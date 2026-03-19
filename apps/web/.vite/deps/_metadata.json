@@ -1,0 +1,61 @@
+{
+  "hash": "0a036b68",
+  "configHash": "620f05cc",
+  "lockfileHash": "615db4d3",
+  "browserHash": "493e906e",
+  "optimized": {
+    "react/jsx-dev-runtime": {
+      "src": "../../../../node_modules/.pnpm/react@18.3.1/node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "438759c8",
+      "needsInterop": true
+    },
+    "react": {
+      "src": "../../../../node_modules/.pnpm/react@18.3.1/node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "bc1dcbe5",
+      "needsInterop": true
+    },
+    "react-dom/client": {
+      "src": "../../../../node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "0991d91f",
+      "needsInterop": true
+    },
+    "@tanstack/react-query": {
+      "src": "../../../../node_modules/.pnpm/@tanstack+react-query@5.91.2_react@18.3.1/node_modules/@tanstack/react-query/build/modern/index.js",
+      "file": "@tanstack_react-query.js",
+      "fileHash": "ed72dc37",
+      "needsInterop": false
+    },
+    "framer-motion": {
+      "src": "../../../../node_modules/.pnpm/framer-motion@12.38.0_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/framer-motion/dist/es/index.mjs",
+      "file": "framer-motion.js",
+      "fileHash": "d71de27c",
+      "needsInterop": false
+    },
+    "lucide-react": {
+      "src": "../../../../node_modules/.pnpm/lucide-react@0.462.0_react@18.3.1/node_modules/lucide-react/dist/esm/lucide-react.js",
+      "file": "lucide-react.js",
+      "fileHash": "4ac8f99a",
+      "needsInterop": false
+    },
+    "zod": {
+      "src": "../../../../node_modules/.pnpm/zod@3.25.76/node_modules/zod/index.js",
+      "file": "zod.js",
+      "fileHash": "f94a5667",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-NGE56BNF": {
+      "file": "chunk-NGE56BNF.js"
+    },
+    "chunk-ZAFXPOOE": {
+      "file": "chunk-ZAFXPOOE.js"
+    },
+    "chunk-RDKGUBC5": {
+      "file": "chunk-RDKGUBC5.js"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+node_modules
+dist
+build
+.next
+coverage
+*.env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Turbo
+.turbo
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea
+
+# Prisma
+prisma/migrations/dev*

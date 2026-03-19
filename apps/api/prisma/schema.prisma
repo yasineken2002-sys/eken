@@ -1,0 +1,367 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MANAGER
+  ACCOUNTANT
+  VIEWER
+}
+
+enum PropertyType {
+  RESIDENTIAL
+  COMMERCIAL
+  MIXED
+  INDUSTRIAL
+  LAND
+}
+
+enum UnitType {
+  APARTMENT
+  OFFICE
+  RETAIL
+  STORAGE
+  PARKING
+  OTHER
+}
+
+enum UnitStatus {
+  VACANT
+  OCCUPIED
+  UNDER_RENOVATION
+  RESERVED
+}
+
+enum TenantType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum LeaseStatus {
+  DRAFT
+  ACTIVE
+  TERMINATED
+  EXPIRED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIAL
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum InvoiceType {
+  RENT
+  DEPOSIT
+  SERVICE
+  UTILITY
+  OTHER
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum JournalEntrySource {
+  MANUAL
+  INVOICE
+  PAYMENT
+  LEASE
+}
+
+// ─── Organization (Tenant in multi-tenant context) ────────────────────────────
+
+model Organization {
+  id          String  @id @default(uuid())
+  name        String
+  orgNumber   String  @unique
+  vatNumber   String?
+  email       String
+  phone       String?
+  street      String
+  city        String
+  postalCode  String
+  country     String  @default("SE")
+  logoUrl     String?
+
+  users          User[]
+  properties     Property[]
+  tenants        Tenant[]
+  invoices       Invoice[]
+  accounts       Account[]
+  journalEntries JournalEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orgNumber])
+}
+
+// ─── User ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id             String   @id @default(uuid())
+  organizationId String
+  email          String   @unique
+  passwordHash   String
+  firstName      String
+  lastName       String
+  role           UserRole @default(VIEWER)
+  avatarUrl      String?
+  isActive       Boolean  @default(true)
+  lastLoginAt    DateTime?
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  refreshTokens  RefreshToken[]
+  journalEntries JournalEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([email])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+// ─── Property (Fastighet) ─────────────────────────────────────────────────────
+
+model Property {
+  id                     String       @id @default(uuid())
+  organizationId         String
+  name                   String
+  propertyDesignation    String
+  type                   PropertyType
+  street                 String
+  city                   String
+  postalCode             String
+  country                String       @default("SE")
+  totalArea              Decimal      @db.Decimal(10, 2)
+  yearBuilt              Int?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  units        Unit[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+// ─── Unit (Lägenhet/Lokal) ────────────────────────────────────────────────────
+
+model Unit {
+  id          String     @id @default(uuid())
+  propertyId  String
+  name        String
+  unitNumber  String
+  type        UnitType
+  status      UnitStatus @default(VACANT)
+  area        Decimal    @db.Decimal(10, 2)
+  floor       Int?
+  rooms       Int?
+  monthlyRent Decimal    @db.Decimal(10, 2)
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  leases   Lease[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([propertyId, unitNumber])
+  @@index([propertyId])
+  @@index([status])
+}
+
+// ─── Tenant (Hyresgäst) ───────────────────────────────────────────────────────
+
+model Tenant {
+  id             String     @id @default(uuid())
+  organizationId String
+  type           TenantType
+  firstName      String?
+  lastName       String?
+  personalNumber String?
+  companyName    String?
+  orgNumber      String?
+  contactPerson  String?
+  email          String
+  phone          String?
+  street         String?
+  city           String?
+  postalCode     String?
+  country        String?    @default("SE")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leases       Lease[]
+  invoices     Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([email])
+}
+
+// ─── Lease (Hyresavtal) ───────────────────────────────────────────────────────
+
+model Lease {
+  id                 String      @id @default(uuid())
+  organizationId     String
+  unitId             String
+  tenantId           String
+  status             LeaseStatus @default(DRAFT)
+  startDate          DateTime    @db.Date
+  endDate            DateTime?   @db.Date
+  monthlyRent        Decimal     @db.Decimal(10, 2)
+  depositAmount      Decimal     @db.Decimal(10, 2)
+  noticePeriodMonths Int         @default(3)
+  indexClause        Boolean     @default(false)
+  signedAt           DateTime?
+  terminatedAt       DateTime?
+  terminationReason  String?
+
+  unit     Unit     @relation(fields: [unitId], references: [id])
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  invoices Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([unitId])
+  @@index([tenantId])
+  @@index([status])
+}
+
+// ─── Invoice (Faktura) ────────────────────────────────────────────────────────
+
+model Invoice {
+  id             String        @id @default(uuid())
+  organizationId String
+  invoiceNumber  String
+  type           InvoiceType
+  status         InvoiceStatus @default(DRAFT)
+  tenantId       String
+  leaseId        String?
+  subtotal       Decimal       @db.Decimal(10, 2)
+  vatTotal       Decimal       @db.Decimal(10, 2)
+  total          Decimal       @db.Decimal(10, 2)
+  dueDate        DateTime      @db.Date
+  issueDate      DateTime      @db.Date
+  paidAt         DateTime?
+  reference      String?
+  notes          String?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  lease        Lease?        @relation(fields: [leaseId], references: [id])
+  lines        InvoiceLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId])
+  @@index([tenantId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model InvoiceLine {
+  id          String  @id @default(uuid())
+  invoiceId   String
+  description String
+  quantity    Decimal @db.Decimal(10, 4)
+  unitPrice   Decimal @db.Decimal(10, 2)
+  vatRate     Int
+  total       Decimal @db.Decimal(10, 2)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+// ─── Accounting ───────────────────────────────────────────────────────────────
+
+model Account {
+  id             String      @id @default(uuid())
+  organizationId String
+  number         Int
+  name           String
+  type           AccountType
+  parentId       String?
+  isActive       Boolean     @default(true)
+
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent         Account?           @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children       Account[]          @relation("AccountHierarchy")
+  journalLines   JournalEntryLine[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId])
+}
+
+model JournalEntry {
+  id             String             @id @default(uuid())
+  organizationId String
+  date           DateTime           @db.Date
+  description    String
+  reference      String?
+  source         JournalEntrySource @default(MANUAL)
+  sourceId       String?
+  createdById    String
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User               @relation(fields: [createdById], references: [id])
+  lines        JournalEntryLine[]
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([date])
+}
+
+model JournalEntryLine {
+  id             String   @id @default(uuid())
+  journalEntryId String
+  accountId      String
+  debit          Decimal? @db.Decimal(10, 2)
+  credit         Decimal? @db.Decimal(10, 2)
+  description    String?
+
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  account      Account      @relation(fields: [accountId], references: [id])
+
+  @@index([journalEntryId])
+  @@index([accountId])
+}
