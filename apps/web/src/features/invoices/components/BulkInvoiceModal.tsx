@@ -212,7 +212,7 @@ export function BulkInvoiceModal({ open, onClose }: Props) {
           </label>
 
           {/* Förhandsgranskning */}
-          <div className="rounded-xl border border-[#EAEDF0] bg-gray-50 px-4 py-3">
+          <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
             <p className="text-[12px] font-semibold uppercase tracking-wide text-gray-400">
               Förhandsgranskning
             </p>
@@ -265,7 +265,7 @@ export function BulkInvoiceModal({ open, onClose }: Props) {
             <p className="text-[17px] font-semibold text-gray-900">Fakturor skapade!</p>
           </div>
 
-          <div className="space-y-2 rounded-xl border border-[#EAEDF0] bg-gray-50 px-4 py-3">
+          <div className="space-y-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
             <div className="flex items-center gap-2 text-[13.5px]">
               <CheckCircle2 size={14} className="text-emerald-600" strokeWidth={2} />
               <span className="font-medium text-gray-800">{result?.created} fakturor skapade</span>

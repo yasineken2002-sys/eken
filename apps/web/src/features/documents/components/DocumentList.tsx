@@ -131,7 +131,7 @@ export function DocumentList({
                 hidden: { opacity: 0, y: 6 },
                 show: { opacity: 1, y: 0, transition: { duration: 0.18 } },
               }}
-              className="flex items-start gap-3 rounded-lg border border-[#EAEDF0] bg-gray-50/60 px-3 py-2.5"
+              className="flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2.5"
             >
               {/* Icon */}
               <div className="mt-0.5 flex-shrink-0">

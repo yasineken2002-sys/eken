@@ -91,9 +91,9 @@ function JournalEntryCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
       onClick={onClick}
-      className="cursor-pointer overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white transition-shadow hover:shadow-sm"
+      className="cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white transition-shadow hover:shadow-sm"
     >
-      <div className="flex items-center justify-between border-b border-[#EAEDF0] px-5 py-3.5">
+      <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3.5">
         <div>
           <p className="text-[14px] font-semibold text-gray-900">{entry.description}</p>
           <p className="mt-0.5 text-[12px] text-gray-400">
@@ -119,8 +119,8 @@ function JournalEntryCard({
 
 function JournalLinesDetail({ lines }: { lines: JournalEntryLine[] }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-[#EAEDF0]">
-      <div className="grid grid-cols-[1fr_auto_auto] gap-0 border-b border-[#EAEDF0] bg-gray-50 px-4 py-2">
+    <div className="overflow-hidden rounded-xl border border-gray-100">
+      <div className="grid grid-cols-[1fr_auto_auto] gap-0 border-b border-gray-100 bg-gray-50 px-4 py-2">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
           Konto
         </span>
@@ -134,7 +134,7 @@ function JournalLinesDetail({ lines }: { lines: JournalEntryLine[] }) {
       {lines.map((line) => (
         <div
           key={line.id}
-          className="grid grid-cols-[1fr_auto_auto] gap-0 border-b border-[#EAEDF0] px-4 py-2.5 last:border-0"
+          className="grid grid-cols-[1fr_auto_auto] gap-0 border-b border-gray-100 px-4 py-2.5 last:border-0"
         >
           <div className="flex items-center gap-3">
             <span className="w-12 font-mono text-[12px] font-bold text-gray-500">
@@ -197,7 +197,7 @@ export function AccountingPage() {
       </div>
 
       {/* View toggle */}
-      <div className="mt-6 flex w-fit items-center gap-1 rounded-xl bg-gray-100 p-1">
+      <div className="mt-6 flex w-fit items-center gap-1 rounded-xl bg-gray-100/70 p-1">
         {(
           [
             { id: 'chart', label: 'Kontoplan' },
@@ -261,9 +261,9 @@ export function AccountingPage() {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: gi * 0.08 }}
-                className="overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white"
+                className="overflow-hidden rounded-2xl border border-gray-100 bg-white"
               >
-                <div className="flex items-center justify-between border-b border-[#EAEDF0] px-4 py-3.5">
+                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3.5">
                   <div className="flex items-center gap-2">
                     <BookOpen size={14} className="text-gray-400" />
                     <h3 className="text-[13.5px] font-semibold text-gray-800">

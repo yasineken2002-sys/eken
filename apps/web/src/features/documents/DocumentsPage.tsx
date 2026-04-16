@@ -296,14 +296,14 @@ export function DocumentsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Sök dokument…"
-            className="h-9 rounded-lg border border-[#DDDFE4] pl-8 pr-3 text-[13px] text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            className="h-9 rounded-lg border border-[#E5E7EB] pl-8 pr-3 text-[13px] text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
             style={{ width: 220 }}
           />
         </div>
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          className="h-9 cursor-pointer rounded-lg border border-[#DDDFE4] bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+          className="h-9 cursor-pointer rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
         >
           {CATEGORY_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>

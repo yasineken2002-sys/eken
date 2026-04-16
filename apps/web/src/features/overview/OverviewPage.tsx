@@ -322,7 +322,7 @@ function EndpointAccordion({ group }: { group: EndpointGroup }) {
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[#EAEDF0] bg-white">
+    <div className="overflow-hidden rounded-xl border border-gray-100 bg-white">
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center justify-between px-4 py-3 transition-colors hover:bg-gray-50/80"
@@ -342,13 +342,13 @@ function EndpointAccordion({ group }: { group: EndpointGroup }) {
       </button>
 
       {open && (
-        <div className="border-t border-[#EAEDF0] px-4 py-2">
+        <div className="border-t border-gray-100 px-4 py-2">
           {group.endpoints.map((ep, i) => {
             const mc = METHOD_COLORS[ep.method] ?? { bg: '#F3F4F6', text: '#374151' }
             return (
               <div
                 key={i}
-                className="flex items-center gap-3 border-b border-[#EAEDF0] py-2 last:border-0"
+                className="flex items-center gap-3 border-b border-gray-100 py-2 last:border-0"
               >
                 <span
                   className="w-14 rounded px-1.5 py-0.5 text-center text-[11px] font-bold"
@@ -399,7 +399,7 @@ export function OverviewPage() {
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-[12px] font-semibold text-emerald-700">
               v1.0
             </span>
-            <span className="rounded-full border border-[#EAEDF0] bg-white px-3 py-1 text-[12px] text-gray-500">
+            <span className="rounded-full border border-gray-100 bg-white px-3 py-1 text-[12px] text-gray-500">
               {today}
             </span>
           </div>
@@ -420,7 +420,7 @@ export function OverviewPage() {
               <motion.div
                 key={card.title}
                 variants={item}
-                className="rounded-2xl border border-[#EAEDF0] bg-white p-4"
+                className="rounded-2xl border border-gray-100 bg-white p-4"
                 whileHover={{ y: -2, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
               >
                 <div className="flex items-center gap-2">
@@ -452,7 +452,7 @@ export function OverviewPage() {
               <motion.div
                 key={mod.name}
                 variants={item}
-                className="flex cursor-pointer flex-col rounded-2xl border border-[#EAEDF0] bg-white p-5 transition-shadow"
+                className="flex cursor-pointer flex-col rounded-2xl border border-gray-100 bg-white p-5 transition-shadow"
                 whileHover={{ y: -2, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
               >
                 {/* Top */}
@@ -484,7 +484,7 @@ export function OverviewPage() {
 
                 {/* Footer */}
                 <div className="mt-auto pt-4">
-                  <span className="rounded-full border border-[#EAEDF0] px-2.5 py-0.5 text-[11px] font-medium text-gray-400">
+                  <span className="rounded-full border border-gray-100 px-2.5 py-0.5 text-[11px] font-medium text-gray-400">
                     {mod.endpoints} endpoints
                   </span>
                 </div>
@@ -504,7 +504,7 @@ export function OverviewPage() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2, delay: 0.05 }}
-              className="rounded-2xl border border-[#EAEDF0] bg-white p-5"
+              className="rounded-2xl border border-gray-100 bg-white p-5"
             >
               <div className="mb-3 flex items-center gap-2">
                 <Server size={14} className="text-gray-400" strokeWidth={1.8} />
@@ -513,7 +513,7 @@ export function OverviewPage() {
               <table className="w-full">
                 <tbody>
                   {BACKEND_STACK.map(([tech, desc]) => (
-                    <tr key={tech} className="border-b border-[#EAEDF0] last:border-0">
+                    <tr key={tech} className="border-b border-gray-100 last:border-0">
                       <td className="w-36 py-2 pr-4 text-[12.5px] font-semibold text-gray-800">
                         {tech}
                       </td>
@@ -529,7 +529,7 @@ export function OverviewPage() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2, delay: 0.1 }}
-              className="rounded-2xl border border-[#EAEDF0] bg-white p-5"
+              className="rounded-2xl border border-gray-100 bg-white p-5"
             >
               <div className="mb-3 flex items-center gap-2">
                 <Monitor size={14} className="text-gray-400" strokeWidth={1.8} />
@@ -538,7 +538,7 @@ export function OverviewPage() {
               <table className="w-full">
                 <tbody>
                   {FRONTEND_STACK.map(([tech, desc]) => (
-                    <tr key={tech} className="border-b border-[#EAEDF0] last:border-0">
+                    <tr key={tech} className="border-b border-gray-100 last:border-0">
                       <td className="w-36 py-2 pr-4 text-[12.5px] font-semibold text-gray-800">
                         {tech}
                       </td>
@@ -564,7 +564,7 @@ export function OverviewPage() {
             ))}
           </motion.div>
           <div className="mt-3 text-right">
-            <span className="rounded-full border border-[#EAEDF0] bg-white px-3 py-1 text-[12px] font-medium text-gray-500">
+            <span className="rounded-full border border-gray-100 bg-white px-3 py-1 text-[12px] font-medium text-gray-500">
               {totalEndpoints} endpoints totalt
             </span>
           </div>
@@ -584,7 +584,7 @@ export function OverviewPage() {
             {[
               {
                 icon: GitBranch,
-                color: '#1a6b3c',
+                color: '#2563EB',
                 bg: '#F0FDF4',
                 title: 'CI Pipeline',
                 subtitle: 'GitHub Actions',
@@ -628,7 +628,7 @@ export function OverviewPage() {
               <motion.div
                 key={card.title}
                 variants={item}
-                className="rounded-2xl border border-[#EAEDF0] bg-white p-5"
+                className="rounded-2xl border border-gray-100 bg-white p-5"
                 whileHover={{ y: -2, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
               >
                 <div
@@ -662,7 +662,7 @@ export function OverviewPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.4 }}
-          className="mt-10 border-t border-[#EAEDF0] pb-6 pt-5 text-center"
+          className="mt-10 border-t border-gray-100 pb-6 pt-5 text-center"
         >
           <p className="text-[12px] text-gray-400">
             Byggt med Claude Code · Eken v1.0 · {new Date().getFullYear()}

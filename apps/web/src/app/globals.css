@@ -4,47 +4,34 @@
 
 @layer base {
   :root {
-    /* Fortnox-inspired palette */
-    --background: 210 20% 97%; /* #F3F5F7 – light warm gray */
-    --foreground: 215 28% 12%; /* #182030 – near black */
+    --background: 220 20% 97%;
+    --foreground: 222 47% 7%;
     --card: 0 0% 100%;
-    --card-foreground: 215 28% 12%;
+    --card-foreground: 222 47% 7%;
     --popover: 0 0% 100%;
-    --popover-foreground: 215 28% 12%;
+    --popover-foreground: 222 47% 7%;
 
-    /* Fortnox green */
-    --primary: 149 60% 33%; /* #218F52 */
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 16% 94%;
-    --secondary-foreground: 215 14% 38%;
-    --muted: 210 16% 94%;
-    --muted-foreground: 215 14% 48%;
-    --accent: 210 16% 92%;
-    --accent-foreground: 215 28% 12%;
-    --destructive: 0 78% 56%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 9% 46%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 220 14% 94%;
+    --accent-foreground: 222 47% 7%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 214 18% 88%; /* #DADEЕ4 */
-    --input: 214 18% 88%;
-    --ring: 149 60% 33%;
-    --radius: 0.375rem; /* Fortnox: straighter corners */
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 221 83% 53%;
+    --radius: 0.625rem;
 
-    /* Sidebar */
-    --sidebar-bg: 218 36% 16%; /* #1A2537 dark navy */
-    --sidebar-fg: 215 20% 68%; /* #A5AFBE muted text */
-    --sidebar-fg-active: 0 0% 100%;
-    --sidebar-active-bg: 218 30% 24%; /* slightly lighter */
-    --sidebar-border: 218 30% 20%;
-
-    /* Status */
-    --success: 149 55% 34%;
-    --success-bg: 149 55% 96%;
-    --warning: 36 90% 50%;
-    --warning-bg: 36 90% 96%;
-    --danger: 0 78% 56%;
-    --danger-bg: 0 78% 96%;
-    --info: 207 86% 47%;
-    --info-bg: 207 86% 96%;
+    --sidebar-bg: 222 47% 7%;
+    --sidebar-fg: 220 9% 60%;
+    --sidebar-fg-active: 0 0% 98%;
+    --sidebar-active-bg: 220 27% 13%;
+    --sidebar-border: 220 27% 11%;
   }
 }
 
@@ -53,7 +40,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-[#F7F8FC] text-[#111827];
     font-family:
       'Inter var',
       'Inter',
@@ -66,14 +53,14 @@
     font-size: 14px;
   }
   ::selection {
-    background: hsl(149 60% 33% / 0.15);
+    background: rgba(37, 99, 235, 0.12);
   }
 }
 
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--border)) transparent;
+    scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
   }
   .scrollbar-thin::-webkit-scrollbar {
     width: 4px;
@@ -83,22 +70,20 @@
     background: transparent;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
-    border-radius: 2px;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground));
+    background: rgba(0, 0, 0, 0.18);
   }
 
-  /* Fortnox table row */
-  .fn-row {
-    @apply border-b border-[#E8EAED] transition-colors duration-100 last:border-0;
+  .table-row-base {
+    @apply border-b border-[#F0F2F5] transition-colors duration-100 last:border-0;
   }
-  .fn-row:hover {
-    background: #f7f9fb;
+  .table-row-base:hover {
+    background: #fafbff;
   }
 
-  /* Streaming cursor blink */
   @keyframes blink {
     0%,
     100% {

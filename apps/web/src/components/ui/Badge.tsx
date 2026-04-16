@@ -3,23 +3,23 @@ import { cn } from '@/lib/cn'
 type Variant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'ghost' | 'purple'
 
 const variants: Record<Variant, string> = {
-  default: 'bg-[#EEF1F4] text-[#4A5568]',
-  success: 'bg-[#E6F6ED] text-[#196638]',
-  warning: 'bg-[#FFF3CD] text-[#7A5200]',
-  danger: 'bg-[#FDECEE] text-[#B91C2A]',
-  info: 'bg-[#E0F0FB] text-[#0B5A8A]',
-  ghost: 'border border-[#D4D9E0] text-[#5A6A7A] bg-transparent',
-  purple: 'bg-[#EDE9FE] text-[#5B21B6]',
+  default: 'bg-gray-100 text-gray-600',
+  success: 'bg-emerald-50 text-emerald-700',
+  warning: 'bg-amber-50 text-amber-700',
+  danger: 'bg-red-50 text-red-600',
+  info: 'bg-blue-50 text-blue-700',
+  ghost: 'border border-gray-200 text-gray-500 bg-transparent',
+  purple: 'bg-purple-50 text-purple-700',
 }
 
 const dotColors: Record<Variant, string> = {
-  default: 'bg-[#8A9BB0]',
-  success: 'bg-[#218F52]',
-  warning: 'bg-[#D97706]',
-  danger: 'bg-[#DC3545]',
-  info: 'bg-[#0B84D0]',
-  ghost: 'bg-[#8A9BB0]',
-  purple: 'bg-[#7C3AED]',
+  default: 'bg-gray-400',
+  success: 'bg-emerald-500',
+  warning: 'bg-amber-500',
+  danger: 'bg-red-500',
+  info: 'bg-blue-500',
+  ghost: 'bg-gray-400',
+  purple: 'bg-purple-500',
 }
 
 interface Props {
@@ -33,7 +33,7 @@ export function Badge({ children, variant = 'default', dot, className }: Props) 
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 whitespace-nowrap rounded px-2 py-0.5 text-[11.5px] font-medium',
+        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[12px] font-medium',
         variants[variant],
         className,
       )}
@@ -63,7 +63,7 @@ export function InvoiceStatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; variant: Variant }> = {
     DRAFT: { label: 'Utkast', variant: 'ghost' },
     SENT: { label: 'Skickad', variant: 'info' },
-    PARTIAL: { label: 'Delvis', variant: 'warning' },
+    PARTIAL: { label: 'Delvis betald', variant: 'warning' },
     PAID: { label: 'Betald', variant: 'success' },
     OVERDUE: { label: 'Försenad', variant: 'danger' },
     VOID: { label: 'Makulerad', variant: 'default' },

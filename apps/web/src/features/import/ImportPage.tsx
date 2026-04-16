@@ -86,7 +86,7 @@ function DropZone({ accept, onFile, disabled, hint }: DropZoneProps) {
         'relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 text-center transition-colors',
         dragging
           ? 'border-blue-400 bg-blue-50'
-          : 'border-[#DDDFE4] bg-gray-50/50 hover:border-blue-300 hover:bg-blue-50/30',
+          : 'border-[#E5E7EB] bg-gray-50/50 hover:border-blue-300 hover:bg-blue-50/30',
         disabled && 'pointer-events-none opacity-50',
       )}
       onClick={() => inputRef.current?.click()}
@@ -124,10 +124,10 @@ function PreviewTable({ preview }: { preview: Record<string, string>[] }) {
   const headers = Object.keys(preview[0] ?? {})
 
   return (
-    <div className="overflow-auto rounded-xl border border-[#EAEDF0]">
+    <div className="overflow-auto rounded-xl border border-gray-100">
       <table className="w-full text-[12.5px]">
         <thead>
-          <tr className="border-b border-[#EAEDF0] bg-gray-50">
+          <tr className="border-b border-gray-100 bg-gray-50">
             {headers.map((h) => (
               <th
                 key={h}
@@ -140,7 +140,7 @@ function PreviewTable({ preview }: { preview: Record<string, string>[] }) {
         </thead>
         <tbody>
           {preview.map((row, i) => (
-            <tr key={i} className="border-b border-[#EAEDF0] last:border-0 hover:bg-gray-50/80">
+            <tr key={i} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/80">
               {headers.map((h) => (
                 <td key={h} className="whitespace-nowrap px-3 py-2 text-gray-700">
                   {row[h] ?? '—'}
@@ -230,7 +230,7 @@ function ImportPanel({ type }: { type: string }) {
 
       {/* Previewing */}
       {state === 'previewing' && (
-        <div className="flex h-24 items-center justify-center rounded-xl border border-[#EAEDF0] bg-gray-50">
+        <div className="flex h-24 items-center justify-center rounded-xl border border-gray-100 bg-gray-50">
           <Loader2 size={18} className="animate-spin text-blue-500" />
           <span className="ml-2 text-[13px] text-gray-500">Analyserar fil...</span>
         </div>
@@ -317,7 +317,7 @@ function ImportPanel({ type }: { type: string }) {
 
       {/* Importing */}
       {state === 'importing' && (
-        <div className="flex h-24 items-center justify-center rounded-xl border border-[#EAEDF0] bg-gray-50">
+        <div className="flex h-24 items-center justify-center rounded-xl border border-gray-100 bg-gray-50">
           <Loader2 size={18} className="animate-spin text-blue-500" />
           <span className="ml-2 text-[13px] text-gray-500">Importerar...</span>
         </div>
@@ -328,7 +328,7 @@ function ImportPanel({ type }: { type: string }) {
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-xl border border-[#EAEDF0] bg-white p-5"
+          className="rounded-xl border border-gray-100 bg-white p-5"
         >
           <div className="mb-4 flex items-center gap-2">
             <CheckCircle2 size={16} className="text-emerald-600" />
@@ -456,7 +456,7 @@ function ContractScannerPanel() {
       )}
 
       {scanState === 'scanning' && (
-        <div className="flex h-32 flex-col items-center justify-center gap-2 rounded-xl border border-[#EAEDF0] bg-gray-50">
+        <div className="flex h-32 flex-col items-center justify-center gap-2 rounded-xl border border-gray-100 bg-gray-50">
           <Loader2 size={20} className="animate-spin text-blue-500" />
           <span className="text-[13px] text-gray-500">Analyserar kontrakt...</span>
         </div>
@@ -484,7 +484,7 @@ function ContractScannerPanel() {
           </div>
 
           {/* Hyresgäst section */}
-          <div className="rounded-xl border border-[#EAEDF0] bg-white p-4">
+          <div className="rounded-xl border border-gray-100 bg-white p-4">
             <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
               Hyresgäst
             </p>
@@ -552,7 +552,7 @@ function ContractScannerPanel() {
           </div>
 
           {/* Contract section */}
-          <div className="rounded-xl border border-[#EAEDF0] bg-white p-4">
+          <div className="rounded-xl border border-gray-100 bg-white p-4">
             <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
               Kontrakt
             </p>
@@ -673,8 +673,8 @@ function ScanField({
           'h-8 w-full rounded-lg border px-2.5 text-[13px] outline-none transition-colors',
           'focus:border-blue-500 focus:ring-2 focus:ring-blue-500',
           !value
-            ? 'border-[#DDDFE4] bg-gray-50 text-gray-400 placeholder:text-gray-300'
-            : 'border-[#DDDFE4] bg-white text-gray-800',
+            ? 'border-[#E5E7EB] bg-gray-50 text-gray-400 placeholder:text-gray-300'
+            : 'border-[#E5E7EB] bg-white text-gray-800',
         )}
       />
     </div>
@@ -685,10 +685,10 @@ function ScanField({
 
 function ImportHistory({ jobs }: { jobs: ImportJob[] }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white">
+    <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
       <table className="w-full text-[13px]">
         <thead>
-          <tr className="border-b border-[#EAEDF0]">
+          <tr className="border-b border-gray-100">
             {['Datum', 'Typ', 'Fil', 'Totalt', 'Lyckades', 'Fel', 'Status'].map((h) => (
               <th
                 key={h}
@@ -708,10 +708,7 @@ function ImportHistory({ jobs }: { jobs: ImportJob[] }) {
             </tr>
           )}
           {jobs.map((job) => (
-            <tr
-              key={job.id}
-              className="border-b border-[#EAEDF0] last:border-0 hover:bg-gray-50/80"
-            >
+            <tr key={job.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/80">
               <td className="px-4 py-3 text-gray-600">{formatDate(job.createdAt)}</td>
               <td className="px-4 py-3 text-gray-700">{TYPE_LABELS[job.type] ?? job.type}</td>
               <td className="max-w-[160px] truncate px-4 py-3 text-gray-500">{job.filename}</td>
@@ -772,7 +769,7 @@ export function ImportPage() {
         >
           {/* LEFT — Excel/CSV Import */}
           <motion.div variants={item} className="lg:col-span-3">
-            <div className="rounded-2xl border border-[#EAEDF0] bg-white p-5">
+            <div className="rounded-2xl border border-gray-100 bg-white p-5">
               <div className="mb-5 flex items-center gap-2">
                 <FileSpreadsheet size={16} className="text-blue-600" strokeWidth={1.8} />
                 <h2 className="text-[15px] font-semibold text-gray-900">
@@ -781,7 +778,7 @@ export function ImportPage() {
               </div>
 
               {/* Tabs */}
-              <div className="mb-5 flex gap-1 rounded-xl bg-gray-100 p-1">
+              <div className="mb-5 flex gap-1 rounded-xl bg-gray-100/70 p-1">
                 {IMPORT_TABS.map((tab) => {
                   const Icon = tab.icon
                   return (
@@ -818,7 +815,7 @@ export function ImportPage() {
 
           {/* RIGHT — AI Scanner */}
           <motion.div variants={item} className="lg:col-span-2">
-            <div className="rounded-2xl border border-[#EAEDF0] bg-white p-5">
+            <div className="rounded-2xl border border-gray-100 bg-white p-5">
               <div className="mb-4 flex items-center gap-2">
                 <Scan size={16} className="text-purple-600" strokeWidth={1.8} />
                 <h2 className="text-[15px] font-semibold text-gray-900">Skanna kontrakt med AI</h2>

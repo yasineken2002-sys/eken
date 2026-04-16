@@ -226,7 +226,7 @@ export function PropertiesPage() {
             title="Bostadsfastigheter"
             value={residentialCount}
             icon={Home}
-            iconColor="#218F52"
+            iconColor="#2563EB"
             delay={0.1}
           />
         </motion.div>
@@ -234,7 +234,7 @@ export function PropertiesPage() {
 
       {/* Filter tabs */}
       <div className="mt-6">
-        <div className="flex w-fit gap-1 rounded-xl bg-gray-100 p-1">
+        <div className="flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -375,7 +375,7 @@ function DetailPanel({
   return (
     <div>
       {/* Tabs */}
-      <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100 p-1">
+      <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
         {(['detaljer', 'redigera'] as const).map((t) => (
           <button
             key={t}
@@ -478,7 +478,7 @@ function DetaljerTab({ property, onDeleteRequest }: DetaljerTabProps) {
             {property.units.map((unit) => (
               <div
                 key={unit.id}
-                className="flex items-center justify-between rounded-lg border border-[#EAEDF0] bg-gray-50/60 px-3 py-2.5"
+                className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2.5"
               >
                 <div className="flex items-center gap-2.5">
                   <MapPin size={12} strokeWidth={1.8} className="text-gray-400" />
@@ -505,7 +505,7 @@ function DetaljerTab({ property, onDeleteRequest }: DetaljerTabProps) {
       <DocumentList propertyId={property.id} title="Fastighetsdokument" />
 
       {/* Footer actions */}
-      <div className="flex items-center justify-between border-t border-[#EAEDF0] pt-4">
+      <div className="flex items-center justify-between border-t border-gray-100 pt-4">
         <Button variant="danger" size="sm" onClick={onDeleteRequest}>
           <Trash2 size={13} strokeWidth={1.8} />
           Ta bort fastighet

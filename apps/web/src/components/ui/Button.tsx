@@ -5,21 +5,24 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline'
 type Size = 'xs' | 'sm' | 'md'
 
 const base =
-  'inline-flex items-center justify-center gap-1.5 font-medium rounded transition-all duration-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#218F52] focus-visible:ring-offset-1 disabled:opacity-50 disabled:pointer-events-none select-none active:scale-[0.98]'
+  'inline-flex items-center justify-center gap-1.5 font-medium rounded-[10px] transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-1 disabled:opacity-50 disabled:pointer-events-none select-none active:scale-[0.97]'
 
 const variants: Record<Variant, string> = {
-  primary: 'bg-[#218F52] text-white hover:bg-[#1A7C45] active:bg-[#166638] shadow-sm',
+  primary:
+    'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-[0_1px_2px_rgba(37,99,235,0.3),0_0_0_1px_rgba(37,99,235,0.08)]',
   secondary:
-    'bg-white text-[#3A4553] border border-[#D4D9E0] hover:bg-[#F7F9FB] hover:border-[#B8BFC8] shadow-sm',
-  outline: 'bg-transparent text-[#218F52] border border-[#218F52] hover:bg-[#218F52]/5',
-  ghost: 'text-[#5A6A7A] hover:bg-[#EEF1F4] hover:text-[#182030]',
-  danger: 'bg-[#DC3545] text-white hover:bg-[#C82333] shadow-sm',
+    'bg-white text-gray-700 border border-[#E5E7EB] hover:bg-gray-50 hover:border-gray-300 shadow-[0_1px_2px_rgba(0,0,0,0.05)]',
+  outline:
+    'bg-transparent text-blue-600 border border-blue-200 hover:bg-blue-50 hover:border-blue-400',
+  ghost: 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+  danger:
+    'bg-red-500 text-white hover:bg-red-600 active:bg-red-700 shadow-[0_1px_2px_rgba(239,68,68,0.25)]',
 }
 
 const sizes: Record<Size, string> = {
   xs: 'h-7 px-2.5 text-[12px]',
-  sm: 'h-8 px-3 text-[13px]',
-  md: 'h-[34px] px-4 text-[13px]',
+  sm: 'h-8 px-3.5 text-[13px]',
+  md: 'h-9 px-4 text-[13.5px]',
 }
 
 interface Props extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -37,14 +40,14 @@ export const Button = forwardRef<HTMLButtonElement, Props>(
       {...props}
     >
       {loading && (
-        <svg className="h-3 w-3 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+        <svg className="h-3.5 w-3.5 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
           <circle
             className="opacity-25"
             cx="12"
             cy="12"
             r="10"
             stroke="currentColor"
-            strokeWidth="4"
+            strokeWidth="3"
           />
           <path
             className="opacity-75"

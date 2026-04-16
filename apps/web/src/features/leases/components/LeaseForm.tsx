@@ -230,7 +230,7 @@ export function LeaseForm({
             render={({ field }) => (
               <select
                 {...field}
-                className="h-9 w-full rounded-lg border border-[#DDDFE4] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Välj fastighet…</option>
                 {properties.map((p) => (
@@ -257,7 +257,7 @@ export function LeaseForm({
                 {...field}
                 disabled={!propertyId}
                 className={cn(
-                  'h-9 w-full rounded-lg border border-[#DDDFE4] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500',
+                  'h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500',
                   !propertyId && 'cursor-not-allowed opacity-50',
                 )}
               >
@@ -299,8 +299,8 @@ export function LeaseForm({
             className={cn(
               'h-9 flex-1 rounded-lg border px-4 text-[13px] font-medium transition-all active:scale-[0.97]',
               tenantMode === mode
-                ? 'border-[#218F52] bg-[#218F52]/10 text-[#196638]'
-                : 'border-[#DDDFE4] text-gray-500 hover:border-gray-300 hover:text-gray-700',
+                ? 'border-[#218F52] bg-blue-600/10 text-[#196638]'
+                : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
             )}
           >
             {mode === 'existing' ? 'Befintlig hyresgäst' : 'Ny hyresgäst'}
@@ -318,7 +318,7 @@ export function LeaseForm({
             render={({ field }) => (
               <select
                 {...field}
-                className="h-9 w-full rounded-lg border border-[#DDDFE4] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Välj hyresgäst…</option>
                 {tenants.map((t) => (
@@ -349,7 +349,7 @@ export function LeaseForm({
                     'h-9 flex-1 rounded-lg border px-4 text-[13px] font-medium transition-all active:scale-[0.97]',
                     newTenantType === t
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-[#DDDFE4] text-gray-500 hover:border-gray-300 hover:text-gray-700',
+                      : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
                   )}
                 >
                   {t === 'INDIVIDUAL' ? 'Privatperson' : 'Företag'}

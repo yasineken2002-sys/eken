@@ -139,9 +139,9 @@ function ImportModal({
             className={cn(
               'flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-10 transition-colors',
               dragOver
-                ? 'border-[#218F52] bg-[#218F52]/5'
+                ? 'border-[#218F52] bg-blue-600/5'
                 : file
-                  ? 'border-[#218F52] bg-[#218F52]/5'
+                  ? 'border-[#218F52] bg-blue-600/5'
                   : 'border-[#D4D9E0] hover:border-[#218F52]/50 hover:bg-gray-50/60',
             )}
           >
@@ -157,16 +157,16 @@ function ImportModal({
             />
             {file ? (
               <>
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#218F52]/30 bg-[#218F52]/10">
-                  <FileText size={22} strokeWidth={1.5} className="text-[#218F52]" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#218F52]/30 bg-blue-600/10">
+                  <FileText size={22} strokeWidth={1.5} className="text-blue-600" />
                 </div>
                 <p className="mt-3 text-[13.5px] font-semibold text-gray-800">{file.name}</p>
                 <p className="text-[12px] text-gray-400">{formatBytes(file.size)}</p>
-                <p className="mt-1 text-[12px] text-[#218F52]">Klicka för att byta fil</p>
+                <p className="mt-1 text-[12px] text-blue-600">Klicka för att byta fil</p>
               </>
             ) : (
               <>
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#EAEDF0] bg-gray-50">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-gray-100 bg-gray-50">
                   <Upload size={22} strokeWidth={1.5} className="text-gray-300" />
                 </div>
                 <p className="mt-3 text-[13.5px] font-semibold text-gray-700">
@@ -200,7 +200,7 @@ function ImportModal({
             <p className="mt-3 text-[16px] font-semibold text-gray-900">Import klar!</p>
           </div>
 
-          <div className="space-y-2 rounded-xl border border-[#EAEDF0] bg-gray-50 px-4 py-3">
+          <div className="space-y-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
             <ResultRow
               icon="check"
               text={`${result.imported} transaktioner importerade`}
@@ -301,7 +301,7 @@ function ResultRow({
 function FormatGuide() {
   const [open, setOpen] = useState(false)
   return (
-    <div className="rounded-xl border border-[#EAEDF0]">
+    <div className="rounded-xl border border-gray-100">
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center justify-between px-3.5 py-2.5 text-[12.5px] font-medium text-gray-600 hover:text-gray-800"
@@ -310,7 +310,7 @@ function FormatGuide() {
         {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
       </button>
       {open && (
-        <div className="space-y-1.5 border-t border-[#EAEDF0] px-3.5 py-3">
+        <div className="space-y-1.5 border-t border-gray-100 px-3.5 py-3">
           <p className="text-[12px] text-gray-500">Förväntade kolumner (svenska eller engelska):</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             {[
@@ -370,7 +370,7 @@ function ManualMatchModal({
   return (
     <Modal open onClose={onClose} title="Matcha transaktion" size="md">
       {/* Transaction details */}
-      <div className="mb-4 rounded-xl border border-[#EAEDF0] bg-gray-50 px-4 py-3">
+      <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Datum</p>
@@ -408,11 +408,11 @@ function ManualMatchModal({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Sök faktura..."
-          className="h-9 w-full rounded-lg border border-[#DDDFE4] pl-8 pr-3 text-[13px] focus:border-[#218F52] focus:outline-none focus:ring-2 focus:ring-[#218F52]/20"
+          className="h-9 w-full rounded-lg border border-[#E5E7EB] pl-8 pr-3 text-[13px] focus:border-[#218F52] focus:outline-none focus:ring-2 focus:ring-[#218F52]/20"
         />
       </div>
 
-      <div className="max-h-52 overflow-y-auto rounded-xl border border-[#EAEDF0]">
+      <div className="max-h-52 overflow-y-auto rounded-xl border border-gray-100">
         {isLoading ? (
           <div className="py-8 text-center text-[13px] text-gray-400">Laddar fakturor...</div>
         ) : candidates.length === 0 ? (
@@ -424,9 +424,9 @@ function ManualMatchModal({
               onClick={() => setSelectedInvoiceId(inv.id)}
               className={cn(
                 'flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors',
-                i !== candidates.length - 1 && 'border-b border-[#EAEDF0]',
+                i !== candidates.length - 1 && 'border-b border-gray-100',
                 selectedInvoiceId === inv.id
-                  ? 'bg-[#218F52]/8 ring-1 ring-inset ring-[#218F52]/30'
+                  ? 'bg-blue-600/8 ring-1 ring-inset ring-[#218F52]/30'
                   : amountMatches(inv)
                     ? 'bg-emerald-50/60 hover:bg-emerald-50'
                     : 'hover:bg-gray-50',
@@ -534,7 +534,7 @@ export function ReconciliationPage() {
             title="Matchade"
             value={`${stats?.matched ?? 0}`}
             icon={CheckCircle2}
-            iconColor="#218F52"
+            iconColor="#2563EB"
             delay={0.05}
             {...(stats?.matchedAmount ? { changeLabel: formatCurrency(stats.matchedAmount) } : {})}
           />
@@ -561,7 +561,7 @@ export function ReconciliationPage() {
 
       {/* Filter tabs */}
       <div className="mt-6">
-        <div className="flex w-fit gap-1 rounded-xl bg-gray-100 p-1">
+        <div className="flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -597,7 +597,7 @@ export function ReconciliationPage() {
             }
           />
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white">
+          <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: '1px solid #EAEDF0' }}>
@@ -619,7 +619,7 @@ export function ReconciliationPage() {
                   <motion.tr
                     key={tx.id}
                     variants={item}
-                    className="border-b border-[#EAEDF0] transition-colors last:border-0 hover:bg-gray-50/80"
+                    className="border-b border-gray-100 transition-colors last:border-0 hover:bg-gray-50/80"
                   >
                     <td className="px-4 py-3 text-[13px] text-gray-600">{formatDate(tx.date)}</td>
                     <td className="max-w-[200px] px-4 py-3">

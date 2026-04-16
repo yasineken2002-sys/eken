@@ -166,7 +166,7 @@ export function SettingsPage() {
       ) : (
         <div className="mt-6 space-y-5">
           {/* ── Section 1: Logotyp ──────────────────────────────────────────── */}
-          <section className="rounded-2xl border border-[#EAEDF0] bg-white p-5">
+          <section className="rounded-2xl border border-gray-100 bg-white p-5">
             <h2 className="mb-4 text-[14px] font-semibold text-gray-800">Företagslogotyp</h2>
 
             <div className="flex items-start gap-6">
@@ -176,7 +176,7 @@ export function SettingsPage() {
                   <img
                     src={logoUrl}
                     alt="Logotyp"
-                    className="h-20 w-20 rounded-xl border border-[#EAEDF0] object-contain p-2"
+                    className="h-20 w-20 rounded-xl border border-gray-100 object-contain p-2"
                   />
                 </div>
               )}
@@ -188,7 +188,7 @@ export function SettingsPage() {
                     'flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-colors',
                     uploadMutation.isPending
                       ? 'border-blue-200 bg-blue-50'
-                      : 'border-[#DDDFE4] hover:border-blue-300 hover:bg-blue-50/40',
+                      : 'border-[#E5E7EB] hover:border-blue-300 hover:bg-blue-50/40',
                   )}
                   onClick={() => fileInputRef.current?.click()}
                   onDrop={handleDrop}
@@ -232,7 +232,7 @@ export function SettingsPage() {
           </section>
 
           {/* ── Section 2: Betalningsinformation ────────────────────────────── */}
-          <section className="rounded-2xl border border-[#EAEDF0] bg-white p-5">
+          <section className="rounded-2xl border border-gray-100 bg-white p-5">
             <h2 className="mb-4 text-[14px] font-semibold text-gray-800">Betalningsinformation</h2>
 
             <form onSubmit={handleSubmit(handleSave)} className="space-y-4">
@@ -269,7 +269,7 @@ export function SettingsPage() {
           </section>
 
           {/* ── Section 3: Fakturainställningar ─────────────────────────────── */}
-          <section className="rounded-2xl border border-[#EAEDF0] bg-white p-5">
+          <section className="rounded-2xl border border-gray-100 bg-white p-5">
             <h2 className="mb-5 text-[14px] font-semibold text-gray-800">Fakturainställningar</h2>
 
             {/* FÄRGVAL */}
@@ -308,7 +308,7 @@ export function SettingsPage() {
                     type="color"
                     value={invoiceColor}
                     onChange={(e) => setInvoiceColor(e.target.value)}
-                    className="h-8 w-8 cursor-pointer rounded-full border border-[#DDDFE4] p-0.5"
+                    className="h-8 w-8 cursor-pointer rounded-full border border-[#E5E7EB] p-0.5"
                     title="Anpassad färg"
                   />
                   <span className="text-[12px] text-gray-400">Anpassad</span>
@@ -337,7 +337,7 @@ export function SettingsPage() {
                       'rounded-xl border p-3 text-left transition-all active:scale-[0.97]',
                       invoiceTemplate === tpl.value
                         ? 'border-2 shadow-sm'
-                        : 'border-[#EAEDF0] hover:border-gray-300',
+                        : 'border-gray-100 hover:border-gray-300',
                     )}
                     style={
                       invoiceTemplate === tpl.value
@@ -485,7 +485,7 @@ export function SettingsPage() {
           </section>
 
           {/* ── Section 4: Företagsinformation (read-only) ──────────────────── */}
-          <section className="rounded-2xl border border-[#EAEDF0] bg-white p-5">
+          <section className="rounded-2xl border border-gray-100 bg-white p-5">
             <h2 className="mb-4 text-[14px] font-semibold text-gray-800">Företagsinformation</h2>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -511,7 +511,7 @@ export function SettingsPage() {
           </section>
 
           {/* ── Section 5: AI-inställningar ─────────────────────────────────── */}
-          <section className="rounded-2xl border border-[#EAEDF0] bg-white p-5">
+          <section className="rounded-2xl border border-gray-100 bg-white p-5">
             <div className="mb-4 flex items-center gap-2">
               <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-purple-50">
                 <Brain size={13} strokeWidth={1.8} className="text-purple-600" />
@@ -573,7 +573,7 @@ export function SettingsPage() {
               </div>
 
               {/* Clear memories */}
-              <div className="border-t border-[#EAEDF0] pt-4">
+              <div className="border-t border-gray-100 pt-4">
                 {clearMemoriesConfirm ? (
                   <div className="space-y-2">
                     <p className="text-[13px] text-gray-700">

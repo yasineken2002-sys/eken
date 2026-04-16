@@ -124,7 +124,7 @@ function MessageBubble({ msg }: { msg: AiMessage }) {
       className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
     >
       {!isUser && (
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-[#EAEDF0] bg-white shadow-sm">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">
           <Sparkles size={14} strokeWidth={1.8} className="text-blue-500" />
         </div>
       )}
@@ -132,7 +132,7 @@ function MessageBubble({ msg }: { msg: AiMessage }) {
         className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
           isUser
             ? 'rounded-tr-sm bg-[#1A7C45] text-white'
-            : 'rounded-tl-sm border border-[#EAEDF0] bg-white text-gray-800'
+            : 'rounded-tl-sm border border-gray-100 bg-white text-gray-800'
         }`}
       >
         <p
@@ -172,7 +172,7 @@ function ConfirmationCard({
     >
       <div
         className={cn(
-          'overflow-hidden rounded-2xl border border-l-4 border-[#EAEDF0] bg-white shadow-sm',
+          'overflow-hidden rounded-2xl border border-l-4 border-gray-100 bg-white shadow-sm',
           isHighRisk ? 'border-l-red-600' : 'border-l-green-600',
         )}
       >
@@ -230,7 +230,7 @@ function ConfirmationCard({
             <button
               onClick={onCancel}
               disabled={isLoading}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-[#DDDFE4] bg-white px-4 text-[13.5px] font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-4 text-[13.5px] font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
             >
               <X size={13} strokeWidth={2} />
               Avbryt
@@ -528,9 +528,9 @@ export function AiPage() {
     <PageWrapper id="ai">
       <div className="flex h-[calc(100vh-52px)] overflow-hidden">
         {/* ── Left Sidebar ── */}
-        <div className="flex w-[280px] flex-shrink-0 flex-col border-r border-[#EAEDF0] bg-white">
+        <div className="flex w-[280px] flex-shrink-0 flex-col border-r border-gray-100 bg-white">
           {/* Header */}
-          <div className="border-b border-[#EAEDF0] px-4 py-3">
+          <div className="border-b border-gray-100 px-4 py-3">
             <div className="mb-3 flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50">
                 <Sparkles size={14} strokeWidth={1.8} className="text-blue-600" />
@@ -628,7 +628,7 @@ export function AiPage() {
           </div>
 
           {/* Analysis button */}
-          <div className="border-t border-[#EAEDF0] p-3">
+          <div className="border-t border-gray-100 p-3">
             <button
               onClick={() => setAnalysisOpen(true)}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-gray-600 transition-colors hover:bg-gray-50"
@@ -650,7 +650,7 @@ export function AiPage() {
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.3 }}
-                  className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[#EAEDF0] bg-white shadow-md"
+                  className="flex h-16 w-16 items-center justify-center rounded-2xl border border-gray-100 bg-white shadow-md"
                 >
                   <Sparkles size={28} strokeWidth={1.5} className="text-blue-500" />
                 </motion.div>
@@ -683,7 +683,7 @@ export function AiPage() {
                     <button
                       key={s.label}
                       onClick={() => void handleSend(s.label)}
-                      className="flex items-center gap-2.5 rounded-xl border border-[#EAEDF0] bg-white px-4 py-3 text-left transition-all hover:border-blue-200 hover:shadow-sm active:scale-[0.98]"
+                      className="flex items-center gap-2.5 rounded-xl border border-gray-100 bg-white px-4 py-3 text-left transition-all hover:border-blue-200 hover:shadow-sm active:scale-[0.98]"
                     >
                       <div
                         className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
@@ -710,10 +710,10 @@ export function AiPage() {
                     animate={{ opacity: 1, y: 0 }}
                     className="flex gap-3"
                   >
-                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-[#EAEDF0] bg-white shadow-sm">
+                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">
                       <Sparkles size={14} strokeWidth={1.8} className="text-blue-500" />
                     </div>
-                    <div className="rounded-2xl rounded-tl-sm border border-[#EAEDF0] bg-white px-4 py-2.5">
+                    <div className="rounded-2xl rounded-tl-sm border border-gray-100 bg-white px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <LoadingDots />
                         <span className="text-[12px] text-gray-400">Analyserar din data...</span>
@@ -728,14 +728,14 @@ export function AiPage() {
                     animate={{ opacity: 1, y: 0 }}
                     className="flex gap-3"
                   >
-                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-[#EAEDF0] bg-white shadow-sm">
+                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">
                       <Sparkles
                         size={14}
                         strokeWidth={1.8}
                         className="animate-pulse text-blue-500"
                       />
                     </div>
-                    <div className="max-w-[70%] rounded-2xl rounded-tl-sm border border-[#EAEDF0] bg-white px-4 py-2.5">
+                    <div className="max-w-[70%] rounded-2xl rounded-tl-sm border border-gray-100 bg-white px-4 py-2.5">
                       {streamingText ? (
                         <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-gray-800">
                           {streamingText}
@@ -769,7 +769,7 @@ export function AiPage() {
           </AnimatePresence>
 
           {/* Input area */}
-          <div className="border-t border-[#EAEDF0] bg-white px-6 py-4">
+          <div className="border-t border-gray-100 bg-white px-6 py-4">
             <div className="mx-auto max-w-3xl">
               {isListening && (
                 <div className="mb-2 flex items-center gap-2 text-[13px] text-red-500">
@@ -777,7 +777,7 @@ export function AiPage() {
                   Lyssnar... Tala din fråga på svenska
                 </div>
               )}
-              <div className="flex items-end gap-3 rounded-2xl border border-[#DDDFE4] bg-white px-4 py-3 transition-all focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100">
+              <div className="flex items-end gap-3 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 transition-all focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100">
                 <textarea
                   ref={textareaRef}
                   value={input}

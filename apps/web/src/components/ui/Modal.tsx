@@ -38,58 +38,39 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="absolute inset-0"
-            style={{ background: 'rgba(15,22,35,0.45)', backdropFilter: 'blur(2px)' }}
+            transition={{ duration: 0.15 }}
+            className="absolute inset-0 bg-black/40 backdrop-blur-[3px]"
             onClick={onClose}
           />
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.97, y: 10 }}
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 6 }}
-            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-            className={cn('relative w-full overflow-hidden bg-white', sizes[size])}
-            style={{
-              borderRadius: '6px',
-              border: '1px solid #D4D9E0',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.08)',
-            }}
+            exit={{ opacity: 0, scale: 0.96, y: 8 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+            className={cn(
+              'relative w-full overflow-hidden rounded-[20px] bg-white',
+              'shadow-[0_24px_80px_rgba(0,0,0,0.12),0_8px_24px_rgba(0,0,0,0.06)]',
+              'border border-white/80',
+              sizes[size],
+            )}
           >
             {/* Header */}
-            <div
-              className="flex items-center justify-between px-5 py-4"
-              style={{ borderBottom: '1px solid #E8EAED' }}
-            >
-              <div>
-                <h2 className="text-[15px] font-semibold" style={{ color: '#182030' }}>
-                  {title}
-                </h2>
-                {description && (
-                  <p className="mt-0.5 text-[12.5px]" style={{ color: '#6B7684' }}>
-                    {description}
-                  </p>
-                )}
+            <div className="flex items-start justify-between border-b border-gray-100 px-6 pb-4 pt-5">
+              <div className="pr-4">
+                <h2 className="text-[17px] font-semibold leading-tight text-gray-900">{title}</h2>
+                {description && <p className="mt-1 text-[13px] text-gray-500">{description}</p>}
               </div>
               <button
                 onClick={onClose}
-                className="ml-4 flex h-7 w-7 items-center justify-center rounded transition-colors"
-                style={{ color: '#8A95A3' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#EEF1F4'
-                  e.currentTarget.style.color = '#182030'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent'
-                  e.currentTarget.style.color = '#8A95A3'
-                }}
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
               >
-                <X size={14} />
+                <X size={15} strokeWidth={2} />
               </button>
             </div>
 
             {/* Body */}
-            <div className="px-5 py-5">{children}</div>
+            <div className="px-6 py-5">{children}</div>
           </motion.div>
         </div>
       )}
@@ -106,8 +87,10 @@ export function ModalFooter({
 }) {
   return (
     <div
-      className={cn('mt-4 flex items-center justify-end gap-2 pt-4', className)}
-      style={{ borderTop: '1px solid #E8EAED' }}
+      className={cn(
+        'mt-5 flex items-center justify-end gap-2 border-t border-gray-100 pt-4',
+        className,
+      )}
     >
       {children}
     </div>

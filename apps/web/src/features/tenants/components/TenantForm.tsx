@@ -149,8 +149,8 @@ export function TenantForm({
               className={cn(
                 'h-9 flex-1 rounded-lg border px-4 text-[13px] font-medium transition-all active:scale-[0.97]',
                 type === t
-                  ? 'border-[#218F52] bg-[#218F52]/10 text-[#196638]'
-                  : 'border-[#DDDFE4] text-gray-500 hover:border-gray-300 hover:text-gray-700',
+                  ? 'border-[#218F52] bg-blue-600/10 text-[#196638]'
+                  : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
               )}
             >
               {t === 'INDIVIDUAL' ? 'Privatperson' : 'Företag'}

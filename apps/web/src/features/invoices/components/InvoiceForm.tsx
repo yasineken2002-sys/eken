@@ -197,12 +197,12 @@ export function InvoiceForm({
           </div>
 
           {/* Fakturarader */}
-          <div className="overflow-hidden rounded-xl border border-[#EAEDF0]">
-            <div className="border-b border-[#EAEDF0] bg-gray-50 px-4 py-2.5">
+          <div className="overflow-hidden rounded-xl border border-gray-100">
+            <div className="border-b border-gray-100 bg-gray-50 px-4 py-2.5">
               <p className="text-[12px] font-semibold text-gray-500">Fakturarader</p>
             </div>
 
-            <div className="divide-y divide-[#EAEDF0]">
+            <div className="divide-y divide-gray-100">
               {fields.map((field, idx) => (
                 <div key={field.id} className="space-y-2 p-3">
                   <div className="flex items-start gap-2">
@@ -217,7 +217,7 @@ export function InvoiceForm({
                       <button
                         type="button"
                         onClick={() => remove(idx)}
-                        className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#DDDFE4] text-gray-400 hover:border-red-200 hover:text-red-500 active:scale-[0.97]"
+                        className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#E5E7EB] text-gray-400 hover:border-red-200 hover:text-red-500 active:scale-[0.97]"
                       >
                         <Trash2 size={13} strokeWidth={1.8} />
                       </button>
@@ -256,7 +256,7 @@ export function InvoiceForm({
               ))}
             </div>
 
-            <div className="flex items-center justify-between border-t border-[#EAEDF0] bg-gray-50 px-4 py-2.5">
+            <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50 px-4 py-2.5">
               <button
                 type="button"
                 onClick={() => append({ description: '', quantity: 1, unitPrice: 0, vatRate: 25 })}

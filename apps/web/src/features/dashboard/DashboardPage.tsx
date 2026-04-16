@@ -9,6 +9,7 @@ import {
   TrendingUp,
   Sparkles,
   ChevronRight,
+  ArrowUpRight,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -29,6 +30,12 @@ const item = {
   show: { opacity: 1, y: 0, transition: { duration: 0.2 } },
 }
 
+const AI_CHIPS = [
+  { label: 'Förfallna fakturor', prompt: 'Analysera förfallna fakturor' },
+  { label: 'Beläggning', prompt: 'Hur ser beläggningen ut?' },
+  { label: 'Utgående avtal', prompt: 'Vilka kontrakt löper ut snart?' },
+]
+
 export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
   const { data: stats, isLoading, isError } = useDashboardStats()
 
@@ -44,22 +51,21 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
     )
   }
 
+  const today = new Date().toLocaleDateString('sv-SE', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  })
+
   return (
     <PageWrapper id="dashboard">
-      <PageHeader
-        title="Översikt"
-        description={new Date().toLocaleDateString('sv-SE', {
-          weekday: 'long',
-          day: 'numeric',
-          month: 'long',
-        })}
-      />
+      <PageHeader title="Översikt" description={today.charAt(0).toUpperCase() + today.slice(1)} />
 
       {/* KPI Grid */}
       {isLoading ? (
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-24 animate-pulse rounded-2xl bg-gray-100" />
+            <div key={i} className="h-[110px] animate-pulse rounded-2xl bg-gray-100" />
           ))}
         </div>
       ) : (
@@ -67,15 +73,14 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
           variants={stagger}
           initial="hidden"
           animate="show"
-          className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
           <motion.div variants={item}>
             <StatCard
               title="Totala intäkter"
               value={formatCurrency(stats?.invoices.totalRevenue ?? 0)}
               icon={Banknote}
-              iconColor="#218F52"
-              delay={0}
+              iconColor="#2563EB"
             />
           </motion.div>
           <motion.div variants={item}>
@@ -83,8 +88,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
               title="Försenat belopp"
               value={formatCurrency(stats?.invoices.overdueAmount ?? 0)}
               icon={AlertTriangle}
-              iconColor="#DC2626"
-              delay={0.06}
+              iconColor="#EF4444"
             />
           </motion.div>
           <motion.div variants={item}>
@@ -92,8 +96,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
               title="Aktiva kontrakt"
               value={stats?.leases.active ?? 0}
               icon={FileText}
-              iconColor="#0B84D0"
-              delay={0.12}
+              iconColor="#8B5CF6"
             />
           </motion.div>
           <motion.div variants={item}>
@@ -101,8 +104,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
               title="Hyresgäster"
               value={stats?.tenants.total ?? 0}
               icon={Users}
-              iconColor="#7C3AED"
-              delay={0.18}
+              iconColor="#0891B2"
             />
           </motion.div>
           <motion.div variants={item}>
@@ -111,7 +113,6 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
               value={stats?.properties.total ?? 0}
               icon={Building2}
               iconColor="#64748B"
-              delay={0.24}
             />
           </motion.div>
           <motion.div variants={item}>
@@ -120,7 +121,6 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
               value={stats?.invoices.draft ?? 0}
               icon={TrendingUp}
               iconColor="#F59E0B"
-              delay={0.3}
             />
           </motion.div>
         </motion.div>
@@ -128,71 +128,76 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
 
       {/* AI Insights card */}
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.28 }}
-        className="mt-6 overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50"
+        transition={{ delay: 0.25 }}
+        className="mt-6 overflow-hidden rounded-2xl border border-blue-100/60 bg-gradient-to-br from-blue-600 to-blue-700"
       >
-        <div className="flex items-center gap-4 px-5 py-4">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-white shadow-sm">
-            <Sparkles size={18} strokeWidth={1.8} className="text-blue-600" />
+        <div className="flex items-center gap-5 px-6 py-5">
+          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white/15">
+            <Sparkles size={20} strokeWidth={1.8} className="text-white" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[14px] font-semibold text-gray-900">AI-insikter</p>
-            <p className="text-[12.5px] text-gray-500">
+            <p className="text-[15px] font-semibold text-white">AI-insikter</p>
+            <p className="mt-0.5 text-[13px] text-blue-100/80">
               Låt Eken AI analysera din portfölj och ge konkreta råd
             </p>
           </div>
-          <div className="flex flex-shrink-0 gap-2">
-            {[
-              { label: 'Förfallna fakturor', prompt: 'Analysera förfallna fakturor' },
-              { label: 'Beläggning', prompt: 'Hur ser beläggningen ut?' },
-              { label: 'Utgående avtal', prompt: 'Vilka kontrakt löper ut snart?' },
-            ].map((chip) => (
+          <div className="hidden flex-shrink-0 gap-2 md:flex">
+            {AI_CHIPS.map((chip) => (
               <button
                 key={chip.label}
                 onClick={() => onNavigate?.('ai')}
-                className="flex items-center gap-1.5 rounded-full border border-blue-200 bg-white px-3 py-1.5 text-[12px] font-medium text-blue-700 transition-all hover:border-blue-600 hover:bg-blue-600 hover:text-white active:scale-[0.97]"
+                className="flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-[12.5px] font-medium text-white transition-all hover:bg-white/20 active:scale-[0.97]"
               >
                 {chip.label}
-                <ChevronRight size={11} strokeWidth={2} />
+                <ChevronRight size={11} strokeWidth={2.5} />
               </button>
             ))}
           </div>
+          <button onClick={() => onNavigate?.('ai')} className="flex-shrink-0 md:hidden">
+            <ArrowUpRight size={18} className="text-white/70" />
+          </button>
         </div>
       </motion.div>
 
       {/* Recent invoices */}
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="mt-6 overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white"
+        className="mt-6 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.04)]"
       >
-        <div className="border-b border-[#EAEDF0] px-5 py-4">
-          <h2 className="text-[14px] font-semibold text-gray-900">Senaste fakturor</h2>
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <h2 className="text-[15px] font-semibold text-gray-900">Senaste fakturor</h2>
+          <button
+            onClick={() => onNavigate?.('invoices')}
+            className="flex items-center gap-1 text-[13px] font-medium text-blue-600 transition-colors hover:text-blue-700"
+          >
+            Visa alla <ChevronRight size={13} strokeWidth={2} />
+          </button>
         </div>
 
         {isLoading ? (
-          <div className="divide-y divide-[#EAEDF0]">
+          <div className="divide-y divide-gray-50">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4 px-5 py-3.5">
-                <div className="h-4 w-24 animate-pulse rounded bg-gray-100" />
-                <div className="h-4 w-32 animate-pulse rounded bg-gray-100" />
-                <div className="ml-auto h-4 w-20 animate-pulse rounded bg-gray-100" />
+              <div key={i} className="flex items-center gap-4 px-6 py-4">
+                <div className="h-4 w-24 animate-pulse rounded-full bg-gray-100" />
+                <div className="h-4 w-36 animate-pulse rounded-full bg-gray-100" />
+                <div className="ml-auto h-4 w-20 animate-pulse rounded-full bg-gray-100" />
               </div>
             ))}
           </div>
         ) : stats?.recentInvoices.length === 0 ? (
-          <div className="py-10 text-center text-[13px] text-gray-400">Inga fakturor ännu</div>
+          <div className="py-12 text-center text-[13.5px] text-gray-400">Inga fakturor ännu</div>
         ) : (
-          <div className="divide-y divide-[#EAEDF0]">
+          <div>
             {/* Header row */}
-            <div className="grid grid-cols-5 gap-4 px-5 py-2.5">
+            <div className="grid grid-cols-5 gap-4 border-b border-gray-50 px-6 py-2.5">
               {['Fakturanr', 'Hyresgäst', 'Belopp', 'Förfaller', 'Status'].map((h) => (
                 <p
                   key={h}
-                  className="text-[12px] font-semibold uppercase tracking-wide text-gray-400"
+                  className="text-[11.5px] font-semibold uppercase tracking-wider text-gray-400"
                 >
                   {h}
                 </p>
@@ -201,21 +206,23 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
             {stats?.recentInvoices.map((inv, i) => (
               <motion.div
                 key={inv.id}
-                initial={{ opacity: 0, x: -8 }}
+                initial={{ opacity: 0, x: -6 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.35 + i * 0.05 }}
+                transition={{ delay: 0.32 + i * 0.04 }}
                 onClick={() => onNavigate?.('invoices')}
-                className="grid cursor-pointer grid-cols-5 gap-4 px-5 py-3.5 transition-colors hover:bg-gray-50/80"
+                className="grid cursor-pointer grid-cols-5 gap-4 border-b border-gray-50 px-6 py-4 transition-colors last:border-0 hover:bg-gray-50/60"
               >
-                <div className="flex items-center gap-2">
-                  <Receipt size={13} strokeWidth={1.8} className="text-gray-400" />
-                  <span className="text-[13px] font-medium text-gray-800">{inv.invoiceNumber}</span>
+                <div className="flex items-center gap-2.5">
+                  <Receipt size={13} strokeWidth={1.8} className="text-gray-300" />
+                  <span className="text-[13.5px] font-medium text-gray-800">
+                    {inv.invoiceNumber}
+                  </span>
                 </div>
-                <span className="truncate text-[13px] text-gray-600">{inv.tenantName}</span>
-                <span className="text-[13px] font-semibold text-gray-800">
+                <span className="truncate text-[13.5px] text-gray-600">{inv.tenantName}</span>
+                <span className="text-[13.5px] font-semibold text-gray-900">
                   {formatCurrency(Number(inv.total))}
                 </span>
-                <span className="text-[13px] text-gray-500">{formatDate(inv.dueDate)}</span>
+                <span className="text-[13.5px] text-gray-500">{formatDate(inv.dueDate)}</span>
                 <InvoiceStatusBadge
                   status={inv.status as Parameters<typeof InvoiceStatusBadge>[0]['status']}
                 />

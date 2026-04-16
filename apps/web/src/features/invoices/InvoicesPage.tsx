@@ -296,7 +296,7 @@ export function InvoicesPage() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.07 }}
-            className="rounded-2xl border border-[#EAEDF0] bg-white p-5"
+            className="rounded-2xl border border-gray-100 bg-white p-5"
           >
             <p className="text-[12px] font-medium text-gray-400">{s.label}</p>
             <p
@@ -310,7 +310,7 @@ export function InvoicesPage() {
       </div>
 
       {/* Filterflikar */}
-      <div className="mt-6 flex w-fit items-center gap-1 rounded-xl bg-gray-100 p-1">
+      <div className="mt-6 flex w-fit items-center gap-1 rounded-xl bg-gray-100/70 p-1">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -422,7 +422,7 @@ export function InvoicesPage() {
           size="lg"
         >
           {/* Flikar */}
-          <div className="mb-5 flex w-fit items-center gap-1 rounded-xl bg-gray-100 p-1">
+          <div className="mb-5 flex w-fit items-center gap-1 rounded-xl bg-gray-100/70 p-1">
             {(['detaljer', 'historik'] as DetailTab[]).map((t) => (
               <button
                 key={t}
@@ -464,14 +464,14 @@ export function InvoicesPage() {
               </div>
 
               {/* Fakturarader */}
-              <div className="overflow-hidden rounded-xl border border-[#EAEDF0]">
-                <div className="border-b border-[#EAEDF0] bg-gray-50 px-4 py-2.5">
+              <div className="overflow-hidden rounded-xl border border-gray-100">
+                <div className="border-b border-gray-100 bg-gray-50 px-4 py-2.5">
                   <p className="text-[12px] font-semibold text-gray-500">Fakturarader</p>
                 </div>
                 {selected.lines.map((line) => (
                   <div
                     key={line.id}
-                    className="flex items-center justify-between border-b border-[#EAEDF0] px-4 py-3 last:border-0"
+                    className="flex items-center justify-between border-b border-gray-100 px-4 py-3 last:border-0"
                   >
                     <div>
                       <p className="text-[13px] text-gray-800">{line.description}</p>
@@ -502,7 +502,7 @@ export function InvoicesPage() {
               )}
 
               {/* Åtgärdsknappar baserade på status */}
-              <div className="flex flex-wrap items-center gap-2 border-t border-[#EAEDF0] pt-4">
+              <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
                 {/* DRAFT: redigera, skicka, ta bort */}
                 {selected.status === 'DRAFT' && (
                   <>

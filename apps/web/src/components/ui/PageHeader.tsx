@@ -11,16 +11,18 @@ interface Props {
 export function PageHeader({ title, description, action, className }: Props) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: -8 }}
+      initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
+      transition={{ duration: 0.2 }}
       className={cn('flex items-start justify-between gap-4', className)}
     >
       <div>
-        <h1 className="text-[22px] font-semibold tracking-tight text-gray-900">{title}</h1>
-        {description && <p className="mt-0.5 text-[13.5px] text-gray-500">{description}</p>}
+        <h1 className="text-[26px] font-bold leading-tight tracking-tight text-gray-900">
+          {title}
+        </h1>
+        {description && <p className="mt-1 text-[14px] text-gray-500">{description}</p>}
       </div>
-      {action && <div className="flex-shrink-0">{action}</div>}
+      {action && <div className="flex-shrink-0 pt-0.5">{action}</div>}
     </motion.div>
   )
 }

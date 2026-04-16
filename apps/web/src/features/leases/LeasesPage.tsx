@@ -221,7 +221,7 @@ export function LeasesPage() {
             title="Totalt"
             value={leases.length}
             icon={FileText}
-            iconColor="#218F52"
+            iconColor="#2563EB"
             delay={0}
           />
         </motion.div>
@@ -247,7 +247,7 @@ export function LeasesPage() {
 
       {/* Filter tabs */}
       <div className="mt-6">
-        <div className="flex w-fit gap-1 rounded-xl bg-gray-100 p-1">
+        <div className="flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -408,7 +408,7 @@ function LeaseDetailPanel({
   return (
     <div>
       {/* Tab strip */}
-      <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100 p-1">
+      <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
         {(['detaljer', 'redigera'] as const).map((t) => (
           <button
             key={t}
@@ -428,7 +428,7 @@ function LeaseDetailPanel({
       {detailTab === 'detaljer' ? (
         <div>
           {/* Info grid */}
-          <div className="grid grid-cols-2 gap-3 rounded-xl border border-[#EAEDF0] p-4">
+          <div className="grid grid-cols-2 gap-3 rounded-xl border border-gray-100 p-4">
             {[
               { label: 'Hyresgäst', value: tenantName(selected.tenant) },
               { label: 'Enhet', value: selected.unit.name },

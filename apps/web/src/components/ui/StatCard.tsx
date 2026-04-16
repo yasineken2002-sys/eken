@@ -19,7 +19,7 @@ export function StatCard({
   change,
   changeLabel,
   icon: Icon,
-  iconColor = '#218F52',
+  iconColor = '#2563EB',
   delay = 0,
   compact,
 }: Props) {
@@ -29,53 +29,48 @@ export function StatCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay }}
+      whileHover={{ y: -1, boxShadow: '0 8px 28px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04)' }}
       className={cn(
-        'rounded border bg-white transition-shadow hover:shadow-sm',
+        'rounded-2xl border border-gray-100 bg-white transition-shadow',
         compact ? 'p-4' : 'p-5',
       )}
-      style={{ borderColor: '#E3E7EC' }}
     >
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-[12.5px] font-medium leading-tight" style={{ color: '#6B7684' }}>
-          {title}
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[13px] font-medium leading-snug text-gray-500">{title}</p>
         {Icon && (
           <div
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl"
             style={{ background: `${iconColor}14` }}
           >
-            <Icon size={14} strokeWidth={1.8} style={{ color: iconColor }} />
+            <Icon size={15} strokeWidth={1.8} style={{ color: iconColor }} />
           </div>
         )}
       </div>
       <p
         className={cn(
-          'mt-2 font-semibold leading-none tracking-tight',
-          compact ? 'text-[22px]' : 'text-[26px]',
+          'mt-2.5 font-bold leading-none tracking-tight text-gray-900',
+          compact ? 'text-[24px]' : 'text-[30px]',
         )}
-        style={{ color: '#182030' }}
       >
         {value}
       </p>
       {change !== undefined && (
-        <div className="mt-2 flex items-center gap-1">
-          {positive ? (
-            <TrendingUp size={11} className="flex-shrink-0" style={{ color: '#218F52' }} />
-          ) : (
-            <TrendingDown size={11} className="flex-shrink-0" style={{ color: '#DC3545' }} />
-          )}
-          <span
-            className="text-[11.5px] font-semibold"
-            style={{ color: positive ? '#196638' : '#B91C2A' }}
+        <div className="mt-2.5 flex items-center gap-1.5">
+          <div
+            className={cn(
+              'flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
+              positive ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600',
+            )}
           >
+            {positive ? (
+              <TrendingUp size={10} className="flex-shrink-0" />
+            ) : (
+              <TrendingDown size={10} className="flex-shrink-0" />
+            )}
             {positive ? '+' : ''}
             {change}%
-          </span>
-          {changeLabel && (
-            <span className="text-[11.5px]" style={{ color: '#8A95A3' }}>
-              {changeLabel}
-            </span>
-          )}
+          </div>
+          {changeLabel && <span className="text-[12px] text-gray-400">{changeLabel}</span>}
         </div>
       )}
     </motion.div>

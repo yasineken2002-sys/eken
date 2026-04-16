@@ -233,7 +233,7 @@ interface InvoiceTimelineProps {
 export function InvoiceTimeline({ events }: InvoiceTimelineProps) {
   if (events.length === 0) {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-[#EAEDF0] bg-gray-50 px-4 py-3">
+      <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
         <p className="text-[13px] text-gray-400">Ingen historik ännu</p>
       </div>
     )
@@ -260,7 +260,7 @@ export function InvoiceTimeline({ events }: InvoiceTimelineProps) {
               <div
                 className={cn(
                   'relative z-10 flex h-5 w-5 shrink-0 items-center justify-center rounded-full',
-                  'border border-[#EAEDF0]',
+                  'border border-gray-100',
                   meta.dotColor,
                 )}
               >

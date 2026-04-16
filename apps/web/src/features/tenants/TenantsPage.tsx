@@ -206,7 +206,7 @@ export function TenantsPage() {
             title="Totalt"
             value={tenants.length}
             icon={Users}
-            iconColor="#218F52"
+            iconColor="#2563EB"
             delay={0}
           />
         </motion.div>
@@ -232,7 +232,7 @@ export function TenantsPage() {
 
       {/* Search + filter tabs */}
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-1 rounded-xl bg-gray-100 p-1">
+        <div className="flex gap-1 rounded-xl bg-gray-100/70 p-1">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -385,7 +385,7 @@ function DetailPanel({
   return (
     <div>
       {/* Tab strip */}
-      <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100 p-1">
+      <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
         {(['detaljer', 'redigera'] as const).map((t) => (
           <button
             key={t}
@@ -405,7 +405,7 @@ function DetailPanel({
       {detailTab === 'detaljer' ? (
         <div>
           {/* Info grid */}
-          <div className="grid grid-cols-2 gap-4 rounded-xl border border-[#EAEDF0] p-4">
+          <div className="grid grid-cols-2 gap-4 rounded-xl border border-gray-100 p-4">
             <InfoRow icon={Mail} label="E-post" value={selected.email} />
             <InfoRow icon={Phone} label="Telefon" value={selected.phone ?? '–'} />
             <InfoRow
@@ -433,7 +433,7 @@ function DetailPanel({
           <div className="mt-5">
             <p className="mb-3 text-[13px] font-semibold text-gray-700">Senaste fakturor</p>
             {selectedTenant?.invoices && selectedTenant.invoices.length > 0 ? (
-              <div className="divide-y divide-[#EAEDF0] overflow-hidden rounded-xl border border-[#EAEDF0]">
+              <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
                 {selectedTenant.invoices.map((inv) => (
                   <div
                     key={inv.id}
@@ -454,7 +454,7 @@ function DetailPanel({
                 ))}
               </div>
             ) : (
-              <div className="rounded-xl border border-[#EAEDF0] py-8 text-center text-[13px] text-gray-400">
+              <div className="rounded-xl border border-gray-100 py-8 text-center text-[13px] text-gray-400">
                 Inga fakturor ännu
               </div>
             )}

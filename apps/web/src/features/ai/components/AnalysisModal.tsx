@@ -120,14 +120,14 @@ export function AnalysisModal({ open, onClose }: AnalysisModalProps) {
 
           {/* Panel */}
           <motion.div
-            className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white shadow-xl"
+            className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-xl"
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-[#EAEDF0] px-6 py-4">
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <div className="flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-50">
                   <BarChart2 size={14} strokeWidth={1.8} className="text-purple-600" />
@@ -156,7 +156,7 @@ export function AnalysisModal({ open, onClose }: AnalysisModalProps) {
                       'flex flex-col items-center gap-2 rounded-xl border p-3 text-center transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50',
                       selectedType === t.key
                         ? 'border-2 border-purple-300 bg-purple-50 shadow-sm'
-                        : 'border-[#EAEDF0] hover:border-gray-300 hover:shadow-sm',
+                        : 'border-gray-100 hover:border-gray-300 hover:shadow-sm',
                     )}
                   >
                     <div
@@ -214,7 +214,7 @@ export function AnalysisModal({ open, onClose }: AnalysisModalProps) {
                       </p>
                       <div className="space-y-2">
                         {result.insights.map((insight, i) => (
-                          <div key={i} className="rounded-xl border border-[#EAEDF0] bg-white p-4">
+                          <div key={i} className="rounded-xl border border-gray-100 bg-white p-4">
                             <div className="flex items-start gap-3">
                               <SeverityIcon severity={insight.severity} />
                               <div className="min-w-0 flex-1">

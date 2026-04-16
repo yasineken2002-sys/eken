@@ -3,7 +3,17 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Eye, EyeOff, Check, ArrowLeft, ArrowRight } from 'lucide-react'
+import {
+  Eye,
+  EyeOff,
+  Check,
+  ArrowLeft,
+  ArrowRight,
+  Building2,
+  BarChart3,
+  Shield,
+  Zap,
+} from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
@@ -46,45 +56,66 @@ interface Props {
 }
 
 const FEATURES = [
-  'Hantera fastigheter och hyresgäster',
-  'Automatisera fakturering',
-  'Bokföring i realtid',
+  { icon: Building2, title: 'Fastighetsöversikt', desc: 'Hantera hela portföljen på ett ställe' },
+  {
+    icon: BarChart3,
+    title: 'Automatisk bokföring',
+    desc: 'BAS-kontoplan och journalposter i realtid',
+  },
+  { icon: Zap, title: 'Smart fakturering', desc: 'Skicka hyresfakturor med ett klick' },
+  { icon: Shield, title: 'Banknivå säkerhet', desc: 'JWT-autentisering och krypterad data' },
 ]
 
 function BrandPanel() {
   return (
     <div
-      className="hidden w-[42%] flex-shrink-0 flex-col justify-between p-12 lg:flex"
-      style={{ background: '#1a6b3c' }}
+      className="relative hidden w-[46%] flex-shrink-0 flex-col justify-between overflow-hidden lg:flex"
+      style={{ background: '#0F1117' }}
     >
-      <div>
-        <div
-          className="text-[32px] font-bold tracking-tight text-white"
-          style={{ fontFamily: 'Georgia, serif' }}
-        >
-          Eken
+      <div
+        className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)',
+          backgroundSize: '40px 40px',
+        }}
+      />
+      <div className="absolute left-1/3 top-1/4 h-96 w-96 rounded-full bg-blue-600/10 blur-3xl" />
+
+      <div className="relative z-10 p-14">
+        <div className="mb-16 flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600">
+            <Building2 size={16} className="text-white" strokeWidth={2.2} />
+          </div>
+          <span className="text-[20px] font-bold tracking-tight text-white">Eken</span>
         </div>
-        <p className="mt-3 text-[15px] font-medium" style={{ color: 'rgba(255,255,255,0.75)' }}>
-          Fastighetsförvaltning gjord enkelt
+
+        <h2 className="text-[34px] font-bold leading-tight tracking-tight text-white">
+          Kom igång
+          <br />
+          <span className="text-white/50">på 2 minuter</span>
+        </h2>
+        <p className="mt-4 max-w-sm text-[15px] leading-relaxed text-white/50">
+          Gratis i 14 dagar. Inget kreditkort krävs. Avsluta när som helst.
         </p>
-        <ul className="mt-10 space-y-3">
-          {FEATURES.map((f) => (
-            <li key={f} className="flex items-start gap-3">
-              <span
-                className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
-                style={{ background: 'rgba(255,255,255,0.15)' }}
-              >
-                <Check size={11} className="text-white" strokeWidth={2.5} />
-              </span>
-              <span className="text-[14px]" style={{ color: 'rgba(255,255,255,0.85)' }}>
-                {f}
-              </span>
-            </li>
+
+        <div className="mt-12 space-y-4">
+          {FEATURES.map(({ icon: Icon, title, desc }) => (
+            <div key={title} className="flex items-start gap-3.5">
+              <div className="bg-white/6 border-white/8 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border">
+                <Icon size={14} strokeWidth={1.8} className="text-white/60" />
+              </div>
+              <div>
+                <p className="text-[13.5px] font-semibold text-white/80">{title}</p>
+                <p className="mt-0.5 text-[12.5px] text-white/35">{desc}</p>
+              </div>
+            </div>
           ))}
-        </ul>
+        </div>
       </div>
-      <p className="text-[12px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
-        © 2025 Eken
+
+      <p className="relative z-10 px-14 pb-10 text-[12px] text-white/20">
+        © 2025 Eken. Alla rättigheter förbehållna.
       </p>
     </div>
   )
@@ -103,7 +134,10 @@ export function RegisterPage({ onNavigate }: Props) {
     handleSubmit,
     trigger,
     formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(schema), mode: 'onTouched' })
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    mode: 'onTouched',
+  })
 
   const goToStep2 = async () => {
     const valid = await trigger(STEP1_FIELDS)
@@ -136,64 +170,59 @@ export function RegisterPage({ onNavigate }: Props) {
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-white">
       <BrandPanel />
 
-      {/* Right panel */}
-      <div className="flex flex-1 items-center justify-center bg-white px-6 py-12">
+      <div className="flex flex-1 items-center justify-center bg-white px-8 py-12">
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
-          className="w-full max-w-[420px]"
+          transition={{ duration: 0.22 }}
+          className="w-full max-w-[400px]"
         >
           {/* Mobile logo */}
-          <div className="mb-8 flex items-center gap-2 lg:hidden">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded text-[13px] font-bold text-white"
-              style={{ background: '#1a6b3c' }}
-            >
-              E
+          <div className="mb-8 flex items-center gap-2.5 lg:hidden">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-600">
+              <Building2 size={14} className="text-white" strokeWidth={2.2} />
             </div>
-            <span className="text-[17px] font-semibold text-gray-900">Eken</span>
+            <span className="text-[18px] font-bold text-gray-900">Eken</span>
           </div>
 
-          <h1 className="text-[22px] font-semibold tracking-tight text-gray-900">Skapa konto</h1>
-          <p className="mt-1 text-[13.5px] text-gray-500">
-            Kom igång med Eken idag — gratis i 14 dagar
-          </p>
+          <h1 className="text-[26px] font-bold leading-tight tracking-tight text-gray-900">
+            Skapa konto
+          </h1>
+          <p className="mt-1.5 text-[14px] text-gray-500">Kom igång med Eken — gratis i 14 dagar</p>
 
           {/* Step indicator */}
-          <div className="mt-6 flex items-center gap-2">
-            {[1, 2].map((s) => (
-              <div key={s} className="flex items-center gap-2">
+          <div className="mt-6 flex items-center gap-3">
+            {([1, 2] as const).map((s) => (
+              <div key={s} className="flex items-center gap-2.5">
                 <div
                   className={cn(
-                    'flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold transition-colors',
+                    'flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold transition-all',
                     step === s
-                      ? 'text-white'
+                      ? 'bg-blue-600 text-white'
                       : s < step
-                        ? 'text-white'
+                        ? 'bg-blue-600 text-white'
                         : 'bg-gray-100 text-gray-400',
                   )}
-                  style={step === s || s < step ? { background: '#1a6b3c' } : undefined}
                 >
                   {s < step ? <Check size={10} strokeWidth={3} /> : s}
                 </div>
                 <span
                   className={cn(
-                    'text-[12.5px] font-medium',
-                    step === s ? 'text-gray-900' : 'text-gray-400',
+                    'text-[13px] font-medium',
+                    step === s ? 'text-gray-900' : s < step ? 'text-gray-500' : 'text-gray-400',
                   )}
                 >
                   {s === 1 ? 'Ditt konto' : 'Ditt företag'}
                 </span>
-                {s < 2 && <div className="mx-1 h-px w-6 bg-gray-200" />}
+                {s < 2 && <div className="mx-1 h-px w-8 bg-gray-200" />}
               </div>
             ))}
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="mt-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="mt-7">
             <AnimatePresence mode="wait">
               {step === 1 ? (
                 <motion.div
@@ -220,9 +249,8 @@ export function RegisterPage({ onNavigate }: Props) {
                       {...register('lastName')}
                     />
                   </div>
-
                   <Input
-                    label="E-post"
+                    label="E-postadress"
                     type="email"
                     placeholder="anna@foretag.se"
                     autoComplete="email"
@@ -230,70 +258,48 @@ export function RegisterPage({ onNavigate }: Props) {
                     {...register('email')}
                   />
 
-                  <div className="space-y-1.5">
-                    <label className="block text-[13px] font-medium text-gray-700">Lösenord</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        autoComplete="new-password"
-                        placeholder="Minst 8 tecken"
-                        className={cn(
-                          'flex h-9 w-full rounded-lg border bg-white px-3 pr-10 text-[13.5px] text-gray-900 placeholder:text-gray-400',
-                          'transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0',
-                          errors.password
-                            ? 'border-red-300 focus:ring-red-400'
-                            : 'border-[#DDDFE4] hover:border-gray-300',
+                  {(['password', 'confirmPassword'] as const).map((field) => {
+                    const show = field === 'password' ? showPassword : showConfirm
+                    const setShow = field === 'password' ? setShowPassword : setShowConfirm
+                    return (
+                      <div key={field} className="space-y-1.5">
+                        <label className="block text-[13px] font-medium text-gray-700">
+                          {field === 'password' ? 'Lösenord' : 'Bekräfta lösenord'}
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={show ? 'text' : 'password'}
+                            autoComplete="new-password"
+                            placeholder={
+                              field === 'password' ? 'Minst 8 tecken' : 'Upprepa lösenord'
+                            }
+                            className={cn(
+                              'flex h-10 w-full rounded-xl border bg-white px-3.5 pr-10 text-[13.5px] text-gray-900 placeholder:text-gray-400',
+                              'transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-0',
+                              errors[field]
+                                ? 'border-red-300 focus:border-red-400 focus:ring-red-500/15'
+                                : 'border-[#E5E7EB] hover:border-gray-300 focus:border-blue-500 focus:ring-blue-500/15',
+                            )}
+                            {...register(field)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShow((v) => !v)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600"
+                            tabIndex={-1}
+                          >
+                            {show ? <EyeOff size={15} /> : <Eye size={15} />}
+                          </button>
+                        </div>
+                        {errors[field] && (
+                          <p className="text-[12px] text-red-500">{errors[field]?.message}</p>
                         )}
-                        {...register('password')}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((v) => !v)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                        tabIndex={-1}
-                      >
-                        {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                      </button>
-                    </div>
-                    {errors.password && (
-                      <p className="text-[12px] text-red-500">{errors.password.message}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[13px] font-medium text-gray-700">
-                      Bekräfta lösenord
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showConfirm ? 'text' : 'password'}
-                        autoComplete="new-password"
-                        placeholder="Upprepa lösenord"
-                        className={cn(
-                          'flex h-9 w-full rounded-lg border bg-white px-3 pr-10 text-[13.5px] text-gray-900 placeholder:text-gray-400',
-                          'transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0',
-                          errors.confirmPassword
-                            ? 'border-red-300 focus:ring-red-400'
-                            : 'border-[#DDDFE4] hover:border-gray-300',
-                        )}
-                        {...register('confirmPassword')}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirm((v) => !v)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                        tabIndex={-1}
-                      >
-                        {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
-                      </button>
-                    </div>
-                    {errors.confirmPassword && (
-                      <p className="text-[12px] text-red-500">{errors.confirmPassword.message}</p>
-                    )}
-                  </div>
+                      </div>
+                    )
+                  })}
 
                   {apiError && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-[13px] text-red-600">
+                    <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-[13px] text-red-600">
                       {apiError}
                     </div>
                   )}
@@ -301,8 +307,7 @@ export function RegisterPage({ onNavigate }: Props) {
                   <Button
                     type="button"
                     variant="primary"
-                    size="md"
-                    className="mt-1 h-10 w-full text-[14px]"
+                    className="mt-1 h-10 w-full rounded-xl text-[14px] font-semibold"
                     onClick={goToStep2}
                   >
                     Nästa <ArrowRight size={14} />
@@ -324,7 +329,6 @@ export function RegisterPage({ onNavigate }: Props) {
                     error={errors.organizationName?.message}
                     {...register('organizationName')}
                   />
-
                   <Input
                     label="Organisationsnummer (valfritt)"
                     placeholder="559123-4567"
@@ -333,17 +337,16 @@ export function RegisterPage({ onNavigate }: Props) {
                   />
 
                   {apiError && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-[13px] text-red-600">
+                    <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-[13px] text-red-600">
                       {apiError}
                     </div>
                   )}
 
-                  <div className="flex gap-2 pt-1">
+                  <div className="flex gap-2.5 pt-1">
                     <Button
                       type="button"
                       variant="secondary"
-                      size="md"
-                      className="h-10"
+                      className="h-10 rounded-xl"
                       onClick={() => setStep(1)}
                     >
                       <ArrowLeft size={14} /> Tillbaka
@@ -351,9 +354,8 @@ export function RegisterPage({ onNavigate }: Props) {
                     <Button
                       type="submit"
                       variant="primary"
-                      size="md"
                       loading={isPending}
-                      className="h-10 flex-1 text-[14px]"
+                      className="h-10 flex-1 rounded-xl text-[14px] font-semibold"
                     >
                       {isPending ? 'Skapar konto...' : 'Skapa konto'}
                     </Button>
@@ -363,18 +365,18 @@ export function RegisterPage({ onNavigate }: Props) {
             </AnimatePresence>
           </form>
 
-          <div className="my-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-[#EAEDF0]" />
+          <div className="my-7 flex items-center gap-3">
+            <div className="h-px flex-1 bg-gray-100" />
             <span className="text-[12px] text-gray-400">eller</span>
-            <div className="h-px flex-1 bg-[#EAEDF0]" />
+            <div className="h-px flex-1 bg-gray-100" />
           </div>
 
-          <p className="text-center text-[13.5px] text-gray-500">
+          <p className="text-center text-[14px] text-gray-500">
             Har du redan ett konto?{' '}
             <button
               type="button"
               onClick={() => onNavigate('login')}
-              className="font-medium text-[#1a6b3c] hover:underline"
+              className="font-semibold text-blue-600 transition-colors hover:text-blue-700"
             >
               Logga in →
             </button>

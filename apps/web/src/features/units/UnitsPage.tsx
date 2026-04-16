@@ -228,7 +228,7 @@ export function UnitsPage() {
             title="Lediga"
             value={vacantCount}
             icon={DoorOpen}
-            iconColor="#218F52"
+            iconColor="#2563EB"
             delay={0.05}
           />
         </motion.div>
@@ -253,7 +253,7 @@ export function UnitsPage() {
       </motion.div>
 
       {/* Filter tabs */}
-      <div className="mt-6 flex w-fit items-center gap-1 rounded-xl bg-gray-100 p-1">
+      <div className="mt-6 flex w-fit items-center gap-1 rounded-xl bg-gray-100/70 p-1">
         {FILTER_TABS.map((f) => {
           const count =
             f.id === 'ALL' ? units.length : units.filter((u) => u.status === f.id).length
@@ -405,7 +405,7 @@ function UnitDetailPanel({
   return (
     <div>
       {/* Tab strip */}
-      <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100 p-1">
+      <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
         {(['detaljer', 'redigera'] as const).map((t) => (
           <button
             key={t}
@@ -456,7 +456,7 @@ function UnitDetailPanel({
             ].map((row) => (
               <div
                 key={row.label}
-                className="flex items-start gap-2.5 rounded-xl border border-[#EAEDF0] p-3"
+                className="flex items-start gap-2.5 rounded-xl border border-gray-100 p-3"
               >
                 <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gray-50">
                   <row.icon size={12} strokeWidth={1.8} className="text-gray-400" />
@@ -481,7 +481,7 @@ function UnitDetailPanel({
           <div className="mt-5">
             <p className="mb-3 text-[13px] font-semibold text-gray-700">Nuvarande kontrakt</p>
             {activeLease ? (
-              <div className="rounded-xl border border-[#EAEDF0] p-4">
+              <div className="rounded-xl border border-gray-100 p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-[14px] font-medium text-gray-900">
@@ -500,7 +500,7 @@ function UnitDetailPanel({
                 </div>
               </div>
             ) : (
-              <div className="rounded-xl border border-[#EAEDF0] py-8 text-center text-[13px] text-gray-400">
+              <div className="rounded-xl border border-gray-100 py-8 text-center text-[13px] text-gray-400">
                 Ingen aktiv hyresgäst
               </div>
             )}

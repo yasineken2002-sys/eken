@@ -16,28 +16,27 @@ interface Props<T> {
   keyExtractor: (row: T) => string
 }
 
-const container = { hidden: {}, show: { transition: { staggerChildren: 0.035 } } }
-const item = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: 0.18 } } }
+const container = { hidden: {}, show: { transition: { staggerChildren: 0.03 } } }
+const item = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: 0.15 } } }
 
 export function DataTable<T>({ columns, data, onRowClick, keyExtractor }: Props<T>) {
   return (
-    <div className="overflow-hidden rounded border bg-white" style={{ borderColor: '#E3E7EC' }}>
+    <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr style={{ borderBottom: '1px solid #E3E7EC', background: '#F8FAFB' }}>
+            <tr className="border-b border-gray-100 bg-gray-50/60">
               {columns.map((col) => (
                 <th
                   key={col.key}
                   className={cn(
-                    'whitespace-nowrap px-4 py-2.5 text-[11.5px] font-semibold uppercase tracking-wide',
+                    'whitespace-nowrap px-5 py-3 text-[11.5px] font-semibold uppercase tracking-wider text-gray-400',
                     col.align === 'right'
                       ? 'text-right'
                       : col.align === 'center'
                         ? 'text-center'
                         : 'text-left',
                   )}
-                  style={{ color: '#8A95A3' }}
                 >
                   {col.header}
                 </th>
@@ -50,13 +49,13 @@ export function DataTable<T>({ columns, data, onRowClick, keyExtractor }: Props<
                 key={keyExtractor(row)}
                 variants={item}
                 onClick={() => onRowClick?.(row)}
-                className={cn('fn-row', onRowClick && 'cursor-pointer')}
+                className={cn('table-row-base', onRowClick && 'cursor-pointer')}
               >
                 {columns.map((col) => (
                   <td
                     key={col.key}
                     className={cn(
-                      'px-4 py-3 text-[13px]',
+                      'px-5 py-3.5 text-[13.5px]',
                       col.align === 'right'
                         ? 'text-right'
                         : col.align === 'center'
@@ -73,9 +72,7 @@ export function DataTable<T>({ columns, data, onRowClick, keyExtractor }: Props<
         </table>
       </div>
       {data.length === 0 && (
-        <div className="py-12 text-center text-[13px]" style={{ color: '#8A95A3' }}>
-          Inga poster att visa
-        </div>
+        <div className="py-14 text-center text-[13.5px] text-gray-400">Inga poster att visa</div>
       )}
     </div>
   )
