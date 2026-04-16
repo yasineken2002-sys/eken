@@ -85,6 +85,77 @@ enum JournalEntrySource {
   LEASE
 }
 
+// ─── Invoice Event Types ──────────────────────────────────────────────────────
+// Append-only audit log för fakturahistorik.
+// Samma mönster som Fortnox, Visma och Stripe.
+
+enum InvoiceEventType {
+  // Livscykel
+  CREATED
+  UPDATED
+  // Utskick
+  SENT
+  SEND_FAILED
+  // E-postleverans (provider-webhook)
+  EMAIL_QUEUED
+  EMAIL_DELIVERED
+  EMAIL_BOUNCED
+  EMAIL_SPAM
+  // Mottagaraktivitet
+  EMAIL_OPENED
+  PDF_VIEWED
+  // Betalning
+  PAYMENT_RECEIVED
+  PAYMENT_PARTIAL
+  PAYMENT_REVERSED
+  // Förfallen-flöde
+  OVERDUE
+  REMINDER_SENT
+  DEBT_COLLECTION
+  // Korrigeringar
+  VOIDED
+  CREDIT_NOTE_CREATED
+  // Administrativt
+  NOTE_ADDED
+  VIEWED_BY_USER
+}
+
+enum EventActorType {
+  USER
+  SYSTEM
+  WEBHOOK
+}
+
+enum BankTransactionStatus {
+  UNMATCHED
+  MATCHED
+  IGNORED
+}
+
+enum ImportJobType {
+  PROPERTIES
+  UNITS
+  TENANTS
+  LEASES
+}
+
+enum ImportJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum DocumentCategory {
+  CONTRACT
+  INSPECTION
+  DRAWING
+  PHOTO
+  INVOICE
+  INSURANCE
+  OTHER
+}
+
 // ─── Organization (Tenant in multi-tenant context) ────────────────────────────
 
 model Organization {
@@ -98,14 +169,24 @@ model Organization {
   city        String
   postalCode  String
   country     String  @default("SE")
-  logoUrl     String?
+  logoUrl              String?
+  bankgiro             String?
+  paymentTermsDays     Int     @default(30)
+  invoiceColor         String?
+  invoiceTemplate      String?
+  morningReportEnabled Boolean @default(false)
 
-  users          User[]
-  properties     Property[]
-  tenants        Tenant[]
-  invoices       Invoice[]
-  accounts       Account[]
-  journalEntries JournalEntry[]
+  users             User[]
+  properties        Property[]
+  tenants           Tenant[]
+  invoices          Invoice[]
+  accounts          Account[]
+  journalEntries    JournalEntry[]
+  bankTransactions  BankTransaction[]
+  documents         Document[]
+  importJobs        ImportJob[]
+  aiConversations   AiConversation[]
+  aiMemories        AiMemory[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -127,9 +208,13 @@ model User {
   isActive       Boolean  @default(true)
   lastLoginAt    DateTime?
 
-  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  refreshTokens  RefreshToken[]
-  journalEntries JournalEntry[]
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  refreshTokens   RefreshToken[]
+  journalEntries  JournalEntry[]
+  documents       Document[]
+  importJobs      ImportJob[]
+  aiConversations AiConversation[]
+  aiMemories      AiMemory[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -170,6 +255,7 @@ model Property {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   units        Unit[]
+  documents    Document[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -191,8 +277,9 @@ model Unit {
   rooms       Int?
   monthlyRent Decimal    @db.Decimal(10, 2)
 
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  leases   Lease[]
+  property  Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  leases    Lease[]
+  documents Document[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -224,6 +311,7 @@ model Tenant {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   leases       Lease[]
   invoices     Invoice[]
+  documents    Document[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -250,9 +338,10 @@ model Lease {
   terminatedAt       DateTime?
   terminationReason  String?
 
-  unit     Unit     @relation(fields: [unitId], references: [id])
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
-  invoices Invoice[]
+  unit      Unit       @relation(fields: [unitId], references: [id])
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  invoices  Invoice[]
+  documents Document[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -282,10 +371,16 @@ model Invoice {
   reference      String?
   notes          String?
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  lease        Lease?        @relation(fields: [leaseId], references: [id])
-  lines        InvoiceLine[]
+  // Tracking-token för e-postspårning (pixel + PDF-länk)
+  // Genereras vid skapande, används aldrig om – en faktura, ett token.
+  trackingToken  String        @unique @default(uuid())
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  lease            Lease?            @relation(fields: [leaseId], references: [id])
+  lines            InvoiceLine[]
+  events           InvoiceEvent[]
+  bankTransactions BankTransaction[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -295,6 +390,44 @@ model Invoice {
   @@index([tenantId])
   @@index([status])
   @@index([dueDate])
+  @@index([trackingToken])
+}
+
+// ─── Invoice Event Log ────────────────────────────────────────────────────────
+// Immutabel append-only tabell. Inga UPDATE, inga DELETE (utom via Cascade).
+// Svensk bokföringslag kräver 7 års retention – soft-delete vid org-borttagning.
+
+model InvoiceEvent {
+  id          String           @id @default(uuid())
+  invoiceId   String
+  type        InvoiceEventType
+
+  // Aktör – vem/vad som utlöste händelsen
+  actorType   EventActorType
+  actorId     String?          // userId eller null för system/webhook
+  actorLabel  String?          // Denormaliserat: "Anna Svensson" / "System" / "Postmark"
+
+  // Händelsespecifik data – flexibel JSON per händelsetyp
+  // t.ex. { email, provider, messageId } för e-postleverans
+  // t.ex. { amount, paymentMethod, reference } för betalning
+  // t.ex. { previousStatus, newStatus } för statusövergång
+  payload     Json             @default("{}")
+
+  // E-postspårnings-metadata
+  ipAddress   String?
+  userAgent   String?
+
+  // Immutabilitetsgaranti: ingen updatedAt
+  createdAt   DateTime         @default(now())
+
+  invoice     Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  // Komposit-index för tidslinjequery (en faktura, sorterat på tid)
+  @@index([invoiceId, createdAt])
+  // Index för filtrering per händelsetyp
+  @@index([invoiceId, type])
+  // Index för global aktivitetsfeed
+  @@index([createdAt])
 }
 
 model InvoiceLine {
@@ -364,4 +497,132 @@ model JournalEntryLine {
 
   @@index([journalEntryId])
   @@index([accountId])
+}
+
+// ─── Bank Reconciliation (Bankavstämning) ─────────────────────────────────────
+
+model BankTransaction {
+  id             String                @id @default(uuid())
+  organizationId String
+  date           DateTime
+  description    String
+  amount         Decimal               @db.Decimal(12, 2)
+  balance        Decimal?              @db.Decimal(12, 2)
+  reference      String?
+  rawOcr         String?
+  status         BankTransactionStatus @default(UNMATCHED)
+  invoiceId      String?
+  matchedAt      DateTime?
+  matchedBy      String?
+  createdAt      DateTime              @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([invoiceId])
+}
+
+// ─── Document (Dokumentarkiv) ─────────────────────────────────────────────────
+
+model Document {
+  id             String           @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  fileUrl        String
+  fileSize       Int
+  mimeType       String
+  category       DocumentCategory @default(OTHER)
+  propertyId     String?
+  unitId         String?
+  leaseId        String?
+  tenantId       String?
+  uploadedById   String
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property     Property?    @relation(fields: [propertyId], references: [id])
+  unit         Unit?        @relation(fields: [unitId], references: [id])
+  lease        Lease?       @relation(fields: [leaseId], references: [id])
+  tenant       Tenant?      @relation(fields: [tenantId], references: [id])
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([propertyId])
+  @@index([unitId])
+  @@index([leaseId])
+  @@index([tenantId])
+}
+
+// ─── AI Assistant ─────────────────────────────────────────────────────────────
+
+model AiConversation {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  title          String   @default("Ny konversation")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     AiMessage[]
+
+  @@index([organizationId])
+  @@index([userId])
+}
+
+model AiMessage {
+  id             String   @id @default(uuid())
+  conversationId String
+  role           String   // "user" | "assistant"
+  content        String
+  createdAt      DateTime @default(now())
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+model AiMemory {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  key            String
+  value          String   @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, key])
+  @@index([organizationId, userId])
+}
+
+// ─── Import Job ───────────────────────────────────────────────────────────────
+
+model ImportJob {
+  id             String          @id @default(uuid())
+  organizationId String
+  type           ImportJobType
+  status         ImportJobStatus @default(PENDING)
+  filename       String
+  totalRows      Int             @default(0)
+  processedRows  Int             @default(0)
+  successRows    Int             @default(0)
+  errorRows      Int             @default(0)
+  errors         Json            @default("[]")
+  createdById    String
+  createdAt      DateTime        @default(now())
+  completedAt    DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdById], references: [id])
+
+  @@index([organizationId])
 }

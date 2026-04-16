@@ -73,6 +73,11 @@ export interface Organization {
   phone?: string
   address: Address
   logoUrl?: string
+  bankgiro?: string
+  paymentTermsDays?: number
+  invoiceColor?: string
+  invoiceTemplate?: string
+  morningReportEnabled?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -202,8 +207,101 @@ export interface Invoice {
   paidAt?: string
   reference?: string // OCR/Referensnummer
   notes?: string
+  trackingToken: string
   createdAt: string
   updatedAt: string
+}
+
+// ─── Invoice Events (Fakturahistorik) ────────────────────────────────────────
+// Append-only audit log – samma mönster som Fortnox, Visma och Stripe.
+// Invoice-raden håller materialiserad aktuell status.
+// InvoiceEvent-rader är immutabla och skrivs aldrig om.
+
+export type InvoiceEventType =
+  // Livscykel
+  | 'invoice.created'
+  | 'invoice.updated'
+  // Utskick
+  | 'invoice.sent'
+  | 'invoice.send_failed'
+  // E-postleverans (via provider-webhook, t.ex. Postmark)
+  | 'invoice.email_queued'
+  | 'invoice.email_delivered'
+  | 'invoice.email_bounced'
+  | 'invoice.email_spam'
+  // Mottagaraktivitet (tracking-pixel / PDF-länk)
+  | 'invoice.email_opened'
+  | 'invoice.pdf_viewed'
+  // Betalning
+  | 'invoice.payment_received'
+  | 'invoice.payment_partial'
+  | 'invoice.payment_reversed'
+  // Förfallen-flöde
+  | 'invoice.overdue'
+  | 'invoice.reminder_sent'
+  | 'invoice.debt_collection'
+  // Korrigeringar
+  | 'invoice.voided'
+  | 'invoice.credit_note_created'
+  // Administrativt
+  | 'invoice.note_added'
+  | 'invoice.viewed_by_user'
+
+export type EventActorType = 'USER' | 'SYSTEM' | 'WEBHOOK'
+
+export interface InvoiceEvent {
+  id: string
+  invoiceId: string
+  type: InvoiceEventType
+  // Vem/vad som utlöste händelsen
+  actorType: EventActorType
+  actorId?: string
+  actorLabel?: string // Denormaliserat för historikvisning (t.ex. "Anna Svensson")
+  // Händelsespecifik data (e-postleverans, betalningsinfo, etc.)
+  payload: Record<string, unknown>
+  // E-postspårning
+  ipAddress?: string
+  userAgent?: string
+  // Immutabel – ingen updatedAt
+  createdAt: string
+}
+
+// ─── Bank Reconciliation (Bankavstämning) ─────────────────────────────────────
+
+export type BankTransactionStatus = 'UNMATCHED' | 'MATCHED' | 'IGNORED'
+
+export interface BankTransaction {
+  id: string
+  organizationId: string
+  date: string
+  description: string
+  amount: number
+  balance?: number
+  reference?: string
+  rawOcr?: string
+  status: BankTransactionStatus
+  invoiceId?: string
+  matchedAt?: string
+  matchedBy?: string
+  createdAt: string
+  invoice?: { id: string; invoiceNumber: string; status: string }
+}
+
+export interface ImportResult {
+  imported: number
+  duplicates: number
+  autoMatched: number
+  unmatched: number
+  errors: string[]
+}
+
+export interface ReconciliationStats {
+  total: number
+  matched: number
+  unmatched: number
+  ignored: number
+  totalAmount: number
+  matchedAmount: number
 }
 
 // ─── Accounting (Bokföring) ───────────────────────────────────────────────────
@@ -226,6 +324,8 @@ export interface JournalEntry {
   date: string
   description: string
   reference?: string
+  source?: string
+  sourceId?: string | null
   lines: JournalEntryLine[]
   createdById: string
   createdAt: string
@@ -234,9 +334,8 @@ export interface JournalEntry {
 export interface JournalEntryLine {
   id: string
   accountId: string
-  accountNumber: number
-  accountName: string
-  debit?: number
-  credit?: number
-  description?: string
+  account: Account
+  debit?: number | null
+  credit?: number | null
+  description?: string | null
 }

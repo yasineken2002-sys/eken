@@ -97,4 +97,21 @@
   .fn-row:hover {
     background: #f7f9fb;
   }
+
+  /* Streaming cursor blink */
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
+  .cursor {
+    animation: blink 1s step-end infinite;
+    color: #2563eb;
+    font-weight: 600;
+    margin-left: 1px;
+  }
 }

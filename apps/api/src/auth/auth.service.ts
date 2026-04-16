@@ -1,11 +1,31 @@
 import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common'
 import type { JwtService } from '@nestjs/jwt'
 import type { ConfigService } from '@nestjs/config'
-import * as bcrypt from 'bcrypt'
+import * as bcrypt from 'bcryptjs'
 import { v4 as uuidv4 } from 'uuid'
 import type { PrismaService } from '../common/prisma/prisma.service'
 import type { JwtPayload, TokenPair } from '@eken/shared'
 import type { LoginInput, RegisterInput } from '@eken/shared'
+
+export interface AuthUser {
+  id: string
+  email: string
+  firstName: string
+  lastName: string
+  role: string
+  organizationId: string
+}
+
+export interface AuthOrganization {
+  id: string
+  name: string
+  orgNumber: string | null
+}
+
+export interface AuthResponse extends TokenPair {
+  user: AuthUser
+  organization: AuthOrganization
+}
 
 @Injectable()
 export class AuthService {
@@ -15,7 +35,7 @@ export class AuthService {
     private config: ConfigService,
   ) {}
 
-  async register(dto: RegisterInput): Promise<TokenPair> {
+  async register(dto: RegisterInput): Promise<AuthResponse> {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } })
     if (existing) throw new ConflictException('E-postadressen är redan registrerad')
 
@@ -43,11 +63,26 @@ export class AuthService {
       },
     })
 
-    return this.issueTokens(user.id, user.email, org.id, user.role)
+    const tokens = await this.issueTokens(user.id, user.email, org.id, user.role)
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        organizationId: user.organizationId,
+      },
+      organization: { id: org.id, name: org.name, orgNumber: org.orgNumber ?? null },
+    }
   }
 
-  async login(dto: LoginInput): Promise<TokenPair> {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } })
+  async login(dto: LoginInput): Promise<AuthResponse> {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      include: { organization: true },
+    })
     if (!user || !user.isActive) throw new UnauthorizedException('Felaktiga inloggningsuppgifter')
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash)
@@ -58,7 +93,23 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     })
 
-    return this.issueTokens(user.id, user.email, user.organizationId, user.role)
+    const tokens = await this.issueTokens(user.id, user.email, user.organizationId, user.role)
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        organizationId: user.organizationId,
+      },
+      organization: {
+        id: user.organization.id,
+        name: user.organization.name,
+        orgNumber: user.organization.orgNumber ?? null,
+      },
+    }
   }
 
   async refresh(token: string): Promise<TokenPair> {

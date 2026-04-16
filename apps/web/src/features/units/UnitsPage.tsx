@@ -1,256 +1,545 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import type { Filter } from 'lucide-react'
-import { Plus, Home } from 'lucide-react'
+import {
+  Plus,
+  Home,
+  Building2,
+  LayoutGrid,
+  Wrench,
+  Calendar,
+  DoorOpen,
+  Ruler,
+  Hash,
+  AlertCircle,
+} from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Modal, ModalFooter } from '@/components/ui/Modal'
-import { Input, Select } from '@/components/ui/Input'
 import { DataTable } from '@/components/ui/DataTable'
+import { StatCard } from '@/components/ui/StatCard'
 import { UnitStatusBadge } from '@/components/ui/Badge'
-import { mockUnits, mockProperties } from '@/lib/mock-data'
-import { formatCurrency } from '@eken/shared'
-import type { Unit } from '@eken/shared'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { UnitForm } from './components/UnitForm'
+import { useUnits, useUnit, useCreateUnit, useUpdateUnit, useDeleteUnit } from './hooks/useUnits'
+import { formatCurrency, formatDate } from '@eken/shared'
+import type { UnitStatus } from '@eken/shared'
+import type { UnitWithProperty, UnitDetail, CreateUnitInput } from './api/units.api'
 import { cn } from '@/lib/cn'
+import { DocumentList } from '@/features/documents/components/DocumentList'
 
-type Filter = 'ALL' | 'OCCUPIED' | 'VACANT' | 'UNDER_RENOVATION' | 'RESERVED'
-const FILTERS: { id: Filter; label: string }[] = [
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type FilterTab = 'ALL' | UnitStatus
+type DetailTab = 'detaljer' | 'redigera'
+
+const FILTER_TABS: { id: FilterTab; label: string }[] = [
   { id: 'ALL', label: 'Alla' },
-  { id: 'OCCUPIED', label: 'Uthyrda' },
   { id: 'VACANT', label: 'Lediga' },
-  { id: 'UNDER_RENOVATION', label: 'Renovering' },
+  { id: 'OCCUPIED', label: 'Uthyrda' },
+  { id: 'UNDER_RENOVATION', label: 'Underhåll' },
   { id: 'RESERVED', label: 'Reserverade' },
 ]
 
-function getPropertyName(id: string) {
-  return mockProperties.find((p) => p.id === id)?.name ?? '–'
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const unitTypeLabel: Record<string, string> = {
+const UNIT_TYPE_LABELS: Record<string, string> = {
   APARTMENT: 'Lägenhet',
   OFFICE: 'Kontor',
-  RETAIL: 'Butik/Restaurang',
+  RETAIL: 'Butik',
   STORAGE: 'Förråd',
   PARKING: 'Parkering',
   OTHER: 'Övrigt',
 }
 
-export function UnitsPage() {
-  const [filter, setFilter] = useState<Filter>('ALL')
-  const [selected, setSelected] = useState<Unit | null>(null)
-  const [showCreate, setShowCreate] = useState(false)
+const container = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } }
+const item = {
+  hidden: { opacity: 0, y: 8 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.2 } },
+}
 
-  const data = filter === 'ALL' ? mockUnits : mockUnits.filter((u) => u.status === filter)
-  const totalRent = mockUnits
-    .filter((u) => u.status === 'OCCUPIED')
-    .reduce((s, u) => s + u.monthlyRent, 0)
+function unitToInput(u: UnitDetail): Partial<CreateUnitInput> {
+  return {
+    propertyId: u.propertyId,
+    name: u.name,
+    unitNumber: u.unitNumber,
+    type: u.type,
+    status: u.status,
+    area: u.area,
+    ...(u.floor != null ? { floor: u.floor } : {}),
+    ...(u.rooms != null ? { rooms: u.rooms } : {}),
+    monthlyRent: u.monthlyRent,
+  }
+}
+
+function tenantName(t: UnitDetail['leases'][number]['tenant']): string {
+  if (t.type === 'INDIVIDUAL') {
+    return [t.firstName, t.lastName].filter(Boolean).join(' ') || '–'
+  }
+  return t.companyName ?? '–'
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export function UnitsPage() {
+  const [filterTab, setFilterTab] = useState<FilterTab>('ALL')
+  const [selected, setSelected] = useState<UnitWithProperty | null>(null)
+  const [detailTab, setDetailTab] = useState<DetailTab>('detaljer')
+  const [showCreate, setShowCreate] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  const { data: units = [], isLoading, isError } = useUnits()
+  const { data: selectedUnit } = useUnit(selected?.id ?? null)
+
+  const createMutation = useCreateUnit()
+  const updateMutation = useUpdateUnit()
+  const deleteMutation = useDeleteUnit()
+
+  // Client-side filter
+  const filtered = useMemo(() => {
+    if (filterTab === 'ALL') return units
+    return units.filter((u) => u.status === filterTab)
+  }, [units, filterTab])
+
+  // Stats
+  const vacantCount = units.filter((u) => u.status === 'VACANT').length
+  const occupiedCount = units.filter((u) => u.status === 'OCCUPIED').length
+  const renovationCount = units.filter((u) => u.status === 'UNDER_RENOVATION').length
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleCreate = (dto: CreateUnitInput) => {
+    createMutation.mutate(dto, { onSuccess: () => setShowCreate(false) })
+  }
+
+  const handleUpdate = (dto: CreateUnitInput) => {
+    if (!selected) return
+    updateMutation.mutate(
+      { id: selected.id, ...dto },
+      { onSuccess: () => setDetailTab('detaljer') },
+    )
+  }
+
+  const handleDelete = () => {
+    if (!selected) return
+    deleteMutation.mutate(selected.id, {
+      onSuccess: () => {
+        setSelected(null)
+        setShowDeleteConfirm(false)
+      },
+    })
+  }
+
+  // ── Table columns ──────────────────────────────────────────────────────────
+
+  const columns = [
+    {
+      key: 'name',
+      header: 'Objekt',
+      cell: (u: UnitWithProperty) => (
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50">
+            <Home size={13} strokeWidth={1.8} className="text-blue-600" />
+          </div>
+          <div>
+            <p className="font-medium text-gray-900">{u.name}</p>
+            <p className="text-[11px] text-gray-400">{u.unitNumber}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'property',
+      header: 'Fastighet',
+      cell: (u: UnitWithProperty) => <span className="text-gray-600">{u.property.name}</span>,
+    },
+    {
+      key: 'type',
+      header: 'Typ',
+      cell: (u: UnitWithProperty) => (
+        <span className="text-[12.5px] text-gray-500">{UNIT_TYPE_LABELS[u.type] ?? u.type}</span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (u: UnitWithProperty) => <UnitStatusBadge status={u.status} />,
+    },
+    {
+      key: 'area',
+      header: 'Yta',
+      align: 'right' as const,
+      cell: (u: UnitWithProperty) => <span className="text-gray-600">{u.area} m²</span>,
+    },
+    {
+      key: 'rent',
+      header: 'Hyra/mån',
+      align: 'right' as const,
+      cell: (u: UnitWithProperty) => (
+        <span className="font-semibold text-gray-800">{formatCurrency(Number(u.monthlyRent))}</span>
+      ),
+    },
+  ]
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  if (isError)
+    return (
+      <PageWrapper id="units-error">
+        <EmptyState
+          icon={AlertCircle}
+          title="Något gick fel"
+          description="Kunde inte ladda enheter. Försök ladda om sidan."
+        />
+      </PageWrapper>
+    )
 
   return (
     <PageWrapper id="units">
       <PageHeader
         title="Objekt"
-        description={`${mockUnits.length} objekt · ${mockUnits.filter((u) => u.status === 'VACANT').length} lediga`}
+        description={`${units.length} objekt · ${vacantCount} lediga`}
         action={
           <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
-            <Plus size={14} />
+            <Plus size={14} strokeWidth={2.2} />
             Nytt objekt
           </Button>
         }
       />
 
       {/* Stats */}
-      <div className="mt-6 grid grid-cols-4 gap-4">
-        {[
-          { label: 'Totala intäkter/mån', value: formatCurrency(totalRent), sub: 'Uthyrda objekt' },
-          {
-            label: 'Uthyrda',
-            value: mockUnits.filter((u) => u.status === 'OCCUPIED').length,
-            sub: `av ${mockUnits.length} objekt`,
-          },
-          {
-            label: 'Lediga',
-            value: mockUnits.filter((u) => u.status === 'VACANT').length,
-            sub: 'objekt',
-          },
-          {
-            label: 'Total yta',
-            value: `${mockUnits.reduce((s, u) => s + u.area, 0)} m²`,
-            sub: 'Alla objekt',
-          },
-        ].map((s, i) => (
-          <motion.div
-            key={s.label}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.07 }}
-            className="rounded-2xl border border-[#EAEDF0] bg-white p-4"
-          >
-            <p className="text-[12px] font-medium text-gray-400">{s.label}</p>
-            <p className="mt-1 text-[24px] font-semibold text-gray-900">{s.value}</p>
-            <p className="mt-0.5 text-[12px] text-gray-400">{s.sub}</p>
-          </motion.div>
-        ))}
-      </div>
+      <motion.div
+        variants={container}
+        initial="hidden"
+        animate="show"
+        className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      >
+        <motion.div variants={item}>
+          <StatCard
+            title="Totalt"
+            value={units.length}
+            icon={LayoutGrid}
+            iconColor="#2563EB"
+            delay={0}
+          />
+        </motion.div>
+        <motion.div variants={item}>
+          <StatCard
+            title="Lediga"
+            value={vacantCount}
+            icon={DoorOpen}
+            iconColor="#218F52"
+            delay={0.05}
+          />
+        </motion.div>
+        <motion.div variants={item}>
+          <StatCard
+            title="Uthyrda"
+            value={occupiedCount}
+            icon={Home}
+            iconColor="#0B84D0"
+            delay={0.1}
+          />
+        </motion.div>
+        <motion.div variants={item}>
+          <StatCard
+            title="Underhåll"
+            value={renovationCount}
+            icon={Wrench}
+            iconColor="#D97706"
+            delay={0.15}
+          />
+        </motion.div>
+      </motion.div>
 
       {/* Filter tabs */}
       <div className="mt-6 flex w-fit items-center gap-1 rounded-xl bg-gray-100 p-1">
-        {FILTERS.map((f) => {
+        {FILTER_TABS.map((f) => {
           const count =
-            f.id === 'ALL' ? mockUnits.length : mockUnits.filter((u) => u.status === f.id).length
+            f.id === 'ALL' ? units.length : units.filter((u) => u.status === f.id).length
           return (
             <button
               key={f.id}
-              onClick={() => setFilter(f.id)}
+              onClick={() => setFilterTab(f.id)}
               className={cn(
                 'flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-all',
-                filter === f.id
+                filterTab === f.id
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700',
               )}
             >
-              {f.label} <span className="text-[11px] text-gray-400">{count}</span>
+              {f.label}
+              <span className="text-[11px] text-gray-400">{count}</span>
             </button>
           )
         })}
       </div>
 
+      {/* Table */}
       <div className="mt-4">
-        <DataTable
-          data={data}
-          keyExtractor={(u) => u.id}
-          onRowClick={setSelected}
-          columns={[
-            {
-              key: 'name',
-              header: 'Objekt',
-              cell: (u) => (
-                <div className="flex items-center gap-2">
-                  <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50">
-                    <Home size={12} className="text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-800">{u.name}</p>
-                    <p className="text-[11px] text-gray-400">{u.unitNumber}</p>
-                  </div>
-                </div>
-              ),
-            },
-            {
-              key: 'property',
-              header: 'Fastighet',
-              cell: (u) => <span className="text-gray-600">{getPropertyName(u.propertyId)}</span>,
-            },
-            {
-              key: 'type',
-              header: 'Typ',
-              cell: (u) => (
-                <span className="text-[12.5px] text-gray-500">
-                  {unitTypeLabel[u.type] ?? u.type}
-                </span>
-              ),
-            },
-            {
-              key: 'area',
-              header: 'Yta',
-              align: 'right',
-              cell: (u) => <span className="text-gray-600">{u.area} m²</span>,
-            },
-            {
-              key: 'floor',
-              header: 'Våning',
-              align: 'center',
-              cell: (u) => (
-                <span className="text-gray-500">
-                  {u.floor !== undefined ? `Plan ${u.floor}` : 'BV'}
-                </span>
-              ),
-            },
-            {
-              key: 'rooms',
-              header: 'Rum',
-              align: 'center',
-              cell: (u) => <span className="text-gray-500">{u.rooms ?? '–'}</span>,
-            },
-            {
-              key: 'rent',
-              header: 'Hyra/mån',
-              align: 'right',
-              cell: (u) => (
-                <span className="font-semibold text-gray-800">{formatCurrency(u.monthlyRent)}</span>
-              ),
-            },
-            { key: 'status', header: 'Status', cell: (u) => <UnitStatusBadge status={u.status} /> },
-          ]}
-        />
+        {isLoading ? (
+          <div className="flex items-center justify-center py-20 text-[13px] text-gray-400">
+            Laddar objekt…
+          </div>
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={Home}
+            title="Inga objekt"
+            description={
+              units.length === 0
+                ? 'Lägg till ditt första objekt för att komma igång.'
+                : 'Inga objekt matchar det aktiva filtret.'
+            }
+            {...(units.length === 0
+              ? {
+                  action: (
+                    <Button variant="primary" onClick={() => setShowCreate(true)}>
+                      <Plus size={14} strokeWidth={2.2} />
+                      Skapa objekt
+                    </Button>
+                  ),
+                }
+              : {})}
+          />
+        ) : (
+          <DataTable
+            columns={columns}
+            data={filtered}
+            keyExtractor={(u) => u.id}
+            onRowClick={(u) => {
+              setSelected(u)
+              setDetailTab('detaljer')
+            }}
+          />
+        )}
       </div>
 
-      {selected && (
-        <Modal
-          open
-          onClose={() => setSelected(null)}
-          title={selected.name}
-          description={`${getPropertyName(selected.propertyId)} · ${selected.unitNumber}`}
-          size="sm"
-        >
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Fastighet', value: getPropertyName(selected.propertyId) },
-                { label: 'Typ', value: unitTypeLabel[selected.type] ?? selected.type },
-                { label: 'Yta', value: `${selected.area} m²` },
-                {
-                  label: 'Våning',
-                  value: selected.floor !== undefined ? `Plan ${selected.floor}` : 'Bottenvåning',
-                },
-                { label: 'Antal rum', value: selected.rooms ?? '–' },
-                { label: 'Hyra/mån', value: formatCurrency(selected.monthlyRent) },
-              ].map((i) => (
-                <div key={i.label} className="rounded-xl bg-gray-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                    {i.label}
-                  </p>
-                  <p className="mt-0.5 text-[13px] font-medium text-gray-800">{i.value}</p>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center justify-between pt-1">
-              <UnitStatusBadge status={selected.status} />
-            </div>
-          </div>
-        </Modal>
-      )}
+      {/* ── Create modal ───────────────────────────────────────────────────── */}
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Nytt objekt" size="md">
+        <UnitForm
+          onSubmit={handleCreate}
+          onCancel={() => setShowCreate(false)}
+          isSubmitting={createMutation.isPending}
+          submitLabel="Skapa objekt"
+        />
+      </Modal>
 
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Nytt objekt">
-        <div className="space-y-4">
+      {/* ── Detail modal ───────────────────────────────────────────────────── */}
+      <Modal
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        title={selected?.name ?? ''}
+        {...(selected ? { description: `${selected.property.name} · ${selected.unitNumber}` } : {})}
+        size="lg"
+      >
+        {selected && (
+          <UnitDetailPanel
+            selected={selected}
+            selectedUnit={selectedUnit ?? null}
+            detailTab={detailTab}
+            setDetailTab={setDetailTab}
+            onUpdate={handleUpdate}
+            onDeleteRequest={() => setShowDeleteConfirm(true)}
+            isUpdating={updateMutation.isPending}
+          />
+        )}
+      </Modal>
+
+      {/* ── Delete confirm ─────────────────────────────────────────────────── */}
+      <Modal
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        title="Ta bort objekt"
+        size="sm"
+      >
+        <p className="text-[13px] text-gray-600">
+          Vill du ta bort <span className="font-medium text-gray-900">{selected?.name}</span>?
+          Åtgärden kan inte ångras.
+        </p>
+        <ModalFooter>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowDeleteConfirm(false)}
+            disabled={deleteMutation.isPending}
+          >
+            Avbryt
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            loading={deleteMutation.isPending}
+            onClick={handleDelete}
+          >
+            Ta bort
+          </Button>
+        </ModalFooter>
+      </Modal>
+    </PageWrapper>
+  )
+}
+
+// ─── Detail Panel ─────────────────────────────────────────────────────────────
+
+interface UnitDetailPanelProps {
+  selected: UnitWithProperty
+  selectedUnit: UnitDetail | null
+  detailTab: DetailTab
+  setDetailTab: (t: DetailTab) => void
+  onUpdate: (dto: CreateUnitInput) => void
+  onDeleteRequest: () => void
+  isUpdating: boolean
+}
+
+function UnitDetailPanel({
+  selected,
+  selectedUnit,
+  detailTab,
+  setDetailTab,
+  onUpdate,
+  onDeleteRequest,
+  isUpdating,
+}: UnitDetailPanelProps) {
+  const activeLease = selectedUnit?.leases.find((l) => l.status === 'ACTIVE') ?? null
+
+  return (
+    <div>
+      {/* Tab strip */}
+      <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100 p-1">
+        {(['detaljer', 'redigera'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setDetailTab(t)}
+            className={cn(
+              'h-8 rounded-lg px-3 text-[13px] font-medium transition-all',
+              detailTab === t
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700',
+            )}
+          >
+            {t === 'detaljer' ? 'Detaljer' : 'Redigera'}
+          </button>
+        ))}
+      </div>
+
+      {detailTab === 'detaljer' ? (
+        <div>
+          {/* Info grid */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <Input label="Namn" placeholder="Lägenhet 5A" />
-            </div>
-            <Input label="Objektnummer" placeholder="501" />
-            <Select
-              label="Fastighet"
-              options={mockProperties.map((p) => ({ value: p.id, label: p.name }))}
-            />
-            <Select
-              label="Typ"
-              options={Object.entries(unitTypeLabel).map(([v, l]) => ({ value: v, label: l }))}
-            />
-            <Input label="Yta (m²)" type="number" placeholder="72" />
-            <Input label="Våning" type="number" placeholder="3" />
-            <Input label="Antal rum" type="number" placeholder="3" />
-            <div className="col-span-2">
-              <Input label="Hyra per månad (kr)" type="number" placeholder="9500" />
-            </div>
+            {[
+              { icon: Building2, label: 'Fastighet', value: selected.property.name },
+              { icon: Hash, label: 'Enhetsnummer', value: selected.unitNumber },
+              {
+                icon: LayoutGrid,
+                label: 'Typ',
+                value: UNIT_TYPE_LABELS[selected.type] ?? selected.type,
+              },
+              {
+                icon: Calendar,
+                label: 'Skapad',
+                value: formatDate(selected.createdAt),
+              },
+              { icon: Ruler, label: 'Area', value: `${selected.area} m²` },
+              {
+                icon: Home,
+                label: 'Våning',
+                value: selected.floor != null ? `Plan ${selected.floor}` : 'Bottenvåning',
+              },
+              ...(selected.rooms != null
+                ? [{ icon: DoorOpen, label: 'Antal rum', value: String(selected.rooms) }]
+                : []),
+              {
+                icon: Hash,
+                label: 'Månadshyra',
+                value: formatCurrency(Number(selected.monthlyRent)),
+              },
+            ].map((row) => (
+              <div
+                key={row.label}
+                className="flex items-start gap-2.5 rounded-xl border border-[#EAEDF0] p-3"
+              >
+                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gray-50">
+                  <row.icon size={12} strokeWidth={1.8} className="text-gray-400" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                    {row.label}
+                  </p>
+                  <p className="mt-0.5 text-[13px] text-gray-800">{row.value}</p>
+                </div>
+              </div>
+            ))}
           </div>
+
+          {/* Status badge row */}
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-[12px] text-gray-400">Status:</span>
+            <UnitStatusBadge status={selected.status} />
+          </div>
+
+          {/* Active lease */}
+          <div className="mt-5">
+            <p className="mb-3 text-[13px] font-semibold text-gray-700">Nuvarande kontrakt</p>
+            {activeLease ? (
+              <div className="rounded-xl border border-[#EAEDF0] p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[14px] font-medium text-gray-900">
+                      {tenantName(activeLease.tenant)}
+                    </p>
+                    <p className="mt-0.5 text-[12px] text-gray-500">{activeLease.tenant.email}</p>
+                  </div>
+                  <p className="text-[15px] font-semibold text-gray-800">
+                    {formatCurrency(Number(activeLease.monthlyRent))}/mån
+                  </p>
+                </div>
+                <div className="mt-3 flex gap-4 text-[12px] text-gray-500">
+                  <span>Från {formatDate(activeLease.startDate)}</span>
+                  {activeLease.endDate && <span>Till {formatDate(activeLease.endDate)}</span>}
+                  {!activeLease.endDate && <span className="text-emerald-600">Tillsvidare</span>}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-[#EAEDF0] py-8 text-center text-[13px] text-gray-400">
+                Ingen aktiv hyresgäst
+              </div>
+            )}
+          </div>
+
+          {/* Documents */}
+          <div className="mt-6">
+            <DocumentList unitId={selected.id} title="Enhetsdokument" />
+          </div>
+
+          {/* Actions */}
           <ModalFooter>
-            <Button onClick={() => setShowCreate(false)}>Avbryt</Button>
-            <Button variant="primary" onClick={() => setShowCreate(false)}>
-              Spara
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={selected.status === 'OCCUPIED'}
+              title={
+                selected.status === 'OCCUPIED'
+                  ? 'Objekt med aktiv hyresgäst kan inte tas bort'
+                  : undefined
+              }
+              onClick={onDeleteRequest}
+            >
+              Ta bort
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setDetailTab('redigera')}>
+              Redigera
             </Button>
           </ModalFooter>
         </div>
-      </Modal>
-    </PageWrapper>
+      ) : (
+        <UnitForm
+          {...(selectedUnit ? { defaultValues: unitToInput(selectedUnit) } : {})}
+          onSubmit={onUpdate}
+          onCancel={() => setDetailTab('detaljer')}
+          isSubmitting={isUpdating}
+          submitLabel="Spara ändringar"
+        />
+      )}
+    </div>
   )
 }

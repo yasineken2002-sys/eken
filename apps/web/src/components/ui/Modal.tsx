@@ -9,10 +9,16 @@ interface Props {
   title: string
   description?: string
   children: React.ReactNode
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
 }
 
-const sizes = { sm: 'max-w-[440px]', md: 'max-w-[560px]', lg: 'max-w-[720px]' }
+const sizes = {
+  sm: 'max-w-[440px]',
+  md: 'max-w-[560px]',
+  lg: 'max-w-[720px]',
+  xl: 'max-w-5xl',
+  full: 'max-w-7xl',
+}
 
 export function Modal({ open, onClose, title, description, children, size = 'md' }: Props) {
   useEffect(() => {

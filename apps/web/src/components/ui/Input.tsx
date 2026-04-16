@@ -3,8 +3,8 @@ import { cn } from '@/lib/cn'
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string
-  error?: string
-  hint?: string
+  error?: string | undefined
+  hint?: string | undefined
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
@@ -30,7 +30,7 @@ Input.displayName = 'Input'
 
 interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string
-  error?: string
+  error?: string | undefined
   options: { value: string; label: string }[]
 }
 

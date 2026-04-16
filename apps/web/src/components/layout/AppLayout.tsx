@@ -15,8 +15,15 @@ import {
   HelpCircle,
   LogOut,
   Search,
+  LayoutGrid,
+  ArrowLeftRight,
+  FolderOpen,
+  Upload,
+  Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { useAuthStore } from '@/stores/auth.store'
+import { logoutApi } from '@/features/auth/api/auth.api'
 import type { Route } from '@/App'
 
 interface NavItem {
@@ -28,12 +35,17 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Översikt', icon: LayoutDashboard },
+  { id: 'ai', label: 'AI-assistent', icon: Sparkles },
+  { id: 'import', label: 'Importera data', icon: Upload },
   { id: 'properties', label: 'Fastigheter', icon: Building2 },
   { id: 'units', label: 'Objekt', icon: Home },
   { id: 'tenants', label: 'Hyresgäster', icon: Users },
   { id: 'leases', label: 'Hyresavtal', icon: FileText },
-  { id: 'invoices', label: 'Fakturor', icon: Receipt, badge: 1 },
+  { id: 'invoices', label: 'Fakturor', icon: Receipt },
   { id: 'accounting', label: 'Bokföring', icon: BookOpen },
+  { id: 'reconciliation', label: 'Bankavstämning', icon: ArrowLeftRight },
+  { id: 'documents', label: 'Dokument', icon: FolderOpen },
+  { id: 'overview', label: 'Plattformsöversikt', icon: LayoutGrid },
 ]
 
 interface Props {
@@ -45,6 +57,22 @@ interface Props {
 export function AppLayout({ route, onNavigate, children }: Props) {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const user = useAuthStore((s) => s.user)
+  const clearAuth = useAuthStore((s) => s.clearAuth)
+
+  const handleLogout = async () => {
+    try {
+      await logoutApi()
+    } catch {
+      /* clear auth regardless */
+    }
+    clearAuth()
+    onNavigate('login')
+  }
+
+  const displayName = user ? `${user.firstName} ${user.lastName}` : ''
+  const initials = user ? `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase() : '?'
+  const shortName = user ? `${user.firstName} ${user.lastName[0]}.` : ''
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#F3F5F7' }}>
@@ -222,11 +250,19 @@ export function AppLayout({ route, onNavigate, children }: Props) {
           style={{ borderColor: '#253347' }}
         >
           {[
-            { icon: HelpCircle, label: 'Hjälp' },
-            { icon: Settings, label: 'Inställningar' },
-          ].map(({ icon: Icon, label }) => (
+            { icon: HelpCircle, label: 'Hjälp', action: undefined as (() => void) | undefined },
+            {
+              icon: Settings,
+              label: 'Inställningar',
+              action: () => {
+                onNavigate('settings')
+                setMobileOpen(false)
+              },
+            },
+          ].map(({ icon: Icon, label, action }) => (
             <button
               key={label}
+              onClick={action}
               className={cn(
                 'flex w-full items-center rounded transition-colors duration-100',
                 collapsed ? 'h-9 justify-center' : 'h-8 gap-2.5 px-2.5',
@@ -249,7 +285,7 @@ export function AppLayout({ route, onNavigate, children }: Props) {
           {/* User */}
           <div
             className={cn(
-              'mt-1 flex cursor-pointer items-center rounded transition-colors',
+              'mt-1 flex items-center rounded transition-colors',
               collapsed ? 'justify-center p-1.5' : 'gap-2.5 px-2.5 py-1.5',
             )}
             style={{ borderTop: '1px solid #253347', marginTop: '6px', paddingTop: '10px' }}
@@ -258,7 +294,7 @@ export function AppLayout({ route, onNavigate, children }: Props) {
               className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-[11px] font-semibold text-white"
               style={{ background: 'linear-gradient(135deg, #7C3AED, #5B21B6)' }}
             >
-              AA
+              {initials}
             </div>
             <AnimatePresence>
               {!collapsed && (
@@ -268,20 +304,24 @@ export function AppLayout({ route, onNavigate, children }: Props) {
                   exit={{ opacity: 0 }}
                   className="min-w-0 flex-1"
                 >
-                  <p className="truncate text-[12.5px] font-semibold text-white">Anna Andersson</p>
+                  <p className="truncate text-[12.5px] font-semibold text-white">{displayName}</p>
                   <p className="truncate text-[11px]" style={{ color: '#5A6A82' }}>
-                    admin@demo.se
+                    {user?.email ?? ''}
                   </p>
                 </motion.div>
               )}
             </AnimatePresence>
             {!collapsed && (
-              <LogOut
-                size={13}
-                strokeWidth={1.7}
+              <button
+                onClick={handleLogout}
+                title="Logga ut"
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[#1E2F45]"
                 style={{ color: '#5A6A82' }}
-                className="flex-shrink-0"
-              />
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#EF4444')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = '#5A6A82')}
+              >
+                <LogOut size={13} strokeWidth={1.7} />
+              </button>
             )}
           </div>
         </div>
@@ -331,10 +371,10 @@ export function AppLayout({ route, onNavigate, children }: Props) {
               className="flex h-6 w-6 items-center justify-center rounded text-[10px] font-bold text-white"
               style={{ background: 'linear-gradient(135deg, #7C3AED, #5B21B6)' }}
             >
-              AA
+              {initials}
             </div>
             <span className="text-[13px] font-medium" style={{ color: '#182030' }}>
-              Anna A.
+              {shortName}
             </span>
           </div>
         </header>

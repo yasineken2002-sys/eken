@@ -15,6 +15,13 @@ import { LeasesModule } from './leases/leases.module'
 import { InvoicesModule } from './invoices/invoices.module'
 import { AccountingModule } from './accounting/accounting.module'
 import { HealthModule } from './common/health/health.module'
+import { DashboardModule } from './dashboard/dashboard.module'
+import { MailModule } from './mail/mail.module'
+import { NotificationsModule } from './notifications/notifications.module'
+import { ReconciliationModule } from './reconciliation/reconciliation.module'
+import { DocumentsModule } from './documents/documents.module'
+import { ImportModule } from './import/import.module'
+import { AiModule } from './ai/ai.module'
 
 @Module({
   imports: [
@@ -62,6 +69,13 @@ import { HealthModule } from './common/health/health.module'
     InvoicesModule,
     AccountingModule,
     HealthModule,
+    DashboardModule,
+    MailModule,
+    NotificationsModule,
+    ReconciliationModule,
+    DocumentsModule,
+    ImportModule,
+    AiModule,
   ],
 })
 export class AppModule {}

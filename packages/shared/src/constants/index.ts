@@ -27,3 +27,56 @@ export const STANDARD_ACCOUNTS = {
 } as const
 
 export const USER_ROLES = ['OWNER', 'ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER'] as const
+
+// ─── Invoice Event Types ──────────────────────────────────────────────────────
+
+export const INVOICE_EVENT_TYPES = [
+  'invoice.created',
+  'invoice.updated',
+  'invoice.sent',
+  'invoice.send_failed',
+  'invoice.email_queued',
+  'invoice.email_delivered',
+  'invoice.email_bounced',
+  'invoice.email_spam',
+  'invoice.email_opened',
+  'invoice.pdf_viewed',
+  'invoice.payment_received',
+  'invoice.payment_partial',
+  'invoice.payment_reversed',
+  'invoice.overdue',
+  'invoice.reminder_sent',
+  'invoice.debt_collection',
+  'invoice.voided',
+  'invoice.credit_note_created',
+  'invoice.note_added',
+  'invoice.viewed_by_user',
+] as const
+
+// ─── Invoice State Machine ─────────────────────────────────────────────────
+// Giltiga statusövergångar. Terminala statusar (PAID, VOID) har tomma arrayer.
+// Samma approach som Stripe använder internt.
+
+import type { InvoiceStatus, InvoiceEventType } from '../types'
+
+export const INVOICE_TRANSITIONS: Record<InvoiceStatus, InvoiceStatus[]> = {
+  DRAFT: ['SENT', 'VOID'],
+  SENT: ['PARTIAL', 'PAID', 'OVERDUE', 'VOID'],
+  PARTIAL: ['PAID', 'OVERDUE', 'VOID'],
+  OVERDUE: ['PARTIAL', 'PAID', 'VOID'],
+  PAID: [],
+  VOID: [],
+}
+
+export function isValidTransition(from: InvoiceStatus, to: InvoiceStatus): boolean {
+  return INVOICE_TRANSITIONS[from]?.includes(to) ?? false
+}
+
+// Mappar statusövergång → händelsetyp som loggas
+export const STATUS_TO_EVENT: Partial<Record<InvoiceStatus, InvoiceEventType>> = {
+  SENT: 'invoice.sent',
+  PARTIAL: 'invoice.payment_partial',
+  PAID: 'invoice.payment_received',
+  OVERDUE: 'invoice.overdue',
+  VOID: 'invoice.voided',
+}

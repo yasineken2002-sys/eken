@@ -39,7 +39,8 @@ export class PropertiesController {
   @Roles('MANAGER', 'ADMIN', 'OWNER')
   @ApiOperation({ summary: 'Skapa fastighet' })
   create(@OrgId() orgId: string, @Body() dto: CreatePropertyDto) {
-    return this.service.create(orgId, dto)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return this.service.create(orgId, { ...dto, address: dto.address as any })
   }
 
   @Patch(':id')
@@ -50,7 +51,8 @@ export class PropertiesController {
     @OrgId() orgId: string,
     @Body() dto: UpdatePropertyDto,
   ) {
-    return this.service.update(id, orgId, dto)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return this.service.update(id, orgId, { ...dto, address: dto.address as any })
   }
 
   @Delete(':id')

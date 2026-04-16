@@ -4,6 +4,9 @@ import { ValidationPipe, VersioningType } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import helmet from '@fastify/helmet'
+import multipart from '@fastify/multipart'
+import fastifyStatic from '@fastify/static'
+import * as path from 'path'
 import { AppModule } from './app.module'
 import { HttpExceptionFilter } from './common/filters/http-exception.filter'
 import { TransformInterceptor } from './common/interceptors/transform.interceptor'
@@ -16,8 +19,20 @@ async function bootstrap() {
   const appUrl = config.get<string>('APP_URL', 'http://localhost:5173')
 
   // Security
-  await app.register(helmet, {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await app.register(helmet as any, {
     contentSecurityPolicy: false, // handled by frontend
+  })
+
+  // File uploads
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await app.register(multipart as any, { limits: { fileSize: 20_000_000 } })
+
+  // Static files (uploaded logos)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await app.register(fastifyStatic as any, {
+    root: path.join(process.cwd(), 'uploads'),
+    prefix: '/uploads/',
   })
 
   // CORS

@@ -1,0 +1,16 @@
+{
+  "name": "Eken",
+  "forwardPorts": [5173, 3000, 5432, 6379],
+  "portsAttributes": {
+    "5173": {
+      "label": "Web (Vite)",
+      "onAutoForward": "openBrowserOnce",
+      "visibility": "public"
+    },
+    "3000": {
+      "label": "API (NestJS)",
+      "onAutoForward": "notify",
+      "visibility": "public"
+    }
+  }
+}

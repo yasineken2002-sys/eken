@@ -1,37 +1,36 @@
 FROM node:20-alpine AS base
-RUN corepack enable pnpm
+RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
-
-# ─── Dependencies ─────────────────────────────────────────────────────────────
+RUN npm install -g pnpm
 
 FROM base AS deps
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 RUN pnpm install --frozen-lockfile
 
-# ─── Development ─────────────────────────────────────────────────────────────
-
-FROM deps AS development
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY . .
-CMD ["pnpm", "--filter=@eken/api", "dev"]
+RUN pnpm --filter=@eken/shared build 2>/dev/null || true
+WORKDIR /app/apps/api
+RUN npx prisma generate
+RUN pnpm build
 
-# ─── Build ────────────────────────────────────────────────────────────────────
-
-FROM deps AS builder
-COPY . .
-RUN pnpm --filter=@eken/api build
-
-# ─── Production ──────────────────────────────────────────────────────────────
-
-FROM node:20-alpine AS production
-RUN corepack enable pnpm
+FROM node:20-alpine AS runner
+RUN apk add --no-cache openssl chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 WORKDIR /app
-ENV NODE_ENV=production
-
-COPY --from=builder /app/apps/api/dist ./dist
-COPY --from=builder /app/apps/api/prisma ./prisma
+RUN npm install -g pnpm
 COPY --from=builder /app/node_modules ./node_modules
-
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=builder /app/apps/api/package.json ./apps/api/
+COPY apps/api/prisma ./apps/api/prisma
+COPY apps/api/scripts ./apps/api/scripts
+RUN mkdir -p /app/apps/api/uploads/logos
 EXPOSE 3000
-CMD ["node", "dist/main"]
+CMD ["sh", "/app/apps/api/scripts/migrate-and-start.sh"]

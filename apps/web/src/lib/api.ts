@@ -63,7 +63,6 @@ api.interceptors.response.use(
       pendingQueue.forEach((p) => p.reject(e))
       pendingQueue = []
       useAuthStore.getState().logout()
-      window.location.href = '/login'
       return Promise.reject(e)
     } finally {
       isRefreshing = false

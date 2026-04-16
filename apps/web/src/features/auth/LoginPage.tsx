@@ -1,86 +1,204 @@
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
-import { LoginSchema, type LoginInput } from '@eken/shared'
-import { post } from '@/lib/api'
+import { z } from 'zod'
+import { motion } from 'framer-motion'
+import { Eye, EyeOff, Check } from 'lucide-react'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { cn } from '@/lib/cn'
+import { loginApi } from './api/auth.api'
 import { useAuthStore } from '@/stores/auth.store'
-import type { TokenPair, User } from '@eken/shared'
+import type { Route } from '@/App'
 
-export function LoginPage() {
-  const navigate = useNavigate()
+const schema = z.object({
+  email: z.string().email('Ogiltig e-postadress'),
+  password: z.string().min(1, 'Lösenord krävs'),
+})
+
+type FormValues = z.infer<typeof schema>
+
+interface Props {
+  onNavigate: (route: Route) => void
+}
+
+const FEATURES = [
+  'Hantera fastigheter och hyresgäster',
+  'Automatisera fakturering',
+  'Bokföring i realtid',
+]
+
+function BrandPanel() {
+  return (
+    <div
+      className="hidden w-[42%] flex-shrink-0 flex-col justify-between p-12 lg:flex"
+      style={{ background: '#1a6b3c' }}
+    >
+      <div>
+        <div
+          className="text-[32px] font-bold tracking-tight text-white"
+          style={{ fontFamily: 'Georgia, serif' }}
+        >
+          Eken
+        </div>
+        <p className="mt-3 text-[15px] font-medium" style={{ color: 'rgba(255,255,255,0.75)' }}>
+          Fastighetsförvaltning gjord enkelt
+        </p>
+        <ul className="mt-10 space-y-3">
+          {FEATURES.map((f) => (
+            <li key={f} className="flex items-start gap-3">
+              <span
+                className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
+                style={{ background: 'rgba(255,255,255,0.15)' }}
+              >
+                <Check size={11} className="text-white" strokeWidth={2.5} />
+              </span>
+              <span className="text-[14px]" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                {f}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <p className="text-[12px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+        © 2025 Eken
+      </p>
+    </div>
+  )
+}
+
+export function LoginPage({ onNavigate }: Props) {
+  const [showPassword, setShowPassword] = useState(false)
+  const [apiError, setApiError] = useState<string | null>(null)
+  const [isPending, setIsPending] = useState(false)
   const setAuth = useAuthStore((s) => s.setAuth)
 
   const {
     register,
     handleSubmit,
     formState: { errors },
-    setError,
-  } = useForm<LoginInput>({ resolver: zodResolver(LoginSchema) })
+  } = useForm<FormValues>({ resolver: zodResolver(schema) })
 
-  const mutation = useMutation({
-    mutationFn: (data: LoginInput) => post<{ tokens: TokenPair; user: User }>('/auth/login', data),
-    onSuccess: ({ tokens, user }) => {
-      setAuth(user, tokens.accessToken, tokens.refreshToken)
-      void navigate({ to: '/' })
-    },
-    onError: () => {
-      setError('root', { message: 'Felaktig e-postadress eller lösenord' })
-    },
-  })
+  const onSubmit = async (data: FormValues) => {
+    setApiError(null)
+    setIsPending(true)
+    try {
+      const response = await loginApi(data)
+      setAuth(response)
+      onNavigate('dashboard')
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
+          ?.message ?? 'Felaktig e-post eller lösenord'
+      setApiError(msg)
+    } finally {
+      setIsPending(false)
+    }
+  }
 
   return (
-    <div className="w-full max-w-sm space-y-6">
-      <div className="space-y-2 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Logga in</h1>
-        <p className="text-muted-foreground text-sm">Ange dina uppgifter för att fortsätta</p>
-      </div>
+    <div className="flex min-h-screen">
+      <BrandPanel />
 
-      <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
-        <div className="space-y-1">
-          <label htmlFor="email" className="text-sm font-medium">
-            E-postadress
-          </label>
-          <input
-            id="email"
-            type="email"
-            className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2"
-            placeholder="anna@foretag.se"
-            {...register('email')}
-          />
-          {errors.email && <p className="text-destructive text-xs">{errors.email.message}</p>}
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="password" className="text-sm font-medium">
-            Lösenord
-          </label>
-          <input
-            id="password"
-            type="password"
-            className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2"
-            {...register('password')}
-          />
-          {errors.password && <p className="text-destructive text-xs">{errors.password.message}</p>}
-        </div>
-
-        {errors.root && <p className="text-destructive text-sm">{errors.root.message}</p>}
-
-        <button
-          type="submit"
-          disabled={mutation.isPending}
-          className="bg-primary text-primary-foreground ring-offset-background hover:bg-primary/90 focus-visible:ring-ring inline-flex h-10 w-full items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50"
+      {/* Right panel */}
+      <div className="flex flex-1 items-center justify-center bg-white px-6 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          className="w-full max-w-[400px]"
         >
-          {mutation.isPending ? 'Loggar in...' : 'Logga in'}
-        </button>
-      </form>
+          {/* Mobile logo */}
+          <div className="mb-8 flex items-center gap-2 lg:hidden">
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded text-[13px] font-bold text-white"
+              style={{ background: '#1a6b3c' }}
+            >
+              E
+            </div>
+            <span className="text-[17px] font-semibold text-gray-900">Eken</span>
+          </div>
 
-      <p className="text-muted-foreground text-center text-sm">
-        Inget konto?{' '}
-        <Link to="/register" className="text-primary underline-offset-4 hover:underline">
-          Registrera dig
-        </Link>
-      </p>
+          <h1 className="text-[22px] font-semibold tracking-tight text-gray-900">
+            Välkommen tillbaka
+          </h1>
+          <p className="mt-1 text-[13.5px] text-gray-500">Logga in på ditt konto</p>
+
+          <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-4">
+            <Input
+              label="E-post"
+              type="email"
+              placeholder="anna@foretag.se"
+              autoComplete="email"
+              error={errors.email?.message}
+              {...register('email')}
+            />
+
+            <div className="space-y-1.5">
+              <label className="block text-[13px] font-medium text-gray-700">Lösenord</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  className={cn(
+                    'flex h-9 w-full rounded-lg border bg-white px-3 pr-10 text-[13.5px] text-gray-900 placeholder:text-gray-400',
+                    'transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0',
+                    errors.password
+                      ? 'border-red-300 focus:ring-red-400'
+                      : 'border-[#DDDFE4] hover:border-gray-300',
+                  )}
+                  {...register('password')}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+              {errors.password && (
+                <p className="text-[12px] text-red-500">{errors.password.message}</p>
+              )}
+            </div>
+
+            {apiError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-[13px] text-red-600">
+                {apiError}
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              loading={isPending}
+              className="mt-1 h-10 w-full text-[14px]"
+            >
+              {isPending ? 'Loggar in...' : 'Logga in'}
+            </Button>
+          </form>
+
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-[#EAEDF0]" />
+            <span className="text-[12px] text-gray-400">eller</span>
+            <div className="h-px flex-1 bg-[#EAEDF0]" />
+          </div>
+
+          <p className="text-center text-[13.5px] text-gray-500">
+            Inget konto?{' '}
+            <button
+              type="button"
+              onClick={() => onNavigate('register')}
+              className="font-medium text-[#1a6b3c] hover:underline"
+            >
+              Skapa ett här →
+            </button>
+          </p>
+        </motion.div>
+      </div>
     </div>
   )
 }

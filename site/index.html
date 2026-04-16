@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Horizon – Build something great</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">Hori<span>zon</span></a>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#stats">Stats</a></li>
+        <li><a href="#cta" class="nav-cta">Get started</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-badge">Now in public beta</div>
+    <h1>Build faster.<br />Ship with <span class="highlight">confidence.</span></h1>
+    <p>Horizon gives your team the tools to design, develop, and deploy — without the friction.</p>
+    <div class="hero-actions">
+      <a href="#cta" class="btn-primary">
+        Get started free
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+      <a href="#features" class="btn-secondary">
+        See features
+      </a>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section class="stats" id="stats">
+    <div class="stats-inner">
+      <div class="stat-item">
+        <div class="stat-value" data-target="12000" data-suffix="+">0+</div>
+        <div class="stat-label">Teams onboarded</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" data-target="99.9" data-suffix="%">0%</div>
+        <div class="stat-label">Uptime SLA</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" data-target="4" data-suffix="x">0x</div>
+        <div class="stat-label">Faster deployment</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="features" id="features">
+    <div class="section-header">
+      <div class="section-label">Features</div>
+      <h2>Everything you need, nothing you don't</h2>
+      <p>A focused set of tools designed to get you from idea to production without the bloat.</p>
+    </div>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>Instant deploys</h3>
+        <p>Push to main and go live in seconds. Zero config required — our build pipeline handles the rest automatically.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔐</div>
+        <h3>Built-in security</h3>
+        <p>TLS everywhere, automatic secret rotation, and zero-trust networking out of the box. Security shouldn't be an afterthought.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3>Real-time analytics</h3>
+        <p>Understand your users with instant dashboards. Track performance, errors, and events without instrumenting a thing.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌍</div>
+        <h3>Global edge network</h3>
+        <p>Serve users from 40+ regions worldwide. Automatic geo-routing ensures sub-100ms response times everywhere.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🧩</div>
+        <h3>Composable APIs</h3>
+        <p>Connect to any service with our library of 200+ pre-built integrations. Or build your own in minutes.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🤝</div>
+        <h3>Team collaboration</h3>
+        <p>Roles, environments, audit logs, and branch previews — built for teams that ship together, not in silos.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section" id="cta">
+    <h2>Ready to get started?</h2>
+    <p>Join thousands of teams already building with Horizon. Free forever for small projects.</p>
+    <a href="#" class="btn-white">
+      Start building — it's free
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </a>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <p>© 2026 Horizon. Built with care.</p>
+  </footer>
+
+  <script src="main.js"></script>
+</body>
+</html>
+
+<!--
+=====================================================
+  HOW TO VIEW THIS SITE AT localhost:3000
+=====================================================
+
+From the /workspaces/eken directory, run one of:
+
+  Option 1 – npx serve (Node, no install needed):
+    npx serve site -l 3000
+
+  Option 2 – Python 3:
+    cd site && python3 -m http.server 3000
+
+  Option 3 – npx http-server:
+    npx http-server site -p 3000
+
+Then open your browser at: http://localhost:3000
+=====================================================
+-->
