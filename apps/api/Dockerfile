@@ -19,7 +19,14 @@ RUN npx prisma generate
 RUN pnpm build
 
 FROM node:20-alpine AS runner
-RUN apk add --no-cache openssl chromium
+RUN apk add --no-cache openssl libc6-compat \
+  chromium \
+  nss \
+  freetype \
+  harfbuzz \
+  ca-certificates \
+  ttf-freefont \
+  --repository https://dl-cdn.alpinelinux.org/alpine/edge/community
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 WORKDIR /app
