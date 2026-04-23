@@ -44,4 +44,4 @@ COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 RUN mkdir -p /app/apps/api/uploads/logos
 
 EXPOSE 3000
-CMD ["sh", "-c", "cd /app/apps/api && npx prisma migrate deploy && exec node dist/apps/api/src/main.js"]
+CMD ["sh", "-c", "cd /app/apps/api && npx prisma migrate deploy && exec node dist/main.js"]
