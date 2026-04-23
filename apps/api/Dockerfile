@@ -30,7 +30,6 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/apps/api/package.json ./apps/api/
 COPY apps/api/prisma ./apps/api/prisma
-COPY apps/api/scripts ./apps/api/scripts
 RUN mkdir -p /app/apps/api/uploads/logos
 EXPOSE 3000
-CMD ["sh", "/app/apps/api/scripts/migrate-and-start.sh"]
+CMD ["sh", "-c", "cd /app/apps/api && npx prisma migrate deploy && exec node dist/main.js"]
