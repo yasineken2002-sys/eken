@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
+import { APP_GUARD } from '@nestjs/core'
 import { ConfigModule, ConfigService } from '@nestjs/config'
-import { ThrottlerModule } from '@nestjs/throttler'
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { ScheduleModule } from '@nestjs/schedule'
 import { BullModule } from '@nestjs/bull'
 import { TerminusModule } from '@nestjs/terminus'
@@ -22,6 +23,14 @@ import { ReconciliationModule } from './reconciliation/reconciliation.module'
 import { DocumentsModule } from './documents/documents.module'
 import { ImportModule } from './import/import.module'
 import { AiModule } from './ai/ai.module'
+import { MaintenanceModule } from './maintenance/maintenance.module'
+import { AviseringModule } from './avisering/avisering.module'
+import { InspectionsModule } from './inspections/inspections.module'
+import { MaintenancePlanModule } from './maintenance-plan/maintenance-plan.module'
+import { ContractsModule } from './contracts/contracts.module'
+import { TenantPortalModule } from './tenant-portal/tenant-portal.module'
+import { NewsModule } from './news/news.module'
+import { MessagesModule } from './messages/messages.module'
 
 @Module({
   imports: [
@@ -76,6 +85,15 @@ import { AiModule } from './ai/ai.module'
     DocumentsModule,
     ImportModule,
     AiModule,
+    MaintenanceModule,
+    AviseringModule,
+    InspectionsModule,
+    MaintenancePlanModule,
+    ContractsModule,
+    TenantPortalModule,
+    NewsModule,
+    MessagesModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

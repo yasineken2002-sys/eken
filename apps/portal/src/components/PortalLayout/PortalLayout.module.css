@@ -1,0 +1,65 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #f0f4f0;
+  max-width: 480px;
+  margin: 0 auto;
+  position: relative;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.1);
+}
+
+.main {
+  flex: 1;
+  padding-bottom: 80px;
+}
+
+/* ── Bottom navigation ─────────────────────────────── */
+
+.tabBar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  background: #ffffff;
+  border-top: 0.5px solid #e8ede8;
+  display: flex;
+  justify-content: space-around;
+  padding: 12px 0 20px;
+  z-index: 100;
+}
+
+.tabItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: #aaa;
+  text-decoration: none;
+  padding: 0 4px;
+  transition: color 0.15s;
+  min-width: 48px;
+}
+
+.tabItem:active {
+  opacity: 0.7;
+}
+
+.tabItemActive {
+  color: #1a6b3c;
+}
+
+.tabIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.tabLabel {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}

@@ -1,0 +1,125 @@
+.page {
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  padding: 24px 16px 4px;
+}
+
+.pageTitle {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+/* ── List ────────────────────────────────────────────── */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+/* ── Document card ───────────────────────────────────── */
+
+.card {
+  background: #ffffff;
+  border-radius: 18px;
+  border: 0.5px solid #e0e8e0;
+  padding: 14px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
+}
+
+.cardLeft {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.fileIcon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.docInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.docName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docMeta {
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.docDesc {
+  font-size: 12px;
+  color: #aaa;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.downloadBtn {
+  flex-shrink: 0;
+  padding: 7px 14px;
+  border-radius: 10px;
+  border: 1px solid #c8e0d0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a6b3c;
+  background: #ffffff;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.downloadBtn:hover {
+  background: #f0f9f4;
+}
+
+/* ── Empty state ─────────────────────────────────────── */
+
+.empty {
+  text-align: center;
+  padding: 60px 0;
+}
+
+.emptyIconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  background: #f0f4f0;
+  border-radius: 50%;
+  margin-bottom: 12px;
+}
+
+.emptyText {
+  font-size: 15px;
+  color: #888;
+}

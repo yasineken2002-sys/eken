@@ -15,6 +15,7 @@ export interface RegisterInput {
   lastName: string
   organizationName: string
   orgNumber?: string
+  accountType?: 'COMPANY' | 'PRIVATE'
 }
 
 export async function loginApi(dto: LoginInput): Promise<AuthResponse> {

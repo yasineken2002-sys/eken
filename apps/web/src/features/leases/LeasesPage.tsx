@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, FileX, FileText, Home, User } from 'lucide-react'
+import { Plus, FileX, FileText, Home, User, Download } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -23,6 +23,7 @@ import type { LeaseStatus, Tenant } from '@eken/shared'
 import type { LeaseDetail, CreateLeaseWithTenantInput } from './api/leases.api'
 import { cn } from '@/lib/cn'
 import { DocumentList } from '@/features/documents/components/DocumentList'
+import { generateLeaseContract, downloadLeaseContract } from './api/leases.api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -404,6 +405,18 @@ function LeaseDetailPanel({
   isTransitioning,
 }: DetailPanelProps) {
   const status = selected.status
+  const [isGeneratingContract, setIsGeneratingContract] = useState(false)
+  const [contractGenerated, setContractGenerated] = useState(false)
+
+  const handleGenerateContract = async () => {
+    setIsGeneratingContract(true)
+    try {
+      await generateLeaseContract(selected.id)
+      setContractGenerated(true)
+    } finally {
+      setIsGeneratingContract(false)
+    }
+  }
 
   return (
     <div>
@@ -455,6 +468,37 @@ function LeaseDetailPanel({
             </p>
             <LeaseStatusBadge status={selected.status} />
           </div>
+
+          {/* Generate contract */}
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              loading={isGeneratingContract}
+              onClick={() => {
+                setContractGenerated(false)
+                void handleGenerateContract()
+              }}
+            >
+              <FileText size={13} strokeWidth={1.8} />
+              Generera hyreskontrakt
+            </Button>
+            {contractGenerated && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void downloadLeaseContract(selected.id)}
+              >
+                <Download size={13} strokeWidth={1.8} />
+                Ladda ned direkt
+              </Button>
+            )}
+          </div>
+          {contractGenerated && (
+            <p className="mt-1.5 text-[12px] text-emerald-600">
+              Kontraktet är sparat under Dokument.
+            </p>
+          )}
 
           {/* Documents */}
           <div className="mt-6">

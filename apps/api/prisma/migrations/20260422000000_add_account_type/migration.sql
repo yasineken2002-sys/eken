@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Organization" ADD COLUMN "accountType" TEXT NOT NULL DEFAULT 'COMPANY',
+ALTER COLUMN "orgNumber" DROP NOT NULL;

@@ -1,4 +1,4 @@
-import { get, post, patch, del } from '@/lib/api'
+import { get, post, patch, del, api } from '@/lib/api'
 import type { Lease, Tenant, Unit, Property } from '@eken/shared'
 
 export type LeaseDetail = Lease & {
@@ -58,4 +58,20 @@ export interface CreateLeaseWithTenantInput {
 
 export function createLeaseWithTenant(dto: CreateLeaseWithTenantInput): Promise<LeaseDetail> {
   return post<LeaseDetail>('/leases/with-tenant', dto)
+}
+
+export function generateLeaseContract(
+  leaseId: string,
+): Promise<{ documentId: string; message: string }> {
+  return post(`/contracts/generate/${leaseId}`, {})
+}
+
+export async function downloadLeaseContract(leaseId: string): Promise<void> {
+  const res = await api.get(`/contracts/download/${leaseId}`, { responseType: 'blob' })
+  const url = window.URL.createObjectURL(res.data as Blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `hyreskontrakt-${leaseId.slice(0, 8)}.pdf`
+  a.click()
+  window.URL.revokeObjectURL(url)
 }

@@ -5,7 +5,17 @@ import * as bcrypt from 'bcryptjs'
 import { v4 as uuidv4 } from 'uuid'
 import type { PrismaService } from '../common/prisma/prisma.service'
 import type { JwtPayload, TokenPair } from '@eken/shared'
-import type { LoginInput, RegisterInput } from '@eken/shared'
+import type { LoginInput } from '@eken/shared'
+
+interface RegisterPayload {
+  email: string
+  password: string
+  firstName: string
+  lastName: string
+  organizationName: string
+  orgNumber?: string
+  accountType?: string
+}
 
 export interface AuthUser {
   id: string
@@ -35,7 +45,7 @@ export class AuthService {
     private config: ConfigService,
   ) {}
 
-  async register(dto: RegisterInput): Promise<AuthResponse> {
+  async register(dto: RegisterPayload): Promise<AuthResponse> {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } })
     if (existing) throw new ConflictException('E-postadressen är redan registrerad')
 
@@ -44,7 +54,8 @@ export class AuthService {
     const org = await this.prisma.organization.create({
       data: {
         name: dto.organizationName,
-        orgNumber: dto.orgNumber,
+        ...(dto.orgNumber ? { orgNumber: dto.orgNumber } : {}),
+        accountType: dto.accountType ?? 'COMPANY',
         email: dto.email,
         street: '',
         city: '',

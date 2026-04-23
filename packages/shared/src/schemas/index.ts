@@ -20,9 +20,8 @@ export const RegisterSchema = z.object({
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
   organizationName: z.string().min(1).max(200),
-  orgNumber: z
-    .string()
-    .regex(/^\d{6}-\d{4}$/, 'Ogiltigt organisationsnummer (format: 556xxx-xxxx)'),
+  orgNumber: z.string().optional(),
+  accountType: z.enum(['COMPANY', 'PRIVATE']).default('COMPANY'),
 })
 
 export const RefreshTokenSchema = z.object({

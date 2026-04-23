@@ -368,6 +368,89 @@ export class MailService {
     })
   }
 
+  async sendRentNotice(opts: {
+    to: string
+    tenantName: string
+    ocrNumber: string
+    amount: number
+    dueDate: Date | string
+    pdfBuffer: Buffer
+    organizationName: string
+    noticeNumber: string
+    accentColor?: string
+  }): Promise<void> {
+    const from = this.config.get<string>('SMTP_FROM', '"Eken Fastigheter" <no-reply@eken.se>')
+    const accent = opts.accentColor ?? '#2563EB'
+    const html = `<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hyresavi ${opts.noticeNumber}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           background: #f5f5f5; margin: 0; padding: 32px 16px; color: #1a1a1a; }
+    .card { background: #ffffff; border-radius: 12px; max-width: 560px;
+            margin: 0 auto; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .logo { color: ${accent}; font-size: 20px; font-weight: 700; margin-bottom: 32px; }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    p { font-size: 15px; line-height: 1.6; color: #444; margin: 0 0 16px; }
+    .info-box { background: #f8faff; border: 1px solid #dbeafe; border-radius: 10px;
+                padding: 20px 24px; margin: 24px 0; }
+    .info-row { display: flex; justify-content: space-between; padding: 8px 0;
+                border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: #6b7280; }
+    .info-value { font-weight: 600; color: #111827; }
+    .ocr { font-family: monospace; font-size: 18px; font-weight: 700; color: ${accent};
+           background: #eff6ff; border-radius: 8px; padding: 10px 16px; display: inline-block;
+           letter-spacing: 0.08em; margin: 8px 0; }
+    .footer { margin-top: 32px; font-size: 13px; color: #aaa; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">${opts.organizationName}</div>
+    <h1>Hyresavi ${opts.noticeNumber}</h1>
+    <p>Hej ${opts.tenantName},</p>
+    <p>Bifogat hittar du din hyresavi. Ange OCR-numret vid betalning.</p>
+    <div class="info-box">
+      <div class="info-row">
+        <span class="info-label">Belopp att betala</span>
+        <span class="info-value">${formatSek(opts.amount)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Förfallodatum</span>
+        <span class="info-value">${formatDate(opts.dueDate)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">OCR-nummer</span>
+        <span class="info-value"><span class="ocr">${opts.ocrNumber}</span></span>
+      </div>
+    </div>
+    <p>Vänliga hälsningar,<br /><strong>${opts.organizationName}</strong></p>
+    <div class="footer">
+      Detta e-postmeddelande skickades automatiskt. Svara inte på detta meddelande.
+    </div>
+  </div>
+</body>
+</html>`
+
+    await this.transporter.sendMail({
+      from,
+      to: opts.to,
+      subject: `Hyresavi ${opts.noticeNumber} — förfaller ${formatDate(opts.dueDate)}`,
+      html,
+      attachments: [
+        {
+          filename: `hyresavi-${opts.noticeNumber}.pdf`,
+          content: opts.pdfBuffer,
+          contentType: 'application/pdf',
+        },
+      ],
+    })
+  }
+
   async verifyConnection(): Promise<boolean> {
     try {
       await this.transporter.verify()

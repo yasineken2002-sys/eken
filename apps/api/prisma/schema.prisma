@@ -146,6 +146,93 @@ enum ImportJobStatus {
   FAILED
 }
 
+enum MaintenanceStatus {
+  NEW
+  IN_PROGRESS
+  SCHEDULED
+  COMPLETED
+  CLOSED
+  CANCELLED
+}
+
+enum MaintenancePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum MaintenanceCategory {
+  PLUMBING
+  ELECTRICAL
+  HEATING
+  APPLIANCES
+  WINDOWS_DOORS
+  LOCKS
+  FACADE
+  ROOF
+  COMMON_AREAS
+  CLEANING
+  OTHER
+}
+
+enum MessageStatus {
+  SENT
+  FAILED
+  PARTIAL
+}
+
+enum RentNoticeStatus {
+  PENDING
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum InspectionType {
+  MOVE_IN
+  MOVE_OUT
+  PERIODIC
+  DAMAGE
+}
+
+enum InspectionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  SIGNED
+}
+
+enum InspectionItemCondition {
+  GOOD
+  ACCEPTABLE
+  DAMAGED
+  MISSING
+}
+
+enum MaintenancePlanStatus {
+  PLANNED
+  APPROVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum MaintenancePlanCategory {
+  ROOF
+  FACADE
+  WINDOWS
+  PLUMBING
+  ELECTRICAL
+  HEATING
+  ELEVATOR
+  COMMON_AREAS
+  PAINTING
+  FLOORING
+  OTHER
+}
+
 enum DocumentCategory {
   CONTRACT
   INSPECTION
@@ -156,12 +243,28 @@ enum DocumentCategory {
   OTHER
 }
 
+// ─── Notification ────────────────────────────────────────────────────────────
+
+enum NotificationType {
+  INVOICE_OVERDUE
+  INVOICE_PAID
+  LEASE_EXPIRING
+  LEASE_EXPIRED
+  MAINTENANCE_NEW
+  MAINTENANCE_UPDATED
+  RENT_NOTICE_SENT
+  RENT_NOTICE_OVERDUE
+  INSPECTION_SCHEDULED
+  SYSTEM
+}
+
 // ─── Organization (Tenant in multi-tenant context) ────────────────────────────
 
 model Organization {
   id          String  @id @default(uuid())
   name        String
-  orgNumber   String  @unique
+  orgNumber   String? @unique
+  accountType String  @default("COMPANY")
   vatNumber   String?
   email       String
   phone       String?
@@ -176,17 +279,24 @@ model Organization {
   invoiceTemplate      String?
   morningReportEnabled Boolean @default(false)
 
-  users             User[]
-  properties        Property[]
-  tenants           Tenant[]
-  invoices          Invoice[]
-  accounts          Account[]
-  journalEntries    JournalEntry[]
-  bankTransactions  BankTransaction[]
-  documents         Document[]
-  importJobs        ImportJob[]
-  aiConversations   AiConversation[]
-  aiMemories        AiMemory[]
+  users                User[]
+  properties           Property[]
+  tenants              Tenant[]
+  invoices             Invoice[]
+  accounts             Account[]
+  journalEntries       JournalEntry[]
+  bankTransactions     BankTransaction[]
+  documents            Document[]
+  importJobs           ImportJob[]
+  aiConversations      AiConversation[]
+  aiMemories           AiMemory[]
+  maintenanceTickets   MaintenanceTicket[]
+  rentNotices          RentNotice[]
+  inspections          Inspection[]
+  maintenancePlans     MaintenancePlan[]
+  notifications        Notification[]
+  newsPosts            NewsPost[]
+  sentMessages         SentMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -215,6 +325,9 @@ model User {
   importJobs      ImportJob[]
   aiConversations AiConversation[]
   aiMemories      AiMemory[]
+  notifications   Notification[]
+  newsPosts       NewsPost[]
+  sentMessages    SentMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -253,9 +366,13 @@ model Property {
   totalArea              Decimal      @db.Decimal(10, 2)
   yearBuilt              Int?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  units        Unit[]
-  documents    Document[]
+  organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  units                Unit[]
+  documents            Document[]
+  maintenanceTickets   MaintenanceTicket[]
+  inspections          Inspection[]
+  maintenancePlans     MaintenancePlan[]
+  newsPosts            NewsPost[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -277,9 +394,11 @@ model Unit {
   rooms       Int?
   monthlyRent Decimal    @db.Decimal(10, 2)
 
-  property  Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  leases    Lease[]
-  documents Document[]
+  property             Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  leases               Lease[]
+  documents            Document[]
+  maintenanceTickets   MaintenanceTicket[]
+  inspections          Inspection[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -308,10 +427,18 @@ model Tenant {
   postalCode     String?
   country        String?    @default("SE")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  leases       Lease[]
-  invoices     Invoice[]
-  documents    Document[]
+  ocrNumber      String?    @unique
+
+  organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leases               Lease[]
+  invoices             Invoice[]
+  documents            Document[]
+  maintenanceTickets   MaintenanceTicket[]
+  rentNotices          RentNotice[]
+  inspections          Inspection[]
+  magicLinks           TenantMagicLink[]
+  sessions             TenantSession[]
+  sentMessages         SentMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -338,10 +465,12 @@ model Lease {
   terminatedAt       DateTime?
   terminationReason  String?
 
-  unit      Unit       @relation(fields: [unitId], references: [id])
-  tenant    Tenant     @relation(fields: [tenantId], references: [id])
-  invoices  Invoice[]
-  documents Document[]
+  unit         Unit         @relation(fields: [unitId], references: [id])
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  invoices     Invoice[]
+  documents    Document[]
+  rentNotices  RentNotice[]
+  inspections  Inspection[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -604,6 +733,28 @@ model AiMemory {
   @@index([organizationId, userId])
 }
 
+// ─── Notification ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id             String           @id @default(uuid())
+  organizationId String
+  userId         String
+  type           NotificationType
+  title          String
+  message        String
+  link           String?
+  read           Boolean          @default(false)
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId])
+  @@index([read])
+  @@index([createdAt])
+}
+
 // ─── Import Job ───────────────────────────────────────────────────────────────
 
 model ImportJob {
@@ -623,6 +774,276 @@ model ImportJob {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy    User         @relation(fields: [createdById], references: [id])
+
+  @@index([organizationId])
+}
+
+// ─── Maintenance (Underhåll) ──────────────────────────────────────────────────
+
+model MaintenanceTicket {
+  id              String              @id @default(uuid())
+  ticketNumber    String
+  organizationId  String
+  propertyId      String
+  unitId          String?
+  tenantId        String?
+  reportedById    String?
+  assignedToId    String?
+
+  title           String
+  description     String              @db.Text
+  category        MaintenanceCategory @default(OTHER)
+  priority        MaintenancePriority @default(NORMAL)
+  status          MaintenanceStatus   @default(NEW)
+
+  estimatedCost   Decimal?            @db.Decimal(10, 2)
+  actualCost      Decimal?            @db.Decimal(10, 2)
+
+  scheduledDate   DateTime?
+  completedAt     DateTime?
+
+  tenantToken     String?             @unique
+  tenantNotified  Boolean             @default(false)
+
+  images          MaintenanceImage[]
+  comments        MaintenanceComment[]
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  organization    Organization        @relation(fields: [organizationId], references: [id])
+  property        Property            @relation(fields: [propertyId], references: [id])
+  unit            Unit?               @relation(fields: [unitId], references: [id])
+  tenant          Tenant?             @relation(fields: [tenantId], references: [id])
+
+  @@unique([organizationId, ticketNumber])
+  @@index([organizationId])
+  @@index([propertyId])
+  @@index([status])
+}
+
+model MaintenanceImage {
+  id        String   @id @default(uuid())
+  ticketId  String
+  filename  String
+  path      String
+  size      Int
+  createdAt DateTime @default(now())
+
+  ticket    MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+model MaintenanceComment {
+  id         String   @id @default(uuid())
+  ticketId   String
+  userId     String?
+  content    String   @db.Text
+  isInternal Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  ticket    MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+// ─── Rent Notice (Hyresavi) ───────────────────────────────────────────────────
+
+model RentNotice {
+  id             String           @id @default(uuid())
+  organizationId String
+  tenantId       String
+  leaseId        String
+  noticeNumber   String           @unique
+  ocrNumber      String
+  month          Int
+  year           Int
+  amount         Decimal          @db.Decimal(10, 2)
+  vatAmount      Decimal          @default(0) @db.Decimal(10, 2)
+  totalAmount    Decimal          @db.Decimal(10, 2)
+  dueDate        DateTime
+  paidAt         DateTime?
+  paidAmount     Decimal?         @db.Decimal(10, 2)
+  status         RentNoticeStatus @default(PENDING)
+  sentAt         DateTime?
+  sentTo         String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  lease        Lease        @relation(fields: [leaseId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, tenantId, month, year])
+  @@index([organizationId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+// ─── Inspection (Besiktning) ──────────────────────────────────────────────────
+
+model Inspection {
+  id              String           @id @default(uuid())
+  organizationId  String
+  propertyId      String
+  unitId          String
+  leaseId         String?
+  tenantId        String?
+  inspectedById   String
+
+  type            InspectionType
+  status          InspectionStatus  @default(SCHEDULED)
+  scheduledDate   DateTime
+  completedAt     DateTime?
+
+  overallCondition  String?  @db.Text
+  notes             String?  @db.Text
+
+  tenantSignature   String?
+  landlordSignature String?
+  signedAt          DateTime?
+
+  items           InspectionItem[]
+  images          InspectionImage[]
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property        Property          @relation(fields: [propertyId], references: [id])
+  unit            Unit              @relation(fields: [unitId], references: [id])
+  lease           Lease?            @relation(fields: [leaseId], references: [id])
+  tenant          Tenant?           @relation(fields: [tenantId], references: [id])
+
+  @@index([organizationId])
+  @@index([unitId])
+  @@index([status])
+}
+
+model InspectionItem {
+  id            String                   @id @default(uuid())
+  inspectionId  String
+  room          String
+  item          String
+  condition     InspectionItemCondition  @default(GOOD)
+  notes         String?
+  repairCost    Decimal?                 @db.Decimal(10, 2)
+
+  inspection    Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+}
+
+// ─── Maintenance Plan (Underhållsplan) ────────────────────────────────────────
+
+model MaintenancePlan {
+  id             String                  @id @default(uuid())
+  organizationId String
+  propertyId     String
+
+  title          String
+  description    String?                 @db.Text
+  category       MaintenancePlanCategory @default(OTHER)
+  status         MaintenancePlanStatus   @default(PLANNED)
+
+  plannedYear    Int
+  estimatedCost  Decimal                 @db.Decimal(12, 2)
+  actualCost     Decimal?                @db.Decimal(12, 2)
+
+  priority       Int                     @default(2)
+  interval       Int?
+  lastDoneYear   Int?
+
+  notes          String?                 @db.Text
+  completedAt    DateTime?
+
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property       Property                @relation(fields: [propertyId], references: [id])
+
+  @@index([organizationId])
+  @@index([propertyId])
+  @@index([plannedYear])
+}
+
+model InspectionImage {
+  id            String   @id @default(uuid())
+  inspectionId  String
+  filename      String
+  path          String
+  caption       String?
+  room          String?
+  size          Int
+  createdAt     DateTime @default(now())
+
+  inspection    Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+}
+
+// ─── Tenant Portal ────────────────────────────────────────────────────────────
+
+model TenantMagicLink {
+  id         String    @id @default(uuid())
+  tenantId   String
+  token      String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([tenantId])
+}
+
+model TenantSession {
+  id         String   @id @default(uuid())
+  tenantId   String
+  token      String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+}
+
+model NewsPost {
+  id             String       @id @default(uuid())
+  organizationId String
+  title          String
+  content        String       @db.Text
+  publishedAt    DateTime?
+  createdById    String
+  targetAll      Boolean      @default(true)
+  propertyId     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  property       Property?    @relation(fields: [propertyId], references: [id])
+  createdBy      User         @relation(fields: [createdById], references: [id])
+
+  @@index([organizationId])
+}
+
+// ─── Sent Messages (Meddelandehistorik) ──────────────────────────────────────
+
+model SentMessage {
+  id             String        @id @default(uuid())
+  organizationId String
+  tenantId       String?
+  sentById       String
+  subject        String
+  content        String        @db.Text
+  sentToAll      Boolean       @default(false)
+  recipientCount Int           @default(1)
+  successCount   Int           @default(0)
+  failedCount    Int           @default(0)
+  status         MessageStatus @default(SENT)
+  errorLog       Json?
+  createdAt      DateTime      @default(now())
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tenant         Tenant?       @relation(fields: [tenantId], references: [id])
+  sentBy         User          @relation(fields: [sentById], references: [id])
 
   @@index([organizationId])
 }

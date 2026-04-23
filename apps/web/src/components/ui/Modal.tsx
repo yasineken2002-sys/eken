@@ -49,14 +49,15 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
             className={cn(
-              'relative w-full overflow-hidden rounded-[20px] bg-white',
+              'relative flex w-full flex-col overflow-hidden rounded-[20px] bg-white',
               'shadow-[0_24px_80px_rgba(0,0,0,0.12),0_8px_24px_rgba(0,0,0,0.06)]',
               'border border-white/80',
+              'max-h-[calc(100vh-80px)]',
               sizes[size],
             )}
           >
             {/* Header */}
-            <div className="flex items-start justify-between border-b border-gray-100 px-6 pb-4 pt-5">
+            <div className="flex flex-shrink-0 items-start justify-between border-b border-gray-100 px-6 pb-4 pt-5">
               <div className="pr-4">
                 <h2 className="text-[17px] font-semibold leading-tight text-gray-900">{title}</h2>
                 {description && <p className="mt-1 text-[13px] text-gray-500">{description}</p>}
@@ -70,7 +71,7 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
             </div>
 
             {/* Body */}
-            <div className="px-6 py-5">{children}</div>
+            <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
           </motion.div>
         </div>
       )}

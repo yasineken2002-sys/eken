@@ -21,9 +21,10 @@ export class CreateTenantDto {
   @IsOptional()
   companyName?: string
 
-  @ApiProperty()
+  @ApiProperty({ required: false })
   @IsEmail()
-  email!: string
+  @IsOptional()
+  email?: string
 
   @ApiProperty({ required: false })
   @IsString()

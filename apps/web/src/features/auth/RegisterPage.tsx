@@ -13,6 +13,7 @@ import {
   BarChart3,
   Shield,
   Zap,
+  User,
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -23,12 +24,13 @@ import type { Route } from '@/App'
 
 const schema = z
   .object({
+    accountType: z.enum(['COMPANY', 'PRIVATE']),
     firstName: z.string().min(1, 'Förnamn krävs'),
     lastName: z.string().min(1, 'Efternamn krävs'),
     email: z.string().email('Ogiltig e-postadress'),
     password: z.string().min(8, 'Minst 8 tecken'),
     confirmPassword: z.string(),
-    organizationName: z.string().min(1, 'Företagsnamn krävs'),
+    organizationName: z.string().min(1, 'Namn krävs'),
     orgNumber: z.string().optional(),
   })
   .superRefine(({ password, confirmPassword }, ctx) => {
@@ -133,11 +135,16 @@ export function RegisterPage({ onNavigate }: Props) {
     register,
     handleSubmit,
     trigger,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     mode: 'onTouched',
+    defaultValues: { accountType: 'COMPANY' },
   })
+
+  const accountType = watch('accountType')
 
   const goToStep2 = async () => {
     const valid = await trigger(STEP1_FIELDS)
@@ -154,6 +161,7 @@ export function RegisterPage({ onNavigate }: Props) {
         firstName: data.firstName,
         lastName: data.lastName,
         organizationName: data.organizationName,
+        accountType: data.accountType,
         ...(data.orgNumber ? { orgNumber: data.orgNumber } : {}),
       })
       setAuth(response)
@@ -215,7 +223,11 @@ export function RegisterPage({ onNavigate }: Props) {
                     step === s ? 'text-gray-900' : s < step ? 'text-gray-500' : 'text-gray-400',
                   )}
                 >
-                  {s === 1 ? 'Ditt konto' : 'Ditt företag'}
+                  {s === 1
+                    ? 'Ditt konto'
+                    : accountType === 'PRIVATE'
+                      ? 'Dina uppgifter'
+                      : 'Ditt företag'}
                 </span>
                 {s < 2 && <div className="mx-1 h-px w-8 bg-gray-200" />}
               </div>
@@ -322,19 +334,67 @@ export function RegisterPage({ onNavigate }: Props) {
                   transition={{ duration: 0.15 }}
                   className="space-y-4"
                 >
-                  <Input
-                    label="Företagsnamn"
-                    placeholder="Andersson Fastigheter AB"
-                    autoComplete="organization"
-                    error={errors.organizationName?.message}
-                    {...register('organizationName')}
-                  />
-                  <Input
-                    label="Organisationsnummer (valfritt)"
-                    placeholder="559123-4567"
-                    error={errors.orgNumber?.message}
-                    {...register('orgNumber')}
-                  />
+                  {/* Account type toggle */}
+                  <div>
+                    <p className="mb-2 text-[13px] font-medium text-gray-700">Jag är:</p>
+                    <div className="flex gap-2">
+                      {(
+                        [
+                          { value: 'COMPANY', label: 'Företag', icon: Building2 },
+                          { value: 'PRIVATE', label: 'Privatperson', icon: User },
+                        ] as const
+                      ).map(({ value, label, icon: Icon }) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setValue('accountType', value, { shouldValidate: true })}
+                          className={cn(
+                            'flex flex-1 items-center justify-center gap-2 rounded-xl border py-2.5 text-[13px] font-medium transition-all',
+                            accountType === value
+                              ? 'border-blue-600 bg-blue-50 text-blue-700'
+                              : 'border-[#DDDFE4] bg-white text-gray-600 hover:bg-gray-50',
+                          )}
+                        >
+                          <Icon size={14} strokeWidth={1.8} />
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {accountType === 'COMPANY' ? (
+                    <>
+                      <Input
+                        label="Företagsnamn"
+                        placeholder="Andersson Fastigheter AB"
+                        autoComplete="organization"
+                        error={errors.organizationName?.message}
+                        {...register('organizationName')}
+                      />
+                      <Input
+                        label="Organisationsnummer (valfritt)"
+                        placeholder="559123-4567"
+                        error={errors.orgNumber?.message}
+                        {...register('orgNumber')}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Input
+                        label="Ditt namn (visas i systemet)"
+                        placeholder="Anders Andersson"
+                        autoComplete="name"
+                        error={errors.organizationName?.message}
+                        {...register('organizationName')}
+                      />
+                      <Input
+                        label="Personnummer (valfritt)"
+                        placeholder="ÅÅMMDD-XXXX"
+                        error={errors.orgNumber?.message}
+                        {...register('orgNumber')}
+                      />
+                    </>
+                  )}
 
                   {apiError && (
                     <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-[13px] text-red-600">

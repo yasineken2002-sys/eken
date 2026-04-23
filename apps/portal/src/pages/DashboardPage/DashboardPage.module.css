@@ -1,0 +1,263 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ── Green gradient header ──────────────────────────── */
+
+.header {
+  background: linear-gradient(160deg, #1a4a28 0%, #1e6b35 50%, #2d8a46 100%);
+  border-radius: 0 0 28px 28px;
+  overflow: hidden;
+  position: relative;
+  padding: 32px 20px 0;
+  min-height: 200px;
+}
+
+.headerText {
+  position: relative;
+  z-index: 1;
+  padding-bottom: 80px;
+}
+
+.greeting {
+  font-size: 22px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.date {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.65);
+  margin-top: 4px;
+  text-transform: capitalize;
+}
+
+/* ── Content below header ────────────────────────────── */
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 16px 8px;
+  margin-top: -20px;
+}
+
+/* ── Overdue alert ───────────────────────────────────── */
+
+.alertCard {
+  background: #fef2f2;
+  border: 0.5px solid #fecaca;
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.alertText {
+  font-size: 13px;
+  font-weight: 600;
+  color: #991b1b;
+}
+
+.alertBtn {
+  padding: 5px 14px;
+  border-radius: 8px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Lease card ──────────────────────────────────────── */
+
+.leaseCard {
+  background: #ffffff;
+  border-radius: 20px;
+  border: 0.5px solid #e0e8e0;
+  padding: 18px 16px 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.leaseTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.leaseRent {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a6b3c;
+  line-height: 1.1;
+}
+
+.leaseRentLabel {
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.leaseMeta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border-top: 0.5px solid #e8ede8;
+  padding-top: 12px;
+}
+
+.leaseMetaBox {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 12px;
+}
+
+.leaseMetaBox + .leaseMetaBox {
+  padding-left: 12px;
+  padding-right: 0;
+  border-left: 0.5px solid #e8ede8;
+}
+
+.leaseMetaLabel {
+  font-size: 11px;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.leaseMetaValue {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a1a1a;
+}
+
+.noLeaseCard {
+  background: #ffffff;
+  border-radius: 18px;
+  border: 0.5px solid #e0e8e0;
+  padding: 20px;
+  text-align: center;
+  color: #888;
+  font-size: 14px;
+}
+
+/* ── 2×2 action grid ─────────────────────────────────── */
+
+.actionGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.actionCard {
+  background: #ffffff;
+  border-radius: 18px;
+  border: 0.5px solid #e0e8e0;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.1s,
+    box-shadow 0.15s;
+}
+
+.actionCard:active {
+  transform: scale(0.97);
+}
+
+.actionIcon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.actionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+  line-height: 1.2;
+}
+
+.actionSub {
+  font-size: 12px;
+  color: #888;
+  margin-top: -6px;
+}
+
+/* ── Latest notice card ──────────────────────────────── */
+
+.noticeCard {
+  background: #ffffff;
+  border-radius: 18px;
+  border: 0.5px solid #e0e8e0;
+  padding: 14px 16px;
+}
+
+.noticeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.noticeHeaderTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.noticeHeaderLink {
+  font-size: 12px;
+  color: #1a6b3c;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.noticeRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.noticeMonth {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+  text-transform: capitalize;
+}
+
+.noticeDue {
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.noticeRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.noticeAmount {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a6b3c;
+}

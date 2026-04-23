@@ -12,6 +12,10 @@ import type { PropertiesService } from '../../properties/properties.service'
 import type { UnitsService } from '../../units/units.service'
 import type { AccountingService } from '../../accounting/accounting.service'
 import type { MailService } from '../../mail/mail.service'
+import type { MaintenanceService } from '../../maintenance/maintenance.service'
+import type { AviseringService } from '../../avisering/avisering.service'
+import type { InspectionsService } from '../../inspections/inspections.service'
+import type { MaintenancePlanService } from '../../maintenance-plan/maintenance-plan.service'
 import { ACTION_TOOLS } from './ai-tools.definition'
 
 export interface ToolResult {
@@ -177,6 +181,23 @@ function sanityCheckLease(
   return warnings
 }
 
+function translatePriority(priority: string): string {
+  const map: Record<string, string> = { URGENT: 'Akut', HIGH: 'Hög', NORMAL: 'Normal', LOW: 'Låg' }
+  return map[priority] ?? priority
+}
+
+function translateMaintenanceStatus(status: string): string {
+  const map: Record<string, string> = {
+    NEW: 'Ny',
+    IN_PROGRESS: 'Pågår',
+    SCHEDULED: 'Schemalagd',
+    COMPLETED: 'Åtgärdad',
+    CLOSED: 'Stängd',
+    CANCELLED: 'Avbruten',
+  }
+  return map[status] ?? status
+}
+
 @Injectable()
 export class ToolExecutorService {
   constructor(
@@ -189,6 +210,10 @@ export class ToolExecutorService {
     private readonly unitsService: UnitsService,
     private readonly accountingService: AccountingService,
     private readonly mailService: MailService,
+    private readonly maintenanceService: MaintenanceService,
+    private readonly aviseringService: AviseringService,
+    private readonly inspectionsService: InspectionsService,
+    private readonly maintenancePlanService: MaintenancePlanService,
   ) {}
 
   async executeTool(
@@ -1857,6 +1882,291 @@ export class ToolExecutorService {
               'Spara det signerade kontraktet i systemet',
             ],
           }
+        }
+
+        case 'get_maintenance_tickets': {
+          const tickets = await this.maintenanceService.findAll(organizationId, {
+            ...(toolInput.status ? { status: toolInput.status as never } : {}),
+            ...(toolInput.priority ? { priority: toolInput.priority as never } : {}),
+            ...(toolInput.propertyId ? { propertyId: toolInput.propertyId as string } : {}),
+          })
+
+          if (tickets.length === 0) {
+            return { success: true, data: [], message: 'Inga underhållsärenden hittades.' }
+          }
+
+          const lines = [`${tickets.length} underhållsärenden:\n`]
+          for (const t of tickets) {
+            lines.push(
+              `- [${t.ticketNumber}] ${t.title} — ${t.property.name}` +
+                (t.unit ? ` ${t.unit.name}` : '') +
+                `, Prioritet: ${translatePriority(t.priority)}, Status: ${translateMaintenanceStatus(t.status)}`,
+            )
+          }
+
+          return { success: true, data: tickets, message: lines.join('\n') }
+        }
+
+        case 'create_maintenance_ticket': {
+          const propertyCheck = await this.prisma.property.findFirst({
+            where: { id: toolInput.propertyId as string, organizationId },
+          })
+          if (!propertyCheck) {
+            return {
+              success: false,
+              message: `Fastighet hittades inte. Anropa get_properties för att hitta rätt propertyId.`,
+            }
+          }
+
+          const ticket = await this.maintenanceService.create(
+            {
+              title: toolInput.title as string,
+              description: toolInput.description as string,
+              propertyId: toolInput.propertyId as string,
+              ...(toolInput.unitId ? { unitId: toolInput.unitId as string } : {}),
+              ...(toolInput.category ? { category: toolInput.category as never } : {}),
+              ...(toolInput.priority ? { priority: toolInput.priority as never } : {}),
+              ...(toolInput.estimatedCost
+                ? { estimatedCost: toolInput.estimatedCost as number }
+                : {}),
+            },
+            organizationId,
+            userId,
+          )
+
+          return {
+            success: true,
+            data: ticket,
+            message: `Ärende ${ticket.ticketNumber} skapat!\n${ticket.title}\nFastighet: ${toolInput.propertyName as string}${toolInput.unitName ? ` / ${toolInput.unitName as string}` : ''}`,
+          }
+        }
+
+        case 'update_maintenance_status': {
+          const ticketCheck = await this.prisma.maintenanceTicket.findFirst({
+            where: { id: toolInput.ticketId as string, organizationId },
+          })
+          if (!ticketCheck) {
+            return {
+              success: false,
+              message: `Ärende hittades inte. Anropa get_maintenance_tickets för att hitta rätt ticketId.`,
+            }
+          }
+
+          await this.maintenanceService.update(
+            toolInput.ticketId as string,
+            { status: toolInput.newStatus as never },
+            organizationId,
+          )
+
+          if (toolInput.comment) {
+            await this.maintenanceService.addComment(
+              toolInput.ticketId as string,
+              toolInput.comment as string,
+              true,
+              organizationId,
+              userId,
+            )
+          }
+
+          return {
+            success: true,
+            message: `Ärende ${toolInput.ticketNumber as string} uppdaterat till ${translateMaintenanceStatus(toolInput.newStatus as string)}`,
+          }
+        }
+
+        case 'get_inspections': {
+          const translateInspectionType = (t: string) => {
+            const m: Record<string, string> = {
+              MOVE_IN: 'Inflyttning',
+              MOVE_OUT: 'Utflyttning',
+              PERIODIC: 'Periodisk',
+              DAMAGE: 'Skada',
+            }
+            return m[t] ?? t
+          }
+          const translateInspectionStatus = (s: string) => {
+            const m: Record<string, string> = {
+              SCHEDULED: 'Schemalagd',
+              IN_PROGRESS: 'Pågår',
+              COMPLETED: 'Slutförd',
+              SIGNED: 'Signerad',
+            }
+            return m[s] ?? s
+          }
+          const inspections = await this.inspectionsService.findAll(organizationId, {
+            ...(toolInput.type ? { type: toolInput.type as never } : {}),
+            ...(toolInput.status ? { status: toolInput.status as never } : {}),
+            ...(toolInput.unitId ? { unitId: toolInput.unitId as string } : {}),
+          })
+
+          if (inspections.length === 0) {
+            return { success: true, data: [], message: 'Inga besiktningar hittades.' }
+          }
+
+          const lines = [`${inspections.length} besiktningar:\n`]
+          for (const ins of inspections) {
+            lines.push(
+              `- ${translateInspectionType(ins.type)} — ${ins.property.name} ${ins.unit.name}, ` +
+                `${new Date(ins.scheduledDate).toLocaleDateString('sv-SE')}, ` +
+                `Status: ${translateInspectionStatus(ins.status)}`,
+            )
+          }
+          return { success: true, data: inspections, message: lines.join('\n') }
+        }
+
+        case 'create_inspection': {
+          const propCheck = await this.prisma.property.findFirst({
+            where: { id: toolInput.propertyId as string, organizationId },
+          })
+          if (!propCheck) {
+            return {
+              success: false,
+              message:
+                'Fastighet hittades inte. Anropa get_properties för att hitta rätt propertyId.',
+            }
+          }
+
+          const inspection = await this.inspectionsService.create(
+            {
+              type: toolInput.type as never,
+              scheduledDate: toolInput.scheduledDate as string,
+              propertyId: toolInput.propertyId as string,
+              unitId: toolInput.unitId as string,
+              ...(toolInput.tenantId ? { tenantId: toolInput.tenantId as string } : {}),
+            },
+            organizationId,
+            userId,
+          )
+
+          const typeLabels: Record<string, string> = {
+            MOVE_IN: 'Inflyttningsbesiktning',
+            MOVE_OUT: 'Utflyttningsbesiktning',
+            PERIODIC: 'Periodisk besiktning',
+            DAMAGE: 'Skadebesiktning',
+          }
+          return {
+            success: true,
+            data: inspection,
+            message: `${typeLabels[toolInput.type as string] ?? 'Besiktning'} skapad!\nFastighet: ${toolInput.propertyName as string}, Enhet: ${toolInput.unitName as string}\nDatum: ${toolInput.scheduledDate as string}${inspection?.items.length ? `\n${inspection.items.length} förinladdade checkpunkter.` : ''}`,
+          }
+        }
+
+        case 'get_rent_notices': {
+          const notices = await this.aviseringService.findAll(organizationId, {
+            ...(toolInput.month ? { month: toolInput.month as number } : {}),
+            ...(toolInput.year ? { year: toolInput.year as number } : {}),
+            ...(toolInput.status ? { status: toolInput.status as never } : {}),
+          })
+
+          if (notices.length === 0) {
+            return { success: true, data: [], message: 'Inga hyresavier hittades.' }
+          }
+
+          const translateNoticeStatus = (s: string) => {
+            const m: Record<string, string> = {
+              PENDING: 'Väntande',
+              SENT: 'Skickad',
+              PAID: 'Betald',
+              OVERDUE: 'Försenad',
+              CANCELLED: 'Avbruten',
+            }
+            return m[s] ?? s
+          }
+          const lines = [`${notices.length} hyresavier:\n`]
+          for (const n of notices) {
+            const tenant = n.tenant
+            const name =
+              tenant.type === 'INDIVIDUAL'
+                ? `${tenant.firstName ?? ''} ${tenant.lastName ?? ''}`.trim()
+                : (tenant.companyName ?? tenant.email)
+            lines.push(
+              `- [${n.noticeNumber}] ${name} — OCR: ${n.ocrNumber}, ` +
+                `${Number(n.totalAmount).toLocaleString('sv-SE')} kr, ` +
+                `Förfaller: ${new Date(n.dueDate).toLocaleDateString('sv-SE')}, ` +
+                `Status: ${translateNoticeStatus(n.status)}`,
+            )
+          }
+          return { success: true, data: notices, message: lines.join('\n') }
+        }
+
+        case 'generate_rent_notices': {
+          const result = await this.aviseringService.generateMonthlyNotices(
+            organizationId,
+            toolInput.month as number,
+            toolInput.year as number,
+          )
+          return {
+            success: true,
+            data: result,
+            message: `${result.created} hyresavier skapades för ${toolInput.month}/${toolInput.year}. ${result.skipped > 0 ? `${result.skipped} hoppades över (finns redan).` : ''}`,
+          }
+        }
+
+        case 'get_maintenance_plan': {
+          const currentYear = new Date().getFullYear()
+          const fromYear = (toolInput.fromYear as number) ?? currentYear
+          const toYear = (toolInput.toYear as number) ?? currentYear + 5
+          const summary = await this.maintenancePlanService.getYearlySummary(
+            organizationId,
+            fromYear,
+            toYear,
+          )
+
+          const translatePlanStatus = (s: string) => {
+            const m: Record<string, string> = {
+              PLANNED: 'Planerad',
+              APPROVED: 'Godkänd',
+              IN_PROGRESS: 'Pågår',
+              COMPLETED: 'Slutförd',
+              CANCELLED: 'Avbruten',
+            }
+            return m[s] ?? s
+          }
+          const translatePlanCategory = (c: string) => {
+            const m: Record<string, string> = {
+              ROOF: 'Tak',
+              FACADE: 'Fasad',
+              WINDOWS: 'Fönster',
+              PLUMBING: 'VVS',
+              ELECTRICAL: 'El',
+              HEATING: 'Värme',
+              ELEVATOR: 'Hiss',
+              COMMON_AREAS: 'Gemensamma utrymmen',
+              PAINTING: 'Målning',
+              FLOORING: 'Golv',
+              OTHER: 'Övrigt',
+            }
+            return m[c] ?? c
+          }
+
+          const totalCount = summary.reduce((s, y) => s + y.count, 0)
+          const totalCost = summary.reduce((s, y) => s + y.totalEstimated, 0)
+
+          if (totalCount === 0) {
+            return {
+              success: true,
+              data: summary,
+              message: `Inga underhållsåtgärder planerade för ${fromYear}–${toYear}.`,
+            }
+          }
+
+          const lines = [
+            `Underhållsplan ${fromYear}–${toYear}: ${totalCount} åtgärder, totalt ${totalCost.toLocaleString('sv-SE')} kr\n`,
+          ]
+          for (const yearEntry of summary) {
+            if (yearEntry.count === 0) continue
+            lines.push(
+              `\n${yearEntry.year} (${yearEntry.totalEstimated.toLocaleString('sv-SE')} kr):`,
+            )
+            for (const plan of yearEntry.plans) {
+              const priorityLabel =
+                plan.priority === 3 ? 'Hög' : plan.priority === 2 ? 'Normal' : 'Låg'
+              lines.push(
+                `  - ${translatePlanCategory(plan.category)}: ${plan.title} — ${plan.property.name} — ${Number(plan.estimatedCost).toLocaleString('sv-SE')} kr — ${translatePlanStatus(plan.status)} (Prio: ${priorityLabel})`,
+              )
+            }
+          }
+          return { success: true, data: summary, message: lines.join('\n') }
         }
 
         default:

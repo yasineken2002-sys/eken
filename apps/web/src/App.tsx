@@ -16,6 +16,14 @@ import { ReconciliationPage } from './features/reconciliation/ReconciliationPage
 import { DocumentsPage } from './features/documents/DocumentsPage'
 import { ImportPage } from './features/import/ImportPage'
 import { AiPage } from './features/ai/AiPage'
+import { MaintenancePage } from './features/maintenance/MaintenancePage'
+import { AviseringPage } from './features/avisering/AviseringPage'
+import { InspectionsPage } from './features/inspections/InspectionsPage'
+import { MaintenancePlanPage } from './features/maintenance-plan/MaintenancePlanPage'
+import { TenantPortalPage } from './features/tenant-portal/TenantPortalPage'
+import { NotificationsPage } from './features/notifications/NotificationsPage'
+import { NewsPage } from './features/news/NewsPage'
+import { MessagesPage } from './features/messages/MessagesPage'
 import { useAuthStore } from './stores/auth.store'
 
 export type Route =
@@ -32,13 +40,29 @@ export type Route =
   | 'documents'
   | 'import'
   | 'ai'
+  | 'maintenance'
+  | 'avisering'
+  | 'inspections'
+  | 'maintenance-plan'
   | 'settings'
   | 'overview'
+  | 'notifications'
+  | 'news'
+  | 'messages'
 
 const PUBLIC_ROUTES: Route[] = ['login', 'register']
 
+// Check if current URL is a tenant portal route
+const tenantPortalMatch = window.location.pathname.match(/^\/portal\/(.+)$/)
+const INITIAL_TENANT_TOKEN = tenantPortalMatch?.[1] ?? null
+
 export function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+
+  // Tenant portal — no auth needed
+  if (INITIAL_TENANT_TOKEN) {
+    return <TenantPortalPage token={INITIAL_TENANT_TOKEN} />
+  }
 
   const [route, setRoute] = useState<Route>(() =>
     useAuthStore.getState().isAuthenticated ? 'dashboard' : 'login',
@@ -69,8 +93,15 @@ export function App() {
     documents: <DocumentsPage />,
     import: <ImportPage />,
     ai: <AiPage />,
+    maintenance: <MaintenancePage />,
+    avisering: <AviseringPage />,
+    inspections: <InspectionsPage />,
+    'maintenance-plan': <MaintenancePlanPage />,
     settings: <SettingsPage />,
     overview: <OverviewPage />,
+    notifications: <NotificationsPage onNavigate={setRoute} />,
+    news: <NewsPage />,
+    messages: <MessagesPage />,
     // login/register handled above — these never render inside AppLayout
     login: null,
     register: null,

@@ -1,0 +1,361 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.header {
+  padding: 24px 16px 4px;
+}
+
+.pageTitle {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+/* ── Ticket list ─────────────────────────────────────── */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.ticketCard {
+  background: #ffffff;
+  border-radius: 18px;
+  border: 0.5px solid #e0e8e0;
+  overflow: hidden;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
+}
+
+.ticketRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 14px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.ticketRow:active {
+  background: #f8faf8;
+}
+
+.ticketCenter {
+  flex: 1;
+  min-width: 0;
+}
+
+.ticketTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticketDate {
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.ticketRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.ticketChevron {
+  font-size: 9px;
+  color: #aaa;
+}
+
+/* ── Expanded ticket body ────────────────────────────── */
+
+.ticketBody {
+  border-top: 0.5px solid #e8ede8;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ticketDescription {
+  font-size: 14px;
+  color: #444;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.comments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.commentsTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.comment {
+  background: #f5f7f5;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.commentContent {
+  font-size: 13px;
+  color: #1a1a1a;
+}
+
+.commentDate {
+  font-size: 11px;
+  color: #aaa;
+  margin-top: 4px;
+}
+
+.commentForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.commentInput {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e0e8e0;
+  border-radius: 12px;
+  font-size: 14px;
+  resize: vertical;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.commentInput:focus {
+  border-color: #1a6b3c;
+}
+
+.commentBtn {
+  align-self: flex-end;
+  padding: 8px 18px;
+  border-radius: 10px;
+  background: #1a6b3c;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+
+.commentBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Floating action button ──────────────────────────── */
+
+.fab {
+  position: fixed;
+  bottom: 90px;
+  right: 16px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #1a6b3c;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  box-shadow: 0 4px 16px rgba(26, 107, 60, 0.4);
+  transition:
+    transform 0.1s,
+    box-shadow 0.15s;
+}
+
+.fab:active {
+  transform: scale(0.93);
+}
+
+/* ── Bottom sheet ─────────────────────────────────────── */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 60;
+}
+
+.sheet {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%) translateY(100%);
+  width: 100%;
+  max-width: 480px;
+  background: #ffffff;
+  border-radius: 24px 24px 0 0;
+  padding: 16px 20px 32px;
+  z-index: 70;
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.sheetOpen {
+  transform: translateX(-50%) translateY(0);
+}
+
+.sheetHandle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: #e0e8e0;
+  margin: 0 auto 20px;
+}
+
+.sheetTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 20px;
+}
+
+/* ── Form inside sheet ───────────────────────────────── */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.categoryRow {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.catChip {
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #555;
+  background: #f1f5f9;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.catChipActive {
+  font-weight: 600;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #444;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e0e8e0;
+  border-radius: 12px;
+  font-size: 14px;
+  color: #1a1a1a;
+  background: #ffffff;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: #1a6b3c;
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.formActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.cancelBtn {
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: 1px solid #e0e8e0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #888;
+  background: #ffffff;
+}
+
+.submitBtn {
+  padding: 10px 20px;
+  border-radius: 12px;
+  background: #1a6b3c;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+
+.submitBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Empty state ─────────────────────────────────────── */
+
+.empty {
+  text-align: center;
+  padding: 60px 0;
+}
+
+.emptyIconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  background: #f0f4f0;
+  border-radius: 50%;
+  margin-bottom: 12px;
+}
+
+.emptyTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 6px;
+}
+
+.emptyText {
+  font-size: 14px;
+  color: #888;
+}

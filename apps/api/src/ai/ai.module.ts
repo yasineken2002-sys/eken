@@ -13,6 +13,10 @@ import { PropertiesModule } from '../properties/properties.module'
 import { UnitsModule } from '../units/units.module'
 import { AccountingModule } from '../accounting/accounting.module'
 import { MailModule } from '../mail/mail.module'
+import { MaintenanceModule } from '../maintenance/maintenance.module'
+import { AviseringModule } from '../avisering/avisering.module'
+import { InspectionsModule } from '../inspections/inspections.module'
+import { MaintenancePlanModule } from '../maintenance-plan/maintenance-plan.module'
 
 @Module({
   imports: [
@@ -24,6 +28,10 @@ import { MailModule } from '../mail/mail.module'
     UnitsModule,
     AccountingModule,
     MailModule,
+    MaintenanceModule,
+    AviseringModule,
+    InspectionsModule,
+    MaintenancePlanModule,
   ],
   controllers: [AiAssistantController],
   providers: [

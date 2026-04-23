@@ -25,6 +25,18 @@ export class OrganizationsController {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const file = await (req as any).file()
     if (!file) throw new BadRequestException('Ingen fil bifogad')
+
+    const ALLOWED_LOGO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+    const MAX_LOGO_SIZE = 2 * 1024 * 1024
+
+    if (!ALLOWED_LOGO_TYPES.includes(file.mimetype as string)) {
+      throw new BadRequestException('Filtyp inte tillåten (JPEG, PNG eller WebP)')
+    }
+    const bytesRead = (file.file as { bytesRead?: number }).bytesRead
+    if (bytesRead != null && bytesRead > MAX_LOGO_SIZE) {
+      throw new BadRequestException('Logotypen är för stor (max 2MB)')
+    }
+
     return this.organizationsService.uploadLogo(organizationId, file)
   }
 }

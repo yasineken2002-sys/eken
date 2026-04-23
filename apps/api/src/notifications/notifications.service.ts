@@ -1,6 +1,8 @@
+import type { OnModuleInit } from '@nestjs/common'
 import { Injectable, Logger } from '@nestjs/common'
+import type { ModuleRef } from '@nestjs/core'
 import { Cron, CronExpression } from '@nestjs/schedule'
-import type { Prisma } from '@prisma/client'
+import type { Notification, NotificationType, Prisma } from '@prisma/client'
 import type { PrismaService } from '../common/prisma/prisma.service'
 import type { MailService } from '../mail/mail.service'
 import type { AiAssistantService } from '../ai/ai-assistant.service'
@@ -10,14 +12,109 @@ type InvoiceWithRelations = Prisma.InvoiceGetPayload<{
 }>
 
 @Injectable()
-export class NotificationsService {
+export class NotificationsService implements OnModuleInit {
   private readonly logger = new Logger(NotificationsService.name)
+  private aiService!: AiAssistantService
 
   constructor(
     private prisma: PrismaService,
     private mail: MailService,
-    private aiService: AiAssistantService,
+    private moduleRef: ModuleRef,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    // Dynamic import breaks the TypeScript circular import chain:
+    // notifications.service → ai-assistant.service → tool-executor.service → invoices.service → notifications.service
+    const { AiAssistantService: AiSvc } = await import('../ai/ai-assistant.service')
+    this.aiService = this.moduleRef.get<AiAssistantService>(AiSvc, { strict: false })
+  }
+
+  // ─── In-app notification CRUD ──────────────────────────────────────────────
+
+  async create(
+    organizationId: string,
+    userId: string,
+    type: NotificationType,
+    title: string,
+    message: string,
+    link?: string,
+  ): Promise<Notification> {
+    return this.prisma.notification.create({
+      data: { organizationId, userId, type, title, message, ...(link ? { link } : {}) },
+    })
+  }
+
+  async createForAllOrgUsers(
+    organizationId: string,
+    type: NotificationType,
+    title: string,
+    message: string,
+    link?: string,
+  ): Promise<void> {
+    const users = await this.prisma.user.findMany({
+      where: { organizationId, isActive: true },
+      select: { id: true },
+    })
+    if (users.length === 0) return
+    await this.prisma.notification.createMany({
+      data: users.map((u) => ({
+        organizationId,
+        userId: u.id,
+        type,
+        title,
+        message,
+        ...(link ? { link } : {}),
+      })),
+    })
+  }
+
+  async findAll(
+    organizationId: string,
+    userId: string,
+    onlyUnread?: boolean,
+  ): Promise<Notification[]> {
+    return this.prisma.notification.findMany({
+      where: {
+        organizationId,
+        userId,
+        ...(onlyUnread ? { read: false } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
+  }
+
+  async markAsRead(id: string, userId: string): Promise<{ count: number }> {
+    return this.prisma.notification.updateMany({
+      where: { id, userId },
+      data: { read: true, readAt: new Date() },
+    })
+  }
+
+  async markAllAsRead(organizationId: string, userId: string): Promise<{ count: number }> {
+    return this.prisma.notification.updateMany({
+      where: { organizationId, userId, read: false },
+      data: { read: true, readAt: new Date() },
+    })
+  }
+
+  async getUnreadCount(organizationId: string, userId: string): Promise<number> {
+    return this.prisma.notification.count({
+      where: { organizationId, userId, read: false },
+    })
+  }
+
+  @Cron('0 2 * * *')
+  async deleteOld(): Promise<void> {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 90)
+    const result = await this.prisma.notification.deleteMany({
+      where: { createdAt: { lt: cutoff } },
+    })
+    this.logger.log(`Deleted ${result.count} old notifications`)
+  }
+
+  // ─── Email cron jobs ───────────────────────────────────────────────────────
 
   @Cron(CronExpression.EVERY_DAY_AT_8AM)
   async sendOverdueReminders(): Promise<void> {

@@ -9,6 +9,7 @@ import {
   HttpStatus,
   Req,
   Res,
+  BadRequestException,
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger'
 import type { FastifyRequest, FastifyReply } from 'fastify'
@@ -72,8 +73,26 @@ export class DocumentsController {
     }
 
     if (!fileBuffer || !filename) {
-      const { BadRequestException } = await import('@nestjs/common')
       throw new BadRequestException('Ingen fil hittades i formuläret')
+    }
+
+    const ALLOWED_MIME_TYPES = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ]
+    const MAX_FILE_SIZE = 10 * 1024 * 1024
+
+    if (!ALLOWED_MIME_TYPES.includes(mimetype)) {
+      throw new BadRequestException('Filtyp inte tillåten')
+    }
+    if (fileSize > MAX_FILE_SIZE) {
+      throw new BadRequestException('Filen är för stor (max 10MB)')
     }
 
     return this.service.upload(

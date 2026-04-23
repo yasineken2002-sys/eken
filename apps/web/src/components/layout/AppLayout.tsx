@@ -8,7 +8,6 @@ import {
   FileText,
   Receipt,
   BookOpen,
-  Bell,
   ChevronRight,
   Menu,
   Settings,
@@ -18,10 +17,16 @@ import {
   FolderOpen,
   Upload,
   Sparkles,
+  Wrench,
+  ClipboardCheck,
+  CalendarRange,
+  Newspaper,
+  MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuthStore } from '@/stores/auth.store'
 import { logoutApi } from '@/features/auth/api/auth.api'
+import { NotificationBell } from '@/features/notifications/components/NotificationBell'
 import type { Route } from '@/App'
 
 interface NavItem {
@@ -45,13 +50,19 @@ const NAV_PORTFOLIO: NavItem[] = [
 
 const NAV_FINANCE: NavItem[] = [
   { id: 'invoices', label: 'Fakturor', icon: Receipt },
+  { id: 'avisering', label: 'Hyresavier', icon: Receipt },
   { id: 'accounting', label: 'Bokföring', icon: BookOpen },
   { id: 'reconciliation', label: 'Bankavstämning', icon: ArrowLeftRight },
 ]
 
 const NAV_TOOLS: NavItem[] = [
+  { id: 'inspections', label: 'Besiktningar', icon: ClipboardCheck },
+  { id: 'maintenance', label: 'Underhåll', icon: Wrench },
+  { id: 'maintenance-plan', label: 'Underhållsplan', icon: CalendarRange },
   { id: 'documents', label: 'Dokument', icon: FolderOpen },
   { id: 'import', label: 'Importera', icon: Upload },
+  { id: 'news', label: 'Nyheter', icon: Newspaper },
+  { id: 'messages', label: 'Meddelanden', icon: MessageSquare },
   { id: 'overview', label: 'Plattformsöversikt', icon: LayoutGrid },
 ]
 
@@ -337,10 +348,7 @@ export function AppLayout({ route, onNavigate, children }: Props) {
           <div className="flex-1" />
 
           {/* Notifications */}
-          <button className="relative flex h-8 w-8 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-gray-100">
-            <Bell size={15} strokeWidth={1.8} />
-            <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-red-500" />
-          </button>
+          <NotificationBell onNavigate={onNavigate} />
 
           <div className="h-5 w-px bg-gray-100" />
 

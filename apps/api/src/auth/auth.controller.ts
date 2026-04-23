@@ -1,5 +1,6 @@
 import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
+import { Throttle } from '@nestjs/throttler'
 import type { AuthService } from './auth.service'
 import { Public } from '../common/decorators/public.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
@@ -15,6 +16,7 @@ export class AuthController {
 
   @Post('register')
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Registrera ny organisation och ägare' })
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto)
@@ -22,6 +24,7 @@ export class AuthController {
 
   @Post('login')
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Logga in' })
   login(@Body() dto: LoginDto) {
@@ -37,9 +40,10 @@ export class AuthController {
   }
 
   @Post('logout')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Logga ut' })
-  logout(@CurrentUser() user: JwtPayload) {
-    return this.auth.logout(user.sub)
+  async logout(@CurrentUser() user: JwtPayload) {
+    await this.auth.logout(user.sub)
+    return null
   }
 }

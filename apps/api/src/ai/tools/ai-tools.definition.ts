@@ -470,6 +470,124 @@ export const TOOLS: Anthropic.Tool[] = [
     },
   },
 
+  // ── MAINTENANCE TOOLS ────────────────────────────────────────────────────
+
+  {
+    name: 'get_maintenance_tickets',
+    description: 'Hämtar underhållsärenden — kan filtreras på status, prioritet eller fastighet.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', description: 'NEW, IN_PROGRESS, SCHEDULED, COMPLETED, CLOSED' },
+        priority: { type: 'string', description: 'LOW, NORMAL, HIGH, URGENT' },
+        propertyId: { type: 'string' },
+      },
+      required: [],
+    },
+  },
+
+  {
+    name: 'create_maintenance_ticket',
+    description: 'Skapar ett nytt underhållsärende/felanmälan. KRÄVER bekräftelse.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        description: { type: 'string' },
+        propertyId: { type: 'string' },
+        propertyName: { type: 'string' },
+        unitId: { type: 'string' },
+        unitName: { type: 'string' },
+        category: { type: 'string' },
+        priority: { type: 'string', enum: ['LOW', 'NORMAL', 'HIGH', 'URGENT'] },
+        estimatedCost: { type: 'number' },
+      },
+      required: ['title', 'description', 'propertyId', 'propertyName'],
+    },
+  },
+
+  {
+    name: 'update_maintenance_status',
+    description: 'Uppdaterar status på ett underhållsärende. KRÄVER bekräftelse.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ticketId: { type: 'string' },
+        ticketNumber: { type: 'string' },
+        newStatus: {
+          type: 'string',
+          enum: ['IN_PROGRESS', 'SCHEDULED', 'COMPLETED', 'CLOSED', 'CANCELLED'],
+        },
+        comment: { type: 'string', description: 'Valfri kommentar om åtgärden' },
+      },
+      required: ['ticketId', 'ticketNumber', 'newStatus'],
+    },
+  },
+
+  // ── INSPECTION TOOLS ────────────────────────────────────────────────────
+
+  {
+    name: 'get_inspections',
+    description: 'Hämtar besiktningar — kan filtreras på typ, status och enhet.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', description: 'MOVE_IN, MOVE_OUT, PERIODIC, DAMAGE' },
+        status: { type: 'string', description: 'SCHEDULED, IN_PROGRESS, COMPLETED, SIGNED' },
+        unitId: { type: 'string', description: 'Filtrera på enhet' },
+      },
+      required: [],
+    },
+  },
+
+  {
+    name: 'create_inspection',
+    description: 'Skapar en ny besiktning för en enhet. KRÄVER bekräftelse.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['MOVE_IN', 'MOVE_OUT', 'PERIODIC', 'DAMAGE'] },
+        propertyId: { type: 'string' },
+        propertyName: { type: 'string', description: 'För visning' },
+        unitId: { type: 'string' },
+        unitName: { type: 'string', description: 'För visning' },
+        tenantId: { type: 'string' },
+        tenantName: { type: 'string', description: 'För visning' },
+        scheduledDate: { type: 'string', description: 'YYYY-MM-DD' },
+      },
+      required: ['type', 'propertyId', 'propertyName', 'unitId', 'unitName', 'scheduledDate'],
+    },
+  },
+
+  // ── AVISERING TOOLS ─────────────────────────────────────────────────────
+
+  {
+    name: 'get_rent_notices',
+    description: 'Hämtar hyresavier — kan filtreras på månad, år och status.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        month: { type: 'number', description: 'Månad 1-12' },
+        year: { type: 'number', description: 'År t.ex. 2026' },
+        status: { type: 'string', description: 'PENDING, SENT, PAID, OVERDUE, CANCELLED' },
+      },
+      required: [],
+    },
+  },
+
+  {
+    name: 'generate_rent_notices',
+    description: 'Genererar hyresavier för alla aktiva kontrakt en viss månad. KRÄVER bekräftelse.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        month: { type: 'number', description: 'Månad 1-12' },
+        year: { type: 'number', description: 'År t.ex. 2026' },
+      },
+      required: ['month', 'year'],
+    },
+  },
+
   // ── ANALYSIS TOOLS (read-only, no confirmation needed) ───────────────────
 
   {
@@ -513,6 +631,20 @@ export const TOOLS: Anthropic.Tool[] = [
   },
 
   {
+    name: 'get_maintenance_plan',
+    description: 'Hämtar underhållsplanen — planerade åtgärder och kostnader per år.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        fromYear: { type: 'number', description: 'Från år (default innevarande)' },
+        toYear: { type: 'number', description: 'Till år (default +5)' },
+        propertyId: { type: 'string', description: 'Filtrera på specifik fastighet' },
+      },
+      required: [],
+    },
+  },
+
+  {
     name: 'find_optimization_opportunities',
     description:
       'Hittar möjligheter att optimera portföljen — enheter med låg hyra, kontrakt utan indexklausul etc.',
@@ -525,6 +657,8 @@ export const TOOLS: Anthropic.Tool[] = [
 ]
 
 export const ACTION_TOOLS = new Set([
+  'create_maintenance_ticket',
+  'update_maintenance_status',
   'create_invoice',
   'create_bulk_invoices',
   'create_tenant',
@@ -542,4 +676,6 @@ export const ACTION_TOOLS = new Set([
   'apply_rent_increase',
   'generate_lease_contract',
   'create_tenant_and_lease',
+  'generate_rent_notices',
+  'create_inspection',
 ])

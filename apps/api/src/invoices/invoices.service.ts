@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
 import type { Invoice, InvoiceStatus, InvoiceEventType, Prisma } from '@prisma/client'
 import type { PrismaService } from '../common/prisma/prisma.service'
 import type { InvoiceEventsService } from './invoice-events.service'
 import type { PdfService } from './pdf.service'
 import type { MailService } from '../mail/mail.service'
 import type { AccountingService } from '../accounting/accounting.service'
+import type { NotificationsService } from '../notifications/notifications.service'
 import { isValidTransition } from '@eken/shared'
 import type { CreateInvoiceDto } from './dto/create-invoice.dto'
 import type { UpdateInvoiceDto } from './dto/update-invoice.dto'
@@ -21,12 +22,15 @@ const STATUS_TO_EVENT_TYPE: Partial<Record<InvoiceStatus, InvoiceEventType>> = {
 
 @Injectable()
 export class InvoicesService {
+  private readonly logger = new Logger(InvoicesService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsService: InvoiceEventsService,
     private readonly pdfService: PdfService,
     private readonly mailService: MailService,
     private readonly accountingService: AccountingService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -322,7 +326,7 @@ export class InvoicesService {
     actorType: 'USER' | 'SYSTEM',
     payload: Record<string, unknown> = {},
   ): Promise<Invoice> {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const invoice = await tx.invoice.findFirst({
         where: { id, organizationId },
         select: { id: true, status: true, invoiceNumber: true },
@@ -356,6 +360,20 @@ export class InvoicesService {
 
       return updated
     })
+
+    if (newStatus === 'PAID') {
+      void this.notificationsService
+        .createForAllOrgUsers(
+          organizationId,
+          'INVOICE_PAID',
+          'Faktura betald',
+          `Faktura ${result.invoiceNumber} har betalats`,
+          '/invoices',
+        )
+        .catch((err) => this.logger.error(`Notification error: ${String(err)}`))
+    }
+
+    return result
   }
 
   /**

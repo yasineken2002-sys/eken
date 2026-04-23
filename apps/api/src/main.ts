@@ -21,7 +21,8 @@ async function bootstrap() {
   // Security
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await app.register(helmet as any, {
-    contentSecurityPolicy: false, // handled by frontend
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
   })
 
   // File uploads
@@ -36,11 +37,27 @@ async function bootstrap() {
   })
 
   // CORS
+  const rawOrigins = config.get<string>('ALLOWED_ORIGINS', '')
+  const allowedOrigins = rawOrigins
+    ? rawOrigins.split(',').map((o) => o.trim())
+    : [appUrl, 'http://localhost:5174', 'https://*.app.github.dev']
+
   app.enableCors({
-    origin: [appUrl],
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true)
+      const allowed = allowedOrigins.some((o) => {
+        if (o.includes('*')) {
+          const regex = new RegExp('^' + o.replace(/\*/g, '.*') + '$')
+          return regex.test(origin)
+        }
+        return o === origin
+      })
+      if (allowed) callback(null, true)
+      else callback(new Error('Not allowed by CORS'))
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Dev-Tenant-Id'],
   })
 
   // Versioning

@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import type { ConfigService } from '@nestjs/config'
+import * as crypto from 'crypto'
 import type { Tenant } from '@prisma/client'
 import type { PrismaService } from '../common/prisma/prisma.service'
+import type { MailService } from '../mail/mail.service'
 import type { CreateTenantDto } from './dto/create-tenant.dto'
 import type { UpdateTenantDto } from './dto/update-tenant.dto'
 
@@ -21,7 +24,11 @@ function mapTenant<T extends Pick<Tenant, 'street' | 'city' | 'postalCode'>>(
 
 @Injectable()
 export class TenantsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+    private readonly config: ConfigService,
+  ) {}
 
   async findAll(organizationId: string, search?: string) {
     const tenants = await this.prisma.tenant.findMany({
@@ -77,7 +84,7 @@ export class TenantsService {
         ...(dto.firstName != null ? { firstName: dto.firstName } : {}),
         ...(dto.lastName != null ? { lastName: dto.lastName } : {}),
         ...(dto.companyName != null ? { companyName: dto.companyName } : {}),
-        email: dto.email,
+        ...(dto.email != null ? { email: dto.email } : { email: '' }),
         ...(dto.phone != null ? { phone: dto.phone } : {}),
         ...(dto.personalNumber != null ? { personalNumber: dto.personalNumber } : {}),
         ...(dto.orgNumber != null ? { orgNumber: dto.orgNumber } : {}),
@@ -85,8 +92,64 @@ export class TenantsService {
         ...(dto.city != null ? { city: dto.city } : {}),
         ...(dto.postalCode != null ? { postalCode: dto.postalCode } : {}),
       },
+      include: { organization: { select: { name: true } } },
     })
+
+    if (tenant.email) {
+      void this.sendInvitationEmail(tenant).catch((err) =>
+        console.error('[tenants] invitation email failed', String(err)),
+      )
+    }
+
     return mapTenant(tenant)
+  }
+
+  private async sendInvitationEmail(
+    tenant: Tenant & { organization: { name: string } },
+  ): Promise<void> {
+    const token = crypto.randomBytes(32).toString('hex')
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+
+    await this.prisma.tenantMagicLink.create({
+      data: { tenantId: tenant.id, token, expiresAt },
+    })
+
+    const portalUrl = this.config.get<string>('PORTAL_URL') ?? 'http://localhost:5174'
+    const magicUrl = `${portalUrl}/auth/verify?token=${token}`
+    const tenantName = tenant.firstName
+      ? `${tenant.firstName} ${tenant.lastName ?? ''}`.trim()
+      : (tenant.companyName ?? tenant.email)
+    const orgName = tenant.organization.name
+
+    await this.mail
+      .sendCustomEmail({
+        to: tenant.email,
+        subject: 'Du är inbjuden till din hyresgästportal',
+        tenantName,
+        organizationName: orgName,
+        bodyHtml: `
+        <h2 style="color:#1a6b3c;margin:0 0 16px">Välkommen till hyresgästportalen</h2>
+        <p>Hej ${tenantName},</p>
+        <p>Din hyresvärd <strong>${orgName}</strong> har skapat ett konto åt dig i hyresgästportalen Eken.</p>
+        <a href="${magicUrl}"
+           style="display:inline-block;background:#1a6b3c;color:white;
+                  padding:12px 24px;border-radius:6px;text-decoration:none;
+                  font-weight:bold;margin:16px 0">
+          Logga in på portalen →
+        </a>
+        <p style="color:#555;margin-top:16px">I portalen kan du:</p>
+        <ul style="color:#555;line-height:1.8">
+          <li>Se dina hyresavier och fakturor</li>
+          <li>Anmäla fel i lägenheten</li>
+          <li>Läsa nyheter från din hyresvärd</li>
+          <li>Se ditt hyreskontrakt</li>
+        </ul>
+        <p style="color:#999;font-size:12px;margin-top:16px">
+          Länken är giltig i 7 dagar och kan bara användas en gång.
+        </p>
+      `,
+      })
+      .catch((err: unknown) => console.warn('[tenants] invitation mail send failed', String(err)))
   }
 
   async update(id: string, dto: UpdateTenantDto, organizationId: string) {
