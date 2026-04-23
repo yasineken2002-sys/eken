@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
-import type { ConfigService } from '@nestjs/config'
+import { ConfigService } from '@nestjs/config'
 import * as XLSX from 'xlsx'
-import type { PrismaService } from '../common/prisma/prisma.service'
+import { PrismaService } from '../common/prisma/prisma.service'
 import type { Prisma } from '@prisma/client'
 import { ImportJobStatus, ImportJobType } from '@prisma/client'
 

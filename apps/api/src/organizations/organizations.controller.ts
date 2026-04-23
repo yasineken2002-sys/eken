@@ -2,8 +2,8 @@ import { Controller, Get, Patch, Body, BadRequestException, UseGuards, Req } fro
 import type { FastifyRequest } from 'fastify'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
-import type { OrganizationsService } from './organizations.service'
-import type { UpdateOrganizationDto } from './dto/update-organization.dto'
+import { OrganizationsService } from './organizations.service'
+import { UpdateOrganizationDto } from './dto/update-organization.dto'
 
 @Controller('organizations')
 @UseGuards(JwtAuthGuard)

@@ -7,8 +7,8 @@ import {
 import { Decimal } from '@prisma/client/runtime/library'
 import type { BankTransaction, Prisma } from '@prisma/client'
 import * as XLSX from 'xlsx'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { InvoiceEventsService } from '../invoices/invoice-events.service'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { InvoiceEventsService } from '../invoices/invoice-events.service'
 
 export interface ImportResult {
   imported: number

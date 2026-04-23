@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { Decimal } from '@prisma/client/runtime/library'
 import type { MaintenancePlanCategory, MaintenancePlanStatus } from '@prisma/client'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { CreateMaintenancePlanDto } from './dto/create-maintenance-plan.dto'
-import type { UpdateMaintenancePlanDto } from './dto/update-maintenance-plan.dto'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { CreateMaintenancePlanDto } from './dto/create-maintenance-plan.dto'
+import { UpdateMaintenancePlanDto } from './dto/update-maintenance-plan.dto'
 
 const PROPERTY_SELECT = { id: true, name: true, street: true, city: true }
 

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { CreateUnitDto } from './dto/create-unit.dto'
-import type { UpdateUnitDto } from './dto/update-unit.dto'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { CreateUnitDto } from './dto/create-unit.dto'
+import { UpdateUnitDto } from './dto/update-unit.dto'
 
 @Injectable()
 export class UnitsService {

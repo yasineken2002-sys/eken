@@ -4,7 +4,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
-import type { ContractTemplateService } from './contract-template.service'
+import { ContractTemplateService } from './contract-template.service'
 
 @Controller('contracts')
 @UseGuards(JwtAuthGuard)

@@ -1,8 +1,8 @@
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common'
-import type { ConfigService } from '@nestjs/config'
+import { ConfigService } from '@nestjs/config'
 import * as crypto from 'crypto'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { MailService } from '../mail/mail.service'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { MailService } from '../mail/mail.service'
 import type { Tenant } from '@prisma/client'
 
 @Injectable()

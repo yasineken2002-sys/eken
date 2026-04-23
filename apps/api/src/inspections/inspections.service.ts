@@ -1,11 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { PdfService } from '../invoices/pdf.service'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { PdfService } from '../invoices/pdf.service'
 import { InspectionStatus, InspectionType } from '@prisma/client'
 import type { InspectionItemCondition } from '@prisma/client'
-import type { CreateInspectionDto } from './dto/create-inspection.dto'
-import type { UpdateInspectionDto } from './dto/update-inspection.dto'
-import type { UpdateInspectionItemDto } from './dto/update-inspection-item.dto'
+import { CreateInspectionDto } from './dto/create-inspection.dto'
+import { UpdateInspectionDto } from './dto/update-inspection.dto'
+import { UpdateInspectionItemDto } from './dto/update-inspection-item.dto'
 
 const DEFAULT_ITEMS: { room: string; item: string }[] = [
   { room: 'Hall', item: 'Golv' },

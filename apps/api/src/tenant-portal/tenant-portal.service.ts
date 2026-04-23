@@ -1,8 +1,8 @@
 import { Injectable, BadRequestException } from '@nestjs/common'
 import type { Invoice, Lease, MaintenanceCategory, Property, Unit } from '@prisma/client'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { MaintenanceService } from '../maintenance/maintenance.service'
-import type { NotificationsService } from '../notifications/notifications.service'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { MaintenanceService } from '../maintenance/maintenance.service'
+import { NotificationsService } from '../notifications/notifications.service'
 
 type InvoiceWithLease = Invoice & {
   lease?: (Lease & { unit: Unit & { property: Property } }) | null

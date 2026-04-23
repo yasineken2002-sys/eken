@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import * as fs from 'fs/promises'
 import * as path from 'path'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { UpdateOrganizationDto } from './dto/update-organization.dto'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { UpdateOrganizationDto } from './dto/update-organization.dto'
 
 interface MultipartFile {
   mimetype: string

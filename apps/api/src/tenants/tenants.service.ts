@@ -1,11 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
-import type { ConfigService } from '@nestjs/config'
+import { ConfigService } from '@nestjs/config'
 import * as crypto from 'crypto'
 import type { Tenant } from '@prisma/client'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { MailService } from '../mail/mail.service'
-import type { CreateTenantDto } from './dto/create-tenant.dto'
-import type { UpdateTenantDto } from './dto/update-tenant.dto'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { MailService } from '../mail/mail.service'
+import { CreateTenantDto } from './dto/create-tenant.dto'
+import { UpdateTenantDto } from './dto/update-tenant.dto'
 
 // Maps flat Prisma address fields → nested Address object matching @eken/shared Tenant type
 function mapTenant<T extends Pick<Tenant, 'street' | 'city' | 'postalCode'>>(

@@ -15,8 +15,8 @@ import { RolesGuard } from '../common/guards/roles.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
-import type { NotificationsService } from './notifications.service'
-import type { QueryNotificationsDto } from './dto/query-notifications.dto'
+import { NotificationsService } from './notifications.service'
+import { QueryNotificationsDto } from './dto/query-notifications.dto'
 import type { JwtPayload } from '@eken/shared'
 
 @Controller('notifications')

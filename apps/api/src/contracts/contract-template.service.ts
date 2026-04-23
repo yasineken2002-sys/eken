@@ -2,8 +2,8 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import { v4 as uuid } from 'uuid'
 import { Injectable, NotFoundException } from '@nestjs/common'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { PdfService } from '../invoices/pdf.service'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { PdfService } from '../invoices/pdf.service'
 
 async function getLogoDataUrl(logoUrl: string | null): Promise<string | null> {
   if (!logoUrl) return null

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import type { InvoiceEvent, InvoiceEventType, EventActorType, Prisma } from '@prisma/client'
-import type { PrismaService } from '../common/prisma/prisma.service'
+import { PrismaService } from '../common/prisma/prisma.service'
 
 @Injectable()
 export class InvoiceEventsService {

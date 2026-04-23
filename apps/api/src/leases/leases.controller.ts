@@ -12,11 +12,11 @@ import {
 import type { LeaseStatus } from '@prisma/client'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
-import type { LeasesService } from './leases.service'
-import type { CreateLeaseDto } from './dto/create-lease.dto'
-import type { UpdateLeaseDto } from './dto/update-lease.dto'
-import type { TransitionLeaseStatusDto } from './dto/transition-status.dto'
-import type { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
+import { LeasesService } from './leases.service'
+import { CreateLeaseDto } from './dto/create-lease.dto'
+import { UpdateLeaseDto } from './dto/update-lease.dto'
+import { TransitionLeaseStatusDto } from './dto/transition-status.dto'
+import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
 
 @Controller('leases')
 @UseGuards(JwtAuthGuard)

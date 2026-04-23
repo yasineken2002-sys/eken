@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
-import type { ConfigService } from '@nestjs/config'
+import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
 import type { SentMessage } from '@prisma/client'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { MailService } from '../mail/mail.service'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { MailService } from '../mail/mail.service'
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const result: T[][] = []

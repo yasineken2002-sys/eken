@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import puppeteer from 'puppeteer'
-import type { PrismaService } from '../common/prisma/prisma.service'
+import { PrismaService } from '../common/prisma/prisma.service'
 import { generateInvoiceHtml } from './templates/invoice-pdf.template'
 
 @Injectable()

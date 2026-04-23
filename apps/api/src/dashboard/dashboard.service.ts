@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import type { PrismaService } from '../common/prisma/prisma.service'
+import { PrismaService } from '../common/prisma/prisma.service'
 
 export interface DashboardStats {
   invoices: {

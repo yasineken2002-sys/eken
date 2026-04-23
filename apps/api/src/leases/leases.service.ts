@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import type { LeaseStatus } from '@prisma/client'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { CreateLeaseDto } from './dto/create-lease.dto'
-import type { UpdateLeaseDto } from './dto/update-lease.dto'
-import type { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { CreateLeaseDto } from './dto/create-lease.dto'
+import { UpdateLeaseDto } from './dto/update-lease.dto'
+import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
 
 const VALID_TRANSITIONS: Partial<Record<LeaseStatus, LeaseStatus[]>> = {
   DRAFT: ['ACTIVE', 'TERMINATED'],

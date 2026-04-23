@@ -11,11 +11,11 @@ import {
   HttpStatus,
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger'
-import type { PropertiesService } from './properties.service'
+import { PropertiesService } from './properties.service'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
-import type { CreatePropertyDto } from './dto/create-property.dto'
-import type { UpdatePropertyDto } from './dto/update-property.dto'
+import { CreatePropertyDto } from './dto/create-property.dto'
+import { UpdatePropertyDto } from './dto/update-property.dto'
 
 @ApiTags('Properties')
 @ApiBearerAuth()

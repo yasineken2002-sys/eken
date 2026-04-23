@@ -13,10 +13,10 @@ import {
   HttpStatus,
 } from '@nestjs/common'
 import type { FastifyReply } from 'fastify'
-import type { AviseringService } from './avisering.service'
-import type { GenerateNoticesDto } from './dto/generate-notices.dto'
-import type { SendNoticesDto } from './dto/send-notices.dto'
-import type { MarkPaidDto } from './dto/mark-paid.dto'
+import { AviseringService } from './avisering.service'
+import { GenerateNoticesDto } from './dto/generate-notices.dto'
+import { SendNoticesDto } from './dto/send-notices.dto'
+import { MarkPaidDto } from './dto/mark-paid.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import type { RentNoticeStatus } from '@prisma/client'
 

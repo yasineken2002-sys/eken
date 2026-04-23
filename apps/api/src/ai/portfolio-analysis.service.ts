@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common'
 import Anthropic from '@anthropic-ai/sdk'
-import type { PrismaService } from '../common/prisma/prisma.service'
+import { PrismaService } from '../common/prisma/prisma.service'
 
 export interface PortfolioInsight {
   category: string

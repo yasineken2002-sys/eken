@@ -13,9 +13,9 @@ import {
 } from '@nestjs/common'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
-import type { MaintenancePlanService } from './maintenance-plan.service'
-import type { CreateMaintenancePlanDto } from './dto/create-maintenance-plan.dto'
-import type { UpdateMaintenancePlanDto } from './dto/update-maintenance-plan.dto'
+import { MaintenancePlanService } from './maintenance-plan.service'
+import { CreateMaintenancePlanDto } from './dto/create-maintenance-plan.dto'
+import { UpdateMaintenancePlanDto } from './dto/update-maintenance-plan.dto'
 import type { MaintenancePlanCategory, MaintenancePlanStatus } from '@prisma/client'
 
 @Controller('maintenance-plans')

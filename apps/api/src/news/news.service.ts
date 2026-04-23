@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { IsString, IsOptional, IsBoolean, IsUUID } from 'class-validator'
-import type { PrismaService } from '../common/prisma/prisma.service'
+import { PrismaService } from '../common/prisma/prisma.service'
 
 export class CreateNewsPostDto {
   @IsString()

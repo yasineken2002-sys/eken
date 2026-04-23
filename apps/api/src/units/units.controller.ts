@@ -13,9 +13,9 @@ import {
 } from '@nestjs/common'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
-import type { UnitsService } from './units.service'
-import type { CreateUnitDto } from './dto/create-unit.dto'
-import type { UpdateUnitDto } from './dto/update-unit.dto'
+import { UnitsService } from './units.service'
+import { CreateUnitDto } from './dto/create-unit.dto'
+import { UpdateUnitDto } from './dto/update-unit.dto'
 
 @Controller('units')
 @UseGuards(JwtAuthGuard)

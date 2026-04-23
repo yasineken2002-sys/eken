@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { NotificationsService } from '../notifications/notifications.service'
-import type { CreateMaintenanceTicketDto } from './dto/create-maintenance-ticket.dto'
-import type { UpdateMaintenanceTicketDto } from './dto/update-maintenance-ticket.dto'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { NotificationsService } from '../notifications/notifications.service'
+import { CreateMaintenanceTicketDto } from './dto/create-maintenance-ticket.dto'
+import { UpdateMaintenanceTicketDto } from './dto/update-maintenance-ticket.dto'
 import type { MaintenanceStatus, MaintenancePriority, MaintenanceCategory } from '@prisma/client'
 
 @Injectable()

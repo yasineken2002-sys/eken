@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common'
-import type { ConfigService } from '@nestjs/config'
+import { ConfigService } from '@nestjs/config'
 import Anthropic from '@anthropic-ai/sdk'
 
 export type AnalysisCondition = 'GOOD' | 'ACCEPTABLE' | 'DAMAGED' | 'MISSING'

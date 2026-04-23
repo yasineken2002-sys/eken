@@ -5,12 +5,12 @@ import {
   BadRequestException,
   ServiceUnavailableException,
 } from '@nestjs/common'
-import type { ConfigService } from '@nestjs/config'
+import { ConfigService } from '@nestjs/config'
 import Anthropic from '@anthropic-ai/sdk'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { DataContextService } from './data-context.service'
-import type { ToolExecutorService } from './tools/tool-executor.service'
-import type { MemoryService } from './memory.service'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { DataContextService } from './data-context.service'
+import { ToolExecutorService } from './tools/tool-executor.service'
+import { MemoryService } from './memory.service'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
 
 const MODEL = 'claude-sonnet-4-5'

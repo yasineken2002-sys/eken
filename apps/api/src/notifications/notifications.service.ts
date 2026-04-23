@@ -1,11 +1,11 @@
 import type { OnModuleInit } from '@nestjs/common'
 import { Injectable, Logger } from '@nestjs/common'
-import type { ModuleRef } from '@nestjs/core'
+import { ModuleRef } from '@nestjs/core'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import type { Notification, NotificationType, Prisma } from '@prisma/client'
-import type { PrismaService } from '../common/prisma/prisma.service'
-import type { MailService } from '../mail/mail.service'
-import type { AiAssistantService } from '../ai/ai-assistant.service'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { MailService } from '../mail/mail.service'
+import { AiAssistantService } from '../ai/ai-assistant.service'
 
 type InvoiceWithRelations = Prisma.InvoiceGetPayload<{
   include: { tenant: true; organization: true }

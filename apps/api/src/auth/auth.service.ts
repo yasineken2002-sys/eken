@@ -1,9 +1,9 @@
 import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common'
-import type { JwtService } from '@nestjs/jwt'
-import type { ConfigService } from '@nestjs/config'
+import { JwtService } from '@nestjs/jwt'
+import { ConfigService } from '@nestjs/config'
 import * as bcrypt from 'bcryptjs'
 import { v4 as uuidv4 } from 'uuid'
-import type { PrismaService } from '../common/prisma/prisma.service'
+import { PrismaService } from '../common/prisma/prisma.service'
 import type { JwtPayload, TokenPair } from '@eken/shared'
 import type { LoginInput } from '@eken/shared'
 

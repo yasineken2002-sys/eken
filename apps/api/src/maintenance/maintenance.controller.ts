@@ -11,9 +11,9 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common'
-import type { MaintenanceService } from './maintenance.service'
-import type { CreateMaintenanceTicketDto } from './dto/create-maintenance-ticket.dto'
-import type { UpdateMaintenanceTicketDto } from './dto/update-maintenance-ticket.dto'
+import { MaintenanceService } from './maintenance.service'
+import { CreateMaintenanceTicketDto } from './dto/create-maintenance-ticket.dto'
+import { UpdateMaintenanceTicketDto } from './dto/update-maintenance-ticket.dto'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'

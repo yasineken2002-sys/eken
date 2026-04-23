@@ -1,8 +1,8 @@
 import type { CanActivate, ExecutionContext } from '@nestjs/common'
 import { Injectable, UnauthorizedException } from '@nestjs/common'
 import type { FastifyRequest } from 'fastify'
-import type { TenantAuthService } from './tenant-auth.service'
-import type { PrismaService } from '../common/prisma/prisma.service'
+import { TenantAuthService } from './tenant-auth.service'
+import { PrismaService } from '../common/prisma/prisma.service'
 
 @Injectable()
 export class TenantAuthGuard implements CanActivate {

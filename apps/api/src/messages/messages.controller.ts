@@ -12,8 +12,8 @@ import {
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
-import type { MessagesService } from './messages.service'
-import type { SendMessageDto } from './dto/send-message.dto'
+import { MessagesService } from './messages.service'
+import { SendMessageDto } from './dto/send-message.dto'
 import type { JwtPayload } from '@eken/shared'
 
 @Controller('messages')

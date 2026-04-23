@@ -12,9 +12,9 @@ import {
 } from '@nestjs/common'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
-import type { TenantsService } from './tenants.service'
-import type { CreateTenantDto } from './dto/create-tenant.dto'
-import type { UpdateTenantDto } from './dto/update-tenant.dto'
+import { TenantsService } from './tenants.service'
+import { CreateTenantDto } from './dto/create-tenant.dto'
+import { UpdateTenantDto } from './dto/update-tenant.dto'
 
 @Controller('tenants')
 @UseGuards(JwtAuthGuard)

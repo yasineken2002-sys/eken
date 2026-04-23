@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger'
 import type { FastifyRequest, FastifyReply } from 'fastify'
-import type { DocumentsService } from './documents.service'
+import { DocumentsService } from './documents.service'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'

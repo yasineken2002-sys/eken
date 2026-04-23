@@ -1,6 +1,6 @@
 import { Controller, Get, Param, Ip, Headers, Res, HttpCode } from '@nestjs/common'
 import { Public } from '../common/decorators/public.decorator'
-import type { InvoiceEventsService } from './invoice-events.service'
+import { InvoiceEventsService } from './invoice-events.service'
 
 // 1×1 transparent GIF – branschstandard för e-postspårningspixlar
 // Samma teknik som Fortnox, Visma, Mailchimp m.fl. använder

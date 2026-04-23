@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
-import type { PrismaService } from '../common/prisma/prisma.service'
+import { PrismaService } from '../common/prisma/prisma.service'
 import type { CreatePropertyInput, UpdatePropertyInput } from '@eken/shared'
 
 type PrismaPropertyWithCount = {

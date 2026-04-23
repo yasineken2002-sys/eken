@@ -13,7 +13,7 @@ import {
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
-import type { NewsService, CreateNewsPostDto, UpdateNewsPostDto } from './news.service'
+import { NewsService, CreateNewsPostDto, UpdateNewsPostDto } from './news.service'
 
 @Controller('news')
 export class NewsController {

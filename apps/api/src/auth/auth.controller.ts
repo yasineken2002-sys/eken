@@ -1,13 +1,13 @@
 import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
-import type { AuthService } from './auth.service'
+import { AuthService } from './auth.service'
 import { Public } from '../common/decorators/public.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
-import type { LoginDto } from './dto/login.dto'
-import type { RegisterDto } from './dto/register.dto'
-import type { RefreshDto } from './dto/refresh.dto'
+import { LoginDto } from './dto/login.dto'
+import { RegisterDto } from './dto/register.dto'
+import { RefreshDto } from './dto/refresh.dto'
 
 @ApiTags('Auth')
 @Controller('auth')
