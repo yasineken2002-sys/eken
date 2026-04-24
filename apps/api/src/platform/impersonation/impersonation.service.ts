@@ -90,6 +90,29 @@ export class ImpersonationService {
     })
   }
 
+  /**
+   * Avslutar en session där anroparen har SJÄLVA impersonation-JWT (dvs
+   * web-tabben). Vi kräver att `impersonationLogId` i JWT-payloaden matchar
+   * den inskickade `logId` — det betyder att tokenet faktiskt utfärdades
+   * för exakt denna session och ingen annan. Platform-user-id:t läses ur
+   * loggen och behöver inte valideras på nytt.
+   */
+  async endFromImpersonatedToken(
+    impersonationLogIdFromPayload: string,
+    bodyLogId: string,
+  ): Promise<void> {
+    if (impersonationLogIdFromPayload !== bodyLogId) {
+      throw new ForbiddenException('Log-id matchar inte token')
+    }
+    const log = await this.prisma.impersonationLog.findUnique({ where: { id: bodyLogId } })
+    if (!log) throw new NotFoundException('Logg hittades inte')
+    if (log.endedAt) return
+    await this.prisma.impersonationLog.update({
+      where: { id: bodyLogId },
+      data: { endedAt: new Date() },
+    })
+  }
+
   async listRecent(platformUserId?: string, limit = 50) {
     const logs = await this.prisma.impersonationLog.findMany({
       where: platformUserId ? { platformUserId } : {},
