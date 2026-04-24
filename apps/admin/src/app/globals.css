@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#F7F8FA] text-[#111827];
+    font-family: 'Inter var', 'Inter', system-ui, sans-serif;
+    font-feature-settings: 'cv01', 'cv02', 'cv03', 'cv04', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: 14px;
+  }
+  ::selection {
+    background: rgba(37, 99, 235, 0.12);
+  }
+}
