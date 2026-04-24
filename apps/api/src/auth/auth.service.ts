@@ -148,6 +148,29 @@ export class AuthService {
     })
   }
 
+  async me(userId: string, organizationId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, organizationId },
+      include: { organization: true },
+    })
+    if (!user) throw new UnauthorizedException()
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        organizationId: user.organizationId,
+      },
+      organization: {
+        id: user.organization.id,
+        name: user.organization.name,
+        orgNumber: user.organization.orgNumber ?? null,
+      },
+    }
+  }
+
   private async issueTokens(
     userId: string,
     email: string,
