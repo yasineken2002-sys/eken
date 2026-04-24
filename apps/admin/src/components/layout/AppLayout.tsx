@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   Building2,
@@ -7,6 +7,8 @@ import {
   BarChart3,
   Settings,
   LogOut,
+  Menu,
+  X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '@/stores/auth.store'
@@ -31,7 +33,9 @@ export function AppLayout() {
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
+  const location = useLocation()
   const [summary, setSummary] = useState<ErrorSummary | null>(null)
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -53,6 +57,11 @@ export function AppLayout() {
     }
   }, [])
 
+  // Stäng mobilmenyn på navigation
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [location.pathname])
+
   const doLogout = () => {
     logout()
     navigate('/login', { replace: true })
@@ -60,12 +69,38 @@ export function AppLayout() {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="sticky top-0 flex h-screen w-64 flex-col border-r border-[#EAEDF0] bg-white">
-        <div className="px-5 py-5">
-          <div className="text-[13px] font-semibold uppercase tracking-wide text-gray-400">
-            Eken
+      {/* Backdrop mobil */}
+      {mobileOpen ? (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      ) : null}
+
+      <aside
+        className={cn(
+          'z-40 flex w-64 flex-col border-r border-[#EAEDF0] bg-white',
+          // Mobilt: fast positionerad offcanvas som slidar in
+          'fixed inset-y-0 left-0 transition-transform duration-200',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full',
+          // Desktop: sticky och alltid synlig
+          'lg:sticky lg:top-0 lg:h-screen lg:translate-x-0',
+        )}
+      >
+        <div className="flex items-center justify-between px-5 py-5">
+          <div>
+            <div className="text-[13px] font-semibold uppercase tracking-wide text-gray-400">
+              Eken
+            </div>
+            <div className="text-[15px] font-semibold text-gray-900">Platform Admin</div>
           </div>
-          <div className="text-[15px] font-semibold text-gray-900">Platform Admin</div>
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 lg:hidden"
+            aria-label="Stäng meny"
+          >
+            <X size={18} />
+          </button>
         </div>
         <nav className="flex-1 space-y-0.5 px-3">
           {navItems.map(({ to, label, icon: Icon, exact, showBadge }) => (
@@ -113,8 +148,20 @@ export function AppLayout() {
           </button>
         </div>
       </aside>
-      <main className="flex-1 bg-[#F7F8FA]">
-        <div className="mx-auto max-w-[1280px] px-8 py-8">
+
+      <main className="min-w-0 flex-1 bg-[#F7F8FA]">
+        {/* Mobil topbar med hamburger (syns bara under lg) */}
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-[#EAEDF0] bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="rounded-lg p-1.5 text-gray-600 hover:bg-gray-100"
+            aria-label="Öppna meny"
+          >
+            <Menu size={18} />
+          </button>
+          <div className="text-[14px] font-semibold text-gray-900">Platform Admin</div>
+        </header>
+        <div className="mx-auto max-w-[1280px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           <Outlet />
         </div>
       </main>
