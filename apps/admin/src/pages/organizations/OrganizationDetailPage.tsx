@@ -9,6 +9,7 @@ import { OrgStatusBadge, PlanBadge, InvoiceStatusBadge } from '@/components/ui/B
 import { Modal } from '@/components/ui/Modal'
 import { Input, Label, Select, Textarea } from '@/components/ui/Input'
 import { get, post, del } from '@/lib/api'
+import { resolveWebUrl } from '@/lib/webUrl'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/format'
 
 interface OrgDetail {
@@ -607,9 +608,7 @@ function ImpersonateModal({
         },
       ),
     onSuccess: (data) => {
-      const webUrl =
-        (import.meta.env.VITE_WEB_URL as string | undefined) ??
-        window.location.origin.replace(/:\d+$/, ':5173')
+      const webUrl = resolveWebUrl()
       window.open(
         `${webUrl}/#impersonate=${data.accessToken}&logId=${data.logId}`,
         '_blank',
