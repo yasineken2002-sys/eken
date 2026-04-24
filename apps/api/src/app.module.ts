@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { ScheduleModule } from '@nestjs/schedule'
@@ -31,6 +32,7 @@ import { ContractsModule } from './contracts/contracts.module'
 import { TenantPortalModule } from './tenant-portal/tenant-portal.module'
 import { NewsModule } from './news/news.module'
 import { MessagesModule } from './messages/messages.module'
+import { PlatformModule } from './platform/platform.module'
 
 @Module({
   imports: [
@@ -93,7 +95,8 @@ import { MessagesModule } from './messages/messages.module'
     TenantPortalModule,
     NewsModule,
     MessagesModule,
+    PlatformModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }, GlobalExceptionFilter],
 })
 export class AppModule {}

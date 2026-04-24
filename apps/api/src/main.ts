@@ -8,7 +8,7 @@ import multipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
 import * as path from 'path'
 import { AppModule } from './app.module'
-import { HttpExceptionFilter } from './common/filters/http-exception.filter'
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { TransformInterceptor } from './common/interceptors/transform.interceptor'
 
 async function bootstrap() {
@@ -72,7 +72,7 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   )
-  app.useGlobalFilters(new HttpExceptionFilter())
+  app.useGlobalFilters(app.get(GlobalExceptionFilter))
   app.useGlobalInterceptors(new TransformInterceptor())
 
   // Swagger
