@@ -8,7 +8,7 @@ import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { OrgStatusBadge, PlanBadge, InvoiceStatusBadge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Label, Select, Textarea } from '@/components/ui/Input'
-import { get, post, del } from '@/lib/api'
+import { get, post, delWithBody } from '@/lib/api'
 import { resolveWebUrl } from '@/lib/webUrl'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/format'
 
@@ -73,8 +73,7 @@ export function OrganizationDetailPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['platform', 'org', id] }),
   })
   const cancel = useMutation({
-    mutationFn: (reason: string) =>
-      del(`/platform/organizations/${id}?reason=${encodeURIComponent(reason)}`),
+    mutationFn: (reason: string) => delWithBody(`/platform/organizations/${id}`, { reason }),
     onSuccess: () => navigate('/organizations'),
   })
 

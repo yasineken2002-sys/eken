@@ -88,3 +88,14 @@ export async function patch<T>(url: string, body?: unknown): Promise<T> {
 export async function del(url: string): Promise<void> {
   await api.delete(url)
 }
+
+/**
+ * DELETE med JSON-body. Axios stöder `data` som andra-arg till `.delete()`,
+ * men det är lätt att glömma och typcheckas inte via vår standard-helper.
+ * Använd den här när endpoint-et läser `@Body()` (t.ex. cancel-reason på
+ * /platform/organizations/:id).
+ */
+export async function delWithBody<T = void>(url: string, body?: unknown): Promise<T> {
+  const { data } = await api.delete<{ data: T }>(url, { data: body })
+  return data?.data as T
+}
