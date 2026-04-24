@@ -258,20 +258,55 @@ enum NotificationType {
   SYSTEM
 }
 
+// ─── Platform / SaaS enums ────────────────────────────────────────────────────
+
+enum PlatformPlan {
+  TRIAL
+  BASIC
+  STANDARD
+  PREMIUM
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum PlatformInvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum ErrorSeverity {
+  CRITICAL
+  ERROR
+  WARNING
+}
+
+enum ErrorSource {
+  API
+  WEB
+  PORTAL
+  ADMIN
+}
+
 // ─── Organization (Tenant in multi-tenant context) ────────────────────────────
 
 model Organization {
-  id          String  @id @default(uuid())
-  name        String
-  orgNumber   String? @unique
-  accountType String  @default("COMPANY")
-  vatNumber   String?
-  email       String
-  phone       String?
-  street      String
-  city        String
-  postalCode  String
-  country     String  @default("SE")
+  id                   String  @id @default(uuid())
+  name                 String
+  orgNumber            String? @unique
+  accountType          String  @default("COMPANY")
+  vatNumber            String?
+  email                String
+  phone                String?
+  street               String
+  city                 String
+  postalCode           String
+  country              String  @default("SE")
   logoUrl              String?
   bankgiro             String?
   paymentTermsDays     Int     @default(30)
@@ -279,55 +314,70 @@ model Organization {
   invoiceTemplate      String?
   morningReportEnabled Boolean @default(false)
 
-  users                User[]
-  properties           Property[]
-  tenants              Tenant[]
-  invoices             Invoice[]
-  accounts             Account[]
-  journalEntries       JournalEntry[]
-  bankTransactions     BankTransaction[]
-  documents            Document[]
-  importJobs           ImportJob[]
-  aiConversations      AiConversation[]
-  aiMemories           AiMemory[]
-  maintenanceTickets   MaintenanceTicket[]
-  rentNotices          RentNotice[]
-  inspections          Inspection[]
-  maintenancePlans     MaintenancePlan[]
-  notifications        Notification[]
-  newsPosts            NewsPost[]
-  sentMessages         SentMessage[]
+  // Platform / SaaS-fält
+  plan               PlatformPlan       @default(TRIAL)
+  status             OrganizationStatus @default(ACTIVE)
+  trialEndsAt        DateTime?
+  billingEmail       String?
+  monthlyFee         Decimal            @default(0) @db.Decimal(10, 2)
+  suspendedAt        DateTime?
+  cancellationReason String?
+
+  users              User[]
+  properties         Property[]
+  tenants            Tenant[]
+  invoices           Invoice[]
+  accounts           Account[]
+  journalEntries     JournalEntry[]
+  bankTransactions   BankTransaction[]
+  documents          Document[]
+  importJobs         ImportJob[]
+  aiConversations    AiConversation[]
+  aiMemories         AiMemory[]
+  maintenanceTickets MaintenanceTicket[]
+  rentNotices        RentNotice[]
+  inspections        Inspection[]
+  maintenancePlans   MaintenancePlan[]
+  notifications      Notification[]
+  newsPosts          NewsPost[]
+  sentMessages       SentMessage[]
+  platformInvoices   PlatformInvoice[]
+  impersonationLogs  ImpersonationLog[]
+  errorLogs          ErrorLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([orgNumber])
+  @@index([status])
+  @@index([plan])
 }
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 
 model User {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   organizationId String
-  email          String   @unique
+  email          String    @unique
   passwordHash   String
   firstName      String
   lastName       String
-  role           UserRole @default(VIEWER)
+  role           UserRole  @default(VIEWER)
   avatarUrl      String?
-  isActive       Boolean  @default(true)
+  isActive       Boolean   @default(true)
   lastLoginAt    DateTime?
 
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  refreshTokens   RefreshToken[]
-  journalEntries  JournalEntry[]
-  documents       Document[]
-  importJobs      ImportJob[]
-  aiConversations AiConversation[]
-  aiMemories      AiMemory[]
-  notifications   Notification[]
-  newsPosts       NewsPost[]
-  sentMessages    SentMessage[]
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  refreshTokens     RefreshToken[]
+  journalEntries    JournalEntry[]
+  documents         Document[]
+  importJobs        ImportJob[]
+  aiConversations   AiConversation[]
+  aiMemories        AiMemory[]
+  notifications     Notification[]
+  newsPosts         NewsPost[]
+  sentMessages      SentMessage[]
+  impersonationLogs ImpersonationLog[] @relation("ImpersonationTargetUser")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -337,9 +387,9 @@ model User {
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  token     String   @unique
+  token     String    @unique
   expiresAt DateTime
   revokedAt DateTime?
 
@@ -354,25 +404,25 @@ model RefreshToken {
 // ─── Property (Fastighet) ─────────────────────────────────────────────────────
 
 model Property {
-  id                     String       @id @default(uuid())
-  organizationId         String
-  name                   String
-  propertyDesignation    String
-  type                   PropertyType
-  street                 String
-  city                   String
-  postalCode             String
-  country                String       @default("SE")
-  totalArea              Decimal      @db.Decimal(10, 2)
-  yearBuilt              Int?
+  id                  String       @id @default(uuid())
+  organizationId      String
+  name                String
+  propertyDesignation String
+  type                PropertyType
+  street              String
+  city                String
+  postalCode          String
+  country             String       @default("SE")
+  totalArea           Decimal      @db.Decimal(10, 2)
+  yearBuilt           Int?
 
-  organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  units                Unit[]
-  documents            Document[]
-  maintenanceTickets   MaintenanceTicket[]
-  inspections          Inspection[]
-  maintenancePlans     MaintenancePlan[]
-  newsPosts            NewsPost[]
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  units              Unit[]
+  documents          Document[]
+  maintenanceTickets MaintenanceTicket[]
+  inspections        Inspection[]
+  maintenancePlans   MaintenancePlan[]
+  newsPosts          NewsPost[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -394,11 +444,11 @@ model Unit {
   rooms       Int?
   monthlyRent Decimal    @db.Decimal(10, 2)
 
-  property             Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  leases               Lease[]
-  documents            Document[]
-  maintenanceTickets   MaintenanceTicket[]
-  inspections          Inspection[]
+  property           Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  leases             Lease[]
+  documents          Document[]
+  maintenanceTickets MaintenanceTicket[]
+  inspections        Inspection[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -427,18 +477,18 @@ model Tenant {
   postalCode     String?
   country        String?    @default("SE")
 
-  ocrNumber      String?    @unique
+  ocrNumber String? @unique
 
-  organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  leases               Lease[]
-  invoices             Invoice[]
-  documents            Document[]
-  maintenanceTickets   MaintenanceTicket[]
-  rentNotices          RentNotice[]
-  inspections          Inspection[]
-  magicLinks           TenantMagicLink[]
-  sessions             TenantSession[]
-  sentMessages         SentMessage[]
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leases             Lease[]
+  invoices           Invoice[]
+  documents          Document[]
+  maintenanceTickets MaintenanceTicket[]
+  rentNotices        RentNotice[]
+  inspections        Inspection[]
+  magicLinks         TenantMagicLink[]
+  sessions           TenantSession[]
+  sentMessages       SentMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -465,12 +515,12 @@ model Lease {
   terminatedAt       DateTime?
   terminationReason  String?
 
-  unit         Unit         @relation(fields: [unitId], references: [id])
-  tenant       Tenant       @relation(fields: [tenantId], references: [id])
-  invoices     Invoice[]
-  documents    Document[]
-  rentNotices  RentNotice[]
-  inspections  Inspection[]
+  unit        Unit         @relation(fields: [unitId], references: [id])
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  invoices    Invoice[]
+  documents   Document[]
+  rentNotices RentNotice[]
+  inspections Inspection[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -502,7 +552,7 @@ model Invoice {
 
   // Tracking-token för e-postspårning (pixel + PDF-länk)
   // Genereras vid skapande, används aldrig om – en faktura, ett token.
-  trackingToken  String        @unique @default(uuid())
+  trackingToken String @unique @default(uuid())
 
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   tenant           Tenant            @relation(fields: [tenantId], references: [id])
@@ -527,29 +577,29 @@ model Invoice {
 // Svensk bokföringslag kräver 7 års retention – soft-delete vid org-borttagning.
 
 model InvoiceEvent {
-  id          String           @id @default(uuid())
-  invoiceId   String
-  type        InvoiceEventType
+  id        String           @id @default(uuid())
+  invoiceId String
+  type      InvoiceEventType
 
   // Aktör – vem/vad som utlöste händelsen
-  actorType   EventActorType
-  actorId     String?          // userId eller null för system/webhook
-  actorLabel  String?          // Denormaliserat: "Anna Svensson" / "System" / "Postmark"
+  actorType  EventActorType
+  actorId    String? // userId eller null för system/webhook
+  actorLabel String? // Denormaliserat: "Anna Svensson" / "System" / "Postmark"
 
   // Händelsespecifik data – flexibel JSON per händelsetyp
   // t.ex. { email, provider, messageId } för e-postleverans
   // t.ex. { amount, paymentMethod, reference } för betalning
   // t.ex. { previousStatus, newStatus } för statusövergång
-  payload     Json             @default("{}")
+  payload Json @default("{}")
 
   // E-postspårnings-metadata
-  ipAddress   String?
-  userAgent   String?
+  ipAddress String?
+  userAgent String?
 
   // Immutabilitetsgaranti: ingen updatedAt
-  createdAt   DateTime         @default(now())
+  createdAt DateTime @default(now())
 
-  invoice     Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   // Komposit-index för tidslinjequery (en faktura, sorterat på tid)
   @@index([invoiceId, createdAt])
@@ -584,10 +634,10 @@ model Account {
   parentId       String?
   isActive       Boolean     @default(true)
 
-  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent         Account?           @relation("AccountHierarchy", fields: [parentId], references: [id])
-  children       Account[]          @relation("AccountHierarchy")
-  journalLines   JournalEntryLine[]
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       Account?           @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children     Account[]          @relation("AccountHierarchy")
+  journalLines JournalEntryLine[]
 
   @@unique([organizationId, number])
   @@index([organizationId])
@@ -708,7 +758,7 @@ model AiConversation {
 model AiMessage {
   id             String   @id @default(uuid())
   conversationId String
-  role           String   // "user" | "assistant"
+  role           String // "user" | "assistant"
   content        String
   createdAt      DateTime @default(now())
 
@@ -726,8 +776,8 @@ model AiMemory {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, userId, key])
   @@index([organizationId, userId])
@@ -747,8 +797,8 @@ model Notification {
   readAt         DateTime?
   createdAt      DateTime         @default(now())
 
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, userId])
   @@index([read])
@@ -781,40 +831,40 @@ model ImportJob {
 // ─── Maintenance (Underhåll) ──────────────────────────────────────────────────
 
 model MaintenanceTicket {
-  id              String              @id @default(uuid())
-  ticketNumber    String
-  organizationId  String
-  propertyId      String
-  unitId          String?
-  tenantId        String?
-  reportedById    String?
-  assignedToId    String?
+  id             String  @id @default(uuid())
+  ticketNumber   String
+  organizationId String
+  propertyId     String
+  unitId         String?
+  tenantId       String?
+  reportedById   String?
+  assignedToId   String?
 
-  title           String
-  description     String              @db.Text
-  category        MaintenanceCategory @default(OTHER)
-  priority        MaintenancePriority @default(NORMAL)
-  status          MaintenanceStatus   @default(NEW)
+  title       String
+  description String              @db.Text
+  category    MaintenanceCategory @default(OTHER)
+  priority    MaintenancePriority @default(NORMAL)
+  status      MaintenanceStatus   @default(NEW)
 
-  estimatedCost   Decimal?            @db.Decimal(10, 2)
-  actualCost      Decimal?            @db.Decimal(10, 2)
+  estimatedCost Decimal? @db.Decimal(10, 2)
+  actualCost    Decimal? @db.Decimal(10, 2)
 
-  scheduledDate   DateTime?
-  completedAt     DateTime?
+  scheduledDate DateTime?
+  completedAt   DateTime?
 
-  tenantToken     String?             @unique
-  tenantNotified  Boolean             @default(false)
+  tenantToken    String? @unique
+  tenantNotified Boolean @default(false)
 
-  images          MaintenanceImage[]
-  comments        MaintenanceComment[]
+  images   MaintenanceImage[]
+  comments MaintenanceComment[]
 
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  organization    Organization        @relation(fields: [organizationId], references: [id])
-  property        Property            @relation(fields: [propertyId], references: [id])
-  unit            Unit?               @relation(fields: [unitId], references: [id])
-  tenant          Tenant?             @relation(fields: [tenantId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+  property     Property     @relation(fields: [propertyId], references: [id])
+  unit         Unit?        @relation(fields: [unitId], references: [id])
+  tenant       Tenant?      @relation(fields: [tenantId], references: [id])
 
   @@unique([organizationId, ticketNumber])
   @@index([organizationId])
@@ -830,7 +880,7 @@ model MaintenanceImage {
   size      Int
   createdAt DateTime @default(now())
 
-  ticket    MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticket MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 }
 
 model MaintenanceComment {
@@ -841,7 +891,7 @@ model MaintenanceComment {
   isInternal Boolean  @default(true)
   createdAt  DateTime @default(now())
 
-  ticket    MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticket MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 }
 
 // ─── Rent Notice (Hyresavi) ───────────────────────────────────────────────────
@@ -881,37 +931,37 @@ model RentNotice {
 // ─── Inspection (Besiktning) ──────────────────────────────────────────────────
 
 model Inspection {
-  id              String           @id @default(uuid())
-  organizationId  String
-  propertyId      String
-  unitId          String
-  leaseId         String?
-  tenantId        String?
-  inspectedById   String
+  id             String  @id @default(uuid())
+  organizationId String
+  propertyId     String
+  unitId         String
+  leaseId        String?
+  tenantId       String?
+  inspectedById  String
 
-  type            InspectionType
-  status          InspectionStatus  @default(SCHEDULED)
-  scheduledDate   DateTime
-  completedAt     DateTime?
+  type          InspectionType
+  status        InspectionStatus @default(SCHEDULED)
+  scheduledDate DateTime
+  completedAt   DateTime?
 
-  overallCondition  String?  @db.Text
-  notes             String?  @db.Text
+  overallCondition String? @db.Text
+  notes            String? @db.Text
 
   tenantSignature   String?
   landlordSignature String?
   signedAt          DateTime?
 
-  items           InspectionItem[]
-  images          InspectionImage[]
+  items  InspectionItem[]
+  images InspectionImage[]
 
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  property        Property          @relation(fields: [propertyId], references: [id])
-  unit            Unit              @relation(fields: [unitId], references: [id])
-  lease           Lease?            @relation(fields: [leaseId], references: [id])
-  tenant          Tenant?           @relation(fields: [tenantId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property     Property     @relation(fields: [propertyId], references: [id])
+  unit         Unit         @relation(fields: [unitId], references: [id])
+  lease        Lease?       @relation(fields: [leaseId], references: [id])
+  tenant       Tenant?      @relation(fields: [tenantId], references: [id])
 
   @@index([organizationId])
   @@index([unitId])
@@ -919,45 +969,45 @@ model Inspection {
 }
 
 model InspectionItem {
-  id            String                   @id @default(uuid())
-  inspectionId  String
-  room          String
-  item          String
-  condition     InspectionItemCondition  @default(GOOD)
-  notes         String?
-  repairCost    Decimal?                 @db.Decimal(10, 2)
+  id           String                  @id @default(uuid())
+  inspectionId String
+  room         String
+  item         String
+  condition    InspectionItemCondition @default(GOOD)
+  notes        String?
+  repairCost   Decimal?                @db.Decimal(10, 2)
 
-  inspection    Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
 }
 
 // ─── Maintenance Plan (Underhållsplan) ────────────────────────────────────────
 
 model MaintenancePlan {
-  id             String                  @id @default(uuid())
+  id             String @id @default(uuid())
   organizationId String
   propertyId     String
 
-  title          String
-  description    String?                 @db.Text
-  category       MaintenancePlanCategory @default(OTHER)
-  status         MaintenancePlanStatus   @default(PLANNED)
+  title       String
+  description String?                 @db.Text
+  category    MaintenancePlanCategory @default(OTHER)
+  status      MaintenancePlanStatus   @default(PLANNED)
 
-  plannedYear    Int
-  estimatedCost  Decimal                 @db.Decimal(12, 2)
-  actualCost     Decimal?                @db.Decimal(12, 2)
+  plannedYear   Int
+  estimatedCost Decimal  @db.Decimal(12, 2)
+  actualCost    Decimal? @db.Decimal(12, 2)
 
-  priority       Int                     @default(2)
-  interval       Int?
-  lastDoneYear   Int?
+  priority     Int  @default(2)
+  interval     Int?
+  lastDoneYear Int?
 
-  notes          String?                 @db.Text
-  completedAt    DateTime?
+  notes       String?   @db.Text
+  completedAt DateTime?
 
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  property       Property                @relation(fields: [propertyId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property     Property     @relation(fields: [propertyId], references: [id])
 
   @@index([organizationId])
   @@index([propertyId])
@@ -965,61 +1015,61 @@ model MaintenancePlan {
 }
 
 model InspectionImage {
-  id            String   @id @default(uuid())
-  inspectionId  String
-  filename      String
-  path          String
-  caption       String?
-  room          String?
-  size          Int
-  createdAt     DateTime @default(now())
+  id           String   @id @default(uuid())
+  inspectionId String
+  filename     String
+  path         String
+  caption      String?
+  room         String?
+  size         Int
+  createdAt    DateTime @default(now())
 
-  inspection    Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
 }
 
 // ─── Tenant Portal ────────────────────────────────────────────────────────────
 
 model TenantMagicLink {
-  id         String    @id @default(uuid())
-  tenantId   String
-  token      String    @unique
-  expiresAt  DateTime
-  usedAt     DateTime?
-  createdAt  DateTime  @default(now())
+  id        String    @id @default(uuid())
+  tenantId  String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 
-  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([token])
   @@index([tenantId])
 }
 
 model TenantSession {
-  id         String   @id @default(uuid())
-  tenantId   String
-  token      String   @unique
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  tenantId  String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 
-  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([token])
 }
 
 model NewsPost {
-  id             String       @id @default(uuid())
+  id             String    @id @default(uuid())
   organizationId String
   title          String
-  content        String       @db.Text
+  content        String    @db.Text
   publishedAt    DateTime?
   createdById    String
-  targetAll      Boolean      @default(true)
+  targetAll      Boolean   @default(true)
   propertyId     String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  property       Property?    @relation(fields: [propertyId], references: [id])
-  createdBy      User         @relation(fields: [createdById], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+  property     Property?    @relation(fields: [propertyId], references: [id])
+  createdBy    User         @relation(fields: [createdById], references: [id])
 
   @@index([organizationId])
 }
@@ -1041,9 +1091,89 @@ model SentMessage {
   errorLog       Json?
   createdAt      DateTime      @default(now())
 
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  tenant         Tenant?       @relation(fields: [tenantId], references: [id])
-  sentBy         User          @relation(fields: [sentById], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tenant       Tenant?      @relation(fields: [tenantId], references: [id])
+  sentBy       User         @relation(fields: [sentById], references: [id])
 
   @@index([organizationId])
+}
+
+// ─── Platform (Super-admin SaaS) ──────────────────────────────────────────────
+
+model PlatformUser {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  totpSecret   String?
+  totpEnabled  Boolean   @default(false)
+  lastLoginAt  DateTime?
+
+  impersonationLogs ImpersonationLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+}
+
+model PlatformInvoice {
+  id             String                @id @default(uuid())
+  organizationId String
+  invoiceNumber  String                @unique
+  amount         Decimal               @db.Decimal(10, 2)
+  status         PlatformInvoiceStatus @default(PENDING)
+  description    String?
+  dueDate        DateTime
+  paidAt         DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model ImpersonationLog {
+  id             String    @id @default(uuid())
+  platformUserId String
+  organizationId String
+  targetUserId   String
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  ipAddress      String?
+  userAgent      String?
+  reason         String?
+
+  platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  targetUser   User         @relation("ImpersonationTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@index([platformUserId])
+  @@index([organizationId])
+  @@index([targetUserId])
+  @@index([startedAt])
+}
+
+model ErrorLog {
+  id             String        @id @default(uuid())
+  organizationId String?
+  severity       ErrorSeverity
+  source         ErrorSource
+  message        String        @db.Text
+  stack          String?       @db.Text
+  context        Json          @default("{}")
+  resolved       Boolean       @default(false)
+  resolvedAt     DateTime?
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, severity, resolved])
+  @@index([createdAt])
 }

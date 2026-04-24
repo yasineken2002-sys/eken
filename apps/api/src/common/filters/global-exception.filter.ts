@@ -1,19 +1,44 @@
 import type { ExceptionFilter, ArgumentsHost } from '@nestjs/common'
-import { Catch, HttpException, HttpStatus } from '@nestjs/common'
+import { Catch, HttpException, HttpStatus, Injectable } from '@nestjs/common'
 import type { FastifyReply, FastifyRequest } from 'fastify'
+import { PlatformErrorsService } from '../../platform/errors/platform-errors.service'
+
+interface AuthedRequest extends FastifyRequest {
+  user?: { sub?: string; organizationId?: string }
+}
 
 @Catch()
-export class HttpExceptionFilter implements ExceptionFilter {
+@Injectable()
+export class GlobalExceptionFilter implements ExceptionFilter {
+  constructor(private readonly errorsService: PlatformErrorsService) {}
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp()
     const reply = ctx.getResponse<FastifyReply>()
-    const request = ctx.getRequest<FastifyRequest>()
+    const request = ctx.getRequest<AuthedRequest>()
 
     const status =
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR
 
-    if (!(exception instanceof HttpException)) {
-      console.error('[HttpExceptionFilter] Unhandled exception:', exception)
+    if (status >= 500) {
+      const message = exception instanceof Error ? exception.message : String(exception)
+      const stack = exception instanceof Error ? exception.stack : undefined
+
+      console.error('[GlobalExceptionFilter] Unhandled exception:', exception)
+
+      void this.errorsService.logInternalError({
+        severity: 'CRITICAL',
+        source: 'API',
+        message,
+        ...(stack ? { stack } : {}),
+        context: {
+          path: request.url,
+          method: request.method,
+          userId: request.user?.sub ?? null,
+          ip: request.ip,
+        },
+        ...(request.user?.organizationId ? { organizationId: request.user.organizationId } : {}),
+      })
     }
 
     let message = 'Internal server error'
@@ -27,7 +52,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
         const r = response as Record<string, unknown>
         message = (r['message'] as string) ?? message
         if (Array.isArray(r['message'])) {
-          // class-validator errors
           details = { validation: r['message'] as string[] }
           message = 'Valideringsfel'
         }

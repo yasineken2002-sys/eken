@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common'
+import { Controller, Post, Get, Body, HttpCode, HttpStatus } from '@nestjs/common'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { AuthService } from './auth.service'
@@ -45,5 +45,26 @@ export class AuthController {
   async logout(@CurrentUser() user: JwtPayload) {
     await this.auth.logout(user.sub)
     return null
+  }
+
+  @Get('me')
+  @ApiOperation({
+    summary:
+      'Hämta inloggad user + organization. Returnerar impersonation-info om token är impersonerad.',
+  })
+  async me(
+    @CurrentUser() payload: JwtPayload & { impersonatedBy?: string; impersonationLogId?: string },
+  ) {
+    const base = await this.auth.me(payload.sub, payload.organizationId)
+    return {
+      ...base,
+      impersonation: payload.impersonatedBy
+        ? {
+            active: true,
+            platformUserId: payload.impersonatedBy,
+            logId: payload.impersonationLogId ?? null,
+          }
+        : null,
+    }
   }
 }

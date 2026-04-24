@@ -8,7 +8,7 @@ import multipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
 import * as path from 'path'
 import { AppModule } from './app.module'
-import { HttpExceptionFilter } from './common/filters/http-exception.filter'
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { TransformInterceptor } from './common/interceptors/transform.interceptor'
 
 async function bootstrap() {
@@ -38,9 +38,11 @@ async function bootstrap() {
 
   // CORS
   const rawOrigins = config.get<string>('ALLOWED_ORIGINS', '')
+  const adminUrl = config.get<string>('ADMIN_URL', 'http://localhost:5175')
+  const portalUrl = config.get<string>('PORTAL_URL', 'http://localhost:5174')
   const allowedOrigins = rawOrigins
     ? rawOrigins.split(',').map((o) => o.trim())
-    : [appUrl, 'http://localhost:5174', 'https://*.app.github.dev']
+    : [appUrl, portalUrl, adminUrl, 'https://*.app.github.dev']
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -72,7 +74,7 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   )
-  app.useGlobalFilters(new HttpExceptionFilter())
+  app.useGlobalFilters(app.get(GlobalExceptionFilter))
   app.useGlobalInterceptors(new TransformInterceptor())
 
   // Swagger
