@@ -93,34 +93,6 @@ export default defineConfig(({ mode }) => ({
   build: {
     target: 'es2022',
     sourcemap: mode === 'development',
-    rollupOptions: {
-      output: {
-        // Manuell chunk-splitting för optimal cache-utnyttjning
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react/jsx-runtime'],
-          'vendor-router': ['@tanstack/react-router', '@tanstack/react-query'],
-          'vendor-ui': [
-            'framer-motion',
-            'lucide-react',
-            '@radix-ui/react-dialog',
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-select',
-            '@radix-ui/react-tooltip',
-            '@radix-ui/react-toast',
-          ],
-          'vendor-forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
-          'vendor-utils': [
-            'axios',
-            'zustand',
-            'date-fns',
-            'clsx',
-            'tailwind-merge',
-            'class-variance-authority',
-          ],
-        },
-      },
-    },
-    // Varna om chunks > 500 kB
     chunkSizeWarningLimit: 500,
   },
 
