@@ -40,22 +40,37 @@ async function bootstrap() {
   const rawOrigins = config.get<string>('ALLOWED_ORIGINS', '')
   const adminUrl = config.get<string>('ADMIN_URL', 'http://localhost:5175')
   const portalUrl = config.get<string>('PORTAL_URL', 'http://localhost:5174')
-  const allowedOrigins = rawOrigins
-    ? rawOrigins.split(',').map((o) => o.trim())
-    : [appUrl, portalUrl, adminUrl, 'https://*.app.github.dev']
+  const normalizeOrigin = (o: string) => o.trim().replace(/\/+$/, '').toLowerCase()
+  const allowedOrigins = (
+    rawOrigins ? rawOrigins.split(',') : [appUrl, portalUrl, adminUrl, 'https://*.app.github.dev']
+  )
+    .map(normalizeOrigin)
+    .filter((o) => o.length > 0)
+
+  console.warn(`[CORS] ALLOWED_ORIGINS raw: ${JSON.stringify(rawOrigins)}`)
+  console.warn(`[CORS] Allowed origins parsed: ${JSON.stringify(allowedOrigins)}`)
 
   app.enableCors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true)
+      const normalizedOrigin = normalizeOrigin(origin)
       const allowed = allowedOrigins.some((o) => {
         if (o.includes('*')) {
           const regex = new RegExp('^' + o.replace(/\*/g, '.*') + '$')
-          return regex.test(origin)
+          return regex.test(normalizedOrigin)
         }
-        return o === origin
+        return o === normalizedOrigin
       })
-      if (allowed) callback(null, true)
-      else callback(new Error('Not allowed by CORS'))
+      if (allowed) {
+        callback(null, true)
+      } else {
+        console.warn(
+          `[CORS] BLOCKED origin=${JSON.stringify(origin)} normalized=${JSON.stringify(
+            normalizedOrigin,
+          )} allowed=${JSON.stringify(allowedOrigins)}`,
+        )
+        callback(new Error('Not allowed by CORS'))
+      }
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
