@@ -18,6 +18,7 @@
     "db:generate": "prisma generate",
     "db:seed": "ts-node prisma/seed.ts",
     "db:seed:platform": "ts-node prisma/seed-platform.ts",
+    "db:seed:properties": "ts-node prisma/seed-properties.ts",
     "db:studio": "prisma studio"
   },
   "dependencies": {
