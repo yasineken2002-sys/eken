@@ -6,6 +6,7 @@
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "node dist/main",
+    "postinstall": "prisma generate",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "jest",
