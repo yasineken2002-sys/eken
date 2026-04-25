@@ -41,7 +41,8 @@ COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
-RUN mkdir -p /app/apps/api/uploads/logos
+COPY --from=builder /app/apps/api/scripts ./apps/api/scripts
+RUN mkdir -p /app/apps/api/uploads/logos && chmod +x /app/apps/api/scripts/migrate-and-start.sh
 
 EXPOSE 8080
-CMD ["sh", "-c", "cd /app/apps/api && npx prisma migrate deploy && exec node dist/main.js"]
+CMD ["/app/apps/api/scripts/migrate-and-start.sh"]

@@ -12,10 +12,29 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { TransformInterceptor } from './common/interceptors/transform.interceptor'
 
 async function bootstrap() {
+  // Force line-buffered stdout so NestJS logs flush even on crash starts on
+  // Railway / non-TTY environments. Without this, block-buffered stdout can
+  // swallow all bootstrap output if the process exits before the buffer fills.
+  const stdoutHandle = (
+    process.stdout as unknown as { _handle?: { setBlocking?: (b: boolean) => void } }
+  )._handle
+  stdoutHandle?.setBlocking?.(true)
+
+  console.warn('[bootstrap] entering main.ts')
+
+  process.on('uncaughtException', (err) => {
+    console.error('[bootstrap] uncaughtException:', err)
+    process.exit(1)
+  })
+  process.on('unhandledRejection', (reason) => {
+    console.error('[bootstrap] unhandledRejection:', reason)
+    process.exit(1)
+  })
+
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter())
 
   const config = app.get(ConfigService)
-  const port = config.get<number>('PORT', 3000)
+  const port = Number(config.get<string | number>('PORT', 3000))
   const appUrl = config.get<string>('APP_URL', 'http://localhost:5173')
 
   // Security
