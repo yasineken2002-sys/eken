@@ -20,7 +20,7 @@ async function main() {
     return
   }
 
-  const tempPassword = generateTempPassword()
+  const tempPassword = process.env['PLATFORM_SEED_PASSWORD'] ?? generateTempPassword()
   const passwordHash = await bcrypt.hash(tempPassword, 12)
 
   const firstName = process.env['PLATFORM_SEED_FIRST_NAME'] ?? 'Super'
