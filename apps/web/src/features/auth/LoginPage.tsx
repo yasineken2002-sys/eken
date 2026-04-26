@@ -109,7 +109,7 @@ export function LoginPage({ onNavigate }: Props) {
     try {
       const response = await loginApi(data)
       setAuth(response)
-      onNavigate('dashboard')
+      onNavigate(response.user.mustChangePassword ? 'change-password' : 'dashboard')
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
@@ -182,6 +182,16 @@ export function LoginPage({ onNavigate }: Props) {
               {errors.password && (
                 <p className="text-[12px] text-red-500">{errors.password.message}</p>
               )}
+            </div>
+
+            <div className="-mt-1 flex justify-end">
+              <button
+                type="button"
+                onClick={() => onNavigate('forgot-password')}
+                className="text-[12.5px] font-medium text-blue-600 transition-colors hover:text-blue-700"
+              >
+                Glömt lösenord?
+              </button>
             </div>
 
             {apiError && (

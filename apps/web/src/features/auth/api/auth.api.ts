@@ -29,3 +29,30 @@ export async function registerApi(dto: RegisterInput): Promise<AuthResponse> {
 export async function logoutApi(): Promise<void> {
   await api.post('/auth/logout')
 }
+
+// ── Lösenordshantering ──────────────────────────────────────────────────────
+
+export async function changePasswordApi(input: {
+  currentPassword: string
+  newPassword: string
+}): Promise<void> {
+  await api.post('/auth/change-password', input)
+}
+
+export async function forgotPasswordApi(email: string): Promise<void> {
+  await api.post('/auth/forgot-password', { email })
+}
+
+export async function resetPasswordApi(input: {
+  token: string
+  newPassword: string
+}): Promise<void> {
+  await api.post('/auth/reset-password', input)
+}
+
+export async function acceptInviteApi(input: {
+  token: string
+  newPassword: string
+}): Promise<AuthResponse> {
+  return post<AuthResponse>('/auth/accept-invite', input)
+}

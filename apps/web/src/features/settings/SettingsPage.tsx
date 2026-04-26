@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Upload, Building2, AlertCircle, Check, Brain, Info } from 'lucide-react'
+import { Upload, Building2, AlertCircle, Check, Brain, Info, KeyRound, Lock } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -10,7 +10,22 @@ import { Input } from '@/components/ui/Input'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useOrganization, useUpdateOrganization, useUploadLogo } from './hooks/useSettings'
 import { clearAiMemory } from '@/features/ai/api/ai.api'
+import { UsersPanel } from '@/features/users/UsersPanel'
+import { useAuthStore } from '@/stores/auth.store'
+import type { Route } from '@/App'
 import { cn } from '@/lib/cn'
+
+interface Props {
+  onNavigate: (r: Route) => void
+}
+
+type SettingsTab = 'general' | 'security' | 'users'
+
+const TABS: { id: SettingsTab; label: string; ownerOnly?: boolean }[] = [
+  { id: 'general', label: 'Allmänt' },
+  { id: 'security', label: 'Säkerhet' },
+  { id: 'users', label: 'Användare' },
+]
 
 // ─── Form schema ──────────────────────────────────────────────────────────────
 
@@ -23,10 +38,12 @@ type PaymentFormValues = z.infer<typeof PaymentFormSchema>
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export function SettingsPage() {
+export function SettingsPage({ onNavigate }: Props) {
   const { data: org, isLoading, isError } = useOrganization()
   const updateMutation = useUpdateOrganization()
   const uploadMutation = useUploadLogo()
+  const [tab, setTab] = useState<SettingsTab>('general')
+  const currentUser = useAuthStore((s) => s.user)
 
   const [savedFlash, setSavedFlash] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -157,479 +174,552 @@ export function SettingsPage() {
     <PageWrapper id="settings">
       <PageHeader title="Inställningar" description="Hantera din organisations uppgifter" />
 
-      {isLoading ? (
-        <div className="mt-6 space-y-5">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-48 animate-pulse rounded-2xl bg-gray-100" />
-          ))}
-        </div>
-      ) : (
-        <div className="mt-6 space-y-5">
-          {/* ── Section 1: Logotyp ──────────────────────────────────────────── */}
+      {/* Tab-väljare */}
+      <div className="mt-6 flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={cn(
+              'h-8 rounded-lg px-3 text-[13px] font-medium transition-all',
+              tab === t.id
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700',
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'security' && (
+        <div className="mt-5 space-y-5">
           <section className="rounded-2xl border border-gray-100 bg-white p-5">
-            <h2 className="mb-4 text-[14px] font-semibold text-gray-800">Företagslogotyp</h2>
-
-            <div className="flex items-start gap-6">
-              {/* Current logo */}
-              {logoUrl && (
-                <div className="flex-shrink-0">
-                  <img
-                    src={logoUrl}
-                    alt="Logotyp"
-                    className="h-20 w-20 rounded-xl border border-gray-100 object-contain p-2"
-                  />
-                </div>
-              )}
-
-              {/* Upload zone */}
-              <div className="flex-1">
-                <div
-                  className={cn(
-                    'flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-colors',
-                    uploadMutation.isPending
-                      ? 'border-blue-200 bg-blue-50'
-                      : 'border-[#E5E7EB] hover:border-blue-300 hover:bg-blue-50/40',
-                  )}
-                  onClick={() => fileInputRef.current?.click()}
-                  onDrop={handleDrop}
-                  onDragOver={(e) => e.preventDefault()}
-                >
-                  {uploadMutation.isPending ? (
-                    <div className="flex items-center gap-2 text-[13px] text-blue-600">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-                      Laddar upp…
-                    </div>
-                  ) : (
-                    <>
-                      <Upload size={20} strokeWidth={1.5} className="mb-2 text-gray-400" />
-                      <p className="text-[13px] font-medium text-gray-700">
-                        {logoUrl ? 'Byt logotyp' : 'Ladda upp logotyp'}
-                      </p>
-                      <p className="mt-1 text-[12px] text-gray-400">
-                        PNG, JPEG eller WebP · max 2 MB
-                      </p>
-                    </>
-                  )}
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleFileSelect(file)
-                  }}
-                />
-                {uploadError && (
-                  <div className="mt-2 flex items-center gap-1.5 text-[12px] text-red-600">
-                    <AlertCircle size={13} />
-                    {uploadError}
-                  </div>
-                )}
+            <div className="mb-4 flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50">
+                <KeyRound size={13} strokeWidth={1.8} className="text-blue-600" />
               </div>
+              <h2 className="text-[14px] font-semibold text-gray-800">Lösenord</h2>
+            </div>
+            <p className="text-[13px] text-gray-500">
+              Ditt lösenord används för att logga in på Eken. Vi rekommenderar att du byter lösenord
+              regelbundet och aldrig delar det med någon.
+            </p>
+            <div className="mt-4">
+              <Button variant="primary" size="sm" onClick={() => onNavigate('change-password')}>
+                <Lock size={13} strokeWidth={1.8} className="mr-1.5" />
+                Byt lösenord
+              </Button>
             </div>
           </section>
 
-          {/* ── Section 2: Betalningsinformation ────────────────────────────── */}
           <section className="rounded-2xl border border-gray-100 bg-white p-5">
-            <h2 className="mb-4 text-[14px] font-semibold text-gray-800">Betalningsinformation</h2>
+            <h2 className="mb-2 text-[14px] font-semibold text-gray-800">Inloggad som</h2>
+            <p className="text-[13px] text-gray-500">
+              {currentUser?.email} ·{' '}
+              {currentUser?.role === 'OWNER'
+                ? 'Ägare'
+                : currentUser?.role === 'ADMIN'
+                  ? 'Administratör'
+                  : currentUser?.role === 'MANAGER'
+                    ? 'Förvaltare'
+                    : currentUser?.role === 'ACCOUNTANT'
+                      ? 'Ekonomi'
+                      : 'Läsbehörighet'}
+            </p>
+          </section>
+        </div>
+      )}
 
-            <form onSubmit={handleSubmit(handleSave)} className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Input
-                  label="Bankgiro"
-                  placeholder="1234-5678"
-                  error={errors.bankgiro?.message}
-                  {...register('bankgiro')}
-                />
-                <Input
-                  label="Betalningsvillkor (dagar)"
-                  type="number"
-                  placeholder="30"
-                  error={errors.paymentTermsDays?.message}
-                  {...register('paymentTermsDays')}
-                />
+      {tab === 'users' && (
+        <div className="mt-5">
+          <UsersPanel />
+        </div>
+      )}
+
+      {tab === 'general' &&
+        (isLoading ? (
+          <div className="mt-5 space-y-5">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-48 animate-pulse rounded-2xl bg-gray-100" />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-5 space-y-5">
+            {/* ── Section 1: Logotyp ──────────────────────────────────────────── */}
+            <section className="rounded-2xl border border-gray-100 bg-white p-5">
+              <h2 className="mb-4 text-[14px] font-semibold text-gray-800">Företagslogotyp</h2>
+
+              <div className="flex items-start gap-6">
+                {/* Current logo */}
+                {logoUrl && (
+                  <div className="flex-shrink-0">
+                    <img
+                      src={logoUrl}
+                      alt="Logotyp"
+                      className="h-20 w-20 rounded-xl border border-gray-100 object-contain p-2"
+                    />
+                  </div>
+                )}
+
+                {/* Upload zone */}
+                <div className="flex-1">
+                  <div
+                    className={cn(
+                      'flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-colors',
+                      uploadMutation.isPending
+                        ? 'border-blue-200 bg-blue-50'
+                        : 'border-[#E5E7EB] hover:border-blue-300 hover:bg-blue-50/40',
+                    )}
+                    onClick={() => fileInputRef.current?.click()}
+                    onDrop={handleDrop}
+                    onDragOver={(e) => e.preventDefault()}
+                  >
+                    {uploadMutation.isPending ? (
+                      <div className="flex items-center gap-2 text-[13px] text-blue-600">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+                        Laddar upp…
+                      </div>
+                    ) : (
+                      <>
+                        <Upload size={20} strokeWidth={1.5} className="mb-2 text-gray-400" />
+                        <p className="text-[13px] font-medium text-gray-700">
+                          {logoUrl ? 'Byt logotyp' : 'Ladda upp logotyp'}
+                        </p>
+                        <p className="mt-1 text-[12px] text-gray-400">
+                          PNG, JPEG eller WebP · max 2 MB
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) handleFileSelect(file)
+                    }}
+                  />
+                  {uploadError && (
+                    <div className="mt-2 flex items-center gap-1.5 text-[12px] text-red-600">
+                      <AlertCircle size={13} />
+                      {uploadError}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* ── Section 2: Betalningsinformation ────────────────────────────── */}
+            <section className="rounded-2xl border border-gray-100 bg-white p-5">
+              <h2 className="mb-4 text-[14px] font-semibold text-gray-800">
+                Betalningsinformation
+              </h2>
+
+              <form onSubmit={handleSubmit(handleSave)} className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Input
+                    label="Bankgiro"
+                    placeholder="1234-5678"
+                    error={errors.bankgiro?.message}
+                    {...register('bankgiro')}
+                  />
+                  <Input
+                    label="Betalningsvillkor (dagar)"
+                    type="number"
+                    placeholder="30"
+                    error={errors.paymentTermsDays?.message}
+                    {...register('paymentTermsDays')}
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    loading={updateMutation.isPending}
+                  >
+                    Spara
+                  </Button>
+                  {savedFlash && (
+                    <span className="text-[13px] font-medium text-emerald-600">Sparat!</span>
+                  )}
+                </div>
+              </form>
+            </section>
+
+            {/* ── Section 3: Fakturainställningar ─────────────────────────────── */}
+            <section className="rounded-2xl border border-gray-100 bg-white p-5">
+              <h2 className="mb-5 text-[14px] font-semibold text-gray-800">Fakturainställningar</h2>
+
+              {/* FÄRGVAL */}
+              <div className="mb-6">
+                <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
+                  Fakturafärg
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  {[
+                    { hex: '#1a6b3c', label: 'Grön' },
+                    { hex: '#1a3a6b', label: 'Blå' },
+                    { hex: '#6b1a1a', label: 'Röd' },
+                    { hex: '#4a1a6b', label: 'Lila' },
+                    { hex: '#1a5a6b', label: 'Petrol' },
+                    { hex: '#2c2c2c', label: 'Svart' },
+                  ].map(({ hex }) => (
+                    <button
+                      key={hex}
+                      type="button"
+                      onClick={() => setInvoiceColor(hex)}
+                      title={hex}
+                      className={cn(
+                        'relative flex h-8 w-8 items-center justify-center rounded-full transition-all active:scale-[0.97]',
+                        invoiceColor === hex ? 'ring-2 ring-offset-2' : '',
+                      )}
+                      style={{
+                        backgroundColor: hex,
+                        ...(invoiceColor === hex ? { ringColor: hex } : {}),
+                      }}
+                    >
+                      {invoiceColor === hex && (
+                        <Check size={14} strokeWidth={2.5} color="#ffffff" />
+                      )}
+                    </button>
+                  ))}
+                  <div className="ml-2 flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={invoiceColor}
+                      onChange={(e) => setInvoiceColor(e.target.value)}
+                      className="h-8 w-8 cursor-pointer rounded-full border border-[#E5E7EB] p-0.5"
+                      title="Anpassad färg"
+                    />
+                    <span className="text-[12px] text-gray-400">Anpassad</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* FAKTURAMALLAR */}
+              <div className="mb-5">
+                <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
+                  Fakturamall
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  {(
+                    [
+                      { value: 'classic', label: 'Klassisk' },
+                      { value: 'modern', label: 'Modern' },
+                      { value: 'minimal', label: 'Minimal' },
+                    ] as const
+                  ).map((tpl) => (
+                    <button
+                      key={tpl.value}
+                      type="button"
+                      onClick={() => setInvoiceTemplate(tpl.value)}
+                      className={cn(
+                        'rounded-xl border p-3 text-left transition-all active:scale-[0.97]',
+                        invoiceTemplate === tpl.value
+                          ? 'border-2 shadow-sm'
+                          : 'border-gray-100 hover:border-gray-300',
+                      )}
+                      style={
+                        invoiceTemplate === tpl.value
+                          ? { borderColor: invoiceColor, backgroundColor: `${invoiceColor}08` }
+                          : {}
+                      }
+                    >
+                      {/* SVG thumbnail */}
+                      <svg
+                        width="100"
+                        height="70"
+                        viewBox="0 0 100 70"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="mb-2 w-full"
+                      >
+                        {tpl.value === 'classic' && (
+                          <>
+                            <rect width="100" height="70" rx="4" fill="#f9fafb" />
+                            <rect
+                              x="6"
+                              y="8"
+                              width="28"
+                              height="8"
+                              rx="2"
+                              fill={invoiceColor}
+                              opacity="0.8"
+                            />
+                            <rect x="66" y="8" width="28" height="8" rx="2" fill={invoiceColor} />
+                            <rect x="6" y="24" width="88" height="1" fill="#e5e7eb" />
+                            <rect x="6" y="30" width="60" height="4" rx="1" fill="#d1d5db" />
+                            <rect x="6" y="38" width="88" height="3" rx="1" fill="#e5e7eb" />
+                            <rect x="6" y="44" width="88" height="3" rx="1" fill="#e5e7eb" />
+                            <rect x="6" y="50" width="88" height="3" rx="1" fill="#e5e7eb" />
+                            <rect
+                              x="60"
+                              y="58"
+                              width="34"
+                              height="5"
+                              rx="1"
+                              fill={invoiceColor}
+                              opacity="0.6"
+                            />
+                          </>
+                        )}
+                        {tpl.value === 'modern' && (
+                          <>
+                            <rect width="100" height="70" rx="4" fill="#f9fafb" />
+                            <rect width="100" height="20" rx="4" fill={invoiceColor} />
+                            <rect x="0" y="16" width="100" height="4" fill={invoiceColor} />
+                            <rect
+                              x="6"
+                              y="5"
+                              width="24"
+                              height="10"
+                              rx="2"
+                              fill="white"
+                              opacity="0.8"
+                            />
+                            <rect
+                              x="66"
+                              y="5"
+                              width="28"
+                              height="10"
+                              rx="2"
+                              fill="white"
+                              opacity="0.6"
+                            />
+                            <rect x="6" y="28" width="60" height="4" rx="1" fill="#d1d5db" />
+                            <rect x="6" y="36" width="88" height="3" rx="1" fill="#e5e7eb" />
+                            <rect x="6" y="42" width="88" height="3" rx="1" fill="#e5e7eb" />
+                            <rect x="6" y="48" width="88" height="3" rx="1" fill="#e5e7eb" />
+                            <rect
+                              x="60"
+                              y="58"
+                              width="34"
+                              height="5"
+                              rx="1"
+                              fill={invoiceColor}
+                              opacity="0.6"
+                            />
+                          </>
+                        )}
+                        {tpl.value === 'minimal' && (
+                          <>
+                            <rect width="100" height="70" rx="4" fill="#f9fafb" />
+                            <rect
+                              x="6"
+                              y="8"
+                              width="40"
+                              height="7"
+                              rx="2"
+                              fill={invoiceColor}
+                              opacity="0.9"
+                            />
+                            <rect
+                              x="6"
+                              y="18"
+                              width="88"
+                              height="2"
+                              fill={invoiceColor}
+                              opacity="0.4"
+                            />
+                            <rect x="6" y="28" width="50" height="4" rx="1" fill="#d1d5db" />
+                            <rect x="6" y="36" width="88" height="3" rx="1" fill="#e5e7eb" />
+                            <rect x="6" y="42" width="88" height="3" rx="1" fill="#e5e7eb" />
+                            <rect x="6" y="48" width="88" height="3" rx="1" fill="#e5e7eb" />
+                            <rect
+                              x="60"
+                              y="58"
+                              width="34"
+                              height="5"
+                              rx="1"
+                              fill={invoiceColor}
+                              opacity="0.6"
+                            />
+                          </>
+                        )}
+                      </svg>
+                      <p
+                        className="text-center text-[13px] font-medium"
+                        style={{ color: invoiceTemplate === tpl.value ? invoiceColor : '#374151' }}
+                      >
+                        {tpl.label}
+                      </p>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="flex items-center gap-3">
                 <Button
-                  type="submit"
+                  type="button"
                   variant="primary"
                   size="sm"
                   loading={updateMutation.isPending}
+                  onClick={handleSaveInvoiceSettings}
                 >
-                  Spara
+                  Spara fakturainställningar
                 </Button>
-                {savedFlash && (
+                {invoiceSavedFlash && (
                   <span className="text-[13px] font-medium text-emerald-600">Sparat!</span>
                 )}
               </div>
-            </form>
-          </section>
+            </section>
 
-          {/* ── Section 3: Fakturainställningar ─────────────────────────────── */}
-          <section className="rounded-2xl border border-gray-100 bg-white p-5">
-            <h2 className="mb-5 text-[14px] font-semibold text-gray-800">Fakturainställningar</h2>
+            {/* ── Section 4: Företagsinformation (read-only) ──────────────────── */}
+            <section className="rounded-2xl border border-gray-100 bg-white p-5">
+              <h2 className="mb-4 text-[14px] font-semibold text-gray-800">Företagsinformation</h2>
 
-            {/* FÄRGVAL */}
-            <div className="mb-6">
-              <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Fakturafärg
-              </p>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {[
-                  { hex: '#1a6b3c', label: 'Grön' },
-                  { hex: '#1a3a6b', label: 'Blå' },
-                  { hex: '#6b1a1a', label: 'Röd' },
-                  { hex: '#4a1a6b', label: 'Lila' },
-                  { hex: '#1a5a6b', label: 'Petrol' },
-                  { hex: '#2c2c2c', label: 'Svart' },
-                ].map(({ hex }) => (
-                  <button
-                    key={hex}
-                    type="button"
-                    onClick={() => setInvoiceColor(hex)}
-                    title={hex}
-                    className={cn(
-                      'relative flex h-8 w-8 items-center justify-center rounded-full transition-all active:scale-[0.97]',
-                      invoiceColor === hex ? 'ring-2 ring-offset-2' : '',
-                    )}
-                    style={{
-                      backgroundColor: hex,
-                      ...(invoiceColor === hex ? { ringColor: hex } : {}),
-                    }}
-                  >
-                    {invoiceColor === hex && <Check size={14} strokeWidth={2.5} color="#ffffff" />}
-                  </button>
-                ))}
-                <div className="ml-2 flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={invoiceColor}
-                    onChange={(e) => setInvoiceColor(e.target.value)}
-                    className="h-8 w-8 cursor-pointer rounded-full border border-[#E5E7EB] p-0.5"
-                    title="Anpassad färg"
-                  />
-                  <span className="text-[12px] text-gray-400">Anpassad</span>
-                </div>
-              </div>
-            </div>
-
-            {/* FAKTURAMALLAR */}
-            <div className="mb-5">
-              <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Fakturamall
-              </p>
-              <div className="grid grid-cols-3 gap-3">
-                {(
-                  [
-                    { value: 'classic', label: 'Klassisk' },
-                    { value: 'modern', label: 'Modern' },
-                    { value: 'minimal', label: 'Minimal' },
-                  ] as const
-                ).map((tpl) => (
-                  <button
-                    key={tpl.value}
-                    type="button"
-                    onClick={() => setInvoiceTemplate(tpl.value)}
-                    className={cn(
-                      'rounded-xl border p-3 text-left transition-all active:scale-[0.97]',
-                      invoiceTemplate === tpl.value
-                        ? 'border-2 shadow-sm'
-                        : 'border-gray-100 hover:border-gray-300',
-                    )}
-                    style={
-                      invoiceTemplate === tpl.value
-                        ? { borderColor: invoiceColor, backgroundColor: `${invoiceColor}08` }
-                        : {}
-                    }
-                  >
-                    {/* SVG thumbnail */}
-                    <svg
-                      width="100"
-                      height="70"
-                      viewBox="0 0 100 70"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="mb-2 w-full"
-                    >
-                      {tpl.value === 'classic' && (
-                        <>
-                          <rect width="100" height="70" rx="4" fill="#f9fafb" />
-                          <rect
-                            x="6"
-                            y="8"
-                            width="28"
-                            height="8"
-                            rx="2"
-                            fill={invoiceColor}
-                            opacity="0.8"
-                          />
-                          <rect x="66" y="8" width="28" height="8" rx="2" fill={invoiceColor} />
-                          <rect x="6" y="24" width="88" height="1" fill="#e5e7eb" />
-                          <rect x="6" y="30" width="60" height="4" rx="1" fill="#d1d5db" />
-                          <rect x="6" y="38" width="88" height="3" rx="1" fill="#e5e7eb" />
-                          <rect x="6" y="44" width="88" height="3" rx="1" fill="#e5e7eb" />
-                          <rect x="6" y="50" width="88" height="3" rx="1" fill="#e5e7eb" />
-                          <rect
-                            x="60"
-                            y="58"
-                            width="34"
-                            height="5"
-                            rx="1"
-                            fill={invoiceColor}
-                            opacity="0.6"
-                          />
-                        </>
-                      )}
-                      {tpl.value === 'modern' && (
-                        <>
-                          <rect width="100" height="70" rx="4" fill="#f9fafb" />
-                          <rect width="100" height="20" rx="4" fill={invoiceColor} />
-                          <rect x="0" y="16" width="100" height="4" fill={invoiceColor} />
-                          <rect
-                            x="6"
-                            y="5"
-                            width="24"
-                            height="10"
-                            rx="2"
-                            fill="white"
-                            opacity="0.8"
-                          />
-                          <rect
-                            x="66"
-                            y="5"
-                            width="28"
-                            height="10"
-                            rx="2"
-                            fill="white"
-                            opacity="0.6"
-                          />
-                          <rect x="6" y="28" width="60" height="4" rx="1" fill="#d1d5db" />
-                          <rect x="6" y="36" width="88" height="3" rx="1" fill="#e5e7eb" />
-                          <rect x="6" y="42" width="88" height="3" rx="1" fill="#e5e7eb" />
-                          <rect x="6" y="48" width="88" height="3" rx="1" fill="#e5e7eb" />
-                          <rect
-                            x="60"
-                            y="58"
-                            width="34"
-                            height="5"
-                            rx="1"
-                            fill={invoiceColor}
-                            opacity="0.6"
-                          />
-                        </>
-                      )}
-                      {tpl.value === 'minimal' && (
-                        <>
-                          <rect width="100" height="70" rx="4" fill="#f9fafb" />
-                          <rect
-                            x="6"
-                            y="8"
-                            width="40"
-                            height="7"
-                            rx="2"
-                            fill={invoiceColor}
-                            opacity="0.9"
-                          />
-                          <rect
-                            x="6"
-                            y="18"
-                            width="88"
-                            height="2"
-                            fill={invoiceColor}
-                            opacity="0.4"
-                          />
-                          <rect x="6" y="28" width="50" height="4" rx="1" fill="#d1d5db" />
-                          <rect x="6" y="36" width="88" height="3" rx="1" fill="#e5e7eb" />
-                          <rect x="6" y="42" width="88" height="3" rx="1" fill="#e5e7eb" />
-                          <rect x="6" y="48" width="88" height="3" rx="1" fill="#e5e7eb" />
-                          <rect
-                            x="60"
-                            y="58"
-                            width="34"
-                            height="5"
-                            rx="1"
-                            fill={invoiceColor}
-                            opacity="0.6"
-                          />
-                        </>
-                      )}
-                    </svg>
-                    <p
-                      className="text-center text-[13px] font-medium"
-                      style={{ color: invoiceTemplate === tpl.value ? invoiceColor : '#374151' }}
-                    >
-                      {tpl.label}
+                  { label: 'Företagsnamn', value: org?.name ?? '–' },
+                  { label: 'Organisationsnummer / personnummer', value: org?.orgNumber ?? '–' },
+                  { label: 'E-post', value: org?.email ?? '–' },
+                  {
+                    label: 'Adress',
+                    value: org?.address
+                      ? `${org.address.street}, ${org.address.postalCode} ${org.address.city}`
+                      : '–',
+                  },
+                ].map((row) => (
+                  <div key={row.label} className="rounded-xl bg-gray-50 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                      {row.label}
                     </p>
-                  </button>
+                    <p className="mt-0.5 text-[13px] text-gray-600">{row.value}</p>
+                  </div>
                 ))}
               </div>
-            </div>
+            </section>
 
-            <div className="flex items-center gap-3">
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                loading={updateMutation.isPending}
-                onClick={handleSaveInvoiceSettings}
-              >
-                Spara fakturainställningar
-              </Button>
-              {invoiceSavedFlash && (
-                <span className="text-[13px] font-medium text-emerald-600">Sparat!</span>
-              )}
-            </div>
-          </section>
-
-          {/* ── Section 4: Företagsinformation (read-only) ──────────────────── */}
-          <section className="rounded-2xl border border-gray-100 bg-white p-5">
-            <h2 className="mb-4 text-[14px] font-semibold text-gray-800">Företagsinformation</h2>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {[
-                { label: 'Företagsnamn', value: org?.name ?? '–' },
-                { label: 'Organisationsnummer / personnummer', value: org?.orgNumber ?? '–' },
-                { label: 'E-post', value: org?.email ?? '–' },
-                {
-                  label: 'Adress',
-                  value: org?.address
-                    ? `${org.address.street}, ${org.address.postalCode} ${org.address.city}`
-                    : '–',
-                },
-              ].map((row) => (
-                <div key={row.label} className="rounded-xl bg-gray-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                    {row.label}
-                  </p>
-                  <p className="mt-0.5 text-[13px] text-gray-600">{row.value}</p>
+            {/* ── Section 5: AI-inställningar ─────────────────────────────────── */}
+            <section className="rounded-2xl border border-gray-100 bg-white p-5">
+              <div className="mb-4 flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-purple-50">
+                  <Brain size={13} strokeWidth={1.8} className="text-purple-600" />
                 </div>
-              ))}
-            </div>
-          </section>
-
-          {/* ── Section 5: AI-inställningar ─────────────────────────────────── */}
-          <section className="rounded-2xl border border-gray-100 bg-white p-5">
-            <div className="mb-4 flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-purple-50">
-                <Brain size={13} strokeWidth={1.8} className="text-purple-600" />
-              </div>
-              <h2 className="text-[14px] font-semibold text-gray-800">AI-assistent</h2>
-            </div>
-
-            <div className="space-y-4">
-              {/* Morning report toggle */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[13.5px] font-medium text-gray-800">
-                    Morgonrapport via e-post
-                  </p>
-                  <p className="text-[12px] text-gray-500">
-                    Få en daglig sammanfattning måndag–fredag kl 07:00
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleMorningReportToggle(!morningReportEnabled)}
-                  className={cn(
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                    morningReportEnabled ? 'bg-blue-600' : 'bg-gray-200',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                      morningReportEnabled ? 'translate-x-6' : 'translate-x-1',
-                    )}
-                  />
-                </button>
+                <h2 className="text-[14px] font-semibold text-gray-800">AI-assistent</h2>
               </div>
 
-              {/* AI memories toggle */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[13.5px] font-medium text-gray-800">AI-minnen</p>
-                  <p className="text-[12px] text-gray-500">
-                    AI:n kommer ihåg dina preferenser mellan samtal
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleAiMemoriesToggle(!aiMemoriesEnabled)}
-                  className={cn(
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                    aiMemoriesEnabled ? 'bg-blue-600' : 'bg-gray-200',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                      aiMemoriesEnabled ? 'translate-x-6' : 'translate-x-1',
-                    )}
-                  />
-                </button>
-              </div>
-
-              {/* Clear memories */}
-              <div className="border-t border-gray-100 pt-4">
-                {clearMemoriesConfirm ? (
-                  <div className="space-y-2">
-                    <p className="text-[13px] text-gray-700">
-                      Vill du radera alla AI-minnen? AI:n kommer inte längre komma ihåg dina
-                      preferenser.
+              <div className="space-y-4">
+                {/* Morning report toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[13.5px] font-medium text-gray-800">
+                      Morgonrapport via e-post
                     </p>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        loading={clearMemoriesLoading}
-                        onClick={() => void handleClearMemories()}
-                        className="!bg-red-600 hover:!bg-red-700"
-                      >
-                        Ja, radera
-                      </Button>
+                    <p className="text-[12px] text-gray-500">
+                      Få en daglig sammanfattning måndag–fredag kl 07:00
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleMorningReportToggle(!morningReportEnabled)}
+                    className={cn(
+                      'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                      morningReportEnabled ? 'bg-blue-600' : 'bg-gray-200',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                        morningReportEnabled ? 'translate-x-6' : 'translate-x-1',
+                      )}
+                    />
+                  </button>
+                </div>
+
+                {/* AI memories toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[13.5px] font-medium text-gray-800">AI-minnen</p>
+                    <p className="text-[12px] text-gray-500">
+                      AI:n kommer ihåg dina preferenser mellan samtal
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleAiMemoriesToggle(!aiMemoriesEnabled)}
+                    className={cn(
+                      'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                      aiMemoriesEnabled ? 'bg-blue-600' : 'bg-gray-200',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                        aiMemoriesEnabled ? 'translate-x-6' : 'translate-x-1',
+                      )}
+                    />
+                  </button>
+                </div>
+
+                {/* Clear memories */}
+                <div className="border-t border-gray-100 pt-4">
+                  {clearMemoriesConfirm ? (
+                    <div className="space-y-2">
+                      <p className="text-[13px] text-gray-700">
+                        Vill du radera alla AI-minnen? AI:n kommer inte längre komma ihåg dina
+                        preferenser.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          loading={clearMemoriesLoading}
+                          onClick={() => void handleClearMemories()}
+                          className="!bg-red-600 hover:!bg-red-700"
+                        >
+                          Ja, radera
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setClearMemoriesConfirm(false)}
+                          disabled={clearMemoriesLoading}
+                        >
+                          Avbryt
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => setClearMemoriesConfirm(false)}
-                        disabled={clearMemoriesLoading}
+                        onClick={() => setClearMemoriesConfirm(true)}
                       >
-                        Avbryt
+                        Rensa AI-minnen
                       </Button>
+                      {clearMemoriesFlash && (
+                        <span className="text-[13px] font-medium text-emerald-600">
+                          Minnen raderade
+                        </span>
+                      )}
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setClearMemoriesConfirm(true)}
-                    >
-                      Rensa AI-minnen
-                    </Button>
-                    {clearMemoriesFlash && (
-                      <span className="text-[13px] font-medium text-emerald-600">
-                        Minnen raderade
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              {/* Info box */}
-              <div className="flex items-start gap-2.5 rounded-xl bg-blue-50 p-3.5">
-                <Info size={14} strokeWidth={1.8} className="mt-0.5 flex-shrink-0 text-blue-600" />
-                <p className="text-[12.5px] text-blue-700">
-                  AI-assistenten använder din organisations data för att svara på frågor och utföra
-                  åtgärder. All data stannar inom din organisation och delas aldrig med andra.
-                </p>
+                {/* Info box */}
+                <div className="flex items-start gap-2.5 rounded-xl bg-blue-50 p-3.5">
+                  <Info
+                    size={14}
+                    strokeWidth={1.8}
+                    className="mt-0.5 flex-shrink-0 text-blue-600"
+                  />
+                  <p className="text-[12.5px] text-blue-700">
+                    AI-assistenten använder din organisations data för att svara på frågor och
+                    utföra åtgärder. All data stannar inom din organisation och delas aldrig med
+                    andra.
+                  </p>
+                </div>
               </div>
-            </div>
-          </section>
-        </div>
-      )}
+            </section>
+          </div>
+        ))}
     </PageWrapper>
   )
 }

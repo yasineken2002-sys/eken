@@ -37,6 +37,9 @@ export interface JwtPayload {
   email: string
   organizationId: string
   role: UserRole
+  // Sätts true när användaren skapats via invite/customer-create. Frontend
+  // tvingar redirect till /change-password tills detta blir false.
+  mustChangePassword?: boolean
   iat?: number
   exp?: number
 }
@@ -58,6 +61,9 @@ export interface User {
   role: UserRole
   organizationId: string
   avatarUrl?: string
+  isActive?: boolean
+  mustChangePassword?: boolean
+  lastLoginAt?: string | null
   createdAt: string
   updatedAt: string
 }

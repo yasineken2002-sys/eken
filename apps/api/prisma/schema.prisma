@@ -356,34 +356,71 @@ model Organization {
 // ─── User ─────────────────────────────────────────────────────────────────────
 
 model User {
-  id             String    @id @default(uuid())
-  organizationId String
-  email          String    @unique
-  passwordHash   String
-  firstName      String
-  lastName       String
-  role           UserRole  @default(VIEWER)
-  avatarUrl      String?
-  isActive       Boolean   @default(true)
-  lastLoginAt    DateTime?
+  id                  String    @id @default(uuid())
+  organizationId      String
+  email               String    @unique
+  passwordHash        String
+  firstName           String
+  lastName            String
+  role                UserRole  @default(VIEWER)
+  avatarUrl           String?
+  isActive            Boolean   @default(true)
+  mustChangePassword  Boolean   @default(false)
+  lastLoginAt         DateTime?
 
-  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  refreshTokens     RefreshToken[]
-  journalEntries    JournalEntry[]
-  documents         Document[]
-  importJobs        ImportJob[]
-  aiConversations   AiConversation[]
-  aiMemories        AiMemory[]
-  notifications     Notification[]
-  newsPosts         NewsPost[]
-  sentMessages      SentMessage[]
-  impersonationLogs ImpersonationLog[] @relation("ImpersonationTargetUser")
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  invitations         UserInvitation[]
+  journalEntries      JournalEntry[]
+  documents           Document[]
+  importJobs          ImportJob[]
+  aiConversations     AiConversation[]
+  aiMemories          AiMemory[]
+  notifications       Notification[]
+  newsPosts           NewsPost[]
+  sentMessages        SentMessage[]
+  impersonationLogs   ImpersonationLog[]   @relation("ImpersonationTargetUser")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
   @@index([email])
+}
+
+// One-time-use tokens för glömt-lösenord-flödet. Cascade så att tokens
+// försvinner om användaren raderas. usedAt sätts vid förbrukning för att
+// förhindra återanvändning.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+// One-time-use tokens för "bjud in användare"-flödet. När en OWNER/ADMIN
+// bjuder in skapas både User (isActive=false) och en UserInvitation som
+// pekar på det skapade kontot. Mottagaren accepterar via token.
+model UserInvitation {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
 }
 
 model RefreshToken {

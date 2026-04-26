@@ -75,6 +75,26 @@ export interface SendTenantInviteOptions {
   idempotencyKey?: string
 }
 
+export interface SendPasswordResetOptions {
+  to: string
+  recipientName: string
+  resetUrl: string
+  organizationName: string
+  validForHours?: number
+  idempotencyKey?: string
+}
+
+export interface SendUserInviteOptions {
+  to: string
+  recipientName: string
+  roleLabel: string
+  invitedBy: string
+  acceptUrl: string
+  organizationName: string
+  validForDays?: number
+  idempotencyKey?: string
+}
+
 export interface SendTenantWelcomeOptions {
   to: string
   tenantName: string
@@ -199,6 +219,46 @@ export class MailService {
       {
         to: opts.to,
         subject: `Välkommen som hyresgäst hos ${opts.organizationName}`,
+        idempotencyKey: opts.idempotencyKey,
+      },
+    )
+  }
+
+  // ── Användarhantering ────────────────────────────────────────────────────────
+
+  async sendPasswordReset(opts: SendPasswordResetOptions): Promise<string> {
+    return this.enqueueTyped(
+      'password-reset',
+      'high',
+      {
+        recipientName: opts.recipientName,
+        resetUrl: opts.resetUrl,
+        organizationName: opts.organizationName,
+        ...(opts.validForHours !== undefined ? { validForHours: opts.validForHours } : {}),
+      },
+      {
+        to: opts.to,
+        subject: `Återställ ditt lösenord — ${opts.organizationName}`,
+        idempotencyKey: opts.idempotencyKey,
+      },
+    )
+  }
+
+  async sendUserInvite(opts: SendUserInviteOptions): Promise<string> {
+    return this.enqueueTyped(
+      'user-invite',
+      'high',
+      {
+        recipientName: opts.recipientName,
+        roleLabel: opts.roleLabel,
+        invitedBy: opts.invitedBy,
+        acceptUrl: opts.acceptUrl,
+        organizationName: opts.organizationName,
+        ...(opts.validForDays !== undefined ? { validForDays: opts.validForDays } : {}),
+      },
+      {
+        to: opts.to,
+        subject: `Du är inbjuden till ${opts.organizationName}`,
         idempotencyKey: opts.idempotencyKey,
       },
     )

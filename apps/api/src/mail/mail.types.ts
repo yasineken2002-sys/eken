@@ -6,6 +6,8 @@ import type { InvoiceOverdueProps } from './templates/invoices/InvoiceOverdue'
 import type { TenantWelcomeProps } from './templates/tenants/TenantWelcome'
 import type { TenantInviteProps } from './templates/tenants/TenantInvite'
 import type { MaintenanceUpdateProps } from './templates/notifications/MaintenanceUpdate'
+import type { PasswordResetProps } from './templates/users/PasswordReset'
+import type { UserInviteProps } from './templates/users/UserInvite'
 
 export const TEMPLATE_NAMES = [
   'magic-link',
@@ -15,6 +17,8 @@ export const TEMPLATE_NAMES = [
   'tenant-welcome',
   'tenant-invite',
   'maintenance-update',
+  'password-reset',
+  'user-invite',
   'custom',
 ] as const
 
@@ -28,6 +32,8 @@ export interface TemplatePropsMap {
   'tenant-welcome': TenantWelcomeProps
   'tenant-invite': TenantInviteProps
   'maintenance-update': MaintenanceUpdateProps
+  'password-reset': PasswordResetProps
+  'user-invite': UserInviteProps
   custom: CustomProps
 }
 

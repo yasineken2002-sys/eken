@@ -8,6 +8,10 @@ import type { JwtPayload } from '@eken/shared'
 import { LoginDto } from './dto/login.dto'
 import { RegisterDto } from './dto/register.dto'
 import { RefreshDto } from './dto/refresh.dto'
+import { ChangePasswordDto } from './dto/change-password.dto'
+import { ForgotPasswordDto } from './dto/forgot-password.dto'
+import { ResetPasswordDto } from './dto/reset-password.dto'
+import { AcceptInviteDto } from './dto/accept-invite.dto'
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -66,5 +70,43 @@ export class AuthController {
           }
         : null,
     }
+  }
+
+  // ── Lösenordshantering ───────────────────────────────────────────────────────
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Byt lösenord (kräver inloggning)' })
+  async changePassword(@CurrentUser() user: JwtPayload, @Body() dto: ChangePasswordDto) {
+    await this.auth.changePassword(user.sub, dto.currentPassword, dto.newPassword)
+  }
+
+  @Post('forgot-password')
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle({ default: { limit: 3, ttl: 600_000 } }) // 3 / 10 min per IP
+  @ApiOperation({
+    summary: 'Begär lösenordsåterställning. Svarar alltid 204 (skydd mot enumeration)',
+  })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    await this.auth.forgotPassword(dto.email)
+  }
+
+  @Post('reset-password')
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle({ default: { limit: 5, ttl: 600_000 } }) // 5 / 10 min per IP
+  @ApiOperation({ summary: 'Återställ lösenord med engångstoken' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.auth.resetPassword(dto.token, dto.newPassword)
+  }
+
+  @Post('accept-invite')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
+  @ApiOperation({ summary: 'Acceptera inbjudan och sätt första lösenord — loggar in användaren' })
+  acceptInvite(@Body() dto: AcceptInviteDto) {
+    return this.auth.acceptInvite(dto.token, dto.newPassword)
   }
 }

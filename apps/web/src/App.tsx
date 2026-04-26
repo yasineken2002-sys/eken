@@ -3,6 +3,10 @@ import { AnimatePresence } from 'framer-motion'
 import { AppLayout } from './components/layout/AppLayout'
 import { LoginPage } from './features/auth/LoginPage'
 import { RegisterPage } from './features/auth/RegisterPage'
+import { ChangePasswordPage } from './features/auth/ChangePasswordPage'
+import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage'
+import { ResetPasswordPage } from './features/auth/ResetPasswordPage'
+import { AcceptInvitePage } from './features/auth/AcceptInvitePage'
 import { DashboardPage } from './features/dashboard/DashboardPage'
 import { PropertiesPage } from './features/properties/PropertiesPage'
 import { UnitsPage } from './features/units/UnitsPage'
@@ -29,6 +33,10 @@ import { useAuthStore } from './stores/auth.store'
 export type Route =
   | 'login'
   | 'register'
+  | 'change-password'
+  | 'forgot-password'
+  | 'reset-password'
+  | 'accept-invite'
   | 'dashboard'
   | 'properties'
   | 'units'
@@ -50,36 +58,75 @@ export type Route =
   | 'news'
   | 'messages'
 
-const PUBLIC_ROUTES: Route[] = ['login', 'register']
+const PUBLIC_ROUTES: Route[] = [
+  'login',
+  'register',
+  'forgot-password',
+  'reset-password',
+  'accept-invite',
+]
 
 // Check if current URL is a tenant portal route
 const tenantPortalMatch = window.location.pathname.match(/^\/portal\/(.+)$/)
 const INITIAL_TENANT_TOKEN = tenantPortalMatch?.[1] ?? null
 
+// Detektera reset-password / accept-invite-länkar via path eller query.
+// Reset/invite-mailen pekar på /reset-password?token=... resp /accept-invite?token=...
+function readInitialAuthRoute(): { route: Route; token: string | null } | null {
+  const path = window.location.pathname
+  const params = new URLSearchParams(window.location.search)
+  const token = params.get('token')
+  if (path === '/reset-password' || path === '/auth/reset-password') {
+    return { route: 'reset-password', token }
+  }
+  if (path === '/accept-invite' || path === '/auth/accept-invite') {
+    return { route: 'accept-invite', token }
+  }
+  return null
+}
+const INITIAL_AUTH_ROUTE = readInitialAuthRoute()
+
 export function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const mustChangePassword = useAuthStore((s) => s.user?.mustChangePassword === true)
 
   // Tenant portal — no auth needed
   if (INITIAL_TENANT_TOKEN) {
     return <TenantPortalPage token={INITIAL_TENANT_TOKEN} />
   }
 
-  const [route, setRoute] = useState<Route>(() =>
-    useAuthStore.getState().isAuthenticated ? 'dashboard' : 'login',
-  )
+  const [route, setRoute] = useState<Route>(() => {
+    if (INITIAL_AUTH_ROUTE) return INITIAL_AUTH_ROUTE.route
+    const auth = useAuthStore.getState()
+    if (auth.isAuthenticated) {
+      return auth.user?.mustChangePassword ? 'change-password' : 'dashboard'
+    }
+    return 'login'
+  })
+  const [authToken] = useState<string | null>(INITIAL_AUTH_ROUTE?.token ?? null)
 
   // Auth guard: redirect to login when session expires, redirect to dashboard after login
   useEffect(() => {
-    if (!isAuthenticated && !PUBLIC_ROUTES.includes(route)) {
+    if (!isAuthenticated && !PUBLIC_ROUTES.includes(route) && route !== 'change-password') {
       setRoute('login')
     }
     if (isAuthenticated && PUBLIC_ROUTES.includes(route)) {
-      setRoute('dashboard')
+      setRoute(mustChangePassword ? 'change-password' : 'dashboard')
     }
-  }, [isAuthenticated, route])
+    // Tvinga password-byte: blockera all annan navigation tills användaren bytt.
+    if (isAuthenticated && mustChangePassword && route !== 'change-password' && route !== 'login') {
+      setRoute('change-password')
+    }
+  }, [isAuthenticated, mustChangePassword, route])
 
   if (route === 'login') return <LoginPage onNavigate={setRoute} />
   if (route === 'register') return <RegisterPage onNavigate={setRoute} />
+  if (route === 'forgot-password') return <ForgotPasswordPage onNavigate={setRoute} />
+  if (route === 'reset-password')
+    return <ResetPasswordPage token={authToken} onNavigate={setRoute} />
+  if (route === 'accept-invite') return <AcceptInvitePage token={authToken} onNavigate={setRoute} />
+  if (route === 'change-password')
+    return <ChangePasswordPage forced={mustChangePassword} onNavigate={setRoute} />
 
   const page = {
     dashboard: <DashboardPage onNavigate={setRoute} />,
@@ -97,14 +144,18 @@ export function App() {
     avisering: <AviseringPage />,
     inspections: <InspectionsPage />,
     'maintenance-plan': <MaintenancePlanPage />,
-    settings: <SettingsPage />,
+    settings: <SettingsPage onNavigate={setRoute} />,
     overview: <OverviewPage />,
     notifications: <NotificationsPage onNavigate={setRoute} />,
     news: <NewsPage />,
     messages: <MessagesPage />,
-    // login/register handled above — these never render inside AppLayout
+    // Auth-flöden hanteras ovan — dessa renderas aldrig inuti AppLayout
     login: null,
     register: null,
+    'change-password': null,
+    'forgot-password': null,
+    'reset-password': null,
+    'accept-invite': null,
   }[route]
 
   return (
