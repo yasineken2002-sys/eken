@@ -1177,3 +1177,22 @@ model ErrorLog {
   @@index([organizationId, severity, resolved])
   @@index([createdAt])
 }
+
+// ─── Mail engine — failed-job DLQ ─────────────────────────────────────────────
+// När en mailjobb har uttömt sina retries sparas det här för manuell inspektion
+// och eventuell replay. Append-only — behandlas som event log.
+
+model FailedEmail {
+  id        String   @id @default(uuid())
+  jobId     String
+  template  String
+  to        String
+  subject   String
+  payload   Json
+  error     String   @db.Text
+  attempts  Int
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([template])
+}
