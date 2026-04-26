@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/Button'
 import { AuthCard } from './components/AuthCard'
 import { PasswordInput } from './components/PasswordInput'
 import { passwordSchema, readErrorMessage } from './lib/password-schema'
+import { setLoginFlash } from './lib/login-flash'
 import { acceptInviteApi } from './api/auth.api'
-import { useAuthStore } from '@/stores/auth.store'
 import type { Route } from '@/App'
 
 const schema = z
@@ -31,7 +31,6 @@ interface Props {
 export function AcceptInvitePage({ token, onNavigate }: Props) {
   const [apiError, setApiError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
-  const setAuth = useAuthStore((s) => s.setAuth)
 
   const {
     register,
@@ -54,9 +53,12 @@ export function AcceptInvitePage({ token, onNavigate }: Props) {
     setApiError(null)
     setPending(true)
     try {
-      const response = await acceptInviteApi({ token, newPassword: data.newPassword })
-      setAuth(response)
-      onNavigate('dashboard')
+      const { email } = await acceptInviteApi({ token, newPassword: data.newPassword })
+      // INGEN auto-login. Skicka användaren till login-sidan med flash-banner
+      // och förfylld email; städa även URL:en så ?token=... försvinner.
+      setLoginFlash({ kind: 'account-activated', email })
+      window.history.replaceState({}, '', '/')
+      onNavigate('login')
     } catch (err) {
       setApiError(readErrorMessage(err, 'Kunde inte aktivera kontot'))
     } finally {
@@ -65,7 +67,10 @@ export function AcceptInvitePage({ token, onNavigate }: Props) {
   }
 
   return (
-    <AuthCard title="Välkommen!" description="Välj ett lösenord för att aktivera ditt konto.">
+    <AuthCard
+      title="Sätt ditt lösenord"
+      description="Välj ett lösenord för ditt nya Eken-konto. Du loggar sedan in med din e-post och det här lösenordet."
+    >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <PasswordInput
           label="Lösenord"
@@ -84,7 +89,7 @@ export function AcceptInvitePage({ token, onNavigate }: Props) {
           </div>
         )}
         <Button type="submit" variant="primary" loading={pending} className="w-full">
-          Aktivera mitt konto
+          Spara lösenord
         </Button>
       </form>
     </AuthCard>

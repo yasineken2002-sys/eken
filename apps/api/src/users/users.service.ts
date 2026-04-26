@@ -6,7 +6,6 @@ import {
   ForbiddenException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import * as bcrypt from 'bcryptjs'
 import * as crypto from 'crypto'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
@@ -69,11 +68,10 @@ export class UsersService {
       throw new ConflictException('En användare med den e-postadressen finns redan')
     }
 
-    // Slumpat tillfälligt lösenord — användaren tvingas byta innan första
-    // riktiga inloggningen via accept-invite-flödet.
-    const tempPassword = crypto.randomBytes(24).toString('base64url')
-    const passwordHash = await bcrypt.hash(tempPassword, 12)
-
+    // INGET tillfälligt lösenord skapas. Användaren har passwordHash=null
+    // tills inbjudan accepteras via /v1/auth/accept-invite, då lösenordet
+    // sätts för första gången. Login() avvisar passwordHash=null som
+    // "felaktiga inloggningsuppgifter".
     const token = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 dagar
 
@@ -85,9 +83,8 @@ export class UsersService {
           firstName: dto.firstName,
           lastName: dto.lastName,
           role: dto.role,
-          passwordHash,
+          passwordHash: null,
           isActive: false, // aktiveras vid accept-invite
-          mustChangePassword: true,
         },
         select: PUBLIC_USER_FIELDS,
       })

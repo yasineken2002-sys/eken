@@ -359,7 +359,11 @@ model User {
   id                  String    @id @default(uuid())
   organizationId      String
   email               String    @unique
-  passwordHash        String
+  // Nullable: vid invite skapas User utan lösenord. Lösenord sätts först
+  // när inbjudan accepteras via /v1/auth/accept-invite. login() avvisar
+  // användare där passwordHash är null (samma "Felaktiga inloggningsuppgifter"
+  // som ett felaktigt lösenord — ingen enumeration).
+  passwordHash        String?
   firstName           String
   lastName            String
   role                UserRole  @default(VIEWER)

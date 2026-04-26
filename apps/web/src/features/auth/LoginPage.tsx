@@ -1,13 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion } from 'framer-motion'
-import { Eye, EyeOff, Building2, BarChart3, Shield, Zap } from 'lucide-react'
+import { Eye, EyeOff, Building2, BarChart3, Shield, Zap, CheckCircle2 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { loginApi } from './api/auth.api'
+import { consumeLoginFlash } from './lib/login-flash'
 import { useAuthStore } from '@/stores/auth.store'
 import type { Route } from '@/App'
 
@@ -95,13 +96,23 @@ export function LoginPage({ onNavigate }: Props) {
   const [showPassword, setShowPassword] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [isPending, setIsPending] = useState(false)
+  // Konsumera flash-signalen synkront vid first render — annars riskerar vi
+  // att React StrictMode kallar effekten två gånger och nollar bannern.
+  const [flash] = useState(() => consumeLoginFlash())
   const setAuth = useAuthStore((s) => s.setAuth)
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) })
+
+  useEffect(() => {
+    if (flash?.kind === 'account-activated') {
+      setValue('email', flash.email)
+    }
+  }, [flash, setValue])
 
   const onSubmit = async (data: FormValues) => {
     setApiError(null)
@@ -143,6 +154,22 @@ export function LoginPage({ onNavigate }: Props) {
             Välkommen tillbaka
           </h1>
           <p className="mt-1.5 text-[14px] text-gray-500">Logga in på ditt Eken-konto</p>
+
+          {flash?.kind === 'account-activated' && (
+            <div className="mt-6 flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5 text-[13px] text-emerald-800">
+              <CheckCircle2
+                size={16}
+                className="mt-0.5 shrink-0 text-emerald-600"
+                strokeWidth={1.8}
+              />
+              <div>
+                <p className="font-medium">Konto aktiverat</p>
+                <p className="mt-0.5 text-emerald-700/80">
+                  Logga in med <strong>{flash.email}</strong> och lösenordet du nyss valde.
+                </p>
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-4">
             <Input

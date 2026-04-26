@@ -111,7 +111,11 @@ export class AuthService {
       where: { email: dto.email },
       include: { organization: true },
     })
-    if (!user || !user.isActive) throw new UnauthorizedException('Felaktiga inloggningsuppgifter')
+    // En icke-aktiverad eller inbjuden-men-ej-accepterad användare avvisas med
+    // exakt samma fel som ett felaktigt lösenord — ingen enumeration.
+    if (!user || !user.isActive || !user.passwordHash) {
+      throw new UnauthorizedException('Felaktiga inloggningsuppgifter')
+    }
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash)
     if (!valid) throw new UnauthorizedException('Felaktiga inloggningsuppgifter')
@@ -211,6 +215,11 @@ export class AuthService {
   ): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } })
     if (!user) throw new NotFoundException('Användaren hittades inte')
+    if (!user.passwordHash) {
+      // Ska inte gå att nå i praktiken (login-guard avvisar null), men vi är
+      // defensiva i fall någon kallar denna med en orphan-token.
+      throw new BadRequestException('Konto saknar lösenord')
+    }
 
     const valid = await bcrypt.compare(currentPassword, user.passwordHash)
     if (!valid) throw new UnauthorizedException('Felaktigt nuvarande lösenord')
@@ -295,10 +304,9 @@ export class AuthService {
     ])
   }
 
-  async acceptInvite(token: string, newPassword: string): Promise<AuthResponse> {
+  async acceptInvite(token: string, newPassword: string): Promise<{ email: string }> {
     const invite = await this.prisma.userInvitation.findUnique({
       where: { token },
-      include: { user: { include: { organization: true } } },
     })
     if (!invite) throw new BadRequestException('Ogiltig inbjudningslänk')
     if (invite.usedAt) throw new BadRequestException('Inbjudningslänken har redan använts')
@@ -308,6 +316,8 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(newPassword, 12)
 
+    // Sätt lösenord + aktivera användaren. INGEN auto-login — användaren
+    // skickas tillbaka till /login där hen loggar in med det nya lösenordet.
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.userInvitation.update({
         where: { id: invite.id },
@@ -319,36 +329,12 @@ export class AuthService {
           passwordHash,
           isActive: true,
           mustChangePassword: false,
-          lastLoginAt: new Date(),
         },
-        include: { organization: true },
+        select: { email: true },
       })
     })
 
-    const tokens = await this.issueTokens(
-      updated.id,
-      updated.email,
-      updated.organizationId,
-      updated.role,
-      false,
-    )
-    return {
-      ...tokens,
-      user: {
-        id: updated.id,
-        email: updated.email,
-        firstName: updated.firstName,
-        lastName: updated.lastName,
-        role: updated.role,
-        organizationId: updated.organizationId,
-        mustChangePassword: false,
-      },
-      organization: {
-        id: updated.organization.id,
-        name: updated.organization.name,
-        orgNumber: updated.organization.orgNumber ?? null,
-      },
-    }
+    return { email: updated.email }
   }
 
   // ── Tokens ──────────────────────────────────────────────────────────────────

@@ -50,9 +50,11 @@ export async function resetPasswordApi(input: {
   await api.post('/auth/reset-password', input)
 }
 
+// acceptInvite loggar INTE in användaren. Den sätter lösenordet och returnerar
+// e-postadressen så att LoginPage kan förfylla fältet och visa "Konto aktiverat".
 export async function acceptInviteApi(input: {
   token: string
   newPassword: string
-}): Promise<AuthResponse> {
-  return post<AuthResponse>('/auth/accept-invite', input)
+}): Promise<{ email: string }> {
+  return post<{ email: string }>('/auth/accept-invite', input)
 }

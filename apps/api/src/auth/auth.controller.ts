@@ -105,7 +105,10 @@ export class AuthController {
   @Public()
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 600_000 } })
-  @ApiOperation({ summary: 'Acceptera inbjudan och sätt första lösenord — loggar in användaren' })
+  @ApiOperation({
+    summary:
+      'Acceptera inbjudan och sätt lösenord. Returnerar e-postadressen så att login-sidan kan förfylla — auto-login sker INTE.',
+  })
   acceptInvite(@Body() dto: AcceptInviteDto) {
     return this.auth.acceptInvite(dto.token, dto.newPassword)
   }
