@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import * as crypto from 'crypto'
-import type { Tenant } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+import type { Tenant, Lease } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 import { CreateTenantDto } from './dto/create-tenant.dto'
@@ -47,10 +48,22 @@ export class TenantsService {
       },
       include: {
         _count: { select: { invoices: true } },
+        leases: {
+          where: { status: { in: ['ACTIVE', 'DRAFT'] } },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: { unit: { include: { property: true } } },
+        },
       },
       orderBy: { createdAt: 'desc' },
     })
-    return tenants.map(mapTenant)
+    return tenants.map((t) => {
+      const { leases, ...rest } = t
+      return {
+        ...mapTenant(rest),
+        activeLease: leases[0] ?? null,
+      }
+    })
   }
 
   async findOne(id: string, organizationId: string) {
@@ -62,51 +75,102 @@ export class TenantsService {
           take: 5,
           include: { lines: true },
         },
+        leases: {
+          orderBy: { createdAt: 'desc' },
+          include: { unit: { include: { property: true } } },
+        },
         _count: { select: { invoices: true } },
       },
     })
     if (!tenant) throw new NotFoundException('Hyresgästen hittades inte')
-    return mapTenant(tenant)
+    const { leases, ...rest } = tenant
+    return {
+      ...mapTenant(rest),
+      leases,
+      activeLease: leases.find((l) => l.status === 'ACTIVE' || l.status === 'DRAFT') ?? null,
+    }
   }
 
   async create(dto: CreateTenantDto, organizationId: string) {
-    if (dto.type === 'INDIVIDUAL' && (!dto.firstName || !dto.lastName)) {
-      throw new BadRequestException('Förnamn och efternamn krävs')
+    if (dto.type === 'INDIVIDUAL' && (!dto.firstName?.trim() || !dto.lastName?.trim())) {
+      throw new BadRequestException('Förnamn och efternamn krävs för privatperson')
     }
-    if (dto.type === 'COMPANY' && !dto.companyName) {
-      throw new BadRequestException('Företagsnamn krävs')
+    if (dto.type === 'COMPANY' && !dto.companyName?.trim()) {
+      throw new BadRequestException('Företagsnamn krävs för företag')
     }
 
-    const tenant = await this.prisma.tenant.create({
-      data: {
-        organizationId,
-        type: dto.type,
-        ...(dto.firstName != null ? { firstName: dto.firstName } : {}),
-        ...(dto.lastName != null ? { lastName: dto.lastName } : {}),
-        ...(dto.companyName != null ? { companyName: dto.companyName } : {}),
-        ...(dto.email != null ? { email: dto.email } : { email: '' }),
-        ...(dto.phone != null ? { phone: dto.phone } : {}),
-        ...(dto.personalNumber != null ? { personalNumber: dto.personalNumber } : {}),
-        ...(dto.orgNumber != null ? { orgNumber: dto.orgNumber } : {}),
-        ...(dto.street != null ? { street: dto.street } : {}),
-        ...(dto.city != null ? { city: dto.city } : {}),
-        ...(dto.postalCode != null ? { postalCode: dto.postalCode } : {}),
-      },
-      include: { organization: { select: { name: true } } },
+    // Verifiera att enheten finns och tillhör samma organisation.
+    const unit = await this.prisma.unit.findFirst({
+      where: { id: dto.lease.unitId },
+      include: { property: true },
     })
+    if (!unit || unit.property.organizationId !== organizationId) {
+      throw new NotFoundException('Enheten hittades inte')
+    }
 
-    if (tenant.email) {
-      void this.sendInvitationEmail(tenant).catch((err) =>
+    let result: { tenant: Tenant; lease: Lease }
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
+        const tenant = await tx.tenant.create({
+          data: {
+            organizationId,
+            type: dto.type,
+            email: dto.email,
+            ...(dto.firstName != null ? { firstName: dto.firstName } : {}),
+            ...(dto.lastName != null ? { lastName: dto.lastName } : {}),
+            ...(dto.companyName != null ? { companyName: dto.companyName } : {}),
+            ...(dto.phone != null ? { phone: dto.phone } : {}),
+            ...(dto.personalNumber != null ? { personalNumber: dto.personalNumber } : {}),
+            ...(dto.orgNumber != null ? { orgNumber: dto.orgNumber } : {}),
+            ...(dto.street != null ? { street: dto.street } : {}),
+            ...(dto.city != null ? { city: dto.city } : {}),
+            ...(dto.postalCode != null ? { postalCode: dto.postalCode } : {}),
+          },
+        })
+
+        const lease = await tx.lease.create({
+          data: {
+            organizationId,
+            unitId: dto.lease.unitId,
+            tenantId: tenant.id,
+            startDate: new Date(dto.lease.startDate),
+            ...(dto.lease.endDate != null ? { endDate: new Date(dto.lease.endDate) } : {}),
+            monthlyRent: dto.lease.monthlyRent,
+            depositAmount: dto.lease.depositAmount ?? 0,
+            status: 'DRAFT',
+          },
+        })
+
+        return { tenant, lease }
+      })
+    } catch (err) {
+      // P2002 = unique constraint violation. Vår partial unique index på
+      // Lease(unitId) WHERE status='ACTIVE' kan inte trigga här (status='DRAFT')
+      // men vi fångar generisk konflikt för säkerhets skull.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new BadRequestException('Konflikt vid skapande – försök igen')
+      }
+      throw err
+    }
+
+    // Bjud in efter att transaktionen committat. Felar mejlet ska tenant + lease
+    // ändå vara skapade.
+    if (result.tenant.email) {
+      void this.sendInvitationEmail(result.tenant, organizationId).catch((err) =>
         console.error('[tenants] invitation email failed', String(err)),
       )
     }
 
-    return mapTenant(tenant)
+    return mapTenant(result.tenant)
   }
 
-  private async sendInvitationEmail(
-    tenant: Tenant & { organization: { name: string } },
-  ): Promise<void> {
+  private async sendInvitationEmail(tenant: Tenant, organizationId: string): Promise<void> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true },
+    })
+    if (!org) return
+
     const token = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
 
@@ -119,18 +183,17 @@ export class TenantsService {
     const tenantName = tenant.firstName
       ? `${tenant.firstName} ${tenant.lastName ?? ''}`.trim()
       : (tenant.companyName ?? tenant.email)
-    const orgName = tenant.organization.name
 
     await this.mail
       .sendCustomEmail({
         to: tenant.email,
         subject: 'Du är inbjuden till din hyresgästportal',
         tenantName,
-        organizationName: orgName,
+        organizationName: org.name,
         bodyHtml: `
         <h2 style="color:#1a6b3c;margin:0 0 16px">Välkommen till hyresgästportalen</h2>
         <p>Hej ${tenantName},</p>
-        <p>Din hyresvärd <strong>${orgName}</strong> har skapat ett konto åt dig i hyresgästportalen Eken.</p>
+        <p>Din hyresvärd <strong>${org.name}</strong> har skapat ett konto åt dig i hyresgästportalen Eken.</p>
         <a href="${magicUrl}"
            style="display:inline-block;background:#1a6b3c;color:white;
                   padding:12px 24px;border-radius:6px;text-decoration:none;
@@ -178,6 +241,17 @@ export class TenantsService {
   async remove(id: string, organizationId: string): Promise<void> {
     const existing = await this.prisma.tenant.findFirst({ where: { id, organizationId } })
     if (!existing) throw new NotFoundException('Hyresgästen hittades inte')
+
+    // Blockera om hyresgästen har aktiva eller pågående kontrakt – dessa måste
+    // avslutas via /v1/leases först.
+    const blockingLeaseCount = await this.prisma.lease.count({
+      where: { tenantId: id, status: { in: ['ACTIVE', 'DRAFT'] } },
+    })
+    if (blockingLeaseCount > 0) {
+      throw new BadRequestException(
+        'Hyresgästen har aktiva eller pågående kontrakt och kan inte tas bort.',
+      )
+    }
 
     const activeInvoiceCount = await this.prisma.invoice.count({
       where: { tenantId: id, status: { notIn: ['VOID', 'DRAFT'] } },

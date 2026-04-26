@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import type { LeaseStatus } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { CreateLeaseDto } from './dto/create-lease.dto'
@@ -14,6 +15,18 @@ const INCLUDE = {
   unit: { include: { property: true } },
   tenant: true,
 } as const
+
+// Översätt Postgres unique-konflikt på partial index lease_unit_active_unique
+// till svensk BadRequest. Detta är skyddet mot race när två förfrågningar
+// samtidigt försöker skapa/aktivera ACTIVE-kontrakt på samma enhet.
+function isActiveUnitConflict(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false
+  if (err.code !== 'P2002') return false
+  const target = (err.meta as { target?: unknown } | undefined)?.target
+  if (typeof target === 'string') return target.includes('lease_unit_active_unique')
+  if (Array.isArray(target)) return target.includes('unitId')
+  return false
+}
 
 @Injectable()
 export class LeasesService {
@@ -37,7 +50,6 @@ export class LeasesService {
   }
 
   async create(dto: CreateLeaseDto, organizationId: string) {
-    // Verify unit belongs to this organization
     const unit = await this.prisma.unit.findFirst({
       where: { id: dto.unitId },
       include: { property: true },
@@ -46,13 +58,12 @@ export class LeasesService {
       throw new NotFoundException('Enheten hittades inte')
     }
 
-    // Verify tenant belongs to this organization
     const tenant = await this.prisma.tenant.findFirst({
       where: { id: dto.tenantId, organizationId },
     })
     if (!tenant) throw new NotFoundException('Hyresgästen hittades inte')
 
-    // Check for existing ACTIVE lease on this unit
+    // Optimistic check – DB-constraint fångar race
     const existingActive = await this.prisma.lease.count({
       where: { unitId: dto.unitId, status: 'ACTIVE' },
     })
@@ -104,15 +115,52 @@ export class LeasesService {
       throw new BadRequestException('Ogiltig statusövergång')
     }
 
-    return this.prisma.lease.update({
-      where: { id },
-      data: { status: newStatus },
-      include: INCLUDE,
-    })
+    // Optimistic check innan DRAFT→ACTIVE; partial unique index fångar race.
+    if (newStatus === 'ACTIVE') {
+      const existingActive = await this.prisma.lease.count({
+        where: { unitId: lease.unitId, status: 'ACTIVE', id: { not: id } },
+      })
+      if (existingActive > 0) {
+        throw new BadRequestException('Enheten har redan ett aktivt kontrakt')
+      }
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.lease.update({
+          where: { id },
+          data: {
+            status: newStatus,
+            ...(newStatus === 'ACTIVE' ? { signedAt: new Date() } : {}),
+            ...(newStatus === 'TERMINATED' ? { terminatedAt: new Date() } : {}),
+          },
+          include: INCLUDE,
+        })
+
+        // Synka enhetens status så att fastighetsöversikten alltid stämmer.
+        if (newStatus === 'ACTIVE') {
+          await tx.unit.update({ where: { id: lease.unitId }, data: { status: 'OCCUPIED' } })
+        } else if (newStatus === 'TERMINATED' || newStatus === 'EXPIRED') {
+          // Endast om det inte fortfarande finns ett annat ACTIVE-kontrakt på enheten
+          const stillActive = await tx.lease.count({
+            where: { unitId: lease.unitId, status: 'ACTIVE', id: { not: id } },
+          })
+          if (stillActive === 0) {
+            await tx.unit.update({ where: { id: lease.unitId }, data: { status: 'VACANT' } })
+          }
+        }
+
+        return updated
+      })
+    } catch (err) {
+      if (isActiveUnitConflict(err)) {
+        throw new BadRequestException('Enheten har redan ett aktivt kontrakt')
+      }
+      throw err
+    }
   }
 
   async createWithTenant(dto: CreateLeaseWithTenantDto, organizationId: string) {
-    // 1. Verify unit belongs to this organization
     const unit = await this.prisma.unit.findFirst({
       where: { id: dto.unitId },
       include: { property: true },
@@ -121,7 +169,6 @@ export class LeasesService {
       throw new NotFoundException('Enheten hittades inte')
     }
 
-    // 2. Check unit has no ACTIVE lease
     const existingActive = await this.prisma.lease.count({
       where: { unitId: dto.unitId, status: 'ACTIVE' },
     })
@@ -129,57 +176,64 @@ export class LeasesService {
       throw new BadRequestException('Enheten har redan ett aktivt kontrakt')
     }
 
-    // 3. Resolve tenant
-    let tenantId: string
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        let tenantId: string
 
-    if (dto.existingTenantId) {
-      const tenant = await this.prisma.tenant.findFirst({
-        where: { id: dto.existingTenantId, organizationId },
+        if (dto.existingTenantId) {
+          const tenant = await tx.tenant.findFirst({
+            where: { id: dto.existingTenantId, organizationId },
+          })
+          if (!tenant) throw new NotFoundException('Hyresgästen hittades inte')
+          tenantId = tenant.id
+        } else if (dto.newTenant) {
+          const { type, firstName, lastName, companyName, email, phone } = dto.newTenant
+
+          if (type === 'INDIVIDUAL' && (!firstName?.trim() || !lastName?.trim())) {
+            throw new BadRequestException('Förnamn och efternamn krävs för privatperson')
+          }
+          if (type === 'COMPANY' && !companyName?.trim()) {
+            throw new BadRequestException('Företagsnamn krävs för företag')
+          }
+
+          const created = await tx.tenant.create({
+            data: {
+              organizationId,
+              type,
+              email,
+              ...(firstName ? { firstName } : {}),
+              ...(lastName ? { lastName } : {}),
+              ...(companyName ? { companyName } : {}),
+              ...(phone ? { phone } : {}),
+            },
+          })
+          tenantId = created.id
+        } else {
+          throw new BadRequestException(
+            'Ange antingen en befintlig hyresgäst eller uppgifter för en ny',
+          )
+        }
+
+        return tx.lease.create({
+          data: {
+            organizationId,
+            unitId: dto.unitId,
+            tenantId,
+            monthlyRent: dto.monthlyRent,
+            depositAmount: dto.depositAmount ?? 0,
+            startDate: new Date(dto.startDate),
+            ...(dto.endDate ? { endDate: new Date(dto.endDate) } : {}),
+            status: 'DRAFT',
+          },
+          include: INCLUDE,
+        })
       })
-      if (!tenant) throw new NotFoundException('Hyresgästen hittades inte')
-      tenantId = tenant.id
-    } else if (dto.newTenant) {
-      const { type, firstName, lastName, companyName, email, phone } = dto.newTenant
-
-      if (type === 'INDIVIDUAL' && (!firstName?.trim() || !lastName?.trim())) {
-        throw new BadRequestException('Förnamn och efternamn krävs för privatperson')
+    } catch (err) {
+      if (isActiveUnitConflict(err)) {
+        throw new BadRequestException('Enheten har redan ett aktivt kontrakt')
       }
-      if (type === 'COMPANY' && !companyName?.trim()) {
-        throw new BadRequestException('Företagsnamn krävs för företag')
-      }
-
-      const created = await this.prisma.tenant.create({
-        data: {
-          organizationId,
-          type,
-          email,
-          ...(firstName ? { firstName } : {}),
-          ...(lastName ? { lastName } : {}),
-          ...(companyName ? { companyName } : {}),
-          ...(phone ? { phone } : {}),
-        },
-      })
-      tenantId = created.id
-    } else {
-      throw new BadRequestException(
-        'Ange antingen en befintlig hyresgäst eller uppgifter för en ny',
-      )
+      throw err
     }
-
-    // 4. Create lease
-    return this.prisma.lease.create({
-      data: {
-        organizationId,
-        unitId: dto.unitId,
-        tenantId,
-        monthlyRent: dto.monthlyRent,
-        depositAmount: dto.depositAmount ?? 0,
-        startDate: new Date(dto.startDate),
-        ...(dto.endDate ? { endDate: new Date(dto.endDate) } : {}),
-        status: 'DRAFT',
-      },
-      include: INCLUDE,
-    })
   }
 
   async remove(id: string, organizationId: string): Promise<void> {

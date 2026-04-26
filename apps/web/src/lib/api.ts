@@ -19,11 +19,16 @@ api.interceptors.request.use((config) => {
 let isRefreshing = false
 let pendingQueue: Array<{ resolve: (v: string) => void; reject: (e: unknown) => void }> = []
 
+// /auth/* endpoints SKA inte triggera refresh – ett 401 där betyder fel lösenord
+// eller utgånget refresh-token, inte ett expired access-token.
+const AUTH_PATH_RE = /\/auth\/(login|register|refresh|logout)\b/
+
 api.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
     const original = error.config!
-    if (error.response?.status !== 401 || (original as { _retry?: boolean })._retry) {
+    const isAuthPath = typeof original.url === 'string' && AUTH_PATH_RE.test(original.url)
+    if (error.response?.status !== 401 || (original as { _retry?: boolean })._retry || isAuthPath) {
       return Promise.reject(error)
     }
 

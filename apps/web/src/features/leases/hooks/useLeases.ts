@@ -10,23 +10,34 @@ import {
 } from '../api/leases.api'
 import type { CreateLeaseInput, CreateLeaseWithTenantInput } from '../api/leases.api'
 
+// Disjunkta query-nycklar – list och detail får inte dela prefix, annars
+// invaliderar list-mutationen även disabled detail-queries vilket triggar
+// 404-fetchar mot ogiltiga IDs.
+const LEASES_LIST = ['leases', 'list'] as const
+const LEASE_DETAIL = (id: string) => ['lease', 'detail', id] as const
+
 export function useLeases() {
-  return useQuery({ queryKey: ['leases'], queryFn: fetchLeases })
+  return useQuery({ queryKey: LEASES_LIST, queryFn: fetchLeases })
 }
 
 export function useLease(id: string | null) {
   return useQuery({
-    queryKey: ['leases', id],
+    queryKey: id ? LEASE_DETAIL(id) : ['lease', 'detail', '__disabled__'],
     queryFn: () => fetchLease(id!),
     enabled: !!id,
   })
+}
+
+function invalidateLeases(qc: ReturnType<typeof useQueryClient>, deletedId?: string) {
+  void qc.invalidateQueries({ queryKey: LEASES_LIST })
+  if (deletedId) qc.removeQueries({ queryKey: LEASE_DETAIL(deletedId) })
 }
 
 export function useCreateLease() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: createLease,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leases'] }),
+    onSuccess: () => invalidateLeases(queryClient),
   })
 }
 
@@ -35,7 +46,10 @@ export function useUpdateLease() {
   return useMutation({
     mutationFn: ({ id, ...dto }: { id: string } & Partial<CreateLeaseInput>) =>
       updateLease(id, dto),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leases'] }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: LEASES_LIST })
+      void queryClient.invalidateQueries({ queryKey: LEASE_DETAIL(variables.id) })
+    },
   })
 }
 
@@ -44,7 +58,10 @@ export function useTransitionLeaseStatus() {
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       transitionLeaseStatus(id, status),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leases'] }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: LEASES_LIST })
+      void queryClient.invalidateQueries({ queryKey: LEASE_DETAIL(variables.id) })
+    },
   })
 }
 
@@ -52,7 +69,7 @@ export function useDeleteLease() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: deleteLease,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leases'] }),
+    onSuccess: (_data, id) => invalidateLeases(queryClient, id),
   })
 }
 
@@ -61,8 +78,9 @@ export function useCreateLeaseWithTenant() {
   return useMutation({
     mutationFn: (dto: CreateLeaseWithTenantInput) => createLeaseWithTenant(dto),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['leases'] })
-      void queryClient.invalidateQueries({ queryKey: ['tenants'] })
+      void queryClient.invalidateQueries({ queryKey: LEASES_LIST })
+      // Endast list-cachen – matchar inte detalj-queries (['tenant', 'detail', id])
+      void queryClient.invalidateQueries({ queryKey: ['tenants', 'list'] })
     },
   })
 }

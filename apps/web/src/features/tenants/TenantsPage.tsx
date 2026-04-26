@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import {
-  Plus,
   Users,
   User,
   Building2,
@@ -11,33 +10,27 @@ import {
   MapPin,
   Calendar,
   FileText,
+  Home,
+  FileSignature,
+  Info,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { Button } from '@/components/ui/Button'
-import { Modal, ModalFooter } from '@/components/ui/Modal'
+import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { DataTable } from '@/components/ui/DataTable'
-import { Badge, InvoiceStatusBadge } from '@/components/ui/Badge'
+import { Badge, InvoiceStatusBadge, LeaseStatusBadge } from '@/components/ui/Badge'
 import { StatCard } from '@/components/ui/StatCard'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { TenantForm } from './components/TenantForm'
-import {
-  useTenants,
-  useTenant,
-  useCreateTenant,
-  useUpdateTenant,
-  useDeleteTenant,
-} from './hooks/useTenants'
+import { useTenants, useTenant } from './hooks/useTenants'
 import { formatCurrency, formatDate } from '@eken/shared'
-import type { CreateTenantInput, Tenant } from '@eken/shared'
-import type { TenantWithCount, TenantDetail } from './api/tenants.api'
+import type { Tenant } from '@eken/shared'
+import type { TenantWithCount, TenantDetail, LeaseWithUnit } from './api/tenants.api'
 import { cn } from '@/lib/cn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type TenantTab = 'ALL' | 'INDIVIDUAL' | 'COMPANY'
-type DetailTab = 'detaljer' | 'redigera'
 
 const TABS: { id: TenantTab; label: string }[] = [
   { id: 'ALL', label: 'Alla' },
@@ -54,19 +47,8 @@ function displayName(t: Pick<Tenant, 'type' | 'firstName' | 'lastName' | 'compan
   return t.companyName ?? '–'
 }
 
-// Convert Tenant shape → CreateTenantInput for pre-filling TenantForm
-function tenantToInput(t: TenantDetail): Partial<CreateTenantInput> {
-  return {
-    type: t.type,
-    ...(t.firstName != null ? { firstName: t.firstName } : {}),
-    ...(t.lastName != null ? { lastName: t.lastName } : {}),
-    ...(t.companyName != null ? { companyName: t.companyName } : {}),
-    email: t.email,
-    ...(t.phone != null ? { phone: t.phone } : {}),
-    ...(t.personalNumber != null ? { personalNumber: t.personalNumber } : {}),
-    ...(t.orgNumber != null ? { orgNumber: t.orgNumber } : {}),
-    ...(t.address != null ? { address: t.address } : {}),
-  }
+function formatUnitLabel(lease: LeaseWithUnit): string {
+  return `${lease.unit.property.name} · ${lease.unit.name}`
 }
 
 // ─── Animation variants ───────────────────────────────────────────────────────
@@ -84,11 +66,7 @@ export function TenantsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [tab, setTab] = useState<TenantTab>('ALL')
   const [selected, setSelected] = useState<TenantWithCount | null>(null)
-  const [detailTab, setDetailTab] = useState<DetailTab>('detaljer')
-  const [showCreate, setShowCreate] = useState(false)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  // Debounce search → server-side query
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -101,11 +79,6 @@ export function TenantsPage() {
   const { data: tenants = [], isLoading } = useTenants(debouncedSearch || undefined)
   const { data: selectedTenant } = useTenant(selected?.id ?? null)
 
-  const createMutation = useCreateTenant()
-  const updateMutation = useUpdateTenant()
-  const deleteMutation = useDeleteTenant()
-
-  // Client-side tab filter (search is already server-side)
   const filtered = useMemo(() => {
     if (tab === 'ALL') return tenants
     return tenants.filter((t) => t.type === tab)
@@ -113,37 +86,14 @@ export function TenantsPage() {
 
   const individualCount = tenants.filter((t) => t.type === 'INDIVIDUAL').length
   const companyCount = tenants.filter((t) => t.type === 'COMPANY').length
+  const withActiveContract = tenants.filter((t) => t.activeLease?.status === 'ACTIVE').length
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
-
-  const handleCreate = (dto: CreateTenantInput) => {
-    createMutation.mutate(dto, { onSuccess: () => setShowCreate(false) })
-  }
-
-  const handleUpdate = (dto: CreateTenantInput) => {
-    if (!selected) return
-    updateMutation.mutate(
-      { id: selected.id, ...dto },
-      { onSuccess: () => setDetailTab('detaljer') },
-    )
-  }
-
-  const handleDelete = () => {
-    if (!selected) return
-    deleteMutation.mutate(selected.id, {
-      onSuccess: () => {
-        setSelected(null)
-        setShowDeleteConfirm(false)
-      },
-    })
-  }
-
-  // ── Table columns ──────────────────────────────────────────────────────────
+  // ── Tabellkolumner ────────────────────────────────────────────────────────
 
   const columns = [
     {
       key: 'name',
-      header: 'Namn',
+      header: 'Hyresgäst',
       cell: (t: TenantWithCount) => (
         <div>
           <p className="font-medium text-gray-900">{displayName(t)}</p>
@@ -154,14 +104,33 @@ export function TenantsPage() {
       ),
     },
     {
-      key: 'email',
-      header: 'E-post',
-      cell: (t: TenantWithCount) => <span className="text-gray-600">{t.email}</span>,
+      key: 'unit',
+      header: 'Bostad',
+      cell: (t: TenantWithCount) =>
+        t.activeLease ? (
+          <div className="flex items-center gap-1.5">
+            <Home size={12} className="shrink-0 text-gray-300" />
+            <span className="text-[13px] text-gray-700">{formatUnitLabel(t.activeLease)}</span>
+          </div>
+        ) : (
+          <span className="text-[12.5px] italic text-gray-400">Inget aktivt kontrakt</span>
+        ),
     },
     {
-      key: 'phone',
-      header: 'Telefon',
-      cell: (t: TenantWithCount) => <span className="text-gray-500">{t.phone ?? '–'}</span>,
+      key: 'lease',
+      header: 'Kontrakt',
+      cell: (t: TenantWithCount) =>
+        t.activeLease ? <LeaseStatusBadge status={t.activeLease.status} /> : <span>–</span>,
+    },
+    {
+      key: 'rent',
+      header: 'Hyra/mån',
+      cell: (t: TenantWithCount) =>
+        t.activeLease ? (
+          <span className="text-gray-700">{formatCurrency(Number(t.activeLease.monthlyRent))}</span>
+        ) : (
+          <span className="text-gray-400">–</span>
+        ),
     },
     {
       key: 'invoices',
@@ -170,11 +139,9 @@ export function TenantsPage() {
       cell: (t: TenantWithCount) => <Badge variant="default">{t._count?.invoices ?? 0}</Badge>,
     },
     {
-      key: 'createdAt',
-      header: 'Skapad',
-      cell: (t: TenantWithCount) => (
-        <span className="text-gray-500">{formatDate(t.createdAt)}</span>
-      ),
+      key: 'contact',
+      header: 'Kontakt',
+      cell: (t: TenantWithCount) => <span className="text-gray-500">{t.email}</span>,
     },
   ]
 
@@ -182,24 +149,27 @@ export function TenantsPage() {
 
   return (
     <PageWrapper id="tenants">
-      {/* Header */}
       <PageHeader
         title="Hyresgäster"
-        description={`${tenants.length} hyresgäster`}
-        action={
-          <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
-            <Plus size={14} strokeWidth={2.2} />
-            Ny hyresgäst
-          </Button>
-        }
+        description={`${tenants.length} hyresgäster · läs-bar översikt`}
       />
+
+      {/* Banner som förklarar att skapande sker via Kontrakt-flödet */}
+      <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-[13px] text-blue-900">
+        <Info size={14} strokeWidth={1.8} className="mt-0.5 shrink-0 text-blue-500" />
+        <p>
+          Hyresgäster skapas via <strong>Kontrakt</strong>-fliken när du registrerar ett nytt
+          hyresavtal. Den här sidan är en översikt – för att lägga till en ny hyresgäst, gå till
+          Kontrakt → Nytt kontrakt.
+        </p>
+      </div>
 
       {/* Stats */}
       <motion.div
         variants={container}
         initial="hidden"
         animate="show"
-        className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3"
+        className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
       >
         <motion.div variants={item}>
           <StatCard
@@ -212,11 +182,20 @@ export function TenantsPage() {
         </motion.div>
         <motion.div variants={item}>
           <StatCard
+            title="Aktiva kontrakt"
+            value={withActiveContract}
+            icon={FileSignature}
+            iconColor="#16A34A"
+            delay={0.05}
+          />
+        </motion.div>
+        <motion.div variants={item}>
+          <StatCard
             title="Privatpersoner"
             value={individualCount}
             icon={User}
             iconColor="#0B84D0"
-            delay={0.05}
+            delay={0.1}
           />
         </motion.div>
         <motion.div variants={item}>
@@ -225,12 +204,12 @@ export function TenantsPage() {
             value={companyCount}
             icon={Building2}
             iconColor="#7C3AED"
-            delay={0.1}
+            delay={0.15}
           />
         </motion.div>
       </motion.div>
 
-      {/* Search + filter tabs */}
+      {/* Filter */}
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1 rounded-xl bg-gray-100/70 p-1">
           {TABS.map((t) => (
@@ -250,6 +229,7 @@ export function TenantsPage() {
         </div>
         <div className="w-64">
           <Input
+            name="tenant-search"
             placeholder="Sök på namn eller e-post..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -257,7 +237,7 @@ export function TenantsPage() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Tabell */}
       <div className="mt-4">
         {isLoading ? (
           <div className="flex items-center justify-center py-20 text-[13px] text-gray-400">
@@ -269,226 +249,135 @@ export function TenantsPage() {
             title="Inga hyresgäster"
             description={
               tenants.length === 0
-                ? 'Lägg till din första hyresgäst för att komma igång.'
+                ? 'Hyresgäster skapas via Kontrakt-fliken när du registrerar ett nytt hyresavtal.'
                 : 'Inga hyresgäster matchar det aktiva filtret.'
             }
-            {...(tenants.length === 0
-              ? {
-                  action: (
-                    <Button variant="primary" onClick={() => setShowCreate(true)}>
-                      <Plus size={14} strokeWidth={2.2} />
-                      Skapa hyresgäst
-                    </Button>
-                  ),
-                }
-              : {})}
           />
         ) : (
           <DataTable
             columns={columns}
             data={filtered}
             keyExtractor={(t) => t.id}
-            onRowClick={(t) => {
-              setSelected(t)
-              setDetailTab('detaljer')
-            }}
+            onRowClick={(t) => setSelected(t)}
           />
         )}
       </div>
 
-      {/* ── Create modal ───────────────────────────────────────────────────── */}
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Ny hyresgäst" size="md">
-        <TenantForm
-          onSubmit={handleCreate}
-          onCancel={() => setShowCreate(false)}
-          isSubmitting={createMutation.isPending}
-          submitLabel="Skapa hyresgäst"
-        />
-      </Modal>
-
-      {/* ── Detail modal ───────────────────────────────────────────────────── */}
+      {/* Detalj-modal (read-only) */}
       <Modal
         open={!!selected}
         onClose={() => setSelected(null)}
         title={selected ? displayName(selected) : ''}
         size="lg"
       >
-        {selected && (
-          <DetailPanel
-            selected={selected}
-            selectedTenant={selectedTenant ?? null}
-            detailTab={detailTab}
-            setDetailTab={setDetailTab}
-            onUpdate={handleUpdate}
-            onDeleteRequest={() => setShowDeleteConfirm(true)}
-            isUpdating={updateMutation.isPending}
-          />
-        )}
-      </Modal>
-
-      {/* ── Delete confirm modal ───────────────────────────────────────────── */}
-      <Modal
-        open={showDeleteConfirm}
-        onClose={() => setShowDeleteConfirm(false)}
-        title="Ta bort hyresgäst"
-        size="sm"
-      >
-        <p className="text-[13px] text-gray-600">
-          Vill du ta bort{' '}
-          <span className="font-medium text-gray-900">{selected ? displayName(selected) : ''}</span>
-          ? Åtgärden kan inte ångras.
-        </p>
-        <ModalFooter>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setShowDeleteConfirm(false)}
-            disabled={deleteMutation.isPending}
-          >
-            Avbryt
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            loading={deleteMutation.isPending}
-            onClick={handleDelete}
-          >
-            Ta bort
-          </Button>
-        </ModalFooter>
+        {selected && <DetailPanel selected={selected} selectedTenant={selectedTenant ?? null} />}
       </Modal>
     </PageWrapper>
   )
 }
 
-// ─── Detail panel (extracted to keep TenantsPage readable) ────────────────────
+// ─── Detail panel ─────────────────────────────────────────────────────────────
 
 interface DetailPanelProps {
   selected: TenantWithCount
   selectedTenant: TenantDetail | null
-  detailTab: DetailTab
-  setDetailTab: (t: DetailTab) => void
-  onUpdate: (dto: CreateTenantInput) => void
-  onDeleteRequest: () => void
-  isUpdating: boolean
 }
 
-function DetailPanel({
-  selected,
-  selectedTenant,
-  detailTab,
-  setDetailTab,
-  onUpdate,
-  onDeleteRequest,
-  isUpdating,
-}: DetailPanelProps) {
+function DetailPanel({ selected, selectedTenant }: DetailPanelProps) {
   return (
-    <div>
-      {/* Tab strip */}
-      <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
-        {(['detaljer', 'redigera'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setDetailTab(t)}
-            className={cn(
-              'h-8 rounded-lg px-3 text-[13px] font-medium transition-all',
-              detailTab === t
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700',
-            )}
-          >
-            {t === 'detaljer' ? 'Detaljer' : 'Redigera'}
-          </button>
-        ))}
+    <div className="space-y-5">
+      {/* Kontaktinfo */}
+      <div>
+        <p className="mb-3 text-[13px] font-semibold text-gray-700">Kontaktuppgifter</p>
+        <div className="grid grid-cols-2 gap-4 rounded-xl border border-gray-100 p-4">
+          <InfoRow icon={Mail} label="E-post" value={selected.email} />
+          <InfoRow icon={Phone} label="Telefon" value={selected.phone ?? '–'} />
+          <InfoRow
+            icon={Hash}
+            label={selected.type === 'INDIVIDUAL' ? 'Personnummer' : 'Org.nummer'}
+            value={
+              selected.type === 'INDIVIDUAL'
+                ? (selected.personalNumber ?? '–')
+                : (selected.orgNumber ?? '–')
+            }
+          />
+          <InfoRow
+            icon={MapPin}
+            label="Adress"
+            value={
+              selected.address
+                ? `${selected.address.street}, ${selected.address.postalCode} ${selected.address.city}`
+                : '–'
+            }
+          />
+          <InfoRow icon={Calendar} label="Skapad" value={formatDate(selected.createdAt)} />
+        </div>
       </div>
 
-      {detailTab === 'detaljer' ? (
-        <div>
-          {/* Info grid */}
-          <div className="grid grid-cols-2 gap-4 rounded-xl border border-gray-100 p-4">
-            <InfoRow icon={Mail} label="E-post" value={selected.email} />
-            <InfoRow icon={Phone} label="Telefon" value={selected.phone ?? '–'} />
-            <InfoRow
-              icon={Hash}
-              label={selected.type === 'INDIVIDUAL' ? 'Personnummer' : 'Org.nummer'}
-              value={
-                selected.type === 'INDIVIDUAL'
-                  ? (selected.personalNumber ?? '–')
-                  : (selected.orgNumber ?? '–')
-              }
-            />
-            <InfoRow
-              icon={MapPin}
-              label="Adress"
-              value={
-                selected.address
-                  ? `${selected.address.street}, ${selected.address.postalCode} ${selected.address.city}`
-                  : '–'
-              }
-            />
-            <InfoRow icon={Calendar} label="Skapad" value={formatDate(selected.createdAt)} />
-          </div>
-
-          {/* Recent invoices */}
-          <div className="mt-5">
-            <p className="mb-3 text-[13px] font-semibold text-gray-700">Senaste fakturor</p>
-            {selectedTenant?.invoices && selectedTenant.invoices.length > 0 ? (
-              <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
-                {selectedTenant.invoices.map((inv) => (
-                  <div
-                    key={inv.id}
-                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/80"
-                  >
-                    <div className="flex items-center gap-2">
-                      <FileText size={13} strokeWidth={1.8} className="text-gray-400" />
-                      <span className="text-[13px] font-medium text-gray-800">
-                        {inv.invoiceNumber}
-                      </span>
-                      <InvoiceStatusBadge status={inv.status} />
-                    </div>
-                    <div className="flex items-center gap-4 text-[13px] text-gray-500">
-                      <span>{formatCurrency(Number(inv.total))}</span>
-                      <span>{formatDate(inv.dueDate)}</span>
-                    </div>
+      {/* Kontrakts-historik */}
+      <div>
+        <p className="mb-3 text-[13px] font-semibold text-gray-700">Kontrakt</p>
+        {selectedTenant?.leases && selectedTenant.leases.length > 0 ? (
+          <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
+            {selectedTenant.leases.map((l) => (
+              <div
+                key={l.id}
+                className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/80"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Home size={13} strokeWidth={1.8} className="text-gray-400" />
+                  <div>
+                    <p className="text-[13px] font-medium text-gray-800">
+                      {l.unit.property.name} · {l.unit.name}
+                    </p>
+                    <p className="mt-0.5 text-[11.5px] text-gray-400">
+                      {formatDate(l.startDate)}
+                      {l.endDate ? ` – ${formatDate(l.endDate)}` : ' – tills vidare'}
+                    </p>
                   </div>
-                ))}
+                </div>
+                <div className="flex items-center gap-3 text-[13px] text-gray-600">
+                  <span>{formatCurrency(Number(l.monthlyRent))}/mån</span>
+                  <LeaseStatusBadge status={l.status} />
+                </div>
               </div>
-            ) : (
-              <div className="rounded-xl border border-gray-100 py-8 text-center text-[13px] text-gray-400">
-                Inga fakturor ännu
-              </div>
-            )}
+            ))}
           </div>
+        ) : (
+          <div className="rounded-xl border border-gray-100 py-8 text-center text-[13px] text-gray-400">
+            Inga kontrakt registrerade
+          </div>
+        )}
+      </div>
 
-          {/* Actions */}
-          <ModalFooter>
-            <Button
-              variant="danger"
-              size="sm"
-              disabled={(selected._count?.invoices ?? 0) > 0}
-              title={
-                (selected._count?.invoices ?? 0) > 0
-                  ? 'Hyresgästen har aktiva fakturor och kan inte tas bort'
-                  : undefined
-              }
-              onClick={onDeleteRequest}
-            >
-              Ta bort
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setDetailTab('redigera')}>
-              Redigera
-            </Button>
-          </ModalFooter>
-        </div>
-      ) : (
-        <TenantForm
-          {...(selectedTenant ? { defaultValues: tenantToInput(selectedTenant) } : {})}
-          onSubmit={onUpdate}
-          onCancel={() => setDetailTab('detaljer')}
-          isSubmitting={isUpdating}
-          submitLabel="Spara ändringar"
-        />
-      )}
+      {/* Senaste fakturor */}
+      <div>
+        <p className="mb-3 text-[13px] font-semibold text-gray-700">Senaste fakturor</p>
+        {selectedTenant?.invoices && selectedTenant.invoices.length > 0 ? (
+          <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
+            {selectedTenant.invoices.map((inv) => (
+              <div
+                key={inv.id}
+                className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/80"
+              >
+                <div className="flex items-center gap-2">
+                  <FileText size={13} strokeWidth={1.8} className="text-gray-400" />
+                  <span className="text-[13px] font-medium text-gray-800">{inv.invoiceNumber}</span>
+                  <InvoiceStatusBadge status={inv.status} />
+                </div>
+                <div className="flex items-center gap-4 text-[13px] text-gray-500">
+                  <span>{formatCurrency(Number(inv.total))}</span>
+                  <span>{formatDate(inv.dueDate)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-gray-100 py-8 text-center text-[13px] text-gray-400">
+            Inga fakturor ännu
+          </div>
+        )}
+      </div>
     </div>
   )
 }

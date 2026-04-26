@@ -122,23 +122,6 @@ export const TOOLS: Anthropic.Tool[] = [
   },
 
   {
-    name: 'create_tenant',
-    description: 'Skapar en ny hyresgäst. KRÄVER bekräftelse.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        type: { type: 'string', enum: ['INDIVIDUAL', 'COMPANY'] },
-        firstName: { type: 'string' },
-        lastName: { type: 'string' },
-        companyName: { type: 'string' },
-        email: { type: 'string', description: 'E-postadress (obligatorisk)' },
-        phone: { type: 'string' },
-      },
-      required: ['type', 'email'],
-    },
-  },
-
-  {
     name: 'update_tenant',
     description: 'Uppdaterar en hyresgästs kontaktinformation. KRÄVER bekräftelse.',
     input_schema: {
@@ -229,29 +212,6 @@ export const TOOLS: Anthropic.Tool[] = [
         reason: { type: 'string', description: 'Anledning (valfritt)' },
       },
       required: ['leaseId', 'tenantName', 'newStatus'],
-    },
-  },
-
-  {
-    name: 'create_tenant_and_invoice',
-    description:
-      'Skapar en ny hyresgäst och en faktura i ett steg. Använd detta verktyg NÄR hyresgästen INTE finns i systemet. KRÄVER bekräftelse.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        tenantType: { type: 'string', enum: ['INDIVIDUAL', 'COMPANY'] },
-        tenantFirstName: { type: 'string', description: 'Förnamn (krävs för privatperson)' },
-        tenantLastName: { type: 'string', description: 'Efternamn (krävs för privatperson)' },
-        tenantCompanyName: { type: 'string', description: 'Företagsnamn (krävs för företag)' },
-        tenantEmail: { type: 'string', description: 'E-postadress (obligatorisk)' },
-        tenantPhone: { type: 'string' },
-        type: { type: 'string', enum: ['RENT', 'DEPOSIT', 'SERVICE', 'UTILITY', 'OTHER'] },
-        amount: { type: 'number', description: 'Belopp i SEK exkl. moms' },
-        vatRate: { type: 'number', description: 'Momssats i procent, t.ex. 0 eller 25' },
-        dueDate: { type: 'string', description: 'Förfallodatum YYYY-MM-DD' },
-        description: { type: 'string', description: 'Fakturabeskrivning' },
-      },
-      required: ['tenantType', 'tenantEmail', 'amount', 'dueDate', 'description'],
     },
   },
 
@@ -661,8 +621,6 @@ export const ACTION_TOOLS = new Set([
   'update_maintenance_status',
   'create_invoice',
   'create_bulk_invoices',
-  'create_tenant',
-  'create_tenant_and_invoice',
   'update_tenant',
   'send_invoice_email',
   'send_overdue_reminders',

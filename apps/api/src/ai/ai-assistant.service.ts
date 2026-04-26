@@ -211,10 +211,11 @@ Brevtyper du kan skriva:
 - Allmän kommunikation (GENERAL): anpassa ton efter sammanhang
 
 NÄR HYRESGÄST SAKNAS:
-Om create_invoice misslyckas med "hyresgäst hittades inte":
-1. Fråga om du ska skapa hyresgästen och fakturan i ett steg
-2. Hämta e-post och typ (INDIVIDUAL/COMPANY) om det saknas
-3. Använd create_tenant_and_invoice för att skapa allt i ett steg
+Hyresgäster kan inte skapas fristående – varje hyresgäst måste registreras
+mot en enhet via ett kontrakt. Om create_invoice misslyckas med
+"hyresgäst hittades inte":
+1. Be användaren först skapa kontraktet med create_tenant_and_lease
+2. Återkom sedan med fakturan när kontraktet är på plats
 
 VALIDERING (inbyggd i systemet):
 Systemet blockerar automatiskt:
@@ -301,7 +302,7 @@ export interface ChatResponse {
 
 function requiresDoubleConfirmation(toolName: string, toolInput: Record<string, unknown>): boolean {
   // Large single invoice (>50 000 kr)
-  if (toolName === 'create_invoice' || toolName === 'create_tenant_and_invoice') {
+  if (toolName === 'create_invoice') {
     const raw = String(toolInput.amount ?? '0').replace(/[^\d.]/g, '')
     const amount = parseFloat(raw)
     if (!isNaN(amount) && amount > 50000) return true
@@ -692,20 +693,6 @@ export class AiAssistantService {
           },
         }
 
-      case 'create_tenant':
-        return {
-          confirmationMessage: `Skapa hyresgäst ${(input.firstName as string | undefined) ?? (input.companyName as string | undefined) ?? ''} (${input.email as string})`,
-          details: {
-            Typ: input.type === 'INDIVIDUAL' ? 'Privatperson' : 'Företag',
-            Namn:
-              input.type === 'INDIVIDUAL'
-                ? `${(input.firstName as string | undefined) ?? ''} ${(input.lastName as string | undefined) ?? ''}`.trim()
-                : ((input.companyName as string | undefined) ?? ''),
-            'E-post': input.email as string,
-            ...(input.phone ? { Telefon: input.phone as string } : {}),
-          },
-        }
-
       case 'update_tenant':
         return {
           confirmationMessage: `Uppdatera kontaktinfo för ${input.tenantName as string}`,
@@ -844,24 +831,6 @@ export class AiAssistantService {
             Startdatum: input.startDate as string,
             Kontraktsform: input.endDate ? `T.o.m. ${input.endDate as string}` : 'Tillsvidare',
             Deposition: `${((input.depositAmount as number | undefined) ?? 0).toLocaleString('sv-SE')} kr`,
-          },
-        }
-      }
-
-      case 'create_tenant_and_invoice': {
-        const newTenantName =
-          input.tenantType === 'INDIVIDUAL'
-            ? `${(input.tenantFirstName as string | undefined) ?? ''} ${(input.tenantLastName as string | undefined) ?? ''}`.trim()
-            : ((input.tenantCompanyName as string | undefined) ?? (input.tenantEmail as string))
-        return {
-          confirmationMessage: `Skapa ny hyresgäst "${newTenantName}" och faktura på ${safeAmountStr(input.amount)} kr`,
-          details: {
-            'Ny hyresgäst': newTenantName,
-            'E-post': input.tenantEmail as string,
-            Typ: (input.tenantType as string) === 'INDIVIDUAL' ? 'Privatperson' : 'Företag',
-            Belopp: `${safeAmountStr(input.amount)} kr`,
-            Förfallodatum: input.dueDate as string,
-            Beskrivning: input.description as string,
           },
         }
       }

@@ -524,6 +524,10 @@ model Lease {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  // OBS: Det finns även ett partial unique index lease_unit_active_unique
+  // ON "Lease" ("unitId") WHERE status = 'ACTIVE' — definierat i migration
+  // 20260426120000_lease_active_unique. Prisma stöder inte WHERE-villkor i
+  // schemat så det måste hållas i sync manuellt.
 
   @@index([organizationId])
   @@index([unitId])

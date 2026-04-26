@@ -169,7 +169,7 @@ function PostForm({
 export function NewsPage() {
   const { data: posts = [], isLoading } = useNewsPosts()
   const { data: propertiesRaw = [] } = useQuery({
-    queryKey: ['properties'],
+    queryKey: ['properties', 'list'],
     queryFn: fetchProperties,
     staleTime: 60_000,
   })

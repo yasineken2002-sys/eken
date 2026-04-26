@@ -21,8 +21,7 @@ import { StatCard } from '@/components/ui/StatCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { useMessages, useMessageStats, useSendMessage, useRetryMessage } from './hooks/useMessages'
-import { useQuery } from '@tanstack/react-query'
-import { fetchTenants } from '@/features/tenants/api/tenants.api'
+import { useTenants } from '@/features/tenants/hooks/useTenants'
 import { cn } from '@/lib/cn'
 import type { SentMessage } from './api/messages.api'
 
@@ -203,7 +202,7 @@ interface SendResult {
 export function MessagesPage() {
   const { data: stats } = useMessageStats()
   const { data: messages = [], refetch: refetchMessages } = useMessages()
-  const { data: tenants = [] } = useQuery({ queryKey: ['tenants'], queryFn: () => fetchTenants() })
+  const { data: tenants = [] } = useTenants()
   const sendMutation = useSendMessage()
   const retryMutation = useRetryMessage()
 

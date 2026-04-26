@@ -22,10 +22,10 @@ export function useExecuteImport() {
     mutationFn: ({ file, type }: { file: File; type: string }) => executeImport(file, type),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['import', 'jobs'] })
-      void queryClient.invalidateQueries({ queryKey: ['properties'] })
-      void queryClient.invalidateQueries({ queryKey: ['units'] })
-      void queryClient.invalidateQueries({ queryKey: ['tenants'] })
-      void queryClient.invalidateQueries({ queryKey: ['leases'] })
+      void queryClient.invalidateQueries({ queryKey: ['properties', 'list'] })
+      void queryClient.invalidateQueries({ queryKey: ['units', 'list'] })
+      void queryClient.invalidateQueries({ queryKey: ['tenants', 'list'] })
+      void queryClient.invalidateQueries({ queryKey: ['leases', 'list'] })
     },
   })
 }

@@ -32,7 +32,6 @@ export interface ToolResult {
 const MANAGER_ALLOWED_ACTIONS = new Set([
   'create_invoice',
   'create_bulk_invoices',
-  'create_tenant_and_invoice',
   'send_invoice_email',
   'send_overdue_reminders',
   'mark_invoice_paid',
@@ -528,105 +527,6 @@ export class ToolExecutorService {
             success: true,
             data: result,
             message: `${result.created} fakturor skapade för ${month}/${year}`,
-          }
-        }
-
-        case 'create_tenant': {
-          const tenant = await this.tenantsService.create(
-            {
-              type: toolInput.type as 'INDIVIDUAL' | 'COMPANY',
-              email: toolInput.email as string,
-              ...(toolInput.firstName ? { firstName: toolInput.firstName as string } : {}),
-              ...(toolInput.lastName ? { lastName: toolInput.lastName as string } : {}),
-              ...(toolInput.companyName ? { companyName: toolInput.companyName as string } : {}),
-              ...(toolInput.phone ? { phone: toolInput.phone as string } : {}),
-            },
-            organizationId,
-          )
-          const name =
-            tenant.type === 'INDIVIDUAL'
-              ? `${tenant.firstName ?? ''} ${tenant.lastName ?? ''}`.trim()
-              : (tenant.companyName ?? '')
-          return {
-            success: true,
-            data: tenant,
-            message: `Hyresgäst ${name} skapad`,
-            nextSteps: [`Skapa ett kontrakt för ${name}`, `Lägg till kontaktuppgifter`],
-          }
-        }
-
-        case 'create_tenant_and_invoice': {
-          const ctaiAmount = parseSwedishAmount(toolInput.amount)
-          if (ctaiAmount === null) {
-            return {
-              success: false,
-              message: `Ogiltigt belopp: "${String(toolInput.amount)}". Ange t.ex. "8323" eller "8 323 kr".`,
-            }
-          }
-          const ctaiDueDate = parseSwedishDate(toolInput.dueDate)
-          const ctaiSanityWarnings = sanityCheckInvoice(
-            ctaiAmount,
-            toolInput.vatRate as number | undefined,
-            ctaiDueDate,
-          )
-          if (ctaiSanityWarnings.length > 0) {
-            return {
-              success: false,
-              message: `Valideringsfel:\n${ctaiSanityWarnings.map((w) => `• ${w}`).join('\n')}`,
-            }
-          }
-          const createdTenant = await this.tenantsService.create(
-            {
-              type: toolInput.tenantType as 'INDIVIDUAL' | 'COMPANY',
-              email: toolInput.tenantEmail as string,
-              ...(toolInput.tenantFirstName
-                ? { firstName: toolInput.tenantFirstName as string }
-                : {}),
-              ...(toolInput.tenantLastName ? { lastName: toolInput.tenantLastName as string } : {}),
-              ...(toolInput.tenantCompanyName
-                ? { companyName: toolInput.tenantCompanyName as string }
-                : {}),
-              ...(toolInput.tenantPhone ? { phone: toolInput.tenantPhone as string } : {}),
-            },
-            organizationId,
-          )
-          const ctaiTenantName =
-            createdTenant.type === 'INDIVIDUAL'
-              ? `${createdTenant.firstName ?? ''} ${createdTenant.lastName ?? ''}`.trim()
-              : (createdTenant.companyName ?? '')
-          const ctaiDesc = (toolInput.description as string | undefined)?.trim() || 'Övrigt'
-          const ctaiInvoiceType = (
-            toolInput.type && toolInput.type !== 'OTHER'
-              ? toolInput.type
-              : detectInvoiceType(ctaiDesc)
-          ) as 'RENT' | 'DEPOSIT' | 'SERVICE' | 'UTILITY' | 'OTHER'
-          const ctaiInvoice = await this.invoicesService.create(organizationId, userId, {
-            tenantId: createdTenant.id,
-            type: ctaiInvoiceType,
-            issueDate: new Date().toISOString(),
-            dueDate: ctaiDueDate.toISOString(),
-            lines: [
-              {
-                description: ctaiDesc,
-                quantity: 1,
-                unitPrice: ctaiAmount,
-                vatRate: (toolInput.vatRate as number) ?? 0,
-              },
-            ],
-          })
-          return {
-            success: true,
-            data: { tenant: createdTenant, invoice: ctaiInvoice },
-            message: [
-              `Hyresgäst ${ctaiTenantName} skapad`,
-              `Faktura ${ctaiInvoice.invoiceNumber} skapad — Belopp: ${formatAmount(Number(ctaiInvoice.total))} kr`,
-              `Förfaller: ${ctaiInvoice.dueDate.toISOString().slice(0, 10)}`,
-              `Status: Utkast — kom ihåg att skicka den till hyresgästen!`,
-            ].join('\n'),
-            nextSteps: [
-              `Skicka fakturan till ${createdTenant.email} via e-post`,
-              `Skapa ett hyreskontrakt för ${ctaiTenantName}`,
-            ],
           }
         }
 

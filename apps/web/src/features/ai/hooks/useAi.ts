@@ -49,10 +49,10 @@ export function useConfirmAction() {
       }
       // Invalidate domain data so pages reflect AI-created/updated entities
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
-      queryClient.invalidateQueries({ queryKey: ['tenants'] })
-      queryClient.invalidateQueries({ queryKey: ['leases'] })
-      queryClient.invalidateQueries({ queryKey: ['properties'] })
-      queryClient.invalidateQueries({ queryKey: ['units'] })
+      queryClient.invalidateQueries({ queryKey: ['tenants', 'list'] })
+      queryClient.invalidateQueries({ queryKey: ['leases', 'list'] })
+      queryClient.invalidateQueries({ queryKey: ['properties', 'list'] })
+      queryClient.invalidateQueries({ queryKey: ['units', 'list'] })
     },
   })
 }

@@ -35,6 +35,7 @@ interface NavItem {
   label: string
   icon: React.ElementType
   badge?: number
+  readOnly?: boolean
 }
 
 const NAV_PRIMARY: NavItem[] = [
@@ -45,7 +46,7 @@ const NAV_PRIMARY: NavItem[] = [
 const NAV_PORTFOLIO: NavItem[] = [
   { id: 'properties', label: 'Fastigheter', icon: Building2 },
   { id: 'units', label: 'Objekt', icon: Home },
-  { id: 'tenants', label: 'Hyresgäster', icon: Users },
+  { id: 'tenants', label: 'Hyresgäster', icon: Users, readOnly: true },
   { id: 'leases', label: 'Hyresavtal', icon: FileText },
 ]
 
@@ -123,6 +124,14 @@ function NavGroup({ label, items, route, collapsed, onNavigate, onMobileClose }:
             {!collapsed && item.badge !== undefined && (
               <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
                 {item.badge}
+              </span>
+            )}
+            {!collapsed && item.readOnly && (
+              <span
+                title="Läs-bar översikt – skapas via Kontrakt"
+                className="rounded-md border border-white/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-white/40"
+              >
+                Läs
               </span>
             )}
           </button>

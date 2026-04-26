@@ -1,11 +1,33 @@
-import { get, post, patch, del } from '@/lib/api'
-import type { Tenant, Invoice, CreateTenantInput } from '@eken/shared'
+import { get, patch } from '@/lib/api'
+import type { Tenant, Invoice, Lease, Unit, Property } from '@eken/shared'
 
-export type TenantWithCount = Tenant & { _count: { invoices: number } }
-export type TenantDetail = TenantWithCount & { invoices: Invoice[] }
+export type LeaseWithUnit = Lease & {
+  unit: Unit & { property: Pick<Property, 'id' | 'name' | 'propertyDesignation'> }
+}
 
-// Maps CreateTenantInput (nested address) → flat fields the backend DTO expects
-function flattenDto(dto: CreateTenantInput | Partial<CreateTenantInput>): Record<string, unknown> {
+export type TenantWithCount = Tenant & {
+  _count: { invoices: number }
+  activeLease: LeaseWithUnit | null
+}
+
+export type TenantDetail = TenantWithCount & {
+  invoices: Invoice[]
+  leases: LeaseWithUnit[]
+}
+
+export type UpdateTenantInput = {
+  type?: 'INDIVIDUAL' | 'COMPANY'
+  firstName?: string
+  lastName?: string
+  companyName?: string
+  email?: string
+  phone?: string
+  personalNumber?: string
+  orgNumber?: string
+  address?: { street: string; city: string; postalCode: string }
+}
+
+function flattenUpdate(dto: UpdateTenantInput): Record<string, unknown> {
   const { address, ...rest } = dto
   return {
     ...rest,
@@ -23,14 +45,10 @@ export function fetchTenant(id: string): Promise<TenantDetail> {
   return get<TenantDetail>(`/tenants/${id}`)
 }
 
-export function createTenant(dto: CreateTenantInput): Promise<Tenant> {
-  return post<Tenant>('/tenants', flattenDto(dto))
-}
+// OBS: Hyresgäster skapas inte längre fristående – endast via
+// LeaseForm/useCreateLeaseWithTenant. createTenant-funktionen är därför
+// inte längre exponerad i UI:t.
 
-export function updateTenant(id: string, dto: Partial<CreateTenantInput>): Promise<Tenant> {
-  return patch<Tenant>(`/tenants/${id}`, flattenDto(dto))
-}
-
-export function deleteTenant(id: string): Promise<void> {
-  return del(`/tenants/${id}`)
+export function updateTenant(id: string, dto: UpdateTenantInput): Promise<Tenant> {
+  return patch<Tenant>(`/tenants/${id}`, flattenUpdate(dto))
 }

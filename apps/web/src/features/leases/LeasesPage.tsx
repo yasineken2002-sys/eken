@@ -127,12 +127,10 @@ export function LeasesPage() {
 
   const handleDelete = () => {
     if (!selected) return
-    deleteMutation.mutate(selected.id, {
-      onSuccess: () => {
-        setSelected(null)
-        setShowDeleteConfirm(false)
-      },
-    })
+    const id = selected.id
+    setSelected(null)
+    setShowDeleteConfirm(false)
+    deleteMutation.mutate(id)
   }
 
   // ── Table columns ──────────────────────────────────────────────────────────

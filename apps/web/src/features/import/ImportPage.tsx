@@ -31,6 +31,8 @@ import {
 import { downloadTemplate } from './api/import.api'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
+import { Select } from '@/components/ui/Input'
+import { useUnits } from '@/features/units/hooks/useUnits'
 import { formatDate } from '@eken/shared'
 import type { PreviewResult, ImportJob, ScannedContract } from './api/import.api'
 
@@ -367,6 +369,9 @@ function ContractScannerPanel() {
   const [edited, setEdited] = useState<ScannedContract | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveResult, setSaveResult] = useState<'success' | 'error' | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [selectedUnitId, setSelectedUnitId] = useState<string>('')
+  const { data: units = [] } = useUnits()
   const { mutateAsync: scan } = useScanContract()
 
   const handleFile = async (file: File) => {
@@ -395,30 +400,55 @@ function ContractScannerPanel() {
     if (!edited) return
     setSaving(true)
     setSaveResult(null)
+    setSaveError(null)
     try {
-      const tenantPayload: Record<string, unknown> = {
-        type: edited.tenantType ?? 'INDIVIDUAL',
-        email: edited.tenantEmail ?? '',
-        phone: edited.tenantPhone ?? undefined,
+      if (!selectedUnitId) {
+        setSaveError('Välj enhet innan du sparar')
+        setSaveResult('error')
+        return
+      }
+      if (!edited.monthlyRent || !edited.startDate) {
+        setSaveError('Månadshyra och startdatum krävs för att skapa kontraktet')
+        setSaveResult('error')
+        return
       }
 
-      if (edited.tenantType === 'COMPANY') {
-        tenantPayload['companyName'] = edited.companyName ?? ''
-        tenantPayload['orgNumber'] = edited.orgNumber ?? undefined
+      const tenantType = edited.tenantType ?? 'INDIVIDUAL'
+      const newTenant: Record<string, unknown> = {
+        type: tenantType,
+        email: edited.tenantEmail ?? '',
+        ...(edited.tenantPhone ? { phone: edited.tenantPhone } : {}),
+      }
+      if (tenantType === 'COMPANY') {
+        newTenant['companyName'] = edited.companyName ?? ''
       } else {
         const nameParts = (edited.tenantName ?? '').trim().split(' ')
-        tenantPayload['firstName'] = nameParts.slice(0, -1).join(' ') || nameParts[0] || ''
-        tenantPayload['lastName'] =
-          nameParts.length > 1 ? (nameParts[nameParts.length - 1] ?? '') : ''
-        tenantPayload['personalNumber'] = edited.personalNumber ?? undefined
+        newTenant['firstName'] = nameParts.slice(0, -1).join(' ') || nameParts[0] || ''
+        newTenant['lastName'] = nameParts.length > 1 ? (nameParts[nameParts.length - 1] ?? '') : ''
+      }
+
+      const payload = {
+        unitId: selectedUnitId,
+        newTenant,
+        monthlyRent: edited.monthlyRent,
+        ...(edited.depositAmount != null ? { depositAmount: edited.depositAmount } : {}),
+        startDate: edited.startDate,
+        ...(edited.endDate ? { endDate: edited.endDate } : {}),
       }
 
       const token = useAuthStore.getState().accessToken
-      await api.post('/tenants', tenantPayload, {
+      // Skapa hyresgäst + kontrakt atomiskt – samma endpoint som LeaseForm.
+      await api.post('/leases/with-tenant', payload, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
       setSaveResult('success')
-    } catch {
+    } catch (err) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data
+              ?.error?.message
+      setSaveError(msg ?? 'Något gick fel. Kontrollera uppgifterna.')
       setSaveResult('error')
     } finally {
       setSaving(false)
@@ -556,14 +586,33 @@ function ContractScannerPanel() {
             <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
               Kontrakt
             </p>
+            <div className="mb-3 rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2 text-[12.5px] text-amber-900">
+              Skannade adress- och enhetsuppgifter används som referens. Välj rätt enhet i listan
+              nedan – kontraktet kopplas till den enheten.
+            </div>
+            <div className="mb-3">
+              <Select
+                name="scan-unit"
+                label="Enhet att koppla kontraktet till *"
+                value={selectedUnitId}
+                onChange={(e) => setSelectedUnitId(e.target.value)}
+                options={[
+                  { value: '', label: 'Välj enhet...' },
+                  ...units.map((u) => ({
+                    value: u.id,
+                    label: `${u.property.name} · ${u.name} (${u.unitNumber})`,
+                  })),
+                ]}
+              />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <ScanField
-                label="Adress"
+                label="Skannad adress"
                 value={edited.propertyAddress}
                 onChange={(v) => setEdited({ ...edited, propertyAddress: v || null })}
               />
               <ScanField
-                label="Enhet"
+                label="Skannad enhet"
                 value={edited.unitDescription}
                 onChange={(v) => setEdited({ ...edited, unitDescription: v || null })}
               />
@@ -615,7 +664,7 @@ function ContractScannerPanel() {
                 className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-600"
               >
                 <AlertCircle size={14} />
-                Något gick fel. Kontrollera uppgifterna.
+                {saveError ?? 'Något gick fel. Kontrollera uppgifterna.'}
               </motion.div>
             )}
           </AnimatePresence>
@@ -629,7 +678,7 @@ function ContractScannerPanel() {
               variant="primary"
               size="sm"
               onClick={handleSave}
-              disabled={saving || !edited.tenantEmail}
+              disabled={saving || !edited.tenantEmail || !selectedUnitId}
             >
               {saving ? (
                 <>
