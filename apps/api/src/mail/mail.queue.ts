@@ -64,7 +64,7 @@ export class MailQueue {
       if (delay > 0) jobOptions.delay = delay
     }
 
-    const job = await queue.add(opts.template, payload, jobOptions)
+    const job = await queue.add(payload, jobOptions)
     this.logger.log(
       `Enqueued mail jobId=${job.id} template=${opts.template} to=${opts.to} priority=${opts.priority ?? 'normal'}`,
     )
