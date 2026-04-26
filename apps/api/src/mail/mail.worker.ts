@@ -34,6 +34,12 @@ abstract class MailWorkerBase {
     }
     this.resend = new Resend(apiKey ?? 'missing-key')
     this.from = config.get<string>('MAIL_FROM') ?? DEFAULT_FROM
+
+    if (config.get<string>('NODE_ENV') === 'production' && this.from.includes('resend.dev')) {
+      this.logger.error(
+        '[MAIL] WARNING: Sending from Resend sandbox domain in production. Set MAIL_FROM to a verified domain.',
+      )
+    }
   }
 
   protected async processJob(job: Job<MailJobPayload>): Promise<void> {

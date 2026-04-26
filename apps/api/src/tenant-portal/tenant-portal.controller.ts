@@ -10,7 +10,8 @@ import {
   HttpStatus,
   NotFoundException,
 } from '@nestjs/common'
-import { IsEmail, IsString, IsOptional, IsEnum, MinLength } from 'class-validator'
+import { Throttle } from '@nestjs/throttler'
+import { IsEmail, IsString, IsOptional, IsEnum, IsUUID, MinLength } from 'class-validator'
 import * as crypto from 'crypto'
 import { MaintenanceCategory } from '@prisma/client'
 import { Public } from '../common/decorators/public.decorator'
@@ -24,6 +25,10 @@ import type { Tenant } from '@prisma/client'
 class MagicLinkDto {
   @IsEmail()
   email!: string
+
+  @IsOptional()
+  @IsUUID()
+  organizationId?: string
 }
 
 class SubmitMaintenanceDto {
@@ -55,9 +60,10 @@ export class TenantAuthController {
   ) {}
 
   @Post('magic-link')
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   async sendMagicLink(@Body() dto: MagicLinkDto): Promise<null> {
-    await this.tenantAuthService.sendMagicLink(dto.email)
+    await this.tenantAuthService.sendMagicLink(dto.email, dto.organizationId)
     return null
   }
 

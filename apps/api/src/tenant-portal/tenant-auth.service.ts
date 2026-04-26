@@ -1,9 +1,12 @@
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { Cron } from '@nestjs/schedule'
 import * as crypto from 'crypto'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 import type { Tenant } from '@prisma/client'
+
+const MAGIC_LINK_COOLDOWN_MS = 2 * 60 * 1000
 
 @Injectable()
 export class TenantAuthService {
@@ -15,9 +18,29 @@ export class TenantAuthService {
     private readonly config: ConfigService,
   ) {}
 
-  async sendMagicLink(email: string): Promise<void> {
-    const tenant = await this.prisma.tenant.findFirst({ where: { email } })
+  async sendMagicLink(email: string, organizationId?: string): Promise<void> {
+    const where = organizationId ? { email, organizationId } : { email }
+    const tenant = await this.prisma.tenant.findFirst({ where })
     if (!tenant) return
+
+    if (!organizationId) {
+      const matches = await this.prisma.tenant.count({ where: { email } })
+      if (matches > 1) {
+        this.logger.warn(
+          `Magic link request for ${email} matched ${matches} tenants — sent to tenant ${tenant.id} (org ${tenant.organizationId}). Caller should pass organizationId.`,
+        )
+      }
+    }
+
+    const cooldownSince = new Date(Date.now() - MAGIC_LINK_COOLDOWN_MS)
+    const recent = await this.prisma.tenantMagicLink.findFirst({
+      where: { tenantId: tenant.id, createdAt: { gte: cooldownSince } },
+      select: { id: true },
+    })
+    if (recent) {
+      this.logger.warn(`Magic link cooldown active for tenant ${tenant.id}`)
+      return
+    }
 
     const token = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
@@ -156,5 +179,15 @@ export class TenantAuthService {
 
   async logout(token: string): Promise<void> {
     await this.prisma.tenantSession.deleteMany({ where: { token } })
+  }
+
+  @Cron('0 3 * * *')
+  async cleanupStaleMagicLinks(): Promise<void> {
+    const result = await this.prisma.tenantMagicLink.deleteMany({
+      where: {
+        OR: [{ expiresAt: { lt: new Date() } }, { usedAt: { not: null } }],
+      },
+    })
+    this.logger.log(`Cleaned up ${result.count} stale magic link(s)`)
   }
 }
