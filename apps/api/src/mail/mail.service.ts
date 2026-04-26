@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import * as nodemailer from 'nodemailer'
+import { Resend } from 'resend'
 
 export interface SendInvoiceOptions {
   to: string
@@ -49,6 +49,19 @@ export interface SendCustomEmailOptions {
   tenantName: string
   organizationName: string
   accentColor?: string
+}
+
+interface ResendAttachment {
+  filename: string
+  content: Buffer
+}
+
+interface ResendSendPayload {
+  from: string
+  to: string
+  subject: string
+  html: string
+  attachments?: ResendAttachment[]
 }
 
 function formatSek(amount: number): string {
@@ -124,27 +137,33 @@ function buildHtml(opts: SendInvoiceOptions): string {
 </html>`
 }
 
+const DEFAULT_FROM = 'Eken Fastigheter <onboarding@resend.dev>'
+
 @Injectable()
 export class MailService {
-  private transporter: nodemailer.Transporter
+  private readonly logger = new Logger(MailService.name)
+  private readonly resend: Resend
+  private readonly from: string
 
   constructor(private readonly config: ConfigService) {
-    this.transporter = nodemailer.createTransport({
-      host: this.config.get<string>('SMTP_HOST', 'smtp.gmail.com'),
-      port: this.config.get<number>('SMTP_PORT', 587),
-      secure: false,
-      auth: {
-        user: this.config.get<string>('SMTP_USER'),
-        pass: this.config.get<string>('SMTP_PASS'),
-      },
-    })
+    const apiKey = this.config.get<string>('RESEND_API_KEY')
+    if (!apiKey) {
+      this.logger.warn('RESEND_API_KEY saknas — mailutskick kommer misslyckas')
+    }
+    this.resend = new Resend(apiKey ?? 'missing-key')
+    this.from = this.config.get<string>('MAIL_FROM') ?? DEFAULT_FROM
+  }
+
+  private async send(payload: ResendSendPayload): Promise<void> {
+    const result = await this.resend.emails.send(payload)
+    if (result.error) {
+      throw new Error(`Resend send failed: ${result.error.message}`)
+    }
   }
 
   async sendInvoice(opts: SendInvoiceOptions): Promise<void> {
-    const from = this.config.get<string>('SMTP_FROM', '"Eken Fastigheter" <no-reply@eken.se>')
-
-    await this.transporter.sendMail({
-      from,
+    await this.send({
+      from: this.from,
       to: opts.to,
       subject: `Faktura ${opts.invoiceNumber} från ${opts.organizationName}`,
       html: buildHtml(opts),
@@ -152,14 +171,12 @@ export class MailService {
         {
           filename: `faktura-${opts.invoiceNumber}.pdf`,
           content: opts.pdfBuffer,
-          contentType: 'application/pdf',
         },
       ],
     })
   }
 
   async sendOverdueReminder(opts: SendOverdueReminderOptions): Promise<void> {
-    const from = this.config.get<string>('SMTP_FROM', '"Eken Fastigheter" <no-reply@eken.se>')
     const accent = opts.accentColor ?? '#1a6b3c'
     const html = `<!DOCTYPE html>
 <html lang="sv">
@@ -203,8 +220,8 @@ export class MailService {
 </body>
 </html>`
 
-    await this.transporter.sendMail({
-      from,
+    await this.send({
+      from: this.from,
       to: opts.to,
       subject: `Påminnelse: Faktura ${opts.invoiceNumber} är förfallen`,
       html,
@@ -212,7 +229,6 @@ export class MailService {
   }
 
   async sendMorningInsights(opts: SendMorningInsightsOptions): Promise<void> {
-    const from = this.config.get<string>('SMTP_FROM', '"Eken Fastigheter" <no-reply@eken.se>')
     const accent = opts.accentColor ?? '#1a6b3c'
     const bulletPoints = opts.insights
       .split('\n')
@@ -261,8 +277,8 @@ export class MailService {
 </body>
 </html>`
 
-    await this.transporter.sendMail({
-      from,
+    await this.send({
+      from: this.from,
       to: opts.to,
       subject: `Eken — Din morgonrapport ${opts.today}`,
       html,
@@ -270,7 +286,6 @@ export class MailService {
   }
 
   async sendCustomEmail(opts: SendCustomEmailOptions): Promise<void> {
-    const from = this.config.get<string>('SMTP_FROM', '"Eken Fastigheter" <no-reply@eken.se>')
     const color = opts.accentColor ?? '#2563EB'
     const html = `<!DOCTYPE html>
 <html lang="sv">
@@ -302,11 +317,10 @@ export class MailService {
 </body>
 </html>`
 
-    await this.transporter.sendMail({ from, to: opts.to, subject: opts.subject, html })
+    await this.send({ from: this.from, to: opts.to, subject: opts.subject, html })
   }
 
   async sendRentIncreaseNotice(opts: SendRentIncreaseNoticeOptions): Promise<void> {
-    const from = this.config.get<string>('SMTP_FROM', '"Eken Fastigheter" <no-reply@eken.se>')
     const accent = opts.accentColor ?? '#1a6b3c'
     const increase = opts.newRent - opts.currentRent
     const html = `<!DOCTYPE html>
@@ -360,8 +374,8 @@ export class MailService {
 </body>
 </html>`
 
-    await this.transporter.sendMail({
-      from,
+    await this.send({
+      from: this.from,
       to: opts.to,
       subject: `Meddelande om hyreshöjning från ${opts.effectiveDate} — ${opts.organizationName}`,
       html,
@@ -379,7 +393,6 @@ export class MailService {
     noticeNumber: string
     accentColor?: string
   }): Promise<void> {
-    const from = this.config.get<string>('SMTP_FROM', '"Eken Fastigheter" <no-reply@eken.se>')
     const accent = opts.accentColor ?? '#2563EB'
     const html = `<!DOCTYPE html>
 <html lang="sv">
@@ -436,8 +449,8 @@ export class MailService {
 </body>
 </html>`
 
-    await this.transporter.sendMail({
-      from,
+    await this.send({
+      from: this.from,
       to: opts.to,
       subject: `Hyresavi ${opts.noticeNumber} — förfaller ${formatDate(opts.dueDate)}`,
       html,
@@ -445,7 +458,6 @@ export class MailService {
         {
           filename: `hyresavi-${opts.noticeNumber}.pdf`,
           content: opts.pdfBuffer,
-          contentType: 'application/pdf',
         },
       ],
     })
@@ -453,8 +465,8 @@ export class MailService {
 
   async verifyConnection(): Promise<boolean> {
     try {
-      await this.transporter.verify()
-      return true
+      const result = await this.resend.domains.list()
+      return !result.error
     } catch {
       return false
     }
