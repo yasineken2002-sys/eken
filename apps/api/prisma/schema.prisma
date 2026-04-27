@@ -350,6 +350,7 @@ model Organization {
   impersonationLogs  ImpersonationLog[]
   errorLogs          ErrorLog[]
   deposits           Deposit[]
+  rentIncreases      RentIncrease[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -565,13 +566,14 @@ model Lease {
   terminatedAt         DateTime?
   terminationReason    String?
 
-  unit        Unit         @relation(fields: [unitId], references: [id])
-  tenant      Tenant       @relation(fields: [tenantId], references: [id])
-  invoices    Invoice[]
-  documents   Document[]
-  rentNotices RentNotice[]
-  inspections Inspection[]
-  deposit     Deposit?
+  unit          Unit           @relation(fields: [unitId], references: [id])
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  invoices      Invoice[]
+  documents     Document[]
+  rentNotices   RentNotice[]
+  inspections   Inspection[]
+  deposit       Deposit?
+  rentIncreases RentIncrease[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1288,4 +1290,40 @@ model Deposit {
   @@index([organizationId])
   @@index([status])
   @@index([tenantId])
+}
+
+// ─── RentIncrease (Hyreshöjning) ──────────────────────────────────────────────
+
+enum RentIncreaseStatus {
+  DRAFT       // Skapad men avisering ej skickad
+  NOTICE_SENT // Avisering skickad till hyresgäst
+  ACCEPTED    // Hyresgäst godkänt
+  REJECTED    // Hyresgäst nekat
+  WITHDRAWN   // Återkallad av hyresvärd
+  APPLIED     // Den nya hyran har tillämpats på avtalet
+}
+
+model RentIncrease {
+  id              String             @id @default(uuid())
+  organizationId  String
+  leaseId         String
+  currentRent     Decimal            @db.Decimal(10, 2)
+  newRent         Decimal             @db.Decimal(10, 2)
+  increasePercent Decimal             @db.Decimal(6, 2)
+  reason          String
+  noticeDate      DateTime?
+  effectiveDate   DateTime           @db.Date
+  status          RentIncreaseStatus @default(DRAFT)
+  respondedAt     DateTime?
+  rejectionReason String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lease        Lease        @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([leaseId])
+  @@index([status])
+  @@index([effectiveDate])
 }

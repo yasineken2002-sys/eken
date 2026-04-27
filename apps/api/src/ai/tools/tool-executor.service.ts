@@ -1600,12 +1600,16 @@ export class ToolExecutorService {
               select: { name: true },
             })
             try {
+              const increasePercent =
+                currentRent > 0 ? ((newRent - currentRent) / currentRent) * 100 : 0
               await this.mailService.sendRentIncreaseNotice({
                 to: leaseCheck.tenant.email,
                 tenantName: toolInput.tenantName as string,
                 currentRent,
                 newRent,
+                increasePercent,
                 effectiveDate,
+                reason: 'KPI-justering',
                 organizationName: organization?.name ?? 'Eken Fastigheter',
               })
               emailSent = true

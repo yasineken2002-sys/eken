@@ -5,6 +5,7 @@ import { Cron } from '@nestjs/schedule'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { DepositsService } from '../deposits/deposits.service'
+import { RentIncreasesService } from '../rent-increases/rent-increases.service'
 import { CreateLeaseDto } from './dto/create-lease.dto'
 import { UpdateLeaseDto } from './dto/update-lease.dto'
 import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
@@ -59,6 +60,7 @@ export class LeasesService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly deposits: DepositsService,
+    private readonly rentIncreases: RentIncreasesService,
   ) {}
 
   async findAll(organizationId: string) {
@@ -431,15 +433,16 @@ export class LeasesService {
   async processLifecycle(): Promise<void> {
     const today = startOfDay(new Date())
 
-    const [renewed, reminders, terminated, depositReminders] = await Promise.all([
+    const [renewed, reminders, terminated, depositReminders, rentApplied] = await Promise.all([
       this.autoRenewExpiredFixedTerm(today),
       this.sendExpiryReminders(today),
       this.terminateExpiredNoticeLeases(today),
       this.deposits.remindStaleRefundPending(),
+      this.rentIncreases.applyDueIncreases(today),
     ])
 
     this.logger.log(
-      `[Leases] Lifecycle done: ${renewed} renewed, ${reminders} reminders, ${terminated} terminated, ${depositReminders} deposit reminders`,
+      `[Leases] Lifecycle done: ${renewed} renewed, ${reminders} reminders, ${terminated} terminated, ${depositReminders} deposit reminders, ${rentApplied} rent increases applied`,
     )
   }
 

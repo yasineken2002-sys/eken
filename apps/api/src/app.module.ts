@@ -17,6 +17,7 @@ import { LeasesModule } from './leases/leases.module'
 import { InvoicesModule } from './invoices/invoices.module'
 import { AccountingModule } from './accounting/accounting.module'
 import { DepositsModule } from './deposits/deposits.module'
+import { RentIncreasesModule } from './rent-increases/rent-increases.module'
 import { HealthModule } from './common/health/health.module'
 import { DashboardModule } from './dashboard/dashboard.module'
 import { MailModule } from './mail/mail.module'
@@ -81,6 +82,7 @@ import { PlatformModule } from './platform/platform.module'
     InvoicesModule,
     AccountingModule,
     DepositsModule,
+    RentIncreasesModule,
     HealthModule,
     DashboardModule,
     MailModule,

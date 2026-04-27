@@ -14,6 +14,7 @@ import { TenantsPage } from './features/tenants/TenantsPage'
 import { LeasesPage } from './features/leases/LeasesPage'
 import { InvoicesPage } from './features/invoices/InvoicesPage'
 import { DepositsPage } from './features/deposits/DepositsPage'
+import { RentIncreasesPage } from './features/rent-increases/RentIncreasesPage'
 import { AccountingPage } from './features/accounting/AccountingPage'
 import { SettingsPage } from './features/settings/SettingsPage'
 import { OverviewPage } from './features/overview/OverviewPage'
@@ -45,6 +46,7 @@ export type Route =
   | 'leases'
   | 'invoices'
   | 'deposits'
+  | 'rent-increases'
   | 'accounting'
   | 'reconciliation'
   | 'documents'
@@ -138,6 +140,7 @@ export function App() {
     leases: <LeasesPage />,
     invoices: <InvoicesPage />,
     deposits: <DepositsPage onNavigate={setRoute} />,
+    'rent-increases': <RentIncreasesPage onNavigate={setRoute} />,
     accounting: <AccountingPage />,
     reconciliation: <ReconciliationPage />,
     documents: <DocumentsPage />,

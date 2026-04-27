@@ -32,8 +32,13 @@ export interface SendRentIncreaseNoticeOptions {
   tenantName: string
   currentRent: number
   newRent: number
+  increasePercent: number
   effectiveDate: string
+  reason: string
   organizationName: string
+  unitAddress?: string
+  contactEmail?: string
+  contactPhone?: string
   accentColor?: string
   idempotencyKey?: string
 }
@@ -362,35 +367,20 @@ export class MailService {
   }
 
   async sendRentIncreaseNotice(opts: SendRentIncreaseNoticeOptions): Promise<string> {
-    const increase = opts.newRent - opts.currentRent
-    const bodyHtml = `
-      <h2 style="color:#111827;font-size:20px;font-weight:600;margin:0 0 16px">Meddelande om hyreshöjning</h2>
-      <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px">Hej ${opts.tenantName},</p>
-      <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px">
-        Din hyra kommer att höjas från och med <strong>${opts.effectiveDate}</strong>
-        i enlighet med KPI-indexklausulen i ditt hyresavtal.
-      </p>
-      <table style="width:100%;border-collapse:collapse;margin:24px 0">
-        <tr><td style="padding:10px;border-bottom:1px solid #E5E7EB;font-size:14px">Nuvarande hyra</td>
-            <td style="padding:10px;border-bottom:1px solid #E5E7EB;font-size:14px;text-align:right;font-weight:600">${formatSek(opts.currentRent)}/mån</td></tr>
-        <tr><td style="padding:10px;border-bottom:1px solid #E5E7EB;font-size:14px">Höjning</td>
-            <td style="padding:10px;border-bottom:1px solid #E5E7EB;font-size:14px;text-align:right;font-weight:600">+${formatSek(increase)}/mån</td></tr>
-        <tr><td style="padding:10px;font-size:14px"><strong>Ny hyra från ${opts.effectiveDate}</strong></td>
-            <td style="padding:10px;font-size:14px;text-align:right;font-weight:700">${formatSek(opts.newRent)}/mån</td></tr>
-      </table>
-      <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 16px">
-        En hyreshöjning kräver minst 3 månaders varsel. Hör av dig om du har frågor.
-      </p>`
     return this.enqueueTyped(
-      'custom',
+      'rent-increase-notice',
       'normal',
       {
-        preview: `Meddelande om hyreshöjning från ${opts.effectiveDate}`,
         tenantName: opts.tenantName,
         organizationName: opts.organizationName,
-        bodyHtml,
-        whyReceived:
-          'Du får detta mail eftersom du har ett aktivt hyresavtal med en KPI-indexklausul.',
+        currentRent: opts.currentRent,
+        newRent: opts.newRent,
+        increasePercent: opts.increasePercent,
+        effectiveDate: opts.effectiveDate,
+        reason: opts.reason,
+        ...(opts.unitAddress ? { unitAddress: opts.unitAddress } : {}),
+        ...(opts.contactEmail ? { contactEmail: opts.contactEmail } : {}),
+        ...(opts.contactPhone ? { contactPhone: opts.contactPhone } : {}),
       },
       {
         to: opts.to,

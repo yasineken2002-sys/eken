@@ -108,6 +108,23 @@ export function DepositStatusBadge({ status }: { status: string }) {
   )
 }
 
+export function RentIncreaseStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; variant: Variant }> = {
+    DRAFT: { label: 'Utkast', variant: 'ghost' },
+    NOTICE_SENT: { label: 'Aviserad', variant: 'info' },
+    ACCEPTED: { label: 'Godkänd', variant: 'success' },
+    REJECTED: { label: 'Nekad', variant: 'danger' },
+    WITHDRAWN: { label: 'Återkallad', variant: 'default' },
+    APPLIED: { label: 'Tillämpad', variant: 'success' },
+  }
+  const { label, variant } = map[status] ?? { label: status, variant: 'default' as Variant }
+  return (
+    <Badge variant={variant} dot>
+      {label}
+    </Badge>
+  )
+}
+
 export function PropertyTypeBadge({ type }: { type: string }) {
   const map: Record<string, { label: string; variant: Variant }> = {
     RESIDENTIAL: { label: 'Bostäder', variant: 'info' },

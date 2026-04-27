@@ -5,6 +5,7 @@ import type { InvoiceReminderProps } from './templates/invoices/InvoiceReminder'
 import type { InvoiceOverdueProps } from './templates/invoices/InvoiceOverdue'
 import type { TenantWelcomeProps } from './templates/tenants/TenantWelcome'
 import type { TenantInviteProps } from './templates/tenants/TenantInvite'
+import type { RentIncreaseNoticeProps } from './templates/tenants/RentIncreaseNotice'
 import type { MaintenanceUpdateProps } from './templates/notifications/MaintenanceUpdate'
 import type { PasswordResetProps } from './templates/users/PasswordReset'
 import type { UserInviteProps } from './templates/users/UserInvite'
@@ -16,6 +17,7 @@ export const TEMPLATE_NAMES = [
   'invoice-overdue',
   'tenant-welcome',
   'tenant-invite',
+  'rent-increase-notice',
   'maintenance-update',
   'password-reset',
   'user-invite',
@@ -31,6 +33,7 @@ export interface TemplatePropsMap {
   'invoice-overdue': InvoiceOverdueProps
   'tenant-welcome': TenantWelcomeProps
   'tenant-invite': TenantInviteProps
+  'rent-increase-notice': RentIncreaseNoticeProps
   'maintenance-update': MaintenanceUpdateProps
   'password-reset': PasswordResetProps
   'user-invite': UserInviteProps

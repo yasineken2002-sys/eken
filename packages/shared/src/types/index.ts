@@ -354,6 +354,33 @@ export interface Deposit {
   updatedAt: string
 }
 
+// ─── RentIncrease (Hyreshöjning) ──────────────────────────────────────────────
+
+export type RentIncreaseStatus =
+  | 'DRAFT'
+  | 'NOTICE_SENT'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'WITHDRAWN'
+  | 'APPLIED'
+
+export interface RentIncrease {
+  id: string
+  organizationId: string
+  leaseId: string
+  currentRent: number
+  newRent: number
+  increasePercent: number
+  reason: string
+  noticeDate?: string
+  effectiveDate: string
+  status: RentIncreaseStatus
+  respondedAt?: string
+  rejectionReason?: string
+  createdAt: string
+  updatedAt: string
+}
+
 // ─── Accounting (Bokföring) ───────────────────────────────────────────────────
 
 export type AccountType = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE'

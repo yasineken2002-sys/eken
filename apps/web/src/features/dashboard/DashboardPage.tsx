@@ -23,6 +23,7 @@ import { InvoiceStatusBadge } from '@/components/ui/Badge'
 import { useDashboardStats } from './hooks/useDashboard'
 import { useLeases } from '@/features/leases/hooks/useLeases'
 import { useDeposits } from '@/features/deposits/hooks/useDeposits'
+import { useRentIncreases } from '@/features/rent-increases/hooks/useRentIncreases'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { Route } from '@/App'
 
@@ -46,6 +47,18 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
   const { data: stats, isLoading, isError } = useDashboardStats()
   const { data: leases = [] } = useLeases()
   const { data: deposits = [] } = useDeposits()
+  const { data: rentIncreases = [] } = useRentIncreases()
+
+  const upcomingRentIncreases = useMemo(() => {
+    const now = Date.now()
+    const cutoff = now + 30 * 86_400_000
+    return rentIncreases.filter(
+      (r) =>
+        r.status === 'ACCEPTED' &&
+        new Date(r.effectiveDate).getTime() >= now &&
+        new Date(r.effectiveDate).getTime() <= cutoff,
+    ).length
+  }, [rentIncreases])
 
   const depositStats = useMemo(() => {
     const managed = deposits
@@ -166,6 +179,14 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
               value={depositStats.refundPending}
               icon={CreditCard}
               iconColor="#D97706"
+            />
+          </motion.div>
+          <motion.div variants={item}>
+            <StatCard
+              title="Hyreshöjningar inom 30 dagar"
+              value={upcomingRentIncreases}
+              icon={TrendingUp}
+              iconColor="#10B981"
             />
           </motion.div>
         </motion.div>
