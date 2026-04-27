@@ -1,13 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import * as fs from 'fs/promises'
-import * as path from 'path'
 import puppeteer from 'puppeteer'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { StorageService } from '../storage/storage.service'
 import { generateInvoiceHtml } from './templates/invoice-pdf.template'
 
 @Injectable()
 export class PdfService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   async generateFromHtml(html: string): Promise<Buffer> {
     const browser = await puppeteer.launch({
@@ -45,12 +47,11 @@ export class PdfService {
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
 
-    // 2. Read logo and encode as base64 (fail-safe: null on any error)
+    // 2. Read logo from R2 and encode as base64 (fail-safe: null on any error)
     let logoBase64: string | null = null
-    if (invoice.organization.logoUrl) {
+    if (invoice.organization.logoStorageKey) {
       try {
-        const filePath = path.join(process.cwd(), invoice.organization.logoUrl)
-        const buffer = await fs.readFile(filePath)
+        const buffer = await this.storage.getFileBuffer(invoice.organization.logoStorageKey)
         logoBase64 = buffer.toString('base64')
       } catch {
         logoBase64 = null
@@ -82,7 +83,7 @@ export class PdfService {
           city: invoice.organization.city,
           postalCode: invoice.organization.postalCode,
           bankgiro: invoice.organization.bankgiro ?? null,
-          logoUrl: invoice.organization.logoUrl,
+          logoUrl: invoice.organization.logoStorageKey,
         },
       },
       logoBase64,

@@ -168,7 +168,7 @@ export function SettingsPage({ onNavigate }: Props) {
     )
   }
 
-  const logoUrl = org?.logoUrl ? `/uploads/${org.logoUrl.replace(/^uploads\//, '')}` : null
+  const logoUrl = org?.logoStorageUrl ?? null
 
   return (
     <PageWrapper id="settings">

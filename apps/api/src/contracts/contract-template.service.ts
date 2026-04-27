@@ -1,16 +1,17 @@
-import * as fs from 'fs/promises'
-import * as path from 'path'
 import { v4 as uuid } from 'uuid'
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PdfService } from '../invoices/pdf.service'
+import { StorageService } from '../storage/storage.service'
 
-async function getLogoDataUrl(logoUrl: string | null): Promise<string | null> {
-  if (!logoUrl) return null
+async function getLogoDataUrl(
+  storage: StorageService,
+  logoStorageKey: string | null,
+): Promise<string | null> {
+  if (!logoStorageKey) return null
   try {
-    const filePath = logoUrl.startsWith('/') ? logoUrl : path.join(process.cwd(), logoUrl)
-    const buffer = await fs.readFile(filePath)
-    const ext = path.extname(logoUrl).slice(1).toLowerCase()
+    const buffer = await storage.getFileBuffer(logoStorageKey)
+    const ext = logoStorageKey.split('.').pop()?.toLowerCase() ?? ''
     const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
     return `data:${mime};base64,${buffer.toString('base64')}`
   } catch {
@@ -23,6 +24,7 @@ export class ContractTemplateService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pdfService: PdfService,
+    private readonly storage: StorageService,
   ) {}
 
   private async buildHtml(
@@ -43,7 +45,7 @@ export class ContractTemplateService {
           ? '3 månader'
           : '9 månader'
 
-    const logoDataUrl = await getLogoDataUrl(org.logoUrl ?? null)
+    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
     const primaryColor = org.invoiceColor ?? '#1a6b3c'
     const contractNumber = lease.id.slice(0, 8).toUpperCase()
     const today = new Date().toLocaleDateString('sv-SE')
@@ -405,10 +407,8 @@ export class ContractTemplateService {
     const buffer = await this.pdfService.generateFromHtml(html)
 
     const safeName = `${uuid()}.pdf`
-    const relDir = `uploads/documents/${organizationId}`
-    const absDir = path.join(process.cwd(), relDir)
-    await fs.mkdir(absDir, { recursive: true })
-    await fs.writeFile(path.join(absDir, safeName), buffer)
+    const storageKey = `documents/${organizationId}/${safeName}`
+    const storageUrl = await this.storage.uploadFile(buffer, storageKey, 'application/pdf')
 
     const doc = await this.prisma.document.create({
       data: {
@@ -419,7 +419,8 @@ export class ContractTemplateService {
         propertyId: lease.unit.propertyId,
         tenantId: lease.tenantId,
         name: `Hyreskontrakt – ${tenantName}`,
-        fileUrl: `${relDir}/${safeName}`,
+        storageKey,
+        storageUrl,
         fileSize: buffer.length,
         mimeType: 'application/pdf',
         category: 'CONTRACT',

@@ -1,10 +1,9 @@
-import * as fs from 'fs/promises'
-import * as path from 'path'
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { OcrService } from './ocr.service'
 import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
+import { StorageService } from '../storage/storage.service'
 import { RentNoticeStatus } from '@prisma/client'
 import type { RentNotice, Prisma } from '@prisma/client'
 
@@ -15,12 +14,14 @@ type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
   }
 }>
 
-async function getLogoDataUrl(logoUrl: string | null): Promise<string | null> {
-  if (!logoUrl) return null
+async function getLogoDataUrl(
+  storage: StorageService,
+  logoStorageKey: string | null,
+): Promise<string | null> {
+  if (!logoStorageKey) return null
   try {
-    const filePath = logoUrl.startsWith('/') ? logoUrl : path.join(process.cwd(), logoUrl)
-    const buffer = await fs.readFile(filePath)
-    const ext = path.extname(logoUrl).slice(1).toLowerCase()
+    const buffer = await storage.getFileBuffer(logoStorageKey)
+    const ext = logoStorageKey.split('.').pop()?.toLowerCase() ?? ''
     const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
     return `data:${mime};base64,${buffer.toString('base64')}`
   } catch {
@@ -39,6 +40,7 @@ export class AviseringService {
     private readonly ocrService: OcrService,
     private readonly mailService: MailService,
     private readonly pdfService: PdfService,
+    private readonly storage: StorageService,
   ) {}
 
   async generateMonthlyNotices(orgId: string, month: number, year: number) {
@@ -185,10 +187,10 @@ export class AviseringService {
       email?: string | null
       bankgiro?: string | null
       invoiceColor?: string | null
-      logoUrl?: string | null
+      logoStorageKey?: string | null
     },
   ): Promise<string> {
-    const logoDataUrl = await getLogoDataUrl(org.logoUrl ?? null)
+    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
     const primaryColor = org.invoiceColor ?? '#1a6b3c'
     const bankgiro = org.bankgiro ?? '0000-0000'
 

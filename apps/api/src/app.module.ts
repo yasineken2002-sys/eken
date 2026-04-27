@@ -35,6 +35,7 @@ import { TenantPortalModule } from './tenant-portal/tenant-portal.module'
 import { NewsModule } from './news/news.module'
 import { MessagesModule } from './messages/messages.module'
 import { PlatformModule } from './platform/platform.module'
+import { StorageModule } from './storage/storage.module'
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { PlatformModule } from './platform/platform.module'
 
     // Core
     PrismaModule,
+    StorageModule,
 
     // Feature modules
     AuthModule,

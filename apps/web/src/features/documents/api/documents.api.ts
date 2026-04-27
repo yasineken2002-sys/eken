@@ -6,7 +6,8 @@ export interface Document {
   organizationId: string
   name: string
   description?: string
-  fileUrl: string
+  storageKey: string
+  storageUrl: string
   fileSize: number
   mimeType: string
   category: string

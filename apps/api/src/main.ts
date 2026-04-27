@@ -5,8 +5,6 @@ import { ConfigService } from '@nestjs/config'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import helmet from '@fastify/helmet'
 import multipart from '@fastify/multipart'
-import fastifyStatic from '@fastify/static'
-import * as path from 'path'
 import { AppModule } from './app.module'
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { TransformInterceptor } from './common/interceptors/transform.interceptor'
@@ -44,16 +42,9 @@ async function bootstrap() {
     crossOriginEmbedderPolicy: false,
   })
 
-  // File uploads
+  // File uploads (uppladdade filer skickas vidare till Cloudflare R2)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await app.register(multipart as any, { limits: { fileSize: 20_000_000 } })
-
-  // Static files (uploaded logos)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await app.register(fastifyStatic as any, {
-    root: path.join(process.cwd(), 'uploads'),
-    prefix: '/uploads/',
-  })
 
   // CORS
   const rawOrigins = config.get<string>('ALLOWED_ORIGINS', '')

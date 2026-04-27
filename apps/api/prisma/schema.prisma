@@ -312,7 +312,8 @@ model Organization {
   city                 String
   postalCode           String
   country              String  @default("SE")
-  logoUrl              String?
+  logoStorageKey       String?
+  logoStorageUrl       String?
   bankgiro             String?
   paymentTermsDays     Int     @default(30)
   invoiceColor         String?
@@ -768,7 +769,8 @@ model Document {
   organizationId String
   name           String
   description    String?
-  fileUrl        String
+  storageKey     String
+  storageUrl     String
   fileSize       Int
   mimeType       String
   category       DocumentCategory @default(OTHER)
@@ -931,12 +933,13 @@ model MaintenanceTicket {
 }
 
 model MaintenanceImage {
-  id        String   @id @default(uuid())
-  ticketId  String
-  filename  String
-  path      String
-  size      Int
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  ticketId   String
+  filename   String
+  storageKey String
+  storageUrl String
+  size       Int
+  createdAt  DateTime @default(now())
 
   ticket MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 }
@@ -1076,7 +1079,8 @@ model InspectionImage {
   id           String   @id @default(uuid())
   inspectionId String
   filename     String
-  path         String
+  storageKey   String
+  storageUrl   String
   caption      String?
   room         String?
   size         Int

@@ -112,18 +112,10 @@ export class DocumentsController {
   }
 
   @Get(':id/download')
-  @ApiOperation({ summary: 'Ladda ner dokument' })
+  @ApiOperation({ summary: 'Hämta presignerad nedladdnings-URL för dokument' })
   async download(@Param('id') id: string, @OrgId() orgId: string, @Res() reply: FastifyReply) {
-    const { document } = await this.service.getFilePath(id, orgId)
-    const relativeUrl = document.fileUrl
-
-    void reply
-      .header('Content-Type', document.mimeType)
-      .header('Content-Disposition', `attachment; filename="${encodeURIComponent(document.name)}"`)
-    // fastify-static serves from the uploads directory via /uploads/ prefix
-    // We strip the 'uploads/' prefix since fastify-static root is the uploads folder
-    const fileRelativePath = relativeUrl.replace(/^uploads\//, '')
-    return reply.sendFile(fileRelativePath)
+    const { url } = await this.service.getDownloadUrl(id, orgId)
+    void reply.redirect(url, 302)
   }
 
   @Delete(':id')

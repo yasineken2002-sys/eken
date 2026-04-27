@@ -14,7 +14,6 @@ import {
   BadRequestException,
 } from '@nestjs/common'
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import * as fs from 'fs'
 import * as path from 'path'
 import { v4 as uuid } from 'uuid'
 import { InspectionsService } from './inspections.service'
@@ -26,6 +25,7 @@ import { UpdateInspectionItemDto } from './dto/update-inspection-item.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { StorageService } from '../storage/storage.service'
 import type { JwtPayload } from '@eken/shared'
 import type { InspectionType, InspectionStatus } from '@prisma/client'
 
@@ -35,6 +35,7 @@ export class InspectionsController {
     private readonly inspectionsService: InspectionsService,
     private readonly analyzerService: InspectionAnalyzerService,
     private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
   ) {}
 
   @Get('stats')
@@ -124,15 +125,15 @@ export class InspectionsController {
       const f = files[i]!
       const ext = path.extname(f.filename) || `.${f.mimetype.split('/')[1]}`
       const safeName = `${uuid()}${ext}`
-      const relDir = `uploads/inspections/${orgId}`
-      await fs.promises.mkdir(path.join(process.cwd(), relDir), { recursive: true })
-      await fs.promises.writeFile(path.join(process.cwd(), relDir, safeName), f.buffer)
+      const storageKey = `inspections/${orgId}/${safeName}`
+      const storageUrl = await this.storage.uploadFile(f.buffer, storageKey, f.mimetype)
       const caption = captions[`caption_${i}`] ?? null
       await this.prisma.inspectionImage.create({
         data: {
           inspectionId: id,
           filename: f.filename,
-          path: `${relDir}/${safeName}`,
+          storageKey,
+          storageUrl,
           caption,
           room: null,
           size: f.buffer.length,

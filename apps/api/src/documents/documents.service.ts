@@ -1,10 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { DocumentCategory } from '@prisma/client'
-import * as fs from 'fs'
 import * as path from 'path'
 import { v4 as uuid } from 'uuid'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { StorageService } from '../storage/storage.service'
 
 const ALLOWED_MIME_TYPES = [
   'application/pdf',
@@ -41,6 +41,7 @@ export class DocumentsService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private storage: StorageService,
   ) {}
 
   async findAll(
@@ -103,22 +104,17 @@ export class DocumentsService {
 
     const ext = path.extname(file.filename)
     const safeName = `${uuid()}${ext}`
-    const relDir = `uploads/documents/${organizationId}`
-    const absDir = path.join(process.cwd(), relDir)
+    const storageKey = `documents/${organizationId}/${safeName}`
 
-    await fs.promises.mkdir(absDir, { recursive: true })
-
-    const relPath = `${relDir}/${safeName}`
-    const absPath = path.join(process.cwd(), relPath)
-
-    await fs.promises.writeFile(absPath, file.buffer)
+    const storageUrl = await this.storage.uploadFile(file.buffer, storageKey, file.mimetype)
 
     const document = await this.prisma.document.create({
       data: {
         organizationId,
         name: dto.name,
         description: dto.description ?? null,
-        fileUrl: relPath,
+        storageKey,
+        storageUrl,
         fileSize: file.size,
         mimeType: file.mimetype,
         category: dto.category ?? DocumentCategory.OTHER,
@@ -138,30 +134,16 @@ export class DocumentsService {
 
   async remove(id: string, organizationId: string): Promise<void> {
     const document = await this.findOne(id, organizationId)
-
-    const absPath = path.join(process.cwd(), document.fileUrl)
-    try {
-      await fs.promises.unlink(absPath)
-    } catch {
-      // File not found on disk — continue with DB deletion
-    }
-
+    await this.storage.deleteFile(document.storageKey)
     await this.prisma.document.delete({ where: { id } })
   }
 
-  async getFilePath(
+  async getDownloadUrl(
     id: string,
     organizationId: string,
-  ): Promise<{ filePath: string; document: Awaited<ReturnType<DocumentsService['findOne']>> }> {
+  ): Promise<{ url: string; document: Awaited<ReturnType<DocumentsService['findOne']>> }> {
     const document = await this.findOne(id, organizationId)
-    const filePath = path.join(process.cwd(), document.fileUrl)
-
-    try {
-      await fs.promises.access(filePath)
-    } catch {
-      throw new NotFoundException('Filen hittades inte på disk')
-    }
-
-    return { filePath, document }
+    const url = await this.storage.getPresignedUrl(document.storageKey, 300)
+    return { url, document }
   }
 }

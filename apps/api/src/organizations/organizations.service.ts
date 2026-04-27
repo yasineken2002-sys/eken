@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
-import * as fs from 'fs/promises'
-import * as path from 'path'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { StorageService } from '../storage/storage.service'
 import { UpdateOrganizationDto } from './dto/update-organization.dto'
 
 interface MultipartFile {
@@ -19,7 +18,10 @@ function extFromMimetype(mime: string): string {
 
 @Injectable()
 export class OrganizationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   async findMyOrganization(organizationId: string) {
     const org = await this.prisma.organization.findUnique({
@@ -50,16 +52,22 @@ export class OrganizationsService {
     }
 
     const ext = extFromMimetype(file.mimetype)
-    const dir = path.join(process.cwd(), 'uploads', 'logos')
-    await fs.mkdir(dir, { recursive: true })
-
     const buffer = await file.toBuffer()
-    const filename = `${organizationId}.${ext}`
-    await fs.writeFile(path.join(dir, filename), buffer)
+    const storageKey = `logos/${organizationId}.${ext}`
+
+    const existing = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { logoStorageKey: true },
+    })
+    if (existing?.logoStorageKey && existing.logoStorageKey !== storageKey) {
+      await this.storage.deleteFile(existing.logoStorageKey)
+    }
+
+    const storageUrl = await this.storage.uploadFile(buffer, storageKey, file.mimetype)
 
     return this.prisma.organization.update({
       where: { id: organizationId },
-      data: { logoUrl: `uploads/logos/${filename}` },
+      data: { logoStorageKey: storageKey, logoStorageUrl: storageUrl },
     })
   }
 }

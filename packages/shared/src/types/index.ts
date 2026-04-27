@@ -78,7 +78,8 @@ export interface Organization {
   email: string
   phone?: string
   address: Address
-  logoUrl?: string
+  logoStorageKey?: string
+  logoStorageUrl?: string
   bankgiro?: string
   paymentTermsDays?: number
   invoiceColor?: string

@@ -1,6 +1,4 @@
 import { Injectable, ForbiddenException } from '@nestjs/common'
-import * as fs from 'fs/promises'
-import * as path from 'path'
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
@@ -16,6 +14,7 @@ import { MaintenanceService } from '../../maintenance/maintenance.service'
 import { AviseringService } from '../../avisering/avisering.service'
 import { InspectionsService } from '../../inspections/inspections.service'
 import { MaintenancePlanService } from '../../maintenance-plan/maintenance-plan.service'
+import { StorageService } from '../../storage/storage.service'
 import { ACTION_TOOLS } from './ai-tools.definition'
 
 export interface ToolResult {
@@ -213,6 +212,7 @@ export class ToolExecutorService {
     private readonly aviseringService: AviseringService,
     private readonly inspectionsService: InspectionsService,
     private readonly maintenancePlanService: MaintenancePlanService,
+    private readonly storage: StorageService,
   ) {}
 
   async executeTool(
@@ -1770,19 +1770,17 @@ export class ToolExecutorService {
           const pdfBuffer = await this.pdfService.generateFromHtml(html)
 
           const safeFilename = `kontrakt_${tenantDisplayName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`
-          const uploadDir = path.join(process.cwd(), 'uploads', 'documents', organizationId)
-          await fs.mkdir(uploadDir, { recursive: true })
-          const filePath = path.join(uploadDir, safeFilename)
-          await fs.writeFile(filePath, pdfBuffer)
+          const storageKey = `documents/${organizationId}/${safeFilename}`
+          const storageUrl = await this.storage.uploadFile(pdfBuffer, storageKey, 'application/pdf')
 
-          const fileUrl = `/uploads/documents/${organizationId}/${safeFilename}`
           await this.prisma.document.create({
             data: {
               organizationId,
               uploadedById: userId,
               leaseId: lease.id,
               name: `Hyreskontrakt – ${tenantDisplayName}`,
-              fileUrl,
+              storageKey,
+              storageUrl,
               fileSize: pdfBuffer.length,
               mimeType: 'application/pdf',
               category: 'CONTRACT',
