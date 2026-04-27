@@ -606,6 +606,7 @@ model Invoice {
   issueDate      DateTime      @db.Date
   paidAt         DateTime?
   reference      String?
+  ocrNumber      String?
   notes          String?
 
   // Tracking-token för e-postspårning (pixel + PDF-länk)
@@ -629,6 +630,7 @@ model Invoice {
   @@index([status])
   @@index([dueDate])
   @@index([trackingToken])
+  @@index([ocrNumber])
 }
 
 // ─── Invoice Event Log ────────────────────────────────────────────────────────

@@ -367,14 +367,23 @@ export class ReconciliationService {
     const db = prismaClient ?? this.prisma
     const tolerance = new Decimal('1.00')
 
-    // Exact OCR match
-    const invoice = await db.invoice.findFirst({
-      where: {
-        organizationId,
-        reference: transaction.rawOcr,
-        status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
-      },
-    })
+    // 1. Exakt match på auto-genererat ocrNumber (högsta prioritet — deterministiskt per faktura).
+    // 2. Fallback till klient-angiven reference (kan vara OCR eller annan betalningsreferens).
+    const invoice =
+      (await db.invoice.findFirst({
+        where: {
+          organizationId,
+          ocrNumber: transaction.rawOcr,
+          status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
+        },
+      })) ??
+      (await db.invoice.findFirst({
+        where: {
+          organizationId,
+          reference: transaction.rawOcr,
+          status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
+        },
+      }))
 
     if (invoice) {
       const diff = invoice.total.minus(transaction.amount).abs()

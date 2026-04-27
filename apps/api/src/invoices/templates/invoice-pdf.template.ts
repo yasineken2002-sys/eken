@@ -10,6 +10,7 @@ interface InvoicePdfData {
     issueDate: Date | string
     dueDate: Date | string
     reference: string | null
+    ocrNumber: string | null
     subtotal: Decimal | number
     vatTotal: Decimal | number
     total: Decimal | number
@@ -235,6 +236,24 @@ ${headerHtml}
     </div>
   </div>
 </div>
+
+${
+  invoice.ocrNumber
+    ? `
+<!-- OCR -->
+<div style="margin-top:32px;background:#f5f5f5;border:1px solid #ddd;border-radius:8px;padding:16px 20px;text-align:center;">
+  <div style="font-size:10px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
+    OCR-nummer — ange alltid vid betalning
+  </div>
+  <div style="font-size:26px;font-weight:700;font-family:'Courier New',monospace;letter-spacing:4px;color:${color};">
+    ${invoice.ocrNumber}
+  </div>
+  <div style="font-size:10px;color:#888;margin-top:6px;">
+    Bankgiro: <strong>${organization.bankgiro ?? '–'}</strong> · Att betala: <strong>${formatSek(invoice.total)}</strong>
+  </div>
+</div>`
+    : ''
+}
 
 <!-- FOOTER -->
 <div style="position:fixed;bottom:32px;left:40px;right:40px;

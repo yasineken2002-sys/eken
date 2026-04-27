@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../common/prisma/prisma.service'
+import { generateOcrNumber as generateOcrFromSequence } from '@eken/shared'
+import { PrismaService } from '../prisma/prisma.service'
 
 @Injectable()
 export class OcrService {
@@ -26,8 +27,17 @@ export class OcrService {
     return `${base}${check}`
   }
 
+  /**
+   * Genererar Luhn-validerat OCR från en fakturasekvens (t.ex. 1, 2, ...).
+   * Wrappar shared-paketets generateOcrNumber så InvoicesService kan injecta
+   * OcrService utan att importera shared direkt.
+   */
+  generateForInvoiceSequence(sequence: number): string {
+    return generateOcrFromSequence(sequence)
+  }
+
   validateOcrNumber(ocr: string): boolean {
-    if (!/^\d{11}$/.test(ocr)) return false
+    if (!/^\d{2,}$/.test(ocr)) return false
     const base = ocr.slice(0, -1)
     const check = parseInt(ocr.slice(-1), 10)
     return this.luhnChecksum(base) === check

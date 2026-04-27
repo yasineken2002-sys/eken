@@ -36,6 +36,7 @@ import { NewsModule } from './news/news.module'
 import { MessagesModule } from './messages/messages.module'
 import { PlatformModule } from './platform/platform.module'
 import { StorageModule } from './storage/storage.module'
+import { OcrModule } from './common/ocr/ocr.module'
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { StorageModule } from './storage/storage.module'
     // Core
     PrismaModule,
     StorageModule,
+    OcrModule,
 
     // Feature modules
     AuthModule,

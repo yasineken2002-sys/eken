@@ -637,7 +637,6 @@ export function InvoicesPage() {
               ...(selected.leaseId ? { leaseId: selected.leaseId } : {}),
               dueDate: new Date(selected.dueDate).toISOString().split('T')[0] ?? '',
               issueDate: new Date(selected.issueDate).toISOString().split('T')[0] ?? '',
-              reference: selected.reference ?? undefined,
               notes: selected.notes ?? undefined,
               lines: selected.lines.map((l) => ({
                 description: l.description,

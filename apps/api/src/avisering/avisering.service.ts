@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
-import { OcrService } from './ocr.service'
+import { OcrService } from '../common/ocr/ocr.service'
 import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'

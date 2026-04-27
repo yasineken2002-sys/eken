@@ -4,12 +4,11 @@ import { MailModule } from '../mail/mail.module'
 import { InvoicesModule } from '../invoices/invoices.module'
 import { AviseringController } from './avisering.controller'
 import { AviseringService } from './avisering.service'
-import { OcrService } from './ocr.service'
 
 @Module({
   imports: [PrismaModule, MailModule, InvoicesModule],
   controllers: [AviseringController],
-  providers: [AviseringService, OcrService],
+  providers: [AviseringService],
   exports: [AviseringService],
 })
 export class AviseringModule {}

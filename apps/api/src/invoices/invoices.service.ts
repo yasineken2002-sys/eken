@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
 import type { Invoice, InvoiceStatus, InvoiceEventType, Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { OcrService } from '../common/ocr/ocr.service'
 import { InvoiceEventsService } from './invoice-events.service'
 import { PdfService } from './pdf.service'
 import { MailService } from '../mail/mail.service'
@@ -31,6 +32,7 @@ export class InvoicesService {
     private readonly mailService: MailService,
     private readonly accountingService: AccountingService,
     private readonly notificationsService: NotificationsService,
+    private readonly ocrService: OcrService,
   ) {}
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -92,10 +94,14 @@ export class InvoicesService {
   private async generateInvoiceNumber(
     organizationId: string,
     tx: Prisma.TransactionClient,
-  ): Promise<string> {
+  ): Promise<{ invoiceNumber: string; sequence: number }> {
     const year = new Date().getFullYear()
     const count = await tx.invoice.count({ where: { organizationId } })
-    return `F-${year}-${String(count + 1).padStart(4, '0')}`
+    const sequence = count + 1
+    return {
+      invoiceNumber: `F-${year}-${String(sequence).padStart(4, '0')}`,
+      sequence,
+    }
   }
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -116,7 +122,13 @@ export class InvoicesService {
     }
 
     const invoice = await this.prisma.$transaction(async (tx) => {
-      const invoiceNumber = await this.generateInvoiceNumber(organizationId, tx)
+      const { invoiceNumber, sequence } = await this.generateInvoiceNumber(organizationId, tx)
+
+      // Auto-generera Luhn-validerat OCR från fakturasekvensen.
+      // Lagras alltid på Invoice.ocrNumber. Reference defaultar till OCR
+      // om klienten inte angett egen referens.
+      const ocrNumber = this.ocrService.generateForInvoiceSequence(sequence)
+      const reference = dto.reference != null ? dto.reference : ocrNumber
 
       // Beräkna belopp server-side (lita aldrig på klienten)
       const subtotal = dto.lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0)
@@ -130,6 +142,8 @@ export class InvoicesService {
         data: {
           organizationId,
           invoiceNumber,
+          ocrNumber,
+          reference,
           type: dto.type,
           status: 'DRAFT',
           tenantId: lease.tenantId,
@@ -139,7 +153,6 @@ export class InvoicesService {
           total,
           dueDate: new Date(dto.dueDate),
           issueDate: new Date(dto.issueDate),
-          ...(dto.reference != null ? { reference: dto.reference } : {}),
           ...(dto.notes != null ? { notes: dto.notes } : {}),
           lines: {
             createMany: {

@@ -186,14 +186,6 @@ export function InvoiceForm({
               {...register('type')}
             />
 
-            {/* Referens */}
-            <Input
-              label="Referens / OCR"
-              placeholder="t.ex. 9153"
-              error={errors.reference?.message}
-              {...register('reference')}
-            />
-
             {/* Utfärdandedatum */}
             <Input
               label="Utfärdandedatum"
@@ -209,6 +201,12 @@ export function InvoiceForm({
               error={errors.dueDate?.message}
               {...register('dueDate')}
             />
+
+            {/* OCR-info (auto-genereras av backend) */}
+            <div className="col-span-2 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-[12px] text-blue-700">
+              OCR-nummer genereras automatiskt när fakturan sparas — Luhn-validerat och unikt per
+              faktura.
+            </div>
 
             {/* Notering */}
             <div className="col-span-2">
@@ -333,7 +331,6 @@ export function InvoiceForm({
             orgName={org?.name ?? 'Din organisation'}
             tenantName={tenantName}
             invoiceType={TYPE_LABELS[watched.type ?? 'RENT'] ?? ''}
-            reference={watched.reference ?? ''}
             issueDate={watched.issueDate}
             dueDate={watched.dueDate}
             lines={previewLines}
@@ -366,7 +363,6 @@ interface InvoicePreviewProps {
   orgName: string
   tenantName: string | null
   invoiceType: string
-  reference: string
   issueDate: string | undefined
   dueDate: string | undefined
   lines: PreviewLine[]
@@ -382,7 +378,6 @@ function InvoicePreview({
   orgName,
   tenantName,
   invoiceType,
-  reference,
   issueDate,
   dueDate,
   lines,
@@ -484,22 +479,20 @@ function InvoicePreview({
           >
             FAKTURA
           </div>
-          {reference && (
-            <div
-              style={{
-                display: 'inline-block',
-                marginTop: '6px',
-                background: `${invoiceColor}18`,
-                color: invoiceColor,
-                borderRadius: '20px',
-                padding: '3px 12px',
-                fontSize: '12px',
-                fontWeight: 600,
-              }}
-            >
-              OCR: {reference}
-            </div>
-          )}
+          <div
+            style={{
+              display: 'inline-block',
+              marginTop: '6px',
+              background: '#f3f4f6',
+              color: '#6b7280',
+              borderRadius: '20px',
+              padding: '3px 12px',
+              fontSize: '12px',
+              fontWeight: 500,
+            }}
+          >
+            OCR genereras vid sparande
+          </div>
         </div>
       </div>
     )
