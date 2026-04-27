@@ -91,6 +91,23 @@ export function LeaseStatusBadge({ status }: { status: string }) {
   )
 }
 
+export function DepositStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; variant: Variant }> = {
+    PENDING: { label: 'Fakturerad', variant: 'ghost' },
+    PAID: { label: 'Betald', variant: 'success' },
+    REFUND_PENDING: { label: 'Väntar återbetalning', variant: 'warning' },
+    REFUNDED: { label: 'Återbetald', variant: 'info' },
+    PARTIALLY_REFUNDED: { label: 'Delvis återbetald', variant: 'info' },
+    FORFEITED: { label: 'Förverkad', variant: 'danger' },
+  }
+  const { label, variant } = map[status] ?? { label: status, variant: 'default' as Variant }
+  return (
+    <Badge variant={variant} dot>
+      {label}
+    </Badge>
+  )
+}
+
 export function PropertyTypeBadge({ type }: { type: string }) {
   const map: Record<string, { label: string; variant: Variant }> = {
     RESIDENTIAL: { label: 'Bostäder', variant: 'info' },

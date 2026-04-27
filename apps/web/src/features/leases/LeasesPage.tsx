@@ -26,6 +26,7 @@ import type { LeaseStatus, Tenant } from '@eken/shared'
 import type { LeaseDetail, CreateLeaseWithTenantInput } from './api/leases.api'
 import { cn } from '@/lib/cn'
 import { DocumentList } from '@/features/documents/components/DocumentList'
+import { DepositSection } from '@/features/deposits/components/DepositSection'
 import { generateLeaseContract, downloadLeaseContract } from './api/leases.api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -637,6 +638,11 @@ function LeaseDetailPanel({
               Kontraktet är sparat under Dokument.
             </p>
           )}
+
+          {/* Deposition */}
+          <div className="mt-6">
+            <DepositSection leaseId={selected.id} fallbackAmount={Number(selected.depositAmount)} />
+          </div>
 
           {/* Documents */}
           <div className="mt-6">

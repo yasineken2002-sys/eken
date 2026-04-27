@@ -22,6 +22,7 @@ import {
   CalendarRange,
   Newspaper,
   MessageSquare,
+  CreditCard,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuthStore } from '@/stores/auth.store'
@@ -53,6 +54,7 @@ const NAV_PORTFOLIO: NavItem[] = [
 const NAV_FINANCE: NavItem[] = [
   { id: 'invoices', label: 'Fakturor', icon: Receipt },
   { id: 'avisering', label: 'Hyresavier', icon: Receipt },
+  { id: 'deposits', label: 'Depositioner', icon: CreditCard },
   { id: 'accounting', label: 'Bokföring', icon: BookOpen },
   { id: 'reconciliation', label: 'Bankavstämning', icon: ArrowLeftRight },
 ]

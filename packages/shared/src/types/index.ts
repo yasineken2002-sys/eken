@@ -322,6 +322,38 @@ export interface ReconciliationStats {
   matchedAmount: number
 }
 
+// ─── Deposits (Depositioner) ──────────────────────────────────────────────────
+
+export type DepositStatus =
+  | 'PENDING'
+  | 'PAID'
+  | 'REFUND_PENDING'
+  | 'REFUNDED'
+  | 'PARTIALLY_REFUNDED'
+  | 'FORFEITED'
+
+export interface DepositDeduction {
+  reason: string
+  amount: number
+}
+
+export interface Deposit {
+  id: string
+  organizationId: string
+  leaseId: string
+  tenantId: string
+  amount: number
+  status: DepositStatus
+  invoiceId?: string
+  paidAt?: string
+  refundedAt?: string
+  refundAmount?: number
+  deductions?: DepositDeduction[]
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
+
 // ─── Accounting (Bokföring) ───────────────────────────────────────────────────
 
 export type AccountType = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE'

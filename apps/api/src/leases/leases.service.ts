@@ -4,6 +4,7 @@ import type { LeaseStatus, LeaseType } from '@prisma/client'
 import { Cron } from '@nestjs/schedule'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
+import { DepositsService } from '../deposits/deposits.service'
 import { CreateLeaseDto } from './dto/create-lease.dto'
 import { UpdateLeaseDto } from './dto/update-lease.dto'
 import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
@@ -57,6 +58,7 @@ export class LeasesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly deposits: DepositsService,
   ) {}
 
   async findAll(organizationId: string) {
@@ -331,6 +333,11 @@ export class LeasesService {
       include: INCLUDE,
     })
 
+    // Eventuell deposition flyttas till REFUND_PENDING.
+    void this.deposits
+      .markRefundPendingForLease(id, organizationId)
+      .catch((err) => this.logger.error(`Deposit refund-pending failed: ${String(err)}`))
+
     // Notis till alla användare i organisationen
     void this.notifications
       .createForAllOrgUsers(
@@ -424,14 +431,15 @@ export class LeasesService {
   async processLifecycle(): Promise<void> {
     const today = startOfDay(new Date())
 
-    const [renewed, reminders, terminated] = await Promise.all([
+    const [renewed, reminders, terminated, depositReminders] = await Promise.all([
       this.autoRenewExpiredFixedTerm(today),
       this.sendExpiryReminders(today),
       this.terminateExpiredNoticeLeases(today),
+      this.deposits.remindStaleRefundPending(),
     ])
 
     this.logger.log(
-      `[Leases] Lifecycle done: ${renewed} renewed, ${reminders} reminders, ${terminated} terminated`,
+      `[Leases] Lifecycle done: ${renewed} renewed, ${reminders} reminders, ${terminated} terminated, ${depositReminders} deposit reminders`,
     )
   }
 

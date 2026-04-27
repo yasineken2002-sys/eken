@@ -12,12 +12,14 @@ interface JournalFilters {
 const DEFAULT_ACCOUNTS = [
   { number: 1510, name: 'Kundfordringar', type: 'ASSET' as const },
   { number: 1930, name: 'Företagskonto', type: 'ASSET' as const },
+  { number: 2490, name: 'Mottagna depositioner', type: 'LIABILITY' as const },
   { number: 2610, name: 'Utgående moms 25%', type: 'LIABILITY' as const },
   { number: 2612, name: 'Utgående moms 12%', type: 'LIABILITY' as const },
   { number: 2614, name: 'Utgående moms 6%', type: 'LIABILITY' as const },
   { number: 3010, name: 'Hyresintäkter', type: 'REVENUE' as const },
   { number: 3011, name: 'Serviceintäkter', type: 'REVENUE' as const },
   { number: 3012, name: 'Depositionsintäkter', type: 'REVENUE' as const },
+  { number: 3040, name: 'Skadeersättningar', type: 'REVENUE' as const },
 ]
 
 // Map VAT rate to account number
@@ -293,6 +295,120 @@ export class AccountingService {
             ...(l.description ? { description: `Reversal: ${l.description}` } : {}),
           })),
         },
+      },
+    })
+  }
+
+  // BAS för registrering av deposition: 1510 D (kundfordran) / 2490 K (skuld
+  // för mottagen deposition). Posten skrivs en gång per deposit (idempotent).
+  async createJournalEntryForDepositInvoice(
+    depositId: string,
+    organizationId: string,
+    amount: number,
+    invoiceNumber: string,
+    issueDate: Date,
+    createdById: string | null,
+  ) {
+    const sourceId = `deposit-invoice:${depositId}`
+    const existing = await this.prisma.journalEntry.findFirst({
+      where: { organizationId, sourceId },
+    })
+    if (existing) return existing
+
+    const accounts = await this.prisma.account.findMany({
+      where: { organizationId },
+      select: { id: true, number: true },
+    })
+    const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+    const receivableId = accountByNumber.get(1510)
+    const liabilityId = accountByNumber.get(2490)
+    if (!receivableId || !liabilityId) return null
+
+    return this.prisma.journalEntry.create({
+      data: {
+        organizationId,
+        date: issueDate,
+        description: `Deposition ${invoiceNumber}`,
+        source: 'INVOICE',
+        sourceId,
+        ...(createdById ? { createdById } : {}),
+        lines: {
+          create: [
+            { accountId: receivableId, debit: amount, description: 'Depositionsfordran' },
+            { accountId: liabilityId, credit: amount, description: 'Mottagen deposition' },
+          ],
+        },
+      },
+    })
+  }
+
+  // BAS för återbetalning av deposition: 2490 D (skulden minskar)
+  // / 1930 K (bank) för återbetald del. Eventuella avdrag krediteras 3040
+  // (skadeersättningar) istället, så bokföringen alltid balanserar.
+  async createJournalEntryForDepositRefund(
+    depositId: string,
+    organizationId: string,
+    refundAmount: number,
+    deductionsTotal: number,
+    transactionDate: Date,
+    createdById: string | null,
+  ) {
+    const sourceId = `deposit-refund:${depositId}`
+    const existing = await this.prisma.journalEntry.findFirst({
+      where: { organizationId, sourceId },
+    })
+    if (existing) return existing
+
+    const total = refundAmount + deductionsTotal
+    if (total <= 0) return null
+
+    const accounts = await this.prisma.account.findMany({
+      where: { organizationId },
+      select: { id: true, number: true },
+    })
+    const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+    const liabilityId = accountByNumber.get(2490)
+    const bankId = accountByNumber.get(1930)
+    const damageRevenueId = accountByNumber.get(3040)
+    if (!liabilityId || !bankId) return null
+
+    const lines: Array<{
+      accountId: string
+      debit?: number
+      credit?: number
+      description: string
+    }> = [{ accountId: liabilityId, debit: total, description: 'Återförd depositionsskuld' }]
+    if (refundAmount > 0) {
+      lines.push({ accountId: bankId, credit: refundAmount, description: 'Återbetalning bank' })
+    }
+    if (deductionsTotal > 0 && damageRevenueId) {
+      lines.push({
+        accountId: damageRevenueId,
+        credit: deductionsTotal,
+        description: 'Avdrag (skador)',
+      })
+    } else if (deductionsTotal > 0) {
+      // Saknas 3040 — boka resten på 1510 (fordran) som fallback så att
+      // bokföringen balanserar. Användaren får manuellt rätta efteråt.
+      const receivableId = accountByNumber.get(1510)
+      if (!receivableId) return null
+      lines.push({
+        accountId: receivableId,
+        debit: 0,
+        credit: deductionsTotal,
+        description: 'Avdrag (manuell justering krävs — saknar konto 3040)',
+      })
+    }
+
+    return this.prisma.journalEntry.create({
+      data: {
+        organizationId,
+        date: transactionDate,
+        description: `Återbetalning deposition`,
+        source: 'PAYMENT',
+        sourceId,
+        ...(createdById ? { createdById } : {}),
+        lines: { create: lines },
       },
     })
   }

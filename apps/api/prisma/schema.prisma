@@ -349,6 +349,7 @@ model Organization {
   platformInvoices   PlatformInvoice[]
   impersonationLogs  ImpersonationLog[]
   errorLogs          ErrorLog[]
+  deposits           Deposit[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -535,6 +536,7 @@ model Tenant {
   magicLinks         TenantMagicLink[]
   sessions           TenantSession[]
   sentMessages       SentMessage[]
+  deposits           Deposit[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -569,6 +571,7 @@ model Lease {
   documents   Document[]
   rentNotices RentNotice[]
   inspections Inspection[]
+  deposit     Deposit?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -612,6 +615,7 @@ model Invoice {
   lines            InvoiceLine[]
   events           InvoiceEvent[]
   bankTransactions BankTransaction[]
+  deposit          Deposit?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1247,4 +1251,41 @@ model FailedEmail {
 
   @@index([createdAt])
   @@index([template])
+}
+
+// ─── Deposit (Deposition) ─────────────────────────────────────────────────────
+
+enum DepositStatus {
+  PENDING            // Fakturerad, ej betald
+  PAID               // Betald, förvaras
+  REFUND_PENDING     // Kontrakt avslutat, väntar återbetalning
+  REFUNDED           // Återbetald fullt
+  PARTIALLY_REFUNDED // Återbetald med avdrag
+  FORFEITED          // Förverkad (skador översteg deposition)
+}
+
+model Deposit {
+  id             String        @id @default(uuid())
+  organizationId String
+  leaseId        String        @unique
+  tenantId       String
+  amount         Decimal       @db.Decimal(10, 2)
+  status         DepositStatus @default(PENDING)
+  invoiceId      String?       @unique
+  paidAt         DateTime?
+  refundedAt     DateTime?
+  refundAmount   Decimal?      @db.Decimal(10, 2)
+  deductions     Json?
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lease        Lease        @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([tenantId])
 }

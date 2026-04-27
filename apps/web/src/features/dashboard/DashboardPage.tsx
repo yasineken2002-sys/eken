@@ -12,6 +12,8 @@ import {
   ChevronRight,
   ArrowUpRight,
   CalendarClock,
+  CreditCard,
+  Wallet,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -20,6 +22,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { InvoiceStatusBadge } from '@/components/ui/Badge'
 import { useDashboardStats } from './hooks/useDashboard'
 import { useLeases } from '@/features/leases/hooks/useLeases'
+import { useDeposits } from '@/features/deposits/hooks/useDeposits'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { Route } from '@/App'
 
@@ -42,6 +45,15 @@ const AI_CHIPS = [
 export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
   const { data: stats, isLoading, isError } = useDashboardStats()
   const { data: leases = [] } = useLeases()
+  const { data: deposits = [] } = useDeposits()
+
+  const depositStats = useMemo(() => {
+    const managed = deposits
+      .filter((d) => d.status === 'PAID' || d.status === 'REFUND_PENDING')
+      .reduce((s, d) => s + Number(d.amount), 0)
+    const refundPending = deposits.filter((d) => d.status === 'REFUND_PENDING').length
+    return { managed, refundPending }
+  }, [deposits])
 
   const expiringLeases = useMemo(() => {
     const now = Date.now()
@@ -138,6 +150,22 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
               value={stats?.invoices.draft ?? 0}
               icon={TrendingUp}
               iconColor="#F59E0B"
+            />
+          </motion.div>
+          <motion.div variants={item}>
+            <StatCard
+              title="Förvaltat depositionskapital"
+              value={formatCurrency(depositStats.managed)}
+              icon={Wallet}
+              iconColor="#2563EB"
+            />
+          </motion.div>
+          <motion.div variants={item}>
+            <StatCard
+              title="Depositioner att återbetala"
+              value={depositStats.refundPending}
+              icon={CreditCard}
+              iconColor="#D97706"
             />
           </motion.div>
         </motion.div>
