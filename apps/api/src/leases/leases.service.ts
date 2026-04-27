@@ -1,10 +1,14 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import type { LeaseStatus } from '@prisma/client'
+import type { LeaseStatus, LeaseType } from '@prisma/client'
+import { Cron } from '@nestjs/schedule'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { NotificationsService } from '../notifications/notifications.service'
 import { CreateLeaseDto } from './dto/create-lease.dto'
 import { UpdateLeaseDto } from './dto/update-lease.dto'
 import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
+import { TerminateLeaseDto } from './dto/terminate-lease.dto'
+import { RenewLeaseDto } from './dto/renew-lease.dto'
 
 const VALID_TRANSITIONS: Partial<Record<LeaseStatus, LeaseStatus[]>> = {
   DRAFT: ['ACTIVE', 'TERMINATED'],
@@ -15,6 +19,24 @@ const INCLUDE = {
   unit: { include: { property: true } },
   tenant: true,
 } as const
+
+// Lägg till N månader till ett datum, hantera månadsdrift (31 jan + 1 mån = 28/29 feb).
+function addMonths(date: Date, months: number): Date {
+  const d = new Date(date)
+  const targetMonth = d.getMonth() + months
+  d.setMonth(targetMonth)
+  // Om dag rullade (t.ex. 31 → 1 jan), backa till sista dagen i föregående månad.
+  if (d.getMonth() !== ((targetMonth % 12) + 12) % 12) {
+    d.setDate(0)
+  }
+  return d
+}
+
+function startOfDay(date: Date): Date {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
 
 // Översätt Postgres unique-konflikt på partial index lease_unit_active_unique
 // till svensk BadRequest. Detta är skyddet mot race när två förfrågningar
@@ -30,7 +52,12 @@ function isActiveUnitConflict(err: unknown): boolean {
 
 @Injectable()
 export class LeasesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(LeasesService.name)
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async findAll(organizationId: string) {
     return this.prisma.lease.findMany({
@@ -71,6 +98,11 @@ export class LeasesService {
       throw new BadRequestException('Enheten har redan ett aktivt kontrakt')
     }
 
+    const leaseType: LeaseType = dto.leaseType ?? 'INDEFINITE'
+    if (leaseType === 'FIXED_TERM' && !dto.endDate) {
+      throw new BadRequestException('Tidsbegränsade kontrakt måste ha ett slutdatum')
+    }
+
     return this.prisma.lease.create({
       data: {
         organizationId,
@@ -81,6 +113,11 @@ export class LeasesService {
         monthlyRent: dto.monthlyRent,
         depositAmount: dto.depositAmount ?? 0,
         status: 'DRAFT',
+        leaseType,
+        ...(dto.renewalPeriodMonths != null
+          ? { renewalPeriodMonths: dto.renewalPeriodMonths }
+          : {}),
+        ...(dto.noticePeriodMonths != null ? { noticePeriodMonths: dto.noticePeriodMonths } : {}),
       },
       include: INCLUDE,
     })
@@ -102,6 +139,11 @@ export class LeasesService {
         ...(dto.endDate != null ? { endDate: new Date(dto.endDate) } : {}),
         ...(dto.monthlyRent != null ? { monthlyRent: dto.monthlyRent } : {}),
         ...(dto.depositAmount != null ? { depositAmount: dto.depositAmount } : {}),
+        ...(dto.leaseType != null ? { leaseType: dto.leaseType } : {}),
+        ...(dto.renewalPeriodMonths != null
+          ? { renewalPeriodMonths: dto.renewalPeriodMonths }
+          : {}),
+        ...(dto.noticePeriodMonths != null ? { noticePeriodMonths: dto.noticePeriodMonths } : {}),
       },
       include: INCLUDE,
     })
@@ -176,6 +218,11 @@ export class LeasesService {
       throw new BadRequestException('Enheten har redan ett aktivt kontrakt')
     }
 
+    const leaseType: LeaseType = dto.leaseType ?? 'INDEFINITE'
+    if (leaseType === 'FIXED_TERM' && !dto.endDate) {
+      throw new BadRequestException('Tidsbegränsade kontrakt måste ha ett slutdatum')
+    }
+
     try {
       return await this.prisma.$transaction(async (tx) => {
         let tenantId: string
@@ -224,6 +271,13 @@ export class LeasesService {
             startDate: new Date(dto.startDate),
             ...(dto.endDate ? { endDate: new Date(dto.endDate) } : {}),
             status: 'DRAFT',
+            leaseType,
+            ...(dto.renewalPeriodMonths != null
+              ? { renewalPeriodMonths: dto.renewalPeriodMonths }
+              : {}),
+            ...(dto.noticePeriodMonths != null
+              ? { noticePeriodMonths: dto.noticePeriodMonths }
+              : {}),
           },
           include: INCLUDE,
         })
@@ -244,5 +298,271 @@ export class LeasesService {
     }
 
     await this.prisma.lease.delete({ where: { id } })
+  }
+
+  // ── Uppsägningsflöde ─────────────────────────────────────────────────────────
+
+  async terminate(id: string, dto: TerminateLeaseDto, organizationId: string) {
+    const lease = await this.findOne(id, organizationId)
+
+    if (lease.status !== 'ACTIVE' && lease.status !== 'DRAFT') {
+      throw new BadRequestException('Endast aktiva eller utkast-avtal kan sägas upp')
+    }
+    if (lease.terminatedAt) {
+      throw new BadRequestException('Kontraktet är redan uppsagt')
+    }
+
+    const today = startOfDay(new Date())
+    const effective = dto.effectiveDate
+      ? startOfDay(new Date(dto.effectiveDate))
+      : addMonths(today, lease.noticePeriodMonths)
+
+    if (effective < today) {
+      throw new BadRequestException('Slutdatum kan inte vara i förflutet')
+    }
+
+    const updated = await this.prisma.lease.update({
+      where: { id },
+      data: {
+        terminatedAt: today,
+        endDate: effective,
+        ...(dto.terminationReason ? { terminationReason: dto.terminationReason } : {}),
+      },
+      include: INCLUDE,
+    })
+
+    // Notis till alla användare i organisationen
+    void this.notifications
+      .createForAllOrgUsers(
+        organizationId,
+        'LEASE_EXPIRED',
+        'Kontrakt uppsagt',
+        `Hyresavtal för enhet ${updated.unit.name} sägs upp och avslutas ${effective
+          .toISOString()
+          .slice(0, 10)}`,
+        '/leases',
+      )
+      .catch((err) => this.logger.error(`Notification error: ${String(err)}`))
+
+    return updated
+  }
+
+  // ── Förnyelsebeslut för FIXED_TERM ───────────────────────────────────────────
+
+  async renew(id: string, dto: RenewLeaseDto, organizationId: string) {
+    const lease = await this.findOne(id, organizationId)
+
+    if (lease.leaseType !== 'FIXED_TERM') {
+      throw new BadRequestException('Bara tidsbegränsade kontrakt kan förnyas')
+    }
+    if (lease.status !== 'ACTIVE') {
+      throw new BadRequestException('Bara aktiva kontrakt kan förnyas')
+    }
+    if (!lease.endDate) {
+      throw new BadRequestException('Kontraktet saknar slutdatum')
+    }
+
+    // Nytt kontrakt börjar dagen efter gamla slutdatum
+    const oldEnd = startOfDay(lease.endDate)
+    const newStart = new Date(oldEnd.getTime() + 86_400_000)
+
+    let newEnd: Date
+    if (dto.newEndDate) {
+      newEnd = startOfDay(new Date(dto.newEndDate))
+    } else if (lease.renewalPeriodMonths != null) {
+      newEnd = addMonths(newStart, lease.renewalPeriodMonths)
+    } else {
+      throw new BadRequestException('Ange newEndDate eller sätt renewalPeriodMonths på kontraktet')
+    }
+
+    if (newEnd <= newStart) {
+      throw new BadRequestException('Slutdatum måste vara efter startdatum')
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Markera gamla kontraktet som EXPIRED
+      await tx.lease.update({
+        where: { id: lease.id },
+        data: { status: 'EXPIRED' },
+      })
+
+      // Skapa nytt kontrakt — samma villkor men nya datum (och ev. ny hyra)
+      const created = await tx.lease.create({
+        data: {
+          organizationId,
+          unitId: lease.unitId,
+          tenantId: lease.tenantId,
+          startDate: newStart,
+          endDate: newEnd,
+          monthlyRent: dto.monthlyRent ?? lease.monthlyRent,
+          depositAmount: lease.depositAmount,
+          status: 'ACTIVE',
+          leaseType: 'FIXED_TERM',
+          ...(lease.renewalPeriodMonths != null
+            ? { renewalPeriodMonths: lease.renewalPeriodMonths }
+            : {}),
+          noticePeriodMonths: lease.noticePeriodMonths,
+          indexClause: lease.indexClause,
+          signedAt: new Date(),
+        },
+        include: INCLUDE,
+      })
+
+      // Säkerställ att enhetsstatus förblir OCCUPIED (det nya avtalet är ACTIVE)
+      await tx.unit.update({ where: { id: lease.unitId }, data: { status: 'OCCUPIED' } })
+
+      return created
+    })
+  }
+
+  // ── Cron: livscykel-processering ─────────────────────────────────────────────
+  // Körs varje dag 06:00. Tre uppgifter:
+  //   a) auto-förläng FIXED_TERM som löpt ut utan uppsägning
+  //   b) skicka påminnelser 90/60/30 dagar innan slutdatum
+  //   c) avsluta uppsagda avtal som nått slutdatum
+  @Cron('0 6 * * *')
+  async processLifecycle(): Promise<void> {
+    const today = startOfDay(new Date())
+
+    const [renewed, reminders, terminated] = await Promise.all([
+      this.autoRenewExpiredFixedTerm(today),
+      this.sendExpiryReminders(today),
+      this.terminateExpiredNoticeLeases(today),
+    ])
+
+    this.logger.log(
+      `[Leases] Lifecycle done: ${renewed} renewed, ${reminders} reminders, ${terminated} terminated`,
+    )
+  }
+
+  // a) Hitta FIXED_TERM ACTIVE där endDate < idag och terminatedAt IS NULL,
+  // skapa nytt avtal med samma villkor och markera gamla EXPIRED.
+  private async autoRenewExpiredFixedTerm(today: Date): Promise<number> {
+    const candidates = await this.prisma.lease.findMany({
+      where: {
+        status: 'ACTIVE',
+        leaseType: 'FIXED_TERM',
+        terminatedAt: null,
+        endDate: { lt: today, not: null },
+      },
+      include: INCLUDE,
+    })
+
+    let renewed = 0
+    for (const lease of candidates) {
+      if (!lease.endDate) continue
+      // Auto-förläng kräver att renewalPeriodMonths är satt — annars hoppa över.
+      if (lease.renewalPeriodMonths == null) continue
+
+      const newStart = new Date(startOfDay(lease.endDate).getTime() + 86_400_000)
+      const newEnd = addMonths(newStart, lease.renewalPeriodMonths)
+
+      try {
+        await this.prisma.$transaction(async (tx) => {
+          await tx.lease.update({
+            where: { id: lease.id },
+            data: { status: 'EXPIRED' },
+          })
+
+          await tx.lease.create({
+            data: {
+              organizationId: lease.organizationId,
+              unitId: lease.unitId,
+              tenantId: lease.tenantId,
+              startDate: newStart,
+              endDate: newEnd,
+              monthlyRent: lease.monthlyRent,
+              depositAmount: lease.depositAmount,
+              status: 'ACTIVE',
+              leaseType: 'FIXED_TERM',
+              renewalPeriodMonths: lease.renewalPeriodMonths,
+              noticePeriodMonths: lease.noticePeriodMonths,
+              indexClause: lease.indexClause,
+              signedAt: new Date(),
+            },
+          })
+        })
+        this.logger.log(`[Leases] Auto-renewed lease ${lease.id} for unit ${lease.unitId}`)
+        renewed++
+      } catch (err) {
+        this.logger.error(`[Leases] Auto-renew failed for ${lease.id}: ${String(err)}`)
+      }
+    }
+    return renewed
+  }
+
+  // b) Skicka in-app-notiser för FIXED_TERM ACTIVE där endDate är exakt
+  // 90, 60 eller 30 dagar bort.
+  private async sendExpiryReminders(today: Date): Promise<number> {
+    let sent = 0
+    for (const days of [90, 60, 30]) {
+      const target = new Date(today.getTime() + days * 86_400_000)
+      const targetEnd = new Date(target.getTime() + 86_400_000)
+
+      const expiring = await this.prisma.lease.findMany({
+        where: {
+          status: 'ACTIVE',
+          leaseType: 'FIXED_TERM',
+          terminatedAt: null,
+          endDate: { gte: target, lt: targetEnd },
+        },
+        include: INCLUDE,
+      })
+
+      for (const lease of expiring) {
+        try {
+          await this.notifications.createForAllOrgUsers(
+            lease.organizationId,
+            'LEASE_EXPIRING',
+            `Kontrakt löper ut om ${days} dagar`,
+            `Hyresavtal för ${lease.unit.name} (${lease.unit.property.name}) löper ut ${lease.endDate
+              ?.toISOString()
+              .slice(0, 10)}. Förnya eller säg upp.`,
+            '/leases',
+          )
+          sent++
+        } catch (err) {
+          this.logger.error(`[Leases] Reminder failed for ${lease.id}: ${String(err)}`)
+        }
+      }
+    }
+    return sent
+  }
+
+  // c) Hitta uppsagda kontrakt där slutdatumet har passerat → markera TERMINATED
+  // och frigör enheten.
+  private async terminateExpiredNoticeLeases(today: Date): Promise<number> {
+    const due = await this.prisma.lease.findMany({
+      where: {
+        status: 'ACTIVE',
+        terminatedAt: { not: null },
+        endDate: { lt: today, not: null },
+      },
+    })
+
+    let terminated = 0
+    for (const lease of due) {
+      try {
+        await this.prisma.$transaction(async (tx) => {
+          await tx.lease.update({
+            where: { id: lease.id },
+            data: { status: 'TERMINATED' },
+          })
+
+          // Frigör enheten om inget annat ACTIVE-kontrakt finns
+          const stillActive = await tx.lease.count({
+            where: { unitId: lease.unitId, status: 'ACTIVE', id: { not: lease.id } },
+          })
+          if (stillActive === 0) {
+            await tx.unit.update({ where: { id: lease.unitId }, data: { status: 'VACANT' } })
+          }
+        })
+        this.logger.log(`[Leases] Terminated expired-notice lease ${lease.id}`)
+        terminated++
+      } catch (err) {
+        this.logger.error(`[Leases] Termination cron failed for ${lease.id}: ${String(err)}`)
+      }
+    }
+    return terminated
   }
 }

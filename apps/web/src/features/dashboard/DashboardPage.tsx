@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
   Building2,
@@ -10,6 +11,7 @@ import {
   Sparkles,
   ChevronRight,
   ArrowUpRight,
+  CalendarClock,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -17,6 +19,7 @@ import { StatCard } from '@/components/ui/StatCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { InvoiceStatusBadge } from '@/components/ui/Badge'
 import { useDashboardStats } from './hooks/useDashboard'
+import { useLeases } from '@/features/leases/hooks/useLeases'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { Route } from '@/App'
 
@@ -38,6 +41,20 @@ const AI_CHIPS = [
 
 export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
   const { data: stats, isLoading, isError } = useDashboardStats()
+  const { data: leases = [] } = useLeases()
+
+  const expiringLeases = useMemo(() => {
+    const now = Date.now()
+    const cutoff = now + 90 * 86_400_000
+    return leases
+      .filter((l) => l.status === 'ACTIVE' && l.endDate)
+      .map((l) => ({
+        lease: l,
+        endMs: new Date(l.endDate as string).getTime(),
+      }))
+      .filter(({ endMs }) => endMs >= now && endMs <= cutoff)
+      .sort((a, b) => a.endMs - b.endMs)
+  }, [leases])
 
   if (isError) {
     return (
@@ -160,6 +177,71 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
           </button>
         </div>
       </motion.div>
+
+      {/* Utgående kontrakt */}
+      {expiringLeases.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.28 }}
+          className="mt-6 overflow-hidden rounded-2xl border border-amber-100 bg-amber-50/40 shadow-[0_1px_4px_rgba(0,0,0,0.04)]"
+        >
+          <button
+            onClick={() => onNavigate?.('leases')}
+            className="flex w-full items-center justify-between border-b border-amber-100 bg-amber-50/60 px-6 py-4 text-left transition-colors hover:bg-amber-50"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100">
+                <CalendarClock size={18} strokeWidth={1.8} className="text-amber-700" />
+              </div>
+              <div>
+                <p className="text-[14px] font-semibold text-amber-900">
+                  {expiringLeases.length} kontrakt löper ut inom 90 dagar
+                </p>
+                <p className="text-[12.5px] text-amber-700/80">
+                  Förnya eller säg upp innan de förfaller automatiskt
+                </p>
+              </div>
+            </div>
+            <ChevronRight size={14} className="text-amber-700/70" />
+          </button>
+          <div className="divide-y divide-amber-100/60">
+            {expiringLeases.slice(0, 5).map(({ lease, endMs }) => {
+              const days = Math.ceil((endMs - Date.now()) / 86_400_000)
+              const tone =
+                days < 30 ? 'text-red-600' : days < 60 ? 'text-amber-700' : 'text-amber-600'
+              const tenant =
+                lease.tenant.type === 'INDIVIDUAL'
+                  ? [lease.tenant.firstName, lease.tenant.lastName].filter(Boolean).join(' ')
+                  : (lease.tenant.companyName ?? '–')
+              return (
+                <button
+                  key={lease.id}
+                  onClick={() => onNavigate?.('leases')}
+                  className="grid w-full grid-cols-4 items-center gap-4 px-6 py-3 text-left transition-colors hover:bg-amber-50/40"
+                >
+                  <span className="truncate text-[13px] font-medium text-gray-800">{tenant}</span>
+                  <span className="truncate text-[12.5px] text-gray-500">
+                    {lease.unit.name} · {lease.unit.property.name}
+                  </span>
+                  <span className="text-[12.5px] text-gray-500">{formatDate(lease.endDate!)}</span>
+                  <span className={`text-[12.5px] font-semibold ${tone}`}>
+                    {days <= 0 ? 'Idag' : `${days} ${days === 1 ? 'dag' : 'dagar'} kvar`}
+                  </span>
+                </button>
+              )
+            })}
+            {expiringLeases.length > 5 && (
+              <button
+                onClick={() => onNavigate?.('leases')}
+                className="block w-full px-6 py-2.5 text-center text-[12px] font-medium text-amber-700 hover:bg-amber-50/40"
+              >
+                Visa alla {expiringLeases.length} kontrakt
+              </button>
+            )}
+          </div>
+        </motion.div>
+      )}
 
       {/* Recent invoices */}
       <motion.div

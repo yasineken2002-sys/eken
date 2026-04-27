@@ -162,6 +162,7 @@ export interface Tenant {
 // ─── Leases (Hyresavtal) ──────────────────────────────────────────────────────
 
 export type LeaseStatus = 'DRAFT' | 'ACTIVE' | 'TERMINATED' | 'EXPIRED'
+export type LeaseType = 'FIXED_TERM' | 'INDEFINITE'
 
 export interface Lease {
   id: string
@@ -169,8 +170,10 @@ export interface Lease {
   unitId: string
   tenantId: string
   status: LeaseStatus
+  leaseType: LeaseType
+  renewalPeriodMonths?: number
   startDate: string
-  endDate?: string // null = open-ended
+  endDate?: string // null = open-ended (gäller INDEFINITE-kontrakt)
   monthlyRent: number
   depositAmount: number
   noticePeriodMonths: number

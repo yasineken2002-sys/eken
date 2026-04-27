@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, FileX, FileText, Home, User, Download } from 'lucide-react'
+import { Plus, FileX, FileText, Home, User, Download, RefreshCw, X } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { DataTable } from '@/components/ui/DataTable'
 import { LeaseStatusBadge } from '@/components/ui/Badge'
@@ -17,6 +18,8 @@ import {
   useUpdateLease,
   useTransitionLeaseStatus,
   useDeleteLease,
+  useTerminateLease,
+  useRenewLease,
 } from './hooks/useLeases'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { LeaseStatus, Tenant } from '@eken/shared'
@@ -55,7 +58,36 @@ function leaseToInput(l: LeaseDetail): Partial<CreateLeaseWithTenantInput> {
     ...(l.endDate != null ? { endDate: l.endDate.slice(0, 10) } : {}),
     monthlyRent: Number(l.monthlyRent),
     depositAmount: Number(l.depositAmount),
+    leaseType: l.leaseType,
+    ...(l.renewalPeriodMonths != null ? { renewalPeriodMonths: l.renewalPeriodMonths } : {}),
+    noticePeriodMonths: l.noticePeriodMonths,
   }
+}
+
+function daysUntil(iso: string | undefined): number | null {
+  if (!iso) return null
+  const ms = new Date(iso).getTime() - Date.now()
+  return Math.ceil(ms / 86_400_000)
+}
+
+function DaysLeftBadge({ days }: { days: number }) {
+  const tone =
+    days < 30
+      ? 'bg-red-50 text-red-700'
+      : days < 90
+        ? 'bg-amber-50 text-amber-700'
+        : 'bg-gray-100 text-gray-600'
+  const text = days <= 0 ? 'Löper ut idag' : `${days} ${days === 1 ? 'dag' : 'dagar'} kvar`
+  return (
+    <span
+      className={cn(
+        'mt-0.5 inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
+        tone,
+      )}
+    >
+      {text}
+    </span>
+  )
 }
 
 // ─── Animation variants ───────────────────────────────────────────────────────
@@ -74,6 +106,8 @@ export function LeasesPage() {
   const [detailTab, setDetailTab] = useState<DetailTab>('detaljer')
   const [showCreate, setShowCreate] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showTerminate, setShowTerminate] = useState(false)
+  const [showRenew, setShowRenew] = useState(false)
 
   const { data: leases = [], isLoading, isError } = useLeases()
   const { data: selectedLease } = useLease(selected?.id ?? null)
@@ -82,6 +116,8 @@ export function LeasesPage() {
   const updateMutation = useUpdateLease()
   const transitionMutation = useTransitionLeaseStatus()
   const deleteMutation = useDeleteLease()
+  const terminateMutation = useTerminateLease()
+  const renewMutation = useRenewLease()
 
   // Client-side tab filter
   const filtered = useMemo(() => {
@@ -133,6 +169,32 @@ export function LeasesPage() {
     deleteMutation.mutate(id)
   }
 
+  const handleTerminate = (data: { terminationReason?: string; effectiveDate?: string }) => {
+    if (!selected) return
+    terminateMutation.mutate(
+      { id: selected.id, ...data },
+      {
+        onSuccess: (updated) => {
+          setSelected(updated)
+          setShowTerminate(false)
+        },
+      },
+    )
+  }
+
+  const handleRenew = (data: { newEndDate?: string; monthlyRent?: number }) => {
+    if (!selected) return
+    renewMutation.mutate(
+      { id: selected.id, ...data },
+      {
+        onSuccess: () => {
+          setSelected(null)
+          setShowRenew(false)
+        },
+      },
+    )
+  }
+
   // ── Table columns ──────────────────────────────────────────────────────────
 
   const columns = [
@@ -178,6 +240,24 @@ export function LeasesPage() {
       key: 'startDate',
       header: 'Startdatum',
       cell: (l: LeaseDetail) => <span className="text-gray-500">{formatDate(l.startDate)}</span>,
+    },
+    {
+      key: 'expiry',
+      header: 'Slutdatum',
+      cell: (l: LeaseDetail) => {
+        if (!l.endDate) {
+          return <span className="text-[12px] text-gray-300">Tillsvidare</span>
+        }
+        const days = daysUntil(l.endDate)
+        return (
+          <div className="flex flex-col">
+            <span className="text-[12.5px] text-gray-500">{formatDate(l.endDate)}</span>
+            {l.status === 'ACTIVE' && days != null && days >= 0 && days <= 90 && (
+              <DaysLeftBadge days={days} />
+            )}
+          </div>
+        )
+      },
     },
   ]
 
@@ -334,8 +414,39 @@ export function LeasesPage() {
             onUpdate={handleUpdate}
             onTransition={handleTransition}
             onDeleteRequest={() => setShowDeleteConfirm(true)}
+            onTerminateRequest={() => setShowTerminate(true)}
+            onRenewRequest={() => setShowRenew(true)}
             isUpdating={updateMutation.isPending}
             isTransitioning={transitionMutation.isPending}
+          />
+        )}
+      </Modal>
+
+      {/* ── Terminate modal ─────────────────────────────────────────────────── */}
+      <Modal
+        open={showTerminate}
+        onClose={() => setShowTerminate(false)}
+        title="Säg upp kontrakt"
+        size="sm"
+      >
+        {selected && (
+          <TerminateForm
+            lease={selected}
+            isSubmitting={terminateMutation.isPending}
+            onCancel={() => setShowTerminate(false)}
+            onSubmit={handleTerminate}
+          />
+        )}
+      </Modal>
+
+      {/* ── Renew modal ─────────────────────────────────────────────────────── */}
+      <Modal open={showRenew} onClose={() => setShowRenew(false)} title="Förnya kontrakt" size="sm">
+        {selected && (
+          <RenewForm
+            lease={selected}
+            isSubmitting={renewMutation.isPending}
+            onCancel={() => setShowRenew(false)}
+            onSubmit={handleRenew}
           />
         )}
       </Modal>
@@ -387,6 +498,8 @@ interface DetailPanelProps {
   onUpdate: (dto: CreateLeaseWithTenantInput) => void
   onTransition: (status: string) => void
   onDeleteRequest: () => void
+  onTerminateRequest: () => void
+  onRenewRequest: () => void
   isUpdating: boolean
   isTransitioning: boolean
 }
@@ -399,6 +512,8 @@ function LeaseDetailPanel({
   onUpdate,
   onTransition,
   onDeleteRequest,
+  onTerminateRequest,
+  onRenewRequest,
   isUpdating,
   isTransitioning,
 }: DetailPanelProps) {
@@ -444,11 +559,21 @@ function LeaseDetailPanel({
               { label: 'Hyresgäst', value: tenantName(selected.tenant) },
               { label: 'Enhet', value: selected.unit.name },
               { label: 'Fastighet', value: selected.unit.property.name },
+              {
+                label: 'Kontraktstyp',
+                value: selected.leaseType === 'FIXED_TERM' ? 'Tidsbegränsat' : 'Tillsvidare',
+              },
               { label: 'Startdatum', value: formatDate(selected.startDate) },
-              { label: 'Slutdatum', value: selected.endDate ? formatDate(selected.endDate) : '–' },
+              {
+                label: 'Slutdatum',
+                value: selected.endDate ? formatDate(selected.endDate) : 'Tillsvidare',
+              },
               { label: 'Månadshyra', value: formatCurrency(Number(selected.monthlyRent)) },
               { label: 'Deposition', value: formatCurrency(Number(selected.depositAmount)) },
-              { label: 'Skapad', value: formatDate(selected.createdAt) },
+              { label: 'Uppsägningstid', value: `${selected.noticePeriodMonths} mån` },
+              ...(selected.leaseType === 'FIXED_TERM' && selected.renewalPeriodMonths != null
+                ? [{ label: 'Förlängning', value: `${selected.renewalPeriodMonths} mån` }]
+                : []),
             ].map((row) => (
               <div key={row.label} className="rounded-xl bg-gray-50 p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
@@ -459,13 +584,28 @@ function LeaseDetailPanel({
             ))}
           </div>
 
-          {/* Status */}
-          <div className="mt-4 flex items-center gap-2">
+          {/* Status + livscykel-banners */}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <p className="text-[12px] font-semibold uppercase tracking-wide text-gray-400">
               Status
             </p>
             <LeaseStatusBadge status={selected.status} />
+            {selected.endDate &&
+              selected.status === 'ACTIVE' &&
+              (() => {
+                const days = daysUntil(selected.endDate)
+                if (days == null || days < 0 || days > 90) return null
+                return <DaysLeftBadge days={days} />
+              })()}
           </div>
+
+          {selected.terminatedAt && selected.endDate && (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800">
+              Uppsagt {formatDate(selected.terminatedAt)} — avslutas{' '}
+              <span className="font-semibold">{formatDate(selected.endDate)}</span>
+              {selected.terminationReason ? <> · {selected.terminationReason}</> : null}
+            </div>
+          )}
 
           {/* Generate contract */}
           <div className="mt-6 flex flex-wrap items-center gap-2">
@@ -535,14 +675,24 @@ function LeaseDetailPanel({
             )}
             {status === 'ACTIVE' && (
               <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  loading={isTransitioning}
-                  onClick={() => onTransition('TERMINATED')}
-                >
-                  Avsluta
-                </Button>
+                {selected.leaseType === 'FIXED_TERM' &&
+                  !selected.terminatedAt &&
+                  (() => {
+                    const days = daysUntil(selected.endDate)
+                    if (days == null || days > 90) return null
+                    return (
+                      <Button variant="primary" size="sm" onClick={onRenewRequest}>
+                        <RefreshCw size={13} strokeWidth={1.8} />
+                        Förnya kontrakt
+                      </Button>
+                    )
+                  })()}
+                {!selected.terminatedAt && (
+                  <Button variant="danger" size="sm" onClick={onTerminateRequest}>
+                    <X size={13} strokeWidth={1.8} />
+                    Säg upp kontrakt
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"
@@ -571,6 +721,139 @@ function LeaseDetailPanel({
           submitLabel="Spara ändringar"
         />
       )}
+    </div>
+  )
+}
+
+// ─── Terminate form ───────────────────────────────────────────────────────────
+
+function TerminateForm({
+  lease,
+  isSubmitting,
+  onCancel,
+  onSubmit,
+}: {
+  lease: LeaseDetail
+  isSubmitting: boolean
+  onCancel: () => void
+  onSubmit: (data: { terminationReason?: string; effectiveDate?: string }) => void
+}) {
+  const [reason, setReason] = useState('')
+  const [customDate, setCustomDate] = useState('')
+
+  // Förslagsdatum: idag + uppsägningstid
+  const suggested = useMemo(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() + lease.noticePeriodMonths)
+    return d.toISOString().slice(0, 10)
+  }, [lease.noticePeriodMonths])
+
+  const submit = () => {
+    onSubmit({
+      ...(reason.trim() ? { terminationReason: reason.trim() } : {}),
+      ...(customDate ? { effectiveDate: customDate } : {}),
+    })
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-[13px] text-gray-600">
+        Uppsägningstid är{' '}
+        <span className="font-semibold text-gray-900">{lease.noticePeriodMonths} månader</span>.
+        Slutdatum sätts automatiskt till{' '}
+        <span className="font-semibold text-gray-900">{formatDate(suggested)}</span> om du inte
+        anger annat.
+      </p>
+
+      <Input
+        label="Anledning (valfritt)"
+        placeholder="t.ex. Hyresgäst flyttar"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+      />
+
+      <Input
+        label="Annat slutdatum (valfritt)"
+        type="date"
+        value={customDate}
+        onChange={(e) => setCustomDate(e.target.value)}
+      />
+
+      <ModalFooter>
+        <Button variant="secondary" size="sm" onClick={onCancel} disabled={isSubmitting}>
+          Avbryt
+        </Button>
+        <Button variant="danger" size="sm" loading={isSubmitting} onClick={submit}>
+          Bekräfta uppsägning
+        </Button>
+      </ModalFooter>
+    </div>
+  )
+}
+
+// ─── Renew form ───────────────────────────────────────────────────────────────
+
+function RenewForm({
+  lease,
+  isSubmitting,
+  onCancel,
+  onSubmit,
+}: {
+  lease: LeaseDetail
+  isSubmitting: boolean
+  onCancel: () => void
+  onSubmit: (data: { newEndDate?: string; monthlyRent?: number }) => void
+}) {
+  // Förslag: nytt avtal startar dagen efter gamla slutdatum + renewalPeriodMonths.
+  const suggested = useMemo(() => {
+    if (!lease.endDate) return ''
+    const start = new Date(lease.endDate)
+    start.setDate(start.getDate() + 1)
+    const months = lease.renewalPeriodMonths ?? 12
+    const end = new Date(start)
+    end.setMonth(end.getMonth() + months)
+    return end.toISOString().slice(0, 10)
+  }, [lease.endDate, lease.renewalPeriodMonths])
+
+  const [newEnd, setNewEnd] = useState(suggested)
+  const [rent, setRent] = useState(String(Number(lease.monthlyRent)))
+
+  const submit = () => {
+    onSubmit({
+      ...(newEnd ? { newEndDate: newEnd } : {}),
+      ...(rent && Number(rent) !== Number(lease.monthlyRent) ? { monthlyRent: Number(rent) } : {}),
+    })
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-[13px] text-gray-600">
+        Skapar ett nytt kontrakt med samma villkor. Det gamla kontraktet markeras som{' '}
+        <span className="font-semibold">utgången</span>.
+      </p>
+
+      <Input
+        label="Nytt slutdatum"
+        type="date"
+        value={newEnd}
+        onChange={(e) => setNewEnd(e.target.value)}
+      />
+
+      <Input
+        label="Månadshyra (kr)"
+        type="number"
+        value={rent}
+        onChange={(e) => setRent(e.target.value)}
+      />
+
+      <ModalFooter>
+        <Button variant="secondary" size="sm" onClick={onCancel} disabled={isSubmitting}>
+          Avbryt
+        </Button>
+        <Button variant="primary" size="sm" loading={isSubmitting} onClick={submit}>
+          Förnya kontrakt
+        </Button>
+      </ModalFooter>
     </div>
   )
 }

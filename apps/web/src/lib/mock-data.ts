@@ -302,11 +302,21 @@ const tenants: PartialTenant[] = [
 ]
 export const mockTenants = tenants as Tenant[]
 
-type PartialLease = Omit<Lease, 'endDate' | 'terminatedAt' | 'terminationReason' | 'signedAt'> & {
+type PartialLease = Omit<
+  Lease,
+  | 'endDate'
+  | 'terminatedAt'
+  | 'terminationReason'
+  | 'signedAt'
+  | 'leaseType'
+  | 'renewalPeriodMonths'
+> & {
   endDate?: string
   terminatedAt?: string
   terminationReason?: string
   signedAt?: string
+  leaseType?: Lease['leaseType']
+  renewalPeriodMonths?: number
 }
 const leases: PartialLease[] = [
   {

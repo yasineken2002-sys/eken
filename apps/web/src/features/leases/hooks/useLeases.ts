@@ -7,8 +7,15 @@ import {
   transitionLeaseStatus,
   deleteLease,
   createLeaseWithTenant,
+  terminateLease,
+  renewLease,
 } from '../api/leases.api'
-import type { CreateLeaseInput, CreateLeaseWithTenantInput } from '../api/leases.api'
+import type {
+  CreateLeaseInput,
+  CreateLeaseWithTenantInput,
+  TerminateLeaseInput,
+  RenewLeaseInput,
+} from '../api/leases.api'
 
 // Disjunkta query-nycklar – list och detail får inte dela prefix, annars
 // invaliderar list-mutationen även disabled detail-queries vilket triggar
@@ -81,6 +88,27 @@ export function useCreateLeaseWithTenant() {
       void queryClient.invalidateQueries({ queryKey: LEASES_LIST })
       // Endast list-cachen – matchar inte detalj-queries (['tenant', 'detail', id])
       void queryClient.invalidateQueries({ queryKey: ['tenants', 'list'] })
+    },
+  })
+}
+
+export function useTerminateLease() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...dto }: { id: string } & TerminateLeaseInput) => terminateLease(id, dto),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: LEASES_LIST })
+      void queryClient.invalidateQueries({ queryKey: LEASE_DETAIL(variables.id) })
+    },
+  })
+}
+
+export function useRenewLease() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...dto }: { id: string } & RenewLeaseInput) => renewLease(id, dto),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: LEASES_LIST })
     },
   })
 }

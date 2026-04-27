@@ -17,6 +17,8 @@ import { CreateLeaseDto } from './dto/create-lease.dto'
 import { UpdateLeaseDto } from './dto/update-lease.dto'
 import { TransitionLeaseStatusDto } from './dto/transition-status.dto'
 import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
+import { TerminateLeaseDto } from './dto/terminate-lease.dto'
+import { RenewLeaseDto } from './dto/renew-lease.dto'
 
 @Controller('leases')
 @UseGuards(JwtAuthGuard)
@@ -47,6 +49,24 @@ export class LeasesController {
     @Body() dto: TransitionLeaseStatusDto,
   ) {
     return this.leasesService.transitionStatus(id, dto.status as LeaseStatus, organizationId)
+  }
+
+  @Patch(':id/terminate')
+  async terminate(
+    @Param('id') id: string,
+    @OrgId() organizationId: string,
+    @Body() dto: TerminateLeaseDto,
+  ) {
+    return this.leasesService.terminate(id, dto, organizationId)
+  }
+
+  @Patch(':id/renew')
+  async renew(
+    @Param('id') id: string,
+    @OrgId() organizationId: string,
+    @Body() dto: RenewLeaseDto,
+  ) {
+    return this.leasesService.renew(id, dto, organizationId)
   }
 
   @Get(':id')

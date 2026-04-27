@@ -53,6 +53,11 @@ enum LeaseStatus {
   EXPIRED
 }
 
+enum LeaseType {
+  FIXED_TERM
+  INDEFINITE
+}
+
 enum InvoiceStatus {
   DRAFT
   SENT
@@ -541,20 +546,22 @@ model Tenant {
 // ─── Lease (Hyresavtal) ───────────────────────────────────────────────────────
 
 model Lease {
-  id                 String      @id @default(uuid())
-  organizationId     String
-  unitId             String
-  tenantId           String
-  status             LeaseStatus @default(DRAFT)
-  startDate          DateTime    @db.Date
-  endDate            DateTime?   @db.Date
-  monthlyRent        Decimal     @db.Decimal(10, 2)
-  depositAmount      Decimal     @db.Decimal(10, 2)
-  noticePeriodMonths Int         @default(3)
-  indexClause        Boolean     @default(false)
-  signedAt           DateTime?
-  terminatedAt       DateTime?
-  terminationReason  String?
+  id                   String      @id @default(uuid())
+  organizationId       String
+  unitId               String
+  tenantId             String
+  status               LeaseStatus @default(DRAFT)
+  leaseType            LeaseType   @default(INDEFINITE)
+  renewalPeriodMonths  Int? // Bara meningsfullt för FIXED_TERM
+  startDate            DateTime    @db.Date
+  endDate              DateTime?   @db.Date
+  monthlyRent          Decimal     @db.Decimal(10, 2)
+  depositAmount        Decimal     @db.Decimal(10, 2)
+  noticePeriodMonths   Int         @default(3)
+  indexClause          Boolean     @default(false)
+  signedAt             DateTime?
+  terminatedAt         DateTime?
+  terminationReason    String?
 
   unit        Unit         @relation(fields: [unitId], references: [id])
   tenant      Tenant       @relation(fields: [tenantId], references: [id])

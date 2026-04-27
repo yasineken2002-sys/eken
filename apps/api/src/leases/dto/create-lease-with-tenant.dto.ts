@@ -65,4 +65,18 @@ export class CreateLeaseWithTenantDto {
   @IsDateString()
   @IsOptional()
   endDate?: string
+
+  @IsEnum(['FIXED_TERM', 'INDEFINITE'])
+  @IsOptional()
+  leaseType?: 'FIXED_TERM' | 'INDEFINITE'
+
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  renewalPeriodMonths?: number
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  noticePeriodMonths?: number
 }

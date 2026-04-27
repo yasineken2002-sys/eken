@@ -13,6 +13,9 @@ export interface CreateLeaseInput {
   endDate?: string
   monthlyRent: number
   depositAmount?: number
+  leaseType?: 'FIXED_TERM' | 'INDEFINITE'
+  renewalPeriodMonths?: number
+  noticePeriodMonths?: number
 }
 
 export function fetchLeases(): Promise<LeaseDetail[]> {
@@ -54,6 +57,27 @@ export interface CreateLeaseWithTenantInput {
   depositAmount?: number
   startDate: string
   endDate?: string
+  leaseType?: 'FIXED_TERM' | 'INDEFINITE'
+  renewalPeriodMonths?: number
+  noticePeriodMonths?: number
+}
+
+export interface TerminateLeaseInput {
+  terminationReason?: string
+  effectiveDate?: string
+}
+
+export interface RenewLeaseInput {
+  newEndDate?: string
+  monthlyRent?: number
+}
+
+export function terminateLease(id: string, dto: TerminateLeaseInput): Promise<LeaseDetail> {
+  return patch<LeaseDetail>(`/leases/${id}/terminate`, dto)
+}
+
+export function renewLease(id: string, dto: RenewLeaseInput): Promise<LeaseDetail> {
+  return patch<LeaseDetail>(`/leases/${id}/renew`, dto)
 }
 
 export function createLeaseWithTenant(dto: CreateLeaseWithTenantInput): Promise<LeaseDetail> {

@@ -31,8 +31,18 @@ const schema = z
     depositAmount: z.coerce.number().min(0).optional(),
     startDate: z.string().min(1, 'Ange startdatum'),
     endDate: z.string().optional(),
+    leaseType: z.enum(['FIXED_TERM', 'INDEFINITE']),
+    renewalPeriodMonths: z.coerce.number().int().min(1).optional(),
+    noticePeriodMonths: z.coerce.number().int().min(0).default(3),
   })
   .superRefine((data, ctx) => {
+    if (data.leaseType === 'FIXED_TERM' && !data.endDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Tidsbegränsade kontrakt kräver slutdatum',
+        path: ['endDate'],
+      })
+    }
     if (data.tenantMode === 'existing') {
       if (!data.existingTenantId || data.existingTenantId.trim() === '') {
         ctx.addIssue({
@@ -148,8 +158,15 @@ export function LeaseForm({
       depositAmount: defaultValues?.depositAmount ?? 0,
       startDate: defaultValues?.startDate ?? today,
       endDate: defaultValues?.endDate ?? '',
+      leaseType: defaultValues?.leaseType ?? 'INDEFINITE',
+      ...(defaultValues?.renewalPeriodMonths != null
+        ? { renewalPeriodMonths: defaultValues.renewalPeriodMonths }
+        : { renewalPeriodMonths: 12 }),
+      noticePeriodMonths: defaultValues?.noticePeriodMonths ?? 3,
     },
   })
+
+  const leaseType = watch('leaseType')
 
   const propertyId = watch('propertyId')
   const unitId = watch('unitId')
@@ -190,8 +207,13 @@ export function LeaseForm({
       unitId: v.unitId,
       monthlyRent: v.monthlyRent,
       startDate: v.startDate,
+      leaseType: v.leaseType,
+      noticePeriodMonths: v.noticePeriodMonths,
       ...(v.depositAmount ? { depositAmount: v.depositAmount } : {}),
       ...(v.endDate ? { endDate: v.endDate } : {}),
+      ...(v.leaseType === 'FIXED_TERM' && v.renewalPeriodMonths
+        ? { renewalPeriodMonths: v.renewalPeriodMonths }
+        : {}),
     }
 
     if (v.tenantMode === 'existing') {
@@ -404,6 +426,38 @@ export function LeaseForm({
       <SectionDivider label="Kontraktsvillkor" />
 
       <div className="space-y-3">
+        {/* Lease type toggle */}
+        <div className="space-y-1.5">
+          <label className="block text-[13px] font-medium text-gray-700">Kontraktstyp</label>
+          <div className="flex gap-2">
+            {(
+              [
+                { id: 'INDEFINITE', label: 'Tillsvidare' },
+                { id: 'FIXED_TERM', label: 'Tidsbegränsat' },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setValue('leaseType', t.id, { shouldValidate: true })}
+                className={cn(
+                  'h-9 flex-1 rounded-lg border px-4 text-[13px] font-medium transition-all active:scale-[0.97]',
+                  leaseType === t.id
+                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-gray-400">
+            {leaseType === 'INDEFINITE'
+              ? 'Tillsvidare: löper på obestämd tid, sägs upp med uppsägningstid.'
+              : 'Tidsbegränsat: har slutdatum och förlängs automatiskt om det inte sägs upp.'}
+          </p>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <Input
             label="Startdatum"
@@ -411,11 +465,48 @@ export function LeaseForm({
             error={errors.startDate?.message}
             {...register('startDate')}
           />
-          <div className="space-y-1.5">
-            <Input label="Slutdatum (valfritt)" type="date" {...register('endDate')} />
-            <p className="text-[11px] text-gray-400">Tomt = Tillsvidare-kontrakt</p>
-          </div>
+          {leaseType === 'FIXED_TERM' ? (
+            <Input
+              label="Slutdatum"
+              type="date"
+              error={errors.endDate?.message}
+              {...register('endDate')}
+            />
+          ) : (
+            <div className="flex items-center text-[12px] text-gray-400">
+              Inget slutdatum för tillsvidare-kontrakt
+            </div>
+          )}
         </div>
+
+        {leaseType === 'FIXED_TERM' && (
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Förlängningsperiod (månader)"
+              type="number"
+              placeholder="12"
+              error={errors.renewalPeriodMonths?.message}
+              {...register('renewalPeriodMonths')}
+            />
+            <Input
+              label="Uppsägningstid (månader)"
+              type="number"
+              placeholder="3"
+              error={errors.noticePeriodMonths?.message}
+              {...register('noticePeriodMonths')}
+            />
+          </div>
+        )}
+
+        {leaseType === 'INDEFINITE' && (
+          <Input
+            label="Uppsägningstid (månader)"
+            type="number"
+            placeholder="3"
+            error={errors.noticePeriodMonths?.message}
+            {...register('noticePeriodMonths')}
+          />
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Input

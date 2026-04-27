@@ -1,4 +1,4 @@
-import { IsUUID, IsDateString, IsNumber, IsOptional, Min } from 'class-validator'
+import { IsUUID, IsDateString, IsNumber, IsOptional, IsEnum, Min } from 'class-validator'
 
 export class CreateLeaseDto {
   @IsUUID()
@@ -22,4 +22,18 @@ export class CreateLeaseDto {
   @Min(0)
   @IsOptional()
   depositAmount?: number
+
+  @IsEnum(['FIXED_TERM', 'INDEFINITE'])
+  @IsOptional()
+  leaseType?: 'FIXED_TERM' | 'INDEFINITE'
+
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  renewalPeriodMonths?: number
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  noticePeriodMonths?: number
 }
