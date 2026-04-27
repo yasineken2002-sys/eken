@@ -57,6 +57,7 @@ export class DataContextService {
           total: true,
           dueDate: true,
           tenant: { select: { firstName: true, lastName: true, companyName: true } },
+          customer: { select: { firstName: true, lastName: true, companyName: true } },
         },
         orderBy: { dueDate: 'asc' },
         take: 5,
@@ -87,6 +88,7 @@ export class DataContextService {
           total: true,
           issueDate: true,
           tenant: { select: { firstName: true, lastName: true, companyName: true } },
+          customer: { select: { firstName: true, lastName: true, companyName: true } },
         },
         orderBy: { createdAt: 'desc' },
         take: 5,
@@ -189,11 +191,13 @@ export class DataContextService {
       paymentMap.set(inv.tenantId, cur)
     }
 
-    const formatTenantName = (t: {
-      firstName?: string | null
-      lastName?: string | null
-      companyName?: string | null
-    }) => t.companyName ?? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()
+    const formatTenantName = (
+      t: {
+        firstName?: string | null
+        lastName?: string | null
+        companyName?: string | null
+      } | null,
+    ) => (t ? (t.companyName ?? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()) : '–')
 
     const formatSEK = (amount: number) =>
       new Intl.NumberFormat('sv-SE', {
@@ -259,7 +263,7 @@ export class DataContextService {
       lines.push('', 'Förfallna fakturor (urval):')
       for (const inv of overdueInvoices) {
         lines.push(
-          `  - Faktura ${inv.invoiceNumber}, ${formatTenantName(inv.tenant)}, ${formatSEK(Number(inv.total))}, förföll ${formatDate(inv.dueDate)}`,
+          `  - Faktura ${inv.invoiceNumber}, ${formatTenantName(inv.tenant ?? inv.customer)}, ${formatSEK(Number(inv.total))}, förföll ${formatDate(inv.dueDate)}`,
         )
       }
     }
@@ -268,7 +272,7 @@ export class DataContextService {
       lines.push('', 'Senaste fakturor (30 dagar):')
       for (const inv of recentInvoices) {
         lines.push(
-          `  - Faktura ${inv.invoiceNumber}, ${formatTenantName(inv.tenant)}, ${formatSEK(Number(inv.total))}, ${statusLabels[inv.status] ?? inv.status}, utfärdad ${formatDate(inv.issueDate)}`,
+          `  - Faktura ${inv.invoiceNumber}, ${formatTenantName(inv.tenant ?? inv.customer)}, ${formatSEK(Number(inv.total))}, ${statusLabels[inv.status] ?? inv.status}, utfärdad ${formatDate(inv.issueDate)}`,
         )
       }
     }

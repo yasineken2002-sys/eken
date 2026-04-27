@@ -49,6 +49,7 @@ const NAV_PORTFOLIO: NavItem[] = [
   { id: 'properties', label: 'Fastigheter', icon: Building2 },
   { id: 'units', label: 'Objekt', icon: Home },
   { id: 'tenants', label: 'Hyresgäster', icon: Users, readOnly: true },
+  { id: 'customers', label: 'Kunder', icon: Users },
   { id: 'leases', label: 'Hyresavtal', icon: FileText },
 ]
 

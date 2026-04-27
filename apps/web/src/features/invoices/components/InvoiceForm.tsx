@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus, Trash2, Building2 } from 'lucide-react'
@@ -6,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { ModalFooter } from '@/components/ui/Modal'
 import { CreateInvoiceSchema, formatDate, type CreateInvoiceInput } from '@eken/shared'
 import { useLeases } from '@/features/leases/hooks/useLeases'
+import { useCustomers } from '@/features/customers/hooks/useCustomers'
 import { cn } from '@/lib/cn'
 import { useOrganization } from '@/features/settings/hooks/useSettings'
 
@@ -70,6 +72,7 @@ export function InvoiceForm({
     control,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<CreateInvoiceInput>({
     resolver: zodResolver(CreateInvoiceSchema),
@@ -86,7 +89,23 @@ export function InvoiceForm({
 
   const watched = watch()
   const { data: leases = [], isLoading: leasesLoading } = useLeases()
+  const { data: customers = [], isLoading: customersLoading } = useCustomers({ isActive: true })
   const { data: org } = useOrganization()
+
+  // "Faktura till" — växel mellan hyresgäst (lease) och extern kund.
+  // Initialvärde härleds från defaultValues om man redigerar en befintlig faktura.
+  const [recipientMode, setRecipientMode] = useState<'tenant' | 'customer'>(
+    defaultValues?.customerId ? 'customer' : 'tenant',
+  )
+
+  // När användaren växlar mode — rensa motstående fält så Zod-XOR går igenom.
+  useEffect(() => {
+    if (recipientMode === 'tenant') {
+      setValue('customerId', undefined)
+    } else {
+      setValue('leaseId', undefined)
+    }
+  }, [recipientMode, setValue])
 
   // Endast ACTIVE/DRAFT-avtal kan faktureras (samma regel som backend).
   const billableLeases = leases.filter((l) => l.status === 'ACTIVE' || l.status === 'DRAFT')
@@ -115,7 +134,29 @@ export function InvoiceForm({
   // ── Preview calculations ───────────────────────────────────────────────────
 
   const selectedLease = billableLeases.find((l) => l.id === watched.leaseId)
-  const tenantName = selectedLease ? tenantLabel(selectedLease.tenant) : null
+  const selectedCustomer = customers.find((c) => c.id === watched.customerId)
+
+  const customerLabel = (c: {
+    type: 'INDIVIDUAL' | 'COMPANY'
+    firstName: string | null
+    lastName: string | null
+    companyName: string | null
+  }): string => {
+    return c.type === 'INDIVIDUAL'
+      ? `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || '–'
+      : (c.companyName ?? '–')
+  }
+
+  const tenantName = selectedLease
+    ? tenantLabel(selectedLease.tenant)
+    : selectedCustomer
+      ? customerLabel(selectedCustomer)
+      : null
+
+  const customerOptions = customers.map((c) => ({
+    value: c.id,
+    label: customerLabel(c) + (c.orgNumber ? ` (${c.orgNumber})` : ''),
+  }))
 
   const previewLines = (watched.lines ?? []).map((l) => {
     const qty = Number(l.quantity) || 0
@@ -144,39 +185,104 @@ export function InvoiceForm({
       <div className="w-[44%] shrink-0 overflow-y-auto pr-5" style={{ maxHeight: '78vh' }}>
         <form id="invoice-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            {/* Hyresavtal (källa till hyresgäst) */}
+            {/* Faktura till — växel mellan hyresgäst (lease) och extern kund */}
             <div className="col-span-2">
-              <Controller
-                control={control}
-                name="leaseId"
-                render={({ field }) => (
-                  <Select
-                    label="Hyresavtal"
-                    options={
-                      leasesLoading
-                        ? [{ value: '', label: 'Laddar avtal…' }]
-                        : leaseOptions.length === 0
-                          ? [{ value: '', label: 'Inga aktiva avtal tillgängliga' }]
-                          : [{ value: '', label: 'Välj hyresavtal...' }, ...leaseOptions]
-                    }
-                    disabled={leasesLoading || leaseOptions.length === 0}
-                    error={errors.leaseId?.message}
-                    {...field}
-                    value={field.value ?? ''}
-                  />
-                )}
-              />
-            </div>
-
-            {/* Hyresgäst (läsbar – härleds från valt avtal) */}
-            <div className="col-span-2">
-              <label className="mb-1 block text-[13px] font-medium text-gray-700">Hyresgäst</label>
-              <div className="flex h-9 items-center rounded-lg border border-[#DDDFE4] bg-gray-50 px-3 text-[13.5px] text-gray-700">
-                {tenantName ?? (
-                  <span className="text-gray-400">Väljs automatiskt från avtalet</span>
-                )}
+              <label className="mb-1.5 block text-[13px] font-medium text-gray-700">
+                Faktura till
+              </label>
+              <div className="flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
+                <button
+                  type="button"
+                  onClick={() => setRecipientMode('tenant')}
+                  className={cn(
+                    'h-8 rounded-lg px-3 text-[13px] font-medium transition-all',
+                    recipientMode === 'tenant'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700',
+                  )}
+                >
+                  Hyresgäst
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRecipientMode('customer')}
+                  className={cn(
+                    'h-8 rounded-lg px-3 text-[13px] font-medium transition-all',
+                    recipientMode === 'customer'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700',
+                  )}
+                >
+                  Extern kund
+                </button>
               </div>
             </div>
+
+            {recipientMode === 'tenant' ? (
+              <>
+                {/* Hyresavtal (källa till hyresgäst) */}
+                <div className="col-span-2">
+                  <Controller
+                    control={control}
+                    name="leaseId"
+                    render={({ field }) => (
+                      <Select
+                        label="Hyresavtal"
+                        options={
+                          leasesLoading
+                            ? [{ value: '', label: 'Laddar avtal…' }]
+                            : leaseOptions.length === 0
+                              ? [{ value: '', label: 'Inga aktiva avtal tillgängliga' }]
+                              : [{ value: '', label: 'Välj hyresavtal...' }, ...leaseOptions]
+                        }
+                        disabled={leasesLoading || leaseOptions.length === 0}
+                        error={errors.leaseId?.message}
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    )}
+                  />
+                </div>
+
+                {/* Hyresgäst (läsbar – härleds från valt avtal) */}
+                <div className="col-span-2">
+                  <label className="mb-1 block text-[13px] font-medium text-gray-700">
+                    Hyresgäst
+                  </label>
+                  <div className="flex h-9 items-center rounded-lg border border-[#DDDFE4] bg-gray-50 px-3 text-[13.5px] text-gray-700">
+                    {tenantName ?? (
+                      <span className="text-gray-400">Väljs automatiskt från avtalet</span>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Extern kund — direkt val från kundregistret */}
+                <div className="col-span-2">
+                  <Controller
+                    control={control}
+                    name="customerId"
+                    render={({ field }) => (
+                      <Select
+                        label="Kund"
+                        options={
+                          customersLoading
+                            ? [{ value: '', label: 'Laddar kunder…' }]
+                            : customerOptions.length === 0
+                              ? [{ value: '', label: 'Inga kunder upplagda' }]
+                              : [{ value: '', label: 'Välj kund...' }, ...customerOptions]
+                        }
+                        disabled={customersLoading || customerOptions.length === 0}
+                        error={errors.customerId?.message}
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    )}
+                  />
+                </div>
+              </>
+            )}
 
             {/* Typ */}
             <Select

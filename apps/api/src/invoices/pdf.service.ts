@@ -42,10 +42,16 @@ export class PdfService {
       include: {
         lines: true,
         tenant: true,
+        customer: true,
         organization: true,
       },
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
+
+    // En faktura har antingen tenant eller customer (XOR-constraint).
+    // Normalisera till ett gemensamt "party"-objekt för mall-rendering.
+    const party = invoice.tenant ?? invoice.customer
+    if (!party) throw new NotFoundException('Fakturan saknar mottagare')
 
     // 2. Read logo from R2 and encode as base64 (fail-safe: null on any error)
     let logoBase64: string | null = null
@@ -65,13 +71,18 @@ export class PdfService {
       invoice: {
         ...invoice,
         tenant: {
-          ...invoice.tenant,
+          type: party.type,
+          firstName: party.firstName,
+          lastName: party.lastName,
+          companyName: party.companyName,
+          email: party.email ?? '',
+          phone: party.phone,
           // Map flat Prisma address fields → nested shape the template expects
-          address: invoice.tenant.street
+          address: party.street
             ? {
-                street: invoice.tenant.street,
-                city: invoice.tenant.city ?? '',
-                postalCode: invoice.tenant.postalCode ?? '',
+                street: party.street,
+                city: party.city ?? '',
+                postalCode: party.postalCode ?? '',
               }
             : null,
         },

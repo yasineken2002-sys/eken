@@ -5,7 +5,6 @@ import {
   IsIn,
   IsOptional,
   IsUUID,
-  IsDefined,
   IsDateString,
   ValidateNested,
   ArrayMinSize,
@@ -25,10 +24,24 @@ export class CreateInvoiceDto {
   @IsEnum(['RENT', 'DEPOSIT', 'SERVICE', 'UTILITY', 'OTHER'])
   type!: 'RENT' | 'DEPOSIT' | 'SERVICE' | 'UTILITY' | 'OTHER'
 
-  @ApiProperty({ description: 'Hyresavtal som fakturan tillhör. Hyresgäst härleds från avtalet.' })
-  @IsDefined({ message: 'Hyresavtal måste anges' })
+  // Exakt en av leaseId / customerId måste anges. XOR-validering sker
+  // i InvoicesService.create eftersom class-validator saknar inbyggd
+  // discriminerad union — vi vill inte köra två separata DTOs.
+  @ApiProperty({
+    required: false,
+    description: 'Hyresavtal som fakturan tillhör. Hyresgäst härleds från avtalet.',
+  })
+  @IsOptional()
   @IsUUID('4', { message: 'leaseId måste vara ett giltigt UUID' })
-  leaseId!: string
+  leaseId?: string
+
+  @ApiProperty({
+    required: false,
+    description: 'Extern kund som fakturan ställs till (alternativ till leaseId)',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'customerId måste vara ett giltigt UUID' })
+  customerId?: string
 
   @ApiProperty({ type: [InvoiceLineDto] })
   @ValidateNested({ each: true })

@@ -55,6 +55,9 @@ export class InvoicesService {
         tenant: {
           select: { id: true, firstName: true, lastName: true, companyName: true, type: true },
         },
+        customer: {
+          select: { id: true, firstName: true, lastName: true, companyName: true, type: true },
+        },
         bankTransactions: {
           where: { status: 'MATCHED' },
           select: { id: true, date: true, amount: true, description: true, rawOcr: true },
@@ -71,6 +74,7 @@ export class InvoicesService {
       include: {
         lines: true,
         tenant: true,
+        customer: true,
         lease: true,
         events: { orderBy: { createdAt: 'asc' } },
         bankTransactions: {
@@ -107,18 +111,46 @@ export class InvoicesService {
   // ── Mutations ──────────────────────────────────────────────────────────────
 
   async create(organizationId: string, actorId: string, dto: CreateInvoiceDto): Promise<Invoice> {
-    // Hämta avtalet org-scopat. unit.property.organizationId är källan till sanning
-    // (Lease saknar eget organizationId-fält).
-    const lease = await this.prisma.lease.findFirst({
-      where: {
-        id: dto.leaseId,
-        unit: { property: { organizationId } },
-      },
-      select: { id: true, status: true, tenantId: true },
-    })
-    if (!lease) throw new NotFoundException('Hyresavtal hittades inte')
-    if (lease.status !== 'ACTIVE' && lease.status !== 'DRAFT') {
-      throw new BadRequestException('Endast aktiva eller utkast-avtal kan faktureras')
+    // XOR: exakt en av leaseId / customerId. CHECK-constraint i DB är sista
+    // försvarslinjen — vi vill ge tydligt fel innan vi når dit.
+    const hasLease = dto.leaseId != null
+    const hasCustomer = dto.customerId != null
+    if (hasLease === hasCustomer) {
+      throw new BadRequestException(
+        'Faktura måste vara kopplad till antingen hyresavtal eller extern kund — inte båda eller ingen',
+      )
+    }
+
+    let leaseTenantId: string | null = null
+    let leaseId: string | null = null
+    let customerId: string | null = null
+
+    if (hasLease) {
+      // Hämta avtalet org-scopat. unit.property.organizationId är källan till sanning
+      // (Lease saknar eget organizationId-fält).
+      const lease = await this.prisma.lease.findFirst({
+        where: {
+          id: dto.leaseId!,
+          unit: { property: { organizationId } },
+        },
+        select: { id: true, status: true, tenantId: true },
+      })
+      if (!lease) throw new NotFoundException('Hyresavtal hittades inte')
+      if (lease.status !== 'ACTIVE' && lease.status !== 'DRAFT') {
+        throw new BadRequestException('Endast aktiva eller utkast-avtal kan faktureras')
+      }
+      leaseId = lease.id
+      leaseTenantId = lease.tenantId
+    } else {
+      const customer = await this.prisma.customer.findFirst({
+        where: { id: dto.customerId!, organizationId },
+        select: { id: true, isActive: true },
+      })
+      if (!customer) throw new NotFoundException('Kunden hittades inte')
+      if (!customer.isActive) {
+        throw new BadRequestException('Kunden är arkiverad och kan inte faktureras')
+      }
+      customerId = customer.id
     }
 
     const invoice = await this.prisma.$transaction(async (tx) => {
@@ -146,8 +178,9 @@ export class InvoicesService {
           reference,
           type: dto.type,
           status: 'DRAFT',
-          tenantId: lease.tenantId,
-          leaseId: lease.id,
+          tenantId: leaseTenantId,
+          leaseId,
+          customerId,
           subtotal,
           vatTotal,
           total,
@@ -439,7 +472,7 @@ export class InvoicesService {
   async sendInvoiceEmail(id: string, organizationId: string, userId: string): Promise<void> {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id, organizationId },
-      include: { lines: true, tenant: true, organization: true },
+      include: { lines: true, tenant: true, customer: true, organization: true },
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
 
@@ -447,18 +480,27 @@ export class InvoicesService {
       throw new BadRequestException('Fakturan kan inte skickas i nuvarande status')
     }
 
+    // En faktura har antingen tenant eller customer (XOR-constraint).
+    const recipient = invoice.tenant ?? invoice.customer
+    if (!recipient) {
+      throw new BadRequestException('Fakturan saknar mottagare')
+    }
+    if (!recipient.email) {
+      throw new BadRequestException('Mottagaren saknar e-postadress')
+    }
+
     // Generate PDF
     const pdfBuffer = await this.pdfService.generateInvoicePdf(id, organizationId)
 
-    const tenantName =
-      invoice.tenant.type === 'INDIVIDUAL'
-        ? [invoice.tenant.firstName, invoice.tenant.lastName].filter(Boolean).join(' ')
-        : (invoice.tenant.companyName ?? invoice.tenant.email)
+    const recipientName =
+      recipient.type === 'INDIVIDUAL'
+        ? [recipient.firstName, recipient.lastName].filter(Boolean).join(' ')
+        : (recipient.companyName ?? recipient.email)
 
     try {
       await this.mailService.sendInvoice({
-        to: invoice.tenant.email,
-        tenantName,
+        to: recipient.email,
+        tenantName: recipientName,
         invoiceNumber: invoice.invoiceNumber,
         total: Number(invoice.total),
         dueDate: invoice.dueDate,
@@ -476,7 +518,7 @@ export class InvoicesService {
     } else {
       // Record send event without status transition
       await this.eventsService.record(id, 'SENT', 'USER', userId, {
-        sentTo: invoice.tenant.email,
+        sentTo: recipient.email,
       })
     }
   }

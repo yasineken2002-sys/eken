@@ -13,6 +13,7 @@ import { OrganizationsModule } from './organizations/organizations.module'
 import { PropertiesModule } from './properties/properties.module'
 import { UnitsModule } from './units/units.module'
 import { TenantsModule } from './tenants/tenants.module'
+import { CustomersModule } from './customers/customers.module'
 import { LeasesModule } from './leases/leases.module'
 import { InvoicesModule } from './invoices/invoices.module'
 import { AccountingModule } from './accounting/accounting.module'
@@ -82,6 +83,7 @@ import { OcrModule } from './common/ocr/ocr.module'
     PropertiesModule,
     UnitsModule,
     TenantsModule,
+    CustomersModule,
     LeasesModule,
     InvoicesModule,
     AccountingModule,

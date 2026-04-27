@@ -8,7 +8,7 @@ import { MailService } from '../mail/mail.service'
 import { AiAssistantService } from '../ai/ai-assistant.service'
 
 type InvoiceWithRelations = Prisma.InvoiceGetPayload<{
-  include: { tenant: true; organization: true }
+  include: { tenant: true; customer: true; organization: true }
 }>
 
 @Injectable()
@@ -120,18 +120,19 @@ export class NotificationsService implements OnModuleInit {
   async sendOverdueReminders(): Promise<void> {
     const invoices: InvoiceWithRelations[] = await this.prisma.invoice.findMany({
       where: { status: 'OVERDUE' },
-      include: { tenant: true, organization: true },
+      include: { tenant: true, customer: true, organization: true },
     })
 
     let sent = 0
     let failed = 0
 
     for (const invoice of invoices) {
-      if (!invoice.tenant.email) continue
+      const party = invoice.tenant ?? invoice.customer
+      if (!party?.email) continue
       try {
         const tenantName = this.resolveTenantName(invoice)
         await this.mail.sendOverdueReminder({
-          to: invoice.tenant.email,
+          to: party.email,
           tenantName,
           invoiceNumber: invoice.invoiceNumber,
           total: Number(invoice.total),
@@ -171,15 +172,16 @@ export class NotificationsService implements OnModuleInit {
   async sendOverdueRemindersForOrg(organizationId: string): Promise<void> {
     const invoices: InvoiceWithRelations[] = await this.prisma.invoice.findMany({
       where: { organizationId, status: 'OVERDUE' },
-      include: { tenant: true, organization: true },
+      include: { tenant: true, customer: true, organization: true },
     })
 
     for (const invoice of invoices) {
-      if (!invoice.tenant.email) continue
+      const party = invoice.tenant ?? invoice.customer
+      if (!party?.email) continue
       try {
         const tenantName = this.resolveTenantName(invoice)
         await this.mail.sendOverdueReminder({
-          to: invoice.tenant.email,
+          to: party.email,
           tenantName,
           invoiceNumber: invoice.invoiceNumber,
           total: Number(invoice.total),
@@ -244,9 +246,11 @@ export class NotificationsService implements OnModuleInit {
   }
 
   private resolveTenantName(invoice: InvoiceWithRelations): string {
-    if (invoice.tenant.type === 'INDIVIDUAL') {
-      return `${invoice.tenant.firstName ?? ''} ${invoice.tenant.lastName ?? ''}`.trim()
+    const party = invoice.tenant ?? invoice.customer
+    if (!party) return '–'
+    if (party.type === 'INDIVIDUAL') {
+      return `${party.firstName ?? ''} ${party.lastName ?? ''}`.trim()
     }
-    return invoice.tenant.companyName ?? invoice.tenant.email
+    return party.companyName ?? party.email ?? '–'
   }
 }

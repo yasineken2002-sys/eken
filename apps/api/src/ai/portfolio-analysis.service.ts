@@ -177,6 +177,7 @@ ${expiringLeases.map((l) => `- ${l.unit.name} (${l.tenant.companyName ?? `${l.te
           total: true,
           dueDate: true,
           tenant: { select: { firstName: true, lastName: true, companyName: true, email: true } },
+          customer: { select: { firstName: true, lastName: true, companyName: true, email: true } },
         },
         orderBy: { dueDate: 'asc' },
         take: 20,
@@ -199,7 +200,13 @@ ${expiringLeases.map((l) => `- ${l.unit.name} (${l.tenant.companyName ?? `${l.te
       sections.push(
         `RISKDATA:
 Förfallna fakturor (${overdueInvoices.length} st):
-${overdueInvoices.map((i) => `- Faktura ${i.invoiceNumber}: ${Number(i.total).toFixed(2)} SEK, förfallen ${i.dueDate.toISOString().substring(0, 10)}, hyresgäst: ${i.tenant.companyName ?? `${i.tenant.firstName ?? ''} ${i.tenant.lastName ?? ''}`.trim()}`).join('\n')}
+${overdueInvoices
+  .map((i) => {
+    const p = i.tenant ?? i.customer
+    const partyName = p ? (p.companyName ?? `${p.firstName ?? ''} ${p.lastName ?? ''}`.trim()) : '–'
+    return `- Faktura ${i.invoiceNumber}: ${Number(i.total).toFixed(2)} SEK, förfallen ${i.dueDate.toISOString().substring(0, 10)}, mottagare: ${partyName}`
+  })
+  .join('\n')}
 
 Avtal som löper ut inom 30 dagar (${expiringRiskLeases.length} st):
 ${expiringRiskLeases.map((l) => `- ${l.unit.name}: ${l.endDate?.toISOString().substring(0, 10) ?? 'löpande'}, hyra ${Number(l.monthlyRent).toFixed(0)} SEK/mån`).join('\n')}`,

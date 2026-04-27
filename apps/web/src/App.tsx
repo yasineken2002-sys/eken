@@ -11,6 +11,7 @@ import { DashboardPage } from './features/dashboard/DashboardPage'
 import { PropertiesPage } from './features/properties/PropertiesPage'
 import { UnitsPage } from './features/units/UnitsPage'
 import { TenantsPage } from './features/tenants/TenantsPage'
+import { CustomersPage } from './features/customers/CustomersPage'
 import { LeasesPage } from './features/leases/LeasesPage'
 import { InvoicesPage } from './features/invoices/InvoicesPage'
 import { DepositsPage } from './features/deposits/DepositsPage'
@@ -43,6 +44,7 @@ export type Route =
   | 'properties'
   | 'units'
   | 'tenants'
+  | 'customers'
   | 'leases'
   | 'invoices'
   | 'deposits'
@@ -137,6 +139,7 @@ export function App() {
     properties: <PropertiesPage />,
     units: <UnitsPage />,
     tenants: <TenantsPage />,
+    customers: <CustomersPage />,
     leases: <LeasesPage />,
     invoices: <InvoicesPage />,
     deposits: <DepositsPage onNavigate={setRoute} />,

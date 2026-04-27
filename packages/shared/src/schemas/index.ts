@@ -157,15 +157,23 @@ export const InvoiceLineSchema = z.object({
   vatRate: z.union([z.literal(0), z.literal(6), z.literal(12), z.literal(25)]),
 })
 
-export const CreateInvoiceSchema = z.object({
-  type: z.enum(['RENT', 'DEPOSIT', 'SERVICE', 'UTILITY', 'OTHER']),
-  leaseId: z.string().uuid({ message: 'Hyresavtal måste väljas' }),
-  lines: z.array(InvoiceLineSchema).min(1),
-  dueDate: z.string().date(),
-  issueDate: z.string().date(),
-  reference: z.string().optional(),
-  notes: z.string().max(1000).optional(),
-})
+// En faktura måste ha exakt en av leaseId (hyresgäst-faktura) eller customerId
+// (extern kund-faktura) — aldrig båda, aldrig ingen.
+export const CreateInvoiceSchema = z
+  .object({
+    type: z.enum(['RENT', 'DEPOSIT', 'SERVICE', 'UTILITY', 'OTHER']),
+    leaseId: z.string().uuid().optional(),
+    customerId: z.string().uuid().optional(),
+    lines: z.array(InvoiceLineSchema).min(1),
+    dueDate: z.string().date(),
+    issueDate: z.string().date(),
+    reference: z.string().optional(),
+    notes: z.string().max(1000).optional(),
+  })
+  .refine((d) => (d.leaseId != null) !== (d.customerId != null), {
+    message: 'Faktura måste vara kopplad till antingen hyresavtal eller extern kund',
+    path: ['leaseId'],
+  })
 
 // ─── Type exports ─────────────────────────────────────────────────────────────
 

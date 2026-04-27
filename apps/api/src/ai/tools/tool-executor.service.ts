@@ -1203,6 +1203,14 @@ export class ToolExecutorService {
                     companyName: true,
                   },
                 },
+                customer: {
+                  select: {
+                    type: true,
+                    firstName: true,
+                    lastName: true,
+                    companyName: true,
+                  },
+                },
               },
             }),
             this.prisma.lease.findMany({
@@ -1228,15 +1236,19 @@ export class ToolExecutorService {
             }),
           ])
 
-          const formatTenantName = (t: {
-            type: string
-            firstName?: string | null
-            lastName?: string | null
-            companyName?: string | null
-          }) =>
-            t.type === 'INDIVIDUAL'
-              ? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()
-              : (t.companyName ?? '')
+          const formatTenantName = (
+            t: {
+              type: string
+              firstName?: string | null
+              lastName?: string | null
+              companyName?: string | null
+            } | null,
+          ) =>
+            !t
+              ? '–'
+              : t.type === 'INDIVIDUAL'
+                ? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()
+                : (t.companyName ?? '')
 
           // Average rent per unit type from active leases
           const rentByType = new Map<string, { sum: number; count: number }>()
@@ -1267,7 +1279,7 @@ export class ToolExecutorService {
             )
             for (const inv of overdueOld) {
               opportunities.push(
-                `  - Faktura ${inv.invoiceNumber}, ${formatTenantName(inv.tenant)}, ${formatAmount(Number(inv.total))} kr, förföll ${inv.dueDate.toISOString().slice(0, 10)}`,
+                `  - Faktura ${inv.invoiceNumber}, ${formatTenantName(inv.tenant ?? inv.customer)}, ${formatAmount(Number(inv.total))} kr, förföll ${inv.dueDate.toISOString().slice(0, 10)}`,
               )
             }
           }

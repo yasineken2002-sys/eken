@@ -352,6 +352,7 @@ model Organization {
   errorLogs          ErrorLog[]
   deposits           Deposit[]
   rentIncreases      RentIncrease[]
+  customers          Customer[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -547,6 +548,49 @@ model Tenant {
   @@index([email])
 }
 
+// ─── Customer (Externt kundregister, separerat från Tenant) ───────────────────
+// För fakturering av icke-hyresgäster: städfirmor, mäklare, engångsleverantörer
+// etc. Customer kan inte logga in i tenant-portalen och har inga kontrakt.
+
+model Customer {
+  id             String       @id @default(uuid())
+  organizationId String
+  type           CustomerType
+
+  firstName      String?
+  lastName       String?
+  personalNumber String?
+  companyName    String?
+  orgNumber      String?
+  contactPerson  String?
+
+  email          String?
+  phone          String?
+
+  street         String?
+  city           String?
+  postalCode     String?
+  country        String?      @default("SE")
+
+  reference      String?
+  notes          String?
+  isActive       Boolean      @default(true)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoices     Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([email])
+}
+
+enum CustomerType {
+  INDIVIDUAL
+  COMPANY
+}
+
 // ─── Lease (Hyresavtal) ───────────────────────────────────────────────────────
 
 model Lease {
@@ -597,7 +641,8 @@ model Invoice {
   invoiceNumber  String
   type           InvoiceType
   status         InvoiceStatus @default(DRAFT)
-  tenantId       String
+  tenantId       String?
+  customerId     String?
   leaseId        String?
   subtotal       Decimal       @db.Decimal(10, 2)
   vatTotal       Decimal       @db.Decimal(10, 2)
@@ -614,7 +659,8 @@ model Invoice {
   trackingToken String @unique @default(uuid())
 
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  tenant           Tenant?           @relation(fields: [tenantId], references: [id])
+  customer         Customer?         @relation(fields: [customerId], references: [id])
   lease            Lease?            @relation(fields: [leaseId], references: [id])
   lines            InvoiceLine[]
   events           InvoiceEvent[]
@@ -627,6 +673,7 @@ model Invoice {
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId])
   @@index([tenantId])
+  @@index([customerId])
   @@index([status])
   @@index([dueDate])
   @@index([trackingToken])

@@ -76,7 +76,7 @@ export class DashboardService {
         where: { organizationId },
         orderBy: { createdAt: 'desc' },
         take: 5,
-        include: { tenant: true },
+        include: { tenant: true, customer: true },
       }),
     ])
 
@@ -115,17 +115,22 @@ export class DashboardService {
         active: leaseByStatus['ACTIVE'] ?? 0,
         draft: leaseByStatus['DRAFT'] ?? 0,
       },
-      recentInvoices: recentInvoices.map((inv) => ({
-        id: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        status: inv.status,
-        total: Number(inv.total),
-        dueDate: inv.dueDate.toISOString(),
-        tenantName:
-          inv.tenant.type === 'INDIVIDUAL'
-            ? [inv.tenant.firstName, inv.tenant.lastName].filter(Boolean).join(' ')
-            : (inv.tenant.companyName ?? inv.tenant.email),
-      })),
+      recentInvoices: recentInvoices.map((inv) => {
+        const party = inv.tenant ?? inv.customer
+        const partyName = !party
+          ? '–'
+          : party.type === 'INDIVIDUAL'
+            ? [party.firstName, party.lastName].filter(Boolean).join(' ')
+            : (party.companyName ?? party.email ?? '–')
+        return {
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          status: inv.status,
+          total: Number(inv.total),
+          dueDate: inv.dueDate.toISOString(),
+          tenantName: partyName,
+        }
+      }),
     }
   }
 }
