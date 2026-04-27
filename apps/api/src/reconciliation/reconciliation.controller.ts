@@ -9,12 +9,14 @@ import {
   BadRequestException,
 } from '@nestjs/common'
 import type { FastifyRequest } from 'fastify'
-import { ReconciliationService } from './reconciliation.service'
+import { ReconciliationService, type BankFormat } from './reconciliation.service'
 import { ManualMatchDto } from './dto/manual-match.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { Body } from '@nestjs/common'
+
+const VALID_BANKS: ReadonlyArray<BankFormat> = ['GENERIC', 'HANDELSBANKEN', 'SEB', 'SWEDBANK']
 
 @Controller('reconciliation')
 export class ReconciliationController {
@@ -26,7 +28,11 @@ export class ReconciliationController {
    * Accepts: .csv, .xlsx, .xls (max 10MB)
    */
   @Post('import')
-  async importStatement(@OrgId() organizationId: string, @Req() req: FastifyRequest) {
+  async importStatement(
+    @OrgId() organizationId: string,
+    @Req() req: FastifyRequest,
+    @Query('bank') bank?: string,
+  ) {
     const file = await (
       req as unknown as {
         file: () => Promise<{ filename: string; toBuffer: () => Promise<Buffer> } | null>
@@ -40,8 +46,31 @@ export class ReconciliationController {
       throw new BadRequestException('Endast CSV och Excel-filer (.csv, .xlsx, .xls) stöds')
     }
 
+    let bankOverride: BankFormat | undefined
+    if (bank) {
+      const upper = bank.toUpperCase()
+      if (!VALID_BANKS.includes(upper as BankFormat)) {
+        throw new BadRequestException(`Ogiltig bank. Tillåtna värden: ${VALID_BANKS.join(', ')}`)
+      }
+      bankOverride = upper as BankFormat
+    }
+
     const buffer = await file.toBuffer()
-    return this.reconciliationService.importBankStatement(buffer, filename, organizationId)
+    return this.reconciliationService.importBankStatement(
+      buffer,
+      filename,
+      organizationId,
+      bankOverride,
+    )
+  }
+
+  /**
+   * POST /reconciliation/auto-match
+   * Försöker auto-matcha alla UNMATCHED transaktioner mot fakturor.
+   */
+  @Post('auto-match')
+  async autoMatch(@OrgId() organizationId: string) {
+    return this.reconciliationService.autoMatchAll(organizationId)
   }
 
   /**
@@ -96,7 +125,11 @@ export class ReconciliationController {
    * PATCH /reconciliation/transactions/:id/unmatch
    */
   @Patch('transactions/:id/unmatch')
-  async unmatchTransaction(@Param('id') id: string, @OrgId() organizationId: string) {
-    await this.reconciliationService.unmatchTransaction(id, organizationId)
+  async unmatchTransaction(
+    @Param('id') id: string,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    await this.reconciliationService.unmatchTransaction(id, organizationId, user.sub)
   }
 }

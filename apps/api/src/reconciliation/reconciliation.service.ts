@@ -9,6 +9,7 @@ import type { BankTransaction, Prisma } from '@prisma/client'
 import * as XLSX from 'xlsx'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
+import { AccountingService } from '../accounting/accounting.service'
 
 export interface ImportResult {
   imported: number
@@ -16,6 +17,14 @@ export interface ImportResult {
   autoMatched: number
   unmatched: number
   errors: string[]
+  bank?: BankFormat
+}
+
+export type BankFormat = 'GENERIC' | 'HANDELSBANKEN' | 'SEB' | 'SWEDBANK'
+
+export interface AutoMatchResult {
+  matched: number
+  unmatched: number
 }
 
 export interface ReconciliationStats {
@@ -37,11 +46,12 @@ interface ParsedRow {
 
 // ── Column detection helpers ──────────────────────────────────────────────────
 
-const DATE_KEYS = /^(datum|date|bokföringsdag|transaktionsdag)$/i
-const DESC_KEYS = /^(text|description|meddelande|specifikation|beskrivning)$/i
+const DATE_KEYS = /^(datum|date|bokföringsdag|transaktionsdag|valutadag)$/i
+const DESC_KEYS =
+  /^(text|description|meddelande|specifikation|beskrivning|rubrik|avsändare|motpart)$/i
 const AMOUNT_KEYS = /^(belopp|amount|transaktionsbelopp|kredit|debit)$/i
-const BALANCE_KEYS = /^(saldo|balance)$/i
-const REF_KEYS = /^(referens|reference|ocr|ref)$/i
+const BALANCE_KEYS = /^(saldo|balance|bokfört saldo)$/i
+const REF_KEYS = /^(referens|reference|ocr|ref|ocr-nummer|meddelande till mottagare)$/i
 
 function detectColumns(headers: string[]): {
   date: number
@@ -60,6 +70,28 @@ function detectColumns(headers: string[]): {
     if (idx.reference === -1 && REF_KEYS.test(clean)) idx.reference = i
   })
   return idx
+}
+
+// ── Bank format detection (header-fingerprint) ────────────────────────────────
+// Svenska bankexporter har stabila men olika kolumnnamn. Auto-detect baseras
+// på unika kolumnkombinationer; vid osäkerhet faller vi tillbaka till generic.
+function detectBankFormat(headers: string[]): BankFormat {
+  const norm = headers.map((h) => h.trim().toLowerCase())
+  const has = (s: string) => norm.some((n) => n.includes(s))
+
+  // Handelsbanken-export: "Bokföringsdag", "Specifikation", "Transaktionsbelopp", "Saldo"
+  if (has('bokföringsdag') && has('transaktionsbelopp') && has('specifikation')) {
+    return 'HANDELSBANKEN'
+  }
+  // SEB-export: "Bokföringsdatum", "Verifikationsnummer", "Text", "Belopp", "Saldo"
+  if ((has('bokföringsdatum') || has('valutadag')) && has('verifikationsnummer')) {
+    return 'SEB'
+  }
+  // Swedbank-export: "Radnummer", "Bokföringsdag", "Belopp", "Referens", "Bokfört saldo"
+  if (has('radnummer') && has('bokfört saldo')) {
+    return 'SWEDBANK'
+  }
+  return 'GENERIC'
 }
 
 // ── Date parsing ──────────────────────────────────────────────────────────────
@@ -121,23 +153,37 @@ export class ReconciliationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: InvoiceEventsService,
+    private readonly accounting: AccountingService,
   ) {}
 
   // ── Parse CSV ───────────────────────────────────────────────────────────────
 
-  private parseCsv(buffer: Buffer): ParsedRow[] {
+  private parseCsv(buffer: Buffer): { rows: ParsedRow[]; bank: BankFormat } {
     const text = buffer.toString('utf-8')
     const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0)
-    if (lines.length < 2) return []
+    if (lines.length < 2) return { rows: [], bank: 'GENERIC' }
 
-    // Detect delimiter
-    const firstLine = lines[0] ?? ''
+    // Vissa banker (t.ex. Swedbank) lägger en metadata-rad före headerraden.
+    // Heuristik: rätt headerrad innehåller "datum"/"bokföringsdag" + "belopp".
+    let headerLineIdx = 0
+    for (let i = 0; i < Math.min(5, lines.length); i++) {
+      const lower = (lines[i] ?? '').toLowerCase()
+      if (
+        (lower.includes('datum') || lower.includes('bokföringsdag')) &&
+        lower.includes('belopp')
+      ) {
+        headerLineIdx = i
+        break
+      }
+    }
+    const firstLine = lines[headerLineIdx] ?? ''
     const delimiter = firstLine.includes(';') ? ';' : ','
     const headers = firstLine.split(delimiter).map((h) => h.trim().replace(/^"|"$/g, ''))
+    const bank = detectBankFormat(headers)
     const cols = detectColumns(headers)
 
     const rows: ParsedRow[] = []
-    for (let i = 1; i < lines.length; i++) {
+    for (let i = headerLineIdx + 1; i < lines.length; i++) {
       const line = lines[i]
       if (!line) continue
       const cells = line.split(delimiter).map((c) => c.trim().replace(/^"|"$/g, ''))
@@ -156,27 +202,28 @@ export class ReconciliationService {
 
       rows.push({ date, description, amount, balance, reference })
     }
-    return rows
+    return { rows, bank }
   }
 
   // ── Parse XLSX ──────────────────────────────────────────────────────────────
 
-  private parseXlsx(buffer: Buffer): ParsedRow[] {
+  private parseXlsx(buffer: Buffer): { rows: ParsedRow[]; bank: BankFormat } {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true })
     const sheetName = workbook.SheetNames[0]
-    if (!sheetName) return []
+    if (!sheetName) return { rows: [], bank: 'GENERIC' }
     const sheet = workbook.Sheets[sheetName]
-    if (!sheet) return []
+    if (!sheet) return { rows: [], bank: 'GENERIC' }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const jsonRows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, {
       raw: false,
       defval: '',
     })
-    if (jsonRows.length === 0) return []
+    if (jsonRows.length === 0) return { rows: [], bank: 'GENERIC' }
 
     // Detect column keys from first row keys
     const headers = Object.keys(jsonRows[0] ?? {})
+    const bank = detectBankFormat(headers)
     const cols = detectColumns(headers)
     const headerByIdx = headers
 
@@ -208,7 +255,7 @@ export class ReconciliationService {
 
       rows.push({ date, description, amount, balance, reference })
     }
-    return rows
+    return { rows, bank }
   }
 
   // ── Import ──────────────────────────────────────────────────────────────────
@@ -217,17 +264,21 @@ export class ReconciliationService {
     fileBuffer: Buffer,
     filename: string,
     organizationId: string,
+    bankOverride?: BankFormat,
   ): Promise<ImportResult> {
     const ext = filename.toLowerCase().split('.').pop() ?? ''
-    let rows: ParsedRow[]
+    let parsed: { rows: ParsedRow[]; bank: BankFormat }
 
     if (ext === 'csv') {
-      rows = this.parseCsv(fileBuffer)
+      parsed = this.parseCsv(fileBuffer)
     } else if (ext === 'xlsx' || ext === 'xls') {
-      rows = this.parseXlsx(fileBuffer)
+      parsed = this.parseXlsx(fileBuffer)
     } else {
       throw new BadRequestException('Endast CSV och Excel-filer (.csv, .xlsx, .xls) stöds')
     }
+
+    const rows = parsed.rows
+    const bank: BankFormat = bankOverride ?? parsed.bank
 
     const result: ImportResult = {
       imported: 0,
@@ -235,6 +286,7 @@ export class ReconciliationService {
       autoMatched: 0,
       unmatched: 0,
       errors: [],
+      bank,
     }
 
     for (let i = 0; i < rows.length; i++) {
@@ -381,8 +433,11 @@ export class ReconciliationService {
     actorLabel: string | null,
     db: Prisma.TransactionClient | PrismaService,
   ): Promise<void> {
+    let organizationId: string | null = null
+    let invoiceNumber = ''
+
     await (db as PrismaService).$transaction(async (tx) => {
-      await tx.bankTransaction.update({
+      const bt = await tx.bankTransaction.update({
         where: { id: transactionId },
         data: {
           status: 'MATCHED',
@@ -391,11 +446,14 @@ export class ReconciliationService {
           ...(userId ? { matchedBy: userId } : {}),
         },
       })
+      organizationId = bt.organizationId
 
-      await tx.invoice.update({
+      const inv = await tx.invoice.update({
         where: { id: invoiceId },
         data: { status: 'PAID', paidAt: transactionDate },
+        select: { invoiceNumber: true, total: true, organizationId: true, id: true },
       })
+      invoiceNumber = inv.invoiceNumber
 
       await this.events.record(
         invoiceId,
@@ -412,6 +470,21 @@ export class ReconciliationService {
         { tx },
       )
     })
+
+    // Skapa bokföringspost utanför matchningstransaktionen — fire-and-forget
+    // så att en saknad kontoplan aldrig blockerar matchningen.
+    if (organizationId) {
+      try {
+        await this.accounting.createJournalEntryForPayment(
+          { id: invoiceId, invoiceNumber, total: invoiceTotal },
+          { id: transactionId, date: transactionDate, amount: invoiceTotal },
+          organizationId,
+          userId,
+        )
+      } catch (err) {
+        console.error('[reconciliation] accounting journal entry failed:', err)
+      }
+    }
   }
 
   // ── Get transactions ─────────────────────────────────────────────────────────
@@ -478,6 +551,27 @@ export class ReconciliationService {
     return stats
   }
 
+  // ── Bulk auto-match (kör matchTransaction på alla UNMATCHED) ────────────────
+
+  async autoMatchAll(organizationId: string): Promise<AutoMatchResult> {
+    const candidates = await this.prisma.bankTransaction.findMany({
+      where: { organizationId, status: 'UNMATCHED' },
+      orderBy: { date: 'asc' },
+    })
+
+    let matched = 0
+    for (const tx of candidates) {
+      try {
+        const ok = await this.matchTransaction(tx, organizationId)
+        if (ok) matched++
+      } catch {
+        // Hoppa över transaktioner som inte kan matchas — fortsätt med resten.
+      }
+    }
+
+    return { matched, unmatched: candidates.length - matched }
+  }
+
   // ── Manual match ─────────────────────────────────────────────────────────────
 
   async manualMatch(
@@ -523,7 +617,11 @@ export class ReconciliationService {
 
   // ── Unmatch ───────────────────────────────────────────────────────────────────
 
-  async unmatchTransaction(transactionId: string, organizationId: string): Promise<void> {
+  async unmatchTransaction(
+    transactionId: string,
+    organizationId: string,
+    userId: string | null = null,
+  ): Promise<void> {
     const transaction = await this.prisma.bankTransaction.findFirst({
       where: { id: transactionId, organizationId },
       include: { invoice: true },
@@ -552,5 +650,13 @@ export class ReconciliationService {
         })
       }
     })
+
+    // Skapa motverifikat (utanför transaktionen — bokföringen får aldrig
+    // blockera själva unmatchen).
+    try {
+      await this.accounting.reverseJournalEntryForPayment(transactionId, organizationId, userId)
+    } catch (err) {
+      console.error('[reconciliation] accounting reversal failed:', err)
+    }
   }
 }

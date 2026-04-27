@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import type { Invoice, InvoiceLine } from '@prisma/client'
+import type { BankTransaction, Invoice, InvoiceLine } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 
 interface JournalFilters {
@@ -203,6 +203,97 @@ export class AccountingService {
         },
       },
       include: { lines: { include: { account: true } } },
+    })
+  }
+
+  // BAS-bokning vid bankbetalning: 1930 (Företagskonto) Debet → 1510 (Kundfordringar) Kredit.
+  // Idempotent — sourceId = bankTransaction.id, så samma transaktion kan inte
+  // bokas två gånger även om matchen ångras och görs om.
+  async createJournalEntryForPayment(
+    invoice: Pick<Invoice, 'id' | 'invoiceNumber' | 'total'>,
+    transaction: Pick<BankTransaction, 'id' | 'date' | 'amount'>,
+    organizationId: string,
+    createdById: string | null,
+  ) {
+    const existing = await this.prisma.journalEntry.findFirst({
+      where: { organizationId, source: 'PAYMENT', sourceId: transaction.id },
+    })
+    if (existing) return existing
+
+    const accounts = await this.prisma.account.findMany({
+      where: { organizationId },
+      select: { id: true, number: true },
+    })
+    const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+
+    const bankAccountId = accountByNumber.get(1930)
+    const receivableId = accountByNumber.get(1510)
+
+    if (!bankAccountId || !receivableId) return null
+
+    const amount = Number(transaction.amount)
+    if (amount <= 0) return null
+
+    return this.prisma.journalEntry.create({
+      data: {
+        organizationId,
+        date: transaction.date,
+        description: `Inbetalning faktura ${invoice.invoiceNumber}`,
+        source: 'PAYMENT',
+        sourceId: transaction.id,
+        ...(createdById ? { createdById } : {}),
+        lines: {
+          create: [
+            { accountId: bankAccountId, debit: amount, description: 'Inbetalning bank' },
+            { accountId: receivableId, credit: amount, description: 'Reglering kundfordran' },
+          ],
+        },
+      },
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
+  // Reverse av betalningsverifikat: skapar ett motverifikat (debet/kredit byter
+  // plats) — append-only, vi raderar aldrig en tidigare bokad post.
+  async reverseJournalEntryForPayment(
+    transactionId: string,
+    organizationId: string,
+    createdById: string | null,
+  ): Promise<void> {
+    const original = await this.prisma.journalEntry.findFirst({
+      where: { organizationId, source: 'PAYMENT', sourceId: transactionId },
+      include: { lines: true },
+    })
+    if (!original) return
+
+    // Skapa inte dubbletter av reversal heller.
+    const alreadyReversed = await this.prisma.journalEntry.findFirst({
+      where: {
+        organizationId,
+        source: 'PAYMENT',
+        sourceId: `reversal:${transactionId}`,
+      },
+    })
+    if (alreadyReversed) return
+
+    await this.prisma.journalEntry.create({
+      data: {
+        organizationId,
+        date: new Date(),
+        description: `Hävd matchning: ${original.description}`,
+        source: 'PAYMENT',
+        sourceId: `reversal:${transactionId}`,
+        ...(createdById ? { createdById } : {}),
+        lines: {
+          create: original.lines.map((l) => ({
+            accountId: l.accountId,
+            // Byt debet/kredit
+            ...(l.debit != null ? { credit: Number(l.debit) } : {}),
+            ...(l.credit != null ? { debit: Number(l.credit) } : {}),
+            ...(l.description ? { description: `Reversal: ${l.description}` } : {}),
+          })),
+        },
+      },
     })
   }
 }

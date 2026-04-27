@@ -1,13 +1,25 @@
-import { api, get, patch } from '@/lib/api'
+import { api, get, patch, post } from '@/lib/api'
 import type { BankTransaction, ImportResult, ReconciliationStats } from '@eken/shared'
 
-export async function importBankStatement(file: File): Promise<ImportResult> {
+export type BankFormat = 'GENERIC' | 'HANDELSBANKEN' | 'SEB' | 'SWEDBANK'
+
+export interface AutoMatchResult {
+  matched: number
+  unmatched: number
+}
+
+export async function importBankStatement(file: File, bank?: BankFormat): Promise<ImportResult> {
   const formData = new FormData()
   formData.append('statement', file)
-  const { data } = await api.post<{ data: ImportResult }>('/reconciliation/import', formData, {
+  const url = bank ? `/reconciliation/import?bank=${bank}` : '/reconciliation/import'
+  const { data } = await api.post<{ data: ImportResult }>(url, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
   return data.data
+}
+
+export async function autoMatchAll(): Promise<AutoMatchResult> {
+  return post<AutoMatchResult>('/reconciliation/auto-match', {})
 }
 
 export async function getTransactions(filters?: {

@@ -6,7 +6,9 @@ import {
   manualMatch,
   ignoreTransaction,
   unmatchTransaction,
+  autoMatchAll,
 } from '../api/reconciliation.api'
+import type { BankFormat } from '../api/reconciliation.api'
 
 export function useTransactions(filters?: { status?: string; from?: string; to?: string }) {
   return useQuery({
@@ -27,9 +29,23 @@ export function useReconciliationStats() {
 export function useImportStatement() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (file: File) => importBankStatement(file),
+    mutationFn: ({ file, bank }: { file: File; bank?: BankFormat }) =>
+      importBankStatement(file, bank),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['reconciliation'] })
+      // En auto-matchad transaktion kan ändra fakturors status till PAID.
+      void qc.invalidateQueries({ queryKey: ['invoices'] })
+    },
+  })
+}
+
+export function useAutoMatch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => autoMatchAll(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['reconciliation'] })
+      void qc.invalidateQueries({ queryKey: ['invoices'] })
     },
   })
 }

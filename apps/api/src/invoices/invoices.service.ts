@@ -53,6 +53,11 @@ export class InvoicesService {
         tenant: {
           select: { id: true, firstName: true, lastName: true, companyName: true, type: true },
         },
+        bankTransactions: {
+          where: { status: 'MATCHED' },
+          select: { id: true, date: true, amount: true, description: true, rawOcr: true },
+          orderBy: { date: 'desc' },
+        },
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -66,6 +71,10 @@ export class InvoicesService {
         tenant: true,
         lease: true,
         events: { orderBy: { createdAt: 'asc' } },
+        bankTransactions: {
+          where: { status: 'MATCHED' },
+          orderBy: { date: 'desc' },
+        },
       },
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')

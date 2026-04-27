@@ -216,6 +216,14 @@ export interface Invoice {
   trackingToken: string
   createdAt: string
   updatedAt: string
+  // Matchade banktransaktioner — fylls bara av invoice-detail/list-svar.
+  bankTransactions?: Array<{
+    id: string
+    date: string
+    amount: number
+    description: string
+    rawOcr?: string | null
+  }>
 }
 
 // ─── Invoice Events (Fakturahistorik) ────────────────────────────────────────
@@ -299,6 +307,7 @@ export interface ImportResult {
   autoMatched: number
   unmatched: number
   errors: string[]
+  bank?: 'GENERIC' | 'HANDELSBANKEN' | 'SEB' | 'SWEDBANK'
 }
 
 export interface ReconciliationStats {

@@ -11,6 +11,7 @@ import {
   ChevronUp,
   FileText,
   Search,
+  Sparkles,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -27,7 +28,9 @@ import {
   useManualMatch,
   useIgnoreTransaction,
   useUnmatchTransaction,
+  useAutoMatch,
 } from './hooks/useReconciliation'
+import type { BankFormat } from './api/reconciliation.api'
 import { useInvoices } from '@/features/invoices/hooks/useInvoiceQueries'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { BankTransaction, ImportResult, Invoice } from '@eken/shared'
@@ -74,6 +77,7 @@ function ImportModal({
 }) {
   const [step, setStep] = useState<ImportStep>('upload')
   const [file, setFile] = useState<File | null>(null)
+  const [bank, setBank] = useState<BankFormat | 'AUTO'>('AUTO')
   const [dragOver, setDragOver] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
   const [showErrors, setShowErrors] = useState(false)
@@ -95,18 +99,22 @@ function ImportModal({
 
   const handleImport = () => {
     if (!file) return
-    importMutation.mutate(file, {
-      onSuccess: (data) => {
-        setResult(data)
-        setStep('result')
-        onSuccess()
+    importMutation.mutate(
+      { file, ...(bank !== 'AUTO' ? { bank } : {}) },
+      {
+        onSuccess: (data) => {
+          setResult(data)
+          setStep('result')
+          onSuccess()
+        },
       },
-    })
+    )
   }
 
   const handleClose = () => {
     setStep('upload')
     setFile(null)
+    setBank('AUTO')
     setResult(null)
     setShowErrors(false)
     onClose()
@@ -180,6 +188,41 @@ function ImportModal({
             )}
           </div>
 
+          {/* Bank-väljare */}
+          <div>
+            <label className="mb-1 block text-[12.5px] font-medium text-gray-700">
+              Bank (valfritt)
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                [
+                  { id: 'AUTO', label: 'Auto-detektera' },
+                  { id: 'HANDELSBANKEN', label: 'Handelsbanken' },
+                  { id: 'SEB', label: 'SEB' },
+                  { id: 'SWEDBANK', label: 'Swedbank' },
+                  { id: 'GENERIC', label: 'Generisk CSV' },
+                ] as { id: BankFormat | 'AUTO'; label: string }[]
+              ).map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => setBank(b.id)}
+                  className={cn(
+                    'rounded-lg border px-3 py-1.5 text-[12.5px] font-medium transition-colors',
+                    bank === b.id
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-[#DDDFE4] bg-white text-gray-600 hover:bg-gray-50',
+                  )}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11.5px] text-gray-400">
+              Lämna på Auto-detektera om du är osäker — vi känner igen formaten automatiskt.
+            </p>
+          </div>
+
           {/* Format guide */}
           <FormatGuide />
 
@@ -201,6 +244,12 @@ function ImportModal({
           </div>
 
           <div className="space-y-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+            {result.bank && (
+              <p className="text-[12px] text-gray-500">
+                Format:{' '}
+                <span className="font-semibold text-gray-700">{bankLabel(result.bank)}</span>
+              </p>
+            )}
             <ResultRow
               icon="check"
               text={`${result.imported} transaktioner importerade`}
@@ -269,6 +318,21 @@ function ImportModal({
       </ModalFooter>
     </Modal>
   )
+}
+
+function bankLabel(bank: string): string {
+  switch (bank) {
+    case 'HANDELSBANKEN':
+      return 'Handelsbanken'
+    case 'SEB':
+      return 'SEB'
+    case 'SWEDBANK':
+      return 'Swedbank'
+    case 'GENERIC':
+      return 'Generisk CSV'
+    default:
+      return bank
+  }
 }
 
 function ResultRow({
@@ -488,14 +552,29 @@ export function ReconciliationPage() {
   const [tab, setTab] = useState<TabId>('ALL')
   const [importOpen, setImportOpen] = useState(false)
   const [matchingTx, setMatchingTx] = useState<BankTransaction | null>(null)
+  const [autoMatchFlash, setAutoMatchFlash] = useState<string | null>(null)
 
   const filters = tab === 'ALL' ? undefined : { status: tab }
   const { data: transactions = [], isLoading } = useTransactions(filters)
   const { data: stats } = useReconciliationStats()
   const ignoreMutation = useIgnoreTransaction()
   const unmatchMutation = useUnmatchTransaction()
+  const autoMatchMutation = useAutoMatch()
 
   const unmatchedCount = stats?.unmatched ?? 0
+
+  const handleAutoMatch = () => {
+    autoMatchMutation.mutate(undefined, {
+      onSuccess: (data) => {
+        setAutoMatchFlash(
+          data.matched > 0
+            ? `${data.matched} matchade · ${data.unmatched} väntar fortfarande`
+            : 'Inga nya matchningar hittades',
+        )
+        setTimeout(() => setAutoMatchFlash(null), 4000)
+      },
+    })
+  }
 
   return (
     <PageWrapper id="reconciliation">
@@ -507,9 +586,21 @@ export function ReconciliationPage() {
             : 'Alla transaktioner är matchade'
         }
         action={
-          <Button variant="primary" onClick={() => setImportOpen(true)}>
-            <Upload size={14} /> Importera kontoutdrag
-          </Button>
+          <div className="flex items-center gap-2">
+            {autoMatchFlash && (
+              <span className="text-[12px] font-medium text-emerald-600">{autoMatchFlash}</span>
+            )}
+            <Button
+              onClick={handleAutoMatch}
+              disabled={unmatchedCount === 0}
+              loading={autoMatchMutation.isPending}
+            >
+              <Sparkles size={14} /> Auto-matcha
+            </Button>
+            <Button variant="primary" onClick={() => setImportOpen(true)}>
+              <Upload size={14} /> Importera kontoutdrag
+            </Button>
+          </div>
         }
       />
 

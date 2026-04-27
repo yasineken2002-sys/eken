@@ -494,10 +494,28 @@ export function InvoicesPage() {
               </div>
 
               {selected.paidAt && (
-                <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-                  <span className="text-[12px] font-medium text-emerald-700">
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+                  <p className="text-[12px] font-semibold text-emerald-700">
                     Betald {formatDate(selected.paidAt)}
-                  </span>
+                  </p>
+                  {selected.bankTransactions && selected.bankTransactions.length > 0 && (
+                    <div className="mt-2 space-y-1.5 border-t border-emerald-200/60 pt-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/70">
+                        Kopplad banktransaktion
+                      </p>
+                      {selected.bankTransactions.map((bt) => (
+                        <div
+                          key={bt.id}
+                          className="flex items-center justify-between text-[12.5px] text-emerald-800"
+                        >
+                          <span className="truncate" title={bt.description}>
+                            {formatDate(bt.date)} · {bt.description}
+                          </span>
+                          <span className="font-semibold">{formatCurrency(Number(bt.amount))}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
