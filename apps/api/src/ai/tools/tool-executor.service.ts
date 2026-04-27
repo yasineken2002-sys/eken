@@ -480,8 +480,26 @@ export class ToolExecutorService {
             }
           }
 
+          // Fakturor måste kopplas till ett hyresavtal. Slå upp aktivt avtal
+          // för hyresgästen — om flera finns, välj det senast påbörjade.
+          const tenantLease = await this.prisma.lease.findFirst({
+            where: {
+              tenantId: resolvedTenant.id,
+              status: { in: ['ACTIVE', 'DRAFT'] },
+              unit: { property: { organizationId } },
+            },
+            orderBy: { startDate: 'desc' },
+            select: { id: true },
+          })
+          if (!tenantLease) {
+            return {
+              success: false,
+              message: `Kan inte skapa faktura: ${resolvedName} saknar aktivt hyresavtal. Skapa ett avtal först.`,
+            }
+          }
+
           const invoice = await this.invoicesService.create(organizationId, userId, {
-            tenantId: resolvedTenant.id,
+            leaseId: tenantLease.id,
             type: invoiceType,
             issueDate: new Date().toISOString(),
             dueDate: dueDateParsed.toISOString(),

@@ -92,6 +92,20 @@ export class InvoicesService {
   // ── Mutations ──────────────────────────────────────────────────────────────
 
   async create(organizationId: string, actorId: string, dto: CreateInvoiceDto): Promise<Invoice> {
+    // Hämta avtalet org-scopat. unit.property.organizationId är källan till sanning
+    // (Lease saknar eget organizationId-fält).
+    const lease = await this.prisma.lease.findFirst({
+      where: {
+        id: dto.leaseId,
+        unit: { property: { organizationId } },
+      },
+      select: { id: true, status: true, tenantId: true },
+    })
+    if (!lease) throw new NotFoundException('Hyresavtal hittades inte')
+    if (lease.status !== 'ACTIVE' && lease.status !== 'DRAFT') {
+      throw new BadRequestException('Endast aktiva eller utkast-avtal kan faktureras')
+    }
+
     const invoice = await this.prisma.$transaction(async (tx) => {
       const invoiceNumber = await this.generateInvoiceNumber(organizationId, tx)
 
@@ -109,8 +123,8 @@ export class InvoicesService {
           invoiceNumber,
           type: dto.type,
           status: 'DRAFT',
-          tenantId: dto.tenantId,
-          ...(dto.leaseId != null ? { leaseId: dto.leaseId } : {}),
+          tenantId: lease.tenantId,
+          leaseId: lease.id,
           subtotal,
           vatTotal,
           total,
@@ -205,7 +219,6 @@ export class InvoicesService {
 
       const createDto: CreateInvoiceDto = {
         type: 'RENT',
-        tenantId: lease.tenantId,
         leaseId: lease.id,
         issueDate: dto.issueDate,
         dueDate: dto.dueDate,
@@ -255,8 +268,19 @@ export class InvoicesService {
       const updateData: Prisma.InvoiceUncheckedUpdateInput = {}
 
       if (dto.type != null) updateData.type = dto.type
-      if (dto.tenantId != null) updateData.tenantId = dto.tenantId
-      if (dto.leaseId != null) updateData.leaseId = dto.leaseId
+      // tenantId kan aldrig ändras manuellt – det härleds alltid från leaseId.
+      if (dto.leaseId != null) {
+        const lease = await tx.lease.findFirst({
+          where: { id: dto.leaseId, unit: { property: { organizationId } } },
+          select: { id: true, status: true, tenantId: true },
+        })
+        if (!lease) throw new NotFoundException('Hyresavtal hittades inte')
+        if (lease.status !== 'ACTIVE' && lease.status !== 'DRAFT') {
+          throw new BadRequestException('Endast aktiva eller utkast-avtal kan faktureras')
+        }
+        updateData.leaseId = lease.id
+        updateData.tenantId = lease.tenantId
+      }
       if (dto.dueDate != null) updateData.dueDate = new Date(dto.dueDate)
       if (dto.issueDate != null) updateData.issueDate = new Date(dto.issueDate)
       if (dto.reference != null) updateData.reference = dto.reference

@@ -4,8 +4,8 @@ import { Plus, Trash2, Building2 } from 'lucide-react'
 import { Input, Select } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { ModalFooter } from '@/components/ui/Modal'
-import { CreateInvoiceSchema, type CreateInvoiceInput } from '@eken/shared'
-import { useTenants } from '@/features/tenants/hooks/useTenants'
+import { CreateInvoiceSchema, formatDate, type CreateInvoiceInput } from '@eken/shared'
+import { useLeases } from '@/features/leases/hooks/useLeases'
 import { cn } from '@/lib/cn'
 import { useOrganization } from '@/features/settings/hooks/useSettings'
 
@@ -85,25 +85,37 @@ export function InvoiceForm({
   const { fields, append, remove } = useFieldArray({ control, name: 'lines' })
 
   const watched = watch()
-  const { data: tenants = [], isLoading: tenantsLoading } = useTenants()
+  const { data: leases = [], isLoading: leasesLoading } = useLeases()
   const { data: org } = useOrganization()
 
-  const tenantOptions = tenants.map((t) => ({
-    value: t.id,
-    label:
-      t.type === 'INDIVIDUAL'
-        ? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()
-        : (t.companyName ?? '–'),
-  }))
+  // Endast ACTIVE/DRAFT-avtal kan faktureras (samma regel som backend).
+  const billableLeases = leases.filter((l) => l.status === 'ACTIVE' || l.status === 'DRAFT')
+
+  function tenantLabel(t: {
+    type: 'INDIVIDUAL' | 'COMPANY'
+    firstName?: string
+    lastName?: string
+    companyName?: string
+  }): string {
+    return t.type === 'INDIVIDUAL'
+      ? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim() || '–'
+      : (t.companyName ?? '–')
+  }
+
+  const leaseOptions = billableLeases.map((l) => {
+    const unitLabel = l.unit?.unitNumber ?? l.unit?.id ?? '–'
+    const tenantStr = tenantLabel(l.tenant)
+    const startStr = formatDate(l.startDate)
+    return {
+      value: l.id,
+      label: `${unitLabel} — ${tenantStr} (${startStr})`,
+    }
+  })
 
   // ── Preview calculations ───────────────────────────────────────────────────
 
-  const selectedTenant = tenants.find((t) => t.id === watched.tenantId)
-  const tenantName = selectedTenant
-    ? selectedTenant.type === 'INDIVIDUAL'
-      ? `${selectedTenant.firstName ?? ''} ${selectedTenant.lastName ?? ''}`.trim()
-      : (selectedTenant.companyName ?? '–')
-    : null
+  const selectedLease = billableLeases.find((l) => l.id === watched.leaseId)
+  const tenantName = selectedLease ? tenantLabel(selectedLease.tenant) : null
 
   const previewLines = (watched.lines ?? []).map((l) => {
     const qty = Number(l.quantity) || 0
@@ -132,25 +144,38 @@ export function InvoiceForm({
       <div className="w-[44%] shrink-0 overflow-y-auto pr-5" style={{ maxHeight: '78vh' }}>
         <form id="invoice-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            {/* Hyresgäst */}
+            {/* Hyresavtal (källa till hyresgäst) */}
             <div className="col-span-2">
               <Controller
                 control={control}
-                name="tenantId"
+                name="leaseId"
                 render={({ field }) => (
                   <Select
-                    label="Hyresgäst"
+                    label="Hyresavtal"
                     options={
-                      tenantsLoading
-                        ? [{ value: '', label: 'Laddar hyresgäster…' }]
-                        : [{ value: '', label: 'Välj hyresgäst...' }, ...tenantOptions]
+                      leasesLoading
+                        ? [{ value: '', label: 'Laddar avtal…' }]
+                        : leaseOptions.length === 0
+                          ? [{ value: '', label: 'Inga aktiva avtal tillgängliga' }]
+                          : [{ value: '', label: 'Välj hyresavtal...' }, ...leaseOptions]
                     }
-                    disabled={tenantsLoading}
-                    error={errors.tenantId?.message}
+                    disabled={leasesLoading || leaseOptions.length === 0}
+                    error={errors.leaseId?.message}
                     {...field}
+                    value={field.value ?? ''}
                   />
                 )}
               />
+            </div>
+
+            {/* Hyresgäst (läsbar – härleds från valt avtal) */}
+            <div className="col-span-2">
+              <label className="mb-1 block text-[13px] font-medium text-gray-700">Hyresgäst</label>
+              <div className="flex h-9 items-center rounded-lg border border-[#DDDFE4] bg-gray-50 px-3 text-[13.5px] text-gray-700">
+                {tenantName ?? (
+                  <span className="text-gray-400">Väljs automatiskt från avtalet</span>
+                )}
+              </div>
             </div>
 
             {/* Typ */}

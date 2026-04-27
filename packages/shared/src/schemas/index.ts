@@ -159,8 +159,7 @@ export const InvoiceLineSchema = z.object({
 
 export const CreateInvoiceSchema = z.object({
   type: z.enum(['RENT', 'DEPOSIT', 'SERVICE', 'UTILITY', 'OTHER']),
-  tenantId: z.string().uuid(),
-  leaseId: z.string().uuid().optional(),
+  leaseId: z.string().uuid({ message: 'Hyresavtal måste väljas' }),
   lines: z.array(InvoiceLineSchema).min(1),
   dueDate: z.string().date(),
   issueDate: z.string().date(),

@@ -616,8 +616,7 @@ export function InvoicesPage() {
           <InvoiceForm
             defaultValues={{
               type: selected.type as CreateInvoiceInput['type'],
-              tenantId: selected.tenantId,
-              leaseId: selected.leaseId ?? undefined,
+              ...(selected.leaseId ? { leaseId: selected.leaseId } : {}),
               dueDate: new Date(selected.dueDate).toISOString().split('T')[0] ?? '',
               issueDate: new Date(selected.issueDate).toISOString().split('T')[0] ?? '',
               reference: selected.reference ?? undefined,

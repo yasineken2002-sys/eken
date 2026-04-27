@@ -5,6 +5,7 @@ import {
   IsIn,
   IsOptional,
   IsUUID,
+  IsDefined,
   IsDateString,
   ValidateNested,
   ArrayMinSize,
@@ -24,12 +25,10 @@ export class CreateInvoiceDto {
   @IsEnum(['RENT', 'DEPOSIT', 'SERVICE', 'UTILITY', 'OTHER'])
   type!: 'RENT' | 'DEPOSIT' | 'SERVICE' | 'UTILITY' | 'OTHER'
 
-  @ApiProperty() @IsUUID() tenantId!: string
-
-  @ApiProperty({ required: false })
-  @IsUUID()
-  @IsOptional()
-  leaseId?: string
+  @ApiProperty({ description: 'Hyresavtal som fakturan tillhör. Hyresgäst härleds från avtalet.' })
+  @IsDefined({ message: 'Hyresavtal måste anges' })
+  @IsUUID('4', { message: 'leaseId måste vara ett giltigt UUID' })
+  leaseId!: string
 
   @ApiProperty({ type: [InvoiceLineDto] })
   @ValidateNested({ each: true })
