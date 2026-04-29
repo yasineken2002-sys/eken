@@ -6,6 +6,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { DepositsService } from '../deposits/deposits.service'
 import { RentIncreasesService } from '../rent-increases/rent-increases.service'
+import { TenantsService } from '../tenants/tenants.service'
 import { CreateLeaseDto } from './dto/create-lease.dto'
 import { UpdateLeaseDto } from './dto/update-lease.dto'
 import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
@@ -61,6 +62,7 @@ export class LeasesService {
     private readonly notifications: NotificationsService,
     private readonly deposits: DepositsService,
     private readonly rentIncreases: RentIncreasesService,
+    private readonly tenants: TenantsService,
   ) {}
 
   async findAll(organizationId: string) {
@@ -227,8 +229,38 @@ export class LeasesService {
       throw new BadRequestException('Tidsbegränsade kontrakt måste ha ett slutdatum')
     }
 
+    // Validera nya hyresgästuppgifter och kolla dubblett-email innan transaktionen
+    // — felet är då rent en valideringsmiss, inte en halv-skapad situation.
+    if (!dto.existingTenantId && dto.newTenant) {
+      const { type, firstName, lastName, companyName, email } = dto.newTenant
+
+      if (type === 'INDIVIDUAL' && (!firstName?.trim() || !lastName?.trim())) {
+        throw new BadRequestException('Förnamn och efternamn krävs för privatperson')
+      }
+      if (type === 'COMPANY' && !companyName?.trim()) {
+        throw new BadRequestException('Företagsnamn krävs för företag')
+      }
+
+      const duplicate = await this.prisma.tenant.findFirst({
+        where: { organizationId, email },
+        select: { id: true },
+      })
+      if (duplicate) {
+        throw new BadRequestException(
+          'En hyresgäst med denna e-postadress finns redan i organisationen',
+        )
+      }
+    } else if (!dto.existingTenantId && !dto.newTenant) {
+      throw new BadRequestException(
+        'Ange antingen en befintlig hyresgäst eller uppgifter för en ny',
+      )
+    }
+
+    let createdTenantId: string | null = null
+
+    let lease
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      lease = await this.prisma.$transaction(async (tx) => {
         let tenantId: string
 
         if (dto.existingTenantId) {
@@ -238,14 +270,20 @@ export class LeasesService {
           if (!tenant) throw new NotFoundException('Hyresgästen hittades inte')
           tenantId = tenant.id
         } else if (dto.newTenant) {
-          const { type, firstName, lastName, companyName, email, phone } = dto.newTenant
-
-          if (type === 'INDIVIDUAL' && (!firstName?.trim() || !lastName?.trim())) {
-            throw new BadRequestException('Förnamn och efternamn krävs för privatperson')
-          }
-          if (type === 'COMPANY' && !companyName?.trim()) {
-            throw new BadRequestException('Företagsnamn krävs för företag')
-          }
+          const {
+            type,
+            firstName,
+            lastName,
+            companyName,
+            email,
+            phone,
+            personalNumber,
+            orgNumber,
+            street,
+            city,
+            postalCode,
+            country,
+          } = dto.newTenant
 
           const created = await tx.tenant.create({
             data: {
@@ -256,9 +294,16 @@ export class LeasesService {
               ...(lastName ? { lastName } : {}),
               ...(companyName ? { companyName } : {}),
               ...(phone ? { phone } : {}),
+              ...(personalNumber ? { personalNumber } : {}),
+              ...(orgNumber ? { orgNumber } : {}),
+              ...(street ? { street } : {}),
+              ...(city ? { city } : {}),
+              ...(postalCode ? { postalCode } : {}),
+              ...(country ? { country } : {}),
             },
           })
           tenantId = created.id
+          createdTenantId = created.id
         } else {
           throw new BadRequestException(
             'Ange antingen en befintlig hyresgäst eller uppgifter för en ny',
@@ -290,8 +335,33 @@ export class LeasesService {
       if (isActiveUnitConflict(err)) {
         throw new BadRequestException('Enheten har redan ett aktivt kontrakt')
       }
+      // P2002 på ([organizationId, email]) — race där två förfrågningar samtidigt
+      // skapar tenant med samma e-post. Dubblett-checken före tx fångar normalfallet.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002' &&
+        Array.isArray((err.meta as { target?: unknown } | undefined)?.target) &&
+        ((err.meta as { target?: string[] }).target ?? []).includes('email')
+      ) {
+        throw new BadRequestException(
+          'En hyresgäst med denna e-postadress finns redan i organisationen',
+        )
+      }
       throw err
     }
+
+    // Skicka portalinbjudan EFTER transaktionen — fire-and-forget så att
+    // ett mejlfel inte rullar tillbaka kontraktsskapandet.
+    if (createdTenantId) {
+      const newTenant = await this.prisma.tenant.findUnique({ where: { id: createdTenantId } })
+      if (newTenant) {
+        void this.tenants
+          .sendInvitationEmail(newTenant, organizationId)
+          .catch((err) => this.logger.error(`[Leases] invitation email failed: ${String(err)}`))
+      }
+    }
+
+    return lease
   }
 
   async remove(id: string, organizationId: string): Promise<void> {

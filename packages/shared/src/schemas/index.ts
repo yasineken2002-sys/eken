@@ -148,6 +148,42 @@ export const CreateLeaseSchema = z
 
 export const UpdateLeaseSchema = CreateLeaseSchema.innerType().partial()
 
+// Schema för det kombinerade flödet där en hyresgäst skapas tillsammans med
+// kontraktet (POST /leases/with-tenant). Adress + pers/orgnummer är optionella
+// — fältkraven valideras backend för att stödja både privatperson och företag.
+export const NewTenantInLeaseSchema = z.object({
+  type: z.enum(['INDIVIDUAL', 'COMPANY']),
+  firstName: z.string().min(1).max(100).optional(),
+  lastName: z.string().min(1).max(100).optional(),
+  companyName: z.string().min(1).max(200).optional(),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  personalNumber: z.string().optional(),
+  orgNumber: z.string().optional(),
+  street: z.string().optional(),
+  city: z.string().optional(),
+  postalCode: z.string().optional(),
+  country: z.string().optional(),
+})
+
+export const CreateLeaseWithTenantSchema = z
+  .object({
+    unitId: z.string().uuid(),
+    existingTenantId: z.string().uuid().optional(),
+    newTenant: NewTenantInLeaseSchema.optional(),
+    monthlyRent: z.number().positive(),
+    depositAmount: z.number().nonnegative().optional(),
+    startDate: z.string().date(),
+    endDate: z.string().date().optional(),
+    leaseType: z.enum(['FIXED_TERM', 'INDEFINITE']).optional(),
+    renewalPeriodMonths: z.number().int().min(1).optional(),
+    noticePeriodMonths: z.number().int().min(0).optional(),
+  })
+  .refine((d) => Boolean(d.existingTenantId) !== Boolean(d.newTenant), {
+    message: 'Ange antingen en befintlig hyresgäst eller uppgifter för en ny',
+    path: ['existingTenantId'],
+  })
+
 // ─── Invoice ──────────────────────────────────────────────────────────────────
 
 export const InvoiceLineSchema = z.object({
@@ -184,4 +220,6 @@ export type UpdatePropertyInput = z.infer<typeof UpdatePropertySchema>
 export type CreateUnitInput = z.infer<typeof CreateUnitSchema>
 export type CreateTenantInput = z.infer<typeof CreateTenantSchema>
 export type CreateLeaseInput = z.infer<typeof CreateLeaseSchema>
+export type CreateLeaseWithTenantInput = z.infer<typeof CreateLeaseWithTenantSchema>
+export type NewTenantInLeaseInput = z.infer<typeof NewTenantInLeaseSchema>
 export type CreateInvoiceInput = z.infer<typeof CreateInvoiceSchema>

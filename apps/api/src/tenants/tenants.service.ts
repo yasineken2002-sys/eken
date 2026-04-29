@@ -99,6 +99,18 @@ export class TenantsService {
       throw new BadRequestException('Företagsnamn krävs för företag')
     }
 
+    // Dubblett-check innan transaktionen så användaren får ett tydligt fel
+    // istället för en rå P2002 från Postgres.
+    const duplicate = await this.prisma.tenant.findFirst({
+      where: { organizationId, email: dto.email },
+      select: { id: true },
+    })
+    if (duplicate) {
+      throw new BadRequestException(
+        'En hyresgäst med denna e-postadress finns redan i organisationen',
+      )
+    }
+
     // Verifiera att enheten finns och tillhör samma organisation.
     const unit = await this.prisma.unit.findFirst({
       where: { id: dto.lease.unitId },
@@ -144,10 +156,15 @@ export class TenantsService {
         return { tenant, lease }
       })
     } catch (err) {
-      // P2002 = unique constraint violation. Vår partial unique index på
-      // Lease(unitId) WHERE status='ACTIVE' kan inte trigga här (status='DRAFT')
-      // men vi fångar generisk konflikt för säkerhets skull.
+      // P2002 = unique constraint violation. Race-skydd för dubblett-check
+      // ovan om två förfrågningar skapar samma e-post samtidigt.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const target = (err.meta as { target?: unknown } | undefined)?.target
+        if (Array.isArray(target) && target.includes('email')) {
+          throw new BadRequestException(
+            'En hyresgäst med denna e-postadress finns redan i organisationen',
+          )
+        }
         throw new BadRequestException('Konflikt vid skapande – försök igen')
       }
       throw err
@@ -164,7 +181,10 @@ export class TenantsService {
     return mapTenant(result.tenant)
   }
 
-  private async sendInvitationEmail(tenant: Tenant, organizationId: string): Promise<void> {
+  // Publik så LeasesService kan anropa samma flöde när en hyresgäst skapas
+  // som del av ett kontrakt (createWithTenant). Måste köras EFTER transaktionen
+  // committat så att en eventuell mejlfel inte rullar tillbaka skapandet.
+  async sendInvitationEmail(tenant: Tenant, organizationId: string): Promise<void> {
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
       select: { name: true },

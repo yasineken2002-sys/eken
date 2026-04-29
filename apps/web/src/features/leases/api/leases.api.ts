@@ -52,6 +52,12 @@ export interface CreateLeaseWithTenantInput {
     companyName?: string
     email: string
     phone?: string
+    personalNumber?: string
+    orgNumber?: string
+    street?: string
+    city?: string
+    postalCode?: string
+    country?: string
   }
   monthlyRent: number
   depositAmount?: number

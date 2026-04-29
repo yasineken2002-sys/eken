@@ -27,6 +27,11 @@ const schema = z
     companyName: z.string().optional(),
     email: z.string().optional(),
     phone: z.string().optional(),
+    personalNumber: z.string().optional(),
+    orgNumber: z.string().optional(),
+    street: z.string().optional(),
+    city: z.string().optional(),
+    postalCode: z.string().optional(),
     monthlyRent: z.coerce.number().min(1, 'Ange månadshyra'),
     depositAmount: z.coerce.number().min(0).optional(),
     startDate: z.string().min(1, 'Ange startdatum'),
@@ -154,6 +159,11 @@ export function LeaseForm({
       companyName: '',
       email: '',
       phone: '',
+      personalNumber: '',
+      orgNumber: '',
+      street: '',
+      city: '',
+      postalCode: '',
       monthlyRent: defaultValues?.monthlyRent ?? 0,
       depositAmount: defaultValues?.depositAmount ?? 0,
       startDate: defaultValues?.startDate ?? today,
@@ -223,13 +233,18 @@ export function LeaseForm({
         type: v.newTenantType,
         email: v.email ?? '',
         ...(v.phone ? { phone: v.phone } : {}),
+        ...(v.street ? { street: v.street } : {}),
+        ...(v.city ? { city: v.city } : {}),
+        ...(v.postalCode ? { postalCode: v.postalCode } : {}),
         ...(v.newTenantType === 'INDIVIDUAL'
           ? {
               ...(v.firstName ? { firstName: v.firstName } : {}),
               ...(v.lastName ? { lastName: v.lastName } : {}),
+              ...(v.personalNumber ? { personalNumber: v.personalNumber } : {}),
             }
           : {
               ...(v.companyName ? { companyName: v.companyName } : {}),
+              ...(v.orgNumber ? { orgNumber: v.orgNumber } : {}),
             }),
       }
     }
@@ -381,27 +396,41 @@ export function LeaseForm({
           </div>
 
           {newTenantType === 'INDIVIDUAL' ? (
-            <div className="grid grid-cols-2 gap-3">
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Förnamn"
+                  placeholder="Anna"
+                  error={errors.firstName?.message}
+                  {...register('firstName')}
+                />
+                <Input
+                  label="Efternamn"
+                  placeholder="Svensson"
+                  error={errors.lastName?.message}
+                  {...register('lastName')}
+                />
+              </div>
               <Input
-                label="Förnamn"
-                placeholder="Anna"
-                error={errors.firstName?.message}
-                {...register('firstName')}
+                label="Personnummer (valfritt)"
+                placeholder="ÅÅÅÅMMDD-XXXX"
+                {...register('personalNumber')}
               />
-              <Input
-                label="Efternamn"
-                placeholder="Svensson"
-                error={errors.lastName?.message}
-                {...register('lastName')}
-              />
-            </div>
+            </>
           ) : (
-            <Input
-              label="Företagsnamn"
-              placeholder="Exempelföretaget AB"
-              error={errors.companyName?.message}
-              {...register('companyName')}
-            />
+            <>
+              <Input
+                label="Företagsnamn"
+                placeholder="Exempelföretaget AB"
+                error={errors.companyName?.message}
+                {...register('companyName')}
+              />
+              <Input
+                label="Organisationsnummer (valfritt)"
+                placeholder="556xxx-xxxx"
+                {...register('orgNumber')}
+              />
+            </>
           )}
 
           <div className="grid grid-cols-2 gap-3">
@@ -418,6 +447,13 @@ export function LeaseForm({
               placeholder="070-123 45 67"
               {...register('phone')}
             />
+          </div>
+
+          <Input label="Gatuadress (valfritt)" placeholder="Storgatan 12" {...register('street')} />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Postnummer (valfritt)" placeholder="123 45" {...register('postalCode')} />
+            <Input label="Stad (valfritt)" placeholder="Stockholm" {...register('city')} />
           </div>
         </div>
       )}

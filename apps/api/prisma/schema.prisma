@@ -544,8 +544,8 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([organizationId, email])
   @@index([organizationId])
-  @@index([email])
 }
 
 // ─── Customer (Externt kundregister, separerat från Tenant) ───────────────────

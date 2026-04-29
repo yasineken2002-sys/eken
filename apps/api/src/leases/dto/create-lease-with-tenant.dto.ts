@@ -34,6 +34,30 @@ export class NewTenantDto {
   @IsString()
   @IsOptional()
   phone?: string
+
+  @IsString()
+  @IsOptional()
+  personalNumber?: string
+
+  @IsString()
+  @IsOptional()
+  orgNumber?: string
+
+  @IsString()
+  @IsOptional()
+  street?: string
+
+  @IsString()
+  @IsOptional()
+  city?: string
+
+  @IsString()
+  @IsOptional()
+  postalCode?: string
+
+  @IsString()
+  @IsOptional()
+  country?: string
 }
 
 export class CreateLeaseWithTenantDto {
