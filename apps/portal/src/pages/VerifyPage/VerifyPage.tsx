@@ -24,7 +24,7 @@ export function VerifyPage() {
 
     verifyMagicLink(token)
       .then((result) => {
-        setSession(result.sessionToken, result.tenant)
+        setSession(result.sessionToken, result.tenant, result.expiresAt)
         setState('success')
         navigate('/dashboard', { replace: true })
       })

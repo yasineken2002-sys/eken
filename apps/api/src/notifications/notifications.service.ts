@@ -123,12 +123,34 @@ export class NotificationsService implements OnModuleInit {
       include: { tenant: true, customer: true, organization: true },
     })
 
+    const startOfDay = new Date()
+    startOfDay.setHours(0, 0, 0, 0)
+    const endOfDay = new Date(startOfDay)
+    endOfDay.setDate(endOfDay.getDate() + 1)
+
     let sent = 0
     let failed = 0
+    let skipped = 0
 
     for (const invoice of invoices) {
       const party = invoice.tenant ?? invoice.customer
       if (!party?.email) continue
+
+      // Idempotency-guard: hoppa över om en påminnelse redan loggats för
+      // denna faktura idag (t.ex. efter server-restart eller dubbel cron-fire).
+      const alreadySent = await this.prisma.invoiceEvent.findFirst({
+        where: {
+          invoiceId: invoice.id,
+          type: 'REMINDER_SENT',
+          createdAt: { gte: startOfDay, lt: endOfDay },
+        },
+        select: { id: true },
+      })
+      if (alreadySent) {
+        skipped++
+        continue
+      }
+
       try {
         const tenantName = this.resolveTenantName(invoice)
         await this.mail.sendOverdueReminder({
@@ -156,7 +178,7 @@ export class NotificationsService implements OnModuleInit {
         failed++
       }
     }
-    this.logger.log(`Overdue reminders: ${sent} sent, ${failed} failed`)
+    this.logger.log(`Overdue reminders: ${sent} sent, ${failed} failed, ${skipped} skipped`)
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
@@ -210,11 +232,36 @@ export class NotificationsService implements OnModuleInit {
       day: 'numeric',
     })
 
+    const startOfDay = new Date()
+    startOfDay.setHours(0, 0, 0, 0)
+    const endOfDay = new Date(startOfDay)
+    endOfDay.setDate(endOfDay.getDate() + 1)
+
     let sent = 0
     let failed = 0
+    let skipped = 0
 
     for (const org of organizations) {
       if (org.users.length === 0) continue
+
+      // Idempotency-guard: hoppa över om dagens rapport redan markerats som
+      // skickad för denna organisation (t.ex. efter server-restart eller dubbel
+      // cron-fire). Sentinel-markeringen är en SYSTEM-notification med fast
+      // titel som vi kan slå upp på (organizationId + dag).
+      const alreadySent = await this.prisma.notification.findFirst({
+        where: {
+          organizationId: org.id,
+          type: 'SYSTEM',
+          title: 'MORNING_INSIGHTS_SENT',
+          createdAt: { gte: startOfDay, lt: endOfDay },
+        },
+        select: { id: true },
+      })
+      if (alreadySent) {
+        skipped++
+        continue
+      }
+
       try {
         const insights = await this.aiService.generateDailyInsights(org.id)
         if (!insights) continue
@@ -236,13 +283,30 @@ export class NotificationsService implements OnModuleInit {
             failed++
           }
         }
+
+        // Markera dagens rapport som hanterad oavsett om enskilda mejl misslyckats —
+        // vi vill inte regenerera AI-insikter eller spamma användare vid retry.
+        const markerUserId = org.users[0]?.id
+        if (markerUserId) {
+          await this.prisma.notification.create({
+            data: {
+              organizationId: org.id,
+              userId: markerUserId,
+              type: 'SYSTEM',
+              title: 'MORNING_INSIGHTS_SENT',
+              message: today,
+              read: true,
+              readAt: new Date(),
+            },
+          })
+        }
       } catch (err) {
         this.logger.error(`Morning insights generation failed for org ${org.id}: ${String(err)}`)
         failed++
       }
     }
 
-    this.logger.log(`Morning insights: ${sent} sent, ${failed} failed`)
+    this.logger.log(`Morning insights: ${sent} sent, ${failed} failed, ${skipped} skipped`)
   }
 
   private resolveTenantName(invoice: InvoiceWithRelations): string {

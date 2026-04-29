@@ -111,6 +111,7 @@ export class AviseringService {
 
     let sent = 0
     let failed = 0
+    let alreadySent = 0
 
     for (const id of noticeIds) {
       const notice = await this.prisma.rentNotice.findFirst({
@@ -126,6 +127,13 @@ export class AviseringService {
         continue
       }
 
+      // Idempotens: hoppa över avier som redan skickats. En retry får aldrig
+      // resultera i ett dubbelmejl till hyresgästen.
+      if (notice.sentAt || notice.status === RentNoticeStatus.SENT) {
+        alreadySent++
+        continue
+      }
+
       try {
         const pdfHtml = await this.buildNoticePdfHtml(notice, org)
         const pdfBuffer = await this.pdfService.generateFromHtml(pdfHtml)
@@ -135,6 +143,8 @@ export class AviseringService {
             ? `${notice.tenant.firstName ?? ''} ${notice.tenant.lastName ?? ''}`.trim()
             : (notice.tenant.companyName ?? notice.tenant.email)
 
+        // Mejlet måste bekräftas innan vi flaggar avin som SENT — annars riskerar
+        // vi att tenant tror att en avi skickats som aldrig nått fram.
         await this.mailService.sendRentNotice({
           to: notice.tenant.email,
           tenantName,
@@ -145,19 +155,30 @@ export class AviseringService {
           organizationName: org.name,
           noticeNumber: notice.noticeNumber,
           accentColor: org.invoiceColor ?? '#2563EB',
+          idempotencyKey: `rent-notice-${notice.id}`,
         })
 
         await this.prisma.rentNotice.update({
           where: { id },
-          data: { status: RentNoticeStatus.SENT, sentAt: new Date(), sentTo: notice.tenant.email },
+          data: {
+            status: RentNoticeStatus.SENT,
+            sentAt: new Date(),
+            sentTo: notice.tenant.email,
+            sendError: null,
+          },
         })
         sent++
-      } catch {
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        await this.prisma.rentNotice.update({
+          where: { id },
+          data: { status: RentNoticeStatus.FAILED, sendError: errorMessage },
+        })
         failed++
       }
     }
 
-    return { sent, failed }
+    return { sent, failed, alreadySent }
   }
 
   async getNoticePdfBuffer(noticeId: string, orgId: string): Promise<Buffer> {

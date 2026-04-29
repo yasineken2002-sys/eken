@@ -202,6 +202,7 @@ enum RentNoticeStatus {
   PAID
   OVERDUE
   CANCELLED
+  FAILED
 }
 
 enum InspectionType {
@@ -1035,6 +1036,7 @@ model RentNotice {
   status         RentNoticeStatus @default(PENDING)
   sentAt         DateTime?
   sentTo         String?
+  sendError      String?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   tenant       Tenant       @relation(fields: [tenantId], references: [id])

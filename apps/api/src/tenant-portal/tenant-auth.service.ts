@@ -135,7 +135,9 @@ export class TenantAuthService {
       })
   }
 
-  async verifyMagicLink(token: string): Promise<{ sessionToken: string; tenant: Tenant }> {
+  async verifyMagicLink(
+    token: string,
+  ): Promise<{ sessionToken: string; tenant: Tenant; expiresAt: Date }> {
     const link = await this.prisma.tenantMagicLink.findUnique({
       where: { token },
       include: { tenant: { include: { organization: true } } },
@@ -151,15 +153,16 @@ export class TenantAuthService {
     })
 
     const sessionToken = crypto.randomBytes(32).toString('hex')
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     await this.prisma.tenantSession.create({
       data: {
         tenantId: link.tenantId,
         token: sessionToken,
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        expiresAt,
       },
     })
 
-    return { sessionToken, tenant: link.tenant }
+    return { sessionToken, tenant: link.tenant, expiresAt }
   }
 
   async validateSession(

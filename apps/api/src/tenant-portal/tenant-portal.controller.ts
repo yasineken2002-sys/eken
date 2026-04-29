@@ -69,7 +69,7 @@ export class TenantAuthController {
 
   @Get('verify')
   async verifyMagicLink(@Query('token') token: string) {
-    const { sessionToken, tenant } = await this.tenantAuthService.verifyMagicLink(token)
+    const { sessionToken, tenant, expiresAt } = await this.tenantAuthService.verifyMagicLink(token)
     return {
       sessionToken,
       tenant: {
@@ -78,6 +78,7 @@ export class TenantAuthController {
         lastName: tenant.lastName,
         email: tenant.email,
       },
+      expiresAt: expiresAt.toISOString(),
     }
   }
 
