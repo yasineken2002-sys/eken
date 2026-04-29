@@ -75,6 +75,15 @@ enum InvoiceType {
   OTHER
 }
 
+// PDF-mallvalet för fakturor – styr layouten i invoice-pdf.template.ts.
+// Lowercase-värden så befintliga rader ('classic', 'modern', 'minimal')
+// kan migreras direkt utan UPDATE.
+enum InvoiceTemplate {
+  classic
+  modern
+  minimal
+}
+
 enum AccountType {
   ASSET
   LIABILITY
@@ -317,7 +326,7 @@ model Organization {
   bankgiro             String?
   paymentTermsDays     Int     @default(30)
   invoiceColor         String?
-  invoiceTemplate      String?
+  invoiceTemplate      InvoiceTemplate?
   morningReportEnabled Boolean @default(false)
 
   // Platform / SaaS-fält
