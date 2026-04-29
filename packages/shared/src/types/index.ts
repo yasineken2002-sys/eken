@@ -206,7 +206,10 @@ export interface Invoice {
   invoiceNumber: string
   type: InvoiceType
   status: InvoiceStatus
-  tenantId: string
+  // tenantId/customerId är XOR i Prisma — hyresavtalsbaserade fakturor har
+  // tenantId, externa kundfakturor har customerId. Båda är nullable här.
+  tenantId?: string
+  customerId?: string
   leaseId?: string
   lines: InvoiceLine[]
   subtotal: number
@@ -215,6 +218,7 @@ export interface Invoice {
   dueDate: string
   issueDate: string
   paidAt?: string
+  ocrNumber?: string // Auto-genererat Luhn-validerat OCR
   reference?: string // OCR/Referensnummer
   notes?: string
   trackingToken: string

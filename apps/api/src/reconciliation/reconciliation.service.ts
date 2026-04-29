@@ -5,9 +5,11 @@ import {
   ForbiddenException,
 } from '@nestjs/common'
 import { Decimal } from '@prisma/client/runtime/library'
-import type { BankTransaction, Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+import type { BankTransaction } from '@prisma/client'
 import * as XLSX from 'xlsx'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { InvoicesService } from '../invoices/invoices.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { AccountingService } from '../accounting/accounting.service'
 
@@ -152,6 +154,7 @@ function extractOcr(text: string | undefined): string | null {
 export class ReconciliationService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly invoices: InvoicesService,
     private readonly events: InvoiceEventsService,
     private readonly accounting: AccountingService,
   ) {}
@@ -401,7 +404,7 @@ export class ReconciliationService {
       }
     }
 
-    // Fuzzy fallback: amount match within tolerance, no OCR required but status/date range
+    // Fuzzy fallback: amount match within tolerance, no OCR required but status/date range.
     const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000
     const dateFrom = new Date(transaction.date.getTime() - ninetyDaysMs)
     const dateTo = new Date(transaction.date.getTime() + ninetyDaysMs)
@@ -417,20 +420,61 @@ export class ReconciliationService {
     const matching = candidates.filter((inv) =>
       inv.total.minus(transaction.amount).abs().lte(tolerance),
     )
-    if (matching.length === 1 && matching[0]) {
-      await this.applyMatch(
-        transaction.id,
-        matching[0].id,
-        matching[0].total,
-        transaction.date,
+    if (matching.length !== 1 || !matching[0]) return false
+
+    const candidate = matching[0]
+
+    // Optimistic lock: två parallella bank-imports kan annars båda fuzzy-matcha
+    // mot samma faktura. Genom att låta status-övergången till PAID gå via en
+    // updateMany med status-guardad WHERE-clause serialiseras claim:et på rad-nivå
+    // i Postgres — endast en parallell körning får count=1; övriga får count=0
+    // och avbryter. Säkrare än att köra applyMatch (vars transitionStatus öppnar
+    // en separat transaktion och därmed inte ger atomic CAS).
+    const claim = await db.invoice.updateMany({
+      where: { id: candidate.id, status: { in: ['SENT', 'OVERDUE'] } },
+      data: { status: 'PAID', paidAt: transaction.date },
+    })
+    if (claim.count === 0) return false
+
+    // Vi äger nu matchen. Återstående sido-effekter — bankTransaction-koppling,
+    // PAYMENT_RECEIVED-event, bokföringspost — körs sekventiellt med
+    // applyMatch's mönster, men utan transitionStatus (statusen är redan flyttad).
+    const inv = await db.invoice.findUnique({
+      where: { id: candidate.id },
+      select: { invoiceNumber: true, organizationId: true },
+    })
+    if (!inv) return false
+
+    await db.bankTransaction.update({
+      where: { id: transaction.id },
+      data: {
+        status: 'MATCHED',
+        invoiceId: candidate.id,
+        matchedAt: new Date(),
+      },
+    })
+
+    await this.events.record(candidate.id, 'PAYMENT_RECEIVED', 'SYSTEM', null, {
+      transactionId: transaction.id,
+      amount: candidate.total.toNumber(),
+      date: transaction.date.toISOString(),
+      source: 'bank_reconciliation',
+      previousStatus: candidate.status,
+      newStatus: 'PAID',
+    })
+
+    try {
+      await this.accounting.createJournalEntryForPayment(
+        { id: candidate.id, invoiceNumber: inv.invoiceNumber, total: candidate.total },
+        { id: transaction.id, date: transaction.date, amount: candidate.total },
+        inv.organizationId,
         null,
-        null,
-        db,
       )
-      return true
+    } catch (err) {
+      console.error('[reconciliation] accounting journal entry failed:', err)
     }
 
-    return false
+    return true
   }
 
   private async applyMatch(
@@ -442,57 +486,60 @@ export class ReconciliationService {
     actorLabel: string | null,
     db: Prisma.TransactionClient | PrismaService,
   ): Promise<void> {
-    let organizationId: string | null = null
-    let invoiceNumber = ''
+    const invoice = await db.invoice.findUnique({
+      where: { id: invoiceId },
+      select: { id: true, invoiceNumber: true, organizationId: true },
+    })
+    if (!invoice) throw new NotFoundException('Faktura hittades inte')
 
-    await (db as PrismaService).$transaction(async (tx) => {
-      const bt = await tx.bankTransaction.update({
-        where: { id: transactionId },
-        data: {
-          status: 'MATCHED',
-          invoiceId,
-          matchedAt: new Date(),
-          ...(userId ? { matchedBy: userId } : {}),
-        },
-      })
-      organizationId = bt.organizationId
+    // Kör statusövergången via state machine. transitionStatus validerar
+    // SENT/OVERDUE/PARTIAL → PAID, skriver PAYMENT_RECEIVED-event och
+    // triggar INVOICE_PAID-notifikationen — alla "vid PAID"-bieffekter
+    // hålls på ett enda ställe.
+    await this.invoices.transitionStatus(
+      invoiceId,
+      invoice.organizationId,
+      'PAID',
+      userId,
+      userId ? 'USER' : 'SYSTEM',
+      {
+        transactionId,
+        amount: invoiceTotal.toNumber(),
+        date: transactionDate.toISOString(),
+        source: 'bank_reconciliation',
+        ...(actorLabel ? { actorLabel } : {}),
+      },
+    )
 
-      const inv = await tx.invoice.update({
-        where: { id: invoiceId },
-        data: { status: 'PAID', paidAt: transactionDate },
-        select: { invoiceNumber: true, total: true, organizationId: true, id: true },
-      })
-      invoiceNumber = inv.invoiceNumber
-
-      await this.events.record(
-        invoiceId,
-        'PAYMENT_RECEIVED',
-        userId ? 'USER' : 'SYSTEM',
-        userId,
-        {
-          transactionId,
-          amount: invoiceTotal.toNumber(),
-          date: transactionDate.toISOString(),
-          source: 'bank_reconciliation',
-          ...(actorLabel ? { actorLabel } : {}),
-        },
-        { tx },
-      )
+    // transitionStatus sätter paidAt = new Date(); skriv över med faktiskt
+    // bankbetalningsdatum så att bokföring och historik matchar bankutdraget.
+    await db.invoice.update({
+      where: { id: invoiceId },
+      data: { paidAt: transactionDate },
     })
 
-    // Skapa bokföringspost utanför matchningstransaktionen — fire-and-forget
-    // så att en saknad kontoplan aldrig blockerar matchningen.
-    if (organizationId) {
-      try {
-        await this.accounting.createJournalEntryForPayment(
-          { id: invoiceId, invoiceNumber, total: invoiceTotal },
-          { id: transactionId, date: transactionDate, amount: invoiceTotal },
-          organizationId,
-          userId,
-        )
-      } catch (err) {
-        console.error('[reconciliation] accounting journal entry failed:', err)
-      }
+    // Länka banktransaktionen till fakturan.
+    await db.bankTransaction.update({
+      where: { id: transactionId },
+      data: {
+        status: 'MATCHED',
+        invoiceId,
+        matchedAt: new Date(),
+        ...(userId ? { matchedBy: userId } : {}),
+      },
+    })
+
+    // Skapa bokföringspost — fire-and-forget. En saknad kontoplan får aldrig
+    // blockera matchningen.
+    try {
+      await this.accounting.createJournalEntryForPayment(
+        { id: invoiceId, invoiceNumber: invoice.invoiceNumber, total: invoiceTotal },
+        { id: transactionId, date: transactionDate, amount: invoiceTotal },
+        invoice.organizationId,
+        userId,
+      )
+    } catch (err) {
+      console.error('[reconciliation] accounting journal entry failed:', err)
     }
   }
 
@@ -640,24 +687,27 @@ export class ReconciliationService {
       throw new ForbiddenException('Transaktionen är inte matchad')
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.bankTransaction.update({
-        where: { id: transactionId },
-        data: {
-          status: 'UNMATCHED',
-          invoiceId: null,
-          matchedAt: null,
-          matchedBy: null,
-        },
-      })
+    // PAID är terminal i state machine — kan inte återställas via en vanlig
+    // statusövergång. För att häva en bokförd betalning måste användaren
+    // skapa en kreditnota (samma flöde som Fortnox/Visma).
+    if (transaction.invoice && transaction.invoice.status === 'PAID') {
+      throw new BadRequestException(
+        'Fakturan är markerad som betald och kan inte avmatchas. Skapa en kreditnota för att häva betalningen.',
+      )
+    }
 
-      // Revert invoice to SENT if it was paid by this transaction
-      if (transaction.invoice && transaction.invoice.status === 'PAID') {
-        await tx.invoice.update({
-          where: { id: transaction.invoice.id },
-          data: { status: 'SENT', paidAt: null },
-        })
-      }
+    // Övriga statusar (SENT, OVERDUE, PARTIAL, DRAFT, VOID) lämnas oförändrade
+    // — vi länkar bara bort banktransaktionen. updateMany med organizationId
+    // som defense-in-depth: även om transactionId från en annan org skulle
+    // läcka in (via bug i auth-laget) påverkar vi bara denna orgs data.
+    await this.prisma.bankTransaction.updateMany({
+      where: { id: transactionId, organizationId },
+      data: {
+        status: 'UNMATCHED',
+        invoiceId: null,
+        matchedAt: null,
+        matchedBy: null,
+      },
     })
 
     // Skapa motverifikat (utanför transaktionen — bokföringen får aldrig

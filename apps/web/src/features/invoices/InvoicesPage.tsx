@@ -49,7 +49,8 @@ const TABS: { id: Tab; label: string; color?: string }[] = [
   { id: 'DRAFT', label: 'Utkast' },
 ]
 
-function getTenantName(id: string, tenants: Tenant[]) {
+function getTenantName(id: string | undefined, tenants: Tenant[]) {
+  if (!id) return '–'
   const t = tenants.find((t) => t.id === id)
   if (!t) return '–'
   return t.type === 'INDIVIDUAL' ? `${t.firstName} ${t.lastName}` : (t.companyName ?? '–')

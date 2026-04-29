@@ -768,10 +768,12 @@ model JournalEntry {
   reference      String?
   source         JournalEntrySource @default(MANUAL)
   sourceId       String?
-  createdById    String
+  // Nullable för automatiska poster (t.ex. auto-match från bank-import) där
+  // ingen användare är inloggad. Manuella poster har alltid en createdBy.
+  createdById    String?
 
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User               @relation(fields: [createdById], references: [id])
+  createdBy    User?              @relation(fields: [createdById], references: [id])
   lines        JournalEntryLine[]
 
   createdAt DateTime @default(now())
