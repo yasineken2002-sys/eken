@@ -14,7 +14,7 @@ import {
   QUEUE_NORMAL,
 } from './mail.types'
 
-const DEFAULT_FROM = 'Eken Fastigheter <onboarding@resend.dev>'
+const DEFAULT_FROM = 'Eken Fastigheter <noreply@eveno.se>'
 const CONCURRENCY = 5
 
 @Injectable()
@@ -33,11 +33,18 @@ abstract class MailWorkerBase {
       this.logger.warn('RESEND_API_KEY saknas — mailutskick kommer misslyckas')
     }
     this.resend = new Resend(apiKey ?? 'missing-key')
-    this.from = config.get<string>('MAIL_FROM') ?? DEFAULT_FROM
+    const explicitFrom = config.get<string>('MAIL_FROM')
+    this.from = explicitFrom ?? DEFAULT_FROM
 
-    if (config.get<string>('NODE_ENV') === 'production' && this.from.includes('resend.dev')) {
+    const isProduction = config.get<string>('NODE_ENV') === 'production'
+    if (isProduction && this.from.includes('resend.dev')) {
       this.logger.error(
         '[MAIL] WARNING: Sending from Resend sandbox domain in production. Set MAIL_FROM to a verified domain.',
+      )
+    }
+    if (isProduction && !explicitFrom) {
+      this.logger.error(
+        `[MAIL] WARNING: MAIL_FROM is not set in production — falling back to default "${DEFAULT_FROM}". Set MAIL_FROM explicitly.`,
       )
     }
   }
