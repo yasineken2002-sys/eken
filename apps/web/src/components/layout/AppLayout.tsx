@@ -224,7 +224,7 @@ export function AppLayout({ route, onNavigate, children }: Props) {
                     exit={{ opacity: 0, width: 0 }}
                     className="overflow-hidden whitespace-nowrap"
                   >
-                    <span className="text-[15px] font-bold tracking-tight text-white">Eken</span>
+                    <span className="text-[15px] font-bold tracking-tight text-white">Eveno</span>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -357,7 +357,7 @@ export function AppLayout({ route, onNavigate, children }: Props) {
 
             {/* Breadcrumb */}
             <div className="flex items-center gap-1.5">
-              <span className="text-[13px] text-gray-400">Eken</span>
+              <span className="text-[13px] text-gray-400">Eveno</span>
               <ChevronRight size={11} strokeWidth={2} className="text-gray-300" />
               <span className="text-[13px] font-semibold text-gray-800">{currentLabel}</span>
             </div>

@@ -105,7 +105,7 @@ async function bootstrap() {
   // Swagger
   if (config.get('NODE_ENV') !== 'production') {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('Eken API')
+      .setTitle('Eveno API')
       .setDescription('Fastighetssystem – REST API')
       .setVersion('1.0')
       .addBearerAuth()

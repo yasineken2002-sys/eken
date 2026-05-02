@@ -45,7 +45,7 @@ function buildEmailHtml(
     ${greeting}
     ${paragraphs}
     <p style="margin-top:30px;color:#666;font-size:13px">Med vänliga hälsningar,<br><strong>${orgName}</strong></p>
-    <div class="footer">Detta e-postmeddelande skickades via Eken Fastigheter.</div>
+    <div class="footer">Detta e-postmeddelande skickades via Eveno Fastigheter.</div>
   </div>
 </body>
 </html>`

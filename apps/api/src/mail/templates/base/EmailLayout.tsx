@@ -22,16 +22,16 @@ export interface EmailLayoutProps {
 }
 
 /**
- * Gemensam layout för alla Eken-mail. Ärvs av varje template.
+ * Gemensam layout för alla Eveno-mail. Ärvs av varje template.
  * Designprinciper:
  *   - 600px max-width, fungerar i Gmail/Outlook/Apple Mail
  *   - Inga bilder (Outlook blockerar bilder by default → alt-text bara räcker inte)
  *   - Tabellbaserad layout via React Email-komponenter (e-post-CSS är begränsat)
- *   - Eken-grön (#2D6A4F) som accentfärg
+ *   - Eveno-grön (#2D6A4F) som accentfärg
  */
 export function EmailLayout({
   preview,
-  organizationName = 'Eken Fastigheter',
+  organizationName = 'Eveno Fastigheter',
   whyReceived,
   children,
 }: EmailLayoutProps) {

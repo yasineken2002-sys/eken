@@ -850,7 +850,7 @@ export class AiAssistantService {
     const response = await this.client.messages.create({
       model: MODEL,
       max_tokens: 512,
-      system: `Du är Eken AI – en intelligent fastighetsassistent för svenska fastighetsförvaltare.\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}`,
+      system: `Du är Eveno AI – en intelligent fastighetsassistent för svenska fastighetsförvaltare.\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}`,
       messages: [
         {
           role: 'user',

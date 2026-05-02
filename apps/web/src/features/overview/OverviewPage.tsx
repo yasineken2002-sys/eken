@@ -665,7 +665,7 @@ export function OverviewPage() {
           className="mt-10 border-t border-gray-100 pb-6 pt-5 text-center"
         >
           <p className="text-[12px] text-gray-400">
-            Byggt med Claude Code · Eken v1.0 · {new Date().getFullYear()}
+            Byggt med Claude Code · Eveno v1.0 · {new Date().getFullYear()}
           </p>
         </motion.div>
       </div>

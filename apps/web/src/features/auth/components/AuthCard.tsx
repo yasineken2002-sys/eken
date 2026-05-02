@@ -21,7 +21,7 @@ export function AuthCard({ title, description, children, footer }: Props) {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600">
             <Building2 size={15} className="text-white" strokeWidth={2.2} />
           </div>
-          <span className="text-[20px] font-bold tracking-tight text-gray-900">Eken</span>
+          <span className="text-[20px] font-bold tracking-tight text-gray-900">Eveno</span>
         </div>
 
         <div className="rounded-2xl border border-[#EAEDF0] bg-white p-7 shadow-sm">

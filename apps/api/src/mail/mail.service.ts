@@ -457,11 +457,11 @@ export class MailService {
         organizationName: opts.organizationName,
         bodyHtml,
         whyReceived:
-          'Du får detta mail eftersom du har morgonrapporten aktiverad i Eken-inställningarna.',
+          'Du får detta mail eftersom du har morgonrapporten aktiverad i Eveno-inställningarna.',
       },
       {
         to: opts.to,
-        subject: `Eken — Din morgonrapport ${opts.today}`,
+        subject: `Eveno — Din morgonrapport ${opts.today}`,
         idempotencyKey: opts.idempotencyKey,
       },
     )

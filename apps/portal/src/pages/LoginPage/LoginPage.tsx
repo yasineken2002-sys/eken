@@ -63,7 +63,7 @@ export function LoginPage() {
         <div className={styles.brand}>
           <div className={styles.logo}>E</div>
           <div>
-            <p className={styles.brandName}>Eken</p>
+            <p className={styles.brandName}>Eveno</p>
             <p className={styles.brandSub}>Hyresgästportal</p>
           </div>
         </div>

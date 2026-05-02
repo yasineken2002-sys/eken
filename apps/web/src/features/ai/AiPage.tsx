@@ -535,7 +535,7 @@ export function AiPage() {
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50">
                 <Sparkles size={14} strokeWidth={1.8} className="text-blue-600" />
               </div>
-              <span className="text-[14px] font-semibold text-gray-900">Eken AI</span>
+              <span className="text-[14px] font-semibold text-gray-900">Eveno AI</span>
             </div>
             <Button variant="primary" size="sm" className="w-full" onClick={handleNewConversation}>
               <Plus size={13} strokeWidth={2} />
@@ -660,7 +660,7 @@ export function AiPage() {
                   transition={{ delay: 0.1 }}
                   className="mt-4 text-[20px] font-semibold text-gray-900"
                 >
-                  Hej! Jag är Eken AI
+                  Hej! Jag är Eveno AI
                 </motion.h2>
                 <motion.p
                   initial={{ opacity: 0, y: 8 }}
@@ -815,7 +815,7 @@ export function AiPage() {
                 </div>
               </div>
               <p className="mt-2 text-center text-[11px] text-gray-300">
-                Eken AI kan utföra åtgärder — åtgärder kräver alltid din bekräftelse.
+                Eveno AI kan utföra åtgärder — åtgärder kräver alltid din bekräftelse.
               </p>
             </div>
           </div>

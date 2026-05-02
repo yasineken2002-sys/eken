@@ -29,7 +29,7 @@ export function UserInvite({
     <EmailLayout
       preview={`Du har blivit inbjuden till ${organizationName}`}
       organizationName={organizationName}
-      whyReceived={`Du får detta mail eftersom ${invitedBy} har bjudit in dig som användare i ${organizationName} på Eken.`}
+      whyReceived={`Du får detta mail eftersom ${invitedBy} har bjudit in dig som användare i ${organizationName} på Eveno.`}
     >
       <Heading as="h2" style={h2Style}>
         Välkommen till {organizationName}
@@ -39,7 +39,7 @@ export function UserInvite({
 
       <Text style={textStyle}>
         <strong>{invitedBy}</strong> har bjudit in dig som <strong>{roleLabel}</strong> i{' '}
-        {organizationName} på Eken — fastighetssystemet som hanterar hela portföljen, från
+        {organizationName} på Eveno — fastighetssystemet som hanterar hela portföljen, från
         hyresavtal till bokföring.
       </Text>
 

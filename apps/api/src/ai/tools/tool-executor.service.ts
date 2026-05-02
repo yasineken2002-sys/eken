@@ -1622,7 +1622,7 @@ export class ToolExecutorService {
                 increasePercent,
                 effectiveDate,
                 reason: 'KPI-justering',
-                organizationName: organization?.name ?? 'Eken Fastigheter',
+                organizationName: organization?.name ?? 'Eveno Fastigheter',
               })
               emailSent = true
             } catch {
@@ -1774,7 +1774,7 @@ export class ToolExecutorService {
 
   <p style="margin-top:40px;font-size:10px;color:#999;text-align:center">
     Detta kontrakt är upprättat i två exemplar, ett till vardera parten.
-    Genererat av Eken Fastighetsförvaltning ${new Date().toLocaleDateString('sv-SE')}
+    Genererat av Eveno Fastighetsförvaltning ${new Date().toLocaleDateString('sv-SE')}
   </p>
 </body>
 </html>`

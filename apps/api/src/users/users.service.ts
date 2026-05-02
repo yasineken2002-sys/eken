@@ -113,7 +113,7 @@ export class UsersService {
         roleLabel: ROLE_LABELS[created.role],
         invitedBy: inviterName,
         acceptUrl,
-        organizationName: org?.name ?? 'Eken',
+        organizationName: org?.name ?? 'Eveno',
         validForDays: 7,
         idempotencyKey: `invite:${token}`,
       })

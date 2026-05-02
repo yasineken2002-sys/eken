@@ -60,7 +60,7 @@ export class TenantAuthService {
         to: email,
         subject: 'Din inloggningslänk till hyresgästportalen',
         tenantName,
-        organizationName: 'Eken Fastigheter',
+        organizationName: 'Eveno Fastigheter',
         bodyHtml: `
         <h2 style="color:#1a6b3c;margin:0 0 16px">Logga in på din hyresgästportal</h2>
         <p>Klicka på knappen nedan för att logga in. Länken är giltig i 24 timmar.</p>
@@ -111,7 +111,7 @@ export class TenantAuthService {
         bodyHtml: `
         <h2 style="color:#1a6b3c;margin:0 0 16px">Välkommen till hyresgästportalen</h2>
         <p>Hej ${tenantName},</p>
-        <p>Din hyresvärd <strong>${orgName}</strong> har skapat ett konto åt dig i hyresgästportalen Eken.</p>
+        <p>Din hyresvärd <strong>${orgName}</strong> har skapat ett konto åt dig i hyresgästportalen Eveno.</p>
         <a href="${magicUrl}"
            style="display:inline-block;background:#1a6b3c;color:white;
                   padding:12px 24px;border-radius:6px;text-decoration:none;

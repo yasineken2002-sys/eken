@@ -7,7 +7,7 @@ export function AuthLayout() {
       <div className="bg-primary text-primary-foreground hidden flex-col justify-between p-10 lg:flex">
         <div className="flex items-center gap-2 text-lg font-semibold">
           <span className="bg-primary-foreground/20 h-6 w-6 rounded-md" />
-          Eken
+          Eveno
         </div>
         <blockquote className="space-y-2">
           <p className="text-lg leading-relaxed">

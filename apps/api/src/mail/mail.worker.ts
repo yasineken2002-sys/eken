@@ -14,7 +14,7 @@ import {
   QUEUE_NORMAL,
 } from './mail.types'
 
-const DEFAULT_FROM = 'Eken Fastigheter <noreply@eveno.se>'
+const DEFAULT_FROM = 'Eveno Fastigheter <noreply@eveno.se>'
 const CONCURRENCY = 5
 
 @Injectable()

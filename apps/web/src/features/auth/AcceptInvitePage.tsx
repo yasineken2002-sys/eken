@@ -69,7 +69,7 @@ export function AcceptInvitePage({ token, onNavigate }: Props) {
   return (
     <AuthCard
       title="Sätt ditt lösenord"
-      description="Välj ett lösenord för ditt nya Eken-konto. Du loggar sedan in med din e-post och det här lösenordet."
+      description="Välj ett lösenord för ditt nya Eveno-konto. Du loggar sedan in med din e-post och det här lösenordet."
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <PasswordInput

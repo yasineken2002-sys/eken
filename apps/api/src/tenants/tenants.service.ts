@@ -213,7 +213,7 @@ export class TenantsService {
         bodyHtml: `
         <h2 style="color:#1a6b3c;margin:0 0 16px">Välkommen till hyresgästportalen</h2>
         <p>Hej ${tenantName},</p>
-        <p>Din hyresvärd <strong>${org.name}</strong> har skapat ett konto åt dig i hyresgästportalen Eken.</p>
+        <p>Din hyresvärd <strong>${org.name}</strong> har skapat ett konto åt dig i hyresgästportalen Eveno.</p>
         <a href="${magicUrl}"
            style="display:inline-block;background:#1a6b3c;color:white;
                   padding:12px 24px;border-radius:6px;text-decoration:none;

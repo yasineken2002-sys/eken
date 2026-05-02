@@ -90,7 +90,7 @@ export function AppLayout() {
         <div className="flex items-center justify-between px-5 py-5">
           <div>
             <div className="text-[13px] font-semibold uppercase tracking-wide text-gray-400">
-              Eken
+              Eveno
             </div>
             <div className="text-[15px] font-semibold text-gray-900">Platform Admin</div>
           </div>

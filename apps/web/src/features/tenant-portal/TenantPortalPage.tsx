@@ -72,7 +72,7 @@ export function TenantPortalPage({ token }: Props) {
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-600">
             <Wrench size={14} className="text-white" strokeWidth={2} />
           </div>
-          <span className="text-[15px] font-bold text-gray-900">Eken Fastigheter</span>
+          <span className="text-[15px] font-bold text-gray-900">Eveno Fastigheter</span>
         </motion.div>
 
         {/* Ticket card */}
@@ -181,7 +181,7 @@ export function TenantPortalPage({ token }: Props) {
         </motion.div>
 
         <p className="mt-6 text-center text-[12px] text-gray-400">
-          Powered by Eken Fastighetsförvaltning
+          Powered by Eveno Fastighetsförvaltning
         </p>
       </div>
     </div>

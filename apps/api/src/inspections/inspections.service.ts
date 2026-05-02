@@ -354,7 +354,7 @@ export class InspectionsService {
     </div>
   </div>
 
-  <div class="footer">Utfärdad av ${org.name} · Powered by Eken Fastighetsförvaltning</div>
+  <div class="footer">Utfärdad av ${org.name} · Powered by Eveno Fastighetsförvaltning</div>
 </body>
 </html>`
 

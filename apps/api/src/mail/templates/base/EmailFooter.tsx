@@ -22,7 +22,7 @@ export function EmailFooter({ organizationName, whyReceived }: EmailFooterProps)
         Detta är ett transaktionsmail. Svara inte direkt på detta meddelande.
       </Text>
 
-      <Text style={poweredStyle}>Skickat via Eken — fastighetssystem för proffs</Text>
+      <Text style={poweredStyle}>Skickat via Eveno — fastighetssystem för proffs</Text>
     </Section>
   )
 }

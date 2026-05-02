@@ -23,7 +23,7 @@ export function TenantInvite({ tenantName, organizationName, magicUrl }: TenantI
       <Text style={textStyle}>Hej {tenantName},</Text>
       <Text style={textStyle}>
         Din hyresvärd <strong>{organizationName}</strong> har skapat ett konto åt dig i
-        hyresgästportalen Eken.
+        hyresgästportalen Eveno.
       </Text>
 
       <Section style={ctaSection}>

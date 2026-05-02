@@ -110,20 +110,20 @@ export function getImportJobs(): Promise<ImportJob[]> {
 const TEMPLATES: Record<string, { headers: string; filename: string }> = {
   PROPERTIES: {
     headers: 'Namn,Fastighetsbeteckning,Typ,Gatuadress,Postnummer,Stad,Yta m²,Byggår',
-    filename: 'eken-mall-fastigheter.csv',
+    filename: 'eveno-mall-fastigheter.csv',
   },
   UNITS: {
     headers: 'Enhetsnamn,Enhetsnummer,Fastighet,Typ,Status,Yta m²,Våning,Antal rum,Månadshyra',
-    filename: 'eken-mall-enheter.csv',
+    filename: 'eveno-mall-enheter.csv',
   },
   TENANTS: {
     headers:
       'Typ,Förnamn,Efternamn,Företagsnamn,E-post,Telefon,Personnummer,Org.nummer,Gatuadress,Postnummer,Stad',
-    filename: 'eken-mall-hyresgaster.csv',
+    filename: 'eveno-mall-hyresgaster.csv',
   },
   LEASES: {
     headers: 'Hyresgäst e-post,Enhetsnummer,Startdatum,Slutdatum,Månadshyra,Deposition,Status',
-    filename: 'eken-mall-kontrakt.csv',
+    filename: 'eveno-mall-kontrakt.csv',
   },
 }
 

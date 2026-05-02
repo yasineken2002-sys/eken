@@ -355,7 +355,7 @@ export class ContractTemplateService {
 
   <div class="footer">
     Detta kontrakt är upprättat i två likalydande exemplar, ett till vardera parten. |
-    Genererat av Eken Fastighetsförvaltning ${today}
+    Genererat av Eveno Fastighetsförvaltning ${today}
   </div>
 </body>
 </html>`

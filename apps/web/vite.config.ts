@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react-swc'
 import { resolve } from 'path'
 
 /**
- * Eken – Vite dev server configuration
+ * Eveno – Vite dev server configuration
  *
  * Transformer: SWC (Rust-based) via @vitejs/plugin-react-swc
  * → Signifikant snabbare HMR och cold starts vs Babel

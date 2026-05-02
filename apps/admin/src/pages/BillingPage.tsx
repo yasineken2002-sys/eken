@@ -49,7 +49,7 @@ export function BillingPage() {
     <>
       <PageHeader
         title="Plattformsfakturor"
-        description="Fakturor som Eken skickar till kunder"
+        description="Fakturor som Eveno skickar till kunder"
         action={
           <Button onClick={() => setOpen(true)}>
             <Plus size={14} /> Skicka faktura

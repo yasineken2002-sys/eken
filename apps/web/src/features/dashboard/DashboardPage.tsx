@@ -206,7 +206,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
           <div className="min-w-0 flex-1">
             <p className="text-[15px] font-semibold text-white">AI-insikter</p>
             <p className="mt-0.5 text-[13px] text-blue-100/80">
-              Låt Eken AI analysera din portfölj och ge konkreta råd
+              Låt Eveno AI analysera din portfölj och ge konkreta råd
             </p>
           </div>
           <div className="hidden flex-shrink-0 gap-2 md:flex">

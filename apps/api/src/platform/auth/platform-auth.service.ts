@@ -139,7 +139,7 @@ export class PlatformAuthService {
     const otpauth = await generateURI({
       secret,
       label: user.email,
-      issuer: 'Eken Admin',
+      issuer: 'Eveno Admin',
     })
     const qrCodeDataUrl = await QRCode.toDataURL(otpauth)
 

@@ -57,7 +57,7 @@ function BrandPanel() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600">
             <Building2 size={16} className="text-white" strokeWidth={2.2} />
           </div>
-          <span className="text-[20px] font-bold tracking-tight text-white">Eken</span>
+          <span className="text-[20px] font-bold tracking-tight text-white">Eveno</span>
         </div>
 
         <h2 className="text-[34px] font-bold leading-tight tracking-tight text-white">
@@ -86,7 +86,7 @@ function BrandPanel() {
       </div>
 
       <p className="relative z-10 px-14 pb-10 text-[12px] text-white/20">
-        © 2025 Eken. Alla rättigheter förbehållna.
+        © 2025 Eveno. Alla rättigheter förbehållna.
       </p>
     </div>
   )
@@ -147,13 +147,13 @@ export function LoginPage({ onNavigate }: Props) {
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-600">
               <Building2 size={14} className="text-white" strokeWidth={2.2} />
             </div>
-            <span className="text-[18px] font-bold text-gray-900">Eken</span>
+            <span className="text-[18px] font-bold text-gray-900">Eveno</span>
           </div>
 
           <h1 className="text-[26px] font-bold leading-tight tracking-tight text-gray-900">
             Välkommen tillbaka
           </h1>
-          <p className="mt-1.5 text-[14px] text-gray-500">Logga in på ditt Eken-konto</p>
+          <p className="mt-1.5 text-[14px] text-gray-500">Logga in på ditt Eveno-konto</p>
 
           {flash?.kind === 'account-activated' && (
             <div className="mt-6 flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5 text-[13px] text-emerald-800">

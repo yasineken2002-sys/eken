@@ -18,7 +18,7 @@ export interface CustomProps {
 /**
  * Wrapper-template för historiskt fri-HTML-anrop (sendCustomEmail).
  * Service-lagret bygger sin HTML och skickar in den hit; vi wrappar den
- * i Eken-layouten så att headern och footern blir konsekventa.
+ * i Eveno-layouten så att headern och footern blir konsekventa.
  */
 export function Custom({
   preview,

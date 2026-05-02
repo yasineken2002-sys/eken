@@ -62,7 +62,7 @@ export function LoginPage() {
       <div className="w-full max-w-sm rounded-2xl border border-[#EAEDF0] bg-white p-8 shadow-sm">
         <div className="mb-6 text-center">
           <div className="text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-            Eken
+            Eveno
           </div>
           <div className="mt-0.5 text-[20px] font-semibold text-gray-900">Plattforms-admin</div>
         </div>

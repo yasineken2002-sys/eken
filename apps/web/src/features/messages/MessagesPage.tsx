@@ -447,7 +447,7 @@ export function MessagesPage() {
                         Med vänliga hälsningar, Din organisation
                       </p>
                       <p className="mt-1 text-center text-[11px] text-gray-300">
-                        Detta e-postmeddelande skickades via Eken Fastigheter.
+                        Detta e-postmeddelande skickades via Eveno Fastigheter.
                       </p>
                     </div>
                   </div>

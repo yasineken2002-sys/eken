@@ -23,7 +23,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import type { JwtPayload } from '@eken/shared'
 
-const STREAMING_SYSTEM_PROMPT = `Du är en intelligent AI-assistent för Eken, ett svenskt fastighetsförvaltningssystem.
+const STREAMING_SYSTEM_PROMPT = `Du är en intelligent AI-assistent för Eveno, ett svenskt fastighetsförvaltningssystem.
 Du hjälper fastighetsförvaltare att hantera sin portfölj effektivt.
 
 REGLER:

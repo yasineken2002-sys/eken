@@ -202,8 +202,8 @@ export function SettingsPage({ onNavigate }: Props) {
               <h2 className="text-[14px] font-semibold text-gray-800">Lösenord</h2>
             </div>
             <p className="text-[13px] text-gray-500">
-              Ditt lösenord används för att logga in på Eken. Vi rekommenderar att du byter lösenord
-              regelbundet och aldrig delar det med någon.
+              Ditt lösenord används för att logga in på Eveno. Vi rekommenderar att du byter
+              lösenord regelbundet och aldrig delar det med någon.
             </p>
             <div className="mt-4">
               <Button variant="primary" size="sm" onClick={() => onNavigate('change-password')}>
