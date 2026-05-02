@@ -3,12 +3,18 @@ import { PrismaModule } from '../common/prisma/prisma.module'
 import { NotificationsModule } from '../notifications/notifications.module'
 import { DepositsModule } from '../deposits/deposits.module'
 import { RentIncreasesModule } from '../rent-increases/rent-increases.module'
-import { TenantsModule } from '../tenants/tenants.module'
+import { TenantPortalModule } from '../tenant-portal/tenant-portal.module'
 import { LeasesController } from './leases.controller'
 import { LeasesService } from './leases.service'
 
 @Module({
-  imports: [PrismaModule, NotificationsModule, DepositsModule, RentIncreasesModule, TenantsModule],
+  imports: [
+    PrismaModule,
+    NotificationsModule,
+    DepositsModule,
+    RentIncreasesModule,
+    TenantPortalModule,
+  ],
   controllers: [LeasesController],
   providers: [LeasesService],
   exports: [LeasesService],

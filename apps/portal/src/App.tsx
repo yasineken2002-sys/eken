@@ -7,14 +7,19 @@ import { MaintenancePage } from '@/pages/MaintenancePage/MaintenancePage'
 import { NewsPage } from '@/pages/NewsPage/NewsPage'
 import { DocumentsPage } from '@/pages/DocumentsPage/DocumentsPage'
 import { LoginPage } from '@/pages/LoginPage/LoginPage'
-import { VerifyPage } from '@/pages/VerifyPage/VerifyPage'
+import { ActivatePage } from '@/pages/ActivatePage/ActivatePage'
+import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage/ForgotPasswordPage'
+import { ResetPasswordPage } from '@/pages/ResetPasswordPage/ResetPasswordPage'
 
 export function App() {
   return (
     <Routes>
-      {/* Publika auth-routes — magic-link-URL:en genereras som /auth/verify?token=... i API:n */}
+      {/* Publika auth-routes — aktiveringslänken skickas i välkomstmejlet
+          som /activate?token=... och har 72h TTL. */}
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/auth/verify" element={<VerifyPage />} />
+      <Route path="/activate" element={<ActivatePage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       {/* Skyddade routes — allt innanför kräver aktiv session */}
       <Route

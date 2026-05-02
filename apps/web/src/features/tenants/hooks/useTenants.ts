@@ -1,5 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchTenants, fetchTenant, updateTenant } from '../api/tenants.api'
+import {
+  fetchActivationStatus,
+  fetchTenants,
+  fetchTenant,
+  resendActivation,
+  updateTenant,
+} from '../api/tenants.api'
 import type { UpdateTenantInput } from '../api/tenants.api'
 
 // Disjunkta query-nycklar så list-invalidering inte träffar detalj-queries.
@@ -38,6 +44,28 @@ export function useUpdateTenant() {
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: tenantQueryKeys.allLists() })
       void queryClient.invalidateQueries({ queryKey: TENANT_DETAIL(variables.id) })
+    },
+  })
+}
+
+// ── Portal-aktivering ───────────────────────────────────────────────────────
+
+const ACTIVATION_STATUS = (tenantId: string) => ['tenant', 'activation-status', tenantId] as const
+
+export function useTenantActivationStatus(tenantId: string | null) {
+  return useQuery({
+    queryKey: tenantId ? ACTIVATION_STATUS(tenantId) : ['tenant', 'activation-status', '__none__'],
+    queryFn: () => fetchActivationStatus(tenantId!),
+    enabled: !!tenantId,
+  })
+}
+
+export function useResendActivation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (tenantId: string) => resendActivation(tenantId),
+    onSuccess: (_data, tenantId) => {
+      void queryClient.invalidateQueries({ queryKey: ACTIVATION_STATUS(tenantId) })
     },
   })
 }

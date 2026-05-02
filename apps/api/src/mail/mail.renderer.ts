@@ -8,6 +8,7 @@ import { InvoiceCreated } from './templates/invoices/InvoiceCreated'
 import { InvoiceReminder } from './templates/invoices/InvoiceReminder'
 import { InvoiceOverdue } from './templates/invoices/InvoiceOverdue'
 import { TenantWelcome } from './templates/tenants/TenantWelcome'
+import { TenantWelcomeWithContract } from './templates/tenants/TenantWelcomeWithContract'
 import { TenantInvite } from './templates/tenants/TenantInvite'
 import { RentIncreaseNotice } from './templates/tenants/RentIncreaseNotice'
 import { MaintenanceUpdate } from './templates/notifications/MaintenanceUpdate'
@@ -24,6 +25,7 @@ const TEMPLATE_REGISTRY: Record<TemplateName, TemplateComponent> = {
   'invoice-reminder': InvoiceReminder as TemplateComponent,
   'invoice-overdue': InvoiceOverdue as TemplateComponent,
   'tenant-welcome': TenantWelcome as TemplateComponent,
+  'tenant-welcome-with-contract': TenantWelcomeWithContract as TemplateComponent,
   'tenant-invite': TenantInvite as TemplateComponent,
   'rent-increase-notice': RentIncreaseNotice as TemplateComponent,
   'maintenance-update': MaintenanceUpdate as TemplateComponent,

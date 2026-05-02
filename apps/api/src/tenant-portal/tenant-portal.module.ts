@@ -5,12 +5,15 @@ import { PrismaModule } from '../common/prisma/prisma.module'
 import { TenantAuthService } from './tenant-auth.service'
 import { TenantAuthGuard } from './tenant-auth.guard'
 import { TenantPortalService } from './tenant-portal.service'
-import { TenantAuthController } from './tenant-portal.controller'
-import { TenantPortalController } from './tenant-portal.controller'
+import {
+  TenantAuthController,
+  TenantPortalController,
+  TenantPortalAdminController,
+} from './tenant-portal.controller'
 
 @Module({
   imports: [MaintenanceModule, NotificationsModule, PrismaModule],
-  controllers: [TenantAuthController, TenantPortalController],
+  controllers: [TenantAuthController, TenantPortalController, TenantPortalAdminController],
   providers: [TenantAuthService, TenantAuthGuard, TenantPortalService],
   exports: [TenantAuthService],
 })

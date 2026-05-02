@@ -109,6 +109,15 @@ export interface SendTenantWelcomeOptions {
   idempotencyKey?: string
 }
 
+export interface SendTenantWelcomeWithContractOptions {
+  to: string
+  tenantName: string
+  organizationName: string
+  activationUrl: string
+  validForHours?: number
+  idempotencyKey?: string
+}
+
 export interface SendInvoiceReminderOptions {
   to: string
   tenantName: string
@@ -224,6 +233,24 @@ export class MailService {
       {
         to: opts.to,
         subject: `Välkommen som hyresgäst hos ${opts.organizationName}`,
+        idempotencyKey: opts.idempotencyKey,
+      },
+    )
+  }
+
+  async sendTenantWelcomeWithContract(opts: SendTenantWelcomeWithContractOptions): Promise<string> {
+    return this.enqueueTyped(
+      'tenant-welcome-with-contract',
+      'high',
+      {
+        tenantName: opts.tenantName,
+        organizationName: opts.organizationName,
+        activationUrl: opts.activationUrl,
+        ...(opts.validForHours !== undefined ? { validForHours: opts.validForHours } : {}),
+      },
+      {
+        to: opts.to,
+        subject: `Välkommen till ${opts.organizationName} — signera ditt kontrakt`,
         idempotencyKey: opts.idempotencyKey,
       },
     )

@@ -22,7 +22,12 @@ import { DataTable } from '@/components/ui/DataTable'
 import { Badge, InvoiceStatusBadge, LeaseStatusBadge } from '@/components/ui/Badge'
 import { StatCard } from '@/components/ui/StatCard'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { useTenants, useTenant } from './hooks/useTenants'
+import {
+  useTenants,
+  useTenant,
+  useTenantActivationStatus,
+  useResendActivation,
+} from './hooks/useTenants'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { Tenant } from '@eken/shared'
 import type { TenantWithCount, TenantDetail, LeaseWithUnit } from './api/tenants.api'
@@ -137,6 +142,20 @@ export function TenantsPage() {
       header: 'Fakturor',
       align: 'center' as const,
       cell: (t: TenantWithCount) => <Badge variant="default">{t._count?.invoices ?? 0}</Badge>,
+    },
+    {
+      key: 'portal',
+      header: 'Portal',
+      cell: (t: TenantWithCount) =>
+        t.portalActivated ? (
+          <Badge variant="success" dot>
+            Aktiverad
+          </Badge>
+        ) : (
+          <Badge variant="ghost" dot>
+            Ej aktiverad
+          </Badge>
+        ),
     },
     {
       key: 'contact',
@@ -286,6 +305,9 @@ interface DetailPanelProps {
 function DetailPanel({ selected, selectedTenant }: DetailPanelProps) {
   return (
     <div className="space-y-5">
+      {/* Portal-aktivering */}
+      <PortalActivationCard tenantId={selected.id} />
+
       {/* Kontaktinfo */}
       <div>
         <p className="mb-3 text-[13px] font-semibold text-gray-700">Kontaktuppgifter</p>
@@ -401,6 +423,87 @@ function InfoRow({
       <div>
         <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">{label}</p>
         <p className="mt-0.5 text-[13px] text-gray-800">{value}</p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Portal Activation ────────────────────────────────────────────────────────
+
+function PortalActivationCard({ tenantId }: { tenantId: string }) {
+  const { data: status, isLoading } = useTenantActivationStatus(tenantId)
+  const resend = useResendActivation()
+  const [feedback, setFeedback] = useState<'idle' | 'sent' | 'error'>('idle')
+
+  function handleResend() {
+    setFeedback('idle')
+    resend.mutate(tenantId, {
+      onSuccess: () => setFeedback('sent'),
+      onError: () => setFeedback('error'),
+    })
+  }
+
+  return (
+    <div>
+      <p className="mb-3 text-[13px] font-semibold text-gray-700">Hyresgästportal</p>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 p-4">
+        <div className="flex flex-col gap-1">
+          {isLoading ? (
+            <span className="text-[12.5px] text-gray-400">Laddar status…</span>
+          ) : status?.portalActivated ? (
+            <>
+              <Badge variant="success" dot>
+                Portal aktiverad
+              </Badge>
+              {status.portalActivatedAt && (
+                <span className="text-[11.5px] text-gray-400">
+                  Aktiverad {formatDate(status.portalActivatedAt)}
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              <Badge variant="ghost" dot>
+                Ej aktiverad
+              </Badge>
+              {status?.hasPendingActivationLink ? (
+                <span className="text-[11.5px] text-gray-400">
+                  Aktiveringslänk skickad
+                  {status.activationTokenExpiresAt
+                    ? ` · går ut ${formatDate(status.activationTokenExpiresAt)}`
+                    : ''}
+                </span>
+              ) : (
+                <span className="text-[11.5px] text-gray-400">
+                  Hyresgästen har inte aktiverat sitt konto än.
+                </span>
+              )}
+            </>
+          )}
+        </div>
+
+        {!status?.portalActivated && (
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resend.isPending}
+              className={cn(
+                'h-9 rounded-lg border border-[#DDDFE4] bg-white px-4 text-[13.5px] font-medium text-gray-700 shadow-sm transition-all',
+                'hover:bg-gray-50 active:scale-[0.97]',
+                resend.isPending && 'cursor-not-allowed opacity-60',
+              )}
+            >
+              {resend.isPending ? 'Skickar…' : 'Skicka aktiveringslänk igen'}
+            </button>
+            {feedback === 'sent' && (
+              <span className="text-[11.5px] text-emerald-600">Mejl skickat</span>
+            )}
+            {feedback === 'error' && (
+              <span className="text-[11.5px] text-red-600">Det gick inte att skicka mejlet</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

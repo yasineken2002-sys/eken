@@ -1,7 +1,8 @@
 import axios from 'axios'
 import { useSessionStore } from '@/store/session.store'
 import type {
-  MagicLinkRequestResult,
+  PortalActivationInfo,
+  PortalAuthResult,
   PortalDashboard,
   PortalDocument,
   PortalInvoice,
@@ -9,7 +10,6 @@ import type {
   PortalMaintenanceTicket,
   PortalNews,
   PortalNotice,
-  PortalVerifyResult,
 } from '@/types/portal.types'
 
 const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/v1` : '/api'
@@ -44,11 +44,23 @@ async function post<T>(url: string, body?: unknown): Promise<T> {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-export const requestMagicLink = (email: string) =>
-  post<MagicLinkRequestResult>('/portal/auth/magic-link', { email })
+export const fetchActivationInfo = (token: string) =>
+  get<PortalActivationInfo>(`/tenant-portal/activation/${encodeURIComponent(token)}`)
 
-export const verifyMagicLink = (token: string) =>
-  get<PortalVerifyResult>(`/portal/auth/verify?token=${encodeURIComponent(token)}`)
+export const activateAccount = (payload: { token: string; password: string }) =>
+  post<PortalAuthResult>('/tenant-portal/activate', payload)
+
+export const loginWithPassword = (payload: { email: string; password: string }) =>
+  post<PortalAuthResult>('/tenant-portal/login', payload)
+
+export const requestForgotPassword = (email: string) =>
+  post<{ message: string }>('/tenant-portal/forgot-password', { email })
+
+export const resetPassword = (payload: { token: string; password: string }) =>
+  post<PortalAuthResult>('/tenant-portal/reset-password', payload)
+
+export const logoutSession = (sessionToken: string) =>
+  post<null>('/tenant-portal/logout', { sessionToken })
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 

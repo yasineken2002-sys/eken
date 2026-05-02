@@ -1,4 +1,4 @@
-import { get, patch } from '@/lib/api'
+import { get, patch, post } from '@/lib/api'
 import type { Tenant, Invoice, Lease, Unit, Property } from '@eken/shared'
 
 export type LeaseWithUnit = Lease & {
@@ -51,4 +51,23 @@ export function fetchTenant(id: string): Promise<TenantDetail> {
 
 export function updateTenant(id: string, dto: UpdateTenantInput): Promise<Tenant> {
   return patch<Tenant>(`/tenants/${id}`, flattenUpdate(dto))
+}
+
+// ── Portal-aktivering (admin) ────────────────────────────────────────────────
+
+export interface TenantActivationStatus {
+  tenantId: string
+  email: string
+  portalActivated: boolean
+  portalActivatedAt: string | null
+  activationTokenExpiresAt: string | null
+  hasPendingActivationLink: boolean
+}
+
+export function fetchActivationStatus(tenantId: string): Promise<TenantActivationStatus> {
+  return get<TenantActivationStatus>(`/tenant-portal/admin/activation-status/${tenantId}`)
+}
+
+export function resendActivation(tenantId: string): Promise<{ message: string }> {
+  return post<{ message: string }>(`/tenant-portal/admin/resend-activation/${tenantId}`)
 }

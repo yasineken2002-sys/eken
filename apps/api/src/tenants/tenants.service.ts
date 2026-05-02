@@ -1,10 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
-import * as crypto from 'crypto'
 import { Prisma } from '@prisma/client'
 import type { Tenant, Lease } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
-import { MailService } from '../mail/mail.service'
 import { CreateTenantDto } from './dto/create-tenant.dto'
 import { UpdateTenantDto } from './dto/update-tenant.dto'
 
@@ -25,11 +22,7 @@ function mapTenant<T extends Pick<Tenant, 'street' | 'city' | 'postalCode'>>(
 
 @Injectable()
 export class TenantsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly mail: MailService,
-    private readonly config: ConfigService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async findAll(organizationId: string, search?: string) {
     const tenants = await this.prisma.tenant.findMany({
@@ -170,69 +163,9 @@ export class TenantsService {
       throw err
     }
 
-    // Bjud in efter att transaktionen committat. Felar mejlet ska tenant + lease
-    // ändå vara skapade.
-    if (result.tenant.email) {
-      void this.sendInvitationEmail(result.tenant, organizationId).catch((err) =>
-        console.error('[tenants] invitation email failed', String(err)),
-      )
-    }
-
+    // Tenant skapas utan portalkonto — välkomstmejl med aktiveringslänk
+    // skickas först när det första kontraktet aktiveras (lease → ACTIVE).
     return mapTenant(result.tenant)
-  }
-
-  // Publik så LeasesService kan anropa samma flöde när en hyresgäst skapas
-  // som del av ett kontrakt (createWithTenant). Måste köras EFTER transaktionen
-  // committat så att en eventuell mejlfel inte rullar tillbaka skapandet.
-  async sendInvitationEmail(tenant: Tenant, organizationId: string): Promise<void> {
-    const org = await this.prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: { name: true },
-    })
-    if (!org) return
-
-    const token = crypto.randomBytes(32).toString('hex')
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-
-    await this.prisma.tenantMagicLink.create({
-      data: { tenantId: tenant.id, token, expiresAt },
-    })
-
-    const portalUrl = this.config.get<string>('PORTAL_URL') ?? 'http://localhost:5174'
-    const magicUrl = `${portalUrl}/auth/verify?token=${token}`
-    const tenantName = tenant.firstName
-      ? `${tenant.firstName} ${tenant.lastName ?? ''}`.trim()
-      : (tenant.companyName ?? tenant.email)
-
-    await this.mail
-      .sendCustomEmail({
-        to: tenant.email,
-        subject: 'Du är inbjuden till din hyresgästportal',
-        tenantName,
-        organizationName: org.name,
-        bodyHtml: `
-        <h2 style="color:#1a6b3c;margin:0 0 16px">Välkommen till hyresgästportalen</h2>
-        <p>Hej ${tenantName},</p>
-        <p>Din hyresvärd <strong>${org.name}</strong> har skapat ett konto åt dig i hyresgästportalen Eveno.</p>
-        <a href="${magicUrl}"
-           style="display:inline-block;background:#1a6b3c;color:white;
-                  padding:12px 24px;border-radius:6px;text-decoration:none;
-                  font-weight:bold;margin:16px 0">
-          Logga in på portalen →
-        </a>
-        <p style="color:#555;margin-top:16px">I portalen kan du:</p>
-        <ul style="color:#555;line-height:1.8">
-          <li>Se dina hyresavier och fakturor</li>
-          <li>Anmäla fel i lägenheten</li>
-          <li>Läsa nyheter från din hyresvärd</li>
-          <li>Se ditt hyreskontrakt</li>
-        </ul>
-        <p style="color:#999;font-size:12px;margin-top:16px">
-          Länken är giltig i 7 dagar och kan bara användas en gång.
-        </p>
-      `,
-      })
-      .catch((err: unknown) => console.warn('[tenants] invitation mail send failed', String(err)))
   }
 
   async update(id: string, dto: UpdateTenantDto, organizationId: string) {

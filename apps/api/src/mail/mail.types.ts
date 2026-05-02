@@ -4,6 +4,7 @@ import type { InvoiceCreatedProps } from './templates/invoices/InvoiceCreated'
 import type { InvoiceReminderProps } from './templates/invoices/InvoiceReminder'
 import type { InvoiceOverdueProps } from './templates/invoices/InvoiceOverdue'
 import type { TenantWelcomeProps } from './templates/tenants/TenantWelcome'
+import type { TenantWelcomeWithContractProps } from './templates/tenants/TenantWelcomeWithContract'
 import type { TenantInviteProps } from './templates/tenants/TenantInvite'
 import type { RentIncreaseNoticeProps } from './templates/tenants/RentIncreaseNotice'
 import type { MaintenanceUpdateProps } from './templates/notifications/MaintenanceUpdate'
@@ -16,6 +17,7 @@ export const TEMPLATE_NAMES = [
   'invoice-reminder',
   'invoice-overdue',
   'tenant-welcome',
+  'tenant-welcome-with-contract',
   'tenant-invite',
   'rent-increase-notice',
   'maintenance-update',
@@ -32,6 +34,7 @@ export interface TemplatePropsMap {
   'invoice-reminder': InvoiceReminderProps
   'invoice-overdue': InvoiceOverdueProps
   'tenant-welcome': TenantWelcomeProps
+  'tenant-welcome-with-contract': TenantWelcomeWithContractProps
   'tenant-invite': TenantInviteProps
   'rent-increase-notice': RentIncreaseNoticeProps
   'maintenance-update': MaintenanceUpdateProps

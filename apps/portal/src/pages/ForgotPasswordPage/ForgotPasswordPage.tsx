@@ -1,38 +1,46 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
-import { loginWithPassword } from '@/api/portal.api'
-import { useSessionStore } from '@/store/session.store'
-import styles from './LoginPage.module.css'
+import { requestForgotPassword } from '@/api/portal.api'
+import styles from '../LoginPage/LoginPage.module.css'
 
-export function LoginPage() {
-  const navigate = useNavigate()
-  const setSession = useSessionStore((s) => s.setSession)
+type State = 'idle' | 'sent'
+
+export function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [state, setState] = useState<State>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
   const mutation = useMutation({
-    mutationFn: () => loginWithPassword({ email: email.trim(), password }),
-    onSuccess: (result) => {
-      setSession(result.sessionToken, result.tenant, result.expiresAt)
-      navigate('/dashboard', { replace: true })
-    },
-    onError: (err: unknown) => {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 401) {
-        setErrorMsg('Felaktig e-post eller lösenord.')
-      } else {
-        setErrorMsg('Något gick fel. Försök igen.')
-      }
-    },
+    mutationFn: (em: string) => requestForgotPassword(em),
+    onSuccess: () => setState('sent'),
+    onError: () => setErrorMsg('Något gick fel. Försök igen om en stund.'),
   })
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!email.trim() || !password) return
+    if (!email.trim()) return
     setErrorMsg('')
-    mutation.mutate()
+    mutation.mutate(email.trim())
+  }
+
+  if (state === 'sent') {
+    return (
+      <div className={styles.page}>
+        <div className={styles.card}>
+          <div className={styles.successIcon}>📧</div>
+          <h1 className={styles.title}>Mejl skickat</h1>
+          <p className={styles.subtitle}>
+            Om ett konto finns för <strong>{email}</strong> har vi skickat instruktioner för att
+            återställa lösenordet. Länken är giltig i 24 timmar.
+          </p>
+          <p className={styles.smallHint}>Inget mail? Kontrollera skräpposten.</p>
+          <Link to="/login" className={styles.linkBtn}>
+            Tillbaka till inloggningen
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -46,8 +54,10 @@ export function LoginPage() {
           </div>
         </div>
 
-        <h1 className={styles.title}>Logga in</h1>
-        <p className={styles.subtitle}>Logga in med din e-post och ditt lösenord.</p>
+        <h1 className={styles.title}>Glömt lösenord</h1>
+        <p className={styles.subtitle}>
+          Ange din e-postadress så skickar vi en länk för att återställa lösenordet.
+        </p>
 
         <form onSubmit={handleSubmit} className={styles.form}>
           <label className={styles.label} htmlFor="email">
@@ -65,48 +75,34 @@ export function LoginPage() {
             disabled={mutation.isPending}
           />
 
-          <label className={styles.label} htmlFor="password" style={{ marginTop: 12 }}>
-            Lösenord
-          </label>
-          <input
-            id="password"
-            type="password"
-            className={styles.input}
-            placeholder="Ditt lösenord"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            disabled={mutation.isPending}
-          />
-
           {errorMsg && <p className={styles.errorMsg}>{errorMsg}</p>}
 
           <button
             type="submit"
             className={styles.submitBtn}
-            disabled={mutation.isPending || !email.trim() || !password}
+            disabled={mutation.isPending || !email.trim()}
           >
             {mutation.isPending ? (
               <>
                 <span className={styles.btnSpinner} />
-                Loggar in...
+                Skickar...
               </>
             ) : (
-              'Logga in'
+              'Skicka återställningslänk'
             )}
           </button>
         </form>
 
         <div style={{ marginTop: 16, textAlign: 'center' }}>
           <Link
-            to="/forgot-password"
+            to="/login"
             style={{
               fontSize: 13,
               color: 'var(--color-text-muted)',
               textDecoration: 'underline',
             }}
           >
-            Glömt lösenord?
+            Tillbaka till inloggningen
           </Link>
         </div>
       </div>

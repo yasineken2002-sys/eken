@@ -539,6 +539,17 @@ model Tenant {
 
   ocrNumber String? @unique
 
+  // ─── Portal-aktivering & lösenordsautentisering ─────────────────────────────
+  // portalActivated sätts när hyresgästen genomfört aktiveringsflödet
+  // (signerat kontraktet och valt lösenord). passwordHash = bcryptjs (12 rounds).
+  // activationToken används både för första aktivering (skickas vid kontrakts-
+  // signering) och vid återställning av glömt lösenord. unique för enkel lookup.
+  portalActivated         Boolean   @default(false)
+  portalActivatedAt       DateTime?
+  passwordHash            String?
+  activationToken         String?   @unique
+  activationTokenExpiresAt DateTime?
+
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   leases             Lease[]
   invoices           Invoice[]

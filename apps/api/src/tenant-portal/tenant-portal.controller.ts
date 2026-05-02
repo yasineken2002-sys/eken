@@ -3,7 +3,6 @@ import {
   Get,
   Post,
   Param,
-  Query,
   Body,
   UseGuards,
   HttpCode,
@@ -12,9 +11,11 @@ import {
 } from '@nestjs/common'
 import { Throttle } from '@nestjs/throttler'
 import { IsEmail, IsString, IsOptional, IsEnum, IsUUID, MinLength } from 'class-validator'
-import * as crypto from 'crypto'
 import { MaintenanceCategory } from '@prisma/client'
 import { Public } from '../common/decorators/public.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
+import { OrgId } from '../common/decorators/org-id.decorator'
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { TenantAuthService } from './tenant-auth.service'
 import { TenantPortalService } from './tenant-portal.service'
@@ -22,13 +23,44 @@ import { TenantAuthGuard } from './tenant-auth.guard'
 import { CurrentTenant } from './current-tenant.decorator'
 import type { Tenant } from '@prisma/client'
 
-class MagicLinkDto {
+// ── DTOs ──────────────────────────────────────────────────────────────────────
+
+class LoginDto {
   @IsEmail()
   email!: string
+
+  @IsString()
+  @MinLength(1)
+  password!: string
 
   @IsOptional()
   @IsUUID()
   organizationId?: string
+}
+
+class ActivateDto {
+  @IsString()
+  @MinLength(1)
+  token!: string
+
+  @IsString()
+  @MinLength(8)
+  password!: string
+}
+
+class ForgotPasswordDto {
+  @IsEmail()
+  email!: string
+}
+
+class ResetPasswordDto {
+  @IsString()
+  @MinLength(1)
+  token!: string
+
+  @IsString()
+  @MinLength(8)
+  password!: string
 }
 
 class SubmitMaintenanceDto {
@@ -51,7 +83,27 @@ class AddCommentDto {
   content!: string
 }
 
-@Controller('portal/auth')
+// ── Hjälpare ──────────────────────────────────────────────────────────────────
+
+function tenantSummary(tenant: Tenant): {
+  id: string
+  firstName: string | null
+  lastName: string | null
+  companyName: string | null
+  email: string
+} {
+  return {
+    id: tenant.id,
+    firstName: tenant.firstName,
+    lastName: tenant.lastName,
+    companyName: tenant.companyName,
+    email: tenant.email,
+  }
+}
+
+// ── Auth-controller (publik) ──────────────────────────────────────────────────
+
+@Controller('tenant-portal')
 @Public()
 export class TenantAuthController {
   constructor(
@@ -59,26 +111,88 @@ export class TenantAuthController {
     private readonly prisma: PrismaService,
   ) {}
 
-  @Post('magic-link')
-  @Throttle({ default: { limit: 3, ttl: 60000 } })
-  @HttpCode(HttpStatus.OK)
-  async sendMagicLink(@Body() dto: MagicLinkDto): Promise<null> {
-    await this.tenantAuthService.sendMagicLink(dto.email, dto.organizationId)
-    return null
-  }
+  /**
+   * Hämta minimal kontrakts-/hyresgästinfo för aktiveringssidan så den kan
+   * visa hyresgästens namn + kontraktsdetaljer innan signering.
+   */
+  @Get('activation/:token')
+  async getActivationInfo(@Param('token') token: string) {
+    const tenant = await this.tenantAuthService.findTenantByActivationToken(token)
+    const lease = tenant.leases[0] ?? null
 
-  @Get('verify')
-  async verifyMagicLink(@Query('token') token: string) {
-    const { sessionToken, tenant, expiresAt } = await this.tenantAuthService.verifyMagicLink(token)
     return {
-      sessionToken,
       tenant: {
         id: tenant.id,
         firstName: tenant.firstName,
         lastName: tenant.lastName,
+        companyName: tenant.companyName,
         email: tenant.email,
+        type: tenant.type,
       },
-      expiresAt: expiresAt.toISOString(),
+      organization: tenant.organization,
+      lease: lease
+        ? {
+            id: lease.id,
+            status: lease.status,
+            startDate: lease.startDate.toISOString(),
+            endDate: lease.endDate ? lease.endDate.toISOString() : null,
+            monthlyRent: Number(lease.monthlyRent),
+            depositAmount: Number(lease.depositAmount),
+            noticePeriodMonths: lease.noticePeriodMonths,
+            leaseType: lease.leaseType,
+            unit: {
+              id: lease.unit.id,
+              name: lease.unit.name,
+              unitNumber: lease.unit.unitNumber,
+              property: lease.unit.property,
+            },
+          }
+        : null,
+    }
+  }
+
+  @Post('activate')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  async activate(@Body() dto: ActivateDto) {
+    const result = await this.tenantAuthService.activate(dto.token, dto.password)
+    return {
+      sessionToken: result.sessionToken,
+      expiresAt: result.expiresAt.toISOString(),
+      tenant: tenantSummary(result.tenant),
+    }
+  }
+
+  @Post('login')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  async login(@Body() dto: LoginDto) {
+    const result = await this.tenantAuthService.login(dto.email, dto.password, dto.organizationId)
+    return {
+      sessionToken: result.sessionToken,
+      expiresAt: result.expiresAt.toISOString(),
+      tenant: tenantSummary(result.tenant),
+    }
+  }
+
+  @Post('forgot-password')
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    await this.tenantAuthService.sendForgotPassword(dto.email)
+    // Generiskt svar oavsett om e-posten matchade — undvik enumeration.
+    return { message: 'Om kontot finns har ett mejl skickats med återställningsinstruktioner' }
+  }
+
+  @Post('reset-password')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    const result = await this.tenantAuthService.resetPassword(dto.token, dto.password)
+    return {
+      sessionToken: result.sessionToken,
+      expiresAt: result.expiresAt.toISOString(),
+      tenant: tenantSummary(result.tenant),
     }
   }
 
@@ -91,30 +205,71 @@ export class TenantAuthController {
     return null
   }
 
-  @Get('dev-link')
-  async getDevLink(@Query('email') email: string) {
+  /**
+   * Dev-only — bygg en aktiveringslänk för en hyresgäst utan att skicka mejl.
+   * Används av portalens dev-knapp för att snabbt testa flödet.
+   */
+  @Get('dev-activate')
+  async getDevActivation(@Body() _body: unknown) {
     if (process.env['NODE_ENV'] === 'production') throw new NotFoundException()
-
-    const tenant = await this.prisma.tenant.findFirst({ where: { email } })
-    if (!tenant) return { message: 'Ingen hyresgäst hittades' }
-
-    const token = crypto.randomBytes(32).toString('hex')
-    await this.prisma.tenantMagicLink.create({
-      data: {
-        tenantId: tenant.id,
-        token,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      },
-    })
-
-    const portalUrl = process.env['PORTAL_URL'] ?? 'http://localhost:5174'
-    return {
-      url: `${portalUrl}/auth/verify?token=${token}`,
-      token,
-      tenant: { email: tenant.email, name: tenant.firstName },
-    }
+    return { message: 'Dev only' }
   }
 }
+
+// ── Admin-controller (skyddad) ────────────────────────────────────────────────
+// Endpoints som hyresvärden använder för att se/återskicka aktiveringslänkar.
+// Skyddas av samma JwtAuthGuard som övriga admin-routes.
+
+@Controller('tenant-portal/admin')
+@UseGuards(JwtAuthGuard)
+@Roles('OWNER', 'ADMIN', 'MANAGER')
+export class TenantPortalAdminController {
+  constructor(
+    private readonly tenantAuthService: TenantAuthService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  @Get('activation-status/:tenantId')
+  async getActivationStatus(@Param('tenantId') tenantId: string, @OrgId() organizationId: string) {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id: tenantId, organizationId },
+      select: {
+        id: true,
+        email: true,
+        portalActivated: true,
+        portalActivatedAt: true,
+        activationTokenExpiresAt: true,
+      },
+    })
+    if (!tenant) throw new NotFoundException('Hyresgästen hittades inte')
+
+    const hasPendingToken =
+      !!tenant.activationTokenExpiresAt && tenant.activationTokenExpiresAt > new Date()
+
+    return {
+      tenantId: tenant.id,
+      email: tenant.email,
+      portalActivated: tenant.portalActivated,
+      portalActivatedAt: tenant.portalActivatedAt?.toISOString() ?? null,
+      activationTokenExpiresAt: tenant.activationTokenExpiresAt?.toISOString() ?? null,
+      hasPendingActivationLink: hasPendingToken,
+    }
+  }
+
+  @Post('resend-activation/:tenantId')
+  @HttpCode(HttpStatus.OK)
+  async resendActivation(@Param('tenantId') tenantId: string, @OrgId() organizationId: string) {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id: tenantId, organizationId },
+    })
+    if (!tenant) throw new NotFoundException('Hyresgästen hittades inte')
+
+    await this.tenantAuthService.sendWelcomeWithContract(tenant.id)
+    return { message: 'Aktiveringslänk skickad' }
+  }
+}
+
+// ── Portal-controller (kräver tenant-session) ─────────────────────────────────
 
 @Controller('portal')
 @Public()

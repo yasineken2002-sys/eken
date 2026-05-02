@@ -108,12 +108,43 @@ export interface PortalDocument {
   createdAt: string
 }
 
-export interface MagicLinkRequestResult {
-  message: string
-}
-
-export interface PortalVerifyResult {
+export interface PortalAuthResult {
   sessionToken: string
   tenant: PortalTenant
   expiresAt: string
+}
+
+export interface PortalActivationInfo {
+  tenant: {
+    id: string
+    type: 'INDIVIDUAL' | 'COMPANY'
+    firstName: string | null
+    lastName: string | null
+    companyName: string | null
+    email: string
+  }
+  organization: { id: string; name: string }
+  lease: PortalActivationLease | null
+}
+
+export interface PortalActivationLease {
+  id: string
+  status: 'DRAFT' | 'ACTIVE' | 'TERMINATED' | 'EXPIRED'
+  startDate: string
+  endDate: string | null
+  monthlyRent: number
+  depositAmount: number
+  noticePeriodMonths: number
+  leaseType: 'FIXED_TERM' | 'INDEFINITE'
+  unit: {
+    id: string
+    name: string
+    unitNumber: string
+    property: {
+      name: string
+      street: string
+      city: string
+      postalCode: string
+    }
+  }
 }

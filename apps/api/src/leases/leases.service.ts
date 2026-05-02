@@ -6,7 +6,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { DepositsService } from '../deposits/deposits.service'
 import { RentIncreasesService } from '../rent-increases/rent-increases.service'
-import { TenantsService } from '../tenants/tenants.service'
+import { TenantAuthService } from '../tenant-portal/tenant-auth.service'
 import { CreateLeaseDto } from './dto/create-lease.dto'
 import { UpdateLeaseDto } from './dto/update-lease.dto'
 import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
@@ -62,7 +62,7 @@ export class LeasesService {
     private readonly notifications: NotificationsService,
     private readonly deposits: DepositsService,
     private readonly rentIncreases: RentIncreasesService,
-    private readonly tenants: TenantsService,
+    private readonly tenantAuth: TenantAuthService,
   ) {}
 
   async findAll(organizationId: string) {
@@ -173,9 +173,10 @@ export class LeasesService {
       }
     }
 
+    let updated
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        const updated = await tx.lease.update({
+      updated = await this.prisma.$transaction(async (tx) => {
+        const result = await tx.lease.update({
           where: { id },
           data: {
             status: newStatus,
@@ -198,7 +199,7 @@ export class LeasesService {
           }
         }
 
-        return updated
+        return result
       })
     } catch (err) {
       if (isActiveUnitConflict(err)) {
@@ -206,6 +207,19 @@ export class LeasesService {
       }
       throw err
     }
+
+    // När ett kontrakt blir ACTIVE skickas välkomstmejl med aktiveringslänk
+    // till hyresgästen så de kan signera kontraktet och välja eget lösenord.
+    // Fire-and-forget: ett mejlfel ska inte rulla tillbaka aktiveringen.
+    if (newStatus === 'ACTIVE') {
+      void this.tenantAuth
+        .sendWelcomeWithContract(lease.tenantId)
+        .catch((err) =>
+          this.logger.error(`[Leases] welcome-with-contract mail failed: ${String(err)}`),
+        )
+    }
+
+    return updated
   }
 
   async createWithTenant(dto: CreateLeaseWithTenantDto, organizationId: string) {
@@ -256,8 +270,6 @@ export class LeasesService {
       )
     }
 
-    let createdTenantId: string | null = null
-
     let lease
     try {
       lease = await this.prisma.$transaction(async (tx) => {
@@ -303,7 +315,6 @@ export class LeasesService {
             },
           })
           tenantId = created.id
-          createdTenantId = created.id
         } else {
           throw new BadRequestException(
             'Ange antingen en befintlig hyresgäst eller uppgifter för en ny',
@@ -350,17 +361,8 @@ export class LeasesService {
       throw err
     }
 
-    // Skicka portalinbjudan EFTER transaktionen — fire-and-forget så att
-    // ett mejlfel inte rullar tillbaka kontraktsskapandet.
-    if (createdTenantId) {
-      const newTenant = await this.prisma.tenant.findUnique({ where: { id: createdTenantId } })
-      if (newTenant) {
-        void this.tenants
-          .sendInvitationEmail(newTenant, organizationId)
-          .catch((err) => this.logger.error(`[Leases] invitation email failed: ${String(err)}`))
-      }
-    }
-
+    // Inget portalmejl skickas vid kontraktsskapande — välkomstmejlet med
+    // aktiveringslänk skickas när kontraktet aktiveras (DRAFT → ACTIVE).
     return lease
   }
 

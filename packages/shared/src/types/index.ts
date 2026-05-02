@@ -156,6 +156,10 @@ export interface Tenant {
   email: string
   phone?: string
   address?: Address
+  // Portal-aktivering — sätts när hyresgästen aktiverat sitt konto via
+  // välkomstmejlets aktiveringslänk och valt eget lösenord.
+  portalActivated?: boolean
+  portalActivatedAt?: string | null
   createdAt: string
   updatedAt: string
 }
