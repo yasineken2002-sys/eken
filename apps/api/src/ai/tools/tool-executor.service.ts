@@ -15,7 +15,80 @@ import { AviseringService } from '../../avisering/avisering.service'
 import { InspectionsService } from '../../inspections/inspections.service'
 import { MaintenancePlanService } from '../../maintenance-plan/maintenance-plan.service'
 import { StorageService } from '../../storage/storage.service'
+import { AiAuditService } from '../audit/ai-audit.service'
 import { ACTION_TOOLS } from './ai-tools.definition'
+
+// ─── Säker fält-whitelisting för AI-svar ─────────────────────────────────────
+// AI:n får ALDRIG se personnummer, lösenordshashar, aktiveringstokens eller
+// andra känsliga fält. Vi använder två lager:
+//
+//   1. Whitelist via pickSafeTenantFields (primär — för Tenant-objekt).
+//      InvoicesService selectar redan customer-fält säkert, så ingen
+//      separat customer-helper behövs i tool-executor idag.
+//   2. Rekursiv redact av kända farliga fältnamn (defense-in-depth) som
+//      körs på allt som returneras från executeTool.
+//
+// Om en framtida tool råkar inkludera ett känsligt fält fångas det av
+// redact-lagret även om författaren glömt whitelista.
+
+const SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set([
+  'personalNumber',
+  'passwordHash',
+  'activationToken',
+  'activationTokenExpiresAt',
+  'sessionToken',
+  'refreshToken',
+  'magicLinkToken',
+  'token', // PasswordResetToken / TenantSession / etc.
+  'apiKey',
+])
+
+function redactSensitive<T>(value: T, depth = 0): T {
+  if (depth > 12) return value
+  if (value === null || value === undefined) return value
+  if (Array.isArray(value)) {
+    return value.map((v) => redactSensitive(v, depth + 1)) as unknown as T
+  }
+  if (typeof value === 'object' && !(value instanceof Date) && !(value instanceof Buffer)) {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (SENSITIVE_FIELD_NAMES.has(k)) continue
+      out[k] = redactSensitive(v, depth + 1)
+    }
+    return out as unknown as T
+  }
+  return value
+}
+
+interface UnsafeTenant {
+  id: string
+  type: string
+  firstName?: string | null
+  lastName?: string | null
+  companyName?: string | null
+  email: string
+  phone?: string | null
+  portalActivated?: boolean
+  [extra: string]: unknown
+}
+
+/**
+ * Whitelista de fält av en hyresgäst som är säkra att skicka till AI:n.
+ * Tar EXPLICIT INTE med personalNumber, passwordHash, activationToken etc.
+ */
+function pickSafeTenantFields(t: UnsafeTenant | null | undefined) {
+  if (!t) return null
+  return {
+    id: t.id,
+    type: t.type,
+    firstName: t.firstName ?? null,
+    lastName: t.lastName ?? null,
+    companyName: t.companyName ?? null,
+    email: t.email,
+    phone: t.phone ?? null,
+    portalActivated: t.portalActivated ?? false,
+  }
+}
 
 export interface ToolResult {
   success: boolean
@@ -213,9 +286,67 @@ export class ToolExecutorService {
     private readonly inspectionsService: InspectionsService,
     private readonly maintenancePlanService: MaintenancePlanService,
     private readonly storage: StorageService,
+    private readonly audit: AiAuditService,
   ) {}
 
   async executeTool(
+    toolName: string,
+    toolInput: Record<string, unknown>,
+    organizationId: string,
+    userId: string,
+    userRole: string,
+    auditContext?: { conversationId?: string | null; confirmedAt?: Date | null },
+  ): Promise<ToolResult> {
+    const startedAt = Date.now()
+    let result: ToolResult
+    let thrownError: Error | null = null
+
+    try {
+      result = await this.executeToolUnsafe(toolName, toolInput, organizationId, userId, userRole)
+    } catch (err) {
+      thrownError = err instanceof Error ? err : new Error(String(err))
+      // Logga miss-exekveringen innan vi kastar vidare
+      void this.audit.logToolExecution({
+        organizationId,
+        userId,
+        conversationId: auditContext?.conversationId ?? null,
+        toolName,
+        toolInput,
+        success: false,
+        errorMessage: thrownError.message,
+        durationMs: Date.now() - startedAt,
+        requiredConfirmation: ACTION_TOOLS.has(toolName),
+        confirmedAt: auditContext?.confirmedAt ?? null,
+      })
+      throw thrownError
+    }
+
+    // Defense-in-depth: även om en tool-handler glömt whitelista känsliga
+    // fält rensas de bort här innan svaret går tillbaka till AI:n.
+    if (result.data !== undefined && result.data !== null) {
+      result.data = redactSensitive(result.data)
+    }
+
+    // Audit-logg — fire-and-forget. Misslyckad loggning ska aldrig blockera
+    // det faktiska tool-svaret.
+    void this.audit.logToolExecution({
+      organizationId,
+      userId,
+      conversationId: auditContext?.conversationId ?? null,
+      toolName,
+      toolInput,
+      toolResult: result.data,
+      success: result.success,
+      errorMessage: result.success ? null : result.message,
+      durationMs: Date.now() - startedAt,
+      requiredConfirmation: ACTION_TOOLS.has(toolName),
+      confirmedAt: auditContext?.confirmedAt ?? null,
+    })
+
+    return result
+  }
+
+  private async executeToolUnsafe(
     toolName: string,
     toolInput: Record<string, unknown>,
     organizationId: string,
@@ -349,9 +480,19 @@ export class ToolExecutorService {
         case 'get_tenants': {
           const search = typeof toolInput.search === 'string' ? toolInput.search : undefined
           const tenants = await this.tenantsService.findAll(organizationId, search)
+          // Whitelista — tenantsService.findAll returnerar HELA Tenant-objektet
+          // inkl. personalNumber, passwordHash och activationToken. Skicka
+          // endast säkra fält till AI:n.
+          const safeTenants = tenants.map((t) => {
+            const safe = pickSafeTenantFields(t as UnsafeTenant)
+            // activeLease kommer från leases-include — vi behåller bara
+            // icke-känsliga sammanfattningsfält.
+            const activeLease = (t as { activeLease?: unknown }).activeLease ?? null
+            return { ...safe, activeLease }
+          })
           return {
             success: true,
-            data: tenants,
+            data: safeTenants,
             message: `${tenants.length} hyresgäster hittades`,
           }
         }
@@ -572,7 +713,7 @@ export class ToolExecutorService {
           )
           return {
             success: true,
-            data: updated,
+            data: pickSafeTenantFields(updated as UnsafeTenant),
             message: `${toolInput.tenantName as string} uppdaterad`,
           }
         }
@@ -1492,7 +1633,7 @@ export class ToolExecutorService {
 
           return {
             success: true,
-            data: { tenant, lease },
+            data: { tenant: pickSafeTenantFields(tenant as UnsafeTenant), lease },
             message:
               `Kontrakt skapat!\n\n` +
               `Hyresgäst: ${tenantName}${existing ? ' (befintlig)' : ' (ny)'}\n` +

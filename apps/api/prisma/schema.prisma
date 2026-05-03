@@ -350,6 +350,8 @@ model Organization {
   importJobs         ImportJob[]
   aiConversations    AiConversation[]
   aiMemories         AiMemory[]
+  aiUsageLogs        AiUsageLog[]
+  aiToolExecutions   AiToolExecution[]
   maintenanceTickets MaintenanceTicket[]
   rentNotices        RentNotice[]
   inspections        Inspection[]
@@ -405,6 +407,8 @@ model User {
   importJobs          ImportJob[]
   aiConversations     AiConversation[]
   aiMemories          AiMemory[]
+  aiUsageLogs         AiUsageLog[]
+  aiToolExecutions    AiToolExecution[]
   notifications       Notification[]
   newsPosts           NewsPost[]
   sentMessages        SentMessage[]
@@ -918,6 +922,59 @@ model AiMemory {
 
   @@unique([organizationId, userId, key])
   @@index([organizationId, userId])
+}
+
+// Spårar varje Anthropic-anrop med token-användning och uppskattad kostnad.
+// Används av AiQuotaService för att stoppa orgs som överskrider månads-budget,
+// samt för rapporter över AI-användning.
+model AiUsageLog {
+  id               String   @id @default(uuid())
+  organizationId   String
+  userId           String?
+  // 'chat' | 'stream' | 'analysis' | 'memory' | 'contract-scan' | 'inspection-analyze' | 'daily-insights'
+  endpoint         String
+  model            String
+  inputTokens      Int      @default(0)
+  cacheReadTokens  Int      @default(0)
+  cacheWriteTokens Int      @default(0)
+  outputTokens     Int      @default(0)
+  costUsd          Decimal  @db.Decimal(10, 6)
+  costSek          Decimal  @db.Decimal(10, 4)
+  createdAt        DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+}
+
+// Audit-logg för varje AI-tool-exekvering. Krävs för GDPR och för att kunna
+// utreda vad AI:n faktiskt gjorde i en organisations data.
+//
+// toolInput och toolResult lagras som JSON, men personnummer och
+// organisationsnummer maskeras innan persistens (se ai-audit.service.ts).
+model AiToolExecution {
+  id                   String   @id @default(uuid())
+  organizationId       String
+  userId               String
+  conversationId       String?
+  toolName             String
+  toolInput            Json
+  toolResult           Json?
+  success              Boolean
+  errorMessage         String?
+  durationMs           Int
+  requiredConfirmation Boolean  @default(false)
+  confirmedAt          DateTime?
+  createdAt            DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+  @@index([toolName])
 }
 
 // ─── Notification ─────────────────────────────────────────────────────────────

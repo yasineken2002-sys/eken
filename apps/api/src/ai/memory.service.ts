@@ -1,13 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common'
 import Anthropic from '@anthropic-ai/sdk'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { AiUsageService } from './usage/ai-usage.service'
+
+const MEMORY_MODEL = 'claude-haiku-4-5-20251001'
 
 @Injectable()
 export class MemoryService {
   private readonly logger = new Logger(MemoryService.name)
   private readonly anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] })
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly usage: AiUsageService,
+  ) {}
 
   async getMemories(organizationId: string, userId: string): Promise<string> {
     const memories = await this.prisma.aiMemory.findMany({
@@ -28,7 +34,7 @@ export class MemoryService {
     userId: string,
   ): Promise<void> {
     const response = await this.anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: MEMORY_MODEL,
       max_tokens: 512,
       messages: [
         {
@@ -53,6 +59,16 @@ AI: ${reply}`,
         },
       ],
     })
+
+    void this.usage
+      .logUsage({
+        organizationId,
+        userId,
+        endpoint: 'memory',
+        model: MEMORY_MODEL,
+        usage: response.usage,
+      })
+      .catch((err: unknown) => this.logger.warn('logUsage(memory) failed', err))
 
     const text = response.content[0]?.type === 'text' ? response.content[0].text.trim() : '[]'
 

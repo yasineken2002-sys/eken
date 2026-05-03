@@ -1,6 +1,10 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common'
 import Anthropic from '@anthropic-ai/sdk'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { AiUsageService } from './usage/ai-usage.service'
+import { AiQuotaService } from './usage/ai-quota.service'
+
+const MODEL = 'claude-sonnet-4-6'
 
 export interface PortfolioInsight {
   category: string
@@ -23,12 +27,17 @@ export class PortfolioAnalysisService {
   private readonly logger = new Logger(PortfolioAnalysisService.name)
   private readonly anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] })
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly usage: AiUsageService,
+    private readonly quota: AiQuotaService,
+  ) {}
 
   async analyzePortfolio(
     organizationId: string,
     analysisType: AnalysisType,
   ): Promise<PortfolioAnalysis> {
+    await this.quota.checkQuota(organizationId)
     const now = new Date()
     const twelveMonthsAgo = new Date(now)
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12)
@@ -48,10 +57,19 @@ export class PortfolioAnalysisService {
     const prompt = this.buildPrompt(analysisType, dataContext)
 
     const response = await this.anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: MODEL,
       max_tokens: 2048,
       messages: [{ role: 'user', content: prompt }],
     })
+
+    void this.usage
+      .logUsage({
+        organizationId,
+        endpoint: 'analysis',
+        model: MODEL,
+        usage: response.usage,
+      })
+      .catch((err: unknown) => this.logger.warn('logUsage(analysis) failed', err))
 
     const text = response.content[0]?.type === 'text' ? response.content[0].text.trim() : ''
 

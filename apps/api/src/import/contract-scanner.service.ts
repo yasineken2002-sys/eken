@@ -1,5 +1,9 @@
 import { Injectable, BadRequestException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { AiUsageService } from '../ai/usage/ai-usage.service'
+import { AiQuotaService } from '../ai/usage/ai-quota.service'
+
+const CONTRACT_SCAN_MODEL = 'claude-sonnet-4-5'
 
 export interface ScannedContract {
   tenantName: string | null
@@ -22,13 +26,24 @@ export interface ScannedContract {
 
 @Injectable()
 export class ContractScannerService {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly usage: AiUsageService,
+    private readonly quota: AiQuotaService,
+  ) {}
 
-  async scanContract(fileBuffer: Buffer, mimeType: string): Promise<ScannedContract> {
+  async scanContract(
+    fileBuffer: Buffer,
+    mimeType: string,
+    organizationId: string,
+    userId?: string,
+  ): Promise<ScannedContract> {
     const apiKey = this.config.get<string>('ANTHROPIC_API_KEY')
     if (!apiKey) {
       throw new BadRequestException('AI-scanning är inte konfigurerat. Kontakta administratören.')
     }
+
+    await this.quota.checkQuota(organizationId)
 
     const base64 = fileBuffer.toString('base64')
 
@@ -85,7 +100,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga kodblock.
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-5',
+          model: CONTRACT_SCAN_MODEL,
           max_tokens: 1024,
           messages: [
             {
@@ -113,6 +128,12 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga kodblock.
 
     let data: {
       content: Array<{ type: string; text: string }>
+      usage?: {
+        input_tokens?: number
+        output_tokens?: number
+        cache_creation_input_tokens?: number
+        cache_read_input_tokens?: number
+      }
     }
 
     try {
@@ -120,6 +141,16 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga kodblock.
     } catch {
       throw new BadRequestException('Kunde inte tolka AI-svaret. Försök igen.')
     }
+
+    void this.usage
+      .logUsage({
+        organizationId,
+        userId: userId ?? null,
+        endpoint: 'contract-scan',
+        model: CONTRACT_SCAN_MODEL,
+        usage: data.usage ?? null,
+      })
+      .catch(() => undefined)
 
     const text = data.content?.[0]?.text ?? ''
     const clean = text

@@ -11,17 +11,22 @@ import {
   HttpStatus,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { Throttle } from '@nestjs/throttler'
 import type { FastifyReply } from 'fastify'
 import { AiAssistantService } from './ai-assistant.service'
 import { MemoryService } from './memory.service'
 import { PortfolioAnalysisService } from './portfolio-analysis.service'
 import { DataContextService } from './data-context.service'
+import { AiUsageService } from './usage/ai-usage.service'
+import { AiQuotaService } from './usage/ai-quota.service'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { ChatDto } from './dto/chat.dto'
 import { ConfirmActionDto } from './dto/confirm-action.dto'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import type { JwtPayload } from '@eken/shared'
+
+const STREAM_MODEL = 'claude-sonnet-4-5'
 
 const STREAMING_SYSTEM_PROMPT = `Du är en intelligent AI-assistent för Eveno, ett svenskt fastighetsförvaltningssystem.
 Du hjälper fastighetsförvaltare att hantera sin portfölj effektivt.
@@ -40,11 +45,14 @@ export class AiAssistantController {
     private readonly memoryService: MemoryService,
     private readonly portfolioAnalysisService: PortfolioAnalysisService,
     private readonly dataContext: DataContextService,
+    private readonly usageService: AiUsageService,
+    private readonly quotaService: AiQuotaService,
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {}
 
   @Get('chat/stream')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async streamChat(
     @Query('message') message: string,
     @Query('conversationId') conversationId: string | undefined,
@@ -52,6 +60,21 @@ export class AiAssistantController {
     @CurrentUser() user: JwtPayload,
     @Res() reply: FastifyReply,
   ): Promise<void> {
+    // Kvot-kontroll innan vi öppnar SSE-strömmen
+    try {
+      await this.quotaService.checkQuota(organizationId)
+    } catch (err) {
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      })
+      const msg = err instanceof Error ? err.message : 'AI-kvota överskriden'
+      reply.raw.write(`event: error\ndata: ${JSON.stringify({ message: msg })}\n\n`)
+      reply.raw.end()
+      return
+    }
+
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -105,7 +128,7 @@ export class AiAssistantController {
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-5',
+          model: STREAM_MODEL,
           max_tokens: 2048,
           stream: true,
           system: systemPrompt,
@@ -119,6 +142,14 @@ export class AiAssistantController {
       let fullText = ''
       let currentEvent = ''
 
+      // Anthropics streaming-API skickar usage i `message_start` (input tokens)
+      // och i `message_delta`s slut-event (output tokens). Vi samlar båda så
+      // vi kan logga totalkostnaden vid stream-slut.
+      let inputTokens = 0
+      let outputTokens = 0
+      let cacheReadTokens = 0
+      let cacheWriteTokens = 0
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -129,13 +160,40 @@ export class AiAssistantController {
           if (trimmed.startsWith('event: ')) {
             currentEvent = trimmed.slice(7)
           } else if (trimmed.startsWith('data: ')) {
-            if (currentEvent !== 'content_block_delta') continue
             try {
               const parsed = JSON.parse(trimmed.slice(6)) as {
                 type?: string
-                delta?: { type?: string; text?: string }
+                delta?: { type?: string; text?: string; stop_reason?: string }
+                message?: {
+                  usage?: {
+                    input_tokens?: number
+                    output_tokens?: number
+                    cache_creation_input_tokens?: number
+                    cache_read_input_tokens?: number
+                  }
+                }
+                usage?: {
+                  input_tokens?: number
+                  output_tokens?: number
+                  cache_creation_input_tokens?: number
+                  cache_read_input_tokens?: number
+                }
               }
-              if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta') {
+
+              if (currentEvent === 'message_start' && parsed.message?.usage) {
+                inputTokens = parsed.message.usage.input_tokens ?? 0
+                cacheReadTokens = parsed.message.usage.cache_read_input_tokens ?? 0
+                cacheWriteTokens = parsed.message.usage.cache_creation_input_tokens ?? 0
+                outputTokens = parsed.message.usage.output_tokens ?? 0
+              }
+              if (currentEvent === 'message_delta' && parsed.usage) {
+                outputTokens = parsed.usage.output_tokens ?? outputTokens
+              }
+              if (
+                currentEvent === 'content_block_delta' &&
+                parsed.type === 'content_block_delta' &&
+                parsed.delta?.type === 'text_delta'
+              ) {
                 const text = parsed.delta.text ?? ''
                 if (text) {
                   fullText += text
@@ -148,6 +206,22 @@ export class AiAssistantController {
           }
         }
       }
+
+      // Logga kostnaden för stream-anropet
+      void this.usageService
+        .logUsage({
+          organizationId,
+          userId: user.sub,
+          endpoint: 'stream',
+          model: STREAM_MODEL,
+          usage: {
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            cache_read_input_tokens: cacheReadTokens,
+            cache_creation_input_tokens: cacheWriteTokens,
+          },
+        })
+        .catch(() => undefined)
 
       // 6. Save to DB
       await this.prisma.aiMessage.createMany({
@@ -177,6 +251,7 @@ export class AiAssistantController {
 
   @Post('chat')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   chat(@OrgId() orgId: string, @CurrentUser() user: JwtPayload, @Body() dto: ChatDto) {
     return this.aiService.chat(orgId, user.sub, user.role, dto.message, dto.conversationId)
   }
@@ -230,11 +305,22 @@ export class AiAssistantController {
   }
 
   @Get('analysis')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   getAnalysis(@OrgId() orgId: string, @Query('type') type: string) {
     const validTypes = ['revenue', 'occupancy', 'risks', 'full'] as const
     const analysisType = validTypes.includes(type as 'revenue')
       ? (type as (typeof validTypes)[number])
       : 'full'
     return this.portfolioAnalysisService.analyzePortfolio(orgId, analysisType)
+  }
+
+  @Get('usage')
+  getUsage(@OrgId() orgId: string) {
+    return this.quotaService.getStatus(orgId)
+  }
+
+  @Get('usage/breakdown')
+  getUsageBreakdown(@OrgId() orgId: string) {
+    return this.usageService.getMonthlyBreakdown(orgId)
   }
 }

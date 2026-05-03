@@ -5,6 +5,8 @@ import { DataContextService } from './data-context.service'
 import { ToolExecutorService } from './tools/tool-executor.service'
 import { MemoryService } from './memory.service'
 import { PortfolioAnalysisService } from './portfolio-analysis.service'
+import { AiUsageModule } from './usage/ai-usage.module'
+import { AiAuditService } from './audit/ai-audit.service'
 import { PrismaModule } from '../common/prisma/prisma.module'
 import { InvoicesModule } from '../invoices/invoices.module'
 import { TenantsModule } from '../tenants/tenants.module'
@@ -21,6 +23,7 @@ import { MaintenancePlanModule } from '../maintenance-plan/maintenance-plan.modu
 @Module({
   imports: [
     PrismaModule,
+    AiUsageModule,
     InvoicesModule,
     TenantsModule,
     LeasesModule,
@@ -40,7 +43,8 @@ import { MaintenancePlanModule } from '../maintenance-plan/maintenance-plan.modu
     ToolExecutorService,
     MemoryService,
     PortfolioAnalysisService,
+    AiAuditService,
   ],
-  exports: [AiAssistantService],
+  exports: [AiAssistantService, AiAuditService],
 })
 export class AiModule {}

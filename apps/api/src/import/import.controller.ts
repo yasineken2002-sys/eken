@@ -57,7 +57,11 @@ export class ImportController {
   @Post('scan-contract')
   @ApiOperation({ summary: 'Skanna hyreskontrakt med AI' })
   @ApiConsumes('multipart/form-data')
-  async scanContract(@Req() request: FastifyRequest) {
+  async scanContract(
+    @Req() request: FastifyRequest,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
     let fileBuffer: Buffer | null = null
     let mimeType = ''
     let fileSize = 0
@@ -84,7 +88,7 @@ export class ImportController {
       throw new BadRequestException('Filformatet stöds inte. Ladda upp PDF, JPG, PNG eller WEBP.')
     }
 
-    return this.contractScanner.scanContract(fileBuffer, mimeType)
+    return this.contractScanner.scanContract(fileBuffer, mimeType, organizationId, user.sub)
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────

@@ -98,7 +98,12 @@ export class InspectionsController {
   }
 
   @Post(':id/analyze')
-  async analyze(@Req() request: FastifyRequest, @OrgId() orgId: string, @Param('id') id: string) {
+  async analyze(
+    @Req() request: FastifyRequest,
+    @OrgId() orgId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
     const inspection = await this.inspectionsService.findOne(id, orgId)
     const ALLOWED = ['image/jpeg', 'image/png', 'image/webp']
     const files: Array<{ buffer: Buffer; filename: string; mimetype: string }> = []
@@ -146,7 +151,7 @@ export class InspectionsController {
       })
     }
 
-    const analysis = await this.analyzerService.analyzeImages(imageInputs)
+    const analysis = await this.analyzerService.analyzeImages(imageInputs, orgId, user.sub)
 
     let updatedCount = 0
     let createdCount = 0

@@ -11,6 +11,9 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { DataContextService } from './data-context.service'
 import { ToolExecutorService } from './tools/tool-executor.service'
 import { MemoryService } from './memory.service'
+import { AiUsageService } from './usage/ai-usage.service'
+import { AiQuotaService } from './usage/ai-quota.service'
+import { AiAuditService } from './audit/ai-audit.service'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
 
 const MODEL = 'claude-sonnet-4-5'
@@ -325,6 +328,9 @@ export class AiAssistantService {
     private readonly dataContext: DataContextService,
     private readonly toolExecutor: ToolExecutorService,
     private readonly memory: MemoryService,
+    private readonly usage: AiUsageService,
+    private readonly quota: AiQuotaService,
+    private readonly audit: AiAuditService,
   ) {
     this.client = new Anthropic({
       apiKey: this.configService.get<string>('ANTHROPIC_API_KEY', ''),
@@ -344,6 +350,9 @@ export class AiAssistantService {
     if (!apiKey) {
       throw new BadRequestException('ANTHROPIC_API_KEY är inte konfigurerad i servermiljön')
     }
+
+    // 0. Kvot-kontroll innan vi spenderar pengar
+    await this.quota.checkQuota(organizationId)
 
     // 1. Load or create conversation
     const conversation = await this.getOrCreateConversation(
@@ -372,7 +381,13 @@ export class AiAssistantService {
     const MAX_TOOL_ITERATIONS = 3
     let iterations = 0
     let currentMessages = messages
-    let response = await this.callClaude(currentMessages, dataCtx, memoriesCtx)
+    let response = await this.callClaude(
+      currentMessages,
+      dataCtx,
+      memoriesCtx,
+      organizationId,
+      userId,
+    )
 
     while (response.stop_reason === 'tool_use' && iterations < MAX_TOOL_ITERATIONS) {
       const toolBlock = response.content.find(
@@ -414,6 +429,7 @@ export class AiAssistantService {
           organizationId,
           userId,
           userRole,
+          { conversationId: conversation.id },
         )
       } catch (err) {
         toolResult = {
@@ -437,7 +453,13 @@ export class AiAssistantService {
         },
       ]
 
-      response = await this.callClaude(currentMessages, dataCtx, memoriesCtx)
+      response = await this.callClaude(
+        currentMessages,
+        dataCtx,
+        memoriesCtx,
+        organizationId,
+        userId,
+      )
       iterations++
     }
 
@@ -494,7 +516,7 @@ export class AiAssistantService {
       }
     }
 
-    // Execute
+    // Execute — märker att åtgärden krävde och fick bekräftelse av användaren
     let result
     try {
       result = await this.toolExecutor.executeTool(
@@ -503,6 +525,7 @@ export class AiAssistantService {
         organizationId,
         userId,
         userRole,
+        { conversationId, confirmedAt: new Date() },
       )
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Okänt fel'
@@ -603,10 +626,12 @@ export class AiAssistantService {
     messages: Anthropic.MessageParam[],
     dataCtx: string,
     memoriesCtx: string,
+    organizationId: string,
+    userId: string,
   ): Promise<Anthropic.Message> {
     const memorySection = memoriesCtx ? `\n\n${memoriesCtx}` : ''
     try {
-      return await this.client.messages.create({
+      const response = await this.client.messages.create({
         model: MODEL,
         max_tokens: MAX_TOKENS,
         system: [
@@ -619,6 +644,17 @@ export class AiAssistantService {
         tools: TOOLS,
         messages,
       })
+      // Logga kostnad — fire-and-forget. Loggning får aldrig blockera AI:n.
+      void this.usage
+        .logUsage({
+          organizationId,
+          userId,
+          endpoint: 'chat',
+          model: MODEL,
+          usage: response.usage,
+        })
+        .catch((err: unknown) => this.logger.warn('logUsage(chat) failed', err))
+      return response
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Okänt fel'
       throw new ServiceUnavailableException(`Kunde inte nå Claude API: ${msg}`)
@@ -846,6 +882,7 @@ export class AiAssistantService {
   // ── Proactive insights ─────────────────────────────────────────────────────
 
   async generateDailyInsights(organizationId: string): Promise<string> {
+    await this.quota.checkQuota(organizationId)
     const dataCtx = await this.dataContext.buildContext(organizationId)
     const response = await this.client.messages.create({
       model: MODEL,
@@ -859,6 +896,15 @@ export class AiAssistantService {
         },
       ],
     })
+    void this.usage
+      .logUsage({
+        organizationId,
+        endpoint: 'daily-insights',
+        model: MODEL,
+        usage: response.usage,
+      })
+      .catch((err: unknown) => this.logger.warn('logUsage(daily-insights) failed', err))
+
     const content = response.content[0]
     return content?.type === 'text' ? content.text : ''
   }

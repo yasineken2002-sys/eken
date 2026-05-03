@@ -1,6 +1,10 @@
 import { Injectable, BadRequestException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import Anthropic from '@anthropic-ai/sdk'
+import { AiUsageService } from '../ai/usage/ai-usage.service'
+import { AiQuotaService } from '../ai/usage/ai-quota.service'
+
+const INSPECTION_MODEL = 'claude-sonnet-4-5'
 
 export type AnalysisCondition = 'GOOD' | 'ACCEPTABLE' | 'DAMAGED' | 'MISSING'
 
@@ -53,13 +57,22 @@ Om en bild är oklar, ange GOOD med notes "Bild oklar – manuell kontroll rekom
 export class InspectionAnalyzerService {
   private readonly client: Anthropic
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly usage: AiUsageService,
+    private readonly quota: AiQuotaService,
+  ) {
     this.client = new Anthropic({
       apiKey: this.configService.get<string>('ANTHROPIC_API_KEY', ''),
     })
   }
 
-  async analyzeImages(images: ImageInput[]): Promise<AnalysisResult> {
+  async analyzeImages(
+    images: ImageInput[],
+    organizationId: string,
+    userId?: string,
+  ): Promise<AnalysisResult> {
+    await this.quota.checkQuota(organizationId)
     const content: Anthropic.MessageParam['content'] = []
 
     for (let i = 0; i < images.length; i++) {
@@ -82,10 +95,20 @@ export class InspectionAnalyzerService {
 
     try {
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-5',
+        model: INSPECTION_MODEL,
         max_tokens: 2048,
         messages: [{ role: 'user', content }],
       })
+
+      void this.usage
+        .logUsage({
+          organizationId,
+          userId: userId ?? null,
+          endpoint: 'inspection-analyze',
+          model: INSPECTION_MODEL,
+          usage: response.usage,
+        })
+        .catch(() => undefined)
 
       const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
       if (!textBlock) throw new Error('Inget textsvar från AI')
