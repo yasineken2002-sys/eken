@@ -1,5 +1,6 @@
-import { IsString, MinLength, Matches } from 'class-validator'
+import { IsString, MinLength } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
+import { IsStrongPassword } from './password.decorators'
 
 export class ResetPasswordDto {
   @ApiProperty()
@@ -7,10 +8,7 @@ export class ResetPasswordDto {
   @MinLength(32)
   token!: string
 
-  @ApiProperty({ minLength: 8 })
-  @IsString()
-  @MinLength(8, { message: 'Lösenordet måste vara minst 8 tecken' })
-  @Matches(/[A-Z]/, { message: 'Lösenordet måste innehålla minst en stor bokstav' })
-  @Matches(/[0-9]/, { message: 'Lösenordet måste innehålla minst en siffra' })
+  @ApiProperty({ minLength: 10 })
+  @IsStrongPassword()
   newPassword!: string
 }

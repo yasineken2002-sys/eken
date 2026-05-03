@@ -9,11 +9,17 @@ import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import * as bcrypt from 'bcryptjs'
 import * as crypto from 'crypto'
-import { v4 as uuidv4 } from 'uuid'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 import type { JwtPayload, TokenPair } from '@eken/shared'
 import type { LoginInput } from '@eken/shared'
+
+const MAX_LOGIN_ATTEMPTS = 10
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000 // 15 minuter
+
+function sha256(input: string): string {
+  return crypto.createHash('sha256').update(input).digest('hex')
+}
 
 interface RegisterPayload {
   email: string
@@ -117,12 +123,30 @@ export class AuthService {
       throw new UnauthorizedException('Felaktiga inloggningsuppgifter')
     }
 
+    // Brute-force-skydd: konto låst tills lockedUntil passerat. Ger samma
+    // generiska fel utåt så att en angripare inte kan skilja på "låst" vs
+    // "fel lösenord", men loggar internt.
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new UnauthorizedException('Felaktiga inloggningsuppgifter')
+    }
+
     const valid = await bcrypt.compare(dto.password, user.passwordHash)
-    if (!valid) throw new UnauthorizedException('Felaktiga inloggningsuppgifter')
+    if (!valid) {
+      const attempts = (user.loginAttempts ?? 0) + 1
+      const shouldLock = attempts >= MAX_LOGIN_ATTEMPTS
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          loginAttempts: shouldLock ? 0 : attempts,
+          lockedUntil: shouldLock ? new Date(Date.now() + LOCKOUT_DURATION_MS) : user.lockedUntil,
+        },
+      })
+      throw new UnauthorizedException('Felaktiga inloggningsuppgifter')
+    }
 
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date() },
+      data: { lastLoginAt: new Date(), loginAttempts: 0, lockedUntil: null },
     })
 
     const tokens = await this.issueTokens(
@@ -152,7 +176,10 @@ export class AuthService {
   }
 
   async refresh(token: string): Promise<TokenPair> {
-    const stored = await this.prisma.refreshToken.findUnique({ where: { token } })
+    // Refresh-tokens lagras som SHA-256-hash. Token från klient är den
+    // ohashade slumpsträngen — vi hashar och slår upp.
+    const tokenHash = sha256(token)
+    const stored = await this.prisma.refreshToken.findUnique({ where: { token: tokenHash } })
     if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
       throw new UnauthorizedException('Ogiltig refresh token')
     }
@@ -355,14 +382,17 @@ export class AuthService {
     }
     const accessToken = this.jwt.sign(payload)
 
-    const refreshToken = uuidv4()
+    // 256 bitars slumpmässig token. Vi lagrar SHA-256 av token, inte token
+    // själv, så ett databasintrång inte räcker för att kapa sessioner.
+    const refreshToken = crypto.randomBytes(32).toString('hex')
+    const refreshTokenHash = sha256(refreshToken)
     const refreshExpiresIn = this.config.get('JWT_REFRESH_EXPIRES_IN', '30d')
     const days = parseInt(refreshExpiresIn.replace('d', ''), 10) || 30
     const expiresAt = new Date()
     expiresAt.setDate(expiresAt.getDate() + days)
 
     await this.prisma.refreshToken.create({
-      data: { userId, token: refreshToken, expiresAt },
+      data: { userId, token: refreshTokenHash, expiresAt },
     })
 
     return { accessToken, refreshToken }

@@ -231,4 +231,94 @@ export class TenantPortalService {
       },
     })
   }
+
+  // ─── GDPR ───────────────────────────────────────────────────────────────────
+
+  /**
+   * GDPR Art. 15: maskinläsbar kopia av all hyresgästens data.
+   */
+  async exportTenantData(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      include: {
+        organization: { select: { id: true, name: true } },
+        leases: {
+          include: { unit: { include: { property: true } }, documents: true },
+        },
+        invoices: { include: { lines: true } },
+        rentNotices: true,
+        maintenanceTickets: {
+          include: { comments: { where: { isInternal: false } }, images: true },
+        },
+        documents: true,
+      },
+    })
+    if (!tenant) throw new BadRequestException('Hyresgäst hittades inte')
+
+    return {
+      exportedAt: new Date().toISOString(),
+      gdprNotice:
+        'Detta är en kopia av personuppgifter som vi behandlar om dig enligt GDPR Art. 15. Begäran om radering kan göras via DELETE /v1/portal/me.',
+      tenant: {
+        id: tenant.id,
+        type: tenant.type,
+        firstName: tenant.firstName,
+        lastName: tenant.lastName,
+        companyName: tenant.companyName,
+        email: tenant.email,
+        phone: tenant.phone,
+        personalNumber: tenant.personalNumber,
+        orgNumber: tenant.orgNumber,
+        street: tenant.street,
+        city: tenant.city,
+        postalCode: tenant.postalCode,
+        portalActivated: tenant.portalActivated,
+        portalActivatedAt: tenant.portalActivatedAt,
+        createdAt: tenant.createdAt,
+      },
+      organization: tenant.organization,
+      leases: tenant.leases,
+      invoices: tenant.invoices,
+      rentNotices: tenant.rentNotices,
+      maintenanceTickets: tenant.maintenanceTickets,
+      documents: tenant.documents,
+    }
+  }
+
+  /**
+   * GDPR Art. 17: anonymisera hyresgästen och radera portal-konto.
+   *
+   * Vi raderar inte själva tenant-raden eftersom kvarvarande hyresavtal,
+   * fakturor och journalposter är räkenskapsmaterial som måste sparas i 7 år
+   * enligt Bokföringslagen 7 kap. 2 §. Istället maskerar vi
+   * personuppgifterna (namn, e-post, telefon, personnummer) så ingen
+   * återidentifiering är möjlig.
+   */
+  async deleteTenantAccount(tenantId: string) {
+    await this.prisma.$transaction(async (tx) => {
+      const masked = `gdpr-deleted-${tenantId.slice(0, 8)}`
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: {
+          firstName: null,
+          lastName: null,
+          companyName: 'Raderad hyresgäst',
+          email: `${masked}@gdpr.invalid`,
+          phone: null,
+          personalNumber: null,
+          orgNumber: null,
+          street: null,
+          city: null,
+          postalCode: null,
+          contactPerson: null,
+          passwordHash: null,
+          portalActivated: false,
+          activationToken: null,
+          activationTokenExpiresAt: null,
+        },
+      })
+      // Radera alla aktiva sessioner
+      await tx.tenantSession.deleteMany({ where: { tenantId } })
+    })
+  }
 }

@@ -87,3 +87,11 @@ export const fetchNotices = () => get<PortalNotice[]>('/portal/notices')
 export const markNoticeRead = (id: string) => post<void>(`/portal/notices/${id}/read`)
 export const fetchNews = () => get<PortalNews[]>('/portal/news')
 export const fetchDocuments = () => get<PortalDocument[]>('/portal/documents')
+
+// ── GDPR ──────────────────────────────────────────────────────────────────────
+
+export const exportMyData = () => get<unknown>('/portal/me/export')
+
+export async function deleteMyAccount(password: string): Promise<void> {
+  await portalApi.delete('/portal/me', { data: { password } })
+}

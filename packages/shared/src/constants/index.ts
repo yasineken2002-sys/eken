@@ -1,5 +1,36 @@
+// Svenska momssatser. 0% och 25% är de två som faktiskt används för
+// fastigheter (bostadshyra är momsbefriad, lokalhyra med frivillig
+// skattskyldighet är 25%). 6% och 12% finns i listan eftersom de kan
+// förekomma vid extern fakturering (t.ex. tidskrifter, livsmedel) men
+// får ALDRIG användas för bostadshyra.
 export const VAT_RATES = [0, 6, 12, 25] as const
 export type VatRate = (typeof VAT_RATES)[number]
+
+// Per Mervärdesskattelagen (1994:200): bostadshyra är momsbefriad. Lokalhyra
+// kan vara momsbefriad eller 25% beroende på frivillig skattskyldighet.
+export const VAT_RATE_RESIDENTIAL_RENT = 0
+export const VAT_RATE_COMMERCIAL_RENT_TAXED = 25
+
+/**
+ * Returnerar tillåten momssats för en hyrestyp. Bostad får aldrig moms.
+ * Lokal kan ha 0% (utan frivillig skattskyldighet) eller 25%.
+ */
+export function getVatRateForUnitType(unitType: string, taxedCommercial = false): VatRate {
+  switch (unitType) {
+    case 'APARTMENT':
+      return 0
+    case 'OFFICE':
+    case 'RETAIL':
+    case 'STORAGE':
+      return taxedCommercial ? 25 : 0
+    case 'PARKING':
+      // Parkering till hyresgäst i samma fastighet följer bostaden (0%);
+      // separat parkering till utomstående är 25%. Default till 0% här.
+      return 0
+    default:
+      return 0
+  }
+}
 
 export const DEFAULT_NOTICE_PERIOD_MONTHS = 3
 export const DEFAULT_PAGE_SIZE = 20

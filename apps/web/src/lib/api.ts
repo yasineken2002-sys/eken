@@ -92,6 +92,6 @@ export async function patch<T>(url: string, body?: unknown): Promise<T> {
   return data.data
 }
 
-export async function del(url: string): Promise<void> {
-  await api.delete(url)
+export async function del(url: string, config?: { data?: unknown }): Promise<void> {
+  await api.delete(url, config)
 }

@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Post,
   Param,
@@ -8,10 +9,12 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common'
 import { Throttle } from '@nestjs/throttler'
 import { IsEmail, IsString, IsOptional, IsEnum, IsUUID, MinLength } from 'class-validator'
 import { MaintenanceCategory } from '@prisma/client'
+import * as bcrypt from 'bcryptjs'
 import { Public } from '../common/decorators/public.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
@@ -43,8 +46,15 @@ class ActivateDto {
   @MinLength(1)
   token!: string
 
+  // Lösenordsstyrkan kontrolleras i TenantAuthService.assertStrongPassword.
   @IsString()
-  @MinLength(8)
+  @MinLength(1)
+  password!: string
+}
+
+class DeleteAccountDto {
+  @IsString()
+  @MinLength(1)
   password!: string
 }
 
@@ -58,8 +68,9 @@ class ResetPasswordDto {
   @MinLength(1)
   token!: string
 
+  // Lösenordsstyrkan kontrolleras i TenantAuthService.assertStrongPassword.
   @IsString()
-  @MinLength(8)
+  @MinLength(1)
   password!: string
 }
 
@@ -275,11 +286,36 @@ export class TenantPortalAdminController {
 @Public()
 @UseGuards(TenantAuthGuard)
 export class TenantPortalController {
-  constructor(private readonly portalService: TenantPortalService) {}
+  constructor(
+    private readonly portalService: TenantPortalService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Get('me')
   async getMe(@CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } }) {
     return tenant
+  }
+
+  @Get('me/export')
+  async exportMyData(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+  ) {
+    return this.portalService.exportTenantData(tenant.id)
+  }
+
+  @Delete('me')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteMyAccount(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+    @Body() dto: DeleteAccountDto,
+  ): Promise<void> {
+    const fresh = await this.prisma.tenant.findUnique({ where: { id: tenant.id } })
+    if (!fresh?.passwordHash) {
+      throw new UnauthorizedException('Kontot saknar lösenord')
+    }
+    const valid = await bcrypt.compare(dto.password, fresh.passwordHash)
+    if (!valid) throw new UnauthorizedException('Felaktigt lösenord')
+    await this.portalService.deleteTenantAccount(tenant.id)
   }
 
   @Get('dashboard')

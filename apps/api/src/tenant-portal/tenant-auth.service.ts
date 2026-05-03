@@ -6,11 +6,22 @@ import * as crypto from 'crypto'
 import type { Tenant } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
+import { validatePasswordStrength } from '@eken/shared'
 
 const ACTIVATION_TTL_MS = 72 * 60 * 60 * 1000 // 72 timmar
 const RESET_TTL_MS = 24 * 60 * 60 * 1000 // 24 timmar
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 dagar
-const MIN_PASSWORD_LENGTH = 8
+
+function sha256(input: string): string {
+  return crypto.createHash('sha256').update(input).digest('hex')
+}
+
+function assertStrongPassword(password: string): void {
+  const result = validatePasswordStrength(password)
+  if (!result.valid) {
+    throw new BadRequestException(result.errors.join('. '))
+  }
+}
 
 interface SessionResult {
   sessionToken: string
@@ -127,9 +138,7 @@ export class TenantAuthService {
   // ── Aktivering (signering + lösenord) ────────────────────────────────────────
 
   async activate(token: string, password: string): Promise<SessionResult> {
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      throw new BadRequestException(`Lösenordet måste vara minst ${MIN_PASSWORD_LENGTH} tecken`)
-    }
+    assertStrongPassword(password)
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { activationToken: token },
@@ -218,9 +227,7 @@ export class TenantAuthService {
   }
 
   async resetPassword(token: string, password: string): Promise<SessionResult> {
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      throw new BadRequestException(`Lösenordet måste vara minst ${MIN_PASSWORD_LENGTH} tecken`)
-    }
+    assertStrongPassword(password)
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { activationToken: token },
@@ -257,8 +264,11 @@ export class TenantAuthService {
   ): Promise<SessionResult> {
     const sessionToken = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS)
+    // Lagra SHA-256-hash av token, inte token själv. Klienten håller den
+    // ohashade token i Authorization-headern; vid validering hashar vi
+    // inkommande och slår upp.
     await this.prisma.tenantSession.create({
-      data: { tenantId: tenant.id, token: sessionToken, expiresAt },
+      data: { tenantId: tenant.id, token: sha256(sessionToken), expiresAt },
     })
     return { sessionToken, expiresAt, tenant }
   }
@@ -267,7 +277,7 @@ export class TenantAuthService {
     token: string,
   ): Promise<Tenant & { organization: { id: string; name: string } }> {
     const session = await this.prisma.tenantSession.findUnique({
-      where: { token },
+      where: { token: sha256(token) },
       include: { tenant: { include: { organization: { select: { id: true, name: true } } } } },
     })
 
@@ -279,7 +289,7 @@ export class TenantAuthService {
   }
 
   async logout(token: string): Promise<void> {
-    await this.prisma.tenantSession.deleteMany({ where: { token } })
+    await this.prisma.tenantSession.deleteMany({ where: { token: sha256(token) } })
   }
 
   // ── Mejlhjälpare ─────────────────────────────────────────────────────────────

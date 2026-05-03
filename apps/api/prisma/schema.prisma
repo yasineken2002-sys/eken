@@ -390,6 +390,11 @@ model User {
   isActive            Boolean   @default(true)
   mustChangePassword  Boolean   @default(false)
   lastLoginAt         DateTime?
+  // Brute-force-skydd: räknar upp vid felaktigt lösenord, nollställs vid
+  // lyckad inloggning. När loginAttempts ≥ 10 sätts lockedUntil 15 min
+  // framåt och inga försök släpps förrän klockan passerat.
+  loginAttempts       Int       @default(0)
+  lockedUntil         DateTime?
 
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   refreshTokens       RefreshToken[]

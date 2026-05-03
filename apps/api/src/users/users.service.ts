@@ -4,8 +4,10 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  UnauthorizedException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import * as bcrypt from 'bcryptjs'
 import * as crypto from 'crypto'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
@@ -192,5 +194,83 @@ export class UsersService {
       data: { isActive: true },
       select: PUBLIC_USER_FIELDS,
     })
+  }
+
+  // ─── GDPR ───────────────────────────────────────────────────────────────────
+  // Art. 15 (rätt till dataportabilitet) och Art. 17 (rätt att bli glömd).
+
+  /**
+   * Exportera all personlig data om en användare i maskinläsbart format.
+   * Returnerar JSON som inkluderar konto-, organisations- och aktivitetsdata.
+   * Används av portalens "Ladda ner mina uppgifter"-knapp.
+   */
+  async exportMyData(userId: string, organizationId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, organizationId },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            orgNumber: true,
+            email: true,
+            phone: true,
+            street: true,
+            city: true,
+            postalCode: true,
+            country: true,
+            createdAt: true,
+          },
+        },
+        invitations: { select: { token: false, createdAt: true, usedAt: true, expiresAt: true } },
+      },
+    })
+    if (!user) throw new NotFoundException('Användaren hittades inte')
+
+    return {
+      exportedAt: new Date().toISOString(),
+      gdprNotice:
+        'Detta är en kopia av personuppgifter som vi behandlar om dig enligt GDPR Art. 15. Begäran om radering kan göras via DELETE /v1/users/me.',
+      account: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        avatarUrl: user.avatarUrl,
+        isActive: user.isActive,
+        lastLoginAt: user.lastLoginAt,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+      organization: user.organization,
+      pendingInvitations: user.invitations,
+    }
+  }
+
+  /**
+   * Radera den inloggade användarens konto. Kräver lösenord-bekräftelse för
+   * att hindra CSRF/cookie-baserade attacker. För ägare (OWNER) tillåts det
+   * inte — då måste organisationen avslutas separat.
+   */
+  async deleteMyAccount(userId: string, organizationId: string, password: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, organizationId },
+    })
+    if (!user) throw new NotFoundException('Användaren hittades inte')
+    if (user.role === 'OWNER') {
+      throw new ForbiddenException(
+        'Ägaren kan inte radera sitt konto direkt — kontakta supporten för att avsluta organisationen',
+      )
+    }
+    if (!user.passwordHash) {
+      throw new BadRequestException('Konto saknar lösenord — sätt ett lösenord först')
+    }
+    const valid = await bcrypt.compare(password, user.passwordHash)
+    if (!valid) throw new UnauthorizedException('Felaktigt lösenord')
+
+    // Cascade-delete via Prisma. RefreshToken/PasswordResetToken/UserInvitation
+    // tas bort tack vare onDelete: Cascade i schemat.
+    await this.prisma.user.delete({ where: { id: userId } })
   }
 }

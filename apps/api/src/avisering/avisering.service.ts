@@ -6,6 +6,7 @@ import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { RentNoticeStatus } from '@prisma/client'
 import type { RentNotice, Prisma } from '@prisma/client'
+import { rentDueDateForMonth } from '@eken/shared'
 
 type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
   include: {
@@ -77,7 +78,9 @@ export class AviseringService {
       const ocrNumber = await this.ocrService.assignOcrToTenant(lease.tenantId, orgId)
       const seq = existingCount + created + 1
       const noticeNumber = `AVI-${year}-${pad2(month)}-${String(seq).padStart(4, '0')}`
-      const dueDate = new Date(year, month - 1, 25)
+      // Hyreslagen 12 kap. 20 § JB: hyran ska betalas senast sista
+      // vardagen i månaden FÖRE den hyresperiod avin avser.
+      const dueDate = rentDueDateForMonth(year, month)
 
       const amount = Number(lease.monthlyRent)
       const notice = await this.prisma.rentNotice.create({

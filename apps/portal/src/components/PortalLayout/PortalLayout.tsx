@@ -80,12 +80,27 @@ function DokumentIcon() {
   )
 }
 
+function InstallningarIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <circle cx="11" cy="11" r="3" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M11 3v2M11 17v2M3 11h2M17 11h2M5.5 5.5l1.4 1.4M15.1 15.1l1.4 1.4M5.5 16.5l1.4-1.4M15.1 6.9l1.4-1.4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 const NAV_ITEMS: { to: string; label: string; icon: React.ReactNode; end: boolean }[] = [
   { to: '/', label: 'Hem', icon: <HemIcon />, end: true },
   { to: '/notices', label: 'Avier', icon: <AvierIcon />, end: false },
   { to: '/maintenance', label: 'Felanmälan', icon: <FelanmalanIcon />, end: false },
   { to: '/news', label: 'Nyheter', icon: <NyheterIcon />, end: false },
   { to: '/documents', label: 'Dokument', icon: <DokumentIcon />, end: false },
+  { to: '/installningar', label: 'Konto', icon: <InstallningarIcon />, end: false },
 ]
 
 export function PortalLayout() {

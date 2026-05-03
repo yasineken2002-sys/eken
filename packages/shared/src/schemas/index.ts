@@ -1,4 +1,9 @@
 import { z } from 'zod'
+import {
+  isValidSwedishPersonalNumber,
+  isValidSwedishOrgNumber,
+  PASSWORD_MIN_LENGTH,
+} from '../utils'
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
 
@@ -9,18 +14,35 @@ export const PaginationSchema = z.object({
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
+// Starkt lösenord: minst 10 tecken, stor/liten/siffra. Specialtecken
+// rekommenderas men är inte hård krav (NIST SP 800-63B prioriterar längd
+// över ad-hoc-komplexitet).
+export const StrongPasswordSchema = z
+  .string()
+  .min(PASSWORD_MIN_LENGTH, `Lösenordet måste vara minst ${PASSWORD_MIN_LENGTH} tecken`)
+  .regex(/[a-z]/, 'Lösenordet måste innehålla en liten bokstav')
+  .regex(/[A-Z]/, 'Lösenordet måste innehålla en stor bokstav')
+  .regex(/[0-9]/, 'Lösenordet måste innehålla en siffra')
+  .max(128, 'Lösenordet är för långt')
+
 export const LoginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
+  email: z.string().email('Ogiltig e-postadress'),
+  password: z.string().min(1, 'Lösenord krävs'),
 })
 
 export const RegisterSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8).regex(/[A-Z]/).regex(/[0-9]/),
+  email: z.string().email('Ogiltig e-postadress'),
+  password: StrongPasswordSchema,
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
   organizationName: z.string().min(1).max(200),
-  orgNumber: z.string().optional(),
+  orgNumber: z
+    .string()
+    .optional()
+    .refine(
+      (v) => !v || isValidSwedishOrgNumber(v),
+      'Ogiltigt organisationsnummer (måste följa Luhn-modulus 10)',
+    ),
   accountType: z.enum(['COMPANY', 'PRIVATE']).default('COMPANY'),
 })
 
@@ -31,7 +53,22 @@ export const RefreshTokenSchema = z.object({
 export const ChangePasswordSchema = z
   .object({
     currentPassword: z.string().min(1),
-    newPassword: z.string().min(8).regex(/[A-Z]/).regex(/[0-9]/),
+    newPassword: StrongPasswordSchema,
+    confirmPassword: z.string().min(1),
+  })
+  .refine((d) => d.newPassword === d.confirmPassword, {
+    message: 'Lösenorden matchar inte',
+    path: ['confirmPassword'],
+  })
+  .refine((d) => d.newPassword !== d.currentPassword, {
+    message: 'Det nya lösenordet måste skilja sig från det gamla',
+    path: ['newPassword'],
+  })
+
+// Schema för lösenordsåterställning + tenant-aktivering.
+export const ResetPasswordSchema = z
+  .object({
+    newPassword: StrongPasswordSchema,
     confirmPassword: z.string().min(1),
   })
   .refine((d) => d.newPassword === d.confirmPassword, {
@@ -102,13 +139,16 @@ export const CreateTenantSchema = z
     lastName: z.string().min(1).max(100).optional(),
     personalNumber: z
       .string()
-      .regex(/^\d{8}-\d{4}$/, 'Ogiltigt personnummer')
-      .optional(),
+      .optional()
+      .refine(
+        (v) => !v || isValidSwedishPersonalNumber(v),
+        'Ogiltigt personnummer (kontrollera format och kontrollsiffra)',
+      ),
     companyName: z.string().min(1).max(200).optional(),
     orgNumber: z
       .string()
-      .regex(/^\d{6}-\d{4}$/)
-      .optional(),
+      .optional()
+      .refine((v) => !v || isValidSwedishOrgNumber(v), 'Ogiltigt organisationsnummer'),
     contactPerson: z.string().max(200).optional(),
     email: z.string().email(),
     phone: z.string().optional(),
@@ -215,6 +255,8 @@ export const CreateInvoiceSchema = z
 
 export type LoginInput = z.infer<typeof LoginSchema>
 export type RegisterInput = z.infer<typeof RegisterSchema>
+export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>
+export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>
 export type CreatePropertyInput = z.infer<typeof CreatePropertySchema>
 export type UpdatePropertyInput = z.infer<typeof UpdatePropertySchema>
 export type CreateUnitInput = z.infer<typeof CreateUnitSchema>

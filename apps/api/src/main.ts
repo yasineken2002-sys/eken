@@ -35,11 +35,31 @@ async function bootstrap() {
   const port = Number(config.get<string | number>('PORT', 3000))
   const appUrl = config.get<string>('APP_URL', 'http://localhost:5173')
 
-  // Security
+  // Security headers via helmet. CSP är restriktiv för API:t — vi serverar
+  // inget HTML/script härifrån utöver Swagger-UI som behöver inline-script
+  // och inline-style. I production stängs Swagger av (se nedan), så vi
+  // använder en stramare policy där.
+  const isProd = config.get('NODE_ENV') === 'production'
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await app.register(helmet as any, {
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        scriptSrc: isProd ? ["'self'"] : ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'blob:'],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'", 'data:'],
+        upgradeInsecureRequests: isProd ? [] : null,
+      },
+    },
     crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   })
 
   // File uploads (uppladdade filer skickas vidare till Cloudflare R2)

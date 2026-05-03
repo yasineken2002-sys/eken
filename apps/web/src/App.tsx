@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { AppLayout } from './components/layout/AppLayout'
+import { CookieBanner } from './components/CookieBanner'
+import { PrivacyPage } from './features/privacy/PrivacyPage'
 import { LoginPage } from './features/auth/LoginPage'
 import { RegisterPage } from './features/auth/RegisterPage'
 import { ChangePasswordPage } from './features/auth/ChangePasswordPage'
@@ -40,6 +42,7 @@ export type Route =
   | 'forgot-password'
   | 'reset-password'
   | 'accept-invite'
+  | 'privacy'
   | 'dashboard'
   | 'properties'
   | 'units'
@@ -70,6 +73,7 @@ const PUBLIC_ROUTES: Route[] = [
   'forgot-password',
   'reset-password',
   'accept-invite',
+  'privacy',
 ]
 
 // Check if current URL is a tenant portal route
@@ -87,6 +91,9 @@ function readInitialAuthRoute(): { route: Route; token: string | null } | null {
   }
   if (path === '/accept-invite' || path === '/auth/accept-invite') {
     return { route: 'accept-invite', token }
+  }
+  if (path === '/integritet' || path === '/integritetspolicy' || path === '/privacy') {
+    return { route: 'privacy', token: null }
   }
   return null
 }
@@ -125,8 +132,22 @@ export function App() {
     }
   }, [isAuthenticated, mustChangePassword, route])
 
-  if (route === 'login') return <LoginPage onNavigate={setRoute} />
-  if (route === 'register') return <RegisterPage onNavigate={setRoute} />
+  if (route === 'privacy')
+    return <PrivacyPage onBack={() => setRoute(isAuthenticated ? 'dashboard' : 'login')} />
+  if (route === 'login')
+    return (
+      <>
+        <LoginPage onNavigate={setRoute} />
+        <CookieBanner onNavigate={(r) => setRoute(r as Route)} />
+      </>
+    )
+  if (route === 'register')
+    return (
+      <>
+        <RegisterPage onNavigate={setRoute} />
+        <CookieBanner onNavigate={(r) => setRoute(r as Route)} />
+      </>
+    )
   if (route === 'forgot-password') return <ForgotPasswordPage onNavigate={setRoute} />
   if (route === 'reset-password')
     return <ResetPasswordPage token={authToken} onNavigate={setRoute} />
@@ -165,6 +186,7 @@ export function App() {
     'forgot-password': null,
     'reset-password': null,
     'accept-invite': null,
+    privacy: null,
   }[route]
 
   return (

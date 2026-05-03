@@ -8,25 +8,66 @@ interface JournalFilters {
   source?: string
 }
 
-// Default BAS accounts for Swedish property management
+// Default BAS accounts for Swedish property management.
+// Bygger på BAS-kontoplanen 2026 + Fastighetsägarnas branschanpassning.
 const DEFAULT_ACCOUNTS = [
+  // Tillgångar
   { number: 1510, name: 'Kundfordringar', type: 'ASSET' as const },
-  { number: 1930, name: 'Företagskonto', type: 'ASSET' as const },
-  { number: 2490, name: 'Mottagna depositioner', type: 'LIABILITY' as const },
-  { number: 2610, name: 'Utgående moms 25%', type: 'LIABILITY' as const },
-  { number: 2612, name: 'Utgående moms 12%', type: 'LIABILITY' as const },
-  { number: 2614, name: 'Utgående moms 6%', type: 'LIABILITY' as const },
-  { number: 3010, name: 'Hyresintäkter', type: 'REVENUE' as const },
-  { number: 3011, name: 'Serviceintäkter', type: 'REVENUE' as const },
-  { number: 3012, name: 'Depositionsintäkter', type: 'REVENUE' as const },
+  { number: 1515, name: 'Osäkra kundfordringar', type: 'ASSET' as const },
+  { number: 1930, name: 'Företagskonto / Bank', type: 'ASSET' as const },
+  { number: 1940, name: 'Plusgiro', type: 'ASSET' as const },
+  // Skulder
+  { number: 2350, name: 'Andra långfristiga skulder', type: 'LIABILITY' as const },
+  { number: 2440, name: 'Leverantörsskulder', type: 'LIABILITY' as const },
+  { number: 2490, name: 'Övriga kortfristiga skulder', type: 'LIABILITY' as const },
+  { number: 2611, name: 'Utgående moms 25% (försäljning Sverige)', type: 'LIABILITY' as const },
+  { number: 2621, name: 'Utgående moms 12%', type: 'LIABILITY' as const },
+  { number: 2631, name: 'Utgående moms 6%', type: 'LIABILITY' as const },
+  { number: 2640, name: 'Ingående moms', type: 'LIABILITY' as const },
+  { number: 2641, name: 'Debiterad ingående moms', type: 'LIABILITY' as const },
+  {
+    number: 2645,
+    name: 'Beräknad ingående moms på förvärv från utlandet',
+    type: 'LIABILITY' as const,
+  },
+  { number: 2650, name: 'Redovisningskonto för moms', type: 'LIABILITY' as const },
+  { number: 2710, name: 'Personalskatt', type: 'LIABILITY' as const },
+  { number: 2820, name: 'Mottagna depositioner', type: 'LIABILITY' as const },
+  // Intäkter (3xxx)
+  { number: 3001, name: 'Hyresintäkter bostäder (momsfri)', type: 'REVENUE' as const },
+  { number: 3010, name: 'Hyresintäkter lokaler (momspliktiga)', type: 'REVENUE' as const },
+  { number: 3011, name: 'Hyresintäkter lokaler (momsfria)', type: 'REVENUE' as const },
+  { number: 3012, name: 'Hyresintäkter parkering / garage', type: 'REVENUE' as const },
+  { number: 3013, name: 'Hyresintäkter förråd', type: 'REVENUE' as const },
+  { number: 3030, name: 'Övriga ersättningar (varmvatten, el)', type: 'REVENUE' as const },
   { number: 3040, name: 'Skadeersättningar', type: 'REVENUE' as const },
+  { number: 3960, name: 'Valutakursvinster på rörelsefordringar', type: 'REVENUE' as const },
+  // Driftkostnader (5xxx)
+  { number: 5010, name: 'Lokalhyra (egen)', type: 'EXPENSE' as const },
+  { number: 5020, name: 'El för fastighet', type: 'EXPENSE' as const },
+  { number: 5030, name: 'Värme (fjärrvärme)', type: 'EXPENSE' as const },
+  { number: 5040, name: 'Vatten och avlopp', type: 'EXPENSE' as const },
+  { number: 5050, name: 'Sophämtning och städning', type: 'EXPENSE' as const },
+  { number: 5060, name: 'Fastighetsskötsel', type: 'EXPENSE' as const },
+  { number: 5070, name: 'Reparation och underhåll', type: 'EXPENSE' as const },
+  { number: 5080, name: 'Försäkring fastighet', type: 'EXPENSE' as const },
+  { number: 5090, name: 'Övriga fastighetskostnader', type: 'EXPENSE' as const },
+  { number: 6110, name: 'Kontorsmaterial', type: 'EXPENSE' as const },
+  { number: 6230, name: 'Internet och datakommunikation', type: 'EXPENSE' as const },
+  { number: 6310, name: 'Företagsförsäkring', type: 'EXPENSE' as const },
+  { number: 6420, name: 'Revisionsarvoden', type: 'EXPENSE' as const },
+  { number: 6530, name: 'Redovisningstjänster', type: 'EXPENSE' as const },
+  { number: 7010, name: 'Löner till tjänstemän', type: 'EXPENSE' as const },
+  { number: 7510, name: 'Lagstadgade sociala avgifter', type: 'EXPENSE' as const },
+  { number: 8410, name: 'Räntekostnader (lån)', type: 'EXPENSE' as const },
 ]
 
-// Map VAT rate to account number
+// Map VAT rate to account number. 0% (momsbefriad) ska INTE bokföras som
+// momskredit alls — då hoppas raden över i createJournalEntryForInvoice.
 const VAT_TO_ACCOUNT: Record<number, number> = {
-  25: 2610,
-  12: 2612,
-  6: 2614,
+  25: 2611,
+  12: 2621,
+  6: 2631,
 }
 
 @Injectable()
@@ -99,15 +140,34 @@ export class AccountingService {
     const fromCompact = from.replace(/-/g, '')
     const toCompact = to.replace(/-/g, '')
 
+    // SIE4-format enligt SIE Gruppen specifikation 4B.
+    // Källa: https://sie.se/wp-content/uploads/2020/05/SIE_filformat_ver_4B_080930.pdf
+    const generatedAt = new Date()
+    const genDate =
+      generatedAt.getFullYear().toString() +
+      String(generatedAt.getMonth() + 1).padStart(2, '0') +
+      String(generatedAt.getDate()).padStart(2, '0')
     const lines: string[] = [
       '#FLAGGA 0',
+      '#PROGRAM "Eveno" "1.0"',
       '#FORMAT PC8',
+      `#GEN ${genDate}`,
       '#SIETYP 4',
       `#ORGNR ${org?.orgNumber ?? organizationId}`,
-      `#FNAMN "${org?.name ?? 'Okänd organisation'}"`,
+      `#FNAMN "${(org?.name ?? 'Okänd organisation').replace(/"/g, '')}"`,
       `#RAR 0 ${fromCompact} ${toCompact}`,
       '',
     ]
+
+    // Kontoplan – krävs för att bokslutsprogram ska kunna mappa.
+    const accounts = await this.prisma.account.findMany({
+      where: { organizationId },
+      orderBy: { number: 'asc' },
+    })
+    for (const acc of accounts) {
+      lines.push(`#KONTO ${acc.number} "${acc.name.replace(/"/g, '')}"`)
+    }
+    lines.push('')
 
     entries.forEach((entry, idx) => {
       const dateStr = entry.date.toISOString().slice(0, 10).replace(/-/g, '')
@@ -175,9 +235,12 @@ export class AccountingService {
       }
 
       for (const [rate, amount] of vatByRate) {
-        const vatAccountNumber = VAT_TO_ACCOUNT[rate] ?? 2610
+        // 0% är momsbefriat — bokförs inte mot momskonto.
+        if (rate === 0 || amount <= 0) continue
+        const vatAccountNumber = VAT_TO_ACCOUNT[rate]
+        if (!vatAccountNumber) continue
         const vatAccountId = accountByNumber.get(vatAccountNumber)
-        if (vatAccountId && amount > 0) {
+        if (vatAccountId) {
           lines.push({
             accountId: vatAccountId,
             credit: amount,

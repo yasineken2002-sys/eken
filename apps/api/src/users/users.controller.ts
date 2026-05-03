@@ -17,6 +17,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { InviteUserDto } from './dto/invite-user.dto'
 import { UpdateUserRoleDto } from './dto/update-user-role.dto'
+import { DeleteAccountDto } from './dto/delete-account.dto'
 import type { JwtPayload } from '@eken/shared'
 
 @ApiTags('Users')
@@ -72,5 +73,29 @@ export class UsersController {
   @ApiOperation({ summary: 'Återaktivera en tidigare inaktiverad användare' })
   reactivate(@Param('id', new ParseUUIDPipe()) id: string, @OrgId() organizationId: string) {
     return this.users.reactivate(id, organizationId)
+  }
+
+  // ─── GDPR ───────────────────────────────────────────────────────────────────
+
+  @Get('me/export')
+  @ApiOperation({
+    summary: 'GDPR-export: ladda ner all personlig data om dig själv (Art. 15)',
+  })
+  exportMyData(@CurrentUser() current: JwtPayload, @OrgId() organizationId: string) {
+    return this.users.exportMyData(current.sub, organizationId)
+  }
+
+  @Delete('me')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary:
+      'GDPR-radering: radera ditt eget konto permanent (Art. 17). Kräver lösenordsbekräftelse.',
+  })
+  async deleteMyAccount(
+    @Body() dto: DeleteAccountDto,
+    @CurrentUser() current: JwtPayload,
+    @OrgId() organizationId: string,
+  ): Promise<void> {
+    await this.users.deleteMyAccount(current.sub, organizationId, dto.password)
   }
 }

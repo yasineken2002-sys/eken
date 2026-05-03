@@ -253,6 +253,16 @@ export function LoginPage({ onNavigate }: Props) {
               Skapa ett här →
             </button>
           </p>
+
+          <p className="mt-6 text-center text-[12px] text-gray-400">
+            <button
+              type="button"
+              onClick={() => onNavigate('privacy')}
+              className="hover:text-gray-600 hover:underline"
+            >
+              Integritetspolicy
+            </button>
+          </p>
         </motion.div>
       </div>
     </div>

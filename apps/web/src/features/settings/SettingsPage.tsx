@@ -2,7 +2,19 @@ import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Upload, Building2, AlertCircle, Check, Brain, Info, KeyRound, Lock } from 'lucide-react'
+import {
+  Upload,
+  Building2,
+  AlertCircle,
+  Check,
+  Brain,
+  Info,
+  KeyRound,
+  Lock,
+  Download,
+  Trash2,
+  ShieldCheck,
+} from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -12,6 +24,7 @@ import { useOrganization, useUpdateOrganization, useUploadLogo } from './hooks/u
 import { clearAiMemory } from '@/features/ai/api/ai.api'
 import { UsersPanel } from '@/features/users/UsersPanel'
 import { useAuthStore } from '@/stores/auth.store'
+import { get, del } from '@/lib/api'
 import type { Route } from '@/App'
 import { cn } from '@/lib/cn'
 
@@ -228,6 +241,11 @@ export function SettingsPage({ onNavigate }: Props) {
                       : 'Läsbehörighet'}
             </p>
           </section>
+
+          <GdprSection
+            isOwner={currentUser?.role === 'OWNER'}
+            onLogout={() => useAuthStore.getState().logout()}
+          />
         </div>
       )}
 
@@ -721,5 +739,137 @@ export function SettingsPage({ onNavigate }: Props) {
           </div>
         ))}
     </PageWrapper>
+  )
+}
+
+// ─── GDPR-sektion ─────────────────────────────────────────────────────────────
+
+interface GdprSectionProps {
+  isOwner: boolean
+  onLogout: () => void
+}
+
+function GdprSection({ isOwner, onLogout }: GdprSectionProps) {
+  const [exportLoading, setExportLoading] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const handleExport = async () => {
+    setExportLoading(true)
+    try {
+      const data = await get<unknown>('/users/me/export')
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `eveno-mina-uppgifter-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    setDeleteError(null)
+    setDeleteLoading(true)
+    try {
+      await del('/users/me', { data: { password: deletePassword } })
+      onLogout()
+      window.location.href = '/'
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: { message?: string } } }; message?: string }
+      setDeleteError(e?.response?.data?.error?.message ?? e?.message ?? 'Kunde inte radera kontot')
+      setDeleteLoading(false)
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-gray-100 bg-white p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50">
+          <ShieldCheck size={13} strokeWidth={1.8} className="text-emerald-600" />
+        </div>
+        <h2 className="text-[14px] font-semibold text-gray-800">Dina rättigheter (GDPR)</h2>
+      </div>
+      <p className="text-[13px] text-gray-500">
+        Du har rätt att exportera och radera dina personuppgifter. Räkenskapsmaterial som måste
+        sparas enligt Bokföringslagen (7 år) anonymiseras snarare än raderas.
+      </p>
+
+      <div className="mt-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-3.5">
+          <div>
+            <p className="text-[13.5px] font-medium text-gray-800">Exportera mina uppgifter</p>
+            <p className="text-[12.5px] text-gray-500">JSON-fil med all data om ditt konto.</p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={handleExport} disabled={exportLoading}>
+            <Download size={13} strokeWidth={1.8} className="mr-1.5" />
+            {exportLoading ? 'Hämtar…' : 'Ladda ner'}
+          </Button>
+        </div>
+
+        <div className="rounded-xl border border-red-100 bg-red-50/40 p-3.5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[13.5px] font-medium text-gray-800">Radera mitt konto</p>
+              <p className="text-[12.5px] text-gray-500">
+                {isOwner
+                  ? 'Som ägare måste du först överlåta organisationen eller kontakta supporten.'
+                  : 'Detta kan inte ångras. Sessioner avslutas och kontot raderas omedelbart.'}
+              </p>
+            </div>
+            {!isOwner && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setConfirmDelete((v) => !v)}
+                disabled={confirmDelete}
+              >
+                <Trash2 size={13} strokeWidth={1.8} className="mr-1.5" />
+                Radera konto
+              </Button>
+            )}
+          </div>
+
+          {confirmDelete && !isOwner && (
+            <div className="mt-3 space-y-2 border-t border-red-100 pt-3">
+              <Input
+                type="password"
+                placeholder="Bekräfta med ditt lösenord"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+              />
+              {deleteError && <p className="text-[12px] text-red-600">{deleteError}</p>}
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setConfirmDelete(false)
+                    setDeletePassword('')
+                    setDeleteError(null)
+                  }}
+                >
+                  Avbryt
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleDelete}
+                  disabled={deleteLoading || deletePassword.length === 0}
+                >
+                  {deleteLoading ? 'Raderar…' : 'Bekräfta radering'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   )
 }
