@@ -1,4 +1,6 @@
-import { Outlet, NavLink } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { TenantAiChat, TenantAiFab } from '@/features/ai/TenantAiChat'
 import styles from './PortalLayout.module.css'
 
 function HemIcon() {
@@ -104,11 +106,43 @@ const NAV_ITEMS: { to: string; label: string; icon: React.ReactNode; end: boolea
 ]
 
 export function PortalLayout() {
+  const location = useLocation()
+  const [aiOpen, setAiOpen] = useState(false)
+  const [initialMessage, setInitialMessage] = useState<string | undefined>()
+
+  // Lyssna på custom event från Dashboard-chips: ask-ai → öppna chatten med
+  // en förifylld fråga.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const ce = e as CustomEvent<{ message?: string }>
+      setInitialMessage(ce.detail?.message ?? undefined)
+      setAiOpen(true)
+    }
+    window.addEventListener('eveno-portal-ask-ai', handler)
+    return () => window.removeEventListener('eveno-portal-ask-ai', handler)
+  }, [])
+
+  // Stäng AI när användaren navigerar bort (förbättrar UX på mobil)
+  useEffect(() => {
+    setAiOpen(false)
+  }, [location.pathname])
+
   return (
     <div className={styles.shell}>
       <main className={styles.main}>
         <Outlet />
       </main>
+
+      <TenantAiFab onClick={() => setAiOpen(true)} hidden={aiOpen} />
+
+      <TenantAiChat
+        open={aiOpen}
+        onClose={() => {
+          setAiOpen(false)
+          setInitialMessage(undefined)
+        }}
+        initialMessage={initialMessage}
+      />
 
       <nav className={styles.tabBar} aria-label="Navigering">
         {NAV_ITEMS.map((item) => (

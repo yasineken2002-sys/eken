@@ -10,6 +10,7 @@ export type AiEndpoint =
   | 'contract-scan'
   | 'inspection-analyze'
   | 'daily-insights'
+  | 'tenant-chat'
 
 export interface AnthropicUsageBlock {
   input_tokens?: number | null
@@ -35,6 +36,7 @@ export class AiUsageService {
   async logUsage(args: {
     organizationId: string
     userId?: string | null
+    tenantId?: string | null
     endpoint: AiEndpoint
     model: string
     usage: AnthropicUsageBlock | null | undefined
@@ -69,6 +71,7 @@ export class AiUsageService {
         data: {
           organizationId: args.organizationId,
           userId: args.userId ?? null,
+          tenantId: args.tenantId ?? null,
           endpoint: args.endpoint,
           model: args.model,
           inputTokens: cost.inputTokens,
@@ -83,6 +86,35 @@ export class AiUsageService {
       this.logger.warn(
         `Kunde inte spara AiUsageLog för ${args.endpoint}: ${err instanceof Error ? err.message : String(err)}`,
       )
+    }
+  }
+
+  /**
+   * Hyresgästens månadsförbrukning i SEK + dagens anrop. Används av
+   * TenantAiService för att stoppa missbruk.
+   */
+  async getTenantUsage(tenantId: string): Promise<{
+    monthlyCostSek: number
+    callsToday: number
+  }> {
+    const monthStart = new Date()
+    monthStart.setDate(1)
+    monthStart.setHours(0, 0, 0, 0)
+    const dayStart = new Date()
+    dayStart.setHours(0, 0, 0, 0)
+
+    const [monthly, daily] = await Promise.all([
+      this.prisma.aiUsageLog.aggregate({
+        where: { tenantId, createdAt: { gte: monthStart } },
+        _sum: { costSek: true },
+      }),
+      this.prisma.aiUsageLog.count({
+        where: { tenantId, createdAt: { gte: dayStart } },
+      }),
+    ])
+    return {
+      monthlyCostSek: Number(monthly._sum.costSek ?? 0),
+      callsToday: daily,
     }
   }
 

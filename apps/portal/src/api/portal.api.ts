@@ -95,3 +95,59 @@ export const exportMyData = () => get<unknown>('/portal/me/export')
 export async function deleteMyAccount(password: string): Promise<void> {
   await portalApi.delete('/portal/me', { data: { password } })
 }
+
+// ── AI ────────────────────────────────────────────────────────────────────────
+
+export interface TenantAiPendingAction {
+  toolName: string
+  toolInput: Record<string, unknown>
+  confirmationMessage: string
+  details: Record<string, string>
+}
+
+export interface TenantAiChatResponse {
+  reply: string
+  conversationId: string
+  pendingAction?: TenantAiPendingAction
+}
+
+export interface TenantAiMessage {
+  id: string
+  conversationId: string
+  role: 'user' | 'assistant'
+  content: string
+  createdAt: string
+}
+
+export interface TenantAiConversation {
+  id: string
+  tenantId: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  messages: TenantAiMessage[]
+  _count?: { messages: number }
+}
+
+export const sendAiMessage = (message: string, conversationId?: string) =>
+  post<TenantAiChatResponse>('/tenant-portal/ai/chat', {
+    message,
+    ...(conversationId ? { conversationId } : {}),
+  })
+
+export const confirmAiAction = (params: {
+  toolName: string
+  toolInput: Record<string, unknown>
+  conversationId: string
+  confirmed: boolean
+}) => post<TenantAiChatResponse>('/tenant-portal/ai/confirm', params)
+
+export const fetchAiConversations = () =>
+  get<TenantAiConversation[]>('/tenant-portal/ai/conversations')
+
+export const fetchAiConversation = (id: string) =>
+  get<TenantAiConversation>(`/tenant-portal/ai/conversations/${id}`)
+
+export async function deleteAiConversation(id: string): Promise<void> {
+  await portalApi.delete(`/tenant-portal/ai/conversations/${id}`)
+}

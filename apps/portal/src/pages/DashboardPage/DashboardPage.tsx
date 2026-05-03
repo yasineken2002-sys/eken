@@ -128,6 +128,18 @@ export function DashboardPage() {
 
   const { tenant, activeLease, overdueInvoices, upcomingInvoice, openMaintenanceTickets } = data
 
+  const askAi = (message: string) => {
+    window.dispatchEvent(new CustomEvent('eveno-portal-ask-ai', { detail: { message } }))
+  }
+  const aiSuggestions = [
+    'När förfaller min nästa hyra?',
+    'Visa min betalningshistorik',
+    'Hur säger jag upp lägenheten?',
+    'Skapa felanmälan',
+    'Var hittar jag mitt kontrakt?',
+    'Vad är min uppsägningstid?',
+  ]
+
   const firstName =
     tenant.type === 'COMPANY'
       ? (tenant.companyName ?? 'Hyresgäst')
@@ -192,6 +204,23 @@ export function DashboardPage() {
             </button>
           </div>
         )}
+
+        {/* AI quick questions */}
+        <div className={styles.aiCard}>
+          <div className={styles.aiHeader}>
+            <span className={styles.aiBadge} aria-hidden="true">
+              💬
+            </span>
+            <strong>Ställ en snabb fråga</strong>
+          </div>
+          <div className={styles.aiChips}>
+            {aiSuggestions.map((q) => (
+              <button key={q} type="button" className={styles.aiChip} onClick={() => askAi(q)}>
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Lease card */}
         {activeLease ? (

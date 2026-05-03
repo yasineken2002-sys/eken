@@ -15,6 +15,6 @@ import {
   imports: [MaintenanceModule, NotificationsModule, PrismaModule],
   controllers: [TenantAuthController, TenantPortalController, TenantPortalAdminController],
   providers: [TenantAuthService, TenantAuthGuard, TenantPortalService],
-  exports: [TenantAuthService],
+  exports: [TenantAuthService, TenantAuthGuard],
 })
 export class TenantPortalModule {}

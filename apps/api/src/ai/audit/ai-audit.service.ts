@@ -71,7 +71,8 @@ export class AiAuditService {
    */
   async logToolExecution(args: {
     organizationId: string
-    userId: string
+    userId?: string | null
+    tenantId?: string | null
     conversationId?: string | null
     toolName: string
     toolInput: Record<string, unknown>
@@ -90,7 +91,8 @@ export class AiAuditService {
       await this.prisma.aiToolExecution.create({
         data: {
           organizationId: args.organizationId,
-          userId: args.userId,
+          userId: args.userId ?? null,
+          tenantId: args.tenantId ?? null,
           conversationId: args.conversationId ?? null,
           toolName: args.toolName,
           toolInput: sanitizedInput as object,
