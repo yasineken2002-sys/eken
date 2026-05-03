@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException } from '@nestjs/common'
+import { Injectable, ForbiddenException, BadRequestException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
@@ -14,9 +14,10 @@ import { MaintenanceService } from '../../maintenance/maintenance.service'
 import { AviseringService } from '../../avisering/avisering.service'
 import { InspectionsService } from '../../inspections/inspections.service'
 import { MaintenancePlanService } from '../../maintenance-plan/maintenance-plan.service'
+import { ReconciliationService } from '../../reconciliation/reconciliation.service'
 import { StorageService } from '../../storage/storage.service'
 import { AiAuditService } from '../audit/ai-audit.service'
-import { ACTION_TOOLS } from './ai-tools.definition'
+import { ACTION_TOOLS, ACCOUNTING_ONLY_ACTIONS } from './ai-tools.definition'
 
 // ─── Säker fält-whitelisting för AI-svar ─────────────────────────────────────
 // AI:n får ALDRIG se personnummer, lösenordshashar, aktiveringstokens eller
@@ -285,6 +286,7 @@ export class ToolExecutorService {
     private readonly aviseringService: AviseringService,
     private readonly inspectionsService: InspectionsService,
     private readonly maintenancePlanService: MaintenancePlanService,
+    private readonly reconciliationService: ReconciliationService,
     private readonly storage: StorageService,
     private readonly audit: AiAuditService,
   ) {}
@@ -361,6 +363,15 @@ export class ToolExecutorService {
       }
       if (userRole === 'MANAGER' && !MANAGER_ALLOWED_ACTIONS.has(toolName)) {
         throw new ForbiddenException('Du har inte behörighet för denna åtgärd.')
+      }
+      // Bokförings- och bankavstämnings-action-tools kräver ACCOUNTANT eller högre.
+      // ADMIN/OWNER har redan allt; MANAGER blockas explicit ovan.
+      if (ACCOUNTING_ONLY_ACTIONS.has(toolName)) {
+        if (userRole !== 'ACCOUNTANT' && userRole !== 'ADMIN' && userRole !== 'OWNER') {
+          throw new ForbiddenException(
+            'Endast bokförare (ACCOUNTANT) eller administratörer får använda bokförings-verktyg.',
+          )
+        }
       }
     }
 
@@ -2242,6 +2253,688 @@ export class ToolExecutorService {
           return { success: true, data: summary, message: lines.join('\n') }
         }
 
+        // ── BANKAVSTÄMNING ─────────────────────────────────────────────────
+
+        case 'get_bank_transactions': {
+          const filters: { status?: string; from?: string; to?: string } = {}
+          if (typeof toolInput.status === 'string') filters.status = toolInput.status
+          if (typeof toolInput.fromDate === 'string') filters.from = toolInput.fromDate
+          if (typeof toolInput.toDate === 'string') filters.to = toolInput.toDate
+          const limit = typeof toolInput.limit === 'number' ? toolInput.limit : 50
+          const all = await this.reconciliationService.getTransactions(organizationId, filters)
+          const txs = all.slice(0, limit)
+          return {
+            success: true,
+            data: txs.map((t) => ({
+              id: t.id,
+              date: t.date,
+              description: t.description,
+              amount: Number(t.amount),
+              ocr: t.rawOcr,
+              status: t.status,
+              invoiceNumber: t.invoice?.invoiceNumber ?? null,
+              invoiceStatus: t.invoice?.status ?? null,
+              matchedAt: t.matchedAt,
+            })),
+            message: `${txs.length} banktransaktioner hittades`,
+          }
+        }
+
+        case 'get_unmatched_transactions': {
+          const txs = await this.reconciliationService.getTransactions(organizationId, {
+            status: 'UNMATCHED',
+          })
+          return {
+            success: true,
+            data: txs.map((t) => ({
+              id: t.id,
+              date: t.date,
+              description: t.description,
+              amount: Number(t.amount),
+              ocr: t.rawOcr,
+            })),
+            message: `${txs.length} omatchade banktransaktioner`,
+          }
+        }
+
+        case 'get_reconciliation_summary': {
+          const month = typeof toolInput.month === 'number' ? toolInput.month : undefined
+          const year = typeof toolInput.year === 'number' ? toolInput.year : undefined
+          const stats = await this.reconciliationService.getStats(organizationId)
+          const total = stats.matched + stats.unmatched
+          const autoMatchedPct = total > 0 ? Math.round((stats.matched / total) * 100) : 0
+          let scopedTotal: number | null = null
+          if (month && year) {
+            const from = new Date(Date.UTC(year, month - 1, 1))
+            const to = new Date(Date.UTC(year, month, 1))
+            const scoped = await this.prisma.bankTransaction.aggregate({
+              where: { organizationId, date: { gte: from, lt: to } },
+              _count: { id: true },
+              _sum: { amount: true },
+            })
+            scopedTotal = scoped._count.id
+          }
+          return {
+            success: true,
+            data: {
+              ...stats,
+              autoMatchedPct,
+              ...(month && year ? { month, year, scopedCount: scopedTotal } : {}),
+            },
+            message: `${stats.matched} matchade, ${stats.unmatched} omatchade — ${autoMatchedPct}% automatiskt`,
+          }
+        }
+
+        case 'match_bank_transaction': {
+          const transactionId = String(toolInput.transactionId ?? '')
+          const invoiceId = String(toolInput.invoiceId ?? '')
+          if (!transactionId || !invoiceId) {
+            return { success: false, message: 'transactionId och invoiceId krävs' }
+          }
+          await this.reconciliationService.manualMatch(
+            transactionId,
+            invoiceId,
+            organizationId,
+            userId,
+          )
+          return {
+            success: true,
+            message:
+              'Banktransaktionen matchades mot fakturan och betalningen bokfördes (1930 D / 1510 K).',
+            nextSteps: [
+              'Kontrollera saldot på företagskontot (1930) med get_account_balance',
+              'Hämta verifikatlistan med get_journal_entries om du vill verifiera bokningen',
+            ],
+          }
+        }
+
+        case 'import_bgmax_file': {
+          const fileContent = String(toolInput.fileContent ?? '')
+          const fileName = String(toolInput.fileName ?? 'bgmax.txt')
+          if (!fileContent) {
+            return { success: false, message: 'fileContent (base64) krävs' }
+          }
+          let buffer: Buffer
+          try {
+            buffer = Buffer.from(fileContent, 'base64')
+          } catch {
+            return { success: false, message: 'Kunde inte avkoda base64-innehållet' }
+          }
+          const result = await this.importBgMaxFile(buffer, fileName, organizationId)
+          return {
+            success: true,
+            data: result,
+            message: `BgMax-import: ${result.imported} importerade, ${result.autoMatched} automatiskt matchade, ${result.unmatched} omatchade${result.duplicates > 0 ? `, ${result.duplicates} dubletter` : ''}.`,
+            nextSteps:
+              result.unmatched > 0
+                ? [
+                    'Använd get_unmatched_transactions för att se vilka som inte hittade en faktura',
+                    'Matcha manuellt med match_bank_transaction',
+                  ]
+                : ['Använd get_reconciliation_summary för status'],
+          }
+        }
+
+        case 'unmatch_transaction': {
+          const transactionId = String(toolInput.transactionId ?? '')
+          const reason = String(toolInput.reason ?? '')
+          if (!transactionId || !reason) {
+            return { success: false, message: 'transactionId och reason krävs' }
+          }
+          await this.reconciliationService.unmatchTransaction(transactionId, organizationId, userId)
+          return {
+            success: true,
+            message: `Matchningen ångrades. Motverifikat skapades i bokföringen. Anledning: ${reason}`,
+            nextSteps: [
+              'Kontrollera fakturans nya status med get_invoices',
+              'Verifiera bokföringen med get_journal_entries',
+            ],
+          }
+        }
+
+        // ── BOKFÖRING ──────────────────────────────────────────────────────
+
+        case 'get_journal_entries': {
+          const filters: { from?: string; to?: string } = {}
+          if (typeof toolInput.fromDate === 'string') filters.from = toolInput.fromDate
+          if (typeof toolInput.toDate === 'string') filters.to = toolInput.toDate
+          const all = await this.accountingService.getJournalEntries(organizationId, filters)
+          const accountFilter =
+            typeof toolInput.accountNumber === 'number' ? toolInput.accountNumber : null
+          const filtered = accountFilter
+            ? all.filter((e) => e.lines.some((l) => l.account.number === accountFilter))
+            : all
+          const data = filtered.map((e) => ({
+            id: e.id,
+            date: e.date,
+            description: e.description,
+            source: e.source,
+            lines: e.lines.map((l) => ({
+              account: `${l.account.number} ${l.account.name}`,
+              debit: l.debit ? Number(l.debit) : null,
+              credit: l.credit ? Number(l.credit) : null,
+              description: l.description,
+            })),
+          }))
+          return {
+            success: true,
+            data,
+            message: `${data.length} verifikat hittades${accountFilter ? ` på konto ${accountFilter}` : ''}`,
+          }
+        }
+
+        case 'get_account_balance': {
+          const accountNumber =
+            typeof toolInput.accountNumber === 'number' ? toolInput.accountNumber : NaN
+          if (!Number.isFinite(accountNumber)) {
+            return { success: false, message: 'accountNumber måste vara ett tal' }
+          }
+          const asOfDate =
+            typeof toolInput.asOfDate === 'string' ? new Date(toolInput.asOfDate) : new Date()
+          const account = await this.prisma.account.findFirst({
+            where: { organizationId, number: accountNumber },
+          })
+          if (!account) {
+            return { success: false, message: `Konto ${accountNumber} finns inte` }
+          }
+          const aggregate = await this.prisma.journalEntryLine.aggregate({
+            where: {
+              accountId: account.id,
+              journalEntry: { organizationId, date: { lte: asOfDate } },
+            },
+            _sum: { debit: true, credit: true },
+          })
+          const debit = Number(aggregate._sum.debit ?? 0)
+          const credit = Number(aggregate._sum.credit ?? 0)
+          const balance = debit - credit
+          return {
+            success: true,
+            data: {
+              accountNumber: account.number,
+              accountName: account.name,
+              type: account.type,
+              debit,
+              credit,
+              balance,
+              asOf: asOfDate.toISOString().slice(0, 10),
+            },
+            message: `Konto ${account.number} ${account.name}: saldo ${formatAmount(balance)} kr per ${asOfDate.toISOString().slice(0, 10)}`,
+          }
+        }
+
+        case 'get_vat_report': {
+          const fromDate = String(toolInput.fromDate ?? '')
+          const toDate = String(toolInput.toDate ?? '')
+          if (!fromDate || !toDate) {
+            return { success: false, message: 'fromDate och toDate krävs' }
+          }
+          const accounts = await this.prisma.account.findMany({
+            where: { organizationId, number: { in: [2611, 2621, 2631, 2641] } },
+          })
+          const accountByNumber = new Map(accounts.map((a) => [a.number, a]))
+
+          const sumFor = async (num: number) => {
+            const acc = accountByNumber.get(num)
+            if (!acc) return { debit: 0, credit: 0 }
+            const agg = await this.prisma.journalEntryLine.aggregate({
+              where: {
+                accountId: acc.id,
+                journalEntry: {
+                  organizationId,
+                  date: { gte: new Date(fromDate), lte: new Date(toDate) },
+                },
+              },
+              _sum: { debit: true, credit: true },
+            })
+            return {
+              debit: Number(agg._sum.debit ?? 0),
+              credit: Number(agg._sum.credit ?? 0),
+            }
+          }
+
+          const [v25, v12, v6, vIn] = await Promise.all([
+            sumFor(2611),
+            sumFor(2621),
+            sumFor(2631),
+            sumFor(2641),
+          ])
+          // Utgående moms = kredit på 2611/2621/2631 (försäljning ökar skuld)
+          const outVat25 = v25.credit - v25.debit
+          const outVat12 = v12.credit - v12.debit
+          const outVat6 = v6.credit - v6.debit
+          const outTotal = outVat25 + outVat12 + outVat6
+          // Ingående moms = debet på 2641 (köp ökar fordran på Skatteverket)
+          const inVat = vIn.debit - vIn.credit
+          const netToPay = outTotal - inVat
+          return {
+            success: true,
+            data: {
+              period: { from: fromDate, to: toDate },
+              outgoing: { vat25: outVat25, vat12: outVat12, vat6: outVat6, total: outTotal },
+              incoming: { total: inVat },
+              netToPay,
+              direction: netToPay >= 0 ? 'BETALA' : 'ÅTERBÄRING',
+            },
+            message: `Momsrapport ${fromDate}–${toDate}: utgående ${formatAmount(outTotal)} kr, ingående ${formatAmount(inVat)} kr → ${netToPay >= 0 ? 'att betala' : 'att få tillbaka'} ${formatAmount(Math.abs(netToPay))} kr`,
+          }
+        }
+
+        case 'get_profit_loss_report': {
+          const fromDate = String(toolInput.fromDate ?? '')
+          const toDate = String(toolInput.toDate ?? '')
+          if (!fromDate || !toDate) {
+            return { success: false, message: 'fromDate och toDate krävs' }
+          }
+          const lines = await this.prisma.journalEntryLine.findMany({
+            where: {
+              journalEntry: {
+                organizationId,
+                date: { gte: new Date(fromDate), lte: new Date(toDate) },
+              },
+            },
+            include: { account: true },
+          })
+          const buckets: Record<string, { number: number; name: string; amount: number }[]> = {
+            revenue: [],
+            operating: [],
+            admin: [],
+            personnel: [],
+            depreciation: [],
+            financial: [],
+          }
+          const sums = {
+            revenue: 0,
+            operating: 0,
+            admin: 0,
+            personnel: 0,
+            depreciation: 0,
+            financial: 0,
+          }
+          const perAccount = new Map<number, { name: string; amount: number }>()
+          for (const l of lines) {
+            const num = l.account.number
+            // Intäkter (3xxx): kreditsaldo positivt
+            // Kostnader (5xxx-8xxx): debetsaldo positivt
+            const debit = Number(l.debit ?? 0)
+            const credit = Number(l.credit ?? 0)
+            const value = num >= 3000 && num < 4000 ? credit - debit : debit - credit
+            const cur = perAccount.get(num) ?? { name: l.account.name, amount: 0 }
+            cur.amount += value
+            perAccount.set(num, cur)
+          }
+          for (const [num, info] of perAccount) {
+            if (num >= 3000 && num < 4000) {
+              buckets.revenue!.push({ number: num, name: info.name, amount: info.amount })
+              sums.revenue += info.amount
+            } else if (num >= 5000 && num < 6000) {
+              buckets.operating!.push({ number: num, name: info.name, amount: info.amount })
+              sums.operating += info.amount
+            } else if (num >= 6000 && num < 7000) {
+              buckets.admin!.push({ number: num, name: info.name, amount: info.amount })
+              sums.admin += info.amount
+            } else if (num >= 7000 && num < 8000) {
+              buckets.personnel!.push({ number: num, name: info.name, amount: info.amount })
+              sums.personnel += info.amount
+            } else if (num >= 8000 && num < 8400) {
+              buckets.depreciation!.push({ number: num, name: info.name, amount: info.amount })
+              sums.depreciation += info.amount
+            } else if (num >= 8400 && num < 9000) {
+              buckets.financial!.push({ number: num, name: info.name, amount: info.amount })
+              sums.financial += info.amount
+            }
+          }
+          const totalCosts =
+            sums.operating + sums.admin + sums.personnel + sums.depreciation + sums.financial
+          const result = sums.revenue - totalCosts
+          return {
+            success: true,
+            data: {
+              period: { from: fromDate, to: toDate },
+              ...(typeof toolInput.propertyId === 'string'
+                ? {
+                    propertyFilter: toolInput.propertyId,
+                    note: 'Per-fastighets-resultat kräver att kostnader är taggade per fastighet — totalsumman gäller hela organisationen tills dess.',
+                  }
+                : {}),
+              revenue: { total: sums.revenue, accounts: buckets.revenue },
+              costs: {
+                operating: { total: sums.operating, accounts: buckets.operating },
+                admin: { total: sums.admin, accounts: buckets.admin },
+                personnel: { total: sums.personnel, accounts: buckets.personnel },
+                depreciation: { total: sums.depreciation, accounts: buckets.depreciation },
+                financial: { total: sums.financial, accounts: buckets.financial },
+                total: totalCosts,
+              },
+              result,
+            },
+            message: `Resultaträkning ${fromDate}–${toDate}: intäkter ${formatAmount(sums.revenue)} kr, kostnader ${formatAmount(totalCosts)} kr → resultat ${formatAmount(result)} kr`,
+          }
+        }
+
+        case 'get_balance_sheet': {
+          const asOfStr = String(toolInput.asOfDate ?? '')
+          if (!asOfStr) return { success: false, message: 'asOfDate krävs' }
+          const asOf = new Date(asOfStr)
+          const lines = await this.prisma.journalEntryLine.findMany({
+            where: {
+              journalEntry: { organizationId, date: { lte: asOf } },
+            },
+            include: { account: true },
+          })
+          const perAccount = new Map<number, { name: string; balance: number }>()
+          for (const l of lines) {
+            const num = l.account.number
+            const debit = Number(l.debit ?? 0)
+            const credit = Number(l.credit ?? 0)
+            // Tillgångar (1xxx): debet−kredit. Skulder/EK (2xxx): kredit−debet.
+            const value = num < 2000 ? debit - credit : credit - debit
+            const cur = perAccount.get(num) ?? { name: l.account.name, balance: 0 }
+            cur.balance += value
+            perAccount.set(num, cur)
+          }
+          const assets: { number: number; name: string; balance: number }[] = []
+          const liabilities: { number: number; name: string; balance: number }[] = []
+          let totalAssets = 0
+          let totalLiabilities = 0
+          for (const [num, info] of perAccount) {
+            if (num < 2000) {
+              assets.push({ number: num, name: info.name, balance: info.balance })
+              totalAssets += info.balance
+            } else if (num < 3000) {
+              liabilities.push({ number: num, name: info.name, balance: info.balance })
+              totalLiabilities += info.balance
+            }
+          }
+          assets.sort((a, b) => a.number - b.number)
+          liabilities.sort((a, b) => a.number - b.number)
+          return {
+            success: true,
+            data: {
+              asOf: asOfStr,
+              assets: { total: totalAssets, accounts: assets },
+              liabilitiesAndEquity: { total: totalLiabilities, accounts: liabilities },
+              difference: totalAssets - totalLiabilities,
+            },
+            message: `Balansräkning per ${asOfStr}: tillgångar ${formatAmount(totalAssets)} kr, skulder + EK ${formatAmount(totalLiabilities)} kr`,
+          }
+        }
+
+        case 'create_journal_entry': {
+          const dateStr = String(toolInput.date ?? '')
+          const description = String(toolInput.description ?? '').trim()
+          const linesInput = toolInput.lines as
+            | Array<{
+                accountNumber: number
+                debit?: number
+                credit?: number
+                description?: string
+              }>
+            | undefined
+          if (!dateStr || !description || !linesInput || linesInput.length < 2) {
+            return {
+              success: false,
+              message: 'date, description och minst 2 rader krävs',
+            }
+          }
+          const date = new Date(dateStr)
+          if (isNaN(date.getTime())) {
+            return { success: false, message: `Ogiltigt datum: ${dateStr}` }
+          }
+          const closed = await this.prisma.closedAccountingPeriod.findFirst({
+            where: {
+              organizationId,
+              year: date.getUTCFullYear(),
+              month: date.getUTCMonth() + 1,
+            },
+          })
+          if (closed) {
+            return {
+              success: false,
+              message: `Bokföringsperioden ${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')} är stängd. Ändra datum eller återöppna perioden manuellt.`,
+            }
+          }
+          const accounts = await this.prisma.account.findMany({
+            where: { organizationId },
+            select: { id: true, number: true },
+          })
+          const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+          let totalDebit = 0
+          let totalCredit = 0
+          const prismaLines: Array<{
+            accountId: string
+            debit?: number
+            credit?: number
+            description?: string
+          }> = []
+          for (const line of linesInput) {
+            const accountId = accountByNumber.get(line.accountNumber)
+            if (!accountId) {
+              return {
+                success: false,
+                message: `BAS-konto ${line.accountNumber} finns inte i kontoplanen. Lägg till det först eller välj ett befintligt konto.`,
+              }
+            }
+            const debit = typeof line.debit === 'number' && line.debit > 0 ? line.debit : 0
+            const credit = typeof line.credit === 'number' && line.credit > 0 ? line.credit : 0
+            if (debit === 0 && credit === 0) {
+              return {
+                success: false,
+                message: `Rad mot konto ${line.accountNumber} saknar både debet och kredit.`,
+              }
+            }
+            if (debit > 0 && credit > 0) {
+              return {
+                success: false,
+                message: `Rad mot konto ${line.accountNumber} har både debet och kredit — använd separata rader.`,
+              }
+            }
+            totalDebit += debit
+            totalCredit += credit
+            prismaLines.push({
+              accountId,
+              ...(debit > 0 ? { debit } : {}),
+              ...(credit > 0 ? { credit } : {}),
+              ...(line.description ? { description: line.description } : {}),
+            })
+          }
+          if (Math.abs(totalDebit - totalCredit) > 0.01) {
+            return {
+              success: false,
+              message: `Verifikatet balanserar inte: debet ${formatAmount(totalDebit)} kr, kredit ${formatAmount(totalCredit)} kr.`,
+            }
+          }
+          const entry = await this.prisma.journalEntry.create({
+            data: {
+              organizationId,
+              date,
+              description,
+              source: 'MANUAL',
+              createdById: userId,
+              lines: { create: prismaLines },
+            },
+            include: { lines: { include: { account: true } } },
+          })
+          return {
+            success: true,
+            data: { id: entry.id, total: totalDebit },
+            message: `Verifikat skapat: ${description} (${formatAmount(totalDebit)} kr balanserat).`,
+          }
+        }
+
+        case 'record_expense': {
+          const dateStr = String(toolInput.date ?? '')
+          const amount = parseSwedishAmount(toolInput.amount)
+          const vatAmount =
+            toolInput.vatAmount !== undefined ? parseSwedishAmount(toolInput.vatAmount) : 0
+          const description = String(toolInput.description ?? '').trim()
+          const accountNumber =
+            typeof toolInput.accountNumber === 'number' ? toolInput.accountNumber : NaN
+          if (
+            !dateStr ||
+            amount === null ||
+            amount <= 0 ||
+            !description ||
+            !Number.isFinite(accountNumber)
+          ) {
+            return {
+              success: false,
+              message: 'date, amount > 0, description och accountNumber krävs',
+            }
+          }
+          const date = new Date(dateStr)
+          if (isNaN(date.getTime())) {
+            return { success: false, message: `Ogiltigt datum: ${dateStr}` }
+          }
+          const closed = await this.prisma.closedAccountingPeriod.findFirst({
+            where: {
+              organizationId,
+              year: date.getUTCFullYear(),
+              month: date.getUTCMonth() + 1,
+            },
+          })
+          if (closed) {
+            return {
+              success: false,
+              message: `Bokföringsperioden ${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')} är stängd.`,
+            }
+          }
+          const accounts = await this.prisma.account.findMany({
+            where: { organizationId },
+            select: { id: true, number: true },
+          })
+          const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+          const expenseAccountId = accountByNumber.get(accountNumber)
+          const bankAccountId = accountByNumber.get(1930)
+          const vatInAccountId = accountByNumber.get(2641)
+          if (!expenseAccountId) {
+            return {
+              success: false,
+              message: `Kostnadskonto ${accountNumber} finns inte. Använd t.ex. 5070 (Reparationer) eller 5080 (Försäkring).`,
+            }
+          }
+          if (!bankAccountId) {
+            return {
+              success: false,
+              message:
+                'Konto 1930 (Företagskonto/Bank) saknas i kontoplanen. Lägg till standardkontoplan först.',
+            }
+          }
+          const vat = vatAmount ?? 0
+          const netExpense = amount - vat
+          const lines: Array<{
+            accountId: string
+            debit?: number
+            credit?: number
+            description?: string
+          }> = [
+            {
+              accountId: expenseAccountId,
+              debit: netExpense,
+              description,
+            },
+            {
+              accountId: bankAccountId,
+              credit: amount,
+              description: 'Betalning bank',
+            },
+          ]
+          if (vat > 0) {
+            if (!vatInAccountId) {
+              return {
+                success: false,
+                message: 'Konto 2641 (Ingående moms) saknas — kan inte bokföra moms separat.',
+              }
+            }
+            lines.push({
+              accountId: vatInAccountId,
+              debit: vat,
+              description: 'Ingående moms',
+            })
+          }
+          const entry = await this.prisma.journalEntry.create({
+            data: {
+              organizationId,
+              date,
+              description: `Utgift: ${description}`,
+              source: 'MANUAL',
+              createdById: userId,
+              lines: { create: lines },
+            },
+          })
+          const propertyTag = typeof toolInput.propertyId === 'string' ? toolInput.propertyId : null
+          return {
+            success: true,
+            data: { id: entry.id, amount, vat, netExpense, propertyId: propertyTag },
+            message: `Utgift bokförd: ${formatAmount(amount)} kr på ${accountNumber}${vat > 0 ? ` (varav ${formatAmount(vat)} kr moms på 2641)` : ''}, betalt från 1930.`,
+          }
+        }
+
+        case 'close_period': {
+          const month = typeof toolInput.month === 'number' ? toolInput.month : NaN
+          const year = typeof toolInput.year === 'number' ? toolInput.year : NaN
+          if (!Number.isFinite(month) || month < 1 || month > 12 || !Number.isFinite(year)) {
+            return { success: false, message: 'Ogiltig månad eller år' }
+          }
+          const existing = await this.prisma.closedAccountingPeriod.findFirst({
+            where: { organizationId, month, year },
+          })
+          if (existing) {
+            return {
+              success: false,
+              message: `Perioden ${year}-${String(month).padStart(2, '0')} är redan stängd (stängdes ${existing.closedAt.toISOString().slice(0, 10)}).`,
+            }
+          }
+          const from = new Date(Date.UTC(year, month - 1, 1))
+          const to = new Date(Date.UTC(year, month, 1))
+          // Generera periodrapport innan låsning
+          const lines = await this.prisma.journalEntryLine.findMany({
+            where: {
+              journalEntry: {
+                organizationId,
+                date: { gte: from, lt: to },
+              },
+            },
+            include: { account: true },
+          })
+          let revenue = 0
+          let expenses = 0
+          for (const l of lines) {
+            const num = l.account.number
+            const debit = Number(l.debit ?? 0)
+            const credit = Number(l.credit ?? 0)
+            if (num >= 3000 && num < 4000) revenue += credit - debit
+            else if (num >= 5000 && num < 9000) expenses += debit - credit
+          }
+          const result = revenue - expenses
+          const summary = {
+            month,
+            year,
+            revenue,
+            expenses,
+            result,
+            entriesCount: new Set(lines.map((l) => l.journalEntryId)).size,
+            generatedAt: new Date().toISOString(),
+          }
+          await this.prisma.closedAccountingPeriod.create({
+            data: {
+              organizationId,
+              month,
+              year,
+              closedById: userId,
+              summary: summary as unknown as Prisma.InputJsonValue,
+            },
+          })
+          return {
+            success: true,
+            data: summary,
+            message: `Period ${year}-${String(month).padStart(2, '0')} stängd. Intäkter ${formatAmount(revenue)} kr, kostnader ${formatAmount(expenses)} kr, resultat ${formatAmount(result)} kr.`,
+            nextSteps: [
+              'Använd get_vat_report för att förbereda momsdeklarationen',
+              'Använd export_sie4 för att skicka bokföringen till revisorn',
+            ],
+          }
+        }
+
         default:
           return { success: false, message: `Okänt verktyg: ${toolName}` }
       }
@@ -2253,5 +2946,103 @@ export class ToolExecutorService {
         message: `Åtgärden misslyckades: ${msg}. Försök igen eller kontakta support om problemet kvarstår.`,
       }
     }
+  }
+
+  // ── BgMax-parser ─────────────────────────────────────────────────────────
+  // Hanterar grundformatet från Bankgirot: 80-tecken-rader med transaktionskoder
+  // (TC 01 = filheader, 05 = sektionsstart, 20/21 = OCR-betalning, 70 = avslut).
+  // Parsar belopp i öre, OCR-referens och datum från sektionsraderna.
+  private async importBgMaxFile(
+    buffer: Buffer,
+    fileName: string,
+    organizationId: string,
+  ): Promise<{
+    fileName: string
+    imported: number
+    duplicates: number
+    autoMatched: number
+    unmatched: number
+    errors: string[]
+  }> {
+    const text = buffer.toString('utf8')
+    const lines = text.split(/\r?\n/).filter((l) => l.length > 0)
+    const result = {
+      fileName,
+      imported: 0,
+      duplicates: 0,
+      autoMatched: 0,
+      unmatched: 0,
+      errors: [] as string[],
+    }
+
+    let sectionDate: Date | null = null
+    for (const line of lines) {
+      const tc = line.slice(0, 2)
+      // TC 05 = sektionsstart (innehåller bokföringsdatum). Format:
+      // 05 + bankgironr (10) + plusgiro (10) + betalningsdatum YYYYMMDD (8)
+      if (tc === '05') {
+        const dateStr = line.slice(22, 30)
+        if (/^\d{8}$/.test(dateStr)) {
+          sectionDate = new Date(
+            `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`,
+          )
+        }
+        continue
+      }
+      // TC 20 / 21 = OCR-betalning. Layout (per Bankgirot v3):
+      //   pos 1-2: TC
+      //   pos 3-12: mottagar-bankgiro (10)
+      //   pos 13-37: betalarens referens / OCR (25)
+      //   pos 38-55: belopp i öre (18)
+      // Vi använder slice (0-indexerad → samma som "pos − 1").
+      if (tc !== '20' && tc !== '21') continue
+      try {
+        const ocr = line.slice(12, 37).trim()
+        const amountOre = parseInt(line.slice(37, 55).trim(), 10)
+        if (!Number.isFinite(amountOre) || amountOre <= 0) {
+          result.errors.push(`Rad: ogiltigt belopp`)
+          continue
+        }
+        const amount = amountOre / 100
+        const txDate = sectionDate ?? new Date()
+        const description = `BgMax inbetalning${ocr ? ` (OCR ${ocr})` : ''}`
+        const amountDecimal = new Prisma.Decimal(amount.toFixed(2))
+        const existing = await this.prisma.bankTransaction.findFirst({
+          where: {
+            organizationId,
+            date: txDate,
+            amount: amountDecimal,
+            ...(ocr ? { rawOcr: ocr } : {}),
+          },
+        })
+        if (existing) {
+          result.duplicates++
+          continue
+        }
+        const tx = await this.prisma.bankTransaction.create({
+          data: {
+            organizationId,
+            date: txDate,
+            description,
+            amount: amountDecimal,
+            ...(ocr ? { rawOcr: ocr } : {}),
+          },
+        })
+        result.imported++
+        const matched = await this.reconciliationService.matchTransaction(tx, organizationId)
+        if (matched) result.autoMatched++
+        else result.unmatched++
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        result.errors.push(msg)
+      }
+    }
+
+    if (result.imported === 0 && result.duplicates === 0) {
+      throw new BadRequestException(
+        'Inga giltiga BgMax-poster hittades i filen. Kontrollera att det är en BgMax-fil från Bankgirot.',
+      )
+    }
+    return result
   }
 }

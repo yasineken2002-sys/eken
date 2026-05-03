@@ -614,6 +614,234 @@ export const TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
+
+  // ── BANKAVSTÄMNING — READ ──────────────────────────────────────────────────
+
+  {
+    name: 'get_bank_transactions',
+    description:
+      'Hämtar banktransaktioner med filter på status (UNMATCHED/MATCHED/IGNORED), datumintervall och antal.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['UNMATCHED', 'MATCHED', 'IGNORED'],
+          description: 'Matchningsstatus',
+        },
+        fromDate: { type: 'string', description: 'Från-datum (YYYY-MM-DD)' },
+        toDate: { type: 'string', description: 'Till-datum (YYYY-MM-DD)' },
+        limit: { type: 'number', description: 'Max antal rader (default 50)' },
+      },
+      required: [],
+    },
+  },
+
+  {
+    name: 'get_unmatched_transactions',
+    description:
+      'Hämtar alla banktransaktioner som ännu inte matchats mot en faktura. Använd som första steg vid bankavstämning.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
+  {
+    name: 'get_reconciliation_summary',
+    description:
+      'Returnerar avstämningssammanfattning: antal matchade/omatchade transaktioner, totalbelopp och andel automatiskt matchat.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        month: { type: 'number', description: 'Månad 1–12 (valfritt)' },
+        year: { type: 'number', description: 'År (valfritt)' },
+      },
+      required: [],
+    },
+  },
+
+  // ── BANKAVSTÄMNING — ACTION ────────────────────────────────────────────────
+
+  {
+    name: 'match_bank_transaction',
+    description:
+      'Matchar manuellt en banktransaktion mot en specifik faktura. Bokför betalningen via 1930→1510 och markerar fakturan som PAID.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        transactionId: { type: 'string', description: 'BankTransaction-ID' },
+        invoiceId: { type: 'string', description: 'Faktura-ID' },
+      },
+      required: ['transactionId', 'invoiceId'],
+    },
+  },
+
+  {
+    name: 'import_bgmax_file',
+    description:
+      'Importerar en BgMax-fil (Bankgirot-format) — parsar betalningsposter, skapar bankrader och auto-matchar mot fakturor via OCR. Returnerar summering med antal matchade/omatchade.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        fileContent: { type: 'string', description: 'Filinnehåll i base64' },
+        fileName: { type: 'string', description: 'Filnamn (för loggning)' },
+      },
+      required: ['fileContent', 'fileName'],
+    },
+  },
+
+  {
+    name: 'unmatch_transaction',
+    description:
+      'Ångrar en felaktig matchning. Återställer fakturans status till SENT/OVERDUE och skapar korrigerings-verifikat (motverifikat) i bokföringen. Kräver dubbelbekräftelse om matchningen är äldre än 30 dagar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        transactionId: { type: 'string', description: 'BankTransaction-ID' },
+        reason: { type: 'string', description: 'Anledning till avmatchning (för audit)' },
+      },
+      required: ['transactionId', 'reason'],
+    },
+  },
+
+  // ── BOKFÖRING — READ ──────────────────────────────────────────────────────
+
+  {
+    name: 'get_journal_entries',
+    description: 'Hämtar verifikat med rader, filtrerat på datum och eventuellt kontonummer.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        fromDate: { type: 'string', description: 'Från-datum (YYYY-MM-DD)' },
+        toDate: { type: 'string', description: 'Till-datum (YYYY-MM-DD)' },
+        accountNumber: { type: 'number', description: 'Filtrera på BAS-konto (t.ex. 1930)' },
+      },
+      required: [],
+    },
+  },
+
+  {
+    name: 'get_account_balance',
+    description:
+      'Returnerar saldo på ett BAS-konto vid ett datum. Saldo = sum(debet) − sum(kredit) över alla journalposter på kontot t.o.m. asOfDate.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        accountNumber: { type: 'number', description: 'BAS-kontonummer (t.ex. 1930)' },
+        asOfDate: { type: 'string', description: 'Per-datum (YYYY-MM-DD), default idag' },
+      },
+      required: ['accountNumber'],
+    },
+  },
+
+  {
+    name: 'get_vat_report',
+    description:
+      'Genererar momsrapport för en period: utgående moms (2611/2621/2631), ingående moms (2641) och nettomoms att betala/få tillbaka. Underlag för Skatteverket-deklaration.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        fromDate: { type: 'string', description: 'Från-datum (YYYY-MM-DD)' },
+        toDate: { type: 'string', description: 'Till-datum (YYYY-MM-DD)' },
+      },
+      required: ['fromDate', 'toDate'],
+    },
+  },
+
+  {
+    name: 'get_profit_loss_report',
+    description:
+      'Resultaträkning per period: intäkter (3xxx), driftkostnader (5xxx), administrativa (6xxx), personal (7xxx), avskrivningar (8xxx). Kan filtreras per fastighet (preliminärt — kräver att kostnaderna är taggade).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        fromDate: { type: 'string', description: 'Från-datum (YYYY-MM-DD)' },
+        toDate: { type: 'string', description: 'Till-datum (YYYY-MM-DD)' },
+        propertyId: { type: 'string', description: 'Filtrera på fastighet (valfritt)' },
+      },
+      required: ['fromDate', 'toDate'],
+    },
+  },
+
+  {
+    name: 'get_balance_sheet',
+    description:
+      'Balansräkning vid ett datum: tillgångar (1xxx), eget kapital + skulder (2xxx). Saldo per konto och summering.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        asOfDate: { type: 'string', description: 'Per-datum (YYYY-MM-DD)' },
+      },
+      required: ['asOfDate'],
+    },
+  },
+
+  // ── BOKFÖRING — ACTION ────────────────────────────────────────────────────
+
+  {
+    name: 'create_journal_entry',
+    description:
+      'Skapar ett manuellt verifikat (JournalEntry) med rader. Validerar att debet = kredit och att alla konton finns i BAS-kontoplanen. Kräver dubbelbekräftelse om summa > 100 000 kr.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'Verifikationsdatum (YYYY-MM-DD)' },
+        description: { type: 'string', description: 'Verifikationstext' },
+        lines: {
+          type: 'array',
+          description: 'Verifikationsrader — debet och kredit måste balansera',
+          items: {
+            type: 'object',
+            properties: {
+              accountNumber: { type: 'number', description: 'BAS-kontonummer' },
+              debit: { type: 'number', description: 'Debet-belopp (eller 0)' },
+              credit: { type: 'number', description: 'Kredit-belopp (eller 0)' },
+              description: { type: 'string', description: 'Radbeskrivning' },
+            },
+            required: ['accountNumber'],
+          },
+        },
+      },
+      required: ['date', 'description', 'lines'],
+    },
+  },
+
+  {
+    name: 'record_expense',
+    description:
+      'Bokför en utgift — debet på kostnadskonto (t.ex. 5070 Reparationer) och kredit på 1930 (Bank). Hanterar moms separat på 2641 om vatAmount anges.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'Datum (YYYY-MM-DD)' },
+        amount: { type: 'number', description: 'Total betalt belopp (inkl. moms)' },
+        vatAmount: { type: 'number', description: 'Momsbelopp (valfritt)' },
+        description: { type: 'string', description: 'Beskrivning av utgiften' },
+        accountNumber: {
+          type: 'number',
+          description: 'Kostnadskonto (t.ex. 5070 Reparationer, 5080 Försäkring)',
+        },
+        propertyId: { type: 'string', description: 'Fastighets-ID (valfritt, för spårning)' },
+      },
+      required: ['date', 'amount', 'description', 'accountNumber'],
+    },
+  },
+
+  {
+    name: 'close_period',
+    description:
+      'Stänger en bokföringsperiod (månad/år) — efter detta kan inga nya verifikat skapas med datum inom perioden. Genererar periodrapport. Kräver ALLTID dubbelbekräftelse — kan inte återöppnas via API.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        month: { type: 'number', description: 'Månad 1–12' },
+        year: { type: 'number', description: 'År' },
+      },
+      required: ['month', 'year'],
+    },
+  },
 ]
 
 export const ACTION_TOOLS = new Set([
@@ -636,4 +864,19 @@ export const ACTION_TOOLS = new Set([
   'create_tenant_and_lease',
   'generate_rent_notices',
   'create_inspection',
+  // Bankavstämning + bokföring
+  'match_bank_transaction',
+  'import_bgmax_file',
+  'unmatch_transaction',
+  'create_journal_entry',
+  'record_expense',
+  'close_period',
+])
+
+// Bokförings-tools — endast ACCOUNTANT, ADMIN, OWNER. MANAGER blockeras.
+export const ACCOUNTING_ONLY_ACTIONS = new Set([
+  'create_journal_entry',
+  'record_expense',
+  'close_period',
+  'unmatch_transaction',
 ])

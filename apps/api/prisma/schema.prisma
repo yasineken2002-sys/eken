@@ -365,6 +365,7 @@ model Organization {
   deposits           Deposit[]
   rentIncreases      RentIncrease[]
   customers          Customer[]
+  closedPeriods      ClosedAccountingPeriod[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -403,6 +404,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   invitations         UserInvitation[]
   journalEntries      JournalEntry[]
+  closedPeriods       ClosedAccountingPeriod[]
   documents           Document[]
   importJobs          ImportJob[]
   aiConversations     AiConversation[]
@@ -816,6 +818,25 @@ model JournalEntryLine {
 
   @@index([journalEntryId])
   @@index([accountId])
+}
+
+// Stänger en bokföringsperiod (månad+år) — efter close_period kan inga nya
+// verifikat skapas med datum inom perioden. Append-only: en stängd period
+// kan inte återöppnas via API (skulle kräva manuell DB-åtgärd).
+model ClosedAccountingPeriod {
+  id             String   @id @default(uuid())
+  organizationId String
+  month          Int
+  year           Int
+  closedAt       DateTime @default(now())
+  closedById     String?
+  summary        Json?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  closedBy     User?        @relation(fields: [closedById], references: [id])
+
+  @@unique([organizationId, year, month])
+  @@index([organizationId])
 }
 
 // ─── Bank Reconciliation (Bankavstämning) ─────────────────────────────────────

@@ -201,9 +201,6 @@ const TOOL_LABELS: Record<string, string> = {
   get_maintenance_plan: 'Hämtar underhållsplan',
   get_rent_notices: 'Hämtar hyresavier',
   get_inspections: 'Hämtar besiktningar',
-  get_kpi: 'Hämtar nyckeltal',
-  get_journal_entries: 'Hämtar journalposter',
-  get_account_balances: 'Hämtar kontosaldon',
   create_invoice: 'Förbereder ny faktura',
   create_bulk_invoices: 'Förbereder hyresfakturering',
   update_tenant: 'Uppdaterar hyresgäst',
@@ -221,6 +218,21 @@ const TOOL_LABELS: Record<string, string> = {
   create_tenant_and_lease: 'Förbereder hyresgäst och kontrakt',
   generate_rent_notices: 'Förbereder hyresavier',
   create_inspection: 'Förbereder besiktning',
+  // Bankavstämning + bokföring
+  get_bank_transactions: 'Hämtar banktransaktioner',
+  get_unmatched_transactions: 'Hämtar omatchade transaktioner',
+  get_reconciliation_summary: 'Hämtar avstämningsläget',
+  match_bank_transaction: 'Förbereder manuell matchning',
+  import_bgmax_file: 'Förbereder BgMax-import',
+  unmatch_transaction: 'Förbereder avmatchning',
+  get_journal_entries: 'Hämtar verifikat',
+  get_account_balance: 'Hämtar kontosaldo',
+  get_vat_report: 'Genererar momsrapport',
+  get_profit_loss_report: 'Genererar resultaträkning',
+  get_balance_sheet: 'Genererar balansräkning',
+  create_journal_entry: 'Förbereder manuellt verifikat',
+  record_expense: 'Förbereder utgiftsbokning',
+  close_period: 'Förbereder periodstängning',
 }
 
 export function describeTool(name: string): string {

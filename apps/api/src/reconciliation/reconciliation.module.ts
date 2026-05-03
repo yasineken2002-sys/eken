@@ -9,5 +9,6 @@ import { ReconciliationService } from './reconciliation.service'
   imports: [PrismaModule, InvoicesModule, AccountingModule],
   controllers: [ReconciliationController],
   providers: [ReconciliationService],
+  exports: [ReconciliationService],
 })
 export class ReconciliationModule {}

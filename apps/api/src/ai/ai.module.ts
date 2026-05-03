@@ -19,6 +19,7 @@ import { MaintenanceModule } from '../maintenance/maintenance.module'
 import { AviseringModule } from '../avisering/avisering.module'
 import { InspectionsModule } from '../inspections/inspections.module'
 import { MaintenancePlanModule } from '../maintenance-plan/maintenance-plan.module'
+import { ReconciliationModule } from '../reconciliation/reconciliation.module'
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { MaintenancePlanModule } from '../maintenance-plan/maintenance-plan.modu
     AviseringModule,
     InspectionsModule,
     MaintenancePlanModule,
+    ReconciliationModule,
   ],
   controllers: [AiAssistantController],
   providers: [

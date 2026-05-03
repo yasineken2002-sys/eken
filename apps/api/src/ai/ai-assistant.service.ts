@@ -188,6 +188,41 @@ HYRESAVIER (AVISERING):
 - Följ upp obetalda avier efter förfallodatum
 - Använd get_rent_notices för att visa aktuella avier
 
+## Bokföring och bankavstämning
+Du har nu verktyg för att hantera bankavstämning och bokföring direkt. När
+användaren ber om hjälp med betalningar:
+- Använd get_unmatched_transactions för att se vad som är omatchat
+- Föreslå match_bank_transaction för uppenbara matchningar (samma OCR/belopp)
+- Importera BgMax-filer med import_bgmax_file när användaren skickar dem
+- Använd get_reconciliation_summary för en snabb statusbild
+
+För bokföring:
+- Använd get_profit_loss_report för månads/årsanalys
+- get_vat_report för momsrapportering inför Skatteverket-deklaration
+- get_balance_sheet för aktuell ekonomisk ställning
+- get_account_balance vid frågor om saldon på enskilda BAS-konton
+- Föreslå create_journal_entry för manuella verifikat (kräver att debet = kredit)
+- Använd record_expense för enkla utgifter (bokar mot kostnadskonto + bank)
+- close_period för att stänga en bokföringsmånad — varna att den inte kan
+  återöppnas via systemet
+
+VIKTIGT: All bokföring följer BAS-2026 kontoplanen. Alla momsberäkningar
+följer svensk Mervärdesskattelag. Bostäder är alltid momsfria.
+
+VANLIGA BAS-KONTON FÖR FASTIGHETSFÖRVALTNING:
+- 1510 Kundfordringar
+- 1930 Företagskonto / Bank
+- 2611 Utgående moms 25%
+- 2621 Utgående moms 12%
+- 2631 Utgående moms 6%
+- 2641 Ingående moms
+- 3001 Hyresintäkter bostäder (momsfri)
+- 3010 Hyresintäkter lokaler (momspliktiga)
+- 5070 Reparation och underhåll
+- 5080 Försäkring fastighet
+- 6212 Fastighetsskatt
+- 8410 Räntekostnader
+
 KONVERSATIONSMINNE:
 Du har tillgång till hela konversationshistoriken.
 Använd den för att förstå pronomen och referenser:
@@ -321,6 +356,37 @@ export function requiresDoubleConfirmation(
   if (toolName === 'create_bulk_invoices') return true
   // Lease termination
   if (toolName === 'transition_lease_status' && toolInput.newStatus === 'TERMINATED') return true
+  // Stora manuella verifikat (> 100 000 kr)
+  if (toolName === 'create_journal_entry') {
+    const lines = toolInput.lines as Array<{ debit?: number; credit?: number }> | undefined
+    if (Array.isArray(lines)) {
+      const sum = lines.reduce((acc, l) => {
+        const debit = typeof l.debit === 'number' && l.debit > 0 ? l.debit : 0
+        return acc + debit
+      }, 0)
+      if (sum > 100000) return true
+    }
+  }
+  // Stora utgiftsbokningar (> 100 000 kr)
+  if (toolName === 'record_expense') {
+    const amount =
+      typeof toolInput.amount === 'number'
+        ? toolInput.amount
+        : parseFloat(String(toolInput.amount ?? '0').replace(/[^\d.]/g, ''))
+    if (!isNaN(amount) && amount > 100000) return true
+  }
+  // Period-stängning är irreversibel — kräv alltid dubbelbekräftelse
+  if (toolName === 'close_period') return true
+  // Avmatchning av äldre transaktioner — om matchningen är gammal kan det
+  // krocka med redan stängda perioder eller bokslutsarbete.
+  if (toolName === 'unmatch_transaction') {
+    const matchedAt = toolInput.matchedAt
+    if (typeof matchedAt === 'string') {
+      const matched = new Date(matchedAt)
+      const days = (Date.now() - matched.getTime()) / (24 * 60 * 60 * 1000)
+      if (Number.isFinite(days) && days > 30) return true
+    }
+  }
   return false
 }
 
@@ -414,6 +480,7 @@ export class AiAssistantService {
           where: { id: conversation.id },
           data: { updatedAt: new Date() },
         })
+        await this.enrichDoubleConfirmContext(toolName, toolInput, organizationId)
         const needsDoubleConfirm = requiresDoubleConfirmation(toolName, toolInput)
         return {
           reply: '',
@@ -709,6 +776,28 @@ export class AiAssistantService {
     return { reply, conversationId }
   }
 
+  /**
+   * Slå upp DB-fält som requiresDoubleConfirmation behöver men som AI:n inte
+   * själv vet (t.ex. när en bank-match faktiskt skedde). Muterar toolInput
+   * in-place så pendingAction får dessa fält tillgängliga.
+   */
+  async enrichDoubleConfirmContext(
+    toolName: string,
+    toolInput: Record<string, unknown>,
+    organizationId: string,
+  ): Promise<void> {
+    if (toolName === 'unmatch_transaction' && typeof toolInput.transactionId === 'string') {
+      const tx = await this.prisma.bankTransaction.findFirst({
+        where: { id: toolInput.transactionId, organizationId },
+        select: { matchedAt: true, date: true },
+      })
+      const reference = tx?.matchedAt ?? tx?.date ?? null
+      if (reference) {
+        toolInput.matchedAt = reference.toISOString()
+      }
+    }
+  }
+
   buildConfirmation(
     toolName: string,
     input: Record<string, unknown>,
@@ -882,6 +971,80 @@ export class AiAssistantService {
           },
         }
       }
+
+      case 'match_bank_transaction':
+        return {
+          confirmationMessage: `Matcha banktransaktion mot faktura och bokför betalningen`,
+          details: {
+            'Transaktion-ID': String(input.transactionId ?? ''),
+            'Faktura-ID': String(input.invoiceId ?? ''),
+          },
+        }
+
+      case 'import_bgmax_file': {
+        const fileContent = String(input.fileContent ?? '')
+        const sizeKb = fileContent
+          ? (Buffer.byteLength(fileContent, 'utf8') / 1024).toFixed(1)
+          : '0'
+        return {
+          confirmationMessage: `Importera BgMax-fil och auto-matcha mot fakturor`,
+          details: {
+            Filnamn: String(input.fileName ?? 'okänd'),
+            Storlek: `${sizeKb} kB (base64)`,
+          },
+        }
+      }
+
+      case 'unmatch_transaction': {
+        const matchedAt = typeof input.matchedAt === 'string' ? input.matchedAt : null
+        return {
+          confirmationMessage: `Ångra matchning av banktransaktion (motverifikat skapas)`,
+          details: {
+            'Transaktion-ID': String(input.transactionId ?? ''),
+            Anledning: String(input.reason ?? '–'),
+            ...(matchedAt ? { 'Matchad sedan': matchedAt.slice(0, 10) } : {}),
+          },
+        }
+      }
+
+      case 'create_journal_entry': {
+        const lines = (input.lines as Array<{ debit?: number; credit?: number }> | undefined) ?? []
+        const totalDebit = lines.reduce(
+          (acc, l) => acc + (typeof l.debit === 'number' && l.debit > 0 ? l.debit : 0),
+          0,
+        )
+        return {
+          confirmationMessage: `Skapa manuellt verifikat: ${String(input.description ?? '')}`,
+          details: {
+            Datum: String(input.date ?? ''),
+            Beskrivning: String(input.description ?? ''),
+            'Antal rader': String(lines.length),
+            Summa: `${totalDebit.toLocaleString('sv-SE')} kr`,
+          },
+        }
+      }
+
+      case 'record_expense':
+        return {
+          confirmationMessage: `Bokför utgift: ${String(input.description ?? '')}`,
+          details: {
+            Datum: String(input.date ?? ''),
+            Belopp: `${safeAmountStr(input.amount)} kr`,
+            'Varav moms':
+              input.vatAmount !== undefined ? `${safeAmountStr(input.vatAmount)} kr` : '0 kr',
+            Konto: String(input.accountNumber ?? ''),
+            Beskrivning: String(input.description ?? ''),
+          },
+        }
+
+      case 'close_period':
+        return {
+          confirmationMessage: `Stäng bokföringsperioden ${String(input.year ?? '')}-${String(input.month ?? '').padStart(2, '0')} (kan inte återöppnas via systemet)`,
+          details: {
+            Period: `${String(input.year ?? '')}-${String(input.month ?? '').padStart(2, '0')}`,
+            Effekt: 'Inga nya verifikat kan skapas med datum inom perioden',
+          },
+        }
 
       default:
         return {

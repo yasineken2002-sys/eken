@@ -213,6 +213,7 @@ export class AiAssistantController {
         const actionBlock = toolUses.find((tu) => ACTION_TOOLS.has(tu.name))
         if (actionBlock) {
           const input = actionBlock.input as Record<string, unknown>
+          await this.aiService.enrichDoubleConfirmContext(actionBlock.name, input, organizationId)
           const conf = this.aiService.buildConfirmation(actionBlock.name, input)
           const needsDouble = requiresDoubleConfirmation(actionBlock.name, input)
           pendingAction = {
