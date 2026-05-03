@@ -65,6 +65,13 @@ enum InvoiceStatus {
   PAID
   OVERDUE
   VOID
+  SENT_TO_COLLECTION
+}
+
+enum PaymentReminderType {
+  REMINDER_FRIENDLY
+  REMINDER_FORMAL
+  READY_FOR_COLLECTION
 }
 
 enum InvoiceType {
@@ -329,6 +336,16 @@ model Organization {
   invoiceColor         String?
   invoiceTemplate      InvoiceTemplate?
   morningReportEnabled Boolean @default(false)
+
+  // ─── Påminnelse- och inkassoflöde ─────────────────────────────────────────
+  // Lagstöd: Lag (1981:739) om ersättning för inkassokostnader — max 60 kr
+  // för skriftlig påminnelse, 180 kr för inkassokrav. Vi tar bara ut
+  // påminnelseavgiften — själva inkassoärendet hanteras externt.
+  remindersEnabled       Boolean @default(true)
+  reminderFeeSek         Decimal @default(60) @db.Decimal(10, 2)
+  reminderFormalDay      Int     @default(14) // dagar efter förfall för formell påminnelse
+  reminderCollectionDay  Int     @default(30) // dagar efter förfall innan markering "redo för inkasso"
+  collectionAgencyName   String? // fritext: namn på fastighetsägarens valda inkassobolag
 
   // Platform / SaaS-fält
   plan               PlatformPlan       @default(TRIAL)
@@ -696,14 +713,22 @@ model Invoice {
   // Genereras vid skapande, används aldrig om – en faktura, ett token.
   trackingToken String @unique @default(uuid())
 
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  tenant           Tenant?           @relation(fields: [tenantId], references: [id])
-  customer         Customer?         @relation(fields: [customerId], references: [id])
-  lease            Lease?            @relation(fields: [leaseId], references: [id])
+  // Påminnelse- och inkassoflöde
+  remindersPaused      Boolean   @default(false)
+  remindersPausedAt    DateTime?
+  remindersPausedReason String?
+  sentToCollectionAt   DateTime?
+  collectionExportKey  String? // R2-nyckel till senaste inkassounderlag
+
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tenant           Tenant?            @relation(fields: [tenantId], references: [id])
+  customer         Customer?          @relation(fields: [customerId], references: [id])
+  lease            Lease?             @relation(fields: [leaseId], references: [id])
   lines            InvoiceLine[]
   events           InvoiceEvent[]
   bankTransactions BankTransaction[]
   deposit          Deposit?
+  paymentReminders PaymentReminder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -767,6 +792,24 @@ model InvoiceLine {
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([invoiceId])
+}
+
+// Idempotency-spärr för påminnelseflödet. UNIQUE (invoiceId, type) garanterar
+// att samma typ av påminnelse aldrig skickas två gånger för en faktura, även
+// vid cron-restart eller race conditions.
+model PaymentReminder {
+  id             String              @id @default(uuid())
+  invoiceId      String
+  type           PaymentReminderType
+  sentAt         DateTime            @default(now())
+  feeAmount      Decimal             @default(0) @db.Decimal(10, 2)
+  emailMessageId String?
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, type])
+  @@index([invoiceId])
+  @@index([sentAt])
 }
 
 // ─── Accounting ───────────────────────────────────────────────────────────────

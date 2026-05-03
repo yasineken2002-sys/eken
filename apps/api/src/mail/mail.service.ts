@@ -356,6 +356,78 @@ export class MailService {
     )
   }
 
+  async sendReminderFriendly(opts: {
+    to: string
+    tenantName: string
+    invoiceNumber: string
+    total: number
+    dueDate: Date | string
+    daysOverdue: number
+    organizationName: string
+    ocrNumber?: string | null
+    bankgiro?: string | null
+    idempotencyKey?: string
+  }): Promise<string> {
+    return this.enqueueTyped(
+      'reminder-friendly',
+      'normal',
+      {
+        tenantName: opts.tenantName,
+        invoiceNumber: opts.invoiceNumber,
+        total: opts.total,
+        dueDate: opts.dueDate,
+        daysOverdue: opts.daysOverdue,
+        organizationName: opts.organizationName,
+        ocrNumber: opts.ocrNumber ?? null,
+        bankgiro: opts.bankgiro ?? null,
+      },
+      {
+        to: opts.to,
+        subject: `Påminnelse — faktura ${opts.invoiceNumber}`,
+        ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
+      },
+    )
+  }
+
+  async sendReminderFormal(opts: {
+    to: string
+    tenantName: string
+    invoiceNumber: string
+    originalTotal: number
+    feeAmount: number
+    newTotal: number
+    dueDate: Date | string
+    daysOverdue: number
+    organizationName: string
+    ocrNumber?: string | null
+    bankgiro?: string | null
+    collectionDay: number
+    idempotencyKey?: string
+  }): Promise<string> {
+    return this.enqueueTyped(
+      'reminder-formal',
+      'normal',
+      {
+        tenantName: opts.tenantName,
+        invoiceNumber: opts.invoiceNumber,
+        originalTotal: opts.originalTotal,
+        feeAmount: opts.feeAmount,
+        newTotal: opts.newTotal,
+        dueDate: opts.dueDate,
+        daysOverdue: opts.daysOverdue,
+        organizationName: opts.organizationName,
+        ocrNumber: opts.ocrNumber ?? null,
+        bankgiro: opts.bankgiro ?? null,
+        collectionDay: opts.collectionDay,
+      },
+      {
+        to: opts.to,
+        subject: `Påminnelse — faktura ${opts.invoiceNumber} (avgift tillkommer)`,
+        ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
+      },
+    )
+  }
+
   async sendRentNotice(opts: SendRentNoticeOptions): Promise<string> {
     const accent = opts.accentColor ?? '#2563EB'
     const bodyHtml = `

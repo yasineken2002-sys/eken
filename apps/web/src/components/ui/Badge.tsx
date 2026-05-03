@@ -67,6 +67,7 @@ export function InvoiceStatusBadge({ status }: { status: string }) {
     PAID: { label: 'Betald', variant: 'success' },
     OVERDUE: { label: 'Försenad', variant: 'danger' },
     VOID: { label: 'Makulerad', variant: 'default' },
+    SENT_TO_COLLECTION: { label: 'Hos inkasso', variant: 'danger' },
   }
   const { label, variant } = map[status] ?? { label: status, variant: 'default' as Variant }
   return (

@@ -14,6 +14,7 @@ import {
   Download,
   Trash2,
   ShieldCheck,
+  Gavel,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -67,6 +68,12 @@ export function SettingsPage({ onNavigate }: Props) {
   const [invoiceSavedFlash, setInvoiceSavedFlash] = useState(false)
 
   const [morningReportEnabled, setMorningReportEnabled] = useState(false)
+  const [remindersEnabled, setRemindersEnabled] = useState(true)
+  const [reminderFeeSek, setReminderFeeSek] = useState(60)
+  const [reminderFormalDay, setReminderFormalDay] = useState(14)
+  const [reminderCollectionDay, setReminderCollectionDay] = useState(30)
+  const [collectionAgencyName, setCollectionAgencyName] = useState('')
+  const [collectionsSavedFlash, setCollectionsSavedFlash] = useState(false)
   const [aiMemoriesEnabled, setAiMemoriesEnabled] = useState(() => {
     return localStorage.getItem('eken-ai-memories-enabled') !== 'false'
   })
@@ -94,6 +101,11 @@ export function SettingsPage({ onNavigate }: Props) {
       setInvoiceColor(org.invoiceColor ?? '#1a6b3c')
       setInvoiceTemplate(org.invoiceTemplate ?? 'classic')
       setMorningReportEnabled(org.morningReportEnabled ?? false)
+      setRemindersEnabled(org.remindersEnabled ?? true)
+      setReminderFeeSek(org.reminderFeeSek ?? 60)
+      setReminderFormalDay(org.reminderFormalDay ?? 14)
+      setReminderCollectionDay(org.reminderCollectionDay ?? 30)
+      setCollectionAgencyName(org.collectionAgencyName ?? '')
     }
   }, [org, reset])
 
@@ -733,6 +745,133 @@ export function SettingsPage({ onNavigate }: Props) {
                     utföra åtgärder. All data stannar inom din organisation och delas aldrig med
                     andra.
                   </p>
+                </div>
+              </div>
+            </section>
+
+            {/* ── Section 6: Påminnelser och inkasso ──────────────────────── */}
+            <section className="rounded-2xl border border-gray-100 bg-white p-5">
+              <div className="mb-4 flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-50">
+                  <Gavel size={13} strokeWidth={1.8} className="text-amber-700" />
+                </div>
+                <h2 className="text-[14px] font-semibold text-gray-800">Påminnelser och inkasso</h2>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[13.5px] font-medium text-gray-800">
+                      Aktivera automatiska påminnelser
+                    </p>
+                    <p className="text-[12px] text-gray-500">
+                      Vänlig påminnelse dag 1–7, formell + avgift dag 14, redo för inkasso dag 30
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !remindersEnabled
+                      setRemindersEnabled(next)
+                      updateMutation.mutate({ remindersEnabled: next })
+                    }}
+                    className={cn(
+                      'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                      remindersEnabled ? 'bg-blue-600' : 'bg-gray-200',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                        remindersEnabled ? 'translate-x-6' : 'translate-x-1',
+                      )}
+                    />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-[12px] font-medium text-gray-700">
+                      Påminnelseavgift (SEK)
+                    </label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={reminderFeeSek}
+                      onChange={(e) => setReminderFeeSek(Number(e.target.value))}
+                    />
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      Max enligt lag (1981:739): 60 kr
+                    </p>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[12px] font-medium text-gray-700">
+                      Dagar till formell påminnelse
+                    </label>
+                    <Input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={reminderFormalDay}
+                      onChange={(e) => setReminderFormalDay(Number(e.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[12px] font-medium text-gray-700">
+                      Dagar till "redo för inkasso"
+                    </label>
+                    <Input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={reminderCollectionDay}
+                      onChange={(e) => setReminderCollectionDay(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-gray-700">
+                    Inkassobolag (intern anteckning)
+                  </label>
+                  <Input
+                    placeholder="t.ex. Visma Collectors / Intrum / Lindorff"
+                    value={collectionAgencyName}
+                    onChange={(e) => setCollectionAgencyName(e.target.value)}
+                  />
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Eveno bedriver ingen inkassoverksamhet — du skickar underlaget vidare till valt
+                    bolag.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 border-t border-gray-100 pt-3">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      updateMutation.mutate(
+                        {
+                          reminderFeeSek,
+                          reminderFormalDay,
+                          reminderCollectionDay,
+                          collectionAgencyName,
+                        },
+                        {
+                          onSuccess: () => {
+                            setCollectionsSavedFlash(true)
+                            setTimeout(() => setCollectionsSavedFlash(false), 2500)
+                          },
+                        },
+                      )
+                    }}
+                  >
+                    Spara inställningar
+                  </Button>
+                  {collectionsSavedFlash && (
+                    <span className="text-[13px] font-medium text-emerald-600">Sparat</span>
+                  )}
                 </div>
               </div>
             </section>

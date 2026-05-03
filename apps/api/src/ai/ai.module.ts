@@ -24,6 +24,7 @@ import { InspectionsModule } from '../inspections/inspections.module'
 import { MaintenancePlanModule } from '../maintenance-plan/maintenance-plan.module'
 import { ReconciliationModule } from '../reconciliation/reconciliation.module'
 import { NotificationsModule } from '../notifications/notifications.module'
+import { CollectionsModule } from '../collections/collections.module'
 import { TenantPortalModule } from '../tenant-portal/tenant-portal.module'
 
 @Module({
@@ -43,6 +44,7 @@ import { TenantPortalModule } from '../tenant-portal/tenant-portal.module'
     MaintenancePlanModule,
     ReconciliationModule,
     NotificationsModule,
+    CollectionsModule,
     TenantPortalModule,
   ],
   controllers: [AiAssistantController, TenantAiController],

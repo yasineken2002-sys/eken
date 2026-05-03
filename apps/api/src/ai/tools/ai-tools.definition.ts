@@ -842,6 +842,77 @@ export const TOOLS: Anthropic.Tool[] = [
       required: ['month', 'year'],
     },
   },
+
+  // ── PÅMINNELSER OCH INKASSO ─────────────────────────────────────────────
+
+  {
+    name: 'get_overdue_status',
+    description:
+      'Översikt över alla förfallna fakturor och deras påminnelse-status: hur många dagar förfallna, vilka påminnelser som skickats, om reminders är pausade, om fakturan är skickad till inkasso.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
+  {
+    name: 'pause_reminders',
+    description:
+      'Pausar automatiska påminnelser för en specifik faktura. Använd vid avbetalningsplan eller pågående dialog med hyresgästen. Kräver bekräftelse.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        invoiceId: { type: 'string', description: 'Faktura-ID' },
+        invoiceNumber: { type: 'string', description: 'Fakturanummer (för bekräftelse-UI)' },
+        reason: { type: 'string', description: 'Anledning till pausen (visas i audit-logg)' },
+      },
+      required: ['invoiceId', 'reason'],
+    },
+  },
+
+  {
+    name: 'resume_reminders',
+    description:
+      'Återupptar automatiska påminnelser för en pausad faktura. Påminnelseflödet räknar dagar sedan förfall, så nästa lämpliga påminnelse skickas vid nästa cron-körning.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        invoiceId: { type: 'string', description: 'Faktura-ID' },
+        invoiceNumber: { type: 'string', description: 'Fakturanummer (för bekräftelse-UI)' },
+      },
+      required: ['invoiceId'],
+    },
+  },
+
+  {
+    name: 'export_for_collection',
+    description:
+      'Genererar inkassounderlag (PDF + CSV) för en faktura och sparar i molnlagringen. Markerar fakturan som SENT_TO_COLLECTION och pausar automatiska påminnelser. Eveno bedriver INTE inkassoverksamhet — underlaget skickas av fastighetsägaren till valt inkassobolag (Visma Collectors, Intrum, Lindorff, etc.). Kräver bekräftelse.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        invoiceId: { type: 'string', description: 'Faktura-ID' },
+        invoiceNumber: { type: 'string', description: 'Fakturanummer (för bekräftelse-UI)' },
+      },
+      required: ['invoiceId'],
+    },
+  },
+
+  {
+    name: 'mark_sent_to_collection',
+    description:
+      'Manuell markering att fakturan har skickats till externt inkassobolag (om fastighetsägaren använt Vismas portal eller annat verktyg). Pausar påminnelser, sätter status till SENT_TO_COLLECTION.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        invoiceId: { type: 'string', description: 'Faktura-ID' },
+        invoiceNumber: { type: 'string', description: 'Fakturanummer (för bekräftelse-UI)' },
+        note: { type: 'string', description: 'Valfri notering om vilket inkassobolag som används' },
+      },
+      required: ['invoiceId'],
+    },
+  },
 ]
 
 export const ACTION_TOOLS = new Set([
@@ -871,6 +942,11 @@ export const ACTION_TOOLS = new Set([
   'create_journal_entry',
   'record_expense',
   'close_period',
+  // Påminnelser och inkasso
+  'pause_reminders',
+  'resume_reminders',
+  'export_for_collection',
+  'mark_sent_to_collection',
 ])
 
 // Bokförings-tools — endast ACCOUNTANT, ADMIN, OWNER. MANAGER blockeras.
@@ -879,4 +955,6 @@ export const ACCOUNTING_ONLY_ACTIONS = new Set([
   'record_expense',
   'close_period',
   'unmatch_transaction',
+  'export_for_collection',
+  'mark_sent_to_collection',
 ])

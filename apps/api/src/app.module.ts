@@ -24,6 +24,7 @@ import { DashboardModule } from './dashboard/dashboard.module'
 import { MailModule } from './mail/mail.module'
 import { NotificationsModule } from './notifications/notifications.module'
 import { ReconciliationModule } from './reconciliation/reconciliation.module'
+import { CollectionsModule } from './collections/collections.module'
 import { DocumentsModule } from './documents/documents.module'
 import { ImportModule } from './import/import.module'
 import { AiModule } from './ai/ai.module'
@@ -94,6 +95,7 @@ import { OcrModule } from './common/ocr/ocr.module'
     MailModule,
     NotificationsModule,
     ReconciliationModule,
+    CollectionsModule,
     DocumentsModule,
     ImportModule,
     AiModule,

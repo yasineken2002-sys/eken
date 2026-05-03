@@ -54,6 +54,7 @@
     "class-validator": "^0.14.1",
     "helmet": "^8.0.0",
     "ioredis": "^5.4.1",
+    "jszip": "^3.10.1",
     "otplib": "^13.4.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",

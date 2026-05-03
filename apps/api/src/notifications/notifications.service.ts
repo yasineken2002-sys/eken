@@ -116,7 +116,13 @@ export class NotificationsService implements OnModuleInit {
 
   // ─── Email cron jobs ───────────────────────────────────────────────────────
 
-  @Cron(CronExpression.EVERY_DAY_AT_8AM)
+  /**
+   * @deprecated Det tiered påminnelseflödet (vänlig → formell → redo för
+   * inkasso) ligger i PaymentReminderService.processOverdueReminders och
+   * körs kl 09:00. Den här metoden behålls bara för manuella anrop via
+   * sendOverdueRemindersForOrg — cron-triggern är borttagen så samma
+   * faktura inte får två mejl per dag.
+   */
   async sendOverdueReminders(): Promise<void> {
     const invoices: InvoiceWithRelations[] = await this.prisma.invoice.findMany({
       where: { status: 'OVERDUE' },

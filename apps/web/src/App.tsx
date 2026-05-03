@@ -27,6 +27,7 @@ import { ImportPage } from './features/import/ImportPage'
 import { AiPage } from './features/ai/AiPage'
 import { MaintenancePage } from './features/maintenance/MaintenancePage'
 import { AviseringPage } from './features/avisering/AviseringPage'
+import { CollectionsPage } from './features/collections/CollectionsPage'
 import { InspectionsPage } from './features/inspections/InspectionsPage'
 import { MaintenancePlanPage } from './features/maintenance-plan/MaintenancePlanPage'
 import { TenantPortalPage } from './features/tenant-portal/TenantPortalPage'
@@ -54,6 +55,7 @@ export type Route =
   | 'rent-increases'
   | 'accounting'
   | 'reconciliation'
+  | 'collections'
   | 'documents'
   | 'import'
   | 'ai'
@@ -167,6 +169,7 @@ export function App() {
     'rent-increases': <RentIncreasesPage onNavigate={setRoute} />,
     accounting: <AccountingPage />,
     reconciliation: <ReconciliationPage />,
+    collections: <CollectionsPage />,
     documents: <DocumentsPage />,
     import: <ImportPage />,
     ai: <AiPage />,

@@ -7,6 +7,11 @@ export interface UpdateOrganizationInput {
   invoiceColor?: string
   invoiceTemplate?: string
   morningReportEnabled?: boolean
+  remindersEnabled?: boolean
+  reminderFeeSek?: number
+  reminderFormalDay?: number
+  reminderCollectionDay?: number
+  collectionAgencyName?: string
 }
 
 export function getOrganization(): Promise<Organization> {

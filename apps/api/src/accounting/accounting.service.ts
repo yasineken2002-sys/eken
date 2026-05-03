@@ -41,6 +41,7 @@ const DEFAULT_ACCOUNTS = [
   { number: 3013, name: 'Hyresintäkter förråd', type: 'REVENUE' as const },
   { number: 3030, name: 'Övriga ersättningar (varmvatten, el)', type: 'REVENUE' as const },
   { number: 3040, name: 'Skadeersättningar', type: 'REVENUE' as const },
+  { number: 3593, name: 'Påminnelseavgifter', type: 'REVENUE' as const },
   { number: 3960, name: 'Valutakursvinster på rörelsefordringar', type: 'REVENUE' as const },
   // Driftkostnader (5xxx)
   { number: 5010, name: 'Lokalhyra (egen)', type: 'EXPENSE' as const },

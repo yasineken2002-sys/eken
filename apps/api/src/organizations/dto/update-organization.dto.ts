@@ -25,4 +25,28 @@ export class UpdateOrganizationDto {
   @IsBoolean()
   @IsOptional()
   morningReportEnabled?: boolean
+
+  // ── Påminnelse- och inkassoinställningar ───────────────────────────────
+  @IsBoolean()
+  @IsOptional()
+  remindersEnabled?: boolean
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  reminderFeeSek?: number
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  reminderFormalDay?: number
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  reminderCollectionDay?: number
+
+  @IsString()
+  @IsOptional()
+  collectionAgencyName?: string
 }

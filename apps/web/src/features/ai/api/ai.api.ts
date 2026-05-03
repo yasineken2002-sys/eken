@@ -233,6 +233,12 @@ const TOOL_LABELS: Record<string, string> = {
   create_journal_entry: 'Förbereder manuellt verifikat',
   record_expense: 'Förbereder utgiftsbokning',
   close_period: 'Förbereder periodstängning',
+  // Påminnelser och inkasso
+  get_overdue_status: 'Hämtar status på förfallna fakturor',
+  pause_reminders: 'Pausar påminnelser',
+  resume_reminders: 'Återupptar påminnelser',
+  export_for_collection: 'Skapar inkassounderlag',
+  mark_sent_to_collection: 'Markerar skickad till inkasso',
 }
 
 export function describeTool(name: string): string {

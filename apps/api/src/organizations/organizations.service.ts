@@ -42,6 +42,15 @@ export class OrganizationsService {
         ...(dto.morningReportEnabled != null
           ? { morningReportEnabled: dto.morningReportEnabled }
           : {}),
+        ...(dto.remindersEnabled != null ? { remindersEnabled: dto.remindersEnabled } : {}),
+        ...(dto.reminderFeeSek != null ? { reminderFeeSek: dto.reminderFeeSek } : {}),
+        ...(dto.reminderFormalDay != null ? { reminderFormalDay: dto.reminderFormalDay } : {}),
+        ...(dto.reminderCollectionDay != null
+          ? { reminderCollectionDay: dto.reminderCollectionDay }
+          : {}),
+        ...(dto.collectionAgencyName != null
+          ? { collectionAgencyName: dto.collectionAgencyName }
+          : {}),
       },
     })
   }

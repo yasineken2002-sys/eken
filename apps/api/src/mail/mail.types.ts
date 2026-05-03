@@ -3,6 +3,8 @@ import type { MagicLinkProps } from './templates/auth/MagicLink'
 import type { InvoiceCreatedProps } from './templates/invoices/InvoiceCreated'
 import type { InvoiceReminderProps } from './templates/invoices/InvoiceReminder'
 import type { InvoiceOverdueProps } from './templates/invoices/InvoiceOverdue'
+import type { ReminderFriendlyProps } from './templates/invoices/ReminderFriendly'
+import type { ReminderFormalProps } from './templates/invoices/ReminderFormal'
 import type { TenantWelcomeProps } from './templates/tenants/TenantWelcome'
 import type { TenantWelcomeWithContractProps } from './templates/tenants/TenantWelcomeWithContract'
 import type { TenantInviteProps } from './templates/tenants/TenantInvite'
@@ -16,6 +18,8 @@ export const TEMPLATE_NAMES = [
   'invoice-created',
   'invoice-reminder',
   'invoice-overdue',
+  'reminder-friendly',
+  'reminder-formal',
   'tenant-welcome',
   'tenant-welcome-with-contract',
   'tenant-invite',
@@ -33,6 +37,8 @@ export interface TemplatePropsMap {
   'invoice-created': InvoiceCreatedProps
   'invoice-reminder': InvoiceReminderProps
   'invoice-overdue': InvoiceOverdueProps
+  'reminder-friendly': ReminderFriendlyProps
+  'reminder-formal': ReminderFormalProps
   'tenant-welcome': TenantWelcomeProps
   'tenant-welcome-with-contract': TenantWelcomeWithContractProps
   'tenant-invite': TenantInviteProps

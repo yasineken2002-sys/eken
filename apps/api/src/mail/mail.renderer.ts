@@ -7,6 +7,8 @@ import { MagicLink } from './templates/auth/MagicLink'
 import { InvoiceCreated } from './templates/invoices/InvoiceCreated'
 import { InvoiceReminder } from './templates/invoices/InvoiceReminder'
 import { InvoiceOverdue } from './templates/invoices/InvoiceOverdue'
+import { ReminderFriendly } from './templates/invoices/ReminderFriendly'
+import { ReminderFormal } from './templates/invoices/ReminderFormal'
 import { TenantWelcome } from './templates/tenants/TenantWelcome'
 import { TenantWelcomeWithContract } from './templates/tenants/TenantWelcomeWithContract'
 import { TenantInvite } from './templates/tenants/TenantInvite'
@@ -24,6 +26,8 @@ const TEMPLATE_REGISTRY: Record<TemplateName, TemplateComponent> = {
   'invoice-created': InvoiceCreated as TemplateComponent,
   'invoice-reminder': InvoiceReminder as TemplateComponent,
   'invoice-overdue': InvoiceOverdue as TemplateComponent,
+  'reminder-friendly': ReminderFriendly as TemplateComponent,
+  'reminder-formal': ReminderFormal as TemplateComponent,
   'tenant-welcome': TenantWelcome as TemplateComponent,
   'tenant-welcome-with-contract': TenantWelcomeWithContract as TemplateComponent,
   'tenant-invite': TenantInvite as TemplateComponent,

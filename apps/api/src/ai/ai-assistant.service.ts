@@ -218,10 +218,37 @@ VANLIGA BAS-KONTON FÖR FASTIGHETSFÖRVALTNING:
 - 2641 Ingående moms
 - 3001 Hyresintäkter bostäder (momsfri)
 - 3010 Hyresintäkter lokaler (momspliktiga)
+- 3593 Påminnelseavgifter (intäkt vid formell påminnelse)
 - 5070 Reparation och underhåll
 - 5080 Försäkring fastighet
 - 6212 Fastighetsskatt
 - 8410 Räntekostnader
+
+## Påminnelser och inkasso
+Eveno hanterar automatiska påminnelser:
+- Dag 1-7: Vänlig påminnelse (ingen avgift)
+- Dag 14: Formell påminnelse + 60 kr avgift enligt lag (1981:739) om
+  ersättning för inkassokostnader. Avgiften bokförs på BAS 3593 och
+  läggs på fakturan som ny rad.
+- Dag 30: Markeras som "redo för inkasso" — fastighetsägaren får notis
+  i appen, men hyresgästen får INGET nytt mejl från Eveno
+
+Eveno är INTE ett inkassobolag. Vid dag 30 förbereder systemet ett
+inkasso-underlag (PDF + CSV) som fastighetsägaren skickar till sitt
+valda inkassobolag (t.ex. Visma Collectors, Intrum, Lindorff).
+
+Verktyg:
+- get_overdue_status — översikt av alla förfallna fakturor
+- pause_reminders — pausa när hyresgästen avtalat avbetalningsplan
+- resume_reminders — återuppta om planen bryts
+- export_for_collection — skapa PDF + CSV-underlag
+- mark_sent_to_collection — om fastighetsägaren använt externt verktyg
+
+VIKTIGT: Lova ALDRIG hyresgästen att avgift kan tas bort. Lova ALDRIG på
+fastighetsägarens vägnar att inkassoärendet kan stoppas — det hanteras
+av inkassobolaget. Föreslå pause_reminders när det är meningsfullt
+(avbetalningsplan, dialog pågår), men exekvera bara efter användarens
+explicita godkännande.
 
 KONVERSATIONSMINNE:
 Du har tillgång till hela konversationshistoriken.
@@ -377,6 +404,10 @@ export function requiresDoubleConfirmation(
   }
   // Period-stängning är irreversibel — kräv alltid dubbelbekräftelse
   if (toolName === 'close_period') return true
+  // Inkasso-export skickar fakturan till externt inkassobolag — irreversibel
+  // status och hyresgästen kan få inkassokrav. Kräv dubbelbekräftelse.
+  if (toolName === 'export_for_collection') return true
+  if (toolName === 'mark_sent_to_collection') return true
   // Avmatchning av äldre transaktioner — om matchningen är gammal kan det
   // krocka med redan stängda perioder eller bokslutsarbete.
   if (toolName === 'unmatch_transaction') {
@@ -1043,6 +1074,47 @@ export class AiAssistantService {
           details: {
             Period: `${String(input.year ?? '')}-${String(input.month ?? '').padStart(2, '0')}`,
             Effekt: 'Inga nya verifikat kan skapas med datum inom perioden',
+          },
+        }
+
+      case 'pause_reminders': {
+        const reason = typeof input.reason === 'string' ? input.reason : '–'
+        return {
+          confirmationMessage: `Pausa automatiska påminnelser för faktura ${String(input.invoiceNumber ?? '–')}`,
+          details: {
+            Faktura: String(input.invoiceNumber ?? input.invoiceId ?? ''),
+            Anledning: reason,
+            Effekt: 'Inga nya påminnelser skickas tills du återupptar dem',
+          },
+        }
+      }
+
+      case 'resume_reminders':
+        return {
+          confirmationMessage: `Återuppta påminnelser för faktura ${String(input.invoiceNumber ?? input.invoiceId ?? '–')}`,
+          details: {
+            Faktura: String(input.invoiceNumber ?? input.invoiceId ?? ''),
+            Effekt: 'Påminnelser återupptas vid nästa cron kl 09:00',
+          },
+        }
+
+      case 'export_for_collection':
+        return {
+          confirmationMessage: `Skapa inkassounderlag för faktura ${String(input.invoiceNumber ?? input.invoiceId ?? '–')}`,
+          details: {
+            Faktura: String(input.invoiceNumber ?? input.invoiceId ?? ''),
+            Resultat: 'PDF + CSV-underlag att skicka till ditt inkassobolag',
+            Status: 'Fakturan markeras SENT_TO_COLLECTION och påminnelser pausas',
+          },
+        }
+
+      case 'mark_sent_to_collection':
+        return {
+          confirmationMessage: `Markera faktura ${String(input.invoiceNumber ?? input.invoiceId ?? '–')} som skickad till externt inkassobolag`,
+          details: {
+            Faktura: String(input.invoiceNumber ?? input.invoiceId ?? ''),
+            ...(input.note ? { Notering: String(input.note) } : {}),
+            Effekt: 'Påminnelser pausas, status sätts till SENT_TO_COLLECTION',
           },
         }
 

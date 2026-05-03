@@ -24,6 +24,7 @@ import {
   MessageSquare,
   CreditCard,
   TrendingUp,
+  Gavel,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuthStore } from '@/stores/auth.store'
@@ -60,6 +61,7 @@ const NAV_FINANCE: NavItem[] = [
   { id: 'rent-increases', label: 'Hyreshöjningar', icon: TrendingUp },
   { id: 'accounting', label: 'Bokföring', icon: BookOpen },
   { id: 'reconciliation', label: 'Bankavstämning', icon: ArrowLeftRight },
+  { id: 'collections', label: 'Inkasso', icon: Gavel },
 ]
 
 const NAV_TOOLS: NavItem[] = [

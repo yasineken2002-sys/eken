@@ -15,6 +15,8 @@ import { AviseringService } from '../../avisering/avisering.service'
 import { InspectionsService } from '../../inspections/inspections.service'
 import { MaintenancePlanService } from '../../maintenance-plan/maintenance-plan.service'
 import { ReconciliationService } from '../../reconciliation/reconciliation.service'
+import { CollectionExportService } from '../../collections/collection-export.service'
+import { PaymentReminderService } from '../../notifications/payment-reminder.service'
 import { StorageService } from '../../storage/storage.service'
 import { AiAuditService } from '../audit/ai-audit.service'
 import { ACTION_TOOLS, ACCOUNTING_ONLY_ACTIONS } from './ai-tools.definition'
@@ -109,6 +111,8 @@ const MANAGER_ALLOWED_ACTIONS = new Set([
   'send_overdue_reminders',
   'mark_invoice_paid',
   'compose_and_send_email',
+  'pause_reminders',
+  'resume_reminders',
 ])
 
 function formatAmount(n: number): string {
@@ -287,6 +291,8 @@ export class ToolExecutorService {
     private readonly inspectionsService: InspectionsService,
     private readonly maintenancePlanService: MaintenancePlanService,
     private readonly reconciliationService: ReconciliationService,
+    private readonly collectionExport: CollectionExportService,
+    private readonly paymentReminders: PaymentReminderService,
     private readonly storage: StorageService,
     private readonly audit: AiAuditService,
   ) {}
@@ -2932,6 +2938,97 @@ export class ToolExecutorService {
               'Använd get_vat_report för att förbereda momsdeklarationen',
               'Använd export_sie4 för att skicka bokföringen till revisorn',
             ],
+          }
+        }
+
+        // ── PÅMINNELSER OCH INKASSO ────────────────────────────────────────
+
+        case 'get_overdue_status': {
+          const status = await this.paymentReminders.getOverdueStatus(organizationId)
+          const summary = {
+            total: status.length,
+            inProgress: status.filter(
+              (s) => s.status === 'OVERDUE' && s.lastReminderType !== 'READY_FOR_COLLECTION',
+            ).length,
+            readyForCollection: status.filter(
+              (s) => s.status === 'OVERDUE' && s.lastReminderType === 'READY_FOR_COLLECTION',
+            ).length,
+            sentToCollection: status.filter((s) => s.status === 'SENT_TO_COLLECTION').length,
+            pausedCount: status.filter((s) => s.remindersPaused).length,
+          }
+          return {
+            success: true,
+            data: { summary, invoices: status },
+            message:
+              status.length === 0
+                ? 'Inga förfallna fakturor — bra jobbat!'
+                : `${summary.inProgress} pågående påminnelser, ${summary.readyForCollection} redo för inkasso, ${summary.sentToCollection} skickade till inkasso`,
+          }
+        }
+
+        case 'pause_reminders': {
+          const invoiceId = String(toolInput.invoiceId ?? '')
+          const reason = String(toolInput.reason ?? '')
+          if (!invoiceId || !reason) {
+            return { success: false, message: 'invoiceId och reason krävs' }
+          }
+          await this.paymentReminders.pauseReminders(invoiceId, organizationId, reason)
+          return {
+            success: true,
+            message: `Påminnelser pausade. Anledning: ${reason}`,
+            nextSteps: [
+              'Kom överens om en avbetalningsplan med hyresgästen',
+              'Återuppta påminnelser med resume_reminders när planen bryts',
+            ],
+          }
+        }
+
+        case 'resume_reminders': {
+          const invoiceId = String(toolInput.invoiceId ?? '')
+          if (!invoiceId) {
+            return { success: false, message: 'invoiceId krävs' }
+          }
+          await this.paymentReminders.resumeReminders(invoiceId, organizationId)
+          return {
+            success: true,
+            message:
+              'Påminnelser återupptagna. Nästa lämpliga påminnelse skickas vid nästa cron-körning kl 09:00.',
+          }
+        }
+
+        case 'export_for_collection': {
+          const invoiceId = String(toolInput.invoiceId ?? '')
+          if (!invoiceId) {
+            return { success: false, message: 'invoiceId krävs' }
+          }
+          const result = await this.collectionExport.exportForInvoice(invoiceId, organizationId)
+          return {
+            success: true,
+            data: { invoiceId: result.invoiceId, invoiceNumber: result.invoiceNumber },
+            message: `Inkassounderlag genererat för faktura ${result.invoiceNumber}. Fakturan är nu markerad SENT_TO_COLLECTION och påminnelser är pausade.`,
+            downloadUrl: result.pdfUrl,
+            nextSteps: [
+              'Ladda ner PDF + CSV och skicka till ditt valda inkassobolag',
+              'CSV-formatet stöder bulk-import till Visma Collectors, Intrum och Lindorff',
+            ],
+          }
+        }
+
+        case 'mark_sent_to_collection': {
+          const invoiceId = String(toolInput.invoiceId ?? '')
+          if (!invoiceId) {
+            return { success: false, message: 'invoiceId krävs' }
+          }
+          const note = typeof toolInput.note === 'string' ? toolInput.note : undefined
+          const result = await this.collectionExport.markSentToCollection(
+            invoiceId,
+            organizationId,
+            note,
+          )
+          return {
+            success: true,
+            data: result,
+            message: `Faktura markerad som skickad till inkasso${note ? ` (${note})` : ''}. Påminnelser är pausade.`,
           }
         }
 

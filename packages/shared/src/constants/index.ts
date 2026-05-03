@@ -94,7 +94,8 @@ export const INVOICE_TRANSITIONS: Record<InvoiceStatus, InvoiceStatus[]> = {
   DRAFT: ['SENT', 'VOID'],
   SENT: ['PARTIAL', 'PAID', 'OVERDUE', 'VOID'],
   PARTIAL: ['PAID', 'OVERDUE', 'VOID'],
-  OVERDUE: ['PARTIAL', 'PAID', 'VOID'],
+  OVERDUE: ['PARTIAL', 'PAID', 'VOID', 'SENT_TO_COLLECTION'],
+  SENT_TO_COLLECTION: ['PAID', 'VOID'],
   PAID: [],
   VOID: [],
 }

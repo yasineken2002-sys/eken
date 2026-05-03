@@ -85,6 +85,11 @@ export interface Organization {
   invoiceColor?: string
   invoiceTemplate?: string
   morningReportEnabled?: boolean
+  remindersEnabled?: boolean
+  reminderFeeSek?: number
+  reminderFormalDay?: number
+  reminderCollectionDay?: number
+  collectionAgencyName?: string
   createdAt: string
   updatedAt: string
 }
@@ -192,7 +197,14 @@ export interface Lease {
 
 // ─── Invoices (Fakturor) ──────────────────────────────────────────────────────
 
-export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'VOID'
+export type InvoiceStatus =
+  | 'DRAFT'
+  | 'SENT'
+  | 'PARTIAL'
+  | 'PAID'
+  | 'OVERDUE'
+  | 'VOID'
+  | 'SENT_TO_COLLECTION'
 export type InvoiceType = 'RENT' | 'DEPOSIT' | 'SERVICE' | 'UTILITY' | 'OTHER'
 
 export interface InvoiceLine {
