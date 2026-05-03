@@ -3,8 +3,9 @@ import Anthropic from '@anthropic-ai/sdk'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
+import { AI_MODELS } from './ai.config'
 
-const MODEL = 'claude-sonnet-4-6'
+const MODEL = AI_MODELS.ANALYSIS
 
 export interface PortfolioInsight {
   category: string

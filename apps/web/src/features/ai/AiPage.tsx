@@ -27,7 +27,7 @@ import {
   useConfirmAction,
   useDeleteConversation,
 } from './hooks/useAi'
-import { streamChat } from './api/ai.api'
+import { streamChat, describeTool } from './api/ai.api'
 import { AnalysisModal } from './components/AnalysisModal'
 import { useAuthStore } from '@/stores/auth.store'
 import { cn } from '@/lib/cn'
@@ -273,6 +273,9 @@ export function AiPage() {
   const [isThinking, setIsThinking] = useState(false)
   const [streamingText, setStreamingText] = useState<string>('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [toolEvents, setToolEvents] = useState<
+    Array<{ id: string; name: string; status: 'starting' | 'executing' | 'done' }>
+  >([])
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [isListening, setIsListening] = useState(false)
   const [analysisOpen, setAnalysisOpen] = useState(false)
@@ -402,32 +405,61 @@ export function AiPage() {
         setIsThinking(false)
       }
     } else {
-      // Read/question queries — use streaming
+      // Read/question queries — use streaming (med tool-stöd och bekräftelseflöde)
       const token = useAuthStore.getState().accessToken ?? ''
       setIsStreaming(true)
       setStreamingText('')
+      setToolEvents([])
 
-      streamCleanupRef.current = streamChat(
-        msg,
-        activeConversationId ?? undefined,
-        token,
-        (text) => setStreamingText(text),
-        (convId) => {
+      streamCleanupRef.current = streamChat(msg, activeConversationId ?? undefined, token, {
+        onDelta: (text) => setStreamingText(text),
+        onToolUseStart: ({ id, name }) => {
+          setToolEvents((prev) => [...prev, { id, name, status: 'starting' }])
+        },
+        onToolUseExecuting: ({ id }) => {
+          setToolEvents((prev) =>
+            prev.map((e) => (e.id === id ? { ...e, status: 'executing' } : e)),
+          )
+        },
+        onToolResult: ({ id }) => {
+          setToolEvents((prev) => prev.map((e) => (e.id === id ? { ...e, status: 'done' } : e)))
+        },
+        onPendingAction: (action) => {
           setIsStreaming(false)
           setStreamingText('')
+          setToolEvents([])
+          setActiveConversationId(action.conversationId)
+          setPendingAction({
+            toolName: action.toolName,
+            toolInput: action.toolInput,
+            confirmationMessage: action.confirmationMessage,
+            details: action.details,
+            ...(action.requiresDoubleConfirm ? { requiresDoubleConfirm: true } : {}),
+          })
+          void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
+          void queryClient
+            .refetchQueries({ queryKey: ['ai-conversation', action.conversationId] })
+            .then(() => {
+              setPendingMessages([])
+            })
+        },
+        onDone: (convId) => {
+          setIsStreaming(false)
+          setStreamingText('')
+          setToolEvents([])
           setActiveConversationId(convId)
           void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
-          // Refetch conversation first, then clear pending to avoid message flash
           void queryClient.refetchQueries({ queryKey: ['ai-conversation', convId] }).then(() => {
             setPendingMessages([])
           })
         },
-        (_error) => {
+        onError: (_error) => {
           setIsStreaming(false)
           setStreamingText('')
+          setToolEvents([])
           setPendingMessages([])
         },
-      )
+      })
     }
   }
 
@@ -736,17 +768,42 @@ export function AiPage() {
                       />
                     </div>
                     <div className="max-w-[70%] rounded-2xl rounded-tl-sm border border-gray-100 bg-white px-4 py-2.5">
+                      {toolEvents.length > 0 && (
+                        <div className="mb-2 flex flex-col gap-1">
+                          {toolEvents.map((evt) => (
+                            <motion.div
+                              key={evt.id}
+                              initial={{ opacity: 0, x: -4 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              className="flex items-center gap-2 text-[12px] text-gray-500"
+                            >
+                              <span
+                                className={cn(
+                                  'inline-flex h-1.5 w-1.5 rounded-full',
+                                  evt.status === 'done'
+                                    ? 'bg-emerald-500'
+                                    : 'animate-pulse bg-blue-500',
+                                )}
+                              />
+                              <span>
+                                {describeTool(evt.name)}
+                                {evt.status === 'done' ? '' : '…'}
+                              </span>
+                            </motion.div>
+                          ))}
+                        </div>
+                      )}
                       {streamingText ? (
                         <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-gray-800">
                           {streamingText}
                           <span className="cursor">▋</span>
                         </p>
-                      ) : (
+                      ) : toolEvents.length === 0 ? (
                         <div className="flex items-center gap-2">
                           <LoadingDots />
                           <span className="text-[12px] text-gray-400">Tänker...</span>
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   </motion.div>
                 )}

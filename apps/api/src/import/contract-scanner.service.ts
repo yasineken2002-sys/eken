@@ -2,8 +2,9 @@ import { Injectable, BadRequestException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { AiUsageService } from '../ai/usage/ai-usage.service'
 import { AiQuotaService } from '../ai/usage/ai-quota.service'
+import { AI_MODELS } from '../ai/ai.config'
 
-const CONTRACT_SCAN_MODEL = 'claude-sonnet-4-5'
+const CONTRACT_SCAN_MODEL = AI_MODELS.VISION_CONTRACT
 
 export interface ScannedContract {
   tenantName: string | null

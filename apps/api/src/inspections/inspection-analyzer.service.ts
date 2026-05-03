@@ -3,8 +3,9 @@ import { ConfigService } from '@nestjs/config'
 import Anthropic from '@anthropic-ai/sdk'
 import { AiUsageService } from '../ai/usage/ai-usage.service'
 import { AiQuotaService } from '../ai/usage/ai-quota.service'
+import { AI_MODELS } from '../ai/ai.config'
 
-const INSPECTION_MODEL = 'claude-sonnet-4-5'
+const INSPECTION_MODEL = AI_MODELS.VISION_INSPECTION
 
 export type AnalysisCondition = 'GOOD' | 'ACCEPTABLE' | 'DAMAGED' | 'MISSING'
 

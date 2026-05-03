@@ -15,8 +15,8 @@ import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { AiAuditService } from './audit/ai-audit.service'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
+import { AI_MODELS } from './ai.config'
 
-const MODEL = 'claude-sonnet-4-5'
 const MAX_TOKENS = 2048
 
 const SYSTEM_PROMPT = `Du är Sveriges bästa AI-assistent för fastighetsförvaltning. Du kombinerar djup juridisk och ekonomisk kunskap med tillgång till användarens egna data.
@@ -69,7 +69,9 @@ BAS-KONTOPLAN FÖR FASTIGHETER:
 - 1510 Kundfordringar (utestående hyror)
 - 1920 Plusgiro/bankgiro
 - 2440 Leverantörsskulder
-- 2610 Utgående moms 25% (lokaler)
+- 2611 Utgående moms 25% (lokaler)
+- 2621 Utgående moms 12%
+- 2631 Utgående moms 6%
 - 3010 Hyresintäkter bostäder (momsfria)
 - 3011 Hyresintäkter lokaler (momspliktiga)
 - 3012 Depositionsintäkter
@@ -80,12 +82,13 @@ BAS-KONTOPLAN FÖR FASTIGHETER:
 MOMS:
 - Bostäder: MOMSFRIA (0%)
 - Lokaler: kan vara momspliktiga (25%) om frivillig skattskyldighet
+- Lokaler kan vara momspliktiga om uthyraren är frivilligt momsregistrerad enligt Mervärdesskattelagen 9 kap. 1 §
 - Frivillig skattskyldighet: måste ansökas hos Skatteverket
 - Fördel: kan dra av ingående moms på kostnader
 - Nackdel: hyresgästen betalar 25% mer i hyra
 
 FASTIGHETSSKATT OCH AVGIFTER:
-- Småhus: kommunal fastighetsavgift max 9 287 kr/år (2024)
+- Småhus: kommunal fastighetsavgift max 9 525 kr/år (2026)
 - Hyreshus bostäder: 1 421 kr per lägenhet (max 0,3% av taxvärde)
 - Hyreshus lokaler: 1% av taxeringsvärdet
 - Nybyggda fastigheter: befriade 15 år
@@ -181,7 +184,8 @@ HYRESAVIER (AVISERING):
 - OCR-numret är unikt per hyresgäst och ändras aldrig — ange alltid vid betalning
 - Generera avier i början av varje månad med generate_rent_notices
 - Skicka sedan ut dem till hyresgästerna via UI (send-all eller per avi)
-- Följ upp obetalda avier efter förfallodatum (25:e varje månad)
+- Förfallodatum: sista vardagen FÖRE den månad hyran avser, enligt Hyreslagen 12:20 JB. Helger och röda dagar hoppas över automatiskt.
+- Följ upp obetalda avier efter förfallodatum
 - Använd get_rent_notices för att visa aktuella avier
 
 KONVERSATIONSMINNE:
@@ -303,7 +307,10 @@ export interface ChatResponse {
   downloadUrl?: string
 }
 
-function requiresDoubleConfirmation(toolName: string, toolInput: Record<string, unknown>): boolean {
+export function requiresDoubleConfirmation(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+): boolean {
   // Large single invoice (>50 000 kr)
   if (toolName === 'create_invoice') {
     const raw = String(toolInput.amount ?? '0').replace(/[^\d.]/g, '')
@@ -630,15 +637,20 @@ export class AiAssistantService {
     userId: string,
   ): Promise<Anthropic.Message> {
     const memorySection = memoriesCtx ? `\n\n${memoriesCtx}` : ''
+    const dateContext = this.dataContext.getCurrentDateContext()
     try {
       const response = await this.client.messages.create({
-        model: MODEL,
+        model: AI_MODELS.CHAT,
         max_tokens: MAX_TOKENS,
         system: [
           {
             type: 'text',
             text: `${SYSTEM_PROMPT}\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}${memorySection}`,
             cache_control: { type: 'ephemeral' },
+          },
+          {
+            type: 'text',
+            text: dateContext,
           },
         ],
         tools: TOOLS,
@@ -650,7 +662,7 @@ export class AiAssistantService {
           organizationId,
           userId,
           endpoint: 'chat',
-          model: MODEL,
+          model: AI_MODELS.CHAT,
           usage: response.usage,
         })
         .catch((err: unknown) => this.logger.warn('logUsage(chat) failed', err))
@@ -697,7 +709,7 @@ export class AiAssistantService {
     return { reply, conversationId }
   }
 
-  private buildConfirmation(
+  buildConfirmation(
     toolName: string,
     input: Record<string, unknown>,
   ): { confirmationMessage: string; details: Record<string, string> } {
@@ -885,7 +897,7 @@ export class AiAssistantService {
     await this.quota.checkQuota(organizationId)
     const dataCtx = await this.dataContext.buildContext(organizationId)
     const response = await this.client.messages.create({
-      model: MODEL,
+      model: AI_MODELS.ANALYSIS,
       max_tokens: 512,
       system: `Du är Eveno AI – en intelligent fastighetsassistent för svenska fastighetsförvaltare.\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}`,
       messages: [
@@ -900,7 +912,7 @@ export class AiAssistantService {
       .logUsage({
         organizationId,
         endpoint: 'daily-insights',
-        model: MODEL,
+        model: AI_MODELS.ANALYSIS,
         usage: response.usage,
       })
       .catch((err: unknown) => this.logger.warn('logUsage(daily-insights) failed', err))

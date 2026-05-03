@@ -13,10 +13,13 @@ import {
 import { ConfigService } from '@nestjs/config'
 import { Throttle } from '@nestjs/throttler'
 import type { FastifyReply } from 'fastify'
-import { AiAssistantService } from './ai-assistant.service'
+import Anthropic from '@anthropic-ai/sdk'
+import { AiAssistantService, requiresDoubleConfirmation } from './ai-assistant.service'
 import { MemoryService } from './memory.service'
 import { PortfolioAnalysisService } from './portfolio-analysis.service'
 import { DataContextService } from './data-context.service'
+import { ToolExecutorService } from './tools/tool-executor.service'
+import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
 import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -25,8 +28,11 @@ import { ConfirmActionDto } from './dto/confirm-action.dto'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import type { JwtPayload } from '@eken/shared'
+import { AI_MODELS } from './ai.config'
 
-const STREAM_MODEL = 'claude-sonnet-4-5'
+const STREAM_MODEL = AI_MODELS.STREAM
+const STREAM_MAX_TOOL_ITERATIONS = 3
+const STREAM_MAX_TOKENS = 2048
 
 const STREAMING_SYSTEM_PROMPT = `Du är en intelligent AI-assistent för Eveno, ett svenskt fastighetsförvaltningssystem.
 Du hjälper fastighetsförvaltare att hantera sin portfölj effektivt.
@@ -45,6 +51,7 @@ export class AiAssistantController {
     private readonly memoryService: MemoryService,
     private readonly portfolioAnalysisService: PortfolioAnalysisService,
     private readonly dataContext: DataContextService,
+    private readonly toolExecutor: ToolExecutorService,
     private readonly usageService: AiUsageService,
     private readonly quotaService: AiQuotaService,
     private readonly prisma: PrismaService,
@@ -103,12 +110,23 @@ export class AiAssistantController {
         })
       }
 
-      // 2. Build data context + system prompt
+      // 2. Build data context + system prompt. Datum sänds som ett separat
+      //    (icke-cachat) systemblock så att portföljdata-snapshotten kan
+      //    cachas över flera dygn.
       const dataCtx = await this.dataContext.buildContext(organizationId)
-      const systemPrompt = `${STREAMING_SYSTEM_PROMPT}\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}`
+      const dateContext = this.dataContext.getCurrentDateContext()
+      const cacheableSystemText = `${STREAMING_SYSTEM_PROMPT}\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}`
+      const systemBlocks: Anthropic.TextBlockParam[] = [
+        {
+          type: 'text',
+          text: cacheableSystemText,
+          cache_control: { type: 'ephemeral' },
+        },
+        { type: 'text', text: dateContext },
+      ]
 
       // 3. Build message history
-      const allMessages = [
+      let currentMessages: Anthropic.MessageParam[] = [
         ...conversation.messages.map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
@@ -118,96 +136,136 @@ export class AiAssistantController {
 
       send('start', { conversationId: conversation.id })
 
-      // 4. Call Anthropic with stream: true
       const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY', '')
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: STREAM_MODEL,
-          max_tokens: 2048,
-          stream: true,
-          system: systemPrompt,
-          messages: allMessages,
-        }),
-      })
+      const anthropic = new Anthropic({ apiKey })
 
-      // 5. Read stream
-      const reader = response.body!.getReader()
-      const decoder = new TextDecoder()
-      let fullText = ''
-      let currentEvent = ''
+      let assistantText = ''
+      let pendingAction: {
+        toolName: string
+        toolInput: Record<string, unknown>
+        confirmationMessage: string
+        details: Record<string, string>
+        requiresDoubleConfirm?: boolean
+      } | null = null
 
-      // Anthropics streaming-API skickar usage i `message_start` (input tokens)
-      // och i `message_delta`s slut-event (output tokens). Vi samlar båda så
-      // vi kan logga totalkostnaden vid stream-slut.
       let inputTokens = 0
       let outputTokens = 0
       let cacheReadTokens = 0
       let cacheWriteTokens = 0
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      // 4. Tool-loop med streamning
+      let iterations = 0
+      let stopReason: string | null = null
+      let assistantContent: Anthropic.ContentBlock[] = []
 
-        const chunk = decoder.decode(value)
-        for (const line of chunk.split('\n')) {
-          const trimmed = line.trim()
-          if (trimmed.startsWith('event: ')) {
-            currentEvent = trimmed.slice(7)
-          } else if (trimmed.startsWith('data: ')) {
-            try {
-              const parsed = JSON.parse(trimmed.slice(6)) as {
-                type?: string
-                delta?: { type?: string; text?: string; stop_reason?: string }
-                message?: {
-                  usage?: {
-                    input_tokens?: number
-                    output_tokens?: number
-                    cache_creation_input_tokens?: number
-                    cache_read_input_tokens?: number
-                  }
-                }
-                usage?: {
-                  input_tokens?: number
-                  output_tokens?: number
-                  cache_creation_input_tokens?: number
-                  cache_read_input_tokens?: number
-                }
-              }
+      while (iterations < STREAM_MAX_TOOL_ITERATIONS) {
+        const stream = anthropic.messages.stream({
+          model: STREAM_MODEL,
+          max_tokens: STREAM_MAX_TOKENS,
+          system: systemBlocks,
+          tools: TOOLS,
+          messages: currentMessages,
+        })
 
-              if (currentEvent === 'message_start' && parsed.message?.usage) {
-                inputTokens = parsed.message.usage.input_tokens ?? 0
-                cacheReadTokens = parsed.message.usage.cache_read_input_tokens ?? 0
-                cacheWriteTokens = parsed.message.usage.cache_creation_input_tokens ?? 0
-                outputTokens = parsed.message.usage.output_tokens ?? 0
-              }
-              if (currentEvent === 'message_delta' && parsed.usage) {
-                outputTokens = parsed.usage.output_tokens ?? outputTokens
-              }
-              if (
-                currentEvent === 'content_block_delta' &&
-                parsed.type === 'content_block_delta' &&
-                parsed.delta?.type === 'text_delta'
-              ) {
-                const text = parsed.delta.text ?? ''
-                if (text) {
-                  fullText += text
-                  send('delta', { text })
-                }
-              }
-            } catch {
-              // ignore malformed lines
-            }
+        // Stream textdeltan direkt till klienten
+        stream.on('text', (delta: string) => {
+          if (delta) {
+            assistantText += delta
+            send('delta', { text: delta })
           }
+        })
+
+        // Annonsera tool_use så snart vi ser den i strömmen
+        let lastNotifiedIndex = -1
+        stream.on('streamEvent', (event) => {
+          if (
+            event.type === 'content_block_start' &&
+            event.content_block.type === 'tool_use' &&
+            event.index !== lastNotifiedIndex
+          ) {
+            lastNotifiedIndex = event.index
+            send('tool_use_start', {
+              id: event.content_block.id,
+              name: event.content_block.name,
+            })
+          }
+        })
+
+        const finalMessage = await stream.finalMessage()
+        assistantContent = finalMessage.content
+        stopReason = finalMessage.stop_reason ?? null
+
+        if (finalMessage.usage) {
+          inputTokens += finalMessage.usage.input_tokens ?? 0
+          outputTokens += finalMessage.usage.output_tokens ?? 0
+          cacheReadTokens += finalMessage.usage.cache_read_input_tokens ?? 0
+          cacheWriteTokens += finalMessage.usage.cache_creation_input_tokens ?? 0
         }
+
+        if (stopReason !== 'tool_use') break
+
+        const toolUses = assistantContent.filter(
+          (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+        )
+
+        // Om en åtgärd uppstår: avbryt streaming och kräv bekräftelse.
+        // Behåll bekräftelseflödet — actions exekveras inte direkt.
+        const actionBlock = toolUses.find((tu) => ACTION_TOOLS.has(tu.name))
+        if (actionBlock) {
+          const input = actionBlock.input as Record<string, unknown>
+          const conf = this.aiService.buildConfirmation(actionBlock.name, input)
+          const needsDouble = requiresDoubleConfirmation(actionBlock.name, input)
+          pendingAction = {
+            toolName: actionBlock.name,
+            toolInput: input,
+            ...conf,
+            ...(needsDouble ? { requiresDoubleConfirm: true } : {}),
+          }
+          break
+        }
+
+        // Read-tools — kör parallellt och annonsera resultat
+        const toolResultBlocks: Anthropic.ToolResultBlockParam[] = await Promise.all(
+          toolUses.map(async (tu) => {
+            send('tool_use_executing', {
+              id: tu.id,
+              name: tu.name,
+              input: tu.input as Record<string, unknown>,
+            })
+            let result: unknown
+            try {
+              result = await this.toolExecutor.executeTool(
+                tu.name,
+                tu.input as Record<string, unknown>,
+                organizationId,
+                user.sub,
+                user.role,
+                { conversationId: conversation!.id },
+              )
+            } catch (err) {
+              result = {
+                success: false,
+                message: err instanceof Error ? err.message : 'Fel vid verktygsanrop',
+              }
+            }
+            send('tool_result', { id: tu.id, name: tu.name, result })
+            return {
+              type: 'tool_result' as const,
+              tool_use_id: tu.id,
+              content: JSON.stringify(result),
+            }
+          }),
+        )
+
+        currentMessages = [
+          ...currentMessages,
+          { role: 'assistant', content: assistantContent },
+          { role: 'user', content: toolResultBlocks },
+        ]
+        iterations++
       }
 
-      // Logga kostnaden för stream-anropet
+      // 5. Logga kostnad
       void this.usageService
         .logUsage({
           organizationId,
@@ -223,24 +281,33 @@ export class AiAssistantController {
         })
         .catch(() => undefined)
 
-      // 6. Save to DB
-      await this.prisma.aiMessage.createMany({
-        data: [
-          { conversationId: conversation.id, role: 'user', content: message },
-          {
-            conversationId: conversation.id,
-            role: 'assistant',
-            content: fullText || 'Inget svar.',
-          },
-        ],
-      })
-      await this.prisma.aiConversation.update({
-        where: { id: conversation.id },
-        data: { updatedAt: new Date() },
-      })
-
-      // 7. Done
-      send('done', { conversationId: conversation.id })
+      // 6. Spara — actions sparar bara user-meddelandet (svaret kommer vid bekräftelse)
+      if (pendingAction) {
+        await this.prisma.aiMessage.create({
+          data: { conversationId: conversation.id, role: 'user', content: message },
+        })
+        await this.prisma.aiConversation.update({
+          where: { id: conversation.id },
+          data: { updatedAt: new Date() },
+        })
+        send('pending_action', { conversationId: conversation.id, ...pendingAction })
+      } else {
+        await this.prisma.aiMessage.createMany({
+          data: [
+            { conversationId: conversation.id, role: 'user', content: message },
+            {
+              conversationId: conversation.id,
+              role: 'assistant',
+              content: assistantText || 'Inget svar.',
+            },
+          ],
+        })
+        await this.prisma.aiConversation.update({
+          where: { id: conversation.id },
+          data: { updatedAt: new Date() },
+        })
+        send('done', { conversationId: conversation.id })
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Okänt fel'
       send('error', { message: `Något gick fel, försök igen. (${msg})` })

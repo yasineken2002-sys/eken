@@ -908,14 +908,22 @@ model AiMessage {
   @@index([conversationId, createdAt])
 }
 
+enum AiMemoryType {
+  preference
+  fact
+  relationship
+  convention
+}
+
 model AiMemory {
-  id             String   @id @default(uuid())
+  id             String       @id @default(uuid())
   organizationId String
   userId         String
   key            String
-  value          String   @db.Text
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  value          String       @db.Text
+  type           AiMemoryType @default(fact)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)

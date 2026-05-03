@@ -212,7 +212,6 @@ export class DataContextService {
     const overdueData = invoiceMap['OVERDUE']
     const lines: string[] = [
       `ORGANISATIONSÖVERSIKT – ${org?.name ?? 'Okänd organisation'} (${org?.city ?? ''})`,
-      `Datum: ${formatDate(now)}`,
       '',
       'PORTFÖLJSAMMANFATTNING:',
       `Totala månadsinkomster: ${formatSEK(totalMonthlyIncome)}`,
@@ -335,5 +334,14 @@ export class DataContextService {
     }
 
     return lines.join('\n')
+  }
+
+  /**
+   * Aktuellt datum som separat segment. Hålls utanför buildContext() så att
+   * den cachebara system-prompt-snapshotten inte invalideras varje dygn.
+   */
+  getCurrentDateContext(now: Date = new Date()): string {
+    const formatted = new Intl.DateTimeFormat('sv-SE').format(now)
+    return `Dagens datum: ${formatted}`
   }
 }
