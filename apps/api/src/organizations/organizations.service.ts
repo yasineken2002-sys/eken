@@ -28,6 +28,20 @@ export class OrganizationsService {
       where: { id: organizationId },
     })
     if (!org) throw new NotFoundException('Organisationen hittades inte')
+
+    // logoStorageUrl i databasen är en presignerad R2-URL från upload-tillfället
+    // (TTL 1h) och blir därför stale. Skriv över med en färsk presigned URL
+    // varje gång org:t hämtas så att <img src> i settings/PDF-genereringen
+    // alltid funkar oavsett när logon laddades upp.
+    if (org.logoStorageKey) {
+      try {
+        return { ...org, logoStorageUrl: await this.storage.getPresignedUrl(org.logoStorageKey) }
+      } catch {
+        // Faller tillbaka på lagrad URL om R2 är otillgängligt — bättre att
+        // visa en eventuellt utgången URL än att hela settings-sidan kraschar.
+        return org
+      }
+    }
     return org
   }
 
@@ -74,9 +88,14 @@ export class OrganizationsService {
 
     const storageUrl = await this.storage.uploadFile(buffer, storageKey, file.mimetype)
 
-    return this.prisma.organization.update({
+    const updated = await this.prisma.organization.update({
       where: { id: organizationId },
       data: { logoStorageKey: storageKey, logoStorageUrl: storageUrl },
     })
+
+    // Returnera samma färska URL som findMyOrganization annars genererar — så
+    // att frontend kan visa logon direkt efter upload utan att behöva göra
+    // en extra refetch först.
+    return { ...updated, logoStorageUrl: await this.storage.getPresignedUrl(storageKey) }
   }
 }

@@ -6,15 +6,14 @@ import {
   NotFoundException,
   Param,
   Post,
-  Res,
   UseGuards,
 } from '@nestjs/common'
-import type { FastifyReply } from 'fastify'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { StorageService } from '../storage/storage.service'
 import { ContractTemplateService } from './contract-template.service'
 
 @Controller('contracts')
@@ -23,6 +22,7 @@ export class ContractsController {
   constructor(
     private readonly service: ContractTemplateService,
     private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
   ) {}
 
   @Post('generate/:leaseId')
@@ -41,20 +41,36 @@ export class ContractsController {
     }
   }
 
+  /**
+   * Returnerar presigned R2-URL till senaste kontrakts-PDF för leasen.
+   * Frontend öppnar URL:en direkt mot R2 (ingen auth-header behövs där).
+   *
+   * Om inget kontrakt har genererats än byggs ett först — det täcker det
+   * gamla flödet (knapp som klickades innan auto-generering kördes) och
+   * sparar samtidigt PDF:en i R2 så framtida nedladdningar går direkt.
+   */
   @Get('download/:leaseId')
   async download(
     @OrgId() orgId: string,
+    @CurrentUser() user: JwtPayload,
     @Param('leaseId') leaseId: string,
-    @Res() reply: FastifyReply,
   ) {
-    const buffer = await this.service.buildPdfBuffer(leaseId, orgId)
-    void reply
-      .header('Content-Type', 'application/pdf')
-      .header(
-        'Content-Disposition',
-        `attachment; filename="hyreskontrakt-${leaseId.slice(0, 8)}.pdf"`,
-      )
-      .send(buffer)
+    let latest = await this.service.findLatestContract(leaseId, orgId)
+    if (!latest) {
+      const lease = await this.prisma.lease.findFirst({
+        where: { id: leaseId, organizationId: orgId },
+        select: { id: true },
+      })
+      if (!lease) throw new NotFoundException('Kontraktet hittades inte')
+      const { documentId } = await this.service.generateLeaseContract(leaseId, orgId, user.sub, {
+        linkPrevious: false,
+      })
+      latest = await this.prisma.document.findUnique({ where: { id: documentId } })
+      if (!latest) throw new NotFoundException('Kontraktets PDF kunde inte sparas')
+    }
+
+    const url = await this.storage.getPresignedUrl(latest.storageKey, 300)
+    return { url, filename: `${latest.name}.pdf`, mimeType: latest.mimeType }
   }
 
   /**

@@ -1,4 +1,6 @@
-import { get, post, patch, del, api } from '@/lib/api'
+import { toast } from 'sonner'
+import { get, post, patch, del, extractApiError } from '@/lib/api'
+import { openPresignedDownload, sanitizeFilename } from '@/lib/download'
 import type { Lease, Tenant, Unit, Property } from '@eken/shared'
 
 export type LeaseDetail = Lease & {
@@ -133,13 +135,23 @@ export function generateLeaseContract(
 }
 
 export async function downloadLeaseContract(leaseId: string): Promise<void> {
-  const res = await api.get(`/contracts/download/${leaseId}`, { responseType: 'blob' })
-  const url = window.URL.createObjectURL(res.data as Blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `hyreskontrakt-${leaseId.slice(0, 8)}.pdf`
-  a.click()
-  window.URL.revokeObjectURL(url)
+  // Backend returnerar presigned R2-URL till senaste sparade kontrakts-PDF.
+  // Tidigare laddades hela bufferten via vår API som blob — onödig
+  // bandbreddskostnad när filen redan ligger i R2.
+  try {
+    const { url, filename } = await get<{ url: string; filename: string; mimeType: string }>(
+      `/contracts/download/${leaseId}`,
+    )
+    openPresignedDownload(
+      url,
+      sanitizeFilename(filename || `hyreskontrakt-${leaseId.slice(0, 8)}.pdf`),
+    )
+  } catch (err) {
+    toast.error('Kunde inte ladda ner kontraktet', {
+      description: extractApiError(err, 'Försök igen om en stund.'),
+    })
+    throw err
+  }
 }
 
 export interface ContractDocument {

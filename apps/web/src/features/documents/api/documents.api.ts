@@ -1,5 +1,7 @@
-import { api, get, del } from '@/lib/api'
+import { toast } from 'sonner'
+import { api, get, del, extractApiError } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
+import { sanitizeFilename, openPresignedDownload } from '@/lib/download'
 
 export interface Document {
   id: string
@@ -72,13 +74,24 @@ export async function uploadDocument(input: UploadDocumentInput): Promise<Docume
   return data.data
 }
 
-export function downloadDocument(id: string, _name: string): void {
-  const token = useAuthStore.getState().accessToken
-  // Open download in new tab — browser will handle the attachment
-  const url = `/api/v1/documents/${id}/download`
-  // Append token as query param since we can't set headers on window.open
-  const fullUrl = token ? `${url}?_t=${Date.now()}` : url
-  window.open(fullUrl, '_blank')
+// Backend returnerar { url, filename, mimeType } där `url` är en presigned
+// R2-URL (~5 min TTL) som vi öppnar direkt — den är förautentiserad så
+// webbläsaren behöver ingen Authorization-header. Den gamla lösningen försökte
+// öppna /api/v1/documents/:id/download i ett nytt fönster utan auth-header
+// och fick 401 UNAUTHORIZED.
+export async function downloadDocument(id: string, name: string): Promise<void> {
+  try {
+    const { url, filename } = await get<{ url: string; filename: string; mimeType: string }>(
+      `/documents/${id}/download`,
+    )
+    openPresignedDownload(url, sanitizeFilename(filename || name))
+  } catch (err) {
+    // Queries triggas inte av MutationCache, så fel skulle annars vara tysta.
+    toast.error('Kunde inte ladda ner dokumentet', {
+      description: extractApiError(err, 'Försök igen om en stund.'),
+    })
+    throw err
+  }
 }
 
 export async function deleteDocument(id: string): Promise<void> {

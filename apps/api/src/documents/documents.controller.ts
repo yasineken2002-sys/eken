@@ -8,11 +8,10 @@ import {
   HttpCode,
   HttpStatus,
   Req,
-  Res,
   BadRequestException,
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger'
-import type { FastifyRequest, FastifyReply } from 'fastify'
+import type { FastifyRequest } from 'fastify'
 import { DocumentsService } from './documents.service'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
@@ -113,9 +112,14 @@ export class DocumentsController {
 
   @Get(':id/download')
   @ApiOperation({ summary: 'Hämta presignerad nedladdnings-URL för dokument' })
-  async download(@Param('id') id: string, @OrgId() orgId: string, @Res() reply: FastifyReply) {
-    const { url } = await this.service.getDownloadUrl(id, orgId)
-    void reply.redirect(url, 302)
+  async download(@Param('id') id: string, @OrgId() orgId: string) {
+    // Returnerar presigned R2-URL (~5 min TTL) som JSON istället för 302-redirect.
+    // Tidigare lösning krävde att webbläsaren skickade Authorization-headern på
+    // den initiala GET:en, vilket är omöjligt vid window.open() — resultatet
+    // blev 401 UNAUTHORIZED. Frontend hämtar nu URL:en med auth via fetch och
+    // öppnar sedan den signerade URL:en direkt mot R2.
+    const { url, document } = await this.service.getDownloadUrl(id, orgId)
+    return { url, filename: document.name, mimeType: document.mimeType }
   }
 
   @Delete(':id')
