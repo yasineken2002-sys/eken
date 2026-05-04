@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { Button } from '@/components/ui/Button'
 import { AuthCard } from './components/AuthCard'
 import { PasswordInput } from './components/PasswordInput'
+import { PasswordRequirements } from './components/PasswordRequirements'
 import { passwordSchema, readErrorMessage } from './lib/password-schema'
 import { changePasswordApi } from './api/auth.api'
 import { useAuthStore } from '@/stores/auth.store'
@@ -42,8 +43,11 @@ export function ChangePasswordPage({ forced = false, onNavigate }: Props) {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) })
+  } = useForm<FormValues>({ resolver: zodResolver(schema), mode: 'onTouched' })
+
+  const newPasswordValue = watch('newPassword') ?? ''
 
   const onSubmit = async (data: FormValues) => {
     setApiError(null)
@@ -93,10 +97,10 @@ export function ChangePasswordPage({ forced = false, onNavigate }: Props) {
         />
         <PasswordInput
           label="Nytt lösenord"
-          hint="Min 8 tecken, minst 1 stor bokstav och 1 siffra"
           error={errors.newPassword?.message}
           {...register('newPassword')}
         />
+        <PasswordRequirements password={newPasswordValue} />
         <PasswordInput
           label="Bekräfta nytt lösenord"
           error={errors.confirmPassword?.message}

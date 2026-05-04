@@ -1,11 +1,9 @@
-import { z } from 'zod'
+import { StrongPasswordSchema } from '@eken/shared'
 
-// Måste matcha backend-validering: min 8 tecken, minst 1 stor bokstav, 1 siffra.
-export const passwordSchema = z
-  .string()
-  .min(8, 'Lösenordet måste vara minst 8 tecken')
-  .regex(/[A-Z]/, 'Lösenordet måste innehålla minst en stor bokstav')
-  .regex(/[0-9]/, 'Lösenordet måste innehålla minst en siffra')
+// Single source of truth — synkad med backend (apps/api/.../password.decorators.ts)
+// och delade utils (validatePasswordStrength). Ändras kraven uppdateras alla
+// formulär (registrering, byt lösenord, aktivering, glömt lösenord, portal).
+export const passwordSchema = StrongPasswordSchema
 
 export function readErrorMessage(err: unknown, fallback: string): string {
   return (

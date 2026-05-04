@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { validatePasswordStrength } from '@eken/shared'
 import { activateAccount, fetchActivationInfo } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
 import { Spinner } from '@/components/ui/Spinner'
+import { PasswordRequirements } from '@/components/ui/PasswordRequirements'
 import styles from './ActivatePage.module.css'
 
 const SEK = new Intl.NumberFormat('sv-SE', {
@@ -76,9 +78,14 @@ export function ActivatePage() {
       navigate('/dashboard', { replace: true })
     },
     onError: (err: unknown) => {
-      const status = (err as { response?: { status?: number } })?.response?.status
+      const e = err as {
+        response?: { status?: number; data?: { error?: { message?: string } } }
+      }
+      const status = e?.response?.status
+      const apiMsg = e?.response?.data?.error?.message
       if (status === 401) setErrorMsg('Aktiveringslänken är ogiltig eller har gått ut.')
-      else if (status === 400) setErrorMsg('Lösenordet uppfyller inte kraven (minst 8 tecken).')
+      else if (status === 400 && apiMsg) setErrorMsg(apiMsg)
+      else if (status === 400) setErrorMsg('Lösenordet uppfyller inte kraven.')
       else setErrorMsg('Något gick fel. Försök igen om en stund.')
     },
   })
@@ -86,7 +93,8 @@ export function ActivatePage() {
   function validate(): string | null {
     if (!signed) return 'Du måste markera att du har läst och godkänner kontraktet.'
     if (!signatureName.trim()) return 'Ange ditt namn som signatur.'
-    if (password.length < 8) return 'Lösenordet måste vara minst 8 tecken.'
+    const strength = validatePasswordStrength(password)
+    if (!strength.valid) return strength.errors[0] ?? 'Lösenordet uppfyller inte kraven.'
     if (password !== confirmPassword) return 'Lösenorden matchar inte.'
     return null
   }
@@ -285,9 +293,10 @@ export function ActivatePage() {
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={activateMutation.isPending}
                 autoComplete="new-password"
+                placeholder="Minst 10 tecken med stor/liten/siffra/specialtecken"
                 required
               />
-              <p className={styles.passwordHint}>Minst 8 tecken.</p>
+              <PasswordRequirements password={password} />
             </div>
             <div className={styles.fieldGroup}>
               <label className={styles.label} htmlFor="confirmPassword">

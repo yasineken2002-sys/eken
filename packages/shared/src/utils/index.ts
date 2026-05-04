@@ -230,21 +230,59 @@ export function isValidSwedishOrgNumber(raw: string): boolean {
 
 // ─── Lösenordspolicy ───────────────────────────────────────────────────────────
 // Krav: minst 10 tecken, minst en stor bokstav, minst en liten, minst en
-// siffra. Specialtecken är rekommenderat men inte krav (användarstudier visar
-// att längd > komplexitet, men vi tar med stor/liten/siffra som baseline).
+// siffra och minst ett specialtecken. Tillsammans ger detta tillräcklig
+// entropi för enterprise-konton (jfr. Fortnox/banker som kräver
+// blandning + specialtecken).
 
 export const PASSWORD_MIN_LENGTH = 10
+// Behåll regex i en enda källa så UI och server alltid är synkade.
+export const PASSWORD_SPECIAL_CHAR_REGEX = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/
+
+export interface PasswordCheck {
+  key: 'length' | 'lowercase' | 'uppercase' | 'digit' | 'special'
+  label: string
+  passed: boolean
+}
+
+export function passwordChecks(password: string): PasswordCheck[] {
+  const pwd = password ?? ''
+  return [
+    {
+      key: 'length',
+      label: `Minst ${PASSWORD_MIN_LENGTH} tecken`,
+      passed: pwd.length >= PASSWORD_MIN_LENGTH,
+    },
+    { key: 'uppercase', label: 'Stor bokstav (A–Z)', passed: /[A-Z]/.test(pwd) },
+    { key: 'lowercase', label: 'Liten bokstav (a–z)', passed: /[a-z]/.test(pwd) },
+    { key: 'digit', label: 'Siffra (0–9)', passed: /[0-9]/.test(pwd) },
+    {
+      key: 'special',
+      label: 'Specialtecken (t.ex. !@#$%)',
+      passed: PASSWORD_SPECIAL_CHAR_REGEX.test(pwd),
+    },
+  ]
+}
 
 export function validatePasswordStrength(password: string): {
   valid: boolean
   errors: string[]
 } {
-  const errors: string[] = []
-  if (!password || password.length < PASSWORD_MIN_LENGTH) {
-    errors.push(`Lösenordet måste vara minst ${PASSWORD_MIN_LENGTH} tecken`)
-  }
-  if (!/[a-z]/.test(password)) errors.push('Lösenordet måste innehålla en liten bokstav')
-  if (!/[A-Z]/.test(password)) errors.push('Lösenordet måste innehålla en stor bokstav')
-  if (!/[0-9]/.test(password)) errors.push('Lösenordet måste innehålla en siffra')
+  const checks = passwordChecks(password ?? '')
+  const errors = checks
+    .filter((c) => !c.passed)
+    .map((c) => {
+      switch (c.key) {
+        case 'length':
+          return `Lösenordet måste vara minst ${PASSWORD_MIN_LENGTH} tecken`
+        case 'uppercase':
+          return 'Lösenordet måste innehålla en stor bokstav'
+        case 'lowercase':
+          return 'Lösenordet måste innehålla en liten bokstav'
+        case 'digit':
+          return 'Lösenordet måste innehålla en siffra'
+        case 'special':
+          return 'Lösenordet måste innehålla ett specialtecken'
+      }
+    })
   return { valid: errors.length === 0, errors }
 }

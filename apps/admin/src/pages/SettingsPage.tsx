@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input, Label } from '@/components/ui/Input'
+import { PasswordRequirements } from '@/components/ui/PasswordRequirements'
 import { post } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -76,10 +77,12 @@ export function SettingsPage() {
               <Label>Nytt lösenord</Label>
               <Input
                 type="password"
+                placeholder="Minst 10 tecken med stor/liten/siffra/specialtecken"
                 value={pwd.newPassword}
                 onChange={(e) => setPwd({ ...pwd, newPassword: e.target.value })}
               />
             </div>
+            <PasswordRequirements password={pwd.newPassword} />
             {pwdMsg ? <div className="text-[13px] text-gray-700">{pwdMsg}</div> : null}
             <Button onClick={() => pwdMutation.mutate()} loading={pwdMutation.isPending}>
               Uppdatera

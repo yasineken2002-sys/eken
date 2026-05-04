@@ -52,8 +52,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         const r = response as Record<string, unknown>
         message = (r['message'] as string) ?? message
         if (Array.isArray(r['message'])) {
-          details = { validation: r['message'] as string[] }
-          message = 'Valideringsfel'
+          const messages = r['message'] as string[]
+          details = { validation: messages }
+          // Visa det första (eller alla) faktiska felmeddelandena. Tidigare
+          // ersattes detta med ett generiskt "Valideringsfel" vilket gjorde
+          // det omöjligt för UI:t att visa vilket krav som inte uppfylls.
+          message = messages.length === 1 ? messages[0]! : messages.join('. ')
         }
       }
     }

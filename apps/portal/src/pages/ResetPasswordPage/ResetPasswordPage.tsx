@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
+import { validatePasswordStrength } from '@eken/shared'
 import { resetPassword } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
+import { PasswordRequirements } from '@/components/ui/PasswordRequirements'
 import styles from '../LoginPage/LoginPage.module.css'
 
 export function ResetPasswordPage() {
@@ -22,17 +24,23 @@ export function ResetPasswordPage() {
       navigate('/dashboard', { replace: true })
     },
     onError: (err: unknown) => {
-      const status = (err as { response?: { status?: number } })?.response?.status
+      const e = err as {
+        response?: { status?: number; data?: { error?: { message?: string } } }
+      }
+      const status = e?.response?.status
+      const apiMsg = e?.response?.data?.error?.message
       if (status === 401) setErrorMsg('Återställningslänken är ogiltig eller har gått ut.')
-      else if (status === 400) setErrorMsg('Lösenordet uppfyller inte kraven (minst 8 tecken).')
+      else if (status === 400 && apiMsg) setErrorMsg(apiMsg)
+      else if (status === 400) setErrorMsg('Lösenordet uppfyller inte kraven.')
       else setErrorMsg('Något gick fel. Försök igen om en stund.')
     },
   })
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (password.length < 8) {
-      setErrorMsg('Lösenordet måste vara minst 8 tecken.')
+    const strength = validatePasswordStrength(password)
+    if (!strength.valid) {
+      setErrorMsg(strength.errors[0] ?? 'Lösenordet uppfyller inte kraven.')
       return
     }
     if (password !== confirmPassword) {
@@ -85,7 +93,9 @@ export function ResetPasswordPage() {
             autoFocus
             disabled={mutation.isPending}
             autoComplete="new-password"
+            placeholder="Minst 10 tecken med stor/liten/siffra/specialtecken"
           />
+          <PasswordRequirements password={password} />
 
           <label className={styles.label} htmlFor="confirmPassword" style={{ marginTop: 12 }}>
             Bekräfta lösenord

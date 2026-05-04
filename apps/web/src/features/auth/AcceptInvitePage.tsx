@@ -6,6 +6,7 @@ import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { AuthCard } from './components/AuthCard'
 import { PasswordInput } from './components/PasswordInput'
+import { PasswordRequirements } from './components/PasswordRequirements'
 import { passwordSchema, readErrorMessage } from './lib/password-schema'
 import { setLoginFlash } from './lib/login-flash'
 import { acceptInviteApi } from './api/auth.api'
@@ -35,8 +36,11 @@ export function AcceptInvitePage({ token, onNavigate }: Props) {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) })
+  } = useForm<FormValues>({ resolver: zodResolver(schema), mode: 'onTouched' })
+
+  const newPasswordValue = watch('newPassword') ?? ''
 
   if (!token) {
     return (
@@ -74,10 +78,10 @@ export function AcceptInvitePage({ token, onNavigate }: Props) {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <PasswordInput
           label="Lösenord"
-          hint="Min 8 tecken, minst 1 stor bokstav och 1 siffra"
           error={errors.newPassword?.message}
           {...register('newPassword')}
         />
+        <PasswordRequirements password={newPasswordValue} />
         <PasswordInput
           label="Bekräfta lösenord"
           error={errors.confirmPassword?.message}

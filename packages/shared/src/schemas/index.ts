@@ -3,6 +3,7 @@ import {
   isValidSwedishPersonalNumber,
   isValidSwedishOrgNumber,
   PASSWORD_MIN_LENGTH,
+  PASSWORD_SPECIAL_CHAR_REGEX,
 } from '../utils'
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
@@ -14,15 +15,15 @@ export const PaginationSchema = z.object({
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-// Starkt lösenord: minst 10 tecken, stor/liten/siffra. Specialtecken
-// rekommenderas men är inte hård krav (NIST SP 800-63B prioriterar längd
-// över ad-hoc-komplexitet).
+// Starkt lösenord: minst 10 tecken med stor/liten/siffra/specialtecken.
+// Hård policy — håller enterprise-nivå (jfr. Fortnox och svenska banker).
 export const StrongPasswordSchema = z
   .string()
   .min(PASSWORD_MIN_LENGTH, `Lösenordet måste vara minst ${PASSWORD_MIN_LENGTH} tecken`)
   .regex(/[a-z]/, 'Lösenordet måste innehålla en liten bokstav')
   .regex(/[A-Z]/, 'Lösenordet måste innehålla en stor bokstav')
   .regex(/[0-9]/, 'Lösenordet måste innehålla en siffra')
+  .regex(PASSWORD_SPECIAL_CHAR_REGEX, 'Lösenordet måste innehålla ett specialtecken')
   .max(128, 'Lösenordet är för långt')
 
 export const LoginSchema = z.object({

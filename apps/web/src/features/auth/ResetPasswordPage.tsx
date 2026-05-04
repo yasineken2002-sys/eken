@@ -6,6 +6,7 @@ import { CheckCircle2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { AuthCard } from './components/AuthCard'
 import { PasswordInput } from './components/PasswordInput'
+import { PasswordRequirements } from './components/PasswordRequirements'
 import { passwordSchema, readErrorMessage } from './lib/password-schema'
 import { resetPasswordApi } from './api/auth.api'
 import type { Route } from '@/App'
@@ -35,8 +36,11 @@ export function ResetPasswordPage({ token, onNavigate }: Props) {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) })
+  } = useForm<FormValues>({ resolver: zodResolver(schema), mode: 'onTouched' })
+
+  const newPasswordValue = watch('newPassword') ?? ''
 
   if (!token) {
     return (
@@ -104,10 +108,10 @@ export function ResetPasswordPage({ token, onNavigate }: Props) {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <PasswordInput
           label="Nytt lösenord"
-          hint="Min 8 tecken, minst 1 stor bokstav och 1 siffra"
           error={errors.newPassword?.message}
           {...register('newPassword')}
         />
+        <PasswordRequirements password={newPasswordValue} />
         <PasswordInput
           label="Bekräfta lösenord"
           error={errors.confirmPassword?.message}

@@ -19,6 +19,8 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { registerApi } from './api/auth.api'
+import { passwordSchema } from './lib/password-schema'
+import { PasswordRequirements } from './components/PasswordRequirements'
 import { useAuthStore } from '@/stores/auth.store'
 import type { Route } from '@/App'
 
@@ -28,7 +30,7 @@ const schema = z
     firstName: z.string().min(1, 'Förnamn krävs'),
     lastName: z.string().min(1, 'Efternamn krävs'),
     email: z.string().email('Ogiltig e-postadress'),
-    password: z.string().min(8, 'Minst 8 tecken'),
+    password: passwordSchema,
     confirmPassword: z.string(),
     organizationName: z.string().min(1, 'Namn krävs'),
     orgNumber: z.string().optional(),
@@ -145,6 +147,7 @@ export function RegisterPage({ onNavigate }: Props) {
   })
 
   const accountType = watch('accountType')
+  const passwordValue = watch('password') ?? ''
 
   const goToStep2 = async () => {
     const valid = await trigger(STEP1_FIELDS)
@@ -285,7 +288,9 @@ export function RegisterPage({ onNavigate }: Props) {
                             type={show ? 'text' : 'password'}
                             autoComplete="new-password"
                             placeholder={
-                              field === 'password' ? 'Minst 8 tecken' : 'Upprepa lösenord'
+                              field === 'password'
+                                ? 'Minst 10 tecken med stor/liten/siffra/specialtecken'
+                                : 'Upprepa lösenord'
                             }
                             className={cn(
                               'flex h-10 w-full rounded-xl border bg-white px-3.5 pr-10 text-[13.5px] text-gray-900 placeholder:text-gray-400',
@@ -305,6 +310,9 @@ export function RegisterPage({ onNavigate }: Props) {
                             {show ? <EyeOff size={15} /> : <Eye size={15} />}
                           </button>
                         </div>
+                        {field === 'password' && (
+                          <PasswordRequirements password={passwordValue} className="mt-2" />
+                        )}
                         {errors[field] && (
                           <p className="text-[12px] text-red-500">{errors[field]?.message}</p>
                         )}
