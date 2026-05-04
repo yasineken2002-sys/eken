@@ -12,6 +12,8 @@ import {
 import type { LeaseStatus } from '@prisma/client'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { CurrentUser } from '../common/decorators/current-user.decorator'
+import type { JwtPayload } from '@eken/shared'
 import { LeasesService } from './leases.service'
 import { CreateLeaseDto } from './dto/create-lease.dto'
 import { UpdateLeaseDto } from './dto/update-lease.dto'
@@ -46,9 +48,15 @@ export class LeasesController {
   async transitionStatus(
     @Param('id') id: string,
     @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
     @Body() dto: TransitionLeaseStatusDto,
   ) {
-    return this.leasesService.transitionStatus(id, dto.status as LeaseStatus, organizationId)
+    return this.leasesService.transitionStatus(
+      id,
+      dto.status as LeaseStatus,
+      organizationId,
+      user.sub,
+    )
   }
 
   @Patch(':id/terminate')

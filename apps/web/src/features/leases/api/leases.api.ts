@@ -42,7 +42,43 @@ export function deleteLease(id: string): Promise<void> {
   return del(`/leases/${id}`)
 }
 
-export interface CreateLeaseWithTenantInput {
+export type PetPolicy = 'ALLOWED' | 'REQUIRES_APPROVAL' | 'NOT_ALLOWED'
+export type IndexClauseType = 'NONE' | 'KPI' | 'NEGOTIATED' | 'MARKET_RENT'
+
+export interface ContractTerms {
+  // Vad ingår i hyran
+  includesHeating?: boolean
+  includesWater?: boolean
+  includesHotWater?: boolean
+  includesElectricity?: boolean
+  includesInternet?: boolean
+  includesCleaning?: boolean
+  includesParking?: boolean
+  includesStorage?: boolean
+  includesLaundry?: boolean
+
+  // Tilläggshyror
+  parkingFee?: number | null
+  storageFee?: number | null
+  garageFee?: number | null
+
+  // Användningsändamål, husdjur, andrahand, försäkring
+  usagePurpose?: string | null
+  petsAllowed?: PetPolicy
+  petsApprovalNotes?: string | null
+  sublettingAllowed?: boolean
+  requiresHomeInsurance?: boolean
+
+  // Indexklausul
+  indexClauseType?: IndexClauseType
+  indexBaseYear?: number | null
+  indexAdjustmentDate?: string | null
+  indexMaxIncrease?: number | null
+  indexMinIncrease?: number | null
+  indexNotes?: string | null
+}
+
+export interface CreateLeaseWithTenantInput extends ContractTerms {
   unitId: string
   existingTenantId?: string
   newTenant?: {
@@ -104,4 +140,31 @@ export async function downloadLeaseContract(leaseId: string): Promise<void> {
   a.download = `hyreskontrakt-${leaseId.slice(0, 8)}.pdf`
   a.click()
   window.URL.revokeObjectURL(url)
+}
+
+export interface ContractDocument {
+  id: string
+  name: string
+  createdAt: string
+  signedAt: string | null
+  signedFromIp: string | null
+  contentHash: string | null
+  locked: boolean
+  previousVersionId: string | null
+  signedByTenant: {
+    firstName: string | null
+    lastName: string | null
+    companyName: string | null
+  } | null
+}
+
+export interface ContractStatus {
+  latest: ContractDocument | null
+  versions: ContractDocument[]
+  hasPdf: boolean
+  staleSinceSigning: boolean
+}
+
+export function fetchContractStatus(leaseId: string): Promise<ContractStatus> {
+  return get<ContractStatus>(`/contracts/status/${leaseId}`)
 }

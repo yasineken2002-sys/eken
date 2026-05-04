@@ -265,6 +265,21 @@ enum DocumentCategory {
   OTHER
 }
 
+// ─── Kontraktsmall-enums ─────────────────────────────────────────────────────
+
+enum PetPolicy {
+  ALLOWED
+  REQUIRES_APPROVAL
+  NOT_ALLOWED
+}
+
+enum IndexClauseType {
+  NONE
+  KPI // Konsumentprisindex (SCB)
+  NEGOTIATED // Förhandlad hyra (bostad, 12:19 § JB)
+  MARKET_RENT // Marknadshyra (lokal, 12:57–60 §§ JB)
+}
+
 // ─── Notification ────────────────────────────────────────────────────────────
 
 enum NotificationType {
@@ -505,6 +520,12 @@ model Property {
   totalArea           Decimal      @db.Decimal(10, 2)
   yearBuilt           Int?
 
+  // Information som genererade hyreskontrakt refererar till per fastighet —
+  // hyresvärden fyller i en gång och slipper upprepa per kontrakt.
+  fireSafetyNotes      String?
+  commonAreasNotes     String?
+  garbageDisposalRules String?
+
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   units              Unit[]
   documents          Document[]
@@ -532,6 +553,12 @@ model Unit {
   floor       Int?
   rooms       Int?
   monthlyRent Decimal    @db.Decimal(10, 2)
+
+  // Tilläggsutrustning som syns i kontrakts-PDF:n.
+  hasBalcony         Boolean @default(false)
+  hasStorage         Boolean @default(false)
+  storageNumber      String?
+  parkingSpaceNumber String?
 
   property           Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   leases             Lease[]
@@ -583,6 +610,7 @@ model Tenant {
   leases             Lease[]
   invoices           Invoice[]
   documents          Document[]
+  signedDocuments    Document[]          @relation("DocumentSignedByTenant")
   maintenanceTickets MaintenanceTicket[]
   rentNotices        RentNotice[]
   inspections        Inspection[]
@@ -660,10 +688,53 @@ model Lease {
   monthlyRent          Decimal     @db.Decimal(10, 2)
   depositAmount        Decimal     @db.Decimal(10, 2)
   noticePeriodMonths   Int         @default(3)
+  // Behålls för bakåtkompatibilitet (gamla rader). Nya kontrakt sätter
+  // indexClauseType — `indexClause` speglar då (type !== NONE).
   indexClause          Boolean     @default(false)
   signedAt             DateTime?
   terminatedAt         DateTime?
   terminationReason    String?
+
+  // ── Vad ingår i hyran ────────────────────────────────────────────────────
+  // Branschpraxis: bostäder har normalt värme, vatten, varmvatten och
+  // tvättstuga inkluderade; hushållsel och internet betalar hyresgästen.
+  includesHeating       Boolean @default(true)
+  includesWater         Boolean @default(true)
+  includesHotWater      Boolean @default(true)
+  includesElectricity   Boolean @default(false)
+  includesInternet      Boolean @default(false)
+  includesCleaning      Boolean @default(false)
+  includesParking       Boolean @default(false)
+  includesStorage       Boolean @default(false)
+  includesLaundry       Boolean @default(true)
+
+  // ── Tilläggshyror utöver grundhyran ──────────────────────────────────────
+  parkingFee Decimal? @db.Decimal(10, 2)
+  storageFee Decimal? @db.Decimal(10, 2)
+  garageFee  Decimal? @db.Decimal(10, 2)
+
+  // ── Användningsändamål (kritiskt för lokal — styr besittningsskydd) ─────
+  usagePurpose String?
+
+  // ── Husdjur ─────────────────────────────────────────────────────────────
+  petsAllowed       PetPolicy @default(REQUIRES_APPROVAL)
+  petsApprovalNotes String?
+
+  // ── Andrahandsuthyrning ─────────────────────────────────────────────────
+  sublettingAllowed Boolean @default(false)
+
+  // ── Indexklausul ────────────────────────────────────────────────────────
+  // Allt valfritt — hyresvärden fyller i det som är aktuellt. Kontrolltyp
+  // styr vilken text som visas i kontraktet (KPI/förhandlat/marknadshyra).
+  indexClauseType     IndexClauseType @default(NONE)
+  indexBaseYear       Int?
+  indexAdjustmentDate String? // "01-01" eller "anniversary"
+  indexMaxIncrease    Decimal? @db.Decimal(5, 2)
+  indexMinIncrease    Decimal? @db.Decimal(5, 2)
+  indexNotes          String?
+
+  // ── Försäkring ──────────────────────────────────────────────────────────
+  requiresHomeInsurance Boolean @default(true)
 
   unit                Unit                 @relation(fields: [unitId], references: [id])
   tenant              Tenant               @relation(fields: [tenantId], references: [id])
@@ -931,12 +1002,27 @@ model Document {
   tenantId       String?
   uploadedById   String
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  property     Property?    @relation(fields: [propertyId], references: [id])
-  unit         Unit?        @relation(fields: [unitId], references: [id])
-  lease        Lease?       @relation(fields: [leaseId], references: [id])
-  tenant       Tenant?      @relation(fields: [tenantId], references: [id])
-  uploadedBy   User         @relation(fields: [uploadedById], references: [id])
+  // ── Signering & versionskedja (används primärt för CONTRACT) ─────────────
+  // contentHash är SHA-256 över PDF-bytena vid signeringstillfället. När
+  // locked = true får storageKey/storageUrl ej ändras — ny version skapas
+  // istället och refereras via previousVersionId.
+  contentHash       String?
+  signedAt          DateTime?
+  signedByTenantId  String?
+  signedFromIp      String?
+  signedUserAgent   String?
+  locked            Boolean   @default(false)
+  previousVersionId String?
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property         Property?    @relation(fields: [propertyId], references: [id])
+  unit             Unit?        @relation(fields: [unitId], references: [id])
+  lease            Lease?       @relation(fields: [leaseId], references: [id])
+  tenant           Tenant?      @relation(fields: [tenantId], references: [id])
+  uploadedBy       User         @relation(fields: [uploadedById], references: [id])
+  signedByTenant   Tenant?      @relation("DocumentSignedByTenant", fields: [signedByTenantId], references: [id])
+  previousVersion  Document?    @relation("DocumentVersionChain", fields: [previousVersionId], references: [id])
+  newerVersions    Document[]   @relation("DocumentVersionChain")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -946,6 +1032,7 @@ model Document {
   @@index([unitId])
   @@index([leaseId])
   @@index([tenantId])
+  @@index([previousVersionId])
 }
 
 // ─── AI Assistant ─────────────────────────────────────────────────────────────

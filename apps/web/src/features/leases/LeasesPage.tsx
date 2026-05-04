@@ -11,6 +11,7 @@ import { LeaseStatusBadge } from '@/components/ui/Badge'
 import { StatCard } from '@/components/ui/StatCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LeaseForm } from './components/LeaseForm'
+import { ContractTab } from './components/ContractTab'
 import {
   useLeases,
   useLease,
@@ -33,7 +34,7 @@ import { generateLeaseContract, downloadLeaseContract } from './api/leases.api'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type LeaseTab = 'ALL' | LeaseStatus
-type DetailTab = 'detaljer' | 'redigera'
+type DetailTab = 'detaljer' | 'kontrakt' | 'redigera'
 
 const TABS: { id: LeaseTab; label: string }[] = [
   { id: 'ALL', label: 'Alla' },
@@ -537,7 +538,7 @@ function LeaseDetailPanel({
     <div>
       {/* Tab strip */}
       <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
-        {(['detaljer', 'redigera'] as const).map((t) => (
+        {(['detaljer', 'kontrakt', 'redigera'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setDetailTab(t)}
@@ -548,12 +549,14 @@ function LeaseDetailPanel({
                 : 'text-gray-500 hover:text-gray-700',
             )}
           >
-            {t === 'detaljer' ? 'Detaljer' : 'Redigera'}
+            {t === 'detaljer' ? 'Detaljer' : t === 'kontrakt' ? 'Kontrakt' : 'Redigera'}
           </button>
         ))}
       </div>
 
-      {detailTab === 'detaljer' ? (
+      {detailTab === 'kontrakt' ? (
+        <ContractTab leaseId={selected.id} />
+      ) : detailTab === 'detaljer' ? (
         <div>
           {/* Info grid */}
           <div className="grid grid-cols-2 gap-3 rounded-xl border border-gray-100 p-4">

@@ -4,6 +4,7 @@ import { NotificationsModule } from '../notifications/notifications.module'
 import { DepositsModule } from '../deposits/deposits.module'
 import { RentIncreasesModule } from '../rent-increases/rent-increases.module'
 import { TenantPortalModule } from '../tenant-portal/tenant-portal.module'
+import { ContractsModule } from '../contracts/contracts.module'
 import { LeasesController } from './leases.controller'
 import { LeasesService } from './leases.service'
 
@@ -14,6 +15,7 @@ import { LeasesService } from './leases.service'
     DepositsModule,
     RentIncreasesModule,
     TenantPortalModule,
+    ContractsModule,
   ],
   controllers: [LeasesController],
   providers: [LeasesService],

@@ -5,12 +5,14 @@ import {
   Post,
   Param,
   Body,
+  Req,
   UseGuards,
   HttpCode,
   HttpStatus,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common'
+import type { FastifyRequest } from 'fastify'
 import { Throttle } from '@nestjs/throttler'
 import { IsEmail, IsString, IsOptional, IsEnum, IsUUID, MinLength } from 'class-validator'
 import { MaintenanceCategory } from '@prisma/client'
@@ -165,8 +167,13 @@ export class TenantAuthController {
   @Post('activate')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
-  async activate(@Body() dto: ActivateDto) {
-    const result = await this.tenantAuthService.activate(dto.token, dto.password)
+  async activate(@Body() dto: ActivateDto, @Req() req: FastifyRequest) {
+    const ip = req.ip ?? null
+    const userAgent = req.headers['user-agent'] ?? null
+    const result = await this.tenantAuthService.activate(dto.token, dto.password, {
+      ip,
+      userAgent: typeof userAgent === 'string' ? userAgent : null,
+    })
     return {
       sessionToken: result.sessionToken,
       expiresAt: result.expiresAt.toISOString(),

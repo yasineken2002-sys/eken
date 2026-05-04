@@ -7,6 +7,7 @@ import { NotificationsService } from '../notifications/notifications.service'
 import { DepositsService } from '../deposits/deposits.service'
 import { RentIncreasesService } from '../rent-increases/rent-increases.service'
 import { TenantAuthService } from '../tenant-portal/tenant-auth.service'
+import { ContractTemplateService } from '../contracts/contract-template.service'
 import { CreateLeaseDto } from './dto/create-lease.dto'
 import { UpdateLeaseDto } from './dto/update-lease.dto'
 import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
@@ -41,6 +42,73 @@ function startOfDay(date: Date): Date {
   return d
 }
 
+// Plocka ut alla kontraktsfält ur en DTO till ett delobjekt som kan spridas
+// in i prisma.lease.create/update. Returnerar bara de fält som faktiskt är
+// definierade i DTO:n så vi inte trampar på defaults i schemat.
+type ContractTermsDto = {
+  includesHeating?: boolean
+  includesWater?: boolean
+  includesHotWater?: boolean
+  includesElectricity?: boolean
+  includesInternet?: boolean
+  includesCleaning?: boolean
+  includesParking?: boolean
+  includesStorage?: boolean
+  includesLaundry?: boolean
+  parkingFee?: number
+  storageFee?: number
+  garageFee?: number
+  usagePurpose?: string
+  petsAllowed?: 'ALLOWED' | 'REQUIRES_APPROVAL' | 'NOT_ALLOWED'
+  petsApprovalNotes?: string
+  sublettingAllowed?: boolean
+  requiresHomeInsurance?: boolean
+  indexClauseType?: 'NONE' | 'KPI' | 'NEGOTIATED' | 'MARKET_RENT'
+  indexBaseYear?: number
+  indexAdjustmentDate?: string
+  indexMaxIncrease?: number
+  indexMinIncrease?: number
+  indexNotes?: string
+}
+
+function pickContractTerms(dto: ContractTermsDto): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  const bools: Array<keyof ContractTermsDto> = [
+    'includesHeating',
+    'includesWater',
+    'includesHotWater',
+    'includesElectricity',
+    'includesInternet',
+    'includesCleaning',
+    'includesParking',
+    'includesStorage',
+    'includesLaundry',
+    'sublettingAllowed',
+    'requiresHomeInsurance',
+  ]
+  for (const k of bools) if (dto[k] !== undefined) out[k] = dto[k]
+
+  if (dto.parkingFee != null) out['parkingFee'] = dto.parkingFee
+  if (dto.storageFee != null) out['storageFee'] = dto.storageFee
+  if (dto.garageFee != null) out['garageFee'] = dto.garageFee
+  if (dto.usagePurpose !== undefined) out['usagePurpose'] = dto.usagePurpose || null
+  if (dto.petsAllowed !== undefined) out['petsAllowed'] = dto.petsAllowed
+  if (dto.petsApprovalNotes !== undefined) out['petsApprovalNotes'] = dto.petsApprovalNotes || null
+
+  if (dto.indexClauseType !== undefined) {
+    out['indexClauseType'] = dto.indexClauseType
+    out['indexClause'] = dto.indexClauseType !== 'NONE'
+  }
+  if (dto.indexBaseYear != null) out['indexBaseYear'] = dto.indexBaseYear
+  if (dto.indexAdjustmentDate !== undefined)
+    out['indexAdjustmentDate'] = dto.indexAdjustmentDate || null
+  if (dto.indexMaxIncrease != null) out['indexMaxIncrease'] = dto.indexMaxIncrease
+  if (dto.indexMinIncrease != null) out['indexMinIncrease'] = dto.indexMinIncrease
+  if (dto.indexNotes !== undefined) out['indexNotes'] = dto.indexNotes || null
+
+  return out
+}
+
 // Översätt Postgres unique-konflikt på partial index lease_unit_active_unique
 // till svensk BadRequest. Detta är skyddet mot race när två förfrågningar
 // samtidigt försöker skapa/aktivera ACTIVE-kontrakt på samma enhet.
@@ -63,6 +131,7 @@ export class LeasesService {
     private readonly deposits: DepositsService,
     private readonly rentIncreases: RentIncreasesService,
     private readonly tenantAuth: TenantAuthService,
+    private readonly contracts: ContractTemplateService,
   ) {}
 
   async findAll(organizationId: string) {
@@ -124,6 +193,7 @@ export class LeasesService {
           ? { renewalPeriodMonths: dto.renewalPeriodMonths }
           : {}),
         ...(dto.noticePeriodMonths != null ? { noticePeriodMonths: dto.noticePeriodMonths } : {}),
+        ...pickContractTerms(dto),
       },
       include: INCLUDE,
     })
@@ -150,12 +220,18 @@ export class LeasesService {
           ? { renewalPeriodMonths: dto.renewalPeriodMonths }
           : {}),
         ...(dto.noticePeriodMonths != null ? { noticePeriodMonths: dto.noticePeriodMonths } : {}),
+        ...pickContractTerms(dto),
       },
       include: INCLUDE,
     })
   }
 
-  async transitionStatus(id: string, newStatus: LeaseStatus, organizationId: string) {
+  async transitionStatus(
+    id: string,
+    newStatus: LeaseStatus,
+    organizationId: string,
+    actorUserId?: string,
+  ) {
     const lease = await this.findOne(id, organizationId)
     const allowed = VALID_TRANSITIONS[lease.status] ?? []
 
@@ -208,10 +284,22 @@ export class LeasesService {
       throw err
     }
 
-    // När ett kontrakt blir ACTIVE skickas välkomstmejl med aktiveringslänk
-    // till hyresgästen så de kan signera kontraktet och välja eget lösenord.
-    // Fire-and-forget: ett mejlfel ska inte rulla tillbaka aktiveringen.
+    // När ett kontrakt blir ACTIVE genereras en kontrakts-PDF och välkomst-
+    // mejl med aktiveringslänk skickas till hyresgästen. Fire-and-forget:
+    // varken PDF- eller mejlfel ska rulla tillbaka aktiveringen — felen
+    // loggas och kontraktet kan regenereras manuellt från detaljvyn.
     if (newStatus === 'ACTIVE') {
+      // Auto-generera kontrakts-PDF. Vi väntar inte på resultatet eftersom
+      // Puppeteer kan ta några sekunder; mejlservicen kör i sin tur i
+      // bakgrunden via Bull-kön.
+      if (actorUserId) {
+        void this.contracts
+          .generateLeaseContract(id, organizationId, actorUserId, { linkPrevious: true })
+          .catch((err) =>
+            this.logger.error(`[Leases] auto-generate contract failed: ${String(err)}`),
+          )
+      }
+
       void this.tenantAuth
         .sendWelcomeWithContract(lease.tenantId)
         .catch((err) =>
@@ -338,6 +426,7 @@ export class LeasesService {
             ...(dto.noticePeriodMonths != null
               ? { noticePeriodMonths: dto.noticePeriodMonths }
               : {}),
+            ...pickContractTerms(dto),
           },
           include: INCLUDE,
         })

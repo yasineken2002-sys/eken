@@ -59,6 +59,39 @@ const schema = z
     leaseType: z.enum(['FIXED_TERM', 'INDEFINITE']),
     renewalPeriodMonths: z.coerce.number().int().min(1).optional(),
     noticePeriodMonths: z.coerce.number().int().min(0).default(3),
+
+    // Vad ingår i hyran
+    includesHeating: z.boolean().default(true),
+    includesWater: z.boolean().default(true),
+    includesHotWater: z.boolean().default(true),
+    includesElectricity: z.boolean().default(false),
+    includesInternet: z.boolean().default(false),
+    includesCleaning: z.boolean().default(false),
+    includesParking: z.boolean().default(false),
+    includesStorage: z.boolean().default(false),
+    includesLaundry: z.boolean().default(true),
+
+    // Tilläggshyror
+    parkingFee: z.coerce.number().min(0).optional(),
+    storageFee: z.coerce.number().min(0).optional(),
+    garageFee: z.coerce.number().min(0).optional(),
+
+    // Användning, husdjur, andrahand, försäkring
+    usagePurpose: z.string().optional(),
+    petsAllowed: z
+      .enum(['ALLOWED', 'REQUIRES_APPROVAL', 'NOT_ALLOWED'])
+      .default('REQUIRES_APPROVAL'),
+    petsApprovalNotes: z.string().optional(),
+    sublettingAllowed: z.boolean().default(false),
+    requiresHomeInsurance: z.boolean().default(true),
+
+    // Indexklausul
+    indexClauseType: z.enum(['NONE', 'KPI', 'NEGOTIATED', 'MARKET_RENT']).default('NONE'),
+    indexBaseYear: z.coerce.number().int().min(1900).max(2100).optional(),
+    indexAdjustmentDate: z.string().optional(),
+    indexMaxIncrease: z.coerce.number().min(0).max(100).optional(),
+    indexMinIncrease: z.coerce.number().min(0).max(100).optional(),
+    indexNotes: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.leaseType === 'FIXED_TERM' && !data.endDate) {
@@ -66,6 +99,18 @@ const schema = z
         code: z.ZodIssueCode.custom,
         message: 'Tidsbegränsade kontrakt kräver slutdatum',
         path: ['endDate'],
+      })
+    }
+    if (
+      data.indexClauseType !== 'NONE' &&
+      data.indexMinIncrease != null &&
+      data.indexMaxIncrease != null &&
+      data.indexMinIncrease > data.indexMaxIncrease
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Min-höjning kan inte vara större än max-höjning',
+        path: ['indexMinIncrease'],
       })
     }
     if (data.tenantMode === 'existing') {
@@ -268,6 +313,39 @@ export function LeaseForm({
         ? { renewalPeriodMonths: defaultValues.renewalPeriodMonths }
         : { renewalPeriodMonths: 12 }),
       noticePeriodMonths: defaultValues?.noticePeriodMonths ?? 3,
+
+      includesHeating: defaultValues?.includesHeating ?? true,
+      includesWater: defaultValues?.includesWater ?? true,
+      includesHotWater: defaultValues?.includesHotWater ?? true,
+      includesElectricity: defaultValues?.includesElectricity ?? false,
+      includesInternet: defaultValues?.includesInternet ?? false,
+      includesCleaning: defaultValues?.includesCleaning ?? false,
+      includesParking: defaultValues?.includesParking ?? false,
+      includesStorage: defaultValues?.includesStorage ?? false,
+      includesLaundry: defaultValues?.includesLaundry ?? true,
+
+      ...(defaultValues?.parkingFee != null ? { parkingFee: defaultValues.parkingFee } : {}),
+      ...(defaultValues?.storageFee != null ? { storageFee: defaultValues.storageFee } : {}),
+      ...(defaultValues?.garageFee != null ? { garageFee: defaultValues.garageFee } : {}),
+
+      usagePurpose: defaultValues?.usagePurpose ?? '',
+      petsAllowed: defaultValues?.petsAllowed ?? 'REQUIRES_APPROVAL',
+      petsApprovalNotes: defaultValues?.petsApprovalNotes ?? '',
+      sublettingAllowed: defaultValues?.sublettingAllowed ?? false,
+      requiresHomeInsurance: defaultValues?.requiresHomeInsurance ?? true,
+
+      indexClauseType: defaultValues?.indexClauseType ?? 'NONE',
+      ...(defaultValues?.indexBaseYear != null
+        ? { indexBaseYear: defaultValues.indexBaseYear }
+        : {}),
+      indexAdjustmentDate: defaultValues?.indexAdjustmentDate ?? '',
+      ...(defaultValues?.indexMaxIncrease != null
+        ? { indexMaxIncrease: defaultValues.indexMaxIncrease }
+        : {}),
+      ...(defaultValues?.indexMinIncrease != null
+        ? { indexMinIncrease: defaultValues.indexMinIncrease }
+        : {}),
+      indexNotes: defaultValues?.indexNotes ?? '',
     },
   })
 
@@ -277,6 +355,8 @@ export function LeaseForm({
   const unitId = watch('unitId')
   const tenantMode = watch('tenantMode')
   const newTenantType = watch('newTenantType')
+  const indexClauseType = watch('indexClauseType')
+  const petsAllowed = watch('petsAllowed')
 
   const { data: properties = [] } = useProperties()
   const { data: units = [] } = useUnits(propertyId || undefined)
@@ -330,6 +410,43 @@ export function LeaseForm({
       ...(v.endDate ? { endDate: v.endDate } : {}),
       ...(v.leaseType === 'FIXED_TERM' && v.renewalPeriodMonths
         ? { renewalPeriodMonths: v.renewalPeriodMonths }
+        : {}),
+
+      // Vad ingår
+      includesHeating: v.includesHeating,
+      includesWater: v.includesWater,
+      includesHotWater: v.includesHotWater,
+      includesElectricity: v.includesElectricity,
+      includesInternet: v.includesInternet,
+      includesCleaning: v.includesCleaning,
+      includesParking: v.includesParking,
+      includesStorage: v.includesStorage,
+      includesLaundry: v.includesLaundry,
+
+      // Tilläggshyror — skicka bara om > 0
+      ...(v.parkingFee && v.parkingFee > 0 ? { parkingFee: v.parkingFee } : {}),
+      ...(v.storageFee && v.storageFee > 0 ? { storageFee: v.storageFee } : {}),
+      ...(v.garageFee && v.garageFee > 0 ? { garageFee: v.garageFee } : {}),
+
+      // Användning, husdjur, andrahand, försäkring
+      ...(v.usagePurpose?.trim() ? { usagePurpose: v.usagePurpose.trim() } : {}),
+      petsAllowed: v.petsAllowed,
+      ...(v.petsApprovalNotes?.trim() ? { petsApprovalNotes: v.petsApprovalNotes.trim() } : {}),
+      sublettingAllowed: v.sublettingAllowed,
+      requiresHomeInsurance: v.requiresHomeInsurance,
+
+      // Indexklausul — skicka bara detaljer när typ valts
+      indexClauseType: v.indexClauseType,
+      ...(v.indexClauseType !== 'NONE'
+        ? {
+            ...(v.indexBaseYear != null ? { indexBaseYear: v.indexBaseYear } : {}),
+            ...(v.indexAdjustmentDate?.trim()
+              ? { indexAdjustmentDate: v.indexAdjustmentDate.trim() }
+              : {}),
+            ...(v.indexMaxIncrease != null ? { indexMaxIncrease: v.indexMaxIncrease } : {}),
+            ...(v.indexMinIncrease != null ? { indexMinIncrease: v.indexMinIncrease } : {}),
+            ...(v.indexNotes?.trim() ? { indexNotes: v.indexNotes.trim() } : {}),
+          }
         : {}),
     }
 
@@ -714,6 +831,231 @@ export function LeaseForm({
             {...register('depositAmount')}
           />
         </div>
+      </div>
+
+      {/* ── Section 4: Vad ingår i hyran ─────────────────────────────────────── */}
+      <SectionDivider label="Vad ingår i hyran" />
+      <div className="grid grid-cols-2 gap-2 rounded-xl border border-[#EAEDF0] bg-gray-50/60 p-3 sm:grid-cols-3">
+        {(
+          [
+            { name: 'includesHeating', label: 'Uppvärmning' },
+            { name: 'includesWater', label: 'Kallvatten' },
+            { name: 'includesHotWater', label: 'Varmvatten' },
+            { name: 'includesElectricity', label: 'Hushållsel' },
+            { name: 'includesInternet', label: 'Internet/bredband' },
+            { name: 'includesCleaning', label: 'Trapphusstädning' },
+            { name: 'includesParking', label: 'Parkering' },
+            { name: 'includesStorage', label: 'Förråd' },
+            { name: 'includesLaundry', label: 'Tvättstuga' },
+          ] as const
+        ).map((f) => (
+          <label
+            key={f.name}
+            className="flex cursor-pointer items-center gap-2 rounded-lg bg-white px-3 py-2 text-[12.5px] text-gray-700 ring-1 ring-[#EAEDF0] transition-colors hover:bg-gray-50"
+          >
+            <input
+              type="checkbox"
+              {...register(f.name)}
+              className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>{f.label}</span>
+          </label>
+        ))}
+      </div>
+
+      {/* ── Section 5: Tilläggshyror ─────────────────────────────────────────── */}
+      <SectionDivider label="Tilläggshyror (valfritt)" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Input
+          label="Parkering (kr/mån)"
+          type="number"
+          placeholder="0"
+          {...register('parkingFee')}
+        />
+        <Input label="Förråd (kr/mån)" type="number" placeholder="0" {...register('storageFee')} />
+        <Input label="Garage (kr/mån)" type="number" placeholder="0" {...register('garageFee')} />
+      </div>
+
+      {/* ── Section 6: Användningsändamål ────────────────────────────────────── */}
+      <SectionDivider label="Användningsändamål" />
+      <div className="space-y-1.5">
+        <label className="block text-[13px] font-medium text-gray-700">
+          {selectedUnit && selectedUnit.type !== 'APARTMENT'
+            ? 'Lokalens användningsändamål'
+            : 'Användningsändamål (valfritt för bostad)'}
+        </label>
+        <Input
+          placeholder={
+            selectedUnit && selectedUnit.type !== 'APARTMENT'
+              ? 't.ex. Kontorsverksamhet, butik för konfektion, restaurang…'
+              : 't.ex. Bostad'
+          }
+          {...register('usagePurpose')}
+        />
+        {selectedUnit && selectedUnit.type !== 'APARTMENT' && (
+          <p className="text-[11.5px] text-amber-700">
+            ⚠️ Krävs för indirekt besittningsskydd enligt 12 kap. 57 § JB.
+          </p>
+        )}
+      </div>
+
+      {/* ── Section 7: Husdjursregler ────────────────────────────────────────── */}
+      <SectionDivider label="Husdjursregler" />
+      <div className="space-y-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          {(
+            [
+              { value: 'ALLOWED', label: 'Tillåtna' },
+              { value: 'REQUIRES_APPROVAL', label: 'Kräver godkännande' },
+              { value: 'NOT_ALLOWED', label: 'Ej tillåtna' },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setValue('petsAllowed', opt.value, { shouldValidate: false })}
+              className={cn(
+                'h-9 flex-1 rounded-lg border px-4 text-[13px] font-medium transition-all active:scale-[0.97]',
+                petsAllowed === opt.value
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <textarea
+          rows={2}
+          placeholder="Anteckningar (valfritt) — t.ex. ”små husdjur OK efter godkännande”."
+          {...register('petsApprovalNotes')}
+          className="w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      {/* ── Section 8: Andrahand + försäkring ────────────────────────────────── */}
+      <SectionDivider label="Övriga villkor" />
+      <div className="space-y-2">
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-[#EAEDF0] bg-white px-3.5 py-2.5">
+          <input
+            type="checkbox"
+            {...register('sublettingAllowed')}
+            className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span className="text-[13px] text-gray-800">
+            Andrahandsuthyrning är tillåten
+            <span className="ml-1 text-[11.5px] text-gray-500">
+              (kräver alltid skriftligt godkännande för varje fall)
+            </span>
+          </span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-[#EAEDF0] bg-white px-3.5 py-2.5">
+          <input
+            type="checkbox"
+            {...register('requiresHomeInsurance')}
+            className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span className="text-[13px] text-gray-800">
+            Hyresgästen ska teckna och vidmakthålla hem-/verksamhetsförsäkring
+          </span>
+        </label>
+      </div>
+
+      {/* ── Section 9: Indexklausul ──────────────────────────────────────────── */}
+      <SectionDivider label="Indexklausul" />
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <label className="block text-[13px] font-medium text-gray-700">Typ av klausul</label>
+          <Controller
+            control={control}
+            name="indexClauseType"
+            render={({ field }) => (
+              <select
+                {...field}
+                className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="NONE">Ingen — fast hyra under perioden</option>
+                <option value="KPI">KPI — Konsumentprisindex (SCB)</option>
+                <option value="NEGOTIATED">Förhandlad hyra (bostad, 12:19 § JB)</option>
+                <option value="MARKET_RENT">Marknadshyra (lokal, 12:57 a § JB)</option>
+              </select>
+            )}
+          />
+          <p className="text-[11.5px] text-gray-400">
+            {indexClauseType === 'NONE'
+              ? 'Hyran är fast — kan justeras genom omförhandling vid förlängning.'
+              : indexClauseType === 'KPI'
+                ? 'Hyran följer KPI. Tomma fält nedan = inga begränsningar.'
+                : indexClauseType === 'NEGOTIATED'
+                  ? 'Förhandlingsöverenskommelse styr — hyresförhandlingslagen 1978:304.'
+                  : 'Marknadshyra prövas vid förlängning. Tomma fält = inga begränsningar.'}
+          </p>
+        </div>
+
+        {indexClauseType !== 'NONE' && (
+          <div className="space-y-3 rounded-xl border border-[#EAEDF0] bg-gray-50/60 p-3.5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Input
+                label="Basår (valfritt)"
+                type="number"
+                placeholder={String(new Date().getFullYear())}
+                {...register('indexBaseYear')}
+              />
+              <div className="space-y-1.5">
+                <label className="block text-[13px] font-medium text-gray-700">
+                  Höjningsdatum (valfritt)
+                </label>
+                <Controller
+                  control={control}
+                  name="indexAdjustmentDate"
+                  render={({ field }) => (
+                    <select
+                      {...field}
+                      value={field.value ?? ''}
+                      className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">— Ingen specifik dag —</option>
+                      <option value="anniversary">Kontraktets årsdag</option>
+                      <option value="01-01">1 januari varje år</option>
+                      <option value="01-04">1 april varje år</option>
+                      <option value="01-07">1 juli varje år</option>
+                      <option value="01-10">1 oktober varje år</option>
+                    </select>
+                  )}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Input
+                label="Max höjning per år (%, valfritt)"
+                type="number"
+                step="0.1"
+                placeholder="t.ex. 5"
+                error={errors.indexMaxIncrease?.message}
+                {...register('indexMaxIncrease')}
+              />
+              <Input
+                label="Min höjning per år (%, valfritt)"
+                type="number"
+                step="0.1"
+                placeholder="t.ex. 0"
+                error={errors.indexMinIncrease?.message}
+                {...register('indexMinIncrease')}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[13px] font-medium text-gray-700">
+                Anteckningar (valfritt)
+              </label>
+              <textarea
+                rows={2}
+                placeholder="t.ex. ”justering meddelas senast 3 månader före ikraftträdande”."
+                {...register('indexNotes')}
+                className="w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <ModalFooter>

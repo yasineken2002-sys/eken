@@ -1,4 +1,11 @@
-import { Injectable, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common'
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+  Logger,
+  Inject,
+  forwardRef,
+} from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Cron } from '@nestjs/schedule'
 import * as bcrypt from 'bcryptjs'
@@ -6,6 +13,7 @@ import * as crypto from 'crypto'
 import type { Tenant } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
+import { ContractTemplateService } from '../contracts/contract-template.service'
 import { validatePasswordStrength } from '@eken/shared'
 
 const ACTIVATION_TTL_MS = 72 * 60 * 60 * 1000 // 72 timmar
@@ -37,6 +45,8 @@ export class TenantAuthService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    @Inject(forwardRef(() => ContractTemplateService))
+    private readonly contracts: ContractTemplateService,
   ) {}
 
   // ── Aktiveringstoken ─────────────────────────────────────────────────────────
@@ -137,7 +147,11 @@ export class TenantAuthService {
 
   // ── Aktivering (signering + lösenord) ────────────────────────────────────────
 
-  async activate(token: string, password: string): Promise<SessionResult> {
+  async activate(
+    token: string,
+    password: string,
+    signature: { ip: string | null; userAgent: string | null } = { ip: null, userAgent: null },
+  ): Promise<SessionResult> {
     assertStrongPassword(password)
 
     const tenant = await this.prisma.tenant.findUnique({
@@ -165,7 +179,37 @@ export class TenantAuthService {
       include: { organization: { select: { id: true, name: true } } },
     })
 
+    // Lås den senaste kontrakts-PDF:en för hyresgästens aktiva kontrakt och
+    // skriv signaturmetadata. Fire-and-forget: en signering ska inte blockera
+    // aktiveringen men låsdata bör finnas på dokumentet.
+    void this.lockLatestContractForTenant(updated.id, updated.organizationId, signature).catch(
+      (err) => this.logger.warn(`[TenantAuth] kunde inte låsa kontraktsdokument: ${String(err)}`),
+    )
+
     return this.createSession(updated)
+  }
+
+  private async lockLatestContractForTenant(
+    tenantId: string,
+    organizationId: string,
+    signature: { ip: string | null; userAgent: string | null },
+  ): Promise<void> {
+    // Hitta senaste aktiva kontraktet för hyresgästen.
+    const lease = await this.prisma.lease.findFirst({
+      where: { tenantId, status: { in: ['DRAFT', 'ACTIVE'] } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    })
+    if (!lease) return
+
+    const doc = await this.contracts.findLatestContract(lease.id, organizationId)
+    if (!doc || doc.locked) return
+
+    await this.contracts.lockContractAfterSignature(doc.id, {
+      tenantId,
+      ip: signature.ip,
+      userAgent: signature.userAgent,
+    })
   }
 
   // ── Lösenordsinloggning ──────────────────────────────────────────────────────
