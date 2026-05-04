@@ -99,3 +99,22 @@ export async function delWithBody<T = void>(url: string, body?: unknown): Promis
   const { data } = await api.delete<{ data: T }>(url, { data: body })
   return data?.data as T
 }
+
+// API:t svarar konsekvent med { success: false, error: { message, ... } } —
+// extrahera meddelandet så att globala mutation-toasts och lokala onError
+// slipper duplicera unwrap-logiken.
+export function extractApiError(err: unknown, fallback = 'Något gick fel'): string {
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data as
+      | { error?: { message?: unknown }; message?: unknown }
+      | undefined
+    const apiMessage = data?.error?.message
+    if (typeof apiMessage === 'string' && apiMessage.trim()) return apiMessage
+    if (Array.isArray(apiMessage) && apiMessage.length > 0)
+      return apiMessage.filter((m) => typeof m === 'string').join('. ') || fallback
+    if (typeof data?.message === 'string' && data.message.trim()) return data.message
+    if (err.message && err.code !== 'ERR_BAD_RESPONSE') return err.message
+  }
+  if (err instanceof Error && err.message) return err.message
+  return fallback
+}

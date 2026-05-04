@@ -42,6 +42,24 @@ async function post<T>(url: string, body?: unknown): Promise<T> {
   return data.data
 }
 
+// API:t svarar med { success: false, error: { message, ... } } — extrahera
+// meddelandet så att den globala mutation-toasten alltid får läsbart svar.
+export function extractApiError(err: unknown, fallback = 'Något gick fel'): string {
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data as
+      | { error?: { message?: unknown }; message?: unknown }
+      | undefined
+    const apiMessage = data?.error?.message
+    if (typeof apiMessage === 'string' && apiMessage.trim()) return apiMessage
+    if (Array.isArray(apiMessage) && apiMessage.length > 0)
+      return apiMessage.filter((m) => typeof m === 'string').join('. ') || fallback
+    if (typeof data?.message === 'string' && data.message.trim()) return data.message
+    if (err.message && err.code !== 'ERR_BAD_RESPONSE') return err.message
+  }
+  if (err instanceof Error && err.message) return err.message
+  return fallback
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export const fetchActivationInfo = (token: string) =>

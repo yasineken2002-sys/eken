@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, FileX, FileText, Home, User, Download, RefreshCw, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -26,6 +27,7 @@ import { formatCurrency, formatDate } from '@eken/shared'
 import type { LeaseStatus, Tenant } from '@eken/shared'
 import type { LeaseDetail, CreateLeaseWithTenantInput } from './api/leases.api'
 import { cn } from '@/lib/cn'
+import { extractApiError } from '@/lib/api'
 import { DocumentList } from '@/features/documents/components/DocumentList'
 import { DepositSection } from '@/features/deposits/components/DepositSection'
 import { RentIncreaseSection } from '@/features/rent-increases/components/RentIncreaseSection'
@@ -134,7 +136,20 @@ export function LeasesPage() {
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleCreate = (dto: CreateLeaseWithTenantInput) => {
-    createMutation.mutate(dto, { onSuccess: () => setShowCreate(false) })
+    createMutation.mutate(dto, {
+      onSuccess: () => {
+        toast.success('Kontraktet skapades')
+        setShowCreate(false)
+      },
+      // useCreateLeaseWithTenant har meta.handlesOwnError så globalfilter:t
+      // hoppar över det här felet — vi visar en kontextuell toast med både
+      // titel och API-meddelandet istället för det generiska globala.
+      onError: (err) => {
+        toast.error('Kunde inte skapa kontraktet', {
+          description: extractApiError(err, 'Försök igen om en stund.'),
+        })
+      },
+    })
   }
 
   const handleUpdate = (dto: CreateLeaseWithTenantInput) => {

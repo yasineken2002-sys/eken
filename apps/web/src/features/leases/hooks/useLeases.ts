@@ -89,6 +89,9 @@ export function useCreateLeaseWithTenant() {
       // Endast list-cachen – matchar inte detalj-queries (['tenant', 'detail', id])
       void queryClient.invalidateQueries({ queryKey: ['tenants', 'list'] })
     },
+    // Anroparen visar en kontextuell toast i sin onError — globala
+    // MutationCache.onError ska därför inte också toast:a samma fel.
+    meta: { handlesOwnError: true },
   })
 }
 
