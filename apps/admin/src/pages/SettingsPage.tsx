@@ -1,25 +1,47 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import { AlertTriangle } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input, Label } from '@/components/ui/Input'
 import { PasswordRequirements } from '@/components/ui/PasswordRequirements'
 import { post } from '@/lib/api'
+import { setAdminLoginFlash } from '@/lib/login-flash'
 import { useAuthStore } from '@/stores/auth.store'
+
+interface ChangePasswordResult {
+  message: string
+  loggedOut: true
+}
 
 export function SettingsPage() {
   const user = useAuthStore((s) => s.user)
   const setUser = useAuthStore((s) => s.setUser)
+  const logout = useAuthStore((s) => s.logout)
+  const navigate = useNavigate()
   const qc = useQueryClient()
 
   const [pwd, setPwd] = useState({ currentPassword: '', newPassword: '' })
   const [pwdMsg, setPwdMsg] = useState<string | null>(null)
   const pwdMutation = useMutation({
-    mutationFn: () => post('/platform/auth/change-password', pwd),
-    onSuccess: () => {
+    mutationFn: () => post<ChangePasswordResult>('/platform/auth/change-password', pwd),
+    onSuccess: (result) => {
       setPwd({ currentPassword: '', newPassword: '' })
-      setPwdMsg('Lösenordet är uppdaterat.')
+      // Server revokerar samtliga refresh-tokens — städa lokal session och
+      // skicka till login med en flash-banner i stället för att tappa
+      // användaren tyst vid nästa 401.
+      if (result.loggedOut) {
+        setAdminLoginFlash({
+          kind: 'password-changed',
+          ...(user?.email ? { email: user.email } : {}),
+        })
+        logout()
+        navigate('/login', { replace: true })
+      } else {
+        setPwdMsg(result.message)
+      }
     },
     onError: (err) => {
       setPwdMsg((err as Error).message)
@@ -83,6 +105,20 @@ export function SettingsPage() {
               />
             </div>
             <PasswordRequirements password={pwd.newPassword} />
+            <div
+              role="note"
+              className="flex items-start gap-2.5 rounded-xl border border-amber-100 bg-amber-50/70 p-3 text-[12.5px] text-amber-900"
+            >
+              <AlertTriangle
+                size={14}
+                strokeWidth={1.8}
+                className="mt-0.5 shrink-0 text-amber-600"
+              />
+              <p>
+                När du byter lösenord loggas du ut från <strong>alla enheter</strong> och behöver
+                logga in igen.
+              </p>
+            </div>
             {pwdMsg ? <div className="text-[13px] text-gray-700">{pwdMsg}</div> : null}
             <Button onClick={() => pwdMutation.mutate()} loading={pwdMutation.isPending}>
               Uppdatera

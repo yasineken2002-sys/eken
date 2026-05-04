@@ -111,6 +111,8 @@ export function LoginPage({ onNavigate }: Props) {
   useEffect(() => {
     if (flash?.kind === 'account-activated') {
       setValue('email', flash.email)
+    } else if (flash?.kind === 'password-changed' && flash.email) {
+      setValue('email', flash.email)
     }
   }, [flash, setValue])
 
@@ -167,6 +169,20 @@ export function LoginPage({ onNavigate }: Props) {
                 <p className="mt-0.5 text-emerald-700/80">
                   Logga in med <strong>{flash.email}</strong> och lösenordet du nyss valde.
                 </p>
+              </div>
+            </div>
+          )}
+
+          {flash?.kind === 'password-changed' && (
+            <div className="mt-6 flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5 text-[13px] text-emerald-800">
+              <CheckCircle2
+                size={16}
+                className="mt-0.5 shrink-0 text-emerald-600"
+                strokeWidth={1.8}
+              />
+              <div>
+                <p className="font-medium">Lösenordet har bytts</p>
+                <p className="mt-0.5 text-emerald-700/80">Logga in igen med ditt nya lösenord.</p>
               </div>
             </div>
           )}

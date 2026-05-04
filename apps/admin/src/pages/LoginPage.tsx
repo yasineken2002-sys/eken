@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
+import { CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Label } from '@/components/ui/Input'
+import { consumeAdminLoginFlash } from '@/lib/login-flash'
 import { useAuthStore } from '@/stores/auth.store'
 
 interface LoginResponse {
@@ -24,8 +26,15 @@ export function LoginPage() {
   const [needsTotp, setNeedsTotp] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [flash] = useState(() => consumeAdminLoginFlash())
   const setSession = useAuthStore((s) => s.setSession)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (flash?.kind === 'password-changed' && flash.email) {
+      setEmail(flash.email)
+    }
+  }, [flash])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -66,6 +75,19 @@ export function LoginPage() {
           </div>
           <div className="mt-0.5 text-[20px] font-semibold text-gray-900">Plattforms-admin</div>
         </div>
+        {flash?.kind === 'password-changed' && (
+          <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-emerald-100 bg-emerald-50/60 p-3 text-[13px] text-emerald-800">
+            <CheckCircle2
+              size={15}
+              strokeWidth={1.8}
+              className="mt-0.5 shrink-0 text-emerald-600"
+            />
+            <div>
+              <p className="font-medium">Lösenordet har bytts</p>
+              <p className="mt-0.5 text-emerald-700/80">Logga in igen med ditt nya lösenord.</p>
+            </div>
+          </div>
+        )}
         <form onSubmit={submit} className="space-y-4">
           <div>
             <Label htmlFor="email">E-post</Label>

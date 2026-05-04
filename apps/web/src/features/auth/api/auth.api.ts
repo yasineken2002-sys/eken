@@ -32,11 +32,16 @@ export async function logoutApi(): Promise<void> {
 
 // ── Lösenordshantering ──────────────────────────────────────────────────────
 
+export interface ChangePasswordResult {
+  message: string
+  loggedOut: true
+}
+
 export async function changePasswordApi(input: {
   currentPassword: string
   newPassword: string
-}): Promise<void> {
-  await api.post('/auth/change-password', input)
+}): Promise<ChangePasswordResult> {
+  return post<ChangePasswordResult>('/auth/change-password', input)
 }
 
 export async function forgotPasswordApi(email: string): Promise<void> {

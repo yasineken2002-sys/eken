@@ -112,7 +112,7 @@ export class PlatformAuthService {
     platformUserId: string,
     currentPassword: string,
     newPassword: string,
-  ): Promise<void> {
+  ): Promise<{ message: string; loggedOut: true }> {
     const user = await this.prisma.platformUser.findUnique({ where: { id: platformUserId } })
     if (!user) throw new NotFoundException()
 
@@ -124,6 +124,21 @@ export class PlatformAuthService {
       where: { id: platformUserId },
       data: { passwordHash },
     })
+
+    // Revokera alla aktiva refresh-tokens för denna admin så att alla enheter
+    // (inkl. den aktuella) tappar sessionen — admin-klienten redirectar till
+    // login med en flash-banner.
+    for (const [token, stored] of this.refreshStore.entries()) {
+      if (stored.platformUserId === platformUserId && !stored.revoked) {
+        stored.revoked = true
+        this.refreshStore.set(token, stored)
+      }
+    }
+
+    return {
+      message: 'Lösenordet har bytts. Du loggas nu ut från alla enheter.',
+      loggedOut: true,
+    }
   }
 
   async generateTotpSetup(

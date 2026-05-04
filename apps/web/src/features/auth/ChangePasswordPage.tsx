@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { AuthCard } from './components/AuthCard'
 import { PasswordInput } from './components/PasswordInput'
 import { PasswordRequirements } from './components/PasswordRequirements'
 import { passwordSchema, readErrorMessage } from './lib/password-schema'
+import { setLoginFlash } from './lib/login-flash'
 import { changePasswordApi } from './api/auth.api'
 import { useAuthStore } from '@/stores/auth.store'
 import type { Route } from '@/App'
@@ -38,7 +40,7 @@ export function ChangePasswordPage({ forced = false, onNavigate }: Props) {
   const [apiError, setApiError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const user = useAuthStore((s) => s.user)
-  const setAuth = useAuthStore((s) => s.setAuth)
+  const logout = useAuthStore((s) => s.logout)
 
   const {
     register,
@@ -53,25 +55,20 @@ export function ChangePasswordPage({ forced = false, onNavigate }: Props) {
     setApiError(null)
     setPending(true)
     try {
-      await changePasswordApi({
+      const result = await changePasswordApi({
         currentPassword: data.currentPassword,
         newPassword: data.newPassword,
       })
-      // Backend invaliderar refresh-tokens; uppdatera lokalt user-flag så att
-      // appen släpper igenom användaren framöver. Tokens är fortfarande giltiga
-      // i denna session (axios bryr sig först om 401).
-      if (user) {
-        const current = useAuthStore.getState()
-        if (current.accessToken && current.refreshToken && current.organization) {
-          setAuth({
-            accessToken: current.accessToken,
-            refreshToken: current.refreshToken,
-            organization: current.organization,
-            user: { ...user, mustChangePassword: false },
-          })
-        }
+      // Backend revokerar samtliga refresh-tokens (inkl. denna session) — vi
+      // städar lokal auth-state och redirectar till login med en flash-banner
+      // i stället för att låta nästa /refresh-401 göra jobbet tyst.
+      if (result.loggedOut) {
+        setLoginFlash({ kind: 'password-changed', ...(user?.email ? { email: user.email } : {}) })
+        logout()
+        onNavigate('login')
+      } else {
+        onNavigate('dashboard')
       }
-      onNavigate('dashboard')
     } catch (err) {
       setApiError(readErrorMessage(err, 'Kunde inte byta lösenord'))
     } finally {
@@ -106,6 +103,17 @@ export function ChangePasswordPage({ forced = false, onNavigate }: Props) {
           error={errors.confirmPassword?.message}
           {...register('confirmPassword')}
         />
+
+        <div
+          role="note"
+          className="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50/70 p-3.5 text-[13px] text-amber-900"
+        >
+          <AlertTriangle size={16} strokeWidth={1.8} className="mt-0.5 shrink-0 text-amber-600" />
+          <p>
+            När du byter lösenord loggas du ut från <strong>alla enheter</strong> och behöver logga
+            in igen med det nya lösenordet.
+          </p>
+        </div>
 
         {apiError && (
           <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-[13px] text-red-600">

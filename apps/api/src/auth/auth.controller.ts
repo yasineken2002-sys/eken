@@ -75,10 +75,13 @@ export class AuthController {
   // ── Lösenordshantering ───────────────────────────────────────────────────────
 
   @Post('change-password')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Byt lösenord (kräver inloggning)' })
+  @ApiOperation({
+    summary:
+      'Byt lösenord (kräver inloggning). Returnerar { message, loggedOut } så klienten kan' +
+      ' redirecta till login med flash-banner.',
+  })
   async changePassword(@CurrentUser() user: JwtPayload, @Body() dto: ChangePasswordDto) {
-    await this.auth.changePassword(user.sub, dto.currentPassword, dto.newPassword)
+    return this.auth.changePassword(user.sub, dto.currentPassword, dto.newPassword)
   }
 
   @Post('forgot-password')

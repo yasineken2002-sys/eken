@@ -239,7 +239,7 @@ export class AuthService {
     userId: string,
     currentPassword: string,
     newPassword: string,
-  ): Promise<void> {
+  ): Promise<{ message: string; loggedOut: true }> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } })
     if (!user) throw new NotFoundException('Användaren hittades inte')
     if (!user.passwordHash) {
@@ -262,11 +262,18 @@ export class AuthService {
     })
 
     // Invalidera alla aktiva refresh tokens — användaren måste logga in på
-    // nytt på sina andra enheter.
+    // nytt på sina andra enheter (och även den aktuella sessionen). Klienten
+    // använder `loggedOut`-flaggan för att redirecta till login med en
+    // success-banner i stället för att tappa sessionen tyst.
     await this.prisma.refreshToken.updateMany({
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     })
+
+    return {
+      message: 'Lösenordet har bytts. Du loggas nu ut från alla enheter.',
+      loggedOut: true,
+    }
   }
 
   async forgotPassword(email: string): Promise<void> {

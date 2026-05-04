@@ -56,13 +56,16 @@ export class PlatformAuthController {
   @UseGuards(PlatformGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Byt lösenord' })
+  @ApiOperation({
+    summary:
+      'Byt lösenord. Returnerar { message, loggedOut } så admin-klienten kan' +
+      ' redirecta till login med flash-banner.',
+  })
   async changePassword(
     @CurrentPlatformUser() user: PlatformJwtPayload,
     @Body() dto: PlatformChangePasswordDto,
   ) {
-    await this.auth.changePassword(user.sub, dto.currentPassword, dto.newPassword)
-    return null
+    return this.auth.changePassword(user.sub, dto.currentPassword, dto.newPassword)
   }
 
   @Post('2fa/setup')
