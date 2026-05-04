@@ -1,7 +1,18 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import {
+  Building2,
+  MapPin,
+  Maximize2,
+  Layers,
+  BedDouble,
+  Hash,
+  Plus,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { ModalFooter } from '@/components/ui/Modal'
@@ -11,7 +22,16 @@ import { useUnits } from '@/features/units/hooks/useUnits'
 import { useTenants } from '@/features/tenants/hooks/useTenants'
 import { formatCurrency } from '@eken/shared'
 import type { CreateLeaseWithTenantInput } from '../api/leases.api'
-import type { Tenant } from '@eken/shared'
+import type { Tenant, UnitType } from '@eken/shared'
+
+const UNIT_TYPE_LABELS: Record<UnitType, string> = {
+  APARTMENT: 'Lägenhet',
+  OFFICE: 'Kontor',
+  RETAIL: 'Butik',
+  STORAGE: 'Förråd',
+  PARKING: 'Parkering',
+  OTHER: 'Övrigt',
+}
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -115,6 +135,81 @@ function SectionDivider({ label }: { label: string }) {
   )
 }
 
+function Fact({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white text-gray-500">
+        <Icon size={13} strokeWidth={1.8} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">{label}</p>
+        <p className="mt-0.5 break-words text-[13px] font-medium text-gray-800">{value}</p>
+      </div>
+    </div>
+  )
+}
+
+interface UnitInfoCardProps {
+  unit: {
+    unitNumber: string
+    type: UnitType
+    area: number
+    rooms?: number
+    floor?: number
+    monthlyRent: number
+  }
+  property: {
+    name: string
+    propertyDesignation: string
+    address: { street: string; postalCode: string; city: string }
+  }
+}
+
+// Read-only sammanfattning av enheten + fastigheten. Allt här härleds från
+// Unit/Property och får INTE redigeras i kontraktsformuläret — kontraktshyran
+// är fortfarande redigerbar längre ner och kan avvika från enhetens
+// marknadshyra (det är just det fältet ett kontrakt sätter).
+function UnitInfoCard({ unit, property }: UnitInfoCardProps) {
+  const fullAddress =
+    `${property.address.street}, ${property.address.postalCode} ${property.address.city}`.trim()
+
+  return (
+    <div className="space-y-3 rounded-xl border border-[#EAEDF0] bg-gray-50/60 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-[13.5px] font-semibold text-gray-900">{property.name}</p>
+          <p className="mt-0.5 text-[12px] text-gray-500">
+            Fastighetsbeteckning {property.propertyDesignation}
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full bg-white px-2.5 py-0.5 text-[11px] font-medium text-gray-600 ring-1 ring-[#EAEDF0]">
+          {UNIT_TYPE_LABELS[unit.type] ?? unit.type}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+        <Fact icon={MapPin} label="Adress" value={fullAddress} />
+        <Fact icon={Hash} label="Lägenhetsnummer" value={unit.unitNumber} />
+        <Fact icon={Maximize2} label="Yta" value={`${unit.area} m²`} />
+        {unit.rooms != null && (
+          <Fact icon={BedDouble} label="Antal rum" value={String(unit.rooms)} />
+        )}
+        {unit.floor != null && <Fact icon={Layers} label="Våning" value={String(unit.floor)} />}
+        <Fact
+          icon={Building2}
+          label="Marknadshyra"
+          value={`${formatCurrency(Number(unit.monthlyRent))}/mån`}
+        />
+      </div>
+
+      <p className="border-t border-[#EAEDF0] pt-2.5 text-[11.5px] text-gray-500">
+        Uppgifterna ovan kommer från enheten och fastigheten — ändras de behöver enheten uppdateras
+        i fastighetsregistret. Kontraktshyran kan ändå avvika och anges nedan.
+      </p>
+    </div>
+  )
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -211,6 +306,18 @@ export function LeaseForm({
   }, [newTenantType, setValue])
 
   const selectedUnit = units.find((u) => u.id === unitId)
+  const selectedProperty = properties.find((p) => p.id === propertyId)
+
+  // Hyresgästens kontaktadress kan i 99% av fallen härledas från lägenheten
+  // — gör fälten valfria via en explicit toggle. Skickas inte alls om av.
+  const [showAddressOverride, setShowAddressOverride] = useState(false)
+  useEffect(() => {
+    if (!showAddressOverride) {
+      setValue('street', '')
+      setValue('postalCode', '')
+      setValue('city', '')
+    }
+  }, [showAddressOverride, setValue])
 
   const handleFormSubmit = (v: FormValues) => {
     const dto: CreateLeaseWithTenantInput = {
@@ -311,15 +418,28 @@ export function LeaseForm({
           {errors.unitId && <p className="text-[12px] text-red-600">{errors.unitId.message}</p>}
         </div>
 
-        {/* Unit rent suggestion */}
-        {selectedUnit && (
-          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[12.5px] text-blue-700">
-            Aktuell hyra:{' '}
-            <span className="font-semibold">
-              {formatCurrency(Number(selectedUnit.monthlyRent))}
-            </span>
-            /mån — förfylld nedan
-          </div>
+        {/* Read-only fakta från Unit + Property — kontraktshyran sätts längre
+            ner och kan avvika från enhetens marknadshyra. */}
+        {selectedUnit && selectedProperty && (
+          <UnitInfoCard
+            unit={{
+              unitNumber: selectedUnit.unitNumber,
+              type: selectedUnit.type as UnitType,
+              area: Number(selectedUnit.area),
+              ...(selectedUnit.rooms != null ? { rooms: Number(selectedUnit.rooms) } : {}),
+              ...(selectedUnit.floor != null ? { floor: Number(selectedUnit.floor) } : {}),
+              monthlyRent: Number(selectedUnit.monthlyRent),
+            }}
+            property={{
+              name: selectedProperty.name,
+              propertyDesignation: selectedProperty.propertyDesignation,
+              address: {
+                street: selectedProperty.address.street,
+                postalCode: selectedProperty.address.postalCode,
+                city: selectedProperty.address.city,
+              },
+            }}
+          />
         )}
       </div>
 
@@ -449,12 +569,47 @@ export function LeaseForm({
             />
           </div>
 
-          <Input label="Gatuadress (valfritt)" placeholder="Storgatan 12" {...register('street')} />
+          {/* Hyresgästens kontaktadress används bara om den AVVIKER från
+              lägenhetens (t.ex. delad lägenhet, andrahand, juridisk c/o-adress).
+              I normalfallet ärver hyresgästen lägenhetens adress på backend. */}
+          {!showAddressOverride ? (
+            <button
+              type="button"
+              onClick={() => setShowAddressOverride(true)}
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-dashed border-[#DDDFE4] bg-white px-3.5 py-2.5 text-left text-[13px] text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-800"
+            >
+              <span className="flex items-center gap-2">
+                <Plus size={14} strokeWidth={1.8} className="text-gray-400" />
+                <span>Använd annan kontaktadress än lägenhetens</span>
+              </span>
+              <span className="text-[11.5px] text-gray-400">valfritt</span>
+            </button>
+          ) : (
+            <div className="space-y-3 rounded-xl border border-[#EAEDF0] bg-amber-50/30 p-3.5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[12.5px] font-semibold text-gray-800">Annan kontaktadress</p>
+                  <p className="mt-0.5 text-[11.5px] text-gray-500">
+                    Lämna tomt om hyresgästen ska använda lägenhetens adress.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddressOverride(false)}
+                  aria-label="Ta bort kontaktadress"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                >
+                  <X size={14} strokeWidth={1.8} />
+                </button>
+              </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Postnummer (valfritt)" placeholder="123 45" {...register('postalCode')} />
-            <Input label="Stad (valfritt)" placeholder="Stockholm" {...register('city')} />
-          </div>
+              <Input label="Gatuadress" placeholder="Storgatan 12" {...register('street')} />
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Postnummer" placeholder="123 45" {...register('postalCode')} />
+                <Input label="Stad" placeholder="Stockholm" {...register('city')} />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
