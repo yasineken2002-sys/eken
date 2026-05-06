@@ -70,11 +70,23 @@ export interface User {
 
 // ─── Organization (multi-tenant) ──────────────────────────────────────────────
 
+// Måste hållas synkad med Prismas CompanyForm-enum (samma strängvärden).
+export type CompanyForm = 'AB' | 'ENSKILD_FIRMA' | 'HB' | 'KB' | 'FORENING' | 'STIFTELSE'
+
 export interface Organization {
   id: string
   name: string
-  orgNumber: string // Swedish org nr (556xxx-xxxx)
+  orgNumber: string // Swedish org nr (556xxx-xxxx) eller personnr för EF
+  // Juridisk företagsform — sätts vid registrering, kan inte ändras av
+  // användaren själv (kräver supportkontakt eftersom kontoplanen och
+  // kontraktstexterna beror på den).
+  companyForm: CompanyForm
   vatNumber?: string
+  // F-skatt: skrivs ut som "Godkänd för F-skatt" på faktura-PDF
+  // (lagkrav 11 kap. 8 § ML). Kan ändras i Inställningar när Skatteverket
+  // godkänner ansökan.
+  hasFSkatt?: boolean
+  fSkattApprovedDate?: string | null
   email: string
   phone?: string
   address: Address

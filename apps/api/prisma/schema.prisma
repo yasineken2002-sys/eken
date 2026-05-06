@@ -330,6 +330,18 @@ enum ErrorSource {
   ADMIN
 }
 
+// Svenska företagsformer. Styr orgnummer-validering, BAS-kontoplan
+// (eget kapital-serie), kontraktsformuleringar (firmatecknare vs ägare)
+// och vilka skatteregister som visas på faktura.
+enum CompanyForm {
+  AB             // Aktiebolag — eget kapital 2080-serien
+  ENSKILD_FIRMA  // Enskild näringsidkare — eget kapital 2010-serien
+  HB             // Handelsbolag
+  KB             // Kommanditbolag
+  FORENING       // Ideell eller ekonomisk förening
+  STIFTELSE      // Stiftelse
+}
+
 // ─── Organization (Tenant in multi-tenant context) ────────────────────────────
 
 model Organization {
@@ -337,7 +349,15 @@ model Organization {
   name                 String
   orgNumber            String? @unique
   accountType          String  @default("COMPANY")
+  // Juridisk företagsform. Sätts vid registrering och kan inte ändras
+  // av användaren själv (kräver supportkontakt) — det skulle invalidera
+  // hela kontoplanen och skattetexten på fakturor.
+  companyForm          CompanyForm @default(AB)
   vatNumber            String?
+  // F-skatt: obligatoriskt på faktura enligt 11 kap. 8 § ML att visa.
+  // hasFSkatt = true ⇒ "Godkänd för F-skatt" tryckt på faktura-PDF.
+  hasFSkatt            Boolean   @default(false)
+  fSkattApprovedDate   DateTime?
   email                String
   phone                String?
   street               String

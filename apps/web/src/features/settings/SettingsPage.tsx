@@ -15,7 +15,18 @@ import {
   Trash2,
   ShieldCheck,
   Gavel,
+  Receipt,
 } from 'lucide-react'
+import type { CompanyForm } from '@eken/shared'
+
+const COMPANY_FORM_LABEL: Record<CompanyForm, string> = {
+  AB: 'Aktiebolag (AB)',
+  ENSKILD_FIRMA: 'Enskild firma',
+  HB: 'Handelsbolag (HB)',
+  KB: 'Kommanditbolag (KB)',
+  FORENING: 'Ideell förening',
+  STIFTELSE: 'Stiftelse',
+}
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -74,6 +85,13 @@ export function SettingsPage({ onNavigate }: Props) {
   const [reminderCollectionDay, setReminderCollectionDay] = useState(30)
   const [collectionAgencyName, setCollectionAgencyName] = useState('')
   const [collectionsSavedFlash, setCollectionsSavedFlash] = useState(false)
+  // ── Skatteinformation: F-skatt + momsregistreringsnummer ────────────────
+  const [hasFSkatt, setHasFSkatt] = useState(false)
+  const [fSkattApprovedDate, setFSkattApprovedDate] = useState('')
+  const [vatNumber, setVatNumber] = useState('')
+  const [taxSavedFlash, setTaxSavedFlash] = useState(false)
+  const [taxError, setTaxError] = useState<string | null>(null)
+
   const [aiMemoriesEnabled, setAiMemoriesEnabled] = useState(() => {
     return localStorage.getItem('eken-ai-memories-enabled') !== 'false'
   })
@@ -106,8 +124,35 @@ export function SettingsPage({ onNavigate }: Props) {
       setReminderFormalDay(org.reminderFormalDay ?? 14)
       setReminderCollectionDay(org.reminderCollectionDay ?? 30)
       setCollectionAgencyName(org.collectionAgencyName ?? '')
+      setHasFSkatt(org.hasFSkatt ?? false)
+      setFSkattApprovedDate(org.fSkattApprovedDate ? org.fSkattApprovedDate.slice(0, 10) : '')
+      setVatNumber(org.vatNumber ?? '')
     }
   }, [org, reset])
+
+  const handleSaveTaxInfo = () => {
+    setTaxError(null)
+    if (hasFSkatt && fSkattApprovedDate) {
+      const d = new Date(fSkattApprovedDate)
+      if (Number.isNaN(d.getTime()) || d > new Date()) {
+        setTaxError('F-skatt-datum kan inte ligga i framtiden')
+        return
+      }
+    }
+    updateMutation.mutate(
+      {
+        hasFSkatt,
+        ...(hasFSkatt && fSkattApprovedDate ? { fSkattApprovedDate } : {}),
+        vatNumber,
+      },
+      {
+        onSuccess: () => {
+          setTaxSavedFlash(true)
+          setTimeout(() => setTaxSavedFlash(false), 2500)
+        },
+      },
+    )
+  }
 
   const handleSave = (v: PaymentFormValues) => {
     updateMutation.mutate(
@@ -607,6 +652,10 @@ export function SettingsPage({ onNavigate }: Props) {
                 {[
                   { label: 'Företagsnamn', value: org?.name ?? '–' },
                   { label: 'Organisationsnummer / personnummer', value: org?.orgNumber ?? '–' },
+                  {
+                    label: 'Företagsform',
+                    value: org?.companyForm ? COMPANY_FORM_LABEL[org.companyForm] : '–',
+                  },
                   { label: 'E-post', value: org?.email ?? '–' },
                   {
                     label: 'Adress',
@@ -622,6 +671,96 @@ export function SettingsPage({ onNavigate }: Props) {
                     <p className="mt-0.5 text-[13px] text-gray-600">{row.value}</p>
                   </div>
                 ))}
+              </div>
+
+              <p className="mt-3 flex items-start gap-1.5 text-[12px] text-gray-500">
+                <Info size={12} strokeWidth={1.8} className="mt-0.5 flex-shrink-0" />
+                Företagsform kan inte ändras här — den styr kontoplanen och kontraktstexterna.
+                Kontakta supporten om du behöver byta form.
+              </p>
+            </section>
+
+            {/* ── Section 4b: Skatteinformation (F-skatt + moms) ──────────────── */}
+            <section className="rounded-2xl border border-gray-100 bg-white p-5">
+              <div className="mb-4 flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50">
+                  <Receipt size={13} strokeWidth={1.8} className="text-emerald-700" />
+                </div>
+                <h2 className="text-[14px] font-semibold text-gray-800">Skatteinformation</h2>
+              </div>
+
+              <p className="mb-4 text-[12.5px] text-gray-500">
+                F-skatt-status visas på alla fakturor enligt 11 kap. 8 § mervärdesskattelagen.
+                Uppdatera så snart Skatteverket godkänt din ansökan.
+              </p>
+
+              <div className="space-y-4">
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[#E5E7EB] bg-gray-50/50 p-3.5">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500/30"
+                    checked={hasFSkatt}
+                    onChange={(e) => {
+                      setHasFSkatt(e.target.checked)
+                      if (!e.target.checked) setFSkattApprovedDate('')
+                    }}
+                  />
+                  <div>
+                    <p className="text-[13px] font-medium text-gray-800">Vi innehar F-skatt</p>
+                    <p className="mt-0.5 text-[12px] text-gray-500">
+                      Skrivs ut som "Godkänd för F-skatt" på fakturor.
+                    </p>
+                  </div>
+                </label>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {hasFSkatt && (
+                    <div>
+                      <label className="mb-1 block text-[12px] font-medium text-gray-700">
+                        Godkänd från
+                      </label>
+                      <Input
+                        type="date"
+                        value={fSkattApprovedDate}
+                        onChange={(e) => setFSkattApprovedDate(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  <div className={hasFSkatt ? '' : 'sm:col-span-2'}>
+                    <label className="mb-1 block text-[12px] font-medium text-gray-700">
+                      Momsregistreringsnummer (valfritt)
+                    </label>
+                    <Input
+                      placeholder="SE556xxxxxxx01"
+                      value={vatNumber}
+                      onChange={(e) => setVatNumber(e.target.value)}
+                    />
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      EU-format: SE följt av 12 siffror. Lämna tomt om du inte är momsregistrerad.
+                    </p>
+                  </div>
+                </div>
+
+                {taxError && (
+                  <div className="flex items-center gap-1.5 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-[12.5px] text-red-600">
+                    <AlertCircle size={13} />
+                    {taxError}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3 border-t border-gray-100 pt-3">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    loading={updateMutation.isPending}
+                    onClick={handleSaveTaxInfo}
+                  >
+                    Spara skatteinformation
+                  </Button>
+                  {taxSavedFlash && (
+                    <span className="text-[13px] font-medium text-emerald-600">Sparat</span>
+                  )}
+                </div>
               </div>
             </section>
 

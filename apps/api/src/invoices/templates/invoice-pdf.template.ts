@@ -43,9 +43,49 @@ interface InvoicePdfData {
       postalCode: string | null
       bankgiro: string | null
       logoUrl: string | null
+      // Skatteinformation — krav enligt 11 kap. 8 § ML att F-skatt-status
+      // visas på faktura. vatNumber visas som "Momsregistreringsnummer:
+      // SE{vatNumber}01" om det finns. companyForm används för att skriva
+      // ut korrekt företagsformsetikett ("Aktiebolag", "Enskild firma" m.m.).
+      hasFSkatt: boolean
+      fSkattApprovedDate: Date | string | null
+      vatNumber: string | null
+      companyForm: string | null
     }
   }
   logoBase64: string | null
+}
+
+// Mappa Prisma-enumens companyForm till svenska visningstext.
+function companyFormLabel(form: string | null): string | null {
+  switch (form) {
+    case 'AB':
+      return 'Aktiebolag'
+    case 'ENSKILD_FIRMA':
+      return 'Enskild firma'
+    case 'HB':
+      return 'Handelsbolag'
+    case 'KB':
+      return 'Kommanditbolag'
+    case 'FORENING':
+      return 'Ideell förening'
+    case 'STIFTELSE':
+      return 'Stiftelse'
+    default:
+      return null
+  }
+}
+
+// Formatera momsregistreringsnummer enligt EU-standard: SE + 12 siffror
+// (10-siffrigt orgnr utan bindestreck + två siffror sufix, oftast 01 för
+// huvudverksamheten). Om vatNumber redan börjar med "SE" lämnas det orört.
+function formatVatNumber(raw: string): string {
+  const trimmed = raw.trim()
+  if (/^SE\d/i.test(trimmed)) return trimmed.toUpperCase()
+  const digits = trimmed.replace(/\D/g, '')
+  if (digits.length === 10) return `SE${digits}01`
+  if (digits.length === 12) return `SE${digits}`
+  return trimmed
 }
 
 function formatSek(value: Decimal | number): string {
@@ -121,6 +161,19 @@ export function generateInvoiceHtml(data: InvoicePdfData): string {
     .filter(Boolean)
     .join(' · ')
 
+  // ── Skatteinformation: F-skatt + momsnr ────────────────────────────────
+  // Lagkrav per 11 kap. 8 § ML — F-skatt-status ska anges. Om hasFSkatt
+  // är false skriver vi ändå ut det negativa beskedet så att mottagaren
+  // vet att inga skatter dras av automatiskt vid betalning.
+  const fSkattLine = organization.hasFSkatt
+    ? `Godkänd för F-skatt${organization.fSkattApprovedDate ? ` (sedan ${formatDate(organization.fSkattApprovedDate)})` : ''}`
+    : null
+  const vatLine = organization.vatNumber
+    ? `Momsregistreringsnummer: ${formatVatNumber(organization.vatNumber)}`
+    : null
+  const companyFormText = companyFormLabel(organization.companyForm)
+  const taxInfoFooter = [companyFormText, fSkattLine, vatLine].filter(Boolean).join(' · ')
+
   const linesHtml = invoice.lines
     .map(
       (line, i) => `
@@ -180,7 +233,7 @@ export function generateInvoiceHtml(data: InvoicePdfData): string {
 ${headerHtml}
 
 <!-- META GRID -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:36px;">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
   <div style="background:#f9fafb;border-radius:8px;padding:20px;">
     <div class="label">Faktureras till</div>
     <div style="font-size:16px;font-weight:700;color:#111827;margin-bottom:4px;">${tenantName(tenant)}</div>
@@ -201,6 +254,28 @@ ${headerHtml}
     </div>
   </div>
 </div>
+
+<!-- SKATTEINFORMATION (lagkrav per 11 kap. 8 § ML) -->
+${
+  fSkattLine || vatLine
+    ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;">
+  ${
+    fSkattLine
+      ? `<div style="display:inline-flex;align-items:center;gap:6px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;border-radius:999px;padding:4px 12px;font-size:11.5px;font-weight:600;">
+        <span>✓</span> ${fSkattLine}
+      </div>`
+      : ''
+  }
+  ${
+    vatLine
+      ? `<div style="background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;border-radius:999px;padding:4px 12px;font-size:11.5px;font-weight:500;">
+        ${vatLine}
+      </div>`
+      : ''
+  }
+</div>`
+    : ''
+}
 
 <!-- INVOICE LINES -->
 <table style="margin-bottom:0;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;">
@@ -256,11 +331,18 @@ ${
 }
 
 <!-- FOOTER -->
-<div style="position:fixed;bottom:32px;left:40px;right:40px;
-            border-top:1px solid #e2e8f0;padding-top:12px;
-            font-size:11px;color:#9ca3af;display:flex;justify-content:space-between;">
-  <span>${organization.name}${organization.orgNumber ? ' · ' + organization.orgNumber : ''}</span>
-  <span>${[organization.email, orgAddress].filter(Boolean).join(' · ')}</span>
+<div style="position:fixed;bottom:24px;left:40px;right:40px;
+            border-top:1px solid #e2e8f0;padding-top:10px;
+            font-size:10.5px;color:#9ca3af;line-height:1.5;">
+  <div style="display:flex;justify-content:space-between;gap:16px;">
+    <span>${organization.name}${organization.orgNumber ? ' · ' + organization.orgNumber : ''}</span>
+    <span>${[organization.email, orgAddress].filter(Boolean).join(' · ')}</span>
+  </div>
+  ${
+    taxInfoFooter
+      ? `<div style="margin-top:4px;color:#6b7280;font-weight:500;">${taxInfoFooter}</div>`
+      : ''
+  }
 </div>
 
 </body>

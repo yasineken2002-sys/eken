@@ -1,5 +1,7 @@
 import { LOCALE, CURRENCY } from '../constants'
 
+export * from './swedish-org-number'
+
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat(LOCALE, {
     style: 'currency',

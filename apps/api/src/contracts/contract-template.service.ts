@@ -97,6 +97,8 @@ export class ContractTemplateService {
         bankgiro: org.bankgiro,
         invoiceColor: org.invoiceColor ?? null,
         logoDataUrl,
+        companyForm: org.companyForm,
+        hasFSkatt: org.hasFSkatt,
       },
       tenant: {
         type: lease.tenant.type,

@@ -1,5 +1,6 @@
 import { api, post } from '@/lib/api'
 import type { AuthResponse } from '@/stores/auth.store'
+import type { SwedishCompanyForm } from '@eken/shared'
 
 export type { AuthResponse }
 
@@ -15,7 +16,14 @@ export interface RegisterInput {
   lastName: string
   organizationName: string
   orgNumber?: string
+  // accountType behålls för bakåtkompatibilitet — backend härleder
+  // companyForm från accountType om companyForm saknas. Nya klienter
+  // skickar companyForm explicit.
   accountType?: 'COMPANY' | 'PRIVATE'
+  companyForm?: SwedishCompanyForm
+  hasFSkatt?: boolean
+  fSkattApprovedDate?: string
+  vatNumber?: string
 }
 
 export async function loginApi(dto: LoginInput): Promise<AuthResponse> {

@@ -1,4 +1,13 @@
-import { IsString, IsOptional, IsNumber, IsBoolean, IsEnum, Matches, Min } from 'class-validator'
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsBoolean,
+  IsEnum,
+  IsDateString,
+  Matches,
+  Min,
+} from 'class-validator'
 import { InvoiceTemplate } from '@prisma/client'
 
 export class UpdateOrganizationDto {
@@ -49,4 +58,21 @@ export class UpdateOrganizationDto {
   @IsString()
   @IsOptional()
   collectionAgencyName?: string
+
+  // ── Skatteinformation (F-skatt + moms) ──────────────────────────────────
+  // companyForm är medvetet INTE uppdaterbar via detta endpoint — den
+  // sätts vid registrering och får bara ändras via support. Anledning:
+  // den styr eget kapital-serien i kontoplanen och en byte mitt i ett
+  // räkenskapsår skulle leda till blandade konton som inte balanserar.
+  @IsBoolean()
+  @IsOptional()
+  hasFSkatt?: boolean
+
+  @IsDateString()
+  @IsOptional()
+  fSkattApprovedDate?: string
+
+  @IsString()
+  @IsOptional()
+  vatNumber?: string
 }

@@ -9,8 +9,11 @@ import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import * as bcrypt from 'bcryptjs'
 import * as crypto from 'crypto'
+import { CompanyForm } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
+import { AccountingService } from '../accounting/accounting.service'
+import { validateSwedishOrgNumber } from '../common/validators/swedish-org-number'
 import type { JwtPayload, TokenPair } from '@eken/shared'
 import type { LoginInput } from '@eken/shared'
 
@@ -29,6 +32,10 @@ interface RegisterPayload {
   organizationName: string
   orgNumber?: string
   accountType?: string
+  companyForm?: CompanyForm
+  hasFSkatt?: boolean
+  fSkattApprovedDate?: string
+  vatNumber?: string
 }
 
 export interface AuthUser {
@@ -59,25 +66,59 @@ export class AuthService {
     private jwt: JwtService,
     private config: ConfigService,
     private mail: MailService,
+    private accounting: AccountingService,
   ) {}
 
   async register(dto: RegisterPayload): Promise<AuthResponse> {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } })
     if (existing) throw new ConflictException('E-postadressen är redan registrerad')
 
+    // Härled företagsform: explicit val går först, sedan accountType-bryggan
+    // för bakåtkompatibilitet (PRIVATE = enskild firma), annars AB.
+    const companyForm: CompanyForm =
+      dto.companyForm ?? (dto.accountType === 'PRIVATE' ? 'ENSKILD_FIRMA' : 'AB')
+
+    // Orgnummer-validering mot vald företagsform — släng tydligt fel
+    // istället för att låta databas-constraint smälla. Tomt orgnummer är OK.
+    let normalizedOrgNumber: string | undefined
+    if (dto.orgNumber && dto.orgNumber.trim()) {
+      const result = validateSwedishOrgNumber(dto.orgNumber, companyForm)
+      if (!result.valid) {
+        throw new BadRequestException(result.error ?? 'Ogiltigt organisationsnummer')
+      }
+      normalizedOrgNumber = result.normalized ?? dto.orgNumber
+    }
+
+    // F-skatt: datum bara om checkboxen är ikryssad. Skickas datum utan
+    // checkbox så ignorerar vi det istället för att kasta — schemat på
+    // shared-sidan har redan blockerat den kombinationen.
+    const hasFSkatt = dto.hasFSkatt ?? false
+    const fSkattApprovedDate =
+      hasFSkatt && dto.fSkattApprovedDate ? new Date(dto.fSkattApprovedDate) : null
+
     const passwordHash = await bcrypt.hash(dto.password, 12)
 
     const org = await this.prisma.organization.create({
       data: {
         name: dto.organizationName,
-        ...(dto.orgNumber ? { orgNumber: dto.orgNumber } : {}),
-        accountType: dto.accountType ?? 'COMPANY',
+        ...(normalizedOrgNumber ? { orgNumber: normalizedOrgNumber } : {}),
+        accountType: dto.accountType ?? (companyForm === 'ENSKILD_FIRMA' ? 'PRIVATE' : 'COMPANY'),
+        companyForm,
+        hasFSkatt,
+        fSkattApprovedDate,
+        ...(dto.vatNumber ? { vatNumber: dto.vatNumber } : {}),
         email: dto.email,
         street: '',
         city: '',
         postalCode: '',
       },
     })
+
+    // Seeda BAS-kontoplan automatiskt vid registrering så att första
+    // fakturan/journalposten hittar konton. Eget kapital-serien väljs per
+    // företagsform (2080 för AB, 2010 för enskild firma — se
+    // AccountingService.seedDefaultAccounts).
+    await this.accounting.seedDefaultAccounts(org.id, companyForm)
 
     const user = await this.prisma.user.create({
       data: {

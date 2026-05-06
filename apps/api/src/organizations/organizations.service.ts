@@ -46,6 +46,16 @@ export class OrganizationsService {
   }
 
   async update(organizationId: string, dto: UpdateOrganizationDto) {
+    // F-skatt-datum: bara meningsfullt när hasFSkatt = true. Om
+    // användaren bockar av F-skatt nollställer vi datumet samtidigt.
+    const fSkattDateUpdate = (() => {
+      if (dto.hasFSkatt === false) return { fSkattApprovedDate: null }
+      if (dto.fSkattApprovedDate != null) {
+        return { fSkattApprovedDate: new Date(dto.fSkattApprovedDate) }
+      }
+      return {}
+    })()
+
     return this.prisma.organization.update({
       where: { id: organizationId },
       data: {
@@ -65,6 +75,9 @@ export class OrganizationsService {
         ...(dto.collectionAgencyName != null
           ? { collectionAgencyName: dto.collectionAgencyName }
           : {}),
+        ...(dto.hasFSkatt != null ? { hasFSkatt: dto.hasFSkatt } : {}),
+        ...fSkattDateUpdate,
+        ...(dto.vatNumber != null ? { vatNumber: dto.vatNumber } : {}),
       },
     })
   }

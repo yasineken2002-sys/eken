@@ -12,7 +12,7 @@
 // paragraf i 12 kap. JB den vilar på, så att en jurist kan revidera
 // mallen utan att behöva gå tillbaka till källkoden.
 
-import type { PetPolicy, IndexClauseType } from '@prisma/client'
+import type { PetPolicy, IndexClauseType, CompanyForm } from '@prisma/client'
 
 // ─── Input ────────────────────────────────────────────────────────────────
 
@@ -67,6 +67,12 @@ export interface ContractTemplateInput {
     bankgiro: string | null
     invoiceColor: string | null
     logoDataUrl: string | null
+    // Företagsform — styr vilken signatärsroll som anges i § 1 och i
+    // signaturblocket (firmatecknare/ägare/bolagsman/behörig firmatecknare).
+    companyForm: CompanyForm
+    // F-skatt: visas i § 1 så hyresgästen ser att hyresvärden är
+    // godkänd för F-skatt (hyresvärden ansvarar då för egna skatter).
+    hasFSkatt: boolean
   }
   tenant: {
     type: 'INDIVIDUAL' | 'COMPANY'
@@ -155,6 +161,28 @@ export function escape(s: string | null | undefined): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+// Vem som lagligen tecknar avtalet för hyresvärden — beror på företagsform.
+// Visas som rad i § 1 Parter och som etikett i signaturblocket.
+//   AB              → firmatecknare (ABL 8 kap. 35–37 §§)
+//   Enskild firma   → ägaren (ensamt ansvar, BFL 1 §)
+//   HB / KB         → bolagsman (HBL 2 kap. 17 §)
+//   Förening        → behörig firmatecknare (stadgarna)
+//   Stiftelse       → behörig firmatecknare (stiftelseförordnandet)
+export function signatoryRoleLabel(form: CompanyForm): string {
+  switch (form) {
+    case 'AB':
+      return 'firmatecknare'
+    case 'ENSKILD_FIRMA':
+      return 'ägaren'
+    case 'HB':
+    case 'KB':
+      return 'bolagsman'
+    case 'FORENING':
+    case 'STIFTELSE':
+      return 'behörig firmatecknare'
+  }
 }
 
 // ─── Beskrivning av vad som ingår i hyran ────────────────────────────────
@@ -461,6 +489,12 @@ export function partiesSection(input: ContractTemplateInput): string {
           ? `<div class="field-row"><span class="field-label">Bankgiro</span><span class="field-value">${escape(org.bankgiro)}</span></div>`
           : ''
       }
+      <div class="field-row"><span class="field-label">Tecknas av</span><span class="field-value">${escape(signatoryRoleLabel(org.companyForm))}</span></div>
+      ${
+        org.hasFSkatt
+          ? `<div class="field-row"><span class="field-label">Skattestatus</span><span class="field-value">Godkänd för F-skatt</span></div>`
+          : ''
+      }
     </div>
     <div class="party-box">
       <div class="party-label">Hyresgäst</div>
@@ -715,13 +749,14 @@ export function signatureBlock(input: ContractTemplateInput): string {
   const tenantName = tenantDisplayName(input.tenant)
   const sig = input.signature
 
+  const signatoryRole = signatoryRoleLabel(input.organization.companyForm)
   return `
   <div class="signature-section">
     <div>
       <div class="sig-box">
         <strong>HYRESVÄRD — ${escape(input.organization.name)}</strong>
         <div class="sig-line">Ort och datum</div>
-        <div class="sig-line">Underskrift</div>
+        <div class="sig-line">Underskrift (${escape(signatoryRole)})</div>
         <div class="sig-line">Namnförtydligande</div>
       </div>
     </div>

@@ -13,7 +13,6 @@ import {
   BarChart3,
   Shield,
   Zap,
-  User,
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -22,11 +21,18 @@ import { registerApi } from './api/auth.api'
 import { passwordSchema } from './lib/password-schema'
 import { PasswordRequirements } from './components/PasswordRequirements'
 import { useAuthStore } from '@/stores/auth.store'
+import { COMPANY_FORM_OPTIONS, validateSwedishOrgNumber } from '@eken/shared'
+import type { SwedishCompanyForm } from '@eken/shared'
 import type { Route } from '@/App'
+
+const COMPANY_FORM_VALUES = COMPANY_FORM_OPTIONS.map((o) => o.value) as [
+  SwedishCompanyForm,
+  ...SwedishCompanyForm[],
+]
 
 const schema = z
   .object({
-    accountType: z.enum(['COMPANY', 'PRIVATE']),
+    companyForm: z.enum(COMPANY_FORM_VALUES),
     firstName: z.string().min(1, 'Förnamn krävs'),
     lastName: z.string().min(1, 'Efternamn krävs'),
     email: z.string().email('Ogiltig e-postadress'),
@@ -34,6 +40,9 @@ const schema = z
     confirmPassword: z.string(),
     organizationName: z.string().min(1, 'Namn krävs'),
     orgNumber: z.string().optional(),
+    hasFSkatt: z.boolean().default(false),
+    fSkattApprovedDate: z.string().optional(),
+    vatNumber: z.string().optional(),
   })
   .superRefine(({ password, confirmPassword }, ctx) => {
     if (password !== confirmPassword) {
@@ -42,6 +51,32 @@ const schema = z
         message: 'Lösenorden matchar inte',
         path: ['confirmPassword'],
       })
+    }
+  })
+  .superRefine(({ orgNumber, companyForm }, ctx) => {
+    // Validera orgnummer mot vald företagsform live i formuläret —
+    // exakt samma regler som backend, så användaren får felet direkt
+    // istället för efter submit.
+    if (!orgNumber) return
+    const result = validateSwedishOrgNumber(orgNumber, companyForm)
+    if (!result.valid) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: result.error ?? 'Ogiltigt organisationsnummer',
+        path: ['orgNumber'],
+      })
+    }
+  })
+  .superRefine(({ hasFSkatt, fSkattApprovedDate }, ctx) => {
+    if (hasFSkatt && fSkattApprovedDate) {
+      const d = new Date(fSkattApprovedDate)
+      if (Number.isNaN(d.getTime()) || d > new Date()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'F-skatt-datum kan inte ligga i framtiden',
+          path: ['fSkattApprovedDate'],
+        })
+      }
     }
   })
 
@@ -54,6 +89,28 @@ const STEP1_FIELDS: (keyof FormValues)[] = [
   'password',
   'confirmPassword',
 ]
+
+// För enskild firma är "organisationsnummer" personnummer-formaterat.
+// Vi visar därför annan label, placeholder och hjälptext.
+function orgNumberFieldProps(form: SwedishCompanyForm): {
+  label: string
+  placeholder: string
+  helpText: string
+} {
+  if (form === 'ENSKILD_FIRMA') {
+    return {
+      label: 'Personnummer (valfritt)',
+      placeholder: 'ÅÅÅÅMMDD-XXXX',
+      helpText:
+        'Som enskild näringsidkare är ditt personnummer ditt organisationsnummer hos Skatteverket.',
+    }
+  }
+  return {
+    label: 'Organisationsnummer (valfritt)',
+    placeholder: '5XXXXX-XXXX',
+    helpText: 'Tio siffror med Luhn-kontroll. Lämna tomt om du inte har det till hands.',
+  }
+}
 
 interface Props {
   onNavigate: (route: Route) => void
@@ -143,11 +200,14 @@ export function RegisterPage({ onNavigate }: Props) {
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     mode: 'onTouched',
-    defaultValues: { accountType: 'COMPANY' },
+    defaultValues: { companyForm: 'AB', hasFSkatt: false },
   })
 
-  const accountType = watch('accountType')
+  const companyForm = watch('companyForm')
+  const hasFSkatt = watch('hasFSkatt')
   const passwordValue = watch('password') ?? ''
+  const orgNumberField = orgNumberFieldProps(companyForm)
+  const isPrivate = companyForm === 'ENSKILD_FIRMA'
 
   const goToStep2 = async () => {
     const valid = await trigger(STEP1_FIELDS)
@@ -164,8 +224,16 @@ export function RegisterPage({ onNavigate }: Props) {
         firstName: data.firstName,
         lastName: data.lastName,
         organizationName: data.organizationName,
-        accountType: data.accountType,
+        companyForm: data.companyForm,
+        // accountType bevaras för bakåtkompatibilitet — enskild firma
+        // mappas till PRIVATE, övriga former till COMPANY.
+        accountType: data.companyForm === 'ENSKILD_FIRMA' ? 'PRIVATE' : 'COMPANY',
+        hasFSkatt: data.hasFSkatt,
         ...(data.orgNumber ? { orgNumber: data.orgNumber } : {}),
+        ...(data.hasFSkatt && data.fSkattApprovedDate
+          ? { fSkattApprovedDate: data.fSkattApprovedDate }
+          : {}),
+        ...(data.vatNumber ? { vatNumber: data.vatNumber } : {}),
       })
       setAuth(response)
       onNavigate('dashboard')
@@ -228,11 +296,7 @@ export function RegisterPage({ onNavigate }: Props) {
                     step === s ? 'text-gray-900' : s < step ? 'text-gray-500' : 'text-gray-400',
                   )}
                 >
-                  {s === 1
-                    ? 'Ditt konto'
-                    : accountType === 'PRIVATE'
-                      ? 'Dina uppgifter'
-                      : 'Ditt företag'}
+                  {s === 1 ? 'Ditt konto' : isPrivate ? 'Dina uppgifter' : 'Ditt företag'}
                 </span>
                 {s < 2 && <div className="mx-1 h-px w-8 bg-gray-200" />}
               </div>
@@ -344,67 +408,93 @@ export function RegisterPage({ onNavigate }: Props) {
                   transition={{ duration: 0.15 }}
                   className="space-y-4"
                 >
-                  {/* Account type toggle */}
+                  {/* Företagsform — styr orgnummer-validering, BAS-kontoplan och kontraktstexter */}
                   <div>
-                    <p className="mb-2 text-[13px] font-medium text-gray-700">Jag är:</p>
-                    <div className="flex gap-2">
-                      {(
-                        [
-                          { value: 'COMPANY', label: 'Företag', icon: Building2 },
-                          { value: 'PRIVATE', label: 'Privatperson', icon: User },
-                        ] as const
-                      ).map(({ value, label, icon: Icon }) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => setValue('accountType', value, { shouldValidate: true })}
-                          className={cn(
-                            'flex flex-1 items-center justify-center gap-2 rounded-xl border py-2.5 text-[13px] font-medium transition-all',
-                            accountType === value
-                              ? 'border-blue-600 bg-blue-50 text-blue-700'
-                              : 'border-[#DDDFE4] bg-white text-gray-600 hover:bg-gray-50',
-                          )}
-                        >
-                          <Icon size={14} strokeWidth={1.8} />
-                          {label}
-                        </button>
+                    <label
+                      htmlFor="companyForm"
+                      className="mb-1.5 block text-[13px] font-medium text-gray-700"
+                    >
+                      Företagsform
+                    </label>
+                    <select
+                      id="companyForm"
+                      value={companyForm}
+                      onChange={(e) =>
+                        setValue('companyForm', e.target.value as SwedishCompanyForm, {
+                          shouldValidate: true,
+                        })
+                      }
+                      className={cn(
+                        'flex h-10 w-full rounded-xl border bg-white px-3.5 text-[13.5px] text-gray-900',
+                        'border-[#E5E7EB] transition-all hover:border-gray-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/15',
+                      )}
+                    >
+                      {COMPANY_FORM_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
                       ))}
-                    </div>
+                    </select>
+                    <p className="mt-1 text-[12px] text-gray-500">
+                      {COMPANY_FORM_OPTIONS.find((o) => o.value === companyForm)?.description}
+                    </p>
                   </div>
 
-                  {accountType === 'COMPANY' ? (
-                    <>
-                      <Input
-                        label="Företagsnamn"
-                        placeholder="Andersson Fastigheter AB"
-                        autoComplete="organization"
-                        error={errors.organizationName?.message}
-                        {...register('organizationName')}
+                  <Input
+                    label={isPrivate ? 'Ditt namn (visas i systemet)' : 'Företagsnamn'}
+                    placeholder={isPrivate ? 'Anders Andersson' : 'Andersson Fastigheter AB'}
+                    autoComplete={isPrivate ? 'name' : 'organization'}
+                    error={errors.organizationName?.message}
+                    {...register('organizationName')}
+                  />
+
+                  <div className="space-y-1">
+                    <Input
+                      label={orgNumberField.label}
+                      placeholder={orgNumberField.placeholder}
+                      error={errors.orgNumber?.message}
+                      {...register('orgNumber')}
+                    />
+                    {!errors.orgNumber && (
+                      <p className="text-[12px] text-gray-500">{orgNumberField.helpText}</p>
+                    )}
+                  </div>
+
+                  {/* F-skatt — lagkrav att visas på faktura enligt 11 kap. 8 § ML */}
+                  <div className="rounded-xl border border-[#E5E7EB] bg-gray-50/50 p-3.5">
+                    <label className="flex cursor-pointer items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500/30"
+                        checked={hasFSkatt}
+                        onChange={(e) =>
+                          setValue('hasFSkatt', e.target.checked, { shouldValidate: true })
+                        }
                       />
-                      <Input
-                        label="Organisationsnummer (valfritt)"
-                        placeholder="559123-4567"
-                        error={errors.orgNumber?.message}
-                        {...register('orgNumber')}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <Input
-                        label="Ditt namn (visas i systemet)"
-                        placeholder="Anders Andersson"
-                        autoComplete="name"
-                        error={errors.organizationName?.message}
-                        {...register('organizationName')}
-                      />
-                      <Input
-                        label="Personnummer (valfritt)"
-                        placeholder="ÅÅMMDD-XXXX"
-                        error={errors.orgNumber?.message}
-                        {...register('orgNumber')}
-                      />
-                    </>
-                  )}
+                      <div>
+                        <p className="text-[13px] font-medium text-gray-800">Vi innehar F-skatt</p>
+                        <p className="mt-0.5 text-[12px] text-gray-500">
+                          Skrivs ut som "Godkänd för F-skatt" på fakturor (11 kap. 8 § ML).
+                        </p>
+                      </div>
+                    </label>
+                    {hasFSkatt && (
+                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <Input
+                          label="Godkänd från"
+                          type="date"
+                          error={errors.fSkattApprovedDate?.message}
+                          {...register('fSkattApprovedDate')}
+                        />
+                        <Input
+                          label="Momsregistreringsnummer (valfritt)"
+                          placeholder="SE556xxxxxxx01"
+                          error={errors.vatNumber?.message}
+                          {...register('vatNumber')}
+                        />
+                      </div>
+                    )}
+                  </div>
 
                   {apiError && (
                     <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-[13px] text-red-600">

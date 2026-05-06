@@ -1,67 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
+import { CompanyForm } from '@prisma/client'
 import type { BankTransaction, Invoice, InvoiceLine } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { basChartFor } from './bas-chart'
 
 interface JournalFilters {
   from?: string
   to?: string
   source?: string
 }
-
-// Default BAS accounts for Swedish property management.
-// Bygger på BAS-kontoplanen 2026 + Fastighetsägarnas branschanpassning.
-const DEFAULT_ACCOUNTS = [
-  // Tillgångar
-  { number: 1510, name: 'Kundfordringar', type: 'ASSET' as const },
-  { number: 1515, name: 'Osäkra kundfordringar', type: 'ASSET' as const },
-  { number: 1930, name: 'Företagskonto / Bank', type: 'ASSET' as const },
-  { number: 1940, name: 'Plusgiro', type: 'ASSET' as const },
-  // Skulder
-  { number: 2350, name: 'Andra långfristiga skulder', type: 'LIABILITY' as const },
-  { number: 2440, name: 'Leverantörsskulder', type: 'LIABILITY' as const },
-  { number: 2490, name: 'Övriga kortfristiga skulder', type: 'LIABILITY' as const },
-  { number: 2611, name: 'Utgående moms 25% (försäljning Sverige)', type: 'LIABILITY' as const },
-  { number: 2621, name: 'Utgående moms 12%', type: 'LIABILITY' as const },
-  { number: 2631, name: 'Utgående moms 6%', type: 'LIABILITY' as const },
-  { number: 2640, name: 'Ingående moms', type: 'LIABILITY' as const },
-  { number: 2641, name: 'Debiterad ingående moms', type: 'LIABILITY' as const },
-  {
-    number: 2645,
-    name: 'Beräknad ingående moms på förvärv från utlandet',
-    type: 'LIABILITY' as const,
-  },
-  { number: 2650, name: 'Redovisningskonto för moms', type: 'LIABILITY' as const },
-  { number: 2710, name: 'Personalskatt', type: 'LIABILITY' as const },
-  { number: 2820, name: 'Mottagna depositioner', type: 'LIABILITY' as const },
-  // Intäkter (3xxx)
-  { number: 3001, name: 'Hyresintäkter bostäder (momsfri)', type: 'REVENUE' as const },
-  { number: 3010, name: 'Hyresintäkter lokaler (momspliktiga)', type: 'REVENUE' as const },
-  { number: 3011, name: 'Hyresintäkter lokaler (momsfria)', type: 'REVENUE' as const },
-  { number: 3012, name: 'Hyresintäkter parkering / garage', type: 'REVENUE' as const },
-  { number: 3013, name: 'Hyresintäkter förråd', type: 'REVENUE' as const },
-  { number: 3030, name: 'Övriga ersättningar (varmvatten, el)', type: 'REVENUE' as const },
-  { number: 3040, name: 'Skadeersättningar', type: 'REVENUE' as const },
-  { number: 3593, name: 'Påminnelseavgifter', type: 'REVENUE' as const },
-  { number: 3960, name: 'Valutakursvinster på rörelsefordringar', type: 'REVENUE' as const },
-  // Driftkostnader (5xxx)
-  { number: 5010, name: 'Lokalhyra (egen)', type: 'EXPENSE' as const },
-  { number: 5020, name: 'El för fastighet', type: 'EXPENSE' as const },
-  { number: 5030, name: 'Värme (fjärrvärme)', type: 'EXPENSE' as const },
-  { number: 5040, name: 'Vatten och avlopp', type: 'EXPENSE' as const },
-  { number: 5050, name: 'Sophämtning och städning', type: 'EXPENSE' as const },
-  { number: 5060, name: 'Fastighetsskötsel', type: 'EXPENSE' as const },
-  { number: 5070, name: 'Reparation och underhåll', type: 'EXPENSE' as const },
-  { number: 5080, name: 'Försäkring fastighet', type: 'EXPENSE' as const },
-  { number: 5090, name: 'Övriga fastighetskostnader', type: 'EXPENSE' as const },
-  { number: 6110, name: 'Kontorsmaterial', type: 'EXPENSE' as const },
-  { number: 6230, name: 'Internet och datakommunikation', type: 'EXPENSE' as const },
-  { number: 6310, name: 'Företagsförsäkring', type: 'EXPENSE' as const },
-  { number: 6420, name: 'Revisionsarvoden', type: 'EXPENSE' as const },
-  { number: 6530, name: 'Redovisningstjänster', type: 'EXPENSE' as const },
-  { number: 7010, name: 'Löner till tjänstemän', type: 'EXPENSE' as const },
-  { number: 7510, name: 'Lagstadgade sociala avgifter', type: 'EXPENSE' as const },
-  { number: 8410, name: 'Räntekostnader (lån)', type: 'EXPENSE' as const },
-]
 
 // Map VAT rate to account number. 0% (momsbefriad) ska INTE bokföras som
 // momskredit alls — då hoppas raden över i createJournalEntryForInvoice.
@@ -121,12 +68,41 @@ export class AccountingService {
     return entry
   }
 
-  async seedDefaultAccounts(organizationId: string): Promise<void> {
+  /**
+   * Seeda BAS-kontoplan för en organisation. Hoppar över om kontona
+   * redan är seedade — idempotent och säker att kalla flera gånger.
+   *
+   * Eget kapital-serien väljs baserat på companyForm:
+   *   • AB             → 2080-serien (aktiekapital, reservfond, fritt kapital)
+   *   • ENSKILD_FIRMA  → 2010-serien (eget kapital, egna uttag/insättningar)
+   *   • HB / KB        → 2010-serien per delägare
+   *   • FORENING       → 2065-serien
+   *   • STIFTELSE      → 2070-serien
+   *
+   * Anropas både från AuthService.register() (vid org-skapande) och
+   * från POST /v1/accounting/accounts/seed (manuell trigger för
+   * importerade orgs som saknar kontoplan).
+   */
+  async seedDefaultAccounts(organizationId: string, companyForm?: CompanyForm): Promise<void> {
     const existing = await this.prisma.account.count({ where: { organizationId } })
     if (existing > 0) return
 
+    let form: CompanyForm
+    if (companyForm) {
+      form = companyForm
+    } else {
+      // Fallback: läs upp från Organization-raden om anroparen inte
+      // skickat med formen explicit. Default till AB om kolumnen är null.
+      const org = await this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { companyForm: true },
+      })
+      form = org?.companyForm ?? CompanyForm.AB
+    }
+
+    const accounts = basChartFor(form)
     await this.prisma.account.createMany({
-      data: DEFAULT_ACCOUNTS.map((a) => ({ ...a, organizationId })),
+      data: accounts.map((a) => ({ ...a, organizationId })),
     })
   }
 

@@ -12,6 +12,9 @@ export interface UpdateOrganizationInput {
   reminderFormalDay?: number
   reminderCollectionDay?: number
   collectionAgencyName?: string
+  hasFSkatt?: boolean
+  fSkattApprovedDate?: string
+  vatNumber?: string
 }
 
 export function getOrganization(): Promise<Organization> {

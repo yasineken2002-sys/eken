@@ -95,6 +95,13 @@ export class PdfService {
           postalCode: invoice.organization.postalCode ?? null,
           bankgiro: invoice.organization.bankgiro ?? null,
           logoUrl: invoice.organization.logoStorageKey ?? null,
+          // Skatteinformation — krav per 11 kap. 8 § ML att F-skatt-status
+          // visas på faktura. Övriga fält är frivilliga men inkluderas så
+          // att mottagaren ser fullständig identifiering.
+          hasFSkatt: invoice.organization.hasFSkatt,
+          fSkattApprovedDate: invoice.organization.fSkattApprovedDate,
+          vatNumber: invoice.organization.vatNumber ?? null,
+          companyForm: invoice.organization.companyForm,
         },
       },
       logoBase64,

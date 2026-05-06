@@ -4,6 +4,7 @@ import {
   isValidSwedishOrgNumber,
   PASSWORD_MIN_LENGTH,
   PASSWORD_SPECIAL_CHAR_REGEX,
+  validateSwedishOrgNumber,
 } from '../utils'
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
@@ -31,21 +32,72 @@ export const LoginSchema = z.object({
   password: z.string().min(1, 'Lösenord krävs'),
 })
 
-export const RegisterSchema = z.object({
-  email: z.string().email('Ogiltig e-postadress'),
-  password: StrongPasswordSchema,
-  firstName: z.string().min(1).max(100),
-  lastName: z.string().min(1).max(100),
-  organizationName: z.string().min(1).max(200),
-  orgNumber: z
-    .string()
-    .optional()
-    .refine(
-      (v) => !v || isValidSwedishOrgNumber(v),
-      'Ogiltigt organisationsnummer (måste följa Luhn-modulus 10)',
-    ),
-  accountType: z.enum(['COMPANY', 'PRIVATE']).default('COMPANY'),
-})
+// Företagsformer som matchar Prismas CompanyForm-enum exakt — vi
+// dubbel-deklarerar inte enumen i Prisma och Zod, utan håller en
+// strängunion som båda sidor refererar till. Backend mappar detta direkt
+// till `Prisma.CompanyForm` och frontend renderar dropdown-alternativ
+// från COMPANY_FORM_OPTIONS i shared/utils.
+export const CompanyFormSchema = z.enum([
+  'AB',
+  'ENSKILD_FIRMA',
+  'HB',
+  'KB',
+  'FORENING',
+  'STIFTELSE',
+])
+
+export const RegisterSchema = z
+  .object({
+    email: z.string().email('Ogiltig e-postadress'),
+    password: StrongPasswordSchema,
+    firstName: z.string().min(1).max(100),
+    lastName: z.string().min(1).max(100),
+    organizationName: z.string().min(1).max(200),
+    companyForm: CompanyFormSchema.default('AB'),
+    orgNumber: z.string().optional(),
+    // F-skatt: enligt 11 kap. 8 § ML krävs uppgift på faktura. Defaultar
+    // till false så att nya konton inte felaktigt påstår att de är
+    // godkända — användaren bockar i själv när de fått beslutet.
+    hasFSkatt: z.boolean().default(false),
+    fSkattApprovedDate: z.string().date().optional(),
+    vatNumber: z.string().optional(),
+    accountType: z.enum(['COMPANY', 'PRIVATE']).default('COMPANY'),
+  })
+  // Kombinerad orgnummer-validering: orgnumret måste matcha vald form.
+  // Tom orgnummer släpps igenom (valfritt fält); skrivet orgnummer
+  // måste passera validateSwedishOrgNumber med rätt företagsform.
+  .superRefine((data, ctx) => {
+    if (!data.orgNumber) return
+    const result = validateSwedishOrgNumber(data.orgNumber, data.companyForm)
+    if (!result.valid) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: result.error ?? 'Ogiltigt organisationsnummer',
+        path: ['orgNumber'],
+      })
+    }
+  })
+  // F-skatt-datum får inte ligga i framtiden och ska bara anges när
+  // hasFSkatt = true (annars är det meningslöst data).
+  .superRefine((data, ctx) => {
+    if (data.fSkattApprovedDate && !data.hasFSkatt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'F-skatt-datum kan bara anges när "Vi innehar F-skatt" är ikryssad',
+        path: ['fSkattApprovedDate'],
+      })
+    }
+    if (data.fSkattApprovedDate) {
+      const d = new Date(data.fSkattApprovedDate)
+      if (d > new Date()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'F-skatt-datum kan inte ligga i framtiden',
+          path: ['fSkattApprovedDate'],
+        })
+      }
+    }
+  })
 
 export const RefreshTokenSchema = z.object({
   refreshToken: z.string().min(1),
