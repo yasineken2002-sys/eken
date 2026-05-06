@@ -70,6 +70,12 @@ export interface EnqueueMailOptions<T extends TemplateName = TemplateName> {
 /**
  * Den serialiserade payload som faktiskt landar i BullMQ-jobbet.
  * Buffer-bilagor måste base64-kodas för att överleva JSON-serialiseringen.
+ *
+ * idempotencyKey skickas vidare till Resend som `Idempotency-Key`-header
+ * så att Bull-retries (worker-stall, container-restart, transient-fel
+ * efter att Resend redan accepterat mejlet) inte resulterar i dubbla
+ * utskick. Bulls jobId-dedup räcker inte — den skyddar bara mot dubbla
+ * enqueues, inte mot dubbla körningar av samma job.
  */
 export interface MailJobPayload {
   template: TemplateName
@@ -77,6 +83,7 @@ export interface MailJobPayload {
   to: string
   subject: string
   attachments?: Array<{ filename: string; contentBase64: string }>
+  idempotencyKey?: string
 }
 
 export const QUEUE_HIGH = 'mail:high'

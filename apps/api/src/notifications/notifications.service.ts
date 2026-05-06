@@ -231,17 +231,16 @@ export class NotificationsService implements OnModuleInit {
       },
     })
 
-    const today = new Date().toLocaleDateString('sv-SE', {
+    const now = new Date()
+    const today = now.toLocaleDateString('sv-SE', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     })
-
-    const startOfDay = new Date()
-    startOfDay.setHours(0, 0, 0, 0)
-    const endOfDay = new Date(startOfDay)
-    endOfDay.setDate(endOfDay.getDate() + 1)
+    // Stabil dagsnyckel i lokal tid — basen för idempotency på både sentinel
+    // och Resend. Använder sv-SE → "YYYY-MM-DD".
+    const dayKey = now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' })
 
     let sent = 0
     let failed = 0
@@ -250,21 +249,37 @@ export class NotificationsService implements OnModuleInit {
     for (const org of organizations) {
       if (org.users.length === 0) continue
 
-      // Idempotency-guard: hoppa över om dagens rapport redan markerats som
-      // skickad för denna organisation (t.ex. efter server-restart eller dubbel
-      // cron-fire). Sentinel-markeringen är en SYSTEM-notification med fast
-      // titel som vi kan slå upp på (organizationId + dag).
-      const alreadySent = await this.prisma.notification.findFirst({
-        where: {
-          organizationId: org.id,
-          type: 'SYSTEM',
-          title: 'MORNING_INSIGHTS_SENT',
-          createdAt: { gte: startOfDay, lt: endOfDay },
-        },
-        select: { id: true },
-      })
-      if (alreadySent) {
-        skipped++
+      // Atomic sentinel-lås: skriv markeringen FÖRE mejlen skickas, med ett
+      // deterministiskt id (organizationId + dag). Lyckas insert → vi äger
+      // dagens utskick. Faller på unique-violation (P2002) → en annan replica
+      // / cron-fire har redan tagit jobbet, hoppa över. Detta löser race
+      // condition mellan check-then-act i föregående version.
+      const sentinelId = `morning-insights-${org.id}-${dayKey}`
+      const markerUserId = org.users[0]?.id
+      if (!markerUserId) continue
+
+      try {
+        await this.prisma.notification.create({
+          data: {
+            id: sentinelId,
+            organizationId: org.id,
+            userId: markerUserId,
+            type: 'SYSTEM',
+            title: 'MORNING_INSIGHTS_SENT',
+            message: today,
+            read: true,
+            readAt: now,
+          },
+        })
+      } catch (err) {
+        // P2002: unique constraint på id → annan process har redan låst dagen.
+        const code = (err as { code?: string }).code
+        if (code === 'P2002') {
+          skipped++
+          continue
+        }
+        this.logger.error(`Sentinel-lås misslyckades för org ${org.id}: ${String(err)}`)
+        failed++
         continue
       }
 
@@ -282,29 +297,15 @@ export class NotificationsService implements OnModuleInit {
               today,
               organizationName: org.name,
               accentColor: org.invoiceColor ?? '#1a6b3c',
+              // Stabil nyckel per (org, user, dag) — Bull-jobId dedupar dubbla
+              // enqueues, och Resend dedupar dubbla worker-körningar (24h-fönster).
+              idempotencyKey: `morning-insights-${org.id}-${user.id}-${dayKey}`,
             })
             sent++
           } catch (err) {
             this.logger.error(`Morning insights email failed for ${user.email}: ${String(err)}`)
             failed++
           }
-        }
-
-        // Markera dagens rapport som hanterad oavsett om enskilda mejl misslyckats —
-        // vi vill inte regenerera AI-insikter eller spamma användare vid retry.
-        const markerUserId = org.users[0]?.id
-        if (markerUserId) {
-          await this.prisma.notification.create({
-            data: {
-              organizationId: org.id,
-              userId: markerUserId,
-              type: 'SYSTEM',
-              title: 'MORNING_INSIGHTS_SENT',
-              message: today,
-              read: true,
-              readAt: new Date(),
-            },
-          })
         }
       } catch (err) {
         this.logger.error(`Morning insights generation failed for org ${org.id}: ${String(err)}`)

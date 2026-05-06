@@ -51,7 +51,7 @@ abstract class MailWorkerBase {
 
   protected async processJob(job: Job<MailJobPayload>): Promise<void> {
     const start = Date.now()
-    const { template, props, to, subject, attachments } = job.data
+    const { template, props, to, subject, attachments, idempotencyKey } = job.data
     const attempt = job.attemptsMade + 1
 
     this.logger.log(
@@ -63,21 +63,27 @@ abstract class MailWorkerBase {
       props as TemplatePropsMap[TemplateName],
     )
 
-    const result = await this.resend.emails.send({
-      from: this.from,
-      to,
-      subject,
-      html,
-      text,
-      ...(attachments && attachments.length > 0
-        ? {
-            attachments: attachments.map((a) => ({
-              filename: a.filename,
-              content: Buffer.from(a.contentBase64, 'base64'),
-            })),
-          }
-        : {}),
-    })
+    // Idempotency-Key skickas till Resend så att retries (efter worker-stall,
+    // container-restart, transient timeout efter att Resend accepterat mejlet)
+    // inte ger ett andra utskick till samma mottagare. Resend dedupar i 24h.
+    const result = await this.resend.emails.send(
+      {
+        from: this.from,
+        to,
+        subject,
+        html,
+        text,
+        ...(attachments && attachments.length > 0
+          ? {
+              attachments: attachments.map((a) => ({
+                filename: a.filename,
+                content: Buffer.from(a.contentBase64, 'base64'),
+              })),
+            }
+          : {}),
+      },
+      idempotencyKey ? { idempotencyKey } : undefined,
+    )
 
     if (result.error) {
       // Kasta så Bull triggar retry/DLQ

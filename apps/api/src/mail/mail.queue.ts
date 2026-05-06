@@ -46,6 +46,7 @@ export class MailQueue {
             })),
           }
         : {}),
+      ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
     }
 
     const jobOptions: JobOptions = {
