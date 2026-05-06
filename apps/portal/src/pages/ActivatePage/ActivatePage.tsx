@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { validatePasswordStrength } from '@eken/shared'
-import { activateAccount, fetchActivationInfo } from '@/api/portal.api'
+import { activateAccount, fetchActivationContract, fetchActivationInfo } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
 import { Spinner } from '@/components/ui/Spinner'
 import { PasswordRequirements } from '@/components/ui/PasswordRequirements'
@@ -58,6 +58,16 @@ export function ActivatePage() {
     retry: false,
   })
 
+  // Hämta presigned R2-URL till kontrakts-PDF separat — token är auth, ingen
+  // session krävs. Misslyckas hämtningen (PDF inte genererad än) faller vi
+  // tillbaka på HTML-sammanfattningen så hyresgästen åtminstone ser fälten.
+  const contractQuery = useQuery({
+    queryKey: ['tenant-portal', 'activation-contract', token],
+    queryFn: () => fetchActivationContract(token),
+    enabled: !!token && !!infoQuery.data,
+    retry: false,
+  })
+
   const [signed, setSigned] = useState(false)
   const [signatureName, setSignatureName] = useState('')
   const [password, setPassword] = useState('')
@@ -72,7 +82,7 @@ export function ActivatePage() {
   }, [infoQuery.data, signatureName])
 
   const activateMutation = useMutation({
-    mutationFn: () => activateAccount({ token, password }),
+    mutationFn: () => activateAccount({ token, password, signatureName: signatureName.trim() }),
     onSuccess: (result) => {
       setSession(result.sessionToken, result.tenant, result.expiresAt)
       navigate('/dashboard', { replace: true })
@@ -180,9 +190,32 @@ export function ActivatePage() {
         </p>
 
         <form onSubmit={handleSubmit}>
+          {/* ── PDF-preview ─────────────────────────────────────────────── */}
+          {contractQuery.data?.url && (
+            <div className={styles.section}>
+              <p className={styles.sectionLabel}>Granska kontrakts-PDF</p>
+              <div className={styles.pdfFrameWrapper}>
+                <iframe
+                  src={contractQuery.data.url}
+                  title="Hyreskontrakt"
+                  className={styles.pdfFrame}
+                />
+              </div>
+              <a
+                href={contractQuery.data.url}
+                download={contractQuery.data.filename}
+                target="_blank"
+                rel="noreferrer"
+                className={styles.downloadLink}
+              >
+                Ladda ner PDF
+              </a>
+            </div>
+          )}
+
           {/* ── Kontrakt ────────────────────────────────────────────────── */}
           <div className={styles.section}>
-            <p className={styles.sectionLabel}>Hyreskontrakt</p>
+            <p className={styles.sectionLabel}>Sammanfattning</p>
             <div className={styles.contractBox}>
               {lease ? (
                 <>

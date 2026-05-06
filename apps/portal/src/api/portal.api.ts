@@ -65,8 +65,16 @@ export function extractApiError(err: unknown, fallback = 'Något gick fel'): str
 export const fetchActivationInfo = (token: string) =>
   get<PortalActivationInfo>(`/tenant-portal/activation/${encodeURIComponent(token)}`)
 
-export const activateAccount = (payload: { token: string; password: string }) =>
-  post<PortalAuthResult>('/tenant-portal/activate', payload)
+export const fetchActivationContract = (token: string) =>
+  get<{ url: string; filename: string; mimeType: string }>(
+    `/tenant-portal/activation/${encodeURIComponent(token)}/contract`,
+  )
+
+export const activateAccount = (payload: {
+  token: string
+  password: string
+  signatureName: string
+}) => post<PortalAuthResult>('/tenant-portal/activate', payload)
 
 export const loginWithPassword = (payload: { email: string; password: string }) =>
   post<PortalAuthResult>('/tenant-portal/login', payload)

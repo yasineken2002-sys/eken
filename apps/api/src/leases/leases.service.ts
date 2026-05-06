@@ -8,6 +8,7 @@ import { DepositsService } from '../deposits/deposits.service'
 import { RentIncreasesService } from '../rent-increases/rent-increases.service'
 import { TenantAuthService } from '../tenant-portal/tenant-auth.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
+import { LeaseActivationQueue } from './lease-activation.queue'
 import { CreateLeaseDto } from './dto/create-lease.dto'
 import { UpdateLeaseDto } from './dto/update-lease.dto'
 import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
@@ -132,6 +133,7 @@ export class LeasesService {
     private readonly rentIncreases: RentIncreasesService,
     private readonly tenantAuth: TenantAuthService,
     private readonly contracts: ContractTemplateService,
+    private readonly activationQueue: LeaseActivationQueue,
   ) {}
 
   async findAll(organizationId: string) {
@@ -284,27 +286,23 @@ export class LeasesService {
       throw err
     }
 
-    // När ett kontrakt blir ACTIVE genereras en kontrakts-PDF och välkomst-
-    // mejl med aktiveringslänk skickas till hyresgästen. Fire-and-forget:
-    // varken PDF- eller mejlfel ska rulla tillbaka aktiveringen — felen
-    // loggas och kontraktet kan regenereras manuellt från detaljvyn.
+    // När ett kontrakt blir ACTIVE läggs två jobb på lease-activation-kön:
+    // PDF-generering + välkomstmejl. Bull retras automatiskt (1m → 2m → 4m
+    // → 8m → 16m → permanent fail) och vid permanent fail får org-admins en
+    // SYSTEM-notification. Detta ersätter tidigare fire-and-forget som tyst
+    // kunde lämna en ACTIVE Lease utan PDF eller mejl.
     if (newStatus === 'ACTIVE') {
-      // Auto-generera kontrakts-PDF. Vi väntar inte på resultatet eftersom
-      // Puppeteer kan ta några sekunder; mejlservicen kör i sin tur i
-      // bakgrunden via Bull-kön.
       if (actorUserId) {
-        void this.contracts
-          .generateLeaseContract(id, organizationId, actorUserId, { linkPrevious: true })
+        await this.activationQueue
+          .enqueueGenerateContract({ leaseId: id, organizationId, actorUserId })
           .catch((err) =>
-            this.logger.error(`[Leases] auto-generate contract failed: ${String(err)}`),
+            this.logger.error(`[Leases] enqueue generate-contract failed: ${String(err)}`),
           )
       }
 
-      void this.tenantAuth
-        .sendWelcomeWithContract(lease.tenantId)
-        .catch((err) =>
-          this.logger.error(`[Leases] welcome-with-contract mail failed: ${String(err)}`),
-        )
+      await this.activationQueue
+        .enqueueWelcomeMail({ tenantId: lease.tenantId })
+        .catch((err) => this.logger.error(`[Leases] enqueue welcome-mail failed: ${String(err)}`))
     }
 
     return updated

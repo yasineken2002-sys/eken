@@ -1011,6 +1011,10 @@ model Document {
   signedByTenantId  String?
   signedFromIp      String?
   signedUserAgent   String?
+  // Hyresgästens skrivna namnunderskrift vid signering. Lagras separat
+  // från signedByTenant så att vi har två oberoende identitetsspår: vem
+  // som autentiserade (FK) och vad de själva skrev (fritext).
+  signatureName     String?
   locked            Boolean   @default(false)
   previousVersionId String?
 

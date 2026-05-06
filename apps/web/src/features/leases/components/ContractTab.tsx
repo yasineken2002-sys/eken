@@ -27,6 +27,31 @@ function signedByLabel(doc: ContractDocument): string {
   return name || t.companyName || 'okänd hyresgäst'
 }
 
+/**
+ * Lättviktig User-Agent-formatter som plockar ut webbläsare + OS från
+ * en rå UA-sträng utan ny dependency. Vi matchar bara de vanligaste
+ * familjerna; för udda strängar faller vi tillbaka till råversionen.
+ */
+function formatUserAgent(ua: string): string {
+  const browserMatch =
+    ua.match(/(Edg|Chrome|Firefox|Safari)\/([0-9]+)/) ?? ([] as RegExpMatchArray | string[])
+  const browserName = browserMatch[1] === 'Edg' ? 'Edge' : browserMatch[1]
+  const browserVersion = browserMatch[2]
+
+  let os = ''
+  if (/Windows NT 10\.0/.test(ua)) os = 'Windows 10/11'
+  else if (/Windows/.test(ua)) os = 'Windows'
+  else if (/iPhone OS|iPad/.test(ua)) os = 'iOS'
+  else if (/Mac OS X/.test(ua)) os = 'macOS'
+  else if (/Android/.test(ua)) os = 'Android'
+  else if (/Linux/.test(ua)) os = 'Linux'
+
+  if (browserName && browserVersion && os) return `${browserName} ${browserVersion} på ${os}`
+  if (browserName && browserVersion) return `${browserName} ${browserVersion}`
+  if (os) return os
+  return ua.length > 80 ? `${ua.slice(0, 77)}…` : ua
+}
+
 export function ContractTab({ leaseId }: Props) {
   const qc = useQueryClient()
   const { data, isLoading } = useQuery({
@@ -92,6 +117,16 @@ export function ContractTab({ leaseId }: Props) {
               Signerat av <strong>{signedByLabel(latest)}</strong> {formatDateTime(latest.signedAt)}
               {latest.signedFromIp ? ` från IP ${latest.signedFromIp}` : ''}.
             </p>
+            {latest.signatureName && (
+              <p className="mt-0.5 text-emerald-700/80">
+                Skriven underskrift: <strong>{latest.signatureName}</strong>
+              </p>
+            )}
+            {latest.signedUserAgent && (
+              <p className="mt-0.5 text-emerald-700/80">
+                Enhet: {formatUserAgent(latest.signedUserAgent)}
+              </p>
+            )}
             {latest.contentHash && (
               <p className="mt-1 break-all font-mono text-[10.5px] text-emerald-700/70">
                 SHA-256: {latest.contentHash}

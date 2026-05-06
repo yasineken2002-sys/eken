@@ -160,6 +160,8 @@ export interface ContractDocument {
   createdAt: string
   signedAt: string | null
   signedFromIp: string | null
+  signedUserAgent: string | null
+  signatureName: string | null
   contentHash: string | null
   locked: boolean
   previousVersionId: string | null

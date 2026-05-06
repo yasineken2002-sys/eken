@@ -150,7 +150,11 @@ export class TenantAuthService {
   async activate(
     token: string,
     password: string,
-    signature: { ip: string | null; userAgent: string | null } = { ip: null, userAgent: null },
+    signature: {
+      ip: string | null
+      userAgent: string | null
+      signatureName?: string | null
+    } = { ip: null, userAgent: null, signatureName: null },
   ): Promise<SessionResult> {
     assertStrongPassword(password)
 
@@ -180,11 +184,27 @@ export class TenantAuthService {
     })
 
     // Lås den senaste kontrakts-PDF:en för hyresgästens aktiva kontrakt och
-    // skriv signaturmetadata. Fire-and-forget: en signering ska inte blockera
-    // aktiveringen men låsdata bör finnas på dokumentet.
-    void this.lockLatestContractForTenant(updated.id, updated.organizationId, signature).catch(
-      (err) => this.logger.warn(`[TenantAuth] kunde inte låsa kontraktsdokument: ${String(err)}`),
-    )
+    // skriv signaturmetadata. Vi inväntar låsningen så att vi vet exakt vilket
+    // dokument som signerades — bekräftelsemejlet behöver dess id som
+    // idempotency-nyckel. Misslyckas låsningen blir aktiveringen ändå klar:
+    // hyresgästen får sitt konto, men vi loggar och skippar bekräftelsemejlet
+    // (mejlas inget om vi inte kan bevisa vilket dokument det gäller).
+    let signedDocumentId: string | null = null
+    try {
+      signedDocumentId = await this.lockLatestContractForTenant(
+        updated.id,
+        updated.organizationId,
+        signature,
+      )
+    } catch (err) {
+      this.logger.warn(`[TenantAuth] kunde inte låsa kontraktsdokument: ${String(err)}`)
+    }
+
+    if (signedDocumentId) {
+      void this.sendSignatureConfirmation(updated.id, signedDocumentId).catch((err) => {
+        this.logger.warn(`[TenantAuth] kvittensmejl misslyckades: ${String(err)}`)
+      })
+    }
 
     return this.createSession(updated)
   }
@@ -192,24 +212,30 @@ export class TenantAuthService {
   private async lockLatestContractForTenant(
     tenantId: string,
     organizationId: string,
-    signature: { ip: string | null; userAgent: string | null },
-  ): Promise<void> {
+    signature: {
+      ip: string | null
+      userAgent: string | null
+      signatureName?: string | null
+    },
+  ): Promise<string | null> {
     // Hitta senaste aktiva kontraktet för hyresgästen.
     const lease = await this.prisma.lease.findFirst({
       where: { tenantId, status: { in: ['DRAFT', 'ACTIVE'] } },
       orderBy: { createdAt: 'desc' },
       select: { id: true },
     })
-    if (!lease) return
+    if (!lease) return null
 
     const doc = await this.contracts.findLatestContract(lease.id, organizationId)
-    if (!doc || doc.locked) return
+    if (!doc || doc.locked) return null
 
     await this.contracts.lockContractAfterSignature(doc.id, {
       tenantId,
       ip: signature.ip,
       userAgent: signature.userAgent,
+      signatureName: signature.signatureName ?? null,
     })
+    return doc.id
   }
 
   // ── Lösenordsinloggning ──────────────────────────────────────────────────────
@@ -264,6 +290,9 @@ export class TenantAuthService {
         resetUrl,
         organizationName: tenant.organization.name,
         validForHours: 24,
+        // Stabil nyckel per (tenant, token-prefix) — Bull-jobId dedupar dubbla
+        // enqueues och Resend dedupar dubbla worker-körningar.
+        idempotencyKey: `tenant-reset-${tenant.id}-${token.substring(0, 8)}`,
       })
       .catch((err: unknown) => {
         this.logger.warn(`Forgot-password mail för ${email} failade: ${String(err)}`)
@@ -366,10 +395,48 @@ export class TenantAuthService {
         organizationName: tenant.organization.name,
         activationUrl,
         validForHours: 72,
+        // Stabil nyckel per (tenant, token-prefix). Bull-jobId dedupar dubbla
+        // enqueues, Resend dedupar dubbla worker-körningar (samma fix som
+        // morgonrapporten — utan den kan worker-stall ge två mejl).
+        idempotencyKey: `tenant-welcome-${tenant.id}-${token.substring(0, 8)}`,
       })
       .catch((err: unknown) => {
         this.logger.error(`Välkomstmejl för tenant ${tenantId} failade: ${String(err)}`)
       })
+  }
+
+  /**
+   * Bekräftelsemejl efter genomförd signering. Skickas direkt efter att
+   * Document-raden låsts. Vi använder dokumentets id som idempotency-nyckel
+   * eftersom det är ett-till-ett med en signering — admin kan inte dubbel-
+   * trigga genom att retra aktiveringen (det blir en ny token + nytt doc-id).
+   */
+  async sendSignatureConfirmation(tenantId: string, documentId: string): Promise<void> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      include: { organization: { select: { name: true } } },
+    })
+    if (!tenant) return
+
+    const tenantName = tenant.firstName
+      ? `${tenant.firstName} ${tenant.lastName ?? ''}`.trim()
+      : (tenant.companyName ?? tenant.email)
+
+    const portalUrl = this.config.get<string>('PORTAL_URL') ?? 'http://localhost:5174'
+    const documentsUrl = `${portalUrl}/documents`
+
+    await this.mail.sendTenantSignatureConfirmation({
+      to: tenant.email,
+      tenantName,
+      organizationName: tenant.organization.name,
+      documentsUrl,
+      signedAt: new Date().toLocaleDateString('sv-SE', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      }),
+      idempotencyKey: `tenant-signature-confirm-${documentId}`,
+    })
   }
 
   // ── Cron-städning ────────────────────────────────────────────────────────────

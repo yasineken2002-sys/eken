@@ -118,6 +118,15 @@ export interface SendTenantWelcomeWithContractOptions {
   idempotencyKey?: string
 }
 
+export interface SendTenantSignatureConfirmationOptions {
+  to: string
+  tenantName: string
+  organizationName: string
+  documentsUrl: string
+  signedAt: string
+  idempotencyKey?: string
+}
+
 export interface SendInvoiceReminderOptions {
   to: string
   tenantName: string
@@ -251,6 +260,26 @@ export class MailService {
       {
         to: opts.to,
         subject: `Välkommen till ${opts.organizationName} — signera ditt kontrakt`,
+        idempotencyKey: opts.idempotencyKey,
+      },
+    )
+  }
+
+  async sendTenantSignatureConfirmation(
+    opts: SendTenantSignatureConfirmationOptions,
+  ): Promise<string> {
+    return this.enqueueTyped(
+      'tenant-signature-confirmation',
+      'high',
+      {
+        tenantName: opts.tenantName,
+        organizationName: opts.organizationName,
+        documentsUrl: opts.documentsUrl,
+        signedAt: opts.signedAt,
+      },
+      {
+        to: opts.to,
+        subject: `Kvittens — ditt hyreskontrakt hos ${opts.organizationName} är signerat`,
         idempotencyKey: opts.idempotencyKey,
       },
     )

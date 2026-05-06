@@ -231,7 +231,12 @@ export class ContractTemplateService {
    */
   async lockContractAfterSignature(
     documentId: string,
-    signature: { tenantId: string; ip: string | null; userAgent: string | null },
+    signature: {
+      tenantId: string
+      ip: string | null
+      userAgent: string | null
+      signatureName?: string | null
+    },
   ): Promise<void> {
     await this.prisma.document.update({
       where: { id: documentId },
@@ -240,6 +245,7 @@ export class ContractTemplateService {
         signedByTenantId: signature.tenantId,
         signedFromIp: signature.ip,
         signedUserAgent: signature.userAgent,
+        signatureName: signature.signatureName ?? null,
         locked: true,
       },
     })

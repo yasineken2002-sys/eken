@@ -22,6 +22,8 @@ import { Roles } from '../common/decorators/roles.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { StorageService } from '../storage/storage.service'
+import { ContractTemplateService } from '../contracts/contract-template.service'
 import { TenantAuthService } from './tenant-auth.service'
 import { TenantPortalService } from './tenant-portal.service'
 import { TenantAuthGuard } from './tenant-auth.guard'
@@ -52,6 +54,13 @@ class ActivateDto {
   @IsString()
   @MinLength(1)
   password!: string
+
+  // Hyresgästens skrivna namnunderskrift vid digital signering. Sparas
+  // på Document-raden så signaturen blir spårbar separat från FK-länken
+  // till Tenant.
+  @IsString()
+  @MinLength(2)
+  signatureName!: string
 }
 
 class DeleteAccountDto {
@@ -122,6 +131,8 @@ export class TenantAuthController {
   constructor(
     private readonly tenantAuthService: TenantAuthService,
     private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+    private readonly contracts: ContractTemplateService,
   ) {}
 
   /**
@@ -164,6 +175,32 @@ export class TenantAuthController {
     }
   }
 
+  /**
+   * Returnerar en presigned R2-URL till senaste kontrakts-PDF för aktiverings-
+   * tokenets hyresgäst. Token i sig är auth — ingen extra session krävs.
+   * Hyresgästen ska kunna granska den faktiska PDF:en (inte bara HTML-fält)
+   * innan de signerar.
+   */
+  @Get('activation/:token/contract')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  async getActivationContract(@Param('token') token: string) {
+    // findTenantByActivationToken kastar 401 vid ogiltig/utgången token, vilket
+    // ger samma generiska felsvar som övriga aktiveringsendpoints.
+    const tenant = await this.tenantAuthService.findTenantByActivationToken(token)
+    const lease = tenant.leases[0]
+    if (!lease) {
+      throw new NotFoundException('Inget kontrakt hittades')
+    }
+
+    const doc = await this.contracts.findLatestContract(lease.id, tenant.organizationId)
+    if (!doc) {
+      throw new NotFoundException('Kontraktets PDF har inte genererats än')
+    }
+
+    const url = await this.storage.getPresignedUrl(doc.storageKey, 300)
+    return { url, filename: `${doc.name}.pdf`, mimeType: doc.mimeType }
+  }
+
   @Post('activate')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
@@ -173,6 +210,7 @@ export class TenantAuthController {
     const result = await this.tenantAuthService.activate(dto.token, dto.password, {
       ip,
       userAgent: typeof userAgent === 'string' ? userAgent : null,
+      signatureName: dto.signatureName,
     })
     return {
       sessionToken: result.sessionToken,

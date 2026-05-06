@@ -94,6 +94,8 @@ export class ContractsController {
         createdAt: true,
         signedAt: true,
         signedFromIp: true,
+        signedUserAgent: true,
+        signatureName: true,
         contentHash: true,
         locked: true,
         previousVersionId: true,
