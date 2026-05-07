@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -7,9 +9,12 @@ import {
   Logger,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common'
+import { IsBoolean, IsEnum, IsInt, IsOptional, Min } from 'class-validator'
 import { Throttle } from '@nestjs/throttler'
 import * as crypto from 'crypto'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
@@ -25,6 +30,17 @@ import { ContractTemplateService } from './contract-template.service'
 // och lämnas till stickprovs-jobb vid behov. 10 MB täcker så gott som alla
 // kontrakt — typiska hyreskontrakt är 50-300 KB, även med foton.
 const HASH_VERIFY_MAX_BYTES = 10 * 1024 * 1024
+
+// DTO för PATCH /contracts/:leaseId/appendices/:documentId. Måste deklareras
+// före @Controller-klassen — annars körs decoratorn med ett fortfarande
+// odefinierat klassnamn (TDZ) i runtime.
+class UpdateAppendixDto {
+  @IsBoolean() @IsOptional() attachedToLeaseAsAppendix?: boolean
+  @IsEnum(['ENERGY_DECLARATION', 'HOUSE_RULES', 'INSPECTION_PROTOCOL', 'OTHER'])
+  @IsOptional()
+  category?: 'ENERGY_DECLARATION' | 'HOUSE_RULES' | 'INSPECTION_PROTOCOL' | 'OTHER'
+  @IsInt() @Min(0) @IsOptional() appendixOrder?: number
+}
 
 @Controller('contracts')
 @UseGuards(JwtAuthGuard)
@@ -178,5 +194,92 @@ export class ContractsController {
       hasPdf: documents.length > 0,
       staleSinceSigning,
     }
+  }
+
+  /**
+   * Listar dokument som är (eller kan bli) bilagor till leasens kontrakt.
+   * Inkluderar redan markerade bilagor sorterade efter `appendixOrder`,
+   * samt övriga lease-länkade dokument som hyresvärden kan välja att lägga
+   * till. CONTRACT-kategorin filtreras bort — vi vill inte att den
+   * genererade kontrakts-PDF:en bifogar sig själv som bilaga.
+   */
+  @Get(':leaseId/appendices')
+  async listAppendices(@OrgId() orgId: string, @Param('leaseId', ParseUUIDPipe) leaseId: string) {
+    const lease = await this.prisma.lease.findFirst({
+      where: { id: leaseId, organizationId: orgId },
+      select: { id: true },
+    })
+    if (!lease) throw new NotFoundException('Kontraktet hittades inte')
+
+    const docs = await this.prisma.document.findMany({
+      where: {
+        leaseId,
+        organizationId: orgId,
+        NOT: { category: 'CONTRACT' },
+      },
+      orderBy: [
+        { attachedToLeaseAsAppendix: 'desc' },
+        { appendixOrder: 'asc' },
+        { createdAt: 'desc' },
+      ],
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        fileSize: true,
+        mimeType: true,
+        attachedToLeaseAsAppendix: true,
+        appendixOrder: true,
+        createdAt: true,
+      },
+    })
+
+    return { items: docs }
+  }
+
+  /**
+   * Patch:ar appendix-flaggan + ev. ny kategori/ordning på ett dokument.
+   * Vi tillåter alla dokumentkategorier som bilaga, men nya specifika
+   * bilage-typer (ENERGY_DECLARATION, HOUSE_RULES, INSPECTION_PROTOCOL)
+   * är de som visas tydligast i kontraktets bilageförteckning.
+   */
+  @Patch(':leaseId/appendices/:documentId')
+  async updateAppendix(
+    @OrgId() orgId: string,
+    @Param('leaseId', ParseUUIDPipe) leaseId: string,
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Body() dto: UpdateAppendixDto,
+  ) {
+    const doc = await this.prisma.document.findFirst({
+      where: { id: documentId, organizationId: orgId, leaseId },
+      select: { id: true, locked: true, category: true },
+    })
+    if (!doc) throw new NotFoundException('Dokumentet hittades inte på detta kontrakt')
+    if (doc.category === 'CONTRACT') {
+      throw new BadRequestException('Själva kontrakts-PDF:en kan inte vara bilaga')
+    }
+
+    const data: Record<string, unknown> = {}
+    if (dto.attachedToLeaseAsAppendix !== undefined) {
+      data['attachedToLeaseAsAppendix'] = dto.attachedToLeaseAsAppendix
+    }
+    if (dto.category !== undefined) {
+      data['category'] = dto.category
+    }
+    if (dto.appendixOrder !== undefined) {
+      data['appendixOrder'] = dto.appendixOrder
+    }
+
+    return this.prisma.document.update({
+      where: { id: documentId },
+      data,
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        attachedToLeaseAsAppendix: true,
+        appendixOrder: true,
+      },
+    })
   }
 }

@@ -262,6 +262,13 @@ enum DocumentCategory {
   PHOTO
   INVOICE
   INSURANCE
+  // Kontraktsbilagor — bifogas hyreskontraktets sista sida som
+  // länkad bilageförteckning. ENERGY_DECLARATION krävs enligt lag
+  // (2006:985), HOUSE_RULES bifogas vid behov, INSPECTION_PROTOCOL
+  // är tillträdes-/avflyttningsbesiktning.
+  ENERGY_DECLARATION
+  HOUSE_RULES
+  INSPECTION_PROTOCOL
   OTHER
 }
 
@@ -414,6 +421,7 @@ model Organization {
   platformInvoices   PlatformInvoice[]
   impersonationLogs  ImpersonationLog[]
   errorLogs          ErrorLog[]
+  contractNumberSequences ContractNumberSequence[]
   deposits           Deposit[]
   rentIncreases      RentIncrease[]
   customers          Customer[]
@@ -762,6 +770,19 @@ model Lease {
   // ── Försäkring ──────────────────────────────────────────────────────────
   requiresHomeInsurance Boolean @default(true)
 
+  // ── Särskilda bestämmelser (Kontraktsmall 2.0) ──────────────────────────
+  // Fritextfält där hyresvärden kan lägga till egna villkor som inte täcks
+  // av standardparagraferna — t.ex. "tillträde först efter städning av
+  // föregående hyresgäst" eller "garageplats nr 5 ingår". Renderas som
+  // egen § "ÖVRIGA VILLKOR & SÄRSKILDA BESTÄMMELSER" i PDF:en när satt.
+  specialTerms String? @db.Text
+
+  // ── Kontraktsnummer (Kontraktsmall 2.0) ─────────────────────────────────
+  // Fortlöpande nummer per organisation, format KONT-{år}-{löpnr:5}.
+  // Genereras vid DRAFT → ACTIVE via ContractNumberSequence-tabellen.
+  // Null så länge kontraktet är i DRAFT.
+  contractNumber String? @unique
+
   unit                Unit                 @relation(fields: [unitId], references: [id])
   tenant              Tenant               @relation(fields: [tenantId], references: [id])
   invoices            Invoice[]
@@ -1044,6 +1065,13 @@ model Document {
   locked            Boolean   @default(false)
   previousVersionId String?
 
+  // ── Kontraktsbilaga (Kontraktsmall 2.0) ────────────────────────────────
+  // När true bifogas dokumentet i hyreskontraktets bilageförteckning
+  // (sista sidan av PDF:en). appendixOrder styr sorteringen — låga tal
+  // först. Bara meningsfullt när leaseId är satt.
+  attachedToLeaseAsAppendix Boolean @default(false)
+  appendixOrder             Int?
+
   organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   property         Property?    @relation(fields: [propertyId], references: [id])
   unit             Unit?        @relation(fields: [unitId], references: [id])
@@ -1063,6 +1091,24 @@ model Document {
   @@index([leaseId])
   @@index([tenantId])
   @@index([previousVersionId])
+  @@index([leaseId, attachedToLeaseAsAppendix])
+}
+
+// ─── ContractNumberSequence (Kontraktsmall 2.0) ───────────────────────────────
+// Per-organisation, per-år löpnummer för kontrakt. Vi kör en SELECT FOR UPDATE
+// inom transaktion + UPSERT — Postgres kan därför aldrig dela ut samma nummer
+// två gånger även vid samtidiga DRAFT→ACTIVE-aktiveringar. Liknar fakturornas
+// nummersystem men en separat tabell så vi kan ha andra format/regler om de
+// divergerar i framtiden.
+model ContractNumberSequence {
+  organizationId String
+  year           Int
+  lastNumber     Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, year])
 }
 
 // ─── AI Assistant ─────────────────────────────────────────────────────────────

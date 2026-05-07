@@ -92,6 +92,9 @@ const schema = z
     indexMaxIncrease: z.coerce.number().min(0).max(100).optional(),
     indexMinIncrease: z.coerce.number().min(0).max(100).optional(),
     indexNotes: z.string().optional(),
+
+    // Övriga villkor / särskilda bestämmelser (Kontraktsmall 2.0)
+    specialTerms: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.leaseType === 'FIXED_TERM' && !data.endDate) {
@@ -346,6 +349,8 @@ export function LeaseForm({
         ? { indexMinIncrease: defaultValues.indexMinIncrease }
         : {}),
       indexNotes: defaultValues?.indexNotes ?? '',
+
+      specialTerms: defaultValues?.specialTerms ?? '',
     },
   })
 
@@ -448,6 +453,9 @@ export function LeaseForm({
             ...(v.indexNotes?.trim() ? { indexNotes: v.indexNotes.trim() } : {}),
           }
         : {}),
+
+      // Övriga villkor — fritext skickas bara om något skrivits in.
+      ...(v.specialTerms?.trim() ? { specialTerms: v.specialTerms.trim() } : {}),
     }
 
     if (v.tenantMode === 'existing') {
@@ -1056,6 +1064,24 @@ export function LeaseForm({
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Section 10: Särskilda bestämmelser ───────────────────────────── */}
+      <SectionDivider label="Särskilda bestämmelser (valfritt)" />
+      <div className="space-y-1.5">
+        <textarea
+          rows={4}
+          placeholder={
+            'Egna villkor som inte täcks av standardparagraferna.\n\n' +
+            "T.ex. 'Tillträde först efter städning av föregående hyresgäst', " +
+            "'Garageplats nr 5 ingår'."
+          }
+          {...register('specialTerms')}
+          className="w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] leading-relaxed text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <p className="text-[11.5px] text-gray-500">
+          Renderas som en egen § ”Övriga villkor &amp; särskilda bestämmelser” i kontraktet.
+        </p>
       </div>
 
       <ModalFooter>

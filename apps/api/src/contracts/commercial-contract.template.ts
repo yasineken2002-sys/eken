@@ -16,6 +16,7 @@ import {
   type ContractTemplateInput,
   buildHtmlShell,
   buildIncludesList,
+  contractNumberLabel,
   formatDateSv,
   formatMoney,
   partiesSection,
@@ -30,6 +31,8 @@ import {
   moveOutSection,
   forfeitureSection,
   signatureBlock,
+  specialTermsSection,
+  appendicesSection,
   footer,
   RENT_DUE_TEXT,
   escape,
@@ -39,7 +42,8 @@ export function buildCommercialContractHtml(input: ContractTemplateInput): strin
   const { lease, organization: org } = input
 
   const primaryColor = org.invoiceColor ?? '#1a6b3c'
-  const contractNumber = lease.id.slice(0, 8).toUpperCase()
+  const variant = org.invoiceTemplate
+  const contractNumber = contractNumberLabel(input)
   const today = new Date().toLocaleDateString('sv-SE')
 
   const noticePeriod =
@@ -263,14 +267,19 @@ export function buildCommercialContractHtml(input: ContractTemplateInput): strin
     ska föregås av medling i Hyresnämnden.
   </div>
 
-  <h2>§ 20 — Underskrifter</h2>
+  ${specialTermsSection(input, 20)}
+
+  <h2>§ ${input.lease.specialTerms?.trim() ? 21 : 20} — Underskrifter</h2>
   ${signatureBlock(input)}
 
   ${footer(input)}
+
+  ${appendicesSection(input)}
   `
 
   return buildHtmlShell({
     primaryColor,
+    variant,
     title: 'HYRESKONTRAKT — LOKAL',
     subtitle: `Lokalhyresavtal · ${org.name}`,
     contractNumber,
@@ -278,6 +287,7 @@ export function buildCommercialContractHtml(input: ContractTemplateInput): strin
     organizationName: org.name,
     logoDataUrl: org.logoDataUrl,
     body,
+    showDraftWatermark: lease.status === 'DRAFT',
   })
 }
 

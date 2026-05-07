@@ -5,6 +5,17 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
 import { generateInvoiceHtml } from './templates/invoice-pdf.template'
 
+// Liten HTML-escape för values vi väver in i Puppeteers header/footer-
+// templates (kontraktsnummer, orgnamn). Templates tolkas som HTML, så vi
+// måste skydda mot &/<>/"-tecken i orgnamn.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
 const BROWSER_LAUNCH_ARGS = [
   '--no-sandbox',
   '--disable-setuid-sandbox',
@@ -56,6 +67,54 @@ export class PdfService implements OnModuleDestroy {
         format: 'A4',
         printBackground: true,
         margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },
+      })
+      return Buffer.from(pdf)
+    })
+  }
+
+  /**
+   * Genererar en kontrakts-PDF med upprepad header/footer på varje sida —
+   * Chromium-versionen av CSS Paged Media `@top-center` / `@bottom-right`
+   * (vilket Chromium inte stödjer). Headern visar
+   * "Hyreskontrakt — KONT-NNNN · OrgName" och footern visar "Sida X av Y"
+   * höger samt kontraktsnumret vänster.
+   *
+   * Marginalerna måste matcha @page-värdena i contract-template.shared.ts:
+   *   top:25mm  right:18mm  bottom:22mm  left:18mm
+   *
+   * displayHeaderFooter=true tillsammans med headerTemplate/footerTemplate
+   * är hur Puppeteer faktiskt utlöser detta — utan templates renderas
+   * standardrubriken/-footern (URL och tid), vilket vi inte vill ha.
+   */
+  async generateContractFromHtml(
+    html: string,
+    meta: { contractNumber: string; organizationName: string },
+  ): Promise<Buffer> {
+    return this.withPage(async (page) => {
+      await page.setContent(html, { waitUntil: 'networkidle0' })
+
+      const headerHtml = `
+        <div style="font-size:8pt;color:#6b7280;width:100%;padding:0 18mm;
+                    font-family:-apple-system,system-ui,sans-serif;
+                    text-align:center;">
+          Hyreskontrakt — ${escapeHtml(meta.contractNumber)} · ${escapeHtml(meta.organizationName)}
+        </div>`
+
+      const footerHtml = `
+        <div style="font-size:8pt;color:#6b7280;width:100%;padding:0 18mm;
+                    font-family:-apple-system,system-ui,sans-serif;
+                    display:flex;justify-content:space-between;">
+          <span>${escapeHtml(meta.contractNumber)}</span>
+          <span>Sida <span class="pageNumber"></span> av <span class="totalPages"></span></span>
+        </div>`
+
+      const pdf = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate: headerHtml,
+        footerTemplate: footerHtml,
+        margin: { top: '25mm', right: '18mm', bottom: '22mm', left: '18mm' },
       })
       return Buffer.from(pdf)
     })

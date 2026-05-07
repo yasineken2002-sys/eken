@@ -11,14 +11,35 @@
 // Laghänvisningar är aktivt korrekta — varje § i mallen anger vilken
 // paragraf i 12 kap. JB den vilar på, så att en jurist kan revidera
 // mallen utan att behöva gå tillbaka till källkoden.
+//
+// Kontraktsmall 2.0 (2026-05-08):
+//   – konsekvent typografi mot fakturamallen (system-ui, 11px body, 26px H1)
+//   – tre template-varianter: classic / modern / minimal (delas med faktura)
+//   – DRAFT-vattenmärke "EJ SIGNERAT" tills kontraktet aktiveras
+//   – egen § "Övriga villkor" om lease.specialTerms är ifyllt
+//   – BILAGOR-sektion på sista sidan + bilageförteckning
+//   – kontraktsnummer i format KONT-{år}-{löpnr} (fortlöpande per org)
 
 import type { PetPolicy, IndexClauseType, CompanyForm } from '@prisma/client'
 
+// ─── Template-variants (delas med fakturan via Organization.invoiceTemplate) ─
+
+export type ContractTemplateVariant = 'classic' | 'modern' | 'minimal'
+
 // ─── Input ────────────────────────────────────────────────────────────────
+
+export interface ContractTemplateAppendix {
+  id: string
+  title: string
+  category: 'ENERGY_DECLARATION' | 'HOUSE_RULES' | 'INSPECTION_PROTOCOL' | 'OTHER'
+  fileSize?: number
+}
 
 export interface ContractTemplateInput {
   lease: {
     id: string
+    contractNumber: string | null
+    status: 'DRAFT' | 'ACTIVE' | 'TERMINATED' | 'EXPIRED'
     startDate: Date
     endDate: Date | null
     monthlyRent: number
@@ -54,6 +75,9 @@ export interface ContractTemplateInput {
     indexMaxIncrease: number | null
     indexMinIncrease: number | null
     indexNotes: string | null
+
+    // Övriga villkor / särskilda bestämmelser (Kontraktsmall 2.0)
+    specialTerms: string | null
   }
   organization: {
     name: string
@@ -66,6 +90,7 @@ export interface ContractTemplateInput {
     city: string
     bankgiro: string | null
     invoiceColor: string | null
+    invoiceTemplate: ContractTemplateVariant
     logoDataUrl: string | null
     // Företagsform — styr vilken signatärsroll som anges i § 1 och i
     // signaturblocket (firmatecknare/ägare/bolagsman/behörig firmatecknare).
@@ -110,6 +135,9 @@ export interface ContractTemplateInput {
     commonAreasNotes: string | null
     garbageDisposalRules: string | null
   }
+  // Bilagor som ska listas i kontraktets bilageförteckning på sista sidan.
+  // Pre-sorterade efter appendixOrder + kategori.
+  appendices: ContractTemplateAppendix[]
   // Signaturmetadata visas på hyresgästsidan om kontraktet är digitalt
   // signerat. Sätts av ContractTemplateService efter att tenant-aktiveringen
   // skrivit lock-data till Document-raden.
@@ -161,6 +189,13 @@ export function escape(s: string | null | undefined): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+// Visningsnummer för kontraktet. Använd lease.contractNumber när det finns
+// (KONT-2026-00042), annars en lease-id-fallback (gamla DRAFT-rader). Den
+// här hjälpfunktionen används både i headern, i footern och som filnamn.
+export function contractNumberLabel(input: ContractTemplateInput): string {
+  return input.lease.contractNumber ?? input.lease.id.slice(0, 8).toUpperCase()
 }
 
 // Vem som lagligen tecknar avtalet för hyresvärden — beror på företagsform.
@@ -222,10 +257,169 @@ export const RENT_DUE_TEXT =
   ' betalning utgår dröjsmålsränta enligt räntelagen (1975:635) samt påminnelse-' +
   ' och inkassoavgifter enligt lagen (1981:739) om ersättning för inkassokostnader.'
 
+// ─── Variant-tokens ──────────────────────────────────────────────────────
+// Tre stilar: classic (formell, traditionell — som dagens), modern (rundade
+// hörn, färgad header-bar, mer luft), minimal (svartvit, minimal pynt).
+// Tokens delar struktur så mallarna inte vet vilken variant de renderas i.
+
+interface VariantTokens {
+  bodyBg: string
+  surfaceBg: string
+  partyBoxBg: string
+  partyBoxBorder: string
+  infoGridBg: string
+  infoGridRadius: string
+  cardRadius: string
+  borderColor: string
+  hAccent: string // h2 färg
+  hAccentMuted: string // dimmad lawref
+  textPrimary: string
+  textSecondary: string
+  textTertiary: string
+  headerBorderBottom: string // accent under header
+  headerBg: string // bg på själva header-blocket
+  headerTitleColor: string
+  headerSubColor: string
+  headerMetaColor: string
+  clauseBorder: string
+  clauseNumberColor: string
+  highlightBg: string
+  highlightBorder: string
+  highlightText: string
+  infoBoxBg: string
+  infoBoxBorder: string
+  infoBoxText: string
+  sigTopBorder: string
+  sigStrongColor: string
+  digitalSigBg: string
+  digitalSigBorder: string
+  digitalSigText: string
+  digitalSigStrong: string
+  appendixCardBg: string
+  appendixCardBorder: string
+}
+
+function tokensForVariant(variant: ContractTemplateVariant, primary: string): VariantTokens {
+  if (variant === 'modern') {
+    return {
+      bodyBg: '#ffffff',
+      surfaceBg: '#ffffff',
+      partyBoxBg: '#f8fafc',
+      partyBoxBorder: '#e5e7eb',
+      infoGridBg: '#f8fafc',
+      infoGridRadius: '12px',
+      cardRadius: '12px',
+      borderColor: '#e5e7eb',
+      hAccent: primary,
+      hAccentMuted: '#9ca3af',
+      textPrimary: '#0f172a',
+      textSecondary: '#64748b',
+      textTertiary: '#94a3b8',
+      headerBorderBottom: '0',
+      headerBg: primary,
+      headerTitleColor: '#ffffff',
+      headerSubColor: 'rgba(255,255,255,0.85)',
+      headerMetaColor: 'rgba(255,255,255,0.85)',
+      clauseBorder: '#e2e8f0',
+      clauseNumberColor: primary,
+      highlightBg: '#fef3c7',
+      highlightBorder: '#f59e0b',
+      highlightText: '#78350f',
+      infoBoxBg: '#eff6ff',
+      infoBoxBorder: '#3b82f6',
+      infoBoxText: '#1e40af',
+      sigTopBorder: primary,
+      sigStrongColor: primary,
+      digitalSigBg: '#ecfdf5',
+      digitalSigBorder: '#6ee7b7',
+      digitalSigText: '#065f46',
+      digitalSigStrong: '#064e3b',
+      appendixCardBg: '#f8fafc',
+      appendixCardBorder: '#e2e8f0',
+    }
+  }
+  if (variant === 'minimal') {
+    return {
+      bodyBg: '#ffffff',
+      surfaceBg: '#ffffff',
+      partyBoxBg: '#ffffff',
+      partyBoxBorder: '#d1d5db',
+      infoGridBg: '#ffffff',
+      infoGridRadius: '0',
+      cardRadius: '0',
+      borderColor: '#d1d5db',
+      hAccent: '#111827',
+      hAccentMuted: '#6b7280',
+      textPrimary: '#111827',
+      textSecondary: '#374151',
+      textTertiary: '#6b7280',
+      headerBorderBottom: '1px solid #111827',
+      headerBg: 'transparent',
+      headerTitleColor: '#111827',
+      headerSubColor: '#6b7280',
+      headerMetaColor: '#6b7280',
+      clauseBorder: '#d1d5db',
+      clauseNumberColor: '#111827',
+      highlightBg: '#ffffff',
+      highlightBorder: '#111827',
+      highlightText: '#111827',
+      infoBoxBg: '#ffffff',
+      infoBoxBorder: '#111827',
+      infoBoxText: '#111827',
+      sigTopBorder: '#111827',
+      sigStrongColor: '#111827',
+      digitalSigBg: '#ffffff',
+      digitalSigBorder: '#111827',
+      digitalSigText: '#111827',
+      digitalSigStrong: '#111827',
+      appendixCardBg: '#ffffff',
+      appendixCardBorder: '#d1d5db',
+    }
+  }
+  // classic (default)
+  return {
+    bodyBg: '#ffffff',
+    surfaceBg: '#ffffff',
+    partyBoxBg: '#fafafa',
+    partyBoxBorder: '#e5e7eb',
+    infoGridBg: '#f8fafc',
+    infoGridRadius: '6px',
+    cardRadius: '6px',
+    borderColor: '#e5e7eb',
+    hAccent: primary,
+    hAccentMuted: '#9ca3af',
+    textPrimary: '#1f2937',
+    textSecondary: '#6b7280',
+    textTertiary: '#9ca3af',
+    headerBorderBottom: `3px solid ${primary}`,
+    headerBg: 'transparent',
+    headerTitleColor: primary,
+    headerSubColor: '#6b7280',
+    headerMetaColor: '#6b7280',
+    clauseBorder: '#e5e7eb',
+    clauseNumberColor: primary,
+    highlightBg: '#fffbeb',
+    highlightBorder: '#d97706',
+    highlightText: '#78350f',
+    infoBoxBg: '#eff6ff',
+    infoBoxBorder: '#2563eb',
+    infoBoxText: '#1e3a8a',
+    sigTopBorder: primary,
+    sigStrongColor: primary,
+    digitalSigBg: '#ecfdf5',
+    digitalSigBorder: '#6ee7b7',
+    digitalSigText: '#065f46',
+    digitalSigStrong: '#064e3b',
+    appendixCardBg: '#fafafa',
+    appendixCardBorder: '#e5e7eb',
+  }
+}
+
 // ─── CSS-shell — delad mellan bostad och lokal ───────────────────────────
 
 export function buildHtmlShell(opts: {
   primaryColor: string
+  variant: ContractTemplateVariant
   title: string
   subtitle: string
   contractNumber: string
@@ -233,9 +427,11 @@ export function buildHtmlShell(opts: {
   organizationName: string
   logoDataUrl: string | null
   body: string
+  showDraftWatermark: boolean
 }): string {
   const {
     primaryColor,
+    variant,
     title,
     subtitle,
     contractNumber,
@@ -243,26 +439,66 @@ export function buildHtmlShell(opts: {
     organizationName,
     logoDataUrl,
     body,
+    showDraftWatermark,
   } = opts
 
+  const t = tokensForVariant(variant, primaryColor)
+
+  // Header rendering varies per variant. For "modern" we reverse-out the
+  // contents on a primary-colored bar; för classic/minimal har vi den
+  // klassiska borderless/border-bottom-headern.
+  const isModern = variant === 'modern'
+  const logoBlock = logoDataUrl
+    ? `<img src="${logoDataUrl}" style="height:48px;max-width:200px;object-fit:contain;" alt="${escape(organizationName)}">`
+    : `<div style="font-size:20px;font-weight:700;color:${
+        isModern ? '#ffffff' : t.headerTitleColor
+      };">${escape(organizationName)}</div>`
+
   return `<!DOCTYPE html>
-<html lang="sv">
+<html lang="sv" data-contract-no="${escape(contractNumber)}" data-org="${escape(organizationName)}">
 <head>
   <meta charset="UTF-8">
   <title>${escape(title)} — ${escape(organizationName)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
-      font-size: 10.5px;
+      font-family: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', sans-serif;
+      font-size: 11px;
       line-height: 1.55;
-      color: #1f2937;
-      padding: 36px 40px;
+      color: ${t.textPrimary};
+      background: ${t.bodyBg};
     }
+
+    /* Watermark — visas bara för DRAFT-status. Pseudo-fixed på varje sida
+       via Puppeteers print-flow: vi använder absolut + transform och
+       repeterar via header-kanal. För säkerhets skull lägger vi också en
+       full-höjds bakgrundscell som täcker första sidans innehåll. */
+    .draft-watermark {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-30deg);
+      font-size: 120px;
+      font-weight: 800;
+      color: rgba(15, 23, 42, 0.08);
+      letter-spacing: 8px;
+      pointer-events: none;
+      z-index: 0;
+      white-space: nowrap;
+    }
+
     .header {
-      border-bottom: 3px solid ${primaryColor};
-      padding-bottom: 18px;
-      margin-bottom: 22px;
+      ${
+        isModern
+          ? `background: ${t.headerBg};
+            color: ${t.headerTitleColor};
+            padding: 26px 32px 22px 32px;
+            border-radius: 12px;
+            margin-bottom: 22px;`
+          : `border-bottom: ${t.headerBorderBottom};
+            padding-bottom: 20px;
+            margin-bottom: 24px;`
+      }
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
@@ -270,121 +506,141 @@ export function buildHtmlShell(opts: {
     }
     .header-left { min-width: 0; }
     .header-title {
-      font-size: 22px;
+      font-size: 26px;
       font-weight: 700;
-      color: ${primaryColor};
-      margin-top: 8px;
-      letter-spacing: -0.01em;
+      color: ${t.headerTitleColor};
+      margin-top: 10px;
+      letter-spacing: -0.5px;
     }
-    .header-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
-    .header-meta { font-size: 10px; color: #6b7280; text-align: right; white-space: nowrap; }
-    .header-meta strong { color: #111827; font-weight: 600; }
+    .header-sub { font-size: 12px; color: ${t.headerSubColor}; margin-top: 4px; }
+    .header-meta {
+      font-size: 11px;
+      color: ${t.headerMetaColor};
+      text-align: right;
+      white-space: nowrap;
+      ${isModern ? 'background: rgba(255,255,255,0.12); padding: 8px 12px; border-radius: 8px;' : ''}
+    }
+    .header-meta strong { color: ${isModern ? '#ffffff' : t.textPrimary}; font-weight: 600; }
 
     h2 {
-      font-size: 12.5px;
+      font-size: 13px;
       font-weight: 700;
-      color: ${primaryColor};
-      border-bottom: 1px solid #e5e7eb;
+      color: ${t.hAccent};
+      ${variant === 'minimal' ? '' : `border-bottom: 1px solid ${t.borderColor};`}
       padding-bottom: 5px;
-      margin: 18px 0 9px 0;
+      margin: 20px 0 10px 0;
       text-transform: uppercase;
       letter-spacing: 0.4px;
     }
     h2 .lawref {
-      font-size: 9.5px;
+      font-size: 10px;
       font-weight: 500;
-      color: #9ca3af;
+      color: ${t.hAccentMuted};
       letter-spacing: 0;
       text-transform: none;
       margin-left: 8px;
     }
 
-    p { margin-bottom: 6px; }
-    p + p { margin-top: 4px; }
+    p { margin-bottom: 7px; }
+    p + p { margin-top: 5px; }
 
     .party-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 14px;
+      gap: 16px;
       margin-bottom: 8px;
     }
     .party-box {
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
-      padding: 12px 14px;
-      background: #fafafa;
+      border: 1px solid ${t.partyBoxBorder};
+      border-radius: ${t.cardRadius};
+      padding: 14px 16px;
+      background: ${t.partyBoxBg};
     }
     .party-label {
-      font-size: 9px;
+      font-size: 9.5px;
       font-weight: 700;
-      color: ${primaryColor};
+      color: ${t.hAccent};
       text-transform: uppercase;
       letter-spacing: 0.6px;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
     .field-row {
       display: flex;
-      margin-bottom: 3px;
+      margin-bottom: 4px;
       align-items: baseline;
     }
-    .field-label { font-size: 9.5px; color: #6b7280; width: 110px; flex-shrink: 0; }
-    .field-value { font-size: 10.5px; font-weight: 500; color: #1f2937; word-break: break-word; }
+    .field-label { font-size: 10px; color: ${t.textSecondary}; width: 115px; flex-shrink: 0; }
+    .field-value { font-size: 11px; font-weight: 500; color: ${t.textPrimary}; word-break: break-word; }
 
     .info-grid {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
       gap: 14px;
-      background: #f8fafc;
-      border-radius: 6px;
-      padding: 12px 14px;
-      margin: 8px 0;
+      background: ${t.infoGridBg};
+      border-radius: ${t.infoGridRadius};
+      padding: 13px 16px;
+      margin: 9px 0;
+      ${variant === 'minimal' ? `border: 1px solid ${t.borderColor};` : ''}
     }
     .info-item .label {
-      font-size: 9px;
-      color: #6b7280;
+      font-size: 9.5px;
+      color: ${t.textSecondary};
       text-transform: uppercase;
       letter-spacing: 0.4px;
     }
     .info-item .value {
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 600;
-      color: #111827;
-      margin-top: 1px;
+      color: ${t.textPrimary};
+      margin-top: 2px;
     }
 
     .clause {
-      margin-bottom: 7px;
+      margin-bottom: 8px;
       padding-left: 14px;
-      border-left: 2px solid #e5e7eb;
+      border-left: 2px solid ${t.clauseBorder};
     }
-    .clause-number { font-weight: 700; color: ${primaryColor}; }
+    .clause-number { font-weight: 700; color: ${t.clauseNumberColor}; }
 
     ul.clause-list {
       list-style: disc;
-      margin-left: 20px;
+      margin-left: 22px;
       margin-top: 4px;
     }
-    ul.clause-list li { margin-bottom: 2px; }
+    ul.clause-list li { margin-bottom: 3px; }
 
     .highlight-box {
-      background: #fffbeb;
-      border: 1px solid #fcd34d;
-      border-left: 3px solid #d97706;
+      background: ${t.highlightBg};
+      border: 1px solid ${t.highlightBorder};
+      border-left: 3px solid ${t.highlightBorder};
       border-radius: 4px;
-      padding: 9px 12px;
-      margin: 9px 0;
-      font-size: 10px;
-      color: #78350f;
+      padding: 10px 13px;
+      margin: 10px 0;
+      font-size: 10.5px;
+      color: ${t.highlightText};
     }
     .info-box {
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-      border-left: 3px solid #2563eb;
+      background: ${t.infoBoxBg};
+      border: 1px solid ${t.infoBoxBorder};
+      border-left: 3px solid ${t.infoBoxBorder};
       border-radius: 4px;
-      padding: 9px 12px;
-      margin: 9px 0;
-      font-size: 10px;
-      color: #1e3a8a;
+      padding: 10px 13px;
+      margin: 10px 0;
+      font-size: 10.5px;
+      color: ${t.infoBoxText};
+    }
+
+    /* Övriga villkor / särskilda bestämmelser — vi vill ha en mer markant
+       presentation än en vanlig clause så att hyresgästen och hyresvärden
+       båda lägger märke till de individuella villkoren. */
+    .special-terms {
+      white-space: pre-wrap;
+      padding: 12px 14px;
+      border-left: 3px solid ${t.clauseNumberColor};
+      background: ${t.infoGridBg};
+      border-radius: ${t.cardRadius};
+      font-size: 11px;
+      color: ${t.textPrimary};
     }
 
     .signature-section {
@@ -394,63 +650,101 @@ export function buildHtmlShell(opts: {
       gap: 36px;
       page-break-inside: avoid;
     }
-    .sig-box { border-top: 2px solid ${primaryColor}; padding-top: 8px; }
-    .sig-box strong { font-size: 11px; color: ${primaryColor}; }
+    .sig-box { border-top: 2px solid ${t.sigTopBorder}; padding-top: 8px; }
+    .sig-box strong { font-size: 11.5px; color: ${t.sigStrongColor}; }
     .sig-line {
       border-top: 1px solid #9ca3af;
       margin-top: 32px;
       padding-top: 5px;
-      font-size: 9.5px;
-      color: #6b7280;
+      font-size: 10px;
+      color: ${t.textSecondary};
     }
     .digital-sig {
       margin-top: 14px;
-      padding: 9px 11px;
-      background: #ecfdf5;
-      border: 1px solid #6ee7b7;
+      padding: 10px 12px;
+      background: ${t.digitalSigBg};
+      border: 1px solid ${t.digitalSigBorder};
       border-radius: 4px;
-      font-size: 9.5px;
-      color: #065f46;
+      font-size: 10px;
+      color: ${t.digitalSigText};
     }
-    .digital-sig strong { display: block; color: #064e3b; margin-bottom: 2px; }
+    .digital-sig strong { display: block; color: ${t.digitalSigStrong}; margin-bottom: 2px; }
     .digital-sig code {
       font-family: 'JetBrains Mono', Menlo, monospace;
-      font-size: 8.5px;
-      color: #047857;
+      font-size: 9px;
+      color: ${t.digitalSigText};
       word-break: break-all;
     }
+
+    /* BILAGOR — listas på sista sidan, alltid på en egen sida för läsbarhet. */
+    .appendices {
+      page-break-before: always;
+    }
+    .appendices-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .appendix-card {
+      border: 1px solid ${t.appendixCardBorder};
+      border-radius: ${t.cardRadius};
+      padding: 14px 16px;
+      background: ${t.appendixCardBg};
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .appendix-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: ${t.hAccent};
+      color: ${variant === 'minimal' ? '#ffffff' : '#ffffff'};
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .appendix-info { flex: 1; min-width: 0; }
+    .appendix-title { font-size: 12px; font-weight: 600; color: ${t.textPrimary}; }
+    .appendix-meta { font-size: 10px; color: ${t.textSecondary}; margin-top: 2px; }
 
     .footer {
       margin-top: 30px;
       padding-top: 10px;
-      border-top: 1px solid #e5e7eb;
-      font-size: 8.5px;
-      color: #9ca3af;
+      border-top: 1px solid ${t.borderColor};
+      font-size: 9px;
+      color: ${t.textTertiary};
       text-align: center;
     }
 
-    @page { margin: 18mm; }
+    /* Puppeteers headerTemplate/footerTemplate krockar med default-margin —
+       vi sätter @page till 25/22 mm så det finns plats. */
+    @page { margin: 25mm 18mm 22mm 18mm; }
     .page-break { page-break-before: always; }
+    .body-content { position: relative; z-index: 1; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="header-left">
-      ${
-        logoDataUrl
-          ? `<img src="${logoDataUrl}" style="height:42px;max-width:180px;object-fit:contain;" alt="${escape(organizationName)}">`
-          : `<div style="font-size:18px;font-weight:700;color:${primaryColor}">${escape(organizationName)}</div>`
-      }
-      <div class="header-title">${escape(title)}</div>
-      <div class="header-sub">${escape(subtitle)}</div>
+  ${showDraftWatermark ? `<div class="draft-watermark">EJ SIGNERAT</div>` : ''}
+  <div class="body-content">
+    <div class="header">
+      <div class="header-left">
+        ${logoBlock}
+        <div class="header-title">${escape(title)}</div>
+        <div class="header-sub">${escape(subtitle)}</div>
+      </div>
+      <div class="header-meta">
+        Kontrakt nr <strong>${escape(contractNumber)}</strong><br>
+        Upprättat <strong>${escape(generatedDate)}</strong>
+      </div>
     </div>
-    <div class="header-meta">
-      Kontrakt nr <strong>${escape(contractNumber)}</strong><br>
-      Upprättat <strong>${escape(generatedDate)}</strong>
-    </div>
-  </div>
 
-  ${body}
+    ${body}
+  </div>
 </body>
 </html>`
 }
@@ -743,6 +1037,68 @@ export function forfeitureSection(paragraphNo: number): string {
   </div>`
 }
 
+// ─── Övriga villkor / särskilda bestämmelser (Kontraktsmall 2.0) ─────────
+// Renderas BARA om lease.specialTerms har innehåll. Behåll fritext-
+// formattering (radbrytningar) via white-space: pre-wrap.
+
+export function specialTermsSection(input: ContractTemplateInput, paragraphNo: number): string {
+  const text = input.lease.specialTerms?.trim()
+  if (!text) return ''
+  return `
+  <h2>§ ${paragraphNo} — Övriga villkor &amp; särskilda bestämmelser</h2>
+  <div class="clause">
+    Utöver vad som följer av föregående paragrafer har parterna avtalat om
+    följande särskilda villkor som utgör en integrerad del av detta avtal:
+  </div>
+  <div class="special-terms">${escape(text)}</div>`
+}
+
+// ─── Bilageförteckning (Kontraktsmall 2.0) ───────────────────────────────
+// Listas på en egen sida (page-break-before) för läsbarhet. Visar typ +
+// titel + storlek. Bilagornas faktiska PDF:er bifogas separat — denna
+// sida är en innehållsförteckning, inte själva bilage-PDF:en.
+
+const APPENDIX_LABEL: Record<ContractTemplateAppendix['category'], string> = {
+  ENERGY_DECLARATION: 'Energideklaration',
+  HOUSE_RULES: 'Ordningsregler',
+  INSPECTION_PROTOCOL: 'Tillträdes- och avflyttningsbesiktning',
+  OTHER: 'Övrig bilaga',
+}
+
+export function appendicesSection(input: ContractTemplateInput): string {
+  if (input.appendices.length === 0) return ''
+  return `
+  <div class="appendices">
+    <h2>Bilageförteckning</h2>
+    <div class="clause">
+      Följande bilagor utgör en integrerad del av detta hyresavtal och har
+      överlämnats till hyresgästen vid avtalets undertecknande.
+    </div>
+    <div class="appendices-grid">
+      ${input.appendices
+        .map(
+          (a, i) => `
+        <div class="appendix-card">
+          <div class="appendix-num">${i + 1}</div>
+          <div class="appendix-info">
+            <div class="appendix-title">Bilaga ${i + 1}: ${escape(a.title)}</div>
+            <div class="appendix-meta">${APPENDIX_LABEL[a.category]}${
+              a.fileSize ? ` · ${formatFileSize(a.fileSize)}` : ''
+            }</div>
+          </div>
+        </div>`,
+        )
+        .join('')}
+    </div>
+  </div>`
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 // ─── Signaturblock ───────────────────────────────────────────────────────
 
 export function signatureBlock(input: ContractTemplateInput): string {
@@ -789,6 +1145,6 @@ export function footer(input: ContractTemplateInput): string {
   <div class="footer">
     Detta kontrakt är upprättat i två likalydande exemplar, ett till vardera parten.
     &nbsp;·&nbsp; Genererat av Eveno Fastighetsförvaltning ${formatDateSv(new Date())}
-    &nbsp;·&nbsp; Kontrakt nr ${escape(input.lease.id.slice(0, 8).toUpperCase())}
+    &nbsp;·&nbsp; Kontrakt nr ${escape(contractNumberLabel(input))}
   </div>`
 }

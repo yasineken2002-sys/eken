@@ -145,6 +145,9 @@ export class TenantsService {
             ...(dto.lease.endDate != null ? { endDate: new Date(dto.lease.endDate) } : {}),
             monthlyRent: dto.lease.monthlyRent,
             depositAmount: dto.lease.depositAmount ?? 0,
+            ...(dto.lease.specialTerms?.trim()
+              ? { specialTerms: dto.lease.specialTerms.trim() }
+              : {}),
             status: 'DRAFT',
           },
         })

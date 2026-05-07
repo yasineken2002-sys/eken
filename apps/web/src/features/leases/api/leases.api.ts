@@ -78,6 +78,9 @@ export interface ContractTerms {
   indexMaxIncrease?: number | null
   indexMinIncrease?: number | null
   indexNotes?: string | null
+
+  // Övriga villkor / särskilda bestämmelser (Kontraktsmall 2.0)
+  specialTerms?: string | null
 }
 
 export interface CreateLeaseWithTenantInput extends ContractTerms {
@@ -118,6 +121,41 @@ export interface RenewLeaseInput {
 
 export function terminateLease(id: string, dto: TerminateLeaseInput): Promise<LeaseDetail> {
   return patch<LeaseDetail>(`/leases/${id}/terminate`, dto)
+}
+
+// ─── Bilagor (Kontraktsmall 2.0) ──────────────────────────────────────────
+
+export type AppendixCategory =
+  | 'ENERGY_DECLARATION'
+  | 'HOUSE_RULES'
+  | 'INSPECTION_PROTOCOL'
+  | 'OTHER'
+
+export interface AppendixItem {
+  id: string
+  name: string
+  category: string
+  fileSize: number | null
+  mimeType: string
+  attachedToLeaseAsAppendix: boolean
+  appendixOrder: number | null
+  createdAt: string
+}
+
+export function fetchAppendices(leaseId: string): Promise<{ items: AppendixItem[] }> {
+  return get<{ items: AppendixItem[] }>(`/contracts/${leaseId}/appendices`)
+}
+
+export function updateAppendix(
+  leaseId: string,
+  documentId: string,
+  dto: {
+    attachedToLeaseAsAppendix?: boolean
+    category?: AppendixCategory
+    appendixOrder?: number
+  },
+): Promise<AppendixItem> {
+  return patch<AppendixItem>(`/contracts/${leaseId}/appendices/${documentId}`, dto)
 }
 
 export function renewLease(id: string, dto: RenewLeaseInput): Promise<LeaseDetail> {

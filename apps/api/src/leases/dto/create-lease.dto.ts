@@ -82,4 +82,10 @@ export class CreateLeaseDto {
   @IsNumber() @Min(0) @Max(100) @IsOptional() indexMaxIncrease?: number
   @IsNumber() @Min(0) @Max(100) @IsOptional() indexMinIncrease?: number
   @IsString() @IsOptional() indexNotes?: string
+
+  // ── Övriga villkor / särskilda bestämmelser (Kontraktsmall 2.0) ────────
+  // Fritextfält för egna villkor utöver standardparagraferna. Renderas
+  // som egen § "Övriga villkor & särskilda bestämmelser" i kontraktet
+  // när det är ifyllt.
+  @IsString() @IsOptional() specialTerms?: string
 }

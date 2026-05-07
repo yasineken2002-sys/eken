@@ -141,4 +141,5 @@ export class CreateLeaseWithTenantDto {
   @IsNumber() @Min(0) @Max(100) @IsOptional() indexMaxIncrease?: number
   @IsNumber() @Min(0) @Max(100) @IsOptional() indexMinIncrease?: number
   @IsString() @IsOptional() indexNotes?: string
+  @IsString() @IsOptional() specialTerms?: string
 }

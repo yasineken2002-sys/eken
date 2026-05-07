@@ -40,6 +40,13 @@ export class CreateTenantLeaseDto {
   @Min(0)
   @IsOptional()
   depositAmount?: number
+
+  // Övriga villkor / särskilda bestämmelser (Kontraktsmall 2.0). Visas som
+  // egen § i kontraktet när satt; tom sträng innebär ingen § skapas.
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  specialTerms?: string
 }
 
 export class CreateTenantDto {

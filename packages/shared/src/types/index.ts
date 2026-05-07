@@ -203,6 +203,12 @@ export interface Lease {
   signedAt?: string
   terminatedAt?: string
   terminationReason?: string
+  // Kontraktsmall 2.0: fortlöpande nummer (KONT-2026-00042) som tilldelas
+  // vid DRAFT → ACTIVE. Null så länge kontraktet är i DRAFT.
+  contractNumber?: string | null
+  // Kontraktsmall 2.0: fritext som hyresvärden lägger till som "övriga
+  // villkor & särskilda bestämmelser" i kontraktet.
+  specialTerms?: string | null
   createdAt: string
   updatedAt: string
 }

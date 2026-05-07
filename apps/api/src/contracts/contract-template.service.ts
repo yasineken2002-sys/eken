@@ -7,7 +7,11 @@ import { StorageService } from '../storage/storage.service'
 import { LockService } from '../common/redis/lock.service'
 import { buildResidentialContractHtml } from './residential-contract.template'
 import { buildCommercialContractHtml } from './commercial-contract.template'
-import { type ContractTemplateInput, tenantDisplayName } from './contract-template.shared'
+import {
+  type ContractTemplateInput,
+  contractNumberLabel,
+  tenantDisplayName,
+} from './contract-template.shared'
 
 // Hur länge en nyligen genererad PDF räknas som "färsk" och kan återanvändas
 // av den andra requesten i en race istället för att köra Puppeteer igen. 30 s
@@ -48,6 +52,41 @@ export class ContractTemplateService {
     })
   }
 
+  // Hämtar dokument som markerats som kontraktsbilagor. Sortering: explicit
+  // appendixOrder först (low→high), därefter category-prioritet (energi-
+  // deklaration högst — krävs av lag), sedan createdAt. Dokument utan
+  // appendixOrder hamnar sist i sin kategori.
+  private async fetchAppendices(leaseId: string, organizationId: string) {
+    const docs = await this.prisma.document.findMany({
+      where: { leaseId, organizationId, attachedToLeaseAsAppendix: true },
+      orderBy: [{ appendixOrder: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        fileSize: true,
+      },
+    })
+    const categoryOrder: Record<string, number> = {
+      ENERGY_DECLARATION: 0,
+      HOUSE_RULES: 1,
+      INSPECTION_PROTOCOL: 2,
+      OTHER: 3,
+    }
+    return docs
+      .map((d) => ({
+        id: d.id,
+        title: d.name,
+        category: (categoryOrder[d.category] !== undefined ? d.category : 'OTHER') as
+          | 'ENERGY_DECLARATION'
+          | 'HOUSE_RULES'
+          | 'INSPECTION_PROTOCOL'
+          | 'OTHER',
+        fileSize: d.fileSize ?? undefined,
+      }))
+      .sort((a, b) => (categoryOrder[a.category] ?? 99) - (categoryOrder[b.category] ?? 99))
+  }
+
   private async fetchOrg(organizationId: string) {
     return this.prisma.organization.findUnique({ where: { id: organizationId } })
   }
@@ -58,9 +97,14 @@ export class ContractTemplateService {
   ): Promise<ContractTemplateInput> {
     const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
 
+    const appendices = await this.fetchAppendices(lease.id, lease.organizationId)
+
     return {
+      appendices,
       lease: {
         id: lease.id,
+        contractNumber: lease.contractNumber,
+        status: lease.status,
         startDate: lease.startDate,
         endDate: lease.endDate,
         monthlyRent: Number(lease.monthlyRent),
@@ -92,6 +136,7 @@ export class ContractTemplateService {
         indexMaxIncrease: lease.indexMaxIncrease != null ? Number(lease.indexMaxIncrease) : null,
         indexMinIncrease: lease.indexMinIncrease != null ? Number(lease.indexMinIncrease) : null,
         indexNotes: lease.indexNotes,
+        specialTerms: lease.specialTerms,
       },
       organization: {
         name: org.name,
@@ -104,6 +149,9 @@ export class ContractTemplateService {
         city: org.city,
         bankgiro: org.bankgiro,
         invoiceColor: org.invoiceColor ?? null,
+        // Delar samma template-val som fakturan så kunder ser konsekvent
+        // brevpapper. Falls back till "classic" om ingenting är satt.
+        invoiceTemplate: org.invoiceTemplate ?? 'classic',
         logoDataUrl,
         companyForm: org.companyForm,
         hasFSkatt: org.hasFSkatt,
@@ -162,8 +210,12 @@ export class ContractTemplateService {
     ])
     if (!lease) throw new NotFoundException('Kontraktet hittades inte')
     if (!org) throw new NotFoundException('Organisationen hittades inte')
-    const html = this.renderHtml(await this.buildInput(lease, org))
-    return this.pdfService.generateFromHtml(html)
+    const input = await this.buildInput(lease, org)
+    const html = this.renderHtml(input)
+    return this.pdfService.generateContractFromHtml(html, {
+      contractNumber: contractNumberLabel(input),
+      organizationName: input.organization.name,
+    })
   }
 
   /**
@@ -228,7 +280,10 @@ export class ContractTemplateService {
 
     const input = await this.buildInput(lease, org)
     const html = this.renderHtml(input)
-    const buffer = await this.pdfService.generateFromHtml(html)
+    const buffer = await this.pdfService.generateContractFromHtml(html, {
+      contractNumber: contractNumberLabel(input),
+      organizationName: input.organization.name,
+    })
     const contentHash = crypto.createHash('sha256').update(buffer).digest('hex')
 
     const tenantName = tenantDisplayName(input.tenant)

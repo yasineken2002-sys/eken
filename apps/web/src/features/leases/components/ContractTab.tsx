@@ -1,11 +1,23 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { CheckCircle2, AlertTriangle, FileText, Lock, Download, RefreshCw } from 'lucide-react'
+import {
+  CheckCircle2,
+  AlertTriangle,
+  FileText,
+  Lock,
+  Download,
+  RefreshCw,
+  Paperclip,
+} from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import {
   fetchContractStatus,
+  fetchAppendices,
   generateLeaseContract,
   downloadLeaseContract,
+  updateAppendix,
+  type AppendixCategory,
+  type AppendixItem,
   type ContractDocument,
 } from '../api/leases.api'
 
@@ -197,6 +209,8 @@ export function ContractTab({ leaseId }: Props) {
       </div>
 
       {/* Versionshistorik */}
+      <AppendicesSection leaseId={leaseId} />
+
       {versions.length > 1 && (
         <div>
           <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
@@ -231,5 +245,136 @@ export function ContractTab({ leaseId }: Props) {
         </div>
       )}
     </motion.div>
+  )
+}
+
+// ─── Bilagor / appendices ──────────────────────────────────────────────────
+// Listar alla dokument som är länkade till leasen (förutom själva
+// kontrakts-PDF:en) och låter hyresvärden välja vilka som ska bifogas
+// kontraktet samt klassificera typ. Filuppladdning sker via separata
+// dokumentvyn — den här sektionen är ren konfiguration.
+
+const APPENDIX_KEY = (id: string) => ['contract', 'appendices', id] as const
+
+const APPENDIX_CATEGORY_LABEL: Record<string, string> = {
+  ENERGY_DECLARATION: 'Energideklaration',
+  HOUSE_RULES: 'Ordningsregler',
+  INSPECTION_PROTOCOL: 'Tillträdesbesiktning',
+  OTHER: 'Övrig bilaga',
+  INSPECTION: 'Tillträdesbesiktning',
+  INSURANCE: 'Försäkringsbevis',
+  DRAWING: 'Ritning',
+  PHOTO: 'Foto',
+  INVOICE: 'Faktura',
+  CONTRACT: 'Kontrakt',
+}
+
+function formatAppendixSize(bytes: number | null): string {
+  if (bytes == null) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function AppendicesSection({ leaseId }: { leaseId: string }) {
+  const qc = useQueryClient()
+  const { data, isLoading } = useQuery({
+    queryKey: APPENDIX_KEY(leaseId),
+    queryFn: () => fetchAppendices(leaseId),
+  })
+
+  const toggle = useMutation({
+    mutationFn: (vars: { documentId: string; attached: boolean }) =>
+      updateAppendix(leaseId, vars.documentId, { attachedToLeaseAsAppendix: vars.attached }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: APPENDIX_KEY(leaseId) }),
+  })
+
+  const setCategory = useMutation({
+    mutationFn: (vars: { documentId: string; category: AppendixCategory }) =>
+      updateAppendix(leaseId, vars.documentId, { category: vars.category }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: APPENDIX_KEY(leaseId) }),
+  })
+
+  if (isLoading) return null
+
+  const items = data?.items ?? []
+  const attachedCount = items.filter((i) => i.attachedToLeaseAsAppendix).length
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[12px] font-semibold uppercase tracking-wide text-gray-400">
+          Bilagor &amp; appendix
+        </p>
+        {attachedCount > 0 ? (
+          <span className="text-[11.5px] text-gray-500">
+            {attachedCount} bifogad{attachedCount === 1 ? '' : 'a'} till kontraktet
+          </span>
+        ) : null}
+      </div>
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-[#EAEDF0] bg-white px-4 py-5 text-center text-[12.5px] text-gray-500">
+          Inga dokument är länkade till detta kontrakt än. Ladda upp under <strong>Dokument</strong>{' '}
+          och koppla mot leasen för att kunna bifoga som bilaga.
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((doc) => (
+            <AppendixRow
+              key={doc.id}
+              doc={doc}
+              onToggle={(attached) => toggle.mutate({ documentId: doc.id, attached })}
+              onSetCategory={(category) => setCategory.mutate({ documentId: doc.id, category })}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function AppendixRow({
+  doc,
+  onToggle,
+  onSetCategory,
+}: {
+  doc: AppendixItem
+  onToggle: (attached: boolean) => void
+  onSetCategory: (category: AppendixCategory) => void
+}) {
+  const isAppendixCategory =
+    doc.category === 'ENERGY_DECLARATION' ||
+    doc.category === 'HOUSE_RULES' ||
+    doc.category === 'INSPECTION_PROTOCOL' ||
+    doc.category === 'OTHER'
+  return (
+    <li className="flex items-start gap-3 rounded-xl border border-[#EAEDF0] bg-white px-3.5 py-2.5">
+      <input
+        type="checkbox"
+        checked={doc.attachedToLeaseAsAppendix}
+        onChange={(e) => onToggle(e.target.checked)}
+        className="mt-1 h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      />
+      <Paperclip size={14} strokeWidth={1.8} className="mt-1 shrink-0 text-gray-400" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px] font-medium text-gray-800">{doc.name}</p>
+        <p className="mt-0.5 text-[11.5px] text-gray-500">
+          {APPENDIX_CATEGORY_LABEL[doc.category] ?? doc.category}
+          {doc.fileSize ? ` · ${formatAppendixSize(doc.fileSize)}` : ''}
+        </p>
+      </div>
+      {doc.attachedToLeaseAsAppendix ? (
+        <select
+          value={isAppendixCategory ? doc.category : 'OTHER'}
+          onChange={(e) => onSetCategory(e.target.value as AppendixCategory)}
+          className="h-7 shrink-0 rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option value="ENERGY_DECLARATION">Energideklaration</option>
+          <option value="HOUSE_RULES">Ordningsregler</option>
+          <option value="INSPECTION_PROTOCOL">Tillträdesbesiktning</option>
+          <option value="OTHER">Övrig bilaga</option>
+        </select>
+      ) : null}
+    </li>
   )
 }
