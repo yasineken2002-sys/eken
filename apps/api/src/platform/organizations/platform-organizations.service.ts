@@ -7,6 +7,7 @@ import {
 import * as bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { normalizeEmail } from '../../common/utils/normalize-email'
 import type { CreateOrganizationDto, UpdateOrganizationDto } from './dto/platform-organization.dto'
 
 type OrgStatus = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED'
@@ -149,7 +150,10 @@ export class PlatformOrganizationsService {
       : null
     if (existingOrg) throw new ConflictException('Organisationsnumret är redan registrerat')
 
-    const existingUser = await this.prisma.user.findUnique({ where: { email: dto.adminEmail } })
+    const adminEmail = normalizeEmail(dto.adminEmail)
+    const orgEmail = normalizeEmail(dto.email)
+    const billingEmail = dto.billingEmail ? normalizeEmail(dto.billingEmail) : undefined
+    const existingUser = await this.prisma.user.findUnique({ where: { email: adminEmail } })
     if (existingUser) throw new ConflictException('Admin-mailen är redan registrerad')
 
     const tempPassword = dto.adminPassword ?? this.generateTempPassword()
@@ -165,7 +169,7 @@ export class PlatformOrganizationsService {
         name: dto.name,
         ...(dto.orgNumber ? { orgNumber: dto.orgNumber } : {}),
         ...(dto.vatNumber ? { vatNumber: dto.vatNumber } : {}),
-        email: dto.email,
+        email: orgEmail,
         ...(dto.phone ? { phone: dto.phone } : {}),
         street: dto.street,
         city: dto.city,
@@ -174,7 +178,7 @@ export class PlatformOrganizationsService {
         plan,
         status: 'ACTIVE',
         ...(trialEndsAt ? { trialEndsAt } : {}),
-        ...(dto.billingEmail ? { billingEmail: dto.billingEmail } : {}),
+        ...(billingEmail ? { billingEmail } : {}),
         ...(dto.monthlyFee !== undefined ? { monthlyFee: dto.monthlyFee } : {}),
       },
     })
@@ -182,7 +186,7 @@ export class PlatformOrganizationsService {
     const adminUser = await this.prisma.user.create({
       data: {
         organizationId: org.id,
-        email: dto.adminEmail,
+        email: adminEmail,
         passwordHash,
         firstName: dto.adminFirstName,
         lastName: dto.adminLastName,

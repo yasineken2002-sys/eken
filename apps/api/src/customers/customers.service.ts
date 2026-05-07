@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { normalizeEmail } from '../common/utils/normalize-email'
 import { CreateCustomerDto } from './dto/create-customer.dto'
 import { UpdateCustomerDto } from './dto/update-customer.dto'
 
@@ -72,7 +73,7 @@ export class CustomersService {
         ...(dto.companyName != null ? { companyName: dto.companyName } : {}),
         ...(dto.orgNumber != null ? { orgNumber: dto.orgNumber } : {}),
         ...(dto.contactPerson != null ? { contactPerson: dto.contactPerson } : {}),
-        ...(dto.email != null ? { email: dto.email } : {}),
+        ...(dto.email != null ? { email: normalizeEmail(dto.email) } : {}),
         ...(dto.phone != null ? { phone: dto.phone } : {}),
         ...(dto.street != null ? { street: dto.street } : {}),
         ...(dto.city != null ? { city: dto.city } : {}),
@@ -98,7 +99,7 @@ export class CustomersService {
         ...(dto.companyName != null ? { companyName: dto.companyName } : {}),
         ...(dto.orgNumber != null ? { orgNumber: dto.orgNumber } : {}),
         ...(dto.contactPerson != null ? { contactPerson: dto.contactPerson } : {}),
-        ...(dto.email != null ? { email: dto.email } : {}),
+        ...(dto.email != null ? { email: normalizeEmail(dto.email) } : {}),
         ...(dto.phone != null ? { phone: dto.phone } : {}),
         ...(dto.street != null ? { street: dto.street } : {}),
         ...(dto.city != null ? { city: dto.city } : {}),

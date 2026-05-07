@@ -14,6 +14,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { validateSwedishOrgNumber } from '../common/validators/swedish-org-number'
+import { normalizeEmail } from '../common/utils/normalize-email'
 import type { JwtPayload, TokenPair } from '@eken/shared'
 import type { LoginInput } from '@eken/shared'
 
@@ -70,7 +71,10 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterPayload): Promise<AuthResponse> {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } })
+    // Normalisera direkt på input — alla downstream-skrivningar och ev.
+    // jämförelser ska se samma kanoniska form.
+    const email = normalizeEmail(dto.email)
+    const existing = await this.prisma.user.findUnique({ where: { email } })
     if (existing) throw new ConflictException('E-postadressen är redan registrerad')
 
     // Härled företagsform: explicit val går först, sedan accountType-bryggan
@@ -107,7 +111,7 @@ export class AuthService {
         hasFSkatt,
         fSkattApprovedDate,
         ...(dto.vatNumber ? { vatNumber: dto.vatNumber } : {}),
-        email: dto.email,
+        email,
         street: '',
         city: '',
         postalCode: '',
@@ -123,7 +127,7 @@ export class AuthService {
     const user = await this.prisma.user.create({
       data: {
         organizationId: org.id,
-        email: dto.email,
+        email,
         passwordHash,
         firstName: dto.firstName,
         lastName: dto.lastName,
@@ -155,7 +159,7 @@ export class AuthService {
 
   async login(dto: LoginInput): Promise<AuthResponse> {
     const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { email: normalizeEmail(dto.email) },
       include: { organization: true },
     })
     // En icke-aktiverad eller inbjuden-men-ej-accepterad användare avvisas med
@@ -321,7 +325,7 @@ export class AuthService {
     // Vi svarar alltid 200 även om emailen inte finns — annars läcker vi om
     // ett konto existerar (enumeration attack).
     const user = await this.prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizeEmail(email) },
       include: { organization: true },
     })
     if (!user || !user.isActive) return

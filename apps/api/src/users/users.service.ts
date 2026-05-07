@@ -11,6 +11,7 @@ import * as bcrypt from 'bcryptjs'
 import * as crypto from 'crypto'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
+import { normalizeEmail } from '../common/utils/normalize-email'
 import type { InvitableRole } from './dto/invite-user.dto'
 import type { AssignableRole } from './dto/update-user-role.dto'
 import type { UserRole } from '@eken/shared'
@@ -63,7 +64,8 @@ export class UsersService {
       select: { firstName: true, lastName: true, email: true },
     })
     if (!inviter) throw new ForbiddenException('Otillräckliga rättigheter')
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } })
+    const email = normalizeEmail(dto.email)
+    const existing = await this.prisma.user.findUnique({ where: { email } })
     if (existing) {
       // Konflikt även om användaren råkar tillhöra en annan organisation —
       // email är ett globalt unikt fält i schemat.
@@ -81,7 +83,7 @@ export class UsersService {
       const user = await tx.user.create({
         data: {
           organizationId,
-          email: dto.email,
+          email,
           firstName: dto.firstName,
           lastName: dto.lastName,
           role: dto.role,

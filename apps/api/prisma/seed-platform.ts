@@ -9,10 +9,12 @@ function generateTempPassword(): string {
 }
 
 async function main() {
-  const email = process.env['PLATFORM_SEED_EMAIL']
-  if (!email) {
+  const rawEmail = process.env['PLATFORM_SEED_EMAIL']
+  if (!rawEmail) {
     throw new Error('PLATFORM_SEED_EMAIL saknas i miljön')
   }
+  // Normalisera så seed och login alltid jämför samma kanoniska form.
+  const email = rawEmail.trim().toLowerCase()
 
   const existing = await prisma.platformUser.findUnique({ where: { email } })
   if (existing) {

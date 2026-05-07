@@ -6,6 +6,7 @@ import { activateAccount, fetchActivationContract, fetchActivationInfo } from '@
 import { useSessionStore } from '@/store/session.store'
 import { Spinner } from '@/components/ui/Spinner'
 import { PasswordRequirements } from '@/components/ui/PasswordRequirements'
+import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
 import styles from './ActivatePage.module.css'
 
 const SEK = new Intl.NumberFormat('sv-SE', {
@@ -318,10 +319,8 @@ export function ActivatePage() {
               <label className={styles.label} htmlFor="password">
                 Nytt lösenord
               </label>
-              <input
+              <PasswordInput
                 id="password"
-                type="password"
-                className={styles.input}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={activateMutation.isPending}
@@ -335,10 +334,8 @@ export function ActivatePage() {
               <label className={styles.label} htmlFor="confirmPassword">
                 Bekräfta lösenord
               </label>
-              <input
+              <PasswordInput
                 id="confirmPassword"
-                type="password"
-                className={styles.input}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 disabled={activateMutation.isPending}

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { Prisma } from '@prisma/client'
 import type { Tenant, Lease } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { normalizeEmail } from '../common/utils/normalize-email'
 import { CreateTenantDto } from './dto/create-tenant.dto'
 import { UpdateTenantDto } from './dto/update-tenant.dto'
 
@@ -92,10 +93,12 @@ export class TenantsService {
       throw new BadRequestException('Företagsnamn krävs för företag')
     }
 
+    const email = normalizeEmail(dto.email)
+
     // Dubblett-check innan transaktionen så användaren får ett tydligt fel
     // istället för en rå P2002 från Postgres.
     const duplicate = await this.prisma.tenant.findFirst({
-      where: { organizationId, email: dto.email },
+      where: { organizationId, email },
       select: { id: true },
     })
     if (duplicate) {
@@ -120,7 +123,7 @@ export class TenantsService {
           data: {
             organizationId,
             type: dto.type,
-            email: dto.email,
+            email,
             ...(dto.firstName != null ? { firstName: dto.firstName } : {}),
             ...(dto.lastName != null ? { lastName: dto.lastName } : {}),
             ...(dto.companyName != null ? { companyName: dto.companyName } : {}),
@@ -179,7 +182,7 @@ export class TenantsService {
         ...(dto.firstName != null ? { firstName: dto.firstName } : {}),
         ...(dto.lastName != null ? { lastName: dto.lastName } : {}),
         ...(dto.companyName != null ? { companyName: dto.companyName } : {}),
-        ...(dto.email != null ? { email: dto.email } : {}),
+        ...(dto.email != null ? { email: normalizeEmail(dto.email) } : {}),
         ...(dto.phone != null ? { phone: dto.phone } : {}),
         ...(dto.personalNumber != null ? { personalNumber: dto.personalNumber } : {}),
         ...(dto.orgNumber != null ? { orgNumber: dto.orgNumber } : {}),

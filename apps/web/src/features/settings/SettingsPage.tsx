@@ -32,6 +32,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { PasswordInput } from '@/features/auth/components/PasswordInput'
 import { useOrganization, useUpdateOrganization, useUploadLogo } from './hooks/useSettings'
 import { clearAiMemory } from '@/features/ai/api/ai.api'
 import { UsersPanel } from '@/features/users/UsersPanel'
@@ -1116,8 +1117,7 @@ function GdprSection({ isOwner, onLogout }: GdprSectionProps) {
 
           {confirmDelete && !isOwner && (
             <div className="mt-3 space-y-2 border-t border-red-100 pt-3">
-              <Input
-                type="password"
+              <PasswordInput
                 placeholder="Bekräfta med ditt lösenord"
                 value={deletePassword}
                 onChange={(e) => setDeletePassword(e.target.value)}

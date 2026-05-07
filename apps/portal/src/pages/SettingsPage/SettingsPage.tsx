@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { exportMyData, deleteMyAccount, logoutSession } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
+import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
 
 const card: React.CSSProperties = {
   background: '#fff',
@@ -206,19 +207,10 @@ export function SettingsPage() {
                       gap: 8,
                     }}
                   >
-                    <input
-                      type="password"
+                    <PasswordInput
                       placeholder="Bekräfta med ditt lösenord"
                       value={deletePassword}
                       onChange={(e) => setDeletePassword(e.target.value)}
-                      style={{
-                        height: 36,
-                        padding: '0 12px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: 8,
-                        fontSize: 13.5,
-                        outline: 'none',
-                      }}
                     />
                     {deleteError && (
                       <p style={{ margin: 0, fontSize: 12, color: '#dc2626' }}>{deleteError}</p>

@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input, Label } from '@/components/ui/Input'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 import { PasswordRequirements } from '@/components/ui/PasswordRequirements'
 import { post } from '@/lib/api'
 import { setAdminLoginFlash } from '@/lib/login-flash'
@@ -89,16 +90,14 @@ export function SettingsPage() {
           <CardBody className="space-y-3">
             <div>
               <Label>Nuvarande lösenord</Label>
-              <Input
-                type="password"
+              <PasswordInput
                 value={pwd.currentPassword}
                 onChange={(e) => setPwd({ ...pwd, currentPassword: e.target.value })}
               />
             </div>
             <div>
               <Label>Nytt lösenord</Label>
-              <Input
-                type="password"
+              <PasswordInput
                 placeholder="Minst 10 tecken med stor/liten/siffra/specialtecken"
                 value={pwd.newPassword}
                 onChange={(e) => setPwd({ ...pwd, newPassword: e.target.value })}

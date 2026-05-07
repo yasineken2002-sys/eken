@@ -3,19 +3,10 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  Eye,
-  EyeOff,
-  Check,
-  ArrowLeft,
-  ArrowRight,
-  Building2,
-  BarChart3,
-  Shield,
-  Zap,
-} from 'lucide-react'
+import { Check, ArrowLeft, ArrowRight, Building2, BarChart3, Shield, Zap } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { PasswordInput } from './components/PasswordInput'
 import { cn } from '@/lib/cn'
 import { registerApi } from './api/auth.api'
 import { passwordSchema } from './lib/password-schema'
@@ -35,7 +26,10 @@ const schema = z
     companyForm: z.enum(COMPANY_FORM_VALUES),
     firstName: z.string().min(1, 'Förnamn krävs'),
     lastName: z.string().min(1, 'Efternamn krävs'),
-    email: z.string().email('Ogiltig e-postadress'),
+    email: z
+      .string()
+      .email('Ogiltig e-postadress')
+      .transform((s) => s.trim().toLowerCase()),
     password: passwordSchema,
     confirmPassword: z.string(),
     organizationName: z.string().min(1, 'Namn krävs'),
@@ -184,8 +178,6 @@ function BrandPanel() {
 
 export function RegisterPage({ onNavigate }: Props) {
   const [step, setStep] = useState<1 | 2>(1)
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirm, setShowConfirm] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [isPending, setIsPending] = useState(false)
   const setAuth = useAuthStore((s) => s.setAuth)
@@ -339,50 +331,23 @@ export function RegisterPage({ onNavigate }: Props) {
                     {...register('email')}
                   />
 
-                  {(['password', 'confirmPassword'] as const).map((field) => {
-                    const show = field === 'password' ? showPassword : showConfirm
-                    const setShow = field === 'password' ? setShowPassword : setShowConfirm
-                    return (
-                      <div key={field} className="space-y-1.5">
-                        <label className="block text-[13px] font-medium text-gray-700">
-                          {field === 'password' ? 'Lösenord' : 'Bekräfta lösenord'}
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={show ? 'text' : 'password'}
-                            autoComplete="new-password"
-                            placeholder={
-                              field === 'password'
-                                ? 'Minst 10 tecken med stor/liten/siffra/specialtecken'
-                                : 'Upprepa lösenord'
-                            }
-                            className={cn(
-                              'flex h-10 w-full rounded-xl border bg-white px-3.5 pr-10 text-[13.5px] text-gray-900 placeholder:text-gray-400',
-                              'transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-0',
-                              errors[field]
-                                ? 'border-red-300 focus:border-red-400 focus:ring-red-500/15'
-                                : 'border-[#E5E7EB] hover:border-gray-300 focus:border-blue-500 focus:ring-blue-500/15',
-                            )}
-                            {...register(field)}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShow((v) => !v)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600"
-                            tabIndex={-1}
-                          >
-                            {show ? <EyeOff size={15} /> : <Eye size={15} />}
-                          </button>
-                        </div>
-                        {field === 'password' && (
-                          <PasswordRequirements password={passwordValue} className="mt-2" />
-                        )}
-                        {errors[field] && (
-                          <p className="text-[12px] text-red-500">{errors[field]?.message}</p>
-                        )}
-                      </div>
-                    )
-                  })}
+                  <div className="space-y-1.5">
+                    <PasswordInput
+                      label="Lösenord"
+                      autoComplete="new-password"
+                      placeholder="Minst 10 tecken med stor/liten/siffra/specialtecken"
+                      error={errors.password?.message}
+                      {...register('password')}
+                    />
+                    <PasswordRequirements password={passwordValue} className="mt-2" />
+                  </div>
+                  <PasswordInput
+                    label="Bekräfta lösenord"
+                    autoComplete="new-password"
+                    placeholder="Upprepa lösenord"
+                    error={errors.confirmPassword?.message}
+                    {...register('confirmPassword')}
+                  />
 
                   {apiError && (
                     <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-[13px] text-red-600">

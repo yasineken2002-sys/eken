@@ -7,6 +7,7 @@ import { PdfService } from '../../invoices/pdf.service'
 import { TenantsService } from '../../tenants/tenants.service'
 import { LeasesService } from '../../leases/leases.service'
 import type { CreateLeaseWithTenantDto } from '../../leases/dto/create-lease-with-tenant.dto'
+import { normalizeEmail } from '../../common/utils/normalize-email'
 import { PropertiesService } from '../../properties/properties.service'
 import { UnitsService } from '../../units/units.service'
 import { AccountingService } from '../../accounting/accounting.service'
@@ -1785,8 +1786,9 @@ export class ToolExecutorService {
           // Återanvänd existerande tenant om mailet redan finns i orgen
           // (annars skapas det av createWithTenant). Detta bevarar tidigare
           // beteende för "lägg till nytt kontrakt åt befintlig hyresgäst".
+          const tenantEmail = normalizeEmail(toolInput.email as string)
           const existing = await this.prisma.tenant.findFirst({
-            where: { email: toolInput.email as string, organizationId },
+            where: { email: tenantEmail, organizationId },
             select: {
               id: true,
               type: true,
@@ -1813,7 +1815,7 @@ export class ToolExecutorService {
               : {
                   newTenant: {
                     type: toolInput.tenantType as 'INDIVIDUAL' | 'COMPANY',
-                    email: toolInput.email as string,
+                    email: tenantEmail,
                     ...(toolInput.firstName ? { firstName: toolInput.firstName as string } : {}),
                     ...(toolInput.lastName ? { lastName: toolInput.lastName as string } : {}),
                     ...(toolInput.companyName

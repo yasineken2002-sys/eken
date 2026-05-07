@@ -8,7 +8,9 @@ import { DepositsService } from '../deposits/deposits.service'
 import { RentIncreasesService } from '../rent-increases/rent-increases.service'
 import { TenantAuthService } from '../tenant-portal/tenant-auth.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
+import { ContractNumberService } from '../contracts/contract-number.service'
 import { LeaseActivationQueue } from './lease-activation.queue'
+import { normalizeEmail } from '../common/utils/normalize-email'
 import { CreateLeaseDto } from './dto/create-lease.dto'
 import { UpdateLeaseDto } from './dto/update-lease.dto'
 import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
@@ -70,6 +72,7 @@ type ContractTermsDto = {
   indexMaxIncrease?: number
   indexMinIncrease?: number
   indexNotes?: string
+  specialTerms?: string
 }
 
 function pickContractTerms(dto: ContractTermsDto): Record<string, unknown> {
@@ -106,6 +109,7 @@ function pickContractTerms(dto: ContractTermsDto): Record<string, unknown> {
   if (dto.indexMaxIncrease != null) out['indexMaxIncrease'] = dto.indexMaxIncrease
   if (dto.indexMinIncrease != null) out['indexMinIncrease'] = dto.indexMinIncrease
   if (dto.indexNotes !== undefined) out['indexNotes'] = dto.indexNotes || null
+  if (dto.specialTerms !== undefined) out['specialTerms'] = dto.specialTerms?.trim() || null
 
   return out
 }
@@ -133,6 +137,7 @@ export class LeasesService {
     private readonly rentIncreases: RentIncreasesService,
     private readonly tenantAuth: TenantAuthService,
     private readonly contracts: ContractTemplateService,
+    private readonly contractNumbers: ContractNumberService,
     private readonly activationQueue: LeaseActivationQueue,
   ) {}
 
@@ -254,12 +259,23 @@ export class LeasesService {
     let updated
     try {
       updated = await this.prisma.$transaction(async (tx) => {
+        // DRAFT → ACTIVE tilldelar fortlöpande kontraktsnummer
+        // (KONT-{år}-{löpnr}). Om numret redan finns (omaktivering eller
+        // backfill) lämnas det orört. Allokeringen sker INOM samma
+        // transaktion som status-ändringen så att en abort lämnar inga
+        // hängande nummer i sekvenstabellen.
+        let contractNumber: string | undefined
+        if (newStatus === 'ACTIVE' && !lease.contractNumber) {
+          contractNumber = await this.contractNumbers.allocate(lease.organizationId, tx)
+        }
+
         const result = await tx.lease.update({
           where: { id },
           data: {
             status: newStatus,
             ...(newStatus === 'ACTIVE' ? { signedAt: new Date() } : {}),
             ...(newStatus === 'TERMINATED' ? { terminatedAt: new Date() } : {}),
+            ...(contractNumber ? { contractNumber } : {}),
           },
           include: INCLUDE,
         })
@@ -340,7 +356,11 @@ export class LeasesService {
     // Validera nya hyresgästuppgifter och kolla dubblett-email innan transaktionen
     // — felet är då rent en valideringsmiss, inte en halv-skapad situation.
     if (!dto.existingTenantId && dto.newTenant) {
-      const { type, firstName, lastName, companyName, email } = dto.newTenant
+      const { type, firstName, lastName, companyName } = dto.newTenant
+      const email = normalizeEmail(dto.newTenant.email)
+      // Mutera dto:n så att downstream tx.tenant.create skriver normaliserad
+      // email — alla writes ska träffa lowercase.
+      dto.newTenant.email = email
 
       if (type === 'INDIVIDUAL' && (!firstName?.trim() || !lastName?.trim())) {
         throw new BadRequestException('Förnamn och efternamn krävs för privatperson')

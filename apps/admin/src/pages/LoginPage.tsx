@@ -4,6 +4,7 @@ import axios from 'axios'
 import { CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Label } from '@/components/ui/Input'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 import { consumeAdminLoginFlash } from '@/lib/login-flash'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -42,7 +43,7 @@ export function LoginPage() {
     setLoading(true)
     try {
       const { data } = await axios.post<{ data: LoginResponse }>('/api/v1/platform/auth/login', {
-        email,
+        email: email.trim().toLowerCase(),
         password,
         ...(totpCode ? { totpCode } : {}),
       })
@@ -102,9 +103,8 @@ export function LoginPage() {
           </div>
           <div>
             <Label htmlFor="password">Lösenord</Label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               value={password}
               autoComplete="current-password"
               onChange={(e) => setPassword(e.target.value)}

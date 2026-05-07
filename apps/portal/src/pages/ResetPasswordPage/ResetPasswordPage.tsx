@@ -5,6 +5,7 @@ import { validatePasswordStrength } from '@eken/shared'
 import { resetPassword } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
 import { PasswordRequirements } from '@/components/ui/PasswordRequirements'
+import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
 import styles from '../LoginPage/LoginPage.module.css'
 
 export function ResetPasswordPage() {
@@ -83,10 +84,8 @@ export function ResetPasswordPage() {
           <label className={styles.label} htmlFor="password">
             Nytt lösenord
           </label>
-          <input
+          <PasswordInput
             id="password"
-            type="password"
-            className={styles.input}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -100,10 +99,8 @@ export function ResetPasswordPage() {
           <label className={styles.label} htmlFor="confirmPassword" style={{ marginTop: 12 }}>
             Bekräfta lösenord
           </label>
-          <input
+          <PasswordInput
             id="confirmPassword"
-            type="password"
-            className={styles.input}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required

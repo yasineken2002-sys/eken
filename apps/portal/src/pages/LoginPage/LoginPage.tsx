@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { loginWithPassword } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
+import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
 import styles from './LoginPage.module.css'
 
 export function LoginPage() {
@@ -71,10 +72,8 @@ export function LoginPage() {
           <label className={styles.label} htmlFor="password" style={{ marginTop: 12 }}>
             Lösenord
           </label>
-          <input
+          <PasswordInput
             id="password"
-            type="password"
-            className={styles.input}
             placeholder="Ditt lösenord"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

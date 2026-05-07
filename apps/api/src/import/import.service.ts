@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import * as XLSX from 'xlsx'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { normalizeEmail } from '../common/utils/normalize-email'
 import type { Prisma } from '@prisma/client'
 import { ImportJobStatus, ImportJobType } from '@prisma/client'
 
@@ -465,9 +466,11 @@ export class ImportService {
           continue
         }
 
-        // Duplicate check: email + organizationId
+        // Duplicate check: email + organizationId. Normalisera så CSV med
+        // blandad case ("Anna@x.se") fortfarande hittar befintlig "anna@x.se".
+        const importEmail = normalizeEmail(data['email'] ?? '')
         const existing = await this.prisma.tenant.findFirst({
-          where: { organizationId, email: data['email'] ?? '' },
+          where: { organizationId, email: importEmail },
         })
         if (existing) {
           errors.push({
@@ -497,7 +500,7 @@ export class ImportService {
             firstName: data['firstName'] || null,
             lastName: data['lastName'] || null,
             companyName: data['companyName'] || null,
-            email: data['email'] ?? '',
+            email: importEmail,
             phone: data['phone'] || null,
             personalNumber: data['personalNumber'] || null,
             orgNumber: data['orgNumber'] || null,
@@ -555,9 +558,10 @@ export class ImportService {
           continue
         }
 
-        // Find tenant by email
-        const tenantEmail = data['tenantEmail'] ?? data['email'] ?? ''
-        const tenant = tenants.find((t) => t.email.toLowerCase() === tenantEmail.toLowerCase())
+        // Find tenant by email — DB lagrar lowercase, så vi normaliserar
+        // input och kan jämföra exakt (snabbare än .toLowerCase() per rad).
+        const tenantEmail = normalizeEmail(data['tenantEmail'] ?? data['email'] ?? '')
+        const tenant = tenants.find((t) => t.email === tenantEmail)
         if (!tenant) {
           errors.push({
             row: rowNumber,

@@ -11,7 +11,10 @@ import { readErrorMessage } from './lib/password-schema'
 import type { Route } from '@/App'
 
 const schema = z.object({
-  email: z.string().email('Ogiltig e-postadress'),
+  email: z
+    .string()
+    .email('Ogiltig e-postadress')
+    .transform((s) => s.trim().toLowerCase()),
 })
 type FormValues = z.infer<typeof schema>
 

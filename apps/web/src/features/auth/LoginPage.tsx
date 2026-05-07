@@ -3,17 +3,22 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion } from 'framer-motion'
-import { Eye, EyeOff, Building2, BarChart3, Shield, Zap, CheckCircle2 } from 'lucide-react'
+import { Building2, BarChart3, Shield, Zap, CheckCircle2 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
-import { cn } from '@/lib/cn'
+import { PasswordInput } from './components/PasswordInput'
 import { loginApi } from './api/auth.api'
 import { consumeLoginFlash } from './lib/login-flash'
 import { useAuthStore } from '@/stores/auth.store'
 import type { Route } from '@/App'
 
 const schema = z.object({
-  email: z.string().email('Ogiltig e-postadress'),
+  // E-post är case-insensitiv (RFC 5321) — normalisera till lowercase
+  // direkt vid validering så payload till backend alltid är kanonisk.
+  email: z
+    .string()
+    .email('Ogiltig e-postadress')
+    .transform((s) => s.trim().toLowerCase()),
   password: z.string().min(1, 'Lösenord krävs'),
 })
 
@@ -93,7 +98,6 @@ function BrandPanel() {
 }
 
 export function LoginPage({ onNavigate }: Props) {
-  const [showPassword, setShowPassword] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [isPending, setIsPending] = useState(false)
   // Konsumera flash-signalen synkront vid first render — annars riskerar vi
@@ -197,35 +201,13 @@ export function LoginPage({ onNavigate }: Props) {
               {...register('email')}
             />
 
-            <div className="space-y-1.5">
-              <label className="block text-[13px] font-medium text-gray-700">Lösenord</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                  className={cn(
-                    'flex h-10 w-full rounded-xl border bg-white px-3.5 pr-10 text-[13.5px] text-gray-900 placeholder:text-gray-400',
-                    'transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-0',
-                    errors.password
-                      ? 'border-red-300 focus:border-red-400 focus:ring-red-500/15'
-                      : 'border-[#E5E7EB] hover:border-gray-300 focus:border-blue-500 focus:ring-blue-500/15',
-                  )}
-                  {...register('password')}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600"
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                </button>
-              </div>
-              {errors.password && (
-                <p className="text-[12px] text-red-500">{errors.password.message}</p>
-              )}
-            </div>
+            <PasswordInput
+              label="Lösenord"
+              autoComplete="current-password"
+              placeholder="••••••••"
+              error={errors.password?.message}
+              {...register('password')}
+            />
 
             <div className="-mt-1 flex justify-end">
               <button

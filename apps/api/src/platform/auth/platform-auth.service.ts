@@ -11,6 +11,7 @@ import { generateSecret, generateURI, verify as verifyOtp } from 'otplib'
 import * as QRCode from 'qrcode'
 import { v4 as uuidv4 } from 'uuid'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { normalizeEmail } from '../../common/utils/normalize-email'
 import type { PlatformJwtPayload, PlatformTokenPair } from '../platform-token.types'
 
 export interface PlatformAuthUser {
@@ -45,7 +46,9 @@ export class PlatformAuthService {
   ) {}
 
   async login(email: string, password: string, totpCode?: string): Promise<PlatformAuthResponse> {
-    const user = await this.prisma.platformUser.findUnique({ where: { email } })
+    const user = await this.prisma.platformUser.findUnique({
+      where: { email: normalizeEmail(email) },
+    })
     if (!user) throw new UnauthorizedException('Felaktiga inloggningsuppgifter')
 
     const valid = await bcrypt.compare(password, user.passwordHash)
