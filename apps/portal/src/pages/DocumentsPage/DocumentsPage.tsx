@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchDocuments } from '@/api/portal.api'
-import { useSessionStore } from '@/store/session.store'
+import { toast } from 'sonner'
+import { fetchDocuments, fetchDocumentDownload, extractApiError } from '@/api/portal.api'
 import { Spinner } from '@/components/ui/Spinner'
 import { ErrorCard } from '@/components/ui/ErrorCard'
+import { openPresignedDownload, sanitizeFilename } from '@/lib/download'
 import type { PortalDocument } from '@/types/portal.types'
 import styles from './DocumentsPage.module.css'
 
@@ -77,13 +79,27 @@ function formatDateSv(dateStr: string): string {
 }
 
 function DocumentCard({ doc }: { doc: PortalDocument }) {
-  const sessionToken = useSessionStore((s) => s.sessionToken)
+  const [loading, setLoading] = useState(false)
   const iconStyle = getFileIconStyle(doc.mimeType)
   const category = CATEGORY_LABELS[doc.category] ?? doc.category
 
-  function handleDownload() {
-    const url = `/api/portal/documents/${doc.id}/download?session=${sessionToken ?? ''}`
-    window.open(url, '_blank', 'noopener,noreferrer')
+  // Tvåstegsnedladdning: backend returnerar en presigned R2-URL och vi öppnar
+  // den i ett nytt fönster. Sessionstoken ligger i Authorization-headern (set
+  // av portalApi-interceptorn) — INTE i query-stringen som tidigare. Det
+  // gör att tokens inte läcker via referrer, browser-historik eller serverloggar.
+  async function handleDownload() {
+    if (loading) return
+    setLoading(true)
+    try {
+      const { url, filename } = await fetchDocumentDownload(doc.id)
+      openPresignedDownload(url, sanitizeFilename(filename || doc.name))
+    } catch (err) {
+      toast.error('Kunde inte ladda ner dokumentet', {
+        description: extractApiError(err, 'Försök igen om en stund.'),
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -103,8 +119,8 @@ function DocumentCard({ doc }: { doc: PortalDocument }) {
           {doc.description && <p className={styles.docDesc}>{doc.description}</p>}
         </div>
       </div>
-      <button className={styles.downloadBtn} onClick={handleDownload}>
-        Ladda ned
+      <button className={styles.downloadBtn} onClick={handleDownload} disabled={loading}>
+        {loading ? 'Laddar...' : 'Ladda ned'}
       </button>
     </div>
   )

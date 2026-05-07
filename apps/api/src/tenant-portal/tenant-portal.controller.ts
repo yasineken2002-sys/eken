@@ -336,6 +336,7 @@ export class TenantPortalController {
   constructor(
     private readonly portalService: TenantPortalService,
     private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
   ) {}
 
   @Get('me')
@@ -396,6 +397,46 @@ export class TenantPortalController {
     @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
   ) {
     return this.portalService.getDocuments(tenant.id)
+  }
+
+  /**
+   * Returnerar en presigned R2-URL till ett dokument som tillhör hyresgästen.
+   *
+   * Auth: Bearer-session (TenantAuthGuard) — sessionstoken får aldrig ligga
+   * i query-string, varken i request-URL eller i den returnerade R2-URL:en
+   * (Cloudflare-signaturen ligger där, inte vår tenant-token).
+   *
+   * Scope: dokumentet måste ha tenantId === inloggad tenant ELLER vara
+   * signerat av hyresgästen (signedByTenantId). Andra dokument i org:en
+   * — t.ex. interna fastighetspapper — får hyresgästen aldrig se.
+   *
+   * Faktura-PDF:er exponeras inte via denna endpoint; portalen har en
+   * separat avi-vy med inbäddad fakturabild.
+   */
+  @Get('documents/:id/download')
+  async downloadDocument(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+    @Param('id') documentId: string,
+  ): Promise<{ url: string; filename: string; mimeType: string }> {
+    const doc = await this.prisma.document.findFirst({
+      where: {
+        id: documentId,
+        OR: [{ tenantId: tenant.id }, { signedByTenantId: tenant.id }],
+        NOT: { category: 'INVOICE' },
+      },
+      select: {
+        id: true,
+        name: true,
+        storageKey: true,
+        mimeType: true,
+      },
+    })
+    if (!doc) {
+      throw new NotFoundException('Dokumentet hittades inte')
+    }
+
+    const url = await this.storage.getPresignedUrl(doc.storageKey, 300)
+    return { url, filename: `${doc.name}.pdf`, mimeType: doc.mimeType }
   }
 
   @Get('news')
