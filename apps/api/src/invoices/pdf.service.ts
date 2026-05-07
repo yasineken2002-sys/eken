@@ -1,28 +1,56 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
-import puppeteer from 'puppeteer'
+import { Injectable, NotFoundException, OnModuleDestroy } from '@nestjs/common'
+import { Logger } from '@nestjs/common'
+import puppeteer, { type Browser, type Page } from 'puppeteer'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
 import { generateInvoiceHtml } from './templates/invoice-pdf.template'
 
+const BROWSER_LAUNCH_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--disable-gpu',
+] as const
+
+// Hur många PDF-renderingar vi tillåter samtidigt mot samma browser. Headless
+// Chromium klarar fler men varje öppen page äter ~50-100 MB. 5 är en bra
+// avvägning för Railway-storleken vi kör i prod (1-2 vCPU, 2 GB RAM).
+const MAX_CONCURRENT_PAGES = 5
+
 @Injectable()
-export class PdfService {
+export class PdfService implements OnModuleDestroy {
+  private readonly logger = new Logger(PdfService.name)
+
+  // Singleton browser-handle. Lat-initieras vid första anrop och återanvänds
+  // för alla efterföljande renderingar. Att starta en ny Chromium per request
+  // är ~2 s overhead + ~500 MB minnesläck över tid (Puppeteer/Chromium har
+  // dokumenterade läckor när processen återstartas snabbt).
+  private browser: Browser | null = null
+  private launchPromise: Promise<Browser> | null = null
+
+  // Lättviktig semaphore. queue håller resolves som väntar på en ledig slot,
+  // active räknar hur många pages som körs just nu.
+  private active = 0
+  private readonly waiters: Array<() => void> = []
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
   ) {}
 
+  async onModuleDestroy(): Promise<void> {
+    if (this.browser) {
+      try {
+        await this.browser.close()
+      } catch (err) {
+        this.logger.warn(`Failed to close Puppeteer browser cleanly: ${String(err)}`)
+      }
+      this.browser = null
+    }
+  }
+
   async generateFromHtml(html: string): Promise<Buffer> {
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-      ],
-    })
-    try {
-      const page = await browser.newPage()
+    return this.withPage(async (page) => {
       await page.setContent(html, { waitUntil: 'networkidle0' })
       const pdf = await page.pdf({
         format: 'A4',
@@ -30,13 +58,10 @@ export class PdfService {
         margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },
       })
       return Buffer.from(pdf)
-    } finally {
-      await browser.close()
-    }
+    })
   }
 
   async generateInvoicePdf(invoiceId: string, organizationId: string): Promise<Buffer> {
-    // 1. Fetch invoice with related data
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, organizationId },
       include: {
@@ -53,7 +78,6 @@ export class PdfService {
     const party = invoice.tenant ?? invoice.customer
     if (!party) throw new NotFoundException('Fakturan saknar mottagare')
 
-    // 2. Read logo from R2 and encode as base64 (fail-safe: null on any error)
     let logoBase64: string | null = null
     if (invoice.organization.logoStorageKey) {
       try {
@@ -64,7 +88,6 @@ export class PdfService {
       }
     }
 
-    // 3. Build HTML
     const html = generateInvoiceHtml({
       invoiceColor: invoice.organization.invoiceColor ?? '#1a6b3c',
       invoiceTemplate: invoice.organization.invoiceTemplate ?? 'classic',
@@ -77,7 +100,6 @@ export class PdfService {
           companyName: party.companyName,
           email: party.email ?? '',
           phone: party.phone,
-          // Map flat Prisma address fields → nested shape the template expects
           address: party.street
             ? {
                 street: party.street,
@@ -107,19 +129,7 @@ export class PdfService {
       logoBase64,
     })
 
-    // 4. Launch Puppeteer and render PDF
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-      ],
-    })
-
-    try {
-      const page = await browser.newPage()
+    return this.withPage(async (page) => {
       await page.setContent(html, { waitUntil: 'networkidle0' })
       const pdf = await page.pdf({
         format: 'A4',
@@ -127,8 +137,78 @@ export class PdfService {
         margin: { top: '0', right: '0', bottom: '0', left: '0' },
       })
       return Buffer.from(pdf)
+    })
+  }
+
+  // ── Browser pool ──────────────────────────────────────────────────────────
+
+  /**
+   * Hämtar (eller startar) singleton-browsern. Om Chromium kraschat
+   * (browser.disconnect:ar) startas en ny vid nästa anrop. Två parallella
+   * första-anrop delar samma launchPromise så vi aldrig startar två browsers.
+   */
+  private async getBrowser(): Promise<Browser> {
+    if (this.browser && this.browser.connected) return this.browser
+    if (this.launchPromise) return this.launchPromise
+
+    this.launchPromise = puppeteer
+      .launch({ headless: true, args: [...BROWSER_LAUNCH_ARGS] })
+      .then((browser) => {
+        this.browser = browser
+        browser.on('disconnected', () => {
+          this.logger.warn('[pdf] Puppeteer browser disconnected — startar om vid nästa request')
+          this.browser = null
+        })
+        this.logger.log('[pdf] Puppeteer browser startad')
+        return browser
+      })
+      .finally(() => {
+        this.launchPromise = null
+      })
+
+    return this.launchPromise
+  }
+
+  /**
+   * Kör en callback med en exklusiv Page. Tar en semaphore-slot före, släpper
+   * efter (även vid fel). Stänger pagen alltid — Puppeteer läcker minne om
+   * pages lämnas öppna.
+   */
+  private async withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
+    await this.acquireSlot()
+    let page: Page | null = null
+    try {
+      const browser = await this.getBrowser()
+      page = await browser.newPage()
+      return await fn(page)
     } finally {
-      await browser.close()
+      if (page) {
+        try {
+          await page.close()
+        } catch (err) {
+          this.logger.warn(`Failed to close page: ${String(err)}`)
+        }
+      }
+      this.releaseSlot()
     }
+  }
+
+  private acquireSlot(): Promise<void> {
+    if (this.active < MAX_CONCURRENT_PAGES) {
+      this.active++
+      return Promise.resolve()
+    }
+    return new Promise<void>((resolve) => {
+      this.waiters.push(() => {
+        this.active++
+        resolve()
+      })
+    })
+  }
+
+  private releaseSlot(): void {
+    this.active--
+    const next = this.waiters.shift()
+    if (next) next()
   }
 }

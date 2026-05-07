@@ -29,7 +29,18 @@ async function bootstrap() {
     process.exit(1)
   })
 
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter())
+  // trustProxy: 1 — Fastify litar på en (1) proxy framför sig och läser
+  // klientens IP från X-Forwarded-For. Det här är vad Railway och nginx
+  // kräver för att req.ip ska peka på den faktiska besökaren istället för
+  // proxyns interna adress. Utan denna inställning blir signed-from-IP-loggar,
+  // ratelimit-buckets och GDPR-audits värdelösa i produktion.
+  //
+  // 1 = en hop. Bakom Cloudflare → Railway hade vi behövt 2; vi får ändra
+  // när vi flyttar till en sådan topologi (eller läsa Cloudflare CF-Connecting-IP).
+  const app = await NestFactory.create<NestFastifyApplication>(
+    AppModule,
+    new FastifyAdapter({ trustProxy: 1 }),
+  )
 
   const config = app.get(ConfigService)
   const port = Number(config.get<string | number>('PORT', 3000))

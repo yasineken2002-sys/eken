@@ -4,9 +4,16 @@ import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
+import { LockService } from '../common/redis/lock.service'
 import { buildResidentialContractHtml } from './residential-contract.template'
 import { buildCommercialContractHtml } from './commercial-contract.template'
 import { type ContractTemplateInput, tenantDisplayName } from './contract-template.shared'
+
+// Hur länge en nyligen genererad PDF räknas som "färsk" och kan återanvändas
+// av den andra requesten i en race istället för att köra Puppeteer igen. 30 s
+// täcker normala dubbelklick utan att gömma riktiga uppdateringar (lease som
+// ändras → ny PDF även om någon precis genererat en).
+const RECENT_CONTRACT_WINDOW_MS = 30_000
 
 async function getLogoDataUrl(
   storage: StorageService,
@@ -29,6 +36,7 @@ export class ContractTemplateService {
     private readonly prisma: PrismaService,
     private readonly pdfService: PdfService,
     private readonly storage: StorageService,
+    private readonly locks: LockService,
   ) {}
 
   // ── Datainsamling och templating ──────────────────────────────────────
@@ -165,6 +173,15 @@ export class ContractTemplateService {
    * Om en föregående version finns och `linkPrevious=true` kopplas den
    * nya raden via `previousVersionId` så hela versionskedjan är
    * spårbar (renew, status-change m.m.).
+   *
+   * Hela operationen körs under ett distribuerat Redis-lock per leaseId.
+   * Två samtidiga klick på "generera" eller en race mellan controller
+   * och Bull-jobbet får annars två Document-rader och två R2-objekt.
+   *
+   * När låset väl tagits kontrollerar vi om någon redan precis genererade
+   * en PDF (inom RECENT_CONTRACT_WINDOW_MS) — i så fall returnerar vi
+   * den raden istället för att bygga en ny. Det matchar förväntningen att
+   * "tryck två gånger snabbt" ger ETT dokument, inte två versioner.
    */
   async generateLeaseContract(
     leaseId: string,
@@ -172,12 +189,42 @@ export class ContractTemplateService {
     userId: string,
     options: { linkPrevious?: boolean } = {},
   ): Promise<{ buffer: Buffer; documentId: string; contentHash: string }> {
+    return this.locks.runWithLock(
+      `contract-generation:${leaseId}`,
+      () => this.generateLeaseContractUnsafe(leaseId, organizationId, userId, options),
+      { ttlSec: 30, waitMs: 25_000 },
+    )
+  }
+
+  private async generateLeaseContractUnsafe(
+    leaseId: string,
+    organizationId: string,
+    userId: string,
+    options: { linkPrevious?: boolean },
+  ): Promise<{ buffer: Buffer; documentId: string; contentHash: string }> {
     const [lease, org] = await Promise.all([
       this.fetchLease(leaseId, organizationId),
       this.fetchOrg(organizationId),
     ])
     if (!lease) throw new NotFoundException('Kontraktet hittades inte')
     if (!org) throw new NotFoundException('Organisationen hittades inte')
+
+    // Snabbreturn: om en annan request precis genererade en PDF, återanvänd
+    // den. Använder createdAt > now - window. Vi hoppar bara om dokumentet
+    // skapades efter att lease senast uppdaterades — annars är det inaktuellt.
+    const recent = await this.prisma.document.findFirst({
+      where: {
+        leaseId,
+        organizationId,
+        category: 'CONTRACT',
+        createdAt: { gt: new Date(Date.now() - RECENT_CONTRACT_WINDOW_MS) },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (recent && recent.contentHash && recent.createdAt >= lease.updatedAt) {
+      const buffer = await this.storage.getFileBuffer(recent.storageKey)
+      return { buffer, documentId: recent.id, contentHash: recent.contentHash }
+    }
 
     const input = await this.buildInput(lease, org)
     const html = this.renderHtml(input)

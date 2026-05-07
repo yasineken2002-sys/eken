@@ -295,6 +295,7 @@ export class TenantPortalAdminController {
         portalActivated: true,
         portalActivatedAt: true,
         activationTokenExpiresAt: true,
+        activationReminderSentAt: true,
       },
     })
     if (!tenant) throw new NotFoundException('Hyresgästen hittades inte')
@@ -308,6 +309,7 @@ export class TenantPortalAdminController {
       portalActivated: tenant.portalActivated,
       portalActivatedAt: tenant.portalActivatedAt?.toISOString() ?? null,
       activationTokenExpiresAt: tenant.activationTokenExpiresAt?.toISOString() ?? null,
+      activationReminderSentAt: tenant.activationReminderSentAt?.toISOString() ?? null,
       hasPendingActivationLink: hasPendingToken,
     }
   }

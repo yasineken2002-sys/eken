@@ -8,6 +8,7 @@ import type { ReminderFormalProps } from './templates/invoices/ReminderFormal'
 import type { TenantWelcomeProps } from './templates/tenants/TenantWelcome'
 import type { TenantWelcomeWithContractProps } from './templates/tenants/TenantWelcomeWithContract'
 import type { TenantSignatureConfirmationProps } from './templates/tenants/TenantSignatureConfirmation'
+import type { TenantActivationReminderProps } from './templates/tenants/TenantActivationReminder'
 import type { TenantInviteProps } from './templates/tenants/TenantInvite'
 import type { RentIncreaseNoticeProps } from './templates/tenants/RentIncreaseNotice'
 import type { MaintenanceUpdateProps } from './templates/notifications/MaintenanceUpdate'
@@ -24,6 +25,7 @@ export const TEMPLATE_NAMES = [
   'tenant-welcome',
   'tenant-welcome-with-contract',
   'tenant-signature-confirmation',
+  'tenant-activation-reminder',
   'tenant-invite',
   'rent-increase-notice',
   'maintenance-update',
@@ -44,6 +46,7 @@ export interface TemplatePropsMap {
   'tenant-welcome': TenantWelcomeProps
   'tenant-welcome-with-contract': TenantWelcomeWithContractProps
   'tenant-signature-confirmation': TenantSignatureConfirmationProps
+  'tenant-activation-reminder': TenantActivationReminderProps
   'tenant-invite': TenantInviteProps
   'rent-increase-notice': RentIncreaseNoticeProps
   'maintenance-update': MaintenanceUpdateProps

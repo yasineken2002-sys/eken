@@ -313,8 +313,11 @@ export class TenantPortalService {
           contactPerson: null,
           passwordHash: null,
           portalActivated: false,
-          activationToken: null,
+          activationTokenHash: null,
           activationTokenExpiresAt: null,
+          activationReminderSentAt: null,
+          passwordResetTokenHash: null,
+          passwordResetTokenExpiresAt: null,
         },
       })
       // Radera alla aktiva sessioner

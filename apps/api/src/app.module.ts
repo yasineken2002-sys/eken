@@ -2,7 +2,8 @@ import { Module } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { ConfigModule, ConfigService } from '@nestjs/config'
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
+import { ThrottlerModule } from '@nestjs/throttler'
+import { UserOrIpThrottlerGuard } from './common/throttler/user-or-ip.throttler-guard'
 import { ScheduleModule } from '@nestjs/schedule'
 import { BullModule } from '@nestjs/bull'
 import { TerminusModule } from '@nestjs/terminus'
@@ -39,6 +40,7 @@ import { MessagesModule } from './messages/messages.module'
 import { PlatformModule } from './platform/platform.module'
 import { StorageModule } from './storage/storage.module'
 import { OcrModule } from './common/ocr/ocr.module'
+import { RedisModule } from './common/redis/redis.module'
 
 @Module({
   imports: [
@@ -76,6 +78,7 @@ import { OcrModule } from './common/ocr/ocr.module'
     PrismaModule,
     StorageModule,
     OcrModule,
+    RedisModule,
 
     // Feature modules
     AuthModule,
@@ -109,6 +112,6 @@ import { OcrModule } from './common/ocr/ocr.module'
     MessagesModule,
     PlatformModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }, GlobalExceptionFilter],
+  providers: [{ provide: APP_GUARD, useClass: UserOrIpThrottlerGuard }, GlobalExceptionFilter],
 })
 export class AppModule {}

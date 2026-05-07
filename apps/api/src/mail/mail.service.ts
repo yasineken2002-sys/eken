@@ -127,6 +127,15 @@ export interface SendTenantSignatureConfirmationOptions {
   idempotencyKey?: string
 }
 
+export interface SendTenantActivationReminderOptions {
+  to: string
+  tenantName: string
+  organizationName: string
+  activationUrl: string
+  validForHours?: number
+  idempotencyKey?: string
+}
+
 export interface SendInvoiceReminderOptions {
   to: string
   tenantName: string
@@ -280,6 +289,24 @@ export class MailService {
       {
         to: opts.to,
         subject: `Kvittens — ditt hyreskontrakt hos ${opts.organizationName} är signerat`,
+        idempotencyKey: opts.idempotencyKey,
+      },
+    )
+  }
+
+  async sendTenantActivationReminder(opts: SendTenantActivationReminderOptions): Promise<string> {
+    return this.enqueueTyped(
+      'tenant-activation-reminder',
+      'high',
+      {
+        tenantName: opts.tenantName,
+        organizationName: opts.organizationName,
+        activationUrl: opts.activationUrl,
+        ...(opts.validForHours !== undefined ? { validForHours: opts.validForHours } : {}),
+      },
+      {
+        to: opts.to,
+        subject: `Påminnelse: aktivera ditt hyreskonto hos ${opts.organizationName}`,
         idempotencyKey: opts.idempotencyKey,
       },
     )

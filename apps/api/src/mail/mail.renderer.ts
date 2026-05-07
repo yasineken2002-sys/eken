@@ -12,6 +12,7 @@ import { ReminderFormal } from './templates/invoices/ReminderFormal'
 import { TenantWelcome } from './templates/tenants/TenantWelcome'
 import { TenantWelcomeWithContract } from './templates/tenants/TenantWelcomeWithContract'
 import { TenantSignatureConfirmation } from './templates/tenants/TenantSignatureConfirmation'
+import { TenantActivationReminder } from './templates/tenants/TenantActivationReminder'
 import { TenantInvite } from './templates/tenants/TenantInvite'
 import { RentIncreaseNotice } from './templates/tenants/RentIncreaseNotice'
 import { MaintenanceUpdate } from './templates/notifications/MaintenanceUpdate'
@@ -32,6 +33,7 @@ const TEMPLATE_REGISTRY: Record<TemplateName, TemplateComponent> = {
   'tenant-welcome': TenantWelcome as TemplateComponent,
   'tenant-welcome-with-contract': TenantWelcomeWithContract as TemplateComponent,
   'tenant-signature-confirmation': TenantSignatureConfirmation as TemplateComponent,
+  'tenant-activation-reminder': TenantActivationReminder as TemplateComponent,
   'tenant-invite': TenantInvite as TemplateComponent,
   'rent-increase-notice': RentIncreaseNotice as TemplateComponent,
   'maintenance-update': MaintenanceUpdate as TemplateComponent,

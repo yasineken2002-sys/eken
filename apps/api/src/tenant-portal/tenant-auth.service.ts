@@ -20,6 +20,12 @@ const ACTIVATION_TTL_MS = 72 * 60 * 60 * 1000 // 72 timmar
 const RESET_TTL_MS = 24 * 60 * 60 * 1000 // 24 timmar
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 dagar
 
+// Påminnelsemejl skickas när hyresgästen haft tokenen i 48 h utan att ha
+// aktiverat. Det ger 24 h kvar att klicka innan utgång (72 h totalt). Vi
+// markerar `activationReminderSentAt` så samma token bara genererar en
+// påminnelse — om hyresvärden återskickar token nollas markeringen.
+const REMINDER_AFTER_MS = 48 * 60 * 60 * 1000
+
 function sha256(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex')
 }
@@ -53,8 +59,11 @@ export class TenantAuthService {
 
   /**
    * Skapa eller rotera en aktiveringstoken för en hyresgäst och returnera den
-   * fulla aktiveringslänken. Anropas från LeasesService när ett kontrakt blir
-   * ACTIVE och från admin-resend-endpointen.
+   * råa token (som skickas i mejl). Endast SHA-256-hashen sparas i DB — vid
+   * läcka går databasvärdet inte att använda för att aktivera kontot.
+   *
+   * Anropas från LeasesService när ett kontrakt blir ACTIVE och från
+   * admin-resend-endpointen.
    */
   async issueActivationToken(tenantId: string, ttlMs = ACTIVATION_TTL_MS): Promise<string> {
     const token = crypto.randomBytes(32).toString('hex')
@@ -62,7 +71,33 @@ export class TenantAuthService {
 
     await this.prisma.tenant.update({
       where: { id: tenantId },
-      data: { activationToken: token, activationTokenExpiresAt: expiresAt },
+      data: {
+        activationTokenHash: sha256(token),
+        activationTokenExpiresAt: expiresAt,
+        // Nollställ påminnelse-markeringen så en återskickad token leder till
+        // en ny påminnelse efter 48 h (annars skulle hyresgäster som fick en
+        // ny länk aldrig få en påminnelse).
+        activationReminderSentAt: null,
+      },
+    })
+
+    return token
+  }
+
+  /**
+   * Skapa en separat lösenordsåterställningstoken. Använder en egen kolumn
+   * (passwordResetTokenHash) så att aktiveringsflödet inte överskrivs.
+   */
+  async issuePasswordResetToken(tenantId: string, ttlMs = RESET_TTL_MS): Promise<string> {
+    const token = crypto.randomBytes(32).toString('hex')
+    const expiresAt = new Date(Date.now() + ttlMs)
+
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        passwordResetTokenHash: sha256(token),
+        passwordResetTokenExpiresAt: expiresAt,
+      },
     })
 
     return token
@@ -105,7 +140,7 @@ export class TenantAuthService {
     }
   > {
     const tenant = await this.prisma.tenant.findUnique({
-      where: { activationToken: token },
+      where: { activationTokenHash: sha256(token) },
       include: {
         organization: { select: { id: true, name: true } },
         leases: {
@@ -158,8 +193,9 @@ export class TenantAuthService {
   ): Promise<SessionResult> {
     assertStrongPassword(password)
 
+    const tokenHash = sha256(token)
     const tenant = await this.prisma.tenant.findUnique({
-      where: { activationToken: token },
+      where: { activationTokenHash: tokenHash },
       include: { organization: { select: { id: true, name: true } } },
     })
     if (!tenant || !tenant.activationTokenExpiresAt) {
@@ -177,8 +213,9 @@ export class TenantAuthService {
         passwordHash,
         portalActivated: true,
         portalActivatedAt: tenant.portalActivated ? tenant.portalActivatedAt : new Date(),
-        activationToken: null,
+        activationTokenHash: null,
         activationTokenExpiresAt: null,
+        activationReminderSentAt: null,
       },
       include: { organization: { select: { id: true, name: true } } },
     })
@@ -276,7 +313,7 @@ export class TenantAuthService {
       return
     }
 
-    const token = await this.issueActivationToken(tenant.id, RESET_TTL_MS)
+    const token = await this.issuePasswordResetToken(tenant.id, RESET_TTL_MS)
     const resetUrl = this.buildResetUrl(token)
 
     const tenantName = tenant.firstName
@@ -302,14 +339,15 @@ export class TenantAuthService {
   async resetPassword(token: string, password: string): Promise<SessionResult> {
     assertStrongPassword(password)
 
+    const tokenHash = sha256(token)
     const tenant = await this.prisma.tenant.findUnique({
-      where: { activationToken: token },
+      where: { passwordResetTokenHash: tokenHash },
       include: { organization: { select: { id: true, name: true } } },
     })
-    if (!tenant || !tenant.activationTokenExpiresAt) {
+    if (!tenant || !tenant.passwordResetTokenExpiresAt) {
       throw new UnauthorizedException('Ogiltig återställningslänk')
     }
-    if (tenant.activationTokenExpiresAt < new Date()) {
+    if (tenant.passwordResetTokenExpiresAt < new Date()) {
       throw new UnauthorizedException('Återställningslänken har gått ut')
     }
 
@@ -321,8 +359,8 @@ export class TenantAuthService {
         passwordHash,
         portalActivated: true,
         portalActivatedAt: tenant.portalActivated ? tenant.portalActivatedAt : new Date(),
-        activationToken: null,
-        activationTokenExpiresAt: null,
+        passwordResetTokenHash: null,
+        passwordResetTokenExpiresAt: null,
       },
       include: { organization: { select: { id: true, name: true } } },
     })
@@ -439,13 +477,115 @@ export class TenantAuthService {
     })
   }
 
-  // ── Cron-städning ────────────────────────────────────────────────────────────
+  // ── Cron-jobs ────────────────────────────────────────────────────────────────
 
+  /**
+   * Städa utgångna sessions och tokens. Körs nattetid när belastningen är låg.
+   *
+   * - TenantSession: hård radering (sessionsraden behövs inte historiskt).
+   * - activationTokenHash + passwordResetTokenHash: nollas så att råtoken
+   *   som hyresgästen ev. har sparat (mejl, bookmark) ger ett rent 401 vid
+   *   användning. Tenant-raden i sig får aldrig raderas — kvarvarande hyresavtal
+   *   och fakturor är räkenskapsmaterial enligt Bokföringslagen 7 kap. 2 §.
+   */
   @Cron('0 3 * * *')
   async cleanupStaleSessions(): Promise<void> {
-    const result = await this.prisma.tenantSession.deleteMany({
+    const sessions = await this.prisma.tenantSession.deleteMany({
       where: { expiresAt: { lt: new Date() } },
     })
-    this.logger.log(`Cleaned up ${result.count} stale session(s)`)
+    this.logger.log(`Cleaned up ${sessions.count} stale session(s)`)
+
+    const expiredActivations = await this.prisma.tenant.updateMany({
+      where: {
+        activationTokenHash: { not: null },
+        activationTokenExpiresAt: { lt: new Date() },
+      },
+      data: {
+        activationTokenHash: null,
+        activationTokenExpiresAt: null,
+        activationReminderSentAt: null,
+      },
+    })
+    this.logger.log(`Cleaned up ${expiredActivations.count} expired activation token(s)`)
+
+    const expiredResets = await this.prisma.tenant.updateMany({
+      where: {
+        passwordResetTokenHash: { not: null },
+        passwordResetTokenExpiresAt: { lt: new Date() },
+      },
+      data: {
+        passwordResetTokenHash: null,
+        passwordResetTokenExpiresAt: null,
+      },
+    })
+    this.logger.log(`Cleaned up ${expiredResets.count} expired password-reset token(s)`)
+  }
+
+  /**
+   * Skicka påminnelsemejl till hyresgäster som fått en aktiveringslänk för
+   * mer än 48 h sedan men inte använt den. Det ger 24 h kvar att klicka
+   * (token är giltig i 72 h totalt) — perfekt timing för att fånga
+   * hyresgäster som fått mejlet på fredagen och försvunnit över helgen.
+   *
+   * activationReminderSentAt sätts så samma token bara påminns en gång.
+   * Återskickar hyresvärden token via admin-endpointen nollas markeringen
+   * automatiskt i issueActivationToken.
+   */
+  @Cron('0 9 * * *')
+  async sendActivationReminders(): Promise<void> {
+    const now = Date.now()
+    const reminderCutoff = new Date(now - REMINDER_AFTER_MS)
+
+    const candidates = await this.prisma.tenant.findMany({
+      where: {
+        activationTokenHash: { not: null },
+        activationTokenExpiresAt: { gt: new Date() },
+        activationReminderSentAt: null,
+        portalActivated: false,
+      },
+      include: { organization: { select: { name: true } } },
+    })
+
+    let sent = 0
+    for (const tenant of candidates) {
+      // Vi har ingen kolumn för "när token utfärdades" — beräknar från
+      // expiresAt - TTL. Om token utfärdades för mindre än REMINDER_AFTER_MS
+      // sedan väntar vi.
+      const issuedAt = new Date(tenant.activationTokenExpiresAt!.getTime() - ACTIVATION_TTL_MS)
+      if (issuedAt > reminderCutoff) continue
+
+      const tenantName = tenant.firstName
+        ? `${tenant.firstName} ${tenant.lastName ?? ''}`.trim()
+        : (tenant.companyName ?? tenant.email)
+
+      // Vi har bara hashen lagrad — kan inte återgenerera samma råtoken.
+      // Lösningen: rotera till en NY token och skicka den i påminnelsen.
+      // Det innebär att den gamla länken (om hyresgästen ändå hittar mejlet
+      // efter påminnelsen) blir ogiltig, men praktiken är att påminnelsen
+      // är den de använder. issueActivationToken nollar
+      // activationReminderSentAt — vi sätter den explicit efter mejlet.
+      const newToken = await this.issueActivationToken(tenant.id, ACTIVATION_TTL_MS)
+      const activationUrl = this.buildActivationUrl(newToken)
+
+      try {
+        await this.mail.sendTenantActivationReminder({
+          to: tenant.email,
+          tenantName,
+          organizationName: tenant.organization.name,
+          activationUrl,
+          validForHours: 72,
+          idempotencyKey: `tenant-activation-reminder-${tenant.id}-${newToken.substring(0, 8)}`,
+        })
+        await this.prisma.tenant.update({
+          where: { id: tenant.id },
+          data: { activationReminderSentAt: new Date() },
+        })
+        sent++
+      } catch (err) {
+        this.logger.error(`Aktiveringspåminnelse för ${tenant.email} failade: ${String(err)}`)
+      }
+    }
+
+    this.logger.log(`Sent ${sent} activation reminder(s)`)
   }
 }
