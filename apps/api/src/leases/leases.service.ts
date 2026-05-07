@@ -232,7 +232,7 @@ export class LeasesService {
     id: string,
     newStatus: LeaseStatus,
     organizationId: string,
-    actorUserId?: string,
+    actorUserId?: string | null,
   ) {
     const lease = await this.findOne(id, organizationId)
     const allowed = VALID_TRANSITIONS[lease.status] ?? []
@@ -291,14 +291,22 @@ export class LeasesService {
     // → 8m → 16m → permanent fail) och vid permanent fail får org-admins en
     // SYSTEM-notification. Detta ersätter tidigare fire-and-forget som tyst
     // kunde lämna en ACTIVE Lease utan PDF eller mejl.
+    //
+    // PDF-jobbet enqueueas alltid, även när vi inte vet vem som triggade
+    // (cron, system-fix, AI-tool utan user-context). actorUserId blir då
+    // null → Document.uploadedById blir null. Tidigare gating på actorUserId
+    // gjorde att aktiveringar utan user-context tyst skapade ACTIVE-leases
+    // utan PDF — det orsakade Tindra-buggen 2026-05-07.
     if (newStatus === 'ACTIVE') {
-      if (actorUserId) {
-        await this.activationQueue
-          .enqueueGenerateContract({ leaseId: id, organizationId, actorUserId })
-          .catch((err) =>
-            this.logger.error(`[Leases] enqueue generate-contract failed: ${String(err)}`),
-          )
-      }
+      await this.activationQueue
+        .enqueueGenerateContract({
+          leaseId: id,
+          organizationId,
+          actorUserId: actorUserId ?? null,
+        })
+        .catch((err) =>
+          this.logger.error(`[Leases] enqueue generate-contract failed: ${String(err)}`),
+        )
 
       await this.activationQueue
         .enqueueWelcomeMail({ tenantId: lease.tenantId })

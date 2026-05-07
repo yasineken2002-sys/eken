@@ -41,7 +41,7 @@ export class LeaseActivationWorker {
       await this.contracts.generateLeaseContract(
         data.leaseId,
         data.organizationId,
-        data.actorUserId,
+        data.actorUserId, // null tillåts → Document.uploadedById blir null (system-genererat)
         { linkPrevious: true },
       )
       return

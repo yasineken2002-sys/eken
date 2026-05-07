@@ -6,6 +6,7 @@ import { InvoicesService } from '../../invoices/invoices.service'
 import { PdfService } from '../../invoices/pdf.service'
 import { TenantsService } from '../../tenants/tenants.service'
 import { LeasesService } from '../../leases/leases.service'
+import type { CreateLeaseWithTenantDto } from '../../leases/dto/create-lease-with-tenant.dto'
 import { PropertiesService } from '../../properties/properties.service'
 import { UnitsService } from '../../units/units.service'
 import { AccountingService } from '../../accounting/accounting.service'
@@ -1083,6 +1084,7 @@ export class ToolExecutorService {
             transLeaseId,
             toolInput.newStatus as LeaseStatus,
             organizationId,
+            userId,
           )
           const statusLabel = toolInput.newStatus === 'ACTIVE' ? 'aktiverat' : 'avslutat'
           return {
@@ -1778,54 +1780,65 @@ export class ToolExecutorService {
               message: `${unitResolved.unit.name} (nr ${unitResolved.unit.unitNumber}) är inte ledig. Status: ${unitResolved.unit.status}. Anropa get_available_units för att se vilka som faktiskt är lediga.`,
             }
           }
-          const unit = await this.prisma.unit.findFirst({
-            where: { id: unitResolved.unit.id, property: { organizationId } },
-          })
-          if (!unit) {
-            // Cant happen — resolveUnit har precis bekräftat raden — men
-            // Prisma-typen kräver att vi behandlar null.
-            return { success: false, message: 'Enheten kunde inte läsas in efter uppslagning.' }
-          }
+          const resolvedUnitId = unitResolved.unit.id
 
+          // Återanvänd existerande tenant om mailet redan finns i orgen
+          // (annars skapas det av createWithTenant). Detta bevarar tidigare
+          // beteende för "lägg till nytt kontrakt åt befintlig hyresgäst".
           const existing = await this.prisma.tenant.findFirst({
             where: { email: toolInput.email as string, organizationId },
-          })
-
-          const tenant =
-            existing ??
-            (await this.prisma.tenant.create({
-              data: {
-                organizationId,
-                type: toolInput.tenantType as 'INDIVIDUAL' | 'COMPANY',
-                ...(toolInput.firstName ? { firstName: toolInput.firstName as string } : {}),
-                ...(toolInput.lastName ? { lastName: toolInput.lastName as string } : {}),
-                ...(toolInput.companyName ? { companyName: toolInput.companyName as string } : {}),
-                ...(toolInput.personalNumber
-                  ? { personalNumber: toolInput.personalNumber as string }
-                  : {}),
-                email: toolInput.email as string,
-                ...(toolInput.phone ? { phone: toolInput.phone as string } : {}),
-              },
-            }))
-
-          const lease = await this.prisma.lease.create({
-            data: {
-              organizationId,
-              unitId: toolInput.unitId as string,
-              tenantId: tenant.id,
-              monthlyRent: new Prisma.Decimal(toolInput.monthlyRent as number),
-              depositAmount: new Prisma.Decimal(
-                (toolInput.depositAmount as number | undefined) ?? 0,
-              ),
-              startDate: new Date(toolInput.startDate as string),
-              ...(toolInput.endDate ? { endDate: new Date(toolInput.endDate as string) } : {}),
-              status: 'ACTIVE',
+            select: {
+              id: true,
+              type: true,
+              firstName: true,
+              lastName: true,
+              companyName: true,
+              email: true,
             },
           })
 
-          await this.prisma.unit.update({
-            where: { id: toolInput.unitId as string },
-            data: { status: 'OCCUPIED' },
+          // Skapa lease via service-flödet: createWithTenant ger DRAFT-status,
+          // sedan transitionStatus(ACTIVE) — det är transitionStatus som
+          // enqueueasr lease-activation-jobben (PDF + välkomstmejl). Att
+          // skapa direkt med ACTIVE via raw prisma skippar Bull och gör att
+          // hyresgästen aldrig får sin PDF (Tindra-buggen 2026-05-07).
+          const createDto: CreateLeaseWithTenantDto = {
+            unitId: resolvedUnitId,
+            monthlyRent: toolInput.monthlyRent as number,
+            depositAmount: (toolInput.depositAmount as number | undefined) ?? 0,
+            startDate: toolInput.startDate as string,
+            ...(toolInput.endDate ? { endDate: toolInput.endDate as string } : {}),
+            ...(existing
+              ? { existingTenantId: existing.id }
+              : {
+                  newTenant: {
+                    type: toolInput.tenantType as 'INDIVIDUAL' | 'COMPANY',
+                    email: toolInput.email as string,
+                    ...(toolInput.firstName ? { firstName: toolInput.firstName as string } : {}),
+                    ...(toolInput.lastName ? { lastName: toolInput.lastName as string } : {}),
+                    ...(toolInput.companyName
+                      ? { companyName: toolInput.companyName as string }
+                      : {}),
+                    ...(toolInput.phone ? { phone: toolInput.phone as string } : {}),
+                    ...(toolInput.personalNumber
+                      ? { personalNumber: toolInput.personalNumber as string }
+                      : {}),
+                  },
+                }),
+          }
+
+          const draftLease = await this.leasesService.createWithTenant(createDto, organizationId)
+          const activated = await this.leasesService.transitionStatus(
+            draftLease.id,
+            'ACTIVE',
+            organizationId,
+            userId,
+          )
+
+          // Hämta full tenant för return-payload (createWithTenant returnerar
+          // bara lease + minimal include).
+          const tenant = await this.prisma.tenant.findUniqueOrThrow({
+            where: { id: activated.tenantId },
           })
 
           const tenantName =
@@ -1835,19 +1848,16 @@ export class ToolExecutorService {
 
           return {
             success: true,
-            data: { tenant: pickSafeTenantFields(tenant as UnsafeTenant), lease },
+            data: { tenant: pickSafeTenantFields(tenant as UnsafeTenant), lease: activated },
             message:
-              `Kontrakt skapat!\n\n` +
+              `Kontrakt skapat och aktiverat!\n\n` +
               `Hyresgäst: ${tenantName}${existing ? ' (befintlig)' : ' (ny)'}\n` +
-              `Lägenhet: ${toolInput.unitName as string}, ${toolInput.propertyName as string}\n` +
+              `Lägenhet: ${unitResolved.unit.name} (nr ${unitResolved.unit.unitNumber}), ${toolInput.propertyName as string}\n` +
               `Hyra: ${(toolInput.monthlyRent as number).toLocaleString('sv-SE')} kr/mån\n` +
               `Från: ${toolInput.startDate as string}\n` +
-              (toolInput.endDate ? `Till: ${toolInput.endDate as string}` : 'Tillsvidare'),
-            nextSteps: [
-              `Generera hyreskontrakt som PDF`,
-              `Skicka välkomstbrev till ${tenant.email}`,
-              `Skapa första månadens faktura`,
-            ],
+              (toolInput.endDate ? `Till: ${toolInput.endDate as string}` : 'Tillsvidare') +
+              `\n\nKontrakts-PDF genereras automatiskt och välkomstmejl med aktiveringslänk skickas till ${tenant.email}.`,
+            nextSteps: [`Skapa första månadens faktura för ${tenantName}`],
           }
         }
 
@@ -2301,12 +2311,19 @@ export class ToolExecutorService {
             }
           }
 
+          // Robust unitId-uppslagning — Claude kan skicka unitNumber, name
+          // eller hallucinerad UUID. resolveUnit faller tillbaka på fuzzy.
+          const inspectionUnitResolved = await this.resolveUnit(toolInput, organizationId)
+          if ('error' in inspectionUnitResolved) {
+            return { success: false, message: inspectionUnitResolved.error }
+          }
+
           const inspection = await this.inspectionsService.create(
             {
               type: toolInput.type as never,
               scheduledDate: toolInput.scheduledDate as string,
               propertyId: toolInput.propertyId as string,
-              unitId: toolInput.unitId as string,
+              unitId: inspectionUnitResolved.unit.id,
               ...(toolInput.tenantId ? { tenantId: toolInput.tenantId as string } : {}),
             },
             organizationId,

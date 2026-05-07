@@ -1026,7 +1026,7 @@ model Document {
   unitId         String?
   leaseId        String?
   tenantId       String?
-  uploadedById   String
+  uploadedById   String?
 
   // ── Signering & versionskedja (används primärt för CONTRACT) ─────────────
   // contentHash är SHA-256 över PDF-bytena vid signeringstillfället. När
@@ -1049,7 +1049,7 @@ model Document {
   unit             Unit?        @relation(fields: [unitId], references: [id])
   lease            Lease?       @relation(fields: [leaseId], references: [id])
   tenant           Tenant?      @relation(fields: [tenantId], references: [id])
-  uploadedBy       User         @relation(fields: [uploadedById], references: [id])
+  uploadedBy       User?        @relation(fields: [uploadedById], references: [id])
   signedByTenant   Tenant?      @relation("DocumentSignedByTenant", fields: [signedByTenantId], references: [id])
   previousVersion  Document?    @relation("DocumentVersionChain", fields: [previousVersionId], references: [id])
   newerVersions    Document[]   @relation("DocumentVersionChain")

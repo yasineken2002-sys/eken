@@ -186,7 +186,7 @@ export class ContractTemplateService {
   async generateLeaseContract(
     leaseId: string,
     organizationId: string,
-    userId: string,
+    userId: string | null,
     options: { linkPrevious?: boolean } = {},
   ): Promise<{ buffer: Buffer; documentId: string; contentHash: string }> {
     return this.locks.runWithLock(
@@ -199,7 +199,7 @@ export class ContractTemplateService {
   private async generateLeaseContractUnsafe(
     leaseId: string,
     organizationId: string,
-    userId: string,
+    userId: string | null,
     options: { linkPrevious?: boolean },
   ): Promise<{ buffer: Buffer; documentId: string; contentHash: string }> {
     const [lease, org] = await Promise.all([
@@ -254,7 +254,10 @@ export class ContractTemplateService {
     const doc = await this.prisma.document.create({
       data: {
         organizationId,
-        uploadedById: userId,
+        // userId är null för system-genererade dokument (auto-jobb, cron, fix-skript).
+        // Document.uploadedById är nullable; vi utelämnar fältet helt vid null så
+        // Prisma inte försöker länka mot en obefintlig User.
+        ...(userId ? { uploadedById: userId } : {}),
         leaseId: lease.id,
         unitId: lease.unitId,
         propertyId: lease.unit.propertyId,

@@ -14,7 +14,11 @@ export type LeaseActivationJob =
       type: 'generate-contract-pdf'
       leaseId: string
       organizationId: string
-      actorUserId: string
+      // Mänsklig användare som triggade aktiveringen, om en sådan finns.
+      // Sätts till null när jobbet enqueueas av cron, system-fix eller
+      // andra autonoma flöden — i de fallen sparas Document utan
+      // uploadedBy och worker-loggen markerar 'system'.
+      actorUserId: string | null
     }
   | {
       type: 'send-welcome-mail'
@@ -41,7 +45,7 @@ export class LeaseActivationQueue {
   async enqueueGenerateContract(payload: {
     leaseId: string
     organizationId: string
-    actorUserId: string
+    actorUserId: string | null
   }): Promise<string> {
     const jobOptions: JobOptions = {
       attempts: 5,
