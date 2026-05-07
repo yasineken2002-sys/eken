@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, BadRequestException } from '@nestjs/common'
+import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
@@ -274,8 +274,23 @@ function translateMaintenanceStatus(status: string): string {
   return map[status] ?? status
 }
 
+// UUID v1-v5 tillåts. Vi använder det bara för att skilja på "AI skickade
+// en faktisk identifierare" vs "AI skickade en namnsträng som unitId" — vi
+// reserverar inte några garantier åt klienten.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function looksLikeUuid(v: unknown): v is string {
+  return typeof v === 'string' && UUID_RE.test(v.trim())
+}
+
+function normalize(v: unknown): string {
+  return typeof v === 'string' ? v.trim().toLowerCase() : ''
+}
+
 @Injectable()
 export class ToolExecutorService {
+  private readonly logger = new Logger(ToolExecutorService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoicesService: InvoicesService,
@@ -296,6 +311,153 @@ export class ToolExecutorService {
     private readonly storage: StorageService,
     private readonly audit: AiAuditService,
   ) {}
+
+  /**
+   * Översätt ett AI-input som påstås peka på en Unit till en faktisk Unit-rad.
+   *
+   * Claude är opålitlig med UUID:er över längre konversationer — den kan
+   * skicka in unitNumber ("0"), unit.name ("under våning") eller en
+   * hallucinerad UUID istället för det faktiska unit.id. Eftersom vi
+   * också får unitName + propertyName i samma payload (tool definition
+   * har dem som visningsfält) kan vi alltid disambiguera på serversidan.
+   *
+   * Strategi:
+   *   1. Om unitId är ett giltigt UUID-format → exakt id-uppslagning.
+   *   2. Annars (eller om id-uppslagningen failar) → fuzzy-match på
+   *      unitName / unitNumber inom propertyName-scope. Endast om vi
+   *      hittar EN unik kandidat returnerar vi den; annars returnerar
+   *      vi en lista över valbara enheter så Claude kan välja om.
+   *
+   * Returnerar { unit } vid lyckad uppslagning eller { error } med ett
+   * AI-vänligt felmeddelande.
+   */
+  async resolveUnit(
+    toolInput: Record<string, unknown>,
+    organizationId: string,
+  ): Promise<
+    { unit: { id: string; name: string; unitNumber: string; status: string } } | { error: string }
+  > {
+    const unitIdInput = toolInput.unitId
+    const unitNameHint = typeof toolInput.unitName === 'string' ? toolInput.unitName : null
+    const propertyNameHint =
+      typeof toolInput.propertyName === 'string' ? toolInput.propertyName : null
+
+    // Steg 1 — exakt id-uppslagning. UUID-form krävs så vi inte gör en
+    // dyr full-table scan om Claude skickade in "0" eller liknande.
+    if (looksLikeUuid(unitIdInput)) {
+      const unit = await this.prisma.unit.findFirst({
+        where: { id: (unitIdInput as string).trim(), property: { organizationId } },
+        select: { id: true, name: true, unitNumber: true, status: true },
+      })
+      if (unit) return { unit }
+      // Fall genom till fuzzy-match nedan istället för att direkt 404:a —
+      // mest sannolikt är UUID:n hallucinerad och vi har bättre data i
+      // unitName/propertyName.
+      this.logger.warn(
+        `[ai-tool] resolveUnit: UUID "${String(unitIdInput)}" matchade ingen rad — försöker fuzzy-match på unitName="${unitNameHint}" propertyName="${propertyNameHint}"`,
+      )
+    } else if (unitIdInput != null && unitIdInput !== '') {
+      this.logger.warn(
+        `[ai-tool] resolveUnit: unitId "${String(unitIdInput)}" är inte UUID — försöker fuzzy-match`,
+      )
+    }
+
+    // Steg 2 — fuzzy-match. Båda fälten krävs annars är sökrymden för
+    // bred (en organisation kan ha 100+ enheter med samma namn över
+    // flera fastigheter).
+    if (!unitNameHint && !propertyNameHint && !looksLikeUuid(unitIdInput)) {
+      return {
+        error:
+          'unitId saknas eller ogiltigt och unitName/propertyName är inte angivna. ' +
+          'Anropa get_available_units för att hitta rätt enhet och skicka tillbaka unit.id exakt.',
+      }
+    }
+
+    // Hitta kandidatfastigheter. Claude skickar propertyName ibland som
+    // bara namnet ("lunna"), ibland som designation ("lunna 15:2") och
+    // ibland med city ("lunna 15:2, Vallda"). Vi matchar mot alla tre
+    // (case-insensitiv contains) så Claude inte behöver veta exakt
+    // vilken kolumn som motsvarar vad det visar i UI:t.
+    const propertyWhere: Prisma.PropertyWhereInput = { organizationId }
+    if (propertyNameHint) {
+      const q = propertyNameHint.trim()
+      propertyWhere.OR = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { propertyDesignation: { contains: q, mode: 'insensitive' } },
+        { city: { contains: q, mode: 'insensitive' } },
+      ]
+    }
+    const candidateProperties = await this.prisma.property.findMany({
+      where: propertyWhere,
+      select: { id: true, name: true },
+    })
+
+    if (candidateProperties.length === 0) {
+      return {
+        error: `Ingen fastighet matchar "${propertyNameHint ?? '(saknas)'}". Anropa get_available_units utan filter för att se alla.`,
+      }
+    }
+
+    // I de matchande fastigheterna, leta enheter där (a) name matchar
+    // hint, eller (b) unitNumber == hint.trim() (Claude skickar ibland
+    // "nr 0" som unitName — vi prövar båda fälten).
+    const propertyIds = candidateProperties.map((p) => p.id)
+    const allUnits = await this.prisma.unit.findMany({
+      where: { propertyId: { in: propertyIds } },
+      select: {
+        id: true,
+        name: true,
+        unitNumber: true,
+        status: true,
+        property: { select: { id: true, name: true } },
+      },
+    })
+
+    const nameNorm = normalize(unitNameHint)
+    // Plocka ut "0" ur "nr 0", "lägenhet 1101" → "1101", osv.
+    const numberMatch = unitNameHint?.match(/(\d+)/)?.[1]
+    const candidates = allUnits.filter((u) => {
+      const n = normalize(u.name)
+      if (nameNorm && (n === nameNorm || n.includes(nameNorm))) return true
+      if (nameNorm && u.unitNumber.trim().toLowerCase() === nameNorm) return true
+      if (numberMatch && u.unitNumber.trim() === numberMatch) return true
+      return false
+    })
+
+    if (candidates.length === 1) {
+      const c = candidates[0]!
+      this.logger.warn(
+        `[ai-tool] resolveUnit: fuzzy-match lyckades — unit.id=${c.id} via name/number "${unitNameHint}" i property "${c.property.name}"`,
+      )
+      return {
+        unit: { id: c.id, name: c.name, unitNumber: c.unitNumber, status: c.status },
+      }
+    }
+
+    if (candidates.length > 1) {
+      const list = candidates
+        .slice(0, 10)
+        .map((c) => `- ${c.property.name} → ${c.name} (nr ${c.unitNumber}) — id=${c.id}`)
+        .join('\n')
+      return {
+        error:
+          `Flera enheter matchar "${unitNameHint}" i fastighet "${propertyNameHint}":\n${list}\n\n` +
+          'Ange exakt unit.id från denna lista i unitId-fältet.',
+      }
+    }
+
+    // Ingen match alls — visa vad som finns i de aktuella fastigheterna
+    const sample = allUnits
+      .slice(0, 10)
+      .map((u) => `- ${u.property.name} → ${u.name} (nr ${u.unitNumber}) — id=${u.id}`)
+      .join('\n')
+    return {
+      error:
+        `Ingen enhet matchar "${unitNameHint}" i fastighet "${propertyNameHint}". ` +
+        `Tillgängliga enheter:\n${sample || '(inga)'}\n\n` +
+        'Anropa get_available_units utan filter för att se alla, eller ange unit.id exakt.',
+    }
+  }
 
   async executeTool(
     toolName: string,
@@ -839,9 +1001,9 @@ export class ToolExecutorService {
         }
 
         case 'create_lease': {
-          // FIX 2: verify tenantId and unitId belong to org
+          // Verify tenantId belongs to org. Unit-uppslagningen gör resolveUnit
+          // som även hanterar AI-hallucinerade UUID:er och fuzzy-match.
           const leaseTenantId = toolInput.tenantId as string
-          const leaseUnitId = toolInput.unitId as string
 
           const leaseTenantCheck = await this.prisma.tenant.findFirst({
             where: { id: leaseTenantId, organizationId },
@@ -854,16 +1016,11 @@ export class ToolExecutorService {
             }
           }
 
-          const leaseUnitCheck = await this.prisma.unit.findFirst({
-            where: { id: leaseUnitId, property: { organizationId } },
-            select: { id: true },
-          })
-          if (!leaseUnitCheck) {
-            return {
-              success: false,
-              message: `Enhet med id "${leaseUnitId}" hittades inte i din organisation. Anropa get_properties för att hitta rätt unitId.`,
-            }
+          const unitResolved = await this.resolveUnit(toolInput, organizationId)
+          if ('error' in unitResolved) {
+            return { success: false, message: unitResolved.error }
           }
+          const leaseUnitId = unitResolved.unit.id
 
           const monthlyRent = parseSwedishAmount(toolInput.monthlyRent)
           if (monthlyRent === null) {
@@ -1564,12 +1721,12 @@ export class ToolExecutorService {
                   .map(
                     (unit) =>
                       `  • ${unit.name} (nr ${unit.unitNumber})\n` +
+                      `    unitId: ${unit.id}   ← använd EXAKT denna sträng som unitId i create_lease/create_tenant_and_lease\n` +
                       `    Typ: ${translateUnitType(unit.type)}\n` +
                       `    Storlek: ${unit.area ? Number(unit.area) + ' m²' : 'ej angiven'}\n` +
                       `    Våning: ${unit.floor ?? 'ej angiven'}\n` +
                       `    Rum: ${unit.rooms ?? 'ej angiven'}\n` +
-                      `    Hyra: ${Number(unit.monthlyRent).toLocaleString('sv-SE')} kr/mån\n` +
-                      `    ID: ${unit.id}`,
+                      `    Hyra: ${Number(unit.monthlyRent).toLocaleString('sv-SE')} kr/mån`,
                   )
                   .join('\n\n')
               )
@@ -1577,29 +1734,57 @@ export class ToolExecutorService {
             .filter(Boolean)
             .join('\n\n---\n\n')
 
+          // Trimma data-payloaden så Claude inte distraheras av interna fält
+          // (organizationId, createdAt, m.fl.). Vi behåller bara det som
+          // behövs för att skapa kontrakt och visa enheten.
+          const trimmedData = {
+            properties: properties.map((p) => ({
+              propertyId: p.id,
+              propertyName: p.name,
+              city: p.city,
+              units: p.units.map((u) => ({
+                unitId: u.id,
+                unitName: u.name,
+                unitNumber: u.unitNumber,
+                type: u.type,
+                status: u.status,
+                area: u.area ? Number(u.area) : null,
+                floor: u.floor,
+                rooms: u.rooms,
+                monthlyRent: Number(u.monthlyRent),
+              })),
+            })),
+            totalVacant,
+          }
+
           return {
             success: true,
-            data: { properties, totalVacant },
+            data: trimmedData,
             message: result as string,
           }
         }
 
         case 'create_tenant_and_lease': {
-          const unit = await this.prisma.unit.findFirst({
-            where: { id: toolInput.unitId as string, property: { organizationId } },
-          })
-          if (!unit) {
+          // resolveUnit hanterar både exakt UUID-match och fuzzy-match på
+          // unitName + propertyName, så Claude kan skicka in unit.id, unit.name,
+          // unitNumber eller en hallucinerad UUID — vi hittar rätt rad ändå.
+          const unitResolved = await this.resolveUnit(toolInput, organizationId)
+          if ('error' in unitResolved) {
+            return { success: false, message: unitResolved.error }
+          }
+          if (unitResolved.unit.status !== 'VACANT') {
             return {
               success: false,
-              message:
-                'Enheten hittades inte. Anropa get_available_units för att hitta rätt enhet.',
+              message: `${unitResolved.unit.name} (nr ${unitResolved.unit.unitNumber}) är inte ledig. Status: ${unitResolved.unit.status}. Anropa get_available_units för att se vilka som faktiskt är lediga.`,
             }
           }
-          if (unit.status !== 'VACANT') {
-            return {
-              success: false,
-              message: `${toolInput.unitName as string} är inte ledig. Status: ${unit.status}`,
-            }
+          const unit = await this.prisma.unit.findFirst({
+            where: { id: unitResolved.unit.id, property: { organizationId } },
+          })
+          if (!unit) {
+            // Cant happen — resolveUnit har precis bekräftat raden — men
+            // Prisma-typen kräver att vi behandlar null.
+            return { success: false, message: 'Enheten kunde inte läsas in efter uppslagning.' }
           }
 
           const existing = await this.prisma.tenant.findFirst({
