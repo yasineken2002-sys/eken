@@ -21,7 +21,7 @@ export function ForgotPasswordPage() {
     e.preventDefault()
     if (!email.trim()) return
     setErrorMsg('')
-    mutation.mutate(email.trim())
+    mutation.mutate(email.trim().toLowerCase())
   }
 
   if (state === 'sent') {

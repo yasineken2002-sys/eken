@@ -278,7 +278,17 @@ export class TenantAuthService {
   // ── Lösenordsinloggning ──────────────────────────────────────────────────────
 
   async login(email: string, password: string, organizationId?: string): Promise<SessionResult> {
-    const where = organizationId ? { email, organizationId } : { email }
+    // Case-insensitiv email-uppslagning. Postgres är case-sensitive by default
+    // och tenants kan ha sparats med blandad case (AI-toolet skapade
+    // "tindra.horkeby@gmail.com" medan hyresgästen skriver in
+    // "Tindra.horkeby@gmail.com" i login-formen). Identiska emails ska räknas
+    // som identisk identitet — annars får hyresgästen ett tyst 401 utan att
+    // kunna lista ut varför.
+    const emailFilter: { equals: string; mode: 'insensitive' } = {
+      equals: email,
+      mode: 'insensitive',
+    }
+    const where = organizationId ? { email: emailFilter, organizationId } : { email: emailFilter }
     const tenant = await this.prisma.tenant.findFirst({
       where,
       include: { organization: { select: { id: true, name: true } } },
@@ -304,8 +314,10 @@ export class TenantAuthService {
    * fel så hyresvärden kan felsöka.
    */
   async sendForgotPassword(email: string): Promise<void> {
+    // Samma case-insensitiva logik som login() — annars hittar vi inte
+    // hyresgäster som angav en blandad-case email vid skapande.
     const tenant = await this.prisma.tenant.findFirst({
-      where: { email },
+      where: { email: { equals: email, mode: 'insensitive' } },
       include: { organization: { select: { id: true, name: true } } },
     })
     if (!tenant || !tenant.portalActivated) {

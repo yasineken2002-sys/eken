@@ -13,7 +13,10 @@ export function LoginPage() {
   const [errorMsg, setErrorMsg] = useState('')
 
   const mutation = useMutation({
-    mutationFn: () => loginWithPassword({ email: email.trim(), password }),
+    // E-post är case-insensitiv. Backend matchar nu också case-insensitivt,
+    // men vi normaliserar i klienten också så samma e-post inte sparas i
+    // flera olika varianter över tid.
+    mutationFn: () => loginWithPassword({ email: email.trim().toLowerCase(), password }),
     onSuccess: (result) => {
       setSession(result.sessionToken, result.tenant, result.expiresAt)
       navigate('/dashboard', { replace: true })
