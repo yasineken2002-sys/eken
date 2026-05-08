@@ -493,7 +493,13 @@ export class TenantPortalController {
     if (typeof reqAny.parts !== 'function') {
       throw new BadRequestException('Multipart-data förväntas')
     }
-    const files: { filename: string; mimetype: string; toBuffer: () => Promise<Buffer> }[] = []
+
+    // OBS: @fastify/multipart håller varje fil-stream öppen ENBART under
+    // iterator-steget. Om vi sparar `part.toBuffer` och anropar den senare
+    // har streamen redan stängts och vi får TypeError på `Symbol.asyncIterator`.
+    // Därför drar vi varje fil till buffer redan här inne i loopen, och
+    // skickar färdiga buffers till service-lagret.
+    const files: { filename: string; mimetype: string; buffer: Buffer }[] = []
     for await (const part of reqAny.parts() as AsyncIterable<{
       type: 'file' | 'field'
       filename?: string
@@ -501,10 +507,11 @@ export class TenantPortalController {
       toBuffer?: () => Promise<Buffer>
     }>) {
       if (part.type === 'file' && part.toBuffer) {
+        const buffer = await part.toBuffer()
         files.push({
           filename: part.filename ?? 'upload.jpg',
           mimetype: part.mimetype ?? 'application/octet-stream',
-          toBuffer: part.toBuffer,
+          buffer,
         })
       }
     }

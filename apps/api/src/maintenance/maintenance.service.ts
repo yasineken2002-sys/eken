@@ -6,10 +6,16 @@ import { CreateMaintenanceTicketDto } from './dto/create-maintenance-ticket.dto'
 import { UpdateMaintenanceTicketDto } from './dto/update-maintenance-ticket.dto'
 import type { MaintenanceStatus, MaintenancePriority, MaintenanceCategory } from '@prisma/client'
 
-interface MultipartFile {
+/**
+ * Filuppladdning till maintenance. Controllern måste själv konsumera
+ * varje del från `req.parts()` eftersom @fastify/multipart bara håller
+ * stream:en levande inuti iterator-steget — annars dör `toBuffer()` med
+ * "Cannot read properties of undefined (reading 'Symbol.asyncIterator')".
+ */
+interface UploadedImage {
   filename: string
   mimetype: string
-  toBuffer(): Promise<Buffer>
+  buffer: Buffer
 }
 
 const ALLOWED_IMAGE_MIMETYPES = [
@@ -342,7 +348,7 @@ export class MaintenanceService {
    * mimetype/storlek, ladda till R2, och spara storageKey + initial
    * presigned URL. URL:en regenereras vid varje read i refreshImageUrls.
    */
-  async addImages(ticketId: string, files: MultipartFile[]) {
+  async addImages(ticketId: string, files: UploadedImage[]) {
     if (!files.length) throw new BadRequestException('Inga bilder bifogade')
 
     const existingCount = await this.prisma.maintenanceImage.count({ where: { ticketId } })
@@ -359,7 +365,7 @@ export class MaintenanceService {
           `Filtyp ${file.mimetype} stöds inte (tillåt: JPEG, PNG, WebP, HEIC)`,
         )
       }
-      const buffer = await file.toBuffer()
+      const buffer = file.buffer
       if (buffer.length > MAX_IMAGE_SIZE) {
         throw new BadRequestException('Bilden är för stor (max 15MB)')
       }
