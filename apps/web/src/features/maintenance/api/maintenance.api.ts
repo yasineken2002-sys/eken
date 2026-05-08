@@ -58,7 +58,14 @@ export interface MaintenanceTicket {
     type: string
     email: string
   } | null
-  images: { id: string; filename: string; path: string; size: number; createdAt: string }[]
+  images: {
+    id: string
+    filename: string
+    storageKey: string
+    storageUrl: string
+    size: number
+    createdAt: string
+  }[]
   comments: MaintenanceComment[]
   createdAt: string
   updatedAt: string

@@ -107,6 +107,27 @@ export async function submitMaintenanceRequest(dto: {
 }): Promise<PortalMaintenanceTicket> {
   return post<PortalMaintenanceTicket>('/portal/maintenance', dto)
 }
+
+/**
+ * Ladda upp bilder till en felanmälan via multipart/form-data. Anropas
+ * efter att ticket:en har skapats — vi vill inte blanda JSON-payload och
+ * filer i samma request, så vi kör två steg (skapa → ladda upp).
+ */
+export async function uploadMaintenanceImages(
+  ticketId: string,
+  files: File[],
+): Promise<{ id: string; storageUrl: string }[]> {
+  const formData = new FormData()
+  for (const file of files) {
+    formData.append('images', file, file.name)
+  }
+  const { data } = await portalApi.post<{ data: { id: string; storageUrl: string }[] }>(
+    `/portal/maintenance/${ticketId}/images`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  )
+  return data.data
+}
 export const addTicketComment = (ticketId: string, content: string) =>
   post<PortalMaintenanceTicket>(`/portal/maintenance/${ticketId}/comment`, { content })
 export const fetchNotices = () => get<PortalNotice[]>('/portal/notices')

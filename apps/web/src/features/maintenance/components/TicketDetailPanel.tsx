@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { motion } from 'framer-motion'
-import { X, Lock, Globe, Copy, Check, MessageSquare } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { X, Lock, Globe, Copy, Check, MessageSquare, ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import {
   MaintenanceStatusBadge,
@@ -32,6 +32,7 @@ export function TicketDetailPanel({ ticket, onClose }: Props) {
   const [commentText, setCommentText] = useState('')
   const [isInternal, setIsInternal] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
 
   const tenantName = ticket.tenant
     ? ticket.tenant.type === 'INDIVIDUAL'
@@ -124,6 +125,32 @@ export function TicketDetailPanel({ ticket, onClose }: Props) {
           </p>
           <p className="text-[13px] leading-relaxed text-gray-700">{ticket.description}</p>
         </div>
+
+        {/* Image gallery */}
+        {ticket.images.length > 0 && (
+          <div>
+            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+              <ImageIcon size={11} strokeWidth={2} />
+              Bilder ({ticket.images.length})
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {ticket.images.map((img, i) => (
+                <button
+                  key={img.id}
+                  type="button"
+                  onClick={() => setLightboxIndex(i)}
+                  className="group relative aspect-square overflow-hidden rounded-xl border border-[#EAEDF0] bg-gray-50 transition-shadow hover:shadow-sm"
+                >
+                  <img
+                    src={img.storageUrl}
+                    alt={img.filename}
+                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Status actions */}
         {(ticket.status === 'NEW' ||
@@ -278,6 +305,48 @@ export function TicketDetailPanel({ ticket, onClose }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Lightbox */}
+      <AnimatePresence>
+        {lightboxIndex !== null && ticket.images[lightboxIndex] && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+            onClick={() => setLightboxIndex(null)}
+          >
+            <button
+              type="button"
+              className="absolute right-5 top-5 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+              onClick={(e) => {
+                e.stopPropagation()
+                setLightboxIndex(null)
+              }}
+              aria-label="Stäng"
+            >
+              <X size={18} strokeWidth={2} />
+            </button>
+            <motion.img
+              key={ticket.images[lightboxIndex].id}
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              src={ticket.images[lightboxIndex].storageUrl}
+              alt={ticket.images[lightboxIndex].filename}
+              className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+            {ticket.images.length > 1 && (
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1 text-[12px] text-white">
+                {lightboxIndex + 1} / {ticket.images.length}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.aside>
   )
 }

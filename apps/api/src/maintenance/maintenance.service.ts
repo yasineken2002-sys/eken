@@ -1,16 +1,73 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
+import { StorageService } from '../storage/storage.service'
 import { CreateMaintenanceTicketDto } from './dto/create-maintenance-ticket.dto'
 import { UpdateMaintenanceTicketDto } from './dto/update-maintenance-ticket.dto'
 import type { MaintenanceStatus, MaintenancePriority, MaintenanceCategory } from '@prisma/client'
 
+interface MultipartFile {
+  filename: string
+  mimetype: string
+  toBuffer(): Promise<Buffer>
+}
+
+const ALLOWED_IMAGE_MIMETYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+]
+const MAX_IMAGES_PER_TICKET = 10
+const MAX_IMAGE_SIZE = 15 * 1024 * 1024
+
+export interface MaintenanceImageRecord {
+  id: string
+  ticketId: string
+  filename: string
+  storageKey: string
+  storageUrl: string
+  size: number
+  createdAt: Date
+}
+
+interface TicketWithImages {
+  images?: MaintenanceImageRecord[]
+}
+
 @Injectable()
 export class MaintenanceService {
+  private readonly logger = new Logger(MaintenanceService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly storage: StorageService,
   ) {}
+
+  /**
+   * R2 presigned URLs har kort TTL (1h). Lagra-och-läs ger stale URLs som
+   * inte funkar i admin-vyn. Generera färska URLs varje gång vi serverar
+   * en ticket — samma mönster som OrganizationsService.findMyOrganization
+   * gör för logoStorageUrl.
+   */
+  private async refreshImageUrls<T extends TicketWithImages | null>(ticket: T): Promise<T> {
+    if (!ticket?.images?.length) return ticket
+    const refreshed = await Promise.all(
+      ticket.images.map(async (img) => {
+        try {
+          return { ...img, storageUrl: await this.storage.getPresignedUrl(img.storageKey) }
+        } catch (err) {
+          this.logger.warn(
+            `Kunde inte signera URL för bild ${img.id} (${img.storageKey}): ${String(err)}`,
+          )
+          return img
+        }
+      }),
+    )
+    return { ...ticket, images: refreshed }
+  }
 
   private async generateTicketNumber(organizationId: string): Promise<string> {
     const count = await this.prisma.maintenanceTicket.count({ where: { organizationId } })
@@ -27,7 +84,7 @@ export class MaintenanceService {
       unitId?: string
     },
   ) {
-    return this.prisma.maintenanceTicket.findMany({
+    const tickets = await this.prisma.maintenanceTicket.findMany({
       where: {
         organizationId,
         ...(filters?.status ? { status: filters.status } : {}),
@@ -54,6 +111,7 @@ export class MaintenanceService {
       },
       orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
     })
+    return Promise.all(tickets.map((t) => this.refreshImageUrls(t)))
   }
 
   async findOne(id: string, organizationId: string) {
@@ -78,7 +136,7 @@ export class MaintenanceService {
       },
     })
     if (!ticket) throw new NotFoundException('Underhållsärende hittades inte')
-    return ticket
+    return this.refreshImageUrls(ticket)
   }
 
   async create(dto: CreateMaintenanceTicketDto, organizationId: string, userId: string) {
@@ -183,7 +241,7 @@ export class MaintenanceService {
         .catch((err) => console.error('[maintenance] notification error', String(err)))
     }
 
-    return result
+    return this.refreshImageUrls(result)
   }
 
   async addComment(
@@ -251,17 +309,19 @@ export class MaintenanceService {
   }
 
   async findByTenantToken(token: string) {
-    return this.prisma.maintenanceTicket.findUnique({
+    const ticket = await this.prisma.maintenanceTicket.findUnique({
       where: { tenantToken: token },
       include: {
         property: { select: { id: true, name: true, city: true, street: true } },
         unit: { select: { id: true, name: true, unitNumber: true } },
+        images: true,
         comments: {
           where: { isInternal: false },
           orderBy: { createdAt: 'asc' },
         },
       },
     })
+    return this.refreshImageUrls(ticket)
   }
 
   async addTenantComment(token: string, content: string) {
@@ -271,5 +331,59 @@ export class MaintenanceService {
       data: { ticketId: ticket.id, content, isInternal: false },
     })
     return this.findByTenantToken(token)
+  }
+
+  /**
+   * Ladda upp bilder till en felanmälan. Anropas från:
+   *   - admin (tenant-portal? nej — i admin-flödet är det `create`-flödet),
+   *   - hyresgästportalen (efter create), via TenantPortalController.
+   *
+   * Upload-mönstret följer OrganizationsService.uploadLogo: validera
+   * mimetype/storlek, ladda till R2, och spara storageKey + initial
+   * presigned URL. URL:en regenereras vid varje read i refreshImageUrls.
+   */
+  async addImages(ticketId: string, files: MultipartFile[]) {
+    if (!files.length) throw new BadRequestException('Inga bilder bifogade')
+
+    const existingCount = await this.prisma.maintenanceImage.count({ where: { ticketId } })
+    if (existingCount + files.length > MAX_IMAGES_PER_TICKET) {
+      throw new BadRequestException(
+        `Max ${MAX_IMAGES_PER_TICKET} bilder per ärende (har redan ${existingCount})`,
+      )
+    }
+
+    const created: MaintenanceImageRecord[] = []
+    for (const file of files) {
+      if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
+        throw new BadRequestException(
+          `Filtyp ${file.mimetype} stöds inte (tillåt: JPEG, PNG, WebP, HEIC)`,
+        )
+      }
+      const buffer = await file.toBuffer()
+      if (buffer.length > MAX_IMAGE_SIZE) {
+        throw new BadRequestException('Bilden är för stor (max 15MB)')
+      }
+
+      const ext = file.filename.includes('.') ? file.filename.split('.').pop() : 'jpg'
+      const safeExt =
+        (ext ?? 'jpg')
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '')
+          .slice(0, 6) || 'jpg'
+      const storageKey = `maintenance/${ticketId}/${crypto.randomUUID()}.${safeExt}`
+      const storageUrl = await this.storage.uploadFile(buffer, storageKey, file.mimetype)
+
+      const row = await this.prisma.maintenanceImage.create({
+        data: {
+          ticketId,
+          filename: file.filename,
+          storageKey,
+          storageUrl,
+          size: buffer.length,
+        },
+      })
+      created.push(row)
+    }
+    return created
   }
 }

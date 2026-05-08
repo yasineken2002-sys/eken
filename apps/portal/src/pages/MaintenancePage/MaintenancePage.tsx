@@ -4,6 +4,7 @@ import {
   fetchMaintenanceTickets,
   addTicketComment,
   submitMaintenanceRequest,
+  uploadMaintenanceImages,
 } from '@/api/portal.api'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Spinner } from '@/components/ui/Spinner'
@@ -145,11 +146,22 @@ export function MaintenancePage() {
     if (!title.trim() || !description.trim()) return
     setIsSubmitting(true)
     try {
-      await submitMaintenanceRequest({
+      const ticket = await submitMaintenanceRequest({
         title: title.trim(),
         description: description.trim(),
         category,
       })
+      // Bilderna laddas upp i ett andra steg: vi vill inte blanda JSON och
+      // multipart i samma request. Felar uppladdningen visar vi en mjuk
+      // varning men ticket:en finns redan och listan refetchas.
+      if (images.length > 0) {
+        try {
+          await uploadMaintenanceImages(ticket.id, images)
+        } catch (err) {
+          console.error('[maintenance] kunde inte ladda upp bilder', err)
+          alert('Felanmälan skickades, men en eller flera bilder kunde inte laddas upp.')
+        }
+      }
       setShowSheet(false)
       setTitle('')
       setDescription('')

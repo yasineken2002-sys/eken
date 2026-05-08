@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -23,6 +24,7 @@ import { OrgId } from '../common/decorators/org-id.decorator'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
+import { MaintenanceService } from '../maintenance/maintenance.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
 import { TenantAuthService } from './tenant-auth.service'
 import { TenantPortalService } from './tenant-portal.service'
@@ -337,6 +339,7 @@ export class TenantPortalController {
     private readonly portalService: TenantPortalService,
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly maintenanceService: MaintenanceService,
   ) {}
 
   @Get('me')
@@ -466,5 +469,47 @@ export class TenantPortalController {
     @Body() dto: AddCommentDto,
   ) {
     return this.portalService.addMaintenanceComment(tenant.id, ticketId, dto.content)
+  }
+
+  /**
+   * Ladda upp bilder till en felanmälan. Hyresgästen får bara röra
+   * tickets som tillhör denne — vi verifierar ägarskap här innan vi
+   * delegerar till MaintenanceService.addImages.
+   */
+  @Post('maintenance/:id/images')
+  async uploadMaintenanceImages(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+    @Param('id') ticketId: string,
+    @Req() req: FastifyRequest,
+  ) {
+    const owns = await this.prisma.maintenanceTicket.findFirst({
+      where: { id: ticketId, tenantId: tenant.id },
+      select: { id: true },
+    })
+    if (!owns) throw new NotFoundException('Ärende hittades inte')
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reqAny = req as any
+    if (typeof reqAny.parts !== 'function') {
+      throw new BadRequestException('Multipart-data förväntas')
+    }
+    const files: { filename: string; mimetype: string; toBuffer: () => Promise<Buffer> }[] = []
+    for await (const part of reqAny.parts() as AsyncIterable<{
+      type: 'file' | 'field'
+      filename?: string
+      mimetype?: string
+      toBuffer?: () => Promise<Buffer>
+    }>) {
+      if (part.type === 'file' && part.toBuffer) {
+        files.push({
+          filename: part.filename ?? 'upload.jpg',
+          mimetype: part.mimetype ?? 'application/octet-stream',
+          toBuffer: part.toBuffer,
+        })
+      }
+    }
+    if (!files.length) throw new BadRequestException('Inga bilder bifogade')
+
+    return this.maintenanceService.addImages(ticketId, files)
   }
 }
