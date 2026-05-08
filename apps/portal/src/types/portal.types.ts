@@ -96,6 +96,8 @@ export interface PortalNews {
   body: string
   publishedAt: string
   imageUrl: string | null
+  organizationName: string | null
+  authorName: string | null
 }
 
 export interface PortalDocument {

@@ -101,21 +101,51 @@ export class TenantPortalService {
   }
 
   async getNews(tenantId: string) {
+    // Scopa till hyresgästens egen organisation — tidigare saknades detta
+    // helt (en hyresgäst kunde i teorin se publicerade nyheter från andra
+    // organisationer som hade `targetAll: true`).
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { organizationId: true },
+    })
+    if (!tenant) return []
+
     const lease = await this.prisma.lease.findFirst({
       where: { tenantId, status: 'ACTIVE' },
       include: { unit: { include: { property: true } } },
     })
     const propertyId = lease?.unit?.property?.id
 
-    return this.prisma.newsPost.findMany({
+    const posts = await this.prisma.newsPost.findMany({
       where: {
+        organizationId: tenant.organizationId,
         publishedAt: { not: null },
         OR: [{ targetAll: true }, ...(propertyId ? [{ propertyId }] : [])],
       },
-      include: { createdBy: { select: { firstName: true, lastName: true } } },
+      include: {
+        organization: { select: { name: true } },
+        createdBy: { select: { firstName: true, lastName: true } },
+      },
       orderBy: { publishedAt: 'desc' },
       take: 20,
     })
+
+    // Mappa till portal-DTO. Kontraktet (`body`, `imageUrl`,
+    // `organizationName`) frikopplar portalen från Prisma-modellen så att
+    // schemaändringar inte tysta-bryter klienten — vilket var precis vad
+    // som hände tidigare när frontend förväntade sig `body` men Prisma
+    // returnerade `content`.
+    return posts.map((p) => ({
+      id: p.id,
+      title: p.title,
+      body: p.content,
+      publishedAt: p.publishedAt,
+      imageUrl: null as string | null,
+      organizationName: p.organization?.name ?? null,
+      authorName: p.createdBy
+        ? `${p.createdBy.firstName ?? ''} ${p.createdBy.lastName ?? ''}`.trim() || null
+        : null,
+    }))
   }
 
   async submitMaintenanceRequest(
