@@ -147,7 +147,6 @@ export class MaintenanceService {
 
   async create(dto: CreateMaintenanceTicketDto, organizationId: string, userId: string) {
     const ticketNumber = await this.generateTicketNumber(organizationId)
-    const tenantToken = crypto.randomUUID()
 
     const ticket = await this.prisma.maintenanceTicket.create({
       data: {
@@ -163,7 +162,6 @@ export class MaintenanceService {
         priority: dto.priority ?? 'NORMAL',
         ...(dto.scheduledDate ? { scheduledDate: new Date(dto.scheduledDate) } : {}),
         ...(dto.estimatedCost != null ? { estimatedCost: dto.estimatedCost } : {}),
-        tenantToken,
       },
       include: {
         property: { select: { id: true, name: true, city: true } },
@@ -312,31 +310,6 @@ export class MaintenanceService {
       urgent: urgentCount,
       openCosts: Number(openCostsResult._sum.estimatedCost ?? 0),
     }
-  }
-
-  async findByTenantToken(token: string) {
-    const ticket = await this.prisma.maintenanceTicket.findUnique({
-      where: { tenantToken: token },
-      include: {
-        property: { select: { id: true, name: true, city: true, street: true } },
-        unit: { select: { id: true, name: true, unitNumber: true } },
-        images: true,
-        comments: {
-          where: { isInternal: false },
-          orderBy: { createdAt: 'asc' },
-        },
-      },
-    })
-    return this.refreshImageUrls(ticket)
-  }
-
-  async addTenantComment(token: string, content: string) {
-    const ticket = await this.prisma.maintenanceTicket.findUnique({ where: { tenantToken: token } })
-    if (!ticket) throw new NotFoundException('Ärende hittades inte')
-    await this.prisma.maintenanceComment.create({
-      data: { ticketId: ticket.id, content, isInternal: false },
-    })
-    return this.findByTenantToken(token)
   }
 
   /**

@@ -46,7 +46,6 @@ export interface MaintenanceTicket {
   actualCost?: number | null
   scheduledDate?: string | null
   completedAt?: string | null
-  tenantToken?: string | null
   tenantNotified: boolean
   property: { id: string; name: string; city: string }
   unit?: { id: string; name: string; unitNumber: string } | null

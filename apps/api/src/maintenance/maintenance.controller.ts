@@ -17,7 +17,6 @@ import { UpdateMaintenanceTicketDto } from './dto/update-maintenance-ticket.dto'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
-import { Public } from '../common/decorators/public.decorator'
 import type { JwtPayload } from '@eken/shared'
 import type { MaintenanceStatus, MaintenancePriority, MaintenanceCategory } from '@prisma/client'
 
@@ -88,19 +87,5 @@ export class MaintenanceController {
   @HttpCode(HttpStatus.NO_CONTENT)
   delete(@Param('id') id: string, @OrgId() orgId: string) {
     return this.maintenanceService.deleteTicket(id, orgId)
-  }
-
-  // ── Tenant portal endpoints (no auth — token-based) ───────────────────────
-
-  @Public()
-  @Get('tenant/:token')
-  getTenantTicket(@Param('token') token: string) {
-    return this.maintenanceService.findByTenantToken(token)
-  }
-
-  @Public()
-  @Post('tenant/:token/comment')
-  addTenantComment(@Param('token') token: string, @Body() body: { content: string }) {
-    return this.maintenanceService.addTenantComment(token, body.content)
   }
 }

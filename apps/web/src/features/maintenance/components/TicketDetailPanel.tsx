@@ -1,18 +1,23 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { X, Lock, Globe, Copy, Check, MessageSquare, ImageIcon } from 'lucide-react'
+import { X, Lock, Globe, MessageSquare, ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import {
   MaintenanceStatusBadge,
   MaintenancePriorityBadge,
   MaintenanceCategoryLabel,
 } from './MaintenanceBadges'
-import { useUpdateTicket, useAddComment } from '../hooks/useMaintenance'
+import { useUpdateTicket, useAddComment, useTicket } from '../hooks/useMaintenance'
 import { formatDate, formatCurrency } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import type { MaintenanceTicket } from '../api/maintenance.api'
 
 interface Props {
+  // Tar antingen ett komplett ticket-objekt (snabb open från listan, panel
+  // renderas direkt) ELLER bara id (deep-link / refresh efter upload). Vi
+  // refetchar alltid detail-endpoint i bakgrunden så panelen aldrig visar
+  // stale `images: []` från listcachen — det är just det som tidigare gjorde
+  // att admin missade nyligen uppladdade bilder.
   ticket: MaintenanceTicket
   onClose: () => void
 }
@@ -26,12 +31,19 @@ function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-export function TicketDetailPanel({ ticket, onClose }: Props) {
+export function TicketDetailPanel({ ticket: initialTicket, onClose }: Props) {
   const updateTicket = useUpdateTicket()
   const addComment = useAddComment()
+  // Refetcha alltid detail-endpoint i bakgrunden — så bilder som laddats
+  // upp efter att listan cachades dyker upp utan att admin behöver
+  // hard-reload.a sidan. `useTicket` har samma 60s staleTime, men eftersom
+  // `select` matchar på id-nyckeln slår den första rendering inte cache:n
+  // för en nyöppnad ticket.
+  const { data: fresh } = useTicket(initialTicket.id)
+  const ticket = fresh ?? initialTicket
+
   const [commentText, setCommentText] = useState('')
   const [isInternal, setIsInternal] = useState(true)
-  const [copied, setCopied] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
 
   const tenantName = ticket.tenant
@@ -48,17 +60,6 @@ export function TicketDetailPanel({ ticket, onClose }: Props) {
     if (!commentText.trim()) return
     await addComment.mutateAsync({ id: ticket.id, content: commentText.trim(), isInternal })
     setCommentText('')
-  }
-
-  const portalUrl = ticket.tenantToken
-    ? `${window.location.origin}/portal/${ticket.tenantToken}`
-    : null
-
-  const handleCopyLink = () => {
-    if (!portalUrl) return
-    void navigator.clipboard.writeText(portalUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -212,33 +213,6 @@ export function TicketDetailPanel({ ticket, onClose }: Props) {
                 Avbryt ärende
               </Button>
             </div>
-          </div>
-        )}
-
-        {/* Tenant portal link */}
-        {portalUrl && (
-          <div className="rounded-xl border border-[#EAEDF0] bg-gray-50/60 p-3.5">
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-              Hyresgästlänk
-            </p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-gray-500">
-                {portalUrl}
-              </code>
-              <button
-                onClick={handleCopyLink}
-                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
-              >
-                {copied ? (
-                  <Check size={12} className="text-emerald-500" />
-                ) : (
-                  <Copy size={12} strokeWidth={1.8} />
-                )}
-              </button>
-            </div>
-            <p className="mt-1 text-[11px] text-gray-400">
-              Dela med hyresgästen så kan de följa ärendets status
-            </p>
           </div>
         )}
 
