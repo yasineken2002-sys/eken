@@ -125,7 +125,7 @@ export class MaintenanceService {
         'MAINTENANCE_NEW',
         'Nytt underhållsärende',
         `Ärende ${ticket.ticketNumber}: ${dto.title}`,
-        '/maintenance',
+        { relatedEntityType: 'MAINTENANCE_TICKET', relatedEntityId: ticket.id },
       )
       .catch((err) => console.error('[maintenance] notification error', String(err)))
 
@@ -178,7 +178,7 @@ export class MaintenanceService {
           'MAINTENANCE_UPDATED',
           'Underhållsärende slutfört',
           `Ärende ${result.ticketNumber} har markerats som åtgärdat`,
-          '/maintenance',
+          { relatedEntityType: 'MAINTENANCE_TICKET', relatedEntityId: result.id },
         )
         .catch((err) => console.error('[maintenance] notification error', String(err)))
     }

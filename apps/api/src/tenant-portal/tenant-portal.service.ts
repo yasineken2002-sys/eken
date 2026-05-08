@@ -157,7 +157,7 @@ export class TenantPortalService {
         'MAINTENANCE_NEW',
         '🔔 Ny felanmälan från hyresgäst',
         `${tenantName} har anmält: ${dto.title}`,
-        '/maintenance',
+        { relatedEntityType: 'MAINTENANCE_TICKET', relatedEntityId: ticket.id },
       )
       .catch((err) => console.error('[portal] notification error', String(err)))
 

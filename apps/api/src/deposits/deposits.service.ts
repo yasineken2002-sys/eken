@@ -296,7 +296,7 @@ export class DepositsService {
           'SYSTEM',
           'Deposition väntar på återbetalning',
           `Deposition för ${deposit.lease.unit.name} har väntat på återbetalning i ${days} dagar.`,
-          '/deposits',
+          { relatedEntityType: 'DEPOSIT', relatedEntityId: deposit.id },
         )
         sent++
       } catch (err) {

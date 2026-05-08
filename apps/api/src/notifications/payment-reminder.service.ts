@@ -355,7 +355,7 @@ export class PaymentReminderService {
         'INVOICE_OVERDUE',
         '⚠️ Faktura redo för inkasso',
         `Faktura ${invoice?.invoiceNumber} (${tenantName}) är förfallen ${daysOverdue} dagar och redo att skickas till inkasso. Generera underlag i Inkasso-vyn.`,
-        '/collections',
+        { relatedEntityType: 'INVOICE', relatedEntityId: invoiceId },
       )
       .catch(() => undefined)
   }

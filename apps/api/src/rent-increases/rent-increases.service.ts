@@ -162,7 +162,7 @@ export class RentIncreasesService {
         `${tenantName} har aviserats om hyreshöjning från ${updated.effectiveDate
           .toISOString()
           .slice(0, 10)}.`,
-        '/rent-increases',
+        { relatedEntityType: 'RENT_INCREASE', relatedEntityId: updated.id },
       )
       .catch((err) => this.logger.error(`Notification error: ${String(err)}`))
 

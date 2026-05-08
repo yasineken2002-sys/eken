@@ -11,6 +11,37 @@ type InvoiceWithRelations = Prisma.InvoiceGetPayload<{
   include: { tenant: true; customer: true; organization: true }
 }>
 
+// Strukturerad referens till entiteten en notis handlar om. Frontend mappar
+// `relatedEntityType` → Route och använder `relatedEntityId` för att öppna
+// rätt detaljvy. `link` behålls för bakåtkompatibilitet med äldre rader.
+export type RelatedEntityType =
+  | 'MAINTENANCE_TICKET'
+  | 'INVOICE'
+  | 'LEASE'
+  | 'TENANT'
+  | 'DEPOSIT'
+  | 'RENT_INCREASE'
+  | 'TERMINATION_REQUEST'
+
+export interface NotificationTarget {
+  link?: string
+  relatedEntityType?: RelatedEntityType
+  relatedEntityId?: string
+}
+
+function buildTargetPatch(target: NotificationTarget | undefined): {
+  link?: string
+  relatedEntityType?: string
+  relatedEntityId?: string
+} {
+  if (!target) return {}
+  const out: { link?: string; relatedEntityType?: string; relatedEntityId?: string } = {}
+  if (target.link) out.link = target.link
+  if (target.relatedEntityType) out.relatedEntityType = target.relatedEntityType
+  if (target.relatedEntityId) out.relatedEntityId = target.relatedEntityId
+  return out
+}
+
 @Injectable()
 export class NotificationsService implements OnModuleInit {
   private readonly logger = new Logger(NotificationsService.name)
@@ -31,16 +62,27 @@ export class NotificationsService implements OnModuleInit {
 
   // ─── In-app notification CRUD ──────────────────────────────────────────────
 
+  // `link` är legacy-fältet (URL-sträng). För nya notiser passas istället
+  // `relatedEntityType` + `relatedEntityId` så att frontend kan resolva rätt
+  // detaljvy via en typ→Route-mappning. `link` behålls bakåtkompatibelt
+  // tills alla rader backfillats / cron-rensats.
   async create(
     organizationId: string,
     userId: string,
     type: NotificationType,
     title: string,
     message: string,
-    link?: string,
+    target?: NotificationTarget,
   ): Promise<Notification> {
     return this.prisma.notification.create({
-      data: { organizationId, userId, type, title, message, ...(link ? { link } : {}) },
+      data: {
+        organizationId,
+        userId,
+        type,
+        title,
+        message,
+        ...buildTargetPatch(target),
+      },
     })
   }
 
@@ -49,13 +91,14 @@ export class NotificationsService implements OnModuleInit {
     type: NotificationType,
     title: string,
     message: string,
-    link?: string,
+    target?: NotificationTarget,
   ): Promise<void> {
     const users = await this.prisma.user.findMany({
       where: { organizationId, isActive: true },
       select: { id: true },
     })
     if (users.length === 0) return
+    const patch = buildTargetPatch(target)
     await this.prisma.notification.createMany({
       data: users.map((u) => ({
         organizationId,
@@ -63,7 +106,7 @@ export class NotificationsService implements OnModuleInit {
         type,
         title,
         message,
-        ...(link ? { link } : {}),
+        ...patch,
       })),
     })
   }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import {
   Plus,
@@ -36,6 +36,7 @@ import { formatCurrency, formatDate } from '@eken/shared'
 import type { Invoice, InvoiceStatus, CreateInvoiceInput, Tenant } from '@eken/shared'
 import { downloadInvoicePdf } from './api/invoices.api'
 import { useTenants } from '@/features/tenants/hooks/useTenants'
+import { useFocusStore } from '@/stores/focus.store'
 import { cn } from '@/lib/cn'
 
 type DetailTab = 'detaljer' | 'historik'
@@ -172,6 +173,19 @@ export function InvoicesPage() {
     setSelected(invoice)
     setDetailTab('detaljer')
   }
+
+  // Deep-link från notifikationer (INVOICE-typade) — öppna detaljpanelen
+  // när focus matchar och fakturan finns i listan.
+  const focusTarget = useFocusStore((s) => s.target)
+  const clearFocus = useFocusStore((s) => s.clear)
+  useEffect(() => {
+    if (focusTarget?.type !== 'INVOICE') return
+    const match = allInvoices.find((i) => i.id === focusTarget.id)
+    if (match) {
+      handleSelectInvoice(match)
+      clearFocus()
+    }
+  }, [focusTarget, allInvoices, clearFocus])
 
   function handleCreate(data: CreateInvoiceInput) {
     createMutation.mutate(data, {

@@ -536,7 +536,7 @@ export class LeasesService {
         `Hyresavtal för enhet ${updated.unit.name} sägs upp och avslutas ${effective
           .toISOString()
           .slice(0, 10)}`,
-        '/leases',
+        { relatedEntityType: 'LEASE', relatedEntityId: updated.id },
       )
       .catch((err) => this.logger.error(`Notification error: ${String(err)}`))
 
@@ -716,7 +716,7 @@ export class LeasesService {
             `Hyresavtal för ${lease.unit.name} (${lease.unit.property.name}) löper ut ${lease.endDate
               ?.toISOString()
               .slice(0, 10)}. Förnya eller säg upp.`,
-            '/leases',
+            { relatedEntityType: 'LEASE', relatedEntityId: lease.id },
           )
           sent++
         } catch (err) {

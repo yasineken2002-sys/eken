@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Wrench,
@@ -27,6 +27,8 @@ import {
 import { CreateTicketModal } from './components/CreateTicketModal'
 import { TicketDetailPanel } from './components/TicketDetailPanel'
 import { useTickets, useMaintenanceStats } from './hooks/useMaintenance'
+import { fetchTicket } from './api/maintenance.api'
+import { useFocusStore } from '@/stores/focus.store'
 import { formatDate } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import type {
@@ -104,6 +106,34 @@ export function MaintenancePage() {
   )
 
   const { data: stats } = useMaintenanceStats()
+
+  // Deep-link från notifikationer: NotificationBell sätter en focus-target,
+  // vi öppnar matchande ärende i detaljpanelen och rensar focus. Hämtar via
+  // API om biljetten inte redan ligger i listan (t.ex. filtrerad bort).
+  const focusTarget = useFocusStore((s) => s.target)
+  const clearFocus = useFocusStore((s) => s.clear)
+  useEffect(() => {
+    if (focusTarget?.type !== 'MAINTENANCE_TICKET') return
+    const id = focusTarget.id
+    const fromList = tickets.find((t) => t.id === id)
+    if (fromList) {
+      setSelectedTicket(fromList)
+      clearFocus()
+      return
+    }
+    let cancelled = false
+    fetchTicket(id)
+      .then((ticket) => {
+        if (!cancelled) {
+          setSelectedTicket(ticket)
+          clearFocus()
+        }
+      })
+      .catch(() => clearFocus())
+    return () => {
+      cancelled = true
+    }
+  }, [focusTarget, tickets, clearFocus])
 
   const openCount =
     (stats?.byStatus.NEW ?? 0) +

@@ -1290,16 +1290,18 @@ model TerminationRequest {
 // ─── Notification ─────────────────────────────────────────────────────────────
 
 model Notification {
-  id             String           @id @default(uuid())
-  organizationId String
-  userId         String
-  type           NotificationType
-  title          String
-  message        String
-  link           String?
-  read           Boolean          @default(false)
-  readAt         DateTime?
-  createdAt      DateTime         @default(now())
+  id                 String           @id @default(uuid())
+  organizationId     String
+  userId             String
+  type               NotificationType
+  title              String
+  message            String
+  link               String?
+  relatedEntityType  String?
+  relatedEntityId    String?
+  read               Boolean          @default(false)
+  readAt             DateTime?
+  createdAt          DateTime         @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)

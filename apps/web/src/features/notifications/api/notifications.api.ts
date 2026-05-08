@@ -12,6 +12,15 @@ export type NotificationType =
   | 'INSPECTION_SCHEDULED'
   | 'SYSTEM'
 
+export type RelatedEntityType =
+  | 'MAINTENANCE_TICKET'
+  | 'INVOICE'
+  | 'LEASE'
+  | 'TENANT'
+  | 'DEPOSIT'
+  | 'RENT_INCREASE'
+  | 'TERMINATION_REQUEST'
+
 export interface Notification {
   id: string
   organizationId: string
@@ -20,6 +29,8 @@ export interface Notification {
   title: string
   message: string
   link?: string | null
+  relatedEntityType?: RelatedEntityType | null
+  relatedEntityId?: string | null
   read: boolean
   readAt?: string | null
   createdAt: string

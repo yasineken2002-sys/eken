@@ -447,7 +447,7 @@ export class InvoicesService {
           'INVOICE_PAID',
           'Faktura betald',
           `Faktura ${result.invoiceNumber} har betalats`,
-          '/invoices',
+          { relatedEntityType: 'INVOICE', relatedEntityId: result.id },
         )
         .catch((err) => this.logger.error(`Notification error: ${String(err)}`))
     }

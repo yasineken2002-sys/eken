@@ -20,8 +20,44 @@ import {
   useMarkNotificationRead,
   useMarkAllRead,
 } from '../hooks/useNotifications'
+import { useFocusStore } from '@/stores/focus.store'
 import type { Route } from '@/App'
-import type { Notification, NotificationType } from '../api/notifications.api'
+import type { Notification, NotificationType, RelatedEntityType } from '../api/notifications.api'
+
+// Mappning från strukturerad entity-typ → app-Route. Detaljvyn öppnas sedan
+// av mottagarsidan via useFocusStore (se MaintenancePage m.fl.).
+const ENTITY_ROUTE: Record<RelatedEntityType, Route> = {
+  MAINTENANCE_TICKET: 'maintenance',
+  INVOICE: 'invoices',
+  LEASE: 'leases',
+  TENANT: 'tenants',
+  DEPOSIT: 'deposits',
+  RENT_INCREASE: 'rent-increases',
+  TERMINATION_REQUEST: 'leases',
+}
+
+// Bakåtkompatibel fallback för äldre rader som bara har `link` (URL-form).
+function legacyLinkToRoute(link: string): Route | null {
+  const segment = link.replace(/^\/+/, '').split('/')[0]
+  switch (segment) {
+    case 'maintenance':
+      return 'maintenance'
+    case 'invoices':
+      return 'invoices'
+    case 'leases':
+      return 'leases'
+    case 'tenants':
+      return 'tenants'
+    case 'deposits':
+      return 'deposits'
+    case 'rent-increases':
+      return 'rent-increases'
+    case 'collections':
+      return 'collections'
+    default:
+      return null
+  }
+}
 
 interface Props {
   onNavigate: (r: Route) => void
@@ -97,6 +133,7 @@ export function NotificationBell({ onNavigate }: Props) {
   const { data: notifications = [] } = useNotifications()
   const markOne = useMarkNotificationRead()
   const markAll = useMarkAllRead()
+  const requestFocus = useFocusStore((s) => s.request)
 
   const unreadCount = countData?.unread ?? 0
 
@@ -112,11 +149,34 @@ export function NotificationBell({ onNavigate }: Props) {
 
   function handleRead(id: string) {
     const n = notifications.find((x) => x.id === id)
-    if (!n?.read) markOne.mutate(id)
-    if (n?.link) {
-      setOpen(false)
-      onNavigate(n.link as Route)
+    if (!n) return
+    if (!n.read) markOne.mutate(id)
+
+    // 1. Strukturerad referens (relatedEntityType + relatedEntityId) — nya
+    //    notiser. Sätter focus så mottagarsidan kan öppna rätt detaljvy.
+    if (n.relatedEntityType && n.relatedEntityId) {
+      const route = ENTITY_ROUTE[n.relatedEntityType]
+      if (route) {
+        requestFocus({ type: n.relatedEntityType, id: n.relatedEntityId })
+        setOpen(false)
+        onNavigate(route)
+        return
+      }
     }
+
+    // 2. Legacy `link`-fält (URL-sträng). Endast list-navigation, ingen
+    //    djupöppning. Tas bort när alla rader migrerats.
+    if (n.link) {
+      const route = legacyLinkToRoute(n.link)
+      if (route) {
+        setOpen(false)
+        onNavigate(route)
+        return
+      }
+    }
+
+    // 3. Fallback per typ — för SYSTEM-notiser eller saknade fält.
+    setOpen(false)
   }
 
   return (

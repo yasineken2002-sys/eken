@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, FileX, FileText, Home, User, Download, RefreshCw, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -26,6 +26,8 @@ import {
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { LeaseStatus, Tenant } from '@eken/shared'
 import type { LeaseDetail, CreateLeaseWithTenantInput } from './api/leases.api'
+import { fetchLease } from './api/leases.api'
+import { useFocusStore } from '@/stores/focus.store'
 import { cn } from '@/lib/cn'
 import { extractApiError } from '@/lib/api'
 import { DocumentList } from '@/features/documents/components/DocumentList'
@@ -116,6 +118,34 @@ export function LeasesPage() {
 
   const { data: leases = [], isLoading, isError } = useLeases()
   const { data: selectedLease } = useLease(selected?.id ?? null)
+
+  // Deep-link från notifikationer (LEASE / TERMINATION_REQUEST → leasen).
+  // TerminationRequest har inte egen detaljvy — vi öppnar lease-fliken så
+  // användaren ser kontraktet och kan agera på begäran därifrån.
+  const focusTarget = useFocusStore((s) => s.target)
+  const clearFocus = useFocusStore((s) => s.clear)
+  useEffect(() => {
+    if (focusTarget?.type !== 'LEASE') return
+    const id = focusTarget.id
+    const fromList = leases.find((l) => l.id === id)
+    if (fromList) {
+      setSelected(fromList)
+      clearFocus()
+      return
+    }
+    let cancelled = false
+    fetchLease(id)
+      .then((lease) => {
+        if (!cancelled) {
+          setSelected(lease)
+          clearFocus()
+        }
+      })
+      .catch(() => clearFocus())
+    return () => {
+      cancelled = true
+    }
+  }, [focusTarget, leases, clearFocus])
 
   const createMutation = useCreateLeaseWithTenant()
   const updateMutation = useUpdateLease()

@@ -380,7 +380,7 @@ export class TenantToolExecutorService {
               'MAINTENANCE_NEW',
               '🔔 Ny felanmälan från hyresgäst',
               `${tenantName} har anmält: ${title}`,
-              '/maintenance',
+              { relatedEntityType: 'MAINTENANCE_TICKET', relatedEntityId: ticket.id },
             )
             .catch(() => undefined)
 
@@ -459,7 +459,7 @@ export class TenantToolExecutorService {
               'SYSTEM',
               '📤 Uppsägningsbegäran från hyresgäst',
               `${tenantName} har begärt uppsägning per ${endDate.toISOString().slice(0, 10)}.`,
-              '/leases',
+              { relatedEntityType: 'TERMINATION_REQUEST', relatedEntityId: request.id },
             )
             .catch(() => undefined)
 
