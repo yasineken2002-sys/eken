@@ -7,13 +7,14 @@ import {
   Param,
   Body,
   Req,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common'
-import type { FastifyRequest } from 'fastify'
+import type { FastifyReply, FastifyRequest } from 'fastify'
 import { Throttle } from '@nestjs/throttler'
 import { IsEmail, IsString, IsOptional, IsEnum, IsUUID, MinLength } from 'class-validator'
 import { MaintenanceCategory } from '@prisma/client'
@@ -25,6 +26,8 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
 import { MaintenanceService } from '../maintenance/maintenance.service'
+import { PdfService } from '../invoices/pdf.service'
+import { AviseringService } from '../avisering/avisering.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
 import { TenantAuthService } from './tenant-auth.service'
 import { TenantPortalService } from './tenant-portal.service'
@@ -340,6 +343,8 @@ export class TenantPortalController {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly maintenanceService: MaintenanceService,
+    private readonly pdfService: PdfService,
+    private readonly aviseringService: AviseringService,
   ) {}
 
   @Get('me')
@@ -388,6 +393,76 @@ export class TenantPortalController {
     @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
   ) {
     return this.portalService.getInvoices(tenant.id)
+  }
+
+  /**
+   * Hyresavier (RentNotice) — separat tabell från Invoice. Tidigare visades
+   * fakturor under "Avier"-fliken eftersom portalen bara hade /portal/invoices.
+   */
+  @Get('rent-notices')
+  async getRentNotices(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+  ) {
+    return this.portalService.getRentNotices(tenant.id)
+  }
+
+  /**
+   * Streamar faktura-PDF för en faktura som tillhör inloggad hyresgäst.
+   * Auth: TenantAuthGuard. Scope: invoice.tenantId måste matcha — annars
+   * 404 (vi avslöjar inte att faktura-id existerar i annan org).
+   *
+   * PDF:en genereras on-demand av PdfService (samma som admin-vyn) och
+   * lagras inte i R2 — fakturor är immutabla efter SENT så stale-cache är
+   * inte ett problem, men generering är billig nog att inte vara värt
+   * cache-komplexiteten just nu.
+   */
+  @Get('invoices/:id/download')
+  async downloadInvoicePdf(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+    @Param('id') invoiceId: string,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, tenantId: tenant.id },
+      select: { id: true, organizationId: true, invoiceNumber: true, status: true },
+    })
+    if (!invoice) throw new NotFoundException('Fakturan hittades inte')
+    if (invoice.status === 'DRAFT') {
+      throw new NotFoundException('Fakturan är inte publicerad ännu')
+    }
+
+    const buffer = await this.pdfService.generateInvoicePdf(invoice.id, invoice.organizationId)
+    void reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="faktura-${invoice.invoiceNumber}.pdf"`)
+      .header('Content-Length', buffer.length)
+      .send(buffer)
+  }
+
+  /**
+   * Streamar hyresavi-PDF för en avi som tillhör inloggad hyresgäst.
+   */
+  @Get('rent-notices/:id/download')
+  async downloadRentNoticePdf(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+    @Param('id') noticeId: string,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const notice = await this.prisma.rentNotice.findFirst({
+      where: { id: noticeId, tenantId: tenant.id },
+      select: { id: true, organizationId: true, noticeNumber: true, status: true },
+    })
+    if (!notice) throw new NotFoundException('Avin hittades inte')
+    if (notice.status === 'PENDING' || notice.status === 'CANCELLED') {
+      throw new NotFoundException('Avin är inte tillgänglig')
+    }
+
+    const buffer = await this.aviseringService.getNoticePdfBuffer(notice.id, notice.organizationId)
+    void reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="hyresavi-${notice.noticeNumber}.pdf"`)
+      .header('Content-Length', buffer.length)
+      .send(buffer)
   }
 
   @Get('lease')

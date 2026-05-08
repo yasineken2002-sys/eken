@@ -4,6 +4,8 @@ import { NotificationsModule } from '../notifications/notifications.module'
 import { PrismaModule } from '../common/prisma/prisma.module'
 import { ContractsModule } from '../contracts/contracts.module'
 import { StorageModule } from '../storage/storage.module'
+import { InvoicesModule } from '../invoices/invoices.module'
+import { AviseringModule } from '../avisering/avisering.module'
 import { TenantAuthService } from './tenant-auth.service'
 import { TenantAuthGuard } from './tenant-auth.guard'
 import { TenantPortalService } from './tenant-portal.service'
@@ -19,6 +21,8 @@ import {
     NotificationsModule,
     PrismaModule,
     StorageModule,
+    InvoicesModule,
+    AviseringModule,
     forwardRef(() => ContractsModule),
   ],
   controllers: [TenantAuthController, TenantPortalController, TenantPortalAdminController],

@@ -10,6 +10,7 @@ import type {
   PortalMaintenanceTicket,
   PortalNews,
   PortalNotice,
+  PortalRentNotice,
 } from '@/types/portal.types'
 
 const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/v1` : '/api'
@@ -93,6 +94,32 @@ export const logoutSession = (sessionToken: string) =>
 export const fetchDashboard = () => get<PortalDashboard>('/portal/dashboard')
 export const fetchLease = () => get<PortalLease>('/portal/lease')
 export const fetchInvoices = () => get<PortalInvoice[]>('/portal/invoices')
+export const fetchRentNotices = () => get<PortalRentNotice[]>('/portal/rent-notices')
+
+/**
+ * Hämtar PDF som blob och triggar nedladdning. Backend streamar PDF direkt
+ * (Bearer-auth behövs så vi kan inte använda window.open). Ger användaren
+ * en native download i webbläsaren och städar upp blob-URL:en efter klick.
+ */
+async function downloadPdfBlob(url: string, filename: string): Promise<void> {
+  const response = await portalApi.get<Blob>(url, { responseType: 'blob' })
+  const blobUrl = URL.createObjectURL(response.data)
+  const a = document.createElement('a')
+  a.href = blobUrl
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  // Revoke efter en kort timeout — vissa browsers behöver behållen URL
+  // tills download-handshaken slutförts.
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
+}
+
+export const downloadInvoicePdf = (id: string, invoiceNumber: string) =>
+  downloadPdfBlob(`/portal/invoices/${id}/download`, `faktura-${invoiceNumber}.pdf`)
+
+export const downloadRentNoticePdf = (id: string, noticeNumber: string) =>
+  downloadPdfBlob(`/portal/rent-notices/${id}/download`, `hyresavi-${noticeNumber}.pdf`)
 export const fetchMaintenanceTickets = () => get<PortalMaintenanceTicket[]>('/portal/maintenance')
 export const createMaintenanceTicket = (dto: {
   title: string

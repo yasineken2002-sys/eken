@@ -29,14 +29,29 @@ const MAINTENANCE_LABELS: Record<string, BadgeStyle> = {
   CANCELLED: { label: 'Avbruten', bg: '#f9fafb', color: '#6b7280' },
 }
 
+const RENT_NOTICE_LABELS: Record<string, BadgeStyle> = {
+  PENDING: { label: 'Förbereds', bg: '#f3f4f6', color: '#374151' },
+  SENT: { label: 'Skickad', bg: '#eff6ff', color: '#1d4ed8' },
+  PAID: { label: 'Betald', bg: '#ecfdf5', color: '#065f46' },
+  OVERDUE: { label: 'Förfallen', bg: '#fef2f2', color: '#991b1b' },
+  CANCELLED: { label: 'Makulerad', bg: '#f9fafb', color: '#6b7280' },
+  FAILED: { label: 'Skickfel', bg: '#fef2f2', color: '#991b1b' },
+}
+
 interface StatusBadgeProps {
-  type: 'invoice' | 'lease' | 'maintenance'
+  type: 'invoice' | 'lease' | 'maintenance' | 'rent-notice'
   status: string
 }
 
 export function StatusBadge({ type, status }: StatusBadgeProps) {
   const map =
-    type === 'invoice' ? INVOICE_LABELS : type === 'lease' ? LEASE_LABELS : MAINTENANCE_LABELS
+    type === 'invoice'
+      ? INVOICE_LABELS
+      : type === 'lease'
+        ? LEASE_LABELS
+        : type === 'rent-notice'
+          ? RENT_NOTICE_LABELS
+          : MAINTENANCE_LABELS
 
   const style = map[status] ?? { label: status, bg: '#f3f4f6', color: '#374151' }
 

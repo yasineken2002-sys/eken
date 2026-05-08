@@ -59,6 +59,23 @@ export interface PortalInvoice {
   unitName: string
 }
 
+export interface PortalRentNotice {
+  id: string
+  noticeNumber: string
+  ocrNumber: string
+  month: number
+  year: number
+  amount: number
+  vatAmount: number
+  totalAmount: number
+  dueDate: string
+  paidAt: string | null
+  status: 'PENDING' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' | 'FAILED'
+  sentAt: string | null
+  propertyName: string
+  unitName: string
+}
+
 export interface PortalMaintenanceComment {
   id: string
   content: string

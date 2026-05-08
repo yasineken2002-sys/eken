@@ -81,12 +81,50 @@ export class TenantPortalService {
   }
 
   async getInvoices(tenantId: string) {
+    // Fakturor (engångar: DEPOSIT, SERVICE, UTILITY, OTHER, samt admin-skapade
+    // RENT-fakturor). DRAFT döljs — hyresgästen ska aldrig se utkast som
+    // hyresvärden inte hunnit publicera.
     const rows = await this.prisma.invoice.findMany({
-      where: { tenantId },
+      where: { tenantId, status: { not: 'DRAFT' } },
       include: { lines: true, lease: { include: { unit: { include: { property: true } } } } },
       orderBy: { createdAt: 'desc' },
     })
     return rows.map((inv) => this.mapInvoice(inv))
+  }
+
+  /**
+   * Hyresavier (RentNotice) — separat tabell från Invoice. Avier är
+   * återkommande månadshyror som genereras av AviseringService, fakturor är
+   * engångsbetalningar (deposition, service, m.m.). Att sammanblanda dessa
+   * i samma flik var bug:en där en 16 647 kr-faktura visades under "Avier".
+   */
+  async getRentNotices(tenantId: string) {
+    const rows = await this.prisma.rentNotice.findMany({
+      where: {
+        tenantId,
+        // Skicka inte PENDING/CANCELLED till hyresgästen — bara avier som
+        // hyresvärden faktiskt skickat eller markerat betalda.
+        status: { in: ['SENT', 'PAID', 'OVERDUE'] },
+      },
+      include: { lease: { include: { unit: { include: { property: true } } } } },
+      orderBy: [{ year: 'desc' }, { month: 'desc' }],
+    })
+    return rows.map((notice) => ({
+      id: notice.id,
+      noticeNumber: notice.noticeNumber,
+      ocrNumber: notice.ocrNumber,
+      month: notice.month,
+      year: notice.year,
+      amount: Number(notice.amount),
+      vatAmount: Number(notice.vatAmount),
+      totalAmount: Number(notice.totalAmount),
+      dueDate: notice.dueDate.toISOString(),
+      paidAt: notice.paidAt?.toISOString() ?? null,
+      status: notice.status,
+      sentAt: notice.sentAt?.toISOString() ?? null,
+      propertyName: notice.lease?.unit?.property?.name ?? '',
+      unitName: notice.lease?.unit?.name ?? '',
+    }))
   }
 
   async getLease(tenantId: string) {
