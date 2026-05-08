@@ -167,6 +167,34 @@ export function MaintenancePage() {
     <div className={styles.page}>
       <div className={styles.header}>
         <h1 className={styles.pageTitle}>Felanmälningar</h1>
+        <button
+          type="button"
+          className={styles.headerBtn}
+          onClick={() => setShowSheet(true)}
+          aria-label="Ny felanmälan"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <line
+              x1="12"
+              y1="5"
+              x2="12"
+              y2="19"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+            <line
+              x1="5"
+              y1="12"
+              x2="19"
+              y2="12"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+          </svg>
+          <span>Ny felanmälan</span>
+        </button>
       </div>
 
       {isLoading && <Spinner size="md" label="Laddar ärenden..." />}
@@ -190,37 +218,18 @@ export function MaintenancePage() {
                 </svg>
               </div>
               <p className={styles.emptyTitle}>Inga felanmälningar</p>
-              <p className={styles.emptyText}>Tryck på + för att rapportera ett fel</p>
+              <p className={styles.emptyText}>
+                Tryck på "Ny felanmälan" högst upp för att rapportera ett fel
+              </p>
+              <button type="button" className={styles.emptyCta} onClick={() => setShowSheet(true)}>
+                + Ny felanmälan
+              </button>
             </div>
           ) : (
             data.map((ticket) => <TicketCard key={ticket.id} ticket={ticket} />)
           )}
         </div>
       )}
-
-      {/* Floating action button */}
-      <button className={styles.fab} onClick={() => setShowSheet(true)} aria-label="Ny felanmälan">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-          <line
-            x1="12"
-            y1="5"
-            x2="12"
-            y2="19"
-            stroke="white"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          />
-          <line
-            x1="5"
-            y1="12"
-            x2="19"
-            y2="12"
-            stroke="white"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
 
       {/* Bottom sheet backdrop */}
       {showSheet && <div className={styles.backdrop} onClick={() => setShowSheet(false)} />}
