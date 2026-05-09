@@ -86,6 +86,10 @@ export function SettingsPage({ onNavigate }: Props) {
   const [reminderCollectionDay, setReminderCollectionDay] = useState(30)
   const [collectionAgencyName, setCollectionAgencyName] = useState('')
   const [collectionsSavedFlash, setCollectionsSavedFlash] = useState(false)
+  // Hyresavi-inställningar: hur många dagar före tillträde som depositions-
+  // och första hyresavi förfaller. Hyresgästföreningens default är 7.
+  const [daysBeforeMoveIn, setDaysBeforeMoveIn] = useState(7)
+  const [aviSavedFlash, setAviSavedFlash] = useState(false)
   // ── Skatteinformation: F-skatt + momsregistreringsnummer ────────────────
   const [hasFSkatt, setHasFSkatt] = useState(false)
   const [fSkattApprovedDate, setFSkattApprovedDate] = useState('')
@@ -128,6 +132,9 @@ export function SettingsPage({ onNavigate }: Props) {
       setHasFSkatt(org.hasFSkatt ?? false)
       setFSkattApprovedDate(org.fSkattApprovedDate ? org.fSkattApprovedDate.slice(0, 10) : '')
       setVatNumber(org.vatNumber ?? '')
+      setDaysBeforeMoveIn(
+        (org as { daysBeforeMoveInForFirstPayment?: number }).daysBeforeMoveInForFirstPayment ?? 7,
+      )
     }
   }, [org, reset])
 
@@ -1013,6 +1020,62 @@ export function SettingsPage({ onNavigate }: Props) {
                     <span className="text-[13px] font-medium text-emerald-600">Sparat</span>
                   )}
                 </div>
+              </div>
+            </section>
+
+            {/* ── Hyresavi-flöde ───────────────────────────────────────────── */}
+            <section className="rounded-2xl border border-gray-100 bg-white p-5">
+              <h2 className="mb-3 text-[14px] font-semibold text-gray-800">
+                Hyresavi & deposition
+              </h2>
+              <p className="mb-4 text-[12.5px] text-gray-500">
+                Vid lease-aktivering skapas deposition + första hyresavi automatiskt. Avier för
+                månaderna därefter genereras 1:a varje månad och förfaller sista vardagen i månaden
+                FÖRE den hyresperiod avin avser, enligt 12 kap. 20 § Jordabalken.
+              </p>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-gray-700">
+                    Dagar före tillträde att deposition + första avi förfaller
+                  </label>
+                  <select
+                    className="h-9 w-full rounded-lg border border-[#DDDFE4] bg-white px-3 text-[13.5px] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={daysBeforeMoveIn}
+                    onChange={(e) => setDaysBeforeMoveIn(Number(e.target.value))}
+                  >
+                    <option value={5}>5 dagar (snabbt)</option>
+                    <option value={7}>7 dagar (standard)</option>
+                    <option value={14}>14 dagar (god marginal)</option>
+                  </select>
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Om dagen blir helg eller röd dag flyttas förfallodagen till närmaste vardag
+                    bakåt. Aldrig bakåt i tiden.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center gap-3 border-t border-gray-100 pt-3">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    updateMutation.mutate(
+                      { daysBeforeMoveInForFirstPayment: daysBeforeMoveIn },
+                      {
+                        onSuccess: () => {
+                          setAviSavedFlash(true)
+                          setTimeout(() => setAviSavedFlash(false), 2500)
+                        },
+                      },
+                    )
+                  }}
+                >
+                  Spara inställning
+                </Button>
+                {aviSavedFlash && (
+                  <span className="text-[13px] font-medium text-emerald-600">Sparat</span>
+                )}
               </div>
             </section>
           </div>

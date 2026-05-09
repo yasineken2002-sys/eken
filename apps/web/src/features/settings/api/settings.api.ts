@@ -15,6 +15,7 @@ export interface UpdateOrganizationInput {
   hasFSkatt?: boolean
   fSkattApprovedDate?: string
   vatNumber?: string
+  daysBeforeMoveInForFirstPayment?: number
 }
 
 export function getOrganization(): Promise<Organization> {

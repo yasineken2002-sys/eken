@@ -78,6 +78,9 @@ export class OrganizationsService {
         ...(dto.hasFSkatt != null ? { hasFSkatt: dto.hasFSkatt } : {}),
         ...fSkattDateUpdate,
         ...(dto.vatNumber != null ? { vatNumber: dto.vatNumber } : {}),
+        ...(dto.daysBeforeMoveInForFirstPayment != null
+          ? { daysBeforeMoveInForFirstPayment: dto.daysBeforeMoveInForFirstPayment }
+          : {}),
       },
     })
   }

@@ -1,12 +1,16 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { OcrService } from '../common/ocr/ocr.service'
 import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
-import { RentNoticeStatus } from '@prisma/client'
-import type { RentNotice, Prisma } from '@prisma/client'
-import { rentDueDateForMonth } from '@eken/shared'
+import { Prisma, RentNoticeStatus, RentNoticeType } from '@prisma/client'
+import type { RentNotice } from '@prisma/client'
+import {
+  rentDueDateForMonth,
+  calculateProratedRent,
+  calculateFirstPaymentDueDate,
+} from '@eken/shared'
 
 type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
   include: {
@@ -36,6 +40,8 @@ function pad2(n: number) {
 
 @Injectable()
 export class AviseringService {
+  private readonly logger = new Logger(AviseringService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ocrService: OcrService,
@@ -43,6 +49,30 @@ export class AviseringService {
     private readonly pdfService: PdfService,
     private readonly storage: StorageService,
   ) {}
+
+  // Allokerar nästa avinummer i sekvensen AVI-{year}-{month}-{NNNN}. Vi
+  // söker max-suffix per (year, month) och räknar uppåt från den. Detta
+  // tål gaps och historik från tidigare format (t.ex. AVI-XXXXXX) — det
+  // som spelar roll är att vi får ett ledigt nummer i AVI-{y}-{m}-XXXX.
+  //
+  // Race-säkerhet: två parallella requests kan teoretiskt hämta samma max
+  // och skapa duplicat — vi förlitar oss på @unique(noticeNumber) och en
+  // backoff-retry. För månadscronen körs dock allt sekventiellt.
+  private async nextNoticeNumber(year: number, month: number, offset = 0): Promise<string> {
+    const prefix = `AVI-${year}-${pad2(month)}-`
+    const existing = await this.prisma.rentNotice.findMany({
+      where: { noticeNumber: { startsWith: prefix } },
+      select: { noticeNumber: true },
+    })
+    let maxSeq = 0
+    for (const e of existing) {
+      const tail = e.noticeNumber.slice(prefix.length)
+      const n = parseInt(tail, 10)
+      if (!Number.isNaN(n) && n > maxSeq) maxSeq = n
+    }
+    const seq = maxSeq + offset + 1
+    return `${prefix}${String(seq).padStart(4, '0')}`
+  }
 
   async generateMonthlyNotices(orgId: string, month: number, year: number) {
     const leases = await this.prisma.lease.findMany({
@@ -57,32 +87,56 @@ export class AviseringService {
       return { created: 0, skipped: 0, notices: [] }
     }
 
+    // Idempotens på (lease, year, month, type=RENT) — generering kan köras
+    // om utan att dubbla avier skapas (cron-retry, manuell knapptryckning).
     const existing = await this.prisma.rentNotice.findMany({
-      where: { organizationId: orgId, month, year },
-      select: { tenantId: true },
+      where: { organizationId: orgId, month, year, type: RentNoticeType.RENT },
+      select: { leaseId: true },
     })
-    const existingSet = new Set(existing.map((n) => n.tenantId))
-
-    const existingCount = await this.prisma.rentNotice.count()
+    const existingLeaseIds = new Set(existing.map((n) => n.leaseId))
 
     let created = 0
     let skipped = 0
     const notices: RentNotice[] = []
 
     for (const lease of leases) {
-      if (existingSet.has(lease.tenantId)) {
+      if (existingLeaseIds.has(lease.id)) {
+        skipped++
+        continue
+      }
+
+      // Kontrakt som inte täcker någon dag i månaden hoppas över. Proration
+      // tar hand om delmånader (in-/utflyttning).
+      const monthEnd = new Date(year, month, 0)
+      const monthStart = new Date(year, month - 1, 1)
+      if (lease.startDate > monthEnd) {
+        skipped++
+        continue
+      }
+      if (lease.endDate && lease.endDate < monthStart) {
+        skipped++
+        continue
+      }
+
+      const proration = calculateProratedRent({
+        monthlyRent: Number(lease.monthlyRent),
+        year,
+        month,
+        leaseStart: lease.startDate,
+        leaseEnd: lease.endDate,
+      })
+
+      if (proration.daysCharged <= 0) {
         skipped++
         continue
       }
 
       const ocrNumber = await this.ocrService.assignOcrToTenant(lease.tenantId, orgId)
-      const seq = existingCount + created + 1
-      const noticeNumber = `AVI-${year}-${pad2(month)}-${String(seq).padStart(4, '0')}`
+      const noticeNumber = await this.nextNoticeNumber(year, month, created)
       // Hyreslagen 12 kap. 20 § JB: hyran ska betalas senast sista
       // vardagen i månaden FÖRE den hyresperiod avin avser.
       const dueDate = rentDueDateForMonth(year, month)
 
-      const amount = Number(lease.monthlyRent)
       const notice = await this.prisma.rentNotice.create({
         data: {
           organizationId: orgId,
@@ -92,11 +146,17 @@ export class AviseringService {
           ocrNumber,
           month,
           year,
-          amount,
+          amount: proration.amount,
           vatAmount: 0,
-          totalAmount: amount,
+          totalAmount: proration.amount,
           dueDate,
           status: RentNoticeStatus.PENDING,
+          type: RentNoticeType.RENT,
+          periodStart: proration.periodStart,
+          periodEnd: proration.periodEnd,
+          daysCharged: proration.daysCharged,
+          totalDays: proration.totalDays,
+          isProrated: proration.isProrated,
         },
         include: { tenant: true, lease: { include: { unit: { include: { property: true } } } } },
       })
@@ -106,6 +166,152 @@ export class AviseringService {
     }
 
     return { created, skipped, notices }
+  }
+
+  // ── Auto-skapa avier vid lease-aktivering (DRAFT → ACTIVE) ────────────────
+  // Skapar två avier vid behov: deposition (om depositAmount > 0) och första
+  // hyresavi (proportionellt om tillträde mitt i månaden). Båda får samma
+  // förfallodag = lease.startDate − daysBeforeMoveInForFirstPayment (org-
+  // inställning, default 7), justerat till närmaste vardag bakåt.
+  //
+  // Idempotent via @@unique(leaseId, year, month, type) på RentNotice — om
+  // metoden körs två gånger för samma lease tolkar vi P2002 som "redan
+  // skapad" och hämtar befintlig istället.
+  async createInitialNoticesForLease(leaseId: string): Promise<{
+    deposit: RentNotice | null
+    firstRent: RentNotice | null
+    mailed: boolean
+  }> {
+    const lease = await this.prisma.lease.findUnique({
+      where: { id: leaseId },
+      include: {
+        tenant: true,
+        unit: { include: { property: true } },
+      },
+    })
+    if (!lease) throw new NotFoundException('Kontraktet hittades inte')
+    if (lease.status !== 'ACTIVE') {
+      return { deposit: null, firstRent: null, mailed: false }
+    }
+
+    const orgId = lease.organizationId
+    // Lease-modellen saknar relation till Organization i schema — vi hämtar
+    // separat. Settings-fältet (daysBeforeMoveInForFirstPayment) styr
+    // förfallodagens offset från tillträdesdatum.
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { daysBeforeMoveInForFirstPayment: true },
+    })
+    if (!org) throw new NotFoundException('Organisation hittades inte')
+
+    const startDate = lease.startDate
+    const year = startDate.getFullYear()
+    const month = startDate.getMonth() + 1
+
+    const dueDate = calculateFirstPaymentDueDate(startDate, org.daysBeforeMoveInForFirstPayment)
+
+    const ocrNumber = await this.ocrService.assignOcrToTenant(lease.tenantId, orgId)
+
+    let depositNotice: RentNotice | null = null
+    let firstRentNotice: RentNotice | null = null
+
+    // ── 1. Deposition ────────────────────────────────────────────────────
+    const depositAmount = Number(lease.depositAmount ?? 0)
+    if (depositAmount > 0) {
+      try {
+        const noticeNumber = await this.nextNoticeNumber(year, month)
+        depositNotice = (await this.prisma.rentNotice.create({
+          data: {
+            organizationId: orgId,
+            tenantId: lease.tenantId,
+            leaseId: lease.id,
+            noticeNumber,
+            ocrNumber,
+            month,
+            year,
+            amount: depositAmount,
+            vatAmount: 0,
+            totalAmount: depositAmount,
+            dueDate,
+            status: RentNoticeStatus.PENDING,
+            type: RentNoticeType.DEPOSIT,
+          },
+        })) as unknown as RentNotice
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          depositNotice = (await this.prisma.rentNotice.findFirst({
+            where: { leaseId: lease.id, year, month, type: RentNoticeType.DEPOSIT },
+          })) as unknown as RentNotice | null
+        } else {
+          throw err
+        }
+      }
+    }
+
+    // ── 2. Första hyresavi (delmånad eller hel) ──────────────────────────
+    const proration = calculateProratedRent({
+      monthlyRent: Number(lease.monthlyRent),
+      year,
+      month,
+      leaseStart: lease.startDate,
+      leaseEnd: lease.endDate,
+    })
+
+    if (proration.daysCharged > 0) {
+      try {
+        const noticeNumber = await this.nextNoticeNumber(year, month, depositNotice ? 1 : 0)
+        firstRentNotice = (await this.prisma.rentNotice.create({
+          data: {
+            organizationId: orgId,
+            tenantId: lease.tenantId,
+            leaseId: lease.id,
+            noticeNumber,
+            ocrNumber,
+            month,
+            year,
+            amount: proration.amount,
+            vatAmount: 0,
+            totalAmount: proration.amount,
+            dueDate,
+            status: RentNoticeStatus.PENDING,
+            type: RentNoticeType.RENT,
+            periodStart: proration.periodStart,
+            periodEnd: proration.periodEnd,
+            daysCharged: proration.daysCharged,
+            totalDays: proration.totalDays,
+            isProrated: proration.isProrated,
+          },
+        })) as unknown as RentNotice
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          firstRentNotice = (await this.prisma.rentNotice.findFirst({
+            where: { leaseId: lease.id, year, month, type: RentNoticeType.RENT },
+          })) as unknown as RentNotice | null
+        } else {
+          throw err
+        }
+      }
+    }
+
+    // ── 3. Mejla hyresgästen med båda avier som bilagor ─────────────────
+    let mailed = false
+    if (lease.tenant.email && (depositNotice || firstRentNotice)) {
+      try {
+        const idsToSend = [depositNotice?.id, firstRentNotice?.id].filter((id): id is string =>
+          Boolean(id),
+        )
+        const result = await this.sendNotices(orgId, idsToSend)
+        mailed = result.sent > 0
+      } catch (err) {
+        // Mejlfel ska inte krascha lease-aktiveringen — avier är skapade,
+        // admin kan trigga "Skicka" manuellt om mejlet failar.
+        this.logger.warn(
+          `[Avisering] Initial mail failed for lease ${lease.id}: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
+
+    return { deposit: depositNotice, firstRent: firstRentNotice, mailed }
   }
 
   async sendNotices(orgId: string, noticeIds: string[]) {
@@ -255,6 +461,60 @@ export class AviseringService {
       month: 'long',
       year: 'numeric',
     })
+
+    const isDeposit = notice.type === RentNoticeType.DEPOSIT
+    const isProrated = notice.isProrated
+
+    const monthlyRent = Number(notice.lease?.monthlyRent ?? 0)
+    const dailyRate =
+      notice.totalDays && notice.totalDays > 0
+        ? Math.round((monthlyRent / notice.totalDays) * 100) / 100
+        : 0
+
+    const specRowsHtml = isDeposit
+      ? `
+      <tr>
+        <td>${unit?.unitNumber ?? notice.ocrNumber.slice(-6)}</td>
+        <td>
+          <strong>Deposition</strong>
+          ${unit ? ` — ${unit.name as string}` : ''}
+          ${property ? `, ${(property.street as string | null | undefined) ?? (property.name as string)}` : ''}
+          <div style="font-size:10px;color:#666;margin-top:4px">
+            Säkerhet enligt 12 kap. 21 § JB. Återbetalas vid avflyttning efter slutbesiktning.
+          </div>
+        </td>
+        <td>${Number(notice.amount).toLocaleString('sv-SE')} kr</td>
+      </tr>`
+      : isProrated
+        ? `
+      <tr>
+        <td>${unit?.unitNumber ?? notice.ocrNumber.slice(-6)}</td>
+        <td>
+          <strong>Hyra ${monthLabel} (delmånad)</strong>
+          ${unit ? ` — ${unit.name as string}` : ''}
+          ${property ? `, ${(property.street as string | null | undefined) ?? (property.name as string)}` : ''}
+          <div style="font-size:10px;color:#666;margin-top:4px;line-height:1.5">
+            Period: ${notice.periodStart ? new Date(notice.periodStart).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' }) : ''}
+            – ${notice.periodEnd ? new Date(notice.periodEnd).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' }) : ''}
+            (${notice.daysCharged} av ${notice.totalDays} dagar)<br>
+            Dagshyra: ${monthlyRent.toLocaleString('sv-SE')} / ${notice.totalDays} =
+            ${dailyRate.toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kr
+          </div>
+        </td>
+        <td>${Number(notice.amount).toLocaleString('sv-SE')} kr</td>
+      </tr>`
+        : `
+      <tr>
+        <td>${unit?.unitNumber ?? notice.ocrNumber.slice(-6)}</td>
+        <td>
+          Hyra ${monthLabel}
+          ${unit ? ` — ${unit.name as string}` : ''}
+          ${property ? `, ${(property.street as string | null | undefined) ?? (property.name as string)}` : ''}
+        </td>
+        <td>${Number(notice.amount).toLocaleString('sv-SE')} kr</td>
+      </tr>`
+
+    const aviTitle = isDeposit ? 'Depositionsavi' : 'Hyresavi'
 
     return `<!DOCTYPE html>
 <html lang="sv">
@@ -519,11 +779,11 @@ export class AviseringService {
       </div>
     </div>
     <div class="avi-header">
-      <div class="avi-title">Hyresavi</div>
+      <div class="avi-title">${aviTitle}</div>
       <div class="avi-meta">
         Datum: <span>${new Date().toLocaleDateString('sv-SE')}</span><br>
         Avinummer: <span>${notice.noticeNumber}</span><br>
-        Period: <span>${monthLabel}</span><br>
+        ${isDeposit ? '' : `Period: <span>${monthLabel}</span><br>`}
         Kundnr: <span>${notice.ocrNumber.slice(-6)}</span>
       </div>
     </div>
@@ -544,15 +804,7 @@ export class AviseringService {
       </tr>
     </thead>
     <tbody>
-      <tr>
-        <td>${unit?.unitNumber ?? notice.ocrNumber.slice(-6)}</td>
-        <td>
-          Hyra ${monthLabel}
-          ${unit ? ` — ${unit.name as string}` : ''}
-          ${property ? `, ${(property.street as string | null | undefined) ?? (property.name as string)}` : ''}
-        </td>
-        <td>${Number(notice.amount).toLocaleString('sv-SE')} kr</td>
-      </tr>
+      ${specRowsHtml}
       ${
         Number(notice.vatAmount) > 0
           ? `
@@ -619,8 +871,8 @@ export class AviseringService {
       </div>
     </div>
     <div class="slip-field">
-      <div class="label">Period</div>
-      <div class="value" style="font-size:12px">${monthLabel}</div>
+      <div class="label">${isDeposit ? 'Avser' : 'Period'}</div>
+      <div class="value" style="font-size:12px">${isDeposit ? 'Deposition' : monthLabel}</div>
     </div>
   </div>
 

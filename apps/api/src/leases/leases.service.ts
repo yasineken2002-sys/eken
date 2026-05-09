@@ -361,6 +361,16 @@ export class LeasesService {
       await this.activationQueue
         .enqueueWelcomeMail({ tenantId: lease.tenantId })
         .catch((err) => this.logger.error(`[Leases] enqueue welcome-mail failed: ${String(err)}`))
+
+      // Auto-skapa deposition + första hyresavi (delmånad om relevant) och
+      // mejla hyresgästen. Bull-kön ger samma retry-policy som de andra
+      // aktiverings-jobben — om R2/Resend är nere får vi 5 försök innan en
+      // SYSTEM-notification går ut till org-admins.
+      await this.activationQueue
+        .enqueueInitialNotices({ leaseId: id, organizationId })
+        .catch((err: unknown) =>
+          this.logger.error(`[Leases] enqueue initial-notices failed: ${String(err)}`),
+        )
     }
 
     return updated

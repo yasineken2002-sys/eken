@@ -5,7 +5,7 @@ import type { Queue, JobOptions } from 'bull'
 export const LEASE_ACTIVATION_QUEUE = 'lease-activation'
 
 /**
- * Bull-jobben för lease-aktivering. Två jobbtyper i samma kö så de delar
+ * Bull-jobben för lease-aktivering. Tre jobbtyper i samma kö så de delar
  * worker, retry-policy och visualisering. Idempotency-nycklar (`jobId`) gör
  * att samma logiska aktivering inte enqueueas dubbelt.
  */
@@ -23,6 +23,11 @@ export type LeaseActivationJob =
   | {
       type: 'send-welcome-mail'
       tenantId: string
+    }
+  | {
+      type: 'create-initial-notices'
+      leaseId: string
+      organizationId: string
     }
 
 const JOB_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -70,6 +75,24 @@ export class LeaseActivationQueue {
     }
     const job = await this.queue.add({ type: 'send-welcome-mail', ...payload }, jobOptions)
     this.logger.log(`Enqueued send-welcome-mail jobId=${job.id} tenant=${payload.tenantId}`)
+    return String(job.id)
+  }
+
+  async enqueueInitialNotices(payload: {
+    leaseId: string
+    organizationId: string
+  }): Promise<string> {
+    const jobOptions: JobOptions = {
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 60_000 },
+      removeOnComplete: { age: JOB_TTL_MS / 1000, count: 1000 },
+      removeOnFail: { age: JOB_TTL_MS / 1000, count: 1000 },
+      // Idempotency-nyckel: en lease får bara ett initial-notices-jobb. Om
+      // admin re-aktiverar eller dubbelklickar dedupar Bull.
+      jobId: `initial-notices-${payload.leaseId}`,
+    }
+    const job = await this.queue.add({ type: 'create-initial-notices', ...payload }, jobOptions)
+    this.logger.log(`Enqueued create-initial-notices jobId=${job.id} lease=${payload.leaseId}`)
     return String(job.id)
   }
 }

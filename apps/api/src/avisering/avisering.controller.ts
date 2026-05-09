@@ -14,19 +14,37 @@ import {
 } from '@nestjs/common'
 import type { FastifyReply } from 'fastify'
 import { AviseringService } from './avisering.service'
+import { AviseringScheduler } from './avisering.scheduler'
 import { GenerateNoticesDto } from './dto/generate-notices.dto'
 import { SendNoticesDto } from './dto/send-notices.dto'
 import { MarkPaidDto } from './dto/mark-paid.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
+import { UserRole } from '@prisma/client'
 import type { RentNoticeStatus } from '@prisma/client'
 
 @Controller('avisering')
 export class AviseringController {
-  constructor(private readonly aviseringService: AviseringService) {}
+  constructor(
+    private readonly aviseringService: AviseringService,
+    private readonly scheduler: AviseringScheduler,
+  ) {}
 
   @Post('generate')
   async generate(@OrgId() orgId: string, @Body() dto: GenerateNoticesDto) {
     return this.aviseringService.generateMonthlyNotices(orgId, dto.month, dto.year)
+  }
+
+  // Admin-trigger för månadscronen. Använd för att simulera "1:a varje månad
+  // kl 07:00" i test eller om servern var nere när cron skulle köra.
+  @Post('cron/run/:year/:month')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async runCron(
+    @Param('year', ParseIntPipe) year: number,
+    @Param('month', ParseIntPipe) month: number,
+  ) {
+    return this.scheduler.runForMonth(year, month)
   }
 
   @Post('send')

@@ -288,3 +288,103 @@ export function validatePasswordStrength(password: string): {
     })
   return { valid: errors.length === 0, errors }
 }
+
+// ─── Proportionell hyra (delmånad) ───────────────────────────────────────────
+// Hyra för in-/utflyttningsmånaden räknas pro rata enligt faktiskt antal
+// dagar i månaden. Branschpraxis (Hyresgästföreningens mall + Fastighetsägarna):
+// månadens hyra * (debiterade dagar / totala dagar i månaden).
+
+export function getDaysInMonth(year: number, month: number): number {
+  // month är 1–12 (kalendermånad). new Date(y, m, 0) returnerar sista dagen
+  // i månad m (eftersom dag 0 = sista dagen i föregående månad, sett från m+1).
+  return new Date(year, month, 0).getDate()
+}
+
+export interface ProratedRentResult {
+  amount: number
+  daysCharged: number
+  totalDays: number
+  isProrated: boolean
+  periodStart: Date
+  periodEnd: Date
+  monthLabel: string
+  description: string
+}
+
+/**
+ * Räkna ut hyresbelopp för en given period inom en månad. Hanterar både
+ * inflyttning mitt i månaden, utflyttning mitt i månaden och avi för hel
+ * månad. Beloppet avrundas till hela kronor enligt Fortnox-standard.
+ */
+export function calculateProratedRent(params: {
+  monthlyRent: number
+  year: number
+  month: number
+  leaseStart: Date
+  leaseEnd: Date | null
+}): ProratedRentResult {
+  const { monthlyRent, year, month, leaseStart, leaseEnd } = params
+
+  const totalDays = getDaysInMonth(year, month)
+  const monthStart = new Date(year, month - 1, 1)
+
+  // Klipp periodens början mot lease.startDate om lease börjar denna månad.
+  const startDay =
+    leaseStart.getFullYear() === year && leaseStart.getMonth() === month - 1
+      ? leaseStart.getDate()
+      : 1
+
+  // Klipp periodens slut mot lease.endDate om lease slutar denna månad.
+  const endDay =
+    leaseEnd && leaseEnd.getFullYear() === year && leaseEnd.getMonth() === month - 1
+      ? leaseEnd.getDate()
+      : totalDays
+
+  const periodStart = new Date(year, month - 1, startDay)
+  const periodEnd = new Date(year, month - 1, endDay)
+
+  const daysCharged = Math.max(0, endDay - startDay + 1)
+  const isProrated = daysCharged < totalDays
+
+  const amount = Math.round((monthlyRent * daysCharged) / totalDays)
+
+  const monthLabel = monthStart.toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' })
+
+  const description = isProrated
+    ? `Hyra ${monthLabel} (delmånad ${daysCharged} av ${totalDays} dagar)`
+    : `Hyra ${monthLabel}`
+
+  return {
+    amount,
+    daysCharged,
+    totalDays,
+    isProrated,
+    periodStart,
+    periodEnd,
+    monthLabel,
+    description,
+  }
+}
+
+/**
+ * Förfallodatum för deposition / första hyresavi vid lease-aktivering.
+ * Standard är `daysBeforeMoveIn` dagar före tillträde, justerat till sista
+ * vardagen om det landar på helg/röd dag, och aldrig bakåt i tiden.
+ */
+export function calculateFirstPaymentDueDate(leaseStartDate: Date, daysBeforeMoveIn: number): Date {
+  const candidate = addDays(leaseStartDate, -Math.abs(daysBeforeMoveIn))
+  let d = candidate
+  while (!isSwedishBusinessDay(d)) {
+    d = addDays(d, -1)
+  }
+  // Aldrig i historien — om beräknad dag är före idag, använd nästa vardag.
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (d < today) {
+    d = today
+    while (!isSwedishBusinessDay(d)) {
+      d = addDays(d, 1)
+    }
+  }
+  return d
+}

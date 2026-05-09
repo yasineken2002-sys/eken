@@ -33,6 +33,7 @@ import { extractApiError } from '@/lib/api'
 import { DocumentList } from '@/features/documents/components/DocumentList'
 import { DepositSection } from '@/features/deposits/components/DepositSection'
 import { RentIncreaseSection } from '@/features/rent-increases/components/RentIncreaseSection'
+import { LeaseNoticesSection } from './components/LeaseNoticesSection'
 import { generateLeaseContract, downloadLeaseContract } from './api/leases.api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -729,6 +730,13 @@ function LeaseDetailPanel({
               Kontraktet är sparat under Dokument.
             </p>
           )}
+
+          {/* Auto-genererade hyresavier (deposition + första hyran). Visas
+              för alla statusar — för DRAFT visas en informativ text om
+              vad som händer vid aktivering. */}
+          <div className="mt-6">
+            <LeaseNoticesSection leaseId={selected.id} startDate={selected.startDate} />
+          </div>
 
           {/* Deposition */}
           <div className="mt-6">

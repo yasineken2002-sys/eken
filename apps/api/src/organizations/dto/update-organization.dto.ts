@@ -75,4 +75,13 @@ export class UpdateOrganizationDto {
   @IsString()
   @IsOptional()
   vatNumber?: string
+
+  // ── Hyresavi-inställningar ───────────────────────────────────────────────
+  // Antal dagar före tillträde som deposition + första hyresavi förfaller.
+  // Standard 7 (Hyresgästföreningens rekommendation). Hyresvärden väljer
+  // 5/7/14 i SettingsPage.
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  daysBeforeMoveInForFirstPayment?: number
 }

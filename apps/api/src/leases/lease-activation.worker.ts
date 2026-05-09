@@ -5,16 +5,20 @@ import { ContractTemplateService } from '../contracts/contract-template.service'
 import { TenantAuthService } from '../tenant-portal/tenant-auth.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { AviseringService } from '../avisering/avisering.service'
 import { LEASE_ACTIVATION_QUEUE, type LeaseActivationJob } from './lease-activation.queue'
 
 /**
- * Worker för lease-activation-kön. Två jobbtyper:
+ * Worker för lease-activation-kön. Tre jobbtyper:
  *
  * - `generate-contract-pdf` → kör Puppeteer + spara Document. Bull retries
  *   hanterar transienta R2/Puppeteer-fel.
  * - `send-welcome-mail` → utfärda token + enqueue Resend-mejl. Bull retries
  *   hanterar transienta DB- eller Bull-fel; själva mejl-leveransen retras
  *   sedan av mail-kön (Resend dedupar via Idempotency-Key).
+ * - `create-initial-notices` → skapar deposition + första hyresavi (delmånad
+ *   om relevant) och mejlar hyresgästen. Idempotent via @@unique på
+ *   (leaseId, year, month, type) på RentNotice.
  *
  * Vid permanent fail (alla 5 försök slut) loggas felet och en SYSTEM-
  * notification skapas för organisationens admins så att någon kan agera.
@@ -29,6 +33,7 @@ export class LeaseActivationWorker {
     private readonly tenantAuth: TenantAuthService,
     private readonly notifications: NotificationsService,
     private readonly prisma: PrismaService,
+    private readonly avisering: AviseringService,
   ) {}
 
   @Process({ concurrency: 3 })
@@ -49,6 +54,11 @@ export class LeaseActivationWorker {
 
     if (data.type === 'send-welcome-mail') {
       await this.tenantAuth.sendWelcomeWithContract(data.tenantId)
+      return
+    }
+
+    if (data.type === 'create-initial-notices') {
+      await this.avisering.createInitialNoticesForLease(data.leaseId)
       return
     }
   }
@@ -73,11 +83,15 @@ export class LeaseActivationWorker {
       const title =
         job.data.type === 'generate-contract-pdf'
           ? 'Kontrakts-PDF kunde inte genereras'
-          : 'Välkomstmejl kunde inte skickas'
+          : job.data.type === 'send-welcome-mail'
+            ? 'Välkomstmejl kunde inte skickas'
+            : 'Avier kunde inte genereras automatiskt'
       const message =
         job.data.type === 'generate-contract-pdf'
           ? `Auto-generering misslyckades efter ${attempt} försök. Generera manuellt från kontraktssidan. Fel: ${err.message}`
-          : `Aktiveringsmejlet kunde inte skickas efter ${attempt} försök. Återskicka från hyresgäst-vyn. Fel: ${err.message}`
+          : job.data.type === 'send-welcome-mail'
+            ? `Aktiveringsmejlet kunde inte skickas efter ${attempt} försök. Återskicka från hyresgäst-vyn. Fel: ${err.message}`
+            : `Deposition + första hyresavi kunde inte skapas automatiskt efter ${attempt} försök. Skapa manuellt från avisering-sidan. Fel: ${err.message}`
 
       await this.notifications.createForAllOrgUsers(organizationId, 'SYSTEM', title, message)
     } catch (notifyErr) {
@@ -89,6 +103,7 @@ export class LeaseActivationWorker {
 
   private async resolveOrganizationId(data: LeaseActivationJob): Promise<string | null> {
     if (data.type === 'generate-contract-pdf') return data.organizationId
+    if (data.type === 'create-initial-notices') return data.organizationId
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: data.tenantId },
       select: { organizationId: true },
