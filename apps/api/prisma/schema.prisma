@@ -212,6 +212,15 @@ enum RentNoticeStatus {
   FAILED
 }
 
+// Avi-typ. RENT är vanlig månadshyresavi (kan vara delmånad), DEPOSIT är
+// engångsavin för deposition vid lease-aktivering. Andra typer (extra-debet
+// för skadestånd, indexhöjningar etc.) kan läggas till senare utan
+// migrationssmärta.
+enum RentNoticeType {
+  RENT
+  DEPOSIT
+}
+
 enum InspectionType {
   MOVE_IN
   MOVE_OUT
@@ -378,6 +387,12 @@ model Organization {
   invoiceColor         String?
   invoiceTemplate      InvoiceTemplate?
   morningReportEnabled Boolean @default(false)
+
+  // ── Hyresavi-inställningar ────────────────────────────────────────────────
+  // Antal dagar före tillträdesdag som deposition + första hyresavi förfaller.
+  // Standard 7 dagar — Hyresgästföreningens rekommendation. Hyresvärden kan
+  // justera (5/7/14) i organisationsinställningarna.
+  daysBeforeMoveInForFirstPayment Int @default(7)
 
   // ─── Påminnelse- och inkassoflöde ─────────────────────────────────────────
   // Lagstöd: Lag (1981:739) om ersättning för inkassokostnader — max 60 kr
@@ -1065,6 +1080,14 @@ model Document {
   locked            Boolean   @default(false)
   previousVersionId String?
 
+  // SHA-256-fingerprint av template-INPUT (lease/tenant/unit/property/org-snapshot)
+  // som PDF:en byggdes från. Används för att dedupa kontrakts-PDF:er när admin
+  // klickar "Generera" upprepade gånger utan att något har ändrats — då
+  // återanvänder vi den befintliga raden istället för att skapa nya versioner.
+  // Skiljer sig från contentHash som hashar PDF-bytena (dessa varierar p.g.a.
+  // Puppeteer-timestamps även för identisk input).
+  templateInputHash String?
+
   // ── Kontraktsbilaga (Kontraktsmall 2.0) ────────────────────────────────
   // När true bifogas dokumentet i hyreskontraktets bilageförteckning
   // (sista sidan av PDF:en). appendixOrder styr sorteringen — låga tal
@@ -1092,6 +1115,10 @@ model Document {
   @@index([tenantId])
   @@index([previousVersionId])
   @@index([leaseId, attachedToLeaseAsAppendix])
+  // Snabb lookup för dedup-fönstret i ContractTemplateService — vi söker
+  // (leaseId, category=CONTRACT, templateInputHash=X) för att hitta
+  // återanvändbar PDF utan att scanna alla dokument på leasen.
+  @@index([leaseId, category, templateInputHash])
 }
 
 // ─── ContractNumberSequence (Kontraktsmall 2.0) ───────────────────────────────
@@ -1423,6 +1450,16 @@ model RentNotice {
   sentTo         String?
   sendError      String?
 
+  // ── Typ + proportionell hyra (delmånad) ─────────────────────────────────
+  // type skiljer ren månadshyra från deposition. Periodfälten används av
+  // PDF-mallen för att visa "9 maj – 31 maj (23/31 dagar)".
+  type        RentNoticeType @default(RENT)
+  periodStart DateTime?      @db.Date
+  periodEnd   DateTime?      @db.Date
+  daysCharged Int?
+  totalDays   Int?
+  isProrated  Boolean        @default(false)
+
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   tenant       Tenant       @relation(fields: [tenantId], references: [id])
   lease        Lease        @relation(fields: [leaseId], references: [id])
@@ -1430,10 +1467,15 @@ model RentNotice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([organizationId, tenantId, month, year])
+  // Idempotency på (lease, period, typ) — samma månad får INTE generera två
+  // RENT-avier eller två DEPOSIT-avier. Det gamla unique på (org,tenant,month,
+  // year) räcker inte när tenant har flera kontrakt eller när vi även lagrar
+  // DEPOSIT i samma tabell.
+  @@unique([leaseId, year, month, type])
   @@index([organizationId])
   @@index([status])
   @@index([dueDate])
+  @@index([leaseId])
 }
 
 // ─── Inspection (Besiktning) ──────────────────────────────────────────────────

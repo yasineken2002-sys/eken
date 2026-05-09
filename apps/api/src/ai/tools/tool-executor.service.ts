@@ -1829,7 +1829,11 @@ export class ToolExecutorService {
                 }),
           }
 
-          const draftLease = await this.leasesService.createWithTenant(createDto, organizationId)
+          const draftLease = await this.leasesService.createWithTenant(
+            createDto,
+            organizationId,
+            userId,
+          )
           const activated = await this.leasesService.transitionStatus(
             draftLease.id,
             'ACTIVE',

@@ -126,6 +126,23 @@ function isActiveUnitConflict(err: unknown): boolean {
   return false
 }
 
+// Bygg ett visningsbart hyresgästnamn till felmeddelanden. INDIVIDUAL faller
+// tillbaka till email om både för- och efternamn saknas; COMPANY på email om
+// companyName saknas. Aldrig tomt sträng — minst email används.
+function tenantDisplayName(t: {
+  type: string
+  firstName: string | null
+  lastName: string | null
+  companyName: string | null
+  email: string
+}): string {
+  if (t.type === 'INDIVIDUAL') {
+    const name = `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()
+    return name || t.email
+  }
+  return t.companyName?.trim() || t.email
+}
+
 @Injectable()
 export class LeasesService {
   private readonly logger = new Logger(LeasesService.name)
@@ -158,6 +175,27 @@ export class LeasesService {
     return lease
   }
 
+  // Returnerar ett människovänligt felmeddelande om enheten redan har ett
+  // ACTIVE-kontrakt (annat än `excludeLeaseId`). Inkluderar hyresgästens namn
+  // så administratören vet vilket avtal som måste avslutas först. Returnerar
+  // null när enheten är fri.
+  private async describeActiveBlocker(
+    unitId: string,
+    excludeLeaseId?: string,
+  ): Promise<string | null> {
+    const blocking = await this.prisma.lease.findFirst({
+      where: {
+        unitId,
+        status: 'ACTIVE',
+        ...(excludeLeaseId ? { id: { not: excludeLeaseId } } : {}),
+      },
+      include: { tenant: true },
+    })
+    if (!blocking) return null
+    const name = tenantDisplayName(blocking.tenant)
+    return `Lägenheten har redan ett aktivt kontrakt med ${name}. Avsluta det först innan du aktiverar ett nytt.`
+  }
+
   async create(dto: CreateLeaseDto, organizationId: string) {
     const unit = await this.prisma.unit.findFirst({
       where: { id: dto.unitId },
@@ -173,12 +211,8 @@ export class LeasesService {
     if (!tenant) throw new NotFoundException('Hyresgästen hittades inte')
 
     // Optimistic check – DB-constraint fångar race
-    const existingActive = await this.prisma.lease.count({
-      where: { unitId: dto.unitId, status: 'ACTIVE' },
-    })
-    if (existingActive > 0) {
-      throw new BadRequestException('Enheten har redan ett aktivt kontrakt')
-    }
+    const blocker = await this.describeActiveBlocker(dto.unitId)
+    if (blocker) throw new BadRequestException(blocker)
 
     const leaseType: LeaseType = dto.leaseType ?? 'INDEFINITE'
     if (leaseType === 'FIXED_TERM' && !dto.endDate) {
@@ -248,12 +282,8 @@ export class LeasesService {
 
     // Optimistic check innan DRAFT→ACTIVE; partial unique index fångar race.
     if (newStatus === 'ACTIVE') {
-      const existingActive = await this.prisma.lease.count({
-        where: { unitId: lease.unitId, status: 'ACTIVE', id: { not: id } },
-      })
-      if (existingActive > 0) {
-        throw new BadRequestException('Enheten har redan ett aktivt kontrakt')
-      }
+      const blocker = await this.describeActiveBlocker(lease.unitId, id)
+      if (blocker) throw new BadRequestException(blocker)
     }
 
     let updated
@@ -297,7 +327,11 @@ export class LeasesService {
       })
     } catch (err) {
       if (isActiveUnitConflict(err)) {
-        throw new BadRequestException('Enheten har redan ett aktivt kontrakt')
+        // Race: en annan request hann slå mot lease_unit_active_unique mellan
+        // vår describeActiveBlocker-check och DB-skrivningen. Bygg om felet
+        // med tenant-namn så meddelandet blir lika hjälpsamt som ovan.
+        const blocker = await this.describeActiveBlocker(lease.unitId, id)
+        throw new BadRequestException(blocker ?? 'Lägenheten har redan ett aktivt kontrakt.')
       }
       throw err
     }
@@ -332,7 +366,11 @@ export class LeasesService {
     return updated
   }
 
-  async createWithTenant(dto: CreateLeaseWithTenantDto, organizationId: string) {
+  async createWithTenant(
+    dto: CreateLeaseWithTenantDto,
+    organizationId: string,
+    actorUserId?: string | null,
+  ) {
     const unit = await this.prisma.unit.findFirst({
       where: { id: dto.unitId },
       include: { property: true },
@@ -341,12 +379,19 @@ export class LeasesService {
       throw new NotFoundException('Enheten hittades inte')
     }
 
-    const existingActive = await this.prisma.lease.count({
-      where: { unitId: dto.unitId, status: 'ACTIVE' },
-    })
-    if (existingActive > 0) {
-      throw new BadRequestException('Enheten har redan ett aktivt kontrakt')
+    // Defensiv check mot drift mellan Unit.status och Lease.status. Normalt
+    // hålls de i sync av transitionStatus → tx.unit.update, men om någon har
+    // patchat unit-status manuellt vill vi inte tyst skapa ett kontrakt på
+    // en uthyrd enhet och få en konflikt först vid aktivering.
+    if (unit.status === 'OCCUPIED') {
+      const blocker = await this.describeActiveBlocker(dto.unitId)
+      throw new BadRequestException(
+        blocker ?? 'Lägenheten är markerad som uthyrd och kan inte få ett nytt kontrakt.',
+      )
     }
+
+    const blocker = await this.describeActiveBlocker(dto.unitId)
+    if (blocker) throw new BadRequestException(blocker)
 
     const leaseType: LeaseType = dto.leaseType ?? 'INDEFINITE'
     if (leaseType === 'FIXED_TERM' && !dto.endDate) {
@@ -459,7 +504,13 @@ export class LeasesService {
       })
     } catch (err) {
       if (isActiveUnitConflict(err)) {
-        throw new BadRequestException('Enheten har redan ett aktivt kontrakt')
+        // Race: en annan request hann slå mot lease_unit_active_unique mellan
+        // vår describeActiveBlocker-check och DB-skrivningen. Bygg om felet
+        // med tenant-namn så meddelandet blir lika hjälpsamt som ovan.
+        const blocker = await this.describeActiveBlocker(
+          'unitId' in dto && typeof dto.unitId === 'string' ? dto.unitId : '',
+        )
+        throw new BadRequestException(blocker ?? 'Lägenheten har redan ett aktivt kontrakt.')
       }
       // P2002 på ([organizationId, email]) — race där två förfrågningar samtidigt
       // skapar tenant med samma e-post. Dubblett-checken före tx fångar normalfallet.
@@ -478,6 +529,15 @@ export class LeasesService {
 
     // Inget portalmejl skickas vid kontraktsskapande — välkomstmejlet med
     // aktiveringslänk skickas när kontraktet aktiveras (DRAFT → ACTIVE).
+    //
+    // När frontend explicit ber om "skapa & aktivera direkt" (knapp i
+    // CreateLeaseModal) gör vi övergången i samma anrop. Det enqueueasr
+    // PDF-generering + välkomstmejl precis som vanlig DRAFT→ACTIVE-knapp,
+    // så användaren slipper det dolda två-stegs-flödet som ofta missades.
+    if (dto.activate) {
+      return this.transitionStatus(lease.id, 'ACTIVE', organizationId, actorUserId ?? null)
+    }
+
     return lease
   }
 

@@ -142,4 +142,9 @@ export class CreateLeaseWithTenantDto {
   @IsNumber() @Min(0) @Max(100) @IsOptional() indexMinIncrease?: number
   @IsString() @IsOptional() indexNotes?: string
   @IsString() @IsOptional() specialTerms?: string
+
+  // När `true` aktiveras kontraktet (DRAFT → ACTIVE) i samma anrop. Då
+  // enqueueasr också välkomstmejlet med aktiveringslänk + PDF-genereringen.
+  // Default false → spara som utkast.
+  @IsBoolean() @IsOptional() activate?: boolean
 }

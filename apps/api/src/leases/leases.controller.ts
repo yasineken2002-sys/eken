@@ -34,8 +34,12 @@ export class LeasesController {
 
   // Must be before @Post() to avoid route conflict
   @Post('with-tenant')
-  async createWithTenant(@OrgId() organizationId: string, @Body() dto: CreateLeaseWithTenantDto) {
-    return this.leasesService.createWithTenant(dto, organizationId)
+  async createWithTenant(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateLeaseWithTenantDto,
+  ) {
+    return this.leasesService.createWithTenant(dto, organizationId, user.sub)
   }
 
   @Post()

@@ -107,6 +107,11 @@ export interface CreateLeaseWithTenantInput extends ContractTerms {
   leaseType?: 'FIXED_TERM' | 'INDEFINITE'
   renewalPeriodMonths?: number
   noticePeriodMonths?: number
+  /**
+   * När `true` aktiveras kontraktet (DRAFT → ACTIVE) i samma anrop —
+   * välkomstmejl + PDF-jobb enqueueas direkt. Default false → utkast.
+   */
+  activate?: boolean
 }
 
 export interface TerminateLeaseInput {

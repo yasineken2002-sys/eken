@@ -264,9 +264,15 @@ interface Props {
   defaultValues?: Partial<CreateLeaseWithTenantInput>
   /** Pre-select a property (used in edit mode where the unit is already known) */
   initialPropertyId?: string
-  onSubmit: (data: CreateLeaseWithTenantInput) => void
+  onSubmit: (data: CreateLeaseWithTenantInput, opts: { activate: boolean }) => void
   onCancel: () => void
   isSubmitting: boolean
+  /**
+   * Endast i create-läge: visa "Skapa & aktivera direkt"-knappen som primär
+   * action. I edit-läge (`mode === 'edit'`) finns bara en "Spara"-knapp och
+   * activate-flaggan ignoreras alltid.
+   */
+  mode?: 'create' | 'edit'
   submitLabel?: string
 }
 
@@ -278,9 +284,15 @@ export function LeaseForm({
   onSubmit,
   onCancel,
   isSubmitting,
-  submitLabel = 'Skapa kontrakt',
+  mode = 'create',
+  submitLabel = 'Spara som utkast',
 }: Props) {
   const today = new Date().toISOString().slice(0, 10)
+  // Vilken knapp som klickades senast — används för att veta om användaren
+  // valde "Skapa & aktivera direkt" (primär) eller "Spara som utkast"
+  // (sekundär). React Hook Form skickar inget event till handleSubmit så vi
+  // måste fånga det innan submit-fasen.
+  const [pendingActivate, setPendingActivate] = useState<boolean>(false)
 
   const {
     register,
@@ -481,7 +493,7 @@ export function LeaseForm({
       }
     }
 
-    onSubmit(dto)
+    onSubmit(dto, { activate: pendingActivate })
   }
 
   return (
@@ -515,7 +527,12 @@ export function LeaseForm({
           )}
         </div>
 
-        {/* Unit select */}
+        {/* Unit select — uthyrda enheter visas disabled så administratören
+            inte ens kan välja en uthyrd lägenhet. Backend dubbelkollar med
+            describeActiveBlocker + partial unique index, men UI:t ska göra
+            det uppenbart innan submit. I edit-läge tillåter vi att den
+            redan valda enheten väljs igen även om den råkar vara OCCUPIED
+            (dvs den här leasens egen unit). */}
         <div className="space-y-1.5">
           <label className="block text-[13px] font-medium text-gray-700">Enhet</label>
           <Controller
@@ -531,16 +548,31 @@ export function LeaseForm({
                 )}
               >
                 <option value="">{propertyId ? 'Välj enhet…' : 'Välj fastighet först'}</option>
-                {units.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                    {u.unitNumber ? ` (${u.unitNumber})` : ''}
-                  </option>
-                ))}
+                {units.map((u) => {
+                  const isOccupied = u.status === 'OCCUPIED'
+                  const isCurrent = defaultValues?.unitId === u.id
+                  // I edit-läge får den befintliga enheten alltid vara
+                  // valbar — annars går det inte att spara små ändringar
+                  // på ett aktivt kontrakt.
+                  const disabled = isOccupied && !isCurrent
+                  const label =
+                    `${u.name}${u.unitNumber ? ` (${u.unitNumber})` : ''}` +
+                    (isOccupied ? ' — uthyrd' : '')
+                  return (
+                    <option key={u.id} value={u.id} disabled={disabled}>
+                      {label}
+                    </option>
+                  )
+                })}
               </select>
             )}
           />
           {errors.unitId && <p className="text-[12px] text-red-600">{errors.unitId.message}</p>}
+          {units.some((u) => u.status === 'OCCUPIED') && (
+            <p className="text-[11.5px] text-gray-500">
+              Uthyrda enheter visas men kan inte väljas — ett aktivt kontrakt måste avslutas först.
+            </p>
+          )}
         </div>
 
         {/* Read-only fakta från Unit + Property — kontraktshyran sätts längre
@@ -1084,13 +1116,46 @@ export function LeaseForm({
         </p>
       </div>
 
+      {/* Hjälptext + två primära actions: spara som utkast (sekundär) eller
+          skapa & aktivera direkt (primär). I edit-läge har vi bara en
+          spara-knapp eftersom aktivering sker via separat knapp i detaljvyn. */}
+      {mode === 'create' && (
+        <p className="rounded-lg bg-blue-50/70 px-3.5 py-2.5 text-[12.5px] text-blue-900">
+          💡 <strong>Skapa &amp; aktivera direkt</strong> skickar mejl till hyresgästen omedelbart
+          med aktiveringslänk. <strong>Spara som utkast</strong> låter dig granska kontraktet först.
+        </p>
+      )}
+
       <ModalFooter>
         <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
           Avbryt
         </Button>
-        <Button type="submit" variant="primary" loading={isSubmitting}>
-          {submitLabel}
-        </Button>
+        {mode === 'create' ? (
+          <>
+            <Button
+              type="submit"
+              variant="secondary"
+              loading={isSubmitting && !pendingActivate}
+              disabled={isSubmitting && pendingActivate}
+              onClick={() => setPendingActivate(false)}
+            >
+              Spara som utkast
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={isSubmitting && pendingActivate}
+              disabled={isSubmitting && !pendingActivate}
+              onClick={() => setPendingActivate(true)}
+            >
+              🚀 Skapa &amp; aktivera direkt
+            </Button>
+          </>
+        ) : (
+          <Button type="submit" variant="primary" loading={isSubmitting}>
+            {submitLabel}
+          </Button>
+        )}
       </ModalFooter>
     </form>
   )

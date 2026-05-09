@@ -19,6 +19,31 @@ import {
 // ändras → ny PDF även om någon precis genererat en).
 const RECENT_CONTRACT_WINDOW_MS = 30_000
 
+// Stabil JSON-stringify som sorterar nycklar djupt. Behövs för deterministisk
+// fingerprint av template-input — annars varierar JSON.stringify-output med
+// nyckel-ordning från queries och då dedupar vi inget. Datum hanteras separat
+// (Date → ISO-sträng).
+function stableStringify(value: unknown): string {
+  if (value === null || value === undefined) return JSON.stringify(value)
+  if (value instanceof Date) return JSON.stringify(value.toISOString())
+  if (typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) {
+    return '[' + value.map(stableStringify).join(',') + ']'
+  }
+  const keys = Object.keys(value as Record<string, unknown>).sort()
+  return (
+    '{' +
+    keys
+      .map((k) => JSON.stringify(k) + ':' + stableStringify((value as Record<string, unknown>)[k]))
+      .join(',') +
+    '}'
+  )
+}
+
+function fingerprintTemplateInput(input: ContractTemplateInput): string {
+  return crypto.createHash('sha256').update(stableStringify(input)).digest('hex')
+}
+
 async function getLogoDataUrl(
   storage: StorageService,
   logoStorageKey: string | null,
@@ -261,14 +286,43 @@ export class ContractTemplateService {
     if (!lease) throw new NotFoundException('Kontraktet hittades inte')
     if (!org) throw new NotFoundException('Organisationen hittades inte')
 
-    // Snabbreturn: om en annan request precis genererade en PDF, återanvänd
-    // den. Använder createdAt > now - window. Vi hoppar bara om dokumentet
-    // skapades efter att lease senast uppdaterades — annars är det inaktuellt.
+    // Bygg template-input och dess fingerprint *innan* vi går vidare till
+    // Puppeteer. Den hashen är vår dedup-nyckel: alla tidigare CONTRACT-rader
+    // för leasen med samma hash beskriver bit-för-bit samma kontrakt och kan
+    // återanvändas, oavsett hur många gånger admin har klickat "Generera".
+    const input = await this.buildInput(lease, org)
+    const inputHash = fingerprintTemplateInput(input)
+
+    // Återanvändbar = (a) samma input-hash, (b) inte låst (en låst PDF är
+    // signerad och måste alltid lämnas orörd — ändringar kräver ny version),
+    // (c) skapad efter senaste lease-uppdatering så ingen redigering missas.
+    // Vi sorterar på createdAt desc så vi får den färskaste raden om flera
+    // tidigare jobb råkat skapa identiska dubletter.
+    const reusable = await this.prisma.document.findFirst({
+      where: {
+        leaseId,
+        organizationId,
+        category: 'CONTRACT',
+        templateInputHash: inputHash,
+        locked: false,
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (reusable && reusable.contentHash && reusable.createdAt >= lease.updatedAt) {
+      const buffer = await this.storage.getFileBuffer(reusable.storageKey)
+      return { buffer, documentId: reusable.id, contentHash: reusable.contentHash }
+    }
+
+    // Race-fönster: två snabba klick kan landa båda inom låset i tur och
+    // ordning. Om någon precis hann skriva en CONTRACT-rad inom de senaste
+    // 30 sekunderna och lease inte ändrats sedan dess — återanvänd även om
+    // hashen råkar skilja (t.ex. äldre rader utan templateInputHash satt).
     const recent = await this.prisma.document.findFirst({
       where: {
         leaseId,
         organizationId,
         category: 'CONTRACT',
+        locked: false,
         createdAt: { gt: new Date(Date.now() - RECENT_CONTRACT_WINDOW_MS) },
       },
       orderBy: { createdAt: 'desc' },
@@ -278,7 +332,6 @@ export class ContractTemplateService {
       return { buffer, documentId: recent.id, contentHash: recent.contentHash }
     }
 
-    const input = await this.buildInput(lease, org)
     const html = this.renderHtml(input)
     const buffer = await this.pdfService.generateContractFromHtml(html, {
       contractNumber: contractNumberLabel(input),
@@ -292,10 +345,12 @@ export class ContractTemplateService {
     const storageKey = `documents/${organizationId}/${safeName}`
     const storageUrl = await this.storage.uploadFile(buffer, storageKey, 'application/pdf')
 
-    // Hitta senaste icke-låsta CONTRACT-rad för leasen — vi länkar bara
-    // versionerna när det är meningsfullt (om previousVersionId redan
-    // är satt på en annan rad i kedjan så pekar vi på den raden, inte
-    // ursprunget; se `previousVersion`-relationen).
+    // Hitta senaste CONTRACT-rad för leasen — vi länkar bara versionerna
+    // när det är meningsfullt (om previousVersionId redan är satt på en
+    // annan rad i kedjan så pekar vi på den raden, inte ursprunget; se
+    // `previousVersion`-relationen). Locked rader får också vara previous —
+    // det är hela poängen med versionskedjan: behåll signerad version som
+    // historik och peka mot den från den nya.
     let previousVersionId: string | null = null
     if (options.linkPrevious) {
       const prev = await this.prisma.document.findFirst({
@@ -324,6 +379,7 @@ export class ContractTemplateService {
         mimeType: 'application/pdf',
         category: 'CONTRACT',
         contentHash,
+        templateInputHash: inputHash,
         ...(previousVersionId ? { previousVersionId } : {}),
       },
     })

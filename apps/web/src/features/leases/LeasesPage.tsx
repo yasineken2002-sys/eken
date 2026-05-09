@@ -165,21 +165,31 @@ export function LeasesPage() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
-  const handleCreate = (dto: CreateLeaseWithTenantInput) => {
-    createMutation.mutate(dto, {
-      onSuccess: () => {
-        toast.success('Kontraktet skapades')
-        setShowCreate(false)
+  const handleCreate = (dto: CreateLeaseWithTenantInput, opts: { activate: boolean }) => {
+    createMutation.mutate(
+      { ...dto, activate: opts.activate },
+      {
+        onSuccess: () => {
+          if (opts.activate) {
+            toast.success('Kontraktet aktiverat — hyresgästen har fått mejl')
+          } else {
+            toast.success('Kontraktet sparat som utkast')
+          }
+          setShowCreate(false)
+        },
+        // useCreateLeaseWithTenant har meta.handlesOwnError så globalfilter:t
+        // hoppar över det här felet — vi visar en kontextuell toast med både
+        // titel och API-meddelandet istället för det generiska globala.
+        onError: (err) => {
+          toast.error(
+            opts.activate ? 'Kunde inte aktivera kontraktet' : 'Kunde inte spara kontraktet',
+            {
+              description: extractApiError(err, 'Försök igen om en stund.'),
+            },
+          )
+        },
       },
-      // useCreateLeaseWithTenant har meta.handlesOwnError så globalfilter:t
-      // hoppar över det här felet — vi visar en kontextuell toast med både
-      // titel och API-meddelandet istället för det generiska globala.
-      onError: (err) => {
-        toast.error('Kunde inte skapa kontraktet', {
-          description: extractApiError(err, 'Försök igen om en stund.'),
-        })
-      },
-    })
+    )
   }
 
   const handleUpdate = (dto: CreateLeaseWithTenantInput) => {
@@ -439,10 +449,10 @@ export function LeasesPage() {
         size="lg"
       >
         <LeaseForm
+          mode="create"
           onSubmit={handleCreate}
           onCancel={() => setShowCreate(false)}
           isSubmitting={createMutation.isPending}
-          submitLabel="Skapa kontrakt"
         />
       </Modal>
 
@@ -603,6 +613,38 @@ function LeaseDetailPanel({
         <ContractTab leaseId={selected.id} />
       ) : detailTab === 'detaljer' ? (
         <div>
+          {/* DRAFT-banner: kontraktet skapades men inget mejl gick ut än.
+              Tydlig varning + stor primär aktivera-knapp så administratören
+              inte missar steg 2. Tonen är amber/orange för att skilja från
+              fel (röd) och status-info (blå). */}
+          {status === 'DRAFT' && (
+            <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                  ⚠️
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[14px] font-semibold text-amber-900">
+                    Kontraktet är ett utkast
+                  </p>
+                  <p className="mt-1 text-[13px] text-amber-800/90">
+                    Hyresgästen får inget mejl förrän du klickar <strong>Aktivera</strong>. Granska
+                    först — när allt stämmer, klicka knappen nedan så skickas aktiveringslänken
+                    automatiskt.
+                  </p>
+                  <Button
+                    variant="primary"
+                    loading={isTransitioning}
+                    onClick={() => onTransition('ACTIVE')}
+                    className="mt-3 !bg-emerald-600 hover:!bg-emerald-700"
+                  >
+                    🚀 Aktivera kontrakt och skicka mejl till hyresgästen
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Info grid */}
           <div className="grid grid-cols-2 gap-3 rounded-xl border border-gray-100 p-4">
             {[
@@ -703,7 +745,10 @@ function LeaseDetailPanel({
             <DocumentList leaseId={selected.id} title="Kontraktsdokument" />
           </div>
 
-          {/* Action buttons */}
+          {/* Action buttons. Aktivera-knappen för DRAFT finns redan stor och
+              grön i bannern högst upp i vyn — vi visar bara sekundära
+              actions här (Ta bort / Avsluta) så det finns ett tydligt
+              huvudflöde. */}
           <ModalFooter>
             {status === 'DRAFT' && (
               <>
@@ -722,14 +767,6 @@ function LeaseDetailPanel({
                   onClick={() => onTransition('TERMINATED')}
                 >
                   Avsluta
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  loading={isTransitioning}
-                  onClick={() => onTransition('ACTIVE')}
-                >
-                  Aktivera
                 </Button>
               </>
             )}
@@ -773,6 +810,7 @@ function LeaseDetailPanel({
         </div>
       ) : (
         <LeaseForm
+          mode="edit"
           {...(selectedLease ? { defaultValues: leaseToInput(selectedLease) } : {})}
           initialPropertyId={selected.unit.property.id}
           onSubmit={onUpdate}
