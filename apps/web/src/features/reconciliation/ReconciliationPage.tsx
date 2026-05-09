@@ -86,9 +86,15 @@ function ImportModal({
 
   const handleFile = (f: File) => {
     const ext = f.name.toLowerCase().split('.').pop() ?? ''
-    if (!['csv', 'xlsx', 'xls'].includes(ext)) return
+    if (!['csv', 'xlsx', 'xls', 'txt', 'bgmax'].includes(ext)) return
     setFile(f)
   }
+
+  // Avgör om vi pratar med /import (CSV/Excel) eller /import-bgmax (Bankgirot).
+  // Detekteringen i useImportStatement-hooken gör samma sak — vi duplicerar
+  // den här bara för UI-villkor (t.ex. dölja bank-väljaren för BgMax där den
+  // är irrelevant).
+  const isBgMax = file && ['txt', 'bgmax'].includes(file.name.toLowerCase().split('.').pop() ?? '')
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -156,7 +162,7 @@ function ImportModal({
             <input
               ref={fileRef}
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept=".csv,.xlsx,.xls,.txt,.bgmax"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0]
@@ -182,49 +188,59 @@ function ImportModal({
                 </p>
                 <p className="mt-0.5 text-[12.5px] text-gray-400">eller klicka för att välja fil</p>
                 <p className="mt-2 rounded-md bg-gray-100 px-2.5 py-1 text-[11.5px] text-gray-400">
-                  CSV, Excel (.xlsx, .xls) — max 10 MB
+                  CSV, Excel (.xlsx, .xls) eller BgMax (.txt) — max 10 MB
                 </p>
               </>
             )}
           </div>
 
-          {/* Bank-väljare */}
-          <div>
-            <label className="mb-1 block text-[12.5px] font-medium text-gray-700">
-              Bank (valfritt)
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {(
-                [
-                  { id: 'AUTO', label: 'Auto-detektera' },
-                  { id: 'HANDELSBANKEN', label: 'Handelsbanken' },
-                  { id: 'SEB', label: 'SEB' },
-                  { id: 'SWEDBANK', label: 'Swedbank' },
-                  { id: 'GENERIC', label: 'Generisk CSV' },
-                ] as { id: BankFormat | 'AUTO'; label: string }[]
-              ).map((b) => (
-                <button
-                  key={b.id}
-                  type="button"
-                  onClick={() => setBank(b.id)}
-                  className={cn(
-                    'rounded-lg border px-3 py-1.5 text-[12.5px] font-medium transition-colors',
-                    bank === b.id
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-[#DDDFE4] bg-white text-gray-600 hover:bg-gray-50',
-                  )}
-                >
-                  {b.label}
-                </button>
-              ))}
+          {/* BgMax-info — bank-väljaren är irrelevant för Bankgirots format */}
+          {isBgMax && (
+            <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-[12.5px] text-blue-700">
+              Detekterat: <strong>BgMax (Bankgirot)</strong>. Inbetalningar matchas automatiskt mot
+              fakturor och hyresavier via OCR-numret.
             </div>
-            <p className="mt-1 text-[11.5px] text-gray-400">
-              Lämna på Auto-detektera om du är osäker — vi känner igen formaten automatiskt.
-            </p>
-          </div>
+          )}
 
-          {/* Format guide */}
-          <FormatGuide />
+          {/* Bank-väljare — visas inte för BgMax */}
+          {!isBgMax && (
+            <div>
+              <label className="mb-1 block text-[12.5px] font-medium text-gray-700">
+                Bank (valfritt)
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  [
+                    { id: 'AUTO', label: 'Auto-detektera' },
+                    { id: 'HANDELSBANKEN', label: 'Handelsbanken' },
+                    { id: 'SEB', label: 'SEB' },
+                    { id: 'SWEDBANK', label: 'Swedbank' },
+                    { id: 'GENERIC', label: 'Generisk CSV' },
+                  ] as { id: BankFormat | 'AUTO'; label: string }[]
+                ).map((b) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => setBank(b.id)}
+                    className={cn(
+                      'rounded-lg border px-3 py-1.5 text-[12.5px] font-medium transition-colors',
+                      bank === b.id
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-[#DDDFE4] bg-white text-gray-600 hover:bg-gray-50',
+                    )}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[11.5px] text-gray-400">
+                Lämna på Auto-detektera om du är osäker — vi känner igen formaten automatiskt.
+              </p>
+            </div>
+          )}
+
+          {/* Format guide — bara för CSV/Excel */}
+          {!isBgMax && <FormatGuide />}
 
           {importMutation.isError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600">

@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common'
+import { Injectable, ForbiddenException, Logger } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
@@ -2541,13 +2541,20 @@ export class ToolExecutorService {
 
         case 'match_bank_transaction': {
           const transactionId = String(toolInput.transactionId ?? '')
-          const invoiceId = String(toolInput.invoiceId ?? '')
-          if (!transactionId || !invoiceId) {
-            return { success: false, message: 'transactionId och invoiceId krävs' }
+          const invoiceId = toolInput.invoiceId ? String(toolInput.invoiceId) : ''
+          const rentNoticeId = toolInput.rentNoticeId ? String(toolInput.rentNoticeId) : ''
+          if (!transactionId || (!invoiceId && !rentNoticeId)) {
+            return {
+              success: false,
+              message: 'transactionId och antingen invoiceId eller rentNoticeId krävs',
+            }
           }
           await this.reconciliationService.manualMatch(
             transactionId,
-            invoiceId,
+            {
+              ...(invoiceId ? { invoiceId } : {}),
+              ...(rentNoticeId ? { rentNoticeId } : {}),
+            },
             organizationId,
             userId,
           )
@@ -2574,7 +2581,14 @@ export class ToolExecutorService {
           } catch {
             return { success: false, message: 'Kunde inte avkoda base64-innehållet' }
           }
-          const result = await this.importBgMaxFile(buffer, fileName, organizationId)
+          // Delegera till ReconciliationService — samma parser används av
+          // HTTP-endpointen POST /v1/reconciliation/import-bgmax så vi inte
+          // har två kodvägar att hålla synkade.
+          const result = await this.reconciliationService.importBgMaxFile(
+            buffer,
+            fileName,
+            organizationId,
+          )
           return {
             success: true,
             data: result,
@@ -3251,103 +3265,5 @@ export class ToolExecutorService {
         message: `Åtgärden misslyckades: ${msg}. Försök igen eller kontakta support om problemet kvarstår.`,
       }
     }
-  }
-
-  // ── BgMax-parser ─────────────────────────────────────────────────────────
-  // Hanterar grundformatet från Bankgirot: 80-tecken-rader med transaktionskoder
-  // (TC 01 = filheader, 05 = sektionsstart, 20/21 = OCR-betalning, 70 = avslut).
-  // Parsar belopp i öre, OCR-referens och datum från sektionsraderna.
-  private async importBgMaxFile(
-    buffer: Buffer,
-    fileName: string,
-    organizationId: string,
-  ): Promise<{
-    fileName: string
-    imported: number
-    duplicates: number
-    autoMatched: number
-    unmatched: number
-    errors: string[]
-  }> {
-    const text = buffer.toString('utf8')
-    const lines = text.split(/\r?\n/).filter((l) => l.length > 0)
-    const result = {
-      fileName,
-      imported: 0,
-      duplicates: 0,
-      autoMatched: 0,
-      unmatched: 0,
-      errors: [] as string[],
-    }
-
-    let sectionDate: Date | null = null
-    for (const line of lines) {
-      const tc = line.slice(0, 2)
-      // TC 05 = sektionsstart (innehåller bokföringsdatum). Format:
-      // 05 + bankgironr (10) + plusgiro (10) + betalningsdatum YYYYMMDD (8)
-      if (tc === '05') {
-        const dateStr = line.slice(22, 30)
-        if (/^\d{8}$/.test(dateStr)) {
-          sectionDate = new Date(
-            `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`,
-          )
-        }
-        continue
-      }
-      // TC 20 / 21 = OCR-betalning. Layout (per Bankgirot v3):
-      //   pos 1-2: TC
-      //   pos 3-12: mottagar-bankgiro (10)
-      //   pos 13-37: betalarens referens / OCR (25)
-      //   pos 38-55: belopp i öre (18)
-      // Vi använder slice (0-indexerad → samma som "pos − 1").
-      if (tc !== '20' && tc !== '21') continue
-      try {
-        const ocr = line.slice(12, 37).trim()
-        const amountOre = parseInt(line.slice(37, 55).trim(), 10)
-        if (!Number.isFinite(amountOre) || amountOre <= 0) {
-          result.errors.push(`Rad: ogiltigt belopp`)
-          continue
-        }
-        const amount = amountOre / 100
-        const txDate = sectionDate ?? new Date()
-        const description = `BgMax inbetalning${ocr ? ` (OCR ${ocr})` : ''}`
-        const amountDecimal = new Prisma.Decimal(amount.toFixed(2))
-        const existing = await this.prisma.bankTransaction.findFirst({
-          where: {
-            organizationId,
-            date: txDate,
-            amount: amountDecimal,
-            ...(ocr ? { rawOcr: ocr } : {}),
-          },
-        })
-        if (existing) {
-          result.duplicates++
-          continue
-        }
-        const tx = await this.prisma.bankTransaction.create({
-          data: {
-            organizationId,
-            date: txDate,
-            description,
-            amount: amountDecimal,
-            ...(ocr ? { rawOcr: ocr } : {}),
-          },
-        })
-        result.imported++
-        const matched = await this.reconciliationService.matchTransaction(tx, organizationId)
-        if (matched) result.autoMatched++
-        else result.unmatched++
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        result.errors.push(msg)
-      }
-    }
-
-    if (result.imported === 0 && result.duplicates === 0) {
-      throw new BadRequestException(
-        'Inga giltiga BgMax-poster hittades i filen. Kontrollera att det är en BgMax-fil från Bankgirot.',
-      )
-    }
-    return result
   }
 }

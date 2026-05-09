@@ -358,6 +358,106 @@ export class ReconciliationService {
     return result
   }
 
+  // ── BgMax-import (Bankgirot) ─────────────────────────────────────────────
+  // 80-tecken-rader. TC 01 = filheader, TC 05 = sektionsstart (innehåller
+  // bokföringsdatum), TC 20/21 = OCR-betalning, TC 70 = slutpost. Vi parsar
+  // belopp i öre, OCR-referens och datum från sektionsraderna.
+  //
+  // Tidigare låg parsern dold inne i AI-tool-pathen — flyttat hit så HTTP-
+  // endpointen, AI-toolet och eventuella framtida cron-jobb delar samma
+  // implementation. Idempotency: dubblett-check på (org, date, amount, ocr).
+  async importBgMaxFile(
+    fileBuffer: Buffer,
+    fileName: string,
+    organizationId: string,
+  ): Promise<ImportResult & { fileName: string }> {
+    const text = fileBuffer.toString('utf8')
+    const lines = text.split(/\r?\n/).filter((l) => l.length > 0)
+
+    const result: ImportResult & { fileName: string } = {
+      fileName,
+      imported: 0,
+      duplicates: 0,
+      autoMatched: 0,
+      unmatched: 0,
+      errors: [],
+    }
+
+    let sectionDate: Date | null = null
+    for (const line of lines) {
+      const tc = line.slice(0, 2)
+
+      // TC 05: 0-1=tc, 2-11=BG(10), 12-21=PG(10), 22-29=date(8 YYYYMMDD)
+      if (tc === '05') {
+        const dateStr = line.slice(22, 30)
+        if (/^\d{8}$/.test(dateStr)) {
+          sectionDate = new Date(
+            `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`,
+          )
+        }
+        continue
+      }
+
+      // TC 20 / 21: OCR-betalning. Layout (Bankgirot v3):
+      //   pos 1-2:   TC
+      //   pos 3-12:  mottagar-bankgiro (10)
+      //   pos 13-37: betalarens referens / OCR (25)
+      //   pos 38-55: belopp i öre (18)
+      if (tc !== '20' && tc !== '21') continue
+
+      try {
+        const ocr = line.slice(12, 37).trim()
+        const amountOre = parseInt(line.slice(37, 55).trim(), 10)
+        if (!Number.isFinite(amountOre) || amountOre <= 0) {
+          result.errors.push('Rad: ogiltigt belopp')
+          continue
+        }
+        const amount = amountOre / 100
+        const txDate = sectionDate ?? new Date()
+        const description = `BgMax inbetalning${ocr ? ` (OCR ${ocr})` : ''}`
+        const amountDecimal = new Decimal(amount.toFixed(2))
+
+        const existing = await this.prisma.bankTransaction.findFirst({
+          where: {
+            organizationId,
+            date: txDate,
+            amount: amountDecimal,
+            ...(ocr ? { rawOcr: ocr } : {}),
+          },
+        })
+        if (existing) {
+          result.duplicates++
+          continue
+        }
+
+        const tx = await this.prisma.bankTransaction.create({
+          data: {
+            organizationId,
+            date: txDate,
+            description,
+            amount: amountDecimal,
+            ...(ocr ? { rawOcr: ocr } : {}),
+          },
+        })
+        result.imported++
+
+        const matched = await this.matchTransaction(tx, organizationId)
+        if (matched) result.autoMatched++
+        else result.unmatched++
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        result.errors.push(msg)
+      }
+    }
+
+    if (result.imported === 0 && result.duplicates === 0) {
+      throw new BadRequestException(
+        'Inga giltiga BgMax-poster hittades i filen. Kontrollera att det är en BgMax-fil från Bankgirot.',
+      )
+    }
+    return result
+  }
+
   // ── Match ───────────────────────────────────────────────────────────────────
 
   async matchTransaction(
@@ -365,33 +465,82 @@ export class ReconciliationService {
     organizationId: string,
     prismaClient?: Prisma.TransactionClient,
   ): Promise<boolean> {
-    if (!transaction.rawOcr) return false
-
     const db = prismaClient ?? this.prisma
     const tolerance = new Decimal('1.00')
 
-    // 1. Exakt match på auto-genererat ocrNumber (högsta prioritet — deterministiskt per faktura).
-    // 2. Fallback till klient-angiven reference (kan vara OCR eller annan betalningsreferens).
-    const invoice =
-      (await db.invoice.findFirst({
+    // ── 1. OCR-match (deterministisk) ────────────────────────────────────
+    // Sök i båda tabeller: kommersiell faktura och hyresavi. Hyresavin
+    // (RentNotice) har egen OCR-serie genererad av OcrService — utan den
+    // här grenen landar alla BgMax-betalningar för bostadshyror som
+    // UNMATCHED, vilket var Bug 3 i bankavstämnings-flödet.
+    if (transaction.rawOcr) {
+      const invoice =
+        (await db.invoice.findFirst({
+          where: {
+            organizationId,
+            ocrNumber: transaction.rawOcr,
+            status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
+          },
+        })) ??
+        (await db.invoice.findFirst({
+          where: {
+            organizationId,
+            reference: transaction.rawOcr,
+            status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
+          },
+        }))
+
+      if (invoice && invoice.total.minus(transaction.amount).abs().lte(tolerance)) {
+        await this.applyMatchToInvoice(
+          transaction.id,
+          invoice.id,
+          invoice.total,
+          transaction.date,
+          null,
+          null,
+          db,
+        )
+        return true
+      }
+
+      const notice = await db.rentNotice.findFirst({
         where: {
           organizationId,
           ocrNumber: transaction.rawOcr,
-          status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
+          status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
         },
-      })) ??
-      (await db.invoice.findFirst({
+      })
+      if (notice && notice.totalAmount.minus(transaction.amount).abs().lte(tolerance)) {
+        await this.applyMatchToRentNotice(
+          transaction.id,
+          notice.id,
+          notice.totalAmount,
+          transaction.date,
+          null,
+          db,
+        )
+        return true
+      }
+    }
+
+    // ── 2. Reference-match: fakturanummer / avinummer i description ─────
+    // Banktransaktionens description innehåller ofta "F-2026-001" eller
+    // "AVI-2026-06-0010" när betalaren manuellt skrivit in referens
+    // istället för OCR. Vi extraherar mönstret och slår på det.
+    const haystack = `${transaction.description ?? ''} ${transaction.reference ?? ''}`
+    const invoiceNumberMatch = haystack.match(/\b(F-\d{4}-\d{3,})\b/i)
+    const noticeNumberMatch = haystack.match(/\b(AVI-\d{4}-\d{2}-\d{4})\b/i)
+
+    if (invoiceNumberMatch?.[1]) {
+      const invoice = await db.invoice.findFirst({
         where: {
           organizationId,
-          reference: transaction.rawOcr,
+          invoiceNumber: invoiceNumberMatch[1],
           status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
         },
-      }))
-
-    if (invoice) {
-      const diff = invoice.total.minus(transaction.amount).abs()
-      if (diff.lte(tolerance)) {
-        await this.applyMatch(
+      })
+      if (invoice && invoice.total.minus(transaction.amount).abs().lte(tolerance)) {
+        await this.applyMatchToInvoice(
           transaction.id,
           invoice.id,
           invoice.total,
@@ -404,80 +553,142 @@ export class ReconciliationService {
       }
     }
 
-    // Fuzzy fallback: amount match within tolerance, no OCR required but status/date range.
+    if (noticeNumberMatch?.[1]) {
+      const notice = await db.rentNotice.findFirst({
+        where: {
+          organizationId,
+          noticeNumber: noticeNumberMatch[1],
+          status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+        },
+      })
+      if (notice && notice.totalAmount.minus(transaction.amount).abs().lte(tolerance)) {
+        await this.applyMatchToRentNotice(
+          transaction.id,
+          notice.id,
+          notice.totalAmount,
+          transaction.date,
+          null,
+          db,
+        )
+        return true
+      }
+    }
+
+    // ── 3. Fuzzy-match: belopp + datum-fönster över BÅDA tabellerna ────
+    // 90-dagarsfönstret håller oss inom rimligt sortiment och hindrar gamla
+    // obetalda fakturor från att felmatcha mot dagsfärska betalningar.
+    // Vi matchar bara om TOTALT en kandidat över båda tabellerna ligger
+    // inom toleransen — annars för osäkert (AMBIGUOUS skulle kräva annan
+    // status-modell, idag faller vi tillbaka till manuell matchning).
     const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000
     const dateFrom = new Date(transaction.date.getTime() - ninetyDaysMs)
     const dateTo = new Date(transaction.date.getTime() + ninetyDaysMs)
 
-    const candidates = await db.invoice.findMany({
+    const invCandidates = await db.invoice.findMany({
       where: {
         organizationId,
         status: { in: ['SENT', 'OVERDUE'] },
         dueDate: { gte: dateFrom, lte: dateTo },
       },
     })
-
-    const matching = candidates.filter((inv) =>
-      inv.total.minus(transaction.amount).abs().lte(tolerance),
-    )
-    if (matching.length !== 1 || !matching[0]) return false
-
-    const candidate = matching[0]
-
-    // Optimistic lock: två parallella bank-imports kan annars båda fuzzy-matcha
-    // mot samma faktura. Genom att låta status-övergången till PAID gå via en
-    // updateMany med status-guardad WHERE-clause serialiseras claim:et på rad-nivå
-    // i Postgres — endast en parallell körning får count=1; övriga får count=0
-    // och avbryter. Säkrare än att köra applyMatch (vars transitionStatus öppnar
-    // en separat transaktion och därmed inte ger atomic CAS).
-    const claim = await db.invoice.updateMany({
-      where: { id: candidate.id, status: { in: ['SENT', 'OVERDUE'] } },
-      data: { status: 'PAID', paidAt: transaction.date },
-    })
-    if (claim.count === 0) return false
-
-    // Vi äger nu matchen. Återstående sido-effekter — bankTransaction-koppling,
-    // PAYMENT_RECEIVED-event, bokföringspost — körs sekventiellt med
-    // applyMatch's mönster, men utan transitionStatus (statusen är redan flyttad).
-    const inv = await db.invoice.findUnique({
-      where: { id: candidate.id },
-      select: { invoiceNumber: true, organizationId: true },
-    })
-    if (!inv) return false
-
-    await db.bankTransaction.update({
-      where: { id: transaction.id },
-      data: {
-        status: 'MATCHED',
-        invoiceId: candidate.id,
-        matchedAt: new Date(),
+    const noticeCandidates = await db.rentNotice.findMany({
+      where: {
+        organizationId,
+        status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+        dueDate: { gte: dateFrom, lte: dateTo },
       },
     })
 
-    await this.events.record(candidate.id, 'PAYMENT_RECEIVED', 'SYSTEM', null, {
-      transactionId: transaction.id,
-      amount: candidate.total.toNumber(),
-      date: transaction.date.toISOString(),
-      source: 'bank_reconciliation',
-      previousStatus: candidate.status,
-      newStatus: 'PAID',
-    })
+    const invMatches = invCandidates.filter((inv) =>
+      inv.total.minus(transaction.amount).abs().lte(tolerance),
+    )
+    const noticeMatches = noticeCandidates.filter((n) =>
+      n.totalAmount.minus(transaction.amount).abs().lte(tolerance),
+    )
 
-    try {
-      await this.accounting.createJournalEntryForPayment(
-        { id: candidate.id, invoiceNumber: inv.invoiceNumber, total: candidate.total },
-        { id: transaction.id, date: transaction.date, amount: candidate.total },
-        inv.organizationId,
-        null,
-      )
-    } catch (err) {
-      console.error('[reconciliation] accounting journal entry failed:', err)
+    if (invMatches.length + noticeMatches.length !== 1) return false
+
+    if (invMatches.length === 1 && invMatches[0]) {
+      const candidate = invMatches[0]
+      // Optimistic claim: en parallell bank-import kan annars också matcha
+      // samma faktura. Status-guardad updateMany serialiserar på rad-nivå
+      // i Postgres — bara en körning får count=1.
+      const claim = await db.invoice.updateMany({
+        where: { id: candidate.id, status: { in: ['SENT', 'OVERDUE'] } },
+        data: { status: 'PAID', paidAt: transaction.date },
+      })
+      if (claim.count === 0) return false
+
+      await db.bankTransaction.update({
+        where: { id: transaction.id },
+        data: { status: 'MATCHED', invoiceId: candidate.id, matchedAt: new Date() },
+      })
+
+      await this.events.record(candidate.id, 'PAYMENT_RECEIVED', 'SYSTEM', null, {
+        transactionId: transaction.id,
+        amount: candidate.total.toNumber(),
+        date: transaction.date.toISOString(),
+        source: 'bank_reconciliation',
+        previousStatus: candidate.status,
+        newStatus: 'PAID',
+        matchType: 'fuzzy',
+      })
+
+      try {
+        await this.accounting.createJournalEntryForPayment(
+          { id: candidate.id, invoiceNumber: candidate.invoiceNumber, total: candidate.total },
+          { id: transaction.id, date: transaction.date, amount: candidate.total },
+          organizationId,
+          null,
+        )
+      } catch (err) {
+        console.error('[reconciliation] accounting journal entry failed:', err)
+      }
+      return true
     }
 
-    return true
+    if (noticeMatches[0]) {
+      const candidate = noticeMatches[0]
+      const claim = await db.rentNotice.updateMany({
+        where: { id: candidate.id, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } },
+        data: {
+          status: 'PAID',
+          paidAt: transaction.date,
+          paidAmount: candidate.totalAmount,
+        },
+      })
+      if (claim.count === 0) return false
+
+      await db.bankTransaction.update({
+        where: { id: transaction.id },
+        data: {
+          status: 'MATCHED',
+          matchedRentNoticeId: candidate.id,
+          matchedAt: new Date(),
+        },
+      })
+
+      try {
+        await this.accounting.createJournalEntryForRentNoticePayment(
+          {
+            id: candidate.id,
+            noticeNumber: candidate.noticeNumber,
+            totalAmount: candidate.totalAmount,
+          },
+          { id: transaction.id, date: transaction.date, amount: candidate.totalAmount },
+          organizationId,
+          null,
+        )
+      } catch (err) {
+        console.error('[reconciliation] accounting journal entry failed:', err)
+      }
+      return true
+    }
+
+    return false
   }
 
-  private async applyMatch(
+  private async applyMatchToInvoice(
     transactionId: string,
     invoiceId: string,
     invoiceTotal: Decimal,
@@ -518,12 +729,14 @@ export class ReconciliationService {
       data: { paidAt: transactionDate },
     })
 
-    // Länka banktransaktionen till fakturan.
+    // Länka banktransaktionen till fakturan. matchedRentNoticeId nollställs
+    // explicit för att respektera XOR-constraint vid eventuell re-match.
     await db.bankTransaction.update({
       where: { id: transactionId },
       data: {
         status: 'MATCHED',
         invoiceId,
+        matchedRentNoticeId: null,
         matchedAt: new Date(),
         ...(userId ? { matchedBy: userId } : {}),
       },
@@ -536,6 +749,59 @@ export class ReconciliationService {
         { id: invoiceId, invoiceNumber: invoice.invoiceNumber, total: invoiceTotal },
         { id: transactionId, date: transactionDate, amount: invoiceTotal },
         invoice.organizationId,
+        userId,
+      )
+    } catch (err) {
+      console.error('[reconciliation] accounting journal entry failed:', err)
+    }
+  }
+
+  // Match mot hyresavi. Parallell till applyMatchToInvoice — RentNotice har
+  // egen status-modell (PENDING/SENT/OVERDUE → PAID) och egen paidAmount-
+  // kolumn. Bokföringskontona är desamma (1930/1510), så journalEntryt
+  // skrivs via accounting.createJournalEntryForRentNoticePayment med samma
+  // sourceId-strategi som Invoice-betalning (= reverse fungerar för båda).
+  private async applyMatchToRentNotice(
+    transactionId: string,
+    noticeId: string,
+    noticeTotal: Decimal,
+    transactionDate: Date,
+    userId: string | null,
+    db: Prisma.TransactionClient | PrismaService,
+  ): Promise<void> {
+    const notice = await db.rentNotice.findUnique({
+      where: { id: noticeId },
+      select: { id: true, noticeNumber: true, organizationId: true, status: true },
+    })
+    if (!notice) throw new NotFoundException('Hyresavi hittades inte')
+
+    if (notice.status !== 'PAID') {
+      await db.rentNotice.update({
+        where: { id: noticeId },
+        data: {
+          status: 'PAID',
+          paidAt: transactionDate,
+          paidAmount: noticeTotal,
+        },
+      })
+    }
+
+    await db.bankTransaction.update({
+      where: { id: transactionId },
+      data: {
+        status: 'MATCHED',
+        invoiceId: null,
+        matchedRentNoticeId: noticeId,
+        matchedAt: new Date(),
+        ...(userId ? { matchedBy: userId } : {}),
+      },
+    })
+
+    try {
+      await this.accounting.createJournalEntryForRentNoticePayment(
+        { id: noticeId, noticeNumber: notice.noticeNumber, totalAmount: noticeTotal },
+        { id: transactionId, date: transactionDate, amount: noticeTotal },
+        notice.organizationId,
         userId,
       )
     } catch (err) {
@@ -564,6 +830,9 @@ export class ReconciliationService {
       where,
       include: {
         invoice: { select: { id: true, invoiceNumber: true, status: true } },
+        matchedRentNotice: {
+          select: { id: true, noticeNumber: true, status: true, totalAmount: true },
+        },
       },
       orderBy: { date: 'desc' },
       take: 200,
@@ -632,29 +901,52 @@ export class ReconciliationService {
 
   async manualMatch(
     transactionId: string,
-    invoiceId: string,
+    target: { invoiceId?: string; rentNoticeId?: string },
     organizationId: string,
     userId: string,
   ): Promise<void> {
+    if (!target.invoiceId && !target.rentNoticeId) {
+      throw new BadRequestException('Ange invoiceId eller rentNoticeId')
+    }
+    if (target.invoiceId && target.rentNoticeId) {
+      throw new BadRequestException(
+        'Ange endast en av invoiceId / rentNoticeId — en transaktion kan inte matchas mot båda',
+      )
+    }
+
     const transaction = await this.prisma.bankTransaction.findFirst({
       where: { id: transactionId, organizationId },
     })
     if (!transaction) throw new NotFoundException('Transaktion hittades inte')
 
-    const invoice = await this.prisma.invoice.findFirst({
-      where: { id: invoiceId, organizationId },
-    })
-    if (!invoice) throw new NotFoundException('Faktura hittades inte')
-
-    await this.applyMatch(
-      transactionId,
-      invoiceId,
-      invoice.total,
-      transaction.date,
-      userId,
-      null,
-      this.prisma,
-    )
+    if (target.invoiceId) {
+      const invoice = await this.prisma.invoice.findFirst({
+        where: { id: target.invoiceId, organizationId },
+      })
+      if (!invoice) throw new NotFoundException('Faktura hittades inte')
+      await this.applyMatchToInvoice(
+        transactionId,
+        target.invoiceId,
+        invoice.total,
+        transaction.date,
+        userId,
+        null,
+        this.prisma,
+      )
+    } else if (target.rentNoticeId) {
+      const notice = await this.prisma.rentNotice.findFirst({
+        where: { id: target.rentNoticeId, organizationId },
+      })
+      if (!notice) throw new NotFoundException('Hyresavi hittades inte')
+      await this.applyMatchToRentNotice(
+        transactionId,
+        target.rentNoticeId,
+        notice.totalAmount,
+        transaction.date,
+        userId,
+        this.prisma,
+      )
+    }
   }
 
   // ── Ignore ───────────────────────────────────────────────────────────────────
@@ -680,7 +972,7 @@ export class ReconciliationService {
   ): Promise<void> {
     const transaction = await this.prisma.bankTransaction.findFirst({
       where: { id: transactionId, organizationId },
-      include: { invoice: true },
+      include: { invoice: true, matchedRentNotice: true },
     })
     if (!transaction) throw new NotFoundException('Transaktion hittades inte')
     if (transaction.status !== 'MATCHED') {
@@ -696,22 +988,36 @@ export class ReconciliationService {
       )
     }
 
-    // Övriga statusar (SENT, OVERDUE, PARTIAL, DRAFT, VOID) lämnas oförändrade
-    // — vi länkar bara bort banktransaktionen. updateMany med organizationId
-    // som defense-in-depth: även om transactionId från en annan org skulle
-    // läcka in (via bug i auth-laget) påverkar vi bara denna orgs data.
+    // För hyresavier: PAID kan flippas tillbaka till SENT eftersom det inte
+    // finns någon kreditnota-mekanism för avier. Återställ paidAt/paidAmount
+    // så avi:n syns som obetald igen och nästa BgMax-import kan matcha den
+    // korrekt om betalningen återförs och kommer in på nytt.
+    if (transaction.matchedRentNotice && transaction.matchedRentNotice.status === 'PAID') {
+      await this.prisma.rentNotice.update({
+        where: { id: transaction.matchedRentNotice.id },
+        data: { status: 'SENT', paidAt: null, paidAmount: null },
+      })
+    }
+
+    // Övriga statusar lämnas oförändrade — vi länkar bara bort
+    // banktransaktionen. updateMany med organizationId som defense-in-depth:
+    // även om transactionId från en annan org skulle läcka in (via bug i
+    // auth-laget) påverkar vi bara denna orgs data.
     await this.prisma.bankTransaction.updateMany({
       where: { id: transactionId, organizationId },
       data: {
         status: 'UNMATCHED',
         invoiceId: null,
+        matchedRentNoticeId: null,
         matchedAt: null,
         matchedBy: null,
       },
     })
 
     // Skapa motverifikat (utanför transaktionen — bokföringen får aldrig
-    // blockera själva unmatchen).
+    // blockera själva unmatchen). reverseJournalEntryForPayment slår på
+    // sourceId=transaction.id och fungerar för både Invoice- och
+    // RentNotice-betalningar (vi använder samma sourceId-strategi).
     try {
       await this.accounting.reverseJournalEntryForPayment(transactionId, organizationId, userId)
     } catch (err) {

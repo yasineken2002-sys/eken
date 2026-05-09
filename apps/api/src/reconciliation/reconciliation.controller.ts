@@ -65,6 +65,36 @@ export class ReconciliationController {
   }
 
   /**
+   * POST /reconciliation/import-bgmax
+   * Multipart form upload, field: "statement"
+   * Accepts: .txt (BgMax-format från Bankgirot)
+   *
+   * Skiljs från /import eftersom BgMax har en helt annan layout (80-tecken-
+   * fastformat) än CSV/XLSX. Att försöka detektera per innehåll är skört —
+   * en explicit endpoint per format är tydligare för både UI och AI-tools.
+   */
+  @Post('import-bgmax')
+  async importBgMax(@OrgId() organizationId: string, @Req() req: FastifyRequest) {
+    const file = await (
+      req as unknown as {
+        file: () => Promise<{ filename: string; toBuffer: () => Promise<Buffer> } | null>
+      }
+    ).file()
+    if (!file) throw new BadRequestException('Ingen fil bifogad')
+
+    const filename = file.filename ?? 'bgmax.txt'
+    const ext = filename.toLowerCase().split('.').pop() ?? ''
+    if (!['txt', 'bgmax'].includes(ext)) {
+      throw new BadRequestException(
+        'BgMax-import kräver en .txt-fil från Bankgirot. För Excel/CSV använd /reconciliation/import.',
+      )
+    }
+
+    const buffer = await file.toBuffer()
+    return this.reconciliationService.importBgMaxFile(buffer, filename, organizationId)
+  }
+
+  /**
    * POST /reconciliation/auto-match
    * Försöker auto-matcha alla UNMATCHED transaktioner mot fakturor.
    */
@@ -110,7 +140,15 @@ export class ReconciliationController {
     @OrgId() organizationId: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    await this.reconciliationService.manualMatch(id, dto.invoiceId, organizationId, user.sub)
+    await this.reconciliationService.manualMatch(
+      id,
+      {
+        ...(dto.invoiceId ? { invoiceId: dto.invoiceId } : {}),
+        ...(dto.rentNoticeId ? { rentNoticeId: dto.rentNoticeId } : {}),
+      },
+      organizationId,
+      user.sub,
+    )
   }
 
   /**

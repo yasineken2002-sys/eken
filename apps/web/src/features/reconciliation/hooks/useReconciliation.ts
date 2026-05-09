@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   importBankStatement,
+  importBgMaxFile,
   getTransactions,
   getReconciliationStats,
   manualMatch,
@@ -29,12 +30,21 @@ export function useReconciliationStats() {
 export function useImportStatement() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ file, bank }: { file: File; bank?: BankFormat }) =>
-      importBankStatement(file, bank),
+    // Filändelsen styr endpoint: .txt → BgMax, .csv/.xlsx/.xls → bankutdrag.
+    // Detekteringen ligger här istället för i UI så alla anrop (inkl. drag-
+    // and-drop, programmatic) får samma routing.
+    mutationFn: ({ file, bank }: { file: File; bank?: BankFormat }) => {
+      const ext = file.name.toLowerCase().split('.').pop() ?? ''
+      if (ext === 'txt' || ext === 'bgmax') {
+        return importBgMaxFile(file)
+      }
+      return importBankStatement(file, bank)
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['reconciliation'] })
-      // En auto-matchad transaktion kan ändra fakturors status till PAID.
+      // En auto-matchad transaktion kan ändra Invoice ELLER RentNotice till PAID.
       void qc.invalidateQueries({ queryKey: ['invoices'] })
+      void qc.invalidateQueries({ queryKey: ['avisering'] })
     },
   })
 }
@@ -53,10 +63,23 @@ export function useAutoMatch() {
 export function useManualMatch() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ transactionId, invoiceId }: { transactionId: string; invoiceId: string }) =>
-      manualMatch(transactionId, invoiceId),
+    mutationFn: ({
+      transactionId,
+      invoiceId,
+      rentNoticeId,
+    }: {
+      transactionId: string
+      invoiceId?: string
+      rentNoticeId?: string
+    }) =>
+      manualMatch(transactionId, {
+        ...(invoiceId ? { invoiceId } : {}),
+        ...(rentNoticeId ? { rentNoticeId } : {}),
+      }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['reconciliation'] })
+      void qc.invalidateQueries({ queryKey: ['invoices'] })
+      void qc.invalidateQueries({ queryKey: ['avisering'] })
     },
   })
 }

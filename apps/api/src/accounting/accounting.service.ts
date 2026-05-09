@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { CompanyForm } from '@prisma/client'
 import type { BankTransaction, Invoice, InvoiceLine } from '@prisma/client'
+import type { Decimal } from '@prisma/client/runtime/library'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { basChartFor } from './bas-chart'
 
@@ -288,6 +289,55 @@ export class AccountingService {
           create: [
             { accountId: bankAccountId, debit: amount, description: 'Inbetalning bank' },
             { accountId: receivableId, credit: amount, description: 'Reglering kundfordran' },
+          ],
+        },
+      },
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
+  // Bokföring av hyresinbetalning (RentNotice). Använder samma BAS-konton som
+  // Invoice-betalning (1930 D bank / 1510 K kundfordran) — hyresavin är en
+  // kundfordran på samma sätt. Vi indexerar med samma source='PAYMENT' och
+  // sourceId=transaction.id så reverseJournalEntryForPayment fungerar för
+  // båda typerna utan särfall.
+  async createJournalEntryForRentNoticePayment(
+    notice: { id: string; noticeNumber: string; totalAmount: Decimal },
+    transaction: Pick<BankTransaction, 'id' | 'date' | 'amount'>,
+    organizationId: string,
+    createdById: string | null,
+  ) {
+    const existing = await this.prisma.journalEntry.findFirst({
+      where: { organizationId, source: 'PAYMENT', sourceId: transaction.id },
+    })
+    if (existing) return existing
+
+    const accounts = await this.prisma.account.findMany({
+      where: { organizationId },
+      select: { id: true, number: true },
+    })
+    const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+    const bankAccountId = accountByNumber.get(1930)
+    const receivableId = accountByNumber.get(1510)
+    if (!bankAccountId || !receivableId) return null
+
+    const amount = Number(transaction.amount)
+    if (amount <= 0) return null
+
+    void notice.totalAmount
+
+    return this.prisma.journalEntry.create({
+      data: {
+        organizationId,
+        date: transaction.date,
+        description: `Inbetalning hyresavi ${notice.noticeNumber}`,
+        source: 'PAYMENT',
+        sourceId: transaction.id,
+        ...(createdById ? { createdById } : {}),
+        lines: {
+          create: [
+            { accountId: bankAccountId, debit: amount, description: 'Inbetalning bank' },
+            { accountId: receivableId, credit: amount, description: 'Reglering hyresfordran' },
           ],
         },
       },

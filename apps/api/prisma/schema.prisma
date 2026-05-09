@@ -1033,17 +1033,24 @@ model BankTransaction {
   reference      String?
   rawOcr         String?
   status         BankTransactionStatus @default(UNMATCHED)
-  invoiceId      String?
-  matchedAt      DateTime?
-  matchedBy      String?
-  createdAt      DateTime              @default(now())
+  // Match-länkar — XOR. En transaktion kan matchas mot antingen en
+  // kommersiell faktura (Invoice) eller en hyresavi (RentNotice), aldrig
+  // båda. CHECK-constraint i migration garanterar invarianten på DB-nivå
+  // så vi inte kan hamna i ett inkonsekvent state om en bug skriver båda.
+  invoiceId            String?
+  matchedRentNoticeId  String?
+  matchedAt            DateTime?
+  matchedBy            String?
+  createdAt            DateTime              @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice           Invoice?     @relation(fields: [invoiceId], references: [id])
+  matchedRentNotice RentNotice?  @relation(fields: [matchedRentNoticeId], references: [id])
 
   @@index([organizationId])
   @@index([status])
   @@index([invoiceId])
+  @@index([matchedRentNoticeId])
 }
 
 // ─── Document (Dokumentarkiv) ─────────────────────────────────────────────────
@@ -1460,9 +1467,10 @@ model RentNotice {
   totalDays   Int?
   isProrated  Boolean        @default(false)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  tenant       Tenant       @relation(fields: [tenantId], references: [id])
-  lease        Lease        @relation(fields: [leaseId], references: [id])
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  lease            Lease             @relation(fields: [leaseId], references: [id])
+  bankTransactions BankTransaction[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

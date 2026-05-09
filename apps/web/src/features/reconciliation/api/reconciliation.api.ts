@@ -18,6 +18,17 @@ export async function importBankStatement(file: File, bank?: BankFormat): Promis
   return data.data
 }
 
+export async function importBgMaxFile(file: File): Promise<ImportResult & { fileName: string }> {
+  const formData = new FormData()
+  formData.append('statement', file)
+  const { data } = await api.post<{ data: ImportResult & { fileName: string } }>(
+    '/reconciliation/import-bgmax',
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  )
+  return data.data
+}
+
 export async function autoMatchAll(): Promise<AutoMatchResult> {
   return post<AutoMatchResult>('/reconciliation/auto-match', {})
 }
@@ -34,8 +45,11 @@ export async function getReconciliationStats(): Promise<ReconciliationStats> {
   return get<ReconciliationStats>('/reconciliation/stats')
 }
 
-export async function manualMatch(transactionId: string, invoiceId: string): Promise<void> {
-  await patch(`/reconciliation/transactions/${transactionId}/match`, { invoiceId })
+export async function manualMatch(
+  transactionId: string,
+  target: { invoiceId?: string; rentNoticeId?: string },
+): Promise<void> {
+  await patch(`/reconciliation/transactions/${transactionId}/match`, target)
 }
 
 export async function ignoreTransaction(transactionId: string): Promise<void> {
