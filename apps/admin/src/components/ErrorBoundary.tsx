@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from 'react'
+import * as Sentry from '@sentry/react'
 import axios from 'axios'
 
 interface State {
@@ -14,6 +15,9 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
+    Sentry.captureException(error, {
+      contexts: { react: { componentStack: info.componentStack } },
+    })
     void axios
       .post('/api/v1/platform/errors/report', {
         severity: 'ERROR',

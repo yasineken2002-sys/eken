@@ -22,6 +22,7 @@ import type { CreatePropertyInput } from '@eken/shared'
 import type { PropertyWithCount, PropertyDetail } from './api/properties.api'
 import { cn } from '@/lib/cn'
 import { DocumentList } from '@/features/documents/components/DocumentList'
+import { useCanWrite } from '@/hooks/useCanWrite'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,7 @@ const item = {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function PropertiesPage() {
+  const canWrite = useCanWrite()
   const [tab, setTab] = useState<PropertyTab>('ALL')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<DetailTab>('detaljer')
@@ -189,10 +191,12 @@ export function PropertiesPage() {
         title="Fastigheter"
         description={`${properties.length} fastigheter`}
         action={
-          <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
-            <Plus size={14} strokeWidth={2.2} />
-            Ny fastighet
-          </Button>
+          canWrite ? (
+            <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
+              <Plus size={14} strokeWidth={2.2} />
+              Ny fastighet
+            </Button>
+          ) : undefined
         }
       />
 
@@ -267,7 +271,7 @@ export function PropertiesPage() {
                 ? 'Lägg till din första fastighet för att komma igång.'
                 : 'Inga fastigheter matchar det aktiva filtret.'
             }
-            {...(properties.length === 0
+            {...(properties.length === 0 && canWrite
               ? {
                   action: (
                     <Button variant="primary" onClick={() => setShowCreate(true)}>

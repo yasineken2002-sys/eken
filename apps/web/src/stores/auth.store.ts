@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import * as Sentry from '@sentry/react'
 import type { User } from '@eken/shared'
 
 export interface AuthOrg {
@@ -37,28 +38,35 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       isAuthenticated: false,
 
-      setAuth: ({ user, organization, accessToken, refreshToken }) =>
-        set({ user, organization, accessToken, refreshToken, isAuthenticated: true }),
+      setAuth: ({ user, organization, accessToken, refreshToken }) => {
+        Sentry.setUser({ id: user.id, email: user.email })
+        Sentry.setTag('organizationId', organization.id)
+        set({ user, organization, accessToken, refreshToken, isAuthenticated: true })
+      },
 
       setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
 
-      clearAuth: () =>
+      clearAuth: () => {
+        Sentry.setUser(null)
         set({
           user: null,
           organization: null,
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
-        }),
+        })
+      },
 
-      logout: () =>
+      logout: () => {
+        Sentry.setUser(null)
         set({
           user: null,
           organization: null,
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
-        }),
+        })
+      },
 
       getAccessToken: () => get().accessToken,
     }),

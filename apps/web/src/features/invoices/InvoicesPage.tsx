@@ -37,6 +37,7 @@ import type { Invoice, InvoiceStatus, CreateInvoiceInput, Tenant } from '@eken/s
 import { downloadInvoicePdf } from './api/invoices.api'
 import { useTenants } from '@/features/tenants/hooks/useTenants'
 import { useFocusStore } from '@/stores/focus.store'
+import { useCanWrite } from '@/hooks/useCanWrite'
 import { cn } from '@/lib/cn'
 
 type DetailTab = 'detaljer' | 'historik'
@@ -133,6 +134,7 @@ function PaymentSubForm({
 // ─── Huvud-komponent ──────────────────────────────────────────────────────────
 
 export function InvoicesPage() {
+  const canWrite = useCanWrite()
   const [tab, setTab] = useState<Tab>('ALL')
   const [selected, setSelected] = useState<Invoice | null>(null)
   const [detailTab, setDetailTab] = useState<DetailTab>('detaljer')
@@ -272,14 +274,18 @@ export function InvoicesPage() {
               <Filter size={13} />
               Filter
             </Button>
-            <Button size="sm" onClick={() => setShowBulk(true)}>
-              <Zap size={14} strokeWidth={2.2} />
-              Bulk-fakturering
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
-              <Plus size={14} />
-              Ny faktura
-            </Button>
+            {canWrite && (
+              <>
+                <Button size="sm" onClick={() => setShowBulk(true)}>
+                  <Zap size={14} strokeWidth={2.2} />
+                  Bulk-fakturering
+                </Button>
+                <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
+                  <Plus size={14} />
+                  Ny faktura
+                </Button>
+              </>
+            )}
           </div>
         }
       />

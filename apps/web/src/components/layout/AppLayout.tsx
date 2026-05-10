@@ -31,6 +31,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import { logoutApi } from '@/features/auth/api/auth.api'
 import { NotificationBell } from '@/features/notifications/components/NotificationBell'
 import { ImpersonationBanner } from '@/components/ImpersonationBanner'
+import { ViewerBanner } from '@/components/ViewerBanner'
 import type { Route } from '@/App'
 
 interface NavItem {
@@ -180,6 +181,7 @@ export function AppLayout({ route, onNavigate, children }: Props) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#F7F8FC]">
       <ImpersonationBanner />
+      <ViewerBanner />
       <div className="flex min-h-0 flex-1">
         {/* Mobile overlay */}
         <AnimatePresence>

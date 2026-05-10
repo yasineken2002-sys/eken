@@ -36,3 +36,19 @@ export interface DashboardStats {
 export function getDashboardStats(): Promise<DashboardStats> {
   return get<DashboardStats>('/dashboard/stats')
 }
+
+export type DashboardPeriod = '6months' | '12months' | '24months'
+
+export interface TimeseriesPoint {
+  month: string
+  revenue: number
+  paidRevenue: number
+  newLeases: number
+  terminatedLeases: number
+  occupancy: number
+  openTickets: number
+}
+
+export function getDashboardTimeseries(period: DashboardPeriod): Promise<TimeseriesPoint[]> {
+  return get<TimeseriesPoint[]>(`/dashboard/timeseries?period=${period}`)
+}

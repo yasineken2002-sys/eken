@@ -29,6 +29,7 @@ import { TicketDetailPanel } from './components/TicketDetailPanel'
 import { useTickets, useMaintenanceStats } from './hooks/useMaintenance'
 import { fetchTicket } from './api/maintenance.api'
 import { useFocusStore } from '@/stores/focus.store'
+import { useCanWrite } from '@/hooks/useCanWrite'
 import { formatDate } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import type {
@@ -89,6 +90,7 @@ function categoryIcon(category: MaintenanceCategory) {
 }
 
 export function MaintenancePage() {
+  const canWrite = useCanWrite()
   const [statusTab, setStatusTab] = useState<MaintenanceStatus | 'ALL'>('ALL')
   const [categoryFilter, setCategoryFilter] = useState<MaintenanceCategory | ''>('')
   const [priorityFilter, setPriorityFilter] = useState<MaintenancePriority | ''>('')
@@ -149,10 +151,12 @@ export function MaintenancePage() {
             title="Underhåll"
             description={`${stats?.total ?? 0} ärenden totalt`}
             action={
-              <Button variant="primary" onClick={() => setCreateOpen(true)}>
-                <Plus size={14} strokeWidth={2} />
-                Ny felanmälan
-              </Button>
+              canWrite ? (
+                <Button variant="primary" onClick={() => setCreateOpen(true)}>
+                  <Plus size={14} strokeWidth={2} />
+                  Ny felanmälan
+                </Button>
+              ) : undefined
             }
           />
 
@@ -241,13 +245,21 @@ export function MaintenancePage() {
               <EmptyState
                 icon={Wrench}
                 title="Inga underhållsärenden"
-                description="Skapa en ny felanmälan för att komma igång"
-                action={
-                  <Button variant="primary" onClick={() => setCreateOpen(true)}>
-                    <Plus size={14} strokeWidth={2} />
-                    Ny felanmälan
-                  </Button>
+                description={
+                  canWrite
+                    ? 'Skapa en ny felanmälan för att komma igång'
+                    : 'Inga felanmälningar ännu.'
                 }
+                {...(canWrite
+                  ? {
+                      action: (
+                        <Button variant="primary" onClick={() => setCreateOpen(true)}>
+                          <Plus size={14} strokeWidth={2} />
+                          Ny felanmälan
+                        </Button>
+                      ),
+                    }
+                  : {})}
               />
             ) : (
               <motion.div variants={container} initial="hidden" animate="show">

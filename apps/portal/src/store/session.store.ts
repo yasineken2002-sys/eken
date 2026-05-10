@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import * as Sentry from '@sentry/react'
 import type { PortalTenant } from '@/types/portal.types'
 
 interface SessionState {
@@ -31,11 +32,15 @@ export const useSessionStore = create<SessionState>()(
       expiresAt: null,
       isAuthenticated: false,
 
-      setSession: (sessionToken, tenant, expiresAt) =>
-        set({ sessionToken, tenant, expiresAt, isAuthenticated: true }),
+      setSession: (sessionToken, tenant, expiresAt) => {
+        Sentry.setUser({ id: tenant.id, email: tenant.email })
+        set({ sessionToken, tenant, expiresAt, isAuthenticated: true })
+      },
 
-      clearSession: () =>
-        set({ sessionToken: null, tenant: null, expiresAt: null, isAuthenticated: false }),
+      clearSession: () => {
+        Sentry.setUser(null)
+        set({ sessionToken: null, tenant: null, expiresAt: null, isAuthenticated: false })
+      },
 
       getSessionToken: () => get().sessionToken,
 

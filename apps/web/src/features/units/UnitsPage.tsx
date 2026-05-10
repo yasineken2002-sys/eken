@@ -27,6 +27,7 @@ import type { UnitStatus } from '@eken/shared'
 import type { UnitWithProperty, UnitDetail, CreateUnitInput } from './api/units.api'
 import { cn } from '@/lib/cn'
 import { DocumentList } from '@/features/documents/components/DocumentList'
+import { useCanWrite } from '@/hooks/useCanWrite'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,6 +83,7 @@ function tenantName(t: UnitDetail['leases'][number]['tenant']): string {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function UnitsPage() {
+  const canWrite = useCanWrite()
   const [filterTab, setFilterTab] = useState<FilterTab>('ALL')
   const [selected, setSelected] = useState<UnitWithProperty | null>(null)
   const [detailTab, setDetailTab] = useState<DetailTab>('detaljer')
@@ -200,10 +202,12 @@ export function UnitsPage() {
         title="Objekt"
         description={`${units.length} objekt · ${vacantCount} lediga`}
         action={
-          <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
-            <Plus size={14} strokeWidth={2.2} />
-            Nytt objekt
-          </Button>
+          canWrite ? (
+            <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
+              <Plus size={14} strokeWidth={2.2} />
+              Nytt objekt
+            </Button>
+          ) : undefined
         }
       />
 
@@ -290,7 +294,7 @@ export function UnitsPage() {
                 ? 'Lägg till ditt första objekt för att komma igång.'
                 : 'Inga objekt matchar det aktiva filtret.'
             }
-            {...(units.length === 0
+            {...(units.length === 0 && canWrite
               ? {
                   action: (
                     <Button variant="primary" onClick={() => setShowCreate(true)}>

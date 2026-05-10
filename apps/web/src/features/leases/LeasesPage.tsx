@@ -35,6 +35,7 @@ import { DepositSection } from '@/features/deposits/components/DepositSection'
 import { RentIncreaseSection } from '@/features/rent-increases/components/RentIncreaseSection'
 import { LeaseNoticesSection } from './components/LeaseNoticesSection'
 import { generateLeaseContract, downloadLeaseContract } from './api/leases.api'
+import { useCanWrite } from '@/hooks/useCanWrite'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -109,6 +110,7 @@ const item = {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function LeasesPage() {
+  const canWrite = useCanWrite()
   const [tab, setTab] = useState<LeaseTab>('ALL')
   const [selected, setSelected] = useState<LeaseDetail | null>(null)
   const [detailTab, setDetailTab] = useState<DetailTab>('detaljer')
@@ -340,10 +342,12 @@ export function LeasesPage() {
         title="Hyresavtal"
         description={`${leases.length} kontrakt`}
         action={
-          <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
-            <Plus size={14} strokeWidth={2.2} />
-            Nytt kontrakt
-          </Button>
+          canWrite ? (
+            <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
+              <Plus size={14} strokeWidth={2.2} />
+              Nytt kontrakt
+            </Button>
+          ) : undefined
         }
       />
 
@@ -418,7 +422,7 @@ export function LeasesPage() {
                 ? 'Skapa ditt första hyresavtal för att komma igång.'
                 : 'Inga kontrakt matchar det aktiva filtret.'
             }
-            {...(leases.length === 0
+            {...(leases.length === 0 && canWrite
               ? {
                   action: (
                     <Button variant="primary" onClick={() => setShowCreate(true)}>

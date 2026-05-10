@@ -1,6 +1,16 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 
+export interface TimeseriesPoint {
+  month: string
+  revenue: number
+  paidRevenue: number
+  newLeases: number
+  terminatedLeases: number
+  occupancy: number
+  openTickets: number
+}
+
 export interface DashboardStats {
   invoices: {
     total: number
@@ -36,6 +46,13 @@ export interface DashboardStats {
 
 @Injectable()
 export class DashboardService {
+  // Per-process cache. Räcker för en vanlig single-instance-deploy; om vi
+  // skalar horisontellt får vi flytta nyckeln till Redis. TTL = 5 minuter
+  // — balans mellan färska siffror och att inte hamra DB:n vid varje
+  // dashboard-mount.
+  private timeseriesCache = new Map<string, { at: number; data: TimeseriesPoint[] }>()
+  private static readonly TIMESERIES_TTL_MS = 5 * 60 * 1000
+
   constructor(private readonly prisma: PrismaService) {}
 
   async getStats(organizationId: string): Promise<DashboardStats> {
@@ -132,5 +149,99 @@ export class DashboardService {
         }
       }),
     }
+  }
+
+  /**
+   * Trender: en datapunkt per månad N månader bakåt. Mätvärden:
+   * - revenue: totalt fakturerat (issueDate i månaden, exkl. DRAFT/VOID)
+   * - paidRevenue: totalt betalat (paidAt i månaden)
+   * - newLeases: kontrakt med startDate i månaden
+   * - terminatedLeases: kontrakt med terminatedAt i månaden
+   * - occupancy: % units med aktivt kontrakt vid månadens sista dag
+   * - openTickets: ärenden som var öppna vid månadens sista dag
+   *
+   * Resultatet cachas per (org, månader) i 5 minuter — räcker för att en
+   * dashboard-mount inte kostar 6×N queries.
+   */
+  async getTimeseries(organizationId: string, months: number): Promise<TimeseriesPoint[]> {
+    const key = `${organizationId}:${months}`
+    const cached = this.timeseriesCache.get(key)
+    if (cached && Date.now() - cached.at < DashboardService.TIMESERIES_TTL_MS) {
+      return cached.data
+    }
+
+    const now = new Date()
+    const buckets: { label: string; start: Date; end: Date }[] = []
+    for (let i = months - 1; i >= 0; i--) {
+      const start = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const end = new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59, 999)
+      const label = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`
+      buckets.push({ label, start, end })
+    }
+
+    const totalUnits = await this.prisma.unit.count({
+      where: { property: { organizationId } },
+    })
+
+    const points = await Promise.all(
+      buckets.map(async ({ label, start, end }) => {
+        const [revenueAgg, paidAgg, newLeases, terminatedLeases, occupiedUnits, openTickets] =
+          await Promise.all([
+            this.prisma.invoice.aggregate({
+              where: {
+                organizationId,
+                issueDate: { gte: start, lte: end },
+                status: { notIn: ['DRAFT', 'VOID'] },
+              },
+              _sum: { total: true },
+            }),
+            this.prisma.invoice.aggregate({
+              where: { organizationId, paidAt: { gte: start, lte: end } },
+              _sum: { total: true },
+            }),
+            this.prisma.lease.count({
+              where: { organizationId, startDate: { gte: start, lte: end } },
+            }),
+            this.prisma.lease.count({
+              where: { organizationId, terminatedAt: { gte: start, lte: end } },
+            }),
+            this.prisma.unit.count({
+              where: {
+                property: { organizationId },
+                leases: {
+                  some: {
+                    startDate: { lte: end },
+                    AND: [
+                      { OR: [{ endDate: null }, { endDate: { gte: end } }] },
+                      { OR: [{ terminatedAt: null }, { terminatedAt: { gt: end } }] },
+                    ],
+                  },
+                },
+              },
+            }),
+            this.prisma.maintenanceTicket.count({
+              where: {
+                organizationId,
+                createdAt: { lte: end },
+                status: { notIn: ['CANCELLED'] },
+                OR: [{ completedAt: null }, { completedAt: { gt: end } }],
+              },
+            }),
+          ])
+
+        return {
+          month: label,
+          revenue: Number(revenueAgg._sum.total ?? 0),
+          paidRevenue: Number(paidAgg._sum.total ?? 0),
+          newLeases,
+          terminatedLeases,
+          occupancy: totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 1000) / 10 : 0,
+          openTickets,
+        }
+      }),
+    )
+
+    this.timeseriesCache.set(key, { at: Date.now(), data: points })
+    return points
   }
 }

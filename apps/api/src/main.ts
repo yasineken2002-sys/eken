@@ -1,3 +1,8 @@
+// Sentry / OpenTelemetry MÅSTE laddas innan något annat — den hookar in sig
+// i Node:s require-cache och måste hinna wrappa NestJS, Fastify och Prisma
+// innan deras moduler initieras.
+import './instrument'
+import * as Sentry from '@sentry/nestjs'
 import { NestFactory } from '@nestjs/core'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
 import { ValidationPipe, VersioningType } from '@nestjs/common'
@@ -21,10 +26,12 @@ async function bootstrap() {
   console.warn('[bootstrap] entering main.ts')
 
   process.on('uncaughtException', (err) => {
+    Sentry.captureException(err)
     console.error('[bootstrap] uncaughtException:', err)
     process.exit(1)
   })
   process.on('unhandledRejection', (reason) => {
+    Sentry.captureException(reason)
     console.error('[bootstrap] unhandledRejection:', reason)
     process.exit(1)
   })

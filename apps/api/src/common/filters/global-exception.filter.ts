@@ -1,5 +1,6 @@
 import type { ExceptionFilter, ArgumentsHost } from '@nestjs/common'
 import { Catch, HttpException, HttpStatus, Injectable } from '@nestjs/common'
+import * as Sentry from '@sentry/nestjs'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { PlatformErrorsService } from '../../platform/errors/platform-errors.service'
 
@@ -25,6 +26,21 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       const stack = exception instanceof Error ? exception.stack : undefined
 
       console.error('[GlobalExceptionFilter] Unhandled exception:', exception)
+
+      // Skicka till Sentry med kontext så incident-utredningen kan börja
+      // direkt på rätt request, user och org. 4xx-fel (validering, behörighet)
+      // hamnar inte här eftersom HttpException-status är < 500.
+      Sentry.withScope((scope) => {
+        scope.setTag('path', request.url)
+        scope.setTag('method', request.method)
+        if (request.user?.organizationId) {
+          scope.setTag('organizationId', request.user.organizationId)
+        }
+        if (request.user?.sub) {
+          scope.setUser({ id: request.user.sub })
+        }
+        Sentry.captureException(exception)
+      })
 
       void this.errorsService.logInternalError({
         severity: 'CRITICAL',

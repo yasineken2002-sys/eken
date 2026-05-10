@@ -21,6 +21,7 @@ import { StatCard } from '@/components/ui/StatCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { InvoiceStatusBadge } from '@/components/ui/Badge'
 import { useDashboardStats } from './hooks/useDashboard'
+import { TrendsSection } from './components/TrendsSection'
 import { useLeases } from '@/features/leases/hooks/useLeases'
 import { useDeposits } from '@/features/deposits/hooks/useDeposits'
 import { useRentIncreases } from '@/features/rent-increases/hooks/useRentIncreases'
@@ -291,6 +292,9 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
           </div>
         </motion.div>
       )}
+
+      {/* Trender */}
+      <TrendsSection />
 
       {/* Recent invoices */}
       <motion.div

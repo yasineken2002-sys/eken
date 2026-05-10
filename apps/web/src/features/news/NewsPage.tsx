@@ -29,6 +29,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchProperties } from '@/features/properties/api/properties.api'
 import { formatDate } from '@eken/shared'
 import { cn } from '@/lib/cn'
+import { useCanWrite, useCanDelete } from '@/hooks/useCanWrite'
 import type { NewsPost, CreateNewsPostDto } from './api/news.api'
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } }
@@ -167,6 +168,8 @@ function PostForm({
 }
 
 export function NewsPage() {
+  const canWrite = useCanWrite()
+  const canDelete = useCanDelete()
   const { data: posts = [], isLoading } = useNewsPosts()
   const { data: propertiesRaw = [] } = useQuery({
     queryKey: ['properties', 'list'],
@@ -273,10 +276,12 @@ export function NewsPage() {
         title="Nyheter"
         description="Publicera nyheter till dina hyresgäster"
         action={
-          <Button variant="primary" onClick={() => setCreateOpen(true)}>
-            <Plus size={14} strokeWidth={2} />
-            Nytt inlägg
-          </Button>
+          canWrite ? (
+            <Button variant="primary" onClick={() => setCreateOpen(true)}>
+              <Plus size={14} strokeWidth={2} />
+              Nytt inlägg
+            </Button>
+          ) : undefined
         }
       />
 
@@ -348,13 +353,21 @@ export function NewsPage() {
             <EmptyState
               icon={Newspaper}
               title="Inga inlägg"
-              description="Skapa ditt första nyhetsinlägg för hyresgästerna"
-              action={
-                <Button variant="primary" onClick={() => setCreateOpen(true)}>
-                  <Plus size={14} strokeWidth={2} />
-                  Nytt inlägg
-                </Button>
+              description={
+                canWrite
+                  ? 'Skapa ditt första nyhetsinlägg för hyresgästerna'
+                  : 'Inga nyhetsinlägg har publicerats ännu.'
               }
+              {...(canWrite
+                ? {
+                    action: (
+                      <Button variant="primary" onClick={() => setCreateOpen(true)}>
+                        <Plus size={14} strokeWidth={2} />
+                        Nytt inlägg
+                      </Button>
+                    ),
+                  }
+                : {})}
             />
           ) : (
             <div className="overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white">
@@ -409,7 +422,7 @@ export function NewsPage() {
                           className="flex items-center justify-end gap-1"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          {post.publishedAt === null && (
+                          {post.publishedAt === null && canWrite && (
                             <Button
                               size="xs"
                               variant="outline"
@@ -422,19 +435,23 @@ export function NewsPage() {
                               Publicera
                             </Button>
                           )}
-                          <Button size="xs" variant="ghost" onClick={() => openEdit(post)}>
-                            <Pencil size={11} strokeWidth={2} />
-                            Redigera
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            className="text-red-500 hover:bg-red-50 hover:text-red-600"
-                            onClick={() => setDeleteConfirm(post.id)}
-                          >
-                            <Trash2 size={11} strokeWidth={2} />
-                            Radera
-                          </Button>
+                          {canWrite && (
+                            <Button size="xs" variant="ghost" onClick={() => openEdit(post)}>
+                              <Pencil size={11} strokeWidth={2} />
+                              Redigera
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                              onClick={() => setDeleteConfirm(post.id)}
+                            >
+                              <Trash2 size={11} strokeWidth={2} />
+                              Radera
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </motion.tr>
