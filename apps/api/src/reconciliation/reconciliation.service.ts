@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   BadRequestException,
   NotFoundException,
   ForbiddenException,
@@ -152,6 +153,8 @@ function extractOcr(text: string | undefined): string | null {
 
 @Injectable()
 export class ReconciliationService {
+  private readonly logger = new Logger(ReconciliationService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoices: InvoicesService,
@@ -642,7 +645,10 @@ export class ReconciliationService {
           null,
         )
       } catch (err) {
-        console.error('[reconciliation] accounting journal entry failed:', err)
+        this.logger.error(
+          'Accounting journal entry failed',
+          err instanceof Error ? err.stack : String(err),
+        )
       }
       return true
     }
@@ -680,7 +686,10 @@ export class ReconciliationService {
           null,
         )
       } catch (err) {
-        console.error('[reconciliation] accounting journal entry failed:', err)
+        this.logger.error(
+          'Accounting journal entry failed',
+          err instanceof Error ? err.stack : String(err),
+        )
       }
       return true
     }
@@ -752,7 +761,10 @@ export class ReconciliationService {
         userId,
       )
     } catch (err) {
-      console.error('[reconciliation] accounting journal entry failed:', err)
+      this.logger.error(
+        'Accounting journal entry failed',
+        err instanceof Error ? err.stack : String(err),
+      )
     }
   }
 
@@ -805,7 +817,10 @@ export class ReconciliationService {
         userId,
       )
     } catch (err) {
-      console.error('[reconciliation] accounting journal entry failed:', err)
+      this.logger.error(
+        'Accounting journal entry failed',
+        err instanceof Error ? err.stack : String(err),
+      )
     }
   }
 
@@ -1021,7 +1036,10 @@ export class ReconciliationService {
     try {
       await this.accounting.reverseJournalEntryForPayment(transactionId, organizationId, userId)
     } catch (err) {
-      console.error('[reconciliation] accounting reversal failed:', err)
+      this.logger.error(
+        'Accounting reversal failed',
+        err instanceof Error ? err.stack : String(err),
+      )
     }
   }
 }

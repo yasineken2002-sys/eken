@@ -126,24 +126,4 @@ export class MaintenancePlanService {
 
     return Array.from(byYear.values()).sort((a, b) => a.year - b.year)
   }
-
-  async getTotalBudget(organizationId: string, fromYear: number, toYear: number) {
-    const result = await this.prisma.maintenancePlan.groupBy({
-      by: ['category'],
-      where: { organizationId, plannedYear: { gte: fromYear, lte: toYear } },
-      _sum: { estimatedCost: true },
-      _count: { id: true },
-    })
-
-    const total = result.reduce((s, r) => s + Number(r._sum.estimatedCost ?? 0), 0)
-
-    return {
-      total,
-      byCategory: result.map((r) => ({
-        category: r.category,
-        total: Number(r._sum.estimatedCost ?? 0),
-        count: r._count.id,
-      })),
-    }
-  }
 }

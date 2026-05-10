@@ -437,6 +437,7 @@ model Organization {
   impersonationLogs  ImpersonationLog[]
   errorLogs          ErrorLog[]
   contractNumberSequences ContractNumberSequence[]
+  maintenanceTicketSequence MaintenanceTicketSequence?
   deposits           Deposit[]
   rentIncreases      RentIncrease[]
   customers          Customer[]
@@ -1145,6 +1146,17 @@ model ContractNumberSequence {
   @@id([organizationId, year])
 }
 
+// Per-organisation löpnummer för felanmälningsärenden (UND-{nnnnn}). En rad
+// per organisation. UPSERT med atomär increment ger Postgres row-lock så
+// att samtidiga ärendeskapande inte kan dela ut samma nummer två gånger.
+model MaintenanceTicketSequence {
+  organizationId String   @id
+  lastNumber     Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
 // ─── AI Assistant ─────────────────────────────────────────────────────────────
 
 model AiConversation {
@@ -1670,11 +1682,31 @@ model PlatformUser {
   lastLoginAt  DateTime?
 
   impersonationLogs ImpersonationLog[]
+  refreshTokens     PlatformRefreshToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([email])
+}
+
+// Refresh-tokens för super-admin. Lagras som SHA-256-hash (samma mönster
+// som RefreshToken för tenants). Logout sätter revokedAt — token kan inte
+// återanvändas. Cleanup-cron raderar utgångna rader.
+model PlatformRefreshToken {
+  id              String    @id @default(uuid())
+  platformUserId  String
+  token           String    @unique
+  expiresAt       DateTime
+  revokedAt       DateTime?
+
+  platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([platformUserId])
+  @@index([token])
+  @@index([expiresAt])
 }
 
 model PlatformInvoice {

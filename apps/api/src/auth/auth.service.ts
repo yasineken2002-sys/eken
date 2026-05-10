@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   ConflictException,
   BadRequestException,
@@ -62,6 +63,8 @@ export interface AuthResponse extends TokenPair {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name)
+
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
@@ -351,7 +354,10 @@ export class AuthService {
         idempotencyKey: `pwreset:${token}`,
       })
       .catch((err: unknown) => {
-        console.error('[auth] password reset mail failed', String(err))
+        this.logger.error(
+          'Password reset mail failed',
+          err instanceof Error ? err.stack : String(err),
+        )
       })
   }
 

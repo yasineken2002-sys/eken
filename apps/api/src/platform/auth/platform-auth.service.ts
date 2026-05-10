@@ -7,6 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import * as bcrypt from 'bcryptjs'
+import * as crypto from 'crypto'
 import { generateSecret, generateURI, verify as verifyOtp } from 'otplib'
 import * as QRCode from 'qrcode'
 import { v4 as uuidv4 } from 'uuid'
@@ -26,19 +27,12 @@ export interface PlatformAuthResponse extends PlatformTokenPair {
   user: PlatformAuthUser
 }
 
-interface StoredRefreshToken {
-  platformUserId: string
-  expiresAt: number
-  revoked: boolean
+function sha256(input: string): string {
+  return crypto.createHash('sha256').update(input).digest('hex')
 }
 
 @Injectable()
 export class PlatformAuthService {
-  // Refresh tokens förvaras i minne (en långlivad prod-deployment bör migrera
-  // detta till en platform_refresh_token-tabell — men för första iterationen
-  // räcker in-memory tills vi introducerar horisontell skalning).
-  private refreshStore = new Map<string, StoredRefreshToken>()
-
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
@@ -71,7 +65,7 @@ export class PlatformAuthService {
       data: { lastLoginAt: new Date() },
     })
 
-    const tokens = this.issueTokens(user.id, user.email)
+    const tokens = await this.issueTokens(user.id, user.email)
     return {
       ...tokens,
       user: {
@@ -85,13 +79,20 @@ export class PlatformAuthService {
   }
 
   async refresh(refreshToken: string): Promise<PlatformTokenPair> {
-    const stored = this.refreshStore.get(refreshToken)
-    if (!stored || stored.revoked || stored.expiresAt < Date.now()) {
+    const tokenHash = sha256(refreshToken)
+    const stored = await this.prisma.platformRefreshToken.findUnique({
+      where: { token: tokenHash },
+    })
+    if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
       throw new UnauthorizedException('Ogiltig refresh token')
     }
 
-    stored.revoked = true
-    this.refreshStore.set(refreshToken, stored)
+    // Rotation: revokera den gamla, mint en ny — så att en eventuell stulen
+    // kopia förlorar giltighet så fort legitim klient refreshar.
+    await this.prisma.platformRefreshToken.update({
+      where: { id: stored.id },
+      data: { revokedAt: new Date() },
+    })
 
     const user = await this.prisma.platformUser.findUnique({
       where: { id: stored.platformUserId },
@@ -102,13 +103,12 @@ export class PlatformAuthService {
   }
 
   async logout(refreshToken?: string): Promise<void> {
-    if (refreshToken) {
-      const stored = this.refreshStore.get(refreshToken)
-      if (stored) {
-        stored.revoked = true
-        this.refreshStore.set(refreshToken, stored)
-      }
-    }
+    if (!refreshToken) return
+    const tokenHash = sha256(refreshToken)
+    await this.prisma.platformRefreshToken.updateMany({
+      where: { token: tokenHash, revokedAt: null },
+      data: { revokedAt: new Date() },
+    })
   }
 
   async changePassword(
@@ -131,12 +131,10 @@ export class PlatformAuthService {
     // Revokera alla aktiva refresh-tokens för denna admin så att alla enheter
     // (inkl. den aktuella) tappar sessionen — admin-klienten redirectar till
     // login med en flash-banner.
-    for (const [token, stored] of this.refreshStore.entries()) {
-      if (stored.platformUserId === platformUserId && !stored.revoked) {
-        stored.revoked = true
-        this.refreshStore.set(token, stored)
-      }
-    }
+    await this.prisma.platformRefreshToken.updateMany({
+      where: { platformUserId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    })
 
     return {
       message: 'Lösenordet har bytts. Du loggas nu ut från alla enheter.',
@@ -211,7 +209,7 @@ export class PlatformAuthService {
     }
   }
 
-  private issueTokens(platformUserId: string, email: string): PlatformTokenPair {
+  private async issueTokens(platformUserId: string, email: string): Promise<PlatformTokenPair> {
     const payload: PlatformJwtPayload = {
       sub: platformUserId,
       email,
@@ -222,8 +220,15 @@ export class PlatformAuthService {
     const refreshToken = uuidv4()
     const refreshExpiresIn = this.config.get('PLATFORM_JWT_REFRESH_EXPIRES_IN', '30d')
     const days = parseInt(String(refreshExpiresIn).replace('d', ''), 10) || 30
-    const expiresAt = Date.now() + days * 24 * 60 * 60 * 1000
-    this.refreshStore.set(refreshToken, { platformUserId, expiresAt, revoked: false })
+    const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000)
+
+    await this.prisma.platformRefreshToken.create({
+      data: {
+        platformUserId,
+        token: sha256(refreshToken),
+        expiresAt,
+      },
+    })
 
     return { accessToken, refreshToken }
   }

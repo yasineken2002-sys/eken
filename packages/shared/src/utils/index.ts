@@ -21,13 +21,6 @@ export function formatOrgNumber(raw: string): string {
   return raw
 }
 
-export function formatPersonalNumber(raw: string): string {
-  const digits = raw.replace(/\D/g, '')
-  if (digits.length === 10) return `${digits.slice(0, 8)}-${digits.slice(8)}`
-  if (digits.length === 12) return `${digits.slice(0, 8)}-${digits.slice(8)}`
-  return raw
-}
-
 export function calculateVat(amount: number, vatRate: number): number {
   return Math.round(amount * (vatRate / 100) * 100) / 100
 }

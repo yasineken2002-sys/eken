@@ -7,6 +7,7 @@ import { PlatformAuthService } from './auth/platform-auth.service'
 import { PlatformAuthController } from './auth/platform-auth.controller'
 import { PlatformJwtStrategy } from './auth/platform-jwt.strategy'
 import { PlatformGuard } from './auth/platform.guard'
+import { PlatformTokenCleanupService } from './auth/platform-token-cleanup.service'
 import { PlatformOrganizationsService } from './organizations/platform-organizations.service'
 import { PlatformOrganizationsController } from './organizations/platform-organizations.controller'
 import { ImpersonationService } from './impersonation/impersonation.service'
@@ -46,6 +47,7 @@ import { PlatformStatsController } from './stats/platform-stats.controller'
     PlatformJwtStrategy,
     PlatformGuard,
     PlatformAuthService,
+    PlatformTokenCleanupService,
     PlatformOrganizationsService,
     ImpersonationService,
     PlatformPropertiesService,

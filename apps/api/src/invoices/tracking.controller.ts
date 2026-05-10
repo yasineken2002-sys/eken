@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Ip, Headers, Res, HttpCode } from '@nestjs/common'
+import { Controller, Get, Param, Ip, Headers, Res, HttpCode, Logger } from '@nestjs/common'
 import { Public } from '../common/decorators/public.decorator'
 import { InvoiceEventsService } from './invoice-events.service'
 
@@ -11,6 +11,8 @@ const TRACKING_PIXEL = Buffer.from(
 
 @Controller('track')
 export class TrackingController {
+  private readonly logger = new Logger(TrackingController.name)
+
   constructor(private readonly eventsService: InvoiceEventsService) {}
 
   /**
@@ -36,7 +38,9 @@ export class TrackingController {
     // Fire-and-forget – blockera aldrig pixelsvaret
     this.eventsService
       .recordByToken(token, 'EMAIL_OPENED', { ip, userAgent })
-      .catch((err) => console.error('[tracking] pixel error', err))
+      .catch((err) =>
+        this.logger.error('Pixel error', err instanceof Error ? err.stack : String(err)),
+      )
 
     res
       .header('Content-Type', 'image/gif')

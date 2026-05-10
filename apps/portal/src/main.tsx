@@ -4,6 +4,7 @@ import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react
 import { BrowserRouter } from 'react-router-dom'
 import { Toaster, toast } from 'sonner'
 import { App } from './App'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { extractApiError } from './api/portal.api'
 import './styles/tokens.css'
 
@@ -31,11 +32,13 @@ if (!root) throw new Error('Root element not found')
 
 createRoot(root).render(
   <StrictMode>
-    <BrowserRouter>
-      <QueryClientProvider client={queryClient}>
-        <App />
-        <Toaster position="top-right" richColors closeButton toastOptions={{ duration: 5000 }} />
-      </QueryClientProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <QueryClientProvider client={queryClient}>
+          <App />
+          <Toaster position="top-right" richColors closeButton toastOptions={{ duration: 5000 }} />
+        </QueryClientProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   </StrictMode>,
 )

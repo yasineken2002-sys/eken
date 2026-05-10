@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common'
+import { Injectable, Logger, BadRequestException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { AiUsageService } from '../ai/usage/ai-usage.service'
 import { AiQuotaService } from '../ai/usage/ai-quota.service'
@@ -27,6 +27,8 @@ export interface ScannedContract {
 
 @Injectable()
 export class ContractScannerService {
+  private readonly logger = new Logger(ContractScannerService.name)
+
   constructor(
     private readonly config: ConfigService,
     private readonly usage: AiUsageService,
@@ -123,7 +125,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga kodblock.
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Okänt fel')
-      console.error('Anthropic API error:', response.status, errorBody)
+      this.logger.error(`Anthropic API error ${response.status}: ${errorBody}`)
       throw new BadRequestException('Kunde inte läsa kontraktet. Kontrollera att filen är tydlig.')
     }
 

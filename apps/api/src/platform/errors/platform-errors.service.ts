@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import type { CreateFrontendErrorDto } from './dto/error-log.dto'
 
@@ -7,6 +7,8 @@ type Source = 'API' | 'WEB' | 'PORTAL' | 'ADMIN'
 
 @Injectable()
 export class PlatformErrorsService {
+  private readonly logger = new Logger(PlatformErrorsService.name)
+
   constructor(private prisma: PrismaService) {}
 
   async logInternalError(params: {
@@ -29,8 +31,12 @@ export class PlatformErrorsService {
         },
       })
     } catch (err) {
-      // Om ErrorLog själv failar (t.ex. DB nere) — skriv till stderr och gå vidare.
-      console.error('[PlatformErrorsService] Kunde inte skriva till ErrorLog:', err)
+      // Om ErrorLog själv failar (t.ex. DB nere) — logga och gå vidare så att
+      // klient-anropet aldrig blockeras av att felregistreringen i sig fallerar.
+      this.logger.error(
+        'Kunde inte skriva till ErrorLog',
+        err instanceof Error ? err.stack : String(err),
+      )
     }
   }
 

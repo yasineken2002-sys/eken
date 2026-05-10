@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ConflictException,
@@ -40,6 +41,8 @@ const PUBLIC_USER_FIELDS = {
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
@@ -122,7 +125,7 @@ export class UsersService {
         idempotencyKey: `invite:${token}`,
       })
       .catch((err: unknown) => {
-        console.error('[users] invite mail failed', String(err))
+        this.logger.error('Invite mail failed', err instanceof Error ? err.stack : String(err))
       })
 
     return created

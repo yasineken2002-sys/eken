@@ -622,12 +622,6 @@ export class MailService {
     )
   }
 
-  // ── Hälsokontroll ────────────────────────────────────────────────────────────
-
-  async verifyConnection(): Promise<boolean> {
-    return true
-  }
-
   // ── Privat helper ────────────────────────────────────────────────────────────
 
   private async enqueueTyped<T extends TemplateName>(

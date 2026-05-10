@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common'
+import { Injectable, Logger, BadRequestException } from '@nestjs/common'
 import type { Invoice, Lease, MaintenanceCategory, Property, Unit } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MaintenanceService } from '../maintenance/maintenance.service'
@@ -10,6 +10,8 @@ type InvoiceWithLease = Invoice & {
 
 @Injectable()
 export class TenantPortalService {
+  private readonly logger = new Logger(TenantPortalService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly maintenanceService: MaintenanceService,
@@ -227,7 +229,9 @@ export class TenantPortalService {
         `${tenantName} har anmält: ${dto.title}`,
         { relatedEntityType: 'MAINTENANCE_TICKET', relatedEntityId: ticket.id },
       )
-      .catch((err) => console.error('[portal] notification error', String(err)))
+      .catch((err) =>
+        this.logger.error('Notification error', err instanceof Error ? err.stack : String(err)),
+      )
 
     return ticket
   }

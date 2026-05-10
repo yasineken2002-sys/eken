@@ -2,6 +2,7 @@ import { z } from 'zod'
 import {
   isValidSwedishPersonalNumber,
   isValidSwedishOrgNumber,
+  isValidOcrNumber,
   PASSWORD_MIN_LENGTH,
   PASSWORD_SPECIAL_CHAR_REGEX,
   validateSwedishOrgNumber,
@@ -131,10 +132,24 @@ export const ResetPasswordSchema = z
 
 // ─── Address ─────────────────────────────────────────────────────────────────
 
+// Svenska postnummer: första tre siffrorna pekar ut PostNord-områden i
+// intervallet 100 (Stockholm) till 984 (Pajala). Allt utanför dvs. 0XX
+// och 985–999 är ogiltigt. Ett frivilligt mellanslag mellan siffergrupperna
+// accepteras (t.ex. "111 22").
+const SWEDISH_POSTAL_CODE_REGEX = /^[1-9]\d{2}\s?\d{2}$/
+const SWEDISH_POSTAL_AREA_MIN = 100
+const SWEDISH_POSTAL_AREA_MAX = 984
+
+function isValidSwedishPostalCode(value: string): boolean {
+  if (!SWEDISH_POSTAL_CODE_REGEX.test(value)) return false
+  const area = parseInt(value.slice(0, 3), 10)
+  return area >= SWEDISH_POSTAL_AREA_MIN && area <= SWEDISH_POSTAL_AREA_MAX
+}
+
 export const AddressSchema = z.object({
   street: z.string().min(1),
   city: z.string().min(1),
-  postalCode: z.string().regex(/^\d{3}\s?\d{2}$/, 'Ogiltigt postnummer'),
+  postalCode: z.string().refine(isValidSwedishPostalCode, 'Ogiltigt postnummer'),
   country: z.string().default('SE'),
 })
 
@@ -277,6 +292,19 @@ export const CreateLeaseWithTenantSchema = z
     path: ['existingTenantId'],
   })
 
+// ─── OCR (Bankgiro Luhn-mod10) ───────────────────────────────────────────────
+
+// OCR-numret ska vara 2–25 siffror (Bankgirot tillåter teoretiskt 2 siffror,
+// i praktiken minst 4) med Luhn-modulus10 kontrollsiffra som sista tecken.
+// Validering återanvänder isValidOcrNumber från utils så vi inte håller två
+// implementationer av Luhn-checken.
+export const OcrSchema = z
+  .string()
+  .min(2, 'OCR-nummer måste vara minst 2 siffror')
+  .max(25, 'OCR-nummer får inte vara längre än 25 siffror')
+  .regex(/^\d+$/, 'OCR-nummer får bara innehålla siffror')
+  .refine(isValidOcrNumber, 'Ogiltig OCR-kontrollsiffra')
+
 // ─── Invoice ──────────────────────────────────────────────────────────────────
 
 export const InvoiceLineSchema = z.object({
@@ -318,3 +346,4 @@ export type CreateLeaseInput = z.infer<typeof CreateLeaseSchema>
 export type CreateLeaseWithTenantInput = z.infer<typeof CreateLeaseWithTenantSchema>
 export type NewTenantInLeaseInput = z.infer<typeof NewTenantInLeaseSchema>
 export type CreateInvoiceInput = z.infer<typeof CreateInvoiceSchema>
+export type OcrInput = z.infer<typeof OcrSchema>

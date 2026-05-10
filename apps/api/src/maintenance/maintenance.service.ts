@@ -75,9 +75,17 @@ export class MaintenanceService {
     return { ...ticket, images: refreshed }
   }
 
+  // UPSERT med atomär increment — Postgres låser raden så samtidiga skapanden
+  // av tickets aldrig kan dela ut samma nummer. Tidigare COUNT+1-mönstret
+  // hade en race där två parallella requests fick samma värde.
   private async generateTicketNumber(organizationId: string): Promise<string> {
-    const count = await this.prisma.maintenanceTicket.count({ where: { organizationId } })
-    return `UND-${(count + 1).toString().padStart(5, '0')}`
+    const row = await this.prisma.maintenanceTicketSequence.upsert({
+      where: { organizationId },
+      create: { organizationId, lastNumber: 1 },
+      update: { lastNumber: { increment: 1 } },
+      select: { lastNumber: true },
+    })
+    return `UND-${row.lastNumber.toString().padStart(5, '0')}`
   }
 
   async findAll(
@@ -189,7 +197,9 @@ export class MaintenanceService {
         `Ärende ${ticket.ticketNumber}: ${dto.title}`,
         { relatedEntityType: 'MAINTENANCE_TICKET', relatedEntityId: ticket.id },
       )
-      .catch((err) => console.error('[maintenance] notification error', String(err)))
+      .catch((err) =>
+        this.logger.error('Notification error', err instanceof Error ? err.stack : String(err)),
+      )
 
     return ticket
   }
@@ -242,7 +252,9 @@ export class MaintenanceService {
           `Ärende ${result.ticketNumber} har markerats som åtgärdat`,
           { relatedEntityType: 'MAINTENANCE_TICKET', relatedEntityId: result.id },
         )
-        .catch((err) => console.error('[maintenance] notification error', String(err)))
+        .catch((err) =>
+          this.logger.error('Notification error', err instanceof Error ? err.stack : String(err)),
+        )
     }
 
     return this.refreshImageUrls(result)

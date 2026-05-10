@@ -224,7 +224,12 @@ export class InvoicesService {
           actorId,
         )
       })
-      .catch((err) => console.error('[invoices] accounting journal entry failed:', err))
+      .catch((err) =>
+        this.logger.error(
+          'Accounting journal entry failed',
+          err instanceof Error ? err.stack : String(err),
+        ),
+      )
 
     return invoice
   }
@@ -293,7 +298,10 @@ export class InvoicesService {
 
         if (dto.sendEmail) {
           void this.sendInvoiceEmail(invoice.id, organizationId, actorId).catch((err) =>
-            console.error('[bulk-invoices] email failed for', invoice.id, err),
+            this.logger.error(
+              `Bulk-invoice email failed for ${invoice.id}`,
+              err instanceof Error ? err.stack : String(err),
+            ),
           )
         }
       } catch (err) {
@@ -462,7 +470,9 @@ export class InvoicesService {
   recordView(invoiceId: string, actorId: string): void {
     this.eventsService
       .record(invoiceId, 'VIEWED_BY_USER', 'USER', actorId, {})
-      .catch((err) => console.error('[invoices] view tracking error', err))
+      .catch((err) =>
+        this.logger.error('View tracking error', err instanceof Error ? err.stack : String(err)),
+      )
   }
 
   /**
