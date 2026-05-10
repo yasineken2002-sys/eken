@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { NewsService, CreateNewsPostDto, UpdateNewsPostDto } from './news.service'
 
@@ -31,6 +32,7 @@ export class NewsController {
   }
 
   @Post()
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async create(
     @OrgId() organizationId: string,
     @CurrentUser() user: JwtPayload,
@@ -40,6 +42,7 @@ export class NewsController {
   }
 
   @Patch(':id')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async update(
     @Param('id') id: string,
     @OrgId() organizationId: string,
@@ -49,12 +52,14 @@ export class NewsController {
   }
 
   @Post(':id/publish')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   @HttpCode(HttpStatus.OK)
   async publish(@Param('id') id: string, @OrgId() organizationId: string) {
     return this.newsService.publish(id, organizationId)
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'OWNER')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id') id: string, @OrgId() organizationId: string): Promise<void> {
     await this.newsService.remove(id, organizationId)

@@ -59,6 +59,8 @@ export class NotificationsController {
   }
 
   @Post('send-overdue-reminders')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'OWNER')
   async triggerReminders(@OrgId() organizationId: string) {
     await this.service.sendOverdueRemindersForOrg(organizationId)
     return { message: 'Påminnelser skickade' }

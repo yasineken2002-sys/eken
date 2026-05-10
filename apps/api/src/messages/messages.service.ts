@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
 import type { SentMessage } from '@prisma/client'
+import sanitizeHtml from 'sanitize-html'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 
@@ -11,6 +12,37 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return result
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+const USER_HTML_OPTS: sanitizeHtml.IOptions = {
+  allowedTags: [
+    'p',
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'h5',
+    'h6',
+    'strong',
+    'em',
+    'a',
+    'br',
+    'ul',
+    'ol',
+    'li',
+  ],
+  allowedAttributes: { a: ['href', 'title', 'target', 'rel'] },
+  allowedSchemes: ['http', 'https', 'mailto'],
+  disallowedTagsMode: 'discard',
+}
+
 function buildEmailHtml(
   subject: string,
   content: string,
@@ -18,11 +50,15 @@ function buildEmailHtml(
   accentColor: string,
   tenantName?: string,
 ): string {
-  const greeting = tenantName ? `<p>Hej ${tenantName},</p>` : ''
+  const safeSubject = escapeHtml(subject)
+  const safeOrgName = escapeHtml(orgName)
+  const safeAccent = /^#[0-9A-Fa-f]{3,8}$/.test(accentColor) ? accentColor : '#2563EB'
+  const safeTenantName = tenantName ? escapeHtml(tenantName) : ''
+  const greeting = safeTenantName ? `<p>Hej ${safeTenantName},</p>` : ''
   const paragraphs = content
     .split('\n')
     .filter((l) => l.trim())
-    .map((l) => `<p>${l}</p>`)
+    .map((l) => `<p>${sanitizeHtml(l, USER_HTML_OPTS)}</p>`)
     .join('\n')
 
   return `<!DOCTYPE html>
@@ -30,21 +66,21 @@ function buildEmailHtml(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>${subject}</title>
+  <title>${safeSubject}</title>
   <style>
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;margin:0;padding:32px 16px;color:#1a1a1a}
     .card{background:#fff;border-radius:12px;max-width:560px;margin:0 auto;padding:40px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-    .logo{color:${accentColor};font-size:20px;font-weight:700;margin-bottom:32px}
+    .logo{color:${safeAccent};font-size:20px;font-weight:700;margin-bottom:32px}
     p{font-size:15px;line-height:1.6;color:#444;margin:0 0 16px}
     .footer{margin-top:32px;font-size:13px;color:#aaa;text-align:center}
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo">${orgName}</div>
+    <div class="logo">${safeOrgName}</div>
     ${greeting}
     ${paragraphs}
-    <p style="margin-top:30px;color:#666;font-size:13px">Med vänliga hälsningar,<br><strong>${orgName}</strong></p>
+    <p style="margin-top:30px;color:#666;font-size:13px">Med vänliga hälsningar,<br><strong>${safeOrgName}</strong></p>
     <div class="footer">Detta e-postmeddelande skickades via Eveno Fastigheter.</div>
   </div>
 </body>

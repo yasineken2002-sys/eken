@@ -13,6 +13,7 @@ import { ReconciliationService, type BankFormat } from './reconciliation.service
 import { ManualMatchDto } from './dto/manual-match.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { Body } from '@nestjs/common'
 
@@ -28,6 +29,7 @@ export class ReconciliationController {
    * Accepts: .csv, .xlsx, .xls (max 10MB)
    */
   @Post('import')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async importStatement(
     @OrgId() organizationId: string,
     @Req() req: FastifyRequest,
@@ -74,6 +76,7 @@ export class ReconciliationController {
    * en explicit endpoint per format är tydligare för både UI och AI-tools.
    */
   @Post('import-bgmax')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async importBgMax(@OrgId() organizationId: string, @Req() req: FastifyRequest) {
     const file = await (
       req as unknown as {
@@ -99,6 +102,7 @@ export class ReconciliationController {
    * Försöker auto-matcha alla UNMATCHED transaktioner mot fakturor.
    */
   @Post('auto-match')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async autoMatch(@OrgId() organizationId: string) {
     return this.reconciliationService.autoMatchAll(organizationId)
   }
@@ -134,6 +138,7 @@ export class ReconciliationController {
    * Body: { invoiceId: string }
    */
   @Patch('transactions/:id/match')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async manualMatch(
     @Param('id') id: string,
     @Body() dto: ManualMatchDto,
@@ -155,6 +160,7 @@ export class ReconciliationController {
    * PATCH /reconciliation/transactions/:id/ignore
    */
   @Patch('transactions/:id/ignore')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async ignoreTransaction(@Param('id') id: string, @OrgId() organizationId: string) {
     await this.reconciliationService.ignoreTransaction(id, organizationId)
   }
@@ -163,6 +169,7 @@ export class ReconciliationController {
    * PATCH /reconciliation/transactions/:id/unmatch
    */
   @Patch('transactions/:id/unmatch')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async unmatchTransaction(
     @Param('id') id: string,
     @OrgId() organizationId: string,
