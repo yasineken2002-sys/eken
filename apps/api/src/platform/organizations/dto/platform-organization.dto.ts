@@ -24,10 +24,13 @@ export class CreateOrganizationDto {
   @IsOptional()
   country?: string
 
-  @ApiProperty({ enum: ['TRIAL', 'BASIC', 'STANDARD', 'PREMIUM'], required: false })
-  @IsEnum(['TRIAL', 'BASIC', 'STANDARD', 'PREMIUM'])
+  @ApiProperty({
+    enum: ['TRIAL', 'STARTER', 'MINI', 'STANDARD', 'PLUS', 'PRO'],
+    required: false,
+  })
+  @IsEnum(['TRIAL', 'STARTER', 'MINI', 'STANDARD', 'PLUS', 'PRO'])
   @IsOptional()
-  plan?: 'TRIAL' | 'BASIC' | 'STANDARD' | 'PREMIUM'
+  plan?: 'TRIAL' | 'STARTER' | 'MINI' | 'STANDARD' | 'PLUS' | 'PRO'
 
   @ApiProperty({ required: false, description: 'Längd på trial i dagar (default 30)' })
   @IsInt()

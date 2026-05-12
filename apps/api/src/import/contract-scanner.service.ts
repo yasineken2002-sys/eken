@@ -46,7 +46,8 @@ export class ContractScannerService {
       throw new BadRequestException('AI-scanning är inte konfigurerat. Kontakta administratören.')
     }
 
-    await this.quota.checkQuota(organizationId)
+    // Kontraktsskanning är AUTOMATISK — utlöses av PDF-upload, ingår i
+    // baspriset. Ingen tak-kontroll.
 
     const base64 = fileBuffer.toString('base64')
 
@@ -152,6 +153,8 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga kodblock.
         endpoint: 'contract-scan',
         model: CONTRACT_SCAN_MODEL,
         usage: data.usage ?? null,
+        isAutomated: true,
+        source: 'contract_scan',
       })
       .catch(() => undefined)
 

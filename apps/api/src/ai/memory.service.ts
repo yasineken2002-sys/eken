@@ -111,6 +111,8 @@ AI: ${reply}`,
         endpoint: 'memory',
         model: MEMORY_MODEL,
         usage: response.usage,
+        isAutomated: true,
+        source: 'memory_extract',
       })
       .catch((err: unknown) => this.logger.warn('logUsage(memory) failed', err))
 

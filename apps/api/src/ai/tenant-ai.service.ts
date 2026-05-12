@@ -372,6 +372,8 @@ export class TenantAiService {
           endpoint: 'tenant-chat',
           model: TENANT_MODEL,
           usage: response.usage,
+          isAutomated: true,
+          source: 'tenant_chat',
         })
         .catch((err: unknown) => this.logger.warn('logUsage(tenant-chat) failed', err))
       return response

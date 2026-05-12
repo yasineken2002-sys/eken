@@ -69,6 +69,8 @@ export class PortfolioAnalysisService {
         endpoint: 'analysis',
         model: MODEL,
         usage: response.usage,
+        isAutomated: false,
+        source: 'portfolio_analysis',
       })
       .catch((err: unknown) => this.logger.warn('logUsage(analysis) failed', err))
 

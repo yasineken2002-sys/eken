@@ -279,6 +279,8 @@ export class AiAssistantController {
             cache_read_input_tokens: cacheReadTokens,
             cache_creation_input_tokens: cacheWriteTokens,
           },
+          isAutomated: false,
+          source: 'manual_chat',
         })
         .catch(() => undefined)
 

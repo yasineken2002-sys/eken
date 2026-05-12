@@ -73,7 +73,8 @@ export class InspectionAnalyzerService {
     organizationId: string,
     userId?: string,
   ): Promise<AnalysisResult> {
-    await this.quota.checkQuota(organizationId)
+    // Bildbesiktnings-AI ingår i baspriset — utlöses av admin men räknas
+    // inte mot manuella chat-anropstaket. Ingen tak-kontroll.
     const content: Anthropic.MessageParam['content'] = []
 
     for (let i = 0; i < images.length; i++) {
@@ -108,6 +109,8 @@ export class InspectionAnalyzerService {
           endpoint: 'inspection-analyze',
           model: INSPECTION_MODEL,
           usage: response.usage,
+          isAutomated: true,
+          source: 'inspection_analyze',
         })
         .catch(() => undefined)
 

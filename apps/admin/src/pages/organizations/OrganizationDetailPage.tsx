@@ -20,8 +20,8 @@ interface OrgDetail {
   email: string
   phone: string | null
   address: { street: string; city: string; postalCode: string; country: string }
-  plan: 'TRIAL' | 'BASIC' | 'STANDARD' | 'PREMIUM'
-  status: 'ACTIVE' | 'SUSPENDED' | 'CANCELLED'
+  plan: 'TRIAL' | 'STARTER' | 'MINI' | 'STANDARD' | 'PLUS' | 'PRO'
+  status: 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED'
   trialEndsAt: string | null
   monthlyFee: number
   billingEmail: string | null

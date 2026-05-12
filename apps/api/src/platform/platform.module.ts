@@ -20,6 +20,8 @@ import { PlatformErrorsService } from './errors/platform-errors.service'
 import { PlatformErrorsController } from './errors/platform-errors.controller'
 import { PlatformStatsService } from './stats/platform-stats.service'
 import { PlatformStatsController } from './stats/platform-stats.controller'
+import { PlatformAiUsageService } from './ai-usage/platform-ai-usage.service'
+import { PlatformAiUsageController } from './ai-usage/platform-ai-usage.controller'
 
 @Module({
   imports: [
@@ -42,6 +44,7 @@ import { PlatformStatsController } from './stats/platform-stats.controller'
     PlatformInvoicesController,
     PlatformErrorsController,
     PlatformStatsController,
+    PlatformAiUsageController,
   ],
   providers: [
     PlatformJwtStrategy,
@@ -54,6 +57,7 @@ import { PlatformStatsController } from './stats/platform-stats.controller'
     PlatformInvoicesService,
     PlatformErrorsService,
     PlatformStatsService,
+    PlatformAiUsageService,
   ],
   exports: [PlatformErrorsService],
 })

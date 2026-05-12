@@ -40,6 +40,13 @@ export class AiUsageService {
     endpoint: AiEndpoint
     model: string
     usage: AnthropicUsageBlock | null | undefined
+    /** true för bakgrundsanrop som ingår i baspriset (morning insights,
+     *  OCR, hyresgäst-AI, kontraktsskanning, bankavstämning). false eller
+     *  utelämnad för manuella anrop som räknas mot månadens tak. */
+    isAutomated?: boolean
+    /** Subtyp för observabilitet: 'manual_chat', 'morning_insights',
+     *  'ocr_invoice', 'contract_scan', 'tenant_chat', 'bank_match'. */
+    source?: string
   }): Promise<void> {
     if (!args.usage) {
       this.logger.warn(
@@ -80,6 +87,8 @@ export class AiUsageService {
           outputTokens: cost.outputTokens,
           costUsd: cost.costUsd,
           costSek: cost.costSek,
+          isAutomated: args.isAutomated ?? false,
+          source: args.source ?? null,
         },
       })
     } catch (err) {

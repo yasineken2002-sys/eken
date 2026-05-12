@@ -17,8 +17,8 @@ import { get } from '@/lib/api'
 interface TopOrg {
   id: string
   name: string
-  plan: 'TRIAL' | 'BASIC' | 'STANDARD' | 'PREMIUM'
-  status: 'ACTIVE' | 'SUSPENDED' | 'CANCELLED'
+  plan: 'TRIAL' | 'STARTER' | 'MINI' | 'STANDARD' | 'PLUS' | 'PRO'
+  status: 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED'
   propertyCount: number
   tenantCount: number
   userCount: number
@@ -26,9 +26,11 @@ interface TopOrg {
 
 const PLAN_COLORS: Record<string, string> = {
   TRIAL: '#F59E0B',
-  BASIC: '#9CA3AF',
+  STARTER: '#9CA3AF',
+  MINI: '#6B7280',
   STANDARD: '#3B82F6',
-  PREMIUM: '#10B981',
+  PLUS: '#6366F1',
+  PRO: '#10B981',
 }
 
 export function StatsPage() {

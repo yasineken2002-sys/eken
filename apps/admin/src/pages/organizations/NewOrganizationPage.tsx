@@ -185,9 +185,11 @@ export function NewOrganizationPage() {
                 onChange={(e) => onChange('plan', e.target.value)}
               >
                 <option value="TRIAL">Trial</option>
-                <option value="BASIC">Basic</option>
+                <option value="STARTER">Starter</option>
+                <option value="MINI">Mini</option>
                 <option value="STANDARD">Standard</option>
-                <option value="PREMIUM">Premium</option>
+                <option value="PLUS">Plus</option>
+                <option value="PRO">Pro</option>
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">

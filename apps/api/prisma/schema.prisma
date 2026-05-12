@@ -313,17 +313,27 @@ enum NotificationType {
 
 // ─── Platform / SaaS enums ────────────────────────────────────────────────────
 
-enum PlatformPlan {
-  TRIAL
-  BASIC
-  STANDARD
-  PREMIUM
+// SaaS-plan. Bestämmer maxObjects (hyresobjekt), månadsavgift (exkl moms)
+// och månatligt tak för MANUELLA AI-anrop. Automatiska anrop (morning
+// insights, OCR, hyresgäst-AI, kontraktsskanning) räknas EJ mot taket
+// utan ingår i baspriset. PLAN_LIMITS i packages/shared definierar siffrorna.
+enum SubscriptionPlan {
+  TRIAL      // 30 dagar, 100 AI-anrop
+  STARTER    // 390 kr/mån, 1-5 obj, 200 anrop
+  MINI       // 990 kr/mån, 6-15 obj, 500 anrop
+  STANDARD   // 2 490 kr/mån, 16-50 obj, 2 000 anrop
+  PLUS       // 4 990 kr/mån, 51-150 obj, 5 000 anrop
+  PRO        // 9 990 kr/mån, 151-300 obj, 20 000 anrop
 }
 
-enum OrganizationStatus {
-  ACTIVE
-  SUSPENDED
-  CANCELLED
+// Faktureringsstatus för organisationen. Driver tillgång till plattformen:
+// SUSPENDED och CANCELLED blockerar alla autentiserade endpoints.
+enum OrgStatus {
+  TRIAL      // Trial-period aktiv (default vid signup)
+  ACTIVE     // Betalande kund
+  PAST_DUE   // Försenad betalning — varning men ej blockerad
+  SUSPENDED  // Pausad pga utebliven betalning — data finns kvar 60 dagar
+  CANCELLED  // Avslutad — markerad för radering
 }
 
 enum PlatformInvoiceStatus {
@@ -405,11 +415,20 @@ model Organization {
   collectionAgencyName   String? // fritext: namn på fastighetsägarens valda inkassobolag
 
   // Platform / SaaS-fält
-  plan               PlatformPlan       @default(TRIAL)
-  status             OrganizationStatus @default(ACTIVE)
+  // subscriptionPlan styr maxObjects + AI-anropstak; status styr åtkomst.
+  // PLAN_LIMITS i @eken/shared mappar plan → siffror.
+  subscriptionPlan   SubscriptionPlan @default(TRIAL)
+  status             OrgStatus        @default(TRIAL)
+  planStartedAt      DateTime         @default(now())
   trialEndsAt        DateTime?
   billingEmail       String?
-  monthlyFee         Decimal            @default(0) @db.Decimal(10, 2)
+  // Månadsavgift exkl moms, snapshotat när plan väljs. Vi behåller en kopia
+  // på Organization istället för att enbart lita på PLAN_LIMITS så att
+  // historiska planbyten kan reproduceras (om vi någonsin justerar prislistan).
+  planMonthlyFee     Decimal          @default(0) @db.Decimal(10, 2)
+  // Köpta extra AI-credits (1 kr/anrop exkl moms). Dras automatiskt
+  // när organisationen passerar plan-taket på manuella anrop.
+  aiCreditsBalance   Int              @default(0)
   suspendedAt        DateTime?
   cancellationReason String?
 
@@ -449,7 +468,7 @@ model Organization {
 
   @@index([orgNumber])
   @@index([status])
-  @@index([plan])
+  @@index([subscriptionPlan])
 }
 
 // ─── User ─────────────────────────────────────────────────────────────────────
@@ -1230,6 +1249,14 @@ model AiUsageLog {
   outputTokens     Int      @default(0)
   costUsd          Decimal  @db.Decimal(10, 6)
   costSek          Decimal  @db.Decimal(10, 4)
+  // isAutomated=true: anropet utlöstes av schemalagd automation (morning
+  // insights, OCR, kontraktsskanning, tenant-AI, bankavstämning). Räknas
+  // EJ mot månadens manuella anropstak — kostnaden ingår i baspriset.
+  // isAutomated=false: anropet kommer från admin via AiPage / chat.
+  isAutomated      Boolean  @default(false)
+  // Subtyp för observabilitet: 'manual_chat', 'morning_insights',
+  // 'ocr_invoice', 'contract_scan', 'tenant_chat', 'bank_match'…
+  source           String?
   createdAt        DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -1237,6 +1264,7 @@ model AiUsageLog {
   tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, createdAt])
+  @@index([organizationId, isAutomated, createdAt])
   @@index([userId, createdAt])
   @@index([tenantId, createdAt])
 }

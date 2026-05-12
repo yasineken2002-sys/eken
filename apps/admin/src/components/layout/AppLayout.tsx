@@ -5,6 +5,7 @@ import {
   Receipt,
   AlertTriangle,
   BarChart3,
+  Brain,
   Settings,
   LogOut,
   Menu,
@@ -26,6 +27,7 @@ const navItems = [
   { to: '/billing', label: 'Fakturor', icon: Receipt },
   { to: '/errors', label: 'Fel-logg', icon: AlertTriangle, showBadge: true },
   { to: '/stats', label: 'Statistik', icon: BarChart3 },
+  { to: '/ai-usage', label: 'AI-användning', icon: Brain },
   { to: '/settings', label: 'Inställningar', icon: Settings },
 ]
 

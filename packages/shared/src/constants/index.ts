@@ -112,3 +112,6 @@ export const STATUS_TO_EVENT: Partial<Record<InvoiceStatus, InvoiceEventType>> =
   OVERDUE: 'invoice.overdue',
   VOID: 'invoice.voided',
 }
+
+// SaaS-plans & AI-anropstak. Definitionen ligger i plans.ts för läsbarhet.
+export * from './plans'

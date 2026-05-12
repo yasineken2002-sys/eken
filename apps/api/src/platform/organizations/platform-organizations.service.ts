@@ -10,8 +10,8 @@ import { PrismaService } from '../../common/prisma/prisma.service'
 import { normalizeEmail } from '../../common/utils/normalize-email'
 import type { CreateOrganizationDto, UpdateOrganizationDto } from './dto/platform-organization.dto'
 
-type OrgStatus = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED'
-type OrgPlan = 'TRIAL' | 'BASIC' | 'STANDARD' | 'PREMIUM'
+type OrgStatus = 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED'
+type OrgPlan = 'TRIAL' | 'STARTER' | 'MINI' | 'STANDARD' | 'PLUS' | 'PRO'
 
 export interface PlatformOrganizationListItem {
   id: string
@@ -54,7 +54,7 @@ export class PlatformOrganizationsService {
       ]
     }
     if (params.status) where['status'] = params.status
-    if (params.plan) where['plan'] = params.plan
+    if (params.plan) where['subscriptionPlan'] = params.plan
 
     const [total, rows] = await Promise.all([
       this.prisma.organization.count({ where }),
@@ -121,10 +121,12 @@ export class PlatformOrganizationsService {
         postalCode: org.postalCode,
         country: org.country,
       },
-      plan: org.plan,
+      plan: org.subscriptionPlan,
       status: org.status,
       trialEndsAt: org.trialEndsAt?.toISOString() ?? null,
-      monthlyFee: Number(org.monthlyFee),
+      planStartedAt: org.planStartedAt.toISOString(),
+      monthlyFee: Number(org.planMonthlyFee),
+      aiCreditsBalance: org.aiCreditsBalance,
       billingEmail: org.billingEmail,
       suspendedAt: org.suspendedAt?.toISOString() ?? null,
       cancellationReason: org.cancellationReason,
@@ -163,6 +165,9 @@ export class PlatformOrganizationsService {
     const plan = dto.plan ?? 'TRIAL'
     const trialEndsAt =
       plan === 'TRIAL' ? new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000) : null
+    // Plan på TRIAL → status TRIAL, annars ACTIVE. Plattforms-admin
+    // skapar oftast direktkonton (förbetald) — sätt ACTIVE där.
+    const status = plan === 'TRIAL' ? 'TRIAL' : 'ACTIVE'
 
     const org = await this.prisma.organization.create({
       data: {
@@ -175,11 +180,11 @@ export class PlatformOrganizationsService {
         city: dto.city,
         postalCode: dto.postalCode,
         country: dto.country ?? 'SE',
-        plan,
-        status: 'ACTIVE',
+        subscriptionPlan: plan,
+        status,
         ...(trialEndsAt ? { trialEndsAt } : {}),
         ...(billingEmail ? { billingEmail } : {}),
-        ...(dto.monthlyFee !== undefined ? { monthlyFee: dto.monthlyFee } : {}),
+        ...(dto.monthlyFee !== undefined ? { planMonthlyFee: dto.monthlyFee } : {}),
       },
     })
 
@@ -216,9 +221,12 @@ export class PlatformOrganizationsService {
     if (dto.city !== undefined) data['city'] = dto.city
     if (dto.postalCode !== undefined) data['postalCode'] = dto.postalCode
     if (dto.country !== undefined) data['country'] = dto.country
-    if (dto.plan !== undefined) data['plan'] = dto.plan
+    if (dto.plan !== undefined) {
+      data['subscriptionPlan'] = dto.plan
+      data['planStartedAt'] = new Date()
+    }
     if (dto.billingEmail !== undefined) data['billingEmail'] = dto.billingEmail
-    if (dto.monthlyFee !== undefined) data['monthlyFee'] = dto.monthlyFee
+    if (dto.monthlyFee !== undefined) data['planMonthlyFee'] = dto.monthlyFee
 
     if (dto.trialDays !== undefined) {
       data['trialEndsAt'] = new Date(Date.now() + dto.trialDays * 24 * 60 * 60 * 1000)
@@ -280,10 +288,10 @@ export class PlatformOrganizationsService {
     name: string
     orgNumber: string | null
     email: string
-    plan: OrgPlan
+    subscriptionPlan: OrgPlan
     status: OrgStatus
     trialEndsAt: Date | null
-    monthlyFee: unknown
+    planMonthlyFee: unknown
     billingEmail: string | null
     createdAt: Date
     updatedAt: Date
@@ -294,10 +302,10 @@ export class PlatformOrganizationsService {
       name: r.name,
       orgNumber: r.orgNumber,
       email: r.email,
-      plan: r.plan,
+      plan: r.subscriptionPlan,
       status: r.status,
       trialEndsAt: r.trialEndsAt?.toISOString() ?? null,
-      monthlyFee: Number(r.monthlyFee),
+      monthlyFee: Number(r.planMonthlyFee),
       billingEmail: r.billingEmail,
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),

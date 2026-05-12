@@ -41,6 +41,8 @@ import { PlatformModule } from './platform/platform.module'
 import { StorageModule } from './storage/storage.module'
 import { OcrModule } from './common/ocr/ocr.module'
 import { RedisModule } from './common/redis/redis.module'
+import { AiUsagePageModule } from './ai-usage/ai-usage.module'
+import { PublicPlansModule } from './public/public-plans.module'
 
 @Module({
   imports: [
@@ -111,6 +113,8 @@ import { RedisModule } from './common/redis/redis.module'
     NewsModule,
     MessagesModule,
     PlatformModule,
+    AiUsagePageModule,
+    PublicPlansModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: UserOrIpThrottlerGuard }, GlobalExceptionFilter],
 })

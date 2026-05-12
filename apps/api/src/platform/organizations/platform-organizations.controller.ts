@@ -35,8 +35,8 @@ export class PlatformOrganizationsController {
   @ApiOperation({ summary: 'Lista alla organisationer med filter' })
   list(
     @Query('search') search?: string,
-    @Query('status') status?: 'ACTIVE' | 'SUSPENDED' | 'CANCELLED',
-    @Query('plan') plan?: 'TRIAL' | 'BASIC' | 'STANDARD' | 'PREMIUM',
+    @Query('status') status?: 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED',
+    @Query('plan') plan?: 'TRIAL' | 'STARTER' | 'MINI' | 'STANDARD' | 'PLUS' | 'PRO',
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {

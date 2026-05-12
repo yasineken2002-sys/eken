@@ -18,6 +18,7 @@ import { validateSwedishOrgNumber } from '../common/validators/swedish-org-numbe
 import { normalizeEmail } from '../common/utils/normalize-email'
 import type { JwtPayload, TokenPair } from '@eken/shared'
 import type { LoginInput } from '@eken/shared'
+import { TRIAL_DAYS } from '@eken/shared'
 
 const MAX_LOGIN_ATTEMPTS = 10
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000 // 15 minuter
@@ -105,6 +106,11 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, 12)
 
+    // Trial: 30 dagars gratisperiod. Sätts vid signup och kontrolleras av
+    // ai-usage-notifier-cronen — vid utgång byts status till PAST_DUE +
+    // utskickad uppgraderingspåminnelse.
+    const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
+
     const org = await this.prisma.organization.create({
       data: {
         name: dto.organizationName,
@@ -118,6 +124,10 @@ export class AuthService {
         street: '',
         city: '',
         postalCode: '',
+        subscriptionPlan: 'TRIAL',
+        status: 'TRIAL',
+        trialEndsAt,
+        planStartedAt: new Date(),
       },
     })
 
@@ -137,6 +147,39 @@ export class AuthService {
         role: 'OWNER',
       },
     })
+
+    // Välkomstmejl — fire-and-forget. Får aldrig blockera signup-flödet.
+    void this.mail
+      .enqueue({
+        template: 'custom',
+        priority: 'high',
+        to: email,
+        subject: 'Välkommen till Eveno — din 30-dagars trial är aktiv',
+        props: {
+          preview: 'Din Eveno-trial är aktiv i 30 dagar',
+          tenantName: dto.firstName,
+          organizationName: 'Eveno',
+          whyReceived: 'Du fick det här mejlet eftersom du nyss skapade ett konto på Eveno.',
+          bodyHtml: `
+            <h1 style="color:#111827;font-size:22px;margin:0 0 16px;">Välkommen, ${dto.firstName}!</h1>
+            <p>Ditt konto för <strong>${dto.organizationName}</strong> är klart och din 30-dagars gratis trial är aktiv.</p>
+            <p>Under trial-perioden får du:</p>
+            <ul>
+              <li>Tillgång till alla funktioner i Eveno</li>
+              <li>100 AI-anrop per månad</li>
+              <li>Obegränsat antal hyresobjekt</li>
+            </ul>
+            <p>Din trial löper ut <strong>${trialEndsAt.toLocaleDateString('sv-SE')}</strong>. Inga betalningsuppgifter krävs förrän du själv väljer en plan.</p>
+            <p>Hör av dig om du behöver hjälp att komma igång — vi svarar inom 24 timmar.</p>
+          `,
+        },
+        idempotencyKey: `welcome-${org.id}`,
+      })
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `Kunde inte skicka välkomstmejl till ${email}: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      )
 
     const tokens = await this.issueTokens(
       user.id,

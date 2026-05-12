@@ -10,8 +10,8 @@ import { OrgStatusBadge, PlanBadge } from '@/components/ui/Badge'
 import { get } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/format'
 
-type Status = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED'
-type Plan = 'TRIAL' | 'BASIC' | 'STANDARD' | 'PREMIUM'
+type Status = 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED'
+type Plan = 'TRIAL' | 'STARTER' | 'MINI' | 'STANDARD' | 'PLUS' | 'PRO'
 
 interface OrgListItem {
   id: string
@@ -85,7 +85,9 @@ export function OrganizationsPage() {
           className="w-40"
         >
           <option value="">Alla statusar</option>
+          <option value="TRIAL">Trial</option>
           <option value="ACTIVE">Aktiv</option>
+          <option value="PAST_DUE">Förfallen</option>
           <option value="SUSPENDED">Suspenderad</option>
           <option value="CANCELLED">Avslutad</option>
         </Select>
@@ -96,9 +98,11 @@ export function OrganizationsPage() {
         >
           <option value="">Alla planer</option>
           <option value="TRIAL">Trial</option>
-          <option value="BASIC">Basic</option>
+          <option value="STARTER">Starter</option>
+          <option value="MINI">Mini</option>
           <option value="STANDARD">Standard</option>
-          <option value="PREMIUM">Premium</option>
+          <option value="PLUS">Plus</option>
+          <option value="PRO">Pro</option>
         </Select>
       </div>
 

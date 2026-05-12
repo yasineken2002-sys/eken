@@ -10,6 +10,7 @@ import { BillingPage } from '@/pages/BillingPage'
 import { ErrorsPage } from '@/pages/ErrorsPage'
 import { StatsPage } from '@/pages/StatsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { AiUsagePage } from '@/pages/AiUsagePage'
 
 function ProtectedShell() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -30,6 +31,7 @@ export function App() {
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/errors" element={<ErrorsPage />} />
           <Route path="/stats" element={<StatsPage />} />
+          <Route path="/ai-usage" element={<AiUsagePage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -188,7 +188,15 @@ export function DashboardPage() {
                         </div>
                         <div className="mt-0.5 flex items-center gap-2">
                           <PlanBadge
-                            plan={e.data.plan as 'TRIAL' | 'BASIC' | 'STANDARD' | 'PREMIUM'}
+                            plan={
+                              e.data.plan as
+                                | 'TRIAL'
+                                | 'STARTER'
+                                | 'MINI'
+                                | 'STANDARD'
+                                | 'PLUS'
+                                | 'PRO'
+                            }
                           />
                           <span className="text-[11.5px] text-gray-500">
                             {relativeTime(e.timestamp)}

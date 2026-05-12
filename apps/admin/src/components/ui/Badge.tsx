@@ -25,24 +25,41 @@ export function Badge({ tone = 'default', children }: { tone?: Tone; children: R
   )
 }
 
-export function PlanBadge({ plan }: { plan: 'TRIAL' | 'BASIC' | 'STANDARD' | 'PREMIUM' }) {
-  const map: Record<typeof plan, Tone> = {
+export type AdminPlan = 'TRIAL' | 'STARTER' | 'MINI' | 'STANDARD' | 'PLUS' | 'PRO'
+export type AdminOrgStatus = 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED'
+
+export function PlanBadge({ plan }: { plan: AdminPlan }) {
+  const map: Record<AdminPlan, Tone> = {
     TRIAL: 'warning',
-    BASIC: 'default',
+    STARTER: 'default',
+    MINI: 'default',
     STANDARD: 'info',
-    PREMIUM: 'success',
+    PLUS: 'info',
+    PRO: 'success',
   }
-  return <Badge tone={map[plan]}>{plan}</Badge>
+  const label: Record<AdminPlan, string> = {
+    TRIAL: 'Trial',
+    STARTER: 'Starter',
+    MINI: 'Mini',
+    STANDARD: 'Standard',
+    PLUS: 'Plus',
+    PRO: 'Pro',
+  }
+  return <Badge tone={map[plan]}>{label[plan]}</Badge>
 }
 
-export function OrgStatusBadge({ status }: { status: 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' }) {
-  const label: Record<typeof status, string> = {
+export function OrgStatusBadge({ status }: { status: AdminOrgStatus }) {
+  const label: Record<AdminOrgStatus, string> = {
+    TRIAL: 'Trial',
     ACTIVE: 'Aktiv',
+    PAST_DUE: 'Förfallen',
     SUSPENDED: 'Suspenderad',
     CANCELLED: 'Avslutad',
   }
-  const tone: Record<typeof status, Tone> = {
+  const tone: Record<AdminOrgStatus, Tone> = {
+    TRIAL: 'info',
     ACTIVE: 'success',
+    PAST_DUE: 'warning',
     SUSPENDED: 'warning',
     CANCELLED: 'danger',
   }

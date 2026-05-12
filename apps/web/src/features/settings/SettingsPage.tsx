@@ -36,6 +36,7 @@ import { PasswordInput } from '@/features/auth/components/PasswordInput'
 import { useOrganization, useUpdateOrganization, useUploadLogo } from './hooks/useSettings'
 import { clearAiMemory } from '@/features/ai/api/ai.api'
 import { UsersPanel } from '@/features/users/UsersPanel'
+import { PlanPanel } from './components/PlanPanel'
 import { useAuthStore } from '@/stores/auth.store'
 import { get, del } from '@/lib/api'
 import type { Route } from '@/App'
@@ -45,10 +46,11 @@ interface Props {
   onNavigate: (r: Route) => void
 }
 
-type SettingsTab = 'general' | 'security' | 'users'
+type SettingsTab = 'general' | 'plan' | 'security' | 'users'
 
 const TABS: { id: SettingsTab; label: string; ownerOnly?: boolean }[] = [
   { id: 'general', label: 'Allmänt' },
+  { id: 'plan', label: 'Plan och AI' },
   { id: 'security', label: 'Säkerhet' },
   { id: 'users', label: 'Användare' },
 ]
@@ -317,6 +319,12 @@ export function SettingsPage({ onNavigate }: Props) {
       {tab === 'users' && (
         <div className="mt-5">
           <UsersPanel />
+        </div>
+      )}
+
+      {tab === 'plan' && (
+        <div className="mt-5">
+          <PlanPanel />
         </div>
       )}
 

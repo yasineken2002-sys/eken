@@ -1,81 +1,137 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../../common/prisma/prisma.service'
-import { AiUsageService } from './ai-usage.service'
+import { PLAN_LIMITS, getMonthStart, getNextResetAt } from '@eken/shared'
+import type { SubscriptionPlan } from '@eken/shared'
 
+/**
+ * Plan-baserad AI-anropsräknare. Ersätter den tidigare kostnadsbaserade
+ * SEK-budgeten med en räknare på MANUELLA AI-anrop per kalendermånad.
+ *
+ * Räknaren omfattar ENDAST anrop med isAutomated=false (admin via AiPage
+ * eller chat). Automatiska anrop — morning insights, OCR, kontrakts-
+ * skanning, hyresgäst-AI, bankavstämning — räknas inte alls och kan
+ * aldrig blockeras av denna service. Det är ett medvetet beslut:
+ * automatik är en del av baspriset och får inte stoppas av prisstrul.
+ *
+ * Workflow innan varje manuellt AI-anrop:
+ *   1. Hämta org.subscriptionPlan + aiCreditsBalance
+ *   2. Räkna manuella anrop denna månad
+ *   3. Om över PLAN_LIMITS[plan].monthlyAiCalls:
+ *      - Om aiCreditsBalance > 0: tillåt och dra 1 credit
+ *      - Annars: kasta BadRequestException
+ */
 @Injectable()
 export class AiQuotaService {
   private readonly logger = new Logger(AiQuotaService.name)
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly usage: AiUsageService,
-    private readonly config: ConfigService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Hämta organisationens månads-budget i SEK. Bygger på Organization.plan
-   * (default standard-tier 100 SEK, OWNER-tier 1 000 SEK).
+   * Kasta BadRequestException om organisationen nått sitt månadstak och inte
+   * har några credits kvar. Anropas FÖRE varje manuellt AI-anrop.
    *
-   * Konfigurerbart via env för enkel justering utan migration:
-   *   AI_QUOTA_STANDARD_SEK (default 100)
-   *   AI_QUOTA_OWNER_SEK (default 1000)
+   * Om taket är nått men credits finns: drar 1 credit och tillåter anropet.
+   * Returnerar { creditUsed: true } i så fall så att callsiten kan logga.
    */
-  async getMonthlyBudgetSek(organizationId: string): Promise<number> {
+  async checkQuota(organizationId: string): Promise<{ creditUsed: boolean }> {
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { plan: true },
+      select: {
+        subscriptionPlan: true,
+        aiCreditsBalance: true,
+        status: true,
+      },
     })
-    if (!org) return 0
-
-    const ownerBudget = Number(this.config.get<string | number>('AI_QUOTA_OWNER_SEK', 1000))
-    const standardBudget = Number(this.config.get<string | number>('AI_QUOTA_STANDARD_SEK', 100))
-
-    // PlatformPlan-enum: TRIAL, BASIC, STANDARD, PREMIUM. PREMIUM-kunder
-    // får "owner-tier" budget, övriga standard.
-    return org.plan === 'PREMIUM' ? ownerBudget : standardBudget
-  }
-
-  /**
-   * Kasta BadRequestException om månadens kostnad överskrider budgeten.
-   * Anropas innan varje AI-anrop. Hård gräns — när taket nås blockeras
-   * alla AI-anrop tills nästa månadsskifte.
-   */
-  async checkQuota(organizationId: string): Promise<void> {
-    const [used, budget] = await Promise.all([
-      this.usage.getMonthlyCostSek(organizationId),
-      this.getMonthlyBudgetSek(organizationId),
-    ])
-
-    if (budget <= 0) {
-      // Defensivt: om budgeten på något sätt är 0 (saknad org) blockeras allt.
-      throw new BadRequestException('AI-kvoten är inte konfigurerad. Kontakta administratören.')
+    if (!org) {
+      throw new BadRequestException('Organisationen kunde inte hittas.')
     }
 
-    if (used >= budget) {
-      this.logger.warn(
-        `AI-kvota överskriden för org ${organizationId}: ${used.toFixed(2)} / ${budget.toFixed(2)} SEK`,
-      )
+    if (org.status === 'SUSPENDED' || org.status === 'CANCELLED') {
       throw new BadRequestException(
-        `AI-kvoten för innevarande månad är förbrukad (${used.toFixed(0)} av ${budget.toFixed(0)} kr). Kontakta supporten för att höja kvoten.`,
+        'Ditt konto är pausat. Kontakta supporten för att återaktivera.',
       )
     }
+
+    const plan = org.subscriptionPlan as SubscriptionPlan
+    const limit = PLAN_LIMITS[plan]
+    if (!limit) {
+      throw new BadRequestException('Ogiltig plan-konfiguration. Kontakta supporten.')
+    }
+
+    const used = await this.countManualCallsThisMonth(organizationId)
+
+    if (used < limit.monthlyAiCalls) {
+      return { creditUsed: false }
+    }
+
+    // Över taket — försök använda en credit
+    if (org.aiCreditsBalance > 0) {
+      await this.prisma.organization.update({
+        where: { id: organizationId },
+        data: { aiCreditsBalance: { decrement: 1 } },
+      })
+      this.logger.log(
+        `Org ${organizationId} över tak (${used}/${limit.monthlyAiCalls}) — drog 1 credit (saldo nu ${org.aiCreditsBalance - 1})`,
+      )
+      return { creditUsed: true }
+    }
+
+    this.logger.warn(
+      `Org ${organizationId} blockerad: ${used} manuella anrop, tak ${limit.monthlyAiCalls}, 0 credits`,
+    )
+    throw new BadRequestException(
+      'Du har använt alla AI-frågor för denna månad. Köp extra credits eller uppgradera din plan i Inställningar.',
+    )
   }
 
   /**
-   * Returnerar status så UI:t kan visa "85 av 100 kr använt denna månad".
+   * Aktuell status för UI. Visar inte automatiska anrop — bara manuella.
    */
   async getStatus(organizationId: string) {
-    const [used, budget] = await Promise.all([
-      this.usage.getMonthlyCostSek(organizationId),
-      this.getMonthlyBudgetSek(organizationId),
-    ])
-    return {
-      usedSek: used,
-      budgetSek: budget,
-      remainingSek: Math.max(0, budget - used),
-      percentUsed: budget > 0 ? Math.round((used / budget) * 100) : 0,
-      blocked: used >= budget,
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        subscriptionPlan: true,
+        aiCreditsBalance: true,
+        trialEndsAt: true,
+        status: true,
+        planStartedAt: true,
+        planMonthlyFee: true,
+      },
+    })
+    if (!org) {
+      throw new BadRequestException('Organisationen kunde inte hittas.')
     }
+
+    const plan = org.subscriptionPlan as SubscriptionPlan
+    const limit = PLAN_LIMITS[plan]
+    const used = await this.countManualCallsThisMonth(organizationId)
+    const percentage = limit.monthlyAiCalls > 0 ? (used / limit.monthlyAiCalls) * 100 : 0
+
+    return {
+      plan,
+      planName: limit.name,
+      status: org.status,
+      used,
+      limit: limit.monthlyAiCalls,
+      percentage: Math.round(percentage * 100) / 100,
+      resetsAt: getNextResetAt().toISOString(),
+      creditsBalance: org.aiCreditsBalance,
+      trialEndsAt: org.trialEndsAt?.toISOString() ?? null,
+      planStartedAt: org.planStartedAt.toISOString(),
+      monthlyFee: Number(org.planMonthlyFee),
+      maxObjects: limit.maxObjects,
+    }
+  }
+
+  /** Endast manuella anrop denna kalendermånad. */
+  private async countManualCallsThisMonth(organizationId: string): Promise<number> {
+    return this.prisma.aiUsageLog.count({
+      where: {
+        organizationId,
+        isAutomated: false,
+        createdAt: { gte: getMonthStart() },
+      },
+    })
   }
 }

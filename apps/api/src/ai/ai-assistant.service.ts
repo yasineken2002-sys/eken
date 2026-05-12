@@ -762,6 +762,8 @@ export class AiAssistantService {
           endpoint: 'chat',
           model: AI_MODELS.CHAT,
           usage: response.usage,
+          isAutomated: false,
+          source: 'manual_chat',
         })
         .catch((err: unknown) => this.logger.warn('logUsage(chat) failed', err))
       return response
@@ -1129,7 +1131,7 @@ export class AiAssistantService {
   // ── Proactive insights ─────────────────────────────────────────────────────
 
   async generateDailyInsights(organizationId: string): Promise<string> {
-    await this.quota.checkQuota(organizationId)
+    // Automatiskt anrop — ingen tak-kontroll. Morning insights ingår i baspriset.
     const dataCtx = await this.dataContext.buildContext(organizationId)
     const response = await this.client.messages.create({
       model: AI_MODELS.ANALYSIS,
@@ -1149,6 +1151,8 @@ export class AiAssistantService {
         endpoint: 'daily-insights',
         model: AI_MODELS.ANALYSIS,
         usage: response.usage,
+        isAutomated: true,
+        source: 'morning_insights',
       })
       .catch((err: unknown) => this.logger.warn('logUsage(daily-insights) failed', err))
 

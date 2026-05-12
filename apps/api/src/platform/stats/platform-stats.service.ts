@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { PLAN_ORDER } from '@eken/shared'
 
 @Injectable()
 export class PlatformStatsService {
@@ -11,13 +12,13 @@ export class PlatformStatsService {
         this.prisma.organization.count(),
         this.prisma.organization.count({ where: { status: 'ACTIVE' } }),
         this.prisma.organization.count({ where: { status: 'SUSPENDED' } }),
-        this.prisma.organization.count({ where: { plan: 'TRIAL' } }),
+        this.prisma.organization.count({ where: { status: 'TRIAL' } }),
         this.prisma.platformInvoice.aggregate({
           _sum: { amount: true },
           where: { status: 'PAID' },
         }),
         this.prisma.organization.aggregate({
-          _sum: { monthlyFee: true },
+          _sum: { planMonthlyFee: true },
           where: { status: 'ACTIVE' },
         }),
         this.prisma.errorLog.count({ where: { severity: 'CRITICAL', resolved: false } }),
@@ -29,7 +30,7 @@ export class PlatformStatsService {
       suspendedOrgs,
       trialOrgs,
       totalRevenue: Number(revenueAgg._sum.amount ?? 0),
-      mrr: Number(mrrAgg._sum.monthlyFee ?? 0),
+      mrr: Number(mrrAgg._sum.planMonthlyFee ?? 0),
       criticalErrors,
     }
   }
@@ -63,7 +64,7 @@ export class PlatformStatsService {
       this.prisma.organization.findMany({
         orderBy: { createdAt: 'desc' },
         take: limit,
-        select: { id: true, name: true, createdAt: true, plan: true },
+        select: { id: true, name: true, createdAt: true, subscriptionPlan: true },
       }),
       this.prisma.platformInvoice.findMany({
         where: { status: 'PAID' },
@@ -83,7 +84,7 @@ export class PlatformStatsService {
       ...orgs.map((o) => ({
         type: 'ORG_CREATED' as const,
         timestamp: o.createdAt.toISOString(),
-        data: { id: o.id, name: o.name, plan: o.plan },
+        data: { id: o.id, name: o.name, plan: o.subscriptionPlan },
       })),
       ...payments.map((p) => ({
         type: 'PAYMENT_RECEIVED' as const,
@@ -121,7 +122,7 @@ export class PlatformStatsService {
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
-      plan: r.plan,
+      plan: r.subscriptionPlan,
       status: r.status,
       propertyCount: r._count.properties,
       tenantCount: r._count.tenants,
@@ -131,12 +132,12 @@ export class PlatformStatsService {
 
   async planBreakdown() {
     const rows = await this.prisma.organization.groupBy({
-      by: ['plan'],
-      _count: { plan: true },
+      by: ['subscriptionPlan'],
+      _count: { subscriptionPlan: true },
     })
-    const map: Record<string, number> = { TRIAL: 0, BASIC: 0, STANDARD: 0, PREMIUM: 0 }
+    const map: Record<string, number> = Object.fromEntries(PLAN_ORDER.map((p) => [p, 0]))
     for (const row of rows) {
-      map[row.plan] = row._count.plan
+      map[row.subscriptionPlan] = row._count.subscriptionPlan
     }
     return map
   }
