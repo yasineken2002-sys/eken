@@ -127,14 +127,19 @@ export class AiUsagePageService {
     const grossSek = Math.round(pkg.priceSek * 1.25 * 100) / 100
     const invoiceNumber = await this.nextCreditInvoiceNumber()
 
+    // Beskrivningen MÅSTE börja med "<antal> " — PlatformInvoicesService.markPaid
+    // läser av credits-antalet från denna prefix när Yasin markerar fakturan
+    // som betald.
     const invoice = await this.prisma.platformInvoice.create({
       data: {
         organizationId,
         invoiceNumber,
         amount: grossSek,
-        status: 'PENDING',
-        description: `${pkg.amount} extra AI-credits (${pkg.priceSek} kr exkl moms, ${grossSek} kr inkl moms)`,
+        status: 'SENT',
+        type: 'AI_CREDITS',
+        description: `${pkg.amount} extra AI-credits (${pkg.priceSek} kr exkl moms)`,
         dueDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+        sentAt: new Date(),
       },
     })
 

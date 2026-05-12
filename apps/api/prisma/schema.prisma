@@ -337,10 +337,20 @@ enum OrgStatus {
 }
 
 enum PlatformInvoiceStatus {
-  PENDING
-  PAID
-  OVERDUE
-  VOID
+  DRAFT     // Skapad men inte skickad (Yasin redigerar)
+  SENT      // Mailad till kunden, väntar på betalning
+  PENDING   // Legacy-alias för SENT — behålls för bakåtkompatibilitet
+  PAID      // Betald (paidAt satt)
+  OVERDUE   // Förfallen och påminnelse skickad
+  VOID      // Makulerad
+}
+
+// Typ av plattformsfaktura. PLAN_FEE skapas av månadscron, AI_CREDITS
+// av buy-credits-flödet i admin, OTHER manuellt av Yasin.
+enum PlatformInvoiceType {
+  PLAN_FEE
+  AI_CREDITS
+  OTHER
 }
 
 enum ErrorSeverity {
@@ -1741,11 +1751,28 @@ model PlatformInvoice {
   id             String                @id @default(uuid())
   organizationId String
   invoiceNumber  String                @unique
+  // Belopp INKL moms (Decimal måste matcha vad UI/PDF visar som totalt).
+  // amountNetSek räknas baklänges som amount / 1.25.
   amount         Decimal               @db.Decimal(10, 2)
-  status         PlatformInvoiceStatus @default(PENDING)
+  status         PlatformInvoiceStatus @default(DRAFT)
+  type           PlatformInvoiceType   @default(OTHER)
   description    String?
   dueDate        DateTime
-  paidAt         DateTime?
+  // För PLAN_FEE: vilken månad fakturan gäller (1:a → sista). Används i PDF.
+  planPeriodStart DateTime?
+  planPeriodEnd   DateTime?
+  // Audit-tidsstämplar
+  sentAt          DateTime?
+  paidAt          DateTime?
+  // Betalningsdetaljer (anges av Yasin när han markerar fakturan betald)
+  // BANKGIRO | SWISH | MANUAL
+  paymentMethod    String?
+  paymentReference String?
+  // Interna anteckningar — visas inte i PDF
+  notes            String?
+  // Antal påminnelser som skickats. Cron-jobb sätter; UI visar.
+  reminderCount    Int @default(0)
+  lastReminderAt   DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1754,7 +1781,9 @@ model PlatformInvoice {
 
   @@index([organizationId])
   @@index([status])
+  @@index([type])
   @@index([dueDate])
+  @@index([planPeriodStart])
 }
 
 model ImpersonationLog {

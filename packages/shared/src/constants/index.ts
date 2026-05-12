@@ -115,3 +115,6 @@ export const STATUS_TO_EVENT: Partial<Record<InvoiceStatus, InvoiceEventType>> =
 
 // SaaS-plans & AI-anropstak. Definitionen ligger i plans.ts för läsbarhet.
 export * from './plans'
+
+// Plattformens juridiska identitet + versionsmärkta dokument
+export * from './platform'
