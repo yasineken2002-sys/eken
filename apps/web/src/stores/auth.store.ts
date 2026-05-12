@@ -7,6 +7,11 @@ export interface AuthOrg {
   id: string
   name: string
   orgNumber: string | null
+  // Version av Användarvillkor + Integritetspolicy som organisationen
+  // senast accepterat. null = legacy-konto (innan acceptance-fältet
+  // fanns) eller färska konton vars version blivit lägre än
+  // CURRENT_TERMS_VERSION. Frontend visar re-acceptance-modal då.
+  termsVersion: string | null
 }
 
 export interface AuthResponse {
@@ -24,6 +29,7 @@ interface AuthState {
   isAuthenticated: boolean
   setAuth: (response: AuthResponse) => void
   setTokens: (accessToken: string, refreshToken: string) => void
+  setOrgTermsVersion: (version: string) => void
   clearAuth: () => void
   logout: () => void // alias for clearAuth — used by Axios interceptor
   getAccessToken: () => string | null
@@ -45,6 +51,13 @@ export const useAuthStore = create<AuthState>()(
       },
 
       setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
+
+      setOrgTermsVersion: (version) =>
+        set((state) =>
+          state.organization
+            ? { organization: { ...state.organization, termsVersion: version } }
+            : state,
+        ),
 
       clearAuth: () => {
         Sentry.setUser(null)

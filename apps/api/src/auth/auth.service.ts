@@ -18,7 +18,7 @@ import { validateSwedishOrgNumber } from '../common/validators/swedish-org-numbe
 import { normalizeEmail } from '../common/utils/normalize-email'
 import type { JwtPayload, TokenPair } from '@eken/shared'
 import type { LoginInput } from '@eken/shared'
-import { TRIAL_DAYS } from '@eken/shared'
+import { TRIAL_DAYS, CURRENT_TERMS_VERSION } from '@eken/shared'
 
 const MAX_LOGIN_ATTEMPTS = 10
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000 // 15 minuter
@@ -39,6 +39,9 @@ interface RegisterPayload {
   hasFSkatt?: boolean
   fSkattApprovedDate?: string
   vatNumber?: string
+  // Måste vara true. DTO-lagret validerar med @Equals(true) men vi
+  // dubbelkollar i service:en så att inget request-flöde kan kringgå det.
+  acceptTerms: boolean
 }
 
 export interface AuthUser {
@@ -55,6 +58,11 @@ export interface AuthOrganization {
   id: string
   name: string
   orgNumber: string | null
+  // Snapshot av den juridiska version som organisationen senast accepterat.
+  // Frontend jämför med CURRENT_TERMS_VERSION och visar re-acceptance-modal
+  // om versionen är lägre. Null = legacy-konto innan dessa fält fanns,
+  // behandlas som "behöver acceptera".
+  termsVersion: string | null
 }
 
 export interface AuthResponse extends TokenPair {
@@ -75,6 +83,13 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterPayload): Promise<AuthResponse> {
+    // Defense-in-depth: även om DTO-validering avvisat acceptTerms=false
+    // kontrollerar vi en gång till. Vi får aldrig spara en användare som
+    // inte aktivt godkänt villkoren — det är en GDPR-bevisbördekrav.
+    if (dto.acceptTerms !== true) {
+      throw new BadRequestException('Du måste acceptera Användarvillkor och Integritetspolicy')
+    }
+
     // Normalisera direkt på input — alla downstream-skrivningar och ev.
     // jämförelser ska se samma kanoniska form.
     const email = normalizeEmail(dto.email)
@@ -128,6 +143,11 @@ export class AuthService {
         status: 'TRIAL',
         trialEndsAt,
         planStartedAt: new Date(),
+        // Snapshot:a versionen för hela organisationen vid signup. När
+        // CURRENT_TERMS_VERSION höjs visar inloggningsflödet en
+        // re-acceptance-modal tills den nya versionen bekräftats.
+        termsAcceptedAt: new Date(),
+        termsVersion: CURRENT_TERMS_VERSION,
       },
     })
 
@@ -145,6 +165,11 @@ export class AuthService {
         firstName: dto.firstName,
         lastName: dto.lastName,
         role: 'OWNER',
+        // Spara även på User-nivå — på sikt kan organisationer ha flera
+        // användare där var och en accepterar sin egen version. För
+        // OWNER:n vid signup är det samma version som org-snapshoten.
+        acceptedTermsAt: new Date(),
+        termsVersion: CURRENT_TERMS_VERSION,
       },
     })
 
@@ -171,6 +196,14 @@ export class AuthService {
             </ul>
             <p>Din trial löper ut <strong>${trialEndsAt.toLocaleDateString('sv-SE')}</strong>. Inga betalningsuppgifter krävs förrän du själv väljer en plan.</p>
             <p>Hör av dig om du behöver hjälp att komma igång — vi svarar inom 24 timmar.</p>
+            <p style="margin-top:24px;padding-top:16px;border-top:1px solid #eaedf0;color:#6b7280;font-size:13px;">
+              Genom att skapa kontot har du accepterat våra
+              <a href="https://eveno.se/legal/villkor" style="color:#2563eb;">Användarvillkor</a>
+              och
+              <a href="https://eveno.se/legal/integritet" style="color:#2563eb;">Integritetspolicy</a>
+              (version ${CURRENT_TERMS_VERSION}). Du kan när som helst läsa dem på
+              eveno.se/legal/villkor.
+            </p>
           `,
         },
         idempotencyKey: `welcome-${org.id}`,
@@ -199,7 +232,12 @@ export class AuthService {
         organizationId: user.organizationId,
         mustChangePassword: user.mustChangePassword,
       },
-      organization: { id: org.id, name: org.name, orgNumber: org.orgNumber ?? null },
+      organization: {
+        id: org.id,
+        name: org.name,
+        orgNumber: org.orgNumber ?? null,
+        termsVersion: org.termsVersion ?? null,
+      },
     }
   }
 
@@ -262,6 +300,7 @@ export class AuthService {
         id: user.organization.id,
         name: user.organization.name,
         orgNumber: user.organization.orgNumber ?? null,
+        termsVersion: user.organization.termsVersion ?? null,
       },
     }
   }
@@ -320,8 +359,41 @@ export class AuthService {
         id: user.organization.id,
         name: user.organization.name,
         orgNumber: user.organization.orgNumber ?? null,
+        termsVersion: user.organization.termsVersion ?? null,
       },
     }
+  }
+
+  // ── Re-acceptance av juridiska dokument ──────────────────────────────────
+
+  /**
+   * Användaren bekräftar att hen accepterar den nya versionen av
+   * Användarvillkor och Integritetspolicy. Kallas från re-acceptance-modalen
+   * i frontend när Organization.termsVersion är lägre än
+   * CURRENT_TERMS_VERSION i @eken/shared. Vi snapshot:ar versionen både på
+   * User- och Organization-nivå så att vi har en revision för individen och
+   * för bolaget.
+   */
+  async acceptTerms(
+    userId: string,
+    organizationId: string,
+    version: string,
+  ): Promise<{ termsVersion: string; acceptedAt: string }> {
+    if (version !== CURRENT_TERMS_VERSION) {
+      throw new BadRequestException(`Förväntad version ${CURRENT_TERMS_VERSION}, mottog ${version}`)
+    }
+    const acceptedAt = new Date()
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { acceptedTermsAt: acceptedAt, termsVersion: version },
+      }),
+      this.prisma.organization.update({
+        where: { id: organizationId },
+        data: { termsAcceptedAt: acceptedAt, termsVersion: version },
+      }),
+    ])
+    return { termsVersion: version, acceptedAt: acceptedAt.toISOString() }
   }
 
   // ── Lösenord & inbjudan ─────────────────────────────────────────────────────

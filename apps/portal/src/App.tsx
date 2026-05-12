@@ -13,6 +13,9 @@ import { ActivatePage } from '@/pages/ActivatePage/ActivatePage'
 import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage/ForgotPasswordPage'
 import { ResetPasswordPage } from '@/pages/ResetPasswordPage/ResetPasswordPage'
 import { PrivacyPage } from '@/pages/PrivacyPage/PrivacyPage'
+import { TermsPage as LegalTermsPage } from '@/pages/legal/TermsPage'
+import { PrivacyPage as LegalPrivacyPage } from '@/pages/legal/PrivacyPage'
+import { CookiesPage as LegalCookiesPage } from '@/pages/legal/CookiesPage'
 
 export function App() {
   return (
@@ -24,9 +27,16 @@ export function App() {
         <Route path="/activate" element={<ActivatePage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        {/* Bakåtkompatibla alias för den gamla hyresgäst-specifika
+            integritetspolicyn. Nya länkar pekar på /legal/*-paths nedan. */}
         <Route path="/integritet" element={<PrivacyPage />} />
         <Route path="/integritetspolicy" element={<PrivacyPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
+
+        {/* Kanoniska legal-paths — samma URL:er som apps/web exponerar */}
+        <Route path="/legal/villkor" element={<LegalTermsPage />} />
+        <Route path="/legal/integritet" element={<LegalPrivacyPage />} />
+        <Route path="/legal/cookies" element={<LegalCookiesPage />} />
 
         {/* Skyddade routes — allt innanför kräver aktiv session */}
         <Route

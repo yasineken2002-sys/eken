@@ -383,9 +383,46 @@ export function AppLayout({ route, onNavigate, children }: Props) {
           </header>
 
           {/* Page */}
-          <main className="scrollbar-thin flex-1 overflow-y-auto">{children}</main>
+          <main className="scrollbar-thin flex-1 overflow-y-auto">
+            {children}
+            <AppFooter onNavigate={onNavigate} />
+          </main>
         </div>
       </div>
     </div>
+  )
+}
+
+function AppFooter({ onNavigate }: { onNavigate: (r: Route) => void }) {
+  const year = new Date().getFullYear()
+  return (
+    <footer className="border-t border-gray-100 bg-white/60 px-6 py-4">
+      <div className="flex flex-col items-center justify-between gap-2 text-[12px] text-gray-500 sm:flex-row">
+        <p>© {year} Eveno AB</p>
+        <div className="flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            onClick={() => onNavigate('legal-villkor')}
+            className="transition-colors hover:text-gray-900"
+          >
+            Användarvillkor
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('legal-integritet')}
+            className="transition-colors hover:text-gray-900"
+          >
+            Integritetspolicy
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('legal-cookies')}
+            className="transition-colors hover:text-gray-900"
+          >
+            Cookies
+          </button>
+        </div>
+      </div>
+    </footer>
   )
 }

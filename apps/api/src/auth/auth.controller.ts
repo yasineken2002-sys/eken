@@ -12,6 +12,7 @@ import { ChangePasswordDto } from './dto/change-password.dto'
 import { ForgotPasswordDto } from './dto/forgot-password.dto'
 import { ResetPasswordDto } from './dto/reset-password.dto'
 import { AcceptInviteDto } from './dto/accept-invite.dto'
+import { AcceptTermsDto } from './dto/accept-terms.dto'
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -70,6 +71,18 @@ export class AuthController {
           }
         : null,
     }
+  }
+
+  @Post('accept-terms')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Bekräfta att den inloggade användaren accepterar aktuell version av' +
+      ' Användarvillkor och Integritetspolicy. Sätter både User.acceptedTermsAt' +
+      ' och Organization.termsAcceptedAt.',
+  })
+  async acceptTerms(@CurrentUser() user: JwtPayload, @Body() dto: AcceptTermsDto) {
+    return this.auth.acceptTerms(user.sub, user.organizationId, dto.version)
   }
 
   // ── Lösenordshantering ───────────────────────────────────────────────────────

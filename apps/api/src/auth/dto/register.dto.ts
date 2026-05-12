@@ -7,6 +7,7 @@ import {
   IsDateString,
   MinLength,
   MaxLength,
+  Equals,
 } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { CompanyForm } from '@prisma/client'
@@ -64,4 +65,15 @@ export class RegisterDto {
   @IsOptional()
   @IsIn(['COMPANY', 'PRIVATE'])
   accountType?: string
+
+  // ─── Acceptans av juridiska dokument ─────────────────────────────────────
+  // literal(true) — avvisa allt utom exakt true. Detta är ett juridiskt krav
+  // för att kunna bevisa att användaren aktivt godkänt villkoren vid signup
+  // (jfr. GDPR art. 7.1 om bevisbörda för samtycke).
+  @ApiProperty({ description: 'Måste vara true för att signup ska lyckas' })
+  @IsBoolean()
+  @Equals(true, {
+    message: 'Du måste acceptera Användarvillkor och Integritetspolicy',
+  })
+  acceptTerms!: boolean
 }

@@ -442,6 +442,16 @@ model Organization {
   suspendedAt        DateTime?
   cancellationReason String?
 
+  // ─── Acceptans av plattformens juridiska dokument ─────────────────────
+  // Org-nivå-acceptans används av re-acceptance-modalen: när
+  // CURRENT_TERMS_VERSION i @eken/shared höjs visas modalen för alla
+  // OWNER/ADMIN-användare i organisationen tills de bekräftat. Denna
+  // koll är separat från User.acceptedTermsAt — användarens egen
+  // acceptans gäller vid signup, medan org-acceptansen rör senare
+  // versionsbyten som binder hela bolaget.
+  termsAcceptedAt    DateTime?
+  termsVersion       String?
+
   users              User[]
   properties         Property[]
   tenants            Tenant[]
@@ -504,6 +514,16 @@ model User {
   // framåt och inga försök släpps förrän klockan passerat.
   loginAttempts       Int       @default(0)
   lockedUntil         DateTime?
+
+  // ─── Acceptans av juridiska dokument ───────────────────────────────────
+  // Sätts när användaren bockat i "Jag accepterar Användarvillkor och
+  // Integritetspolicy" vid registrering. termsVersion snapshot:as från
+  // CURRENT_TERMS_VERSION i @eken/shared så att vi kan se exakt vilken
+  // version användaren godkänt. Båda fälten är nullable för befintliga
+  // konton — vid nästa inloggning visas re-acceptance-modalen om
+  // versionen är lägre än CURRENT_TERMS_VERSION.
+  acceptedTermsAt     DateTime?
+  termsVersion        String?
 
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   refreshTokens       RefreshToken[]

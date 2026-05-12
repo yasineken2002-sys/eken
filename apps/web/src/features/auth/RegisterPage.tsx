@@ -12,7 +12,7 @@ import { registerApi } from './api/auth.api'
 import { passwordSchema } from './lib/password-schema'
 import { PasswordRequirements } from './components/PasswordRequirements'
 import { useAuthStore } from '@/stores/auth.store'
-import { COMPANY_FORM_OPTIONS, validateSwedishOrgNumber } from '@eken/shared'
+import { COMPANY_FORM_OPTIONS, LEGAL_PATHS, validateSwedishOrgNumber } from '@eken/shared'
 import type { SwedishCompanyForm } from '@eken/shared'
 import type { Route } from '@/App'
 
@@ -37,6 +37,14 @@ const schema = z
     hasFSkatt: z.boolean().default(false),
     fSkattApprovedDate: z.string().optional(),
     vatNumber: z.string().optional(),
+    // Användarvillkor + Integritetspolicy — literal(true) gör att form-state
+    // inte kan submittas utan att kryssrutan klickats. Custom error message
+    // visas direkt under checkboxen.
+    acceptTerms: z.literal(true, {
+      errorMap: () => ({
+        message: 'Du måste acceptera Användarvillkor och Integritetspolicy',
+      }),
+    }),
   })
   .superRefine(({ password, confirmPassword }, ctx) => {
     if (password !== confirmPassword) {
@@ -221,6 +229,7 @@ export function RegisterPage({ onNavigate }: Props) {
         // mappas till PRIVATE, övriga former till COMPANY.
         accountType: data.companyForm === 'ENSKILD_FIRMA' ? 'PRIVATE' : 'COMPANY',
         hasFSkatt: data.hasFSkatt,
+        acceptTerms: true,
         ...(data.orgNumber ? { orgNumber: data.orgNumber } : {}),
         ...(data.hasFSkatt && data.fSkattApprovedDate
           ? { fSkattApprovedDate: data.fSkattApprovedDate }
@@ -458,6 +467,45 @@ export function RegisterPage({ onNavigate }: Props) {
                           {...register('vatNumber')}
                         />
                       </div>
+                    )}
+                  </div>
+
+                  {/* Acceptans-checkbox — krävs både av frontend-schemat och
+                      backend-DTO. Länkarna öppnar i ny flik så att användaren
+                      inte tappar formuläret. */}
+                  <div className="rounded-xl border border-[#E5E7EB] bg-gray-50/50 p-3.5">
+                    <label className="flex cursor-pointer items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500/30"
+                        {...register('acceptTerms')}
+                      />
+                      <span className="text-[13px] leading-relaxed text-gray-700">
+                        Jag accepterar Evenos{' '}
+                        <a
+                          href={LEGAL_PATHS.terms}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium text-blue-600 hover:underline"
+                        >
+                          Användarvillkor
+                        </a>{' '}
+                        och{' '}
+                        <a
+                          href={LEGAL_PATHS.privacy}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium text-blue-600 hover:underline"
+                        >
+                          Integritetspolicy
+                        </a>
+                        .
+                      </span>
+                    </label>
+                    {errors.acceptTerms && (
+                      <p className="mt-2 pl-[26px] text-[12px] text-red-600">
+                        {errors.acceptTerms.message}
+                      </p>
                     )}
                   </div>
 

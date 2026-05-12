@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { AppLayout } from './components/layout/AppLayout'
 import { CookieBanner } from './components/CookieBanner'
-import { PrivacyPage } from './features/privacy/PrivacyPage'
+import { PrivacyPage as LegalPrivacyPage } from './features/legal/PrivacyPage'
+import { TermsPage as LegalTermsPage } from './features/legal/TermsPage'
+import { CookiesPage as LegalCookiesPage } from './features/legal/CookiesPage'
+import { TermsReacceptanceModal } from './features/legal/TermsReacceptanceModal'
+import { CURRENT_TERMS_VERSION } from '@eken/shared'
 import { LoginPage } from './features/auth/LoginPage'
 import { RegisterPage } from './features/auth/RegisterPage'
 import { ChangePasswordPage } from './features/auth/ChangePasswordPage'
@@ -44,6 +48,9 @@ export type Route =
   | 'reset-password'
   | 'accept-invite'
   | 'privacy'
+  | 'legal-villkor'
+  | 'legal-integritet'
+  | 'legal-cookies'
   | 'dashboard'
   | 'properties'
   | 'units'
@@ -76,6 +83,9 @@ const PUBLIC_ROUTES: Route[] = [
   'reset-password',
   'accept-invite',
   'privacy',
+  'legal-villkor',
+  'legal-integritet',
+  'legal-cookies',
 ]
 
 // Check if current URL is a tenant portal route
@@ -94,8 +104,13 @@ function readInitialAuthRoute(): { route: Route; token: string | null } | null {
   if (path === '/accept-invite' || path === '/auth/accept-invite') {
     return { route: 'accept-invite', token }
   }
+  // Nya kanoniska paths under /legal/. Behåll gamla /integritet och /privacy
+  // som permanenta alias så att gamla mejl-länkar fortsätter fungera.
+  if (path === '/legal/villkor') return { route: 'legal-villkor', token: null }
+  if (path === '/legal/integritet') return { route: 'legal-integritet', token: null }
+  if (path === '/legal/cookies') return { route: 'legal-cookies', token: null }
   if (path === '/integritet' || path === '/integritetspolicy' || path === '/privacy') {
-    return { route: 'privacy', token: null }
+    return { route: 'legal-integritet', token: null }
   }
   return null
 }
@@ -104,6 +119,11 @@ const INITIAL_AUTH_ROUTE = readInitialAuthRoute()
 export function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const mustChangePassword = useAuthStore((s) => s.user?.mustChangePassword === true)
+  // null behandlas som "behöver acceptera" — det fångar både legacy-konton
+  // utan version och nyare konton vars version blivit lägre än aktuell.
+  const orgTermsVersion = useAuthStore((s) => s.organization?.termsVersion ?? null)
+  const needsTermsReacceptance =
+    isAuthenticated && !mustChangePassword && orgTermsVersion !== CURRENT_TERMS_VERSION
 
   // Tenant portal — no auth needed
   if (INITIAL_TENANT_TOKEN) {
@@ -134,8 +154,11 @@ export function App() {
     }
   }, [isAuthenticated, mustChangePassword, route])
 
-  if (route === 'privacy')
-    return <PrivacyPage onBack={() => setRoute(isAuthenticated ? 'dashboard' : 'login')} />
+  const onLegalBack = () => setRoute(isAuthenticated ? 'dashboard' : 'login')
+  if (route === 'privacy' || route === 'legal-integritet')
+    return <LegalPrivacyPage onBack={onLegalBack} />
+  if (route === 'legal-villkor') return <LegalTermsPage onBack={onLegalBack} />
+  if (route === 'legal-cookies') return <LegalCookiesPage onBack={onLegalBack} />
   if (route === 'login')
     return (
       <>
@@ -190,10 +213,14 @@ export function App() {
     'reset-password': null,
     'accept-invite': null,
     privacy: null,
+    'legal-villkor': null,
+    'legal-integritet': null,
+    'legal-cookies': null,
   }[route]
 
   return (
     <AppLayout route={route} onNavigate={setRoute}>
+      {needsTermsReacceptance && <TermsReacceptanceModal onAccepted={() => {}} />}
       <AnimatePresence mode="wait">{page}</AnimatePresence>
     </AppLayout>
   )

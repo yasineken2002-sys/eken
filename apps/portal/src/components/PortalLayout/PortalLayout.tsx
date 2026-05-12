@@ -1,7 +1,21 @@
 import { useEffect, useState } from 'react'
-import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { Link, Outlet, NavLink, useLocation } from 'react-router-dom'
 import { TenantAiChat, TenantAiFab } from '@/features/ai/TenantAiChat'
 import styles from './PortalLayout.module.css'
+
+function PortalFooter() {
+  const year = new Date().getFullYear()
+  return (
+    <footer className={styles.footer}>
+      <p className={styles.footerCopy}>© {year} Eveno AB</p>
+      <div className={styles.footerLinks}>
+        <Link to="/legal/villkor">Användarvillkor</Link>
+        <Link to="/legal/integritet">Integritetspolicy</Link>
+        <Link to="/legal/cookies">Cookies</Link>
+      </div>
+    </footer>
+  )
+}
 
 function HemIcon() {
   return (
@@ -131,6 +145,7 @@ export function PortalLayout() {
     <div className={styles.shell}>
       <main className={styles.main}>
         <Outlet />
+        <PortalFooter />
       </main>
 
       <TenantAiFab onClick={() => setAiOpen(true)} hidden={aiOpen} />

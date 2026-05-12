@@ -7,7 +7,7 @@ const STORAGE_KEY = 'eveno-cookies-consent'
 type Consent = 'accepted' | 'necessary-only'
 
 interface Props {
-  onNavigate?: (route: 'privacy') => void
+  onNavigate?: (route: 'privacy' | 'legal-integritet' | 'legal-cookies') => void
 }
 
 export function CookieBanner({ onNavigate }: Props) {
@@ -51,7 +51,7 @@ export function CookieBanner({ onNavigate }: Props) {
                     {' '}
                     <button
                       type="button"
-                      onClick={() => onNavigate('privacy')}
+                      onClick={() => onNavigate('legal-integritet')}
                       className="font-medium text-blue-600 hover:underline"
                     >
                       Läs vår integritetspolicy

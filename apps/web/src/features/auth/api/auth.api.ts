@@ -24,6 +24,9 @@ export interface RegisterInput {
   hasFSkatt?: boolean
   fSkattApprovedDate?: string
   vatNumber?: string
+  // Måste vara true. Backend avvisar utan detta fält — sätts av
+  // RegisterPage när användaren bockat i acceptansrutan.
+  acceptTerms: true
 }
 
 export async function loginApi(dto: LoginInput): Promise<AuthResponse> {
