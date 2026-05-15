@@ -76,17 +76,23 @@ export type Route =
   | 'news'
   | 'messages'
 
-const PUBLIC_ROUTES: Route[] = [
+// Juridiska sidor är publika men informativa — en inloggad användare som
+// öppnar dem (t.ex. via re-acceptance-modalens länkar i ny flik) ska INTE
+// bouncas vidare till dashboard, utan få läsa innehållet.
+const LEGAL_ROUTES: Route[] = ['privacy', 'legal-villkor', 'legal-integritet', 'legal-cookies']
+
+// Auth-flöden: nåbara utan inloggning, men en redan inloggad användare som
+// hamnar här ska skickas vidare till dashboard (login/register är meningslösa).
+const AUTH_FLOW_ROUTES: Route[] = [
   'login',
   'register',
   'forgot-password',
   'reset-password',
   'accept-invite',
-  'privacy',
-  'legal-villkor',
-  'legal-integritet',
-  'legal-cookies',
 ]
+
+// Alla routes som inte kräver inloggning för att visas.
+const PUBLIC_ROUTES: Route[] = [...AUTH_FLOW_ROUTES, ...LEGAL_ROUTES]
 
 // Check if current URL is a tenant portal route
 const tenantPortalMatch = window.location.pathname.match(/^\/portal\/(.+)$/)
@@ -145,7 +151,7 @@ export function App() {
     if (!isAuthenticated && !PUBLIC_ROUTES.includes(route) && route !== 'change-password') {
       setRoute('login')
     }
-    if (isAuthenticated && PUBLIC_ROUTES.includes(route)) {
+    if (isAuthenticated && AUTH_FLOW_ROUTES.includes(route)) {
       setRoute(mustChangePassword ? 'change-password' : 'dashboard')
     }
     // Tvinga password-byte: blockera all annan navigation tills användaren bytt.
