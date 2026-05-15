@@ -2,10 +2,12 @@ import {
   IsDateString,
   IsEnum,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   Min,
 } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
@@ -55,6 +57,19 @@ export class UpdatePlatformInvoiceStatusDto {
   @ApiProperty({ enum: INVOICE_STATUSES })
   @IsEnum(INVOICE_STATUSES)
   status!: (typeof INVOICE_STATUSES)[number]
+}
+
+export class BackfillDto {
+  @ApiProperty({ description: 'År (>= 2025)', example: 2026 })
+  @IsInt()
+  @Min(2025)
+  year!: number
+
+  @ApiProperty({ description: 'Månad 1-12', example: 3 })
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  month!: number
 }
 
 export class MarkPaidDto {

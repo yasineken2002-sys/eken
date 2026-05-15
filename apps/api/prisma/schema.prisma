@@ -441,6 +441,14 @@ model Organization {
   aiCreditsBalance   Int              @default(0)
   suspendedAt        DateTime?
   cancellationReason String?
+  // Sista trial-påminnelsen som skickats, i kvarvarande dagar (7/3/1).
+  // Idempotensnyckel för sendTrialEndingReminders så att samma steg inte
+  // mailas två gånger.
+  lastTrialReminderDays Int?
+  // Hård spärr mot plattformsfakturering. Sätts manuellt på test-,
+  // intern- och friends&family-konton. Respekteras i ALLA
+  // genereringsvägar (månadscron, backfill, manuell trigger).
+  excludeFromBilling Boolean @default(false)
 
   // ─── Acceptans av plattformens juridiska dokument ─────────────────────
   // Org-nivå-acceptans används av re-acceptance-modalen: när
@@ -1793,6 +1801,10 @@ model PlatformInvoice {
   // Antal påminnelser som skickats. Cron-jobb sätter; UI visar.
   reminderCount    Int @default(0)
   lastReminderAt   DateTime?
+  // Senaste felmeddelandet från send() — sätts när auto-send (eller manuell
+  // send) misslyckas, nollställs vid lyckat utskick. Gör att en faktura som
+  // skapats men inte kunnat mailas kan felsökas och skickas om från UI.
+  lastSendError    String?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 

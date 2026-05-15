@@ -18,6 +18,7 @@ import { Public } from '../../common/decorators/public.decorator'
 import { PlatformGuard } from '../auth/platform.guard'
 import { PlatformInvoicesService } from './platform-invoices.service'
 import {
+  BackfillDto,
   CreatePlatformInvoiceDto,
   MarkPaidDto,
   UpdatePlatformInvoiceDto,
@@ -122,5 +123,32 @@ export class PlatformInvoicesController {
   @ApiOperation({ summary: 'Trigga månadscron manuellt (för admin/test)' })
   triggerMonthlyCron() {
     return this.svc.createMonthlyInvoices()
+  }
+
+  @Get('cron/monthly/preview')
+  @ApiOperation({ summary: 'Förhandsvisa vilka organisationer som faktureras' })
+  previewMonthly(@Query('year') year?: string, @Query('month') month?: string) {
+    return this.svc.previewForPeriod(
+      year ? parseInt(year, 10) : undefined,
+      month ? parseInt(month, 10) : undefined,
+    )
+  }
+
+  @Post('cron/monthly/backfill')
+  @ApiOperation({ summary: 'Skapa fakturor för en missad månad (backfill)' })
+  backfill(@Body() dto: BackfillDto) {
+    return this.svc.backfillForPeriod(dto.year, dto.month)
+  }
+
+  @Post('cron/trials/convert')
+  @ApiOperation({ summary: 'Trigga trial-konvertering manuellt (för admin/test)' })
+  triggerTrialConversion() {
+    return this.svc.convertExpiredTrials()
+  }
+
+  @Post('cron/trials/reminders')
+  @ApiOperation({ summary: 'Trigga trial-påminnelser manuellt (för admin/test)' })
+  triggerTrialReminders() {
+    return this.svc.sendTrialEndingReminders()
   }
 }

@@ -2,14 +2,18 @@ import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
+  AlertTriangle,
+  CalendarClock,
   CheckCircle2,
   CreditCard,
   FileText,
   Plus,
+  RefreshCw,
   Send,
   Trash2,
   Wallet,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -62,6 +66,30 @@ interface Stats {
   mrrSek: number
 }
 
+interface MonthlyPreview {
+  period: { start: string; end: string; label: string }
+  eligible: number
+  alreadyInvoiced: number
+  expectedNetTotal: number
+  expectedGrossTotal: number
+  autoSend: boolean
+  orgs: {
+    id: string
+    name: string
+    plan: string
+    planMonthlyFee: number
+    alreadyHasInvoice: boolean
+  }[]
+}
+
+interface GenerationResult {
+  created: number
+  sent: number
+  failed: number
+  skipped: number
+  failures: string[]
+}
+
 type TabFilter = 'all' | 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE'
 
 const TABS: { id: TabFilter; label: string }[] = [
@@ -106,9 +134,24 @@ function TypeBadge({ type }: { type: InvoiceType }) {
 export function BillingPage() {
   const [tab, setTab] = useState<TabFilter>('all')
   const [createOpen, setCreateOpen] = useState(false)
+  const [generateMode, setGenerateMode] = useState<'now' | 'backfill' | null>(null)
+  const [failures, setFailures] = useState<string[] | null>(null)
   const [markPaidInvoice, setMarkPaidInvoice] = useState<Invoice | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Invoice | null>(null)
   const qc = useQueryClient()
+
+  const handleGenerationResult = (r: GenerationResult) => {
+    setGenerateMode(null)
+    qc.invalidateQueries({ queryKey: ['platform', 'invoices'] })
+    const summary = `${r.created} skapade, ${r.sent} skickade, ${r.skipped} hoppade över, ${r.failed} misslyckade`
+    if (r.failed > 0 || r.failures.length > 0) {
+      toast.error(`Fakturagenerering klar med fel: ${summary}`, {
+        action: { label: 'Visa detaljer', onClick: () => setFailures(r.failures) },
+      })
+    } else {
+      toast.success(`Fakturagenerering klar: ${summary}`)
+    }
+  }
 
   const params = useMemo(() => {
     const p: Record<string, string | number> = { pageSize: 200 }
@@ -145,9 +188,17 @@ export function BillingPage() {
         title="Plattformsfakturor"
         description="Fakturor som Eveno skickar till sina kunder"
         action={
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus size={14} /> Skapa ny faktura
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => setGenerateMode('backfill')}>
+              <CalendarClock size={14} /> Skapa missade fakturor
+            </Button>
+            <Button variant="secondary" onClick={() => setGenerateMode('now')}>
+              <RefreshCw size={14} /> Generera fakturor nu
+            </Button>
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus size={14} /> Skapa ny faktura
+            </Button>
+          </div>
         }
       />
 
@@ -356,6 +407,27 @@ export function BillingPage() {
         <p className="text-[13px] text-gray-700">
           Är du säker på att du vill radera faktura <strong>{confirmDelete?.invoiceNumber}</strong>?
         </p>
+      </Modal>
+
+      <GenerationModal
+        mode={generateMode}
+        onClose={() => setGenerateMode(null)}
+        onDone={handleGenerationResult}
+      />
+
+      <Modal
+        open={failures !== null}
+        onClose={() => setFailures(null)}
+        title="Fel vid fakturagenerering"
+        size="lg"
+      >
+        <ul className="max-h-[50vh] space-y-1.5 overflow-y-auto text-[12.5px]">
+          {failures?.map((f, i) => (
+            <li key={i} className="rounded-lg bg-red-50 px-3 py-2 text-red-700">
+              {f}
+            </li>
+          ))}
+        </ul>
       </Modal>
     </>
   )
@@ -618,6 +690,207 @@ function MarkPaidModal({
           </div>
         </div>
       )}
+    </Modal>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
+const MONTHS_SV = [
+  'Januari',
+  'Februari',
+  'Mars',
+  'April',
+  'Maj',
+  'Juni',
+  'Juli',
+  'Augusti',
+  'September',
+  'Oktober',
+  'November',
+  'December',
+]
+
+function GenerationModal({
+  mode,
+  onClose,
+  onDone,
+}: {
+  mode: 'now' | 'backfill' | null
+  onClose: () => void
+  onDone: (r: GenerationResult) => void
+}) {
+  const open = mode !== null
+  const now = new Date()
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const [year, setYear] = useState(prev.getFullYear())
+  const [month, setMonth] = useState(prev.getMonth() + 1)
+
+  const years: number[] = []
+  for (let y = 2025; y <= now.getFullYear(); y += 1) years.push(y)
+
+  const previewParams =
+    mode === 'backfill' ? { year, month } : (undefined as Record<string, number> | undefined)
+
+  const preview = useQuery({
+    queryKey: [
+      'platform',
+      'invoices',
+      'preview',
+      mode,
+      mode === 'backfill' ? year : null,
+      mode === 'backfill' ? month : null,
+    ],
+    queryFn: () => get<MonthlyPreview>('/platform/invoices/cron/monthly/preview', previewParams),
+    enabled: open,
+  })
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      mode === 'backfill'
+        ? post<GenerationResult>('/platform/invoices/cron/monthly/backfill', { year, month })
+        : post<GenerationResult>('/platform/invoices/cron/monthly', {}),
+    onSuccess: (r) => onDone(r),
+  })
+
+  const p = preview.data
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={mode === 'backfill' ? 'Skapa missade fakturor' : 'Generera plattformsfakturor'}
+      size="lg"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={mutation.isPending}>
+            Avbryt
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            loading={mutation.isPending}
+            disabled={preview.isLoading || !!preview.error}
+          >
+            {mode === 'backfill' ? 'Skapa fakturor' : 'Generera och skicka'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {mode === 'backfill' ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Månad</Label>
+              <Select value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+                {MONTHS_SV.map((m, i) => (
+                  <option key={m} value={i + 1}>
+                    {m}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label>År</Label>
+              <Select value={year} onChange={(e) => setYear(Number(e.target.value))}>
+                {years.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+        ) : (
+          <p className="text-[13px] leading-relaxed text-gray-700">
+            Detta skapar och skickar fakturor för föregående månad
+            {p ? ` (${p.period.label})` : ''} till alla aktiva organisationer med en betald plan.
+            Organisationer med status ACTIVE och planMonthlyFee &gt; 0 påverkas. Fakturor som redan
+            finns för perioden hoppas över (idempotent). Körs annars automatiskt den 1:a varje månad
+            kl 08:00.
+          </p>
+        )}
+
+        {preview.isLoading && (
+          <div className="rounded-xl bg-gray-50 p-4 text-center text-[13px] text-gray-500">
+            Beräknar…
+          </div>
+        )}
+        {preview.error && (
+          <div className="rounded-xl bg-red-50 p-3 text-[12.5px] text-red-700">
+            Kunde inte hämta förhandsvisning. Kontrollera att perioden ligger i det förflutna.
+          </div>
+        )}
+
+        {p && (
+          <>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-xl bg-gray-50 p-3">
+                <div className="text-[11px] uppercase tracking-wide text-gray-400">Period</div>
+                <div className="mt-1 text-[13.5px] font-medium text-gray-900">{p.period.label}</div>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <div className="text-[11px] uppercase tracking-wide text-gray-400">
+                  Antal fakturor
+                </div>
+                <div className="mt-1 text-[13.5px] font-medium text-gray-900">
+                  {p.eligible} (
+                  {p.eligible === 1 ? '1 organisation' : `${p.eligible} organisationer`})
+                </div>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <div className="text-[11px] uppercase tracking-wide text-gray-400">
+                  Belopp inkl moms
+                </div>
+                <div className="mt-1 text-[13.5px] font-medium text-gray-900">
+                  {formatCurrency(p.expectedGrossTotal)}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-[12.5px]">
+              <span className="text-gray-500">Auto-utskick:</span>
+              <Badge tone={p.autoSend ? 'success' : 'default'}>
+                {p.autoSend ? 'PÅ – skickas direkt' : 'AV – skapas som utkast'}
+              </Badge>
+            </div>
+
+            {p.alreadyInvoiced > 0 && (
+              <div className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-[12.5px] text-amber-700">
+                <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                <span>
+                  OBS: {p.alreadyInvoiced} organisation(er) har redan en faktura för denna period
+                  och kommer hoppas över.
+                </span>
+              </div>
+            )}
+
+            {p.orgs.length > 0 && (
+              <div className="max-h-[28vh] overflow-y-auto rounded-xl border border-[#EAEDF0]">
+                <table className="w-full">
+                  <tbody>
+                    {p.orgs.map((o) => (
+                      <tr key={o.id} className="border-b border-[#EAEDF0] last:border-0">
+                        <td className="px-3 py-2 text-[13px]">{o.name}</td>
+                        <td className="px-3 py-2 text-[12px] text-gray-500">{o.plan}</td>
+                        <td className="px-3 py-2 text-right text-[13px] tabular-nums">
+                          {formatCurrency(o.planMonthlyFee)}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {o.alreadyHasInvoice ? (
+                            <Badge tone="default">Finns redan</Badge>
+                          ) : (
+                            <Badge tone="info">Faktureras</Badge>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </Modal>
   )
 }
