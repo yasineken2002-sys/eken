@@ -10,7 +10,8 @@ import { prefersReducedMotion } from '@/lib/motion'
 /** Scales the building down on small viewports so it stays framed. */
 function ResponsiveBuilding({ animate }: { animate: boolean }) {
   const width = useThree((s) => s.size.width)
-  const scale = width < 768 ? 0.62 : width < 1100 ? 0.82 : 1
+  // Scaled up ~40% so the building reads as present, not distant.
+  const scale = width < 768 ? 0.86 : width < 1100 ? 1.14 : 1.4
   return (
     <group scale={scale}>
       <Building animate={animate} />
@@ -28,7 +29,7 @@ export function Scene() {
 
   return (
     <Canvas
-      camera={{ position: [0, 0, 50], fov: 75, near: 0.1, far: 200 }}
+      camera={{ position: [0, 0, 26], fov: 75, near: 0.1, far: 200 }}
       dpr={[1, 1.8]}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
       frameloop="always"

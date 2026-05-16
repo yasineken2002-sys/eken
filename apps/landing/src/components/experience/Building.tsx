@@ -20,7 +20,7 @@ const COL_Z = [-2, -0.7, 0.7, 2] // columns across the depth (left/right)
 const FRONT_Z = D / 2 // +3 — the face that carries the entrance
 
 const LIT_INTENSITY = 1.5
-const LIT_PROB = 0.35 // ~35% lit at any moment
+const LIT_PROB = 0.52 // ~52% lit — the building always feels alive
 const BALCONY_RATE = 24 // ≈% of non-ground windows that get a balcony
 
 type Placement = {
@@ -33,28 +33,310 @@ type Placement = {
   floor: number
 }
 
-type WindowState = { lit: boolean; value: number; next: number }
+// One window's "apartment": which atlas scene it shows when lit, whether
+// it flickers like a TV, and a stable per-window seed for animation.
+type WindowState = {
+  lit: boolean
+  value: number
+  next: number
+  tv: boolean
+  seed: number
+}
 
 // Stable per-window pseudo-random — keeps the balcony layout identical
 // across reloads (real buildings don't rearrange their balconies).
 const hash = (i: number, f: number) => (((i * 73856093) ^ (f * 19349663)) >>> 0) % 100
 
+// ── Window-life atlas ─────────────────────────────────────────────────
+// A 5×5 grid of hand-drawn "apartment interiors": dark silhouettes on a
+// warm / cool / green lit background. One CanvasTexture, sampled per
+// instance via the `aCell` attribute → all 98 windows in ONE draw call.
+const ATLAS = 5 // 5 cols × 5 rows
+const CELL = 132 // px per cell
+
+type SceneType =
+  | 'standing'
+  | 'sitting'
+  | 'tv'
+  | 'lamp'
+  | 'plant'
+  | 'two'
+  | 'curtain'
+  | 'cat'
+  | 'empty'
+
+// Animation flag baked per cell: 0 none · 1 subtle person sway · 2 curtain.
+type Cell = { type: SceneType; flag: number }
+
+const SIL = '#05070E' // silhouette ink — reads as pure shadow
+const COOL = [108, 140, 228] // overhead electric light
+const WARM = [240, 176, 96] // lamp / candle
+const GREEN = [126, 198, 156] // TV spill
+
+/** Builds the scene atlas on a 2D canvas and returns the texture + the
+ *  per-cell type/flag table used to assign windows. Client-only. */
+function buildAtlas(): { texture: THREE.Texture; cells: Cell[] } {
+  const size = ATLAS * CELL
+  const cv = document.createElement('canvas')
+  cv.width = size
+  cv.height = size
+  const x = cv.getContext('2d')!
+
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t
+  const rgb = (c: number[], m = 1) =>
+    `rgb(${Math.round(c[0] * m)},${Math.round(c[1] * m)},${Math.round(c[2] * m)})`
+
+  // Soft lit interior: brighter toward the ceiling, dimmer at the floor.
+  const room = (ox: number, oy: number, base: number[]) => {
+    const g = x.createLinearGradient(0, oy, 0, oy + CELL)
+    g.addColorStop(0, rgb(base, 1.15))
+    g.addColorStop(0.55, rgb(base, 0.92))
+    g.addColorStop(1, rgb(base, 0.6))
+    x.fillStyle = g
+    x.fillRect(ox, oy, CELL, CELL)
+  }
+  // A glowing light source (lamp / screen).
+  const bulb = (cx: number, cy: number, r: number, col: number[]) => {
+    const g = x.createRadialGradient(cx, cy, 0, cx, cy, r)
+    g.addColorStop(0, 'rgba(255,253,245,0.95)')
+    g.addColorStop(0.4, rgb(col, 1.2))
+    g.addColorStop(1, 'rgba(0,0,0,0)')
+    x.fillStyle = g
+    x.beginPath()
+    x.arc(cx, cy, r, 0, Math.PI * 2)
+    x.fill()
+  }
+  x.fillStyle = SIL
+  const person = (ox: number, oy: number, px: number, scale = 1) => {
+    const fy = oy + CELL
+    const hw = 11 * scale // half body width
+    x.beginPath() // body
+    x.moveTo(px - hw, fy)
+    x.quadraticCurveTo(px - hw, oy + CELL * 0.42, px, oy + CELL * 0.4)
+    x.quadraticCurveTo(px + hw, oy + CELL * 0.42, px + hw, fy)
+    x.closePath()
+    x.fill()
+    x.beginPath() // head
+    x.arc(px, oy + CELL * 0.34, 9 * scale, 0, Math.PI * 2)
+    x.fill()
+  }
+
+  const draw: Record<SceneType, ((ox: number, oy: number, v: number) => void)[]> = {
+    standing: [
+      (o, p) => {
+        room(o, p, COOL)
+        person(o, p, o + CELL * 0.5, 1)
+      },
+      (o, p) => {
+        room(o, p, COOL)
+        person(o, p, o + CELL * 0.62, 0.95)
+      },
+    ],
+    sitting: [
+      (o, p) => {
+        room(o, p, COOL)
+        bulb(o + CELL * 0.66, p + CELL * 0.52, 26, COOL)
+        x.fillStyle = SIL
+        x.fillRect(o + CELL * 0.22, p + CELL * 0.5, 26, CELL * 0.5) // hunched torso
+        x.beginPath()
+        x.arc(o + CELL * 0.3, p + CELL * 0.48, 9, 0, Math.PI * 2)
+        x.fill()
+        x.fillRect(o + CELL * 0.58, p + CELL * 0.46, 22, 16) // screen
+      },
+      (o, p) => {
+        room(o, p, WARM)
+        x.fillStyle = SIL
+        x.fillRect(o + CELL * 0.3, p + CELL * 0.52, 30, CELL * 0.48)
+        x.beginPath()
+        x.arc(o + CELL * 0.36, p + CELL * 0.5, 10, 0, Math.PI * 2)
+        x.fill()
+      },
+      (o, p) => {
+        room(o, p, COOL)
+        bulb(o + CELL * 0.36, p + CELL * 0.55, 24, COOL)
+        x.fillStyle = SIL
+        x.fillRect(o + CELL * 0.5, p + CELL * 0.5, 28, CELL * 0.5)
+        x.beginPath()
+        x.arc(o + CELL * 0.57, p + CELL * 0.47, 10, 0, Math.PI * 2)
+        x.fill()
+      },
+    ],
+    tv: [
+      (o, p) => {
+        room(o, p, GREEN)
+        bulb(o + CELL * 0.5, p + CELL * 0.42, 40, GREEN)
+        x.fillStyle = SIL
+        x.fillRect(o + CELL * 0.28, p + CELL * 0.62, CELL * 0.44, CELL * 0.38) // couch
+      },
+      (o, p) => {
+        room(o, p, GREEN)
+        bulb(o + CELL * 0.46, p + CELL * 0.46, 34, GREEN)
+        x.fillStyle = SIL
+        x.fillRect(o + CELL * 0.34, p + CELL * 0.5, 24, CELL * 0.5) // viewer
+        x.beginPath()
+        x.arc(o + CELL * 0.4, p + CELL * 0.48, 9, 0, Math.PI * 2)
+        x.fill()
+      },
+    ],
+    lamp: [
+      (o, p) => {
+        room(o, p, WARM)
+        bulb(o + CELL * 0.7, p + CELL * 0.4, 30, WARM)
+      },
+      (o, p) => {
+        room(o, p, WARM)
+        bulb(o + CELL * 0.32, p + CELL * 0.46, 26, WARM)
+        x.fillStyle = SIL
+        x.fillRect(o + CELL * 0.28, p + CELL * 0.6, 6, CELL * 0.4) // lamp stand
+      },
+      (o, p) => {
+        room(o, p, WARM)
+        bulb(o + CELL * 0.6, p + CELL * 0.5, 24, WARM)
+        x.fillStyle = SIL
+        x.fillRect(o + CELL * 0.16, p + CELL * 0.58, 22, CELL * 0.42) // someone nearby
+      },
+    ],
+    plant: [
+      (o, p) => {
+        room(o, p, COOL)
+        x.fillStyle = SIL
+        x.fillRect(o + CELL * 0.42, p + CELL * 0.78, 18, CELL * 0.22) // pot
+        for (let i = 0; i < 5; i++) {
+          x.beginPath()
+          x.ellipse(
+            o + CELL * (0.5 + Math.cos(i) * 0.13),
+            p + CELL * (0.62 - i * 0.04),
+            7,
+            13,
+            i,
+            0,
+            Math.PI * 2,
+          )
+          x.fill()
+        }
+      },
+      (o, p) => {
+        room(o, p, WARM)
+        x.fillStyle = SIL
+        x.fillRect(o + CELL * 0.2, p + CELL * 0.8, 14, CELL * 0.2)
+        for (let i = 0; i < 4; i++) {
+          x.beginPath()
+          x.ellipse(o + CELL * 0.27, p + CELL * (0.7 - i * 0.06), 6, 14, 0.4 * i, 0, Math.PI * 2)
+          x.fill()
+        }
+      },
+    ],
+    two: [
+      (o, p) => {
+        room(o, p, WARM)
+        person(o, p, o + CELL * 0.34, 0.88)
+        person(o, p, o + CELL * 0.66, 0.88)
+      },
+      (o, p) => {
+        room(o, p, COOL)
+        person(o, p, o + CELL * 0.38, 0.9)
+        person(o, p, o + CELL * 0.64, 0.82)
+      },
+    ],
+    curtain: [
+      (o, p) => {
+        room(o, p, COOL)
+        for (let i = 0; i < 7; i++) {
+          x.fillStyle = `rgba(5,7,14,${i % 2 ? 0.34 : 0.16})`
+          x.fillRect(o + (CELL / 7) * i, p, CELL / 7 + 1, CELL)
+        }
+      },
+      (o, p) => {
+        room(o, p, WARM)
+        for (let i = 0; i < 6; i++) {
+          x.fillStyle = `rgba(5,7,14,${i % 2 ? 0.3 : 0.12})`
+          x.fillRect(o + (CELL / 6) * i, p, CELL / 6 + 1, CELL)
+        }
+      },
+    ],
+    cat: [
+      (o, p) => {
+        room(o, p, WARM)
+        x.fillStyle = SIL
+        x.beginPath() // loaf body
+        x.ellipse(o + CELL * 0.5, p + CELL * 0.86, 26, 15, 0, 0, Math.PI * 2)
+        x.fill()
+        x.beginPath() // head
+        x.arc(o + CELL * 0.68, p + CELL * 0.78, 11, 0, Math.PI * 2)
+        x.fill()
+        x.beginPath() // ears
+        x.moveTo(o + CELL * 0.63, p + CELL * 0.71)
+        x.lineTo(o + CELL * 0.66, p + CELL * 0.63)
+        x.lineTo(o + CELL * 0.7, p + CELL * 0.71)
+        x.fill()
+      },
+    ],
+    empty: [
+      (o, p) => room(o, p, COOL),
+      (o, p) => {
+        room(o, p, WARM)
+        x.fillStyle = 'rgba(5,7,14,0.22)'
+        x.fillRect(o + CELL * 0.15, p + CELL * 0.7, CELL * 0.35, CELL * 0.3) // shelf
+      },
+      (o, p) =>
+        room(o, p, [lerp(COOL[0], 60, 0.5), lerp(COOL[1], 70, 0.5), lerp(COOL[2], 110, 0.5)]),
+      (o, p) => room(o, p, COOL),
+    ],
+  }
+
+  // Fixed layout so the grid is full and assignment is deterministic.
+  const order: { type: SceneType; variant: number }[] = []
+  ;(Object.keys(draw) as SceneType[]).forEach((type) =>
+    draw[type].forEach((_, variant) => order.push({ type, variant })),
+  )
+  while (order.length < ATLAS * ATLAS) order.push({ type: 'empty', variant: 0 })
+
+  const cells: Cell[] = order.map(({ type, variant }, i) => {
+    const ox = (i % ATLAS) * CELL
+    const oy = Math.floor(i / ATLAS) * CELL
+    draw[type][variant](ox, oy, 0)
+    const flag =
+      type === 'curtain' ? 2 : type === 'standing' || type === 'sitting' || type === 'two' ? 1 : 0
+    return { type, flag }
+  })
+
+  const texture = new THREE.CanvasTexture(cv)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.flipY = false
+  texture.generateMipmaps = false
+  texture.minFilter = THREE.LinearFilter
+  texture.magFilter = THREE.LinearFilter
+  return { texture, cells }
+}
+
+// Scene mix (% of windows). Each window keeps its scene for the whole
+// session — its "apartment" — and shows it whenever its lights are on.
+const WEIGHTS: [SceneType, number][] = [
+  ['standing', 10],
+  ['sitting', 15],
+  ['tv', 10],
+  ['lamp', 15],
+  ['plant', 10],
+  ['two', 5],
+  ['curtain', 10],
+  ['cat', 3],
+  ['empty', 22],
+]
+
 /**
- * A 5-floor Scandinavian "hyreshus" — a recognisable apartment building,
- * not a box. Body + parapet roof + chimney + foundation plinth, windows
- * with pronounced light frames on all four faces, a recessed front
- * entrance with canopy / warm light / nameplate / flanking lamp posts,
- * and selective balconies. It sits on a static ground plane (a turntable
- * floor) while the whole "lot" rotates so every angle stays intentional.
+ * A 5-floor Scandinavian "hyreshus" you can tell people *live* in.
+ * Body + parapet roof + chimney + plinth + framed windows on all four
+ * faces + selective balconies + a recessed lit entrance, sitting on a
+ * static gridded ground while the lot rotates. Every lit window shows
+ * one of 25 apartment scenes — silhouettes of people, lamps, TVs,
+ * plants, cats, moving curtains — in cool / warm / green light.
  *
- * Performance: every window pane is ONE InstancedMesh (1 draw call) and
- * every frame another; balcony slabs + rails are one InstancedMesh each.
- * Per-window glow is a single instanced float attribute (`aGlow`)
- * injected into MeshStandardMaterial via onBeforeCompile, so the lit
- * choreography is just N float lerps + one buffer upload per frame — no
- * extra draw calls, no React re-renders. Lamps/door glow are emissive +
- * bloom (no per-light cost); a single warm point light gives the porch
- * its depth. Total well under 3k tris / ~30 draw calls → solid 60fps.
+ * Performance: every pane is ONE InstancedMesh and every frame another;
+ * the life scenes are a single CanvasTexture atlas sampled per instance
+ * via `aCell` (no extra geometry, no extra draw calls). Curtain/sway is
+ * a shader UV ripple gated by `aFlag`; TV flicker rides the existing
+ * per-window glow lerp. One `uTime` uniform / frame, zero React
+ * re-renders. ~33 draw calls, <3k tris → solid 60fps with full life.
  */
 function BuildingImpl({ animate = true }: { animate?: boolean }) {
   const groupRef = useRef<THREE.Group>(null)
@@ -62,6 +344,7 @@ function BuildingImpl({ animate = true }: { animate?: boolean }) {
   const frameRef = useRef<THREE.InstancedMesh>(null)
   const slabRef = useRef<THREE.InstancedMesh>(null)
   const railRef = useRef<THREE.InstancedMesh>(null)
+  const shaderRef = useRef<THREE.WebGLProgramParametersWithUniforms | null>(null)
 
   // Window placements, ordered front → back → right → left. The two
   // ground-floor centre slots on the front are omitted — that is where
@@ -96,51 +379,73 @@ function BuildingImpl({ animate = true }: { animate?: boolean }) {
     [placements],
   )
 
-  // Per-instance glow buffer (0 → 1.5), uploaded to the GPU each frame.
+  // The window-life atlas (client only).
+  const atlas = useMemo(() => (typeof document === 'undefined' ? null : buildAtlas()), [])
+
+  // Per-instance buffers, uploaded to the GPU.
   const glow = useMemo(() => new Float32Array(WIN_COUNT), [WIN_COUNT])
+  const cellBuf = useMemo(() => new Float32Array(WIN_COUNT), [WIN_COUNT])
+  const flagBuf = useMemo(() => new Float32Array(WIN_COUNT), [WIN_COUNT])
 
   const paneGeo = useMemo(() => {
-    const g = new THREE.BoxGeometry(1.05, 1.5, 0.1)
+    // Large glass so the scene reads; sits proud of the slim frame.
+    const g = new THREE.BoxGeometry(1.32, 1.78, 0.1)
     g.setAttribute('aGlow', new THREE.InstancedBufferAttribute(glow, 1))
+    g.setAttribute('aCell', new THREE.InstancedBufferAttribute(cellBuf, 1))
+    g.setAttribute('aFlag', new THREE.InstancedBufferAttribute(flagBuf, 1))
     return g
-  }, [glow])
-  const frameGeo = useMemo(() => new THREE.BoxGeometry(1.42, 1.92, 0.14), [])
+  }, [glow, cellBuf, flagBuf])
+  const frameGeo = useMemo(() => new THREE.BoxGeometry(1.5, 1.98, 0.06), [])
   const slabGeo = useMemo(() => new THREE.BoxGeometry(1.5, 0.12, 0.78), [])
   const railGeo = useMemo(() => new THREE.BoxGeometry(1.5, 0.56, 0.05), [])
 
+  // Window panes: emissive = sampled apartment-scene texel × per-window
+  // glow. Curtain/sway windows ripple their UV in the shader.
   const paneMat = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({
-      color: '#1F2940',
+      color: '#10182E',
       metalness: 0.2,
-      roughness: 0.35,
+      roughness: 0.4,
     })
-    m.emissive = new THREE.Color('#5B7FE0')
+    m.emissive = new THREE.Color('#ffffff')
     m.emissiveIntensity = 1
-    // Scale the emissive term by the per-instance glow attribute.
     m.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = { value: 0 }
+      shader.uniforms.uAtlas = { value: atlas?.texture ?? null }
+      // `uv` is already declared by three's attribute setup — declaring
+      // it again fails shader compile. Our instanced attrs are custom.
       shader.vertexShader =
-        'attribute float aGlow;\nvarying float vGlow;\n' +
+        'attribute float aGlow;\nattribute float aCell;\nattribute float aFlag;\n' +
+        'varying float vGlow;\nvarying float vCell;\nvarying float vFlag;\nvarying vec2 vWUv;\n' +
         shader.vertexShader.replace(
           '#include <begin_vertex>',
-          '#include <begin_vertex>\n  vGlow = aGlow;',
+          '#include <begin_vertex>\n  vGlow = aGlow;\n  vCell = aCell;\n  vFlag = aFlag;\n  vWUv = uv;',
         )
       shader.fragmentShader =
-        'varying float vGlow;\n' +
+        'varying float vGlow;\nvarying float vCell;\nvarying float vFlag;\nvarying vec2 vWUv;\n' +
+        'uniform float uTime;\nuniform sampler2D uAtlas;\n' +
         shader.fragmentShader.replace(
           'vec3 totalEmissiveRadiance = emissive;',
-          'vec3 totalEmissiveRadiance = emissive * vGlow;',
+          `vec2 _uv = clamp(vWUv, 0.0, 1.0);
+           float _amp = vFlag > 1.5 ? 0.020 : (vFlag > 0.5 ? 0.006 : 0.0);
+           _uv.x += sin(uTime * 1.5 + vCell * 2.3 + _uv.y * 6.2831) * _amp;
+           _uv = clamp(_uv, 0.0, 1.0);
+           float _N = ${ATLAS}.0;
+           vec2 _c = vec2(mod(vCell, _N), floor(vCell / _N));
+           vec2 _auv = (_c + vec2(0.04) + _uv * 0.92) / _N;
+           vec3 _interior = texture2D(uAtlas, _auv).rgb;
+           vec3 totalEmissiveRadiance = _interior * vGlow * 1.3;`,
         )
+      shaderRef.current = shader
     }
-    m.customProgramCacheKey = () => 'eveno-window-glow'
+    m.customProgramCacheKey = () => 'eveno-window-life-v2'
     return m
-  }, [])
+  }, [atlas])
 
   const bodyMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: '#0F1F47', metalness: 0.45, roughness: 0.55 }),
     [],
   )
-  // Window frames: clearly LIGHTER than the body and proud of the
-  // facade so glass reads as recessed — instant "real window".
   const frameMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: '#9AAAD0', roughness: 0.55 }),
     [],
@@ -149,13 +454,10 @@ function BuildingImpl({ animate = true }: { animate?: boolean }) {
     () => new THREE.MeshStandardMaterial({ color: '#0B1A3C', roughness: 0.6 }),
     [],
   )
-  // Roof edge / canopy / coping — a touch lighter than the body so the
-  // architecture catches the key light.
   const roofMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: '#16264F', roughness: 0.6 }),
     [],
   )
-  // Deep shadow material — recessed doorway, inset roof deck.
   const deckMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: '#070C18', roughness: 0.85 }),
     [],
@@ -168,7 +470,6 @@ function BuildingImpl({ animate = true }: { animate?: boolean }) {
     () => new THREE.MeshStandardMaterial({ color: '#1C2D58', roughness: 0.6 }),
     [],
   )
-  // Light Scandinavian balustrade — must read against the navy facade.
   const railMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: '#8C9CC4', metalness: 0.2, roughness: 0.5 }),
     [],
@@ -185,7 +486,6 @@ function BuildingImpl({ animate = true }: { animate?: boolean }) {
     () => new THREE.MeshStandardMaterial({ color: '#141C38', roughness: 0.9 }),
     [],
   )
-  // Mint glow — emissive, picked up by the bloom pass.
   const lampMat = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({ color: '#ADE0C5', roughness: 0.4 })
     m.emissive = new THREE.Color('#ADE0C5')
@@ -211,7 +511,8 @@ function BuildingImpl({ animate = true }: { animate?: boolean }) {
 
   const windowState = useRef<WindowState[]>([])
 
-  // One-time: place all instanced meshes + seed the lighting state.
+  // One-time: place all instanced meshes, assign each window an
+  // apartment scene, and seed the lighting state.
   useEffect(() => {
     const dummy = new THREE.Object3D()
 
@@ -231,20 +532,54 @@ function BuildingImpl({ animate = true }: { animate?: boolean }) {
       mesh.instanceMatrix.needsUpdate = true
     }
 
-    setInstances(paneRef.current, placements, 0.05, 0)
-    setInstances(frameRef.current, placements, 0.045, 0)
-    // Balcony slab sits below the window sill and protrudes from the
-    // facade; the rail stands at the slab's outer lip.
+    // Glass proud (front face ≈ +0.11); frame recessed behind it (≈ +0.03)
+    // so the emissive scene is never occluded by the surround.
+    setInstances(paneRef.current, placements, 0.06, 0)
+    setInstances(frameRef.current, placements, 0.0, 0)
     setInstances(slabRef.current, balconies, 0.42, -0.92)
     setInstances(railRef.current, balconies, 0.78, -0.64)
 
+    const cells = atlas?.cells ?? []
+    const cellsByType = new Map<SceneType, number[]>()
+    cells.forEach((c, idx) => {
+      const a = cellsByType.get(c.type) ?? []
+      a.push(idx)
+      cellsByType.set(c.type, a)
+    })
+    const totalW = WEIGHTS.reduce((s, [, w]) => s + w, 0)
+    const pickType = (): SceneType => {
+      let r = Math.random() * totalW
+      for (const [t, w] of WEIGHTS) {
+        r -= w
+        if (r <= 0) return t
+      }
+      return 'empty'
+    }
+
     windowState.current = placements.map((_, i) => {
+      const type = pickType()
+      const pool = cellsByType.get(type) ?? cellsByType.get('empty') ?? [0]
+      const ci = pool[(Math.random() * pool.length) | 0]
+      cellBuf[i] = ci
+      flagBuf[i] = cells[ci]?.flag ?? 0
       const lit = Math.random() < LIT_PROB
       glow[i] = lit ? LIT_INTENSITY : 0
-      return { lit, value: glow[i], next: 1 + Math.random() * 5 }
+      return {
+        lit,
+        value: glow[i],
+        next: 1 + Math.random() * 5,
+        tv: type === 'tv',
+        seed: Math.random() * 100,
+      }
     })
-    if (paneRef.current) paneRef.current.geometry.attributes.aGlow.needsUpdate = true
-  }, [placements, balconies, glow])
+
+    const geo = paneRef.current?.geometry
+    if (geo) {
+      geo.attributes.aGlow.needsUpdate = true
+      geo.attributes.aCell.needsUpdate = true
+      geo.attributes.aFlag.needsUpdate = true
+    }
+  }, [placements, balconies, glow, cellBuf, flagBuf, atlas])
 
   useFrame((state, delta) => {
     if (!animate) return
@@ -253,8 +588,11 @@ function BuildingImpl({ animate = true }: { animate?: boolean }) {
     if (group) group.rotation.y += delta * ((Math.PI * 2) / 60)
 
     const t = state.clock.elapsedTime
-    // Frame-rate-independent smoothing → ~1.5s perceptual settle.
+    if (shaderRef.current) shaderRef.current.uniforms.uTime.value = t
+
+    // Frame-rate-independent smoothing → ~1.5s settle; TVs respond fast.
     const k = 1 - Math.exp(-delta / 0.55)
+    const kTv = 1 - Math.exp(-delta / 0.07)
     const win = windowState.current
     for (let i = 0; i < win.length; i++) {
       const w = win[i]
@@ -262,8 +600,15 @@ function BuildingImpl({ animate = true }: { animate?: boolean }) {
         w.lit = Math.random() < LIT_PROB
         w.next = t + 2.5 + Math.random() * 4.5
       }
-      const target = w.lit ? LIT_INTENSITY : 0
-      w.value += (target - w.value) * k
+      let target = w.lit ? LIT_INTENSITY : 0
+      if (w.tv && w.lit) {
+        // Restless screen: fast jitter + slower scene-cut pulses.
+        const f = 0.74 + 0.2 * Math.sin(t * 12 + w.seed) + 0.12 * Math.sin(t * 31 + w.seed * 2)
+        target = LIT_INTENSITY * Math.max(0.4, f)
+        w.value += (target - w.value) * kTv
+      } else {
+        w.value += (target - w.value) * k
+      }
       glow[i] = w.value
     }
     const attr = paneRef.current?.geometry.attributes.aGlow
@@ -413,7 +758,7 @@ function BuildingImpl({ animate = true }: { animate?: boolean }) {
           args={[frameGeo, frameMat, WIN_COUNT]}
           frustumCulled={false}
         />
-        {/* Glowing panes — 1 draw call */}
+        {/* Living panes — 1 draw call, scene atlas sampled per instance */}
         <instancedMesh ref={paneRef} args={[paneGeo, paneMat, WIN_COUNT]} frustumCulled={false} />
       </group>
     </group>
