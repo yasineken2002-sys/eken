@@ -6,7 +6,7 @@ import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
 import { Act1Hero } from './Act1Hero'
-import { Act2Cards } from './Act2Cards'
+import { LiveAIChat } from './LiveAIChat'
 import { scrollState } from '@/lib/scrollStore'
 import { prefersReducedMotion } from '@/lib/motion'
 
@@ -26,8 +26,8 @@ const Scene = dynamic(() => import('./Scene').then((m) => m.Scene), {
  * progress into `scrollState` for the Phase 3 camera path.
  *
  * For Phase 2 the spacer === the full journey: page-progress 0→1 maps
- * to Act 1 (cosmic intro) → Act 2 (proof-of-life cards). Later phases
- * extend this timeline; the act windows stay stable.
+ * to Act 1 (cosmic intro) → Act 2 (live AI chat). Later phases extend
+ * this timeline; the act windows stay stable.
  */
 export function Experience() {
   const root = useRef<HTMLDivElement>(null)
@@ -41,7 +41,7 @@ export function Experience() {
     () => {
       if (reduced) {
         // Calm, static presentation — everything visible, no scrub.
-        gsap.set('.js-card', { opacity: 1, y: 0, scale: 1 })
+        gsap.set('.js-chat', { opacity: 1, y: 0, scale: 1 })
         return
       }
 
@@ -73,19 +73,14 @@ export function Experience() {
         0.12,
       )
 
-      // ── Act 2: proof-of-life cards drift in ───────────────────────
+      // ── Act 2: live AI chat fades in + gentle parallax ────────────
+      // Parallax spans the whole scroll and moves slower than the page.
+      tl.fromTo('.js-chat', { y: 46 }, { y: -46, ease: 'none', duration: 1 }, 0)
       tl.fromTo(
-        '.js-card',
-        { opacity: 0, y: 44, scale: 0.9 },
-        {
-          opacity: 1,
-          y: 0,
-          scale: 1,
-          ease: 'power3.out',
-          duration: 0.3,
-          stagger: 0.1,
-        },
-        0.42,
+        '.js-chat',
+        { opacity: 0, scale: 0.96 },
+        { opacity: 1, scale: 1, ease: 'power3.out', duration: 0.2 },
+        0.4,
       )
 
       // Pad the timeline so positions ≈ scroll fraction.
@@ -105,7 +100,7 @@ export function Experience() {
       </div>
       <div className="pointer-events-none fixed inset-0 z-10">
         <Act1Hero />
-        <Act2Cards />
+        <LiveAIChat />
       </div>
     </div>
   )
