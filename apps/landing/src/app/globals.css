@@ -54,8 +54,25 @@ html.lenis body {
   }
 }
 
+@keyframes drift-y {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  /* Gentle vertical drift for the floating Act 2 cards. Duration and
+     delay are set per-card via inline style so they never sync up. */
+  .drift {
+    animation: drift-y var(--drift-dur, 6s) ease-in-out infinite;
+    animation-delay: var(--drift-delay, 0s);
   }
 }
