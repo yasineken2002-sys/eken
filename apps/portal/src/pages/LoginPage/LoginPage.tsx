@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query'
 import { loginWithPassword } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
 import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
+import { EvenoLogo } from '@/components/ui/EvenoLogo'
 import styles from './LoginPage.module.css'
 
 export function LoginPage() {
@@ -43,11 +44,7 @@ export function LoginPage() {
     <div className={styles.page}>
       <div className={styles.card}>
         <div className={styles.brand}>
-          <div className={styles.logo}>E</div>
-          <div>
-            <p className={styles.brandName}>Eveno</p>
-            <p className={styles.brandSub}>Hyresgästportal</p>
-          </div>
+          <EvenoLogo size="md" subtitle="Hyresgästportal" />
         </div>
 
         <h1 className={styles.title}>Logga in</h1>

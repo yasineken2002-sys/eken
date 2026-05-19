@@ -7,6 +7,7 @@ import { useSessionStore } from '@/store/session.store'
 import { Spinner } from '@/components/ui/Spinner'
 import { PasswordRequirements } from '@/components/ui/PasswordRequirements'
 import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
+import { EvenoLogo } from '@/components/ui/EvenoLogo'
 import styles from './ActivatePage.module.css'
 
 const SEK = new Intl.NumberFormat('sv-SE', {
@@ -177,11 +178,7 @@ export function ActivatePage() {
     <div className={styles.page}>
       <div className={styles.card}>
         <div className={styles.brand}>
-          <div className={styles.logo}>E</div>
-          <div>
-            <p className={styles.brandName}>Eveno</p>
-            <p className={styles.brandSub}>Hyresgästportal</p>
-          </div>
+          <EvenoLogo size="md" subtitle="Hyresgästportal" />
         </div>
 
         <h1 className={styles.title}>Välkommen, {tenantName}!</h1>

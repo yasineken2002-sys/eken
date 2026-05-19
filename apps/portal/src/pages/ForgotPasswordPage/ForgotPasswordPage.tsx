@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { requestForgotPassword } from '@/api/portal.api'
+import { EvenoLogo } from '@/components/ui/EvenoLogo'
 import styles from '../LoginPage/LoginPage.module.css'
 
 type State = 'idle' | 'sent'
@@ -47,11 +48,7 @@ export function ForgotPasswordPage() {
     <div className={styles.page}>
       <div className={styles.card}>
         <div className={styles.brand}>
-          <div className={styles.logo}>E</div>
-          <div>
-            <p className={styles.brandName}>Eveno</p>
-            <p className={styles.brandSub}>Hyresgästportal</p>
-          </div>
+          <EvenoLogo size="md" subtitle="Hyresgästportal" />
         </div>
 
         <h1 className={styles.title}>Glömt lösenord</h1>

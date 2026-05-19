@@ -6,6 +6,7 @@ import { resetPassword } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
 import { PasswordRequirements } from '@/components/ui/PasswordRequirements'
 import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
+import { EvenoLogo } from '@/components/ui/EvenoLogo'
 import styles from '../LoginPage/LoginPage.module.css'
 
 export function ResetPasswordPage() {
@@ -70,11 +71,7 @@ export function ResetPasswordPage() {
     <div className={styles.page}>
       <div className={styles.card}>
         <div className={styles.brand}>
-          <div className={styles.logo}>E</div>
-          <div>
-            <p className={styles.brandName}>Eveno</p>
-            <p className={styles.brandSub}>Hyresgästportal</p>
-          </div>
+          <EvenoLogo size="md" subtitle="Hyresgästportal" />
         </div>
 
         <h1 className={styles.title}>Välj nytt lösenord</h1>
