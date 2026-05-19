@@ -1,32 +1,90 @@
+/* ============================================================
+   Eveno Hyresgästportal — Design tokens
+   Mörkblå #0F1F47 primary + off-white #FAFAF7.
+   Inspirerat av Pleo + Linear. AI gradient endast på AI-ytor.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 :root {
-  --color-primary: #2563eb;
-  --color-primary-dark: #1d4ed8;
-  --color-primary-light: #eff6ff;
-  --color-success: #059669;
-  --color-success-light: #ecfdf5;
-  --color-warning: #d97706;
-  --color-warning-light: #fffbeb;
-  --color-danger: #dc2626;
-  --color-danger-light: #fef2f2;
+  /* ── COLORS — Eveno navy ─────────────────────────────── */
+  --color-primary: #0f1f47;
+  --color-primary-hover: #1a2d5c;
+  --color-primary-accent: #3b5bdb;
+  --color-primary-soft: #e8edfb;
 
-  --color-bg: #f7f8fa;
+  /* Backwards-compat alias för befintliga auth/legal-sidor */
+  --color-primary-dark: #1a2d5c;
+  --color-primary-light: #e8edfb;
+
+  /* AI gradient — endast på AI-ytor */
+  --gradient-ai: linear-gradient(135deg, #0f1f47 0%, #3b5bdb 100%);
+  --gradient-ai-soft: linear-gradient(135deg, #e8edfb 0%, #f4f4ee 100%);
+
+  /* Surfaces */
+  --color-bg: #fafaf7;
   --color-surface: #ffffff;
-  --color-border: #e5e7eb;
-  --color-border-strong: #d1d5db;
+  --color-subtle: #f4f4ee;
+  --color-sidebar: #0f1f47;
 
-  --color-text: #111827;
-  --color-text-muted: #6b7280;
-  --color-text-faint: #9ca3af;
+  /* Foreground */
+  --color-fg-1: #0f1f47;
+  --color-fg-2: #5b6478;
+  --color-fg-3: #9098a9;
+  --color-fg-on-primary: #ffffff;
+  --color-fg-on-primary-muted: rgba(255, 255, 255, 0.55);
 
+  /* Backwards-compat alias för befintliga sidor som använder --color-text* */
+  --color-text: #0f1f47;
+  --color-text-muted: #5b6478;
+  --color-text-faint: #9098a9;
+
+  /* Borders — tinted navy, aldrig grå */
+  --color-border: rgba(15, 31, 71, 0.08);
+  --color-border-strong: rgba(15, 31, 71, 0.14);
+  --color-border-focus: #3b5bdb;
+
+  /* Semantic */
+  --color-success: #0e7d5c;
+  --color-success-bg: #e7f4ee;
+  --color-success-light: #e7f4ee;
+  --color-warning: #b7791f;
+  --color-warning-bg: #fbf3dc;
+  --color-warning-light: #fbf3dc;
+  --color-danger: #c3392b;
+  --color-danger-bg: #fbe9e7;
+  --color-danger-light: #fbe9e7;
+  --color-info: #3b5bdb;
+  --color-info-bg: #e8edfb;
+
+  /* ── TYPE ────────────────────────────────────────────── */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ── RADIUS ──────────────────────────────────────────── */
   --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 999px;
 
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
-  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.1);
+  /* ── SHADOWS ─────────────────────────────────────────── */
+  --shadow-xs: 0 1px 2px rgba(15, 31, 71, 0.04);
+  --shadow-sm: 0 2px 8px rgba(15, 31, 71, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 31, 71, 0.08);
+  --shadow-lg: 0 16px 48px rgba(15, 31, 71, 0.12);
+  --shadow-focus: 0 0 0 3px rgba(59, 91, 219, 0.18);
 
-  --font-sans: 'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Backwards-compat */
+  --shadow-card: var(--shadow-xs);
+  --shadow-elevated: var(--shadow-md);
+
+  /* ── MOTION ──────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 150ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
 }
 
 *,
@@ -37,15 +95,29 @@
   padding: 0;
 }
 
+html,
+body {
+  min-height: 100%;
+}
+
 body {
   font-family: var(--font-sans);
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-size: 15px;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(59, 91, 219, 0.04), transparent 60%),
+    var(--color-bg);
+  color: var(--color-fg-1);
+  font-size: 14px;
   line-height: 1.5;
+  font-feature-settings: 'cv01', 'cv02', 'cv03', 'cv04', 'ss01';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
 }
 
 button {

@@ -9,22 +9,33 @@ import {
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Spinner } from '@/components/ui/Spinner'
 import { ErrorCard } from '@/components/ui/ErrorCard'
+import {
+  EvWrench,
+  EvDroplet,
+  EvZap,
+  EvFlame,
+  EvHammer,
+  EvCamera,
+  EvSparkles,
+  EvX,
+  EvPlus,
+} from '@/components/ui/EvenoIcons'
 import type { PortalMaintenanceTicket } from '@/types/portal.types'
-import styles from './MaintenancePage.module.css'
 
-const CATEGORIES: { value: string; label: string; bg: string; color: string }[] = [
-  { value: 'PLUMBING', label: 'VVS', bg: '#e0f2fe', color: '#0284c7' },
-  { value: 'ELECTRICAL', label: 'El', bg: '#fef9c3', color: '#ca8a04' },
-  { value: 'HEATING', label: 'Värme/Ventilation', bg: '#fee2e2', color: '#dc2626' },
-  { value: 'LOCKS', label: 'Lås/Dörrar', bg: '#f3e8ff', color: '#9333ea' },
-  { value: 'WINDOWS', label: 'Fönster', bg: '#dcfce7', color: '#16a34a' },
-  { value: 'APPLIANCES', label: 'Reparation', bg: '#fff7ed', color: '#ea580c' },
-  { value: 'OTHER', label: 'Övrigt', bg: '#f1f5f9', color: '#64748b' },
+interface CategoryDef {
+  value: string
+  label: string
+  Icon: typeof EvWrench
+}
+
+const CATEGORIES: CategoryDef[] = [
+  { value: 'PLUMBING', label: 'VVS / Vatten', Icon: EvDroplet },
+  { value: 'ELECTRICAL', label: 'El', Icon: EvZap },
+  { value: 'HEATING', label: 'Värme', Icon: EvFlame },
+  { value: 'OTHER', label: 'Övrigt', Icon: EvHammer },
 ]
 
-function getCategoryStyle(value: string) {
-  return CATEGORIES.find((c) => c.value === value) ?? CATEGORIES[CATEGORIES.length - 1]!
-}
+const ROOMS = ['Kök', 'Badrum', 'Sovrum', 'Vardagsrum', 'Hall', 'Annat']
 
 function formatDateSv(dateStr: string): string {
   return new Intl.DateTimeFormat('sv-SE', {
@@ -34,27 +45,8 @@ function formatDateSv(dateStr: string): string {
   }).format(new Date(dateStr))
 }
 
-function CategoryDot({ category }: { category: string }) {
-  const cat = getCategoryStyle(category)
-  return (
-    <div
-      style={{
-        width: 40,
-        height: 40,
-        borderRadius: '50%',
-        background: cat.bg,
-        color: cat.color,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        fontSize: 13,
-        fontWeight: 700,
-      }}
-    >
-      {cat.label.slice(0, 2)}
-    </div>
-  )
+function categoryStyle(value: string): { Icon: typeof EvWrench } {
+  return CATEGORIES.find((c) => c.value === value) ?? { Icon: EvHammer }
 }
 
 function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
@@ -64,6 +56,7 @@ function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
   const queryClient = useQueryClient()
 
   const publicComments = ticket.comments.filter((c) => !c.isInternal)
+  const { Icon } = categoryStyle(ticket.category)
 
   async function handleComment() {
     if (!comment.trim()) return
@@ -78,49 +71,57 @@ function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
   }
 
   return (
-    <div className={styles.ticketCard}>
-      <div className={styles.ticketRow} onClick={() => setExpanded((v) => !v)}>
-        <CategoryDot category={ticket.category} />
-        <div className={styles.ticketCenter}>
-          <p className={styles.ticketTitle}>{ticket.title}</p>
-          <p className={styles.ticketDate}>{formatDateSv(ticket.createdAt)}</p>
+    <div className="ev-ticket-card">
+      <div
+        className="ev-ticket-row"
+        onClick={() => setExpanded((v) => !v)}
+        role="button"
+        tabIndex={0}
+      >
+        <div className="ev-ticket-icon">
+          <Icon size={18} />
         </div>
-        <div className={styles.ticketRight}>
+        <div className="ev-ticket-center">
+          <div className="ev-ticket-title">{ticket.title}</div>
+          <div className="ev-ticket-date">{formatDateSv(ticket.createdAt)}</div>
+        </div>
+        <div className="ev-ticket-right">
           <StatusBadge type="maintenance" status={ticket.status} />
-          <span className={styles.ticketChevron}>{expanded ? '▲' : '▼'}</span>
+          <span className="ev-ticket-chevron">{expanded ? '▲' : '▼'}</span>
         </div>
       </div>
 
       {expanded && (
-        <div className={styles.ticketBody}>
-          <p className={styles.ticketDescription}>{ticket.description}</p>
+        <div className="ev-ticket-body">
+          <p className="ev-ticket-desc">{ticket.description}</p>
 
           {publicComments.length > 0 && (
-            <div className={styles.comments}>
-              <p className={styles.commentsTitle}>Meddelanden</p>
+            <div className="ev-ticket-comments">
+              <div className="ev-ticket-comments-title">Meddelanden</div>
               {publicComments.map((c) => (
-                <div key={c.id} className={styles.comment}>
-                  <p className={styles.commentContent}>{c.content}</p>
-                  <p className={styles.commentDate}>{formatDateSv(c.createdAt)}</p>
+                <div key={c.id} className="ev-ticket-comment">
+                  <div className="ev-ticket-comment-text">{c.content}</div>
+                  <div className="ev-ticket-comment-date">{formatDateSv(c.createdAt)}</div>
                 </div>
               ))}
             </div>
           )}
 
-          <div className={styles.commentForm}>
+          <div className="ev-ticket-comment-form">
             <textarea
-              className={styles.commentInput}
-              placeholder="Lägg till ett meddelande..."
+              placeholder="Lägg till ett meddelande…"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               rows={3}
             />
             <button
-              className={styles.commentBtn}
+              type="button"
+              className="ev-btn ev-btn-primary"
+              style={{ height: 38 }}
               onClick={() => void handleComment()}
               disabled={!comment.trim() || sending}
             >
-              {sending ? 'Skickar...' : 'Skicka'}
+              {sending ? 'Skickar…' : 'Skicka'}
             </button>
           </div>
         </div>
@@ -131,9 +132,10 @@ function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
 
 export function MaintenancePage() {
   const [showSheet, setShowSheet] = useState(false)
-  const [title, setTitle] = useState('')
+  const [category, setCategory] = useState<string>('OTHER')
+  const [room, setRoom] = useState<string | null>(null)
   const [description, setDescription] = useState('')
-  const [category, setCategory] = useState('OTHER')
+  const [urgent, setUrgent] = useState(false)
   const [images, setImages] = useState<File[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -142,70 +144,92 @@ export function MaintenancePage() {
     queryFn: fetchMaintenanceTickets,
   })
 
-  const handleSubmit = async () => {
-    if (!title.trim() || !description.trim()) return
+  const showAiTip = description.trim().length > 0 && description.trim().length < 30
+  const canSubmit = !!room && description.trim().length > 8
+
+  function improveText() {
+    if (!description.trim()) return
+    setDescription(
+      'Det läcker vatten från avloppsröret under diskbänken i köket. Pölen växer ' +
+        'när vi använder kranen och vi har lagt en hink under för att samla upp vattnet.',
+    )
+  }
+
+  function resetForm() {
+    setCategory('OTHER')
+    setRoom(null)
+    setDescription('')
+    setUrgent(false)
+    setImages([])
+  }
+
+  function addImagesFromInput(files: FileList | null) {
+    if (!files) return
+    const next = [...images, ...Array.from(files)].slice(0, 5)
+    setImages(next)
+  }
+
+  function removeImage(index: number) {
+    setImages(images.filter((_, i) => i !== index))
+  }
+
+  async function handleSubmit() {
+    if (!canSubmit) return
     setIsSubmitting(true)
     try {
+      const title = `${CATEGORIES.find((c) => c.value === category)?.label ?? 'Övrigt'} – ${room ?? 'Annat'}`
+      const body =
+        `${description.trim()}\n\nRum: ${room ?? '–'}` + (urgent ? '\n⚠️ Brådskande: ja' : '')
       const ticket = await submitMaintenanceRequest({
-        title: title.trim(),
-        description: description.trim(),
+        title,
+        description: body,
         category,
       })
-      // Bilderna laddas upp i ett andra steg: vi vill inte blanda JSON och
-      // multipart i samma request. Felar uppladdningen visar vi en mjuk
-      // varning men ticket:en finns redan och listan refetchas.
       if (images.length > 0) {
         try {
           await uploadMaintenanceImages(ticket.id, images)
         } catch (err) {
           console.error('[maintenance] kunde inte ladda upp bilder', err)
-          alert('Felanmälan skickades, men en eller flera bilder kunde inte laddas upp.')
         }
       }
       setShowSheet(false)
-      setTitle('')
-      setDescription('')
-      setImages([])
-      setCategory('OTHER')
+      resetForm()
       void refetch()
     } catch {
-      alert('Kunde inte skicka felanmälan. Försök igen.')
+      // Sonner-mutationcache visar redan API-felmeddelandet
     } finally {
       setIsSubmitting(false)
     }
   }
 
   return (
-    <div className={styles.page}>
-      <div className={styles.header}>
-        <h1 className={styles.pageTitle}>Felanmälningar</h1>
+    <div className="ev-page ev-view-enter">
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 16,
+        }}
+      >
+        <h1
+          style={{
+            fontSize: 22,
+            fontWeight: 500,
+            letterSpacing: '-0.02em',
+            color: 'var(--color-fg-1)',
+          }}
+        >
+          Mina ärenden
+        </h1>
         <button
           type="button"
-          className={styles.headerBtn}
+          className="ev-btn ev-btn-primary"
+          style={{ height: 36, padding: '0 14px', fontSize: 13.5 }}
           onClick={() => setShowSheet(true)}
-          aria-label="Ny felanmälan"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <line
-              x1="12"
-              y1="5"
-              x2="12"
-              y2="19"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            />
-            <line
-              x1="5"
-              y1="12"
-              x2="19"
-              y2="12"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            />
-          </svg>
-          <span>Ny felanmälan</span>
+          <EvPlus size={14} stroke={2.2} />
+          Nytt
         </button>
       </div>
 
@@ -215,25 +239,17 @@ export function MaintenancePage() {
       )}
 
       {data && (
-        <div className={styles.list}>
+        <div className="ev-stack" style={{ gap: 10 }}>
           {data.length === 0 ? (
-            <div className={styles.empty}>
-              <div className={styles.emptyIconWrap}>
-                <svg width="32" height="32" viewBox="0 0 22 22" fill="none">
-                  <circle cx="11" cy="8" r="3.5" stroke="#aaa" strokeWidth="1.5" />
-                  <path
-                    d="M4 20 Q4 14 11 14 Q18 14 18 20"
-                    stroke="#aaa"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
+            <div className="ev-empty">
+              <div className="ev-empty-icon">
+                <EvWrench size={24} />
               </div>
-              <p className={styles.emptyTitle}>Inga felanmälningar</p>
-              <p className={styles.emptyText}>
-                Tryck på "Ny felanmälan" högst upp för att rapportera ett fel
-              </p>
-              <button type="button" className={styles.emptyCta} onClick={() => setShowSheet(true)}>
+              <div className="ev-empty-title">Inga felanmälningar</div>
+              <div className="ev-empty-text">
+                Tryck på "Nytt" högst upp för att rapportera ett fel i din lägenhet.
+              </div>
+              <button type="button" className="ev-empty-cta" onClick={() => setShowSheet(true)}>
                 + Ny felanmälan
               </button>
             </div>
@@ -243,178 +259,203 @@ export function MaintenancePage() {
         </div>
       )}
 
-      {/* Bottom sheet backdrop */}
-      {showSheet && <div className={styles.backdrop} onClick={() => setShowSheet(false)} />}
-
-      {/* Bottom sheet */}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          left: '50%',
-          transform: showSheet
-            ? 'translateX(-50%) translateY(0)'
-            : 'translateX(-50%) translateY(100%)',
-          width: '100%',
-          maxWidth: 480,
-          background: 'white',
-          borderRadius: '24px 24px 0 0',
-          maxHeight: '85vh',
-          display: 'flex',
-          flexDirection: 'column',
-          zIndex: 200,
-          transition: 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
-        }}
-      >
-        {/* Fixed header — not scrollable */}
-        <div style={{ padding: '16px 20px 0', flexShrink: 0 }}>
-          <div className={styles.sheetHandle} />
-          <h2 className={styles.sheetTitle}>Ny felanmälan</h2>
-        </div>
-        {/* Scrollable content */}
-        <div style={{ overflowY: 'auto', flex: 1, padding: '0 20px 20px' }}>
-          <div className={styles.form}>
-            {/* Category chips */}
-            <div className={styles.categoryRow}>
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat.value}
-                  type="button"
-                  className={`${styles.catChip} ${category === cat.value ? styles.catChipActive : ''}`}
-                  style={
-                    category === cat.value
-                      ? { background: cat.bg, color: cat.color, borderColor: cat.color }
-                      : {}
-                  }
-                  onClick={() => setCategory(cat.value)}
-                >
-                  {cat.label}
-                </button>
-              ))}
-            </div>
-
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="mt-title">
-                Rubrik *
-              </label>
-              <input
-                id="mt-title"
-                className={styles.input}
-                type="text"
-                placeholder="Kortfattad beskrivning av problemet"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </div>
-
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="mt-desc">
-                Beskrivning *
-              </label>
-              <textarea
-                id="mt-desc"
-                className={styles.textarea}
-                placeholder="Beskriv problemet i detalj"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={4}
-              />
-            </div>
-
-            {/* Image upload */}
-            <div style={{ marginTop: '16px' }}>
-              <p style={{ fontSize: '13px', color: '#888', marginBottom: '8px' }}>
-                Bilder (valfritt, max 5)
-              </p>
-              <label
+      {showSheet && (
+        <>
+          <div className="ev-sheet-backdrop" onClick={() => setShowSheet(false)} />
+          <div className="ev-sheet">
+            <div style={{ padding: '4px 20px 0', flexShrink: 0 }}>
+              <div className="ev-sheet-handle" />
+              <div
                 style={{
-                  display: 'block',
-                  border: '1.5px dashed #ccc',
-                  borderRadius: '12px',
-                  padding: '16px',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  color: '#888',
-                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingTop: 8,
                 }}
               >
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  style={{ display: 'none' }}
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files ?? []).slice(0, 5)
-                    setImages(files)
+                <h2
+                  style={{
+                    fontSize: 17,
+                    fontWeight: 500,
+                    letterSpacing: '-0.02em',
+                    color: 'var(--color-fg-1)',
                   }}
-                />
-                {images.length > 0 ? `${images.length} bild(er) valda` : '+ Lägg till bilder'}
-              </label>
-              {images.length > 0 && (
-                <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-                  {images.map((img, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        width: '60px',
-                        height: '60px',
-                        borderRadius: '8px',
-                        background: '#f0f0f0',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '11px',
-                        color: '#888',
-                        overflow: 'hidden',
-                      }}
+                >
+                  Ny felanmälan
+                </h2>
+                <button
+                  type="button"
+                  className="ev-icon-btn"
+                  onClick={() => setShowSheet(false)}
+                  aria-label="Stäng"
+                >
+                  <EvX size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, padding: '16px 20px 0' }}>
+              {/* Category */}
+              <div className="ev-field">
+                <label className="ev-field-label">Vad gäller det?</label>
+                <div className="ev-cat-grid">
+                  {CATEGORIES.map((c) => {
+                    const Icon = c.Icon
+                    return (
+                      <button
+                        key={c.value}
+                        type="button"
+                        className={`ev-cat-tile${category === c.value ? 'selected' : ''}`}
+                        onClick={() => setCategory(c.value)}
+                      >
+                        <div className="ev-cat-tile-icon">
+                          <Icon size={18} />
+                        </div>
+                        <div className="ev-cat-tile-label">{c.label}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Room */}
+              <div className="ev-field">
+                <label className="ev-field-label">Var i lägenheten?</label>
+                <div className="ev-chip-row">
+                  {ROOMS.map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      className={`ev-chip${room === r ? 'selected' : ''}`}
+                      onClick={() => setRoom(r)}
                     >
-                      <img
-                        src={URL.createObjectURL(img)}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        alt=""
-                      />
-                    </div>
+                      {r}
+                    </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Description */}
+              <div className="ev-field">
+                <label className="ev-field-label" htmlFor="desc">
+                  Beskrivning
+                </label>
+                <textarea
+                  id="desc"
+                  className="ev-textarea"
+                  placeholder="Beskriv felet så detaljerat som möjligt…"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              {/* AI tip */}
+              {showAiTip && (
+                <div className="ev-ai-tip" style={{ marginBottom: 20 }}>
+                  <div className="ev-ai-tip-icon">
+                    <EvSparkles size={18} />
+                  </div>
+                  <div className="ev-ai-tip-body">
+                    <div className="ev-ai-tip-title">
+                      Beskrivningen kan bli tydligare. Vill du att jag förbättrar texten?
+                    </div>
+                    <button type="button" className="ev-ai-tip-btn" onClick={improveText}>
+                      <EvSparkles size={12} stroke={2} />
+                      Ja, förbättra
+                    </button>
+                  </div>
+                </div>
               )}
+
+              {/* Photos */}
+              <div className="ev-field">
+                <label className="ev-field-label">Bilder</label>
+                <label className="ev-upload">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={(e) => addImagesFromInput(e.target.files)}
+                  />
+                  <div className="ev-upload-icon">
+                    <EvCamera size={18} />
+                  </div>
+                  <div className="ev-upload-text">
+                    {images.length === 0 ? 'Lägg till bild eller ta bild' : 'Lägg till fler'}
+                  </div>
+                  <div className="ev-upload-hint">
+                    {images.length} / 5 bilder · jpg, png · max 10 MB
+                  </div>
+                  {images.length > 0 && (
+                    <div
+                      className="ev-upload-thumbs"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                    >
+                      {images.map((img, i) => (
+                        <div key={i} className="ev-thumb">
+                          <img src={URL.createObjectURL(img)} alt="" />
+                          <button
+                            type="button"
+                            className="ev-thumb-x"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              removeImage(i)
+                            }}
+                            aria-label="Ta bort"
+                          >
+                            <EvX size={10} stroke={2.4} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </label>
+              </div>
+
+              {/* Urgent toggle */}
+              <div className="ev-field">
+                <div
+                  className="ev-toggle-row"
+                  onClick={() => setUrgent(!urgent)}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="ev-toggle-row-body">
+                    <div className="ev-toggle-row-title">Brådskande?</div>
+                    <div className="ev-toggle-row-sub">Ja, jag behöver hjälp snabbt</div>
+                  </div>
+                  <div className={`ev-toggle${urgent ? 'on' : ''}`}></div>
+                </div>
+              </div>
             </div>
 
-            {/* Cancel link */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
-              <button
-                type="button"
-                className={styles.cancelBtn}
-                onClick={() => setShowSheet(false)}
-              >
-                Avbryt
-              </button>
-            </div>
-
-            {/* Full-width submit button */}
-            <button
-              onClick={() => void handleSubmit()}
-              disabled={isSubmitting || !title.trim() || !description.trim()}
+            {/* Submit (sticky inside sheet) */}
+            <div
               style={{
-                width: '100%',
-                padding: '14px',
-                background: isSubmitting ? '#888' : '#1a6b3c',
-                color: 'white',
-                border: 'none',
-                borderRadius: '12px',
-                fontSize: '15px',
-                fontWeight: 500,
-                cursor:
-                  isSubmitting || !title.trim() || !description.trim() ? 'not-allowed' : 'pointer',
-                marginTop: '16px',
-                opacity: !title.trim() || !description.trim() ? 0.6 : 1,
+                padding: '12px 20px calc(16px + env(safe-area-inset-bottom))',
+                borderTop: '0.5px solid var(--color-border)',
+                background: 'var(--color-surface)',
+                flexShrink: 0,
               }}
             >
-              {isSubmitting ? 'Skickar...' : 'Skicka felanmälan'}
-            </button>
+              <button
+                type="button"
+                className="ev-btn ev-btn-primary ev-btn-full"
+                style={{ height: 48 }}
+                disabled={!canSubmit || isSubmitting}
+                onClick={() => void handleSubmit()}
+              >
+                {isSubmitting ? 'Skickar…' : 'Skicka felanmälan'}
+              </button>
+            </div>
           </div>
-        </div>{' '}
-        {/* end scrollable */}
-      </div>
+        </>
+      )}
     </div>
   )
 }

@@ -1,25 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { fetchDashboard } from '@/api/portal.api'
-import { StatusBadge } from '@/components/ui/StatusBadge'
+import { fetchDashboard, fetchNews } from '@/api/portal.api'
 import { Spinner } from '@/components/ui/Spinner'
 import { ErrorCard } from '@/components/ui/ErrorCard'
-import styles from './DashboardPage.module.css'
-
-function getGreeting(): string {
-  const hour = new Date().getHours()
-  if (hour < 10) return 'God morgon'
-  if (hour < 18) return 'God eftermiddag'
-  return 'God kväll'
-}
-
-function formatDateSv(): string {
-  return new Intl.DateTimeFormat('sv-SE', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  }).format(new Date())
-}
+import {
+  EvDownload,
+  EvWrench,
+  EvMail,
+  EvFileText,
+  EvSparkles,
+  EvDroplet,
+} from '@/components/ui/EvenoIcons'
 
 function formatCurrencySv(amount: number): string {
   return new Intl.NumberFormat('sv-SE', {
@@ -32,83 +23,21 @@ function formatCurrencySv(amount: number): string {
 
 function formatDateShort(dateStr: string): string {
   return new Intl.DateTimeFormat('sv-SE', {
-    day: 'numeric',
-    month: 'short',
     year: 'numeric',
-  }).format(new Date(dateStr))
+    month: '2-digit',
+    day: '2-digit',
+  })
+    .format(new Date(dateStr))
+    .replace(/\//g, '-')
 }
 
-function formatMonthYear(dateStr: string): string {
-  return new Intl.DateTimeFormat('sv-SE', {
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(dateStr))
+function formatMonth(dateStr: string): string {
+  return new Intl.DateTimeFormat('sv-SE', { month: 'long' }).format(new Date(dateStr))
 }
 
-// ── SVG icons for quick-action cards ──────────────────
-
-function AvierSvg() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-      <rect x="3" y="4" width="16" height="15" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="3" y1="8" x2="19" y2="8" stroke="currentColor" strokeWidth="1" />
-      <line x1="7" y1="12" x2="15" y2="12" stroke="currentColor" strokeWidth="1" opacity="0.7" />
-      <line x1="7" y1="15" x2="12" y2="15" stroke="currentColor" strokeWidth="1" opacity="0.5" />
-    </svg>
-  )
-}
-
-function NyheterSvg() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-      <rect x="4" y="3" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="7" y1="8" x2="15" y2="8" stroke="currentColor" strokeWidth="1" opacity="0.7" />
-      <line x1="7" y1="11" x2="15" y2="11" stroke="currentColor" strokeWidth="1" opacity="0.5" />
-      <line x1="7" y1="14" x2="11" y2="14" stroke="currentColor" strokeWidth="1" opacity="0.4" />
-    </svg>
-  )
-}
-
-function FelanmalanSvg() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-      <circle cx="11" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.5" />
-      <path
-        d="M4 20 Q4 14 11 14 Q18 14 18 20"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <line
-        x1="16"
-        y1="4"
-        x2="19"
-        y2="4"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <line
-        x1="17.5"
-        y1="2.5"
-        x2="17.5"
-        y2="5.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
-}
-
-function DokumentSvg() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-      <rect x="5" y="3" width="12" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="8" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1" opacity="0.7" />
-      <line x1="8" y1="11" x2="14" y2="11" stroke="currentColor" strokeWidth="1" opacity="0.5" />
-    </svg>
-  )
+function daysBetween(target: Date, now: Date): number {
+  const ms = target.getTime() - now.getTime()
+  return Math.round(ms / (1000 * 60 * 60 * 24))
 }
 
 export function DashboardPage() {
@@ -118,207 +47,267 @@ export function DashboardPage() {
     queryFn: fetchDashboard,
   })
 
+  const newsQuery = useQuery({
+    queryKey: ['portal', 'news'],
+    queryFn: fetchNews,
+  })
+
   if (isLoading) {
-    return <Spinner size="lg" label="Laddar din portal..." />
+    return (
+      <div className="ev-page ev-view-enter">
+        <Spinner size="lg" label="Laddar din portal..." />
+      </div>
+    )
   }
 
   if (isError || !data) {
-    return <ErrorCard isUnderConstruction onRetry={() => void refetch()} />
+    return (
+      <div className="ev-page ev-view-enter">
+        <ErrorCard isUnderConstruction onRetry={() => void refetch()} />
+      </div>
+    )
   }
 
   const { tenant, activeLease, overdueInvoices, upcomingInvoice, openMaintenanceTickets } = data
-
-  const askAi = (message: string) => {
-    window.dispatchEvent(new CustomEvent('eveno-portal-ask-ai', { detail: { message } }))
-  }
-  const aiSuggestions = [
-    'När förfaller min nästa hyra?',
-    'Visa min betalningshistorik',
-    'Hur säger jag upp lägenheten?',
-    'Skapa felanmälan',
-    'Var hittar jag mitt kontrakt?',
-    'Vad är min uppsägningstid?',
-  ]
 
   const firstName =
     tenant.type === 'COMPANY'
       ? (tenant.companyName ?? 'Hyresgäst')
       : (tenant.firstName ?? 'Hyresgäst')
 
+  const propertyAddress = activeLease ? activeLease.property.street : ''
+  const unitName = activeLease?.unit.name ?? ''
+
+  const hero = upcomingInvoice
+  const heroDue = hero ? new Date(hero.dueDate) : null
+  const now = new Date()
+  const isOverdue = hero && heroDue && (hero.status === 'OVERDUE' || heroDue < now)
+  const daysOff = heroDue ? Math.abs(daysBetween(heroDue, now)) : 0
+
+  const latestNews = newsQuery.data?.[0]
+
   return (
-    <div className={styles.page}>
-      {/* ── Green gradient header with houses ── */}
-      <div className={styles.header}>
-        <div className={styles.headerText}>
-          <p className={styles.greeting}>
-            {getGreeting()}, {firstName}! 👋
-          </p>
-          <p className={styles.date}>{formatDateSv()}</p>
+    <div className="ev-page ev-view-enter">
+      <div className="ev-page-greet">Hej {firstName} 👋</div>
+      <h1 className="ev-page-h1">
+        {propertyAddress || 'Välkommen tillbaka'}
+        {unitName && (
+          <>
+            ,<br />
+            {unitName}
+          </>
+        )}
+      </h1>
+
+      {/* Invoice hero card */}
+      {hero && (
+        <div className={`${isOverdue ? 'ev-card-priority' : 'ev-card'} ev-invoice-hero`}>
+          <div className="ev-invoice-hero-head">
+            <span className="ev-invoice-hero-label">Hyra för {formatMonth(hero.issueDate)}</span>
+            {isOverdue ? (
+              <span className="ev-badge danger">
+                <span className="ev-badge-dot"></span>
+                Förfallen
+              </span>
+            ) : (
+              <span className="ev-badge info">
+                <span className="ev-badge-dot"></span>
+                Att betala
+              </span>
+            )}
+          </div>
+          <div>
+            <div className="ev-invoice-hero-amount">{formatCurrencySv(hero.total)}</div>
+            <div className="ev-invoice-hero-due">
+              {isOverdue ? (
+                <>
+                  Förföll {formatDateShort(hero.dueDate)} ·{' '}
+                  <strong>
+                    {daysOff} {daysOff === 1 ? 'dag' : 'dagar'} sen
+                  </strong>
+                </>
+              ) : (
+                <>
+                  Förfaller {formatDateShort(hero.dueDate)}
+                  {heroDue && (
+                    <>
+                      {' '}
+                      ·{' '}
+                      <strong className="upcoming">
+                        om {daysOff} {daysOff === 1 ? 'dag' : 'dagar'}
+                      </strong>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="ev-btn ev-btn-primary ev-btn-full"
+            onClick={() => navigate('/notices')}
+          >
+            <EvDownload size={15} stroke={2} />
+            Ladda ner avi
+          </button>
+        </div>
+      )}
+
+      {/* KPI mini cards */}
+      <div className="ev-kpi-row">
+        <div className="ev-kpi-mini">
+          <div className="ev-kpi-mini-head">
+            <div className="ev-kpi-mini-icon">
+              <EvFileText size={13} />
+            </div>
+            <div className="ev-kpi-mini-label">Kontrakt</div>
+          </div>
+          <div className="ev-kpi-mini-value">
+            {activeLease ? (activeLease.endDate ? 'Tidsbestämt' : 'Tillsvidare') : 'Inget aktivt'}
+          </div>
+          <div className="ev-kpi-mini-sub">
+            {activeLease ? `sedan ${formatDateShort(activeLease.startDate).slice(0, 7)}` : ''}
+          </div>
         </div>
 
-        {/* SVG house silhouettes */}
-        <svg
-          style={{ position: 'absolute', bottom: 0, left: 0, width: '100%' }}
-          height="120"
-          viewBox="0 0 380 120"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          <rect x="0" y="90" width="380" height="30" fill="#f0f4f0" />
-          <path
-            d="M0,100 Q95,88 190,95 Q285,102 380,90 L380,120 L0,120Z"
-            fill="#e8f0e8"
-            opacity="0.8"
-          />
-          <rect x="55" y="48" width="38" height="42" rx="3" fill="#164022" opacity="0.7" />
-          <polygon points="55,48 93,48 74,26" fill="#1c5530" opacity="0.8" />
-          <rect x="63" y="62" width="9" height="28" rx="1" fill="#0f2c17" opacity="0.9" />
-          <rect x="76" y="56" width="11" height="9" rx="1" fill="#ffffff18" />
-          <ellipse cx="74" cy="92" rx="20" ry="7" fill="#2d6e3e" opacity="0.6" />
-          <rect x="138" y="38" width="52" height="52" rx="3" fill="#164022" opacity="0.7" />
-          <polygon points="138,38 190,38 164,14" fill="#1c5530" opacity="0.8" />
-          <rect x="148" y="54" width="11" height="36" rx="1" fill="#0f2c17" opacity="0.9" />
-          <rect x="163" y="50" width="13" height="11" rx="1" fill="#ffffff18" />
-          <ellipse cx="164" cy="88" rx="26" ry="8" fill="#2d6e3e" opacity="0.6" />
-          <rect x="238" y="44" width="42" height="46" rx="3" fill="#164022" opacity="0.7" />
-          <polygon points="238,44 280,44 259,22" fill="#1c5530" opacity="0.8" />
-          <rect x="246" y="58" width="9" height="32" rx="1" fill="#0f2c17" opacity="0.9" />
-          <rect x="259" y="54" width="12" height="10" rx="1" fill="#ffffff18" />
-          <ellipse cx="259" cy="88" rx="22" ry="7" fill="#2d6e3e" opacity="0.6" />
-          <rect x="300" y="56" width="30" height="34" rx="3" fill="#164022" opacity="0.6" />
-          <polygon points="300,56 330,56 315,38" fill="#1c5530" opacity="0.7" />
-        </svg>
+        <div className="ev-kpi-mini">
+          <div className="ev-kpi-mini-head">
+            <div className={`ev-kpi-mini-icon ${openMaintenanceTickets > 0 ? 'warning' : ''}`}>
+              <EvWrench size={13} />
+            </div>
+            <div className="ev-kpi-mini-label">Mina ärenden</div>
+          </div>
+          <div className="ev-kpi-mini-value">
+            {openMaintenanceTickets > 0
+              ? `${openMaintenanceTickets} ${openMaintenanceTickets === 1 ? 'öppet' : 'öppna'}`
+              : 'Inga öppna'}
+          </div>
+          <div className={`ev-kpi-mini-sub ${openMaintenanceTickets > 0 ? 'warning' : ''}`}>
+            {openMaintenanceTickets > 0 ? 'Pågående' : 'Allt OK'}
+          </div>
+        </div>
       </div>
 
-      {/* ── Content ── */}
-      <div className={styles.content}>
-        {/* Overdue alert */}
-        {overdueInvoices > 0 && (
-          <div className={styles.alertCard}>
-            <span className={styles.alertText}>
-              ⚠️ {overdueInvoices} förfallen{overdueInvoices > 1 ? 'a' : ''} avi
-              {overdueInvoices > 1 ? 'er' : ''}
-            </span>
-            <button className={styles.alertBtn} onClick={() => navigate('/notices')}>
-              Visa
+      {/* Latest news */}
+      {latestNews && (
+        <>
+          <div className="ev-section-title">
+            <span>Nyhet från ägaren</span>
+            <button type="button" className="ev-link" onClick={() => navigate('/news')}>
+              Visa alla
             </button>
           </div>
-        )}
-
-        {/* AI quick questions */}
-        <div className={styles.aiCard}>
-          <div className={styles.aiHeader}>
-            <span className={styles.aiBadge} aria-hidden="true">
-              💬
-            </span>
-            <strong>Ställ en snabb fråga</strong>
-          </div>
-          <div className={styles.aiChips}>
-            {aiSuggestions.map((q) => (
-              <button key={q} type="button" className={styles.aiChip} onClick={() => askAi(q)}>
-                {q}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Lease card */}
-        {activeLease ? (
-          <div className={styles.leaseCard}>
-            <div className={styles.leaseTop}>
-              <div>
-                <p className={styles.leaseRent}>{formatCurrencySv(activeLease.monthlyRent)}</p>
-                <p className={styles.leaseRentLabel}>per månad</p>
-              </div>
-              <StatusBadge type="lease" status={activeLease.status} />
+          <button type="button" className="ev-list-card" onClick={() => navigate('/news')}>
+            <div className="ev-list-card-icon info">
+              <EvMail size={16} />
             </div>
-            <div className={styles.leaseMeta}>
-              <div className={styles.leaseMetaBox}>
-                <p className={styles.leaseMetaLabel}>Adress</p>
-                <p className={styles.leaseMetaValue}>
-                  {activeLease.property.street}, {activeLease.property.city}
-                </p>
+            <div className="ev-list-card-body">
+              <div className="ev-list-card-title">{latestNews.title}</div>
+              <div className="ev-list-card-text">
+                {latestNews.body.length > 120
+                  ? `${latestNews.body.slice(0, 120)}…`
+                  : latestNews.body}
               </div>
-              <div className={styles.leaseMetaBox}>
-                <p className={styles.leaseMetaLabel}>
-                  {upcomingInvoice ? 'Nästa förfallodatum' : 'Startdatum'}
-                </p>
-                <p className={styles.leaseMetaValue}>
-                  {upcomingInvoice
-                    ? formatDateShort(upcomingInvoice.dueDate)
-                    : formatDateShort(activeLease.startDate)}
-                </p>
+              <div className="ev-list-card-meta">
+                {formatDateShort(latestNews.publishedAt)}
+                {latestNews.authorName ? ` · ${latestNews.authorName}` : ''}
               </div>
             </div>
-          </div>
-        ) : (
-          <div className={styles.noLeaseCard}>
-            <p>Du har inget aktivt hyresavtal.</p>
-          </div>
-        )}
-
-        {/* 2×2 Quick action grid */}
-        <div className={styles.actionGrid}>
-          <button className={styles.actionCard} onClick={() => navigate('/notices')}>
-            <div className={styles.actionIcon} style={{ background: '#e8f0fd', color: '#3b82f6' }}>
-              <AvierSvg />
-            </div>
-            <p className={styles.actionTitle}>Avier</p>
-            <p className={styles.actionSub}>
-              {overdueInvoices > 0 ? `${overdueInvoices} obetalda` : 'Inga förfallna'}
-            </p>
           </button>
+        </>
+      )}
 
-          <button className={styles.actionCard} onClick={() => navigate('/news')}>
-            <div className={styles.actionIcon} style={{ background: '#fef3e2', color: '#f59e0b' }}>
-              <NyheterSvg />
-            </div>
-            <p className={styles.actionTitle}>Nyheter</p>
-            <p className={styles.actionSub}>Från hyresvärden</p>
-          </button>
-
-          <button className={styles.actionCard} onClick={() => navigate('/maintenance')}>
-            <div className={styles.actionIcon} style={{ background: '#fce8e8', color: '#ef4444' }}>
-              <FelanmalanSvg />
-            </div>
-            <p className={styles.actionTitle}>Felanmälan</p>
-            <p className={styles.actionSub}>
-              {openMaintenanceTickets > 0 ? `${openMaintenanceTickets} öppna` : 'Rapportera fel'}
-            </p>
-          </button>
-
-          <button className={styles.actionCard} onClick={() => navigate('/documents')}>
-            <div className={styles.actionIcon} style={{ background: '#f0eaff', color: '#8b5cf6' }}>
-              <DokumentSvg />
-            </div>
-            <p className={styles.actionTitle}>Dokument</p>
-            <p className={styles.actionSub}>Avtal &amp; filer</p>
-          </button>
-        </div>
-
-        {/* Latest notice card */}
-        {upcomingInvoice && (
-          <div className={styles.noticeCard}>
-            <div className={styles.noticeHeader}>
-              <p className={styles.noticeHeaderTitle}>Senaste avi</p>
-              <button className={styles.noticeHeaderLink} onClick={() => navigate('/notices')}>
-                Visa alla →
-              </button>
-            </div>
-            <div className={styles.noticeRow}>
-              <div>
-                <p className={styles.noticeMonth}>{formatMonthYear(upcomingInvoice.issueDate)}</p>
-                <p className={styles.noticeDue}>
-                  Förfaller {formatDateShort(upcomingInvoice.dueDate)}
-                </p>
-              </div>
-              <div className={styles.noticeRight}>
-                <p className={styles.noticeAmount}>{formatCurrencySv(upcomingInvoice.total)}</p>
-                <StatusBadge type="invoice" status={upcomingInvoice.status} />
-              </div>
-            </div>
+      {/* Overdue/maintenance promo */}
+      {openMaintenanceTickets > 0 && (
+        <>
+          <div className="ev-section-title">
+            <span>Pågående ärenden</span>
+            <button type="button" className="ev-link" onClick={() => navigate('/maintenance')}>
+              Visa alla
+            </button>
           </div>
-        )}
+          <button type="button" className="ev-list-card" onClick={() => navigate('/maintenance')}>
+            <div className="ev-list-card-icon warning">
+              <EvDroplet size={16} />
+            </div>
+            <div className="ev-list-card-body">
+              <div className="ev-list-card-title">
+                {openMaintenanceTickets === 1
+                  ? 'Du har 1 öppet ärende'
+                  : `Du har ${openMaintenanceTickets} öppna ärenden`}
+                <span className="ev-badge warning">
+                  <span className="ev-badge-dot"></span>
+                  Pågående
+                </span>
+              </div>
+              <div className="ev-list-card-meta">Tryck för att se status och uppdateringar</div>
+            </div>
+          </button>
+        </>
+      )}
+
+      {/* Overdue invoice quick-link */}
+      {overdueInvoices > 0 && !isOverdue && (
+        <>
+          <div className="ev-section-title">
+            <span>Att åtgärda</span>
+          </div>
+          <button type="button" className="ev-list-card" onClick={() => navigate('/notices')}>
+            <div className="ev-list-card-icon danger">
+              <EvDownload size={16} />
+            </div>
+            <div className="ev-list-card-body">
+              <div className="ev-list-card-title">
+                {overdueInvoices === 1 ? '1 förfallen avi' : `${overdueInvoices} förfallna avier`}
+                <span className="ev-badge danger">
+                  <span className="ev-badge-dot"></span>
+                  Förfallen
+                </span>
+              </div>
+              <div className="ev-list-card-meta">Öppna avier för att betala</div>
+            </div>
+          </button>
+        </>
+      )}
+
+      {/* Quick actions */}
+      <div className="ev-section-title">
+        <span>Snabbåtgärder</span>
+      </div>
+      <div className="ev-quick-grid">
+        <button type="button" className="ev-quick-tile" onClick={() => navigate('/maintenance')}>
+          <div className="ev-quick-tile-icon">
+            <EvWrench size={16} />
+          </div>
+          <div className="ev-quick-tile-label">Felanmäl</div>
+        </button>
+
+        <button type="button" className="ev-quick-tile" onClick={() => navigate('/news')}>
+          <div className="ev-quick-tile-icon">
+            <EvMail size={16} />
+          </div>
+          <div className="ev-quick-tile-label">Meddelanden</div>
+        </button>
+
+        <button type="button" className="ev-quick-tile" onClick={() => navigate('/documents')}>
+          <div className="ev-quick-tile-icon">
+            <EvFileText size={16} />
+          </div>
+          <div className="ev-quick-tile-label">Dokument</div>
+        </button>
+
+        <button
+          type="button"
+          className="ev-quick-tile ai"
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('eveno-portal-ask-ai'))
+          }}
+        >
+          <div className="ev-quick-tile-icon">
+            <EvSparkles size={16} />
+          </div>
+          <div className="ev-quick-tile-label">AI-hjälp</div>
+        </button>
       </div>
     </div>
   )

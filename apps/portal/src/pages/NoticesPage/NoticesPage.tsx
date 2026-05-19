@@ -7,11 +7,10 @@ import {
   downloadRentNoticePdf,
   extractApiError,
 } from '@/api/portal.api'
-import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Spinner } from '@/components/ui/Spinner'
 import { ErrorCard } from '@/components/ui/ErrorCard'
+import { EvDownload, EvReceipt } from '@/components/ui/EvenoIcons'
 import type { PortalInvoice, PortalRentNotice } from '@/types/portal.types'
-import styles from './NoticesPage.module.css'
 
 type TopTab = 'rent-notices' | 'invoices'
 type Filter = 'all' | 'unpaid' | 'paid'
@@ -31,12 +30,14 @@ function formatCurrencySv(amount: number): string {
   }).format(amount)
 }
 
-function formatDateSv(dateStr: string): string {
+function formatDateIso(dateStr: string): string {
   return new Intl.DateTimeFormat('sv-SE', {
-    day: 'numeric',
-    month: 'short',
     year: 'numeric',
-  }).format(new Date(dateStr))
+    month: '2-digit',
+    day: '2-digit',
+  })
+    .format(new Date(dateStr))
+    .replace(/\//g, '-')
 }
 
 function formatMonthYear(month: number, year: number): string {
@@ -59,17 +60,77 @@ function isNoticeOverdue(notice: PortalRentNotice): boolean {
   )
 }
 
-function DownloadIcon() {
+function rentBadge(status: PortalRentNotice['status'], overdue: boolean) {
+  if (overdue) {
+    return (
+      <span className="ev-badge danger">
+        <span className="ev-badge-dot"></span>
+        Förfallen
+      </span>
+    )
+  }
+  if (status === 'PAID') {
+    return (
+      <span className="ev-badge success">
+        <span className="ev-badge-dot"></span>
+        Betald
+      </span>
+    )
+  }
+  if (status === 'SENT') {
+    return (
+      <span className="ev-badge info">
+        <span className="ev-badge-dot"></span>
+        Att betala
+      </span>
+    )
+  }
   return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M8 2v8m0 0l-3-3m3 3l3-3M3 12v1a1 1 0 001 1h8a1 1 0 001-1v-1"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <span className="ev-badge ghost">
+      <span className="ev-badge-dot"></span>
+      {status === 'PENDING' ? 'Förbereds' : status === 'CANCELLED' ? 'Makulerad' : status}
+    </span>
+  )
+}
+
+function invoiceBadge(status: PortalInvoice['status'], overdue: boolean) {
+  if (overdue) {
+    return (
+      <span className="ev-badge danger">
+        <span className="ev-badge-dot"></span>
+        Förfallen
+      </span>
+    )
+  }
+  if (status === 'PAID') {
+    return (
+      <span className="ev-badge success">
+        <span className="ev-badge-dot"></span>
+        Betald
+      </span>
+    )
+  }
+  if (status === 'SENT') {
+    return (
+      <span className="ev-badge info">
+        <span className="ev-badge-dot"></span>
+        Att betala
+      </span>
+    )
+  }
+  if (status === 'PARTIAL') {
+    return (
+      <span className="ev-badge warning">
+        <span className="ev-badge-dot"></span>
+        Delvis betald
+      </span>
+    )
+  }
+  return (
+    <span className="ev-badge ghost">
+      <span className="ev-badge-dot"></span>
+      {status === 'DRAFT' ? 'Utkast' : status === 'VOID' ? 'Makulerad' : status}
+    </span>
   )
 }
 
@@ -114,17 +175,12 @@ export function NoticesPage() {
   }
 
   return (
-    <div className={styles.page}>
-      <div className={styles.header}>
-        <h1 className={styles.pageTitle}>Avier & fakturor</h1>
-      </div>
-
-      {/* Top tabs */}
-      <div className={styles.tabs} role="tablist">
+    <div className="ev-page ev-view-enter">
+      {/* Top tabs — Avier vs Fakturor */}
+      <div className="ev-tab-bar">
         <button
-          role="tab"
-          aria-selected={topTab === 'rent-notices'}
-          className={`${styles.tab} ${topTab === 'rent-notices' ? styles.tabActive : ''}`}
+          type="button"
+          className={`ev-tab${topTab === 'rent-notices' ? 'active' : ''}`}
           onClick={() => {
             setTopTab('rent-notices')
             setFilter('all')
@@ -133,9 +189,8 @@ export function NoticesPage() {
           Avier
         </button>
         <button
-          role="tab"
-          aria-selected={topTab === 'invoices'}
-          className={`${styles.tab} ${topTab === 'invoices' ? styles.tabActive : ''}`}
+          type="button"
+          className={`ev-tab${topTab === 'invoices' ? 'active' : ''}`}
           onClick={() => {
             setTopTab('invoices')
             setFilter('all')
@@ -145,12 +200,13 @@ export function NoticesPage() {
         </button>
       </div>
 
-      {/* Status-filter */}
-      <div className={styles.filters}>
+      {/* Status filter */}
+      <div className="ev-chip-row" style={{ marginBottom: 16 }}>
         {(['all', 'unpaid', 'paid'] as const).map((f) => (
           <button
             key={f}
-            className={`${styles.filterChip} ${filter === f ? styles.filterChipActive : ''}`}
+            type="button"
+            className={`ev-chip${filter === f ? 'selected' : ''}`}
             onClick={() => setFilter(f)}
           >
             {f === 'all' ? 'Alla' : f === 'unpaid' ? 'Obetalda' : 'Betalda'}
@@ -187,8 +243,6 @@ export function NoticesPage() {
   )
 }
 
-// ── Hyresavier ────────────────────────────────────────────────────────────────
-
 function RentNoticesList({
   query,
   filter,
@@ -223,62 +277,69 @@ function RentNoticesList({
   if (filtered.length === 0) return <EmptyState label="Inga avier att visa" />
 
   return (
-    <div className={styles.list}>
+    <div className="ev-stack" style={{ gap: 10 }}>
       {filtered.map((notice) => {
         const overdue = isNoticeOverdue(notice)
+        const paid = notice.status === 'PAID'
         return (
-          <div key={notice.id} className={`${styles.card} ${overdue ? styles.cardOverdue : ''}`}>
-            <div className={styles.cardTop}>
-              <p className={styles.cardMonth} style={{ textTransform: 'capitalize' }}>
-                {formatMonthYear(notice.month, notice.year)}
-              </p>
-              <StatusBadge type="rent-notice" status={notice.status} />
-            </div>
-
-            <p className={styles.cardAmount}>{formatCurrencySv(notice.totalAmount)}</p>
-
-            <div className={styles.cardDueRow}>
-              <span
-                className={`${styles.cardDueLabel} ${overdue ? styles.cardDueLabelOverdue : ''}`}
-              >
-                {overdue ? '⚠️ Förfallen' : 'Förfaller'}
-              </span>
-              <span className={styles.cardDueDate}>{formatDateSv(notice.dueDate)}</span>
-            </div>
-
-            {notice.paidAt && (
-              <div className={styles.paidRow}>
-                <span className={styles.paidText}>✓ Betald {formatDateSv(notice.paidAt)}</span>
+          <div key={notice.id}>
+            <button
+              type="button"
+              className={`ev-invoice-row${overdue ? 'priority' : ''}${paid ? 'paid' : ''}`}
+              onClick={() => {}}
+            >
+              <div className="ev-invoice-row-body">
+                <div className="ev-invoice-row-title" style={{ textTransform: 'capitalize' }}>
+                  Hyra {formatMonthYear(notice.month, notice.year)}
+                  {rentBadge(notice.status, overdue)}
+                </div>
+                <div className="ev-invoice-row-sub">
+                  {notice.propertyName} · {notice.unitName}
+                </div>
+                <div className="ev-invoice-row-meta">
+                  {paid && notice.paidAt
+                    ? `Betald ${formatDateIso(notice.paidAt)}`
+                    : overdue
+                      ? `Förföll ${formatDateIso(notice.dueDate)}`
+                      : `Förfaller ${formatDateIso(notice.dueDate)}`}
+                  {' · OCR '}
+                  {notice.ocrNumber}
+                </div>
               </div>
-            )}
-
-            <div className={styles.cardOcr}>
-              <span className={styles.cardOcrLabel}>OCR-nummer</span>
-              <span className={styles.cardOcrValue}>{notice.ocrNumber}</span>
-            </div>
-
-            <div className={styles.cardFooter}>
-              <span className={styles.cardProperty}>
-                {notice.propertyName} · {notice.unitName}
-              </span>
-              <button
-                className={styles.downloadBtn}
-                onClick={() => onDownload(notice)}
-                disabled={downloadingId === notice.id}
+              <div className="ev-invoice-row-right">
+                <div className="ev-invoice-row-amount">{formatCurrencySv(notice.totalAmount)}</div>
+                <button
+                  type="button"
+                  className="ev-invoice-dl-btn"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDownload(notice)
+                  }}
+                  disabled={downloadingId === notice.id}
+                  aria-label="Ladda ner PDF"
+                >
+                  <EvDownload size={14} />
+                </button>
+              </div>
+            </button>
+            {errorByRow[notice.id] && (
+              <p
+                style={{
+                  fontSize: 12,
+                  color: 'var(--color-danger)',
+                  marginTop: 4,
+                  paddingLeft: 4,
+                }}
               >
-                <DownloadIcon />
-                {downloadingId === notice.id ? 'Laddar…' : 'Ladda ned PDF'}
-              </button>
-            </div>
-            {errorByRow[notice.id] && <p className={styles.errorRow}>{errorByRow[notice.id]}</p>}
+                {errorByRow[notice.id]}
+              </p>
+            )}
           </div>
         )
       })}
     </div>
   )
 }
-
-// ── Fakturor ──────────────────────────────────────────────────────────────────
 
 function InvoicesList({
   query,
@@ -314,54 +375,61 @@ function InvoicesList({
   if (filtered.length === 0) return <EmptyState label="Inga fakturor att visa" />
 
   return (
-    <div className={styles.list}>
+    <div className="ev-stack" style={{ gap: 10 }}>
       {filtered.map((invoice) => {
         const overdue = isInvoiceOverdue(invoice)
+        const paid = invoice.status === 'PAID'
         return (
-          <div key={invoice.id} className={`${styles.card} ${overdue ? styles.cardOverdue : ''}`}>
-            <div className={styles.cardTop}>
-              <p className={styles.cardMonth} style={{ textTransform: 'capitalize' }}>
-                {formatDateSv(invoice.issueDate)}
-              </p>
-              <StatusBadge type="invoice" status={invoice.status} />
-            </div>
-
-            <p className={styles.cardAmount}>{formatCurrencySv(invoice.total)}</p>
-
-            <div className={styles.cardDueRow}>
-              <span
-                className={`${styles.cardDueLabel} ${overdue ? styles.cardDueLabelOverdue : ''}`}
-              >
-                {overdue ? '⚠️ Förfallen' : 'Förfaller'}
-              </span>
-              <span className={styles.cardDueDate}>{formatDateSv(invoice.dueDate)}</span>
-            </div>
-
-            {invoice.paidAt && (
-              <div className={styles.paidRow}>
-                <span className={styles.paidText}>✓ Betald {formatDateSv(invoice.paidAt)}</span>
+          <div key={invoice.id}>
+            <button
+              type="button"
+              className={`ev-invoice-row${overdue ? 'priority' : ''}${paid ? 'paid' : ''}`}
+              onClick={() => {}}
+            >
+              <div className="ev-invoice-row-body">
+                <div className="ev-invoice-row-title">
+                  Faktura {invoice.invoiceNumber}
+                  {invoiceBadge(invoice.status, overdue)}
+                </div>
+                <div className="ev-invoice-row-sub">
+                  {invoice.propertyName} · {invoice.unitName}
+                </div>
+                <div className="ev-invoice-row-meta">
+                  {paid && invoice.paidAt
+                    ? `Betald ${formatDateIso(invoice.paidAt)}`
+                    : overdue
+                      ? `Förföll ${formatDateIso(invoice.dueDate)}`
+                      : `Förfaller ${formatDateIso(invoice.dueDate)}`}
+                </div>
               </div>
-            )}
-
-            <div className={styles.cardOcr}>
-              <span className={styles.cardOcrLabel}>Fakturanummer</span>
-              <span className={styles.cardOcrValue}>{invoice.invoiceNumber}</span>
-            </div>
-
-            <div className={styles.cardFooter}>
-              <span className={styles.cardProperty}>
-                {invoice.propertyName} · {invoice.unitName}
-              </span>
-              <button
-                className={styles.downloadBtn}
-                onClick={() => onDownload(invoice)}
-                disabled={downloadingId === invoice.id}
+              <div className="ev-invoice-row-right">
+                <div className="ev-invoice-row-amount">{formatCurrencySv(invoice.total)}</div>
+                <button
+                  type="button"
+                  className="ev-invoice-dl-btn"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDownload(invoice)
+                  }}
+                  disabled={downloadingId === invoice.id}
+                  aria-label="Ladda ner PDF"
+                >
+                  <EvDownload size={14} />
+                </button>
+              </div>
+            </button>
+            {errorByRow[invoice.id] && (
+              <p
+                style={{
+                  fontSize: 12,
+                  color: 'var(--color-danger)',
+                  marginTop: 4,
+                  paddingLeft: 4,
+                }}
               >
-                <DownloadIcon />
-                {downloadingId === invoice.id ? 'Laddar…' : 'Ladda ned PDF'}
-              </button>
-            </div>
-            {errorByRow[invoice.id] && <p className={styles.errorRow}>{errorByRow[invoice.id]}</p>}
+                {errorByRow[invoice.id]}
+              </p>
+            )}
           </div>
         )
       })}
@@ -369,20 +437,14 @@ function InvoicesList({
   )
 }
 
-// ── Empty state ───────────────────────────────────────────────────────────────
-
 function EmptyState({ label }: { label: string }) {
   return (
-    <div className={styles.empty}>
-      <div className={styles.emptyIconWrap}>
-        <svg width="32" height="32" viewBox="0 0 22 22" fill="none">
-          <rect x="3" y="4" width="16" height="15" rx="2" stroke="#aaa" strokeWidth="1.5" />
-          <line x1="3" y1="8" x2="19" y2="8" stroke="#aaa" strokeWidth="1" />
-          <line x1="7" y1="12" x2="15" y2="12" stroke="#aaa" strokeWidth="1" opacity="0.6" />
-          <line x1="7" y1="15" x2="12" y2="15" stroke="#aaa" strokeWidth="1" opacity="0.4" />
-        </svg>
+    <div className="ev-empty">
+      <div className="ev-empty-icon">
+        <EvReceipt size={24} />
       </div>
-      <p className={styles.emptyText}>{label}</p>
+      <div className="ev-empty-title">{label}</div>
+      <div className="ev-empty-text">När din hyresvärd skickar en ny avi visas den här direkt.</div>
     </div>
   )
 }

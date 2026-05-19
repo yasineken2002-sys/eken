@@ -8,6 +8,7 @@ import { App } from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { extractApiError } from './api/portal.api'
 import './styles/tokens.css'
+import './styles/portal.css'
 
 // Global safety net: alla muteringar som inte själva sätter meta.handlesOwnError
 // får automatiskt en toast med API-felmeddelandet. Stoppar tysta misslyckanden.
