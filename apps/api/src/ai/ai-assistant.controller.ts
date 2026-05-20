@@ -61,9 +61,12 @@ export class AiAssistantController {
     @CurrentUser() user: JwtPayload,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    // Kvot-kontroll innan vi öppnar SSE-strömmen
+    // Kvot-kontroll innan vi öppnar SSE-strömmen.
+    // checkQuota() täcker plan-räknaren + org-wide daglig kostnadscap.
+    // checkUserDailyCostCap() lägger till per-user daglig cap (50 SEK/dag).
     try {
       await this.quotaService.checkQuota(organizationId)
+      await this.quotaService.checkUserDailyCostCap(organizationId, user.sub)
     } catch (err) {
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',

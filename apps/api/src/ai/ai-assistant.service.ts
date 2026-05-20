@@ -462,8 +462,12 @@ export class AiAssistantService {
       throw new BadRequestException('ANTHROPIC_API_KEY är inte konfigurerad i servermiljön')
     }
 
-    // 0. Kvot-kontroll innan vi spenderar pengar
+    // 0. Kvot-kontroll innan vi spenderar pengar.
+    //    checkQuota() täcker plan-räknaren + org-wide daglig kostnadscap.
+    //    checkUserDailyCostCap() lägger till per-user daglig cap för
+    //    manuella anrop (50 SEK/dag default).
     await this.quota.checkQuota(organizationId)
+    await this.quota.checkUserDailyCostCap(organizationId, userId)
 
     // 1. Load or create conversation
     const conversation = await this.getOrCreateConversation(
