@@ -14,7 +14,11 @@ import { ConfigService } from '@nestjs/config'
 import { Throttle } from '@nestjs/throttler'
 import type { FastifyReply } from 'fastify'
 import Anthropic from '@anthropic-ai/sdk'
-import { AiAssistantService, requiresDoubleConfirmation } from './ai-assistant.service'
+import {
+  AiAssistantService,
+  requiresDoubleConfirmation,
+  SYSTEM_PROMPT,
+} from './ai-assistant.service'
 import { MemoryService } from './memory.service'
 import { PortfolioAnalysisService } from './portfolio-analysis.service'
 import { DataContextService } from './data-context.service'
@@ -33,16 +37,6 @@ import { AI_MODELS } from './ai.config'
 const STREAM_MODEL = AI_MODELS.STREAM
 const STREAM_MAX_TOOL_ITERATIONS = 3
 const STREAM_MAX_TOKENS = 2048
-
-const STREAMING_SYSTEM_PROMPT = `Du är en intelligent AI-assistent för Eveno, ett svenskt fastighetsförvaltningssystem.
-Du hjälper fastighetsförvaltare att hantera sin portfölj effektivt.
-
-REGLER:
-- Svara alltid på svenska
-- Var konkret och använd faktiska siffror från datan
-- Identifiera mönster, risker och möjligheter i portföljen
-- Ge handlingsbara råd baserat på situationen
-- Aldrig hitta på siffror – basera alltid svar på nedanstående data`
 
 @Controller('ai')
 export class AiAssistantController {
@@ -112,10 +106,16 @@ export class AiAssistantController {
 
       // 2. Build data context + system prompt. Datum sänds som ett separat
       //    (icke-cachat) systemblock så att portföljdata-snapshotten kan
-      //    cachas över flera dygn.
-      const dataCtx = await this.dataContext.buildContext(organizationId)
+      //    cachas över flera dygn. Använder samma fulla SYSTEM_PROMPT och
+      //    memories-injektion som non-streaming chat() så att SSE-flödet
+      //    inte får ett degraderat svar.
+      const [dataCtx, memoriesCtx] = await Promise.all([
+        this.dataContext.buildContext(organizationId),
+        this.memoryService.getMemories(organizationId, user.sub),
+      ])
       const dateContext = this.dataContext.getCurrentDateContext()
-      const cacheableSystemText = `${STREAMING_SYSTEM_PROMPT}\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}`
+      const memorySection = memoriesCtx ? `\n\n${memoriesCtx}` : ''
+      const cacheableSystemText = `${SYSTEM_PROMPT}\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}${memorySection}`
       const systemBlocks: Anthropic.TextBlockParam[] = [
         {
           type: 'text',
