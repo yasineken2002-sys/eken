@@ -3,6 +3,24 @@ import { PrismaService } from '../../common/prisma/prisma.service'
 import { PLAN_LIMITS, getMonthStart, getNextResetAt } from '@eken/shared'
 import type { SubscriptionPlan } from '@eken/shared'
 
+// ─── Daglig kostnadsbroms (SEK) ──────────────────────────────────────────────
+// Skyddar mot runaway-spending: AI-hallucinerade loop-anrop, missbruk eller
+// buggiga klienter som spammar requests. Limiten är medvetet GENERÖS — normala
+// användare ligger på 1–5 kr/dag, tunga användare 10–20 kr/dag. Att slå i taket
+// betyder nästan alltid missbruk eller automation som gått snett.
+//
+// Org-capen (ORG_DAILY_LIMIT_SEK) gäller alla AI-anrop som passerar denna
+// service (manuella chat + stream + analysis). User-capen
+// (USER_DAILY_LIMIT_SEK) gäller endast MANUELLA anrop per användare.
+const ORG_DAILY_LIMIT_SEK = 200
+const USER_DAILY_LIMIT_SEK = 50
+
+function getDayStart(): Date {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  return start
+}
+
 /**
  * Plan-baserad AI-anropsräknare. Ersätter den tidigare kostnadsbaserade
  * SEK-budgeten med en räknare på MANUELLA AI-anrop per kalendermånad.
@@ -51,6 +69,10 @@ export class AiQuotaService {
         'Ditt konto är pausat. Kontakta supporten för att återaktivera.',
       )
     }
+
+    // Org-wide daily cost cap — körs FÖRE plan-räknaren så vi snabbt
+    // stoppar runaway-spending oavsett om det är manuellt eller automatiskt.
+    await this.checkOrgDailyCostCap(organizationId)
 
     const plan = org.subscriptionPlan as SubscriptionPlan
     const limit = PLAN_LIMITS[plan]
@@ -133,5 +155,63 @@ export class AiQuotaService {
         createdAt: { gte: getMonthStart() },
       },
     })
+  }
+
+  /**
+   * Org-wide daily cost cap. Räknar SUMMAN av costSek för alla AiUsageLog-rader
+   * (manuella + automatiska) inom innevarande dygn. Kastar BadRequestException
+   * om summan passerat ORG_DAILY_LIMIT_SEK.
+   *
+   * Anropas internt från checkQuota() så alla manuella entry-points (chat,
+   * stream, analysis) automatiskt skyddas. Kan även anropas direkt från
+   * automatiska jobb som vill respektera capen.
+   */
+  async checkOrgDailyCostCap(organizationId: string): Promise<void> {
+    const result = await this.prisma.aiUsageLog.aggregate({
+      where: {
+        organizationId,
+        createdAt: { gte: getDayStart() },
+      },
+      _sum: { costSek: true },
+    })
+    const orgSpend = Number(result._sum.costSek ?? 0)
+    if (orgSpend > ORG_DAILY_LIMIT_SEK) {
+      this.logger.warn(
+        `Org ${organizationId} blockerad av daglig kostnadscap: ${orgSpend.toFixed(2)} kr > ${ORG_DAILY_LIMIT_SEK} kr`,
+      )
+      throw new BadRequestException(
+        `Organisationens AI-budget för dagen (${orgSpend.toFixed(2)} kr av ${ORG_DAILY_LIMIT_SEK} kr) är uppnådd. Försök igen imorgon.`,
+      )
+    }
+  }
+
+  /**
+   * Per-användare daglig kostnadscap. Räknar SUMMAN av costSek för endast
+   * MANUELLA anrop (isAutomated=false) från denna user i denna org idag.
+   * Kastar BadRequestException om summan passerat USER_DAILY_LIMIT_SEK.
+   *
+   * Anropas från ai-assistant.controller.ts (streamChat) och
+   * ai-assistant.service.ts (chat). Automatiska jobb räknas inte mot
+   * användarens cap.
+   */
+  async checkUserDailyCostCap(organizationId: string, userId: string): Promise<void> {
+    const result = await this.prisma.aiUsageLog.aggregate({
+      where: {
+        organizationId,
+        userId,
+        isAutomated: false,
+        createdAt: { gte: getDayStart() },
+      },
+      _sum: { costSek: true },
+    })
+    const userSpend = Number(result._sum.costSek ?? 0)
+    if (userSpend > USER_DAILY_LIMIT_SEK) {
+      this.logger.warn(
+        `User ${userId} (org ${organizationId}) blockerad av daglig kostnadscap: ${userSpend.toFixed(2)} kr > ${USER_DAILY_LIMIT_SEK} kr`,
+      )
+      throw new BadRequestException(
+        `AI-budget för dagen (${userSpend.toFixed(2)} kr av ${USER_DAILY_LIMIT_SEK} kr) är uppnådd. Försök igen imorgon eller kontakta admin för höjd gräns.`,
+      )
+    }
   }
 }
