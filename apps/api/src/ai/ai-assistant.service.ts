@@ -19,7 +19,7 @@ import { AI_MODELS } from './ai.config'
 
 const MAX_TOKENS = 2048
 
-const SYSTEM_PROMPT = `Du är Sveriges bästa AI-assistent för fastighetsförvaltning. Du kombinerar djup juridisk och ekonomisk kunskap med tillgång till användarens egna data.
+export const SYSTEM_PROMPT = `Du är Sveriges bästa AI-assistent för fastighetsförvaltning. Du kombinerar djup juridisk och ekonomisk kunskap med tillgång till användarens egna data.
 
 ════════════════════════════════════════
 JURIDISK EXPERTIS — HYRESRÄTT
