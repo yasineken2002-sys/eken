@@ -100,3 +100,431 @@
     margin-left: 1px;
   }
 }
+
+/* ============================================================
+   Eveno AI-assistent — chat styles
+   Mirrors the Claude Design handoff (chat.css). Scoped via
+   .ev-ai-root so the rest of the app keeps its existing look.
+   ============================================================ */
+.ev-ai-root {
+  --ev-color-primary: #0f1f47;
+  --ev-color-primary-hover: #1a2d5c;
+  --ev-color-primary-accent: #3b5bdb;
+  --ev-color-primary-soft: #e8edfb;
+  --ev-gradient-ai: linear-gradient(135deg, #0f1f47 0%, #3b5bdb 100%);
+  --ev-color-bg: #fafaf7;
+  --ev-color-surface: #ffffff;
+  --ev-color-subtle: #f4f4ee;
+  --ev-color-fg-1: #0f1f47;
+  --ev-color-fg-2: #5b6478;
+  --ev-color-fg-3: #9098a9;
+  --ev-color-border: rgba(15, 31, 71, 0.08);
+  --ev-color-border-strong: rgba(15, 31, 71, 0.14);
+  --ev-color-success: #0e7d5c;
+  --ev-color-success-bg: #e7f4ee;
+  --ev-color-warning: #b7791f;
+  --ev-color-warning-bg: #fbf3dc;
+  --ev-color-danger: #c3392b;
+  --ev-color-danger-bg: #fbe9e7;
+  --ev-shadow-xs: 0 1px 2px rgba(15, 31, 71, 0.04);
+  --ev-shadow-md: 0 8px 24px rgba(15, 31, 71, 0.08);
+  background: var(--ev-color-bg);
+  color: var(--ev-color-fg-1);
+}
+
+/* Welcome card ─────────────────────────────────────────────── */
+.ev-ai-welcome {
+  position: relative;
+  border-radius: 18px;
+  padding: 26px;
+  color: #fff;
+  overflow: hidden;
+  background: linear-gradient(135deg, #0f1f47 0%, #1a3070 35%, #3b5bdb 100%);
+  background-size: 200% 200%;
+  animation: ev-welcome-shift 12s ease-in-out infinite;
+  box-shadow: 0 8px 28px rgba(15, 31, 71, 0.18);
+}
+.ev-ai-welcome::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(255, 255, 255, 0.18) 0%, transparent 50%),
+    radial-gradient(circle at 0% 100%, rgba(59, 91, 219, 0.35) 0%, transparent 55%);
+  pointer-events: none;
+}
+.ev-ai-welcome::after {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -10%;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.08) 0%, transparent 70%);
+  border-radius: 999px;
+  filter: blur(20px);
+  pointer-events: none;
+}
+@keyframes ev-welcome-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+.ev-welcome-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85);
+}
+.ev-welcome-tag svg {
+  animation: ev-spin-slow 10s linear infinite;
+}
+@keyframes ev-spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ev-welcome-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 0.5px solid rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  font-family: inherit;
+  letter-spacing: -0.005em;
+  transition:
+    background 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ev-welcome-action:hover {
+  background: rgba(255, 255, 255, 0.16);
+  transform: translateY(-1px);
+}
+.ev-welcome-action:active {
+  transform: scale(0.99);
+}
+.ev-welcome-action-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Chat topbar gradient icon ─────────────────────────────────── */
+.ev-ai-topbar-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--ev-gradient-ai);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+.ev-ai-topbar-icon::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.25) 0%, transparent 60%);
+}
+.ev-ai-topbar-icon svg {
+  position: relative;
+  z-index: 1;
+}
+
+/* Message bubbles ──────────────────────────────────────────── */
+.ev-msg-ai {
+  animation: ev-ai-slide-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes ev-ai-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.ev-msg-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.ev-msg-avatar.user {
+  background: var(--ev-color-primary);
+  color: #fff;
+}
+.ev-msg-avatar.ai {
+  background: var(--ev-gradient-ai);
+  position: relative;
+  overflow: hidden;
+}
+.ev-msg-avatar.ai::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+}
+.ev-msg-avatar.ai svg {
+  position: relative;
+  z-index: 1;
+}
+.ev-bubble {
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.ev-bubble.user {
+  background: var(--ev-color-primary);
+  color: #fff;
+  border-radius: 16px 16px 4px 16px;
+}
+.ev-bubble.ai {
+  background: var(--ev-color-surface);
+  color: var(--ev-color-fg-1);
+  border: 0.5px solid var(--ev-color-border);
+  border-radius: 4px 16px 16px 16px;
+  box-shadow: var(--ev-shadow-xs);
+}
+
+/* Tool-call pill ───────────────────────────────────────────── */
+.ev-tool-call {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 7px 10px;
+  border-radius: 999px;
+  background: var(--ev-color-success-bg);
+  border: 0.5px solid rgba(14, 125, 92, 0.18);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ev-color-success);
+  align-self: flex-start;
+}
+.ev-tool-spark {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--ev-color-success);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ev-tool-spark.running {
+  animation: ev-spin-slow 3.4s linear infinite;
+}
+.ev-tool-call .ev-tool-meta {
+  color: var(--ev-color-fg-3);
+  font-weight: 400;
+}
+
+/* Confirmation card ────────────────────────────────────────── */
+.ev-confirm-card {
+  position: relative;
+  border-radius: 14px;
+  padding: 16px 18px 16px 56px;
+  background: var(--ev-color-warning-bg);
+  border: 0.5px solid rgba(183, 121, 31, 0.22);
+  border-left: 3px solid var(--ev-color-warning);
+  box-shadow: var(--ev-shadow-xs);
+}
+.ev-confirm-card.danger {
+  background: var(--ev-color-danger-bg);
+  border-color: rgba(195, 57, 43, 0.22);
+  border-left-color: var(--ev-color-danger);
+}
+.ev-confirm-icon {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(183, 121, 31, 0.18);
+  color: var(--ev-color-warning);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ev-confirm-card.danger .ev-confirm-icon {
+  background: rgba(195, 57, 43, 0.18);
+  color: var(--ev-color-danger);
+}
+.ev-confirm-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ev-color-warning);
+  margin-bottom: 6px;
+}
+.ev-confirm-card.danger .ev-confirm-title {
+  color: var(--ev-color-danger);
+}
+
+/* Buttons ──────────────────────────────────────────────────── */
+.ev-btn {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ev-btn:active {
+  transform: scale(0.97);
+}
+.ev-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ev-btn:disabled:active {
+  transform: none;
+}
+.ev-btn-primary {
+  background: var(--ev-color-primary);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(15, 31, 71, 0.16);
+}
+.ev-btn-primary:hover:not(:disabled) {
+  background: var(--ev-color-primary-hover);
+}
+.ev-btn-danger {
+  background: var(--ev-color-danger);
+  color: #fff;
+}
+.ev-btn-danger:hover:not(:disabled) {
+  background: #a52f23;
+}
+.ev-btn-secondary {
+  background: var(--ev-color-surface);
+  color: var(--ev-color-fg-1);
+  border: 1px solid var(--ev-color-border-strong);
+}
+.ev-btn-secondary:hover:not(:disabled) {
+  background: var(--ev-color-bg);
+}
+.ev-btn-ghost {
+  background: transparent;
+  color: var(--ev-color-fg-2);
+}
+.ev-btn-ghost:hover:not(:disabled) {
+  background: rgba(15, 31, 71, 0.06);
+  color: var(--ev-color-fg-1);
+}
+
+/* Composer ─────────────────────────────────────────────────── */
+.ev-composer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #fcfcf9;
+  border: 0.5px solid var(--ev-color-border-strong);
+  border-radius: 14px;
+  padding: 6px 6px 6px 8px;
+  box-shadow: 0 2px 8px rgba(15, 31, 71, 0.04);
+  transition:
+    border-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ev-composer:focus-within {
+  border-color: rgba(59, 91, 219, 0.4);
+  box-shadow:
+    0 0 0 3px rgba(59, 91, 219, 0.18),
+    0 2px 8px rgba(15, 31, 71, 0.04);
+}
+.ev-composer-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--ev-color-fg-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ev-composer-icon-btn:hover {
+  background: rgba(15, 31, 71, 0.06);
+  color: var(--ev-color-fg-1);
+}
+.ev-composer-send {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: none;
+  background: var(--ev-color-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ev-composer-send:hover:not(:disabled) {
+  background: var(--ev-color-primary-hover);
+}
+.ev-composer-send:active {
+  transform: scale(0.94);
+}
+.ev-composer-send:disabled {
+  background: rgba(15, 31, 71, 0.18);
+  cursor: default;
+}
+.ev-composer-send:disabled:active {
+  transform: none;
+}

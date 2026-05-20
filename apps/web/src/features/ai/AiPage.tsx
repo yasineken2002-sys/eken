@@ -3,23 +3,24 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Sparkles,
-  Send,
   Plus,
   Trash2,
   MessageSquare,
-  Building2,
-  FileText,
+  Bell,
+  Receipt,
   AlertTriangle,
   TrendingUp,
-  Users,
   CheckCircle2,
+  Check,
   X,
   Mic,
   MicOff,
   BarChart2,
+  ArrowUp,
+  ArrowRight,
+  Search as SearchIcon,
+  PanelLeft,
 } from 'lucide-react'
-import { PageWrapper } from '@/components/ui/PageWrapper'
-import { Button } from '@/components/ui/Button'
 import {
   useConversations,
   useConversation,
@@ -80,23 +81,12 @@ declare global {
   }
 }
 
-const SUGGESTIONS = [
-  {
-    icon: AlertTriangle,
-    label: 'Vilka hyresgäster har förfallna fakturor?',
-    color: '#DC2626',
-    bg: '#FEF2F2',
-  },
-  { icon: FileText, label: 'Skapa hyresfakturor för maj 2026', color: '#059669', bg: '#ECFDF5' },
-  { icon: TrendingUp, label: 'Visa intäkter för Q1 2026', color: '#2563EB', bg: '#EFF6FF' },
-  {
-    icon: AlertTriangle,
-    label: 'Skicka påminnelser till förfallna fakturor',
-    color: '#D97706',
-    bg: '#FFFBEB',
-  },
-  { icon: Building2, label: 'Hur många lediga enheter finns?', color: '#7C3AED', bg: '#F5F3FF' },
-  { icon: Users, label: 'Exportera bokföring för 2026', color: '#6B7280', bg: '#F9FAFB' },
+// Quick-action prompts on the welcome screen
+const QUICK_ACTIONS = [
+  { icon: Bell, label: 'Skicka påminnelse till förfallna hyresgäster' },
+  { icon: TrendingUp, label: 'Visa intäkter denna månad' },
+  { icon: Receipt, label: 'Skapa hyresavier för juni' },
+  { icon: AlertTriangle, label: 'Vilka hyresgäster har förfallna fakturor?' },
 ]
 
 function LoadingDots() {
@@ -105,7 +95,8 @@ function LoadingDots() {
       {[0, 1, 2].map((i) => (
         <motion.div
           key={i}
-          className="h-2 w-2 rounded-full bg-gray-300"
+          className="h-2 w-2 rounded-full"
+          style={{ background: 'rgba(15,31,71,0.25)' }}
           animate={{ opacity: [0.4, 1, 0.4] }}
           transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
         />
@@ -114,36 +105,23 @@ function LoadingDots() {
   )
 }
 
-function MessageBubble({ msg }: { msg: AiMessage }) {
+function MessageBubble({ msg, userInitials }: { msg: AiMessage; userInitials: string }) {
   const isUser = msg.role === 'user'
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
-    >
-      {!isUser && (
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">
-          <Sparkles size={14} strokeWidth={1.8} className="text-blue-500" />
-        </div>
+    <div
+      className={cn(
+        'flex max-w-full gap-2.5',
+        isUser ? 'ev-msg-user flex-row-reverse self-end' : 'ev-msg-ai',
       )}
-      <div
-        className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
-          isUser
-            ? 'rounded-tr-sm bg-[#1A7C45] text-white'
-            : 'rounded-tl-sm border border-gray-100 bg-white text-gray-800'
-        }`}
-      >
-        <p
-          className={`whitespace-pre-wrap text-[13.5px] leading-relaxed ${
-            isUser ? 'text-white' : 'text-gray-800'
-          }`}
-        >
-          {msg.content}
-        </p>
+      style={isUser ? { maxWidth: '78%' } : { maxWidth: '92%' }}
+    >
+      <div className={cn('ev-msg-avatar', isUser ? 'user' : 'ai')}>
+        {isUser ? userInitials : <Sparkles size={14} strokeWidth={2.2} />}
       </div>
-    </motion.div>
+      <div className={cn('ev-bubble whitespace-pre-wrap', isUser ? 'user' : 'ai')}>
+        {msg.content}
+      </div>
+    </div>
   )
 }
 
@@ -168,99 +146,62 @@ function ConfirmationCard({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 4, scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-      className="mx-auto max-w-3xl px-6 pb-4"
+      className={cn('ev-confirm-card', isHighRisk && 'danger')}
     >
-      <div
-        className={cn(
-          'overflow-hidden rounded-2xl border border-l-4 border-gray-100 bg-white shadow-sm',
-          isHighRisk ? 'border-l-red-600' : 'border-l-green-600',
-        )}
-      >
-        <div className="px-5 pb-5 pt-4">
-          {/* Header */}
-          <div className="mb-3 flex items-center gap-2">
-            <div
-              className={cn(
-                'flex h-7 w-7 items-center justify-center rounded-lg',
-                isHighRisk ? 'bg-red-50' : 'bg-amber-50',
-              )}
-            >
-              <AlertTriangle
-                size={14}
-                strokeWidth={1.8}
-                className={isHighRisk ? 'text-red-600' : 'text-amber-600'}
-              />
-            </div>
-            <span className="text-[13.5px] font-semibold text-gray-900">
-              {isHighRisk ? 'Hög risk — bekräfta igen' : 'Bekräfta åtgärd'}
-            </span>
-          </div>
-
-          {/* High risk extra warning */}
-          {isHighRisk && (
-            <div className="mb-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2">
-              <p className="text-[12.5px] font-medium text-red-700">
-                OBS: Denna åtgärd påverkar flera poster eller ett högt belopp. Kontrollera
-                detaljerna nedan noggrant innan du bekräftar.
-              </p>
-            </div>
-          )}
-
-          {/* Confirmation message */}
-          <p className="mb-4 text-[14px] font-medium text-gray-800">
-            {pendingAction.confirmationMessage}
-          </p>
-
-          {/* Details grid */}
-          {entries.length > 0 && (
-            <div className="mb-5 grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-xl bg-gray-50 p-3">
-              {entries.map(([key, value]) => (
-                <div key={key} className="flex flex-col">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                    {key}
-                  </span>
-                  <span className="text-[13px] font-medium text-gray-700">{value}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onCancel}
-              disabled={isLoading}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-4 text-[13.5px] font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-            >
-              <X size={13} strokeWidth={2} />
-              Avbryt
-            </button>
-            <button
-              onClick={onConfirm}
-              disabled={isLoading}
-              className={cn(
-                'flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg px-4 text-[13.5px] font-medium text-white transition-colors active:scale-[0.97] disabled:opacity-50',
-                isHighRisk ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700',
-              )}
-            >
-              {isLoading ? (
-                <LoadingDots />
-              ) : (
-                <>
-                  <CheckCircle2 size={14} strokeWidth={2} />
-                  {isHighRisk ? 'Ja, jag är säker — utför ändå' : 'Bekräfta och utför'}
-                </>
-              )}
-            </button>
-          </div>
-
-          <p className="mt-2.5 text-center text-[11px] text-gray-400">
-            {isHighRisk
-              ? 'Åtgärden kan inte enkelt ångras efter utförande'
-              : 'Åtgärden utförs direkt efter bekräftelse'}
-          </p>
-        </div>
+      <div className="ev-confirm-icon">
+        <AlertTriangle size={16} strokeWidth={2} />
       </div>
+      <div className="ev-confirm-title">
+        {isHighRisk ? 'Hög risk — bekräfta igen' : 'Bekräfta åtgärd'}
+      </div>
+      <p className="m-0 text-[13.5px] leading-[1.5]" style={{ color: 'var(--ev-color-fg-1)' }}>
+        {pendingAction.confirmationMessage}
+      </p>
+      {entries.length > 0 && (
+        <div
+          className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 rounded-[10px] p-3"
+          style={{ background: 'rgba(255,255,255,0.6)' }}
+        >
+          {entries.map(([key, value]) => (
+            <div key={key} className="flex flex-col">
+              <span
+                className="text-[10.5px] font-semibold uppercase tracking-wider"
+                style={{ color: 'var(--ev-color-fg-3)' }}
+              >
+                {key}
+              </span>
+              <span className="text-[13px] font-medium" style={{ color: 'var(--ev-color-fg-1)' }}>
+                {String(value)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mt-3.5 flex gap-2">
+        <button
+          onClick={onConfirm}
+          disabled={isLoading}
+          className={cn('ev-btn', isHighRisk ? 'ev-btn-danger' : 'ev-btn-primary')}
+        >
+          {isLoading ? (
+            <LoadingDots />
+          ) : (
+            <>
+              <CheckCircle2 size={13} strokeWidth={2.4} />
+              {isHighRisk ? 'Ja, utför ändå' : 'Bekräfta'}
+            </>
+          )}
+        </button>
+        <button onClick={onCancel} disabled={isLoading} className="ev-btn ev-btn-secondary">
+          <X size={13} strokeWidth={2} />
+          Avbryt
+        </button>
+      </div>
+      <p className="mb-0 mt-2.5 text-[11px]" style={{ color: 'var(--ev-color-fg-3)' }}>
+        {isHighRisk
+          ? 'Åtgärden kan inte enkelt ångras efter utförande'
+          : 'Åtgärden utförs direkt efter bekräftelse'}
+      </p>
     </motion.div>
   )
 }
@@ -279,10 +220,17 @@ export function AiPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [isListening, setIsListening] = useState(false)
   const [analysisOpen, setAnalysisOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(true)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const streamCleanupRef = useRef<(() => void) | null>(null)
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
+
+  const user = useAuthStore((s) => s.user)
+  const userInitials = user
+    ? `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase()
+    : 'DU'
+  const firstName = user?.firstName ?? ''
 
   const queryClient = useQueryClient()
   const { data: conversations = [], isLoading: convLoading } = useConversations()
@@ -291,15 +239,12 @@ export function AiPage() {
   const confirmMutation = useConfirmAction()
   const deleteMutation = useDeleteConversation()
 
-  // Merge DB messages with pending
   const allMessages: AiMessage[] = [...(conversation?.messages ?? []), ...pendingMessages]
 
-  // Scroll to bottom when messages, streaming, or pending action changes
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [allMessages.length, isThinking, isStreaming, streamingText, pendingAction])
 
-  // Cleanup SSE stream on unmount
   useEffect(
     () => () => {
       streamCleanupRef.current?.()
@@ -343,7 +288,6 @@ export function AiPage() {
     setIsListening(false)
   }
 
-  // Auto-resize textarea
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value)
     const ta = textareaRef.current
@@ -370,9 +314,6 @@ export function AiPage() {
     }
     setPendingMessages((prev) => [...prev, tempUser])
 
-    // Route to non-streaming (tool-capable) path when:
-    // - Message contains an action keyword, OR
-    // - We're in an existing conversation (follow-up replies must reach Claude tools)
     const isActionMessage =
       activeConversationId !== null ||
       /skapa|uppdatera|skicka|markera|aktivera|avsluta|exportera|importera/i.test(msg)
@@ -389,7 +330,6 @@ export function AiPage() {
           setActiveConversationId(res.conversationId)
         }
 
-        // Wait for conversation refetch before clearing pending messages to avoid flash
         const convId = res.conversationId ?? activeConversationId ?? ''
         if (convId) {
           await queryClient.refetchQueries({ queryKey: ['ai-conversation', convId] })
@@ -405,7 +345,6 @@ export function AiPage() {
         setIsThinking(false)
       }
     } else {
-      // Read/question queries — use streaming (med tool-stöd och bekräftelseflöde)
       const token = useAuthStore.getState().accessToken ?? ''
       setIsStreaming(true)
       setStreamingText('')
@@ -453,7 +392,7 @@ export function AiPage() {
             setPendingMessages([])
           })
         },
-        onError: (_error) => {
+        onError: () => {
           setIsStreaming(false)
           setStreamingText('')
           setToolEvents([])
@@ -474,7 +413,6 @@ export function AiPage() {
         confirmed: true,
       })
 
-      // Double-confirm: server returned a new pendingAction (high-risk second check)
       if (res.pendingAction) {
         setPendingAction(res.pendingAction)
         return
@@ -482,7 +420,6 @@ export function AiPage() {
 
       setPendingAction(null)
 
-      // Add result as assistant message to pending until refetch
       if (res.reply) {
         const tempAssistant: AiMessage = {
           id: `tmp-assistant-${Date.now()}`,
@@ -492,10 +429,9 @@ export function AiPage() {
           createdAt: new Date().toISOString(),
         }
         setPendingMessages([tempAssistant])
-        setTimeout(() => setPendingMessages([]), 2000) // let query refresh
+        setTimeout(() => setPendingMessages([]), 2000)
       }
 
-      // Handle SIE4 download
       if (res.downloadUrl) {
         window.open(res.downloadUrl, '_blank')
       }
@@ -556,330 +492,450 @@ export function AiPage() {
   const isNewChat = !activeConversationId
   const hasMessages = allMessages.length > 0
 
-  return (
-    <PageWrapper id="ai">
-      <div className="flex h-[calc(100vh-52px)] overflow-hidden">
-        {/* ── Left Sidebar ── */}
-        <div className="flex w-[280px] flex-shrink-0 flex-col border-r border-gray-100 bg-white">
-          {/* Header */}
-          <div className="border-b border-gray-100 px-4 py-3">
-            <div className="mb-3 flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50">
-                <Sparkles size={14} strokeWidth={1.8} className="text-blue-600" />
-              </div>
-              <span className="text-[14px] font-semibold text-gray-900">Eveno AI</span>
-            </div>
-            <Button variant="primary" size="sm" className="w-full" onClick={handleNewConversation}>
-              <Plus size={13} strokeWidth={2} />
-              Ny konversation
-            </Button>
-          </div>
+  // Usage estimate — capped at 2000 for the display pill
+  const usageUsed = Math.min(2000, conversations.length * 5)
+  const usageRemaining = Math.max(0, 2000 - usageUsed)
 
-          {/* Conversation list */}
-          <div className="flex-1 overflow-y-auto py-2">
-            {convLoading ? (
-              <div className="space-y-1 px-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-12 animate-pulse rounded-lg bg-gray-100" />
-                ))}
+  return (
+    <motion.div
+      key="ai"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+      className="ev-ai-root flex h-[calc(100vh-56px)] overflow-hidden"
+    >
+      {/* ── History panel ── */}
+      <AnimatePresence initial={false}>
+        {historyOpen && (
+          <motion.aside
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 260, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 36 }}
+            className="flex flex-shrink-0 flex-col overflow-hidden"
+            style={{
+              background: 'var(--ev-color-surface)',
+              borderRight: '0.5px solid var(--ev-color-border)',
+            }}
+          >
+            <div className="flex w-[260px] flex-col" style={{ height: '100%' }}>
+              <div
+                className="flex items-center justify-between px-4 py-3"
+                style={{ borderBottom: '0.5px solid var(--ev-color-border)' }}
+              >
+                <span
+                  className="text-[11px] font-semibold uppercase tracking-[0.08em]"
+                  style={{ color: 'var(--ev-color-fg-3)' }}
+                >
+                  Historik
+                </span>
+                <button
+                  onClick={handleNewConversation}
+                  className="ev-composer-icon-btn"
+                  title="Ny konversation"
+                  style={{ width: 28, height: 28 }}
+                >
+                  <Plus size={14} strokeWidth={2} />
+                </button>
               </div>
-            ) : conversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
-                <MessageSquare size={20} strokeWidth={1.5} className="mb-2 text-gray-200" />
-                <p className="text-[12.5px] text-gray-400">Inga konversationer ännu</p>
+
+              <div className="flex-1 overflow-y-auto py-2">
+                {convLoading ? (
+                  <div className="space-y-1 px-3">
+                    {[1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className="h-12 animate-pulse rounded-lg"
+                        style={{ background: 'var(--ev-color-subtle)' }}
+                      />
+                    ))}
+                  </div>
+                ) : conversations.length === 0 ? (
+                  <div className="flex flex-col items-center px-4 py-10 text-center">
+                    <MessageSquare
+                      size={20}
+                      strokeWidth={1.5}
+                      style={{ color: 'var(--ev-color-fg-3)' }}
+                    />
+                    <p className="mt-2 text-[12.5px]" style={{ color: 'var(--ev-color-fg-3)' }}>
+                      Inga konversationer ännu
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-0.5 px-2">
+                    {conversations.map((conv) => {
+                      const active = activeConversationId === conv.id
+                      const lastMsg = conv.messages[0]
+                      return (
+                        <div
+                          key={conv.id}
+                          className="group relative flex cursor-pointer items-start gap-2 rounded-[10px] px-3 py-2.5 transition-colors"
+                          style={{
+                            background: active ? 'var(--ev-color-primary-soft)' : 'transparent',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!active)
+                              (e.currentTarget as HTMLDivElement).style.background =
+                                'var(--ev-color-subtle)'
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!active)
+                              (e.currentTarget as HTMLDivElement).style.background = 'transparent'
+                          }}
+                          onClick={() => {
+                            setActiveConversationId(conv.id)
+                            setPendingMessages([])
+                            setPendingAction(null)
+                          }}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className="truncate text-[13px] font-medium"
+                              style={{
+                                color: active ? 'var(--ev-color-primary)' : 'var(--ev-color-fg-1)',
+                              }}
+                            >
+                              {conv.title}
+                            </p>
+                            {lastMsg && (
+                              <p
+                                className="mt-0.5 truncate text-[11.5px]"
+                                style={{ color: 'var(--ev-color-fg-3)' }}
+                              >
+                                {lastMsg.content}
+                              </p>
+                            )}
+                            <p
+                              className="mt-0.5 text-[11px]"
+                              style={{ color: 'var(--ev-color-fg-3)' }}
+                            >
+                              {formatDate(conv.updatedAt)}
+                            </p>
+                          </div>
+
+                          {confirmDeleteId === conv.id ? (
+                            <div
+                              className="flex flex-shrink-0 items-center gap-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                onClick={() => void handleDelete(conv.id)}
+                                className="rounded px-1.5 py-0.5 text-[11px] font-medium hover:bg-red-50"
+                                style={{ color: 'var(--ev-color-danger)' }}
+                              >
+                                Ja
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+                                style={{ color: 'var(--ev-color-fg-2)' }}
+                              >
+                                Nej
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setConfirmDeleteId(conv.id)
+                              }}
+                              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100"
+                              style={{ color: 'var(--ev-color-fg-3)' }}
+                            >
+                              <Trash2 size={12} strokeWidth={1.8} />
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="space-y-0.5 px-2">
-                {conversations.map((conv) => {
-                  const active = activeConversationId === conv.id
-                  const lastMsg = conv.messages[0]
-                  return (
-                    <div
-                      key={conv.id}
-                      className={`group relative flex cursor-pointer items-start gap-2 rounded-lg px-3 py-2.5 transition-colors ${
-                        active ? 'bg-blue-50' : 'hover:bg-gray-50'
-                      }`}
-                      onClick={() => {
-                        setActiveConversationId(conv.id)
-                        setPendingMessages([])
-                        setPendingAction(null)
+
+              <div className="p-3" style={{ borderTop: '0.5px solid var(--ev-color-border)' }}>
+                <button
+                  onClick={() => setAnalysisOpen(true)}
+                  className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-[13px] font-medium transition-colors hover:bg-[var(--ev-color-subtle)]"
+                  style={{ color: 'var(--ev-color-fg-2)' }}
+                >
+                  <BarChart2
+                    size={14}
+                    strokeWidth={1.8}
+                    style={{ color: 'var(--ev-color-primary-accent)' }}
+                  />
+                  Analysera portfölj
+                </button>
+              </div>
+            </div>
+          </motion.aside>
+        )}
+      </AnimatePresence>
+
+      {/* ── Chat column ── */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Chat topbar */}
+        <header
+          className="flex flex-shrink-0 items-center gap-3.5 px-8 py-4"
+          style={{
+            borderBottom: '0.5px solid var(--ev-color-border)',
+            background: 'rgba(250,250,247,0.85)',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          <button
+            onClick={() => setHistoryOpen((v) => !v)}
+            className="ev-composer-icon-btn"
+            title={historyOpen ? 'Dölj historik' : 'Visa historik'}
+            style={{ width: 34, height: 34 }}
+          >
+            <PanelLeft size={16} strokeWidth={1.8} />
+          </button>
+          <div className="ev-ai-topbar-icon">
+            <Sparkles size={20} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <div
+              className="text-[17px] font-medium leading-[1.2] tracking-[-0.015em]"
+              style={{ color: 'var(--ev-color-fg-1)' }}
+            >
+              AI-assistent
+            </div>
+            <div
+              className="mt-[3px] flex items-center gap-1.5 text-[12px]"
+              style={{ color: 'var(--ev-color-fg-2)' }}
+            >
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-full"
+                style={{ background: 'var(--ev-color-success)' }}
+              />
+              <span className="tabular-nums">
+                <strong style={{ color: 'var(--ev-color-fg-1)', fontWeight: 600 }}>
+                  {usageRemaining.toLocaleString('sv-SE').replace(/,/g, ' ')}
+                </strong>{' '}
+                av <strong style={{ color: 'var(--ev-color-fg-1)', fontWeight: 600 }}>2 000</strong>{' '}
+                anrop kvar denna månad
+              </span>
+            </div>
+          </div>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              className="ev-composer-icon-btn"
+              title="Sök i historik"
+              style={{ width: 34, height: 34 }}
+              onClick={() => setHistoryOpen(true)}
+            >
+              <SearchIcon size={16} strokeWidth={1.8} />
+            </button>
+            <button
+              className="ev-composer-icon-btn"
+              title="Analysera portfölj"
+              style={{ width: 34, height: 34 }}
+              onClick={() => setAnalysisOpen(true)}
+            >
+              <BarChart2 size={16} strokeWidth={1.8} />
+            </button>
+          </div>
+        </header>
+
+        {/* Scroll area */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto flex max-w-[760px] flex-col gap-5 px-8 pb-4 pt-6">
+            {isNewChat && !hasMessages ? (
+              <div className="ev-ai-welcome">
+                <div className="relative z-10">
+                  <div className="ev-welcome-tag">
+                    <Sparkles size={11} strokeWidth={2.2} />
+                    Eveno AI
+                  </div>
+                  <h2 className="mb-0.5 mt-4 text-[26px] font-medium leading-[1.15] tracking-[-0.025em]">
+                    Hej {firstName || 'där'}{' '}
+                    <motion.span
+                      style={{ display: 'inline-block', transformOrigin: '70% 70%' }}
+                      animate={{ rotate: [0, 18, -10, 14, 0, 0, 0] }}
+                      transition={{
+                        duration: 2.4,
+                        repeat: Infinity,
+                        times: [0, 0.1, 0.2, 0.3, 0.4, 0.7, 1],
                       }}
                     >
-                      <div className="min-w-0 flex-1">
-                        <p
-                          className={`truncate text-[13px] font-medium ${
-                            active ? 'text-blue-700' : 'text-gray-800'
-                          }`}
-                        >
-                          {conv.title}
-                        </p>
-                        {lastMsg && (
-                          <p className="mt-0.5 truncate text-[11.5px] text-gray-400">
-                            {lastMsg.content}
-                          </p>
-                        )}
-                        <p className="mt-0.5 text-[11px] text-gray-300">
-                          {formatDate(conv.updatedAt)}
-                        </p>
-                      </div>
+                      👋
+                    </motion.span>
+                  </h2>
+                  <div
+                    className="text-[14.5px] leading-[1.5]"
+                    style={{ color: 'rgba(255,255,255,0.72)' }}
+                  >
+                    Vad vill du göra idag?
+                  </div>
+                  <div className="mt-5 flex flex-col gap-2">
+                    {QUICK_ACTIONS.map((a) => (
+                      <button
+                        key={a.label}
+                        type="button"
+                        onClick={() => void handleSend(a.label)}
+                        className="ev-welcome-action"
+                      >
+                        <span className="ev-welcome-action-icon">
+                          <a.icon size={14} strokeWidth={1.8} />
+                        </span>
+                        <span className="flex-1">{a.label}</span>
+                        <span style={{ color: 'rgba(255,255,255,0.5)', flexShrink: 0 }}>
+                          <ArrowRight size={13} strokeWidth={1.8} />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <AnimatePresence initial={false}>
+                {allMessages.map((msg) => (
+                  <MessageBubble key={msg.id} msg={msg} userInitials={userInitials} />
+                ))}
+              </AnimatePresence>
+            )}
 
-                      {confirmDeleteId === conv.id ? (
-                        <div
-                          className="flex flex-shrink-0 items-center gap-1"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            onClick={() => void handleDelete(conv.id)}
-                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-red-600 hover:bg-red-50"
-                          >
-                            Ja
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteId(null)}
-                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-gray-500 hover:bg-gray-100"
-                          >
-                            Nej
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setConfirmDeleteId(conv.id)
-                          }}
-                          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-gray-300 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100"
-                        >
-                          <Trash2 size={12} strokeWidth={1.8} />
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
+            {isThinking && (
+              <div className="ev-msg-ai flex max-w-[92%] gap-2.5">
+                <div className="ev-msg-avatar ai">
+                  <Sparkles size={14} strokeWidth={2.2} />
+                </div>
+                <div className="ev-bubble ai">
+                  <div className="flex items-center gap-2">
+                    <LoadingDots />
+                    <span className="text-[12px]" style={{ color: 'var(--ev-color-fg-3)' }}>
+                      Analyserar din data…
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
-          </div>
 
-          {/* Analysis button */}
-          <div className="border-t border-gray-100 p-3">
-            <button
-              onClick={() => setAnalysisOpen(true)}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-gray-600 transition-colors hover:bg-gray-50"
-            >
-              <BarChart2 size={14} strokeWidth={1.8} className="text-purple-500" />
-              Analysera portfölj
-            </button>
+            {isStreaming && (
+              <div className="ev-msg-ai flex max-w-[92%] gap-2.5">
+                <div className="ev-msg-avatar ai">
+                  <Sparkles size={14} strokeWidth={2.2} />
+                </div>
+                <div className="flex min-w-0 flex-col gap-2.5">
+                  {toolEvents.length > 0 &&
+                    toolEvents.map((evt) => (
+                      <div key={evt.id} className="ev-tool-call">
+                        <span className={cn('ev-tool-spark', evt.status !== 'done' && 'running')}>
+                          {evt.status === 'done' ? (
+                            <Check size={11} strokeWidth={2.6} />
+                          ) : (
+                            <Sparkles size={10} strokeWidth={2.4} />
+                          )}
+                        </span>
+                        <span>
+                          {describeTool(evt.name)}
+                          {evt.status === 'done' ? '' : '…'}
+                        </span>
+                      </div>
+                    ))}
+                  {streamingText ? (
+                    <div className="ev-bubble ai whitespace-pre-wrap">
+                      {streamingText}
+                      <span className="cursor">▋</span>
+                    </div>
+                  ) : toolEvents.length === 0 ? (
+                    <div className="ev-bubble ai">
+                      <div className="flex items-center gap-2">
+                        <LoadingDots />
+                        <span className="text-[12px]" style={{ color: 'var(--ev-color-fg-3)' }}>
+                          Tänker…
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            )}
+
+            <AnimatePresence>
+              {pendingAction && (
+                <ConfirmationCard
+                  pendingAction={pendingAction}
+                  onConfirm={() => void handleConfirm()}
+                  onCancel={() => void handleCancel()}
+                  isLoading={confirmMutation.isPending}
+                />
+              )}
+            </AnimatePresence>
+
+            <div ref={messagesEndRef} />
           </div>
         </div>
 
-        {/* ── Chat Area ── */}
-        <div className="flex min-w-0 flex-1 flex-col bg-[#F7F8FA]">
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto">
-            {isNewChat && !hasMessages ? (
-              /* Welcome state */
-              <div className="flex h-full flex-col items-center justify-center px-8 py-12">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.3 }}
-                  className="flex h-16 w-16 items-center justify-center rounded-2xl border border-gray-100 bg-white shadow-md"
-                >
-                  <Sparkles size={28} strokeWidth={1.5} className="text-blue-500" />
-                </motion.div>
-                <motion.h2
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                  className="mt-4 text-[20px] font-semibold text-gray-900"
-                >
-                  Hej! Jag är Eveno AI
-                </motion.h2>
-                <motion.p
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.15 }}
-                  className="mt-2 max-w-sm text-center text-[13.5px] text-gray-500"
-                >
-                  Jag kan analysera din fastighetsportfölj, skapa fakturor, hantera hyresgäster och
-                  ge dig konkreta råd — allt baserat på aktuell data.
-                </motion.p>
-
-                {/* Suggestion chips */}
-                <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="mt-8 grid w-full max-w-lg grid-cols-2 gap-2"
-                >
-                  {SUGGESTIONS.map((s) => (
-                    <button
-                      key={s.label}
-                      onClick={() => void handleSend(s.label)}
-                      className="flex items-center gap-2.5 rounded-xl border border-gray-100 bg-white px-4 py-3 text-left transition-all hover:border-blue-200 hover:shadow-sm active:scale-[0.98]"
-                    >
-                      <div
-                        className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-                        style={{ background: s.bg }}
-                      >
-                        <s.icon size={14} strokeWidth={1.8} style={{ color: s.color }} />
-                      </div>
-                      <span className="text-[12.5px] font-medium text-gray-700">{s.label}</span>
-                    </button>
-                  ))}
-                </motion.div>
-              </div>
-            ) : (
-              <div className="mx-auto max-w-3xl space-y-5 px-6 py-6">
-                <AnimatePresence initial={false}>
-                  {allMessages.map((msg) => (
-                    <MessageBubble key={msg.id} msg={msg} />
-                  ))}
-                </AnimatePresence>
-
-                {isThinking && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex gap-3"
-                  >
-                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">
-                      <Sparkles size={14} strokeWidth={1.8} className="text-blue-500" />
-                    </div>
-                    <div className="rounded-2xl rounded-tl-sm border border-gray-100 bg-white px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <LoadingDots />
-                        <span className="text-[12px] text-gray-400">Analyserar din data...</span>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {isStreaming && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex gap-3"
-                  >
-                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">
-                      <Sparkles
-                        size={14}
-                        strokeWidth={1.8}
-                        className="animate-pulse text-blue-500"
-                      />
-                    </div>
-                    <div className="max-w-[70%] rounded-2xl rounded-tl-sm border border-gray-100 bg-white px-4 py-2.5">
-                      {toolEvents.length > 0 && (
-                        <div className="mb-2 flex flex-col gap-1">
-                          {toolEvents.map((evt) => (
-                            <motion.div
-                              key={evt.id}
-                              initial={{ opacity: 0, x: -4 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              className="flex items-center gap-2 text-[12px] text-gray-500"
-                            >
-                              <span
-                                className={cn(
-                                  'inline-flex h-1.5 w-1.5 rounded-full',
-                                  evt.status === 'done'
-                                    ? 'bg-emerald-500'
-                                    : 'animate-pulse bg-blue-500',
-                                )}
-                              />
-                              <span>
-                                {describeTool(evt.name)}
-                                {evt.status === 'done' ? '' : '…'}
-                              </span>
-                            </motion.div>
-                          ))}
-                        </div>
-                      )}
-                      {streamingText ? (
-                        <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-gray-800">
-                          {streamingText}
-                          <span className="cursor">▋</span>
-                        </p>
-                      ) : toolEvents.length === 0 ? (
-                        <div className="flex items-center gap-2">
-                          <LoadingDots />
-                          <span className="text-[12px] text-gray-400">Tänker...</span>
-                        </div>
-                      ) : null}
-                    </div>
-                  </motion.div>
-                )}
-
-                <div ref={messagesEndRef} />
+        {/* Composer */}
+        <div
+          className="flex-shrink-0 px-8 pb-5 pt-3"
+          style={{
+            background: 'linear-gradient(to top, var(--ev-color-bg) 70%, rgba(250,250,247,0))',
+          }}
+        >
+          <div className="mx-auto max-w-[760px]">
+            {isListening && (
+              <div
+                className="mb-2 flex items-center gap-2 text-[13px]"
+                style={{ color: 'var(--ev-color-danger)' }}
+              >
+                <span className="animate-pulse">●</span>
+                Lyssnar… Tala din fråga på svenska
               </div>
             )}
-          </div>
-
-          {/* Confirmation card — shown above input */}
-          <AnimatePresence>
-            {pendingAction && (
-              <ConfirmationCard
-                pendingAction={pendingAction}
-                onConfirm={() => void handleConfirm()}
-                onCancel={() => void handleCancel()}
-                isLoading={confirmMutation.isPending}
+            <div className="ev-composer">
+              <button
+                type="button"
+                onClick={isListening ? stopVoiceInput : startVoiceInput}
+                className={cn('ev-composer-icon-btn', isListening && 'animate-pulse')}
+                title={isListening ? 'Stoppa inspelning' : 'Tala'}
+              >
+                {isListening ? (
+                  <MicOff size={16} strokeWidth={1.8} />
+                ) : (
+                  <Mic size={16} strokeWidth={1.8} />
+                )}
+              </button>
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                placeholder="Skriv en fråga eller säg ett kommando…"
+                rows={1}
+                className="min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-[7px] text-[14px] leading-[1.4] outline-none"
+                style={{ color: 'var(--ev-color-fg-1)', maxHeight: '120px' }}
               />
-            )}
-          </AnimatePresence>
-
-          {/* Input area */}
-          <div className="border-t border-gray-100 bg-white px-6 py-4">
-            <div className="mx-auto max-w-3xl">
-              {isListening && (
-                <div className="mb-2 flex items-center gap-2 text-[13px] text-red-500">
-                  <span className="animate-pulse">●</span>
-                  Lyssnar... Tala din fråga på svenska
-                </div>
+              {input.length > 0 && (
+                <span
+                  className="px-1 text-[11px] tabular-nums"
+                  style={{ color: 'var(--ev-color-fg-3)' }}
+                >
+                  {input.length}
+                </span>
               )}
-              <div className="flex items-end gap-3 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 transition-all focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100">
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Skriv ett meddelande... (Enter för att skicka)"
-                  rows={1}
-                  className="flex-1 resize-none bg-transparent text-[13.5px] text-gray-800 placeholder-gray-400 outline-none"
-                  style={{ maxHeight: '120px' }}
-                />
-                <div className="flex flex-shrink-0 items-center gap-2">
-                  {input.length > 0 && (
-                    <span className="text-[11px] text-gray-300">{input.length}</span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={isListening ? stopVoiceInput : startVoiceInput}
-                    className={cn(
-                      'rounded-lg p-2 transition-all',
-                      isListening
-                        ? 'animate-pulse bg-red-100 text-red-600'
-                        : 'text-gray-400 hover:text-gray-600',
-                    )}
-                    title={isListening ? 'Stoppa inspelning' : 'Tala'}
-                  >
-                    {isListening ? <MicOff size={18} /> : <Mic size={18} />}
-                  </button>
-                  <button
-                    onClick={() => void handleSend()}
-                    disabled={!input.trim() || isThinking || isStreaming}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white transition-colors hover:bg-blue-700 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Send size={14} strokeWidth={2} />
-                  </button>
-                </div>
-              </div>
-              <p className="mt-2 text-center text-[11px] text-gray-300">
-                Eveno AI kan utföra åtgärder — åtgärder kräver alltid din bekräftelse.
-              </p>
+              <button
+                onClick={() => void handleSend()}
+                disabled={!input.trim() || isThinking || isStreaming}
+                className="ev-composer-send"
+                aria-label="Skicka"
+              >
+                <ArrowUp size={15} strokeWidth={2.4} />
+              </button>
             </div>
+            <p
+              className="mb-0 mt-1.5 text-center text-[11px]"
+              style={{ color: 'var(--ev-color-fg-3)' }}
+            >
+              Eveno AI kan göra misstag — granska viktiga åtgärder innan du bekräftar.
+            </p>
           </div>
         </div>
       </div>
 
       <AnalysisModal open={analysisOpen} onClose={() => setAnalysisOpen(false)} />
-    </PageWrapper>
+    </motion.div>
   )
 }
