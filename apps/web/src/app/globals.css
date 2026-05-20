@@ -100,3 +100,445 @@
     margin-left: 1px;
   }
 }
+
+/* ============================================================
+   Eveno · Fakturor — scoped under .ev-fakt-root so the rest of
+   the app keeps its existing visual language.
+   ============================================================ */
+.ev-fakt-root {
+  --ev-color-primary: #0f1f47;
+  --ev-color-primary-hover: #1a2d5c;
+  --ev-color-primary-accent: #3b5bdb;
+  --ev-color-bg: #fafaf7;
+  --ev-color-surface: #ffffff;
+  --ev-color-subtle: #f4f4ee;
+  --ev-color-fg-1: #0f1f47;
+  --ev-color-fg-2: #5b6478;
+  --ev-color-fg-3: #9098a9;
+  --ev-color-border: rgba(15, 31, 71, 0.08);
+  --ev-color-border-strong: rgba(15, 31, 71, 0.14);
+  --ev-color-success: #0e7d5c;
+  --ev-color-danger: #c3392b;
+  --ev-color-warning: #b7791f;
+  --ev-shadow-xs: 0 1px 2px rgba(15, 31, 71, 0.04);
+  font-family:
+    'Inter var',
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  background: var(--ev-color-bg);
+  color: var(--ev-color-fg-1);
+  font-feature-settings: 'cv01', 'cv02', 'cv03', 'cv04', 'ss01';
+}
+
+/* KPI cards ────────────────────────────────────────────────── */
+.ev-fakt-kpi {
+  background: var(--ev-color-surface);
+  border: 0.5px solid var(--ev-color-border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: var(--ev-shadow-xs);
+}
+.ev-fakt-kpi.alert {
+  border-left: 3px solid var(--ev-color-danger);
+}
+.ev-fakt-kpi-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ev-color-fg-3);
+}
+.ev-fakt-kpi-value {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ev-color-fg-1);
+}
+.ev-fakt-kpi-value.danger {
+  color: var(--ev-color-danger);
+}
+.ev-fakt-kpi-foot {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ev-color-fg-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ev-trend-up {
+  color: var(--ev-color-success);
+  font-weight: 500;
+}
+
+/* Pill tab row ─────────────────────────────────────────────── */
+.ev-fakt-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(15, 31, 71, 0.05);
+  padding: 4px;
+  border-radius: 10px;
+}
+.ev-fakt-tab {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ev-color-fg-2);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition:
+    background 120ms,
+    color 120ms;
+}
+.ev-fakt-tab .ev-fakt-tab-count {
+  color: var(--ev-color-fg-3);
+  font-variant-numeric: tabular-nums;
+}
+.ev-fakt-tab:hover {
+  color: var(--ev-color-fg-1);
+}
+.ev-fakt-tab.active {
+  background: var(--ev-color-primary);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(15, 31, 71, 0.18);
+}
+.ev-fakt-tab.active .ev-fakt-tab-count {
+  color: rgba(255, 255, 255, 0.7);
+}
+.ev-fakt-tab.danger-accent {
+  color: var(--ev-color-danger);
+}
+.ev-fakt-tab.danger-accent .ev-fakt-tab-count {
+  color: rgba(195, 57, 43, 0.55);
+}
+.ev-fakt-tab.danger-accent.active {
+  background: var(--ev-color-danger);
+  color: #fff;
+}
+.ev-fakt-tab.danger-accent.active .ev-fakt-tab-count {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Invoice table ────────────────────────────────────────────── */
+.ev-fakt-table {
+  background: var(--ev-color-surface);
+  border: 0.5px solid var(--ev-color-border);
+  border-radius: 12px;
+  box-shadow: var(--ev-shadow-xs);
+  overflow: hidden;
+}
+.ev-fakt-table .ev-thead,
+.ev-fakt-table .ev-trow {
+  display: grid;
+  grid-template-columns: 14px 1.6fr 1.4fr 1fr 1.2fr 1.2fr 40px;
+  gap: 0;
+  align-items: center;
+}
+.ev-fakt-table .ev-thead {
+  padding: 11px 20px 11px 12px;
+  background: #fafaf7;
+  border-bottom: 1px solid var(--ev-color-border);
+}
+.ev-fakt-table .ev-thead > * {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ev-color-fg-3);
+}
+.ev-fakt-table .ev-trow {
+  padding: 14px 20px 14px 0;
+  border-bottom: 1px solid rgba(15, 31, 71, 0.04);
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.ev-fakt-table .ev-trow:hover {
+  background: #fafaf7;
+}
+.ev-fakt-table .ev-trow:last-child {
+  border-bottom: none;
+}
+.ev-fakt-table .ev-trow.muted {
+  opacity: 0.72;
+}
+.ev-fakt-table .ev-accent {
+  width: 3px;
+  align-self: stretch;
+  min-height: 56px;
+  margin-right: 9px;
+}
+.ev-fakt-table .ev-accent.red {
+  background: var(--ev-color-danger);
+}
+.ev-fakt-table .ev-accent.yellow {
+  background: var(--ev-color-warning);
+}
+.ev-fakt-table .ev-accent.none {
+  background: transparent;
+}
+
+.ev-fakt-cell-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ev-color-fg-2);
+}
+.ev-fakt-cell-name {
+  font-weight: 500;
+  font-size: 13.5px;
+  color: var(--ev-color-fg-1);
+}
+.ev-fakt-cell-name.muted {
+  color: var(--ev-color-fg-3);
+}
+.ev-fakt-cell-due {
+  color: var(--ev-color-fg-2);
+  font-size: 13px;
+}
+.ev-fakt-cell-amt {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
+}
+.ev-fakt-cell-amt.muted {
+  color: var(--ev-color-fg-3);
+}
+
+/* Status badge (Fakturor spec colors) ─────────────────────── */
+.ev-fakt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ev-fakt-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.ev-fakt-badge.red {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.ev-fakt-badge.red .ev-fakt-badge-dot {
+  background: #991b1b;
+}
+.ev-fakt-badge.yellow {
+  background: #fef3c7;
+  color: #92400e;
+}
+.ev-fakt-badge.yellow .ev-fakt-badge-dot {
+  background: #92400e;
+}
+.ev-fakt-badge.blue {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.ev-fakt-badge.blue .ev-fakt-badge-dot {
+  background: #1e40af;
+}
+.ev-fakt-badge.green {
+  background: #ecfdf5;
+  color: #047857;
+}
+.ev-fakt-badge.green .ev-fakt-badge-dot {
+  background: #047857;
+}
+.ev-fakt-badge.gray {
+  background: #f1efe8;
+  color: #5f5e5a;
+}
+.ev-fakt-badge.gray .ev-fakt-badge-dot {
+  background: #5f5e5a;
+}
+
+/* Primary CTA + secondary small button ─────────────────────── */
+.ev-fakt-btn-primary {
+  height: 36px;
+  padding: 0 14px 0 12px;
+  border-radius: 10px;
+  border: none;
+  background: var(--ev-color-primary);
+  color: #fff;
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: -0.005em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 31, 71, 0.2);
+  transition:
+    background 120ms,
+    transform 120ms;
+}
+.ev-fakt-btn-primary:hover {
+  background: var(--ev-color-primary-hover);
+}
+.ev-fakt-btn-primary:active {
+  transform: scale(0.97);
+}
+.ev-fakt-btn-secondary {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid var(--ev-color-border-strong);
+  background: var(--ev-color-surface);
+  color: var(--ev-color-fg-1);
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.ev-fakt-btn-secondary:hover {
+  background: var(--ev-color-bg);
+}
+
+/* AI tip card ──────────────────────────────────────────────── */
+.ev-fakt-ai-tip {
+  background: linear-gradient(135deg, #0f1f47 0%, #2a3f87 55%, #3b5bdb 100%);
+  border-radius: 14px;
+  padding: 18px 22px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.ev-fakt-ai-tip::before {
+  content: '';
+  position: absolute;
+  right: -40px;
+  top: -60px;
+  width: 240px;
+  height: 240px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.18) 0%, transparent 60%);
+  pointer-events: none;
+}
+.ev-fakt-ai-tip-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 0.5px solid rgba(255, 255, 255, 0.16);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+.ev-fakt-ai-tip-text {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+.ev-fakt-ai-tip-tag {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+}
+.ev-fakt-ai-tip-msg {
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+.ev-fakt-ai-tip-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+.ev-fakt-ai-tip-btn-primary {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ev-color-primary);
+  border: none;
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ev-fakt-ai-tip-btn-ghost {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 9px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  border: none;
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ev-fakt-ai-tip-btn-ghost:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Search field ────────────────────────────────────────────── */
+.ev-fakt-search {
+  position: relative;
+}
+.ev-fakt-search svg {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ev-color-fg-3);
+  pointer-events: none;
+}
+.ev-fakt-search input {
+  height: 34px;
+  width: 260px;
+  padding: 0 12px 0 34px;
+  border-radius: 9px;
+  border: 1px solid var(--ev-color-border-strong);
+  background: var(--ev-color-surface);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ev-color-fg-1);
+  outline: none;
+}
+.ev-fakt-search input::placeholder {
+  color: var(--ev-color-fg-3);
+}
+.ev-fakt-search input:focus {
+  box-shadow: 0 0 0 3px rgba(59, 91, 219, 0.18);
+  border-color: var(--ev-color-primary-accent);
+}

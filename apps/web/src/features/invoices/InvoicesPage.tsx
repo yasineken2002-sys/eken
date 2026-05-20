@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
   Plus,
-  Filter,
+  Search,
   History,
   Pencil,
   Trash2,
@@ -12,13 +12,14 @@ import {
   Download,
   Mail,
   Zap,
+  Sparkles,
+  MoreHorizontal,
+  ArrowUpRight,
+  FileDown,
 } from 'lucide-react'
-import { PageWrapper } from '@/components/ui/PageWrapper'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { Input, Select } from '@/components/ui/Input'
-import { DataTable } from '@/components/ui/DataTable'
 import { InvoiceStatusBadge } from '@/components/ui/Badge'
 import { InvoiceTimeline } from './components/InvoiceTimeline'
 import { InvoiceForm } from './components/InvoiceForm'
@@ -41,15 +42,67 @@ import { useCanWrite } from '@/hooks/useCanWrite'
 import { cn } from '@/lib/cn'
 
 type DetailTab = 'detaljer' | 'historik'
-
 type Tab = 'ALL' | 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE'
-const TABS: { id: Tab; label: string; color?: string }[] = [
+
+const TABS: { id: Tab; label: string; dangerAccent?: boolean }[] = [
   { id: 'ALL', label: 'Alla' },
-  { id: 'SENT', label: 'Skickade' },
-  { id: 'PAID', label: 'Betalda', color: 'text-emerald-600' },
-  { id: 'OVERDUE', label: 'Försenade', color: 'text-red-600' },
   { id: 'DRAFT', label: 'Utkast' },
+  { id: 'SENT', label: 'Skickade' },
+  { id: 'PAID', label: 'Betalda' },
+  { id: 'OVERDUE', label: 'Förfallna', dangerAccent: true },
 ]
+
+const BADGE_TONE: Record<InvoiceStatus, 'red' | 'yellow' | 'blue' | 'green' | 'gray'> = {
+  DRAFT: 'gray',
+  SENT: 'blue',
+  PAID: 'green',
+  OVERDUE: 'red',
+  PARTIAL: 'yellow',
+  VOID: 'gray',
+  SENT_TO_COLLECTION: 'red',
+}
+
+function statusLabel(invoice: Invoice): string {
+  switch (invoice.status) {
+    case 'DRAFT':
+      return 'Utkast'
+    case 'SENT':
+      return 'Skickad'
+    case 'PAID':
+      return 'Betald'
+    case 'OVERDUE': {
+      const days = Math.max(
+        0,
+        Math.floor((Date.now() - new Date(invoice.dueDate).getTime()) / 86_400_000),
+      )
+      return `Förfallen · ${days} ${days === 1 ? 'dag' : 'dagar'}`
+    }
+    case 'PARTIAL':
+      return 'Delvis betald'
+    case 'VOID':
+      return 'Makulerad'
+    case 'SENT_TO_COLLECTION':
+      return 'Hos inkasso'
+    default:
+      return invoice.status
+  }
+}
+
+function accentForInvoice(invoice: Invoice): 'red' | 'yellow' | 'none' {
+  if (invoice.status !== 'OVERDUE' && invoice.status !== 'SENT_TO_COLLECTION') return 'none'
+  const days = Math.floor((Date.now() - new Date(invoice.dueDate).getTime()) / 86_400_000)
+  if (days >= 7) return 'red'
+  return 'yellow'
+}
+
+function dueText(invoice: Invoice): string {
+  if (invoice.status === 'PAID' && invoice.paidAt) return `Betald ${formatDate(invoice.paidAt)}`
+  if (invoice.status === 'DRAFT') return 'Ej skickad'
+  if (invoice.status === 'OVERDUE' || invoice.status === 'SENT_TO_COLLECTION') {
+    return `Förföll ${formatDate(invoice.dueDate)}`
+  }
+  return `Förfaller ${formatDate(invoice.dueDate)}`
+}
 
 function getTenantName(id: string | undefined, tenants: Tenant[]) {
   if (!id) return '–'
@@ -58,7 +111,7 @@ function getTenantName(id: string | undefined, tenants: Tenant[]) {
   return t.type === 'INDIVIDUAL' ? `${t.firstName} ${t.lastName}` : (t.companyName ?? '–')
 }
 
-// ─── Betalningsformulär (sub-form för statusövergång till PAID) ───────────────
+// ─── Betalningsformulär ─────────────────────────────────────────────────────
 
 interface PaymentFormState {
   amount: string
@@ -136,6 +189,7 @@ function PaymentSubForm({
 export function InvoicesPage() {
   const canWrite = useCanWrite()
   const [tab, setTab] = useState<Tab>('ALL')
+  const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Invoice | null>(null)
   const [detailTab, setDetailTab] = useState<DetailTab>('detaljer')
   const [showCreate, setShowCreate] = useState(false)
@@ -151,6 +205,7 @@ export function InvoicesPage() {
   )
   const { data: selectedEvents = [] } = useInvoiceEvents(selected?.id ?? '')
   const { data: tenants = [] } = useTenants()
+  const { data: allInvoices = [] } = useInvoices()
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   const createMutation = useCreateInvoice()
@@ -159,25 +214,56 @@ export function InvoicesPage() {
   const statusMutation = useTransitionStatus()
   const sendEmailMutation = useSendInvoiceEmail()
 
-  // ── Statistik (beräknas från hämtad data, tab=ALL) ─────────────────────────
-  const { data: allInvoices = [] } = useInvoices()
-  const totalPaid = allInvoices
-    .filter((i) => i.status === 'PAID')
-    .reduce((s, i) => s + Number(i.total), 0)
-  const totalOverdue = allInvoices
-    .filter((i) => i.status === 'OVERDUE')
-    .reduce((s, i) => s + Number(i.total), 0)
-  const totalDraft = allInvoices
-    .filter((i) => i.status === 'DRAFT')
-    .reduce((s, i) => s + Number(i.total), 0)
+  // ── KPI:er ────────────────────────────────────────────────────────────────
+  const kpis = useMemo(() => {
+    const billedThisMonth = allInvoices
+      .filter((i) => {
+        const d = new Date(i.issueDate)
+        const now = new Date()
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+      })
+      .reduce((s, i) => s + Number(i.total), 0)
+    const overdueSum = allInvoices
+      .filter((i) => i.status === 'OVERDUE' || i.status === 'SENT_TO_COLLECTION')
+      .reduce((s, i) => s + Number(i.total), 0)
+    const overdueCount = allInvoices.filter(
+      (i) => i.status === 'OVERDUE' || i.status === 'SENT_TO_COLLECTION',
+    ).length
+    const draftCount = allInvoices.filter((i) => i.status === 'DRAFT').length
+    const sentCount = allInvoices.filter((i) => i.status === 'SENT').length
+    // MRR — estimate from active RENT invoices in the last 90 days
+    const ninetyDaysAgo = Date.now() - 90 * 86_400_000
+    const recentRent = allInvoices.filter(
+      (i) => i.type === 'RENT' && new Date(i.issueDate).getTime() >= ninetyDaysAgo,
+    )
+    const mrr = recentRent.length > 0 ? recentRent.reduce((s, i) => s + Number(i.total), 0) / 3 : 0
+    return {
+      billedThisMonth,
+      overdueSum,
+      overdueCount,
+      total: allInvoices.length,
+      draftCount,
+      sentCount,
+      mrr,
+    }
+  }, [allInvoices])
+
+  // ── Filtrering ────────────────────────────────────────────────────────────
+  const filtered = useMemo(() => {
+    if (!search.trim()) return invoices
+    const q = search.toLowerCase()
+    return invoices.filter((i) => {
+      const tenant = getTenantName(i.tenantId, tenants).toLowerCase()
+      return i.invoiceNumber.toLowerCase().includes(q) || tenant.includes(q)
+    })
+  }, [invoices, search, tenants])
 
   function handleSelectInvoice(invoice: Invoice) {
     setSelected(invoice)
     setDetailTab('detaljer')
   }
 
-  // Deep-link från notifikationer (INVOICE-typade) — öppna detaljpanelen
-  // när focus matchar och fakturan finns i listan.
+  // Deep-link från notifikationer
   const focusTarget = useFocusStore((s) => s.target)
   const clearFocus = useFocusStore((s) => s.clear)
   useEffect(() => {
@@ -190,11 +276,8 @@ export function InvoicesPage() {
   }, [focusTarget, allInvoices, clearFocus])
 
   function handleCreate(data: CreateInvoiceInput) {
-    createMutation.mutate(data, {
-      onSuccess: () => setShowCreate(false),
-    })
+    createMutation.mutate(data, { onSuccess: () => setShowCreate(false) })
   }
-
   function handleEdit(data: CreateInvoiceInput) {
     if (!selected) return
     updateMutation.mutate(
@@ -207,7 +290,6 @@ export function InvoicesPage() {
       },
     )
   }
-
   function handleDelete() {
     if (!selected) return
     deleteMutation.mutate(selected.id, {
@@ -217,7 +299,6 @@ export function InvoicesPage() {
       },
     })
   }
-
   function handleSend() {
     if (!selected) return
     statusMutation.mutate(
@@ -225,7 +306,6 @@ export function InvoicesPage() {
       { onSuccess: (updated) => setSelected(updated) },
     )
   }
-
   function handlePayment(form: PaymentFormState) {
     if (!selected) return
     statusMutation.mutate(
@@ -246,7 +326,6 @@ export function InvoicesPage() {
       },
     )
   }
-
   function handleVoid() {
     if (!selected) return
     statusMutation.mutate(
@@ -257,183 +336,259 @@ export function InvoicesPage() {
 
   const tabCounts = {
     ALL: allInvoices.length,
-    SENT: allInvoices.filter((i) => i.status === 'SENT').length,
+    SENT: kpis.sentCount,
     PAID: allInvoices.filter((i) => i.status === 'PAID').length,
-    OVERDUE: allInvoices.filter((i) => i.status === 'OVERDUE').length,
-    DRAFT: allInvoices.filter((i) => i.status === 'DRAFT').length,
+    OVERDUE: kpis.overdueCount,
+    DRAFT: kpis.draftCount,
   }
 
   return (
-    <PageWrapper id="invoices">
-      <PageHeader
-        title="Fakturor"
-        description={`${allInvoices.length} fakturor totalt`}
-        action={
-          <div className="flex items-center gap-2">
-            <Button size="sm">
-              <Filter size={13} />
-              Filter
-            </Button>
-            {canWrite && (
-              <>
-                <Button size="sm" onClick={() => setShowBulk(true)}>
-                  <Zap size={14} strokeWidth={2.2} />
-                  Bulk-fakturering
-                </Button>
-                <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
-                  <Plus size={14} />
-                  Ny faktura
-                </Button>
-              </>
-            )}
-          </div>
-        }
-      />
-
-      {/* Statistikkort */}
-      <div className="mt-6 grid grid-cols-3 gap-4">
-        {[
-          {
-            label: 'Betalt denna period',
-            value: formatCurrency(totalPaid),
-            color: 'emerald',
-            tag: `${allInvoices.filter((i) => i.status === 'PAID').length} fakturor`,
-          },
-          {
-            label: 'Försenat belopp',
-            value: formatCurrency(totalOverdue),
-            color: 'red',
-            tag: `${allInvoices.filter((i) => i.status === 'OVERDUE').length} fakturor`,
-          },
-          {
-            label: 'Obesvarade utkast',
-            value: formatCurrency(totalDraft),
-            color: 'slate',
-            tag: `${allInvoices.filter((i) => i.status === 'DRAFT').length} fakturor`,
-          },
-        ].map((s, i) => (
-          <motion.div
-            key={s.label}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.07 }}
-            className="rounded-2xl border border-gray-100 bg-white p-5"
+    <motion.div
+      key="invoices"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.18 }}
+      className="ev-fakt-root mx-auto max-w-[1280px] px-7 py-7"
+    >
+      {/* Page header */}
+      <div className="flex items-end justify-between gap-4 pb-1">
+        <div>
+          <h1
+            className="m-0 text-[28px] font-medium leading-[1.15] tracking-[-0.025em]"
+            style={{ color: 'var(--ev-color-fg-1)' }}
           >
-            <p className="text-[12px] font-medium text-gray-400">{s.label}</p>
-            <p
-              className={`mt-1 text-[22px] font-semibold text-${s.color}-${s.color === 'slate' ? '700' : '600'}`}
-            >
-              {s.value}
-            </p>
-            <p className="mt-1 text-[12px] text-gray-400">{s.tag}</p>
-          </motion.div>
-        ))}
+            Fakturor
+          </h1>
+          <p className="mt-1 text-[14px]" style={{ color: 'var(--ev-color-fg-2)' }}>
+            {kpis.total} fakturor totalt · {kpis.draftCount} utkast · {kpis.sentCount} skickade
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="ev-fakt-search hidden md:block">
+            <Search size={14} strokeWidth={1.8} />
+            <input
+              placeholder="Sök fakturanr eller hyresgäst"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          {canWrite && (
+            <>
+              <button className="ev-fakt-btn-secondary" onClick={() => setShowBulk(true)}>
+                <Zap size={13} strokeWidth={2.2} />
+                Bulk
+              </button>
+              <button className="ev-fakt-btn-primary" onClick={() => setShowCreate(true)}>
+                <Plus size={14} strokeWidth={2.2} />
+                Ny faktura
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Filterflikar */}
-      <div className="mt-6 flex w-fit items-center gap-1 rounded-xl bg-gray-100/70 p-1">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              'flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-all',
-              tab === t.id
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700',
-            )}
-          >
-            {t.label}
-            <span
+      {/* KPI row */}
+      <div className="mt-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="ev-fakt-kpi">
+          <div className="ev-fakt-kpi-label">Fakturerat · denna månad</div>
+          <div className="ev-fakt-kpi-value">{formatCurrency(kpis.billedThisMonth)}</div>
+          <div className="ev-fakt-kpi-foot">
+            <span style={{ color: 'var(--ev-color-fg-3)' }}>
+              {
+                allInvoices.filter((i) => {
+                  const d = new Date(i.issueDate)
+                  const now = new Date()
+                  return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+                }).length
+              }{' '}
+              fakturor utfärdade
+            </span>
+          </div>
+        </div>
+        <div className={cn('ev-fakt-kpi', kpis.overdueSum > 0 && 'alert')}>
+          <div className="ev-fakt-kpi-label">Utestående</div>
+          <div className={cn('ev-fakt-kpi-value', kpis.overdueSum > 0 && 'danger')}>
+            {formatCurrency(kpis.overdueSum)}
+          </div>
+          <div className="ev-fakt-kpi-foot">
+            {kpis.overdueCount > 0
+              ? `${kpis.overdueCount} ${kpis.overdueCount === 1 ? 'faktura' : 'fakturor'} över förfallodatum`
+              : 'Inga förfallna fakturor'}
+          </div>
+        </div>
+        <div className="ev-fakt-kpi">
+          <div className="ev-fakt-kpi-label">Antal fakturor</div>
+          <div className="ev-fakt-kpi-value">{kpis.total}</div>
+          <div className="ev-fakt-kpi-foot">
+            <span style={{ color: 'var(--ev-color-fg-3)' }}>
+              {kpis.draftCount} utkast · {kpis.sentCount} skickade
+            </span>
+          </div>
+        </div>
+        <div className="ev-fakt-kpi">
+          <div className="ev-fakt-kpi-label">MRR</div>
+          <div className="ev-fakt-kpi-value">{formatCurrency(kpis.mrr)}</div>
+          <div className="ev-fakt-kpi-foot">
+            <span style={{ color: 'var(--ev-color-fg-3)' }}>Snitt över senaste 3 mån</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        <div className="ev-fakt-tabs">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
               className={cn(
-                'rounded-full px-1.5 text-[11px] font-semibold',
-                tab === t.id && t.color ? t.color : 'text-gray-400',
+                'ev-fakt-tab',
+                tab === t.id && 'active',
+                t.dangerAccent && 'danger-accent',
               )}
             >
-              {tabCounts[t.id]}
-            </span>
+              {t.label}
+              <span className="ev-fakt-tab-count">({tabCounts[t.id]})</span>
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="ev-fakt-search md:hidden">
+            <Search size={14} strokeWidth={1.8} />
+            <input placeholder="Sök" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <button className="ev-fakt-btn-secondary">
+            <FileDown size={13} strokeWidth={1.8} />
+            Exportera
           </button>
-        ))}
+        </div>
       </div>
 
-      {/* Tabell */}
-      <div className="mt-4">
-        <DataTable
-          data={isLoading ? [] : invoices}
-          keyExtractor={(i) => i.id}
-          onRowClick={handleSelectInvoice}
-          columns={[
-            {
-              key: 'number',
-              header: 'Fakturanr',
-              cell: (i) => (
-                <span className="font-mono text-[13px] font-medium text-gray-800">
-                  {i.invoiceNumber}
-                </span>
-              ),
-            },
-            {
-              key: 'tenant',
-              header: 'Hyresgäst',
-              cell: (i) => (
-                <span className="text-gray-700">{getTenantName(i.tenantId, tenants)}</span>
-              ),
-            },
-            {
-              key: 'type',
-              header: 'Typ',
-              cell: (i) => (
-                <span className="text-[12px] text-gray-500">
-                  {i.type === 'RENT'
-                    ? 'Hyra'
-                    : i.type === 'DEPOSIT'
-                      ? 'Deposition'
-                      : i.type === 'SERVICE'
-                        ? 'Tjänst'
-                        : i.type === 'UTILITY'
-                          ? 'Drift'
-                          : i.type}
-                </span>
-              ),
-            },
-            {
-              key: 'issue',
-              header: 'Utfärdat',
-              cell: (i) => (
-                <span className="text-[12.5px] text-gray-500">{formatDate(i.issueDate)}</span>
-              ),
-            },
-            {
-              key: 'due',
-              header: 'Förfaller',
-              cell: (i) => (
-                <span
-                  className={`text-[12.5px] font-medium ${i.status === 'OVERDUE' ? 'text-red-600' : 'text-gray-500'}`}
-                >
-                  {formatDate(i.dueDate)}
-                </span>
-              ),
-            },
-            {
-              key: 'total',
-              header: 'Belopp',
-              align: 'right',
-              cell: (i) => (
-                <span className="font-semibold text-gray-800">
-                  {formatCurrency(Number(i.total))}
-                </span>
-              ),
-            },
-            {
-              key: 'status',
-              header: 'Status',
-              cell: (i) => <InvoiceStatusBadge status={i.status} />,
-            },
-          ]}
-        />
+      {/* Invoice table */}
+      <div className="ev-fakt-table mt-4">
+        <div className="ev-thead">
+          <div />
+          <div>Fakturanr · Hyresgäst</div>
+          <div>Typ</div>
+          <div>Belopp</div>
+          <div>Förfaller</div>
+          <div>Status</div>
+          <div />
+        </div>
+
+        {isLoading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="ev-trow" style={{ cursor: 'default' }}>
+              <div className="ev-accent none" />
+              <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--ev-color-subtle)]" />
+              <div className="h-4 w-1/2 animate-pulse rounded bg-[var(--ev-color-subtle)]" />
+              <div className="h-4 w-1/2 animate-pulse rounded bg-[var(--ev-color-subtle)]" />
+              <div className="h-4 w-2/3 animate-pulse rounded bg-[var(--ev-color-subtle)]" />
+              <div className="h-4 w-1/2 animate-pulse rounded bg-[var(--ev-color-subtle)]" />
+              <div />
+            </div>
+          ))
+        ) : filtered.length === 0 ? (
+          <div
+            className="px-8 py-12 text-center text-[13.5px]"
+            style={{ color: 'var(--ev-color-fg-3)' }}
+          >
+            {search.trim() ? 'Inga fakturor matchar sökningen' : 'Inga fakturor ännu'}
+          </div>
+        ) : (
+          filtered.map((inv) => {
+            const accent = accentForInvoice(inv)
+            const dim = inv.status === 'PAID' || inv.status === 'DRAFT'
+            const tenantName = getTenantName(inv.tenantId, tenants)
+            const tone = BADGE_TONE[inv.status]
+            const muted = inv.status === 'DRAFT'
+            const typeLabel =
+              inv.type === 'RENT'
+                ? 'Hyra'
+                : inv.type === 'DEPOSIT'
+                  ? 'Deposition'
+                  : inv.type === 'SERVICE'
+                    ? 'Tjänst'
+                    : inv.type === 'UTILITY'
+                      ? 'Drift'
+                      : inv.type
+            return (
+              <div
+                key={inv.id}
+                className={cn('ev-trow', dim && 'muted')}
+                onClick={() => handleSelectInvoice(inv)}
+              >
+                <div className={cn('ev-accent', accent)} />
+                <div className="min-w-0">
+                  <div className="ev-fakt-cell-num">{inv.invoiceNumber}</div>
+                  <div className={cn('ev-fakt-cell-name truncate', muted && 'muted')}>
+                    {tenantName}
+                  </div>
+                </div>
+                <div className="truncate text-[13px]" style={{ color: 'var(--ev-color-fg-2)' }}>
+                  {typeLabel}
+                </div>
+                <div className={cn('ev-fakt-cell-amt', muted && 'muted')}>
+                  {formatCurrency(Number(inv.total))}
+                </div>
+                <div className="ev-fakt-cell-due">{dueText(inv)}</div>
+                <div>
+                  <span className={cn('ev-fakt-badge', tone)}>
+                    <span className="ev-fakt-badge-dot" />
+                    {statusLabel(inv)}
+                  </span>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    aria-label="Mer"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleSelectInvoice(inv)
+                    }}
+                    className="flex h-7 w-7 items-center justify-center rounded-md"
+                    style={{ color: 'var(--ev-color-fg-3)' }}
+                  >
+                    <MoreHorizontal size={14} strokeWidth={2} />
+                  </button>
+                </div>
+              </div>
+            )
+          })
+        )}
       </div>
 
-      {/* Detaljmodal */}
+      {/* AI tip card (only if overdue invoices) */}
+      {kpis.overdueCount > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="ev-fakt-ai-tip mt-4"
+        >
+          <div className="ev-fakt-ai-tip-icon">
+            <Sparkles size={18} strokeWidth={1.8} style={{ color: '#fff' }} />
+          </div>
+          <div className="ev-fakt-ai-tip-text">
+            <div className="ev-fakt-ai-tip-tag">AI · förslag</div>
+            <div className="ev-fakt-ai-tip-msg">
+              Vill du skicka påminnelser till alla {kpis.overdueCount} förfallna fakturor på en
+              gång? Total utestående: {formatCurrency(kpis.overdueSum)}.
+            </div>
+          </div>
+          <div className="ev-fakt-ai-tip-actions">
+            <button className="ev-fakt-ai-tip-btn-ghost" onClick={() => setTab('OVERDUE')}>
+              Granska först
+            </button>
+            <button className="ev-fakt-ai-tip-btn-primary" onClick={() => setTab('OVERDUE')}>
+              Ja, gör det
+              <ArrowUpRight size={13} strokeWidth={2} className="ml-1 inline-block" />
+            </button>
+          </div>
+        </motion.div>
+      )}
+
+      {/* ─── Detail modal ─── */}
       {selected && (
         <Modal
           open
@@ -442,7 +597,6 @@ export function InvoicesPage() {
           description={getTenantName(selected.tenantId, tenants)}
           size="lg"
         >
-          {/* Flikar */}
           <div className="mb-5 flex w-fit items-center gap-1 rounded-xl bg-gray-100/70 p-1">
             {(['detaljer', 'historik'] as DetailTab[]).map((t) => (
               <button
@@ -484,7 +638,6 @@ export function InvoicesPage() {
                 ))}
               </div>
 
-              {/* Fakturarader */}
               <div className="overflow-hidden rounded-xl border border-gray-100">
                 <div className="border-b border-gray-100 bg-gray-50 px-4 py-2.5">
                   <p className="text-[12px] font-semibold text-gray-500">Fakturarader</p>
@@ -540,9 +693,7 @@ export function InvoicesPage() {
                 </div>
               )}
 
-              {/* Åtgärdsknappar baserade på status */}
               <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
-                {/* DRAFT: redigera, skicka, ta bort */}
                 {selected.status === 'DRAFT' && (
                   <>
                     <Button size="sm" onClick={() => setShowEdit(true)}>
@@ -570,7 +721,6 @@ export function InvoicesPage() {
                   </>
                 )}
 
-                {/* SENT/OVERDUE: redigera (ej möjligt), registrera betalning, makulera */}
                 {(selected.status === 'SENT' || selected.status === 'OVERDUE') && (
                   <>
                     <Button
@@ -594,13 +744,11 @@ export function InvoicesPage() {
                   </>
                 )}
 
-                {/* PDF download — available for all statuses */}
                 <Button size="sm" onClick={() => downloadInvoicePdf(selected.id)}>
                   <Download size={13} strokeWidth={1.8} />
                   Ladda ner PDF
                 </Button>
 
-                {/* Email — available for DRAFT and SENT */}
                 {(selected.status === 'DRAFT' || selected.status === 'SENT') && (
                   <Button
                     size="sm"
@@ -621,7 +769,6 @@ export function InvoicesPage() {
                   </Button>
                 )}
 
-                {/* Email success flash */}
                 {emailSentTo && (
                   <span className="text-[12px] font-medium text-emerald-600">
                     E-post skickad till {emailSentTo}
@@ -635,7 +782,7 @@ export function InvoicesPage() {
         </Modal>
       )}
 
-      {/* Skapa faktura */}
+      {/* Create / Edit / Payment / Delete / Bulk modals (unchanged) */}
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Ny faktura" size="full">
         <InvoiceForm
           onSubmit={handleCreate}
@@ -644,7 +791,6 @@ export function InvoicesPage() {
         />
       </Modal>
 
-      {/* Redigera faktura */}
       {selected && (
         <Modal
           open={showEdit}
@@ -674,7 +820,6 @@ export function InvoicesPage() {
         </Modal>
       )}
 
-      {/* Registrera betalning */}
       {selected && (
         <Modal
           open={showPayment}
@@ -691,7 +836,6 @@ export function InvoicesPage() {
         </Modal>
       )}
 
-      {/* Bekräfta borttagning */}
       {selected && (
         <Modal
           open={showDeleteConfirm}
@@ -713,8 +857,7 @@ export function InvoicesPage() {
         </Modal>
       )}
 
-      {/* Bulk-fakturering */}
       <BulkInvoiceModal open={showBulk} onClose={() => setShowBulk(false)} />
-    </PageWrapper>
+    </motion.div>
   )
 }
