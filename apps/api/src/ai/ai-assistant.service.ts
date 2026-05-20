@@ -418,6 +418,13 @@ export function requiresDoubleConfirmation(
       if (Number.isFinite(days) && days > 30) return true
     }
   }
+  // Bulk-mejl till > 10 mottagare kräver dubbelbekräftelse för att skydda
+  // mot oavsiktliga massutskick. Hård gräns (>50) och cooldown (1/15 min
+  // för bulk-utskick > 5 mottagare) hanteras separat i tool-executor.
+  if (toolName === 'compose_and_send_email') {
+    const ids = toolInput.tenantIds
+    if (Array.isArray(ids) && ids.length > 10) return true
+  }
   return false
 }
 
