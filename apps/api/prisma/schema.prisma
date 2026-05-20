@@ -1237,6 +1237,14 @@ model AiMessage {
   conversationId String
   role           String // "user" | "assistant"
   content        String
+  // Anthropic ContentBlock[] från final-turn (text + ev. tool_use).
+  // Sparas av assistant-rader så att AI:n vid återupptaget samtal får
+  // typade block tillbaka istället för bara extraherad text. Är NULL
+  // för (a) user-meddelanden, (b) action-tool confirmation-svar, och
+  // (c) alla rader som skapades innan denna kolumn lades till.
+  // Loading-koden faller tillbaka till `content` om `blocks` saknas
+  // — backwards-compatible.
+  blocks         Json?
   createdAt      DateTime @default(now())
 
   conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

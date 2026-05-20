@@ -14,6 +14,7 @@ import { ConfigService } from '@nestjs/config'
 import { Throttle } from '@nestjs/throttler'
 import type { FastifyReply } from 'fastify'
 import Anthropic from '@anthropic-ai/sdk'
+import { Prisma } from '@prisma/client'
 import {
   AiAssistantService,
   requiresDoubleConfirmation,
@@ -128,11 +129,15 @@ export class AiAssistantController {
         { type: 'text', text: dateContext },
       ]
 
-      // 3. Build message history
+      // 3. Build message history. Om en sparad rad har `blocks` (Anthropic
+      //    ContentBlock[]) använder vi dem så AI:n får tillbaka typade block.
+      //    Annars fallback till `content`-sträng — backwards-compatible.
       let currentMessages: Anthropic.MessageParam[] = [
         ...conversation.messages.map((m) => ({
           role: m.role as 'user' | 'assistant',
-          content: m.content,
+          content: Array.isArray(m.blocks)
+            ? (m.blocks as unknown as Anthropic.ContentBlockParam[])
+            : m.content,
         })),
         { role: 'user' as const, content: message },
       ]
@@ -298,15 +303,19 @@ export class AiAssistantController {
         })
         send('pending_action', { conversationId: conversation.id, ...pendingAction })
       } else {
-        await this.prisma.aiMessage.createMany({
-          data: [
-            { conversationId: conversation.id, role: 'user', content: message },
-            {
-              conversationId: conversation.id,
-              role: 'assistant',
-              content: assistantText || 'Inget svar.',
-            },
-          ],
+        // Spara user + assistant separat så assistant-raden kan få `blocks`
+        // (final-turnens Anthropic ContentBlock[]). User-raden får ingen
+        // blocks-kolumn satt — backwards-compatible.
+        await this.prisma.aiMessage.create({
+          data: { conversationId: conversation.id, role: 'user', content: message },
+        })
+        await this.prisma.aiMessage.create({
+          data: {
+            conversationId: conversation.id,
+            role: 'assistant',
+            content: assistantText || 'Inget svar.',
+            blocks: assistantContent as unknown as Prisma.InputJsonValue,
+          },
         })
         await this.prisma.aiConversation.update({
           where: { id: conversation.id },
