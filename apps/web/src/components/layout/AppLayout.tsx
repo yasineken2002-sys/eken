@@ -8,7 +8,6 @@ import {
   FileText,
   Receipt,
   BookOpen,
-  ChevronRight,
   Menu,
   Settings,
   LogOut,
@@ -25,6 +24,7 @@ import {
   CreditCard,
   TrendingUp,
   Gavel,
+  Search,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuthStore } from '@/stores/auth.store'
@@ -39,13 +39,11 @@ interface NavItem {
   label: string
   icon: React.ElementType
   badge?: number
+  badgeTone?: 'default' | 'danger'
   readOnly?: boolean
 }
 
-const NAV_PRIMARY: NavItem[] = [
-  { id: 'dashboard', label: 'Översikt', icon: LayoutDashboard },
-  { id: 'ai', label: 'AI-assistent', icon: Sparkles },
-]
+const NAV_PRIMARY: NavItem[] = [{ id: 'dashboard', label: 'Översikt', icon: LayoutDashboard }]
 
 const NAV_PORTFOLIO: NavItem[] = [
   { id: 'properties', label: 'Fastigheter', icon: Building2 },
@@ -53,6 +51,7 @@ const NAV_PORTFOLIO: NavItem[] = [
   { id: 'tenants', label: 'Hyresgäster', icon: Users, readOnly: true },
   { id: 'customers', label: 'Kunder', icon: Users },
   { id: 'leases', label: 'Hyresavtal', icon: FileText },
+  { id: 'maintenance', label: 'Felanmälningar', icon: Wrench },
 ]
 
 const NAV_FINANCE: NavItem[] = [
@@ -66,8 +65,8 @@ const NAV_FINANCE: NavItem[] = [
 ]
 
 const NAV_TOOLS: NavItem[] = [
+  { id: 'ai', label: 'AI-assistent', icon: Sparkles },
   { id: 'inspections', label: 'Besiktningar', icon: ClipboardCheck },
-  { id: 'maintenance', label: 'Underhåll', icon: Wrench },
   { id: 'maintenance-plan', label: 'Underhållsplan', icon: CalendarRange },
   { id: 'documents', label: 'Dokument', icon: FolderOpen },
   { id: 'import', label: 'Importera', icon: Upload },
@@ -80,22 +79,17 @@ interface NavGroupProps {
   label?: string
   items: NavItem[]
   route: Route
-  collapsed: boolean
   onNavigate: (r: Route) => void
   onMobileClose: () => void
 }
 
-function NavGroup({ label, items, route, collapsed, onNavigate, onMobileClose }: NavGroupProps) {
+function NavGroup({ label, items, route, onNavigate, onMobileClose }: NavGroupProps) {
   return (
-    <div className="space-y-0.5">
-      {label && !collapsed && (
-        <p className="mb-1 mt-4 px-3 text-[10px] font-semibold uppercase tracking-widest text-white/20 first:mt-2">
-          {label}
-        </p>
-      )}
-      {label && collapsed && <div className="mx-auto mt-3 h-px w-6 bg-white/10" />}
+    <div className="flex flex-col gap-0.5">
+      {label && <p className="ev-sb-group-title">{label}</p>}
       {items.map((item) => {
         const active = route === item.id
+        const isAi = item.id === 'ai'
         return (
           <button
             key={item.id}
@@ -103,44 +97,30 @@ function NavGroup({ label, items, route, collapsed, onNavigate, onMobileClose }:
               onNavigate(item.id)
               onMobileClose()
             }}
-            title={collapsed ? item.label : undefined}
-            className={cn(
-              'group flex w-full items-center rounded-xl transition-all duration-150',
-              collapsed ? 'h-10 justify-center px-0' : 'h-9 gap-3 px-3',
-              active
-                ? 'bg-white/10 text-white'
-                : 'hover:bg-white/6 text-white/45 hover:text-white/80',
-            )}
+            className={cn('ev-sb-item', active && 'active')}
           >
-            <item.icon
-              size={15}
-              strokeWidth={active ? 2.2 : 1.8}
-              className={cn('flex-shrink-0 transition-colors', active ? 'text-white' : '')}
-            />
-            <AnimatePresence>
-              {!collapsed && (
-                <motion.span
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="flex-1 overflow-hidden whitespace-nowrap text-left text-[13px] font-medium"
-                >
-                  {item.label}
-                </motion.span>
-              )}
-            </AnimatePresence>
-            {!collapsed && item.badge !== undefined && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+            <span className="ev-sb-item-icon">
+              <item.icon size={16} strokeWidth={active ? 2.2 : 1.8} />
+            </span>
+            <span className="flex-1 truncate">{item.label}</span>
+            {item.badge !== undefined && (
+              <span className={cn('ev-sb-badge', item.badgeTone === 'danger' && 'danger')}>
                 {item.badge}
               </span>
             )}
-            {!collapsed && item.readOnly && (
+            {item.readOnly && (
               <span
                 title="Läs-bar översikt – skapas via Kontrakt"
-                className="rounded-md border border-white/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-white/40"
+                className="rounded-md border border-[rgba(15,31,71,0.14)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[#9098a9]"
               >
                 Läs
               </span>
+            )}
+            {isAi && !active && (
+              <span
+                className="ml-1 h-1.5 w-1.5 rounded-full"
+                style={{ background: 'var(--ev-color-primary-accent)' }}
+              />
             )}
           </button>
         )
@@ -156,9 +136,9 @@ interface Props {
 }
 
 export function AppLayout({ route, onNavigate, children }: Props) {
-  const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const user = useAuthStore((s) => s.user)
+  const org = useAuthStore((s) => s.organization)
   const clearAuth = useAuthStore((s) => s.clearAuth)
 
   const handleLogout = async () => {
@@ -173,13 +153,12 @@ export function AppLayout({ route, onNavigate, children }: Props) {
 
   const displayName = user ? `${user.firstName} ${user.lastName}` : ''
   const initials = user ? `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase() : '?'
-  const shortName = user ? `${user.firstName} ${user.lastName[0]}.` : ''
-  const currentLabel =
-    [...NAV_PRIMARY, ...NAV_PORTFOLIO, ...NAV_FINANCE, ...NAV_TOOLS].find((n) => n.id === route)
-      ?.label ?? 'Översikt'
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#F7F8FC]">
+    <div
+      className="flex h-screen flex-col overflow-hidden"
+      style={{ background: 'var(--ev-color-bg)' }}
+    >
       <ImpersonationBanner />
       <ViewerBanner />
       <div className="flex min-h-0 flex-1">
@@ -190,81 +169,57 @@ export function AppLayout({ route, onNavigate, children }: Props) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden"
+              className="fixed inset-0 z-30 lg:hidden"
+              style={{ background: 'rgba(15, 31, 71, 0.4)', backdropFilter: 'blur(2px)' }}
               onClick={() => setMobileOpen(false)}
             />
           )}
         </AnimatePresence>
 
         {/* ── SIDEBAR ── */}
-        <motion.aside
-          animate={{ width: collapsed ? 60 : 228 }}
-          transition={{ type: 'spring', stiffness: 340, damping: 34 }}
+        <aside
           className={cn(
-            'z-40 flex flex-shrink-0 flex-col overflow-hidden',
+            'z-40 flex w-[240px] flex-shrink-0 flex-col overflow-hidden',
             'fixed inset-y-0 left-0 lg:relative',
             mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
             'transition-transform lg:transition-none',
           )}
-          style={{ background: '#0F1117' }}
+          style={{
+            background: 'var(--ev-color-surface)',
+            borderRight: '0.5px solid var(--ev-color-border)',
+          }}
         >
-          {/* Logo */}
+          {/* Brand */}
           <div
-            className="flex h-14 flex-shrink-0 items-center px-3.5"
-            style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+            className="flex h-16 flex-shrink-0 items-center gap-2.5 px-5"
+            style={{ borderBottom: '0.5px solid var(--ev-color-border)' }}
           >
-            <div className="flex min-w-0 items-center gap-2.5">
-              <div
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-                style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)' }}
-              >
-                <Building2 size={13} className="text-white" strokeWidth={2.2} />
-              </div>
-              <AnimatePresence>
-                {!collapsed && (
-                  <motion.div
-                    initial={{ opacity: 0, width: 0 }}
-                    animate={{ opacity: 1, width: 'auto' }}
-                    exit={{ opacity: 0, width: 0 }}
-                    className="overflow-hidden whitespace-nowrap"
-                  >
-                    <span className="text-[15px] font-bold tracking-tight text-white">Eveno</span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+            <div
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+              style={{ background: 'var(--ev-gradient-ai)' }}
+            >
+              <Building2 size={13} className="text-white" strokeWidth={2.2} />
             </div>
-            {!collapsed && (
-              <button
-                onClick={() => setCollapsed(true)}
-                className="hover:bg-white/8 ml-auto hidden h-6 w-6 items-center justify-center rounded-lg text-white/25 transition-colors hover:text-white/60 lg:flex"
-              >
-                <ChevronRight size={13} className="rotate-180" />
-              </button>
-            )}
-            {collapsed && (
-              <button
-                onClick={() => setCollapsed(false)}
-                className="hover:bg-white/8 mx-auto flex h-6 w-6 items-center justify-center rounded-lg text-white/25 transition-colors hover:text-white/60"
-              >
-                <ChevronRight size={13} />
-              </button>
-            )}
+            <span
+              className="text-[17px] font-semibold tracking-tight"
+              style={{ color: 'var(--ev-color-primary)' }}
+            >
+              Eveno
+            </span>
           </div>
 
           {/* Navigation */}
-          <nav className="scrollbar-thin flex-1 overflow-y-auto px-2.5 py-3">
+          <nav className="scrollbar-thin flex flex-1 flex-col gap-3.5 overflow-y-auto px-3 py-3.5">
             <NavGroup
               items={NAV_PRIMARY}
               route={route}
-              collapsed={collapsed}
               onNavigate={onNavigate}
               onMobileClose={() => setMobileOpen(false)}
             />
             <NavGroup
-              label="Portfölj"
+              label="Förvaltning"
               items={NAV_PORTFOLIO}
               route={route}
-              collapsed={collapsed}
               onNavigate={onNavigate}
               onMobileClose={() => setMobileOpen(false)}
             />
@@ -272,7 +227,6 @@ export function AppLayout({ route, onNavigate, children }: Props) {
               label="Ekonomi"
               items={NAV_FINANCE}
               route={route}
-              collapsed={collapsed}
               onNavigate={onNavigate}
               onMobileClose={() => setMobileOpen(false)}
             />
@@ -280,105 +234,134 @@ export function AppLayout({ route, onNavigate, children }: Props) {
               label="Verktyg"
               items={NAV_TOOLS}
               route={route}
-              collapsed={collapsed}
               onNavigate={onNavigate}
               onMobileClose={() => setMobileOpen(false)}
             />
           </nav>
 
-          {/* Bottom section */}
+          {/* Footer */}
           <div
-            className="flex-shrink-0 px-2.5 pb-4 pt-2"
-            style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+            className="flex flex-shrink-0 flex-col gap-2 px-3 pb-4 pt-2"
+            style={{ borderTop: '0.5px solid var(--ev-color-border)' }}
           >
             <button
               onClick={() => {
                 onNavigate('settings')
                 setMobileOpen(false)
               }}
-              className={cn(
-                'hover:bg-white/6 flex w-full items-center rounded-xl text-white/40 transition-colors hover:text-white/70',
-                collapsed ? 'h-9 justify-center' : 'h-9 gap-3 px-3',
-              )}
+              className={cn('ev-sb-item', route === 'settings' && 'active')}
             >
-              <Settings size={14} strokeWidth={1.8} className="flex-shrink-0" />
-              {!collapsed && <span className="text-[13px] font-medium">Inställningar</span>}
+              <span className="ev-sb-item-icon">
+                <Settings size={16} strokeWidth={route === 'settings' ? 2.2 : 1.8} />
+              </span>
+              <span className="flex-1">Inställningar</span>
             </button>
 
-            {/* User */}
-            <div
-              className={cn(
-                'mt-2 flex items-center rounded-xl',
-                collapsed ? 'justify-center p-2' : 'gap-2.5 px-2.5 py-2',
-              )}
-              style={{
-                borderTop: '1px solid rgba(255,255,255,0.06)',
-                paddingTop: '10px',
-                marginTop: '10px',
-              }}
-            >
-              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-violet-700 text-[11px] font-bold text-white">
+            <div className="mt-1 flex items-center gap-2.5 px-2 pt-2">
+              <div
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white"
+                style={{ background: 'var(--ev-color-primary)' }}
+              >
                 {initials}
               </div>
-              <AnimatePresence>
-                {!collapsed && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="min-w-0 flex-1"
-                  >
-                    <p className="truncate text-[12.5px] font-semibold text-white/90">
-                      {displayName}
-                    </p>
-                    <p className="truncate text-[11px] text-white/35">{user?.email ?? ''}</p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-              {!collapsed && (
-                <button
-                  onClick={handleLogout}
-                  title="Logga ut"
-                  className="hover:bg-white/8 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-white/30 transition-colors hover:text-red-400"
+              <div className="min-w-0 flex-1 leading-tight">
+                <p
+                  className="truncate text-[12.5px] font-medium"
+                  style={{ color: 'var(--ev-color-fg-1)' }}
                 >
-                  <LogOut size={13} strokeWidth={1.8} />
-                </button>
-              )}
+                  {displayName}
+                </p>
+                <p className="truncate text-[11px]" style={{ color: 'var(--ev-color-fg-3)' }}>
+                  {org?.name ?? user?.email ?? ''}
+                </p>
+              </div>
+              <button
+                onClick={handleLogout}
+                title="Logga ut"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-[#9098a9] transition-colors hover:bg-[var(--ev-color-subtle)] hover:text-[var(--ev-color-danger)]"
+              >
+                <LogOut size={13} strokeWidth={1.8} />
+              </button>
             </div>
           </div>
-        </motion.aside>
+        </aside>
 
         {/* ── MAIN ── */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {/* Topbar */}
-          <header className="flex h-14 flex-shrink-0 items-center gap-3 border-b border-gray-100 bg-white/80 px-6 backdrop-blur-sm">
+          <header
+            className="flex h-16 flex-shrink-0 items-center gap-3 px-6"
+            style={{
+              background: 'rgba(255, 255, 255, 0.92)',
+              backdropFilter: 'blur(12px) saturate(140%)',
+              borderBottom: '0.5px solid var(--ev-color-border)',
+            }}
+          >
             <button
               onClick={() => setMobileOpen(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-gray-100 lg:hidden"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-[var(--ev-color-fg-2)] transition-colors hover:bg-[var(--ev-color-subtle)] lg:hidden"
             >
-              <Menu size={15} strokeWidth={1.8} />
+              <Menu size={16} strokeWidth={1.8} />
             </button>
 
-            {/* Breadcrumb */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-[13px] text-gray-400">Eveno</span>
-              <ChevronRight size={11} strokeWidth={2} className="text-gray-300" />
-              <span className="text-[13px] font-semibold text-gray-800">{currentLabel}</span>
+            {/* Search */}
+            <div
+              className="flex h-[38px] max-w-[460px] flex-1 items-center gap-2.5 rounded-[10px] px-3"
+              style={{
+                background: 'var(--ev-color-subtle)',
+                border: '0.5px solid var(--ev-color-border)',
+              }}
+            >
+              <Search size={15} strokeWidth={1.8} style={{ color: 'var(--ev-color-fg-3)' }} />
+              <input
+                type="text"
+                placeholder="Sök efter hyresgäst, fastighet, faktura…"
+                aria-label="Sök"
+                className="flex-1 border-0 bg-transparent text-[13.5px] outline-none"
+                style={{ color: 'var(--ev-color-fg-1)' }}
+              />
+              <kbd
+                className="rounded-md px-1.5 py-0.5 font-mono text-[11px]"
+                style={{
+                  color: 'var(--ev-color-fg-3)',
+                  background: 'var(--ev-color-surface)',
+                  border: '0.5px solid var(--ev-color-border-strong)',
+                }}
+              >
+                ⌘K
+              </kbd>
             </div>
 
-            <div className="flex-1" />
+            <div className="ml-auto flex items-center gap-1.5">
+              <NotificationBell onNavigate={onNavigate} />
 
-            {/* Notifications */}
-            <NotificationBell onNavigate={onNavigate} />
+              <div
+                className="mx-1 h-6 w-px"
+                style={{ background: 'var(--ev-color-border-strong)' }}
+              />
 
-            <div className="h-5 w-px bg-gray-100" />
-
-            {/* User chip */}
-            <div className="flex cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1.5 transition-colors hover:bg-gray-50">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-violet-700 text-[10px] font-bold text-white">
-                {initials}
-              </div>
-              <span className="text-[13px] font-medium text-gray-700">{shortName}</span>
+              <button
+                onClick={() => onNavigate('settings')}
+                className="flex cursor-pointer items-center gap-2.5 rounded-full py-1 pl-1 pr-3 transition-colors hover:bg-[var(--ev-color-subtle)]"
+              >
+                <div
+                  className="flex h-[30px] w-[30px] items-center justify-center rounded-full text-[11px] font-semibold text-white"
+                  style={{ background: 'var(--ev-color-primary)' }}
+                >
+                  {initials}
+                </div>
+                <div className="flex flex-col text-left leading-tight">
+                  <span
+                    className="text-[12.5px] font-medium"
+                    style={{ color: 'var(--ev-color-fg-1)' }}
+                  >
+                    {displayName}
+                  </span>
+                  <span className="text-[11px]" style={{ color: 'var(--ev-color-fg-3)' }}>
+                    Förvaltare
+                  </span>
+                </div>
+              </button>
             </div>
           </header>
 
@@ -396,31 +379,33 @@ export function AppLayout({ route, onNavigate, children }: Props) {
 function AppFooter({ onNavigate }: { onNavigate: (r: Route) => void }) {
   const year = new Date().getFullYear()
   return (
-    <footer className="border-t border-gray-100 bg-white/60 px-6 py-4">
-      <div className="flex flex-col items-center justify-between gap-2 text-[12px] text-gray-500 sm:flex-row">
-        <p>© {year} Eveno AB</p>
+    <footer
+      className="px-7 py-4"
+      style={{
+        background: 'rgba(255, 255, 255, 0.6)',
+        borderTop: '0.5px solid var(--ev-color-border)',
+      }}
+    >
+      <div className="flex flex-col items-center justify-between gap-2 text-[12px] sm:flex-row">
+        <p style={{ color: 'var(--ev-color-fg-2)' }}>© {year} Eveno AB</p>
         <div className="flex flex-wrap items-center gap-4">
-          <button
-            type="button"
-            onClick={() => onNavigate('legal-villkor')}
-            className="transition-colors hover:text-gray-900"
-          >
-            Användarvillkor
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('legal-integritet')}
-            className="transition-colors hover:text-gray-900"
-          >
-            Integritetspolicy
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('legal-cookies')}
-            className="transition-colors hover:text-gray-900"
-          >
-            Cookies
-          </button>
+          {(
+            [
+              ['legal-villkor', 'Användarvillkor'],
+              ['legal-integritet', 'Integritetspolicy'],
+              ['legal-cookies', 'Cookies'],
+            ] as const
+          ).map(([r, label]) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => onNavigate(r)}
+              className="transition-colors"
+              style={{ color: 'var(--ev-color-fg-2)' }}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
     </footer>
