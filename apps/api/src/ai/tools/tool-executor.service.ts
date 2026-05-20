@@ -20,8 +20,21 @@ import { ReconciliationService } from '../../reconciliation/reconciliation.servi
 import { CollectionExportService } from '../../collections/collection-export.service'
 import { PaymentReminderService } from '../../notifications/payment-reminder.service'
 import { StorageService } from '../../storage/storage.service'
+import { RedisService } from '../../common/redis/redis.service'
 import { AiAuditService } from '../audit/ai-audit.service'
 import { ACTION_TOOLS, ACCOUNTING_ONLY_ACTIONS } from './ai-tools.definition'
+
+// ─── Mass-mejl säkerhetsgränser ──────────────────────────────────────────────
+// Skyddar mot oavsiktliga eller AI-hallucinerade massutskick. Tre lager:
+//   1. HARD_LIMIT (>50 mottagare): blockas helt — för stora utskick måste
+//      delas upp i flera anrop.
+//   2. DOUBLE_CONFIRM (>10 mottagare): hanteras i requiresDoubleConfirmation()
+//      i ai-assistant.service.ts.
+//   3. COOLDOWN (>5 mottagare = "bulk"): max 1 bulk-utskick per
+//      15 min per (org, user) — atomisk SET NX EX i Redis.
+const EMAIL_MAX_RECIPIENTS_HARD_LIMIT = 50
+const EMAIL_BULK_THRESHOLD = 5
+const EMAIL_BULK_COOLDOWN_SECONDS = 15 * 60
 
 // ─── Säker fält-whitelisting för AI-svar ─────────────────────────────────────
 // AI:n får ALDRIG se personnummer, lösenordshashar, aktiveringstokens eller
@@ -311,6 +324,7 @@ export class ToolExecutorService {
     private readonly collectionExport: CollectionExportService,
     private readonly paymentReminders: PaymentReminderService,
     private readonly storage: StorageService,
+    private readonly redis: RedisService,
     private readonly audit: AiAuditService,
   ) {}
 
@@ -1169,6 +1183,46 @@ export class ToolExecutorService {
           const emailTenantIds = toolInput.tenantIds as string[]
           const subject = toolInput.subject as string
           const body = toolInput.body as string
+
+          // ─── Layer 1: hård gräns max 50 mottagare per anrop ────────────────
+          // Skyddar mot AI-hallucinerade massutskick à la "skicka till alla
+          // 1000 hyresgäster". Måste delas upp i flera anrop.
+          if (emailTenantIds.length > EMAIL_MAX_RECIPIENTS_HARD_LIMIT) {
+            return {
+              success: false,
+              message:
+                `För många mottagare: ${emailTenantIds.length}. ` +
+                `Max ${EMAIL_MAX_RECIPIENTS_HARD_LIMIT} per anrop. ` +
+                `För större utskick, dela upp i flera omgångar.`,
+            }
+          }
+
+          // ─── Layer 3: cooldown — max 1 bulk-utskick per 15 min per användare
+          // Atomic SET NX EX: bara första anropet får sätta nyckeln, alla
+          // efterföljande inom TTL får null tillbaka och blockas. Tröskel
+          // för "bulk" = > 5 mottagare. Enskilda mejl och små grupper
+          // (≤ 5) påverkas inte alls.
+          const isBulkEmail = emailTenantIds.length > EMAIL_BULK_THRESHOLD
+          if (isBulkEmail) {
+            const cooldownKey = `email_cooldown:${organizationId}:${userId}`
+            const wasSet = await this.redis.client.set(
+              cooldownKey,
+              '1',
+              'EX',
+              EMAIL_BULK_COOLDOWN_SECONDS,
+              'NX',
+            )
+            if (wasSet === null) {
+              const remainingTtl = await this.redis.client.ttl(cooldownKey)
+              const minutes = Math.max(1, Math.ceil(remainingTtl / 60))
+              return {
+                success: false,
+                message:
+                  `Bulk-utskick är begränsade till 1 per 15 minuter för säkerhet. ` +
+                  `Försök igen om ${minutes} minut${minutes > 1 ? 'er' : ''}.`,
+              }
+            }
+          }
 
           const emailTenants = await this.prisma.tenant.findMany({
             where: { id: { in: emailTenantIds }, organizationId },
