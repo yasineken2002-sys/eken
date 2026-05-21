@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Sunrise,
   CalendarDays,
+  FileText,
   Info,
   Check,
 } from 'lucide-react'
@@ -39,6 +40,7 @@ const TYPE_ICON: Record<NotificationType, { icon: React.ElementType; color: stri
     INSPECTION_SCHEDULED: { icon: ClipboardCheck, color: 'text-purple-600', bg: 'bg-purple-50' },
     MORNING_INSIGHT: { icon: Sunrise, color: 'text-amber-500', bg: 'bg-amber-50' },
     WEEKLY_SUMMARY: { icon: CalendarDays, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    MONTHLY_REPORT: { icon: FileText, color: 'text-slate-600', bg: 'bg-slate-50' },
     SYSTEM: { icon: Info, color: 'text-gray-500', bg: 'bg-gray-50' },
   }
 

@@ -12,6 +12,7 @@ export type NotificationType =
   | 'INSPECTION_SCHEDULED'
   | 'MORNING_INSIGHT'
   | 'WEEKLY_SUMMARY'
+  | 'MONTHLY_REPORT'
   | 'SYSTEM'
 
 export type RelatedEntityType =
