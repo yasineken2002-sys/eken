@@ -1294,17 +1294,55 @@ export class AiAssistantService {
   // ── Proactive insights ─────────────────────────────────────────────────────
 
   async generateDailyInsights(organizationId: string): Promise<string> {
-    // Automatiskt anrop — ingen tak-kontroll. Morning insights ingår i baspriset.
+    // Kostnadscap-kontroll: morgonrapporten är ett automatiskt anrop men kostar
+    // fortfarande pengar. Hoppa över generering om organisationen redan nått sin
+    // dagliga AI-budget. Additivt — orgs under cap påverkas inte. Anroparen
+    // (sendMorningInsights) hanterar tom sträng via `if (!insights) continue`.
+    try {
+      await this.quota.checkOrgDailyCostCap(organizationId)
+    } catch {
+      this.logger.warn(
+        `Hoppar över morgonrapport för org ${organizationId}: daglig kostnadscap nådd`,
+      )
+      return ''
+    }
+
     const dataCtx = await this.dataContext.buildContext(organizationId)
     const response = await this.client.messages.create({
       model: AI_MODELS.ANALYSIS,
-      max_tokens: 512,
+      max_tokens: 1024,
       system: `Du är Eveno AI – en intelligent fastighetsassistent för svenska fastighetsförvaltare.\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}`,
       messages: [
         {
           role: 'user',
-          content:
-            'Baserat på denna data, ge en kort morgonsammanfattning (max 4 punkter) med de viktigaste sakerna att hantera idag. Fokusera på: förfallna fakturor, kontrakt som löper ut snart, ovanliga mönster. Var konkret med siffror. Format: bullet points på svenska, ett per rad.',
+          content: [
+            'Skriv en personlig morgonbriefing till fastighetsägaren.',
+            'Använd portföljdatan i kontexten för att producera en rik översikt.',
+            '',
+            'STRUKTUR (använd dessa rubriker):',
+            '',
+            '🚨 KRITISKT (handla idag) — högst 3 punkter',
+            'Bara saker som måste hanteras NU: förfallna fakturor, akuta',
+            'felanmälningar, kontrakt som går ut inom 14 dagar.',
+            '',
+            '📊 INSIKTER — högst 3 punkter',
+            'Mönster, jämförelser, anomalier: betalningsbeteende,',
+            'intäktsförändringar, beläggningsgrad.',
+            '',
+            '🎯 SMARTA FÖRSLAG — högst 3 punkter',
+            'Möjligheter att tjäna mer eller spara: hyror som kan justeras,',
+            'lediga lägenheter att marknadsföra, kostnadsbesparingar.',
+            '',
+            'REGLER:',
+            '- Var KONKRET med siffror (kr-belopp, datum, antal)',
+            '- Skriv NAMN på hyresgäster/fastigheter där relevant',
+            '- Om en kategori är tom, hoppa över den (skriv inte "inget att rapportera")',
+            '- Maximalt 9 punkter totalt',
+            '- Skriv på svenska',
+            '- Inga generiska floskler ("kolla din portfölj") — bara konkreta actions eller insikter',
+            '',
+            'Använd portföljdatan som finns i kontexten. Hitta inte på siffror.',
+          ].join('\n'),
         },
       ],
     })
