@@ -19,6 +19,7 @@ import { Throttle } from '@nestjs/throttler'
 import * as crypto from 'crypto'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -56,6 +57,7 @@ export class ContractsController {
   // 10 generationer per minut per användare räcker till manuella regenereringar
   // utan att tillåta hamring (varje generation kostar 1-3 s Puppeteer + R2 PUT).
   @Post('generate/:leaseId')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   async generate(
@@ -244,6 +246,7 @@ export class ContractsController {
    * är de som visas tydligast i kontraktets bilageförteckning.
    */
   @Patch(':leaseId/appendices/:documentId')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async updateAppendix(
     @OrgId() orgId: string,
     @Param('leaseId', ParseUUIDPipe) leaseId: string,

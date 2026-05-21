@@ -15,6 +15,7 @@ import type { FastifyReply } from 'fastify'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { InvoicesService } from './invoices.service'
 import { PdfService } from './pdf.service'
@@ -45,6 +46,7 @@ export class InvoicesController {
   }
 
   @Post('bulk')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async createBulk(
     @OrgId() organizationId: string,
     @CurrentUser() user: JwtPayload,
@@ -54,6 +56,7 @@ export class InvoicesController {
   }
 
   @Post()
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async create(
     @OrgId() organizationId: string,
     @CurrentUser() user: JwtPayload,
@@ -98,6 +101,7 @@ export class InvoicesController {
   }
 
   @Patch(':id')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async update(
     @Param('id') id: string,
     @OrgId() organizationId: string,
@@ -108,6 +112,7 @@ export class InvoicesController {
   }
 
   @Patch(':id/status')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async transitionStatus(
     @Param('id') id: string,
     @OrgId() organizationId: string,
@@ -125,6 +130,7 @@ export class InvoicesController {
   }
 
   @Post(':id/send-email')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async sendEmail(
     @Param('id') id: string,
     @OrgId() organizationId: string,
@@ -135,6 +141,7 @@ export class InvoicesController {
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'OWNER')
   @HttpCode(204)
   async remove(@Param('id') id: string, @OrgId() organizationId: string): Promise<void> {
     await this.invoicesService.remove(id, organizationId)

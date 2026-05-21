@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@ne
 import type { DepositStatus } from '@prisma/client'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { DepositsService } from './deposits.service'
@@ -31,6 +32,7 @@ export class DepositsController {
   }
 
   @Post()
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async create(
     @OrgId() organizationId: string,
     @Body() dto: CreateDepositDto,
@@ -40,6 +42,7 @@ export class DepositsController {
   }
 
   @Patch(':id/pay')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async markPaid(
     @Param('id') id: string,
     @OrgId() organizationId: string,
@@ -49,6 +52,7 @@ export class DepositsController {
   }
 
   @Patch(':id/refund')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async refund(
     @Param('id') id: string,
     @OrgId() organizationId: string,

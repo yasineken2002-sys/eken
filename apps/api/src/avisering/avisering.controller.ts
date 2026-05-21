@@ -31,6 +31,7 @@ export class AviseringController {
   ) {}
 
   @Post('generate')
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
   async generate(@OrgId() orgId: string, @Body() dto: GenerateNoticesDto) {
     return this.aviseringService.generateMonthlyNotices(orgId, dto.month, dto.year)
   }
@@ -48,12 +49,14 @@ export class AviseringController {
   }
 
   @Post('send')
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
   @HttpCode(HttpStatus.OK)
   async send(@OrgId() orgId: string, @Body() dto: SendNoticesDto) {
     return this.aviseringService.sendNotices(orgId, dto.noticeIds)
   }
 
   @Post('send-all/:month/:year')
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
   @HttpCode(HttpStatus.OK)
   async sendAll(
     @OrgId() orgId: string,
@@ -107,11 +110,13 @@ export class AviseringController {
   }
 
   @Patch(':id/paid')
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
   async markPaid(@OrgId() orgId: string, @Param('id') id: string, @Body() dto: MarkPaidDto) {
     return this.aviseringService.markAsPaid(id, orgId, dto.paidAmount, dto.paidAt)
   }
 
   @Delete(':id')
+  @Roles(UserRole.ADMIN, UserRole.OWNER)
   @HttpCode(HttpStatus.OK)
   async cancel(@OrgId() orgId: string, @Param('id') id: string) {
     return this.aviseringService.cancelNotice(id, orgId)

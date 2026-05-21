@@ -14,6 +14,7 @@ import { ApiBearerAuth, ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagg
 import type { FastifyRequest } from 'fastify'
 import { DocumentsService } from './documents.service'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 import type { DocumentCategory } from '@prisma/client'
@@ -45,6 +46,7 @@ export class DocumentsController {
   }
 
   @Post()
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   @ApiOperation({ summary: 'Ladda upp dokument (multipart/form-data)' })
   @ApiConsumes('multipart/form-data')
   async upload(
@@ -123,6 +125,7 @@ export class DocumentsController {
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'OWNER')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Ta bort dokument' })
   remove(@Param('id') id: string, @OrgId() orgId: string) {

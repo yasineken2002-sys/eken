@@ -12,6 +12,7 @@ import {
 import type { LeaseStatus } from '@prisma/client'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { LeasesService } from './leases.service'
@@ -34,6 +35,7 @@ export class LeasesController {
 
   // Must be before @Post() to avoid route conflict
   @Post('with-tenant')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async createWithTenant(
     @OrgId() organizationId: string,
     @CurrentUser() user: JwtPayload,
@@ -43,12 +45,14 @@ export class LeasesController {
   }
 
   @Post()
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async create(@OrgId() organizationId: string, @Body() dto: CreateLeaseDto) {
     return this.leasesService.create(dto, organizationId)
   }
 
   // MUST be before /:id to avoid route conflict
   @Patch(':id/status')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async transitionStatus(
     @Param('id') id: string,
     @OrgId() organizationId: string,
@@ -64,6 +68,7 @@ export class LeasesController {
   }
 
   @Patch(':id/terminate')
+  @Roles('ADMIN', 'OWNER')
   async terminate(
     @Param('id') id: string,
     @OrgId() organizationId: string,
@@ -73,6 +78,7 @@ export class LeasesController {
   }
 
   @Patch(':id/renew')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async renew(
     @Param('id') id: string,
     @OrgId() organizationId: string,
@@ -87,6 +93,7 @@ export class LeasesController {
   }
 
   @Patch(':id')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async update(
     @Param('id') id: string,
     @OrgId() organizationId: string,
@@ -96,6 +103,7 @@ export class LeasesController {
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'OWNER')
   @HttpCode(204)
   async remove(@Param('id') id: string, @OrgId() organizationId: string): Promise<void> {
     await this.leasesService.remove(id, organizationId)
