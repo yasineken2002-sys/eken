@@ -10,6 +10,8 @@ export type NotificationType =
   | 'RENT_NOTICE_SENT'
   | 'RENT_NOTICE_OVERDUE'
   | 'INSPECTION_SCHEDULED'
+  | 'MORNING_INSIGHT'
+  | 'WEEKLY_SUMMARY'
   | 'SYSTEM'
 
 export type RelatedEntityType =

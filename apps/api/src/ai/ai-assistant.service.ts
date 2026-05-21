@@ -1360,4 +1360,71 @@ export class AiAssistantService {
     const content = response.content[0]
     return content?.type === 'text' ? content.text : ''
   }
+
+  async generateWeeklySummary(organizationId: string): Promise<string> {
+    // Samma kostnadscap-logik som generateDailyInsights — automatiskt anrop,
+    // hoppa över om orgen nått dagsbudgeten. Anroparen (sendWeeklySummary)
+    // hanterar tom sträng via `if (!summary) continue`.
+    try {
+      await this.quota.checkOrgDailyCostCap(organizationId)
+    } catch {
+      this.logger.warn(
+        `Hoppar över veckosammanfattning för org ${organizationId}: daglig kostnadscap nådd`,
+      )
+      return ''
+    }
+
+    const dataCtx = await this.dataContext.buildContext(organizationId)
+    const response = await this.client.messages.create({
+      model: AI_MODELS.ANALYSIS,
+      max_tokens: 1280,
+      system: `Du är Eveno AI – en intelligent fastighetsassistent för svenska fastighetsförvaltare.\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}`,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            'Skriv en personlig veckosammanfattning till fastighetsägaren inför',
+            'kommande vecka. Använd portföljdatan i kontexten.',
+            '',
+            'STRUKTUR (använd dessa rubriker):',
+            '',
+            '📅 KOMMANDE VECKAN — högst 5 punkter',
+            'Saker som händer denna vecka: hyresavier som ska skickas, kontrakt',
+            'som löper ut, bokade besiktningar, planerade åtgärder.',
+            '',
+            '💰 FINANSIELL ÖVERSIKT — högst 3 punkter',
+            'Förväntade inbetalningar denna vecka, förväntade utgifter,',
+            'kassaflödesprognosen.',
+            '',
+            '⚠️ RISKER ATT BEVAKA — högst 3 punkter',
+            'Saker som behöver hållas under uppsikt: hyresgäster med',
+            'betalningsproblem, kontrakt nära förfall, akuta ärenden.',
+            '',
+            'REGLER:',
+            '- Var KONKRET med dagar (måndag, tisdag) och belopp',
+            '- Skriv NAMN på personer/fastigheter',
+            '- Om en kategori är tom, hoppa över den',
+            '- Maximalt 11 punkter totalt',
+            '- Skriv på svenska',
+            '- Inga generiska floskler — bara konkreta actions eller insikter',
+            '',
+            'Använd portföljdatan som finns i kontexten. Hitta inte på siffror.',
+          ].join('\n'),
+        },
+      ],
+    })
+    void this.usage
+      .logUsage({
+        organizationId,
+        endpoint: 'weekly-summary',
+        model: AI_MODELS.ANALYSIS,
+        usage: response.usage,
+        isAutomated: true,
+        source: 'weekly_summary',
+      })
+      .catch((err: unknown) => this.logger.warn('logUsage(weekly-summary) failed', err))
+
+    const content = response.content[0]
+    return content?.type === 'text' ? content.text : ''
+  }
 }

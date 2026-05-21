@@ -10,6 +10,8 @@ import {
   AlertTriangle,
   Receipt,
   ClipboardCheck,
+  Sunrise,
+  CalendarDays,
   Info,
   X,
 } from 'lucide-react'
@@ -83,6 +85,8 @@ const TYPE_ICON: Record<NotificationType, { icon: React.ElementType; color: stri
   RENT_NOTICE_SENT: { icon: Receipt, color: 'text-blue-600' },
   RENT_NOTICE_OVERDUE: { icon: AlertTriangle, color: 'text-orange-600' },
   INSPECTION_SCHEDULED: { icon: ClipboardCheck, color: 'text-purple-600' },
+  MORNING_INSIGHT: { icon: Sunrise, color: 'text-amber-500' },
+  WEEKLY_SUMMARY: { icon: CalendarDays, color: 'text-indigo-600' },
   SYSTEM: { icon: Info, color: 'text-gray-400' },
 }
 
