@@ -1221,8 +1221,16 @@ model AiConversation {
   organizationId String
   userId         String
   title          String   @default("Ny konversation")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  // Sliding-window-cache för långa konversationer (>30 meddelanden).
+  // `summary` är en Haiku-genererad svensk sammanfattning av meddelandena
+  // FÖRE de senaste 20. `summarizedUpToMessageId` pekar på det sista
+  // meddelandet som ingick i cachen — när ≥10 nya meddelanden hamnat i
+  // "old"-tiern regenereras summary. Är NULL för korta konversationer
+  // och alla konversationer som existerade innan kolumnerna lades till.
+  summary                 String?  @db.Text
+  summarizedUpToMessageId String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
