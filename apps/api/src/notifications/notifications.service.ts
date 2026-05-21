@@ -42,6 +42,23 @@ function buildTargetPatch(target: NotificationTarget | undefined): {
   return out
 }
 
+// Roller som tar emot AI-rapporter (morgonrapport + veckosammanfattning).
+// VIEWER exkluderas — observatörsroll utan dagligt arbete i systemet.
+const REPORT_RECIPIENT_ROLES = ['OWNER', 'ADMIN', 'MANAGER', 'ACCOUNTANT'] as const
+
+// ISO-8601-veckonyckel för en lokal datumsträng "YYYY-MM-DD". Returnerar både
+// nyckeln ("YYYY-Www", basen för veckorapportens idempotency) och veckonumret.
+function isoWeek(ymd: string): { key: string; week: number } {
+  const parts = ymd.split('-')
+  const date = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])))
+  // Flytta till veckans torsdag — ISO-veckan ägs av det år torsdagen ligger i.
+  const dayNum = date.getUTCDay() || 7
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+  const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7)
+  return { key: `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`, week }
+}
+
 @Injectable()
 export class NotificationsService implements OnModuleInit {
   private readonly logger = new Logger(NotificationsService.name)
@@ -273,7 +290,9 @@ export class NotificationsService implements OnModuleInit {
   async sendMorningInsights(): Promise<void> {
     const organizations = await this.prisma.organization.findMany({
       include: {
-        users: { where: { role: { in: ['OWNER', 'ADMIN'] }, isActive: true } },
+        users: {
+          where: { role: { in: [...REPORT_RECIPIENT_ROLES] }, isActive: true },
+        },
       },
     })
 
@@ -334,6 +353,17 @@ export class NotificationsService implements OnModuleInit {
         if (!insights) continue
 
         for (const user of org.users) {
+          // In-app-notis skapas FÖRE mejlet och oavsett e-postadress —
+          // användare utan e-post ska ändå se rapporten i appen, och ett
+          // misslyckat mejlutskick ska inte hindra notisen.
+          await this.createReportNotification(
+            org.id,
+            user.id,
+            'MORNING_INSIGHT',
+            'Din morgonrapport är här',
+            insights,
+          )
+
           if (!user.email) continue
           try {
             await this.mail.sendMorningInsights({
@@ -360,6 +390,131 @@ export class NotificationsService implements OnModuleInit {
     }
 
     this.logger.log(`Morning insights: ${sent} sent, ${failed} failed, ${skipped} skipped`)
+  }
+
+  @Cron('0 18 * * 0', {
+    timeZone: 'Europe/Stockholm',
+    name: 'weekly-summary',
+  })
+  async sendWeeklySummary(): Promise<void> {
+    const organizations = await this.prisma.organization.findMany({
+      include: {
+        users: {
+          where: { role: { in: [...REPORT_RECIPIENT_ROLES] }, isActive: true },
+        },
+      },
+    })
+
+    const now = new Date()
+    // Veckonyckel i svensk tid — samma princip som morgonrapportens dayKey.
+    const stockholmYmd = now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' })
+    const { key: weekKey, week } = isoWeek(stockholmYmd)
+    const weekLabel = `vecka ${week}`
+
+    let sent = 0
+    let failed = 0
+    let skipped = 0
+
+    for (const org of organizations) {
+      if (org.users.length === 0) continue
+
+      // Atomiskt sentinel-lås per (org, ISO-vecka) — identiskt mönster med
+      // morgonrapporten men med veckokadens. SYSTEM/read:true, separat från
+      // de användarsynliga WEEKLY_SUMMARY-notiserna nedan.
+      const sentinelId = `weekly-summary-${org.id}-${weekKey}`
+      const markerUserId = org.users[0]?.id
+      if (!markerUserId) continue
+
+      try {
+        await this.prisma.notification.create({
+          data: {
+            id: sentinelId,
+            organizationId: org.id,
+            userId: markerUserId,
+            type: 'SYSTEM',
+            title: 'WEEKLY_SUMMARY_SENT',
+            message: weekLabel,
+            read: true,
+            readAt: now,
+          },
+        })
+      } catch (err) {
+        const code = (err as { code?: string }).code
+        if (code === 'P2002') {
+          skipped++
+          continue
+        }
+        this.logger.error(`Sentinel-lås (vecka) misslyckades för org ${org.id}: ${String(err)}`)
+        failed++
+        continue
+      }
+
+      try {
+        const summary = await this.aiService.generateWeeklySummary(org.id)
+        if (!summary) continue
+
+        for (const user of org.users) {
+          // In-app-notis först, oavsett e-post (se sendMorningInsights).
+          await this.createReportNotification(
+            org.id,
+            user.id,
+            'WEEKLY_SUMMARY',
+            'Din veckosammanfattning är här',
+            summary,
+          )
+
+          if (!user.email) continue
+          try {
+            await this.mail.sendWeeklySummary({
+              to: user.email,
+              firstName: user.firstName,
+              summary,
+              weekLabel,
+              organizationName: org.name,
+              accentColor: org.invoiceColor ?? '#1a6b3c',
+              idempotencyKey: `weekly-summary-${org.id}-${user.id}-${weekKey}`,
+            })
+            sent++
+          } catch (err) {
+            this.logger.error(`Weekly summary email failed for ${user.email}: ${String(err)}`)
+            failed++
+          }
+        }
+      } catch (err) {
+        this.logger.error(`Weekly summary generation failed for org ${org.id}: ${String(err)}`)
+        failed++
+      }
+    }
+
+    this.logger.log(`Weekly summary: ${sent} sent, ${failed} failed, ${skipped} skipped`)
+  }
+
+  /**
+   * Skapar en användarsynlig notis för en AI-rapport (morgon/vecka). Skild
+   * från sentinel-låset (type SYSTEM, read:true) — denna är read:false och
+   * dyker upp i NotificationBell. Sväljer egna fel: en misslyckad notis ska
+   * aldrig stoppa resten av utskicket.
+   */
+  private async createReportNotification(
+    organizationId: string,
+    userId: string,
+    type: 'MORNING_INSIGHT' | 'WEEKLY_SUMMARY',
+    title: string,
+    body: string,
+  ): Promise<void> {
+    try {
+      await this.prisma.notification.create({
+        data: {
+          organizationId,
+          userId,
+          type,
+          title,
+          message: body.trim(),
+        },
+      })
+    } catch (err) {
+      this.logger.error(`In-app-notis (${type}) misslyckades för user ${userId}: ${String(err)}`)
+    }
   }
 
   private resolveTenantName(invoice: InvoiceWithRelations): string {

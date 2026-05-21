@@ -53,6 +53,16 @@ export interface SendMorningInsightsOptions {
   idempotencyKey?: string
 }
 
+export interface SendWeeklySummaryOptions {
+  to: string
+  firstName: string
+  summary: string
+  weekLabel: string
+  organizationName: string
+  accentColor?: string
+  idempotencyKey?: string
+}
+
 export interface SendCustomEmailOptions {
   to: string
   subject: string
@@ -617,6 +627,42 @@ export class MailService {
       {
         to: opts.to,
         subject: `Eveno — Din morgonrapport ${opts.today}`,
+        idempotencyKey: opts.idempotencyKey,
+      },
+    )
+  }
+
+  async sendWeeklySummary(opts: SendWeeklySummaryOptions): Promise<string> {
+    const bullets = opts.summary
+      .split('\n')
+      .filter((l) => l.trim())
+      .map(
+        (l) =>
+          `<li style="margin-bottom:8px;font-size:14px;color:#374151">${l.replace(/^[-•*]\s*/, '')}</li>`,
+      )
+      .join('')
+
+    const bodyHtml = `
+      <h2 style="color:#111827;font-size:20px;font-weight:600;margin:0 0 8px">Hej ${opts.firstName}!</h2>
+      <p style="color:#9CA3AF;font-size:12px;margin:0 0 16px">Veckosammanfattning — ${opts.weekLabel}</p>
+      <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 16px">
+        Här är vad som väntar under kommande vecka:
+      </p>
+      <ul style="padding-left:20px;margin:16px 0">${bullets}</ul>`
+    return this.enqueueTyped(
+      'custom',
+      'low',
+      {
+        preview: `Veckosammanfattning ${opts.weekLabel}`,
+        tenantName: opts.firstName,
+        organizationName: opts.organizationName,
+        bodyHtml,
+        whyReceived:
+          'Du får detta mail eftersom du har veckosammanfattningen aktiverad i Eveno-inställningarna.',
+      },
+      {
+        to: opts.to,
+        subject: `Eveno — Din veckosammanfattning ${opts.weekLabel}`,
         idempotencyKey: opts.idempotencyKey,
       },
     )

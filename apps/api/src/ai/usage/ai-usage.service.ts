@@ -10,6 +10,7 @@ export type AiEndpoint =
   | 'contract-scan'
   | 'inspection-analyze'
   | 'daily-insights'
+  | 'weekly-summary'
   | 'tenant-chat'
 
 export interface AnthropicUsageBlock {
