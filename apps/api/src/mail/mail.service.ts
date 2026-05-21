@@ -63,6 +63,16 @@ export interface SendWeeklySummaryOptions {
   idempotencyKey?: string
 }
 
+export interface SendMonthlyReportOptions {
+  to: string
+  firstName: string
+  monthLabel: string
+  organizationName: string
+  pdf: Buffer
+  filename: string
+  idempotencyKey?: string
+}
+
 export interface SendCustomEmailOptions {
   to: string
   subject: string
@@ -663,6 +673,37 @@ export class MailService {
       {
         to: opts.to,
         subject: `Eveno — Din veckosammanfattning ${opts.weekLabel}`,
+        idempotencyKey: opts.idempotencyKey,
+      },
+    )
+  }
+
+  async sendMonthlyReport(opts: SendMonthlyReportOptions): Promise<string> {
+    const bodyHtml = `
+      <h2 style="color:#111827;font-size:20px;font-weight:600;margin:0 0 8px">Hej ${opts.firstName}!</h2>
+      <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 16px">
+        Din månadsrapport för ${opts.monthLabel} är klar.
+      </p>
+      <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 16px">
+        Rapporten innehåller omsättning med jämförelser, detaljerade nyckeltal,
+        en genomgång per fastighet samt AI-genererade insikter och rekommendationer.
+        Du hittar den som PDF-bilaga i detta mejl.
+      </p>`
+    return this.enqueueTyped(
+      'custom',
+      'low',
+      {
+        preview: `Månadsrapport ${opts.monthLabel}`,
+        tenantName: opts.firstName,
+        organizationName: opts.organizationName,
+        bodyHtml,
+        whyReceived:
+          'Du får detta mail eftersom du har månadsrapporten aktiverad i Eveno-inställningarna.',
+      },
+      {
+        to: opts.to,
+        subject: `Eveno — Månadsrapport för ${opts.monthLabel}`,
+        attachments: [{ filename: opts.filename, content: opts.pdf }],
         idempotencyKey: opts.idempotencyKey,
       },
     )

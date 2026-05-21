@@ -1427,4 +1427,71 @@ export class AiAssistantService {
     const content = response.content[0]
     return content?.type === 'text' ? content.text : ''
   }
+
+  /**
+   * Genererar AI-insikter för den månatliga PDF-rapporten. Tar emot en
+   * färdigaggregerad textsammanfattning av månadens data (byggd av
+   * MonthlyReportService) och returnerar fritext i tre rubriker. Returnerar
+   * tom sträng om kostnadscapet är nått — PDF:en renderar då en fallback-text.
+   */
+  async generateMonthlyInsights(organizationId: string, monthSummary: string): Promise<string> {
+    try {
+      await this.quota.checkOrgDailyCostCap(organizationId)
+    } catch {
+      this.logger.warn(
+        `Hoppar över månadsrapport-insikter för org ${organizationId}: daglig kostnadscap nådd`,
+      )
+      return ''
+    }
+
+    const response = await this.client.messages.create({
+      model: AI_MODELS.ANALYSIS,
+      max_tokens: 2048,
+      system: `Du är Eveno AI – en intelligent fastighetsassistent för svenska fastighetsförvaltare. Du skriver den analytiska delen av en månadsrapport till fastighetsägaren.`,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            'Analysera månadens data nedan och skriv rapportens analytiska del.',
+            '',
+            'STRUKTUR (använd exakt dessa tre rubriker, var för sig på egen rad,',
+            'utan numrering och utan emoji):',
+            '',
+            'Insikter från denna månad',
+            'Tre konkreta, data-drivna observationer om vad som faktiskt hände.',
+            '',
+            'Rekommendationer för nästa månad',
+            'Tre konkreta åtgärder, var och en med förväntat resultat.',
+            '',
+            'Trender att bevaka',
+            'Tre trender (positiva eller negativa) med kort förklaring.',
+            '',
+            'REGLER:',
+            '- Var KONKRET med siffror (kr-belopp, procent, antal)',
+            '- Varje punkt på egen rad, inled med "- "',
+            '- Skriv rubrikraderna exakt som ovan, utan emoji eller siffror',
+            '- Skriv på svenska',
+            '- Inga generiska floskler — bara konkreta insikter och åtgärder',
+            '- Hitta inte på siffror; använd enbart datan nedan',
+            '',
+            'MÅNADSDATA:',
+            monthSummary,
+          ].join('\n'),
+        },
+      ],
+    })
+    void this.usage
+      .logUsage({
+        organizationId,
+        endpoint: 'monthly-report',
+        model: AI_MODELS.ANALYSIS,
+        usage: response.usage,
+        isAutomated: true,
+        source: 'monthly_report',
+      })
+      .catch((err: unknown) => this.logger.warn('logUsage(monthly-report) failed', err))
+
+    const content = response.content[0]
+    return content?.type === 'text' ? content.text : ''
+  }
 }

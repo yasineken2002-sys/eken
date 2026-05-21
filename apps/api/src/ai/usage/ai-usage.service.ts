@@ -11,6 +11,7 @@ export type AiEndpoint =
   | 'inspection-analyze'
   | 'daily-insights'
   | 'weekly-summary'
+  | 'monthly-report'
   | 'tenant-chat'
 
 export interface AnthropicUsageBlock {

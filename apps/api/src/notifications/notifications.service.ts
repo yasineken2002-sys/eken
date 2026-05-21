@@ -3,9 +3,11 @@ import { Injectable, Logger } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import type { Notification, NotificationType, Prisma } from '@prisma/client'
+import { formatCurrency } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 import { AiAssistantService } from '../ai/ai-assistant.service'
+import { MonthlyReportService } from './monthly-report.service'
 
 type InvoiceWithRelations = Prisma.InvoiceGetPayload<{
   include: { tenant: true; customer: true; organization: true }
@@ -68,6 +70,7 @@ export class NotificationsService implements OnModuleInit {
     private prisma: PrismaService,
     private mail: MailService,
     private moduleRef: ModuleRef,
+    private monthlyReport: MonthlyReportService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -489,16 +492,117 @@ export class NotificationsService implements OnModuleInit {
     this.logger.log(`Weekly summary: ${sent} sent, ${failed} failed, ${skipped} skipped`)
   }
 
+  @Cron('0 8 1 * *', {
+    timeZone: 'Europe/Stockholm',
+    name: 'monthly-report',
+  })
+  async sendMonthlyReport(): Promise<void> {
+    const organizations = await this.prisma.organization.findMany({
+      include: {
+        users: {
+          where: { role: { in: [...REPORT_RECIPIENT_ROLES] }, isActive: true },
+        },
+      },
+    })
+
+    const now = new Date()
+    // Rapportmånad = föregående månad (cron fyrar den 1:a kl 08:00).
+    const reportMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const monthKey = `${reportMonth.getFullYear()}-${String(reportMonth.getMonth() + 1).padStart(2, '0')}`
+
+    let sent = 0
+    let failed = 0
+    let skipped = 0
+
+    for (const org of organizations) {
+      if (org.users.length === 0) continue
+
+      // Atomiskt sentinel-lås per (org, månad) — samma mönster som morgon-
+      // och veckorapporten. SYSTEM/read:true, skilt från de användarsynliga
+      // MONTHLY_REPORT-notiserna nedan.
+      const sentinelId = `monthly-report-${org.id}-${monthKey}`
+      const markerUserId = org.users[0]?.id
+      if (!markerUserId) continue
+
+      try {
+        await this.prisma.notification.create({
+          data: {
+            id: sentinelId,
+            organizationId: org.id,
+            userId: markerUserId,
+            type: 'SYSTEM',
+            title: 'MONTHLY_REPORT_SENT',
+            message: monthKey,
+            read: true,
+            readAt: now,
+          },
+        })
+      } catch (err) {
+        const code = (err as { code?: string }).code
+        if (code === 'P2002') {
+          skipped++
+          continue
+        }
+        this.logger.error(`Sentinel-lås (månad) misslyckades för org ${org.id}: ${String(err)}`)
+        failed++
+        continue
+      }
+
+      try {
+        // PDF-generering + AI-insikter sker i MonthlyReportService. null =
+        // organisationen saknar fastigheter — skicka inte en tom rapport.
+        const result = await this.monthlyReport.generatePdf(org.id)
+        if (!result) continue
+        const { pdf, data } = result
+        const filename = `manadsrapport-${monthKey}.pdf`
+        const summaryLine = `Omsättning ${formatCurrency(data.summary.revenue.current)}, beläggning ${data.summary.occupancy.currentPct}%. Rapporten finns som PDF-bilaga i mejlet.`
+
+        for (const user of org.users) {
+          // In-app-notis först, oavsett e-post (se sendMorningInsights).
+          await this.createReportNotification(
+            org.id,
+            user.id,
+            'MONTHLY_REPORT',
+            `Månadsrapport för ${data.header.monthLabel}`,
+            summaryLine,
+          )
+
+          if (!user.email) continue
+          try {
+            await this.mail.sendMonthlyReport({
+              to: user.email,
+              firstName: user.firstName,
+              monthLabel: data.header.monthLabel,
+              organizationName: org.name,
+              pdf,
+              filename,
+              idempotencyKey: `monthly-report-${org.id}-${user.id}-${monthKey}`,
+            })
+            sent++
+          } catch (err) {
+            this.logger.error(`Monthly report email failed for ${user.email}: ${String(err)}`)
+            failed++
+          }
+        }
+      } catch (err) {
+        this.logger.error(`Monthly report generation failed for org ${org.id}: ${String(err)}`)
+        failed++
+      }
+    }
+
+    this.logger.log(`Monthly report: ${sent} sent, ${failed} failed, ${skipped} skipped`)
+  }
+
   /**
-   * Skapar en användarsynlig notis för en AI-rapport (morgon/vecka). Skild
-   * från sentinel-låset (type SYSTEM, read:true) — denna är read:false och
-   * dyker upp i NotificationBell. Sväljer egna fel: en misslyckad notis ska
-   * aldrig stoppa resten av utskicket.
+   * Skapar en användarsynlig notis för en AI-rapport (morgon/vecka/månad).
+   * Skild från sentinel-låset (type SYSTEM, read:true) — denna är read:false
+   * och dyker upp i NotificationBell. Sväljer egna fel: en misslyckad notis
+   * ska aldrig stoppa resten av utskicket.
    */
   private async createReportNotification(
     organizationId: string,
     userId: string,
-    type: 'MORNING_INSIGHT' | 'WEEKLY_SUMMARY',
+    type: 'MORNING_INSIGHT' | 'WEEKLY_SUMMARY' | 'MONTHLY_REPORT',
     title: string,
     body: string,
   ): Promise<void> {
