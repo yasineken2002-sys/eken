@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import Anthropic from '@anthropic-ai/sdk'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { DataContextService } from './data-context.service'
 import { ToolExecutorService } from './tools/tool-executor.service'
@@ -483,11 +484,16 @@ export class AiAssistantService {
       this.memory.getMemories(organizationId, userId),
     ])
 
-    // 3. Build message history
+    // 3. Build message history. Om en sparad rad har `blocks` (Anthropic
+    //    ContentBlock[]) använder vi dem så AI:n får tillbaka typade block
+    //    med tool_use/text-struktur. Annars fallback till `content`-sträng
+    //    (gamla rader, action-confirm-svar, m.m.) — backwards-compatible.
     const messages: Anthropic.MessageParam[] = [
       ...conversation.messages.map((m) => ({
         role: m.role as 'user' | 'assistant',
-        content: m.content,
+        content: Array.isArray(m.blocks)
+          ? (m.blocks as unknown as Anthropic.ContentBlockParam[])
+          : m.content,
       })),
       { role: 'user' as const, content: message },
     ]
@@ -799,11 +805,19 @@ export class AiAssistantService {
   ): Promise<ChatResponse> {
     const reply = this.extractText(response)
 
-    await this.prisma.aiMessage.createMany({
-      data: [
-        { conversationId, role: 'user', content: userMessage },
-        { conversationId, role: 'assistant', content: reply },
-      ],
+    // Spara user + assistant separat så assistant-raden kan få `blocks`
+    // (Anthropic ContentBlock[] från final-turn). Backwards-compatible:
+    // user-raden får ingen blocks-kolumn satt, gamla rader får NULL.
+    await this.prisma.aiMessage.create({
+      data: { conversationId, role: 'user', content: userMessage },
+    })
+    await this.prisma.aiMessage.create({
+      data: {
+        conversationId,
+        role: 'assistant',
+        content: reply,
+        blocks: response.content as unknown as Prisma.InputJsonValue,
+      },
     })
     await this.prisma.aiConversation.update({
       where: { id: conversationId },
