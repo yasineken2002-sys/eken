@@ -266,7 +266,10 @@ export class NotificationsService implements OnModuleInit {
     }
   }
 
-  @Cron('0 7 * * 1-5')
+  @Cron('0 7 * * 1-5', {
+    timeZone: 'Europe/Stockholm',
+    name: 'morning-insights',
+  })
   async sendMorningInsights(): Promise<void> {
     const organizations = await this.prisma.organization.findMany({
       include: {
