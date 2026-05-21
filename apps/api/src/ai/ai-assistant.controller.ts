@@ -129,16 +129,13 @@ export class AiAssistantController {
         { type: 'text', text: dateContext },
       ]
 
-      // 3. Build message history. Om en sparad rad har `blocks` (Anthropic
-      //    ContentBlock[]) använder vi dem så AI:n får tillbaka typade block.
-      //    Annars fallback till `content`-sträng — backwards-compatible.
+      // 3. Build message history via gemensam helper som hanterar både
+      //    blocks-fallback (FAS 3) och sliding window för långa konversationer
+      //    (FAS 4). Korta konversationer (≤30 meddelanden) returnerar
+      //    historiken oförändrad — ingen beteendeskillnad.
+      const history = await this.aiService.buildMessageHistoryForClaude(conversation)
       let currentMessages: Anthropic.MessageParam[] = [
-        ...conversation.messages.map((m) => ({
-          role: m.role as 'user' | 'assistant',
-          content: Array.isArray(m.blocks)
-            ? (m.blocks as unknown as Anthropic.ContentBlockParam[])
-            : m.content,
-        })),
+        ...history,
         { role: 'user' as const, content: message },
       ]
 

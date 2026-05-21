@@ -20,6 +20,21 @@ import { AI_MODELS } from './ai.config'
 
 const MAX_TOKENS = 2048
 
+// ─── Sliding window för långa konversationer ─────────────────────────────────
+// För korta konversationer (≤ SLIDING_WINDOW_THRESHOLD) skickas hela historiken
+// till Claude som tidigare — ingen beteendeförändring. Vid längre konversationer
+// behålls de senaste SLIDING_WINDOW_KEEP_RECENT meddelandena i sin helhet, och
+// allt äldre sammanfattas av Haiku till en kort svensk briefing som injiceras
+// som ett (user, assistant)-par i början. Sammanfattningen cachas på
+// AiConversation.summary och regenereras först när ≥ SUMMARY_CACHE_THRESHOLD
+// nya meddelanden hamnat i "old"-tiern. Detta sparar både tokens och tid på
+// power-user-konversationer (200 meddelanden: ~100k → ~8k tokens per turn).
+const SLIDING_WINDOW_THRESHOLD = 30
+const SLIDING_WINDOW_KEEP_RECENT = 20
+const SUMMARY_CACHE_THRESHOLD = 10
+const SUMMARY_MAX_TOKENS = 500
+const SUMMARY_ACK_TEXT = 'Förstått, jag har sammanhanget från tidigare. Fortsätter samtalet.'
+
 export const SYSTEM_PROMPT = `Du är Sveriges bästa AI-assistent för fastighetsförvaltning. Du kombinerar djup juridisk och ekonomisk kunskap med tillgång till användarens egna data.
 
 ════════════════════════════════════════
@@ -484,17 +499,13 @@ export class AiAssistantService {
       this.memory.getMemories(organizationId, userId),
     ])
 
-    // 3. Build message history. Om en sparad rad har `blocks` (Anthropic
-    //    ContentBlock[]) använder vi dem så AI:n får tillbaka typade block
-    //    med tool_use/text-struktur. Annars fallback till `content`-sträng
-    //    (gamla rader, action-confirm-svar, m.m.) — backwards-compatible.
+    // 3. Build message history via gemensam helper som hanterar både
+    //    blocks-fallback (FAS 3) och sliding window för långa konversationer
+    //    (FAS 4). Korta konversationer (≤30 meddelanden) returnerar
+    //    historiken oförändrad — ingen beteendeskillnad.
+    const history = await this.buildMessageHistoryForClaude(conversation)
     const messages: Anthropic.MessageParam[] = [
-      ...conversation.messages.map((m) => ({
-        role: m.role as 'user' | 'assistant',
-        content: Array.isArray(m.blocks)
-          ? (m.blocks as unknown as Anthropic.ContentBlockParam[])
-          : m.content,
-      })),
+      ...history,
       { role: 'user' as const, content: message },
     ]
 
@@ -787,6 +798,133 @@ export class AiAssistantService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Okänt fel'
       throw new ServiceUnavailableException(`Kunde inte nå Claude API: ${msg}`)
+    }
+  }
+
+  /**
+   * Bygger meddelandehistoriken som skickas till Claude. För korta
+   * konversationer (≤ SLIDING_WINDOW_THRESHOLD meddelanden) returneras
+   * hela historiken direkt — IDENTISKT beteende som tidigare.
+   *
+   * För längre konversationer aktiveras sliding window:
+   *  - de senaste SLIDING_WINDOW_KEEP_RECENT meddelandena behålls i sin helhet
+   *  - allt äldre ersätts av en Haiku-genererad sammanfattning (cachad i DB)
+   *  - sammanfattningen levereras som ett (user, assistant)-par för att hålla
+   *    konversationsflödet välformat
+   *
+   * Returnerar HISTORIK utan det nya user-meddelandet — caller appendar det
+   * själv (samma mönster som tidigare).
+   */
+  async buildMessageHistoryForClaude(conversation: {
+    id: string
+    organizationId: string
+    summary: string | null
+    summarizedUpToMessageId: string | null
+    messages: Array<{ id: string; role: string; content: string; blocks: Prisma.JsonValue | null }>
+  }): Promise<Anthropic.MessageParam[]> {
+    const allMessages = conversation.messages
+
+    const toClaude = (m: {
+      role: string
+      content: string
+      blocks: Prisma.JsonValue | null
+    }): Anthropic.MessageParam => ({
+      role: m.role as 'user' | 'assistant',
+      content: Array.isArray(m.blocks)
+        ? (m.blocks as unknown as Anthropic.ContentBlockParam[])
+        : m.content,
+    })
+
+    // Kort konversation → ingen window, samma beteende som idag.
+    if (allMessages.length <= SLIDING_WINDOW_THRESHOLD) {
+      return allMessages.map(toClaude)
+    }
+
+    // Lång konversation → splittra i recent + old.
+    const recentMessages = allMessages.slice(-SLIDING_WINDOW_KEEP_RECENT)
+    const oldMessages = allMessages.slice(0, allMessages.length - SLIDING_WINDOW_KEEP_RECENT)
+    const lastOldId = oldMessages[oldMessages.length - 1]?.id ?? null
+
+    // Avgör om vi behöver regenerera sammanfattningen.
+    // Stale om: ingen cachad summary, ingen pekare, eller ≥ THRESHOLD meddelanden
+    // har lagts till efter den senast cachade.
+    let summaryIsStale = !conversation.summary || !conversation.summarizedUpToMessageId
+    if (!summaryIsStale && conversation.summarizedUpToMessageId) {
+      const idx = oldMessages.findIndex((m) => m.id === conversation.summarizedUpToMessageId)
+      const messagesSinceCache = idx < 0 ? oldMessages.length : oldMessages.length - 1 - idx
+      if (messagesSinceCache >= SUMMARY_CACHE_THRESHOLD) {
+        summaryIsStale = true
+      }
+    }
+
+    let summary = conversation.summary
+    if (summaryIsStale && lastOldId) {
+      summary = await this.summarizeOldMessages(oldMessages, conversation.organizationId)
+      await this.prisma.aiConversation.update({
+        where: { id: conversation.id },
+        data: { summary, summarizedUpToMessageId: lastOldId },
+      })
+    }
+
+    // Bygg upp sliding-window-historiken. Summary injiceras som ett
+    // (user, assistant)-par så Claude ser flödet som naturligt.
+    const summaryText = summary ?? '(Ingen sammanfattning tillgänglig.)'
+    return [
+      {
+        role: 'user' as const,
+        content: `[Tidigare i detta samtal (sammanfattning):]\n${summaryText}\n\n[Slutet av tidigare kontext. Fortsätt samtalet nedan.]`,
+      },
+      {
+        role: 'assistant' as const,
+        content: SUMMARY_ACK_TEXT,
+      },
+      ...recentMessages.map(toClaude),
+    ]
+  }
+
+  /**
+   * Sammanfattar gamla meddelanden via Haiku (billig, snabb modell).
+   * Returnerar en kort svensk briefing som behåller viktiga fakta,
+   * beslut och referenser till fastigheter/hyresgäster/fakturor.
+   */
+  private async summarizeOldMessages(
+    oldMessages: Array<{ role: string; content: string }>,
+    organizationId: string,
+  ): Promise<string> {
+    const transcript = oldMessages
+      .map((m) => `${m.role === 'user' ? 'Användare' : 'AI'}: ${m.content}`)
+      .join('\n\n')
+
+    try {
+      const response = await this.client.messages.create({
+        model: AI_MODELS.MEMORY,
+        max_tokens: SUMMARY_MAX_TOKENS,
+        messages: [
+          {
+            role: 'user',
+            content: `Sammanfatta följande konversation mellan en fastighetsförvaltare och en AI-assistent. Skriv på svenska, koncist (max 200 ord), som en briefing till en AI som tar över samtalet. Behåll viktiga fakta, beslut och referenser till specifika fastigheter, hyresgäster, fakturor och belopp. Använd punkter eller korta meningar.\n\nKONVERSATION:\n${transcript}\n\nSAMMANFATTNING:`,
+          },
+        ],
+      })
+
+      void this.usage
+        .logUsage({
+          organizationId,
+          endpoint: 'memory',
+          model: AI_MODELS.MEMORY,
+          usage: response.usage,
+          isAutomated: true,
+          source: 'sliding_window_summary',
+        })
+        .catch(() => undefined)
+
+      const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
+      return textBlock?.text.trim() ?? '(Sammanfattning kunde inte genereras.)'
+    } catch (err) {
+      this.logger.warn(
+        `Sliding-window summary failed: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return '(Sammanfattning kunde inte genereras — fortsätt med försiktighet.)'
     }
   }
 
