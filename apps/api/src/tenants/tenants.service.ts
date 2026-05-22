@@ -19,6 +19,53 @@ const TENANT_CREDENTIAL_KEYS = [
 
 type TenantCredentialKey = (typeof TENANT_CREDENTIAL_KEYS)[number]
 
+/**
+ * Safe Prisma SELECT for tenant data exposed via API.
+ *
+ * Innehåller ALLA icke-känsliga Tenant-kolumner men ALDRIG portal-credentials
+ * (passwordHash, *TokenHash, *TokenExpiresAt — se TENANT_CREDENTIAL_KEYS ovan).
+ * Använd detta istället för `include: { tenant: true }` överallt en hyresgäst
+ * returneras till ett hyresvärds-vänt endpoint — det är samma skydd som
+ * mapTenant ger, fast på databas-nivå så hashen aldrig ens lämnar Postgres.
+ *
+ * Behöver du fler icke-känsliga fält: LÄGG TILL dem här. Använd aldrig rå
+ * `include: { tenant: true }` för Tenant. (Audit HIGH #2 — uppföljning PR #10.)
+ */
+export const SAFE_TENANT_SELECT = {
+  id: true,
+  organizationId: true,
+  type: true,
+  firstName: true,
+  lastName: true,
+  personalNumber: true,
+  companyName: true,
+  orgNumber: true,
+  contactPerson: true,
+  email: true,
+  phone: true,
+  street: true,
+  city: true,
+  postalCode: true,
+  country: true,
+  ocrNumber: true,
+
+  // Portal-status (icke-känsligt — inga hemligheter)
+  portalActivated: true,
+  portalActivatedAt: true,
+  activationReminderSentAt: true,
+
+  // Tidsstämplar
+  createdAt: true,
+  updatedAt: true,
+
+  // EXPLICIT EXKLUDERADE (LÄGG ALDRIG TILL — se TENANT_CREDENTIAL_KEYS):
+  // - passwordHash
+  // - activationTokenHash
+  // - activationTokenExpiresAt
+  // - passwordResetTokenHash
+  // - passwordResetTokenExpiresAt
+} as const satisfies Prisma.TenantSelect
+
 type MappedTenant<T> = Omit<T, 'street' | 'city' | 'postalCode' | TenantCredentialKey> & {
   address?: { street: string; city: string; postalCode: string; country: string }
 }

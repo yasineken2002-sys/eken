@@ -5,10 +5,11 @@ import { AccountingService } from '../accounting/accounting.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { CreateDepositDto } from './dto/create-deposit.dto'
 import { RefundDepositDto } from './dto/refund-deposit.dto'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 const INCLUDE = {
   lease: { include: { unit: { include: { property: true } } } },
-  tenant: true,
+  tenant: { select: SAFE_TENANT_SELECT },
   invoice: { select: { id: true, invoiceNumber: true, status: true, total: true } },
 } as const
 

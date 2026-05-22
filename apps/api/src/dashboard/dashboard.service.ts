@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 export interface TimeseriesPoint {
   month: string
@@ -93,7 +94,7 @@ export class DashboardService {
         where: { organizationId },
         orderBy: { createdAt: 'desc' },
         take: 5,
-        include: { tenant: true, customer: true },
+        include: { tenant: { select: SAFE_TENANT_SELECT }, customer: true },
       }),
     ])
 

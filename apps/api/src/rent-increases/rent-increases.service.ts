@@ -5,12 +5,13 @@ import { MailService } from '../mail/mail.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { CreateRentIncreaseDto } from './dto/create-rent-increase.dto'
 import { RejectRentIncreaseDto } from './dto/reject-rent-increase.dto'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 const INCLUDE = {
   lease: {
     include: {
       unit: { include: { property: true } },
-      tenant: true,
+      tenant: { select: SAFE_TENANT_SELECT },
     },
   },
 } as const

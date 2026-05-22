@@ -16,6 +16,7 @@ import { UpdateLeaseDto } from './dto/update-lease.dto'
 import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
 import { TerminateLeaseDto } from './dto/terminate-lease.dto'
 import { RenewLeaseDto } from './dto/renew-lease.dto'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 const VALID_TRANSITIONS: Partial<Record<LeaseStatus, LeaseStatus[]>> = {
   DRAFT: ['ACTIVE', 'TERMINATED'],
@@ -24,7 +25,7 @@ const VALID_TRANSITIONS: Partial<Record<LeaseStatus, LeaseStatus[]>> = {
 
 const INCLUDE = {
   unit: { include: { property: true } },
-  tenant: true,
+  tenant: { select: SAFE_TENANT_SELECT },
 } as const
 
 // Lägg till N månader till ett datum, hantera månadsdrift (31 jan + 1 mån = 28/29 feb).
@@ -189,7 +190,7 @@ export class LeasesService {
         status: 'ACTIVE',
         ...(excludeLeaseId ? { id: { not: excludeLeaseId } } : {}),
       },
-      include: { tenant: true },
+      include: { tenant: { select: SAFE_TENANT_SELECT } },
     })
     if (!blocking) return null
     const name = tenantDisplayName(blocking.tenant)

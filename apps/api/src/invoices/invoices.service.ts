@@ -11,6 +11,7 @@ import { isValidTransition } from '@eken/shared'
 import { CreateInvoiceDto } from './dto/create-invoice.dto'
 import { UpdateInvoiceDto } from './dto/update-invoice.dto'
 import { BulkInvoiceDto } from './dto/bulk-invoice.dto'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 // Mappar InvoiceStatus → Prisma InvoiceEventType enum-värde
 const STATUS_TO_EVENT_TYPE: Partial<Record<InvoiceStatus, InvoiceEventType>> = {
@@ -73,7 +74,7 @@ export class InvoicesService {
       where: { id, organizationId },
       include: {
         lines: true,
-        tenant: true,
+        tenant: { select: SAFE_TENANT_SELECT },
         customer: true,
         lease: true,
         events: { orderBy: { createdAt: 'asc' } },
@@ -246,7 +247,7 @@ export class InvoicesService {
         ...(dto.leaseIds?.length ? { id: { in: dto.leaseIds } } : {}),
       },
       include: {
-        tenant: true,
+        tenant: { select: SAFE_TENANT_SELECT },
         unit: { include: { property: true } },
       },
     })
@@ -482,7 +483,12 @@ export class InvoicesService {
   async sendInvoiceEmail(id: string, organizationId: string, userId: string): Promise<void> {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id, organizationId },
-      include: { lines: true, tenant: true, customer: true, organization: true },
+      include: {
+        lines: true,
+        tenant: { select: SAFE_TENANT_SELECT },
+        customer: true,
+        organization: true,
+      },
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
 

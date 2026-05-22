@@ -6,6 +6,7 @@ import type { InspectionItemCondition } from '@prisma/client'
 import { CreateInspectionDto } from './dto/create-inspection.dto'
 import { UpdateInspectionDto } from './dto/update-inspection.dto'
 import { UpdateInspectionItemDto } from './dto/update-inspection-item.dto'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 const DEFAULT_ITEMS: { room: string; item: string }[] = [
   { room: 'Hall', item: 'Golv' },
@@ -78,7 +79,7 @@ function conditionLabel(condition: InspectionItemCondition): string {
 const FULL_INCLUDE = {
   property: true,
   unit: true,
-  tenant: true,
+  tenant: { select: SAFE_TENANT_SELECT },
   lease: true,
   items: true,
   images: true,
