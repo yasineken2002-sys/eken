@@ -6,19 +6,40 @@ import { normalizeEmail } from '../common/utils/normalize-email'
 import { CreateTenantDto } from './dto/create-tenant.dto'
 import { UpdateTenantDto } from './dto/update-tenant.dto'
 
-// Maps flat Prisma address fields → nested Address object matching @eken/shared Tenant type
+// Tenant-portal credentials. Dessa kolumner finns i DB för portalens
+// autentisering (se Tenant-modellen i schema.prisma) men får ALDRIG nå det
+// hyresvärds-vända API:t — mapTenant strippar dem ur varje svar. (Audit HIGH #2.)
+const TENANT_CREDENTIAL_KEYS = [
+  'passwordHash',
+  'activationTokenHash',
+  'activationTokenExpiresAt',
+  'passwordResetTokenHash',
+  'passwordResetTokenExpiresAt',
+] as const
+
+type TenantCredentialKey = (typeof TENANT_CREDENTIAL_KEYS)[number]
+
+type MappedTenant<T> = Omit<T, 'street' | 'city' | 'postalCode' | TenantCredentialKey> & {
+  address?: { street: string; city: string; postalCode: string; country: string }
+}
+
+// Maps flat Prisma address fields → nested Address object matching @eken/shared
+// Tenant type, och strippar portal-credentials ur svaret.
 function mapTenant<T extends Pick<Tenant, 'street' | 'city' | 'postalCode'>>(
   t: T,
-): Omit<T, 'street' | 'city' | 'postalCode'> & {
-  address?: { street: string; city: string; postalCode: string; country: string }
-} {
+): MappedTenant<T> {
   const { street, city, postalCode, ...rest } = t
+  // SECURITY (audit HIGH #2): ta bort portal-credentials innan hyresgästen
+  // serialiseras till det hyresvärds-vända API:t.
+  for (const key of TENANT_CREDENTIAL_KEYS) {
+    delete (rest as Record<string, unknown>)[key]
+  }
   return {
     ...rest,
     ...(street != null
       ? { address: { street, city: city ?? '', postalCode: postalCode ?? '', country: 'SE' } }
       : {}),
-  }
+  } as MappedTenant<T>
 }
 
 @Injectable()
