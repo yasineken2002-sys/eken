@@ -1,12 +1,10 @@
-// URL-baserad routing för Eveno-webben (FIX 4, Etapp 1).
+// URL-baserad routing för Eveno-webben (FIX 4).
 //
-// Ersätter den tidigare useState<Route>-routningen i App.tsx. URL:en speglar
-// nu appens tillstånd: F5 behåller sidan, bakåt/framåt fungerar, bokmärken och
-// delbara länkar fungerar.
+// Ersätter den tidigare useState<Route>-routningen. URL:en speglar appens
+// tillstånd: F5 behåller sidan, bakåt/framåt fungerar, bokmärken och delbara
+// länkar fungerar.
 //
-// Etapp 1 behåller sidkomponenternas befintliga `onNavigate`-API via en adapter
-// (se `useOnNavigate`). Etapp 2 konverterar konsumenterna till <Link>/useNavigate
-// och tar bort adaptern.
+// Sidkomponenterna navigerar själva via TanStack Routers useNavigate/<Link>.
 
 import { useEffect } from 'react'
 import {
@@ -15,7 +13,6 @@ import {
   createRouter,
   Outlet,
   redirect,
-  useLocation,
   useNavigate,
 } from '@tanstack/react-router'
 import { AnimatePresence } from 'framer-motion'
@@ -60,84 +57,8 @@ import { NotificationsPage } from '../features/notifications/NotificationsPage'
 import { NewsPage } from '../features/news/NewsPage'
 import { MessagesPage } from '../features/messages/MessagesPage'
 import { useAuthStore } from '../stores/auth.store'
-import type { Route } from '../App'
 
-// ── Route ↔ URL-mappning ─────────────────────────────────────────────────────
-
-const ROUTE_TO_PATH: Record<Route, string> = {
-  login: '/login',
-  register: '/register',
-  'change-password': '/change-password',
-  'forgot-password': '/forgot-password',
-  'reset-password': '/reset-password',
-  'accept-invite': '/accept-invite',
-  privacy: '/legal/integritet',
-  'legal-villkor': '/legal/villkor',
-  'legal-integritet': '/legal/integritet',
-  'legal-cookies': '/legal/cookies',
-  dashboard: '/',
-  properties: '/properties',
-  units: '/units',
-  tenants: '/tenants',
-  customers: '/customers',
-  leases: '/leases',
-  invoices: '/invoices',
-  deposits: '/deposits',
-  'rent-increases': '/rent-increases',
-  accounting: '/accounting',
-  reconciliation: '/reconciliation',
-  collections: '/collections',
-  documents: '/documents',
-  import: '/import',
-  ai: '/ai',
-  maintenance: '/maintenance',
-  avisering: '/avisering',
-  inspections: '/inspections',
-  'maintenance-plan': '/maintenance-plan',
-  settings: '/settings',
-  overview: '/overview',
-  notifications: '/notifications',
-  news: '/news',
-  messages: '/messages',
-}
-
-// Omvänd mappning för AppLayout (aktiv nav-markering + brödsmula). Endast
-// app-routes — AppLayout renderas aldrig på publika/auth-sidor.
-const PATH_TO_ROUTE: Record<string, Route> = {
-  '/': 'dashboard',
-  '/properties': 'properties',
-  '/units': 'units',
-  '/tenants': 'tenants',
-  '/customers': 'customers',
-  '/leases': 'leases',
-  '/invoices': 'invoices',
-  '/deposits': 'deposits',
-  '/rent-increases': 'rent-increases',
-  '/accounting': 'accounting',
-  '/reconciliation': 'reconciliation',
-  '/collections': 'collections',
-  '/documents': 'documents',
-  '/import': 'import',
-  '/ai': 'ai',
-  '/maintenance': 'maintenance',
-  '/avisering': 'avisering',
-  '/inspections': 'inspections',
-  '/maintenance-plan': 'maintenance-plan',
-  '/settings': 'settings',
-  '/overview': 'overview',
-  '/notifications': 'notifications',
-  '/news': 'news',
-  '/messages': 'messages',
-}
-
-// Adapter: låter sidkomponenter behålla sitt `onNavigate(route)`-API men driver
-// riktig URL-navigering. Tas bort i Etapp 2 när konsumenter använder <Link>.
-function useOnNavigate(): (route: Route) => void {
-  const navigate = useNavigate()
-  return (route: Route) => {
-    void navigate({ to: ROUTE_TO_PATH[route] ?? '/' })
-  }
-}
+// ── Auth-hjälpare ────────────────────────────────────────────────────────────
 
 function authSnapshot(): { isAuthenticated: boolean; mustChangePassword: boolean } {
   const state = useAuthStore.getState()
@@ -178,11 +99,10 @@ const loginRoute = createRoute({
   path: '/login',
   beforeLoad: redirectIfAuthenticated,
   component: function LoginRoute() {
-    const onNavigate = useOnNavigate()
     return (
       <>
-        <LoginPage onNavigate={onNavigate} />
-        <CookieBanner onNavigate={onNavigate} />
+        <LoginPage />
+        <CookieBanner />
       </>
     )
   },
@@ -193,11 +113,10 @@ const registerRoute = createRoute({
   path: '/register',
   beforeLoad: redirectIfAuthenticated,
   component: function RegisterRoute() {
-    const onNavigate = useOnNavigate()
     return (
       <>
-        <RegisterPage onNavigate={onNavigate} />
-        <CookieBanner onNavigate={onNavigate} />
+        <RegisterPage />
+        <CookieBanner />
       </>
     )
   },
@@ -207,10 +126,7 @@ const forgotPasswordRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/forgot-password',
   beforeLoad: redirectIfAuthenticated,
-  component: function ForgotPasswordRoute() {
-    const onNavigate = useOnNavigate()
-    return <ForgotPasswordPage onNavigate={onNavigate} />
-  },
+  component: ForgotPasswordPage,
 })
 
 const resetPasswordRoute = createRoute({
@@ -220,9 +136,8 @@ const resetPasswordRoute = createRoute({
     typeof search['token'] === 'string' ? { token: search['token'] } : {},
   beforeLoad: redirectIfAuthenticated,
   component: function ResetPasswordRoute() {
-    const onNavigate = useOnNavigate()
     const { token } = resetPasswordRoute.useSearch()
-    return <ResetPasswordPage token={token ?? null} onNavigate={onNavigate} />
+    return <ResetPasswordPage token={token ?? null} />
   },
 })
 
@@ -233,9 +148,8 @@ const acceptInviteRoute = createRoute({
     typeof search['token'] === 'string' ? { token: search['token'] } : {},
   beforeLoad: redirectIfAuthenticated,
   component: function AcceptInviteRoute() {
-    const onNavigate = useOnNavigate()
     const { token } = acceptInviteRoute.useSearch()
-    return <AcceptInvitePage token={token ?? null} onNavigate={onNavigate} />
+    return <AcceptInvitePage token={token ?? null} />
   },
 })
 
@@ -247,9 +161,8 @@ const changePasswordRoute = createRoute({
     if (!authSnapshot().isAuthenticated) throw redirect({ to: '/login' })
   },
   component: function ChangePasswordRoute() {
-    const onNavigate = useOnNavigate()
     const forced = useAuthStore((s) => s.user?.mustChangePassword === true)
-    return <ChangePasswordPage forced={forced} onNavigate={onNavigate} />
+    return <ChangePasswordPage forced={forced} />
   },
 })
 
@@ -328,8 +241,6 @@ const acceptInviteAliasRoute = createRoute({
 
 function AppShell() {
   const navigate = useNavigate()
-  const location = useLocation()
-  const onNavigate = useOnNavigate()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const mustChangePassword = useAuthStore((s) => s.user?.mustChangePassword === true)
   const orgTermsVersion = useAuthStore((s) => s.organization?.termsVersion ?? null)
@@ -343,10 +254,8 @@ function AppShell() {
     if (!isAuthenticated) void navigate({ to: '/login' })
   }, [isAuthenticated, navigate])
 
-  const route: Route = PATH_TO_ROUTE[location.pathname] ?? 'dashboard'
-
   return (
-    <AppLayout route={route} onNavigate={onNavigate}>
+    <AppLayout>
       {needsTermsReacceptance && <TermsReacceptanceModal onAccepted={() => {}} />}
       <AnimatePresence mode="wait">
         <Outlet />
@@ -368,32 +277,21 @@ const appRoute = createRoute({
 
 // ── App-sidor ────────────────────────────────────────────────────────────────
 
-function appPage(path: string, component: () => JSX.Element) {
+// Generisk över path-literalen så TanStack registrerar varje route med sin
+// exakta URL — annars degraderas <Link to>/navigate-typningen till `string`.
+function appPage<TPath extends string>(path: TPath, component: () => JSX.Element) {
   return createRoute({ getParentRoute: () => appRoute, path, component })
 }
 
-const dashboardRoute = appPage('/', function DashboardRoute() {
-  return <DashboardPage onNavigate={useOnNavigate()} />
-})
-const depositsRoute = appPage('/deposits', function DepositsRoute() {
-  return <DepositsPage onNavigate={useOnNavigate()} />
-})
-const rentIncreasesRoute = appPage('/rent-increases', function RentIncreasesRoute() {
-  return <RentIncreasesPage onNavigate={useOnNavigate()} />
-})
-const settingsRoute = appPage('/settings', function SettingsRoute() {
-  return <SettingsPage onNavigate={useOnNavigate()} />
-})
-const notificationsRoute = appPage('/notifications', function NotificationsRoute() {
-  return <NotificationsPage onNavigate={useOnNavigate()} />
-})
-
+const dashboardRoute = appPage('/', DashboardPage)
 const propertiesRoute = appPage('/properties', PropertiesPage)
 const unitsRoute = appPage('/units', UnitsPage)
 const tenantsRoute = appPage('/tenants', TenantsPage)
 const customersRoute = appPage('/customers', CustomersPage)
 const leasesRoute = appPage('/leases', LeasesPage)
 const invoicesRoute = appPage('/invoices', InvoicesPage)
+const depositsRoute = appPage('/deposits', DepositsPage)
+const rentIncreasesRoute = appPage('/rent-increases', RentIncreasesPage)
 const accountingRoute = appPage('/accounting', AccountingPage)
 const reconciliationRoute = appPage('/reconciliation', ReconciliationPage)
 const collectionsRoute = appPage('/collections', CollectionsPage)
@@ -404,7 +302,9 @@ const maintenanceRoute = appPage('/maintenance', MaintenancePage)
 const aviseringRoute = appPage('/avisering', AviseringPage)
 const inspectionsRoute = appPage('/inspections', InspectionsPage)
 const maintenancePlanRoute = appPage('/maintenance-plan', MaintenancePlanPage)
+const settingsRoute = appPage('/settings', SettingsPage)
 const overviewRoute = appPage('/overview', OverviewPage)
+const notificationsRoute = appPage('/notifications', NotificationsPage)
 const newsRoute = appPage('/news', NewsPage)
 const messagesRoute = appPage('/messages', MessagesPage)
 

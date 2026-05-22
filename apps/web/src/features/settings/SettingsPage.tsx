@@ -39,12 +39,8 @@ import { UsersPanel } from '@/features/users/UsersPanel'
 import { PlanPanel } from './components/PlanPanel'
 import { useAuthStore } from '@/stores/auth.store'
 import { get, del } from '@/lib/api'
-import type { Route } from '@/App'
+import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
-
-interface Props {
-  onNavigate: (r: Route) => void
-}
 
 type SettingsTab = 'general' | 'plan' | 'security' | 'users'
 
@@ -66,7 +62,8 @@ type PaymentFormValues = z.infer<typeof PaymentFormSchema>
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export function SettingsPage({ onNavigate }: Props) {
+export function SettingsPage() {
+  const navigate = useNavigate()
   const { data: org, isLoading, isError } = useOrganization()
   const updateMutation = useUpdateOrganization()
   const uploadMutation = useUploadLogo()
@@ -286,7 +283,11 @@ export function SettingsPage({ onNavigate }: Props) {
               lösenord regelbundet och aldrig delar det med någon.
             </p>
             <div className="mt-4">
-              <Button variant="primary" size="sm" onClick={() => onNavigate('change-password')}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => void navigate({ to: '/change-password' })}
+              >
                 <Lock size={13} strokeWidth={1.8} className="mr-1.5" />
                 Byt lösenord
               </Button>

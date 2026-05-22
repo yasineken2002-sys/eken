@@ -10,7 +10,7 @@ import { PasswordInput } from './components/PasswordInput'
 import { loginApi } from './api/auth.api'
 import { consumeLoginFlash } from './lib/login-flash'
 import { useAuthStore } from '@/stores/auth.store'
-import type { Route } from '@/App'
+import { useNavigate } from '@tanstack/react-router'
 
 const schema = z.object({
   // E-post är case-insensitiv (RFC 5321) — normalisera till lowercase
@@ -23,10 +23,6 @@ const schema = z.object({
 })
 
 type FormValues = z.infer<typeof schema>
-
-interface Props {
-  onNavigate: (route: Route) => void
-}
 
 const FEATURES = [
   { icon: Building2, title: 'Fastighetsöversikt', desc: 'Hantera hela portföljen på ett ställe' },
@@ -97,7 +93,8 @@ function BrandPanel() {
   )
 }
 
-export function LoginPage({ onNavigate }: Props) {
+export function LoginPage() {
+  const navigate = useNavigate()
   const [apiError, setApiError] = useState<string | null>(null)
   const [isPending, setIsPending] = useState(false)
   // Konsumera flash-signalen synkront vid first render — annars riskerar vi
@@ -126,7 +123,7 @@ export function LoginPage({ onNavigate }: Props) {
     try {
       const response = await loginApi(data)
       setAuth(response)
-      onNavigate(response.user.mustChangePassword ? 'change-password' : 'dashboard')
+      void navigate({ to: response.user.mustChangePassword ? '/change-password' : '/' })
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
@@ -212,7 +209,7 @@ export function LoginPage({ onNavigate }: Props) {
             <div className="-mt-1 flex justify-end">
               <button
                 type="button"
-                onClick={() => onNavigate('forgot-password')}
+                onClick={() => void navigate({ to: '/forgot-password' })}
                 className="text-[12.5px] font-medium text-blue-600 transition-colors hover:text-blue-700"
               >
                 Glömt lösenord?
@@ -245,7 +242,7 @@ export function LoginPage({ onNavigate }: Props) {
             Inget konto?{' '}
             <button
               type="button"
-              onClick={() => onNavigate('register')}
+              onClick={() => void navigate({ to: '/register' })}
               className="font-semibold text-blue-600 transition-colors hover:text-blue-700"
             >
               Skapa ett här →
@@ -255,7 +252,7 @@ export function LoginPage({ onNavigate }: Props) {
           <p className="mt-6 text-center text-[12px] text-gray-400">
             <button
               type="button"
-              onClick={() => onNavigate('privacy')}
+              onClick={() => void navigate({ to: '/legal/integritet' })}
               className="hover:text-gray-600 hover:underline"
             >
               Integritetspolicy

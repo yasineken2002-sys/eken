@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { AuthCard } from './components/AuthCard'
 import { forgotPasswordApi } from './api/auth.api'
 import { readErrorMessage } from './lib/password-schema'
-import type { Route } from '@/App'
+import { useNavigate } from '@tanstack/react-router'
 
 const schema = z.object({
   email: z
@@ -18,11 +18,8 @@ const schema = z.object({
 })
 type FormValues = z.infer<typeof schema>
 
-interface Props {
-  onNavigate: (r: Route) => void
-}
-
-export function ForgotPasswordPage({ onNavigate }: Props) {
+export function ForgotPasswordPage() {
+  const navigate = useNavigate()
   const [apiError, setApiError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null)
@@ -54,7 +51,7 @@ export function ForgotPasswordPage({ onNavigate }: Props) {
         footer={
           <button
             type="button"
-            onClick={() => onNavigate('login')}
+            onClick={() => void navigate({ to: '/login' })}
             className="font-semibold text-blue-600 hover:text-blue-700"
           >
             ← Tillbaka till inloggning
@@ -82,7 +79,7 @@ export function ForgotPasswordPage({ onNavigate }: Props) {
       footer={
         <button
           type="button"
-          onClick={() => onNavigate('login')}
+          onClick={() => void navigate({ to: '/login' })}
           className="font-semibold text-blue-600 hover:text-blue-700"
         >
           ← Tillbaka till inloggning

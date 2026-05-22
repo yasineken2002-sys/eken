@@ -9,7 +9,7 @@ import { PasswordInput } from './components/PasswordInput'
 import { PasswordRequirements } from './components/PasswordRequirements'
 import { passwordSchema, readErrorMessage } from './lib/password-schema'
 import { resetPasswordApi } from './api/auth.api'
-import type { Route } from '@/App'
+import { useNavigate } from '@tanstack/react-router'
 
 const schema = z
   .object({
@@ -25,10 +25,10 @@ type FormValues = z.infer<typeof schema>
 
 interface Props {
   token: string | null
-  onNavigate: (r: Route) => void
 }
 
-export function ResetPasswordPage({ token, onNavigate }: Props) {
+export function ResetPasswordPage({ token }: Props) {
+  const navigate = useNavigate()
   const [apiError, setApiError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -50,7 +50,7 @@ export function ResetPasswordPage({ token, onNavigate }: Props) {
         footer={
           <button
             type="button"
-            onClick={() => onNavigate('forgot-password')}
+            onClick={() => void navigate({ to: '/forgot-password' })}
             className="font-semibold text-blue-600 hover:text-blue-700"
           >
             Begär en ny länk
@@ -79,7 +79,7 @@ export function ResetPasswordPage({ token, onNavigate }: Props) {
           type="button"
           variant="primary"
           className="mt-5 w-full"
-          onClick={() => onNavigate('login')}
+          onClick={() => void navigate({ to: '/login' })}
         >
           Gå till inloggning
         </Button>

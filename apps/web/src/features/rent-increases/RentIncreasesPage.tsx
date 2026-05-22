@@ -11,7 +11,7 @@ import { useRentIncreases } from './hooks/useRentIncreases'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { RentIncreaseStatus, Tenant } from '@eken/shared'
 import type { RentIncreaseDetail } from './api/rent-increases.api'
-import type { Route } from '@/App'
+import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
 
 type Tab = 'ALL' | RentIncreaseStatus
@@ -32,11 +32,8 @@ function tenantName(t: Tenant): string {
   return t.companyName ?? '–'
 }
 
-interface Props {
-  onNavigate?: (route: Route) => void
-}
-
-export function RentIncreasesPage({ onNavigate }: Props = {}) {
+export function RentIncreasesPage() {
+  const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('ALL')
   const { data: increases = [], isLoading } = useRentIncreases()
 
@@ -171,7 +168,7 @@ export function RentIncreasesPage({ onNavigate }: Props = {}) {
             columns={columns}
             data={filtered}
             keyExtractor={(r) => r.id}
-            onRowClick={() => onNavigate?.('leases')}
+            onRowClick={() => void navigate({ to: '/leases' })}
           />
         )}
       </div>
