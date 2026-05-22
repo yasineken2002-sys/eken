@@ -914,7 +914,9 @@ model Invoice {
   sentToCollectionAt   DateTime?
   collectionExportKey  String? // R2-nyckel till senaste inkassounderlag
 
-  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Bokföringslagen (1999:1078): räkenskapsinformation måste bevaras 7 år.
+  // Restrict hindrar att en org med fakturor raderas och förstör underlaget.
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   tenant           Tenant?            @relation(fields: [tenantId], references: [id])
   customer         Customer?          @relation(fields: [customerId], references: [id])
   lease            Lease?             @relation(fields: [leaseId], references: [id])
@@ -964,7 +966,9 @@ model InvoiceEvent {
   // Immutabilitetsgaranti: ingen updatedAt
   createdAt DateTime @default(now())
 
-  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  // Bokföringslagen (1999:1078): InvoiceEvent är en append-only verifikationslogg.
+  // Restrict hindrar att fakturans revisionsspår raderas vid borttagning.
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
 
   // Komposit-index för tidslinjequery (en faktura, sorterat på tid)
   @@index([invoiceId, createdAt])
@@ -1017,7 +1021,8 @@ model Account {
   parentId       String?
   isActive       Boolean     @default(true)
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Bokföringslagen (1999:1078): kontoplanen är räkenskapsinformation, bevaras 7 år.
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   parent       Account?           @relation("AccountHierarchy", fields: [parentId], references: [id])
   children     Account[]          @relation("AccountHierarchy")
   journalLines JournalEntryLine[]
@@ -1038,7 +1043,8 @@ model JournalEntry {
   // ingen användare är inloggad. Manuella poster har alltid en createdBy.
   createdById    String?
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Bokföringslagen (1999:1078): journalposter är räkenskapsinformation, bevaras 7 år.
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   createdBy    User?              @relation(fields: [createdById], references: [id])
   lines        JournalEntryLine[]
 
@@ -1075,7 +1081,8 @@ model ClosedAccountingPeriod {
   closedById     String?
   summary        Json?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Bokföringslagen (1999:1078): stängda perioder är räkenskapsinformation, bevaras 7 år.
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   closedBy     User?        @relation(fields: [closedById], references: [id])
 
   @@unique([organizationId, year, month])
@@ -1104,7 +1111,8 @@ model BankTransaction {
   matchedBy            String?
   createdAt            DateTime              @default(now())
 
-  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Bokföringslagen (1999:1078): banktransaktioner är räkenskapsinformation, bevaras 7 år.
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   invoice           Invoice?     @relation(fields: [invoiceId], references: [id])
   matchedRentNotice RentNotice?  @relation(fields: [matchedRentNoticeId], references: [id])
 
@@ -1316,7 +1324,8 @@ model AiUsageLog {
   source           String?
   createdAt        DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Revisionsspår: AI-användningsloggen måste bevaras vid org-borttagning (Restrict).
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
@@ -1349,9 +1358,11 @@ model AiToolExecution {
   confirmedAt          DateTime?
   createdAt            DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Revisionsspår: AI-verktygskörningar måste bevaras vid org-borttagning (Restrict).
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  // SetNull (matchar AiUsageLog): revisionsspåret bevaras även om användare/hyresgäst raderas.
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, createdAt])
   @@index([userId, createdAt])
@@ -1564,7 +1575,8 @@ model RentNotice {
   totalDays   Int?
   isProrated  Boolean        @default(false)
 
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Bokföringslagen (1999:1078): hyresavier är räkenskapsinformation, bevaras 7 år.
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   tenant           Tenant            @relation(fields: [tenantId], references: [id])
   lease            Lease             @relation(fields: [leaseId], references: [id])
   bankTransactions BankTransaction[]
@@ -1825,7 +1837,8 @@ model PlatformInvoice {
   // skapats men inte kunnat mailas kan felsökas och skickas om från UI.
   lastSendError    String?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Bokföringslagen (1999:1078): plattformsfakturor är räkenskapsinformation, bevaras 7 år.
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1849,7 +1862,8 @@ model ImpersonationLog {
   reason         String?
 
   platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Revisionsspår: impersoneringsloggen måste bevaras vid org-borttagning (Restrict).
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   targetUser   User         @relation("ImpersonationTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
 
   @@index([platformUserId])
@@ -1869,7 +1883,8 @@ model ErrorLog {
   resolved       Boolean       @default(false)
   resolvedAt     DateTime?
 
-  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Revisionsspår: felloggen måste bevaras vid org-borttagning (Restrict).
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
 
@@ -1923,7 +1938,8 @@ model Deposit {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Bokföringslagen (1999:1078): deposition/handpenning är räkenskapsinformation, bevaras 7 år.
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   lease        Lease        @relation(fields: [leaseId], references: [id], onDelete: Cascade)
   tenant       Tenant       @relation(fields: [tenantId], references: [id])
   invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
@@ -1960,7 +1976,8 @@ model RentIncrease {
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Bokföringslagen (1999:1078): hyreshöjningar är räkenskapsinformation, bevaras 7 år.
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   lease        Lease        @relation(fields: [leaseId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])

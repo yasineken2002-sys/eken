@@ -397,7 +397,13 @@ export class InvoicesService {
       throw new BadRequestException('Endast utkast kan tas bort. Makulera istället.')
     }
 
-    await this.prisma.invoice.delete({ where: { id } })
+    // InvoiceEvent.invoice är Restrict (Bokföringslagen 1999:1078) och blockerar
+    // radering av fakturan. Ett utkast är dock inte utfärdad räkenskapsinformation,
+    // så dess händelselogg får följa med – ta bort eventen och fakturan i en transaktion.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.invoiceEvent.deleteMany({ where: { invoiceId: id } })
+      await tx.invoice.delete({ where: { id } })
+    })
   }
 
   /**
