@@ -4,6 +4,7 @@ import { OcrService } from '../common/ocr/ocr.service'
 import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
+import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { Prisma, RentNoticeStatus, RentNoticeType } from '@prisma/client'
 import type { RentNotice } from '@prisma/client'
 import {
@@ -49,6 +50,7 @@ export class AviseringService {
     private readonly mailService: MailService,
     private readonly pdfService: PdfService,
     private readonly storage: StorageService,
+    private readonly pdfQueue: PdfQueue,
   ) {}
 
   // Allokerar nästa avinummer i sekvensen AVI-{year}-{month}-{NNNN}. Vi
@@ -305,7 +307,7 @@ export class AviseringService {
           Boolean(id),
         )
         const result = await this.sendNotices(orgId, idsToSend)
-        mailed = result.sent > 0
+        mailed = result.queued > 0
       } catch (err) {
         // Mejlfel ska inte krascha lease-aktiveringen — avier är skapade,
         // admin kan trigga "Skicka" manuellt om mejlet failar.
@@ -318,80 +320,104 @@ export class AviseringService {
     return { deposit: depositNotice, firstRent: firstRentNotice, mailed }
   }
 
-  async sendNotices(orgId: string, noticeIds: string[]) {
+  /**
+   * Köar utskick av hyresavier. Varje avi blir ett eget Bull-jobb — granulär
+   * retry, idempotens och inget HTTP-blockerande PDF-rendering. Returnerar
+   * direkt med jobb-id:n; workern (processNoticeSendJob) gör renderingen.
+   */
+  async sendNotices(
+    orgId: string,
+    noticeIds: string[],
+  ): Promise<{ queued: number; jobIds: string[] }> {
+    const jobIds: string[] = []
+    for (const noticeId of noticeIds) {
+      const jobId = await this.pdfQueue.enqueue({
+        kind: 'avisering-send',
+        organizationId: orgId,
+        noticeId,
+      })
+      jobIds.push(jobId)
+    }
+    return { queued: jobIds.length, jobIds }
+  }
+
+  /**
+   * Behandlar EN avi — anropas av PdfWorker. Renderar PDF, köar mejlet och
+   * sätter status SENT. Idempotent: redan skickade avier hoppas över så en
+   * Bull-retry aldrig ger ett dubbelmejl. Vid fel markeras avin FAILED och
+   * felet kastas vidare så Bull kan schemalägga retry.
+   */
+  async processNoticeSendJob(orgId: string, noticeId: string): Promise<void> {
     const org = await this.prisma.organization.findUnique({ where: { id: orgId } })
     if (!org) throw new NotFoundException('Organisation hittades inte')
 
-    let sent = 0
-    let failed = 0
-    let alreadySent = 0
+    const notice = await this.prisma.rentNotice.findFirst({
+      where: { id: noticeId, organizationId: orgId },
+      include: {
+        tenant: { select: SAFE_TENANT_SELECT },
+        lease: { include: { unit: { include: { property: true } } } },
+      },
+    })
+    if (!notice) throw new NotFoundException('Avi hittades inte')
 
-    for (const id of noticeIds) {
-      const notice = await this.prisma.rentNotice.findFirst({
-        where: { id, organizationId: orgId },
-        include: {
-          tenant: { select: SAFE_TENANT_SELECT },
-          lease: { include: { unit: { include: { property: true } } } },
-        },
-      })
+    // Idempotens: hoppa över avier som redan skickats.
+    if (notice.sentAt || notice.status === RentNoticeStatus.SENT) return
 
-      if (!notice || !notice.tenant.email) {
-        failed++
-        continue
-      }
-
-      // Idempotens: hoppa över avier som redan skickats. En retry får aldrig
-      // resultera i ett dubbelmejl till hyresgästen.
-      if (notice.sentAt || notice.status === RentNoticeStatus.SENT) {
-        alreadySent++
-        continue
-      }
-
-      try {
-        const pdfHtml = await this.buildNoticePdfHtml(notice, org)
-        const pdfBuffer = await this.pdfService.generateFromHtml(pdfHtml)
-
-        const tenantName =
-          notice.tenant.type === 'INDIVIDUAL'
-            ? `${notice.tenant.firstName ?? ''} ${notice.tenant.lastName ?? ''}`.trim()
-            : (notice.tenant.companyName ?? notice.tenant.email)
-
-        // Mejlet måste bekräftas innan vi flaggar avin som SENT — annars riskerar
-        // vi att tenant tror att en avi skickats som aldrig nått fram.
-        await this.mailService.sendRentNotice({
-          to: notice.tenant.email,
-          tenantName,
-          ocrNumber: notice.ocrNumber,
-          amount: Number(notice.totalAmount),
-          dueDate: notice.dueDate,
-          pdfBuffer,
-          organizationName: org.name,
-          noticeNumber: notice.noticeNumber,
-          accentColor: org.invoiceColor ?? '#2563EB',
-          idempotencyKey: `rent-notice-${notice.id}`,
+    // Saknad e-post är ett permanent fel — markera FAILED utan att kasta,
+    // annars gör Bull fem meningslösa retries.
+    if (!notice.tenant.email) {
+      await this.prisma.rentNotice
+        .update({
+          where: { id: noticeId },
+          data: { status: RentNoticeStatus.FAILED, sendError: 'Hyresgästen saknar e-postadress' },
         })
-
-        await this.prisma.rentNotice.update({
-          where: { id },
-          data: {
-            status: RentNoticeStatus.SENT,
-            sentAt: new Date(),
-            sentTo: notice.tenant.email,
-            sendError: null,
-          },
-        })
-        sent++
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err)
-        await this.prisma.rentNotice.update({
-          where: { id },
-          data: { status: RentNoticeStatus.FAILED, sendError: errorMessage },
-        })
-        failed++
-      }
+        .catch(() => undefined)
+      return
     }
 
-    return { sent, failed, alreadySent }
+    try {
+      const pdfHtml = await this.buildNoticePdfHtml(notice, org)
+      const pdfBuffer = await this.pdfService.generateFromHtml(pdfHtml)
+
+      const tenantName =
+        notice.tenant.type === 'INDIVIDUAL'
+          ? `${notice.tenant.firstName ?? ''} ${notice.tenant.lastName ?? ''}`.trim()
+          : (notice.tenant.companyName ?? notice.tenant.email)
+
+      // Mejlet köas med idempotencyKey så att en Bull-retry (om DB-uppdateringen
+      // nedan misslyckas efter att mejlet redan köats) inte ger dubbelmejl.
+      await this.mailService.sendRentNotice({
+        to: notice.tenant.email,
+        tenantName,
+        ocrNumber: notice.ocrNumber,
+        amount: Number(notice.totalAmount),
+        dueDate: notice.dueDate,
+        pdfBuffer,
+        organizationName: org.name,
+        noticeNumber: notice.noticeNumber,
+        accentColor: org.invoiceColor ?? '#2563EB',
+        idempotencyKey: `rent-notice-${notice.id}`,
+      })
+
+      await this.prisma.rentNotice.update({
+        where: { id: noticeId },
+        data: {
+          status: RentNoticeStatus.SENT,
+          sentAt: new Date(),
+          sentTo: notice.tenant.email,
+          sendError: null,
+        },
+      })
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      await this.prisma.rentNotice
+        .update({
+          where: { id: noticeId },
+          data: { status: RentNoticeStatus.FAILED, sendError: errorMessage },
+        })
+        .catch(() => undefined)
+      throw err
+    }
   }
 
   async getNoticePdfBuffer(noticeId: string, orgId: string): Promise<Buffer> {

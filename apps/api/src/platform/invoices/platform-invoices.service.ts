@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { MailService } from '../../mail/mail.service'
 import { PdfService } from '../../invoices/pdf.service'
+import { PdfQueue } from '../../pdf-jobs/pdf.queue'
 import {
   PLATFORM_COMPANY,
   generatePlatformOcr,
@@ -90,6 +91,7 @@ export class PlatformInvoicesService {
     private readonly mail: MailService,
     private readonly pdf: PdfService,
     private readonly config: ConfigService,
+    private readonly pdfQueue: PdfQueue,
   ) {}
 
   /**
@@ -299,14 +301,37 @@ export class PlatformInvoicesService {
    * Mailar fakturan till kundens billingEmail (fallback: organization.email).
    * Bifogar PDF, sätter sentAt + status SENT.
    */
-  async send(id: string): Promise<{ id: string; sentTo: string }> {
+  /**
+   * Validerar plattformsfakturan och köar utskicket. PDF-rendering + mejl
+   * sker i PdfWorker (processSendJob) så HTTP-svaret returneras direkt (202).
+   */
+  async send(id: string): Promise<{ jobId: string }> {
+    const row = await this.prisma.platformInvoice.findUnique({ where: { id } })
+    if (!row) throw new NotFoundException('Fakturan hittades inte')
+    if (row.status === 'PAID' || row.status === 'VOID') {
+      throw new BadRequestException('Kan inte skicka en betald eller makulerad faktura')
+    }
+    const jobId = await this.pdfQueue.enqueue({
+      kind: 'platform-invoice-send',
+      platformInvoiceId: id,
+    })
+    return { jobId }
+  }
+
+  /**
+   * Renderar plattformsfaktura-PDF, köar mejlet och sätter status SENT.
+   * Anropas av PdfWorker. Mejlet har en idempotencyKey så en Bull-retry inte
+   * ger dubbelmejl; vid fel sparas lastSendError och felet kastas vidare.
+   */
+  async processSendJob(id: string): Promise<void> {
     const row = await this.prisma.platformInvoice.findUnique({
       where: { id },
       include: { organization: true },
     })
     if (!row) throw new NotFoundException('Fakturan hittades inte')
     if (row.status === 'PAID' || row.status === 'VOID') {
-      throw new BadRequestException('Kan inte skicka en betald eller makulerad faktura')
+      this.logger.warn(`[pdf] hoppar över platform-invoice-send för ${id} — status ${row.status}`)
+      return
     }
 
     const recipient = row.organization.billingEmail ?? row.organization.email
@@ -353,13 +378,10 @@ export class PlatformInvoicesService {
         idempotencyKey: `platform-invoice-send-${row.id}`,
       })
 
-      const updated = await this.prisma.platformInvoice.update({
+      await this.prisma.platformInvoice.update({
         where: { id },
         data: { status: 'SENT', sentAt: new Date(), lastSendError: null },
-        select: { id: true },
       })
-
-      return { id: updated.id, sentTo: recipient }
     } catch (err) {
       // Misslyckat utskick raderar inte fakturan — den ligger kvar som
       // DRAFT med felet sparat så den kan skickas om från admin-UI.

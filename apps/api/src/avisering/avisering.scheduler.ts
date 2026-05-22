@@ -46,8 +46,7 @@ export class AviseringScheduler {
     organizations: number
     created: number
     skipped: number
-    mailed: number
-    mailFailed: number
+    queued: number
   }> {
     const orgs = await this.prisma.organization.findMany({
       where: { status: 'ACTIVE' },
@@ -56,8 +55,7 @@ export class AviseringScheduler {
 
     let created = 0
     let skipped = 0
-    let mailed = 0
-    let mailFailed = 0
+    let queued = 0
 
     for (const org of orgs) {
       try {
@@ -66,13 +64,12 @@ export class AviseringScheduler {
         skipped += result.skipped
 
         if (result.notices.length > 0) {
-          // Skicka direkt så hyresgästerna har max tid på sig.
+          // Köa utskicket direkt så hyresgästerna har max tid på sig.
           const sendRes = await this.avisering.sendNotices(
             org.id,
             result.notices.map((n) => n.id),
           )
-          mailed += sendRes.sent
-          mailFailed += sendRes.failed
+          queued += sendRes.queued
         }
 
         this.logger.log(
@@ -86,7 +83,7 @@ export class AviseringScheduler {
     }
 
     this.logger.log(
-      `[avisering-cron] done year=${year} month=${month} orgs=${orgs.length} created=${created} skipped=${skipped} mailed=${mailed} mailFailed=${mailFailed}`,
+      `[avisering-cron] done year=${year} month=${month} orgs=${orgs.length} created=${created} skipped=${skipped} queued=${queued}`,
     )
 
     return {
@@ -95,8 +92,7 @@ export class AviseringScheduler {
       organizations: orgs.length,
       created,
       skipped,
-      mailed,
-      mailFailed,
+      queued,
     }
   }
 }

@@ -50,14 +50,14 @@ export class AviseringController {
 
   @Post('send')
   @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.ACCEPTED)
   async send(@OrgId() orgId: string, @Body() dto: SendNoticesDto) {
     return this.aviseringService.sendNotices(orgId, dto.noticeIds)
   }
 
   @Post('send-all/:month/:year')
   @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.ACCEPTED)
   async sendAll(
     @OrgId() orgId: string,
     @Param('month', ParseIntPipe) month: number,

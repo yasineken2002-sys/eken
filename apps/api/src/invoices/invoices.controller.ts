@@ -131,13 +131,14 @@ export class InvoicesController {
 
   @Post(':id/send-email')
   @Roles('MANAGER', 'ADMIN', 'OWNER')
+  @HttpCode(202)
   async sendEmail(
     @Param('id') id: string,
     @OrgId() organizationId: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    await this.invoicesService.sendInvoiceEmail(id, organizationId, user.sub)
-    return { message: 'E-post skickad' }
+    const { jobId } = await this.invoicesService.sendInvoiceEmail(id, organizationId, user.sub)
+    return { jobId, message: 'Fakturan köad för utskick' }
   }
 
   @Delete(':id')
