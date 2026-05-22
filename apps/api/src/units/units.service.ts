@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../common/prisma/prisma.service'
 import { CreateUnitDto } from './dto/create-unit.dto'
 import { UpdateUnitDto } from './dto/update-unit.dto'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 @Injectable()
 export class UnitsService {
@@ -27,7 +28,7 @@ export class UnitsService {
       include: {
         property: { select: { id: true, name: true } },
         leases: {
-          include: { tenant: true },
+          include: { tenant: { select: SAFE_TENANT_SELECT } },
           orderBy: { createdAt: 'desc' },
         },
         _count: { select: { leases: true } },

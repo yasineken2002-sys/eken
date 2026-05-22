@@ -4,10 +4,11 @@ import JSZip from 'jszip'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 type InvoiceWithCollectionData = Prisma.InvoiceGetPayload<{
   include: {
-    tenant: true
+    tenant: { select: typeof SAFE_TENANT_SELECT }
     customer: true
     organization: true
     paymentReminders: { orderBy: { sentAt: 'asc' } }
@@ -215,7 +216,7 @@ export class CollectionExportService {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, organizationId },
       include: {
-        tenant: true,
+        tenant: { select: SAFE_TENANT_SELECT },
         customer: true,
         organization: true,
         paymentReminders: { orderBy: { sentAt: 'asc' } },

@@ -3,6 +3,7 @@ import type { Invoice, Lease, MaintenanceCategory, Property, Unit } from '@prism
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MaintenanceService } from '../maintenance/maintenance.service'
 import { NotificationsService } from '../notifications/notifications.service'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 type InvoiceWithLease = Invoice & {
   lease?: (Lease & { unit: Unit & { property: Property } }) | null
@@ -20,7 +21,12 @@ export class TenantPortalService {
 
   async getDashboard(tenantId: string) {
     const [tenant, lease, openTickets, overdueCount, upcomingInvoice] = await Promise.all([
-      this.prisma.tenant.findUnique({ where: { id: tenantId } }),
+      // SECURITY (audit HIGH #2, uppföljning PR #10): SAFE_TENANT_SELECT så
+      // hyresgästens egen dashboard aldrig returnerar passwordHash/token-hashar.
+      this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: SAFE_TENANT_SELECT,
+      }),
       this.getActiveLease(tenantId),
       this.prisma.maintenanceTicket.findMany({
         where: { tenantId, status: { in: ['NEW', 'IN_PROGRESS', 'SCHEDULED'] } },
@@ -198,7 +204,10 @@ export class TenantPortalService {
   ) {
     const lease = await this.prisma.lease.findFirst({
       where: { tenantId, status: 'ACTIVE' },
-      include: { unit: { include: { property: true } }, tenant: true },
+      include: {
+        unit: { include: { property: true } },
+        tenant: { select: SAFE_TENANT_SELECT },
+      },
     })
 
     if (!lease) throw new BadRequestException('Inget aktivt hyresavtal hittades')

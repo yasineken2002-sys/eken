@@ -11,10 +11,11 @@ import {
   calculateProratedRent,
   calculateFirstPaymentDueDate,
 } from '@eken/shared'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
   include: {
-    tenant: true
+    tenant: { select: typeof SAFE_TENANT_SELECT }
     lease: { include: { unit: { include: { property: true } } } }
   }
 }>
@@ -78,7 +79,7 @@ export class AviseringService {
     const leases = await this.prisma.lease.findMany({
       where: { organizationId: orgId, status: 'ACTIVE' },
       include: {
-        tenant: true,
+        tenant: { select: SAFE_TENANT_SELECT },
         unit: { include: { property: true } },
       },
     })
@@ -158,7 +159,10 @@ export class AviseringService {
           totalDays: proration.totalDays,
           isProrated: proration.isProrated,
         },
-        include: { tenant: true, lease: { include: { unit: { include: { property: true } } } } },
+        include: {
+          tenant: { select: SAFE_TENANT_SELECT },
+          lease: { include: { unit: { include: { property: true } } } },
+        },
       })
 
       notices.push(notice as unknown as RentNotice)
@@ -185,7 +189,7 @@ export class AviseringService {
     const lease = await this.prisma.lease.findUnique({
       where: { id: leaseId },
       include: {
-        tenant: true,
+        tenant: { select: SAFE_TENANT_SELECT },
         unit: { include: { property: true } },
       },
     })
@@ -326,7 +330,7 @@ export class AviseringService {
       const notice = await this.prisma.rentNotice.findFirst({
         where: { id, organizationId: orgId },
         include: {
-          tenant: true,
+          tenant: { select: SAFE_TENANT_SELECT },
           lease: { include: { unit: { include: { property: true } } } },
         },
       })
@@ -394,7 +398,7 @@ export class AviseringService {
     const notice = await this.prisma.rentNotice.findFirst({
       where: { id: noticeId, organizationId: orgId },
       include: {
-        tenant: true,
+        tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
       },
     })
@@ -978,7 +982,7 @@ export class AviseringService {
         ...(filters?.status ? { status: filters.status } : {}),
       },
       include: {
-        tenant: true,
+        tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
       },
       orderBy: { dueDate: 'desc' },
@@ -989,7 +993,7 @@ export class AviseringService {
     const notice = await this.prisma.rentNotice.findFirst({
       where: { id: noticeId, organizationId: orgId },
       include: {
-        tenant: true,
+        tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
       },
     })
