@@ -2,6 +2,7 @@ import { Controller, Get, Patch, Body, BadRequestException, UseGuards, Req } fro
 import type { FastifyRequest } from 'fastify'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { OrganizationsService } from './organizations.service'
 import { UpdateOrganizationDto } from './dto/update-organization.dto'
 
@@ -16,11 +17,13 @@ export class OrganizationsController {
   }
 
   @Patch('me')
+  @Roles('ADMIN', 'OWNER')
   async update(@OrgId() organizationId: string, @Body() dto: UpdateOrganizationDto) {
     return this.organizationsService.update(organizationId, dto)
   }
 
   @Patch('me/logo')
+  @Roles('ADMIN', 'OWNER')
   async uploadLogo(@OrgId() organizationId: string, @Req() req: FastifyRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const file = await (req as any).file()

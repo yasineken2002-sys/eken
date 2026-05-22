@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Param, Query, UseGuards } from '@nestjs/common'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { AccountingService } from './accounting.service'
 
 @Controller('accounting')
@@ -14,6 +15,7 @@ export class AccountingController {
   }
 
   @Post('accounts/seed')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
   async seedAccounts(@OrgId() organizationId: string) {
     await this.accountingService.seedDefaultAccounts(organizationId)
     return { message: 'Standardkonton skapade' }

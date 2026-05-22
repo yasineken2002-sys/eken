@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { CustomersService } from './customers.service'
 import { CreateCustomerDto } from './dto/create-customer.dto'
 import { UpdateCustomerDto } from './dto/update-customer.dto'
@@ -44,18 +45,21 @@ export class CustomersController {
   }
 
   @Post()
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   @ApiOperation({ summary: 'Skapa ny kund' })
   create(@OrgId() orgId: string, @Body() dto: CreateCustomerDto) {
     return this.service.create(dto, orgId)
   }
 
   @Patch(':id')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   @ApiOperation({ summary: 'Uppdatera kund' })
   update(@Param('id') id: string, @OrgId() orgId: string, @Body() dto: UpdateCustomerDto) {
     return this.service.update(id, dto, orgId)
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'OWNER')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Arkivera kund (soft delete) eller ta bort om utan historik' })
   remove(@Param('id') id: string, @OrgId() orgId: string) {

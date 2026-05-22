@@ -23,6 +23,7 @@ import { CreateInspectionDto } from './dto/create-inspection.dto'
 import { UpdateInspectionDto } from './dto/update-inspection.dto'
 import { UpdateInspectionItemDto } from './dto/update-inspection-item.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
@@ -74,6 +75,7 @@ export class InspectionsController {
   }
 
   @Post()
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async create(
     @OrgId() orgId: string,
     @CurrentUser() user: JwtPayload,
@@ -83,11 +85,13 @@ export class InspectionsController {
   }
 
   @Patch(':id')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async update(@OrgId() orgId: string, @Param('id') id: string, @Body() dto: UpdateInspectionDto) {
     return this.inspectionsService.update(id, dto, orgId)
   }
 
   @Patch(':id/items/:itemId')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async updateItem(
     @OrgId() orgId: string,
     @Param('id') id: string,
@@ -98,6 +102,7 @@ export class InspectionsController {
   }
 
   @Post(':id/analyze')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async analyze(
     @Req() request: FastifyRequest,
     @OrgId() orgId: string,
@@ -194,6 +199,7 @@ export class InspectionsController {
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'OWNER')
   @HttpCode(HttpStatus.OK)
   async delete(@OrgId() orgId: string, @Param('id') id: string) {
     return this.inspectionsService.delete(id, orgId)

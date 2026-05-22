@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { UnitsService } from './units.service'
 import { CreateUnitDto } from './dto/create-unit.dto'
 import { UpdateUnitDto } from './dto/update-unit.dto'
@@ -33,11 +34,13 @@ export class UnitsController {
   }
 
   @Post()
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   create(@OrgId() organizationId: string, @Body() dto: CreateUnitDto) {
     return this.unitsService.create(dto, organizationId)
   }
 
   @Patch(':id')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @OrgId() organizationId: string,
@@ -47,6 +50,7 @@ export class UnitsController {
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'OWNER')
   @HttpCode(204)
   async remove(
     @Param('id', ParseUUIDPipe) id: string,

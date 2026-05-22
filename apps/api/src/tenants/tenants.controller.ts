@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { TenantsService } from './tenants.service'
 import { CreateTenantDto } from './dto/create-tenant.dto'
 import { UpdateTenantDto } from './dto/update-tenant.dto'
@@ -32,11 +33,13 @@ export class TenantsController {
   }
 
   @Post()
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async create(@OrgId() organizationId: string, @Body() dto: CreateTenantDto) {
     return this.tenantsService.create(dto, organizationId)
   }
 
   @Patch(':id')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async update(
     @Param('id') id: string,
     @OrgId() organizationId: string,
@@ -46,6 +49,7 @@ export class TenantsController {
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'OWNER')
   @HttpCode(204)
   async remove(@Param('id') id: string, @OrgId() organizationId: string): Promise<void> {
     await this.tenantsService.remove(id, organizationId)

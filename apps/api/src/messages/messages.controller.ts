@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { MessagesService } from './messages.service'
 import { SendMessageDto } from './dto/send-message.dto'
@@ -22,6 +23,7 @@ export class MessagesController {
   constructor(private readonly service: MessagesService) {}
 
   @Post('send')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   @HttpCode(HttpStatus.CREATED)
   async send(
     @Body() dto: SendMessageDto,
@@ -44,6 +46,7 @@ export class MessagesController {
   }
 
   @Post(':id/retry')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   @HttpCode(HttpStatus.CREATED)
   async retry(
     @Param('id') id: string,

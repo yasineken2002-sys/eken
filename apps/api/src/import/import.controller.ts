@@ -4,6 +4,7 @@ import type { FastifyRequest } from 'fastify'
 import { ImportService } from './import.service'
 import { ContractScannerService } from './contract-scanner.service'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 
@@ -23,6 +24,7 @@ export class ImportController {
   // ─── Preview ───────────────────────────────────────────────────────────────
 
   @Post('preview')
+  @Roles('ADMIN', 'OWNER')
   @ApiOperation({ summary: 'Förhandsgranska fil – inga databasskrivningar' })
   @ApiConsumes('multipart/form-data')
   async preview(@Req() request: FastifyRequest) {
@@ -33,6 +35,7 @@ export class ImportController {
   // ─── Execute ───────────────────────────────────────────────────────────────
 
   @Post('execute')
+  @Roles('ADMIN', 'OWNER')
   @ApiOperation({ summary: 'Kör fullständig import till databasen' })
   @ApiConsumes('multipart/form-data')
   async execute(
@@ -55,6 +58,7 @@ export class ImportController {
   // ─── Contract Scan ────────────────────────────────────────────────────────
 
   @Post('scan-contract')
+  @Roles('ADMIN', 'OWNER')
   @ApiOperation({ summary: 'Skanna hyreskontrakt med AI' })
   @ApiConsumes('multipart/form-data')
   async scanContract(

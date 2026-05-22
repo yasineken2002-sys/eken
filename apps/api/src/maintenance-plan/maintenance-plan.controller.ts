@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { MaintenancePlanService } from './maintenance-plan.service'
 import { CreateMaintenancePlanDto } from './dto/create-maintenance-plan.dto'
 import { UpdateMaintenancePlanDto } from './dto/update-maintenance-plan.dto'
@@ -57,16 +58,19 @@ export class MaintenancePlanController {
   }
 
   @Post()
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   create(@OrgId() orgId: string, @Body() dto: CreateMaintenancePlanDto) {
     return this.service.create(dto, orgId)
   }
 
   @Patch(':id')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   update(@OrgId() orgId: string, @Param('id') id: string, @Body() dto: UpdateMaintenancePlanDto) {
     return this.service.update(id, dto, orgId)
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'OWNER')
   @HttpCode(HttpStatus.NO_CONTENT)
   delete(@OrgId() orgId: string, @Param('id') id: string) {
     return this.service.delete(id, orgId)
