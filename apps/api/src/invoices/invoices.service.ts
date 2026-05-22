@@ -12,6 +12,7 @@ import { CreateInvoiceDto } from './dto/create-invoice.dto'
 import { UpdateInvoiceDto } from './dto/update-invoice.dto'
 import { BulkInvoiceDto } from './dto/bulk-invoice.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+import { PdfQueue } from '../pdf-jobs/pdf.queue'
 
 // Mappar InvoiceStatus → Prisma InvoiceEventType enum-värde
 const STATUS_TO_EVENT_TYPE: Partial<Record<InvoiceStatus, InvoiceEventType>> = {
@@ -34,6 +35,7 @@ export class InvoicesService {
     private readonly accountingService: AccountingService,
     private readonly notificationsService: NotificationsService,
     private readonly ocrService: OcrService,
+    private readonly pdfQueue: PdfQueue,
   ) {}
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -486,7 +488,46 @@ export class InvoicesService {
    * Generera PDF och skicka faktura via e-post till hyresgästen.
    * Om fakturan är DRAFT övergår den till SENT automatiskt.
    */
-  async sendInvoiceEmail(id: string, organizationId: string, userId: string): Promise<void> {
+  /**
+   * Validerar fakturan och köar utskicket. Själva PDF-renderingen + mejlet
+   * sker i PdfWorker (processInvoiceSendJob) så HTTP-svaret returneras direkt
+   * (202) i stället för att blockera tills Chromium renderat klart.
+   */
+  async sendInvoiceEmail(
+    id: string,
+    organizationId: string,
+    userId: string,
+  ): Promise<{ jobId: string }> {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id, organizationId },
+      include: { tenant: { select: SAFE_TENANT_SELECT }, customer: true },
+    })
+    if (!invoice) throw new NotFoundException('Faktura hittades inte')
+    if (invoice.status === 'VOID' || invoice.status === 'PAID') {
+      throw new BadRequestException('Fakturan kan inte skickas i nuvarande status')
+    }
+
+    // En faktura har antingen tenant eller customer (XOR-constraint).
+    const recipient = invoice.tenant ?? invoice.customer
+    if (!recipient) throw new BadRequestException('Fakturan saknar mottagare')
+    if (!recipient.email) throw new BadRequestException('Mottagaren saknar e-postadress')
+
+    const jobId = await this.pdfQueue.enqueue({
+      kind: 'invoice-send',
+      organizationId,
+      invoiceId: id,
+      actorId: userId,
+    })
+    return { jobId }
+  }
+
+  /**
+   * Renderar faktura-PDF, köar mejlet och gör statusövergången DRAFT→SENT.
+   * Anropas av PdfWorker. Idempotent: en faktura som hunnit bli VOID/PAID
+   * hoppas tyst över, och mejlet har en idempotencyKey så en Bull-retry
+   * (efter t.ex. ett fel i statusövergången) aldrig ger ett dubbelmejl.
+   */
+  async processInvoiceSendJob(id: string, organizationId: string, userId: string): Promise<void> {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id, organizationId },
       include: {
@@ -498,20 +539,17 @@ export class InvoicesService {
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
 
+    // Status kan ha ändrats mellan enqueue och körning — hoppa tyst över.
     if (invoice.status === 'VOID' || invoice.status === 'PAID') {
-      throw new BadRequestException('Fakturan kan inte skickas i nuvarande status')
+      this.logger.warn(`[pdf] hoppar över invoice-send för ${id} — status ${invoice.status}`)
+      return
     }
 
-    // En faktura har antingen tenant eller customer (XOR-constraint).
     const recipient = invoice.tenant ?? invoice.customer
-    if (!recipient) {
-      throw new BadRequestException('Fakturan saknar mottagare')
-    }
-    if (!recipient.email) {
-      throw new BadRequestException('Mottagaren saknar e-postadress')
+    if (!recipient?.email) {
+      throw new BadRequestException('Fakturan saknar mottagare med e-postadress')
     }
 
-    // Generate PDF
     const pdfBuffer = await this.pdfService.generateInvoicePdf(id, organizationId)
 
     const recipientName =
@@ -519,20 +557,17 @@ export class InvoicesService {
         ? [recipient.firstName, recipient.lastName].filter(Boolean).join(' ')
         : (recipient.companyName ?? recipient.email)
 
-    try {
-      await this.mailService.sendInvoice({
-        to: recipient.email,
-        tenantName: recipientName,
-        invoiceNumber: invoice.invoiceNumber,
-        total: Number(invoice.total),
-        dueDate: invoice.dueDate,
-        pdfBuffer,
-        organizationName: invoice.organization.name,
-        accentColor: invoice.organization.invoiceColor ?? '#1a6b3c',
-      })
-    } catch {
-      throw new BadRequestException('E-post kunde inte skickas. Kontrollera SMTP-inställningar.')
-    }
+    await this.mailService.sendInvoice({
+      to: recipient.email,
+      tenantName: recipientName,
+      invoiceNumber: invoice.invoiceNumber,
+      total: Number(invoice.total),
+      dueDate: invoice.dueDate,
+      pdfBuffer,
+      organizationName: invoice.organization.name,
+      accentColor: invoice.organization.invoiceColor ?? '#1a6b3c',
+      idempotencyKey: `invoice-send-${id}`,
+    })
 
     // Transition DRAFT → SENT
     if (invoice.status === 'DRAFT') {

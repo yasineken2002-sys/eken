@@ -5,6 +5,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+import { PdfQueue } from '../pdf-jobs/pdf.queue'
 
 type InvoiceWithCollectionData = Prisma.InvoiceGetPayload<{
   include: {
@@ -34,7 +35,40 @@ export class CollectionExportService {
     private readonly prisma: PrismaService,
     private readonly pdf: PdfService,
     private readonly storage: StorageService,
+    private readonly pdfQueue: PdfQueue,
   ) {}
+
+  /**
+   * Köar inkassoexport för EN faktura. PDF-renderingen sker i PdfWorker
+   * (exportForInvoice) — HTTP-svaret returneras direkt med jobb-id.
+   */
+  async enqueueExportForInvoice(
+    invoiceId: string,
+    organizationId: string,
+  ): Promise<{ jobId: string }> {
+    const jobId = await this.pdfQueue.enqueue({
+      kind: 'collections-export',
+      organizationId,
+      invoiceId,
+    })
+    return { jobId }
+  }
+
+  /**
+   * Köar bulk-inkassoexport (en samlad ZIP). Hela ZIP-bygget — N PDF-
+   * renderingar — sker i PdfWorker (exportBulk) i ett enda jobb.
+   */
+  async enqueueBulkExport(
+    invoiceIds: string[],
+    organizationId: string,
+  ): Promise<{ jobId: string }> {
+    const jobId = await this.pdfQueue.enqueue({
+      kind: 'collections-bulk-export',
+      organizationId,
+      invoiceIds,
+    })
+    return { jobId }
+  }
 
   /**
    * Genererar inkassounderlag (PDF + CSV) för EN faktura. Markerar fakturan

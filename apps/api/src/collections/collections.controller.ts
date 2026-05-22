@@ -63,18 +63,18 @@ export class CollectionsController {
   }
 
   @Post('export/:invoiceId')
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.ACCEPTED)
   async exportSingle(@Param('invoiceId') invoiceId: string, @OrgId() organizationId: string) {
-    return this.exportService.exportForInvoice(invoiceId, organizationId)
+    return this.exportService.enqueueExportForInvoice(invoiceId, organizationId)
   }
 
   @Post('bulk-export')
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.ACCEPTED)
   async exportBulk(@Body() dto: BulkExportDto, @OrgId() organizationId: string) {
     if (!dto.invoiceIds?.length) {
       throw new BadRequestException('invoiceIds får inte vara tom')
     }
-    return this.exportService.exportBulk(dto.invoiceIds, organizationId)
+    return this.exportService.enqueueBulkExport(dto.invoiceIds, organizationId)
   }
 
   @Post('mark-sent/:invoiceId')

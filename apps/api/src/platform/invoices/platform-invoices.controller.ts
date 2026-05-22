@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Header,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -91,7 +92,8 @@ export class PlatformInvoicesController {
   }
 
   @Post(':id/send')
-  @ApiOperation({ summary: 'Mejla fakturan till kunden + sätt status SENT' })
+  @HttpCode(202)
+  @ApiOperation({ summary: 'Köa utskick av fakturan (PDF + mejl i bakgrunden)' })
   send(@Param('id', ParseUUIDPipe) id: string) {
     return this.svc.send(id)
   }
