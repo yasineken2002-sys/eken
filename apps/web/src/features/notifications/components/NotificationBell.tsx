@@ -24,47 +24,9 @@ import {
   useMarkAllRead,
 } from '../hooks/useNotifications'
 import { useFocusStore } from '@/stores/focus.store'
-import type { Route } from '@/App'
-import type { Notification, NotificationType, RelatedEntityType } from '../api/notifications.api'
-
-// Mappning från strukturerad entity-typ → app-Route. Detaljvyn öppnas sedan
-// av mottagarsidan via useFocusStore (se MaintenancePage m.fl.).
-const ENTITY_ROUTE: Record<RelatedEntityType, Route> = {
-  MAINTENANCE_TICKET: 'maintenance',
-  INVOICE: 'invoices',
-  LEASE: 'leases',
-  TENANT: 'tenants',
-  DEPOSIT: 'deposits',
-  RENT_INCREASE: 'rent-increases',
-  TERMINATION_REQUEST: 'leases',
-}
-
-// Bakåtkompatibel fallback för äldre rader som bara har `link` (URL-form).
-function legacyLinkToRoute(link: string): Route | null {
-  const segment = link.replace(/^\/+/, '').split('/')[0]
-  switch (segment) {
-    case 'maintenance':
-      return 'maintenance'
-    case 'invoices':
-      return 'invoices'
-    case 'leases':
-      return 'leases'
-    case 'tenants':
-      return 'tenants'
-    case 'deposits':
-      return 'deposits'
-    case 'rent-increases':
-      return 'rent-increases'
-    case 'collections':
-      return 'collections'
-    default:
-      return null
-  }
-}
-
-interface Props {
-  onNavigate: (r: Route) => void
-}
+import { useNavigate } from '@tanstack/react-router'
+import { entityTypeToPath, notificationLinkToPath } from '../lib/notification-link'
+import type { Notification, NotificationType } from '../api/notifications.api'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -131,7 +93,8 @@ function NotificationRow({
   )
 }
 
-export function NotificationBell({ onNavigate }: Props) {
+export function NotificationBell() {
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -161,11 +124,11 @@ export function NotificationBell({ onNavigate }: Props) {
     // 1. Strukturerad referens (relatedEntityType + relatedEntityId) — nya
     //    notiser. Sätter focus så mottagarsidan kan öppna rätt detaljvy.
     if (n.relatedEntityType && n.relatedEntityId) {
-      const route = ENTITY_ROUTE[n.relatedEntityType]
-      if (route) {
+      const path = entityTypeToPath(n.relatedEntityType)
+      if (path) {
         requestFocus({ type: n.relatedEntityType, id: n.relatedEntityId })
         setOpen(false)
-        onNavigate(route)
+        void navigate({ to: path })
         return
       }
     }
@@ -173,10 +136,10 @@ export function NotificationBell({ onNavigate }: Props) {
     // 2. Legacy `link`-fält (URL-sträng). Endast list-navigation, ingen
     //    djupöppning. Tas bort när alla rader migrerats.
     if (n.link) {
-      const route = legacyLinkToRoute(n.link)
-      if (route) {
+      const path = notificationLinkToPath(n.link)
+      if (path) {
         setOpen(false)
-        onNavigate(route)
+        void navigate({ to: path })
         return
       }
     }
@@ -253,7 +216,7 @@ export function NotificationBell({ onNavigate }: Props) {
                 <button
                   onClick={() => {
                     setOpen(false)
-                    onNavigate('notifications')
+                    void navigate({ to: '/notifications' })
                   }}
                   className="w-full rounded-lg py-1.5 text-center text-[13px] text-blue-600 transition-colors hover:bg-blue-50"
                 >

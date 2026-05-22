@@ -1,16 +1,13 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Link } from '@tanstack/react-router'
 import { Cookie } from 'lucide-react'
 
 const STORAGE_KEY = 'eveno-cookies-consent'
 
 type Consent = 'accepted' | 'necessary-only'
 
-interface Props {
-  onNavigate?: (route: 'privacy' | 'legal-integritet' | 'legal-cookies') => void
-}
-
-export function CookieBanner({ onNavigate }: Props) {
+export function CookieBanner() {
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
@@ -45,19 +42,10 @@ export function CookieBanner({ onNavigate }: Props) {
               <p className="mt-1 text-[13px] leading-relaxed text-gray-600">
                 Eveno använder cookies som krävs för inloggning och säkerhet. Vi använder inte
                 tredjepartscookies för marknadsföring eller spårning. Genom att fortsätta godkänner
-                du nödvändiga cookies.
-                {onNavigate && (
-                  <>
-                    {' '}
-                    <button
-                      type="button"
-                      onClick={() => onNavigate('legal-integritet')}
-                      className="font-medium text-blue-600 hover:underline"
-                    >
-                      Läs vår integritetspolicy
-                    </button>
-                  </>
-                )}
+                du nödvändiga cookies.{' '}
+                <Link to="/legal/integritet" className="font-medium text-blue-600 hover:underline">
+                  Läs vår integritetspolicy
+                </Link>
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button

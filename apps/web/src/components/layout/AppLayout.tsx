@@ -26,16 +26,41 @@ import {
   TrendingUp,
   Gavel,
 } from 'lucide-react'
+import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
 import { useAuthStore } from '@/stores/auth.store'
 import { logoutApi } from '@/features/auth/api/auth.api'
 import { NotificationBell } from '@/features/notifications/components/NotificationBell'
 import { ImpersonationBanner } from '@/components/ImpersonationBanner'
 import { ViewerBanner } from '@/components/ViewerBanner'
-import type { Route } from '@/App'
+
+// URL:er för sidonavigeringens poster. Begränsad union så <Link to> typkollar.
+type AppPath =
+  | '/'
+  | '/ai'
+  | '/properties'
+  | '/units'
+  | '/tenants'
+  | '/customers'
+  | '/leases'
+  | '/invoices'
+  | '/avisering'
+  | '/deposits'
+  | '/rent-increases'
+  | '/accounting'
+  | '/reconciliation'
+  | '/collections'
+  | '/inspections'
+  | '/maintenance'
+  | '/maintenance-plan'
+  | '/documents'
+  | '/import'
+  | '/news'
+  | '/messages'
+  | '/overview'
 
 interface NavItem {
-  id: Route
+  to: AppPath
   label: string
   icon: React.ElementType
   badge?: number
@@ -43,49 +68,48 @@ interface NavItem {
 }
 
 const NAV_PRIMARY: NavItem[] = [
-  { id: 'dashboard', label: 'Översikt', icon: LayoutDashboard },
-  { id: 'ai', label: 'AI-assistent', icon: Sparkles },
+  { to: '/', label: 'Översikt', icon: LayoutDashboard },
+  { to: '/ai', label: 'AI-assistent', icon: Sparkles },
 ]
 
 const NAV_PORTFOLIO: NavItem[] = [
-  { id: 'properties', label: 'Fastigheter', icon: Building2 },
-  { id: 'units', label: 'Objekt', icon: Home },
-  { id: 'tenants', label: 'Hyresgäster', icon: Users, readOnly: true },
-  { id: 'customers', label: 'Kunder', icon: Users },
-  { id: 'leases', label: 'Hyresavtal', icon: FileText },
+  { to: '/properties', label: 'Fastigheter', icon: Building2 },
+  { to: '/units', label: 'Objekt', icon: Home },
+  { to: '/tenants', label: 'Hyresgäster', icon: Users, readOnly: true },
+  { to: '/customers', label: 'Kunder', icon: Users },
+  { to: '/leases', label: 'Hyresavtal', icon: FileText },
 ]
 
 const NAV_FINANCE: NavItem[] = [
-  { id: 'invoices', label: 'Fakturor', icon: Receipt },
-  { id: 'avisering', label: 'Hyresavier', icon: Receipt },
-  { id: 'deposits', label: 'Depositioner', icon: CreditCard },
-  { id: 'rent-increases', label: 'Hyreshöjningar', icon: TrendingUp },
-  { id: 'accounting', label: 'Bokföring', icon: BookOpen },
-  { id: 'reconciliation', label: 'Bankavstämning', icon: ArrowLeftRight },
-  { id: 'collections', label: 'Inkasso', icon: Gavel },
+  { to: '/invoices', label: 'Fakturor', icon: Receipt },
+  { to: '/avisering', label: 'Hyresavier', icon: Receipt },
+  { to: '/deposits', label: 'Depositioner', icon: CreditCard },
+  { to: '/rent-increases', label: 'Hyreshöjningar', icon: TrendingUp },
+  { to: '/accounting', label: 'Bokföring', icon: BookOpen },
+  { to: '/reconciliation', label: 'Bankavstämning', icon: ArrowLeftRight },
+  { to: '/collections', label: 'Inkasso', icon: Gavel },
 ]
 
 const NAV_TOOLS: NavItem[] = [
-  { id: 'inspections', label: 'Besiktningar', icon: ClipboardCheck },
-  { id: 'maintenance', label: 'Underhåll', icon: Wrench },
-  { id: 'maintenance-plan', label: 'Underhållsplan', icon: CalendarRange },
-  { id: 'documents', label: 'Dokument', icon: FolderOpen },
-  { id: 'import', label: 'Importera', icon: Upload },
-  { id: 'news', label: 'Nyheter', icon: Newspaper },
-  { id: 'messages', label: 'Meddelanden', icon: MessageSquare },
-  { id: 'overview', label: 'Plattformsöversikt', icon: LayoutGrid },
+  { to: '/inspections', label: 'Besiktningar', icon: ClipboardCheck },
+  { to: '/maintenance', label: 'Underhåll', icon: Wrench },
+  { to: '/maintenance-plan', label: 'Underhållsplan', icon: CalendarRange },
+  { to: '/documents', label: 'Dokument', icon: FolderOpen },
+  { to: '/import', label: 'Importera', icon: Upload },
+  { to: '/news', label: 'Nyheter', icon: Newspaper },
+  { to: '/messages', label: 'Meddelanden', icon: MessageSquare },
+  { to: '/overview', label: 'Plattformsöversikt', icon: LayoutGrid },
 ]
 
 interface NavGroupProps {
   label?: string
   items: NavItem[]
-  route: Route
   collapsed: boolean
-  onNavigate: (r: Route) => void
   onMobileClose: () => void
 }
 
-function NavGroup({ label, items, route, collapsed, onNavigate, onMobileClose }: NavGroupProps) {
+function NavGroup({ label, items, collapsed, onMobileClose }: NavGroupProps) {
+  const { pathname } = useLocation()
   return (
     <div className="space-y-0.5">
       {label && !collapsed && (
@@ -95,14 +119,12 @@ function NavGroup({ label, items, route, collapsed, onNavigate, onMobileClose }:
       )}
       {label && collapsed && <div className="mx-auto mt-3 h-px w-6 bg-white/10" />}
       {items.map((item) => {
-        const active = route === item.id
+        const active = pathname === item.to
         return (
-          <button
-            key={item.id}
-            onClick={() => {
-              onNavigate(item.id)
-              onMobileClose()
-            }}
+          <Link
+            key={item.to}
+            to={item.to}
+            onClick={onMobileClose}
             title={collapsed ? item.label : undefined}
             className={cn(
               'group flex w-full items-center rounded-xl transition-all duration-150',
@@ -142,7 +164,7 @@ function NavGroup({ label, items, route, collapsed, onNavigate, onMobileClose }:
                 Läs
               </span>
             )}
-          </button>
+          </Link>
         )
       })}
     </div>
@@ -150,12 +172,12 @@ function NavGroup({ label, items, route, collapsed, onNavigate, onMobileClose }:
 }
 
 interface Props {
-  route: Route
-  onNavigate: (r: Route) => void
   children: React.ReactNode
 }
 
-export function AppLayout({ route, onNavigate, children }: Props) {
+export function AppLayout({ children }: Props) {
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const user = useAuthStore((s) => s.user)
@@ -168,14 +190,14 @@ export function AppLayout({ route, onNavigate, children }: Props) {
       /* clear regardless */
     }
     clearAuth()
-    onNavigate('login')
+    void navigate({ to: '/login' })
   }
 
   const displayName = user ? `${user.firstName} ${user.lastName}` : ''
   const initials = user ? `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase() : '?'
   const shortName = user ? `${user.firstName} ${user.lastName[0]}.` : ''
   const currentLabel =
-    [...NAV_PRIMARY, ...NAV_PORTFOLIO, ...NAV_FINANCE, ...NAV_TOOLS].find((n) => n.id === route)
+    [...NAV_PRIMARY, ...NAV_PORTFOLIO, ...NAV_FINANCE, ...NAV_TOOLS].find((n) => n.to === pathname)
       ?.label ?? 'Översikt'
 
   return (
@@ -255,33 +277,25 @@ export function AppLayout({ route, onNavigate, children }: Props) {
           <nav className="scrollbar-thin flex-1 overflow-y-auto px-2.5 py-3">
             <NavGroup
               items={NAV_PRIMARY}
-              route={route}
               collapsed={collapsed}
-              onNavigate={onNavigate}
               onMobileClose={() => setMobileOpen(false)}
             />
             <NavGroup
               label="Portfölj"
               items={NAV_PORTFOLIO}
-              route={route}
               collapsed={collapsed}
-              onNavigate={onNavigate}
               onMobileClose={() => setMobileOpen(false)}
             />
             <NavGroup
               label="Ekonomi"
               items={NAV_FINANCE}
-              route={route}
               collapsed={collapsed}
-              onNavigate={onNavigate}
               onMobileClose={() => setMobileOpen(false)}
             />
             <NavGroup
               label="Verktyg"
               items={NAV_TOOLS}
-              route={route}
               collapsed={collapsed}
-              onNavigate={onNavigate}
               onMobileClose={() => setMobileOpen(false)}
             />
           </nav>
@@ -291,11 +305,9 @@ export function AppLayout({ route, onNavigate, children }: Props) {
             className="flex-shrink-0 px-2.5 pb-4 pt-2"
             style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
           >
-            <button
-              onClick={() => {
-                onNavigate('settings')
-                setMobileOpen(false)
-              }}
+            <Link
+              to="/settings"
+              onClick={() => setMobileOpen(false)}
               className={cn(
                 'hover:bg-white/6 flex w-full items-center rounded-xl text-white/40 transition-colors hover:text-white/70',
                 collapsed ? 'h-9 justify-center' : 'h-9 gap-3 px-3',
@@ -303,7 +315,7 @@ export function AppLayout({ route, onNavigate, children }: Props) {
             >
               <Settings size={14} strokeWidth={1.8} className="flex-shrink-0" />
               {!collapsed && <span className="text-[13px] font-medium">Inställningar</span>}
-            </button>
+            </Link>
 
             {/* User */}
             <div
@@ -369,7 +381,7 @@ export function AppLayout({ route, onNavigate, children }: Props) {
             <div className="flex-1" />
 
             {/* Notifications */}
-            <NotificationBell onNavigate={onNavigate} />
+            <NotificationBell />
 
             <div className="h-5 w-px bg-gray-100" />
 
@@ -385,7 +397,7 @@ export function AppLayout({ route, onNavigate, children }: Props) {
           {/* Page */}
           <main className="scrollbar-thin flex-1 overflow-y-auto">
             {children}
-            <AppFooter onNavigate={onNavigate} />
+            <AppFooter />
           </main>
         </div>
       </div>
@@ -393,34 +405,22 @@ export function AppLayout({ route, onNavigate, children }: Props) {
   )
 }
 
-function AppFooter({ onNavigate }: { onNavigate: (r: Route) => void }) {
+function AppFooter() {
   const year = new Date().getFullYear()
   return (
     <footer className="border-t border-gray-100 bg-white/60 px-6 py-4">
       <div className="flex flex-col items-center justify-between gap-2 text-[12px] text-gray-500 sm:flex-row">
         <p>© {year} Eveno AB</p>
         <div className="flex flex-wrap items-center gap-4">
-          <button
-            type="button"
-            onClick={() => onNavigate('legal-villkor')}
-            className="transition-colors hover:text-gray-900"
-          >
+          <Link to="/legal/villkor" className="transition-colors hover:text-gray-900">
             Användarvillkor
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('legal-integritet')}
-            className="transition-colors hover:text-gray-900"
-          >
+          </Link>
+          <Link to="/legal/integritet" className="transition-colors hover:text-gray-900">
             Integritetspolicy
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('legal-cookies')}
-            className="transition-colors hover:text-gray-900"
-          >
+          </Link>
+          <Link to="/legal/cookies" className="transition-colors hover:text-gray-900">
             Cookies
-          </button>
+          </Link>
         </div>
       </div>
     </footer>

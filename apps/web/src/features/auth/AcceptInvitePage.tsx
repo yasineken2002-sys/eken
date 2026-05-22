@@ -10,7 +10,7 @@ import { PasswordRequirements } from './components/PasswordRequirements'
 import { passwordSchema, readErrorMessage } from './lib/password-schema'
 import { setLoginFlash } from './lib/login-flash'
 import { acceptInviteApi } from './api/auth.api'
-import type { Route } from '@/App'
+import { useNavigate } from '@tanstack/react-router'
 
 const schema = z
   .object({
@@ -26,10 +26,10 @@ type FormValues = z.infer<typeof schema>
 
 interface Props {
   token: string | null
-  onNavigate: (r: Route) => void
 }
 
-export function AcceptInvitePage({ token, onNavigate }: Props) {
+export function AcceptInvitePage({ token }: Props) {
+  const navigate = useNavigate()
   const [apiError, setApiError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -61,8 +61,7 @@ export function AcceptInvitePage({ token, onNavigate }: Props) {
       // INGEN auto-login. Skicka användaren till login-sidan med flash-banner
       // och förfylld email; städa även URL:en så ?token=... försvinner.
       setLoginFlash({ kind: 'account-activated', email })
-      window.history.replaceState({}, '', '/')
-      onNavigate('login')
+      void navigate({ to: '/login' })
     } catch (err) {
       setApiError(readErrorMessage(err, 'Kunde inte aktivera kontot'))
     } finally {

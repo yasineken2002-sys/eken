@@ -26,11 +26,7 @@ import { useLeases } from '@/features/leases/hooks/useLeases'
 import { useDeposits } from '@/features/deposits/hooks/useDeposits'
 import { useRentIncreases } from '@/features/rent-increases/hooks/useRentIncreases'
 import { formatCurrency, formatDate } from '@eken/shared'
-import type { Route } from '@/App'
-
-interface DashboardPageProps {
-  onNavigate?: (route: Route) => void
-}
+import { useNavigate } from '@tanstack/react-router'
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } }
 const item = {
@@ -44,7 +40,8 @@ const AI_CHIPS = [
   { label: 'Utgående avtal', prompt: 'Vilka kontrakt löper ut snart?' },
 ]
 
-export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
+export function DashboardPage() {
+  const navigate = useNavigate()
   const { data: stats, isLoading, isError } = useDashboardStats()
   const { data: leases = [] } = useLeases()
   const { data: deposits = [] } = useDeposits()
@@ -214,7 +211,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
             {AI_CHIPS.map((chip) => (
               <button
                 key={chip.label}
-                onClick={() => onNavigate?.('ai')}
+                onClick={() => void navigate({ to: '/ai' })}
                 className="flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-[12.5px] font-medium text-white transition-all hover:bg-white/20 active:scale-[0.97]"
               >
                 {chip.label}
@@ -222,7 +219,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
               </button>
             ))}
           </div>
-          <button onClick={() => onNavigate?.('ai')} className="flex-shrink-0 md:hidden">
+          <button onClick={() => void navigate({ to: '/ai' })} className="flex-shrink-0 md:hidden">
             <ArrowUpRight size={18} className="text-white/70" />
           </button>
         </div>
@@ -237,7 +234,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
           className="mt-6 overflow-hidden rounded-2xl border border-amber-100 bg-amber-50/40 shadow-[0_1px_4px_rgba(0,0,0,0.04)]"
         >
           <button
-            onClick={() => onNavigate?.('leases')}
+            onClick={() => void navigate({ to: '/leases' })}
             className="flex w-full items-center justify-between border-b border-amber-100 bg-amber-50/60 px-6 py-4 text-left transition-colors hover:bg-amber-50"
           >
             <div className="flex items-center gap-3">
@@ -267,7 +264,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
               return (
                 <button
                   key={lease.id}
-                  onClick={() => onNavigate?.('leases')}
+                  onClick={() => void navigate({ to: '/leases' })}
                   className="grid w-full grid-cols-4 items-center gap-4 px-6 py-3 text-left transition-colors hover:bg-amber-50/40"
                 >
                   <span className="truncate text-[13px] font-medium text-gray-800">{tenant}</span>
@@ -283,7 +280,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
             })}
             {expiringLeases.length > 5 && (
               <button
-                onClick={() => onNavigate?.('leases')}
+                onClick={() => void navigate({ to: '/leases' })}
                 className="block w-full px-6 py-2.5 text-center text-[12px] font-medium text-amber-700 hover:bg-amber-50/40"
               >
                 Visa alla {expiringLeases.length} kontrakt
@@ -306,7 +303,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <h2 className="text-[15px] font-semibold text-gray-900">Senaste fakturor</h2>
           <button
-            onClick={() => onNavigate?.('invoices')}
+            onClick={() => void navigate({ to: '/invoices' })}
             className="flex items-center gap-1 text-[13px] font-medium text-blue-600 transition-colors hover:text-blue-700"
           >
             Visa alla <ChevronRight size={13} strokeWidth={2} />
@@ -344,7 +341,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
                 initial={{ opacity: 0, x: -6 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.32 + i * 0.04 }}
-                onClick={() => onNavigate?.('invoices')}
+                onClick={() => void navigate({ to: '/invoices' })}
                 className="grid cursor-pointer grid-cols-5 gap-4 border-b border-gray-50 px-6 py-4 transition-colors last:border-0 hover:bg-gray-50/60"
               >
                 <div className="flex items-center gap-2.5">

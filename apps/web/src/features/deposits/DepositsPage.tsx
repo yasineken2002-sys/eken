@@ -11,7 +11,7 @@ import { useDeposits } from './hooks/useDeposits'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { DepositStatus, Tenant } from '@eken/shared'
 import type { DepositDetail } from './api/deposits.api'
-import type { Route } from '@/App'
+import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
 
 type Tab = 'ALL' | DepositStatus
@@ -32,11 +32,8 @@ function tenantName(t: Tenant): string {
   return t.companyName ?? '–'
 }
 
-interface DepositsPageProps {
-  onNavigate?: (route: Route) => void
-}
-
-export function DepositsPage({ onNavigate }: DepositsPageProps = {}) {
+export function DepositsPage() {
+  const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('ALL')
   const { data: deposits = [], isLoading } = useDeposits()
 
@@ -152,7 +149,7 @@ export function DepositsPage({ onNavigate }: DepositsPageProps = {}) {
             columns={columns}
             data={filtered}
             keyExtractor={(d) => d.id}
-            onRowClick={() => onNavigate?.('leases')}
+            onRowClick={() => void navigate({ to: '/leases' })}
           />
         )}
       </div>

@@ -14,7 +14,7 @@ import { PasswordRequirements } from './components/PasswordRequirements'
 import { useAuthStore } from '@/stores/auth.store'
 import { COMPANY_FORM_OPTIONS, LEGAL_PATHS, validateSwedishOrgNumber } from '@eken/shared'
 import type { SwedishCompanyForm } from '@eken/shared'
-import type { Route } from '@/App'
+import { useNavigate } from '@tanstack/react-router'
 
 const COMPANY_FORM_VALUES = COMPANY_FORM_OPTIONS.map((o) => o.value) as [
   SwedishCompanyForm,
@@ -114,10 +114,6 @@ function orgNumberFieldProps(form: SwedishCompanyForm): {
   }
 }
 
-interface Props {
-  onNavigate: (route: Route) => void
-}
-
 const FEATURES = [
   { icon: Building2, title: 'Fastighetsöversikt', desc: 'Hantera hela portföljen på ett ställe' },
   {
@@ -184,7 +180,8 @@ function BrandPanel() {
   )
 }
 
-export function RegisterPage({ onNavigate }: Props) {
+export function RegisterPage() {
+  const navigate = useNavigate()
   const [step, setStep] = useState<1 | 2>(1)
   const [apiError, setApiError] = useState<string | null>(null)
   const [isPending, setIsPending] = useState(false)
@@ -237,7 +234,7 @@ export function RegisterPage({ onNavigate }: Props) {
         ...(data.vatNumber ? { vatNumber: data.vatNumber } : {}),
       })
       setAuth(response)
-      onNavigate('dashboard')
+      void navigate({ to: '/' })
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
@@ -548,7 +545,7 @@ export function RegisterPage({ onNavigate }: Props) {
             Har du redan ett konto?{' '}
             <button
               type="button"
-              onClick={() => onNavigate('login')}
+              onClick={() => void navigate({ to: '/login' })}
               className="font-semibold text-blue-600 transition-colors hover:text-blue-700"
             >
               Logga in →

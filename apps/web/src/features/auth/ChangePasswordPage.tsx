@@ -11,7 +11,7 @@ import { passwordSchema, readErrorMessage } from './lib/password-schema'
 import { setLoginFlash } from './lib/login-flash'
 import { changePasswordApi } from './api/auth.api'
 import { useAuthStore } from '@/stores/auth.store'
-import type { Route } from '@/App'
+import { useNavigate } from '@tanstack/react-router'
 
 const schema = z
   .object({
@@ -33,10 +33,10 @@ type FormValues = z.infer<typeof schema>
 interface Props {
   // Påtvingad? (mustChangePassword=true → ingen "Avbryt"-knapp).
   forced?: boolean
-  onNavigate: (r: Route) => void
 }
 
-export function ChangePasswordPage({ forced = false, onNavigate }: Props) {
+export function ChangePasswordPage({ forced = false }: Props) {
+  const navigate = useNavigate()
   const [apiError, setApiError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const user = useAuthStore((s) => s.user)
@@ -65,9 +65,9 @@ export function ChangePasswordPage({ forced = false, onNavigate }: Props) {
       if (result.loggedOut) {
         setLoginFlash({ kind: 'password-changed', ...(user?.email ? { email: user.email } : {}) })
         logout()
-        onNavigate('login')
+        void navigate({ to: '/login' })
       } else {
-        onNavigate('dashboard')
+        void navigate({ to: '/' })
       }
     } catch (err) {
       setApiError(readErrorMessage(err, 'Kunde inte byta lösenord'))
@@ -123,7 +123,11 @@ export function ChangePasswordPage({ forced = false, onNavigate }: Props) {
 
         <div className="flex items-center justify-end gap-2 pt-2">
           {!forced && (
-            <Button type="button" variant="secondary" onClick={() => onNavigate('settings')}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void navigate({ to: '/settings' })}
+            >
               Avbryt
             </Button>
           )}

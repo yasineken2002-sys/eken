@@ -18,12 +18,9 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useNotifications, useMarkNotificationRead, useMarkAllRead } from './hooks/useNotifications'
-import type { Route } from '@/App'
+import { useNavigate } from '@tanstack/react-router'
+import { notificationLinkToPath } from './lib/notification-link'
 import type { Notification, NotificationType } from './api/notifications.api'
-
-interface Props {
-  onNavigate: (r: Route) => void
-}
 
 type Tab = 'all' | 'unread'
 
@@ -66,12 +63,11 @@ const item = {
 function NotificationRow({
   notification,
   onRead,
-  onNavigate,
 }: {
   notification: Notification
   onRead: (id: string) => void
-  onNavigate: (r: Route) => void
 }) {
+  const navigate = useNavigate()
   const {
     icon: Icon,
     color,
@@ -80,7 +76,10 @@ function NotificationRow({
 
   function handleClick() {
     if (!notification.read) onRead(notification.id)
-    if (notification.link) onNavigate(notification.link as Route)
+    if (notification.link) {
+      const path = notificationLinkToPath(notification.link)
+      if (path) void navigate({ to: path })
+    }
   }
 
   return (
@@ -121,7 +120,7 @@ function NotificationRow({
   )
 }
 
-export function NotificationsPage({ onNavigate }: Props) {
+export function NotificationsPage() {
   const [tab, setTab] = useState<Tab>('all')
   const { data: notifications = [], isLoading } = useNotifications(tab === 'unread')
   const markOne = useMarkNotificationRead()
@@ -202,12 +201,7 @@ export function NotificationsPage({ onNavigate }: Props) {
           className="overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white"
         >
           {notifications.map((n) => (
-            <NotificationRow
-              key={n.id}
-              notification={n}
-              onRead={(id) => markOne.mutate(id)}
-              onNavigate={onNavigate}
-            />
+            <NotificationRow key={n.id} notification={n} onRead={(id) => markOne.mutate(id)} />
           ))}
         </motion.div>
       )}
