@@ -2,8 +2,9 @@ import './instrument'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { RouterProvider } from '@tanstack/react-router'
 import { Toaster, toast } from 'sonner'
-import { App } from './App'
+import { router } from './app/router'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { consumeImpersonationHash } from './lib/impersonation'
 import { extractApiError } from './lib/api'
@@ -36,7 +37,7 @@ async function bootstrap() {
     <StrictMode>
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <App />
+          <RouterProvider router={router} />
           <Toaster position="top-right" richColors closeButton toastOptions={{ duration: 5000 }} />
         </QueryClientProvider>
       </ErrorBoundary>
