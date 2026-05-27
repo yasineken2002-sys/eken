@@ -506,15 +506,21 @@ export class ReconciliationService {
         return true
       }
 
+      // OCR är per hyresgäst (samma OCR delas över ALLA månads-avier för
+      // tenant X), så när hen har flera obetalda avier måste vi välja
+      // ÄLDSTA först — det är så svenska banker hanterar OCR-betalningar
+      // i praktiken. Utan orderBy returnerar Postgres en godtycklig rad,
+      // vilket innebar att en betalning för maj kunde landa på juni-avin.
       const notice = await db.rentNotice.findFirst({
         where: {
           organizationId,
           ocrNumber: transaction.rawOcr,
           status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
         },
+        orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
       })
       if (notice && notice.totalAmount.minus(transaction.amount).abs().lte(tolerance)) {
-        await this.applyMatchToRentNotice(
+        const matched = await this.applyMatchToRentNotice(
           transaction.id,
           notice.id,
           notice.totalAmount,
@@ -522,7 +528,7 @@ export class ReconciliationService {
           null,
           db,
         )
-        return true
+        if (matched) return true
       }
     }
 
@@ -565,7 +571,7 @@ export class ReconciliationService {
         },
       })
       if (notice && notice.totalAmount.minus(transaction.amount).abs().lte(tolerance)) {
-        await this.applyMatchToRentNotice(
+        const matched = await this.applyMatchToRentNotice(
           transaction.id,
           notice.id,
           notice.totalAmount,
@@ -573,7 +579,7 @@ export class ReconciliationService {
           null,
           db,
         )
-        return true
+        if (matched) return true
       }
     }
 
@@ -773,6 +779,11 @@ export class ReconciliationService {
   // kolumn. Bokföringskontona är desamma (1930/1510), så journalEntryt
   // skrivs via accounting.createJournalEntryForRentNoticePayment med samma
   // sourceId-strategi som Invoice-betalning (= reverse fungerar för båda).
+  //
+  // Returnerar true om avin claimades (vi vann race + skrev bank-länk),
+  // false om en parallell körning hann markera avin som PAID först. Caller
+  // ska INTE rapportera matchning vid false — låt transaktionen stanna
+  // som UNMATCHED så att operatören/nästa import får hantera den korrekt.
   private async applyMatchToRentNotice(
     transactionId: string,
     noticeId: string,
@@ -780,22 +791,28 @@ export class ReconciliationService {
     transactionDate: Date,
     userId: string | null,
     db: Prisma.TransactionClient | PrismaService,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const notice = await db.rentNotice.findUnique({
       where: { id: noticeId },
       select: { id: true, noticeNumber: true, organizationId: true, status: true },
     })
     if (!notice) throw new NotFoundException('Hyresavi hittades inte')
 
-    if (notice.status !== 'PAID') {
-      await db.rentNotice.update({
-        where: { id: noticeId },
-        data: {
-          status: 'PAID',
-          paidAt: transactionDate,
-          paidAmount: noticeTotal,
-        },
-      })
+    // Status-guardad updateMany — atomisk på rad-nivå i Postgres. Två
+    // parallella bank-importer för samma OCR kan inte båda markera samma
+    // avi som PAID; bara en räkning får count=1. Den som förlorar racet
+    // skriver inte heller bank-länken (matchedRentNoticeId), så vi undviker
+    // duplicate-key-fel mot @unique-constraint:et och undviker att en
+    // bank-transaktion länkas till en avi som redan tillhör en annan.
+    const claim = await db.rentNotice.updateMany({
+      where: { id: noticeId, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } },
+      data: { status: 'PAID', paidAt: transactionDate, paidAmount: noticeTotal },
+    })
+    if (claim.count === 0) {
+      this.logger.warn(
+        `RentNotice ${noticeId} kunde inte claimas (redan PAID) — hoppar över bank-länk för transaktion ${transactionId}`,
+      )
+      return false
     }
 
     await db.bankTransaction.update({
@@ -822,6 +839,8 @@ export class ReconciliationService {
         err instanceof Error ? err.stack : String(err),
       )
     }
+
+    return true
   }
 
   // ── Get transactions ─────────────────────────────────────────────────────────
@@ -953,7 +972,7 @@ export class ReconciliationService {
         where: { id: target.rentNoticeId, organizationId },
       })
       if (!notice) throw new NotFoundException('Hyresavi hittades inte')
-      await this.applyMatchToRentNotice(
+      const matched = await this.applyMatchToRentNotice(
         transactionId,
         target.rentNoticeId,
         notice.totalAmount,
@@ -961,6 +980,11 @@ export class ReconciliationService {
         userId,
         this.prisma,
       )
+      if (!matched) {
+        throw new BadRequestException(
+          'Hyresavin är redan markerad som betald och kan inte länkas till en ny transaktion. Avmatcha den befintliga transaktionen först.',
+        )
+      }
     }
   }
 

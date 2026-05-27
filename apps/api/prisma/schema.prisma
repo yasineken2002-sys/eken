@@ -1106,7 +1106,11 @@ model BankTransaction {
   // båda. CHECK-constraint i migration garanterar invarianten på DB-nivå
   // så vi inte kan hamna i ett inkonsekvent state om en bug skriver båda.
   invoiceId            String?
-  matchedRentNoticeId  String?
+  // @unique: en hyresavi får maximalt EN matchad bank-transaktion. Skyddar
+  // mot dubbel-match-race i applyMatchToRentNotice — om två importer av
+  // någon anledning båda försöker länka samma avi, faller den andra med
+  // P2002 istället för att korrumpera betalningshistoriken.
+  matchedRentNoticeId  String?   @unique
   matchedAt            DateTime?
   matchedBy            String?
   createdAt            DateTime              @default(now())
@@ -1119,7 +1123,7 @@ model BankTransaction {
   @@index([organizationId])
   @@index([status])
   @@index([invoiceId])
-  @@index([matchedRentNoticeId])
+  // matchedRentNoticeId har egen unique-index via @unique på fältet
 }
 
 // ─── Document (Dokumentarkiv) ─────────────────────────────────────────────────
