@@ -8,6 +8,7 @@ export type AiEndpoint =
   | 'analysis'
   | 'memory'
   | 'contract-scan'
+  | 'pdf-bank-statement-parse'
   | 'inspection-analyze'
   | 'daily-insights'
   | 'weekly-summary'

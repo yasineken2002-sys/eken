@@ -470,6 +470,7 @@ model Organization {
   accounts           Account[]
   journalEntries     JournalEntry[]
   bankTransactions   BankTransaction[]
+  bankStatementImports BankStatementImport[]
   documents          Document[]
   importJobs         ImportJob[]
   aiConversations    AiConversation[]
@@ -1124,6 +1125,60 @@ model BankTransaction {
   @@index([status])
   @@index([invoiceId])
   // matchedRentNoticeId har egen unique-index via @unique på fältet
+}
+
+// ─── Bank Statement Import (AI-tolkat kontoutdrag i PDF) ──────────────────────
+// Sparas som DRAFT (PARSED) direkt efter AI-tolkning så användaren kan granska
+// och redigera innan vi commitar BankTransaction-rader. När användaren bekräftar
+// går vi via reconciliation.service.matchTransaction() — samma FIFO + dubbel-
+// match-skydd som CSV/BgMax-flödena (Fix 6).
+
+model BankStatementImport {
+  id              String                     @id @default(uuid())
+  organizationId  String
+  fileName        String
+  fileType        String // 'pdf' idag; reserverat för framtida 'csv','xlsx','bgmax'
+  fileSize        Int
+  status          BankStatementImportStatus  @default(PARSING)
+  // uploadedBy / confirmedBy lagras som plain user-IDs (mirrors BankTransaction.matchedBy)
+  uploadedById    String?
+  uploadedAt      DateTime                   @default(now())
+
+  // AI-extraherade metadata
+  bank            String? // 'Swedbank' | 'SEB' | 'Nordea' | 'Handelsbanken' | 'Annan'
+  accountNumber   String?
+  periodStart     DateTime? @db.Date
+  periodEnd       DateTime? @db.Date
+  // Sparas som JSON: { transactions: [{ date, description, ocr, amount, isIncoming }, ...] }
+  // Användaren får redigera i UI:t; den bekräftade arrayen skrivs hit innan commit.
+  parsedData      Json?
+  transactionCount Int                       @default(0)
+
+  // Audit
+  errorMessage    String?
+  confirmedAt     DateTime?
+  confirmedById   String?
+  // Snapshot av matchningsresultatet vid bekräftelse
+  matchedCount    Int?
+  unmatchedCount  Int?
+
+  // Bokföringslagen (1999:1078): underlag för räkenskapsinformation, bevaras 7 år.
+  // Restrict matchar BankTransaction-mönstret — vi får inte tappa underlaget.
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+enum BankStatementImportStatus {
+  PARSING   // Skickad till AI, väntar (transient — sync-flödet hoppar normalt över denna)
+  PARSED    // AI gav giltig JSON, väntar på användarens granskning
+  CONFIRMED // Användaren har bekräftat — BankTransaction-rader skapade
+  FAILED    // Tolkning misslyckades (AI-fel / ogiltig JSON)
+  CANCELLED // Användaren avbröt granskningen
 }
 
 // ─── Document (Dokumentarkiv) ─────────────────────────────────────────────────

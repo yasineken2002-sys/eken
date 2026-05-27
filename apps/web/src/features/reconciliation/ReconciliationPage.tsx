@@ -25,12 +25,14 @@ import {
   useTransactions,
   useReconciliationStats,
   useImportStatement,
+  useImportPdfStatement,
   useManualMatch,
   useIgnoreTransaction,
   useUnmatchTransaction,
   useAutoMatch,
 } from './hooks/useReconciliation'
-import type { BankFormat } from './api/reconciliation.api'
+import type { BankFormat, PdfImportDraft } from './api/reconciliation.api'
+import { PdfImportPreviewModal } from './components/PdfImportPreviewModal'
 import { useInvoices } from '@/features/invoices/hooks/useInvoiceQueries'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { BankTransaction, ImportResult, Invoice } from '@eken/shared'
@@ -70,10 +72,12 @@ function ImportModal({
   open,
   onClose,
   onSuccess,
+  onPdfDraft,
 }: {
   open: boolean
   onClose: () => void
   onSuccess: () => void
+  onPdfDraft: (draft: PdfImportDraft) => void
 }) {
   const [step, setStep] = useState<ImportStep>('upload')
   const [file, setFile] = useState<File | null>(null)
@@ -83,18 +87,20 @@ function ImportModal({
   const [showErrors, setShowErrors] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const importMutation = useImportStatement()
+  const pdfImportMutation = useImportPdfStatement()
 
   const handleFile = (f: File) => {
     const ext = f.name.toLowerCase().split('.').pop() ?? ''
-    if (!['csv', 'xlsx', 'xls', 'txt', 'bgmax'].includes(ext)) return
+    if (!['csv', 'xlsx', 'xls', 'txt', 'bgmax', 'pdf'].includes(ext)) return
     setFile(f)
   }
 
-  // Avgör om vi pratar med /import (CSV/Excel) eller /import-bgmax (Bankgirot).
-  // Detekteringen i useImportStatement-hooken gör samma sak — vi duplicerar
-  // den här bara för UI-villkor (t.ex. dölja bank-väljaren för BgMax där den
-  // är irrelevant).
-  const isBgMax = file && ['txt', 'bgmax'].includes(file.name.toLowerCase().split('.').pop() ?? '')
+  // Avgör flöde via filändelse: .pdf → AI-tolkning (två steg, preview innan
+  // commit). .txt → BgMax. .csv/.xlsx/.xls → kolumnbaserad import. Detekteringen
+  // ligger även i useImportStatement-hooken; här används den för UI-villkor.
+  const ext = file?.name.toLowerCase().split('.').pop() ?? ''
+  const isPdf = ext === 'pdf'
+  const isBgMax = ext === 'txt' || ext === 'bgmax'
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -105,6 +111,18 @@ function ImportModal({
 
   const handleImport = () => {
     if (!file) return
+    if (isPdf) {
+      // PDF-flödet: ladda upp, AI-tolkar, returnerar DRAFT. Stäng denna modal
+      // och öppna preview-modalen (managed av parent). Commit sker först
+      // efter användarens granskning.
+      pdfImportMutation.mutate(file, {
+        onSuccess: (draft) => {
+          onPdfDraft(draft)
+          handleClose()
+        },
+      })
+      return
+    }
     importMutation.mutate(
       { file, ...(bank !== 'AUTO' ? { bank } : {}) },
       {
@@ -162,7 +180,7 @@ function ImportModal({
             <input
               ref={fileRef}
               type="file"
-              accept=".csv,.xlsx,.xls,.txt,.bgmax"
+              accept=".csv,.xlsx,.xls,.txt,.bgmax,.pdf"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0]
@@ -188,7 +206,7 @@ function ImportModal({
                 </p>
                 <p className="mt-0.5 text-[12.5px] text-gray-400">eller klicka för att välja fil</p>
                 <p className="mt-2 rounded-md bg-gray-100 px-2.5 py-1 text-[11.5px] text-gray-400">
-                  CSV, Excel (.xlsx, .xls) eller BgMax (.txt) — max 10 MB
+                  PDF (AI-tolkning), CSV, Excel (.xlsx, .xls) eller BgMax (.txt) — max 10 MB
                 </p>
               </>
             )}
@@ -202,8 +220,20 @@ function ImportModal({
             </div>
           )}
 
-          {/* Bank-väljare — visas inte för BgMax */}
-          {!isBgMax && (
+          {/* PDF-info — AI-tolkning, ingen bank-väljare */}
+          {isPdf && (
+            <div className="flex items-start gap-2 rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-2.5 text-[12.5px] text-violet-700">
+              <Sparkles size={14} className="mt-0.5 flex-shrink-0" />
+              <div>
+                <strong>AI-tolkat kontoutdrag.</strong> Claude läser PDF:en och extraherar
+                transaktioner, OCR och belopp. Du får en preview där du kan granska och redigera
+                innan något skapas. Tar normalt 10–20 sekunder.
+              </div>
+            </div>
+          )}
+
+          {/* Bank-väljare — visas inte för BgMax eller PDF (AI detekterar själv) */}
+          {!isBgMax && !isPdf && (
             <div>
               <label className="mb-1 block text-[12.5px] font-medium text-gray-700">
                 Bank (valfritt)
@@ -240,11 +270,16 @@ function ImportModal({
           )}
 
           {/* Format guide — bara för CSV/Excel */}
-          {!isBgMax && <FormatGuide />}
+          {!isBgMax && !isPdf && <FormatGuide />}
 
           {importMutation.isError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600">
               Import misslyckades. Kontrollera filformatet och försök igen.
+            </p>
+          )}
+          {pdfImportMutation.isError && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600">
+              AI-tolkning misslyckades. Kontrollera att PDF:en är ett läsbart kontoutdrag.
             </p>
           )}
         </div>
@@ -321,9 +356,18 @@ function ImportModal({
               variant="primary"
               onClick={handleImport}
               disabled={!file}
-              loading={importMutation.isPending}
+              loading={importMutation.isPending || pdfImportMutation.isPending}
             >
-              <Upload size={14} /> Importera
+              {isPdf ? (
+                <>
+                  <Sparkles size={14} />{' '}
+                  {pdfImportMutation.isPending ? 'AI läser PDF…' : 'Tolka med AI'}
+                </>
+              ) : (
+                <>
+                  <Upload size={14} /> Importera
+                </>
+              )}
             </Button>
           </>
         ) : (
@@ -567,6 +611,7 @@ const item = {
 export function ReconciliationPage() {
   const [tab, setTab] = useState<TabId>('ALL')
   const [importOpen, setImportOpen] = useState(false)
+  const [pdfDraft, setPdfDraft] = useState<PdfImportDraft | null>(null)
   const [matchingTx, setMatchingTx] = useState<BankTransaction | null>(null)
   const [autoMatchFlash, setAutoMatchFlash] = useState<string | null>(null)
 
@@ -820,7 +865,23 @@ export function ReconciliationPage() {
         onSuccess={() => {
           /* data refetches via invalidation */
         }}
+        onPdfDraft={(draft) => setPdfDraft(draft)}
       />
+
+      {/* PDF preview modal (AI-tolkade transaktioner — granska + bekräfta) */}
+      {pdfDraft && (
+        <PdfImportPreviewModal
+          draft={pdfDraft}
+          onClose={() => setPdfDraft(null)}
+          onConfirmed={(summary) => {
+            setAutoMatchFlash(
+              `${summary.created} importerade · ${summary.autoMatched} auto-matchade · ${summary.unmatched} väntar`,
+            )
+            setTimeout(() => setAutoMatchFlash(null), 5000)
+            setPdfDraft(null)
+          }}
+        />
+      )}
 
       {/* Manual match modal */}
       {matchingTx && (

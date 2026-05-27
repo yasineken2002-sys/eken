@@ -1,10 +1,42 @@
-import { api, get, patch, post } from '@/lib/api'
+import { api, del, get, patch, post } from '@/lib/api'
 import type { BankTransaction, ImportResult, ReconciliationStats } from '@eken/shared'
 
 export type BankFormat = 'GENERIC' | 'HANDELSBANKEN' | 'SEB' | 'SWEDBANK'
 
 export interface AutoMatchResult {
   matched: number
+  unmatched: number
+}
+
+// ─── PDF-import (AI-tolkat kontoutdrag) ──────────────────────────────────────
+
+export interface ParsedTransaction {
+  date: string // YYYY-MM-DD
+  description: string
+  ocr: string | null
+  amount: number
+  isIncoming: boolean
+}
+
+export interface ParsedBankStatement {
+  bank: string | null
+  accountNumber: string | null
+  periodStart: string | null
+  periodEnd: string | null
+  transactions: ParsedTransaction[]
+}
+
+export interface PdfImportDraft {
+  id: string
+  status: 'PARSING' | 'PARSED' | 'CONFIRMED' | 'FAILED' | 'CANCELLED'
+  parsed: ParsedBankStatement
+}
+
+export interface ImportCommitResult {
+  importId: string
+  created: number
+  duplicates: number
+  autoMatched: number
   unmatched: number
 }
 
@@ -58,4 +90,30 @@ export async function ignoreTransaction(transactionId: string): Promise<void> {
 
 export async function unmatchTransaction(transactionId: string): Promise<void> {
   await patch(`/reconciliation/transactions/${transactionId}/unmatch`, {})
+}
+
+// ─── PDF-import ─────────────────────────────────────────────────────────────
+
+export async function importPdfStatement(file: File): Promise<PdfImportDraft> {
+  const formData = new FormData()
+  formData.append('statement', file)
+  const { data } = await api.post<{ data: PdfImportDraft }>(
+    '/reconciliation/import-pdf',
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  )
+  return data.data
+}
+
+export async function confirmPdfImport(
+  importId: string,
+  transactions?: ParsedTransaction[],
+): Promise<ImportCommitResult> {
+  return post<ImportCommitResult>(`/reconciliation/imports/${importId}/confirm`, {
+    ...(transactions ? { transactions } : {}),
+  })
+}
+
+export async function cancelPdfImport(importId: string): Promise<void> {
+  await del(`/reconciliation/imports/${importId}`)
 }
