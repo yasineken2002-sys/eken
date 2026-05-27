@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import {
   ArrowLeftRight,
@@ -83,15 +83,27 @@ function ImportModal({
   const [file, setFile] = useState<File | null>(null)
   const [bank, setBank] = useState<BankFormat | 'AUTO'>('AUTO')
   const [dragOver, setDragOver] = useState(false)
+  const [dropError, setDropError] = useState<string | null>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
   const [showErrors, setShowErrors] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  // dragCounter motverkar att onDragLeave triggar varje gång muspekaren rör
+  // sig över ett barn-element (browser-default: dragleave fires on parent när
+  // cursor enters child). Vi räknar enter/leave-par och visar bara feedback
+  // när countern är 0 → fullt utanför dropzonen.
+  const dragCounter = useRef(0)
   const importMutation = useImportStatement()
   const pdfImportMutation = useImportPdfStatement()
 
   const handleFile = (f: File) => {
     const ext = f.name.toLowerCase().split('.').pop() ?? ''
-    if (!['csv', 'xlsx', 'xls', 'txt', 'bgmax', 'pdf'].includes(ext)) return
+    if (!['csv', 'xlsx', 'xls', 'txt', 'bgmax', 'pdf'].includes(ext)) {
+      setDropError(
+        `Filtypen .${ext || '?'} stöds inte. Tillåtna format: PDF, CSV, Excel (.xlsx/.xls), BgMax (.txt).`,
+      )
+      return
+    }
+    setDropError(null)
     setFile(f)
   }
 
@@ -102,12 +114,60 @@ function ImportModal({
   const isPdf = ext === 'pdf'
   const isBgMax = ext === 'txt' || ext === 'bgmax'
 
+  const onDropZoneDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current++
+    // dataTransfer.items är tom under dragleave/drop — använd .types som finns
+    // genom hela drag-sekvensen. 'Files' indikerar att det är en filöverföring.
+    if (e.dataTransfer.types.includes('Files')) {
+      setDragOver(true)
+    }
+  }, [])
+
+  const onDropZoneDragOver = useCallback((e: React.DragEvent) => {
+    // Måste preventDefault på VARJE dragover för att drop ska tillåtas alls.
+    // Detta är HTML5-spec — utan denna får cursor "no-drop"-ikon och drop
+    // event:et triggas aldrig.
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const onDropZoneDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current = Math.max(0, dragCounter.current - 1)
+    if (dragCounter.current === 0) setDragOver(false)
+  }, [])
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
+    e.stopPropagation()
     setDragOver(false)
-    const f = e.dataTransfer.files[0]
+    dragCounter.current = 0
+    const f = e.dataTransfer.files?.[0]
     if (f) handleFile(f)
   }, [])
+
+  // Window-nivå-skydd: när modalen är öppen och användaren drar en fil men
+  // missar dropzonen (släpper på modal-backdrop eller utanför) skulle browsern
+  // annars navigera bort till filens URL och tappa hela appens state. Vi
+  // preventDefault på document-nivå så missade drops bara avbryts utan effekt.
+  useEffect(() => {
+    if (!open) return
+    const block = (e: DragEvent) => {
+      // Endast filöverföringar — vi rör inte t.ex. text-drag inom appen.
+      if (e.dataTransfer?.types.includes('Files')) {
+        e.preventDefault()
+      }
+    }
+    window.addEventListener('dragover', block)
+    window.addEventListener('drop', block)
+    return () => {
+      window.removeEventListener('dragover', block)
+      window.removeEventListener('drop', block)
+    }
+  }, [open])
 
   const handleImport = () => {
     if (!file) return
@@ -141,6 +201,9 @@ function ImportModal({
     setBank('AUTO')
     setResult(null)
     setShowErrors(false)
+    setDropError(null)
+    setDragOver(false)
+    dragCounter.current = 0
     onClose()
   }
 
@@ -159,13 +222,11 @@ function ImportModal({
     >
       {step === 'upload' && (
         <div className="space-y-4">
-          {/* Drop zone */}
+          {/* Drop zone — dragCounter-mönster för stabil enter/leave-feedback */}
           <div
-            onDragOver={(e) => {
-              e.preventDefault()
-              setDragOver(true)
-            }}
-            onDragLeave={() => setDragOver(false)}
+            onDragEnter={onDropZoneDragEnter}
+            onDragOver={onDropZoneDragOver}
+            onDragLeave={onDropZoneDragLeave}
             onDrop={handleDrop}
             onClick={() => fileRef.current?.click()}
             className={cn(
@@ -272,6 +333,9 @@ function ImportModal({
           {/* Format guide — bara för CSV/Excel */}
           {!isBgMax && !isPdf && <FormatGuide />}
 
+          {dropError && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600">{dropError}</p>
+          )}
           {importMutation.isError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600">
               Import misslyckades. Kontrollera filformatet och försök igen.
