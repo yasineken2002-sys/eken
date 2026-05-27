@@ -2,6 +2,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   importBankStatement,
   importBgMaxFile,
+  importPdfStatement,
+  confirmPdfImport,
+  cancelPdfImport,
   getTransactions,
   getReconciliationStats,
   manualMatch,
@@ -9,7 +12,7 @@ import {
   unmatchTransaction,
   autoMatchAll,
 } from '../api/reconciliation.api'
-import type { BankFormat } from '../api/reconciliation.api'
+import type { BankFormat, ParsedTransaction } from '../api/reconciliation.api'
 
 export function useTransactions(filters?: { status?: string; from?: string; to?: string }) {
   return useQuery({
@@ -46,6 +49,42 @@ export function useImportStatement() {
       void qc.invalidateQueries({ queryKey: ['invoices'] })
       void qc.invalidateQueries({ queryKey: ['avisering'] })
     },
+  })
+}
+
+// ── PDF-import (AI-tolkning, två steg: upload → confirm) ─────────────────
+// useImportPdfStatement laddar upp filen + triggar Claude-tolkning. Returnerar
+// DRAFT med extraherade transaktioner. INGA BankTransactions skapas ännu.
+export function useImportPdfStatement() {
+  return useMutation({
+    mutationFn: (file: File) => importPdfStatement(file),
+  })
+}
+
+// useConfirmPdfImport bekräftar en DRAFT (med ev. redigeringar) och skapar
+// BankTransactions som auto-matchas via FIFO. Invaliderar samma queries
+// som CSV/BgMax-confirmflödet.
+export function useConfirmPdfImport() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      importId,
+      transactions,
+    }: {
+      importId: string
+      transactions?: ParsedTransaction[]
+    }) => confirmPdfImport(importId, transactions),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['reconciliation'] })
+      void qc.invalidateQueries({ queryKey: ['invoices'] })
+      void qc.invalidateQueries({ queryKey: ['avisering'] })
+    },
+  })
+}
+
+export function useCancelPdfImport() {
+  return useMutation({
+    mutationFn: (importId: string) => cancelPdfImport(importId),
   })
 }
 
