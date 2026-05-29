@@ -36,6 +36,12 @@ export interface SendRentIncreaseNoticeOptions {
   effectiveDate: string
   reason: string
   organizationName: string
+  // JB 12 kap 54 a § 2 st — tvingande uppgifter i hyreshöjningsmeddelande:
+  // sista dag att motsätta sig (minst 2 mån från meddelandedag), hyresvärdens
+  // formella postadress, och vägledning till hyresnämnden för prövning.
+  objectionDeadline: string
+  landlordAddress: string
+  hyresnamndContact: string
   unitAddress?: string
   contactEmail?: string
   contactPhone?: string
@@ -553,6 +559,9 @@ export class MailService {
         increasePercent: opts.increasePercent,
         effectiveDate: opts.effectiveDate,
         reason: opts.reason,
+        objectionDeadline: opts.objectionDeadline,
+        landlordAddress: opts.landlordAddress,
+        hyresnamndContact: opts.hyresnamndContact,
         ...(opts.unitAddress ? { unitAddress: opts.unitAddress } : {}),
         ...(opts.contactEmail ? { contactEmail: opts.contactEmail } : {}),
         ...(opts.contactPhone ? { contactPhone: opts.contactPhone } : {}),

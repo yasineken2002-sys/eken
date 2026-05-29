@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import type { LeaseStatus, LeaseType } from '@prisma/client'
+import type { LeaseStatus, LeaseType, UnitType } from '@prisma/client'
 import { Cron } from '@nestjs/schedule'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
@@ -17,6 +17,12 @@ import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
 import { TerminateLeaseDto } from './dto/terminate-lease.dto'
 import { RenewLeaseDto } from './dto/renew-lease.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+import {
+  minNoticePeriodMonths,
+  noticePeriodErrorMessage,
+  maxDepositAmount,
+  depositErrorMessage,
+} from './leases.compliance'
 
 const VALID_TRANSITIONS: Partial<Record<LeaseStatus, LeaseStatus[]>> = {
   DRAFT: ['ACTIVE', 'TERMINATED'],
@@ -220,6 +226,19 @@ export class LeasesService {
       throw new BadRequestException('Tidsbegränsade kontrakt måste ha ett slutdatum')
     }
 
+    // JB 12 kap 4 § — uppsägningstid får inte understiga lagens minimum.
+    const minNotice = minNoticePeriodMonths(unit.type)
+    const requestedNotice = dto.noticePeriodMonths ?? minNotice
+    if (requestedNotice < minNotice) {
+      throw new BadRequestException(noticePeriodErrorMessage(unit.type))
+    }
+
+    // Praxis (hyresnämnden) — depositionstak för bostad.
+    const cap = maxDepositAmount(dto.monthlyRent, unit.type)
+    if (cap != null && (dto.depositAmount ?? 0) > cap) {
+      throw new BadRequestException(depositErrorMessage(cap))
+    }
+
     return this.prisma.lease.create({
       data: {
         organizationId,
@@ -234,7 +253,7 @@ export class LeasesService {
         ...(dto.renewalPeriodMonths != null
           ? { renewalPeriodMonths: dto.renewalPeriodMonths }
           : {}),
-        ...(dto.noticePeriodMonths != null ? { noticePeriodMonths: dto.noticePeriodMonths } : {}),
+        noticePeriodMonths: requestedNotice,
         ...pickContractTerms(dto),
       },
       include: INCLUDE,
@@ -246,6 +265,35 @@ export class LeasesService {
 
     if (existing.status !== 'DRAFT' && existing.status !== 'ACTIVE') {
       throw new BadRequestException('Kontraktet kan inte redigeras i nuvarande status')
+    }
+
+    // Effektiv unit-typ efter ev. byte (för att avgöra bostad/lokal-regelvalet).
+    // unitId kan flyttas i update (sällan, men möjligt) — hämta nya typen då.
+    let effectiveUnitType: UnitType = existing.unit.type
+    if (dto.unitId != null && dto.unitId !== existing.unitId) {
+      const newUnit = await this.prisma.unit.findFirst({
+        where: { id: dto.unitId, property: { organizationId } },
+        select: { type: true },
+      })
+      if (!newUnit) throw new NotFoundException('Enheten hittades inte')
+      effectiveUnitType = newUnit.type
+    }
+
+    // JB 12 kap 4 § — uppsägningstid får aldrig sänkas under lagens minimum.
+    // Vi validerar både när noticePeriodMonths uttryckligen ändras OCH när
+    // unitId byts (bostad→lokal eller tvärtom kan göra befintligt värde ogiltigt).
+    const minNotice = minNoticePeriodMonths(effectiveUnitType)
+    const effectiveNotice = dto.noticePeriodMonths ?? existing.noticePeriodMonths
+    if (effectiveNotice < minNotice) {
+      throw new BadRequestException(noticePeriodErrorMessage(effectiveUnitType))
+    }
+
+    // Depositionstak (bostad). Validera när belopp eller hyra ändras.
+    const effectiveRent = dto.monthlyRent ?? Number(existing.monthlyRent)
+    const effectiveDeposit = dto.depositAmount ?? Number(existing.depositAmount)
+    const cap = maxDepositAmount(effectiveRent, effectiveUnitType)
+    if (cap != null && effectiveDeposit > cap) {
+      throw new BadRequestException(depositErrorMessage(cap))
     }
 
     return this.prisma.lease.update({
@@ -409,6 +457,21 @@ export class LeasesService {
       throw new BadRequestException('Tidsbegränsade kontrakt måste ha ett slutdatum')
     }
 
+    // JB 12 kap 4 § — uppsägningstid får inte understiga lagens minimum
+    // (3 mån bostad / 9 mån lokal). Validera FÖRE tx så vi inte half-skapar
+    // tenant + lease om noticePeriodMonths är lagstridig.
+    const minNotice = minNoticePeriodMonths(unit.type)
+    const requestedNotice = dto.noticePeriodMonths ?? minNotice
+    if (requestedNotice < minNotice) {
+      throw new BadRequestException(noticePeriodErrorMessage(unit.type))
+    }
+
+    // Praxis (hyresnämnden) — depositionstak för bostad. Lokal: fri deposition.
+    const cap = maxDepositAmount(dto.monthlyRent, unit.type)
+    if (cap != null && (dto.depositAmount ?? 0) > cap) {
+      throw new BadRequestException(depositErrorMessage(cap))
+    }
+
     // Validera nya hyresgästuppgifter och kolla dubblett-email innan transaktionen
     // — felet är då rent en valideringsmiss, inte en halv-skapad situation.
     if (!dto.existingTenantId && dto.newTenant) {
@@ -505,9 +568,7 @@ export class LeasesService {
             ...(dto.renewalPeriodMonths != null
               ? { renewalPeriodMonths: dto.renewalPeriodMonths }
               : {}),
-            ...(dto.noticePeriodMonths != null
-              ? { noticePeriodMonths: dto.noticePeriodMonths }
-              : {}),
+            noticePeriodMonths: requestedNotice,
             ...pickContractTerms(dto),
           },
           include: INCLUDE,

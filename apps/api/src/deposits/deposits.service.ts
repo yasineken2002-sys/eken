@@ -64,7 +64,13 @@ export class DepositsService {
   async create(dto: CreateDepositDto, organizationId: string, userId: string): Promise<Deposit> {
     const lease = await this.prisma.lease.findFirst({
       where: { id: dto.leaseId, organizationId },
-      select: { id: true, tenantId: true, depositAmount: true },
+      select: {
+        id: true,
+        tenantId: true,
+        depositAmount: true,
+        monthlyRent: true,
+        unit: { select: { type: true } },
+      },
     })
     if (!lease) throw new NotFoundException('Hyresavtalet hittades inte')
 
@@ -76,6 +82,22 @@ export class DepositsService {
     const amount = dto.amount ?? Number(lease.depositAmount)
     if (amount <= 0) {
       throw new BadRequestException('Depositionsbelopp måste vara större än 0')
+    }
+
+    // Praxis (hyresnämnden + Konsumentverket): deposition för bostad får inte
+    // överstiga 3 månadshyror. Lokalhyra har fri depositionsbestämning.
+    // Validering här fångar fallet då dto.amount överrider lease.depositAmount
+    // — leases.service validerar redan vid kontraktsskapande.
+    if (lease.unit.type === 'APARTMENT') {
+      const monthlyRent = Number(lease.monthlyRent)
+      const cap = monthlyRent * 3
+      if (amount > cap) {
+        throw new BadRequestException(
+          `Deposition för bostad får enligt praxis inte överstiga 3 månadshyror (${cap.toLocaleString(
+            'sv-SE',
+          )} kr). Högre belopp kan ogiltigförklaras som otillåten förskottshyra.`,
+        )
+      }
     }
 
     const today = new Date()

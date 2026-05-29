@@ -30,6 +30,43 @@ function addMonths(date: Date, months: number): Date {
   return d
 }
 
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date)
+  d.setDate(d.getDate() + days)
+  return d
+}
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+// JB 12 kap 54 a § 2 st — sista dag att motsätta sig får aldrig vara
+// tidigare än 2 månader efter att meddelandet lämnats. Vi använder en exakt
+// 2-månadersfrist baserat på meddelandedatumet (samma kalenderdag två
+// månader senare; addMonths-hjälparen hanterar månadsdrift 31 jan → 28/29 feb).
+export function computeObjectionDeadline(noticeDate: Date): Date {
+  return addMonths(noticeDate, 2)
+}
+
+// Centraliserad text för "så här begär du prövning hos hyresnämnden". Skickas
+// med i varje hyreshöjningsmeddelande enligt 54 a § 2 st kravet på upplysning
+// om prövningsförfarandet. Hyresnämnden har åtta avdelningar — tenant hänvisas
+// till den i sin region via domstol.se där den exakta adressen för respektive
+// nämnd alltid är aktuell.
+function buildHyresnamndContact(): string {
+  return [
+    'Hyresnämnden – kontaktuppgifter:',
+    'Sök upp din region på www.domstol.se/hyresnamnden',
+    'Telefon (huvudväxel): 0771-71 32 00',
+    '',
+    'Så här begär du prövning:',
+    '1. Skriv en ansökan där du anger varför du motsätter dig hyreshöjningen.',
+    '2. Bifoga detta meddelande och ditt hyresavtal.',
+    '3. Skicka ansökan till hyresnämnden i den region där lägenheten är belägen.',
+    '4. Du måste skicka in ansökan innan invändningsfristen ovan löper ut.',
+  ].join('\n')
+}
+
 @Injectable()
 export class RentIncreasesService {
   private readonly logger = new Logger(RentIncreasesService.name)
@@ -78,10 +115,20 @@ export class RentIncreasesService {
 
     const today = startOfDay(new Date())
     const effective = startOfDay(new Date(dto.effectiveDate))
+    // JB 12 kap 54 a § 2 st kräver minst 2 mån invändningsfrist + 1 dag innan
+    // höjningen får träda i kraft. Vi använder 3 mån som buffert vid create
+    // för att ge tid mellan registrering och faktiskt utskick av meddelandet
+    // (noticeDate sätts när sendNotice() körs, inte vid create). Strikt
+    // 54 a §-kontroll mot noticeDate görs i sendNotice().
     const minDate = addMonths(today, 3)
 
     if (effective < minDate) {
-      throw new BadRequestException('Slutdatum måste vara minst 3 månader fram (svensk hyresrätt)')
+      throw new BadRequestException(
+        'Ny hyra måste börja gälla tidigast 3 månader fram. ' +
+          'JB 12 kap 54 a § kräver minst 2 mån invändningsfrist från meddelandedatumet ' +
+          '— bufferten gör det möjligt att skicka meddelandet inom rimlig tid efter att ' +
+          'höjningen registrerats.',
+      )
     }
 
     const currentRent = Number(lease.monthlyRent)
@@ -116,8 +163,49 @@ export class RentIncreasesService {
 
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { name: true, billingEmail: true, phone: true, invoiceColor: true },
+      select: {
+        name: true,
+        billingEmail: true,
+        phone: true,
+        email: true,
+        street: true,
+        city: true,
+        postalCode: true,
+        country: true,
+        invoiceColor: true,
+      },
     })
+
+    // JB 12 kap 54 a § 2 st — meddelandet ska innehålla hyresvärdens adress.
+    // Utan formell postadress kan hyresgästen inte skicka sin invändning
+    // på rättssäker väg → tystnaden får ingen bindande verkan.
+    if (!org?.street || !org.city || !org.postalCode) {
+      throw new BadRequestException(
+        'Organisationens postadress (gata, ort, postnummer) måste vara komplett innan ' +
+          'hyreshöjningsmeddelande kan skickas (JB 12 kap 54 a § 2 st kräver att hyresvärdens adress anges).',
+      )
+    }
+
+    const today = startOfDay(new Date())
+    // JB 12 kap 54 a § 2 st — invändningsdag minst 2 månader efter
+    // meddelandedag. Vi sätter noticeDate till idag och beräknar deadline
+    // utifrån det. Detta måste ske FÖRE mejl-enqueue så att payloaden är
+    // korrekt och idempotent vid retry.
+    const noticeDate = today
+    const objectionDeadline = computeObjectionDeadline(noticeDate)
+
+    // Effective date måste vara minst 1 dag EFTER invändningsfristen — annars
+    // kan höjningen träda i kraft innan hyresgästen hunnit svara, vilket
+    // strider mot tystnadsverkans-konstruktionen i 54 a § 3 st.
+    const minEffective = addDays(objectionDeadline, 1)
+    if (ri.effectiveDate < minEffective) {
+      throw new BadRequestException(
+        `Ny hyra får tidigast börja gälla ${isoDate(minEffective)} — det är dagen efter ` +
+          `invändningsfristen (${isoDate(objectionDeadline)}) som beräknas från dagens ` +
+          'meddelandedag. JB 12 kap 54 a § kräver minst 2 månaders invändningsfrist + 1 dag ' +
+          'innan höjningen kan träda i kraft. Justera startdatum för hyreshöjningen.',
+      )
+    }
 
     const tenantName =
       ri.lease.tenant.type === 'INDIVIDUAL'
@@ -130,6 +218,9 @@ export class RentIncreasesService {
       throw new BadRequestException('Hyresgästen saknar e-postadress')
     }
 
+    const landlordAddress = `${org.street}\n${org.postalCode} ${org.city}`
+    const hyresnamndContact = buildHyresnamndContact()
+
     try {
       await this.mail.sendRentIncreaseNotice({
         to: ri.lease.tenant.email,
@@ -141,6 +232,9 @@ export class RentIncreasesService {
         reason: ri.reason,
         organizationName: org?.name ?? 'Hyresvärd',
         unitAddress,
+        objectionDeadline: isoDate(objectionDeadline),
+        landlordAddress,
+        hyresnamndContact,
         ...(org?.billingEmail ? { contactEmail: org.billingEmail } : {}),
         ...(org?.phone ? { contactPhone: org.phone } : {}),
       })
@@ -151,7 +245,7 @@ export class RentIncreasesService {
 
     const updated = await this.prisma.rentIncrease.update({
       where: { id },
-      data: { status: 'NOTICE_SENT', noticeDate: new Date() },
+      data: { status: 'NOTICE_SENT', noticeDate },
       include: INCLUDE,
     })
 

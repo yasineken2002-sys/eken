@@ -11,6 +11,12 @@ export interface RentIncreaseNoticeProps {
   increasePercent: number
   effectiveDate: string
   reason: string
+  // JB 12 kap 54 a § 2 st — tvingande uppgifter. Utan dessa får hyresgästens
+  // tystnad ingen bindande verkan enligt 3 st och systemet får INTE automatiskt
+  // sätta status till ACCEPTED vid utebliven respons.
+  objectionDeadline: string // ISO-datum (sista dag att motsätta sig)
+  landlordAddress: string // hyresvärdens formella postadress
+  hyresnamndContact: string // kontaktuppgifter + handledning till hyresnämnden
   contactEmail?: string
   contactPhone?: string
 }
@@ -32,6 +38,9 @@ export function RentIncreaseNotice({
   increasePercent,
   effectiveDate,
   reason,
+  objectionDeadline,
+  landlordAddress,
+  hyresnamndContact,
   contactEmail,
   contactPhone,
 }: RentIncreaseNoticeProps) {
@@ -61,6 +70,7 @@ export function RentIncreaseNotice({
         />
         <Row label="Ny hyra" value={`${formatSek(newRent)}/mån`} bold />
         <Row label="Gäller från" value={effectiveDate} />
+        <Row label="Sista dag att motsätta sig" value={objectionDeadline} bold />
       </Section>
 
       <Section style={reasonBox}>
@@ -68,14 +78,46 @@ export function RentIncreaseNotice({
         <Text style={reasonText}>{reason}</Text>
       </Section>
 
-      <Text style={textStyle}>
-        Enligt svensk hyresrätt har du som hyresgäst rätt att överklaga en hyreshöjning. Om vi inte
-        kommer överens kan ärendet hänskjutas till <strong>Hyresnämnden</strong> för prövning.
-      </Text>
+      {/* JB 12 kap 54 a § 2 st — tvingande tystnadsverkan-text. Utan denna
+          formulering blir hyresgästens passivitet inte bindande enligt 3 st. */}
+      <Section style={warningBox}>
+        <Text style={warningHeading}>Viktigt — om du inte svarar</Text>
+        <Text style={warningText}>
+          Om du inte senast <strong>{objectionDeadline}</strong> ger {organizationName} skriftligt
+          besked om att du motsätter dig den begärda hyreshöjningen anses du enligt 12 kap. 54 a §
+          tredje stycket jordabalken ha godkänt den nya hyran. Höjningen blir då bindande från och
+          med {effectiveDate}.
+        </Text>
+      </Section>
+
+      <Section style={addressBox}>
+        <Text style={labelText}>Skicka skriftlig invändning till</Text>
+        <Text style={addressText}>
+          {organizationName}
+          <br />
+          {landlordAddress.split('\n').map((line, i) => (
+            <React.Fragment key={i}>
+              {line}
+              <br />
+            </React.Fragment>
+          ))}
+        </Text>
+      </Section>
+
+      {/* JB 12 kap 54 a § 2 st — upplysning om hyresnämndens prövningsrätt
+          och konkret vägledning om hur prövning begärs. */}
+      <Section style={hyresnamndBox}>
+        <Text style={labelText}>Din rätt till prövning hos hyresnämnden</Text>
+        <Text style={hyresnamndText}>
+          Du har rätt att få den begärda hyran prövad av Hyresnämnden. Prövning sker genom skriftlig
+          ansökan. Mer information och blanketter finns på <strong>www.domstol.se</strong> under
+          &quot;Hyresnämnd&quot;.
+        </Text>
+        <Text style={hyresnamndContactText}>{hyresnamndContact}</Text>
+      </Section>
 
       <Text style={textStyle}>
-        Vill du godkänna den nya hyran direkt eller har du frågor är du varmt välkommen att kontakta
-        oss
+        Har du frågor är du varmt välkommen att kontakta oss
         {contactEmail ? (
           <>
             {' '}
@@ -137,6 +179,66 @@ const reasonBox: React.CSSProperties = {
   padding: '16px 20px',
   margin: '0 0 24px',
   border: '1px solid #FDE68A',
+}
+
+const warningBox: React.CSSProperties = {
+  backgroundColor: '#FEF2F2',
+  borderRadius: '8px',
+  padding: '16px 20px',
+  margin: '0 0 24px',
+  border: '1px solid #FCA5A5',
+}
+
+const warningHeading: React.CSSProperties = {
+  color: '#991B1B',
+  fontSize: '14px',
+  fontWeight: 700,
+  margin: '0 0 8px',
+}
+
+const warningText: React.CSSProperties = {
+  color: '#7F1D1D',
+  fontSize: '14px',
+  lineHeight: '1.55',
+  margin: '0',
+}
+
+const addressBox: React.CSSProperties = {
+  backgroundColor: '#F9FAFB',
+  borderRadius: '8px',
+  padding: '16px 20px',
+  margin: '0 0 24px',
+  border: '1px solid #E5E7EB',
+}
+
+const addressText: React.CSSProperties = {
+  color: '#111827',
+  fontSize: '14px',
+  lineHeight: '1.55',
+  margin: '0',
+}
+
+const hyresnamndBox: React.CSSProperties = {
+  backgroundColor: '#EFF6FF',
+  borderRadius: '8px',
+  padding: '16px 20px',
+  margin: '0 0 24px',
+  border: '1px solid #BFDBFE',
+}
+
+const hyresnamndText: React.CSSProperties = {
+  color: '#1E3A8A',
+  fontSize: '14px',
+  lineHeight: '1.55',
+  margin: '0 0 8px',
+}
+
+const hyresnamndContactText: React.CSSProperties = {
+  color: '#1E3A8A',
+  fontSize: '13px',
+  lineHeight: '1.55',
+  margin: '0',
+  whiteSpace: 'pre-line',
 }
 
 const labelText: React.CSSProperties = {

@@ -2018,35 +2018,23 @@ export class ToolExecutorService {
             data: { monthlyRent: new Prisma.Decimal(newRent) },
           })
 
-          let emailSent = false
-          if (sendNotification && leaseCheck.tenant.email) {
-            const organization = await this.prisma.organization.findUnique({
-              where: { id: organizationId },
-              select: { name: true },
-            })
-            try {
-              const increasePercent =
-                currentRent > 0 ? ((newRent - currentRent) / currentRent) * 100 : 0
-              await this.mailService.sendRentIncreaseNotice({
-                to: leaseCheck.tenant.email,
-                tenantName: toolInput.tenantName as string,
-                currentRent,
-                newRent,
-                increasePercent,
-                effectiveDate,
-                reason: 'KPI-justering',
-                organizationName: organization?.name ?? 'Eveno Fastigheter',
-              })
-              emailSent = true
-            } catch {
-              // Email failure is non-fatal — rent was already updated
-            }
-          }
-
+          // JB 12 kap 54 a § 2 st — hyreshöjningsmeddelande har tvingande
+          // formkrav (invändningsfrist, hyresvärdens adress, hyresnämnds-
+          // upplysning, tystnadsverkan). AI-verktyget får INTE skicka mejl
+          // direkt eftersom det skulle producera en lagstridig avi som
+          // inte ger bindande verkan vid hyresgästens tystnad. Hänvisa
+          // alltid till det formella RentIncrease-flödet (POST /rent-
+          // increases → /rent-increases/:id/notice) som validerar både
+          // 2-månadersfristen och formuleringskraven.
+          //
+          // TODO: refaktorera så att apply_rent_increase går genom
+          // RentIncreasesService.create() istället för att skriva direkt
+          // på lease.monthlyRent (separat följd-PR).
           const notificationLine = sendNotification
-            ? emailSent
-              ? '\nHyreshöjningsbrev skickat via e-post'
-              : '\nKunde inte skicka e-post — skicka manuellt'
+            ? '\nVIKTIGT: Hyreshöjningsbrev måste skickas via det formella ' +
+              'rent-increase-flödet (POST /v1/rent-increases + ' +
+              '/v1/rent-increases/:id/notice) — JB 12 kap 54 a § kräver ' +
+              'tvingande uppgifter som AI-verktyget inte kan generera.'
             : ''
 
           return {
@@ -2057,9 +2045,7 @@ export class ToolExecutorService {
               `Gäller från: ${effectiveDate}` +
               notificationLine,
             nextSteps: [
-              emailSent
-                ? 'Bekräfta att hyresgästen mottagit brevet'
-                : 'Skicka hyreshöjningsbrev till hyresgästen',
+              'Skicka hyreshöjningsbrev via POST /v1/rent-increases (54 a §-flödet)',
               'Uppdatera övriga kontrakt med apply_rent_increase',
             ],
           }
