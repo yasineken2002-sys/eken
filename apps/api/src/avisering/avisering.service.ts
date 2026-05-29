@@ -5,6 +5,7 @@ import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
+import { AccountingService } from '../accounting/accounting.service'
 import { Prisma, RentNoticeStatus, RentNoticeType } from '@prisma/client'
 import type { RentNotice } from '@prisma/client'
 import {
@@ -51,7 +52,38 @@ export class AviseringService {
     private readonly pdfService: PdfService,
     private readonly storage: StorageService,
     private readonly pdfQueue: PdfQueue,
+    private readonly accounting: AccountingService,
   ) {}
+
+  // Bokför hyresfordran (intäktsverifikation) för en skapad RENT-avi.
+  // BFL kräver att intäkten verifieras när affärshändelsen inträffar — inte
+  // först vid betalning. Idempotent i AccountingService; fel loggas men får
+  // aldrig fälla avi-genereringen (avin är redan skapad i DB).
+  private async bookRentNoticeRevenue(
+    orgId: string,
+    notice: {
+      id: string
+      noticeNumber: string
+      leaseId: string
+      type: RentNoticeType
+      amount: Prisma.Decimal | number
+      vatAmount: Prisma.Decimal | number
+      totalAmount: Prisma.Decimal | number
+      year: number
+      month: number
+    },
+  ): Promise<void> {
+    if (notice.type === RentNoticeType.DEPOSIT) return
+    try {
+      await this.accounting.createJournalEntryForRentNotice(notice, orgId, null)
+    } catch (err) {
+      this.logger.error(
+        `[Avisering] Bokföring av hyresavi ${notice.noticeNumber} misslyckades: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      )
+    }
+  }
 
   // Allokerar nästa avinummer i sekvensen AVI-{year}-{month}-{NNNN}. Vi
   // söker max-suffix per (year, month) och räknar uppåt från den. Detta
@@ -166,6 +198,9 @@ export class AviseringService {
           lease: { include: { unit: { include: { property: true } } } },
         },
       })
+
+      // Intäktsverifikation (BFL): bokför hyresfordran 1510 D / 39xx K.
+      await this.bookRentNoticeRevenue(orgId, notice)
 
       notices.push(notice as unknown as RentNotice)
       created++
@@ -297,6 +332,12 @@ export class AviseringService {
           throw err
         }
       }
+    }
+
+    // Intäktsverifikation (BFL): bokför hyresfordran för första hyresavin.
+    // Depositionsavin bokförs inte som intäkt (skuld — deposits-modulen).
+    if (firstRentNotice) {
+      await this.bookRentNoticeRevenue(orgId, firstRentNotice)
     }
 
     // ── 3. Mejla hyresgästen med båda avier som bilagor ─────────────────
