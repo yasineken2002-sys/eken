@@ -48,17 +48,27 @@ const COMMON_ACCOUNTS: BasAccountSeed[] = [
   { number: 2645, name: 'Beräknad ingående moms på förvärv från utlandet', type: 'LIABILITY' },
   { number: 2650, name: 'Redovisningskonto för moms', type: 'LIABILITY' },
   { number: 2710, name: 'Personalskatt', type: 'LIABILITY' },
-  { number: 2820, name: 'Mottagna depositioner', type: 'LIABILITY' },
-  // Intäkter
-  { number: 3001, name: 'Hyresintäkter bostäder (momsfri)', type: 'REVENUE' },
-  { number: 3010, name: 'Hyresintäkter lokaler (momspliktiga)', type: 'REVENUE' },
-  { number: 3011, name: 'Hyresintäkter lokaler (momsfria)', type: 'REVENUE' },
-  { number: 3012, name: 'Hyresintäkter parkering / garage', type: 'REVENUE' },
-  { number: 3013, name: 'Hyresintäkter förråd', type: 'REVENUE' },
-  { number: 3030, name: 'Övriga ersättningar (varmvatten, el)', type: 'REVENUE' },
+  // Mottagna depositioner bokförs på 2890 (Övriga kortfristiga skulder) — i
+  // officiell BAS 2024 avser 2820 löneskulder till anställda, vilket skulle ge
+  // SIE4-kollision i revisorns bokslutsprogram. 2890 är BFL-/SIE4-säkert och
+  // direkt igenkännbart för revisor.
+  { number: 2890, name: 'Mottagna depositioner (hyresgäster)', type: 'LIABILITY' },
+  // Intäkter — BAS 2024 fastighet, 3900-serien.
+  //
+  // Hyresintäkter delas per upplåtelsetyp eftersom momsbehandlingen skiljer:
+  //   • Bostäder (3911) är undantagna moms enligt ML 3 kap 2 § — alltid 0%.
+  //   • Lokaler (3913) kan vara momspliktiga vid frivillig skattskyldighet
+  //     (ML 9 kap) — annars 0%.
+  //   • Parkering (3912) och förråd/övrigt (3914) följer samma logik.
+  // Kontovalet vid auto-postering styrs av Unit.type, se
+  // `REVENUE_ACCOUNT_BY_UNIT_TYPE` i accounting.service.ts.
+  { number: 3911, name: 'Hyresintäkter, bostäder', type: 'REVENUE' },
+  { number: 3912, name: 'Hyresintäkter, parkeringsplatser', type: 'REVENUE' },
+  { number: 3913, name: 'Hyresintäkter, lokaler', type: 'REVENUE' },
+  { number: 3914, name: 'Hyresintäkter, övriga (förråd m.m.)', type: 'REVENUE' },
+  { number: 3920, name: 'Hyresgästers el- och värmeersättning', type: 'REVENUE' },
   { number: 3040, name: 'Skadeersättningar', type: 'REVENUE' },
   { number: 3593, name: 'Påminnelseavgifter', type: 'REVENUE' },
-  { number: 3960, name: 'Valutakursvinster på rörelsefordringar', type: 'REVENUE' },
   // Driftkostnader
   { number: 5010, name: 'Lokalhyra (egen)', type: 'EXPENSE' },
   { number: 5020, name: 'El för fastighet', type: 'EXPENSE' },

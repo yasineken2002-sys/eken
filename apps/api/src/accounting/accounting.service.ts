@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { CompanyForm } from '@prisma/client'
+import { CompanyForm, UnitType } from '@prisma/client'
 import type { BankTransaction, Invoice, InvoiceLine } from '@prisma/client'
 import type { Decimal } from '@prisma/client/runtime/library'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -17,6 +17,25 @@ const VAT_TO_ACCOUNT: Record<number, number> = {
   25: 2611,
   12: 2621,
   6: 2631,
+}
+
+// BAS 2024-konto för hyresintäkt per upplåtelsetyp. Avgör vilket 39xx-konto
+// en hyresfaktura/-avi krediteras mot. Bostäder (3911) är undantagna moms
+// (ML 3 kap 2 §); lokaler (3913) kan vara momspliktiga vid frivillig
+// skattskyldighet (ML 9 kap). Saknas koppling till en Unit används 3914
+// (övriga rörelseintäkter) som säker fallback.
+const REVENUE_ACCOUNT_BY_UNIT_TYPE: Record<UnitType, number> = {
+  APARTMENT: 3911,
+  PARKING: 3912,
+  OFFICE: 3913,
+  RETAIL: 3913,
+  STORAGE: 3914,
+  OTHER: 3914,
+}
+const DEFAULT_REVENUE_ACCOUNT = 3914
+
+export function revenueAccountForUnitType(type: UnitType | null | undefined): number {
+  return type ? REVENUE_ACCOUNT_BY_UNIT_TYPE[type] : DEFAULT_REVENUE_ACCOUNT
 }
 
 @Injectable()
@@ -180,8 +199,21 @@ export class AccountingService {
     })
     const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
 
+    // Välj hyresintäktskonto (39xx) utifrån lägenhetens/lokalens typ. En
+    // hyresfaktura avser ett kontrakt (lease) → en unit, så typen avgör om
+    // intäkten är bostad (3911), lokal (3913), p-plats (3912) eller övrigt.
+    let unitType: UnitType | null = null
+    if (invoice.leaseId) {
+      const lease = await this.prisma.lease.findUnique({
+        where: { id: invoice.leaseId },
+        select: { unit: { select: { type: true } } },
+      })
+      unitType = lease?.unit?.type ?? null
+    }
+    const revenueAccountNumber = revenueAccountForUnitType(unitType)
+
     const receivableId = accountByNumber.get(1510)
-    const revenueId = accountByNumber.get(3010)
+    const revenueId = accountByNumber.get(revenueAccountNumber)
 
     // Skip if required accounts don't exist
     if (!receivableId || !revenueId) return null
@@ -389,8 +421,12 @@ export class AccountingService {
     })
   }
 
-  // BAS för registrering av deposition: 1510 D (kundfordran) / 2490 K (skuld
-  // för mottagen deposition). Posten skrivs en gång per deposit (idempotent).
+  // BAS för registrering av deposition: 1510 D (kundfordran) / 2890 K (skuld
+  // för mottagen deposition). 2890 (Övriga kortfristiga skulder, beskrivning
+  // "Mottagna depositioner") är rätt BAS 2024-konto — depositionen är en skuld
+  // till hyresgästen tills avflyttning. Tidigare felaktigt 2490; även 2820 är
+  // fel då det officiellt avser löneskulder. Posten skrivs en gång per deposit
+  // (idempotent).
   async createJournalEntryForDepositInvoice(
     depositId: string,
     organizationId: string,
@@ -411,7 +447,7 @@ export class AccountingService {
     })
     const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
     const receivableId = accountByNumber.get(1510)
-    const liabilityId = accountByNumber.get(2490)
+    const liabilityId = accountByNumber.get(2890)
     if (!receivableId || !liabilityId) return null
 
     return this.prisma.journalEntry.create({
@@ -432,7 +468,7 @@ export class AccountingService {
     })
   }
 
-  // BAS för återbetalning av deposition: 2490 D (skulden minskar)
+  // BAS för återbetalning av deposition: 2890 D (skulden minskar)
   // / 1930 K (bank) för återbetald del. Eventuella avdrag krediteras 3040
   // (skadeersättningar) istället, så bokföringen alltid balanserar.
   async createJournalEntryForDepositRefund(
@@ -457,7 +493,7 @@ export class AccountingService {
       select: { id: true, number: true },
     })
     const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
-    const liabilityId = accountByNumber.get(2490)
+    const liabilityId = accountByNumber.get(2890)
     const bankId = accountByNumber.get(1930)
     const damageRevenueId = accountByNumber.get(3040)
     if (!liabilityId || !bankId) return null

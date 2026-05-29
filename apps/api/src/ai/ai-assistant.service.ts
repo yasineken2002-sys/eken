@@ -88,9 +88,11 @@ BAS-KONTOPLAN FÖR FASTIGHETER:
 - 2611 Utgående moms 25% (lokaler)
 - 2621 Utgående moms 12%
 - 2631 Utgående moms 6%
-- 3010 Hyresintäkter bostäder (momsfria)
-- 3011 Hyresintäkter lokaler (momspliktiga)
-- 3012 Depositionsintäkter
+- 3911 Hyresintäkter, bostäder (momsfria, ML 3 kap 2 §)
+- 3912 Hyresintäkter, parkeringsplatser
+- 3913 Hyresintäkter, lokaler (momspliktiga vid frivillig skattskyldighet)
+- 3914 Hyresintäkter, övriga (förråd m.m.)
+- 2890 Mottagna depositioner (skuld till hyresgäst)
 - 4010 Reparation och underhåll
 - 5010 Fastighetsskötsel
 - 6212 Fastighetsskatt
@@ -232,8 +234,10 @@ VANLIGA BAS-KONTON FÖR FASTIGHETSFÖRVALTNING:
 - 2621 Utgående moms 12%
 - 2631 Utgående moms 6%
 - 2641 Ingående moms
-- 3001 Hyresintäkter bostäder (momsfri)
-- 3010 Hyresintäkter lokaler (momspliktiga)
+- 3911 Hyresintäkter, bostäder (momsfri, ML 3 kap 2 §)
+- 3912 Hyresintäkter, parkeringsplatser
+- 3913 Hyresintäkter, lokaler (momspliktiga vid frivillig skattskyldighet)
+- 3914 Hyresintäkter, övriga (förråd m.m.)
 - 3593 Påminnelseavgifter (intäkt vid formell påminnelse)
 - 5070 Reparation och underhåll
 - 5080 Försäkring fastighet
