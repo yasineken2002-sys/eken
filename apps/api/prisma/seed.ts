@@ -72,9 +72,10 @@ async function main() {
   const accounts = [
     { number: 1510, name: 'Kundfordringar', type: 'ASSET' as const },
     { number: 1930, name: 'Bankkonto', type: 'ASSET' as const },
-    { number: 2350, name: 'Mottagna depositioner', type: 'LIABILITY' as const },
-    { number: 2610, name: 'Utgående moms 25%', type: 'LIABILITY' as const },
-    { number: 3010, name: 'Hyresintäkter bostäder', type: 'REVENUE' as const },
+    { number: 2611, name: 'Utgående moms 25%', type: 'LIABILITY' as const },
+    { number: 2890, name: 'Mottagna depositioner (hyresgäster)', type: 'LIABILITY' as const },
+    { number: 3911, name: 'Hyresintäkter, bostäder', type: 'REVENUE' as const },
+    { number: 3913, name: 'Hyresintäkter, lokaler', type: 'REVENUE' as const },
     { number: 5010, name: 'Reparationer och underhåll', type: 'EXPENSE' as const },
     { number: 5020, name: 'Fastighetsskötsel', type: 'EXPENSE' as const },
   ]
