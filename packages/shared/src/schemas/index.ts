@@ -285,7 +285,10 @@ export const CreateLeaseWithTenantSchema = z
     endDate: z.string().date().optional(),
     leaseType: z.enum(['FIXED_TERM', 'INDEFINITE']).optional(),
     renewalPeriodMonths: z.number().int().min(1).optional(),
-    noticePeriodMonths: z.number().int().min(0).optional(),
+    // JB 12 kap 4 § — minst 3 mån (bostad) eller 9 mån (lokal). API-laget
+    // gör den bostad-/lokal-specifika kontrollen mot Unit.type; här
+    // garanterar vi bara att värdet är ett positivt heltal.
+    noticePeriodMonths: z.number().int().min(1).max(60).optional(),
   })
   .refine((d) => Boolean(d.existingTenantId) !== Boolean(d.newTenant), {
     message: 'Ange antingen en befintlig hyresgäst eller uppgifter för en ny',

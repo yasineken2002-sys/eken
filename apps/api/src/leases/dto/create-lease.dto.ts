@@ -43,8 +43,11 @@ export class CreateLeaseDto {
   @IsOptional()
   renewalPeriodMonths?: number
 
-  @IsNumber()
-  @Min(0)
+  // JB 12 kap 4 § — uppsägningstid får aldrig vara 0. Lagens minimum är
+  // 3 mån (bostad) eller 9 mån (lokal). Service-laget validerar mot unit.type.
+  @IsInt()
+  @Min(1)
+  @Max(60)
   @IsOptional()
   noticePeriodMonths?: number
 
