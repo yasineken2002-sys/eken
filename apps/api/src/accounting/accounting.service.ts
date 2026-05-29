@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
-import { CompanyForm, UnitType } from '@prisma/client'
+import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { CompanyForm, RentNoticeType, UnitType } from '@prisma/client'
 import type { BankTransaction, Invoice, InvoiceLine } from '@prisma/client'
 import type { Decimal } from '@prisma/client/runtime/library'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -40,6 +40,8 @@ export function revenueAccountForUnitType(type: UnitType | null | undefined): nu
 
 @Injectable()
 export class AccountingService {
+  private readonly logger = new Logger(AccountingService.name)
+
   constructor(private readonly prisma: PrismaService) {}
 
   async getAccounts(organizationId: string) {
@@ -322,6 +324,127 @@ export class AccountingService {
             { accountId: bankAccountId, debit: amount, description: 'Inbetalning bank' },
             { accountId: receivableId, credit: amount, description: 'Reglering kundfordran' },
           ],
+        },
+      },
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
+  // Intäktsverifikation vid avisering (BFL 1999:1078, LAGBROTT 2). När en
+  // hyresavi skapas uppstår en hyresfordran som ska bokföras enligt
+  // bokföringsmässiga grunder (god redovisningssed, BFL 4 kap 2 §):
+  //
+  //   1510 Kundfordringar    D  totalbelopp
+  //   39xx Hyresintäkt       K  nettobelopp (konto per upplåtelsetyp)
+  //   26xx Utgående moms     K  momsbelopp (endast om vatAmount > 0)
+  //
+  // Den efterföljande inbetalningen (createJournalEntryForRentNoticePayment)
+  // reglerar fordran 1930 D / 1510 K — utan denna accrual skulle betalningen
+  // sakna intäktsmotpost och hyresintäkten aldrig redovisas.
+  //
+  // Datumet sätts till första dagen i den period avin avser så att intäkten
+  // periodiseras rätt vid räkenskapsårsskifte. Idempotent via sourceId
+  // ("rent-notice:<id>"). Depositionsavier (type=DEPOSIT) är en skuld, inte
+  // intäkt, och hoppas över — de hanteras av deposits-modulen.
+  async createJournalEntryForRentNotice(
+    notice: {
+      id: string
+      noticeNumber: string
+      leaseId: string
+      type: RentNoticeType
+      amount: Decimal | number
+      vatAmount: Decimal | number
+      totalAmount: Decimal | number
+      year: number
+      month: number
+    },
+    organizationId: string,
+    createdById: string | null,
+  ) {
+    if (notice.type === RentNoticeType.DEPOSIT) return null
+
+    const sourceId = `rent-notice:${notice.id}`
+    const existing = await this.prisma.journalEntry.findFirst({
+      where: { organizationId, sourceId },
+    })
+    if (existing) return existing
+
+    const accounts = await this.prisma.account.findMany({
+      where: { organizationId },
+      select: { id: true, number: true },
+    })
+    const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+
+    // Intäktskonto utifrån lägenhetens/lokalens typ (bostad 3911, lokal 3913,
+    // p-plats 3912, övrigt 3914).
+    const lease = await this.prisma.lease.findUnique({
+      where: { id: notice.leaseId },
+      select: { unit: { select: { type: true } } },
+    })
+    const revenueAccountNumber = revenueAccountForUnitType(lease?.unit?.type ?? null)
+
+    const receivableId = accountByNumber.get(1510)
+    const revenueId = accountByNumber.get(revenueAccountNumber)
+    if (!receivableId || !revenueId) return null
+
+    const net = Number(notice.amount)
+    const vat = Number(notice.vatAmount)
+    const total = Number(notice.totalAmount)
+    if (total <= 0) return null
+
+    const lines: Array<{
+      accountId: string
+      debit?: number
+      credit?: number
+      description: string
+    }> = [{ accountId: receivableId, debit: total, description: `Hyresavi ${notice.noticeNumber}` }]
+
+    // Moms krediteras separat på rätt 26xx-konto. Hellre INGEN verifikation
+    // än en som döljer moms i intäktskontot eller bokar fel sats — det vore
+    // felaktig momsredovisning (ML 1 kap 1 §) och bryter mot god redovisningssed
+    // (BFL 4 kap 2 §). Net krediteras alltid intäktskontot → posten balanserar.
+    if (vat > 0 && net > 0) {
+      const rate = Math.round((vat / net) * 100)
+      const vatAccountNumber = VAT_TO_ACCOUNT[rate]
+      if (!vatAccountNumber) {
+        this.logger.error(
+          `[Accounting] Okänd momssats ${rate}% för hyresavi ${notice.noticeNumber} — verifikation skapas ej`,
+        )
+        return null
+      }
+      const vatAccountId = accountByNumber.get(vatAccountNumber)
+      if (!vatAccountId) {
+        this.logger.error(
+          `[Accounting] Momskonto ${vatAccountNumber} saknas i kontoplanen för hyresavi ${notice.noticeNumber} — verifikation skapas ej`,
+        )
+        return null
+      }
+      lines.push({ accountId: vatAccountId, credit: vat, description: `Moms ${rate}%` })
+    }
+    lines.push({
+      accountId: revenueId,
+      credit: net,
+      description: `Hyresintäkt ${notice.month}/${notice.year}`,
+    })
+
+    // Periodisering: intäkten hör till den månad avin avser.
+    const periodDate = new Date(Date.UTC(notice.year, notice.month - 1, 1))
+
+    return this.prisma.journalEntry.create({
+      data: {
+        organizationId,
+        date: periodDate,
+        description: `Hyresavi ${notice.noticeNumber}`,
+        source: 'INVOICE',
+        sourceId,
+        ...(createdById ? { createdById } : {}),
+        lines: {
+          create: lines.map((l) => ({
+            accountId: l.accountId,
+            ...(l.debit != null ? { debit: l.debit } : {}),
+            ...(l.credit != null ? { credit: l.credit } : {}),
+            description: l.description,
+          })),
         },
       },
       include: { lines: { include: { account: true } } },
