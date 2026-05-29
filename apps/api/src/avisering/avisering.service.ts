@@ -5,8 +5,9 @@ import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
-import { AccountingService } from '../accounting/accounting.service'
+import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { Prisma, RentNoticeStatus, RentNoticeType } from '@prisma/client'
+import type { UnitType } from '@prisma/client'
 import type { RentNotice } from '@prisma/client'
 import {
   rentDueDateForMonth,
@@ -54,6 +55,35 @@ export class AviseringService {
     private readonly pdfQueue: PdfQueue,
     private readonly accounting: AccountingService,
   ) {}
+
+  // Beräknar moms på en hyra utifrån enhetens upplåtelsetyp och frivilliga
+  // skattskyldighet (ML 1994:200). Bostad → 0 %, lokal → 25 % endast vid
+  // frivillig skattskyldighet, parkering → 25 %. Öresavrundning på momsbeloppet.
+  //
+  // Netto-gate (JB 12 kap 19 § 3 st): moms läggs ENDAST på om hyran uttryckligen
+  // är avtalad exkl. moms (lease.monthlyRentExcludingVat). Annars vet vi inte om
+  // monthlyRent redan inkluderar moms, och att lägga på 25 % vore en oavtalad
+  // hyreshöjning. Är enheten momspliktig men hyran inte markerad netto loggas en
+  // varning så att felregistrerade kontrakt kan rättas.
+  private rentVat(
+    net: number,
+    unit: { type: UnitType; voluntaryTaxLiability: boolean },
+    lease: { monthlyRentExcludingVat: boolean },
+    context?: string,
+  ): { vatAmount: number; totalAmount: number } {
+    const rate = vatRateForRent(unit.type, unit.voluntaryTaxLiability)
+    if (rate === 0) return { vatAmount: 0, totalAmount: net }
+    if (!lease.monthlyRentExcludingVat) {
+      this.logger.warn(
+        `[Moms] Enhet ${unit.type} är momspliktig men hyran är inte markerad som ` +
+          `exkl. moms — moms läggs ej på${context ? ` (${context})` : ''}. ` +
+          `Kontrollera kontraktsregistreringen.`,
+      )
+      return { vatAmount: 0, totalAmount: net }
+    }
+    const vatAmount = Math.round(net * rate) / 100
+    return { vatAmount, totalAmount: net + vatAmount }
+  }
 
   // Bokför hyresfordran (intäktsverifikation) för en skapad RENT-avi.
   // BFL kräver att intäkten verifieras när affärshändelsen inträffar — inte
@@ -172,6 +202,14 @@ export class AviseringService {
       // vardagen i månaden FÖRE den hyresperiod avin avser.
       const dueDate = rentDueDateForMonth(year, month)
 
+      // Moms enligt upplåtelsetyp (ML 3 kap 2 § / 9 kap). Bostad → 0.
+      const { vatAmount, totalAmount } = this.rentVat(
+        proration.amount,
+        lease.unit,
+        lease,
+        `avi ${noticeNumber}`,
+      )
+
       const notice = await this.prisma.rentNotice.create({
         data: {
           organizationId: orgId,
@@ -182,8 +220,8 @@ export class AviseringService {
           month,
           year,
           amount: proration.amount,
-          vatAmount: 0,
-          totalAmount: proration.amount,
+          vatAmount,
+          totalAmount,
           dueDate,
           status: RentNoticeStatus.PENDING,
           type: RentNoticeType.RENT,
@@ -301,6 +339,13 @@ export class AviseringService {
     if (proration.daysCharged > 0) {
       try {
         const noticeNumber = await this.nextNoticeNumber(year, month, depositNotice ? 1 : 0)
+        // Moms enligt upplåtelsetyp (ML 3 kap 2 § / 9 kap). Bostad → 0.
+        const { vatAmount, totalAmount } = this.rentVat(
+          proration.amount,
+          lease.unit,
+          lease,
+          `avi ${noticeNumber}`,
+        )
         firstRentNotice = (await this.prisma.rentNotice.create({
           data: {
             organizationId: orgId,
@@ -311,8 +356,8 @@ export class AviseringService {
             month,
             year,
             amount: proration.amount,
-            vatAmount: 0,
-            totalAmount: proration.amount,
+            vatAmount,
+            totalAmount,
             dueDate,
             status: RentNoticeStatus.PENDING,
             type: RentNoticeType.RENT,

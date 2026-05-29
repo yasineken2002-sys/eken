@@ -665,6 +665,13 @@ model Unit {
   storageNumber      String?
   parkingSpaceNumber String?
 
+  // Frivillig skattskyldighet för moms (ML 9 kap). Endast relevant för lokaler
+  // (OFFICE/RETAIL/STORAGE/OTHER) som hyrs ut till momspliktig verksamhet — då
+  // läggs 25% moms på hyran. Bostäder (APARTMENT) är ALLTID undantagna moms
+  // (ML 3 kap 2 §) oavsett detta fält. Parkering är momspliktig enligt lag
+  // (ML 3 kap 3 § 5) oberoende av frivillig skattskyldighet.
+  voluntaryTaxLiability Boolean @default(false)
+
   property           Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   leases             Lease[]
   documents          Document[]
@@ -797,6 +804,12 @@ model Lease {
   startDate            DateTime    @db.Date
   endDate              DateTime?   @db.Date
   monthlyRent          Decimal     @db.Decimal(10, 2)
+  // Anger att monthlyRent är avtalad EXKLUSIVE moms (netto). Moms läggs på
+  // hyresavin endast när detta är true OCH enheten är momspliktig
+  // (voluntaryTaxLiability/parkering). Default false skyddar mot oavtalad
+  // hyreshöjning (JB 12 kap 19 § 3 st) — moms läggs aldrig ovanpå en hyra som
+  // kan ha avtalats inkl. moms. Sätts vid kontraktsregistrering för lokaler.
+  monthlyRentExcludingVat Boolean  @default(false)
   depositAmount        Decimal     @db.Decimal(10, 2)
   noticePeriodMonths   Int         @default(3)
   // Behålls för bakåtkompatibilitet (gamla rader). Nya kontrakt sätter
