@@ -16,17 +16,29 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 import { AviseringService } from './avisering.service'
 
 describe('FIX 9 · PR 2 — generateMonthlyNotices bokför hyresintäkt', () => {
-  function makeService() {
+  function makeService(unitOverrides?: {
+    type?: string
+    voluntaryTaxLiability?: boolean
+    monthlyRentExcludingVat?: boolean
+  }) {
     const lease = {
       id: 'lease-1',
       tenantId: 'tenant-1',
       organizationId: 'org-1',
       monthlyRent: 10_000,
+      monthlyRentExcludingVat: unitOverrides?.monthlyRentExcludingVat ?? false,
       startDate: new Date('2026-01-01'),
       endDate: null,
       status: 'ACTIVE',
       tenant: { id: 'tenant-1', email: 't@example.se', type: 'INDIVIDUAL' },
-      unit: { id: 'unit-1', type: 'APARTMENT', name: 'Lgh 1', unitNumber: '1', property: {} },
+      unit: {
+        id: 'unit-1',
+        type: unitOverrides?.type ?? 'APARTMENT',
+        voluntaryTaxLiability: unitOverrides?.voluntaryTaxLiability ?? false,
+        name: 'Lgh 1',
+        unitNumber: '1',
+        property: {},
+      },
     }
 
     const prisma = {
@@ -85,5 +97,45 @@ describe('FIX 9 · PR 2 — generateMonthlyNotices bokför hyresintäkt', () => 
     accounting.createJournalEntryForRentNotice.mockRejectedValueOnce(new Error('DB nere'))
     const result = await service.generateMonthlyNotices('org-1', 6, 2026)
     expect(result.created).toBe(1)
+  })
+
+  it('bostadsavi får INGEN moms (ML 3 kap 2 §)', async () => {
+    const { service, prisma } = makeService({ type: 'APARTMENT' })
+    await service.generateMonthlyNotices('org-1', 6, 2026)
+    const data = prisma.rentNotice.create.mock.calls[0][0].data
+    expect(data.vatAmount).toBe(0)
+    expect(data.totalAmount).toBe(data.amount)
+  })
+
+  it('lokal MED frivillig skattskyldighet + hyra exkl. moms → 25% moms', async () => {
+    const { service, prisma } = makeService({
+      type: 'OFFICE',
+      voluntaryTaxLiability: true,
+      monthlyRentExcludingVat: true,
+    })
+    await service.generateMonthlyNotices('org-1', 6, 2026)
+    const data = prisma.rentNotice.create.mock.calls[0][0].data
+    // Hel månad → amount = 10000, moms 25% = 2500, total 12500
+    expect(data.vatAmount).toBe(2_500)
+    expect(data.totalAmount).toBe(data.amount + 2_500)
+  })
+
+  it('netto-gate: momspliktig lokal men hyra EJ markerad exkl. moms → ingen moms (JB 12 kap 19 §)', async () => {
+    const { service, prisma } = makeService({
+      type: 'OFFICE',
+      voluntaryTaxLiability: true,
+      monthlyRentExcludingVat: false,
+    })
+    await service.generateMonthlyNotices('org-1', 6, 2026)
+    const data = prisma.rentNotice.create.mock.calls[0][0].data
+    expect(data.vatAmount).toBe(0)
+    expect(data.totalAmount).toBe(data.amount)
+  })
+
+  it('lokal UTAN frivillig skattskyldighet får ingen moms', async () => {
+    const { service, prisma } = makeService({ type: 'OFFICE', voluntaryTaxLiability: false })
+    await service.generateMonthlyNotices('org-1', 6, 2026)
+    const data = prisma.rentNotice.create.mock.calls[0][0].data
+    expect(data.vatAmount).toBe(0)
   })
 })

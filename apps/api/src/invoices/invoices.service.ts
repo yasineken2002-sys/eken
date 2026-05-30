@@ -5,7 +5,7 @@ import { OcrService } from '../common/ocr/ocr.service'
 import { InvoiceEventsService } from './invoice-events.service'
 import { PdfService } from './pdf.service'
 import { MailService } from '../mail/mail.service'
-import { AccountingService } from '../accounting/accounting.service'
+import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { isValidTransition } from '@eken/shared'
 import { CreateInvoiceDto } from './dto/create-invoice.dto'
@@ -136,12 +136,47 @@ export class InvoicesService {
           id: dto.leaseId!,
           unit: { property: { organizationId } },
         },
-        select: { id: true, status: true, tenantId: true },
+        select: {
+          id: true,
+          status: true,
+          tenantId: true,
+          unit: { select: { type: true, voluntaryTaxLiability: true } },
+        },
       })
       if (!lease) throw new NotFoundException('Hyresavtal hittades inte')
       if (lease.status !== 'ACTIVE' && lease.status !== 'DRAFT') {
         throw new BadRequestException('Endast aktiva eller utkast-avtal kan faktureras')
       }
+
+      // Momskontroll (ML 1994:200): en momsfri upplåtelse får inte faktureras
+      // med moms. Bostad (APARTMENT) är alltid undantagen (ML 3 kap 2 §); lokal
+      // utan frivillig skattskyldighet likaså. Annars skulle felaktig moms
+      // debiteras hyresgästen och redovisas till staten.
+      const allowedVatRate = vatRateForRent(lease.unit.type, lease.unit.voluntaryTaxLiability)
+      if (allowedVatRate === 0) {
+        // Momsfri upplåtelse får inte faktureras med moms.
+        const offending = dto.lines.find((l) => l.vatRate !== 0)
+        if (offending) {
+          throw new BadRequestException(
+            lease.unit.type === 'APARTMENT'
+              ? 'Bostadshyra är undantagen från moms enligt ML 3 kap 2 § — vatRate måste vara 0'
+              : 'Lokalen saknar frivillig skattskyldighet — hyran är momsfri (ML 3 kap 3 § 2 st). ' +
+                  'Sätt frivillig skattskyldighet på enheten eller använd vatRate 0.',
+          )
+        }
+      } else {
+        // Omvänd kontroll: en i lag momspliktig upplåtelse får inte faktureras
+        // momsfritt — det vore underredovisning av utgående moms till staten.
+        const offending = dto.lines.find((l) => l.vatRate !== allowedVatRate)
+        if (offending) {
+          throw new BadRequestException(
+            lease.unit.type === 'PARKING'
+              ? `Parkeringsplats är momspliktig enligt ML 3 kap 3 § 5 — vatRate måste vara ${allowedVatRate}`
+              : `Lokalen har frivillig skattskyldighet — vatRate måste vara ${allowedVatRate} (ML 9 kap)`,
+          )
+        }
+      }
+
       leaseId = lease.id
       leaseTenantId = lease.tenantId
     } else {

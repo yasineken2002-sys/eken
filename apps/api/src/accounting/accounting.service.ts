@@ -38,6 +38,37 @@ export function revenueAccountForUnitType(type: UnitType | null | undefined): nu
   return type ? REVENUE_ACCOUNT_BY_UNIT_TYPE[type] : DEFAULT_REVENUE_ACCOUNT
 }
 
+// Tillämplig momssats (%) för hyresintäkt per upplåtelsetyp (ML 1994:200):
+//   • Bostad (APARTMENT)         → 0 %. Undantagen moms (ML 3 kap 2 §). Frivillig
+//     skattskyldighet får ALDRIG avse stadigvarande bostad (3 kap 3 § 2 st) —
+//     därför alltid 0 % oavsett voluntaryTaxLiability.
+//   • Lokal (OFFICE/RETAIL)      → 0 % som huvudregel; 25 % endast vid frivillig
+//     skattskyldighet (ML 9 kap, 3 kap 3 § 2 st).
+//   • Parkering (PARKING)        → 25 %. Momspliktig enligt lag (ML 3 kap 3 § 5),
+//     oberoende av frivillig skattskyldighet. Gäller fristående p-plats; ingår
+//     platsen i en bostadsupplåtelse hör den till APARTMENT-enheten.
+//   • Förråd/övrigt (STORAGE/OTHER) → 0 % som huvudregel; 25 % vid frivillig
+//     skattskyldighet (konservativ tolkning — fristående förvaringsbox kan vara
+//     momspliktig enligt 3 kap 3 § 6, men kräver då explicit skattskyldighet).
+export function vatRateForRent(
+  type: UnitType | null | undefined,
+  voluntaryTaxLiability: boolean,
+): number {
+  switch (type) {
+    case 'APARTMENT':
+      return 0
+    case 'PARKING':
+      return 25
+    case 'OFFICE':
+    case 'RETAIL':
+    case 'STORAGE':
+    case 'OTHER':
+      return voluntaryTaxLiability ? 25 : 0
+    default:
+      return 0
+  }
+}
+
 @Injectable()
 export class AccountingService {
   private readonly logger = new Logger(AccountingService.name)
