@@ -5,6 +5,11 @@ import * as path from 'path'
 import { v4 as uuid } from 'uuid'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
+import {
+  validateUploadedFile,
+  DETECTED_DOCUMENT_TYPES,
+  MAX_DOCUMENT_BYTES,
+} from '../common/utils/file-validation'
 
 const ALLOWED_MIME_TYPES = [
   'application/pdf',
@@ -17,7 +22,7 @@ const ALLOWED_MIME_TYPES = [
   'image/webp',
 ]
 
-const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20 MB
+const MAX_FILE_SIZE = MAX_DOCUMENT_BYTES // 20 MB (delad konstant, se file-validation.ts)
 
 export interface UploadFileData {
   buffer: Buffer
@@ -101,6 +106,14 @@ export class DocumentsService {
     if (file.size > MAX_FILE_SIZE) {
       throw new BadRequestException('Filen är för stor. Maximal filstorlek är 20 MB.')
     }
+
+    // SECURITY (H3): verifiera filens FAKTISKA innehåll (magiska byten) — den
+    // deklarerade mimetype:n ovan kan vara förfalskad. Avvisar t.ex. en
+    // omdöpt .exe/.html som påstår sig vara en PDF/bild.
+    validateUploadedFile(file.buffer, {
+      allowedDetectedMimes: DETECTED_DOCUMENT_TYPES,
+      maxBytes: MAX_FILE_SIZE,
+    })
 
     const ext = path.extname(file.filename)
     const safeName = `${uuid()}${ext}`

@@ -10,12 +10,27 @@ import { ConfigService } from '@nestjs/config'
 import { Cron } from '@nestjs/schedule'
 import * as bcrypt from 'bcryptjs'
 import * as crypto from 'crypto'
+import { Prisma } from '@prisma/client'
 import type { Tenant } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
 import { normalizeEmail } from '../common/utils/normalize-email'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { validatePasswordStrength } from '@eken/shared'
+
+/**
+ * SELECT för en hyresgäst som autentiserats via portal-session och returneras
+ * till portalen (bl.a. GET /tenant-portal/me). Återanvänder det hyresvärds-
+ * vända SAFE_TENANT_SELECT (alla icke-känsliga kolumner) och lägger till
+ * organisationsrelationen som portalen behöver. portal-credentials
+ * (passwordHash, *TokenHash, *TokenExpiresAt) ingår ALDRIG — se
+ * TENANT_CREDENTIAL_KEYS i tenants.service.ts.
+ */
+const SAFE_PORTAL_TENANT_SELECT = {
+  ...SAFE_TENANT_SELECT,
+  organization: { select: { id: true, name: true } },
+} satisfies Prisma.TenantSelect
 
 const ACTIVATION_TTL_MS = 72 * 60 * 60 * 1000 // 72 timmar
 const RESET_TTL_MS = 24 * 60 * 60 * 1000 // 24 timmar
@@ -36,6 +51,32 @@ function assertStrongPassword(password: string): void {
   if (!result.valid) {
     throw new BadRequestException(result.errors.join('. '))
   }
+}
+
+// Portal-credentials som ALDRIG får ingå i ett tenant-objekt som lämnar
+// servicen. Speglar TENANT_CREDENTIAL_KEYS i tenants.service.ts.
+const TENANT_CREDENTIAL_KEYS = [
+  'passwordHash',
+  'activationTokenHash',
+  'activationTokenExpiresAt',
+  'passwordResetTokenHash',
+  'passwordResetTokenExpiresAt',
+] as const
+
+/**
+ * Strippar portal-credentials ur ett tenant-objekt. SECURITY (B1, defense-in-
+ * depth): login()/activate()/resetPassword() hämtar tenant med full
+ * `include` (passwordHash krävs för bcrypt-jämförelsen i login). Här
+ * garanterar vi att SessionResult.tenant aldrig bär credentials — så att en
+ * framtida controller som returnerar result.tenant rakt av (samma misstag som
+ * orsakade B1) inte kan läcka dem.
+ */
+function stripTenantCredentials<T extends Record<string, unknown>>(tenant: T): T {
+  const clone = { ...tenant }
+  for (const key of TENANT_CREDENTIAL_KEYS) {
+    delete (clone as Record<string, unknown>)[key]
+  }
+  return clone
 }
 
 interface SessionResult {
@@ -389,7 +430,11 @@ export class TenantAuthService {
     await this.prisma.tenantSession.create({
       data: { tenantId: tenant.id, token: sha256(sessionToken), expiresAt },
     })
-    return { sessionToken, expiresAt, tenant }
+    // Strippa portal-credentials innan tenant returneras (B1 defense-in-depth).
+    const safeTenant = stripTenantCredentials(
+      tenant as unknown as Record<string, unknown>,
+    ) as unknown as Tenant & { organization: { id: string; name: string } }
+    return { sessionToken, expiresAt, tenant: safeTenant }
   }
 
   async validateSession(
@@ -397,14 +442,26 @@ export class TenantAuthService {
   ): Promise<Tenant & { organization: { id: string; name: string } }> {
     const session = await this.prisma.tenantSession.findUnique({
       where: { token: sha256(token) },
-      include: { tenant: { include: { organization: { select: { id: true, name: true } } } } },
+      // SECURITY (launch-blocker B1): selektera EXPLICIT icke-känsliga
+      // Tenant-kolumner. Tidigare `include: { tenant: true }` drog med
+      // passwordHash + alla *TokenHash/*TokenExpiresAt-kolumner, som sedan
+      // läckte rakt ut via GET /tenant-portal/me (getMe returnerar tenant-
+      // objektet oförändrat). Samma princip som SAFE_TENANT_SELECT på det
+      // hyresvärds-vända API:t — credentials lämnar aldrig Postgres.
+      // Behöver portalen fler icke-känsliga fält: LÄGG TILL dem här, lägg
+      // ALDRIG till passwordHash, *TokenHash eller *TokenExpiresAt.
+      include: {
+        tenant: { select: SAFE_PORTAL_TENANT_SELECT },
+      },
     })
 
     if (!session || session.expiresAt < new Date()) {
       throw new UnauthorizedException('Sessionen är ogiltig eller har gått ut')
     }
 
-    return session.tenant as Tenant & { organization: { id: string; name: string } }
+    return session.tenant as unknown as Tenant & {
+      organization: { id: string; name: string }
+    }
   }
 
   async logout(token: string): Promise<void> {

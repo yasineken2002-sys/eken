@@ -18,6 +18,7 @@ import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 import type { DocumentCategory } from '@prisma/client'
+import { MAX_DOCUMENT_BYTES } from '../common/utils/file-validation'
 import * as path from 'path'
 
 @ApiTags('Documents')
@@ -87,13 +88,15 @@ export class DocumentsController {
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     ]
-    const MAX_FILE_SIZE = 10 * 1024 * 1024
+    // Samma tak som DocumentsService.upload (delad konstant) — controller och
+    // service ska aldrig glida isär (H3).
+    const MAX_FILE_SIZE = MAX_DOCUMENT_BYTES
 
     if (!ALLOWED_MIME_TYPES.includes(mimetype)) {
       throw new BadRequestException('Filtyp inte tillåten')
     }
     if (fileSize > MAX_FILE_SIZE) {
-      throw new BadRequestException('Filen är för stor (max 10MB)')
+      throw new BadRequestException('Filen är för stor (max 20MB)')
     }
 
     return this.service.upload(

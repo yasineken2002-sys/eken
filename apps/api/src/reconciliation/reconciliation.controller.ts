@@ -19,11 +19,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { Body } from '@nestjs/common'
-
-// PDF-kontoutdrag kan vara större än CSV — kontoutdrag på 5+ sidor med
-// dussintals transaktioner kan landa runt 1–2 MB. 10 MB är samma tak som
-// CSV-flödet; mer än så är extremt ovanligt och oftast en felaktig fil.
-const MAX_PDF_BYTES = 10 * 1024 * 1024
+import { MAX_PDF_BYTES } from '../common/utils/file-validation'
 
 const VALID_BANKS: ReadonlyArray<BankFormat> = ['GENERIC', 'HANDELSBANKEN', 'SEB', 'SWEDBANK']
 
@@ -144,7 +140,7 @@ export class ReconciliationController {
     const buffer = await file.toBuffer()
     if (buffer.length > MAX_PDF_BYTES) {
       throw new BadRequestException(
-        `PDF:en är för stor (${(buffer.length / 1024 / 1024).toFixed(1)} MB). Max 10 MB.`,
+        `PDF:en är för stor (${(buffer.length / 1024 / 1024).toFixed(1)} MB). Max 20 MB.`,
       )
     }
 

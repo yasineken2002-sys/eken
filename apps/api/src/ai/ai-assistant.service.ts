@@ -620,9 +620,12 @@ export class AiAssistantService {
     userId: string,
     userRole: string,
   ): Promise<ChatResponse> {
-    // Verify conversation exists
+    // Verify conversation exists. SECURITY (AI-IDOR): scope även på userId —
+    // annars kunde en användare inom samma org bekräfta en annan användares
+    // pending action (exekvera en åtgärd i den andras namn) genom att gissa/
+    // läcka ett conversationId. Samma ägarskapskontroll som deleteConversation.
     const conversation = await this.prisma.aiConversation.findFirst({
-      where: { id: conversationId, organizationId },
+      where: { id: conversationId, organizationId, userId },
     })
     if (!conversation) throw new NotFoundException('Konversation hittades inte')
 
@@ -744,8 +747,11 @@ export class AiAssistantService {
     conversationId?: string,
   ) {
     if (conversationId) {
+      // SECURITY (AI-IDOR): scope på userId så att en användare inte kan
+      // fortsätta (eller läsa historik ur) en annan användares konversation
+      // inom samma org. Samma kontroll som getConversation/deleteConversation.
       const conv = await this.prisma.aiConversation.findFirst({
-        where: { id: conversationId, organizationId },
+        where: { id: conversationId, organizationId, userId },
         include: { messages: { orderBy: { createdAt: 'asc' } } },
       })
       if (!conv) throw new NotFoundException('Konversation hittades inte')

@@ -85,13 +85,19 @@ async function bootstrap() {
   await app.register(multipart as any, { limits: { fileSize: 20_000_000 } })
 
   // CORS
-  const rawOrigins = config.get<string>('ALLOWED_ORIGINS', '')
+  // .trim() så att ett ALLOWED_ORIGINS satt till enbart blanksteg (t.ex. via
+  // ett tomställt fält i Railway/Vercel UI) faller tillbaka på default-listan
+  // i stället för att bli truthy → en tom allowlist som blockerar ALL trafik.
+  const rawOrigins = config.get<string>('ALLOWED_ORIGINS', '').trim()
   const adminUrl = config.get<string>('ADMIN_URL', 'http://localhost:5175')
   const portalUrl = config.get<string>('PORTAL_URL', 'http://localhost:5174')
   const normalizeOrigin = (o: string) => o.trim().replace(/\/+$/, '').toLowerCase()
-  const allowedOrigins = (
-    rawOrigins ? rawOrigins.split(',') : [appUrl, portalUrl, adminUrl, 'https://*.app.github.dev']
-  )
+  // SECURITY (H2): fallback-listan innehåller bara de tre kända app-URL:erna.
+  // Den tidigare wildcard-fallbacken `https://*.app.github.dev` matchade
+  // VILKEN github.dev-codespace som helst (inkl. andras) i produktion om
+  // ALLOWED_ORIGINS råkade saknas. Behöver en deploy tillåta Codespaces-
+  // origins sätter man dem explicit i ALLOWED_ORIGINS.
+  const allowedOrigins = (rawOrigins ? rawOrigins.split(',') : [appUrl, portalUrl, adminUrl])
     .map(normalizeOrigin)
     .filter((o) => o.length > 0)
 
@@ -104,7 +110,12 @@ async function bootstrap() {
       const normalizedOrigin = normalizeOrigin(origin)
       const allowed = allowedOrigins.some((o) => {
         if (o.includes('*')) {
-          const regex = new RegExp('^' + o.replace(/\*/g, '.*') + '$')
+          // SECURITY (H2): escapa alla regex-metatecken FÖRST så att en punkt
+          // i mönstret bara matchar en punkt (inte valfritt tecken). Annars
+          // tillåter `https://app.example.com` även `https://appXexample.com`.
+          // Översätt sedan `*` → `.*` så wildcards fortfarande fungerar.
+          const pattern = o.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
+          const regex = new RegExp('^' + pattern + '$')
           return regex.test(normalizedOrigin)
         }
         return o === normalizedOrigin
