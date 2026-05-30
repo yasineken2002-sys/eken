@@ -1957,6 +1957,11 @@ model PlatformInvoice {
   // Audit-tidsstämplar
   sentAt          DateTime?
   paidAt          DateTime?
+  // Makulering (soft-delete, BFL 5 kap 11 § behandlingshistorik): en
+  // plattformsfaktura raderas aldrig hårt utan makuleras (status VOID).
+  // voidedAt/voidedReason gör makuleringen spårbar — vem/när/varför.
+  voidedAt        DateTime?
+  voidedReason    String?
   // Betalningsdetaljer (anges av Yasin när han markerar fakturan betald)
   // BANKGIRO | SWISH | MANUAL
   paymentMethod    String?

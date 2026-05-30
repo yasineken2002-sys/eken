@@ -437,21 +437,25 @@ export class InvoicesService {
     })
   }
 
-  async remove(id: string, organizationId: string): Promise<void> {
+  // Soft-delete (LAGBROTT 1, BFL 1999:1078): en faktura och dess append-only
+  // händelselogg får ALDRIG raderas hårt. Ett utkast har dessutom redan
+  // förbrukat ett fakturanummer ur InvoiceNumberSequence (PR 4) — en hård
+  // radering skulle lämna ett oförklarat hål i den fortlöpande nummerserien.
+  // I stället makuleras utkastet (DRAFT → VOID) via state machine:n, vilket
+  // bevarar fakturan, loggar en VOIDED-händelse (vem + när + varför) och gör
+  // hålet i serien spårbart (behandlingshistorik, BFL 5 kap 11 §).
+  async remove(id: string, organizationId: string, actorId: string): Promise<void> {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id, organizationId },
+      select: { id: true, status: true },
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
     if (invoice.status !== 'DRAFT') {
-      throw new BadRequestException('Endast utkast kan tas bort. Makulera istället.')
+      throw new BadRequestException('Endast utkast kan tas bort. Makulera fakturan istället.')
     }
 
-    // InvoiceEvent.invoice är Restrict (Bokföringslagen 1999:1078) och blockerar
-    // radering av fakturan. Ett utkast är dock inte utfärdad räkenskapsinformation,
-    // så dess händelselogg får följa med – ta bort eventen och fakturan i en transaktion.
-    await this.prisma.$transaction(async (tx) => {
-      await tx.invoiceEvent.deleteMany({ where: { invoiceId: id } })
-      await tx.invoice.delete({ where: { id } })
+    await this.transitionStatus(id, organizationId, 'VOID', actorId, 'USER', {
+      reason: 'draft_voided',
     })
   }
 

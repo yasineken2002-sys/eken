@@ -273,13 +273,19 @@ export class PlatformInvoicesService {
     return this.map(row)
   }
 
+  // Soft-delete (LAGBROTT 1, BFL 1999:1078): plattformsfakturor är räkenskaps-
+  // information och raderas aldrig hårt. Ett utkast makuleras (status VOID) med
+  // spårbar makuleringstidpunkt (behandlingshistorik, BFL 5 kap 11 §).
   async remove(id: string) {
     const existing = await this.prisma.platformInvoice.findUnique({ where: { id } })
     if (!existing) throw new NotFoundException('Fakturan hittades inte')
     if (existing.status !== 'DRAFT') {
-      throw new BadRequestException('Endast DRAFT-fakturor kan raderas')
+      throw new BadRequestException('Endast DRAFT-fakturor kan makuleras')
     }
-    await this.prisma.platformInvoice.delete({ where: { id } })
+    await this.prisma.platformInvoice.update({
+      where: { id },
+      data: { status: 'VOID', voidedAt: new Date(), voidedReason: 'draft_voided' },
+    })
     return { id }
   }
 
@@ -466,7 +472,7 @@ export class PlatformInvoicesService {
     if (row.status === 'PAID') throw new BadRequestException('Kan inte makulera en betald faktura')
     const updated = await this.prisma.platformInvoice.update({
       where: { id },
-      data: { status: 'VOID' },
+      data: { status: 'VOID', voidedAt: new Date(), voidedReason: 'manual_void' },
       include: {
         organization: { select: { id: true, name: true, email: true, billingEmail: true } },
       },

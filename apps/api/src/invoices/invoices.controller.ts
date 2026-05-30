@@ -144,7 +144,11 @@ export class InvoicesController {
   @Delete(':id')
   @Roles('ADMIN', 'OWNER')
   @HttpCode(204)
-  async remove(@Param('id') id: string, @OrgId() organizationId: string): Promise<void> {
-    await this.invoicesService.remove(id, organizationId)
+  async remove(
+    @Param('id') id: string,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    await this.invoicesService.remove(id, organizationId, user.sub)
   }
 }
