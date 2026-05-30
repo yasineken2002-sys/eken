@@ -97,3 +97,49 @@ att korrigera mot. Verifierat gap-free per (org, räkenskapsår).
   Vercel), så ett DB-beroende test ger ingen CI-signal och skulle bryta lokala
   jest-körningar utan test-DB. Lägg till ett gated integrationstest när en
   test-DB finns i CI.
+
+---
+
+## FIX 9 · PR 5 — Soft-delete av fakturor (LAGBROTT 1)
+
+**Lagrum:** BFL 1999:1078 7 kap 2 § (räkenskapsinformation bevaras 7 år),
+5 kap 11 § (behandlingshistorik), 4 kap 2 § (god redovisningssed), ML 11 kap 8 §.
+
+### Beslut
+
+1. **Hård radering ersatt med makulering (VOID).** `InvoicesService.remove()`
+   raderade tidigare ett DRAFT-utkast OCH dess append-only `InvoiceEvent`-logg
+   hårt (kringgick `onDelete: Restrict`). Nu makuleras utkastet i stället
+   (DRAFT → VOID) via `transitionStatus()` — fakturan och hela händelseloggen
+   bevaras, och en `VOIDED`-händelse loggas med aktör + `reason: 'draft_voided'`.
+   Controllern skickar nu `@CurrentUser().sub` som aktör (BFL 5 kap 7 §).
+
+2. **Varför VOID och inte radering, även för ett aldrig-skickat utkast?** Ett rent
+   utkast är i sig knappast räkenskapsinformation (ingen affärshändelse ännu), men
+   det har redan **förbrukat ett fakturanummer** ur `InvoiceNumberSequence` (PR 4).
+   En hård radering lämnar då ett **oförklarat hål** i den gap-free serien
+   `F-{år}-{nr}`. Makulering bevarar fakturan som VOID så att hålet är spårbart
+   och förklarat (behandlingshistorik, BFL 5 kap 11 §). Fakturanumret återanvänds
+   aldrig. Inget ML-brott uppstår (numret utfärdades aldrig externt).
+
+3. **VOID är terminal.** `INVOICE_TRANSITIONS` har `VOID: []`, och `update()`
+   blockerar icke-DRAFT — en makulerad faktura kan inte ändras eller återupplivas.
+
+4. **Plattformsfakturor.** `PlatformInvoicesService.remove()` makulerar nu
+   (status VOID) i stället för `delete()`. Nya fält `voidedAt`/`voidedReason` ger
+   behandlingshistorik (BFL 5 kap 11 §); den befintliga `voidInvoice()` sätter
+   dem också. Liten migration (nullable, ingen backfill).
+
+5. **UI.** Makulerade fakturor döljs i "Alla"-vyn men visas i en egen flik
+   "Makulerade" — ett makulerat utkast känns "borttaget" men förblir granskbart,
+   vilket krävs för att en revisor ska kunna förklara hål i nummerserien.
+
+### Öppna följdpunkter (ej i PR 5)
+
+- **`invoice.update()` på VOID-fakturor** i reconciliation/collections/
+  payment-reminder kontrollerar inte status — en makulerad faktura bör inte kunna
+  få nya påminnelser/inkassoflagg. Separat ärende (metadata, ej bokföring).
+- **`PlatformInvoiceEvent`-logg** (fullständig audit-tabell) i stället för enbart
+  `voidedAt`/`voidedReason`.
+- **Hårdkodad `VAT_RATE = 25`** i platform-invoices.service.ts bör flyttas till
+  `@eken/shared`.

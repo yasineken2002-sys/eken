@@ -42,13 +42,16 @@ import { cn } from '@/lib/cn'
 
 type DetailTab = 'detaljer' | 'historik'
 
-type Tab = 'ALL' | 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE'
+type Tab = 'ALL' | 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'VOID'
 const TABS: { id: Tab; label: string; color?: string }[] = [
   { id: 'ALL', label: 'Alla' },
   { id: 'SENT', label: 'Skickade' },
   { id: 'PAID', label: 'Betalda', color: 'text-emerald-600' },
   { id: 'OVERDUE', label: 'Försenade', color: 'text-red-600' },
   { id: 'DRAFT', label: 'Utkast' },
+  // Makulerade fakturor (VOID) döljs i "Alla"-vyn men är åtkomliga här —
+  // räkenskapsinformation raderas aldrig, så de måste gå att granska (BFL).
+  { id: 'VOID', label: 'Makulerade', color: 'text-gray-500' },
 ]
 
 function getTenantName(id: string | undefined, tenants: Tenant[]) {
@@ -149,6 +152,10 @@ export function InvoicesPage() {
   const { data: invoices = [], isLoading } = useInvoices(
     tab === 'ALL' ? undefined : { status: tab as InvoiceStatus },
   )
+  // I "Alla"-vyn döljs makulerade fakturor (VOID) — de syns bara i fliken
+  // "Makulerade". Ett makulerat utkast känns därmed "borttaget" men bevaras
+  // som räkenskapsinformation (soft-delete, BFL 1999:1078).
+  const displayedInvoices = tab === 'ALL' ? invoices.filter((i) => i.status !== 'VOID') : invoices
   const { data: selectedEvents = [] } = useInvoiceEvents(selected?.id ?? '')
   const { data: tenants = [] } = useTenants()
 
@@ -161,6 +168,10 @@ export function InvoicesPage() {
 
   // ── Statistik (beräknas från hämtad data, tab=ALL) ─────────────────────────
   const { data: allInvoices = [] } = useInvoices()
+  // Makulerade (VOID) räknas inte som aktiva fakturor — de visas bara i egen
+  // flik. Använd activeInvoices för totaler/räknare så de matchar "Alla"-vyn.
+  const activeInvoices = allInvoices.filter((i) => i.status !== 'VOID')
+  const voidCount = allInvoices.length - activeInvoices.length
   const totalPaid = allInvoices
     .filter((i) => i.status === 'PAID')
     .reduce((s, i) => s + Number(i.total), 0)
@@ -256,18 +267,24 @@ export function InvoicesPage() {
   }
 
   const tabCounts = {
-    ALL: allInvoices.length,
+    // "Alla" räknar exklusive makulerade (de visas i egen flik).
+    ALL: activeInvoices.length,
     SENT: allInvoices.filter((i) => i.status === 'SENT').length,
     PAID: allInvoices.filter((i) => i.status === 'PAID').length,
     OVERDUE: allInvoices.filter((i) => i.status === 'OVERDUE').length,
     DRAFT: allInvoices.filter((i) => i.status === 'DRAFT').length,
+    VOID: allInvoices.filter((i) => i.status === 'VOID').length,
   }
 
   return (
     <PageWrapper id="invoices">
       <PageHeader
         title="Fakturor"
-        description={`${allInvoices.length} fakturor totalt`}
+        description={
+          voidCount > 0
+            ? `${activeInvoices.length} fakturor · ${voidCount} makulerade`
+            : `${activeInvoices.length} fakturor totalt`
+        }
         action={
           <div className="flex items-center gap-2">
             <Button size="sm">
@@ -359,7 +376,7 @@ export function InvoicesPage() {
       {/* Tabell */}
       <div className="mt-4">
         <DataTable
-          data={isLoading ? [] : invoices}
+          data={isLoading ? [] : displayedInvoices}
           keyExtractor={(i) => i.id}
           onRowClick={handleSelectInvoice}
           columns={[
@@ -696,8 +713,8 @@ export function InvoicesPage() {
         <Modal
           open={showDeleteConfirm}
           onClose={() => setShowDeleteConfirm(false)}
-          title="Ta bort faktura"
-          description={`Vill du permanent ta bort ${selected.invoiceNumber}? Åtgärden kan inte ångras.`}
+          title="Ta bort utkast"
+          description={`Utkastet ${selected.invoiceNumber} makuleras och flyttas till "Makulerade". Fakturan raderas inte – den bevaras som räkenskapsinformation (Bokföringslagen).`}
         >
           <ModalFooter>
             <Button onClick={() => setShowDeleteConfirm(false)}>Avbryt</Button>
@@ -707,7 +724,7 @@ export function InvoicesPage() {
               disabled={deleteMutation.isPending}
               onClick={handleDelete}
             >
-              {deleteMutation.isPending ? 'Tar bort…' : 'Ta bort faktura'}
+              {deleteMutation.isPending ? 'Makulerar…' : 'Ta bort utkast'}
             </Button>
           </ModalFooter>
         </Modal>
