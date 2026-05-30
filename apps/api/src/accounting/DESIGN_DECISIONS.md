@@ -143,3 +143,67 @@ att korrigera mot. Verifierat gap-free per (org, räkenskapsår).
   `voidedAt`/`voidedReason`.
 - **Hårdkodad `VAT_RATE = 25`** i platform-invoices.service.ts bör flyttas till
   `@eken/shared`.
+
+---
+
+## FIX 9 · PR 6 — Sluten intäktscykel: betalningsbokföring vid markAsPaid
+
+**Lagrum:** BFL 1999:1078 5 kap 6 § (verifikation per affärshändelse),
+5 kap 1 § (rättvisande bild av ställning/resultat), 4 kap 2 § (god redovisningssed),
+5 kap 7 § (aktör/identifieringstecken). BAS 2024.
+
+### Problemet
+
+PR 2 bokförde hyresfordran vid avisering (`1510 D / 39xx K`), men `markAsPaid`
+satte bara status PAID utan motpost. Kundfordran 1510 växte därför obegränsat och
+manuella betalningar (kontant/Swish) saknades helt i bokföringen — intäktscykelns
+andra halva fattades.
+
+### Beslut
+
+1. **Ny bokföringsmetod `createJournalEntryForRentNoticeManualPayment`** bokför
+   `likvidkonto D / 1510 K` med **faktiskt inbetalt belopp** (`paidAmount`, ej
+   totalen — delbetalning reglerar fordran delvis). Idempotent via
+   `sourceId = "rent-notice-payment:<id>"`, dateras betalningsdatumet. Egen metod
+   (inte återanvänd `createJournalEntryForRentNoticePayment`) eftersom den senare
+   är knuten till en `BankTransaction` (sourceId = transaktion.id) vid
+   bankavstämning — skild idempotensnyckel och ingen banktransaktion här.
+
+2. **Likvidkonto per betalningssätt:** BANK/MANUAL → 1930, CASH → 1910,
+   **SWISH → 1930**. Swish bokförs mot företagskontot (medlen landar där inom
+   sekunder) i stället för ett eget 1934 — ett separat Swish-konto blir ett
+   "fantasikonto" som aldrig kan stämmas av mot ett kontoutdrag (granskat av
+   auktoriserad redovisningskonsult). Att betalningen var Swish spåras via
+   `RentNotice.paymentMethod` (ny enum `PaymentMethod`) + verifikatets radtext.
+   Endast 1910 (Kassa) saknades i kontoplanen och backfillas + seedas.
+
+3. **Atomisk, race-säker statusövergång FÖRE bokföring.** `markAsPaid` tar avin
+   obetald → PAID med `updateMany` + status-guard (`PENDING/SENT/OVERDUE/FAILED`) —
+   samma mönster som bankavstämningens `applyMatchToRentNotice`. Därmed utesluter
+   en manuell markering och en parallell bankavstämning av samma avi varandra
+   (claim.count === 0 → 409) och kan **aldrig skapa två betalningsverifikat mot
+   1510** (BFL 5 kap 1 §).
+
+4. **Invarianten "ingen PAID-avi utan verifikat".** Misslyckas bokföringen — vare
+   sig den kastar ELLER returnerar `null` (saknat likvidkonto för en RENT-avi) —
+   **ångras statusövergången** och felet propageras, så avin kan regleras på nytt
+   när orsaken är åtgärdad (BFL 5 kap 6 §). `DEPOSIT`-avier returnerar `null`
+   avsiktligt (deposits-modulen äger 1510/2890-flödet) och behåller PAID.
+
+5. **`@Min(0.01)` på `paidAmount`** — en nollbetalning är ingen affärshändelse.
+
+6. **Aktör loggas** (`@CurrentUser().sub` → `createdById` på verifikatet, BFL 5 kap 7 §).
+
+### Öppna följdpunkter (ej i PR 6)
+
+- **Reversering av manuellt betalningsverifikat.** `reverseJournalEntryForPayment`
+  söker på `sourceId = transactionId` och hittar inte manuella verifikat
+  (`sourceId = "rent-notice-payment:<id>"`). Att ångra en manuell betalning ger
+  i nuläget inget motverifikat — separat ärende.
+- **`MANUAL` bokförs mot 1930.** En kontantbetalning som av misstag registreras
+  som MANUAL hamnar på 1930 i stället för 1910 (kassa). Överväg att ta bort MANUAL
+  eller varna i UI.
+- **`RentNotice`/`PaymentMethod`-typer dupliceras** i `apps/web/.../avisering.api.ts`
+  i stället för `@eken/shared` (gäller hela avisering-featuren) — tech-debt.
+- **Invariantkontroll:** schemalagd avstämning som larmar om 1510-saldo per avi
+  avviker från summan av tillhörande verifikat.

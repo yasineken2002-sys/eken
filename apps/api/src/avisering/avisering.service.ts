@@ -1,4 +1,11 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  InternalServerErrorException,
+} from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { OcrService } from '../common/ocr/ocr.service'
 import { MailService } from '../mail/mail.service'
@@ -6,7 +13,7 @@ import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
-import { Prisma, RentNoticeStatus, RentNoticeType } from '@prisma/client'
+import { PaymentMethod, Prisma, RentNoticeStatus, RentNoticeType } from '@prisma/client'
 import type { UnitType } from '@prisma/client'
 import type { RentNotice } from '@prisma/client'
 import {
@@ -1026,7 +1033,28 @@ export class AviseringService {
 </html>`
   }
 
-  async markAsPaid(noticeId: string, orgId: string, paidAmount: number, paidAt?: string) {
+  // Registrerar en hyresavi som betald OCH bokför betalningen (FIX 9 · PR 6).
+  // Sluter intäktscykeln: utan denna bokning skulle kundfordran 1510 växa
+  // obegränsat eftersom PR 2 endast bokade fordran vid avisering.
+  //
+  // Flödet är race-säkert och har invarianten "ingen PAID-avi utan verifikat":
+  //   1. Atomisk statusövergång (updateMany med status-guard) tar avin från
+  //      obetald → PAID. Exakt en process kan vinna — samma mönster som
+  //      bankavstämningen (applyMatchToRentNotice) — så en manuell markering och
+  //      en parallell bankavstämning av samma avi utesluter varandra och kan
+  //      aldrig skapa två betalningsverifikat mot 1510.
+  //   2. Bokför betalningen (likvidkonto D / 1510 K) EFTER övergången. Kan
+  //      verifikatet inte skapas (saknat konto eller DB-fel) ångras
+  //      statusövergången och felet propageras — avin kan då regleras på nytt
+  //      när orsaken är åtgärdad (BFL 5 kap 6 §).
+  async markAsPaid(
+    noticeId: string,
+    orgId: string,
+    paidAmount: number,
+    paymentMethod: PaymentMethod,
+    paidAt?: string,
+    createdById?: string | null,
+  ) {
     const notice = await this.prisma.rentNotice.findFirst({
       where: { id: noticeId, organizationId: orgId },
     })
@@ -1034,14 +1062,82 @@ export class AviseringService {
     if (notice.status === RentNoticeStatus.CANCELLED) {
       throw new BadRequestException('Kan inte markera avbruten avi som betald')
     }
+    if (notice.status === RentNoticeStatus.PAID) {
+      throw new BadRequestException('Avin är redan betald')
+    }
 
-    return this.prisma.rentNotice.update({
-      where: { id: noticeId },
+    const paymentDate = paidAt ? new Date(paidAt) : new Date()
+
+    // ── 1. Atomisk, race-säker statusövergång ────────────────────────────────
+    const claim = await this.prisma.rentNotice.updateMany({
+      where: {
+        id: noticeId,
+        organizationId: orgId,
+        status: {
+          in: [
+            RentNoticeStatus.PENDING,
+            RentNoticeStatus.SENT,
+            RentNoticeStatus.OVERDUE,
+            RentNoticeStatus.FAILED,
+          ],
+        },
+      },
       data: {
         status: RentNoticeStatus.PAID,
-        paidAt: paidAt ? new Date(paidAt) : new Date(),
+        paidAt: paymentDate,
         paidAmount,
+        paymentMethod,
       },
+    })
+    if (claim.count === 0) {
+      // En parallell process (t.ex. bankavstämning) hann reglera eller avbryta avin.
+      throw new ConflictException(
+        'Avin är redan reglerad eller avbruten — uppdatera sidan och försök igen',
+      )
+    }
+
+    // ── 2. Bokför betalningen; ångra statusövergången om verifikatet uteblir ──
+    try {
+      const entry = await this.accounting.createJournalEntryForRentNoticeManualPayment(
+        { id: notice.id, noticeNumber: notice.noticeNumber, type: notice.type },
+        paidAmount,
+        paymentDate,
+        paymentMethod,
+        orgId,
+        createdById ?? null,
+      )
+      // null för en RENT-avi = saknat likvidkonto/1510 → bokföringsfel, inte
+      // ett giltigt no-op. (DEPOSIT returnerar null avsiktligt — deposits-modulen
+      // äger 1510/2890-flödet — och får behålla PAID-statusen.)
+      if (entry === null && notice.type !== RentNoticeType.DEPOSIT) {
+        throw new InternalServerErrorException(
+          `Betalningsverifikat kunde inte skapas för avi ${notice.noticeNumber} — ` +
+            'kontrollera att kontoplanen innehåller konto 1510 och rätt likvidkonto.',
+        )
+      }
+    } catch (err) {
+      // Återställ avin till obetald så att den kan regleras på nytt.
+      await this.prisma.rentNotice
+        .updateMany({
+          where: { id: noticeId, organizationId: orgId, status: RentNoticeStatus.PAID },
+          data: {
+            status: notice.status,
+            paidAt: null,
+            paidAmount: null,
+            paymentMethod: null,
+          },
+        })
+        .catch((revertErr) => {
+          this.logger.error(
+            `[Avisering] Kunde inte ångra betalningsstatus för avi ${notice.noticeNumber}: ` +
+              `${revertErr instanceof Error ? revertErr.message : String(revertErr)}`,
+          )
+        })
+      throw err
+    }
+
+    return this.prisma.rentNotice.findFirst({
+      where: { id: noticeId, organizationId: orgId },
     })
   }
 

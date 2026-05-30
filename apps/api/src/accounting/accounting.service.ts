@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { CompanyForm, RentNoticeType, UnitType } from '@prisma/client'
+import { CompanyForm, PaymentMethod, RentNoticeType, UnitType } from '@prisma/client'
 import type {
   BankTransaction,
   Invoice,
@@ -51,6 +51,29 @@ const DEFAULT_REVENUE_ACCOUNT = 3914
 
 export function revenueAccountForUnitType(type: UnitType | null | undefined): number {
   return type ? REVENUE_ACCOUNT_BY_UNIT_TYPE[type] : DEFAULT_REVENUE_ACCOUNT
+}
+
+// BAS-likvidkonto som debiteras vid manuell betalningsregistrering, per
+// betalningssätt. Kontona seedas av basChartFor och backfillas för
+// befintliga organisationer via migration (PR 6) — saknas kontot loggas ett
+// fel och betalningsverifikatet skapas inte (hellre än att boka mot fel konto).
+const PAYMENT_METHOD_TO_ACCOUNT: Record<PaymentMethod, number> = {
+  BANK: 1930,
+  CASH: 1910,
+  // Swish-medel landar inom sekunder på företagskontot (1930) — det är inte ett
+  // separatredovisat bankkonto. Vi bokför därför mot 1930 (undviker ett
+  // "fantasikonto" som aldrig kan stämmas av mot ett kontoutdrag). Att det var
+  // Swish framgår av paymentMethod på avin + verifikatets radtext.
+  SWISH: 1930,
+  MANUAL: 1930,
+}
+
+// Radtext på debetraden i betalningsverifikatet, per betalningssätt.
+const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  BANK: 'Inbetalning bank',
+  CASH: 'Inbetalning kontant',
+  SWISH: 'Inbetalning Swish',
+  MANUAL: 'Inbetalning (manuell registrering)',
 }
 
 // Tillämplig momssats (%) för hyresintäkt per upplåtelsetyp (ML 1994:200):
@@ -578,6 +601,76 @@ export class AccountingService {
         { accountId: receivableId, credit: amount, description: 'Reglering hyresfordran' },
       ],
       idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId: transaction.id },
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
+  // FIX 9 · PR 6 — Manuell betalningsregistrering av en hyresavi (markAsPaid).
+  // Sluter intäktscykeln: PR 2 bokförde fordran vid avisering (1510 D / 39xx K),
+  // och denna post reglerar fordran när betalningen registreras manuellt:
+  //
+  //   1930/1910/1934  Likvidkonto    D  inbetalt belopp   (per betalningssätt)
+  //   1510            Kundfordringar K  inbetalt belopp
+  //
+  // Till skillnad från createJournalEntryForRentNoticePayment (som matchar en
+  // importerad BankTransaction vid bankavstämning) finns här ingen transaktion —
+  // betalningssättet styr debetkontot och idempotensen nycklas på själva avin
+  // (sourceId = "rent-notice-payment:<id>") så att en dubbel-markering aldrig
+  // bokför betalningen två gånger (BFL 5 kap 6 §, gap-free serie via
+  // createNumberedEntry). Beloppet är det FAKTISKT inbetalda (paidAmount) — vid
+  // delbetalning regleras fordran bara delvis, vilket är korrekt dubbel bokföring.
+  //
+  // Depositionsavier (type=DEPOSIT) hoppas över: deras 1510/2890-flöde ägs av
+  // deposits-modulen (createJournalEntryForDepositInvoice), inte avisering.
+  async createJournalEntryForRentNoticeManualPayment(
+    notice: { id: string; noticeNumber: string; type: RentNoticeType },
+    paidAmount: number,
+    paidAt: Date,
+    paymentMethod: PaymentMethod,
+    organizationId: string,
+    createdById: string | null,
+  ) {
+    if (notice.type === RentNoticeType.DEPOSIT) return null
+
+    const amount = Number(paidAmount)
+    if (!Number.isFinite(amount) || amount <= 0) return null
+
+    const debitAccountNumber = PAYMENT_METHOD_TO_ACCOUNT[paymentMethod]
+
+    const accounts = await this.prisma.account.findMany({
+      where: { organizationId },
+      select: { id: true, number: true },
+    })
+    const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+    const debitAccountId = accountByNumber.get(debitAccountNumber)
+    const receivableId = accountByNumber.get(1510)
+    if (!debitAccountId || !receivableId) {
+      this.logger.error(
+        `[Accounting] Likvidkonto ${debitAccountNumber} eller 1510 saknas i ` +
+          `kontoplanen (org ${organizationId}) — betalningsverifikat för hyresavi ` +
+          `${notice.noticeNumber} skapas ej.`,
+      )
+      return null
+    }
+
+    const sourceId = `rent-notice-payment:${notice.id}`
+
+    return this.createNumberedEntry({
+      organizationId,
+      date: paidAt,
+      description: `Inbetalning hyresavi ${notice.noticeNumber}`,
+      source: 'PAYMENT',
+      sourceId,
+      createdById,
+      lines: [
+        {
+          accountId: debitAccountId,
+          debit: amount,
+          description: PAYMENT_METHOD_LABEL[paymentMethod],
+        },
+        { accountId: receivableId, credit: amount, description: 'Reglering hyresfordran' },
+      ],
+      idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId },
       include: { lines: { include: { account: true } } },
     })
   }

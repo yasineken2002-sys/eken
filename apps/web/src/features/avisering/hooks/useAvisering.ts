@@ -9,7 +9,7 @@ import {
   cancelNotice,
   downloadNoticePdf,
 } from '../api/avisering.api'
-import type { NoticeFilter } from '../api/avisering.api'
+import type { NoticeFilter, PaymentMethod } from '../api/avisering.api'
 
 export function useNotices(filters?: NoticeFilter) {
   return useQuery({
@@ -54,8 +54,17 @@ export function useSendAllNotices() {
 export function useMarkAsPaid() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, paidAmount, paidAt }: { id: string; paidAmount: number; paidAt?: string }) =>
-      markAsPaid(id, paidAmount, paidAt),
+    mutationFn: ({
+      id,
+      paidAmount,
+      paymentMethod,
+      paidAt,
+    }: {
+      id: string
+      paidAmount: number
+      paymentMethod: PaymentMethod
+      paidAt?: string
+    }) => markAsPaid(id, paidAmount, paymentMethod, paidAt),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['avisering'] }),
   })
 }
