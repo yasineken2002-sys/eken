@@ -8,7 +8,7 @@ import * as bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { normalizeEmail } from '../../common/utils/normalize-email'
-import type { CreateOrganizationDto, UpdateOrganizationDto } from './dto/platform-organization.dto'
+import { CreateOrganizationDto, UpdateOrganizationDto } from './dto/platform-organization.dto'
 
 type OrgStatus = 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED'
 type OrgPlan = 'TRIAL' | 'STARTER' | 'MINI' | 'STANDARD' | 'PLUS' | 'PRO'

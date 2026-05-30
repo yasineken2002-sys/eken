@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, Logger } from '@nestjs/common'
+import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
@@ -6,7 +6,8 @@ import { InvoicesService } from '../../invoices/invoices.service'
 import { PdfService } from '../../invoices/pdf.service'
 import { TenantsService } from '../../tenants/tenants.service'
 import { LeasesService } from '../../leases/leases.service'
-import type { CreateLeaseWithTenantDto } from '../../leases/dto/create-lease-with-tenant.dto'
+import { RentIncreasesService } from '../../rent-increases/rent-increases.service'
+import { CreateLeaseWithTenantDto } from '../../leases/dto/create-lease-with-tenant.dto'
 import { normalizeEmail } from '../../common/utils/normalize-email'
 import { PropertiesService } from '../../properties/properties.service'
 import { UnitsService } from '../../units/units.service'
@@ -313,6 +314,7 @@ export class ToolExecutorService {
     private readonly pdfService: PdfService,
     private readonly tenantsService: TenantsService,
     private readonly leasesService: LeasesService,
+    private readonly rentIncreasesService: RentIncreasesService,
     private readonly propertiesService: PropertiesService,
     private readonly unitsService: UnitsService,
     private readonly accountingService: AccountingService,
@@ -1988,67 +1990,66 @@ export class ToolExecutorService {
         }
 
         case 'apply_rent_increase': {
+          // H4 (JB 12 kap 54 a §): AI-verktyget får ALDRIG skriva direkt på
+          // lease.monthlyRent. En ensidig hyreshöjning utan formenligt
+          // meddelande och utlöpt invändningsfrist är en lagstridig
+          // villkorsändring (54 a § är tvingande, JB 12 kap 1 § 5 st) och kan
+          // dessutom trigga förverkandeflödet mot en hyresgäst som betalar
+          // rätt belopp. Verktyget registrerar i stället ett DRAFT via
+          // RentIncreasesService.create() (som validerar 3-månadersbufferten
+          // och att newRent > currentRent) och stannar där — en människa
+          // skickar det formella 54 a §-meddelandet via send-notice, som
+          // monthlyRent uppdateras automatiskt efter (ACCEPTED + effectiveDate).
           const leaseId = toolInput.leaseId as string
           const newRent = toolInput.newRent as number
-          const currentRent = toolInput.currentRent as number
-          const effectiveDate = toolInput.effectiveDate as string
-          const sendNotification = toolInput.sendNotification === true
+          const effectiveDate = toolInput.effectiveDate as string | undefined
+          const reason =
+            (toolInput.reason as string | undefined)?.trim() || 'Marknadsmässig hyresjustering'
 
-          const leaseCheck = await this.prisma.lease.findFirst({
-            where: { id: leaseId, organizationId },
-            include: {
-              tenant: {
-                select: {
-                  email: true,
-                  firstName: true,
-                  lastName: true,
-                  companyName: true,
-                  type: true,
-                },
-              },
-            },
-          })
-          if (!leaseCheck) {
+          if (!effectiveDate) {
             return {
               success: false,
-              message: `Kontrakt med id "${leaseId}" hittades inte. Anropa calculate_rent_increases för att hitta rätt leaseId.`,
+              message:
+                'Startdatum för den nya hyran (effectiveDate, YYYY-MM-DD) saknas. ' +
+                'JB 12 kap 54 a § kräver minst 2 mån invändningsfrist — ange ett datum ' +
+                'minst 3 månader framåt så det hinner skickas ett formellt meddelande.',
             }
           }
 
-          await this.prisma.lease.update({
-            where: { id: leaseId },
-            data: { monthlyRent: new Prisma.Decimal(newRent) },
-          })
+          let rentIncrease: Awaited<ReturnType<RentIncreasesService['create']>>
+          try {
+            rentIncrease = await this.rentIncreasesService.create(
+              { leaseId, newRent, reason, effectiveDate },
+              organizationId,
+            )
+          } catch (err) {
+            const msg =
+              err instanceof BadRequestException
+                ? ((err.getResponse() as { message?: string }).message ?? err.message)
+                : err instanceof Error
+                  ? err.message
+                  : String(err)
+            return { success: false, message: `Kunde inte registrera hyreshöjningen: ${msg}` }
+          }
 
-          // JB 12 kap 54 a § 2 st — hyreshöjningsmeddelande har tvingande
-          // formkrav (invändningsfrist, hyresvärdens adress, hyresnämnds-
-          // upplysning, tystnadsverkan). AI-verktyget får INTE skicka mejl
-          // direkt eftersom det skulle producera en lagstridig avi som
-          // inte ger bindande verkan vid hyresgästens tystnad. Hänvisa
-          // alltid till det formella RentIncrease-flödet (POST /rent-
-          // increases → /rent-increases/:id/notice) som validerar både
-          // 2-månadersfristen och formuleringskraven.
-          //
-          // TODO: refaktorera så att apply_rent_increase går genom
-          // RentIncreasesService.create() istället för att skriva direkt
-          // på lease.monthlyRent (separat följd-PR).
-          const notificationLine = sendNotification
-            ? '\nVIKTIGT: Hyreshöjningsbrev måste skickas via det formella ' +
-              'rent-increase-flödet (POST /v1/rent-increases + ' +
-              '/v1/rent-increases/:id/notice) — JB 12 kap 54 a § kräver ' +
-              'tvingande uppgifter som AI-verktyget inte kan generera.'
-            : ''
-
+          const cur = Number(rentIncrease.currentRent).toLocaleString('sv-SE')
+          const next = Number(rentIncrease.newRent).toLocaleString('sv-SE')
           return {
             success: true,
+            data: { rentIncreaseId: rentIncrease.id },
             message:
-              `Hyran för ${toolInput.tenantName as string} uppdaterad!\n` +
-              `${currentRent.toLocaleString('sv-SE')} kr → ${newRent.toLocaleString('sv-SE')} kr/mån\n` +
-              `Gäller från: ${effectiveDate}` +
-              notificationLine,
+              `Hyreshöjning registrerad som UTKAST (id: ${rentIncrease.id}).\n` +
+              `${cur} kr → ${next} kr/mån, gäller fr.o.m. ${effectiveDate}.\n\n` +
+              'VIKTIGT — hyran är INTE ändrad ännu. Nästa steg (kräver människa):\n' +
+              `1. Skicka det formella hyreshöjningsmeddelandet: POST /v1/rent-increases/${rentIncrease.id}/send-notice\n` +
+              '   (JB 12 kap 54 a § kräver hyresvärdens adress, ny hyra, datum, ' +
+              'minst 2 mån invändningsfrist och upplysning om hyresnämndens prövningsrätt).\n' +
+              '2. Hyran justeras automatiskt på effectiveDate efter att hyresgästen ' +
+              'accepterat eller fristen löpt ut utan invändning.',
             nextSteps: [
-              'Skicka hyreshöjningsbrev via POST /v1/rent-increases (54 a §-flödet)',
-              'Uppdatera övriga kontrakt med apply_rent_increase',
+              `Skicka meddelande: POST /v1/rent-increases/${rentIncrease.id}/send-notice`,
+              'Vänta ut invändningsfristen (minst 2 mån från meddelandedatum)',
+              'Systemet applicerar höjningen automatiskt på effectiveDate',
             ],
           }
         }

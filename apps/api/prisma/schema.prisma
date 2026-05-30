@@ -1706,7 +1706,7 @@ model RentNotice {
   organizationId String
   tenantId       String
   leaseId        String
-  noticeNumber   String           @unique
+  noticeNumber   String
   ocrNumber      String
   month          Int
   year           Int
@@ -1749,6 +1749,11 @@ model RentNotice {
   // year) räcker inte när tenant har flera kontrakt eller när vi även lagrar
   // DEPOSIT i samma tabell.
   @@unique([leaseId, year, month, type])
+  // H1: avinummer är unikt PER ORGANISATION, inte globalt. Det gamla globala
+  // @unique på noticeNumber gjorde att två orgar inte kunde dela samma
+  // AVI-2026-06-0001. Den composite unique:n indexerar även (organizationId,
+  // noticeNumber) → nextNoticeNumber-prefixsökningen slipper full table scan.
+  @@unique([organizationId, noticeNumber])
   @@index([organizationId])
   @@index([status])
   @@index([dueDate])

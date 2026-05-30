@@ -39,22 +39,43 @@ export const MAX_PAGE_SIZE = 100
 export const CURRENCY = 'SEK'
 export const LOCALE = 'sv-SE'
 
-// BAS account ranges
-export const ACCOUNT_RANGES = {
+// BAS 2024 — kontoklass-intervall (H5, verifierat av Auktoriserad
+// Redovisningskonsult mot accounting.service.ts + bas-chart.ts).
+// OBS: eget kapital är INTE ett eget intervall — det ligger inom klass 2
+// (2000–2999) men vilken delmängd beror på företagsform (AB 2080–2099,
+// enskild firma 2010–2019 osv). Se bas-chart.ts. Därför ingen EQUITY-nyckel:
+// en konstant `EQUITY: 3000–3999` (intäkter) var ett BAS-fundamentalt fel.
+export const ACCOUNT_CLASS_RANGES = {
   ASSET: { min: 1000, max: 1999 },
-  LIABILITY: { min: 2000, max: 2999 },
-  EQUITY: { min: 3000, max: 3999 },
+  LIABILITY: { min: 2000, max: 2999 }, // inkl. eget kapital
   REVENUE: { min: 3000, max: 3999 },
   EXPENSE: { min: 4000, max: 8999 },
 } as const
 
-// Standard BAS accounts for real estate
-export const STANDARD_ACCOUNTS = {
-  RENT_REVENUE: 3010,
-  VAT_OUTPUT: 2610,
-  ACCOUNTS_RECEIVABLE: 1510,
-  BANK: 1930,
-  DEPOSIT_LIABILITY: 2350,
+// Hyresintäktskonton per upplåtelsetyp (ML 3 kap 2 §, BAS 2024). Det finns
+// INGEN enskild "RENT_REVENUE" — bostad får aldrig moms, lokal/p-plats kan.
+// Den auktoritativa mappningen är accounting.service.ts:revenueAccountForUnitType();
+// dessa konstanter är referensvärden, bokför aldrig direkt mot ett enda konto.
+export const RENT_REVENUE_ACCOUNTS = {
+  APARTMENT: 3911, // Hyresintäkter, bostäder (0 % moms)
+  PARKING: 3912, // Hyresintäkter, parkering (25 % moms)
+  OFFICE: 3913, // Hyresintäkter, lokaler (0 % eller 25 % vid frivillig skattskyldighet)
+  RETAIL: 3913, // Hyresintäkter, lokaler (samma konto som OFFICE)
+  STORAGE: 3914, // Hyresintäkter, övrigt/förråd
+  OTHER: 3914, // Hyresintäkter, övrigt (fallback)
+} as const
+
+// Övriga standardkonton för fastighetsförvaltning (BAS 2024). Speglar exakt
+// de accountByNumber.get()-anrop som finns i accounting.service.ts efter FIX 9.
+export const CORE_ACCOUNTS = {
+  ACCOUNTS_RECEIVABLE: 1510, // Kundfordringar
+  CASH: 1910, // Kassa (kontant)
+  BANK: 1930, // Företagskonto / bank
+  DEPOSIT_LIABILITY: 2890, // Mottagna depositioner (kortfristig skuld)
+  VAT_OUTPUT_25: 2611, // Utgående moms 25 %
+  VAT_OUTPUT_12: 2621, // Utgående moms 12 %
+  VAT_OUTPUT_6: 2631, // Utgående moms 6 %
+  DAMAGE_REVENUE: 3040, // Skadeersättningar (depositionsavdrag)
 } as const
 
 export const USER_ROLES = ['OWNER', 'ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER'] as const

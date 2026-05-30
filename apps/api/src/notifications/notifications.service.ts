@@ -179,76 +179,12 @@ export class NotificationsService implements OnModuleInit {
 
   // ─── Email cron jobs ───────────────────────────────────────────────────────
 
-  /**
-   * @deprecated Det tiered påminnelseflödet (vänlig → formell → redo för
-   * inkasso) ligger i PaymentReminderService.processOverdueReminders och
-   * körs kl 09:00. Den här metoden behålls bara för manuella anrop via
-   * sendOverdueRemindersForOrg — cron-triggern är borttagen så samma
-   * faktura inte får två mejl per dag.
-   */
-  async sendOverdueReminders(): Promise<void> {
-    const invoices: InvoiceWithRelations[] = await this.prisma.invoice.findMany({
-      where: { status: 'OVERDUE' },
-      include: { tenant: true, customer: true, organization: true },
-    })
-
-    const startOfDay = new Date()
-    startOfDay.setHours(0, 0, 0, 0)
-    const endOfDay = new Date(startOfDay)
-    endOfDay.setDate(endOfDay.getDate() + 1)
-
-    let sent = 0
-    let failed = 0
-    let skipped = 0
-
-    for (const invoice of invoices) {
-      const party = invoice.tenant ?? invoice.customer
-      if (!party?.email) continue
-
-      // Idempotency-guard: hoppa över om en påminnelse redan loggats för
-      // denna faktura idag (t.ex. efter server-restart eller dubbel cron-fire).
-      const alreadySent = await this.prisma.invoiceEvent.findFirst({
-        where: {
-          invoiceId: invoice.id,
-          type: 'REMINDER_SENT',
-          createdAt: { gte: startOfDay, lt: endOfDay },
-        },
-        select: { id: true },
-      })
-      if (alreadySent) {
-        skipped++
-        continue
-      }
-
-      try {
-        const tenantName = this.resolveTenantName(invoice)
-        await this.mail.sendOverdueReminder({
-          to: party.email,
-          tenantName,
-          invoiceNumber: invoice.invoiceNumber,
-          total: Number(invoice.total),
-          dueDate: invoice.dueDate,
-          organizationName: invoice.organization.name,
-          accentColor: invoice.organization.invoiceColor ?? '#1a6b3c',
-        })
-
-        await this.prisma.invoiceEvent.create({
-          data: {
-            invoiceId: invoice.id,
-            type: 'REMINDER_SENT',
-            actorType: 'SYSTEM',
-            actorLabel: 'Automatisk påminnelse',
-            payload: {},
-          },
-        })
-        sent++
-      } catch (err) {
-        this.logger.error(`Failed to send reminder for invoice ${invoice.id}: ${String(err)}`)
-        failed++
-      }
-    }
-    this.logger.log(`Overdue reminders: ${sent} sent, ${failed} failed, ${skipped} skipped`)
-  }
+  // H2: den tidigare `sendOverdueReminders()` (icke org-scopad, `include:
+  // { tenant: true }` utan SAFE_TENANT_SELECT) är borttagen. Den var
+  // @deprecated, saknade anropare och var en latent cross-tenant- och
+  // credential-läckaväg. Det aktiva flödet är PaymentReminderService.
+  // processOverdueReminders (tiered) + sendOverdueRemindersForOrg (manuellt,
+  // org-scopat) nedan.
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async markOverdueInvoices(): Promise<void> {

@@ -401,7 +401,15 @@ export const TOOLS: Anthropic.Tool[] = [
         tenantName: { type: 'string', description: 'För visning' },
         currentRent: { type: 'number' },
         newRent: { type: 'number' },
-        effectiveDate: { type: 'string', description: 'YYYY-MM-DD' },
+        effectiveDate: {
+          type: 'string',
+          description: 'YYYY-MM-DD, minst 3 månader fram (54 a §-buffert)',
+        },
+        reason: {
+          type: 'string',
+          description:
+            'Skäl för höjningen (3–500 tecken), används i det formella 54 a §-meddelandet',
+        },
         sendNotification: {
           type: 'boolean',
           description: 'Skicka hyreshöjningsbrev till hyresgästen',
