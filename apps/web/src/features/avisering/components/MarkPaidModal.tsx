@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { X, CheckCircle2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { cn } from '@/lib/cn'
+import { formatCurrency } from '@eken/shared'
 import { useMarkAsPaid } from '../hooks/useAvisering'
-import type { RentNotice } from '../api/avisering.api'
+import type { PaymentMethod, RentNotice } from '../api/avisering.api'
 
 interface Props {
   notice: RentNotice | null
@@ -11,9 +13,17 @@ interface Props {
   onSuccess: () => void
 }
 
+const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
+  { value: 'BANK', label: 'Bank' },
+  { value: 'SWISH', label: 'Swish' },
+  { value: 'CASH', label: 'Kontant' },
+  { value: 'MANUAL', label: 'Övrigt' },
+]
+
 export function MarkPaidModal({ notice, onClose, onSuccess }: Props) {
   const [paidAmount, setPaidAmount] = useState('')
   const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 10))
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('BANK')
   const markPaid = useMarkAsPaid()
 
   if (!notice) return null
@@ -21,7 +31,7 @@ export function MarkPaidModal({ notice, onClose, onSuccess }: Props) {
   const handleSubmit = async () => {
     const amount = parseFloat(paidAmount.replace(',', '.'))
     if (isNaN(amount) || amount <= 0) return
-    await markPaid.mutateAsync({ id: notice.id, paidAmount: amount, paidAt })
+    await markPaid.mutateAsync({ id: notice.id, paidAmount: amount, paymentMethod, paidAt })
     onSuccess()
     onClose()
   }
@@ -66,9 +76,31 @@ export function MarkPaidModal({ notice, onClose, onSuccess }: Props) {
               type="number"
               value={paidAmount}
               onChange={(e) => setPaidAmount(e.target.value)}
-              placeholder={String(Number(notice.totalAmount))}
+              placeholder={formatCurrency(Number(notice.totalAmount))}
               className="h-9 w-full rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[13px] font-medium text-gray-700">
+              Betalningssätt
+            </label>
+            <div className="flex w-fit gap-1 rounded-xl bg-gray-100 p-1">
+              {PAYMENT_METHODS.map((m) => (
+                <button
+                  key={m.value}
+                  type="button"
+                  onClick={() => setPaymentMethod(m.value)}
+                  className={cn(
+                    'h-8 rounded-lg px-3 text-[13px] font-medium transition-colors',
+                    paymentMethod === m.value
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700',
+                  )}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
           </div>
           <div>
             <label className="mb-1.5 block text-[13px] font-medium text-gray-700">

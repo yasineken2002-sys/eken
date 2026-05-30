@@ -19,9 +19,11 @@ import { GenerateNoticesDto } from './dto/generate-notices.dto'
 import { SendNoticesDto } from './dto/send-notices.dto'
 import { MarkPaidDto } from './dto/mark-paid.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { UserRole } from '@prisma/client'
 import type { RentNoticeStatus } from '@prisma/client'
+import type { JwtPayload } from '@eken/shared'
 
 @Controller('avisering')
 export class AviseringController {
@@ -111,8 +113,20 @@ export class AviseringController {
 
   @Patch(':id/paid')
   @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
-  async markPaid(@OrgId() orgId: string, @Param('id') id: string, @Body() dto: MarkPaidDto) {
-    return this.aviseringService.markAsPaid(id, orgId, dto.paidAmount, dto.paidAt)
+  async markPaid(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+    @Body() dto: MarkPaidDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.aviseringService.markAsPaid(
+      id,
+      orgId,
+      dto.paidAmount,
+      dto.paymentMethod,
+      dto.paidAt,
+      user.sub,
+    )
   }
 
   @Delete(':id')

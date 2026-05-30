@@ -221,6 +221,21 @@ enum RentNoticeType {
   DEPOSIT
 }
 
+// Betalningssätt vid manuell betalningsregistrering av en hyresavi
+// (markAsPaid). Styr vilket BAS-tillgångskonto som debiteras när
+// kundfordran (1510) regleras:
+//   BANK   → 1930 Företagskonto
+//   CASH   → 1910 Kassa
+//   SWISH  → 1930 Företagskonto (Swish landar på företagskontot; sättet sparas
+//            ändå här för audit/statistik och i verifikatets radtext)
+//   MANUAL → 1930 (okänt/övrigt sätt — bokförs konservativt mot bankkontot)
+enum PaymentMethod {
+  BANK
+  CASH
+  SWISH
+  MANUAL
+}
+
 enum InspectionType {
   MOVE_IN
   MOVE_OUT
@@ -1694,6 +1709,10 @@ model RentNotice {
   dueDate        DateTime
   paidAt         DateTime?
   paidAmount     Decimal?         @db.Decimal(10, 2)
+  // Betalningssätt vid manuell betalningsregistrering (markAsPaid). Nullbar:
+  // historiska/obetalda avier saknar värde, och bankavstämda betalningar
+  // (reconciliation) sätter det inte. Styr debetkontot i betalningsverifikatet.
+  paymentMethod  PaymentMethod?
   status         RentNoticeStatus @default(PENDING)
   sentAt         DateTime?
   sentTo         String?

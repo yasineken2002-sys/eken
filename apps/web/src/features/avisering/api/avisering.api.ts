@@ -2,6 +2,8 @@ import { get, post, patch, del, api } from '@/lib/api'
 
 export type RentNoticeStatus = 'PENDING' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED'
 
+export type PaymentMethod = 'BANK' | 'CASH' | 'SWISH' | 'MANUAL'
+
 export interface RentNotice {
   id: string
   organizationId: string
@@ -17,6 +19,7 @@ export interface RentNotice {
   dueDate: string
   paidAt: string | null
   paidAmount: number | null
+  paymentMethod: PaymentMethod | null
   status: RentNoticeStatus
   sentAt: string | null
   sentTo: string | null
@@ -102,8 +105,17 @@ export function sendAllNotices(month: number, year: number) {
   return post<SendResult>(`/avisering/send-all/${month}/${year}`, {})
 }
 
-export function markAsPaid(id: string, paidAmount: number, paidAt?: string) {
-  return patch<RentNotice>(`/avisering/${id}/paid`, { paidAmount, ...(paidAt ? { paidAt } : {}) })
+export function markAsPaid(
+  id: string,
+  paidAmount: number,
+  paymentMethod: PaymentMethod,
+  paidAt?: string,
+) {
+  return patch<RentNotice>(`/avisering/${id}/paid`, {
+    paidAmount,
+    paymentMethod,
+    ...(paidAt ? { paidAt } : {}),
+  })
 }
 
 export function cancelNotice(id: string) {

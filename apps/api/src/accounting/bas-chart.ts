@@ -34,6 +34,11 @@ const COMMON_ACCOUNTS: BasAccountSeed[] = [
   // Tillgångar
   { number: 1510, name: 'Kundfordringar', type: 'ASSET' },
   { number: 1515, name: 'Osäkra kundfordringar', type: 'ASSET' },
+  // Likvidkonton för betalningsregistrering (markAsPaid). 1910 Kassa för
+  // kontant, 1930 Företagskonto för bank/Swish/övrigt. Swish särredovisas inte
+  // på eget konto — medlen landar på företagskontot — utan spåras via avins
+  // paymentMethod.
+  { number: 1910, name: 'Kassa', type: 'ASSET' },
   { number: 1930, name: 'Företagskonto / Bank', type: 'ASSET' },
   { number: 1940, name: 'Plusgiro', type: 'ASSET' },
   // Skulder (exkl. eget kapital)
