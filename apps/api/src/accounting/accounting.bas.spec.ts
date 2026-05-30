@@ -87,7 +87,13 @@ describe('FIX 9 · PR 1 — BAS-kontoplan fastighet', () => {
             .mockResolvedValue(unitType ? { unit: { type: unitType } } : { unit: null }),
         },
       }
-      const service = new AccountingService(prisma as never)
+      ;(prisma as unknown as { $transaction: unknown }).$transaction = (
+        cb: (tx: unknown) => unknown,
+      ) => cb(prisma)
+      const verifikationsnummer = {
+        allocate: jest.fn().mockResolvedValue({ series: 'A', verNumber: 1, fiscalYear: 2026 }),
+      }
+      const service = new AccountingService(prisma as never, verifikationsnummer as never)
       return { service, prisma, getCreated: () => created }
     }
 
@@ -148,7 +154,13 @@ describe('FIX 9 · PR 1 — BAS-kontoplan fastighet', () => {
         },
         account: { findMany: jest.fn().mockResolvedValue(accounts) },
       }
-      const service = new AccountingService(prisma as never)
+      ;(prisma as unknown as { $transaction: unknown }).$transaction = (
+        cb: (tx: unknown) => unknown,
+      ) => cb(prisma)
+      const verifikationsnummer = {
+        allocate: jest.fn().mockResolvedValue({ series: 'A', verNumber: 1, fiscalYear: 2026 }),
+      }
+      const service = new AccountingService(prisma as never, verifikationsnummer as never)
       return { service, getCreated: () => created }
     }
 

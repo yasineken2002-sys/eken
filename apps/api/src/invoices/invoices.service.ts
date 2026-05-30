@@ -103,8 +103,20 @@ export class InvoicesService {
     tx: Prisma.TransactionClient,
   ): Promise<{ invoiceNumber: string; sequence: number }> {
     const year = new Date().getFullYear()
-    const count = await tx.invoice.count({ where: { organizationId } })
-    const sequence = count + 1
+    // Atomär, race-säker allokering via InvoiceNumberSequence (ML 11 kap 8 §:
+    // fortlöpande nummerserie). Tidigare count()+1 kunde dela ut samma nummer
+    // vid samtidiga anrop och lämna hål vid rollback. UPSERT med increment ger
+    // Postgres row-lock; eftersom allokeringen sker i samma transaktion som
+    // fakturan skapas blir serien gap-free. Numret är globalt per org (året i
+    // F-{år}-{nr} är kosmetiskt) — det bevarar OCR-unikheten som härleds ur
+    // sekvensen.
+    const row = await tx.invoiceNumberSequence.upsert({
+      where: { organizationId },
+      create: { organizationId, lastNumber: 1 },
+      update: { lastNumber: { increment: 1 } },
+      select: { lastNumber: true },
+    })
+    const sequence = row.lastNumber
     return {
       invoiceNumber: `F-${year}-${String(sequence).padStart(4, '0')}`,
       sequence,

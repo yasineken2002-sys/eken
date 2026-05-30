@@ -46,7 +46,12 @@ function makeService(opts: {
         ),
     },
   }
-  const service = new AccountingService(prisma as never)
+  ;(prisma as unknown as { $transaction: unknown }).$transaction = (cb: (tx: unknown) => unknown) =>
+    cb(prisma)
+  const verifikationsnummer = {
+    allocate: jest.fn().mockResolvedValue({ series: 'A', verNumber: 1, fiscalYear: 2026 }),
+  }
+  const service = new AccountingService(prisma as never, verifikationsnummer as never)
   return { service, prisma, getCreated: () => created }
 }
 
