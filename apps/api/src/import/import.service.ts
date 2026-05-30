@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import * as XLSX from 'xlsx'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { ContractNumberService } from '../contracts/contract-number.service'
 import { normalizeEmail } from '../common/utils/normalize-email'
 import type { Prisma } from '@prisma/client'
 import { ImportJobStatus, ImportJobType } from '@prisma/client'
@@ -76,6 +77,7 @@ export class ImportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly contractNumbers: ContractNumberService,
   ) {}
 
   // ─── File Parsing ──────────────────────────────────────────────────────────
@@ -600,12 +602,20 @@ export class ImportService {
           status = 'DRAFT'
         }
 
+        // Ett importerat kontrakt som inte är DRAFT är (eller har varit) i kraft
+        // och ska ha ett kontraktsnummer — annars hamnar ACTIVE/EXPIRED-kontrakt
+        // permanent utan KONT-nummer (samma lucka som renew/autoRenew hade).
+        // DRAFT får numret först vid aktivering (transitionStatus).
+        const contractNumber =
+          status === 'DRAFT' ? null : await this.contractNumbers.allocate(organizationId)
+
         await this.prisma.lease.create({
           data: {
             organizationId,
             unitId: unit.id,
             tenantId: tenant.id,
             status,
+            ...(contractNumber ? { contractNumber } : {}),
             startDate,
             endDate: endDate ?? null,
             monthlyRent: this.parseAmount(data['monthlyRent'] ?? '') ?? 0,

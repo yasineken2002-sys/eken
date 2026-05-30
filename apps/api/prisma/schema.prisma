@@ -892,8 +892,10 @@ model Lease {
   // ── Kontraktsnummer (Kontraktsmall 2.0) ─────────────────────────────────
   // Fortlöpande nummer per organisation, format KONT-{år}-{löpnr:5}.
   // Genereras vid DRAFT → ACTIVE via ContractNumberSequence-tabellen.
-  // Null så länge kontraktet är i DRAFT.
-  contractNumber String? @unique
+  // Null så länge kontraktet är i DRAFT. Unikt PER ORGANISATION (se
+  // @@unique nedan) — INTE globalt: ContractNumberSequence räknar per org+år,
+  // så två organisationer delar oundvikligen samma löpnummer (KONT-2026-00001).
+  contractNumber String?
 
   unit                Unit                 @relation(fields: [unitId], references: [id])
   tenant              Tenant               @relation(fields: [tenantId], references: [id])
@@ -912,6 +914,11 @@ model Lease {
   // 20260426120000_lease_active_unique. Prisma stöder inte WHERE-villkor i
   // schemat så det måste hållas i sync manuellt.
 
+  // Kontraktsnummer är unikt inom en organisation (numret tilldelas från en
+  // per-org-sekvens). Tidigare globalt @unique gav P2002-kollision mellan
+  // organisationer som nådde samma löpnummer. NULL (DRAFT) räknas inte som
+  // dubblett i Postgres.
+  @@unique([organizationId, contractNumber])
   @@index([organizationId])
   @@index([unitId])
   @@index([tenantId])
