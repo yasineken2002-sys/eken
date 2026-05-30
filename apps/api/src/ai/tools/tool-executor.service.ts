@@ -11,6 +11,7 @@ import { normalizeEmail } from '../../common/utils/normalize-email'
 import { PropertiesService } from '../../properties/properties.service'
 import { UnitsService } from '../../units/units.service'
 import { AccountingService } from '../../accounting/accounting.service'
+import { VerifikationsnummerService } from '../../accounting/verifikationsnummer.service'
 import { MailService } from '../../mail/mail.service'
 import { MaintenanceService } from '../../maintenance/maintenance.service'
 import { AviseringService } from '../../avisering/avisering.service'
@@ -315,6 +316,7 @@ export class ToolExecutorService {
     private readonly propertiesService: PropertiesService,
     private readonly unitsService: UnitsService,
     private readonly accountingService: AccountingService,
+    private readonly verifikationsnummer: VerifikationsnummerService,
     private readonly mailService: MailService,
     private readonly maintenanceService: MaintenanceService,
     private readonly aviseringService: AviseringService,
@@ -3011,16 +3013,22 @@ export class ToolExecutorService {
               message: `Verifikatet balanserar inte: debet ${formatAmount(totalDebit)} kr, kredit ${formatAmount(totalCredit)} kr.`,
             }
           }
-          const entry = await this.prisma.journalEntry.create({
-            data: {
-              organizationId,
-              date,
-              description,
-              source: 'MANUAL',
-              createdById: userId,
-              lines: { create: prismaLines },
-            },
-            include: { lines: { include: { account: true } } },
+          const entry = await this.prisma.$transaction(async (tx) => {
+            const v = await this.verifikationsnummer.allocate(tx, organizationId, date)
+            return tx.journalEntry.create({
+              data: {
+                organizationId,
+                date,
+                description,
+                source: 'MANUAL',
+                createdById: userId,
+                series: v.series,
+                verNumber: v.verNumber,
+                fiscalYear: v.fiscalYear,
+                lines: { create: prismaLines },
+              },
+              include: { lines: { include: { account: true } } },
+            })
           })
           return {
             success: true,
@@ -3119,15 +3127,21 @@ export class ToolExecutorService {
               description: 'Ingående moms',
             })
           }
-          const entry = await this.prisma.journalEntry.create({
-            data: {
-              organizationId,
-              date,
-              description: `Utgift: ${description}`,
-              source: 'MANUAL',
-              createdById: userId,
-              lines: { create: lines },
-            },
+          const entry = await this.prisma.$transaction(async (tx) => {
+            const v = await this.verifikationsnummer.allocate(tx, organizationId, date)
+            return tx.journalEntry.create({
+              data: {
+                organizationId,
+                date,
+                description: `Utgift: ${description}`,
+                source: 'MANUAL',
+                createdById: userId,
+                series: v.series,
+                verNumber: v.verNumber,
+                fiscalYear: v.fiscalYear,
+                lines: { create: lines },
+              },
+            })
           })
           const propertyTag = typeof toolInput.propertyId === 'string' ? toolInput.propertyId : null
           return {

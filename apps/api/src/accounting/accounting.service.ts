@@ -1,9 +1,24 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { CompanyForm, RentNoticeType, UnitType } from '@prisma/client'
-import type { BankTransaction, Invoice, InvoiceLine } from '@prisma/client'
+import type {
+  BankTransaction,
+  Invoice,
+  InvoiceLine,
+  JournalEntrySource,
+  Prisma,
+} from '@prisma/client'
 import type { Decimal } from '@prisma/client/runtime/library'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { VerifikationsnummerService } from './verifikationsnummer.service'
 import { basChartFor } from './bas-chart'
+
+// Konteringsrad i internt format innan den mappas till Prisma create-input.
+interface JournalLineInput {
+  accountId: string
+  debit?: number
+  credit?: number
+  description?: string
+}
 
 interface JournalFilters {
   from?: string
@@ -73,7 +88,71 @@ export function vatRateForRent(
 export class AccountingService {
   private readonly logger = new Logger(AccountingService.name)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly verifikationsnummer: VerifikationsnummerService,
+  ) {}
+
+  /**
+   * Skapar en JournalEntry med ett gap-free, race-säkert verifikationsnummer.
+   *
+   * Allt sker i EN transaktion: idempotenskontrollen körs om inuti transaktionen
+   * (TOCTOU-säkert tillsammans med det unika indexet på (org, source, sourceId)),
+   * verifikationsnumret allokeras atomiskt, och posten skapas. Misslyckas något
+   * rullas hela transaktionen — inklusive sekvensökningen — tillbaka, så serien
+   * förblir obruten (BFL 5 kap 6 §).
+   */
+  private async createNumberedEntry(params: {
+    organizationId: string
+    date: Date
+    description: string
+    source: JournalEntrySource
+    sourceId: string | null
+    createdById?: string | null
+    lines: JournalLineInput[]
+    idempotencyWhere: Prisma.JournalEntryWhereInput
+    include?: Prisma.JournalEntryInclude
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      // Idempotenskontrollen körs inuti transaktionen och matchar samma
+      // (org, source, sourceId) som det unika DB-indexet — så app-kontroll och
+      // DB-constraint är i synk (TOCTOU-säkert).
+      const existing = await tx.journalEntry.findFirst({
+        where: { ...params.idempotencyWhere, source: params.source },
+        ...(params.include ? { include: params.include } : {}),
+      })
+      if (existing) return existing
+
+      const { series, verNumber, fiscalYear } = await this.verifikationsnummer.allocate(
+        tx,
+        params.organizationId,
+        params.date,
+      )
+
+      return tx.journalEntry.create({
+        data: {
+          organizationId: params.organizationId,
+          date: params.date,
+          description: params.description,
+          source: params.source,
+          series,
+          verNumber,
+          fiscalYear,
+          ...(params.sourceId != null ? { sourceId: params.sourceId } : {}),
+          ...(params.createdById != null ? { createdById: params.createdById } : {}),
+          lines: {
+            create: params.lines.map((l) => ({
+              accountId: l.accountId,
+              ...(l.debit != null ? { debit: l.debit } : {}),
+              ...(l.credit != null ? { credit: l.credit } : {}),
+              ...(l.description ? { description: l.description } : {}),
+            })),
+          },
+        },
+        ...(params.include ? { include: params.include } : {}),
+      })
+    })
+  }
 
   async getAccounts(organizationId: string) {
     return this.prisma.account.findMany({
@@ -165,7 +244,17 @@ export class AccountingService {
       select: { name: true, orgNumber: true },
     })
 
-    const entries = await this.getJournalEntries(organizationId, { from, to })
+    // Dedikerad hämtning för export: ALLA verifikationer i perioden, kronologiskt
+    // ordnade efter verifikationsnummer. (getJournalEntries har take:100 för UI —
+    // får aldrig användas för SIE, då blir räkenskapsinformationen ofullständig.)
+    const entries = await this.prisma.journalEntry.findMany({
+      where: {
+        organizationId,
+        date: { gte: new Date(from), lte: new Date(to) },
+      },
+      include: { lines: { include: { account: true } } },
+      orderBy: [{ date: 'asc' }, { series: 'asc' }, { verNumber: 'asc' }],
+    })
 
     const fromCompact = from.replace(/-/g, '')
     const toCompact = to.replace(/-/g, '')
@@ -199,9 +288,14 @@ export class AccountingService {
     }
     lines.push('')
 
-    entries.forEach((entry, idx) => {
+    // Verifikationsnummer (serie + nummer) skrivs ut deterministiskt så att
+    // samma verifikation identifieras lika i varje export (BFL 5 kap 6 §).
+    for (const entry of entries) {
       const dateStr = entry.date.toISOString().slice(0, 10).replace(/-/g, '')
-      lines.push(`#VER "AI" ${idx + 1} ${dateStr} "${entry.description}"`)
+      const serie = entry.series.replace(/"/g, '')
+      lines.push(
+        `#VER "${serie}" ${entry.verNumber} ${dateStr} "${entry.description.replace(/"/g, '')}"`,
+      )
       lines.push('{')
       for (const l of entry.lines) {
         const amount = l.debit != null ? Number(l.debit) : -Number(l.credit ?? 0)
@@ -209,7 +303,7 @@ export class AccountingService {
       }
       lines.push('}')
       lines.push('')
-    })
+    }
 
     return Buffer.from(lines.join('\n'), 'utf8')
   }
@@ -219,12 +313,6 @@ export class AccountingService {
     organizationId: string,
     createdById: string,
   ) {
-    // Skip if journal entry already exists for this invoice
-    const existing = await this.prisma.journalEntry.findFirst({
-      where: { organizationId, sourceId: invoice.id },
-    })
-    if (existing) return existing
-
     // Look up account numbers
     const accounts = await this.prisma.account.findMany({
       where: { organizationId },
@@ -293,23 +381,15 @@ export class AccountingService {
       }
     }
 
-    return this.prisma.journalEntry.create({
-      data: {
-        organizationId,
-        date: invoice.issueDate,
-        description: `Faktura ${invoice.invoiceNumber}`,
-        source: 'INVOICE',
-        sourceId: invoice.id,
-        createdById,
-        lines: {
-          create: lines.map((l) => ({
-            accountId: l.accountId,
-            ...(l.debit != null ? { debit: l.debit } : {}),
-            ...(l.credit != null ? { credit: l.credit } : {}),
-            ...(l.description ? { description: l.description } : {}),
-          })),
-        },
-      },
+    return this.createNumberedEntry({
+      organizationId,
+      date: invoice.issueDate,
+      description: `Faktura ${invoice.invoiceNumber}`,
+      source: 'INVOICE',
+      sourceId: invoice.id,
+      createdById,
+      lines,
+      idempotencyWhere: { organizationId, sourceId: invoice.id },
       include: { lines: { include: { account: true } } },
     })
   }
@@ -323,11 +403,6 @@ export class AccountingService {
     organizationId: string,
     createdById: string | null,
   ) {
-    const existing = await this.prisma.journalEntry.findFirst({
-      where: { organizationId, source: 'PAYMENT', sourceId: transaction.id },
-    })
-    if (existing) return existing
-
     const accounts = await this.prisma.account.findMany({
       where: { organizationId },
       select: { id: true, number: true },
@@ -342,21 +417,18 @@ export class AccountingService {
     const amount = Number(transaction.amount)
     if (amount <= 0) return null
 
-    return this.prisma.journalEntry.create({
-      data: {
-        organizationId,
-        date: transaction.date,
-        description: `Inbetalning faktura ${invoice.invoiceNumber}`,
-        source: 'PAYMENT',
-        sourceId: transaction.id,
-        ...(createdById ? { createdById } : {}),
-        lines: {
-          create: [
-            { accountId: bankAccountId, debit: amount, description: 'Inbetalning bank' },
-            { accountId: receivableId, credit: amount, description: 'Reglering kundfordran' },
-          ],
-        },
-      },
+    return this.createNumberedEntry({
+      organizationId,
+      date: transaction.date,
+      description: `Inbetalning faktura ${invoice.invoiceNumber}`,
+      source: 'PAYMENT',
+      sourceId: transaction.id,
+      createdById,
+      lines: [
+        { accountId: bankAccountId, debit: amount, description: 'Inbetalning bank' },
+        { accountId: receivableId, credit: amount, description: 'Reglering kundfordran' },
+      ],
+      idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId: transaction.id },
       include: { lines: { include: { account: true } } },
     })
   }
@@ -395,11 +467,6 @@ export class AccountingService {
     if (notice.type === RentNoticeType.DEPOSIT) return null
 
     const sourceId = `rent-notice:${notice.id}`
-    const existing = await this.prisma.journalEntry.findFirst({
-      where: { organizationId, sourceId },
-    })
-    if (existing) return existing
-
     const accounts = await this.prisma.account.findMany({
       where: { organizationId },
       select: { id: true, number: true },
@@ -461,23 +528,15 @@ export class AccountingService {
     // Periodisering: intäkten hör till den månad avin avser.
     const periodDate = new Date(Date.UTC(notice.year, notice.month - 1, 1))
 
-    return this.prisma.journalEntry.create({
-      data: {
-        organizationId,
-        date: periodDate,
-        description: `Hyresavi ${notice.noticeNumber}`,
-        source: 'INVOICE',
-        sourceId,
-        ...(createdById ? { createdById } : {}),
-        lines: {
-          create: lines.map((l) => ({
-            accountId: l.accountId,
-            ...(l.debit != null ? { debit: l.debit } : {}),
-            ...(l.credit != null ? { credit: l.credit } : {}),
-            description: l.description,
-          })),
-        },
-      },
+    return this.createNumberedEntry({
+      organizationId,
+      date: periodDate,
+      description: `Hyresavi ${notice.noticeNumber}`,
+      source: 'INVOICE',
+      sourceId,
+      createdById,
+      lines,
+      idempotencyWhere: { organizationId, sourceId },
       include: { lines: { include: { account: true } } },
     })
   }
@@ -493,11 +552,6 @@ export class AccountingService {
     organizationId: string,
     createdById: string | null,
   ) {
-    const existing = await this.prisma.journalEntry.findFirst({
-      where: { organizationId, source: 'PAYMENT', sourceId: transaction.id },
-    })
-    if (existing) return existing
-
     const accounts = await this.prisma.account.findMany({
       where: { organizationId },
       select: { id: true, number: true },
@@ -512,21 +566,18 @@ export class AccountingService {
 
     void notice.totalAmount
 
-    return this.prisma.journalEntry.create({
-      data: {
-        organizationId,
-        date: transaction.date,
-        description: `Inbetalning hyresavi ${notice.noticeNumber}`,
-        source: 'PAYMENT',
-        sourceId: transaction.id,
-        ...(createdById ? { createdById } : {}),
-        lines: {
-          create: [
-            { accountId: bankAccountId, debit: amount, description: 'Inbetalning bank' },
-            { accountId: receivableId, credit: amount, description: 'Reglering hyresfordran' },
-          ],
-        },
-      },
+    return this.createNumberedEntry({
+      organizationId,
+      date: transaction.date,
+      description: `Inbetalning hyresavi ${notice.noticeNumber}`,
+      source: 'PAYMENT',
+      sourceId: transaction.id,
+      createdById,
+      lines: [
+        { accountId: bankAccountId, debit: amount, description: 'Inbetalning bank' },
+        { accountId: receivableId, credit: amount, description: 'Reglering hyresfordran' },
+      ],
+      idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId: transaction.id },
       include: { lines: { include: { account: true } } },
     })
   }
@@ -544,33 +595,28 @@ export class AccountingService {
     })
     if (!original) return
 
-    // Skapa inte dubbletter av reversal heller.
-    const alreadyReversed = await this.prisma.journalEntry.findFirst({
-      where: {
-        organizationId,
-        source: 'PAYMENT',
-        sourceId: `reversal:${transactionId}`,
-      },
-    })
-    if (alreadyReversed) return
+    // Motverifikatet byter plats på debet/kredit. createNumberedEntry är
+    // idempotent via det unika indexet på (org, source, sourceId) — en redan
+    // skapad reversal returneras utan att en dubblett bokförs.
+    const reversalLines: JournalLineInput[] = original.lines.map((l) => ({
+      accountId: l.accountId,
+      ...(l.debit != null ? { credit: Number(l.debit) } : {}),
+      ...(l.credit != null ? { debit: Number(l.credit) } : {}),
+      ...(l.description ? { description: `Reversal: ${l.description}` } : {}),
+    }))
 
-    await this.prisma.journalEntry.create({
-      data: {
+    await this.createNumberedEntry({
+      organizationId,
+      date: new Date(),
+      description: `Hävd matchning: ${original.description}`,
+      source: 'PAYMENT',
+      sourceId: `reversal:${transactionId}`,
+      createdById,
+      lines: reversalLines,
+      idempotencyWhere: {
         organizationId,
-        date: new Date(),
-        description: `Hävd matchning: ${original.description}`,
         source: 'PAYMENT',
         sourceId: `reversal:${transactionId}`,
-        ...(createdById ? { createdById } : {}),
-        lines: {
-          create: original.lines.map((l) => ({
-            accountId: l.accountId,
-            // Byt debet/kredit
-            ...(l.debit != null ? { credit: Number(l.debit) } : {}),
-            ...(l.credit != null ? { debit: Number(l.credit) } : {}),
-            ...(l.description ? { description: `Reversal: ${l.description}` } : {}),
-          })),
-        },
       },
     })
   }
@@ -590,11 +636,6 @@ export class AccountingService {
     createdById: string | null,
   ) {
     const sourceId = `deposit-invoice:${depositId}`
-    const existing = await this.prisma.journalEntry.findFirst({
-      where: { organizationId, sourceId },
-    })
-    if (existing) return existing
-
     const accounts = await this.prisma.account.findMany({
       where: { organizationId },
       select: { id: true, number: true },
@@ -604,21 +645,18 @@ export class AccountingService {
     const liabilityId = accountByNumber.get(2890)
     if (!receivableId || !liabilityId) return null
 
-    return this.prisma.journalEntry.create({
-      data: {
-        organizationId,
-        date: issueDate,
-        description: `Deposition ${invoiceNumber}`,
-        source: 'INVOICE',
-        sourceId,
-        ...(createdById ? { createdById } : {}),
-        lines: {
-          create: [
-            { accountId: receivableId, debit: amount, description: 'Depositionsfordran' },
-            { accountId: liabilityId, credit: amount, description: 'Mottagen deposition' },
-          ],
-        },
-      },
+    return this.createNumberedEntry({
+      organizationId,
+      date: issueDate,
+      description: `Deposition ${invoiceNumber}`,
+      source: 'INVOICE',
+      sourceId,
+      createdById,
+      lines: [
+        { accountId: receivableId, debit: amount, description: 'Depositionsfordran' },
+        { accountId: liabilityId, credit: amount, description: 'Mottagen deposition' },
+      ],
+      idempotencyWhere: { organizationId, sourceId },
     })
   }
 
@@ -634,11 +672,6 @@ export class AccountingService {
     createdById: string | null,
   ) {
     const sourceId = `deposit-refund:${depositId}`
-    const existing = await this.prisma.journalEntry.findFirst({
-      where: { organizationId, sourceId },
-    })
-    if (existing) return existing
-
     const total = refundAmount + deductionsTotal
     if (total <= 0) return null
 
@@ -680,16 +713,15 @@ export class AccountingService {
       })
     }
 
-    return this.prisma.journalEntry.create({
-      data: {
-        organizationId,
-        date: transactionDate,
-        description: `Återbetalning deposition`,
-        source: 'PAYMENT',
-        sourceId,
-        ...(createdById ? { createdById } : {}),
-        lines: { create: lines },
-      },
+    return this.createNumberedEntry({
+      organizationId,
+      date: transactionDate,
+      description: `Återbetalning deposition`,
+      source: 'PAYMENT',
+      sourceId,
+      createdById,
+      lines,
+      idempotencyWhere: { organizationId, sourceId },
     })
   }
 }

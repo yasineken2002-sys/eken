@@ -392,6 +392,11 @@ model Organization {
   // av användaren själv (kräver supportkontakt) — det skulle invalidera
   // hela kontoplanen och skattetexten på fakturor.
   companyForm          CompanyForm @default(AB)
+  // Räkenskapsårets startmånad (1–12). 1 = kalenderår (BFL 3 kap 1 §, default
+  // och tvingande för enskild firma/HB). AB får ha brutet räkenskapsår — t.ex.
+  // 5 = maj–april. Styr vilket räkenskapsår en verifikation hör till, och
+  // därmed verifikationsnummerserien (se VerifikationsnummerService).
+  fiscalYearStartMonth Int @default(1)
   vatNumber            String?
   // F-skatt: obligatoriskt på faktura enligt 11 kap. 8 § ML att visa.
   // hasFSkatt = true ⇒ "Godkänd för F-skatt" tryckt på faktura-PDF.
@@ -489,6 +494,8 @@ model Organization {
   errorLogs          ErrorLog[]
   contractNumberSequences ContractNumberSequence[]
   maintenanceTicketSequence MaintenanceTicketSequence?
+  journalEntrySequences JournalEntrySequence[]
+  invoiceNumberSequence InvoiceNumberSequence?
   deposits           Deposit[]
   rentIncreases      RentIncrease[]
   customers          Customer[]
@@ -1057,6 +1064,18 @@ model JournalEntry {
   // ingen användare är inloggad. Manuella poster har alltid en createdBy.
   createdById    String?
 
+  // ── Verifikationsnummer (BFL 5 kap 6 §) ───────────────────────────────────
+  // Varje verifikation ska ha ett verifikationsnummer i en obruten nummerföljd
+  // per serie och räkenskapsår. fiscalYear = det räkenskapsår posten hör till
+  // (härlett ur date + Organization.fiscalYearStartMonth). series = "A"
+  // (automatverifikat, SIE4-konvention). verNumber = löpnummer 1..N inom
+  // (organizationId, series, fiscalYear), tilldelat atomiskt via
+  // JournalEntrySequence inuti samma transaktion som posten skapas — en
+  // rollback bränner därför aldrig ett nummer (gap-free).
+  fiscalYear     Int
+  series         String             @default("A")
+  verNumber      Int
+
   // Bokföringslagen (1999:1078): journalposter är räkenskapsinformation, bevaras 7 år.
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   createdBy    User?              @relation(fields: [createdById], references: [id])
@@ -1064,8 +1083,15 @@ model JournalEntry {
 
   createdAt DateTime @default(now())
 
+  // Obruten, unik nummerserie per (org, serie, räkenskapsår).
+  @@unique([organizationId, series, fiscalYear, verNumber])
+  // Idempotensspärr på DB-nivå: en affärshändelse (source+sourceId) får bara
+  // bokföras en gång. Postgres behandlar NULL som distinkt, så manuella poster
+  // (sourceId = null) berörs inte — endast automatiska poster med sourceId.
+  @@unique([organizationId, source, sourceId])
   @@index([organizationId])
   @@index([date])
+  @@index([organizationId, fiscalYear])
 }
 
 model JournalEntryLine {
@@ -1076,7 +1102,10 @@ model JournalEntryLine {
   credit         Decimal? @db.Decimal(10, 2)
   description    String?
 
-  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  // Restrict (ej Cascade): konteringsrader är räkenskapsinformation (BFL 1 kap
+  // 2 § p.9, 5 kap 6 §) och får inte raderas. Append-only — rättelse sker via
+  // motverifikat, aldrig radering. Systemet raderar aldrig verifikationer.
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
   account      Account      @relation(fields: [accountId], references: [id])
 
   @@index([journalEntryId])
@@ -1295,6 +1324,39 @@ model MaintenanceTicketSequence {
   updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+// Verifikationsnummerserie per organisation, räkenskapsår och serie (BFL 5 kap
+// 6 §). En rad per (org, fiscalYear, series). UPSERT med atomär increment ger
+// Postgres row-lock så att samtidiga verifikationer aldrig delar ut samma
+// nummer (race-säkert), och eftersom allokeringen sker inuti samma transaktion
+// som JournalEntry skapas blir serien obruten (gap-free) — en rollback
+// återställer även increment:en. onDelete Restrict: sekvensen är en del av
+// bokföringsintegriteten.
+model JournalEntrySequence {
+  organizationId String
+  fiscalYear     Int
+  series         String   @default("A")
+  lastNumber     Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@id([organizationId, fiscalYear, series])
+}
+
+// Global löpnummerserie för fakturanummer per organisation (ML 11 kap 8 §:
+// fortlöpande serie som entydigt identifierar fakturan). En rad per org;
+// numret nollställs INTE per år (året i F-{år}-{nr} är kosmetiskt, numret är
+// global obruten sekvens — bevarar OCR-unikhet som härleds ur sekvensen).
+// Atomär increment via UPSERT inuti faktura-transaktionen → race-säkert och
+// gap-free. onDelete Restrict: del av bokföringsintegriteten.
+model InvoiceNumberSequence {
+  organizationId String   @id
+  lastNumber     Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 }
 
 // ─── AI Assistant ─────────────────────────────────────────────────────────────
