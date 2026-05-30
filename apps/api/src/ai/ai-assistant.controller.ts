@@ -9,6 +9,7 @@ import {
   Res,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Throttle } from '@nestjs/throttler'
@@ -28,7 +29,7 @@ import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
 import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { PrismaService } from '../common/prisma/prisma.service'
-import { ChatDto } from './dto/chat.dto'
+import { ChatDto, CHAT_MESSAGE_MAX_LENGTH } from './dto/chat.dto'
 import { ConfirmActionDto } from './dto/confirm-action.dto'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
@@ -62,6 +63,17 @@ export class AiAssistantController {
     @CurrentUser() user: JwtPayload,
     @Res() reply: FastifyReply,
   ): Promise<void> {
+    // SECURITY (H4): SSE-endpointen tar `message` som rå query-param och går
+    // därmed förbi ChatDto:s ValidationPipe. Validera längden manuellt med
+    // samma gränser (1–CHAT_MESSAGE_MAX_LENGTH) så att SSE-vägen inte blir en
+    // kringgång av kostnads-/DoS-skyddet.
+    if (typeof message !== 'string' || message.length < 1) {
+      throw new BadRequestException('message krävs')
+    }
+    if (message.length > CHAT_MESSAGE_MAX_LENGTH) {
+      throw new BadRequestException(`message får vara högst ${CHAT_MESSAGE_MAX_LENGTH} tecken`)
+    }
+
     // Kvot-kontroll innan vi öppnar SSE-strömmen.
     // checkQuota() täcker plan-räknaren + org-wide daglig kostnadscap.
     // checkUserDailyCostCap() lägger till per-user daglig cap (50 SEK/dag).

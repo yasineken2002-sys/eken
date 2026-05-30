@@ -13,6 +13,11 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { InvoicesService } from '../invoices/invoices.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { AccountingService } from '../accounting/accounting.service'
+import {
+  validateUploadedFile,
+  DETECTED_SPREADSHEET_TYPES,
+  MAX_CSV_BYTES,
+} from '../common/utils/file-validation'
 
 export interface ImportResult {
   imported: number
@@ -275,6 +280,15 @@ export class ReconciliationService {
     const ext = filename.toLowerCase().split('.').pop() ?? ''
     let parsed: { rows: ParsedRow[]; bank: BankFormat }
 
+    // SECURITY (H3): validera storlek + faktiskt innehåll innan parse. CSV är
+    // ren text utan signatur (allowTextWithoutSignature), .xlsx/.xls måste ha
+    // en giltig Excel-/OOXML-signatur — annars avvisas filen.
+    validateUploadedFile(fileBuffer, {
+      allowedDetectedMimes: DETECTED_SPREADSHEET_TYPES,
+      maxBytes: MAX_CSV_BYTES,
+      allowTextWithoutSignature: true,
+    })
+
     if (ext === 'csv') {
       parsed = this.parseCsv(fileBuffer)
     } else if (ext === 'xlsx' || ext === 'xls') {
@@ -374,6 +388,15 @@ export class ReconciliationService {
     fileName: string,
     organizationId: string,
   ): Promise<ImportResult & { fileName: string }> {
+    // SECURITY (H3): BgMax är ren text (fastformat 80 tecken). Tillåt
+    // signaturlösa textfiler men avvisa allt med en binär signatur (en
+    // omdöpt .exe/.zip osv) samt filer över taket.
+    validateUploadedFile(fileBuffer, {
+      allowedDetectedMimes: [],
+      maxBytes: MAX_CSV_BYTES,
+      allowTextWithoutSignature: true,
+    })
+
     const text = fileBuffer.toString('utf8')
     const lines = text.split(/\r?\n/).filter((l) => l.length > 0)
 

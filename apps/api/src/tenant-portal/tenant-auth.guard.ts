@@ -3,6 +3,7 @@ import { Injectable, UnauthorizedException, Logger } from '@nestjs/common'
 import type { FastifyRequest } from 'fastify'
 import { TenantAuthService } from './tenant-auth.service'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 @Injectable()
 export class TenantAuthGuard implements CanActivate {
@@ -34,9 +35,11 @@ export class TenantAuthGuard implements CanActivate {
         providedSecret === expectedSecret &&
         expectedSecret.length >= 16
       ) {
+        // SECURITY (B1 defense-in-depth): selektera icke-känsliga fält så att
+        // dev-bypass aldrig sätter request.tenant med passwordHash/token-hashar.
         const tenant = await this.prisma.tenant.findUnique({
           where: { id: devTenantId },
-          include: { organization: true },
+          select: { ...SAFE_TENANT_SELECT, organization: { select: { id: true, name: true } } },
         })
         if (tenant) {
           this.logger.warn(`Dev tenant bypass aktiv för tenantId=${devTenantId}`)

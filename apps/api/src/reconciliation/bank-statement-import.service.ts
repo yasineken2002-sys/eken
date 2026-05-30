@@ -14,6 +14,11 @@ import {
   type ParsedTransaction,
 } from './pdf-statement-parser.service'
 import { ReconciliationService } from './reconciliation.service'
+import {
+  validateUploadedFile,
+  DETECTED_PDF_TYPES,
+  MAX_PDF_BYTES,
+} from '../common/utils/file-validation'
 
 export interface ImportCommitResult {
   importId: string
@@ -40,6 +45,14 @@ export class BankStatementImportService {
     organizationId: string,
     userId: string | null,
   ): Promise<{ id: string; status: string; parsed: ParsedBankStatement }> {
+    // SECURITY (H3): verifiera att filen faktiskt är en PDF (magiska byten
+    // %PDF) och inte överskrider taket innan vi skickar den till Claude som
+    // document-block. Den klient-deklarerade filändelsen räcker inte.
+    validateUploadedFile(fileBuffer, {
+      allowedDetectedMimes: DETECTED_PDF_TYPES,
+      maxBytes: MAX_PDF_BYTES,
+    })
+
     const fileSize = fileBuffer.length
 
     // Skapa raden FÖRST (status=PARSING) så vi har en audit-trail även om
