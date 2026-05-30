@@ -714,6 +714,12 @@ export class LeasesService {
         data: { status: 'EXPIRED' },
       })
 
+      // Det förnyade kontraktet skapas direkt som ACTIVE (inte via
+      // transitionStatus) och måste därför allokera sitt eget kontraktsnummer
+      // — annars blir det ett ACTIVE-avtal utan KONT-nummer. Allokeringen sker
+      // i samma transaktion så en abort inte lämnar hängande nummer.
+      const contractNumber = await this.contractNumbers.allocate(organizationId, tx)
+
       // Skapa nytt kontrakt — samma villkor men nya datum (och ev. ny hyra)
       const created = await tx.lease.create({
         data: {
@@ -726,6 +732,7 @@ export class LeasesService {
           depositAmount: lease.depositAmount,
           status: 'ACTIVE',
           leaseType: 'FIXED_TERM',
+          contractNumber,
           ...(lease.renewalPeriodMonths != null
             ? { renewalPeriodMonths: lease.renewalPeriodMonths }
             : {}),
@@ -794,6 +801,10 @@ export class LeasesService {
             data: { status: 'EXPIRED' },
           })
 
+          // Auto-förnyat kontrakt skapas direkt ACTIVE → allokera eget
+          // kontraktsnummer i samma transaktion (annars NULL contractNumber).
+          const contractNumber = await this.contractNumbers.allocate(lease.organizationId, tx)
+
           await tx.lease.create({
             data: {
               organizationId: lease.organizationId,
@@ -805,6 +816,7 @@ export class LeasesService {
               depositAmount: lease.depositAmount,
               status: 'ACTIVE',
               leaseType: 'FIXED_TERM',
+              contractNumber,
               renewalPeriodMonths: lease.renewalPeriodMonths,
               noticePeriodMonths: lease.noticePeriodMonths,
               indexClause: lease.indexClause,
