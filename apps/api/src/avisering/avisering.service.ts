@@ -128,12 +128,22 @@ export class AviseringService {
   // som spelar roll är att vi får ett ledigt nummer i AVI-{y}-{m}-XXXX.
   //
   // Race-säkerhet: två parallella requests kan teoretiskt hämta samma max
-  // och skapa duplicat — vi förlitar oss på @unique(noticeNumber) och en
-  // backoff-retry. För månadscronen körs dock allt sekventiellt.
-  private async nextNoticeNumber(year: number, month: number, offset = 0): Promise<string> {
+  // och skapa duplicat — vi förlitar oss på @@unique([organizationId,
+  // noticeNumber]) och en backoff-retry. För månadscronen körs dock allt
+  // sekventiellt.
+  private async nextNoticeNumber(
+    organizationId: string,
+    year: number,
+    month: number,
+    offset = 0,
+  ): Promise<string> {
     const prefix = `AVI-${year}-${pad2(month)}-`
+    // SECURITY/korrekthet (H1): scopa sekvensen till organisationen. Utan
+    // organizationId-filtret räknades max-sekvensen över ALLA orgars avier,
+    // så en ny kunds serie kunde börja på t.ex. AVI-2026-06-0047. Träffar nu
+    // @@index([organizationId, noticeNumber]) i stället för full table scan.
     const existing = await this.prisma.rentNotice.findMany({
-      where: { noticeNumber: { startsWith: prefix } },
+      where: { organizationId, noticeNumber: { startsWith: prefix } },
       select: { noticeNumber: true },
     })
     let maxSeq = 0
@@ -204,7 +214,7 @@ export class AviseringService {
       }
 
       const ocrNumber = await this.ocrService.assignOcrToTenant(lease.tenantId, orgId)
-      const noticeNumber = await this.nextNoticeNumber(year, month, created)
+      const noticeNumber = await this.nextNoticeNumber(orgId, year, month, created)
       // Hyreslagen 12 kap. 20 § JB: hyran ska betalas senast sista
       // vardagen i månaden FÖRE den hyresperiod avin avser.
       const dueDate = rentDueDateForMonth(year, month)
@@ -305,7 +315,7 @@ export class AviseringService {
     const depositAmount = Number(lease.depositAmount ?? 0)
     if (depositAmount > 0) {
       try {
-        const noticeNumber = await this.nextNoticeNumber(year, month)
+        const noticeNumber = await this.nextNoticeNumber(orgId, year, month)
         depositNotice = (await this.prisma.rentNotice.create({
           data: {
             organizationId: orgId,
@@ -345,7 +355,7 @@ export class AviseringService {
 
     if (proration.daysCharged > 0) {
       try {
-        const noticeNumber = await this.nextNoticeNumber(year, month, depositNotice ? 1 : 0)
+        const noticeNumber = await this.nextNoticeNumber(orgId, year, month, depositNotice ? 1 : 0)
         // Moms enligt upplåtelsetyp (ML 3 kap 2 § / 9 kap). Bostad → 0.
         const { vatAmount, totalAmount } = this.rentVat(
           proration.amount,

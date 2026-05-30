@@ -249,6 +249,9 @@ export class InvoicesService {
             },
           },
         },
+        // H3: hämta med rader direkt i transaktionen — bokföringen behöver dem,
+        // och vi slipper den extra findUnique-rundturen som fanns tidigare.
+        include: { lines: true },
       })
 
       await this.eventsService.record(
@@ -263,23 +266,21 @@ export class InvoicesService {
       return created
     })
 
-    // Fire-and-forget: create accounting journal entry
-    void this.prisma.invoice
-      .findUnique({ where: { id: invoice.id }, include: { lines: true } })
-      .then((invoiceWithLines) => {
-        if (!invoiceWithLines) return
-        return this.accountingService.createJournalEntryForInvoice(
-          invoiceWithLines,
-          organizationId,
-          actorId,
-        )
-      })
-      .catch((err) =>
-        this.logger.error(
-          'Accounting journal entry failed',
-          err instanceof Error ? err.stack : String(err),
-        ),
+    // H3 (BFL 5 kap 6 §): bokför intäktsverifikatet SYNKRONT med try/catch —
+    // samma mönster som AviseringService.bookRentNoticeRevenue. Tidigare var
+    // detta ett fire-and-forget `void ...catch(log)`: om bokföringen kastade
+    // (saknad kontoplan, DB-glapp) fanns fakturan kvar UTAN journalpost och
+    // utan återhämtning — ett BFL-gap. Saknad kontoplan loggas fortfarande
+    // (avin/fakturan är redan skapad) men felet blir nu synligt i request-
+    // kedjan i stället för att tystna i en bortglömd promise.
+    try {
+      await this.accountingService.createJournalEntryForInvoice(invoice, organizationId, actorId)
+    } catch (err) {
+      this.logger.error(
+        `Accounting journal entry failed for invoice ${invoice.invoiceNumber}`,
+        err instanceof Error ? err.stack : String(err),
       )
+    }
 
     return invoice
   }

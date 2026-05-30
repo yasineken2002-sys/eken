@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../../common/prisma/prisma.service'
-import type { CreateFrontendErrorDto } from './dto/error-log.dto'
+import { CreateFrontendErrorDto } from './dto/error-log.dto'
 
 type Severity = 'CRITICAL' | 'ERROR' | 'WARNING'
 type Source = 'API' | 'WEB' | 'PORTAL' | 'ADMIN'
