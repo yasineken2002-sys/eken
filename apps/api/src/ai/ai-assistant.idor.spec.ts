@@ -28,6 +28,14 @@ function makeService(conversationLookupResult: unknown) {
       update: jest.fn(),
     },
     aiMessage: { create: jest.fn() },
+    // confirmAction binder numera mot en pending action (SECURITY RISK 1).
+    // Mocka så att en matchande, konsumerbar action finns för det ägda fallet.
+    aiPendingAction: {
+      create: jest.fn().mockResolvedValue({}),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      findFirst: jest.fn().mockResolvedValue({ id: 'pa1' }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
   }
   const executeTool = jest.fn().mockResolvedValue({ success: true, message: 'ok' })
   const toolExecutor = { executeTool }

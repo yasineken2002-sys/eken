@@ -310,6 +310,15 @@ export class AiAssistantController {
           where: { id: conversation.id },
           data: { updatedAt: new Date() },
         })
+        // SECURITY (RISK 1): persistera den föreslagna åtgärden så confirm-
+        // endpointen kan binda bekräftelsen mot exakt denna åtgärd.
+        await this.aiService.recordPendingAction(
+          conversation.id,
+          organizationId,
+          user.sub,
+          pendingAction.toolName,
+          pendingAction.toolInput,
+        )
         send('pending_action', { conversationId: conversation.id, ...pendingAction })
       } else {
         // Spara user + assistant separat så assistant-raden kan få `blocks`
@@ -349,6 +358,7 @@ export class AiAssistantController {
 
   @Post('confirm')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   confirmAction(
     @OrgId() orgId: string,
     @CurrentUser() user: JwtPayload,
