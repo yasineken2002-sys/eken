@@ -7,6 +7,7 @@ import {
   IsDateString,
   Matches,
   Min,
+  Max,
 } from 'class-validator'
 import { InvoiceTemplate } from '@prisma/client'
 
@@ -84,4 +85,14 @@ export class UpdateOrganizationDto {
   @IsOptional()
   @Min(1)
   daysBeforeMoveInForFirstPayment?: number
+
+  // ── Bankavstämning ───────────────────────────────────────────────────────
+  // Intern kontrollgräns (#36): rader i PDF-bankavstämning vars belopp
+  // överstiger detta flaggas/avvisas + loggas. Default 5 MSEK. Absolut tak
+  // 50 MSEK (MAX_TX_AMOUNT) — högre värden clampas i resolveMaxTxAmount.
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  @Max(50_000_000)
+  maxBankTxAmount?: number
 }

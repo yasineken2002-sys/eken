@@ -8,6 +8,7 @@
 jest.mock('./pdf-statement-parser.service', () => ({
   PdfStatementParserService: class {},
   MAX_TX_AMOUNT: 50_000_000,
+  DEFAULT_MAX_BANK_TX_AMOUNT: 5_000_000,
 }))
 jest.mock('./reconciliation.service', () => ({ ReconciliationService: class {} }))
 

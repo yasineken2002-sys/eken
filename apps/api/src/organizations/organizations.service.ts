@@ -81,6 +81,7 @@ export class OrganizationsService {
         ...(dto.daysBeforeMoveInForFirstPayment != null
           ? { daysBeforeMoveInForFirstPayment: dto.daysBeforeMoveInForFirstPayment }
           : {}),
+        ...(dto.maxBankTxAmount != null ? { maxBankTxAmount: dto.maxBankTxAmount } : {}),
       },
     })
   }

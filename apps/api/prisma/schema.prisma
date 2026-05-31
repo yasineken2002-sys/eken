@@ -431,6 +431,13 @@ model Organization {
   invoiceTemplate      InvoiceTemplate?
   morningReportEnabled Boolean @default(false)
 
+  // Intern kontrollgräns (COSO) för PDF-bankavstämning: rader vars belopp
+  // överstiger detta avvisas och loggas vid AI-tolkning/confirm (flagga, ej
+  // hårt stopp av importen). Default 5 MSEK — en enskild hyresinbetalning
+  // överstiger praktiskt taget aldrig detta. Höjs per org vid legitima stora
+  // kommersiella transaktioner. Absolut tak är MAX_TX_AMOUNT (50 MSEK) i koden.
+  maxBankTxAmount      Decimal @default(5000000) @db.Decimal(14, 2)
+
   // ── Hyresavi-inställningar ────────────────────────────────────────────────
   // Antal dagar före tillträdesdag som deposition + första hyresavi förfaller.
   // Standard 7 dagar — Hyresgästföreningens rekommendation. Hyresvärden kan

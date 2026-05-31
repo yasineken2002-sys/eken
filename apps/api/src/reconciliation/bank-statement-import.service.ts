@@ -12,6 +12,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import {
   PdfStatementParserService,
   MAX_TX_AMOUNT,
+  DEFAULT_MAX_BANK_TX_AMOUNT,
   type ParsedBankStatement,
   type ParsedTransaction,
 } from './pdf-statement-parser.service'
@@ -70,9 +71,11 @@ export class BankStatementImportService {
       },
     })
 
+    const maxTxAmount = await this.resolveMaxTxAmount(organizationId)
+
     let parsed: ParsedBankStatement
     try {
-      parsed = await this.parser.parse(fileBuffer, organizationId, userId)
+      parsed = await this.parser.parse(fileBuffer, organizationId, userId, maxTxAmount)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       await this.prisma.bankStatementImport.update({
@@ -138,9 +141,10 @@ export class BankStatementImportService {
       )
     }
 
+    const maxTxAmount = await this.resolveMaxTxAmount(organizationId)
     const finalTx: ParsedTransaction[] = Array.isArray(edited)
-      ? this.sanitizeEdited(edited)
-      : this.extractFromDraft(draft.parsedData)
+      ? this.sanitizeEdited(edited, maxTxAmount)
+      : this.extractFromDraft(draft.parsedData, maxTxAmount)
 
     // Endast inbetalningar (positiva belopp) ska skapa BankTransactions —
     // samma som CSV/BgMax-flödena. Uttag/avgifter visas i preview men
@@ -231,11 +235,27 @@ export class BankStatementImportService {
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────
-  private extractFromDraft(parsedData: Prisma.JsonValue | null): ParsedTransaction[] {
+  // Per-org beloppsrimlighetsgräns (#36). Default 5 MSEK via schema; clampas
+  // alltid till absolut tak (MAX_TX_AMOUNT, 50 MSEK) som defense-in-depth även
+  // om ett orimligt värde skulle ligga i DB. Saknas orgen används defaulten.
+  private async resolveMaxTxAmount(organizationId: string): Promise<number> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { maxBankTxAmount: true },
+    })
+    const configured = org ? Number(org.maxBankTxAmount) : DEFAULT_MAX_BANK_TX_AMOUNT
+    if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_MAX_BANK_TX_AMOUNT
+    return Math.min(configured, MAX_TX_AMOUNT)
+  }
+
+  private extractFromDraft(
+    parsedData: Prisma.JsonValue | null,
+    maxTxAmount: number = DEFAULT_MAX_BANK_TX_AMOUNT,
+  ): ParsedTransaction[] {
     if (!parsedData || typeof parsedData !== 'object' || Array.isArray(parsedData)) return []
     const obj = parsedData as Record<string, unknown>
     if (!Array.isArray(obj.transactions)) return []
-    return this.sanitizeEdited(obj.transactions as unknown[])
+    return this.sanitizeEdited(obj.transactions as unknown[], maxTxAmount)
   }
 
   // Saneras både för icke-redigerade drafts (via extractFromDraft) och för
@@ -244,7 +264,10 @@ export class BankStatementImportService {
   // SAMMA OCR-Luhn- och beloppsskydd som parserns validate(), annars kan en
   // MANAGER+ kringgå parser-skyddet genom att skicka en fabricerad OCR/belopp
   // i confirm-bodyn → fabricerad betalning bokförs (BFL 5 kap 6–7 §§).
-  private sanitizeEdited(edited: unknown[]): ParsedTransaction[] {
+  private sanitizeEdited(
+    edited: unknown[],
+    maxTxAmount: number = DEFAULT_MAX_BANK_TX_AMOUNT,
+  ): ParsedTransaction[] {
     const out: ParsedTransaction[] = []
     let strippedOcr = 0
     let flaggedAmounts = 0
@@ -257,7 +280,7 @@ export class BankStatementImportService {
       const amount = typeof amountRaw === 'number' ? amountRaw : parseFloat(String(amountRaw))
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
       if (!Number.isFinite(amount)) continue
-      if (Math.abs(amount) > MAX_TX_AMOUNT) {
+      if (Math.abs(amount) > maxTxAmount) {
         flaggedAmounts++
         continue
       }
