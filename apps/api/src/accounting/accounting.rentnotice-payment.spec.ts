@@ -14,12 +14,18 @@
 import { AccountingService } from './accounting.service'
 
 type Created = {
-  data: { date: Date; sourceId?: string; lines: { create: Array<Record<string, unknown>> } }
+  data: {
+    date: Date
+    sourceId?: string
+    description?: string
+    lines: { create: Array<Record<string, unknown>> }
+  }
 }
 
 function makeService(opts?: {
   existing?: unknown
   accounts?: Array<{ id: string; number: number }>
+  tenant?: { companyName: string | null; firstName: string | null; lastName: string | null } | null
 }) {
   const accounts = opts?.accounts ?? [
     { id: 'acc-1510', number: 1510 },
@@ -36,6 +42,13 @@ function makeService(opts?: {
       }),
     },
     account: { findMany: jest.fn().mockResolvedValue(accounts) },
+    // BFL 5 kap 7 § (#35): motpartsnamn slås upp via avi→tenant-relationen
+    // (org-scopad findFirst — FIX 2-mönstret).
+    rentNotice: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue(opts?.tenant !== undefined ? { tenant: opts.tenant } : null),
+    },
   }
   ;(prisma as unknown as { $transaction: unknown }).$transaction = (cb: (tx: unknown) => unknown) =>
     cb(prisma)
@@ -185,6 +198,56 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
     )
     expect(result).toMatchObject({ id: 'je-existing' })
     expect(prisma.journalEntry.create).not.toHaveBeenCalled()
+  })
+
+  // BFL 5 kap 7 § (#35) — motparten ska framgå direkt i beskrivningen.
+  it('företagshyresgäst: motpartsnamn (companyName) skrivs i beskrivningen', async () => {
+    const { service, getCreated } = makeService({
+      tenant: { companyName: 'Hyresgäst AB', firstName: null, lastName: null },
+    })
+    await service.createJournalEntryForRentNoticeManualPayment(
+      baseNotice,
+      10_000,
+      paidAt,
+      'BANK',
+      'org-1',
+      null,
+    )
+    expect(getCreated()!.data.description).toBe(
+      'Inbetalning hyresavi AVI-2026-06-0001 (Hyresgäst AB)',
+    )
+  })
+
+  it('privatperson: faller tillbaka till för- och efternamn', async () => {
+    const { service, getCreated } = makeService({
+      tenant: { companyName: null, firstName: 'Anna', lastName: 'Andersson' },
+    })
+    await service.createJournalEntryForRentNoticeManualPayment(
+      baseNotice,
+      10_000,
+      paidAt,
+      'BANK',
+      'org-1',
+      null,
+    )
+    expect(getCreated()!.data.description).toBe(
+      'Inbetalning hyresavi AVI-2026-06-0001 (Anna Andersson)',
+    )
+  })
+
+  it('namn saknas helt → ingen tom parentes (beskrivning oförändrad)', async () => {
+    const { service, getCreated } = makeService({
+      tenant: { companyName: null, firstName: null, lastName: null },
+    })
+    await service.createJournalEntryForRentNoticeManualPayment(
+      baseNotice,
+      10_000,
+      paidAt,
+      'BANK',
+      'org-1',
+      null,
+    )
+    expect(getCreated()!.data.description).toBe('Inbetalning hyresavi AVI-2026-06-0001')
   })
 
   it('saknat likvidkonto (1910) → null, ingen halv post', async () => {
