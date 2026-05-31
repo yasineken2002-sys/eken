@@ -16,6 +16,7 @@
 jest.mock('./pdf-statement-parser.service', () => ({
   PdfStatementParserService: class {},
   MAX_TX_AMOUNT: 50_000_000,
+  DEFAULT_MAX_BANK_TX_AMOUNT: 5_000_000,
 }))
 jest.mock('./reconciliation.service', () => ({ ReconciliationService: class {} }))
 jest.mock('../common/utils/file-validation', () => ({
@@ -31,6 +32,7 @@ type AnyFn = jest.Mock
 interface PrismaMock {
   bankStatementImport: { create: AnyFn; update: AnyFn; findFirst: AnyFn }
   bankTransaction: { findFirst: AnyFn; create: AnyFn }
+  organization: { findUnique: AnyFn }
 }
 
 function makePrismaMock(): PrismaMock {
@@ -41,6 +43,8 @@ function makePrismaMock(): PrismaMock {
       findFirst: jest.fn(),
     },
     bankTransaction: { findFirst: jest.fn(), create: jest.fn() },
+    // #36: resolveMaxTxAmount slår upp org-gränsen (default 5 MSEK).
+    organization: { findUnique: jest.fn().mockResolvedValue({ maxBankTxAmount: 5_000_000 }) },
   }
 }
 

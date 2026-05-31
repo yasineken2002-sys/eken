@@ -18,11 +18,15 @@ const PARSER_MODEL = AI_MODELS.VISION_CONTRACT
 // realistiska kontoutdrag; vi sätter 8k för marginal.
 const MAX_TOKENS = 8192
 
-// Övre rimlighetsgräns per transaktion. En enskild hyresinbetalning/avi
-// överstiger praktiskt taget aldrig detta; ett belopp däröver är antingen
+// Absolut övre rimlighetsgräns per transaktion (hård takgräns). Den per-org
+// konfigurerbara gränsen (Organization.maxBankTxAmount, #36) är den operativa
+// gränsen och får aldrig överstiga detta tak. Ett belopp däröver är antingen
 // en feltolkning eller ett injection-försök → raden avvisas och loggas.
 // (SECURITY RISK 2 — fabricerade belopp får inte nå bokföringen.)
 export const MAX_TX_AMOUNT = 50_000_000
+
+// Default per-org-gräns när inget annat konfigurerats (matchar schema-default).
+export const DEFAULT_MAX_BANK_TX_AMOUNT = 5_000_000
 
 // SECURITY (RISK 2): instruktionshierarki. PDF:en är 100 % motpartskontrollerad
 // indata. Den läggs i user-turn som ren data och får ALDRIG tolkas som
@@ -93,6 +97,9 @@ export class PdfStatementParserService {
     fileBuffer: Buffer,
     organizationId: string,
     userId: string | null,
+    // Per-org rimlighetsgräns (#36). Default = DEFAULT_MAX_BANK_TX_AMOUNT så
+    // anropare utan org-konfig (och äldre tester) får samma skydd som förut.
+    maxTxAmount: number = DEFAULT_MAX_BANK_TX_AMOUNT,
   ): Promise<ParsedBankStatement> {
     const apiKey = this.config.get<string>('ANTHROPIC_API_KEY')
     if (!apiKey) {
@@ -206,7 +213,7 @@ export class PdfStatementParserService {
       )
     }
 
-    return this.validate(parsed)
+    return this.validate(parsed, maxTxAmount)
   }
 
   // Strikt validering via Zod (SECURITY RISK 2). AI:n kan i kantfall — eller
@@ -218,7 +225,10 @@ export class PdfStatementParserService {
   //   • avvikelser loggas för manuell granskning
   // Resultatet är ALLTID en overifierad DRAFT — inga BankTransaction-rader
   // skapas förrän en människa bekräftar via confirmImport (human-in-the-loop).
-  private validate(input: unknown): ParsedBankStatement {
+  private validate(
+    input: unknown,
+    maxTxAmount: number = DEFAULT_MAX_BANK_TX_AMOUNT,
+  ): ParsedBankStatement {
     const envelope = PdfStatementParserService.EnvelopeSchema.safeParse(input)
     if (!envelope.success) {
       throw new BadRequestException(
@@ -239,7 +249,8 @@ export class PdfStatementParserService {
       }
       const r = parsed.data
       // Belopp-rimlighet: avvisa absurda belopp (feltolkning eller injection).
-      if (Math.abs(r.amount) > MAX_TX_AMOUNT) {
+      // Gränsen är per-org konfigurerbar (#36); absolut tak är MAX_TX_AMOUNT.
+      if (Math.abs(r.amount) > maxTxAmount) {
         flaggedAmounts++
         continue
       }
@@ -264,7 +275,7 @@ export class PdfStatementParserService {
     if (droppedRows || flaggedAmounts || strippedOcr) {
       this.logger.warn(
         `[PDF-parse] avvikelser vid validering: ${droppedRows} ogiltiga rader, ` +
-          `${flaggedAmounts} belopp över ${MAX_TX_AMOUNT} avvisade, ` +
+          `${flaggedAmounts} belopp över ${maxTxAmount} avvisade, ` +
           `${strippedOcr} ogiltiga OCR nollställda. Granska DRAFT manuellt.`,
       )
     }
