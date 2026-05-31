@@ -271,6 +271,35 @@ export class RentIncreasesService {
     if (ri.status !== 'NOTICE_SENT') {
       throw new BadRequestException('Bara aviserade höjningar kan godkännas')
     }
+
+    // JB 12 kap 54 a § 3 st — tystnadens bindande verkan inträder först EFTER
+    // "den i meddelandet utsatta dagen" (invändningsfristen, minst 2 mån från
+    // meddelandedagen). En höjning får inte registreras som godkänd innan
+    // fristen löpt ut: hyresgästen har rätt att invända ända till sista dagen,
+    // och en för tidig ACCEPTED skulle dessutom blockera en senare giltig
+    // invändning (reject() kräver NOTICE_SENT) → hyresgästens 54 a §-rätt
+    // kringgås (#30). Frivillig tidig accept kräver en äkta, hyresgäst-
+    // initierad bekräftelse som systemet ännu inte kan ta emot — den vägen
+    // skjuts till en framtida portal-kanal (BankID), se utredning i #30.
+    if (!ri.noticeDate) {
+      throw new BadRequestException(
+        'Invändningsfristen kan inte beräknas: aviseringen saknar meddelandedatum. ' +
+          'Skicka aviseringen på nytt innan höjningen godkänns.',
+      )
+    }
+    const objectionDeadline = computeObjectionDeadline(ri.noticeDate)
+    const today = startOfDay(new Date())
+    // Strikt > : på själva den utsatta dagen får hyresgästen fortfarande invända.
+    if (today <= objectionDeadline) {
+      const earliest = addDays(objectionDeadline, 1)
+      throw new BadRequestException(
+        `Hyreshöjningen kan tidigast godkännas ${isoDate(earliest)} — dagen efter ` +
+          `invändningsfristen (${isoDate(objectionDeadline)}). JB 12 kap 54 a § 3 st: ` +
+          'höjningen blir bindande genom hyresgästens tystnad först efter den utsatta dagen. ' +
+          'Invänder hyresgästen dessförinnan registreras det i stället som nekad.',
+      )
+    }
+
     return this.prisma.rentIncrease.update({
       where: { id },
       data: { status: 'ACCEPTED', respondedAt: new Date() },

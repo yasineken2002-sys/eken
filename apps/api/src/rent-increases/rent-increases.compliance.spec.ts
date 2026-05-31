@@ -47,7 +47,12 @@ describe('Hyreslagen-compliance: rent-increases (JB 12 kap 54 a §)', () => {
     billingEmail: string | null
   }>
 
-  function makeService(opts: { effectiveDate: string; org?: OrgOverrides; riStatus?: string }) {
+  function makeService(opts: {
+    effectiveDate: string
+    org?: OrgOverrides
+    riStatus?: string
+    noticeDate?: string | null
+  }) {
     const ri = {
       id: 'ri-1',
       status: opts.riStatus ?? 'DRAFT',
@@ -58,7 +63,8 @@ describe('Hyreslagen-compliance: rent-increases (JB 12 kap 54 a §)', () => {
       increasePercent: 10,
       reason: 'Underhåll och uppgradering',
       effectiveDate: new Date(opts.effectiveDate),
-      noticeDate: null,
+      noticeDate:
+        opts.noticeDate !== undefined ? (opts.noticeDate ? new Date(opts.noticeDate) : null) : null,
       lease: {
         tenant: {
           type: 'INDIVIDUAL',
@@ -142,6 +148,72 @@ describe('Hyreslagen-compliance: rent-increases (JB 12 kap 54 a §)', () => {
           data: expect.objectContaining({ status: 'NOTICE_SENT' }),
         }),
       )
+    })
+  })
+
+  // ── accept(): hård fristkontroll (54 a § 3 st, väg A) — #30 ───────────────
+
+  describe('accept() — invändningsfrist (54 a § 3 st, #30)', () => {
+    beforeAll(() => {
+      jest.useFakeTimers()
+      // "Idag" = 2026-07-29 (exakt på deadline för noticeDate 2026-05-29).
+      jest.setSystemTime(new Date('2026-07-29T10:00:00Z'))
+    })
+    afterAll(() => {
+      jest.useRealTimers()
+    })
+
+    it('blockerar accept FÖRE fristens utgång (idag = deadline, strikt >)', async () => {
+      // noticeDate 2026-05-29 → deadline 2026-07-29 = idag → får inte godkännas än.
+      const { service, prisma } = makeService({
+        effectiveDate: '2026-09-01',
+        riStatus: 'NOTICE_SENT',
+        noticeDate: '2026-05-29',
+      })
+      await expect(service.accept('ri-1', 'org-1')).rejects.toThrow(/54 a §/)
+      // Ingen status-uppdatering fick ske.
+      expect(prisma.rentIncrease.update).not.toHaveBeenCalled()
+    })
+
+    it('felmeddelandet anger exakt tidigaste godkännandedatum (deadline + 1)', async () => {
+      const { service } = makeService({
+        effectiveDate: '2026-09-01',
+        riStatus: 'NOTICE_SENT',
+        noticeDate: '2026-05-29',
+      })
+      await expect(service.accept('ri-1', 'org-1')).rejects.toThrow(/2026-07-30/)
+    })
+
+    it('tillåter accept dagen EFTER fristens utgång', async () => {
+      // noticeDate 2026-05-27 → deadline 2026-07-27 → idag 2026-07-29 > deadline → OK.
+      const { service, prisma } = makeService({
+        effectiveDate: '2026-09-01',
+        riStatus: 'NOTICE_SENT',
+        noticeDate: '2026-05-27',
+      })
+      await service.accept('ri-1', 'org-1')
+      expect(prisma.rentIncrease.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'ACCEPTED' }) }),
+      )
+    })
+
+    it('avvisar accept när noticeDate saknas (ingen krasch/felberäkning)', async () => {
+      const { service, prisma } = makeService({
+        effectiveDate: '2026-09-01',
+        riStatus: 'NOTICE_SENT',
+        noticeDate: null,
+      })
+      await expect(service.accept('ri-1', 'org-1')).rejects.toThrow(/meddelandedatum/)
+      expect(prisma.rentIncrease.update).not.toHaveBeenCalled()
+    })
+
+    it('avvisar accept för icke-aviserade höjningar (status != NOTICE_SENT)', async () => {
+      const { service } = makeService({
+        effectiveDate: '2026-09-01',
+        riStatus: 'DRAFT',
+        noticeDate: '2026-05-27',
+      })
+      await expect(service.accept('ri-1', 'org-1')).rejects.toThrow(/aviserade/)
     })
   })
 
