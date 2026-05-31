@@ -423,6 +423,53 @@ export class AccountingService {
     })
   }
 
+  // BFL 5 kap 7 §: verifikationen ska ange motparten. Fakturanumret räcker
+  // tekniskt (motpart kan slås upp via fakturakedjan), men BFN:s allmänna råd
+  // till 5 kap 7 § anger att motparten bör framgå direkt om det kan ske utan
+  // svårigheter. Vi hämtar därför motpartsnamnet via faktura-/avi→tenant-
+  // relationen och skriver in det i betalningsverifikatets beskrivning.
+  //
+  // Selekterar endast namnfälten (inga känsliga uppgifter). Företagsnamn först,
+  // annars privatpersonens för-/efternamn. Saknas namn helt returneras null →
+  // beskrivningen lämnas utan motpartssuffix (ingen tom parentes).
+  private formatCounterparty(
+    tenant: {
+      companyName: string | null
+      firstName: string | null
+      lastName: string | null
+    } | null,
+  ): string | null {
+    if (!tenant) return null
+    const name =
+      tenant.companyName?.trim() || `${tenant.firstName ?? ''} ${tenant.lastName ?? ''}`.trim()
+    return name || null
+  }
+
+  // Org-scopad findFirst (inte findUnique på enbart id) — FIX 2-mönstret mot
+  // multi-tenant-läckage. Anroparna validerar redan id mot org, men scopningen
+  // hålls konsekvent i fall metoderna återanvänds från ett mindre strikt kontext.
+  private async counterpartyForInvoice(
+    invoiceId: string,
+    organizationId: string,
+  ): Promise<string | null> {
+    const row = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      select: { tenant: { select: { companyName: true, firstName: true, lastName: true } } },
+    })
+    return this.formatCounterparty(row?.tenant ?? null)
+  }
+
+  private async counterpartyForRentNotice(
+    noticeId: string,
+    organizationId: string,
+  ): Promise<string | null> {
+    const row = await this.prisma.rentNotice.findFirst({
+      where: { id: noticeId, organizationId },
+      select: { tenant: { select: { companyName: true, firstName: true, lastName: true } } },
+    })
+    return this.formatCounterparty(row?.tenant ?? null)
+  }
+
   // BAS-bokning vid bankbetalning: 1930 (Företagskonto) Debet → 1510 (Kundfordringar) Kredit.
   // Idempotent — sourceId = bankTransaction.id, så samma transaktion kan inte
   // bokas två gånger även om matchen ångras och görs om.
@@ -446,10 +493,12 @@ export class AccountingService {
     const amount = Number(transaction.amount)
     if (amount <= 0) return null
 
+    const counterparty = await this.counterpartyForInvoice(invoice.id, organizationId)
+
     return this.createNumberedEntry({
       organizationId,
       date: transaction.date,
-      description: `Inbetalning faktura ${invoice.invoiceNumber}`,
+      description: `Inbetalning faktura ${invoice.invoiceNumber}${counterparty ? ` (${counterparty})` : ''}`,
       source: 'PAYMENT',
       sourceId: transaction.id,
       createdById,
@@ -595,10 +644,12 @@ export class AccountingService {
 
     void notice.totalAmount
 
+    const counterparty = await this.counterpartyForRentNotice(notice.id, organizationId)
+
     return this.createNumberedEntry({
       organizationId,
       date: transaction.date,
-      description: `Inbetalning hyresavi ${notice.noticeNumber}`,
+      description: `Inbetalning hyresavi ${notice.noticeNumber}${counterparty ? ` (${counterparty})` : ''}`,
       source: 'PAYMENT',
       sourceId: transaction.id,
       createdById,
@@ -661,10 +712,12 @@ export class AccountingService {
 
     const sourceId = `rent-notice-payment:${notice.id}`
 
+    const counterparty = await this.counterpartyForRentNotice(notice.id, organizationId)
+
     return this.createNumberedEntry({
       organizationId,
       date: paidAt,
-      description: `Inbetalning hyresavi ${notice.noticeNumber}`,
+      description: `Inbetalning hyresavi ${notice.noticeNumber}${counterparty ? ` (${counterparty})` : ''}`,
       source: 'PAYMENT',
       sourceId,
       createdById,
