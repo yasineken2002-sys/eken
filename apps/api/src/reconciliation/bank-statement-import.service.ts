@@ -82,6 +82,13 @@ export class BankStatementImportService {
       throw err
     }
 
+    // BFL 5 kap 11 §: bevara AI:ns råtolkning immutabelt i originalParsedData
+    // (sätts EN gång här, rörs aldrig igen) parallellt med den redigerbara
+    // preview-listan i parsedData. Identiska vid PARSED; divergerar om
+    // operatören redigerar innan confirm.
+    const transactionsJson = {
+      transactions: parsed.transactions,
+    } as unknown as Prisma.InputJsonValue
     const updated = await this.prisma.bankStatementImport.update({
       where: { id: draft.id },
       data: {
@@ -90,7 +97,8 @@ export class BankStatementImportService {
         accountNumber: parsed.accountNumber,
         ...(parsed.periodStart ? { periodStart: new Date(parsed.periodStart) } : {}),
         ...(parsed.periodEnd ? { periodEnd: new Date(parsed.periodEnd) } : {}),
-        parsedData: { transactions: parsed.transactions } as unknown as Prisma.InputJsonValue,
+        originalParsedData: transactionsJson,
+        parsedData: transactionsJson,
         transactionCount: parsed.transactions.length,
       },
     })
@@ -188,13 +196,17 @@ export class BankStatementImportService {
       }
     }
 
+    // BFL 5 kap 11 §: skriv den bekräftade listan till confirmedData (immutabel,
+    // sätts EN gång här) — INTE över parsedData. originalParsedData (AI:ns
+    // råtolkning) och parsedData (granskat preview-tillstånd) lämnas orörda så att
+    // hela behandlingshistoriken AI → granskning → commit kan rekonstrueras.
     await this.prisma.bankStatementImport.update({
       where: { id },
       data: {
         status: 'CONFIRMED',
         confirmedAt: new Date(),
         ...(userId ? { confirmedById: userId } : {}),
-        parsedData: { transactions: finalTx } as unknown as Prisma.InputJsonValue,
+        confirmedData: { transactions: finalTx } as unknown as Prisma.InputJsonValue,
         transactionCount: finalTx.length,
         matchedCount: autoMatched,
         unmatchedCount: unmatched + duplicates,

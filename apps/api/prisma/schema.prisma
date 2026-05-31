@@ -1213,9 +1213,20 @@ model BankStatementImport {
   accountNumber   String?
   periodStart     DateTime? @db.Date
   periodEnd       DateTime? @db.Date
+  // BFL 5 kap 11 § (behandlingshistorik) + 7 kap 2 § (räkenskapsinformation, 7 år).
+  // AI:ns RÅTOLKNING — sätts EN gång när status blir PARSED, ändras ALDRIG.
+  // Gör att en granskare i efterhand kan se exakt vad Claude returnerade kontra
+  // vad operatören ändrade (diff mot confirmedData). Endast PDF/AI-flödet behöver
+  // detta: AI-tolkning är icke-deterministisk (modellberoende), så råtolkningen
+  // måste bevaras separat. CSV/BgMax är deterministisk maskinparsning där
+  // källfilen ensam utgör tillräcklig behandlingshistorik.
+  originalParsedData Json?
   // Sparas som JSON: { transactions: [{ date, description, ocr, amount, isIncoming }, ...] }
-  // Användaren får redigera i UI:t; den bekräftade arrayen skrivs hit innan commit.
+  // Granskat/redigerat preview-tillstånd som UI:t läser under PARSED-fasen.
   parsedData      Json?
+  // Den lista som FAKTISKT commitades till BankTransaction-rader — sätts EN gång
+  // när status blir CONFIRMED, ändras ALDRIG. Räkenskapsinformation (BFL 1 kap 2 § 9c).
+  confirmedData   Json?
   transactionCount Int                       @default(0)
 
   // Audit
