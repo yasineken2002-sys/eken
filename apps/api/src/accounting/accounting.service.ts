@@ -354,10 +354,22 @@ export class AccountingService {
     // intäkten är bostad (3911), lokal (3913), p-plats (3912) eller övrigt.
     let unitType: UnitType | null = null
     if (invoice.leaseId) {
-      const lease = await this.prisma.lease.findUnique({
-        where: { id: invoice.leaseId },
+      // Org-scopad findFirst (inte findUnique på enbart id) — FIX 2-mönstret mot
+      // cross-tenant-läsning. Ett leaseId från en annan org → null → fallback
+      // till default-intäktskonto (3914) i revenueAccountForUnitType.
+      const lease = await this.prisma.lease.findFirst({
+        where: { id: invoice.leaseId, organizationId },
         select: { unit: { select: { type: true } } },
       })
+      // leaseId var satt men ingen lease hittades i org → anomali (möjligt
+      // cross-tenant-försök eller felkopplad lease). Logga så det syns; intäkten
+      // faller tillbaka till 3914. Förväntat null (faktura utan lease) loggas ej.
+      if (!lease) {
+        this.logger.warn(
+          `[Accounting] Lease ${invoice.leaseId} hittades ej i org ${organizationId} ` +
+            `för faktura ${invoice.invoiceNumber} — intäkt bokförs mot 3914 (fallback).`,
+        )
+      }
       unitType = lease?.unit?.type ?? null
     }
     const revenueAccountNumber = revenueAccountForUnitType(unitType)
@@ -552,11 +564,20 @@ export class AccountingService {
     const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
 
     // Intäktskonto utifrån lägenhetens/lokalens typ (bostad 3911, lokal 3913,
-    // p-plats 3912, övrigt 3914).
-    const lease = await this.prisma.lease.findUnique({
-      where: { id: notice.leaseId },
+    // p-plats 3912, övrigt 3914). Org-scopad findFirst (FIX 2) — ett leaseId
+    // från en annan org → null → fallback till 3914.
+    const lease = await this.prisma.lease.findFirst({
+      where: { id: notice.leaseId, organizationId },
       select: { unit: { select: { type: true } } },
     })
+    // Anomali: hyresavins leaseId hittades ej i org → möjligt cross-tenant-
+    // försök eller felkopplad lease. Logga; intäkten faller tillbaka till 3914.
+    if (!lease) {
+      this.logger.warn(
+        `[Accounting] Lease ${notice.leaseId} hittades ej i org ${organizationId} ` +
+          `för hyresavi ${notice.noticeNumber} — intäkt bokförs mot 3914 (fallback).`,
+      )
+    }
     const revenueAccountNumber = revenueAccountForUnitType(lease?.unit?.type ?? null)
 
     const receivableId = accountByNumber.get(1510)

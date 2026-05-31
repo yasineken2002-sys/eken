@@ -82,7 +82,7 @@ describe('FIX 9 · PR 1 — BAS-kontoplan fastighet', () => {
         },
         account: { findMany: jest.fn().mockResolvedValue(accounts) },
         lease: {
-          findUnique: jest
+          findFirst: jest
             .fn()
             .mockResolvedValue(unitType ? { unit: { type: unitType } } : { unit: null }),
         },
@@ -130,6 +130,24 @@ describe('FIX 9 · PR 1 — BAS-kontoplan fastighet', () => {
 
     it('saknad lease/unit krediterar 3914 (fallback)', async () => {
       expect(await revenueAccountIdUsedFor(null)).toBe('acc-3914')
+    })
+
+    // #29 — lease-uppslaget är org-scopat (FIX 2, cross-tenant-läsrisk).
+    it('lease-uppslaget scopas på organisationen', async () => {
+      const { service, prisma } = makeService('APARTMENT')
+      await service.createJournalEntryForInvoice(invoice, 'org-1', 'user-1')
+      expect(prisma.lease.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'lease-1', organizationId: 'org-1' } }),
+      )
+    })
+
+    it('cross-org lease (findFirst → null) faller tillbaka till 3914', async () => {
+      const { service, prisma, getCreated } = makeService('APARTMENT')
+      // Simulera att leaseId tillhör en annan org → org-scopad findFirst ger null.
+      prisma.lease.findFirst.mockResolvedValueOnce(null)
+      await service.createJournalEntryForInvoice(invoice, 'org-1', 'user-1')
+      const lines = getCreated()?.data.lines.create ?? []
+      expect(lines.find((l) => l.credit != null)?.accountId).toBe('acc-3914')
     })
   })
 
