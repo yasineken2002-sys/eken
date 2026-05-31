@@ -202,9 +202,38 @@ export class NotificationsService implements OnModuleInit {
       include: { tenant: true, customer: true, organization: true },
     })
 
+    // Idempotensfönstret är dagen (lokal serverdag). Samma dedup som den
+    // borttagna sendOverdueReminders() hade (PR #27, H2) — den org-scopade
+    // varianten ärvde aldrig skyddet (#28).
+    const startOfDay = new Date()
+    startOfDay.setHours(0, 0, 0, 0)
+    const endOfDay = new Date(startOfDay)
+    endOfDay.setDate(endOfDay.getDate() + 1)
+
+    let sent = 0
+    let failed = 0
+    let skipped = 0
+
     for (const invoice of invoices) {
       const party = invoice.tenant ?? invoice.customer
       if (!party?.email) continue
+
+      // Idempotency-guard: hoppa över om en påminnelse redan loggats för denna
+      // faktura idag (dubbelklick, retry, dubbel cron-fire vid multi-replica)
+      // → undviker dubbla påminnelsemejl för samma faktura.
+      const alreadySent = await this.prisma.invoiceEvent.findFirst({
+        where: {
+          invoiceId: invoice.id,
+          type: 'REMINDER_SENT',
+          createdAt: { gte: startOfDay, lt: endOfDay },
+        },
+        select: { id: true },
+      })
+      if (alreadySent) {
+        skipped++
+        continue
+      }
+
       try {
         const tenantName = this.resolveTenantName(invoice)
         await this.mail.sendOverdueReminder({
@@ -216,10 +245,28 @@ export class NotificationsService implements OnModuleInit {
           organizationName: invoice.organization.name,
           accentColor: invoice.organization.invoiceColor ?? '#1a6b3c',
         })
+
+        // Logga REMINDER_SENT EFTER lyckat utskick → dedup-fönstret stängs för
+        // dagen. Append-only InvoiceEvent (samma mönster som det borttagna).
+        await this.prisma.invoiceEvent.create({
+          data: {
+            invoiceId: invoice.id,
+            type: 'REMINDER_SENT',
+            actorType: 'SYSTEM',
+            actorLabel: 'Automatisk påminnelse',
+            payload: {},
+          },
+        })
+        sent++
       } catch (err) {
-        this.logger.error(`Failed: ${String(err)}`)
+        this.logger.error(`Failed to send reminder for invoice ${invoice.id}: ${String(err)}`)
+        failed++
       }
     }
+
+    this.logger.log(
+      `Overdue reminders (org ${organizationId}): ${sent} sent, ${failed} failed, ${skipped} skipped`,
+    )
   }
 
   @Cron('0 7 * * 1-5', {
