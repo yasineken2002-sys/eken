@@ -1402,9 +1402,36 @@ model AiConversation {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages     AiMessage[]
+  pendingActions AiPendingAction[]
 
   @@index([organizationId])
   @@index([userId])
+}
+
+// SECURITY (AI-architect RISK 1): server-lagrad pending action. När AI:n
+// föreslår en action-tool persisteras den här (hash av toolName+toolInput).
+// confirm-endpointen MÅSTE matcha mot en icke-konsumerad, ej utgången rad —
+// annars kan en klient bekräfta en godtycklig åtgärd (t.ex. create_journal_entry
+// med egna belopp) som AI:n aldrig föreslog och kringgå human-in-the-loop.
+// Engångsbruk (consumedAt) + 5 min TTL + scope på (org, user, conversation).
+model AiPendingAction {
+  id             String    @id @default(uuid())
+  conversationId String
+  organizationId String
+  userId         String
+  toolName       String
+  // SHA-256 av kanonisk JSON av { toolName, toolInput }. Vi lagrar bara hashen
+  // — den faktiska inputen finns i AI-meddelandet och skickas av klienten.
+  toolInputHash  String
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([organizationId, userId])
+  @@index([expiresAt])
 }
 
 model AiMessage {
@@ -1534,6 +1561,12 @@ model AiTenantConversation {
   id        String   @id @default(uuid())
   tenantId  String
   title     String   @default("Ny konversation")
+  // SECURITY (RISK 1, tenant): pending-action-bindning. Sätts när AI:n föreslår
+  // en action-tool; confirm-endpointen kräver att hashen matchar och inte gått
+  // ut (5 min). Annars kan en hyresgäst POST:a confirm med request_termination
+  // utan att ha chattat. En aktiv pending action i taget per konversation.
+  pendingActionHash      String?
+  pendingActionExpiresAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

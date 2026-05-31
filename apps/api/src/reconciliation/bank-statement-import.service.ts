@@ -7,9 +7,11 @@ import {
 } from '@nestjs/common'
 import { Decimal } from '@prisma/client/runtime/library'
 import type { Prisma } from '@prisma/client'
+import { isValidOcrNumber } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import {
   PdfStatementParserService,
+  MAX_TX_AMOUNT,
   type ParsedBankStatement,
   type ParsedTransaction,
 } from './pdf-statement-parser.service'
@@ -224,8 +226,16 @@ export class BankStatementImportService {
     return this.sanitizeEdited(obj.transactions as unknown[])
   }
 
+  // Saneras både för icke-redigerade drafts (via extractFromDraft) och för
+  // klientskickade redigerade transaktioner vid confirm. SECURITY (RISK 2):
+  // detta är den FAKTISKA skrivvägen till BankTransaction — den måste tillämpa
+  // SAMMA OCR-Luhn- och beloppsskydd som parserns validate(), annars kan en
+  // MANAGER+ kringgå parser-skyddet genom att skicka en fabricerad OCR/belopp
+  // i confirm-bodyn → fabricerad betalning bokförs (BFL 5 kap 6–7 §§).
   private sanitizeEdited(edited: unknown[]): ParsedTransaction[] {
     const out: ParsedTransaction[] = []
+    let strippedOcr = 0
+    let flaggedAmounts = 0
     for (const raw of edited) {
       if (!raw || typeof raw !== 'object') continue
       const r = raw as Record<string, unknown>
@@ -235,10 +245,27 @@ export class BankStatementImportService {
       const amount = typeof amountRaw === 'number' ? amountRaw : parseFloat(String(amountRaw))
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
       if (!Number.isFinite(amount)) continue
+      if (Math.abs(amount) > MAX_TX_AMOUNT) {
+        flaggedAmounts++
+        continue
+      }
+      // OCR måste vara Luhn-mod10-giltig — annars nollställs den så den aldrig
+      // auto-matchar en avi. Samma kontroll som i parserns validate().
       const ocrVal = r.ocr
-      const ocr = typeof ocrVal === 'string' && ocrVal.trim().length > 0 ? ocrVal.trim() : null
+      let ocr: string | null = null
+      if (typeof ocrVal === 'string' && ocrVal.trim().length > 0) {
+        const candidate = ocrVal.trim()
+        if (isValidOcrNumber(candidate)) ocr = candidate
+        else strippedOcr++
+      }
       const isIncoming = typeof r.isIncoming === 'boolean' ? r.isIncoming : amount > 0
-      out.push({ date, description, ocr, amount, isIncoming })
+      out.push({ date, description: description.slice(0, 120), ocr, amount, isIncoming })
+    }
+    if (strippedOcr || flaggedAmounts) {
+      this.logger.warn(
+        `[PDF-import] confirm sanering: ${strippedOcr} ogiltiga OCR nollställda, ` +
+          `${flaggedAmounts} orimliga belopp avvisade.`,
+      )
     }
     return out
   }

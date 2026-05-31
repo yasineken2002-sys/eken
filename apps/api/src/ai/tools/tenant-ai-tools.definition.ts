@@ -134,4 +134,11 @@ export const TENANT_TOOLS: Anthropic.Tool[] = [
   },
 ]
 
+// PROMPT CACHING (cost): eget cache-segment för tools-blocket (se utförlig
+// motivering i ai-tools.definition.ts). Håll sist.
+{
+  const last = TENANT_TOOLS[TENANT_TOOLS.length - 1]
+  if (last) last.cache_control = { type: 'ephemeral' }
+}
+
 export const TENANT_ACTION_TOOLS = new Set(['create_maintenance_ticket', 'request_termination'])

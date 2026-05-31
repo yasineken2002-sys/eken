@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import * as crypto from 'crypto'
 import Anthropic from '@anthropic-ai/sdk'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -389,6 +390,31 @@ export interface ChatResponse {
   downloadUrl?: string
 }
 
+// Pending actions går ut efter 5 min — en bekräftelse måste ske i rimlig
+// anslutning till att AI:n föreslog åtgärden.
+export const PENDING_ACTION_TTL_MS = 5 * 60 * 1000
+
+// Kanonisk (nyckel-sorterad) JSON så att hashen blir deterministisk oavsett
+// fältordning. Används för att binda en confirm till exakt den åtgärd AI:n
+// föreslog (SECURITY RISK 1).
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize)
+  if (value && typeof value === 'object') {
+    return Object.keys(value as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, k) => {
+        acc[k] = canonicalize((value as Record<string, unknown>)[k])
+        return acc
+      }, {})
+  }
+  return value
+}
+
+export function hashPendingAction(toolName: string, toolInput: Record<string, unknown>): string {
+  const payload = JSON.stringify({ toolName, toolInput: canonicalize(toolInput) })
+  return crypto.createHash('sha256').update(payload).digest('hex')
+}
+
 export function requiresDoubleConfirmation(
   toolName: string,
   toolInput: Record<string, unknown>,
@@ -545,6 +571,10 @@ export class AiAssistantService {
         })
         await this.enrichDoubleConfirmContext(toolName, toolInput, organizationId)
         const needsDoubleConfirm = requiresDoubleConfirmation(toolName, toolInput)
+        // SECURITY (RISK 1): persistera den föreslagna åtgärden så confirm kan
+        // bindas mot den. Hashen täcker den enrichade toolInput:en som klienten
+        // får tillbaka och förväntas eka.
+        await this.recordPendingAction(conversation.id, organizationId, userId, toolName, toolInput)
         return {
           reply: '',
           conversationId: conversation.id,
@@ -630,6 +660,9 @@ export class AiAssistantService {
     if (!conversation) throw new NotFoundException('Konversation hittades inte')
 
     if (!confirmed) {
+      // Avböjd bekräftelse — konsumera ev. pending action så den inte kan
+      // återanvändas, men kräv inte att den finns (avbryt ska alltid funka).
+      await this.consumePendingAction(conversationId, organizationId, userId, toolName, toolInput)
       const cancelMsg = 'Okej, åtgärden avbröts. Kan jag hjälpa dig med något annat?'
       await this.prisma.aiMessage.create({
         data: { conversationId, role: 'assistant', content: cancelMsg },
@@ -641,9 +674,36 @@ export class AiAssistantService {
       return { reply: cancelMsg, conversationId }
     }
 
+    // SECURITY (RISK 1): bind bekräftelsen till en server-lagrad pending action.
+    // Konsumtionen är atomisk (engångsbruk) och avvisar utgångna/okända/redan
+    // använda åtgärder. Utan detta kunde en klient skicka ett godtyckligt
+    // toolName + toolInput (t.ex. create_journal_entry med egna belopp) som
+    // AI:n aldrig föreslog och kringgå human-in-the-loop-granskningen.
+    const consumed = await this.consumePendingAction(
+      conversationId,
+      organizationId,
+      userId,
+      toolName,
+      toolInput,
+    )
+    if (!consumed) {
+      throw new BadRequestException(
+        'Bekräftelsen är ogiltig eller har gått ut. Be assistenten föreslå åtgärden igen.',
+      )
+    }
+
     // Double confirmation: re-prompt with high-risk warning if not yet warned
     if (requiresDoubleConfirmation(toolName, toolInput) && !toolInput.alreadyWarned) {
       const doubleConfirmInput = { ...toolInput, alreadyWarned: true }
+      // Den första pending action är nu konsumerad — registrera en ny för den
+      // andra bekräftelsen (med alreadyWarned) så även den binds server-side.
+      await this.recordPendingAction(
+        conversationId,
+        organizationId,
+        userId,
+        toolName,
+        doubleConfirmInput,
+      )
       return {
         reply: '',
         conversationId,
@@ -703,6 +763,72 @@ export class AiAssistantService {
       conversationId,
       ...(result.downloadUrl ? { downloadUrl: result.downloadUrl } : {}),
     }
+  }
+
+  // ── Pending action-bindning (SECURITY RISK 1) ───────────────────────────────
+
+  /**
+   * Persistera en föreslagen action-tool så att en kommande confirm kan bindas
+   * mot exakt den åtgärden. Anropas av chat() och av SSE-controllern.
+   */
+  async recordPendingAction(
+    conversationId: string,
+    organizationId: string,
+    userId: string,
+    toolName: string,
+    toolInput: Record<string, unknown>,
+  ): Promise<void> {
+    // Städa bort konsumerade/utgångna rader för konversationen så tabellen inte
+    // växer obegränsat (lättviktig opportunistisk cleanup, ingen separat cron).
+    await this.prisma.aiPendingAction.deleteMany({
+      where: {
+        conversationId,
+        OR: [{ consumedAt: { not: null } }, { expiresAt: { lt: new Date() } }],
+      },
+    })
+    await this.prisma.aiPendingAction.create({
+      data: {
+        conversationId,
+        organizationId,
+        userId,
+        toolName,
+        toolInputHash: hashPendingAction(toolName, toolInput),
+        expiresAt: new Date(Date.now() + PENDING_ACTION_TTL_MS),
+      },
+    })
+  }
+
+  /**
+   * Atomiskt engångsbruk: markera en matchande, icke-konsumerad och ej utgången
+   * pending action som konsumerad. Returnerar true endast om EN rad konsumerades
+   * (race-säkert mot dubbla confirms — samma updateMany+count-mönster som FIX 6).
+   */
+  private async consumePendingAction(
+    conversationId: string,
+    organizationId: string,
+    userId: string,
+    toolName: string,
+    toolInput: Record<string, unknown>,
+  ): Promise<boolean> {
+    const hash = hashPendingAction(toolName, toolInput)
+    const match = await this.prisma.aiPendingAction.findFirst({
+      where: {
+        conversationId,
+        organizationId,
+        userId,
+        toolName,
+        toolInputHash: hash,
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    })
+    if (!match) return false
+    const claim = await this.prisma.aiPendingAction.updateMany({
+      where: { id: match.id, consumedAt: null },
+      data: { consumedAt: new Date() },
+    })
+    return claim.count === 1
   }
 
   // ── Conversation management ────────────────────────────────────────────────

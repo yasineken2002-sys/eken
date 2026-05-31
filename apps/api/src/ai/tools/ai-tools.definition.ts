@@ -923,6 +923,19 @@ export const TOOLS: Anthropic.Tool[] = [
   },
 ]
 
+// PROMPT CACHING (cost-optimering): markera sista verktyget med cache_control
+// så att hela tools-blocket (~57 verktyg, statiskt mellan requests) får ett
+// EGET cache-segment. Utan detta cachas tools bara som del av system-prefixet
+// — och eftersom system-blocket innehåller volatil portföljdata (ändras varje
+// gång orgens data ändras) cache-missar tools varje gång. Ett separat
+// tools-breakpoint ger cacheRead (~$0.30/Mtok) i stället för full input
+// (~$3/Mtok) på ~10k tool-tokens. Hålls sist; lägg nya verktyg FÖRE denna rad
+// eller flytta cache_control till det nya sista verktyget.
+{
+  const last = TOOLS[TOOLS.length - 1]
+  if (last) last.cache_control = { type: 'ephemeral' }
+}
+
 export const ACTION_TOOLS = new Set([
   'create_maintenance_ticket',
   'update_maintenance_status',
