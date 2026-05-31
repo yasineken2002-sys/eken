@@ -135,8 +135,13 @@ export class AccountingService {
     lines: JournalLineInput[]
     idempotencyWhere: Prisma.JournalEntryWhereInput
     include?: Prisma.JournalEntryInclude
+    // Valfri yttre transaktion. Anges när verifikatet måste skapas ATOMISKT
+    // tillsammans med andra DB-writes (t.ex. unmatch-flödet som måste rulla
+    // tillbaka statusändringar om bokföringen fallerar — BFL 5 kap 5 §/9 §).
+    // Utan tx öppnar metoden en egen transaktion som tidigare.
+    tx?: Prisma.TransactionClient
   }) {
-    return this.prisma.$transaction(async (tx) => {
+    const run = async (tx: Prisma.TransactionClient) => {
       // Idempotenskontrollen körs inuti transaktionen och matchar samma
       // (org, source, sourceId) som det unika DB-indexet — så app-kontroll och
       // DB-constraint är i synk (TOCTOU-säkert).
@@ -174,7 +179,8 @@ export class AccountingService {
         },
         ...(params.include ? { include: params.include } : {}),
       })
-    })
+    }
+    return params.tx ? run(params.tx) : this.prisma.$transaction(run)
   }
 
   async getAccounts(organizationId: string) {
@@ -681,8 +687,12 @@ export class AccountingService {
     transactionId: string,
     organizationId: string,
     createdById: string | null,
+    // Valfri yttre transaktion — när reverseringen måste ske atomiskt med en
+    // statusåterställning (unmatch). Utan den körs den fristående som förut.
+    tx?: Prisma.TransactionClient,
   ): Promise<void> {
-    const original = await this.prisma.journalEntry.findFirst({
+    const db = tx ?? this.prisma
+    const original = await db.journalEntry.findFirst({
       where: { organizationId, source: 'PAYMENT', sourceId: transactionId },
       include: { lines: true },
     })
@@ -711,6 +721,7 @@ export class AccountingService {
         source: 'PAYMENT',
         sourceId: `reversal:${transactionId}`,
       },
+      ...(tx ? { tx } : {}),
     })
   }
 
