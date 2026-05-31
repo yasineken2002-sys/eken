@@ -1050,43 +1050,57 @@ export class ReconciliationService {
       )
     }
 
-    // För hyresavier: PAID kan flippas tillbaka till SENT eftersom det inte
-    // finns någon kreditnota-mekanism för avier. Återställ paidAt/paidAmount
-    // så avi:n syns som obetald igen och nästa BgMax-import kan matcha den
-    // korrekt om betalningen återförs och kommer in på nytt.
-    if (transaction.matchedRentNotice && transaction.matchedRentNotice.status === 'PAID') {
-      await this.prisma.rentNotice.update({
-        where: { id: transaction.matchedRentNotice.id },
-        data: { status: 'SENT', paidAt: null, paidAmount: null },
-      })
-    }
+    const rentNoticeToReset =
+      transaction.matchedRentNotice && transaction.matchedRentNotice.status === 'PAID'
+        ? transaction.matchedRentNotice.id
+        : null
 
-    // Övriga statusar lämnas oförändrade — vi länkar bara bort
-    // banktransaktionen. updateMany med organizationId som defense-in-depth:
-    // även om transactionId från en annan org skulle läcka in (via bug i
-    // auth-laget) påverkar vi bara denna orgs data.
-    await this.prisma.bankTransaction.updateMany({
-      where: { id: transactionId, organizationId },
-      data: {
-        status: 'UNMATCHED',
-        invoiceId: null,
-        matchedRentNoticeId: null,
-        matchedAt: null,
-        matchedBy: null,
-      },
+    // BFL 5 kap 5 §/9 §: statusåterställningen och motverifikatet måste ske
+    // ATOMISKT. Tidigare kördes reverseJournalEntryForPayment som
+    // fire-and-forget EFTER att statusen flippats — om reverseringen fallerade
+    // (saknad kontoplan, DB-glapp) lämnades systemet inkonsistent: avi=SENT
+    // (obetald) men bokföring=PAID (verifikatet kvar). Nästa BgMax/PDF-import
+    // kunde då matcha avin igen och DUBBELBOKA intäkten. Nu körs allt i en
+    // transaktion — fallerar motverifikatet rullas hela unmatchen tillbaka
+    // (avin förblir PAID, banktransaktionen MATCHED) och operatören får felet.
+    // (Issue #33; samma awaited-mönster som faktura-bokföringen i PR #27 H3.)
+    await this.prisma.$transaction(async (tx) => {
+      // För hyresavier: PAID kan flippas tillbaka till SENT eftersom det inte
+      // finns någon kreditnota-mekanism för avier. Återställ paidAt/paidAmount
+      // så avi:n syns som obetald igen och nästa BgMax-import kan matcha den
+      // korrekt om betalningen återförs och kommer in på nytt.
+      if (rentNoticeToReset) {
+        await tx.rentNotice.update({
+          where: { id: rentNoticeToReset },
+          data: { status: 'SENT', paidAt: null, paidAmount: null },
+        })
+      }
+
+      // Övriga statusar lämnas oförändrade — vi länkar bara bort
+      // banktransaktionen. updateMany med organizationId som defense-in-depth:
+      // även om transactionId från en annan org skulle läcka in (via bug i
+      // auth-laget) påverkar vi bara denna orgs data.
+      await tx.bankTransaction.updateMany({
+        where: { id: transactionId, organizationId },
+        data: {
+          status: 'UNMATCHED',
+          invoiceId: null,
+          matchedRentNoticeId: null,
+          matchedAt: null,
+          matchedBy: null,
+        },
+      })
+
+      // Motverifikatet inom samma transaktion. reverseJournalEntryForPayment
+      // slår på sourceId=transaction.id (samma strategi för Invoice- och
+      // RentNotice-betalningar) och är idempotent (sourceId reversal:<id>) — en
+      // retry efter ett tidigare lyckat anrop dubbelbokför aldrig.
+      await this.accounting.reverseJournalEntryForPayment(transactionId, organizationId, userId, tx)
     })
 
-    // Skapa motverifikat (utanför transaktionen — bokföringen får aldrig
-    // blockera själva unmatchen). reverseJournalEntryForPayment slår på
-    // sourceId=transaction.id och fungerar för både Invoice- och
-    // RentNotice-betalningar (vi använder samma sourceId-strategi).
-    try {
-      await this.accounting.reverseJournalEntryForPayment(transactionId, organizationId, userId)
-    } catch (err) {
-      this.logger.error(
-        'Accounting reversal failed',
-        err instanceof Error ? err.stack : String(err),
-      )
-    }
+    this.logger.log(
+      `[BFL] Avmatchade banktransaktion ${transactionId} (org ${organizationId}) — ` +
+        `status återställd och motverifikat bokfört atomiskt.`,
+    )
   }
 }
