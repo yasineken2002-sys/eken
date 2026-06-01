@@ -39,6 +39,36 @@ async function unwrap<T>(
   return body.data as T
 }
 
+export interface RegisteredOrg {
+  email: string
+  password: string
+}
+
+/**
+ * Registrerar enbart en HELT FÄRSK organisation + ägare via API:t och returnerar
+ * inloggningsuppgifter — ingen fastighet/enhet/kontrakt. Används av flöden som
+ * bygger upp grunddatan via UI:t (och därför vill starta från en tom org).
+ */
+export async function registerOrg(request: APIRequestContext): Promise<RegisteredOrg> {
+  const stamp = Date.now()
+  const email = `e2e.landlord+${stamp}@eveno.test`
+  const password = 'TestE2e123!'
+  await unwrap(
+    await request.post(`${API}/auth/register`, {
+      data: {
+        email,
+        password,
+        firstName: 'E2E',
+        lastName: 'Hyresvärd',
+        organizationName: `E2E Fastigheter ${stamp}`,
+        acceptTerms: true,
+      },
+    }),
+    'Registrering',
+  )
+  return { email, password }
+}
+
 export async function seedActiveLease(request: APIRequestContext): Promise<SeededOrg> {
   // Unik identitet per körning. (Date.now här är OK — vanlig Node-testkod.)
   const stamp = Date.now()
