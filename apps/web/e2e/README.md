@@ -5,11 +5,12 @@ webbläsare → Vite-proxy → NestJS-API → Postgres. Till skillnad från enhe
 RTL-testerna kör de mot en levande stack och fångar regressioner som bara syns
 när alla lager pratar med varandra.
 
-I denna första iteration finns **ett** flöde:
+Flöden som täcks:
 
-| Fil                     | Flöde                                                              |
-| ----------------------- | ------------------------------------------------------------------ |
-| `avi-paid-flow.spec.ts` | Logga in → generera hyresavi → markera betald → verifiera "Betald" |
+| Fil                        | Flöde                                                                          |
+| -------------------------- | ------------------------------------------------------------------------------ |
+| `create-base-data.spec.ts` | Logga in → skapa fastighet → enhet → hyresgäst + kontrakt → verifiera "Aktivt" |
+| `avi-paid-flow.spec.ts`    | Logga in → generera hyresavi → markera betald → verifiera "Betald"             |
 
 ## Förutsättningar
 
@@ -43,12 +44,23 @@ npm run test:e2e:report   # öppna senaste HTML-rapporten
 ## Hur testdatan sätts upp
 
 `helpers/seed.ts` skapar en **helt färsk organisation per körning** (unik
-e-post) via det riktiga API:t och bygger kedjan
-`Organisation → Fastighet → Enhet → Hyresgäst → AKTIVT kontrakt`. Eftersom varje
-körning är isolerad behövs ingen separat test-databas och inga andra orgs data
-påverkas. Avin genereras för en period två månader bak, så att den alltid är
-förfallen — då går den att markera betald direkt utan den asynkrona skicka-vägen
-(PDF-rendering i en Bull-worker), vilket håller testet snabbt och stabilt.
+e-post) via det riktiga API:t. Eftersom varje körning är isolerad behövs ingen
+separat test-databas och inga andra orgs data påverkas. Två varianter:
+
+- `registerOrg()` — registrerar bara en tom org (ägare + inloggning). Används av
+  `create-base-data.spec.ts` som bygger all grunddata via UI:t.
+- `seedActiveLease()` — registrerar org OCH provisionerar
+  `Fastighet → Enhet → Hyresgäst → AKTIVT kontrakt` via API, så att
+  `avi-paid-flow.spec.ts` kan fokusera på avi-flödet.
+
+**Deterministisk hantering av async-beroenden:**
+
+- _avi-flödet_: avin genereras för en period två månader bak → alltid förfallen,
+  så den kan markeras betald direkt utan den asynkrona skicka-vägen (PDF i en
+  Bull-worker).
+- _kontrakts-flödet_: "Skapa & aktivera direkt" gör DRAFT → ACTIVE synkront i
+  samma request; välkomstmejl och kontrakts-PDF köas i bakgrunden och påverkar
+  inte statusen, så "Aktivt" syns direkt utan att vänta på någon worker.
 
 > **Obs:** seedade test-organisationer ligger kvar i dev-databasen efter
 > körningen. Det är ofarligt (egna, isolerade orgs) men kan städas vid behov.
