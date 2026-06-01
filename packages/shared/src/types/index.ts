@@ -255,6 +255,10 @@ export interface Invoice {
   ocrNumber?: string // Auto-genererat Luhn-validerat OCR
   reference?: string // OCR/Referensnummer
   notes?: string
+  // Synligt fel vid misslyckat e-postutskick. Sätts av processInvoiceSendJob,
+  // nollställs vid lyckat utskick. Statusen förblir DRAFT — fältet (inte en
+  // FAILED-status) bär felet, samma mönster som RentNotice.sendError.
+  sendError?: string | null
   trackingToken: string
   createdAt: string
   updatedAt: string
