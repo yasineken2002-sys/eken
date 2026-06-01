@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Link, Outlet, NavLink, useLocation } from 'react-router-dom'
+import { Link, Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { TenantAiChat, TenantAiFab } from '@/features/ai/TenantAiChat'
+import { logoutSession } from '@/api/portal.api'
+import { useSessionStore } from '@/store/session.store'
 import styles from './PortalLayout.module.css'
 
-function PortalFooter() {
+function PortalFooter({ onLogout }: { onLogout: () => void }) {
   const year = new Date().getFullYear()
   return (
     <footer className={styles.footer}>
+      <button type="button" className={styles.logoutButton} onClick={onLogout}>
+        Logga ut
+      </button>
       <p className={styles.footerCopy}>© {year} Eveno AB</p>
       <div className={styles.footerLinks}>
         <Link to="/legal/villkor">Användarvillkor</Link>
@@ -121,8 +126,21 @@ const NAV_ITEMS: { to: string; label: string; icon: React.ReactNode; end: boolea
 
 export function PortalLayout() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const sessionToken = useSessionStore((s) => s.sessionToken)
+  const clearSession = useSessionStore((s) => s.clearSession)
   const [aiOpen, setAiOpen] = useState(false)
   const [initialMessage, setInitialMessage] = useState<string | undefined>()
+
+  const handleLogout = async () => {
+    if (sessionToken) {
+      // Bästa möjliga ansträngning att invalidera token i backend — vi loggar
+      // ut lokalt oavsett om anropet lyckas.
+      await logoutSession(sessionToken).catch(() => undefined)
+    }
+    clearSession()
+    navigate('/login', { replace: true })
+  }
 
   // Lyssna på custom event från Dashboard-chips: ask-ai → öppna chatten med
   // en förifylld fråga.
@@ -145,7 +163,7 @@ export function PortalLayout() {
     <div className={styles.shell}>
       <main className={styles.main}>
         <Outlet />
-        <PortalFooter />
+        <PortalFooter onLogout={() => void handleLogout()} />
       </main>
 
       <TenantAiFab onClick={() => setAiOpen(true)} hidden={aiOpen} />

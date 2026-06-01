@@ -54,7 +54,7 @@ export function NewsPage() {
 
   if (isLoading) return <Spinner size="md" label="Laddar nyheter..." />
   if (isError || !data) {
-    return <ErrorCard isUnderConstruction onRetry={() => void refetch()} />
+    return <ErrorCard onRetry={() => void refetch()} />
   }
 
   return (

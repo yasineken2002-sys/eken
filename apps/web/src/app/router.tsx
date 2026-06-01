@@ -52,7 +52,6 @@ import { AviseringPage } from '../features/avisering/AviseringPage'
 import { CollectionsPage } from '../features/collections/CollectionsPage'
 import { InspectionsPage } from '../features/inspections/InspectionsPage'
 import { MaintenancePlanPage } from '../features/maintenance-plan/MaintenancePlanPage'
-import { TenantPortalPage } from '../features/tenant-portal/TenantPortalPage'
 import { NotificationsPage } from '../features/notifications/NotificationsPage'
 import { NewsPage } from '../features/news/NewsPage'
 import { MessagesPage } from '../features/messages/MessagesPage'
@@ -80,17 +79,6 @@ function redirectIfAuthenticated(): void {
 // ── Rot ──────────────────────────────────────────────────────────────────────
 
 const rootRoute = createRootRoute({ component: RootLayout })
-
-// ── Hyresgästportal — helt utanför app-skalet, ingen auth ───────────────────
-
-const portalRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/portal/$token',
-  component: function PortalRoute() {
-    const { token } = portalRoute.useParams()
-    return <TenantPortalPage token={token} />
-  },
-})
 
 // ── Auth-flöden ──────────────────────────────────────────────────────────────
 
@@ -321,7 +309,6 @@ const catchAllRoute = createRoute({
 // ── Routerträd ───────────────────────────────────────────────────────────────
 
 const routeTree = rootRoute.addChildren([
-  portalRoute,
   loginRoute,
   registerRoute,
   forgotPasswordRoute,

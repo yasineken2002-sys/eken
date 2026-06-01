@@ -210,9 +210,7 @@ export function MaintenancePage() {
       </div>
 
       {isLoading && <Spinner size="md" label="Laddar ärenden..." />}
-      {(isError || (!data && !isLoading)) && (
-        <ErrorCard isUnderConstruction onRetry={() => void refetch()} />
-      )}
+      {(isError || (!data && !isLoading)) && <ErrorCard onRetry={() => void refetch()} />}
 
       {data && (
         <div className={styles.list}>

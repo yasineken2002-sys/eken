@@ -123,7 +123,7 @@ export function DashboardPage() {
   }
 
   if (isError || !data) {
-    return <ErrorCard isUnderConstruction onRetry={() => void refetch()} />
+    return <ErrorCard onRetry={() => void refetch()} />
   }
 
   const { tenant, activeLease, overdueInvoices, upcomingInvoice, openMaintenanceTickets } = data
