@@ -15,6 +15,7 @@ import { defineConfig, devices } from '@playwright/test'
  */
 
 const WEB_URL = 'http://localhost:5173'
+const PORTAL_URL = 'http://localhost:5174'
 const API_HEALTH_URL = 'http://localhost:3000/v1/health'
 
 export default defineConfig({
@@ -24,7 +25,11 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  // Live-stack mot en dev-server: första anropet efter att API:t legat idle kan
+  // svara långsamt/transient-faila (nest-watch + Prisma-pool värms upp), vilket
+  // kan fälla en seed (beforeAll). Ett omförsök absorberar den kallstarten —
+  // varma körningar passerar på första försöket. (CI får två.)
+  retries: process.env.CI ? 2 : 1,
   // Flödet inkluderar Puppeteer-PDF-rendering i en Bull-worker (skicka avi),
   // vilket tar några sekunder — tillåt gott om tid per test.
   timeout: 90_000,
@@ -54,6 +59,15 @@ export default defineConfig({
     {
       command: 'npm run dev',
       url: WEB_URL,
+      reuseExistingServer: true,
+      timeout: 120_000,
+      stdout: 'ignore',
+      stderr: 'pipe',
+    },
+    {
+      command: 'npm run dev',
+      cwd: '../portal',
+      url: PORTAL_URL,
       reuseExistingServer: true,
       timeout: 120_000,
       stdout: 'ignore',
