@@ -176,18 +176,14 @@ export function OrganizationDetailPage() {
       <SuspendModal
         open={suspendOpen}
         onClose={() => setSuspendOpen(false)}
-        onSubmit={(reason) => {
-          suspend.mutate(reason)
-          setSuspendOpen(false)
-        }}
+        loading={suspend.isPending}
+        onSubmit={(reason) => suspend.mutate(reason, { onSuccess: () => setSuspendOpen(false) })}
       />
       <CancelModal
         open={cancelOpen}
         onClose={() => setCancelOpen(false)}
-        onSubmit={(reason) => {
-          cancel.mutate(reason)
-          setCancelOpen(false)
-        }}
+        loading={cancel.isPending}
+        onSubmit={(reason) => cancel.mutate(reason, { onSuccess: () => setCancelOpen(false) })}
       />
     </>
   )
@@ -665,10 +661,12 @@ function SuspendModal({
   open,
   onClose,
   onSubmit,
+  loading,
 }: {
   open: boolean
   onClose: () => void
   onSubmit: (reason: string) => void
+  loading?: boolean
 }) {
   const [reason, setReason] = useState('')
   return (
@@ -678,10 +676,10 @@ function SuspendModal({
       title="Suspendera kund"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={loading ?? false}>
             Avbryt
           </Button>
-          <Button variant="danger" onClick={() => onSubmit(reason)}>
+          <Button variant="danger" onClick={() => onSubmit(reason)} loading={loading ?? false}>
             Suspendera
           </Button>
         </>
@@ -701,10 +699,12 @@ function CancelModal({
   open,
   onClose,
   onSubmit,
+  loading,
 }: {
   open: boolean
   onClose: () => void
   onSubmit: (reason: string) => void
+  loading?: boolean
 }) {
   const [reason, setReason] = useState('')
   return (
@@ -714,10 +714,10 @@ function CancelModal({
       title="Avsluta kund"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={loading ?? false}>
             Avbryt
           </Button>
-          <Button variant="danger" onClick={() => onSubmit(reason)}>
+          <Button variant="danger" onClick={() => onSubmit(reason)} loading={loading ?? false}>
             Avsluta
           </Button>
         </>

@@ -21,7 +21,9 @@ import {
   ChevronUp,
   CheckCircle2,
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { PageWrapper } from '@/components/ui/PageWrapper'
+import { get } from '@/lib/api'
 
 // ─── Animation variants ───────────────────────────────────────────────────────
 
@@ -37,32 +39,41 @@ const item = {
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
+// Statiska metadata för korten; status (value + ton) härleds live från
+// /v1/health vid render — se cardStatus() i komponenten. Tidigare var allt
+// hårdkodat "Online"/grönt, vilket dolde verkliga driftstörningar.
 const STATUS_CARDS = [
-  {
-    icon: Server,
-    title: 'NestJS API',
-    value: 'Online',
-    sub: 'Port 3000 · Fastify adapter',
+  { key: 'api', icon: Server, title: 'NestJS API', sub: 'Port 3000 · Fastify adapter' },
+  { key: 'db', icon: Database, title: 'PostgreSQL 16', sub: 'Prisma ORM · ACID' },
+  { key: 'redis', icon: Zap, title: 'Redis 7', sub: 'Sessions · BullMQ' },
+  { key: 'frontend', icon: Monitor, title: 'React 18 + Vite', sub: 'TanStack Query · Zustand' },
+] as const
+
+// /v1/health (Terminus) rapporterar API-liveness + databas. Redis/köer ingår
+// INTE i health-checken, så det kortet kan inte verifieras härifrån.
+interface HealthResponse {
+  status?: string
+  info?: Record<string, { status?: string }>
+  details?: Record<string, { status?: string }>
+}
+
+type StatusTone = 'ok' | 'down' | 'neutral'
+
+const TONE: Record<StatusTone, { iconBg: string; icon: string; dot: string; value: string }> = {
+  ok: {
+    iconBg: 'bg-emerald-50',
+    icon: 'text-emerald-600',
+    dot: 'bg-emerald-400',
+    value: 'text-emerald-600',
   },
-  {
-    icon: Database,
-    title: 'PostgreSQL 16',
-    value: 'Ansluten',
-    sub: 'Prisma ORM · ACID',
+  down: { iconBg: 'bg-red-50', icon: 'text-red-600', dot: 'bg-red-400', value: 'text-red-600' },
+  neutral: {
+    iconBg: 'bg-gray-100',
+    icon: 'text-gray-400',
+    dot: 'bg-gray-300',
+    value: 'text-gray-500',
   },
-  {
-    icon: Zap,
-    title: 'Redis 7',
-    value: 'Aktiv',
-    sub: 'Sessions · BullMQ',
-  },
-  {
-    icon: Monitor,
-    title: 'React 18 + Vite',
-    value: 'Körs',
-    sub: 'TanStack Query · Zustand',
-  },
-]
+}
 
 interface Module {
   icon: React.ElementType
@@ -377,6 +388,32 @@ export function OverviewPage() {
 
   const totalEndpoints = ENDPOINT_GROUPS.reduce((s, g) => s + g.endpoints.length, 0)
 
+  // Live driftstatus. retry:false så ett nere-API syns direkt; pollar var 30:e s.
+  const health = useQuery({
+    queryKey: ['system-health'],
+    queryFn: () => get<HealthResponse>('/health'),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+    retry: false,
+  })
+  const dbStatus = health.data?.info?.database?.status ?? health.data?.details?.database?.status
+
+  function cardStatus(key: string): { value: string; tone: StatusTone } {
+    // Redis ingår inte i /health → vi kan inte påstå något om den.
+    if (key === 'redis') return { value: 'Ej övervakad', tone: 'neutral' }
+    // Frontend kör per definition om den här sidan renderas.
+    if (key === 'frontend') return { value: 'Körs', tone: 'ok' }
+    if (health.isLoading) return { value: 'Kontrollerar…', tone: 'neutral' }
+    if (key === 'api') {
+      return health.isSuccess
+        ? { value: 'Online', tone: 'ok' }
+        : { value: 'Otillgänglig', tone: 'down' }
+    }
+    // db
+    if (!health.isSuccess) return { value: 'Okänd', tone: 'down' }
+    return dbStatus === 'up' ? { value: 'Ansluten', tone: 'ok' } : { value: 'Fel', tone: 'down' }
+  }
+
   return (
     <PageWrapper id="overview">
       <div className="px-6 py-6" style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -416,24 +453,30 @@ export function OverviewPage() {
             animate="show"
             className="grid grid-cols-2 gap-3 sm:grid-cols-4"
           >
-            {STATUS_CARDS.map((card) => (
-              <motion.div
-                key={card.title}
-                variants={item}
-                className="rounded-2xl border border-gray-100 bg-white p-4"
-                whileHover={{ y: -2, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50">
-                    <card.icon size={14} className="text-emerald-600" strokeWidth={1.8} />
+            {STATUS_CARDS.map((card) => {
+              const { value, tone } = cardStatus(card.key)
+              const t = TONE[tone]
+              return (
+                <motion.div
+                  key={card.title}
+                  variants={item}
+                  className="rounded-2xl border border-gray-100 bg-white p-4"
+                  whileHover={{ y: -2, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`flex h-7 w-7 items-center justify-center rounded-lg ${t.iconBg}`}
+                    >
+                      <card.icon size={14} className={t.icon} strokeWidth={1.8} />
+                    </div>
+                    <span className={`h-2 w-2 rounded-full ${t.dot}`} />
                   </div>
-                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                </div>
-                <p className="mt-2.5 text-[13px] font-medium text-gray-500">{card.title}</p>
-                <p className="text-[15px] font-semibold text-emerald-600">{card.value}</p>
-                <p className="mt-0.5 text-[11px] text-gray-400">{card.sub}</p>
-              </motion.div>
-            ))}
+                  <p className="mt-2.5 text-[13px] font-medium text-gray-500">{card.title}</p>
+                  <p className={`text-[15px] font-semibold ${t.value}`}>{value}</p>
+                  <p className="mt-0.5 text-[11px] text-gray-400">{card.sub}</p>
+                </motion.div>
+              )
+            })}
           </motion.div>
         </div>
 

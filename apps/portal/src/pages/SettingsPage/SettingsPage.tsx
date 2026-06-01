@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { exportMyData, deleteMyAccount, logoutSession } from '@/api/portal.api'
+import { toast } from 'sonner'
+import { exportMyData, deleteMyAccount, logoutSession, extractApiError } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
 import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
 
@@ -60,6 +61,8 @@ export function SettingsPage() {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
+    } catch (err) {
+      toast.error(extractApiError(err, 'Kunde inte exportera dina uppgifter'))
     } finally {
       setExportLoading(false)
     }

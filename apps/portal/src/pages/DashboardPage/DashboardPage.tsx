@@ -196,10 +196,10 @@ export function DashboardPage() {
         {overdueInvoices > 0 && (
           <div className={styles.alertCard}>
             <span className={styles.alertText}>
-              ⚠️ {overdueInvoices} förfallen{overdueInvoices > 1 ? 'a' : ''} avi
-              {overdueInvoices > 1 ? 'er' : ''}
+              ⚠️ {overdueInvoices}{' '}
+              {overdueInvoices > 1 ? 'förfallna fakturor' : 'förfallen faktura'}
             </span>
-            <button className={styles.alertBtn} onClick={() => navigate('/notices')}>
+            <button className={styles.alertBtn} onClick={() => navigate('/notices?tab=invoices')}>
               Visa
             </button>
           </div>
