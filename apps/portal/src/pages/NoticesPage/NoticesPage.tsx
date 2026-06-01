@@ -204,7 +204,7 @@ function RentNoticesList({
 }) {
   if (query.isLoading) return <Spinner size="md" label="Laddar avier..." />
   if (query.isError || !query.data) {
-    return <ErrorCard isUnderConstruction onRetry={() => void query.refetch()} />
+    return <ErrorCard onRetry={() => void query.refetch()} />
   }
 
   const filtered = query.data
@@ -295,7 +295,7 @@ function InvoicesList({
 }) {
   if (query.isLoading) return <Spinner size="md" label="Laddar fakturor..." />
   if (query.isError || !query.data) {
-    return <ErrorCard isUnderConstruction onRetry={() => void query.refetch()} />
+    return <ErrorCard onRetry={() => void query.refetch()} />
   }
 
   const filtered = query.data

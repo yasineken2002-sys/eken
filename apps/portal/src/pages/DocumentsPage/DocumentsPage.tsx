@@ -134,7 +134,7 @@ export function DocumentsPage() {
 
   if (isLoading) return <Spinner size="md" label="Laddar dokument..." />
   if (isError || !data) {
-    return <ErrorCard isUnderConstruction onRetry={() => void refetch()} />
+    return <ErrorCard onRetry={() => void refetch()} />
   }
 
   return (

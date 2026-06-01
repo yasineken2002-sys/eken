@@ -2,6 +2,11 @@ import styles from './ui.module.css'
 
 interface ErrorCardProps {
   message?: string
+  /**
+   * Sätt ENBART för sidor/funktioner som ännu inte är byggda. Använd INTE
+   * vid vanliga API-fel (500, nätverk) — då ska felmeddelande + "Försök
+   * igen"-knapp visas, annars ser en fungerande sida ut som permanent obyggd.
+   */
   isUnderConstruction?: boolean
   onRetry?: () => void
 }
