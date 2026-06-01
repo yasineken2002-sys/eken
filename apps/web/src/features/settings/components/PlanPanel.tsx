@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts'
 import { PLAN_LIMITS, PLAN_ORDER, CREDIT_PACKAGES, formatCurrency, formatDate } from '@eken/shared'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useAiUsageCurrent, useAiUsageHistory, useBuyAiCredits } from '../hooks/usePlan'
@@ -381,8 +382,9 @@ export function PlanPanel() {
                   className="mt-5 w-full"
                   disabled={isCurrent}
                   onClick={() => {
-                    alert(
+                    toast.info(
                       `För att byta till ${limit.name}: kontakta supporten på support@eveno.se så hjälper vi dig direkt.`,
+                      { duration: 8000 },
                     )
                   }}
                 >

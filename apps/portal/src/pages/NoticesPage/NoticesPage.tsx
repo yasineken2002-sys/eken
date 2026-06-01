@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   fetchInvoices,
@@ -74,7 +75,12 @@ function DownloadIcon() {
 }
 
 export function NoticesPage() {
-  const [topTab, setTopTab] = useState<TopTab>('rent-notices')
+  // Tillåt djuplänkning till en specifik flik (t.ex. dashboardens "Visa" på
+  // förfallna fakturor → ?tab=invoices). Default är avier.
+  const [searchParams] = useSearchParams()
+  const [topTab, setTopTab] = useState<TopTab>(
+    searchParams.get('tab') === 'invoices' ? 'invoices' : 'rent-notices',
+  )
   const [filter, setFilter] = useState<Filter>('all')
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [errorByRow, setErrorByRow] = useState<Record<string, string>>({})

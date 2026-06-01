@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   fetchMaintenanceTickets,
   addTicketComment,
   submitMaintenanceRequest,
   uploadMaintenanceImages,
+  extractApiError,
 } from '@/api/portal.api'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Spinner } from '@/components/ui/Spinner'
@@ -72,6 +74,8 @@ function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
       await addTicketComment(ticket.id, comment.trim())
       setComment('')
       await queryClient.invalidateQueries({ queryKey: ['portal', 'maintenance'] })
+    } catch (err) {
+      toast.error(extractApiError(err, 'Kunde inte skicka kommentaren'))
     } finally {
       setSending(false)
     }
@@ -159,7 +163,7 @@ export function MaintenancePage() {
           await uploadMaintenanceImages(ticket.id, images)
         } catch (err) {
           console.error('[maintenance] kunde inte ladda upp bilder', err)
-          alert('Felanmälan skickades, men en eller flera bilder kunde inte laddas upp.')
+          toast.warning('Felanmälan skickades, men en eller flera bilder kunde inte laddas upp.')
         }
       }
       setShowSheet(false)
@@ -168,8 +172,8 @@ export function MaintenancePage() {
       setImages([])
       setCategory('OTHER')
       void refetch()
-    } catch {
-      alert('Kunde inte skicka felanmälan. Försök igen.')
+    } catch (err) {
+      toast.error(extractApiError(err, 'Kunde inte skicka felanmälan. Försök igen.'))
     } finally {
       setIsSubmitting(false)
     }
