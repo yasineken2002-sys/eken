@@ -11,6 +11,7 @@ import {
   XCircle,
   Download,
   Mail,
+  MailX,
   Zap,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
@@ -444,7 +445,19 @@ export function InvoicesPage() {
             {
               key: 'status',
               header: 'Status',
-              cell: (i) => <InvoiceStatusBadge status={i.status} />,
+              cell: (i) => (
+                <div className="flex items-center gap-1.5">
+                  <InvoiceStatusBadge status={i.status} />
+                  {i.sendError && (
+                    <span
+                      title={`Utskick misslyckades: ${i.sendError}`}
+                      className="inline-flex items-center text-red-600"
+                    >
+                      <MailX size={14} strokeWidth={1.8} />
+                    </span>
+                  )}
+                </div>
+              ),
             },
           ]}
         />
@@ -554,6 +567,21 @@ export function InvoicesPage() {
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Synligt fel vid misslyckat utskick — hyresvärden kan skicka om
+                  via "Skicka via e-post"/"Skicka faktura" nedan. */}
+              {selected.sendError && selected.status !== 'PAID' && (
+                <div className="rounded-xl border border-red-100 bg-red-50 p-3">
+                  <p className="flex items-center gap-1.5 text-[12px] font-semibold text-red-600">
+                    <MailX size={13} strokeWidth={1.8} />
+                    Utskick misslyckades
+                  </p>
+                  <p className="mt-1 text-[12px] text-red-600/90">{selected.sendError}</p>
+                  <p className="mt-1.5 text-[11px] text-gray-500">
+                    Fakturan skickades aldrig. Försök skicka igen nedan.
+                  </p>
                 </div>
               )}
 

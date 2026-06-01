@@ -599,37 +599,69 @@ export class InvoicesService {
 
     const recipient = invoice.tenant ?? invoice.customer
     if (!recipient?.email) {
-      throw new BadRequestException('Fakturan saknar mottagare med e-postadress')
+      // Permanent fel — markera synligt UTAN att kasta, annars gör Bull fem
+      // meningslösa retries. Samma resonemang som avisering vid saknad e-post.
+      await this.recordSendFailure(id, 'Fakturan saknar mottagare med e-postadress')
+      return
     }
 
-    const pdfBuffer = await this.pdfService.generateInvoicePdf(id, organizationId)
+    try {
+      const pdfBuffer = await this.pdfService.generateInvoicePdf(id, organizationId)
 
-    const recipientName =
-      recipient.type === 'INDIVIDUAL'
-        ? [recipient.firstName, recipient.lastName].filter(Boolean).join(' ')
-        : (recipient.companyName ?? recipient.email)
+      const recipientName =
+        recipient.type === 'INDIVIDUAL'
+          ? [recipient.firstName, recipient.lastName].filter(Boolean).join(' ')
+          : (recipient.companyName ?? recipient.email)
 
-    await this.mailService.sendInvoice({
-      to: recipient.email,
-      tenantName: recipientName,
-      invoiceNumber: invoice.invoiceNumber,
-      total: Number(invoice.total),
-      dueDate: invoice.dueDate,
-      pdfBuffer,
-      organizationName: invoice.organization.name,
-      accentColor: invoice.organization.invoiceColor ?? '#1a6b3c',
-      idempotencyKey: `invoice-send-${id}`,
-    })
-
-    // Transition DRAFT → SENT
-    if (invoice.status === 'DRAFT') {
-      await this.transitionStatus(id, organizationId, 'SENT', userId, 'USER')
-    } else {
-      // Record send event without status transition
-      await this.eventsService.record(id, 'SENT', 'USER', userId, {
-        sentTo: recipient.email,
+      await this.mailService.sendInvoice({
+        to: recipient.email,
+        tenantName: recipientName,
+        invoiceNumber: invoice.invoiceNumber,
+        total: Number(invoice.total),
+        dueDate: invoice.dueDate,
+        pdfBuffer,
+        organizationName: invoice.organization.name,
+        accentColor: invoice.organization.invoiceColor ?? '#1a6b3c',
+        idempotencyKey: `invoice-send-${id}`,
       })
+
+      // Transition DRAFT → SENT
+      if (invoice.status === 'DRAFT') {
+        await this.transitionStatus(id, organizationId, 'SENT', userId, 'USER')
+      } else {
+        // Record send event without status transition
+        await this.eventsService.record(id, 'SENT', 'USER', userId, {
+          sentTo: recipient.email,
+        })
+      }
+
+      // Lyckat utskick — nollställ ev. tidigare fel så att UI-varningen försvinner.
+      if (invoice.sendError) {
+        await this.prisma.invoice.update({ where: { id }, data: { sendError: null } })
+      }
+    } catch (err) {
+      // Transient fel (Puppeteer kraschar, mejlkön/Resend nere) — markera
+      // synligt + logga SEND_FAILED, kasta sedan vidare så Bull schemalägger
+      // retry (1m→2m→4m→8m). Vid permanent fail blir sendError kvar och syns i
+      // UI tills hyresvärden skickar om. Mirror av AviseringService.
+      await this.recordSendFailure(id, err instanceof Error ? err.message : String(err))
+      throw err
     }
+  }
+
+  /**
+   * Markerar ett misslyckat faktura-utskick synligt: sätter Invoice.sendError
+   * (visas i UI, hyresvärden kan skicka om) och skriver ett immutabelt
+   * SEND_FAILED-event i fakturahistoriken. Best-effort — får aldrig dölja det
+   * ursprungliga felet; anroparen avgör om jobbet ska retrias eller ej.
+   */
+  private async recordSendFailure(invoiceId: string, message: string): Promise<void> {
+    await this.prisma.invoice
+      .update({ where: { id: invoiceId }, data: { sendError: message } })
+      .catch((err) => this.logger.error(`Kunde inte spara sendError: ${String(err)}`))
+    await this.eventsService
+      .record(invoiceId, 'SEND_FAILED', 'SYSTEM', null, { error: message, detail: message })
+      .catch((err) => this.logger.error(`Kunde inte logga SEND_FAILED-event: ${String(err)}`))
   }
 }
 

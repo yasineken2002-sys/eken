@@ -953,6 +953,14 @@ model Invoice {
   ocrNumber      String?
   notes          String?
 
+  // Synligt fel vid misslyckat e-postutskick (PDF-/mejl-jobbet). Sätts av
+  // processInvoiceSendJob vid fel och nollställs vid lyckat utskick — samma
+  // mönster som RentNotice.sendError. Statusen förblir DRAFT (utskicket skedde
+  // aldrig); det här fältet + ett SEND_FAILED-event gör felet synligt i UI så
+  // att hyresvärden kan skicka om. InvoiceStatus är en finansiell statusmaskin
+  // (DRAFT→SENT→PAID …) utan FAILED — därför ett separat fält, inte en status.
+  sendError      String?
+
   // Tracking-token för e-postspårning (pixel + PDF-länk)
   // Genereras vid skapande, används aldrig om – en faktura, ett token.
   trackingToken String @unique @default(uuid())
