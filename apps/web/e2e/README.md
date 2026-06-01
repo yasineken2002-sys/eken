@@ -7,10 +7,11 @@ när alla lager pratar med varandra.
 
 Flöden som täcks:
 
-| Fil                        | Flöde                                                                          |
-| -------------------------- | ------------------------------------------------------------------------------ |
-| `create-base-data.spec.ts` | Logga in → skapa fastighet → enhet → hyresgäst + kontrakt → verifiera "Aktivt" |
-| `avi-paid-flow.spec.ts`    | Logga in → generera hyresavi → markera betald → verifiera "Betald"             |
+| Fil                          | Flöde                                                                          |
+| ---------------------------- | ------------------------------------------------------------------------------ |
+| `create-base-data.spec.ts`   | Logga in → skapa fastighet → enhet → hyresgäst + kontrakt → verifiera "Aktivt" |
+| `avi-paid-flow.spec.ts`      | Logga in → generera hyresavi → markera betald → verifiera "Betald"             |
+| `portal-tenant-flow.spec.ts` | Hyresgäst-portal (:5174): logga in → se avi → felanmälan → logga ut            |
 
 ## Förutsättningar
 
@@ -26,10 +27,12 @@ Flöden som täcks:
    ```bash
    cd apps/web && npx playwright install chromium
    ```
+4. **`psql` tillgängligt** — portal-seedningen skriver en aktiverings-token-hash
+   direkt till DB (se nedan). Ingår i `postgresql-client`.
 
-API (`:3000`) och web (`:5173`) startas automatiskt av Playwright om de inte
-redan kör (`webServer` i `playwright.config.ts`), och redan körande dev-servrar
-återanvänds.
+API (`:3000`), web (`:5173`) och portal (`:5174`) startas automatiskt av
+Playwright om de inte redan kör (`webServer` i `playwright.config.ts`), och
+redan körande dev-servrar återanvänds.
 
 ## Köra
 
@@ -50,10 +53,12 @@ separat test-databas och inga andra orgs data påverkas. Två varianter:
 - `registerOrg()` — registrerar bara en tom org (ägare + inloggning). Används av
   `create-base-data.spec.ts` som bygger all grunddata via UI:t.
 - `seedActiveLease()` — registrerar org OCH provisionerar
-  `Fastighet → Enhet → Hyresgäst → AKTIVT kontrakt` via API, så att
+  `Fastighet → Enhet → Hyresgäst → AKTIVT kontrakt`, så att
   `avi-paid-flow.spec.ts` kan fokusera på avi-flödet.
+- `seedPortalTenant()` — som ovan plus: en BETALD avi (syns i portalen) och ett
+  aktiverat portal-konto, så att `portal-tenant-flow.spec.ts` kan logga in.
 
-**Deterministisk hantering av async-beroenden:**
+**Deterministisk hantering av async-/flaky beroenden:**
 
 - _avi-flödet_: avin genereras för en period två månader bak → alltid förfallen,
   så den kan markeras betald direkt utan den asynkrona skicka-vägen (PDF i en
@@ -61,6 +66,16 @@ separat test-databas och inga andra orgs data påverkas. Två varianter:
 - _kontrakts-flödet_: "Skapa & aktivera direkt" gör DRAFT → ACTIVE synkront i
   samma request; välkomstmejl och kontrakts-PDF köas i bakgrunden och påverkar
   inte statusen, så "Aktivt" syns direkt utan att vänta på någon worker.
+- _portal-aktivering_: portalen har inget lösenord vid kontraktsskapande —
+  hyresgästen aktiverar via en mejllänk (token vars SHA-256-hash lagras; råtoken
+  finns bara i mejlet). Seedningen genererar en token, skriver hashen till DB
+  (`psql`) och anropar sedan det riktiga `/tenant-portal/activate` (som bcrypt:ar
+  lösenordet) → en hyresgäst som kan logga in.
+- _CPU-mättnad (viktigast för stabilitet)_: API-aktivering av ett kontrakt köar
+  en Puppeteer-kontrakts-PDF som dessutom failar + retrear 5× när R2-lagring inte
+  är konfigurerad i dev — det mättar CPU och gör hela sviten flaky. Seed-helprarna
+  aktiverar därför kontraktet via en DB-`UPDATE` (de testar inte aktiveringen).
+  Den RIKTIGA aktiveringsvägen täcks ändå av `create-base-data.spec.ts` (UI).
 
 > **Obs:** seedade test-organisationer ligger kvar i dev-databasen efter
 > körningen. Det är ofarligt (egna, isolerade orgs) men kan städas vid behov.
