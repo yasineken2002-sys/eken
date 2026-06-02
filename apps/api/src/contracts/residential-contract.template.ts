@@ -46,7 +46,12 @@ export function buildResidentialContractHtml(input: ContractTemplateInput): stri
   const contractNumber = contractNumberLabel(input)
   const today = new Date().toLocaleDateString('sv-SE')
 
-  const noticePeriod =
+  // Hyresgästen har enligt 12 kap. 5 § JB alltid rätt till 3 mån uppsägning
+  // (tvingande, oavsett avtalad tid). Det avtalade fältet (noticePeriodMonths)
+  // binder hyresvärden. Vi visar därför de två separat så fält och brödtext
+  // inte motsäger varandra.
+  const tenantNoticePeriod = '3 månader'
+  const landlordNoticePeriod =
     lease.noticePeriodMonths > 0 ? `${lease.noticePeriodMonths} månader` : '3 månader'
 
   const includes = buildIncludesList(lease)
@@ -77,8 +82,12 @@ export function buildResidentialContractHtml(input: ContractTemplateInput): stri
       <div class="value">${lease.endDate ? 'Tidsbestämt' : 'Tillsvidare'}</div>
     </div>
     <div class="info-item">
-      <div class="label">Uppsägningstid</div>
-      <div class="value">${escape(noticePeriod)}</div>
+      <div class="label">Uppsägning – hyresgäst</div>
+      <div class="value">${escape(tenantNoticePeriod)}</div>
+    </div>
+    <div class="info-item">
+      <div class="label">Uppsägning – hyresvärd</div>
+      <div class="value">${escape(landlordNoticePeriod)}</div>
     </div>
   </div>
   ${
@@ -93,9 +102,11 @@ export function buildResidentialContractHtml(input: ContractTemplateInput): stri
   }
   <div class="clause">
     Uppsägning ska ske skriftligen enligt 12 kap. 8 § Jordabalken.
-    För hyresgästen gäller 3 månaders uppsägningstid till månadsskifte
-    om inte annan kortare tid avtalats. Hyresgästen har besittningsskydd
-    enligt 12 kap. 46 § JB.
+    Hyresgästen har enligt 12 kap. 5 § Jordabalken alltid rätt att säga upp
+    avtalet med tre (3) månaders uppsägningstid till månadsskifte, oavsett
+    vad som i övrigt avtalats om uppsägningstid. För hyresvärden gäller den
+    uppsägningstid som anges ovan. Hyresgästen har besittningsskydd enligt
+    12 kap. 46 § JB.
   </div>
 
   <h2>§ 4 — Hyra, betalning och vad som ingår <span class="lawref">(12 kap. 19–20 §§ JB)</span></h2>
@@ -246,11 +257,12 @@ export function buildResidentialContractHtml(input: ContractTemplateInput): stri
   })
 }
 
-// ─── § 5 indexklausul (visas BARA om typ !== NONE) ───────────────────────
+// ─── § 5 indexklausul ─────────────────────────────────────────────────────
+// Renderas ALLTID så paragrafnumreringen inte hoppar (§4 → §6). NONE faller
+// igenom till "fast hyra"-texten i else-grenen nedan.
 
 function renderIndexClause(input: ContractTemplateInput): string {
   const { lease } = input
-  if (lease.indexClauseType === 'NONE') return ''
 
   const limits: string[] = []
   if (lease.indexMaxIncrease != null && Number(lease.indexMaxIncrease) > 0) {
@@ -286,6 +298,10 @@ function renderIndexClause(input: ContractTemplateInput): string {
       <span class="clause-number">5.3</span>
       För bostadshyresavtal gäller utöver detta villkor 12 kap. 19 och 54 §§
       Jordabalken. Tvist om hyrans skälighet kan prövas av Hyresnämnden.
+    </div>
+    <div class="highlight-box">
+      Hyran kan alltid prövas mot bruksvärdet av Hyresnämnden enligt
+      12 kap. 55 § JB, oavsett indexklausul.
     </div>`
   } else if (lease.indexClauseType === 'NEGOTIATED') {
     body = `
