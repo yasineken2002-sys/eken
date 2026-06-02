@@ -10,6 +10,7 @@ import type { TenantWelcomeWithContractProps } from './templates/tenants/TenantW
 import type { TenantSignatureConfirmationProps } from './templates/tenants/TenantSignatureConfirmation'
 import type { TenantActivationReminderProps } from './templates/tenants/TenantActivationReminder'
 import type { TenantInviteProps } from './templates/tenants/TenantInvite'
+import type { TenantPortalInviteProps } from './templates/tenants/TenantPortalInvite'
 import type { RentIncreaseNoticeProps } from './templates/tenants/RentIncreaseNotice'
 import type { MaintenanceUpdateProps } from './templates/notifications/MaintenanceUpdate'
 import type { PasswordResetProps } from './templates/users/PasswordReset'
@@ -27,6 +28,7 @@ export const TEMPLATE_NAMES = [
   'tenant-signature-confirmation',
   'tenant-activation-reminder',
   'tenant-invite',
+  'tenant-portal-invite',
   'rent-increase-notice',
   'maintenance-update',
   'password-reset',
@@ -48,6 +50,7 @@ export interface TemplatePropsMap {
   'tenant-signature-confirmation': TenantSignatureConfirmationProps
   'tenant-activation-reminder': TenantActivationReminderProps
   'tenant-invite': TenantInviteProps
+  'tenant-portal-invite': TenantPortalInviteProps
   'rent-increase-notice': RentIncreaseNoticeProps
   'maintenance-update': MaintenanceUpdateProps
   'password-reset': PasswordResetProps

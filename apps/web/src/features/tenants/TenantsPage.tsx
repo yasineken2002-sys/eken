@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { DataTable } from '@/components/ui/DataTable'
@@ -30,6 +31,7 @@ import {
 } from './hooks/useTenants'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { Tenant } from '@eken/shared'
+import { InvitePortalModal } from './components/InvitePortalModal'
 import type { TenantWithCount, TenantDetail, LeaseWithUnit } from './api/tenants.api'
 import { cn } from '@/lib/cn'
 
@@ -71,6 +73,7 @@ export function TenantsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [tab, setTab] = useState<TenantTab>('ALL')
   const [selected, setSelected] = useState<TenantWithCount | null>(null)
+  const [inviteOpen, setInviteOpen] = useState(false)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -171,6 +174,12 @@ export function TenantsPage() {
       <PageHeader
         title="Hyresgäster"
         description={`${tenants.length} hyresgäster · läs-bar översikt`}
+        action={
+          <Button variant="primary" onClick={() => setInviteOpen(true)}>
+            <Mail size={15} strokeWidth={1.8} />
+            Bjud in till portalen
+          </Button>
+        }
       />
 
       {/* Banner som förklarar att skapande sker via Kontrakt-flödet */}
@@ -291,6 +300,8 @@ export function TenantsPage() {
       >
         {selected && <DetailPanel selected={selected} selectedTenant={selectedTenant ?? null} />}
       </Modal>
+
+      <InvitePortalModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
     </PageWrapper>
   )
 }

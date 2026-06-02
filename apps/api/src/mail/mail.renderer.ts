@@ -14,6 +14,7 @@ import { TenantWelcomeWithContract } from './templates/tenants/TenantWelcomeWith
 import { TenantSignatureConfirmation } from './templates/tenants/TenantSignatureConfirmation'
 import { TenantActivationReminder } from './templates/tenants/TenantActivationReminder'
 import { TenantInvite } from './templates/tenants/TenantInvite'
+import { TenantPortalInvite } from './templates/tenants/TenantPortalInvite'
 import { RentIncreaseNotice } from './templates/tenants/RentIncreaseNotice'
 import { MaintenanceUpdate } from './templates/notifications/MaintenanceUpdate'
 import { PasswordReset } from './templates/users/PasswordReset'
@@ -35,6 +36,7 @@ const TEMPLATE_REGISTRY: Record<TemplateName, TemplateComponent> = {
   'tenant-signature-confirmation': TenantSignatureConfirmation as TemplateComponent,
   'tenant-activation-reminder': TenantActivationReminder as TemplateComponent,
   'tenant-invite': TenantInvite as TemplateComponent,
+  'tenant-portal-invite': TenantPortalInvite as TemplateComponent,
   'rent-increase-notice': RentIncreaseNotice as TemplateComponent,
   'maintenance-update': MaintenanceUpdate as TemplateComponent,
   'password-reset': PasswordReset as TemplateComponent,

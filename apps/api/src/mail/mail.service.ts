@@ -144,6 +144,15 @@ export interface SendTenantWelcomeWithContractOptions {
   idempotencyKey?: string
 }
 
+export interface SendTenantPortalInviteOptions {
+  to: string
+  tenantName: string
+  organizationName: string
+  activationUrl: string
+  validForHours?: number
+  idempotencyKey?: string
+}
+
 export interface SendTenantSignatureConfirmationOptions {
   to: string
   tenantName: string
@@ -295,6 +304,29 @@ export class MailService {
       {
         to: opts.to,
         subject: `Välkommen till ${opts.organizationName} — signera ditt kontrakt`,
+        idempotencyKey: opts.idempotencyKey,
+      },
+    )
+  }
+
+  /**
+   * Neutral portal-inbjudan (massutskick) — ingen kontraktssignerings-text,
+   * eftersom importerade hyresgäster ofta saknar kontrakts-PDF. Använder samma
+   * aktiveringstoken-mekanik som välkomstmejlet (länk → välj lösenord).
+   */
+  async sendTenantPortalInvite(opts: SendTenantPortalInviteOptions): Promise<string> {
+    return this.enqueueTyped(
+      'tenant-portal-invite',
+      'high',
+      {
+        tenantName: opts.tenantName,
+        organizationName: opts.organizationName,
+        activationUrl: opts.activationUrl,
+        ...(opts.validForHours !== undefined ? { validForHours: opts.validForHours } : {}),
+      },
+      {
+        to: opts.to,
+        subject: `${opts.organizationName} — aktivera ditt portalkonto`,
         idempotencyKey: opts.idempotencyKey,
       },
     )

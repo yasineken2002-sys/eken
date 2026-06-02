@@ -5,6 +5,7 @@ import {
   Get,
   Post,
   Param,
+  Query,
   Body,
   Req,
   Res,
@@ -16,7 +17,17 @@ import {
 } from '@nestjs/common'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { Throttle } from '@nestjs/throttler'
-import { IsEmail, IsString, IsOptional, IsEnum, IsUUID, MinLength } from 'class-validator'
+import {
+  IsEmail,
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsUUID,
+  IsBoolean,
+  IsArray,
+  ArrayMaxSize,
+  MinLength,
+} from 'class-validator'
 import { MaintenanceCategory } from '@prisma/client'
 import * as bcrypt from 'bcryptjs'
 import { Public } from '../common/decorators/public.decorator'
@@ -31,6 +42,7 @@ import { AviseringService } from '../avisering/avisering.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
 import { TenantAuthService } from './tenant-auth.service'
 import { TenantPortalService } from './tenant-portal.service'
+import { TenantInvitationsService, type TenantInviteStatus } from './tenant-invitations.service'
 import { TenantAuthGuard } from './tenant-auth.guard'
 import { CurrentTenant } from './current-tenant.decorator'
 import type { Tenant } from '@prisma/client'
@@ -62,10 +74,13 @@ class ActivateDto {
 
   // Hyresgästens skrivna namnunderskrift vid digital signering. Sparas
   // på Document-raden så signaturen blir spårbar separat från FK-länken
-  // till Tenant.
+  // till Tenant. VALFRI: rena portal-inbjudningar (massutskick för
+  // importerade hyresgäster utan kontrakts-PDF) signerar inget kontrakt och
+  // behöver ingen underskrift. Anges den ändå kräver vi minst 2 tecken.
+  @IsOptional()
   @IsString()
   @MinLength(2)
-  signatureName!: string
+  signatureName?: string
 }
 
 class DeleteAccountDto {
@@ -88,6 +103,38 @@ class ResetPasswordDto {
   @IsString()
   @MinLength(1)
   password!: string
+}
+
+class InviteTenantsDto {
+  // Bjud in alla aktiva hyresgäster (≥1 ACTIVE-kontrakt).
+  @IsOptional()
+  @IsBoolean()
+  all?: boolean
+
+  // Eller ett explicit urval.
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(2000)
+  @IsUUID('4', { each: true })
+  tenantIds?: string[]
+
+  // Kringgå 24 h-dubbelklicks-skyddet (medveten omsändning).
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean
+}
+
+class ResendInvitesDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(2000)
+  @IsUUID('4', { each: true })
+  tenantIds?: string[]
+
+  // Skicka om till alla inbjudna men ej aktiverade.
+  @IsOptional()
+  @IsBoolean()
+  onlyNotActivated?: boolean
 }
 
 class SubmitMaintenanceDto {
@@ -215,7 +262,7 @@ export class TenantAuthController {
     const result = await this.tenantAuthService.activate(dto.token, dto.password, {
       ip,
       userAgent: typeof userAgent === 'string' ? userAgent : null,
-      signatureName: dto.signatureName,
+      signatureName: dto.signatureName ?? null,
     })
     return {
       sessionToken: result.sessionToken,
@@ -288,7 +335,64 @@ export class TenantPortalAdminController {
   constructor(
     private readonly tenantAuthService: TenantAuthService,
     private readonly prisma: PrismaService,
+    private readonly invitations: TenantInvitationsService,
   ) {}
+
+  /**
+   * Massinbjudan till portalen. Body: `{ all:true }` (alla aktiva) eller
+   * `{ tenantIds:[…] }`. Aktiverade hoppas över; saknad mejl YTAS i svaret
+   * (noEmailTenants) i stället för att tyst hoppas över; nyligen inbjudna
+   * (<24 h) hoppas över om inte `force`. Ett HTTP-anrop → N köade mejl.
+   */
+  @Post('invitations')
+  @HttpCode(HttpStatus.OK)
+  async createInvitations(@Body() dto: InviteTenantsDto, @OrgId() organizationId: string) {
+    if (!dto.all && !(dto.tenantIds && dto.tenantIds.length > 0)) {
+      throw new BadRequestException('Ange all=true eller en tenantIds-lista')
+    }
+    return this.invitations.invite(organizationId, {
+      ...(dto.all !== undefined ? { all: dto.all } : {}),
+      ...(dto.tenantIds ? { tenantIds: dto.tenantIds } : {}),
+      ...(dto.force !== undefined ? { force: dto.force } : {}),
+    })
+  }
+
+  /**
+   * Skicka om inbjudan (force) till valda eller alla ej aktiverade.
+   */
+  @Post('invitations/resend')
+  @HttpCode(HttpStatus.OK)
+  async resendInvitations(@Body() dto: ResendInvitesDto, @OrgId() organizationId: string) {
+    if (!dto.onlyNotActivated && !(dto.tenantIds && dto.tenantIds.length > 0)) {
+      throw new BadRequestException('Ange onlyNotActivated=true eller en tenantIds-lista')
+    }
+    return this.invitations.resend(organizationId, {
+      ...(dto.tenantIds ? { tenantIds: dto.tenantIds } : {}),
+      ...(dto.onlyNotActivated !== undefined ? { onlyNotActivated: dto.onlyNotActivated } : {}),
+    })
+  }
+
+  /**
+   * Härledd inbjudningsstatus per hyresgäst (för översikt + uppföljning).
+   * Query: status (filter), page, pageSize.
+   */
+  @Get('invitations')
+  async listInvitationStatus(
+    @OrgId() organizationId: string,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    const validStatuses = ['NOT_INVITED', 'NO_EMAIL', 'INVITED', 'ACTIVATED']
+    if (status !== undefined && !validStatuses.includes(status)) {
+      throw new BadRequestException(`Ogiltig status. Tillåtna: ${validStatuses.join(', ')}`)
+    }
+    return this.invitations.listStatus(organizationId, {
+      ...(status ? { status: status as TenantInviteStatus } : {}),
+      ...(page ? { page: parseInt(page, 10) } : {}),
+      ...(pageSize ? { pageSize: parseInt(pageSize, 10) } : {}),
+    })
+  }
 
   @Get('activation-status/:tenantId')
   async getActivationStatus(@Param('tenantId') tenantId: string, @OrgId() organizationId: string) {
