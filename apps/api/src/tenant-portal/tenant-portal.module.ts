@@ -9,6 +9,7 @@ import { AviseringModule } from '../avisering/avisering.module'
 import { TenantAuthService } from './tenant-auth.service'
 import { TenantAuthGuard } from './tenant-auth.guard'
 import { TenantPortalService } from './tenant-portal.service'
+import { TenantInvitationsService } from './tenant-invitations.service'
 import {
   TenantAuthController,
   TenantPortalController,
@@ -26,7 +27,7 @@ import {
     forwardRef(() => ContractsModule),
   ],
   controllers: [TenantAuthController, TenantPortalController, TenantPortalAdminController],
-  providers: [TenantAuthService, TenantAuthGuard, TenantPortalService],
+  providers: [TenantAuthService, TenantAuthGuard, TenantPortalService, TenantInvitationsService],
   exports: [TenantAuthService, TenantAuthGuard],
 })
 export class TenantPortalModule {}

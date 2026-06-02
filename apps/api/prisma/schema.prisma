@@ -753,6 +753,19 @@ model Tenant {
   passwordResetTokenHash       String?   @unique
   passwordResetTokenExpiresAt  DateTime?
 
+  // ─── Portal-inbjudan (massutskick) ───────────────────────────────────────
+  // Spårar massinbjudan till portalen separat från aktiveringstoken ovan.
+  // invitedAt sätts när en inbjudan köas; inviteCount ökar vid varje (om)skick.
+  // Statusen (ej inbjuden/inbjuden/aktiverad/saknar mejl) HÄRLEDS i läs-
+  // endpointen — portalActivated är fortsatt auktoritativ för aktivering.
+  // De fyra leverans-/bounce-fälten fylls först i PR 2 (Resend-webhook).
+  invitedAt           DateTime?
+  inviteCount         Int       @default(0)
+  inviteDeliveredAt   DateTime?
+  inviteBouncedAt     DateTime?
+  inviteBounceReason  String?
+  lastInviteMessageId String?
+
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   leases             Lease[]
   invoices           Invoice[]
