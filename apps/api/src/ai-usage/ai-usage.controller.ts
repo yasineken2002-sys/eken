@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import { AiUsagePageService } from './ai-usage.service'
 import { BuyCreditsDto } from './dto/buy-credits.dto'
 
@@ -28,8 +29,13 @@ export class AiUsageController {
   /**
    * Skapar en pending plattformsfaktura för köp av extra AI-credits.
    * Yasin markerar betald manuellt och lägger då till credits på org.
+   *
+   * C2: köp som skapar en faktura/kostnad begränsas till ADMIN och uppåt —
+   * samma nivå som organisationsinställningar. Tidigare oskyddad → VIEWER kunde
+   * trigga köp. GET current/history lämnas öppna (ren lässtatistik).
    */
   @Post('buy-credits')
+  @Roles('ADMIN', 'OWNER')
   buyCredits(@OrgId() organizationId: string, @Body() dto: BuyCreditsDto) {
     return this.service.buyCredits(organizationId, dto.amount)
   }
