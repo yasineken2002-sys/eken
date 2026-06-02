@@ -7,13 +7,9 @@ import { z } from 'zod'
 //
 // email_id är Resends message-id och vår enda korrelationsnyckel mot rätt
 // hyresgäst (Tenant.lastInviteMessageId, @unique).
-
-/** Event-typer vi agerar på. Övriga (sent, opened, clicked …) ackas men ignoreras. */
-export const RESEND_HANDLED_EVENTS = [
-  'email.delivered',
-  'email.bounced',
-  'email.complained',
-] as const
+//
+// Event-typer vi agerar på: email.delivered, email.bounced, email.complained.
+// Övriga (sent, opened, clicked …) parsar men ignoreras i service-switchen.
 
 export const ResendEventSchema = z.object({
   // type valideras som en begränsad sträng — inte ett strikt enum, så att

@@ -43,10 +43,13 @@ export class ResendWebhookService {
   ): Promise<void> {
     const secret = this.config.get<string>('RESEND_WEBHOOK_SECRET')
     if (!secret) {
-      // Serverkonfigurationsfel — aldrig tyst. 503 → Resend retryar tills vi
-      // satt hemligheten. Vi behandlar absolut ingenting utan en hemlighet.
+      // Serverkonfigurationsfel — loggas högt internt (alert), men svaret hålls
+      // generiskt så att en extern scanner inte kan skilja "saknar hemlighet"
+      // från andra tillfälliga fel. 503 (inte 401) behålls MEDVETET: Resend
+      // retryar bara 5xx, så event återhämtas när hemligheten väl är satt i
+      // stället för att tappas. Ingenting behandlas utan en hemlighet.
       this.logger.error('RESEND_WEBHOOK_SECRET saknas — kan inte verifiera webhook')
-      throw new ServiceUnavailableException('Webhook ej konfigurerad')
+      throw new ServiceUnavailableException('Webhooken är tillfälligt otillgänglig')
     }
 
     if (!rawBody || rawBody.length === 0) {
@@ -83,6 +86,18 @@ export class ResendWebhookService {
     await this.process(parsed.data)
   }
 
+  /**
+   * Idempotens & ordning: Resend levererar at-least-once och kan skicka event
+   * out-of-order. Det hanteras av design snarare än av dedup:
+   *  - Varje hanterare sätter ETT fält till eventets värde → en exakt retry är
+   *    idempotent (samma fält, samma värde).
+   *  - Den HÄRLEDDA statusen (deriveStatus) beror bara på VILKA fält som är satta,
+   *    inte i vilken ordning event kom: bounced/complained > delivered > invited,
+   *    och aktiverad slår allt. Ordningen påverkar alltså inte vad ägaren ser.
+   *  - Vid (om)skick nollställs fälten + lastInviteMessageId, så ett sent event
+   *    för ett GAMMALT utskick matchar ingen tenant (no-op) och kan inte trampa
+   *    en ny inbjudans status.
+   */
   private async process(event: ResendEvent): Promise<void> {
     const emailId = event.data.email_id
     const at = parseEventDate(event.created_at)
