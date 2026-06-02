@@ -1,6 +1,15 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Mail, MailX, CheckCircle2, Clock, Send, AlertTriangle } from 'lucide-react'
+import {
+  Mail,
+  MailX,
+  MailCheck,
+  MailWarning,
+  CheckCircle2,
+  Clock,
+  Send,
+  AlertTriangle,
+} from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useInviteStatus, useInviteTenants, useResendInvites } from '../hooks/useInvitations'
@@ -20,6 +29,12 @@ const STATUS_META: Record<
     label: 'Aktiverad',
     className: 'bg-emerald-50 text-emerald-700',
     icon: CheckCircle2,
+  },
+  DELIVERED: { label: 'Levererad', className: 'bg-teal-50 text-teal-700', icon: MailCheck },
+  BOUNCED: {
+    label: 'Studsad — åtgärda',
+    className: 'bg-amber-50 text-amber-700',
+    icon: MailWarning,
   },
   INVITED: { label: 'Inbjuden', className: 'bg-blue-50 text-blue-700', icon: Mail },
   NOT_INVITED: { label: 'Ej inbjuden', className: 'bg-gray-100 text-gray-600', icon: Clock },
@@ -58,10 +73,19 @@ export function InvitePortalModal({ open, onClose }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const busy = invite.isPending || resend.isPending
-  const counts = data?.counts ?? { NOT_INVITED: 0, NO_EMAIL: 0, INVITED: 0, ACTIVATED: 0 }
+  const counts = data?.counts ?? {
+    NOT_INVITED: 0,
+    NO_EMAIL: 0,
+    INVITED: 0,
+    DELIVERED: 0,
+    BOUNCED: 0,
+    ACTIVATED: 0,
+  }
   const rows = data?.items ?? []
   const noEmailRows = rows.filter((r) => r.status === 'NO_EMAIL')
-  const selectable = (r: InviteStatusRow) => r.status === 'NOT_INVITED' || r.status === 'INVITED'
+  // Allt utom redan aktiverade och de som saknar mejl kan (om)bjudas in — inkl.
+  // studsade (ägaren kan ha rättat adressen) och levererade-men-ej-aktiverade.
+  const selectable = (r: InviteStatusRow) => r.status !== 'ACTIVATED' && r.status !== 'NO_EMAIL'
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -112,8 +136,17 @@ export function InvitePortalModal({ open, onClose }: Props) {
       size="lg"
     >
       {/* Räknare */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {(['ACTIVATED', 'INVITED', 'NOT_INVITED', 'NO_EMAIL'] as TenantInviteStatus[]).map((s) => (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {(
+          [
+            'ACTIVATED',
+            'DELIVERED',
+            'INVITED',
+            'BOUNCED',
+            'NOT_INVITED',
+            'NO_EMAIL',
+          ] as TenantInviteStatus[]
+        ).map((s) => (
           <div key={s} className="rounded-xl border border-[#EAEDF0] bg-white p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
               {STATUS_META[s].label}
@@ -169,6 +202,11 @@ export function InvitePortalModal({ open, onClose }: Props) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-medium text-gray-800">{r.name}</p>
                 <p className="truncate text-[12px] text-gray-400">{r.email || '—'}</p>
+                {r.status === 'BOUNCED' && r.bounceReason && (
+                  <p className="truncate text-[11.5px] text-amber-600" title={r.bounceReason}>
+                    {r.bounceReason}
+                  </p>
+                )}
               </div>
               <StatusBadge status={r.status} />
             </label>

@@ -1,6 +1,12 @@
 import { get, post } from '@/lib/api'
 
-export type TenantInviteStatus = 'NOT_INVITED' | 'NO_EMAIL' | 'INVITED' | 'ACTIVATED'
+export type TenantInviteStatus =
+  | 'NOT_INVITED'
+  | 'NO_EMAIL'
+  | 'INVITED'
+  | 'DELIVERED'
+  | 'BOUNCED'
+  | 'ACTIVATED'
 
 export interface InviteStatusRow {
   tenantId: string
@@ -10,6 +16,10 @@ export interface InviteStatusRow {
   invitedAt: string | null
   inviteCount: number
   portalActivatedAt: string | null
+  deliveredAt: string | null
+  bouncedAt: string | null
+  /** Förklaring vid BOUNCED (studs-orsak eller spam-anmälan) — annars null. */
+  bounceReason: string | null
 }
 
 export interface InviteStatusList {

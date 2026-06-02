@@ -47,6 +47,7 @@ export class MailQueue {
           }
         : {}),
       ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
+      ...(opts.correlation ? { correlation: opts.correlation } : {}),
     }
 
     const jobOptions: JobOptions = {

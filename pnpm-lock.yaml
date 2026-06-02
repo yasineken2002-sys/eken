@@ -263,6 +263,9 @@ importers:
       sanitize-html:
         specifier: ^2.17.3
         version: 2.17.3
+      svix:
+        specifier: ^1.95.1
+        version: 1.95.1
       uuid:
         specifier: ^10.0.0
         version: 10.0.0
@@ -10935,6 +10938,12 @@ packages:
         integrity: sha512-ljkZuyy2+IBEoESkIpn8sLM+sxJHQcPxlZFxU+nVDhltNfUMisMBzWX/UR8SjEnzoI28ZjCzMbmYAPwSTucoMw==,
       }
 
+  svix@1.95.1:
+    resolution:
+      {
+        integrity: sha512-Vtsbzsvs4lzXJneruB5HiZmV7dlhAjbo6dGid2Qxi9bv+LutLz7Yt3NORI4SYqRTNWPhVoFAA8TG/WXB+mIzNQ==,
+      }
+
   swagger-ui-dist@5.17.14:
     resolution:
       {
@@ -19010,6 +19019,10 @@ snapshots:
     dependencies:
       standardwebhooks: 1.0.0
       uuid: 10.0.0
+
+  svix@1.95.1:
+    dependencies:
+      standardwebhooks: 1.0.0
 
   swagger-ui-dist@5.17.14: {}
 

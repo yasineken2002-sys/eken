@@ -44,6 +44,7 @@ import { RedisModule } from './common/redis/redis.module'
 import { PdfQueueModule } from './pdf-jobs/pdf-queue.module'
 import { AiUsagePageModule } from './ai-usage/ai-usage.module'
 import { PublicPlansModule } from './public/public-plans.module'
+import { WebhooksModule } from './webhooks/webhooks.module'
 
 @Module({
   imports: [
@@ -117,6 +118,7 @@ import { PublicPlansModule } from './public/public-plans.module'
     PlatformModule,
     AiUsagePageModule,
     PublicPlansModule,
+    WebhooksModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: UserOrIpThrottlerGuard }, GlobalExceptionFilter],
 })

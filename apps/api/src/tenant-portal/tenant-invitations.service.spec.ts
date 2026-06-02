@@ -31,6 +31,10 @@ interface TenantOverride {
   portalActivatedAt?: Date | null
   invitedAt?: Date | null
   inviteCount?: number
+  inviteDeliveredAt?: Date | null
+  inviteBouncedAt?: Date | null
+  inviteBounceReason?: string | null
+  inviteComplainedAt?: Date | null
 }
 
 function tenant(over: TenantOverride = {}) {
@@ -45,6 +49,10 @@ function tenant(over: TenantOverride = {}) {
     portalActivatedAt: null,
     invitedAt: null,
     inviteCount: 0,
+    inviteDeliveredAt: null,
+    inviteBouncedAt: null,
+    inviteBounceReason: null,
+    inviteComplainedAt: null,
     ...over,
   }
 }
@@ -107,14 +115,24 @@ describe('TenantInvitationsService — urval + saknar-mejl', () => {
     // Token utfärdades + invitedAt/inviteCount uppdaterades för den behöriga.
     expect(tenantAuth.issueActivationToken).toHaveBeenCalledTimes(1)
     expect(tenantAuth.issueActivationToken).toHaveBeenCalledWith('ok')
+    // PR 2: lastInviteMessageId sätts INTE här längre (workern skriver Resend-id
+    // efter lyckat utskick). Vid (om)skick nollställs det + leverans-/bounce-state.
     expect(prisma.tenant.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'ok' },
         data: expect.objectContaining({
           inviteCount: { increment: 1 },
-          lastInviteMessageId: 'mail-job-1',
+          lastInviteMessageId: null,
+          inviteDeliveredAt: null,
+          inviteBouncedAt: null,
+          inviteBounceReason: null,
+          inviteComplainedAt: null,
         }),
       }),
+    )
+    // Korrelations-deskriptorn följer med så workern kan koppla id:t till tenant.
+    expect(mail.sendTenantPortalInvite).toHaveBeenCalledWith(
+      expect.objectContaining({ correlation: { kind: 'tenant-invite', tenantId: 'ok' } }),
     )
   })
 
@@ -192,10 +210,78 @@ describe('TenantInvitationsService — urval + saknar-mejl', () => {
 
     const list = await service.listStatus('org-1', {})
 
-    expect(list.counts).toEqual({ ACTIVATED: 1, NO_EMAIL: 1, INVITED: 1, NOT_INVITED: 1 })
+    expect(list.counts).toEqual({
+      ACTIVATED: 1,
+      NO_EMAIL: 1,
+      INVITED: 1,
+      DELIVERED: 0,
+      BOUNCED: 0,
+      NOT_INVITED: 1,
+    })
     expect(list.total).toBe(4)
     const byId = Object.fromEntries(list.items.map((i) => [i.tenantId, i.status]))
     expect(byId).toEqual({ a: 'ACTIVATED', b: 'NO_EMAIL', c: 'INVITED', d: 'NOT_INVITED' })
+  })
+
+  it('listStatus härleder DELIVERED/BOUNCED från webhook-fälten (PR 2)', async () => {
+    const rows = [
+      tenant({
+        id: 'del',
+        email: 'del@example.se',
+        invitedAt: new Date(),
+        inviteDeliveredAt: new Date(),
+      }),
+      tenant({
+        id: 'bnc',
+        email: 'bnc@example.se',
+        invitedAt: new Date(),
+        inviteBouncedAt: new Date(),
+        inviteBounceReason: 'Mailbox does not exist',
+      }),
+      // Spam-anmälan klassas också som BOUNCED ("studsad — åtgärda").
+      tenant({
+        id: 'spam',
+        email: 'spam@example.se',
+        invitedAt: new Date(),
+        inviteComplainedAt: new Date(),
+      }),
+      // Studs slår levererad även om båda fälten råkar vara satta.
+      tenant({
+        id: 'both',
+        email: 'both@example.se',
+        invitedAt: new Date(),
+        inviteDeliveredAt: new Date(),
+        inviteBouncedAt: new Date(),
+        inviteBounceReason: 'Blocked',
+      }),
+      // Aktiverad slår allt — även en tidigare studs.
+      tenant({
+        id: 'act',
+        email: 'act@example.se',
+        portalActivated: true,
+        invitedAt: new Date(),
+        inviteBouncedAt: new Date(),
+      }),
+    ]
+    const { service } = makeService(rows)
+
+    const list = await service.listStatus('org-1', {})
+
+    const byId = Object.fromEntries(list.items.map((i) => [i.tenantId, i.status]))
+    expect(byId).toEqual({
+      del: 'DELIVERED',
+      bnc: 'BOUNCED',
+      spam: 'BOUNCED',
+      both: 'BOUNCED',
+      act: 'ACTIVATED',
+    })
+    expect(list.counts.DELIVERED).toBe(1)
+    expect(list.counts.BOUNCED).toBe(3)
+
+    const rowsById = Object.fromEntries(list.items.map((i) => [i.tenantId, i]))
+    expect(rowsById.bnc?.bounceReason).toBe('Mailbox does not exist')
+    expect(rowsById.spam?.bounceReason).toBe('Mottagaren anmälde mejlet som skräppost')
+    expect(rowsById.del?.deliveredAt).not.toBeNull()
   })
 
   it('listStatus filtrerar på status', async () => {

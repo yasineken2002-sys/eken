@@ -65,6 +65,19 @@ export interface MailAttachment {
   content: Buffer
 }
 
+/**
+ * Korrelations-deskriptor som följer med mailjobbet hela vägen till workern.
+ *
+ * Resends message-id (email_id) finns FÖRST efter att workern faktiskt anropat
+ * `resend.emails.send()` — inte vid enqueue. För att kunna koppla ett senare
+ * leverans-/bounce-event tillbaka till rätt domänobjekt skriver workern
+ * Resend-id:t till objektet som pekas ut här, direkt efter lyckat utskick.
+ *
+ * Diskriminerad union — lägg till fler `kind` när andra mejltyper behöver
+ * leveransspårning (t.ex. faktura-utskick).
+ */
+export type MailCorrelation = { kind: 'tenant-invite'; tenantId: string }
+
 export interface EnqueueMailOptions<T extends TemplateName = TemplateName> {
   template: T
   props: TemplatePropsMap[T]
@@ -74,6 +87,7 @@ export interface EnqueueMailOptions<T extends TemplateName = TemplateName> {
   scheduledAt?: Date
   attachments?: MailAttachment[]
   idempotencyKey?: string
+  correlation?: MailCorrelation
 }
 
 /**
@@ -93,6 +107,7 @@ export interface MailJobPayload {
   subject: string
   attachments?: Array<{ filename: string; contentBase64: string }>
   idempotencyKey?: string
+  correlation?: MailCorrelation
 }
 
 export const QUEUE_HIGH = 'mail:high'

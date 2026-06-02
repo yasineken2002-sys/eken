@@ -6,6 +6,7 @@ import { Resend } from 'resend'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailRenderer } from './mail.renderer'
 import {
+  type MailCorrelation,
   type MailJobPayload,
   type TemplateName,
   type TemplatePropsMap,
@@ -51,7 +52,7 @@ abstract class MailWorkerBase {
 
   protected async processJob(job: Job<MailJobPayload>): Promise<void> {
     const start = Date.now()
-    const { template, props, to, subject, attachments, idempotencyKey } = job.data
+    const { template, props, to, subject, attachments, idempotencyKey, correlation } = job.data
     const attempt = job.attemptsMade + 1
 
     this.logger.log(
@@ -90,10 +91,39 @@ abstract class MailWorkerBase {
       throw new Error(`Resend rejected mail: ${result.error.message}`)
     }
 
+    const resendId = result.data?.id
     const duration = Date.now() - start
     this.logger.log(
-      `[${job.queue.name}] sent jobId=${job.id} template=${template} to=${to} duration=${duration}ms resendId=${result.data?.id ?? 'unknown'}`,
+      `[${job.queue.name}] sent jobId=${job.id} template=${template} to=${to} duration=${duration}ms resendId=${resendId ?? 'unknown'}`,
     )
+
+    // Korrelera Resend-id:t med rätt domänobjekt så webhooken (PR 2) kan koppla
+    // leverans-/bounce-event tillbaka. Görs EFTER lyckat utskick — id:t finns
+    // inte vid enqueue. Ett fel här är icke-fatalt: mejlet ÄR skickat, så vi
+    // kastar inte (det skulle trigga en onödig Bull-retry). Resultatet blir
+    // bara att statusen fastnar på "skickad" tills nästa utskick.
+    if (correlation && resendId) {
+      await this.persistResendId(correlation, resendId)
+    }
+  }
+
+  private async persistResendId(correlation: MailCorrelation, resendId: string): Promise<void> {
+    try {
+      switch (correlation.kind) {
+        case 'tenant-invite':
+          await this.prisma.tenant.update({
+            where: { id: correlation.tenantId },
+            data: { lastInviteMessageId: resendId },
+          })
+          break
+      }
+    } catch (err) {
+      this.logger.error(
+        `Failed to persist resendId=${resendId} for correlation=${JSON.stringify(
+          correlation,
+        )}: ${(err as Error).message}`,
+      )
+    }
   }
 
   /**
