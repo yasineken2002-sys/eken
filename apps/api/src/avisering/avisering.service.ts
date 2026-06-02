@@ -557,6 +557,12 @@ export class AviseringService {
     const primaryColor = org.invoiceColor ?? '#1a6b3c'
     const bankgiro = org.bankgiro ?? '0000-0000'
 
+    // Konsekvent beloppsformat med hyresfakturan: alltid två decimaler (ören).
+    // Tidigare visade avin ören bara när de fanns medan fakturan rundade till
+    // hela kronor — nu använder båda dokumenten samma 2-decimalsformat.
+    const fmt = (n: number): string =>
+      Number(n).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
     const tenantName =
       notice.tenant.type === 'INDIVIDUAL'
         ? `${notice.tenant.firstName ?? ''} ${notice.tenant.lastName ?? ''}`.trim()
@@ -616,7 +622,7 @@ export class AviseringService {
             Säkerhet enligt 12 kap. 21 § JB. Återbetalas vid avflyttning efter slutbesiktning.
           </div>
         </td>
-        <td>${Number(notice.amount).toLocaleString('sv-SE')} kr</td>
+        <td>${fmt(Number(notice.amount))} kr</td>
       </tr>`
       : isProrated
         ? `
@@ -630,11 +636,11 @@ export class AviseringService {
             Period: ${notice.periodStart ? new Date(notice.periodStart).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' }) : ''}
             – ${notice.periodEnd ? new Date(notice.periodEnd).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' }) : ''}
             (${notice.daysCharged} av ${notice.totalDays} dagar)<br>
-            Dagshyra: ${monthlyRent.toLocaleString('sv-SE')} / ${notice.totalDays} =
-            ${dailyRate.toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kr
+            Dagshyra: ${fmt(monthlyRent)} / ${notice.totalDays} =
+            ${fmt(dailyRate)} kr
           </div>
         </td>
-        <td>${Number(notice.amount).toLocaleString('sv-SE')} kr</td>
+        <td>${fmt(Number(notice.amount))} kr</td>
       </tr>`
         : `
       <tr>
@@ -644,7 +650,7 @@ export class AviseringService {
           ${unit ? ` — ${unit.name as string}` : ''}
           ${property ? `, ${(property.street as string | null | undefined) ?? (property.name as string)}` : ''}
         </td>
-        <td>${Number(notice.amount).toLocaleString('sv-SE')} kr</td>
+        <td>${fmt(Number(notice.amount))} kr</td>
       </tr>`
 
     const aviTitle = isDeposit ? 'Depositionsavi' : 'Hyresavi'
@@ -944,7 +950,7 @@ export class AviseringService {
       <tr>
         <td></td>
         <td>Moms ${((Number(notice.vatAmount) / Number(notice.amount)) * 100).toFixed(0)}%</td>
-        <td>${Number(notice.vatAmount).toLocaleString('sv-SE')} kr</td>
+        <td>${fmt(Number(notice.vatAmount))} kr</td>
       </tr>`
           : ''
       }
@@ -958,17 +964,17 @@ export class AviseringService {
           ? `
       <tr>
         <td>Delsumma:</td>
-        <td>${Number(notice.amount).toLocaleString('sv-SE')} kr</td>
+        <td>${fmt(Number(notice.amount))} kr</td>
       </tr>
       <tr>
         <td>Moms:</td>
-        <td>${Number(notice.vatAmount).toLocaleString('sv-SE')} kr</td>
+        <td>${fmt(Number(notice.vatAmount))} kr</td>
       </tr>`
           : ''
       }
       <tr class="total-final">
         <td>Att betala:</td>
-        <td>${Number(notice.totalAmount).toLocaleString('sv-SE')} kr</td>
+        <td>${fmt(Number(notice.totalAmount))} kr</td>
       </tr>
     </table>
   </div>
@@ -1025,7 +1031,7 @@ export class AviseringService {
     <div class="amount-box">
       <div class="amount-label">ATT BETALA</div>
       <div class="amount-value">
-        ${Number(notice.totalAmount).toLocaleString('sv-SE')} kr
+        ${fmt(Number(notice.totalAmount))} kr
       </div>
     </div>
   </div>
