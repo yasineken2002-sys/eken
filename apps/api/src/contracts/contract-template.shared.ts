@@ -873,8 +873,9 @@ export function depositSection(input: ContractTemplateInput, paragraphNo: number
   </div>
   <div class="clause">
     <span class="clause-number">${paragraphNo}.2</span>
-    Depositionen återbetalas inom 30 dagar efter avflyttning, mot kvitterad
-    återlämning av samtliga nycklar samt godkänd avflyttningsbesiktning.
+    Depositionen återbetalas inom skälig tid, normalt 30 dagar, efter
+    avflyttning, mot kvitterad återlämning av samtliga nycklar samt godkänd
+    avflyttningsbesiktning.
   </div>
   <div class="clause">
     <span class="clause-number">${paragraphNo}.3</span>
@@ -909,11 +910,14 @@ export function accessSection(paragraphNo: number): string {
   return `
   <h2>§ ${paragraphNo} — Tillträde för hyresvärden <span class="lawref">(12 kap. 26 § JB)</span></h2>
   <div class="clause">
-    Hyresvärden får besiktiga hyresobjektet efter skriftligt varsel om minst
-    24 timmar. Vid akut fara — exempelvis vattenläcka, brand eller risk
-    för skada på fastigheten — får tillträde ske utan föregående varsel.
-    Hyresvärden får också vid skälig tid visa lägenheten för intresserade
-    spekulanter inför nästa hyresförhållande.
+    Hyresvärden har rätt till tillträde till hyresobjektet för nödvändig
+    tillsyn och skötsel i enlighet med 12 kap. 26 § Jordabalken. Hyresvärden
+    underrättar hyresgästen i god tid i förväg — som internt riktvärde minst
+    24 timmar — vilket inte inskränker den rätt till tillträde som lagen ger.
+    Vid akut fara — exempelvis vattenläcka, brand eller risk för skada på
+    fastigheten — får tillträde ske utan föregående varsel. Hyresvärden får
+    också vid skälig tid visa lägenheten för intresserade spekulanter inför
+    nästa hyresförhållande.
   </div>`
 }
 
@@ -987,6 +991,10 @@ export function gdprSection(input: ContractTemplateInput, paragraphNo: number): 
     förhållandets bestånd och därefter i sju år enligt 7 kap. 2 § bokförings-
     lagen (1999:1078). Hyresgästen har rätt att begära registerutdrag,
     rättelse, radering och dataportabilitet i enlighet med GDPR art. 15–22.
+  </div>
+  <div class="clause">
+    Frågor om behandlingen av personuppgifter samt begäran enligt ovan ställs
+    till hyresvärden på ${escape(input.organization.email)}.
   </div>`
 }
 
