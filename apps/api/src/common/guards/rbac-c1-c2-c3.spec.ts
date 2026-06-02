@@ -74,20 +74,34 @@ describe('RBAC C2 — köp av AI-credits kräver minst ADMIN', () => {
     expect(allows(proto.buyCredits as () => unknown, AiUsageController, role)).toBe(true)
   })
 
-  it('lämnar GET current öppet för VIEWER (lässtatistik)', () => {
-    expect(allows(proto.current as () => unknown, AiUsageController, 'VIEWER')).toBe(true)
-  })
+  it.each(['current', 'history'] as const)(
+    'lämnar GET %s öppet för VIEWER (lässtatistik)',
+    (method) => {
+      expect(allows(proto[method] as () => unknown, AiUsageController, 'VIEWER')).toBe(true)
+    },
+  )
 })
 
 describe('RBAC C3 — AI-assistenten kräver minst ACCOUNTANT', () => {
   const proto = AiAssistantController.prototype
 
-  it.each(['chat', 'streamChat', 'getAnalysis', 'getConversations'] as const)(
-    'nekar VIEWER på %s (403)',
-    (method) => {
-      expect(allows(proto[method] as () => unknown, AiAssistantController, 'VIEWER')).toBe(false)
-    },
-  )
+  // Täcker SAMTLIGA endpoints i controllern (inte ett urval) så att en framtida
+  // handler-nivå-@Roles som av misstag öppnar en metod för VIEWER fångas — särskilt
+  // confirmAction, som faktiskt exekverar AI-åtgärder (bokföring/avtalsändringar).
+  it.each([
+    'streamChat',
+    'chat',
+    'confirmAction',
+    'getConversations',
+    'getConversation',
+    'deleteConversation',
+    'clearMemory',
+    'getAnalysis',
+    'getUsage',
+    'getUsageBreakdown',
+  ] as const)('nekar VIEWER på %s (403)', (method) => {
+    expect(allows(proto[method] as () => unknown, AiAssistantController, 'VIEWER')).toBe(false)
+  })
 
   it.each(['ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER'] as const)(
     'släpper in %s på AI-chat (200)',
