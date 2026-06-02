@@ -23,6 +23,54 @@ const STATUS_TO_EVENT_TYPE: Partial<Record<InvoiceStatus, InvoiceEventType>> = {
   VOID: 'VOIDED',
 }
 
+// Öresavrundning i beräkningslagret. Belopp lagras till ören (2 decimaler) och
+// totalerna HÄRLEDS ur de avrundade radvärdena, så att invarianten
+// "Σ rader = total" och "subtotal + moms = total" alltid håller exakt — inte
+// bara matematiskt vid full float-precision, utan även efter avrundning på
+// utskriften. Tidigare lagrades full precision och visningen rundade varje
+// belopp för sig, vilket kunde göra att raderna inte summerade till totalen.
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100
+}
+
+interface InvoiceLineInput {
+  description: string
+  quantity: number
+  unitPrice: number
+  vatRate: number
+}
+
+interface ComputedInvoiceAmounts {
+  subtotal: number
+  vatTotal: number
+  total: number
+  lines: Array<InvoiceLineInput & { total: number }>
+}
+
+// Per rad: netto och bruttobelopp (inkl. moms) öresavrundas. Radens moms tas som
+// (brutto − netto) så ingen separat avrundningsdrift uppstår. subtotal/vatTotal
+// summeras ur de avrundade radvärdena och total = subtotal + moms. Då gäller
+// alltid total = Σ radbelopp (eftersom netto + moms = brutto per rad).
+function computeInvoiceAmounts(lines: InvoiceLineInput[]): ComputedInvoiceAmounts {
+  let subtotal = 0
+  let vatTotal = 0
+  const computed = lines.map((l) => {
+    const net = round2(l.quantity * l.unitPrice)
+    const gross = round2(l.quantity * l.unitPrice * (1 + l.vatRate / 100))
+    const vat = round2(gross - net)
+    subtotal = round2(subtotal + net)
+    vatTotal = round2(vatTotal + vat)
+    return {
+      description: l.description,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      vatRate: l.vatRate,
+      total: gross,
+    }
+  })
+  return { subtotal, vatTotal, total: round2(subtotal + vatTotal), lines: computed }
+}
+
 @Injectable()
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name)
@@ -212,13 +260,9 @@ export class InvoicesService {
       const ocrNumber = this.ocrService.generateForInvoiceSequence(sequence)
       const reference = dto.reference != null ? dto.reference : ocrNumber
 
-      // Beräkna belopp server-side (lita aldrig på klienten)
-      const subtotal = dto.lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0)
-      const vatTotal = dto.lines.reduce(
-        (s, l) => s + l.quantity * l.unitPrice * (l.vatRate / 100),
-        0,
-      )
-      const total = subtotal + vatTotal
+      // Beräkna belopp server-side (lita aldrig på klienten). Öresavrundat så
+      // att Σ rader = total och subtotal + moms = total exakt (se round2 ovan).
+      const { subtotal, vatTotal, total, lines: computedLines } = computeInvoiceAmounts(dto.lines)
 
       const created = await tx.invoice.create({
         data: {
@@ -239,12 +283,12 @@ export class InvoicesService {
           ...(dto.notes != null ? { notes: dto.notes } : {}),
           lines: {
             createMany: {
-              data: dto.lines.map((l) => ({
+              data: computedLines.map((l) => ({
                 description: l.description,
                 quantity: l.quantity,
                 unitPrice: l.unitPrice,
                 vatRate: l.vatRate,
-                total: l.quantity * l.unitPrice * (1 + l.vatRate / 100),
+                total: l.total,
               })),
             },
           },
@@ -404,24 +448,20 @@ export class InvoicesService {
         // Ta bort alla befintliga rader och skapa nya (replace-all)
         await tx.invoiceLine.deleteMany({ where: { invoiceId: id } })
 
-        const subtotal = dto.lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0)
-        const vatTotal = dto.lines.reduce(
-          (s, l) => s + l.quantity * l.unitPrice * (l.vatRate / 100),
-          0,
-        )
-        const total = subtotal + vatTotal
+        // Öresavrundat i beräkningslagret (se round2/computeInvoiceAmounts ovan).
+        const { subtotal, vatTotal, total, lines: computedLines } = computeInvoiceAmounts(dto.lines)
 
         updateData.subtotal = subtotal
         updateData.vatTotal = vatTotal
         updateData.total = total
         updateData.lines = {
           createMany: {
-            data: dto.lines.map((l) => ({
+            data: computedLines.map((l) => ({
               description: l.description,
               quantity: l.quantity,
               unitPrice: l.unitPrice,
               vatRate: l.vatRate,
-              total: l.quantity * l.unitPrice * (1 + l.vatRate / 100),
+              total: l.total,
             })),
           },
         }

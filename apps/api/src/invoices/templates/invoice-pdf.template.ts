@@ -88,12 +88,22 @@ function formatVatNumber(raw: string): string {
   return trimmed
 }
 
+// Visa alltid ören (2 decimaler). Tidigare rundades varje belopp till hela
+// kronor var för sig (maximumFractionDigits: 0), vilket kunde göra att raderna
+// inte summerade till totalen på utskriften. Beloppen är öresavrundade redan i
+// beräkningslagret (invoices.service.ts), så 2-decimalsvisning är exakt och
+// delar = helhet. Samma format används i hyresavin för konsekvens.
 function formatSek(value: Decimal | number): string {
   return new Intl.NumberFormat('sv-SE', {
     style: 'currency',
     currency: 'SEK',
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(Number(value))
+}
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100
 }
 
 function formatDate(value: Date | string): string {
@@ -119,6 +129,17 @@ export function generateInvoiceHtml(data: InvoicePdfData): string {
   const color = data.invoiceColor ?? '#1a6b3c'
   const template = data.invoiceTemplate ?? 'classic'
   const { tenant, organization } = invoice
+
+  // Betalningsvillkor härleds ur faktiskt antal dagar mellan utfärdande- och
+  // förfallodatum, så texten aldrig kan motsäga förfallodatumet (tidigare
+  // hårdkodat "30 dagar" oavsett verkligt datum).
+  const paymentTermsDays = Math.max(
+    0,
+    Math.round(
+      (new Date(invoice.dueDate).getTime() - new Date(invoice.issueDate).getTime()) /
+        (1000 * 60 * 60 * 24),
+    ),
+  )
 
   const logoHtml = logoBase64
     ? `<img src="data:${detectMime(organization.logoUrl ?? '')};base64,${logoBase64}"
@@ -152,14 +173,18 @@ export function generateInvoiceHtml(data: InvoicePdfData): string {
 </div>`
   }
 
+  // Köparens adress hör till fakturans uppgifter. Saknas den flaggar vi det
+  // synligt i stället för att tyst utelämna (krascha gör vi inte).
   const tenantAddress = tenant.address
     ? `<div style="color:#374151;">${tenant.address.street}</div>
        <div style="color:#374151;">${tenant.address.postalCode} ${tenant.address.city}</div>`
-    : ''
+    : `<div style="color:#b45309;font-weight:600;">&#9888; Adress saknas</div>`
 
-  const orgAddress = [organization.street, organization.postalCode, organization.city]
-    .filter(Boolean)
-    .join(' · ')
+  // Säljarens adress får aldrig bli helt tom i footern — visa en synlig flagga
+  // i stället så att den ofullständiga uppgiften upptäcks och kompletteras.
+  const orgAddress =
+    [organization.street, organization.postalCode, organization.city].filter(Boolean).join(' · ') ||
+    'Adress saknas — komplettera organisationsuppgifterna'
 
   // ── Skatteinformation: F-skatt + momsnr ────────────────────────────────
   // Lagkrav per 11 kap. 8 § ML — F-skatt-status ska anges. Om hasFSkatt
@@ -186,6 +211,46 @@ export function generateInvoiceHtml(data: InvoicePdfData): string {
       </tr>`,
     )
     .join('')
+
+  // Momsuppdelning per skattesats. Vid BLANDADE satser ska beskattningsunderlag
+  // och moms anges per sats; vid en enda sats visas det som förut (netto + moms).
+  // Netto/moms per sats härleds ur de redan öresavrundade radbeloppen så att
+  // delsummorna summerar till subtotal/vatTotal/total exakt.
+  const vatByRate = new Map<number, { net: number; vat: number }>()
+  for (const line of invoice.lines) {
+    const net = round2(Number(line.quantity) * Number(line.unitPrice))
+    const vat = round2(Number(line.total) - net)
+    const acc = vatByRate.get(line.vatRate) ?? { net: 0, vat: 0 }
+    acc.net = round2(acc.net + net)
+    acc.vat = round2(acc.vat + vat)
+    vatByRate.set(line.vatRate, acc)
+  }
+  const vatRates = [...vatByRate.keys()].sort((a, b) => b - a)
+  const totalsBreakdownHtml =
+    vatRates.length > 1
+      ? vatRates
+          .map((rate) => {
+            const { net, vat } = vatByRate.get(rate)!
+            return `
+    <div style="display:flex;justify-content:space-between;padding:6px 0;color:#374151;">
+      <span>Netto (${rate}% moms)</span>
+      <span>${formatSek(net)}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:4px 0;color:#374151;">
+      <span>Moms ${rate}%</span>
+      <span>${formatSek(vat)}</span>
+    </div>`
+          })
+          .join('')
+      : `
+    <div style="display:flex;justify-content:space-between;padding:6px 0;color:#374151;">
+      <span>Netto exkl. moms</span>
+      <span>${formatSek(invoice.subtotal)}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:6px 0;color:#374151;">
+      <span>Moms</span>
+      <span>${formatSek(invoice.vatTotal)}</span>
+    </div>`
 
   return `<!DOCTYPE html>
 <html lang="sv">
@@ -248,7 +313,7 @@ ${headerHtml}
       <span class="label" style="margin-bottom:0;">Förfallodatum</span>
       <span style="font-weight:600;color:#dc2626;">${formatDate(invoice.dueDate)}</span>
       <span class="label" style="margin-bottom:0;">Betalningsvillkor</span>
-      <span>30 dagar</span>
+      <span>${paymentTermsDays} dagar</span>
       <span class="label" style="margin-bottom:0;">Bankgiro</span>
       <span style="font-weight:500;">${organization.bankgiro ?? '–'}</span>
     </div>
@@ -296,14 +361,7 @@ ${
 <!-- TOTALS -->
 <div style="display:flex;justify-content:flex-end;margin-top:24px;">
   <div style="min-width:280px;">
-    <div style="display:flex;justify-content:space-between;padding:6px 0;color:#374151;">
-      <span>Netto exkl. moms</span>
-      <span>${formatSek(invoice.subtotal)}</span>
-    </div>
-    <div style="display:flex;justify-content:space-between;padding:6px 0;color:#374151;">
-      <span>Moms</span>
-      <span>${formatSek(invoice.vatTotal)}</span>
-    </div>
+    ${totalsBreakdownHtml}
     <div style="border-top:2px solid #111827;margin:8px 0;"></div>
     <div style="display:flex;justify-content:space-between;padding:6px 0;">
       <span style="font-size:17px;font-weight:700;color:#111827;">Att betala</span>
