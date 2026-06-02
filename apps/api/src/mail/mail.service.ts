@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common'
 import { MailQueue } from './mail.queue'
-import type { EnqueueMailOptions, MailPriority, TemplateName, TemplatePropsMap } from './mail.types'
+import type {
+  EnqueueMailOptions,
+  MailCorrelation,
+  MailPriority,
+  TemplateName,
+  TemplatePropsMap,
+} from './mail.types'
 
 // ── Public option-types — bevaras för bakåtkompabilitet med befintliga callers ─
 
@@ -151,6 +157,8 @@ export interface SendTenantPortalInviteOptions {
   activationUrl: string
   validForHours?: number
   idempotencyKey?: string
+  /** Korrelation så workern kan skriva Resend-id:t till rätt hyresgäst. */
+  correlation?: MailCorrelation
 }
 
 export interface SendTenantSignatureConfirmationOptions {
@@ -328,6 +336,7 @@ export class MailService {
         to: opts.to,
         subject: `${opts.organizationName} — aktivera ditt portalkonto`,
         idempotencyKey: opts.idempotencyKey,
+        ...(opts.correlation ? { correlation: opts.correlation } : {}),
       },
     )
   }
@@ -761,6 +770,7 @@ export class MailService {
       subject: string
       attachments?: { filename: string; content: Buffer }[]
       idempotencyKey?: string | undefined
+      correlation?: MailCorrelation | undefined
     },
   ): Promise<string> {
     const opts: EnqueueMailOptions<T> = {
@@ -772,6 +782,7 @@ export class MailService {
     }
     if (extras.attachments) opts.attachments = extras.attachments
     if (extras.idempotencyKey) opts.idempotencyKey = extras.idempotencyKey
+    if (extras.correlation) opts.correlation = extras.correlation
     return this.queue.enqueue(opts)
   }
 }

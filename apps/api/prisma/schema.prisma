@@ -756,15 +756,26 @@ model Tenant {
   // ─── Portal-inbjudan (massutskick) ───────────────────────────────────────
   // Spårar massinbjudan till portalen separat från aktiveringstoken ovan.
   // invitedAt sätts när en inbjudan köas; inviteCount ökar vid varje (om)skick.
-  // Statusen (ej inbjuden/inbjuden/aktiverad/saknar mejl) HÄRLEDS i läs-
-  // endpointen — portalActivated är fortsatt auktoritativ för aktivering.
-  // De fyra leverans-/bounce-fälten fylls först i PR 2 (Resend-webhook).
+  // Statusen (ej inbjuden/inbjuden/levererad/studsad/aktiverad/saknar mejl)
+  // HÄRLEDS i läs-endpointen — portalActivated är fortsatt auktoritativ för
+  // aktivering.
+  //
+  // Leverans-/bounce-/spam-fälten fylls av Resend-webhooken (PR 2) och
+  // nollställs vid varje (om)skick i sendOne() så att statusen speglar det
+  // SENASTE utskicket, inte ett gammalt event.
+  //
+  // lastInviteMessageId är Resends message-id (email_id) för det senaste
+  // utskicket och är webhookens ENDA korrelationsnyckel mot rätt hyresgäst.
+  // @unique gör korrelationen entydig på DB-nivå: ett event kan aldrig träffa
+  // mer än en hyresgäst. Sätts av mail-workern EFTER lyckad Resend-send
+  // (id:t finns inte vid enqueue), inte här.
   invitedAt           DateTime?
   inviteCount         Int       @default(0)
   inviteDeliveredAt   DateTime?
   inviteBouncedAt     DateTime?
   inviteBounceReason  String?
-  lastInviteMessageId String?
+  inviteComplainedAt  DateTime?
+  lastInviteMessageId String?   @unique
 
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   leases             Lease[]

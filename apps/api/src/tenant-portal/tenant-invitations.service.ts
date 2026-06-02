@@ -5,9 +5,19 @@ import { MailService } from '../mail/mail.service'
 import { TenantAuthService } from './tenant-auth.service'
 
 // Härledd portal-inbjudningsstatus. Lagras INTE som kolumn — räknas fram ur
-// portalActivated + email-giltighet + invitedAt. portalActivated förblir
-// auktoritativ för aktivering. (PR 2 lägger till DELIVERED/BOUNCED via webhook.)
-export type TenantInviteStatus = 'NOT_INVITED' | 'NO_EMAIL' | 'INVITED' | 'ACTIVATED'
+// portalActivated + email-giltighet + invitedAt + leverans-/bounce-fälten som
+// Resend-webhooken (PR 2) fyller. portalActivated förblir auktoritativ för
+// aktivering.
+//
+// BOUNCED = "studsad — åtgärda": täcker både hård studs (email.bounced) och
+// spam-anmälan (email.complained), eftersom båda kräver att hyresvärden agerar.
+export type TenantInviteStatus =
+  | 'NOT_INVITED'
+  | 'NO_EMAIL'
+  | 'INVITED'
+  | 'DELIVERED'
+  | 'BOUNCED'
+  | 'ACTIVATED'
 
 // Inbjudan återanvänder aktiveringstokenets TTL (72 h) — samma mekanik som
 // välkomstmejlet, så länken funkar identiskt i activate-flödet.
@@ -48,6 +58,10 @@ const TENANT_INVITE_SELECT = {
   portalActivatedAt: true,
   invitedAt: true,
   inviteCount: true,
+  inviteDeliveredAt: true,
+  inviteBouncedAt: true,
+  inviteBounceReason: true,
+  inviteComplainedAt: true,
 } satisfies Prisma.TenantSelect
 
 type TenantRow = Prisma.TenantGetPayload<{ select: typeof TENANT_INVITE_SELECT }>
@@ -61,12 +75,38 @@ function displayName(
 }
 
 function deriveStatus(
-  t: Pick<TenantRow, 'portalActivated' | 'email' | 'invitedAt'>,
+  t: Pick<
+    TenantRow,
+    | 'portalActivated'
+    | 'email'
+    | 'invitedAt'
+    | 'inviteDeliveredAt'
+    | 'inviteBouncedAt'
+    | 'inviteComplainedAt'
+  >,
 ): TenantInviteStatus {
+  // Aktivering är terminal och auktoritativ — slår allt annat (hyresgästen är
+  // inne, oavsett vad ett gammalt leverans-event säger).
   if (t.portalActivated) return 'ACTIVATED'
   if (!isValidEmail(t.email)) return 'NO_EMAIL'
+  // Studs och spam-anmälan kräver åtgärd och rankas före "levererad". Fälten
+  // nollställs vid omskick, så de speglar alltid det senaste utskicket.
+  if (t.inviteBouncedAt || t.inviteComplainedAt) return 'BOUNCED'
+  if (t.inviteDeliveredAt) return 'DELIVERED'
   if (t.invitedAt) return 'INVITED'
   return 'NOT_INVITED'
+}
+
+/**
+ * Åtgärds-text för BOUNCED-status. Hård studs har en konkret Resend-orsak;
+ * spam-anmälan har ingen "bounce reason" men ska ändå förklaras för ägaren.
+ */
+function bounceReasonFor(
+  t: Pick<TenantRow, 'inviteBouncedAt' | 'inviteBounceReason' | 'inviteComplainedAt'>,
+): string | null {
+  if (t.inviteBouncedAt) return t.inviteBounceReason ?? 'Mejlet studsade'
+  if (t.inviteComplainedAt) return 'Mottagaren anmälde mejlet som skräppost'
+  return null
 }
 
 export interface TenantRef {
@@ -94,6 +134,10 @@ export interface InviteStatusRow {
   invitedAt: string | null
   inviteCount: number
   portalActivatedAt: string | null
+  deliveredAt: string | null
+  bouncedAt: string | null
+  /** Förklaring vid BOUNCED (studs-orsak eller spam-anmälan) — annars null. */
+  bounceReason: string | null
 }
 
 export interface InviteStatusList {
@@ -269,6 +313,8 @@ export class TenantInvitationsService {
       // Stabil nyckel per (tenant, token-prefix): Bull dedupar dubbla enqueues,
       // Resend dedupar dubbla worker-körningar. Ny token → ny nyckel vid omskick.
       idempotencyKey: `tenant-invite-${t.id}-${token.substring(0, 8)}`,
+      // Workern skriver Resend-id:t till denna hyresgäst efter lyckat utskick.
+      correlation: { kind: 'tenant-invite', tenantId: t.id },
     })
 
     await this.prisma.tenant.update({
@@ -276,11 +322,21 @@ export class TenantInvitationsService {
       data: {
         invitedAt: new Date(),
         inviteCount: { increment: 1 },
-        // PR 1: Bull-jobId (samma mönster som PaymentReminder.emailMessageId).
-        // PR 2 ersätter med Resend-message-id för bounce-korrelation.
-        lastInviteMessageId: messageId,
+        // Nollställ leverans-/bounce-/spam-state inför det nya utskicket så att
+        // statusen speglar SENASTE inbjudan, inte ett gammalt event. Och rensa
+        // lastInviteMessageId — workern skriver det nya Resend-id:t efter lyckat
+        // utskick (id:t finns inte här). Tills dess saknar inbjudan korrelation,
+        // vilket är korrekt: ett ev. event för det GAMLA id:t träffar då ingen.
+        inviteDeliveredAt: null,
+        inviteBouncedAt: null,
+        inviteBounceReason: null,
+        inviteComplainedAt: null,
+        lastInviteMessageId: null,
       },
     })
+    // Säkerhetsnät: 'messageId' är Bull-jobId (inte Resend-id) och används inte
+    // för korrelation — workern äger lastInviteMessageId. Refereras för loggspår.
+    void messageId
   }
 
   // ── Status ─────────────────────────────────────────────────────────────────
@@ -311,12 +367,17 @@ export class TenantInvitationsService {
       invitedAt: t.invitedAt?.toISOString() ?? null,
       inviteCount: t.inviteCount,
       portalActivatedAt: t.portalActivatedAt?.toISOString() ?? null,
+      deliveredAt: t.inviteDeliveredAt?.toISOString() ?? null,
+      bouncedAt: (t.inviteBouncedAt ?? t.inviteComplainedAt)?.toISOString() ?? null,
+      bounceReason: bounceReasonFor(t),
     }))
 
     const counts: Record<TenantInviteStatus, number> = {
       NOT_INVITED: 0,
       NO_EMAIL: 0,
       INVITED: 0,
+      DELIVERED: 0,
+      BOUNCED: 0,
       ACTIVATED: 0,
     }
     for (const r of rows) counts[r.status]++

@@ -44,9 +44,15 @@ async function bootstrap() {
   //
   // 1 = en hop. Bakom Cloudflare → Railway hade vi behövt 2; vi får ändra
   // när vi flyttar till en sådan topologi (eller läsa Cloudflare CF-Connecting-IP).
+  // rawBody: true exponerar den oparsade request-bodyn på `req.rawBody` (Buffer).
+  // Svix-/Resend-webhooken MÅSTE verifiera signaturen mot exakt de bytes Resend
+  // signerade — den JSON-parsade bodyn duger inte (omserialisering ändrar
+  // whitespace/nyckelordning och bryter HMAC:en). Gäller bara application/json;
+  // multipart-uppladdningar hanteras av @fastify/multipart och påverkas inte.
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ trustProxy: 1 }),
+    { rawBody: true },
   )
 
   const config = app.get(ConfigService)
