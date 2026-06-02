@@ -33,6 +33,7 @@ import { ChatDto, CHAT_MESSAGE_MAX_LENGTH } from './dto/chat.dto'
 import { ConfirmActionDto } from './dto/confirm-action.dto'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { AI_MODELS } from './ai.config'
 
@@ -40,7 +41,12 @@ const STREAM_MODEL = AI_MODELS.STREAM
 const STREAM_MAX_TOOL_ITERATIONS = 3
 const STREAM_MAX_TOKENS = 2048
 
+// C3: AI-assistenten kräver minst ACCOUNTANT. Utestänger VIEWER (som annars
+// nådde chat/stream/analys) men bevarar bokförings-AI för ekonomirollen —
+// tool-executorns finare spärrar (ACTION_TOOLS, ACCOUNTING_ONLY_ACTIONS) ligger
+// kvar som djupförsvar ovanpå denna controller-gate. JWT enforce:as globalt.
 @Controller('ai')
+@Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
 export class AiAssistantController {
   constructor(
     private readonly aiService: AiAssistantService,

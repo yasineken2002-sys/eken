@@ -4,8 +4,13 @@ import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { AccountingService } from './accounting.service'
 
+// C1: hela bokföringen kräver minst ACCOUNTANT — konsekvent med accounts/seed
+// och collections (ekonomidomänen = ACCOUNTANT och uppåt). Utan detta kunde
+// VIEWER läsa hela verifikationsjournalen. Klass-nivå täcker alla GET-routes;
+// hierarkisk RolesGuard släpper in ACCOUNTANT/MANAGER/ADMIN/OWNER, ej VIEWER.
 @Controller('accounting')
 @UseGuards(JwtAuthGuard)
+@Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
 export class AccountingController {
   constructor(private readonly accountingService: AccountingService) {}
 
