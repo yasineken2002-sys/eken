@@ -34,6 +34,10 @@ const COMMON_ACCOUNTS: BasAccountSeed[] = [
   // Tillgångar
   { number: 1510, name: 'Kundfordringar', type: 'ASSET' },
   { number: 1515, name: 'Osäkra kundfordringar', type: 'ASSET' },
+  // Upplupna intäkter (interimsfordran). Bokslutspost för förbrukning (IMD) som
+  // är levererad men ännu inte fakturerad vid räkenskapsårets slut: 1790 D /
+  // 3920|3970 K per 31/12, återförs 1/1. Se IMD bokslut (PR 5).
+  { number: 1790, name: 'Övriga förutbetalda kostnader och upplupna intäkter', type: 'ASSET' },
   // Likvidkonton för betalningsregistrering (markAsPaid). 1910 Kassa för
   // kontant, 1930 Företagskonto för bank/Swish/övrigt. Swish särredovisas inte
   // på eget konto — medlen landar på företagskontot — utan spåras via avins
@@ -72,6 +76,9 @@ const COMMON_ACCOUNTS: BasAccountSeed[] = [
   { number: 3913, name: 'Hyresintäkter, lokaler', type: 'REVENUE' },
   { number: 3914, name: 'Hyresintäkter, övriga (förråd m.m.)', type: 'REVENUE' },
   { number: 3920, name: 'Hyresgästers el- och värmeersättning', type: 'REVENUE' },
+  // Vattenersättning (IMD) hålls skild från el/värme (3920) för bruttoredovisning
+  // per förbrukningsslag. Kostnaden bokförs separat på 5040 — nettas aldrig.
+  { number: 3970, name: 'Hyresgästers vattenersättning', type: 'REVENUE' },
   { number: 3040, name: 'Skadeersättningar', type: 'REVENUE' },
   { number: 3593, name: 'Påminnelseavgifter', type: 'REVENUE' },
   // Driftkostnader
