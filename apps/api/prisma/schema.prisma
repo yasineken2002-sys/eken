@@ -523,6 +523,7 @@ model Organization {
   customers          Customer[]
   closedPeriods      ClosedAccountingPeriod[]
   terminationRequests TerminationRequest[]
+  keyHandovers       KeyHandover[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -706,6 +707,7 @@ model Unit {
   documents          Document[]
   maintenanceTickets MaintenanceTicket[]
   inspections        Inspection[]
+  keyHandovers       KeyHandover[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -793,6 +795,7 @@ model Tenant {
   aiUsageLogs        AiUsageLog[]
   aiToolExecutions   AiToolExecution[]
   terminationRequests TerminationRequest[]
+  keyHandovers       KeyHandover[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -937,6 +940,7 @@ model Lease {
   deposit             Deposit?
   rentIncreases       RentIncrease[]
   terminationRequests TerminationRequest[]
+  keyHandovers        KeyHandover[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2237,4 +2241,68 @@ model RentIncrease {
   @@index([leaseId])
   @@index([status])
   @@index([effectiveDate])
+}
+
+// ─── KeyHandover (Nyckelkvittens) ─────────────────────────────────────────────
+// Ren förvaltningsfunktion: spårar vilka fysiska nycklar/brickor som kvitterats
+// ut till hyresgästen, när de lämnades ut och när de återlämnats. EN rad = EN
+// fysisk nyckel (ingen quantity) → ren styckstatus och triviala "X av Y ute".
+// Bulk-utlämning skapar N rader i en transaktion.
+//
+// Kopplingspunkt: Lease (precis som Deposit) — kvittensen tillhör hyresförhållandet,
+// inte personen eller väggen. unitId + tenantId denormaliseras för filtrering/vy
+// (samma mönster som Deposit bär både leaseId och tenantId).
+//
+// Append-only-etos: en återlämnad nyckel RADERAS aldrig — returnedAt sätts och
+// status → RETURNED. Posterna är bevis vid depositionstvist (jfr § 6 i kontraktet:
+// deposition återbetalas "mot kvitterad återlämning av samtliga nycklar").
+
+enum KeyType {
+  APARTMENT // Lägenhets-/lokalnyckel
+  ENTRANCE // Port-/entrényckel
+  MAILBOX // Postboxnyckel
+  LAUNDRY_TAG // Tvättstugebricka/-tagg
+  GARAGE // Garage-/parkeringsnyckel
+  STORAGE // Förråds-/vindsnyckel
+  FOB_TAG // Passerbricka/tagg
+  OTHER // Övrigt
+}
+
+enum KeyStatus {
+  ISSUED // Utlämnad, ej återlämnad
+  RETURNED // Återlämnad
+  LOST // Förlorad/borttappad
+  REPLACED // Ersatt (t.ex. omkodad efter förlust)
+}
+
+model KeyHandover {
+  id             String    @id @default(uuid())
+  organizationId String
+  leaseId        String
+  unitId         String
+  tenantId       String
+  type           KeyType
+  label          String? // Märkning/serienr, t.ex. "Nyckel A / 4471"
+  status         KeyStatus @default(ISSUED)
+  issuedAt       DateTime  @default(now())
+  issuedToName   String? // Om annan än hyresgästen fysiskt kvitterade (sambo/firma)
+  issuedById     String? // User som lämnade ut
+  returnedAt     DateTime?
+  receivedById   String? // User som tog emot återlämningen
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // organization: Restrict — nyckelkvittenser är bevis, raderas inte med org.
+  // lease: Cascade — speglar Deposit; en force-raderad (DRAFT) lease städar sina rader.
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  lease        Lease        @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  unit         Unit         @relation(fields: [unitId], references: [id])
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+
+  @@index([organizationId])
+  @@index([leaseId])
+  @@index([unitId])
+  @@index([tenantId])
+  @@index([status])
 }

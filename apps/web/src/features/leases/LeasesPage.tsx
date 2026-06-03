@@ -32,6 +32,7 @@ import { cn } from '@/lib/cn'
 import { extractApiError } from '@/lib/api'
 import { DocumentList } from '@/features/documents/components/DocumentList'
 import { DepositSection } from '@/features/deposits/components/DepositSection'
+import { KeysSection } from '@/features/keys/components/KeysSection'
 import { RentIncreaseSection } from '@/features/rent-increases/components/RentIncreaseSection'
 import { LeaseNoticesSection } from './components/LeaseNoticesSection'
 import { generateLeaseContract, downloadLeaseContract } from './api/leases.api'
@@ -745,6 +746,11 @@ function LeaseDetailPanel({
           {/* Deposition */}
           <div className="mt-6">
             <DepositSection leaseId={selected.id} fallbackAmount={Number(selected.depositAmount)} />
+          </div>
+
+          {/* Nycklar */}
+          <div className="mt-6">
+            <KeysSection leaseId={selected.id} />
           </div>
 
           {/* Hyreshöjningar */}

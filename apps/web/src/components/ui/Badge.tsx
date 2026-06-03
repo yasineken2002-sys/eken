@@ -126,6 +126,35 @@ export function RentIncreaseStatusBadge({ status }: { status: string }) {
   )
 }
 
+export function KeyTypeBadge({ type }: { type: string }) {
+  const map: Record<string, string> = {
+    APARTMENT: 'Lägenhetsnyckel',
+    ENTRANCE: 'Portnyckel',
+    MAILBOX: 'Postboxnyckel',
+    LAUNDRY_TAG: 'Tvättbricka',
+    GARAGE: 'Garagenyckel',
+    STORAGE: 'Förrådsnyckel',
+    FOB_TAG: 'Passerbricka',
+    OTHER: 'Övrigt',
+  }
+  return <Badge variant="ghost">{map[type] ?? type}</Badge>
+}
+
+export function KeyStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; variant: Variant }> = {
+    ISSUED: { label: 'Utlämnad', variant: 'warning' },
+    RETURNED: { label: 'Återlämnad', variant: 'success' },
+    LOST: { label: 'Förlorad', variant: 'danger' },
+    REPLACED: { label: 'Ersatt', variant: 'default' },
+  }
+  const { label, variant } = map[status] ?? { label: status, variant: 'default' as Variant }
+  return (
+    <Badge variant={variant} dot>
+      {label}
+    </Badge>
+  )
+}
+
 export function PropertyTypeBadge({ type }: { type: string }) {
   const map: Record<string, { label: string; variant: Variant }> = {
     RESIDENTIAL: { label: 'Bostäder', variant: 'info' },

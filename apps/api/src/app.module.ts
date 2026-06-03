@@ -19,6 +19,7 @@ import { LeasesModule } from './leases/leases.module'
 import { InvoicesModule } from './invoices/invoices.module'
 import { AccountingModule } from './accounting/accounting.module'
 import { DepositsModule } from './deposits/deposits.module'
+import { KeysModule } from './keys/keys.module'
 import { RentIncreasesModule } from './rent-increases/rent-increases.module'
 import { HealthModule } from './common/health/health.module'
 import { DashboardModule } from './dashboard/dashboard.module'
@@ -98,6 +99,7 @@ import { WebhooksModule } from './webhooks/webhooks.module'
     InvoicesModule,
     AccountingModule,
     DepositsModule,
+    KeysModule,
     RentIncreasesModule,
     HealthModule,
     DashboardModule,
