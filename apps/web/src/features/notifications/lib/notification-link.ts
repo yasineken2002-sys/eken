@@ -15,7 +15,7 @@ const ENTITY_PATH = {
   TENANT: '/tenants',
   DEPOSIT: '/deposits',
   RENT_INCREASE: '/rent-increases',
-  TERMINATION_REQUEST: '/leases',
+  TERMINATION_REQUEST: '/terminations',
 } as const
 
 export function entityTypeToPath(type: RelatedEntityType) {
