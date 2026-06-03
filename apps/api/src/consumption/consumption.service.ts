@@ -11,7 +11,7 @@ import type {
   ReadingType,
 } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
-import { vatRateForRent } from '../accounting/accounting.service'
+import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { CreateMeterDto } from './dto/create-meter.dto'
 import { UpdateMeterDto } from './dto/update-meter.dto'
 import { CreateTariffDto } from './dto/create-tariff.dto'
@@ -35,7 +35,10 @@ const CHARGE_INCLUDE = {
 export class ConsumptionService {
   private readonly logger = new Logger(ConsumptionService.name)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accounting: AccountingService,
+  ) {}
 
   // ══ Mätare (Meter) ══════════════════════════════════════════════════════════
 
@@ -455,6 +458,50 @@ export class ConsumptionService {
     })
     if (!charge) throw new NotFoundException('Förbrukningsposten hittades inte')
     return charge
+  }
+
+  // ── DRAFT → CONFIRMED: bokför verifikat + 1510-fordran (PR 3) ───────────────
+  //
+  // Här uppstår intäkten och kundfordran — oberoende av leverans (PR 4 rör detta
+  // aldrig). Verifikatet skapas UTANFÖR transaktionen och är idempotent via
+  // sourceId="consumption-charge:<id>": dubbel confirm skapar inte dubbla
+  // verifikat. Bokföringsfel loggas men fäller aldrig confirm:en (jfr deposits/
+  // avisering). Inget rörs på avi/faktura, ingen consumptionAmount, ingen
+  // RentNoticeLine — det är PR 4.
+  async confirmCharge(
+    id: string,
+    organizationId: string,
+    userId: string,
+  ): Promise<ConsumptionCharge> {
+    // Atomär statusövergång DRAFT → CONFIRMED: en villkorad updateMany (status:
+    // 'DRAFT' i WHERE) kan aldrig råka skriva över ett samtidigt CANCELLED till
+    // CONFIRMED — stänger TOCTOU mot ett framtida cancel-flöde. count påverkar
+    // inget: verifikat-anropet nedan körs alltid (self-heal) och är idempotent.
+    await this.prisma.consumptionCharge.updateMany({
+      where: { id, organizationId, status: 'DRAFT' },
+      data: { status: 'CONFIRMED' },
+    })
+
+    const charge = await this.prisma.consumptionCharge.findFirst({ where: { id, organizationId } })
+    if (!charge) throw new NotFoundException('Förbrukningsposten hittades inte')
+    if (charge.status === 'CANCELLED') {
+      throw new BadRequestException('Annullerad förbrukningspost kan inte bokföras')
+    }
+    // CONFIRMED/ATTACHED → redan bokförd; det idempotenta anropet nedan körs ändå
+    // (self-heal om ett tidigare confirm dog efter statusbytet men före verifikatet)
+    // utan att skapa dubbletter, tack vare sourceId-idempotensen.
+
+    try {
+      await this.accounting.createJournalEntryForConsumptionCharge(charge, organizationId, userId)
+    } catch (err) {
+      this.logger.error(
+        `[Consumption] Bokföring av förbrukningspost ${charge.id} misslyckades: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      )
+    }
+
+    return this.findCharge(id, organizationId)
   }
 
   async findReadings(

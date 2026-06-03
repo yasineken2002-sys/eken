@@ -2,9 +2,11 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { CompanyForm, PaymentMethod, RentNoticeType, UnitType } from '@prisma/client'
 import type {
   BankTransaction,
+  ConsumptionVatStatus,
   Invoice,
   InvoiceLine,
   JournalEntrySource,
+  MeterType,
   Prisma,
 } from '@prisma/client'
 import type { Decimal } from '@prisma/client/runtime/library'
@@ -58,6 +60,25 @@ const DEFAULT_REVENUE_ACCOUNT = 3914
 
 export function revenueAccountForUnitType(type: UnitType | null | undefined): number {
   return type ? REVENUE_ACCOUNT_BY_UNIT_TYPE[type] : DEFAULT_REVENUE_ACCOUNT
+}
+
+// BAS-intäktskonto för förbrukningsersättning (IMD) per mätartyp. Bruttoredovisat
+// och skilt från hyresintäkten (39xx ovan): el/värme → 3920, vatten → 3970.
+// Kostnaden (5020/5040) bokförs ALDRIG här — den hör till leverantörsfaktura-
+// flödet. Vi nettar aldrig kostnad mot intäkt.
+const CONSUMPTION_REVENUE_ACCOUNT_BY_METER_TYPE: Record<MeterType, number> = {
+  ELECTRICITY: 3920,
+  HEATING: 3920,
+  WATER_COLD: 3970,
+  WATER_HOT: 3970,
+}
+
+// Svensk etikett per mätartyp för verifikatets beskrivning/radtext.
+const METER_TYPE_LABEL: Record<MeterType, string> = {
+  ELECTRICITY: 'el',
+  HEATING: 'värme',
+  WATER_COLD: 'kallvatten',
+  WATER_HOT: 'varmvatten',
 }
 
 // BAS-likvidkonto som debiteras vid manuell betalningsregistrering, per
@@ -821,6 +842,100 @@ export class AccountingService {
       organizationId,
       date: periodDate,
       description: `Hyresavi ${notice.noticeNumber}`,
+      source: 'INVOICE',
+      sourceId,
+      createdById,
+      lines,
+      idempotencyWhere: { organizationId, sourceId },
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
+  // Bokföring av förbrukningsersättning (IMD). Speglar createJournalEntryForRent-
+  // Notice: kundfordran debiteras, intäkten krediteras netto, ev. moms separat.
+  //
+  //   1510 D  totalAmount                (kundfordran)
+  //   3920|3970 K  netAmount             (el/värme resp. vatten – bruttoredovisat)
+  //   2611 K  vatAmount   (ENDAST om vatStatus = TAXABLE_25)
+  //
+  // Datumet sätts till mätperiodens slut (periodEnd) — mätperioden styr räken-
+  // skapsåret, ALDRIG skapandedatumet (jfr bokföringsbedömningen). Idempotent via
+  // sourceId="consumption-charge:<id>" → dubbel confirm skapar inte dubbla
+  // verifikat. Momsen tas från charge-snapshotet (PR 2), beräknas aldrig om.
+  //
+  // Bruttoredovisning: ENDAST intäktssidan bokförs här. Kostnaden (5020/5040)
+  // hör till leverantörsfakturan och nettas aldrig mot ersättningen.
+  async createJournalEntryForConsumptionCharge(
+    charge: {
+      id: string
+      meterType: MeterType
+      periodEnd: Date
+      netAmount: Decimal | number
+      vatStatus: ConsumptionVatStatus
+      vatAmount: Decimal | number
+      totalAmount: Decimal | number
+    },
+    organizationId: string,
+    createdById: string | null,
+  ) {
+    const sourceId = `consumption-charge:${charge.id}`
+
+    const accounts = await this.prisma.account.findMany({
+      where: { organizationId },
+      select: { id: true, number: true },
+    })
+    const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+
+    const revenueAccountNumber = CONSUMPTION_REVENUE_ACCOUNT_BY_METER_TYPE[charge.meterType]
+    const receivableId = accountByNumber.get(1510)
+    const revenueId = accountByNumber.get(revenueAccountNumber)
+    if (!receivableId || !revenueId) {
+      this.logger.error(
+        `[Accounting] Konto saknas (1510 eller ${revenueAccountNumber}) för förbrukningspost ` +
+          `${charge.id} — verifikation skapas ej`,
+      )
+      return null
+    }
+
+    const net = Number(charge.netAmount)
+    const vat = Number(charge.vatAmount)
+    const total = Number(charge.totalAmount)
+    if (total <= 0) return null
+
+    const label = METER_TYPE_LABEL[charge.meterType]
+    const period = charge.periodEnd.toISOString().slice(0, 7) // YYYY-MM
+
+    const lines: JournalLineInput[] = [
+      { accountId: receivableId, debit: total, description: `Förbrukning ${label} ${period}` },
+    ]
+
+    // Momsraden tas DIREKT från charge-snapshotet — beräknas aldrig om (PR 2 äger
+    // momsregeln via vatRateForRent). EXEMPT (bostad m.fl.) ger ingen 26xx-rad;
+    // hellre INGEN verifikation än en med fel momsbehandling (ML 1 kap 1 §, god
+    // redovisningssed BFL 4 kap 2 §).
+    if (charge.vatStatus === 'TAXABLE_25' && vat > 0) {
+      const vatAccountNumber = VAT_TO_ACCOUNT[25] // 2611
+      const vatAccountId = vatAccountNumber ? accountByNumber.get(vatAccountNumber) : undefined
+      if (!vatAccountId) {
+        this.logger.error(
+          `[Accounting] Momskonto ${vatAccountNumber} saknas för förbrukningspost ${charge.id} — verifikation skapas ej`,
+        )
+        return null
+      }
+      lines.push({ accountId: vatAccountId, credit: vat, description: 'Moms 25%' })
+    }
+
+    lines.push({
+      accountId: revenueId,
+      credit: net,
+      description: `Förbrukningsersättning ${label} ${period}`,
+    })
+
+    return this.createNumberedEntry({
+      organizationId,
+      // Mätperiodens slut styr räkenskapsåret — inte skapandedatumet.
+      date: charge.periodEnd,
+      description: `Förbrukning ${label} ${period}`,
       source: 'INVOICE',
       sourceId,
       createdById,
