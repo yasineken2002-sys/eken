@@ -397,6 +397,39 @@ export interface Deposit {
   updatedAt: string
 }
 
+// ─── KeyHandover (Nyckelkvittens) ─────────────────────────────────────────────
+
+export type KeyType =
+  | 'APARTMENT'
+  | 'ENTRANCE'
+  | 'MAILBOX'
+  | 'LAUNDRY_TAG'
+  | 'GARAGE'
+  | 'STORAGE'
+  | 'FOB_TAG'
+  | 'OTHER'
+
+export type KeyStatus = 'ISSUED' | 'RETURNED' | 'LOST' | 'REPLACED'
+
+export interface KeyHandover {
+  id: string
+  organizationId: string
+  leaseId: string
+  unitId: string
+  tenantId: string
+  type: KeyType
+  label?: string
+  status: KeyStatus
+  issuedAt: string
+  issuedToName?: string
+  issuedById?: string
+  returnedAt?: string
+  receivedById?: string
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
+
 // ─── RentIncrease (Hyreshöjning) ──────────────────────────────────────────────
 
 export type RentIncreaseStatus =

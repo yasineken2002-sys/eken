@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
-import { LogOut, Clock, Check, X } from 'lucide-react'
+import { LogOut, Clock, Check, X, KeyRound } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { StatCard } from '@/components/ui/StatCard'
@@ -19,6 +19,7 @@ import type { TerminationRequestDetail, TerminationStatus } from './api/terminat
 import { formatDate } from '@eken/shared'
 import type { Tenant } from '@eken/shared'
 import { useCanDelete } from '@/hooks/useCanWrite'
+import { useKeys } from '@/features/keys/hooks/useKeys'
 import { cn } from '@/lib/cn'
 
 type Tab = 'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'
@@ -227,6 +228,10 @@ function ApproveForm({
   const [effectiveDate, setEffectiveDate] = useState(suggestedEndDate(request))
   const minDate = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
+  // Mjuk påminnelse: visa hur många nycklar som ännu inte återlämnats för
+  // avtalet. Blockerar INTE godkännandet — bara en nudge inför avflyttningen.
+  const { data: openKeys = [] } = useKeys({ leaseId: request.leaseId, status: 'ISSUED' })
+
   const submit = () => {
     if (!effectiveDate) return
     approve.mutate(
@@ -252,6 +257,18 @@ function ApproveForm({
         {request.lease.noticePeriodMonths || 3} mån). Justera vid behov — det är detta datum
         kontraktet sägs upp till.
       </p>
+      {openKeys.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800">
+          <KeyRound size={14} strokeWidth={1.8} className="mt-0.5 shrink-0" />
+          <span>
+            <strong>
+              {openKeys.length} {openKeys.length === 1 ? 'nyckel' : 'nycklar'} ej återlämnade
+            </strong>{' '}
+            för det här avtalet. Påminn hyresgästen om att lämna tillbaka samtliga nycklar senast på
+            avflyttningsdagen.
+          </span>
+        </div>
+      )}
       <Input
         label="Bindande slutdatum"
         type="date"
