@@ -8,6 +8,13 @@ import type {
   Prisma,
 } from '@prisma/client'
 import type { Decimal } from '@prisma/client/runtime/library'
+import type {
+  BalanceSheet,
+  ProfitLossReport,
+  ReportAccountAmount,
+  ReportAccountBalance,
+  VatReport,
+} from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { VerifikationsnummerService } from './verifikationsnummer.service'
 import { basChartFor } from './bas-chart'
@@ -335,6 +342,189 @@ export class AccountingService {
     }
 
     return Buffer.from(lines.join('\n'), 'utf8')
+  }
+
+  // ── Finansiella rapporter ───────────────────────────────────────────────
+  // EN sanningskälla för beräkningen. Både REST-endpoints (AccountingController)
+  // och AI-verktygen (tool-executor) anropar dessa metoder — ingen divergens.
+
+  // Momsrapport: utgående moms (kredit på 2611/2621/2631 = försäljning ökar
+  // skuld) minus ingående moms (debet på 2641 = köp ökar fordran på SKV).
+  async getVatReport(organizationId: string, from: string, to: string): Promise<VatReport> {
+    const accounts = await this.prisma.account.findMany({
+      where: { organizationId, number: { in: [2611, 2621, 2631, 2641] } },
+    })
+    const accountByNumber = new Map(accounts.map((a) => [a.number, a]))
+
+    const sumFor = async (num: number) => {
+      const acc = accountByNumber.get(num)
+      if (!acc) return { debit: 0, credit: 0 }
+      const agg = await this.prisma.journalEntryLine.aggregate({
+        where: {
+          accountId: acc.id,
+          journalEntry: {
+            organizationId,
+            date: { gte: new Date(from), lte: new Date(to) },
+          },
+        },
+        _sum: { debit: true, credit: true },
+      })
+      return {
+        debit: Number(agg._sum.debit ?? 0),
+        credit: Number(agg._sum.credit ?? 0),
+      }
+    }
+
+    const [v25, v12, v6, vIn] = await Promise.all([
+      sumFor(2611),
+      sumFor(2621),
+      sumFor(2631),
+      sumFor(2641),
+    ])
+    const outVat25 = v25.credit - v25.debit
+    const outVat12 = v12.credit - v12.debit
+    const outVat6 = v6.credit - v6.debit
+    const outTotal = outVat25 + outVat12 + outVat6
+    const inVat = vIn.debit - vIn.credit
+    const netToPay = outTotal - inVat
+    return {
+      period: { from, to },
+      outgoing: { vat25: outVat25, vat12: outVat12, vat6: outVat6, total: outTotal },
+      incoming: { total: inVat },
+      netToPay,
+      direction: netToPay >= 0 ? 'BETALA' : 'ÅTERBÄRING',
+    }
+  }
+
+  // Resultaträkning: intäkter (3xxx, kreditsaldo) minus kostnader
+  // (5xxx–8xxx, debetsaldo), grupperat i BAS-kontoklasser.
+  async getProfitLossReport(
+    organizationId: string,
+    from: string,
+    to: string,
+    propertyId?: string,
+  ): Promise<ProfitLossReport> {
+    const lines = await this.prisma.journalEntryLine.findMany({
+      where: {
+        journalEntry: {
+          organizationId,
+          date: { gte: new Date(from), lte: new Date(to) },
+        },
+      },
+      include: { account: true },
+    })
+    const buckets: Record<string, ReportAccountAmount[]> = {
+      revenue: [],
+      operating: [],
+      admin: [],
+      personnel: [],
+      depreciation: [],
+      financial: [],
+    }
+    const sums = {
+      revenue: 0,
+      operating: 0,
+      admin: 0,
+      personnel: 0,
+      depreciation: 0,
+      financial: 0,
+    }
+    const perAccount = new Map<number, { name: string; amount: number }>()
+    for (const l of lines) {
+      const num = l.account.number
+      const debit = Number(l.debit ?? 0)
+      const credit = Number(l.credit ?? 0)
+      const value = num >= 3000 && num < 4000 ? credit - debit : debit - credit
+      const cur = perAccount.get(num) ?? { name: l.account.name, amount: 0 }
+      cur.amount += value
+      perAccount.set(num, cur)
+    }
+    for (const [num, info] of perAccount) {
+      if (num >= 3000 && num < 4000) {
+        buckets.revenue!.push({ number: num, name: info.name, amount: info.amount })
+        sums.revenue += info.amount
+      } else if (num >= 5000 && num < 6000) {
+        buckets.operating!.push({ number: num, name: info.name, amount: info.amount })
+        sums.operating += info.amount
+      } else if (num >= 6000 && num < 7000) {
+        buckets.admin!.push({ number: num, name: info.name, amount: info.amount })
+        sums.admin += info.amount
+      } else if (num >= 7000 && num < 8000) {
+        buckets.personnel!.push({ number: num, name: info.name, amount: info.amount })
+        sums.personnel += info.amount
+      } else if (num >= 8000 && num < 8400) {
+        buckets.depreciation!.push({ number: num, name: info.name, amount: info.amount })
+        sums.depreciation += info.amount
+      } else if (num >= 8400 && num < 9000) {
+        buckets.financial!.push({ number: num, name: info.name, amount: info.amount })
+        sums.financial += info.amount
+      }
+    }
+    const totalCosts =
+      sums.operating + sums.admin + sums.personnel + sums.depreciation + sums.financial
+    const result = sums.revenue - totalCosts
+    return {
+      period: { from, to },
+      ...(propertyId
+        ? {
+            propertyFilter: propertyId,
+            note: 'Per-fastighets-resultat kräver att kostnader är taggade per fastighet — totalsumman gäller hela organisationen tills dess.',
+          }
+        : {}),
+      revenue: { total: sums.revenue, accounts: buckets.revenue! },
+      costs: {
+        operating: { total: sums.operating, accounts: buckets.operating! },
+        admin: { total: sums.admin, accounts: buckets.admin! },
+        personnel: { total: sums.personnel, accounts: buckets.personnel! },
+        depreciation: { total: sums.depreciation, accounts: buckets.depreciation! },
+        financial: { total: sums.financial, accounts: buckets.financial! },
+        total: totalCosts,
+      },
+      result,
+    }
+  }
+
+  // Balansräkning per ett datum: tillgångar (1xxx, debet−kredit) mot
+  // skulder/eget kapital (2xxx, kredit−debet). difference ska vara 0 i en
+  // balanserad bok.
+  async getBalanceSheet(organizationId: string, asOf: string): Promise<BalanceSheet> {
+    const lines = await this.prisma.journalEntryLine.findMany({
+      where: {
+        journalEntry: { organizationId, date: { lte: new Date(asOf) } },
+      },
+      include: { account: true },
+    })
+    const perAccount = new Map<number, { name: string; balance: number }>()
+    for (const l of lines) {
+      const num = l.account.number
+      const debit = Number(l.debit ?? 0)
+      const credit = Number(l.credit ?? 0)
+      const value = num < 2000 ? debit - credit : credit - debit
+      const cur = perAccount.get(num) ?? { name: l.account.name, balance: 0 }
+      cur.balance += value
+      perAccount.set(num, cur)
+    }
+    const assets: ReportAccountBalance[] = []
+    const liabilities: ReportAccountBalance[] = []
+    let totalAssets = 0
+    let totalLiabilities = 0
+    for (const [num, info] of perAccount) {
+      if (num < 2000) {
+        assets.push({ number: num, name: info.name, balance: info.balance })
+        totalAssets += info.balance
+      } else if (num < 3000) {
+        liabilities.push({ number: num, name: info.name, balance: info.balance })
+        totalLiabilities += info.balance
+      }
+    }
+    assets.sort((a, b) => a.number - b.number)
+    liabilities.sort((a, b) => a.number - b.number)
+    return {
+      asOf,
+      assets: { total: totalAssets, accounts: assets },
+      liabilitiesAndEquity: { total: totalLiabilities, accounts: liabilities },
+      difference: totalAssets - totalLiabilities,
+    }
   }
 
   async createJournalEntryForInvoice(

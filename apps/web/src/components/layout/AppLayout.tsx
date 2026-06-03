@@ -25,6 +25,7 @@ import {
   CreditCard,
   TrendingUp,
   Gavel,
+  BarChart3,
 } from 'lucide-react'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
@@ -48,6 +49,7 @@ type AppPath =
   | '/deposits'
   | '/rent-increases'
   | '/accounting'
+  | '/reports'
   | '/reconciliation'
   | '/collections'
   | '/inspections'
@@ -86,6 +88,7 @@ const NAV_FINANCE: NavItem[] = [
   { to: '/deposits', label: 'Depositioner', icon: CreditCard },
   { to: '/rent-increases', label: 'Hyreshöjningar', icon: TrendingUp },
   { to: '/accounting', label: 'Bokföring', icon: BookOpen },
+  { to: '/reports', label: 'Rapporter', icon: BarChart3 },
   { to: '/reconciliation', label: 'Bankavstämning', icon: ArrowLeftRight },
   { to: '/collections', label: 'Inkasso', icon: Gavel },
 ]

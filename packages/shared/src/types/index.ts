@@ -459,3 +459,50 @@ export interface JournalEntryLine {
   credit?: number | null
   description?: string | null
 }
+
+// ─── Finansiella rapporter ────────────────────────────────────────────────────
+// Svar från /accounting/reports/*. Beräknas i AccountingService (en
+// sanningskälla, delas med AI-verktygen).
+
+export interface ReportAccountAmount {
+  number: number
+  name: string
+  amount: number
+}
+
+export interface ReportAccountBalance {
+  number: number
+  name: string
+  balance: number
+}
+
+export interface VatReport {
+  period: { from: string; to: string }
+  outgoing: { vat25: number; vat12: number; vat6: number; total: number }
+  incoming: { total: number }
+  netToPay: number
+  direction: 'BETALA' | 'ÅTERBÄRING'
+}
+
+export interface ProfitLossReport {
+  period: { from: string; to: string }
+  propertyFilter?: string
+  note?: string
+  revenue: { total: number; accounts: ReportAccountAmount[] }
+  costs: {
+    operating: { total: number; accounts: ReportAccountAmount[] }
+    admin: { total: number; accounts: ReportAccountAmount[] }
+    personnel: { total: number; accounts: ReportAccountAmount[] }
+    depreciation: { total: number; accounts: ReportAccountAmount[] }
+    financial: { total: number; accounts: ReportAccountAmount[] }
+    total: number
+  }
+  result: number
+}
+
+export interface BalanceSheet {
+  asOf: string
+  assets: { total: number; accounts: ReportAccountBalance[] }
+  liabilitiesAndEquity: { total: number; accounts: ReportAccountBalance[] }
+  difference: number
+}
