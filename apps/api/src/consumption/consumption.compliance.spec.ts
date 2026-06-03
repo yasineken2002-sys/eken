@@ -56,6 +56,24 @@ function defaultTariff(over: Record<string, unknown> = {}) {
   }
 }
 
+function chargeRow(over: Record<string, unknown> = {}) {
+  return {
+    id: 'charge-1',
+    organizationId: 'org-1',
+    leaseId: 'lease-1',
+    unitId: 'unit-1',
+    tenantId: 'ten-1',
+    meterType: 'ELECTRICITY',
+    status: 'DRAFT',
+    netAmount: 600,
+    vatStatus: 'EXEMPT',
+    vatAmount: 0,
+    totalAmount: 600,
+    periodEnd: new Date('2026-05-31'),
+    ...over,
+  }
+}
+
 type MockTable = Record<string, jest.Mock>
 interface MockPrisma {
   meter: MockTable
@@ -103,12 +121,20 @@ function makeService(o: Opts = {}) {
       create: jest
         .fn()
         .mockImplementation(({ data }) => Promise.resolve({ id: 'charge-1', ...data })),
+      update: jest
+        .fn()
+        .mockImplementation(({ data }) => Promise.resolve({ ...chargeRow(), ...data })),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
   }
   prisma.$transaction = jest.fn((cb: (tx: unknown) => unknown) => cb(prisma))
+  const accounting = {
+    createJournalEntryForConsumptionCharge: jest.fn().mockResolvedValue({ id: 'je-1' }),
+  }
   return {
-    service: new ConsumptionService(prisma as never),
+    service: new ConsumptionService(prisma as never, accounting as never),
     prisma: prisma as unknown as MockPrisma,
+    accounting,
   }
 }
 
@@ -281,6 +307,46 @@ describe('createTariff — historik', () => {
   })
 })
 
+describe('confirmCharge — DRAFT → CONFIRMED (PR 3)', () => {
+  it('sätter CONFIRMED atomärt (villkorad på DRAFT) och bokför verifikat', async () => {
+    const { service, prisma, accounting } = makeService({ existingCharge: chargeRow() })
+
+    await service.confirmCharge('charge-1', 'org-1', 'user-9')
+
+    // Atomär, race-säker övergång: status:'DRAFT' i WHERE hindrar att en samtidig
+    // CANCELLED skrivs över till CONFIRMED.
+    expect(prisma.consumptionCharge.updateMany).toHaveBeenCalledWith({
+      where: { id: 'charge-1', organizationId: 'org-1', status: 'DRAFT' },
+      data: { status: 'CONFIRMED' },
+    })
+    expect(accounting.createJournalEntryForConsumptionCharge).toHaveBeenCalledTimes(1)
+  })
+
+  it('annullerad post kan inte bokföras (updateMany matchar inte CANCELLED)', async () => {
+    const { service, accounting } = makeService({
+      existingCharge: chargeRow({ status: 'CANCELLED' }),
+    })
+    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).rejects.toBeInstanceOf(
+      BadRequestException,
+    )
+    expect(accounting.createJournalEntryForConsumptionCharge).not.toHaveBeenCalled()
+  })
+
+  it('redan CONFIRMED: idempotent self-heal — bokför (idempotent), kastar inte', async () => {
+    const { service, accounting } = makeService({
+      existingCharge: chargeRow({ status: 'CONFIRMED' }),
+    })
+    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).resolves.toBeDefined()
+    expect(accounting.createJournalEntryForConsumptionCharge).toHaveBeenCalledTimes(1)
+  })
+
+  it('bokföringsfel fäller inte confirm:en (loggas)', async () => {
+    const { service, accounting } = makeService({ existingCharge: chargeRow() })
+    accounting.createJournalEntryForConsumptionCharge.mockRejectedValueOnce(new Error('boom'))
+    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).resolves.toBeDefined()
+  })
+})
+
 describe('ConsumptionController RBAC', () => {
   const guard = new RolesGuard(new Reflector())
   const proto = ConsumptionController.prototype
@@ -306,6 +372,7 @@ describe('ConsumptionController RBAC', () => {
       expect(allows(proto.updateMeter as () => unknown, role)).toBe(false)
       expect(allows(proto.createTariff as () => unknown, role)).toBe(false)
       expect(allows(proto.recordReading as () => unknown, role)).toBe(false)
+      expect(allows(proto.confirmCharge as () => unknown, role)).toBe(false)
     },
   )
 
@@ -314,6 +381,7 @@ describe('ConsumptionController RBAC', () => {
     expect(allows(proto.updateMeter as () => unknown, role)).toBe(true)
     expect(allows(proto.createTariff as () => unknown, role)).toBe(true)
     expect(allows(proto.recordReading as () => unknown, role)).toBe(true)
+    expect(allows(proto.confirmCharge as () => unknown, role)).toBe(true)
   })
 
   it('läsning (findMeters/findCharges) är öppen även för VIEWER', () => {

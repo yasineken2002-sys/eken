@@ -109,4 +109,15 @@ export class ConsumptionController {
   async findCharge(@Param('id') id: string, @OrgId() organizationId: string) {
     return this.consumption.findCharge(id, organizationId)
   }
+
+  // DRAFT → CONFIRMED: bokför verifikat + 1510-fordran. Oberoende av leverans.
+  @Patch('charges/:id/confirm')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
+  async confirmCharge(
+    @Param('id') id: string,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.consumption.confirmCharge(id, organizationId, user.sub)
+  }
 }

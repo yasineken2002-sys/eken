@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common'
 import { PrismaModule } from '../common/prisma/prisma.module'
+import { AccountingModule } from '../accounting/accounting.module'
 import { ConsumptionController } from './consumption.controller'
 import { ConsumptionService } from './consumption.service'
 
-// PR 2 (intake): avläsningar in → DRAFT-charges ut. Inget verifikat, ingen
-// 1510-fordran (PR 3), inget på avi/faktura (PR 4) — därför inget
-// AccountingModule-beroende ännu. vatRateForRent importeras som ren funktion.
+// PR 3 (bokföring): DRAFT → CONFIRMED skapar verifikat + 1510-fordran via
+// AccountingService. Oberoende av leverans (PR 4). Leverans rör avi/faktura.
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AccountingModule],
   controllers: [ConsumptionController],
   providers: [ConsumptionService],
   exports: [ConsumptionService],
