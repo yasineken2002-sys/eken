@@ -193,12 +193,31 @@ export class ImportService {
     for (const header of headers) {
       const normalizedHeader = header.toLowerCase().trim()
 
+      // Poängsätt varje variant och välj den bästa över HELA kartan i stället för
+      // första-träff-i-ordning. Annars "stjäl" en kort generisk variant (t.ex.
+      // 'namn'/'typ') mer specifika rubriker via delsträngsmatchning: "förnamn"
+      // innehåller "namn" och mappades felaktigt till name i stället för firstName
+      // (bröt tenant-CSV-import — onboarding). Regler:
+      //   • Exakt träff slår ALLTID delsträngsträff.
+      //   • Bland träffar vinner den längsta (mest specifika) varianten.
+      let bestKey: string | null = null
+      let bestScore = 0
       for (const [standardKey, variants] of Object.entries(HEADER_MAP)) {
-        if (variants.some((v) => normalizedHeader === v || normalizedHeader.includes(v))) {
-          mapping[header] = standardKey
-          break
+        for (const v of variants) {
+          let score = 0
+          if (normalizedHeader === v) {
+            score = 1000 + v.length
+          } else if (normalizedHeader.includes(v)) {
+            score = v.length
+          }
+          if (score > bestScore) {
+            bestScore = score
+            bestKey = standardKey
+          }
         }
       }
+
+      if (bestKey) mapping[header] = bestKey
     }
 
     return mapping
