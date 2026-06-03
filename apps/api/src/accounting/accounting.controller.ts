@@ -21,6 +21,24 @@ function requireDate(value: string | undefined, field: string): string {
   if (!value || !DATE_RE.test(value)) {
     throw new BadRequestException(`${field} måste anges på formatet ÅÅÅÅ-MM-DD`)
   }
+  // Formatregex släpper igenom kalenderorimliga datum (2026-02-30). JS koercerar
+  // dem tyst (→ 2026-03-02) vilket skulle ge rapport för FEL period utan fel.
+  // toISOString-rundtur fångar overflow: koercerat datum ≠ inmatad sträng.
+  const parsed = new Date(value)
+  if (isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new BadRequestException(`${field} är inte ett giltigt kalenderdatum`)
+  }
+  return value
+}
+
+// Property-filter (valfritt) måste vara ett UUID om det anges — vi ekar inte
+// godtyckliga strängar i svaret. Org-scopning sker i servicen.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+function optionalUuid(value: string | undefined, field: string): string | undefined {
+  if (value == null) return undefined
+  if (!UUID_RE.test(value)) {
+    throw new BadRequestException(`${field} måste vara ett giltigt UUID`)
+  }
   return value
 }
 
@@ -80,7 +98,7 @@ export class AccountingController {
       organizationId,
       requireDate(from, 'from'),
       requireDate(to, 'to'),
-      propertyId,
+      optionalUuid(propertyId, 'propertyId'),
     )
   }
 
@@ -102,6 +120,9 @@ export class AccountingController {
     )
   }
 
+  // @Res() utan passthrough är avsiktligt: vi styr svaret manuellt (octet-stream
+  // + Content-Disposition). TransformInterceptor körs ej, men GlobalExceptionFilter
+  // fångar fel innan reply.send() anropas (datum-/Prisma-fel → 400/500 som vanligt).
   @Get('reports/sie4')
   async exportSie4(
     @OrgId() organizationId: string,

@@ -6,6 +6,8 @@
  * teckenkonventionerna (debet/kredit per kontoklass) så de inte glider.
  */
 
+import { BadRequestException } from '@nestjs/common'
+import { AccountingController } from './accounting.controller'
 import { AccountingService } from './accounting.service'
 
 type Line = {
@@ -103,6 +105,63 @@ describe('AccountingService — resultaträkning', () => {
     const r = await service.getProfitLossReport('org-1', '2026-01-01', '2026-12-31', 'prop-9')
     expect(r.propertyFilter).toBe('prop-9')
     expect(r.note).toContain('taggade per fastighet')
+  })
+})
+
+describe('AccountingController — query-validering', () => {
+  function makeController() {
+    const service = {
+      getProfitLossReport: jest.fn().mockResolvedValue({ ok: true }),
+      getBalanceSheet: jest.fn().mockResolvedValue({ ok: true }),
+      getVatReport: jest.fn().mockResolvedValue({ ok: true }),
+    }
+    const controller = new AccountingController(service as never)
+    return { controller, service }
+  }
+
+  it('giltig period passerar och anropar servicen', async () => {
+    const { controller, service } = makeController()
+    await controller.getProfitLoss('org-1', '2026-01-01', '2026-12-31')
+    expect(service.getProfitLossReport).toHaveBeenCalledWith(
+      'org-1',
+      '2026-01-01',
+      '2026-12-31',
+      undefined,
+    )
+  })
+
+  it('saknat datum → 400', async () => {
+    const { controller } = makeController()
+    await expect(controller.getVatReport('org-1', undefined, '2026-12-31')).rejects.toBeInstanceOf(
+      BadRequestException,
+    )
+  })
+
+  it('kalenderorimligt datum (2026-02-30) → 400, inte tyst koercering', async () => {
+    const { controller, service } = makeController()
+    await expect(controller.getBalanceSheet('org-1', '2026-02-30')).rejects.toBeInstanceOf(
+      BadRequestException,
+    )
+    expect(service.getBalanceSheet).not.toHaveBeenCalled()
+  })
+
+  it('icke-UUID propertyId → 400', async () => {
+    const { controller } = makeController()
+    await expect(
+      controller.getProfitLoss('org-1', '2026-01-01', '2026-12-31', 'not-a-uuid'),
+    ).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it('giltigt UUID propertyId vidarebefordras', async () => {
+    const { controller, service } = makeController()
+    const uuid = '11111111-2222-3333-4444-555555555555'
+    await controller.getProfitLoss('org-1', '2026-01-01', '2026-12-31', uuid)
+    expect(service.getProfitLossReport).toHaveBeenCalledWith(
+      'org-1',
+      '2026-01-01',
+      '2026-12-31',
+      uuid,
+    )
   })
 })
 
