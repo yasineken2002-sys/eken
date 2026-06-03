@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import * as XLSX from 'xlsx'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { ContractNumberService } from '../contracts/contract-number.service'
+import { syncUnitStatusFromLeases } from '../units/unit-status.sync'
 import { normalizeEmail } from '../common/utils/normalize-email'
 import type { Prisma } from '@prisma/client'
 import { ImportJobStatus, ImportJobType } from '@prisma/client'
@@ -625,6 +626,12 @@ export class ImportService {
               : 3,
           },
         })
+
+        // I1/#62: ett importerat ACTIVE-kontrakt måste flippa enheten till
+        // OCCUPIED. Tidigare skapades leasen direkt via prisma.lease.create()
+        // — förbi transitionStatus — så enheten blev kvar VACANT. Samma
+        // synk-punkt som leases-flödena använder.
+        await syncUnitStatusFromLeases(this.prisma, unit.id)
 
         successRows++
       } catch (err) {
