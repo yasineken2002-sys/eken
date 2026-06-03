@@ -15,6 +15,7 @@ import { CreateMeterDto } from './dto/create-meter.dto'
 import { UpdateMeterDto } from './dto/update-meter.dto'
 import { CreateTariffDto } from './dto/create-tariff.dto'
 import { RecordReadingDto } from './dto/record-reading.dto'
+import { YearEndAccrualDto } from './dto/year-end-accrual.dto'
 
 @Controller('consumption')
 @UseGuards(JwtAuthGuard)
@@ -132,5 +133,17 @@ export class ConsumptionController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.consumption.invoiceSeparateCharges(leaseId, organizationId, user.sub)
+  }
+
+  // Bokslut: periodisera omätt förbrukning till räkenskapsåret (1790, återförs
+  // 1/1). Bokföringsåtgärd → ACCOUNTANT tillåts utöver MANAGER/ADMIN/OWNER.
+  @Post('year-end-accrual')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
+  async runYearEndAccrual(
+    @OrgId() organizationId: string,
+    @Body() dto: YearEndAccrualDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.consumption.runYearEndAccrual(organizationId, dto.year, user.sub)
   }
 }

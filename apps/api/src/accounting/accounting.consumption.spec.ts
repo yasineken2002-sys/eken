@@ -26,6 +26,7 @@ function makeAccounting() {
     account: {
       findMany: jest.fn().mockResolvedValue([
         { id: 'acc-1510', number: 1510 },
+        { id: 'acc-1790', number: 1790 },
         { id: 'acc-3920', number: 3920 },
         { id: 'acc-3970', number: 3970 },
         { id: 'acc-2611', number: 2611 },
@@ -145,5 +146,94 @@ describe('createJournalEntryForConsumptionCharge — idempotens', () => {
 
     expect(prisma.journalEntry.create).toHaveBeenCalledTimes(1)
     expect(store).toHaveLength(1)
+  })
+})
+
+// ── IMD · PR 5 — bokslut: upplupen förbrukningsintäkt (1790) ──────────────────
+
+const baseAccrual = {
+  meterId: 'meter-1',
+  meterType: 'ELECTRICITY' as const,
+  fiscalYear: 2026,
+  yearEndDate: new Date('2026-12-31'),
+  reversalDate: new Date('2027-01-01'),
+  netAmount: 500,
+  vatStatus: 'EXEMPT' as const,
+  vatAmount: 0,
+  totalAmount: 500,
+}
+
+// Konteringsrader för en specifik journalEntry.create-call (0 = accrual, 1 = reversal).
+function linesOfCall(createMock: jest.Mock, call: number): JLine[] {
+  return createMock.mock.calls[call][0].data.lines.create as JLine[]
+}
+
+describe('createConsumptionAccrualEntry — accrual + reversal (EXEMPT)', () => {
+  it('accrual balanserar 1790 D 500 / 3920 K 500, daterad årsslut', async () => {
+    const { service, prisma } = makeAccounting()
+    await service.createConsumptionAccrualEntry(baseAccrual, 'org-1', 'user-9')
+
+    const accrual = linesOfCall(prisma.journalEntry.create, 0)
+    expect(sum(accrual, 'debit')).toBe(500)
+    expect(sum(accrual, 'credit')).toBe(500)
+    expect(accrual.find((l) => l.accountId === 'acc-1790')?.debit).toBe(500)
+    expect(accrual.find((l) => l.accountId === 'acc-3920')?.credit).toBe(500)
+    expect(prisma.journalEntry.create.mock.calls[0][0].data.date).toEqual(new Date('2026-12-31'))
+  })
+
+  it('reversal speglar accrual rad-för-rad och dateras 1/1 nästa år', async () => {
+    const { service, prisma } = makeAccounting()
+    await service.createConsumptionAccrualEntry(baseAccrual, 'org-1', 'user-9')
+
+    const reversal = linesOfCall(prisma.journalEntry.create, 1)
+    expect(sum(reversal, 'debit')).toBe(500)
+    expect(sum(reversal, 'credit')).toBe(500)
+    // Spegling: 1790 krediteras, intäkten debiteras (tvärtom mot accrual).
+    expect(reversal.find((l) => l.accountId === 'acc-1790')?.credit).toBe(500)
+    expect(reversal.find((l) => l.accountId === 'acc-3920')?.debit).toBe(500)
+    expect(prisma.journalEntry.create.mock.calls[1][0].data.date).toEqual(new Date('2027-01-01'))
+  })
+})
+
+describe('createConsumptionAccrualEntry — TAXABLE_25 + vatten', () => {
+  it('TAXABLE: accrual 1790 D 625 / 2611 K 125 / 3920 K 500; reversal speglar', async () => {
+    const { service, prisma } = makeAccounting()
+    await service.createConsumptionAccrualEntry(
+      { ...baseAccrual, vatStatus: 'TAXABLE_25', vatAmount: 125, totalAmount: 625 },
+      'org-1',
+      'user-9',
+    )
+    const accrual = linesOfCall(prisma.journalEntry.create, 0)
+    expect(sum(accrual, 'debit')).toBe(625)
+    expect(sum(accrual, 'credit')).toBe(625)
+    expect(accrual.find((l) => l.accountId === 'acc-2611')?.credit).toBe(125)
+
+    const reversal = linesOfCall(prisma.journalEntry.create, 1)
+    expect(sum(reversal, 'debit')).toBe(625)
+    expect(reversal.find((l) => l.accountId === 'acc-2611')?.debit).toBe(125)
+  })
+
+  it('vatten (WATER_COLD) periodiseras mot 3970', async () => {
+    const { service, prisma } = makeAccounting()
+    await service.createConsumptionAccrualEntry(
+      { ...baseAccrual, meterType: 'WATER_COLD' },
+      'org-1',
+      'user-9',
+    )
+    const accrual = linesOfCall(prisma.journalEntry.create, 0)
+    expect(accrual.find((l) => l.accountId === 'acc-3970')?.credit).toBe(500)
+    expect(accrual.some((l) => l.accountId === 'acc-3920')).toBe(false)
+  })
+})
+
+describe('createConsumptionAccrualEntry — idempotens', () => {
+  it('omkörning skapar inte dubbla accrual/reversal', async () => {
+    const { service, prisma, store } = makeAccounting()
+    await service.createConsumptionAccrualEntry(baseAccrual, 'org-1', 'user-9')
+    await service.createConsumptionAccrualEntry(baseAccrual, 'org-1', 'user-9')
+
+    // Två verifikat totalt (accrual + reversal), inte fyra.
+    expect(prisma.journalEntry.create).toHaveBeenCalledTimes(2)
+    expect(store).toHaveLength(2)
   })
 })
