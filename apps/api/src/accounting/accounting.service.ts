@@ -945,6 +945,136 @@ export class AccountingService {
     })
   }
 
+  // Bokslutspost: upplupen förbrukningsintäkt (IMD). Förbrukning som är konsumerad
+  // men ännu OMÄTT vid räkenskapsårets slut (mätaren läses först i januari) saknar
+  // ett ACTUAL-verifikat i rätt år. Här periodiseras den estimerade intäkten:
+  //
+  //   Accrual (datum = räkenskapsårets slut, normalt 31/12):
+  //     1790 D  total        (upplupen intäkt, interimsfordran)
+  //     3920|3970 K  net     (el/värme resp. vatten — bruttoredovisat)
+  //     2611 K  vat          (endast om vatStatus = TAXABLE_25)
+  //   Reversal (datum = nästa räkenskapsårs första dag, normalt 1/1) — speglar
+  //   accrual rad för rad så intäkten inte dubbelräknas när den verkliga (ACTUAL)
+  //   förbrukningen bokförs:
+  //     3920|3970 D  net   / 2611 D vat   / 1790 K total
+  //
+  // Bruttoredovisning: endast intäktssidan. Idempotent via separata sourceId för
+  // accrual respektive reversal → bokslutet kan köras om utan dubbla poster.
+  // Detta är en BOKSLUTSPOST — den materialiseras ALDRIG som en ConsumptionCharge
+  // och hamnar aldrig på en avi/faktura (jfr ACTUAL-flödet).
+  async createConsumptionAccrualEntry(
+    params: {
+      meterId: string
+      meterType: MeterType
+      fiscalYear: number
+      yearEndDate: Date
+      reversalDate: Date
+      netAmount: number
+      vatStatus: ConsumptionVatStatus
+      vatAmount: number
+      totalAmount: number
+    },
+    organizationId: string,
+    createdById: string | null,
+  ) {
+    const { meterId, meterType, fiscalYear, yearEndDate, reversalDate } = params
+    const net = params.netAmount
+    const vat = params.vatAmount
+    const total = params.totalAmount
+    if (total <= 0) return null
+
+    const accounts = await this.prisma.account.findMany({
+      where: { organizationId },
+      select: { id: true, number: true },
+    })
+    const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+
+    const accrualAccountId = accountByNumber.get(1790)
+    const revenueId = accountByNumber.get(CONSUMPTION_REVENUE_ACCOUNT_BY_METER_TYPE[meterType])
+    if (!accrualAccountId || !revenueId) {
+      this.logger.error(
+        `[Accounting] Konto saknas (1790 eller intäktskonto) för upplupen förbrukning ` +
+          `mätare ${meterId} ${fiscalYear} — bokslutspost skapas ej`,
+      )
+      return null
+    }
+
+    let vatAccountId: string | undefined
+    if (params.vatStatus === 'TAXABLE_25' && vat > 0) {
+      const vatNumber = VAT_TO_ACCOUNT[25] // 2611
+      vatAccountId = vatNumber ? accountByNumber.get(vatNumber) : undefined
+      if (!vatAccountId) {
+        this.logger.error(
+          `[Accounting] Momskonto 2611 saknas för upplupen förbrukning mätare ${meterId} — bokslutspost skapas ej`,
+        )
+        return null
+      }
+    }
+
+    const label = METER_TYPE_LABEL[meterType]
+    // Mätarreferens i verifikattexten (BFL 5 kap 7 §) — sambandet ska kunna
+    // fastställas utan att slå upp sourceId.
+    const meterRef = meterId.slice(0, 8)
+    const accrualSourceId = `consumption-accrual:${meterId}:${fiscalYear}`
+    const reversalSourceId = `consumption-accrual-reversal:${meterId}:${fiscalYear}`
+
+    const accrualLines: JournalLineInput[] = [
+      { accountId: accrualAccountId, debit: total, description: `Upplupen förbrukning ${label}` },
+    ]
+    if (vatAccountId)
+      accrualLines.push({ accountId: vatAccountId, credit: vat, description: 'Moms 25%' })
+    accrualLines.push({
+      accountId: revenueId,
+      credit: net,
+      description: `Upplupen förbrukningsersättning ${label} ${fiscalYear}`,
+    })
+
+    const reversalLines: JournalLineInput[] = [
+      { accountId: revenueId, debit: net, description: `Återföring upplupen förbrukning ${label}` },
+    ]
+    if (vatAccountId)
+      reversalLines.push({ accountId: vatAccountId, debit: vat, description: 'Moms 25%' })
+    reversalLines.push({
+      accountId: accrualAccountId,
+      credit: total,
+      description: `Återföring upplupen intäkt ${label} ${fiscalYear}`,
+    })
+
+    // Accrual (räkenskapsårets slut) + reversal (nästa års första dag) skapas
+    // ATOMISKT i EN transaktion: en halvfärdig periodisering (accrual utan
+    // reversal) skulle dubbelräkna intäkten nästa år. Antingen båda eller inget.
+    // createNumberedEntry förblir idempotent inuti transaktionen via sourceId.
+    return this.prisma.$transaction(async (tx) => {
+      const accrual = await this.createNumberedEntry({
+        organizationId,
+        date: yearEndDate,
+        description: `Bokslut: upplupen förbrukning ${label} ${fiscalYear} (mätare ${meterRef})`,
+        source: 'MANUAL',
+        sourceId: accrualSourceId,
+        createdById,
+        lines: accrualLines,
+        idempotencyWhere: { organizationId, sourceId: accrualSourceId },
+        include: { lines: { include: { account: true } } },
+        tx,
+      })
+
+      const reversal = await this.createNumberedEntry({
+        organizationId,
+        date: reversalDate,
+        description: `Bokslut: återföring upplupen förbrukning ${label} ${fiscalYear} (mätare ${meterRef})`,
+        source: 'MANUAL',
+        sourceId: reversalSourceId,
+        createdById,
+        lines: reversalLines,
+        idempotencyWhere: { organizationId, sourceId: reversalSourceId },
+        include: { lines: { include: { account: true } } },
+        tx,
+      })
+
+      return { accrual, reversal }
+    })
+  }
+
   // Bokföring av hyresinbetalning (RentNotice). Använder samma BAS-konton som
   // Invoice-betalning (1930 D bank / 1510 K kundfordran) — hyresavin är en
   // kundfordran på samma sätt. Vi indexerar med samma source='PAYMENT' och

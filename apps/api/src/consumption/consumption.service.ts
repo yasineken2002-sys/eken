@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common'
 import type {
   Meter,
   MeterStatus,
@@ -676,6 +682,212 @@ export class ConsumptionService {
 
       return invoice
     })
+  }
+
+  // ══ Bokslut: upplupen förbrukningsintäkt (1790, PR 5) ═══════════════════════
+  //
+  // Vid räkenskapsårets slut estimeras förbrukning som är konsumerad men ännu
+  // OMÄTT (mätaren läses först i januari) och periodiseras till rätt år via en
+  // reverserande bokslutspost (1790 D / 3920|3970 K, återförs första dagen nästa
+  // år). Detta är en BOKSLUTSPOST — den materialiseras aldrig som en charge och
+  // hamnar aldrig på en avi/faktura.
+  //
+  // Estimatmetod (konsultfråga 3, ska vara konsekvent över år):
+  //   dagstakt = senaste ACTUAL-chargens quantity / dess periodlängd (dagar)
+  //   gap-dagar = dagar från sista mätpunkten (eller årsstart) t.o.m. årsslut
+  //   estimerad kvantitet = dagstakt × gap-dagar
+  //   estimerat netto = estimerad kvantitet × GÄLLANDE tariffpris (vid årsslut)
+  // Moms tas från enhetens config (vatRateForRent), som för ACTUAL.
+  async runYearEndAccrual(
+    organizationId: string,
+    fiscalYear: number,
+    userId: string,
+  ): Promise<{
+    fiscalYear: number
+    yearEndDate: string
+    reversalDate: string
+    accrued: number
+    skipped: number
+    totalNet: number
+  }> {
+    const DAY_MS = 86_400_000
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { fiscalYearStartMonth: true },
+    })
+    if (!org) throw new NotFoundException('Organisationen hittades inte')
+    const startMonth = org.fiscalYearStartMonth ?? 1
+
+    // Räkenskapsårets gränser. För kalenderår (startMonth=1): start 1/1, slut
+    // 31/12, återföring 1/1 nästa år. Brutet år följer fiscalYearStartMonth.
+    const fiscalStart = new Date(Date.UTC(fiscalYear, startMonth - 1, 1))
+    const reversalDate = new Date(Date.UTC(fiscalYear + 1, startMonth - 1, 1))
+    const yearEndDate = new Date(reversalDate.getTime() - DAY_MS)
+
+    // Stängd period blockerar bokslutsposten (BFL) — tydligt fel uppåt innan
+    // vi börjar skapa verifikat.
+    await this.assertPeriodOpen(organizationId, yearEndDate, reversalDate)
+
+    const meters = await this.prisma.meter.findMany({
+      where: { organizationId, status: 'ACTIVE' },
+      include: {
+        unit: {
+          select: {
+            id: true,
+            type: true,
+            voluntaryTaxLiability: true,
+            propertyId: true,
+            property: { select: { consumptionBillingMode: true } },
+          },
+        },
+      },
+    })
+
+    let accrued = 0
+    let skipped = 0
+    let totalNet = 0
+
+    for (const meter of meters) {
+      // Aktivt hyresförhållande som täcker årsskiftet — vakant enhet ger ingen
+      // hyresgästintäkt att periodisera.
+      const lease = await this.prisma.lease.findFirst({
+        where: {
+          unitId: meter.unitId,
+          organizationId,
+          status: 'ACTIVE',
+          startDate: { lte: yearEndDate },
+          OR: [{ endDate: null }, { endDate: { gte: fiscalStart } }],
+        },
+        select: { consumptionBillingMode: true },
+      })
+      if (!lease) {
+        skipped++
+        continue
+      }
+      const billingMode = lease.consumptionBillingMode ?? meter.unit.property.consumptionBillingMode
+      if (billingMode === 'NONE') {
+        skipped++
+        continue
+      }
+
+      const lastReading = await this.prisma.meterReading.findFirst({
+        where: { meterId: meter.id },
+        orderBy: { periodEnd: 'desc' },
+        select: { periodEnd: true },
+      })
+      // Senaste ACTUAL-charge ger dagstakten (basis). Ingen → ingen estimatbas.
+      const lastCharge = await this.prisma.consumptionCharge.findFirst({
+        where: {
+          organizationId,
+          meterType: meter.type,
+          kind: 'ACTUAL',
+          meterReading: { meterId: meter.id },
+        },
+        orderBy: { periodEnd: 'desc' },
+        select: { quantity: true, periodStart: true, periodEnd: true },
+      })
+      if (!lastReading || !lastCharge) {
+        skipped++
+        continue
+      }
+
+      // Gap-dagar inom räkenskapsåret: från sista mätpunkten (eller årsstart om
+      // mätaren inte lästs sedan föregående år) t.o.m. årsslut.
+      const fiscalStartPrevDay = new Date(fiscalStart.getTime() - DAY_MS)
+      const lower =
+        lastReading.periodEnd > fiscalStartPrevDay ? lastReading.periodEnd : fiscalStartPrevDay
+      const gapDays = Math.round((yearEndDate.getTime() - lower.getTime()) / DAY_MS)
+      if (gapDays <= 0) {
+        skipped++ // mätt t.o.m. årsslut — inget att periodisera
+        continue
+      }
+
+      const lastChargeDays =
+        Math.round((lastCharge.periodEnd.getTime() - lastCharge.periodStart.getTime()) / DAY_MS) + 1
+      if (lastChargeDays <= 0) {
+        skipped++
+        continue
+      }
+      const dailyQty = Number(lastCharge.quantity) / lastChargeDays
+      const estQty = dailyQty * gapDays
+
+      const tariff = await this.resolveTariff(
+        organizationId,
+        meter.unitId,
+        meter.unit.propertyId,
+        meter.type,
+        yearEndDate,
+      )
+      if (!tariff) {
+        skipped++
+        continue
+      }
+
+      const net = round2(estQty * Number(tariff.pricePerUnit))
+      if (net <= 0) {
+        skipped++
+        continue
+      }
+      const vatRate = vatRateForRent(meter.unit.type, meter.unit.voluntaryTaxLiability)
+      const vatStatus: ConsumptionVatStatus = vatRate === 25 ? 'TAXABLE_25' : 'EXEMPT'
+      const vatAmount = round2((net * vatRate) / 100)
+      const total = round2(net + vatAmount)
+
+      const result = await this.accounting.createConsumptionAccrualEntry(
+        {
+          meterId: meter.id,
+          meterType: meter.type,
+          fiscalYear,
+          yearEndDate,
+          reversalDate,
+          netAmount: net,
+          vatStatus,
+          vatAmount,
+          totalAmount: total,
+        },
+        organizationId,
+        userId,
+      )
+      if (result) {
+        accrued++
+        totalNet = round2(totalNet + net)
+      } else {
+        skipped++
+      }
+    }
+
+    return {
+      fiscalYear,
+      yearEndDate: yearEndDate.toISOString().slice(0, 10),
+      reversalDate: reversalDate.toISOString().slice(0, 10),
+      accrued,
+      skipped,
+      totalNet,
+    }
+  }
+
+  private async assertPeriodOpen(
+    organizationId: string,
+    yearEndDate: Date,
+    reversalDate: Date,
+  ): Promise<void> {
+    const periods = [
+      { year: yearEndDate.getUTCFullYear(), month: yearEndDate.getUTCMonth() + 1 },
+      { year: reversalDate.getUTCFullYear(), month: reversalDate.getUTCMonth() + 1 },
+    ]
+    for (const p of periods) {
+      const closed = await this.prisma.closedAccountingPeriod.findUnique({
+        where: {
+          organizationId_year_month: { organizationId, year: p.year, month: p.month },
+        },
+        select: { id: true },
+      })
+      if (closed) {
+        throw new ConflictException(
+          `Bokföringsperioden ${p.year}-${String(p.month).padStart(2, '0')} är stängd — bokslutspost kan inte skapas`,
+        )
+      }
+    }
   }
 
   async findReadings(

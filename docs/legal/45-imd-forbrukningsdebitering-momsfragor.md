@@ -48,6 +48,29 @@ december ofta ännu omätt. Bekräfta metod och brytdatum för upplupen intäkt
 senast kända period/tariff, och hur hanteras gränsdragningen mot den 2-mån
 förskjutna ordinarie debiteringen så att ingen period dubbelredovisas?
 
+**Implementerad metod (PR 5 — `runYearEndAccrual`), att bekräfta:**
+
+- **Brytdatum:** accrual dateras till räkenskapsårets sista dag (kalenderår →
+  31/12), reversal till nästa räkenskapsårs första dag (1/1). Brutet räkenskapsår
+  följer `Organization.fiscalYearStartMonth`.
+- **Vad som periodiseras:** varje ACTUAL-förbrukning har redan ett eget verifikat
+  daterat till sin mätperiod (PR 3) — den är alltså redan i rätt år oavsett när
+  den debiteras. Accrualen täcker ENBART **omätt** förbrukning: dagarna från
+  mätarens sista avläsning (mätpunkt) fram till årsslutet.
+- **Estimat (per mätare):**
+  `dagstakt = senaste ACTUAL-chargens quantity / dess periodlängd (dagar)`,
+  `gap-dagar = dagar från sista mätpunkten (eller årsstart) t.o.m. årsslut`,
+  `estimerat netto = dagstakt × gap-dagar × GÄLLANDE tariffpris vid årsslut`.
+  Moms från enhetens config (`vatRateForRent`). Saknas tidigare ACTUAL-charge,
+  tariff eller aktivt avtal → ingen accrual (ingen estimatbas).
+- **Ingen dubbelredovisning:** posten **återförs 1/1**; när den verkliga (mätta)
+  förbrukningen sedan bokförs i nya året tar reversalen ut accrualen. Estimatet
+  materialiseras ALDRIG som en charge/avi/faktura — det lever bara i bokföringen.
+
+_Öppen fråga till konsult:_ är dagstakt-proration från senaste perioden en
+godtagbar och tillräckligt konsekvent estimatgrund, eller önskas annan bas
+(t.ex. rullande 12-månaderssnitt eller normalårskorrigerad förbrukning)?
+
 ## Beslutslogg
 
 | Datum | Fråga | Svar    | Beslutad av |

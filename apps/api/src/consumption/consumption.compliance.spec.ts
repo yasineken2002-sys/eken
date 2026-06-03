@@ -13,7 +13,7 @@
  *  • PR 2 stannar vid DRAFT-charge: inget verifikat, ingen 1510-fordran.
  *  • RBAC: skriv (mätare/tariff/avläsning) kräver MANAGER/ADMIN/OWNER; läs öppen.
  */
-import { BadRequestException, ForbiddenException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common'
 import type { ExecutionContext } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { RolesGuard } from '../common/guards/roles.guard'
@@ -522,6 +522,144 @@ describe('invoiceSeparateCharges (SEPARATE_INVOICE, PR 4)', () => {
   })
 })
 
+// ── Bokslut: upplupen förbrukningsintäkt (PR 5) ──────────────────────────────
+
+function accrualMeter(over: Record<string, unknown> = {}) {
+  return {
+    id: 'meter-1',
+    unitId: 'unit-1',
+    type: 'ELECTRICITY',
+    status: 'ACTIVE',
+    unit: {
+      id: 'unit-1',
+      type: 'APARTMENT',
+      voluntaryTaxLiability: false,
+      propertyId: 'prop-1',
+      property: { consumptionBillingMode: 'RENT_NOTICE_LINE' },
+    },
+    ...over,
+  }
+}
+
+interface AccrualOpts {
+  meters?: Record<string, unknown>[]
+  lease?: Record<string, unknown> | null
+  lastReading?: { periodEnd: Date } | null
+  lastCharge?: { quantity: number; periodStart: Date; periodEnd: Date } | null
+  tariffs?: Record<string, unknown>[]
+  closed?: Record<string, unknown> | null
+  fiscalYearStartMonth?: number
+}
+
+function makeAccrual(o: AccrualOpts = {}) {
+  const prisma: Record<string, unknown> = {
+    organization: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({ fiscalYearStartMonth: o.fiscalYearStartMonth ?? 1 }),
+    },
+    closedAccountingPeriod: { findUnique: jest.fn().mockResolvedValue(o.closed ?? null) },
+    meter: { findMany: jest.fn().mockResolvedValue(o.meters ?? [accrualMeter()]) },
+    lease: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue('lease' in o ? o.lease : { consumptionBillingMode: null }),
+    },
+    meterReading: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue(
+          o.lastReading === undefined ? { periodEnd: new Date('2026-11-30') } : o.lastReading,
+        ),
+    },
+    consumptionCharge: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue(
+          o.lastCharge === undefined
+            ? {
+                quantity: 300,
+                periodStart: new Date('2026-11-01'),
+                periodEnd: new Date('2026-11-30'),
+              }
+            : o.lastCharge,
+        ),
+    },
+    consumptionTariff: { findMany: jest.fn().mockResolvedValue(o.tariffs ?? [defaultTariff()]) },
+  }
+  const accounting = {
+    createConsumptionAccrualEntry: jest.fn().mockResolvedValue({ accrual: {}, reversal: {} }),
+  }
+  const service = new ConsumptionService(prisma as never, accounting as never)
+  return { service, accounting, prisma }
+}
+
+describe('runYearEndAccrual — estimatmetod + periodisering (PR 5)', () => {
+  it('estimerar dagstakt × gap-dagar × gällande tariff och bokför 1790-accrual', async () => {
+    const { service, accounting } = makeAccrual()
+    // lastReading 2026-11-30, lastCharge 300 kWh över 30 dagar → 10/dag.
+    // gap Nov30→Dec31 = 31 dagar → 310 kWh × 2.5 = 775 kr (bostad → EXEMPT).
+    const res = await service.runYearEndAccrual('org-1', 2026, 'user-9')
+
+    expect(res.accrued).toBe(1)
+    expect(res.totalNet).toBe(775)
+    expect(accounting.createConsumptionAccrualEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        meterId: 'meter-1',
+        meterType: 'ELECTRICITY',
+        fiscalYear: 2026,
+        yearEndDate: new Date(Date.UTC(2026, 11, 31)),
+        reversalDate: new Date(Date.UTC(2027, 0, 1)),
+        netAmount: 775,
+        vatStatus: 'EXEMPT',
+        vatAmount: 0,
+        totalAmount: 775,
+      }),
+      'org-1',
+      'user-9',
+    )
+  })
+
+  it('mätt t.o.m. årsslut (lastReading 31/12) → ingen accrual', async () => {
+    const { service, accounting } = makeAccrual({
+      lastReading: { periodEnd: new Date('2026-12-31') },
+    })
+    const res = await service.runYearEndAccrual('org-1', 2026, 'user-9')
+    expect(res.accrued).toBe(0)
+    expect(res.skipped).toBe(1)
+    expect(accounting.createConsumptionAccrualEntry).not.toHaveBeenCalled()
+  })
+
+  it('ingen tidigare ACTUAL-charge → hoppas över (ingen estimatbas)', async () => {
+    const { service, accounting } = makeAccrual({ lastCharge: null })
+    const res = await service.runYearEndAccrual('org-1', 2026, 'user-9')
+    expect(res.accrued).toBe(0)
+    expect(accounting.createConsumptionAccrualEntry).not.toHaveBeenCalled()
+  })
+
+  it('vakant enhet (inget aktivt avtal) → ingen accrual', async () => {
+    const { service, accounting } = makeAccrual({ lease: null })
+    const res = await service.runYearEndAccrual('org-1', 2026, 'user-9')
+    expect(res.accrued).toBe(0)
+    expect(accounting.createConsumptionAccrualEntry).not.toHaveBeenCalled()
+  })
+
+  it('leveranssätt NONE → ingen accrual', async () => {
+    const { service, accounting } = makeAccrual({ lease: { consumptionBillingMode: 'NONE' } })
+    const res = await service.runYearEndAccrual('org-1', 2026, 'user-9')
+    expect(res.accrued).toBe(0)
+    expect(accounting.createConsumptionAccrualEntry).not.toHaveBeenCalled()
+  })
+
+  it('stängd bokföringsperiod → ConflictException, inget bokförs', async () => {
+    const { service, accounting } = makeAccrual({ closed: { id: 'cp-1' } })
+    await expect(service.runYearEndAccrual('org-1', 2026, 'user-9')).rejects.toBeInstanceOf(
+      ConflictException,
+    )
+    expect(accounting.createConsumptionAccrualEntry).not.toHaveBeenCalled()
+  })
+})
+
 describe('ConsumptionController RBAC', () => {
   const guard = new RolesGuard(new Reflector())
   const proto = ConsumptionController.prototype
@@ -564,5 +702,11 @@ describe('ConsumptionController RBAC', () => {
   it('läsning (findMeters/findCharges) är öppen även för VIEWER', () => {
     expect(allows(proto.findMeters as () => unknown, 'VIEWER')).toBe(true)
     expect(allows(proto.findCharges as () => unknown, 'VIEWER')).toBe(true)
+  })
+
+  it('bokslut (runYearEndAccrual) tillåts för ACCOUNTANT men nekas VIEWER', () => {
+    expect(allows(proto.runYearEndAccrual as () => unknown, 'ACCOUNTANT')).toBe(true)
+    expect(allows(proto.runYearEndAccrual as () => unknown, 'OWNER')).toBe(true)
+    expect(allows(proto.runYearEndAccrual as () => unknown, 'VIEWER')).toBe(false)
   })
 })
