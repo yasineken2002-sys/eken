@@ -524,6 +524,10 @@ model Organization {
   closedPeriods      ClosedAccountingPeriod[]
   terminationRequests TerminationRequest[]
   keyHandovers       KeyHandover[]
+  meters             Meter[]
+  meterReadings      MeterReading[]
+  consumptionTariffs ConsumptionTariff[]
+  consumptionCharges ConsumptionCharge[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -661,6 +665,12 @@ model Property {
   commonAreasNotes     String?
   garbageDisposalRules String?
 
+  // ── Förbrukningsdebitering (IMD) ──────────────────────────────────────────
+  // Standard-leveranssätt för el/vatten/värme för fastighetens enheter. Kan
+  // åsidosättas per lease (Lease.consumptionBillingMode). Default RENT_NOTICE_LINE
+  // (det momssäkra fallet — rad på hyresavin).
+  consumptionBillingMode ConsumptionBillingMode @default(RENT_NOTICE_LINE)
+
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   units              Unit[]
   documents          Document[]
@@ -708,6 +718,7 @@ model Unit {
   maintenanceTickets MaintenanceTicket[]
   inspections        Inspection[]
   keyHandovers       KeyHandover[]
+  meters             Meter[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -796,6 +807,7 @@ model Tenant {
   aiToolExecutions   AiToolExecution[]
   terminationRequests TerminationRequest[]
   keyHandovers       KeyHandover[]
+  consumptionCharges ConsumptionCharge[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -931,6 +943,11 @@ model Lease {
   // så två organisationer delar oundvikligen samma löpnummer (KONT-2026-00001).
   contractNumber String?
 
+  // ── Förbrukningsdebitering (IMD) ──────────────────────────────────────────
+  // Åsidosätter fastighetens default (Property.consumptionBillingMode) för just
+  // detta hyresförhållande. Null = ärv fastighetens inställning.
+  consumptionBillingMode ConsumptionBillingMode?
+
   unit                Unit                 @relation(fields: [unitId], references: [id])
   tenant              Tenant               @relation(fields: [tenantId], references: [id])
   invoices            Invoice[]
@@ -941,6 +958,7 @@ model Lease {
   rentIncreases       RentIncrease[]
   terminationRequests TerminationRequest[]
   keyHandovers        KeyHandover[]
+  consumptionCharges  ConsumptionCharge[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1011,6 +1029,7 @@ model Invoice {
   bankTransactions BankTransaction[]
   deposit          Deposit?
   paymentReminders PaymentReminder[]
+  consumptionCharges ConsumptionCharge[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1822,11 +1841,19 @@ model RentNotice {
   totalDays   Int?
   isProrated  Boolean        @default(false)
 
+  // ── Förbrukningsdebitering (IMD, rad-på-avi) ────────────────────────────
+  // amount/vatAmount/totalAmount avser HYRAN (bokförs av hyresverifikatet,
+  // oförändrat). consumptionAmount är summan av förbrukningsrader (brutto) och
+  // ingår i den betalbara totalen/OCR — men bokförs via egna periodiserade
+  // verifikat (PR 3), inte här. Default 0. Rader i RentNoticeLine (PR 4).
+  consumptionAmount Decimal @default(0) @db.Decimal(10, 2)
+
   // Bokföringslagen (1999:1078): hyresavier är räkenskapsinformation, bevaras 7 år.
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   tenant           Tenant            @relation(fields: [tenantId], references: [id])
   lease            Lease             @relation(fields: [leaseId], references: [id])
   bankTransactions BankTransaction[]
+  lines            RentNoticeLine[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1845,6 +1872,31 @@ model RentNotice {
   @@index([status])
   @@index([dueDate])
   @@index([leaseId])
+}
+
+// Radpost på en hyresavi. Idag bär RentNotice bara ett samlat amount; denna
+// tabell gör det möjligt att visa "Hyra 7 000 / El 240 kr" på samma avi och ett
+// OCR (leveranssätt RENT_NOTICE_LINE, PR 4). Speglar InvoiceLine. consumption-
+// ChargeId kopplar raden till sin förbrukningspost (null för framtida manuella
+// tilläggsrader). Cascade mot avin (som InvoiceLine mot Invoice); avin själv är
+// Restrict-skyddad mot org → räkenskapsinformationen består.
+model RentNoticeLine {
+  id           String  @id @default(uuid())
+  rentNoticeId String
+  description  String
+  quantity     Decimal @db.Decimal(10, 4)
+  unitPrice    Decimal @db.Decimal(10, 2)
+  vatRate      Int     @default(0)
+  total        Decimal @db.Decimal(10, 2)
+
+  consumptionChargeId String? @unique
+
+  createdAt DateTime @default(now())
+
+  rentNotice        RentNotice         @relation(fields: [rentNoticeId], references: [id], onDelete: Cascade)
+  consumptionCharge ConsumptionCharge? @relation(fields: [consumptionChargeId], references: [id])
+
+  @@index([rentNoticeId])
 }
 
 // ─── Inspection (Besiktning) ──────────────────────────────────────────────────
@@ -2305,4 +2357,228 @@ model KeyHandover {
   @@index([unitId])
   @@index([tenantId])
   @@index([status])
+}
+
+// ─── IMD – förbrukningsdebitering (el/vatten/värme) ───────────────────────────
+// Individuell mätning och debitering. Fyra entiteter med strikt ansvarsdelning:
+//   Meter             — fysisk mätare, sitter på enheten (väggen), inte lease:n.
+//   MeterReading      — append-only mätunderlag (BFL 7 år), källagnostiskt.
+//   ConsumptionTariff — prismodell med historik (validFrom/validTo).
+//   ConsumptionCharge — den debiterbara, prissatta och moms-snapshotade posten.
+//
+// PR 1 = ren persistens. Inget läser/skriver dessa ännu; intake (PR 2),
+// bokföring (PR 3), leveranssätt (PR 4) och bokslut (PR 5) bygger ovanpå.
+//
+// Momsfrågor som ännu är öppna (konsult): docs/legal/45-imd-forbrukningsdebitering-momsfragor.md
+
+enum MeterType {
+  ELECTRICITY // El (kWh) → intäktskonto 3920
+  WATER_COLD // Kallvatten (m³) → 3970
+  WATER_HOT // Varmvatten (m³) → 3970 (öppen momsfråga 2)
+  HEATING // Värme (kWh/MWh) → 3920
+}
+
+enum MeterStatus {
+  ACTIVE // I drift, avläses
+  INACTIVE // Tillfälligt ur bruk
+  REMOVED // Demonterad (behålls för historik – readings finns kvar)
+}
+
+// Hur en avläsning levererades. ALLA tre går genom SAMMA recordReading()-tjänst
+// (PR 2) — manuell input och framtida leverantörs-API delar väg.
+enum ReadingSource {
+  MANUAL // Inmatad av handläggare
+  IMPORT // Fil-/CSV-import
+  API // Leverantörs-API (framtid)
+}
+
+// Värdetyp på avläsningen. CUMULATIVE = mätarställning (förbrukning beräknas som
+// differens mot föregående avläsning — default, självläker vid missad period).
+// PERIOD_VOLUME = färdig periodförbrukning ("240 kWh i maj").
+enum ReadingType {
+  CUMULATIVE
+  PERIOD_VOLUME
+}
+
+enum ConsumptionChargeStatus {
+  DRAFT // Skapad och prissatt, ej bokförd (PR 2)
+  CONFIRMED // Periodiserat verifikat + 1510-fordran bokförd (PR 3)
+  ATTACHED // Kopplad till avi/faktura för presentation + betalning (PR 4)
+  CANCELLED // Annullerad (rättning – posterna raderas aldrig)
+}
+
+// ACTUAL i v1. ESTIMATE/ADJUSTMENT-sömmen behålls för framtida schablon och
+// bokslutspost (PR 5) utan migrationssmärta — ingen schablon byggs i v1.
+enum ConsumptionChargeKind {
+  ACTUAL
+  ESTIMATE
+  ADJUSTMENT
+}
+
+// Momsstatus snapshotad på charge:n från lease/unit-konfiguration vid skapande.
+// EXEMPT default för bostad (ML 3 kap 2 §). Regeln spikas ALDRIG i kod — läses
+// från konfiguration. Se öppen momsfråga 1 om SEPARATE_INVOICE.
+enum ConsumptionVatStatus {
+  EXEMPT
+  TAXABLE_25
+}
+
+// Leveranssätt — konfiguration per fastighet (default) och lease (override).
+// Default RENT_NOTICE_LINE (det momssäkra fallet).
+enum ConsumptionBillingMode {
+  RENT_NOTICE_LINE // Rad på hyresavin (ett OCR, en betalning)
+  SEPARATE_INVOICE // Egen faktura (Invoice, type=UTILITY)
+  NONE // Ingen förbrukningsdebitering
+}
+
+// Tariffens räckvidd. ORGANIZATION = standardpris; PROPERTY/UNIT = mer specifik
+// åsidosätter bredare (löses i intake-tjänsten, PR 2).
+enum TariffScope {
+  ORGANIZATION
+  PROPERTY
+  UNIT
+}
+
+model Meter {
+  id             String      @id @default(uuid())
+  organizationId String
+  unitId         String
+  type           MeterType
+  unitOfMeasure  String // "kWh" | "m³" — fri text, källagnostisk
+  serialNumber   String?
+  status         MeterStatus @default(ACTIVE)
+
+  // Källagnostik: extern koppling för framtida leverantörs-API. provider +
+  // externalId identifierar mätaren hos datakällan; intake matchar på dessa.
+  provider   String?
+  externalId String?
+
+  installedAt DateTime?
+  removedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Restrict mot org OCH unit: mätaren bär räkenskapsinformation via sina
+  // avläsningar (BFL 7 år) — en enhet/org med mätare raderas inte tyst.
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  unit         Unit           @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  readings     MeterReading[]
+
+  @@index([organizationId])
+  @@index([unitId])
+  @@index([status])
+}
+
+model MeterReading {
+  id             String        @id @default(uuid())
+  organizationId String
+  meterId        String
+  // Denormaliserat arkiv (speglar Deposit/KeyHandover): självständigt underlag
+  // som överlever om-/avkoppling av lease. leaseId är en historisk ögonblicks-
+  // bild (vilken lease som var aktiv vid avläsningen) — plain string, ingen FK,
+  // så att en lease-radering aldrig blockeras av eller nollar mätunderlaget.
+  unitId         String
+  leaseId        String?
+  value          Decimal       @db.Decimal(14, 3)
+  readingType    ReadingType   @default(CUMULATIVE)
+  readingDate    DateTime // När mätaren lästes
+  periodStart    DateTime      @db.Date // Mätperiodens start (skild från fakturadatum)
+  periodEnd      DateTime      @db.Date // Mätperiodens slut — styr räkenskapsåret
+  source         ReadingSource
+  externalId     String? // Datakällans avläsnings-id → idempotens vid API-ingest
+  registeredById String? // User vid MANUAL
+  notes          String?
+
+  // Append-only (BFL 5 kap 5 §): INGEN updatedAt. Rättning = ny rad, aldrig UPDATE/DELETE.
+  createdAt DateTime @default(now())
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  meter        Meter               @relation(fields: [meterId], references: [id], onDelete: Restrict)
+  charges      ConsumptionCharge[]
+
+  // Idempotens för API-/import-ingest: samma (mätare, externt avläsnings-id) får
+  // inte skapa två rader. MANUAL har null externalId → ej begränsad.
+  @@unique([meterId, externalId])
+  @@index([organizationId])
+  @@index([meterId])
+  @@index([periodEnd])
+}
+
+model ConsumptionTariff {
+  id             String      @id @default(uuid())
+  organizationId String
+  scope          TariffScope @default(ORGANIZATION)
+  // Scope-mål (polymorft): PROPERTY → propertyId satt; UNIT → unitId satt;
+  // ORGANIZATION → båda null. Plain strings (ingen FK) eftersom en tariff kan
+  // peka på ettdera och upplösningen sker i intake-tjänsten (PR 2).
+  propertyId     String?
+  unitId         String?
+  meterType      MeterType
+  pricePerUnit   Decimal     @db.Decimal(10, 4)
+  fixedMonthlyFee Decimal?   @db.Decimal(10, 2)
+
+  // Historik: validTo = null är gällande tariff. Pris uppdateras ALDRIG
+  // in-place — ny rad ersätter och stänger föregående. Avläsningens periodEnd
+  // väljer den tariff som gällde då.
+  validFrom DateTime  @db.Date
+  validTo   DateTime? @db.Date
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([meterType])
+  @@index([scope])
+}
+
+model ConsumptionCharge {
+  id             String @id @default(uuid())
+  organizationId String
+  leaseId        String
+  // Denormaliserat (speglar Deposit som bär leaseId+tenantId): självständigt underlag.
+  unitId         String
+  tenantId       String
+  meterReadingId String
+  meterType      MeterType
+
+  periodStart  DateTime @db.Date
+  periodEnd    DateTime @db.Date // Styr verifikatets datum (periodisering, PR 3)
+  quantity     Decimal  @db.Decimal(14, 3)
+  pricePerUnit Decimal  @db.Decimal(10, 4)
+  netAmount    Decimal  @db.Decimal(10, 2)
+
+  // Moms = snapshot från lease/unit-config vid skapande. EXEMPT default bostad.
+  // Regeln spikas aldrig i kod (se öppen momsfråga 1).
+  vatStatus   ConsumptionVatStatus @default(EXEMPT)
+  vatRate     Int                  @default(0)
+  vatAmount   Decimal              @default(0) @db.Decimal(10, 2)
+  totalAmount Decimal              @db.Decimal(10, 2)
+
+  kind         ConsumptionChargeKind   @default(ACTUAL)
+  status       ConsumptionChargeStatus @default(DRAFT)
+  // Leveranssätt snapshotat vid skapande — presentation, ej bokföring.
+  deliveryMode ConsumptionBillingMode  @default(RENT_NOTICE_LINE)
+
+  // Var posten landade (sätts vid ATTACHED, PR 4). Rad-på-avi via RentNoticeLine
+  // (1:1, FK på line-sidan); separat faktura via invoiceId (många charges → en faktura).
+  invoiceId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Restrict mot org OCH lease — charges är bevis (striktare än Deposit, som har
+  // Cascade mot lease). meterReading Restrict: underlaget får inte försvinna.
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  lease          Lease           @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  meterReading   MeterReading    @relation(fields: [meterReadingId], references: [id], onDelete: Restrict)
+  invoice        Invoice?        @relation(fields: [invoiceId], references: [id])
+  rentNoticeLine RentNoticeLine?
+
+  @@index([organizationId])
+  @@index([leaseId])
+  @@index([status])
+  @@index([periodEnd])
 }
