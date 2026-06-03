@@ -57,6 +57,7 @@ function makeService(opts?: { notice?: Record<string, unknown>; claimCount?: num
     noop as never, // storage
     noop as never, // pdfQueue
     accounting as never,
+    noop as never, // consumption
   )
   return { service, prisma, accounting }
 }

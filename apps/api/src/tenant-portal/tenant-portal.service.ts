@@ -4,6 +4,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { MaintenanceService } from '../maintenance/maintenance.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 
 type InvoiceWithLease = Invoice & {
   lease?: (Lease & { unit: Unit & { property: Property } }) | null
@@ -125,7 +126,11 @@ export class TenantPortalService {
       year: notice.year,
       amount: Number(notice.amount),
       vatAmount: Number(notice.vatAmount),
+      // consumptionAmount = förbrukning (IMD) på avi-rader; totalAmount = hyra.
+      // payableTotal = vad hyresgästen faktiskt ska betala (hyra + förbrukning).
+      consumptionAmount: Number(notice.consumptionAmount),
       totalAmount: Number(notice.totalAmount),
+      payableTotal: rentNoticePayableTotal(notice),
       dueDate: notice.dueDate.toISOString(),
       paidAt: notice.paidAt?.toISOString() ?? null,
       status: notice.status,

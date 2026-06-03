@@ -13,6 +13,8 @@ import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
+import { ConsumptionService } from '../consumption/consumption.service'
+import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { PaymentMethod, Prisma, RentNoticeStatus, RentNoticeType } from '@prisma/client'
 import type { UnitType } from '@prisma/client'
 import type { RentNotice } from '@prisma/client'
@@ -27,6 +29,7 @@ type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
   include: {
     tenant: { select: typeof SAFE_TENANT_SELECT }
     lease: { include: { unit: { include: { property: true } } } }
+    lines: true
   }
 }>
 
@@ -61,6 +64,7 @@ export class AviseringService {
     private readonly storage: StorageService,
     private readonly pdfQueue: PdfQueue,
     private readonly accounting: AccountingService,
+    private readonly consumption: ConsumptionService,
   ) {}
 
   // Beräknar moms på en hyra utifrån enhetens upplåtelsetyp och frivilliga
@@ -255,7 +259,31 @@ export class AviseringService {
       })
 
       // Intäktsverifikation (BFL): bokför hyresfordran 1510 D / 39xx K.
+      // amount/vatAmount/totalAmount = HYRA → hyresverifikatet bokför bara hyran.
       await this.bookRentNoticeRevenue(orgId, notice)
+
+      // IMD (PR 4): koppla lease:ens redan bokförda förbruknings-charges som
+      // avi-rader (2-mån-lag). Sätter RentNotice.consumptionAmount; förbrukningen
+      // ingår i betalbar total/OCR men har sitt EGNA verifikat (PR 3) — ingen
+      // dubbelbokning här. Presentation, ej bokföring.
+      try {
+        const consumptionAmount = await this.consumption.attachRentNoticeLineCharges({
+          organizationId: orgId,
+          leaseId: lease.id,
+          rentNoticeId: notice.id,
+          aviMonth: month,
+          aviYear: year,
+        })
+        if (consumptionAmount > 0) notice.consumptionAmount = new Prisma.Decimal(consumptionAmount)
+      } catch (err) {
+        // Misslyckad koppling får inte fälla avi-genereringen — avin (hyra) är
+        // skapad och bokförd; charges förblir CONFIRMED och fångas nästa månad.
+        this.logger.error(
+          `[Avisering] Koppling av förbrukning till avi ${notice.noticeNumber} misslyckades: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        )
+      }
 
       notices.push(notice as unknown as RentNotice)
       created++
@@ -459,6 +487,7 @@ export class AviseringService {
       include: {
         tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
+        lines: true,
       },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
@@ -493,7 +522,8 @@ export class AviseringService {
         to: notice.tenant.email,
         tenantName,
         ocrNumber: notice.ocrNumber,
-        amount: Number(notice.totalAmount),
+        // Betalbar total = hyra + förbrukning (IMD). Vad hyresgästen ska betala.
+        amount: rentNoticePayableTotal(notice),
         dueDate: notice.dueDate,
         pdfBuffer,
         organizationName: org.name,
@@ -529,6 +559,7 @@ export class AviseringService {
       include: {
         tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
+        lines: true,
       },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
@@ -563,6 +594,21 @@ export class AviseringService {
     const fmt = (n: number): string =>
       Number(n).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+    // Betalbar total = hyra + förbrukning (IMD-rader). Hyresgästen betalar EN
+    // summa med ETT OCR. notice.totalAmount avser bara hyran (hyresverifikatet).
+    const payable = rentNoticePayableTotal(notice)
+    const consumptionLines = notice.lines ?? []
+    // HTML för förbrukningsrader (visas mellan hyra och totalsumma).
+    const consumptionRowsHtml = consumptionLines
+      .map(
+        (l) => `
+      <tr>
+        <td>${l.description}</td>
+        <td>${fmt(Number(l.total))} kr</td>
+      </tr>`,
+      )
+      .join('')
+
     const tenantName =
       notice.tenant.type === 'INDIVIDUAL'
         ? `${notice.tenant.firstName ?? ''} ${notice.tenant.lastName ?? ''}`.trim()
@@ -594,7 +640,7 @@ export class AviseringService {
       return `# ${ocrNumber} # ${kronor} ${oren} ${checkDigit} > ${bgFormatted}#41#`
     }
 
-    const ocrLine = formatBankgiroLine(notice.ocrNumber, Number(notice.totalAmount), bankgiro)
+    const ocrLine = formatBankgiroLine(notice.ocrNumber, payable, bankgiro)
 
     const monthLabel = new Date(notice.year, notice.month - 1, 1).toLocaleDateString('sv-SE', {
       month: 'long',
@@ -972,9 +1018,19 @@ export class AviseringService {
       </tr>`
           : ''
       }
+      ${
+        consumptionLines.length > 0
+          ? `
+      <tr>
+        <td>Hyra:</td>
+        <td>${fmt(Number(notice.totalAmount))} kr</td>
+      </tr>
+      ${consumptionRowsHtml}`
+          : ''
+      }
       <tr class="total-final">
         <td>Att betala:</td>
-        <td>${fmt(Number(notice.totalAmount))} kr</td>
+        <td>${fmt(payable)} kr</td>
       </tr>
     </table>
   </div>
@@ -1031,7 +1087,7 @@ export class AviseringService {
     <div class="amount-box">
       <div class="amount-label">ATT BETALA</div>
       <div class="amount-value">
-        ${fmt(Number(notice.totalAmount))} kr
+        ${fmt(payable)} kr
       </div>
     </div>
   </div>

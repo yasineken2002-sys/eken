@@ -120,4 +120,17 @@ export class ConsumptionController {
   ) {
     return this.consumption.confirmCharge(id, organizationId, user.sub)
   }
+
+  // SEPARATE_INVOICE: bygg EN faktura (UTILITY) av lease:ens CONFIRMED charges
+  // med leveranssätt SEPARATE_INVOICE → CONFIRMED → ATTACHED. RENT_NOTICE_LINE-
+  // charges kopplas istället automatiskt på hyresavin vid avi-genereringen.
+  @Post('leases/:leaseId/invoice')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
+  async invoiceSeparateCharges(
+    @Param('leaseId') leaseId: string,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.consumption.invoiceSeparateCharges(leaseId, organizationId, user.sub)
+  }
 }

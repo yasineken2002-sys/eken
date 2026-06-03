@@ -542,16 +542,23 @@ export class ReconciliationService {
         },
         orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
       })
-      if (notice && notice.totalAmount.minus(transaction.amount).abs().lte(tolerance)) {
-        const matched = await this.applyMatchToRentNotice(
-          transaction.id,
-          notice.id,
-          notice.totalAmount,
-          transaction.date,
-          null,
-          db,
-        )
-        if (matched) return true
+      // Betalbar total = hyra (totalAmount) + förbrukning på avi-rader
+      // (consumptionAmount, IMD). Hyresgästen betalar EN summa; matchning och
+      // 1510-reglering sker mot den. Hyresverifikatet (hyra) + förbruknings-
+      // verifikatet (PR 3) summerar till exakt denna fordran på 1510.
+      if (notice) {
+        const payable = notice.totalAmount.plus(notice.consumptionAmount)
+        if (payable.minus(transaction.amount).abs().lte(tolerance)) {
+          const matched = await this.applyMatchToRentNotice(
+            transaction.id,
+            notice.id,
+            payable,
+            transaction.date,
+            null,
+            db,
+          )
+          if (matched) return true
+        }
       }
     }
 
@@ -593,16 +600,19 @@ export class ReconciliationService {
           status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
         },
       })
-      if (notice && notice.totalAmount.minus(transaction.amount).abs().lte(tolerance)) {
-        const matched = await this.applyMatchToRentNotice(
-          transaction.id,
-          notice.id,
-          notice.totalAmount,
-          transaction.date,
-          null,
-          db,
-        )
-        if (matched) return true
+      if (notice) {
+        const payable = notice.totalAmount.plus(notice.consumptionAmount)
+        if (payable.minus(transaction.amount).abs().lte(tolerance)) {
+          const matched = await this.applyMatchToRentNotice(
+            transaction.id,
+            notice.id,
+            payable,
+            transaction.date,
+            null,
+            db,
+          )
+          if (matched) return true
+        }
       }
     }
 
@@ -634,8 +644,9 @@ export class ReconciliationService {
     const invMatches = invCandidates.filter((inv) =>
       inv.total.minus(transaction.amount).abs().lte(tolerance),
     )
+    // Betalbar total = hyra + förbrukning (IMD). Hyresgästen betalar EN summa.
     const noticeMatches = noticeCandidates.filter((n) =>
-      n.totalAmount.minus(transaction.amount).abs().lte(tolerance),
+      n.totalAmount.plus(n.consumptionAmount).minus(transaction.amount).abs().lte(tolerance),
     )
 
     if (invMatches.length + noticeMatches.length !== 1) return false
@@ -684,12 +695,15 @@ export class ReconciliationService {
 
     if (noticeMatches[0]) {
       const candidate = noticeMatches[0]
+      // Betalbar total reglerar hela 1510-fordran (hyresverifikat + förbruknings-
+      // verifikat). paidAmount och betalningsverifikatet ska avse hela summan.
+      const payable = candidate.totalAmount.plus(candidate.consumptionAmount)
       const claim = await db.rentNotice.updateMany({
         where: { id: candidate.id, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } },
         data: {
           status: 'PAID',
           paidAt: transaction.date,
-          paidAmount: candidate.totalAmount,
+          paidAmount: payable,
         },
       })
       if (claim.count === 0) return false
@@ -708,9 +722,9 @@ export class ReconciliationService {
           {
             id: candidate.id,
             noticeNumber: candidate.noticeNumber,
-            totalAmount: candidate.totalAmount,
+            totalAmount: payable,
           },
-          { id: transaction.id, date: transaction.date, amount: candidate.totalAmount },
+          { id: transaction.id, date: transaction.date, amount: payable },
           organizationId,
           null,
         )
@@ -995,10 +1009,12 @@ export class ReconciliationService {
         where: { id: target.rentNoticeId, organizationId },
       })
       if (!notice) throw new NotFoundException('Hyresavi hittades inte')
+      // Betalbar total = hyra + förbrukning (IMD). Reglerar hela 1510-fordran.
+      const payable = notice.totalAmount.plus(notice.consumptionAmount)
       const matched = await this.applyMatchToRentNotice(
         transactionId,
         target.rentNoticeId,
-        notice.totalAmount,
+        payable,
         transaction.date,
         userId,
         this.prisma,
