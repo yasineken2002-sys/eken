@@ -9,6 +9,7 @@ import { RentIncreasesService } from '../rent-increases/rent-increases.service'
 import { TenantAuthService } from '../tenant-portal/tenant-auth.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
 import { ContractNumberService } from '../contracts/contract-number.service'
+import { syncUnitStatusFromLeases } from '../units/unit-status.sync'
 import { LeaseActivationQueue } from './lease-activation.queue'
 import { normalizeEmail } from '../common/utils/normalize-email'
 import { CreateLeaseDto } from './dto/create-lease.dto'
@@ -360,17 +361,9 @@ export class LeasesService {
         })
 
         // Synka enhetens status så att fastighetsöversikten alltid stämmer.
-        if (newStatus === 'ACTIVE') {
-          await tx.unit.update({ where: { id: lease.unitId }, data: { status: 'OCCUPIED' } })
-        } else if (newStatus === 'TERMINATED' || newStatus === 'EXPIRED') {
-          // Endast om det inte fortfarande finns ett annat ACTIVE-kontrakt på enheten
-          const stillActive = await tx.lease.count({
-            where: { unitId: lease.unitId, status: 'ACTIVE', id: { not: id } },
-          })
-          if (stillActive === 0) {
-            await tx.unit.update({ where: { id: lease.unitId }, data: { status: 'VACANT' } })
-          }
-        }
+        // Körs efter lease.update så count() ser det nya tillståndet — en plats
+        // för hela appen (I1/#62).
+        await syncUnitStatusFromLeases(tx, lease.unitId)
 
         return result
       })
@@ -744,7 +737,7 @@ export class LeasesService {
       })
 
       // Säkerställ att enhetsstatus förblir OCCUPIED (det nya avtalet är ACTIVE)
-      await tx.unit.update({ where: { id: lease.unitId }, data: { status: 'OCCUPIED' } })
+      await syncUnitStatusFromLeases(tx, lease.unitId)
 
       return created
     })
@@ -823,6 +816,10 @@ export class LeasesService {
               signedAt: new Date(),
             },
           })
+
+          // Det nya avtalet är ACTIVE → enheten ska vara OCCUPIED (samma
+          // synk-punkt som överallt annars).
+          await syncUnitStatusFromLeases(tx, lease.unitId)
         })
         this.logger.log(`[Leases] Auto-renewed lease ${lease.id} for unit ${lease.unitId}`)
         renewed++
@@ -891,13 +888,8 @@ export class LeasesService {
             data: { status: 'TERMINATED' },
           })
 
-          // Frigör enheten om inget annat ACTIVE-kontrakt finns
-          const stillActive = await tx.lease.count({
-            where: { unitId: lease.unitId, status: 'ACTIVE', id: { not: lease.id } },
-          })
-          if (stillActive === 0) {
-            await tx.unit.update({ where: { id: lease.unitId }, data: { status: 'VACANT' } })
-          }
+          // Frigör enheten om inget annat ACTIVE-kontrakt finns (synk-punkt).
+          await syncUnitStatusFromLeases(tx, lease.unitId)
         })
         this.logger.log(`[Leases] Terminated expired-notice lease ${lease.id}`)
         terminated++
