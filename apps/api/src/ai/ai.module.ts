@@ -27,6 +27,7 @@ import { NotificationsModule } from '../notifications/notifications.module'
 import { CollectionsModule } from '../collections/collections.module'
 import { TenantPortalModule } from '../tenant-portal/tenant-portal.module'
 import { RentIncreasesModule } from '../rent-increases/rent-increases.module'
+import { TerminationsModule } from '../terminations/terminations.module'
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { RentIncreasesModule } from '../rent-increases/rent-increases.module'
     CollectionsModule,
     TenantPortalModule,
     RentIncreasesModule,
+    TerminationsModule,
   ],
   controllers: [AiAssistantController, TenantAiController],
   providers: [

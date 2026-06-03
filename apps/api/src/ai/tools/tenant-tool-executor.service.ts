@@ -4,6 +4,7 @@ import { PrismaService } from '../../common/prisma/prisma.service'
 import { MaintenanceService } from '../../maintenance/maintenance.service'
 import { NotificationsService } from '../../notifications/notifications.service'
 import { AiAuditService } from '../audit/ai-audit.service'
+import { TerminationsService } from '../../terminations/terminations.service'
 import { TENANT_ACTION_TOOLS } from './tenant-ai-tools.definition'
 
 /**
@@ -58,6 +59,7 @@ export class TenantToolExecutorService {
     private readonly maintenanceService: MaintenanceService,
     private readonly notificationsService: NotificationsService,
     private readonly audit: AiAuditService,
+    private readonly terminations: TerminationsService,
   ) {}
 
   async executeTool(
@@ -420,18 +422,17 @@ export class TenantToolExecutorService {
               message: 'Önskat avflyttningsdatum måste ligga i framtiden.',
             }
           }
-          const lease = await this.prisma.lease.findFirst({
-            where: { tenantId, status: 'ACTIVE' },
-            include: { tenant: true },
-          })
-          if (!lease) {
-            throw new BadRequestException('Du har inget aktivt hyresavtal som kan sägas upp.')
-          }
-          // Förhindra dubblerade pågående begäran
-          const existing = await this.prisma.terminationRequest.findFirst({
-            where: { leaseId: lease.id, status: 'PENDING' },
-          })
-          if (existing) {
+          // Centraliserad skapande-logik (dubblettskydd + personalnotis) i
+          // TerminationsService så att AI-vägen och en framtida portal-knapp
+          // delar exakt samma flöde. Kastar BadRequestException om hyresgästen
+          // saknar aktivt avtal; returnerar null vid pågående dubblett.
+          const created = await this.terminations.createFromTenant(
+            organizationId,
+            tenantId,
+            endDate,
+            reason ?? undefined,
+          )
+          if (!created) {
             return {
               success: false,
               message:
@@ -439,33 +440,9 @@ export class TenantToolExecutorService {
             }
           }
 
-          const request = await this.prisma.terminationRequest.create({
-            data: {
-              organizationId,
-              tenantId,
-              leaseId: lease.id,
-              requestedEndDate: endDate,
-              ...(reason ? { reason } : {}),
-            },
-          })
-
-          const tenantName = lease.tenant.firstName
-            ? `${lease.tenant.firstName} ${lease.tenant.lastName ?? ''}`.trim()
-            : (lease.tenant.companyName ?? lease.tenant.email)
-
-          void this.notificationsService
-            .createForAllOrgUsers(
-              organizationId,
-              'SYSTEM',
-              '📤 Uppsägningsbegäran från hyresgäst',
-              `${tenantName} har begärt uppsägning per ${endDate.toISOString().slice(0, 10)}.`,
-              { relatedEntityType: 'TERMINATION_REQUEST', relatedEntityId: request.id },
-            )
-            .catch(() => undefined)
-
           return {
             success: true,
-            data: { id: request.id, requestedEndDate: endDate.toISOString().slice(0, 10) },
+            data: { id: created.id, requestedEndDate: endDate.toISOString().slice(0, 10) },
             message: `Din uppsägningsbegäran har skickats till hyresvärden. Begäran är PRELIMINÄR — uppsägningen är giltig först när hyresvärden bekräftat den enligt Hyreslagen 12 kap. JB.`,
             nextSteps: [
               'Hyresvärden hör av sig för att bekräfta',

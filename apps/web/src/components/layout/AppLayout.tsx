@@ -6,6 +6,7 @@ import {
   Home,
   Users,
   FileText,
+  DoorOpen,
   Receipt,
   BookOpen,
   ChevronRight,
@@ -48,6 +49,7 @@ type AppPath =
   | '/avisering'
   | '/deposits'
   | '/rent-increases'
+  | '/terminations'
   | '/accounting'
   | '/reports'
   | '/reconciliation'
@@ -80,6 +82,7 @@ const NAV_PORTFOLIO: NavItem[] = [
   { to: '/tenants', label: 'Hyresgäster', icon: Users, readOnly: true },
   { to: '/customers', label: 'Kunder', icon: Users },
   { to: '/leases', label: 'Hyresavtal', icon: FileText },
+  { to: '/terminations', label: 'Uppsägningar', icon: DoorOpen },
 ]
 
 const NAV_FINANCE: NavItem[] = [

@@ -40,6 +40,7 @@ import { LeasesPage } from '../features/leases/LeasesPage'
 import { InvoicesPage } from '../features/invoices/InvoicesPage'
 import { DepositsPage } from '../features/deposits/DepositsPage'
 import { RentIncreasesPage } from '../features/rent-increases/RentIncreasesPage'
+import { TerminationsPage } from '../features/terminations/TerminationsPage'
 import { AccountingPage } from '../features/accounting/AccountingPage'
 import { ReportsPage } from '../features/reports/ReportsPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
@@ -281,6 +282,7 @@ const leasesRoute = appPage('/leases', LeasesPage)
 const invoicesRoute = appPage('/invoices', InvoicesPage)
 const depositsRoute = appPage('/deposits', DepositsPage)
 const rentIncreasesRoute = appPage('/rent-increases', RentIncreasesPage)
+const terminationsRoute = appPage('/terminations', TerminationsPage)
 const accountingRoute = appPage('/accounting', AccountingPage)
 const reportsRoute = appPage('/reports', ReportsPage)
 const reconciliationRoute = appPage('/reconciliation', ReconciliationPage)
@@ -335,6 +337,7 @@ const routeTree = rootRoute.addChildren([
     invoicesRoute,
     depositsRoute,
     rentIncreasesRoute,
+    terminationsRoute,
     accountingRoute,
     reportsRoute,
     reconciliationRoute,

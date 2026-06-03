@@ -34,6 +34,7 @@ import { AviseringModule } from './avisering/avisering.module'
 import { InspectionsModule } from './inspections/inspections.module'
 import { MaintenancePlanModule } from './maintenance-plan/maintenance-plan.module'
 import { ContractsModule } from './contracts/contracts.module'
+import { TerminationsModule } from './terminations/terminations.module'
 import { TenantPortalModule } from './tenant-portal/tenant-portal.module'
 import { NewsModule } from './news/news.module'
 import { MessagesModule } from './messages/messages.module'
@@ -112,6 +113,7 @@ import { WebhooksModule } from './webhooks/webhooks.module'
     InspectionsModule,
     MaintenancePlanModule,
     ContractsModule,
+    TerminationsModule,
     TenantPortalModule,
     NewsModule,
     MessagesModule,
