@@ -62,6 +62,9 @@ describe('FIX 9 · PR 2 — generateMonthlyNotices bokför hyresintäkt', () => 
     const accounting = {
       createJournalEntryForRentNotice: jest.fn().mockResolvedValue({ id: 'je-1' }),
     }
+    const consumption = {
+      attachRentNoticeLineCharges: jest.fn().mockResolvedValue(0),
+    }
     const noop = {}
 
     const service = new AviseringService(
@@ -72,6 +75,7 @@ describe('FIX 9 · PR 2 — generateMonthlyNotices bokför hyresintäkt', () => 
       noop as never, // storage
       noop as never, // pdfQueue
       accounting as never,
+      consumption as never,
     )
     return { service, prisma, accounting }
   }

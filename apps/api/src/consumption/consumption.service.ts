@@ -3,12 +3,14 @@ import type {
   Meter,
   MeterStatus,
   MeterReading,
+  MeterType,
   ConsumptionTariff,
   ConsumptionCharge,
   ConsumptionChargeStatus,
   ConsumptionBillingMode,
   ConsumptionVatStatus,
   ReadingType,
+  Invoice,
 } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
@@ -30,6 +32,18 @@ const CHARGE_INCLUDE = {
     select: { id: true, value: true, readingType: true, periodStart: true, periodEnd: true },
   },
 } as const
+
+// Svensk etikett per mätartyp för radtext på avi/faktura.
+const METER_TYPE_LABEL: Record<MeterType, string> = {
+  ELECTRICITY: 'el',
+  HEATING: 'värme',
+  WATER_COLD: 'kallvatten',
+  WATER_HOT: 'varmvatten',
+}
+
+function chargeLineDescription(meterType: MeterType, periodEnd: Date): string {
+  return `Förbrukning ${METER_TYPE_LABEL[meterType]} ${periodEnd.toISOString().slice(0, 7)}`
+}
 
 @Injectable()
 export class ConsumptionService {
@@ -502,6 +516,166 @@ export class ConsumptionService {
     }
 
     return this.findCharge(id, organizationId)
+  }
+
+  // ══ Leveranssätt: CONFIRMED → ATTACHED (PR 4) ═══════════════════════════════
+  //
+  // Ren presentation + betalning. RÖR INTE bokföringen — verifikatet och
+  // 1510-fordran är klara från PR 3. Här kopplas redan bokförda charges till ett
+  // dokument (avi-rad eller separat faktura). Momsen läses oförändrad från
+  // charge-snapshotet — beräknas aldrig om.
+
+  // RENT_NOTICE_LINE: anropas av avi-genereringen efter att en RENT-avi skapats.
+  // Plockar lease:ens CONFIRMED charges (leveranssätt RENT_NOTICE_LINE) med
+  // 2-månaders förskjutning, skapar RentNoticeLine-rader, markerar charges
+  // ATTACHED och returnerar summan (brutto) som avi-genereringen sätter som
+  // RentNotice.consumptionAmount. Den summan ingår i den BETALBARA totalen/OCR —
+  // men inte i hyresverifikatet (förbrukningen har sitt eget verifikat).
+  //
+  // 2-mån-lag via cutoff = sista dagen i månaden (aviMonth − 2). "<=" fångar även
+  // ev. äldre obifogade charges (robust mot en månad där genereringen hoppades).
+  async attachRentNoticeLineCharges(params: {
+    organizationId: string
+    leaseId: string
+    rentNoticeId: string
+    aviMonth: number
+    aviYear: number
+  }): Promise<number> {
+    const lagCutoff = new Date(Date.UTC(params.aviYear, params.aviMonth - 2, 0))
+
+    const charges = await this.prisma.consumptionCharge.findMany({
+      where: {
+        organizationId: params.organizationId,
+        leaseId: params.leaseId,
+        status: 'CONFIRMED',
+        deliveryMode: 'RENT_NOTICE_LINE',
+        periodEnd: { lte: lagCutoff },
+      },
+      orderBy: { periodEnd: 'asc' },
+    })
+    if (charges.length === 0) return 0
+
+    let consumptionTotal = 0
+    await this.prisma.$transaction(async (tx) => {
+      for (const charge of charges) {
+        // Atomiskt anspråk CONFIRMED → ATTACHED (race-säkert): bara den som
+        // vinner får skapa raden. @unique(consumptionChargeId) är backstop.
+        const claim = await tx.consumptionCharge.updateMany({
+          where: { id: charge.id, organizationId: params.organizationId, status: 'CONFIRMED' },
+          data: { status: 'ATTACHED' },
+        })
+        if (claim.count === 0) continue
+
+        await tx.rentNoticeLine.create({
+          data: {
+            rentNoticeId: params.rentNoticeId,
+            description: chargeLineDescription(charge.meterType, charge.periodEnd),
+            quantity: charge.quantity,
+            unitPrice: charge.pricePerUnit,
+            vatRate: charge.vatRate,
+            total: charge.totalAmount,
+            consumptionChargeId: charge.id,
+          },
+        })
+        consumptionTotal += Number(charge.totalAmount)
+      }
+
+      await tx.rentNotice.update({
+        where: { id: params.rentNoticeId },
+        data: { consumptionAmount: round2(consumptionTotal) },
+      })
+    })
+
+    return round2(consumptionTotal)
+  }
+
+  // SEPARATE_INVOICE: bygger EN faktura (InvoiceType.UTILITY) av lease:ens
+  // CONFIRMED charges med leveranssätt SEPARATE_INVOICE, en InvoiceLine per
+  // charge, markerar dem ATTACHED + invoiceId. Speglar deposits-mönstret MEN
+  // anropar ALDRIG bokföringen: intäkt + 1510-fordran är redan bokförda (PR 3).
+  // Att även bokföra fakturan vore dubbelfordran. Fakturan är bara dokumentet
+  // hyresgästen betalar mot; betalningen reglerar den befintliga 1510-fordran.
+  async invoiceSeparateCharges(
+    leaseId: string,
+    organizationId: string,
+    userId: string,
+  ): Promise<Invoice | null> {
+    const lease = await this.prisma.lease.findFirst({
+      where: { id: leaseId, organizationId },
+      select: { id: true, tenantId: true },
+    })
+    if (!lease) throw new NotFoundException('Hyresavtalet hittades inte')
+
+    const charges = await this.prisma.consumptionCharge.findMany({
+      where: {
+        organizationId,
+        leaseId,
+        status: 'CONFIRMED',
+        deliveryMode: 'SEPARATE_INVOICE',
+      },
+      orderBy: { periodEnd: 'asc' },
+    })
+    if (charges.length === 0) return null
+
+    const subtotal = round2(charges.reduce((s, c) => s + Number(c.netAmount), 0))
+    const vatTotal = round2(charges.reduce((s, c) => s + Number(c.vatAmount), 0))
+    const total = round2(charges.reduce((s, c) => s + Number(c.totalAmount), 0))
+
+    const today = new Date()
+    const dueDate = new Date()
+    dueDate.setDate(dueDate.getDate() + 30)
+
+    return this.prisma.$transaction(async (tx) => {
+      const year = today.getFullYear()
+      const count = await tx.invoice.count({ where: { organizationId } })
+      const invoiceNumber = `F-${year}-${String(count + 1).padStart(4, '0')}`
+
+      const invoice = await tx.invoice.create({
+        data: {
+          organizationId,
+          invoiceNumber,
+          type: 'UTILITY',
+          status: 'DRAFT',
+          tenantId: lease.tenantId,
+          leaseId: lease.id,
+          subtotal,
+          vatTotal,
+          total,
+          dueDate,
+          issueDate: today,
+          notes: 'Förbrukningsdebitering (el/vatten/värme)',
+          lines: {
+            create: charges.map((c) => ({
+              description: chargeLineDescription(c.meterType, c.periodEnd),
+              quantity: c.quantity,
+              unitPrice: c.pricePerUnit,
+              vatRate: c.vatRate,
+              total: c.totalAmount,
+            })),
+          },
+        },
+      })
+
+      // Atomiskt anspråk per charge (CONFIRMED → ATTACHED) + länk till fakturan.
+      for (const charge of charges) {
+        await tx.consumptionCharge.updateMany({
+          where: { id: charge.id, organizationId, status: 'CONFIRMED' },
+          data: { status: 'ATTACHED', invoiceId: invoice.id },
+        })
+      }
+
+      await tx.invoiceEvent.create({
+        data: {
+          invoiceId: invoice.id,
+          type: 'CREATED',
+          actorType: 'USER',
+          actorId: userId,
+          payload: { invoiceNumber, consumptionChargeIds: charges.map((c) => c.id) },
+        },
+      })
+
+      return invoice
+    })
   }
 
   async findReadings(

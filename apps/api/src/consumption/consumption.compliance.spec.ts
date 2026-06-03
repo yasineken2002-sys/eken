@@ -347,6 +347,181 @@ describe('confirmCharge — DRAFT → CONFIRMED (PR 3)', () => {
   })
 })
 
+// ── Leveranssätt: CONFIRMED → ATTACHED (PR 4) ────────────────────────────────
+
+function makeLeverans(charges: Record<string, unknown>[]) {
+  const created: { lines: Record<string, unknown>[]; invoices: Record<string, unknown>[] } = {
+    lines: [],
+    invoices: [],
+  }
+  const prisma: Record<string, unknown> = {
+    lease: { findFirst: jest.fn().mockResolvedValue({ id: 'lease-1', tenantId: 'ten-1' }) },
+    consumptionCharge: {
+      findMany: jest.fn().mockResolvedValue(charges),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    rentNoticeLine: {
+      create: jest.fn().mockImplementation(({ data }) => {
+        created.lines.push(data)
+        return Promise.resolve({ id: `line-${created.lines.length}`, ...data })
+      }),
+    },
+    rentNotice: { update: jest.fn().mockResolvedValue({}) },
+    invoice: {
+      count: jest.fn().mockResolvedValue(0),
+      create: jest.fn().mockImplementation(({ data }) => {
+        created.invoices.push(data)
+        return Promise.resolve({ id: 'inv-1', ...data })
+      }),
+    },
+    invoiceEvent: { create: jest.fn().mockResolvedValue({}) },
+  }
+  prisma.$transaction = jest.fn((cb: (tx: unknown) => unknown) => cb(prisma))
+  const accounting = {
+    createJournalEntryForConsumptionCharge: jest.fn(),
+    createJournalEntryForInvoice: jest.fn(),
+  }
+  const service = new ConsumptionService(prisma as never, accounting as never)
+  return { service, prisma: prisma as unknown as LeveransPrisma, accounting, created }
+}
+
+interface LeveransPrisma {
+  lease: MockTable
+  consumptionCharge: MockTable
+  rentNoticeLine: MockTable
+  rentNotice: MockTable
+  invoice: MockTable
+  invoiceEvent: MockTable
+}
+
+function leveransCharge(over: Record<string, unknown> = {}) {
+  return {
+    id: 'c1',
+    organizationId: 'org-1',
+    leaseId: 'lease-1',
+    meterType: 'ELECTRICITY',
+    periodEnd: new Date('2026-05-31'),
+    quantity: 240,
+    pricePerUnit: 2.5,
+    netAmount: 600,
+    vatRate: 0,
+    vatAmount: 0,
+    totalAmount: 600,
+    status: 'CONFIRMED',
+    deliveryMode: 'RENT_NOTICE_LINE',
+    ...over,
+  }
+}
+
+describe('attachRentNoticeLineCharges (RENT_NOTICE_LINE, PR 4)', () => {
+  it('2-mån-lag: hämtar charges med periodEnd <= sista dagen i (aviMonth − 2)', async () => {
+    const { service, prisma } = makeLeverans([leveransCharge()])
+    await service.attachRentNoticeLineCharges({
+      organizationId: 'org-1',
+      leaseId: 'lease-1',
+      rentNoticeId: 'rn-1',
+      aviMonth: 7,
+      aviYear: 2026,
+    })
+    // Juli-avi (M=7) → cutoff = maj 31 2026.
+    expect(prisma.consumptionCharge.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: 'CONFIRMED',
+          deliveryMode: 'RENT_NOTICE_LINE',
+          periodEnd: { lte: new Date(Date.UTC(2026, 5, 0)) },
+        }),
+      }),
+    )
+  })
+
+  it('skapar avi-rader, markerar ATTACHED och sätter consumptionAmount = summan', async () => {
+    const { service, prisma, created } = makeLeverans([
+      leveransCharge({ id: 'c1', totalAmount: 600 }),
+      leveransCharge({ id: 'c2', totalAmount: 300, periodEnd: new Date('2026-05-31') }),
+    ])
+    const sum = await service.attachRentNoticeLineCharges({
+      organizationId: 'org-1',
+      leaseId: 'lease-1',
+      rentNoticeId: 'rn-1',
+      aviMonth: 7,
+      aviYear: 2026,
+    })
+
+    expect(sum).toBe(900)
+    expect(created.lines).toHaveLength(2)
+    expect(created.lines[0]).toEqual(
+      expect.objectContaining({ consumptionChargeId: 'c1', total: 600 }),
+    )
+    // Atomiskt anspråk CONFIRMED → ATTACHED per charge.
+    expect(prisma.consumptionCharge.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'c1', organizationId: 'org-1', status: 'CONFIRMED' },
+        data: { status: 'ATTACHED' },
+      }),
+    )
+    expect(prisma.rentNotice.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'rn-1' }, data: { consumptionAmount: 900 } }),
+    )
+  })
+
+  it('inga charges → returnerar 0, rör inget dokument', async () => {
+    const { service, prisma } = makeLeverans([])
+    const sum = await service.attachRentNoticeLineCharges({
+      organizationId: 'org-1',
+      leaseId: 'lease-1',
+      rentNoticeId: 'rn-1',
+      aviMonth: 7,
+      aviYear: 2026,
+    })
+    expect(sum).toBe(0)
+    expect(prisma.rentNoticeLine.create).not.toHaveBeenCalled()
+    expect(prisma.rentNotice.update).not.toHaveBeenCalled()
+  })
+})
+
+describe('invoiceSeparateCharges (SEPARATE_INVOICE, PR 4)', () => {
+  it('bygger EN faktura (UTILITY) med en rad per charge och markerar ATTACHED + invoiceId', async () => {
+    const { service, prisma, created } = makeLeverans([
+      leveransCharge({
+        id: 'c1',
+        deliveryMode: 'SEPARATE_INVOICE',
+        netAmount: 600,
+        vatAmount: 0,
+        totalAmount: 600,
+      }),
+    ])
+    const invoice = await service.invoiceSeparateCharges('lease-1', 'org-1', 'user-9')
+
+    expect(invoice).not.toBeNull()
+    expect(created.invoices[0]).toEqual(
+      expect.objectContaining({ type: 'UTILITY', total: 600, subtotal: 600, vatTotal: 0 }),
+    )
+    expect(prisma.consumptionCharge.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'c1', organizationId: 'org-1', status: 'CONFIRMED' },
+        data: { status: 'ATTACHED', invoiceId: 'inv-1' },
+      }),
+    )
+  })
+
+  it('INGEN dubbelbokning: bokföringen anropas aldrig (verifikat klart från PR 3)', async () => {
+    const { service, accounting } = makeLeverans([
+      leveransCharge({ deliveryMode: 'SEPARATE_INVOICE' }),
+    ])
+    await service.invoiceSeparateCharges('lease-1', 'org-1', 'user-9')
+    expect(accounting.createJournalEntryForConsumptionCharge).not.toHaveBeenCalled()
+    expect(accounting.createJournalEntryForInvoice).not.toHaveBeenCalled()
+  })
+
+  it('inga charges → returnerar null (ingen faktura)', async () => {
+    const { service, prisma } = makeLeverans([])
+    const invoice = await service.invoiceSeparateCharges('lease-1', 'org-1', 'user-9')
+    expect(invoice).toBeNull()
+    expect(prisma.invoice.create).not.toHaveBeenCalled()
+  })
+})
+
 describe('ConsumptionController RBAC', () => {
   const guard = new RolesGuard(new Reflector())
   const proto = ConsumptionController.prototype
@@ -373,6 +548,7 @@ describe('ConsumptionController RBAC', () => {
       expect(allows(proto.createTariff as () => unknown, role)).toBe(false)
       expect(allows(proto.recordReading as () => unknown, role)).toBe(false)
       expect(allows(proto.confirmCharge as () => unknown, role)).toBe(false)
+      expect(allows(proto.invoiceSeparateCharges as () => unknown, role)).toBe(false)
     },
   )
 
@@ -382,6 +558,7 @@ describe('ConsumptionController RBAC', () => {
     expect(allows(proto.createTariff as () => unknown, role)).toBe(true)
     expect(allows(proto.recordReading as () => unknown, role)).toBe(true)
     expect(allows(proto.confirmCharge as () => unknown, role)).toBe(true)
+    expect(allows(proto.invoiceSeparateCharges as () => unknown, role)).toBe(true)
   })
 
   it('läsning (findMeters/findCharges) är öppen även för VIEWER', () => {
