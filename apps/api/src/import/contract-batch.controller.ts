@@ -1,12 +1,23 @@
-import { Controller, Get, Post, Delete, Param, BadRequestException, Req } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Param,
+  Body,
+  BadRequestException,
+  Req,
+} from '@nestjs/common'
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger'
 import type { FastifyRequest } from 'fastify'
 import { ContractScanBatchService, type UploadedFile } from './contract-scan-batch.service'
+import { ConfirmContractRowDto } from './dto/confirm-contract-row.dto'
 import { MAX_BATCH_FILES_ABSOLUTE } from './contract-scan-cost'
 import { MAX_CONTRACT_BYTES } from '../common/utils/file-validation'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
+import type { ScannedContract } from './contract-scanner.service'
 import type { JwtPayload } from '@eken/shared'
 
 /**
@@ -71,5 +82,41 @@ export class ContractBatchController {
   @ApiOperation({ summary: 'Avbryt en batch och radera de uppladdade filerna' })
   cancelBatch(@Param('id') id: string, @OrgId() organizationId: string) {
     return this.batchService.cancelBatch(id, organizationId)
+  }
+
+  // ── PR3: granskning → commit (avtal skapas vid en explicit operatörsåtgärd) ──
+
+  @Post('contract-batches/:id/rows/:rowId/confirm')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
+  @ApiOperation({ summary: 'Godkänn en rad → skapa avtal via /leases/with-tenant' })
+  confirmRow(
+    @Param('id') id: string,
+    @Param('rowId') rowId: string,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ConfirmContractRowDto,
+  ) {
+    return this.batchService.confirmRow(id, rowId, organizationId, user.sub, {
+      ...(dto.unitId ? { unitId: dto.unitId } : {}),
+      ...(dto.reviewedData ? { reviewedData: dto.reviewedData as Partial<ScannedContract> } : {}),
+    })
+  }
+
+  @Post('contract-batches/:id/confirm-safe')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
+  @ApiOperation({ summary: 'Godkänn alla säkra (AUTO_MATCHED) rader i batchen' })
+  confirmSafe(
+    @Param('id') id: string,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.batchService.bulkConfirmSafe(id, organizationId, user.sub)
+  }
+
+  @Post('contract-batches/:id/rows/:rowId/skip')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
+  @ApiOperation({ summary: 'Hoppa över en rad (skapa inget avtal)' })
+  skipRow(@Param('id') id: string, @Param('rowId') rowId: string, @OrgId() organizationId: string) {
+    return this.batchService.skipRow(id, rowId, organizationId)
   }
 }

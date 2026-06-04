@@ -1403,6 +1403,14 @@ model ContractImportRow {
   matchedUnitId String?
   matchedUnit   Unit?                   @relation(fields: [matchedUnitId], references: [id], onDelete: SetNull)
 
+  // Commit (PR3). confirmedData fryses EN gång när operatören godkänner raden
+  // (de exakta avtalsfält som skickades till /leases/with-tenant — audit).
+  // createdLeaseId är en idempotensnyckel: är den satt har raden redan skapat
+  // ett avtal och committas ALDRIG igen. Plain ID (ingen FK), speglar
+  // BankStatementImport.confirmedById — en audit-pekare, inte en hård relation.
+  confirmedData  Json?
+  createdLeaseId String?
+
   errorMessage String?
 
   batch ContractImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
@@ -1426,16 +1434,20 @@ enum ContractRowMatchStatus {
 enum ContractImportBatchStatus {
   PENDING   // Skapad, rader köade men ännu inte klara
   SCANNING  // Minst en rad skannas
-  SCANNED   // Alla rader klara (lyckade eller failade) — PR1:s terminala läge
+  SCANNED   // Alla rader klara (lyckade eller failade) — väntar på granskning
+  COMPLETED // Alla rader committade/hoppade/failade — granskningen avslutad (PR3)
   FAILED    // Batch-nivå-fel (t.ex. kostnadsbroms slog till under körning)
   CANCELLED // Operatören avbröt
 }
 
 enum ContractImportRowStatus {
-  PENDING  // Köad, ännu inte skannad
-  SCANNING // Hämtad av workern
-  SCANNED  // ScannedContract lagrad i originalScanData/reviewedData
-  FAILED   // Skanning misslyckades (alla retries slut / ogiltig fil / kostnadsbroms)
+  PENDING    // Köad, ännu inte skannad
+  SCANNING   // Hämtad av workern
+  SCANNED    // ScannedContract lagrad i originalScanData/reviewedData
+  COMMITTING // Transient lås under commit — hindrar dubbel-create vid samtidiga godkännanden (PR3)
+  COMMITTED  // Operatören godkände → avtal skapat via /leases/with-tenant (PR3)
+  SKIPPED    // Operatören valde att inte skapa avtal för raden (PR3)
+  FAILED     // Skanning misslyckades (alla retries slut / ogiltig fil / kostnadsbroms)
 }
 
 // ─── Document (Dokumentarkiv) ─────────────────────────────────────────────────

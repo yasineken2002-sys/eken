@@ -17,6 +17,7 @@ import {
   ArrowLeftRight,
   FolderOpen,
   Upload,
+  ScanText,
   Sparkles,
   Wrench,
   ClipboardCheck,
@@ -59,6 +60,7 @@ type AppPath =
   | '/maintenance-plan'
   | '/documents'
   | '/import'
+  | '/import/contract-batches'
   | '/news'
   | '/messages'
   | '/overview'
@@ -102,6 +104,7 @@ const NAV_TOOLS: NavItem[] = [
   { to: '/maintenance-plan', label: 'Underhållsplan', icon: CalendarRange },
   { to: '/documents', label: 'Dokument', icon: FolderOpen },
   { to: '/import', label: 'Importera', icon: Upload },
+  { to: '/import/contract-batches', label: 'Kontraktsskanning', icon: ScanText },
   { to: '/news', label: 'Nyheter', icon: Newspaper },
   { to: '/messages', label: 'Meddelanden', icon: MessageSquare },
   { to: '/overview', label: 'Plattformsöversikt', icon: LayoutGrid },
