@@ -82,8 +82,8 @@ export class ContractScanBatchWorker {
   /**
    * Anropas vid varje misslyckad attempt. Bull schemalägger retry enligt
    * backoff; först vid PERMANENT fail (alla försök slut) markerar vi raden
-   * FAILED så batchräknaren kan slutföras. Den råa PDF:en ligger kvar tills
-   * batchen committas/avbryts (PR3) så operatören kan se vad som hände.
+   * FAILED — och purgar då den råa PDF:en (recordScanFailure), eftersom den
+   * inte längre behövs och inte ska ligga kvar i DB.
    */
   @OnQueueFailed()
   async onFailed(job: Job<ContractScanRowJob>, err: Error): Promise<void> {

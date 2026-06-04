@@ -592,4 +592,21 @@ describe('ContractScanBatchService — worker-callbacks (idempotens)', () => {
     expect(mocks.prisma.contractImportRow.update).toHaveBeenCalled()
     expect(mocks.prisma.contractImportBatch.update).not.toHaveBeenCalled()
   })
+
+  it('recordScanFailure purgar rå PDF (fileData=null) och bevarar errorMessage', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findUnique.mockResolvedValue({ batchId: 'batch-1' })
+
+    await service.recordScanFailure('row-1', 'AI-svaret gick inte att tolka')
+
+    const update = mocks.prisma.contractImportRow.update.mock.calls[0][0]
+    expect(update.where).toEqual({ id: 'row-1' })
+    expect(update.data.rowStatus).toBe('FAILED')
+    // GDPR + DB-svällning: råa PDF:en purgas i samma UPDATE.
+    expect(update.data.fileData).toBeNull()
+    // felmeddelandet bevaras (oförändrat beteende).
+    expect(update.data.errorMessage).toBe('AI-svaret gick inte att tolka')
+    // recomputeBatch körs fortfarande men utan batch-sidoeffekt här (oförändrat).
+    expect(mocks.prisma.contractImportBatch.update).not.toHaveBeenCalled()
+  })
 })
