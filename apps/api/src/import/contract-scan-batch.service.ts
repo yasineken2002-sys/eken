@@ -398,11 +398,16 @@ export class ContractScanBatchService {
     })
   }
 
-  /** Skanning misslyckades permanent (alla retries slut): markera raden FAILED. */
+  /**
+   * Skanning misslyckades permanent (alla retries slut): markera raden FAILED.
+   * Purgar den råa PDF:en i samma UPDATE (precis som vid lyckad skanning/cancel)
+   * — en FAILED-rad behöver aldrig bytena igen, och de ska inte ligga kvar i DB
+   * (svällning + GDPR-kvarhållning av personnummer).
+   */
   async recordScanFailure(rowId: string, message: string): Promise<void> {
     await this.prisma.contractImportRow.update({
       where: { id: rowId },
-      data: { rowStatus: 'FAILED', errorMessage: message.slice(0, 500) },
+      data: { rowStatus: 'FAILED', errorMessage: message.slice(0, 500), fileData: null },
     })
     await this.recomputeBatch(rowId)
   }
