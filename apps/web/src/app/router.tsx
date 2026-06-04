@@ -48,6 +48,8 @@ import { OverviewPage } from '../features/overview/OverviewPage'
 import { ReconciliationPage } from '../features/reconciliation/ReconciliationPage'
 import { DocumentsPage } from '../features/documents/DocumentsPage'
 import { ImportPage } from '../features/import/ImportPage'
+import { ContractBatchUploadPage } from '../features/contract-batch/ContractBatchUploadPage'
+import { ContractBatchReviewPage } from '../features/contract-batch/ContractBatchReviewPage'
 import { AiPage } from '../features/ai/AiPage'
 import { MaintenancePage } from '../features/maintenance/MaintenancePage'
 import { AviseringPage } from '../features/avisering/AviseringPage'
@@ -289,6 +291,11 @@ const reconciliationRoute = appPage('/reconciliation', ReconciliationPage)
 const collectionsRoute = appPage('/collections', CollectionsPage)
 const documentsRoute = appPage('/documents', DocumentsPage)
 const importRoute = appPage('/import', ImportPage)
+const contractBatchUploadRoute = appPage('/import/contract-batches', ContractBatchUploadPage)
+const contractBatchReviewRoute = appPage(
+  '/import/contract-batches/$batchId',
+  ContractBatchReviewPage,
+)
 const aiRoute = appPage('/ai', AiPage)
 const maintenanceRoute = appPage('/maintenance', MaintenancePage)
 const aviseringRoute = appPage('/avisering', AviseringPage)
@@ -344,6 +351,8 @@ const routeTree = rootRoute.addChildren([
     collectionsRoute,
     documentsRoute,
     importRoute,
+    contractBatchUploadRoute,
+    contractBatchReviewRoute,
     aiRoute,
     maintenanceRoute,
     aviseringRoute,

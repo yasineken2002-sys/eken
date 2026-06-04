@@ -26,6 +26,7 @@ interface Mocks {
     }
     contractImportRow: {
       findUnique: jest.Mock
+      findFirst: jest.Mock
       findMany: jest.Mock
       update: jest.Mock
       updateMany: jest.Mock
@@ -36,6 +37,7 @@ interface Mocks {
   }
   quota: { checkOrgDailyCostCap: jest.Mock }
   queue: { enqueueRow: jest.Mock }
+  leases: { createWithTenant: jest.Mock }
 }
 
 function make(overrides?: { maxFiles?: number; maxCostSek?: number; capThrows?: boolean }) {
@@ -55,9 +57,11 @@ function make(overrides?: { maxFiles?: number; maxCostSek?: number; capThrows?: 
       },
       contractImportRow: {
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue({}),
-        updateMany: jest.fn().mockResolvedValue({}),
+        // Default: atomiska claim-låset lyckas (count=1).
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         count: jest.fn().mockResolvedValue(0),
       },
       unit: { findMany: jest.fn().mockResolvedValue([]) },
@@ -69,11 +73,13 @@ function make(overrides?: { maxFiles?: number; maxCostSek?: number; capThrows?: 
         : jest.fn().mockResolvedValue(undefined),
     },
     queue: { enqueueRow: jest.fn().mockResolvedValue('job-1') },
+    leases: { createWithTenant: jest.fn().mockResolvedValue({ id: 'lease-1' }) },
   }
   const service = new ContractScanBatchService(
     mocks.prisma as never,
     mocks.quota as never,
     mocks.queue as never,
+    mocks.leases as never,
   )
   return { service, mocks }
 }
@@ -301,6 +307,200 @@ describe('ContractScanBatchService.matchRow — deterministiskt förslag', () =>
   })
 })
 
+describe('ContractScanBatchService — PR3 commit (avtal skapas via /leases/with-tenant)', () => {
+  const fullScan = {
+    tenantName: 'Anna Andersson',
+    tenantType: 'INDIVIDUAL',
+    tenantEmail: 'anna@example.se',
+    monthlyRent: 12000,
+    startDate: '2026-07-01',
+    confidence: 0.95,
+  }
+
+  function scannedRow(over: Record<string, unknown> = {}) {
+    return {
+      rowStatus: 'SCANNED',
+      matchStatus: 'AUTO_MATCHED',
+      matchedUnitId: 'unit-1',
+      reviewedData: { ...fullScan },
+      createdLeaseId: null,
+      ...over,
+    }
+  }
+
+  it('per-rad commit: AUTO_MATCHED → skapar avtal + markerar COMMITTED', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValue(scannedRow())
+    mocks.leases.createWithTenant.mockResolvedValue({ id: 'lease-9' })
+    mocks.prisma.contractImportBatch.findUnique.mockResolvedValue({ status: 'SCANNED' })
+
+    const res = await service.confirmRow('batch-1', 'row-1', 'org-1', 'user-1')
+
+    expect(res).toEqual({ rowId: 'row-1', leaseId: 'lease-9', alreadyCommitted: false })
+    // avtalet skapas org-scopat med den matchade enheten
+    const [dto, orgId] = mocks.leases.createWithTenant.mock.calls[0]
+    expect(orgId).toBe('org-1')
+    expect(dto.unitId).toBe('unit-1')
+    expect(dto.activate).toBe(false) // utkast, ingen massaktivering
+    // raden fryses som COMMITTED + idempotensnyckel
+    expect(mocks.prisma.contractImportRow.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'row-1' },
+        data: expect.objectContaining({ rowStatus: 'COMMITTED', createdLeaseId: 'lease-9' }),
+      }),
+    )
+  })
+
+  it('IDEMPOTENS: en redan committad rad skapar aldrig ett nytt avtal', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValue(
+      scannedRow({ rowStatus: 'COMMITTED', createdLeaseId: 'lease-existing' }),
+    )
+
+    const res = await service.confirmRow('batch-1', 'row-1', 'org-1', 'user-1')
+
+    expect(res).toEqual({ rowId: 'row-1', leaseId: 'lease-existing', alreadyCommitted: true })
+    expect(mocks.leases.createWithTenant).not.toHaveBeenCalled()
+  })
+
+  it('RACE: förlorar det atomiska låset (count=0) → skapar inget andra avtal', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findFirst
+      .mockResolvedValueOnce(scannedRow()) // initial läsning: SCANNED, ej committad
+      .mockResolvedValueOnce({ createdLeaseId: 'lease-from-winner' }) // re-läsning efter förlorat lås
+    mocks.prisma.contractImportRow.updateMany.mockResolvedValueOnce({ count: 0 }) // någon annan vann
+
+    const res = await service.confirmRow('batch-1', 'row-1', 'org-1', 'user-1')
+
+    expect(res).toEqual({
+      rowId: 'row-1',
+      leaseId: 'lease-from-winner',
+      alreadyCommitted: true,
+    })
+    expect(mocks.leases.createWithTenant).not.toHaveBeenCalled()
+  })
+
+  it('DUBBLETTSKYDD: createWithTenant kastar (uthyrd enhet) → raden committas inte', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValue(scannedRow())
+    mocks.leases.createWithTenant.mockRejectedValue(
+      new BadRequestException('Lägenheten har redan ett aktivt kontrakt med Bo Bengtsson.'),
+    )
+
+    await expect(service.confirmRow('batch-1', 'row-1', 'org-1', 'user-1')).rejects.toThrow(
+      /aktivt kontrakt/,
+    )
+    // raden får ALDRIG markeras COMMITTED när avtalsskapandet kastade
+    const committedCall = mocks.prisma.contractImportRow.update.mock.calls.find(
+      (c) => c[0]?.data?.rowStatus === 'COMMITTED',
+    )
+    expect(committedCall).toBeUndefined()
+  })
+
+  it('AMBIGUOUS utan valt unitId → kan inte committas', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValue(
+      scannedRow({ matchStatus: 'AMBIGUOUS', matchedUnitId: null }),
+    )
+
+    await expect(service.confirmRow('batch-1', 'row-1', 'org-1', 'user-1')).rejects.toThrow(
+      /[Vv]älj en enhet/,
+    )
+    expect(mocks.leases.createWithTenant).not.toHaveBeenCalled()
+  })
+
+  it('AMBIGUOUS MED operatörsvalt unitId → committas mot vald enhet', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValue(
+      scannedRow({ matchStatus: 'AMBIGUOUS', matchedUnitId: null }),
+    )
+    mocks.leases.createWithTenant.mockResolvedValue({ id: 'lease-7' })
+    mocks.prisma.contractImportBatch.findUnique.mockResolvedValue({ status: 'SCANNED' })
+
+    const res = await service.confirmRow('batch-1', 'row-1', 'org-1', 'user-1', {
+      unitId: 'chosen-unit',
+    })
+
+    expect(res.leaseId).toBe('lease-7')
+    expect(mocks.leases.createWithTenant.mock.calls[0][0].unitId).toBe('chosen-unit')
+  })
+
+  it('redigerad data om-valideras: ogiltig e-post i edit → committas inte', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValue(scannedRow())
+
+    await expect(
+      service.confirmRow('batch-1', 'row-1', 'org-1', 'user-1', {
+        reviewedData: { tenantEmail: 'inte-en-epost' },
+      }),
+    ).rejects.toThrow(/e-post/i)
+    expect(mocks.leases.createWithTenant).not.toHaveBeenCalled()
+  })
+
+  it('en icke-SCANNED rad kan inte committas', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValue(scannedRow({ rowStatus: 'PENDING' }))
+    await expect(service.confirmRow('batch-1', 'row-1', 'org-1', 'user-1')).rejects.toThrow(
+      /status PENDING/,
+    )
+    expect(mocks.leases.createWithTenant).not.toHaveBeenCalled()
+  })
+
+  it('bulk "Godkänn alla säkra": committar bara AUTO_MATCHED, per-rad-isolering', async () => {
+    const { service, mocks } = make()
+    // bulk väljer bara SCANNED + AUTO_MATCHED + ej redan committade rader
+    mocks.prisma.contractImportRow.findMany.mockResolvedValueOnce([
+      { id: 'r1' },
+      { id: 'r2' },
+      { id: 'r3' },
+    ])
+    // varje confirmRow läser raden:
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValue(scannedRow())
+    mocks.prisma.contractImportBatch.findUnique.mockResolvedValue({ status: 'SCANNED' })
+    // r1 ok, r2 failar (t.ex. uthyrd enhet), r3 ok — r2 stoppar inte de andra
+    mocks.leases.createWithTenant
+      .mockResolvedValueOnce({ id: 'lease-r1' })
+      .mockRejectedValueOnce(new BadRequestException('Lägenheten har redan ett aktivt kontrakt.'))
+      .mockResolvedValueOnce({ id: 'lease-r3' })
+
+    const res = await service.bulkConfirmSafe('batch-1', 'org-1', 'user-1')
+
+    expect(res.committed).toHaveLength(2)
+    expect(res.failed).toHaveLength(1)
+    expect(res.failed[0]!.rowId).toBe('r2')
+    // urvalet får bara plocka AUTO_MATCHED + ännu icke-committade (idempotens vid dubbeltryck)
+    expect(mocks.prisma.contractImportRow.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          matchStatus: 'AUTO_MATCHED',
+          rowStatus: 'SCANNED',
+          createdLeaseId: null,
+        }),
+      }),
+    )
+  })
+
+  it('skipRow: SCANNED → SKIPPED + purgar PDF; redan committad kan inte hoppas över', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValueOnce({
+      rowStatus: 'SCANNED',
+      createdLeaseId: null,
+    })
+    mocks.prisma.contractImportBatch.findUnique.mockResolvedValue({ status: 'SCANNED' })
+    await service.skipRow('batch-1', 'row-1', 'org-1')
+    expect(mocks.prisma.contractImportRow.update).toHaveBeenCalledWith({
+      where: { id: 'row-1' },
+      data: { rowStatus: 'SKIPPED', fileData: null },
+    })
+
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValueOnce({
+      rowStatus: 'COMMITTED',
+      createdLeaseId: 'lease-1',
+    })
+    await expect(service.skipRow('batch-1', 'row-1', 'org-1')).rejects.toThrow(/redan skapat/)
+  })
+})
+
 describe('ContractScanBatchService.cancelBatch — purgar rå PDF', () => {
   it('sätter CANCELLED och nollar fileData på alla rader', async () => {
     const { service, mocks } = make()
@@ -313,10 +513,12 @@ describe('ContractScanBatchService.cancelBatch — purgar rå PDF', () => {
 
     expect(result.status).toBe('CANCELLED')
     expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1)
-    expect(mocks.prisma.contractImportRow.updateMany).toHaveBeenCalledWith({
-      where: { batchId: 'batch-1' },
-      data: { fileData: null },
-    })
+    expect(mocks.prisma.contractImportRow.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { batchId: 'batch-1' },
+        data: expect.objectContaining({ fileData: null }),
+      }),
+    )
   })
 
   it('är idempotent om batchen redan är CANCELLED', async () => {

@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common'
+import { Injectable, Inject, Logger, BadRequestException, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AiQuotaService } from '../ai/usage/ai-quota.service'
@@ -10,6 +10,8 @@ import {
 import { ContractScanBatchQueue } from './contract-scan-batch.queue'
 import { estimateBatchCostSek, MAX_BATCH_FILES_ABSOLUTE } from './contract-scan-cost'
 import { deterministicUnitMatcher } from './unit-matcher'
+import { buildLeaseDtoFromScan } from './contract-lease-builder'
+import { LEASE_CREATOR, type LeaseCreator } from './lease-creator.token'
 import type { ScannedContract } from './contract-scanner.service'
 
 export interface UploadedFile {
@@ -31,12 +33,35 @@ export interface ContractBatchRowView {
   fileSize: number
   rowStatus: string
   confidence: number | null
-  reviewedData: ScannedContract | null
+  // rawText utelämnas medvetet ur API-svaret (PII-minimering).
+  reviewedData: Omit<ScannedContract, 'rawText'> | null
   // Enhetsmatchning (PR2) — ett FÖRSLAG, inget avtal. matchedUnitId sätts bara
   // vid AUTO_MATCHED.
   matchStatus: string | null
   matchedUnitId: string | null
+  // Commit (PR3) — satt när raden godkänts och ett avtal skapats.
+  createdLeaseId: string | null
   errorMessage: string | null
+}
+
+// Operatörens indata vid commit av EN rad. reviewedData är ev. redigeringar som
+// om-valideras innan avtalet skapas; unitId krävs för rader som inte är
+// AUTO_MATCHED (operatören väljer enhet).
+export interface ConfirmRowInput {
+  unitId?: string
+  reviewedData?: Partial<ScannedContract>
+}
+
+export interface ConfirmRowResult {
+  rowId: string
+  leaseId: string
+  alreadyCommitted: boolean
+}
+
+export interface BulkConfirmResult {
+  committed: Array<{ rowId: string; leaseId: string }>
+  failed: Array<{ rowId: string; error: string }>
+  skipped: number
 }
 
 export interface ContractBatchView {
@@ -55,10 +80,10 @@ export interface ContractBatchView {
  * deterministisk enhetsmatchning (PR2).
  *
  * Tjänsten skapar en batch, tvingar igenom kostnadstaket INNAN något läggs på
- * kön, exponerar batchens status, och sätter ett deterministiskt enhets-FÖRSLAG
- * per skannad rad (matchRow). Den HÄRDADE ContractScannerService (#79) är
- * motorn. Commit till avtal (PR3) finns INTE här — det går alltså inte att skapa
- * ett hyresavtal via detta flöde, och matchningen är bara ett förslag.
+ * kön, exponerar batchens status, sätter ett deterministiskt enhets-FÖRSLAG per
+ * skannad rad (matchRow, PR2), och låter operatören GODKÄNNA rader → avtal via
+ * /leases/with-tenant (confirmRow, PR3). Ett avtal skapas ENDAST efter en
+ * explicit operatörsåtgärd — ingen kodväg auto-committar.
  */
 @Injectable()
 export class ContractScanBatchService {
@@ -68,6 +93,7 @@ export class ContractScanBatchService {
     private readonly prisma: PrismaService,
     private readonly quota: AiQuotaService,
     private readonly queue: ContractScanBatchQueue,
+    @Inject(LEASE_CREATOR) private readonly leases: LeaseCreator,
   ) {}
 
   // ── Steg 1: skapa batch (med tak), lagra rader, enqueue skanning ──────────
@@ -206,6 +232,7 @@ export class ContractScanBatchService {
             reviewedData: true,
             matchStatus: true,
             matchedUnitId: true,
+            createdLeaseId: true,
             errorMessage: true,
           },
         },
@@ -229,9 +256,12 @@ export class ContractScanBatchService {
         fileSize: r.fileSize,
         rowStatus: r.rowStatus,
         confidence: r.confidence,
-        reviewedData: (r.reviewedData as ScannedContract | null) ?? null,
+        // rawText (råt kontraktsutdrag, kan bära ostrukturerad PII) lämnar
+        // ALDRIG servern — det behövs bara internt och lagras i originalScanData.
+        reviewedData: stripRawText(r.reviewedData as ScannedContract | null),
         matchStatus: r.matchStatus,
         matchedUnitId: r.matchedUnitId,
+        createdLeaseId: r.createdLeaseId,
         errorMessage: r.errorMessage,
       })),
     }
@@ -250,12 +280,18 @@ export class ContractScanBatchService {
       return { id: batch.id, status: batch.status }
     }
 
-    // Purga rå PDF-bytes på alla rader — kontrakt innehåller personnummer och
-    // ska inte ligga kvar i DB efter att batchen avbrutits.
+    // Purga rå PDF-bytes OCH tolkningsdata på alla rader — en avbruten batch har
+    // inget operationellt syfte för PII:n (personnummer, e-post m.m.).
+    // (GDPR-dataminimering.) confirmedData/createdLeaseId finns aldrig på
+    // SCANNED/PENDING-rader, så de behöver inte röras.
     await this.prisma.$transaction([
       this.prisma.contractImportRow.updateMany({
         where: { batchId: id },
-        data: { fileData: null },
+        data: {
+          fileData: null,
+          originalScanData: Prisma.JsonNull,
+          reviewedData: Prisma.JsonNull,
+        },
       }),
       this.prisma.contractImportBatch.update({
         where: { id },
@@ -371,6 +407,215 @@ export class ContractScanBatchService {
     await this.recomputeBatch(rowId)
   }
 
+  // ── PR3: granskning → commit (avtal skapas FÖRST här) ─────────────────────
+
+  /**
+   * Godkänn EN rad → skapa ett avtal via /leases/with-tenant. Detta är den enda
+   * vägen som skapar avtal, och den körs ALLTID på en explicit operatörsåtgärd
+   * (per-rad-knapp eller bulk). Ingen auto-commit.
+   *
+   * Spärrar:
+   *  • IDEMPOTENS — har raden redan en createdLeaseId committas den aldrig igen.
+   *  • OM-VALIDERING — (ev. redigerad) data byggs + valideras via
+   *    buildLeaseDtoFromScan innan avtalet skapas (sanitizeEdited-mönstret).
+   *  • DUBBLETTSKYDD — createWithTenant kastar om enheten redan har ett aktivt
+   *    avtal (describeActiveBlocker) → raden failar, övriga rör den inte.
+   *  • ENHETSVAL — rader som inte är AUTO_MATCHED kräver ett operatörsvalt unitId.
+   */
+  async confirmRow(
+    batchId: string,
+    rowId: string,
+    organizationId: string,
+    userId: string | null,
+    input: ConfirmRowInput = {},
+  ): Promise<ConfirmRowResult> {
+    const row = await this.prisma.contractImportRow.findFirst({
+      where: { id: rowId, batchId, organizationId },
+      select: {
+        rowStatus: true,
+        matchStatus: true,
+        matchedUnitId: true,
+        reviewedData: true,
+        createdLeaseId: true,
+      },
+    })
+    if (!row) {
+      throw new NotFoundException('Raden hittades inte.')
+    }
+
+    // Idempotens: redan committad → returnera befintligt avtal, skapa aldrig nytt.
+    if (row.createdLeaseId) {
+      return { rowId, leaseId: row.createdLeaseId, alreadyCommitted: true }
+    }
+    // Bara en granskningsklar (SCANNED) rad kan committas.
+    if (row.rowStatus !== 'SCANNED') {
+      throw new BadRequestException(
+        `Raden är i status ${row.rowStatus} och kan inte godkännas — bara skannade rader.`,
+      )
+    }
+
+    // Effektiv skanningsdata = lagrad reviewedData överlagrad med operatörens
+    // redigeringar. Hela resultatet om-valideras i buildLeaseDtoFromScan.
+    const stored = (row.reviewedData as ScannedContract | null) ?? null
+    if (!stored) {
+      throw new BadRequestException('Raden saknar tolkningsdata och kan inte godkännas.')
+    }
+    const effective: ScannedContract = { ...stored, ...(input.reviewedData ?? {}) }
+
+    // Enhet: AUTO_MATCHED får använda förslaget; övriga kräver operatörens val.
+    const unitId = input.unitId ?? (row.matchStatus === 'AUTO_MATCHED' ? row.matchedUnitId : null)
+    if (!unitId) {
+      throw new BadRequestException(
+        'Välj en enhet för raden innan du godkänner (ingen säker automatisk matchning).',
+      )
+    }
+
+    // Validera/bygg DTO:t FÖRE låset, så ett valideringsfel aldrig lämnar
+    // raden i transient COMMITTING-läge.
+    const dto = buildLeaseDtoFromScan(effective, unitId)
+
+    // Atomiskt lås (RISK: samtidiga godkännanden av SAMMA rad). Endast EN
+    // request vinner övergången SCANNED → COMMITTING; förloraren får count=0
+    // och skapar därmed aldrig ett andra avtal.
+    const claim = await this.prisma.contractImportRow.updateMany({
+      where: { id: rowId, batchId, organizationId, rowStatus: 'SCANNED', createdLeaseId: null },
+      data: { rowStatus: 'COMMITTING' },
+    })
+    if (claim.count === 0) {
+      const current = await this.prisma.contractImportRow.findFirst({
+        where: { id: rowId, batchId, organizationId },
+        select: { createdLeaseId: true },
+      })
+      if (current?.createdLeaseId) {
+        return { rowId, leaseId: current.createdLeaseId, alreadyCommitted: true }
+      }
+      throw new BadRequestException('Raden godkänns redan av en annan begäran — försök igen strax.')
+    }
+
+    let lease: { id: string }
+    try {
+      // Avtalet skapas här. createWithTenant org-scopar enheten, kollar dubblett-
+      // e-post OCH kastar vid enhetskonflikt (redan uthyrd enhet) → raden failar.
+      lease = await this.leases.createWithTenant(dto, organizationId, userId)
+    } catch (err) {
+      // Släpp låset så raden kan godkännas på nytt efter att felet åtgärdats.
+      await this.prisma.contractImportRow.updateMany({
+        where: { id: rowId, rowStatus: 'COMMITTING' },
+        data: { rowStatus: 'SCANNED' },
+      })
+      throw err
+    }
+
+    await this.prisma.contractImportRow.update({
+      where: { id: rowId },
+      data: {
+        rowStatus: 'COMMITTED',
+        createdLeaseId: lease.id,
+        matchedUnitId: unitId,
+        confirmedData: dto as unknown as Prisma.InputJsonValue,
+        reviewedData: effective as unknown as Prisma.InputJsonValue,
+        fileData: null,
+        errorMessage: null,
+      },
+    })
+    await this.recomputeBatchCompletion(batchId, organizationId)
+
+    return { rowId, leaseId: lease.id, alreadyCommitted: false }
+  }
+
+  /**
+   * Bulk "Godkänn alla säkra": committar ENDAST AUTO_MATCHED-rader som ännu inte
+   * har ett avtal. En människa utlöser detta; varje rad går via samma confirmRow
+   * (inkl. dubblett-/valideringsspärrar). Per-rad-isolering: en rad som failar
+   * stoppar inte de andra (speglar bankens confirm-loop).
+   */
+  async bulkConfirmSafe(
+    batchId: string,
+    organizationId: string,
+    userId: string | null,
+  ): Promise<BulkConfirmResult> {
+    const rows = await this.prisma.contractImportRow.findMany({
+      where: {
+        batchId,
+        organizationId,
+        rowStatus: 'SCANNED',
+        matchStatus: 'AUTO_MATCHED',
+        createdLeaseId: null,
+      },
+      select: { id: true },
+    })
+
+    const committed: Array<{ rowId: string; leaseId: string }> = []
+    const failed: Array<{ rowId: string; error: string }> = []
+
+    for (const r of rows) {
+      try {
+        const res = await this.confirmRow(batchId, r.id, organizationId, userId)
+        committed.push({ rowId: r.id, leaseId: res.leaseId })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        failed.push({ rowId: r.id, error: message })
+        this.logger.warn(`[contract-batch] bulk-commit row=${r.id} failade: ${message}`)
+      }
+    }
+
+    return { committed, failed, skipped: 0 }
+  }
+
+  /** Operatören väljer att INTE skapa avtal för en rad → SKIPPED + purga PDF. */
+  async skipRow(
+    batchId: string,
+    rowId: string,
+    organizationId: string,
+  ): Promise<{ rowId: string; rowStatus: string }> {
+    const row = await this.prisma.contractImportRow.findFirst({
+      where: { id: rowId, batchId, organizationId },
+      select: { rowStatus: true, createdLeaseId: true },
+    })
+    if (!row) {
+      throw new NotFoundException('Raden hittades inte.')
+    }
+    if (row.createdLeaseId) {
+      throw new BadRequestException('Raden har redan skapat ett avtal och kan inte hoppas över.')
+    }
+    if (row.rowStatus !== 'SCANNED') {
+      throw new BadRequestException(
+        `Raden är i status ${row.rowStatus} och kan inte hoppas över — bara skannade rader.`,
+      )
+    }
+
+    await this.prisma.contractImportRow.update({
+      where: { id: rowId },
+      data: { rowStatus: 'SKIPPED', fileData: null },
+    })
+    await this.recomputeBatchCompletion(batchId, organizationId)
+
+    return { rowId, rowStatus: 'SKIPPED' }
+  }
+
+  // Batchen → COMPLETED när inga rader återstår att skanna/granska (alla är
+  // COMMITTED/SKIPPED/FAILED). Org-scopad findFirst (defense-in-depth) och rör
+  // inte terminala batch-statusar. COMMITTING räknas som "kvar" (transient).
+  private async recomputeBatchCompletion(batchId: string, organizationId: string): Promise<void> {
+    const [remaining, batch] = await Promise.all([
+      this.prisma.contractImportRow.count({
+        where: { batchId, rowStatus: { in: ['PENDING', 'SCANNING', 'SCANNED', 'COMMITTING'] } },
+      }),
+      this.prisma.contractImportBatch.findFirst({
+        where: { id: batchId, organizationId },
+        select: { status: true },
+      }),
+    ])
+    if (!batch) return
+    if (batch.status !== 'SCANNED' && batch.status !== 'SCANNING') return
+    if (remaining === 0) {
+      await this.prisma.contractImportBatch.update({
+        where: { id: batchId },
+        data: { status: 'COMPLETED' },
+      })
+    }
+  }
+
   // Flytta batchen PENDING → SCANNING när första raden börjar skannas (rör inte
   // terminala batchar).
   private async bumpBatchToScanning(rowId: string): Promise<void> {
@@ -422,4 +667,14 @@ export class ContractScanBatchService {
       },
     })
   }
+}
+
+// Ta bort rawText ur den data som exponeras via API:t. rawText är ett rått
+// utdrag ur kontraktstexten (kan innehålla ostrukturerad PII) och behövs bara
+// server-side; det bevaras i originalScanData för audit.
+function stripRawText(data: ScannedContract | null): Omit<ScannedContract, 'rawText'> | null {
+  if (!data) return null
+  const rest: Partial<ScannedContract> = { ...data }
+  delete rest.rawText
+  return rest as Omit<ScannedContract, 'rawText'>
 }
