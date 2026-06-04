@@ -438,6 +438,15 @@ model Organization {
   // kommersiella transaktioner. Absolut tak är MAX_TX_AMOUNT (50 MSEK) i koden.
   maxBankTxAmount      Decimal @default(5000000) @db.Decimal(14, 2)
 
+  // Kostnadstak för batch-kontraktsskanning (skydd mot oförutsedd AI-kostnad).
+  // Speglar maxBankTxAmount-precedensen: per-org konfigurerbar, med ett absolut
+  // tak i koden. maxContractBatchFiles = max antal PDF:er per batch (default 50,
+  // absolut tak MAX_BATCH_FILES_ABSOLUTE). maxContractBatchCostSek = tak på den
+  // ESTIMERADE kostnaden som beräknas innan batchen körs; överskrids det avvisas
+  // batchen direkt (inget enqueueas).
+  maxContractBatchFiles   Int     @default(50)
+  maxContractBatchCostSek Decimal @default(50) @db.Decimal(10, 2)
+
   // ── Hyresavi-inställningar ────────────────────────────────────────────────
   // Antal dagar före tillträdesdag som deposition + första hyresavi förfaller.
   // Standard 7 dagar — Hyresgästföreningens rekommendation. Hyresvärden kan
@@ -498,6 +507,7 @@ model Organization {
   journalEntries     JournalEntry[]
   bankTransactions   BankTransaction[]
   bankStatementImports BankStatementImport[]
+  contractImportBatches ContractImportBatch[]
   documents          Document[]
   importJobs         ImportJob[]
   aiConversations    AiConversation[]
@@ -1316,6 +1326,98 @@ enum BankStatementImportStatus {
   CONFIRMED // Användaren har bekräftat — BankTransaction-rader skapade
   FAILED    // Tolkning misslyckades (AI-fel / ogiltig JSON)
   CANCELLED // Användaren avbröt granskningen
+}
+
+// ─── Batch-kontraktsskanning (PR1: datamodell + skanningskö + batch-tak) ──────
+// En operatör laddar upp N kontrakts-PDF:er → varje rad skannas asynkront av
+// den HÄRDADE ContractScannerService (#79) via Bull-kön. Speglar bankens
+// draft/confirm-mönster (BankStatementImport): originalScanData är AI:ns
+// oföränderliga råtolkning, reviewedData är den redigerbara kopian.
+//
+// PR1 STANNAR vid skanning: ingen rad matchas mot en Unit (PR2) och ingen
+// commit-väg finns (PR3) — det går alltså inte att skapa ett avtal härifrån.
+model ContractImportBatch {
+  id             String                    @id @default(uuid())
+  organizationId String
+  status         ContractImportBatchStatus @default(PENDING)
+  // Plain user-ID (mirrors BankStatementImport.uploadedById).
+  uploadedById   String?
+  uploadedAt     DateTime                  @default(now())
+
+  totalRows   Int @default(0)
+  scannedRows Int @default(0)
+  failedRows  Int @default(0)
+
+  // Kostnadstak (PR1). estimatedCostSek beräknas heuristiskt INNAN skanningen
+  // enqueueas; fileCapApplied/costCapApplied snapshotar de gränser som gällde
+  // (per-org eller default) så ett historiskt batch-beslut kan rekonstrueras.
+  estimatedCostSek Decimal @default(0) @db.Decimal(10, 2)
+  fileCapApplied   Int
+  costCapApplied   Decimal @db.Decimal(10, 2)
+
+  errorMessage String?
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rows         ContractImportRow[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+model ContractImportRow {
+  id             String  @id @default(uuid())
+  batchId        String
+  // Denormaliserat så workern kan org-scopa skanningen utan att joina batchen.
+  organizationId String
+
+  fileName String
+  fileSize Int
+  // Rå PDF-bytes lagras TRANSIENT i DB och purgeas (sätts till null) så snart
+  // den inte längre behövs: vid lyckad skanning (originalScanData är då sparat)
+  // och vid avbruten batch. Råa PDF:er finns därmed bara på PENDING/SCANNING-
+  // rader — en SCANNAD rad bär aldrig kvar ett kontrakt med personnummer.
+  // Batch-taket + 10 MB-gränsen per fil (MAX_CONTRACT_BYTES) begränsar
+  // svällrisken; R2-objektlagring kan ersätta detta i v2 om DB sväller.
+  fileData Bytes?
+
+  rowStatus ContractImportRowStatus @default(PENDING)
+
+  // Speglar bankens tre-lagers-mönster. originalScanData sätts EN gång när
+  // skanningen lyckas (ContractScannerService:s oföränderliga råtolkning);
+  // reviewedData är en redigerbar kopia (identisk vid SCANNED). Matchning
+  // (PR2) och confirmedData/createdLeaseId (PR3) tillkommer i senare snitt.
+  originalScanData Json?
+  reviewedData     Json?
+  confidence       Float?
+
+  errorMessage String?
+
+  batch ContractImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([batchId])
+  @@index([organizationId])
+  @@index([rowStatus])
+}
+
+enum ContractImportBatchStatus {
+  PENDING   // Skapad, rader köade men ännu inte klara
+  SCANNING  // Minst en rad skannas
+  SCANNED   // Alla rader klara (lyckade eller failade) — PR1:s terminala läge
+  FAILED    // Batch-nivå-fel (t.ex. kostnadsbroms slog till under körning)
+  CANCELLED // Operatören avbröt
+}
+
+enum ContractImportRowStatus {
+  PENDING  // Köad, ännu inte skannad
+  SCANNING // Hämtad av workern
+  SCANNED  // ScannedContract lagrad i originalScanData/reviewedData
+  FAILED   // Skanning misslyckades (alla retries slut / ogiltig fil / kostnadsbroms)
 }
 
 // ─── Document (Dokumentarkiv) ─────────────────────────────────────────────────
