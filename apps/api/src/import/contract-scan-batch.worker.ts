@@ -12,9 +12,10 @@ import { CONTRACT_SCAN_BATCH_QUEUE, type ContractScanRowJob } from './contract-s
 const CONCURRENCY = 2
 
 /**
- * Worker för kontraktsskannings-kön (PR1). Ett jobb = en rad. Workern hämtar
- * den råa PDF:en från DB, kör den HÄRDADE ContractScannerService och lagrar
- * resultatet. Ingen matchning, ingen avtalsskapande — det kommer i PR2/PR3.
+ * Worker för kontraktsskannings-kön. Ett jobb = en rad. Workern hämtar den råa
+ * PDF:en från DB, kör den HÄRDADE ContractScannerService, lagrar resultatet och
+ * (PR2) sätter ett deterministiskt enhets-FÖRSLAG. Ingen avtalsskapande — det
+ * kräver mänskligt godkännande i PR3.
  *
  * Idempotent: `claimRowForScan` returnerar null om raden redan är terminal
  * eller batchen avbruten, så en Bull-retry aldrig dubbel-skannar.
@@ -57,6 +58,20 @@ export class ContractScanBatchWorker {
       claimed.uploadedById ?? undefined,
     )
     await this.batch.recordScanResult(rowId, scan)
+
+    // PR2: deterministisk enhetsmatchning inline efter lyckad skanning (ren
+    // DB-query, ingen AI). Matchningen är bara ett FÖRSLAG — inget avtal skapas.
+    // Den får ALDRIG fälla jobbet: skanningen är redan sparad. Misslyckas den
+    // ligger raden kvar med matchStatus=null och backfillas vid nästa
+    // getBatch-hämtning.
+    try {
+      await this.batch.matchRow(rowId)
+    } catch (matchErr) {
+      this.logger.warn(
+        `[contract-scan] matchning misslyckades för row=${rowId} (skanning OK, ` +
+          `backfillas senare): ${String(matchErr)}`,
+      )
+    }
 
     this.logger.log(
       `[contract-scan] done jobId=${job.id} row=${rowId} confidence=${scan.confidence} ` +
