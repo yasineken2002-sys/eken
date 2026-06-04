@@ -6,9 +6,10 @@ import { ContractScannerService } from './contract-scanner.service'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
+import { MAX_CONTRACT_BYTES } from '../common/utils/file-validation'
 import type { JwtPayload } from '@eken/shared'
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB (CSV/Excel-import)
 const ALLOWED_IMPORT_EXTS = ['.csv', '.xlsx', '.xls']
 const ALLOWED_CONTRACT_MIMES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
 
@@ -84,7 +85,7 @@ export class ImportController {
       throw new BadRequestException('Ingen fil hittades i formuläret')
     }
 
-    if (fileSize > MAX_FILE_SIZE) {
+    if (fileSize > MAX_CONTRACT_BYTES) {
       throw new BadRequestException('Filen är för stor (max 10 MB)')
     }
 
@@ -92,7 +93,7 @@ export class ImportController {
       throw new BadRequestException('Filformatet stöds inte. Ladda upp PDF, JPG, PNG eller WEBP.')
     }
 
-    return this.contractScanner.scanContract(fileBuffer, mimeType, organizationId, user.sub)
+    return this.contractScanner.scanContract(fileBuffer, organizationId, user.sub)
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────

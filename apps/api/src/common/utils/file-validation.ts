@@ -19,9 +19,19 @@ import { BadRequestException } from '@nestjs/common'
 export const MAX_PDF_BYTES = 20 * 1024 * 1024 // PDF: 20 MB
 export const MAX_CSV_BYTES = 10 * 1024 * 1024 // CSV/Excel/BgMax: 10 MB
 export const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024 // Dokumentarkiv: 20 MB
+export const MAX_CONTRACT_BYTES = 10 * 1024 * 1024 // Hyreskontrakt (PDF/bild): 10 MB
 
 // ── Detekterade MIME-typer (faktiskt innehåll, inte deklarerat) ──────────────
 export const DETECTED_PDF_TYPES = ['application/pdf'] as const
+
+// Kontraktsskanning tar både PDF och bild (foto av kontrakt). Samma binär-
+// format som ContractScannerService skickar till vision-modellen.
+export const DETECTED_CONTRACT_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+] as const
 
 // Dokumentarkivet: bilder + PDF + Office. Gamla Office (.doc/.xls) detekteras
 // som CFB (OLE Compound File); nya (.docx/.xlsx) som ZIP/OOXML-container.
@@ -119,8 +129,17 @@ export interface MagicByteValidationOptions {
 /**
  * Validera en uppladdad fil mot dess faktiska innehåll (magiska byten) och
  * storlek. Kastar `BadRequestException` vid avvikelse.
+ *
+ * Returnerar den *detekterade* (kanoniska) MIME-typen så att anroparen kan
+ * använda den i stället för den opålitliga klient-deklarerade Content-Type:n —
+ * utan att behöva köra `detectMimeFromMagicBytes` en andra gång. Returnerar
+ * `null` endast för tillåten textfil utan binär signatur
+ * (`allowTextWithoutSignature: true`).
  */
-export function validateUploadedFile(buffer: Buffer, opts: MagicByteValidationOptions): void {
+export function validateUploadedFile(
+  buffer: Buffer,
+  opts: MagicByteValidationOptions,
+): string | null {
   if (buffer.length === 0) {
     throw new BadRequestException('Filen är tom')
   }
@@ -132,7 +151,7 @@ export function validateUploadedFile(buffer: Buffer, opts: MagicByteValidationOp
   const detected = detectMimeFromMagicBytes(buffer)
 
   if (detected === null) {
-    if (opts.allowTextWithoutSignature) return
+    if (opts.allowTextWithoutSignature) return null
     throw new BadRequestException(
       'Filinnehållet kunde inte verifieras — filen är skadad eller har fel format',
     )
@@ -141,4 +160,6 @@ export function validateUploadedFile(buffer: Buffer, opts: MagicByteValidationOp
   if (!opts.allowedDetectedMimes.includes(detected)) {
     throw new BadRequestException(`Filinnehållet (${detected}) matchar inte en tillåten filtyp`)
   }
+
+  return detected
 }
