@@ -729,6 +729,7 @@ model Unit {
   inspections        Inspection[]
   keyHandovers       KeyHandover[]
   meters             Meter[]
+  contractImportRows ContractImportRow[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1387,11 +1388,20 @@ model ContractImportRow {
 
   // Speglar bankens tre-lagers-mönster. originalScanData sätts EN gång när
   // skanningen lyckas (ContractScannerService:s oföränderliga råtolkning);
-  // reviewedData är en redigerbar kopia (identisk vid SCANNED). Matchning
-  // (PR2) och confirmedData/createdLeaseId (PR3) tillkommer i senare snitt.
+  // reviewedData är en redigerbar kopia (identisk vid SCANNED). confirmedData/
+  // createdLeaseId (PR3) tillkommer i senare snitt.
   originalScanData Json?
   reviewedData     Json?
   confidence       Float?
+
+  // Deterministisk enhetsmatchning (PR2). matchStatus är null tills raden
+  // skannats; därefter ett FÖRSLAG på vilken Unit kontraktet gäller. matchedUnit
+  // sätts endast vid AUTO_MATCHED (exakt EN kandidat). Detta är ENBART ett
+  // förslag — inget avtal skapas (det kräver mänskligt godkännande i PR3).
+  // FK med SetNull: tas den föreslagna enheten bort försvinner förslaget.
+  matchStatus   ContractRowMatchStatus?
+  matchedUnitId String?
+  matchedUnit   Unit?                   @relation(fields: [matchedUnitId], references: [id], onDelete: SetNull)
 
   errorMessage String?
 
@@ -1403,6 +1413,14 @@ model ContractImportRow {
   @@index([batchId])
   @@index([organizationId])
   @@index([rowStatus])
+  @@index([matchedUnitId])
+}
+
+enum ContractRowMatchStatus {
+  AUTO_MATCHED // Exakt EN kandidat-Unit matchade (adress + lägenhetsnummer)
+  AMBIGUOUS    // Flera kandidater matchade — lämnas orörd (ingen gissning)
+  NO_MATCH     // Noll kandidater matchade
+  NEEDS_REVIEW // Saknat adress-/lägenhetsfält eller låg skanningskonfidens
 }
 
 enum ContractImportBatchStatus {

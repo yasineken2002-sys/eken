@@ -10,10 +10,11 @@ import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 
 /**
- * Batch-kontraktsskanning (PR1). Operatören laddar upp flera kontrakts-PDF:er,
- * systemet skannar dem asynkront. Roller MANAGER/ADMIN/OWNER — i linje med
- * /leases/with-tenant (slutåtgärden i serien skapar avtal), men i PR1 finns
- * INGEN väg att skapa avtal: endast skanning.
+ * Batch-kontraktsskanning. Operatören laddar upp flera kontrakts-PDF:er,
+ * systemet skannar dem asynkront (PR1) och föreslår en Unit per rad (PR2).
+ * Roller MANAGER/ADMIN/OWNER — i linje med /leases/with-tenant (slutåtgärden i
+ * serien skapar avtal i PR3), men hittills finns INGEN väg att skapa avtal:
+ * skanning + matchningsförslag, inget mer.
  */
 @ApiTags('Import')
 @ApiBearerAuth()

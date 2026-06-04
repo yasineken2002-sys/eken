@@ -26,10 +26,12 @@ interface Mocks {
     }
     contractImportRow: {
       findUnique: jest.Mock
+      findMany: jest.Mock
       update: jest.Mock
       updateMany: jest.Mock
       count: jest.Mock
     }
+    unit: { findMany: jest.Mock }
     $transaction: jest.Mock
   }
   quota: { checkOrgDailyCostCap: jest.Mock }
@@ -53,10 +55,12 @@ function make(overrides?: { maxFiles?: number; maxCostSek?: number; capThrows?: 
       },
       contractImportRow: {
         findUnique: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({}),
         count: jest.fn().mockResolvedValue(0),
       },
+      unit: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn().mockResolvedValue([]),
     },
     quota: {
@@ -164,6 +168,8 @@ describe('ContractScanBatchService.getBatch — ingen rå PDF läcker', () => {
           rowStatus: 'SCANNED',
           confidence: 0.9,
           reviewedData: { tenantName: 'Anna' },
+          matchStatus: 'AUTO_MATCHED',
+          matchedUnitId: 'u1',
           errorMessage: null,
         },
       ],
@@ -181,6 +187,117 @@ describe('ContractScanBatchService.getBatch — ingen rå PDF läcker', () => {
     // resultatet exponerar ingen fileData-nyckel
     expect(view.rows[0]).not.toHaveProperty('fileData')
     expect(view.rows[0]!.confidence).toBe(0.9)
+    // matchningsförslaget exponeras (PR2)
+    expect(view.rows[0]!.matchStatus).toBe('AUTO_MATCHED')
+    expect(view.rows[0]!.matchedUnitId).toBe('u1')
+  })
+
+  it('lazy-backfillar SCANNED-rader utan matchStatus vid hämtning', async () => {
+    const { service, mocks } = make()
+    // En orörd PR1-rad utan matchStatus.
+    mocks.prisma.contractImportRow.findMany.mockResolvedValueOnce([{ id: 'row-1' }])
+    // matchRow läser raden:
+    mocks.prisma.contractImportRow.findUnique.mockResolvedValue({
+      organizationId: 'org-1',
+      rowStatus: 'SCANNED',
+      reviewedData: { propertyAddress: 'X', unitDescription: '1', confidence: 0.9 },
+      confidence: 0.9,
+    })
+    mocks.prisma.unit.findMany.mockResolvedValue([]) // → NO_MATCH
+    mocks.prisma.contractImportBatch.findFirst.mockResolvedValue({
+      id: 'batch-1',
+      status: 'SCANNED',
+      totalRows: 1,
+      scannedRows: 1,
+      failedRows: 0,
+      estimatedCostSek: 0.2,
+      createdAt: new Date('2026-06-04'),
+      rows: [],
+    })
+
+    await service.getBatch('batch-1', 'org-1')
+
+    // backfill körde matchRow → raden uppdaterades med ett matchStatus
+    expect(mocks.prisma.contractImportRow.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'row-1' } }),
+    )
+    // unmatched-frågan org-scopas
+    expect(mocks.prisma.contractImportRow.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          batchId: 'batch-1',
+          organizationId: 'org-1',
+          rowStatus: 'SCANNED',
+          matchStatus: null,
+        },
+      }),
+    )
+  })
+})
+
+describe('ContractScanBatchService.matchRow — deterministiskt förslag', () => {
+  it('org-scopar kandidat-Units och skriver AUTO_MATCHED + matchedUnitId', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findUnique.mockResolvedValue({
+      organizationId: 'org-1',
+      rowStatus: 'SCANNED',
+      reviewedData: {
+        propertyAddress: 'Storgatan 1, 114 51 Stockholm',
+        unitDescription: '1201',
+      },
+      confidence: 0.9,
+    })
+    mocks.prisma.unit.findMany.mockResolvedValue([
+      {
+        id: 'u1',
+        unitNumber: '1201',
+        property: { street: 'Storgatan 1', postalCode: '11451', city: 'Stockholm' },
+      },
+    ])
+
+    await service.matchRow('row-1')
+
+    // matchningen får ALDRIG korsa org — kandidaterna scopas via Property.
+    expect(mocks.prisma.unit.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { property: { organizationId: 'org-1' } } }),
+    )
+    expect(mocks.prisma.contractImportRow.update).toHaveBeenCalledWith({
+      where: { id: 'row-1' },
+      data: { matchStatus: 'AUTO_MATCHED', matchedUnitId: 'u1' },
+    })
+  })
+
+  it('är no-op för en rad som inte är SCANNED (matchar aldrig en failad/pending rad)', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findUnique.mockResolvedValue({
+      organizationId: 'org-1',
+      rowStatus: 'FAILED',
+      reviewedData: null,
+      confidence: null,
+    })
+
+    await service.matchRow('row-1')
+
+    expect(mocks.prisma.unit.findMany).not.toHaveBeenCalled()
+    expect(mocks.prisma.contractImportRow.update).not.toHaveBeenCalled()
+  })
+
+  it('skriver NO_MATCH när inga kandidat-Units finns i org', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findUnique.mockResolvedValue({
+      organizationId: 'org-1',
+      rowStatus: 'SCANNED',
+      reviewedData: { propertyAddress: 'Storgatan 1, Stockholm', unitDescription: '1201' },
+      confidence: 0.9,
+    })
+    mocks.prisma.unit.findMany.mockResolvedValue([])
+
+    await service.matchRow('row-1')
+
+    expect(mocks.prisma.contractImportRow.update).toHaveBeenCalledWith({
+      where: { id: 'row-1' },
+      data: { matchStatus: 'NO_MATCH', matchedUnitId: null },
+    })
   })
 })
 

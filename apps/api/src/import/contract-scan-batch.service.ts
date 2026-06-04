@@ -9,6 +9,7 @@ import {
 } from '../common/utils/file-validation'
 import { ContractScanBatchQueue } from './contract-scan-batch.queue'
 import { estimateBatchCostSek, MAX_BATCH_FILES_ABSOLUTE } from './contract-scan-cost'
+import { deterministicUnitMatcher } from './unit-matcher'
 import type { ScannedContract } from './contract-scanner.service'
 
 export interface UploadedFile {
@@ -31,6 +32,10 @@ export interface ContractBatchRowView {
   rowStatus: string
   confidence: number | null
   reviewedData: ScannedContract | null
+  // Enhetsmatchning (PR2) — ett FÖRSLAG, inget avtal. matchedUnitId sätts bara
+  // vid AUTO_MATCHED.
+  matchStatus: string | null
+  matchedUnitId: string | null
   errorMessage: string | null
 }
 
@@ -46,12 +51,14 @@ export interface ContractBatchView {
 }
 
 /**
- * PR1: batch-kontraktsskanning — datamodell + skanningskö + batch-tak.
+ * Batch-kontraktsskanning — datamodell + skanningskö + batch-tak (PR1) och
+ * deterministisk enhetsmatchning (PR2).
  *
  * Tjänsten skapar en batch, tvingar igenom kostnadstaket INNAN något läggs på
- * kön, och exponerar batchens status. Den HÄRDADE ContractScannerService (#79)
- * är motorn; matchning (PR2) och commit till avtal (PR3) finns INTE här — det
- * går alltså inte att skapa ett hyresavtal via detta flöde.
+ * kön, exponerar batchens status, och sätter ett deterministiskt enhets-FÖRSLAG
+ * per skannad rad (matchRow). Den HÄRDADE ContractScannerService (#79) är
+ * motorn. Commit till avtal (PR3) finns INTE här — det går alltså inte att skapa
+ * ett hyresavtal via detta flöde, och matchningen är bara ett förslag.
  */
 @Injectable()
 export class ContractScanBatchService {
@@ -165,6 +172,18 @@ export class ContractScanBatchService {
 
   // ── Läsning: batch + rader (ALDRIG rå PDF) ────────────────────────────────
   async getBatch(id: string, organizationId: string): Promise<ContractBatchView> {
+    // Lazy backfill (PR2): SCANNADE rader utan matchStatus (t.ex. skannade i PR1,
+    // innan matchningen fanns) får sitt förslag vid första granskningshämtningen.
+    // Idempotent och avgränsat — bara orörda rader, en gång. Org-scopas på
+    // batchId+organizationId så en främmande org aldrig triggar matchning här.
+    const unmatched = await this.prisma.contractImportRow.findMany({
+      where: { batchId: id, organizationId, rowStatus: 'SCANNED', matchStatus: null },
+      select: { id: true },
+    })
+    for (const r of unmatched) {
+      await this.matchRow(r.id)
+    }
+
     const batch = await this.prisma.contractImportBatch.findFirst({
       where: { id, organizationId },
       select: {
@@ -185,6 +204,8 @@ export class ContractScanBatchService {
             rowStatus: true,
             confidence: true,
             reviewedData: true,
+            matchStatus: true,
+            matchedUnitId: true,
             errorMessage: true,
           },
         },
@@ -209,6 +230,8 @@ export class ContractScanBatchService {
         rowStatus: r.rowStatus,
         confidence: r.confidence,
         reviewedData: (r.reviewedData as ScannedContract | null) ?? null,
+        matchStatus: r.matchStatus,
+        matchedUnitId: r.matchedUnitId,
         errorMessage: r.errorMessage,
       })),
     }
@@ -296,6 +319,47 @@ export class ContractScanBatchService {
       },
     })
     await this.recomputeBatch(rowId)
+  }
+
+  /**
+   * PR2: deterministisk enhetsmatchning. Sätter ett FÖRSLAG (matchStatus +
+   * eventuellt matchedUnitId) på en skannad rad. REN DB-query + ren matchare —
+   * ingen AI, inga nätverksanrop, inget avtal skapas. Kandidat-Units hämtas
+   * org-scopat (via Property.organizationId) så matchningen ALDRIG korsar org.
+   * No-op för rader som inte är SCANNED eller saknar tolkningsdata.
+   */
+  async matchRow(rowId: string): Promise<void> {
+    const row = await this.prisma.contractImportRow.findUnique({
+      where: { id: rowId },
+      select: { organizationId: true, rowStatus: true, reviewedData: true, confidence: true },
+    })
+    if (!row || row.rowStatus !== 'SCANNED') return
+    const scan = row.reviewedData as ScannedContract | null
+    if (!scan) return
+
+    // Org-scoping: enbart Units vars Property tillhör radens organisation.
+    const candidates = await this.prisma.unit.findMany({
+      where: { property: { organizationId: row.organizationId } },
+      select: {
+        id: true,
+        unitNumber: true,
+        property: { select: { street: true, postalCode: true, city: true } },
+      },
+    })
+
+    const result = deterministicUnitMatcher.match(
+      {
+        propertyAddress: scan.propertyAddress ?? null,
+        unitDescription: scan.unitDescription ?? null,
+        confidence: row.confidence ?? scan.confidence ?? 0,
+      },
+      candidates,
+    )
+
+    await this.prisma.contractImportRow.update({
+      where: { id: rowId },
+      data: { matchStatus: result.status, matchedUnitId: result.unitId },
+    })
   }
 
   /** Skanning misslyckades permanent (alla retries slut): markera raden FAILED. */
