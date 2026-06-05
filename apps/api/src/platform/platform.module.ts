@@ -5,6 +5,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { PropertiesModule } from '../properties/properties.module'
 import { MailModule } from '../mail/mail.module'
 import { InvoicesModule } from '../invoices/invoices.module'
+import { CustomerNumberModule } from '../common/customer-number/customer-number.module'
 import { PlatformAuthService } from './auth/platform-auth.service'
 import { PlatformAuthController } from './auth/platform-auth.controller'
 import { PlatformJwtStrategy } from './auth/platform-jwt.strategy'
@@ -39,6 +40,7 @@ import { PlatformAiUsageController } from './ai-usage/platform-ai-usage.controll
     PropertiesModule,
     MailModule,
     InvoicesModule,
+    CustomerNumberModule,
   ],
   controllers: [
     PlatformAuthController,

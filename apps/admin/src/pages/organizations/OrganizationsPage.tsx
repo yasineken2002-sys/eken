@@ -16,6 +16,7 @@ type Plan = 'TRIAL' | 'STARTER' | 'MINI' | 'STANDARD' | 'PLUS' | 'PRO'
 interface OrgListItem {
   id: string
   name: string
+  customerNumber: string | null
   orgNumber: string | null
   email: string
   plan: Plan
@@ -74,7 +75,7 @@ export function OrganizationsPage() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <Input
             className="pl-9"
-            placeholder="Sök namn, orgnummer, e-post…"
+            placeholder="Sök kundnr, namn, orgnummer, e-post…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -147,7 +148,7 @@ export function OrganizationsPage() {
                     {o.name}
                   </Link>
                   <div className="text-[11.5px] text-gray-500">
-                    {o.orgNumber ?? '—'} · {o.email}
+                    {o.customerNumber ?? '—'} · {o.orgNumber ?? '—'} · {o.email}
                   </div>
                 </td>
                 <td className="px-5 py-3">

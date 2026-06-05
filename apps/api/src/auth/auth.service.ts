@@ -12,6 +12,7 @@ import * as bcrypt from 'bcryptjs'
 import * as crypto from 'crypto'
 import { CompanyForm } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { CustomerNumberService } from '../common/customer-number/customer-number.service'
 import { MailService } from '../mail/mail.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { validateSwedishOrgNumber } from '../common/validators/swedish-org-number'
@@ -80,6 +81,7 @@ export class AuthService {
     private config: ConfigService,
     private mail: MailService,
     private accounting: AccountingService,
+    private customerNumber: CustomerNumberService,
   ) {}
 
   async register(dto: RegisterPayload): Promise<AuthResponse> {
@@ -126,9 +128,14 @@ export class AuthService {
     // utskickad uppgraderingspåminnelse.
     const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
 
+    // Allokera plattformsglobalt kundnummer (K-100001 …). Atomär och
+    // race-säker på egen hand; ett ev. hål om create:t failar är ofarligt.
+    const customerNumber = await this.customerNumber.allocate()
+
     const org = await this.prisma.organization.create({
       data: {
         name: dto.organizationName,
+        customerNumber,
         ...(normalizedOrgNumber ? { orgNumber: normalizedOrgNumber } : {}),
         accountType: dto.accountType ?? (companyForm === 'ENSKILD_FIRMA' ? 'PRIVATE' : 'COMPANY'),
         companyForm,

@@ -7,6 +7,7 @@ import {
 import * as bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { CustomerNumberService } from '../../common/customer-number/customer-number.service'
 import { normalizeEmail } from '../../common/utils/normalize-email'
 import { CreateOrganizationDto, UpdateOrganizationDto } from './dto/platform-organization.dto'
 
@@ -16,6 +17,7 @@ type OrgPlan = 'TRIAL' | 'STARTER' | 'MINI' | 'STANDARD' | 'PLUS' | 'PRO'
 export interface PlatformOrganizationListItem {
   id: string
   name: string
+  customerNumber: string | null
   orgNumber: string | null
   email: string
   plan: OrgPlan
@@ -32,7 +34,10 @@ export interface PlatformOrganizationListItem {
 
 @Injectable()
 export class PlatformOrganizationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private customerNumber: CustomerNumberService,
+  ) {}
 
   async list(params: {
     search?: string
@@ -49,6 +54,7 @@ export class PlatformOrganizationsService {
     if (params.search) {
       where['OR'] = [
         { name: { contains: params.search, mode: 'insensitive' } },
+        { customerNumber: { contains: params.search, mode: 'insensitive' } },
         { orgNumber: { contains: params.search, mode: 'insensitive' } },
         { email: { contains: params.search, mode: 'insensitive' } },
       ]
@@ -110,6 +116,7 @@ export class PlatformOrganizationsService {
     return {
       id: org.id,
       name: org.name,
+      customerNumber: org.customerNumber,
       orgNumber: org.orgNumber,
       vatNumber: org.vatNumber,
       accountType: org.accountType,
@@ -161,6 +168,10 @@ export class PlatformOrganizationsService {
     const tempPassword = dto.adminPassword ?? this.generateTempPassword()
     const passwordHash = await bcrypt.hash(tempPassword, 12)
 
+    // Plattformsglobalt kundnummer (K-100001 …) — samma allokering som
+    // självregistreringen i AuthService.
+    const customerNumber = await this.customerNumber.allocate()
+
     const trialDays = dto.trialDays ?? 30
     const plan = dto.plan ?? 'TRIAL'
     const trialEndsAt =
@@ -172,6 +183,7 @@ export class PlatformOrganizationsService {
     const org = await this.prisma.organization.create({
       data: {
         name: dto.name,
+        customerNumber,
         ...(dto.orgNumber ? { orgNumber: dto.orgNumber } : {}),
         ...(dto.vatNumber ? { vatNumber: dto.vatNumber } : {}),
         email: orgEmail,
@@ -286,6 +298,7 @@ export class PlatformOrganizationsService {
   private mapListItem(r: {
     id: string
     name: string
+    customerNumber: string | null
     orgNumber: string | null
     email: string
     subscriptionPlan: OrgPlan
@@ -300,6 +313,7 @@ export class PlatformOrganizationsService {
     return {
       id: r.id,
       name: r.name,
+      customerNumber: r.customerNumber,
       orgNumber: r.orgNumber,
       email: r.email,
       plan: r.subscriptionPlan,

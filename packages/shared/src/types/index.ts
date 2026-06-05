@@ -76,6 +76,10 @@ export type CompanyForm = 'AB' | 'ENSKILD_FIRMA' | 'HB' | 'KB' | 'FORENING' | 'S
 export interface Organization {
   id: string
   name: string
+  // Kort, plattformsglobalt och permanent kundnummer (K-100001 …). Stabil
+  // läsbar identifierare att söka/slå upp på, till skillnad från det interna
+  // id:t. Optionellt på typen tills backfill gjort fältet NOT NULL i DB.
+  customerNumber?: string
   orgNumber: string // Swedish org nr (556xxx-xxxx) eller personnr för EF
   // Juridisk företagsform — sätts vid registrering, kan inte ändras av
   // användaren själv (kräver supportkontakt eftersom kontoplanen och
