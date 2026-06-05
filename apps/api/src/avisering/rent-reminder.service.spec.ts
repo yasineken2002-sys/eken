@@ -30,17 +30,19 @@ function makeService() {
   }
   const accounting = { bookReminderFee: jest.fn().mockResolvedValue({ id: 'je-1' }) }
   const rentNoticeEvents = { record: jest.fn().mockResolvedValue({ id: 'ev-1' }) }
+  const rentInterest = { crystallizeInterest: jest.fn().mockResolvedValue(null) }
   const pdfQueue = { enqueue: jest.fn().mockResolvedValue('job-1') }
   const service = new RentReminderService(
     prisma as never,
     accounting as never,
     rentNoticeEvents as never,
+    rentInterest as never,
     pdfQueue as never,
     {} as never,
     {} as never,
     {} as never,
   )
-  return { service, prisma, tx, accounting, rentNoticeEvents, pdfQueue }
+  return { service, prisma, tx, accounting, rentNoticeEvents, rentInterest, pdfQueue }
 }
 
 describe('escalateNoticeToReminded', () => {
@@ -112,14 +114,16 @@ describe('escalateOverdueRentNotices (cron)', () => {
     }
   }
 
-  it('eskalerar avi som passerat rentReminderDay och köar påminnelse-PDF', async () => {
-    const { service, prisma, pdfQueue } = makeService()
+  it('eskalerar avi, kristalliserar ränta och köar påminnelse-PDF', async () => {
+    const { service, prisma, pdfQueue, rentInterest } = makeService()
     prisma.rentNotice.findMany.mockResolvedValueOnce([
       candidate({ id: 'rn-9', daysOverdue: 9, email: 'g@x.se' }),
     ])
     const spy = jest.spyOn(service, 'escalateNoticeToReminded').mockResolvedValue(true)
     const summary = await service.escalateOverdueRentNotices()
     expect(spy).toHaveBeenCalledWith('rn-9', 'org-1', 9, 60)
+    // Dröjsmålsränta kristalliseras t.o.m. påminnelsedagen (PR 3).
+    expect(rentInterest.crystallizeInterest).toHaveBeenCalledWith('rn-9', 'org-1', expect.any(Date))
     expect(pdfQueue.enqueue).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'avisering-reminder', noticeId: 'rn-9' }),
     )

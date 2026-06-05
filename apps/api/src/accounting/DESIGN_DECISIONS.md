@@ -321,3 +321,59 @@ momsfri); BFL 1999:1078 (verifikat + append-only spår).
   `RentNotice.reminderPdfStorageKey` + ladda upp till `StorageService` så
   dokumentkopian kan rekonstrueras inför inkassoöverlämning (hyresjurist LOW).
   **Inför PR 4.**
+
+---
+
+## Inkasso · PR 3 — dröjsmålsränta (referensränta + 8 pp, bokförd 1510/8131)
+
+**Lagrum:** räntelagen (1975:635) 3 § (ränta från förfallodagen), 6 §
+(referensränta + 8 pp), 9 § (referensräntan fastställd halvårsvis); BFL.
+
+### Beslut
+
+1. **Ränta bokförs 1510 D / 8131 K — ALDRIG 3593.** Dröjsmålsränta är en
+   FINANSIELL intäkt (8131), inte en rörelseintäkt/påminnelseavgift (3593).
+   `AccountingService.bookInterest` speglar `bookReminderFee` men krediterar 8131.
+
+2. **Referensräntan är data, +8 är lagkonstant.** Räntan läses dynamiskt ur
+   `ReferenceInterestRate` (raden vars `effectiveFrom ≤ förfallodagen`); +8 pp är
+   en hårdkodad lagkonstant (6 §). Saknas referensränta → ingen gissad ränta.
+
+3. **Bas = kapital (hyra + förbrukning).** Aldrig ränta på påminnelseavgiften
+   (3593) eller på upplupen ränta (ingen ränta-på-ränta). Från dagen EFTER
+   förfallodagen (konservativt, hyresgästens fördel). 365-dagarsbas.
+
+4. **INV-A + inkrementell delta.** Räntemarkering (`interestAccruedAmount/Through`)
+   - verifikat i samma `$transaction`; bokföring failar → allt rullas tillbaka.
+     `crystallizeInterest` bokför delta mot redan bokförd ränta, idempotent per
+     punkt via `sourceId=interest:{id}:{YYYY-MM-DD}`. Kristalliseras vid påminnelse
+     (PR 3); PR 4 lägger till inkasso-ready-punkten.
+
+5. **Räntan ingår INTE i `rentNoticePayableTotal`/OCR.** Till skillnad från
+   påminnelseavgiften: dröjsmålsräntan löper kontinuerligt och är en separat
+   fordran som regleras vid slutuppgörelse. 1510-saldot för en REMINDED-avi
+   överstiger därför avi-totalen med räntedelen — avsiktligt.
+
+### Öppna följdpunkter (backlog, ej i PR 3)
+
+- **Period-uppdelad ränta vid halvårsskifte — HÅRD PREREQUISITE FÖR PR 4, INTE
+  VALFRI.** PR 4 (inkasso-ready + export) får INTE aktivera räntekravets export
+  förrän detta är implementerat. Idag ankras EN referensränta (förfallodagens) på
+  hela dröjsmålsperioden. Strikt räntelagen 6 § ("den vid varje tid gällande
+  referensräntan", 9 §) kräver respektive halvårs ränta per delperiod. Ett
+  specificerat räntekrav som exporteras till inkassobolag/domstol med fel ränta
+  kan angripas och försvaga hela fordran. Åtgärd: segmentera `[dueDate,
+throughDate]` vid halvårsgränserna, beräkna delbelopp per segment med segmentets
+  referensränta, summera. Konvergerande MEDIUM från BÅDE bokföringsexpert och
+  hyresjurist; dokumenterat i koden (`rent-interest.service.ts`,
+  `referenceRatePercentFor`-anropet).
+- **Resultaträknings-bucket för 8131 (pre-existing).** `getProfitLossReport`
+  buntar 8000–8399 i en bucket med kostnadstecken → 8131 (finansiell intäkt)
+  presenteras under fel rubrik (totalresultatet blir ändå rätt). Dela 8000–8199
+  (intäkt) / 8200–8399 (kostnad) (bokföringsexpert MEDIUM). **Separat ärende.**
+- **Reglering av 1510-ränterest.** När en hyresgäst betalar kapital + avgift men
+  inte räntan blir avin PAID medan räntedelen ligger kvar på 1510. Ett
+  standardflöde för att reglera/skriva av ränteresten behövs (PR 4/5).
+- **Larm vid saknad referensränta.** Saknas innevarande halvårs rad uteblir
+  räntan tyst (loggas bara). Överväg avisering till OWNER (operativ rutin att
+  mata in ny rad i juni/december).

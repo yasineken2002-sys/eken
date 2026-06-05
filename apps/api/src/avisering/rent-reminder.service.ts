@@ -11,6 +11,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { getLogoDataUrl } from './avisering.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
+import { RentInterestService } from './rent-interest.service'
 
 interface ReminderSummary {
   reminded: number
@@ -42,6 +43,7 @@ export class RentReminderService {
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
     private readonly rentNoticeEvents: RentNoticeEventsService,
+    private readonly rentInterest: RentInterestService,
     private readonly pdfQueue: PdfQueue,
     private readonly mailService: MailService,
     private readonly pdfService: PdfService,
@@ -96,6 +98,18 @@ export class RentReminderService {
         if (!escalated) {
           summary.skipped++
           continue
+        }
+
+        // Kristallisera upplupen dröjsmålsränta t.o.m. påminnelsedagen (PR 3).
+        // Egen atomisk transaktion; ett räntefel ska INTE fälla påminnelsen —
+        // avgiften är redan tagen och räntan fångas vid nästa kristalliserings-
+        // punkt (inkasso-ready, PR 4) via delta-beräkningen.
+        try {
+          await this.rentInterest.crystallizeInterest(notice.id, notice.organizationId, new Date())
+        } catch (err) {
+          this.logger.error(
+            `Räntekristallisering misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
+          )
         }
 
         // Avgift + kravsteg är nu bokförda atomiskt. Köa påminnelse-PDF:en — om

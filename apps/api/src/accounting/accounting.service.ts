@@ -272,6 +272,65 @@ export class AccountingService {
     })
   }
 
+  /**
+   * Bokför dröjsmålsränta: 1510 D / 8131 K. Speglar bookReminderFee men
+   * krediterar 8131 (Dröjsmålsränta, kundfordringar) — en FINANSIELL intäkt.
+   * Räntan får ALDRIG hamna på 3593 (påminnelseavgift, rörelseintäkt); det är
+   * två olika resultatposter (bokföringsexpertens uttryckliga poäng).
+   *
+   * Momsfri (dröjsmålsränta är inte omsättning, ML). Idempotent + gap-free via
+   * createNumberedEntry (unikt index (org, source, sourceId)). En `tx` kan
+   * skickas in så att räntemarkeringen på avin och verifikatet skapas ATOMISKT
+   * (INV-A). `date` daterar verifikatet till kristalliseringspunkten.
+   *
+   * Returnerar verifikatet, eller null om beloppet ≤ 0 eller om 1510/8131 saknas
+   * i kontoplanen (loggas) — anroparen avgör då om kristalliseringen ska avbrytas.
+   */
+  async bookInterest(params: {
+    organizationId: string
+    source: JournalEntrySource
+    sourceId: string
+    amount: number
+    description: string
+    date?: Date
+    createdById?: string | null
+    tx?: Prisma.TransactionClient
+  }): Promise<{ id: string } | null> {
+    const { organizationId, source, sourceId, amount, description } = params
+    if (!Number.isFinite(amount) || amount <= 0) return null
+
+    const db = params.tx ?? this.prisma
+    const accounts = await db.account.findMany({
+      where: { organizationId, number: { in: [1510, 8131] } },
+      select: { id: true, number: true },
+    })
+    const byNumber = new Map(accounts.map((a) => [a.number, a.id]))
+    const receivableId = byNumber.get(1510)
+    const interestIncomeId = byNumber.get(8131)
+    if (!receivableId || !interestIncomeId) {
+      this.logger.warn(
+        `Saknar konto 1510 eller 8131 för organisation ${organizationId} — ` +
+          `dröjsmålsränta (${source} ${sourceId}) bokfördes inte`,
+      )
+      return null
+    }
+
+    return this.createNumberedEntry({
+      organizationId,
+      date: params.date ?? new Date(),
+      description,
+      source,
+      sourceId,
+      createdById: params.createdById ?? null,
+      lines: [
+        { accountId: receivableId, debit: amount, description: 'Dröjsmålsränta fordran' },
+        { accountId: interestIncomeId, credit: amount, description: 'Dröjsmålsränteintäkt' },
+      ],
+      idempotencyWhere: { organizationId, source, sourceId },
+      ...(params.tx ? { tx: params.tx } : {}),
+    })
+  }
+
   async getAccounts(organizationId: string) {
     return this.prisma.account.findMany({
       where: { organizationId },

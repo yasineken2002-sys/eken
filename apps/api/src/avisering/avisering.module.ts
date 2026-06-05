@@ -11,6 +11,7 @@ import { AviseringService } from './avisering.service'
 import { AviseringScheduler } from './avisering.scheduler'
 import { RentReminderService } from './rent-reminder.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
+import { RentInterestService } from './rent-interest.service'
 
 @Module({
   imports: [
@@ -23,9 +24,16 @@ import { RentNoticeEventsService } from './rent-notice-events.service'
     ConsumptionModule,
   ],
   controllers: [AviseringController],
-  providers: [AviseringService, AviseringScheduler, RentReminderService, RentNoticeEventsService],
+  providers: [
+    AviseringService,
+    AviseringScheduler,
+    RentReminderService,
+    RentNoticeEventsService,
+    RentInterestService,
+  ],
   // RentReminderService exporteras så PdfWorker (kind 'avisering-reminder') kan
-  // resolva den via ModuleRef, precis som AviseringService.
-  exports: [AviseringService, RentReminderService],
+  // resolva den via ModuleRef. RentInterestService exporteras för PR 4
+  // (inkasso-ready kristalliserar räntan en sista gång).
+  exports: [AviseringService, RentReminderService, RentInterestService],
 })
 export class AviseringModule {}

@@ -2099,6 +2099,17 @@ model RentNotice {
   // kräver in är konsistenta. Momsfri (avgiften är en påföljd, inte omsättning).
   reminderFeeAmount Decimal @default(0) @db.Decimal(10, 2)
 
+  // Ackumulerad dröjsmålsränta (inkasso PR 3). Kumulativt bokfört räntebelopp
+  // (1510 D / 8131 K, finansiell intäkt — INTE 3593) och datumet räntan är
+  // beräknad t.o.m. Räntan kristalliseras vid bestämda punkter (påminnelse,
+  // inkasso-ready) och bokförs inkrementellt (delta mot redan bokfört). Default 0.
+  // Till SKILLNAD från reminderFeeAmount ingår räntan INTE i rentNoticePayableTotal:
+  // dröjsmålsräntan löper kontinuerligt och är en separat fordran som regleras vid
+  // slutuppgörelse (inkasso/betalning av hela kravet), inte ett fast OCR-belopp.
+  // Exponeras på avin så den kan följa med i inkasso-exporten (PR 4).
+  interestAccruedAmount  Decimal   @default(0) @db.Decimal(10, 2)
+  interestAccruedThrough DateTime?
+
   // Bokföringslagen (1999:1078): hyresavier är räkenskapsinformation, bevaras 7 år.
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   tenant           Tenant            @relation(fields: [tenantId], references: [id])
