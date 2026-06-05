@@ -1250,9 +1250,20 @@ export class AviseringService {
 
   async findAll(
     orgId: string,
-    filters?: { month?: number; year?: number; status?: RentNoticeStatus },
+    filters?: {
+      month?: number
+      year?: number
+      status?: RentNoticeStatus
+      search?: string
+      tenantId?: string
+    },
   ) {
     await this.checkAndMarkOverdue(orgId)
+
+    // Fritext-sök på hyresgäst (för-/efter-/företagsnamn) + OCR/avinummer.
+    // Speglar tenants.service.findAll. När sök används utelämnar frontend
+    // månad/år så hela hyresgästens historik visas över alla perioder.
+    const search = filters?.search?.trim()
 
     return this.prisma.rentNotice.findMany({
       where: {
@@ -1260,6 +1271,18 @@ export class AviseringService {
         ...(filters?.month ? { month: filters.month } : {}),
         ...(filters?.year ? { year: filters.year } : {}),
         ...(filters?.status ? { status: filters.status } : {}),
+        ...(filters?.tenantId ? { tenantId: filters.tenantId } : {}),
+        ...(search
+          ? {
+              OR: [
+                { tenant: { firstName: { contains: search, mode: 'insensitive' } } },
+                { tenant: { lastName: { contains: search, mode: 'insensitive' } } },
+                { tenant: { companyName: { contains: search, mode: 'insensitive' } } },
+                { ocrNumber: { contains: search, mode: 'insensitive' } },
+                { noticeNumber: { contains: search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
       },
       include: {
         tenant: { select: SAFE_TENANT_SELECT },

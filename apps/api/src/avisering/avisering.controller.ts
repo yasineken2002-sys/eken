@@ -89,11 +89,15 @@ export class AviseringController {
     @Query('month') month?: string,
     @Query('year') year?: string,
     @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('tenantId') tenantId?: string,
   ) {
     return this.aviseringService.findAll(orgId, {
       ...(month ? { month: parseInt(month, 10) } : {}),
       ...(year ? { year: parseInt(year, 10) } : {}),
       ...(status ? { status: status as RentNoticeStatus } : {}),
+      ...(search ? { search } : {}),
+      ...(tenantId ? { tenantId } : {}),
     })
   }
 

@@ -74,6 +74,8 @@ export type NoticeFilter = {
   month?: number
   year?: number
   status?: RentNoticeStatus | ''
+  search?: string
+  tenantId?: string
 }
 
 export function fetchNotices(filters?: NoticeFilter) {
@@ -81,6 +83,8 @@ export function fetchNotices(filters?: NoticeFilter) {
   if (filters?.month) params.set('month', String(filters.month))
   if (filters?.year) params.set('year', String(filters.year))
   if (filters?.status) params.set('status', filters.status)
+  if (filters?.search) params.set('search', filters.search)
+  if (filters?.tenantId) params.set('tenantId', filters.tenantId)
   const q = params.toString()
   return get<RentNotice[]>(`/avisering${q ? `?${q}` : ''}`)
 }
