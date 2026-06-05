@@ -15,6 +15,7 @@ import { formatCurrency, formatDate, formatDateTime } from '@/lib/format'
 interface OrgDetail {
   id: string
   name: string
+  customerNumber: string | null
   orgNumber: string | null
   vatNumber: string | null
   email: string
@@ -85,7 +86,7 @@ export function OrganizationDetailPage() {
     <>
       <PageHeader
         title={org.name}
-        description={`${org.orgNumber ?? '—'} · ${org.address.street}, ${org.address.postalCode} ${org.address.city}`}
+        description={`${org.customerNumber ?? '—'} · ${org.orgNumber ?? '—'} · ${org.address.street}, ${org.address.postalCode} ${org.address.city}`}
         action={
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setImpersonateOpen(true)}>

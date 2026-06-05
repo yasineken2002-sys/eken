@@ -402,6 +402,14 @@ model Organization {
   id                   String  @id @default(uuid())
   name                 String
   orgNumber            String? @unique
+  // Kort, läsbart och plattformsglobalt kundnummer (K-100001, K-100002 …) —
+  // en stabil, permanent identifierare att söka/slå upp på i admin-portalen,
+  // till skillnad från det interna UUID:t och det optionella orgNumber (som
+  // saknas för privatpersoner/trial). Nullable i detta steg så befintliga
+  // rader inte bryter migrationen; backfill:as i createdAt-ordning i samma
+  // migration och allokeras vid org-skapande via CustomerNumberService.
+  // Görs NOT NULL i en separat PR efter prod-verifierad backfill.
+  customerNumber       String? @unique
   accountType          String  @default("COMPANY")
   // Juridisk företagsform. Sätts vid registrering och kan inte ändras
   // av användaren själv (kräver supportkontakt) — det skulle invalidera
@@ -543,6 +551,7 @@ model Organization {
   updatedAt DateTime @updatedAt
 
   @@index([orgNumber])
+  @@index([customerNumber])
   @@index([status])
   @@index([subscriptionPlan])
 }
@@ -1570,6 +1579,21 @@ model JournalEntrySequence {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@id([organizationId, fiscalYear, series])
+}
+
+// Plattformsglobal löpnummerserie för organisationernas kundnummer
+// (K-100001, K-100002 …). Till skillnad från de övriga sekvenserna ovan är
+// denna INTE scopad per organisation — kundnumret är unikt över hela
+// plattformen. Därför en enda rad, vaktad av ett konstant id ("GLOBAL"):
+// allokeringen sker via en UPSERT med atomär increment som tar Postgres
+// row-lock på just den raden, så två samtidiga org-skapanden aldrig delar ut
+// samma nummer. Ett hål i serien är ofarligt (kundnumret är ingen BFL-reglerad
+// verifikations-/fakturaserie), så allokeringen kräver ingen omslutande
+// transaktion — till skillnad från InvoiceNumberSequence nedan.
+model CustomerNumberSequence {
+  id         String   @id @default("GLOBAL")
+  lastNumber Int      @default(0)
+  updatedAt  DateTime @updatedAt
 }
 
 // Global löpnummerserie för fakturanummer per organisation (ML 11 kap 8 §:

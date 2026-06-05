@@ -10,12 +10,14 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../common/guards/roles.guard'
 import { MailModule } from '../mail/mail.module'
 import { AccountingModule } from '../accounting/accounting.module'
+import { CustomerNumberModule } from '../common/customer-number/customer-number.module'
 
 @Module({
   imports: [
     PassportModule,
     MailModule,
     AccountingModule,
+    CustomerNumberModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
