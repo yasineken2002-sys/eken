@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText,
@@ -10,10 +10,12 @@ import {
   Clock,
   DollarSign,
   Mail,
+  Search,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { StatCard } from '@/components/ui/StatCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { RentNoticeBadge } from './components/RentNoticeBadge'
@@ -76,10 +78,24 @@ export function AviseringPage() {
   const [statusTab, setStatusTab] = useState<RentNoticeStatus | 'ALL'>('ALL')
   const [generateOpen, setGenerateOpen] = useState(false)
   const [markPaidNotice, setMarkPaidNotice] = useState<RentNotice | null>(null)
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
 
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [search])
+
+  const searching = debouncedSearch.trim().length > 0
+
+  // Vid sök släpps månadslåset: utelämna month/year så hela hyresgästens
+  // historik visas över alla perioder. Status-filtret kombineras fortfarande.
   const filter: NoticeFilter = {
-    month,
-    year,
+    ...(searching ? { search: debouncedSearch.trim() } : { month, year }),
     ...(statusTab !== 'ALL' ? { status: statusTab } : {}),
   }
 
@@ -97,7 +113,11 @@ export function AviseringPage() {
       <div>
         <PageHeader
           title="Hyresavier"
-          description={`${stats?.total ?? 0} avier för ${MONTHS[month - 1]} ${year}`}
+          description={
+            searching
+              ? `${notices.length} avier matchar "${debouncedSearch.trim()}"`
+              : `${stats?.total ?? 0} avier för ${MONTHS[month - 1]} ${year}`
+          }
           action={
             <div className="flex items-center gap-2">
               <Button
@@ -117,13 +137,14 @@ export function AviseringPage() {
           }
         />
 
-        {/* Period selector */}
-        <div className="mt-4 flex items-center gap-2">
+        {/* Period selector + search */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <span className="text-[13px] text-gray-500">Period:</span>
           <select
             value={month}
+            disabled={searching}
             onChange={(e) => setMonth(parseInt(e.target.value, 10))}
-            className="h-8 rounded-lg border border-[#DDDFE4] px-3 text-[13px] text-gray-700 focus:border-blue-500 focus:outline-none"
+            className="h-8 rounded-lg border border-[#DDDFE4] px-3 text-[13px] text-gray-700 focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
           >
             {MONTHS.map((m, i) => (
               <option key={i + 1} value={i + 1}>
@@ -133,8 +154,9 @@ export function AviseringPage() {
           </select>
           <select
             value={year}
+            disabled={searching}
             onChange={(e) => setYear(parseInt(e.target.value, 10))}
-            className="h-8 rounded-lg border border-[#DDDFE4] px-3 text-[13px] text-gray-700 focus:border-blue-500 focus:outline-none"
+            className="h-8 rounded-lg border border-[#DDDFE4] px-3 text-[13px] text-gray-700 focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
           >
             {years.map((y) => (
               <option key={y} value={y}>
@@ -142,6 +164,24 @@ export function AviseringPage() {
               </option>
             ))}
           </select>
+          {searching && (
+            <span className="text-[12px] text-gray-400">Visar alla perioder för sökningen</span>
+          )}
+
+          <div className="relative ml-auto w-72">
+            <Search
+              size={14}
+              strokeWidth={1.8}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+            <Input
+              name="avisering-search"
+              placeholder="Sök hyresgäst, OCR eller avinummer..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
         </div>
 
         {/* KPI Cards */}
@@ -200,14 +240,20 @@ export function AviseringPage() {
             <div className="py-16 text-center text-[13px] text-gray-400">Laddar avier...</div>
           ) : notices.length === 0 ? (
             <EmptyState
-              icon={FileText}
-              title="Inga hyresavier"
-              description={`Generera avier för ${MONTHS[month - 1]} ${year} för att komma igång`}
+              icon={searching ? Search : FileText}
+              title={searching ? 'Inga avier matchar sökningen' : 'Inga hyresavier'}
+              description={
+                searching
+                  ? `Ingen avi hittades för "${debouncedSearch.trim()}". Prova ett annat namn, OCR- eller avinummer.`
+                  : `Generera avier för ${MONTHS[month - 1]} ${year} för att komma igång`
+              }
               action={
-                <Button variant="primary" onClick={() => setGenerateOpen(true)}>
-                  <Plus size={14} strokeWidth={2} />
-                  Generera avier
-                </Button>
+                searching ? undefined : (
+                  <Button variant="primary" onClick={() => setGenerateOpen(true)}>
+                    <Plus size={14} strokeWidth={2} />
+                    Generera avier
+                  </Button>
+                )
               }
             />
           ) : (
@@ -287,8 +333,9 @@ export function AviseringPage() {
                               <CheckCircle2 size={12} strokeWidth={1.8} />
                             </button>
                           )}
-                          <button
-                            title="Ladda ner PDF"
+                          <Button
+                            variant="secondary"
+                            size="xs"
                             disabled={downloadPdf.isPending}
                             onClick={() =>
                               void downloadPdf.mutateAsync({
@@ -296,10 +343,10 @@ export function AviseringPage() {
                                 noticeNumber: notice.noticeNumber,
                               })
                             }
-                            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
                           >
-                            <Download size={12} strokeWidth={1.8} />
-                          </button>
+                            <Download size={13} strokeWidth={1.8} />
+                            PDF
+                          </Button>
                         </div>
                       </td>
                     </motion.tr>
