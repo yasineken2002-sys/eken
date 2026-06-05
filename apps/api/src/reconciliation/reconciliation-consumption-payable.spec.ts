@@ -22,6 +22,7 @@ function notice(over: Record<string, unknown> = {}) {
     status: 'SENT',
     totalAmount: new Decimal(8000), // hyra
     consumptionAmount: new Decimal(240), // förbrukning (IMD)
+    reminderFeeAmount: new Decimal(0), // påminnelseavgift (inkasso PR 2), default 0
     ...over,
   }
 }
@@ -83,5 +84,26 @@ describe('matchTransaction — betalbar total (OCR-match)', () => {
 
     expect(result).toBe(true)
     expect(Number(apply.mock.calls[0][2] as Decimal)).toBe(8000)
+  })
+
+  // Inkasso PR 2: en påmind avi (reminderFeeAmount 60) har en 1510-fordran på
+  // hyra + förbrukning + avgift. Bankavstämningen måste matcha och reglera HELA
+  // summan (8300), annars blir avgiften kvar som ett glapp på 1510.
+  it('påmind avi: betalbar total inkluderar påminnelseavgiften (8300)', async () => {
+    const { service, apply } = makeService(notice({ reminderFeeAmount: new Decimal(60) }))
+
+    const result = await service.matchTransaction(tx(8300) as never, 'org-1')
+
+    expect(result).toBe(true)
+    expect(Number(apply.mock.calls[0][2] as Decimal)).toBe(8300)
+  })
+
+  it('påmind avi: betalning som bara täcker hyra+förbrukning (8240) matchar INTE', async () => {
+    const { service, apply } = makeService(notice({ reminderFeeAmount: new Decimal(60) }))
+
+    const result = await service.matchTransaction(tx(8240) as never, 'org-1')
+
+    expect(result).toBe(false)
+    expect(apply).not.toHaveBeenCalled()
   })
 })

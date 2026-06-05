@@ -214,6 +214,22 @@ export interface SendRentNoticeOptions {
   idempotencyKey?: string
 }
 
+export interface SendRentNoticeReminderOptions {
+  to: string
+  tenantName: string
+  noticeNumber: string
+  ocrNumber: string
+  originalAmount: number
+  feeAmount: number
+  payableTotal: number
+  dueDate: Date | string
+  daysOverdue: number
+  organizationName: string
+  pdfBuffer: Buffer
+  accentColor?: string
+  idempotencyKey?: string
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function formatSek(amount: number): string {
@@ -546,6 +562,51 @@ export class MailService {
       {
         to: opts.to,
         subject: `Påminnelse — faktura ${opts.invoiceNumber} (avgift tillkommer)`,
+        ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
+      },
+    )
+  }
+
+  async sendRentNoticeReminder(opts: SendRentNoticeReminderOptions): Promise<string> {
+    const accent = opts.accentColor ?? '#2563EB'
+    const feeRow =
+      opts.feeAmount > 0
+        ? `<tr><td style="padding:8px 0;color:#6B7280;font-size:13px">Påminnelseavgift</td>
+              <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:600;text-align:right">${formatSek(opts.feeAmount)}</td></tr>`
+        : ''
+    const bodyHtml = `
+      <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px">
+        Vi har inte registrerat någon betalning för hyresavi <strong>${opts.noticeNumber}</strong>
+        som förföll ${formatDateSv(opts.dueDate)}. Vänligen betala snarast — bifogad
+        påminnelse visar beloppet. En påminnelseavgift enligt lag (1981:739) har tillkommit.
+      </p>
+      <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:20px 24px;margin:24px 0">
+        <table style="width:100%;border-collapse:collapse">
+          <tr><td style="padding:8px 0;color:#6B7280;font-size:13px">Ursprungligt belopp</td>
+              <td style="padding:8px 0;color:#111827;font-size:14px;text-align:right">${formatSek(opts.originalAmount)}</td></tr>
+          ${feeRow}
+          <tr><td style="padding:8px 0;color:#111827;font-size:14px;font-weight:700;border-top:1px solid #E5E7EB">Att betala nu</td>
+              <td style="padding:8px 0;color:#111827;font-size:15px;font-weight:700;text-align:right;border-top:1px solid #E5E7EB">${formatSek(opts.payableTotal)}</td></tr>
+          <tr><td style="padding:8px 0;color:#6B7280;font-size:13px">OCR-nummer</td>
+              <td style="padding:8px 0;text-align:right">
+                <span style="font-family:monospace;font-weight:700;color:${accent};background:#EFF6FF;padding:6px 12px;border-radius:6px;letter-spacing:0.06em">${opts.ocrNumber}</span>
+              </td></tr>
+        </table>
+      </div>`
+    return this.enqueueTyped(
+      'custom',
+      'normal',
+      {
+        preview: `Påminnelse: hyresavi ${opts.noticeNumber} — ${formatSek(opts.payableTotal)} att betala`,
+        tenantName: opts.tenantName,
+        organizationName: opts.organizationName,
+        bodyHtml,
+        whyReceived: 'Du får detta mail eftersom en hyresavi hos oss är obetald och förfallen.',
+      },
+      {
+        to: opts.to,
+        subject: `Betalningspåminnelse — hyresavi ${opts.noticeNumber}`,
+        attachments: [{ filename: `paminnelse-${opts.noticeNumber}.pdf`, content: opts.pdfBuffer }],
         ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
       },
     )

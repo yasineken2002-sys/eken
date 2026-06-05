@@ -279,3 +279,45 @@ längre. Förverkande/uppsägning/avhysning byggs aldrig.
   (`rentNotice.findFirst({ where: { id, organizationId } })`) innan events
   returneras — annars cross-tenant-läsrisk via ett läckt `rentNoticeId`
   (security-auditor, LOW). Skriv ett isolationstest (org A ↛ org B:s logg).
+
+---
+
+## Inkasso · PR 2 — hyrespåminnelse (dag 7, momsfri avgift bokförd 1510/3593)
+
+**Lagrum:** lag (1981:739) om ersättning för inkassokostnader (påminnelseavgift,
+momsfri); BFL 1999:1078 (verifikat + append-only spår).
+
+### Beslut
+
+1. **Delad bokföringskärna.** `AccountingService.bookReminderFee` (via
+   `createNumberedEntry`) bokför 1510 D / 3593 K och används av BÅDE
+   faktura-flödet (`PaymentReminderService`) och hyresavi-flödet
+   (`RentReminderService`). Momsfri: slår bara upp 1510/3593, rör aldrig 26xx.
+
+2. **INV-A atomisk på hyresvägen.** `escalateNoticeToReminded` kör claim
+   (NONE→REMINDED + `reminderFeeAmount`) + `bookReminderFee(tx)` +
+   `RentNoticeEvent` i SAMMA `$transaction`. Bokföring misslyckas → throw →
+   hela transaktionen rullas tillbaka. Idempotent via race-säker `updateMany`-
+   claim + `source=RENT_NOTICE, sourceId=reminder-fee:{id}`.
+
+3. **Avgiften ingår i betalbar total.** `RentNotice.reminderFeeAmount` (default 0)
+   adderas i `rentNoticePayableTotal` + samtliga FEM payable-beräkningar i
+   bankavstämningen (OCR, referens, fuzzy, manuell, kandidatfilter) — så
+   1510-fordran och avins OCR-belopp är konsistenta (bokföringsexpert HIGH,
+   åtgärdad: fuzzy + manuell saknade avgiften initialt).
+
+4. **PDF-formkrav.** Påminnelse-PDF visar fordringsägarens namn + adress (lag
+   1981:739 5 §) och bankgiro endast om det finns (aldrig `0000-0000`)
+   (hyresjurist HIGH + MEDIUM, åtgärdade).
+
+### Öppna följdpunkter (backlog, ej i PR 2)
+
+- **Faktura-flödets svagare INV-A.** `PaymentReminderService.sendFormalReminder`
+  lägger fakturarad + total i en transaktion men anropar `bookReminderFee`
+  EFTER den (utanför) → om bokföringen fallerar finns avgiftsraden kvar utan
+  verifikat. Hyresvägen är atomisk; faktura-vägen bör hårdnas likadant
+  (bokföringsexpert LOW). **Städnings-PR.**
+- **Lagra påminnelse-PDF.** PDF:en genereras, bifogas mejlet och kastas. Lägg
+  `RentNotice.reminderPdfStorageKey` + ladda upp till `StorageService` så
+  dokumentkopian kan rekonstrueras inför inkassoöverlämning (hyresjurist LOW).
+  **Inför PR 4.**

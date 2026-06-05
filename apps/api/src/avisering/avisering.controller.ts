@@ -15,6 +15,7 @@ import {
 import type { FastifyReply } from 'fastify'
 import { AviseringService } from './avisering.service'
 import { AviseringScheduler } from './avisering.scheduler'
+import { RentNoticeEventsService } from './rent-notice-events.service'
 import { GenerateNoticesDto } from './dto/generate-notices.dto'
 import { SendNoticesDto } from './dto/send-notices.dto'
 import { MarkPaidDto } from './dto/mark-paid.dto'
@@ -30,6 +31,7 @@ export class AviseringController {
   constructor(
     private readonly aviseringService: AviseringService,
     private readonly scheduler: AviseringScheduler,
+    private readonly rentNoticeEvents: RentNoticeEventsService,
   ) {}
 
   @Post('generate')
@@ -108,6 +110,13 @@ export class AviseringController {
       .header('Content-Type', 'application/pdf')
       .header('Content-Disposition', `attachment; filename="hyresavi.pdf"`)
       .send(buffer)
+  }
+
+  // Krav-/leveranstidslinje för en avi. Org-verifieras i servicen (avin måste
+  // tillhöra organisationen innan händelser returneras).
+  @Get(':id/events')
+  async events(@OrgId() orgId: string, @Param('id') id: string) {
+    return this.rentNoticeEvents.getTimeline(id, orgId)
   }
 
   @Get(':id')

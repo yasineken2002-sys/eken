@@ -5,10 +5,13 @@ import { NotificationsService } from './notifications.service'
 import { NotificationsController } from './notifications.controller'
 import { PaymentReminderService } from './payment-reminder.service'
 import { MonthlyReportService } from './monthly-report.service'
-import { VerifikationsnummerModule } from '../accounting/verifikationsnummer.module'
+import { AccountingModule } from '../accounting/accounting.module'
 
 @Module({
-  imports: [PrismaModule, MailModule, VerifikationsnummerModule],
+  // AccountingModule ger PaymentReminderService den delade bookReminderFee
+  // (och re-exporterar VerifikationsnummerModule). Ingen cykel: AccountingModule
+  // importerar inte NotificationsModule.
+  imports: [PrismaModule, MailModule, AccountingModule],
   controllers: [NotificationsController],
   providers: [NotificationsService, PaymentReminderService, MonthlyReportService],
   exports: [NotificationsService, PaymentReminderService],

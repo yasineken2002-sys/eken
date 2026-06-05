@@ -104,6 +104,10 @@ enum JournalEntrySource {
   INVOICE
   PAYMENT
   LEASE
+  // Hyresavins egna verifikat (inkasso-serien). Påminnelseavgift på en
+  // hyresavi bokförs med source=RENT_NOTICE, sourceId='reminder-fee:{id}' →
+  // egen idempotensnyckel skild från faktura-flödets INVOICE-serie.
+  RENT_NOTICE
 }
 
 // ─── Invoice Event Types ──────────────────────────────────────────────────────
@@ -2086,6 +2090,14 @@ model RentNotice {
   remindedAt        DateTime?
   collectionReadyAt DateTime?
   writtenOffAt      DateTime?
+
+  // Påminnelseavgift (inkasso PR 2). Default 0 → ingen påverkan på icke-påminda
+  // avier. Sätts ATOMISKT med påminnelseavgiftens verifikat (1510 D / 3593 K) när
+  // avin eskaleras till REMINDED. Hålls SKILD från totalAmount (hyran, som styr
+  // hyresverifikatet) och consumptionAmount (IMD) — men ingår i den betalbara
+  // totalen/OCR (rentNoticePayableTotal) så att fordran på 1510 och det avin
+  // kräver in är konsistenta. Momsfri (avgiften är en påföljd, inte omsättning).
+  reminderFeeAmount Decimal @default(0) @db.Decimal(10, 2)
 
   // Bokföringslagen (1999:1078): hyresavier är räkenskapsinformation, bevaras 7 år.
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
