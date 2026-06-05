@@ -96,8 +96,27 @@ const COMMON_ACCOUNTS: BasAccountSeed[] = [
   { number: 6310, name: 'Företagsförsäkring', type: 'EXPENSE' },
   { number: 6420, name: 'Revisionsarvoden', type: 'EXPENSE' },
   { number: 6530, name: 'Redovisningstjänster', type: 'EXPENSE' },
+  // Kundförlust på skuld-sidan (inkasso-serien). En obetald hyresfordran skrivs
+  // ned i två steg: befarad förlust bokförs mot 1515 (Osäkra kundfordringar,
+  // redan seedat ovan), och när förlusten är konstaterad bokförs den slutligt
+  // mot 6352. Kostnadskonto (6-serien). Posteras först i inkasso PR 5 — seedas
+  // här så kontoplanen är komplett när skuld-flödet byggs.
+  // OBS — medveten avvikelse från BAS 2024-konventionen: i officiell BAS är
+  // 6351 = konstaterad och 6352 = befarad kundförlust. Eveno-standarden är
+  // omvänd (1515 = befarad fordran, 6352 = konstaterad förlust) per fastställd
+  // bokföringsregel (docs/legal/46). Ändra inte utan ny redovisningsbedömning.
+  { number: 6352, name: 'Konstaterade förluster på kundfordringar', type: 'EXPENSE' },
   { number: 7010, name: 'Löner till tjänstemän', type: 'EXPENSE' },
   { number: 7510, name: 'Lagstadgade sociala avgifter', type: 'EXPENSE' },
+  // ── Finansiella intäkter (inkasso-serien: dröjsmålsränta) ──────────────────
+  // Dröjsmålsränta på obetald hyra är en FINANSIELL intäkt — den får aldrig
+  // blandas med påminnelseavgiften (3593, rörelseintäkt). Enligt fastställd
+  // konteringsregel bokförs dröjsmålsräntan mot 8131. 8313 (BAS standardkonto
+  // för ränteintäkter på kundfordringar) seedas parallellt; vilket av 8131/8313
+  // som PR 3 faktiskt posterar mot bekräftas av redovisningskonsult (se
+  // DESIGN_DECISIONS + docs/legal/46). Båda är ofarliga i PR 1 — inget bokförs.
+  { number: 8131, name: 'Dröjsmålsränta, kundfordringar', type: 'REVENUE' },
+  { number: 8313, name: 'Ränteintäkter från kundfordringar', type: 'REVENUE' },
   { number: 8410, name: 'Räntekostnader (lån)', type: 'EXPENSE' },
 ]
 

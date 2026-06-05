@@ -221,6 +221,43 @@ enum RentNoticeType {
   DEPOSIT
 }
 
+// Kravtrappa (inkasso-serien). HELT SKILD från betalnings-statusen ovan: en avi
+// är OVERDUE i `status` (obetald, förfallen) men eskalerar separat genom
+// kravtrappan här. Det gör att en avi kan bli PAID (status) mitt i trappan utan
+// att vi tappar spåret av var den var. Steg:
+//   NONE          → ingen åtgärd vidtagen (default)
+//   REMINDED      → påminnelse utskickad + avgift bokförd (PR 2)
+//   INKASSO_READY → fullständig dokumentation finns, redo för externt
+//                   inkassobolag (PR 4). Eveno går ALDRIG längre än hit —
+//                   förverkande/uppsägning/avhysning är hyresvärdens egen process.
+//   WRITTEN_OFF   → konstaterad kundförlust bokförd 1515→6352 (PR 5)
+// PR 1 introducerar bara fältet (default NONE) — inget läser eller eskalerar det än.
+enum RentCollectionStage {
+  NONE
+  REMINDED
+  INKASSO_READY
+  WRITTEN_OFF
+}
+
+// Append-only händelselogg för hyresavins krav-/leveransspår. Speglar
+// InvoiceEventType. Detta är råmaterialet som gör ett ärende "inkasso-ready":
+// utskickslogg, leveransstatus, betalningshändelser, påminnelse, ränta. PR 1
+// definierar typerna; de skrivs först i PR 2–5.
+enum RentNoticeEventType {
+  CREATED
+  SENT
+  SEND_FAILED
+  EMAIL_DELIVERED
+  EMAIL_BOUNCED
+  PAYMENT_RECEIVED
+  OVERDUE
+  REMINDER_SENT
+  INTEREST_ACCRUED
+  COLLECTION_READY
+  WRITTEN_OFF
+  NOTE_ADDED
+}
+
 // Betalningssätt vid manuell betalningsregistrering av en hyresavi
 // (markAsPaid). Styr vilket BAS-tillgångskonto som debiteras när
 // kundfordran (1510) regleras:
@@ -470,6 +507,17 @@ model Organization {
   reminderFormalDay      Int     @default(14) // dagar efter förfall för formell påminnelse
   reminderCollectionDay  Int     @default(30) // dagar efter förfall innan markering "redo för inkasso"
   collectionAgencyName   String? // fritext: namn på fastighetsägarens valda inkassobolag
+
+  // ── Hyres-specifik kravtrappa (inkasso-serien) ────────────────────────────
+  // SKILD från reminderFormalDay/reminderCollectionDay ovan, som styr det äldre
+  // faktura-flödet (dag 14/30). Juristens fastställda regel för HYRA är en egen
+  // tidslinje och får aldrig hårdkodas — den är konfigurerbar per fastighetsägare:
+  //   • rentReminderDay = dagar efter förfallodag innan påminnelse skickas (dag 7).
+  //   • rentInkassoDaysAfterReminder = dagar efter påminnelsen innan ärendet blir
+  //     inkasso-ready (14). Avgiften återanvänder reminderFeeSek (60 kr, momsfri).
+  // Läses av PR 2 (påminnelse) resp. PR 4 (inkasso-ready). PR 1 sätter bara default.
+  rentReminderDay              Int @default(7)
+  rentInkassoDaysAfterReminder Int @default(14)
 
   // Platform / SaaS-fält
   // subscriptionPlan styr maxObjects + AI-anropstak; status styr åtkomst.
@@ -1610,6 +1658,29 @@ model InvoiceNumberSequence {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 }
 
+// Riksbankens referensränta (räntelagen 1975:635 9 §), fastställd HALVÅRSVIS
+// (gäller 1 jan / 1 jul). Dröjsmålsräntan på obetald hyra är referensränta +
+// 8 procentenheter (räntelagen 6 §). Referensräntan får ALDRIG hårdkodas i
+// beräkningslogiken — den lever som data här och läses utifrån vilket datum
+// dröjsmålet avser (PR 3). Plattformsglobal (nationell ränta, INTE org-scopad,
+// ingen organizationId-kolumn, ingen tenant-data). En rad per halvår; PR 1
+// seedar gällande värde men INGEN kod läser tabellen än. Append-historik:
+// gamla rader raderas aldrig — historiska dröjsmål ska kunna räknas om mot den
+// ränta som gällde då. ratePercent kan vara negativ (referensräntan har
+// historiskt varit < 0).
+model ReferenceInterestRate {
+  id            String   @id @default(uuid())
+  // Gäller fr.o.m. detta datum t.o.m. nästa rads effectiveFrom (halvårsskifte).
+  effectiveFrom DateTime @db.Date
+  ratePercent   Decimal  @db.Decimal(5, 2)
+  // Revisorsspår: var värdet kommer ifrån, t.ex. "Riksbanken, beslut 2025-12".
+  source        String?
+  createdAt     DateTime @default(now())
+
+  @@unique([effectiveFrom])
+  @@index([effectiveFrom])
+}
+
 // ─── AI Assistant ─────────────────────────────────────────────────────────────
 
 model AiConversation {
@@ -2004,12 +2075,25 @@ model RentNotice {
   // verifikat (PR 3), inte här. Default 0. Rader i RentNoticeLine (PR 4).
   consumptionAmount Decimal @default(0) @db.Decimal(10, 2)
 
+  // ── Kravtrappa (inkasso-serien) ─────────────────────────────────────────
+  // Additiva fält — RentNotice bär redan stora delar av "inkasso-ready"-datan
+  // (dueDate, sentAt/sentTo/sendError = leveransstatus, bankTransactions =
+  // betalningshistorik, PDF-spår). Detta lägger till själva kravtrappan.
+  // collectionStage default NONE → befintlig avi-generering påverkas inte.
+  // Tidsstämplarna sätts av respektive PR (remindedAt PR 2, collectionReadyAt
+  // PR 4, writtenOffAt PR 5). PR 1 skriver ingen av dem.
+  collectionStage   RentCollectionStage @default(NONE)
+  remindedAt        DateTime?
+  collectionReadyAt DateTime?
+  writtenOffAt      DateTime?
+
   // Bokföringslagen (1999:1078): hyresavier är räkenskapsinformation, bevaras 7 år.
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   tenant           Tenant            @relation(fields: [tenantId], references: [id])
   lease            Lease             @relation(fields: [leaseId], references: [id])
   bankTransactions BankTransaction[]
   lines            RentNoticeLine[]
+  events           RentNoticeEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2028,6 +2112,8 @@ model RentNotice {
   @@index([status])
   @@index([dueDate])
   @@index([leaseId])
+  // Kravtrappa-jobben (PR 2–5) filtrerar avier per steg per org.
+  @@index([organizationId, collectionStage])
 }
 
 // Radpost på en hyresavi. Idag bär RentNotice bara ett samlat amount; denna
@@ -2053,6 +2139,39 @@ model RentNoticeLine {
   consumptionCharge ConsumptionCharge? @relation(fields: [consumptionChargeId], references: [id])
 
   @@index([rentNoticeId])
+}
+
+// Append-only krav-/leveranslogg för en hyresavi. Speglar InvoiceEvent: ingen
+// updatedAt, Restrict mot avin → revisionsspåret kan aldrig raderas (BFL
+// 1999:1078, append-only-principen 5 kap 5 §). Detta är dokumentationsstommen
+// för "inkasso-ready": varje utskick, leveranskvittens, betalning, påminnelse,
+// ränteackumulering och kravbeslut loggas här. PR 1 skapar tabellen; PR 2–5
+// skriver händelser. Org-scopas via rentNotice.organizationId (ingen egen
+// organizationId-kolumn behövs — avin äger relationen).
+model RentNoticeEvent {
+  id           String              @id @default(uuid())
+  rentNoticeId String
+  type         RentNoticeEventType
+
+  // Aktör — vem/vad som utlöste händelsen (samma enum som InvoiceEvent).
+  actorType  EventActorType
+  actorId    String? // userId eller null för system/webhook
+  actorLabel String? // Denormaliserat: "Anna Svensson" / "System" / "Resend"
+
+  // Händelsespecifik data per typ, t.ex.
+  //   { feeOre, journalEntryId } för REMINDER_SENT
+  //   { throughDate, ratePercent, interestOre, journalEntryId } för INTEREST_ACCRUED
+  //   { provider, messageId } för EMAIL_DELIVERED/BOUNCED
+  payload Json @default("{}")
+
+  // Immutabilitetsgaranti: ingen updatedAt.
+  createdAt DateTime @default(now())
+
+  rentNotice RentNotice @relation(fields: [rentNoticeId], references: [id], onDelete: Restrict)
+
+  @@index([rentNoticeId, createdAt])
+  @@index([rentNoticeId, type])
+  @@index([createdAt])
 }
 
 // ─── Inspection (Besiktning) ──────────────────────────────────────────────────

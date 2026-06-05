@@ -196,6 +196,26 @@ export class NotificationsService implements OnModuleInit {
     this.logger.log(`Marked ${result.count} invoices as OVERDUE`)
   }
 
+  // Inkasso PR 1 — förfalloövervakning för hyresavier. Speglar
+  // markOverdueInvoices: en utskickad (SENT), obetald avi vars dueDate passerat
+  // flippas till OVERDUE. PENGANEUTRALT — ingen påminnelse, ingen avgift, ingen
+  // krona rörs (det börjar i PR 2). Endast SENT eskaleras: en avi som aldrig
+  // nått hyresgästen (PENDING/FAILED) startar ingen kravtrappa. Kravtrappan
+  // (collectionStage) berörs inte här — den ligger kvar på NONE tills PR 2.
+  //
+  // Bulk-updateMany utan org-loop är tenant-säkert: varje rad flippas enbart på
+  // sin EGEN dueDate, ingen organisations data läses eller korsas. PAID/CANCELLED
+  // rörs aldrig (filtret kräver status = SENT).
+  @Cron(CronExpression.EVERY_DAY_AT_9AM)
+  async markOverdueRentNotices(): Promise<void> {
+    const now = new Date()
+    const result = await this.prisma.rentNotice.updateMany({
+      where: { status: 'SENT', dueDate: { lt: now } },
+      data: { status: 'OVERDUE' },
+    })
+    this.logger.log(`Marked ${result.count} rent notices as OVERDUE`)
+  }
+
   async sendOverdueRemindersForOrg(organizationId: string): Promise<void> {
     const invoices: InvoiceWithRelations[] = await this.prisma.invoice.findMany({
       where: { organizationId, status: 'OVERDUE' },
