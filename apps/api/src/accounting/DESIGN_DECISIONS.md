@@ -207,3 +207,75 @@ andra halva fattades.
   i stället för `@eken/shared` (gäller hela avisering-featuren) — tech-debt.
 - **Invariantkontroll:** schemalagd avstämning som larmar om 1510-saldo per avi
   avviker från summan av tillhörande verifikat.
+
+---
+
+## Inkasso · PR 1 — kontoplan + referensränta + kravtrappa + förfalloövervakning
+
+**Lagrum (hänvisning, fastställt av jurist/bokföringsexpert — se
+`docs/legal/46`):** lag (1981:739) om ersättning för inkassokostnader
+(påminnelseavgift), räntelagen (1975:635) 6 § + 9 § (dröjsmålsränta =
+referensränta + 8 pp, halvårsvis fastställd referensränta), BFL (1999:1078)
+(räkenskapsinformation + append-only spår).
+
+**Avgränsning:** Eveno bygger skuld-sidan fram till "inkasso-ready" och inte
+längre. Förverkande/uppsägning/avhysning byggs aldrig.
+
+### Två invarianter som hela serien gjuts kring
+
+- **INV‑A — ingen avgift/ränta utan verifikat.** En påminnelseavgift (PR 2)
+  eller dröjsmålsränta (PR 3) markeras som uttagen i SAMMA transaktion som sitt
+  verifikat skapas. PR 1 inför inget av detta — men lägger kontona som
+  posteringen kräver.
+- **INV‑B — inget ärende blir inkasso-ready utan komplett dokumentation.**
+  Övergången till `INKASSO_READY` (PR 4) grindas på fullständig dokumentation.
+  PR 1 inför `RentNoticeEvent` (append-only) som är dokumentationsstommen.
+
+### Beslut (PR 1)
+
+1. **Tre nya konton, seedade + backfillade, men oposterade.** `6352`
+   (Konstaterade förluster på kundfordringar, EXPENSE), `8131` (Dröjsmålsränta,
+   kundfordringar, REVENUE) och `8313` (Ränteintäkter från kundfordringar,
+   REVENUE) läggs i `bas-chart.ts` och backfillas idempotent för alla 138 orgs
+   med seedad kontoplan (samma mönster som FIX 9 PR 1). Gamla konton raderas
+   aldrig (BFL 7 kap 2 §). PR 1 bokför ingenting.
+
+2. **8131 vs 8313 lämnas öppen för revisor.** Fastställd regel säger 8131 för
+   dröjsmålsränta; BAS standardkonto är 8313. Båda seedas — vilket PR 3 posterar
+   mot bekräftas av revisor (`docs/legal/46`, fråga 2). Ofarligt i PR 1.
+
+3. **Referensräntan är data, aldrig kod.** Ny plattformsglobal tabell
+   `ReferenceInterestRate` (nationell ränta, INGEN org-scoping, ingen
+   tenant-data). En rad seedas (gäller fr.o.m. 2026-01-01) med **preliminärt**
+   värde och en `source` som flaggar att det ska verifieras mot Riksbankens
+   publicering INNAN PR 3 läser tabellen. Ingen kod läser den i PR 1.
+
+4. **Kravtrappan är skild från betalnings-statusen.** `RentNotice.collectionStage`
+   (`NONE → REMINDED → INKASSO_READY → WRITTEN_OFF`, default `NONE`) lever vid
+   sidan av `status` (`…/OVERDUE/PAID/…`). En avi kan alltså bli PAID mitt i
+   trappan utan att spåret tappas. Tidsstämplar (`remindedAt`,
+   `collectionReadyAt`, `writtenOffAt`) är additiva och nullbara; respektive PR
+   sätter sin. PR 1 skriver ingen — befintlig avi-generering är opåverkad.
+
+5. **Förfalloövervakning är penganeutral och tenant-säker.**
+   `markOverdueRentNotices` (daglig cron) speglar `markOverdueInvoices`: bulk
+   `updateMany` flippar SENT + förfallen → OVERDUE. Endast SENT eskaleras (en
+   avi som aldrig nått hyresgästen startar ingen kravtrappa). Bulk-updaten är
+   tenant-säker — varje rad flippas enbart på sin egen `dueDate`, ingen orgs
+   data läses eller korsas. `collectionStage` rörs inte här.
+
+### Öppna följdpunkter (ej i PR 1)
+
+- **Momsåterkrav vid kundförlust på lokalhyra** — öppen revisorfråga
+  (`docs/legal/46`, fråga 1). Avgör konteringen i PR 5; spikas inte i kod förrän
+  besvarad.
+- **OVERDUE som händelse i loggen.** PR 1:s bulk-cron skriver ingen
+  `RentNoticeEvent` (kan inte per rad i en `updateMany`). PR 2 loggar
+  kravhändelserna när trappan aktiveras.
+- **Verifiera gällande referensränta** mot Riksbankens publicering innan PR 3.
+- **RentNoticeEvent-queries måste org-verifieras (PR 2).** Loggen scopas via
+  `rentNotice.organizationId` (ingen egen kolumn, som InvoiceEvent). Varje
+  läsväg i PR 2–5 MÅSTE först verifiera ägarskap på avin
+  (`rentNotice.findFirst({ where: { id, organizationId } })`) innan events
+  returneras — annars cross-tenant-läsrisk via ett läckt `rentNoticeId`
+  (security-auditor, LOW). Skriv ett isolationstest (org A ↛ org B:s logg).
