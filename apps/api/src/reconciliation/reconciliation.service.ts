@@ -547,7 +547,9 @@ export class ReconciliationService {
       // 1510-reglering sker mot den. Hyresverifikatet (hyra) + förbruknings-
       // verifikatet (PR 3) summerar till exakt denna fordran på 1510.
       if (notice) {
-        const payable = notice.totalAmount.plus(notice.consumptionAmount)
+        const payable = notice.totalAmount
+          .plus(notice.consumptionAmount)
+          .plus(notice.reminderFeeAmount)
         if (payable.minus(transaction.amount).abs().lte(tolerance)) {
           const matched = await this.applyMatchToRentNotice(
             transaction.id,
@@ -601,7 +603,9 @@ export class ReconciliationService {
         },
       })
       if (notice) {
-        const payable = notice.totalAmount.plus(notice.consumptionAmount)
+        const payable = notice.totalAmount
+          .plus(notice.consumptionAmount)
+          .plus(notice.reminderFeeAmount)
         if (payable.minus(transaction.amount).abs().lte(tolerance)) {
           const matched = await this.applyMatchToRentNotice(
             transaction.id,
@@ -644,9 +648,15 @@ export class ReconciliationService {
     const invMatches = invCandidates.filter((inv) =>
       inv.total.minus(transaction.amount).abs().lte(tolerance),
     )
-    // Betalbar total = hyra + förbrukning (IMD). Hyresgästen betalar EN summa.
+    // Betalbar total = hyra + förbrukning (IMD) + påminnelseavgift (PR 2).
+    // Hyresgästen betalar EN summa.
     const noticeMatches = noticeCandidates.filter((n) =>
-      n.totalAmount.plus(n.consumptionAmount).minus(transaction.amount).abs().lte(tolerance),
+      n.totalAmount
+        .plus(n.consumptionAmount)
+        .plus(n.reminderFeeAmount)
+        .minus(transaction.amount)
+        .abs()
+        .lte(tolerance),
     )
 
     if (invMatches.length + noticeMatches.length !== 1) return false
@@ -695,9 +705,12 @@ export class ReconciliationService {
 
     if (noticeMatches[0]) {
       const candidate = noticeMatches[0]
-      // Betalbar total reglerar hela 1510-fordran (hyresverifikat + förbruknings-
-      // verifikat). paidAmount och betalningsverifikatet ska avse hela summan.
-      const payable = candidate.totalAmount.plus(candidate.consumptionAmount)
+      // Betalbar total reglerar hela 1510-fordran (hyres- + förbruknings- +
+      // påminnelseverifikat). paidAmount och betalningsverifikatet ska avse hela
+      // summan — annars blir t.ex. en påmind avis 60 kr-avgift kvar på 1510.
+      const payable = candidate.totalAmount
+        .plus(candidate.consumptionAmount)
+        .plus(candidate.reminderFeeAmount)
       const claim = await db.rentNotice.updateMany({
         where: { id: candidate.id, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } },
         data: {
@@ -1009,8 +1022,11 @@ export class ReconciliationService {
         where: { id: target.rentNoticeId, organizationId },
       })
       if (!notice) throw new NotFoundException('Hyresavi hittades inte')
-      // Betalbar total = hyra + förbrukning (IMD). Reglerar hela 1510-fordran.
-      const payable = notice.totalAmount.plus(notice.consumptionAmount)
+      // Betalbar total = hyra + förbrukning (IMD) + påminnelseavgift (PR 2).
+      // Reglerar hela 1510-fordran.
+      const payable = notice.totalAmount
+        .plus(notice.consumptionAmount)
+        .plus(notice.reminderFeeAmount)
       const matched = await this.applyMatchToRentNotice(
         transactionId,
         target.rentNoticeId,

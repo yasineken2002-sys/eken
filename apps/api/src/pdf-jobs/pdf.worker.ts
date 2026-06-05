@@ -4,6 +4,7 @@ import { ModuleRef } from '@nestjs/core'
 import type { Job } from 'bull'
 import { type PdfJobPayload, QUEUE_PDF } from './pdf.types'
 import { AviseringService } from '../avisering/avisering.service'
+import { RentReminderService } from '../avisering/rent-reminder.service'
 import { CollectionExportService } from '../collections/collection-export.service'
 import { InvoicesService } from '../invoices/invoices.service'
 import { PlatformInvoicesService } from '../platform/invoices/platform-invoices.service'
@@ -37,6 +38,11 @@ export class PdfWorker {
       case 'avisering-send': {
         const svc = this.moduleRef.get(AviseringService, { strict: false })
         await svc.processNoticeSendJob(data.organizationId, data.noticeId)
+        break
+      }
+      case 'avisering-reminder': {
+        const svc = this.moduleRef.get(RentReminderService, { strict: false })
+        await svc.processReminderSendJob(data.organizationId, data.noticeId)
         break
       }
       case 'collections-export': {

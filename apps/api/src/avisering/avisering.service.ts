@@ -33,7 +33,7 @@ type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
   }
 }>
 
-async function getLogoDataUrl(
+export async function getLogoDataUrl(
   storage: StorageService,
   logoStorageKey: string | null,
 ): Promise<string | null> {

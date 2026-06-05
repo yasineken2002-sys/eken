@@ -9,6 +9,8 @@ import { ConsumptionModule } from '../consumption/consumption.module'
 import { AviseringController } from './avisering.controller'
 import { AviseringService } from './avisering.service'
 import { AviseringScheduler } from './avisering.scheduler'
+import { RentReminderService } from './rent-reminder.service'
+import { RentNoticeEventsService } from './rent-notice-events.service'
 
 @Module({
   imports: [
@@ -21,7 +23,9 @@ import { AviseringScheduler } from './avisering.scheduler'
     ConsumptionModule,
   ],
   controllers: [AviseringController],
-  providers: [AviseringService, AviseringScheduler],
-  exports: [AviseringService],
+  providers: [AviseringService, AviseringScheduler, RentReminderService, RentNoticeEventsService],
+  // RentReminderService exporteras så PdfWorker (kind 'avisering-reminder') kan
+  // resolva den via ModuleRef, precis som AviseringService.
+  exports: [AviseringService, RentReminderService],
 })
 export class AviseringModule {}

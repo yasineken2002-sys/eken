@@ -211,6 +211,67 @@ export class AccountingService {
     return params.tx ? run(params.tx) : this.prisma.$transaction(run)
   }
 
+  /**
+   * Bokför en påminnelseavgift: 1510 D / 3593 K. DELAD kärna för BÅDE
+   * faktura-flödet (PaymentReminderService) och hyresavi-flödet (RentReminder-
+   * Service, inkasso PR 2) — ingen bokföringslogik byggs på annat håll.
+   *
+   * Momsfri: avgiften är en lagstadgad påföljd (lag 1981:739), inte omsättning
+   * — den får ALDRIG moms, oavsett om underliggande hyra var bostad (0 %) eller
+   * lokal (25 %). 3593 är ett momsfritt intäktskonto; inget 26xx-momskonto rörs.
+   *
+   * Idempotent + gap-free via createNumberedEntry (unikt index (org, source,
+   * sourceId)). En `tx` kan skickas in så att källans avgiftsmarkering och detta
+   * verifikat skapas ATOMISKT (INV-A: ingen avgift utan verifikat — faller
+   * verifikatet rullas hela transaktionen, inkl. markeringen, tillbaka).
+   *
+   * Returnerar verifikatet, eller null om avgiften ≤ 0 eller om 1510/3593 saknas
+   * i kontoplanen (loggas) — anroparen avgör då om eskaleringen ska avbrytas.
+   */
+  async bookReminderFee(params: {
+    organizationId: string
+    source: JournalEntrySource
+    sourceId: string
+    fee: number
+    description: string
+    createdById?: string | null
+    tx?: Prisma.TransactionClient
+  }): Promise<{ id: string } | null> {
+    const { organizationId, source, sourceId, fee, description } = params
+    if (!Number.isFinite(fee) || fee <= 0) return null
+
+    const db = params.tx ?? this.prisma
+    const accounts = await db.account.findMany({
+      where: { organizationId, number: { in: [1510, 3593] } },
+      select: { id: true, number: true },
+    })
+    const byNumber = new Map(accounts.map((a) => [a.number, a.id]))
+    const receivableId = byNumber.get(1510)
+    const reminderRevenueId = byNumber.get(3593)
+    if (!receivableId || !reminderRevenueId) {
+      this.logger.warn(
+        `Saknar konto 1510 eller 3593 för organisation ${organizationId} — ` +
+          `påminnelseavgift (${source} ${sourceId}) bokfördes inte`,
+      )
+      return null
+    }
+
+    return this.createNumberedEntry({
+      organizationId,
+      date: new Date(),
+      description,
+      source,
+      sourceId,
+      createdById: params.createdById ?? null,
+      lines: [
+        { accountId: receivableId, debit: fee, description: 'Påminnelseavgift fordran' },
+        { accountId: reminderRevenueId, credit: fee, description: 'Påminnelseintäkt (momsfri)' },
+      ],
+      idempotencyWhere: { organizationId, source, sourceId },
+      ...(params.tx ? { tx: params.tx } : {}),
+    })
+  }
+
   async getAccounts(organizationId: string) {
     return this.prisma.account.findMany({
       where: { organizationId },

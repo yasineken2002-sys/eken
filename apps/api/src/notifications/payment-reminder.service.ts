@@ -5,7 +5,7 @@ import type { PaymentReminderType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 import { NotificationsService } from './notifications.service'
-import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
+import { AccountingService } from '../accounting/accounting.service'
 
 interface ProcessSummary {
   friendlySent: number
@@ -23,7 +23,7 @@ export class PaymentReminderService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
-    private readonly verifikationsnummer: VerifikationsnummerService,
+    private readonly accounting: AccountingService,
   ) {}
 
   /**
@@ -362,58 +362,20 @@ export class PaymentReminderService {
       .catch(() => undefined)
   }
 
+  // Bokför påminnelseavgiften via den DELADE kärnan i AccountingService — samma
+  // 1510 D / 3593 K, samma idempotens (source=INVOICE, sourceId=reminder-fee:{id}),
+  // som hyresavi-flödet använder. Ingen egen bokföringslogik längre här.
   private async bookReminderFee(
     invoiceId: string,
     organizationId: string,
     fee: number,
   ): Promise<void> {
-    if (fee <= 0) return
-    const accounts = await this.prisma.account.findMany({
-      where: { organizationId, number: { in: [1510, 3593] } },
-      select: { id: true, number: true },
-    })
-    const byNumber = new Map(accounts.map((a) => [a.number, a.id]))
-    const receivableId = byNumber.get(1510)
-    const reminderRevenueId = byNumber.get(3593)
-    if (!receivableId || !reminderRevenueId) {
-      this.logger.warn(
-        `Saknar konto 1510 eller 3593 för organisation ${organizationId} — påminnelseavgift bokfördes inte`,
-      )
-      return
-    }
-    // Gap-free verifikationsnummer + idempotens i en transaktion. Det unika
-    // indexet på (org, source, sourceId) hindrar dubbelbokning även vid
-    // samtidiga körningar; här kontrolleras det dessutom in-transaktion.
-    const sourceId = `reminder-fee:${invoiceId}`
-    await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.journalEntry.findFirst({
-        where: { organizationId, source: 'INVOICE', sourceId },
-      })
-      if (existing) return
-      const date = new Date()
-      const { series, verNumber, fiscalYear } = await this.verifikationsnummer.allocate(
-        tx,
-        organizationId,
-        date,
-      )
-      await tx.journalEntry.create({
-        data: {
-          organizationId,
-          date,
-          description: `Påminnelseavgift faktura ${invoiceId}`,
-          source: 'INVOICE',
-          sourceId,
-          series,
-          verNumber,
-          fiscalYear,
-          lines: {
-            create: [
-              { accountId: receivableId, debit: fee, description: 'Påminnelseavgift fordran' },
-              { accountId: reminderRevenueId, credit: fee, description: 'Påminnelseintäkt' },
-            ],
-          },
-        },
-      })
+    await this.accounting.bookReminderFee({
+      organizationId,
+      source: 'INVOICE',
+      sourceId: `reminder-fee:${invoiceId}`,
+      fee,
+      description: `Påminnelseavgift faktura ${invoiceId}`,
     })
   }
 }

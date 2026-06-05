@@ -14,6 +14,7 @@ export const QUEUE_PDF = 'pdf'
  */
 export type PdfJobPayload =
   | { kind: 'avisering-send'; organizationId: string; noticeId: string }
+  | { kind: 'avisering-reminder'; organizationId: string; noticeId: string }
   | { kind: 'collections-export'; organizationId: string; invoiceId: string }
   | { kind: 'collections-bulk-export'; organizationId: string; invoiceIds: string[] }
   | { kind: 'invoice-send'; organizationId: string; invoiceId: string; actorId: string }
