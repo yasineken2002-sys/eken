@@ -15,7 +15,13 @@ import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { ConsumptionService } from '../consumption/consumption.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
-import { PaymentMethod, Prisma, RentNoticeStatus, RentNoticeType } from '@prisma/client'
+import {
+  PaymentMethod,
+  Prisma,
+  RentCollectionStage,
+  RentNoticeStatus,
+  RentNoticeType,
+} from '@prisma/client'
 import type { UnitType } from '@prisma/client'
 import type { RentNotice } from '@prisma/client'
 import {
@@ -1159,6 +1165,12 @@ export class AviseringService {
         paidAt: paymentDate,
         paidAmount,
         paymentMethod,
+        // Bankavstämnings-härdning PR 2 — hängslen-och-livrem: en reglerad avi
+        // lämnar kravtrappan. collectionStage nollställs ATOMISKT med PAID-claimen
+        // (samma status-guardade updateMany → idempotent: körs en gång). Även om
+        // export-grinden skulle missas finns ingen kvarvarande INKASSO_READY på en
+        // betald avi. Ingen bokföring rörs (ren statusmarkering).
+        collectionStage: RentCollectionStage.NONE,
       },
     })
     if (claim.count === 0) {
@@ -1216,7 +1228,9 @@ export class AviseringService {
             )
           })
       }
-      // Återställ avin till obetald så att den kan regleras på nytt.
+      // Återställ avin till obetald så att den kan regleras på nytt. collectionStage
+      // återställs till sitt tidigare värde (PR 2) så en ångrad betalning inte
+      // lämnar en inkasso-redo avi felaktigt nollställd.
       await this.prisma.rentNotice
         .updateMany({
           where: { id: noticeId, organizationId: orgId, status: RentNoticeStatus.PAID },
@@ -1225,6 +1239,7 @@ export class AviseringService {
             paidAt: null,
             paidAmount: null,
             paymentMethod: null,
+            collectionStage: notice.collectionStage,
           },
         })
         .catch((revertErr) => {
@@ -1234,6 +1249,32 @@ export class AviseringService {
           )
         })
       throw err
+    }
+
+    // Bankavstämnings-härdning PR 2 — append-only trail för kravstegs-nollställningen
+    // (endast om avin faktiskt var i kravtrappan). Skrivs efter lyckad bokning så
+    // noteringen aldrig avser en revertad betalning. Ingen bokföring rörs.
+    if (notice.collectionStage !== RentCollectionStage.NONE) {
+      await this.prisma.rentNoticeEvent
+        .create({
+          data: {
+            rentNoticeId: noticeId,
+            type: 'NOTE_ADDED',
+            actorType: createdById ? 'USER' : 'SYSTEM',
+            ...(createdById ? { actorId: createdById } : { actorLabel: 'System' }),
+            payload: {
+              action: 'collection-stage-reset',
+              from: notice.collectionStage,
+              reason: 'paid',
+            },
+          },
+        })
+        .catch((trailErr) => {
+          this.logger.error(
+            `[Avisering] Kunde inte skriva kravstegs-trail för avi ${notice.noticeNumber}: ` +
+              `${trailErr instanceof Error ? trailErr.message : String(trailErr)}`,
+          )
+        })
     }
 
     return this.prisma.rentNotice.findFirst({
@@ -1250,10 +1291,44 @@ export class AviseringService {
       throw new BadRequestException('Kan inte avbryta en betald avi')
     }
 
-    return this.prisma.rentNotice.update({
-      where: { id: noticeId },
-      data: { status: RentNoticeStatus.CANCELLED },
+    // Bankavstämnings-härdning PR 2 — en avbruten avi lämnar kravtrappan: nollställ
+    // collectionStage till NONE ATOMISKT (samma anti-zombie-princip som PAID-vägarna).
+    // updateMany med organizationId i WHERE org-scopar uppdateringen (defense-in-depth
+    // mot ett läckt noticeId) i stället för update på enbart id.
+    const cancelled = await this.prisma.rentNotice.updateMany({
+      where: { id: noticeId, organizationId: orgId, status: { not: RentNoticeStatus.PAID } },
+      data: { status: RentNoticeStatus.CANCELLED, collectionStage: RentCollectionStage.NONE },
     })
+    if (cancelled.count === 0) {
+      // En parallell process hann reglera avin mellan läsning och uppdatering.
+      throw new ConflictException('Avin är redan reglerad — uppdatera sidan och försök igen')
+    }
+
+    // Append-only trail för kravstegs-nollställningen (endast om avin var i trappan).
+    if (notice.collectionStage !== RentCollectionStage.NONE) {
+      await this.prisma.rentNoticeEvent
+        .create({
+          data: {
+            rentNoticeId: noticeId,
+            type: 'NOTE_ADDED',
+            actorType: 'SYSTEM',
+            actorLabel: 'System',
+            payload: {
+              action: 'collection-stage-reset',
+              from: notice.collectionStage,
+              reason: 'cancelled',
+            },
+          },
+        })
+        .catch((trailErr) => {
+          this.logger.error(
+            `[Avisering] Kunde inte skriva kravstegs-trail (avbruten) för avi ${notice.noticeNumber}: ` +
+              `${trailErr instanceof Error ? trailErr.message : String(trailErr)}`,
+          )
+        })
+    }
+
+    return this.prisma.rentNotice.findFirst({ where: { id: noticeId, organizationId: orgId } })
   }
 
   async checkAndMarkOverdue(orgId: string) {

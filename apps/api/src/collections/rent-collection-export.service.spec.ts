@@ -22,8 +22,10 @@ import { Decimal } from '@prisma/client/runtime/library'
 function completeNotice(over: Record<string, unknown> = {}) {
   return {
     id: 'rn-1',
+    organizationId: 'org-1',
     noticeNumber: 'AVI-2026-07-0001',
     ocrNumber: '1234567890',
+    status: 'OVERDUE',
     collectionStage: 'INKASSO_READY',
     dueDate: new Date('2026-06-01'),
     sentAt: new Date('2026-06-02'),
@@ -83,15 +85,24 @@ function completeNotice(over: Record<string, unknown> = {}) {
   }
 }
 
-function makeService(opts: { notice?: Record<string, unknown> | null } = {}) {
+function makeService(
+  opts: {
+    notice?: Record<string, unknown> | null
+    // PR 2 — export-grindens skuldkontroll. Default: skuld kvar, ingen ny betalning.
+    outstanding?: number
+    newerPayment?: { id: string } | null
+  } = {},
+) {
   const notice = opts.notice === undefined ? completeNotice() : opts.notice
   const txEventCreate = jest.fn().mockResolvedValue({})
   const tx = { rentNoticeEvent: { create: txEventCreate } }
   const update = jest.fn().mockResolvedValue({})
   const eventCreate = jest.fn().mockResolvedValue({})
+  const paymentFindFirst = jest.fn().mockResolvedValue(opts.newerPayment ?? null)
   const prisma = {
     rentNotice: { findFirst: jest.fn().mockResolvedValue(notice), update },
     rentNoticeEvent: { create: eventCreate },
+    rentNoticePayment: { findFirst: paymentFindFirst },
     $transaction: jest.fn().mockImplementation((cb: (t: typeof tx) => unknown) => cb(tx)),
   }
   const pdf = { generateFromHtml: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4 underlag')) }
@@ -99,13 +110,37 @@ function makeService(opts: { notice?: Record<string, unknown> | null } = {}) {
   const getFileBuffer = jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4 paminnelse'))
   const storage = { uploadFile, getFileBuffer }
   const pdfQueue = { enqueue: jest.fn().mockResolvedValue('job-1') }
+  // PR 2 — RentDebtService: default returnerar en utestående total-residual > 0
+  // så grindens skuldkontroll släpper igenom om inget annat anges.
+  const outstanding = jest.fn().mockResolvedValue({
+    capital: 8500,
+    consumption: 0,
+    reminderFee: 60,
+    interest: 123.45,
+    claim: 8683.45,
+    paid: 0,
+    outstanding: opts.outstanding ?? 8683.45,
+  })
+  const rentDebt = { outstanding }
   const service = new RentCollectionExportService(
     prisma as never,
     pdf as never,
     storage as never,
     pdfQueue as never,
+    rentDebt as never,
   )
-  return { service, prisma, update, eventCreate, txEventCreate, pdf, uploadFile, getFileBuffer }
+  return {
+    service,
+    prisma,
+    update,
+    eventCreate,
+    txEventCreate,
+    pdf,
+    uploadFile,
+    getFileBuffer,
+    outstanding,
+    paymentFindFirst,
+  }
 }
 
 // Plockar ut CSV-texten ur uploadFile-anropet (mime text/csv).
@@ -286,5 +321,98 @@ describe('exportBulk', () => {
       completeNotice({ collectionStage: 'REMINDED', noticeNumber: 'AVI-X' }),
     )
     await expect(service.exportBulk(['rn-x'], 'org-1')).rejects.toThrow(/inte inkasso-redo/)
+  })
+})
+
+// ── Bankavstämnings-härdning PR 2 · INV-D — exportgrinden på FAKTISK skuld ──────
+describe('PR2 · export-grind (INV-D): faktisk skuld, inte collectionStage', () => {
+  it('ZOMBIE: betald avi som ligger kvar INKASSO_READY kan ALDRIG exporteras', async () => {
+    const { service, uploadFile, outstanding } = makeService({
+      notice: completeNotice({ status: 'PAID', collectionStage: 'INKASSO_READY' }),
+    })
+    await expect(service.exportForNotice('rn-1', 'org-1')).rejects.toThrow(/betald/i)
+    // Inget inkasso-artefakt producerat (ingen PDF/CSV uppladdad).
+    expect(uploadFile).not.toHaveBeenCalled()
+    // Status-grinden fäller före ens skuldfrågan ställs.
+    expect(outstanding).not.toHaveBeenCalled()
+  })
+
+  it('REGLERAD: outstanding = 0 → export vägras (ingen utestående skuld)', async () => {
+    const { service, uploadFile } = makeService({ outstanding: 0 })
+    await expect(service.exportForNotice('rn-1', 'org-1')).rejects.toThrow(/ingen utestående skuld/)
+    expect(uploadFile).not.toHaveBeenCalled()
+  })
+
+  it('NY BETALNING efter inkasso-redo → export vägras (måste granskas på nytt)', async () => {
+    const { service, uploadFile, paymentFindFirst } = makeService({
+      outstanding: 4000, // delbetalning: skuld kvar MEN en ny betalning har inkommit
+      newerPayment: { id: 'rnp-late' },
+    })
+    await expect(service.exportForNotice('rn-1', 'org-1')).rejects.toThrow(
+      /betalning registrerad efter/,
+    )
+    expect(uploadFile).not.toHaveBeenCalled()
+    // Payment-frågan filtrerar på avin + createdAt > collectionReadyAt.
+    const where = paymentFindFirst.mock.calls[0]![0].where
+    expect(where.rentNoticeId).toBe('rn-1')
+    expect(where.createdAt.gt).toEqual(new Date('2026-06-22'))
+  })
+
+  it('TOTAL-RESIDUAL inkl. ränta: bara ränta kvar (outstanding > 0) → export TILLÅTS', async () => {
+    const { service, uploadFile, outstanding } = makeService({ outstanding: 123.45 })
+    const res = await service.exportForNotice('rn-1', 'org-1')
+    expect(res.noticeId).toBe('rn-1')
+    expect(uploadFile).toHaveBeenCalledTimes(2) // PDF + CSV producerade
+    // Skuldfrågan org-scopas på avins organizationId.
+    expect(outstanding).toHaveBeenCalledWith('rn-1', 'org-1')
+  })
+
+  it('bulk: en enda reglerad avi fäller hela bulken med konkret skäl', async () => {
+    const { service, uploadFile } = makeService({ outstanding: 0 })
+    await expect(service.exportBulk(['rn-1'], 'org-1')).rejects.toThrow(/Kan inte exportera/)
+    expect(uploadFile).not.toHaveBeenCalled()
+  })
+
+  it('listReady filtrerar bort reglerade/zombie — listar bara faktiskt exporterbara', async () => {
+    const txEventCreate = jest.fn()
+    const tx = { rentNoticeEvent: { create: txEventCreate } }
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'rn-skuld',
+        noticeNumber: 'AVI-1',
+        status: 'OVERDUE',
+        collectionReadyAt: new Date('2026-06-22'),
+      },
+      {
+        id: 'rn-reglerad',
+        noticeNumber: 'AVI-2',
+        status: 'OVERDUE',
+        collectionReadyAt: new Date('2026-06-22'),
+      },
+    ])
+    const paymentFindFirst = jest.fn().mockResolvedValue(null)
+    const prisma = {
+      rentNotice: { findMany },
+      rentNoticePayment: { findFirst: paymentFindFirst },
+      $transaction: jest.fn().mockImplementation((cb: (t: typeof tx) => unknown) => cb(tx)),
+    }
+    // rn-skuld har skuld kvar, rn-reglerad är betald (outstanding 0).
+    const outstanding = jest
+      .fn()
+      .mockImplementation((id: string) =>
+        Promise.resolve({ outstanding: id === 'rn-skuld' ? 5000 : 0 }),
+      )
+    const service = new RentCollectionExportService(
+      prisma as never,
+      { generateFromHtml: jest.fn() } as never,
+      { uploadFile: jest.fn(), getFileBuffer: jest.fn() } as never,
+      { enqueue: jest.fn() } as never,
+      { outstanding } as never,
+    )
+
+    const list = (await service.listReady('org-1')) as Array<{ id: string }>
+    expect(list.map((n) => n.id)).toEqual(['rn-skuld'])
+    // DB-förfiltret exkluderar PAID/CANCELLED redan i WHERE.
+    expect(findMany.mock.calls[0]![0].where.status).toEqual({ notIn: ['PAID', 'CANCELLED'] })
   })
 })
