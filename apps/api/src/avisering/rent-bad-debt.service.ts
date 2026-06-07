@@ -10,6 +10,7 @@ import { Prisma, RentNoticeType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
+import { RentDebtService } from './rent-debt.service'
 
 interface BadDebtSummary {
   reclassified: number
@@ -71,6 +72,9 @@ export class RentBadDebtService {
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
     private readonly rentNoticeEvents: RentNoticeEventsService,
+    // Bankavstämnings-härdning PR 3a — nedskrivningsbeloppet läses från den
+    // allokeringsderiverade sanningskällan i stället för paidAmount-cachen.
+    private readonly rentDebt: RentDebtService,
   ) {}
 
   /**
@@ -159,7 +163,13 @@ export class RentBadDebtService {
     // Idempotent: redan befarad → no-op.
     if (notice.probableLossAt) return { booked: false }
 
-    const amount = this.outstanding(notice)
+    // PR 3a — nedskrivningsbeloppet = hela 1510-fordran INKL. ränta (outstanding,
+    // inte ocrOutstanding). Läses från den allokeringsderivade sanningskällan i
+    // stället för paidAmount-cachen; beloppet är oförändrat eftersom invarianten
+    // Σ allokeringar == paidAmount håller (PR 1). Ersätter den tidigare privata
+    // outstanding()-hjälparen (en sanningskälla, eliminerar namnkrocken).
+    const debt = await this.rentDebt.outstanding(noticeId, organizationId)
+    const amount = debt.outstanding
     if (amount <= 0) {
       throw new ConflictException(
         `Avi ${notice.noticeNumber} har ingen utestående fordran att skriva ned`,
@@ -334,26 +344,10 @@ export class RentBadDebtService {
     }
   }
 
-  // Hela den utestående 1510-fordran för avin (momsfri): kapital + förbrukning +
-  // påminnelseavgift + dröjsmålsränta, minus ev. registrerad delbetalning. Alla
-  // dessa poster debiterades 1510 av sina respektive verifikat (hyresaccrual,
-  // förbruknings-, påminnelse-, ränteverifikat) och krediterades vid betalning.
-  //
-  // Detta är den KANONISKA fordran på avin (samma summa som rentNoticePayableTotal
-  // + ränta) och används överallt: OCR, portal, bankavstämning. Den är dessutom mer
-  // komplett än en per-avi-ledger-query: förbruknings-verifikatet nycklas på
-  // charge-id och bankbetalningar på transaktions-id — ingetdera är avi-scopat i
-  // sourceId, så de går inte att summera per avi ur huvudboken. Fältsumman
-  // förutsätter att verifikatkedjan är komplett, vilket gäller en INKASSO_READY-avi
-  // (alla steg har körts). En ledger-rekonciliering av 1510-saldot per avi är en
-  // noterad följdpunkt (kräver charge-/betalnings-attribuering).
-  private outstanding(notice: BadDebtNotice): number {
-    return round2(
-      Number(notice.totalAmount) +
-        Number(notice.consumptionAmount) +
-        Number(notice.reminderFeeAmount) +
-        Number(notice.interestAccruedAmount) -
-        Number(notice.paidAmount ?? 0),
-    )
-  }
+  // PR 3a — den tidigare privata outstanding()-hjälparen (fältsumma mot paidAmount-
+  // cachen) är BORTTAGEN. Nedskrivningsbeloppet läses nu från RentDebtService
+  // (allokeringsderiverad, en sanningskälla) i reclassifyToProbableLoss. Det är den
+  // KANONISKA 1510-fordran inkl. ränta; beloppet är oförändrat eftersom invarianten
+  // Σ allokeringar == paidAmount håller (PR 1). En ledger-rekonciliering av 1510-
+  // saldot per avi (charge-/betalnings-attribuering) kvarstår som noterad följdpunkt.
 }

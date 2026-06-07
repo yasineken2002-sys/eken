@@ -36,6 +36,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       claim: 10_000,
       paid: 0,
       outstanding: 10_000,
+      ocrOutstanding: 10_000,
     })
   })
 
@@ -131,6 +132,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       claim: 0,
       paid: 0,
       outstanding: 0,
+      ocrOutstanding: 0,
     })
   })
 
@@ -147,6 +149,90 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
     expect(d.paid).toBe(1_311.5)
     expect(d.claim).toBe(-1) // 1310,50 − 1311,50
     expect(d.outstanding).toBe(0)
+  })
+})
+
+describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
+  it('obetald: ocrOutstanding = kapital+förbrukning+avgift (exkl. ränta)', () => {
+    const d = computeRentDebt({
+      type: RENT,
+      totalAmount: 7_000,
+      consumptionAmount: 240,
+      reminderFeeAmount: 60,
+      interestAccruedAmount: 140,
+      allocations: [],
+    })
+    expect(d.ocrOutstanding).toBe(7_300) // ränta (140) ingår INTE
+    expect(d.outstanding).toBe(7_440) // total inkl. ränta
+  })
+
+  it('delbetalning minskar OCR-delen: residual = OCR − betalt', () => {
+    const d = computeRentDebt({
+      type: RENT,
+      totalAmount: 7_000,
+      consumptionAmount: 0,
+      reminderFeeAmount: 60,
+      interestAccruedAmount: 140,
+      allocations: [5_000],
+    })
+    expect(d.ocrOutstanding).toBe(2_060) // 7060 OCR − 5000
+    expect(d.outstanding).toBe(2_200) // 7200 total − 5000
+  })
+
+  it('REN RESTRÄNTA (D1-bevis): OCR fullbetalt → ocrOutstanding 0, men outstanding > 0', () => {
+    const d = computeRentDebt({
+      type: RENT,
+      totalAmount: 7_000,
+      consumptionAmount: 0,
+      reminderFeeAmount: 60,
+      interestAccruedAmount: 140,
+      allocations: [7_060], // hela OCR-delen betald, räntan kvar
+    })
+    expect(d.ocrOutstanding).toBe(0) // ingen framdrift av kravtrappan
+    expect(d.outstanding).toBe(140) // men 140 kr ränta ingår i nedskrivning
+  })
+
+  it('överbetalning av OCR: ocrOutstanding klampas till 0', () => {
+    const d = computeRentDebt({
+      type: RENT,
+      totalAmount: 7_000,
+      consumptionAmount: 0,
+      reminderFeeAmount: 0,
+      interestAccruedAmount: 0,
+      allocations: [7_500],
+    })
+    expect(d.ocrOutstanding).toBe(0)
+  })
+
+  it('DEPOSIT → ocrOutstanding 0', () => {
+    const d = computeRentDebt({
+      type: DEPOSIT,
+      totalAmount: 12_000,
+      consumptionAmount: 0,
+      reminderFeeAmount: 0,
+      interestAccruedAmount: 0,
+      allocations: [],
+    })
+    expect(d.ocrOutstanding).toBe(0)
+  })
+
+  it('öre-paritet: separata round2 (ocr vs total) ger ingen avdrift vid decimalbrygga', () => {
+    // Allokering med 3 decimaler (kan ej uppstå ur DB:s Decimal(10,2), men beräkningen
+    // ska vara robust). Bekräftar att ocrOutstanding inte kompounderar avrundning.
+    const d = computeRentDebt({
+      type: RENT,
+      totalAmount: new Decimal('6999.995'),
+      consumptionAmount: 0,
+      reminderFeeAmount: 0,
+      interestAccruedAmount: new Decimal('100.005'),
+      allocations: [new Decimal('3000.005')],
+    })
+    // ocrGross 6999,995 − 3000,005 = 3999,99 (round2)
+    expect(d.ocrOutstanding).toBe(3999.99)
+    // total 7100 − 3000,005 = 4099,995 → round2 4100,00 (eller −0,01-grannskap)
+    expect(d.outstanding).toBeCloseTo(4100, 2)
+    // ocrOutstanding får aldrig överstiga outstanding (OCR ⊆ total).
+    expect(d.ocrOutstanding).toBeLessThanOrEqual(d.outstanding)
   })
 })
 

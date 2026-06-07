@@ -40,6 +40,8 @@ function makeService(
     probableEntry?: { lines: Array<{ debit?: number; credit?: number }> } | null
     reclassReturnsNull?: boolean
     writeOffReturnsNull?: boolean
+    // PR 3a — nedskrivningsbeloppet (total inkl. ränta) som RentDebtService returnerar.
+    outstanding?: number
   } = {},
 ) {
   const tx = {
@@ -70,12 +72,27 @@ function makeService(
       .mockResolvedValue(opts.writeOffReturnsNull ? null : { id: 'je-konstaterad' }),
   }
   const rentNoticeEvents = { record: jest.fn().mockResolvedValue({ id: 'ev-1' }) }
+  // PR 3a — nedskrivningsbeloppet läses från RentDebtService. Default = 8500
+  // (8000 hyra + 300 förbrukning + 60 avgift + 140 ränta), oförändrat mot den
+  // borttagna privata outstanding()-hjälparen (Σ alloc == paidAmount-invarianten).
+  const outstanding = jest.fn().mockResolvedValue({
+    capital: 8000,
+    consumption: 300,
+    reminderFee: 60,
+    interest: 140,
+    claim: opts.outstanding ?? 8500,
+    paid: 0,
+    outstanding: opts.outstanding ?? 8500,
+    ocrOutstanding: Math.max(0, (opts.outstanding ?? 8500) - 140),
+  })
+  const rentDebt = { outstanding }
   const service = new RentBadDebtService(
     prisma as never,
     accounting as never,
     rentNoticeEvents as never,
+    rentDebt as never,
   )
-  return { service, prisma, tx, accounting, rentNoticeEvents }
+  return { service, prisma, tx, accounting, rentNoticeEvents, outstanding }
 }
 
 describe('reclassifyToProbableLoss (befarad)', () => {
@@ -106,6 +123,33 @@ describe('reclassifyToProbableLoss (befarad)', () => {
       amount: 8500,
       journalEntryId: 'je-befarad',
     })
+  })
+
+  it('PR3a: nedskrivningsbeloppet läses org-scopat från RentDebtService (oförändrat)', async () => {
+    const { service, accounting, outstanding } = makeService()
+    await service.reclassifyToProbableLoss('rn-1', 'org-1', 'user-1')
+    // Skuld läses från sanningskällan, inte paidAmount-cachen.
+    expect(outstanding).toHaveBeenCalledWith('rn-1', 'org-1')
+    // Beloppet (8500) är identiskt med den borttagna privata outstanding()-formeln.
+    expect(accounting.bookBadDebtReclassification.mock.calls[0]![0].amount).toBe(8500)
+  })
+
+  it('PR3a (D1-bevis): ren restränta INGÅR i nedskrivningsbeloppet (till skillnad från framdrift)', async () => {
+    // OCR fullbetalt, bara 140 kr ränta kvar (outstanding=140). Nedskrivning bokför
+    // räntan — den är en del av 1510-fordran — medan kravtrappans FRAMDRIFT (REMINDED/
+    // INKASSO_READY) gatar på ocrOutstanding och skulle ha stoppat samma avi.
+    const { service, accounting } = makeService({ outstanding: 140 })
+    const res = await service.reclassifyToProbableLoss('rn-1', 'org-1', 'user-1')
+    expect(res).toEqual({ booked: true })
+    expect(accounting.bookBadDebtReclassification.mock.calls[0]![0].amount).toBe(140)
+  })
+
+  it('PR3a: outstanding=0 → ConflictException, inget att skriva ned', async () => {
+    const { service, tx } = makeService({ outstanding: 0 })
+    await expect(service.reclassifyToProbableLoss('rn-1', 'org-1', 'u')).rejects.toThrow(
+      /ingen utestående fordran/,
+    )
+    expect(tx.rentNotice.updateMany).not.toHaveBeenCalled()
   })
 
   it('LOKALHYRA (vatAmount>0) VÄGRAS — momsåterkrav öppen revisorfråga', async () => {
