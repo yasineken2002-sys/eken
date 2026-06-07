@@ -499,3 +499,77 @@ ingen statusövergång, ingen export, ingen bokföring. Stänger två gap mot
 - **GDPR-strategi för `*Event.payload`-PII** (pseudonymisering vid radering, både
   RentNoticeEvent och InvoiceEvent) — separat systemärende (security-auditor LOW).
 - **Webhook rate-limit/IP-allowlist** för Resend-callbacken — separat ärende.
+
+## Inkasso · PR 4b — inkasso-ready-grind (INV-B) + slutkristallisering + read-only export
+
+**Karaktär:** Steg 2 (kravtrappans sista övergång REMINDED→INKASSO_READY, med en
+slutlig räntekristallisering) + steg 3 (read-only export-paket till externt
+inkassobolag). Bygger på 4b₀:s infrastruktur.
+
+### Steg 2 — INKASSO_READY-grind + slutkristallisering
+
+1. **INV-B-grind före flippen (`checkInkassoReadiness`).** Övergången VÄGRAS
+   (`ConflictException`, ingen flip) om något i underlaget saknas: avin utskickad
+   (`sentAt`), lagrad påminnelse-PDF (4b₀), verifierad leverans (`EMAIL_DELIVERED`,
+   ej `EMAIL_BOUNCED`), utskickslogg (`SENT`), komplett gäldenär (person-/orgnr +
+   adress) OCH fordringsägare (orgnr + adress), samt utestående OCR-reglerbar skuld.
+   Den saknade delen loggas append-only (`NOTE_ADDED`, `action: inkasso-ready-blocked`)
+   innan undantaget. Cronen (`escalateRemindedToInkassoReady`, kl 11:00) räknar en
+   grind-blockad avi som `blocked` (warn), inte fel — den omprövas nästa dygn.
+2. **Race-säker claim.** `updateMany` på (OVERDUE, stage=REMINDED) speglar
+   `escalateNoticeToReminded`; `claim.count === 0` ⇒ `flipped:false`. Redan
+   INKASSO_READY/WRITTEN_OFF ⇒ idempotent no-op (ingen omgrindning, ingen ombokning).
+
+3. **Slutkristallisering i SEPARAT transaktion — medvetet val (bokföringsexpert HIGH).**
+   `crystallizeInterest(noticeId, orgId, now)` körs FÖRE flipp-transaktionen, i sin
+   EGNA transaktion. Den är INV-A-säker internt (ränta + verifikat 1510/8131 atomiskt,
+   idempotent delta via `sourceId='interest:{id}:{YYYY-MM-DD}'`, kastar vid saknat
+   konto ⇒ ingen flip utan bokförd slutränta). Att nästla den i flipp-transaktionen
+   är inte möjligt — `crystallizeInterest` öppnar själv `prisma.$transaction` och
+   Postgres saknar nästlade interaktiva transaktioner. **Konsekvens:** misslyckas
+   flipp-transaktionen EFTER en lyckad kristallisering är ränteverifikatet committat
+   men avin kvar i REMINDED i upp till ett dygn. Detta är **inte** ett BFL-brott:
+   verifikatet är spårbart via sourceId till avinumret, nästa cron hittar delta=0
+   (ingen dubbelbokföring) och konvergerar avin till INKASSO_READY. En revisor som
+   avstämmer 1510 inom fönstret kan se ett ränteöverskott som inte ännu speglas i
+   avistatus — accepterat och dokumenterat här.
+
+### Steg 3 — read-only export (INV-C)
+
+4. **`RentCollectionExportService` speglar `CollectionExportService` men är
+   RentNotice-baserad** (egen data, egna CSV-kolumner, egen PDF-mall). Återanvänder
+   INTE den faktura-baserade tjänsten. Nya pdf-kinds `rent-collections-export` /
+   `rent-collections-bulk-export` i `PdfQueue`/`PdfWorker`.
+5. **INV-C: penganeutral.** Exporten skapar INGEN `JournalEntry`, ingen
+   statusövergång, ingen kontering — bara PDF+CSV (single) / ZIP (bulk, med den
+   lagrade påminnelse-PDF:en bifogad per avi) och en append-only `NOTE_ADDED`-notering.
+   Räntan i underlaget tas från avins bokförda `interestAccruedAmount` (auktoritativ
+   total) med per-halvår-segmenten ur senaste `INTEREST_ACCRUED`-event — aldrig ett
+   dagviktat snitt. `total_skuld = kapital + påminnelseavgift + dröjsmålsränta`.
+6. **Tenant-isolation.** Varje läsväg (`loadNotice`) verifierar `organizationId` i
+   `findFirst` INNAN avins egen logg/relationer läses; storage-nycklar org-scopade
+   (`rent-collections/{orgId}/…`).
+
+### Granskningsfynd åtgärdade i PR:en
+
+- **[hyresjurist BLOCKING] PDF-disclaimern** anger nu att inkassobolaget ansvarar för
+  att utfärda formellt inkassokrav (inkassolagen 1974:182 5 §), skiljer 1981:739 från
+  1974:182, och anger att Eveno saknar inkassotillstånd.
+- **[security MEDIUM] HTML-injection** i `partyAddress` (gäldenäradress) escapas nu i
+  inkasso-PDF:en.
+- **[security MEDIUM] CSV formula-injection** neutraliseras i `csvCell` (inledande
+  `=+-@`/tab/CR prefixas med apostrof) — filen öppnas externt i Excel.
+- **[security LOW]** `reminderPdfStorageKey` utelämnas ur COLLECTION_READY-payloaden
+  (en boolean `reminderPdfStored` räcker; nyckeln exponeras annars via events-endpoint).
+- **[security LOW] `@ArrayMaxSize(200)`** på bulk-exportens `noticeIds`.
+
+### Öppna följdpunkter (ej i PR 4b)
+
+- **Manuell godkännandebarriär / cooling-off** före auto-flip (hyresjurist HIGH) —
+  produktbeslut; PR 4b följer den specade cron-drivna auto-flippen (speglar REMINDED).
+- **`actorId` på export-noteringen** (i dag SYSTEM i workern, ingen användarkontext) —
+  spårbarhet vid PII-export; paritet med faktura-flödet (hyresjurist HIGH).
+- **HTML-escaping i `buildReminderPdfHtml` + faktura-`collection-export`** (systemiskt,
+  pre-existing) — separat städ-PR (security MEDIUM).
+- **`EMAIL_DELIVERED` ↔ `reminderMessageId`-korrelation** i grinden (i dag säkert: bara
+  webhooken skriver eventet) — hårdare koppling (hyresjurist MEDIUM).

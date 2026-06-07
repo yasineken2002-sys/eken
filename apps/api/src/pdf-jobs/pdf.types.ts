@@ -17,6 +17,8 @@ export type PdfJobPayload =
   | { kind: 'avisering-reminder'; organizationId: string; noticeId: string }
   | { kind: 'collections-export'; organizationId: string; invoiceId: string }
   | { kind: 'collections-bulk-export'; organizationId: string; invoiceIds: string[] }
+  | { kind: 'rent-collections-export'; organizationId: string; noticeId: string }
+  | { kind: 'rent-collections-bulk-export'; organizationId: string; noticeIds: string[] }
   | { kind: 'invoice-send'; organizationId: string; invoiceId: string; actorId: string }
   | { kind: 'platform-invoice-send'; platformInvoiceId: string }
 

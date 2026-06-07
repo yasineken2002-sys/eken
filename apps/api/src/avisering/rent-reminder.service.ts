@@ -1,6 +1,12 @@
-import { Injectable, Logger, NotFoundException, InternalServerErrorException } from '@nestjs/common'
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  InternalServerErrorException,
+} from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
-import { Prisma, RentNoticeType } from '@prisma/client'
+import { Prisma, RentNoticeType, type RentNoticeEventType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
@@ -18,6 +24,23 @@ interface ReminderSummary {
   skipped: number
   errors: number
 }
+
+interface InkassoReadySummary {
+  ready: number
+  blocked: number
+  skipped: number
+  errors: number
+}
+
+// Avin med precis de relationer INV-B-grinden behöver för att avgöra om
+// dokumentationen är komplett (gäldenär + fordringsägare). Org redan verifierad
+// av anroparen (findFirst på organizationId) innan grinden körs.
+const INKASSO_READY_INCLUDE = {
+  tenant: { select: SAFE_TENANT_SELECT },
+  organization: true,
+} satisfies Prisma.RentNoticeInclude
+
+type InkassoReadyNotice = Prisma.RentNoticeGetPayload<{ include: typeof INKASSO_READY_INCLUDE }>
 
 const REMINDER_NOTICE_INCLUDE = {
   tenant: { select: SAFE_TENANT_SELECT },
@@ -211,6 +234,255 @@ export class RentReminderService {
       )
       return true
     })
+  }
+
+  /**
+   * Inkasso PR 4b — steg 2. Daglig cron (kl 11:00 — efter påminnelse-cronen kl
+   * 10:00) som eskalerar varje REMINDED-hyresavi som passerat
+   * `rentReminderDay + rentInkassoDaysAfterReminder` (default 7+14=21 dagar efter
+   * förfall) till INKASSO_READY — FÖRUTSATT att INV-B-grinden godkänner att
+   * dokumentationen är komplett.
+   *
+   * En grind-blockerad avi (ConflictException) är INTE ett fel: den loggas som
+   * "blocked", får sin avvikelse skriven till loggen, och omprövas nästa dygn
+   * (när t.ex. en sen leveranskvittens hunnit komma). En betalning gör avin PAID
+   * → faller ur urvalet, ärendet dör.
+   */
+  @Cron('0 11 * * *')
+  async escalateRemindedToInkassoReady(): Promise<InkassoReadySummary> {
+    const summary: InkassoReadySummary = { ready: 0, blocked: 0, skipped: 0, errors: 0 }
+
+    const candidates = await this.prisma.rentNotice.findMany({
+      where: {
+        status: 'OVERDUE',
+        type: RentNoticeType.RENT,
+        collectionStage: 'REMINDED',
+        organization: { remindersEnabled: true },
+      },
+      include: {
+        organization: { select: { rentReminderDay: true, rentInkassoDaysAfterReminder: true } },
+      },
+    })
+
+    for (const notice of candidates) {
+      try {
+        const daysOverdue = this.daysSince(notice.dueDate)
+        const threshold =
+          notice.organization.rentReminderDay + notice.organization.rentInkassoDaysAfterReminder
+        if (daysOverdue < threshold) {
+          summary.skipped++
+          continue
+        }
+
+        const res = await this.escalateNoticeToInkassoReady(notice.id, notice.organizationId)
+        if (res.flipped) summary.ready++
+        else summary.skipped++
+      } catch (err) {
+        // INV-B-grinden vägrade — ofullständigt underlag. Inte ett systemfel;
+        // avin omprövas nästa dygn. Avvikelsen är redan loggad i avins egen logg.
+        if (err instanceof ConflictException) {
+          summary.blocked++
+          this.logger.warn(`Inkasso-redo blockerad för avi ${notice.id}: ${err.message}`)
+          continue
+        }
+        summary.errors++
+        this.logger.error(
+          `Inkasso-redo misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
+
+    this.logger.log(
+      `Inkasso-redo: ${summary.ready} klara, ${summary.blocked} blockerade, ${summary.skipped} hoppade över, ${summary.errors} fel`,
+    )
+    return summary
+  }
+
+  /**
+   * Eskalerar EN hyresavi REMINDED → INKASSO_READY (inkasso PR 4b, steg 2).
+   *
+   * INV-B (dokumentationsfullständighet): grinden VÄGRAR övergången
+   * (ConflictException, ingen flip) om något i underlaget saknas — avikopia,
+   * lagrad påminnelse-PDF, verifierad leverans, utskickslogg, komplett gäldenär
+   * eller fordringsägardata, eller utestående skuld. Den saknade delen loggas
+   * append-only innan undantaget kastas, så avvikelsen syns i avins historik.
+   *
+   * Slutkristallisering: precis innan flippen bokförs dröjsmålsräntan en SISTA
+   * gång t.o.m. idag (crystallizeInterest, INV-A internt: ränta + verifikat i
+   * samma transaktion, idempotent delta). Då bär COLLECTION_READY-eventet och
+   * exporten (steg 3) en räntefordran som är beräknad ända fram till
+   * inkassoöverlämningen — inte t.o.m. den tidigare påminnelsedagen.
+   *
+   * Idempotent + race-säker: en updateMany-claim på (OVERDUE, stage=REMINDED)
+   * gör att bara EN körning kan flippa avin; en dubbel cron-fire eller retry ger
+   * claim count=0 → flipped=false utan att skriva ett andra COLLECTION_READY.
+   * Redan INKASSO_READY/WRITTEN_OFF → no-op (ingen omgrindning, ingen ombokning).
+   */
+  async escalateNoticeToInkassoReady(
+    noticeId: string,
+    organizationId: string,
+  ): Promise<{ flipped: boolean; missing?: string[] }> {
+    // Org-verifierad läsning INNAN avins logg/relationer läses (tenant-isolation:
+    // ett läckt noticeId får aldrig exponera en annan organisations underlag).
+    const notice = await this.prisma.rentNotice.findFirst({
+      where: { id: noticeId, organizationId },
+      include: INKASSO_READY_INCLUDE,
+    })
+    if (!notice) throw new NotFoundException('Avi hittades inte')
+
+    // Redan inkasso-redo (eller avskriven) → idempotent no-op.
+    if (notice.collectionStage === 'INKASSO_READY' || notice.collectionStage === 'WRITTEN_OFF') {
+      return { flipped: false }
+    }
+
+    // INV-B-grind. Avins egen logg (org redan verifierad ovan).
+    const events = await this.prisma.rentNoticeEvent.findMany({
+      where: { rentNoticeId: noticeId },
+      select: { type: true },
+    })
+    const missing = this.checkInkassoReadiness(notice, events)
+    if (missing.length > 0) {
+      await this.rentNoticeEvents
+        .record(noticeId, 'NOTE_ADDED', 'SYSTEM', null, {
+          action: 'inkasso-ready-blocked',
+          missing,
+        })
+        .catch(() => undefined)
+      throw new ConflictException(
+        `Avi ${notice.noticeNumber} kan inte göras inkasso-redo — ofullständigt underlag: ${missing.join('; ')}`,
+      )
+    }
+
+    // Slutkristallisera räntan t.o.m. idag. Egen transaktion, INV-A internt.
+    // En räntefri dag (delta 0) ger null. Ett bokföringsfel (saknat 1510/8131)
+    // kastar och fäller eskaleringen — INV-A: ingen inkasso-flip om sluträntans
+    // verifikat inte kunde skapas. Avin omprövas nästa dygn.
+    await this.rentInterest.crystallizeInterest(noticeId, organizationId, new Date())
+
+    const now = new Date()
+    return this.prisma.$transaction(async (tx) => {
+      const claim = await tx.rentNotice.updateMany({
+        where: {
+          id: noticeId,
+          organizationId,
+          status: 'OVERDUE',
+          collectionStage: 'REMINDED',
+        },
+        data: { collectionStage: 'INKASSO_READY', collectionReadyAt: now },
+      })
+      if (claim.count === 0) return { flipped: false }
+
+      // Färsk räntesnapshot EFTER slutkristalliseringen för COLLECTION_READY.
+      const fresh = await tx.rentNotice.findUniqueOrThrow({
+        where: { id: noticeId },
+        select: {
+          dueDate: true,
+          totalAmount: true,
+          consumptionAmount: true,
+          reminderFeeAmount: true,
+          interestAccruedAmount: true,
+          interestAccruedThrough: true,
+          reminderPdfStorageKey: true,
+        },
+      })
+      const capital = Number(fresh.totalAmount) + Number(fresh.consumptionAmount)
+      const totalClaim = round2(
+        capital + Number(fresh.reminderFeeAmount) + Number(fresh.interestAccruedAmount),
+      )
+
+      await this.rentNoticeEvents.record(
+        noticeId,
+        'COLLECTION_READY',
+        'SYSTEM',
+        null,
+        {
+          daysOverdue: this.daysSince(fresh.dueDate),
+          capital,
+          reminderFeeAmount: Number(fresh.reminderFeeAmount),
+          interestAccruedAmount: Number(fresh.interestAccruedAmount),
+          interestAccruedThrough: fresh.interestAccruedThrough
+            ? toYmd(fresh.interestAccruedThrough)
+            : null,
+          totalClaim,
+          // Bara en flagga att kopian finns — INTE själva R2-nyckeln
+          // (säkerhetsgranskning LOW: event-payloaden exponeras via
+          // GET /avisering/:id/events och nyckeln har inget frontend-värde).
+          reminderPdfStored: !!fresh.reminderPdfStorageKey,
+        },
+        { tx },
+      )
+      return { flipped: true }
+    })
+  }
+
+  /**
+   * INV-B-grinden: returnerar en lista över allt som SAKNAS i underlaget för att
+   * avin ska få överlämnas till inkasso. Tom lista = komplett dokumentation.
+   *
+   * Varje post motsvarar ett konkret bevis ett inkassobolag (och ev. en
+   * tingsrätt) förväntar sig: att kravet utfärdats och nått gäldenären, att en
+   * påminnelse skickats och bevisligen levererats (ej studsat), och att både
+   * gäldenär och fordringsägare är fullständigt identifierade. Saknas något är
+   * kravet angripbart — då ska det aldrig exporteras.
+   */
+  private checkInkassoReadiness(
+    notice: InkassoReadyNotice,
+    events: { type: RentNoticeEventType }[],
+  ): string[] {
+    const missing: string[] = []
+    const has = (t: RentNoticeEventType): boolean => events.some((e) => e.type === t)
+
+    // 1. Original-avin utfärdad och utskickad. Avi-PDF:en regenereras on-demand
+    //    ur avins data (getNoticePdfBuffer) — sentAt bevisar att dokumentet
+    //    faktiskt gått till gäldenären, vilket är det grinden behöver verifiera.
+    if (!notice.sentAt) missing.push('avin har inte skickats till hyresgästen (ingen avikopia)')
+
+    // 2. Lagrad påminnelse-PDF (PR 4b₀) — dokumentkopian som följer med i exporten.
+    if (!notice.reminderPdfStorageKey) missing.push('lagrad påminnelse-PDF saknas')
+
+    // 3. Verifierad leverans av påminnelsen (Resend-webhook → EMAIL_DELIVERED).
+    if (!has('EMAIL_DELIVERED')) missing.push('påminnelsens leverans är inte verifierad')
+
+    // 4. …och påminnelsen får inte ha studsat (utebliven/felaktig adress).
+    if (has('EMAIL_BOUNCED')) missing.push('påminnelsen studsade (leverans misslyckades)')
+
+    // 5. Utskickslogg — minst en SENT-händelse i avins historik.
+    if (!has('SENT')) missing.push('utskickslogg (SENT) saknas')
+
+    // 6. Komplett gäldenär: person- ELLER organisationsnummer.
+    const t = notice.tenant
+    if (!t?.personalNumber && !t?.orgNumber) {
+      missing.push('gäldenärens person-/organisationsnummer saknas')
+    }
+
+    // 7. Komplett gäldenäradress.
+    if (!t?.street || !t?.postalCode || !t?.city) {
+      missing.push('gäldenärens adress är ofullständig')
+    }
+
+    // 8. Fordringsägarens (hyresvärdens) organisationsnummer.
+    const o = notice.organization
+    if (!o?.orgNumber) missing.push('fordringsägarens organisationsnummer saknas')
+
+    // 9. Fordringsägarens adress.
+    if (!o?.street || !o?.postalCode || !o?.city) {
+      missing.push('fordringsägarens adress är ofullständig')
+    }
+
+    // 10. Betalningshistorik: det måste finnas en utestående skuld att driva in.
+    //     (En OVERDUE-avi är obetald, men en delbetalning kan ha registrerats —
+    //     överlämna bara om restskulden är positiv.) interestAccruedAmount
+    //     EXKLUDERAS avsiktligt: räntan är en separat fordran (löper kontinuerligt,
+    //     ingår inte i OCR-inbetalbart, jfr rentNoticePayableTotal). Det vi mäter
+    //     här är den OCR-reglerbara delen — är den noll finns inget att driva in.
+    const outstanding =
+      Number(notice.totalAmount) +
+      Number(notice.consumptionAmount) +
+      Number(notice.reminderFeeAmount) -
+      Number(notice.paidAmount ?? 0)
+    if (outstanding <= 0) missing.push('ingen utestående skuld att driva in')
+
+    return missing
   }
 
   /**
@@ -433,4 +705,12 @@ export class RentReminderService {
   </p>
 </body></html>`
   }
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+function toYmd(d: Date): string {
+  return d.toISOString().slice(0, 10)
 }
