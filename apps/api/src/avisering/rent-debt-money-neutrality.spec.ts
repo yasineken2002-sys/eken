@@ -6,15 +6,17 @@
  *
  *   1. RentDebtService rör ALDRIG huvudboken — ingen accounting/JournalEntry-
  *      referens i rent-debt.service.ts (det är ren läsning).
- *   2. outstanding() har EXAKT EN anropare: export-grinden
- *      (collections/rent-collection-export.service.ts, PR 2, INV-D). Den SKA
- *      referera RentDebtService.
- *   3. INGEN cron-/eskalerings-/kravbeslutsväg läser outstanding() — varken via
- *      import av RentDebtService eller .outstanding(-anrop.
+ *   2. outstanding() får läsas av EXAKT denna uppsättning beslutsvägar:
+ *        • export-grinden (collections/rent-collection-export.service.ts, PR 2, INV-D)
+ *        • kravtrappans eskalering (avisering/rent-reminder.service.ts, PR 3a, INV-A)
+ *        • befarad kundförlust (avisering/rent-bad-debt.service.ts, PR 3a, INV-A)
+ *      Var och en SKA referera RentDebtService.
+ *   3. INGEN annan cron/ränta/faktura-export/controller/scheduler läser outstanding()
+ *      — varken via import av RentDebtService eller .outstanding(-anrop.
  *
- * PR 1 satte "noll anropare". PR 2 öppnar grinden för export-vägen (och ENDAST den).
- * En framtida PR som kopplar in outstanding() i ytterligare en grind ska göra det
- * MEDVETET och samtidigt uppdatera detta test — inte råka göra det.
+ * Utveckling: PR 1 satte "noll anropare". PR 2 öppnade export-vägen. PR 3a öppnar de
+ * två eskaleringstjänsterna (och ENDAST dem). En framtida PR som kopplar in
+ * outstanding() i ytterligare en väg ska göra det MEDVETET och uppdatera detta test.
  */
 
 import { readFileSync } from 'fs'
@@ -25,8 +27,8 @@ const read = (rel: string) => readFileSync(join(SRC, rel), 'utf8')
 
 // Enda sättet att nå skuld-läsaren är via symbolen RentDebtService (injiceras +
 // importeras). `.outstanding(` används som defense-in-depth men EXKLUDERAR
-// `this.outstanding(` — rent-bad-debt.service har en EGEN privat outstanding()-
-// hjälpare (namnkrock som föregår serien, orörd).
+// `this.outstanding(` (egna privata namnkrockar). OBS: rent-bad-debts tidigare
+// privata outstanding()-hjälpare är BORTTAGEN i PR 3a (en sanningskälla).
 const FOREIGN_OUTSTANDING = /(?<!this)\.outstanding\s*\(/
 
 describe('Bank-härdning · D — penganeutralitet', () => {
@@ -37,18 +39,22 @@ describe('Bank-härdning · D — penganeutralitet', () => {
     expect(svc).not.toMatch(/createJournalEntry/)
   })
 
-  it('export-grinden ÄR den tillåtna anroparen (PR 2, INV-D)', () => {
-    const gate = read('collections/rent-collection-export.service.ts')
-    expect(gate).toMatch(/RentDebtService/)
-    expect(gate).toMatch(/\.outstanding\s*\(/)
+  // Vägar som FÅR läsa outstanding() — var och en SKA referera RentDebtService.
+  const ALLOWED_READERS = [
+    'collections/rent-collection-export.service.ts', // PR 2 — export-grind (INV-D)
+    'avisering/rent-reminder.service.ts', // PR 3a — eskalering (INV-A)
+    'avisering/rent-bad-debt.service.ts', // PR 3a — befarad kundförlust (INV-A)
+  ]
+
+  it.each(ALLOWED_READERS)('%s ÄR en tillåten skuld-läsare (refererar RentDebtService)', (rel) => {
+    const src = read(rel)
+    expect(src).toMatch(/RentDebtService/)
+    expect(src).toMatch(/\.outstanding\s*\(/)
   })
 
-  // Cron-/eskalerings-/kravbeslutsvägar — ingen av dem får läsa outstanding().
-  // (export-grinden är medvetet UTANFÖR denna lista — den är den tillåtna anroparen.)
+  // Vägar som ALDRIG får läsa skuld — ränta, faktura-export, controllers, scheduler.
   const FORBIDDEN_PATHS = [
     'avisering/avisering.scheduler.ts',
-    'avisering/rent-reminder.service.ts',
-    'avisering/rent-bad-debt.service.ts',
     'avisering/rent-interest.service.ts',
     'collections/collection-export.service.ts',
     'collections/rent-collections.controller.ts',

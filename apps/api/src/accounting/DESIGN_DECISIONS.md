@@ -765,3 +765,58 @@ minimibelopp för export. Ej infört i PR 2 (policy-/produktbeslut).
   (konsumentproportionalitet) — se "medvetet val" ovan.
 - **[sec note] `findUnique` utan org** i `applyMatchToRentNotice` — förbefintligt
   (callers org-verifierar uppströms), samma not som PR 1.
+
+### Bankavstämnings-härdning PR 3a — eskalering på faktisk skuld (INV-A)
+
+**Mål:** kravtrappans övergångar drivs av **faktisk utestående skuld** (allokerings-
+deriverad via `RentDebtService.outstanding()`), inte av status enbart eller `paidAmount`-
+cachen. En delbetald avi eskalerar bara för residualen; en fullt reglerad avi eskalerar
+aldrig. **PENGANEUTRAL grund-PR:** ingen ändrad matchningslogik, inga nya verifikat,
+ingen delbetalnings-bokföring (det är PR 3b). `outstanding()` är ren läsning.
+
+**`ocrOutstanding` (nytt derivat i RentDebtBreakdown):** `max(0, (kapital+förbrukning+
+avgift) − betalt)` — den OCR-reglerbara restskulden, EXKL. ränta. **Waterfall-regeln**
+(en betalning reglerar OCR-delen FÖRE räntan) definieras på ETT ställe (RentDebtService):
+allokeringarna är inte komponent-attribuerade, så `paid` tolkas som att den fyller OCR-
+bucketen först. Konsekvens: betalar man hela OCR-beloppet blir `ocrOutstanding=0` även om
+ränta återstår (`outstanding>0`).
+
+**Explicit ränte-policy per cron (det strukturerade returvärdets syfte):**
+
+| Cron                                             | Grind                        | Ränta?                         |
+| ------------------------------------------------ | ---------------------------- | ------------------------------ |
+| `markOverdueRentNotices` (SENT→OVERDUE)          | oförändrad (status-driven)   | n/a                            |
+| `escalateOverdueRentNotices` (→REMINDED)         | `ocrOutstanding > 0`         | **exkl.**                      |
+| `escalateRemindedToInkassoReady` (INV-B steg 10) | `ocrOutstanding > 0`         | **exkl.** (bevarar dagens val) |
+| `reclassifyProbableLosses` (befarad)             | nedskrivning = `outstanding` | **inkl.** (hela 1510-fordran)  |
+
+**[D1] Ren restränta driver ALDRIG kravtrappans framdrift.** REMINDED/INKASSO_READY gatar
+på `ocrOutstanding` (exkl. ränta). Räntan ingår bara i nedskrivningsbeloppet (reclassify),
+eftersom den är bokförd på 1510 (1510 D / 8131 K) och måste skrivas ned med resten.
+
+**[D6] `markOverdueRentNotices` lämnas oförändrad** (status SENT→OVERDUE, bulk-updateMany).
+Den defensiva `outstanding>0`-guarden infördes INTE i PR 3a: (a) en SENT-avi har i PR 3a
+inga partiella allokeringar (partiell bankmatchning är PR 3b), så `outstanding` är alltid
+full → guarden triggar aldrig; (b) den skulle kräva NotificationsModule→AviseringModule
+(cykelrisk) + per-rad-query i en bulk-cron. Omprövas i PR 3b när partiella allokeringar finns.
+
+**[D7] Bad-debts privata `outstanding()`-hjälpare BORTTAGEN** — ersatt av RentDebtService
+(en sanningskälla, eliminerar namnkrocken). Nedskrivningsbeloppet är **oförändrat**: invarianten
+Σ allokeringar == paidAmount (PR 1) gör fältsumman och allokeringssumman identiska.
+
+**Kategori-D-vakthund:** export-grinden + `rent-reminder` + `rent-bad-debt` är nu de tillåtna
+`outstanding()`-läsarna; `rent-interest`, faktura-export, controllers och scheduler förblir
+förbjudna.
+
+### Öppna följdpunkter (ej i PR 3a)
+
+- **PR 3b — partiell BANKMATCHNING:** registrera en delbetalning som allokering, flippa PAID
+  först när `outstanding ≤ 0`, boka RIKTIGA partialverifikat (1930/1510). Rör matchningslogiken
+  och huvudboken → egen PR (inte penganeutral). Då aktiveras `markOverdive`-guarden (D6) och
+  `markAsPaid`-partiell (D5) på riktiga partiella data.
+- **[bokf MEDIUM → PR 3b] `reclassifyToProbableLoss` läser `outstanding()` UTANFÖR
+  `$transaction`** (rent-bad-debt.service.ts) — ett race-fönster mot en delbetalning som landar
+  mellan läsning och claim. I PR 3a är det en TEORETISK risk: en fullbetalning flippar PAID och
+  faller ur urvalet (`status notIn PAID/CANCELLED`), och partiella allokeringar på icke-PAID-avier
+  finns inte förrän PR 3b. Åtgärd i PR 3b: läs skulden INNE i transaktionen EFTER claim-låset
+  (kräver en tx-medveten `outstanding`-variant). Samma claim-guard skyddar redan mot fullbetalning.

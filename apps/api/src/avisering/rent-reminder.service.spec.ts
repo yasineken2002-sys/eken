@@ -22,7 +22,7 @@ import { Decimal } from '@prisma/client/runtime/library'
 
 const DAY = 24 * 60 * 60 * 1000
 
-function makeService() {
+function makeService(opts: { ocrOutstanding?: number } = {}) {
   const tx = { rentNotice: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } }
   const prisma = {
     $transaction: jest.fn().mockImplementation((cb: (t: typeof tx) => unknown) => cb(tx)),
@@ -32,6 +32,20 @@ function makeService() {
   const rentNoticeEvents = { record: jest.fn().mockResolvedValue({ id: 'ev-1' }) }
   const rentInterest = { crystallizeInterest: jest.fn().mockResolvedValue(null) }
   const pdfQueue = { enqueue: jest.fn().mockResolvedValue('job-1') }
+  // PR 3a — RentDebtService. Default: OCR-restskuld kvar (ocrOutstanding > 0) så
+  // eskaleringen släpps igenom om inget annat anges.
+  const ocr = opts.ocrOutstanding ?? 7300
+  const outstanding = jest.fn().mockResolvedValue({
+    capital: 7000,
+    consumption: 240,
+    reminderFee: 60,
+    interest: 0,
+    claim: ocr,
+    paid: 0,
+    outstanding: Math.max(0, ocr),
+    ocrOutstanding: Math.max(0, ocr),
+  })
+  const rentDebt = { outstanding }
   const service = new RentReminderService(
     prisma as never,
     accounting as never,
@@ -41,8 +55,9 @@ function makeService() {
     {} as never,
     {} as never,
     {} as never,
+    rentDebt as never,
   )
-  return { service, prisma, tx, accounting, rentNoticeEvents, rentInterest, pdfQueue }
+  return { service, prisma, tx, accounting, rentNoticeEvents, rentInterest, pdfQueue, outstanding }
 }
 
 describe('escalateNoticeToReminded', () => {
@@ -159,6 +174,34 @@ describe('escalateOverdueRentNotices (cron)', () => {
     const where = prisma.rentNotice.findMany.mock.calls[0]![0].where
     expect(where).toMatchObject({ status: 'OVERDUE', type: 'RENT', collectionStage: 'NONE' })
   })
+
+  // ── PR 3a (INV-A) — eskalering gatar på faktisk OCR-restskuld ──────────────
+  it('PR3a: fullt reglerad OCR (ocrOutstanding=0) → ingen avgift, ingen eskalering', async () => {
+    const { service, prisma, pdfQueue, rentInterest } = makeService({ ocrOutstanding: 0 })
+    prisma.rentNotice.findMany.mockResolvedValueOnce([
+      candidate({ id: 'rn-paid', daysOverdue: 20, email: 'g@x.se' }),
+    ])
+    const spy = jest.spyOn(service, 'escalateNoticeToReminded').mockResolvedValue(true)
+    const summary = await service.escalateOverdueRentNotices()
+    // INV-A: ingen kravstegsflip, ingen avgift, ingen ränta, ingen PDF.
+    expect(spy).not.toHaveBeenCalled()
+    expect(rentInterest.crystallizeInterest).not.toHaveBeenCalled()
+    expect(pdfQueue.enqueue).not.toHaveBeenCalled()
+    expect(summary.skipped).toBe(1)
+    expect(summary.reminded).toBe(0)
+  })
+
+  it('PR3a: delbetald men OCR-restskuld kvar (ocrOutstanding>0) → eskalerar på residualen', async () => {
+    const { service, prisma, outstanding } = makeService({ ocrOutstanding: 2000 })
+    prisma.rentNotice.findMany.mockResolvedValueOnce([
+      candidate({ id: 'rn-part', daysOverdue: 20, email: 'g@x.se' }),
+    ])
+    const spy = jest.spyOn(service, 'escalateNoticeToReminded').mockResolvedValue(true)
+    const summary = await service.escalateOverdueRentNotices()
+    expect(outstanding).toHaveBeenCalledWith('rn-part', 'org-1')
+    expect(spy).toHaveBeenCalled()
+    expect(summary.reminded).toBe(1)
+  })
 })
 
 describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id', () => {
@@ -203,6 +246,7 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
       mailService as never,
       pdfService as never,
       storage as never,
+      { outstanding: jest.fn() } as never, // PR 3a: send-jobbet läser inte skuld
     )
     return { service, prisma, update, uploadFile, mailService, rentNoticeEvents }
   }
@@ -298,6 +342,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
       events?: { type: string }[]
       claimCount?: number
       crystallizeThrows?: boolean
+      ocrOutstanding?: number
     } = {},
   ) {
     const notice = opts.notice ?? completeNotice()
@@ -327,6 +372,19 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
       ? jest.fn().mockRejectedValue(new Error('saknat 1510/8131'))
       : jest.fn().mockResolvedValue({ delta: 10, total: 123.45 })
     const rentInterest = { crystallizeInterest }
+    // PR 3a — INV-B steg 10 läser ocrOutstanding härifrån. Default > 0 (skuld kvar).
+    const ocr = opts.ocrOutstanding ?? 8060
+    const outstanding = jest.fn().mockResolvedValue({
+      capital: 8000,
+      consumption: 0,
+      reminderFee: 60,
+      interest: 123.45,
+      claim: ocr + 123.45,
+      paid: 0,
+      outstanding: Math.max(0, ocr + 123.45),
+      ocrOutstanding: Math.max(0, ocr),
+    })
+    const rentDebt = { outstanding }
     const service = new RentReminderService(
       prisma as never,
       {} as never,
@@ -336,8 +394,9 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
       {} as never,
       {} as never,
       {} as never,
+      rentDebt as never,
     )
-    return { service, prisma, tx, rentNoticeEvents, rentInterest }
+    return { service, prisma, tx, rentNoticeEvents, rentInterest, outstanding }
   }
 
   it('komplett underlag: slutkristalliserar, flippar REMINDED→INKASSO_READY, loggar COLLECTION_READY', async () => {
@@ -367,6 +426,22 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
       interestAccruedAmount: 123.45,
       totalClaim: 8183.45,
       reminderPdfStored: true,
+    })
+  })
+
+  it('PR3a: INV-B steg 10 läser ocrOutstanding — fullt reglerad OCR (=0) blockerar inkasso-redo', async () => {
+    const { service, tx, rentNoticeEvents, outstanding } = makeInkassoService({ ocrOutstanding: 0 })
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow(
+      /ingen utestående skuld/,
+    )
+    // Skuld läses org-scopat från RentDebtService, inte paidAmount-cachen.
+    expect(outstanding).toHaveBeenCalledWith('rn-1', 'org-1')
+    expect(tx.rentNotice.updateMany).not.toHaveBeenCalled()
+    const blocked = rentNoticeEvents.record.mock.calls.find(
+      (c) => c[4] && (c[4] as { action?: string }).action === 'inkasso-ready-blocked',
+    )!
+    expect(blocked[4]).toMatchObject({
+      missing: expect.arrayContaining(['ingen utestående skuld att driva in']),
     })
   })
 
@@ -478,6 +553,7 @@ describe('escalateRemindedToInkassoReady (cron)', () => {
       {} as never,
       {} as never,
       {} as never,
+      { outstanding: jest.fn() } as never, // PR 3a: cronen delegerar skuldläsning
     )
     return { service, prisma }
   }

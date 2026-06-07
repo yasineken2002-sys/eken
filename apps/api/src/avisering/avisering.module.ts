@@ -37,9 +37,10 @@ import { RentDebtService } from './rent-debt.service'
   ],
   // RentReminderService exporteras så PdfWorker (kind 'avisering-reminder') kan
   // resolva den via ModuleRef. RentInterestService exporteras för PR 4
-  // (inkasso-ready kristalliserar räntan en sista gång). RentDebtService (PR 1,
-  // bankavstämnings-härdning) exponeras för FRAMTIDA konsumenter — ingen
-  // produktionsväg anropar outstanding() ännu (penganeutral grund-PR).
+  // (inkasso-ready kristalliserar räntan en sista gång). RentDebtService
+  // (bankavstämnings-härdning) exponeras för CollectionsModule (export-grind, PR 2)
+  // och konsumeras internt av RentReminderService + RentBadDebtService (PR 3a, INV-A).
+  // Tillåtna outstanding()-läsare vaktas statiskt av rent-debt-money-neutrality.spec.ts.
   exports: [AviseringService, RentReminderService, RentInterestService, RentDebtService],
 })
 export class AviseringModule {}

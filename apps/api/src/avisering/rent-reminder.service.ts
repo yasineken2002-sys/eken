@@ -18,6 +18,7 @@ import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { getLogoDataUrl } from './avisering.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentInterestService } from './rent-interest.service'
+import { RentDebtService } from './rent-debt.service'
 
 interface ReminderSummary {
   reminded: number
@@ -71,6 +72,9 @@ export class RentReminderService {
     private readonly mailService: MailService,
     private readonly pdfService: PdfService,
     private readonly storage: StorageService,
+    // Bankavstämnings-härdning PR 3a — INV-A: kravstegsövergångar gatar på FAKTISK
+    // skuld (allokeringsderiverad), inte på status/paidAmount-cache.
+    private readonly rentDebt: RentDebtService,
   ) {}
 
   /**
@@ -100,6 +104,16 @@ export class RentReminderService {
       try {
         const daysOverdue = this.daysSince(notice.dueDate)
         if (daysOverdue < notice.organization.rentReminderDay) {
+          summary.skipped++
+          continue
+        }
+        // INV-A (PR 3a): eskalera bara om det finns en OCR-reglerbar restskuld
+        // (hyra/förbrukning) att påminna om. ocrOutstanding EXKLUDERAR ränta — ren
+        // restränta driver aldrig kravtrappans framdrift (D1). En fullt reglerad
+        // avi (ocrOutstanding ≤ 0) eskalerar ALDRIG. Läses från den allokerings-
+        // derivade sanningskällan, inte status/paidAmount-cache. Ren läsning.
+        const debt = await this.rentDebt.outstanding(notice.id, notice.organizationId)
+        if (debt.ocrOutstanding <= 0) {
           summary.skipped++
           continue
         }
@@ -340,7 +354,11 @@ export class RentReminderService {
       where: { rentNoticeId: noticeId },
       select: { type: true },
     })
-    const missing = this.checkInkassoReadiness(notice, events)
+    // PR 3a — steg 10 (utestående skuld) läses från den allokeringsderiverade
+    // sanningskällan i stället för paidAmount-cachen. ocrOutstanding EXKLUDERAR
+    // ränta (bevarar dagens explicita val: vi mäter den OCR-reglerbara delen).
+    const debt = await this.rentDebt.outstanding(noticeId, organizationId)
+    const missing = this.checkInkassoReadiness(notice, events, debt.ocrOutstanding)
     if (missing.length > 0) {
       await this.rentNoticeEvents
         .record(noticeId, 'NOTE_ADDED', 'SYSTEM', null, {
@@ -428,6 +446,7 @@ export class RentReminderService {
   private checkInkassoReadiness(
     notice: InkassoReadyNotice,
     events: { type: RentNoticeEventType }[],
+    ocrOutstanding: number,
   ): string[] {
     const missing: string[] = []
     const has = (t: RentNoticeEventType): boolean => events.some((e) => e.type === t)
@@ -471,16 +490,13 @@ export class RentReminderService {
 
     // 10. Betalningshistorik: det måste finnas en utestående skuld att driva in.
     //     (En OVERDUE-avi är obetald, men en delbetalning kan ha registrerats —
-    //     överlämna bara om restskulden är positiv.) interestAccruedAmount
-    //     EXKLUDERAS avsiktligt: räntan är en separat fordran (löper kontinuerligt,
-    //     ingår inte i OCR-inbetalbart, jfr rentNoticePayableTotal). Det vi mäter
-    //     här är den OCR-reglerbara delen — är den noll finns inget att driva in.
-    const outstanding =
-      Number(notice.totalAmount) +
-      Number(notice.consumptionAmount) +
-      Number(notice.reminderFeeAmount) -
-      Number(notice.paidAmount ?? 0)
-    if (outstanding <= 0) missing.push('ingen utestående skuld att driva in')
+    //     överlämna bara om restskulden är positiv.) PR 3a: ocrOutstanding läses nu
+    //     från RentDebtService (allokeringsderiverad sanningskälla) i stället för
+    //     paidAmount-cachen. interestAccruedAmount EXKLUDERAS fortsatt avsiktligt:
+    //     räntan är en separat fordran (löper kontinuerligt, ingår inte i OCR-
+    //     inbetalbart). Det vi mäter är den OCR-reglerbara delen — är den noll finns
+    //     inget att driva in. (Waterfall-regeln definieras i RentDebtService.)
+    if (ocrOutstanding <= 0) missing.push('ingen utestående skuld att driva in')
 
     return missing
   }

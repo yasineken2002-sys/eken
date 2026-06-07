@@ -37,6 +37,24 @@ export interface RentDebtBreakdown {
   paid: number
   /** Klampad utestående skuld = max(0, claim). Aldrig negativ. */
   outstanding: number
+  /**
+   * OCR-reglerbar restskuld = max(0, (kapital + förbrukning + avgift) − betalt),
+   * dvs. den del hyresgästen reglerar via avins OCR — EXKLUSIVE dröjsmålsränta.
+   *
+   * WATERFALL-REGEL (definieras HÄR, en gång): en betalning antas reglera OCR-delen
+   * FÖRE räntan. Eftersom allokeringarna inte är komponent-attribuerade (en betalning
+   * är ETT belopp mot avin) tolkar vi `paid` som att den först fyller OCR-bucketen
+   * (kapital+förbrukning+avgift) och först därefter räntan. Det speglar domänen:
+   * hyresgästen betalar avins OCR-belopp; dröjsmålsräntan är en separat fordran som
+   * regleras vid slutuppgörelse. Konsekvens: betalar man hela OCR-beloppet blir
+   * ocrOutstanding 0 även om ränta återstår (outstanding > 0).
+   *
+   * Detta är kravtrappans FRAMDRIVS-grind (PR 3a): REMINDED/INKASSO_READY-stegen
+   * gatar på ocrOutstanding > 0 — ren restränta driver ALDRIG framdrift (D1: nej).
+   * `outstanding` (total inkl. ränta) används bara där hela 1510-fordran ska mätas
+   * (nedskrivning/befarad kundförlust).
+   */
+  ocrOutstanding: number
 }
 
 /** Indata till den rena beräkningen — frikopplad från Prisma för enhetstestbarhet. */
@@ -62,6 +80,7 @@ const ZERO_DEBT: RentDebtBreakdown = {
   claim: 0,
   paid: 0,
   outstanding: 0,
+  ocrOutstanding: 0,
 }
 
 /**
@@ -89,9 +108,14 @@ export function computeRentDebt(input: RentDebtInput): RentDebtBreakdown {
   )
 
   const grossClaim = capital.plus(consumption).plus(reminderFee).plus(interest)
-  // EN round2 — på nettot. Subtraktionen är det enda stället där avrundning
-  // kan behövas; allt annat är redan exakt tvådecimaligt.
+  // EN round2 per härlett netto-belopp. Subtraktionen är det enda stället där
+  // avrundning kan behövas; komponenterna är redan exakt tvådecimaliga.
   const claim = round2(grossClaim.minus(paid).toNumber())
+
+  // OCR-reglerbar restskuld (exkl. ränta) — waterfall: betalt fyller OCR-delen
+  // (kapital+förbrukning+avgift) före räntan. Se RentDebtBreakdown.ocrOutstanding.
+  const ocrGross = capital.plus(consumption).plus(reminderFee)
+  const ocrOutstanding = Math.max(0, round2(ocrGross.minus(paid).toNumber()))
 
   return {
     capital: capital.toNumber(),
@@ -101,6 +125,7 @@ export function computeRentDebt(input: RentDebtInput): RentDebtBreakdown {
     claim,
     paid: paid.toNumber(),
     outstanding: Math.max(0, claim),
+    ocrOutstanding,
   }
 }
 
