@@ -713,10 +713,12 @@ export class ReconciliationService {
         .plus(candidate.reminderFeeAmount)
       const claim = await db.rentNotice.updateMany({
         where: { id: candidate.id, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } },
+        // Bankavstämnings-härdning PR 2 — nollställ kravsteget ATOMISKT med claimen.
         data: {
           status: 'PAID',
           paidAt: transaction.date,
           paidAmount: payable,
+          collectionStage: 'NONE',
         },
       })
       if (claim.count === 0) return false
@@ -741,6 +743,24 @@ export class ReconciliationService {
           source: 'BANK_RECONCILIATION',
         },
       })
+
+      // Bankavstämnings-härdning PR 2 — append-only trail för kravstegs-nollställningen.
+      if (candidate.collectionStage !== 'NONE') {
+        await db.rentNoticeEvent.create({
+          data: {
+            rentNoticeId: candidate.id,
+            type: 'NOTE_ADDED',
+            actorType: 'SYSTEM',
+            actorLabel: 'System',
+            payload: {
+              action: 'collection-stage-reset',
+              from: candidate.collectionStage,
+              reason: 'paid',
+              source: 'bank_reconciliation',
+            },
+          },
+        })
+      }
 
       try {
         await this.accounting.createJournalEntryForRentNoticePayment(
@@ -856,7 +876,13 @@ export class ReconciliationService {
   ): Promise<boolean> {
     const notice = await db.rentNotice.findUnique({
       where: { id: noticeId },
-      select: { id: true, noticeNumber: true, organizationId: true, status: true },
+      select: {
+        id: true,
+        noticeNumber: true,
+        organizationId: true,
+        status: true,
+        collectionStage: true,
+      },
     })
     if (!notice) throw new NotFoundException('Hyresavi hittades inte')
 
@@ -868,7 +894,15 @@ export class ReconciliationService {
     // bank-transaktion länkas till en avi som redan tillhör en annan.
     const claim = await db.rentNotice.updateMany({
       where: { id: noticeId, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } },
-      data: { status: 'PAID', paidAt: transactionDate, paidAmount: noticeTotal },
+      // Bankavstämnings-härdning PR 2 — nollställ kravsteget ATOMISKT med PAID-
+      // claimen (idempotent: körs en gång tack vare status-guarden). En betald avi
+      // lämnar kravtrappan; ingen kvarvarande INKASSO_READY på betald avi.
+      data: {
+        status: 'PAID',
+        paidAt: transactionDate,
+        paidAmount: noticeTotal,
+        collectionStage: 'NONE',
+      },
     })
     if (claim.count === 0) {
       this.logger.warn(
@@ -899,6 +933,25 @@ export class ReconciliationService {
         source: 'BANK_RECONCILIATION',
       },
     })
+
+    // Bankavstämnings-härdning PR 2 — append-only trail för kravstegs-nollställningen,
+    // i samma db. Endast om avin faktiskt var i kravtrappan. Ingen bokföring rörs.
+    if (notice.collectionStage !== 'NONE') {
+      await db.rentNoticeEvent.create({
+        data: {
+          rentNoticeId: noticeId,
+          type: 'NOTE_ADDED',
+          actorType: userId ? 'USER' : 'SYSTEM',
+          ...(userId ? { actorId: userId } : { actorLabel: 'System' }),
+          payload: {
+            action: 'collection-stage-reset',
+            from: notice.collectionStage,
+            reason: 'paid',
+            source: 'bank_reconciliation',
+          },
+        },
+      })
+    }
 
     try {
       await this.accounting.createJournalEntryForRentNoticePayment(
@@ -1126,6 +1179,12 @@ export class ReconciliationService {
       // så avi:n syns som obetald igen och nästa BgMax-import kan matcha den
       // korrekt om betalningen återförs och kommer in på nytt.
       if (rentNoticeToReset) {
+        // PR 2 (juristnotering): collectionStage lämnas MEDVETET kvar på NONE här
+        // (det nollställdes vid PAID). En avmatchad avi återgår alltså till SENT
+        // UTAN kravsteg — re-eskalering måste gå via en NY inkasso-ready-granskning
+        // (INV-B) som kristalliserar om dröjsmålsräntan per faktisk löptid (RL 9 §).
+        // Att auto-återställa INKASSO_READY här skulle exportera en avi med förlegad
+        // ränta. Skuld-grinden (INV-D) blockerar ändå export så länge stage ≠ READY.
         await tx.rentNotice.update({
           where: { id: rentNoticeToReset },
           data: { status: 'SENT', paidAt: null, paidAmount: null },

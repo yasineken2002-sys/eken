@@ -709,3 +709,59 @@ Den gamla race-garantin "en avi claimas en gång" bärs fortsatt av den status-g
 - **Eskaleringsgrind:** D/A väljer EXPLICIT grind när `outstanding()` kopplas in
   (t.ex. kapital+förbrukning vs. inkl. avgift+ränta). Grund-PR:n låser ingen policy;
   den uppdaterande PR:n ska samtidigt uppdatera kategori-D-vakthunden.
+
+### Bankavstämnings-härdning PR 2 — exporten grindar på FAKTISK skuld (INV-D)
+
+**Mål:** stäng "zombie"-läckan. Tidigare grindade inkasso-exporten på
+`collectionStage = INKASSO_READY` (en VY), inte på faktisk skuld. En betald avi som
+låg kvar INKASSO_READY kunde därför exporteras som ett inkassokrav fast hyresgästen
+inte var skyldig något — ett ogrundat krav (inkassolagen 1974:182, god inkassosed).
+
+**INV-D:** inget inkasso-artefakt (redo-markering, export-PDF/CSV/ZIP) får produceras
+för en avi vars FAKTISKA skuld är 0 vid beslutsögonblicket. `collectionStage` är en
+vy, aldrig sanning om skuld. Implementeras av en gemensam grind `exportBlockReason`
+(används av `exportForNotice`, `exportBulk` OCH `listReady` → UI och export är alltid
+överens). Grinden körs vid exportögonblicket (PdfWorker), efter org-verifierad
+`loadNotice`. Krav: status ej PAID/CANCELLED · `collectionStage = INKASSO_READY` ·
+`RentDebtService.outstanding().outstanding > 0` · ingen `RentNoticePayment` med
+`createdAt > collectionReadyAt`. Penganeutral (ren läsning, inget verifikat).
+
+**Hängslen-och-livrem:** `collectionStage` nollställs till NONE ATOMISKT (samma
+status-guardade updateMany, idempotent) när en avi blir PAID på alla tre betalvägar
+(`markAsPaid` + reconciliation OCR/fuzzy) OCH när den avbryts (`cancelNotice`). En
+append-only `NOTE_ADDED`-trail (`action: collection-stage-reset`) dokumenterar bytet.
+
+**Medvetet val — total-residual INKL. ränta som exportgrind.** Grinden släpper igenom
+så länge `outstanding > 0`, dvs. även när bara dröjsmålsränta återstår (kapitalet
+betalt). Motiv: inkassobolaget driver HELA fordran inkl. ränta (räntelagen). Detta är
+ett EXPLICIT A/D-val; grund-PR 1 låste ingen policy. **Juristnotering (följdpunkt):**
+för bostadshyresgäster (konsument) kan ett inkassokrav på enbart en ränterest vara
+oproportionerligt (god inkassosed, IMY-praxis) — överväg ett konfigurerbart
+minimibelopp för export. Ej infört i PR 2 (policy-/produktbeslut).
+
+### Granskning PR 2 — fynd hanterade i PR:en
+
+- **[sec + jurist MEDIUM] `cancelNotice`** nollställer nu `collectionStage = NONE` och
+  org-scopar uppdateringen (`updateMany` med `organizationId` + PAID-guard i WHERE i
+  stället för `update` på enbart `id`). Samma anti-zombie-princip som PAID-vägarna.
+- **[sec MEDIUM] `ParseUUIDPipe`** på `POST rent-collections/export/:noticeId`
+  (konsekvent med bulk-DTO:ns `@IsUUID`).
+- **[jurist HIGH → dokumentation] `unmatchTransaction`** lämnar MEDVETET
+  `collectionStage = NONE` vid avmatchning — re-eskalering kräver ny INV-B-granskning
+  med omräknad ränta (RL 9 §). Förtydligat i kod; INV-D blockerar ändå export (stage ≠
+  READY). Ingen funktionell ändring behövdes.
+
+### Öppna följdpunkter (ej i PR 2)
+
+- **[jurist MEDIUM] Ränteperiodisering i exportdokumentet** utgår från
+  kristalliseringsdatumet (`interestAccruedThrough`), inte faktisk betalningsdag —
+  förlegad om inkassot drar ut på tiden. PDF/CSV bör förtydliga att inkassobolaget
+  ansvarar för omräkning till betalningsdag (RL 9 §). Rör export-dokumentets innehåll,
+  inte skuld-grinden — separat ärende.
+- **[jurist LOW] Audit-trail vid exportVÄGRAN** (`action: inkasso-export-blocked`) för
+  spårbarhet av "varför nekades export". Får INTE skrivas från `listReady` (read-path);
+  endast vid explicit export-försök. Separat ärende.
+- **[jurist MEDIUM/produkt] Konfigurerbart minimibelopp** för total-residual vid export
+  (konsumentproportionalitet) — se "medvetet val" ovan.
+- **[sec note] `findUnique` utan org** i `applyMatchToRentNotice` — förbefintligt
+  (callers org-verifierar uppströms), samma not som PR 1.

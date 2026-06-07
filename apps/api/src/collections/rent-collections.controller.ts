@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Post,
 } from '@nestjs/common'
 import { ArrayMaxSize, IsArray, IsUUID } from 'class-validator'
@@ -40,7 +41,12 @@ export class RentCollectionsController {
 
   @Post('export/:noticeId')
   @HttpCode(HttpStatus.ACCEPTED)
-  async exportSingle(@Param('noticeId') noticeId: string, @OrgId() organizationId: string) {
+  async exportSingle(
+    // ParseUUIDPipe — konsekvent med bulk-DTO:ns @IsUUID; avvisar icke-UUID innan
+    // den når Prisma (säkerhetsgranskning PR 2, MEDIUM).
+    @Param('noticeId', ParseUUIDPipe) noticeId: string,
+    @OrgId() organizationId: string,
+  ) {
     return this.exportService.enqueueExportForNotice(noticeId, organizationId)
   }
 

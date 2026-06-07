@@ -29,10 +29,12 @@ function makeService(opts?: { notice?: Record<string, unknown>; claimCount?: num
     noticeNumber: 'AVI-2026-06-0001',
     type: 'RENT',
     status: 'SENT',
+    collectionStage: 'NONE',
     totalAmount: 10_000,
     ...opts?.notice,
   }
 
+  const eventCreate = jest.fn().mockResolvedValue({})
   const prisma = {
     rentNotice: {
       // 1:a findFirst = ladda avin, 2:a = re-fetch för returvärdet.
@@ -47,6 +49,8 @@ function makeService(opts?: { notice?: Record<string, unknown>; claimCount?: num
       create: jest.fn().mockResolvedValue({ id: 'rnp-1' }),
       delete: jest.fn().mockResolvedValue({}),
     },
+    // PR 2 — append-only trail för kravstegs-nollställningen.
+    rentNoticeEvent: { create: eventCreate },
   }
 
   const accounting = {
@@ -64,7 +68,7 @@ function makeService(opts?: { notice?: Record<string, unknown>; claimCount?: num
     accounting as never,
     noop as never, // consumption
   )
-  return { service, prisma, accounting }
+  return { service, prisma, accounting, eventCreate }
 }
 
 describe('FIX 9 · PR 6 — AviseringService.markAsPaid', () => {
@@ -201,5 +205,69 @@ describe('FIX 9 · PR 6 — AviseringService.markAsPaid', () => {
     await expect(service.markAsPaid('rn-1', 'org-1', 10_000, 'BANK')).rejects.toThrow('DB nere')
     // Allokeringen som skrevs före verifikatet rullas tillbaka.
     expect(prisma.rentNoticePayment.delete).toHaveBeenCalledWith({ where: { id: 'rnp-1' } })
+  })
+
+  // ── Bankavstämnings-härdning PR 2 · kravstegs-nollställning ────────────────
+  it('PR2: betald INKASSO_READY-avi nollställs ATOMISKT till NONE + trail skrivs', async () => {
+    const { service, prisma, eventCreate } = makeService({
+      notice: { collectionStage: 'INKASSO_READY' },
+    })
+    await service.markAsPaid('rn-1', 'org-1', 10_000, 'BANK', undefined, 'user-1')
+
+    // Nollställningen sker i SAMMA claim-updateMany som PAID-övergången (atomiskt).
+    expect(prisma.rentNotice.updateMany.mock.calls[0]![0].data).toMatchObject({
+      status: 'PAID',
+      collectionStage: 'NONE',
+    })
+    // Append-only trail med ursprungssteget.
+    const ev = eventCreate.mock.calls[0]![0].data
+    expect(ev.type).toBe('NOTE_ADDED')
+    expect(ev.payload).toMatchObject({
+      action: 'collection-stage-reset',
+      from: 'INKASSO_READY',
+      reason: 'paid',
+    })
+  })
+
+  it('PR2: avi utanför kravtrappan (NONE) → ingen trail (mindre brus)', async () => {
+    const { service, eventCreate } = makeService() // default collectionStage NONE
+    await service.markAsPaid('rn-1', 'org-1', 10_000, 'BANK')
+    expect(eventCreate).not.toHaveBeenCalled()
+  })
+
+  it('PR2: idempotens — parallell process hann först (claim.count 0) → ingen flip/trail', async () => {
+    const { service, eventCreate } = makeService({
+      notice: { collectionStage: 'INKASSO_READY' },
+      claimCount: 0,
+    })
+    await expect(service.markAsPaid('rn-1', 'org-1', 10_000, 'BANK')).rejects.toThrow()
+    expect(eventCreate).not.toHaveBeenCalled()
+  })
+})
+
+describe('PR2 — cancelNotice nollställer collectionStage (anti-zombie)', () => {
+  it('avbruten INKASSO_READY-avi → CANCELLED + collectionStage NONE, org-scopad, trail', async () => {
+    const { service, prisma, eventCreate } = makeService({
+      notice: { collectionStage: 'INKASSO_READY' },
+    })
+    await service.cancelNotice('rn-1', 'org-1')
+
+    const call = prisma.rentNotice.updateMany.mock.calls[0]![0]
+    // Org-scopad updateMany med PAID-guard (inte update på enbart id).
+    expect(call.where).toMatchObject({ id: 'rn-1', organizationId: 'org-1' })
+    expect(call.where.status).toEqual({ not: 'PAID' })
+    expect(call.data).toMatchObject({ status: 'CANCELLED', collectionStage: 'NONE' })
+    // Trail dokumenterar nollställningen.
+    expect(eventCreate.mock.calls[0]![0].data.payload).toMatchObject({
+      action: 'collection-stage-reset',
+      from: 'INKASSO_READY',
+      reason: 'cancelled',
+    })
+  })
+
+  it('redan betald avi → BadRequest, ingen mutering', async () => {
+    const { service, prisma } = makeService({ notice: { status: 'PAID' } })
+    await expect(service.cancelNotice('rn-1', 'org-1')).rejects.toBeInstanceOf(BadRequestException)
+    expect(prisma.rentNotice.updateMany).not.toHaveBeenCalled()
   })
 })

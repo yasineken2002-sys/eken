@@ -6,6 +6,7 @@ import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
+import { RentDebtService } from '../avisering/rent-debt.service'
 
 // Inkasso PR 4b — steg 3. Read-only export av INKASSO_READY-hyresavier till ett
 // externt inkassobolag. SPEGLAR collections/CollectionExportService (faktura-
@@ -69,6 +70,9 @@ export class RentCollectionExportService {
     private readonly pdf: PdfService,
     private readonly storage: StorageService,
     private readonly pdfQueue: PdfQueue,
+    // Bankavstämnings-härdning PR 2 — INV-D: exporten grindar på FAKTISK skuld
+    // (outstanding) vid exportögonblicket, inte på collectionStage (en vy).
+    private readonly rentDebt: RentDebtService,
   ) {}
 
   /**
@@ -77,13 +81,21 @@ export class RentCollectionExportService {
    * (inga interna R2-/message-id-fält) för urvalslistan i UI:t.
    */
   async listReady(organizationId: string): Promise<unknown[]> {
-    return this.prisma.rentNotice.findMany({
-      where: { organizationId, collectionStage: 'INKASSO_READY' },
+    const candidates = await this.prisma.rentNotice.findMany({
+      // status notIn PAID/CANCELLED är ett billigt DB-förfilter (fångar zombies
+      // även i historisk data där stage inte nollställts). Den faktiska skuld-
+      // grinden (outstanding > 0, ingen betalning efter ready) körs per rad nedan.
+      where: {
+        organizationId,
+        collectionStage: 'INKASSO_READY',
+        status: { notIn: ['PAID', 'CANCELLED'] },
+      },
       select: {
         id: true,
         noticeNumber: true,
         ocrNumber: true,
         dueDate: true,
+        status: true,
         collectionReadyAt: true,
         totalAmount: true,
         consumptionAmount: true,
@@ -95,6 +107,24 @@ export class RentCollectionExportService {
       },
       orderBy: { collectionReadyAt: 'desc' },
     })
+
+    // INV-D: listan får ENDAST innehålla faktiskt exporterbara avier — annars
+    // skulle UI:t erbjuda export av en reglerad fordran. Filtrera på samma grind
+    // som exporten själv använder.
+    const exportable = await Promise.all(
+      candidates.map(async (n) => {
+        const reason = await this.exportBlockReason({
+          id: n.id,
+          organizationId,
+          noticeNumber: n.noticeNumber,
+          status: n.status,
+          collectionStage: 'INKASSO_READY',
+          collectionReadyAt: n.collectionReadyAt,
+        })
+        return reason === null ? n : null
+      }),
+    )
+    return exportable.filter((n) => n !== null)
   }
 
   /** Köar export för EN avi — PDF-renderingen sker i PdfWorker. */
@@ -130,7 +160,7 @@ export class RentCollectionExportService {
     organizationId: string,
   ): Promise<RentCollectionExportResult> {
     const notice = await this.loadNotice(noticeId, organizationId)
-    this.assertReady(notice)
+    await this.assertExportable(notice)
 
     const pdfBuffer = await this.pdf.generateFromHtml(this.buildPdfHtml(notice))
     const csvBuffer = Buffer.from(this.buildCsv([notice]), 'utf8')
@@ -183,11 +213,20 @@ export class RentCollectionExportService {
     if (noticeIds.length === 0) throw new BadRequestException('Inga avier angivna')
 
     const notices = await Promise.all(noticeIds.map((id) => this.loadNotice(id, organizationId)))
-    const notReady = notices.filter((n) => n.collectionStage !== 'INKASSO_READY')
-    if (notReady.length > 0) {
-      throw new BadRequestException(
-        `Följande avier är inte inkasso-redo: ${notReady.map((n) => n.noticeNumber).join(', ')}`,
+    // INV-D: skuld-grinden körs per avi vid exportögonblicket (inte bara
+    // collectionStage). En enda icke-exporterbar avi (reglerad, zombie, betalning
+    // efter ready) fäller hela bulken med konkreta skäl — inget inkasso-artefakt
+    // får produceras för en avi vars faktiska skuld är 0.
+    const blocked = (
+      await Promise.all(
+        notices.map(async (n) => {
+          const reason = await this.exportBlockReason(n)
+          return reason ? reason : null
+        }),
       )
+    ).filter((r): r is string => r !== null)
+    if (blocked.length > 0) {
+      throw new BadRequestException(`Kan inte exportera: ${blocked.join('; ')}`)
     }
 
     const zip = new JSZip()
@@ -248,12 +287,61 @@ export class RentCollectionExportService {
     return notice
   }
 
-  private assertReady(notice: RentNoticeWithCollectionData): void {
-    if (notice.collectionStage !== 'INKASSO_READY') {
-      throw new BadRequestException(
-        `Avi ${notice.noticeNumber} är inte inkasso-redo (kravsteg ${notice.collectionStage}) — kör inkasso-ready-grinden först`,
-      )
+  /**
+   * Bankavstämnings-härdning PR 2 — INV-D: exportgrinden frågar FAKTISK skuld vid
+   * exportögonblicket. collectionStage är en vy, aldrig sanning om skuld. En avi
+   * får exporteras som inkassokrav ENDAST om allt nedan gäller — annars returneras
+   * ett skäl (null = exporterbar). Gemensam för assert (kastar) och listReady
+   * (filtrerar), så UI-listan och exporten alltid är överens.
+   *
+   *   1. status är inte PAID/CANCELLED (reglerad/avbruten är inget krav).
+   *   2. collectionStage = INKASSO_READY (grinden uppströms har körts).
+   *   3. outstanding > 0 — TOTAL-residualen (kapital+förbrukning+avgift+ränta −
+   *      betalt) inklusive ränta, eftersom inkassobolaget driver HELA fordran.
+   *   4. ingen betalning registrerad EFTER att ärendet blev INKASSO_READY — en ny
+   *      betalning (även del) innebär att läget ändrats och måste granskas på nytt.
+   *
+   * En betald-men-INKASSO_READY-avi (zombie) faller på (1) och (3) och kan ALDRIG
+   * exporteras. Org-scopas via avins organizationId (rentDebt.outstanding +
+   * payment-frågan filtrerar båda på org/avin).
+   */
+  private async exportBlockReason(notice: {
+    id: string
+    organizationId: string
+    noticeNumber: string
+    status: string
+    collectionStage: string
+    collectionReadyAt: Date | null
+  }): Promise<string | null> {
+    if (notice.status === 'PAID' || notice.status === 'CANCELLED') {
+      return `Avi ${notice.noticeNumber} är ${notice.status === 'PAID' ? 'betald' : 'avbruten'} och kan inte exporteras som inkassokrav`
     }
+    if (notice.collectionStage !== 'INKASSO_READY') {
+      return `Avi ${notice.noticeNumber} är inte inkasso-redo (kravsteg ${notice.collectionStage}) — kör inkasso-ready-grinden först`
+    }
+
+    const debt = await this.rentDebt.outstanding(notice.id, notice.organizationId)
+    if (debt.outstanding <= 0) {
+      return `Avi ${notice.noticeNumber} har ingen utestående skuld (reglerad) — kan inte exporteras som inkassokrav`
+    }
+
+    if (notice.collectionReadyAt) {
+      const newerPayment = await this.prisma.rentNoticePayment.findFirst({
+        where: { rentNoticeId: notice.id, createdAt: { gt: notice.collectionReadyAt } },
+        select: { id: true },
+      })
+      if (newerPayment) {
+        return `Avi ${notice.noticeNumber} har en betalning registrerad efter att den blev inkasso-redo — granska på nytt innan export`
+      }
+    }
+
+    return null
+  }
+
+  /** Kastar om avin inte får exporteras (INV-D). Annars no-op. */
+  private async assertExportable(notice: RentNoticeWithCollectionData): Promise<void> {
+    const reason = await this.exportBlockReason(notice)
+    if (reason) throw new BadRequestException(reason)
   }
 
   /**
