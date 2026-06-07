@@ -250,6 +250,289 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
   })
 })
 
+describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR 4b steg 2)', () => {
+  // En avi med KOMPLETT underlag — grinden ska godkänna. Override-bara delar för
+  // att testa varje vägransfall.
+  function completeNotice(over: Record<string, unknown> = {}) {
+    return {
+      id: 'rn-1',
+      noticeNumber: 'AVI-2026-07-0001',
+      organizationId: 'org-1',
+      collectionStage: 'REMINDED',
+      status: 'OVERDUE',
+      sentAt: new Date('2026-06-02'),
+      remindedAt: new Date('2026-06-09'),
+      reminderPdfStorageKey: 'reminders/org-1/rn-1.pdf',
+      dueDate: new Date('2026-06-01'),
+      totalAmount: new Decimal(8000),
+      consumptionAmount: new Decimal(0),
+      reminderFeeAmount: new Decimal(60),
+      paidAmount: null,
+      tenant: {
+        type: 'INDIVIDUAL',
+        firstName: 'Anna',
+        lastName: 'A',
+        companyName: null,
+        personalNumber: '900101-1234',
+        orgNumber: null,
+        email: 'g@x.se',
+        phone: '070-1',
+        street: 'Storgatan 1',
+        postalCode: '111 22',
+        city: 'Stockholm',
+      },
+      organization: {
+        name: 'Värd AB',
+        orgNumber: '556000-0001',
+        street: 'Värdgatan 2',
+        postalCode: '222 33',
+        city: 'Stockholm',
+      },
+      ...over,
+    }
+  }
+
+  function makeInkassoService(
+    opts: {
+      notice?: Record<string, unknown>
+      events?: { type: string }[]
+      claimCount?: number
+      crystallizeThrows?: boolean
+    } = {},
+  ) {
+    const notice = opts.notice ?? completeNotice()
+    const events = opts.events ?? [{ type: 'SENT' }, { type: 'EMAIL_DELIVERED' }]
+    const fresh = {
+      dueDate: new Date('2026-06-01'),
+      totalAmount: new Decimal(8000),
+      consumptionAmount: new Decimal(0),
+      reminderFeeAmount: new Decimal(60),
+      interestAccruedAmount: new Decimal(123.45),
+      interestAccruedThrough: new Date('2026-06-22'),
+      reminderPdfStorageKey: 'reminders/org-1/rn-1.pdf',
+    }
+    const tx = {
+      rentNotice: {
+        updateMany: jest.fn().mockResolvedValue({ count: opts.claimCount ?? 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(fresh),
+      },
+    }
+    const prisma = {
+      $transaction: jest.fn().mockImplementation((cb: (t: typeof tx) => unknown) => cb(tx)),
+      rentNotice: { findFirst: jest.fn().mockResolvedValue(notice) },
+      rentNoticeEvent: { findMany: jest.fn().mockResolvedValue(events) },
+    }
+    const rentNoticeEvents = { record: jest.fn().mockResolvedValue({ id: 'ev-1' }) }
+    const crystallizeInterest = opts.crystallizeThrows
+      ? jest.fn().mockRejectedValue(new Error('saknat 1510/8131'))
+      : jest.fn().mockResolvedValue({ delta: 10, total: 123.45 })
+    const rentInterest = { crystallizeInterest }
+    const service = new RentReminderService(
+      prisma as never,
+      {} as never,
+      rentNoticeEvents as never,
+      rentInterest as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    )
+    return { service, prisma, tx, rentNoticeEvents, rentInterest }
+  }
+
+  it('komplett underlag: slutkristalliserar, flippar REMINDED→INKASSO_READY, loggar COLLECTION_READY', async () => {
+    const { service, tx, rentNoticeEvents, rentInterest } = makeInkassoService()
+    const res = await service.escalateNoticeToInkassoReady('rn-1', 'org-1')
+    expect(res).toEqual({ flipped: true })
+
+    // Slutkristallisering t.o.m. idag (INV-A internt i crystallizeInterest).
+    expect(rentInterest.crystallizeInterest).toHaveBeenCalledWith('rn-1', 'org-1', expect.any(Date))
+
+    // Race-säker claim: bara om fortfarande OVERDUE + stage REMINDED.
+    const claimArg = tx.rentNotice.updateMany.mock.calls[0]![0]
+    expect(claimArg.where).toMatchObject({
+      id: 'rn-1',
+      organizationId: 'org-1',
+      status: 'OVERDUE',
+      collectionStage: 'REMINDED',
+    })
+    expect(claimArg.data.collectionStage).toBe('INKASSO_READY')
+    expect(claimArg.data.collectionReadyAt).toBeInstanceOf(Date)
+
+    // COLLECTION_READY med räntesnapshot (auktoritativ total, inte dagviktat snitt).
+    const ev = rentNoticeEvents.record.mock.calls.find((c) => c[1] === 'COLLECTION_READY')!
+    expect(ev[4]).toMatchObject({
+      capital: 8000,
+      reminderFeeAmount: 60,
+      interestAccruedAmount: 123.45,
+      totalClaim: 8183.45,
+      reminderPdfStored: true,
+    })
+  })
+
+  it('INV-B vägrar (ConflictException, ingen flip) när lagrad påminnelse-PDF saknas', async () => {
+    const { service, tx, rentNoticeEvents } = makeInkassoService({
+      notice: completeNotice({ reminderPdfStorageKey: null }),
+    })
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow(
+      /lagrad påminnelse-PDF saknas/,
+    )
+    expect(tx.rentNotice.updateMany).not.toHaveBeenCalled()
+    // Avvikelsen loggas append-only innan undantaget.
+    const blocked = rentNoticeEvents.record.mock.calls.find(
+      (c) => c[4] && (c[4] as { action?: string }).action === 'inkasso-ready-blocked',
+    )!
+    expect(blocked[4]).toMatchObject({
+      missing: expect.arrayContaining(['lagrad påminnelse-PDF saknas']),
+    })
+  })
+
+  it('INV-B vägrar när påminnelsens leverans inte är verifierad (ingen EMAIL_DELIVERED)', async () => {
+    const { service, tx } = makeInkassoService({ events: [{ type: 'SENT' }] })
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow(
+      /leverans är inte verifierad/,
+    )
+    expect(tx.rentNotice.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('INV-B vägrar när påminnelsen studsade (EMAIL_BOUNCED)', async () => {
+    const { service } = makeInkassoService({
+      events: [{ type: 'SENT' }, { type: 'EMAIL_DELIVERED' }, { type: 'EMAIL_BOUNCED' }],
+    })
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow(/studsade/)
+  })
+
+  it('INV-B vägrar vid ofullständig gäldenär (saknar person-/orgnr OCH adress)', async () => {
+    const { service } = makeInkassoService({
+      notice: completeNotice({
+        tenant: {
+          type: 'INDIVIDUAL',
+          firstName: 'Anna',
+          lastName: 'A',
+          personalNumber: null,
+          orgNumber: null,
+          street: null,
+          postalCode: null,
+          city: null,
+        },
+      }),
+    })
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow(
+      /gäldenärens person-\/organisationsnummer saknas/,
+    )
+  })
+
+  it('INV-B vägrar vid saknad fordringsägardata (orgnr)', async () => {
+    const { service } = makeInkassoService({
+      notice: completeNotice({
+        organization: {
+          name: 'Värd AB',
+          orgNumber: null,
+          street: 'Värdgatan 2',
+          postalCode: '222 33',
+          city: 'Stockholm',
+        },
+      }),
+    })
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow(
+      /fordringsägarens organisationsnummer saknas/,
+    )
+  })
+
+  it('idempotent: redan INKASSO_READY → no-op (ingen grind, ingen kristallisering, ingen flip)', async () => {
+    const { service, prisma, tx, rentInterest } = makeInkassoService({
+      notice: completeNotice({ collectionStage: 'INKASSO_READY' }),
+    })
+    const res = await service.escalateNoticeToInkassoReady('rn-1', 'org-1')
+    expect(res).toEqual({ flipped: false })
+    expect(prisma.rentNoticeEvent.findMany).not.toHaveBeenCalled()
+    expect(rentInterest.crystallizeInterest).not.toHaveBeenCalled()
+    expect(tx.rentNotice.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('race: claim count=0 (annan körning hann före) → flipped:false, inget COLLECTION_READY', async () => {
+    const { service, rentNoticeEvents } = makeInkassoService({ claimCount: 0 })
+    const res = await service.escalateNoticeToInkassoReady('rn-1', 'org-1')
+    expect(res).toEqual({ flipped: false })
+    expect(rentNoticeEvents.record.mock.calls.some((c) => c[1] === 'COLLECTION_READY')).toBe(false)
+  })
+
+  it('INV-A: slutkristalliseringens bokföring faller (saknat 1510/8131) → kastar, ingen flip', async () => {
+    const { service, tx } = makeInkassoService({ crystallizeThrows: true })
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow()
+    expect(tx.rentNotice.updateMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('escalateRemindedToInkassoReady (cron)', () => {
+  function makeCronService() {
+    const prisma = {
+      rentNotice: { findMany: jest.fn().mockResolvedValue([]) },
+    }
+    const service = new RentReminderService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    )
+    return { service, prisma }
+  }
+
+  function candidate(daysOverdue: number) {
+    return {
+      id: 'rn-1',
+      organizationId: 'org-1',
+      dueDate: new Date(Date.now() - daysOverdue * DAY),
+      organization: { rentReminderDay: 7, rentInkassoDaysAfterReminder: 14 },
+    }
+  }
+
+  it('urvalet kräver OVERDUE + RENT + stage REMINDED', async () => {
+    const { service, prisma } = makeCronService()
+    await service.escalateRemindedToInkassoReady()
+    const where = prisma.rentNotice.findMany.mock.calls[0]![0].where
+    expect(where).toMatchObject({ status: 'OVERDUE', type: 'RENT', collectionStage: 'REMINDED' })
+  })
+
+  it('eskalerar avi förbi tröskeln (7+14=21 dgr) och räknar ready', async () => {
+    const { service, prisma } = makeCronService()
+    prisma.rentNotice.findMany.mockResolvedValueOnce([candidate(25)])
+    const spy = jest
+      .spyOn(service, 'escalateNoticeToInkassoReady')
+      .mockResolvedValue({ flipped: true })
+    const summary = await service.escalateRemindedToInkassoReady()
+    expect(spy).toHaveBeenCalledWith('rn-1', 'org-1')
+    expect(summary.ready).toBe(1)
+  })
+
+  it('hoppar över avi under tröskeln (ingen eskalering)', async () => {
+    const { service, prisma } = makeCronService()
+    prisma.rentNotice.findMany.mockResolvedValueOnce([candidate(15)])
+    const spy = jest
+      .spyOn(service, 'escalateNoticeToInkassoReady')
+      .mockResolvedValue({ flipped: true })
+    const summary = await service.escalateRemindedToInkassoReady()
+    expect(spy).not.toHaveBeenCalled()
+    expect(summary.skipped).toBe(1)
+  })
+
+  it('grind-blockerad avi (ConflictException) räknas som blocked, inte error', async () => {
+    const { ConflictException } = await import('@nestjs/common')
+    const { service, prisma } = makeCronService()
+    prisma.rentNotice.findMany.mockResolvedValueOnce([candidate(25)])
+    jest
+      .spyOn(service, 'escalateNoticeToInkassoReady')
+      .mockRejectedValue(new ConflictException('ofullständigt underlag'))
+    const summary = await service.escalateRemindedToInkassoReady()
+    expect(summary.blocked).toBe(1)
+    expect(summary.errors).toBe(0)
+  })
+})
+
 describe('buildReminderPdfHtml — innehåll (lag 1981:739 5 §)', () => {
   const notice = {
     noticeNumber: 'AVI-2026-07-0001',

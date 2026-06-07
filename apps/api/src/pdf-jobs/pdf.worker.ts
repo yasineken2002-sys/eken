@@ -6,6 +6,7 @@ import { type PdfJobPayload, QUEUE_PDF } from './pdf.types'
 import { AviseringService } from '../avisering/avisering.service'
 import { RentReminderService } from '../avisering/rent-reminder.service'
 import { CollectionExportService } from '../collections/collection-export.service'
+import { RentCollectionExportService } from '../collections/rent-collection-export.service'
 import { InvoicesService } from '../invoices/invoices.service'
 import { PlatformInvoicesService } from '../platform/invoices/platform-invoices.service'
 
@@ -53,6 +54,16 @@ export class PdfWorker {
       case 'collections-bulk-export': {
         const svc = this.moduleRef.get(CollectionExportService, { strict: false })
         await svc.exportBulk(data.invoiceIds, data.organizationId)
+        break
+      }
+      case 'rent-collections-export': {
+        const svc = this.moduleRef.get(RentCollectionExportService, { strict: false })
+        await svc.exportForNotice(data.noticeId, data.organizationId)
+        break
+      }
+      case 'rent-collections-bulk-export': {
+        const svc = this.moduleRef.get(RentCollectionExportService, { strict: false })
+        await svc.exportBulk(data.noticeIds, data.organizationId)
         break
       }
       case 'invoice-send': {
