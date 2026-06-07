@@ -1288,6 +1288,10 @@ export class AviseringService {
         tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
       },
+      // Interna infrastrukturfält ska aldrig nå klienten (security-auditor MEDIUM):
+      // R2-lagringsnyckeln och Resends message-id är inte presigned URL:er och har
+      // ingen frontend-användning — exponera dem inte för VIEWER m.fl.
+      omit: { reminderPdfStorageKey: true, reminderMessageId: true },
       orderBy: { dueDate: 'desc' },
     })
   }
@@ -1299,6 +1303,8 @@ export class AviseringService {
         tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
       },
+      // Interna fält döljs för klienten (se findMany ovan).
+      omit: { reminderPdfStorageKey: true, reminderMessageId: true },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
     return notice

@@ -85,6 +85,9 @@ export class TenantPortalService {
       include: {
         lease: { include: { unit: { include: { property: true } } } },
       },
+      // Interna infrastrukturfält ska aldrig nå hyresgästen (security-auditor
+      // MEDIUM): R2-lagringsnyckel + Resends message-id.
+      omit: { reminderPdfStorageKey: true, reminderMessageId: true },
       orderBy: { dueDate: 'desc' },
     })
   }

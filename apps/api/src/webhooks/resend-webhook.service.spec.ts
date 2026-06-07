@@ -18,13 +18,27 @@ import { ResendWebhookService } from './resend-webhook.service'
 const SECRET = 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw'
 const OTHER_SECRET = 'whsec_C2FVsBQIhrscChlQIMV+b5sSYspob7oD'
 
-function makeService(secret: string | null = SECRET) {
-  const updateMany = jest.fn().mockResolvedValue({ count: 1 })
-  const prisma = { tenant: { updateMany } }
+function makeService(
+  secret: string | null = SECRET,
+  opts: { tenantCount?: number; notice?: { id: string } | null; existingEvent?: boolean } = {},
+) {
+  const updateMany = jest.fn().mockResolvedValue({ count: opts.tenantCount ?? 1 })
+  const rentNoticeFindFirst = jest
+    .fn()
+    .mockResolvedValue(opts.notice === undefined ? null : opts.notice)
+  const eventFindFirst = jest
+    .fn()
+    .mockResolvedValue(opts.existingEvent ? { id: 'ev-existing' } : null)
+  const eventCreate = jest.fn().mockResolvedValue({ id: 'ev-new' })
+  const prisma = {
+    tenant: { updateMany },
+    rentNotice: { findFirst: rentNoticeFindFirst },
+    rentNoticeEvent: { findFirst: eventFindFirst, create: eventCreate },
+  }
   const config = { get: jest.fn().mockReturnValue(secret) }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const service = new ResendWebhookService(prisma as any, config as any)
-  return { service, updateMany }
+  return { service, updateMany, rentNoticeFindFirst, eventFindFirst, eventCreate }
 }
 
 function signedRequest(payloadObj: unknown, signingSecret = SECRET) {
@@ -181,6 +195,145 @@ describe('ResendWebhookService', () => {
       const callArg = updateMany.mock.calls[0][0]
       expect(callArg.where).toEqual({ lastInviteMessageId: 'rid-x' })
       expect(JSON.stringify(callArg)).not.toContain('attacker-org')
+    })
+  })
+
+  // ── Inkasso PR 4b₀ — korrelation mot hyresavi-påminnelse ────────────────────
+  describe('hyresavi-påminnelse-korrelation (RentNotice.reminderMessageId)', () => {
+    it('email.delivered utan inbjudan-träff → loggar EMAIL_DELIVERED på rätt avi (append-only)', async () => {
+      const { service, rentNoticeFindFirst, eventCreate } = makeService(SECRET, {
+        tenantCount: 0,
+        notice: { id: 'rn-1' },
+      })
+      const { raw, headers } = signedRequest(deliveredEvent('reminder-msg-1'))
+
+      await service.handle(raw, headers)
+
+      // Uppslaget sker BARA via @unique reminderMessageId (org kommer från avin).
+      expect(rentNoticeFindFirst).toHaveBeenCalledWith({
+        where: { reminderMessageId: 'reminder-msg-1' },
+        select: { id: true },
+      })
+      expect(eventCreate).toHaveBeenCalledWith({
+        data: {
+          rentNoticeId: 'rn-1',
+          type: 'EMAIL_DELIVERED',
+          actorType: 'WEBHOOK',
+          actorLabel: 'E-postleverantör',
+          payload: { deliveredAt: '2026-06-02T10:00:00.000Z' },
+        },
+      })
+    })
+
+    it('email.bounced → loggar EMAIL_BOUNCED med STRUKTURERAD kategori, ALDRIG fri PII-text', async () => {
+      const { service, eventCreate } = makeService(SECRET, {
+        tenantCount: 0,
+        notice: { id: 'rn-9' },
+      })
+      const { raw, headers } = signedRequest({
+        type: 'email.bounced',
+        created_at: '2026-06-02T11:00:00.000Z',
+        data: {
+          email_id: 'reminder-msg-9',
+          // message innehåller mottagarens e-post (PII) — får ALDRIG lagras.
+          bounce: {
+            message: 'Mailbox does not exist: hyresgast@example.com',
+            type: 'Permanent',
+            subType: 'General',
+          },
+        },
+      })
+
+      await service.handle(raw, headers)
+
+      expect(eventCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          rentNoticeId: 'rn-9',
+          type: 'EMAIL_BOUNCED',
+          actorType: 'WEBHOOK',
+          payload: {
+            bouncedAt: '2026-06-02T11:00:00.000Z',
+            bounceType: 'Permanent',
+            bounceSubType: 'General',
+          },
+        }),
+      })
+      // PII från bounce.message läcker aldrig in i den append-only loggen.
+      expect(JSON.stringify(eventCreate.mock.calls[0][0])).not.toContain('hyresgast@example.com')
+    })
+
+    it('idempotent: redan loggat utfall → ingen dubblett (append-only skrivs aldrig över)', async () => {
+      const { service, eventFindFirst, eventCreate } = makeService(SECRET, {
+        tenantCount: 0,
+        notice: { id: 'rn-1' },
+        existingEvent: true,
+      })
+      const { raw, headers } = signedRequest(deliveredEvent('reminder-msg-1'))
+
+      await service.handle(raw, headers)
+
+      expect(eventFindFirst).toHaveBeenCalledWith({
+        where: { rentNoticeId: 'rn-1', type: 'EMAIL_DELIVERED' },
+        select: { id: true },
+      })
+      expect(eventCreate).not.toHaveBeenCalled()
+    })
+
+    it('samtidig dubblett (P2002 från partiellt unikt index) → idempotent no-op, ingen throw', async () => {
+      // findFirst hinner inte se den andra transaktionens insert (race) → create
+      // körs men DB-indexet avvisar med P2002. Det ska sväljas som no-op.
+      const { service, eventCreate } = makeService(SECRET, {
+        tenantCount: 0,
+        notice: { id: 'rn-1' },
+      })
+      eventCreate.mockRejectedValueOnce(
+        Object.assign(new Error('unique violation'), { code: 'P2002' }),
+      )
+      const { raw, headers } = signedRequest(deliveredEvent('reminder-msg-1'))
+
+      await expect(service.handle(raw, headers)).resolves.toBeUndefined()
+      expect(eventCreate).toHaveBeenCalledTimes(1)
+    })
+
+    it('ingen avi matchar message-id → ingen skrivning, ingen throw', async () => {
+      const { service, eventCreate } = makeService(SECRET, { tenantCount: 0, notice: null })
+      const { raw, headers } = signedRequest(deliveredEvent('okänd-msg'))
+
+      await expect(service.handle(raw, headers)).resolves.toBeUndefined()
+      expect(eventCreate).not.toHaveBeenCalled()
+    })
+
+    it('inbjudan matchar (tenant count>0) → rör ALDRIG avi-loggen', async () => {
+      const { service, rentNoticeFindFirst, eventCreate } = makeService(SECRET, {
+        tenantCount: 1,
+        notice: { id: 'rn-1' },
+      })
+      const { raw, headers } = signedRequest(deliveredEvent('invite-msg'))
+
+      await service.handle(raw, headers)
+
+      expect(rentNoticeFindFirst).not.toHaveBeenCalled()
+      expect(eventCreate).not.toHaveBeenCalled()
+    })
+
+    it('cross-org omöjligt: payload-org ignoreras, avin slås upp bara via message-id', async () => {
+      const { service, rentNoticeFindFirst, eventCreate } = makeService(SECRET, {
+        tenantCount: 0,
+        notice: { id: 'rn-1' },
+      })
+      const { raw, headers } = signedRequest({
+        type: 'email.delivered',
+        created_at: '2026-06-02T10:00:00.000Z',
+        data: { email_id: 'reminder-msg-1', organizationId: 'attacker-org' },
+      })
+
+      await service.handle(raw, headers)
+
+      expect(rentNoticeFindFirst.mock.calls[0][0].where).toEqual({
+        reminderMessageId: 'reminder-msg-1',
+      })
+      const createArg = eventCreate.mock.calls[0][0]
+      expect(JSON.stringify(createArg)).not.toContain('attacker-org')
     })
   })
 })
