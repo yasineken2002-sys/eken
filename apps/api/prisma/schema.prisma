@@ -2094,6 +2094,12 @@ model RentNotice {
   remindedAt        DateTime?
   collectionReadyAt DateTime?
   writtenOffAt      DateTime?
+  // Inkasso PR 5 — befarad kundförlust. Sätts ATOMISKT med omklassningsverifikatet
+  // (1515 D / 1510 K) när en inkasso-redo, MOMSFRI fordran klassas som osäker.
+  // Markören driver kravtrappans terminalsteg: befarad (probableLossAt) → konstaterad
+  // (writtenOffAt + stage WRITTEN_OFF, 6352 D / 1515 K). Ändrar INTE kravsteget i sig
+  // (befarad är en balansräkningsomklassning, ingen ny kravstegsövergång).
+  probableLossAt    DateTime?
 
   // Påminnelseavgift (inkasso PR 2). Default 0 → ingen påverkan på icke-påminda
   // avier. Sätts ATOMISKT med påminnelseavgiftens verifikat (1510 D / 3593 K) när

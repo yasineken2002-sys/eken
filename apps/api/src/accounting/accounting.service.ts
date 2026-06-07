@@ -331,6 +331,124 @@ export class AccountingService {
     })
   }
 
+  /**
+   * Bokför BEFARAD kundförlust: 1515 D / 1510 K — omklassning av en osäker
+   * hyresfordran från kundfordringar (1510) till osäkra kundfordringar (1515).
+   * En ren BALANSRÄKNINGS-omklassning: ingen resultatpåverkan, ingen moms.
+   *
+   * ENDAST MOMSFRI fordran (bostadshyra). Lokalhyra under frivillig skattskyldighet
+   * är momspliktig och momsåterkravet vid kundförlust är en ÖPPEN revisorfråga
+   * (docs/legal/46 fråga 1) — anroparen vägrar momspliktiga avier, så ingen 26xx-rad
+   * rörs här. Skriv ALDRIG egen moms-återkravslogik innan revisorn svarat.
+   *
+   * Idempotent + gap-free via createNumberedEntry (unikt index (org, source,
+   * sourceId)). `tx` kan skickas in så att avins befarad-markering (probableLossAt)
+   * och verifikatet skapas ATOMISKT (INV-A). Returnerar verifikatet, eller null om
+   * beloppet ≤ 0 eller om 1510/1515 saknas (loggas) — anroparen avbryter då.
+   */
+  async bookBadDebtReclassification(params: {
+    organizationId: string
+    source: JournalEntrySource
+    sourceId: string
+    amount: number
+    description: string
+    date?: Date
+    createdById?: string | null
+    tx?: Prisma.TransactionClient
+  }): Promise<{ id: string } | null> {
+    const { organizationId, source, sourceId, amount, description } = params
+    if (!Number.isFinite(amount) || amount <= 0) return null
+
+    const db = params.tx ?? this.prisma
+    const accounts = await db.account.findMany({
+      where: { organizationId, number: { in: [1510, 1515] } },
+      select: { id: true, number: true },
+    })
+    const byNumber = new Map(accounts.map((a) => [a.number, a.id]))
+    const receivableId = byNumber.get(1510)
+    const doubtfulId = byNumber.get(1515)
+    if (!receivableId || !doubtfulId) {
+      this.logger.warn(
+        `Saknar konto 1510 eller 1515 för organisation ${organizationId} — ` +
+          `befarad kundförlust (${source} ${sourceId}) bokfördes inte`,
+      )
+      return null
+    }
+
+    return this.createNumberedEntry({
+      organizationId,
+      date: params.date ?? new Date(),
+      description,
+      source,
+      sourceId,
+      createdById: params.createdById ?? null,
+      lines: [
+        { accountId: doubtfulId, debit: amount, description: 'Omklassning osäker kundfordran' },
+        { accountId: receivableId, credit: amount, description: 'Befarad kundförlust' },
+      ],
+      idempotencyWhere: { organizationId, source, sourceId },
+      ...(params.tx ? { tx: params.tx } : {}),
+    })
+  }
+
+  /**
+   * Bokför KONSTATERAD kundförlust: 6352 D / 1515 K — den osäkra fordran (1515)
+   * skrivs av som en konstaterad förlust (6352, kostnadskonto 6-serien). Detta är
+   * resultatpåverkan: förlusten lämnar balansräkningen och belastar resultatet.
+   *
+   * Förutsätter att fordran redan omklassats till 1515 (bookBadDebtReclassification).
+   * ENDAST MOMSFRI fordran (bostadshyra) — samma avgränsning som befarad: lokalhyrans
+   * momsåterkrav (2611) väntar revisorbeslut (docs/legal/46 fråga 1) och rörs INTE.
+   *
+   * Idempotent + gap-free via createNumberedEntry. `tx` kan skickas in så att avins
+   * WRITTEN_OFF-flip och verifikatet skapas ATOMISKT (INV-A). Returnerar verifikatet,
+   * eller null om beloppet ≤ 0 eller om 1515/6352 saknas (loggas).
+   */
+  async bookBadDebtWriteOff(params: {
+    organizationId: string
+    source: JournalEntrySource
+    sourceId: string
+    amount: number
+    description: string
+    date?: Date
+    createdById?: string | null
+    tx?: Prisma.TransactionClient
+  }): Promise<{ id: string } | null> {
+    const { organizationId, source, sourceId, amount, description } = params
+    if (!Number.isFinite(amount) || amount <= 0) return null
+
+    const db = params.tx ?? this.prisma
+    const accounts = await db.account.findMany({
+      where: { organizationId, number: { in: [1515, 6352] } },
+      select: { id: true, number: true },
+    })
+    const byNumber = new Map(accounts.map((a) => [a.number, a.id]))
+    const doubtfulId = byNumber.get(1515)
+    const lossId = byNumber.get(6352)
+    if (!doubtfulId || !lossId) {
+      this.logger.warn(
+        `Saknar konto 1515 eller 6352 för organisation ${organizationId} — ` +
+          `konstaterad kundförlust (${source} ${sourceId}) bokfördes inte`,
+      )
+      return null
+    }
+
+    return this.createNumberedEntry({
+      organizationId,
+      date: params.date ?? new Date(),
+      description,
+      source,
+      sourceId,
+      createdById: params.createdById ?? null,
+      lines: [
+        { accountId: lossId, debit: amount, description: 'Konstaterad kundförlust' },
+        { accountId: doubtfulId, credit: amount, description: 'Bortskrivning osäker fordran' },
+      ],
+      idempotencyWhere: { organizationId, source, sourceId },
+      ...(params.tx ? { tx: params.tx } : {}),
+    })
+  }
+
   async getAccounts(organizationId: string) {
     return this.prisma.account.findMany({
       where: { organizationId },

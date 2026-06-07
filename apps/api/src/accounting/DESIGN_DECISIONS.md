@@ -573,3 +573,77 @@ inkassobolag). Bygger på 4b₀:s infrastruktur.
   pre-existing) — separat städ-PR (security MEDIUM).
 - **`EMAIL_DELIVERED` ↔ `reminderMessageId`-korrelation** i grinden (i dag säkert: bara
   webhooken skriver eventet) — hårdare koppling (hyresjurist MEDIUM).
+
+## Inkasso · PR 5 — kundförlust (befarad 1515 → konstaterad 6352)
+
+**Karaktär:** Serien sista PR. Sluter skuld-sidans bokföringscykel: en obetald,
+inkasso-redo MOMSFRI hyresfordran skrivs ned i två steg. Inga konton tillkommer —
+1515 (osäkra kundfordringar) seedades i baskontoplanen, 6352 (konstaterade
+förluster) lades in i PR 1 ("posteras först i PR 5"). Endast ett nullbart
+markörfält (`RentNotice.probableLossAt`) + migration.
+
+### Bokföring (RentBadDebtService + AccountingService.bookBadDebt\*)
+
+1. **BEFARAD kundförlust — `1515 D / 1510 K`.** Omklassning av en osäker fordran
+   från kundfordringar till osäkra kundfordringar. Ren balansräkningsåtgärd, INGEN
+   resultatpåverkan. Triggas av cron `reclassifyProbableLosses` (kl 12:00) för
+   inkasso-redo momsfria avier, eller manuellt via `POST /avisering/:id/bad-debt/probable`.
+   Markeras med `probableLossAt`.
+2. **KONSTATERAD kundförlust — `6352 D / 1515 K`.** Den osäkra fordran skrivs av som
+   konstaterad förlust (6352, kostnadskonto). RESULTATPÅVERKAN. Endast manuell
+   (`POST /avisering/:id/bad-debt/confirm`) — en mänsklig bedömning att fordran är
+   förlorad, ALDRIG cron. Kräver att avin först befarats (fordran ligger på 1515);
+   avskrivningsbeloppet läses ur befarad-verifikatets debetrad så 1515 nettar till
+   noll. Flippar kravsteget till `WRITTEN_OFF`.
+3. **INV-A.** Markeringen/flippen och verifikatet skapas i SAMMA transaktion
+   (`tx` skickas till bookBadDebt\*). Faller bokföringen (saknat 1510/1515 resp.
+   1515/6352) kastas felet → allt rullas tillbaka. Race-säker via updateMany-claim
+   (`probableLossAt null` resp. `writtenOffAt null`) + idempotent verifikat-sourceId
+   (`bad-debt-probable:{id}` / `bad-debt-writeoff:{id}`).
+
+### KRITISK JURIDISK AVGRÄNSNING — endast momsfri bostadshyra (docs/legal/46 fråga 1)
+
+Momsåterkravet vid kundförlust på LOKALHYRA (momspliktig under frivillig
+skattskyldighet, ML 9 kap) är en ÖPPEN revisorfråga: när en momspliktig fordran
+blir konstaterad kundförlust ska tidigare redovisad utgående moms (2611) normalt
+minskas/återkrävas — men mot vilket underlag/vilken period är inte bekräftat.
+
+Därför hanterar PR 5 ENDAST MOMSFRI fordran (`vatAmount = 0`, bostadshyra m.fl.):
+där finns ingen moms att korrigera, så `1515 → 6352` är komplett och säkert.
+Momspliktiga avier (`vatAmount > 0`) **VÄGRAS** (`ConflictException` "kräver manuell
+hantering") i båda stegen, och cronen räknar dem som `manual` + loggar. **Ingen egen
+moms-återkravslogik skrivs på AI:ns gissning** — momsdelen spikas i kod först när
+revisorn svarat. Detta är ett medvetet, dokumenterat val (jurist/revisorgräns).
+
+Ingen kod för förverkande/avhysning (samma gräns som hela serien). Kundförlust är
+bokföring av en förlorad fordran, inte en hyresgästprocess.
+
+### Bokföringsgranskning (FAR) — fynd hanterade i PR:en
+
+- **[MEDIUM] confirmLoss-claimen** låser nu på det semantiska villkoret
+  `probableLossAt != null && writtenOffAt == null` (befarad men ej avskriven) i
+  stället för `collectionStage = INKASSO_READY` — robustare mot framtida övergångar.
+- **[HIGH] Momsgrinden skärpt.** `assertMomsfri` vägrar nu även momspliktig
+  FÖRBRUKNING (en `RentNoticeLine.vatRate > 0`), inte bara momspliktig hyra
+  (`vatAmount > 0`) — en momsfri-hyra-men-momspliktig-förbrukning-avi bär utgående
+  moms (2611) och faller under samma öppna revisorfråga.
+- **[LOW]** Befarad-beloppets invariant (verifikatet har exakt en debetrad = 1515)
+  dokumenterad vid avläsningen i confirmLoss.
+
+### Öppna följdpunkter (ej i PR 5)
+
+- **[bokföring BLOCKING-bedömning] Ledger-rekonciliering av 1510 per avi.**
+  Befarad-beloppet kommer från den KANONISKA fältsumman (`outstanding()` = samma som
+  rentNoticePayableTotal + ränta), inte ur huvudboken — förbruknings-verifikat
+  (charge-id) och bankbetalningar (transaktions-id) är inte avi-scopade i sourceId
+  och går inte att summera per avi utan join. Fältsumman är den mest kompletta
+  per-avi-siffran och förutsätter en komplett verifikatkedja (gäller en
+  INKASSO_READY-avi). Ett uppströms INV-A-fel som lämnat ett fält satt utan 1510-
+  debet är en systemisk integritetsfråga, inte införd av PR 5; en full
+  ledger-rekonciliering (charge-/betalnings-attribuering) är noterad följdpunkt.
+- **Lokalhyrans momsåterkrav (2611-reduktion)** vid konstaterad kundförlust —
+  byggs när revisorfråga 1 (docs/legal/46) besvarats.
+- **Återvunnen kundförlust** (en avskriven fordran betalas ändå) — återföring
+  6352/1515 eller intäkt på 3950; inte aktuellt förrän det inträffar i praktiken.
+- **P&L-rapportens bucket för 8131** (dröjsmålsränteintäkt i kostnadsbucket
+  8000–8399) — pre-existing rapportfel, separat ärende (utanför PR 5).

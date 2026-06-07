@@ -16,6 +16,7 @@ import type { FastifyReply } from 'fastify'
 import { AviseringService } from './avisering.service'
 import { AviseringScheduler } from './avisering.scheduler'
 import { RentNoticeEventsService } from './rent-notice-events.service'
+import { RentBadDebtService } from './rent-bad-debt.service'
 import { GenerateNoticesDto } from './dto/generate-notices.dto'
 import { SendNoticesDto } from './dto/send-notices.dto'
 import { MarkPaidDto } from './dto/mark-paid.dto'
@@ -32,6 +33,7 @@ export class AviseringController {
     private readonly aviseringService: AviseringService,
     private readonly scheduler: AviseringScheduler,
     private readonly rentNoticeEvents: RentNoticeEventsService,
+    private readonly badDebt: RentBadDebtService,
   ) {}
 
   @Post('generate')
@@ -147,5 +149,33 @@ export class AviseringController {
   @HttpCode(HttpStatus.OK)
   async cancel(@OrgId() orgId: string, @Param('id') id: string) {
     return this.aviseringService.cancelNotice(id, orgId)
+  }
+
+  // Inkasso PR 5 — kundförlust (skuld-sidans bokföringscykel). Bokföringsåtgärder
+  // → ACCOUNTANT-rollen tillåts (utöver MANAGER/ADMIN/OWNER). Endast momsfri
+  // bostadshyra; momspliktig lokalhyra vägras (docs/legal/46 fråga 1).
+
+  // BEFARAD kundförlust: omklassar inkasso-redo, momsfri fordran 1510 → 1515.
+  @Post(':id/bad-debt/probable')
+  @Roles(UserRole.ACCOUNTANT, UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
+  @HttpCode(HttpStatus.OK)
+  async markProbableLoss(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.badDebt.reclassifyToProbableLoss(id, orgId, user.sub)
+  }
+
+  // KONSTATERAD kundförlust: skriver av osäker fordran 1515 → 6352, flippar WRITTEN_OFF.
+  @Post(':id/bad-debt/confirm')
+  @Roles(UserRole.ACCOUNTANT, UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
+  @HttpCode(HttpStatus.OK)
+  async confirmLoss(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.badDebt.confirmLoss(id, orgId, user.sub)
   }
 }
