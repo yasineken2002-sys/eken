@@ -1169,7 +1169,23 @@ export class AviseringService {
     }
 
     // ── 2. Bokför betalningen; ångra statusövergången om verifikatet uteblir ──
+    // Bankavstämnings-härdning PR 1 — additiv MANUAL-allokering (ingen bank-tx).
+    // Skrivs FÖRST i try-blocket så att samma revert som ångrar statusen även
+    // städar bort allokeringen om verifikatet uteblir. Härledd spegel av
+    // paidAmount; rör inte huvudboken.
+    let allocationId: string | null = null
     try {
+      const allocation = await this.prisma.rentNoticePayment.create({
+        data: {
+          rentNoticeId: noticeId,
+          bankTransactionId: null,
+          amount: paidAmount,
+          paidAt: paymentDate,
+          source: 'MANUAL',
+        },
+      })
+      allocationId = allocation.id
+
       const entry = await this.accounting.createJournalEntryForRentNoticeManualPayment(
         { id: notice.id, noticeNumber: notice.noticeNumber, type: notice.type },
         paidAmount,
@@ -1188,6 +1204,18 @@ export class AviseringService {
         )
       }
     } catch (err) {
+      // Städa bort allokeringen (PR 1) så spegeln Σ allokeringar == paidAmount
+      // hålls konsekvent när statusen ångras nedan.
+      if (allocationId) {
+        await this.prisma.rentNoticePayment
+          .delete({ where: { id: allocationId } })
+          .catch((cleanupErr) => {
+            this.logger.error(
+              `[Avisering] Kunde inte städa allokering för avi ${notice.noticeNumber}: ` +
+                `${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+            )
+          })
+      }
       // Återställ avin till obetald så att den kan regleras på nytt.
       await this.prisma.rentNotice
         .updateMany({
