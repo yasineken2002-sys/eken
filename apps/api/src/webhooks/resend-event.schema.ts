@@ -5,8 +5,9 @@ import { z } from 'zod'
 // låter Zod strippa resten (Resend lägger till fält över tid; okända fält ska
 // inte få payloaden att avvisas så länge signaturen stämmer).
 //
-// email_id är Resends message-id och vår enda korrelationsnyckel mot rätt
-// hyresgäst (Tenant.lastInviteMessageId, @unique).
+// email_id är Resends message-id och vår korrelationsnyckel mot rätt hyresgäst
+// (Tenant.lastInviteMessageId, @unique) eller, för en hyresavi-påminnelse, mot
+// rätt avi (RentNotice.reminderMessageId, @unique).
 //
 // Event-typer vi agerar på: email.delivered, email.bounced, email.complained.
 // Övriga (sent, opened, clicked …) parsar men ignoreras i service-switchen.

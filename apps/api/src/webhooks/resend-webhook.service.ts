@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import type { Prisma } from '@prisma/client'
 import { Webhook, WebhookVerificationError } from 'svix'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { ResendEventSchema, type ResendEvent } from './resend-event.schema'
@@ -20,6 +21,11 @@ import { ResendEventSchema, type ResendEvent } from './resend-event.schema'
  *  - Korrelationen email_id → Tenant går via Tenant.lastInviteMessageId (@unique)
  *    med updateMany. Det är org-säkert: id:t pekar ut exakt en hyresgäst som bär
  *    sin egen organizationId; vi läser ALDRIG någon org-uppgift ur payloaden.
+ *  - Matchar ingen inbjudan kan email_id i stället vara en hyresavi-PÅMINNELSE.
+ *    Den korreleras via RentNotice.reminderMessageId (@unique, inkasso PR 4b₀) och
+ *    leveransutfallet skrivs APPEND-ONLY till RentNoticeEvent (EMAIL_DELIVERED/
+ *    EMAIL_BOUNCED). Samma org-säkerhet: @unique → exakt en avi, som bär sin egen
+ *    organizationId; ingen org-uppgift läses ur payloaden, ingen cross-tenant-skrivning.
  */
 @Injectable()
 export class ResendWebhookService {
@@ -107,7 +113,7 @@ export class ResendWebhookService {
         await this.markDelivered(emailId, at)
         break
       case 'email.bounced':
-        await this.markBounced(emailId, at, event.data.bounce?.message ?? null)
+        await this.markBounced(emailId, at, event.data.bounce ?? null)
         break
       case 'email.complained':
         await this.markComplained(emailId, at)
@@ -122,15 +128,40 @@ export class ResendWebhookService {
       where: { lastInviteMessageId: emailId },
       data: { inviteDeliveredAt: at },
     })
-    this.logCorrelation('delivered', emailId, res.count)
+    if (res.count > 0) {
+      this.logCorrelation('delivered', emailId, res.count)
+      return
+    }
+    // Ingen inbjudan matchade — kan vara en hyresavi-påminnelse (inkasso PR 4b₀).
+    const matched = await this.recordReminderDeliveryEvent(emailId, 'EMAIL_DELIVERED', {
+      deliveredAt: at.toISOString(),
+    })
+    if (!matched) this.logCorrelation('delivered', emailId, 0)
   }
 
-  private async markBounced(emailId: string, at: Date, reason: string | null): Promise<void> {
+  private async markBounced(
+    emailId: string,
+    at: Date,
+    bounce: ResendEvent['data']['bounce'] | null,
+  ): Promise<void> {
     const res = await this.prisma.tenant.updateMany({
       where: { lastInviteMessageId: emailId },
-      data: { inviteBouncedAt: at, inviteBounceReason: reason },
+      data: { inviteBouncedAt: at, inviteBounceReason: bounce?.message ?? null },
     })
-    this.logCorrelation('bounced', emailId, res.count)
+    if (res.count > 0) {
+      this.logCorrelation('bounced', emailId, res.count)
+      return
+    }
+    // Hyresavi-påminnelse: lagra STRUKTURERAD bounce-kategori (type/subType),
+    // ALDRIG den fria bounce-texten. Fritexten kan innehålla mottagarens e-post
+    // (PII) och hamnar annars i en append-only logg som inte kan rensas
+    // (security-auditor LOW / GDPR lagringsminimering).
+    const matched = await this.recordReminderDeliveryEvent(emailId, 'EMAIL_BOUNCED', {
+      bouncedAt: at.toISOString(),
+      ...(bounce?.type ? { bounceType: bounce.type } : {}),
+      ...(bounce?.subType ? { bounceSubType: bounce.subType } : {}),
+    })
+    if (!matched) this.logCorrelation('bounced', emailId, 0)
   }
 
   private async markComplained(emailId: string, at: Date): Promise<void> {
@@ -139,6 +170,66 @@ export class ResendWebhookService {
       data: { inviteComplainedAt: at },
     })
     this.logCorrelation('complained', emailId, res.count)
+  }
+
+  /**
+   * Korrelerar ett Resend-event mot en hyresavi-påminnelse via
+   * RentNotice.reminderMessageId (@unique) och loggar leveransutfallet
+   * APPEND-ONLY i RentNoticeEvent. Returnerar true om en avi matchade.
+   *
+   * Org-säkert: @unique gör att email_id pekar ut HÖGST en avi, som bär sin egen
+   * organizationId — vi läser aldrig org ur payloaden och kan aldrig skriva till
+   * fel organisations logg.
+   *
+   * Idempotent under Resends at-least-once-leverans: om utfallet redan loggats
+   * skapas ingen dubblett (append-only-loggen får aldrig skrivas över).
+   */
+  private async recordReminderDeliveryEvent(
+    emailId: string,
+    type: 'EMAIL_DELIVERED' | 'EMAIL_BOUNCED',
+    payload: Prisma.InputJsonObject,
+  ): Promise<boolean> {
+    const notice = await this.prisma.rentNotice.findFirst({
+      where: { reminderMessageId: emailId },
+      select: { id: true },
+    })
+    if (!notice) return false
+
+    // Snabbväg + rena loggar: hoppa över om utfallet redan loggats.
+    const existing = await this.prisma.rentNoticeEvent.findFirst({
+      where: { rentNoticeId: notice.id, type },
+      select: { id: true },
+    })
+    if (existing) {
+      this.logger.debug(`Resend ${type}: redan loggat för avi ${notice.id} (idempotent)`)
+      return true
+    }
+
+    try {
+      await this.prisma.rentNoticeEvent.create({
+        data: {
+          rentNoticeId: notice.id,
+          type,
+          actorType: 'WEBHOOK',
+          actorLabel: 'E-postleverantör',
+          payload,
+        },
+      })
+      this.logger.log(`Resend ${type}: loggade leverans-event för hyresavi ${notice.id}`)
+    } catch (err) {
+      // Det partiella unika indexet (rentNoticeId, type) på leveranstyperna
+      // DB-enforce:ar idempotensen: en samtidig dubblett som passerade findFirst-
+      // kontrollen ger P2002. Behandla som no-op — det vinnande anropet har redan
+      // skrivit utfallet (append-only-loggen får aldrig dubbletter).
+      if ((err as { code?: string } | null)?.code === 'P2002') {
+        this.logger.debug(
+          `Resend ${type}: samtidig dubblett för avi ${notice.id} (P2002, idempotent)`,
+        )
+        return true
+      }
+      throw err
+    }
+    return true
   }
 
   private logCorrelation(kind: string, emailId: string, count: number): void {

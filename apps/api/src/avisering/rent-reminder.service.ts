@@ -249,6 +249,14 @@ export class RentReminderService {
       const html = await this.buildReminderPdfHtml(notice, org)
       const pdfBuffer = await this.pdfService.generateFromHtml(html)
 
+      // Inkasso PR 4b₀: lagra den FAKTISKT skickade påminnelse-PDF:en org-scopat
+      // (reminders/{orgId}/…, samma R2-tenant-isolation som övriga dokument) så
+      // dokumentkopian kan följa med i inkassoöverlämningen (PR 4b, INV-B).
+      // Best-effort: en R2-hicka får INTE blocka den lagstadgade påminnelsen.
+      // Idempotent — samma nyckel skrivs över vid en Bull-retry före lyckat
+      // utskick (SENT-händelsen ovan stoppar retry EFTER lyckad send).
+      await this.storeReminderPdf(orgId, noticeId, pdfBuffer)
+
       const tenantName =
         notice.tenant.type === 'INDIVIDUAL'
           ? `${notice.tenant.firstName ?? ''} ${notice.tenant.lastName ?? ''}`.trim()
@@ -274,6 +282,16 @@ export class RentReminderService {
         channel: 'EMAIL',
         ...(messageId ? { messageId } : {}),
       })
+
+      // Spara Resends message-id som webhookens korrelationsnyckel mot rätt avi
+      // (@unique). Leveransutfallet (EMAIL_DELIVERED/EMAIL_BOUNCED) skrivs sedan
+      // append-only till RentNoticeEvent av ResendWebhookService.
+      if (messageId) {
+        await this.prisma.rentNotice.update({
+          where: { id: noticeId },
+          data: { reminderMessageId: messageId },
+        })
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       await this.rentNoticeEvents
@@ -286,6 +304,31 @@ export class RentReminderService {
   private daysSince(date: Date): number {
     const ms = Date.now() - date.getTime()
     return Math.floor(ms / (24 * 60 * 60 * 1000))
+  }
+
+  /**
+   * Laddar upp påminnelse-PDF:en till R2 (org-scopat) och persisterar nyckeln på
+   * avin. Best-effort: ett lagringsfel loggas men kastas INTE — den lagstadgade
+   * påminnelsen ska skickas oavsett om dokumentkopian kunde sparas. PR 4b:s
+   * inkasso-ready-grind vägrar i sin tur övergången om nyckeln saknas (INV-B).
+   */
+  private async storeReminderPdf(
+    orgId: string,
+    noticeId: string,
+    pdfBuffer: Buffer,
+  ): Promise<void> {
+    const storageKey = `reminders/${orgId}/${noticeId}.pdf`
+    try {
+      await this.storage.uploadFile(pdfBuffer, storageKey, 'application/pdf')
+      await this.prisma.rentNotice.update({
+        where: { id: noticeId },
+        data: { reminderPdfStorageKey: storageKey },
+      })
+    } catch (err) {
+      this.logger.error(
+        `Kunde inte lagra påminnelse-PDF för avi ${noticeId}: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
   }
 
   // Exponerad för test (org-adress + villkorat bankgiro enligt lag 1981:739 5 §).

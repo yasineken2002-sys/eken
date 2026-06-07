@@ -446,3 +446,56 @@ verifieras innan PR 4b får exportera räntekravet.
   har alltid `dueDate`, men invarianten bör dokumenteras i PR 4b:s grindlogik
   (hyresjurist LOW).
 - **Larm vid saknad referensränta** kvarstår från PR 3 (operativ rutin juni/december).
+
+---
+
+## Inkasso · PR 4b₀ — leveransverifiering + lagrad påminnelse-PDF (INV-B-infrastruktur)
+
+**Karaktär:** Ren infrastruktur som GÖR INV-B uppfyllbar i PR 4b. Penganeutral:
+ingen statusövergång, ingen export, ingen bokföring. Stänger två gap mot
+"verifierad dokumentation" inför inkasso-ready.
+
+### Beslut
+
+1. **Påminnelse-PDF lagras (PR 2-backlog).** `RentNotice.reminderPdfStorageKey` +
+   uppladdning i `processReminderSendJob` till R2 org-scopat
+   (`reminders/{orgId}/{noticeId}.pdf`, samma tenant-isolation som `documents/`).
+   **Best-effort:** ett R2-fel loggas men kastas INTE — den lagstadgade påminnelsen
+   (lag 1981:739) skickas oavsett; PR 4b:s grind vägrar i stället inkasso-ready om
+   nyckeln saknas. Idempotent (samma nyckel skrivs över vid Bull-retry före lyckat
+   utskick).
+
+2. **Leveransverifiering för hyresavi-påminnelser.** `RentNotice.reminderMessageId`
+   (@unique) sätts efter lyckad Resend-send och är `ResendWebhookService`:s
+   korrelationsnyckel mot rätt avi — exakt mönstret som `Tenant.lastInviteMessageId`
+   för portalinbjudan. Webhooken skriver leveransutfallet APPEND-ONLY till
+   `RentNoticeEvent` (`EMAIL_DELIVERED`/`EMAIL_BOUNCED`). Org-säkert: @unique →
+   exakt en avi som bär sin egen `organizationId`; ingen org-uppgift läses ur
+   payloaden (ingen cross-tenant-skrivning). Webhookmodulen hålls självständig
+   (direkt prisma-skrivning, ingen tung AviseringModule-import).
+
+### Säkerhetsgranskning (security-auditor) — alla fynd åtgärdade i PR:en
+
+- **[MEDIUM] Idempotens DB-enforce:ad.** Check-then-act-racet (Resend at-least-once)
+  täcks nu av ett PARTIELLT unikt index `(rentNoticeId, type) WHERE type IN
+('EMAIL_DELIVERED','EMAIL_BOUNCED')` (migration, ej uttryckbart i Prisma-schemat).
+  Ett brett `@@unique([rentNoticeId, type])` gick INTE att använda — det hade brutit
+  repeterbara typer (`INTEREST_ACCRUED` skapas vid både påminnelse och inkasso-ready,
+  `REMINDER_SENT`, `NOTE_ADDED`). Webhooken fångar `P2002` som idempotent no-op.
+- **[MEDIUM] Interna fält döljs för klienten.** `reminderPdfStorageKey`/
+  `reminderMessageId` (R2-path + message-id, ej presigned URL) utelämnas i
+  klient-läsvägarna (`avisering.findMany/findOne`, `tenant-portal.getNotices`) via
+  Prisma `omit` (krävde preview-flaggan `omitApi` på 5.22).
+- **[LOW] PII-minimering i bounce.** Hyresavi-eventet lagrar STRUKTURERAD bounce-
+  kategori (`bounceType`/`bounceSubType`), aldrig Resends fria `bounce.message` som
+  kan innehålla mottagarens e-post (GDPR lagringsminimering; append-only-loggen kan
+  inte rensas). Invite-flödets fritext (`inviteBounceReason`) är oförändrad — samma
+  systemiska mönster i `InvoiceEvent.payload` kvarstår som separat GDPR-ärende.
+
+### Öppna följdpunkter (ej i PR 4b₀)
+
+- **INV-B-grinden (PR 4b)** läser denna infrastruktur: avi-PDF + lagrad påminnelse-
+  PDF + `EMAIL_DELIVERED`-event + utskicks-/betalningslogg + kompletta partsdata.
+- **GDPR-strategi för `*Event.payload`-PII** (pseudonymisering vid radering, både
+  RentNoticeEvent och InvoiceEvent) — separat systemärende (security-auditor LOW).
+- **Webhook rate-limit/IP-allowlist** för Resend-callbacken — separat ärende.

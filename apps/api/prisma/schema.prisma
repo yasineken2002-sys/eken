@@ -1,5 +1,9 @@
 generator client {
   provider = "prisma-client-js"
+  // omitApi: tillåter `omit: { … }` i queries för att utelämna känsliga skalärfält
+  // från svaret (t.ex. interna R2-nycklar/message-id som aldrig ska nå klienten).
+  // GA i Prisma 6.2; preview på 5.22. Additiv — påverkar inga befintliga queries.
+  previewFeatures = ["omitApi"]
 }
 
 datasource db {
@@ -2110,6 +2114,24 @@ model RentNotice {
   interestAccruedAmount  Decimal   @default(0) @db.Decimal(10, 2)
   interestAccruedThrough DateTime?
 
+  // Inkasso PR 4b₀ — dokumentationsinfrastruktur som gör INV-B uppfyllbar i PR 4b
+  // (inget av detta rör status, bokföring eller export — ren infrastruktur).
+  //
+  // reminderPdfStorageKey: R2-nyckeln till den FAKTISKT skickade påminnelse-PDF:en.
+  // Tidigare renderades den i processReminderSendJob, mejlades och kastades; nu
+  // laddas den upp org-scopat (reminders/{orgId}/…) så dokumentkopian kan följa med
+  // i inkassoöverlämningen (PR 2-backlog, hyresjurist LOW).
+  //
+  // reminderMessageId: Resends message-id (email_id) för påminnelseutskicket —
+  // webhookens ENDA korrelationsnyckel mot rätt avi, exakt som
+  // Tenant.lastInviteMessageId för portalinbjudan. @unique gör korrelationen
+  // entydig på DB-nivå: ett leverans-/bounce-event kan aldrig träffa mer än en avi
+  // (ingen cross-tenant-skrivning). Sätts av PdfWorker EFTER lyckad Resend-send.
+  // Leveransutfallet loggas append-only i RentNoticeEvent (EMAIL_DELIVERED/
+  // EMAIL_BOUNCED), inte som muterbara kolumner här.
+  reminderPdfStorageKey String?
+  reminderMessageId     String? @unique
+
   // Bokföringslagen (1999:1078): hyresavier är räkenskapsinformation, bevaras 7 år.
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   tenant           Tenant            @relation(fields: [tenantId], references: [id])
@@ -2195,6 +2217,11 @@ model RentNoticeEvent {
   @@index([rentNoticeId, createdAt])
   @@index([rentNoticeId, type])
   @@index([createdAt])
+  // OBS: Ett PARTIELLT unikt index på (rentNoticeId, type) WHERE type IN
+  // ('EMAIL_DELIVERED','EMAIL_BOUNCED') finns i migrationen 20260607000000 men kan
+  // INTE uttryckas i Prisma-schemat (partiella unika index saknar schema-syntax).
+  // Det DB-enforce:ar idempotent leveranskorrelation (Resend at-least-once) utan
+  // att hindra repeterbara event-typer (INTEREST_ACCRUED, REMINDER_SENT m.fl.).
 }
 
 // ─── Inspection (Besiktning) ──────────────────────────────────────────────────

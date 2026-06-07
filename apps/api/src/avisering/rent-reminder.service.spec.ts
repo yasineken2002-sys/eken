@@ -161,6 +161,95 @@ describe('escalateOverdueRentNotices (cron)', () => {
   })
 })
 
+describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id', () => {
+  function makeSendService(opts: { messageId?: string | null; uploadFails?: boolean } = {}) {
+    const notice = {
+      id: 'rn-1',
+      noticeNumber: 'AVI-2026-07-0001',
+      ocrNumber: '1234567890',
+      dueDate: new Date('2026-06-01'),
+      totalAmount: new Decimal(8000),
+      consumptionAmount: new Decimal(0),
+      reminderFeeAmount: new Decimal(60),
+      tenant: { type: 'INDIVIDUAL', email: 'g@x.se', firstName: 'Anna', lastName: 'A' },
+      lease: null,
+      lines: [],
+    }
+    const org = { id: 'org-1', name: 'Värd AB', invoiceColor: null, logoStorageKey: null }
+    const update = jest.fn().mockResolvedValue({})
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue(org) },
+      rentNotice: { findFirst: jest.fn().mockResolvedValue(notice), update },
+      // alreadySent-kontrollen (type SENT) → ingen tidigare → fortsätt.
+      rentNoticeEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+    }
+    const rentNoticeEvents = { record: jest.fn().mockResolvedValue({ id: 'ev-1' }) }
+    const pdfService = { generateFromHtml: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4')) }
+    const uploadFile = opts.uploadFails
+      ? jest.fn().mockRejectedValue(new Error('R2 nere'))
+      : jest.fn().mockResolvedValue('https://signed.example/r2')
+    const storage = { uploadFile }
+    const mailService = {
+      sendRentNoticeReminder: jest
+        .fn()
+        .mockResolvedValue(opts.messageId === undefined ? 'resend-msg-1' : opts.messageId),
+    }
+    const service = new RentReminderService(
+      prisma as never,
+      {} as never,
+      rentNoticeEvents as never,
+      {} as never,
+      {} as never,
+      mailService as never,
+      pdfService as never,
+      storage as never,
+    )
+    return { service, prisma, update, uploadFile, mailService, rentNoticeEvents }
+  }
+
+  it('laddar upp påminnelse-PDF org-scopat och persisterar nyckel + message-id', async () => {
+    const { service, update, uploadFile, mailService } = makeSendService()
+    await service.processReminderSendJob('org-1', 'rn-1')
+
+    // PDF lagras org-scopat (R2-tenant-isolation: reminders/{orgId}/…).
+    expect(uploadFile).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      'reminders/org-1/rn-1.pdf',
+      'application/pdf',
+    )
+    expect(mailService.sendRentNoticeReminder).toHaveBeenCalledTimes(1)
+
+    // Två update-anrop: nyckeln (storeReminderPdf) + message-id (efter send).
+    const datas = update.mock.calls.map((c) => c[0].data)
+    expect(datas).toContainEqual({ reminderPdfStorageKey: 'reminders/org-1/rn-1.pdf' })
+    expect(datas).toContainEqual({ reminderMessageId: 'resend-msg-1' })
+  })
+
+  it('best-effort: R2-fel blockerar INTE utskicket (ingen throw, ingen PDF-nyckel)', async () => {
+    const { service, update, mailService } = makeSendService({ uploadFails: true })
+    await expect(service.processReminderSendJob('org-1', 'rn-1')).resolves.toBeUndefined()
+
+    // Påminnelsen skickas ändå.
+    expect(mailService.sendRentNoticeReminder).toHaveBeenCalledTimes(1)
+    // PDF-nyckeln persisteras inte (uppladdningen föll), men message-id gör det.
+    const datas = update.mock.calls.map((c) => c[0].data)
+    expect(datas).not.toContainEqual(
+      expect.objectContaining({ reminderPdfStorageKey: expect.any(String) }),
+    )
+    expect(datas).toContainEqual({ reminderMessageId: 'resend-msg-1' })
+  })
+
+  it('saknat message-id från Resend → ingen reminderMessageId-skrivning', async () => {
+    const { service, update } = makeSendService({ messageId: null })
+    await service.processReminderSendJob('org-1', 'rn-1')
+    const datas = update.mock.calls.map((c) => c[0].data)
+    expect(datas).toContainEqual({ reminderPdfStorageKey: 'reminders/org-1/rn-1.pdf' })
+    expect(datas).not.toContainEqual(
+      expect.objectContaining({ reminderMessageId: expect.any(String) }),
+    )
+  })
+})
+
 describe('buildReminderPdfHtml — innehåll (lag 1981:739 5 §)', () => {
   const notice = {
     noticeNumber: 'AVI-2026-07-0001',
