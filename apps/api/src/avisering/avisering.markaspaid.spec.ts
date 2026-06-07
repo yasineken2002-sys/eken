@@ -42,6 +42,11 @@ function makeService(opts?: { notice?: Record<string, unknown>; claimCount?: num
         .mockResolvedValue({ ...notice, status: 'PAID' }),
       updateMany: jest.fn().mockResolvedValue({ count: opts?.claimCount ?? 1 }),
     },
+    // Bankavstämnings-härdning PR 1 — MANUAL-allokering skrivs bredvid betalningen.
+    rentNoticePayment: {
+      create: jest.fn().mockResolvedValue({ id: 'rnp-1' }),
+      delete: jest.fn().mockResolvedValue({}),
+    },
   }
 
   const accounting = {
@@ -170,5 +175,31 @@ describe('FIX 9 · PR 6 — AviseringService.markAsPaid', () => {
       accounting.createJournalEntryForRentNoticeManualPayment.mock.calls[0]
     expect(dateArg).toBeInstanceOf(Date)
     expect(byArg).toBeNull()
+  })
+
+  // ── Bankavstämnings-härdning PR 1 · C — MANUAL-allokering ──────────────────
+  it('PR1: skriver en MANUAL-allokering (ingen bank-tx) bredvid betalningen', async () => {
+    const { service, prisma } = makeService()
+    await service.markAsPaid('rn-1', 'org-1', 10_000, 'SWISH', '2026-06-15')
+
+    expect(prisma.rentNoticePayment.create).toHaveBeenCalledTimes(1)
+    const data = prisma.rentNoticePayment.create.mock.calls[0][0].data
+    expect(data).toMatchObject({
+      rentNoticeId: 'rn-1',
+      bankTransactionId: null,
+      amount: 10_000,
+      source: 'MANUAL',
+    })
+    expect((data.paidAt as Date).toISOString().slice(0, 10)).toBe('2026-06-15')
+  })
+
+  it('PR1: bokföringen KASTAR → allokeringen städas (delete) och felet propageras', async () => {
+    const { service, prisma, accounting } = makeService()
+    accounting.createJournalEntryForRentNoticeManualPayment.mockRejectedValueOnce(
+      new Error('DB nere'),
+    )
+    await expect(service.markAsPaid('rn-1', 'org-1', 10_000, 'BANK')).rejects.toThrow('DB nere')
+    // Allokeringen som skrevs före verifikatet rullas tillbaka.
+    expect(prisma.rentNoticePayment.delete).toHaveBeenCalledWith({ where: { id: 'rnp-1' } })
   })
 })

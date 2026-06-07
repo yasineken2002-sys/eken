@@ -13,6 +13,7 @@ import { RentReminderService } from './rent-reminder.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentInterestService } from './rent-interest.service'
 import { RentBadDebtService } from './rent-bad-debt.service'
+import { RentDebtService } from './rent-debt.service'
 
 @Module({
   imports: [
@@ -32,10 +33,13 @@ import { RentBadDebtService } from './rent-bad-debt.service'
     RentNoticeEventsService,
     RentInterestService,
     RentBadDebtService,
+    RentDebtService,
   ],
   // RentReminderService exporteras så PdfWorker (kind 'avisering-reminder') kan
   // resolva den via ModuleRef. RentInterestService exporteras för PR 4
-  // (inkasso-ready kristalliserar räntan en sista gång).
-  exports: [AviseringService, RentReminderService, RentInterestService],
+  // (inkasso-ready kristalliserar räntan en sista gång). RentDebtService (PR 1,
+  // bankavstämnings-härdning) exponeras för FRAMTIDA konsumenter — ingen
+  // produktionsväg anropar outstanding() ännu (penganeutral grund-PR).
+  exports: [AviseringService, RentReminderService, RentInterestService, RentDebtService],
 })
 export class AviseringModule {}

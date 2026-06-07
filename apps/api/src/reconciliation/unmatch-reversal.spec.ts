@@ -21,6 +21,8 @@ function makeService(opts: { transaction?: unknown; reverseThrows?: boolean }) {
   const tx = {
     rentNotice: { update: jest.fn().mockResolvedValue({}) },
     bankTransaction: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    // Bankavstämnings-härdning PR 1 — allokeringen städas i samma transaktion.
+    rentNoticePayment: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
   }
   const prisma = {
     bankTransaction: {
@@ -72,6 +74,12 @@ describe('ReconciliationService.unmatchTransaction — atomisk reversering (#33)
     // reversering anropad MED transaktionsklienten (4:e argumentet) → atomiskt
     expect(reverseJournalEntryForPayment).toHaveBeenCalledTimes(1)
     expect(reverseJournalEntryForPayment).toHaveBeenCalledWith('tx-1', 'org-1', 'user-1', tx)
+
+    // Bankavstämnings-härdning PR 1 — allokeringen raderas i SAMMA transaktion,
+    // nycklad på bank-transaktionen (0 eller 1 rad).
+    expect(tx.rentNoticePayment.deleteMany).toHaveBeenCalledWith({
+      where: { bankTransactionId: 'tx-1' },
+    })
   })
 
   it('propagerar felet om reverseringen fallerar (rullar tillbaka, sväljer ej)', async () => {

@@ -730,6 +730,18 @@ export class ReconciliationService {
         },
       })
 
+      // Bankavstämnings-härdning PR 1 — additiv allokering bredvid betalningen, i
+      // SAMMA transaktion (db). Samma penganeutrala spegel som OCR-vägen.
+      await db.rentNoticePayment.create({
+        data: {
+          rentNoticeId: candidate.id,
+          bankTransactionId: transaction.id,
+          amount: payable,
+          paidAt: transaction.date,
+          source: 'BANK_RECONCILIATION',
+        },
+      })
+
       try {
         await this.accounting.createJournalEntryForRentNoticePayment(
           {
@@ -873,6 +885,18 @@ export class ReconciliationService {
         matchedRentNoticeId: noticeId,
         matchedAt: new Date(),
         ...(userId ? { matchedBy: userId } : {}),
+      },
+    })
+
+    // Bankavstämnings-härdning PR 1 — additiv allokering bredvid betalningen, i
+    // SAMMA transaktion (db). Härledd spegel av paidAmount; rör inte huvudboken.
+    await db.rentNoticePayment.create({
+      data: {
+        rentNoticeId: noticeId,
+        bankTransactionId: transactionId,
+        amount: noticeTotal,
+        paidAt: transactionDate,
+        source: 'BANK_RECONCILIATION',
       },
     })
 
@@ -1107,6 +1131,16 @@ export class ReconciliationService {
           data: { status: 'SENT', paidAt: null, paidAmount: null },
         })
       }
+
+      // Bankavstämnings-härdning PR 1 — ta bort allokeringen som hörde till denna
+      // bank-transaktion, i SAMMA atomiska transaktion som status- och verifikat-
+      // återställningen. bankTransactionId är unikt → 0 eller 1 rad. Körs alltid
+      // (oavsett rentNoticeToReset): allokeringen tillhör transaktionen, så när
+      // transaktionen avmatchas ska dess spegel bort. paidAmount nollställs ovan,
+      // vilket håller spegeln (Σ allokeringar == paidAmount) konsekvent.
+      await tx.rentNoticePayment.deleteMany({
+        where: { bankTransactionId: transactionId },
+      })
 
       // Övriga statusar lämnas oförändrade — vi länkar bara bort
       // banktransaktionen. updateMany med organizationId som defense-in-depth:

@@ -1309,11 +1309,15 @@ model BankTransaction {
   // båda. CHECK-constraint i migration garanterar invarianten på DB-nivå
   // så vi inte kan hamna i ett inkonsekvent state om en bug skriver båda.
   invoiceId            String?
-  // @unique: en hyresavi får maximalt EN matchad bank-transaktion. Skyddar
-  // mot dubbel-match-race i applyMatchToRentNotice — om två importer av
-  // någon anledning båda försöker länka samma avi, faller den andra med
-  // P2002 istället för att korrumpera betalningshistoriken.
-  matchedRentNoticeId  String?   @unique
+  // Bankavstämnings-härdning PR 1 — @unique LYFT. Dubbel-allokeringsskyddet flyttas
+  // till RentNoticePayment.bankTransactionId @unique (en bank-transaktion får
+  // allokeras till exakt EN avi). matchedRentNoticeId blir en härledd spegel av
+  // "vilken avi denna transaktion betalade" och kan på sikt delas av flera
+  // transaktioner mot samma avi (delbetalning) — därför inte längre unik. Den
+  // gamla race-garantin (en avi → en transaktion) bärs redan av den status-guardade
+  // updateMany:en i applyMatchToRentNotice (claim.count), så ingen skyddslucka
+  // uppstår. Index behålls för relation/uppslag.
+  matchedRentNoticeId  String?
   matchedAt            DateTime?
   matchedBy            String?
   createdAt            DateTime              @default(now())
@@ -1322,11 +1326,14 @@ model BankTransaction {
   organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   invoice           Invoice?     @relation(fields: [invoiceId], references: [id])
   matchedRentNotice RentNotice?  @relation(fields: [matchedRentNoticeId], references: [id])
+  // Härledd betalningsallokering (PR 1). Optional 1:1 — bankTransactionId @unique
+  // på RentNoticePayment-sidan ger en allokering per transaktion.
+  rentNoticePayment RentNoticePayment?
 
   @@index([organizationId])
   @@index([status])
   @@index([invoiceId])
-  // matchedRentNoticeId har egen unique-index via @unique på fältet
+  @@index([matchedRentNoticeId])
 }
 
 // ─── Bank Statement Import (AI-tolkat kontoutdrag i PDF) ──────────────────────
@@ -2145,6 +2152,13 @@ model RentNotice {
   bankTransactions BankTransaction[]
   lines            RentNoticeLine[]
   events           RentNoticeEvent[]
+  // Bankavstämnings-härdning PR 1 — granulära betalningsallokeringar. Källa till
+  // sanning för "hur mycket är betalt" (RentDebtService.outstanding läser dessa);
+  // paidAmount/matchedRentNoticeId blir härledda speglar. En avi kan på sikt bära
+  // flera allokeringar (delbetalning över flera bank-transaktioner). Cascade: en
+  // allokering är härledd data, inte verifikat — själva verifikatet (JournalEntry)
+  // är räkenskapsinformationen och rörs aldrig av den här tabellen.
+  payments         RentNoticePayment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2228,6 +2242,63 @@ model RentNoticeEvent {
   // INTE uttryckas i Prisma-schemat (partiella unika index saknar schema-syntax).
   // Det DB-enforce:ar idempotent leveranskorrelation (Resend at-least-once) utan
   // att hindra repeterbara event-typer (INTEREST_ACCRUED, REMINDER_SENT m.fl.).
+}
+
+// Bankavstämnings-härdning PR 1 — granulär betalningsallokering på en hyresavi.
+//
+// SYFTE: idag bär RentNotice bara en samlad paidAmount-cache + en @unique
+// matchedRentNoticeId på BankTransaction. Det räcker inte för att resonera om
+// DELbetalning, timing-glapp eller "zombie"-matchningar (se reconciliation/
+// inkasso-riskanalysen). Den här tabellen gör betalningar GRANULÄRA: varje
+// faktiskt registrerad betalning får en egen rad bredvid avin. Σ amount per avi
+// är den auktoritativa "betalt"-summan; paidAmount blir en härledd spegel.
+//
+// PENGANEUTRAL: tabellen rör ALDRIG huvudboken. Verifikaten (JournalEntry) är
+// räkenskapsinformationen och skapas/återförs precis som förr av AccountingService.
+// Detta är ren härledd betalningsdata (BFL: stöd-/sidoordnad information), inte
+// ett verifikat. Ingen status, inget utskick, inget kravbeslut skrivs här.
+model RentNoticePayment {
+  id           String @id @default(uuid())
+  rentNoticeId String
+
+  // Bank-transaktionen som gav upphov till allokeringen (BANK_RECONCILIATION).
+  // NULL för manuell betalning (markAsPaid, source = MANUAL). @unique är PR 1:s
+  // dubbel-allokeringsskydd: en bank-transaktion kan allokeras till EXAKT en avi
+  // (ersätter BankTransaction.matchedRentNoticeId @unique). Postgres behandlar
+  // NULL som distinkt i unika index → flera manuella allokeringar (NULL) kan
+  // samexistera på samma eller olika avier utan kollision.
+  bankTransactionId String? @unique
+
+  // Allokerat belopp. Decimal(10,2) speglar avins penningfält. För
+  // bankavstämning = den reglerade (betalbara) totalen; för markAsPaid = det
+  // registrerade paidAmount. Σ amount per avi == paidAmount-spegeln (invariant
+  // som backfillen och dual-write-testerna verifierar).
+  amount Decimal @db.Decimal(10, 2)
+
+  // Betalningsdatum (banktransaktionens datum, resp. markAsPaid:s paidAt).
+  paidAt DateTime
+
+  source RentNoticePaymentSource
+
+  createdAt DateTime @default(now())
+
+  rentNotice      RentNotice       @relation(fields: [rentNoticeId], references: [id], onDelete: Cascade)
+  // onDelete: SetNull är explicit (matchar migrationens ON DELETE SET NULL och
+  // Prisma-default för en nullbar relation — noll drift). En bank-transaktion är
+  // räkenskapsinformation (Restrict mot org, raderas aldrig i praktiken); skulle
+  // den ändå tas bort förblir allokeringen kvar med bankTransactionId = NULL i
+  // stället för att blockera eller kaskadradera betalningsdata.
+  bankTransaction BankTransaction? @relation(fields: [bankTransactionId], references: [id], onDelete: SetNull)
+
+  @@index([rentNoticeId])
+}
+
+// Ursprunget för en betalningsallokering. BANK_RECONCILIATION = matchad mot en
+// importerad bank-transaktion (OCR/referens/fuzzy/manuell matchning). MANUAL =
+// registrerad via markAsPaid (ingen bank-transaktion).
+enum RentNoticePaymentSource {
+  BANK_RECONCILIATION
+  MANUAL
 }
 
 // ─── Inspection (Besiktning) ──────────────────────────────────────────────────

@@ -647,3 +647,65 @@ bokföring av en förlorad fordran, inte en hyresgästprocess.
   6352/1515 eller intäkt på 3950; inte aktuellt förrän det inträffar i praktiken.
 - **P&L-rapportens bucket för 8131** (dröjsmålsränteintäkt i kostnadsbucket
   8000–8399) — pre-existing rapportfel, separat ärende (utanför PR 5).
+
+---
+
+## Bankavstämnings-härdning — granulär betalningsallokering (PR 1, INV-S)
+
+**Mål:** en sanningskälla för "hur mycket är betalt på en avi". Idag bär `RentNotice`
+bara en samlad `paidAmount`-cache + ett `@unique matchedRentNoticeId` på
+`BankTransaction`. Det räcker inte för att resonera om delbetalning, timing-glapp
+eller "zombie"-matchningar (se reconciliation/inkasso-riskanalysen). PR 1 inför
+modellen `RentNoticePayment` (en rad per faktisk betalning) som den auktoritativa
+betalt-summan; `paidAmount` + `matchedRentNoticeId` blir **härledda speglar**.
+D/A/B i serien bygger ovanpå denna grund.
+
+**Penganeutralt kontrakt (ABSOLUT).** PR 1 rör ALDRIG huvudboken: noll nya/ändrade
+verifikat (`JournalEntry`), noll statusövergångar, noll utskick, ingen ändrad
+matchningslogik (±1 kr/OCR/fuzzy oförändrat). `RentNoticePayment` är härledd
+betalningsdata (BFL: stöd-/sidoordnad information), inte ett verifikat — verifikaten
+skapas/återförs precis som förr av `AccountingService`. `RentDebtService.outstanding()`
+är en ren läsare; **ingen produktionsväg anropar den än** (vaktas statiskt av
+`rent-debt-money-neutrality.spec.ts`, kategori D).
+
+**Invariant:** `Σ RentNoticePayment.amount == RentNotice.paidAmount` per avi. Backfillen
+(migration `20260607020000`) är förlustfri + idempotent och har en **inbyggd
+`DO $$`-verifikation** som `RAISE EXCEPTION` vid avvikelse → en korrupt backfill
+bryter deployn i stället för att nå produktion tyst.
+
+**Dubbel-allokeringsskydd:** `@unique` lyftes från `BankTransaction.matchedRentNoticeId`
+och flyttades till `RentNoticePayment.bankTransactionId @unique` (en bank-transaktion →
+exakt en avi; NULL = manuell betalning, flera tillåts via Postgres NULL-distinkthet).
+Den gamla race-garantin "en avi claimas en gång" bärs fortsatt av den status-guardade
+`updateMany`:en (`claim.count`) i `applyMatchToRentNotice`/`markAsPaid`.
+
+### Bok- + säkerhetsgranskning — fynd hanterade i PR:en
+
+- **[sec MEDIUM] Explicit `onDelete: SetNull`** på `RentNoticePayment.bankTransaction`-
+  relationen (matchar migrationens `ON DELETE SET NULL` och Prisma-default för en
+  nullbar relation — noll drift). Hygien mot framtida schema-drift.
+
+### Öppna följdpunkter (ej i PR 1)
+
+- **[ATOMICITETS-HÄRDNING — egen följd-PR, prioriterad]** Fuzzy-grenen i
+  `matchTransaction` och `markAsPaid` wrappar inte sina skrivvägar
+  (claim → bank-länk → allokering → verifikat) i en `$transaction`. Vid en
+  process-krasch mitt i sekvensen kan `paidAmount` sättas utan att allokeringen/
+  bank-länken skrivs → invarianten `Σ alloc == paidAmount` bryts tillfälligt.
+  Detta är en **FÖRBEFINTLIG egenskap** av matchnings-/markAsPaid-vägarna —
+  `paidAmount` och `matchedRentNoticeId` lever redan i exakt samma icke-atomiska
+  sekvens; PR 1:s allokering speglar den riskprofilen, den inför den inte. Att
+  wrappa vägarna ändrar **felväg-beteendet för förbefintlig icke-allokeringskod**
+  (partiell commit → full rollback) och är därför en **beteendeändring som faller
+  utanför penganeutraliteten** — den hör hemma i en egen atomicitets-härdnings-PR.
+  `markAsPaid`-fixen kräver att `createJournalEntryForRentNoticeManualPayment` tar
+  emot en `TransactionClient` (samma mönster som `unmatchTransaction` redan har via
+  `reverseJournalEntryForPayment`, Issue #33). Mönstret för OCR-grenen
+  (`applyMatchToRentNotice`) är att **callern** äger transaktionen — den kan inte
+  wrappa internt eftersom `db` kan vara en redan öppen tx-klient (nästlad tx kastar).
+- **[sec LOW] `findUnique` utan `organizationId`** i `applyMatchToRentNotice`/
+  `applyMatchToInvoice` — förbefintligt, alla callers org-verifierar före anrop.
+  Defensiv härdning (byt till `findFirst` + org-scope) noteras, ej införd av PR 1.
+- **Eskaleringsgrind:** D/A väljer EXPLICIT grind när `outstanding()` kopplas in
+  (t.ex. kapital+förbrukning vs. inkl. avgift+ränta). Grund-PR:n låser ingen policy;
+  den uppdaterande PR:n ska samtidigt uppdatera kategori-D-vakthunden.
