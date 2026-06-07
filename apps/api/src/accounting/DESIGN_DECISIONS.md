@@ -377,3 +377,72 @@ throughDate]` vid halvårsgränserna, beräkna delbelopp per segment med segment
 - **Larm vid saknad referensränta.** Saknas innevarande halvårs rad uteblir
   räntan tyst (loggas bara). Överväg avisering till OWNER (operativ rutin att
   mata in ny rad i juni/december).
+
+---
+
+## Inkasso · PR 4a — period-uppdelad dröjsmålsränta vid halvårsskifte
+
+**Lagrum:** räntelagen (1975:635) 3 § (ränta från förfallodagen), 6 § ("den vid
+varje tid gällande referensräntan" + 8 pp), 9 § (referensräntan fastställd
+halvårsvis); BFL 1999:1078 (append-only, verifikat).
+
+**Karaktär:** Ren beräkningskorrigering, penganeutral bakom befintligt flöde.
+Ingen schemaändring, ingen ny endpoint, ingen ny status, ingen export. Detta är
+den HÅRDA PREREQUISITEN (se PR 3:s öppna punkt ovan) som måste landa och
+verifieras innan PR 4b får exportera räntekravet.
+
+### Beslut
+
+1. **Dröjsmålet segmenteras vid kalenderhalvårens gränser (1 jan / 1 jul).**
+   `crystallizeInterest` ankrar inte längre EN referensränta (förfallodagens) på
+   hela perioden. `[förfallodag+1, förfallodag+dagar]` delas i delperioder som var
+   och en ligger helt inom ETT halvår; varje segment slås upp mot SITT halvårs
+   referensränta (raden vars `effectiveFrom ≤ segmentets start`) + 8 pp, prorateras
+   på 365 dagar. Räntelagen 6 §/9 § kräver respektive halvårs ränta per delperiod —
+   ett enda ankare över en gräns är fel lag, inte en approximation.
+
+2. **Dagräkning förankrad i förfallodagen, inte i throughDate.** Antalet
+   dröjsmålsdagar (`daysBetween(dueDate, throughDate)`) är oförändrat. Segmenten
+   byggs på kalenderdatum från `utcMidnight(dueDate)+1` t.o.m. `+dagar` → segmentens
+   dagar summerar ALLTID exakt till totalen, oberoende av throughDates klockslag.
+
+3. **En enda avrundning på rå summa.** `totalInterest = round2(Σ rå segmentränta)`.
+   För ett dröjsmål inom ETT halvår (ett segment) är detta IDENTISKT med PR 3 → en
+   oförändrad referensränta ger ingen spuriös delta. Beloppet ändras bara när en
+   halvårsränta faktiskt skiljer sig över gränsen — exakt den lagstadgade skillnaden.
+
+4. **Öresrest läggs på sista segmentet.** Varje `segment.amount` är öresavrundat,
+   men restjusteringen på sista segmentet gör att `Σ segment.amount === totalInterest`
+   EXAKT. Därmed kan PR 4b:s specificerade räntekalkyl summera segmenten utan att
+   hamna 1 öre fel mot det bokförda beloppet/1510-fordran (konvergerande MEDIUM från
+   bokföringsexpert + hyresjurist — åtgärdad i PR 4a i stället för att skjutas till
+   PR 4b).
+
+5. **INV-A oförändrad + append-only.** Markering (`interestAccruedAmount/Through`)
+   och verifikat (1510 D / 8131 K) i SAMMA transaktion; bokföring null → kasta →
+   rollback. Endast FRAMÅT-deltat bokförs (`round2(total − redan bokfört)`) — historik
+   ombokas aldrig. En påminnelseränta bokförd under PR 3:s enkel-ankare står kvar;
+   korrigeringen fångas framåt vid nästa kristalliseringspunkt (inkasso-ready, PR 4b).
+
+6. **Saknad referensränta för NÅGOT segment → `null`, ingen gissad ränta.** Samma
+   konservativa hållning som PR 3, men nu per segment: kan en delperiods ränta inte
+   beräknas uteblir HELA kravet (ett delvis/gissat räntekrav är angripbart i sin
+   helhet). Loggas som varning med delperiodens datum.
+
+7. **Segment-uppdelningen lagras i `INTEREST_ACCRUED`-payloaden** (`segments[]`: per
+   halvår `from/to/days/referenceRatePercent/effectiveRatePercent/amount`) så PR 4b:s
+   export kan specificera räntan per halvår. De skalära `effectiveRatePercent`/
+   `referenceRatePercent` i payload/retur är dagviktade genomsnitt — behållna för
+   bakåtkompat, men `segments[]` är den auktoritativa specifikationen.
+
+### Öppna följdpunkter (ej i PR 4a — hör till PR 4b)
+
+- **Exporten ska specificera per halvår via `segments[]`** — aldrig redovisa det
+  dagviktade genomsnitts-procenttalet i ett specificerat krav (räntelagen 9 § kräver
+  respektive halvårs ränta). `totalInterest` är den auktoritativa totalen
+  (hyresjurist + bokföringsexpert LOW/MEDIUM, hör till PR 4b).
+- **`crystallizeInterest` förutsätter bestämd förfallodag** (räntelagen 3 §). Vid
+  privatuthyrning utan bestämd förfallodag gäller 4 § (30-dagarsregeln). Eveno-avier
+  har alltid `dueDate`, men invarianten bör dokumenteras i PR 4b:s grindlogik
+  (hyresjurist LOW).
+- **Larm vid saknad referensränta** kvarstår från PR 3 (operativ rutin juni/december).
