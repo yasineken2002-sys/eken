@@ -1098,14 +1098,34 @@ export class AiAssistantService {
       data: { updatedAt: new Date() },
     })
 
-    // Fire-and-forget: extract facts from this exchange and persist them
+    // Fire-and-forget minnesextraktion — delad väg med SSE-streamChat (se nedan).
+    this.extractMemoriesInBackground(userMessage, reply, organizationId, userId)
+
+    return { reply, conversationId }
+  }
+
+  /**
+   * Fire-and-forget minnesextraktion efter ett AVSLUTAT textsvar. Delas av BÅDE
+   * non-stream chat() (handleTextResponse) och SSE-streamChat så att vägarna aldrig
+   * driftar isär — exakt samma extraktionslogik (memory.extractAndSaveMemories: Haiku,
+   * JSON, upsert), scopad per (org, user).
+   *
+   * Kör ALDRIG synkront i svarsvägen: ett extraktionsfel (Haiku-anrop, parsning, DB) får
+   * aldrig störa eller fördröja chatt-svaret/streamen — det fångas och loggas. Kostnaden
+   * loggas i memory.extractAndSaveMemories med isAutomated:true (räknas mot org-dygnscapen,
+   * undantas per-user/plan-kvoten — oförändrat mot tidigare).
+   */
+  extractMemoriesInBackground(
+    userMessage: string,
+    reply: string,
+    organizationId: string,
+    userId: string,
+  ): void {
     void this.memory
       .extractAndSaveMemories(userMessage, reply, organizationId, userId)
       .catch((err: unknown) => {
         this.logger.warn('Memory extraction failed', err)
       })
-
-    return { reply, conversationId }
   }
 
   /**

@@ -345,6 +345,20 @@ export class AiAssistantController {
           where: { id: conversation.id },
           data: { updatedAt: new Date() },
         })
+
+        // Minnesextraktion efter AVSLUTAD stream — exakt samma delade väg som non-stream
+        // chat() (extractMemoriesInBackground → memory.extractAndSaveMemories). Får hela det
+        // ACKUMULERADE svaret (assistantText) + användarens meddelande. Fire-and-forget:
+        // körs efter att svaret strömmats färdigt och blockerar/fördröjer ALDRIG streamen;
+        // ett extraktionsfel kan aldrig störa chatt-svaret. Endast på ett faktiskt textsvar
+        // (denna gren) — aldrig på en pending action, precis som non-stream-vägen.
+        this.aiService.extractMemoriesInBackground(
+          message,
+          assistantText || 'Inget svar.',
+          organizationId,
+          user.sub,
+        )
+
         send('done', { conversationId: conversation.id })
       }
     } catch (err) {
