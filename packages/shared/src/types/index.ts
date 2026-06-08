@@ -100,6 +100,10 @@ export interface Organization {
   paymentTermsDays?: number
   invoiceColor?: string
   invoiceTemplate?: string
+  // PDF-/dokumentvarumärke (Steg 3, PR 1). Läses inte av någon renderare ännu.
+  // brandFont speglar Prisma-enumet BrandFont (se BRAND_FONTS i constants).
+  brandFont?: string
+  brandSecondaryColor?: string | null
   morningReportEnabled?: boolean
   remindersEnabled?: boolean
   reminderFeeSek?: number

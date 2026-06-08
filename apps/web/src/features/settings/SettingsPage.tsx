@@ -18,6 +18,12 @@ import {
   Receipt,
 } from 'lucide-react'
 import type { CompanyForm } from '@eken/shared'
+import {
+  BRAND_FONTS,
+  BRAND_FONT_LABELS,
+  DEFAULT_BRAND_FONT,
+  DEFAULT_BRAND_COLOR,
+} from '@eken/shared'
 
 const COMPANY_FORM_LABEL: Record<CompanyForm, string> = {
   AB: 'Aktiebolag (AB)',
@@ -76,6 +82,12 @@ export function SettingsPage() {
 
   const [invoiceColor, setInvoiceColor] = useState('#1a6b3c')
   const [invoiceTemplate, setInvoiceTemplate] = useState('classic')
+  // PDF-/dokumentvarumärke (Steg 3, PR 1). Påverkar ingen rendering ännu.
+  const [brandFont, setBrandFont] = useState<string>(DEFAULT_BRAND_FONT)
+  // Sekundärfärg är nullable (NULL → härleds från primärfärg). Toggeln styr om
+  // vi skickar ett värde alls; av = lämna NULL (oförändrat default-beteende).
+  const [useSecondaryColor, setUseSecondaryColor] = useState(false)
+  const [brandSecondaryColor, setBrandSecondaryColor] = useState(DEFAULT_BRAND_COLOR)
   const [invoiceSavedFlash, setInvoiceSavedFlash] = useState(false)
 
   const [morningReportEnabled, setMorningReportEnabled] = useState(false)
@@ -122,6 +134,15 @@ export function SettingsPage() {
       })
       setInvoiceColor(org.invoiceColor ?? '#1a6b3c')
       setInvoiceTemplate(org.invoiceTemplate ?? 'classic')
+      setBrandFont(org.brandFont ?? DEFAULT_BRAND_FONT)
+      if (org.brandSecondaryColor) {
+        setUseSecondaryColor(true)
+        setBrandSecondaryColor(org.brandSecondaryColor)
+      } else {
+        setUseSecondaryColor(false)
+        // Visuell default i pickern = primärfärgen (den NULL härleds från).
+        setBrandSecondaryColor(org.invoiceColor ?? DEFAULT_BRAND_COLOR)
+      }
       setMorningReportEnabled(org.morningReportEnabled ?? false)
       setRemindersEnabled(org.remindersEnabled ?? true)
       setReminderFeeSek(org.reminderFeeSek ?? 60)
@@ -202,7 +223,14 @@ export function SettingsPage() {
 
   const handleSaveInvoiceSettings = () => {
     updateMutation.mutate(
-      { invoiceColor, invoiceTemplate },
+      {
+        invoiceColor,
+        invoiceTemplate,
+        brandFont,
+        // Skicka sekundärfärg bara när den är aktiverad; annars lämnas fältet
+        // orört (NULL → härleds), så befintligt beteende inte ändras.
+        ...(useSecondaryColor ? { brandSecondaryColor } : {}),
+      },
       {
         onSuccess: () => {
           setInvoiceSavedFlash(true)
@@ -643,6 +671,59 @@ export function SettingsPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* TYPSNITT */}
+              <div className="mb-6">
+                <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
+                  Typsnitt på dokument
+                </p>
+                <select
+                  value={brandFont}
+                  onChange={(e) => setBrandFont(e.target.value)}
+                  className="h-9 w-full max-w-xs rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                >
+                  {BRAND_FONTS.map((f) => (
+                    <option key={f} value={f}>
+                      {BRAND_FONT_LABELS[f]}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-[12px] text-gray-400">
+                  Används på framtida PDF:er (fakturor, avier, kontrakt). Påverkar inte befintliga
+                  dokument än.
+                </p>
+              </div>
+
+              {/* SEKUNDÄR-/ACCENTFÄRG */}
+              <div className="mb-6">
+                <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
+                  Sekundärfärg (accent)
+                </p>
+                <label className="flex cursor-pointer items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={useSecondaryColor}
+                    onChange={(e) => setUseSecondaryColor(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500/30"
+                  />
+                  <span className="text-[13px] text-gray-700">Använd en separat accentfärg</span>
+                </label>
+                {useSecondaryColor && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={brandSecondaryColor}
+                      onChange={(e) => setBrandSecondaryColor(e.target.value)}
+                      className="h-8 w-8 cursor-pointer rounded-full border border-[#E5E7EB] p-0.5"
+                      title="Sekundärfärg"
+                    />
+                    <span className="text-[12px] text-gray-400">{brandSecondaryColor}</span>
+                  </div>
+                )}
+                <p className="mt-2 text-[12px] text-gray-400">
+                  Lämnas detta av härleds accenten automatiskt från primärfärgen.
+                </p>
               </div>
 
               <div className="flex items-center gap-3">

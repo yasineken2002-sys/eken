@@ -6,6 +6,8 @@ export interface UpdateOrganizationInput {
   paymentTermsDays?: number
   invoiceColor?: string
   invoiceTemplate?: string
+  brandFont?: string
+  brandSecondaryColor?: string
   morningReportEnabled?: boolean
   remindersEnabled?: boolean
   reminderFeeSek?: number

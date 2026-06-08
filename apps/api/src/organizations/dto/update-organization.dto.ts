@@ -9,7 +9,7 @@ import {
   Min,
   Max,
 } from 'class-validator'
-import { InvoiceTemplate } from '@prisma/client'
+import { InvoiceTemplate, BrandFont } from '@prisma/client'
 
 export class UpdateOrganizationDto {
   @IsString()
@@ -31,6 +31,20 @@ export class UpdateOrganizationDto {
   @IsOptional()
   @IsEnum(InvoiceTemplate)
   invoiceTemplate?: InvoiceTemplate
+
+  // ── PDF-/dokumentvarumärke (Steg 3, PR 1 — endast datafundament) ──────────
+  // Kontrollerad enum (inte fritext) så en ogiltig font-sträng aldrig kan nå
+  // PDF-renderaren senare. Ingen renderare läser fältet ännu.
+  @IsOptional()
+  @IsEnum(BrandFont)
+  brandFont?: BrandFont
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, {
+    message: 'brandSecondaryColor måste vara en giltig hex-färg, t.ex. #2563EB',
+  })
+  brandSecondaryColor?: string
 
   @IsBoolean()
   @IsOptional()

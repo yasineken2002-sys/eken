@@ -63,6 +63,10 @@ export class OrganizationsService {
         ...(dto.paymentTermsDays != null ? { paymentTermsDays: dto.paymentTermsDays } : {}),
         ...(dto.invoiceColor != null ? { invoiceColor: dto.invoiceColor } : {}),
         ...(dto.invoiceTemplate != null ? { invoiceTemplate: dto.invoiceTemplate } : {}),
+        ...(dto.brandFont != null ? { brandFont: dto.brandFont } : {}),
+        ...(dto.brandSecondaryColor != null
+          ? { brandSecondaryColor: dto.brandSecondaryColor }
+          : {}),
         ...(dto.morningReportEnabled != null
           ? { morningReportEnabled: dto.morningReportEnabled }
           : {}),

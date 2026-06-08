@@ -134,6 +134,9 @@ export const STATUS_TO_EVENT: Partial<Record<InvoiceStatus, InvoiceEventType>> =
   VOID: 'invoice.voided',
 }
 
+// PDF-/dokumentvarumärke (default-färg, typsnittsval + font-stackar). Steg 3 PR 1.
+export * from './branding'
+
 // SaaS-plans & AI-anropstak. Definitionen ligger i plans.ts för läsbarhet.
 export * from './plans'
 
