@@ -163,21 +163,27 @@ export class RentBadDebtService {
     // Idempotent: redan befarad → no-op.
     if (notice.probableLossAt) return { booked: false }
 
-    // PR 3a — nedskrivningsbeloppet = hela 1510-fordran INKL. ränta (outstanding,
-    // inte ocrOutstanding). Läses från den allokeringsderivade sanningskällan i
-    // stället för paidAmount-cachen; beloppet är oförändrat eftersom invarianten
-    // Σ allokeringar == paidAmount håller (PR 1). Ersätter den tidigare privata
-    // outstanding()-hjälparen (en sanningskälla, eliminerar namnkrocken).
-    const debt = await this.rentDebt.outstanding(noticeId, organizationId)
-    const amount = debt.outstanding
-    if (amount <= 0) {
-      throw new ConflictException(
-        `Avi ${notice.noticeNumber} har ingen utestående fordran att skriva ned`,
-      )
-    }
-
     const now = new Date()
     return this.prisma.$transaction(async (tx) => {
+      // Bank-härdning PR 3b — RACE-WINDOW-FIX. Lås avi-raden och läs skulden INNE i
+      // transaktionen. Partiella bank-allokeringar (PR 3b) muterar nu outstanding
+      // löpande; läses beloppet UTANFÖR tx (som tidigare) kan en delbetalning landa
+      // mellan läsning och claim → nedskrivning på ett STALE belopp. FOR UPDATE tar
+      // samma rad-lås som bankvägens applyMatchToRentNotice, så outstanding-läsningen
+      // ser ett stabilt committat värde och ingen delbetalning kan interfoliera.
+      await tx.$queryRaw`SELECT id FROM "RentNotice" WHERE id = ${noticeId} AND "organizationId" = ${organizationId} FOR UPDATE`
+
+      // PR 3a — nedskrivningsbeloppet = hela 1510-fordran INKL. ränta (outstanding,
+      // inte ocrOutstanding). Läses från den allokeringsderivade sanningskällan i
+      // stället för paidAmount-cachen.
+      const debt = await this.rentDebt.outstanding(noticeId, organizationId)
+      const amount = debt.outstanding
+      if (amount <= 0) {
+        throw new ConflictException(
+          `Avi ${notice.noticeNumber} har ingen utestående fordran att skriva ned`,
+        )
+      }
+
       const claim = await tx.rentNotice.updateMany({
         where: {
           id: noticeId,

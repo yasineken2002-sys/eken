@@ -1,10 +1,15 @@
 /**
- * IMD · PR 4 — bankavstämning matchar mot BETALBAR total (hyra + förbrukning).
+ * IMD · PR 4 + bank-härdning PR 3b — bankavstämningens RENT-gren delegerar till
+ * applyMatchToRentNotice med det FAKTISKA transaktionsbeloppet.
  *
- * När förbrukning ligger som rad på hyresavin betalar hyresgästen EN summa med
- * ETT OCR = totalAmount (hyra) + consumptionAmount. matchTransaction måste
- * jämföra och reglera mot den summan — annars landar betalningen som UNMATCHED
- * och 1510-fordran (hyresverifikat + förbrukningsverifikat) blir aldrig reglerad.
+ * Tidigare gjorde matchTransaction en ±1 kr-grind mot betalbar total (hyra +
+ * förbrukning + avgift) och avvisade allt annat. Med PR 3b flyttas klassificeringen
+ * (full / partiell / överbetalning mot avins AKTUELLA ocrOutstanding — som inkluderar
+ * förbrukning och påminnelseavgift) ATOMISKT in i applyMatchToRentNotice. Här verifieras
+ * bara DELEGERINGEN: att den deterministiska OCR-grenen anropar applyMatchToRentNotice
+ * med (org, transaction.amount, allowPartial=true). Själva belopps­klassificeringen
+ * (inkl. att förbrukning/avgift ingår i restskulden) testas mot den RIKTIGA
+ * applyMatchToRentNotice i reconciliation-payment-allocation.spec.ts.
  */
 // reconciliation.service drar transitivt in StorageService (→ @aws-sdk, ESM som
 // jest inte transformerar) via InvoicesService/PdfService. Mocka bort dem.
@@ -56,54 +61,48 @@ function tx(amount: number) {
   }
 }
 
-describe('matchTransaction — betalbar total (OCR-match)', () => {
-  it('matchar när betalningen = hyra + förbrukning (8240) och reglerar hela summan', async () => {
+describe('matchTransaction — RENT-gren delegerar med faktiskt belopp (PR 3b)', () => {
+  it('OCR-kandidat funnen → applyMatchToRentNotice anropas med (org, transaction.amount, allowPartial=true)', async () => {
     const { service, apply } = makeService(notice())
 
     const result = await service.matchTransaction(tx(8240) as never, 'org-1')
 
     expect(result).toBe(true)
-    // applyMatchToRentNotice anropas med betalbar total (8240), inte bara hyran.
-    const passedAmount = apply.mock.calls[0][2] as Decimal
-    expect(Number(passedAmount)).toBe(8240)
+    const [txId, noticeId, orgId, amount, , userId, allowPartial] = apply.mock.calls[0]
+    expect(txId).toBe('t1')
+    expect(noticeId).toBe('n1')
+    expect(orgId).toBe('org-1')
+    // FAKTISKT transaktionsbelopp skickas vidare — INTE en förberäknad payable.
+    expect(Number(amount as Decimal)).toBe(8240)
+    expect(userId).toBeNull()
+    expect(allowPartial).toBe(true)
   })
 
-  it('matchar INTE när betalningen bara täcker hyran (8000) — förbrukning saknas', async () => {
+  it('DELbelopp (8000 < restskuld) delegeras nu också — klassas partiellt INNE i applyMatchToRentNotice', async () => {
+    // Tidigare grind avvisade detta i matchTransaction; nu delegeras det och den
+    // riktiga applyMatchToRentNotice avgör (partiell allokering).
     const { service, apply } = makeService(notice())
 
     const result = await service.matchTransaction(tx(8000) as never, 'org-1')
 
-    expect(result).toBe(false)
-    expect(apply).not.toHaveBeenCalled()
+    expect(result).toBe(true)
+    expect(Number(apply.mock.calls[0][3] as Decimal)).toBe(8000)
   })
 
-  it('utan förbrukning (consumptionAmount 0) matchar ren hyra som vanligt', async () => {
+  it('ren hyra utan förbrukning delegeras med rätt belopp', async () => {
     const { service, apply } = makeService(notice({ consumptionAmount: new Decimal(0) }))
 
     const result = await service.matchTransaction(tx(8000) as never, 'org-1')
 
     expect(result).toBe(true)
-    expect(Number(apply.mock.calls[0][2] as Decimal)).toBe(8000)
+    expect(Number(apply.mock.calls[0][3] as Decimal)).toBe(8000)
   })
 
-  // Inkasso PR 2: en påmind avi (reminderFeeAmount 60) har en 1510-fordran på
-  // hyra + förbrukning + avgift. Bankavstämningen måste matcha och reglera HELA
-  // summan (8300), annars blir avgiften kvar som ett glapp på 1510.
-  it('påmind avi: betalbar total inkluderar påminnelseavgiften (8300)', async () => {
-    const { service, apply } = makeService(notice({ reminderFeeAmount: new Decimal(60) }))
+  it('ingen OCR-kandidat → ingen RENT-delegering (faller vidare till fuzzy/UNMATCHED)', async () => {
+    const { service, apply } = makeService(null)
 
-    const result = await service.matchTransaction(tx(8300) as never, 'org-1')
+    await service.matchTransaction(tx(8240) as never, 'org-1')
 
-    expect(result).toBe(true)
-    expect(Number(apply.mock.calls[0][2] as Decimal)).toBe(8300)
-  })
-
-  it('påmind avi: betalning som bara täcker hyra+förbrukning (8240) matchar INTE', async () => {
-    const { service, apply } = makeService(notice({ reminderFeeAmount: new Decimal(60) }))
-
-    const result = await service.matchTransaction(tx(8240) as never, 'org-1')
-
-    expect(result).toBe(false)
     expect(apply).not.toHaveBeenCalled()
   })
 })

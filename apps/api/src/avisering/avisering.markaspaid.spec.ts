@@ -22,7 +22,11 @@ import {
 } from '@nestjs/common'
 import { AviseringService } from './avisering.service'
 
-function makeService(opts?: { notice?: Record<string, unknown>; claimCount?: number }) {
+function makeService(opts?: {
+  notice?: Record<string, unknown>
+  claimCount?: number
+  priorAllocations?: Array<{ amount: number }>
+}) {
   const notice = {
     id: 'rn-1',
     organizationId: 'org-1',
@@ -31,6 +35,13 @@ function makeService(opts?: { notice?: Record<string, unknown>; claimCount?: num
     status: 'SENT',
     collectionStage: 'NONE',
     totalAmount: 10_000,
+    // D5 (bank-härdning PR 3b) — markAsPaid läser nu skuldkomponenterna via
+    // computeRentDebt för att avgöra om betalningen reglerar avin (PAID) eller är
+    // en delbetalning. Defaulta de övriga fälten till 0.
+    consumptionAmount: 0,
+    reminderFeeAmount: 0,
+    interestAccruedAmount: 0,
+    paymentMethod: null,
     ...opts?.notice,
   }
 
@@ -45,7 +56,9 @@ function makeService(opts?: { notice?: Record<string, unknown>; claimCount?: num
       updateMany: jest.fn().mockResolvedValue({ count: opts?.claimCount ?? 1 }),
     },
     // Bankavstämnings-härdning PR 1 — MANUAL-allokering skrivs bredvid betalningen.
+    // PR 3b — findMany läser tidigare allokeringar (D5-skuldberäkning). Default = [].
     rentNoticePayment: {
+      findMany: jest.fn().mockResolvedValue(opts?.priorAllocations ?? []),
       create: jest.fn().mockResolvedValue({ id: 'rnp-1' }),
       delete: jest.fn().mockResolvedValue({}),
     },
@@ -241,6 +254,65 @@ describe('FIX 9 · PR 6 — AviseringService.markAsPaid', () => {
       claimCount: 0,
     })
     await expect(service.markAsPaid('rn-1', 'org-1', 10_000, 'BANK')).rejects.toThrow()
+    expect(eventCreate).not.toHaveBeenCalled()
+  })
+})
+
+// ── Bank-härdning PR 3b · D5 — delbetalning lämnar avin OBETALD ─────────────────
+describe('PR3b · D5 — markAsPaid med delbelopp', () => {
+  it('delbetalning (< payable) → avin förblir obetald, INGEN PAID-flip, allokering + verifikat', async () => {
+    const { service, prisma, accounting } = makeService()
+    // payable = 10 000, betalar 4 000 → ocrOutstanding 6 000 > 0 → INTE PAID.
+    await service.markAsPaid('rn-1', 'org-1', 4_000, 'SWISH', '2026-06-15', 'user-1')
+
+    const claim = prisma.rentNotice.updateMany.mock.calls[0][0]
+    // Ingen status-flip: bara paidAmount-spegeln + betalsätt uppdateras.
+    expect(claim.data.status).toBeUndefined()
+    expect(claim.data).toMatchObject({ paidAmount: 4_000, paymentMethod: 'SWISH' })
+    expect(claim.data.collectionStage).toBeUndefined()
+
+    // Allokeringen (MANUAL) bokförs på det FAKTISKA delbeloppet.
+    const alloc = prisma.rentNoticePayment.create.mock.calls[0][0].data
+    expect(alloc).toMatchObject({ amount: 4_000, source: 'MANUAL', bankTransactionId: null })
+
+    // Delverifikatet skapas på delbeloppet.
+    expect(accounting.createJournalEntryForRentNoticeManualPayment).toHaveBeenCalledTimes(1)
+    expect(accounting.createJournalEntryForRentNoticeManualPayment.mock.calls[0][1]).toBe(4_000)
+  })
+
+  it('andra delbetalningen som täcker resten → PAID, paidAmount = Σ allokeringar', async () => {
+    // Tidigare delbetalning 6 000 finns; betalar 4 000 → Σ 10 000 == payable → PAID.
+    const { service, prisma } = makeService({ priorAllocations: [{ amount: 6_000 }] })
+    await service.markAsPaid('rn-1', 'org-1', 4_000, 'BANK')
+
+    const claim = prisma.rentNotice.updateMany.mock.calls[0][0]
+    expect(claim.data).toMatchObject({
+      status: 'PAID',
+      paidAmount: 10_000,
+      collectionStage: 'NONE',
+    })
+  })
+
+  it('delbetalning vars bokföring KASTAR → paidAmount återställs till Σ tidigare allokeringar (ej null)', async () => {
+    const { service, prisma, accounting } = makeService({ priorAllocations: [{ amount: 6_000 }] })
+    accounting.createJournalEntryForRentNoticeManualPayment.mockRejectedValueOnce(
+      new Error('DB nere'),
+    )
+    // Betalar 1 000 → delbetalning (Σ 7 000 < 10 000). Bokföringen kastar → revert.
+    await expect(service.markAsPaid('rn-1', 'org-1', 1_000, 'BANK')).rejects.toThrow('DB nere')
+
+    const revert = prisma.rentNotice.updateMany.mock.calls[1][0]
+    // paidAmount återställs till 6 000 (de tidigare delbetalningarna), inte null.
+    expect(revert.data.paidAmount).toBe(6_000)
+  })
+
+  it('delbetalning på INKASSO_READY-avi → INGEN kravstegs-nollställning, ingen trail', async () => {
+    const { service, prisma, eventCreate } = makeService({
+      notice: { collectionStage: 'INKASSO_READY', status: 'OVERDUE' },
+    })
+    await service.markAsPaid('rn-1', 'org-1', 3_000, 'BANK', undefined, 'user-1')
+    // collectionStage rörs inte (delbetalning driver inte ut ur kravtrappan).
+    expect(prisma.rentNotice.updateMany.mock.calls[0][0].data.collectionStage).toBeUndefined()
     expect(eventCreate).not.toHaveBeenCalled()
   })
 })

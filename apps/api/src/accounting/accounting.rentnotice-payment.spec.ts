@@ -76,6 +76,7 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
       'BANK',
       'org-1',
       'user-1',
+      'alloc-1',
     )
     const lines = getCreated()!.data.lines.create
     const debit = lines.find((l) => l.debit != null)
@@ -96,6 +97,7 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
       'CASH',
       'org-1',
       null,
+      'alloc-1',
     )
     const debit = getCreated()!.data.lines.create.find((l) => l.debit != null)
     expect(debit).toMatchObject({ accountId: 'acc-1910', debit: 5_000 })
@@ -110,6 +112,7 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
       'SWISH',
       'org-1',
       null,
+      'alloc-1',
     )
     const debit = getCreated()!.data.lines.create.find((l) => l.debit != null)
     expect(debit).toMatchObject({ accountId: 'acc-1930', debit: 3_200 })
@@ -124,6 +127,7 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
       'MANUAL',
       'org-1',
       null,
+      'alloc-1',
     )
     const debit = getCreated()!.data.lines.create.find((l) => l.debit != null)
     expect(debit?.accountId).toBe('acc-1930')
@@ -138,13 +142,14 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
       'BANK',
       'org-1',
       null,
+      'alloc-1',
     )
     const lines = getCreated()!.data.lines.create
     expect(lines.find((l) => l.debit != null)?.debit).toBe(4_500)
     expect(lines.find((l) => l.credit != null)?.credit).toBe(4_500)
   })
 
-  it('bokför på betalningsdatumet och nycklar idempotensen på avin', async () => {
+  it('bokför på betalningsdatumet och nycklar idempotensen på ALLOKERINGEN (PR 3b)', async () => {
     const { service, getCreated } = makeService()
     await service.createJournalEntryForRentNoticeManualPayment(
       baseNotice,
@@ -153,9 +158,39 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
       'BANK',
       'org-1',
       null,
+      'alloc-1',
     )
     expect(getCreated()!.data.date.toISOString().slice(0, 10)).toBe('2026-06-15')
-    expect(getCreated()!.data.sourceId).toBe('rent-notice-payment:rn-1')
+    // PR 3b KRITISK: nyckeln är allokerings-id, INTE avi-id — så två delbetalningar
+    // mot samma avi får två distinkta verifikat (ingen sourceId-kollision).
+    expect(getCreated()!.data.sourceId).toBe('rent-notice-payment:alloc-1')
+  })
+
+  it('PR3b: två delbetalningar mot SAMMA avi (olika allocationId) → två distinkta verifikat', async () => {
+    const { service, getCreated } = makeService()
+    await service.createJournalEntryForRentNoticeManualPayment(
+      baseNotice,
+      3_000,
+      paidAt,
+      'BANK',
+      'org-1',
+      null,
+      'alloc-A',
+    )
+    const first = getCreated()!.data.sourceId
+    await service.createJournalEntryForRentNoticeManualPayment(
+      baseNotice,
+      2_000,
+      paidAt,
+      'BANK',
+      'org-1',
+      null,
+      'alloc-B',
+    )
+    const second = getCreated()!.data.sourceId
+    expect(first).toBe('rent-notice-payment:alloc-A')
+    expect(second).toBe('rent-notice-payment:alloc-B')
+    expect(first).not.toBe(second)
   })
 
   it('DEPOSIT-avi bokförs INTE (deposits-modulen äger ledgern)', async () => {
@@ -167,6 +202,7 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
       'BANK',
       'org-1',
       null,
+      'alloc-1',
     )
     expect(result).toBeNull()
     expect(prisma.journalEntry.create).not.toHaveBeenCalled()
@@ -181,6 +217,7 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
       'BANK',
       'org-1',
       null,
+      'alloc-1',
     )
     expect(result).toBeNull()
     expect(prisma.journalEntry.create).not.toHaveBeenCalled()
@@ -195,6 +232,7 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
       'BANK',
       'org-1',
       null,
+      'alloc-1',
     )
     expect(result).toMatchObject({ id: 'je-existing' })
     expect(prisma.journalEntry.create).not.toHaveBeenCalled()
@@ -212,6 +250,7 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
       'BANK',
       'org-1',
       null,
+      'alloc-1',
     )
     expect(getCreated()!.data.description).toBe(
       'Inbetalning hyresavi AVI-2026-06-0001 (Hyresgäst AB)',
@@ -229,6 +268,7 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
       'BANK',
       'org-1',
       null,
+      'alloc-1',
     )
     expect(getCreated()!.data.description).toBe(
       'Inbetalning hyresavi AVI-2026-06-0001 (Anna Andersson)',
@@ -246,6 +286,7 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
       'BANK',
       'org-1',
       null,
+      'alloc-1',
     )
     expect(getCreated()!.data.description).toBe('Inbetalning hyresavi AVI-2026-06-0001')
   })
@@ -265,6 +306,7 @@ describe('FIX 9 · PR 6 — createJournalEntryForRentNoticeManualPayment', () =>
       'CASH',
       'org-1',
       null,
+      'alloc-1',
     )
     expect(result).toBeNull()
     expect(prisma.journalEntry.create).not.toHaveBeenCalled()

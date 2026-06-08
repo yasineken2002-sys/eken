@@ -1318,13 +1318,22 @@ export class AccountingService {
   // kundfordran på samma sätt. Vi indexerar med samma source='PAYMENT' och
   // sourceId=transaction.id så reverseJournalEntryForPayment fungerar för
   // båda typerna utan särfall.
+  //
+  // Bankavstämnings-härdning PR 3b — valfri `tx`: när verifikatet måste skapas
+  // ATOMISKT tillsammans med allokeringen + ev. status-flip (partiell bankmatchning,
+  // applyMatchToRentNotice). Beloppet är `transaction.amount` = det FAKTISKT
+  // allokerade delbeloppet, så samma funktion bokför både full betalning och
+  // delbetalning utan särfall. Kontoslagning + verifikatet körs på `tx` när den
+  // anges; counterparty-läsningen är ren statisk data och får gå på poolen.
   async createJournalEntryForRentNoticePayment(
-    notice: { id: string; noticeNumber: string; totalAmount: Decimal },
+    notice: { id: string; noticeNumber: string },
     transaction: Pick<BankTransaction, 'id' | 'date' | 'amount'>,
     organizationId: string,
     createdById: string | null,
+    tx?: Prisma.TransactionClient,
   ) {
-    const accounts = await this.prisma.account.findMany({
+    const db = tx ?? this.prisma
+    const accounts = await db.account.findMany({
       where: { organizationId },
       select: { id: true, number: true },
     })
@@ -1333,10 +1342,10 @@ export class AccountingService {
     const receivableId = accountByNumber.get(1510)
     if (!bankAccountId || !receivableId) return null
 
+    // Beloppet bokförs på transaction.amount (= det allokerade delbeloppet vid
+    // partiell bankmatchning). Avins totalAmount styr INTE verifikatet.
     const amount = Number(transaction.amount)
     if (amount <= 0) return null
-
-    void notice.totalAmount
 
     const counterparty = await this.counterpartyForRentNotice(notice.id, organizationId)
 
@@ -1353,6 +1362,7 @@ export class AccountingService {
       ],
       idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId: transaction.id },
       include: { lines: { include: { account: true } } },
+      ...(tx ? { tx } : {}),
     })
   }
 
@@ -1365,11 +1375,19 @@ export class AccountingService {
   //
   // Till skillnad från createJournalEntryForRentNoticePayment (som matchar en
   // importerad BankTransaction vid bankavstämning) finns här ingen transaktion —
-  // betalningssättet styr debetkontot och idempotensen nycklas på själva avin
-  // (sourceId = "rent-notice-payment:<id>") så att en dubbel-markering aldrig
-  // bokför betalningen två gånger (BFL 5 kap 6 §, gap-free serie via
-  // createNumberedEntry). Beloppet är det FAKTISKT inbetalda (paidAmount) — vid
-  // delbetalning regleras fordran bara delvis, vilket är korrekt dubbel bokföring.
+  // betalningssättet styr debetkontot.
+  //
+  // PR 3b (KRITISK FIX): idempotensen nycklas på ALLOKERINGEN (sourceId =
+  // "rent-notice-payment:<allocationId>"), INTE på avin. Tidigare nyckel på avi-id
+  // var ofarlig så länge markAsPaid bara kunde köras EN gång per avi (den flippade
+  // PAID direkt). D5 (PR 3b) låter en delbetalning lämna avin obetald → markAsPaid
+  // kan nu köras flera gånger mot SAMMA avi. Med avi-nycklad sourceId skulle den
+  // ANDRA delbetalningens verifikat kollidera mot den första (createNumberedEntry
+  // returnerar det befintliga) → allokering + paidAmount uppdateras men 1510/likvid
+  // bokförs ALDRIG → 1510 understiger Σ allokeringar (BFL 5 kap 6 §-brott). Per
+  // allokering (unik UUID, samma strategi som bankvägens sourceId=bankTransactionId)
+  // får varje delbetalning sitt EGNA verifikat. Beloppet är det FAKTISKT inbetalda
+  // (paidAmount) — vid delbetalning regleras fordran bara delvis, korrekt dubbel bokföring.
   //
   // Depositionsavier (type=DEPOSIT) hoppas över: deras 1510/2890-flöde ägs av
   // deposits-modulen (createJournalEntryForDepositInvoice), inte avisering.
@@ -1380,6 +1398,7 @@ export class AccountingService {
     paymentMethod: PaymentMethod,
     organizationId: string,
     createdById: string | null,
+    allocationId: string,
   ) {
     if (notice.type === RentNoticeType.DEPOSIT) return null
 
@@ -1404,7 +1423,7 @@ export class AccountingService {
       return null
     }
 
-    const sourceId = `rent-notice-payment:${notice.id}`
+    const sourceId = `rent-notice-payment:${allocationId}`
 
     const counterparty = await this.counterpartyForRentNotice(notice.id, organizationId)
 

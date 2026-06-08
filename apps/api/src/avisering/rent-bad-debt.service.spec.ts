@@ -45,6 +45,9 @@ function makeService(
   } = {},
 ) {
   const tx = {
+    // Bank-härdning PR 3b — race-window-fix: reclassify tar nu ett FOR UPDATE-rad-lås
+    // inne i transaktionen innan outstanding läses.
+    $queryRaw: jest.fn().mockResolvedValue([]),
     rentNotice: { updateMany: jest.fn().mockResolvedValue({ count: opts.claimCount ?? 1 }) },
   }
   const prisma = {
@@ -150,6 +153,17 @@ describe('reclassifyToProbableLoss (befarad)', () => {
       /ingen utestående fordran/,
     )
     expect(tx.rentNotice.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('PR3b race-window-fix: rad-lås (FOR UPDATE) tas INNE i tx FÖRE outstanding-läsningen', async () => {
+    const { service, tx, outstanding } = makeService()
+    await service.reclassifyToProbableLoss('rn-1', 'org-1', 'user-1')
+    // Låset togs (en gång) och outstanding lästes — låset först.
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1)
+    expect(outstanding).toHaveBeenCalledTimes(1)
+    const lockOrder = tx.$queryRaw.mock.invocationCallOrder[0]!
+    const readOrder = outstanding.mock.invocationCallOrder[0]!
+    expect(lockOrder).toBeLessThan(readOrder)
   })
 
   it('LOKALHYRA (vatAmount>0) VÄGRAS — momsåterkrav öppen revisorfråga', async () => {
