@@ -94,7 +94,7 @@ pnpm format      # Prettier
 ```
 eken/                         # pnpm monorepo (Turborepo)
 ├── apps/
-│   ├── api/                  # NestJS 10 + Fastify (REST) – port 3000 (Railway)
+│   ├── api/                  # NestJS 10 + Fastify (REST) – port 3000 lokalt / 8080 i prod-container (Railway)
 │   ├── web/                  # Huvud-SPA: React 18 + Vite + TanStack Router – port 5173 (Vercel)
 │   ├── admin/                # Plattforms-/superadmin-SPA: React 18 + Vite + react-router-dom – port 5175 (Vercel)
 │   ├── portal/              # Hyresgästportal-SPA: React 18 + Vite + react-router-dom – port 5174 (Vercel)
