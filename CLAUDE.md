@@ -55,11 +55,15 @@ tail -f /tmp/web-dev.log   # Vite-output
 # Redis:    redis://localhost:6379
 # Miljöfil: /workspaces/eken/apps/api/.env
 
+# Root-scripts (turbo, filtrerade till @eken/api):
 pnpm db:migrate        # prisma migrate dev (skapar ny migration)
-pnpm db:migrate:deploy # prisma migrate deploy (applicerar pending)
-pnpm db:generate       # prisma generate (uppdaterar klient)
-pnpm db:seed           # ts-node prisma/seed.ts
 pnpm db:studio         # Prisma Studio GUI
+
+# Övriga db-scripts finns ENDAST i apps/api/package.json — kör dem därifrån
+# (pnpm db:generate från root finns inte och misslyckas):
+cd apps/api && pnpm db:migrate:deploy   # prisma migrate deploy (applicerar pending)
+cd apps/api && pnpm db:generate         # prisma generate (uppdaterar klient)
+cd apps/api && pnpm db:seed             # ts-node prisma/seed.ts (även db:seed:platform, db:seed:properties)
 ```
 
 ### Övriga kommandon
@@ -78,14 +82,23 @@ pnpm format      # Prettier
 ```
 eken/                         # pnpm monorepo (Turborepo)
 ├── apps/
-│   ├── api/                  # NestJS 10 + Fastify – port 3000
-│   └── web/                  # React 18 + Vite – port 5173
+│   ├── api/                  # NestJS 10 + Fastify (REST) – port 3000 (Railway)
+│   ├── web/                  # Huvud-SPA: React 18 + Vite + TanStack Router – port 5173 (Vercel)
+│   ├── admin/                # Plattforms-/superadmin-SPA: React 18 + Vite + react-router-dom – port 5175 (Vercel)
+│   ├── portal/              # Hyresgästportal-SPA: React 18 + Vite + react-router-dom – port 5174 (Vercel)
+│   └── landing/             # ÖVERGIVEN (Next.js) – ingen package.json/src kvar, bara byggartefakter
 ├── packages/
-│   └── shared/               # Typer, Zod-scheman, utils, konstanter
-├── docker-compose.yml
+│   └── shared/               # Typer, Zod-scheman, utils, konstanter (delas av api + alla SPA)
+├── docker-compose.yml        # Lokal fullstack (postgres, redis, api, web)
 ├── turbo.json
+├── railway.toml / railway.json
 └── CLAUDE.md
 ```
+
+> **Apparna:** `web` (operatör/fastighetsägare), `admin` (Eveno-plattformsadmin: org-hantering,
+> fakturering, fel/AI-statistik) och `portal` (hyresgäst: avier, felanmälan, dokument, nyheter)
+> är tre SEPARATA SPA:er. Bara `web` använder TanStack Router; `admin` och `portal` kör
+> `react-router-dom`. `landing` är övergiven (ersatt av portal-redesign).
 
 ### Paketnamn (workspace-alias)
 
@@ -93,6 +106,8 @@ eken/                         # pnpm monorepo (Turborepo)
 | ----------------- | -------------- |
 | `apps/api`        | `@eken/api`    |
 | `apps/web`        | `@eken/web`    |
+| `apps/admin`      | `@eken/admin`  |
+| `apps/portal`     | `@eken/portal` |
 | `packages/shared` | `@eken/shared` |
 
 ---
@@ -103,10 +118,13 @@ eken/                         # pnpm monorepo (Turborepo)
 
 - **NestJS 10** med **Fastify**-adapter (inte Express – aldrig blanda ihop)
 - **Prisma 5** → PostgreSQL
-- **Bull + Redis** för jobbköer
-- **Nodemailer** för e-post
-- **Puppeteer** för PDF-generering (Chromium i Docker)
-- **Swagger** på `http://localhost:3000/api/docs` i dev
+- **Bull + Redis** för jobbköer (e-post, PDF-jobb, schemalagda cron)
+- **Resend** för e-post (köas via Bull → `mail.worker`; inkommande leveransstatus via `webhooks`-modulen, Svix-signerad). _OBS: inte Nodemailer/SMTP._
+- **Puppeteer** för PDF-generering (Chromium i Docker) – async via `pdf-jobs`-kön
+- **Anthropic SDK** (`@anthropic-ai/sdk`) för AI-assistenten + verktyg (`ai`-modulen)
+- **Cloudflare R2** (S3-kompatibel) för fillagring (`storage`-modulen) – inte lokal disk
+- **Sentry** för felspårning (`instrument.ts`)
+- **Swagger** på `http://localhost:3000/api/docs` i dev (avstängt i produktion)
 
 ### API-svarsmönster (TransformInterceptor + HttpExceptionFilter)
 
@@ -148,19 +166,39 @@ Hämta med `@OrgId()`-dekoratorn i controllers: `@OrgId() orgId: string`.
 
 ### NestJS-moduler
 
-| Modul                 | Ansvar                                 |
-| --------------------- | -------------------------------------- |
-| `AuthModule`          | Register, login, refresh, logout       |
-| `OrganizationsModule` | Organisationsinställningar             |
-| `PropertiesModule`    | Fastigheter                            |
-| `UnitsModule`         | Lägenheter/lokaler                     |
-| `TenantsModule`       | Hyresgäster (privatpersoner & företag) |
-| `LeasesModule`        | Hyresavtal + statushanttering          |
-| `InvoicesModule`      | Fakturor + append-only händelselogg    |
-| `AccountingModule`    | BAS-kontoplanen + journalposter        |
-| `DashboardModule`     | Aggregerad statistik                   |
-| `MailModule`          | E-postutskick (Nodemailer)             |
-| `NotificationsModule` | Schemalagda påminnelser                |
+~40 moduler i `apps/api/src/`. Kärndomänerna (en rad var):
+
+| Modul                                                               | Ansvar                                                                                                                                                                                  |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AuthModule`                                                        | Register, login, refresh, logout (JWT + RefreshToken)                                                                                                                                   |
+| `OrganizationsModule`                                               | Organisationsinställningar                                                                                                                                                              |
+| `PropertiesModule` / `UnitsModule`                                  | Fastigheter resp. lägenheter/lokaler                                                                                                                                                    |
+| `TenantsModule` / `CustomersModule`                                 | Hyresgäster resp. övriga kunder/motparter                                                                                                                                               |
+| `LeasesModule`                                                      | Hyresavtal + statushantering                                                                                                                                                            |
+| `InvoicesModule`                                                    | Fakturor + append-only händelselogg (`InvoiceEvent`)                                                                                                                                    |
+| `AccountingModule`                                                  | BAS-kontoplanen + journalposter + verifikationsnummer-serie                                                                                                                             |
+| `AviseringModule`                                                   | **Hyresavi-livscykel + inkasso-kravtrappa** (avi→påminnelse→ränta→inkasso-redo→befarad kundförlust); `RentDebtService`/`RentReminderService`/`RentInterestService`/`RentBadDebtService` |
+| `CollectionsModule`                                                 | Inkasso-export (grindar på faktisk skuld, INV-D)                                                                                                                                        |
+| `ReconciliationModule`                                              | **Bankavstämning** (CSV/BgMax/PDF-import, OCR-matchning, partiell betalning, unmatch); `BankTransaction`/`BankStatementImport`                                                          |
+| `PaymentFreshnessModule`                                            | Färskhetsgrind: pausar kravtrappans cron + larmar vid inaktuell betalningsdata (INV-B)                                                                                                  |
+| `ConsumptionModule`                                                 | **IMD** (individuell mätning/debitering el/vatten): mätare, avläsning, tariff, förbrukningsdebitering                                                                                   |
+| `DepositsModule`                                                    | Depositioner (1510/2890-flöde)                                                                                                                                                          |
+| `ContractsModule` / `ImportModule`                                  | Hyreskontrakt + **batch-kontraktsskanning** (AI)                                                                                                                                        |
+| `TerminationsModule`                                                | Uppsägningar                                                                                                                                                                            |
+| `RentIncreasesModule`                                               | Hyreshöjningar                                                                                                                                                                          |
+| `TenantPortalModule`                                                | Hyresgästportalens API (magic-link-auth, avier, dokument)                                                                                                                               |
+| `AiModule` / `AiUsagePageModule`                                    | AI-assistent (Anthropic) + verktyg, samt förbrukningsloggning                                                                                                                           |
+| `PlatformModule`                                                    | **SaaS-plattform**: prenumeration, plattformsfakturering, superadmin (egen JWT)                                                                                                         |
+| `MaintenanceModule` / `MaintenancePlanModule` / `InspectionsModule` | Felanmälan, underhållsplan, besiktningar                                                                                                                                                |
+| `MailModule`                                                        | E-postköande (Resend via Bull)                                                                                                                                                          |
+| `WebhooksModule`                                                    | Inkommande webhooks (Resend leveransstatus, Svix-signerad)                                                                                                                              |
+| `StorageModule`                                                     | Fillagring (Cloudflare R2)                                                                                                                                                              |
+| `PdfQueueModule` (`pdf-jobs`)                                       | Async PDF-generering (Puppeteer-worker)                                                                                                                                                 |
+| `NotificationsModule`                                               | Schemalagda påminnelser + förfallomarkering (cron)                                                                                                                                      |
+| `DashboardModule`                                                   | Aggregerad statistik                                                                                                                                                                    |
+| `MessagesModule` / `NewsModule` / `DocumentsModule` / `KeysModule`  | Meddelanden, nyheter, dokument, nyckelkvittens                                                                                                                                          |
+
+> Övriga stöd-moduler: `UsersModule`, `HealthModule`, `OcrModule`, `RedisModule`, `PublicPlansModule`.
 
 ### DTO-regel (kritisk)
 
@@ -214,37 +252,32 @@ curl -s http://localhost:3000/v1/properties \
 ### Stack
 
 - **React 18** + **Vite 5** (SWC-transformer, inte Babel)
-- **Routing:** Egen `useState<Route>`-baserad router i `App.tsx` (TanStack Router är installerat men ej aktiverat)
+- **Routing:** **TanStack Router** (URL-baserad, `createRouter`/`RouterProvider` i `src/app/router.tsx`). _OBS: den gamla `useState<Route>`-routern är borttagen._
 - **Server state:** React Query (`@tanstack/react-query`, staleTime 60s)
 - **Client state:** Zustand (persisteras till localStorage som `eken-auth`)
 - **Formulär:** React Hook Form + `@hookform/resolvers/zod`
 - **Animationer:** Framer Motion 12
 
-### Routing-typ
+### Routing (TanStack Router)
 
-```typescript
-type Route =
-  | 'login'
-  | 'register'
-  | 'dashboard'
-  | 'overview'
-  | 'properties'
-  | 'units'
-  | 'tenants'
-  | 'leases'
-  | 'invoices'
-  | 'accounting'
-  | 'settings'
-```
+Rutter definieras i `src/app/router.tsx` (route-träd) och navigeras via TanStack Routers
+`Link`/`useNavigate` med riktiga URL:er — **inte** den gamla `onNavigate`-callbacken.
 
-Navigera via `onNavigate`-callback som skickas ned i komponentträdet.
+Vyerna speglar `features/`-katalogen (~30 sidor), bl.a.: `dashboard`, `overview`,
+`properties`, `units`, `tenants`, `customers`, `leases`, `invoices`, `accounting`,
+`reports`, `deposits`, `rent-increases`, `terminations`, **`avisering`** (hyresavier),
+**`collections`** (inkasso), **`reconciliation`** (bankavstämning), **`consumption`** (IMD),
+`documents`, `import`/`contract-batches`, `ai`, `maintenance`, `inspections`,
+`maintenance-plan`, `news`, `messages`, `notifications`, `settings` + auth-sidor.
+
+> `admin` och `portal` är egna SPA:er med `react-router-dom` (separata route-träd).
 
 ### Katalogstruktur
 
 ```
 src/
-├── App.tsx                    # Auth-guard + route-switch + layout-val
-├── main.tsx                   # QueryClientProvider + ReactDOM.render
+├── app/router.tsx             # TanStack Router – route-träd + RouterProvider
+├── main.tsx                   # QueryClientProvider + RouterProvider
 ├── components/
 │   ├── layout/
 │   │   ├── AppLayout.tsx      # Sidebar + topbar (autentiserade sidor)
@@ -305,13 +338,13 @@ Webbläsare:  /api/v1/auth/login
 → API:       http://localhost:3000/v1/auth/login
 ```
 
-Nginx i produktion gör samma sak via `$API_URL`.
+I produktion gör Vercels `rewrites` (per app `vercel.json`) samma sak mot API:ets publika URL.
 
 ---
 
 ## Shared – `packages/shared`
 
-Importeras som `@eken/shared` i både API och web.
+Importeras som `@eken/shared` i API:et och alla SPA:er (web/admin/portal).
 
 ```typescript
 import type { Property, Invoice, UserRole } from '@eken/shared'
@@ -320,14 +353,14 @@ import { RegisterSchema, CreatePropertySchema } from '@eken/shared'
 import { VAT_RATES, DEFAULT_PAGE_SIZE, INVOICE_TRANSITIONS } from '@eken/shared'
 ```
 
-### Exports
+### Exports (urval — listan nedan är inte uttömmande)
 
-| Export       | Innehåll                                                                               |
-| ------------ | -------------------------------------------------------------------------------------- |
-| `types/`     | Alla domänmodeller, `JwtPayload`, `TokenPair`, `ApiResponse<T>`                        |
-| `schemas/`   | Zod-scheman + infererade TypeScript-typer (`RegisterInput` etc.)                       |
-| `utils/`     | `formatCurrency`, `formatDate`, `formatOrgNumber`, `calculateVat`, `generateOcrNumber` |
-| `constants/` | `VAT_RATES`, `LOCALE`, `CURRENCY`, BAS-kontointervall, `INVOICE_TRANSITIONS`           |
+| Export       | Innehåll                                                                                                                                                                                                                                                                                                                     |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `types/`     | Alla domänmodeller, `JwtPayload`, `TokenPair`, `ApiResponse<T>`                                                                                                                                                                                                                                                              |
+| `schemas/`   | Zod-scheman + infererade TypeScript-typer (`RegisterInput` etc.)                                                                                                                                                                                                                                                             |
+| `utils/`     | `formatCurrency`, `formatDate`, `formatOrgNumber`, `calculateVat`/`calculateTotal`, OCR (`generateOcrNumber`/`isValidOcrNumber`), svensk kalender (`rentDueDateForMonth`, `isSwedishBusinessDay`), ID-validering (personnr/orgnr), lösenordsstyrka, hyresberäkning (`calculateProratedRent`, `calculateFirstPaymentDueDate`) |
+| `constants/` | `VAT_RATES` + typade momssatser (bostad/lokal), `LOCALE`, `CURRENCY`, BAS (`ACCOUNT_CLASS_RANGES`, `RENT_REVENUE_ACCOUNTS`, `CORE_ACCOUNTS`), `INVOICE_TRANSITIONS`/`STATUS_TO_EVENT`/`isValidTransition`, `USER_ROLES`, plans/platform                                                                                      |
 
 **Regel:** Aldrig duplicera typer eller formatfunktioner. `@eken/shared` är den enda källan till sanning.
 
@@ -337,17 +370,32 @@ import { VAT_RATES, DEFAULT_PAGE_SIZE, INVOICE_TRANSITIONS } from '@eken/shared'
 
 ### Prisma-schema (`apps/api/prisma/schema.prisma`)
 
-Viktigaste entiteter och relationer:
+Schemat har ~70 modeller. Kärnan (alla scopade på `organizationId`):
 
 ```
 Organization 1──* User
 Organization 1──* Property 1──* Unit 1──* Lease
-Organization 1──* Tenant       *──* Lease
+Organization 1──* Tenant / Customer   *──* Lease
 Organization 1──* Invoice 1──* InvoiceLine
                   Invoice 1──* InvoiceEvent   ← append-only audit log
 Organization 1──* Account
 Organization 1──* JournalEntry 1──* JournalEntryLine
 ```
+
+Övriga domängrupper (utöver fakturadelen ovan):
+
+- **Hyresavi/inkasso:** `RentNotice` 1──\* `RentNoticeLine` / `RentNoticeEvent` / `RentNoticePayment`
+  (granulär betalningsallokering — bankavstämnings-härdningens sanningskälla)
+- **Bankavstämning:** `BankTransaction`, `BankStatementImport`
+- **IMD/förbrukning:** `Meter` 1──\* `MeterReading`, `ConsumptionCharge`, `ConsumptionTariff`
+- **Depositioner:** `Deposit`
+- **Kontrakt/import:** `Contract`, `ContractImportBatch` 1──\* `ContractImportRow`
+- **Underhåll/besiktning:** `MaintenanceTicket`(+Comment/Image), `MaintenancePlan`, `Inspection`(+Item/Image)
+- **Övrigt:** `Termination`, `RentIncrease`, `Document`, `KeyHandover`, `NewsPost`, `Notification`,
+  nummersekvenser (`*Sequence`), `RefreshToken`/`TenantMagicLink`/`TenantSession`
+- **AI:** `AiConversation`/`AiMessage`/`AiMemory`/`AiToolExecution`/`AiUsageLog` (m.fl.)
+- **Plattform/SaaS:** `PlatformUser`, `PlatformInvoice`, `PlatformRefreshToken`
+- **Observability:** `ErrorLog`, `FailedEmail`, `ImpersonationLog`
 
 ### Viktiga mönster
 
@@ -361,11 +409,11 @@ Organization 1──* JournalEntry 1──* JournalEntryLine
 
 ```bash
 # 1. Ändra schema.prisma
-# 2. Kör migration (skapar SQL-fil + uppdaterar DB)
+# 2. Kör migration (skapar SQL-fil + uppdaterar DB) — root-script
 pnpm db:migrate
 
-# 3. Regenerera Prisma-klient
-pnpm db:generate
+# 3. Regenerera Prisma-klient (apps/api-script, kör därifrån)
+cd apps/api && pnpm db:generate
 ```
 
 ---
@@ -654,23 +702,17 @@ Kör detta mentalt innan varje feature anses klar:
 
 ## Deployment
 
+> **Full deploy-guide: [`DEPLOYMENT.md`](./DEPLOYMENT.md)** (tjänster, env-vars, CI). Sammanfattning:
+
+- **API** → **Railway** (Docker: `apps/api/Dockerfile` → `apps/api/scripts/migrate-and-start.sh`,
+  som kör `prisma migrate deploy` + `node dist/main.js`; containern exponerar port 8080).
+- **web / admin / portal** → **Vercel** (Vite-builds; API-proxy via varje apps `vercel.json`-rewrite).
+  Deployas av `.github/workflows/deploy.yml` på push till `main` (CI = `ci.yml`: typecheck + lint).
+- **Postgres + Redis** → Railway-plugins.
+
 ### Docker Compose (lokal fullstack)
 
 ```bash
 docker-compose up           # Startar postgres, redis, api, web
 docker-compose up postgres redis  # Bara databaser
-```
-
-### Railway (produktion)
-
-- API: Dockerfile i `apps/api/Dockerfile`, startar via `scripts/migrate-and-start.sh`
-- Web: Dockerfile i `apps/web/Dockerfile`, nginx serverar SPA + proxyas API via `$API_URL`
-- Config: `railway.toml` + `railway.json` i root
-
-### Produktionsstart (API)
-
-```bash
-# migrate-and-start.sh kör automatiskt:
-npx prisma migrate deploy   # Applicerar pending migrationer
-node dist/main.js           # Startar server
 ```
