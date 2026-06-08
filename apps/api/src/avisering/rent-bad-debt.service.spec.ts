@@ -42,6 +42,8 @@ function makeService(
     writeOffReturnsNull?: boolean
     // PR 3a — nedskrivningsbeloppet (total inkl. ränta) som RentDebtService returnerar.
     outstanding?: number
+    // PR 4 (B) — org vars betalningsdata är inaktuell (befarad-cronen pausas).
+    staleOrgs?: Set<string>
   } = {},
 ) {
   const tx = {
@@ -89,13 +91,15 @@ function makeService(
     ocrOutstanding: Math.max(0, (opts.outstanding ?? 8500) - 140),
   })
   const rentDebt = { outstanding }
+  const evaluateAndAlert = jest.fn().mockResolvedValue(opts.staleOrgs ?? new Set())
   const service = new RentBadDebtService(
     prisma as never,
     accounting as never,
     rentNoticeEvents as never,
     rentDebt as never,
+    { evaluateAndAlert } as never,
   )
-  return { service, prisma, tx, accounting, rentNoticeEvents, outstanding }
+  return { service, prisma, tx, accounting, rentNoticeEvents, outstanding, evaluateAndAlert }
 }
 
 describe('reclassifyToProbableLoss (befarad)', () => {
@@ -310,5 +314,19 @@ describe('reclassifyProbableLosses (cron)', () => {
     expect(spy).toHaveBeenCalledWith('rn-fri', 'org-1', null)
     expect(summary.reclassified).toBe(1)
     expect(summary.manual).toBe(1)
+  })
+
+  // PR 4 (B) — inaktuell betalningsdata pausar befarad-omklassningen (kravsteg framåt).
+  it('STALE org: befarad-omklassningen PAUSAS (ingen nedskrivning), pausedStale räknas', async () => {
+    const { service, prisma, evaluateAndAlert } = makeService({ staleOrgs: new Set(['org-1']) })
+    prisma.rentNotice.findMany.mockResolvedValueOnce([
+      { id: 'rn-fri', organizationId: 'org-1', vatAmount: new Decimal(0) },
+    ])
+    const spy = jest.spyOn(service, 'reclassifyToProbableLoss').mockResolvedValue({ booked: true })
+    const summary = await service.reclassifyProbableLosses()
+    expect(evaluateAndAlert).toHaveBeenCalledWith(['org-1'])
+    expect(spy).not.toHaveBeenCalled() // INGEN nedskrivning 1510→1515
+    expect(summary.pausedStale).toBe(1)
+    expect(summary.reclassified).toBe(0)
   })
 })

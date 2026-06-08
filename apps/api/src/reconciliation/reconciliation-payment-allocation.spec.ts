@@ -100,6 +100,7 @@ function makeService(opts: {
     {} as never, // invoices
     events as never,
     accounting as never,
+    {} as never, // PaymentFreshnessService — ej använd i matchnings-/unmatch-vägen
   )
   return { service, prisma, txMock, createJournalEntryForRentNoticePayment }
 }

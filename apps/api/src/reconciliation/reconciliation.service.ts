@@ -14,6 +14,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { InvoicesService } from '../invoices/invoices.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { AccountingService } from '../accounting/accounting.service'
+import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { computeRentDebt } from '../avisering/rent-debt.service'
 import {
   validateUploadedFile,
@@ -167,7 +168,43 @@ export class ReconciliationService {
     private readonly invoices: InvoicesService,
     private readonly events: InvoiceEventsService,
     private readonly accounting: AccountingService,
+    // Bankavstämnings-härdning PR 4 (B) — varje lyckad import flyttar fram
+    // paymentDataThrough (färskhetssignal som kravtrappans crons gatar på).
+    private readonly freshness: PaymentFreshnessService,
   ) {}
+
+  // Senaste giltiga transaktionsdatum i en importerad batch = den dag t.o.m. vilken
+  // utdraget täcker betalningsdatan. Datakälls-agnostiskt: matar paymentDataThrough.
+  //
+  // OBS (medvetet val): BARA bulk-importer (CSV/BgMax/PDF) flyttar fram färskheten.
+  // En MANUELL matchning (manualMatch) eller enskild auto-match flyttar INTE fram den
+  // — en enskild matchad transaktion är inget KOMPLETTHETS-besked ("alla betalningar
+  // t.o.m. X är kända"), bara att EN betalning hanterats. Att låta den flytta fram
+  // paymentDataThrough vore att felaktigt intyga full täckning. En org som bara
+  // matchar manuellt utan att importera utdrag förblir därför korrekt "ofärsk" tills
+  // ett utdrag laddas upp.
+  private latestCoverageDate(dates: Array<Date | null | undefined>): Date | null {
+    let max: Date | null = null
+    for (const d of dates) {
+      if (d && !isNaN(d.getTime()) && (!max || d > max)) max = d
+    }
+    return max
+  }
+
+  private async advancePaymentFreshness(
+    organizationId: string,
+    coverage: Date | null,
+  ): Promise<void> {
+    if (!coverage) return
+    try {
+      await this.freshness.recordPaymentDataThrough(organizationId, coverage)
+    } catch (err) {
+      // Färskhetsuppdateringen får ALDRIG fälla en import (penganeutral sidoeffekt).
+      this.logger.error(
+        `paymentDataThrough kunde inte uppdateras för org ${organizationId}: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  }
 
   // ── Parse CSV ───────────────────────────────────────────────────────────────
 
@@ -374,6 +411,14 @@ export class ReconciliationService {
       }
     }
 
+    // PR 4 (B) — utdraget täcker betalningsdatan t.o.m. dess senaste radslut. Flyttar
+    // fram paymentDataThrough oavsett om raderna var inbetalningar eller uttag: ett
+    // utdrag UTAN inbetalningar är ändå färsk data som bekräftar "inga betalningar än".
+    await this.advancePaymentFreshness(
+      organizationId,
+      this.latestCoverageDate(rows.map((r) => r?.date)),
+    )
+
     return result
   }
 
@@ -412,6 +457,7 @@ export class ReconciliationService {
     }
 
     let sectionDate: Date | null = null
+    let latestCoverage: Date | null = null
     for (const line of lines) {
       const tc = line.slice(0, 2)
 
@@ -442,6 +488,9 @@ export class ReconciliationService {
         }
         const amount = amountOre / 100
         const txDate = sectionDate ?? new Date()
+        // PR 4 (B) — täckningsdatum för paymentDataThrough (även dubbletter räknas:
+        // datan finns redan, importen bekräftar att den är aktuell t.o.m. detta datum).
+        if (!latestCoverage || txDate > latestCoverage) latestCoverage = txDate
         const description = `BgMax inbetalning${ocr ? ` (OCR ${ocr})` : ''}`
         const amountDecimal = new Decimal(amount.toFixed(2))
 
@@ -483,6 +532,10 @@ export class ReconciliationService {
         'Inga giltiga BgMax-poster hittades i filen. Kontrollera att det är en BgMax-fil från Bankgirot.',
       )
     }
+
+    // PR 4 (B) — flytta fram paymentDataThrough till BgMax-filens senaste sektionsdatum.
+    await this.advancePaymentFreshness(organizationId, latestCoverage)
+
     return result
   }
 

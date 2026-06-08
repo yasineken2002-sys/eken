@@ -527,6 +527,23 @@ model Organization {
   rentReminderDay              Int @default(7)
   rentInkassoDaysAfterReminder Int @default(14)
 
+  // ── Bankavstämnings-härdning PR 4 (B): betalningsdatans färskhet ───────────
+  // DATAKÄLLS-AGNOSTISKT: datumet t.o.m. vilket vi litar på att betalningsdata är
+  // KOMPLETT. Idag matas det av bankimporterna (CSV/BgMax/PDF) — coverage = senaste
+  // importerade transaktionsdatum resp. PDF-periodens slut, monotont framåt. En
+  // framtida bank-aggregator (Tink/Enable Banking) matar SAMMA fält med sin
+  // lastSyncedAt utan omskrivning. NULL = ingen betalningsdata ingestad ännu →
+  // färskhetsgrinden engagerar INTE (manuellt avstämmande org bricks aldrig); den
+  // slår till FÖRST när data väl börjat matas och sedan blir gammal.
+  paymentDataThrough        DateTime? @db.Date
+  // Tröskel i dagar: är paymentDataThrough äldre än så → STALE → pausa kravtrappans
+  // pengamodifierande/inkasso-framflyttande eskalering + larma. Konfigurerbar per org.
+  paymentDataStaleDays      Int       @default(3)
+  // Idempotensmarkör för stale-larmet: sätts när larmet skickats, nollställs när
+  // FÄRSK data åter matas (recordPaymentDataThrough). Säkrar EN notis per stale-
+  // period — inte per cron-körning.
+  paymentDataStaleAlertedAt DateTime?
+
   // Platform / SaaS-fält
   // subscriptionPlan styr maxObjects + AI-anropstak; status styr åtkomst.
   // PLAN_LIMITS i @eken/shared mappar plan → siffror.

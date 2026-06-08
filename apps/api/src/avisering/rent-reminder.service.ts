@@ -19,11 +19,14 @@ import { getLogoDataUrl } from './avisering.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentInterestService } from './rent-interest.service'
 import { RentDebtService } from './rent-debt.service'
+import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 
 interface ReminderSummary {
   reminded: number
   skipped: number
   errors: number
+  /** PR 4 (B) — avier vars eskalering pausats pga inaktuell betalningsdata. */
+  pausedStale: number
 }
 
 interface InkassoReadySummary {
@@ -31,6 +34,7 @@ interface InkassoReadySummary {
   blocked: number
   skipped: number
   errors: number
+  pausedStale: number
 }
 
 // Avin med precis de relationer INV-B-grinden behöver för att avgöra om
@@ -75,6 +79,9 @@ export class RentReminderService {
     // Bankavstämnings-härdning PR 3a — INV-A: kravstegsövergångar gatar på FAKTISK
     // skuld (allokeringsderiverad), inte på status/paidAmount-cache.
     private readonly rentDebt: RentDebtService,
+    // Bankavstämnings-härdning PR 4 (B) — pausa pengamodifierande/inkasso-
+    // framflyttande eskalering + larma när orgens betalningsdata är inaktuell.
+    private readonly freshness: PaymentFreshnessService,
   ) {}
 
   /**
@@ -88,7 +95,7 @@ export class RentReminderService {
    */
   @Cron('0 10 * * *')
   async escalateOverdueRentNotices(): Promise<ReminderSummary> {
-    const summary: ReminderSummary = { reminded: 0, skipped: 0, errors: 0 }
+    const summary: ReminderSummary = { reminded: 0, skipped: 0, errors: 0, pausedStale: 0 }
 
     const candidates = await this.prisma.rentNotice.findMany({
       where: {
@@ -100,8 +107,17 @@ export class RentReminderService {
       include: { organization: true, tenant: { select: SAFE_TENANT_SELECT } },
     })
 
+    // PR 4 (B) — pausa (och larma) eskaleringen för org vars betalningsdata är
+    // inaktuell: påminnelseavgiften FLYTTAR FRAM kravet och tar betalt, så den får
+    // inte rulla mot en hyresgäst som kan ha betalat utan att avstämningen vet det.
+    const staleOrgs = await this.freshness.evaluateAndAlert(candidates.map((n) => n.organizationId))
+
     for (const notice of candidates) {
       try {
+        if (staleOrgs.has(notice.organizationId)) {
+          summary.pausedStale++
+          continue
+        }
         const daysOverdue = this.daysSince(notice.dueDate)
         if (daysOverdue < notice.organization.rentReminderDay) {
           summary.skipped++
@@ -167,7 +183,8 @@ export class RentReminderService {
     }
 
     this.logger.log(
-      `Hyrespåminnelser: ${summary.reminded} skickade, ${summary.skipped} hoppades över, ${summary.errors} fel`,
+      `Hyrespåminnelser: ${summary.reminded} skickade, ${summary.skipped} hoppades över, ` +
+        `${summary.pausedStale} pausade (inaktuell betalningsdata), ${summary.errors} fel`,
     )
     return summary
   }
@@ -264,7 +281,13 @@ export class RentReminderService {
    */
   @Cron('0 11 * * *')
   async escalateRemindedToInkassoReady(): Promise<InkassoReadySummary> {
-    const summary: InkassoReadySummary = { ready: 0, blocked: 0, skipped: 0, errors: 0 }
+    const summary: InkassoReadySummary = {
+      ready: 0,
+      blocked: 0,
+      skipped: 0,
+      errors: 0,
+      pausedStale: 0,
+    }
 
     const candidates = await this.prisma.rentNotice.findMany({
       where: {
@@ -278,8 +301,16 @@ export class RentReminderService {
       },
     })
 
+    // PR 4 (B) — inkasso-redo FLYTTAR FRAM inkassoärendet (och slutkristalliserar
+    // ränta). Pausa + larma för org med inaktuell betalningsdata.
+    const staleOrgs = await this.freshness.evaluateAndAlert(candidates.map((n) => n.organizationId))
+
     for (const notice of candidates) {
       try {
+        if (staleOrgs.has(notice.organizationId)) {
+          summary.pausedStale++
+          continue
+        }
         const daysOverdue = this.daysSince(notice.dueDate)
         const threshold =
           notice.organization.rentReminderDay + notice.organization.rentInkassoDaysAfterReminder
@@ -307,7 +338,8 @@ export class RentReminderService {
     }
 
     this.logger.log(
-      `Inkasso-redo: ${summary.ready} klara, ${summary.blocked} blockerade, ${summary.skipped} hoppade över, ${summary.errors} fel`,
+      `Inkasso-redo: ${summary.ready} klara, ${summary.blocked} blockerade, ${summary.skipped} hoppade över, ` +
+        `${summary.pausedStale} pausade (inaktuell betalningsdata), ${summary.errors} fel`,
     )
     return summary
   }

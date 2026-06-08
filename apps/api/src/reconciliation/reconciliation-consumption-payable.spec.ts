@@ -43,7 +43,13 @@ function makeService(noticeRow: Record<string, unknown> | null) {
       findMany: jest.fn().mockResolvedValue([]),
     },
   }
-  const service = new ReconciliationService(db as never, {} as never, {} as never, {} as never)
+  const service = new ReconciliationService(
+    db as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never, // PaymentFreshnessService — ej använd i matchnings-vägen
+  )
   const apply = jest.fn().mockResolvedValue(true)
   // Isolera matchningslogiken: ersätt den privata appliceringen med en spion.
   ;(service as unknown as { applyMatchToRentNotice: unknown }).applyMatchToRentNotice = apply

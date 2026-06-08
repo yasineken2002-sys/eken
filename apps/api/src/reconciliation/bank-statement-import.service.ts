@@ -17,6 +17,7 @@ import {
   type ParsedTransaction,
 } from './pdf-statement-parser.service'
 import { ReconciliationService } from './reconciliation.service'
+import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import {
   validateUploadedFile,
   DETECTED_PDF_TYPES,
@@ -39,6 +40,9 @@ export class BankStatementImportService {
     private readonly prisma: PrismaService,
     private readonly parser: PdfStatementParserService,
     private readonly reconciliation: ReconciliationService,
+    // PR 4 (B) — en bekräftad PDF-import flyttar fram paymentDataThrough till
+    // utdragets periodslut (eller senaste transaktionsdatum om periodslut saknas).
+    private readonly freshness: PaymentFreshnessService,
   ) {}
 
   // ── Steg 1: ladda upp PDF, parse, spara som DRAFT (PARSED) ────────────
@@ -216,6 +220,25 @@ export class BankStatementImportService {
         unmatchedCount: unmatched + duplicates,
       },
     })
+
+    // PR 4 (B) — täckningsdatum = AI-extraherat periodslut (mest exakt: utdraget
+    // täcker hela perioden även dagar utan inbetalning) annars senaste commitade
+    // transaktionsdatum. Penganeutral sidoeffekt; får aldrig fälla bekräftelsen.
+    const coverage =
+      draft.periodEnd ??
+      finalTx.reduce<Date | null>((max, t) => {
+        const d = new Date(t.date)
+        return !isNaN(d.getTime()) && (!max || d > max) ? d : max
+      }, null)
+    if (coverage) {
+      try {
+        await this.freshness.recordPaymentDataThrough(organizationId, coverage)
+      } catch (err) {
+        this.logger.error(
+          `paymentDataThrough kunde inte uppdateras efter PDF-import ${id}: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
 
     return { importId: id, created, duplicates, autoMatched, unmatched }
   }
