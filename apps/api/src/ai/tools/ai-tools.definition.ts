@@ -675,14 +675,28 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'match_bank_transaction',
     description:
-      'Matchar manuellt en banktransaktion mot en specifik faktura. Bokför betalningen via 1930→1510 och markerar fakturan som PAID.',
+      'Matchar manuellt en banktransaktion mot EN faktura (invoiceId) ELLER EN hyresavi (rentNoticeId) — ange exakt ett av dem. ' +
+      'Bokför betalningen 1930 D / 1510 K via den manuella matchningsvägen. För en hyresavi hanteras DELBETALNING korrekt: ett ' +
+      'delbelopp registreras som en allokering och avin förblir obetald tills hela skulden är reglerad (full PAID först när ' +
+      'utestående skuld är noll). Använd get_rent_notices / get_unmatched_transactions för att hitta rätt ID:n först.',
     input_schema: {
       type: 'object',
       properties: {
         transactionId: { type: 'string', description: 'BankTransaction-ID' },
-        invoiceId: { type: 'string', description: 'Faktura-ID' },
+        invoiceId: {
+          type: 'string',
+          description:
+            'Faktura-ID (kommersiell faktura). Ange detta ELLER rentNoticeId — inte båda.',
+        },
+        rentNoticeId: {
+          type: 'string',
+          description: 'Hyresavi-ID (RentNotice). Ange detta ELLER invoiceId — inte båda.',
+        },
       },
-      required: ['transactionId', 'invoiceId'],
+      required: ['transactionId'],
+      // Exakt en av invoiceId/rentNoticeId måste anges. Grindas dessutom server-side
+      // i handlern (manualMatch avvisar om båda eller ingen anges).
+      anyOf: [{ required: ['invoiceId'] }, { required: ['rentNoticeId'] }],
     },
   },
 
