@@ -14,6 +14,7 @@ import { StorageService } from '../storage/storage.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { ConsumptionService } from '../consumption/consumption.service'
+import { computeRentDebt } from './rent-debt.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import {
   PaymentMethod,
@@ -1146,7 +1147,29 @@ export class AviseringService {
 
     const paymentDate = paidAt ? new Date(paidAt) : new Date()
 
-    // ── 1. Atomisk, race-säker statusövergång ────────────────────────────────
+    // ── D5 (bank-härdning PR 3b): delbetalning lämnar avin OBETALD ────────────
+    // Läs befintliga allokeringar och avgör om DENNA betalning reglerar avins
+    // OCR-skuld (ocrOutstanding ≤ 0, EXKL. ränta — samma waterfall-grind som
+    // bankvägen och kravtrappan). Tidigare flippade markAsPaid OVILLKORLIGT till
+    // PAID även vid ett delbelopp (latent bugg). Nu: bara full reglering → PAID;
+    // ett delbelopp registrerar allokering + delverifikat men behåller status/steg.
+    const priorAllocs = await this.prisma.rentNoticePayment.findMany({
+      where: { rentNoticeId: noticeId },
+      select: { amount: true },
+    })
+    const priorPaid = priorAllocs.reduce<number>((s, a) => s + Number(a.amount), 0)
+    const debtAfter = computeRentDebt({
+      type: notice.type,
+      totalAmount: notice.totalAmount,
+      consumptionAmount: notice.consumptionAmount,
+      reminderFeeAmount: notice.reminderFeeAmount,
+      interestAccruedAmount: notice.interestAccruedAmount,
+      allocations: [...priorAllocs.map((a) => a.amount), paidAmount],
+    })
+    const completesNotice = debtAfter.ocrOutstanding <= 0
+    const paidSum = debtAfter.paid
+
+    // ── 1. Atomisk, race-säker statusövergång (eller ren paidAmount-uppdatering) ─
     const claim = await this.prisma.rentNotice.updateMany({
       where: {
         id: noticeId,
@@ -1160,18 +1183,25 @@ export class AviseringService {
           ],
         },
       },
-      data: {
-        status: RentNoticeStatus.PAID,
-        paidAt: paymentDate,
-        paidAmount,
-        paymentMethod,
-        // Bankavstämnings-härdning PR 2 — hängslen-och-livrem: en reglerad avi
-        // lämnar kravtrappan. collectionStage nollställs ATOMISKT med PAID-claimen
-        // (samma status-guardade updateMany → idempotent: körs en gång). Även om
-        // export-grinden skulle missas finns ingen kvarvarande INKASSO_READY på en
-        // betald avi. Ingen bokföring rörs (ren statusmarkering).
-        collectionStage: RentCollectionStage.NONE,
-      },
+      data: completesNotice
+        ? {
+            status: RentNoticeStatus.PAID,
+            paidAt: paymentDate,
+            paidAmount: paidSum,
+            paymentMethod,
+            // Bankavstämnings-härdning PR 2 — hängslen-och-livrem: en reglerad avi
+            // lämnar kravtrappan. collectionStage nollställs ATOMISKT med PAID-claimen
+            // (samma status-guardade updateMany → idempotent: körs en gång). Även om
+            // export-grinden skulle missas finns ingen kvarvarande INKASSO_READY på en
+            // betald avi. Ingen bokföring rörs (ren statusmarkering).
+            collectionStage: RentCollectionStage.NONE,
+          }
+        : {
+            // D5 — delbetalning: behåll status och kravsteg, uppdatera bara
+            // paidAmount-spegeln (Σ allokeringar) + senast använt betalsätt.
+            paidAmount: paidSum,
+            paymentMethod,
+          },
     })
     if (claim.count === 0) {
       // En parallell process (t.ex. bankavstämning) hann reglera eller avbryta avin.
@@ -1198,6 +1228,9 @@ export class AviseringService {
       })
       allocationId = allocation.id
 
+      // PR 3b (KRITISK): nyckla verifikatets idempotens på ALLOKERINGEN, inte avin —
+      // annars bokförs en ANDRA manuell delbetalning aldrig (sourceId-kollision) och
+      // 1510 understiger Σ allokeringar. Se createJournalEntryForRentNoticeManualPayment.
       const entry = await this.accounting.createJournalEntryForRentNoticeManualPayment(
         { id: notice.id, noticeNumber: notice.noticeNumber, type: notice.type },
         paidAmount,
@@ -1205,6 +1238,7 @@ export class AviseringService {
         paymentMethod,
         orgId,
         createdById ?? null,
+        allocationId,
       )
       // null för en RENT-avi = saknat likvidkonto/1510 → bokföringsfel, inte
       // ett giltigt no-op. (DEPOSIT returnerar null avsiktligt — deposits-modulen
@@ -1228,17 +1262,21 @@ export class AviseringService {
             )
           })
       }
-      // Återställ avin till obetald så att den kan regleras på nytt. collectionStage
-      // återställs till sitt tidigare värde (PR 2) så en ångrad betalning inte
-      // lämnar en inkasso-redo avi felaktigt nollställd.
+      // Återställ avin till sitt PRE-CLAIM-tillstånd så att den kan regleras på nytt.
+      // paidAmount återställs till Σ TIDIGARE allokeringar (priorPaid) — inte null —
+      // så att en ångrad DELbetalning inte raderar cachen för redan registrerade
+      // delbetalningar. collectionStage återställs till sitt tidigare värde (PR 2) så
+      // en ångrad betalning inte lämnar en inkasso-redo avi felaktigt nollställd.
+      // Ingen status-guard på PAID: vid en ångrad delbetalning är status oförändrad
+      // (aldrig PAID), och vi äger raden (claim.count === 1).
       await this.prisma.rentNotice
         .updateMany({
-          where: { id: noticeId, organizationId: orgId, status: RentNoticeStatus.PAID },
+          where: { id: noticeId, organizationId: orgId },
           data: {
             status: notice.status,
             paidAt: null,
-            paidAmount: null,
-            paymentMethod: null,
+            paidAmount: priorPaid > 0 ? priorPaid : null,
+            paymentMethod: notice.paymentMethod ?? null,
             collectionStage: notice.collectionStage,
           },
         })
@@ -1252,9 +1290,10 @@ export class AviseringService {
     }
 
     // Bankavstämnings-härdning PR 2 — append-only trail för kravstegs-nollställningen
-    // (endast om avin faktiskt var i kravtrappan). Skrivs efter lyckad bokning så
-    // noteringen aldrig avser en revertad betalning. Ingen bokföring rörs.
-    if (notice.collectionStage !== RentCollectionStage.NONE) {
+    // (endast om avin faktiskt var i kravtrappan OCH betalningen reglerade avin —
+    // en delbetalning nollställer INTE kravsteget, så ingen trail då). Skrivs efter
+    // lyckad bokning så noteringen aldrig avser en revertad betalning. Ingen bokföring rörs.
+    if (completesNotice && notice.collectionStage !== RentCollectionStage.NONE) {
       await this.prisma.rentNoticeEvent
         .create({
           data: {

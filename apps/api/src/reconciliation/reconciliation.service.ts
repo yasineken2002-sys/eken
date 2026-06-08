@@ -4,15 +4,17 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  InternalServerErrorException,
 } from '@nestjs/common'
 import { Decimal } from '@prisma/client/runtime/library'
-import { Prisma } from '@prisma/client'
+import { Prisma, RentNoticeType } from '@prisma/client'
 import type { BankTransaction } from '@prisma/client'
 import * as XLSX from 'xlsx'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { InvoicesService } from '../invoices/invoices.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { AccountingService } from '../accounting/accounting.service'
+import { computeRentDebt } from '../avisering/rent-debt.service'
 import {
   validateUploadedFile,
   DETECTED_SPREADSHEET_TYPES,
@@ -542,25 +544,24 @@ export class ReconciliationService {
         },
         orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
       })
-      // Betalbar total = hyra (totalAmount) + förbrukning på avi-rader
-      // (consumptionAmount, IMD). Hyresgästen betalar EN summa; matchning och
-      // 1510-reglering sker mot den. Hyresverifikatet (hyra) + förbruknings-
-      // verifikatet (PR 3) summerar till exakt denna fordran på 1510.
+      // PR 3b — partiell bankmatchning. Den DETERMINISTISKA OCR-grenen släpper nu
+      // igenom amount < restskuld som en DELBETALNING (allokering + partialverifikat),
+      // inte längre allt-eller-inget. Klassificering (full/partiell/överbetalning),
+      // allokeringsbelopp och PAID-flip avgörs ATOMISKT inne i applyMatchToRentNotice
+      // mot avins AKTUELLA ocrOutstanding. Äldsta obetalda avi väljs ovan (orderBy) —
+      // ingen spillover till nästa avi. allowPartial=true: bara den deterministiska
+      // OCR/referens-nyckeln får trigga en delbetalning (D3).
       if (notice) {
-        const payable = notice.totalAmount
-          .plus(notice.consumptionAmount)
-          .plus(notice.reminderFeeAmount)
-        if (payable.minus(transaction.amount).abs().lte(tolerance)) {
-          const matched = await this.applyMatchToRentNotice(
-            transaction.id,
-            notice.id,
-            payable,
-            transaction.date,
-            null,
-            db,
-          )
-          if (matched) return true
-        }
+        const matched = await this.applyMatchToRentNotice(
+          transaction.id,
+          notice.id,
+          organizationId,
+          transaction.amount,
+          transaction.date,
+          null,
+          true,
+        )
+        if (matched) return true
       }
     }
 
@@ -602,21 +603,19 @@ export class ReconciliationService {
           status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
         },
       })
+      // PR 3b — referensgrenen (avinummer i description) är lika deterministisk som
+      // OCR och släpper därför också igenom delbetalningar. allowPartial=true.
       if (notice) {
-        const payable = notice.totalAmount
-          .plus(notice.consumptionAmount)
-          .plus(notice.reminderFeeAmount)
-        if (payable.minus(transaction.amount).abs().lte(tolerance)) {
-          const matched = await this.applyMatchToRentNotice(
-            transaction.id,
-            notice.id,
-            payable,
-            transaction.date,
-            null,
-            db,
-          )
-          if (matched) return true
-        }
+        const matched = await this.applyMatchToRentNotice(
+          transaction.id,
+          notice.id,
+          organizationId,
+          transaction.amount,
+          transaction.date,
+          null,
+          true,
+        )
+        if (matched) return true
       }
     }
 
@@ -705,81 +704,21 @@ export class ReconciliationService {
 
     if (noticeMatches[0]) {
       const candidate = noticeMatches[0]
-      // Betalbar total reglerar hela 1510-fordran (hyres- + förbruknings- +
-      // påminnelseverifikat). paidAmount och betalningsverifikatet ska avse hela
-      // summan — annars blir t.ex. en påmind avis 60 kr-avgift kvar på 1510.
-      const payable = candidate.totalAmount
-        .plus(candidate.consumptionAmount)
-        .plus(candidate.reminderFeeAmount)
-      const claim = await db.rentNotice.updateMany({
-        where: { id: candidate.id, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } },
-        // Bankavstämnings-härdning PR 2 — nollställ kravsteget ATOMISKT med claimen.
-        data: {
-          status: 'PAID',
-          paidAt: transaction.date,
-          paidAmount: payable,
-          collectionStage: 'NONE',
-        },
-      })
-      if (claim.count === 0) return false
-
-      await db.bankTransaction.update({
-        where: { id: transaction.id },
-        data: {
-          status: 'MATCHED',
-          matchedRentNoticeId: candidate.id,
-          matchedAt: new Date(),
-        },
-      })
-
-      // Bankavstämnings-härdning PR 1 — additiv allokering bredvid betalningen, i
-      // SAMMA transaktion (db). Samma penganeutrala spegel som OCR-vägen.
-      await db.rentNoticePayment.create({
-        data: {
-          rentNoticeId: candidate.id,
-          bankTransactionId: transaction.id,
-          amount: payable,
-          paidAt: transaction.date,
-          source: 'BANK_RECONCILIATION',
-        },
-      })
-
-      // Bankavstämnings-härdning PR 2 — append-only trail för kravstegs-nollställningen.
-      if (candidate.collectionStage !== 'NONE') {
-        await db.rentNoticeEvent.create({
-          data: {
-            rentNoticeId: candidate.id,
-            type: 'NOTE_ADDED',
-            actorType: 'SYSTEM',
-            actorLabel: 'System',
-            payload: {
-              action: 'collection-stage-reset',
-              from: candidate.collectionStage,
-              reason: 'paid',
-              source: 'bank_reconciliation',
-            },
-          },
-        })
-      }
-
-      try {
-        await this.accounting.createJournalEntryForRentNoticePayment(
-          {
-            id: candidate.id,
-            noticeNumber: candidate.noticeNumber,
-            totalAmount: payable,
-          },
-          { id: transaction.id, date: transaction.date, amount: payable },
-          organizationId,
-          null,
-        )
-      } catch (err) {
-        this.logger.error(
-          'Accounting journal entry failed',
-          err instanceof Error ? err.stack : String(err),
-        )
-      }
-      return true
+      // PR 3b — fuzzy förblir ALLT-ELLER-INGET (D3): allowPartial=false. En icke-
+      // deterministisk beloppsträff får ALDRIG bli en delbetalning (det skulle gissa
+      // fel avi). Fuzzy-filtret ovan kräver ändå ≈ full payable, så applyMatchToRentNotice
+      // klassar träffen som full betalning; har avin redan en delbetalning blir det en
+      // överbetalning → ingen match (faller till UNMATCHED). Bokföringen är ATOMISK i
+      // applyMatchToRentNotice — inte längre fire-and-forget.
+      return this.applyMatchToRentNotice(
+        transaction.id,
+        candidate.id,
+        organizationId,
+        transaction.amount,
+        transaction.date,
+        null,
+        false,
+      )
     }
 
     return false
@@ -856,118 +795,193 @@ export class ReconciliationService {
     }
   }
 
-  // Match mot hyresavi. Parallell till applyMatchToInvoice — RentNotice har
-  // egen status-modell (PENDING/SENT/OVERDUE → PAID) och egen paidAmount-
-  // kolumn. Bokföringskontona är desamma (1930/1510), så journalEntryt
-  // skrivs via accounting.createJournalEntryForRentNoticePayment med samma
-  // sourceId-strategi som Invoice-betalning (= reverse fungerar för båda).
+  // Match mot hyresavi. Bankavstämnings-härdning PR 3b — PARTIELL bankmatchning.
   //
-  // Returnerar true om avin claimades (vi vann race + skrev bank-länk),
-  // false om en parallell körning hann markera avin som PAID först. Caller
-  // ska INTE rapportera matchning vid false — låt transaktionen stanna
-  // som UNMATCHED så att operatören/nästa import får hantera den korrekt.
+  // HELA sekvensen (rad-lås → allokering → outstanding-läsning → status-flip →
+  // bank-länk → partialverifikat) körs i ETT $transaction. Verifikatet bokförs
+  // ATOMISKT (createJournalEntryForRentNoticePayment(..., tx)) — ALDRIG fire-and-
+  // forget. Faller bokföringen kastas felet och hela transaktionen rullas tillbaka:
+  // allokering + status + bank-länk ångras, bank-tx förblir UNMATCHED. En delbetalning
+  // kan därmed aldrig hamna i ett halvtillstånd (seriens enda icke-penganeutrala PR).
+  //
+  // Callern väljer ÄLDSTA obetalda avi (orderBy dueDate) — ingen spillover till nästa
+  // avi. Beloppet klassas mot avins AKTUELLA ocrOutstanding (allokeringsderiverad
+  // restskuld, EXKL. ränta — samma waterfall-grind som kravtrappan i PR 3a):
+  //   • FULL        |restskuld − amount| ≤ 1 kr → allokera restskulden (öre-fel
+  //                  absorberas), flippa PAID, nollställ kravsteget.
+  //   • PARTIELL    amount < restskuld − 1 kr → allokera amount, BEHÅLL status/steg.
+  //                  Endast om allowPartial (deterministisk OCR/referens) — fuzzy är
+  //                  allt-eller-inget (D3): allowPartial=false → en partiell-klass
+  //                  avvisas (return false).
+  //   • ÖVERBETALN. amount > restskuld + 1 kr → ingen match (D4, hanteras ej här).
+  //
+  // FOR UPDATE-låset serialiserar samtidiga delbetalningar på samma avi så Σ
+  // allokeringar aldrig kan överstiga skulden via en race (READ COMMITTED skulle
+  // annars låta två samtidiga delbetalningar båda läsa full restskuld).
+  //
+  // Returnerar true om en allokering registrerades, false annars (callern låter då
+  // transaktionen falla vidare till nästa matchningsgren / förbli UNMATCHED).
   private async applyMatchToRentNotice(
     transactionId: string,
     noticeId: string,
-    noticeTotal: Decimal,
+    organizationId: string,
+    transactionAmount: Decimal,
     transactionDate: Date,
     userId: string | null,
-    db: Prisma.TransactionClient | PrismaService,
+    allowPartial: boolean,
   ): Promise<boolean> {
-    const notice = await db.rentNotice.findUnique({
-      where: { id: noticeId },
-      select: {
-        id: true,
-        noticeNumber: true,
-        organizationId: true,
-        status: true,
-        collectionStage: true,
-      },
-    })
-    if (!notice) throw new NotFoundException('Hyresavi hittades inte')
+    const tolerance = new Decimal('1.00')
 
-    // Status-guardad updateMany — atomisk på rad-nivå i Postgres. Två
-    // parallella bank-importer för samma OCR kan inte båda markera samma
-    // avi som PAID; bara en räkning får count=1. Den som förlorar racet
-    // skriver inte heller bank-länken (matchedRentNoticeId), så vi undviker
-    // duplicate-key-fel mot @unique-constraint:et och undviker att en
-    // bank-transaktion länkas till en avi som redan tillhör en annan.
-    const claim = await db.rentNotice.updateMany({
-      where: { id: noticeId, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } },
-      // Bankavstämnings-härdning PR 2 — nollställ kravsteget ATOMISKT med PAID-
-      // claimen (idempotent: körs en gång tack vare status-guarden). En betald avi
-      // lämnar kravtrappan; ingen kvarvarande INKASSO_READY på betald avi.
-      data: {
-        status: 'PAID',
-        paidAt: transactionDate,
-        paidAmount: noticeTotal,
-        collectionStage: 'NONE',
-      },
-    })
-    if (claim.count === 0) {
-      this.logger.warn(
-        `RentNotice ${noticeId} kunde inte claimas (redan PAID) — hoppar över bank-länk för transaktion ${transactionId}`,
-      )
-      return false
-    }
+    return this.prisma.$transaction(async (tx) => {
+      // Rad-lås FÖRST: serialiserar samtidiga delbetalningar på samma avi.
+      await tx.$queryRaw`SELECT id FROM "RentNotice" WHERE id = ${noticeId} AND "organizationId" = ${organizationId} FOR UPDATE`
 
-    await db.bankTransaction.update({
-      where: { id: transactionId },
-      data: {
-        status: 'MATCHED',
-        invoiceId: null,
-        matchedRentNoticeId: noticeId,
-        matchedAt: new Date(),
-        ...(userId ? { matchedBy: userId } : {}),
-      },
-    })
-
-    // Bankavstämnings-härdning PR 1 — additiv allokering bredvid betalningen, i
-    // SAMMA transaktion (db). Härledd spegel av paidAmount; rör inte huvudboken.
-    await db.rentNoticePayment.create({
-      data: {
-        rentNoticeId: noticeId,
-        bankTransactionId: transactionId,
-        amount: noticeTotal,
-        paidAt: transactionDate,
-        source: 'BANK_RECONCILIATION',
-      },
-    })
-
-    // Bankavstämnings-härdning PR 2 — append-only trail för kravstegs-nollställningen,
-    // i samma db. Endast om avin faktiskt var i kravtrappan. Ingen bokföring rörs.
-    if (notice.collectionStage !== 'NONE') {
-      await db.rentNoticeEvent.create({
-        data: {
-          rentNoticeId: noticeId,
-          type: 'NOTE_ADDED',
-          actorType: userId ? 'USER' : 'SYSTEM',
-          ...(userId ? { actorId: userId } : { actorLabel: 'System' }),
-          payload: {
-            action: 'collection-stage-reset',
-            from: notice.collectionStage,
-            reason: 'paid',
-            source: 'bank_reconciliation',
-          },
+      const notice = await tx.rentNotice.findFirst({
+        where: { id: noticeId, organizationId },
+        select: {
+          id: true,
+          noticeNumber: true,
+          status: true,
+          collectionStage: true,
+          type: true,
+          totalAmount: true,
+          consumptionAmount: true,
+          reminderFeeAmount: true,
+          interestAccruedAmount: true,
         },
       })
-    }
+      if (!notice) throw new NotFoundException('Hyresavi hittades inte')
 
-    try {
-      await this.accounting.createJournalEntryForRentNoticePayment(
-        { id: noticeId, noticeNumber: notice.noticeNumber, totalAmount: noticeTotal },
-        { id: transactionId, date: transactionDate, amount: noticeTotal },
-        notice.organizationId,
+      // Bara öppna (obetalda) avier kan ta emot en betalning. En PAID/CANCELLED avi
+      // (eller en race-förlorare) → ingen allokering; låt tx:n falla vidare.
+      if (!['SENT', 'PENDING', 'OVERDUE'].includes(notice.status)) return false
+
+      const priorAllocs = await tx.rentNoticePayment.findMany({
+        where: { rentNoticeId: noticeId },
+        select: { amount: true },
+      })
+
+      const debtInput = {
+        type: notice.type,
+        totalAmount: notice.totalAmount,
+        consumptionAmount: notice.consumptionAmount,
+        reminderFeeAmount: notice.reminderFeeAmount,
+        interestAccruedAmount: notice.interestAccruedAmount,
+        allocations: priorAllocs.map((a) => a.amount),
+      }
+      const remaining = new Decimal(computeRentDebt(debtInput).ocrOutstanding)
+      if (remaining.lte(0)) return false
+
+      // Klassificera beloppet mot AKTUELL restskuld (ocrOutstanding).
+      const diff = remaining.minus(transactionAmount)
+      let allocationAmount: Decimal
+      let completesNotice: boolean
+      if (diff.abs().lte(tolerance)) {
+        // FULL — absorbera öre-fel genom att allokera exakt restskulden.
+        allocationAmount = remaining
+        completesNotice = true
+      } else if (transactionAmount.lt(remaining.minus(tolerance))) {
+        // PARTIELL — genuin delbetalning. Endast via deterministisk nyckel (D3).
+        if (!allowPartial) return false
+        allocationAmount = transactionAmount
+        completesNotice = false
+      } else {
+        // amount > restskuld + tolerans → överbetalning (D4): hanteras ej här.
+        return false
+      }
+
+      // Allokeringen (bankTransactionId @unique skyddar mot dubbel-allokering).
+      await tx.rentNoticePayment.create({
+        data: {
+          rentNoticeId: noticeId,
+          bankTransactionId: transactionId,
+          amount: allocationAmount,
+          paidAt: transactionDate,
+          source: 'BANK_RECONCILIATION',
+        },
+      })
+
+      // Σ allokeringar EFTER denna betalning — paidAmount-spegeln hålls i synk.
+      const paidSum = computeRentDebt({
+        ...debtInput,
+        allocations: [...debtInput.allocations, allocationAmount],
+      }).paid
+
+      if (completesNotice) {
+        // PAID + nollställ kravsteget. Statusguarden bevarar idempotensen tillsammans
+        // med rad-låset; rad-låset garanterar att vi ser senaste committade allokeringar.
+        await tx.rentNotice.updateMany({
+          where: {
+            id: noticeId,
+            organizationId,
+            status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+          },
+          data: {
+            status: 'PAID',
+            paidAt: transactionDate,
+            paidAmount: paidSum,
+            collectionStage: 'NONE',
+          },
+        })
+      } else {
+        // Delbetalning: behåll status och kravsteg, uppdatera bara paidAmount-spegeln.
+        // organizationId i WHERE som defense-in-depth (FIX 2-mönstret) trots att
+        // raden redan org-validerats av findFirst + FOR UPDATE ovan.
+        await tx.rentNotice.updateMany({
+          where: { id: noticeId, organizationId },
+          data: { paidAmount: paidSum },
+        })
+      }
+
+      await tx.bankTransaction.update({
+        where: { id: transactionId },
+        data: {
+          status: 'MATCHED',
+          invoiceId: null,
+          matchedRentNoticeId: noticeId,
+          matchedAt: new Date(),
+          ...(userId ? { matchedBy: userId } : {}),
+        },
+      })
+
+      // Kravstegs-trail bara när vi faktiskt nollställde en aktiv trappa (full betalning).
+      if (completesNotice && notice.collectionStage !== 'NONE') {
+        await tx.rentNoticeEvent.create({
+          data: {
+            rentNoticeId: noticeId,
+            type: 'NOTE_ADDED',
+            actorType: userId ? 'USER' : 'SYSTEM',
+            ...(userId ? { actorId: userId } : { actorLabel: 'System' }),
+            payload: {
+              action: 'collection-stage-reset',
+              from: notice.collectionStage,
+              reason: 'paid',
+              source: 'bank_reconciliation',
+            },
+          },
+        })
+      }
+
+      // Partialverifikatet ATOMISKT i samma tx. amount = det FAKTISKT allokerade
+      // delbeloppet (1930 D / 1510 K). Faller bokföringen kastas felet → full rollback.
+      const entry = await this.accounting.createJournalEntryForRentNoticePayment(
+        { id: noticeId, noticeNumber: notice.noticeNumber },
+        { id: transactionId, date: transactionDate, amount: allocationAmount },
+        organizationId,
         userId,
+        tx,
       )
-    } catch (err) {
-      this.logger.error(
-        'Accounting journal entry failed',
-        err instanceof Error ? err.stack : String(err),
-      )
-    }
+      // null för en RENT-avi = saknat 1930/1510 → bokföringsfel (ej giltigt no-op).
+      // Kasta så hela transaktionen rullas tillbaka — ingen allokering utan verifikat.
+      if (entry === null && notice.type !== RentNoticeType.DEPOSIT) {
+        throw new InternalServerErrorException(
+          `Betalningsverifikat kunde inte skapas för hyresavi ${notice.noticeNumber} — ` +
+            'kontrollera att kontoplanen innehåller konto 1930 och 1510.',
+        )
+      }
 
-    return true
+      return true
+    })
   }
 
   // ── Get transactions ─────────────────────────────────────────────────────────
@@ -1099,22 +1113,25 @@ export class ReconciliationService {
         where: { id: target.rentNoticeId, organizationId },
       })
       if (!notice) throw new NotFoundException('Hyresavi hittades inte')
-      // Betalbar total = hyra + förbrukning (IMD) + påminnelseavgift (PR 2).
-      // Reglerar hela 1510-fordran.
-      const payable = notice.totalAmount
-        .plus(notice.consumptionAmount)
-        .plus(notice.reminderFeeAmount)
+      // PR 3b — manuell matchning respekterar det FAKTISKA transaktionsbeloppet:
+      // ett delbelopp blir en delbetalning (avin förblir obetald, allokering +
+      // partialverifikat registreras), inte en full PAID-bokning av hela payable.
+      // allowPartial=true (operatören har deterministiskt valt avin). Belopp som
+      // överstiger restskulden (överbetalning, D4) avvisas — hanteras inte i denna PR.
       const matched = await this.applyMatchToRentNotice(
         transactionId,
         target.rentNoticeId,
-        payable,
+        organizationId,
+        transaction.amount,
         transaction.date,
         userId,
-        this.prisma,
+        true,
       )
       if (!matched) {
         throw new BadRequestException(
-          'Hyresavin är redan markerad som betald och kan inte länkas till en ny transaktion. Avmatcha den befintliga transaktionen först.',
+          'Kunde inte matcha transaktionen mot avin: beloppet överstiger avins restskuld ' +
+            '(överbetalning hanteras inte), eller så är avin redan reglerad/avbruten. ' +
+            'Kontrollera beloppet eller avmatcha den befintliga transaktionen först.',
         )
       }
     }
@@ -1159,10 +1176,7 @@ export class ReconciliationService {
       )
     }
 
-    const rentNoticeToReset =
-      transaction.matchedRentNotice && transaction.matchedRentNotice.status === 'PAID'
-        ? transaction.matchedRentNotice.id
-        : null
+    const matchedNoticeId = transaction.matchedRentNotice?.id ?? null
 
     // BFL 5 kap 5 §/9 §: statusåterställningen och motverifikatet måste ske
     // ATOMISKT. Tidigare kördes reverseJournalEntryForPayment som
@@ -1174,32 +1188,65 @@ export class ReconciliationService {
     // (avin förblir PAID, banktransaktionen MATCHED) och operatören får felet.
     // (Issue #33; samma awaited-mönster som faktura-bokföringen i PR #27 H3.)
     await this.prisma.$transaction(async (tx) => {
-      // För hyresavier: PAID kan flippas tillbaka till SENT eftersom det inte
-      // finns någon kreditnota-mekanism för avier. Återställ paidAt/paidAmount
-      // så avi:n syns som obetald igen och nästa BgMax-import kan matcha den
-      // korrekt om betalningen återförs och kommer in på nytt.
-      if (rentNoticeToReset) {
-        // PR 2 (juristnotering): collectionStage lämnas MEDVETET kvar på NONE här
-        // (det nollställdes vid PAID). En avmatchad avi återgår alltså till SENT
-        // UTAN kravsteg — re-eskalering måste gå via en NY inkasso-ready-granskning
-        // (INV-B) som kristalliserar om dröjsmålsräntan per faktisk löptid (RL 9 §).
-        // Att auto-återställa INKASSO_READY här skulle exportera en avi med förlegad
-        // ränta. Skuld-grinden (INV-D) blockerar ändå export så länge stage ≠ READY.
-        await tx.rentNotice.update({
-          where: { id: rentNoticeToReset },
-          data: { status: 'SENT', paidAt: null, paidAmount: null },
-        })
-      }
-
-      // Bankavstämnings-härdning PR 1 — ta bort allokeringen som hörde till denna
-      // bank-transaktion, i SAMMA atomiska transaktion som status- och verifikat-
-      // återställningen. bankTransactionId är unikt → 0 eller 1 rad. Körs alltid
-      // (oavsett rentNoticeToReset): allokeringen tillhör transaktionen, så när
-      // transaktionen avmatchas ska dess spegel bort. paidAmount nollställs ovan,
-      // vilket håller spegeln (Σ allokeringar == paidAmount) konsekvent.
+      // Bankavstämnings-härdning PR 1/3b — ta bort allokeringen som hörde till denna
+      // bank-transaktion FÖRST, i SAMMA atomiska transaktion. bankTransactionId är
+      // unikt → 0 eller 1 rad. Raderas före paidAmount-omräkningen nedan så Σ avser
+      // KVARVARANDE allokeringar (kritiskt vid partiell unmatch: bara EN av flera
+      // delbetalningar tas bort — paidAmount får inte spegla den borttagna).
       await tx.rentNoticePayment.deleteMany({
         where: { bankTransactionId: transactionId },
       })
+
+      // PR 3b — för en matchad hyresavi: räkna om paidAmount = Σ KVARVARANDE
+      // allokeringar och flippa avin tillbaka till obetald BARA om den åter har
+      // OCR-skuld (en delbetalning kvar → avin förblir delbetald SENT med rätt cache;
+      // en avmatchad slutbetalning → tillbaka till SENT). outstanding() läser ändå
+      // allokeringarna direkt, men paidAmount-cachen får inte ljuga (stale).
+      if (matchedNoticeId) {
+        const remainingAllocs = await tx.rentNoticePayment.findMany({
+          where: { rentNoticeId: matchedNoticeId },
+          select: { amount: true },
+        })
+        const paidSum = remainingAllocs.reduce<Decimal>((s, a) => s.plus(a.amount), new Decimal(0))
+
+        const noticeRow = await tx.rentNotice.findFirst({
+          where: { id: matchedNoticeId, organizationId },
+          select: {
+            type: true,
+            status: true,
+            totalAmount: true,
+            consumptionAmount: true,
+            reminderFeeAmount: true,
+            interestAccruedAmount: true,
+          },
+        })
+        if (noticeRow) {
+          const ocrLeft = computeRentDebt({
+            type: noticeRow.type,
+            totalAmount: noticeRow.totalAmount,
+            consumptionAmount: noticeRow.consumptionAmount,
+            reminderFeeAmount: noticeRow.reminderFeeAmount,
+            interestAccruedAmount: noticeRow.interestAccruedAmount,
+            allocations: remainingAllocs.map((a) => a.amount),
+          }).ocrOutstanding
+
+          // En PAID avi som efter avmatchningen åter har OCR-skuld flippas tillbaka
+          // till SENT (det finns ingen kreditnota-mekanism för avier). Kravsteget
+          // lämnas MEDVETET på NONE (juristnotering: re-eskalering kräver en NY
+          // inkasso-ready-granskning, INV-B, som kristalliserar om dröjsmålsräntan
+          // per faktisk löptid, RL 9 §). En redan obetald (delbetald) avi rör vi inte
+          // statusen på — bara paidAmount-spegeln.
+          const reopen = noticeRow.status === 'PAID' && ocrLeft > 0
+          // organizationId i WHERE som defense-in-depth (FIX 2-mönstret).
+          await tx.rentNotice.updateMany({
+            where: { id: matchedNoticeId, organizationId },
+            data: {
+              paidAmount: paidSum.gt(0) ? paidSum : null,
+              ...(reopen ? { status: 'SENT', paidAt: null } : {}),
+            },
+          })
+        }
+      }
 
       // Övriga statusar lämnas oförändrade — vi länkar bara bort
       // banktransaktionen. updateMany med organizationId som defense-in-depth:
