@@ -1,5 +1,17 @@
 # Eken – CLAUDE.md
 
+## Vision & mål
+
+_Eveno_ — fastighetsförvaltnings-SaaS för svenska privata hyresvärdar och mindre bolag (1–50 enheter).
+
+**Kärnvision:** maximal automatisering. En hyresvärd ska kunna luta sig tillbaka medan systemet sköter det löpande — avisering, påminnelser, bankavstämning, bokföring, kravhantering — automatiskt. AI är hyresvärdens assistent: den gör det repetitiva och föreslår det svåra, så att människan bara behöver fatta de verkligt bindande besluten. Ersätter tunga system (Vitec, Momentum) med något enklare, smartare och mer självgående.
+
+**Byggt och i main:** förvaltning (fastigheter/lägenheter/hyresgäster/avtal), automatisk hyresavisering (cron), IMD/förbruknings-debitering, AI-driven kontrakts-onboarding, dubbel bokföring, komplett inkasso-trappa (avi→påminnelse→ränta→inkasso-ready→export→kundförlust, automatisk), och härdad bankavstämning (skuld som beräknat tillstånd: INV-S→D→A→B).
+
+**Återstår före lansering (gatas av bolagsregistrering):** DB-backup, BankID-inloggning, automatisk bankkoppling (PSD2 — ersätter manuell filuppladdning, en nyckel för att avstämningen ska vara självgående), juridisk slutgenomgång.
+
+**Bärande principer:** automatisera det repetitiva, men maskinen _föreslår_ och människan _bekräftar_ det bindande (avtal, hyreshöjning, inkasso-export, avskrivning). Skuld är ett beräknat tillstånd, aldrig en flagga. AI skriver aldrig SFS-nummer/lagrum i produktionskod — verifieras av människa.
+
 > **"Fortnox för fastigheter"** – Enterprise-grade fastighetssystem. Varje beslut ska hålla Fortnox-standard.
 
 ---
