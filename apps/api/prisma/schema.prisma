@@ -95,6 +95,18 @@ enum InvoiceTemplate {
   minimal
 }
 
+// PDF-/dokumentvarumärke (Steg 3, PR 1 — fundament). Kontrollerad enum av
+// PDF-säkra typsnitt — INTE fritext, eftersom en ogiltig font-sträng skulle
+// kunna bryta PDF-renderingen när fältet kopplas in i senare PR:er. Värdena
+// mappas till konkreta font-family-stackar (med säkra fallbacks) i
+// @eken/shared → BRAND_FONT_STACKS. SYSTEM_SANS = nuvarande hårdkodade default.
+enum BrandFont {
+  SYSTEM_SANS
+  HELVETICA
+  GEORGIA
+  INTER
+}
+
 enum AccountType {
   ASSET
   LIABILITY
@@ -482,6 +494,16 @@ model Organization {
   paymentTermsDays     Int     @default(30)
   invoiceColor         String?
   invoiceTemplate      InvoiceTemplate?
+
+  // ── PDF-/dokumentvarumärke (Steg 3, PR 1 — endast datafundament) ──────────
+  // INGEN PDF/e-post läser dessa fält ännu — de kopplas in i senare PR:er.
+  // brandFont: kontrollerad enum (se BrandFont). Default SYSTEM_SANS =
+  // nuvarande hårdkodade typsnitt → befintliga orgs renderar oförändrat.
+  // brandSecondaryColor: sekundär/accentfärg (hex #RRGGBB), nullable. NULL →
+  // härleds från invoiceColor (primär) / DEFAULT_BRAND_COLOR vid inkoppling.
+  brandFont            BrandFont @default(SYSTEM_SANS)
+  brandSecondaryColor  String?
+
   morningReportEnabled Boolean @default(false)
 
   // Intern kontrollgräns (COSO) för PDF-bankavstämning: rader vars belopp
