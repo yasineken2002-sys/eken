@@ -2583,15 +2583,28 @@ export class ToolExecutorService {
         }
 
         case 'match_bank_transaction': {
-          const transactionId = String(toolInput.transactionId ?? '')
-          const invoiceId = toolInput.invoiceId ? String(toolInput.invoiceId) : ''
-          const rentNoticeId = toolInput.rentNoticeId ? String(toolInput.rentNoticeId) : ''
+          const transactionId = String(toolInput.transactionId ?? '').trim()
+          // Tom/whitespace-only sträng behandlas som saknad (explicit intent).
+          const invoiceId = toolInput.invoiceId ? String(toolInput.invoiceId).trim() : ''
+          const rentNoticeId = toolInput.rentNoticeId ? String(toolInput.rentNoticeId).trim() : ''
           if (!transactionId || (!invoiceId && !rentNoticeId)) {
             return {
               success: false,
-              message: 'transactionId och antingen invoiceId eller rentNoticeId krävs',
+              message:
+                'transactionId och exakt ett av invoiceId/rentNoticeId krävs (faktura eller hyresavi)',
             }
           }
+          if (invoiceId && rentNoticeId) {
+            return {
+              success: false,
+              message: 'Ange endast EN av invoiceId/rentNoticeId — inte båda.',
+            }
+          }
+          // Exakt samma manuella matchningsväg som operatörens manuella matchning.
+          // För rentNoticeId går den via applyMatchToRentNotice: org-verifierad,
+          // allokerings-baserad, partiell betalning → allokering (ingen falsk full
+          // PAID), outstanding-medveten status-flip. AI:n får ingen genväg förbi
+          // bankhärdnings-invarianterna (INV-S/D/A).
           await this.reconciliationService.manualMatch(
             transactionId,
             {
@@ -2603,11 +2616,14 @@ export class ToolExecutorService {
           )
           return {
             success: true,
-            message:
-              'Banktransaktionen matchades mot fakturan och betalningen bokfördes (1930 D / 1510 K).',
+            message: rentNoticeId
+              ? 'Banktransaktionen matchades mot hyresavin och betalningen bokfördes (1930 D / 1510 K). ' +
+                'Vid delbetalning registreras en allokering och avin förblir obetald tills hela skulden är reglerad.'
+              : 'Banktransaktionen matchades mot fakturan och betalningen bokfördes (1930 D / 1510 K).',
             nextSteps: [
               'Kontrollera saldot på företagskontot (1930) med get_account_balance',
               'Hämta verifikatlistan med get_journal_entries om du vill verifiera bokningen',
+              ...(rentNoticeId ? ['Kontrollera avins kvarvarande skuld med get_rent_notices'] : []),
             ],
           }
         }
