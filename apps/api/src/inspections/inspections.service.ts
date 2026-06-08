@@ -180,10 +180,17 @@ export class InspectionsService {
     dto: UpdateInspectionItemDto,
     orgId: string,
   ) {
-    const inspection = await this.prisma.inspection.findFirst({
-      where: { id: inspectionId, organizationId: orgId },
+    // Verifiera HELA kedjan i EN query: posten måste tillhöra den besiktning som anges
+    // i URL:en, OCH den besiktningen måste tillhöra anroparens org (från JWT). Tidigare
+    // scopades update:en enbart på itemId → en användare kunde ändra en post i en annan
+    // besiktning/annan organisation genom att byta itemId (IDOR). Samma NotFound oavsett
+    // om posten saknas, hör till en annan besiktning eller en annan org — läck aldrig
+    // existens. organizationId kommer ALLTID från JWT, aldrig från klient-input.
+    const item = await this.prisma.inspectionItem.findFirst({
+      where: { id: itemId, inspectionId, inspection: { organizationId: orgId } },
+      select: { id: true },
     })
-    if (!inspection) throw new NotFoundException('Besiktning hittades inte')
+    if (!item) throw new NotFoundException('Besiktningsobjekt hittades inte')
 
     return this.prisma.inspectionItem.update({
       where: { id: itemId },
