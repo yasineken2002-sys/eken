@@ -2192,6 +2192,11 @@ export class ToolExecutorService {
               organizationId,
               uploadedById: userId,
               leaseId: lease.id,
+              // Härled tenantId från den org-scopade leasen (server-side),
+              // aldrig från AI/klient-input. Utan detta blev AI-genererade
+              // kontrakt osynliga i hyresgästportalen (getDocuments filtrerar
+              // strikt på tenantId). Admin-kontraktsvägen sätter redan detta.
+              tenantId: lease.tenantId,
               name: `Hyreskontrakt – ${tenantDisplayName}`,
               storageKey,
               storageUrl,
