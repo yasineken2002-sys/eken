@@ -200,6 +200,22 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
     expect(deliverToTenant.mock.calls[0][0].notify).toBe(false)
   })
 
+  it('rättsverkande-liknande innehåll LEVERERAS ändå efter bekräftelse (varning blockerar inte)', async () => {
+    // Filosofin: INFORMERA & VARNA, blockera aldrig. Varningen visas i
+    // bekräftelserutan (buildConfirmation); själva handlern — som körs EFTER
+    // bekräftelse — levererar dokumentet som ett informellt brev.
+    const { executor, deliverToTenant } = makeExecutor([TIM])
+    const res = await executor.executeTool(
+      'send_document_to_tenant',
+      { tenantName: 'Tim', title: 'Uppsägning av hyresavtal', content: 'Härmed sägs avtalet upp.' },
+      'org-1',
+      'user-1',
+      'ADMIN',
+    )
+    expect(res.success).toBe(true)
+    expect(deliverToTenant).toHaveBeenCalledTimes(1)
+  })
+
   it('MANAGER får använda verktyget (paritet med compose_and_send_email), VIEWER nekas', async () => {
     const ok = makeExecutor([TIM])
     const resManager = await ok.executor.executeTool(

@@ -18,6 +18,7 @@ import { AiQuotaService } from './usage/ai-quota.service'
 import { AiAuditService } from './audit/ai-audit.service'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
 import { AI_MODELS } from './ai.config'
+import { detectLegalDocumentWarning } from './legal-document-warning'
 
 const MAX_TOKENS = 2048
 
@@ -169,7 +170,6 @@ ALDRIG:
 - Ändra lösenord
 - Gissa ID:n — hämta alltid från databas
 - Ge råd som strider mot hyreslagen
-- Använda send_document_to_tenant för rättsligt verkande handlingar som kräver formell delgivning (uppsägning, hyreshöjningsavisering, rättelseanmaning vid störningar, förverkandevarning) — dessa hanteras i egna flöden med korrekt formalia
 
 UNDERHÅLL OCH FELANMÄLNINGAR:
 - Använd get_maintenance_tickets för att visa öppna ärenden
@@ -1447,13 +1447,24 @@ export class AiAssistantService {
           'hyresgäst'
         const docContent = String(input.content ?? '')
         const preview = docContent.slice(0, 120)
+        // INFORMERA & VARNA (blockera aldrig): om dokumentet kan vara av
+        // rättsligt verkande karaktär upplyser vi hyresvärden i bekräftelse-
+        // rutan om att portalleverans inte ger rättslig verkan. Bekräftar hen
+        // ändå levereras dokumentet som ett informellt brev.
+        const legalWarning = detectLegalDocumentWarning(
+          input.title as string | undefined,
+          docContent,
+        )
         return {
-          confirmationMessage: `Skapa dokumentet "${String(input.title ?? '')}" och skicka det till ${recipient}s hyresgästportal`,
+          confirmationMessage:
+            `Skapa dokumentet "${String(input.title ?? '')}" och skicka det till ${recipient}s hyresgästportal` +
+            (legalWarning ? `\n\n${legalWarning.warning}` : ''),
           details: {
             Titel: String(input.title ?? ''),
             Mottagare: recipient,
             Notis: input.notifyTenant === false ? 'Nej' : 'Ja (e-post)',
             ...(preview ? { Innehåll: preview + (docContent.length > 120 ? '...' : '') } : {}),
+            ...(legalWarning ? { Juridisk: legalWarning.warning } : {}),
           },
         }
       }
