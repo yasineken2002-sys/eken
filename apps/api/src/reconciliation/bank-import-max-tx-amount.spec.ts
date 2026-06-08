@@ -33,7 +33,12 @@ function makeService(orgRow?: { maxBankTxAmount: number } | null) {
         .mockResolvedValue(orgRow === undefined ? { maxBankTxAmount: 5_000_000 } : orgRow),
     },
   }
-  const service = new BankStatementImportService(prisma as never, {} as never, {} as never)
+  const service = new BankStatementImportService(
+    prisma as never,
+    {} as never,
+    {} as never,
+    { recordPaymentDataThrough: jest.fn() } as never,
+  )
   return { service: service as unknown as ServiceAccess, prisma }
 }
 

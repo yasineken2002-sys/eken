@@ -23,7 +23,7 @@ interface SanitizeAccess {
 }
 
 function makeService() {
-  const service = new BankStatementImportService({} as never, {} as never, {} as never)
+  const service = new BankStatementImportService({} as never, {} as never, {} as never, {} as never)
   return service as unknown as SanitizeAccess
 }
 

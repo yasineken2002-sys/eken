@@ -22,7 +22,7 @@ import { Decimal } from '@prisma/client/runtime/library'
 
 const DAY = 24 * 60 * 60 * 1000
 
-function makeService(opts: { ocrOutstanding?: number } = {}) {
+function makeService(opts: { ocrOutstanding?: number; staleOrgs?: Set<string> } = {}) {
   const tx = { rentNotice: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } }
   const prisma = {
     $transaction: jest.fn().mockImplementation((cb: (t: typeof tx) => unknown) => cb(tx)),
@@ -46,6 +46,7 @@ function makeService(opts: { ocrOutstanding?: number } = {}) {
     ocrOutstanding: Math.max(0, ocr),
   })
   const rentDebt = { outstanding }
+  const evaluateAndAlert = jest.fn().mockResolvedValue(opts.staleOrgs ?? new Set())
   const service = new RentReminderService(
     prisma as never,
     accounting as never,
@@ -56,8 +57,19 @@ function makeService(opts: { ocrOutstanding?: number } = {}) {
     {} as never,
     {} as never,
     rentDebt as never,
+    { evaluateAndAlert } as never,
   )
-  return { service, prisma, tx, accounting, rentNoticeEvents, rentInterest, pdfQueue, outstanding }
+  return {
+    service,
+    prisma,
+    tx,
+    accounting,
+    rentNoticeEvents,
+    rentInterest,
+    pdfQueue,
+    outstanding,
+    evaluateAndAlert,
+  }
 }
 
 describe('escalateNoticeToReminded', () => {
@@ -143,6 +155,23 @@ describe('escalateOverdueRentNotices (cron)', () => {
       expect.objectContaining({ kind: 'avisering-reminder', noticeId: 'rn-9' }),
     )
     expect(summary.reminded).toBe(1)
+  })
+
+  // PR 4 (B) — inaktuell betalningsdata pausar påminnelse-eskaleringen (avgift).
+  it('STALE org: PAUSAR (ingen avgift/flip), pausedStale räknas, ingen ränta/PDF', async () => {
+    const { service, prisma, pdfQueue, rentInterest } = makeService({
+      staleOrgs: new Set(['org-1']),
+    })
+    prisma.rentNotice.findMany.mockResolvedValueOnce([
+      candidate({ id: 'rn-9', daysOverdue: 20, email: 'g@x.se' }),
+    ])
+    const spy = jest.spyOn(service, 'escalateNoticeToReminded').mockResolvedValue(true)
+    const summary = await service.escalateOverdueRentNotices()
+    expect(spy).not.toHaveBeenCalled() // INGEN avgift tas ut (INV-B)
+    expect(rentInterest.crystallizeInterest).not.toHaveBeenCalled()
+    expect(pdfQueue.enqueue).not.toHaveBeenCalled()
+    expect(summary.pausedStale).toBe(1)
+    expect(summary.reminded).toBe(0)
   })
 
   it('hoppar över avi som ännu inte nått dag 7 (ingen avgift tas ut)', async () => {
@@ -247,6 +276,7 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
       pdfService as never,
       storage as never,
       { outstanding: jest.fn() } as never, // PR 3a: send-jobbet läser inte skuld
+      { evaluateAndAlert: jest.fn().mockResolvedValue(new Set()) } as never,
     )
     return { service, prisma, update, uploadFile, mailService, rentNoticeEvents }
   }
@@ -395,6 +425,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
       {} as never,
       {} as never,
       rentDebt as never,
+      { evaluateAndAlert: jest.fn().mockResolvedValue(new Set()) } as never,
     )
     return { service, prisma, tx, rentNoticeEvents, rentInterest, outstanding }
   }
@@ -540,10 +571,11 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
 })
 
 describe('escalateRemindedToInkassoReady (cron)', () => {
-  function makeCronService() {
+  function makeCronService(staleOrgs: Set<string> = new Set()) {
     const prisma = {
       rentNotice: { findMany: jest.fn().mockResolvedValue([]) },
     }
+    const evaluateAndAlert = jest.fn().mockResolvedValue(staleOrgs)
     const service = new RentReminderService(
       prisma as never,
       {} as never,
@@ -554,8 +586,9 @@ describe('escalateRemindedToInkassoReady (cron)', () => {
       {} as never,
       {} as never,
       { outstanding: jest.fn() } as never, // PR 3a: cronen delegerar skuldläsning
+      { evaluateAndAlert } as never,
     )
-    return { service, prisma }
+    return { service, prisma, evaluateAndAlert }
   }
 
   function candidate(daysOverdue: number) {
@@ -606,6 +639,30 @@ describe('escalateRemindedToInkassoReady (cron)', () => {
     const summary = await service.escalateRemindedToInkassoReady()
     expect(summary.blocked).toBe(1)
     expect(summary.errors).toBe(0)
+  })
+
+  // PR 4 (B) — inaktuell betalningsdata pausar inkasso-redo-eskaleringen.
+  it('STALE org: avin PAUSAS (ingen flip), pausedStale räknas, larm delegeras', async () => {
+    const { service, prisma, evaluateAndAlert } = makeCronService(new Set(['org-1']))
+    prisma.rentNotice.findMany.mockResolvedValueOnce([candidate(25)]) // förbi tröskeln
+    const spy = jest.spyOn(service, 'escalateNoticeToInkassoReady')
+    const summary = await service.escalateRemindedToInkassoReady()
+    expect(evaluateAndAlert).toHaveBeenCalledWith(['org-1'])
+    expect(spy).not.toHaveBeenCalled() // INGEN inkasso-framflyttning
+    expect(summary.pausedStale).toBe(1)
+    expect(summary.ready).toBe(0)
+  })
+
+  it('FÄRSK org (tom stale-mängd): eskalerar normalt', async () => {
+    const { service, prisma } = makeCronService(new Set())
+    prisma.rentNotice.findMany.mockResolvedValueOnce([candidate(25)])
+    const spy = jest
+      .spyOn(service, 'escalateNoticeToInkassoReady')
+      .mockResolvedValue({ flipped: true })
+    const summary = await service.escalateRemindedToInkassoReady()
+    expect(spy).toHaveBeenCalledWith('rn-1', 'org-1')
+    expect(summary.ready).toBe(1)
+    expect(summary.pausedStale).toBe(0)
   })
 })
 

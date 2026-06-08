@@ -6,6 +6,7 @@ import { OcrModule } from '../common/ocr/ocr.module'
 import { StorageModule } from '../storage/storage.module'
 import { AccountingModule } from '../accounting/accounting.module'
 import { ConsumptionModule } from '../consumption/consumption.module'
+import { PaymentFreshnessModule } from '../payment-freshness/payment-freshness.module'
 import { AviseringController } from './avisering.controller'
 import { AviseringService } from './avisering.service'
 import { AviseringScheduler } from './avisering.scheduler'
@@ -24,6 +25,7 @@ import { RentDebtService } from './rent-debt.service'
     StorageModule,
     AccountingModule,
     ConsumptionModule,
+    PaymentFreshnessModule,
   ],
   controllers: [AviseringController],
   providers: [

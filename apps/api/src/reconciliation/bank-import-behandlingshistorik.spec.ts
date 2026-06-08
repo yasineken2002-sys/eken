@@ -74,7 +74,12 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
           transactions: AI_TX,
         }),
       }
-      const service = new BankStatementImportService(prisma as never, parser as never, {} as never)
+      const service = new BankStatementImportService(
+        prisma as never,
+        parser as never,
+        {} as never,
+        { recordPaymentDataThrough: jest.fn() } as never,
+      )
 
       await service.uploadAndParsePdf(Buffer.from('%PDF-1.4'), 'utdrag.pdf', 'org-1', 'user-1')
 
@@ -111,6 +116,7 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
         prisma as never,
         {} as never,
         reconciliation as never,
+        { recordPaymentDataThrough: jest.fn() } as never,
       )
 
       // Operatören redigerar belopp på rad 1 (8500 → 8400) innan confirm.
@@ -142,6 +148,50 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
       expect(update.data).not.toHaveProperty('originalParsedData')
     })
 
+    // PR 4 (B) — en bekräftad import flyttar fram paymentDataThrough (färskhetssignal).
+    it('flyttar fram paymentDataThrough till periodEnd när det finns', async () => {
+      const prisma = makePrismaMock()
+      setupConfirm(prisma)
+      prisma.bankStatementImport.findFirst.mockResolvedValue({
+        id: 'imp-1',
+        status: 'PARSED',
+        parsedData: { transactions: AI_TX },
+        originalParsedData: { transactions: AI_TX },
+        periodEnd: new Date('2026-05-31'),
+      })
+      const recordPaymentDataThrough = jest.fn()
+      const service = new BankStatementImportService(
+        prisma as never,
+        {} as never,
+        { matchTransaction: jest.fn().mockResolvedValue(true) } as never,
+        { recordPaymentDataThrough } as never,
+      )
+
+      await service.confirmImport('imp-1', 'org-1', 'user-1')
+
+      expect(recordPaymentDataThrough).toHaveBeenCalledWith('org-1', new Date('2026-05-31'))
+    })
+
+    it('utan periodEnd: faller tillbaka till senaste bekräftade transaktionsdatum', async () => {
+      const prisma = makePrismaMock()
+      setupConfirm(prisma) // ingen periodEnd
+      const recordPaymentDataThrough = jest.fn()
+      const service = new BankStatementImportService(
+        prisma as never,
+        {} as never,
+        { matchTransaction: jest.fn().mockResolvedValue(true) } as never,
+        { recordPaymentDataThrough } as never,
+      )
+
+      // AI_TX-datumen avgör coverage; senaste = 2026-05-02 (se edited nedan).
+      await service.confirmImport('imp-1', 'org-1', 'user-1', [
+        { date: '2026-05-01', description: 'A', ocr: null, amount: 8400, isIncoming: true },
+        { date: '2026-05-02', description: 'B', ocr: null, amount: 7200, isIncoming: true },
+      ])
+
+      expect(recordPaymentDataThrough).toHaveBeenCalledWith('org-1', new Date('2026-05-02'))
+    })
+
     it('confirmedData skiljer sig från originalParsedData när operatören redigerat (diff rekonstruerbar)', async () => {
       const prisma = makePrismaMock()
       setupConfirm(prisma)
@@ -150,6 +200,7 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
         prisma as never,
         {} as never,
         reconciliation as never,
+        { recordPaymentDataThrough: jest.fn() } as never,
       )
 
       const edited = [
@@ -179,6 +230,7 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
         prisma as never,
         {} as never,
         reconciliation as never,
+        { recordPaymentDataThrough: jest.fn() } as never,
       )
 
       // Ingen edited-lista → extractFromDraft används.

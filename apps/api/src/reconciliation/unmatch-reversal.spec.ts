@@ -70,6 +70,7 @@ function makeService(opts: {
     {} as never,
     {} as never,
     accounting as never,
+    {} as never, // PaymentFreshnessService — ej använd i unmatch-vägen
   )
   return { service, prisma, tx, reverseJournalEntryForPayment }
 }

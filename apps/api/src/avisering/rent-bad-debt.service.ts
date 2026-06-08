@@ -11,12 +11,15 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentDebtService } from './rent-debt.service'
+import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 
 interface BadDebtSummary {
   reclassified: number
   manual: number
   skipped: number
   errors: number
+  /** PR 4 (B) — avier vars befarad-omklassning pausats pga inaktuell betalningsdata. */
+  pausedStale: number
 }
 
 // Fälten kundförlust-flödet behöver för att avgöra moms-status och belopp.
@@ -75,6 +78,9 @@ export class RentBadDebtService {
     // Bankavstämnings-härdning PR 3a — nedskrivningsbeloppet läses från den
     // allokeringsderiverade sanningskällan i stället för paidAmount-cachen.
     private readonly rentDebt: RentDebtService,
+    // Bankavstämnings-härdning PR 4 (B) — pausa befarad-omklassningen + larma när
+    // betalningsdatan är inaktuell (en befarad förlust är ett kravsteg framåt).
+    private readonly freshness: PaymentFreshnessService,
   ) {}
 
   /**
@@ -88,7 +94,13 @@ export class RentBadDebtService {
    */
   @Cron('0 12 * * *')
   async reclassifyProbableLosses(): Promise<BadDebtSummary> {
-    const summary: BadDebtSummary = { reclassified: 0, manual: 0, skipped: 0, errors: 0 }
+    const summary: BadDebtSummary = {
+      reclassified: 0,
+      manual: 0,
+      skipped: 0,
+      errors: 0,
+      pausedStale: 0,
+    }
 
     const candidates = await this.prisma.rentNotice.findMany({
       where: {
@@ -101,8 +113,17 @@ export class RentBadDebtService {
       select: { id: true, organizationId: true, vatAmount: true },
     })
 
+    // PR 4 (B) — befarad kundförlust skriver ned 1510→1515 (kravsteg framåt). Pausa +
+    // larma för org med inaktuell betalningsdata — vi nedskriver inte en fordran som
+    // kan vara reglerad utan att avstämningen vet det.
+    const staleOrgs = await this.freshness.evaluateAndAlert(candidates.map((n) => n.organizationId))
+
     for (const notice of candidates) {
       try {
+        if (staleOrgs.has(notice.organizationId)) {
+          summary.pausedStale++
+          continue
+        }
         // Momspliktig (lokalhyra) → manuell hantering tills revisorfrågan besvarats.
         if (Number(notice.vatAmount) > 0) {
           summary.manual++
@@ -129,7 +150,8 @@ export class RentBadDebtService {
 
     this.logger.log(
       `Befarad kundförlust: ${summary.reclassified} omklassade, ${summary.manual} manuella (moms), ` +
-        `${summary.skipped} hoppade över, ${summary.errors} fel`,
+        `${summary.skipped} hoppade över, ${summary.pausedStale} pausade (inaktuell betalningsdata), ` +
+        `${summary.errors} fel`,
     )
     return summary
   }
