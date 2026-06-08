@@ -31,6 +31,11 @@ import {
   calculateFirstPaymentDueDate,
 } from '@eken/shared'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+// getLogoDataUrl bor numera i common/branding (Steg 3, PR 2 — en sanning).
+// Vi re-exporterar den här så att rent-reminder.service.ts (som importerar
+// från denna modul) fortsätter fungera oförändrat, beteende-identiskt.
+import { getLogoDataUrl } from '../common/branding/logo.util'
+export { getLogoDataUrl }
 
 type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
   include: {
@@ -39,21 +44,6 @@ type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
     lines: true
   }
 }>
-
-export async function getLogoDataUrl(
-  storage: StorageService,
-  logoStorageKey: string | null,
-): Promise<string | null> {
-  if (!logoStorageKey) return null
-  try {
-    const buffer = await storage.getFileBuffer(logoStorageKey)
-    const ext = logoStorageKey.split('.').pop()?.toLowerCase() ?? ''
-    const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
-    return `data:${mime};base64,${buffer.toString('base64')}`
-  } catch {
-    return null
-  }
-}
 
 function pad2(n: number) {
   return String(n).padStart(2, '0')
