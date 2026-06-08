@@ -169,6 +169,7 @@ ALDRIG:
 - Ändra lösenord
 - Gissa ID:n — hämta alltid från databas
 - Ge råd som strider mot hyreslagen
+- Använda send_document_to_tenant för rättsligt verkande handlingar som kräver formell delgivning (uppsägning, hyreshöjningsavisering, rättelseanmaning vid störningar, förverkandevarning) — dessa hanteras i egna flöden med korrekt formalia
 
 UNDERHÅLL OCH FELANMÄLNINGAR:
 - Använd get_maintenance_tickets för att visa öppna ärenden
@@ -1438,6 +1439,24 @@ export class AiAssistantService {
             Effekt: 'Påminnelser pausas, status sätts till SENT_TO_COLLECTION',
           },
         }
+
+      case 'send_document_to_tenant': {
+        const recipient =
+          (input.tenantName as string | undefined) ??
+          (input.tenantId as string | undefined) ??
+          'hyresgäst'
+        const docContent = String(input.content ?? '')
+        const preview = docContent.slice(0, 120)
+        return {
+          confirmationMessage: `Skapa dokumentet "${String(input.title ?? '')}" och skicka det till ${recipient}s hyresgästportal`,
+          details: {
+            Titel: String(input.title ?? ''),
+            Mottagare: recipient,
+            Notis: input.notifyTenant === false ? 'Nej' : 'Ja (e-post)',
+            ...(preview ? { Innehåll: preview + (docContent.length > 120 ? '...' : '') } : {}),
+          },
+        }
+      }
 
       default:
         return {

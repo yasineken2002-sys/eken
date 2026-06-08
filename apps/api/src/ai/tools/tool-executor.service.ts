@@ -24,6 +24,8 @@ import { PaymentReminderService } from '../../notifications/payment-reminder.ser
 import { StorageService } from '../../storage/storage.service'
 import { RedisService } from '../../common/redis/redis.service'
 import { AiAuditService } from '../audit/ai-audit.service'
+import { DocumentDeliveryService } from '../../documents/document-delivery.service'
+import type { PortalDocumentCategory } from '../../documents/document-delivery.service'
 import { ACTION_TOOLS, ACCOUNTING_ONLY_ACTIONS } from './ai-tools.definition'
 
 // ─── Mass-mejl säkerhetsgränser ──────────────────────────────────────────────
@@ -128,6 +130,7 @@ const MANAGER_ALLOWED_ACTIONS = new Set([
   'send_overdue_reminders',
   'mark_invoice_paid',
   'compose_and_send_email',
+  'send_document_to_tenant',
   'pause_reminders',
   'resume_reminders',
 ])
@@ -330,6 +333,7 @@ export class ToolExecutorService {
     private readonly storage: StorageService,
     private readonly redis: RedisService,
     private readonly audit: AiAuditService,
+    private readonly documentDelivery: DocumentDeliveryService,
   ) {}
 
   /**
@@ -2220,6 +2224,175 @@ export class ToolExecutorService {
               'Skicka kontraktet till hyresgästen för underskrift',
               'Spara det signerade kontraktet i systemet',
             ],
+          }
+        }
+
+        case 'send_document_to_tenant': {
+          const title = (toolInput.title as string | undefined)?.trim()
+          const content = (toolInput.content as string | undefined) ?? ''
+          if (!title) {
+            return { success: false, message: 'Dokumentet måste ha en titel.' }
+          }
+
+          // ── Tenant-upplösning: explicit 0 / 1 / >1 — ALDRIG gissa ─────────
+          // OBS: vi använder INTE fuzzyFindTenant här. Den kollapsar >1 träff
+          // till null, vilket på andra ställen tolkas som "skapa ny hyresgäst".
+          // Det är fel för detta flöde — vid >1 ska vi fråga, inte skapa.
+          const allTenants = await this.tenantsService.findAll(organizationId)
+          const tenantDisplay = (t: TenantLike): string =>
+            t.type === 'INDIVIDUAL'
+              ? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()
+              : (t.companyName ?? '')
+
+          let target: TenantLike | null = null
+
+          // 1. tenantId vinner. Org-scoping: id:t måste finnas i org-listan,
+          //    annars avvisas det (kan ej peka på tenant i annan org).
+          const inputTenantId = toolInput.tenantId as string | undefined
+          if (inputTenantId) {
+            target = allTenants.find((t) => t.id === inputTenantId) ?? null
+            if (!target) {
+              return {
+                success: false,
+                message: `Hyresgäst med id "${inputTenantId}" hittades inte i din organisation.`,
+              }
+            }
+          }
+
+          // 2. annars namn-uppslagning med explicit disambiguering
+          if (!target) {
+            const nameInput = (toolInput.tenantName as string | undefined)?.trim()
+            if (!nameInput) {
+              return {
+                success: false,
+                message:
+                  'Ange vilken hyresgäst dokumentet ska skickas till (tenantName eller tenantId).',
+              }
+            }
+            const q = nameInput.toLowerCase()
+            const exact = allTenants.filter((t) => {
+              const full = tenantDisplay(t).toLowerCase()
+              return full === q || t.email.toLowerCase() === q
+            })
+            const candidates =
+              exact.length > 0
+                ? exact
+                : allTenants.filter((t) => {
+                    const full = tenantDisplay(t).toLowerCase()
+                    return full.includes(q) || t.email.toLowerCase().includes(q)
+                  })
+
+            if (candidates.length === 0) {
+              return {
+                success: false,
+                message: `Hittade ingen hyresgäst som matchar "${nameInput}". Kontrollera namnet eller ange tenantId.`,
+              }
+            }
+            if (candidates.length > 1) {
+              // >1: FRÅGA vilken — gissa aldrig, leverera inget.
+              const list = candidates
+                .map((t) => `• ${tenantDisplay(t)} (${t.email}) — tenantId: ${t.id}`)
+                .join('\n')
+              return {
+                success: false,
+                data: {
+                  candidates: candidates.map((t) => ({
+                    id: t.id,
+                    name: tenantDisplay(t),
+                    email: t.email,
+                  })),
+                },
+                message:
+                  `Det finns flera hyresgäster som matchar "${nameInput}". ` +
+                  `Vilken ska dokumentet skickas till? Anropa igen med rätt tenantId:\n${list}`,
+              }
+            }
+            target = candidates[0] ?? null
+          }
+
+          if (!target) {
+            return {
+              success: false,
+              message: 'Kunde inte avgöra vilken hyresgäst dokumentet gäller.',
+            }
+          }
+
+          const targetName = tenantDisplay(target)
+
+          // ── Bygg PDF ──────────────────────────────────────────────────────
+          const escapeHtml = (s: string): string =>
+            s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          const bodyHtml = content
+            .split('\n')
+            .map((line) => (line.trim() ? `<p>${escapeHtml(line)}</p>` : '<p>&nbsp;</p>'))
+            .join('')
+
+          const docOrg = await this.prisma.organization.findUnique({
+            where: { id: organizationId },
+            select: { name: true },
+          })
+
+          const html = `<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 13px; line-height: 1.6; color: #333; padding: 20px; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .meta { color: #666; font-size: 11px; margin-bottom: 24px; border-bottom: 1px solid #ddd; padding-bottom: 12px; }
+    p { margin: 0 0 10px; }
+    .footer { margin-top: 48px; font-size: 10px; color: #999; border-top: 1px solid #eee; padding-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(title)}</h1>
+  <div class="meta">${docOrg?.name ? escapeHtml(docOrg.name) + ' — ' : ''}${new Date().toLocaleDateString('sv-SE')}</div>
+  ${bodyHtml}
+  <div class="footer">Detta dokument har levererats till din hyresgästportal av ${docOrg?.name ? escapeHtml(docOrg.name) : 'din hyresvärd'} via Eveno Fastighetsförvaltning.</div>
+</body>
+</html>`
+
+          const pdfBuffer = await this.pdfService.generateFromHtml(html)
+          const safeFilename = `${title.replace(/[^a-z0-9åäöÅÄÖ]+/gi, '_').slice(0, 60) || 'dokument'}.pdf`
+
+          // Begränsa kategorin till en säker delmängd. INVOICE är aldrig
+          // tillåtet (döljs i portalen) — leveranstjänsten coercar dessutom.
+          const allowedCategories = [
+            'OTHER',
+            'CONTRACT',
+            'HOUSE_RULES',
+            'INSURANCE',
+            'ENERGY_DECLARATION',
+          ]
+          const rawCat = toolInput.category as string | undefined
+          const category = (
+            rawCat && allowedCategories.includes(rawCat) ? rawCat : 'OTHER'
+          ) as PortalDocumentCategory
+
+          const notify = toolInput.notifyTenant !== false
+
+          // Leverans via den delade primitiven. tenantId härleds server-side
+          // från den upplösta (org-scopade) tenanten — aldrig från rå input.
+          const { documentId } = await this.documentDelivery.deliverToTenant({
+            organizationId,
+            tenantId: target.id,
+            content: pdfBuffer,
+            fileName: safeFilename,
+            name: title,
+            category,
+            mimeType: 'application/pdf',
+            notify,
+          })
+
+          return {
+            success: true,
+            data: { documentId },
+            message: [
+              `Dokumentet "${title}" har levererats till ${targetName}s hyresgästportal.`,
+              notify
+                ? `En e-postnotis har skickats till ${target.email}.`
+                : 'Ingen e-postnotis skickades.',
+            ].join('\n'),
           }
         }
 

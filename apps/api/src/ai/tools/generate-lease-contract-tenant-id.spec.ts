@@ -98,6 +98,7 @@ function makeExecutor(leaseRow: typeof LEASE | null = LEASE) {
     storage as never, // 19 storage
     noop, // 20 redis
     audit as never, // 21 audit
+    noop, // 22 documentDelivery
   )
   return { executor, documentCreate, leaseFindFirst, orgFindUnique }
 }

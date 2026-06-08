@@ -438,6 +438,45 @@ export const TOOLS: Anthropic.Tool[] = [
     },
   },
 
+  {
+    name: 'send_document_to_tenant',
+    description:
+      'Skapar ett dokument (PDF) med angiven titel och text och levererar det till en hyresgästs portal så att hyresgästen kan läsa det. Använd för informativa handlingar: informationsbrev, meddelanden, intyg och liknande. KRÄVER bekräftelse — dokumentet skickas till en riktig person. VIKTIGT: använd INTE detta verktyg för rättsligt verkande handlingar som kräver formell delgivning — t.ex. uppsägning av hyresavtal, hyreshöjningsavisering, tillsägelse/rättelseanmaning vid störningar eller förverkandevarning. Sådana handlingar har egna flöden med korrekt formalia och delgivning; portalleverans räcker inte juridiskt. Ange tenantId om du vet det; annars anges tenantName och systemet slår upp hyresgästen. Vid flera möjliga hyresgäster med samma namn returneras en lista — fråga då användaren vilken och anropa igen med rätt tenantId. Gissa aldrig.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tenantId: {
+          type: 'string',
+          description:
+            'ID för hyresgästen (föredras). Använd detta när du vet exakt vilken hyresgäst, t.ex. efter en disambiguering.',
+        },
+        tenantName: {
+          type: 'string',
+          description: 'Hyresgästens namn — används för uppslagning om tenantId saknas.',
+        },
+        title: {
+          type: 'string',
+          description: 'Dokumentets titel/rubrik (visas som namn i portalen och överst i PDF:en).',
+        },
+        content: {
+          type: 'string',
+          description: 'Dokumentets brödtext (vanlig text, radbrytningar bevaras).',
+        },
+        category: {
+          type: 'string',
+          enum: ['OTHER', 'CONTRACT', 'HOUSE_RULES', 'INSURANCE', 'ENERGY_DECLARATION'],
+          description: 'Dokumentkategori. Utelämna för OTHER. (INVOICE är inte tillåtet här.)',
+        },
+        notifyTenant: {
+          type: 'boolean',
+          description:
+            'Skicka även en e-postnotis till hyresgästen om att ett nytt dokument finns. Standard: ja.',
+        },
+      },
+      required: ['title', 'content'],
+    },
+  },
+
   // ── MAINTENANCE TOOLS ────────────────────────────────────────────────────
 
   {
@@ -967,6 +1006,7 @@ export const ACTION_TOOLS = new Set([
   'compose_and_send_email',
   'apply_rent_increase',
   'generate_lease_contract',
+  'send_document_to_tenant',
   'create_tenant_and_lease',
   'generate_rent_notices',
   'create_inspection',

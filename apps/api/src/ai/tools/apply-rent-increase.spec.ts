@@ -25,7 +25,7 @@ function makeExecutor() {
   const rentIncreasesService = { create }
   const audit = { logToolExecution: jest.fn().mockResolvedValue(undefined) }
 
-  // Konstruktorns positionsordning (21 deps). Endast prisma(1),
+  // Konstruktorns positionsordning (22 deps). Endast prisma(1),
   // rentIncreasesService(6) och audit(21) behöver vara riktiga mocks.
   const noop = {} as never
   const executor = new ToolExecutorService(
@@ -50,6 +50,7 @@ function makeExecutor() {
     noop, // 19 storage
     noop, // 20 redis
     audit as never, // 21 audit
+    noop, // 22 documentDelivery
   )
   return { executor, create, leaseUpdate }
 }
