@@ -5,6 +5,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { LockService } from '../common/redis/lock.service'
+import { getLogoDataUrl } from '../common/branding/logo.util'
 import { buildResidentialContractHtml } from './residential-contract.template'
 import { buildCommercialContractHtml } from './commercial-contract.template'
 import {
@@ -42,21 +43,6 @@ function stableStringify(value: unknown): string {
 
 function fingerprintTemplateInput(input: ContractTemplateInput): string {
   return crypto.createHash('sha256').update(stableStringify(input)).digest('hex')
-}
-
-async function getLogoDataUrl(
-  storage: StorageService,
-  logoStorageKey: string | null,
-): Promise<string | null> {
-  if (!logoStorageKey) return null
-  try {
-    const buffer = await storage.getFileBuffer(logoStorageKey)
-    const ext = logoStorageKey.split('.').pop()?.toLowerCase() ?? ''
-    const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
-    return `data:${mime};base64,${buffer.toString('base64')}`
-  } catch {
-    return null
-  }
 }
 
 @Injectable()
