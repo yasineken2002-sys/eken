@@ -7,6 +7,8 @@ import { StorageService } from '../storage/storage.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { RentDebtService } from '../avisering/rent-debt.service'
+import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 
 // Inkasso PR 4b — steg 3. Read-only export av INKASSO_READY-hyresavier till ett
 // externt inkassobolag. SPEGLAR collections/CollectionExportService (faktura-
@@ -162,7 +164,7 @@ export class RentCollectionExportService {
     const notice = await this.loadNotice(noticeId, organizationId)
     await this.assertExportable(notice)
 
-    const pdfBuffer = await this.pdf.generateFromHtml(this.buildPdfHtml(notice))
+    const pdfBuffer = await this.pdf.generateFromHtml(await this.buildPdfHtml(notice))
     const csvBuffer = Buffer.from(this.buildCsv([notice]), 'utf8')
 
     const date = new Date().toISOString().slice(0, 10)
@@ -232,7 +234,7 @@ export class RentCollectionExportService {
     const zip = new JSZip()
     for (const notice of notices) {
       const safe = notice.noticeNumber.replace(/[^\w-]/g, '_')
-      const pdfBuffer = await this.pdf.generateFromHtml(this.buildPdfHtml(notice))
+      const pdfBuffer = await this.pdf.generateFromHtml(await this.buildPdfHtml(notice))
       zip.file(`${safe}/inkasso-underlag-${safe}.pdf`, pdfBuffer)
 
       if (notice.reminderPdfStorageKey) {
@@ -429,7 +431,7 @@ export class RentCollectionExportService {
     return [headers, ...rows].map((r) => r.map((c) => csvCell(c)).join(',')).join('\n')
   }
 
-  private buildPdfHtml(notice: RentNoticeWithCollectionData): string {
+  private async buildPdfHtml(notice: RentNoticeWithCollectionData): Promise<string> {
     const f = this.figures(notice)
     const t = notice.tenant
     const o = notice.organization
@@ -467,15 +469,23 @@ export class RentCollectionExportService {
             .join('')
         : `<tr><td colspan="4" class="meta">Ingen dröjsmålsränta har kristalliserats.</td></tr>`
 
-    return `<!DOCTYPE html>
-<html lang="sv">
-<head>
-<meta charset="UTF-8">
-<style>
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #1f2937; }
-  h1 { font-size: 22px; color: #1a4a28; margin: 0 0 4px; }
-  h2 { font-size: 14px; color: #1a4a28; margin: 24px 0 8px; border-bottom: 1px solid #d1d5db; padding-bottom: 4px; }
-  .header { border-bottom: 3px solid #1a4a28; padding-bottom: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-start; }
+    const org = notice.organization
+    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
+    // Steg 3, PR 3e-ii: hårdkodad dokumentgrön #1a4a28 → orgens brandfärg
+    // (invoiceColor) med delad DEFAULT_BRAND_COLOR som fallback — enas mot samma
+    // default som det faktura-baserade inkassounderlaget (#126).
+    const accent = org.invoiceColor ?? DEFAULT_BRAND_COLOR
+
+    // Egen html/head/body + egen header/titel ersätts av den gemensamma brandade
+    // shellen. ALLT bindande innehåll — den juristkrävda disclaimern (inkassolagen
+    // 1974:182 5 §, räntelagen 1975:635, lag 1981:739), den PERIOD-SEGMENTERADE
+    // dröjsmålsräntan (varje segment + auktoritativ total), kapital, avgift, OCR,
+    // datum och borgenär/gäldenär — är byte-för-byte oförändrat. Bara ramen brandas.
+    const contentCss = `
+  .docmeta { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
+  .docref { text-align: right; }
+  .docnum { font-size: 18px; font-weight: 700; }
+  h2 { font-size: 14px; color: ${accent}; margin: 24px 0 8px; border-bottom: 1px solid #d1d5db; padding-bottom: 4px; }
   .meta { font-size: 11px; color: #4b5563; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
   .box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 14px; }
@@ -486,18 +496,14 @@ export class RentCollectionExportService {
   tfoot td { font-weight: 700; }
   .total-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 16px; margin-top: 18px; display: flex; justify-content: space-between; align-items: center; }
   .total-box .amt { font-size: 22px; font-weight: 700; color: #b91c1c; }
-  .legal { font-size: 10px; color: #6b7280; margin-top: 24px; line-height: 1.5; }
-</style>
-</head>
-<body>
-  <div class="header">
-    <div>
-      <h1>Inkassounderlag – hyresfordran</h1>
-      <div class="meta">Genererat ${today} · Eveno fastighetssystem</div>
-    </div>
-    <div style="text-align:right">
+  .legal { font-size: 10px; color: #6b7280; margin-top: 24px; line-height: 1.5; }`
+
+    const contentHtml = `<style>${contentCss}</style>
+  <div class="docmeta">
+    <div class="meta">Genererat ${today} · Eveno fastighetssystem</div>
+    <div class="docref">
       <div class="meta"><strong>Hyresavi</strong></div>
-      <div style="font-size:18px;font-weight:700">${escapeHtml(notice.noticeNumber)}</div>
+      <div class="docnum">${escapeHtml(notice.noticeNumber)}</div>
       <div class="meta">Förfallodatum ${notice.dueDate.toLocaleDateString('sv-SE')}</div>
       <div class="meta">OCR ${escapeHtml(notice.ocrNumber)}</div>
     </div>
@@ -589,9 +595,27 @@ export class RentCollectionExportService {
     betalningsföreläggande eller talan väcks.</strong> Eveno är ett
     fastighetssystem, bedriver INTE inkassoverksamhet och har inte tillstånd enligt
     inkassolagen.
-  </p>
-</body>
-</html>`
+  </p>`
+
+    return buildBrandedPdfHtml({
+      // hideFooter → shellen behöver bara namnet (brandMark utan logga).
+      // Borgenärens fullständiga uppgifter ligger i Borgenär-boxen ovan.
+      org: { name: org.name },
+      logoDataUrl,
+      primaryColor: org.invoiceColor ?? null,
+      secondaryColor: org.brandSecondaryColor ?? null,
+      brandFont: org.brandFont ?? null,
+      title: 'Inkassounderlag – hyresfordran',
+      contentHtml,
+      // Footern DÖLJS (samma val + motivering som #126). Den juristkrävda
+      // disclaimern (inkassolagen 1974:182 5 §, räntelagen, lag 1981:739 +
+      // "Eveno bedriver INTE inkassoverksamhet") är ett BLOCKING-krav och MÅSTE
+      // vara dokumentets sista ord. En generisk brand-footer efter den vore
+      // strukturellt fel — och detta dokument visar medvetet INGET bankgiro
+      // (betalningsvägen ägs av inkassobolaget). Borgenärens identitet finns
+      // redan i Borgenär-boxen, så inget går förlorat.
+      hideFooter: true,
+    })
   }
 
   // Datum då påminnelsen verifierat levererades (Resend-webhook → EMAIL_DELIVERED).
@@ -647,12 +671,4 @@ function csvCell(value: string): string {
   const needsEscape = /[",\n]/.test(guarded)
   if (!needsEscape) return guarded
   return `"${guarded.replace(/"/g, '""')}"`
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }
