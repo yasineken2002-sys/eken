@@ -12,6 +12,10 @@
  */
 
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
+// InspectionsService importerar nu common/branding (brandad PDF-shell), som drar
+// in storage.service (AWS SDK, ESM) som jest inte kan parsa. Stubbas — samma
+// mönster som övriga specar som transitivt rör storage. (Steg 3, PR 3b.)
+jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { NotFoundException } from '@nestjs/common'
 import { InspectionsService } from './inspections.service'
@@ -20,7 +24,8 @@ function makeService(opts: { itemFound: boolean }) {
   const findFirst = jest.fn().mockResolvedValue(opts.itemFound ? { id: 'item-1' } : null)
   const update = jest.fn().mockResolvedValue({ id: 'item-1', condition: 'DAMAGED' })
   const prisma = { inspectionItem: { findFirst, update } }
-  const service = new InspectionsService(prisma as never, {} as never)
+  // 3:e arg = StorageService (oanvänd i updateItem-vägen som testas här).
+  const service = new InspectionsService(prisma as never, {} as never, {} as never)
   return { service, findFirst, update }
 }
 

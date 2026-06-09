@@ -36,7 +36,7 @@
  *     • apps/api/src/avisering/rent-reminder.service.ts    (e-post-accent)
  *     • [x] apps/api/src/notifications/templates/monthly-report.template.ts  (Steg 3 PR 3a — brandad shell)
  *     • apps/api/src/messages/messages.service.ts
- *     • apps/api/src/inspections/inspections.service.ts
+ *     • [x] apps/api/src/inspections/inspections.service.ts  (Steg 3 PR 3b — brandad shell)
  *
  *   Transaktionsmejl med egen blå (utanför org-färgvägen, lägre prioritet):
  *     • apps/api/src/mail/templates/users/UserInvite.tsx
