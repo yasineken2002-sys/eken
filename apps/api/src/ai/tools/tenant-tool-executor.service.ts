@@ -443,7 +443,7 @@ export class TenantToolExecutorService {
           return {
             success: true,
             data: { id: created.id, requestedEndDate: endDate.toISOString().slice(0, 10) },
-            message: `Din uppsägningsbegäran har skickats till hyresvärden. Begäran är PRELIMINÄR — uppsägningen är giltig först när hyresvärden bekräftat den enligt Hyreslagen 12 kap. JB.`,
+            message: `Din uppsägningsbegäran har skickats till hyresvärden. Begäran är PRELIMINÄR — uppsägningen är giltig först när hyresvärden bekräftat den enligt hyreslagens regler om uppsägning.`,
             nextSteps: [
               'Hyresvärden hör av sig för att bekräfta',
               'Vid frågor — kontakta hyresvärden direkt',

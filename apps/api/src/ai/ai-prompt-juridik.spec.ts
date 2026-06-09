@@ -17,6 +17,10 @@ import { join } from 'path'
  */
 const OPERATOR_SRC = readFileSync(join(__dirname, 'ai-assistant.service.ts'), 'utf8')
 const TENANT_SRC = readFileSync(join(__dirname, 'tenant-ai.service.ts'), 'utf8')
+const TENANT_TOOL_SRC = readFileSync(
+  join(__dirname, 'tools', 'tenant-tool-executor.service.ts'),
+  'utf8',
+)
 
 // Isolera själva prompt-literalerna så vi inte råkar matcha kommentarer i koden.
 function extractTemplate(src: string, marker: string): string {
@@ -77,6 +81,21 @@ describe('AI-systemprompt — avväpnad juridik', () => {
 
     it('hänvisar till hyresgästens eget kontrakt för uppsägningstid', () => {
       expect(TENANT_SYSTEM_PROMPT).toMatch(/get_my_lease/)
+    })
+  })
+
+  describe('request_termination — verktygs-output (confirm + resultat)', () => {
+    it('citerar inte längre "Hyreslagen 12 kap. JB" som fakta i confirm-detaljen', () => {
+      expect(TENANT_SRC).not.toContain('godkänna enligt Hyreslagen 12 kap. JB')
+      // Behåller funktionen: statusen är fortfarande PRELIMINÄR och kräver hyresvärdens godkännande
+      expect(TENANT_SRC).toContain('Preliminär — hyresvärden måste godkänna')
+    })
+
+    it('citerar inte längre "Hyreslagen 12 kap. JB" som fakta i resultat-meddelandet', () => {
+      expect(TENANT_TOOL_SRC).not.toContain('bekräftat den enligt Hyreslagen 12 kap. JB')
+      // Behåller funktionen: begäran är fortfarande PRELIMINÄR tills hyresvärden bekräftar
+      expect(TENANT_TOOL_SRC).toContain('Begäran är PRELIMINÄR')
+      expect(TENANT_TOOL_SRC).toContain('hyreslagens regler om uppsägning')
     })
   })
 })
