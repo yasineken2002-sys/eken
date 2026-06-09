@@ -1,5 +1,6 @@
 import { Button, Heading, Section, Text } from '@react-email/components'
 import * as React from 'react'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { EmailLayout } from '../base/EmailLayout'
 
 export type MaintenanceStatusLabel =
@@ -171,7 +172,7 @@ const ctaSection: React.CSSProperties = {
 }
 
 const buttonStyle: React.CSSProperties = {
-  backgroundColor: '#2D6A4F',
+  backgroundColor: DEFAULT_BRAND_COLOR,
   color: '#FFFFFF',
   fontSize: '14px',
   fontWeight: 600,
