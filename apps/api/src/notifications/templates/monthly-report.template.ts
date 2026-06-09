@@ -1,4 +1,5 @@
-import { formatCurrency } from '@eken/shared'
+import { formatCurrency, DEFAULT_BRAND_COLOR } from '@eken/shared'
+import { buildBrandedPdfHtml } from '../../common/branding'
 
 // ── Datakontrakt ─────────────────────────────────────────────────────────────
 // Produceras av MonthlyReportService.buildReportData() och konsumeras enbart
@@ -11,6 +12,22 @@ export interface MonthlyReportData {
     organizationName: string
     organizationAddress: string // "Storgatan 4, 111 22 Stockholm"
     generatedAt: string // "1 juni 2026"
+  }
+  // Varumärke (Steg 3, PR 3a) — månadsrapporten renderas genom den gemensamma
+  // brandade PDF-shellen. Fälten kommer från Organization; shellen hanterar
+  // defaults (primär → DEFAULT_BRAND_COLOR, sekundär → härleds, font → fallback).
+  brand: {
+    logoDataUrl: string | null
+    primaryColor: string | null // org.invoiceColor
+    secondaryColor: string | null // org.brandSecondaryColor
+    brandFont: string | null // org.brandFont
+    org: {
+      name: string
+      orgNumber: string | null
+      street: string | null
+      postalCode: string | null
+      city: string | null
+    }
   }
   summary: {
     revenue: { current: number; prevMonthPct: number | null; prevYearPct: number | null }
@@ -151,25 +168,10 @@ function kpiCard(title: string, rows: string): string {
   return `<div class="kpi-card"><div class="kpi-head">${esc(title)}</div>${rows}</div>`
 }
 
-function pageFooter(data: MonthlyReportData, n: number): string {
-  return `<div class="footer">
-    <span>${esc(data.header.organizationName)} · Månadsrapport ${esc(data.header.monthLabel)}</span>
-    <span>Genererad av Eveno · ${esc(data.header.generatedAt)} · sid ${n}</span>
-  </div>`
-}
-
 function buildPage1(data: MonthlyReportData): string {
   const s = data.summary
   return `
   <section class="page">
-    <div class="hero">
-      <div class="brand">Eveno</div>
-      <div class="hero-title">Månadsrapport</div>
-      <div class="hero-month">${esc(data.header.monthLabel)}</div>
-      <div class="hero-org">${esc(data.header.organizationName)}</div>
-      <div class="hero-addr">${esc(data.header.organizationAddress)}</div>
-    </div>
-
     <h2 class="section-title">Sammanfattning</h2>
     <div class="card-grid">
       ${summaryCard(
@@ -180,7 +182,9 @@ function buildPage1(data: MonthlyReportData): string {
         `${deltaBadge(s.revenue.prevYearPct)} mot samma månad förra året`,
       )}
       ${summaryCard(
-        '#2563EB',
+        // Steg 3, PR 3a: ersätter tidigare hårdkodad #2563EB (ett av de 14
+        // ställena i branding.ts-kartan) med den delade default-varumärkesfärgen.
+        DEFAULT_BRAND_COLOR,
         'Beläggning',
         pct(s.occupancy.currentPct),
         `${deltaBadge(s.occupancy.prevMonthDeltaPct)} mot förra månaden`,
@@ -200,7 +204,6 @@ function buildPage1(data: MonthlyReportData): string {
         `${s.tenants.terminatedLeases} avslutade kontrakt`,
       )}
     </div>
-    ${pageFooter(data, 1)}
   </section>`
 }
 
@@ -264,7 +267,6 @@ function buildPage2(data: MonthlyReportData): string {
       ${paymentsCard}
       ${maintenanceCard}
     </div>
-    ${pageFooter(data, 2)}
   </section>`
 }
 
@@ -299,7 +301,6 @@ function buildPage3(data: MonthlyReportData): string {
       </thead>
       <tbody>${rows}</tbody>
     </table>
-    ${pageFooter(data, 3)}
   </section>`
 }
 
@@ -312,7 +313,6 @@ function buildPage4(data: MonthlyReportData): string {
     </div>
     <p class="ai-note">Insikterna är AI-genererade utifrån månadens portföljdata och bör läsas
       som beslutsstöd, inte som finansiell rådgivning.</p>
-    ${pageFooter(data, 4)}
   </section>`
 }
 
@@ -361,34 +361,19 @@ function buildPage5(data: MonthlyReportData): string {
           </table>`
         : `<p class="td-empty">Inga avslutade kontrakt denna månad.</p>`
     }
-    ${pageFooter(data, 5)}
   </section>`
 }
 
 // ── Huvudfunktion ────────────────────────────────────────────────────────────
 
-/**
- * Bygger den fullständiga HTML-strängen för månadsrapportens PDF. Renderas
- * sedan av PdfService.generateFromHtml(). Sida 5 (appendix) tas bara med om
- * det finns kontraktsrörelser att redovisa.
- */
-export function generateMonthlyReportHtml(data: MonthlyReportData): string {
-  const hasAppendix =
-    data.appendix.newLeases.length > 0 || data.appendix.terminatedLeases.length > 0
-
-  const pages = [buildPage1(data), buildPage2(data), buildPage3(data), buildPage4(data)]
-  if (hasAppendix) pages.push(buildPage5(data))
-
-  return `<!doctype html>
-<html lang="sv">
-<head>
-<meta charset="utf-8" />
-<title>Månadsrapport ${esc(data.header.monthLabel)}</title>
-<style>
+// Innehålls-CSS för rapporten. Steg 3, PR 3a: rapportens egna outer-wrapper
+// (html/head/body), hero och per-sid-footer är borttagna — RAMEN (header/footer/
+// typsnitt/varumärkesfärg) kommer nu från den gemensamma brandade shellen.
+// body-regelns font-family är medvetet borttagen så att shellens typsnitt
+// (org.brandFont) styr; övriga sektioner/data är oförändrade.
+const REPORT_CONTENT_CSS = `
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
   body {
-    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
     color: #1A2233;
     background: #FAFAF7;
     -webkit-print-color-adjust: exact;
@@ -398,23 +383,6 @@ export function generateMonthlyReportHtml(data: MonthlyReportData): string {
   }
   .page { page-break-after: always; padding-bottom: 24px; }
   .page:last-child { page-break-after: auto; }
-
-  /* Hero (sida 1) */
-  .hero {
-    background: #0F1F47;
-    color: #FFFFFF;
-    border-radius: 14px;
-    padding: 30px 28px;
-    margin-bottom: 26px;
-  }
-  .brand {
-    font-size: 15px; font-weight: 700; letter-spacing: 0.16em;
-    text-transform: uppercase; color: #AEB9D8; margin-bottom: 22px;
-  }
-  .hero-title { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
-  .hero-month { font-size: 17px; font-weight: 600; color: #C8D0E6; margin-top: 2px; }
-  .hero-org { font-size: 13.5px; font-weight: 600; margin-top: 18px; }
-  .hero-addr { font-size: 12px; color: #AEB9D8; margin-top: 1px; }
 
   .section-title {
     font-size: 17px; font-weight: 700; letter-spacing: -0.01em;
@@ -504,18 +472,32 @@ export function generateMonthlyReportHtml(data: MonthlyReportData): string {
   .ai-list li { font-size: 12px; color: #374151; margin-bottom: 6px; }
   .ai-fallback { font-size: 12px; color: #6B7280; font-style: italic; }
   .ai-note { font-size: 10.5px; color: #9CA3AF; margin-top: 12px; }
+`
 
-  /* Sidfot */
-  .footer {
-    display: flex; justify-content: space-between;
-    margin-top: 22px; padding-top: 8px;
-    border-top: 1px solid #E7E5DF;
-    font-size: 9.5px; color: #9CA3AF;
-  }
-</style>
-</head>
-<body>
-${pages.join('\n')}
-</body>
-</html>`
+/**
+ * Bygger den fullständiga HTML-strängen för månadsrapportens PDF genom den
+ * gemensamma brandade shellen (logga/primär-/sekundärfärg/typsnitt + konsekvent
+ * header/footer från orgens varumärke). Renderas sedan av
+ * PdfService.generateFromHtml(). Sida 5 (appendix) tas bara med om det finns
+ * kontraktsrörelser att redovisa. RAPPORTENS DATA är oförändrad — bara ramen.
+ */
+export function generateMonthlyReportHtml(data: MonthlyReportData): string {
+  const hasAppendix =
+    data.appendix.newLeases.length > 0 || data.appendix.terminatedLeases.length > 0
+
+  const pages = [buildPage1(data), buildPage2(data), buildPage3(data), buildPage4(data)]
+  if (hasAppendix) pages.push(buildPage5(data))
+
+  const contentHtml = `<style>${REPORT_CONTENT_CSS}</style>\n${pages.join('\n')}`
+
+  return buildBrandedPdfHtml({
+    org: data.brand.org,
+    logoDataUrl: data.brand.logoDataUrl,
+    primaryColor: data.brand.primaryColor,
+    secondaryColor: data.brand.secondaryColor,
+    brandFont: data.brand.brandFont,
+    title: `Månadsrapport — ${data.header.monthLabel}`,
+    contentHtml,
+    footerNote: `Genererad av Eveno · ${data.header.generatedAt}`,
+  })
 }

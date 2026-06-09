@@ -8,6 +8,11 @@
  * borttagna sendOverdueReminders() (PR #27, H2).
  */
 
+// NotificationsService → MonthlyReportService → den brandade shellen drar in
+// storage.service (AWS SDK, ESM) som jest inte kan parsa. Stubbas — samma
+// mönster som övriga specar som transitivt rör storage. (Steg 3, PR 3a.)
+jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
+
 import { NotificationsService } from './notifications.service'
 
 function makeInvoice(id: string, email: string | null = 'hyresgast@example.se') {

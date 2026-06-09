@@ -18,7 +18,7 @@
  * eftersom PDF-varumärket är målet). Tills dess är den oanvänd i renderingsvägen.
  *
  * Karta över de gamla hårdkodningarna som ska bytas mot `DEFAULT_BRAND_COLOR`
- * (alla med mönstret `org.invoiceColor ?? '<hårdkod>'`):
+ * (alla med mönstret `org.invoiceColor ?? '<hårdkod>'`). [x] = inkopplad i shellen.
  *
  *   Dokument/PDF — default `#1a6b3c`:
  *     • apps/api/src/invoices/pdf.service.ts
@@ -34,7 +34,7 @@
  *     • apps/api/src/mail/mail.service.ts
  *     • apps/api/src/avisering/avisering.service.ts        (e-post-accent)
  *     • apps/api/src/avisering/rent-reminder.service.ts    (e-post-accent)
- *     • apps/api/src/notifications/templates/monthly-report.template.ts
+ *     • [x] apps/api/src/notifications/templates/monthly-report.template.ts  (Steg 3 PR 3a — brandad shell)
  *     • apps/api/src/messages/messages.service.ts
  *     • apps/api/src/inspections/inspections.service.ts
  *
