@@ -6,6 +6,8 @@ import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
+import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 
 type InvoiceWithCollectionData = Prisma.InvoiceGetPayload<{
   include: {
@@ -86,7 +88,7 @@ export class CollectionExportService {
       )
     }
 
-    const pdfBuffer = await this.pdf.generateFromHtml(this.buildPdfHtml(invoice))
+    const pdfBuffer = await this.pdf.generateFromHtml(await this.buildPdfHtml(invoice))
     const csvBuffer = Buffer.from(this.buildCsv([invoice]), 'utf8')
 
     const date = new Date().toISOString().slice(0, 10)
@@ -155,7 +157,7 @@ export class CollectionExportService {
     const zip = new JSZip()
     for (const invoice of invoices) {
       const safeNumber = invoice.invoiceNumber.replace(/[^\w-]/g, '_')
-      const pdfBuffer = await this.pdf.generateFromHtml(this.buildPdfHtml(invoice))
+      const pdfBuffer = await this.pdf.generateFromHtml(await this.buildPdfHtml(invoice))
       zip.file(`${safeNumber}/inkasso-${safeNumber}.pdf`, pdfBuffer)
     }
     // Samlad CSV med alla fakturor — många inkassobolag (Visma Collectors,
@@ -316,7 +318,7 @@ export class CollectionExportService {
     return [headers, ...rows].map((r) => r.map((c) => csvCell(c)).join(',')).join('\n')
   }
 
-  private buildPdfHtml(invoice: InvoiceWithCollectionData): string {
+  private async buildPdfHtml(invoice: InvoiceWithCollectionData): Promise<string> {
     const party = invoice.tenant ?? invoice.customer
     const partyName = party
       ? (party.companyName ?? `${party.firstName ?? ''} ${party.lastName ?? ''}`.trim())
@@ -359,15 +361,24 @@ export class CollectionExportService {
       )
       .join('')
 
-    return `<!DOCTYPE html>
-<html lang="sv">
-<head>
-<meta charset="UTF-8">
-<style>
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #1f2937; }
-  h1 { font-size: 22px; color: #1a4a28; margin: 0 0 4px; }
-  h2 { font-size: 14px; color: #1a4a28; margin: 24px 0 8px; border-bottom: 1px solid #d1d5db; padding-bottom: 4px; }
-  .header { border-bottom: 3px solid #1a4a28; padding-bottom: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-start; }
+    const org = invoice.organization
+    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
+    // Steg 3, PR 3e: dokumentet var HELT brand-blint (egen inline-HTML, ingen
+    // logga, egen dokumentgrön #1a4a28). Hårdkodad #1a4a28 → orgens brandfärg
+    // (invoiceColor) med delad DEFAULT_BRAND_COLOR som fallback. #1a4a28 låg
+    // utanför branding-kartan och enas nu mot den gemensamma defaulten.
+    const accent = org.invoiceColor ?? DEFAULT_BRAND_COLOR
+
+    // Egen html/head/body + egen header/titel ersätts av den gemensamma brandade
+    // shellen (logga, primär/sekundärfärg, typsnitt, titel). ALLT juridiskt och
+    // ekonomiskt bindande innehåll — disclaimern (lag 1981:739), alla belopp
+    // (kapital, påminnelseavgifter, total skuld), borgenär/gäldenär, förfallo-
+    // datum och kontraktsreferens — är byte-för-byte oförändrat. Bara ramen brandas.
+    const contentCss = `
+  .docmeta { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
+  .docref { text-align: right; }
+  .docnum { font-size: 18px; font-weight: 700; }
+  h2 { font-size: 14px; color: ${accent}; margin: 24px 0 8px; border-bottom: 1px solid #d1d5db; padding-bottom: 4px; }
   .meta { font-size: 11px; color: #4b5563; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
   .box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 14px; }
@@ -378,18 +389,14 @@ export class CollectionExportService {
   tfoot td { font-weight: 700; }
   .total-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 16px; margin-top: 18px; display: flex; justify-content: space-between; align-items: center; }
   .total-box .amt { font-size: 22px; font-weight: 700; color: #b91c1c; }
-  .legal { font-size: 10px; color: #6b7280; margin-top: 24px; line-height: 1.5; }
-</style>
-</head>
-<body>
-  <div class="header">
-    <div>
-      <h1>Inkassounderlag</h1>
-      <div class="meta">Genererat ${today} · Eveno fastighetssystem</div>
-    </div>
-    <div style="text-align:right">
+  .legal { font-size: 10px; color: #6b7280; margin-top: 24px; line-height: 1.5; }`
+
+    const contentHtml = `<style>${contentCss}</style>
+  <div class="docmeta">
+    <div class="meta">Genererat ${today} · Eveno fastighetssystem</div>
+    <div class="docref">
       <div class="meta"><strong>Faktura</strong></div>
-      <div style="font-size:18px;font-weight:700">${invoice.invoiceNumber}</div>
+      <div class="docnum">${invoice.invoiceNumber}</div>
       <div class="meta">Förfallodatum ${invoice.dueDate.toLocaleDateString('sv-SE')}</div>
     </div>
   </div>
@@ -465,9 +472,27 @@ export class CollectionExportService {
     eller Lindorff). Eveno är ett fastighetssystem och bedriver INTE
     inkassoverksamhet. Påminnelseavgift utgår enligt lag (1981:739) om ersättning
     för inkassokostnader.
-  </p>
-</body>
-</html>`
+  </p>`
+
+    return buildBrandedPdfHtml({
+      // hideFooter → shellen behöver bara namnet (för brandMark utan logga).
+      // Borgenärens fullständiga uppgifter ligger i Borgenär-boxen ovan.
+      org: { name: org.name },
+      logoDataUrl,
+      primaryColor: org.invoiceColor ?? null,
+      secondaryColor: org.brandSecondaryColor ?? null,
+      brandFont: org.brandFont ?? null,
+      title: 'Inkassounderlag',
+      contentHtml,
+      // Footern DÖLJS medvetet. Den juristgranskade inkasso-disclaimern
+      // (lag 1981:739 + "Eveno bedriver INTE inkassoverksamhet") är ett
+      // BLOCKING-krav och MÅSTE vara dokumentets sista ord. En generisk
+      // brand-footer (org-adress/bankgiro/kontakt) efter den vore strukturellt
+      // fel och kunde dessutom antyda en betalningsväg (bankgiro) som motsäger
+      // inkassoflödet — kravet ägs av inkassobolaget. Borgenärens identitet
+      // finns redan i Borgenär-boxen, så inget går förlorat.
+      hideFooter: true,
+    })
   }
 }
 
@@ -479,12 +504,4 @@ function csvCell(value: string): string {
   const needsEscape = /[",\n]/.test(value)
   if (!needsEscape) return value
   return `"${value.replace(/"/g, '""')}"`
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }
