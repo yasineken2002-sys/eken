@@ -16,6 +16,8 @@ import { AccountingService } from '../accounting/accounting.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { getLogoDataUrl } from './avisering.service'
+import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentInterestService } from './rent-interest.service'
 import { RentDebtService } from './rent-debt.service'
@@ -661,11 +663,15 @@ export class RentReminderService {
       city?: string | null
       bankgiro?: string | null
       invoiceColor?: string | null
+      brandSecondaryColor?: string | null
+      brandFont?: string | null
       logoStorageKey?: string | null
     },
   ): Promise<string> {
     const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
-    const accent = org.invoiceColor ?? '#1a6b3c'
+    // Steg 3, PR 3d: hårdkodad #1a6b3c → delad DEFAULT_BRAND_COLOR (= '#1a6b3c',
+    // pixel-identiskt för orgs utan egen invoiceColor). Avbockad i kartan.
+    const accent = org.invoiceColor ?? DEFAULT_BRAND_COLOR
     const fmt = (n: number): string =>
       Number(n).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -702,31 +708,28 @@ export class RentReminderService {
              <td style="padding:4px 0;text-align:right" class="mono">${org.bankgiro}</td></tr>`
       : ''
 
-    return `<!doctype html>
-<html lang="sv"><head><meta charset="utf-8"/>
-<style>
-  body { font-family: -apple-system, Arial, sans-serif; color:#111827; margin:0; padding:40px; }
-  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:32px; }
-  .title { font-size:22px; font-weight:700; color:${accent}; margin:0 0 4px; }
+    // Steg 3, PR 3d: påminnelsen renderas genom den gemensamma brandade shellen.
+    // Egen html/head/body + egen logga/titel borttagna — shellen ger logga,
+    // dokumenttitel, typsnitt och varumärkesfärg. hideFooter:true (samma val som
+    // hyresavin): fordringsägarens namn/adress (lag 1981:739 5 §) och betalnings-
+    // rutan ligger i innehållet; ingen generisk footer efter dem. Tonen/texten och
+    // ALLA betalningsbärande fält (OCR, ursprungsbelopp, avgift, total, bankgiro,
+    // förfallodatum, mottagare) är byte-för-byte oförändrade — bara ramen brandas.
+    const contentCss = `
+  .bp-content { color: #111827; }
   table { width:100%; border-collapse:collapse; font-size:13.5px; }
   .totalrow td { border-top:2px solid #111827; padding-top:10px; font-weight:700; font-size:15px; }
   .ocrbox { background:#F9FAFB; border:1px solid #E5E7EB; border-radius:8px; padding:16px 20px; margin-top:24px; }
   .mono { font-family:monospace; font-weight:700; letter-spacing:0.06em; }
-  .muted { color:#6B7280; font-size:12px; }
-</style></head>
-<body>
-  <div class="header">
-    <div>
-      <p class="title">Betalningspåminnelse</p>
-      <p class="muted">Avi ${notice.noticeNumber}${daysOverdue > 0 ? ` · ${daysOverdue} dagar förfallen` : ''}</p>
-    </div>
-    ${logoDataUrl ? `<img src="${logoDataUrl}" alt="" style="max-height:48px"/>` : `<div style="font-weight:700">${org.name}</div>`}
-  </div>
+  .muted { color:#6B7280; font-size:12px; }`
+
+    const contentHtml = `<style>${contentCss}</style>
+  <p class="muted" style="margin-bottom:24px">Avi ${notice.noticeNumber}${daysOverdue > 0 ? ` · ${daysOverdue} dagar förfallen` : ''}</p>
 
   ${orgAddressHtml}
 
   <p style="font-size:13.5px;line-height:1.6">
-    ${tenantName ? `Hej ${tenantName},<br/>` : ''}
+    ${tenantName ? `Hej ${escapeHtml(tenantName)},<br/>` : ''}
     vi har inte registrerat någon betalning för hyresavi <strong>${notice.noticeNumber}</strong>
     som förföll ${dueDateStr}. Vänligen betala snarast. En påminnelseavgift enligt
     lag (1981:739) om ersättning för inkassokostnader har tillkommit.
@@ -750,8 +753,20 @@ export class RentReminderService {
 
   <p class="muted" style="margin-top:32px">
     Har du redan betalat kan du bortse från denna påminnelse.
-  </p>
-</body></html>`
+  </p>`
+
+    return buildBrandedPdfHtml({
+      // Footern dold (hideFooter) → fordringsägarens namn/adress (lag 1981:739 5 §)
+      // ligger kvar i innehållet ovan. Shellen behöver bara namnet.
+      org: { name: org.name },
+      logoDataUrl,
+      primaryColor: org.invoiceColor ?? null,
+      secondaryColor: org.brandSecondaryColor ?? null,
+      brandFont: org.brandFont ?? null,
+      title: 'Betalningspåminnelse',
+      contentHtml,
+      hideFooter: true,
+    })
   }
 }
 
