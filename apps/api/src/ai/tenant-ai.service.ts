@@ -525,7 +525,8 @@ export class TenantAiService {
           details: {
             'Önskat slutdatum': String(input.requestedEndDate ?? ''),
             ...(input.reason ? { Anledning: String(input.reason) } : {}),
-            Status: 'Preliminär — hyresvärden måste godkänna enligt Hyreslagen 12 kap. JB',
+            Status:
+              'Preliminär — hyresvärden måste godkänna begäran enligt hyreslagens regler om uppsägning',
           },
         }
       default:
