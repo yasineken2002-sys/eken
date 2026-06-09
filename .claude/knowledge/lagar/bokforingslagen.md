@@ -1,3 +1,11 @@
+---
+id: bokforingslagen
+titel: Bokföringslagen (1999:1078)
+sfs: '1999:1078'
+verifierad_per: '2026-05-29'
+kalla: 'https://lagen.nu/1999:1078'
+---
+
 # Bokföringslagen (1999:1078)
 
 > Källa: https://lagen.nu/1999:1078

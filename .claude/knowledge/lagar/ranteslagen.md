@@ -1,3 +1,11 @@
+---
+id: ranteslagen
+titel: Räntelagen (1975:635)
+sfs: '1975:635'
+verifierad_per: '2026-05-29'
+kalla: 'https://lagen.nu/1975:635'
+---
+
 # Räntelagen (1975:635)
 
 > Källa: https://lagen.nu/1975:635
