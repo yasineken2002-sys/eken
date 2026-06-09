@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { MailQueue } from './mail.queue'
 import type {
   EnqueueMailOptions,
@@ -568,7 +569,7 @@ export class MailService {
   }
 
   async sendRentNoticeReminder(opts: SendRentNoticeReminderOptions): Promise<string> {
-    const accent = opts.accentColor ?? '#2563EB'
+    const accent = opts.accentColor ?? DEFAULT_BRAND_COLOR
     const feeRow =
       opts.feeAmount > 0
         ? `<tr><td style="padding:8px 0;color:#6B7280;font-size:13px">Påminnelseavgift</td>
@@ -613,7 +614,7 @@ export class MailService {
   }
 
   async sendRentNotice(opts: SendRentNoticeOptions): Promise<string> {
-    const accent = opts.accentColor ?? '#2563EB'
+    const accent = opts.accentColor ?? DEFAULT_BRAND_COLOR
     const bodyHtml = `
       <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px">
         Bifogat hittar du din hyresavi <strong>${opts.noticeNumber}</strong>. Ange OCR-numret vid betalning.

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
 import type { SentMessage } from '@prisma/client'
 import sanitizeHtml from 'sanitize-html'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 
@@ -52,7 +53,7 @@ function buildEmailHtml(
 ): string {
   const safeSubject = escapeHtml(subject)
   const safeOrgName = escapeHtml(orgName)
-  const safeAccent = /^#[0-9A-Fa-f]{3,8}$/.test(accentColor) ? accentColor : '#2563EB'
+  const safeAccent = /^#[0-9A-Fa-f]{3,8}$/.test(accentColor) ? accentColor : DEFAULT_BRAND_COLOR
   const safeTenantName = tenantName ? escapeHtml(tenantName) : ''
   const greeting = safeTenantName ? `<p>Hej ${safeTenantName},</p>` : ''
   const paragraphs = content
@@ -117,7 +118,7 @@ export class MessagesService {
       subject,
       content,
       org.name,
-      org.invoiceColor ?? '#2563EB',
+      org.invoiceColor ?? DEFAULT_BRAND_COLOR,
       tenantName,
     )
 
@@ -131,7 +132,7 @@ export class MessagesService {
         bodyHtml,
         tenantName,
         organizationName: org.name,
-        accentColor: org.invoiceColor ?? '#2563EB',
+        accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
       })
     } catch (err) {
       status = 'FAILED'
@@ -182,7 +183,7 @@ export class MessagesService {
             subject,
             content,
             org.name,
-            org.invoiceColor ?? '#2563EB',
+            org.invoiceColor ?? DEFAULT_BRAND_COLOR,
             tenantName,
           )
 
@@ -193,7 +194,7 @@ export class MessagesService {
               bodyHtml,
               tenantName,
               organizationName: org.name,
-              accentColor: org.invoiceColor ?? '#2563EB',
+              accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
             })
             successCount++
           } catch (err) {
@@ -267,7 +268,7 @@ export class MessagesService {
           original.subject,
           original.content,
           org.name,
-          org.invoiceColor ?? '#2563EB',
+          org.invoiceColor ?? DEFAULT_BRAND_COLOR,
           tenantName,
         )
 
@@ -278,7 +279,7 @@ export class MessagesService {
             bodyHtml,
             tenantName,
             organizationName: org.name,
-            accentColor: org.invoiceColor ?? '#2563EB',
+            accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
           })
           successCount++
         } catch (err) {

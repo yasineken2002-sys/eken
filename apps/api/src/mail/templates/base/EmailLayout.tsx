@@ -9,6 +9,7 @@ import {
   Text,
 } from '@react-email/components'
 import * as React from 'react'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { EmailFooter } from './EmailFooter'
 
 export interface EmailLayoutProps {
@@ -27,7 +28,7 @@ export interface EmailLayoutProps {
  *   - 600px max-width, fungerar i Gmail/Outlook/Apple Mail
  *   - Inga bilder (Outlook blockerar bilder by default → alt-text bara räcker inte)
  *   - Tabellbaserad layout via React Email-komponenter (e-post-CSS är begränsat)
- *   - Eveno-grön (#2D6A4F) som accentfärg
+ *   - Varumärkesgrön (DEFAULT_BRAND_COLOR) som accentfärg — enad med PDF:erna
  */
 export function EmailLayout({
   preview,
@@ -82,7 +83,7 @@ const containerStyle: React.CSSProperties = {
 }
 
 const headerStyle: React.CSSProperties = {
-  backgroundColor: '#2D6A4F',
+  backgroundColor: DEFAULT_BRAND_COLOR,
   padding: '32px 40px 24px',
   textAlign: 'left',
 }

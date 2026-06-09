@@ -595,7 +595,7 @@ export class RentReminderService {
         dueDate: notice.dueDate,
         daysOverdue: this.daysSince(notice.dueDate),
         organizationName: org.name,
-        accentColor: org.invoiceColor ?? '#2563EB',
+        accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
         pdfBuffer,
         idempotencyKey: `rent-reminder-${notice.id}`,
       })

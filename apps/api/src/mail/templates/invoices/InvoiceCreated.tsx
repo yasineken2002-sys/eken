@@ -1,5 +1,6 @@
 import { Heading, Row, Column, Section, Text } from '@react-email/components'
 import * as React from 'react'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { EmailLayout } from '../base/EmailLayout'
 import { formatSek, formatDate } from '../shared/format'
 
@@ -118,7 +119,7 @@ const valueText: React.CSSProperties = {
 }
 
 const amountText: React.CSSProperties = {
-  color: '#2D6A4F',
+  color: DEFAULT_BRAND_COLOR,
   fontSize: '18px',
   fontWeight: 700,
   margin: '6px 0',

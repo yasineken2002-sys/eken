@@ -527,7 +527,7 @@ export class AviseringService {
         pdfBuffer,
         organizationName: org.name,
         noticeNumber: notice.noticeNumber,
-        accentColor: org.invoiceColor ?? '#2563EB',
+        accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
         idempotencyKey: `rent-notice-${notice.id}`,
       })
 

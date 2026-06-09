@@ -1,5 +1,6 @@
 import { Button, Heading, Section, Text } from '@react-email/components'
 import * as React from 'react'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { EmailLayout } from '../base/EmailLayout'
 
 export interface TenantActivationReminderProps {
@@ -79,7 +80,7 @@ const ctaSection: React.CSSProperties = {
 }
 
 const buttonStyle: React.CSSProperties = {
-  backgroundColor: '#2D6A4F',
+  backgroundColor: DEFAULT_BRAND_COLOR,
   color: '#FFFFFF',
   fontSize: '15px',
   fontWeight: 600,
@@ -97,7 +98,7 @@ const hintStyle: React.CSSProperties = {
 }
 
 const urlStyle: React.CSSProperties = {
-  color: '#2D6A4F',
+  color: DEFAULT_BRAND_COLOR,
   fontSize: '12px',
   fontFamily: 'monospace',
   wordBreak: 'break-all',
