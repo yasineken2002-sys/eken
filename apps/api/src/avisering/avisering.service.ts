@@ -29,7 +29,9 @@ import {
   rentDueDateForMonth,
   calculateProratedRent,
   calculateFirstPaymentDueDate,
+  DEFAULT_BRAND_COLOR,
 } from '@eken/shared'
+import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 // getLogoDataUrl bor numera i common/branding (Steg 3, PR 2 — en sanning).
 // Vi re-exporterar den här så att rent-reminder.service.ts (som importerar
@@ -578,11 +580,15 @@ export class AviseringService {
       email?: string | null
       bankgiro?: string | null
       invoiceColor?: string | null
+      brandSecondaryColor?: string | null
+      brandFont?: string | null
       logoStorageKey?: string | null
     },
   ): Promise<string> {
     const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
-    const primaryColor = org.invoiceColor ?? '#1a6b3c'
+    // Steg 3, PR 3b/3c: hårdkodad #1a6b3c → delad DEFAULT_BRAND_COLOR (= '#1a6b3c',
+    // alltså pixel-identiskt för orgs utan egen invoiceColor). Avbockad i kartan.
+    const primaryColor = org.invoiceColor ?? DEFAULT_BRAND_COLOR
     const bankgiro = org.bankgiro ?? '0000-0000'
 
     // Konsekvent beloppsformat med hyresfakturan: alltid två decimaler (ören).
@@ -600,7 +606,7 @@ export class AviseringService {
       .map(
         (l) => `
       <tr>
-        <td>${l.description}</td>
+        <td>${escapeHtml(l.description)}</td>
         <td>${fmt(Number(l.total))} kr</td>
       </tr>`,
       )
@@ -653,14 +659,24 @@ export class AviseringService {
         ? Math.round((monthlyRent / notice.totalDays) * 100) / 100
         : 0
 
+    // Fri text escapas (latent XSS-skydd). OBS: belopp (fmt) och OCR-/datumfält
+    // är systemgenererade och lämnas ORÖRDA i värde — bara namn/beteckningar
+    // escapas. objektCell-fallbacken (OCR-slice) är rena siffror → escapeHtml
+    // ändrar inte värdet.
+    const objektCell = escapeHtml(unit?.unitNumber ?? notice.ocrNumber.slice(-6))
+    const unitNamePart = unit ? ` — ${escapeHtml(unit.name as string)}` : ''
+    const propertyPart = property
+      ? `, ${escapeHtml((property.street as string | null | undefined) ?? (property.name as string))}`
+      : ''
+
     const specRowsHtml = isDeposit
       ? `
       <tr>
-        <td>${unit?.unitNumber ?? notice.ocrNumber.slice(-6)}</td>
+        <td>${objektCell}</td>
         <td>
           <strong>Deposition</strong>
-          ${unit ? ` — ${unit.name as string}` : ''}
-          ${property ? `, ${(property.street as string | null | undefined) ?? (property.name as string)}` : ''}
+          ${unitNamePart}
+          ${propertyPart}
           <div style="font-size:10px;color:#666;margin-top:4px">
             Säkerhet enligt 12 kap. 21 § JB. Återbetalas vid avflyttning efter slutbesiktning.
           </div>
@@ -670,11 +686,11 @@ export class AviseringService {
       : isProrated
         ? `
       <tr>
-        <td>${unit?.unitNumber ?? notice.ocrNumber.slice(-6)}</td>
+        <td>${objektCell}</td>
         <td>
           <strong>Hyra ${monthLabel} (delmånad)</strong>
-          ${unit ? ` — ${unit.name as string}` : ''}
-          ${property ? `, ${(property.street as string | null | undefined) ?? (property.name as string)}` : ''}
+          ${unitNamePart}
+          ${propertyPart}
           <div style="font-size:10px;color:#666;margin-top:4px;line-height:1.5">
             Period: ${notice.periodStart ? new Date(notice.periodStart).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' }) : ''}
             – ${notice.periodEnd ? new Date(notice.periodEnd).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' }) : ''}
@@ -687,29 +703,28 @@ export class AviseringService {
       </tr>`
         : `
       <tr>
-        <td>${unit?.unitNumber ?? notice.ocrNumber.slice(-6)}</td>
+        <td>${objektCell}</td>
         <td>
           Hyra ${monthLabel}
-          ${unit ? ` — ${unit.name as string}` : ''}
-          ${property ? `, ${(property.street as string | null | undefined) ?? (property.name as string)}` : ''}
+          ${unitNamePart}
+          ${propertyPart}
         </td>
         <td>${fmt(Number(notice.amount))} kr</td>
       </tr>`
 
     const aviTitle = isDeposit ? 'Depositionsavi' : 'Hyresavi'
 
-    return `<!DOCTYPE html>
-<html lang="sv">
-<head>
-<meta charset="UTF-8">
-<style>
+    // Steg 3, PR 3c: avin renderas genom den gemensamma brandade shellen.
+    // Avins egna outer-wrapper (html/head/body) och egen logga/titel är borttagna
+    // — shellen ger logga, primär-/sekundärfärg, typsnitt och dokumenttitel.
+    // hideFooter:true så att bankgiro-/avrivningsslipen förblir sidans botten
+    // (org-kontakt behålls i övre delen). body-font borttagen så shellens typsnitt
+    // styr; bas-fontstorleken (11px) återställs på .bp-content. Allt
+    // betalningsbärande (OCR, belopp, bankgiro, förfallodatum, mottagare, OCR-rad)
+    // är BYTE-FÖR-BYTE oförändrat.
+    const contentCss = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: Arial, sans-serif;
-    font-size: 11px;
-    color: #333;
-    background: white;
-  }
+  .bp-content { font-size: 11px; color: #333; }
 
   /* ── UPPER SECTION ── */
   .upper { padding: 30px 40px 20px 40px; }
@@ -939,29 +954,22 @@ export class AviseringService {
     letter-spacing: normal;
   }
 
-  @page { margin: 10mm; size: A4; }
-</style>
-</head>
-<body>
+  @page { margin: 10mm; size: A4; }`
+
+    const contentHtml = `<style>${contentCss}</style>
 
 <!-- ═══ UPPER SECTION ═══ -->
 <div class="upper">
   <div class="header-row">
     <div>
-      ${
-        logoDataUrl
-          ? `<img src="${logoDataUrl}" style="height:48px;max-width:180px;object-fit:contain;" alt="${org.name}">`
-          : `<div style="font-size:20px;font-weight:bold;color:${primaryColor}">${org.name}</div>`
-      }
-      <div style="font-size:11px;color:#666">${org.name}</div>
+      <div class="org-name">${escapeHtml(org.name)}</div>
       <div class="org-details">
-        ${org.street ? `${org.street}, ${org.postalCode ?? ''} ${org.city ?? ''}<br>` : ''}
+        ${org.street ? `${escapeHtml(org.street)}, ${escapeHtml(org.postalCode ?? '')} ${escapeHtml(org.city ?? '')}<br>` : ''}
         ${org.bankgiro ? `Bankgiro: ${bankgiro}<br>` : ''}
-        ${org.email ? `E-post: ${org.email}` : ''}
+        ${org.email ? `E-post: ${escapeHtml(org.email)}` : ''}
       </div>
     </div>
     <div class="avi-header">
-      <div class="avi-title">${aviTitle}</div>
       <div class="avi-meta">
         Datum: <span>${new Date().toLocaleDateString('sv-SE')}</span><br>
         Avinummer: <span>${notice.noticeNumber}</span><br>
@@ -972,9 +980,9 @@ export class AviseringService {
   </div>
 
   <div class="recipient-box">
-    <div class="recipient-name">${tenantName}</div>
-    <div class="recipient-detail">${tenant.email}</div>
-    ${tenant.phone ? `<div class="recipient-detail">${tenant.phone as string}</div>` : ''}
+    <div class="recipient-name">${escapeHtml(tenantName)}</div>
+    <div class="recipient-detail">${escapeHtml(tenant.email)}</div>
+    ${tenant.phone ? `<div class="recipient-detail">${escapeHtml(tenant.phone as string)}</div>` : ''}
   </div>
 
   <table class="spec-table">
@@ -1096,10 +1104,20 @@ export class AviseringService {
   <div class="ocr-warning">
     VAR GOD GÖR INGA ÄNDRINGAR — DEN AVLÄSES MASKINELLT
   </div>
-</div>
+</div>`
 
-</body>
-</html>`
+    return buildBrandedPdfHtml({
+      // Footern är dold (hideFooter) → org-kontakt ligger i övre delen ovan.
+      // Shellen behöver bara namnet (logga/titel/font/färg).
+      org: { name: org.name },
+      logoDataUrl,
+      primaryColor: org.invoiceColor ?? null,
+      secondaryColor: org.brandSecondaryColor ?? null,
+      brandFont: org.brandFont ?? null,
+      title: aviTitle,
+      contentHtml,
+      hideFooter: true,
+    })
   }
 
   // Registrerar en hyresavi som betald OCH bokför betalningen (FIX 9 · PR 6).

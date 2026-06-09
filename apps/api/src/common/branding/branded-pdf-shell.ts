@@ -56,6 +56,14 @@ export interface BrandedPdfShellInput {
   contentHtml: string
   /** Valfri extra rad i footern (escapas). */
   footerNote?: string | null
+  /**
+   * Döljer den avslutande footern helt. Default: footern visas (oförändrat
+   * beteende). Avsett för betalningsinstrument (t.ex. hyresavin) där en
+   * bankgiro-/avrivningsslip MÅSTE vara sidans understa element — en generisk
+   * footer efter slipen vore strukturellt fel. Anroparen ansvarar då själv för
+   * att org-kontaktuppgifterna finns i contentHtml.
+   */
+  hideFooter?: boolean
 }
 
 /** Validerar en hex-färg (#RGB/#RRGGBB); ogiltigt → fallback. Skyddar style-attr. */
@@ -98,6 +106,18 @@ export function buildBrandedPdfHtml(input: BrandedPdfShellInput): string {
   const footerNoteBlock = input.footerNote
     ? `<div class="bp-footer-note">${escapeHtml(input.footerNote)}</div>`
     : ''
+
+  // Footern utelämnas helt när hideFooter är satt (betalningsinstrument där en
+  // slip ska vara sidans botten). Default → footern renderas som tidigare.
+  const footerBlock = input.hideFooter
+    ? ''
+    : `
+  <footer class="bp-footer">
+    <div class="bp-footer-org">${safeOrgName}</div>
+    ${addressLine ? `<div>${addressLine}</div>` : ''}
+    ${footerMeta.length ? `<div>${footerMeta.join(' · ')}</div>` : ''}
+    ${footerNoteBlock}
+  </footer>`
 
   return `<!DOCTYPE html>
 <html lang="sv">
@@ -151,13 +171,7 @@ export function buildBrandedPdfHtml(input: BrandedPdfShellInput): string {
   <main class="bp-content">
     ${input.contentHtml}
   </main>
-
-  <footer class="bp-footer">
-    <div class="bp-footer-org">${safeOrgName}</div>
-    ${addressLine ? `<div>${addressLine}</div>` : ''}
-    ${footerMeta.length ? `<div>${footerMeta.join(' · ')}</div>` : ''}
-    ${footerNoteBlock}
-  </footer>
+${footerBlock}
 </body>
 </html>`
 }

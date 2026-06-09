@@ -118,4 +118,24 @@ describe('buildBrandedPdfHtml', () => {
     expect(minimal).not.toContain('Org.nr')
     expect(minimal).not.toContain('Bankgiro')
   })
+
+  it('hideFooter utelämnar footern helt; default visar den (betalningsinstrument)', () => {
+    // Default: footern renderas (oförändrat beteende — 3a/3b påverkas inte).
+    const withFooter = buildBrandedPdfHtml({ org: BASE_ORG, contentHtml: '<p>x</p>' })
+    expect(withFooter).toContain('class="bp-footer"')
+    expect(withFooter).toContain('Org.nr 556000-0001')
+
+    // hideFooter: footern (och därmed org-metaraden/bankgiro) försvinner helt.
+    const hidden = buildBrandedPdfHtml({
+      org: BASE_ORG,
+      contentHtml: '<p>x</p>',
+      hideFooter: true,
+    })
+    expect(hidden).not.toContain('class="bp-footer"')
+    expect(hidden).not.toContain('Org.nr')
+    expect(hidden).not.toContain('Bankgiro 123-4567')
+    // Headern och innehållet finns kvar.
+    expect(hidden).toContain('class="bp-header"')
+    expect(hidden).toContain('<p>x</p>')
+  })
 })
