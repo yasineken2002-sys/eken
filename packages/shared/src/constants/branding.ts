@@ -29,6 +29,7 @@
  *     • [x] apps/api/src/avisering/avisering.service.ts    (primaryColor, PDF — Steg 3 PR 3c, brandad shell)
  *     • apps/api/src/notifications/notifications.service.ts
  *     • [x] apps/api/src/avisering/rent-reminder.service.ts (accent, PDF — Steg 3 PR 3d, brandad shell)
+ *     • [x] apps/api/src/collections/collection-export.service.ts (egen grön #1a4a28 → accent, PDF — Steg 3 PR 3e, brandad shell)
  *
  *   E-post — default `#2563EB`:
  *     • apps/api/src/mail/mail.service.ts
