@@ -28,7 +28,7 @@
  *     • apps/api/src/contracts/commercial-contract.template.ts
  *     • [x] apps/api/src/avisering/avisering.service.ts    (primaryColor, PDF — Steg 3 PR 3c, brandad shell)
  *     • apps/api/src/notifications/notifications.service.ts
- *     • apps/api/src/avisering/rent-reminder.service.ts    (accent, PDF)
+ *     • [x] apps/api/src/avisering/rent-reminder.service.ts (accent, PDF — Steg 3 PR 3d, brandad shell)
  *
  *   E-post — default `#2563EB`:
  *     • apps/api/src/mail/mail.service.ts
