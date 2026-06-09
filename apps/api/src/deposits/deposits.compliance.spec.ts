@@ -5,6 +5,11 @@
  * som skiljer sig från lease.depositAmount, så validering måste ske här också.
  */
 
+// NotificationsService → MonthlyReportService → den brandade shellen drar in
+// storage.service (AWS SDK, ESM) som jest inte kan parsa. Stubbas — samma
+// mönster som övriga specar som transitivt rör storage. (Steg 3, PR 3a.)
+jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
+
 import { BadRequestException } from '@nestjs/common'
 import type { UnitType } from '@prisma/client'
 import { DepositsService } from './deposits.service'

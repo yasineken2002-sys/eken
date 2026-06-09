@@ -2,6 +2,8 @@ import type { OnModuleInit } from '@nestjs/common'
 import { Injectable, Logger } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { StorageService } from '../storage/storage.service'
+import { getLogoDataUrl } from '../common/branding'
 import { generateMonthlyReportHtml } from './templates/monthly-report.template'
 import type { MonthlyReportData } from './templates/monthly-report.template'
 import type { PdfService } from '../invoices/pdf.service'
@@ -53,6 +55,7 @@ export class MonthlyReportService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly moduleRef: ModuleRef,
+    private readonly storage: StorageService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -83,9 +86,24 @@ export class MonthlyReportService implements OnModuleInit {
   private async buildReportData(organizationId: string): Promise<MonthlyReportData | null> {
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { name: true, street: true, city: true, postalCode: true },
+      select: {
+        name: true,
+        orgNumber: true,
+        street: true,
+        city: true,
+        postalCode: true,
+        // Varumärke (Steg 3, PR 3a) — läses av den brandade shellen.
+        invoiceColor: true,
+        brandSecondaryColor: true,
+        brandFont: true,
+        logoStorageKey: true,
+      },
     })
     if (!org) return null
+
+    // Logga som data:-URL (samlade helpern). Saknad/felad logga → null,
+    // shellen visar då org-namnet i stället. Får aldrig fälla rapporten.
+    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
 
     // Tidsserie över 14 månader: index 12 = rapportmånad (månaden som just
     // tog slut), 11 = månaden dessförinnan, 0 = samma månad förra året.
@@ -316,6 +334,19 @@ export class MonthlyReportService implements OnModuleInit {
           month: 'long',
           year: 'numeric',
         }),
+      },
+      brand: {
+        logoDataUrl,
+        primaryColor: org.invoiceColor ?? null,
+        secondaryColor: org.brandSecondaryColor ?? null,
+        brandFont: org.brandFont ?? null,
+        org: {
+          name: org.name,
+          orgNumber: org.orgNumber ?? null,
+          street: org.street ?? null,
+          postalCode: org.postalCode ?? null,
+          city: org.city ?? null,
+        },
       },
       summary: {
         revenue: {
