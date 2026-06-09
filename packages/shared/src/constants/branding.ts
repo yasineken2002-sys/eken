@@ -26,7 +26,7 @@
  *     • apps/api/src/invoices/templates/invoice-pdf.template.ts
  *     • apps/api/src/contracts/residential-contract.template.ts
  *     • apps/api/src/contracts/commercial-contract.template.ts
- *     • apps/api/src/avisering/avisering.service.ts        (primaryColor, PDF)
+ *     • [x] apps/api/src/avisering/avisering.service.ts    (primaryColor, PDF — Steg 3 PR 3c, brandad shell)
  *     • apps/api/src/notifications/notifications.service.ts
  *     • apps/api/src/avisering/rent-reminder.service.ts    (accent, PDF)
  *
