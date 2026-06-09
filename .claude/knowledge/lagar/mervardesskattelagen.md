@@ -1,3 +1,11 @@
+---
+id: mervardesskattelagen
+titel: Mervärdesskattelagen (1994:200) — utvalda kapitel
+sfs: '1994:200'
+verifierad_per: '2026-05-29'
+kalla: 'https://lagen.nu/1994:200'
+---
+
 # Mervärdesskattelagen (1994:200) — utvalda kapitel
 
 > Källa: https://lagen.nu/1994:200

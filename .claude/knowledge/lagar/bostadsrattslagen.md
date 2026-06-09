@@ -1,3 +1,11 @@
+---
+id: bostadsrattslagen
+titel: Bostadsrättslagen (1991:614)
+sfs: '1991:614'
+verifierad_per: '2026-05-29'
+kalla: 'https://lagen.nu/1991:614'
+---
+
 # Bostadsrättslagen (1991:614)
 
 > Källa: https://lagen.nu/1991:614

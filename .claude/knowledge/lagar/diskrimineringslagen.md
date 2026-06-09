@@ -1,3 +1,11 @@
+---
+id: diskrimineringslagen
+titel: Diskrimineringslagen (2008:567)
+sfs: '2008:567'
+verifierad_per: '2026-05-29'
+kalla: 'https://lagen.nu/2008:567'
+---
+
 # Diskrimineringslagen (2008:567)
 
 > Källa: https://lagen.nu/2008:567 (kompletterad från https://www.riksdagen.se/sv/dokument-och-lagar/dokument/svensk-forfattningssamling/diskrimineringslag-2008567_sfs-2008-567/)

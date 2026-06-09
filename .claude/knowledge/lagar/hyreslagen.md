@@ -1,3 +1,11 @@
+---
+id: hyreslagen
+titel: Hyreslagen (jordabalken 12 kap.)
+sfs: '1970:994'
+verifierad_per: '2026-05-29'
+kalla: 'https://lagen.nu/1970:994#K12'
+---
+
 # Hyreslagen (Jordabalken 12 kap)
 
 > Källa: https://lagen.nu/1970:994#K12
