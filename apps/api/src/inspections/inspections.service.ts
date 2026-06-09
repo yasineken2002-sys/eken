@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PdfService } from '../invoices/pdf.service'
+import { StorageService } from '../storage/storage.service'
+import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { InspectionStatus, InspectionType } from '@prisma/client'
 import type { InspectionItemCondition } from '@prisma/client'
 import { CreateInspectionDto } from './dto/create-inspection.dto'
@@ -90,6 +93,7 @@ export class InspectionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pdfService: PdfService,
+    private readonly storage: StorageService,
   ) {}
 
   async findAll(
@@ -230,11 +234,18 @@ export class InspectionsService {
     )
     const totalRepairCost = inspection.items.reduce((sum, i) => sum + Number(i.repairCost ?? 0), 0)
 
+    // Varumärkesfärg för rubriker (rumstitlar). Steg 3, PR 3b: ersätter tidigare
+    // hårdkodade #2563EB (ett av de 14 ställena i branding.ts-kartan) med orgens
+    // primärfärg → DEFAULT_BRAND_COLOR. Status-/summafärgerna nedan (grönt/rött
+    // för skick och reparationskostnad) är SEMANTISKA, inte varumärke, och lämnas
+    // oförändrade.
+    const brandColor = org.invoiceColor ?? DEFAULT_BRAND_COLOR
+
     const roomHtml = Array.from(rooms.entries())
       .map(
         ([room, items]) => `
       <div class="room-section">
-        <div class="room-title">${room}</div>
+        <div class="room-title">${escapeHtml(room)}</div>
         <table class="items-table">
           <thead>
             <tr>
@@ -249,9 +260,9 @@ export class InspectionsService {
               .map(
                 (item) => `
               <tr>
-                <td>${item.item}</td>
+                <td>${escapeHtml(item.item)}</td>
                 <td><span class="condition-badge" style="color:${conditionColor(item.condition as InspectionItemCondition)};background:${conditionColor(item.condition as InspectionItemCondition)}1a">${conditionLabel(item.condition as InspectionItemCondition)}</span></td>
-                <td>${item.notes ?? '—'}</td>
+                <td>${item.notes ? escapeHtml(item.notes) : '—'}</td>
                 <td>${item.repairCost ? formatSek(Number(item.repairCost)) : '—'}</td>
               </tr>`,
               )
@@ -262,29 +273,20 @@ export class InspectionsService {
       )
       .join('')
 
-    const accent = org.invoiceColor ?? '#2563EB'
-
-    const html = `<!DOCTYPE html>
-<html lang="sv">
-<head>
-  <meta charset="UTF-8" />
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-           color: #111827; background: #fff; padding: 48px; }
-    .header { border-bottom: 3px solid ${accent}; padding-bottom: 24px; margin-bottom: 32px;
-              display: flex; justify-content: space-between; align-items: flex-start; }
-    .org-name { font-size: 22px; font-weight: 700; color: ${accent}; }
-    .doc-title { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
-    .doc-sub { font-size: 14px; color: #6b7280; }
+    // Innehålls-CSS för protokollet. Steg 3, PR 3b: protokollets egna outer-wrapper
+    // (html/head/body), header och footer är borttagna — RAMEN (logga/header/footer/
+    // typsnitt/varumärkesfärg) kommer nu från den gemensamma brandade shellen.
+    // Övriga sektioner/data är oförändrade. brandColor styr rumstitlarna.
+    const contentCss = `
+    .protocol-sub { font-size: 14px; color: #6b7280; margin-bottom: 28px; }
     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 32px; margin-bottom: 32px;
                  background: #f9fafb; border-radius: 10px; padding: 20px 24px; }
     .info-label { font-size: 11px; font-weight: 600; text-transform: uppercase;
                   letter-spacing: 0.06em; color: #9ca3af; margin-bottom: 4px; }
     .info-value { font-size: 14px; font-weight: 500; }
     .room-section { margin-bottom: 24px; }
-    .room-title { font-size: 15px; font-weight: 700; color: ${accent};
-                  border-bottom: 2px solid ${accent}1a; padding-bottom: 8px; margin-bottom: 12px; }
+    .room-title { font-size: 15px; font-weight: 700; color: ${brandColor};
+                  border-bottom: 2px solid ${brandColor}1a; padding-bottom: 8px; margin-bottom: 12px; }
     .items-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .items-table th { text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase;
                       letter-spacing: 0.05em; color: #9ca3af; padding: 6px 8px;
@@ -302,32 +304,23 @@ export class InspectionsService {
     .sig-box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px 24px; }
     .sig-title { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 32px; }
     .sig-line { border-top: 1px solid #374151; padding-top: 8px;
-                font-size: 12px; color: #6b7280; }
-    .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid #e5e7eb;
-              font-size: 12px; color: #9ca3af; text-align: center; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="org-name">${org.name}</div>
-    <div style="text-align:right">
-      <div class="doc-title">Besiktningsprotokoll</div>
-      <div class="doc-sub">${translateType(inspection.type)}</div>
-    </div>
-  </div>
+                font-size: 12px; color: #6b7280; }`
+
+    const contentHtml = `<style>${contentCss}</style>
+  <div class="protocol-sub">${translateType(inspection.type)}</div>
 
   <div class="info-grid">
     <div>
       <div class="info-label">Fastighet</div>
-      <div class="info-value">${inspection.property.name}</div>
+      <div class="info-value">${escapeHtml(inspection.property.name)}</div>
     </div>
     <div>
       <div class="info-label">Enhet</div>
-      <div class="info-value">${inspection.unit.name}</div>
+      <div class="info-value">${escapeHtml(inspection.unit.name)}</div>
     </div>
     <div>
       <div class="info-label">Hyresgäst</div>
-      <div class="info-value">${tenantName}</div>
+      <div class="info-value">${escapeHtml(tenantName)}</div>
     </div>
     <div>
       <div class="info-label">Datum</div>
@@ -346,7 +339,7 @@ export class InspectionsService {
       <div class="summary-label">Bedömd reparationskostnad</div>
       <div class="summary-value" style="color:${totalRepairCost > 0 ? '#DC2626' : '#059669'}">${totalRepairCost > 0 ? formatSek(totalRepairCost) : '0 kr'}</div>
     </div>
-    ${inspection.overallCondition ? `<div class="summary-item" style="flex:2"><div class="summary-label">Övergripande kommentar</div><div style="font-size:14px;margin-top:4px">${inspection.overallCondition}</div></div>` : ''}
+    ${inspection.overallCondition ? `<div class="summary-item" style="flex:2"><div class="summary-label">Övergripande kommentar</div><div style="font-size:14px;margin-top:4px">${escapeHtml(inspection.overallCondition)}</div></div>` : ''}
   </div>
 
   <div class="signatures">
@@ -360,11 +353,34 @@ export class InspectionsService {
       <div class="sig-line">Namn och underskrift</div>
       <div style="margin-top:16px" class="sig-line">Datum</div>
     </div>
-  </div>
+  </div>`
 
-  <div class="footer">Utfärdad av ${org.name} · Powered by Eveno Fastighetsförvaltning</div>
-</body>
-</html>`
+    // Hämtar orgens logga (R2 → data-URL) och renderar protokollet genom den
+    // gemensamma brandade shellen — logga, primär-/sekundärfärg, typsnitt och
+    // konsekvent header/footer kommer nu från orgens varumärke (samma väg som
+    // månadsrapporten i PR 3a). Protokollets DATA är oförändrad — bara ramen.
+    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
+
+    const html = buildBrandedPdfHtml({
+      org: {
+        name: org.name,
+        orgNumber: org.orgNumber ?? null,
+        street: org.street ?? null,
+        postalCode: org.postalCode ?? null,
+        city: org.city ?? null,
+        email: org.email ?? null,
+        phone: org.phone ?? null,
+        bankgiro: org.bankgiro ?? null,
+        vatNumber: org.vatNumber ?? null,
+      },
+      logoDataUrl,
+      primaryColor: org.invoiceColor ?? null,
+      secondaryColor: org.brandSecondaryColor ?? null,
+      brandFont: org.brandFont ?? null,
+      title: 'Besiktningsprotokoll',
+      contentHtml,
+      footerNote: 'Powered by Eveno Fastighetsförvaltning',
+    })
 
     return this.pdfService.generateFromHtml(html)
   }
