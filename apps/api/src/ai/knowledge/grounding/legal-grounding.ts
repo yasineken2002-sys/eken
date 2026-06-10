@@ -8,19 +8,31 @@
  *   signatur bara se chunkar — aldrig AI-text — så en hallucinerad källa är
  *   FYSISKT OMÖJLIG, inte bara upptäckbar.
  *
- * Avgränsningar (medvetna, per PR-plan):
- *   - Gap B (miss-grind: svag/ingen träff → "fråga jurist") byggs i PR 2.3b.
- *     Här gäller: hämtar retrieval inget → ingen grundning → AI:n svarar som
- *     idag (konservativt per #129-prompten).
+ * MISS-GRIND (gap B, PR 2.3b) — tvåstegsgrind före grundning:
+ *   Steg 1 (deterministisk, här): ingen träff eller mätbart svag träff
+ *     (BM25-score/query-täckning under kalibrerade golv) → MISS.
+ *   Steg 2 (semantisk, i AiAssistantService.resolveLegalGrounding): en billig
+ *     Haiku-relevansdomare avgör om kandidat-paragraferna faktiskt innehåller
+ *     den materiella regel frågan gäller. Uppmätt nödvändigt: lexikalt starka
+ *     men semantiskt fel träffar (t.ex. uppsägnings-boilerplate på en
+ *     besittningsskyddsfråga) är omöjliga att skilja på score/täckning.
+ *   Vid MISS injiceras ett ärlighetsblock ("hittar inte den exakta regeln —
+ *   stäm av med jurist") och INGEN kod-bunden källrad sätts — det fanns inget
+ *   att grunda i. Grundning sker ALDRIG förbi domaren: denna modul exponerar
+ *   bara kandidat-utvärdering + grundnings-/miss-byggare, inte en direktväg.
+ *
+ * Avgränsning (medveten):
  *   - Gap C: endast operator-AI:n. Tenant-AI:n importerar INTE denna modul.
  *
- * Ingen AI, ingen modell, inga sidoeffekter — ren text→text-logik.
+ * Denna modul: ingen AI, ingen modell, inga sidoeffekter — ren text→text-logik.
+ * (Domaranropet bor i servicen; här finns bara dess prompt + verdiktparser.)
  */
-import { retrieveLegalChunks } from '../retrieval/legal-retrieval'
+import { retrieveLegalChunks, type RetrievedChunk } from '../retrieval/legal-retrieval'
 import type { LegalChunk } from '../retrieval/legal-chunk'
 import { getLegalDocument } from '../legal-knowledge'
 
 export interface LegalGrounding {
+  outcome: 'grounded'
   /** De hämtade paragraf-chunkarna — den ENDA tillåtna källan till källhänvisning. */
   chunks: LegalChunk[]
   /** Systemblock: verifierad lagtext + grundningsinstruktion (injiceras i AI:ns kontext). */
@@ -28,6 +40,29 @@ export interface LegalGrounding {
   /** Kod-bunden källhänvisning — byggd ENBART ur chunk-metadata, aldrig ur AI-text. */
   sourceCitation: string
 }
+
+/** Varför grinden bedömde frågan som miss (observabilitet + test). */
+export type LegalMissReason =
+  | 'no-hits' // retrieval hämtade ingenting
+  | 'weak-retrieval' // träffen under de deterministiska golven (steg 1)
+  | 'judge-rejected' // relevansdomaren bedömde träffen som fel regel (steg 2)
+  | 'judge-unavailable' // domaranropet misslyckades/ogiltigt svar → fail-safe till miss
+
+export interface LegalGroundingMiss {
+  outcome: 'miss'
+  reason: LegalMissReason
+  /** Systemblock: ärlighetsinstruktion (hittade ingen regel → rekommendera jurist). */
+  contextBlock: string
+}
+
+/** null = inte en juridisk fråga (ingen grundning, AI:n svarar som vanligt). */
+export type LegalGroundingResult = LegalGrounding | LegalGroundingMiss | null
+
+/** Steg 1-utfall: kandidat som ska vidare till relevansdomaren, eller direkt miss. */
+export type LegalRetrievalCandidate =
+  | { outcome: 'candidate'; retrieved: RetrievedChunk[] }
+  | { outcome: 'miss'; reason: 'no-hits' | 'weak-retrieval' }
+  | null
 
 /**
  * Heuristisk ingångsgrind: är detta en juridisk fråga alls? Skiljer juridik
@@ -68,20 +103,59 @@ export function isLegalQuestion(message: string): boolean {
 /** Samma topK som retrieval-mätningen i PR 2.2 (12/18 answerable). */
 export const GROUNDING_TOP_K = 3
 
+// ── Steg 1: deterministiska golv, kalibrerade mot eval-setet (2026-06-10) ─────
+//
+// Uppmätt (topp-BM25 / topp-täckning) på eval-setet:
+//   Svagast GODKÄNDA träff:  besittningsskydd-lokal      10.38 / 0.43
+//   Ska fastna (svaga):      hyresgastval-diskriminering  9.42 / 0.29
+//                            kontrakt-tidsbestamt          8.94 / 0.38
+//                            hyreshojning-formkrav         7.49 / 0.50
+//                            hyressattning-bruksvarde      6.35 / 0.50
+//                            deposition-storlek           10.58 / 0.33  ← bara täckning skiljer
+// Golven ligger mitt i de uppmätta gapen. Lexikalt starka men semantiskt fel
+// träffar (altan 22.4/0.50, eget-behov 17.5/0.45, besittningsskydd-förstahand
+// 20.6/0.46) är INTE separerbara här — de går vidare som kandidater och fälls
+// av relevansdomaren (steg 2).
+const MIN_TOP_SCORE = 10
+const LOW_SCORE_BAND = 12
+const MIN_COVERAGE_IN_BAND = 0.4
+
 /**
- * Bygger grundningen för ett användarmeddelande, eller null om frågan inte är
- * juridisk eller retrieval inte hämtar något (miss-grinden förfinas i 2.3b).
+ * Steg 1 i miss-grinden: kör retrieval och bedöm deterministiskt om träffen
+ * alls är en rimlig kandidat. Returnerar ALDRIG en färdig grundning — en
+ * kandidat måste passera relevansdomaren (steg 2, i servicen) först.
  */
-export function buildLegalGrounding(message: string): LegalGrounding | null {
+export function evaluateLegalRetrieval(message: string): LegalRetrievalCandidate {
   if (!isLegalQuestion(message)) return null
   const retrieved = retrieveLegalChunks(message, { topK: GROUNDING_TOP_K })
-  if (retrieved.length === 0) return null
+  if (retrieved.length === 0) return { outcome: 'miss', reason: 'no-hits' }
+
+  const top = retrieved[0]!
+  const tooWeak =
+    top.score < MIN_TOP_SCORE || (top.score < LOW_SCORE_BAND && top.coverage < MIN_COVERAGE_IN_BAND)
+  if (tooWeak) return { outcome: 'miss', reason: 'weak-retrieval' }
+
+  return { outcome: 'candidate', retrieved }
+}
+
+/**
+ * Bygger den färdiga grundningen för en kandidat som relevansdomaren godkänt.
+ * Citat-integriteten (gap A) är oförändrad från 2.3a: källraden byggs ENBART
+ * ur chunk-metadata, aldrig ur AI-text.
+ */
+export function groundLegalCandidate(retrieved: RetrievedChunk[]): LegalGrounding {
   const chunks = retrieved.map((r) => r.chunk)
   return {
+    outcome: 'grounded',
     chunks,
     contextBlock: buildContextBlock(chunks),
     sourceCitation: buildSourceCitation(chunks),
   }
+}
+
+/** Bygger miss-utfallet: ärlighetsblock i stället för lagtext, ingen källrad. */
+export function buildLegalGroundingMiss(reason: LegalMissReason): LegalGroundingMiss {
+  return { outcome: 'miss', reason, contextBlock: MISS_CONTEXT_BLOCK }
 }
 
 function lawTitle(lawId: string): string {
@@ -134,6 +208,76 @@ export function formatSourceSuffix(grounding: LegalGrounding): string {
  */
 export function appendCodeBoundSource(aiText: string, grounding: LegalGrounding): string {
   return `${aiText.trimEnd()}${formatSourceSuffix(grounding)}`
+}
+
+/**
+ * Systemblocket vid MISS: systemet VET att det inte hittade en tillräckligt
+ * relevant regel — AI:n ska vara ärlig med det och rekommendera jurist, inte
+ * svara ur minnet. Samma anda som #129, men nu utlöst av en faktisk mätning.
+ */
+const MISS_CONTEXT_BLOCK = [
+  'JURIDISK FRÅGA UTAN TILLRÄCKLIGT LAGSTÖD (retrieval-miss)',
+  '',
+  'Användarens senaste fråga ser ut att vara juridisk. Systemet har sökt i sin',
+  'människoverifierade lagtext-kunskapsbas men hittade INGEN tillräckligt',
+  'relevant regel för just denna fråga.',
+  '',
+  'REGLER FÖR DITT SVAR (absoluta):',
+  '- Var ärlig med detta: säg tydligt att du inte hittar den exakta regeln i',
+  '  den verifierade kunskapsbasen och att en jurist bör bekräfta vad som',
+  '  gäller (revisor/skatterådgivare om frågan är skatte-/bolagsrelaterad).',
+  '- Besvara INTE frågan ur ditt eget minne som om du visste regeln. Du får ge',
+  '  försiktig, allmän vägledning i klartext, men presentera ingenting som',
+  '  säker juridisk fakta.',
+  '- Skriv ALDRIG paragrafnummer, §-hänvisningar eller SFS-nummer.',
+  '- Hjälp gärna användaren vidare: föreslå att frågan stäms av med jurist',
+  '  innan någon bindande åtgärd, och hänvisa till hyresnämnden vid tvist.',
+].join('\n')
+
+// ── Steg 2: relevansdomaren (prompt + verdiktparser; anropet bor i servicen) ──
+
+/**
+ * Prompt till den billiga relevansdomaren (Haiku): innehåller kandidat-
+ * paragraferna ordagrant och kräver ett strikt JA/NEJ. Domaren fäller de
+ * lexikalt starka men semantiskt fel träffarna som steg 1 inte kan se.
+ */
+export function buildRelevanceJudgePrompt(question: string, chunks: readonly LegalChunk[]): string {
+  const sources = chunks
+    .map((c, i) => `[${i + 1}] ${lawTitle(c.lawId)}, ${c.paragraph} §:\n${c.text}`)
+    .join('\n\n')
+  return [
+    'Du är en strikt relevansdomare i ett juridiskt RAG-system för svenska hyresvärdar.',
+    '',
+    'ANVÄNDARENS FRÅGA:',
+    '"""',
+    question,
+    '"""',
+    '',
+    'HÄMTAD LAGTEXT (kandidater):',
+    sources,
+    '',
+    'UPPGIFT: Avgör om den hämtade lagtexten innehåller den MATERIELLA regel',
+    'som behövs för att besvara frågans juridiska kärna.',
+    '- Svara JA om minst EN kandidatparagraf innehåller regeln frågan gäller,',
+    '  helt eller till väsentlig del.',
+    '- Att texten bara rör samma allmänna ämnesområde räcker INTE för JA.',
+    '- Procedur-/formregler (t.ex. hur en uppsägning delges) besvarar INTE en',
+    '  fråga om RÄTTEN att säga upp — och tvärtom.',
+    '- Är du tveksam till om regeln verkligen finns i texten: svara NEJ.',
+    '',
+    'Svara med EXAKT ett ord: JA eller NEJ.',
+  ].join('\n')
+}
+
+/**
+ * Strikt verdiktparser: "JA" → true, "NEJ" → false, allt annat → null
+ * (behandlas som domare otillgänglig → fail-safe till miss).
+ */
+export function parseRelevanceVerdict(text: string): boolean | null {
+  const first = text.trim().toLowerCase()
+  if (/^ja\b/.test(first)) return true
+  if (/^nej\b/.test(first)) return false
+  return null
 }
 
 /** Systemblocket med den hämtade lagtexten + grundningsregler för AI:n. */

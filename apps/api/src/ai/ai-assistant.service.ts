@@ -20,9 +20,13 @@ import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
 import { AI_MODELS } from './ai.config'
 import { detectLegalDocumentWarning } from './legal-document-warning'
 import {
-  buildLegalGrounding,
+  evaluateLegalRetrieval,
+  groundLegalCandidate,
+  buildLegalGroundingMiss,
+  buildRelevanceJudgePrompt,
+  parseRelevanceVerdict,
   appendCodeBoundSource,
-  type LegalGrounding,
+  type LegalGroundingResult,
 } from './knowledge/grounding/legal-grounding'
 
 const MAX_TOKENS = 2048
@@ -541,12 +545,14 @@ export class AiAssistantService {
       this.memory.getMemories(organizationId, userId),
     ])
 
-    // 2.5 Juridisk grundning (Etapp 2, PR 2.3a): är frågan juridisk hämtas
-    //     verifierad lagtext (BM25-retrieval, PR 2.2) och injiceras som eget
-    //     systemblock. Grundningen beräknas EN gång per användarfråga och
-    //     följer med genom hela tool-loopen. Källhänvisningen binds av kod ur
-    //     chunk-metadata i handleTextResponse — aldrig av AI:n (gap A).
-    const grounding = buildLegalGrounding(message)
+    // 2.5 Juridisk grundning (Etapp 2, PR 2.3a + miss-grind 2.3b): är frågan
+    //     juridisk körs retrieval + tvåstegsgrinden. God träff → verifierad
+    //     lagtext injiceras som eget systemblock; svag/fel träff → ärligt
+    //     miss-block ("hittar inte regeln — stäm av med jurist") utan källrad.
+    //     Grundningen beräknas EN gång per användarfråga och följer med genom
+    //     hela tool-loopen. Källhänvisningen binds av kod ur chunk-metadata i
+    //     handleTextResponse — aldrig av AI:n (gap A).
+    const grounding = await this.resolveLegalGrounding(message, organizationId, userId)
 
     // 3. Build message history via gemensam helper som hanterar både
     //    blocks-fallback (FAS 3) och sliding window för långa konversationer
@@ -787,6 +793,62 @@ export class AiAssistantService {
     }
   }
 
+  // ── Juridisk grundning med miss-grind (gap A + gap B) ───────────────────────
+
+  /**
+   * Tvåstegsgrinden för juridisk grundning (Etapp 2, PR 2.3b). Delas av
+   * non-stream chat() och SSE-controllern så vägarna aldrig driftar isär.
+   *
+   *   Steg 1 (deterministisk, evaluateLegalRetrieval): ej juridisk → null;
+   *     ingen/svag träff → MISS direkt (inget domaranrop, ingen kostnad).
+   *   Steg 2 (semantisk): Haiku-relevansdomaren avgör om kandidat-paragraferna
+   *     innehåller den materiella regel frågan gäller. JA → grundning med
+   *     kod-bunden källa (gap A, oförändrad från 2.3a). NEJ/fel/ogiltigt svar
+   *     → MISS (fail-safe: hellre ärlig jurist-hänvisning än ett svar grundat
+   *     på en overifierad träff).
+   */
+  async resolveLegalGrounding(
+    message: string,
+    organizationId: string,
+    userId: string,
+  ): Promise<LegalGroundingResult> {
+    const candidate = evaluateLegalRetrieval(message)
+    if (candidate === null) return null
+    if (candidate.outcome === 'miss') return buildLegalGroundingMiss(candidate.reason)
+
+    try {
+      const chunks = candidate.retrieved.map((r) => r.chunk)
+      const response = await this.client.messages.create({
+        model: AI_MODELS.MEMORY,
+        max_tokens: 8,
+        // Deterministisk domare: samma fråga + samma kandidater → samma verdikt.
+        temperature: 0,
+        messages: [{ role: 'user', content: buildRelevanceJudgePrompt(message, chunks) }],
+      })
+      void this.usage
+        .logUsage({
+          organizationId,
+          userId,
+          endpoint: 'legal-judge',
+          model: AI_MODELS.MEMORY,
+          usage: response.usage,
+          isAutomated: false,
+          source: 'legal_judge',
+        })
+        .catch((err: unknown) => this.logger.warn('logUsage(legal-judge) failed', err))
+
+      const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
+      const verdict = parseRelevanceVerdict(textBlock?.text ?? '')
+      if (verdict === true) return groundLegalCandidate(candidate.retrieved)
+      return buildLegalGroundingMiss(verdict === false ? 'judge-rejected' : 'judge-unavailable')
+    } catch (err) {
+      this.logger.warn(
+        `Relevansdomaren misslyckades — fail-safe till miss: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return buildLegalGroundingMiss('judge-unavailable')
+    }
+  }
+
   // ── Pending action-bindning (SECURITY RISK 1) ───────────────────────────────
 
   /**
@@ -919,7 +981,7 @@ export class AiAssistantService {
     memoriesCtx: string,
     organizationId: string,
     userId: string,
-    grounding: LegalGrounding | null = null,
+    grounding: LegalGroundingResult = null,
   ): Promise<Anthropic.Message> {
     const memorySection = memoriesCtx ? `\n\n${memoriesCtx}` : ''
     const dateContext = this.dataContext.getCurrentDateContext()
@@ -937,10 +999,10 @@ export class AiAssistantService {
             type: 'text',
             text: dateContext,
           },
-          // Verifierad lagtext (PR 2.3a) läggs EFTER cache-breakpointen så den
-          // frågespecifika injektionen aldrig invaliderar det cachade prefixet.
-          // Eget breakpoint för lagtexten (återbruk inom samma konversation)
-          // utvärderas i PR 2.4 (kostnadsoptimering).
+          // Verifierad lagtext (PR 2.3a) eller miss-grindens ärlighetsblock
+          // (PR 2.3b) läggs EFTER cache-breakpointen så den frågespecifika
+          // injektionen aldrig invaliderar det cachade prefixet. Eget
+          // breakpoint för lagtexten utvärderas i PR 2.4 (kostnadsoptimering).
           ...(grounding ? [{ type: 'text' as const, text: grounding.contextBlock }] : []),
         ],
         tools: TOOLS,
@@ -1104,14 +1166,16 @@ export class AiAssistantService {
     userMessage: string,
     organizationId: string,
     userId: string,
-    grounding: LegalGrounding | null = null,
+    grounding: LegalGroundingResult = null,
   ): Promise<ChatResponse> {
     // CITAT-INTEGRITET (gap A): på ett grundat svar appendar KODEN den
     // auktoritativa källhänvisningen, byggd ur de hämtade chunkarnas metadata
     // INNAN AI:n svarade. AI:ns text kan aldrig påverka källraden — ett
-    // hallucinerat lagrum i prosan blir aldrig en källa.
+    // hallucinerat lagrum i prosan blir aldrig en källa. Vid MISS (gap B)
+    // sätts INGEN källrad — det fanns inget att grunda i.
     const aiText = this.extractText(response)
-    const reply = grounding ? appendCodeBoundSource(aiText, grounding) : aiText
+    const reply =
+      grounding?.outcome === 'grounded' ? appendCodeBoundSource(aiText, grounding) : aiText
 
     // Spara user + assistant separat så assistant-raden kan få `blocks`
     // (Anthropic ContentBlock[] från final-turn). Backwards-compatible:
