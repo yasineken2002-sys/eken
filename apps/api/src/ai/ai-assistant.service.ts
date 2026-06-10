@@ -19,6 +19,11 @@ import { AiAuditService } from './audit/ai-audit.service'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
 import { AI_MODELS } from './ai.config'
 import { detectLegalDocumentWarning } from './legal-document-warning'
+import {
+  buildLegalGrounding,
+  appendCodeBoundSource,
+  type LegalGrounding,
+} from './knowledge/grounding/legal-grounding'
 
 const MAX_TOKENS = 2048
 
@@ -156,6 +161,11 @@ JURIDISK VÄGLEDNING (läs noga):
   Säg hellre "enligt hyreslagens regler" än att uppfinna en paragraf. Hittar du
   dig själv på väg att skriva ett paragrafnummer eller en exakt summa: byt till
   en klartextbeskrivning och be användaren verifiera.
+- VERIFIERAD LAGTEXT: ibland injicerar systemet ett block märkt "VERIFIERAD
+  LAGTEXT" med ordagrann, människoverifierad lagtext för frågan. Grunda då ditt
+  svar i den texten i stället för i ditt minne. Skriv ändå ALDRIG paragraf-
+  eller SFS-nummer själv — systemet lägger automatiskt till den auktoritativa
+  källhänvisningen, byggd ur den hämtade textens metadata, efter ditt svar.
 - Vid juridiskt känsliga eller osäkra frågor — uppsägning, förverkande/avhysning,
   besittningsskydd, rättelseanmaning, tvist, eller formkraven för hyreshöjning —
   rekommendera ALLTID att hyresvärden stämmer av med en jurist innan bindande
@@ -531,6 +541,13 @@ export class AiAssistantService {
       this.memory.getMemories(organizationId, userId),
     ])
 
+    // 2.5 Juridisk grundning (Etapp 2, PR 2.3a): är frågan juridisk hämtas
+    //     verifierad lagtext (BM25-retrieval, PR 2.2) och injiceras som eget
+    //     systemblock. Grundningen beräknas EN gång per användarfråga och
+    //     följer med genom hela tool-loopen. Källhänvisningen binds av kod ur
+    //     chunk-metadata i handleTextResponse — aldrig av AI:n (gap A).
+    const grounding = buildLegalGrounding(message)
+
     // 3. Build message history via gemensam helper som hanterar både
     //    blocks-fallback (FAS 3) och sliding window för långa konversationer
     //    (FAS 4). Korta konversationer (≤30 meddelanden) returnerar
@@ -551,6 +568,7 @@ export class AiAssistantService {
       memoriesCtx,
       organizationId,
       userId,
+      grounding,
     )
 
     while (response.stop_reason === 'tool_use' && iterations < MAX_TOOL_ITERATIONS) {
@@ -628,6 +646,7 @@ export class AiAssistantService {
         memoriesCtx,
         organizationId,
         userId,
+        grounding,
       )
       iterations++
     }
@@ -640,6 +659,7 @@ export class AiAssistantService {
       message,
       organizationId,
       userId,
+      grounding,
     )
   }
 
@@ -899,6 +919,7 @@ export class AiAssistantService {
     memoriesCtx: string,
     organizationId: string,
     userId: string,
+    grounding: LegalGrounding | null = null,
   ): Promise<Anthropic.Message> {
     const memorySection = memoriesCtx ? `\n\n${memoriesCtx}` : ''
     const dateContext = this.dataContext.getCurrentDateContext()
@@ -916,6 +937,11 @@ export class AiAssistantService {
             type: 'text',
             text: dateContext,
           },
+          // Verifierad lagtext (PR 2.3a) läggs EFTER cache-breakpointen så den
+          // frågespecifika injektionen aldrig invaliderar det cachade prefixet.
+          // Eget breakpoint för lagtexten (återbruk inom samma konversation)
+          // utvärderas i PR 2.4 (kostnadsoptimering).
+          ...(grounding ? [{ type: 'text' as const, text: grounding.contextBlock }] : []),
         ],
         tools: TOOLS,
         messages,
@@ -1078,8 +1104,14 @@ export class AiAssistantService {
     userMessage: string,
     organizationId: string,
     userId: string,
+    grounding: LegalGrounding | null = null,
   ): Promise<ChatResponse> {
-    const reply = this.extractText(response)
+    // CITAT-INTEGRITET (gap A): på ett grundat svar appendar KODEN den
+    // auktoritativa källhänvisningen, byggd ur de hämtade chunkarnas metadata
+    // INNAN AI:n svarade. AI:ns text kan aldrig påverka källraden — ett
+    // hallucinerat lagrum i prosan blir aldrig en källa.
+    const aiText = this.extractText(response)
+    const reply = grounding ? appendCodeBoundSource(aiText, grounding) : aiText
 
     // Spara user + assistant separat så assistant-raden kan få `blocks`
     // (Anthropic ContentBlock[] från final-turn). Backwards-compatible:
