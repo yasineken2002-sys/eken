@@ -29,6 +29,7 @@ import { TenantPortalModule } from '../tenant-portal/tenant-portal.module'
 import { RentIncreasesModule } from '../rent-increases/rent-increases.module'
 import { TerminationsModule } from '../terminations/terminations.module'
 import { DocumentsModule } from '../documents/documents.module'
+import { LegalEmbeddingService } from './knowledge/embedding/legal-embedding.service'
 
 @Module({
   imports: [
@@ -63,7 +64,8 @@ import { DocumentsModule } from '../documents/documents.module'
     AiAuditService,
     TenantAiService,
     TenantToolExecutorService,
+    LegalEmbeddingService,
   ],
-  exports: [AiAssistantService, AiAuditService],
+  exports: [AiAssistantService, AiAuditService, LegalEmbeddingService],
 })
 export class AiModule {}
