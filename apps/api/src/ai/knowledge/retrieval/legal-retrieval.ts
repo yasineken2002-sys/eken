@@ -14,6 +14,13 @@ import { buildLegalChunks, type LegalChunk } from './legal-chunk'
 export interface RetrievedChunk {
   chunk: LegalChunk
   score: number
+  /**
+   * Query-täckning: andelen av frågans sökstammar (efter tesaurus-expansion,
+   * samma ≥4-teckenstammar som BM25 poängsätter) som finns i chunken (0–1).
+   * Relevanssignal för miss-grinden (gap B, PR 2.3b): en hög score med låg
+   * täckning kan vara ett enstaka starkt ord i fel paragraf.
+   */
+  coverage: number
 }
 
 // Vanliga svenska funktionsord som inte bär ämnesinnehåll.
@@ -226,8 +233,17 @@ export function retrieveLegalChunks(query: string, opts?: { topK?: number }): Re
   if (stems.size === 0) return []
 
   const idx = buildIndex()
+  // Samma stam-filter som bm25() använder — täckningen mäter exakt de stammar
+  // som kan bidra till poängen.
+  const scorableStems = [...stems].filter((s) => s.length >= 4)
   return idx.chunks
-    .map((chunk, i) => ({ chunk, score: bm25(idx, i, stems) }))
+    .map((chunk, i) => ({
+      chunk,
+      score: bm25(idx, i, stems),
+      coverage: scorableStems.length
+        ? scorableStems.filter((s) => idx.termFreqs[i]!.has(s)).length / scorableStems.length
+        : 0,
+    }))
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score || a.chunk.paragraph.localeCompare(b.chunk.paragraph))
     .slice(0, topK)

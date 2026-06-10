@@ -14,6 +14,7 @@ export type AiEndpoint =
   | 'weekly-summary'
   | 'monthly-report'
   | 'tenant-chat'
+  | 'legal-judge'
 
 export interface AnthropicUsageBlock {
   input_tokens?: number | null

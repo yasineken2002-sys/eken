@@ -87,6 +87,8 @@ function makeController() {
     enrichDoubleConfirmContext: jest.fn().mockResolvedValue(undefined),
     buildConfirmation: jest.fn().mockReturnValue({ confirmationMessage: 'Bekräfta?', details: {} }),
     recordPendingAction: jest.fn().mockResolvedValue(undefined),
+    // Juridiska grinden (PR 2.3b): null = ej juridisk fråga → ingen grundning.
+    resolveLegalGrounding: jest.fn().mockResolvedValue(null),
   }
   const memoryService = { getMemories: jest.fn().mockResolvedValue('') }
   const dataContext = {

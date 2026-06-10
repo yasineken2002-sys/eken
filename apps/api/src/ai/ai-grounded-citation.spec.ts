@@ -1,16 +1,16 @@
 /**
- * Etapp 2, PR 2.3a — END-TO-END-BEVIS för citat-integriteten (gap A) genom
- * operator-AI:ns båda produktionsvägar (non-stream chat() + SSE streamChat),
- * med mockad Anthropic-klient:
+ * Etapp 2, PR 2.3a + 2.3b — END-TO-END-BEVIS för citat-integriteten (gap A)
+ * och miss-grinden (gap B) genom operator-AI:ns båda produktionsvägar
+ * (non-stream chat() + SSE streamChat), med mockad Anthropic-klient:
  *
- *   • juridisk fråga → verifierad lagtext injiceras som EGET systemblock
- *     (efter cache-breakpointen — invaliderar aldrig det cachade prefixet)
- *   • svaret avslutas med den KOD-BUNDNA källraden, byggd ur de hämtade
- *     chunkarnas metadata INNAN AI:n svarade
- *   • även när den mockade "AI:n" (mot instruktion) hallucinerar ett lagrum i
- *     sin text är den auktoritativa källsektionen exakt den metadata-byggda —
- *     AI-texten kan inte påverka den
- *   • operativ fråga → inget lagtextblock, ingen källrad
+ *   • juridisk fråga med god träff: relevansdomaren (Haiku) tillfrågas, och
+ *     vid JA injiceras verifierad lagtext som EGET systemblock (efter
+ *     cache-breakpointen) + svaret avslutas med den KOD-BUNDNA källraden
+ *   • domaren säger NEJ (eller är otillgänglig): ärligt miss-block injiceras,
+ *     INGEN källrad sätts — det fanns inget att grunda i (fail-safe)
+ *   • deterministiskt svag träff: miss UTAN domaranrop (ingen Haiku-kostnad)
+ *   • hallucinerat lagrum i AI-texten blir ALDRIG den auktoritativa källan
+ *   • operativ fråga → varken domare, lagtextblock eller källrad
  *   • pending actions får aldrig en källrad
  */
 
@@ -40,11 +40,26 @@ jest.mock('@anthropic-ai/sdk', () => ({
 
 import { AiAssistantService } from './ai-assistant.service'
 import { AiAssistantController } from './ai-assistant.controller'
-import { buildLegalGrounding, SOURCE_SUFFIX_MARKER } from './knowledge/grounding/legal-grounding'
+import {
+  evaluateLegalRetrieval,
+  groundLegalCandidate,
+  buildLegalGroundingMiss,
+  SOURCE_SUFFIX_MARKER,
+  type LegalGrounding,
+} from './knowledge/grounding/legal-grounding'
+import { AI_MODELS } from './ai.config'
 
 const LEGAL_QUESTION =
   'Kan jag säga upp min hyresgäst? Hon har ett förstahands-bostadskontrakt och har bott här i ett år.'
+const WEAK_LEGAL_QUESTION = 'Hur stor deposition (säkerhet) får jag kräva av en hyresgäst?'
 const OPERATIONAL_QUESTION = 'Hur många lediga lägenheter har jag?'
+
+/** Förväntad grundning om domaren säger JA (samma byggare som produktionen). */
+function expectedGrounding(question: string): LegalGrounding {
+  const candidate = evaluateLegalRetrieval(question)
+  if (candidate?.outcome !== 'candidate') throw new Error('Frågan är ingen kandidat')
+  return groundLegalCandidate(candidate.retrieved)
+}
 
 /** Den auktoritativa (kod-skrivna) källsektionen = allt efter sista markören. */
 function authoritativeSourceSection(reply: string): string {
@@ -54,8 +69,21 @@ function authoritativeSourceSection(reply: string): string {
 
 // ── Del 1: non-stream chat() ───────────────────────────────────────────────────
 
-function makeService(claudeResponse: unknown) {
-  const create = jest.fn().mockResolvedValue(claudeResponse)
+function makeService(
+  claudeResponse: unknown,
+  opts: { judgeText?: string; judgeError?: boolean } = {},
+) {
+  // Routar per modell: Haiku (AI_MODELS.MEMORY) = relevansdomaren, övriga = chatten.
+  const create = jest.fn().mockImplementation((args: { model: string }) => {
+    if (args.model === AI_MODELS.MEMORY) {
+      if (opts.judgeError) return Promise.reject(new Error('Haiku nere'))
+      return Promise.resolve({
+        content: [{ type: 'text', text: opts.judgeText ?? 'JA' }],
+        usage: { input_tokens: 5, output_tokens: 1 },
+      })
+    }
+    return Promise.resolve(claudeResponse)
+  })
   const prisma = {
     aiConversation: {
       create: jest.fn().mockResolvedValue({
@@ -103,29 +131,35 @@ const textResponse = (text: string) => ({
   usage: { input_tokens: 10, output_tokens: 5 },
 })
 
-describe('chat() — kod-bunden källa på grundade svar', () => {
-  it('juridisk fråga: lagtexten injiceras som eget systemblock efter cache-breakpointen', async () => {
-    const expected = buildLegalGrounding(LEGAL_QUESTION)
-    expect(expected).not.toBeNull()
+/** Plockar ut chat-anropen (icke-domare) ur create-mocken. */
+function chatCalls(create: jest.Mock): Array<{ model: string; system: Array<unknown> }> {
+  return create.mock.calls.map(([args]) => args).filter((a) => a.model !== AI_MODELS.MEMORY)
+}
+function judgeCalls(create: jest.Mock): Array<{ model: string }> {
+  return create.mock.calls.map(([args]) => args).filter((a) => a.model === AI_MODELS.MEMORY)
+}
+
+describe('chat() — kod-bunden källa på grundade svar (domare: JA)', () => {
+  it('juridisk fråga: domaren tillfrågas och lagtexten injiceras som eget systemblock', async () => {
+    const expected = expectedGrounding(LEGAL_QUESTION)
 
     const { service, create } = makeService(textResponse('Hon har förlängningsrätt.'))
     await service.chat('o1', 'u1', 'ADMIN', LEGAL_QUESTION)
 
-    expect(create).toHaveBeenCalledTimes(1)
-    const system = create.mock.calls[0][0].system as Array<{
-      text: string
-      cache_control?: unknown
-    }>
+    expect(judgeCalls(create)).toHaveLength(1)
+    const chats = chatCalls(create)
+    expect(chats).toHaveLength(1)
+    const system = chats[0]!.system as Array<{ text: string; cache_control?: unknown }>
     expect(system).toHaveLength(3)
     // Cache-breakpointen sitter kvar på första blocket; lagtexten ligger sist.
     expect(system[0]!.cache_control).toEqual({ type: 'ephemeral' })
     expect(system[2]!.cache_control).toBeUndefined()
-    expect(system[2]!.text).toBe(expected!.contextBlock)
+    expect(system[2]!.text).toBe(expected.contextBlock)
     expect(system[2]!.text).toContain('VERIFIERAD LAGTEXT')
   })
 
   it('svaret avslutas med den kod-bundna källraden och persisteras med den', async () => {
-    const expected = buildLegalGrounding(LEGAL_QUESTION)!
+    const expected = expectedGrounding(LEGAL_QUESTION)
     const { service, prisma } = makeService(textResponse('Hon har förlängningsrätt.'))
     const res = await service.chat('o1', 'u1', 'ADMIN', LEGAL_QUESTION)
 
@@ -139,7 +173,7 @@ describe('chat() — kod-bunden källa på grundade svar', () => {
   })
 
   it('BEVIS gap A: hallucinerat lagrum i AI-texten blir ALDRIG den auktoritativa källan', async () => {
-    const expected = buildLegalGrounding(LEGAL_QUESTION)!
+    const expected = expectedGrounding(LEGAL_QUESTION)
     const { service } = makeService(
       textResponse('Enligt 999 § hyreslagen (SFS 9999:999) kan du säga upp henne imorgon.'),
     )
@@ -149,16 +183,6 @@ describe('chat() — kod-bunden källa på grundade svar', () => {
     expect(source).toBe(expected.sourceCitation) // exakt metadata-byggd, oavsett AI-text
     expect(source).not.toContain('9999:999')
     expect(source).not.toContain('999 §')
-  })
-
-  it('operativ fråga: inget lagtextblock, ingen källrad', async () => {
-    const { service, create } = makeService(textResponse('Du har 3 lediga lägenheter.'))
-    const res = await service.chat('o1', 'u1', 'ADMIN', OPERATIONAL_QUESTION)
-
-    const system = create.mock.calls[0][0].system as Array<{ text: string }>
-    expect(system).toHaveLength(2)
-    expect(res.reply).toBe('Du har 3 lediga lägenheter.')
-    expect(res.reply).not.toContain(SOURCE_SUFFIX_MARKER)
   })
 
   it('pending action får ALDRIG en källrad (även på juridisk fråga)', async () => {
@@ -180,9 +204,73 @@ describe('chat() — kod-bunden källa på grundade svar', () => {
   })
 })
 
+describe('chat() — MISS-GRINDEN (gap B): svag/fel träff → ärlighet, ingen källrad', () => {
+  it('domaren säger NEJ → miss-block injiceras och INGEN källrad sätts', async () => {
+    const { service, create } = makeService(
+      textResponse('Jag hittar inte den exakta regeln — stäm av med jurist.'),
+      { judgeText: 'NEJ' },
+    )
+    const res = await service.chat('o1', 'u1', 'ADMIN', LEGAL_QUESTION)
+
+    const system = chatCalls(create)[0]!.system as Array<{ text: string }>
+    expect(system).toHaveLength(3)
+    expect(system[2]!.text).toContain('UTAN TILLRÄCKLIGT LAGSTÖD')
+    expect(system[2]!.text).not.toContain('VERIFIERAD LAGTEXT (hämtad')
+    expect(res.reply).not.toContain(SOURCE_SUFFIX_MARKER)
+    expect(res.reply).not.toContain('Detta svar bygger på verifierad lagtext')
+  })
+
+  it('fail-safe: domaren kraschar → miss (hellre jurist-hänvisning än overifierad grund)', async () => {
+    const { service, create } = makeService(textResponse('Det bör en jurist bekräfta.'), {
+      judgeError: true,
+    })
+    const res = await service.chat('o1', 'u1', 'ADMIN', LEGAL_QUESTION)
+
+    const system = chatCalls(create)[0]!.system as Array<{ text: string }>
+    expect(system[2]!.text).toContain('UTAN TILLRÄCKLIGT LAGSTÖD')
+    expect(res.reply).not.toContain(SOURCE_SUFFIX_MARKER)
+  })
+
+  it('fail-safe: ogiltigt domarsvar ("Kanske") → miss', async () => {
+    const { service, create } = makeService(textResponse('Det bör en jurist bekräfta.'), {
+      judgeText: 'Kanske',
+    })
+    const res = await service.chat('o1', 'u1', 'ADMIN', LEGAL_QUESTION)
+    expect((chatCalls(create)[0]!.system as Array<{ text: string }>)[2]!.text).toContain(
+      'UTAN TILLRÄCKLIGT LAGSTÖD',
+    )
+    expect(res.reply).not.toContain(SOURCE_SUFFIX_MARKER)
+  })
+
+  it('deterministiskt svag träff → miss UTAN domaranrop (ingen Haiku-kostnad)', async () => {
+    const { service, create } = makeService(
+      textResponse('Det finns ingen exakt lagregel om depositionens storlek.'),
+    )
+    const res = await service.chat('o1', 'u1', 'ADMIN', WEAK_LEGAL_QUESTION)
+
+    expect(judgeCalls(create)).toHaveLength(0) // steg 1 fällde — steg 2 kostar aldrig
+    const system = chatCalls(create)[0]!.system as Array<{ text: string }>
+    expect(system).toHaveLength(3)
+    expect(system[2]!.text).toContain('UTAN TILLRÄCKLIGT LAGSTÖD')
+    expect(res.reply).not.toContain(SOURCE_SUFFIX_MARKER)
+  })
+
+  it('operativ fråga: varken domare, lagtextblock eller källrad', async () => {
+    const { service, create } = makeService(textResponse('Du har 3 lediga lägenheter.'))
+    const res = await service.chat('o1', 'u1', 'ADMIN', OPERATIONAL_QUESTION)
+
+    expect(judgeCalls(create)).toHaveLength(0)
+    const system = chatCalls(create)[0]!.system as Array<{ text: string }>
+    expect(system).toHaveLength(2)
+    expect(res.reply).toBe('Du har 3 lediga lägenheter.')
+    expect(res.reply).not.toContain(SOURCE_SUFFIX_MARKER)
+  })
+})
+
 // ── Del 2: SSE streamChat ──────────────────────────────────────────────────────
 
-function makeController() {
+function makeController(groundingResult: unknown) {
+  const resolveLegalGrounding = jest.fn().mockResolvedValue(groundingResult)
   const prisma = {
     aiConversation: {
       findFirst: jest.fn().mockResolvedValue(null),
@@ -200,6 +288,7 @@ function makeController() {
         .fn()
         .mockReturnValue({ confirmationMessage: 'Bekräfta?', details: {} }),
       recordPendingAction: jest.fn().mockResolvedValue(undefined),
+      resolveLegalGrounding,
     } as never,
     { getMemories: jest.fn().mockResolvedValue('') } as never,
     {} as never,
@@ -217,7 +306,7 @@ function makeController() {
     { get: jest.fn().mockReturnValue('test-key') } as never,
   )
   const reply = { raw: { writeHead: jest.fn(), write: jest.fn(), end: jest.fn() } }
-  return { controller, prisma, reply }
+  return { controller, prisma, reply, resolveLegalGrounding }
 }
 
 const user = { sub: 'user-1', role: 'ADMIN', organizationId: 'org-1' } as never
@@ -230,7 +319,7 @@ function parseEvents(write: jest.Mock): Array<{ event: string; data: { text?: st
   })
 }
 
-describe('SSE streamChat — kod-bunden källa på grundade svar', () => {
+describe('SSE streamChat — delad grind + kod-bunden källa', () => {
   beforeEach(() => {
     streamCalls.length = 0
     mockFinalMessage.mockReset()
@@ -242,13 +331,16 @@ describe('SSE streamChat — kod-bunden källa på grundade svar', () => {
     })
   })
 
-  it('juridisk fråga: lagtextblock i system + källsuffix som sista delta + persisterat', async () => {
-    const expected = buildLegalGrounding(LEGAL_QUESTION)!
-    const { controller, prisma, reply } = makeController()
+  it('grundad fråga: delad grind anropas, lagtextblock i system + källsuffix som sista delta', async () => {
+    const expected = expectedGrounding(LEGAL_QUESTION)
+    const { controller, prisma, reply, resolveLegalGrounding } = makeController(expected)
 
     await controller.streamChat(LEGAL_QUESTION, undefined, 'org-1', user, reply as never)
 
-    // Systemblocken: cachat prefix + datum + lagtext (sist, utan cache_control).
+    // Exakt samma delade grind som non-stream chat().
+    expect(resolveLegalGrounding).toHaveBeenCalledWith(LEGAL_QUESTION, 'org-1', 'user-1')
+
+    // Systemblocken: cachat prefix + datum + lagtext (sist).
     expect(streamCalls).toHaveLength(1)
     expect(streamCalls[0]!.system).toHaveLength(3)
     expect(streamCalls[0]!.system[2]!.text).toBe(expected.contextBlock)
@@ -269,9 +361,9 @@ describe('SSE streamChat — kod-bunden källa på grundade svar', () => {
   })
 
   it('BEVIS gap A (SSE): hallucinerat lagrum i streamad AI-text ändrar inte källsektionen', async () => {
-    const expected = buildLegalGrounding(LEGAL_QUESTION)!
+    const expected = expectedGrounding(LEGAL_QUESTION)
     streamedText = 'Enligt 999 § hyreslagen (SFS 9999:999) kan du vräka direkt.'
-    const { controller, prisma, reply } = makeController()
+    const { controller, prisma, reply } = makeController(expected)
 
     await controller.streamChat(LEGAL_QUESTION, undefined, 'org-1', user, reply as never)
 
@@ -283,14 +375,38 @@ describe('SSE streamChat — kod-bunden källa på grundade svar', () => {
     expect(source).not.toContain('9999:999')
   })
 
-  it('operativ fråga: inga lagtextblock och inget källsuffix', async () => {
+  it('MISS (gap B, SSE): miss-block injiceras men INGET källsuffix strömmas eller persisteras', async () => {
+    streamedText = 'Jag hittar inte den exakta regeln — det bör en jurist bekräfta.'
+    mockFinalMessage.mockResolvedValue({
+      content: [{ type: 'text', text: streamedText }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 10, output_tokens: 5 },
+    })
+    const miss = buildLegalGroundingMiss('judge-rejected')
+    const { controller, prisma, reply } = makeController(miss)
+
+    await controller.streamChat(LEGAL_QUESTION, undefined, 'org-1', user, reply as never)
+
+    expect(streamCalls[0]!.system).toHaveLength(3)
+    expect(streamCalls[0]!.system[2]!.text).toContain('UTAN TILLRÄCKLIGT LAGSTÖD')
+    const deltas = parseEvents(reply.raw.write as jest.Mock).filter((e) => e.event === 'delta')
+    for (const d of deltas) {
+      expect(d.data.text).not.toContain(SOURCE_SUFFIX_MARKER)
+    }
+    const assistantRow = (prisma.aiMessage.create as jest.Mock).mock.calls
+      .map((c) => c[0].data)
+      .find((d: { role: string }) => d.role === 'assistant')
+    expect(assistantRow.content).not.toContain('Detta svar bygger på verifierad lagtext')
+  })
+
+  it('operativ fråga (grind → null): inga extra systemblock och inget källsuffix', async () => {
     streamedText = 'Du har 3 lediga lägenheter.'
     mockFinalMessage.mockResolvedValue({
       content: [{ type: 'text', text: streamedText }],
       stop_reason: 'end_turn',
       usage: { input_tokens: 10, output_tokens: 5 },
     })
-    const { controller, reply } = makeController()
+    const { controller, reply } = makeController(null)
 
     await controller.streamChat(OPERATIONAL_QUESTION, undefined, 'org-1', user, reply as never)
 
