@@ -1000,10 +1000,29 @@ export class AiAssistantService {
             text: dateContext,
           },
           // Verifierad lagtext (PR 2.3a) eller miss-grindens ärlighetsblock
-          // (PR 2.3b) läggs EFTER cache-breakpointen så den frågespecifika
-          // injektionen aldrig invaliderar det cachade prefixet. Eget
-          // breakpoint för lagtexten utvärderas i PR 2.4 (kostnadsoptimering).
-          ...(grounding ? [{ type: 'text' as const, text: grounding.contextBlock }] : []),
+          // (PR 2.3b) läggs EFTER prefix-breakpointen så den frågespecifika
+          // injektionen aldrig invaliderar det cachade prefixet.
+          //
+          // PR 2.4: blocket har ett EGET cache-breakpoint. Cache-hierarkin
+          // (longest-prefix-matchning, max 4 breakpoints per request) är:
+          //   1. TOOLS (sista verktyget, statiskt)       — befintlig
+          //   2. SYSTEM_PROMPT + portföljdata + minnen   — befintlig
+          //   3. datum + lagtext/miss-block              — NY (denna)
+          // Breakpoint 3 ligger efter 1–2 och kan därför aldrig invalidera
+          // deras prefix. Datumblocket är datum-only (stabilt ≫ 5-min-TTL:n),
+          // så segment 3 återanvänds inom tool-loopen och vid snabba följd-
+          // frågor med samma hämtade paragrafer — cachad läsning kostar ~10 %
+          // av normalpris. Användarens fråga ligger i messages, efter alla
+          // breakpoints, och bryter ingen cache.
+          ...(grounding
+            ? [
+                {
+                  type: 'text' as const,
+                  text: grounding.contextBlock,
+                  cache_control: { type: 'ephemeral' as const },
+                },
+              ]
+            : []),
         ],
         tools: TOOLS,
         messages,
