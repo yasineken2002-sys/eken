@@ -3,12 +3,18 @@ generator client {
   // omitApi: tillåter `omit: { … }` i queries för att utelämna känsliga skalärfält
   // från svaret (t.ex. interna R2-nycklar/message-id som aldrig ska nå klienten).
   // GA i Prisma 6.2; preview på 5.22. Additiv — påverkar inga befintliga queries.
-  previewFeatures = ["omitApi"]
+  // postgresqlExtensions: låter Prisma äga pgvector-extensionen i datasource
+  // (CREATE EXTENSION vector genereras i migrationen). Krävs för Etapp 3:s
+  // semantiska sökning (LegalChunkEmbedding.embedding = vector(1024)).
+  previewFeatures = ["omitApi", "postgresqlExtensions"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // pgvector — lagring av Voyage-embeddings för juridik-RAG:ens semantiska
+  // sökning (Etapp 3). Extensionen tillhandahålls av pgvector/pgvector:pg16.
+  extensions = [vector]
 }
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -3022,4 +3028,47 @@ model ConsumptionCharge {
   @@index([leaseId])
   @@index([status])
   @@index([periodEnd])
+}
+
+// ─── Juridik-RAG: semantisk sökning (Etapp 3) ─────────────────────────────────
+
+/// Lagrad Voyage-embedding per paragraf-chunk i den verifierade lagtexten.
+///
+/// GLOBAL/PUBLIK — INTE org-scopad. Lagtext (LEGAL_KNOWLEDGE) är publik och delas
+/// av alla organisationer; ingen relation till Organization/Tenant och ingen
+/// personuppgift förekommer här. Tabellen är retrieval-infrastruktur, inte domän.
+///
+/// Etapp 3, PR 3.1: BARA lagringen. Tabellen är TOM efter denna migration —
+/// vektorerna fylls av indexerings-scriptet i PR 3.2 (`knowledge:embed`), som är
+/// den första (och enda) plats som anropar Voyage. Inget embeddas här.
+///
+/// Idempotens (PR 3.2): `contentHash` (sha256 av chunk-texten) gör omindexering
+/// billig — bara chunkar vars text ändrats behöver embeddas om. `model` spårar
+/// vilken Voyage-modell vektorn kommer från, så ett modellbyte är upptäckbart.
+model LegalChunkEmbedding {
+  /// Stabil PK = `lawId:paragraph` (t.ex. "hyreslagen:54 a"). Samma nyckel som
+  /// buildLegalChunks() härleder ur LEGAL_KNOWLEDGE — joinen mellan runtime-text
+  /// och lagrad vektor i PR 3.3.
+  id String @id
+
+  /// Spårbarhet — speglar LegalChunk-metadatan (källa: LEGAL_KNOWLEDGE).
+  lawId     String
+  paragraph String
+  sfs       String
+
+  /// sha256 av chunkens fulltext. Idempotensnyckel för PR 3.2:s omindexering.
+  contentHash String
+
+  /// 1024-dim Voyage-embedding (voyage-law-2/voyage-3). Unsupported: Prisma har
+  /// ingen native vector-typ — kolumnen skapas av migrationen, läses via
+  /// $queryRaw i PR 3.3. HNSW-indexet läggs som rå SQL i migrationen (Prisma kan
+  /// inte generera @@index på en Unsupported-kolumn).
+  embedding Unsupported("vector(1024)")
+
+  /// Voyage-modellen vektorn genererades med, t.ex. "voyage-law-2".
+  model String
+
+  createdAt DateTime @default(now())
+
+  @@index([lawId])
 }
