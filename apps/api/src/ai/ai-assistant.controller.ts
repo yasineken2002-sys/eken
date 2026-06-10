@@ -160,7 +160,16 @@ export class AiAssistantController {
         user.sub,
       )
       if (grounding) {
-        systemBlocks.push({ type: 'text', text: grounding.contextBlock })
+        // PR 2.4: eget cache-breakpoint på lagtext-/miss-blocket — samma
+        // hierarki som non-stream callClaude (TOOLS → systemprefix → detta
+        // block; 3 av max 4 breakpoints). Ligger sist i system och kan inte
+        // invalidera prefix-cachet; återanvänds inom tool-loopen och vid
+        // snabba följdfrågor med samma hämtade paragrafer.
+        systemBlocks.push({
+          type: 'text',
+          text: grounding.contextBlock,
+          cache_control: { type: 'ephemeral' },
+        })
       }
 
       // 3. Build message history via gemensam helper som hanterar både

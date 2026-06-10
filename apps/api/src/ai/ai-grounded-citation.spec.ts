@@ -19,7 +19,7 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 // Kontrollerbar fejk-ström för SSE-controllerns `new Anthropic().messages.stream()`.
 const mockFinalMessage = jest.fn()
-const streamCalls: Array<{ system: Array<{ text: string }> }> = []
+const streamCalls: Array<{ system: Array<{ text: string; cache_control?: unknown }> }> = []
 let streamedText = 'Du kan inte säga upp henne fritt — hon har förlängningsrätt.'
 jest.mock('@anthropic-ai/sdk', () => ({
   __esModule: true,
@@ -151,11 +151,16 @@ describe('chat() — kod-bunden källa på grundade svar (domare: JA)', () => {
     expect(chats).toHaveLength(1)
     const system = chats[0]!.system as Array<{ text: string; cache_control?: unknown }>
     expect(system).toHaveLength(3)
-    // Cache-breakpointen sitter kvar på första blocket; lagtexten ligger sist.
+    // Cache-hierarkin (PR 2.4): prefix-breakpointen kvar på första blocket,
+    // lagtextblocket sist med EGET breakpoint, datumblocket emellan ocachat.
     expect(system[0]!.cache_control).toEqual({ type: 'ephemeral' })
-    expect(system[2]!.cache_control).toBeUndefined()
+    expect(system[1]!.cache_control).toBeUndefined()
+    expect(system[2]!.cache_control).toEqual({ type: 'ephemeral' })
     expect(system[2]!.text).toBe(expected.contextBlock)
     expect(system[2]!.text).toContain('VERIFIERAD LAGTEXT')
+    // Max 4 breakpoints per request: TOOLS (1, låst av tool-caching.spec) +
+    // dessa 2 i system = 3 totalt. Fler än 2 i system får aldrig smyga in.
+    expect(system.filter((b) => b.cache_control).length).toBe(2)
   })
 
   it('svaret avslutas med den kod-bundna källraden och persisteras med den', async () => {
@@ -212,10 +217,15 @@ describe('chat() — MISS-GRINDEN (gap B): svag/fel träff → ärlighet, ingen 
     )
     const res = await service.chat('o1', 'u1', 'ADMIN', LEGAL_QUESTION)
 
-    const system = chatCalls(create)[0]!.system as Array<{ text: string }>
+    const system = chatCalls(create)[0]!.system as Array<{
+      text: string
+      cache_control?: unknown
+    }>
     expect(system).toHaveLength(3)
     expect(system[2]!.text).toContain('UTAN TILLRÄCKLIGT LAGSTÖD')
     expect(system[2]!.text).not.toContain('VERIFIERAD LAGTEXT (hämtad')
+    // PR 2.4: även miss-blocket bär breakpointet (samma kodväg som lagtexten).
+    expect(system[2]!.cache_control).toEqual({ type: 'ephemeral' })
     expect(res.reply).not.toContain(SOURCE_SUFFIX_MARKER)
     expect(res.reply).not.toContain('Detta svar bygger på verifierad lagtext')
   })
@@ -260,8 +270,13 @@ describe('chat() — MISS-GRINDEN (gap B): svag/fel träff → ärlighet, ingen 
     const res = await service.chat('o1', 'u1', 'ADMIN', OPERATIONAL_QUESTION)
 
     expect(judgeCalls(create)).toHaveLength(0)
-    const system = chatCalls(create)[0]!.system as Array<{ text: string }>
+    const system = chatCalls(create)[0]!.system as Array<{
+      text: string
+      cache_control?: unknown
+    }>
     expect(system).toHaveLength(2)
+    // Utan grundning finns bara prefix-breakpointet i system (+ TOOLS = 2 totalt).
+    expect(system.filter((b) => b.cache_control).length).toBe(1)
     expect(res.reply).toBe('Du har 3 lediga lägenheter.')
     expect(res.reply).not.toContain(SOURCE_SUFFIX_MARKER)
   })
@@ -340,10 +355,13 @@ describe('SSE streamChat — delad grind + kod-bunden källa', () => {
     // Exakt samma delade grind som non-stream chat().
     expect(resolveLegalGrounding).toHaveBeenCalledWith(LEGAL_QUESTION, 'org-1', 'user-1')
 
-    // Systemblocken: cachat prefix + datum + lagtext (sist).
+    // Systemblocken: cachat prefix + datum + lagtext (sist, eget breakpoint PR 2.4).
     expect(streamCalls).toHaveLength(1)
     expect(streamCalls[0]!.system).toHaveLength(3)
     expect(streamCalls[0]!.system[2]!.text).toBe(expected.contextBlock)
+    expect(streamCalls[0]!.system[0]!.cache_control).toEqual({ type: 'ephemeral' })
+    expect(streamCalls[0]!.system[2]!.cache_control).toEqual({ type: 'ephemeral' })
+    expect(streamCalls[0]!.system.filter((b) => b.cache_control).length).toBe(2)
 
     // Källsuffixet skickas som ett sista delta (skrivet av KOD, efter AI-texten).
     const events = parseEvents(reply.raw.write as jest.Mock)
