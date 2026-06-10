@@ -2,7 +2,11 @@ version: '3.9'
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector/pgvector:pg16 = stock PostgreSQL 16 + pgvector-extensionen
+    # förinstallerad. Drop-in mot postgres:16-alpine (samma PG16-datakatalog,
+    # befintlig postgres_data-volym återanvänds). Krävs för LegalChunkEmbedding
+    # (Etapp 3): CREATE EXTENSION vector + vector(1024)-kolumn + HNSW-index.
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_DB: eken_dev
