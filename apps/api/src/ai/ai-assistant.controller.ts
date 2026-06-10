@@ -29,6 +29,7 @@ import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
 import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { buildLegalGrounding, formatSourceSuffix } from './knowledge/grounding/legal-grounding'
 import { ChatDto, CHAT_MESSAGE_MAX_LENGTH } from './dto/chat.dto'
 import { ConfirmActionDto } from './dto/confirm-action.dto'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
@@ -146,6 +147,15 @@ export class AiAssistantController {
         },
         { type: 'text', text: dateContext },
       ]
+
+      // Juridisk grundning (Etapp 2, PR 2.3a) — samma väg som non-stream chat():
+      // juridisk fråga → verifierad lagtext injiceras som eget systemblock EFTER
+      // cache-breakpointen (invaliderar aldrig det cachade prefixet). Käll-
+      // hänvisningen binds av kod ur chunk-metadata efter avslutad stream (gap A).
+      const grounding = buildLegalGrounding(message)
+      if (grounding) {
+        systemBlocks.push({ type: 'text', text: grounding.contextBlock })
+      }
 
       // 3. Build message history via gemensam helper som hanterar både
       //    blocks-fallback (FAS 3) och sliding window för långa konversationer
@@ -287,6 +297,16 @@ export class AiAssistantController {
           { role: 'user', content: toolResultBlocks },
         ]
         iterations++
+      }
+
+      // CITAT-INTEGRITET (gap A): på ett avslutat, grundat textsvar appendar
+      // KODEN den auktoritativa källhänvisningen — byggd ur de hämtade
+      // chunkarnas metadata innan AI:n svarade — som ett sista delta. AI:ns
+      // strömmade text kan aldrig påverka källraden. Aldrig på pending actions.
+      if (!pendingAction && grounding && assistantText) {
+        const sourceSuffix = formatSourceSuffix(grounding)
+        assistantText += sourceSuffix
+        send('delta', { text: sourceSuffix })
       }
 
       // 5. Logga kostnad
