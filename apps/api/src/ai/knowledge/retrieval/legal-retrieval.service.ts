@@ -1,14 +1,15 @@
 /**
- * Hybrid-retrieval över den verifierade lagtexten (Etapp 3, PR 3.3a):
+ * Hybrid-retrieval över den verifierade lagtexten (Etapp 3, PR 3.3a + 3.3b):
  * BM25 (lexikal kanal, i minnet) + Voyage/pgvector (semantisk kanal) fuserade
  * med Reciprocal Rank Fusion — ENBART för ordningen av kandidaterna.
  *
- * BÄRANDE INVARIANT (gap B orörd i 3.3a): resultatet bär `lexical` och `fused`
- * SEPARAT. Miss-grindens golv (legal-grounding.ts) läser BARA `lexical` — den
- * är bit-för-bit identisk med dagens retrieveLegalChunks(query, {topK: 3}).
- * Den fuserade listan kan per konstruktion inte ändra ett grindutfall; den
- * ändrar bara VILKA chunkar relevansdomaren och grundningen ser när grinden
- * redan släppt igenom en kandidat. Cosine-grindkanalen är PR 3.3b.
+ * BÄRANDE INVARIANT (gap B): resultatet bär KANAL-RENA grindsignaler SEPARAT
+ * från fused-ordningen. Miss-grindens BM25-golv (legal-grounding.ts) läser
+ * BARA `lexical` — bit-för-bit identisk med retrieveLegalChunks(query,
+ * {topK: 3}); cosine-golvet (3.3b) läser BARA `semanticTopCosine` (bästa
+ * giltiga pgvector-träffens cosine). Den fuserade listan kan per konstruktion
+ * inte ändra ett grindutfall; den ändrar bara VILKA chunkar relevansdomaren
+ * och grundningen ser när grinden redan släppt in en kandidat.
  *
  * GDPR-INVARIANT (query-PII): retrieve() tar ENBART `query: string` och
  * klassens enda deps är PrismaService + LegalEmbeddingService — ingen
@@ -88,16 +89,23 @@ export class LegalRetrievalService {
       this.logger.warn(
         `Semantisk kanal otillgänglig — BM25-only fallback: ${err instanceof Error ? err.message : String(err)}`,
       )
-      return { lexical, fused: lexical }
+      return { lexical, fused: lexical, semanticTopCosine: null }
     }
     if (semantic.length === 0) {
       this.logger.warn(
         'Semantisk kanal gav 0 giltiga träffar (tom/stale LegalChunkEmbedding?) — BM25-only fallback',
       )
-      return { lexical, fused: lexical }
+      return { lexical, fused: lexical, semanticTopCosine: null }
     }
 
-    return { lexical, fused: this.fuse(query, semantic) }
+    // Toppsignalen till cosine-golvet (3.3b): bästa GILTIGA träffens cosine.
+    // semanticChannel bevarar pgvector-ordningen (närmast först), så [0] är
+    // kanalens topp efter stale-hash-vakten.
+    return {
+      lexical,
+      fused: this.fuse(query, semantic),
+      semanticTopCosine: semantic[0]!.cosine,
+    }
   }
 
   /**

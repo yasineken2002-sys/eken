@@ -21,6 +21,7 @@
     "db:seed:properties": "ts-node prisma/seed-properties.ts",
     "knowledge:generate": "ts-node scripts/generate-legal-knowledge.ts",
     "knowledge:embed": "node --env-file-if-exists=.env -r ts-node/register scripts/embed-legal-knowledge.ts",
+    "knowledge:eval": "node --env-file-if-exists=.env -r ts-node/register scripts/eval-legal-knowledge.ts",
     "db:studio": "prisma studio"
   },
   "dependencies": {

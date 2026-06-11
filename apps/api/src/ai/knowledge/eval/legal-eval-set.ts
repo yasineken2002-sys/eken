@@ -244,11 +244,18 @@ export const LEGAL_EVAL_SET: LegalEvalCase[] = [
     category: 'tvist',
     question:
       'Hyresgästen har byggt en altan på gården utan lov och vägrar ta bort den. Kan jag säga upp henne?',
-    expectedSources: [{ lawId: 'hyreslagen', paragraphs: ['24'] }],
+    expectedSources: [{ lawId: 'hyreslagen', paragraphs: ['24', '42'] }],
     expectedAnswerCore:
       'Frågan rör hyresgästens vårdplikt och eventuellt förverkande, men utgången är starkt beroende av omständigheterna och en skälighetsbedömning. Detta är en tolkningsfråga.',
     shouldRecommendJurist: true,
     expectedOutcome: 'needs-jurist',
+    note:
+      'Facit vidgat §24 → §24+§42 (juristbedömt 2026-06-11): frågan gäller UPPSÄGNING, ' +
+      '§24 är grundnormen (vårdplikt) men säger inget om uppsägning — den vägen går via ' +
+      '§42 (förverkande), närmast p.9 (vanvård på annat sätt). §42 är därför korrekt ' +
+      'källa, inte bara försvarbar. MEN förverkande är inte automatiskt: p.9 kräver ' +
+      'rättelse efter uppmaning, och sista stycket undantar ringa betydelse — därav ' +
+      'needs-jurist (skälighetsbedömning).',
   },
   {
     id: 'agandeform-skatt-paketering',

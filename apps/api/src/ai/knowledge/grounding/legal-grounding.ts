@@ -124,27 +124,63 @@ const MIN_TOP_SCORE = 10
 const LOW_SCORE_BAND = 12
 const MIN_COVERAGE_IN_BAND = 0.4
 
+// ── Steg 1b: cosine-golvet — semantiska kanalens insläpp (PR 3.3b) ────────────
+//
+// "(a)+"-grinden: BM25-golven ovan är BIT-FÖR-BIT ORÖRDA. Semantiska kanalen
+// får SLÄPPA IN en kandidat som BM25-golven hade fällt, endast om kanalens
+// toppsignal (semanticTopCosine — bästa giltiga pgvector-träff) når detta
+// golv. En fråga går alltså MISS→kandidat bara via BM25-golven ELLER detta
+// golv — och VARJE kandidat måste fortfarande godkännas av relevansdomaren
+// (steg 2). Insläppet är monotont: cosine kan aldrig göra en BM25-godkänd
+// kandidat till miss.
+//
+// Uppmätt (topp-cosine, voyage-4, riktiga query-embeddings, 2026-06-11):
+//   Ska släppas in (BM25-miss idag):  kontrakt-tidsbestamt        0.548 ← lägst
+//                                     hyressattning-bruksvarde    0.584
+//                                     hyresgastval-diskriminering 0.592
+//                                     hyreshojning-formkrav       0.603
+//   Ska INTE släppas in:              altan-referens (kandidat)   0.498
+//                                     agandeform-skatt            0.488 (ej-juridisk ändå)
+//                                     nonsens "blorptaxa"         0.367
+//                                     nonsens "hej hej tjena"     0.167
+// Golvet ligger mitt i det uppmätta gapet 0.498–0.548. OBS deposition-storlek
+// (0.605) ligger ÖVER golvet och är INTE separerbar här — den släpps in som
+// kandidat och fälls av domaren (§22/§28 saknar storleksregel → NEJ → miss),
+// exakt som de lexikalt starka felträffarna ovan. Verifieras av knowledge:eval.
+const MIN_TOP_COSINE = 0.52
+
 /**
- * Steg 1 i miss-grinden över ett färdigt retrieval-resultat (PR 3.3a-sömmen).
- * Golven läser ENBART den LEXIKALA kanalen — `retrieval.fused` (RRF-ordningen
- * från den semantiska kanalen) kan per konstruktion inte ändra ett grindutfall:
- *   - no-hits  = lexical tom (även om semantiken hittade något),
- *   - weak     = lexical[0] under golven,
- * exakt som före hybrid-retrievalen. Passerar grinden blir `fused` kandidaterna
- * som relevansdomaren (steg 2) och grundningen ser — det är HELA skillnaden.
- * Returnerar ALDRIG en färdig grundning — kandidaten måste passera domaren.
+ * Steg 1 i miss-grinden över ett färdigt retrieval-resultat (3.3a-sömmen,
+ * 3.3b-cosineinsläppet). Golven läser KANAL-RENA signaler — `retrieval.fused`
+ * (RRF-ordningen) kan per konstruktion inte ändra ett grindutfall:
+ *   - kandidat = BM25-golven passerade (orörda sedan 2.3b) ELLER
+ *                semanticTopCosine ≥ MIN_TOP_COSINE (3.3b),
+ *   - no-hits  = båda kanalerna under golv och lexical tom,
+ *   - weak     = båda kanalerna under golv men lexical fanns.
+ * semanticTopCosine === null (kanal nere) → bit-för-bit 2.3b-beteende.
+ * Passerar grinden blir `fused` kandidaterna som relevansdomaren (steg 2) och
+ * grundningen ser. Returnerar ALDRIG en färdig grundning — kandidaten måste
+ * passera domaren.
  */
 export function evaluateLegalCandidate(
   message: string,
   retrieval: HybridLegalRetrieval,
 ): LegalRetrievalCandidate {
   if (!isLegalQuestion(message)) return null
-  if (retrieval.lexical.length === 0) return { outcome: 'miss', reason: 'no-hits' }
 
-  const top = retrieval.lexical[0]!
-  const tooWeak =
-    top.score < MIN_TOP_SCORE || (top.score < LOW_SCORE_BAND && top.coverage < MIN_COVERAGE_IN_BAND)
-  if (tooWeak) return { outcome: 'miss', reason: 'weak-retrieval' }
+  const top = retrieval.lexical[0]
+  const lexicalPass =
+    top !== undefined &&
+    top.score >= MIN_TOP_SCORE &&
+    !(top.score < LOW_SCORE_BAND && top.coverage < MIN_COVERAGE_IN_BAND)
+  const semanticPass =
+    retrieval.semanticTopCosine !== null && retrieval.semanticTopCosine >= MIN_TOP_COSINE
+
+  if (!lexicalPass && !semanticPass) {
+    return retrieval.lexical.length === 0
+      ? { outcome: 'miss', reason: 'no-hits' }
+      : { outcome: 'miss', reason: 'weak-retrieval' }
+  }
 
   return {
     outcome: 'candidate',
@@ -155,14 +191,14 @@ export function evaluateLegalCandidate(
 /**
  * Steg 1 i miss-grinden, ren BM25-väg (utan semantisk kanal): kör lexikal
  * retrieval och bedöm deterministiskt. Samma golvlogik som
- * evaluateLegalCandidate — en enda golvkälla, bit-för-bit samma utfall som
- * före PR 3.3a. Används av specar/eval och är fallback-beteendet när den
- * semantiska kanalen är nere.
+ * evaluateLegalCandidate med semanticTopCosine = null — en enda golvkälla,
+ * bit-för-bit samma utfall som före Etapp 3. Används av specar/eval och är
+ * fallback-beteendet när den semantiska kanalen är nere.
  */
 export function evaluateLegalRetrieval(message: string): LegalRetrievalCandidate {
   if (!isLegalQuestion(message)) return null
   const lexical = retrieveLegalChunks(message, { topK: GROUNDING_TOP_K })
-  return evaluateLegalCandidate(message, { lexical, fused: lexical })
+  return evaluateLegalCandidate(message, { lexical, fused: lexical, semanticTopCosine: null })
 }
 
 /**

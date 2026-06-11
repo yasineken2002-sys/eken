@@ -27,8 +27,16 @@ import { LegalEmbeddingService } from '../src/ai/knowledge/embedding/legal-embed
 import { VOYAGE_EMBEDDINGS } from '../src/ai/ai.config'
 
 // Voyage tar flera texter per anrop. Chunkarna är korta paragrafer, så en rimlig
-// batch sparar kvot utan att slå i token-/storlekstaket. Sänk vid behov.
-const BATCH_SIZE = 100
+// batch sparar kvot utan att slå i token-/storlekstaket. Konfigurerbar via env:
+// vid Voyage-incidenten 2026-06-11 skeddade deras servrar stora batchar (503/
+// häng) medan småanrop gick igenom — EMBED_BATCH_SIZE=1 var räddningen.
+const BATCH_SIZE = Math.max(1, Number(process.env.EMBED_BATCH_SIZE ?? 100) || 100)
+
+// Retry per Voyage-anrop: ett transient 503 ska backa och försöka om — ALDRIG
+// fälla hela körningen (lärdom 2026-06-11). Ihärdiga fel kastar till slut;
+// contentHash-idempotensen gör omkörning säker oavsett.
+const EMBED_RETRIES = 8
+const RETRY_BACKOFF_MS = 5_000
 
 // voyage-4 listpris (verifiera mot voyageai.com — kan ändras; dessutom 200M
 // tokens gratis/konto, så indexeringen är i praktiken kostnadsfri). Endast för
@@ -39,6 +47,28 @@ function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = []
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
   return out
+}
+
+/** Embedda med retry/backoff — transienta Voyage-fel fäller inte körningen. */
+async function embedWithRetry(
+  embedder: LegalEmbeddingService,
+  texts: string[],
+  label: string,
+): Promise<{ vectors: number[][]; totalTokens: number }> {
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= EMBED_RETRIES; attempt++) {
+    try {
+      return await embedder.embed(texts, 'document')
+    } catch (err) {
+      lastErr = err
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(
+        `[embed] ${label}: ${msg.slice(0, 120)} — retry ${attempt}/${EMBED_RETRIES} om ${RETRY_BACKOFF_MS / 1000}s`,
+      )
+      await new Promise((res) => setTimeout(res, RETRY_BACKOFF_MS))
+    }
+  }
+  throw lastErr
 }
 
 async function main(): Promise<void> {
@@ -80,8 +110,12 @@ async function main(): Promise<void> {
       const batch = batches[b]!
       const texts = batch.map((x) => x.chunk.text)
       // input_type 'document': dessa texter LAGRAS och söks i (queryn embeddas
-      // som 'query' i PR 3.3).
-      const { vectors, totalTokens: batchTokens } = await embedder.embed(texts, 'document')
+      // som 'query' i runtime-retrieval, PR 3.3a).
+      const { vectors, totalTokens: batchTokens } = await embedWithRetry(
+        embedder,
+        texts,
+        `batch ${b + 1}/${batches.length}`,
+      )
       totalTokens += batchTokens
 
       for (let i = 0; i < batch.length; i++) {
