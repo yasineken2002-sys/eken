@@ -70,6 +70,7 @@ function makeService() {
     {} as never,
     {} as never,
     {} as never,
+    {} as never, // legalRetrieval — nås aldrig (inga juridiska frågor i denna spec)
   )
 }
 

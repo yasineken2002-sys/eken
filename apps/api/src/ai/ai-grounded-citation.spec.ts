@@ -40,6 +40,7 @@ jest.mock('@anthropic-ai/sdk', () => ({
 
 import { AiAssistantService } from './ai-assistant.service'
 import { AiAssistantController } from './ai-assistant.controller'
+import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.service'
 import {
   evaluateLegalRetrieval,
   groundLegalCandidate,
@@ -120,6 +121,12 @@ function makeService(
       checkUserDailyCostCap: jest.fn().mockResolvedValue(undefined),
     } as never,
     {} as never,
+    // RIKTIG LegalRetrievalService med kastande embedder → BM25-only-fallback
+    // (fused === lexical): exakt beteendet före PR 3.3a, deterministiskt, inget nät.
+    new LegalRetrievalService(
+      {} as never,
+      { embed: jest.fn().mockRejectedValue(new Error('inget Voyage i test')) } as never,
+    ),
   )
   ;(service as unknown as { client: unknown }).client = { messages: { create } }
   return { service, create, prisma }

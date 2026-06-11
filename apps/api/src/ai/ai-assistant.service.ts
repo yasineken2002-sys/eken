@@ -20,7 +20,8 @@ import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
 import { AI_MODELS } from './ai.config'
 import { detectLegalDocumentWarning } from './legal-document-warning'
 import {
-  evaluateLegalRetrieval,
+  isLegalQuestion,
+  evaluateLegalCandidate,
   groundLegalCandidate,
   buildLegalGroundingMiss,
   buildRelevanceJudgePrompt,
@@ -28,6 +29,7 @@ import {
   appendCodeBoundSource,
   type LegalGroundingResult,
 } from './knowledge/grounding/legal-grounding'
+import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.service'
 
 const MAX_TOKENS = 2048
 
@@ -504,6 +506,7 @@ export class AiAssistantService {
     private readonly usage: AiUsageService,
     private readonly quota: AiQuotaService,
     private readonly audit: AiAuditService,
+    private readonly legalRetrieval: LegalRetrievalService,
   ) {
     this.client = new Anthropic({
       apiKey: this.configService.get<string>('ANTHROPIC_API_KEY', ''),
@@ -799,8 +802,14 @@ export class AiAssistantService {
    * Tvåstegsgrinden för juridisk grundning (Etapp 2, PR 2.3b). Delas av
    * non-stream chat() och SSE-controllern så vägarna aldrig driftar isär.
    *
-   *   Steg 1 (deterministisk, evaluateLegalRetrieval): ej juridisk → null;
-   *     ingen/svag träff → MISS direkt (inget domaranrop, ingen kostnad).
+   *   Steg 0 (heuristik, isLegalQuestion): ej juridisk → null FÖRE retrieval —
+   *     operativa meddelanden triggar aldrig ett Voyage-anrop (query-PII +
+   *     kostnad).
+   *   Steg 1 (deterministisk, evaluateLegalCandidate över hybrid-retrieval,
+   *     PR 3.3a): golven läser ENBART den lexikala kanalen — identiskt
+   *     grindutfall som före hybriden; ingen/svag träff → MISS direkt (inget
+   *     domaranrop, ingen kostnad). RRF-fusionen påverkar bara VILKA chunkar
+   *     en godkänd kandidat bär till domaren.
    *   Steg 2 (semantisk): Haiku-relevansdomaren avgör om kandidat-paragraferna
    *     innehåller den materiella regel frågan gäller. JA → grundning med
    *     kod-bunden källa (gap A, oförändrad från 2.3a). NEJ/fel/ogiltigt svar
@@ -812,7 +821,9 @@ export class AiAssistantService {
     organizationId: string,
     userId: string,
   ): Promise<LegalGroundingResult> {
-    const candidate = evaluateLegalRetrieval(message)
+    if (!isLegalQuestion(message)) return null
+    const retrieval = await this.legalRetrieval.retrieve(message)
+    const candidate = evaluateLegalCandidate(message, retrieval)
     if (candidate === null) return null
     if (candidate.outcome === 'miss') return buildLegalGroundingMiss(candidate.reason)
 

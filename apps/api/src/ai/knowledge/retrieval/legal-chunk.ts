@@ -9,6 +9,7 @@
  *
  * Ingen AI, ingen modell — ren textbearbetning.
  */
+import { createHash } from 'crypto'
 import { LEGAL_KNOWLEDGE } from '../legal-knowledge'
 
 export interface LegalChunk {
@@ -53,6 +54,17 @@ export function legalChunkId(chunk: LegalChunk): string {
   return chunk.chapter
     ? `${chunk.lawId}:${chunk.chapter}:${chunk.paragraph}`
     : `${chunk.lawId}:${chunk.paragraph}`
+}
+
+/**
+ * sha256-hex av en chunks fulltext — idempotensnyckeln för indexeringen
+ * (`knowledge:embed`, PR 3.2) OCH stale-hash-vaktens jämförelsenyckel i
+ * runtime-retrieval (PR 3.3a). EN sanningskälla: matchar lagrad
+ * LegalChunkEmbedding.contentHash inte denna hash är vektorn beräknad på en
+ * äldre lydelse och får inte användas.
+ */
+export function legalChunkContentHash(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex')
 }
 
 let cache: LegalChunk[] | null = null

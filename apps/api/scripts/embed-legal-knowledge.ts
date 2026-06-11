@@ -16,10 +16,13 @@
  * GDPR: endast publik lagtext (LEGAL_KNOWLEDGE) skickas till Voyage. Embedding-
  * wrappern (LegalEmbeddingService) tar bara strängar och kan inte läsa kunddata.
  */
-import { createHash } from 'crypto'
 import { PrismaClient } from '@prisma/client'
 import { ConfigService } from '@nestjs/config'
-import { buildLegalChunks, legalChunkId } from '../src/ai/knowledge/retrieval/legal-chunk'
+import {
+  buildLegalChunks,
+  legalChunkId,
+  legalChunkContentHash,
+} from '../src/ai/knowledge/retrieval/legal-chunk'
 import { LegalEmbeddingService } from '../src/ai/knowledge/embedding/legal-embedding.service'
 import { VOYAGE_EMBEDDINGS } from '../src/ai/ai.config'
 
@@ -31,10 +34,6 @@ const BATCH_SIZE = 100
 // tokens gratis/konto, så indexeringen är i praktiken kostnadsfri). Endast för
 // en grov kostnadsuppskattning i loggen, ingen affärslogik.
 const USD_PER_MILLION_TOKENS = 0.06
-
-function contentHash(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex')
-}
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = []
@@ -58,7 +57,7 @@ async function main(): Promise<void> {
     const existingById = new Map(existing.map((e) => [e.id, e]))
 
     const toEmbed = chunks
-      .map((c) => ({ chunk: c, id: legalChunkId(c), hash: contentHash(c.text) }))
+      .map((c) => ({ chunk: c, id: legalChunkId(c), hash: legalChunkContentHash(c.text) }))
       .filter(({ id, hash }) => {
         const prev = existingById.get(id)
         // (Om)embedda om: ny chunk, ändrad text, eller bytt modell.
