@@ -27,24 +27,34 @@ export interface RetrievedChunk {
   coverage: number
   /**
    * Cosine-likhet (0–1) från den semantiska kanalen (PR 3.3a). Satt ENDAST när
-   * chunken hämtades via pgvector — ren observabilitet/råsignal i 3.3a; grinden
-   * läser den inte (cosine-grindkanalen är PR 3.3b).
+   * chunken hämtades via pgvector. Observabilitet/råsignal per chunk —
+   * grindens cosine-golv (PR 3.3b) läser KANALENS toppsignal
+   * (HybridLegalRetrieval.semanticTopCosine), inte detta fält.
    */
   cosine?: number
 }
 
 /**
- * Hybrid-retrievalens kontrakt (Etapp 3, PR 3.3a — produceras av
+ * Hybrid-retrievalens kontrakt (Etapp 3, PR 3.3a + 3.3b — produceras av
  * LegalRetrievalService). De två kanalerna bärs SEPARAT som bärande invariant:
- * gap B-grindens golv läser BARA `lexical` (bit-för-bit dagens BM25-topp-3) —
- * den fuserade ordningen kan per konstruktion inte ändra ett grindutfall, bara
- * vilka chunkar domaren/grundningen ser för en redan godkänd kandidat.
+ * grindens golv läser KANAL-RENA signaler — BM25-golven läser `lexical`
+ * (bit-för-bit dagens BM25-topp-3) och cosine-golvet (3.3b) läser
+ * `semanticTopCosine`. Den FUSERADE ordningen kan per konstruktion inte ändra
+ * ett grindutfall — den styr bara vilka chunkar domaren/grundningen ser för en
+ * redan insläppt kandidat.
  */
 export interface HybridLegalRetrieval {
-  /** BM25-kanalen, identisk med retrieveLegalChunks(query, {topK: 3}) — grindens ENDA signalkälla. */
+  /** BM25-kanalen, identisk med retrieveLegalChunks(query, {topK: 3}) — BM25-golvens signalkälla. */
   lexical: RetrievedChunk[]
   /** RRF-fuserad topp-3 — kandidaterna till domare/grundning. === lexical när semantiska kanalen är nere. */
   fused: RetrievedChunk[]
+  /**
+   * Semantiska kanalens toppsignal: cosine för bästa GILTIGA pgvector-träff
+   * (efter stale-hash-vakten), oavsett fused-ordning. null = kanalen
+   * nere/tom — grinden är då bit-för-bit identisk med ren BM25-väg.
+   * Cosine-golvets (PR 3.3b) ENDA signalkälla.
+   */
+  semanticTopCosine: number | null
 }
 
 // Vanliga svenska funktionsord som inte bär ämnesinnehåll.

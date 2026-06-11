@@ -38,6 +38,12 @@ import { LEGAL_EVAL_SET } from '../eval/legal-eval-set'
 const BESITTNING_FRAGA =
   'Kan jag säga upp min hyresgäst? Hon har ett förstahands-bostadskontrakt och har bott här i ett år.'
 
+function caseById(id: string) {
+  const found = LEGAL_EVAL_SET.find((c) => c.id === id)
+  if (!found) throw new Error(`Okänt eval-fall: ${id}`)
+  return found
+}
+
 /** Hämtar en verklig chunk (med korrekt runtime-hash) ur LEGAL_KNOWLEDGE. */
 function chunkFor(lawId: string, paragraph: string) {
   const chunk = buildLegalChunks().find((c) => c.lawId === lawId && c.paragraph === paragraph)
@@ -201,18 +207,22 @@ describe('LegalRetrievalService (Etapp 3, PR 3.3a)', () => {
     })
   })
 
-  describe('Gap B IDENTISK: fused kan per konstruktion inte ändra ett grindutfall', () => {
-    it('adversariell fused-lista ger samma steg 1-utfall som BM25-vägen för HELA eval-setet', () => {
+  describe('Gap B: fused kan per konstruktion inte ändra ett grindutfall (kanal-rena signaler)', () => {
+    it('kanal nere (semanticTopCosine null) + adversariell fused → identiskt med BM25-vägen, hela eval-setet', () => {
       // Adversariell: en semantik-only träff med score 0 men maximal cosine
       // ÖVERST i fused. Om grinden läste fused vore detta no-hits/weak — den
-      // läser lexical och utfallet är identiskt med evaluateLegalRetrieval.
+      // läser kanalsignalerna och utfallet är identiskt med evaluateLegalRetrieval.
       const adversarialFused = [
         { chunk: chunkFor('hyreslagen', '1'), score: 0, coverage: 0, cosine: 0.999 },
       ]
       for (const c of LEGAL_EVAL_SET) {
         const lexical = retrieveLegalChunks(c.question, { topK: GROUNDING_TOP_K })
         const baseline = evaluateLegalRetrieval(c.question)
-        const hybrid = evaluateLegalCandidate(c.question, { lexical, fused: adversarialFused })
+        const hybrid = evaluateLegalCandidate(c.question, {
+          lexical,
+          fused: adversarialFused,
+          semanticTopCosine: null,
+        })
 
         if (baseline === null || baseline.outcome === 'miss') {
           // null/miss: HELA utfallet identiskt (ingen kandidat byggs ur fused).
@@ -228,18 +238,119 @@ describe('LegalRetrievalService (Etapp 3, PR 3.3a)', () => {
       }
     })
 
-    it('semantiska träffar kan inte rädda en lexikal no-hit (grinden läser lexical)', () => {
+    it('cosine i fused-chunkar (utan kanalsignal) kan inte rädda en lexikal no-hit', () => {
       const fused = [{ chunk: chunkFor('hyreslagen', '45'), score: 0, coverage: 0, cosine: 0.99 }]
-      const result = evaluateLegalCandidate('Är blorptaxa laglig?', { lexical: [], fused })
+      const result = evaluateLegalCandidate('Är blorptaxa laglig?', {
+        lexical: [],
+        fused,
+        semanticTopCosine: null,
+      })
       expect(result).toEqual({ outcome: 'miss', reason: 'no-hits' })
     })
 
     it('tom fused faller tillbaka på lexical som kandidatkälla (aldrig tom kandidat)', () => {
       const lexical = retrieveLegalChunks(BESITTNING_FRAGA, { topK: GROUNDING_TOP_K })
-      const result = evaluateLegalCandidate(BESITTNING_FRAGA, { lexical, fused: [] })
+      const result = evaluateLegalCandidate(BESITTNING_FRAGA, {
+        lexical,
+        fused: [],
+        semanticTopCosine: null,
+      })
       expect(result?.outcome).toBe('candidate')
       if (result?.outcome !== 'candidate') return
       expect(result.retrieved).toEqual(lexical)
+    })
+  })
+
+  describe('Cosine-golvet (PR 3.3b): semantiskt insläpp — monotont, kalibrerat, fail-safe', () => {
+    const weakCase = caseById('hyreshojning-formkrav') // BM25 7.49 → weak-retrieval idag
+    const weakLexical = () => retrieveLegalChunks(weakCase.question, { topK: GROUNDING_TOP_K })
+    const fusedWithRight = [
+      { chunk: chunkFor('hyreslagen', '54 a'), score: 4.2, coverage: 0.5, cosine: 0.603 },
+    ]
+
+    it('cosine ≥ golvet släpper in en BM25-svag fråga som kandidat (med fused som kandidatkälla)', () => {
+      const result = evaluateLegalCandidate(weakCase.question, {
+        lexical: weakLexical(),
+        fused: fusedWithRight,
+        semanticTopCosine: 0.603, // uppmätt för hyreshojning-formkrav
+      })
+      expect(result?.outcome).toBe('candidate')
+      if (result?.outcome !== 'candidate') return
+      expect(result.retrieved).toEqual(fusedWithRight)
+    })
+
+    it('cosine UNDER golvet ändrar ingenting: BM25-svag förblir weak-retrieval', () => {
+      const result = evaluateLegalCandidate(weakCase.question, {
+        lexical: weakLexical(),
+        fused: fusedWithRight,
+        semanticTopCosine: 0.498, // uppmätt referensband (altan/skatt/nonsens ligger ≤ här)
+      })
+      expect(result).toEqual({ outcome: 'miss', reason: 'weak-retrieval' })
+    })
+
+    it('cosine ≥ golvet kan släppa in även en lexikal no-hit (semantik-only kandidat)', () => {
+      const fused = [{ chunk: chunkFor('hyreslagen', '45'), score: 0, coverage: 0, cosine: 0.6 }]
+      const result = evaluateLegalCandidate('Är blorptaxa laglig?', {
+        lexical: [],
+        fused,
+        semanticTopCosine: 0.6,
+      })
+      expect(result?.outcome).toBe('candidate')
+    })
+
+    it('MONOTONT: hög cosine kan aldrig göra en BM25-godkänd kandidat till miss — hela eval-setet', () => {
+      for (const c of LEGAL_EVAL_SET) {
+        const baseline = evaluateLegalRetrieval(c.question)
+        const lexical = retrieveLegalChunks(c.question, { topK: GROUNDING_TOP_K })
+        const withHighCosine = evaluateLegalCandidate(c.question, {
+          lexical,
+          fused: lexical,
+          semanticTopCosine: 0.999,
+        })
+        const withLowCosine = evaluateLegalCandidate(c.question, {
+          lexical,
+          fused: lexical,
+          semanticTopCosine: 0.4,
+        })
+        // Under golvet: bit-för-bit identiskt med baslinjen.
+        expect({ id: c.id, result: withLowCosine }).toEqual({ id: c.id, result: baseline })
+        // Över golvet: ej-juridisk förblir null; kandidat förblir kandidat;
+        // miss får BARA bli kandidat (aldrig tvärtom).
+        if (baseline === null) {
+          expect({ id: c.id, result: withHighCosine }).toEqual({ id: c.id, result: null })
+        } else {
+          expect({ id: c.id, outcome: withHighCosine?.outcome }).toEqual({
+            id: c.id,
+            outcome: 'candidate',
+          })
+        }
+      }
+    })
+
+    it('ej-juridisk fråga släpps ALDRIG in av cosine (isLegalQuestion gäller före allt)', () => {
+      const fused = [{ chunk: chunkFor('hyreslagen', '1'), score: 0, coverage: 0, cosine: 0.99 }]
+      const result = evaluateLegalCandidate('Skapa en faktura till Anna på 8 500 kr', {
+        lexical: [],
+        fused,
+        semanticTopCosine: 0.99,
+      })
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('semanticTopCosine: kanalsignalen produceras kanal-rent av servicen', () => {
+    it('sätts till bästa GILTIGA träffens cosine (stale topp-rad räknas inte)', async () => {
+      const stale = { ...validRow('hyreslagen', '45', 0.1), contentHash: 'fel-hash' } // cos 0.9 — ogiltig
+      const { service } = makeService({ rows: [stale, validRow('hyreslagen', '46', 0.3)] })
+      const result = await service.retrieve(BESITTNING_FRAGA)
+      expect(result.semanticTopCosine).toBeCloseTo(0.7, 5) // 1 − 0.3: första GILTIGA raden
+    })
+
+    it('null när kanalen är nere och när tabellen är tom (grinden = ren BM25-väg)', async () => {
+      const down = makeService({ embedRejects: true })
+      expect((await down.service.retrieve(BESITTNING_FRAGA)).semanticTopCosine).toBeNull()
+      const empty = makeService({ rows: [] })
+      expect((await empty.service.retrieve(BESITTNING_FRAGA)).semanticTopCosine).toBeNull()
     })
   })
 
