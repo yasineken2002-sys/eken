@@ -50,6 +50,7 @@ function makeService(conversationLookupResult: unknown) {
     {} as never,
     {} as never,
     {} as never,
+    {} as never, // legalRetrieval — nås aldrig (inga juridiska frågor i denna spec)
   )
   return { service, findFirst, executeTool }
 }

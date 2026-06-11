@@ -30,6 +30,7 @@ import { RentIncreasesModule } from '../rent-increases/rent-increases.module'
 import { TerminationsModule } from '../terminations/terminations.module'
 import { DocumentsModule } from '../documents/documents.module'
 import { LegalEmbeddingService } from './knowledge/embedding/legal-embedding.service'
+import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.service'
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { LegalEmbeddingService } from './knowledge/embedding/legal-embedding.ser
     TenantAiService,
     TenantToolExecutorService,
     LegalEmbeddingService,
+    LegalRetrievalService,
   ],
   exports: [AiAssistantService, AiAuditService, LegalEmbeddingService],
 })

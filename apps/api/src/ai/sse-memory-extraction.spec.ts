@@ -49,6 +49,7 @@ function makeService(extractImpl?: () => Promise<void>) {
     {} as never, // 6 usage
     {} as never, // 7 quota
     {} as never, // 8 audit
+    {} as never, // 9 legalRetrieval — nås aldrig (inga juridiska frågor i denna spec)
   )
   return { service, extractAndSaveMemories }
 }

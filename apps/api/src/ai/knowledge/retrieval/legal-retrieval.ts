@@ -6,13 +6,17 @@
  * paragraf-chunkarna ur LEGAL_KNOWLEDGE, var och en med sin egen källmetadata
  * (lag + paragraf + SFS + verifieradPer) — hämtad ur strukturen, aldrig gissad.
  *
- * Semantisk sökning (embeddings) är Etapp 3, och byggs bara om mätningen mot
- * eval-setet visar att den här enkla nivån är för trubbig.
+ * Semantisk sökning (embeddings) bor i LegalRetrievalService (Etapp 3, PR 3.3a)
+ * — byggd efter att mätningen mot eval-setet visade att BM25 ensam är för
+ * trubbig (12/18 answerable). Denna fil förblir den lexikala kanalen: ren,
+ * synkron, nätfri — och gap B-grindens enda signalkälla.
  */
 import { buildLegalChunks, type LegalChunk } from './legal-chunk'
 
 export interface RetrievedChunk {
   chunk: LegalChunk
+  /** BM25-score (lexikala kanalen). Betydelsen är oförändrad sedan PR 2.2 —
+   * gap B-grindens golv läser detta fält och får aldrig se en annan skala. */
   score: number
   /**
    * Query-täckning: andelen av frågans sökstammar (efter tesaurus-expansion,
@@ -21,6 +25,26 @@ export interface RetrievedChunk {
    * täckning kan vara ett enstaka starkt ord i fel paragraf.
    */
   coverage: number
+  /**
+   * Cosine-likhet (0–1) från den semantiska kanalen (PR 3.3a). Satt ENDAST när
+   * chunken hämtades via pgvector — ren observabilitet/råsignal i 3.3a; grinden
+   * läser den inte (cosine-grindkanalen är PR 3.3b).
+   */
+  cosine?: number
+}
+
+/**
+ * Hybrid-retrievalens kontrakt (Etapp 3, PR 3.3a — produceras av
+ * LegalRetrievalService). De två kanalerna bärs SEPARAT som bärande invariant:
+ * gap B-grindens golv läser BARA `lexical` (bit-för-bit dagens BM25-topp-3) —
+ * den fuserade ordningen kan per konstruktion inte ändra ett grindutfall, bara
+ * vilka chunkar domaren/grundningen ser för en redan godkänd kandidat.
+ */
+export interface HybridLegalRetrieval {
+  /** BM25-kanalen, identisk med retrieveLegalChunks(query, {topK: 3}) — grindens ENDA signalkälla. */
+  lexical: RetrievedChunk[]
+  /** RRF-fuserad topp-3 — kandidaterna till domare/grundning. === lexical när semantiska kanalen är nere. */
+  fused: RetrievedChunk[]
 }
 
 // Vanliga svenska funktionsord som inte bär ämnesinnehåll.
@@ -223,12 +247,13 @@ function bm25(idx: Bm25Index, chunkIndex: number, stems: Set<string>): number {
 }
 
 /**
- * Returnerar de top-K mest relevanta paragraf-chunkarna för en fråga.
- * Tom lista om inget matchar (ren retrieval — beslutet att avstå/be om jurist
- * görs av osäkerhetsgrinden i PR 2.3, inte här).
+ * BM25-score + täckning för ALLA chunkar (osorterat, ofiltrerat — även score 0).
+ * Intern sanningskälla för BM25-matematiken: `retrieveLegalChunks` är
+ * sort+filter+slice över denna, och hybrid-servicen (PR 3.3a) använder den för
+ * att ge semantik-träffar deras sanna lexikala råsignaler utan att duplicera
+ * matematiken. Tom lista om frågan saknar sökstammar.
  */
-export function retrieveLegalChunks(query: string, opts?: { topK?: number }): RetrievedChunk[] {
-  const topK = opts?.topK ?? 3
+export function scoreAllLegalChunks(query: string): RetrievedChunk[] {
   const stems = queryStems(query)
   if (stems.size === 0) return []
 
@@ -236,14 +261,23 @@ export function retrieveLegalChunks(query: string, opts?: { topK?: number }): Re
   // Samma stam-filter som bm25() använder — täckningen mäter exakt de stammar
   // som kan bidra till poängen.
   const scorableStems = [...stems].filter((s) => s.length >= 4)
-  return idx.chunks
-    .map((chunk, i) => ({
-      chunk,
-      score: bm25(idx, i, stems),
-      coverage: scorableStems.length
-        ? scorableStems.filter((s) => idx.termFreqs[i]!.has(s)).length / scorableStems.length
-        : 0,
-    }))
+  return idx.chunks.map((chunk, i) => ({
+    chunk,
+    score: bm25(idx, i, stems),
+    coverage: scorableStems.length
+      ? scorableStems.filter((s) => idx.termFreqs[i]!.has(s)).length / scorableStems.length
+      : 0,
+  }))
+}
+
+/**
+ * Returnerar de top-K mest relevanta paragraf-chunkarna för en fråga.
+ * Tom lista om inget matchar (ren retrieval — beslutet att avstå/be om jurist
+ * görs av osäkerhetsgrinden i PR 2.3, inte här).
+ */
+export function retrieveLegalChunks(query: string, opts?: { topK?: number }): RetrievedChunk[] {
+  const topK = opts?.topK ?? 3
+  return scoreAllLegalChunks(query)
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score || a.chunk.paragraph.localeCompare(b.chunk.paragraph))
     .slice(0, topK)

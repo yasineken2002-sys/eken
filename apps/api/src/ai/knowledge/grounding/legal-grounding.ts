@@ -27,7 +27,11 @@
  * Denna modul: ingen AI, ingen modell, inga sidoeffekter — ren text→text-logik.
  * (Domaranropet bor i servicen; här finns bara dess prompt + verdiktparser.)
  */
-import { retrieveLegalChunks, type RetrievedChunk } from '../retrieval/legal-retrieval'
+import {
+  retrieveLegalChunks,
+  type HybridLegalRetrieval,
+  type RetrievedChunk,
+} from '../retrieval/legal-retrieval'
 import type { LegalChunk } from '../retrieval/legal-chunk'
 import { getLegalDocument } from '../legal-knowledge'
 
@@ -121,21 +125,44 @@ const LOW_SCORE_BAND = 12
 const MIN_COVERAGE_IN_BAND = 0.4
 
 /**
- * Steg 1 i miss-grinden: kör retrieval och bedöm deterministiskt om träffen
- * alls är en rimlig kandidat. Returnerar ALDRIG en färdig grundning — en
- * kandidat måste passera relevansdomaren (steg 2, i servicen) först.
+ * Steg 1 i miss-grinden över ett färdigt retrieval-resultat (PR 3.3a-sömmen).
+ * Golven läser ENBART den LEXIKALA kanalen — `retrieval.fused` (RRF-ordningen
+ * från den semantiska kanalen) kan per konstruktion inte ändra ett grindutfall:
+ *   - no-hits  = lexical tom (även om semantiken hittade något),
+ *   - weak     = lexical[0] under golven,
+ * exakt som före hybrid-retrievalen. Passerar grinden blir `fused` kandidaterna
+ * som relevansdomaren (steg 2) och grundningen ser — det är HELA skillnaden.
+ * Returnerar ALDRIG en färdig grundning — kandidaten måste passera domaren.
  */
-export function evaluateLegalRetrieval(message: string): LegalRetrievalCandidate {
+export function evaluateLegalCandidate(
+  message: string,
+  retrieval: HybridLegalRetrieval,
+): LegalRetrievalCandidate {
   if (!isLegalQuestion(message)) return null
-  const retrieved = retrieveLegalChunks(message, { topK: GROUNDING_TOP_K })
-  if (retrieved.length === 0) return { outcome: 'miss', reason: 'no-hits' }
+  if (retrieval.lexical.length === 0) return { outcome: 'miss', reason: 'no-hits' }
 
-  const top = retrieved[0]!
+  const top = retrieval.lexical[0]!
   const tooWeak =
     top.score < MIN_TOP_SCORE || (top.score < LOW_SCORE_BAND && top.coverage < MIN_COVERAGE_IN_BAND)
   if (tooWeak) return { outcome: 'miss', reason: 'weak-retrieval' }
 
-  return { outcome: 'candidate', retrieved }
+  return {
+    outcome: 'candidate',
+    retrieved: retrieval.fused.length > 0 ? retrieval.fused : retrieval.lexical,
+  }
+}
+
+/**
+ * Steg 1 i miss-grinden, ren BM25-väg (utan semantisk kanal): kör lexikal
+ * retrieval och bedöm deterministiskt. Samma golvlogik som
+ * evaluateLegalCandidate — en enda golvkälla, bit-för-bit samma utfall som
+ * före PR 3.3a. Används av specar/eval och är fallback-beteendet när den
+ * semantiska kanalen är nere.
+ */
+export function evaluateLegalRetrieval(message: string): LegalRetrievalCandidate {
+  if (!isLegalQuestion(message)) return null
+  const lexical = retrieveLegalChunks(message, { topK: GROUNDING_TOP_K })
+  return evaluateLegalCandidate(message, { lexical, fused: lexical })
 }
 
 /**

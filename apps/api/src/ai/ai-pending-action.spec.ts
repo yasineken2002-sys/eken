@@ -39,6 +39,7 @@ function makeService(opts: { pendingFound?: boolean; consumeCount?: number } = {
     {} as never,
     {} as never,
     {} as never,
+    {} as never, // legalRetrieval — nås aldrig (inga juridiska frågor i denna spec)
   )
   return { service, executeTool, prisma }
 }
