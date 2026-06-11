@@ -725,17 +725,22 @@ export const TOOLS: Anthropic.Tool[] = [
         invoiceId: {
           type: 'string',
           description:
-            'Faktura-ID (kommersiell faktura). Ange detta ELLER rentNoticeId — inte båda.',
+            'Faktura-ID (kommersiell faktura). OBLIGATORISKT att ange EXAKT ETT av invoiceId och rentNoticeId — aldrig båda, aldrig ingetdera.',
         },
         rentNoticeId: {
           type: 'string',
-          description: 'Hyresavi-ID (RentNotice). Ange detta ELLER invoiceId — inte båda.',
+          description:
+            'Hyresavi-ID (RentNotice). OBLIGATORISKT att ange EXAKT ETT av invoiceId och rentNoticeId — aldrig båda, aldrig ingetdera.',
         },
       },
       required: ['transactionId'],
-      // Exakt en av invoiceId/rentNoticeId måste anges. Grindas dessutom server-side
-      // i handlern (manualMatch avvisar om båda eller ingen anges).
-      anyOf: [{ required: ['invoiceId'] }, { required: ['rentNoticeId'] }],
+      // OBS: "exakt en av invoiceId/rentNoticeId" får INTE uttryckas som
+      // anyOf/oneOf/allOf på TOPPNIVÅ i input_schema — Anthropics API avvisar
+      // då hela requesten (400) och sänker VARJE chat-anrop, inte bara detta
+      // verktyg. Villkoret bärs i beskrivningarna ovan och grindas
+      // auktoritativt server-side: tool-executorns match_bank_transaction-case
+      // avvisar båda/ingen, och manualMatch validerar igen.
+      // Regressionsspärr: tools/ai-tools-schema.spec.ts.
     },
   },
 
