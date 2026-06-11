@@ -60,11 +60,16 @@ describe('match_bank_transaction — schema + confirm-grind', () => {
     expect(props.rentNoticeId).toBeDefined()
   })
 
-  it('invoiceId/rentNoticeId är ALTERNATIVA: required = bara transactionId, anyOf på de två', () => {
+  it('invoiceId/rentNoticeId är ALTERNATIVA: required = bara transactionId, INGEN toppnivå-anyOf', () => {
     expect(tool.input_schema.required).toEqual(['transactionId'])
-    // anyOf: ett av invoiceId/rentNoticeId krävs (deklarativt mot Claude).
-    const anyOf = (tool.input_schema as { anyOf?: Array<{ required: string[] }> }).anyOf
-    expect(anyOf).toEqual([{ required: ['invoiceId'] }, { required: ['rentNoticeId'] }])
+    // DRIFTSTÖRNINGSFIX 2026-06-11: toppnivå-anyOf får Anthropics API att
+    // avvisa HELA chat-requesten (400) — "exakt en av"-villkoret bärs i
+    // description och grindas auktoritativt server-side (testerna nedan).
+    // Svepande regressionsspärr för alla verktyg: ai-tools-schema.spec.ts.
+    expect('anyOf' in tool.input_schema).toBe(false)
+    const props = tool.input_schema.properties as Record<string, { description?: string }>
+    expect(props.invoiceId!.description).toMatch(/EXAKT ETT/i)
+    expect(props.rentNoticeId!.description).toMatch(/EXAKT ETT/i)
   })
 
   it('ligger kvar i ACTION_TOOLS → kräver mänsklig bekräftelse (rör pengar)', () => {
