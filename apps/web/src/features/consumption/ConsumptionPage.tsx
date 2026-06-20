@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Gauge, Lock, Pencil, Coins, Activity } from 'lucide-react'
+import { Plus, Gauge, Lock, Pencil, Coins, Activity, FileText, BookCheck } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -14,10 +14,11 @@ import { ReadingForm } from './components/ReadingForm'
 import { useMeters, useCreateMeter, useUpdateMeter } from './hooks/useMeterQueries'
 import { useTariffs, useCreateTariff } from './hooks/useTariffQueries'
 import { useReadings, useCreateReading } from './hooks/useReadingQueries'
+import { useCharges, useCharge, useConfirmCharge } from './hooks/useChargeQueries'
 import { useUnits } from '@/features/units/hooks/useUnits'
 import { useProperties } from '@/features/properties/hooks/useProperties'
 import { useCanWrite } from '@/hooks/useCanWrite'
-import { formatDate } from '@eken/shared'
+import { formatDate, formatCurrency } from '@eken/shared'
 import type {
   Meter,
   MeterType,
@@ -29,6 +30,8 @@ import type {
   CreateTariffInput,
   ReadingType,
   CreateReadingInput,
+  ConsumptionChargeStatus,
+  ConsumptionBillingMode,
 } from '@eken/shared'
 import { cn } from '@/lib/cn'
 
@@ -84,6 +87,43 @@ const READING_TYPE_LABELS: Record<ReadingType, string> = {
   PERIOD_VOLUME: 'Periodförbrukning',
 }
 
+// ─── Förbrukningsposter (charges) ─────────────────────────────────────────────
+
+const CHARGE_STATUS: Record<ConsumptionChargeStatus, { label: string; cls: string }> = {
+  DRAFT: { label: 'Utkast', cls: 'bg-amber-50 text-amber-700' },
+  CONFIRMED: { label: 'Bokförd', cls: 'bg-blue-50 text-blue-700' },
+  ATTACHED: { label: 'Kopplad', cls: 'bg-emerald-50 text-emerald-700' },
+  CANCELLED: { label: 'Annullerad', cls: 'bg-gray-100 text-gray-500' },
+}
+
+function ChargeStatusBadge({ status }: { status: ConsumptionChargeStatus }) {
+  const s = CHARGE_STATUS[status]
+  return (
+    <span className={cn('rounded-full px-2.5 py-0.5 text-[12px] font-medium', s.cls)}>
+      {s.label}
+    </span>
+  )
+}
+
+const DELIVERY_LABELS: Record<ConsumptionBillingMode, string> = {
+  RENT_NOTICE_LINE: 'Rad på hyresavi',
+  SEPARATE_INVOICE: 'Separat faktura',
+  NONE: 'Ingen debitering',
+}
+
+// Belopp kommer som Decimal-sträng → coercera ENBART vid visning, räkna ALDRIG om.
+function chargeAmount(value: number | string): string {
+  return formatCurrency(Number(value))
+}
+
+const CHARGE_FILTERS: { id: 'ALL' | ConsumptionChargeStatus; label: string }[] = [
+  { id: 'ALL', label: 'Alla' },
+  { id: 'DRAFT', label: 'Utkast' },
+  { id: 'CONFIRMED', label: 'Bokförda' },
+  { id: 'ATTACHED', label: 'Kopplade' },
+  { id: 'CANCELLED', label: 'Annullerade' },
+]
+
 // ─── Flikar ───────────────────────────────────────────────────────────────────
 // Endast "Mätare" är aktiv i denna PR. Tariffer/Avläsningar/Charges byggs i
 // 1.3/1.4/1.5 — de visas som låsta platshållare så strukturen är på plats och
@@ -94,7 +134,7 @@ const TABS: { id: TabId; label: string; ready: boolean }[] = [
   { id: 'meters', label: 'Mätare', ready: true },
   { id: 'tariffs', label: 'Tariffer', ready: true },
   { id: 'readings', label: 'Avläsningar', ready: true },
-  { id: 'charges', label: 'Förbrukningsposter', ready: false },
+  { id: 'charges', label: 'Förbrukningsposter', ready: true },
 ]
 
 // ─── Inline-redigering av befintlig mätare (status + källagnostiska fält) ──────
@@ -176,6 +216,9 @@ export function ConsumptionPage() {
   const [readingUnitFilter, setReadingUnitFilter] = useState('')
   const [readingFrom, setReadingFrom] = useState('')
   const [readingTo, setReadingTo] = useState('')
+  // Förbrukningsposter: statusfilter + öppen detalj.
+  const [chargeFilter, setChargeFilter] = useState<'ALL' | ConsumptionChargeStatus>('ALL')
+  const [selectedChargeId, setSelectedChargeId] = useState<string | null>(null)
 
   const { data: meters = [], isLoading } = useMeters()
   const { data: tariffs = [], isLoading: tariffsLoading } = useTariffs()
@@ -187,10 +230,17 @@ export function ConsumptionPage() {
     ...(readingTo ? { periodEnd: readingTo } : {}),
   }
   const { data: readings = [], isLoading: readingsLoading } = useReadings(readingFilters)
+  const { data: charges = [], isLoading: chargesLoading } = useCharges(
+    chargeFilter === 'ALL' ? undefined : { status: chargeFilter },
+  )
+  // Detaljen hämtas separat så confirm-invalidering (['charge', id]) driver en
+  // refetch och modalen aldrig visar inaktuell status.
+  const { data: selectedCharge } = useCharge(selectedChargeId)
   const createMutation = useCreateMeter()
   const updateMutation = useUpdateMeter()
   const createTariffMutation = useCreateTariff()
   const createReadingMutation = useCreateReading()
+  const confirmChargeMutation = useConfirmCharge()
 
   function unitLabel(unitId: string): string {
     const u = units.find((u) => u.id === unitId)
@@ -227,6 +277,12 @@ export function ConsumptionPage() {
     (max, r) => (max === null || r.readingDate > max ? r.readingDate : max),
     null,
   )
+  // Charge-KPI: DRAFT = att bekräfta, CONFIRMED/ATTACHED = bokförda. (Räknas på
+  // den filtrerade listan endast om filtret är ALL — annars visas filtrets antal.)
+  const draftCharges = charges.filter((c) => c.status === 'DRAFT').length
+  const bookedCharges = charges.filter(
+    (c) => c.status === 'CONFIRMED' || c.status === 'ATTACHED',
+  ).length
 
   function handleCreate(data: CreateMeterInput) {
     createMutation.mutate(data, { onSuccess: () => setShowCreate(false) })
@@ -238,6 +294,24 @@ export function ConsumptionPage() {
 
   function handleCreateReading(data: CreateReadingInput) {
     createReadingMutation.mutate(data, { onSuccess: () => setShowCreateReading(false) })
+  }
+
+  // Namn på charge:ns hyresgäst (från nästlad tenant).
+  function chargeTenantName(t: {
+    firstName: string | null
+    lastName: string | null
+    companyName: string | null
+  }): string {
+    if (t.companyName) return t.companyName
+    const name = `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()
+    return name || '–'
+  }
+
+  // Bekräfta + bokför en DRAFT-charge. Anropar den befintliga endpointen som
+  // skapar verifikatet — frontend bygger ingen bokföringslogik.
+  function handleConfirmCharge() {
+    if (!selectedCharge) return
+    confirmChargeMutation.mutate(selectedCharge.id)
   }
 
   function handleUpdate(dto: UpdateMeterInput) {
@@ -296,11 +370,17 @@ export function ConsumptionPage() {
                   tag: 'senaste avläsningsdatum',
                 },
               ]
-            : [
-                { label: 'Mätare totalt', value: meters.length, tag: 'el · vatten · värme' },
-                { label: 'I drift', value: activeCount, tag: 'aktiva mätare' },
-                { label: 'Ur bruk / demonterade', value: inactiveCount, tag: 'historik bevaras' },
-              ]
+            : tab === 'charges'
+              ? [
+                  { label: 'Poster', value: charges.length, tag: 'i nuvarande filter' },
+                  { label: 'Att bekräfta', value: draftCharges, tag: 'utkast (ej bokförda)' },
+                  { label: 'Bokförda', value: bookedCharges, tag: 'verifikat skapat' },
+                ]
+              : [
+                  { label: 'Mätare totalt', value: meters.length, tag: 'el · vatten · värme' },
+                  { label: 'I drift', value: activeCount, tag: 'aktiva mätare' },
+                  { label: 'Ur bruk / demonterade', value: inactiveCount, tag: 'historik bevaras' },
+                ]
         ).map((s, i) => (
           <motion.div
             key={s.label}
@@ -603,12 +683,88 @@ export function ConsumptionPage() {
           )}
         </div>
       ) : (
-        <div className="mt-4">
-          <EmptyState
-            icon={Lock}
-            title={`${TABS.find((t) => t.id === tab)?.label} byggs i ett kommande steg`}
-            description="Mätare, tariffer och avläsningar läggs upp först. Förbrukningsposter aktiveras i nästa steg."
-          />
+        /* Förbrukningsposter (charges) */
+        <div className="mt-4 space-y-4">
+          {/* Statusfilter */}
+          <div className="flex w-fit items-center gap-1 rounded-xl bg-gray-100/70 p-1">
+            {CHARGE_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setChargeFilter(f.id)}
+                className={cn(
+                  'flex h-8 items-center rounded-lg px-3 text-[13px] font-medium transition-all',
+                  chargeFilter === f.id
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700',
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {!chargesLoading && charges.length === 0 ? (
+            <EmptyState
+              icon={FileText}
+              title="Inga förbrukningsposter"
+              description="Förbrukningsposter skapas automatiskt när en avläsning ger debiterbar förbrukning (aktivt avtal + tariff). Bekräfta dem här för att bokföra."
+            />
+          ) : (
+            <DataTable
+              data={chargesLoading ? [] : charges}
+              keyExtractor={(c) => c.id}
+              onRowClick={(c) => setSelectedChargeId(c.id)}
+              columns={[
+                {
+                  key: 'type',
+                  header: 'Typ',
+                  cell: (c) => (
+                    <span className="font-medium text-gray-800">
+                      {METER_TYPE_LABELS[c.meterType]}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'tenant',
+                  header: 'Hyresgäst',
+                  cell: (c) => <span className="text-gray-700">{chargeTenantName(c.tenant)}</span>,
+                },
+                {
+                  key: 'period',
+                  header: 'Period',
+                  cell: (c) => (
+                    <span className="text-[12.5px] text-gray-500">
+                      {formatDate(c.periodStart)} – {formatDate(c.periodEnd)}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'amount',
+                  header: 'Belopp',
+                  align: 'right',
+                  cell: (c) => (
+                    <span className="font-semibold text-gray-800">
+                      {chargeAmount(c.totalAmount)}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'delivery',
+                  header: 'Leveranssätt',
+                  cell: (c) => (
+                    <span className="text-[12px] text-gray-500">
+                      {DELIVERY_LABELS[c.deliveryMode]}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'status',
+                  header: 'Status',
+                  cell: (c) => <ChargeStatusBadge status={c.status} />,
+                },
+              ]}
+            />
+          )}
         </div>
       )}
 
@@ -650,6 +806,128 @@ export function ConsumptionPage() {
           isSubmitting={createReadingMutation.isPending}
         />
       </Modal>
+
+      {/* Förbrukningspost — detalj + bekräfta/bokför */}
+      {selectedChargeId && (
+        <Modal
+          open
+          onClose={() => setSelectedChargeId(null)}
+          title={selectedCharge ? METER_TYPE_LABELS[selectedCharge.meterType] : 'Förbrukningspost'}
+          description={
+            selectedCharge
+              ? `${chargeTenantName(selectedCharge.tenant)} · ${formatDate(selectedCharge.periodStart)} – ${formatDate(selectedCharge.periodEnd)}`
+              : ''
+          }
+          size="lg"
+        >
+          {!selectedCharge ? (
+            <p className="py-8 text-center text-[13px] text-gray-400">Laddar…</p>
+          ) : (
+            <div className="space-y-4">
+              {/* Metadata */}
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Status', value: <ChargeStatusBadge status={selectedCharge.status} /> },
+                  { label: 'Hyresgäst', value: chargeTenantName(selectedCharge.tenant) },
+                  { label: 'Mätartyp', value: METER_TYPE_LABELS[selectedCharge.meterType] },
+                  {
+                    label: 'Förbrukning',
+                    value: `${Number(selectedCharge.quantity).toLocaleString('sv-SE', { maximumFractionDigits: 3 })} ${PRICE_UNIT[selectedCharge.meterType]}`,
+                  },
+                  {
+                    label: 'Pris/enhet',
+                    value: formatPricePerUnit(
+                      selectedCharge.pricePerUnit,
+                      selectedCharge.meterType,
+                    ),
+                  },
+                  { label: 'Leveranssätt', value: DELIVERY_LABELS[selectedCharge.deliveryMode] },
+                ].map((i) => (
+                  <div key={i.label} className="rounded-xl bg-gray-50 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                      {i.label}
+                    </p>
+                    <div className="mt-0.5 text-[13px] font-medium text-gray-800">{i.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Beloppsruta — läses DIREKT från verifikatet, räknas aldrig om */}
+              <div className="overflow-hidden rounded-xl border border-[#EAEDF0]">
+                <div className="border-b border-[#EAEDF0] bg-gray-50 px-4 py-2.5">
+                  <p className="text-[12px] font-semibold text-gray-500">
+                    Belopp (från verifikatet)
+                  </p>
+                </div>
+                <div className="divide-y divide-[#EAEDF0]">
+                  <div className="flex justify-between px-4 py-2.5 text-[13px]">
+                    <span className="text-gray-500">Netto</span>
+                    <span className="font-medium text-gray-800">
+                      {chargeAmount(selectedCharge.netAmount)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between px-4 py-2.5 text-[13px]">
+                    <span className="text-gray-500">
+                      Moms{' '}
+                      {selectedCharge.vatStatus === 'EXEMPT'
+                        ? '(momsfri)'
+                        : `(${selectedCharge.vatRate}%)`}
+                    </span>
+                    <span className="font-medium text-gray-800">
+                      {chargeAmount(selectedCharge.vatAmount)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between bg-gray-50 px-4 py-3">
+                    <span className="text-[13px] font-semibold text-gray-700">Att betala</span>
+                    <span className="text-[16px] font-bold text-gray-900">
+                      {chargeAmount(selectedCharge.totalAmount)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Leveranssätt SEPARATE_INVOICE — statisk info, INGEN faktura-knapp */}
+              {selectedCharge.deliveryMode === 'SEPARATE_INVOICE' && (
+                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-[12px] text-blue-700">
+                  Leveranssätt: separat faktura. Fakturan genereras i ett kommande steg när den
+                  juridiska granskningen är klar — ingen faktura skapas härifrån.
+                </div>
+              )}
+
+              {/* Bekräfta + bokför — endast DRAFT, bokföringsåtgärd */}
+              {selectedCharge.status === 'DRAFT' && canWrite && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5">
+                  <p className="text-[13px] font-semibold text-amber-800">
+                    Att bekräfta innebär att bokföra
+                  </p>
+                  <p className="mt-1 text-[12px] text-amber-700">
+                    Ett periodiserat verifikat skapas (kundfordran 1510 + intäkt, samt moms vid
+                    momspliktig post). Åtgärden kan inte ångras härifrån.
+                  </p>
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      loading={confirmChargeMutation.isPending}
+                      onClick={handleConfirmCharge}
+                    >
+                      <BookCheck size={14} strokeWidth={1.9} />
+                      Bekräfta och bokför
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {selectedCharge.status !== 'DRAFT' && (
+                <div className="flex items-center gap-2 rounded-xl border border-[#EAEDF0] bg-gray-50 p-3 text-[12px] text-gray-500">
+                  <BookCheck size={14} strokeWidth={1.9} className="text-emerald-600" />
+                  Posten är bokförd (verifikat skapat).
+                </div>
+              )}
+            </div>
+          )}
+        </Modal>
+      )}
 
       {/* Detalj / redigera */}
       {selected && (
