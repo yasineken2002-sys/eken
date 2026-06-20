@@ -127,6 +127,20 @@ export interface PortalDocument {
   createdAt: string
 }
 
+// Hyresgästens egna förbrukningsposter (IMD). Speglar backendens hårt scopade,
+// fält-begränsade svar — inga interna ekonomi-/infrafält (pris/marginal, moms-
+// status, leverans, mätar-/lease-/unit-id). Belopp redan number (Decimal mappad).
+export interface PortalConsumptionCharge {
+  id: string
+  meterType: 'ELECTRICITY' | 'WATER_COLD' | 'WATER_HOT' | 'HEATING'
+  periodStart: string
+  periodEnd: string
+  quantity: number
+  netAmount: number
+  vatAmount: number
+  totalAmount: number
+}
+
 export interface PortalAuthResult {
   sessionToken: string
   tenant: PortalTenant
