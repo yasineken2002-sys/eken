@@ -629,3 +629,58 @@ export interface MeterReading {
   notes: string | null
   createdAt: string
 }
+
+// ─── Förbrukning / IMD — Förbrukningsposter (charges) ─────────────────────────
+// En charge är ett bevis: DRAFT (prissatt) → CONFIRMED (periodiserat verifikat +
+// 1510-fordran bokförd) → ATTACHED (kopplad till avi/faktura). CANCELLED = rättning
+// (raderas aldrig). Belopp är snapshots av verifikatet — frontend räknar ALDRIG om
+// dem, läser totalAmount/netAmount/vatAmount direkt (Decimal → serialiseras som
+// sträng → coercera med Number() ENBART vid visning).
+
+export type ConsumptionChargeStatus = 'DRAFT' | 'CONFIRMED' | 'ATTACHED' | 'CANCELLED'
+export type ConsumptionChargeKind = 'ACTUAL' | 'ESTIMATE' | 'ADJUSTMENT'
+export type ConsumptionVatStatus = 'EXEMPT' | 'TAXABLE_25'
+// Leveranssätt (snapshot, ren presentation): rad på hyresavi, separat faktura,
+// eller ingen debitering. SEPARATE_INVOICE skarp för bostad är utanför Etapp 1.
+export type ConsumptionBillingMode = 'RENT_NOTICE_LINE' | 'SEPARATE_INVOICE' | 'NONE'
+
+export interface ConsumptionCharge {
+  id: string
+  organizationId: string
+  leaseId: string
+  unitId: string
+  tenantId: string
+  meterReadingId: string
+  meterType: MeterType
+  periodStart: string
+  periodEnd: string
+  // Decimal i DB → serialiseras som sträng. Coercera med Number() vid visning.
+  quantity: number | string
+  pricePerUnit: number | string
+  netAmount: number | string
+  vatStatus: ConsumptionVatStatus
+  vatRate: number
+  vatAmount: number | string
+  totalAmount: number | string
+  kind: ConsumptionChargeKind
+  status: ConsumptionChargeStatus
+  deliveryMode: ConsumptionBillingMode
+  invoiceId: string | null
+  createdAt: string
+  updatedAt: string
+  // CHARGE_INCLUDE-relationer (alltid med i GET-svaren).
+  lease: { id: string }
+  tenant: {
+    id: string
+    firstName: string | null
+    lastName: string | null
+    companyName: string | null
+  }
+  meterReading: {
+    id: string
+    value: number | string
+    readingType: ReadingType
+    periodStart: string
+    periodEnd: string
+  }
+}
