@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Gauge, Lock, Pencil } from 'lucide-react'
+import { Plus, Gauge, Lock, Pencil, Coins } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -9,8 +9,11 @@ import { Input, Select } from '@/components/ui/Input'
 import { DataTable } from '@/components/ui/DataTable'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MeterForm } from './components/MeterForm'
+import { TariffForm } from './components/TariffForm'
 import { useMeters, useCreateMeter, useUpdateMeter } from './hooks/useMeterQueries'
+import { useTariffs, useCreateTariff } from './hooks/useTariffQueries'
 import { useUnits } from '@/features/units/hooks/useUnits'
+import { useProperties } from '@/features/properties/hooks/useProperties'
 import { useCanWrite } from '@/hooks/useCanWrite'
 import { formatDate } from '@eken/shared'
 import type {
@@ -19,6 +22,9 @@ import type {
   MeterStatus,
   CreateMeterInput,
   UpdateMeterInput,
+  ConsumptionTariff,
+  TariffScope,
+  CreateTariffInput,
 } from '@eken/shared'
 import { cn } from '@/lib/cn'
 
@@ -46,6 +52,29 @@ function MeterStatusBadge({ status }: { status: MeterStatus }) {
   )
 }
 
+const SCOPE_LABELS: Record<TariffScope, string> = {
+  ORGANIZATION: 'Hela organisationen',
+  PROPERTY: 'Per fastighet',
+  UNIT: 'Per enhet',
+}
+
+// Prisenhet per mätartyp (el/värme i kWh, vatten i m³).
+const PRICE_UNIT: Record<MeterType, string> = {
+  ELECTRICITY: 'kWh',
+  WATER_COLD: 'm³',
+  WATER_HOT: 'm³',
+  HEATING: 'kWh',
+}
+
+// Pris kan komma som Decimal-sträng från API:t — coercera vid visning.
+function formatPricePerUnit(value: number | string, meterType: MeterType): string {
+  const n = Number(value)
+  const formatted = Number.isFinite(n)
+    ? n.toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+    : '–'
+  return `${formatted} kr/${PRICE_UNIT[meterType]}`
+}
+
 // ─── Flikar ───────────────────────────────────────────────────────────────────
 // Endast "Mätare" är aktiv i denna PR. Tariffer/Avläsningar/Charges byggs i
 // 1.3/1.4/1.5 — de visas som låsta platshållare så strukturen är på plats och
@@ -54,7 +83,7 @@ function MeterStatusBadge({ status }: { status: MeterStatus }) {
 type TabId = 'meters' | 'tariffs' | 'readings' | 'charges'
 const TABS: { id: TabId; label: string; ready: boolean }[] = [
   { id: 'meters', label: 'Mätare', ready: true },
-  { id: 'tariffs', label: 'Tariffer', ready: false },
+  { id: 'tariffs', label: 'Tariffer', ready: true },
   { id: 'readings', label: 'Avläsningar', ready: false },
   { id: 'charges', label: 'Förbrukningsposter', ready: false },
 ]
@@ -130,25 +159,47 @@ export function ConsumptionPage() {
   const canWrite = useCanWrite()
   const [tab, setTab] = useState<TabId>('meters')
   const [showCreate, setShowCreate] = useState(false)
+  const [showCreateTariff, setShowCreateTariff] = useState(false)
   const [selected, setSelected] = useState<Meter | null>(null)
   const [editing, setEditing] = useState(false)
 
   const { data: meters = [], isLoading } = useMeters()
+  const { data: tariffs = [], isLoading: tariffsLoading } = useTariffs()
   const { data: units = [] } = useUnits()
+  const { data: properties = [] } = useProperties()
   const createMutation = useCreateMeter()
   const updateMutation = useUpdateMeter()
+  const createTariffMutation = useCreateTariff()
 
   function unitLabel(unitId: string): string {
     const u = units.find((u) => u.id === unitId)
     return u ? `${u.property.name} · ${u.unitNumber}` : '–'
   }
 
+  // Scope-målets namn för en tariff (ORG → fast text, PROPERTY/UNIT → upplöses).
+  function tariffScopeTarget(t: ConsumptionTariff): string {
+    if (t.scope === 'PROPERTY') {
+      return properties.find((p) => p.id === t.propertyId)?.name ?? 'Okänd fastighet'
+    }
+    if (t.scope === 'UNIT') {
+      return t.unitId ? unitLabel(t.unitId) : 'Okänd enhet'
+    }
+    return SCOPE_LABELS.ORGANIZATION
+  }
+
   // KPI — räknas från hämtad data.
   const activeCount = meters.filter((m) => m.status === 'ACTIVE').length
   const inactiveCount = meters.filter((m) => m.status !== 'ACTIVE').length
+  // Gällande tariff = validTo null. Övriga är historik (stängda prisperioder).
+  const currentTariffs = tariffs.filter((t) => t.validTo === null).length
+  const historicTariffs = tariffs.length - currentTariffs
 
   function handleCreate(data: CreateMeterInput) {
     createMutation.mutate(data, { onSuccess: () => setShowCreate(false) })
+  }
+
+  function handleCreateTariff(data: CreateTariffInput) {
+    createTariffMutation.mutate(data, { onSuccess: () => setShowCreateTariff(false) })
   }
 
   function handleUpdate(dto: UpdateMeterInput) {
@@ -170,23 +221,34 @@ export function ConsumptionPage() {
         title="Förbrukning"
         description="Individuell mätning och debitering (IMD) — el, vatten och värme"
         action={
-          canWrite &&
-          tab === 'meters' && (
+          canWrite && tab === 'meters' ? (
             <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
               <Plus size={14} />
               Ny mätare
             </Button>
-          )
+          ) : canWrite && tab === 'tariffs' ? (
+            <Button variant="primary" size="sm" onClick={() => setShowCreateTariff(true)}>
+              <Plus size={14} />
+              Ny tariff
+            </Button>
+          ) : undefined
         }
       />
 
-      {/* KPI-kort */}
+      {/* KPI-kort (per aktiv flik) */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {[
-          { label: 'Mätare totalt', value: meters.length, tag: 'el · vatten · värme' },
-          { label: 'I drift', value: activeCount, tag: 'aktiva mätare' },
-          { label: 'Ur bruk / demonterade', value: inactiveCount, tag: 'historik bevaras' },
-        ].map((s, i) => (
+        {(tab === 'tariffs'
+          ? [
+              { label: 'Tariffer totalt', value: tariffs.length, tag: 'inkl. historik' },
+              { label: 'Gällande nu', value: currentTariffs, tag: 'aktiva prisperioder' },
+              { label: 'Historiska', value: historicTariffs, tag: 'stängda prisperioder' },
+            ]
+          : [
+              { label: 'Mätare totalt', value: meters.length, tag: 'el · vatten · värme' },
+              { label: 'I drift', value: activeCount, tag: 'aktiva mätare' },
+              { label: 'Ur bruk / demonterade', value: inactiveCount, tag: 'historik bevaras' },
+            ]
+        ).map((s, i) => (
           <motion.div
             key={s.label}
             initial={{ opacity: 0, y: 8 }}
@@ -296,12 +358,87 @@ export function ConsumptionPage() {
             />
           )}
         </div>
+      ) : tab === 'tariffs' ? (
+        <div className="mt-4">
+          {!tariffsLoading && tariffs.length === 0 ? (
+            <EmptyState
+              icon={Coins}
+              title="Inga tariffer ännu"
+              description="Lägg upp pris per förbrukningsenhet (kr/kWh, kr/m³) per organisation, fastighet eller enhet. Avläsningarna räknar mot den tariff som gällde under mätperioden."
+              action={
+                canWrite ? (
+                  <Button variant="primary" size="sm" onClick={() => setShowCreateTariff(true)}>
+                    <Plus size={14} />
+                    Ny tariff
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : (
+            <DataTable
+              data={tariffsLoading ? [] : tariffs}
+              keyExtractor={(t) => t.id}
+              columns={[
+                {
+                  key: 'meterType',
+                  header: 'Typ',
+                  cell: (t) => (
+                    <span className="font-medium text-gray-800">
+                      {METER_TYPE_LABELS[t.meterType]}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'scope',
+                  header: 'Omfattning',
+                  cell: (t) => (
+                    <div className="flex flex-col">
+                      <span className="text-gray-700">{tariffScopeTarget(t)}</span>
+                      <span className="text-[11px] text-gray-400">{SCOPE_LABELS[t.scope]}</span>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'price',
+                  header: 'Pris',
+                  align: 'right',
+                  cell: (t) => (
+                    <span className="font-semibold text-gray-800">
+                      {formatPricePerUnit(t.pricePerUnit, t.meterType)}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'validFrom',
+                  header: 'Giltig fr.o.m.',
+                  cell: (t) => (
+                    <span className="text-[12.5px] text-gray-500">{formatDate(t.validFrom)}</span>
+                  ),
+                },
+                {
+                  key: 'validTo',
+                  header: 'Status',
+                  cell: (t) =>
+                    t.validTo === null ? (
+                      <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[12px] font-medium text-emerald-700">
+                        Gäller nu
+                      </span>
+                    ) : (
+                      <span className="text-[12.5px] text-gray-400">
+                        t.o.m. {formatDate(t.validTo)}
+                      </span>
+                    ),
+                },
+              ]}
+            />
+          )}
+        </div>
       ) : (
         <div className="mt-4">
           <EmptyState
             icon={Lock}
             title={`${TABS.find((t) => t.id === tab)?.label} byggs i ett kommande steg`}
-            description="Förbrukningsgrunden (mätare) läggs upp först. Tariffer, avläsningar och förbrukningsposter aktiveras i tur och ordning."
+            description="Mätare och tariffer läggs upp först. Avläsningar och förbrukningsposter aktiveras i tur och ordning."
           />
         </div>
       )}
@@ -312,6 +449,21 @@ export function ConsumptionPage() {
           onSubmit={handleCreate}
           onCancel={() => setShowCreate(false)}
           isSubmitting={createMutation.isPending}
+        />
+      </Modal>
+
+      {/* Skapa tariff */}
+      <Modal
+        open={showCreateTariff}
+        onClose={() => setShowCreateTariff(false)}
+        title="Ny tariff"
+        description="Pris per förbrukningsenhet. En ny tariff stänger föregående prisperiod automatiskt."
+        size="lg"
+      >
+        <TariffForm
+          onSubmit={handleCreateTariff}
+          onCancel={() => setShowCreateTariff(false)}
+          isSubmitting={createTariffMutation.isPending}
         />
       </Modal>
 
