@@ -892,12 +892,22 @@ export class ConsumptionService {
 
   async findReadings(
     organizationId: string,
-    filters?: { meterId?: string },
+    filters?: { meterId?: string; unitId?: string; periodStart?: Date; periodEnd?: Date },
   ): Promise<MeterReading[]> {
     return this.prisma.meterReading.findMany({
       where: {
         organizationId,
         ...(filters?.meterId ? { meterId: filters.meterId } : {}),
+        ...(filters?.unitId ? { unitId: filters.unitId } : {}),
+        // Periodfilter mot avläsningens slutdatum (periodEnd styr räkenskapsåret)
+        ...(filters?.periodStart || filters?.periodEnd
+          ? {
+              periodEnd: {
+                ...(filters.periodStart ? { gte: filters.periodStart } : {}),
+                ...(filters.periodEnd ? { lte: filters.periodEnd } : {}),
+              },
+            }
+          : {}),
       },
       orderBy: { periodEnd: 'desc' },
     })

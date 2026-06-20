@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common'
 import type {
   MeterStatus,
   ConsumptionChargeStatus,
@@ -77,10 +87,29 @@ export class ConsumptionController {
 
   // ── Avläsningar (källagnostisk intake) ─────────────────────────────────────
   @Get('readings')
-  async findReadings(@OrgId() organizationId: string, @Query('meterId') meterId?: string) {
-    const filters: { meterId?: string } = {}
+  async findReadings(
+    @OrgId() organizationId: string,
+    @Query('meterId') meterId?: string,
+    @Query('unitId') unitId?: string,
+    @Query('periodStart') periodStart?: string,
+    @Query('periodEnd') periodEnd?: string,
+  ) {
+    const filters: { meterId?: string; unitId?: string; periodStart?: Date; periodEnd?: Date } = {}
     if (meterId) filters.meterId = meterId
+    if (unitId) filters.unitId = unitId
+    if (periodStart) filters.periodStart = this.parseDateQuery(periodStart, 'periodStart')
+    if (periodEnd) filters.periodEnd = this.parseDateQuery(periodEnd, 'periodEnd')
     return this.consumption.findReadings(organizationId, filters)
+  }
+
+  private parseDateQuery(value: string, field: string): Date {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(
+        `Ogiltigt datum för ${field}: "${value}" (förväntat ISO-format)`,
+      )
+    }
+    return date
   }
 
   @Post('readings')
