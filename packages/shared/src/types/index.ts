@@ -547,3 +547,33 @@ export interface BalanceSheet {
   liabilitiesAndEquity: { total: number; accounts: ReportAccountBalance[] }
   difference: number
 }
+
+// ─── Förbrukning / IMD (Mätare, avläsningar, tariffer, charges) ───────────────
+// Individuell mätning och debitering (el/vatten/värme). Motorn (backend) är
+// källagnostisk; Etapp 1-frontenden är presentation ovanpå de färdiga
+// endpoints:en — den rör aldrig debiterings-/bokföringskedjan.
+
+// Speglar Prisma-enumet MeterType. El/värme bokförs mot 3920, vatten mot 3970.
+export type MeterType = 'ELECTRICITY' | 'WATER_COLD' | 'WATER_HOT' | 'HEATING'
+
+// Speglar Prisma-enumet MeterStatus. REMOVED behåller historiken (readings
+// bevaras som räkenskapsinformation, BFL 7 år) — mätaren raderas aldrig.
+export type MeterStatus = 'ACTIVE' | 'INACTIVE' | 'REMOVED'
+
+export interface Meter {
+  id: string
+  organizationId: string
+  unitId: string
+  type: MeterType
+  // Fri text, källagnostisk: "kWh" | "m³" | "MWh".
+  unitOfMeasure: string
+  serialNumber: string | null
+  status: MeterStatus
+  // Källagnostik: extern koppling för framtida leverantörs-API (Etapp 2).
+  provider: string | null
+  externalId: string | null
+  installedAt: string | null
+  removedAt: string | null
+  createdAt: string
+  updatedAt: string
+}

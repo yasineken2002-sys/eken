@@ -350,3 +350,31 @@ export type CreateLeaseWithTenantInput = z.infer<typeof CreateLeaseWithTenantSch
 export type NewTenantInLeaseInput = z.infer<typeof NewTenantInLeaseSchema>
 export type CreateInvoiceInput = z.infer<typeof CreateInvoiceSchema>
 export type OcrInput = z.infer<typeof OcrSchema>
+
+// ─── Förbrukning / IMD — Mätare ───────────────────────────────────────────────
+// Speglar CreateMeterDto/UpdateMeterDto i apps/api. Frontend-formulär validerar
+// mot dessa scheman (samma regler som backend) innan POST/PATCH.
+
+export const MeterTypeEnum = z.enum(['ELECTRICITY', 'WATER_COLD', 'WATER_HOT', 'HEATING'])
+export const MeterStatusEnum = z.enum(['ACTIVE', 'INACTIVE', 'REMOVED'])
+
+export const CreateMeterSchema = z.object({
+  unitId: z.string().uuid({ message: 'Välj en enhet för mätaren' }),
+  type: MeterTypeEnum,
+  unitOfMeasure: z.string().min(1, 'Ange mätenhet (t.ex. kWh, m³)').max(16),
+  serialNumber: z.string().max(64).optional(),
+  provider: z.string().max(64).optional(),
+  externalId: z.string().max(128).optional(),
+  installedAt: z.string().date().optional(),
+})
+
+export const UpdateMeterSchema = z.object({
+  status: MeterStatusEnum.optional(),
+  serialNumber: z.string().max(64).optional(),
+  provider: z.string().max(64).optional(),
+  externalId: z.string().max(128).optional(),
+  removedAt: z.string().date().optional(),
+})
+
+export type CreateMeterInput = z.infer<typeof CreateMeterSchema>
+export type UpdateMeterInput = z.infer<typeof UpdateMeterSchema>
