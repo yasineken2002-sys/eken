@@ -378,3 +378,31 @@ export const UpdateMeterSchema = z.object({
 
 export type CreateMeterInput = z.infer<typeof CreateMeterSchema>
 export type UpdateMeterInput = z.infer<typeof UpdateMeterSchema>
+
+// ─── Förbrukning / IMD — Tariffer ─────────────────────────────────────────────
+// Speglar CreateTariffDto i apps/api. validTo sätts automatiskt av servicen
+// (stänger föregående tariff) och ingår därför inte i create-schemat.
+
+export const TariffScopeEnum = z.enum(['ORGANIZATION', 'PROPERTY', 'UNIT'])
+
+export const CreateTariffSchema = z
+  .object({
+    scope: TariffScopeEnum,
+    propertyId: z.string().uuid().optional(),
+    unitId: z.string().uuid().optional(),
+    meterType: MeterTypeEnum,
+    pricePerUnit: z.number().min(0, 'Priset kan inte vara negativt'),
+    fixedMonthlyFee: z.number().min(0, 'Avgiften kan inte vara negativ').optional(),
+    validFrom: z.string().date(),
+  })
+  // Scope-målet måste anges för PROPERTY/UNIT (samma regel som backend-servicen).
+  .refine((d) => d.scope !== 'PROPERTY' || !!d.propertyId, {
+    message: 'Välj en fastighet för fastighetstariffen',
+    path: ['propertyId'],
+  })
+  .refine((d) => d.scope !== 'UNIT' || !!d.unitId, {
+    message: 'Välj en enhet för enhetstariffen',
+    path: ['unitId'],
+  })
+
+export type CreateTariffInput = z.infer<typeof CreateTariffSchema>

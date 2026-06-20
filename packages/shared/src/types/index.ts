@@ -577,3 +577,28 @@ export interface Meter {
   createdAt: string
   updatedAt: string
 }
+
+// ─── Förbrukning / IMD — Tariffer ─────────────────────────────────────────────
+// Pris per förbrukningsenhet (kr/kWh, kr/m³) som avläsningarna räknar mot.
+// Historik: validTo = null är gällande tariff; en prisändring stänger föregående
+// rad (validTo) och skapar en ny — priset uppdateras aldrig in-place.
+
+export type TariffScope = 'ORGANIZATION' | 'PROPERTY' | 'UNIT'
+
+export interface ConsumptionTariff {
+  id: string
+  organizationId: string
+  scope: TariffScope
+  // Polymorft scope-mål: PROPERTY → propertyId satt, UNIT → unitId satt,
+  // ORGANIZATION → båda null (plain strings, ingen relation).
+  propertyId: string | null
+  unitId: string | null
+  meterType: MeterType
+  // Decimal i DB → kan serialiseras som sträng; coercera med Number() vid visning.
+  pricePerUnit: number | string
+  fixedMonthlyFee: number | string | null
+  validFrom: string
+  validTo: string | null
+  createdAt: string
+  updatedAt: string
+}
