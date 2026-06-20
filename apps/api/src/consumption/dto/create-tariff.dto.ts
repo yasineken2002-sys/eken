@@ -1,4 +1,13 @@
-import { IsEnum, IsNumber, IsOptional, IsUUID, IsDateString, Min } from 'class-validator'
+import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsDateString,
+  MaxLength,
+  Min,
+} from 'class-validator'
 import { MeterType, TariffScope } from '@prisma/client'
 
 export class CreateTariffDto {
@@ -33,4 +42,11 @@ export class CreateTariffDto {
   // för samma scope/mål/meterType stängs automatiskt dagen innan (historik).
   @IsDateString()
   validFrom!: string
+
+  // Beräkningsgrund (JB 12:19): fri dokumentationstext om hur vidaredebiteringen
+  // beräknas. Valfri, ren dokumentation — ingår aldrig i charge-/bokföringskalkyl.
+  @IsString()
+  @IsOptional()
+  @MaxLength(2000)
+  calculationBasis?: string
 }

@@ -2964,6 +2964,11 @@ model ConsumptionTariff {
   pricePerUnit   Decimal     @db.Decimal(10, 4)
   fixedMonthlyFee Decimal?   @db.Decimal(10, 2)
 
+  // Beräkningsgrund (JB 12:19): fri dokumentationstext om hur vidaredebiteringen
+  // beräknas — underlag som hyresnämnden kan begära. ENBART dokumentation, ingår
+  // ALDRIG i någon charge-/bokföringsberäkning.
+  calculationBasis String?
+
   // Historik: validTo = null är gällande tariff. Pris uppdateras ALDRIG
   // in-place — ny rad ersätter och stänger föregående. Avläsningens periodEnd
   // väljer den tariff som gällde då.
