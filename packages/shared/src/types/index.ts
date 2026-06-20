@@ -602,3 +602,30 @@ export interface ConsumptionTariff {
   createdAt: string
   updatedAt: string
 }
+
+// ─── Förbrukning / IMD — Avläsningar ──────────────────────────────────────────
+// Append-only mätunderlag (BFL 5:5 — rättning = ny rad, aldrig UPDATE/DELETE).
+// Källagnostisk: MANUAL/IMPORT/API delar samma väg in (recordReading).
+
+export type ReadingType = 'CUMULATIVE' | 'PERIOD_VOLUME'
+export type ReadingSource = 'MANUAL' | 'IMPORT' | 'API'
+
+export interface MeterReading {
+  id: string
+  organizationId: string
+  meterId: string
+  // Historisk ögonblicksbild (plain string, ingen FK) — överlever lease-radering.
+  unitId: string
+  leaseId: string | null
+  // Decimal i DB → kan serialiseras som sträng; coercera med Number() vid visning.
+  value: number | string
+  readingType: ReadingType
+  readingDate: string
+  periodStart: string
+  periodEnd: string
+  source: ReadingSource
+  externalId: string | null
+  registeredById: string | null
+  notes: string | null
+  createdAt: string
+}

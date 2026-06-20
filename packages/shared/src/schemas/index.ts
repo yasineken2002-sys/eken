@@ -409,3 +409,32 @@ export const CreateTariffSchema = z
   })
 
 export type CreateTariffInput = z.infer<typeof CreateTariffSchema>
+
+// ─── Förbrukning / IMD — Avläsningar ──────────────────────────────────────────
+// Speglar RecordReadingDto i apps/api. Den hårda spärren (CUMULATIVE lägre än
+// föregående → 400) ligger i backend (computeQuantity) och replikeras ALDRIG som
+// blockering i klienten — frontenden visar bara en mjuk rimlighetsvarning.
+
+export const ReadingTypeEnum = z.enum(['CUMULATIVE', 'PERIOD_VOLUME'])
+export const ReadingSourceEnum = z.enum(['MANUAL', 'IMPORT', 'API'])
+
+export const CreateReadingSchema = z
+  .object({
+    meterId: z.string().uuid({ message: 'Välj en mätare' }),
+    value: z.number().min(0, 'Värdet kan inte vara negativt'),
+    readingType: ReadingTypeEnum.optional(),
+    source: ReadingSourceEnum,
+    readingDate: z.string().date(),
+    periodStart: z.string().date(),
+    periodEnd: z.string().date(),
+    externalId: z.string().max(128).optional(),
+    leaseId: z.string().uuid().optional(),
+    notes: z.string().max(1000).optional(),
+  })
+  // Mätperiodens slut får inte vara före start (samma regel som backend).
+  .refine((d) => d.periodEnd >= d.periodStart, {
+    message: 'Periodens slut får inte vara före periodens start',
+    path: ['periodEnd'],
+  })
+
+export type CreateReadingInput = z.infer<typeof CreateReadingSchema>
