@@ -28,6 +28,7 @@ import {
   TrendingUp,
   Gavel,
   BarChart3,
+  Gauge,
 } from 'lucide-react'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
@@ -48,6 +49,7 @@ type AppPath =
   | '/leases'
   | '/invoices'
   | '/avisering'
+  | '/consumption'
   | '/deposits'
   | '/rent-increases'
   | '/terminations'
@@ -90,6 +92,7 @@ const NAV_PORTFOLIO: NavItem[] = [
 const NAV_FINANCE: NavItem[] = [
   { to: '/invoices', label: 'Fakturor', icon: Receipt },
   { to: '/avisering', label: 'Hyresavier', icon: Receipt },
+  { to: '/consumption', label: 'Förbrukning', icon: Gauge },
   { to: '/deposits', label: 'Depositioner', icon: CreditCard },
   { to: '/rent-increases', label: 'Hyreshöjningar', icon: TrendingUp },
   { to: '/accounting', label: 'Bokföring', icon: BookOpen },
