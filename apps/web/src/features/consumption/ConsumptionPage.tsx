@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Gauge, Lock, Pencil, Coins } from 'lucide-react'
+import { Plus, Gauge, Lock, Pencil, Coins, Activity } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -10,8 +10,10 @@ import { DataTable } from '@/components/ui/DataTable'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MeterForm } from './components/MeterForm'
 import { TariffForm } from './components/TariffForm'
+import { ReadingForm } from './components/ReadingForm'
 import { useMeters, useCreateMeter, useUpdateMeter } from './hooks/useMeterQueries'
 import { useTariffs, useCreateTariff } from './hooks/useTariffQueries'
+import { useReadings, useCreateReading } from './hooks/useReadingQueries'
 import { useUnits } from '@/features/units/hooks/useUnits'
 import { useProperties } from '@/features/properties/hooks/useProperties'
 import { useCanWrite } from '@/hooks/useCanWrite'
@@ -25,6 +27,8 @@ import type {
   ConsumptionTariff,
   TariffScope,
   CreateTariffInput,
+  ReadingType,
+  CreateReadingInput,
 } from '@eken/shared'
 import { cn } from '@/lib/cn'
 
@@ -75,6 +79,11 @@ function formatPricePerUnit(value: number | string, meterType: MeterType): strin
   return `${formatted} kr/${PRICE_UNIT[meterType]}`
 }
 
+const READING_TYPE_LABELS: Record<ReadingType, string> = {
+  CUMULATIVE: 'Mätarställning',
+  PERIOD_VOLUME: 'Periodförbrukning',
+}
+
 // ─── Flikar ───────────────────────────────────────────────────────────────────
 // Endast "Mätare" är aktiv i denna PR. Tariffer/Avläsningar/Charges byggs i
 // 1.3/1.4/1.5 — de visas som låsta platshållare så strukturen är på plats och
@@ -84,7 +93,7 @@ type TabId = 'meters' | 'tariffs' | 'readings' | 'charges'
 const TABS: { id: TabId; label: string; ready: boolean }[] = [
   { id: 'meters', label: 'Mätare', ready: true },
   { id: 'tariffs', label: 'Tariffer', ready: true },
-  { id: 'readings', label: 'Avläsningar', ready: false },
+  { id: 'readings', label: 'Avläsningar', ready: true },
   { id: 'charges', label: 'Förbrukningsposter', ready: false },
 ]
 
@@ -160,20 +169,39 @@ export function ConsumptionPage() {
   const [tab, setTab] = useState<TabId>('meters')
   const [showCreate, setShowCreate] = useState(false)
   const [showCreateTariff, setShowCreateTariff] = useState(false)
+  const [showCreateReading, setShowCreateReading] = useState(false)
   const [selected, setSelected] = useState<Meter | null>(null)
   const [editing, setEditing] = useState(false)
+  // Avläsningsfilter (1.1-filtret: unit + period mot avläsningens slutdatum).
+  const [readingUnitFilter, setReadingUnitFilter] = useState('')
+  const [readingFrom, setReadingFrom] = useState('')
+  const [readingTo, setReadingTo] = useState('')
 
   const { data: meters = [], isLoading } = useMeters()
   const { data: tariffs = [], isLoading: tariffsLoading } = useTariffs()
   const { data: units = [] } = useUnits()
   const { data: properties = [] } = useProperties()
+  const readingFilters = {
+    ...(readingUnitFilter ? { unitId: readingUnitFilter } : {}),
+    ...(readingFrom ? { periodStart: readingFrom } : {}),
+    ...(readingTo ? { periodEnd: readingTo } : {}),
+  }
+  const { data: readings = [], isLoading: readingsLoading } = useReadings(readingFilters)
   const createMutation = useCreateMeter()
   const updateMutation = useUpdateMeter()
   const createTariffMutation = useCreateTariff()
+  const createReadingMutation = useCreateReading()
 
   function unitLabel(unitId: string): string {
     const u = units.find((u) => u.id === unitId)
     return u ? `${u.property.name} · ${u.unitNumber}` : '–'
+  }
+
+  // Etikett för en avläsnings mätare (typ + enhet).
+  function meterLabel(meterId: string): string {
+    const m = meters.find((m) => m.id === meterId)
+    if (!m) return '–'
+    return `${METER_TYPE_LABELS[m.type]} · ${unitLabel(m.unitId)}`
   }
 
   // Scope-målets namn för en tariff (ORG → fast text, PROPERTY/UNIT → upplöses).
@@ -193,6 +221,12 @@ export function ConsumptionPage() {
   // Gällande tariff = validTo null. Övriga är historik (stängda prisperioder).
   const currentTariffs = tariffs.filter((t) => t.validTo === null).length
   const historicTariffs = tariffs.length - currentTariffs
+  // Avläsnings-KPI.
+  const metersRead = new Set(readings.map((r) => r.meterId)).size
+  const latestReading = readings.reduce<string | null>(
+    (max, r) => (max === null || r.readingDate > max ? r.readingDate : max),
+    null,
+  )
 
   function handleCreate(data: CreateMeterInput) {
     createMutation.mutate(data, { onSuccess: () => setShowCreate(false) })
@@ -200,6 +234,10 @@ export function ConsumptionPage() {
 
   function handleCreateTariff(data: CreateTariffInput) {
     createTariffMutation.mutate(data, { onSuccess: () => setShowCreateTariff(false) })
+  }
+
+  function handleCreateReading(data: CreateReadingInput) {
+    createReadingMutation.mutate(data, { onSuccess: () => setShowCreateReading(false) })
   }
 
   function handleUpdate(dto: UpdateMeterInput) {
@@ -231,6 +269,11 @@ export function ConsumptionPage() {
               <Plus size={14} />
               Ny tariff
             </Button>
+          ) : canWrite && tab === 'readings' ? (
+            <Button variant="primary" size="sm" onClick={() => setShowCreateReading(true)}>
+              <Plus size={14} />
+              Ny avläsning
+            </Button>
           ) : undefined
         }
       />
@@ -243,11 +286,21 @@ export function ConsumptionPage() {
               { label: 'Gällande nu', value: currentTariffs, tag: 'aktiva prisperioder' },
               { label: 'Historiska', value: historicTariffs, tag: 'stängda prisperioder' },
             ]
-          : [
-              { label: 'Mätare totalt', value: meters.length, tag: 'el · vatten · värme' },
-              { label: 'I drift', value: activeCount, tag: 'aktiva mätare' },
-              { label: 'Ur bruk / demonterade', value: inactiveCount, tag: 'historik bevaras' },
-            ]
+          : tab === 'readings'
+            ? [
+                { label: 'Avläsningar', value: readings.length, tag: 'i nuvarande filter' },
+                { label: 'Mätare avlästa', value: metersRead, tag: 'distinkta mätare' },
+                {
+                  label: 'Senaste avläsning',
+                  value: latestReading ? formatDate(latestReading) : '–',
+                  tag: 'senaste avläsningsdatum',
+                },
+              ]
+            : [
+                { label: 'Mätare totalt', value: meters.length, tag: 'el · vatten · värme' },
+                { label: 'I drift', value: activeCount, tag: 'aktiva mätare' },
+                { label: 'Ur bruk / demonterade', value: inactiveCount, tag: 'historik bevaras' },
+              ]
         ).map((s, i) => (
           <motion.div
             key={s.label}
@@ -433,12 +486,128 @@ export function ConsumptionPage() {
             />
           )}
         </div>
+      ) : tab === 'readings' ? (
+        <div className="mt-4 space-y-4">
+          {/* Filter: enhet + period (mot avläsningens slutdatum, 1.1-filtret) */}
+          <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-[#EAEDF0] bg-white p-3">
+            <div className="w-56">
+              <Select
+                label="Enhet"
+                value={readingUnitFilter}
+                onChange={(e) => setReadingUnitFilter(e.target.value)}
+                options={[
+                  { value: '', label: 'Alla enheter' },
+                  ...units.map((u) => ({
+                    value: u.id,
+                    label: `${u.property.name} · ${u.unitNumber}`,
+                  })),
+                ]}
+              />
+            </div>
+            <Input
+              label="Period fr.o.m."
+              type="date"
+              value={readingFrom}
+              onChange={(e) => setReadingFrom(e.target.value)}
+            />
+            <Input
+              label="Period t.o.m."
+              type="date"
+              value={readingTo}
+              onChange={(e) => setReadingTo(e.target.value)}
+            />
+            {(readingUnitFilter || readingFrom || readingTo) && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setReadingUnitFilter('')
+                  setReadingFrom('')
+                  setReadingTo('')
+                }}
+              >
+                Rensa filter
+              </Button>
+            )}
+          </div>
+
+          {!readingsLoading && readings.length === 0 ? (
+            <EmptyState
+              icon={Activity}
+              title="Inga avläsningar"
+              description="Registrera mätaravläsningar (manuellt) per period. Förbrukningen beräknas mot tariffen som gällde under perioden."
+              action={
+                canWrite ? (
+                  <Button variant="primary" size="sm" onClick={() => setShowCreateReading(true)}>
+                    <Plus size={14} />
+                    Ny avläsning
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : (
+            <DataTable
+              data={readingsLoading ? [] : readings}
+              keyExtractor={(r) => r.id}
+              columns={[
+                {
+                  key: 'meter',
+                  header: 'Mätare',
+                  cell: (r) => <span className="text-gray-700">{meterLabel(r.meterId)}</span>,
+                },
+                {
+                  key: 'value',
+                  header: 'Värde',
+                  align: 'right',
+                  cell: (r) => (
+                    <span className="font-semibold text-gray-800">
+                      {Number(r.value).toLocaleString('sv-SE', { maximumFractionDigits: 3 })}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'type',
+                  header: 'Avläsningssätt',
+                  cell: (r) => (
+                    <span className="text-[12.5px] text-gray-500">
+                      {READING_TYPE_LABELS[r.readingType]}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'readingDate',
+                  header: 'Avläst',
+                  cell: (r) => (
+                    <span className="text-[12.5px] text-gray-500">{formatDate(r.readingDate)}</span>
+                  ),
+                },
+                {
+                  key: 'period',
+                  header: 'Period',
+                  cell: (r) => (
+                    <span className="text-[12.5px] text-gray-500">
+                      {formatDate(r.periodStart)} – {formatDate(r.periodEnd)}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'source',
+                  header: 'Källa',
+                  cell: (r) => (
+                    <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-medium text-gray-600">
+                      {r.source === 'MANUAL' ? 'Manuell' : r.source}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          )}
+        </div>
       ) : (
         <div className="mt-4">
           <EmptyState
             icon={Lock}
             title={`${TABS.find((t) => t.id === tab)?.label} byggs i ett kommande steg`}
-            description="Mätare och tariffer läggs upp först. Avläsningar och förbrukningsposter aktiveras i tur och ordning."
+            description="Mätare, tariffer och avläsningar läggs upp först. Förbrukningsposter aktiveras i nästa steg."
           />
         </div>
       )}
@@ -464,6 +633,21 @@ export function ConsumptionPage() {
           onSubmit={handleCreateTariff}
           onCancel={() => setShowCreateTariff(false)}
           isSubmitting={createTariffMutation.isPending}
+        />
+      </Modal>
+
+      {/* Registrera avläsning */}
+      <Modal
+        open={showCreateReading}
+        onClose={() => setShowCreateReading(false)}
+        title="Ny avläsning"
+        description="Manuell mätaravläsning. Förbrukningen beräknas mot gällande tariff."
+        size="lg"
+      >
+        <ReadingForm
+          onSubmit={handleCreateReading}
+          onCancel={() => setShowCreateReading(false)}
+          isSubmitting={createReadingMutation.isPending}
         />
       </Modal>
 
