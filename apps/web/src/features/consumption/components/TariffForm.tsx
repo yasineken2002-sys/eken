@@ -80,6 +80,7 @@ export function TariffForm({ onSubmit, onCancel, isSubmitting = false }: TariffF
       ...(typeof data.fixedMonthlyFee === 'number' && data.fixedMonthlyFee > 0
         ? { fixedMonthlyFee: data.fixedMonthlyFee }
         : {}),
+      ...(data.calculationBasis?.trim() ? { calculationBasis: data.calculationBasis.trim() } : {}),
     }
     onSubmit(clean)
   }
@@ -185,6 +186,31 @@ export function TariffForm({ onSubmit, onCancel, isSubmitting = false }: TariffF
             error={errors.validFrom?.message}
             {...register('validFrom')}
           />
+        </div>
+
+        {/* Beräkningsgrund (JB 12:19) — valfri dokumentationstext */}
+        <div className="col-span-2 space-y-1.5">
+          <label
+            htmlFor="tariff-calculation-basis"
+            className="block text-[13px] font-medium text-gray-700"
+          >
+            Beräkningsgrund (valfri)
+          </label>
+          <textarea
+            id="tariff-calculation-basis"
+            rows={3}
+            placeholder="T.ex. ”Självkostnad: faktisk förbrukning × leverantörens spotpris, ingen marginal.”"
+            className="w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            {...register('calculationBasis')}
+          />
+          {errors.calculationBasis?.message ? (
+            <p className="text-[12px] text-red-500">{errors.calculationBasis.message}</p>
+          ) : (
+            <p className="text-[12px] text-gray-400">
+              Underlag för hur vidaredebiteringen beräknas (JB 12:19) — kan begäras av hyresnämnden.
+              Påverkar inte debiteringen.
+            </p>
+          )}
         </div>
       </div>
 

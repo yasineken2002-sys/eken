@@ -394,6 +394,9 @@ export const CreateTariffSchema = z
     pricePerUnit: z.number().min(0, 'Priset kan inte vara negativt'),
     fixedMonthlyFee: z.number().min(0, 'Avgiften kan inte vara negativ').optional(),
     validFrom: z.string().date(),
+    // Beräkningsgrund (JB 12:19): valfri fri dokumentationstext. Speglar
+    // backendens @MaxLength(2000); ingår aldrig i någon debiteringskalkyl.
+    calculationBasis: z.string().max(2000, 'Högst 2000 tecken').optional(),
   })
   // Scope-målet måste anges för PROPERTY/UNIT (samma regel som backend-servicen).
   .refine((d) => d.scope !== 'PROPERTY' || !!d.propertyId, {
