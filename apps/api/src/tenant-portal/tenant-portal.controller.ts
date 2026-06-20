@@ -511,6 +511,18 @@ export class TenantPortalController {
   }
 
   /**
+   * Hyresgästens egen förbrukning (IMD). Scope kommer ENBART från @CurrentTenant
+   * (tenant-sessionen) — aldrig från query-param. Se getConsumption() i servicen
+   * för GDPR-/säkerhetsbesluten (aggregerad charge, fält-allowlist, DRAFT dold).
+   */
+  @Get('consumption')
+  async getConsumption(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+  ) {
+    return this.portalService.getConsumption(tenant.id)
+  }
+
+  /**
    * Streamar faktura-PDF för en faktura som tillhör inloggad hyresgäst.
    * Auth: TenantAuthGuard. Scope: invoice.tenantId måste matcha — annars
    * 404 (vi avslöjar inte att faktura-id existerar i annan org).

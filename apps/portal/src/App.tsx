@@ -7,6 +7,7 @@ import { NoticesPage } from '@/pages/NoticesPage/NoticesPage'
 import { MaintenancePage } from '@/pages/MaintenancePage/MaintenancePage'
 import { NewsPage } from '@/pages/NewsPage/NewsPage'
 import { DocumentsPage } from '@/pages/DocumentsPage/DocumentsPage'
+import { ConsumptionPage } from '@/pages/ConsumptionPage/ConsumptionPage'
 import { SettingsPage } from '@/pages/SettingsPage/SettingsPage'
 import { LoginPage } from '@/pages/LoginPage/LoginPage'
 import { ActivatePage } from '@/pages/ActivatePage/ActivatePage'
@@ -52,6 +53,7 @@ export function App() {
           <Route path="/maintenance" element={<MaintenancePage />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/forbrukning" element={<ConsumptionPage />} />
           <Route path="/installningar" element={<SettingsPage />} />
         </Route>
 

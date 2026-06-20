@@ -143,6 +143,47 @@ export class TenantPortalService {
     }))
   }
 
+  /**
+   * Hyresgästens egen förbrukning (IMD). GDPR-känsligt — förbrukningsdata är
+   * personuppgift. Säkerhetsbeslut (security-auditor):
+   *  - Scope HÅRT på tenantId (kommer från @CurrentTenant i controllern, ALDRIG
+   *    från query-param → ingen IDOR; en tidigare boende kan aldrig se nuvarandes).
+   *  - Returnera aggregerad ConsumptionCharge (har tenantId) — ALDRIG rå
+   *    MeterReading (saknar tenantId, råa mätarställningar = onödig granularitet).
+   *  - ENDAST fastställda poster: CONFIRMED/ATTACHED. DRAFT (ej bekräftad) och
+   *    CANCELLED (annullerad) döljs.
+   *  - Dubbelt fält-skydd: explicit `select` (allow-list) i queryn + explicit
+   *    mapper nedan. Interna ekonomi-/infrafält når ALDRIG hyresgästen:
+   *    organizationId, leaseId, unitId, tenantId, meterReadingId, deliveryMode,
+   *    invoiceId, vatStatus, vatRate, pricePerUnit, kind, status.
+   */
+  async getConsumption(tenantId: string) {
+    const rows = await this.prisma.consumptionCharge.findMany({
+      where: { tenantId, status: { in: ['CONFIRMED', 'ATTACHED'] } },
+      select: {
+        id: true,
+        meterType: true,
+        periodStart: true,
+        periodEnd: true,
+        quantity: true,
+        netAmount: true,
+        vatAmount: true,
+        totalAmount: true,
+      },
+      orderBy: { periodEnd: 'desc' },
+    })
+    return rows.map((c) => ({
+      id: c.id,
+      meterType: c.meterType,
+      periodStart: c.periodStart.toISOString(),
+      periodEnd: c.periodEnd.toISOString(),
+      quantity: Number(c.quantity),
+      netAmount: Number(c.netAmount),
+      vatAmount: Number(c.vatAmount),
+      totalAmount: Number(c.totalAmount),
+    }))
+  }
+
   async getLease(tenantId: string) {
     return this.getActiveLease(tenantId)
   }

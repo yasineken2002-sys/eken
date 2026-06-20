@@ -115,9 +115,23 @@ function InstallningarIcon() {
   )
 }
 
+function ForbrukningIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <path
+        d="M12 2 6 12h4l-1 8 7-11h-4l1-7z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 const NAV_ITEMS: { to: string; label: string; icon: React.ReactNode; end: boolean }[] = [
   { to: '/', label: 'Hem', icon: <HemIcon />, end: true },
   { to: '/notices', label: 'Avier', icon: <AvierIcon />, end: false },
+  { to: '/forbrukning', label: 'Förbrukning', icon: <ForbrukningIcon />, end: false },
   { to: '/maintenance', label: 'Felanmälan', icon: <FelanmalanIcon />, end: false },
   { to: '/news', label: 'Nyheter', icon: <NyheterIcon />, end: false },
   { to: '/documents', label: 'Dokument', icon: <DokumentIcon />, end: false },

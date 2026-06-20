@@ -3,6 +3,7 @@ import { useSessionStore } from '@/store/session.store'
 import type {
   PortalActivationInfo,
   PortalAuthResult,
+  PortalConsumptionCharge,
   PortalDashboard,
   PortalDocument,
   PortalInvoice,
@@ -161,6 +162,7 @@ export const fetchNotices = () => get<PortalNotice[]>('/portal/notices')
 export const markNoticeRead = (id: string) => post<void>(`/portal/notices/${id}/read`)
 export const fetchNews = () => get<PortalNews[]>('/portal/news')
 export const fetchDocuments = () => get<PortalDocument[]>('/portal/documents')
+export const fetchConsumption = () => get<PortalConsumptionCharge[]>('/portal/consumption')
 export const fetchDocumentDownload = (documentId: string) =>
   get<{ url: string; filename: string; mimeType: string }>(
     `/portal/documents/${encodeURIComponent(documentId)}/download`,
