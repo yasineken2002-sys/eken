@@ -174,6 +174,7 @@ export class ConsumptionService {
           ...(dto.propertyId ? { propertyId: dto.propertyId } : {}),
           ...(dto.unitId ? { unitId: dto.unitId } : {}),
           ...(dto.fixedMonthlyFee !== undefined ? { fixedMonthlyFee: dto.fixedMonthlyFee } : {}),
+          ...(dto.calculationBasis ? { calculationBasis: dto.calculationBasis } : {}),
         },
       })
     })
