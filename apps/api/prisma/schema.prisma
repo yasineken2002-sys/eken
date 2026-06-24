@@ -130,6 +130,10 @@ enum JournalEntrySource {
   // hyresavi bokförs med source=RENT_NOTICE, sourceId='reminder-fee:{id}' →
   // egen idempotensnyckel skild från faktura-flödets INVOICE-serie.
   RENT_NOTICE
+  // Övrig debiterbar post mot hyresgäst (teknisk förvaltning: skada, nyckel).
+  // Bokförs i PR 2 med source=MISC_CHARGE, sourceId='misc-charge:{id}' → egen
+  // idempotensnyckel, separat ledger-filtrering från consumption/faktura.
+  MISC_CHARGE
 }
 
 // ─── Invoice Event Types ──────────────────────────────────────────────────────
@@ -647,6 +651,7 @@ model Organization {
   meterReadings      MeterReading[]
   consumptionTariffs ConsumptionTariff[]
   consumptionCharges ConsumptionCharge[]
+  miscCharges        MiscCharge[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -929,6 +934,7 @@ model Tenant {
   terminationRequests TerminationRequest[]
   keyHandovers       KeyHandover[]
   consumptionCharges ConsumptionCharge[]
+  miscCharges        MiscCharge[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1080,6 +1086,7 @@ model Lease {
   terminationRequests TerminationRequest[]
   keyHandovers        KeyHandover[]
   consumptionCharges  ConsumptionCharge[]
+  miscCharges         MiscCharge[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2052,6 +2059,17 @@ model MaintenanceTicket {
   tenantToken    String? @unique
   tenantNotified Boolean @default(false)
 
+  // Debiterbar post som genererats från ärendet (teknisk förvaltning, Spår A).
+  // 1:1, FK på ticket-sidan med Restrict (en bokförd MiscCharge är bevis och får
+  // inte försvinna under ärendet). Låter ärendet veta om det redan debiterats.
+  //
+  // AVSIKTLIG DUBBELLÄNK (ai-architect) — ta INTE bort som "duplicering": denna
+  // hårda FK (chargeId) ger referensintegritet för den kända v1-källan
+  // (MAINTENANCE_TICKET). MiscCharge.sourceType/sourceRefId är den GENERISKA
+  // metadatan som framtida källor (INSPECTION_ITEM, KEY_LOSS) använder UTAN egen
+  // FK uppåt. De pekar medvetet mot varandra för maintenance-fallet.
+  chargeId String? @unique
+
   images   MaintenanceImage[]
   comments MaintenanceComment[]
 
@@ -2062,6 +2080,7 @@ model MaintenanceTicket {
   property     Property     @relation(fields: [propertyId], references: [id])
   unit         Unit?        @relation(fields: [unitId], references: [id])
   tenant       Tenant?      @relation(fields: [tenantId], references: [id])
+  charge       MiscCharge?  @relation(fields: [chargeId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, ticketNumber])
   @@index([organizationId])
@@ -2242,11 +2261,21 @@ model RentNoticeLine {
   total        Decimal @db.Decimal(10, 2)
 
   consumptionChargeId String? @unique
+  // Övrig debiterbar post (teknisk förvaltning) som rad på avin. Restrict: en
+  // bokförd MiscCharge får inte försvinna under avi-raden (charges är bevis,
+  // speglar consumption-charges Restrict-hållning). FK på line-sidan, 1:1.
+  //
+  // XOR-INVARIANT: exakt EN av consumptionChargeId / miscChargeId får vara satt
+  // på en charge-rad (en rad är antingen en förbruknings- eller en övrig post,
+  // aldrig båda). Detta tvingas i service-lagret (PR 3), inte i schemat —
+  // Prisma kan inte uttrycka ett villkorligt XOR-constraint.
+  miscChargeId String? @unique
 
   createdAt DateTime @default(now())
 
   rentNotice        RentNotice         @relation(fields: [rentNoticeId], references: [id], onDelete: Cascade)
   consumptionCharge ConsumptionCharge? @relation(fields: [consumptionChargeId], references: [id])
+  miscCharge        MiscCharge?        @relation(fields: [miscChargeId], references: [id], onDelete: Restrict)
 
   @@index([rentNoticeId])
 }
@@ -3033,6 +3062,99 @@ model ConsumptionCharge {
   @@index([leaseId])
   @@index([status])
   @@index([periodEnd])
+}
+
+// ─── Teknisk förvaltning: övrig debiterbar post (Spår A) ──────────────────────
+//
+// Generisk intäkts-charge mot hyresgäst för teknisk förvaltning (skada från
+// felanmälan, nyckelersättning m.m.). Speglar ConsumptionCharge:ns konventioner
+// (denormaliserade scope-kolumner som självständigt underlag, Restrict mot org +
+// lease eftersom charges är bevis, status-/moms-snapshot). SKILD från
+// ConsumptionCharge för att inte förorena mätar-semantiken (meterReadingId är
+// där NOT NULL; en skada/nyckel har inget mätunderlag) — beslut "Väg 2",
+// specialist-granskningen 2026-06-24.
+//
+// PR 1 (denna): BARA datamodellen + scope-kolumner. INGEN bokföringslogik, ingen
+// debiterings-service, ingen frontend. Bokföring (1510 D / 3040|3990 K) sker i
+// PR 2/3 via AccountingService med source=MISC_CHARGE, sourceId='misc-charge:{id}'.
+model MiscCharge {
+  id String @id @default(uuid())
+
+  // Denormaliserade scope-kolumner som EGNA fält (speglar ConsumptionCharge:
+  // "självständigt underlag") — scopas ALDRIG via JOIN. unitId/invoiceId
+  // medvetet utelämnade i PR 1 (invoiceId hör till attach, PR 4).
+  organizationId String
+  leaseId        String
+  tenantId       String
+
+  // Källa som METADATA (ej polymorf FK uppåt). Den hårda FK:n ligger på
+  // källmodellen (t.ex. MaintenanceTicket.chargeId). sourceType/sourceRefId är
+  // den generiska kopplingen som framtida källor (INSPECTION_ITEM, KEY_LOSS)
+  // använder utan egen FK. Se AVSIKTLIG DUBBELLÄNK-kommentaren i MaintenanceTicket.
+  sourceType  MiscChargeSource
+  sourceRefId String
+
+  description String
+  // Bokföringsdatum (PR 2): när skadan/förlusten konstaterades — INTE createdAt
+  // (fel räkenskapsår). Speglar ConsumptionCharge.periodEnd som verifikatets datum.
+  incidentDate DateTime @db.Date
+
+  // Money — speglar ConsumptionCharge. vatStatus EXEMPT default (bostad, ML 3:2);
+  // momsbeslutet spikas ALDRIG i kod, dokumenteras i PR 2. Belopp är snapshots —
+  // frontend räknar aldrig om dem.
+  netAmount   Decimal             @db.Decimal(10, 2)
+  vatStatus   MiscChargeVatStatus @default(EXEMPT)
+  vatRate     Int                 @default(0)
+  vatAmount   Decimal             @default(0) @db.Decimal(10, 2)
+  totalAmount Decimal             @db.Decimal(10, 2)
+
+  // DRAFT default — bokförs först i PR 2/3. TODO PR 4: ATTACHED får sättas FÖRST
+  // när posten kopplats till avi/faktura (invoiceId/RentNoticeLine). Ingen kod i
+  // PR 1 får sätta status=ATTACHED — invoiceId-fältet och attach-flödet finns ännu inte.
+  status MiscChargeStatus @default(DRAFT)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Restrict mot org OCH lease — charges är bevis (speglar ConsumptionCharge,
+  // striktare än Deposit som har Cascade mot lease). tenant utan Restrict (spegel).
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  lease        Lease        @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+
+  // Back-relations (1:1) — den hårda FK:n med onDelete: Restrict ligger på
+  // motpartssidan (MaintenanceTicket.chargeId, RentNoticeLine.miscChargeId).
+  maintenanceTicket MaintenanceTicket?
+  rentNoticeLine    RentNoticeLine?
+
+  @@index([organizationId])
+  @@index([leaseId])
+  @@index([status])
+  @@index([sourceType, sourceRefId])
+}
+
+enum MiscChargeStatus {
+  DRAFT // Skapad och prissatt, ej bokförd (PR 2)
+  CONFIRMED // Verifikat + 1510-fordran bokförd (PR 3)
+  ATTACHED // Kopplad till avi/faktura för presentation + betalning (PR 4)
+  CANCELLED // Annullerad (rättning – posterna raderas aldrig)
+}
+
+// Momsstatus snapshotad från lease/unit-konfiguration vid skapande. EXEMPT
+// default för bostad (ML 3 kap 2 §). Regeln spikas ALDRIG i kod — momsbeslutet
+// dokumenteras i PR 2.
+enum MiscChargeVatStatus {
+  EXEMPT
+  TAXABLE_25
+}
+
+// Källtyp för den debiterbara posten. MAINTENANCE_TICKET i v1 (felanmälan →
+// debitering). INSPECTION_ITEM/KEY_LOSS finns i sömmen för Spår A område 2–3
+// utan migrationssmärta — ingen logik för dem byggs i v1.
+enum MiscChargeSource {
+  MAINTENANCE_TICKET
+  INSPECTION_ITEM
+  KEY_LOSS
 }
 
 // ─── Juridik-RAG: semantisk sökning (Etapp 3) ─────────────────────────────────

@@ -438,3 +438,25 @@ export const CreateReadingSchema = z
   })
 
 export type CreateReadingInput = z.infer<typeof CreateReadingSchema>
+
+// ─── Teknisk förvaltning — övrig debiterbar post (MiscCharge, Spår A) ──────────
+// Input-schema för att skapa en debiterbar post (skada/nyckel) mot en hyresgäst.
+// Speglar consumption-mönstret: frontend-formulär validerar mot samma regler som
+// backend-DTO:n (PR 3 — debiterings-servicen). PR 1 exporterar bara schemat;
+// bokföring/service byggs senare. Belopp anges netto (netAmount); moms snapshotas
+// i servicen (momsbeslutet dokumenteras i PR 2), därför ingår vat* inte här.
+
+export const MiscChargeSourceEnum = z.enum(['MAINTENANCE_TICKET', 'INSPECTION_ITEM', 'KEY_LOSS'])
+
+export const CreateMiscChargeSchema = z.object({
+  leaseId: z.string().uuid({ message: 'Välj ett hyresavtal' }),
+  tenantId: z.string().uuid({ message: 'Välj en hyresgäst' }),
+  sourceType: MiscChargeSourceEnum,
+  sourceRefId: z.string().min(1, 'Källreferens krävs'),
+  description: z.string().min(1, 'Ange en beskrivning').max(500, 'Högst 500 tecken'),
+  // När skadan/förlusten konstaterades — styr bokföringsdatum (PR 2).
+  incidentDate: z.string().date(),
+  netAmount: z.number().min(0, 'Beloppet kan inte vara negativt'),
+})
+
+export type CreateMiscChargeInput = z.infer<typeof CreateMiscChargeSchema>

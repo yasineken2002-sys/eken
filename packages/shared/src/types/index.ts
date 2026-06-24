@@ -684,3 +684,37 @@ export interface ConsumptionCharge {
     periodEnd: string
   }
 }
+
+// ─── Teknisk förvaltning: övrig debiterbar post (MiscCharge, Spår A) ───────────
+// Generisk intäkts-charge mot hyresgäst (skada/nyckel m.m.). Speglar
+// ConsumptionCharge-mönstret: belopp är snapshots av verifikatet — frontend
+// räknar ALDRIG om dem, läser totalAmount/netAmount/vatAmount direkt (Decimal →
+// serialiseras som sträng → coercera med Number() ENBART vid visning). Skild
+// modell från ConsumptionCharge (beslut "Väg 2", 2026-06-24).
+
+export type MiscChargeStatus = 'DRAFT' | 'CONFIRMED' | 'ATTACHED' | 'CANCELLED'
+export type MiscChargeVatStatus = 'EXEMPT' | 'TAXABLE_25'
+// Källtyp. MAINTENANCE_TICKET i v1; INSPECTION_ITEM/KEY_LOSS i sömmen för område 2–3.
+export type MiscChargeSource = 'MAINTENANCE_TICKET' | 'INSPECTION_ITEM' | 'KEY_LOSS'
+
+export interface MiscCharge {
+  id: string
+  organizationId: string
+  leaseId: string
+  tenantId: string
+  // Källa som metadata (ej polymorf FK uppåt) — hård FK ligger på källmodellen.
+  sourceType: MiscChargeSource
+  sourceRefId: string
+  description: string
+  // Bokföringsdatum (när skadan/förlusten konstaterades), ISO-datum.
+  incidentDate: string
+  // Decimal i DB → serialiseras som sträng. Coercera med Number() vid visning.
+  netAmount: number | string
+  vatStatus: MiscChargeVatStatus
+  vatRate: number
+  vatAmount: number | string
+  totalAmount: number | string
+  status: MiscChargeStatus
+  createdAt: string
+  updatedAt: string
+}
