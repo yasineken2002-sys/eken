@@ -148,11 +148,20 @@ export class MiscChargeService {
 
     if (charge.status === 'DRAFT') {
       // Aldrig bokförd → inget att backa. Villkorad updateMany stänger TOCTOU mot
-      // ett samtidigt confirm (status:'DRAFT' i where).
-      await this.prisma.miscCharge.updateMany({
+      // ett samtidigt confirm (status:'DRAFT' i where). count===0 betyder att ett
+      // parallellt confirm hann flippa DRAFT→CONFIRMED mellan findFirst och nu —
+      // då får anroparen ett tydligt fel, inte ett tyst 200 med CONFIRMED-status
+      // (speglar ticket-claim-mönstret i createMiscCharge).
+      const result = await this.prisma.miscCharge.updateMany({
         where: { id, organizationId, status: 'DRAFT' },
         data: { status: 'CANCELLED' },
       })
+      if (result.count === 0) {
+        const current = await this.findCharge(id, organizationId)
+        throw new ConflictException(
+          `Posten kan inte annulleras i nuläget (nuvarande status: ${current.status})`,
+        )
+      }
       return this.findCharge(id, organizationId)
     }
 

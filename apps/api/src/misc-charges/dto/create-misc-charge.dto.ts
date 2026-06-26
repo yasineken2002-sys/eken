@@ -27,7 +27,10 @@ export class CreateMiscChargeDto {
   @IsDateString()
   incidentDate!: string
 
+  // Min 0.01: ett nollbelopp skapar en DRAFT som aldrig kan bekräftas (confirm →
+  // null vid total ≤ 0 → 422). DTO-validering är primär spärr; servicens
+  // null-hantering är backstop.
   @IsNumber()
-  @Min(0)
+  @Min(0.01)
   netAmount!: number
 }

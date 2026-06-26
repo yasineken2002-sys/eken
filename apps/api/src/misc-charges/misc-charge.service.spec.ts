@@ -126,6 +126,12 @@ describe('createMiscCharge', () => {
     lease.findFirst.mockResolvedValueOnce(null)
     await expect(service.createMiscCharge(createDto, 'org-1')).rejects.toThrow(NotFoundException)
   })
+
+  it('okänd tenant i org → NotFound (oberoende felväg från lease)', async () => {
+    const { service, tenant } = makeService(null)
+    tenant.findFirst.mockResolvedValueOnce(null)
+    await expect(service.createMiscCharge(createDto, 'org-1')).rejects.toThrow(NotFoundException)
+  })
 })
 
 // ── confirmMiscCharge: fyra utfall ───────────────────────────────────────────
@@ -181,6 +187,18 @@ describe('cancelMiscCharge', () => {
     })
     expect(result.status).toBe('CANCELLED')
     expect(state?.status).toBe('CANCELLED')
+  })
+
+  it('parallellt confirm vinner racet (DRAFT→CONFIRMED) → ConflictException, ingen tyst 200', async () => {
+    const { service, accounting, miscCharge } = makeService({ ...baseCharge, status: 'DRAFT' })
+    // Simulera att confirm hann före: villkorad updateMany matchar inga DRAFT-rader.
+    // (Status-läsningen dessförinnan ser fortfarande DRAFT → DRAFT-grenen.)
+    miscCharge.updateMany.mockResolvedValueOnce({ count: 0 })
+    await expect(service.cancelMiscCharge('mc-1', 'org-1', 'user-9')).rejects.toThrow(
+      ConflictException,
+    )
+    // Ingen reversal — det fanns inget bokfört original (posten var DRAFT vid läsning).
+    expect(accounting.reverseJournalEntryForMiscCharge).not.toHaveBeenCalled()
   })
 
   it('CONFIRMED → motverifikat FÖRST, sedan status, atomiskt', async () => {
