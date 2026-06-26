@@ -42,6 +42,12 @@ export interface MaintenanceTicket {
   category: MaintenanceCategory
   priority: MaintenancePriority
   status: MaintenanceStatus
+  // Teknisk förvaltning (Spår A): debiterbar post genererad från ärendet. chargeId
+  // = MaintenanceTicket.chargeId (skalär). leaseId = härlett aktivt avtal för
+  // enheten (backend findOne) — krävs för "Debitera & bokför". Båda endast på
+  // detalj-svaret (findOne), inte i listan.
+  chargeId?: string | null
+  leaseId?: string | null
   estimatedCost?: number | null
   actualCost?: number | null
   scheduledDate?: string | null

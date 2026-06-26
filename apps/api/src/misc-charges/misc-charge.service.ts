@@ -6,7 +6,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common'
-import type { MiscCharge } from '@prisma/client'
+import type { MiscCharge, MiscChargeStatus } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { CreateMiscChargeDto } from './dto/create-misc-charge.dto'
@@ -123,7 +123,7 @@ export class MiscChargeService {
         'Kunde inte bokföra posten: kontoplanen saknar konto (1510/3990) eller beloppet är noll.',
       )
     }
-    return this.findCharge(id, organizationId)
+    return this.findMiscCharge(id, organizationId)
   }
 
   // ── CANCELLED: annullering/reversal ────────────────────────────────────────
@@ -157,12 +157,12 @@ export class MiscChargeService {
         data: { status: 'CANCELLED' },
       })
       if (result.count === 0) {
-        const current = await this.findCharge(id, organizationId)
+        const current = await this.findMiscCharge(id, organizationId)
         throw new ConflictException(
           `Posten kan inte annulleras i nuläget (nuvarande status: ${current.status})`,
         )
       }
-      return this.findCharge(id, organizationId)
+      return this.findMiscCharge(id, organizationId)
     }
 
     // CONFIRMED → motverifikat + statusflipp atomiskt.
@@ -173,11 +173,32 @@ export class MiscChargeService {
         data: { status: 'CANCELLED' },
       })
     })
-    return this.findCharge(id, organizationId)
+    return this.findMiscCharge(id, organizationId)
   }
 
-  // Intern läs-helper (ingen exponerad GET i PR 3 — hyresgästvy är PR 5).
-  private async findCharge(id: string, organizationId: string): Promise<MiscCharge> {
+  // ── Läsning (hyresvärds-sidan, PR 4) ───────────────────────────────────────
+  //
+  // Lista debiteringsposter, org-scopat. Filter: status (t.ex. CONFIRMED för
+  // poster som kan attach:as till avi i PR 4b), leaseId, sourceRefId (ärendets id
+  // → hämta postens status för en MaintenanceTicket utan att läcka övriga fält).
+  // Hyresgästvy/portal är PR 5 — detta är endast hyresvärds-API.
+  async findMiscCharges(
+    organizationId: string,
+    filters?: { status?: MiscChargeStatus; leaseId?: string; sourceRefId?: string },
+  ): Promise<MiscCharge[]> {
+    return this.prisma.miscCharge.findMany({
+      where: {
+        organizationId,
+        ...(filters?.status ? { status: filters.status } : {}),
+        ...(filters?.leaseId ? { leaseId: filters.leaseId } : {}),
+        ...(filters?.sourceRefId ? { sourceRefId: filters.sourceRefId } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+  }
+
+  // Enskild post (query-nyckel ['misc-charge', id] i frontend). Org-scopat.
+  async findMiscCharge(id: string, organizationId: string): Promise<MiscCharge> {
     const charge = await this.prisma.miscCharge.findFirst({ where: { id, organizationId } })
     if (!charge) throw new NotFoundException('Debiteringsposten hittades inte')
     return charge
