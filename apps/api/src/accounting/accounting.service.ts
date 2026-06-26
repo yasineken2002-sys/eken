@@ -1312,6 +1312,51 @@ export class AccountingService {
     })
   }
 
+  // ── Teknisk förvaltning · Spår A PR 3 — annullering av MiscCharge-verifikat ──
+  // Skapar ett MOTVERIFIKAT (omvänd kontering 3990 D / 1510 K) — append-only, vi
+  // raderar ALDRIG originalet (BFL 5 kap, Restrict). Speglar
+  // reverseJournalEntryForPayment: läser originalet via (org, MISC_CHARGE,
+  // sourceId='misc-charge:{id}'), byter plats debet↔kredit. Inget original (posten
+  // var aldrig bokförd) → no-op. Idempotent via egen nyckel
+  // sourceId='misc-charge-reversal:{id}' — andra annulleringen ger inget andra
+  // motverifikat. Valfri `tx` så reversal + status-flip körs atomiskt (cancel-
+  // flödet: faller reversalen flippas aldrig status → ingen halv-annullering).
+  async reverseJournalEntryForMiscCharge(
+    miscChargeId: string,
+    organizationId: string,
+    createdById: string | null,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const db = tx ?? this.prisma
+    const sourceId = `misc-charge:${miscChargeId}`
+    const original = await db.journalEntry.findFirst({
+      where: { organizationId, source: 'MISC_CHARGE', sourceId },
+      include: { lines: true },
+    })
+    if (!original) return
+
+    const reversalLines: JournalLineInput[] = original.lines.map((l) => ({
+      accountId: l.accountId,
+      ...(l.debit != null ? { credit: Number(l.debit) } : {}),
+      ...(l.credit != null ? { debit: Number(l.credit) } : {}),
+      ...(l.description ? { description: `Reversal: ${l.description}` } : {}),
+    }))
+
+    const reversalSourceId = `misc-charge-reversal:${miscChargeId}`
+    await this.createNumberedEntry({
+      organizationId,
+      // Rättelseverifikatet dateras till annulleringsdagen, inte originalets datum.
+      date: new Date(),
+      description: `Annullerad debitering: ${original.description}`,
+      source: 'MISC_CHARGE',
+      sourceId: reversalSourceId,
+      createdById,
+      lines: reversalLines,
+      idempotencyWhere: { organizationId, source: 'MISC_CHARGE', sourceId: reversalSourceId },
+      ...(tx ? { tx } : {}),
+    })
+  }
+
   // Bokslutspost: upplupen förbrukningsintäkt (IMD). Förbrukning som är konsumerad
   // men ännu OMÄTT vid räkenskapsårets slut (mätaren läses först i januari) saknar
   // ett ACTUAL-verifikat i rätt år. Här periodiseras den estimerade intäkten:
