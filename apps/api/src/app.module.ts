@@ -21,6 +21,7 @@ import { AccountingModule } from './accounting/accounting.module'
 import { DepositsModule } from './deposits/deposits.module'
 import { KeysModule } from './keys/keys.module'
 import { ConsumptionModule } from './consumption/consumption.module'
+import { MiscChargeModule } from './misc-charges/misc-charge.module'
 import { RentIncreasesModule } from './rent-increases/rent-increases.module'
 import { HealthModule } from './common/health/health.module'
 import { DashboardModule } from './dashboard/dashboard.module'
@@ -102,6 +103,7 @@ import { WebhooksModule } from './webhooks/webhooks.module'
     DepositsModule,
     KeysModule,
     ConsumptionModule,
+    MiscChargeModule,
     RentIncreasesModule,
     HealthModule,
     DashboardModule,
