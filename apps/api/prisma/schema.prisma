@@ -2154,6 +2154,14 @@ model RentNotice {
   // verifikat (PR 3), inte här. Default 0. Rader i RentNoticeLine (PR 4).
   consumptionAmount Decimal @default(0) @db.Decimal(10, 2)
 
+  // Övriga debiterbara poster (MiscCharge, teknisk förvaltning Spår A) som rader
+  // på avin — skada/nyckel m.m. SPEGLAR consumptionAmount: brutto, ingår i den
+  // betalbara totalen/OCR/skuld men bokförs via eget verifikat (1510 D / 3990 K,
+  // PR 2/3), inte här. ALDRIG hopslaget med consumptionAmount — IMD-attach skriver
+  // över det fältet vid varje generering, och rapportering håller isär IMD från
+  // skadedebitering. Default 0. Rader i RentNoticeLine.miscChargeId (PR 4b).
+  miscChargeAmount Decimal @default(0) @db.Decimal(10, 2)
+
   // ── Kravtrappa (inkasso-serien) ─────────────────────────────────────────
   // Additiva fält — RentNotice bär redan stora delar av "inkasso-ready"-datan
   // (dueDate, sentAt/sentTo/sendError = leveransstatus, bankTransactions =

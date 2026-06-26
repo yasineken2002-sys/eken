@@ -33,6 +33,7 @@ const BAD_DEBT_SELECT = {
   vatAmount: true,
   totalAmount: true,
   consumptionAmount: true,
+  miscChargeAmount: true,
   reminderFeeAmount: true,
   interestAccruedAmount: true,
   paidAmount: true,

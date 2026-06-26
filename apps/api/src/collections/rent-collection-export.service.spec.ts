@@ -33,6 +33,7 @@ function completeNotice(over: Record<string, unknown> = {}) {
     collectionReadyAt: new Date('2026-06-22'),
     totalAmount: new Decimal(8000),
     consumptionAmount: new Decimal(500),
+    miscChargeAmount: new Decimal(0),
     reminderFeeAmount: new Decimal(60),
     interestAccruedAmount: new Decimal(123.45),
     interestAccruedThrough: new Date('2026-06-22'),

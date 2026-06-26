@@ -700,11 +700,15 @@ export class ReconciliationService {
     const invMatches = invCandidates.filter((inv) =>
       inv.total.minus(transaction.amount).abs().lte(tolerance),
     )
-    // Betalbar total = hyra + förbrukning (IMD) + påminnelseavgift (PR 2).
-    // Hyresgästen betalar EN summa.
+    // Betalbar total = hyra + förbrukning (IMD) + övrig debitering (teknisk
+    // förvaltning, Spår A) + påminnelseavgift (PR 2). Hyresgästen betalar EN summa
+    // — denna måste matcha rentNoticePayableTotal/computeRentDebt.ocrOutstanding
+    // exakt, annars auto-matchar inte en klumpbetalning och en betald avi
+    // felaktigt eskaleras mot inkasso. Ränta exkluderas (ej OCR-reglerbar).
     const noticeMatches = noticeCandidates.filter((n) =>
       n.totalAmount
         .plus(n.consumptionAmount)
+        .plus(n.miscChargeAmount)
         .plus(n.reminderFeeAmount)
         .minus(transaction.amount)
         .abs()
@@ -899,6 +903,7 @@ export class ReconciliationService {
           type: true,
           totalAmount: true,
           consumptionAmount: true,
+          miscChargeAmount: true,
           reminderFeeAmount: true,
           interestAccruedAmount: true,
         },
@@ -918,6 +923,7 @@ export class ReconciliationService {
         type: notice.type,
         totalAmount: notice.totalAmount,
         consumptionAmount: notice.consumptionAmount,
+        miscChargeAmount: notice.miscChargeAmount,
         reminderFeeAmount: notice.reminderFeeAmount,
         interestAccruedAmount: notice.interestAccruedAmount,
         allocations: priorAllocs.map((a) => a.amount),
@@ -1269,6 +1275,7 @@ export class ReconciliationService {
             status: true,
             totalAmount: true,
             consumptionAmount: true,
+            miscChargeAmount: true,
             reminderFeeAmount: true,
             interestAccruedAmount: true,
           },
@@ -1278,6 +1285,7 @@ export class ReconciliationService {
             type: noticeRow.type,
             totalAmount: noticeRow.totalAmount,
             consumptionAmount: noticeRow.consumptionAmount,
+            miscChargeAmount: noticeRow.miscChargeAmount,
             reminderFeeAmount: noticeRow.reminderFeeAmount,
             interestAccruedAmount: noticeRow.interestAccruedAmount,
             allocations: remainingAllocs.map((a) => a.amount),

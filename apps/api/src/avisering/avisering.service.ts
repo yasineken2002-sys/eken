@@ -14,6 +14,7 @@ import { StorageService } from '../storage/storage.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { ConsumptionService } from '../consumption/consumption.service'
+import { MiscChargeService } from '../misc-charges/misc-charge.service'
 import { computeRentDebt } from './rent-debt.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import {
@@ -64,6 +65,7 @@ export class AviseringService {
     private readonly pdfQueue: PdfQueue,
     private readonly accounting: AccountingService,
     private readonly consumption: ConsumptionService,
+    private readonly miscCharges: MiscChargeService,
   ) {}
 
   // Beräknar moms på en hyra utifrån enhetens upplåtelsetyp och frivilliga
@@ -279,6 +281,26 @@ export class AviseringService {
         // skapad och bokförd; charges förblir CONFIRMED och fångas nästa månad.
         this.logger.error(
           `[Avisering] Koppling av förbrukning till avi ${notice.noticeNumber} misslyckades: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        )
+      }
+
+      // Teknisk förvaltning (Spår A PR 4b): koppla lease:ens redan bokförda
+      // CONFIRMED MiscCharges (skada/nyckel) som avi-rader. Sätter
+      // RentNotice.miscChargeAmount; ingår i betalbar total/OCR/skuld men har sitt
+      // EGNA verifikat (1510 D / 3990 K). Presentation, ej bokföring — samma
+      // best-effort-isolering som förbrukningen ovan.
+      try {
+        const miscChargeAmount = await this.miscCharges.attachMiscChargesToRentNotice({
+          organizationId: orgId,
+          leaseId: lease.id,
+          rentNoticeId: notice.id,
+        })
+        if (miscChargeAmount > 0) notice.miscChargeAmount = new Prisma.Decimal(miscChargeAmount)
+      } catch (err) {
+        this.logger.error(
+          `[Avisering] Koppling av övriga debiteringar till avi ${notice.noticeNumber} misslyckades: ${
             err instanceof Error ? err.message : String(err)
           }`,
         )
@@ -521,7 +543,8 @@ export class AviseringService {
         to: notice.tenant.email,
         tenantName,
         ocrNumber: notice.ocrNumber,
-        // Betalbar total = hyra + förbrukning (IMD). Vad hyresgästen ska betala.
+        // Betalbar total = hyra + förbrukning (IMD) + övriga debiterbara poster
+        // (skada/nyckel). Vad hyresgästen faktiskt betalar med avins OCR.
         amount: rentNoticePayableTotal(notice),
         dueDate: notice.dueDate,
         pdfBuffer,
@@ -597,8 +620,9 @@ export class AviseringService {
     const fmt = (n: number): string =>
       Number(n).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-    // Betalbar total = hyra + förbrukning (IMD-rader). Hyresgästen betalar EN
-    // summa med ETT OCR. notice.totalAmount avser bara hyran (hyresverifikatet).
+    // Betalbar total = hyra + förbrukning (IMD-rader) + övriga debiterbara poster
+    // (skada/nyckel). Hyresgästen betalar EN summa med ETT OCR. notice.totalAmount
+    // avser bara hyran (hyresverifikatet).
     const payable = rentNoticePayableTotal(notice)
     const consumptionLines = notice.lines ?? []
     // HTML för förbrukningsrader (visas mellan hyra och totalsumma).
@@ -1170,6 +1194,7 @@ export class AviseringService {
       type: notice.type,
       totalAmount: notice.totalAmount,
       consumptionAmount: notice.consumptionAmount,
+      miscChargeAmount: notice.miscChargeAmount,
       reminderFeeAmount: notice.reminderFeeAmount,
       interestAccruedAmount: notice.interestAccruedAmount,
       allocations: [...priorAllocs.map((a) => a.amount), paidAmount],

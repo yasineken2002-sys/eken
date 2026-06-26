@@ -10,6 +10,7 @@ import type { MiscCharge, MiscChargeStatus } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { CreateMiscChargeDto } from './dto/create-misc-charge.dto'
+import { assertRentNoticeLineChargeXor } from './misc-charge.xor'
 
 // Öresavrundning — speglar consumption (ingen float-aritmetik på snapshots).
 function round2(n: number): number {
@@ -209,5 +210,80 @@ export class MiscChargeService {
     const charge = await this.prisma.miscCharge.findFirst({ where: { id, organizationId } })
     if (!charge) throw new NotFoundException('Debiteringsposten hittades inte')
     return charge
+  }
+
+  // ── ATTACHED: koppla CONFIRMED-poster som rader på en hyresavi (PR 4b) ──────
+  //
+  // Speglar consumption.attachRentNoticeLineCharges. Anropas av avi-genereringen
+  // bredvid consumption-attach. RÖR INTE bokföringen — verifikatet + 1510-fordran
+  // är klara (PR 2/3). Här kopplas redan bokförda CONFIRMED-poster som RentNoticeLine
+  // och summeras till RentNotice.miscChargeAmount, som ingår i den BETALBARA totalen/
+  // OCR/skuld (rentNoticePayableTotal/computeRentDebt) — men har sitt egna verifikat.
+  //
+  // FÖRSTA gången ATTACHED sätts för MiscCharge. invoiceId existerar inte på modellen
+  // (rent-notice-line-vägen länkar via RentNoticeLine.miscChargeId; en separat-faktura-
+  // väg byggs inte här). Claim-mönstret (updateMany status CONFIRMED→ATTACHED,
+  // count===0 → continue) är race-säkert; @unique(miscChargeId) på raden är backstop.
+  // Beloppen läses oförändrat från postens snapshot — beräknas aldrig om.
+  async attachMiscChargesToRentNotice(params: {
+    organizationId: string
+    leaseId: string
+    rentNoticeId: string
+  }): Promise<number> {
+    const charges = await this.prisma.miscCharge.findMany({
+      where: {
+        organizationId: params.organizationId,
+        leaseId: params.leaseId,
+        status: 'CONFIRMED',
+      },
+      orderBy: { createdAt: 'asc' },
+    })
+    if (charges.length === 0) return 0
+
+    let miscTotal = 0
+    await this.prisma.$transaction(async (tx) => {
+      for (const charge of charges) {
+        // Atomiskt anspråk CONFIRMED → ATTACHED (race-säkert): bara vinnaren skapar
+        // raden. @unique(miscChargeId) på RentNoticeLine är backstop.
+        const claim = await tx.miscCharge.updateMany({
+          where: { id: charge.id, organizationId: params.organizationId, status: 'CONFIRMED' },
+          data: { status: 'ATTACHED' },
+        })
+        if (claim.count === 0) continue
+
+        // XOR-invariant (PR 3): exakt EN av consumptionChargeId/miscChargeId satt.
+        // En misc-rad har bara miscChargeId.
+        assertRentNoticeLineChargeXor(undefined, charge.id)
+
+        await tx.rentNoticeLine.create({
+          data: {
+            rentNoticeId: params.rentNoticeId,
+            // Avi-raden visas för hyresgästen (deras egen faktura) — postens
+            // beskrivning hör hemma här, till skillnad från det PII-fria verifikatet.
+            description: charge.description,
+            quantity: 1,
+            unitPrice: charge.netAmount,
+            vatRate: charge.vatRate,
+            total: charge.totalAmount,
+            miscChargeId: charge.id,
+          },
+        })
+        miscTotal += Number(charge.totalAmount)
+      }
+
+      // Org-scopad write (defense-in-depth): updateMany med organizationId i where
+      // så miscChargeAmount aldrig kan skrivas till en annan orgs avi även om en
+      // framtida anropare skickar ett godtyckligt rentNoticeId. count===0 → avin
+      // tillhör inte org:en → kasta (rulla tillbaka attach-transaktionen).
+      const updated = await tx.rentNotice.updateMany({
+        where: { id: params.rentNoticeId, organizationId: params.organizationId },
+        data: { miscChargeAmount: round2(miscTotal) },
+      })
+      if (updated.count === 0) {
+        throw new NotFoundException('Hyresavin hittades inte för organisationen')
+      }
+    })
+
+    return round2(miscTotal)
   }
 }

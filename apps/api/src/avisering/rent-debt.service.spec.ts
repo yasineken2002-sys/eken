@@ -24,6 +24,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       type: RENT,
       totalAmount: 10_000,
       consumptionAmount: 0,
+      miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [],
@@ -31,6 +32,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
     expect(d).toEqual({
       capital: 10_000,
       consumption: 0,
+      miscCharge: 0,
       reminderFee: 0,
       interest: 0,
       claim: 10_000,
@@ -45,6 +47,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       type: RENT,
       totalAmount: 7_000,
       consumptionAmount: 240,
+      miscChargeAmount: 0,
       reminderFeeAmount: 60,
       interestAccruedAmount: 32.5,
       allocations: [],
@@ -59,11 +62,47 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
     expect(d.paid).toBe(0)
   })
 
+  it('miscCharge (teknisk förvaltning) ingår i claim OCH ocrOutstanding (kapital, ej ränta)', () => {
+    const d = computeRentDebt({
+      type: RENT,
+      totalAmount: 7_000,
+      consumptionAmount: 240,
+      miscChargeAmount: 1_500, // skada/nyckel
+      reminderFeeAmount: 60,
+      interestAccruedAmount: 32.5,
+      allocations: [],
+    })
+    expect(d.miscCharge).toBe(1_500)
+    // 7000 + 240 + 1500 + 60 + 32,5 = 8832,5
+    expect(d.claim).toBe(8_832.5)
+    expect(d.outstanding).toBe(8_832.5)
+    // ocrOutstanding = kapital + förbrukning + miscCharge + avgift (EXKL. ränta)
+    // = 7000 + 240 + 1500 + 60 = 8800
+    expect(d.ocrOutstanding).toBe(8_800)
+  })
+
+  it('klumpbetalning som täcker hyra+förbrukning+skada nollställer ocrOutstanding (reconciliation-grund)', () => {
+    // Hyresgästen betalar EN summa = rentNoticePayableTotal. ocrOutstanding måste bli
+    // 0 — annars eskalerar kravtrappan/bankavstämningen mot någon som faktiskt betalat.
+    const d = computeRentDebt({
+      type: RENT,
+      totalAmount: 7_000,
+      consumptionAmount: 240,
+      miscChargeAmount: 1_500,
+      reminderFeeAmount: 0,
+      interestAccruedAmount: 0,
+      allocations: [8_740], // 7000 + 240 + 1500
+    })
+    expect(d.ocrOutstanding).toBe(0)
+    expect(d.outstanding).toBe(0)
+  })
+
   it('delbetalning: outstanding minskar, paid = Σ allokeringar', () => {
     const d = computeRentDebt({
       type: RENT,
       totalAmount: 10_000,
       consumptionAmount: 0,
+      miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [4_000, 1_500],
@@ -78,6 +117,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       type: RENT,
       totalAmount: 7_300,
       consumptionAmount: 0,
+      miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [7_300],
@@ -91,6 +131,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       type: RENT,
       totalAmount: 5_000,
       consumptionAmount: 0,
+      miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [5_500],
@@ -107,6 +148,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       type: RENT,
       totalAmount: new Decimal('0.10'),
       consumptionAmount: new Decimal('0.20'),
+      miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [new Decimal('0.01')],
@@ -120,6 +162,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       type: DEPOSIT,
       totalAmount: 12_000,
       consumptionAmount: 0,
+      miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [],
@@ -127,6 +170,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
     expect(d).toEqual({
       capital: 0,
       consumption: 0,
+      miscCharge: 0,
       reminderFee: 0,
       interest: 0,
       claim: 0,
@@ -141,6 +185,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       type: RENT,
       totalAmount: new Decimal('1000.00'),
       consumptionAmount: '250.50',
+      miscChargeAmount: 0,
       reminderFeeAmount: 60,
       interestAccruedAmount: '0',
       allocations: [new Decimal('310.50'), '0', 1_001],
@@ -158,6 +203,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       type: RENT,
       totalAmount: 7_000,
       consumptionAmount: 240,
+      miscChargeAmount: 0,
       reminderFeeAmount: 60,
       interestAccruedAmount: 140,
       allocations: [],
@@ -171,6 +217,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       type: RENT,
       totalAmount: 7_000,
       consumptionAmount: 0,
+      miscChargeAmount: 0,
       reminderFeeAmount: 60,
       interestAccruedAmount: 140,
       allocations: [5_000],
@@ -184,6 +231,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       type: RENT,
       totalAmount: 7_000,
       consumptionAmount: 0,
+      miscChargeAmount: 0,
       reminderFeeAmount: 60,
       interestAccruedAmount: 140,
       allocations: [7_060], // hela OCR-delen betald, räntan kvar
@@ -197,6 +245,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       type: RENT,
       totalAmount: 7_000,
       consumptionAmount: 0,
+      miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [7_500],
@@ -209,6 +258,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       type: DEPOSIT,
       totalAmount: 12_000,
       consumptionAmount: 0,
+      miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [],
@@ -223,6 +273,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       type: RENT,
       totalAmount: new Decimal('6999.995'),
       consumptionAmount: 0,
+      miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: new Decimal('100.005'),
       allocations: [new Decimal('3000.005')],
@@ -249,6 +300,7 @@ describe('PR1 · A — RentDebtService.outstanding (scopad läsare)', () => {
       type: 'RENT',
       totalAmount: new Decimal('8000'),
       consumptionAmount: new Decimal('0'),
+      miscChargeAmount: 0,
       reminderFeeAmount: new Decimal('0'),
       interestAccruedAmount: new Decimal('0'),
       payments: [{ amount: new Decimal('3000') }, { amount: new Decimal('2000') }],

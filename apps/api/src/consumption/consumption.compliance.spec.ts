@@ -366,7 +366,7 @@ function makeLeverans(charges: Record<string, unknown>[]) {
         return Promise.resolve({ id: `line-${created.lines.length}`, ...data })
       }),
     },
-    rentNotice: { update: jest.fn().mockResolvedValue({}) },
+    rentNotice: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     invoice: {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn().mockImplementation(({ data }) => {
@@ -460,8 +460,11 @@ describe('attachRentNoticeLineCharges (RENT_NOTICE_LINE, PR 4)', () => {
         data: { status: 'ATTACHED' },
       }),
     )
-    expect(prisma.rentNotice.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'rn-1' }, data: { consumptionAmount: 900 } }),
+    expect(prisma.rentNotice.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'rn-1', organizationId: 'org-1' },
+        data: { consumptionAmount: 900 },
+      }),
     )
   })
 
@@ -476,7 +479,7 @@ describe('attachRentNoticeLineCharges (RENT_NOTICE_LINE, PR 4)', () => {
     })
     expect(sum).toBe(0)
     expect(prisma.rentNoticeLine.create).not.toHaveBeenCalled()
-    expect(prisma.rentNotice.update).not.toHaveBeenCalled()
+    expect(prisma.rentNotice.updateMany).not.toHaveBeenCalled()
   })
 })
 
@@ -573,17 +576,15 @@ function makeAccrual(o: AccrualOpts = {}) {
         ),
     },
     consumptionCharge: {
-      findFirst: jest
-        .fn()
-        .mockResolvedValue(
-          o.lastCharge === undefined
-            ? {
-                quantity: 300,
-                periodStart: new Date('2026-11-01'),
-                periodEnd: new Date('2026-11-30'),
-              }
-            : o.lastCharge,
-        ),
+      findFirst: jest.fn().mockResolvedValue(
+        o.lastCharge === undefined
+          ? {
+              quantity: 300,
+              periodStart: new Date('2026-11-01'),
+              periodEnd: new Date('2026-11-30'),
+            }
+          : o.lastCharge,
+      ),
     },
     consumptionTariff: { findMany: jest.fn().mockResolvedValue(o.tariffs ?? [defaultTariff()]) },
   }

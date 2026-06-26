@@ -87,6 +87,7 @@ function makeNotice(over: Record<string, unknown> = {}) {
     collectionReadyAt: new Date('2026-07-21T00:00:00Z'),
     totalAmount: new Decimal(8000),
     consumptionAmount: new Decimal(500),
+    miscChargeAmount: new Decimal(0),
     reminderFeeAmount: new Decimal(60),
     interestAccruedAmount: new Decimal(123.45),
     interestAccruedThrough: new Date('2026-07-20T00:00:00Z'),

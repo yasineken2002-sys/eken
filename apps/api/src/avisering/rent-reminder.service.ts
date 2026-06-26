@@ -431,13 +431,15 @@ export class RentReminderService {
           dueDate: true,
           totalAmount: true,
           consumptionAmount: true,
+          miscChargeAmount: true,
           reminderFeeAmount: true,
           interestAccruedAmount: true,
           interestAccruedThrough: true,
           reminderPdfStorageKey: true,
         },
       })
-      const capital = Number(fresh.totalAmount) + Number(fresh.consumptionAmount)
+      const capital =
+        Number(fresh.totalAmount) + Number(fresh.consumptionAmount) + Number(fresh.miscChargeAmount)
       const totalClaim = round2(
         capital + Number(fresh.reminderFeeAmount) + Number(fresh.interestAccruedAmount),
       )
@@ -589,7 +591,10 @@ export class RentReminderService {
         tenantName,
         noticeNumber: notice.noticeNumber,
         ocrNumber: notice.ocrNumber,
-        originalAmount: Number(notice.totalAmount) + Number(notice.consumptionAmount),
+        originalAmount:
+          Number(notice.totalAmount) +
+          Number(notice.consumptionAmount) +
+          Number(notice.miscChargeAmount),
         feeAmount: Number(notice.reminderFeeAmount),
         payableTotal: rentNoticePayableTotal(notice),
         dueDate: notice.dueDate,
@@ -675,7 +680,10 @@ export class RentReminderService {
     const fmt = (n: number): string =>
       Number(n).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-    const original = Number(notice.totalAmount) + Number(notice.consumptionAmount)
+    const original =
+      Number(notice.totalAmount) +
+      Number(notice.consumptionAmount) +
+      Number(notice.miscChargeAmount)
     const fee = Number(notice.reminderFeeAmount)
     const payable = rentNoticePayableTotal(notice)
     const daysOverdue = this.daysSince(notice.dueDate)

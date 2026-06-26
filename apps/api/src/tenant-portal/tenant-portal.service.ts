@@ -129,9 +129,11 @@ export class TenantPortalService {
       year: notice.year,
       amount: Number(notice.amount),
       vatAmount: Number(notice.vatAmount),
-      // consumptionAmount = förbrukning (IMD) på avi-rader; totalAmount = hyra.
-      // payableTotal = vad hyresgästen faktiskt ska betala (hyra + förbrukning).
+      // consumptionAmount = förbrukning (IMD); miscChargeAmount = övriga debiterbara
+      // poster (skada/nyckel, teknisk förvaltning); totalAmount = hyra. payableTotal =
+      // vad hyresgästen faktiskt ska betala (hyra + förbrukning + övrig debitering).
       consumptionAmount: Number(notice.consumptionAmount),
+      miscChargeAmount: Number(notice.miscChargeAmount),
       totalAmount: Number(notice.totalAmount),
       payableTotal: rentNoticePayableTotal(notice),
       dueDate: notice.dueDate.toISOString(),

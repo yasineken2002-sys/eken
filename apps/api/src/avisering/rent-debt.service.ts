@@ -23,6 +23,8 @@ export interface RentDebtBreakdown {
   capital: number
   /** Förbrukning på avi-rader (consumptionAmount, IMD). */
   consumption: number
+  /** Övriga debiterbara poster på avi-rader (miscChargeAmount, teknisk förvaltning Spår A). */
+  miscCharge: number
   /** Påminnelseavgift (reminderFeeAmount, inkasso PR 2). */
   reminderFee: number
   /** Ackumulerad dröjsmålsränta (interestAccruedAmount, inkasso PR 3). */
@@ -38,13 +40,14 @@ export interface RentDebtBreakdown {
   /** Klampad utestående skuld = max(0, claim). Aldrig negativ. */
   outstanding: number
   /**
-   * OCR-reglerbar restskuld = max(0, (kapital + förbrukning + avgift) − betalt),
-   * dvs. den del hyresgästen reglerar via avins OCR — EXKLUSIVE dröjsmålsränta.
+   * OCR-reglerbar restskuld = max(0, (kapital + förbrukning + övrig debitering +
+   * avgift) − betalt), dvs. den del hyresgästen reglerar via avins OCR — EXKLUSIVE
+   * dröjsmålsränta.
    *
    * WATERFALL-REGEL (definieras HÄR, en gång): en betalning antas reglera OCR-delen
    * FÖRE räntan. Eftersom allokeringarna inte är komponent-attribuerade (en betalning
    * är ETT belopp mot avin) tolkar vi `paid` som att den först fyller OCR-bucketen
-   * (kapital+förbrukning+avgift) och först därefter räntan. Det speglar domänen:
+   * (kapital+förbrukning+övrig debitering+avgift) och först därefter räntan. Det speglar domänen:
    * hyresgästen betalar avins OCR-belopp; dröjsmålsräntan är en separat fordran som
    * regleras vid slutuppgörelse. Konsekvens: betalar man hela OCR-beloppet blir
    * ocrOutstanding 0 även om ränta återstår (outstanding > 0).
@@ -62,6 +65,7 @@ export interface RentDebtInput {
   type: RentNoticeType
   totalAmount: Decimal | number | string
   consumptionAmount: Decimal | number | string
+  miscChargeAmount: Decimal | number | string
   reminderFeeAmount: Decimal | number | string
   interestAccruedAmount: Decimal | number | string
   /** Beloppen från RentNoticePayment-allokeringarna. */
@@ -75,6 +79,7 @@ function round2(n: number): number {
 const ZERO_DEBT: RentDebtBreakdown = {
   capital: 0,
   consumption: 0,
+  miscCharge: 0,
   reminderFee: 0,
   interest: 0,
   claim: 0,
@@ -99,6 +104,7 @@ export function computeRentDebt(input: RentDebtInput): RentDebtBreakdown {
 
   const capital = new Decimal(input.totalAmount)
   const consumption = new Decimal(input.consumptionAmount)
+  const miscCharge = new Decimal(input.miscChargeAmount)
   const reminderFee = new Decimal(input.reminderFeeAmount)
   const interest = new Decimal(input.interestAccruedAmount)
 
@@ -107,19 +113,22 @@ export function computeRentDebt(input: RentDebtInput): RentDebtBreakdown {
     new Decimal(0),
   )
 
-  const grossClaim = capital.plus(consumption).plus(reminderFee).plus(interest)
+  const grossClaim = capital.plus(consumption).plus(miscCharge).plus(reminderFee).plus(interest)
   // EN round2 per härlett netto-belopp. Subtraktionen är det enda stället där
   // avrundning kan behövas; komponenterna är redan exakt tvådecimaliga.
   const claim = round2(grossClaim.minus(paid).toNumber())
 
   // OCR-reglerbar restskuld (exkl. ränta) — waterfall: betalt fyller OCR-delen
-  // (kapital+förbrukning+avgift) före räntan. Se RentDebtBreakdown.ocrOutstanding.
-  const ocrGross = capital.plus(consumption).plus(reminderFee)
+  // (kapital+förbrukning+övrig debitering+avgift) före räntan. Övriga debiterbara
+  // poster (skada/nyckel) är kapitalfordran som hyresgästen reglerar via avins OCR,
+  // precis som förbrukning. Se RentDebtBreakdown.ocrOutstanding.
+  const ocrGross = capital.plus(consumption).plus(miscCharge).plus(reminderFee)
   const ocrOutstanding = Math.max(0, round2(ocrGross.minus(paid).toNumber()))
 
   return {
     capital: capital.toNumber(),
     consumption: consumption.toNumber(),
+    miscCharge: miscCharge.toNumber(),
     reminderFee: reminderFee.toNumber(),
     interest: interest.toNumber(),
     claim,
@@ -144,6 +153,7 @@ export class RentDebtService {
         type: true,
         totalAmount: true,
         consumptionAmount: true,
+        miscChargeAmount: true,
         reminderFeeAmount: true,
         interestAccruedAmount: true,
         payments: { select: { amount: true } },
@@ -155,6 +165,7 @@ export class RentDebtService {
       type: notice.type,
       totalAmount: notice.totalAmount,
       consumptionAmount: notice.consumptionAmount,
+      miscChargeAmount: notice.miscChargeAmount,
       reminderFeeAmount: notice.reminderFeeAmount,
       interestAccruedAmount: notice.interestAccruedAmount,
       allocations: notice.payments.map((p) => p.amount),

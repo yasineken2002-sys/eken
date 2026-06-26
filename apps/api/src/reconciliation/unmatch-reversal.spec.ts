@@ -35,6 +35,7 @@ function makeService(opts: {
               status: 'PAID',
               totalAmount: 7_000,
               consumptionAmount: 0,
+              miscChargeAmount: 0,
               reminderFeeAmount: 0,
               interestAccruedAmount: 0,
             }
@@ -164,6 +165,7 @@ describe('ReconciliationService.unmatchTransaction — partiell unmatch (PR 3b)'
         status: 'SENT',
         totalAmount: 8_000,
         consumptionAmount: 0,
+        miscChargeAmount: 0,
         reminderFeeAmount: 0,
         interestAccruedAmount: 0,
       },
@@ -198,6 +200,7 @@ describe('ReconciliationService.unmatchTransaction — partiell unmatch (PR 3b)'
         status: 'PAID',
         totalAmount: 8_000,
         consumptionAmount: 0,
+        miscChargeAmount: 0,
         reminderFeeAmount: 0,
         interestAccruedAmount: 0,
       },

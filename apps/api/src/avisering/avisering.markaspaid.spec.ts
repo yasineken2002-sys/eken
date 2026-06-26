@@ -39,6 +39,7 @@ function makeService(opts?: {
     // computeRentDebt för att avgöra om betalningen reglerar avin (PAID) eller är
     // en delbetalning. Defaulta de övriga fälten till 0.
     consumptionAmount: 0,
+    miscChargeAmount: 0,
     reminderFeeAmount: 0,
     interestAccruedAmount: 0,
     paymentMethod: null,
@@ -80,6 +81,7 @@ function makeService(opts?: {
     noop as never, // pdfQueue
     accounting as never,
     noop as never, // consumption
+    noop as never, // miscCharges
   )
   return { service, prisma, accounting, eventCreate }
 }
