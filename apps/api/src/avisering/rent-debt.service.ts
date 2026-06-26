@@ -40,13 +40,14 @@ export interface RentDebtBreakdown {
   /** Klampad utestående skuld = max(0, claim). Aldrig negativ. */
   outstanding: number
   /**
-   * OCR-reglerbar restskuld = max(0, (kapital + förbrukning + avgift) − betalt),
-   * dvs. den del hyresgästen reglerar via avins OCR — EXKLUSIVE dröjsmålsränta.
+   * OCR-reglerbar restskuld = max(0, (kapital + förbrukning + övrig debitering +
+   * avgift) − betalt), dvs. den del hyresgästen reglerar via avins OCR — EXKLUSIVE
+   * dröjsmålsränta.
    *
    * WATERFALL-REGEL (definieras HÄR, en gång): en betalning antas reglera OCR-delen
    * FÖRE räntan. Eftersom allokeringarna inte är komponent-attribuerade (en betalning
    * är ETT belopp mot avin) tolkar vi `paid` som att den först fyller OCR-bucketen
-   * (kapital+förbrukning+avgift) och först därefter räntan. Det speglar domänen:
+   * (kapital+förbrukning+övrig debitering+avgift) och först därefter räntan. Det speglar domänen:
    * hyresgästen betalar avins OCR-belopp; dröjsmålsräntan är en separat fordran som
    * regleras vid slutuppgörelse. Konsekvens: betalar man hela OCR-beloppet blir
    * ocrOutstanding 0 även om ränta återstår (outstanding > 0).

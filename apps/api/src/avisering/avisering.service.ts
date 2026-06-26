@@ -543,7 +543,8 @@ export class AviseringService {
         to: notice.tenant.email,
         tenantName,
         ocrNumber: notice.ocrNumber,
-        // Betalbar total = hyra + förbrukning (IMD). Vad hyresgästen ska betala.
+        // Betalbar total = hyra + förbrukning (IMD) + övriga debiterbara poster
+        // (skada/nyckel). Vad hyresgästen faktiskt betalar med avins OCR.
         amount: rentNoticePayableTotal(notice),
         dueDate: notice.dueDate,
         pdfBuffer,
@@ -619,8 +620,9 @@ export class AviseringService {
     const fmt = (n: number): string =>
       Number(n).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-    // Betalbar total = hyra + förbrukning (IMD-rader). Hyresgästen betalar EN
-    // summa med ETT OCR. notice.totalAmount avser bara hyran (hyresverifikatet).
+    // Betalbar total = hyra + förbrukning (IMD-rader) + övriga debiterbara poster
+    // (skada/nyckel). Hyresgästen betalar EN summa med ETT OCR. notice.totalAmount
+    // avser bara hyran (hyresverifikatet).
     const payable = rentNoticePayableTotal(notice)
     const consumptionLines = notice.lines ?? []
     // HTML för förbrukningsrader (visas mellan hyra och totalsumma).

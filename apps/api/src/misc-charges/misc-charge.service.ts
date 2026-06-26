@@ -271,10 +271,17 @@ export class MiscChargeService {
         miscTotal += Number(charge.totalAmount)
       }
 
-      await tx.rentNotice.update({
-        where: { id: params.rentNoticeId },
+      // Org-scopad write (defense-in-depth): updateMany med organizationId i where
+      // så miscChargeAmount aldrig kan skrivas till en annan orgs avi även om en
+      // framtida anropare skickar ett godtyckligt rentNoticeId. count===0 → avin
+      // tillhör inte org:en → kasta (rulla tillbaka attach-transaktionen).
+      const updated = await tx.rentNotice.updateMany({
+        where: { id: params.rentNoticeId, organizationId: params.organizationId },
         data: { miscChargeAmount: round2(miscTotal) },
       })
+      if (updated.count === 0) {
+        throw new NotFoundException('Hyresavin hittades inte för organisationen')
+      }
     })
 
     return round2(miscTotal)

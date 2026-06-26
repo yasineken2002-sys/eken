@@ -266,7 +266,7 @@ describe('findMiscCharges / findMiscCharge', () => {
 
 function makeAttach(charges: Array<Record<string, unknown>>) {
   const lineCreate = jest.fn().mockResolvedValue({ id: 'rnl-1' })
-  const noticeUpdate = jest.fn().mockResolvedValue({})
+  const noticeUpdate = jest.fn().mockResolvedValue({ count: 1 })
   const chargeUpdateMany = jest.fn().mockResolvedValue({ count: 1 })
   const prisma: Record<string, unknown> = {
     miscCharge: {
@@ -274,7 +274,7 @@ function makeAttach(charges: Array<Record<string, unknown>>) {
       updateMany: chargeUpdateMany,
     },
     rentNoticeLine: { create: lineCreate },
-    rentNotice: { update: noticeUpdate },
+    rentNotice: { updateMany: noticeUpdate },
   }
   prisma.$transaction = jest.fn((cb: (tx: unknown) => unknown) => cb(prisma))
   const accounting = {
@@ -318,9 +318,9 @@ describe('attachMiscChargesToRentNotice', () => {
       miscChargeId: 'mc-1',
       total: 1500,
     })
-    // miscChargeAmount summerad på avin.
+    // miscChargeAmount summerad på avin — org-scopad write.
     expect(noticeUpdate).toHaveBeenCalledWith({
-      where: { id: 'rn-1' },
+      where: { id: 'rn-1', organizationId: 'org-1' },
       data: { miscChargeAmount: 1800 },
     })
   })

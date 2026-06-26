@@ -587,10 +587,16 @@ export class ConsumptionService {
         consumptionTotal += Number(charge.totalAmount)
       }
 
-      await tx.rentNotice.update({
-        where: { id: params.rentNoticeId },
+      // Org-scopad write (defense-in-depth, samma mönster som MiscCharge-attach):
+      // updateMany med organizationId i where så consumptionAmount aldrig kan skrivas
+      // till en annan orgs avi. count===0 → avin tillhör inte org:en → kasta.
+      const updated = await tx.rentNotice.updateMany({
+        where: { id: params.rentNoticeId, organizationId: params.organizationId },
         data: { consumptionAmount: round2(consumptionTotal) },
       })
+      if (updated.count === 0) {
+        throw new NotFoundException('Hyresavin hittades inte för organisationen')
+      }
     })
 
     return round2(consumptionTotal)
