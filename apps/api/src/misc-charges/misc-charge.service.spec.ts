@@ -252,6 +252,7 @@ describe('findMiscCharges / findMiscCharge', () => {
     expect(miscCharge.findMany).toHaveBeenCalledWith({
       where: { organizationId: 'org-1', status: 'CONFIRMED', sourceRefId: 'ticket-1' },
       orderBy: { createdAt: 'desc' },
+      take: 500,
     })
   })
 

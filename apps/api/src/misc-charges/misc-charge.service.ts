@@ -133,6 +133,10 @@ export class MiscChargeService {
   // sedan status, ATOMISKT i samma transaktion: faller reversalen flippas inte
   // status (ingen halv-annullering). Originalverifikatet raderas ALDRIG (BFL).
   // Idempotent: redan CANCELLED → no-op (inget andra motverifikat, inget fel).
+  //
+  // TODO (PR 4b, attach-arbetet): en CANCELLED post rensar inte MaintenanceTicket.
+  // chargeId → ärendet kan inte om-debiteras. clearCharge-flödet hör ihop med
+  // attach/ATTACHED-hanteringen — se docs/research/teknisk-forvaltning-kartlaggning.md.
   async cancelMiscCharge(id: string, organizationId: string, userId: string): Promise<MiscCharge> {
     const charge = await this.prisma.miscCharge.findFirst({ where: { id, organizationId } })
     if (!charge) throw new NotFoundException('Debiteringsposten hittades inte')
@@ -194,6 +198,9 @@ export class MiscChargeService {
         ...(filters?.sourceRefId ? { sourceRefId: filters.sourceRefId } : {}),
       },
       orderBy: { createdAt: 'desc' },
+      // Säkerhetsgräns på en publik (MANAGER+) list-endpoint — tabellen växer per
+      // org. Full paginering (cursor) läggs vid en ev. "Alla debiteringar"-listvy.
+      take: 500,
     })
   }
 

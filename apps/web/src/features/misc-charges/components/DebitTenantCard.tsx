@@ -47,7 +47,7 @@ export function DebitTenantCard({ ticket }: { ticket: TicketRef }) {
   const canWrite = useCanWrite()
   const [modalOpen, setModalOpen] = useState(false)
 
-  const { data: charge } = useMiscCharge(ticket.chargeId)
+  const { data: charge, isLoading: chargeLoading } = useMiscCharge(ticket.chargeId)
   const createMutation = useCreateMiscCharge()
   const confirmMutation = useConfirmMiscCharge()
   const cancelMutation = useCancelMiscCharge()
@@ -100,14 +100,18 @@ export function DebitTenantCard({ ticket }: { ticket: TicketRef }) {
 
   function handleCancel() {
     if (!charge) return
+    // Cancel returnerar alltid status=CANCELLED vid 200 (DRAFT, CONFIRMED+motverifikat
+    // eller idempotent no-op). Icke-200 visas av den globala MutationCache.onError.
     cancelMutation.mutate(charge.id, {
-      onSuccess: (updated) =>
-        toast.success(
-          updated.status === 'CANCELLED'
-            ? 'Debiteringen är annullerad'
-            : 'Debiteringen kunde inte annulleras',
-        ),
+      onSuccess: () => toast.success('Debiteringen är annullerad'),
     })
+  }
+
+  // Charge-quern är in-flight (chargeId satt men ännu ej cachad) → visa en
+  // platshållare istället för att låta "ej debiterat"-grenen blinka fram en aktiv
+  // "Debitera"-knapp för ett ärende som redan är debiterat.
+  if (ticket.chargeId && chargeLoading) {
+    return <div className="h-[68px] animate-pulse rounded-xl border border-[#EAEDF0] bg-gray-50" />
   }
 
   // ── Redan debiterat: visa status + åtgärder ────────────────────────────────
