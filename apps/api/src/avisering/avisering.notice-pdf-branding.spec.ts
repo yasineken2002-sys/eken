@@ -86,6 +86,7 @@ function makeService() {
     noop as never, // pdfQueue
     noop as never, // accounting
     noop as never, // consumption
+    noop as never, // miscCharges
   )
 }
 

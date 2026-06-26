@@ -14,6 +14,7 @@ import { StorageService } from '../storage/storage.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { ConsumptionService } from '../consumption/consumption.service'
+import { MiscChargeService } from '../misc-charges/misc-charge.service'
 import { computeRentDebt } from './rent-debt.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import {
@@ -64,6 +65,7 @@ export class AviseringService {
     private readonly pdfQueue: PdfQueue,
     private readonly accounting: AccountingService,
     private readonly consumption: ConsumptionService,
+    private readonly miscCharges: MiscChargeService,
   ) {}
 
   // Beräknar moms på en hyra utifrån enhetens upplåtelsetyp och frivilliga
@@ -279,6 +281,26 @@ export class AviseringService {
         // skapad och bokförd; charges förblir CONFIRMED och fångas nästa månad.
         this.logger.error(
           `[Avisering] Koppling av förbrukning till avi ${notice.noticeNumber} misslyckades: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        )
+      }
+
+      // Teknisk förvaltning (Spår A PR 4b): koppla lease:ens redan bokförda
+      // CONFIRMED MiscCharges (skada/nyckel) som avi-rader. Sätter
+      // RentNotice.miscChargeAmount; ingår i betalbar total/OCR/skuld men har sitt
+      // EGNA verifikat (1510 D / 3990 K). Presentation, ej bokföring — samma
+      // best-effort-isolering som förbrukningen ovan.
+      try {
+        const miscChargeAmount = await this.miscCharges.attachMiscChargesToRentNotice({
+          organizationId: orgId,
+          leaseId: lease.id,
+          rentNoticeId: notice.id,
+        })
+        if (miscChargeAmount > 0) notice.miscChargeAmount = new Prisma.Decimal(miscChargeAmount)
+      } catch (err) {
+        this.logger.error(
+          `[Avisering] Koppling av övriga debiteringar till avi ${notice.noticeNumber} misslyckades: ${
             err instanceof Error ? err.message : String(err)
           }`,
         )
@@ -1170,6 +1192,7 @@ export class AviseringService {
       type: notice.type,
       totalAmount: notice.totalAmount,
       consumptionAmount: notice.consumptionAmount,
+      miscChargeAmount: notice.miscChargeAmount,
       reminderFeeAmount: notice.reminderFeeAmount,
       interestAccruedAmount: notice.interestAccruedAmount,
       allocations: [...priorAllocs.map((a) => a.amount), paidAmount],

@@ -101,6 +101,7 @@ export class RentCollectionExportService {
         collectionReadyAt: true,
         totalAmount: true,
         consumptionAmount: true,
+        miscChargeAmount: true,
         reminderFeeAmount: true,
         interestAccruedAmount: true,
         tenant: {
@@ -354,7 +355,10 @@ export class RentCollectionExportService {
    * bokförda totalen även om en öresrest skulle skilja mot Σ segment.
    */
   private figures(notice: RentNoticeWithCollectionData): CollectionFigures {
-    const capital = Number(notice.totalAmount) + Number(notice.consumptionAmount)
+    const capital =
+      Number(notice.totalAmount) +
+      Number(notice.consumptionAmount) +
+      Number(notice.miscChargeAmount)
     const reminderFee = Number(notice.reminderFeeAmount)
     const interest = Number(notice.interestAccruedAmount)
     const totalClaim = round2(capital + reminderFee + interest)

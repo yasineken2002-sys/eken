@@ -107,6 +107,11 @@ export class RentInterestService {
 
       // Beräkningsbas = obetalt KAPITAL (hyra + förbrukning). Aldrig ränta på
       // ränta, aldrig ränta på påminnelseavgiften (3593).
+      // TODO (PR 4b-spärr): ska miscChargeAmount (skada/nyckel) ingå i räntebasen?
+      // En skadefordran ÄR kapital (som förbrukning) → logiskt ja, men det är ett
+      // bokförings-/juridikbeslut som bokförings-experten avgör SEPARAT. Lämnas
+      // MEDVETET utanför basen i 4b tills beslut tagits — skadedelen undercountar
+      // då räntan, vilket är säkrare än ränta på en oavgjord grund.
       const base = Number(notice.totalAmount) + Number(notice.consumptionAmount)
 
       // Segmentera dröjsmålet [förfallodag+1, förfallodag+days] vid halvårs-

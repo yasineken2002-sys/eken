@@ -262,6 +262,93 @@ describe('findMiscCharges / findMiscCharge', () => {
   })
 })
 
+// ── Attach till hyresavi (PR 4b) ─────────────────────────────────────────────
+
+function makeAttach(charges: Array<Record<string, unknown>>) {
+  const lineCreate = jest.fn().mockResolvedValue({ id: 'rnl-1' })
+  const noticeUpdate = jest.fn().mockResolvedValue({})
+  const chargeUpdateMany = jest.fn().mockResolvedValue({ count: 1 })
+  const prisma: Record<string, unknown> = {
+    miscCharge: {
+      findMany: jest.fn().mockResolvedValue(charges),
+      updateMany: chargeUpdateMany,
+    },
+    rentNoticeLine: { create: lineCreate },
+    rentNotice: { update: noticeUpdate },
+  }
+  prisma.$transaction = jest.fn((cb: (tx: unknown) => unknown) => cb(prisma))
+  const accounting = {
+    createJournalEntryForMiscCharge: jest.fn(),
+    reverseJournalEntryForMiscCharge: jest.fn(),
+  }
+  const service = new MiscChargeService(prisma as never, accounting as never)
+  return { service, lineCreate, noticeUpdate, chargeUpdateMany }
+}
+
+const confirmedCharge = (id: string, total: number) => ({
+  id,
+  status: 'CONFIRMED',
+  description: `Skada ${id}`,
+  netAmount: total,
+  vatRate: 0,
+  totalAmount: total,
+})
+
+describe('attachMiscChargesToRentNotice', () => {
+  it('claim:ar CONFIRMED→ATTACHED, skapar RentNoticeLine.miscChargeId, summerar miscChargeAmount', async () => {
+    const { service, lineCreate, noticeUpdate, chargeUpdateMany } = makeAttach([
+      confirmedCharge('mc-1', 1500),
+      confirmedCharge('mc-2', 300),
+    ])
+    const sum = await service.attachMiscChargesToRentNotice({
+      organizationId: 'org-1',
+      leaseId: 'lease-1',
+      rentNoticeId: 'rn-1',
+    })
+    expect(sum).toBe(1800)
+    // Race-säkert claim per post.
+    expect(chargeUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'mc-1', organizationId: 'org-1', status: 'CONFIRMED' },
+      data: { status: 'ATTACHED' },
+    })
+    // Avi-rad med miscChargeId (XOR uppfylld: ingen consumptionChargeId).
+    expect(lineCreate).toHaveBeenCalledTimes(2)
+    expect(lineCreate.mock.calls[0]![0].data).toMatchObject({
+      rentNoticeId: 'rn-1',
+      miscChargeId: 'mc-1',
+      total: 1500,
+    })
+    // miscChargeAmount summerad på avin.
+    expect(noticeUpdate).toHaveBeenCalledWith({
+      where: { id: 'rn-1' },
+      data: { miscChargeAmount: 1800 },
+    })
+  })
+
+  it('race-förlorare (claim count 0) hoppas över — ingen rad, ingen summa', async () => {
+    const { service, lineCreate, chargeUpdateMany } = makeAttach([confirmedCharge('mc-1', 1500)])
+    chargeUpdateMany.mockResolvedValueOnce({ count: 0 })
+    const sum = await service.attachMiscChargesToRentNotice({
+      organizationId: 'org-1',
+      leaseId: 'lease-1',
+      rentNoticeId: 'rn-1',
+    })
+    expect(sum).toBe(0)
+    expect(lineCreate).not.toHaveBeenCalled()
+  })
+
+  it('inga CONFIRMED-poster → returnerar 0, ingen transaktion', async () => {
+    const { service, noticeUpdate } = makeAttach([])
+    const sum = await service.attachMiscChargesToRentNotice({
+      organizationId: 'org-1',
+      leaseId: 'lease-1',
+      rentNoticeId: 'rn-1',
+    })
+    expect(sum).toBe(0)
+    expect(noticeUpdate).not.toHaveBeenCalled()
+  })
+})
+
 // ── XOR-guard ────────────────────────────────────────────────────────────────
 
 describe('assertRentNoticeLineChargeXor', () => {

@@ -76,6 +76,7 @@ describe('FIX 9 · PR 2 — generateMonthlyNotices bokför hyresintäkt', () => 
       noop as never, // pdfQueue
       accounting as never,
       consumption as never,
+      noop as never, // miscCharges
     )
     return { service, prisma, accounting }
   }

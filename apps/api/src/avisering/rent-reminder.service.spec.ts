@@ -242,6 +242,7 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
       dueDate: new Date('2026-06-01'),
       totalAmount: new Decimal(8000),
       consumptionAmount: new Decimal(0),
+      miscChargeAmount: new Decimal(0),
       reminderFeeAmount: new Decimal(60),
       tenant: { type: 'INDIVIDUAL', email: 'g@x.se', firstName: 'Anna', lastName: 'A' },
       lease: null,
@@ -340,6 +341,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
       dueDate: new Date('2026-06-01'),
       totalAmount: new Decimal(8000),
       consumptionAmount: new Decimal(0),
+      miscChargeAmount: new Decimal(0),
       reminderFeeAmount: new Decimal(60),
       paidAmount: null,
       tenant: {
@@ -381,6 +383,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
       dueDate: new Date('2026-06-01'),
       totalAmount: new Decimal(8000),
       consumptionAmount: new Decimal(0),
+      miscChargeAmount: new Decimal(0),
       reminderFeeAmount: new Decimal(60),
       interestAccruedAmount: new Decimal(123.45),
       interestAccruedThrough: new Date('2026-06-22'),
@@ -673,6 +676,7 @@ describe('buildReminderPdfHtml — innehåll (lag 1981:739 5 §)', () => {
     dueDate: new Date('2026-06-01'),
     totalAmount: new Decimal(8000),
     consumptionAmount: new Decimal(0),
+    miscChargeAmount: new Decimal(0),
     reminderFeeAmount: new Decimal(60),
     tenant: { type: 'INDIVIDUAL', firstName: 'Anna', lastName: 'Andersson' },
   }

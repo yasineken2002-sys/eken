@@ -34,6 +34,7 @@ const NOTICE = {
   dueDate: new Date('2026-06-01T00:00:00Z'),
   totalAmount: 8000,
   consumptionAmount: 0,
+  miscChargeAmount: 0,
   reminderFeeAmount: 60,
   tenant: { type: 'INDIVIDUAL', firstName: 'Anna', lastName: '& Co <x>', companyName: null },
 }
