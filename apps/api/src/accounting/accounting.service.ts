@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { CompanyForm, PaymentMethod, RentNoticeType, UnitType } from '@prisma/client'
 import type {
   BankTransaction,
@@ -1180,6 +1180,135 @@ export class AccountingService {
       lines,
       idempotencyWhere: { organizationId, sourceId },
       include: { lines: { include: { account: true } } },
+    })
+  }
+
+  // ── Teknisk förvaltning · Spår A PR 2 — MiscCharge-verifikat ────────────────
+  // Bokför en övrig debiterbar post mot hyresgäst (skada, förlorad nyckel m.m.)
+  // som en kundfordran. Speglar createJournalEntryForConsumptionCharge:
+  //
+  //   1510 D  total        (kundfordran)
+  //   2611 K  vat          (ENDAST om vatStatus = TAXABLE_25 och vatAmount > 0)
+  //   3990 K  net          (övrig rörelseintäkt)
+  //
+  // Belopp tas DIREKT från postens snapshot (Decimal → Number, ingen omräkning).
+  // EXEMPT (bostad, ML 3 kap 2 §) ger ingen 26xx-rad och net === total. Momsregeln
+  // spikas ALDRIG i kod — vi läser vatStatus/vatAmount från posten så att en
+  // framtida TAXABLE_25 (lokal m. frivillig skattskyldighet) faller ut av sig
+  // självt utan kodändring i konteringen.
+  //
+  // Idempotent + gap-free via createNumberedEntry (unikt index (org, source,
+  // sourceId), source = MISC_CHARGE). Två anrop ger EN entry — verifikatet, inte
+  // status-fältet, är sanningskällan för "redan bokförd": även om status redan
+  // är CONFIRMED men verifikatet saknas (ska ej hända) self-healar anropet och
+  // skapar det. Statusflippen DRAFT → CONFIRMED sker ATOMISKT i samma transaktion
+  // (inget CONFIRMED utan verifikat); ATTACHED/CANCELLED rörs aldrig.
+  //
+  // Anroparen (PR 3) kan skilja utfallen:
+  //   • entry returneras → bokförd (ny ELLER idempotent träff)
+  //   • BadRequest      → CANCELLED, går ej att boka
+  //   • NotFound        → posten finns inte i org
+  //   • null            → kontoplan saknar 1510/3990/2611 ELLER total ≤ 0 (loggas)
+  //
+  // Bokföringsdatum = incidentDate (när skadan/förlusten konstaterades), aldrig
+  // createdAt — annars hamnar posten i fel räkenskapsår. Verifikat-texten är
+  // PII-fri: den refererar ärendenumret (UND-xxxxx), aldrig MiscCharge.description
+  // (fritext som kan innehålla hyresgästens namn) eller tenant.
+  async createJournalEntryForMiscCharge(
+    miscChargeId: string,
+    organizationId: string,
+    createdById: string | null,
+  ) {
+    const sourceId = `misc-charge:${miscChargeId}`
+
+    // Org-scope via findFirst (speglar deposit-refund). Back-relationen ger
+    // ärendenumret utan att läsa hyresgästens namn.
+    const charge = await this.prisma.miscCharge.findFirst({
+      where: { id: miscChargeId, organizationId },
+      include: { maintenanceTicket: { select: { ticketNumber: true } } },
+    })
+    if (!charge) throw new NotFoundException('Debiteringsposten hittades inte')
+    if (charge.status === 'CANCELLED') {
+      // Distinkt från idempotent träff: en annullerad post får aldrig bokföras.
+      throw new BadRequestException('Annullerad debiteringspost kan inte bokföras')
+    }
+
+    const accounts = await this.prisma.account.findMany({
+      where: { organizationId },
+      select: { id: true, number: true },
+    })
+    const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+
+    const receivableId = accountByNumber.get(1510)
+    const revenueId = accountByNumber.get(3990)
+    if (!receivableId || !revenueId) {
+      this.logger.error(
+        `[Accounting] Konto saknas (1510 eller 3990) för debiteringspost ` +
+          `${charge.id} — verifikation skapas ej`,
+      )
+      return null
+    }
+
+    const net = Number(charge.netAmount)
+    const vat = Number(charge.vatAmount)
+    const total = Number(charge.totalAmount)
+    if (total <= 0) return null
+
+    // PII-fri referens: ärendenummer (UND-xxxxx) när källan är ett ärende, annars
+    // en generisk källreferens. Aldrig hyresgästens namn eller fritext-beskrivning.
+    const ref =
+      charge.maintenanceTicket?.ticketNumber ??
+      `${charge.sourceType}:${charge.sourceRefId.slice(0, 8)}`
+
+    const lines: JournalLineInput[] = [
+      { accountId: receivableId, debit: total, description: `Övrig debitering ${ref}` },
+    ]
+
+    // Momsraden tas DIREKT från snapshotet — beräknas aldrig om. v1 är posterna
+    // EXEMPT (bostad) → ingen 26xx-rad. TODO: moms för lokal m. frivillig
+    // skattskyldighet (ML 9 kap) — väntar FAR-konsult, se docs/legal/45. När den
+    // bekräftas räcker det att posten skapas med vatStatus=TAXABLE_25/vatAmount>0;
+    // konteringen nedan hanterar redan momsraden utan kodändring.
+    if (charge.vatStatus === 'TAXABLE_25' && vat > 0) {
+      const vatAccountNumber = VAT_TO_ACCOUNT[25] // 2611
+      const vatAccountId = vatAccountNumber ? accountByNumber.get(vatAccountNumber) : undefined
+      if (!vatAccountId) {
+        this.logger.error(
+          `[Accounting] Momskonto ${vatAccountNumber} saknas för debiteringspost ${charge.id} — verifikation skapas ej`,
+        )
+        return null
+      }
+      lines.push({ accountId: vatAccountId, credit: vat, description: 'Moms 25%' })
+    }
+
+    lines.push({ accountId: revenueId, credit: net, description: `Övrig rörelseintäkt ${ref}` })
+
+    // Verifikat + statusflipp ATOMISKT: faller bokföringen rullas statusbytet
+    // tillbaka (inget CONFIRMED utan verifikat). createNumberedEntry förblir
+    // idempotent inuti transaktionen via (org, source, sourceId).
+    return this.prisma.$transaction(async (tx) => {
+      const entry = await this.createNumberedEntry({
+        organizationId,
+        // Skadans/förlustens datum styr räkenskapsåret — inte skapandedatumet.
+        date: charge.incidentDate,
+        description: `Övrig debitering ${ref}`,
+        source: 'MISC_CHARGE',
+        sourceId,
+        createdById,
+        lines,
+        idempotencyWhere: { organizationId, source: 'MISC_CHARGE', sourceId },
+        include: { lines: { include: { account: true } } },
+        tx,
+      })
+
+      // Status speglar verifikatet. Flippas bara DRAFT → CONFIRMED; ATTACHED (PR 4)
+      // och CANCELLED rörs aldrig. Idempotent: redan CONFIRMED/ATTACHED → 0 rader.
+      await tx.miscCharge.updateMany({
+        where: { id: miscChargeId, organizationId, status: 'DRAFT' },
+        data: { status: 'CONFIRMED' },
+      })
+
+      return entry
     })
   }
 

@@ -81,6 +81,12 @@ const COMMON_ACCOUNTS: BasAccountSeed[] = [
   { number: 3970, name: 'Hyresgästers vattenersättning', type: 'REVENUE' },
   { number: 3040, name: 'Skadeersättningar', type: 'REVENUE' },
   { number: 3593, name: 'Påminnelseavgifter', type: 'REVENUE' },
+  // Övriga rörelseintäkter — intäktskonto för MiscCharge (teknisk förvaltning,
+  // Spår A): debiterbara poster mot hyresgäst som inte är hyra/förbrukning/
+  // depositionsskada (t.ex. ersättning vid förlorad nyckel, åverkan utöver
+  // normalt slitage). Krediteras 3990 K mot 1510 D vid CONFIRMED. Skilt från
+  // 3040 (depositionsavdrag, deposits-modulen) — håll isär flödena.
+  { number: 3990, name: 'Övriga rörelseintäkter', type: 'REVENUE' },
   // Driftkostnader
   { number: 5010, name: 'Lokalhyra (egen)', type: 'EXPENSE' },
   { number: 5020, name: 'El för fastighet', type: 'EXPENSE' },
