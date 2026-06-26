@@ -150,7 +150,23 @@ export class MaintenanceService {
       },
     })
     if (!ticket) throw new NotFoundException('Underhållsärende hittades inte')
-    return this.refreshImageUrls(ticket)
+
+    // Härled aktivt avtal för enheten (teknisk förvaltning, Spår A PR 4): frontend
+    // behöver leaseId för "Debitera hyresgäst & bokför" — MaintenanceTicket har
+    // unitId/tenantId men inget eget leaseId. chargeId följer redan med (skalär via
+    // include) så knappen vet om ärendet redan debiterats. Org-scopat, ingen JOIN.
+    const leaseId = ticket.unitId
+      ? ((
+          await this.prisma.lease.findFirst({
+            where: { unitId: ticket.unitId, organizationId, status: 'ACTIVE' },
+            orderBy: { startDate: 'desc' },
+            select: { id: true },
+          })
+        )?.id ?? null)
+      : null
+
+    const withImages = await this.refreshImageUrls(ticket)
+    return { ...withImages, leaseId }
   }
 
   async create(dto: CreateMaintenanceTicketDto, organizationId: string, userId: string) {

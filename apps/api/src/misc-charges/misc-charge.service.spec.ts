@@ -50,6 +50,7 @@ function makeService(charge: ChargeState | null) {
     create: jest.fn(({ data }: { data: Record<string, unknown> }) =>
       Promise.resolve({ id: 'mc-new', ...data }),
     ),
+    findMany: jest.fn().mockResolvedValue(state ? [{ ...state }] : []),
   }
   const maintenanceTicket = {
     findFirst: jest.fn().mockResolvedValue({ id: 'ticket-1', chargeId: null }),
@@ -242,6 +243,25 @@ describe('cancelMiscCharge', () => {
   })
 })
 
+// ── Läsning (PR 4) ───────────────────────────────────────────────────────────
+
+describe('findMiscCharges / findMiscCharge', () => {
+  it('findMiscCharges trådar org + filter till prisma', async () => {
+    const { service, miscCharge } = makeService(baseCharge)
+    await service.findMiscCharges('org-1', { status: 'CONFIRMED', sourceRefId: 'ticket-1' })
+    expect(miscCharge.findMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', status: 'CONFIRMED', sourceRefId: 'ticket-1' },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    })
+  })
+
+  it('findMiscCharge okänd post → NotFound', async () => {
+    const { service } = makeService(null)
+    await expect(service.findMiscCharge('mc-x', 'org-1')).rejects.toThrow(NotFoundException)
+  })
+})
+
 // ── XOR-guard ────────────────────────────────────────────────────────────────
 
 describe('assertRentNoticeLineChargeXor', () => {
@@ -281,8 +301,10 @@ describe('MiscChargeController RBAC', () => {
   }
 
   it.each(['VIEWER', 'ACCOUNTANT'] as const)(
-    'nekar %s på create/confirm/cancel (confirm/cancel får aldrig vara öppna)',
+    'nekar %s på alla endpoints (list/detail/create/confirm/cancel — inget öppet)',
     (role) => {
+      expect(allows(proto.list as () => unknown, role)).toBe(false)
+      expect(allows(proto.detail as () => unknown, role)).toBe(false)
       expect(allows(proto.create as () => unknown, role)).toBe(false)
       expect(allows(proto.confirm as () => unknown, role)).toBe(false)
       expect(allows(proto.cancel as () => unknown, role)).toBe(false)
@@ -290,6 +312,8 @@ describe('MiscChargeController RBAC', () => {
   )
 
   it.each(['MANAGER', 'ADMIN', 'OWNER'] as const)('släpper in %s', (role) => {
+    expect(allows(proto.list as () => unknown, role)).toBe(true)
+    expect(allows(proto.detail as () => unknown, role)).toBe(true)
     expect(allows(proto.create as () => unknown, role)).toBe(true)
     expect(allows(proto.confirm as () => unknown, role)).toBe(true)
     expect(allows(proto.cancel as () => unknown, role)).toBe(true)

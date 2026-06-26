@@ -8,6 +8,7 @@ import {
   MaintenanceCategoryLabel,
 } from './MaintenanceBadges'
 import { useUpdateTicket, useAddComment, useTicket } from '../hooks/useMaintenance'
+import { DebitTenantCard } from '@/features/misc-charges/components/DebitTenantCard'
 import { formatDate, formatCurrency } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import type { MaintenanceTicket } from '../api/maintenance.api'
@@ -215,6 +216,17 @@ export function TicketDetailPanel({ ticket: initialTicket, onClose }: Props) {
             </div>
           </div>
         )}
+
+        {/* Debitera hyresgäst & bokför (teknisk förvaltning, Spår A) */}
+        <DebitTenantCard
+          ticket={{
+            id: ticket.id,
+            ticketNumber: ticket.ticketNumber,
+            chargeId: ticket.chargeId,
+            leaseId: ticket.leaseId,
+            tenantId: ticket.tenantId,
+          }}
+        />
 
         {/* Comments */}
         <div>
