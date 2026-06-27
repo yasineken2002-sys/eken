@@ -6,7 +6,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common'
-import type { MiscCharge, MiscChargeStatus } from '@prisma/client'
+import type { MiscCharge, MiscChargeStatus, Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { CreateMiscChargeDto } from './dto/create-misc-charge.dto'
@@ -135,9 +135,11 @@ export class MiscChargeService {
   // status (ingen halv-annullering). Originalverifikatet raderas ALDRIG (BFL).
   // Idempotent: redan CANCELLED → no-op (inget andra motverifikat, inget fel).
   //
-  // TODO (PR 4b, attach-arbetet): en CANCELLED post rensar inte MaintenanceTicket.
-  // chargeId → ärendet kan inte om-debiteras. clearCharge-flödet hör ihop med
-  // attach/ATTACHED-hanteringen — se docs/research/teknisk-forvaltning-kartlaggning.md.
+  // clearCharge (PR 4c): en annullering frigör ärendet för om-debitering —
+  // MaintenanceTicket.chargeId rensas tillbaka till null i SAMMA transaktion som
+  // statusflippen (charge→CANCELLED och ticket→fri sker atomiskt, aldrig det ena
+  // utan det andra). Bara MAINTENANCE_TICKET har en ticket.chargeId att rensa;
+  // andra källor (INSPECTION_ITEM/KEY_LOSS) hoppas säkert över. Se clearTicketClaim.
   async cancelMiscCharge(id: string, organizationId: string, userId: string): Promise<MiscCharge> {
     const charge = await this.prisma.miscCharge.findFirst({ where: { id, organizationId } })
     if (!charge) throw new NotFoundException('Debiteringsposten hittades inte')
@@ -156,12 +158,18 @@ export class MiscChargeService {
       // ett samtidigt confirm (status:'DRAFT' i where). count===0 betyder att ett
       // parallellt confirm hann flippa DRAFT→CONFIRMED mellan findFirst och nu —
       // då får anroparen ett tydligt fel, inte ett tyst 200 med CONFIRMED-status
-      // (speglar ticket-claim-mönstret i createMiscCharge).
-      const result = await this.prisma.miscCharge.updateMany({
-        where: { id, organizationId, status: 'DRAFT' },
-        data: { status: 'CANCELLED' },
+      // (speglar ticket-claim-mönstret i createMiscCharge). Statusflipp + clear av
+      // ticket.chargeId görs atomiskt i en transaktion (count===0 → rulla tillbaka).
+      const cancelled = await this.prisma.$transaction(async (tx) => {
+        const result = await tx.miscCharge.updateMany({
+          where: { id, organizationId, status: 'DRAFT' },
+          data: { status: 'CANCELLED' },
+        })
+        if (result.count === 0) return false
+        await this.clearTicketClaim(tx, charge, organizationId)
+        return true
       })
-      if (result.count === 0) {
+      if (!cancelled) {
         const current = await this.findMiscCharge(id, organizationId)
         throw new ConflictException(
           `Posten kan inte annulleras i nuläget (nuvarande status: ${current.status})`,
@@ -170,15 +178,38 @@ export class MiscChargeService {
       return this.findMiscCharge(id, organizationId)
     }
 
-    // CONFIRMED → motverifikat + statusflipp atomiskt.
+    // CONFIRMED → motverifikat + statusflipp + frigör ärendet, allt atomiskt.
     await this.prisma.$transaction(async (tx) => {
       await this.accounting.reverseJournalEntryForMiscCharge(id, organizationId, userId, tx)
       await tx.miscCharge.updateMany({
         where: { id, organizationId, status: 'CONFIRMED' },
         data: { status: 'CANCELLED' },
       })
+      await this.clearTicketClaim(tx, charge, organizationId)
     })
     return this.findMiscCharge(id, organizationId)
+  }
+
+  // ── clearCharge (PR 4c): frigör ärendet vid annullering ────────────────────
+  //
+  // Speglar claim:et i createMiscCharge omvänt: där sätts MaintenanceTicket.chargeId
+  // = charge.id när en debitering skapas; här nollas den när debiteringen annulleras,
+  // så ärendet kan om-debiteras (t.ex. fel belopp annulleras → ny korrekt charge).
+  // Villkorat på chargeId: charge.id → bara DEN ticket som faktiskt pekar på denna
+  // charge rensas. Idempotent: redan null (eller pekar på annan charge) → count 0,
+  // no-op, inget fel. Endast MAINTENANCE_TICKET har en ticket.chargeId att rensa —
+  // INSPECTION_ITEM/KEY_LOSS (framtida källor) saknar koppling och hoppas säkert över.
+  // Körs i SAMMA tx som statusflippen så charge→CANCELLED och ticket→fri är atomiskt.
+  private async clearTicketClaim(
+    tx: Prisma.TransactionClient,
+    charge: Pick<MiscCharge, 'id' | 'sourceType' | 'sourceRefId'>,
+    organizationId: string,
+  ): Promise<void> {
+    if (charge.sourceType !== 'MAINTENANCE_TICKET') return
+    await tx.maintenanceTicket.updateMany({
+      where: { id: charge.sourceRefId, organizationId, chargeId: charge.id },
+      data: { chargeId: null },
+    })
   }
 
   // ── Läsning (hyresvärds-sidan, PR 4) ───────────────────────────────────────

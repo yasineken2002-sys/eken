@@ -25,6 +25,8 @@ interface ChargeState {
   id: string
   organizationId: string
   status: Status
+  sourceType: 'MAINTENANCE_TICKET' | 'INSPECTION_ITEM' | 'KEY_LOSS'
+  sourceRefId: string
   netAmount: number
   vatStatus: string
   vatRate: number
@@ -75,6 +77,8 @@ const baseCharge: ChargeState = {
   id: 'mc-1',
   organizationId: 'org-1',
   status: 'DRAFT',
+  sourceType: 'MAINTENANCE_TICKET',
+  sourceRefId: 'ticket-1',
   netAmount: 800,
   vatStatus: 'EXEMPT',
   vatRate: 0,
@@ -190,6 +194,43 @@ describe('cancelMiscCharge', () => {
     expect(state?.status).toBe('CANCELLED')
   })
 
+  it('DRAFT-cancel rensar MaintenanceTicket.chargeId (frigör ärendet för om-debitering)', async () => {
+    const { service, maintenanceTicket } = makeService({ ...baseCharge, status: 'DRAFT' })
+    await service.cancelMiscCharge('mc-1', 'org-1', 'user-9')
+    // Speglar claim:et omvänt — bara DEN ticket som pekar på denna charge nollas.
+    expect(maintenanceTicket.updateMany).toHaveBeenCalledWith({
+      where: { id: 'ticket-1', organizationId: 'org-1', chargeId: 'mc-1' },
+      data: { chargeId: null },
+    })
+  })
+
+  it('frigjort DRAFT-ärende kan om-debiteras (ny charge på samma ticket lyckas)', async () => {
+    const { service, maintenanceTicket } = makeService({ ...baseCharge, status: 'DRAFT' })
+    await service.cancelMiscCharge('mc-1', 'org-1', 'user-9')
+    // Efter clear ser createMiscCharge ett fritt ärende (chargeId null) → claim går igenom.
+    maintenanceTicket.findFirst.mockResolvedValueOnce({ id: 'ticket-1', chargeId: null })
+    const next = await service.createMiscCharge(createDto, 'org-1')
+    expect(next).toBeDefined()
+    // Andra updateMany-anropet är det nya claim:et (det första var clearen).
+    expect(maintenanceTicket.updateMany).toHaveBeenLastCalledWith({
+      where: { id: 'ticket-1', organizationId: 'org-1', chargeId: null },
+      data: { chargeId: 'mc-new' },
+    })
+  })
+
+  it('parallellt confirm vinner racet → ingen ticket-clear (rullas tillbaka med statusflippen)', async () => {
+    const { service, maintenanceTicket, miscCharge } = makeService({
+      ...baseCharge,
+      status: 'DRAFT',
+    })
+    miscCharge.updateMany.mockResolvedValueOnce({ count: 0 })
+    await expect(service.cancelMiscCharge('mc-1', 'org-1', 'user-9')).rejects.toThrow(
+      ConflictException,
+    )
+    // Statusflippen blev count===0 → clearen körs aldrig (ärendet förblir debiterat).
+    expect(maintenanceTicket.updateMany).not.toHaveBeenCalled()
+  })
+
   it('parallellt confirm vinner racet (DRAFT→CONFIRMED) → ConflictException, ingen tyst 200', async () => {
     const { service, accounting, miscCharge } = makeService({ ...baseCharge, status: 'DRAFT' })
     // Simulera att confirm hann före: villkorad updateMany matchar inga DRAFT-rader.
@@ -218,6 +259,21 @@ describe('cancelMiscCharge', () => {
     expect(result.status).toBe('CANCELLED')
   })
 
+  it('CONFIRMED-cancel: motverifikat OCH ticket-clear i SAMMA transaktion', async () => {
+    const { service, accounting, maintenanceTicket, prisma } = makeService({
+      ...baseCharge,
+      status: 'CONFIRMED',
+    })
+    await service.cancelMiscCharge('mc-1', 'org-1', 'user-9')
+    // Allt i en enda $transaction (atomiskt: charge→CANCELLED + ticket→fri + motverifikat).
+    expect(prisma.$transaction as jest.Mock).toHaveBeenCalledTimes(1)
+    expect(accounting.reverseJournalEntryForMiscCharge).toHaveBeenCalledTimes(1)
+    expect(maintenanceTicket.updateMany).toHaveBeenCalledWith({
+      where: { id: 'ticket-1', organizationId: 'org-1', chargeId: 'mc-1' },
+      data: { chargeId: null },
+    })
+  })
+
   it('idempotent: andra cancel på redan CANCELLED → no-op (inget andra motverifikat)', async () => {
     const { service, accounting, miscCharge } = makeService({ ...baseCharge, status: 'CONFIRMED' })
     await service.cancelMiscCharge('mc-1', 'org-1', 'user-9') // CONFIRMED → CANCELLED + reversal
@@ -225,6 +281,27 @@ describe('cancelMiscCharge', () => {
     expect(accounting.reverseJournalEntryForMiscCharge).toHaveBeenCalledTimes(1)
     // Andra anropet flippar inte status igen.
     expect(miscCharge.updateMany).toHaveBeenCalledTimes(1)
+  })
+
+  it('idempotent: dubbel-cancel rensar ticket EN gång (andra anropet är ren no-op)', async () => {
+    const { service, maintenanceTicket } = makeService({ ...baseCharge, status: 'DRAFT' })
+    await service.cancelMiscCharge('mc-1', 'org-1', 'user-9') // DRAFT → CANCELLED + clear
+    await service.cancelMiscCharge('mc-1', 'org-1', 'user-9') // redan CANCELLED → no-op
+    // Clearen körs bara i den faktiska annulleringen — inte i no-op:en.
+    expect(maintenanceTicket.updateMany).toHaveBeenCalledTimes(1)
+  })
+
+  it('charge utan ticket-källa (INSPECTION_ITEM) → cancel fungerar, ingen ticket-clear', async () => {
+    const { service, maintenanceTicket } = makeService({
+      ...baseCharge,
+      status: 'DRAFT',
+      sourceType: 'INSPECTION_ITEM',
+      sourceRefId: 'insp-row-1',
+    })
+    const result = await service.cancelMiscCharge('mc-1', 'org-1', 'user-9')
+    expect(result.status).toBe('CANCELLED')
+    // Andra källor har ingen ticket.chargeId att rensa → hoppas säkert över (ingen krasch).
+    expect(maintenanceTicket.updateMany).not.toHaveBeenCalled()
   })
 
   it('ATTACHED → BadRequest (rörs aldrig i PR 3)', async () => {
