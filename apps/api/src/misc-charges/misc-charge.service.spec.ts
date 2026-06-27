@@ -274,6 +274,19 @@ describe('cancelMiscCharge', () => {
     })
   })
 
+  it('CONFIRMED-cancel: samtidigt attach vinner racet (count 0) → ingen ticket-clear', async () => {
+    // Posten lästes som CONFIRMED men hann flippas CONFIRMED→ATTACHED av ett parallellt
+    // attach innan statusflippen → updateMany count===0. Då FÅR ticket.chargeId inte
+    // nollas: charge:en lever kvar på en avi och ärendet skulle annars se fritt ut.
+    const { service, miscCharge, maintenanceTicket } = makeService({
+      ...baseCharge,
+      status: 'CONFIRMED',
+    })
+    miscCharge.updateMany.mockResolvedValueOnce({ count: 0 })
+    await service.cancelMiscCharge('mc-1', 'org-1', 'user-9')
+    expect(maintenanceTicket.updateMany).not.toHaveBeenCalled()
+  })
+
   it('idempotent: andra cancel på redan CANCELLED → no-op (inget andra motverifikat)', async () => {
     const { service, accounting, miscCharge } = makeService({ ...baseCharge, status: 'CONFIRMED' })
     await service.cancelMiscCharge('mc-1', 'org-1', 'user-9') // CONFIRMED → CANCELLED + reversal

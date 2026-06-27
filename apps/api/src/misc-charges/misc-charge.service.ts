@@ -181,11 +181,18 @@ export class MiscChargeService {
     // CONFIRMED → motverifikat + statusflipp + frigör ärendet, allt atomiskt.
     await this.prisma.$transaction(async (tx) => {
       await this.accounting.reverseJournalEntryForMiscCharge(id, organizationId, userId, tx)
-      await tx.miscCharge.updateMany({
+      const result = await tx.miscCharge.updateMany({
         where: { id, organizationId, status: 'CONFIRMED' },
         data: { status: 'CANCELLED' },
       })
-      await this.clearTicketClaim(tx, charge, organizationId)
+      // Frigör ärendet ENDAST om vi faktiskt flippade statusen. count===0 betyder
+      // att posten inte längre var CONFIRMED (t.ex. ett samtidigt attach hann flippa
+      // CONFIRMED→ATTACHED) — då vore det fel att nolla ticket.chargeId: charge:en
+      // lever kvar (på en avi) och ärendet skulle se fritt ut → dubbel-debitering.
+      // Speglar DRAFT-grenens count-grind.
+      if (result.count > 0) {
+        await this.clearTicketClaim(tx, charge, organizationId)
+      }
     })
     return this.findMiscCharge(id, organizationId)
   }
