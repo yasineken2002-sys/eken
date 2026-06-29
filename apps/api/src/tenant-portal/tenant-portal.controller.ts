@@ -41,7 +41,7 @@ import { PdfService } from '../invoices/pdf.service'
 import { AviseringService } from '../avisering/avisering.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
 import { TenantAuthService } from './tenant-auth.service'
-import { TenantPortalService } from './tenant-portal.service'
+import { TenantPortalService, mapPortalImage } from './tenant-portal.service'
 import { TenantInvitationsService, type TenantInviteStatus } from './tenant-invitations.service'
 import { TenantAuthGuard } from './tenant-auth.guard'
 import { CurrentTenant } from './current-tenant.decorator'
@@ -708,6 +708,10 @@ export class TenantPortalController {
     }
     if (!files.length) throw new BadRequestException('Inga bilder bifogade')
 
-    return this.maintenanceService.addImages(ticketId, files)
+    // SECURITY (PR 5a): MaintenanceService.addImages returnerar hela
+    // MaintenanceImage-rader inkl. intern R2-nyckel (storageKey). Strippa till
+    // säkra fält innan svaret når hyresgästen (portalen läser bara id/storageUrl).
+    const images = await this.maintenanceService.addImages(ticketId, files)
+    return images.map(mapPortalImage)
   }
 }

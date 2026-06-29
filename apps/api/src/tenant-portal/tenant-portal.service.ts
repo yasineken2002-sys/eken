@@ -1,5 +1,14 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common'
-import type { Invoice, Lease, MaintenanceCategory, Property, Unit } from '@prisma/client'
+import type {
+  Invoice,
+  Lease,
+  MaintenanceCategory,
+  MaintenancePriority,
+  MaintenanceStatus,
+  Prisma,
+  Property,
+  Unit,
+} from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MaintenanceService } from '../maintenance/maintenance.service'
 import { NotificationsService } from '../notifications/notifications.service'
@@ -8,6 +17,195 @@ import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 
 type InvoiceWithLease = Invoice & {
   lease?: (Lease & { unit: Unit & { property: Property } }) | null
+}
+
+/**
+ * Safe Prisma SELECT för MaintenanceTicket som exponeras mot hyresgästportalen.
+ *
+ * Spegel av SAFE_TENANT_SELECT (tenants.service.ts): allow-list på DB-nivå så de
+ * interna fälten ALDRIG ens lämnar Postgres (lager 1). Tillsammans med mapTicket
+ * (explicit mapper nedan, lager 2) ger detta dubbelt fält-skydd.
+ *
+ * EXPLICIT EXKLUDERADE — LÄGG ALDRIG TILL. Dessa läcker hyresvärdens ekonomi/
+ * credentials till hyresgästen (PR 5a säkerhetsfix):
+ *  - organizationId   tenant-isolationens scope-nyckel
+ *  - estimatedCost    hyresvärdens interna kostnadsuppskattning
+ *  - actualCost       hyresvärdens faktiska kostnad
+ *  - reportedById     internt user-id
+ *  - assignedToId     internt user-id (vem som tilldelats ärendet)
+ *  - tenantToken      @unique, credential-liknande ärende-token
+ *  - chargeId         intern FK → MiscCharge
+ *  - tenantNotified   intern utskicksflagga
+ *
+ * Nästlade property/unit har EGNA allow-lists (aldrig `include: true`) så
+ * fireSafetyNotes, consumptionBillingMode, monthlyRent, voluntaryTaxLiability och
+ * organizationId aldrig följer med.
+ */
+export const SAFE_TICKET_SELECT = {
+  id: true,
+  ticketNumber: true,
+  title: true,
+  description: true,
+  category: true,
+  priority: true,
+  status: true,
+  scheduledDate: true,
+  completedAt: true,
+  createdAt: true,
+  updatedAt: true,
+  property: { select: { id: true, name: true, street: true, city: true, postalCode: true } },
+  unit: { select: { id: true, name: true, unitNumber: true, floor: true } },
+  comments: {
+    where: { isInternal: false },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, content: true, isInternal: true, createdAt: true },
+  },
+} as const satisfies Prisma.MaintenanceTicketSelect
+
+/**
+ * Minsta gemensamma form som mapTicket läser. Både SAFE_TICKET_SELECT-rader och
+ * MaintenanceService.create()-payloaden (property/unit/tenant redan select:ade,
+ * men rot-skalärerna fulla) är strukturellt kompatibla med denna — så mapTicket
+ * strippar de interna rot-fälten oavsett varifrån ärendet kom (lager 2).
+ */
+interface MappableTicket {
+  id: string
+  ticketNumber: string
+  title: string
+  description: string
+  category: MaintenanceCategory
+  priority: MaintenancePriority
+  status: MaintenanceStatus
+  scheduledDate: Date | null
+  completedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+  property: { name: string } | null
+  unit: { name: string } | null
+  comments: Array<{ id: string; content: string; createdAt: Date; isInternal: boolean }>
+}
+
+/**
+ * Explicit mapper (lager 2). Bygger hyresgäst-DTO:n fält för fält så att även om
+ * en framtida `select` skulle dra in ett internt fält, når det aldrig svaret.
+ */
+function mapTicket(t: MappableTicket) {
+  return {
+    id: t.id,
+    ticketNumber: t.ticketNumber,
+    title: t.title,
+    description: t.description,
+    category: t.category,
+    priority: t.priority,
+    status: t.status,
+    scheduledDate: t.scheduledDate?.toISOString() ?? null,
+    completedAt: t.completedAt?.toISOString() ?? null,
+    createdAt: t.createdAt.toISOString(),
+    updatedAt: t.updatedAt.toISOString(),
+    property: t.property ? { name: t.property.name } : null,
+    unit: t.unit ? { name: t.unit.name } : null,
+    comments: t.comments.map((c) => ({
+      id: c.id,
+      content: c.content,
+      isInternal: c.isInternal,
+      createdAt: c.createdAt.toISOString(),
+    })),
+  }
+}
+
+/**
+ * Safe Prisma SELECT:ar för Unit/Property/Document mot hyresgästportalen (PR 5a).
+ *
+ * Samma allow-list-princip som SAFE_TICKET_SELECT: portalen får BARA de fält den
+ * faktiskt visar (matchar PortalUnit/PortalProperty/PortalDocument i apps/portal).
+ * `include: true` på dessa relationer läckte tidigare interna fält till
+ * hyresgästen via getLease/getDocuments/exportTenantData.
+ *
+ * EXPLICIT EXKLUDERADE — LÄGG ALDRIG TILL:
+ *  - Unit: monthlyRent, voluntaryTaxLiability (intern moms-konfig)
+ *  - Property: fireSafetyNotes, commonAreasNotes, garbageDisposalRules,
+ *    consumptionBillingMode, organizationId
+ *  - Document: storageKey (intern R2-nyckel), uploadedById, signedFromIp,
+ *    signedUserAgent, contentHash, templateInputHash, organizationId
+ */
+export const SAFE_PORTAL_UNIT_SELECT = {
+  id: true,
+  name: true,
+  unitNumber: true,
+  area: true,
+  floor: true,
+  rooms: true,
+} as const satisfies Prisma.UnitSelect
+
+export const SAFE_PORTAL_PROPERTY_SELECT = {
+  id: true,
+  name: true,
+  street: true,
+  city: true,
+  postalCode: true,
+} as const satisfies Prisma.PropertySelect
+
+export const SAFE_PORTAL_DOCUMENT_SELECT = {
+  id: true,
+  name: true,
+  description: true,
+  mimeType: true,
+  fileSize: true,
+  category: true,
+  createdAt: true,
+} as const satisfies Prisma.DocumentSelect
+
+/**
+ * GDPR Art. 15-export: dokumentets egna metadata PLUS hyresgästens egna
+ * signeringsspår (signedFromIp/UserAgent/signatureName = data OM hyresgästen),
+ * men ALDRIG intern R2-nyckel (storageKey/storageUrl), uppladdare eller hashar.
+ * Delas av BÅDE leases.documents och top-level documents i exportTenantData.
+ */
+export const SAFE_PORTAL_EXPORT_DOCUMENT_SELECT = {
+  id: true,
+  name: true,
+  description: true,
+  mimeType: true,
+  fileSize: true,
+  category: true,
+  signedAt: true,
+  signedFromIp: true,
+  signedUserAgent: true,
+  signatureName: true,
+  createdAt: true,
+} as const satisfies Prisma.DocumentSelect
+
+/**
+ * Safe portal-fält för MaintenanceImage (PR 5a). Hyresgästen ser sina egna
+ * uppladdade bilder men ALDRIG den interna R2-nyckeln (storageKey).
+ */
+export const SAFE_PORTAL_IMAGE_SELECT = {
+  id: true,
+  filename: true,
+  storageUrl: true,
+  size: true,
+  createdAt: true,
+} as const satisfies Prisma.MaintenanceImageSelect
+
+/**
+ * Explicit mapper för MaintenanceImage-rader som redan skapats (t.ex. svaret från
+ * MaintenanceService.addImages, som returnerar HELA raden inkl. intern R2-nyckel).
+ * Strippar storageKey/ticketId innan bilden når hyresgästen (lager 2).
+ */
+export function mapPortalImage(img: {
+  id: string
+  filename: string
+  storageUrl: string
+  size: number
+  createdAt: Date
+}) {
+  return {
+    id: img.id,
+    filename: img.filename,
+    storageUrl: img.storageUrl,
+    size: img.size,
+    createdAt: img.createdAt,
+  }
 }
 
 @Injectable()
@@ -29,10 +227,11 @@ export class TenantPortalService {
         select: SAFE_TENANT_SELECT,
       }),
       this.getActiveLease(tenantId),
-      this.prisma.maintenanceTicket.findMany({
+      // SECURITY (PR 5a): bara antalet behövs — `count` istället för `findMany`
+      // (utan select) som annars drog hela ärenderader med interna kostnader/
+      // tenantToken i minnet och var en foot-gun om någon bytte .length mot raderna.
+      this.prisma.maintenanceTicket.count({
         where: { tenantId, status: { in: ['NEW', 'IN_PROGRESS', 'SCHEDULED'] } },
-        orderBy: { createdAt: 'desc' },
-        take: 5,
       }),
       this.prisma.invoice.count({ where: { tenantId, status: 'OVERDUE' } }),
       this.prisma.invoice.findFirst({
@@ -74,7 +273,7 @@ export class TenantPortalService {
       activeLease,
       overdueInvoices: overdueCount,
       upcomingInvoice: upcomingInvoice ? this.mapInvoice(upcomingInvoice) : null,
-      openMaintenanceTickets: openTickets.length,
+      openMaintenanceTickets: openTickets,
       unreadNotices: 0,
     }
   }
@@ -191,8 +390,13 @@ export class TenantPortalService {
   }
 
   async getDocuments(tenantId: string) {
+    // SECURITY (PR 5a): rå `findMany` läckte Document.storageKey (intern R2-nyckel),
+    // uploadedById, signedFromIp/UserAgent, contentHash, organizationId till
+    // hyresgästen. Allow-list-select matchar PortalDocument. Filnedladdning sker
+    // via separat endpoint som genererar presignerad URL — storageKey behövs aldrig.
     return this.prisma.document.findMany({
       where: { tenantId, NOT: { category: 'INVOICE' } },
+      select: SAFE_PORTAL_DOCUMENT_SELECT,
       orderBy: { createdAt: 'desc' },
     })
   }
@@ -293,7 +497,10 @@ export class TenantPortalService {
         this.logger.error('Notification error', err instanceof Error ? err.stack : String(err)),
       )
 
-    return ticket
+    // SECURITY (PR 5a): MaintenanceService.create() returnerar hela ärenderaden
+    // (organizationId, tenantToken, reportedById …). Strippa via mapTicket innan
+    // den når hyresgästen.
+    return mapTicket(ticket)
   }
 
   async addMaintenanceComment(tenantId: string, ticketId: string, content: string) {
@@ -306,37 +513,27 @@ export class TenantPortalService {
       data: { ticketId, content, isInternal: false },
     })
 
-    return this.prisma.maintenanceTicket.findUnique({
+    // SECURITY (PR 5a): rot-ärendet var tidigare oselekterat (`findUnique` utan
+    // `select`) och läckte estimatedCost/actualCost/tenantToken/chargeId/
+    // organizationId. Samma allow-list + mapper som getMaintenanceTickets.
+    const updated = await this.prisma.maintenanceTicket.findUnique({
       where: { id: ticketId },
-      include: {
-        property: { select: { id: true, name: true, city: true } },
-        unit: { select: { id: true, name: true, unitNumber: true } },
-        tenant: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            companyName: true,
-            type: true,
-            email: true,
-          },
-        },
-        images: true,
-        comments: { where: { isInternal: false }, orderBy: { createdAt: 'asc' } },
-      },
+      select: SAFE_TICKET_SELECT,
     })
+    if (!updated) throw new BadRequestException('Ärende hittades inte')
+    return mapTicket(updated)
   }
 
   async getMaintenanceTickets(tenantId: string) {
-    return this.prisma.maintenanceTicket.findMany({
+    // SECURITY (PR 5a): allow-list-select + mapper. `include: { property: true,
+    // unit: true }` läckte tidigare estimatedCost/actualCost/tenantToken/chargeId/
+    // organizationId + property.fireSafetyNotes + unit.monthlyRent till hyresgästen.
+    const rows = await this.prisma.maintenanceTicket.findMany({
       where: { tenantId },
-      include: {
-        property: true,
-        unit: true,
-        comments: { where: { isInternal: false }, orderBy: { createdAt: 'asc' } },
-      },
+      select: SAFE_TICKET_SELECT,
       orderBy: { createdAt: 'desc' },
     })
+    return rows.map(mapTicket)
   }
 
   private mapInvoice(inv: InvoiceWithLease) {
@@ -355,11 +552,28 @@ export class TenantPortalService {
   }
 
   private async getActiveLease(tenantId: string) {
+    // SECURITY (PR 5a): `include: { unit: { include: { property: true } },
+    // documents: true }` läckte tidigare property.fireSafetyNotes/
+    // consumptionBillingMode, unit.monthlyRent/voluntaryTaxLiability och
+    // documents.storageKey (intern R2-nyckel) till hyresgästen via GET /portal/lease.
+    // Allow-list-select matchar PortalLease (property nästlad under unit, oförändrad
+    // form). lease.documents konsumeras inte av portalen och utelämnas.
     return this.prisma.lease.findFirst({
       where: { tenantId, status: 'ACTIVE' },
-      include: {
-        unit: { include: { property: true } },
-        documents: true,
+      select: {
+        id: true,
+        status: true,
+        startDate: true,
+        endDate: true,
+        monthlyRent: true,
+        depositAmount: true,
+        noticePeriodMonths: true,
+        unit: {
+          select: {
+            ...SAFE_PORTAL_UNIT_SELECT,
+            property: { select: SAFE_PORTAL_PROPERTY_SELECT },
+          },
+        },
       },
     })
   }
@@ -374,15 +588,41 @@ export class TenantPortalService {
       where: { id: tenantId },
       include: {
         organization: { select: { id: true, name: true } },
+        // SECURITY (PR 5a): lease-kedjan läckte property.fireSafetyNotes och
+        // documents.storageKey (intern R2-nyckel) in i GDPR-exporten. Allow-list
+        // på unit/property; documents behåller hyresgästens egna signeringsspår
+        // (signedFromIp/UserAgent/signatureName = data OM hyresgästen, Art. 15)
+        // men utesluter storageKey/uploadedById/contentHash/organizationId.
         leases: {
-          include: { unit: { include: { property: true } }, documents: true },
+          include: {
+            unit: {
+              select: {
+                ...SAFE_PORTAL_UNIT_SELECT,
+                property: { select: SAFE_PORTAL_PROPERTY_SELECT },
+              },
+            },
+            documents: { select: SAFE_PORTAL_EXPORT_DOCUMENT_SELECT },
+          },
         },
         invoices: { include: { lines: true } },
-        rentNotices: true,
+        // SECURITY (PR 5a): RentNotice bär interna infrafält — utelämna R2-nyckel
+        // (reminderPdfStorageKey) och Resends message-id, precis som getNotices.
+        rentNotices: { omit: { reminderPdfStorageKey: true, reminderMessageId: true } },
+        // SECURITY (PR 5a): estimatedCost/actualCost är hyresvärdens interna
+        // siffror — INTE hyresgästens personuppgift — och får inte ingå i en
+        // GDPR Art. 15-export. SAFE_TICKET_SELECT stänger dem (+ organizationId/
+        // tenantToken/chargeId). Hyresgästens egna bilder behålls men utan den
+        // interna R2-nyckeln (storageKey).
         maintenanceTickets: {
-          include: { comments: { where: { isInternal: false } }, images: true },
+          select: {
+            ...SAFE_TICKET_SELECT,
+            images: { select: SAFE_PORTAL_IMAGE_SELECT },
+          },
         },
-        documents: true,
+        // SECURITY (PR 5a): top-level `documents: true` läckte storageKey (intern
+        // R2-nyckel)/storageUrl/uploadedById/contentHash/organizationId rakt in i
+        // GDPR-exporten. Samma allow-list som leases.documents (round-2-fynd).
+        documents: { select: SAFE_PORTAL_EXPORT_DOCUMENT_SELECT },
       },
     })
     if (!tenant) throw new BadRequestException('Hyresgäst hittades inte')
