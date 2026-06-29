@@ -159,3 +159,50 @@ KONSOLIDERADE PLANÄNDRINGAR:
 8. Område 2: InspectionItem får installedAt + materialCategory; reduktionstabell i @eken/shared; inflyttningsprotokoll-koppling + portal-delgivning/invändningsfrist.
 9. Spår B: egen ComplianceInspection-modell.
 10. Tidrapportering: MVP endast intäkts-vidarefakturering; ingen TIME_BILLING i enum v1.
+
+## Öppna reversal-/bokföringsfrågor (för beslut med bokförings-expert/revisor)
+
+Samlade öppna frågor om motverifikat och kontering som inte gatar pågående PR:er men
+ska avgöras tillsammans med revisorn innan de stängs.
+
+- **ÖPPEN (cancelMiscCharge reversal-ordning, sedan PR 4c #155):** CONFIRMED-grenen kör
+  `reverseJournalEntryForMiscCharge` FÖRE den villkorade statusflippen (`updateMany` count).
+  Vid samtidigt attach (CONFIRMED→ATTACHED) kan ett motverifikat skapas för en post som
+  förblir ATTACHED — motverifikat utan motsvarande annullering. Pre-existerande sedan PR 3,
+  idempotent (ingen dubblett), inte akut. Möjlig fix: flytta reversal-anropet till EFTER den
+  villkorade flippen, eller gör hela CONFIRMED-cancel till en enda gated transaktion där
+  reversal bara körs om flippen lyckas. Beslut tillsammans med bokförings-expert/revisor.
+
+- **ÖPPEN (dröjsmålsränta på MiscCharge, RL 6 §):** när en `MiscCharge` är ATTACHED på en avi
+  (PR 4b) och ingår i den betalbara totalen — ska kumulativ dröjsmålsränta (referensränta + 8
+  procentenheter, 6 § räntelagen) löpa även på misc-charge-delen vid utebliven betalning, eller
+  endast på hyresdelen? Räntemotorn (`RentInterestService`) beräknar idag på avins skuld;
+  konteringen mot 8131 är dokumenterad för hyresskuld i `docs/legal/46-inkasso-hyra-pamminnelse.md`.
+  Beslut tillsammans med bokförings-expert/revisor.
+
+## Öppna portal-fynd (ej denna klass)
+
+Hyresgästportalens fält-läckor av select/omit-klassen stängdes i PR 5a (MaintenanceTicket/
+Lease/Document/Image) + RentNotice-följd-PR:en (allow-list-select + mapper på getNotices/
+getRentNotices/exportTenantData). Security-auditorns granskningar lyfte tre kvarvarande
+punkter som INTE tillhör den stängda klassen — egna tickets, ingen gatar pågående arbete:
+
+- **getInvoices / getDashboard.upcomingInvoice — Invoice defense-in-depth (INFO):**
+  båda använder fortfarande `include: { unit: { include: { property: true } } }`. Ingen
+  runtime-läcka idag eftersom `mapInvoice` (lager 2) strippar svaret till säkra fält — men
+  lager 1 (DB-allow-list) saknas, så hela property-raden (`fireSafetyNotes`,
+  `consumptionBillingMode`, `organizationId`) hämtas till minnet. Åtgärd: byt till explicit
+  `select` med `SAFE_PORTAL_UNIT_SELECT` + `SAFE_PORTAL_PROPERTY_SELECT` (samma lager-1-mönster
+  som RentNotice/getActiveLease). Egen ticket.
+
+- **getMe — rå Tenant från `@CurrentTenant` (INFO):** endpointen returnerar `request.tenant`
+  typad som `Tenant`, men runtime-objektet kommer från `validateSession` som redan använder
+  `SAFE_PORTAL_TENANT_SELECT` (inga credentials/token-hashar). Runtime-säkert; TypeScript-typen
+  är vilseledande för framtida devs. Pre-existerande sedan portal-auth-fixen. Egen ticket.
+
+- **PortalLease typ-mismatch — EJ läcka (klargör):** `getLease`/`getActiveLease` returnerar
+  `property` nästlad under `unit` (`lease.unit.property`), medan `PortalLease`-typen i
+  `apps/portal` deklarerar `property` på toppnivå. Pre-existerande shape-mismatch, ingen
+  säkerhetsläcka — klargör om typen ska rättas eller om frontenden läser `unit.property` trots
+  typen. (Relaterat: `PortalRentNotice`-typen saknar `consumptionAmount`/`miscChargeAmount`/
+  `payableTotal` som backend redan returnerar — risk att portalen visar fel betalbelopp.)
