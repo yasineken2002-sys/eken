@@ -291,6 +291,50 @@ export function mapRentNotice(notice: PortalRentNoticeRow) {
   }
 }
 
+/**
+ * Safe Prisma SELECT för MiscCharge (övrig debitering: skada/nyckel, teknisk
+ * förvaltning) mot hyresgästportalen.
+ *
+ * Allow-list (lager 1) + mapMiscCharge (lager 2) — spegel av
+ * SAFE_PORTAL_RENT_NOTICE_SELECT. BARA de fält hyresgästen ska se: belopp,
+ * beskrivning, datum. Inga relationer.
+ *
+ * EXPLICIT EXKLUDERADE — LÄGG ALDRIG TILL:
+ *  - vatStatus, vatRate     (internt momsbeslut; momsen ligger i vatAmount)
+ *  - status                 (filtreras på, exponeras ALDRIG rått — DRAFT/CANCELLED döljs)
+ *  - sourceType, sourceRefId (avslöjar intern källa: vilket ärende/inspektion)
+ *  - organizationId, leaseId, tenantId (scope-internt)
+ *  - createdAt, updatedAt   (interna timestamps)
+ *  - maintenanceTicket / rentNoticeLine (relationer drar in interna objekt)
+ */
+export const SAFE_PORTAL_MISC_CHARGE_SELECT = {
+  id: true,
+  description: true,
+  incidentDate: true,
+  netAmount: true,
+  vatAmount: true,
+  totalAmount: true,
+} as const satisfies Prisma.MiscChargeSelect
+
+type PortalMiscChargeRow = Prisma.MiscChargeGetPayload<{
+  select: typeof SAFE_PORTAL_MISC_CHARGE_SELECT
+}>
+
+/**
+ * Explicit mapper (lager 2) → exakt portal-kontraktet (PortalMiscCharge). Belopp
+ * coercas från Decimal till number; incidentDate till ISO-sträng.
+ */
+export function mapMiscCharge(charge: PortalMiscChargeRow) {
+  return {
+    id: charge.id,
+    description: charge.description,
+    incidentDate: charge.incidentDate.toISOString(),
+    netAmount: Number(charge.netAmount),
+    vatAmount: Number(charge.vatAmount),
+    totalAmount: Number(charge.totalAmount),
+  }
+}
+
 @Injectable()
 export class TenantPortalService {
   private readonly logger = new Logger(TenantPortalService.name)
@@ -448,6 +492,27 @@ export class TenantPortalService {
       vatAmount: Number(c.vatAmount),
       totalAmount: Number(c.totalAmount),
     }))
+  }
+
+  /**
+   * Hyresgästens egna övriga debiteringar (MiscCharge: skada/nyckel/ersättningskrav,
+   * teknisk förvaltning Spår A). Speglar getConsumption EXAKT:
+   *  - Scope HÅRT på tenantId (från @CurrentTenant i controllern, ALDRIG query-param
+   *    → ingen IDOR; granne A kan aldrig se granne B:s debiteringar).
+   *  - ENDAST fastställda poster: BARA CONFIRMED och ATTACHED passerar. DRAFT (ej
+   *    bekräftad debitering) och CANCELLED (annullerad) exponeras ALDRIG för
+   *    hyresgästen — en hyresgäst får aldrig se en obekräftad eller annullerad post.
+   *  - Dubbelt fält-skydd: SAFE_PORTAL_MISC_CHARGE_SELECT (allow-list) + mapMiscCharge.
+   *    Interna fält (vatStatus/status/sourceType/sourceRefId/organizationId/leaseId/
+   *    tenantId/timestamps/relationer) når ALDRIG hyresgästen.
+   */
+  async getMiscCharges(tenantId: string) {
+    const rows = await this.prisma.miscCharge.findMany({
+      where: { tenantId, status: { in: ['CONFIRMED', 'ATTACHED'] } },
+      select: SAFE_PORTAL_MISC_CHARGE_SELECT,
+      orderBy: { incidentDate: 'desc' },
+    })
+    return rows.map(mapMiscCharge)
   }
 
   async getLease(tenantId: string) {

@@ -9,6 +9,7 @@ import type {
   PortalInvoice,
   PortalLease,
   PortalMaintenanceTicket,
+  PortalMiscCharge,
   PortalNews,
   PortalNotice,
   PortalRentNotice,
@@ -163,6 +164,7 @@ export const markNoticeRead = (id: string) => post<void>(`/portal/notices/${id}/
 export const fetchNews = () => get<PortalNews[]>('/portal/news')
 export const fetchDocuments = () => get<PortalDocument[]>('/portal/documents')
 export const fetchConsumption = () => get<PortalConsumptionCharge[]>('/portal/consumption')
+export const fetchMiscCharges = () => get<PortalMiscCharge[]>('/portal/misc-charges')
 export const fetchDocumentDownload = (documentId: string) =>
   get<{ url: string; filename: string; mimeType: string }>(
     `/portal/documents/${encodeURIComponent(documentId)}/download`,

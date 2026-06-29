@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   fetchInvoices,
   fetchRentNotices,
+  fetchMiscCharges,
   downloadInvoicePdf,
   downloadRentNoticePdf,
   extractApiError,
@@ -11,10 +12,10 @@ import {
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Spinner } from '@/components/ui/Spinner'
 import { ErrorCard } from '@/components/ui/ErrorCard'
-import type { PortalInvoice, PortalRentNotice } from '@/types/portal.types'
+import type { PortalInvoice, PortalRentNotice, PortalMiscCharge } from '@/types/portal.types'
 import styles from './NoticesPage.module.css'
 
-type TopTab = 'rent-notices' | 'invoices'
+type TopTab = 'rent-notices' | 'invoices' | 'misc-charges'
 type Filter = 'all' | 'unpaid' | 'paid'
 
 const UNPAID_INVOICE_STATUSES = new Set(['SENT', 'OVERDUE', 'PARTIAL'])
@@ -97,6 +98,12 @@ export function NoticesPage() {
     enabled: topTab === 'rent-notices',
   })
 
+  const miscChargesQuery = useQuery({
+    queryKey: ['portal', 'misc-charges'],
+    queryFn: fetchMiscCharges,
+    enabled: topTab === 'misc-charges',
+  })
+
   async function handleDownload(id: string, label: string, fn: () => Promise<void>): Promise<void> {
     setDownloadingId(id)
     setErrorByRow((prev) => {
@@ -149,22 +156,36 @@ export function NoticesPage() {
         >
           Fakturor
         </button>
+        <button
+          role="tab"
+          aria-selected={topTab === 'misc-charges'}
+          className={`${styles.tab} ${topTab === 'misc-charges' ? styles.tabActive : ''}`}
+          onClick={() => {
+            setTopTab('misc-charges')
+            setFilter('all')
+          }}
+        >
+          Debiteringar
+        </button>
       </div>
 
-      {/* Status-filter */}
-      <div className={styles.filters}>
-        {(['all', 'unpaid', 'paid'] as const).map((f) => (
-          <button
-            key={f}
-            className={`${styles.filterChip} ${filter === f ? styles.filterChipActive : ''}`}
-            onClick={() => setFilter(f)}
-          >
-            {f === 'all' ? 'Alla' : f === 'unpaid' ? 'Obetalda' : 'Betalda'}
-          </button>
-        ))}
-      </div>
+      {/* Status-filter — gäller bara avier/fakturor (debiteringar har ingen
+          betald/obetald-status att filtrera på). */}
+      {topTab !== 'misc-charges' && (
+        <div className={styles.filters}>
+          {(['all', 'unpaid', 'paid'] as const).map((f) => (
+            <button
+              key={f}
+              className={`${styles.filterChip} ${filter === f ? styles.filterChipActive : ''}`}
+              onClick={() => setFilter(f)}
+            >
+              {f === 'all' ? 'Alla' : f === 'unpaid' ? 'Obetalda' : 'Betalda'}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {topTab === 'rent-notices' ? (
+      {topTab === 'rent-notices' && (
         <RentNoticesList
           query={noticesQuery}
           filter={filter}
@@ -176,7 +197,8 @@ export function NoticesPage() {
             )
           }
         />
-      ) : (
+      )}
+      {topTab === 'invoices' && (
         <InvoicesList
           query={invoicesQuery}
           filter={filter}
@@ -189,6 +211,7 @@ export function NoticesPage() {
           }
         />
       )}
+      {topTab === 'misc-charges' && <MiscChargesList query={miscChargesQuery} />}
     </div>
   )
 }
@@ -241,7 +264,10 @@ function RentNoticesList({
               <StatusBadge type="rent-notice" status={notice.status} />
             </div>
 
-            <p className={styles.cardAmount}>{formatCurrencySv(notice.totalAmount)}</p>
+            {/* payableTotal = hyra + förbrukning + övrig debitering + ev.
+                påminnelseavgift = det hyresgästen FAKTISKT ska betala (OCR-raden).
+                Visa aldrig totalAmount (bara hyran) — det vore för lågt. */}
+            <p className={styles.cardAmount}>{formatCurrencySv(notice.payableTotal)}</p>
 
             <div className={styles.cardDueRow}>
               <span
@@ -371,6 +397,37 @@ function InvoicesList({
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ── Debiteringar (övrig debitering: skada/nyckel/ersättningskrav) ───────────────
+
+function MiscChargesList({ query }: { query: ReturnType<typeof useQuery<PortalMiscCharge[]>> }) {
+  if (query.isLoading) return <Spinner size="md" label="Laddar debiteringar..." />
+  if (query.isError || !query.data) {
+    return <ErrorCard onRetry={() => void query.refetch()} />
+  }
+  if (query.data.length === 0) return <EmptyState label="Inga debiteringar att visa" />
+
+  return (
+    <div className={styles.list}>
+      {/* Hyresjuristens not: ramas som ersättningskrav/debitering — ALDRIG "intäkt". */}
+      <p className={styles.sectionHint}>Ersättningskrav — skada, nyckel och övrigt</p>
+      {query.data.map((charge) => (
+        <div key={charge.id} className={styles.card}>
+          <div className={styles.cardTop}>
+            <p className={styles.cardMonth}>{charge.description}</p>
+          </div>
+
+          <p className={styles.cardAmount}>{formatCurrencySv(charge.totalAmount)}</p>
+
+          <div className={styles.cardDueRow}>
+            <span className={styles.cardDueLabel}>Debiterad</span>
+            <span className={styles.cardDueDate}>{formatDateSv(charge.incidentDate)}</span>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
