@@ -67,7 +67,14 @@ export interface PortalRentNotice {
   year: number
   amount: number
   vatAmount: number
+  // consumptionAmount = förbrukning (IMD); miscChargeAmount = övrig debitering
+  // (skada/nyckel); totalAmount = hyran. payableTotal = vad hyresgästen FAKTISKT
+  // ska betala (hyra + förbrukning + övrig debitering + ev. påminnelseavgift) och
+  // är beloppet på OCR-raden. Visa payableTotal, aldrig totalAmount.
+  consumptionAmount: number
+  miscChargeAmount: number
   totalAmount: number
+  payableTotal: number
   dueDate: string
   paidAt: string | null
   status: 'PENDING' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' | 'FAILED'
@@ -136,6 +143,19 @@ export interface PortalConsumptionCharge {
   periodStart: string
   periodEnd: string
   quantity: number
+  netAmount: number
+  vatAmount: number
+  totalAmount: number
+}
+
+// Hyresgästens egna övriga debiteringar (MiscCharge: skada/nyckel/ersättningskrav,
+// teknisk förvaltning). Speglar backendens hårt scopade, fält-begränsade svar —
+// inga interna fält (momsstatus/-sats, status, källa, scope-id, timestamps).
+// Belopp redan number (Decimal mappad). description = hyresvärdens egen text.
+export interface PortalMiscCharge {
+  id: string
+  description: string
+  incidentDate: string
   netAmount: number
   vatAmount: number
   totalAmount: number

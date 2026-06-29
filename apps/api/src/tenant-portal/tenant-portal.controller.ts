@@ -523,6 +523,19 @@ export class TenantPortalController {
   }
 
   /**
+   * Hyresgästens egna övriga debiteringar (MiscCharge: skada/nyckel/ersättningskrav).
+   * Scope kommer ENBART från @CurrentTenant (tenant-sessionen) — aldrig från
+   * query-param. Se getMiscCharges() i servicen för fält-allowlist + DRAFT/CANCELLED
+   * dolda. Speglar GET /portal/consumption exakt.
+   */
+  @Get('misc-charges')
+  async getMiscCharges(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+  ) {
+    return this.portalService.getMiscCharges(tenant.id)
+  }
+
+  /**
    * Streamar faktura-PDF för en faktura som tillhör inloggad hyresgäst.
    * Auth: TenantAuthGuard. Scope: invoice.tenantId måste matcha — annars
    * 404 (vi avslöjar inte att faktura-id existerar i annan org).
