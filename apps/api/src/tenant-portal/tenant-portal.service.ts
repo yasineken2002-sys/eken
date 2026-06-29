@@ -208,6 +208,89 @@ export function mapPortalImage(img: {
   }
 }
 
+/**
+ * Safe Prisma SELECT för RentNotice (hyresavi) mot hyresgästportalen.
+ *
+ * Allow-list (lager 1) + mapRentNotice (lager 2) — spegel av SAFE_TICKET_SELECT.
+ * Ersätter det tidigare `omit`-mönstret (blocklist): med en allow-list kan
+ * framtida interna RentNotice-fält inte auto-läcka. property/unit återbrukar 5a:s
+ * SAFE_PORTAL_*_SELECT (för propertyName/unitName).
+ *
+ * reminderFeeAmount tas med ENBART för att rentNoticePayableTotal ska kunna räkna
+ * (exponeras aldrig som eget fält VIA mapRentNotice; i GDPR Art. 15-exporten, som
+ * returnerar select-raderna utan mapper, ingår den däremot — korrekt, det är
+ * hyresgästens egna debiterade avgift).
+ *
+ * EXPLICIT EXKLUDERADE — LÄGG ALDRIG TILL (interna/kravtrappa/infra):
+ *  - organizationId, tenantId, leaseId
+ *  - sendError, sentTo (leveransinfra), paidAmount, paymentMethod
+ *  - reminderPdfStorageKey (R2-nyckel), reminderMessageId
+ *  - collectionStage, remindedAt, collectionReadyAt, writtenOffAt, probableLossAt
+ *  - interestAccruedAmount, interestAccruedThrough
+ *  - type, periodStart, periodEnd, daysCharged, totalDays, isProrated
+ */
+export const SAFE_PORTAL_RENT_NOTICE_SELECT = {
+  id: true,
+  noticeNumber: true,
+  ocrNumber: true,
+  month: true,
+  year: true,
+  amount: true,
+  vatAmount: true,
+  totalAmount: true,
+  consumptionAmount: true,
+  miscChargeAmount: true,
+  reminderFeeAmount: true,
+  dueDate: true,
+  paidAt: true,
+  status: true,
+  sentAt: true,
+  lease: {
+    select: {
+      unit: {
+        select: {
+          ...SAFE_PORTAL_UNIT_SELECT,
+          property: { select: SAFE_PORTAL_PROPERTY_SELECT },
+        },
+      },
+    },
+  },
+} as const satisfies Prisma.RentNoticeSelect
+
+type PortalRentNoticeRow = Prisma.RentNoticeGetPayload<{
+  select: typeof SAFE_PORTAL_RENT_NOTICE_SELECT
+}>
+
+/**
+ * Explicit mapper (lager 2) → exakt portal-kontraktet (PortalRentNotice). Bygger
+ * DTO:n fält för fält så interna fält aldrig kan följa med, även om selecten
+ * skulle driva.
+ */
+export function mapRentNotice(notice: PortalRentNoticeRow) {
+  return {
+    id: notice.id,
+    noticeNumber: notice.noticeNumber,
+    ocrNumber: notice.ocrNumber,
+    month: notice.month,
+    year: notice.year,
+    amount: Number(notice.amount),
+    vatAmount: Number(notice.vatAmount),
+    // consumptionAmount = förbrukning (IMD); miscChargeAmount = övriga debiterbara
+    // poster (skada/nyckel); totalAmount = hyra. payableTotal = vad hyresgästen
+    // faktiskt ska betala (hyra + förbrukning + övrig debitering + påminnelseavgift).
+    consumptionAmount: Number(notice.consumptionAmount),
+    miscChargeAmount: Number(notice.miscChargeAmount),
+    totalAmount: Number(notice.totalAmount),
+    payableTotal: rentNoticePayableTotal(notice),
+    dueDate: notice.dueDate.toISOString(),
+    paidAt: notice.paidAt?.toISOString() ?? null,
+    status: notice.status,
+    sentAt: notice.sentAt?.toISOString() ?? null,
+    propertyName: notice.lease?.unit?.property?.name ?? '',
+    unitName: notice.lease?.unit?.name ?? '',
+  }
+}
+
 @Injectable()
 export class TenantPortalService {
   private readonly logger = new Logger(TenantPortalService.name)
@@ -279,16 +362,16 @@ export class TenantPortalService {
   }
 
   async getNotices(tenantId: string) {
-    return this.prisma.rentNotice.findMany({
+    // SECURITY (RentNotice-läcktätning): tidigare rå `findMany` + `omit` (blocklist)
+    // läckte organizationId/sendError/sentTo + kravtrapp-fält (collectionStage,
+    // probableLossAt …) + hela property-kedjan (fireSafetyNotes/monthlyRent) till
+    // hyresgästen. Allow-list-select + mapper, samma mönster som getRentNotices.
+    const rows = await this.prisma.rentNotice.findMany({
       where: { tenantId },
-      include: {
-        lease: { include: { unit: { include: { property: true } } } },
-      },
-      // Interna infrastrukturfält ska aldrig nå hyresgästen (security-auditor
-      // MEDIUM): R2-lagringsnyckel + Resends message-id.
-      omit: { reminderPdfStorageKey: true, reminderMessageId: true },
+      select: SAFE_PORTAL_RENT_NOTICE_SELECT,
       orderBy: { dueDate: 'desc' },
     })
+    return rows.map(mapRentNotice)
   }
 
   async getInvoices(tenantId: string) {
@@ -310,6 +393,9 @@ export class TenantPortalService {
    * i samma flik var bug:en där en 16 647 kr-faktura visades under "Avier".
    */
   async getRentNotices(tenantId: string) {
+    // SECURITY (RentNotice-läcktätning): samma allow-list-select + mapper som
+    // getNotices. Stänger även den defense-in-depth-lucka som tidigare `include`
+    // gav (hela property/unit lästes till minnet, även om mappern strippade svaret).
     const rows = await this.prisma.rentNotice.findMany({
       where: {
         tenantId,
@@ -317,31 +403,10 @@ export class TenantPortalService {
         // hyresvärden faktiskt skickat eller markerat betalda.
         status: { in: ['SENT', 'PAID', 'OVERDUE'] },
       },
-      include: { lease: { include: { unit: { include: { property: true } } } } },
+      select: SAFE_PORTAL_RENT_NOTICE_SELECT,
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
     })
-    return rows.map((notice) => ({
-      id: notice.id,
-      noticeNumber: notice.noticeNumber,
-      ocrNumber: notice.ocrNumber,
-      month: notice.month,
-      year: notice.year,
-      amount: Number(notice.amount),
-      vatAmount: Number(notice.vatAmount),
-      // consumptionAmount = förbrukning (IMD); miscChargeAmount = övriga debiterbara
-      // poster (skada/nyckel, teknisk förvaltning); totalAmount = hyra. payableTotal =
-      // vad hyresgästen faktiskt ska betala (hyra + förbrukning + övrig debitering).
-      consumptionAmount: Number(notice.consumptionAmount),
-      miscChargeAmount: Number(notice.miscChargeAmount),
-      totalAmount: Number(notice.totalAmount),
-      payableTotal: rentNoticePayableTotal(notice),
-      dueDate: notice.dueDate.toISOString(),
-      paidAt: notice.paidAt?.toISOString() ?? null,
-      status: notice.status,
-      sentAt: notice.sentAt?.toISOString() ?? null,
-      propertyName: notice.lease?.unit?.property?.name ?? '',
-      unitName: notice.lease?.unit?.name ?? '',
-    }))
+    return rows.map(mapRentNotice)
   }
 
   /**
@@ -605,9 +670,11 @@ export class TenantPortalService {
           },
         },
         invoices: { include: { lines: true } },
-        // SECURITY (PR 5a): RentNotice bär interna infrafält — utelämna R2-nyckel
-        // (reminderPdfStorageKey) och Resends message-id, precis som getNotices.
-        rentNotices: { omit: { reminderPdfStorageKey: true, reminderMessageId: true } },
+        // SECURITY (RentNotice-läcktätning): `omit` var en blocklist — sendError,
+        // kravtrapp-fält och framtida interna fält läckte automatiskt. Byt till
+        // SAMMA allow-list-select som getNotices/getRentNotices (allow-list, inte
+        // blocklist) så bara hyresgäst-säkra fält ingår i GDPR-exporten.
+        rentNotices: { select: SAFE_PORTAL_RENT_NOTICE_SELECT },
         // SECURITY (PR 5a): estimatedCost/actualCost är hyresvärdens interna
         // siffror — INTE hyresgästens personuppgift — och får inte ingå i en
         // GDPR Art. 15-export. SAFE_TICKET_SELECT stänger dem (+ organizationId/

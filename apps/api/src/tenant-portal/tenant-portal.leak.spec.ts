@@ -246,11 +246,12 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
     ]) {
       expect(docsArg.select).not.toHaveProperty(key)
     }
-    // rentNotices: intern R2-nyckel + message-id utelämnas.
-    expect(arg.include.rentNotices.omit).toMatchObject({
-      reminderPdfStorageKey: true,
-      reminderMessageId: true,
-    })
+    // rentNotices: allow-list-select (RentNotice-läcktätnings-PR ersatte det
+    // tidigare omit-mönstret). Detaljerad fält-assertion i
+    // tenant-portal.rentnotice-leak.spec.ts.
+    expect(arg.include.rentNotices.select).toBeDefined()
+    expect(arg.include.rentNotices.omit).toBeUndefined()
+    expect(arg.include.rentNotices.select).not.toHaveProperty('reminderPdfStorageKey')
   })
 
   it('getLease: query använder allow-list-select; läcker aldrig property.fireSafetyNotes / unit.monthlyRent / documents', async () => {
