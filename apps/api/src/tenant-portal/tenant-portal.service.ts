@@ -1,23 +1,16 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common'
 import type {
-  Invoice,
-  Lease,
   MaintenanceCategory,
   MaintenancePriority,
   MaintenanceStatus,
   Prisma,
-  Property,
-  Unit,
+  Tenant,
 } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MaintenanceService } from '../maintenance/maintenance.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
-
-type InvoiceWithLease = Invoice & {
-  lease?: (Lease & { unit: Unit & { property: Property } }) | null
-}
 
 /**
  * Safe Prisma SELECT för MaintenanceTicket som exponeras mot hyresgästportalen.
@@ -335,6 +328,81 @@ export function mapMiscCharge(charge: PortalMiscChargeRow) {
   }
 }
 
+/**
+ * Safe Prisma SELECT för Invoice mot hyresgästportalen (defense-in-depth).
+ *
+ * Lager 1 (allow-list) som komplement till mapInvoice (lager 2, fanns redan).
+ * `include: { lease: { include: { unit: { include: { property: true } } } } }`
+ * drog tidigare hela property-raden (fireSafetyNotes/monthlyRent/organizationId)
+ * till minnet trots att mapInvoice strippade svaret. `lines` hämtades men användes
+ * aldrig av mapInvoice — droppas här. property/unit återbrukar 5a:s SAFE_PORTAL_*.
+ *
+ * Innehåller exakt de Invoice-skalärer + lease.unit.name/property.name som
+ * mapInvoice läser → output förblir BYTE-IDENTISK.
+ */
+export const SAFE_PORTAL_INVOICE_SELECT = {
+  id: true,
+  invoiceNumber: true,
+  type: true,
+  status: true,
+  total: true,
+  dueDate: true,
+  issueDate: true,
+  paidAt: true,
+  lease: {
+    select: {
+      unit: {
+        select: {
+          ...SAFE_PORTAL_UNIT_SELECT,
+          property: { select: SAFE_PORTAL_PROPERTY_SELECT },
+        },
+      },
+    },
+  },
+} as const satisfies Prisma.InvoiceSelect
+
+type PortalInvoiceRow = Prisma.InvoiceGetPayload<{ select: typeof SAFE_PORTAL_INVOICE_SELECT }>
+
+/**
+ * Explicit mapper (lager 2) för GET /portal/me. Lager 1 finns redan:
+ * `request.tenant` kommer från validateSession som använder SAFE_PORTAL_TENANT_SELECT
+ * (inga credentials/token-hashar). Denna mapper bygger hyresgästens egen profil
+ * fält-för-fält så interna/redundanta fält inte når svaret.
+ *
+ * VISA (hyresgästens EGNA uppgifter om sig själv):
+ *   id, type, firstName, lastName, companyName, email, phone, personalNumber,
+ *   orgNumber, contactPerson, street, city, postalCode, country, portalActivated,
+ *   portalActivatedAt, ocrNumber (eget betalnings-OCR), organization.name (hyresvärden).
+ *
+ * DÖLJ:
+ *   organizationId (rå intern scope-nyckel), organization.id (intern nyckel — bara
+ *   namnet har värde för hyresgästen), activationReminderSentAt (intern ops-flagga),
+ *   createdAt, updatedAt (interna record-timestamps).
+ *   credentials (passwordHash/*TokenHash/*TokenExpiresAt) finns inte ens — lager 1.
+ */
+export function mapMe(tenant: Tenant & { organization: { id: string; name: string } }) {
+  return {
+    id: tenant.id,
+    type: tenant.type,
+    firstName: tenant.firstName,
+    lastName: tenant.lastName,
+    companyName: tenant.companyName,
+    email: tenant.email,
+    phone: tenant.phone,
+    personalNumber: tenant.personalNumber,
+    orgNumber: tenant.orgNumber,
+    contactPerson: tenant.contactPerson,
+    street: tenant.street,
+    city: tenant.city,
+    postalCode: tenant.postalCode,
+    country: tenant.country,
+    portalActivated: tenant.portalActivated,
+    portalActivatedAt: tenant.portalActivatedAt?.toISOString() ?? null,
+    ocrNumber: tenant.ocrNumber,
+    organization: { name: tenant.organization.name },
+  }
+}
+
 @Injectable()
 export class TenantPortalService {
   private readonly logger = new Logger(TenantPortalService.name)
@@ -363,7 +431,9 @@ export class TenantPortalService {
       this.prisma.invoice.count({ where: { tenantId, status: 'OVERDUE' } }),
       this.prisma.invoice.findFirst({
         where: { tenantId, status: { in: ['SENT', 'PARTIAL'] }, dueDate: { gte: new Date() } },
-        include: { lease: { include: { unit: { include: { property: true } } } } },
+        // SECURITY (defense-in-depth): samma allow-list-select som getInvoices —
+        // matar samma mapInvoice, stänger samma in-memory property-läsning.
+        select: SAFE_PORTAL_INVOICE_SELECT,
         orderBy: { dueDate: 'asc' },
       }),
     ])
@@ -424,7 +494,10 @@ export class TenantPortalService {
     // hyresvärden inte hunnit publicera.
     const rows = await this.prisma.invoice.findMany({
       where: { tenantId, status: { not: 'DRAFT' } },
-      include: { lines: true, lease: { include: { unit: { include: { property: true } } } } },
+      // SECURITY (defense-in-depth): allow-list-select (lager 1) i stället för
+      // `include: { property: true }` som drog property-interna fält till minnet.
+      // `lines` användes aldrig av mapInvoice — droppas. Output byte-identisk.
+      select: SAFE_PORTAL_INVOICE_SELECT,
       orderBy: { createdAt: 'desc' },
     })
     return rows.map((inv) => this.mapInvoice(inv))
@@ -666,7 +739,7 @@ export class TenantPortalService {
     return rows.map(mapTicket)
   }
 
-  private mapInvoice(inv: InvoiceWithLease) {
+  private mapInvoice(inv: PortalInvoiceRow) {
     return {
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,

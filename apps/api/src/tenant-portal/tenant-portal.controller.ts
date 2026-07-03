@@ -41,7 +41,7 @@ import { PdfService } from '../invoices/pdf.service'
 import { AviseringService } from '../avisering/avisering.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
 import { TenantAuthService } from './tenant-auth.service'
-import { TenantPortalService, mapPortalImage } from './tenant-portal.service'
+import { TenantPortalService, mapPortalImage, mapMe } from './tenant-portal.service'
 import { TenantInvitationsService, type TenantInviteStatus } from './tenant-invitations.service'
 import { TenantAuthGuard } from './tenant-auth.guard'
 import { CurrentTenant } from './current-tenant.decorator'
@@ -453,7 +453,10 @@ export class TenantPortalController {
 
   @Get('me')
   async getMe(@CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } }) {
-    return tenant
+    // SECURITY (defense-in-depth): mappa till hyresgästens egen profil (lager 2).
+    // Råa `tenant` exponerade organizationId/activationReminderSentAt/timestamps +
+    // organization.id som hyresgästen inte behöver. Se mapMe för visa/dölj-listan.
+    return mapMe(tenant)
   }
 
   @Get('me/export')
