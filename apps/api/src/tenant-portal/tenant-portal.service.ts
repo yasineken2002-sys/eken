@@ -364,6 +364,91 @@ export const SAFE_PORTAL_INVOICE_SELECT = {
 type PortalInvoiceRow = Prisma.InvoiceGetPayload<{ select: typeof SAFE_PORTAL_INVOICE_SELECT }>
 
 /**
+ * Safe Prisma SELECT för Invoice i GDPR Art. 15-exporten (GET /portal/me/export).
+ *
+ * Egen från SAFE_PORTAL_INVOICE_SELECT (som är minimal för portalens listvy):
+ * exporten får legitimt MER av hyresgästens egen fakturadata — subtotal/vatTotal,
+ * reference/ocrNumber/notes samt lines (de egna debiterade raderna, kärnan i Art. 15).
+ * Ersätter `invoices: { include: { lines: true } }` som drog HELA Invoice-raden rått
+ * (inkl. trackingToken/collectionExportKey/kravtrappa-fält) och returnerade den
+ * oförändrad. Allow-list (lager 1) — framtida interna Invoice-fält kan inte auto-läcka.
+ *
+ * EXPLICIT EXKLUDERADE — LÄGG ALDRIG TILL (interna/infra/kravtrappa/relationer):
+ *  - organizationId, tenantId, customerId, leaseId (scope-interna FK:er)
+ *  - trackingToken (bearer-liknande; @Public POST /track/view/:token accepterar den)
+ *  - collectionExportKey (rå R2-nyckel, delad zipKey över hela inkasso-batchen →
+ *    cross-tenant PII om nyckeln någonsin blir hämtningsbar)
+ *  - sendError (e-post-infra-fel)
+ *  - remindersPaused(At/Reason), sentToCollectionAt (kravtrappa — hyresvärdens interna)
+ *  - createdAt, updatedAt (interna record-timestamps)
+ *  - events, bankTransactions, deposit, paymentReminders, consumptionCharges (relationer,
+ *    drar in interna objekt — hör inte hemma i hyresgästens fakturakopia)
+ *  - lines.invoiceId (redundant FK; raden själv är Art. 15-data, FK:n är intern)
+ */
+export const SAFE_PORTAL_EXPORT_INVOICE_SELECT = {
+  id: true,
+  invoiceNumber: true,
+  type: true,
+  status: true,
+  subtotal: true,
+  vatTotal: true,
+  total: true,
+  dueDate: true,
+  issueDate: true,
+  paidAt: true,
+  reference: true,
+  ocrNumber: true,
+  notes: true,
+  lines: {
+    select: {
+      id: true,
+      description: true,
+      quantity: true,
+      unitPrice: true,
+      vatRate: true,
+      total: true,
+    },
+  },
+} as const satisfies Prisma.InvoiceSelect
+
+type PortalExportInvoiceRow = Prisma.InvoiceGetPayload<{
+  select: typeof SAFE_PORTAL_EXPORT_INVOICE_SELECT
+}>
+
+/**
+ * Explicit mapper (lager 2) för fakturor i GDPR-exporten. invoices är den enda
+ * export-grenen som annars låg närmast bearer-liknande trackingToken +
+ * cross-tenant collectionExportKey, så den får dubbelt skydd (select + mapper)
+ * även om övriga export-syskon (leases/rentNotices/tickets/documents) bara har
+ * select. Bygger DTO:n fält-för-fält; Decimal→number, datum→ISO.
+ */
+export function mapExportInvoice(inv: PortalExportInvoiceRow) {
+  return {
+    id: inv.id,
+    invoiceNumber: inv.invoiceNumber,
+    type: inv.type,
+    status: inv.status,
+    subtotal: Number(inv.subtotal),
+    vatTotal: Number(inv.vatTotal),
+    total: Number(inv.total),
+    dueDate: inv.dueDate.toISOString(),
+    issueDate: inv.issueDate.toISOString(),
+    paidAt: inv.paidAt?.toISOString() ?? null,
+    reference: inv.reference,
+    ocrNumber: inv.ocrNumber,
+    notes: inv.notes,
+    lines: inv.lines.map((line) => ({
+      id: line.id,
+      description: line.description,
+      quantity: Number(line.quantity),
+      unitPrice: Number(line.unitPrice),
+      vatRate: line.vatRate,
+      total: Number(line.total),
+    })),
+  }
+}
+
+/**
  * Explicit mapper (lager 2) för GET /portal/me. Lager 1 finns redan:
  * `request.tenant` kommer från validateSession som använder SAFE_PORTAL_TENANT_SELECT
  * (inga credentials/token-hashar). Denna mapper bygger hyresgästens egen profil
@@ -807,7 +892,12 @@ export class TenantPortalService {
             documents: { select: SAFE_PORTAL_EXPORT_DOCUMENT_SELECT },
           },
         },
-        invoices: { include: { lines: true } },
+        // SECURITY (defense-in-depth, sista hålet av klassen): `include: { lines: true }`
+        // drog HELA Invoice-raden rått till minnet — trackingToken (bearer-liknande),
+        // collectionExportKey (delad R2-nyckel → cross-tenant PII), sendError,
+        // kravtrappa-fält och organizationId — och returnerades oförändrad nedan.
+        // Allow-list-select + mapExportInvoice (lager 2), samma mönster som syskonen.
+        invoices: { select: SAFE_PORTAL_EXPORT_INVOICE_SELECT },
         // SECURITY (RentNotice-läcktätning): `omit` var en blocklist — sendError,
         // kravtrapp-fält och framtida interna fält läckte automatiskt. Byt till
         // SAMMA allow-list-select som getNotices/getRentNotices (allow-list, inte
@@ -855,7 +945,7 @@ export class TenantPortalService {
       },
       organization: tenant.organization,
       leases: tenant.leases,
-      invoices: tenant.invoices,
+      invoices: tenant.invoices.map(mapExportInvoice),
       rentNotices: tenant.rentNotices,
       maintenanceTickets: tenant.maintenanceTickets,
       documents: tenant.documents,
