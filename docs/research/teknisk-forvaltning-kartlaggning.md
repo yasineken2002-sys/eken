@@ -206,3 +206,32 @@ punkter som INTE tillhör den stängda klassen — egna tickets, ingen gatar på
   säkerhetsläcka — klargör om typen ska rättas eller om frontenden läser `unit.property` trots
   typen. (Relaterat: `PortalRentNotice`-typen saknar `consumptionAmount`/`miscChargeAmount`/
   `payableTotal` som backend redan returnerar — risk att portalen visar fel betalbelopp.)
+
+### Efter export-fixen (`fix/portal-export-invoice-leak`) — kvarvarande hygientrådar
+
+Export-fixen stängde det femte och sista hålet av läckklassen (`exportTenantData.invoices`:
+allow-list-`select` + `mapExportInvoice`-mapper, `lines` strippade på `invoiceId`). Security-
+auditorns granskning bekräftade **inga fler hål av läckklassen** i portalen, men lyfte fyra
+kvarvarande hygienpunkter som INTE tillhör läckklassen — egna tickets, gatar inte:
+
+- **`exportTenantData.leases` — saknar top-level Lease-`select` (LOW/hygien):** grenen använder
+  `include` utan lager-1-`select` på `Lease`, så råa Lease-skalärer (`contractNumber`,
+  `specialTerms`, `organizationId`, `unitId`, `tenantId`) följer med i exporten. **Ej
+  cross-tenant** — hyresgästens egna avtal, legitimt Art. 15-innehåll — men bryter husets
+  allow-list-princip (lager 1). Åtgärd: egen hygien-PR med `SAFE_PORTAL_LEASE_EXPORT_SELECT`.
+
+- **Export-syskon (`rentNotices` m.fl.) — `select` men ingen lager-2-mapper (INFO):** grenarna
+  har allow-list-`select` (lager 1) men ingen explicit mapper (lager 2), till skillnad från
+  `invoices` som nu har båda. Överväg mappers för konsekvent dubbelskydd (defense-in-depth), så
+  att ett framtida `select`-misstag fångas av lager 2. Egen ticket, låg prioritet.
+
+- **`collectionExportKey`-arkitektur — delad zipKey över hyresgäster (fråga till collections):**
+  bulk-inkasso-exporten delar en `collectionExportKey`/zipKey över flera hyresgäster, så samma
+  ZIP blandar flera hyresgästers PII. Detta är en **collections-arkitekturfråga**, inte en
+  portal-fix — fältet läcker inte via portalen (exkluderat i export-select). Lyft med
+  collections-teamet: bör varje hyresgäst ha egen nyckel/artefakt?
+
+- **`PortalLease` typ-mismatch — EJ läcka (klargör):** `property` returneras nästlad under
+  `unit` (`lease.unit.property`) medan `apps/portal`-typen deklarerar `property` på toppnivå.
+  Ren shape-mismatch, ingen säkerhetsläcka (samma tråd som noteras ovan). Klargör om typen ska
+  rättas.
