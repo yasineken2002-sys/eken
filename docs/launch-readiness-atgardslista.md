@@ -462,6 +462,235 @@ DB-rättning.
 
 ---
 
+## 🔬 SVEP 3 — Hyreskontraktets HELA livscykel (2026-07-07)
+
+**Källa:** fem parallella read-only-granskningar av kontraktets livscykel (skapande/aktivering,
+löptid, övergångar, avslutning, omöjliga tillstånd). Findings #40–#63. Alla är BEKRÄFTADE via
+kodläsning om inget annat anges (MISSTÄNKT = plausibelt men ej fullt reproducerat). Flera fynd
+bekräftades oberoende av flera granskare (särskilt förnyelse- och `leases.update`-hålen).
+
+**Rotmönster (går igen i #40–#45, #49):** `Lease`-raden behandlas som enda sanningskällan vid
+förnyelse/byte/redigering, men följdentiteter (RentIncrease, Deposit, Document, RentNotice,
+Unit.status) har implicit 1:1-koppling till ett `leaseId` som aldrig omprövas/migreras när
+kontraktet "byter identitet" eller redigeras. Ingen gemensam "lease succession/edit"-abstraktion.
+
+### 🔴 MÅSTE (aktiv skada, tyst intäktsbortfall eller juridiskt ogiltigt)
+
+#### 40. `leases.update` låter ADMIN ändra hyran på ett ACTIVE-avtal → kringgår hela hyreshöjningslagen
+
+`leases.service.ts:264-331` har ingen spärr mot att ändra `monthlyRent` när `status==='ACTIVE'`
+(`UpdateLeaseDto` = `PartialType(CreateLeaseDto)`, inget fält låst efter aktivering). **Live i UI:**
+`apps/web/.../LeasesPage.tsx:199-210` (`handleUpdate` skickar alltid `monthlyRent`), "Redigera"-knapp
+visas oavsett status (`:823-826`), hyra-inputen alltid redigerbar (`LeaseForm.tsx:864-865`). Hela
+`RentIncreasesService`-flödet (3-mån varsel, invändningsfrist, meddelande till hyresgäst) kringgås —
+nästa avi genereras direkt med ny hyra, hyresgästen får ingen avisering/invändningsrätt. **BEKRÄFTAT
+end-to-end (API + UI).** Fix: lås `monthlyRent`/`unitId`/`tenantId`/datum på ACTIVE, tvinga ändringar
+via rätt domänflöde (RentIncrease resp. förnyelse).
+
+#### 41. Deposition som betalas via aktiverings-avin spåras ALDRIG i `Deposit`-modellen (obokförda pengar)
+
+Aktivering skapar en `RentNotice{type:DEPOSIT}` om `lease.depositAmount>0`
+(`avisering.service.ts:365-379`) men **aldrig** en `Deposit`-rad — enda `deposit.create` är den
+manuella admin-vägen (`deposits.service.ts:149`). Depositions-avin exkluderas dessutom medvetet från
+bokföring (`avisering.service.ts:118`, `accounting.service.ts:1082`) eftersom "deposits-modulen äger
+1510/2890-flödet" — men den modulen äger ingenting eftersom raden aldrig skapas. Följd: betald
+deposition bokförs aldrig (1930 stämmer inte mot skuld till hyresgäst), och `markRefundPendingForLease`
+(`deposits.service.ts:332-343`) hittar ingen `Deposit{PAID}` vid uppsägning → ingen återbetalning
+triggas. **BEKRÄFTAT** (verifierat: deposit-avi skapas :365, enda `deposit.create` :149).
+
+#### 42. Deposition strandar på det döda kontraktet vid förnyelse
+
+`Deposit.leaseId` är `@unique` (`schema.prisma:2884`). Varken `renew()` (`leases.service.ts:716-756`)
+eller `autoRenewExpiredFixedTerm()` (`:804-836`) rör `Deposit` — den blir kvar på det EXPIRED-avtalet.
+Vid senare uppsägning av det nya avtalet letar `markRefundPendingForLease` på nya `leaseId`, hittar
+inget, returnerar tyst → depositionen fastnar permanent i `PAID`, ingen återbetalnings-påminnelse. UI
+visar dessutom "ingen deposition" på det aktiva kontraktet. **BEKRÄFTAT.**
+
+#### 43. Kontraktsförnyelse mitt i månaden → resterande dagar faktureras ALDRIG (tyst intäktsbortfall)
+
+`renew()` och `autoRenewExpiredFixedTerm()` (`leases.service.ts:686-757`, `:783-844`) skapar nya
+kontraktet direkt som ACTIVE utanför `transitionStatus()` → `enqueueInitialNotices` körs aldrig.
+Månadsavin för förnyelsemånaden skapades 1:a mot det GAMLA leaseId (t.o.m. utgångsdagen); nya avtalets
+dagar (utgång→månadsslut) får ingen avi förrän nästa månads cron (som bara täcker kommande hel månad).
+Dagarna däremellan är tyst obetalda vid varje icke-månadsskifte-förnyelse. **BEKRÄFTAT.**
+
+#### 44. Bakdaterad aktivering → mellanliggande månader faktureras aldrig
+
+Inget skydd mot `startDate` i det förflutna (`leases.service.ts:207-262`).
+`createInitialNoticesForLease` skapar bara EN avi för `startDate`-månaden
+(`avisering.service.ts:352-355`); den återkommande cronen (`generateMonthlyNotices`) plockar bara
+kontrakt som är ACTIVE vid körningen. Kontrakt med `startDate=1 jan` som aktiveras 15 april → feb+mars
+faktureras aldrig, ingen felnotis. **BEKRÄFTAT.**
+
+#### 45. Uppsägning: explicit `effectiveDate` kringgår HELT uppsägningstidens golv (juridiskt ogiltigt)
+
+`terminate()` (`leases.service.ts:634-651`) validerar bara att `effectiveDate` inte är i det förflutna
+— ingen kontroll mot `lease.noticePeriodMonths`. Via `approve()`
+(`terminations.service.ts:101-123`) eller direkt `PATCH /leases/:id/terminate` kan en OWNER/ADMIN säga
+upp en bostadshyresgäst med en dags varsel. Frontend sätter `min` = idag, inte det juridiska golvet
+(`TerminationsPage.tsx:272-277`). Testsviten kodifierar t.o.m. beteendet
+(`terminations.service.spec.ts:74-91`). Juridiskt ogiltig uppsägning (tvingande regler till
+hyresgästens förmån) — hyresgästen behåller besittningen. **BEKRÄFTAT.**
+
+#### 46. Uppsägning: default-slutdatum rundas inte till månadsskifte (~24 dagar för kort, systematiskt)
+
+`addMonths(today, N)` (`leases.service.ts:38-48,647`; duplicerat i `terminations.service.ts:29-35,85-89`
+och i frontend `TerminationsPage.tsx:60-69`) räknar exakt N kalendermånader. Uppsägning ska gälla vid
+det månadsskifte som infaller närmast efter N hela månader — koden avrundar aldrig uppåt. Ex (idag
+2026-07-07, bostad 3 mån): koden ger 2026-10-07, korrekt är 2026-10-31 → ~24 dagar för kort, för
+**varje** icke-korrigerad uppsägning. Saknar en gemensam `endOfNoticePeriod`-helper i `@eken/shared`.
+**BEKRÄFTAT.**
+
+#### 47. Dashboardens huvud-KPI:er ("Totala intäkter"/"Försenat belopp") är blinda för hela hyresaviseringen
+
+`DashboardService.getStats()` (`dashboard.service.ts:59-99`, rad 74-81) aggregerar enbart `Invoice`
+(**0** referenser till `RentNotice` i hela filen — verifierat). Men den automatiska hyresmotorn bokförs
+i `RentNotice`, inte `Invoice`. En org som (som avsett) kör all hyra via avisering ser ~0 kr på
+förstasidan (`DashboardPage.tsx:120-129`, generiska etiketter utan förbehåll), medan verkliga siffror
+bara finns på separata Avisering-sidan. **BEKRÄFTAT.** (Skild från #8 som gäller beläggningsgrad.)
+
+> **Koppling:** #43/#44 och hyreshöjnings-tappet vid förnyelse fördjupar känd **#3** (hyreshöjnings-cron
+> på döda avtal). #45/#46 är samma juridiska tema; #29 (approve-atomicitet) och #25 (deposit-refund
+> utan verifikat) kvarstår bekräftade i samma kodvägar.
+
+### 🟠 BÖR (funktionella hål, felaktig data/UX, ej omedelbar juridisk skada)
+
+#### 48. Förnyelse/hyresgästbyte genererar ingen ny kontrakts-PDF (Tindra-regression)
+
+`renew()`/`autoRenewExpiredFixedTerm()` går inte via `transitionStatus()` → ingen
+`enqueueGenerateContract` (`leases.service.ts:716-756`, `:814-830`). Tenant-byte via `update()`
+(`:264-331`) rör inte befintliga `Document`-rader → gammalt kontrakts-PDF med FEL hyresgästs namn/pnr
+står kvar som "gällande avtal" tills någon manuellt regenererar (ingen sådan endpoint finns). Samma
+symptom som produktionsincidenten "Tindra" (ACTIVE utan PDF). **BEKRÄFTAT.**
+
+#### 49. `leases.update` med nytt `unitId` synkar inte `Unit.status` + saknar konfliktkontroll (I1/#62-regression)
+
+`update()` (`leases.service.ts:264-331`) anropar aldrig `syncUnitStatusFromLeases` (till skillnad från
+`transitionStatus`/`renew`/`autoRenew`/`terminateExpired`) — `unit-status.sync.ts:12-20` varnar
+uttryckligen för exakt detta. Byte av enhet på ACTIVE-kontrakt → gamla enheten fast `OCCUPIED`, nya
+aldrig `OCCUPIED`. Saknar även `describeActiveBlocker`/`isActiveUnitConflict` → konflikt mot
+`lease_unit_active_unique` ger rå P2002/500 i stället för svenskt 400. **BEKRÄFTAT.**
+
+#### 50. Ingen differentiering Hyreslagen (JB 12 kap) vs Privatuthyrningslagen
+
+`leases.compliance.ts:7-9` (`minNoticePeriodMonths`) applicerar alltid JB-golvet (3 mån bostad/9 mån
+lokal) baserat enbart på `UnitType` — ingen modellering av vilket regelverk som gäller. Evenos
+kärnsegment (privatpersoners uthyrning) lyder ofta under privatuthyrningslagen (annan uppsägningsrätt,
+inget fullt besittningsskydd, fri hyra med skälighetsprövning). Arkitektur-gap, ej aktiv skada.
+**BEKRÄFTAT.**
+
+#### 51. Hyreshöjningens tystnadsverkan kräver manuell klick — ingen auto-accept/påminnelse
+
+`applyDueIncreases` processar bara `status:'ACCEPTED'`; `accept()` nås bara via manuell
+`PATCH /rent-increases/:id/accept` (`rent-increases.controller.ts:44-47`), inget cron/påminnelse
+(grep-verifierat). Löper invändningsfristen ut utan invändning är höjningen juridiskt bindande — men
+systemet uppdaterar aldrig `monthlyRent` förrän en människa klickar. Glöms det → höjningen ligger kvar
+i `NOTICE_SENT` för evigt. Motsäger "maximal automatisering". **BEKRÄFTAT.**
+
+#### 52. Förbrukningsdebitering: fakturerar nuvarande hyresgäst + slutavläsning efter avslut tappas
+
+(a) `consumption.service.ts:611-668` läser `lease.tenantId` färskt vid faktureringstillfället; om
+hyresgästen bytts (möjligt via #40/#49-vägen) faktureras fel person för föregångarens el/vatten.
+(b) `resolveLease` (`:424-456`) kräver ACTIVE-lease VID lästillfället; slutavläsning efter utflytt (då
+kontraktet redan är TERMINATED) matchar ingen lease → ingen `ConsumptionCharge`, ingen varning →
+sista periodens förbrukning faktureras aldrig. **BEKRÄFTAT.**
+
+#### 53. Portalen visar aldrig delbetalning — statisk skuldsiffra trots registrerad betalning
+
+Bankavstämningens delbetalningsgren behåller medvetet status/kravsteg och uppdaterar bara
+`paidAmount`-spegeln (`reconciliation.service.ts:1185-1193`), men `SAFE_PORTAL_RENT_NOTICE_SELECT`
+exkluderar explicit `paidAmount`/`payments` (`tenant-portal.service.ts:219,225-251`) och visar bara
+statiskt `payableTotal`. Hyresgäst som betalat 8 000 av 10 000 ser "10 000 kr att betala, försenat".
+Backend-bokföringen är korrekt — det är bara den yta hyresgästen ser som ljuger. **BEKRÄFTAT.**
+
+#### 54. En trasig avi tystar hela orgens avigenerering + utskick för dagen
+
+`generateMonthlyNotices`-loopen (`avisering.service.ts:189-311`) saknar per-lease try/catch runt
+`rentNotice.create`/OCR/nummerallokering; schedulern fångar bara per ORG (`scheduler.ts:60-83`). Ett
+enskilt lease-fel (transient DB-fel, P2002-race) kraschar hela orgens körning → efterföljande leases
+får ingen avi, och redan skapade avier mejlas aldrig ut den dagen. **BEKRÄFTAT (struktur); utlösande
+fel MISSTÄNKT.**
+
+#### 55. `properties.remove`/`units.remove` kraschar 500 på enheter med HISTORISKA kontrakt (samma klass som #22)
+
+Båda guardar bara mot `status:'ACTIVE'`-leases (`properties.service.ts:103-114`,
+`units.service.ts:98-112`), men FK är `ON DELETE RESTRICT` utan statusvillkor. Fastighet/enhet med ett
+avslutat/EXPIRED-kontrakt (normalt) → rå P2003 → okontrollerad 500 vid legitim städning. Ingen
+PII/GDPR här — enklare fix än #22 (blockera vid NÅGON lease-koppling, eller soft-delete). **BEKRÄFTAT.**
+
+#### 56. Slutavräkning mot deposition ej kopplad till verklig skuld/dokumentation
+
+`refund()` (`deposits.service.ts:269-328`) tar en fri `deductions`-lista utan koppling till
+`RentDebtService.outstanding()` eller dokumenterade `MiscCharge`/besiktningsposter. Risk: full
+återbetalning trots kvarstående skuld (dubbel förlust), eller odokumenterade avdrag som inte håller i
+hyresnämnd. Kopplar till känd **#25**. **BEKRÄFTAT.**
+
+#### 57. Redigering av datum på ACTIVE-avtal + uppsägning mitt i cykel utan avstämning mot redan genererade avier
+
+`leases.update` (`:264-331`) saknar konsistenskontroll mot befintliga `RentNotice.periodStart/End` när
+`startDate`/`endDate` ändras; `terminate()` (`:634-682`) krediterar/annullerar aldrig en redan skapad
+avi för innevarande månad om uppsägning beslutas efter att månadsavin genererats (särskilt i kombination
+med #45). Ingen mekanism för retroaktiv justering/kreditering. **BEKRÄFTAT frånvaro / MISSTÄNKT scenario.**
+
+#### 58. Aktivering saknar atomicitet DB↔kö + ingen manuell retrigger för misslyckad initial-notices
+
+`transitionStatus()` committar status=ACTIVE i `$transaction` och enqueuear PDF/mejl/avi-jobb
+**efteråt** (`leases.service.ts:352-429`, inget outbox). Krasch däremellan → permanent ACTIVE utan
+aktiverings-artefakter, ingen SYSTEM-notis (den ligger i workerns `@OnQueueFailed` som aldrig triggas).
+Vid permanent jobbfel lovar notisen "Skapa manuellt från avisering-sidan" (`worker:93-94`) men
+`createInitialNoticesForLease` exponeras av ingen controller → åtgärden finns inte. **BEKRÄFTAT
+(retrigger-gap) / MISSTÄNKT (krasch-fönster).**
+
+#### 59. Enda DB-skyddet mot dubbeluthyrning är ett `schema.prisma`-osynligt partiellt index
+
+`lease_unit_active_unique` (migration `20260426120000_lease_active_unique`) är verifierat aktivt men
+finns bara i migrations-SQL, inte i `schema.prisma` (`:1100-1103` säger "sync manuellt"). En framtida
+`prisma migrate dev` kan tolka det som drift och generera en DROP → nästa `migrate deploy` tar bort det
+enda DB-skyddet mot två ACTIVE-leases på samma enhet. Samma drift-klass har redan inträffat en gång
+(`Organization_status_idx`). **BEKRÄFTAT nuläge OK / MISSTÄNKT framtida risk.**
+
+### 🟡 MINDRE (dokumenterat — fixa när tid finns)
+
+- **60. Ingen central lease-statusmaskin.** `VALID_TRANSITIONS` (`leases.service.ts:28-31`) gate:as bara
+  i `transitionStatus()`; tre andra ställen skriver `status` direkt (`renew`/`autoRenew`/
+  `terminateExpired`). Alla är idag giltiga övergångar, men av konvention — ingen delad
+  `assertValidTransition()`, ingen export till `@eken/shared` (jfr `INVOICE_TRANSITIONS`). En framtida
+  kopia av mönstret kan skriva en ogiltig övergång ostört.
+- **61. DTO saknar `endDate>startDate` och `monthlyRent>0`.** `CreateLeaseSchema.refine` finns i
+  `packages/shared/.../schemas:238-255` men används ingenstans (orphanad); `CreateLeaseDto` tillåter
+  `endDate<startDate` och `monthlyRent=0` → negativ proration i första avin. Bryter "@eken/shared som
+  enda sanning".
+- **62. Andrahandsuthyrning saknas som datamodell.** Ingen `Sublease`/subtenant-modell; "andrahand"
+  finns bara i AI-kunskapsbas/genererad avtalstext. Funktionsgap, ingen bugg.
+- **63. Diverse mindre:** (a) välkomstmejlets Bull-`jobId` är per-tenant (`lease-activation.queue.ts:74`)
+  → två snabba aktiveringar för samma hyresgäst kan dedupas tyst (MISSTÄNKT, låg påverkan);
+  (b) edit-formuläret visar en hyresgäst-väljare som ignoreras vid spara (`LeaseForm.tsx:625-647` vs
+  `LeasesPage.tsx:199-210`) — missvisande UX, men just nu det enda som håller #52a borta från webb-UI:t;
+  (c) lokalhyra saknar varning om indirekt besittningsskydd/ersättningsrisk vid uppsägning;
+  (d) uppsägningsgolvet för korta FIXED_TERM-avtal är striktare än lagen kräver (ej skadligt);
+  (e) cron-race `autoRenewExpiredFixedTerm` ↔ `applyDueIncreases` i samma `Promise.all`
+  (`leases.service.ts:768-773`) gör hyreshöjnings-tappet (#3/#43) deterministiskt.
+
+### ✅ Verifierat FRISKT i livscykeln (undvik felaktig omrapportering)
+
+- **Kravtrappan är korrekt frikopplad från `Lease.status`** — påminnelse/ränta/inkasso/kundförlust
+  filtrerar bara på `RentNotice`-fält + betalningsderiverad skuld (`rent-debt.service.ts`), aldrig
+  `lease.status`. Verklig skuld tappas INTE vid avslut; eskalering stannar korrekt vid `ocrOutstanding<=0`
+  oavsett om hyresgästen flyttat. Principen "skuld är beräknat tillstånd" efterlevs.
+- **En aktiv lease per enhet** — tvålagers-skydd (`describeActiveBlocker` + partiellt DB-index +
+  `isActiveUnitConflict`-catch) i create/transition/createWithTenant. (Se #59 för skörheten, #49 för
+  update-vägen som saknar det vänliga felet.)
+- **ACTIVE utan hyresgäst är omöjligt** — `Lease.tenantId` NOT NULL + FK RESTRICT + DTO-validering + #19.
+- **Avslutstatus + avi-stopp korrekt** — kontrakt stannar ACTIVE (med `terminatedAt`) till `endDate`,
+  blir TERMINATED + frigör enhet först då; `calculateProratedRent` klipper mot `endDate` framåtriktat.
+- **Historiska snapshots korrekta** — `RentNotice.totalAmount`/`Invoice.total` fryses vid skapande; en
+  senare höjning ändrar inte historiska avier.
+- **Förnyelse är atomisk** (`$transaction`, per-lease try/catch) — ingen halvskapad lease vid krasch
+  (till skillnad från #29/termination). Problemen i #42/#43/#48 är att följdentiteter inte flyttas, inte
+  atomicitet.
+
+---
+
 ## ✅ Verifierat friskt (2026-07-07)
 
 - `pnpm typecheck`: 6/6 paket gröna, 0 fel.
