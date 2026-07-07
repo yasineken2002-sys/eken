@@ -127,7 +127,56 @@ export class InspectionsService {
     return inspection
   }
 
+  // IDOR-spärr: varje klient-skickat relations-id måste tillhöra anropande org
+  // INNAN besiktningen skrivs. Annars kan org A koppla en besiktning till org B:s
+  // fastighet/enhet/avtal/hyresgäst → svaret (FULL_INCLUDE) läcker offrets data.
+  // Validerar bara icke-tomma id:n. (Launch-readiness #5/#19-klassen.)
+  private async assertRelationsInOrg(
+    organizationId: string,
+    ids: {
+      propertyId?: string | null | undefined
+      unitId?: string | null | undefined
+      leaseId?: string | null | undefined
+      tenantId?: string | null | undefined
+    },
+  ): Promise<void> {
+    if (ids.propertyId) {
+      const p = await this.prisma.property.findFirst({
+        where: { id: ids.propertyId, organizationId },
+        select: { id: true },
+      })
+      if (!p) throw new NotFoundException('Fastigheten hittades inte')
+    }
+    if (ids.unitId) {
+      const u = await this.prisma.unit.findFirst({
+        where: { id: ids.unitId, property: { organizationId } },
+        select: { id: true },
+      })
+      if (!u) throw new NotFoundException('Enheten hittades inte')
+    }
+    if (ids.leaseId) {
+      const l = await this.prisma.lease.findFirst({
+        where: { id: ids.leaseId, organizationId },
+        select: { id: true },
+      })
+      if (!l) throw new NotFoundException('Hyresavtalet hittades inte')
+    }
+    if (ids.tenantId) {
+      const t = await this.prisma.tenant.findFirst({
+        where: { id: ids.tenantId, organizationId },
+        select: { id: true },
+      })
+      if (!t) throw new NotFoundException('Hyresgästen hittades inte')
+    }
+  }
+
   async create(dto: CreateInspectionDto, orgId: string, userId: string) {
+    await this.assertRelationsInOrg(orgId, {
+      propertyId: dto.propertyId,
+      unitId: dto.unitId,
+      leaseId: dto.leaseId,
+      tenantId: dto.tenantId,
+    })
     const inspection = await this.prisma.inspection.create({
       data: {
         organizationId: orgId,

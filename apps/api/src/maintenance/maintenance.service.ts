@@ -169,7 +169,48 @@ export class MaintenanceService {
     return { ...withImages, leaseId }
   }
 
+  // IDOR-spärr: varje klient-skickat relations-id måste tillhöra anropande org
+  // INNAN det skrivs. Annars kan org A koppla sitt ärende till org B:s enhet/
+  // hyresgäst → svaret (include → tenant-PII) läcker offrets data + korrumperar
+  // kopplingen. Validerar bara icke-tomma id:n (null = medveten avkoppling).
+  // (Launch-readiness #5/#19-klassen.)
+  private async assertRelationsInOrg(
+    organizationId: string,
+    ids: {
+      propertyId?: string | null | undefined
+      unitId?: string | null | undefined
+      tenantId?: string | null | undefined
+    },
+  ): Promise<void> {
+    if (ids.propertyId) {
+      const p = await this.prisma.property.findFirst({
+        where: { id: ids.propertyId, organizationId },
+        select: { id: true },
+      })
+      if (!p) throw new NotFoundException('Fastigheten hittades inte')
+    }
+    if (ids.unitId) {
+      const u = await this.prisma.unit.findFirst({
+        where: { id: ids.unitId, property: { organizationId } },
+        select: { id: true },
+      })
+      if (!u) throw new NotFoundException('Enheten hittades inte')
+    }
+    if (ids.tenantId) {
+      const t = await this.prisma.tenant.findFirst({
+        where: { id: ids.tenantId, organizationId },
+        select: { id: true },
+      })
+      if (!t) throw new NotFoundException('Hyresgästen hittades inte')
+    }
+  }
+
   async create(dto: CreateMaintenanceTicketDto, organizationId: string, userId: string) {
+    await this.assertRelationsInOrg(organizationId, {
+      propertyId: dto.propertyId,
+      unitId: dto.unitId,
+      tenantId: dto.tenantId,
+    })
     const ticketNumber = await this.generateTicketNumber(organizationId)
 
     const ticket = await this.prisma.maintenanceTicket.create({
@@ -222,6 +263,10 @@ export class MaintenanceService {
 
   async update(id: string, dto: UpdateMaintenanceTicketDto, organizationId: string) {
     await this.findOne(id, organizationId)
+    await this.assertRelationsInOrg(organizationId, {
+      unitId: dto.unitId,
+      tenantId: dto.tenantId,
+    })
 
     const completedAt = dto.status === 'COMPLETED' ? new Date() : undefined
 
