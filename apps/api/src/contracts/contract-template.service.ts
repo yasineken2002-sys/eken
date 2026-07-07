@@ -1,6 +1,7 @@
 import * as crypto from 'crypto'
 import { v4 as uuid } from 'uuid'
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import { SigningRequestStatus } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
@@ -271,6 +272,24 @@ export class ContractTemplateService {
     ])
     if (!lease) throw new NotFoundException('Kontraktet hittades inte')
     if (!org) throw new NotFoundException('Organisationen hittades inte')
+
+    // WYSIWYS (Item 4, S1): medan ett kontrakt för denna lease är UNDER SIGNERING
+    // får PDF:en inte regenereras — den frusna contentHash är exakt det parterna
+    // signerar. En input-ändring skulle annars skapa en ny version med annan hash.
+    // Avbryt signeringen först.
+    const activeSigning = await this.prisma.signingRequest.findFirst({
+      where: {
+        organizationId,
+        leaseId,
+        status: { in: [SigningRequestStatus.PENDING, SigningRequestStatus.SIGNING_IN_PROGRESS] },
+      },
+      select: { id: true },
+    })
+    if (activeSigning) {
+      throw new BadRequestException(
+        'Kontraktet är under signering och kan inte regenereras — avbryt signeringen först.',
+      )
+    }
 
     // Bygg template-input och dess fingerprint *innan* vi går vidare till
     // Puppeteer. Den hashen är vår dedup-nyckel: alla tidigare CONTRACT-rader

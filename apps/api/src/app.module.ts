@@ -50,6 +50,7 @@ import { AiUsagePageModule } from './ai-usage/ai-usage.module'
 import { PublicPlansModule } from './public/public-plans.module'
 import { WebhooksModule } from './webhooks/webhooks.module'
 import { BackupModule } from './backup/backup.module'
+import { SigningModule } from './signing/signing.module'
 
 @Module({
   imports: [
@@ -129,6 +130,7 @@ import { BackupModule } from './backup/backup.module'
     PublicPlansModule,
     WebhooksModule,
     BackupModule,
+    SigningModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: UserOrIpThrottlerGuard }, GlobalExceptionFilter],
 })

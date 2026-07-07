@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { DocumentCategory } from '@prisma/client'
 import * as path from 'path'
@@ -147,6 +152,15 @@ export class DocumentsService {
 
   async remove(id: string, organizationId: string): Promise<void> {
     const document = await this.findOne(id, organizationId)
+    // Bevisintegritet: ett låst eller signerat kontrakt är räkenskaps-/juridiskt
+    // underlag och får ALDRIG hårdraderas — det skulle förstöra beviskedjan bakom
+    // en BankID-signatur (SignatureEvidence pekar på detta Document). Signering-
+    // härdningen (Item 4, S1).
+    if (document.locked || (document.category === 'CONTRACT' && document.signedAt !== null)) {
+      throw new ForbiddenException(
+        'Ett signerat/låst kontrakt kan inte raderas — det är juridiskt bevisunderlag.',
+      )
+    }
     await this.storage.deleteFile(document.storageKey)
     await this.prisma.document.delete({ where: { id } })
   }
