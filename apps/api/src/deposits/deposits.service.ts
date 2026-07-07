@@ -1,4 +1,11 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  InternalServerErrorException,
+} from '@nestjs/common'
 import type { Deposit, DepositStatus, Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from '../accounting/accounting.service'
@@ -192,29 +199,67 @@ export class DepositsService {
 
     return this.prisma.$transaction(async (tx) => {
       const now = new Date()
-      const updated = await tx.deposit.update({
-        where: { id },
-        data: { status: 'PAID', paidAt: now },
-        include: INCLUDE,
-      })
 
-      if (deposit.invoiceId) {
-        await tx.invoice.update({
-          where: { id: deposit.invoiceId },
-          data: { status: 'PAID', paidAt: now },
-        })
-        await tx.invoiceEvent.create({
-          data: {
-            invoiceId: deposit.invoiceId,
-            type: 'PAYMENT_RECEIVED',
-            actorType: 'USER',
-            actorId: userId,
-            payload: { source: 'deposit', amount: Number(deposit.amount) },
-          },
-        })
+      // Status-guardad claim på DEPOSITIONEN (sanningskällan för "betald") — race-säker.
+      const claim = await tx.deposit.updateMany({
+        where: { id, organizationId, status: 'PENDING' },
+        data: { status: 'PAID', paidAt: now },
+      })
+      if (claim.count === 0) {
+        throw new ConflictException(
+          'Depositionen är redan reglerad — uppdatera sidan och försök igen',
+        )
       }
 
-      return updated
+      if (deposit.invoiceId) {
+        // Rad-lås deposit-fakturan → serialisera mot bankavstämningens applyMatchToInvoice
+        // så samma inbetalning aldrig dubbelbokförs.
+        await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${deposit.invoiceId} AND "organizationId" = ${organizationId} FOR UPDATE`
+        const inv = await tx.invoice.findFirst({
+          where: { id: deposit.invoiceId, organizationId },
+          select: { id: true, status: true, invoiceNumber: true },
+        })
+
+        // Boka bara om fakturan inte redan reglerats (t.ex. av en bankmatch) — annars
+        // står vi kvar med en redan bokförd betalning och ska inte dubbelbokföra.
+        if (inv && inv.status !== 'PAID' && inv.status !== 'VOID') {
+          await tx.invoice.update({
+            where: { id: inv.id },
+            data: { status: 'PAID', paidAt: now },
+          })
+          await tx.invoiceEvent.create({
+            data: {
+              invoiceId: inv.id,
+              type: 'PAYMENT_RECEIVED',
+              actorType: 'USER',
+              actorId: userId,
+              payload: { source: 'deposit', amount: Number(deposit.amount) },
+            },
+          })
+
+          // Bokför inbetalningen (likvidkonto 1930 D / 1510 K) i SAMMA tx. Reglerar
+          // depositionens kundfordran som bokfördes vid create (1510 D / 2890 K).
+          // Utan detta stod 1510 kvar öppen trots betald deposition (BFL 5 kap 6 §).
+          // Verifikatet uteblir (null) → kasta → hela markPaid rullas tillbaka.
+          const entry = await this.accounting.createJournalEntryForInvoiceManualPayment(
+            { id: inv.id, invoiceNumber: inv.invoiceNumber },
+            Number(deposit.amount),
+            now,
+            'MANUAL',
+            organizationId,
+            userId,
+            tx,
+          )
+          if (entry === null) {
+            throw new InternalServerErrorException(
+              `Betalningsverifikat kunde inte skapas för deposition ${id} — ` +
+                'kontrollera att kontoplanen innehåller konto 1930 och 1510.',
+            )
+          }
+        }
+      }
+
+      return tx.deposit.findFirstOrThrow({ where: { id, organizationId }, include: INCLUDE })
     })
   }
 
