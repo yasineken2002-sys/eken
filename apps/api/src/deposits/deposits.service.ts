@@ -9,6 +9,7 @@ import {
 import type { Deposit, DepositStatus, Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from '../accounting/accounting.service'
+import { allocateInvoiceNumber } from '../invoices/invoice-number'
 import { NotificationsService } from '../notifications/notifications.service'
 import { CreateDepositDto } from './dto/create-deposit.dto'
 import { RefundDepositDto } from './dto/refund-deposit.dto'
@@ -112,10 +113,10 @@ export class DepositsService {
     dueDate.setDate(dueDate.getDate() + 30)
 
     const result = await this.prisma.$transaction(async (tx) => {
-      // Generera fakturanummer (samma mönster som InvoicesService).
-      const year = today.getFullYear()
-      const count = await tx.invoice.count({ where: { organizationId } })
-      const invoiceNumber = `F-${year}-${String(count + 1).padStart(4, '0')}`
+      // Delad, race-säker allokering (samma sekvens som InvoicesService) — den
+      // gamla count()+1 kolliderade med sekvensen och kraschade manuell
+      // fakturering efter en deposition (unique-constraint på invoiceNumber).
+      const { invoiceNumber } = await allocateInvoiceNumber(tx, organizationId, today.getFullYear())
 
       const invoice = await tx.invoice.create({
         data: {

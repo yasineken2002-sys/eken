@@ -35,7 +35,6 @@ describe('Hyreslagen-compliance: deposits.create() — depositionstak', () => {
           ),
       },
       invoice: {
-        count: jest.fn().mockResolvedValue(0),
         create: jest.fn().mockResolvedValue({
           id: 'inv-1',
           invoiceNumber: 'F-2026-0001',
@@ -43,6 +42,8 @@ describe('Hyreslagen-compliance: deposits.create() — depositionstak', () => {
           issueDate: new Date('2026-05-29'),
         }),
       },
+      // Delad fakturanummer-allokering (samma sekvens som InvoicesService).
+      invoiceNumberSequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 1 }) },
       invoiceEvent: { create: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
         return cb(prisma)

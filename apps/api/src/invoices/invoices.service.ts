@@ -21,6 +21,7 @@ import { MailService } from '../mail/mail.service'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { isValidTransition } from '@eken/shared'
+import { allocateInvoiceNumber } from './invoice-number'
 import { CreateInvoiceDto } from './dto/create-invoice.dto'
 import { UpdateInvoiceDto } from './dto/update-invoice.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
@@ -186,25 +187,8 @@ export class InvoicesService {
     organizationId: string,
     tx: Prisma.TransactionClient,
   ): Promise<{ invoiceNumber: string; sequence: number }> {
-    const year = new Date().getFullYear()
-    // Atomär, race-säker allokering via InvoiceNumberSequence (ML 11 kap 8 §:
-    // fortlöpande nummerserie). Tidigare count()+1 kunde dela ut samma nummer
-    // vid samtidiga anrop och lämna hål vid rollback. UPSERT med increment ger
-    // Postgres row-lock; eftersom allokeringen sker i samma transaktion som
-    // fakturan skapas blir serien gap-free. Numret är globalt per org (året i
-    // F-{år}-{nr} är kosmetiskt) — det bevarar OCR-unikheten som härleds ur
-    // sekvensen.
-    const row = await tx.invoiceNumberSequence.upsert({
-      where: { organizationId },
-      create: { organizationId, lastNumber: 1 },
-      update: { lastNumber: { increment: 1 } },
-      select: { lastNumber: true },
-    })
-    const sequence = row.lastNumber
-    return {
-      invoiceNumber: `F-${year}-${String(sequence).padStart(4, '0')}`,
-      sequence,
-    }
+    // Delad allokering (samma sekvens som deposits) — se allocateInvoiceNumber.
+    return allocateInvoiceNumber(tx, organizationId)
   }
 
   // ── Mutations ──────────────────────────────────────────────────────────────
