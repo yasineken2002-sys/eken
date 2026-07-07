@@ -280,6 +280,19 @@ export class LeasesService {
       effectiveUnitType = newUnit.type
     }
 
+    // IDOR-spärr: ett klient-skickat tenantId måste tillhöra den anropande orgen
+    // INNAN det appliceras. Annars kan org A peka sitt avtal på org B:s hyresgäst
+    // → svaret (INCLUDE → SAFE_TENANT_SELECT) läcker offrets fulla PII (personnr,
+    // namn, adress) OCH avtalet korrumperas mot fel org. Speglar unitId-checken
+    // ovan + invoices.update. (Launch-readiness #19.)
+    if (dto.tenantId != null && dto.tenantId !== existing.tenantId) {
+      const newTenant = await this.prisma.tenant.findFirst({
+        where: { id: dto.tenantId, organizationId },
+        select: { id: true },
+      })
+      if (!newTenant) throw new NotFoundException('Hyresgästen hittades inte')
+    }
+
     // JB 12 kap 4 § — uppsägningstid får aldrig sänkas under lagens minimum.
     // Vi validerar både när noticePeriodMonths uttryckligen ändras OCH när
     // unitId byts (bostad→lokal eller tvärtom kan göra befintligt värde ogiltigt).
