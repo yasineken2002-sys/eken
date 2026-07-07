@@ -67,7 +67,23 @@ export class NewsService {
     return post
   }
 
+  // IDOR-spärr: ett klient-skickat propertyId måste tillhöra anropande org INNAN
+  // det skrivs. Annars kan org A rikta en nyhet mot org B:s fastighet. Validerar
+  // bara icke-tomma id:n (null = medveten avriktning). (Launch-readiness #5-klassen.)
+  private async assertPropertyInOrg(
+    organizationId: string,
+    propertyId?: string | null | undefined,
+  ): Promise<void> {
+    if (!propertyId) return
+    const p = await this.prisma.property.findFirst({
+      where: { id: propertyId, organizationId },
+      select: { id: true },
+    })
+    if (!p) throw new NotFoundException('Fastigheten hittades inte')
+  }
+
   async create(dto: CreateNewsPostDto, organizationId: string, userId: string) {
+    await this.assertPropertyInOrg(organizationId, dto.propertyId)
     return this.prisma.newsPost.create({
       data: {
         organizationId,
@@ -86,6 +102,7 @@ export class NewsService {
 
   async update(id: string, dto: UpdateNewsPostDto, organizationId: string) {
     await this.findOne(id, organizationId)
+    await this.assertPropertyInOrg(organizationId, dto.propertyId)
     return this.prisma.newsPost.update({
       where: { id },
       data: {
