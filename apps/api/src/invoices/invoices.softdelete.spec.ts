@@ -107,3 +107,21 @@ describe('FIX 9 · PR 5 — InvoicesService.remove (soft-delete)', () => {
     )
   })
 })
+
+describe('transitionStatus → VOID: blockera makulering av delvis betald faktura', () => {
+  it('PARTIAL → VOID avvisas (mottagen delbetalning får inte lämnas oadresserad)', async () => {
+    const { service, prisma } = makeService('PARTIAL')
+    await expect(
+      service.transitionStatus('inv-1', 'org-1', 'VOID', 'user-1', 'USER'),
+    ).rejects.toThrow(/delvis betald/i)
+    expect(prisma.invoice.update).not.toHaveBeenCalled()
+  })
+
+  it('SENT → VOID tillåts (ingen delbetalning att strandsätta)', async () => {
+    const { service, prisma } = makeService('SENT')
+    await service.transitionStatus('inv-1', 'org-1', 'VOID', 'user-1', 'USER')
+    expect(prisma.invoice.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'VOID' }) }),
+    )
+  })
+})

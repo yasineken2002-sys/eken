@@ -1362,6 +1362,17 @@ export class AviseringService {
     if (notice.status === RentNoticeStatus.PAID) {
       throw new BadRequestException('Kan inte avbryta en betald avi')
     }
+    // En DELVIS betald avi får inte annulleras rakt av: motverifikatet reverserar
+    // fordran, men den redan mottagna delbetalningen (RentNoticePayment + eget
+    // likvidverifikat) skulle lämna en oadresserad kundkredit på 1510. Kräv att
+    // betalningen hanteras först (avmatcha/återbetala) — människan bekräftar det
+    // bindande (jfr [[project-bank-hardening-series]]).
+    if (notice.paidAmount != null && Number(notice.paidAmount) > 0) {
+      throw new BadRequestException(
+        'Kan inte annullera en delvis betald avi — avmatcha eller återbetala den ' +
+          'mottagna betalningen först.',
+      )
+    }
 
     // Statusflip + motverifikat körs ATOMISKT. Intäkten bokades vid avi-genereringen
     // (1510 D / 39xx K / ev. 26xx K); en annullering MÅSTE reversera den, annars

@@ -350,4 +350,13 @@ describe('PR2 — cancelNotice nollställer collectionStage (anti-zombie)', () =
     await expect(service.cancelNotice('rn-1', 'org-1')).rejects.toBeInstanceOf(BadRequestException)
     expect(prisma.rentNotice.updateMany).not.toHaveBeenCalled()
   })
+
+  it('delvis betald avi (paidAmount > 0) → BadRequest, ingen annullering/reversering', async () => {
+    const { service, prisma, accounting } = makeService({
+      notice: { status: 'OVERDUE', paidAmount: 5000 },
+    })
+    await expect(service.cancelNotice('rn-1', 'org-1')).rejects.toThrow(/delvis betald/i)
+    expect(prisma.rentNotice.updateMany).not.toHaveBeenCalled()
+    expect(accounting.reverseJournalEntryForRentNotice).not.toHaveBeenCalled()
+  })
 })
