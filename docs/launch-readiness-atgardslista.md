@@ -177,6 +177,25 @@ relations-id före skrivning → `NotFoundException`. Speglar `invoices.update` 
 isolations-test per metod (främmande org → 404 + skriv-metod anropas aldrig; egen org →
 oförändrad). **Hela IDOR-klassen (leases.update #19 + dessa 6 metoder) är nu stängd.**
 
+**Slutgranskning (security-auditor, 2026-07-07):** GODKÄND — 0 fynd på alla nivåer
+(CRITICAL/HIGH/MEDIUM/LOW). Sjunde stället explicit jagat över hela `apps/api/src` (deposits,
+keys, misc-charges, consumption, rent-increases, invoices, units, leases, import, avisering,
+ai-tools) — inget ytterligare hål; alla org-scopar redan sina klient-relations-id (flera
+härleder dem server-side från lease). TOCTOU/bypass uteslutet. 14 icke-vakuösa isolations-test
+gröna.
+
+**Icke-blockerande följdförslag (backlog, ur slutgranskningen):**
+
+1. **CI-lint mot återöppning av klassen** — regel/check som flaggar
+   `prisma.<model>.create/update({ data: { …Id: dto.xxxId } })` utan ett föregående
+   `findFirst`/`findUnique`-org-kontroll i samma funktion. Automatiserar det som nu görs
+   manuellt vid varje svep → förebygger att IDOR-klassen öppnas igen vid framtida moduler.
+   _Värdefullt (förebyggande)._
+2. **Isolations-spec för `keys.service.ts` + `misc-charges/misc-charge.service.ts`** — båda
+   följer redan mönstret korrekt (org-scopar relations-id / härleder från lease), men saknar
+   egen `*-org-isolation.spec.ts` i samma stil som svepet. Testtäckningshygien, inte
+   säkerhetsbrist.
+
 ### 6. Massmejl: utflyttade hyresgäster + saknad idempotens
 
 **Problem:** `apps/api/src/messages/messages.service.ts:159` — `sendToAll` itererar alla
