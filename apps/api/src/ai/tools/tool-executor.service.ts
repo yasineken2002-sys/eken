@@ -2,7 +2,7 @@ import { Injectable, ForbiddenException, BadRequestException, Logger } from '@ne
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
-import { InvoicesService } from '../../invoices/invoices.service'
+import { InvoicesService, toPaymentMethod } from '../../invoices/invoices.service'
 import { PdfService } from '../../invoices/pdf.service'
 import { TenantsService } from '../../tenants/tenants.service'
 import { LeasesService } from '../../leases/leases.service'
@@ -1008,15 +1008,22 @@ export class ToolExecutorService {
             }
           }
 
-          await this.invoicesService.transitionStatus(
+          // Bokför inbetalningen (likvidkonto D / 1510 K) via markAsPaidManually —
+          // transitionStatus(PAID) ensam skulle lämna 1510 öppen (BFL 5 kap 6 §).
+          const paidAmount = parseSwedishAmount(toolInput.amount) ?? (toolInput.amount as number)
+          await this.invoicesService.markAsPaidManually(
             paidInvoiceId,
             organizationId,
-            'PAID',
+            toPaymentMethod(toolInput.paymentMethod),
             userId,
             'USER',
-            { paymentDate: toolInput.paymentDate ?? new Date().toISOString() },
+            {
+              ...(Number.isFinite(paidAmount) ? { enteredAmount: paidAmount } : {}),
+              ...(toolInput.paymentDate
+                ? { paidAt: new Date(toolInput.paymentDate as string) }
+                : {}),
+            },
           )
-          const paidAmount = parseSwedishAmount(toolInput.amount) ?? (toolInput.amount as number)
           return {
             success: true,
             message: `Faktura ${toolInput.invoiceNumber as string} markerad som betald (${paidAmount.toFixed(2)} kr)`,

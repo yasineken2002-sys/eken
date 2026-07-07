@@ -31,6 +31,7 @@ import {
   useUpdateInvoice,
   useDeleteInvoice,
   useTransitionStatus,
+  useRegisterPayment,
   useSendInvoiceEmail,
 } from './hooks/useInvoiceQueries'
 import { formatCurrency, formatDate } from '@eken/shared'
@@ -165,6 +166,7 @@ export function InvoicesPage() {
   const updateMutation = useUpdateInvoice()
   const deleteMutation = useDeleteInvoice()
   const statusMutation = useTransitionStatus()
+  const payMutation = useRegisterPayment()
   const sendEmailMutation = useSendInvoiceEmail()
 
   // ── Statistik (beräknas från hämtad data, tab=ALL) ─────────────────────────
@@ -240,15 +242,14 @@ export function InvoicesPage() {
 
   function handlePayment(form: PaymentFormState) {
     if (!selected) return
-    statusMutation.mutate(
+    // Går via /pay (markAsPaidManually) som bokför inbetalningen — inte /status,
+    // som skulle flippa till PAID utan verifikat.
+    payMutation.mutate(
       {
         id: selected.id,
-        status: 'PAID',
-        payload: {
-          amount: Number(form.amount),
-          paymentMethod: form.paymentMethod,
-          reference: form.reference,
-        },
+        amount: Number(form.amount),
+        paymentMethod: form.paymentMethod,
+        reference: form.reference,
       },
       {
         onSuccess: (updated) => {
@@ -731,7 +732,7 @@ export function InvoicesPage() {
             invoice={selected}
             onConfirm={handlePayment}
             onCancel={() => setShowPayment(false)}
-            isSubmitting={statusMutation.isPending}
+            isSubmitting={payMutation.isPending}
           />
         </Modal>
       )}

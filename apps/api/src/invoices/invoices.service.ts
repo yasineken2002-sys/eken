@@ -1,5 +1,18 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
-import type { Invoice, InvoiceStatus, InvoiceEventType, Prisma } from '@prisma/client'
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  InternalServerErrorException,
+} from '@nestjs/common'
+import type {
+  Invoice,
+  InvoiceStatus,
+  InvoiceEventType,
+  PaymentMethod,
+  Prisma,
+} from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { OcrService } from '../common/ocr/ocr.service'
 import { InvoiceEventsService } from './invoice-events.service'
@@ -21,6 +34,30 @@ const STATUS_TO_EVENT_TYPE: Partial<Record<InvoiceStatus, InvoiceEventType>> = {
   PAID: 'PAYMENT_RECEIVED',
   OVERDUE: 'OVERDUE',
   VOID: 'VOIDED',
+}
+
+// Fakturor från vilka en manuell betalning får registreras (status → PAID giltig
+// enligt INVOICE_TRANSITIONS). Används som atomisk status-guard i markAsPaidManually.
+const PAYABLE_STATUSES: InvoiceStatus[] = ['SENT', 'PARTIAL', 'OVERDUE', 'SENT_TO_COLLECTION']
+
+// Frontend/AI skickar visningssträngar ('Bankgiro', 'Swish', …) eller inget alls —
+// inte PaymentMethod-enumen som styr likvidkontot. Mappa till enumen; okänt eller
+// utelämnat betalsätt → MANUAL (bokförs konservativt mot 1930, se PAYMENT_METHOD_TO_ACCOUNT).
+export function toPaymentMethod(raw: unknown): PaymentMethod {
+  switch (String(raw ?? '').toLowerCase()) {
+    case 'swish':
+      return 'SWISH'
+    case 'kontant':
+    case 'cash':
+      return 'CASH'
+    case 'bankgiro':
+    case 'plusgiro':
+    case 'autogiro':
+    case 'bank':
+      return 'BANK'
+    default:
+      return 'MANUAL'
+  }
 }
 
 // Öresavrundning i beräkningslagret. Belopp lagras till ören (2 decimaler) och
@@ -562,6 +599,113 @@ export class InvoicesService {
     }
 
     return result
+  }
+
+  /**
+   * Registrera en manuell betalning på en faktura (utan bankavstämning).
+   *
+   * Till skillnad från bankmatchningen — som bokför via createJournalEntryForPayment
+   * SEPARAT efter transitionStatus — måste denna väg GARANTERA att inbetalningen
+   * bokförs. Annars markeras fakturan som betald medan 1510 (Kundfordringar) står
+   * kvar öppen: en affärshändelse utan verifikation (BFL 5 kap 6 §). Mönstret speglar
+   * AviseringService.markAsPaid: atomisk status-claim → bokför → ångra statusen om
+   * verifikatet uteblir. Status PAID är terminal (INVOICE_TRANSITIONS) → fakturan
+   * regleras i sin helhet, så likvidkontot krediterar 1510 med fakturans totalbelopp.
+   */
+  async markAsPaidManually(
+    id: string,
+    organizationId: string,
+    paymentMethod: PaymentMethod,
+    actorId: string | null,
+    actorType: 'USER' | 'SYSTEM',
+    opts: { enteredAmount?: number; reference?: string; paidAt?: Date } = {},
+  ): Promise<Invoice> {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id, organizationId },
+      select: { id: true, status: true, invoiceNumber: true, total: true },
+    })
+    if (!invoice) throw new NotFoundException('Faktura hittades inte')
+    if (invoice.status === 'PAID') throw new BadRequestException('Fakturan är redan betald')
+    if (!isValidTransition(invoice.status as InvoiceStatus, 'PAID')) {
+      throw new BadRequestException(
+        `Kan inte registrera betalning: statusövergången ${invoice.status} → PAID är inte tillåten`,
+      )
+    }
+
+    const previousStatus = invoice.status as InvoiceStatus
+    const paymentDate = opts.paidAt ?? new Date()
+    // Status PAID = fakturan reglerad i sin helhet → kreditera 1510 med hela fordran
+    // (samma belopp som debiterades vid fakturering). Det inmatade beloppet sparas i
+    // händelseloggen för spårbarhet men styr inte bokföringen.
+    const settlementAmount = Number(invoice.total)
+
+    // 1. Atomisk, race-säker status-claim — endast från ett betalbart tillstånd.
+    const claim = await this.prisma.invoice.updateMany({
+      where: { id, organizationId, status: { in: PAYABLE_STATUSES } },
+      data: { status: 'PAID', paidAt: paymentDate },
+    })
+    if (claim.count === 0) {
+      // En parallell process (bankavstämning, makulering) hann reglera/avbryta fakturan.
+      throw new ConflictException(
+        'Fakturan är redan reglerad eller makulerad — uppdatera sidan och försök igen',
+      )
+    }
+
+    // 2. Bokför betalningen; ångra statusövergången om verifikatet uteblir.
+    try {
+      const entry = await this.accountingService.createJournalEntryForInvoiceManualPayment(
+        { id: invoice.id, invoiceNumber: invoice.invoiceNumber },
+        settlementAmount,
+        paymentDate,
+        paymentMethod,
+        organizationId,
+        actorId,
+      )
+      if (entry === null) {
+        throw new InternalServerErrorException(
+          `Betalningsverifikat kunde inte skapas för faktura ${invoice.invoiceNumber} — ` +
+            'kontrollera att kontoplanen innehåller konto 1510 och rätt likvidkonto.',
+        )
+      }
+    } catch (err) {
+      // Återställ fakturan till sitt tidigare tillstånd (status-guardad på PAID så vi
+      // bara ångrar vår egen claim, inte en betalning en parallell process hunnit boka).
+      await this.prisma.invoice
+        .updateMany({
+          where: { id, organizationId, status: 'PAID' },
+          data: { status: previousStatus, paidAt: null },
+        })
+        .catch((revertErr) => {
+          this.logger.error(
+            `[Invoices] Kunde inte ångra betalningsstatus för faktura ${invoice.invoiceNumber}: ` +
+              `${revertErr instanceof Error ? revertErr.message : String(revertErr)}`,
+          )
+        })
+      throw err
+    }
+
+    // 3. Append-only händelse + notifikation (efter lyckad bokning).
+    await this.eventsService.record(id, 'PAYMENT_RECEIVED', actorType, actorId, {
+      previousStatus,
+      newStatus: 'PAID',
+      settlementAmount,
+      paymentMethod,
+      ...(opts.enteredAmount != null ? { amount: opts.enteredAmount } : {}),
+      ...(opts.reference ? { reference: opts.reference } : {}),
+      paidAt: paymentDate.toISOString(),
+    })
+
+    void this.notificationsService
+      .createForAllOrgUsers(
+        organizationId,
+        'INVOICE_PAID',
+        'Faktura betald',
+        `Faktura ${invoice.invoiceNumber} har betalats`,
+        { relatedEntityType: 'INVOICE', relatedEntityId: invoice.id },
+      )
+      .catch((err) => this.logger.error(`Notification error: ${String(err)}`))
+
+    return this.prisma.invoice.findFirstOrThrow({ where: { id, organizationId } })
   }
 
   /**
