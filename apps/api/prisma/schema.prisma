@@ -652,6 +652,8 @@ model Organization {
   consumptionTariffs ConsumptionTariff[]
   consumptionCharges ConsumptionCharge[]
   miscCharges        MiscCharge[]
+  signingRequests    SigningRequest[]
+  signatureEvidence  SignatureEvidence[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1632,6 +1634,7 @@ model Document {
   signedByTenant   Tenant?      @relation("DocumentSignedByTenant", fields: [signedByTenantId], references: [id])
   previousVersion  Document?    @relation("DocumentVersionChain", fields: [previousVersionId], references: [id])
   newerVersions    Document[]   @relation("DocumentVersionChain")
+  signingRequests  SigningRequest[] @relation("DocumentSigningRequests")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1647,6 +1650,94 @@ model Document {
   // (leaseId, category=CONTRACT, templateInputHash=X) för att hitta
   // återanvändbar PDF utan att scanna alla dokument på leasen.
   @@index([leaseId, category, templateInputHash])
+}
+
+// ─── Signering (Item 4, S-serien) ─────────────────────────────────────────────
+// BankID-signering av kontrakt via en provider-agnostisk DocumentSigningProvider
+// (dedikerad e-signering, Scrive/Assently — inert bakom SIGNING_ENABLED tills
+// avtal/nycklar finns i S3). SigningRequest = envelope-aggregatet (EXPLICIT status,
+// aldrig härledd). SignatureEvidence = append-only bevis per part.
+
+enum SigningRequestStatus {
+  PENDING // skapad, contentHash fryst, väntar på att skickas till provider
+  SIGNING_IN_PROGRESS // skickad till provider / minst en part påbörjat → blockerar PDF-regenerering
+  PARTIALLY_SIGNED // minst en men inte alla obligatoriska parter klara
+  FULLY_SIGNED // alla obligatoriska parter signerat
+  DECLINED // en part avvisade
+  EXPIRED
+  CANCELLED
+  ERROR
+}
+
+enum SignerRole {
+  LANDLORD
+  TENANT
+}
+
+model SigningRequest {
+  id                String               @id @default(uuid())
+  organizationId    String
+  documentId        String
+  leaseId           String?
+  // FRYST vid createRequest — WYSIWYS-ankaret. Regenerering av kontraktet
+  // blockeras medan status är SIGNING_IN_PROGRESS (se ContractTemplateService).
+  contentHash       String
+  provider          String // 'MOCK' | 'STUB' | 'SCRIVE' | 'ASSENTLY'
+  providerRequestId String? // leverantörens envelope-id (sätts när skickat)
+  // = sha256(documentId + contentHash) — samma dokument+version → samma request
+  // (idempotent "skicka igen").
+  idempotencyKey    String
+  status            SigningRequestStatus @default(PENDING)
+  // Explicit lista över förväntade signerare (t.ex. ["TENANT"]) — "alla klara?"
+  // räknas mot DENNA, aldrig härlett från antal evidence-rader.
+  requiredRoles     Json
+  expiresAt         DateTime?
+  sealedDocumentId  String? // förseglad PDF (ny låst Document-version), sätts när klar
+  createdByUserId   String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt // OK på envelope-aggregatet (ej på beviset)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  document     Document            @relation("DocumentSigningRequests", fields: [documentId], references: [id], onDelete: Restrict)
+  evidence     SignatureEvidence[]
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId])
+  @@index([documentId])
+  @@index([status])
+}
+
+// APPEND-ONLY juridiskt signeringsbevis per part. INGEN updatedAt (som InvoiceEvent).
+// onDelete: Restrict på ALLA relationer — en org-/request-radering får ALDRIG tyst
+// ta bort beviset (BFL/bevis-anda). Känsliga fält (personalNumberEnc/Hash,
+// signaturePayload, certificate, orderRef) når ALDRIG portal/AI (allow-list-select).
+model SignatureEvidence {
+  id                 String     @id @default(uuid())
+  organizationId     String
+  signingRequestId   String
+  documentId         String // denormaliserat för snabb lookup (integritet via signingRequest)
+  signerRole         SignerRole
+  signerName         String
+  personalNumberEnc  String // AES-256-GCM envelope-krypterat
+  personalNumberHash String // HMAC-blind-index (matchning/uppslag utan att exponera personnr)
+  provider           String
+  orderRef           String // leverantörens transaktions-/orderRef
+  signedContentHash  String // hashen som FAKTISKT signerades (== SigningRequest.contentHash)
+  signaturePayload   String? // rå signatur, krypterad — KRITISK, aldrig till portal/AI
+  certificate        String? // krypterad
+  signedAt           DateTime
+  ip                 String?
+  userAgent          String?
+  createdAt          DateTime   @default(now())
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  signingRequest SigningRequest @relation(fields: [signingRequestId], references: [id], onDelete: Restrict)
+
+  // Idempotens: samma leverantörs-transaktion kan aldrig ge två bevisrader.
+  @@unique([organizationId, provider, orderRef])
+  @@index([organizationId])
+  @@index([signingRequestId])
+  @@index([documentId])
 }
 
 // ─── ContractNumberSequence (Kontraktsmall 2.0) ───────────────────────────────
