@@ -74,9 +74,14 @@ export class Psd2SyncService {
         accessToken,
       })
       if (statusCheck.status !== 'ACTIVE') {
+        // Dataminimering: ett dött samtycke ska inte bära kvar bank-tokens.
         await this.prisma.bankConsent.update({
           where: { id: consent.id },
-          data: { status: statusCheck.status === 'REVOKED' ? 'REVOKED' : 'EXPIRED' },
+          data: {
+            status: statusCheck.status === 'REVOKED' ? 'REVOKED' : 'EXPIRED',
+            accessTokenEnc: '',
+            refreshTokenEnc: null,
+          },
         })
         this.logger.warn(
           `[psd2] samtycke ${consent.id} inte längre aktivt (${statusCheck.status}) — synk pausad`,

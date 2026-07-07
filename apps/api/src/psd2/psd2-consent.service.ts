@@ -1,5 +1,6 @@
 import { Injectable, Inject, Logger, BadRequestException, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { Cron } from '@nestjs/schedule'
 import * as crypto from 'crypto'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { BankConsentCryptoService } from './bank-consent-crypto.service'
@@ -146,7 +147,9 @@ export class Psd2ConsentService {
     })
     if (!consent) throw new NotFoundException('Samtycket hittades inte')
 
-    if (consent.status !== 'REVOKED') {
+    // Hoppa över provider-anropet om tokens redan nollats (t.ex. samtycket gått
+    // ut i sync) — inget att återkalla, och decrypt('') skulle bara kasta.
+    if (consent.status !== 'REVOKED' && consent.accessTokenEnc) {
       try {
         await this.provider.revokeConsent({
           consentId: consent.consentId,
@@ -161,10 +164,27 @@ export class Psd2ConsentService {
       }
     }
 
+    // Dataminimering (GDPR 5.1e): ett dött samtycke ska inte bära kvar bank-tokens.
+    // Auditspåret finns i BankStatementImport — tokens behövs inte längre.
     await this.prisma.bankConsent.update({
       where: { id: consent.id },
-      data: { status: 'REVOKED', revokedAt: new Date() },
+      data: { status: 'REVOKED', revokedAt: new Date(), accessTokenEnc: '', refreshTokenEnc: null },
     })
     return { revoked: true }
+  }
+
+  // ── Städning av efemära consent-states ────────────────────────────────────────
+  // Psd2ConsentState är kortlivade CSRF-tokens. Utgångna/förbrukade rader fyller
+  // annars tabellen i evighet och lämnar orphan-orgId efter org-radering. Rader
+  // skapas bara vid beginConsent (strukturellt inert när flaggan är av), så cronen
+  // är ofarlig att köra oavsett flagg-läge.
+  @Cron('0 3 * * *')
+  async cleanupExpiredConsentStates(): Promise<void> {
+    const res = await this.prisma.psd2ConsentState.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    })
+    if (res.count > 0) {
+      this.logger.log(`[psd2] städade ${res.count} utgångna consent-states`)
+    }
   }
 }

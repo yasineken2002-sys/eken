@@ -105,8 +105,15 @@ describe('Psd2SyncService.syncOrganization', () => {
     await service.syncOrganization('org-1')
 
     expect(reconciliation.ingestFromApi).not.toHaveBeenCalled() // inget inflöde
+    // Dataminimering: tokens nollade på det döda samtycket.
     expect(prisma.bankConsent.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'EXPIRED' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'EXPIRED',
+          accessTokenEnc: '',
+          refreshTokenEnc: null,
+        }),
+      }),
     )
   })
 })

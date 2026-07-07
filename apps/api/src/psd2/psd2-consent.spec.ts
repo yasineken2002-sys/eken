@@ -48,6 +48,16 @@ function makeFake() {
       findUniqueOrThrow: jest.fn(({ where }: { where: { state: string } }) =>
         Promise.resolve(states.find((s) => s.state === where.state)!),
       ),
+      deleteMany: jest.fn(({ where }: { where: { expiresAt: { lt: Date } } }) => {
+        let count = 0
+        for (let i = states.length - 1; i >= 0; i--) {
+          if ((states[i]!.expiresAt as Date) < where.expiresAt.lt) {
+            states.splice(i, 1)
+            count++
+          }
+        }
+        return Promise.resolve({ count })
+      }),
     },
     bankConsent: {
       upsert: jest.fn(
@@ -171,6 +181,9 @@ describe('Psd2ConsentService', () => {
     await service.revokeConsent('org-1', consentId, 'user-1')
     expect(consents[0]!.status).toBe('REVOKED')
     expect(provider.revoked.length).toBeGreaterThan(0)
+    // Dataminimering: tokens nollade på det döda samtycket.
+    expect(consents[0]!.accessTokenEnc).toBe('')
+    expect(consents[0]!.refreshTokenEnc).toBeNull()
   })
 
   it('revoke: annan org kan inte återkalla (org-scoping)', async () => {
@@ -180,5 +193,18 @@ describe('Psd2ConsentService', () => {
     await expect(
       service.revokeConsent('org-ANNAN', consents[0]!.id as string, 'user-x'),
     ).rejects.toThrow(/hittades inte/i)
+  })
+
+  it('cleanupExpiredConsentStates: städar utgångna, rör inte giltiga', async () => {
+    const { service, states } = makeService()
+    await service.beginConsent('org-1', 'user-1') // giltig (expiresAt ~15 min fram)
+    await service.beginConsent('org-2', 'user-2')
+    ;(states[1]! as { expiresAt: Date }).expiresAt = new Date(Date.now() - 1000) // utgången
+    expect(states).toHaveLength(2)
+
+    await service.cleanupExpiredConsentStates()
+
+    expect(states).toHaveLength(1)
+    expect(states[0]!.organizationId).toBe('org-1') // giltig rad kvar
   })
 })
