@@ -307,14 +307,14 @@ type PartialLease = Omit<
   | 'endDate'
   | 'terminatedAt'
   | 'terminationReason'
-  | 'signedAt'
+  | 'activatedAt'
   | 'leaseType'
   | 'renewalPeriodMonths'
 > & {
   endDate?: string
   terminatedAt?: string
   terminationReason?: string
-  signedAt?: string
+  activatedAt?: string
   leaseType?: Lease['leaseType']
   renewalPeriodMonths?: number
 }
@@ -330,7 +330,7 @@ const leases: PartialLease[] = [
     depositAmount: 27600,
     noticePeriodMonths: 3,
     indexClause: true,
-    signedAt: '2022-01-15T12:00:00Z',
+    activatedAt: '2022-01-15T12:00:00Z',
     createdAt: '2022-01-15T10:00:00Z',
     updatedAt: '2024-11-01T08:00:00Z',
   },
@@ -345,7 +345,7 @@ const leases: PartialLease[] = [
     depositAmount: 34500,
     noticePeriodMonths: 3,
     indexClause: true,
-    signedAt: '2023-05-20T12:00:00Z',
+    activatedAt: '2023-05-20T12:00:00Z',
     createdAt: '2023-05-20T10:00:00Z',
     updatedAt: '2024-10-20T14:00:00Z',
   },
@@ -361,7 +361,7 @@ const leases: PartialLease[] = [
     depositAmount: 85500,
     noticePeriodMonths: 6,
     indexClause: true,
-    signedAt: '2021-08-10T12:00:00Z',
+    activatedAt: '2021-08-10T12:00:00Z',
     createdAt: '2021-08-10T10:00:00Z',
     updatedAt: '2024-09-15T11:00:00Z',
   },
@@ -377,7 +377,7 @@ const leases: PartialLease[] = [
     depositAmount: 114000,
     noticePeriodMonths: 6,
     indexClause: true,
-    signedAt: '2022-12-01T12:00:00Z',
+    activatedAt: '2022-12-01T12:00:00Z',
     createdAt: '2022-12-01T10:00:00Z',
     updatedAt: '2024-09-15T11:00:00Z',
   },
@@ -392,7 +392,7 @@ const leases: PartialLease[] = [
     depositAmount: 29400,
     noticePeriodMonths: 3,
     indexClause: false,
-    signedAt: '2024-03-15T12:00:00Z',
+    activatedAt: '2024-03-15T12:00:00Z',
     createdAt: '2024-03-15T10:00:00Z',
     updatedAt: '2024-11-05T09:30:00Z',
   },
@@ -408,7 +408,7 @@ const leases: PartialLease[] = [
     depositAmount: 156000,
     noticePeriodMonths: 9,
     indexClause: true,
-    signedAt: '2019-12-01T12:00:00Z',
+    activatedAt: '2019-12-01T12:00:00Z',
     createdAt: '2019-12-01T10:00:00Z',
     updatedAt: '2024-09-15T11:00:00Z',
   },
@@ -423,7 +423,7 @@ const leases: PartialLease[] = [
     depositAmount: 42600,
     noticePeriodMonths: 3,
     indexClause: true,
-    signedAt: '2021-02-10T12:00:00Z',
+    activatedAt: '2021-02-10T12:00:00Z',
     createdAt: '2021-02-10T10:00:00Z',
     updatedAt: '2024-11-01T08:00:00Z',
   },

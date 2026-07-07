@@ -208,7 +208,7 @@ export interface Lease {
   depositAmount: number
   noticePeriodMonths: number
   indexClause: boolean
-  signedAt?: string
+  activatedAt?: string
   terminatedAt?: string
   terminationReason?: string
   // Kontraktsmall 2.0: fortlöpande nummer (KONT-2026-00042) som tilldelas

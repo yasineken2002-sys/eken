@@ -47,7 +47,7 @@ export interface ContractTemplateInput {
     leaseType: 'FIXED_TERM' | 'INDEFINITE'
     renewalPeriodMonths: number | null
     noticePeriodMonths: number
-    signedAt: Date | null
+    activatedAt: Date | null
 
     includesHeating: boolean
     includesWater: boolean

@@ -423,6 +423,21 @@ export const TOOLS: Anthropic.Tool[] = [
       required: ['leaseId', 'tenantName', 'contractType'],
     },
   },
+  {
+    name: 'prepare_contract_signing',
+    description:
+      'FÖRBEREDER en BankID-signering av ett redan genererat hyreskontrakt: skapar en signeringsbegäran och FRYSER dokumentets contentHash (det parterna signerar). AI:n kan ENDAST förbereda — den kan ALDRIG fullborda en signatur. En människa slutför BankID-signeringen; det finns inget verktyg som låter AI:n signera eller försegla. Bindande handling → kräver bekräftelse och behörighet OWNER/ADMIN. Ange documentId för det genererade kontrakts-dokumentet (category CONTRACT).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        documentId: {
+          type: 'string',
+          description: 'ID för kontrakts-dokumentet (CONTRACT) som ska signeras',
+        },
+      },
+      required: ['documentId'],
+    },
+  },
 
   {
     name: 'send_document_to_tenant',
@@ -996,6 +1011,7 @@ export const ACTION_TOOLS = new Set([
   'compose_and_send_email',
   'apply_rent_increase',
   'generate_lease_contract',
+  'prepare_contract_signing',
   'send_document_to_tenant',
   'create_tenant_and_lease',
   'generate_rent_notices',

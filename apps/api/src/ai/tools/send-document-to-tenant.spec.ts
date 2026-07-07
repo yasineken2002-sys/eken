@@ -89,6 +89,7 @@ function makeExecutor(tenants: T[]) {
     noop, // 20 redis
     audit as never, // 21 audit
     documentDelivery as never, // 22 documentDelivery
+    noop, // 23 signingService
   )
   return { executor, deliverToTenant }
 }

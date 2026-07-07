@@ -29,6 +29,7 @@ import { TenantPortalModule } from '../tenant-portal/tenant-portal.module'
 import { RentIncreasesModule } from '../rent-increases/rent-increases.module'
 import { TerminationsModule } from '../terminations/terminations.module'
 import { DocumentsModule } from '../documents/documents.module'
+import { SigningModule } from '../signing/signing.module'
 import { LegalEmbeddingService } from './knowledge/embedding/legal-embedding.service'
 import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.service'
 
@@ -48,6 +49,7 @@ import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.ser
     InspectionsModule,
     MaintenancePlanModule,
     ReconciliationModule,
+    SigningModule,
     NotificationsModule,
     CollectionsModule,
     TenantPortalModule,

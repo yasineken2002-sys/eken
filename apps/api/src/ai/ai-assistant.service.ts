@@ -483,6 +483,9 @@ export function requiresDoubleConfirmation(
   }
   // Period-stängning är irreversibel — kräv alltid dubbelbekräftelse
   if (toolName === 'close_period') return true
+  // Signering är en bindande handling (BankID mot bindande avtal) — kräv alltid
+  // dubbelbekräftelse. AI:n förbereder bara; en människa slutför signaturen.
+  if (toolName === 'prepare_contract_signing') return true
   // Inkasso-export skickar fakturan till externt inkassobolag — irreversibel
   // status och hyresgästen kan få inkassokrav. Kräv dubbelbekräftelse.
   if (toolName === 'export_for_collection') return true

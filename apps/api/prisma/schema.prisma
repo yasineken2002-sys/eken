@@ -1013,7 +1013,11 @@ model Lease {
   // Behålls för bakåtkompatibilitet (gamla rader). Nya kontrakt sätter
   // indexClauseType — `indexClause` speglar då (type !== NONE).
   indexClause          Boolean     @default(false)
-  signedAt             DateTime?
+  // Tidpunkt då avtalet AKTIVERADES (status → ACTIVE). Hette tidigare `signedAt`,
+  // men fältet sätts vid admin-aktivering UTAN någon signatur — namnet "signerat"
+  // var missvisande och bevisade inget om en underskrift. Döpt om till activatedAt
+  // (S2). En faktisk BankID-signatur bevisas separat av SignatureEvidence (S1).
+  activatedAt          DateTime?
   terminatedAt         DateTime?
   terminationReason    String?
 
