@@ -44,8 +44,11 @@ function makeService(opts: { pendingFound?: boolean; consumeCount?: number } = {
   return { service, executeTool, prisma }
 }
 
-const ARGS = (toolInput: Record<string, unknown> = { invoiceId: 'inv-1' }) =>
-  ['mark_invoice_paid', toolInput, 'c1', true, 'o1', 'u1', 'ADMIN'] as const
+// update_tenant: en enkel ACTION_TOOL utan dubbelbekräftelse — testet gäller
+// pending-action-BINDNINGEN, inte en specifik tools confirm-nivå. (mark_invoice_paid
+// kräver numera dubbelbekräftelse och skulle re-prompta i stället för att exekvera.)
+const ARGS = (toolInput: Record<string, unknown> = { tenantId: 't-1', tenantName: 'A' }) =>
+  ['update_tenant', toolInput, 'c1', true, 'o1', 'u1', 'ADMIN'] as const
 
 describe('hashPendingAction', () => {
   it('är oberoende av fältordning i toolInput', () => {

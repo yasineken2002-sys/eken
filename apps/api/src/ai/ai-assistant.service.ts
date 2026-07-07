@@ -504,6 +504,12 @@ export function requiresDoubleConfirmation(
     const ids = toolInput.tenantIds
     if (Array.isArray(ids) && ids.length > 10) return true
   }
+  // Pausa kravtrappan resp. markera betald utan bankmatchning är EXAKT de
+  // åtgärder en indirekt prompt injection (via felanmälan/bank-beskrivning)
+  // försöker lura fram — se OWNER_INJECTION_PATTERN. Kräv dubbelbekräftelse som
+  // extra människa-i-loopen-grind ovanpå injektionsinramningen.
+  if (toolName === 'pause_reminders') return true
+  if (toolName === 'mark_invoice_paid') return true
   return false
 }
 
