@@ -48,6 +48,16 @@ function makePrismaMock(): PrismaMock {
   }
 }
 
+// PDF-importen delegerar dedup+create+match till reconciliation.ingestFromFile
+// (P0-refaktor) istället för att själv anropa prisma.create + matchTransaction.
+function mockReconciliation(matched: boolean) {
+  return {
+    ingestFromFile: jest
+      .fn()
+      .mockResolvedValue({ duplicate: false, transactionId: 'tx-x', matched }),
+  }
+}
+
 const AI_TX = [
   {
     date: '2026-05-01',
@@ -111,7 +121,7 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
     it('skriver confirmedData och lämnar parsedData/originalParsedData ORÖRDA', async () => {
       const prisma = makePrismaMock()
       setupConfirm(prisma)
-      const reconciliation = { matchTransaction: jest.fn().mockResolvedValue(true) }
+      const reconciliation = mockReconciliation(true)
       const service = new BankStatementImportService(
         prisma as never,
         {} as never,
@@ -163,7 +173,7 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
       const service = new BankStatementImportService(
         prisma as never,
         {} as never,
-        { matchTransaction: jest.fn().mockResolvedValue(true) } as never,
+        mockReconciliation(true) as never,
         { recordPaymentDataThrough } as never,
       )
 
@@ -179,7 +189,7 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
       const service = new BankStatementImportService(
         prisma as never,
         {} as never,
-        { matchTransaction: jest.fn().mockResolvedValue(true) } as never,
+        mockReconciliation(true) as never,
         { recordPaymentDataThrough } as never,
       )
 
@@ -195,7 +205,7 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
     it('confirmedData skiljer sig från originalParsedData när operatören redigerat (diff rekonstruerbar)', async () => {
       const prisma = makePrismaMock()
       setupConfirm(prisma)
-      const reconciliation = { matchTransaction: jest.fn().mockResolvedValue(false) }
+      const reconciliation = mockReconciliation(false)
       const service = new BankStatementImportService(
         prisma as never,
         {} as never,
@@ -225,7 +235,7 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
     it('utan redigering speglar confirmedData draftens parsedData', async () => {
       const prisma = makePrismaMock()
       setupConfirm(prisma)
-      const reconciliation = { matchTransaction: jest.fn().mockResolvedValue(true) }
+      const reconciliation = mockReconciliation(true)
       const service = new BankStatementImportService(
         prisma as never,
         {} as never,

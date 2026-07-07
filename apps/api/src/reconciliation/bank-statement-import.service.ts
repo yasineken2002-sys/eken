@@ -164,42 +164,34 @@ export class BankStatementImportService {
       const amountDecimal = new Decimal(t.amount.toFixed(2))
       const date = new Date(t.date)
 
-      // Dubblett-skydd identiskt med CSV-importen (org, date, description, amount).
-      const existing = await this.prisma.bankTransaction.findFirst({
-        where: {
-          organizationId,
-          date,
-          description: t.description,
-          amount: amountDecimal,
-        },
-      })
-      if (existing) {
-        duplicates++
-        continue
-      }
-
-      const tx = await this.prisma.bankTransaction.create({
+      // Delad ingest-kärna (samma pipeline som CSV/BgMax): fält-dedup identisk med
+      // CSV-importen (org, date, description, amount) → create → matchTransaction.
+      const outcome = await this.reconciliation.ingestFromFile(organizationId, {
+        dedup: { date, description: t.description, amount: amountDecimal },
         data: {
-          organizationId,
           date,
           description: t.description,
           amount: amountDecimal,
           ...(t.ocr ? { rawOcr: t.ocr, reference: t.ocr } : {}),
         },
       })
+      if (outcome.duplicate) {
+        duplicates++
+        continue
+      }
       created++
 
-      try {
-        const matched = await this.reconciliation.matchTransaction(tx, organizationId)
-        if (matched) autoMatched++
-        else unmatched++
-      } catch (err) {
+      if (outcome.matchError) {
         // Matchning kan kasta vid kantfall (t.ex. korrupt journal-state).
         // Vi backar inte — transaktionen ligger kvar som UNMATCHED och
         // operatören får hantera manuellt.
         this.logger.error(
-          `matchTransaction failed för tx=${tx.id}: ${err instanceof Error ? err.message : String(err)}`,
+          `matchTransaction failed för tx=${outcome.transactionId}: ${outcome.matchError.message}`,
         )
+        unmatched++
+      } else if (outcome.matched) {
+        autoMatched++
+      } else {
         unmatched++
       }
     }

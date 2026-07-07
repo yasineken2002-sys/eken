@@ -38,6 +38,27 @@ export interface AutoMatchResult {
   unmatched: number
 }
 
+/**
+ * P0-refaktor (PSD2-förberedelse): den ENDA vägen in för en rå banktransaktion —
+ * fält-dedup → bankTransaction.create → matchTransaction. Filimporterna (CSV/BgMax/
+ * PDF) delar EXAKT denna kärna via `ingestFromFile`. PSD2-API-källan får sin egen
+ * `ingestFromApi` (med obligatoriskt `externalId`) i P1. Den härdade matchnings-/
+ * bokföringslogiken (`matchTransaction`, #161-166) rörs ALDRIG av denna refaktor.
+ */
+export interface FileIngestInput {
+  // Fält-dedup, bevarad EXAKT per källa (CSV/PDF: description, BgMax: rawOcr).
+  // `organizationId` injiceras av `ingestFromFile` och får aldrig komma från raw.
+  dedup: Prisma.BankTransactionWhereInput
+  data: Omit<Prisma.BankTransactionUncheckedCreateInput, 'organizationId'>
+}
+
+// Utfall per rå transaktion. `matchError` sätts när raden skapades men
+// matchTransaction kastade — varje källa mappar det till sitt eget felbeteende
+// (CSV/BgMax: radfel; PDF: logga + unmatched), precis som före refaktorn.
+export type FileIngestResult =
+  | { duplicate: true }
+  | { duplicate: false; transactionId: string; matched: boolean; matchError?: Error }
+
 export interface ReconciliationStats {
   total: number
   matched: number
@@ -206,6 +227,36 @@ export class ReconciliationService {
     }
   }
 
+  // ── Delad ingest-kärna (fil-källor) ─────────────────────────────────────────
+  // En rå banktransaktion in: fält-dedup → create → matchTransaction. Detta är den
+  // gemensamma pipelinen som CSV/BgMax/PDF-importerna delar. `organizationId` sätts
+  // här (aldrig från raw) — defense-in-depth för multi-tenant-scopingen. Kastar
+  // vidare vid dedup-/create-fel (källans radloop hanterar det som förr); ett
+  // matchTransaction-fel fångas och returneras som `matchError` så att varje källa
+  // behåller sitt exakta räknar-/felbeteende.
+  async ingestFromFile(organizationId: string, input: FileIngestInput): Promise<FileIngestResult> {
+    const existing = await this.prisma.bankTransaction.findFirst({
+      where: { organizationId, ...input.dedup },
+    })
+    if (existing) return { duplicate: true }
+
+    const tx = await this.prisma.bankTransaction.create({
+      data: { organizationId, ...input.data },
+    })
+
+    try {
+      const matched = await this.matchTransaction(tx, organizationId)
+      return { duplicate: false, transactionId: tx.id, matched }
+    } catch (err) {
+      return {
+        duplicate: false,
+        transactionId: tx.id,
+        matched: false,
+        matchError: err instanceof Error ? err : new Error(String(err)),
+      }
+    }
+  }
+
   // ── Parse CSV ───────────────────────────────────────────────────────────────
 
   private parseCsv(buffer: Buffer): { rows: ParsedRow[]; bank: BankFormat } {
@@ -368,26 +419,13 @@ export class ReconciliationService {
 
         const amountDecimal = new Decimal(row.amount.toFixed(2))
 
-        // Duplicate check
-        const existing = await this.prisma.bankTransaction.findFirst({
-          where: {
-            organizationId,
-            date: row.date,
-            description: row.description,
-            amount: amountDecimal,
-          },
-        })
-        if (existing) {
-          result.duplicates++
-          continue
-        }
-
         // Extract OCR from reference or description
         const rawOcr = extractOcr(row.reference) ?? extractOcr(row.description)
 
-        const tx = await this.prisma.bankTransaction.create({
+        // Delad ingest-kärna: fält-dedup (org, date, description, amount) → create → match.
+        const outcome = await this.ingestFromFile(organizationId, {
+          dedup: { date: row.date, description: row.description, amount: amountDecimal },
           data: {
-            organizationId,
             date: row.date,
             description: row.description,
             amount: amountDecimal,
@@ -396,11 +434,14 @@ export class ReconciliationService {
             ...(rawOcr ? { rawOcr } : {}),
           },
         })
+        if (outcome.duplicate) {
+          result.duplicates++
+          continue
+        }
         result.imported++
-
-        // Auto-match
-        const matched = await this.matchTransaction(tx, organizationId)
-        if (matched) {
+        // Matchfel → radfel (samma som när matchTransaction kastade i radens try förr).
+        if (outcome.matchError) throw outcome.matchError
+        if (outcome.matched) {
           result.autoMatched++
         } else {
           result.unmatched++
@@ -494,32 +535,24 @@ export class ReconciliationService {
         const description = `BgMax inbetalning${ocr ? ` (OCR ${ocr})` : ''}`
         const amountDecimal = new Decimal(amount.toFixed(2))
 
-        const existing = await this.prisma.bankTransaction.findFirst({
-          where: {
-            organizationId,
-            date: txDate,
-            amount: amountDecimal,
-            ...(ocr ? { rawOcr: ocr } : {}),
-          },
-        })
-        if (existing) {
-          result.duplicates++
-          continue
-        }
-
-        const tx = await this.prisma.bankTransaction.create({
+        // Delad ingest-kärna: fält-dedup (org, date, amount, rawOcr) → create → match.
+        const outcome = await this.ingestFromFile(organizationId, {
+          dedup: { date: txDate, amount: amountDecimal, ...(ocr ? { rawOcr: ocr } : {}) },
           data: {
-            organizationId,
             date: txDate,
             description,
             amount: amountDecimal,
             ...(ocr ? { rawOcr: ocr } : {}),
           },
         })
+        if (outcome.duplicate) {
+          result.duplicates++
+          continue
+        }
         result.imported++
-
-        const matched = await this.matchTransaction(tx, organizationId)
-        if (matched) result.autoMatched++
+        // Matchfel → radfel (samma som när matchTransaction kastade i radens try förr).
+        if (outcome.matchError) throw outcome.matchError
+        if (outcome.matched) result.autoMatched++
         else result.unmatched++
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
