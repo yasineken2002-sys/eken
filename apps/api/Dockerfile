@@ -24,11 +24,19 @@ RUN npx prisma generate
 RUN cd /app && pnpm --filter=@eken/api build
 
 FROM node:20-slim AS runner
+# postgresql-client-16 (matchar Railway PG16-servern) för pg_dump/pg_restore i
+# den dagliga backup-jobbet — via PGDG-repot (Debian bookworm har bara client-15).
 RUN apt-get update && apt-get install -y \
   openssl \
   ca-certificates \
   chromium \
   fonts-freefont-ttf \
+  gnupg \
+  wget \
+  && install -d /usr/share/postgresql-common/pgdg \
+  && wget -qO /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update && apt-get install -y postgresql-client-16 \
   && rm -rf /var/lib/apt/lists/*
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
