@@ -84,10 +84,29 @@ function makeFakePrisma() {
           return Promise.resolve(include ? attachEvidence(r.id as string) : r)
         },
       ),
-      findFirstOrThrow: jest.fn(({ where }: { where: { id: string } }) =>
-        Promise.resolve(attachEvidence(where.id)),
-      ),
+      findFirstOrThrow: jest.fn(({ where }: { where: Record<string, unknown> }) => {
+        const r = signingRequests.find(
+          (x) =>
+            (where.id === undefined || x.id === where.id) &&
+            (where.idempotencyKey === undefined || x.idempotencyKey === where.idempotencyKey) &&
+            (where.organizationId === undefined || x.organizationId === where.organizationId),
+        )
+        if (!r) return Promise.reject(new Error('not found'))
+        return Promise.resolve(attachEvidence(r.id as string))
+      }),
       create: jest.fn(({ data }: { data: Record<string, unknown> }) => {
+        // Speglar DB-unik (organizationId, idempotencyKey): dubblett → P2002.
+        if (
+          signingRequests.some(
+            (r) =>
+              r.organizationId === data.organizationId && r.idempotencyKey === data.idempotencyKey,
+          )
+        ) {
+          throw new Prisma.PrismaClientKnownRequestError('dup', {
+            code: 'P2002',
+            clientVersion: 'test',
+          })
+        }
         const row = { id: `req-${(seq += 1)}`, ...data }
         signingRequests.push(row)
         return Promise.resolve(row)
@@ -133,14 +152,32 @@ function makeService(provider = new MockSigningProvider()) {
 }
 
 describe('SigningService.createSigningRequest', () => {
-  it('fryser contentHash och är idempotent', async () => {
-    const { service, signingRequests } = makeService()
+  it('fryser contentHash och är idempotent — samtidig dubblett ger EN envelope, inget 500', async () => {
+    const { service, provider, signingRequests } = makeService()
+    const spy = jest.spyOn(provider, 'createRequest')
     const r1 = await service.createSigningRequest('org-1', 'user-1', 'doc-1')
     expect(r1.contentHash).toBe(FROZEN_HASH)
     expect(r1.status).toBe('SIGNING_IN_PROGRESS')
+    // Andra anropet (retry/dubbelklick) → DB-unik fångas som P2002, INTE ett kastat 500.
     const r2 = await service.createSigningRequest('org-1', 'user-1', 'doc-1')
-    expect(r2.id).toBe(r1.id) // samma request — ingen andra-envelope
+    expect(r2.id).toBe(r1.id) // samma request
     expect(signingRequests).toHaveLength(1)
+    expect(spy).toHaveBeenCalledTimes(1) // ENDAST en provider-envelope skapades
+  })
+
+  it('vägrar signering om hyresgästen saknar registrerat personnummer (ingen fail-open)', async () => {
+    const provider = new MockSigningProvider()
+    const spy = jest.spyOn(provider, 'createRequest')
+    const { service, prisma, signingRequests } = makeService(provider)
+    // Hyresgäst utan personnummer → ingen identitetsbindning möjlig.
+    ;(prisma.lease.findFirst as jest.Mock).mockResolvedValueOnce({
+      tenant: { personalNumber: null },
+    })
+    await expect(service.createSigningRequest('org-1', 'user-1', 'doc-1')).rejects.toThrow(
+      /personnummer/i,
+    )
+    expect(signingRequests).toHaveLength(0) // ingen request skapad
+    expect(spy).not.toHaveBeenCalled() // ingen provider-envelope
   })
 
   it('avvisar ett redan låst kontrakt', async () => {
@@ -209,5 +246,23 @@ describe('SigningService.refreshStatus — säkerhet + happy path', () => {
     expect(json).not.toContain(TENANT_PN)
     expect(json).not.toContain('mock-order') // orderRef
     expect(json).not.toContain('mock-cert')
+  })
+
+  it('läcker ALDRIG expectedPersonalNumberHash via requiredRoles (getStatusSafe + create)', async () => {
+    const { service } = makeService()
+    // Samma blind-index som servicen beräknar för hyresgästens personnr.
+    const pnHash = new SigningCryptoService({
+      get: (k: string) => ({ SIGNING_PII_KEY: KEY, SIGNING_PII_PEPPER: PEPPER })[k],
+    } as never).blindIndex(TENANT_PN)
+
+    const created = await service.createSigningRequest('org-1', 'user-1', 'doc-1')
+    // createSigningRequest-returen: requiredRoles projicerat till rena roller, ingen hash.
+    expect(JSON.stringify(created)).not.toContain(pnHash)
+    expect(created.requiredRoles).toEqual(['TENANT'])
+
+    const safe = await service.getStatusSafe('org-1', created.id)
+    // getStatusSafe (portal/AI-gränsen): samma projektion — hashen får aldrig ut.
+    expect(JSON.stringify(safe)).not.toContain(pnHash)
+    expect(safe.requiredRoles).toEqual(['TENANT'])
   })
 })

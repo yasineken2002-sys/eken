@@ -13,7 +13,11 @@ import {
 
 interface ExpectedParty {
   role: SignerRoleT
-  expectedPersonalNumberHash?: string
+  name: string
+  // Obligatorisk: en signeringsslot binds ALLTID till en förväntad identitet
+  // (blind-index av personnummer). Ingen slot får vara identitetslös — då skulle
+  // vem som helst med BankID kunna signera i rollen (fail-open).
+  expectedPersonalNumberHash: string
 }
 
 /**
@@ -64,59 +68,116 @@ export class SigningService {
     }
 
     const idempotencyKey = this.idempotencyKey(doc.id, doc.contentHash)
-    const existing = await this.prisma.signingRequest.findFirst({
-      where: { organizationId, idempotencyKey },
-    })
-    if (existing) return existing
 
     // v1: endast hyresgästen signerar. Förväntad signerare = leasens hyresgäst;
-    // bind sloten till hens personnummer (blind-index) om det finns registrerat.
+    // sloten binds ALLTID till hens personnummer (blind-index) — annars kastar detta.
     const expectedParties = await this.buildExpectedParties(doc.leaseId, organizationId)
 
+    // Atomär dedup: skapa raden FÖRST (DB-unik på (org, idempotencyKey) är sanningen),
+    // fånga P2002 → returnera befintlig. INGEN findFirst-först: två samtidiga anrop
+    // skulle båda passera en förkontroll och dubbel-dispatcha till providern (TOCTOU).
+    // Intent persisteras innan providern anropas → ingen envelope utan lokalt spår.
+    let row
+    try {
+      row = await this.prisma.signingRequest.create({
+        data: {
+          organizationId,
+          documentId: doc.id,
+          ...(doc.leaseId ? { leaseId: doc.leaseId } : {}),
+          contentHash: doc.contentHash,
+          provider: this.provider.name,
+          idempotencyKey,
+          status: SigningRequestStatus.PENDING,
+          requiredRoles: expectedParties as unknown as Prisma.InputJsonValue,
+          ...(userId ? { createdByUserId: userId } : {}),
+        },
+      })
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const existing = await this.prisma.signingRequest.findFirstOrThrow({
+          where: { organizationId, idempotencyKey },
+        })
+        return this.projectRequest(existing)
+      }
+      throw err
+    }
+
+    // Intent är nu atomiskt persisterad. Dispatcha till providern och koppla på id:t.
     const created = await this.provider.createRequest({
       documentId: doc.id,
       contentHash: doc.contentHash,
       storageKey: doc.storageKey,
       parties: expectedParties.map((p) => ({
         role: p.role,
-        name: p.role,
-        ...(p.expectedPersonalNumberHash
-          ? { expectedPersonalNumberHash: p.expectedPersonalNumberHash }
-          : {}),
+        name: p.name,
+        expectedPersonalNumberHash: p.expectedPersonalNumberHash,
       })),
       visibleText: `Jag signerar hyreskontrakt ${doc.id}`,
       idempotencyKey,
     })
 
-    return this.prisma.signingRequest.create({
+    const updated = await this.prisma.signingRequest.update({
+      where: { id: row.id },
       data: {
-        organizationId,
-        documentId: doc.id,
-        ...(doc.leaseId ? { leaseId: doc.leaseId } : {}),
-        contentHash: doc.contentHash,
-        provider: this.provider.name,
-        providerRequestId: created.providerRequestId,
-        idempotencyKey,
         status: SigningRequestStatus.SIGNING_IN_PROGRESS,
-        requiredRoles: expectedParties as unknown as Prisma.InputJsonValue,
-        ...(userId ? { createdByUserId: userId } : {}),
+        providerRequestId: created.providerRequestId,
       },
     })
+    return this.projectRequest(updated)
   }
 
+  // Projicerar bort identitetsbindningen (expectedPersonalNumberHash + namn) ur
+  // requiredRoles innan raden lämnar backend. Allow-list: endast rollerna exponeras.
+  // (Samma läxa som tenant-portal-läcktätningen #156-160 — pepprad personnr-hash är
+  // ett PII-derivat som aldrig får nå portal/AI/frontend.)
+  private rolesOnly(requiredRoles: unknown): SignerRoleT[] {
+    return ((requiredRoles as ExpectedParty[] | null) ?? []).map((p) => p.role)
+  }
+
+  private projectRequest<T extends { requiredRoles: unknown }>(req: T) {
+    return { ...req, requiredRoles: this.rolesOnly(req.requiredRoles) }
+  }
+
+  // Bygger de förväntade signerings-slotarna. En slot får ALDRIG skapas utan en
+  // identitetsbindning — saknat hyresavtal, saknat personnummer eller okonfigurerat
+  // krypto → VÄGRA (kasta), aldrig skapa en identitetslös slot (fail-open-skydd).
   private async buildExpectedParties(
     leaseId: string | null,
     organizationId: string,
   ): Promise<ExpectedParty[]> {
-    if (!leaseId) return [{ role: 'TENANT' }]
+    if (!leaseId) {
+      throw new BadRequestException('Signering kräver ett kopplat hyresavtal')
+    }
+    if (!this.crypto.configured) {
+      // Får aldrig hända i praktiken (DI-factoryn fail-fastar utan nycklar), men
+      // en identitetsbindning utan krypto vore en tyst fail-open — vägra hellre.
+      throw new BadRequestException('Signerings-krypto ej konfigurerat — kan inte binda identitet')
+    }
     const lease = await this.prisma.lease.findFirst({
       where: { id: leaseId, unit: { property: { organizationId } } },
-      select: { tenant: { select: { personalNumber: true } } },
+      select: {
+        tenant: {
+          select: {
+            personalNumber: true,
+            firstName: true,
+            lastName: true,
+            companyName: true,
+          },
+        },
+      },
     })
-    const pn = lease?.tenant?.personalNumber
-    const party: ExpectedParty = { role: 'TENANT' }
-    if (pn && this.crypto.configured) party.expectedPersonalNumberHash = this.crypto.blindIndex(pn)
-    return [party]
+    const tenant = lease?.tenant
+    const pn = tenant?.personalNumber
+    if (!pn) {
+      throw new BadRequestException(
+        'Hyresgästen saknar registrerat personnummer — kan inte identitetsverifieras för signering',
+      )
+    }
+    const name =
+      tenant?.companyName ||
+      [tenant?.firstName, tenant?.lastName].filter(Boolean).join(' ') ||
+      'Hyresgäst'
+    return [{ role: 'TENANT', name, expectedPersonalNumberHash: this.crypto.blindIndex(pn) }]
   }
 
   // ── Uppdatera status (poll ELLER webhook) ─────────────────────────────────────
@@ -168,10 +229,17 @@ export class SigningService {
       throw new BadRequestException('Signerat innehåll matchar inte det frusna kontraktet')
     }
 
-    // Identitetsavstämning: rätt person signerade rätt slot.
+    // Identitetsavstämning: rätt person signerade rätt slot. OVILLKORLIG — en slot
+    // UTAN förväntad identitet får aldrig acceptera en signatur (fail-open-skydd).
     const pnHash = this.crypto.blindIndex(ev.personalNumber)
     const slot = expected.find((e) => e.role === ev.role)
-    if (slot?.expectedPersonalNumberHash && slot.expectedPersonalNumberHash !== pnHash) {
+    if (!slot?.expectedPersonalNumberHash) {
+      this.logger.error(
+        `[signing] ingen förväntad identitet för roll ${ev.role} i request ${signingRequestId} — bevis EJ skrivet`,
+      )
+      throw new BadRequestException('Ingen förväntad signerare registrerad för denna roll')
+    }
+    if (slot.expectedPersonalNumberHash !== pnHash) {
       this.logger.error(
         `[signing] identitet ≠ förväntad signerare för request ${signingRequestId} (part ${ev.role}) — bevis EJ skrivet`,
       )
@@ -273,6 +341,7 @@ export class SigningService {
           ...(original.tenantId ? { tenantId: original.tenantId } : {}),
           contentHash: sealedHash,
           locked: true,
+          signedAt: new Date(),
           previousVersionId: documentId,
         },
       })
@@ -302,7 +371,9 @@ export class SigningService {
       },
     })
     if (!req) throw new NotFoundException('Signeringsbegäran hittades inte')
-    return req
+    // requiredRoles är ett JSON-fält (kan ej sub-selectas i Prisma) och innehåller
+    // expectedPersonalNumberHash — projicera bort identitetsbindningen i app-lagret.
+    return this.projectRequest(req)
   }
 
   // Webhook-väg: verifiera signatur → hitta request → refresha status.
