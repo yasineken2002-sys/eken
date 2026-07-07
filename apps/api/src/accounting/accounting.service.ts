@@ -998,13 +998,17 @@ export class AccountingService {
     paymentMethod: PaymentMethod,
     organizationId: string,
     createdById: string | null,
+    // Valfri yttre transaktion — anges av deposits-modulens markPaid så att
+    // depositions-/faktura-statusflip och detta verifikat skapas ATOMISKT.
+    tx?: Prisma.TransactionClient,
   ) {
     const amount = Number(paidAmount)
     if (!Number.isFinite(amount) || amount <= 0) return null
 
     const debitAccountNumber = PAYMENT_METHOD_TO_ACCOUNT[paymentMethod]
 
-    const accounts = await this.prisma.account.findMany({
+    const db = tx ?? this.prisma
+    const accounts = await db.account.findMany({
       where: { organizationId },
       select: { id: true, number: true },
     })
@@ -1040,6 +1044,7 @@ export class AccountingService {
       ],
       idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId },
       include: { lines: { include: { account: true } } },
+      ...(tx ? { tx } : {}),
     })
   }
 
