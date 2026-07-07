@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   InternalServerErrorException,
 } from '@nestjs/common'
+import * as crypto from 'crypto'
 import { Decimal } from '@prisma/client/runtime/library'
 import { Prisma, RentNoticeType } from '@prisma/client'
 import type { BankTransaction } from '@prisma/client'
@@ -50,6 +51,9 @@ export interface FileIngestInput {
   // `organizationId` injiceras av `ingestFromFile` och får aldrig komma från raw.
   dedup: Prisma.BankTransactionWhereInput
   data: Omit<Prisma.BankTransactionUncheckedCreateInput, 'organizationId'>
+  // PSD2 P1 — fält för cross-source dedupKey (Stockholm-dag + belopp + OCR). Saknas
+  // OCR → ingen dedupKey (betalning utan referens kan inte matchas cross-source).
+  crossSource?: { date: Date; amount: Decimal; ocr?: string | undefined }
 }
 
 // Utfall per rå transaktion. `matchError` sätts när raden skapades men
@@ -58,6 +62,30 @@ export interface FileIngestInput {
 export type FileIngestResult =
   | { duplicate: true }
   | { duplicate: false; transactionId: string; matched: boolean; matchError?: Error }
+
+/**
+ * PSD2 P1 — rå transaktion från en bank-API-källa (aggregator). `bookingDate` är
+ * en instant som normaliseras till Europe/Stockholm-kalenderdag. `booked=false`
+ * (pending) avvisas — matchning förutsätter finaliserade fakta. `currency` måste
+ * vara SEK. `amount<=0` (återförd/negativ) avvisas EXPLICIT (aldrig tyst drop).
+ */
+export interface ApiRawTransaction {
+  bookingDate: Date
+  booked: boolean
+  currency: string
+  amount: number
+  description: string
+  ocr?: string | undefined
+  reference?: string | undefined
+}
+
+// Explicit utfall för API-ingest — INGET tyst bortfall. `rejected` med typad
+// anledning gör att P2:s sync-lager kan agera (t.ex. återförd betalning → framtida
+// reverserings-hantering) istället för att en transaktion försvinner spårlöst.
+export type ApiIngestResult =
+  | { outcome: 'imported'; transactionId: string; matched: boolean; matchError?: Error }
+  | { outcome: 'duplicate'; transactionId: string; via: 'externalId' | 'dedupKey' }
+  | { outcome: 'rejected'; reason: 'NOT_BOOKED' | 'NON_SEK' | 'NON_POSITIVE' }
 
 export interface ReconciliationStats {
   total: number
@@ -178,6 +206,28 @@ function extractOcr(text: string | undefined): string | null {
   return matches.reduce((a, b) => (b.length > a.length ? b : a))
 }
 
+// ── PSD2 P1: Stockholm-dag + cross-source dedupKey ────────────────────────────
+
+// Normaliserar en instant till Europe/Stockholm-KALENDERDAG, representerad som
+// UTC-midnatt av den dagen — EXAKT samma representation som filimportens
+// `new Date('YYYY-MM-DD')`, så att fil och API ger samma dedupKey för samma dag.
+// (sv-SE ger 'YYYY-MM-DD'; samma mönster som notifications.service.ts.)
+export function normalizeToStockholmDay(instant: Date): Date {
+  const ymd = instant.toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' })
+  return new Date(ymd)
+}
+
+// Deterministisk cross-source-nyckel. Fil OCH API stämplar denna likadant (samma
+// Stockholm-dag, belopp med 2 decimaler, OCR/betalningsreferens) så att en
+// betalning som ingestas via båda källorna känns igen som EN. Kräver OCR — utan
+// betalningsreferens finns ingen pålitlig cross-source-identitet.
+export function computeBankDedupKey(day: Date, amount: Decimal, ocr: string): string {
+  return crypto
+    .createHash('sha256')
+    .update(`${day.toISOString().slice(0, 10)}|${amount.toFixed(2)}|${ocr}`)
+    .digest('hex')
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 @Injectable()
@@ -235,13 +285,31 @@ export class ReconciliationService {
   // matchTransaction-fel fångas och returneras som `matchError` så att varje källa
   // behåller sitt exakta räknar-/felbeteende.
   async ingestFromFile(organizationId: string, input: FileIngestInput): Promise<FileIngestResult> {
+    // PSD2 P1 — cross-source-nyckel (fil OCH API stämplar likadant).
+    const dedupKey = input.crossSource?.ocr
+      ? computeBankDedupKey(input.crossSource.date, input.crossSource.amount, input.crossSource.ocr)
+      : null
+
+    // Migrationsöverlapp: en betalning som REDAN ingestats via PSD2-API (externalId
+    // != null) får inte skapa en andra fil-rad → dubbel-allokering (#162-klassen).
+    // Riktad ENBART mot API-rader, så fil-mot-fil-dedupen nedan är byte-identisk med
+    // förr. No-op tills P2 börjar skapa API-rader (då finns inga → inget beteendeskifte).
+    if (dedupKey) {
+      const apiRow = await this.prisma.bankTransaction.findFirst({
+        where: { organizationId, dedupKey, externalId: { not: null } },
+        select: { id: true },
+      })
+      if (apiRow) return { duplicate: true }
+    }
+
+    // Fält-dedup — OFÖRÄNDRAD per källa (CSV/PDF: description, BgMax: rawOcr).
     const existing = await this.prisma.bankTransaction.findFirst({
       where: { organizationId, ...input.dedup },
     })
     if (existing) return { duplicate: true }
 
     const tx = await this.prisma.bankTransaction.create({
-      data: { organizationId, ...input.data },
+      data: { organizationId, ...input.data, ...(dedupKey ? { dedupKey } : {}) },
     })
 
     try {
@@ -250,6 +318,87 @@ export class ReconciliationService {
     } catch (err) {
       return {
         duplicate: false,
+        transactionId: tx.id,
+        matched: false,
+        matchError: err instanceof Error ? err : new Error(String(err)),
+      }
+    }
+  }
+
+  // ── PSD2-API-ingest (P1: väg byggd, ingen skarp källa förrän P2) ─────────────
+  // Typad ingång för bank-API-källor. `externalId` är OBLIGATORISKT (till skillnad
+  // från fil-vägen) → idempotens är strukturellt garanterad, inte disciplin.
+  // `organizationId` sätts av anroparen från VÅR DB (BankConsent i P2), aldrig ur
+  // aggregatorns råsvar. Rör ALDRIG matchTransaction/bokföringen — bara vägen in.
+  async ingestFromApi(
+    organizationId: string,
+    externalId: string,
+    raw: ApiRawTransaction,
+  ): Promise<ApiIngestResult> {
+    // Booked-only: pending kan byta id/belopp och kringgå externalId — matchning
+    // förutsätter finaliserade fakta.
+    if (!raw.booked) return { outcome: 'rejected', reason: 'NOT_BOOKED' }
+    // Valuta: BankTransaction saknar valutafält; ett icke-SEK-belopp skulle
+    // felmatcha tyst i 1-krons-toleransen. Avvisa EXPLICIT (aldrig felkonvertera).
+    if (raw.currency !== 'SEK') return { outcome: 'rejected', reason: 'NON_SEK' }
+    // Storno/negativa: får ALDRIG tyst droppas (tyst drop → felaktig PAID mot BFL).
+    // Avvisas explicit så P2:s sync-lager kan agera (framtida reverserings-hantering).
+    if (!(raw.amount > 0)) return { outcome: 'rejected', reason: 'NON_POSITIVE' }
+
+    const date = normalizeToStockholmDay(raw.bookingDate)
+    const amount = new Decimal(raw.amount.toFixed(2))
+    const rawOcr = raw.ocr ?? extractOcr(raw.reference) ?? extractOcr(raw.description) ?? undefined
+    const dedupKey = rawOcr ? computeBankDedupKey(date, amount, rawOcr) : null
+
+    // Steg 1 (cross-source): en betalning som redan ingestats via FIL fångas här,
+    // så API inte skapar en andra rad → dubbel-allokering (#162-klassen).
+    if (dedupKey) {
+      const crossSource = await this.prisma.bankTransaction.findFirst({
+        where: { organizationId, dedupKey },
+        select: { id: true },
+      })
+      if (crossSource)
+        return { outcome: 'duplicate', transactionId: crossSource.id, via: 'dedupKey' }
+    }
+
+    // Steg 2 (atomär, API-vs-API): create-och-fånga-P2002 på @@unique(org, externalId).
+    // ALDRIG findFirst-först — två samtidiga synkar skulle båda passera en förkontroll
+    // och dubbel-dispatcha (TOCTOU, samma läxa som #162).
+    let tx
+    try {
+      tx = await this.prisma.bankTransaction.create({
+        data: {
+          organizationId,
+          externalId,
+          date,
+          description: raw.description,
+          amount,
+          ...(rawOcr ? { rawOcr } : {}),
+          ...(raw.reference ? { reference: raw.reference } : {}),
+          ...(dedupKey ? { dedupKey } : {}),
+        },
+      })
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const existing = await this.prisma.bankTransaction.findFirst({
+          where: { organizationId, externalId },
+          select: { id: true },
+        })
+        return {
+          outcome: 'duplicate',
+          transactionId: existing?.id ?? externalId,
+          via: 'externalId',
+        }
+      }
+      throw err
+    }
+
+    try {
+      const matched = await this.matchTransaction(tx, organizationId)
+      return { outcome: 'imported', transactionId: tx.id, matched }
+    } catch (err) {
+      return {
+        outcome: 'imported',
         transactionId: tx.id,
         matched: false,
         matchError: err instanceof Error ? err : new Error(String(err)),
@@ -433,6 +582,11 @@ export class ReconciliationService {
             ...(row.reference ? { reference: row.reference } : {}),
             ...(rawOcr ? { rawOcr } : {}),
           },
+          crossSource: {
+            date: row.date,
+            amount: amountDecimal,
+            ...(rawOcr ? { ocr: rawOcr } : {}),
+          },
         })
         if (outcome.duplicate) {
           result.duplicates++
@@ -544,6 +698,7 @@ export class ReconciliationService {
             amount: amountDecimal,
             ...(ocr ? { rawOcr: ocr } : {}),
           },
+          crossSource: { date: txDate, amount: amountDecimal, ...(ocr ? { ocr } : {}) },
         })
         if (outcome.duplicate) {
           result.duplicates++

@@ -1358,6 +1358,15 @@ model BankTransaction {
   reference      String?
   rawOcr         String?
   status         BankTransactionStatus @default(UNMATCHED)
+  // PSD2 P1 — källidentitet & dedup. Bägge NULLABLE: befintliga fil-rader (och
+  // all filimport) saknar externalId → oförändrade. `externalId` = bankens/
+  // aggregatorns transaktions-id, unikt per org (API-vs-API-idempotens via
+  // @@unique + create-och-fånga-P2002). `dedupKey` = deterministisk cross-source-
+  // nyckel (Stockholm-dag + belopp + OCR) som fil OCH API stämplar likadant, så en
+  // betalning som ingestas via BÅDA källorna vid migrationsöverlapp fångas som
+  // dubblett istället för att dubbel-allokeras (#162-klassen). Rör EJ matchning.
+  externalId     String?
+  dedupKey       String?
   // Match-länkar — XOR. En transaktion kan matchas mot antingen en
   // kommersiell faktura (Invoice) eller en hyresavi (RentNotice), aldrig
   // båda. CHECK-constraint i migration garanterar invarianten på DB-nivå
@@ -1384,10 +1393,12 @@ model BankTransaction {
   // på RentNoticePayment-sidan ger en allokering per transaktion.
   rentNoticePayment RentNoticePayment?
 
+  @@unique([organizationId, externalId])
   @@index([organizationId])
   @@index([status])
   @@index([invoiceId])
   @@index([matchedRentNoticeId])
+  @@index([organizationId, dedupKey])
 }
 
 // ─── Bank Statement Import (AI-tolkat kontoutdrag i PDF) ──────────────────────
