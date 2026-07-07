@@ -27,6 +27,8 @@ function makeService(unit: { type: UnitType; voluntaryTaxLiability: boolean }) {
       }),
     },
     invoice: { findUnique: jest.fn().mockResolvedValue(null) },
+    // Dubbelbokförings-spärren slår upp befintlig hyresavi — ingen för testet.
+    rentNotice: { findFirst: jest.fn().mockResolvedValue(null) },
     // Validering sker före $transaction; för OK-fallet räcker en fejkad faktura.
     $transaction: jest.fn().mockResolvedValue({ id: 'inv-1', invoiceNumber: 'F-2026-0001' }),
   }

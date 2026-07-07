@@ -202,7 +202,6 @@ const TOOL_LABELS: Record<string, string> = {
   get_rent_notices: 'Hämtar hyresavier',
   get_inspections: 'Hämtar besiktningar',
   create_invoice: 'Förbereder ny faktura',
-  create_bulk_invoices: 'Förbereder hyresfakturering',
   update_tenant: 'Uppdaterar hyresgäst',
   send_invoice_email: 'Förbereder e-post med faktura',
   send_overdue_reminders: 'Förbereder påminnelser',

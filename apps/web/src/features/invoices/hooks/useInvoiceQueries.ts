@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { get, post, patch, del } from '@/lib/api'
 import type { Invoice, InvoiceEvent, InvoiceStatus, CreateInvoiceInput } from '@eken/shared'
-import { sendInvoiceEmail, createBulkInvoices, registerInvoicePayment } from '../api/invoices.api'
-import type { BulkInvoiceInput, RegisterPaymentInput } from '../api/invoices.api'
+import { sendInvoiceEmail, registerInvoicePayment } from '../api/invoices.api'
+import type { RegisterPaymentInput } from '../api/invoices.api'
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
@@ -102,16 +102,6 @@ export function useRegisterPayment() {
       void qc.invalidateQueries({ queryKey: ['invoices'] })
       void qc.invalidateQueries({ queryKey: ['invoice', id] })
       void qc.invalidateQueries({ queryKey: ['invoice-events', id] })
-    },
-  })
-}
-
-export function useCreateBulkInvoices() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: BulkInvoiceInput) => createBulkInvoices(data),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['invoices'] })
     },
   })
 }

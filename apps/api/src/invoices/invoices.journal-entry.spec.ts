@@ -44,6 +44,8 @@ function makeService(opts: { journalThrows?: boolean } = {}) {
         unit: { type: 'APARTMENT', voluntaryTaxLiability: false },
       }),
     },
+    // Dubbelbokförings-spärren slår upp befintlig hyresavi — ingen för testet.
+    rentNotice: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: (cb: (t: unknown) => unknown) => cb(tx),
   }
   const captured: { invoice?: { lines?: unknown } } = {}

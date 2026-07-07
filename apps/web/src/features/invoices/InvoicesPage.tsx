@@ -12,7 +12,6 @@ import {
   Download,
   Mail,
   MailX,
-  Zap,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -23,7 +22,6 @@ import { DataTable } from '@/components/ui/DataTable'
 import { InvoiceStatusBadge } from '@/components/ui/Badge'
 import { InvoiceTimeline } from './components/InvoiceTimeline'
 import { InvoiceForm } from './components/InvoiceForm'
-import { BulkInvoiceModal } from './components/BulkInvoiceModal'
 import {
   useInvoices,
   useInvoiceEvents,
@@ -148,7 +146,6 @@ export function InvoicesPage() {
   const [showPayment, setShowPayment] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [emailSentTo, setEmailSentTo] = useState<string | null>(null)
-  const [showBulk, setShowBulk] = useState(false)
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const { data: invoices = [], isLoading } = useInvoices(
@@ -294,16 +291,10 @@ export function InvoicesPage() {
               Filter
             </Button>
             {canWrite && (
-              <>
-                <Button size="sm" onClick={() => setShowBulk(true)}>
-                  <Zap size={14} strokeWidth={2.2} />
-                  Bulk-fakturering
-                </Button>
-                <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
-                  <Plus size={14} />
-                  Ny faktura
-                </Button>
-              </>
+              <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
+                <Plus size={14} />
+                Ny faktura
+              </Button>
             )}
           </div>
         }
@@ -758,9 +749,6 @@ export function InvoicesPage() {
           </ModalFooter>
         </Modal>
       )}
-
-      {/* Bulk-fakturering */}
-      <BulkInvoiceModal open={showBulk} onClose={() => setShowBulk(false)} />
     </PageWrapper>
   )
 }

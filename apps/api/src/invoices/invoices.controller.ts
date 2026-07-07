@@ -23,7 +23,6 @@ import { CreateInvoiceDto } from './dto/create-invoice.dto'
 import { UpdateInvoiceDto } from './dto/update-invoice.dto'
 import { TransitionStatusDto } from './dto/transition-status.dto'
 import { RegisterPaymentDto } from './dto/register-payment.dto'
-import { BulkInvoiceDto } from './dto/bulk-invoice.dto'
 import { BadRequestException } from '@nestjs/common'
 import type { InvoiceStatus } from '@prisma/client'
 
@@ -45,16 +44,6 @@ export class InvoicesController {
       ...(status != null ? { status } : {}),
       ...(tenantId != null ? { tenantId } : {}),
     })
-  }
-
-  @Post('bulk')
-  @Roles('MANAGER', 'ADMIN', 'OWNER')
-  async createBulk(
-    @OrgId() organizationId: string,
-    @CurrentUser() user: JwtPayload,
-    @Body() dto: BulkInvoiceDto,
-  ) {
-    return this.invoicesService.createBulk(organizationId, user.sub, dto)
   }
 
   @Post()

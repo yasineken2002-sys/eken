@@ -443,8 +443,6 @@ export function requiresDoubleConfirmation(
     const amount = parseFloat(raw)
     if (!isNaN(amount) && amount > 50000) return true
   }
-  // Bulk invoices always require double confirmation
-  if (toolName === 'create_bulk_invoices') return true
   // Lease termination
   if (toolName === 'transition_lease_status' && toolInput.newStatus === 'TERMINATED') return true
   // Stora manuella verifikat (> 100 000 kr)
@@ -1298,15 +1296,6 @@ export class AiAssistantService {
             Typ: (input.type as string | undefined) ?? 'AUTO',
             Förfallodatum: input.dueDate as string,
             Beskrivning: input.description as string,
-          },
-        }
-
-      case 'create_bulk_invoices':
-        return {
-          confirmationMessage: `Skapa hyresfakturor för alla aktiva kontrakt, månad ${input.month as number}/${input.year as number}`,
-          details: {
-            Månad: `${input.month as number}/${input.year as number}`,
-            Momssats: `${(input.vatRate as number | undefined) ?? 0}%`,
           },
         }
 
