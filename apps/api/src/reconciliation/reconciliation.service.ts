@@ -572,16 +572,19 @@ export class ReconciliationService {
         }))
 
       if (invoice && invoice.total.minus(transaction.amount).abs().lte(tolerance)) {
-        await this.applyMatchToInvoice(
-          transaction.id,
-          invoice.id,
-          invoice.total,
-          transaction.date,
-          null,
-          null,
-          db,
-        )
-        return true
+        if (
+          await this.applyMatchToInvoice(
+            transaction.id,
+            invoice.id,
+            organizationId,
+            invoice.total,
+            transaction.date,
+            null,
+            null,
+          )
+        ) {
+          return true
+        }
       }
 
       // OCR är per hyresgäst (samma OCR delas över ALLA månads-avier för
@@ -635,16 +638,19 @@ export class ReconciliationService {
         },
       })
       if (invoice && invoice.total.minus(transaction.amount).abs().lte(tolerance)) {
-        await this.applyMatchToInvoice(
-          transaction.id,
-          invoice.id,
-          invoice.total,
-          transaction.date,
-          null,
-          null,
-          db,
-        )
-        return true
+        if (
+          await this.applyMatchToInvoice(
+            transaction.id,
+            invoice.id,
+            organizationId,
+            invoice.total,
+            transaction.date,
+            null,
+            null,
+          )
+        ) {
+          return true
+        }
       }
     }
 
@@ -781,75 +787,81 @@ export class ReconciliationService {
     return false
   }
 
+  // HELA sekvensen (rad-lås → status-guardad PAID-claim → PAYMENT_RECEIVED-event →
+  // bank-länk → betalningsverifikat) körs i ETT $transaction. Verifikatet bokförs
+  // ATOMISKT (createJournalEntryForPayment(..., tx)) — ALDRIG fire-and-forget: faller
+  // bokföringen kastas felet och HELA matchningen rullas tillbaka (ingen faktura kan
+  // bli PAID utan verifikat, BFL 5 kap 6 §). Rad-låset + status-guarden (i
+  // claimPaidWithinTx) serialiserar mot en samtidig manuell betalning
+  // (markAsPaidManually) så samma inbetalning aldrig dubbelbokförs. Speglar
+  // applyMatchToRentNotice (den deterministiska hyresavi-vägen).
+  //
+  // Returnerar true om fakturan reglerades, false om den redan var betald/makulerad
+  // (callern låter då transaktionen förbli UNMATCHED / falla vidare till nästa gren).
   private async applyMatchToInvoice(
     transactionId: string,
     invoiceId: string,
+    organizationId: string,
     invoiceTotal: Decimal,
     transactionDate: Date,
     userId: string | null,
     actorLabel: string | null,
-    db: Prisma.TransactionClient | PrismaService,
-  ): Promise<void> {
-    const invoice = await db.invoice.findUnique({
-      where: { id: invoiceId },
-      select: { id: true, invoiceNumber: true, organizationId: true },
-    })
-    if (!invoice) throw new NotFoundException('Faktura hittades inte')
-
-    // Kör statusövergången via state machine. transitionStatus validerar
-    // SENT/OVERDUE/PARTIAL → PAID, skriver PAYMENT_RECEIVED-event och
-    // triggar INVOICE_PAID-notifikationen — alla "vid PAID"-bieffekter
-    // hålls på ett enda ställe.
-    await this.invoices.transitionStatus(
-      invoiceId,
-      invoice.organizationId,
-      'PAID',
-      userId,
-      userId ? 'USER' : 'SYSTEM',
-      {
-        transactionId,
-        amount: invoiceTotal.toNumber(),
-        date: transactionDate.toISOString(),
-        source: 'bank_reconciliation',
-        ...(actorLabel ? { actorLabel } : {}),
-      },
-    )
-
-    // transitionStatus sätter paidAt = new Date(); skriv över med faktiskt
-    // bankbetalningsdatum så att bokföring och historik matchar bankutdraget.
-    await db.invoice.update({
-      where: { id: invoiceId },
-      data: { paidAt: transactionDate },
-    })
-
-    // Länka banktransaktionen till fakturan. matchedRentNoticeId nollställs
-    // explicit för att respektera XOR-constraint vid eventuell re-match.
-    await db.bankTransaction.update({
-      where: { id: transactionId },
-      data: {
-        status: 'MATCHED',
+  ): Promise<boolean> {
+    const claimedNumber = await this.prisma.$transaction(async (tx) => {
+      // Rad-lås + status-guardad PAID-claim + PAYMENT_RECEIVED-event i samma tx.
+      const { claimed, invoiceNumber } = await this.invoices.claimPaidWithinTx(
+        tx,
         invoiceId,
-        matchedRentNoticeId: null,
-        matchedAt: new Date(),
-        ...(userId ? { matchedBy: userId } : {}),
-      },
+        organizationId,
+        transactionDate,
+        userId,
+        userId ? 'USER' : 'SYSTEM',
+        {
+          transactionId,
+          amount: invoiceTotal.toNumber(),
+          date: transactionDate.toISOString(),
+          source: 'bank_reconciliation',
+          ...(actorLabel ? { actorLabel } : {}),
+        },
+      )
+      // Redan reglerad/makulerad (eller race-förlorare) → boka inget, lämna tx-raden orörd.
+      if (!claimed) return null
+
+      // Länka banktransaktionen till fakturan. matchedRentNoticeId nollställs för XOR.
+      await tx.bankTransaction.update({
+        where: { id: transactionId },
+        data: {
+          status: 'MATCHED',
+          invoiceId,
+          matchedRentNoticeId: null,
+          matchedAt: new Date(),
+          ...(userId ? { matchedBy: userId } : {}),
+        },
+      })
+
+      // Bokför inbetalningen i SAMMA tx — kastar (→ rollback) om kontoplanen saknas.
+      const entry = await this.accounting.createJournalEntryForPayment(
+        { id: invoiceId, invoiceNumber, total: invoiceTotal },
+        { id: transactionId, date: transactionDate, amount: invoiceTotal },
+        organizationId,
+        userId,
+        tx,
+      )
+      if (entry === null) {
+        throw new InternalServerErrorException(
+          `Betalningsverifikat kunde inte skapas för faktura ${invoiceNumber} — ` +
+            'kontrollera att kontoplanen innehåller konto 1930 och 1510.',
+        )
+      }
+
+      return invoiceNumber
     })
 
-    // Skapa bokföringspost — fire-and-forget. En saknad kontoplan får aldrig
-    // blockera matchningen.
-    try {
-      await this.accounting.createJournalEntryForPayment(
-        { id: invoiceId, invoiceNumber: invoice.invoiceNumber, total: invoiceTotal },
-        { id: transactionId, date: transactionDate, amount: invoiceTotal },
-        invoice.organizationId,
-        userId,
-      )
-    } catch (err) {
-      this.logger.error(
-        'Accounting journal entry failed',
-        err instanceof Error ? err.stack : String(err),
-      )
-    }
+    if (claimedNumber === null) return false
+
+    // Notis efter commit (fire-and-forget) — parity med tidigare transitionStatus-beteende.
+    this.invoices.notifyInvoicePaid(organizationId, invoiceId, claimedNumber)
+    return true
   }
 
   // Match mot hyresavi. Bankavstämnings-härdning PR 3b — PARTIELL bankmatchning.
@@ -1158,15 +1170,21 @@ export class ReconciliationService {
         where: { id: target.invoiceId, organizationId },
       })
       if (!invoice) throw new NotFoundException('Faktura hittades inte')
-      await this.applyMatchToInvoice(
+      const matched = await this.applyMatchToInvoice(
         transactionId,
         target.invoiceId,
+        organizationId,
         invoice.total,
         transaction.date,
         userId,
         null,
-        this.prisma,
       )
+      if (!matched) {
+        throw new BadRequestException(
+          'Kunde inte matcha transaktionen mot fakturan: den är redan reglerad eller ' +
+            'makulerad. Avmatcha den befintliga transaktionen först.',
+        )
+      }
     } else if (target.rentNoticeId) {
       const notice = await this.prisma.rentNotice.findFirst({
         where: { id: target.rentNoticeId, organizationId },
