@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { ConfigModule, ConfigService } from '@nestjs/config'
+import { validateEnv } from './config/env.validation'
 import { ThrottlerModule } from '@nestjs/throttler'
 import { UserOrIpThrottlerGuard } from './common/throttler/user-or-ip.throttler-guard'
 import { ScheduleModule } from '@nestjs/schedule'
@@ -56,7 +57,7 @@ import { Psd2Module } from './psd2/psd2.module'
 @Module({
   imports: [
     // Config
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env', validate: validateEnv }),
 
     // Rate limiting
     ThrottlerModule.forRootAsync({
