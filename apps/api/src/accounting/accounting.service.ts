@@ -939,8 +939,13 @@ export class AccountingService {
     transaction: Pick<BankTransaction, 'id' | 'date' | 'amount'>,
     organizationId: string,
     createdById: string | null,
+    // Valfri yttre transaktion — anges av bankavstämningens applyMatchToInvoice så
+    // att statusflip, bank-länk och detta verifikat skapas ATOMISKT. Faller
+    // bokföringen rullas hela matchningen tillbaka (ingen PAID utan verifikat).
+    tx?: Prisma.TransactionClient,
   ) {
-    const accounts = await this.prisma.account.findMany({
+    const db = tx ?? this.prisma
+    const accounts = await db.account.findMany({
       where: { organizationId },
       select: { id: true, number: true },
     })
@@ -969,6 +974,7 @@ export class AccountingService {
       ],
       idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId: transaction.id },
       include: { lines: { include: { account: true } } },
+      ...(tx ? { tx } : {}),
     })
   }
 

@@ -695,17 +695,79 @@ export class InvoicesService {
       paidAt: paymentDate.toISOString(),
     })
 
+    this.notifyInvoicePaid(organizationId, invoice.id, invoice.invoiceNumber)
+
+    return this.prisma.invoice.findFirstOrThrow({ where: { id, organizationId } })
+  }
+
+  /**
+   * Atomisk PAID-claim på en faktura INOM en pågående transaktion — anropas av
+   * bankavstämningens applyMatchToInvoice. Rad-lås (FOR UPDATE) + status-guard
+   * serialiserar mot en samtidig manuell betalning (markAsPaidManually) så samma
+   * faktura aldrig kan dubbelbokföras (BFL 4 kap 2 §). PAYMENT_RECEIVED-eventet
+   * skrivs i SAMMA tx. Bokföring och notis ligger UTANFÖR (callern bokför i samma
+   * tx och notifierar först efter commit) så att ett bokföringsfel rullar tillbaka
+   * hela claimen — ingen faktura kan bli PAID utan verifikat.
+   *
+   * Returnerar claimed=false om fakturan redan var reglerad/makulerad (callern
+   * bokför då inget och låter matchningen falla).
+   */
+  async claimPaidWithinTx(
+    tx: Prisma.TransactionClient,
+    id: string,
+    organizationId: string,
+    paidAt: Date,
+    actorId: string | null,
+    actorType: 'USER' | 'SYSTEM',
+    eventPayload: Record<string, unknown> = {},
+  ): Promise<{ claimed: boolean; invoiceNumber: string }> {
+    // Rad-lås först: serialiserar mot en samtidig markAsPaidManually eller annan import.
+    await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${id} AND "organizationId" = ${organizationId} FOR UPDATE`
+
+    const invoice = await tx.invoice.findFirst({
+      where: { id, organizationId },
+      select: { id: true, status: true, invoiceNumber: true },
+    })
+    if (!invoice) throw new NotFoundException('Faktura hittades inte')
+
+    // Bara öppna fakturor kan ta emot en betalning (status-guard = idempotens + race-skydd).
+    if (!PAYABLE_STATUSES.includes(invoice.status as InvoiceStatus)) {
+      return { claimed: false, invoiceNumber: invoice.invoiceNumber }
+    }
+
+    await tx.invoice.updateMany({
+      where: { id, organizationId, status: { in: PAYABLE_STATUSES } },
+      data: { status: 'PAID', paidAt },
+    })
+
+    await this.eventsService.record(
+      id,
+      'PAYMENT_RECEIVED',
+      actorType,
+      actorId,
+      {
+        previousStatus: invoice.status,
+        newStatus: 'PAID',
+        paidAt: paidAt.toISOString(),
+        ...eventPayload,
+      },
+      { tx },
+    )
+
+    return { claimed: true, invoiceNumber: invoice.invoiceNumber }
+  }
+
+  /** Fire-and-forget INVOICE_PAID-notis till alla org-användare (påverkar aldrig svaret). */
+  notifyInvoicePaid(organizationId: string, invoiceId: string, invoiceNumber: string): void {
     void this.notificationsService
       .createForAllOrgUsers(
         organizationId,
         'INVOICE_PAID',
         'Faktura betald',
-        `Faktura ${invoice.invoiceNumber} har betalats`,
-        { relatedEntityType: 'INVOICE', relatedEntityId: invoice.id },
+        `Faktura ${invoiceNumber} har betalats`,
+        { relatedEntityType: 'INVOICE', relatedEntityId: invoiceId },
       )
       .catch((err) => this.logger.error(`Notification error: ${String(err)}`))
-
-    return this.prisma.invoice.findFirstOrThrow({ where: { id, organizationId } })
   }
 
   /**
