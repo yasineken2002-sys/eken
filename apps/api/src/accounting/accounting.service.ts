@@ -972,6 +972,71 @@ export class AccountingService {
     })
   }
 
+  // Manuell betalningsregistrering på en faktura (utan bankavstämning). Speglar
+  // createJournalEntryForRentNoticeManualPayment: betalningssättet styr likvidkontot.
+  //
+  //   1930/1910  Likvidkonto     D  inbetalt belopp   (per betalningssätt)
+  //   1510       Kundfordringar  K  inbetalt belopp
+  //
+  // Utan denna bokning markeras fakturan som betald medan 1510 står kvar öppen —
+  // en affärshändelse (mottagen betalning) utan verifikation (BFL 5 kap 6 §).
+  //
+  // Idempotent via sourceId = "invoice-manual-payment:<invoiceId>". En manuell
+  // betalning reglerar fakturan i sin helhet (status PAID är terminal och
+  // status-guardas i markAsPaidManually), så en enda nyckel per faktura räcker —
+  // till skillnad från hyresavins delbetalnings-scenario som nycklar per allokering.
+  async createJournalEntryForInvoiceManualPayment(
+    invoice: Pick<Invoice, 'id' | 'invoiceNumber'>,
+    paidAmount: number,
+    paidAt: Date,
+    paymentMethod: PaymentMethod,
+    organizationId: string,
+    createdById: string | null,
+  ) {
+    const amount = Number(paidAmount)
+    if (!Number.isFinite(amount) || amount <= 0) return null
+
+    const debitAccountNumber = PAYMENT_METHOD_TO_ACCOUNT[paymentMethod]
+
+    const accounts = await this.prisma.account.findMany({
+      where: { organizationId },
+      select: { id: true, number: true },
+    })
+    const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+    const debitAccountId = accountByNumber.get(debitAccountNumber)
+    const receivableId = accountByNumber.get(1510)
+    if (!debitAccountId || !receivableId) {
+      this.logger.error(
+        `[Accounting] Likvidkonto ${debitAccountNumber} eller 1510 saknas i ` +
+          `kontoplanen (org ${organizationId}) — betalningsverifikat för faktura ` +
+          `${invoice.invoiceNumber} skapas ej.`,
+      )
+      return null
+    }
+
+    const sourceId = `invoice-manual-payment:${invoice.id}`
+    const counterparty = await this.counterpartyForInvoice(invoice.id, organizationId)
+
+    return this.createNumberedEntry({
+      organizationId,
+      date: paidAt,
+      description: `Inbetalning faktura ${invoice.invoiceNumber}${counterparty ? ` (${counterparty})` : ''}`,
+      source: 'PAYMENT',
+      sourceId,
+      createdById,
+      lines: [
+        {
+          accountId: debitAccountId,
+          debit: amount,
+          description: PAYMENT_METHOD_LABEL[paymentMethod],
+        },
+        { accountId: receivableId, credit: amount, description: 'Reglering kundfordran' },
+      ],
+      idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId },
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
   // Intäktsverifikation vid avisering (BFL 1999:1078, LAGBROTT 2). När en
   // hyresavi skapas uppstår en hyresfordran som ska bokföras enligt
   // bokföringsmässiga grunder (god redovisningssed, BFL 4 kap 2 §):

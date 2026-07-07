@@ -17,12 +17,14 @@ import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
-import { InvoicesService } from './invoices.service'
+import { InvoicesService, toPaymentMethod } from './invoices.service'
 import { PdfService } from './pdf.service'
 import { CreateInvoiceDto } from './dto/create-invoice.dto'
 import { UpdateInvoiceDto } from './dto/update-invoice.dto'
 import { TransitionStatusDto } from './dto/transition-status.dto'
+import { RegisterPaymentDto } from './dto/register-payment.dto'
 import { BulkInvoiceDto } from './dto/bulk-invoice.dto'
+import { BadRequestException } from '@nestjs/common'
 import type { InvoiceStatus } from '@prisma/client'
 
 @Controller('invoices')
@@ -119,6 +121,14 @@ export class InvoicesController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: TransitionStatusDto,
   ) {
+    // Betalning MÅSTE bokföras — den generiska statusövergången gör det inte.
+    // Tvinga klienter till POST /:id/pay (markAsPaidManually) så att en faktura
+    // aldrig kan flippas till PAID utan verifikat (BFL 5 kap 6 §).
+    if (dto.status === 'PAID') {
+      throw new BadRequestException(
+        'Använd betalningsregistrering (POST /invoices/:id/pay) för att markera en faktura som betald',
+      )
+    }
     return this.invoicesService.transitionStatus(
       id,
       organizationId,
@@ -126,6 +136,29 @@ export class InvoicesController {
       user.sub,
       'USER',
       dto.payload ?? {},
+    )
+  }
+
+  // Manuell betalningsregistrering med bokföring (likvidkonto D / 1510 K).
+  @Post(':id/pay')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
+  async registerPayment(
+    @Param('id') id: string,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: RegisterPaymentDto,
+  ) {
+    return this.invoicesService.markAsPaidManually(
+      id,
+      organizationId,
+      toPaymentMethod(dto.paymentMethod),
+      user.sub,
+      'USER',
+      {
+        enteredAmount: dto.amount,
+        ...(dto.reference ? { reference: dto.reference } : {}),
+        ...(dto.paidAt ? { paidAt: new Date(dto.paidAt) } : {}),
+      },
     )
   }
 
