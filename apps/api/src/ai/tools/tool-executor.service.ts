@@ -125,7 +125,6 @@ export interface ToolResult {
 // Tools MANAGER is allowed to use (beyond read tools)
 const MANAGER_ALLOWED_ACTIONS = new Set([
   'create_invoice',
-  'create_bulk_invoices',
   'send_invoice_email',
   'send_overdue_reminders',
   'mark_invoice_paid',
@@ -871,24 +870,6 @@ export class ToolExecutorService {
               `Sätt upp automatisk påminnelse`,
               `Skapa fler fakturor för kommande månader`,
             ],
-          }
-        }
-
-        case 'create_bulk_invoices': {
-          const month = toolInput.month as number
-          const year = toolInput.year as number
-          const firstDay = new Date(year, month - 1, 1)
-          const lastDay = new Date(year, month, 0)
-
-          const result = await this.invoicesService.createBulk(organizationId, userId, {
-            issueDate: firstDay.toISOString(),
-            dueDate: lastDay.toISOString(),
-            vatRate: (toolInput.vatRate as number) ?? 0,
-          })
-          return {
-            success: true,
-            data: result,
-            message: `${result.created} fakturor skapade för ${month}/${year}`,
           }
         }
 

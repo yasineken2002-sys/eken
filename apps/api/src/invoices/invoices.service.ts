@@ -23,7 +23,6 @@ import { NotificationsService } from '../notifications/notifications.service'
 import { isValidTransition } from '@eken/shared'
 import { CreateInvoiceDto } from './dto/create-invoice.dto'
 import { UpdateInvoiceDto } from './dto/update-invoice.dto'
-import { BulkInvoiceDto } from './dto/bulk-invoice.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 
@@ -274,6 +273,32 @@ export class InvoicesService {
         }
       }
 
+      // Dubbelbokförings-spärr (BFL 4 kap 2 §): avisering (RentNotice) är den
+      // kanoniska hyresmotorn. En manuell RENT-faktura för ett avtal+period som
+      // redan aviserats skulle intäktsbokföra samma hyra en andra gång (1510 D /
+      // 39xx K två gånger). Blockera — hyra ska faktureras via avisering.
+      if (dto.type === 'RENT') {
+        const period = new Date(dto.issueDate)
+        const existingNotice = await this.prisma.rentNotice.findFirst({
+          where: {
+            leaseId: lease.id,
+            // Bara HYRES-avin riskerar dubbelbokas — en DEPOSIT-avi för samma
+            // period (som avisering skapar vid tillträde) ska inte falskblockera.
+            type: 'RENT',
+            month: period.getUTCMonth() + 1,
+            year: period.getUTCFullYear(),
+            status: { not: 'CANCELLED' },
+          },
+          select: { id: true },
+        })
+        if (existingNotice) {
+          throw new ConflictException(
+            'Hyresavtalet har redan en hyresavi för denna period — fakturera hyra via ' +
+              'avisering (Generera avier), inte som manuell faktura.',
+          )
+        }
+      }
+
       leaseId = lease.id
       leaseTenantId = lease.tenantId
     } else {
@@ -364,85 +389,6 @@ export class InvoicesService {
     }
 
     return invoice
-  }
-
-  async createBulk(
-    organizationId: string,
-    actorId: string,
-    dto: BulkInvoiceDto,
-  ): Promise<{ created: number; skipped: number; errors: string[] }> {
-    const leases = await this.prisma.lease.findMany({
-      where: {
-        status: 'ACTIVE',
-        unit: { property: { organizationId } },
-        ...(dto.leaseIds?.length ? { id: { in: dto.leaseIds } } : {}),
-      },
-      include: {
-        tenant: { select: SAFE_TENANT_SELECT },
-        unit: { include: { property: true } },
-      },
-    })
-
-    let created = 0
-    let skipped = 0
-    const errors: string[] = []
-
-    const issueStart = startOfMonth(dto.issueDate)
-    const issueEnd = endOfMonth(dto.issueDate)
-    const description = dto.description ?? formatBulkMonth(dto.issueDate)
-
-    for (const lease of leases) {
-      if (!lease.tenant.email) {
-        skipped++
-        continue
-      }
-
-      const duplicate = await this.prisma.invoice.findFirst({
-        where: {
-          leaseId: lease.id,
-          issueDate: { gte: issueStart, lte: issueEnd },
-        },
-        select: { id: true },
-      })
-      if (duplicate) {
-        skipped++
-        continue
-      }
-
-      const createDto: CreateInvoiceDto = {
-        type: 'RENT',
-        leaseId: lease.id,
-        issueDate: dto.issueDate,
-        dueDate: dto.dueDate,
-        lines: [
-          {
-            description,
-            quantity: 1,
-            unitPrice: Number(lease.monthlyRent),
-            vatRate: (dto.vatRate ?? 0) as 0 | 6 | 12 | 25,
-          },
-        ],
-      }
-
-      try {
-        const invoice = await this.create(organizationId, actorId, createDto)
-        created++
-
-        if (dto.sendEmail) {
-          void this.sendInvoiceEmail(invoice.id, organizationId, actorId).catch((err) =>
-            this.logger.error(
-              `Bulk-invoice email failed for ${invoice.id}`,
-              err instanceof Error ? err.stack : String(err),
-            ),
-          )
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        errors.push(`Kontrakt ${lease.id}: ${msg}`)
-      }
-    }
-
-    return { created, skipped, errors }
   }
 
   async update(
@@ -909,23 +855,4 @@ export class InvoicesService {
       .record(invoiceId, 'SEND_FAILED', 'SYSTEM', null, { error: message, detail: message })
       .catch((err) => this.logger.error(`Kunde inte logga SEND_FAILED-event: ${String(err)}`))
   }
-}
-
-// ── Bulk helpers (file-private) ───────────────────────────────────────────────
-
-function formatBulkMonth(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('sv-SE', {
-    month: 'long',
-    year: 'numeric',
-  })
-}
-
-function startOfMonth(dateStr: string): Date {
-  const d = new Date(dateStr)
-  return new Date(d.getFullYear(), d.getMonth(), 1)
-}
-
-function endOfMonth(dateStr: string): Date {
-  const d = new Date(dateStr)
-  return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999)
 }

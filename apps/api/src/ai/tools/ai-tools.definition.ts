@@ -108,20 +108,6 @@ export const TOOLS: Anthropic.Tool[] = [
   },
 
   {
-    name: 'create_bulk_invoices',
-    description: 'Skapar hyresfakturor för alla aktiva kontrakt en viss månad. KRÄVER bekräftelse.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        month: { type: 'number', description: 'Månad 1-12' },
-        year: { type: 'number', description: 'År t.ex. 2026' },
-        vatRate: { type: 'number', description: 'Momssats, standard 0' },
-      },
-      required: ['month', 'year'],
-    },
-  },
-
-  {
     name: 'update_tenant',
     description: 'Uppdaterar en hyresgästs kontaktinformation. KRÄVER bekräftelse.',
     input_schema: {
@@ -998,7 +984,6 @@ export const ACTION_TOOLS = new Set([
   'create_maintenance_ticket',
   'update_maintenance_status',
   'create_invoice',
-  'create_bulk_invoices',
   'update_tenant',
   'send_invoice_email',
   'send_overdue_reminders',
