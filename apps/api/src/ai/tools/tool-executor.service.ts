@@ -27,6 +27,7 @@ import { AiAuditService } from '../audit/ai-audit.service'
 import { DocumentDeliveryService } from '../../documents/document-delivery.service'
 import type { PortalDocumentCategory } from '../../documents/document-delivery.service'
 import { ACTION_TOOLS, ACCOUNTING_ONLY_ACTIONS } from './ai-tools.definition'
+import { neutralizeUntrusted } from './untrusted-content'
 
 // ─── Mass-mejl säkerhetsgränser ──────────────────────────────────────────────
 // Skyddar mot oavsiktliga eller AI-hallucinerade massutskick. Tre lager:
@@ -518,6 +519,29 @@ export class ToolExecutorService {
     // fält rensas de bort här innan svaret går tillbaka till AI:n.
     if (result.data !== undefined && result.data !== null) {
       result.data = redactSensitive(result.data)
+    }
+
+    // Prompt-injection-härdning: rama in osäker (hyresgäst-/externt skriven) fritext
+    // i tool-resultatet så att modellen aldrig tolkar den som instruktioner. Gäller
+    // BÅDE data och message (message byggs ibland med rå hyresgästtext). Delas av
+    // non-stream- och SSE-vägen (båda serialiserar detta result). GDPR: aldrig
+    // råinnehåll i loggen — bara verktygsnamn vid träff.
+    const injectionFlags = { hit: false }
+    if (result.data !== undefined && result.data !== null) {
+      result.data = neutralizeUntrusted(result.data, undefined, injectionFlags)
+    }
+    // message ramas in ENDAST för läsverktyg — deras summeringar kan bädda in rå
+    // hyresgästtext (t.ex. get_maintenance_tickets bygger "- [nr] {title}"). Action-
+    // verktygens message är systemförfattade bekräftelser ("Faktura markerad som
+    // betald") och ska INTE märkas som osäkra (då kan AI:n hedga legitima svar).
+    if (typeof result.message === 'string' && !ACTION_TOOLS.has(toolName)) {
+      result.message = neutralizeUntrusted(result.message, 'message', injectionFlags)
+    }
+    if (injectionFlags.hit) {
+      this.logger.warn(
+        `[owner-ai] möjligt prompt-injection-mönster i tool-result för ${toolName} ` +
+          `(inget innehåll loggas)`,
+      )
     }
 
     // Audit-logg — fire-and-forget. Misslyckad loggning ska aldrig blockera
