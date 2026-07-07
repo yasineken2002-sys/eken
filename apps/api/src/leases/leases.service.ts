@@ -353,7 +353,7 @@ export class LeasesService {
           where: { id },
           data: {
             status: newStatus,
-            ...(newStatus === 'ACTIVE' ? { signedAt: new Date() } : {}),
+            ...(newStatus === 'ACTIVE' ? { activatedAt: new Date() } : {}),
             ...(newStatus === 'TERMINATED' ? { terminatedAt: new Date() } : {}),
             ...(contractNumber ? { contractNumber } : {}),
           },
@@ -731,7 +731,7 @@ export class LeasesService {
             : {}),
           noticePeriodMonths: lease.noticePeriodMonths,
           indexClause: lease.indexClause,
-          signedAt: new Date(),
+          activatedAt: new Date(),
         },
         include: INCLUDE,
       })
@@ -813,7 +813,7 @@ export class LeasesService {
               renewalPeriodMonths: lease.renewalPeriodMonths,
               noticePeriodMonths: lease.noticePeriodMonths,
               indexClause: lease.indexClause,
-              signedAt: new Date(),
+              activatedAt: new Date(),
             },
           })
 

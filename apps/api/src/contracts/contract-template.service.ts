@@ -124,7 +124,7 @@ export class ContractTemplateService {
         leaseType: lease.leaseType,
         renewalPeriodMonths: lease.renewalPeriodMonths,
         noticePeriodMonths: lease.noticePeriodMonths,
-        signedAt: lease.signedAt,
+        activatedAt: lease.activatedAt,
         includesHeating: lease.includesHeating,
         includesWater: lease.includesWater,
         includesHotWater: lease.includesHotWater,

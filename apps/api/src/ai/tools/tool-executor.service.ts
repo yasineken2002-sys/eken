@@ -25,6 +25,7 @@ import { StorageService } from '../../storage/storage.service'
 import { RedisService } from '../../common/redis/redis.service'
 import { AiAuditService } from '../audit/ai-audit.service'
 import { DocumentDeliveryService } from '../../documents/document-delivery.service'
+import { SigningService } from '../../signing/signing.service'
 import type { PortalDocumentCategory } from '../../documents/document-delivery.service'
 import { ACTION_TOOLS, ACCOUNTING_ONLY_ACTIONS } from './ai-tools.definition'
 import { neutralizeUntrusted } from './untrusted-content'
@@ -339,6 +340,9 @@ export class ToolExecutorService {
     private readonly redis: RedisService,
     private readonly audit: AiAuditService,
     private readonly documentDelivery: DocumentDeliveryService,
+    // S2 AI-seam: AI får FÖRBEREDA en signering (createSigningRequest), aldrig
+    // fullborda den. Ingen refresh/seal-metod exponeras här.
+    private readonly signingService: SigningService,
   ) {}
 
   /**
@@ -592,6 +596,13 @@ export class ToolExecutorService {
             'Endast bokförare (ACCOUNTANT) eller administratörer får använda bokförings-verktyg.',
           )
         }
+      }
+      // Signeringsförberedelse är en bindande handling → endast OWNER/ADMIN (propagerar
+      // som 403, till skillnad från en mjuk handler-retur). AI:n förbereder bara.
+      if (toolName === 'prepare_contract_signing' && userRole !== 'OWNER' && userRole !== 'ADMIN') {
+        throw new ForbiddenException(
+          'Endast OWNER/ADMIN får förbereda en signering (bindande handling).',
+        )
       }
     }
 
@@ -2072,6 +2083,35 @@ export class ToolExecutorService {
               'Vänta ut invändningsfristen (minst 2 mån från meddelandedatum)',
               'Systemet applicerar höjningen automatiskt på effectiveDate',
             ],
+          }
+        }
+
+        // S2 AI-seam: FÖRBERED en signering. AI:n kan starta signeringsbegäran
+        // (fryser contentHash) men kan ALDRIG fullborda den — det finns inget
+        // verktyg som signerar/förseglar. En människa slutför BankID-signaturen.
+        // Bindande handling → endast OWNER/ADMIN. Inert bakom SIGNING_ENABLED
+        // (createSigningRequest → Stub 503 när av; felet fångas här).
+        case 'prepare_contract_signing': {
+          // Behörighet (OWNER/ADMIN) grindas i topp-guarden ovan (propagerar 403).
+          const documentId = toolInput.documentId as string
+          try {
+            const request = await this.signingService.createSigningRequest(
+              organizationId,
+              userId,
+              documentId,
+            )
+            return {
+              success: true,
+              message:
+                `Signeringsbegäran förberedd för dokument ${documentId}. En människa måste nu ` +
+                `slutföra BankID-signeringen i signeringsvyn — AI-assistenten kan inte fullborda den.`,
+              data: { signingRequestId: request.id, status: request.status },
+            }
+          } catch (err) {
+            return {
+              success: false,
+              message: `Kunde inte förbereda signering: ${err instanceof Error ? err.message : String(err)}`,
+            }
           }
         }
 
