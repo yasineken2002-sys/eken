@@ -40,6 +40,10 @@ function makeService(invoiceStatus: string | null) {
 
   const eventsService = { record: jest.fn().mockResolvedValue({ id: 'evt-1' }) }
   const notificationsService = { createForAllOrgUsers: jest.fn().mockResolvedValue(undefined) }
+  // VOID reverserar fakturans intäktsverifikat (fix #4) — no-op-mock räcker här.
+  const accountingService = {
+    reverseJournalEntryForInvoice: jest.fn().mockResolvedValue(undefined),
+  }
 
   // Övriga konstruktorberoenden används inte av remove()/transitionStatus.
   const service = new InvoicesService(
@@ -47,7 +51,7 @@ function makeService(invoiceStatus: string | null) {
     eventsService as never,
     {} as never, // pdfService
     {} as never, // mailService
-    {} as never, // accountingService
+    accountingService as never,
     notificationsService as never,
     {} as never, // ocrService
     {} as never, // pdfQueue

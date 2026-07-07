@@ -1433,6 +1433,87 @@ export class AccountingService {
     })
   }
 
+  // Motverifikat vid annullering av en hyresavi (cancelNotice). Intäkten bokas vid
+  // avi-genereringen (createJournalEntryForRentNotice: 1510 D / 39xx K / ev. 26xx K,
+  // sourceId="rent-notice:<id>"). Utan en reversering vid annullering kvarstår en
+  // fantomintäkt, fantomfordran och — för lokal med moms — utgående moms som betalas
+  // in för en affärshändelse som aldrig fullbordades (BFL 5 kap 5 §/9 §). Speglar
+  // reverseJournalEntryForMiscCharge: byter debet/kredit, eget sourceId, idempotent.
+  // No-op om ingen originalpost finns (t.ex. DEPOSIT-avi som aldrig intäktsbokfördes).
+  async reverseJournalEntryForRentNotice(
+    noticeId: string,
+    organizationId: string,
+    createdById: string | null,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const db = tx ?? this.prisma
+    const sourceId = `rent-notice:${noticeId}`
+    const original = await db.journalEntry.findFirst({
+      where: { organizationId, source: 'INVOICE', sourceId },
+      include: { lines: true },
+    })
+    if (!original) return
+
+    const reversalLines: JournalLineInput[] = original.lines.map((l) => ({
+      accountId: l.accountId,
+      ...(l.debit != null ? { credit: Number(l.debit) } : {}),
+      ...(l.credit != null ? { debit: Number(l.credit) } : {}),
+      ...(l.description ? { description: `Reversal: ${l.description}` } : {}),
+    }))
+
+    const reversalSourceId = `rent-notice-reversal:${noticeId}`
+    await this.createNumberedEntry({
+      organizationId,
+      date: new Date(),
+      description: `Annullerad hyresavi: ${original.description}`,
+      source: 'INVOICE',
+      sourceId: reversalSourceId,
+      createdById,
+      lines: reversalLines,
+      idempotencyWhere: { organizationId, source: 'INVOICE', sourceId: reversalSourceId },
+      ...(tx ? { tx } : {}),
+    })
+  }
+
+  // Motverifikat vid makulering av en faktura (Invoice VOID). Intäkten bokas redan
+  // vid create() (createJournalEntryForInvoice: 1510 D / 39xx K / ev. 26xx K,
+  // sourceId=invoice.id) oavsett status — även DRAFT. Utan reversering vid VOID
+  // kvarstår fantomintäkt + utgående moms (BFL 5 kap 5 §/9 §). No-op om ingen
+  // originalpost finns.
+  async reverseJournalEntryForInvoice(
+    invoiceId: string,
+    organizationId: string,
+    createdById: string | null,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const db = tx ?? this.prisma
+    const original = await db.journalEntry.findFirst({
+      where: { organizationId, source: 'INVOICE', sourceId: invoiceId },
+      include: { lines: true },
+    })
+    if (!original) return
+
+    const reversalLines: JournalLineInput[] = original.lines.map((l) => ({
+      accountId: l.accountId,
+      ...(l.debit != null ? { credit: Number(l.debit) } : {}),
+      ...(l.credit != null ? { debit: Number(l.credit) } : {}),
+      ...(l.description ? { description: `Reversal: ${l.description}` } : {}),
+    }))
+
+    const reversalSourceId = `invoice-reversal:${invoiceId}`
+    await this.createNumberedEntry({
+      organizationId,
+      date: new Date(),
+      description: `Makulerad faktura: ${original.description}`,
+      source: 'INVOICE',
+      sourceId: reversalSourceId,
+      createdById,
+      lines: reversalLines,
+      idempotencyWhere: { organizationId, source: 'INVOICE', sourceId: reversalSourceId },
+      ...(tx ? { tx } : {}),
+    })
+  }
+
   // Bokslutspost: upplupen förbrukningsintäkt (IMD). Förbrukning som är konsumerad
   // men ännu OMÄTT vid räkenskapsårets slut (mätaren läses först i januari) saknar
   // ett ACTUAL-verifikat i rätt år. Här periodiseras den estimerade intäkten:

@@ -529,6 +529,15 @@ export class InvoicesService {
         )
       }
 
+      // Makulering: reversera den intäkt som bokades vid create() (createJournal-
+      // EntryForInvoice, oavsett status — även DRAFT). Utan motverifikat kvarstår
+      // fantomintäkt + utgående moms för en makulerad faktura (BFL 5 kap 5 §/9 §).
+      // Körs i SAMMA tx → faller reverseringen rullas statusflippen tillbaka.
+      // No-op om fakturan aldrig bokförts.
+      if (newStatus === 'VOID') {
+        await this.accountingService.reverseJournalEntryForInvoice(id, organizationId, actorId, tx)
+      }
+
       return updated
     })
 

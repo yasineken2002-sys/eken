@@ -65,10 +65,16 @@ function makeService(opts?: {
     },
     // PR 2 — append-only trail för kravstegs-nollställningen.
     rentNoticeEvent: { create: eventCreate },
+    // cancelNotice kör statusflip + motverifikat (fix #4) atomiskt i $transaction.
+    // Deklareras här, tilldelas nedan (undviker cirkulär typinferens på `prisma`).
+    $transaction: undefined as unknown as (cb: (t: unknown) => unknown) => unknown,
   }
+  prisma.$transaction = jest.fn((cb: (t: unknown) => unknown) => cb(prisma))
 
   const accounting = {
     createJournalEntryForRentNoticeManualPayment: jest.fn().mockResolvedValue({ id: 'je-pay-1' }),
+    // Fix #4 — annullering reverserar avins intäktsverifikat (no-op-mock räcker).
+    reverseJournalEntryForRentNotice: jest.fn().mockResolvedValue(undefined),
   }
   const noop = {}
 
