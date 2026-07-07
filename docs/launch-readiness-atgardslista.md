@@ -94,7 +94,7 @@ Dessa ligger utanför MÅSTE-listan och blockeras av extern registrering/avtal, 
 
 ## 🔴 MÅSTE FÖRE LANSERING
 
-### 1. Env-validering vid boot (stänger hela klassen "funkar i dev, dör tyst i prod")
+### 1. Env-validering vid boot (stänger hela klassen "funkar i dev, dör tyst i prod") — ✅ ÅTGÄRDAD
 
 **Problem:** `ConfigModule.forRoot(...)` i `apps/api/src/app.module.ts:58` saknar
 `validationSchema`. Saknade env-vars i Railway kraschar inte appen utan ger tysta fel först i
@@ -113,6 +113,33 @@ drift:
 **Fix:** Zod-schema (eller Joi via `validationSchema`) som i `NODE_ENV=production` **vägrar
 starta** om någon av ovanstående + `DATABASE_URL`, `APP_URL`, `ADMIN_URL`, `JWT_SECRET`,
 `PLATFORM_JWT_SECRET` saknas. I dev: varna. En liten PR som stänger hela felklassen.
+
+**Fix (implementerad):** `apps/api/src/config/env.validation.ts` (`validateEnv`) inkopplad via
+`ConfigModule.forRoot({ validate: validateEnv })` i `app.module.ts`. Kör vid boot innan DB/Redis.
+
+- **Alltid-kritiska** (prod → vägrar starta, dev/test → varnar, blockerar ej): `DATABASE_URL`,
+  `REDIS_URL`, `JWT_SECRET`/`PLATFORM_JWT_SECRET` (≥16), `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`,
+  `ANTHROPIC_API_KEY`, alla fyra `R2_*`, samt `APP_URL`/`WEB_URL`/`ADMIN_URL`/`PORTAL_URL` (URL-format).
+  Alla fel samlas i ETT tydligt boot-fel som namnger varje saknad/ogiltig variabel.
+- **Flagg-villkorade** (krävs bara när flaggan är på, valideras i alla miljöer — **speglar** den
+  befintliga fail-fast i `psd2.module.ts`/`signing.module.ts`, dubblar/motsäger den inte):
+  `PSD2_ENABLED=true` ⇒ `PSD2_TOKEN_KEY` (64 hex); `SIGNING_ENABLED=true` ⇒ `SIGNING_PII_KEY`
+  (64 hex) + `SIGNING_PII_PEPPER` (≥16).
+- **Valfria med default** (`MAIL_FROM`, `PORT`, `THROTTLE_*`, `BACKUP_RETENTION_DAYS`,
+  `PSD2_CALLBACK_URL`/`PSD2_APP_RETURN_URL`): endast format-varning om satta, blockerar aldrig.
+- **`BACKUP_*` medvetet UTELÄMNAT ur boot-krasch:** `backup.service.ts:74-93` är en avsiktlig
+  fail-closed no-op + error-logg (appen ska köra vidare utan backup) — ett boot-krasch där skulle
+  motsäga den logiken.
+
+**Bevis:** 14 enhetstester (`env.validation.spec.ts`) + 3 boot-integrationstester
+(`env.validation.integration.spec.ts` — riktig `ConfigModule.forRoot`-boot). Verifierat live:
+dev-server bootar oförändrat (health `ok`) och loggar bara en icke-blockerande varning för de
+lokalt osatta varerna (R2/WEB_URL/PORTAL_URL). Additivt — appen bootar exakt som förut när alla
+variabler finns.
+
+> **Kvarstår (icke-blockerande, hygien):** flera lästa variabler saknas i `apps/api/.env.example`
+> (`WEB_URL`, `SIGNING_ENABLED`/`SIGNING_PII_KEY`/`SIGNING_PII_PEPPER`, `BACKUP_*`,
+> `R2_BACKUP_*`, m.fl.). Uppdatera `.env.example` som referens så operatören ser hela listan.
 
 ### 2. Koppla in testsviten i CI
 
