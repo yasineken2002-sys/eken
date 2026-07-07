@@ -620,6 +620,7 @@ model Organization {
   journalEntries     JournalEntry[]
   bankTransactions   BankTransaction[]
   bankStatementImports BankStatementImport[]
+  bankConsents       BankConsent[]
   contractImportBatches ContractImportBatch[]
   documents          Document[]
   importJobs         ImportJob[]
@@ -1464,6 +1465,62 @@ enum BankStatementImportStatus {
   CONFIRMED // Användaren har bekräftat — BankTransaction-rader skapade
   FAILED    // Tolkning misslyckades (AI-fel / ogiltig JSON)
   CANCELLED // Användaren avbröt granskningen
+}
+
+// ── PSD2 P2: bankkoppling (samtycke + sync). ALLT inert bakom PSD2_ENABLED. ──────
+
+enum BankConsentStatus {
+  ACTIVE  // Giltigt samtycke — sync tillåten
+  EXPIRED // SCA-omcertifiering krävs (~90 dagar)
+  REVOKED // Återkallat (av användaren eller banken)
+  ERROR   // Providern rapporterade fel — sync pausad
+}
+
+// Ett PSD2-samtycke per bankkoppling. access/refresh-tokens är app-layer-
+// krypterade (AES-256-GCM) och lämnar ALDRIG backend (aldrig frontend/logg/AI).
+// `organizationId` är sanningskällan för sync-scoping — härleds ALDRIG ur
+// aggregatorns råsvar. onDelete: Restrict speglar BankTransaction (räkenskaps-
+// underlag / spårbarhet får inte tappas).
+model BankConsent {
+  id              String            @id @default(uuid())
+  organizationId  String
+  provider        String            // 'STUB' | 'MOCK' | skarp adapter (P3)
+  consentId       String            // aggregatorns samtyckes-id
+  status          BankConsentStatus @default(ACTIVE)
+  accessTokenEnc  String            // AES-256-GCM (base64 iv+tag+ct)
+  refreshTokenEnc String?           // AES-256-GCM
+  scope           String?
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  lastSyncedAt    DateTime?
+  syncCursor      String?           // inkrementell fetch (since) per konto/consent
+  createdByUserId String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, provider, consentId])
+  @@index([organizationId])
+  @@index([status])
+}
+
+// Efemär CSRF-bindning för consent-redirecten (PSD2 SCA). `state` är en
+// engångs-token; callbacken validerar den single-use och hämtar organizationId
+// HÄRIFRÅN (server-lagrat), aldrig ur callback-queryn. Ingen org-relation —
+// kortlivad och rensas efter förbrukning/utgång.
+model Psd2ConsentState {
+  id                String    @id @default(uuid())
+  state             String    @unique
+  organizationId    String
+  provider          String
+  initiatedByUserId String?
+  consumedAt        DateTime? // single-use: sätts atomiskt vid callback
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+
+  @@index([organizationId])
+  @@index([expiresAt])
 }
 
 // ─── Batch-kontraktsskanning (PR1: datamodell + skanningskö + batch-tak) ──────

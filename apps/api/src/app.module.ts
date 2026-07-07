@@ -51,6 +51,7 @@ import { PublicPlansModule } from './public/public-plans.module'
 import { WebhooksModule } from './webhooks/webhooks.module'
 import { BackupModule } from './backup/backup.module'
 import { SigningModule } from './signing/signing.module'
+import { Psd2Module } from './psd2/psd2.module'
 
 @Module({
   imports: [
@@ -131,6 +132,7 @@ import { SigningModule } from './signing/signing.module'
     WebhooksModule,
     BackupModule,
     SigningModule,
+    Psd2Module,
   ],
   providers: [{ provide: APP_GUARD, useClass: UserOrIpThrottlerGuard }, GlobalExceptionFilter],
 })
