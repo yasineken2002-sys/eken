@@ -147,8 +147,8 @@ export class AviseringController {
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.OWNER)
   @HttpCode(HttpStatus.OK)
-  async cancel(@OrgId() orgId: string, @Param('id') id: string) {
-    return this.aviseringService.cancelNotice(id, orgId)
+  async cancel(@OrgId() orgId: string, @Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.aviseringService.cancelNotice(id, orgId, user.sub)
   }
 
   // Inkasso PR 5 — kundförlust (skuld-sidans bokföringscykel). Bokföringsåtgärder

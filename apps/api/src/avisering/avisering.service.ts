@@ -1354,7 +1354,7 @@ export class AviseringService {
     })
   }
 
-  async cancelNotice(noticeId: string, orgId: string) {
+  async cancelNotice(noticeId: string, orgId: string, actorId?: string | null) {
     const notice = await this.prisma.rentNotice.findFirst({
       where: { id: noticeId, organizationId: orgId },
     })
@@ -1363,20 +1363,29 @@ export class AviseringService {
       throw new BadRequestException('Kan inte avbryta en betald avi')
     }
 
-    // Bankavstämnings-härdning PR 2 — en avbruten avi lämnar kravtrappan: nollställ
-    // collectionStage till NONE ATOMISKT (samma anti-zombie-princip som PAID-vägarna).
-    // updateMany med organizationId i WHERE org-scopar uppdateringen (defense-in-depth
-    // mot ett läckt noticeId) i stället för update på enbart id.
-    const cancelled = await this.prisma.rentNotice.updateMany({
-      where: { id: noticeId, organizationId: orgId, status: { not: RentNoticeStatus.PAID } },
-      data: { status: RentNoticeStatus.CANCELLED, collectionStage: RentCollectionStage.NONE },
+    // Statusflip + motverifikat körs ATOMISKT. Intäkten bokades vid avi-genereringen
+    // (1510 D / 39xx K / ev. 26xx K); en annullering MÅSTE reversera den, annars
+    // kvarstår fantomintäkt + utgående moms (BFL 5 kap 5 §/9 §). Faller reverseringen
+    // rullas hela annulleringen tillbaka — ingen CANCELLED-avi utan motverifikat.
+    await this.prisma.$transaction(async (tx) => {
+      // Bankavstämnings-härdning PR 2 — en avbruten avi lämnar kravtrappan: nollställ
+      // collectionStage till NONE ATOMISKT. updateMany med organizationId i WHERE
+      // org-scopar uppdateringen (defense-in-depth mot ett läckt noticeId).
+      const cancelled = await tx.rentNotice.updateMany({
+        where: { id: noticeId, organizationId: orgId, status: { not: RentNoticeStatus.PAID } },
+        data: { status: RentNoticeStatus.CANCELLED, collectionStage: RentCollectionStage.NONE },
+      })
+      if (cancelled.count === 0) {
+        // En parallell process hann reglera avin mellan läsning och uppdatering.
+        throw new ConflictException('Avin är redan reglerad — uppdatera sidan och försök igen')
+      }
+
+      // Motverifikat (no-op om avin aldrig intäktsbokfördes, t.ex. DEPOSIT-avi).
+      await this.accounting.reverseJournalEntryForRentNotice(noticeId, orgId, actorId ?? null, tx)
     })
-    if (cancelled.count === 0) {
-      // En parallell process hann reglera avin mellan läsning och uppdatering.
-      throw new ConflictException('Avin är redan reglerad — uppdatera sidan och försök igen')
-    }
 
     // Append-only trail för kravstegs-nollställningen (endast om avin var i trappan).
+    // Efter commit — best effort, påverkar inte den bokförda annulleringen.
     if (notice.collectionStage !== RentCollectionStage.NONE) {
       await this.prisma.rentNoticeEvent
         .create({
