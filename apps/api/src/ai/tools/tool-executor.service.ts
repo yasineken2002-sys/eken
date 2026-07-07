@@ -66,9 +66,14 @@ const SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set([
   'apiKey',
 ])
 
-function redactSensitive<T>(value: T, depth = 0): T {
+export function redactSensitive<T>(value: T, depth = 0): T {
   if (depth > 12) return value
   if (value === null || value === undefined) return value
+  // Prisma Decimal är ett objekt — utan denna vakt rekurserar vi in i dess interna
+  // {s,e,d}-representation och matar AI:n decimal.js-internaler i stället för belopp
+  // (tyst hallucinationskälla för ett bokförings-AI). Konvertera till number, samma
+  // som get_bank_transactions redan gör med Number(t.amount).
+  if (value instanceof Prisma.Decimal) return value.toNumber() as unknown as T
   if (Array.isArray(value)) {
     return value.map((v) => redactSensitive(v, depth + 1)) as unknown as T
   }
