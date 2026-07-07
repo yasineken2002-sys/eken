@@ -49,6 +49,7 @@ import { PdfQueueModule } from './pdf-jobs/pdf-queue.module'
 import { AiUsagePageModule } from './ai-usage/ai-usage.module'
 import { PublicPlansModule } from './public/public-plans.module'
 import { WebhooksModule } from './webhooks/webhooks.module'
+import { BackupModule } from './backup/backup.module'
 
 @Module({
   imports: [
@@ -127,6 +128,7 @@ import { WebhooksModule } from './webhooks/webhooks.module'
     AiUsagePageModule,
     PublicPlansModule,
     WebhooksModule,
+    BackupModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: UserOrIpThrottlerGuard }, GlobalExceptionFilter],
 })
