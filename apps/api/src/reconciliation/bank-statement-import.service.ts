@@ -174,6 +174,7 @@ export class BankStatementImportService {
           amount: amountDecimal,
           ...(t.ocr ? { rawOcr: t.ocr, reference: t.ocr } : {}),
         },
+        crossSource: { date, amount: amountDecimal, ...(t.ocr ? { ocr: t.ocr } : {}) },
       })
       if (outcome.duplicate) {
         duplicates++
