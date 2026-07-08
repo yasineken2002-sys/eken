@@ -1,19 +1,19 @@
 /**
  * #41 — deposition-livscykel: create-sida (Deposit-rad + 1510 D/2890 K) + backfill
- * + markPaid-guard för avi-länkade depositioner.
+ * + manuell betalväg (T2.2) för avi-länkade depositioner.
  *
  * Bevisar:
  *   • ensureDepositForNotice skapar Deposit{PENDING, rentNoticeId} OCH bokför
  *     1510 D/2890 K ATOMISKT; idempotent (hoppar om Deposit finns); kastar om
  *     accrual-verifikatet uteblir (Deposit skapas ALDRIG utan bokförd 1510).
- *   • markPaid NEKAR manuell markering av en avi-länkad deposition (skulle annars
- *     flippa PAID utan verifikat).
+ *   • markPaid BOKFÖR en avi-länkad deposition (1930 D/1510 K, manuell) + flippar
+ *     avin; kastar om verifikatet uteblir (ingen PAID utan bokföring).
  *   • backfillOrphanDepositNotices sveper orphan-avier via ensureDepositForNotice.
  */
 
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
-import { BadRequestException, InternalServerErrorException } from '@nestjs/common'
+import { InternalServerErrorException } from '@nestjs/common'
 import { DepositsService } from './deposits.service'
 
 function make(opts: { existingDeposit?: unknown; accrualReturnsNull?: boolean } = {}) {
@@ -89,21 +89,58 @@ describe('#41 · ensureDepositForNotice — Deposit + 1510 D/2890 K atomiskt', (
   })
 })
 
-describe('#41 · markPaid nekar avi-länkad deposition', () => {
-  it('rentNoticeId satt + ingen invoiceId → BadRequest (skulle annars flippa PAID utan verifikat)', async () => {
-    const { service, prisma } = make()
-    prisma.deposit.findFirst.mockResolvedValue({
-      id: 'dep-1',
-      organizationId: 'org-1',
-      status: 'PENDING',
-      invoiceId: null,
-      rentNoticeId: 'rn-dep-1',
-      lease: {},
-      tenant: {},
-      invoice: null,
-    })
+describe('#41/T2.2 · markPaid bokför avi-länkad deposition (1930 D/1510 K)', () => {
+  function makeMarkPaid(opts: { manualReturnsNull?: boolean } = {}) {
+    const txMock = {
+      deposit: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findFirstOrThrow: jest.fn().mockResolvedValue({ id: 'dep-1', status: 'PAID' }),
+      },
+      rentNotice: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    }
+    const prisma = {
+      deposit: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'dep-1',
+          organizationId: 'org-1',
+          status: 'PENDING',
+          invoiceId: null,
+          rentNoticeId: 'rn-1',
+          amount: 15000,
+          lease: {},
+          tenant: {},
+          invoice: null,
+        }),
+      },
+      $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(txMock)),
+    }
+    const accounting = {
+      createJournalEntryForDepositManualPayment: jest
+        .fn()
+        .mockResolvedValue(opts.manualReturnsNull ? null : { id: 'je-manual' }),
+    }
+    const service = new DepositsService(prisma as never, accounting as never, {} as never)
+    return { service, txMock, accounting }
+  }
+
+  it('avi-länkad → bokför 1930 D/1510 K (manuell) + flippar länkad avi → PAID', async () => {
+    const { service, txMock, accounting } = makeMarkPaid()
+    await service.markPaid('dep-1', 'org-1', 'user-1')
+
+    expect(accounting.createJournalEntryForDepositManualPayment).toHaveBeenCalledTimes(1)
+    const args = accounting.createJournalEntryForDepositManualPayment.mock.calls[0]!
+    expect(args[0]).toBe('dep-1') // depositId
+    expect(args[2]).toBe(15000) // amount
+    expect(args[6]).toBeDefined() // tx (atomiskt)
+    // Deposit-status-claim (PENDING→PAID) + länkad avi → PAID.
+    expect(txMock.deposit.updateMany.mock.calls[0]![0].data).toMatchObject({ status: 'PAID' })
+    expect(txMock.rentNotice.updateMany.mock.calls[0]![0].data).toMatchObject({ status: 'PAID' })
+  })
+
+  it('manual-verifikat null (saknad kontoplan) → KASTAR (ingen PAID utan verifikat)', async () => {
+    const { service } = makeMarkPaid({ manualReturnsNull: true })
     await expect(service.markPaid('dep-1', 'org-1', 'user-1')).rejects.toBeInstanceOf(
-      BadRequestException,
+      InternalServerErrorException,
     )
   })
 })

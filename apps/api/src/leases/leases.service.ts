@@ -741,10 +741,10 @@ export class LeasesService {
       include: INCLUDE,
     })
 
-    // Eventuell deposition flyttas till REFUND_PENDING.
-    void this.deposits
-      .markRefundPendingForLease(id, organizationId)
-      .catch((err) => this.logger.error(`Deposit refund-pending failed: ${String(err)}`))
+    // #73: depositionen flyttas INTE till REFUND_PENDING här (uppsägningsdatum).
+    // Depositionen är en säkerhet för HELA hyrestiden inkl. uppsägningstiden — den
+    // får inte frisläppas förrän hyresgästen faktiskt flyttat ut. Triggern ligger
+    // därför i terminateExpiredNoticeLeases (när endDate passerat → TERMINATED).
 
     // Notis till alla användare i organisationen
     void this.notifications
@@ -857,8 +857,16 @@ export class LeasesService {
       this.rentIncreases.applyDueIncreases(today),
     ])
 
+    // #73 catch-up (EFTER termineringssvepet ovan): läk PAID-depositioner på
+    // TERMINATED-kontrakt vars inline-flaggning i terminateExpiredNoticeLeases
+    // kan ha felat (transient). Idempotent självläkning.
+    const refundSwept = await this.deposits.sweepTerminatedLeasesForRefundPending().catch((err) => {
+      this.logger.error(`[Leases] Deposit refund-sweep failed: ${String(err)}`)
+      return 0
+    })
+
     this.logger.log(
-      `[Leases] Lifecycle done: ${renewed} renewed, ${reminders} reminders, ${terminated} terminated, ${depositReminders} deposit reminders, ${rentApplied} rent increases applied`,
+      `[Leases] Lifecycle done: ${renewed} renewed, ${reminders} reminders, ${terminated} terminated, ${depositReminders} deposit reminders, ${refundSwept} refund-sweep, ${rentApplied} rent increases applied`,
     )
   }
 
@@ -990,6 +998,21 @@ export class LeasesService {
           // Frigör enheten om inget annat ACTIVE-kontrakt finns (synk-punkt).
           await syncUnitStatusFromLeases(tx, lease.unitId)
         })
+
+        // #73: NU (hyresgästen har flyttat ut, endDate passerat) flyttas en
+        // betald deposition till REFUND_PENDING — inte vid uppsägningsdatum.
+        // Säkerheten hålls kvar under hela uppsägningstiden. Best-effort: ett fel
+        // här får inte fälla cron-svepet. Självläkning finns: en PAID-deposition
+        // på ett TERMINATED-kontrakt som missas här fångas av den dagliga
+        // sweepTerminatedLeasesForRefundPending() i processLifecycle.
+        await this.deposits
+          .markRefundPendingForLease(lease.id, lease.organizationId)
+          .catch((err) =>
+            this.logger.error(
+              `[Leases] Deposit refund-pending failed for ${lease.id}: ${String(err)}`,
+            ),
+          )
+
         this.logger.log(`[Leases] Terminated expired-notice lease ${lease.id}`)
         terminated++
       } catch (err) {
