@@ -43,7 +43,8 @@ function req(over: Record<string, unknown> = {}) {
     lease: {
       id: 'lease-1',
       noticePeriodMonths: 3,
-      unit: { name: 'Lgh 1001', property: { name: 'Eken 1' } },
+      tenancyRegime: 'PRIVATE_RENTAL',
+      unit: { type: 'APARTMENT', name: 'Lgh 1001', property: { name: 'Eken 1' } },
     },
     ...over,
   }
@@ -77,10 +78,12 @@ describe('TerminationsService.approve', () => {
     await service.approve('tr-1', 'org-1', 'user-9', { effectiveDate: '2030-07-15' })
 
     expect(leases.terminate).toHaveBeenCalledTimes(1)
-    const [leaseId, dto, org] = leases.terminate.mock.calls[0]
+    const [leaseId, dto, org, initiator] = leases.terminate.mock.calls[0]
     expect(leaseId).toBe('lease-1')
     expect(org).toBe('org-1')
     expect(dto.effectiveDate).toMatch(/^2030-07-15/)
+    // #69: hyresvärden godkänner hyresgästens begäran → hyresgästens uppsägningstid.
+    expect(initiator).toBe('TENANT')
     expect(prisma.terminationRequest.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'tr-1' },
@@ -102,6 +105,21 @@ describe('TerminationsService.approve', () => {
     const used = leases.terminate.mock.calls[0][1].effectiveDate as string
     expect(used.startsWith('2020-01-01')).toBe(false)
     expect(new Date(used).getTime()).toBeGreaterThan(Date.now())
+  })
+
+  it('#69 privatuthyrning: utan datum + snart önskat datum → 1-månadersgolv (inte 3)', async () => {
+    // Fast systemtid för deterministiskt golv.
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-12T09:00:00Z'))
+    try {
+      // Hyresgäst vill flytta snabbt (önskat datum före 1-mån-golvet) → golvas till
+      // 30 sep (endOfNoticePeriod(2026-08-12, 1)), INTE 30 nov (3 mån).
+      const { service, leases } = makeService(req({ requestedEndDate: new Date('2026-08-20') }))
+      await service.approve('tr-1', 'org-1', 'user-9', {})
+      expect(leases.terminate.mock.calls[0][1].effectiveDate).toMatch(/^2026-09-30/)
+      expect(leases.terminate.mock.calls[0][3]).toBe('TENANT')
+    } finally {
+      jest.useRealTimers()
+    }
   })
 
   it('kör INTE lease-terminering om status inte är PENDING', async () => {
