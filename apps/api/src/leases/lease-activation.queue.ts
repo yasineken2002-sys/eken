@@ -28,6 +28,11 @@ export type LeaseActivationJob =
       type: 'create-initial-notices'
       leaseId: string
       organizationId: string
+      // Succession (förnyelse): hoppa över deposition-avin — depositionen är redan
+      // uttagen/bokförd på ursprungsavtalet och re-pekas (T1.3), inte ny-skapas.
+      // Bara gap-avin (första prorata-hyresavin) skapas. Default false (manuell
+      // aktivering skapar både deposition och första avi).
+      skipDeposit?: boolean
     }
 
 const JOB_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -81,6 +86,7 @@ export class LeaseActivationQueue {
   async enqueueInitialNotices(payload: {
     leaseId: string
     organizationId: string
+    skipDeposit?: boolean
   }): Promise<string> {
     const jobOptions: JobOptions = {
       attempts: 5,

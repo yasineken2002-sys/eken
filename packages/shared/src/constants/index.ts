@@ -109,7 +109,7 @@ export const INVOICE_EVENT_TYPES = [
 // Giltiga statusövergångar. Terminala statusar (PAID, VOID) har tomma arrayer.
 // Samma approach som Stripe använder internt.
 
-import type { InvoiceStatus, InvoiceEventType } from '../types'
+import type { InvoiceStatus, InvoiceEventType, LeaseStatus } from '../types'
 
 export const INVOICE_TRANSITIONS: Record<InvoiceStatus, InvoiceStatus[]> = {
   DRAFT: ['SENT', 'VOID'],
@@ -123,6 +123,22 @@ export const INVOICE_TRANSITIONS: Record<InvoiceStatus, InvoiceStatus[]> = {
 
 export function isValidTransition(from: InvoiceStatus, to: InvoiceStatus): boolean {
   return INVOICE_TRANSITIONS[from]?.includes(to) ?? false
+}
+
+// Hyresavtalets statusmaskin (#60). Enda källan till giltiga övergångar, delad
+// mellan alla status-skrivare i LeasesService (transitionStatus, renew/autoRenew
+// gamla→EXPIRED, terminateExpired ACTIVE→TERMINATED). Gäller BARA övergångar på en
+// BEFINTLIG rad — ett nytt avtal som skapas direkt ACTIVE (succession) har ingen
+// from-status och gate:as därför inte. EXPIRED/TERMINATED är terminala.
+export const LEASE_STATUS_TRANSITIONS: Record<LeaseStatus, LeaseStatus[]> = {
+  DRAFT: ['ACTIVE', 'TERMINATED'],
+  ACTIVE: ['EXPIRED', 'TERMINATED'],
+  EXPIRED: [],
+  TERMINATED: [],
+}
+
+export function isValidLeaseTransition(from: LeaseStatus, to: LeaseStatus): boolean {
+  return LEASE_STATUS_TRANSITIONS[from]?.includes(to) ?? false
 }
 
 // Mappar statusövergång → händelsetyp som loggas

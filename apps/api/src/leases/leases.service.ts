@@ -18,7 +18,7 @@ import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
 import { TerminateLeaseDto } from './dto/terminate-lease.dto'
 import { RenewLeaseDto } from './dto/renew-lease.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
-import { addMonths, endOfNoticePeriod } from '@eken/shared'
+import { addMonths, endOfNoticePeriod, isValidLeaseTransition } from '@eken/shared'
 import {
   minNoticePeriodMonths,
   noticePeriodErrorMessage,
@@ -28,11 +28,6 @@ import {
   defaultTenancyRegime,
   type TerminationInitiator,
 } from './leases.compliance'
-
-const VALID_TRANSITIONS: Partial<Record<LeaseStatus, LeaseStatus[]>> = {
-  DRAFT: ['ACTIVE', 'TERMINATED'],
-  ACTIVE: ['EXPIRED', 'TERMINATED'],
-}
 
 const INCLUDE = {
   unit: { include: { property: true } },
@@ -591,6 +586,62 @@ export class LeasesService {
     })
   }
 
+  // ── T1.2: delad aktiverings-seam (#60) ─────────────────────────────────────
+  // Statusmaskin-gate på en BEFINTLIG rads övergång (delad källa i @eken/shared).
+  // Ett nytt avtal som skapas direkt ACTIVE (succession) har ingen from-status och
+  // gate:as INTE här — bara faktiska övergångar (DRAFT→ACTIVE, ACTIVE→EXPIRED/
+  // TERMINATED) passerar denna kontroll.
+  private assertLeaseTransition(from: LeaseStatus, to: LeaseStatus): void {
+    if (!isValidLeaseTransition(from, to)) {
+      throw new BadRequestException('Ogiltig statusövergång')
+    }
+  }
+
+  // Gemensamt IN-TX-efterled efter att en aktivering skrivits (update ELLER
+  // create) — bara enhetsstatus-synken är genuint delad. Callern äger själva
+  // status-skrivningen (olika shape: transitionStatus=update, succession=create).
+  private async applyActivationEffects(
+    tx: Prisma.TransactionClient,
+    unitId: string,
+  ): Promise<void> {
+    await syncUnitStatusFromLeases(tx, unitId)
+  }
+
+  // Post-commit-jobb vid aktivering, parametriserade på ursprung:
+  //   'manual'     → PDF + välkomstmejl + initial-avier (deposition + första avi)
+  //   'succession' → PDF + gap-avi (skipDeposit, ingen ny deposition) + INGEN välkomst
+  // Alla enqueue:ar är best-effort (Bull retry + SYSTEM-notis vid permanent fail).
+  private async dispatchActivationJobs(
+    lease: { id: string; organizationId: string; tenantId: string },
+    opts: { origin: 'manual' | 'succession'; actorUserId: string | null },
+  ): Promise<void> {
+    await this.activationQueue
+      .enqueueGenerateContract({
+        leaseId: lease.id,
+        organizationId: lease.organizationId,
+        actorUserId: opts.actorUserId,
+      })
+      .catch((err) =>
+        this.logger.error(`[Leases] enqueue generate-contract failed: ${String(err)}`),
+      )
+
+    if (opts.origin === 'manual') {
+      await this.activationQueue
+        .enqueueWelcomeMail({ tenantId: lease.tenantId })
+        .catch((err) => this.logger.error(`[Leases] enqueue welcome-mail failed: ${String(err)}`))
+    }
+
+    await this.activationQueue
+      .enqueueInitialNotices({
+        leaseId: lease.id,
+        organizationId: lease.organizationId,
+        skipDeposit: opts.origin === 'succession',
+      })
+      .catch((err: unknown) =>
+        this.logger.error(`[Leases] enqueue initial-notices failed: ${String(err)}`),
+      )
+  }
+
   async transitionStatus(
     id: string,
     newStatus: LeaseStatus,
@@ -598,11 +649,7 @@ export class LeasesService {
     actorUserId?: string | null,
   ) {
     const lease = await this.findOne(id, organizationId)
-    const allowed = VALID_TRANSITIONS[lease.status] ?? []
-
-    if (!allowed.includes(newStatus)) {
-      throw new BadRequestException('Ogiltig statusövergång')
-    }
+    this.assertLeaseTransition(lease.status, newStatus)
 
     // En uppsägning av ett AKTIVT kontrakt måste gå via terminate() så att
     // uppsägningstidens golv + månadsskiftesrundning ALLTID tillämpas. Annars
@@ -648,9 +695,9 @@ export class LeasesService {
         })
 
         // Synka enhetens status så att fastighetsöversikten alltid stämmer.
-        // Körs efter lease.update så count() ser det nya tillståndet — en plats
-        // för hela appen (I1/#62).
-        await syncUnitStatusFromLeases(tx, lease.unitId)
+        // Körs efter lease.update så count() ser det nya tillståndet — delat
+        // in-tx-efterled (I1/#62, T1.2-seam).
+        await this.applyActivationEffects(tx, lease.unitId)
 
         return result
       })
@@ -665,41 +712,18 @@ export class LeasesService {
       throw err
     }
 
-    // När ett kontrakt blir ACTIVE läggs två jobb på lease-activation-kön:
-    // PDF-generering + välkomstmejl. Bull retras automatiskt (1m → 2m → 4m
-    // → 8m → 16m → permanent fail) och vid permanent fail får org-admins en
-    // SYSTEM-notification. Detta ersätter tidigare fire-and-forget som tyst
-    // kunde lämna en ACTIVE Lease utan PDF eller mejl.
-    //
-    // PDF-jobbet enqueueas alltid, även när vi inte vet vem som triggade
-    // (cron, system-fix, AI-tool utan user-context). actorUserId blir då
-    // null → Document.uploadedById blir null. Tidigare gating på actorUserId
-    // gjorde att aktiveringar utan user-context tyst skapade ACTIVE-leases
-    // utan PDF — det orsakade Tindra-buggen 2026-05-07.
+    // När ett kontrakt blir ACTIVE dispatchas aktiverings-jobben (PDF +
+    // välkomstmejl + initial-avier) via den delade seam:en. Bull retras
+    // automatiskt (1m → 2m → 4m → 8m → 16m → permanent fail) och vid permanent
+    // fail får org-admins en SYSTEM-notification — ersätter tidigare
+    // fire-and-forget som tyst kunde lämna en ACTIVE Lease utan PDF eller mejl.
+    // actorUserId får vara null (cron/system/AI utan user-context) → Document.
+    // uploadedById blir null; gating på actorUserId orsakade Tindra-buggen.
     if (newStatus === 'ACTIVE') {
-      await this.activationQueue
-        .enqueueGenerateContract({
-          leaseId: id,
-          organizationId,
-          actorUserId: actorUserId ?? null,
-        })
-        .catch((err) =>
-          this.logger.error(`[Leases] enqueue generate-contract failed: ${String(err)}`),
-        )
-
-      await this.activationQueue
-        .enqueueWelcomeMail({ tenantId: lease.tenantId })
-        .catch((err) => this.logger.error(`[Leases] enqueue welcome-mail failed: ${String(err)}`))
-
-      // Auto-skapa deposition + första hyresavi (delmånad om relevant) och
-      // mejla hyresgästen. Bull-kön ger samma retry-policy som de andra
-      // aktiverings-jobben — om R2/Resend är nere får vi 5 försök innan en
-      // SYSTEM-notification går ut till org-admins.
-      await this.activationQueue
-        .enqueueInitialNotices({ leaseId: id, organizationId })
-        .catch((err: unknown) =>
-          this.logger.error(`[Leases] enqueue initial-notices failed: ${String(err)}`),
-        )
+      await this.dispatchActivationJobs(updated, {
+        origin: 'manual',
+        actorUserId: actorUserId ?? null,
+      })
     }
 
     return updated
@@ -1019,7 +1043,12 @@ export class LeasesService {
       throw new BadRequestException('Slutdatum måste vara efter startdatum')
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    // Gamla avtalet går ACTIVE→EXPIRED (statusmaskin, #60). Ordning: gammalt→
+    // EXPIRED FÖRE nytt→create — lease_unit_active_unique är per-statement (ej
+    // deferrable) så ett ACTIVE måste bort innan nästa skapas på samma enhet.
+    this.assertLeaseTransition(lease.status, 'EXPIRED')
+
+    const created = await this.prisma.$transaction(async (tx) => {
       // Markera gamla kontraktet som EXPIRED
       await tx.lease.update({
         where: { id: lease.id },
@@ -1059,10 +1088,17 @@ export class LeasesService {
       })
 
       // Säkerställ att enhetsstatus förblir OCCUPIED (det nya avtalet är ACTIVE)
-      await syncUnitStatusFromLeases(tx, lease.unitId)
+      await this.applyActivationEffects(tx, lease.unitId)
 
       return created
     })
+
+    // Succession-aktivering (post-commit): PDF (länkar föregående avtal) + gap-avi
+    // (skipDeposit — depositionen re-pekas i T1.3, inte ny). INGEN välkomstmejl —
+    // samma hyresgäst. Fixar #48 (ingen PDF) + #43 (gap-avi tappas) för renew-vägen.
+    await this.dispatchActivationJobs(created, { origin: 'succession', actorUserId: null })
+
+    return created
   }
 
   // ── Cron: livscykel-processering ─────────────────────────────────────────────
@@ -1118,7 +1154,9 @@ export class LeasesService {
       const newEnd = addMonths(newStart, lease.renewalPeriodMonths)
 
       try {
-        await this.prisma.$transaction(async (tx) => {
+        // Gamla avtalet ACTIVE→EXPIRED (statusmaskin, #60).
+        this.assertLeaseTransition(lease.status, 'EXPIRED')
+        const created = await this.prisma.$transaction(async (tx) => {
           await tx.lease.update({
             where: { id: lease.id },
             data: { status: 'EXPIRED' },
@@ -1128,7 +1166,7 @@ export class LeasesService {
           // kontraktsnummer i samma transaktion (annars NULL contractNumber).
           const contractNumber = await this.contractNumbers.allocate(lease.organizationId, tx)
 
-          await tx.lease.create({
+          const newLease = await tx.lease.create({
             data: {
               organizationId: lease.organizationId,
               unitId: lease.unitId,
@@ -1149,10 +1187,16 @@ export class LeasesService {
             },
           })
 
-          // Det nya avtalet är ACTIVE → enheten ska vara OCCUPIED (samma
-          // synk-punkt som överallt annars).
-          await syncUnitStatusFromLeases(tx, lease.unitId)
+          // Det nya avtalet är ACTIVE → enheten ska vara OCCUPIED (delat
+          // in-tx-efterled, T1.2-seam).
+          await this.applyActivationEffects(tx, lease.unitId)
+          return newLease
         })
+
+        // Succession-aktivering (post-commit): PDF + gap-avi (skipDeposit),
+        // ingen välkomstmejl. Fixar #48 + #43 för auto-förnyelse-vägen.
+        await this.dispatchActivationJobs(created, { origin: 'succession', actorUserId: null })
+
         this.logger.log(`[Leases] Auto-renewed lease ${lease.id} for unit ${lease.unitId}`)
         renewed++
       } catch (err) {
@@ -1214,6 +1258,7 @@ export class LeasesService {
     let terminated = 0
     for (const lease of due) {
       try {
+        this.assertLeaseTransition(lease.status, 'TERMINATED')
         await this.prisma.$transaction(async (tx) => {
           await tx.lease.update({
             where: { id: lease.id },
