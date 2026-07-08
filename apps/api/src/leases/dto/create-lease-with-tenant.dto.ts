@@ -97,6 +97,12 @@ export class CreateLeaseWithTenantDto {
   @IsOptional()
   leaseType?: 'FIXED_TERM' | 'INDEFINITE'
 
+  // Regelverk (#69). Utelämnas normalt → service sätter default efter enhetstyp
+  // (bostad → privatuthyrning, lokal → hyreslagen). PRIVATE_RENTAL bara för bostad.
+  @IsEnum(['PRIVATE_RENTAL', 'TENANCY_ACT'])
+  @IsOptional()
+  tenancyRegime?: 'PRIVATE_RENTAL' | 'TENANCY_ACT'
+
   @IsNumber()
   @Min(1)
   @IsOptional()

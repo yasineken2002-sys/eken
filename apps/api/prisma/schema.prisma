@@ -68,6 +68,15 @@ enum LeaseType {
   INDEFINITE
 }
 
+// Vilket regelverk kontraktet lyder under — styr uppsägningstiderna (#69/#50).
+// PRIVATE_RENTAL = lag (2012:978) om uthyrning av egen bostad (privatuthyrnings-
+// lagen): hyresgäst 1 mån / hyresvärd 3 mån, gäller BARA bostad (APARTMENT).
+// TENANCY_ACT = hyreslagen (JB 12 kap): befintligt golv (3 mån bostad / 9 lokal).
+enum TenancyRegime {
+  PRIVATE_RENTAL
+  TENANCY_ACT
+}
+
 enum InvoiceStatus {
   DRAFT
   SENT
@@ -1010,6 +1019,10 @@ model Lease {
   monthlyRentExcludingVat Boolean  @default(false)
   depositAmount        Decimal     @db.Decimal(10, 2)
   noticePeriodMonths   Int         @default(3)
+  // Regelverk för uppsägningstider (#69). Kolumn-default TENANCY_ACT (säker
+  // fallback); create() sätter PRIVATE_RENTAL för bostad. Migration bakåtfyller
+  // befintliga APARTMENT-kontrakt till PRIVATE_RENTAL.
+  tenancyRegime        TenancyRegime @default(TENANCY_ACT)
   // Behålls för bakåtkompatibilitet (gamla rader). Nya kontrakt sätter
   // indexClauseType — `indexClause` speglar då (type !== NONE).
   indexClause          Boolean     @default(false)

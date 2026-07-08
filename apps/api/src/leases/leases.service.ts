@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import type { LeaseStatus, LeaseType, UnitType } from '@prisma/client'
+import type { LeaseStatus, LeaseType, TenancyRegime, UnitType } from '@prisma/client'
 import { Cron } from '@nestjs/schedule'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
@@ -24,6 +24,9 @@ import {
   noticePeriodErrorMessage,
   maxDepositAmount,
   depositErrorMessage,
+  terminationNoticeMonths,
+  defaultTenancyRegime,
+  type TerminationInitiator,
 } from './leases.compliance'
 
 const VALID_TRANSITIONS: Partial<Record<LeaseStatus, LeaseStatus[]>> = {
@@ -45,6 +48,24 @@ function startOfDay(date: Date): Date {
   const d = new Date(date)
   d.setHours(0, 0, 0, 0)
   return d
+}
+
+// Bestäm regelverk vid kontraktsskapande (#69). Uttryckligt DTO-val vinner, men
+// PRIVATE_RENTAL är bara giltigt för bostad (privatuthyrningslagen omfattar inte
+// lokal). Utan val: default privatuthyrning för bostad, hyreslagen för lokal
+// (beslut 2026-07-08 — målgruppen är privata hyresvärdar).
+function resolveTenancyRegime(
+  requested: TenancyRegime | undefined,
+  unitType: UnitType,
+): TenancyRegime {
+  if (requested === 'PRIVATE_RENTAL' && unitType !== 'APARTMENT') {
+    throw new BadRequestException(
+      'Privatuthyrningslagen gäller bara bostad — en lokal kan inte sättas till privatuthyrning.',
+    )
+  }
+  if (requested) return requested
+  // Ingen uttrycklig regim → hyreslagen. PRIVATE_RENTAL kräver ett medvetet val.
+  return defaultTenancyRegime()
 }
 
 // Plocka ut alla kontraktsfält ur en DTO till ett delobjekt som kan spridas
@@ -249,6 +270,7 @@ export class LeasesService {
           ? { renewalPeriodMonths: dto.renewalPeriodMonths }
           : {}),
         noticePeriodMonths: requestedNotice,
+        tenancyRegime: resolveTenancyRegime(dto.tenancyRegime, unit.type),
         ...pickContractTerms(dto),
       },
       include: INCLUDE,
@@ -602,6 +624,7 @@ export class LeasesService {
               ? { renewalPeriodMonths: dto.renewalPeriodMonths }
               : {}),
             noticePeriodMonths: requestedNotice,
+            tenancyRegime: resolveTenancyRegime(dto.tenancyRegime, unit.type),
             ...pickContractTerms(dto),
           },
           include: INCLUDE,
@@ -658,7 +681,16 @@ export class LeasesService {
 
   // ── Uppsägningsflöde ─────────────────────────────────────────────────────────
 
-  async terminate(id: string, dto: TerminateLeaseDto, organizationId: string) {
+  // `initiator` avgör uppsägningstiden under privatuthyrningslagen (#69):
+  // hyresgäst 1 mån / hyresvärd 3 mån. Default LANDLORD — direkt HTTP /terminate,
+  // /status och AI-delegeringen är alla hyresvärdsvägar. TerminationsService.approve()
+  // (hyresvärd godkänner hyresgästens begäran) skickar 'TENANT'.
+  async terminate(
+    id: string,
+    dto: TerminateLeaseDto,
+    organizationId: string,
+    initiator: TerminationInitiator = 'LANDLORD',
+  ) {
     const lease = await this.findOne(id, organizationId)
 
     if (lease.status !== 'ACTIVE' && lease.status !== 'DRAFT') {
@@ -670,18 +702,24 @@ export class LeasesService {
 
     const today = startOfDay(new Date())
 
-    // Uppsägningstidens golv (JB 12 kap 4 §/5 §) är TVINGANDE till hyresgästens
-    // förmån (1 § 5 st): en uppsägning kan aldrig upphöra före det månadsskifte
-    // som infaller närmast efter `noticePeriodMonths` månader. Ett angivet
-    // effectiveDate som är för kort JUSTERAS UPP till golvet — aldrig ett
-    // ogiltigt (för tidigt) avslut (#45). Golvet är dessutom månadsskiftes-
-    // rundat (#46). Detta är den ENDA punkt alla uppsägningsvägar passerar:
-    // direkt HTTP /terminate, TerminationsService.approve() OCH — via
-    // delegeringen i transitionStatus — AI-verktyget + HTTP /status. Ligger i
-    // service-lagret så ingen controller-/AI-väg kan kringgå det.
+    // Uppsägningstidens golv är TVINGANDE till hyresgästens förmån (JB 12 kap
+    // 1 § 5 st): en uppsägning kan aldrig upphöra före det månadsskifte som
+    // infaller närmast efter uppsägningstiden. Ett för kort effectiveDate
+    // JUSTERAS UPP till golvet — aldrig ett ogiltigt (för tidigt) avslut (#45),
+    // månadsskiftesrundat (#46). Antal månader väljs efter regelverk + vem som
+    // säger upp (#69): privatuthyrning ger hyresgästen 1 mån, hyresvärden 3 mån;
+    // hyreslagen behåller avtalets noticePeriodMonths (oförändrat F2-beteende).
+    // Detta är den ENDA punkt alla uppsägningsvägar passerar (HTTP /terminate,
+    // approve(), transitionStatus-delegeringen) → ingen väg kringgår golvet.
     let effective: Date
     if (lease.status === 'ACTIVE') {
-      const floor = endOfNoticePeriod(today, lease.noticePeriodMonths)
+      const months = terminationNoticeMonths({
+        regime: lease.tenancyRegime,
+        initiator,
+        unitType: lease.unit.type,
+        contractualNoticeMonths: lease.noticePeriodMonths,
+      })
+      const floor = endOfNoticePeriod(today, months)
       const requested = dto.effectiveDate ? startOfDay(new Date(dto.effectiveDate)) : floor
       effective = requested.getTime() < floor.getTime() ? floor : requested
     } else {
@@ -786,6 +824,9 @@ export class LeasesService {
             ? { renewalPeriodMonths: lease.renewalPeriodMonths }
             : {}),
           noticePeriodMonths: lease.noticePeriodMonths,
+          // Förnyelse bär regelverket vidare (#69) — en förnyad privatuthyrning
+          // förblir privatuthyrning, annars tappar hyresgästen sin 1-månadersrätt.
+          tenancyRegime: lease.tenancyRegime,
           indexClause: lease.indexClause,
           activatedAt: new Date(),
         },
@@ -868,6 +909,8 @@ export class LeasesService {
               contractNumber,
               renewalPeriodMonths: lease.renewalPeriodMonths,
               noticePeriodMonths: lease.noticePeriodMonths,
+              // Förnyelse bär regelverket vidare (#69).
+              tenancyRegime: lease.tenancyRegime,
               indexClause: lease.indexClause,
               activatedAt: new Date(),
             },

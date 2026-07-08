@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { Prisma, TerminationRequestStatus } from '@prisma/client'
+import type { TenancyRegime, UnitType } from '@prisma/client'
 import { endOfNoticePeriod } from '@eken/shared'
+import { terminationNoticeMonths } from '../leases/leases.compliance'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 import { NotificationsService } from '../notifications/notifications.service'
@@ -75,11 +77,21 @@ export class TerminationsService {
   // (idag + uppsägningstid). Hyresgästen har enligt JB 12 kap 5 § alltid minst
   // tre månaders uppsägningstid — önskat datum kan aldrig förkorta det. Detta
   // är ett FÖRSLAG som hyresvärden bekräftar/justerar i dialogen.
-  private suggestEndDate(requestedEndDate: Date, noticePeriodMonths: number): Date {
-    // Månadsskiftes-rundat golv (JB 12 kap 4 §/5 §), delad helper med
-    // leases.terminate() (#46). Hyresgästens önskade datum kan aldrig förkorta
-    // golvet. terminate() tillämpar dessutom samma golv defensivt.
-    const floor = endOfNoticePeriod(new Date(), noticePeriodMonths > 0 ? noticePeriodMonths : 3)
+  private suggestEndDate(
+    requestedEndDate: Date,
+    lease: { tenancyRegime: TenancyRegime; noticePeriodMonths: number; unit: { type: UnitType } },
+  ): Date {
+    // HYRESGÄST-initierad uppsägning → hyresgästens uppsägningstid (#69):
+    // privatuthyrning 1 mån, hyreslagen avtalets tid. Månadsskiftes-rundat golv
+    // (#46); hyresgästens önskade datum kan aldrig FÖRKORTA golvet men får
+    // förlänga. terminate(..., 'TENANT') tillämpar samma golv defensivt.
+    const months = terminationNoticeMonths({
+      regime: lease.tenancyRegime,
+      initiator: 'TENANT',
+      unitType: lease.unit.type,
+      contractualNoticeMonths: lease.noticePeriodMonths > 0 ? lease.noticePeriodMonths : 3,
+    })
+    const floor = endOfNoticePeriod(new Date(), months)
     const requested = startOfDay(new Date(requestedEndDate))
     return requested.getTime() > floor.getTime() ? requested : floor
   }
@@ -107,15 +119,19 @@ export class TerminationsService {
 
     const effective = dto.effectiveDate
       ? startOfDay(new Date(dto.effectiveDate))
-      : this.suggestEndDate(req.requestedEndDate, req.lease.noticePeriodMonths)
+      : this.suggestEndDate(req.requestedEndDate, req.lease)
 
     const reason = dto.terminationReason ?? req.reason ?? undefined
 
     // Återanvänder den beprövade vägen — kastar om leasen inte är aktiv.
+    // 'TENANT': detta är hyresgästens uppsägning (hyresvärden godkänner den) →
+    // hyresgästens uppsägningstid gäller (privatuthyrning 1 mån), golvet får
+    // aldrig tvinga hyresgästen till hyresvärdens längre tid (#69).
     await this.leases.terminate(
       req.leaseId,
       { effectiveDate: isoDate(effective), ...(reason ? { terminationReason: reason } : {}) },
       organizationId,
+      'TENANT',
     )
 
     const updated = await this.prisma.terminationRequest.update({
