@@ -15,7 +15,9 @@ import { LeasesService } from './leases.service'
 
 describe('#73 · terminateExpiredNoticeLeases triggar refund-pending vid utflytt', () => {
   it('lease vars endDate passerat → TERMINATED + markRefundPendingForLease körs', async () => {
-    const dueLease = { id: 'lease-1', organizationId: 'org-1', unitId: 'unit-1' }
+    // status ACTIVE speglar findMany-filtret (where status:'ACTIVE') — krävs av
+    // statusmaskin-gaten (assertLeaseTransition ACTIVE→TERMINATED, #60/T1.2).
+    const dueLease = { id: 'lease-1', organizationId: 'org-1', unitId: 'unit-1', status: 'ACTIVE' }
     const txMock = {
       lease: { update: jest.fn().mockResolvedValue({}), count: jest.fn().mockResolvedValue(0) },
       unit: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },

@@ -58,7 +58,9 @@ export class LeaseActivationWorker {
     }
 
     if (data.type === 'create-initial-notices') {
-      await this.avisering.createInitialNoticesForLease(data.leaseId)
+      await this.avisering.createInitialNoticesForLease(data.leaseId, {
+        skipDeposit: data.skipDeposit ?? false,
+      })
       return
     }
   }

@@ -324,7 +324,10 @@ export class AviseringService {
   // Idempotent via @@unique(leaseId, year, month, type) på RentNotice — om
   // metoden körs två gånger för samma lease tolkar vi P2002 som "redan
   // skapad" och hämtar befintlig istället.
-  async createInitialNoticesForLease(leaseId: string): Promise<{
+  async createInitialNoticesForLease(
+    leaseId: string,
+    opts: { skipDeposit?: boolean } = {},
+  ): Promise<{
     deposit: RentNotice | null
     firstRent: RentNotice | null
     mailed: boolean
@@ -363,8 +366,10 @@ export class AviseringService {
     let firstRentNotice: RentNotice | null = null
 
     // ── 1. Deposition ────────────────────────────────────────────────────
+    // Succession (skipDeposit): depositionen är redan uttagen/bokförd på
+    // ursprungsavtalet och re-pekas (T1.3) — ingen ny deposition-avi vid förnyelse.
     const depositAmount = Number(lease.depositAmount ?? 0)
-    if (depositAmount > 0) {
+    if (depositAmount > 0 && !opts.skipDeposit) {
       try {
         const noticeNumber = await this.nextNoticeNumber(orgId, year, month)
         depositNotice = (await this.prisma.rentNotice.create({
