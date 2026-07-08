@@ -142,3 +142,6 @@ export * from './plans'
 
 // Plattformens juridiska identitet + versionsmärkta dokument
 export * from './platform'
+
+// Edit-lås på ACTIVE-hyresavtal (T1.1) — delad fält-lista backend↔frontend
+export * from './lease-edit-lock'

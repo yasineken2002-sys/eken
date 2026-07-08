@@ -831,6 +831,7 @@ function LeaseDetailPanel({
           mode="edit"
           {...(selectedLease ? { defaultValues: leaseToInput(selectedLease) } : {})}
           initialPropertyId={selected.unit.property.id}
+          leaseStatus={selected.status}
           onSubmit={onUpdate}
           onCancel={() => setDetailTab('detaljer')}
           isSubmitting={isUpdating}

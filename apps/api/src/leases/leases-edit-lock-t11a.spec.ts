@@ -27,7 +27,8 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { Decimal } from '@prisma/client/runtime/library'
-import { LeasesService } from './leases.service'
+import { LEASE_ACTIVE_LOCKED_FIELDS, LEASE_LOCK_FIELD_ROUTE } from '@eken/shared'
+import { LeasesService, TIER1_LOCKED_ON_ACTIVE } from './leases.service'
 
 function baseLease(overrides: Record<string, unknown> = {}) {
   return {
@@ -132,6 +133,22 @@ const TIER1_CHANGES: Array<[field: string, value: unknown]> = [
   ['indexMinIncrease', 1],
   ['specialTerms', 'Ny särskild bestämmelse'],
 ]
+
+// Synk-kontrakt mot @eken/shared (frontend-låset, T1.1d). Om backend-arrayen och
+// den delade listan glider isär → 400-vägg eller falskt låst fält i UI. Bryt CI.
+describe('T1.1a · backend↔@eken/shared synk (frontend-lås)', () => {
+  it('TIER1_LOCKED_ON_ACTIVE-nycklarna == LEASE_ACTIVE_LOCKED_FIELDS', () => {
+    const backend = [...TIER1_LOCKED_ON_ACTIVE].map((s) => s.key as string).sort()
+    const shared = [...LEASE_ACTIVE_LOCKED_FIELDS].sort()
+    expect(backend).toEqual(shared)
+  })
+
+  it('per-fält-route matchar mellan backend och @eken/shared', () => {
+    for (const spec of TIER1_LOCKED_ON_ACTIVE) {
+      expect(LEASE_LOCK_FIELD_ROUTE[spec.key as string]).toBe(spec.route)
+    }
+  })
+})
 
 describe('T1.1a · Tier-1-fält nekas på ACTIVE, tillåts på DRAFT', () => {
   it.each(TIER1_CHANGES)(
