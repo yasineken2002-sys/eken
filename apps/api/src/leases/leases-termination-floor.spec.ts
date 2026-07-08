@@ -203,14 +203,16 @@ describe('#65/#66 · update() blockerar endDate-ändring på ACTIVE (fjärde byp
 
   it('ACTIVE + OFÖRÄNDRAT endDate (web återsänder samma) → tillåts (ingen falsk blockering)', async () => {
     const { service, prisma } = makeService()
-    // Samma datum som harnessens existing.endDate (2027-01-01).
-    await service.update('lease-1', { endDate: '2027-01-01', monthlyRent: 12000 } as never, 'org-1')
+    // Samma datum + samma hyra som harnessens existing (2027-01-01 / 10000) — en
+    // äkta web-resubmit av oförändrade värden får INTE blockeras (varken av
+    // endDate-guarden eller T1.1a edit-låset).
+    await service.update('lease-1', { endDate: '2027-01-01', monthlyRent: 10000 } as never, 'org-1')
     expect(prisma.lease.update).toHaveBeenCalledTimes(1)
   })
 
-  it('ACTIVE utan endDate i payload (t.ex. bara hyra) → tillåts', async () => {
+  it('ACTIVE utan endDate i payload (bara oförändrad hyra) → tillåts', async () => {
     const { service, prisma } = makeService()
-    await service.update('lease-1', { monthlyRent: 12000 } as never, 'org-1')
+    await service.update('lease-1', { monthlyRent: 10000 } as never, 'org-1')
     expect(prisma.lease.update).toHaveBeenCalledTimes(1)
   })
 

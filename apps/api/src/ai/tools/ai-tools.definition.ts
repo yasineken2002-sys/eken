@@ -168,6 +168,18 @@ export const TOOLS: Anthropic.Tool[] = [
     },
   },
 
+  // ── INVARIANT: lease-fält-redigering (T1.1a edit-lås) ──────────────────────
+  // Det finns MEDVETET inget `update_lease`-verktyg. Ett aktivt avtals bindande
+  // fält (hyra, avgifter, identitet, deposition, villkor) är låsta i
+  // LeasesService.update() (edit-låset). Om ett lease-fält-edit-verktyg NÅGONSIN
+  // läggs till gäller:
+  //   1. Det MÅSTE gå via LeasesService.update() — aldrig rå prisma.lease.update —
+  //      så det ärver edit-låset. En genväg med rå Prisma kringgår hela skyddet.
+  //   2. Hyresändring har EXAKT EN sanktionerad väg: apply_rent_increase →
+  //      RentIncrease-livscykeln (54 a §-varsel + invändningsrätt). Ett verktyg får
+  //      aldrig skriva monthlyRent direkt.
+  //   3. Verktyget gatas OWNER/ADMIN + dubbelbekräftas (spegla prepare_contract_signing),
+  //      inte bara ACTION_TOOLS (då släpps ACCOUNTANT/MANAGER in — S-B rollinversion).
   {
     name: 'create_lease',
     description: 'Skapar ett nytt hyreskontrakt. KRÄVER bekräftelse.',

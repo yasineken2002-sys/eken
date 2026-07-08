@@ -137,6 +137,215 @@ function pickContractTerms(dto: ContractTermsDto): Record<string, unknown> {
   return out
 }
 
+// ── T1.1a: edit-lås på ACTIVE-avtal ────────────────────────────────────────
+// Ett aktivt hyresavtal binder bägge parter. Bindande villkor (JB 12:19), hyra
+// (kräver hyreshöjningslagens varsel/invändningsrätt), identitet (enhet/gäst =
+// succession) och deposition får därför INTE ändras via den generiska edit-vägen
+// PATCH /leases/:id — då kringgås rätt domänflöde (RentIncrease / terminate /
+// renew / depositionsmodulen). Låset ligger i service-lagret så ALLA anropare
+// (framtida AI-verktyg, interna anrop) täcks — samma "gäller alla vägar"-princip
+// som transitionStatus→terminate-delegeringen (#65) och endDate-guarden.
+//
+// DRAFT undantas helt (avtalet är inte i kraft → allt fritt). På ACTIVE nekas en
+// FAKTISK ändring; ett oförändrat värde (web-formuläret återsänder hela objektet)
+// släpps igenom. Endast rena annotationer (indexNotes, petsApprovalNotes) är fria
+// på ACTIVE. `endDate` hanteras av sin egen guard (F2/#65) och ingår inte här.
+//
+// Fält-tier granskad av hyresjurist 2026-07-08 (specialTerms = operativ avtalstext
+// → låst; usagePurpose/subletting/insurance/petsAllowed låses helt nu, lättnad blir
+// egen följd-PR). `tenancyRegime` skrivs inte av update() idag (varken i spread
+// eller pickContractTerms) → den är redan inert; den läggs INTE i listan, men en
+// framtida regim-edit-seam (#69/T1.1c) måste gå via update() så den ärver låset.
+type LockRoute = 'RENT' | 'DATE_START' | 'IDENTITY' | 'DEPOSIT' | 'TERMS'
+
+const LOCK_ROUTE_HINT: Record<LockRoute, string> = {
+  RENT: 'Ändra hyra och avgifter via hyreshöjningsflödet (en sänkning görs via en separat åtgärd).',
+  DATE_START: 'Tillträdesdagen (startdatum) kan inte flyttas på ett aktivt kontrakt.',
+  IDENTITY:
+    'Byte av enhet eller hyresgäst görs genom att upprätta ett nytt kontrakt (förnyelse), inte genom redigering.',
+  DEPOSIT:
+    'Depositionsbeloppet kan inte ändras fritt på ett löpande avtal — depositionen hanteras via depositionsflödet.',
+  TERMS:
+    'Bindande hyresvillkor kan inte ändras på ett löpande avtal — det kräver ett nytt kontrakt eller ett skriftligt tillägg.',
+}
+
+// Jämförelse-semantik per fälttyp. `nullMeansSkip` speglar EXAKT motsvarande
+// write-sites gate i update()-spread/pickContractTerms: `!= null` (null hoppas
+// tyst över, går ej att nolla via denna endpoint) vs `!== undefined`. Utan exakt
+// spegling ger komparatorn falskt 400 på helt vanliga oförändrade resubmits.
+type Tier1Kind = 'decimal' | 'date' | 'int' | 'enum' | 'string' | 'stringCoalesce' | 'bool'
+
+interface Tier1Spec {
+  key: keyof UpdateLeaseDto
+  label: string
+  route: LockRoute
+  kind: Tier1Kind
+  nullMeansSkip: boolean
+  coalesceTrim?: boolean
+}
+
+const TIER1_LOCKED_ON_ACTIVE: readonly Tier1Spec[] = [
+  // Hyra + avgifter (del av total hyra, JB 12:19) → hyreshöjningsflödet
+  { key: 'monthlyRent', label: 'Månadshyra', route: 'RENT', kind: 'decimal', nullMeansSkip: true },
+  { key: 'parkingFee', label: 'Parkeringsavgift', route: 'RENT', kind: 'decimal', nullMeansSkip: true }, // prettier-ignore
+  {
+    key: 'storageFee',
+    label: 'Förrådsavgift',
+    route: 'RENT',
+    kind: 'decimal',
+    nullMeansSkip: true,
+  },
+  { key: 'garageFee', label: 'Garageavgift', route: 'RENT', kind: 'decimal', nullMeansSkip: true },
+  // Tillträdesdag
+  { key: 'startDate', label: 'Startdatum', route: 'DATE_START', kind: 'date', nullMeansSkip: true },
+  // Identitet → succession
+  { key: 'unitId', label: 'Enhet', route: 'IDENTITY', kind: 'string', nullMeansSkip: true },
+  { key: 'tenantId', label: 'Hyresgäst', route: 'IDENTITY', kind: 'string', nullMeansSkip: true },
+  // Deposition
+  { key: 'depositAmount', label: 'Deposition', route: 'DEPOSIT', kind: 'decimal', nullMeansSkip: true }, // prettier-ignore
+  // Bindande villkor
+  { key: 'leaseType', label: 'Avtalstyp', route: 'TERMS', kind: 'enum', nullMeansSkip: true },
+  { key: 'noticePeriodMonths', label: 'Uppsägningstid', route: 'TERMS', kind: 'int', nullMeansSkip: true }, // prettier-ignore
+  { key: 'renewalPeriodMonths', label: 'Förnyelseperiod', route: 'TERMS', kind: 'int', nullMeansSkip: true }, // prettier-ignore
+  {
+    key: 'includesHeating',
+    label: 'Värme ingår',
+    route: 'TERMS',
+    kind: 'bool',
+    nullMeansSkip: false,
+  },
+  {
+    key: 'includesWater',
+    label: 'Vatten ingår',
+    route: 'TERMS',
+    kind: 'bool',
+    nullMeansSkip: false,
+  },
+  { key: 'includesHotWater', label: 'Varmvatten ingår', route: 'TERMS', kind: 'bool', nullMeansSkip: false }, // prettier-ignore
+  {
+    key: 'includesElectricity',
+    label: 'El ingår',
+    route: 'TERMS',
+    kind: 'bool',
+    nullMeansSkip: false,
+  },
+  {
+    key: 'includesInternet',
+    label: 'Internet ingår',
+    route: 'TERMS',
+    kind: 'bool',
+    nullMeansSkip: false,
+  },
+  {
+    key: 'includesCleaning',
+    label: 'Städning ingår',
+    route: 'TERMS',
+    kind: 'bool',
+    nullMeansSkip: false,
+  },
+  {
+    key: 'includesParking',
+    label: 'Parkering ingår',
+    route: 'TERMS',
+    kind: 'bool',
+    nullMeansSkip: false,
+  },
+  {
+    key: 'includesStorage',
+    label: 'Förråd ingår',
+    route: 'TERMS',
+    kind: 'bool',
+    nullMeansSkip: false,
+  },
+  {
+    key: 'includesLaundry',
+    label: 'Tvätt ingår',
+    route: 'TERMS',
+    kind: 'bool',
+    nullMeansSkip: false,
+  },
+  { key: 'usagePurpose', label: 'Användningsändamål', route: 'TERMS', kind: 'stringCoalesce', nullMeansSkip: false }, // prettier-ignore
+  { key: 'sublettingAllowed', label: 'Andrahandsuthyrning tillåten', route: 'TERMS', kind: 'bool', nullMeansSkip: false }, // prettier-ignore
+  { key: 'requiresHomeInsurance', label: 'Krav på hemförsäkring', route: 'TERMS', kind: 'bool', nullMeansSkip: false }, // prettier-ignore
+  {
+    key: 'petsAllowed',
+    label: 'Husdjurspolicy',
+    route: 'TERMS',
+    kind: 'enum',
+    nullMeansSkip: false,
+  },
+  { key: 'indexClauseType', label: 'Indexklausul (typ)', route: 'TERMS', kind: 'enum', nullMeansSkip: false }, // prettier-ignore
+  { key: 'indexBaseYear', label: 'Index basår', route: 'TERMS', kind: 'int', nullMeansSkip: true },
+  { key: 'indexAdjustmentDate', label: 'Index justeringsdatum', route: 'TERMS', kind: 'stringCoalesce', nullMeansSkip: false }, // prettier-ignore
+  { key: 'indexMaxIncrease', label: 'Index maxhöjning', route: 'TERMS', kind: 'decimal', nullMeansSkip: true }, // prettier-ignore
+  { key: 'indexMinIncrease', label: 'Index minhöjning', route: 'TERMS', kind: 'decimal', nullMeansSkip: true }, // prettier-ignore
+  { key: 'specialTerms', label: 'Övriga villkor / särskilda bestämmelser', route: 'TERMS', kind: 'stringCoalesce', nullMeansSkip: false, coalesceTrim: true }, // prettier-ignore
+]
+
+// Effektivt normaliserat värde (så '' → null-coalescing, trim etc. speglar write-site).
+function coalesceString(v: unknown, trim: boolean): string | null {
+  if (v == null) return null
+  const s = trim ? String(v).trim() : String(v)
+  return s === '' ? null : s
+}
+
+// Returnerar true om DTO-fältet är NÄRVARANDE (enligt fältets write-site-gate) OCH
+// dess effektiva värde SKILJER SIG från det lagrade. Ett oförändrat värde → false.
+function isLockedFieldChanged(spec: Tier1Spec, dtoVal: unknown, current: unknown): boolean {
+  const present = spec.nullMeansSkip ? dtoVal != null : dtoVal !== undefined
+  if (!present) return false
+
+  switch (spec.kind) {
+    case 'decimal': {
+      // Alla nuvarande decimal/int-fält har nullMeansSkip:true → `present`-grinden
+      // ovan filtrerar redan bort null/undefined och denna gren är i praktiken
+      // onåbar idag. Behålls som korrekt hantering ifall ett framtida nullMeansSkip:
+      // false-fält tillkommer (då är null = nollning = en faktisk ändring).
+      if (dtoVal == null) return current != null // nolla ett satt fält = ändring
+      const next = new Prisma.Decimal(String(dtoVal))
+      return current == null
+        ? true
+        : !new Prisma.Decimal(current as Prisma.Decimal.Value).equals(next)
+    }
+    case 'date': {
+      const next = startOfDay(new Date(dtoVal as string)).getTime()
+      const cur = current ? startOfDay(new Date(current as Date)).getTime() : null
+      return next !== cur
+    }
+    case 'int': {
+      if (dtoVal == null) return current != null
+      return current == null ? true : Number(current) !== Number(dtoVal)
+    }
+    case 'bool':
+    case 'enum':
+    case 'string':
+      return current !== dtoVal
+    case 'stringCoalesce': {
+      const eff = coalesceString(dtoVal, spec.coalesceTrim === true)
+      return (current ?? null) !== eff
+    }
+  }
+}
+
+// Samla ALLA låsta fält som ett ACTIVE-edit försöker ändra (aggregerat, så
+// användaren ser hela bilden på en gång i stället för ett fält i taget).
+// `existing` är findOne-resultatet (Lease-raden med relationer).
+function detectLockedActiveChanges(
+  dto: UpdateLeaseDto,
+  existing: Record<string, unknown>,
+): { fields: string[]; routes: LockRoute[] } {
+  const fields: string[] = []
+  const routes = new Set<LockRoute>()
+  const d = dto as Record<string, unknown>
+  for (const spec of TIER1_LOCKED_ON_ACTIVE) {
+    if (isLockedFieldChanged(spec, d[spec.key], existing[spec.key])) {
+      fields.push(spec.label)
+      routes.add(spec.route)
+    }
+  }
+  return { fields, routes: [...routes] }
+}
+
 // Översätt Postgres unique-konflikt på partial index lease_unit_active_unique
 // till svensk BadRequest. Detta är skyddet mot race när två förfrågningar
 // samtidigt försöker skapa/aktivera ACTIVE-kontrakt på samma enhet.
@@ -300,6 +509,20 @@ export class LeasesService {
         throw new BadRequestException(
           'Slutdatum kan inte ändras direkt på ett aktivt kontrakt. Använd uppsägning för att ' +
             'avsluta det (uppsägningstiden tillämpas då automatiskt) eller förnyelse för att förlänga.',
+        )
+      }
+    }
+
+    // T1.1a edit-lås: på ACTIVE nekas ändring av bindande fält (hyra/avgifter,
+    // identitet, deposition, villkor). Körs FÖRE unit/tenant-uppslagen nedan så en
+    // låst identitetsändring nekas direkt utan onödiga DB-frågor. Aggregerat: alla
+    // låsta fält användaren försökte ändra listas i ett svar. DRAFT passerar orört.
+    if (existing.status === 'ACTIVE') {
+      const locked = detectLockedActiveChanges(dto, existing as unknown as Record<string, unknown>)
+      if (locked.fields.length > 0) {
+        throw new BadRequestException(
+          `Följande fält kan inte ändras på ett aktivt kontrakt: ${locked.fields.join(', ')}. ` +
+            locked.routes.map((r) => LOCK_ROUTE_HINT[r]).join(' '),
         )
       }
     }

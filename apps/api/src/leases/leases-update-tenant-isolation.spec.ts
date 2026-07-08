@@ -6,6 +6,11 @@
  *
  * Bevisar: främmande orgs tenantId → nekas (404), INGEN update (ingen läcka, ingen
  * korruption); egen orgs tenantId → funkar; icke-tenant-uppdatering oförändrad.
+ *
+ * OBS: avtalet är DRAFT här. På ACTIVE är tenantId/monthlyRent numera helt låsta
+ * av T1.1a edit-låset (nekas FÖRE IDOR-uppslaget) — hyresgästbyte på ett löpande
+ * avtal är succession, inte redigering. IDOR-skyddet är därför bara relevant på
+ * den redigerbara vägen (DRAFT), och testas här på just den.
  */
 
 jest.mock('../contracts/contract-template.service', () => ({ ContractTemplateService: class {} }))
@@ -17,7 +22,7 @@ import { LeasesService } from './leases.service'
 
 const EXISTING = {
   id: 'lease-A',
-  status: 'ACTIVE',
+  status: 'DRAFT', // se filhuvudet: IDOR-vägen är redigerbar bara på DRAFT (ACTIVE låst av T1.1a)
   organizationId: 'org-A',
   unitId: 'unit-A',
   tenantId: 'tenant-A',
