@@ -29,10 +29,13 @@ function makeService(
   opts: {
     claimed?: boolean
     journalReturnsNull?: boolean
+    depositCount?: number
   } = {},
 ) {
   const txMock = {
     bankTransaction: { update: jest.fn().mockResolvedValue({}) },
+    // deposit-F1: applyMatchToInvoice synkar en ev. länkad Deposit → PAID.
+    deposit: { updateMany: jest.fn().mockResolvedValue({ count: opts.depositCount ?? 0 }) },
   }
 
   const claimPaidWithinTx = jest
@@ -77,6 +80,39 @@ function makeService(
     createJournalEntryForPayment,
   }
 }
+
+// deposit-F1: en deposition-faktura (Deposit.invoiceId-länkad) som bankmatchas
+// måste synka Deposit.status → PAID i samma tx, annars kan depositionen aldrig
+// återbetalas (refund/markRefundPending kräver PAID).
+describe('deposit-F1 · applyMatchToInvoice synkar länkad Deposit → PAID', () => {
+  it('bankmatchad faktura → tx.deposit.updateMany({invoiceId, PENDING}) → PAID (status-guardad, atomisk)', async () => {
+    const { service, txMock } = makeService({ depositCount: 1 })
+    const matched = await service.matchTransaction(OCR_TX as never, 'org-1')
+    expect(matched).toBe(true)
+    expect(txMock.deposit.updateMany).toHaveBeenCalledTimes(1)
+    const arg = txMock.deposit.updateMany.mock.calls[0]![0]
+    expect(arg.where).toMatchObject({
+      invoiceId: INVOICE.id,
+      organizationId: 'org-1',
+      status: 'PENDING',
+    })
+    expect(arg.data).toMatchObject({ status: 'PAID' })
+    expect(arg.data.paidAt).toBeInstanceOf(Date)
+  })
+
+  it('icke-deposition-faktura → updateMany matchar 0 rader (no-op, ingen bieffekt)', async () => {
+    const { service, txMock } = makeService({ depositCount: 0 })
+    await service.matchTransaction(OCR_TX as never, 'org-1')
+    // Anropet sker alltid men är ett DB-no-op (ingen Deposit har denna invoiceId).
+    expect(txMock.deposit.updateMany).toHaveBeenCalledTimes(1)
+  })
+
+  it('claim misslyckas (redan reglerad) → ingen Deposit-synk', async () => {
+    const { service, txMock } = makeService({ claimed: false })
+    await service.matchTransaction(OCR_TX as never, 'org-1')
+    expect(txMock.deposit.updateMany).not.toHaveBeenCalled()
+  })
+})
 
 const OCR_TX = {
   id: 'tx-1',
