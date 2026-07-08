@@ -2397,6 +2397,7 @@ model RentNotice {
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   tenant           Tenant            @relation(fields: [tenantId], references: [id])
   lease            Lease             @relation(fields: [leaseId], references: [id])
+  deposit          Deposit?
   bankTransactions BankTransaction[]
   lines            RentNoticeLine[]
   events           RentNoticeEvent[]
@@ -2899,6 +2900,12 @@ model Deposit {
   amount         Decimal       @db.Decimal(10, 2)
   status         DepositStatus @default(PENDING)
   invoiceId      String?       @unique
+  // #41: länk till aktiverings-avin (RentNotice{DEPOSIT}). En deposition betald
+  // via avin spåras här; @unique = max en Deposit per avi. Alternativ till
+  // invoiceId (manuella vägen) — en Deposit har antingen invoiceId ELLER
+  // rentNoticeId beroende på hur den skapades. Gating i bankavstämningen kräver
+  // en länkad Deposit innan en DEPOSIT-avi får matchas (fail-closed).
+  rentNoticeId   String?       @unique
   paidAt         DateTime?
   refundedAt     DateTime?
   refundAmount   Decimal?      @db.Decimal(10, 2)
@@ -2912,6 +2919,7 @@ model Deposit {
   lease        Lease        @relation(fields: [leaseId], references: [id], onDelete: Cascade)
   tenant       Tenant       @relation(fields: [tenantId], references: [id])
   invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
+  rentNotice   RentNotice?  @relation(fields: [rentNoticeId], references: [id])
 
   @@index([organizationId])
   @@index([status])

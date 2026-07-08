@@ -5,8 +5,10 @@ import {
   BadRequestException,
   ConflictException,
   InternalServerErrorException,
+  type OnApplicationBootstrap,
 } from '@nestjs/common'
-import type { Deposit, DepositStatus, Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+import type { Deposit, DepositStatus } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { allocateInvoiceNumber } from '../invoices/invoice-number'
@@ -27,7 +29,7 @@ interface DepositDeduction {
 }
 
 @Injectable()
-export class DepositsService {
+export class DepositsService implements OnApplicationBootstrap {
   private readonly logger = new Logger(DepositsService.name)
 
   constructor(
@@ -35,6 +37,19 @@ export class DepositsService {
     private readonly accounting: AccountingService,
     private readonly notifications: NotificationsService,
   ) {}
+
+  // #41: kör backfillen EN gång vid uppstart (efter migrate deploy) så befintliga
+  // orphan-deposition-avier får sin Deposit-rad + 1510 D/2890 K medan ingen
+  // räkenskapsperiod ännu stängts. Idempotent (0 orphans efter första körningen)
+  // + best-effort (får aldrig blockera app-start). Hoppas i testmiljö.
+  async onApplicationBootstrap(): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return
+    try {
+      await this.backfillOrphanDepositNotices()
+    } catch (err) {
+      this.logger.error(`[deposit-backfill] uppstarts-backfill misslyckades: ${String(err)}`)
+    }
+  }
 
   async findAll(
     organizationId: string,
@@ -189,6 +204,118 @@ export class DepositsService {
     return result.deposit
   }
 
+  // ── #41: Deposit-rad för aktiverings-avin (skapa + boka atomiskt) ───────────
+  //
+  // Aktiveringen skapar en RentNotice{DEPOSIT} men historiskt ingen Deposit-rad
+  // → depositionen bokfördes aldrig (1510/2890) och kunde aldrig återbetalas.
+  // Denna metod skapar Deposit-raden OCH bokför 1510 D/2890 K i SAMMA transaktion
+  // (Deposit finns ⇔ accrual bokförd). Delad av aktiveringen (avisering) och
+  // backfillen så konteringen blir identisk. Idempotent: en deposition per lease
+  // (leaseId @unique) — hoppar om den redan finns (manuell eller redan skapad).
+  // Kastar om accrual-verifikatet uteblir (saknad kontoplan) så en Deposit ALDRIG
+  // existerar utan bokförd 1510-debet (annars vore bankmatchningens 1930 D/1510 K
+  // en ogrundad kreditering — F1-fällan).
+  async ensureDepositForNotice(params: {
+    organizationId: string
+    leaseId: string
+    tenantId: string
+    rentNoticeId: string
+    noticeNumber: string
+    amount: number
+    date: Date
+  }): Promise<{ created: boolean }> {
+    const amount = Number(params.amount)
+    if (!(amount > 0)) return { created: false }
+
+    const existing = await this.prisma.deposit.findUnique({
+      where: { leaseId: params.leaseId },
+      select: { id: true },
+    })
+    if (existing) return { created: false }
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const deposit = await tx.deposit.create({
+          data: {
+            organizationId: params.organizationId,
+            leaseId: params.leaseId,
+            tenantId: params.tenantId,
+            rentNoticeId: params.rentNoticeId,
+            amount,
+            status: 'PENDING',
+          },
+        })
+        const entry = await this.accounting.createJournalEntryForDepositInvoice(
+          deposit.id,
+          params.organizationId,
+          amount,
+          params.noticeNumber,
+          params.date,
+          null,
+          tx,
+        )
+        if (entry === null) {
+          throw new InternalServerErrorException(
+            `Depositionens bokföringspost (1510 D / 2890 K) kunde inte skapas för avi ` +
+              `${params.noticeNumber} — kontoplanen saknar konto 1510 eller 2890.`,
+          )
+        }
+      })
+      return { created: true }
+    } catch (err) {
+      // Race: en samtidig aktivering/backfill hann skapa Deposit (leaseId @unique).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        return { created: false }
+      }
+      throw err
+    }
+  }
+
+  // #41-backfill: skapa Deposit + boka 1510 D/2890 K för befintliga deposition-avier
+  // utan länkad Deposit (skapade före #41). Idempotent (ensureDepositForNotice
+  // hoppar redan skapade). Körs vid uppstart — MÅSTE köras medan ingen räkenskaps-
+  // period är stängd (VerifikationsnummerService blockerar annars gamla datum).
+  // Best-effort per avi så en enskild felkontoplan inte stoppar hela svepet.
+  async backfillOrphanDepositNotices(): Promise<{ scanned: number; created: number }> {
+    const orphans = await this.prisma.rentNotice.findMany({
+      where: { type: 'DEPOSIT', deposit: { is: null } },
+      select: {
+        id: true,
+        organizationId: true,
+        leaseId: true,
+        tenantId: true,
+        noticeNumber: true,
+        totalAmount: true,
+        createdAt: true,
+      },
+    })
+    let created = 0
+    for (const n of orphans) {
+      try {
+        const r = await this.ensureDepositForNotice({
+          organizationId: n.organizationId,
+          leaseId: n.leaseId,
+          tenantId: n.tenantId,
+          rentNoticeId: n.id,
+          noticeNumber: n.noticeNumber,
+          amount: Number(n.totalAmount),
+          date: n.createdAt,
+        })
+        if (r.created) created++
+      } catch (err) {
+        this.logger.error(
+          `[deposit-backfill] avi ${n.noticeNumber} (lease ${n.leaseId}) misslyckades: ${String(err)}`,
+        )
+      }
+    }
+    if (orphans.length > 0) {
+      this.logger.log(
+        `[deposit-backfill] ${created}/${orphans.length} orphan-deposition-avier bakåtfyllda (Deposit + 1510 D/2890 K)`,
+      )
+    }
+    return { scanned: orphans.length, created }
+  }
+
   // ── Markera som betald ──────────────────────────────────────────────────────
 
   async markPaid(id: string, organizationId: string, userId: string): Promise<Deposit> {
@@ -196,6 +323,18 @@ export class DepositsService {
 
     if (deposit.status !== 'PENDING') {
       throw new BadRequestException('Endast väntande depositioner kan markeras som betalda')
+    }
+
+    // #41: en avi-länkad deposition (skapad vid aktivering, ingen egen Invoice)
+    // betalas via depositionsavin — bankmatchning eller betalning på avin bokför
+    // 1930 D/1510 K och flippar Deposit→PAID. Manuell markPaid saknar (i T2.1)
+    // en bokföringsväg utan Invoice → skulle flippa PAID UTAN verifikat (BFL 5:6).
+    // Blockera tills T2.2 inför manuell deposit-betalning utan Invoice.
+    if (!deposit.invoiceId && deposit.rentNoticeId) {
+      throw new BadRequestException(
+        'Denna deposition betalas via depositionsavin (bankmatchning eller betalning på avin), ' +
+          'inte via manuell markering här.',
+      )
     }
 
     return this.prisma.$transaction(async (tx) => {

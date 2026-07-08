@@ -498,6 +498,31 @@ deposition bokförs aldrig (1930 stämmer inte mot skuld till hyresgäst), och `
 (`deposits.service.ts:332-343`) hittar ingen `Deposit{PAID}` vid uppsägning → ingen återbetalning
 triggas. **BEKRÄFTAT** (verifierat: deposit-avi skapas :365, enda `deposit.create` :149).
 
+> **T2-plan granskad 2026-07-08** (bokförings-expert + code-reviewer + hyresjurist): **Riktning D** enhälligt
+> godkänd (behåll avin, skapa länkad `Deposit` + boka 1510 D/2890 K, gör avin matchbar; härdningen #109
+> byggdes redan för detta — `reconciliation:1235`-carve-out + typ-agnostisk booking finns). MÅSTE-korrigeringar
+> från granskningen: (1) T2.1a+T2.1b = EN atomisk commit (annars F1-fällan via omvänd ordning); (2) **backfill/
+> gating för BEFINTLIGA orphan-DEPOSIT-avier** — un-gate av computeRentDebt gör dem matchbara → 1930 D/1510 K på
+> obokförd 1510 (gata matchning på länkad Deposit, fail-closed); (3) **#42 renewal-orphan är REDAN LIVE** och T2
+> gör den systematisk — `markRefundPendingForLease` tyst no-op när Deposit ligger på förnyat-bort leaseId; (4)
+> markPaid utan Invoice bokför inget (aktiverings-Deposit har invoiceId:null) → ny metod + EN kanonisk manuell
+> betalväg; (5) **#73 (nytt LIVE-fynd):** refund-klockan triggas vid uppsägning (`terminate()`), inte avflytt
+> (`terminateExpiredNoticeLeases`/endDate) → falska återbetalningslarm ~2-3 mån för tidigt, kan släppa säkerheten
+> under uppsägningstiden; (6) #56 deductions: kategori+dokumentref, cap mot `RentDebtService.outstanding()`, ta
+> bort 3040→1510-fallback; (7) `Lease→Deposit onDelete: Cascade` bör bli Restrict (BFL-7år, som #FIX 3).
+>
+> **T2.1 BYGGD 2026-07-08 (bokförings-expert GODKÄND, väntar user money-review + PR):** `Deposit.rentNoticeId
+@unique`-länk; aktivering skapar `Deposit{PENDING}` + bokar 1510 D/2890 K ATOMISKT (kastar annars → Deposit
+> aldrig utan accrual); reconciliation-DEPOSIT-gren FAIL-CLOSED (matchbar bara med länkad Deposit) → 1930 D/1510 K
+>
+> - Deposit→PAID; `computeRentDebt` ORÖRD (gating en nivå upp); idempotent bootstrap-backfill; markPaid-guard.
+>   Bevisat live (verifikatrader: create 1510/2890, match 1930/1510, netto 1510=0 + 2890 K kvar; orphan omatchbar;
+>   backfill konverterar; kravtrappa orörd) + 14 unit-tester. **Nya uppföljningar (bokförings, ej blockerande):**
+>   (8) backfill av orphan-avi vars createdAt ligger i STÄNGD räkenskapsperiod misslyckas fail-closed → behöver
+>   administrativ rättelseväg (bokning på dagens datum, BFL 5:5); (9) `Deposit.leaseId @unique` är en förutsättning
+>   T1/#42-succession måste designa runt (flera depositioner per lease över tid kräver schemaändring). **Kvar i T2.2:**
+>   #73 refund-trigger, markPaid-utan-Invoice-bokväg, #56 (atomicitet+cap+ta-bort-3040-fallback), onDelete Restrict.
+
 #### 42. Deposition strandar på det döda kontraktet vid förnyelse
 
 `Deposit.leaseId` är `@unique` (`schema.prisma:2884`). Varken `renew()` (`leases.service.ts:716-756`)
@@ -809,9 +834,12 @@ unitType, contractual)`; `terminate()` tar `initiator` (default LANDLORD, `appro
 
 ### 🆕 Systemiska ärenden (större än Svep 3)
 
-- **S-A: Inget räkenskapsårslås finns** (grep `lockedYear/closedYear/bokslut` → 0 träffar). Gör #44-backfill
-  farlig över årsskiften — tyst backfill endast i öppet år, hård spärr över tidigare årsgräns tills
-  årslås byggs.
+- **S-A: ~~Inget räkenskapsårslås finns~~ KORRIGERAD 2026-07-08 — det FINNS.** Bokförings-granskningen av
+  T2 hittade `ClosedAccountingPeriod` (`schema.prisma:1350`) + `VerifikationsnummerService.allocate()`
+  (kastar `ConflictException` om datum ligger i stängd period), körs i `createNumberedEntry` för VARJE
+  verifikat. Den tidigare grep:en missade det (annan namngivning). #44-backfill är alltså redan skyddad
+  mot att skriva i stängt år. _Kvar:_ backfill-poster (t.ex. gamla deposit-avier, T2) måste köras INNAN
+  en period stängs, annars blockeras de.
 - **S-B: #20-klass rollinversion på lease-AI-verktyg.** `transition_lease_status`/`create_lease`/
   `create_tenant_and_lease` släpper igenom ACCOUNTANT → gata till OWNER/ADMIN (spegla
   `prepare_contract_signing`). `create_tenant_and_lease` bör dubbelbekräftas.
@@ -856,6 +884,12 @@ unitType, contractual)`; `terminate()` tar `initiator` (default LANDLORD, `appro
 - **T1.3 Succession bär följdentiteter** (#42) — re-peka `Deposit` (unik leaseId, samma tx, FÖRE seam);
   pending RentIncrease: **VOID-som-default** (hyresjurist), smalt repoint-undantag endast om hyra
   oförändrad + samma gäst/enhet + ingen lucka + `currentRent` stämmer.
+  > **⚠️ FÖRUTSÄTTNING (från T2.1-bygget, bokförings-flaggat):** `Deposit.leaseId @unique` + nu även
+  > `Deposit.rentNoticeId @unique` betyder EN Deposit per lease. Succession kan därför INTE skapa en ny
+  > Deposit på det nya leaseId:t — den MÅSTE **re-peka** den befintliga (`leaseId` + ev. `rentNoticeId`)
+  > från gammalt → nytt lease, i samma tx, INNAN aktiverings-seam:en (T1.2 `skipDeposit=true`). Vill man
+  > modellera flera depositioner per lease över tid (ny deposition efter återbetalning) krävs en
+  > schemaändring (deposition-historik) — designa runt detta i T1.3.
 - **T1.4 Bakdaterad debitering** (#44) — #43 löses redan av T1.2. Kvar: `startDate` i förflutet →
   backfill saknade hela månader endast i öppet räkenskapsår (S-A), annars hård spärr.
 

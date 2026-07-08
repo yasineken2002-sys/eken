@@ -15,6 +15,7 @@ import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { ConsumptionService } from '../consumption/consumption.service'
 import { MiscChargeService } from '../misc-charges/misc-charge.service'
+import { DepositsService } from '../deposits/deposits.service'
 import { computeRentDebt } from './rent-debt.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import {
@@ -66,6 +67,7 @@ export class AviseringService {
     private readonly accounting: AccountingService,
     private readonly consumption: ConsumptionService,
     private readonly miscCharges: MiscChargeService,
+    private readonly deposits: DepositsService,
   ) {}
 
   // Beräknar moms på en hyra utifrån enhetens upplåtelsetyp och frivilliga
@@ -389,6 +391,31 @@ export class AviseringService {
           })) as unknown as RentNotice | null
         } else {
           throw err
+        }
+      }
+
+      // #41: skapa Deposit-raden + boka 1510 D/2890 K för deposition-avin.
+      // Utan detta bokförs depositionen aldrig och kan aldrig återbetalas.
+      // Idempotent + atomisk (Deposit finns ⇔ 1510/2890 bokförd). Best-effort:
+      // ett fel här får inte fälla hela aktiverings-aviseringen (avin är skapad),
+      // orphan-avin fångas då av backfillen och förblir omatchbar tills dess.
+      if (depositNotice) {
+        try {
+          await this.deposits.ensureDepositForNotice({
+            organizationId: orgId,
+            leaseId: lease.id,
+            tenantId: lease.tenantId,
+            rentNoticeId: depositNotice.id,
+            noticeNumber: depositNotice.noticeNumber,
+            amount: depositAmount,
+            date: depositNotice.createdAt ?? new Date(),
+          })
+        } catch (err) {
+          this.logger.error(
+            `[Avisering] Deposit-rad för avi ${depositNotice.noticeNumber} kunde inte skapas: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          )
         }
       }
     }

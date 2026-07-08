@@ -87,6 +87,7 @@ function makeService() {
     noop as never, // accounting
     noop as never, // consumption
     noop as never, // miscCharges
+    { ensureDepositForNotice: jest.fn().mockResolvedValue({ created: false }) } as never, // deposits
   )
 }
 
