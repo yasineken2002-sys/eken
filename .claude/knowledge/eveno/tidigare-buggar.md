@@ -340,6 +340,56 @@ grep -rn "openai\|anthropic" apps/api/src | grep -v ai-usage
 
 ---
 
+## FIX 8 — Sido-entitet med egen statusmaskin ej synkad vid varje betalväg (orphan state)
+
+**Commit:** 1135630 — `fix(deposits): deposit-F1 — synka Deposit.status vid bankmatchad deposition-faktura (#185)`
+**När:** juli 2026
+**Severity (vid upptäckt):** HIGH (pengar — deposition kunde aldrig återbetalas)
+
+### Vad gick fel
+
+`Deposit` har en egen statusmaskin (PENDING→PAID→REFUND_PENDING→REFUNDED) parallell med den
+`Invoice`/`RentNotice` den är länkad till. En manuellt skapad deposition (`deposits.create()`,
+`Deposit.invoiceId`-länkad) som betalades via **bankavstämning** fick sin `Invoice` flippad PAID +
+bokförd (1930 D/1510 K), men `applyMatchToInvoice` rörde aldrig `Deposit`-raden. Depositionen stod
+kvar `PENDING` för evigt → `refund()` och `markRefundPendingForLease` (kräver PAID) hittade den
+aldrig → **återbetalning permanent omöjlig, tyst.** Pengarna var rätt bokförda; entiteten var i
+"orphan state".
+
+### Rotorsak
+
+När en betalning kan komma in via FLERA vägar (manuell markPaid, bankmatchning av Invoice,
+bankmatchning av RentNotice-avi) måste VARJE väg synka ALLA länkade sido-entiteters statusmaskiner.
+En sido-entitet med eget statusfält som bara synkas på en delmängd av betalvägarna hamnar tyst i
+inkonsekvent tillstånd på de andra.
+
+### Fix
+
+I varje betalväg, i samma atomiska tx som statusclaimet + verifikatet, synka den länkade
+sido-entiteten status-gardat (CAS via `updateMany` med statusfilter):
+
+```typescript
+await tx.deposit.updateMany({
+  where: { invoiceId, organizationId, status: 'PENDING' },
+  data: { status: 'PAID', paidAt: transactionDate },
+})
+```
+
+`@unique`-länken (`Deposit.invoiceId`/`Deposit.rentNoticeId`) är diskriminatorn → no-op för
+icke-relaterade rader. Statusgardat `updateMany` serialiserar mot samtidiga betalvägar (ingen
+dubbelbokning). Speglar det redan beprövade mönstret i `applyMatchToRentNotice` (avi-vägen, #41).
+
+### Vad du måste kontrollera framöver
+
+- Har du lagt till en NY betalväg (matchning/markPaid/kvittning) för en entitet? → synka ALLA
+  länkade sido-entiteter med egen statusmaskin i SAMMA tx.
+- Har du lagt till en NY sido-entitet med eget statusfält (parallellt med Invoice/RentNotice)? →
+  inventera ALLA befintliga betalvägar och synka den i var och en.
+- Grep: `grep -rn "claimPaidWithinTx\|status: 'PAID'\|markAsPaid\|applyMatchTo" apps/api/src` —
+  varje träff som flippar en betalstatus: rör den alla länkade sido-entiteter?
+
+---
+
 ## Sammanfattning — checklist för varje ny PR
 
 Innan du säger "klart", verifiera systematiskt:
