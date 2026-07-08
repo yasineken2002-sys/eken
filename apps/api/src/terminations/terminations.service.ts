@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { Prisma, TerminationRequestStatus } from '@prisma/client'
+import { endOfNoticePeriod } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 import { NotificationsService } from '../notifications/notifications.service'
@@ -24,14 +25,6 @@ function startOfDay(d: Date): Date {
   const x = new Date(d)
   x.setHours(0, 0, 0, 0)
   return x
-}
-
-function addMonths(date: Date, months: number): Date {
-  const d = new Date(date)
-  const target = d.getMonth() + months
-  d.setMonth(target)
-  if (d.getMonth() !== ((target % 12) + 12) % 12) d.setDate(0)
-  return d
 }
 
 function isoDate(d: Date): string {
@@ -83,7 +76,10 @@ export class TerminationsService {
   // tre månaders uppsägningstid — önskat datum kan aldrig förkorta det. Detta
   // är ett FÖRSLAG som hyresvärden bekräftar/justerar i dialogen.
   private suggestEndDate(requestedEndDate: Date, noticePeriodMonths: number): Date {
-    const floor = addMonths(startOfDay(new Date()), noticePeriodMonths > 0 ? noticePeriodMonths : 3)
+    // Månadsskiftes-rundat golv (JB 12 kap 4 §/5 §), delad helper med
+    // leases.terminate() (#46). Hyresgästens önskade datum kan aldrig förkorta
+    // golvet. terminate() tillämpar dessutom samma golv defensivt.
+    const floor = endOfNoticePeriod(new Date(), noticePeriodMonths > 0 ? noticePeriodMonths : 3)
     const requested = startOfDay(new Date(requestedEndDate))
     return requested.getTime() > floor.getTime() ? requested : floor
   }

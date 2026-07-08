@@ -1131,13 +1131,24 @@ export class ToolExecutorService {
             }
           }
 
-          await this.leasesService.transitionStatus(
+          // ACTIVE→TERMINATED delegeras i service-lagret till terminate() →
+          // uppsägningstidens golv + månadsskiftesrundning tillämpas ALLTID
+          // (AI kan inte kringgå golvet, #65). Kontraktet sägs upp per ett
+          // golvat slutdatum och löper som ACTIVE tills dess.
+          const transResult = (await this.leasesService.transitionStatus(
             transLeaseId,
             toolInput.newStatus as LeaseStatus,
             organizationId,
             userId,
-          )
-          const statusLabel = toolInput.newStatus === 'ACTIVE' ? 'aktiverat' : 'avslutat'
+          )) as { endDate?: Date | string | null }
+          let statusLabel: string
+          if (toolInput.newStatus === 'ACTIVE') {
+            statusLabel = 'aktiverat'
+          } else if (transResult?.endDate) {
+            statusLabel = `uppsagt (upphör ${new Date(transResult.endDate).toISOString().slice(0, 10)})`
+          } else {
+            statusLabel = 'avslutat'
+          }
           return {
             success: true,
             message: `Kontrakt för ${toolInput.tenantName as string} ${statusLabel}`,

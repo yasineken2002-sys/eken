@@ -16,7 +16,7 @@ import {
   useRejectTermination,
 } from './hooks/useTerminations'
 import type { TerminationRequestDetail, TerminationStatus } from './api/terminations.api'
-import { formatDate } from '@eken/shared'
+import { formatDate, endOfNoticePeriod } from '@eken/shared'
 import type { Tenant } from '@eken/shared'
 import { useCanDelete } from '@/hooks/useCanWrite'
 import { useKeys } from '@/features/keys/hooks/useKeys'
@@ -55,13 +55,13 @@ function StatusBadge({ status }: { status: TerminationStatus }) {
   )
 }
 
-// Förberäknat BINDANDE slutdatum: senare av önskat datum och idag +
-// uppsägningstid (JB 12 kap 5 §). Hyresvärden bekräftar/justerar det.
+// Förberäknat BINDANDE slutdatum: senare av önskat datum och det
+// månadsskiftes-rundade golvet (JB 12 kap 4 §/5 §). Delad helper med backend
+// (endOfNoticePeriod) så det visade datumet är exakt vad servern lagrar (#46).
 function suggestedEndDate(r: TerminationRequestDetail): string {
-  const floor = new Date()
-  floor.setHours(0, 0, 0, 0)
-  floor.setMonth(
-    floor.getMonth() + (r.lease.noticePeriodMonths > 0 ? r.lease.noticePeriodMonths : 3),
+  const floor = endOfNoticePeriod(
+    new Date(),
+    r.lease.noticePeriodMonths > 0 ? r.lease.noticePeriodMonths : 3,
   )
   const requested = new Date(r.requestedEndDate)
   const chosen = requested.getTime() > floor.getTime() ? requested : floor
