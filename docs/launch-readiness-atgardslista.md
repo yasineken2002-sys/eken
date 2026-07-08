@@ -522,6 +522,21 @@ triggas. **BEKRÄFTAT** (verifierat: deposit-avi skapas :365, enda `deposit.crea
 >   administrativ rättelseväg (bokning på dagens datum, BFL 5:5); (9) `Deposit.leaseId @unique` är en förutsättning
 >   T1/#42-succession måste designa runt (flera depositioner per lease över tid kräver schemaändring). **Kvar i T2.2:**
 >   #73 refund-trigger, markPaid-utan-Invoice-bokväg, #56 (atomicitet+cap+ta-bort-3040-fallback), onDelete Restrict.
+>
+> **T2.2 BYGGD 2026-07-08 (bokförings-expert + hyresjurist GODKÄNDA):** #73 refund-trigger flyttad från
+> terminate() till terminateExpiredNoticeLeases (utflytt, ej notice-date) + daglig catch-up-sweep
+> (`sweepTerminatedLeasesForRefundPending`); markPaid-bokväg för avi-länkad deposit (`createJournalEntry
+ForDepositManualPayment`, 1930 D/1510 K) + `avisering.markAsPaid` blockerar DEPOSIT (en kanonisk väg);
+> refund() atomisk + race-säker claim; 3040→1510-fallback BORTTAGEN (saknat 3040 → error). Bevisat live
+> (verifikatrader) + 24 unit. **CAP-beslut bekräftat:** cap onödig nu (utan 1510-routing kan ingen
+> kundreskontra-divergens uppstå); den hör ihop med rent-arrears-kategori + allokeringar = följd-PR.
+> **NYA FÖLJD-ÄRENDEN:** (F1, egen liten PR — beslut 2026-07-08) manuell `deposits.create()` (invoiceId-länkad)
+> synkar aldrig `Deposit.status` vid BANKMATCHNING (`applyMatchToInvoice` rör bara Invoice) → den depositionen
+> kan aldrig återbetalas; fix = additiv Deposit.status-synk i applyMatchToInvoice för Invoice.type=DEPOSIT,
+> ELLER fasa ut den manuella vägen till förmån för #41-aktiveringsvägen. (F2) lås-ordning markPaid vs
+> applyMatchToRentNotice (deadlock-risk, penganeutral). (F3) kategori+dokumentref+cap+RentNoticePayment-
+> allokeringar för rent-arrears-avdrag (1510-reglering ist. f. 3040). (F4) `DeductionDto.reason` MinLength.
+> (F5) `remindStaleRefundPending` 30→14 dagar. **Kvar helt separat:** onDelete: Restrict (egen liten PR).
 
 #### 42. Deposition strandar på det döda kontraktet vid förnyelse
 

@@ -1048,6 +1048,55 @@ export class AccountingService {
     })
   }
 
+  // #41/T2.2 — manuell betalning av en AVI-LÄNKAD deposition (ingen Invoice).
+  // En aktiverings-deposition (Deposit.rentNoticeId satt, invoiceId null) har
+  // ingen faktura att reglera via createJournalEntryForInvoiceManualPayment;
+  // denna metod bokför likviden mot depositionsfordran: likvidkonto D / 1510 K.
+  // Reglerar 1510:an som aktiveringen bokförde (1510 D / 2890 K). Nyckel per
+  // deposit (deposit-manual-payment:<id>) — disjunkt från bankvägens
+  // sourceId=bankTransaction.id, och Deposit-status-guarden i markPaid serialiserar
+  // mot bankmatchningen så bara EN väg bokför (ingen dubbelbokning).
+  async createJournalEntryForDepositManualPayment(
+    depositId: string,
+    organizationId: string,
+    amount: number,
+    paidAt: Date,
+    paymentMethod: PaymentMethod,
+    createdById: string | null,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const amt = Number(amount)
+    if (!Number.isFinite(amt) || amt <= 0) return null
+
+    const debitAccountNumber = PAYMENT_METHOD_TO_ACCOUNT[paymentMethod]
+    const db = tx ?? this.prisma
+    const accounts = await db.account.findMany({
+      where: { organizationId },
+      select: { id: true, number: true },
+    })
+    const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+    const debitAccountId = accountByNumber.get(debitAccountNumber)
+    const receivableId = accountByNumber.get(1510)
+    if (!debitAccountId || !receivableId) return null
+
+    const sourceId = `deposit-manual-payment:${depositId}`
+    return this.createNumberedEntry({
+      organizationId,
+      date: paidAt,
+      description: `Inbetalning deposition (manuell)`,
+      source: 'PAYMENT',
+      sourceId,
+      createdById,
+      lines: [
+        { accountId: debitAccountId, debit: amt, description: PAYMENT_METHOD_LABEL[paymentMethod] },
+        { accountId: receivableId, credit: amt, description: 'Reglering depositionsfordran' },
+      ],
+      idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId },
+      include: { lines: { include: { account: true } } },
+      ...(tx ? { tx } : {}),
+    })
+  }
+
   // Intäktsverifikation vid avisering (BFL 1999:1078, LAGBROTT 2). När en
   // hyresavi skapas uppstår en hyresfordran som ska bokföras enligt
   // bokföringsmässiga grunder (god redovisningssed, BFL 4 kap 2 §):
@@ -1878,12 +1927,16 @@ export class AccountingService {
     deductionsTotal: number,
     transactionDate: Date,
     createdById: string | null,
+    // #25/T2.2: valfri yttre transaktion så refund() kan boka verifikatet ATOMISKT
+    // med statusbytet och kasta (→ rollback) om det uteblir.
+    tx?: Prisma.TransactionClient,
   ) {
+    const db = tx ?? this.prisma
     const sourceId = `deposit-refund:${depositId}`
     const total = refundAmount + deductionsTotal
     if (total <= 0) return null
 
-    const accounts = await this.prisma.account.findMany({
+    const accounts = await db.account.findMany({
       where: { organizationId },
       select: { id: true, number: true },
     })
@@ -1909,16 +1962,12 @@ export class AccountingService {
         description: 'Avdrag (skador)',
       })
     } else if (deductionsTotal > 0) {
-      // Saknas 3040 — boka resten på 1510 (fordran) som fallback så att
-      // bokföringen balanserar. Användaren får manuellt rätta efteråt.
-      const receivableId = accountByNumber.get(1510)
-      if (!receivableId) return null
-      lines.push({
-        accountId: receivableId,
-        debit: 0,
-        credit: deductionsTotal,
-        description: 'Avdrag (manuell justering krävs — saknar konto 3040)',
-      })
+      // #56/T2.2: TIDIGARE fallback bokade avdraget på 1510 när konto 3040 saknades.
+      // Det tyst-omklassificerade en SKADEERSÄTTNING (intäkt) till en KUNDFORDRAN
+      // — fel affärshändelse (BFL 5:6) och risk för ogrundad 1510-kreditering utan
+      // motsvarande fordran. Nu: saknat 3040 → null → refund() KASTAR och rullas
+      // tillbaka. Kontoplanen måste innehålla 3040 innan skadeavdrag kan bokföras.
+      return null
     }
 
     return this.createNumberedEntry({
@@ -1930,6 +1979,7 @@ export class AccountingService {
       createdById,
       lines,
       idempotencyWhere: { organizationId, sourceId },
+      ...(tx ? { tx } : {}),
     })
   }
 }

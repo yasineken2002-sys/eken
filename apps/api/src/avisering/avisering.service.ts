@@ -1203,6 +1203,16 @@ export class AviseringService {
     if (notice.status === RentNoticeStatus.PAID) {
       throw new BadRequestException('Avin är redan betald')
     }
+    // #41/T2.2: en DEPOSITIONS-avi betalas via depositionen (bankmatchning eller
+    // deposits.markPaid) — den EGNA kanoniska vägen som bokför 1930 D/1510 K och
+    // flippar Deposit→PAID. Att markera den betald här skulle flippa avin utan att
+    // röra Deposit/bokföringen (divergens). Blockera → en kanonisk betalväg.
+    if (notice.type === RentNoticeType.DEPOSIT) {
+      throw new BadRequestException(
+        'En depositionsavi betalas via depositionen (bankmatchning eller "markera betald" i ' +
+          'depositionsvyn), inte som en vanlig hyresavi.',
+      )
+    }
 
     const paymentDate = paidAt ? new Date(paidAt) : new Date()
 
@@ -1300,10 +1310,10 @@ export class AviseringService {
         createdById ?? null,
         allocationId,
       )
-      // null för en RENT-avi = saknat likvidkonto/1510 → bokföringsfel, inte
-      // ett giltigt no-op. (DEPOSIT returnerar null avsiktligt — deposits-modulen
-      // äger 1510/2890-flödet — och får behålla PAID-statusen.)
-      if (entry === null && notice.type !== RentNoticeType.DEPOSIT) {
+      // null = saknat likvidkonto/1510 → bokföringsfel, inte ett giltigt no-op.
+      // (DEPOSIT-avier når aldrig hit — de blockeras överst; deposits-modulen äger
+      // deras 1510/2890-flöde.)
+      if (entry === null) {
         throw new InternalServerErrorException(
           `Betalningsverifikat kunde inte skapas för avi ${notice.noticeNumber} — ` +
             'kontrollera att kontoplanen innehåller konto 1510 och rätt likvidkonto.',

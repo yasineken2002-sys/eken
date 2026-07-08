@@ -154,12 +154,14 @@ describe('FIX 9 · PR 6 — AviseringService.markAsPaid', () => {
     expect(prisma.rentNotice.updateMany).toHaveBeenCalledTimes(2) // claim + revert
   })
 
-  it('DEPOSIT-avi: bokföring returnerar null avsiktligt → status behålls (ingen revert)', async () => {
+  it('DEPOSIT-avi: BLOCKERAS (#41/T2.2 — betalas via deposits.markPaid/bankmatch, en kanonisk väg)', async () => {
     const { service, prisma, accounting } = makeService({ notice: { type: 'DEPOSIT' } })
-    accounting.createJournalEntryForRentNoticeManualPayment.mockResolvedValueOnce(null)
-    await service.markAsPaid('rn-1', 'org-1', 10_000, 'BANK')
-    // Bara claim, ingen revert.
-    expect(prisma.rentNotice.updateMany).toHaveBeenCalledTimes(1)
+    await expect(service.markAsPaid('rn-1', 'org-1', 10_000, 'BANK')).rejects.toBeInstanceOf(
+      BadRequestException,
+    )
+    // Ingen statusflip, ingen bokföring — deposits-modulen äger deposit-betalningen.
+    expect(prisma.rentNotice.updateMany).not.toHaveBeenCalled()
+    expect(accounting.createJournalEntryForRentNoticeManualPayment).not.toHaveBeenCalled()
   })
 
   it('redan betald (PAID) → BadRequestException, varken claim eller bokning', async () => {

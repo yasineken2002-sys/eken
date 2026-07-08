@@ -325,18 +325,6 @@ export class DepositsService implements OnApplicationBootstrap {
       throw new BadRequestException('Endast väntande depositioner kan markeras som betalda')
     }
 
-    // #41: en avi-länkad deposition (skapad vid aktivering, ingen egen Invoice)
-    // betalas via depositionsavin — bankmatchning eller betalning på avin bokför
-    // 1930 D/1510 K och flippar Deposit→PAID. Manuell markPaid saknar (i T2.1)
-    // en bokföringsväg utan Invoice → skulle flippa PAID UTAN verifikat (BFL 5:6).
-    // Blockera tills T2.2 inför manuell deposit-betalning utan Invoice.
-    if (!deposit.invoiceId && deposit.rentNoticeId) {
-      throw new BadRequestException(
-        'Denna deposition betalas via depositionsavin (bankmatchning eller betalning på avin), ' +
-          'inte via manuell markering här.',
-      )
-    }
-
     return this.prisma.$transaction(async (tx) => {
       const now = new Date()
 
@@ -397,6 +385,36 @@ export class DepositsService implements OnApplicationBootstrap {
             )
           }
         }
+      } else if (deposit.rentNoticeId) {
+        // #41/T2.2: avi-länkad deposition utan Invoice → boka manuell betalning
+        // 1930 D / 1510 K keyat på depositId, och flippa den länkade avin → PAID.
+        // Deposit-status-claimen ovan (PENDING→PAID) serialiserar mot bankmatchningen
+        // (som kräver Deposit=PENDING) → bara EN väg bokför, ingen dubbelbokning.
+        const entry = await this.accounting.createJournalEntryForDepositManualPayment(
+          id,
+          organizationId,
+          Number(deposit.amount),
+          now,
+          'MANUAL',
+          userId,
+          tx,
+        )
+        if (entry === null) {
+          throw new InternalServerErrorException(
+            `Betalningsverifikat kunde inte skapas för deposition ${id} — ` +
+              'kontoplanen saknar konto 1930 eller 1510.',
+          )
+        }
+        // Flippa den länkade depositionsavin → PAID (status-guardad) så den inte
+        // ligger kvar som obetald/bankmatchbar.
+        await tx.rentNotice.updateMany({
+          where: {
+            id: deposit.rentNoticeId,
+            organizationId,
+            status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+          },
+          data: { status: 'PAID', paidAt: now },
+        })
       }
 
       return tx.deposit.findFirstOrThrow({ where: { id, organizationId }, include: INCLUDE })
@@ -438,32 +456,52 @@ export class DepositsService implements OnApplicationBootstrap {
           : 'PARTIALLY_REFUNDED'
 
     const now = new Date()
-    const updated = await this.prisma.deposit.update({
-      where: { id },
-      data: {
-        status: newStatus,
-        refundedAt: now,
-        refundAmount: dto.refundAmount,
-        deductions: deductions as unknown as Prisma.InputJsonValue,
-        ...(dto.notes ? { notes: dto.notes } : {}),
-      },
-      include: INCLUDE,
-    })
+    // #25/T2.2: statusbytet OCH återbetalningsverifikatet i SAMMA transaktion.
+    // Uteblir verifikatet (t.ex. saknat konto 3040 för skadeavdrag efter att
+    // 1510-fallbacken tagits bort) kastar vi → hela återbetalningen rullas
+    // tillbaka. Tidigare loggades bokföringsfel bara → depositionen kunde stå
+    // som REFUNDED/FORFEITED medan 2890-skulden aldrig reverserades (BFL 5:6).
+    return this.prisma.$transaction(async (tx) => {
+      // Status-gardad claim (samma mönster som markPaid) — race-säker mot ett
+      // samtidigt refund-anrop. Utan den kan en andra samtidig transaktion skriva
+      // över refundAmount/deductions/status EFTER att den första committat, medan
+      // idempotensnyckeln (deposit-refund:<id>) bara låter ETT verifikat skapas →
+      // Deposit-fälten skulle divergera från det faktiskt bokförda verifikatet.
+      const claim = await tx.deposit.updateMany({
+        where: { id, organizationId, status: { in: ['PAID', 'REFUND_PENDING'] } },
+        data: {
+          status: newStatus,
+          refundedAt: now,
+          refundAmount: dto.refundAmount,
+          deductions: deductions as unknown as Prisma.InputJsonValue,
+          ...(dto.notes ? { notes: dto.notes } : {}),
+        },
+      })
+      if (claim.count === 0) {
+        throw new ConflictException(
+          'Depositionen är redan reglerad — uppdatera sidan och försök igen',
+        )
+      }
 
-    try {
-      await this.accounting.createJournalEntryForDepositRefund(
+      const entry = await this.accounting.createJournalEntryForDepositRefund(
         id,
         organizationId,
         dto.refundAmount,
         deductionsTotal,
         now,
         userId,
+        tx,
       )
-    } catch (err) {
-      this.logger.error(`Deposit refund accounting failed: ${String(err)}`)
-    }
+      if (entry === null) {
+        throw new InternalServerErrorException(
+          `Återbetalningsverifikat kunde inte skapas för deposition ${id} — ` +
+            'kontrollera att kontoplanen innehåller konto 2890 och 1930, samt konto 3040 ' +
+            'om avdrag för skada anges.',
+        )
+      }
 
-    return updated
+      return tx.deposit.findFirstOrThrow({ where: { id, organizationId }, include: INCLUDE })
+    })
   }
 
   // ── Lease-uppsägning sätter REFUND_PENDING ──────────────────────────────────
@@ -479,6 +517,24 @@ export class DepositsService implements OnApplicationBootstrap {
       where: { id: deposit.id },
       data: { status: 'REFUND_PENDING' },
     })
+  }
+
+  // #73 catch-up: läker en PAID-deposition på ett redan TERMINATED-kontrakt som av
+  // någon anledning (transient DB-fel i terminateExpiredNoticeLeases best-effort-
+  // anropet) aldrig flaggades REFUND_PENDING vid utflytt. Utan denna dagliga sweep
+  // fanns ingen självläkning — depositionen kunde hänga permanent i PAID efter
+  // avflytt (hyresjurist-fynd). Idempotent (updateMany med statusfilter).
+  async sweepTerminatedLeasesForRefundPending(): Promise<number> {
+    const res = await this.prisma.deposit.updateMany({
+      where: { status: 'PAID', lease: { status: 'TERMINATED' } },
+      data: { status: 'REFUND_PENDING' },
+    })
+    if (res.count > 0) {
+      this.logger.log(
+        `[deposit-refund-sweep] ${res.count} deposition(er) på TERMINATED-kontrakt flaggade REFUND_PENDING`,
+      )
+    }
+    return res.count
   }
 
   // ── Cron-hjälpare: påminn om depositioner som väntat >30d på återbetalning ─

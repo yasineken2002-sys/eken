@@ -152,7 +152,7 @@ describe('#65 · transitionStatus(ACTIVE→TERMINATED) delegerar till terminate(
   beforeEach(() => jest.useFakeTimers().setSystemTime(new Date('2026-08-12T09:00:00Z')))
   afterEach(() => jest.useRealTimers())
 
-  it('ACTIVE→TERMINATED → golvat endDate, INGEN rå TERMINATED-flip, deposit-refund triggas', async () => {
+  it('ACTIVE→TERMINATED → golvat endDate, INGEN rå TERMINATED-flip', async () => {
     const { service, prisma, txMock, deposits } = makeService()
 
     await service.transitionStatus('lease-1', 'TERMINATED', 'org-1', 'user-1')
@@ -171,8 +171,9 @@ describe('#65 · transitionStatus(ACTIVE→TERMINATED) delegerar till terminate(
     // Rå-flip-vägens $transaction/unit-sync användes ALDRIG.
     expect(prisma.$transaction).not.toHaveBeenCalled()
     expect(txMock.lease.update).not.toHaveBeenCalled()
-    // Uppsägningens sidoeffekt (deposition → REFUND_PENDING) kördes.
-    expect(deposits.markRefundPendingForLease).toHaveBeenCalledWith('lease-1', 'org-1')
+    // #73: depositionen flyttas INTE till REFUND_PENDING vid uppsägning (notice-date) —
+    // det sker först vid faktisk utflytt (terminateExpiredNoticeLeases, endDate passerad).
+    expect(deposits.markRefundPendingForLease).not.toHaveBeenCalled()
   })
 
   it('DRAFT→TERMINATED → rå flip (avbryt utkast), oförändrat', async () => {
