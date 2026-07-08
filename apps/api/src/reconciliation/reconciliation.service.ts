@@ -1114,6 +1114,77 @@ export class ReconciliationService {
       // (eller en race-förlorare) → ingen allokering; låt tx:n falla vidare.
       if (!['SENT', 'PENDING', 'OVERDUE'].includes(notice.status)) return false
 
+      // #41: en DEPOSITIONS-avi hanteras separat. Den ingår ALDRIG i debt/kravtrappan
+      // (computeRentDebt=0 för DEPOSIT, kravtrappan filtrerar type=RENT) — den lämnas
+      // därför orörd av härdningen. Matchbar BARA om den har en länkad Deposit-rad
+      // (som bokförts 1510 D/2890 K vid aktivering). Orphan-avier (ingen Deposit) →
+      // return false (FAIL-CLOSED): annars skulle 1930 D/1510 K kreditera en 1510 som
+      // aldrig debiterats (F1-fällan). Bygger på #109-carve-out (DEPOSIT-undantaget
+      // i throw:et nedan) — vi bryter inte härdningen, vi fyller i den avsedda luckan.
+      if (notice.type === RentNoticeType.DEPOSIT) {
+        const deposit = await tx.deposit.findFirst({
+          where: { rentNoticeId: noticeId, organizationId },
+          select: { id: true, status: true },
+        })
+        if (!deposit || deposit.status !== 'PENDING') return false
+
+        const priorDep = await tx.rentNoticePayment.findMany({
+          where: { rentNoticeId: noticeId },
+          select: { amount: true },
+        })
+        const paidDep = priorDep.reduce((s, a) => s.plus(new Decimal(a.amount)), new Decimal(0))
+        const remainingDep = new Decimal(notice.totalAmount).minus(paidDep)
+        if (remainingDep.lte(0)) return false
+        // Deposition betalas i sin helhet (allt-eller-inget) — delbetalning ej meningsfull.
+        if (transactionAmount.minus(remainingDep).abs().gt(tolerance)) return false
+
+        await tx.rentNoticePayment.create({
+          data: {
+            rentNoticeId: noticeId,
+            bankTransactionId: transactionId,
+            amount: remainingDep,
+            paidAt: transactionDate,
+            source: 'BANK_RECONCILIATION',
+          },
+        })
+        await tx.rentNotice.updateMany({
+          where: { id: noticeId, organizationId, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } },
+          data: { status: 'PAID', paidAt: transactionDate, paidAmount: notice.totalAmount },
+        })
+        // Deposition → PAID: sanningskällan för återbetalning (markRefundPendingForLease
+        // hittar den vid uppsägning). Status-guardad mot samtidig markPaid-flip.
+        await tx.deposit.updateMany({
+          where: { id: deposit.id, organizationId, status: 'PENDING' },
+          data: { status: 'PAID', paidAt: transactionDate },
+        })
+        await tx.bankTransaction.update({
+          where: { id: transactionId },
+          data: {
+            status: 'MATCHED',
+            invoiceId: null,
+            matchedRentNoticeId: noticeId,
+            matchedAt: new Date(),
+            ...(userId ? { matchedBy: userId } : {}),
+          },
+        })
+        // 1930 D (bank) / 1510 K — stänger fordran som aktiveringen bokförde
+        // 1510 D/2890 K. Netto över create+betalning = 1930 D / 2890 K (korrekt).
+        const depEntry = await this.accounting.createJournalEntryForRentNoticePayment(
+          { id: noticeId, noticeNumber: notice.noticeNumber },
+          { id: transactionId, date: transactionDate, amount: remainingDep },
+          organizationId,
+          userId,
+          tx,
+        )
+        if (depEntry === null) {
+          throw new InternalServerErrorException(
+            `Betalningsverifikat kunde inte skapas för depositionsavi ${notice.noticeNumber} — ` +
+              'kontrollera att kontoplanen innehåller konto 1930 och 1510.',
+          )
+        }
+        return true
+      }
+
       const priorAllocs = await tx.rentNoticePayment.findMany({
         where: { rentNoticeId: noticeId },
         select: { amount: true },
@@ -1230,9 +1301,11 @@ export class ReconciliationService {
         userId,
         tx,
       )
-      // null för en RENT-avi = saknat 1930/1510 → bokföringsfel (ej giltigt no-op).
-      // Kasta så hela transaktionen rullas tillbaka — ingen allokering utan verifikat.
-      if (entry === null && notice.type !== RentNoticeType.DEPOSIT) {
+      // null = saknat 1930/1510 → bokföringsfel (ej giltigt no-op). Kasta så hela
+      // transaktionen rullas tillbaka — ingen allokering utan verifikat. (DEPOSIT
+      // hanteras i egen gren ovan; #109-carve-out är därmed konsumerat och den
+      // tidigare `type !== DEPOSIT`-undantaget här är inte längre nödvändigt.)
+      if (entry === null) {
         throw new InternalServerErrorException(
           `Betalningsverifikat kunde inte skapas för hyresavi ${notice.noticeNumber} — ` +
             'kontrollera att kontoplanen innehåller konto 1930 och 1510.',

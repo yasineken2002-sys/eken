@@ -1835,9 +1835,15 @@ export class AccountingService {
     invoiceNumber: string,
     issueDate: Date,
     createdById: string | null,
+    // #41: valfri yttre transaktion. Aktiverings-vägen skapar Deposit-raden och
+    // bokför denna accrual ATOMISKT (Deposit finns ⇔ 1510 D/2890 K bokförd) så att
+    // matchningens fail-closed-gating (länkad Deposit) aldrig kan matcha en avi
+    // vars 1510 saknar debet (F1-fällan). Utelämnas → fristående (manuella vägen).
+    tx?: Prisma.TransactionClient,
   ) {
+    const db = tx ?? this.prisma
     const sourceId = `deposit-invoice:${depositId}`
-    const accounts = await this.prisma.account.findMany({
+    const accounts = await db.account.findMany({
       where: { organizationId },
       select: { id: true, number: true },
     })
@@ -1858,6 +1864,7 @@ export class AccountingService {
         { accountId: liabilityId, credit: amount, description: 'Mottagen deposition' },
       ],
       idempotencyWhere: { organizationId, sourceId },
+      ...(tx ? { tx } : {}),
     })
   }
 

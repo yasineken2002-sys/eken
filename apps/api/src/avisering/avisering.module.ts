@@ -8,6 +8,7 @@ import { AccountingModule } from '../accounting/accounting.module'
 import { ConsumptionModule } from '../consumption/consumption.module'
 import { MiscChargeModule } from '../misc-charges/misc-charge.module'
 import { PaymentFreshnessModule } from '../payment-freshness/payment-freshness.module'
+import { DepositsModule } from '../deposits/deposits.module'
 import { AviseringController } from './avisering.controller'
 import { AviseringService } from './avisering.service'
 import { AviseringScheduler } from './avisering.scheduler'
@@ -28,6 +29,7 @@ import { RentDebtService } from './rent-debt.service'
     ConsumptionModule,
     MiscChargeModule,
     PaymentFreshnessModule,
+    DepositsModule,
   ],
   controllers: [AviseringController],
   providers: [

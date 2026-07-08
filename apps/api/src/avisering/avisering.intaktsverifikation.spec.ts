@@ -77,6 +77,7 @@ describe('FIX 9 · PR 2 — generateMonthlyNotices bokför hyresintäkt', () => 
       accounting as never,
       consumption as never,
       noop as never, // miscCharges
+      { ensureDepositForNotice: jest.fn().mockResolvedValue({ created: false }) } as never, // deposits
     )
     return { service, prisma, accounting }
   }
