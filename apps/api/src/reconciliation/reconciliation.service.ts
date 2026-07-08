@@ -1042,6 +1042,19 @@ export class ReconciliationService {
         )
       }
 
+      // deposit-F1: är fakturan en deposition-faktura (manuella deposits.create-
+      // vägen, Deposit.invoiceId-länkad) → synka Deposit.status → PAID i SAMMA tx.
+      // Utan detta stod en deposition betald via bankmatchning kvar PENDING för
+      // evigt → refund() nekade och markRefundPendingForLease hittade den aldrig
+      // (deposition kunde aldrig återbetalas). Status-guardad; för en icke-
+      // deposition-faktura matchar `Deposit.invoiceId = invoiceId` ingen rad → no-op.
+      // Ingen kontering ändras (fakturan bokförde redan 1510 D/2890 K vid create,
+      // och createJournalEntryForPayment ovan stänger 1510 — samma som markPaid).
+      await tx.deposit.updateMany({
+        where: { invoiceId, organizationId, status: 'PENDING' },
+        data: { status: 'PAID', paidAt: transactionDate },
+      })
+
       return invoiceNumber
     })
 
