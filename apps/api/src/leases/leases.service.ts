@@ -18,6 +18,7 @@ import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
 import { TerminateLeaseDto } from './dto/terminate-lease.dto'
 import { RenewLeaseDto } from './dto/renew-lease.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+import { addMonths, endOfNoticePeriod } from '@eken/shared'
 import {
   minNoticePeriodMonths,
   noticePeriodErrorMessage,
@@ -35,17 +36,10 @@ const INCLUDE = {
   tenant: { select: SAFE_TENANT_SELECT },
 } as const
 
-// Lägg till N månader till ett datum, hantera månadsdrift (31 jan + 1 mån = 28/29 feb).
-function addMonths(date: Date, months: number): Date {
-  const d = new Date(date)
-  const targetMonth = d.getMonth() + months
-  d.setMonth(targetMonth)
-  // Om dag rullade (t.ex. 31 → 1 jan), backa till sista dagen i föregående månad.
-  if (d.getMonth() !== ((targetMonth % 12) + 12) % 12) {
-    d.setDate(0)
-  }
-  return d
-}
+// addMonths (månadsdrift-säker) importeras från @eken/shared — delad sanning
+// med terminations + web (#66). renew/autoRenew använder den för FIXED_TERM-
+// slutdatum (exakt N månader, ingen månadsskiftesrundning — det gäller bara
+// uppsägningstid via endOfNoticePeriod).
 
 function startOfDay(date: Date): Date {
   const d = new Date(date)
@@ -268,6 +262,26 @@ export class LeasesService {
       throw new BadRequestException('Kontraktet kan inte redigeras i nuvarande status')
     }
 
+    // #65/#66: slutdatum får INTE ändras på ett AKTIVT kontrakt via den generiska
+    // edit-vägen (PATCH /leases/:id). Att sätta/flytta endDate på ett löpande avtal
+    // ÄR en uppsägning (eller förlängning) — görs det här kringgås uppsägningstidens
+    // golv + månadsskiftesrundning, terminatedAt-sättningen OCH depositionsflödet
+    // (markRefundPendingForLease). Tvinga rätt domänflöde: uppsägning (/terminate)
+    // resp. förnyelse (/renew). Samma "golvet gäller ALLA vägar"-princip som
+    // transitionStatus-delegeringen — annars vore update() en fjärde bypass.
+    // En oförändrad endDate (web-formuläret återsänder befintligt värde vid t.ex.
+    // hyresredigering) släpps igenom; bara en FAKTISK ändring blockeras.
+    if (existing.status === 'ACTIVE' && dto.endDate != null) {
+      const newEnd = startOfDay(new Date(dto.endDate)).getTime()
+      const curEnd = existing.endDate ? startOfDay(new Date(existing.endDate)).getTime() : null
+      if (newEnd !== curEnd) {
+        throw new BadRequestException(
+          'Slutdatum kan inte ändras direkt på ett aktivt kontrakt. Använd uppsägning för att ' +
+            'avsluta det (uppsägningstiden tillämpas då automatiskt) eller förnyelse för att förlänga.',
+        )
+      }
+    }
+
     // Effektiv unit-typ efter ev. byte (för att avgöra bostad/lokal-regelvalet).
     // unitId kan flyttas i update (sällan, men möjligt) — hämta nya typen då.
     let effectiveUnitType: UnitType = existing.unit.type
@@ -341,6 +355,19 @@ export class LeasesService {
 
     if (!allowed.includes(newStatus)) {
       throw new BadRequestException('Ogiltig statusövergång')
+    }
+
+    // En uppsägning av ett AKTIVT kontrakt måste gå via terminate() så att
+    // uppsägningstidens golv + månadsskiftesrundning ALLTID tillämpas. Annars
+    // kringgår den generiska /status-vägen (AI-verktyget `transition_lease_status`
+    // och direkt HTTP PATCH /leases/:id/status) golvet och gör en RÅ flip till
+    // TERMINATED med omedelbar verkan — juridiskt ogiltig uppsägning (#65).
+    // terminate() sätter terminatedAt + golvat endDate och låter kontraktet
+    // löpa som ACTIVE till slutdatum (cron flippar TERMINATED då), exakt som
+    // det avsedda uppsägningsflödet. DRAFT→TERMINATED (avbryt utkast) har ingen
+    // uppsägningstid och flippar direkt nedan.
+    if (newStatus === 'TERMINATED' && lease.status === 'ACTIVE') {
+      return this.terminate(id, {}, organizationId)
     }
 
     // Optimistic check innan DRAFT→ACTIVE; partial unique index fångar race.
@@ -642,12 +669,28 @@ export class LeasesService {
     }
 
     const today = startOfDay(new Date())
-    const effective = dto.effectiveDate
-      ? startOfDay(new Date(dto.effectiveDate))
-      : addMonths(today, lease.noticePeriodMonths)
 
-    if (effective < today) {
-      throw new BadRequestException('Slutdatum kan inte vara i förflutet')
+    // Uppsägningstidens golv (JB 12 kap 4 §/5 §) är TVINGANDE till hyresgästens
+    // förmån (1 § 5 st): en uppsägning kan aldrig upphöra före det månadsskifte
+    // som infaller närmast efter `noticePeriodMonths` månader. Ett angivet
+    // effectiveDate som är för kort JUSTERAS UPP till golvet — aldrig ett
+    // ogiltigt (för tidigt) avslut (#45). Golvet är dessutom månadsskiftes-
+    // rundat (#46). Detta är den ENDA punkt alla uppsägningsvägar passerar:
+    // direkt HTTP /terminate, TerminationsService.approve() OCH — via
+    // delegeringen i transitionStatus — AI-verktyget + HTTP /status. Ligger i
+    // service-lagret så ingen controller-/AI-väg kan kringgå det.
+    let effective: Date
+    if (lease.status === 'ACTIVE') {
+      const floor = endOfNoticePeriod(today, lease.noticePeriodMonths)
+      const requested = dto.effectiveDate ? startOfDay(new Date(dto.effectiveDate)) : floor
+      effective = requested.getTime() < floor.getTime() ? floor : requested
+    } else {
+      // DRAFT: kontraktet har aldrig aktiverats → ingen uppsägningstid att
+      // skydda. Avsluta direkt (eller vid angivet framtida datum).
+      effective = dto.effectiveDate ? startOfDay(new Date(dto.effectiveDate)) : today
+      if (effective < today) {
+        throw new BadRequestException('Slutdatum kan inte vara i förflutet')
+      }
     }
 
     const updated = await this.prisma.lease.update({

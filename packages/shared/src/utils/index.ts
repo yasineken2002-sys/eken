@@ -98,6 +98,34 @@ function addDays(date: Date, days: number): Date {
   return d
 }
 
+// Lägg N kalendermånader till ett datum, med månadsdrift-korrigering:
+// 31 jan + 1 mån → 28/29 feb (inte 3 mars). Delad sanning för uppsägnings- och
+// hyreslivscykel-beräkningar (tidigare duplicerad i api-leases, api-terminations
+// och web). Behåller klockslag/tidszon från indata.
+export function addMonths(date: Date, months: number): Date {
+  const d = new Date(date)
+  const target = d.getMonth() + months
+  d.setMonth(target)
+  // Om dagen rullade över (t.ex. 31 → 1) backa till sista dagen i rätt månad.
+  if (d.getMonth() !== ((target % 12) + 12) % 12) d.setDate(0)
+  return d
+}
+
+// Sista kalenderdagen i månaden för `date`, kl 00:00 lokal tid.
+export function endOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0)
+}
+
+// JB 12 kap 4 § / 5 § — en uppsägning upphör "vid det månadsskifte som inträffar
+// närmast efter N månader från uppsägningen". Lägg N månader och runda UPP till
+// månadsskiftet. Ex: uppsägning 12 aug + 1 mån → 30 sep; 7 jul + 3 mån → 31 okt.
+// Regelverks-AGNOSTISK: anroparen anger rätt antal månader (JB resp.
+// privatuthyrningslagen 2012:978 — se #50). Golvet är tvingande till
+// hyresgästens förmån (JB 12 kap 1 § 5 st) och får aldrig kortas.
+export function endOfNoticePeriod(from: Date, noticePeriodMonths: number): Date {
+  return endOfMonth(addMonths(from, noticePeriodMonths))
+}
+
 function isoDateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }

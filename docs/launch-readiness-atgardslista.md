@@ -708,3 +708,160 @@ enda DB-skyddet mot två ACTIVE-leases på samma enhet. Samma drift-klass har re
   misc-charges/rent-increases/consumption/deposits: OK. **OBS:** `inspections` stod tidigare
   här men hade i själva verket hålet (se #5) — nu åtgärdat. Kvarvarande rå-relations-id-klass:
   leases.update (#19) + maintenance/documents/inspections/news (#5) — samtliga stängda.
+
+---
+
+## 🗺️ SVEP 3 — ÅTGÄRDSPLAN (granskad 2026-07-08)
+
+**Status:** Kartläggning + fyra specialistgranskningar (bokförings-expert, hyresjurist, code-reviewer,
+ai-architect) klara. Ingen produktionskod skriven. Granskningen bekräftade rotmönstret men fann **fem
+fynd som inte finns i #40–#63**, varav **två är live-buggar i produktion**. Kartan är verifierad mot
+faktisk kod (`leases.service.ts`, `avisering.service.ts`, `deposits.service.ts`, `accounting.service.ts`,
+`reconciliation.service.ts`, `terminations.service.ts`, `rent-increases.service.ts`, `schema.prisma`,
+AI-verktygslagret).
+
+### Rotmekanismen (verifierad)
+
+Två distinkta identitetsbyten hanteras ad-hoc, ingen delad abstraktion (`grep succession/carryForward/
+repointLease` → 0 träffar):
+
+1. **Succession** (`renew`/`autoRenewExpiredFixedTerm`): nytt `leaseId`, skapas ACTIVE **utanför**
+   `transitionStatus()` → tappar gap-avi (#43), PDF (#48), deposit strandar (#42), pending RentIncrease
+   pekar på död lease (fördjupar #3).
+2. **In-place edit** (`leases.update` på ACTIVE, samma `leaseId`): ingen fältlåsning → #40, #49, #57, #52a.
+
+`syncUnitStatusFromLeases` är den enda delade seam:en — `update()` glömmer den.
+
+### 🆕 Nya fynd (utanför #40–#63)
+
+- **#64 [🟠 KORRIGERAD 2026-07-08 — INTE live på main] Deposit-avier kan inte bankavstämmas → betald
+  deposition bokförs aldrig (2890 skrivs aldrig).** _Ursprunglig hypotes (ogrundad 1510-kreditering) var
+  FALSE POSITIVE på nuvarande main:_ `createJournalEntryForRentNoticePayment` saknar mycket riktigt
+  `type===DEPOSIT`-koll, MEN den nås aldrig för en deposition — `computeRentDebt` returnerar `ZERO_DEBT`
+  för DEPOSIT (`rent-debt.service.ts:101-103`, bank-härdning **#105** `80cf9d0`), och
+  `applyMatchToRentNotice` bailar på `if (remaining.lte(0)) return false` (`reconciliation.service.ts:1131`,
+  **#109** `306c824`) FÖRE bokföringsanropet. Enda anroparen är just den blockerade grenen. `type!==DEPOSIT`
+  vid det gamla throw:et är död defensiv kod. **Faktiskt beteende:** deposit-avin hittas som OCR-kandidat,
+  avvisas vid `remaining=0`, faller till UNMATCHED → pengarna ligger i banken men krediteras aldrig 2890.
+  **Rätt fix ägs av #41/T2.1** (skapa Deposit-rad + boka 1510 D/2890 K vid aktivering, gör avin matchbar,
+  reconciliation stänger 1930 D/1510 K) — kan inte fixas isolerat. **VERIFIERAT i kod + empiriskt** (dev:
+  2 DEPOSIT-avier, 0 med 1510-betalningsverifikat). _Historisk risk (pre-#105, då depositioner kan ha varit
+  matchbara):_ read-only audit-query levererad (`scratchpad/audit-deposit-1510-misbooking.sql`) — kör i prod.
+- **#65 [🔴 LIVE — ÅTGÄRDAD (F2, byggd 2026-07-08)] AI säger upp via annan kodväg.**
+  `transition_lease_status→TERMINATED` anropade `transitionStatus()` (rå flip), inte `terminate()`.
+  **Fix:** `transitionStatus(ACTIVE→TERMINATED)` DELEGERAR nu till `terminate()` i service-lagret → golvet
+  gäller AI + HTTP /status + /terminate. **Hyresjurist-granskning fann en FJÄRDE väg:** `PATCH /leases/:id`
+  (`update()`) kunde sätta `endDate` fritt på ett ACTIVE-kontrakt (golv-bypass, MANAGER-nåbar). **Stängd:**
+  `update()` nekar nu endDate-ändring på ACTIVE (hänvisar till /terminate resp. /renew). Alla fyra vägar
+  bevisade live end-to-end (golvade till 2026-10-31; update-vägen nekad).
+  _Juridik-uppföljning (ej blockerande, hyresjurist):_ (a) golv-villkoret bör även kräva att tillträde
+  passerat (`today >= startDate`, JB 12:6 2 st sista meningen); (b) rollasymmetri /status (MANAGER) vs
+  /terminate (ADMIN/OWNER) — nu när /status ger bindande uppsägning; (c) ömsesidig förtida-överenskommelse-väg
+  (samtycke golvas ej); (d) #50 privatuthyrningslagen (hög prio).
+- **#66 [🔴 — ÅTGÄRDAD (F2)] `terminate()` saknade golv + rundning.** **Fix:** `terminate()` clampar upp
+  ett för kort `effectiveDate` till golvet `endOfNoticePeriod(idag, lease.noticePeriodMonths)`; DRAFT
+  undantaget (ingen uppsägningstid). Ligger i service-lagret (ingen väg kringgår). #50 (privatuthyrning
+  1/3 + hyresvärd/hyresgäst-asymmetri) MEDVETET utanför scope — uppföljning.
+- **#67 [🔴 — ÅTGÄRDAD (F2)] månadsskiftesrundning.** **Fix:** delad `endOfNoticePeriod` i `@eken/shared`
+  (addMonths månadsdrift-säker + runda upp till månadsskifte); ersätter duplicerad `addMonths` i
+  leases/terminations/web. FIXED_TERM-förnyelse behåller exakt-N-månader (ingen rundning) — korrekt.
+- **#68 [🟠] Edit-låsets fältlista för snäv (juridik).** `includes*`-booleaner, `parkingFee/storageFee/
+garageFee`, alla `index*`-fält är hyresvillkor (JB 12:19), inte "mjuka". `noticePeriodMonths` får ej
+  höjas fritt på bostad (hyresgästens 3-mån-rätt, 5 §, är oberoende + tvingande).
+
+#### F2-uppföljning (hyresjurist-granskning av uppsägningsgolvet, ej blockerande för F2)
+
+- **#69 [🟠 HÖG PRIO] #50 privatuthyrningslagen (2012:978) — golvet kan neka hyresgästens 1-månadersrätt.**
+  Lag 2012:978 3 § ger en hyresgäst som hyr av en privatperson (egen bostad) rätt att säga upp med **1
+  månad**, oavsett avtalat. Dagens golv baseras på `lease.noticePeriodMonths` (≥ JB-min 3 mån) → en
+  privatuthyrnings-hyresgäst golvas felaktigt till 3 mån vid egen uppsägning (försämring i strid med
+  tvingande skyddsregel). Kräver ett regelverks-/regime-fält på `Lease`/`Organization` som styr golvet vid
+  hyresgästinitierad uppsägning. Hyresvärdsriktningen är oförändrat säker (golvet blir aldrig för kort).
+  Tills löst: dokumentera begränsningen i onboarding ("gäller ordinarie hyresrätt enligt JB").
+- **#70 [🟡] Tillträde-villkor på golvet (JB 12:6 2 st sista meningen).** `terminate()`-golvet villkoras på
+  `status === 'ACTIVE'`, inte på om tillträdesdagen passerat. Ett ACTIVE-avtal med framtida `startDate`
+  (undertecknat, ej tillträtt) som sägs upp ska upphöra **genast** (6 § 2 st), men golvas idag till fulla
+  3/9 mån. Fix: byt villkor till `status === 'ACTIVE' && today >= lease.startDate`. Missgynnar ingen akut
+  (golvet gör snarast avtalet längre), men blockerar enheten i onödan.
+- **#71 [🟡] Rollasymmetri /status vs /terminate.** `/terminate` kräver ADMIN/OWNER; `/status` tillåter
+  MANAGER. Nu när `/status`→TERMINATED delegerar till `terminate()` (bindande uppsägning med rättsverkan)
+  bör åtkomstnivån vara konsekvent. (Kopplar till S-B rollinversion.)
+- **#72 [🟡] Ingen väg för genuint ömsesidig förtida-överenskommelse.** `terminate()` golvar ALLTID. Ett
+  samtyckesbaserat tidigareläggande (hyresgästen vill flytta ut tidigare, hyresvärden godkänner) är inte en
+  ensidig försämring (1 § 5 st skyddar bara mot ensidigt pålagt) och bör inte golvas — men saknar idag väg.
+  Kräver explicit "hyresgästen samtycker till förtida upphörande"-flagga (för att inte bli en golv-bakväg).
+
+### 🆕 Systemiska ärenden (större än Svep 3)
+
+- **S-A: Inget räkenskapsårslås finns** (grep `lockedYear/closedYear/bokslut` → 0 träffar). Gör #44-backfill
+  farlig över årsskiften — tyst backfill endast i öppet år, hård spärr över tidigare årsgräns tills
+  årslås byggs.
+- **S-B: #20-klass rollinversion på lease-AI-verktyg.** `transition_lease_status`/`create_lease`/
+  `create_tenant_and_lease` släpper igenom ACCOUNTANT → gata till OWNER/ADMIN (spegla
+  `prepare_contract_signing`). `create_tenant_and_lease` bör dubbelbekräftas.
+- **S-C: Hyresförhandlingslagen 3 § ej inläst** — öppen fråga om §54a-tystnadsverkan ens är rätt regel
+  för Evenos standardkund (liten privat värd utan förhandlingsordning). Eget granskningsärende.
+
+### Tema-ordning + PR-plan (granskad, beslutad)
+
+**Ordning:** Live-fixar → T1 → T2 → T3 → T4 → T5.
+
+**Snabbfixar först (beslut 2026-07-08 — egna små PR:er, oberoende av refaktoreringen):**
+
+- **~~F1 → #64~~ INSTÄLLD (2026-07-08):** utredning visade att #64 inte är en live-felbokning på main
+  (bank-härdningen #105/#109 blockerar deposit-matchning helt). En `1930 D/2890 K`-fix byggd och verifierad
+  korrekt på accounting-lagret, men grenen är oåtkomlig och en isolerad fix planterar en landmina för #41
+  (som öppnar en 1510-fordran att stänga). **Vikt in i #41/T2.1** (beslut). Read-only prod-audit för
+  historiska pre-#105-felbokningar levererad (`scratchpad/audit-deposit-1510-misbooking.sql`).
+- **F2 → #65 + #66:** golv + endDate-beräkning + deposit-trigger i `transitionStatus(TERMINATED)` (så
+  BÅDE människa och AI täcks), eller re-peka AI-verktyget till en `prepare_termination`-seam. Delad
+  `roundUpToMonthEnd`-helper (#67) ingår. **Nu högst prio bland snabbfixarna** (F1 inställd).
+
+**T1 — Övergångar & redigering (rot):**
+
+- **T1.1 Lås redigeringsytan på ACTIVE** (#40, #49, #57, #52a) — GUARD-ONLY i **service-lagret** (AI +
+  framtida verktyg passerar aldrig controllern). Fält-tier (hyresjurist):
+  - _Tier 1 hårt låst:_ `monthlyRent`, `tenantId`, `unitId`, `startDate`, `endDate`, `leaseType`,
+    `depositAmount`, alla `includes*`, `parkingFee/storageFee/garageFee`, alla `index*`,
+    `noticePeriodMonths` (låst bostad; lokal endast via auditerat tillägg).
+  - _Tier 2 mjuka:_ `specialTerms`, `usagePurpose`, `petsAllowed` (endast lättnad), `sublettingAllowed`,
+    `requiresHomeInsurance`, `indexNotes`.
+- **T1.2 Central statusmaskin + delad activation-seam** (#60) — **med `skipDeposit=true` för
+  `origin:'succession'` från dag ett** (beslut 2026-07-08 — undviker dubbel deposit-fakturering som
+  code-review + bokförings-expert oberoende fångade). Seam parametriseras på
+  `origin:'manual'|'succession'`: delat = kontraktnr + unit-sync + PDF; endast `manual` = välkomstmejl +
+  deposit. Deposit-dedup-guard **inuti** `createInitialNoticesForLease`. Succession återanvänder INTE
+  `describeActiveBlocker`s exclude-self naivt (skulle falskt neka förnyelse). Dela `applyActivationEffects
+(tx)` från `dispatchActivationJobs(post-commit)`. Export `assertValidTransition` till `@eken/shared`.
+- **T1.3 Succession bär följdentiteter** (#42) — re-peka `Deposit` (unik leaseId, samma tx, FÖRE seam);
+  pending RentIncrease: **VOID-som-default** (hyresjurist), smalt repoint-undantag endast om hyra
+  oförändrad + samma gäst/enhet + ingen lucka + `currentRent` stämmer.
+- **T1.4 Bakdaterad debitering** (#44) — #43 löses redan av T1.2. Kvar: `startDate` i förflutet →
+  backfill saknade hela månader endast i öppet räkenskapsår (S-A), annars hård spärr.
+
+**T2 — Deposition (PR-nedbruten):**
+
+- **T2.1 → #41 + #64:** skapa `Deposit{PENDING, invoiceId:null}` i samma tx som deposit-avin vid
+  aktivering; boka 1510 D/2890 K. Gör `markPaid()` `invoiceId`-agnostisk (annars öppen 1510 för
+  aktiverings-deposit). **Ägar även #64:** gör deposit-avin bankmatchbar (idag zeroar `computeRentDebt`
+  DEPOSIT → `applyMatchToRentNotice` bailar på `remaining<=0` → UNMATCHED) OCH låt reconciliation-grenen
+  stänga fordran `1930 D/1510 K` för en deposit-avi (inte hyresvägens 1510-antagande). Måste samordnas:
+  create-sidan (1510 D/2890 K) och match-sidan (1930 D/1510 K) i EN PR, annars felbokas 2890.
+- **T2.2 → #56/#25:** `refund()` atomisk (status + verifikat i samma `$transaction`, kasta vid fel);
+  `deductions` kopplas till `RentDebtService.outstanding()` + dokumentreferens; skilj skadeavdrag (3040)
+  från hyreskvittning (1510-reglering).
+
+**T3 — Uppsägnings-juridik:** #45/#46/#50 — mestadels täckt av F2 ovan (golv + rundning i
+`transitionStatus`). Kvar: asymmetriskt hyresvärds-/hyresgäst-golv (bostad: hyresgäst alltid 3 mån
+oavsett `noticePeriodMonths`), `FIXED_TERM`-särhantering, Privatuthyrningslagen (2012:978) inläst i
+kunskapsbas (ej lanseringsblockerande).
+
+**T4 — Läsmodell:** #47 (dashboard blind för RentNotice), #53 (portal delbetalning).
+
+**T5 — Resten/resiliens:** #51, #54, #55, #58, #59, #61, #62, #63 + systemiska S-A/S-B/S-C.
+
+### Verifierat friskt (bekräftat av granskningen — bryt INTE)
+
+Kravtrappans frikoppling från `lease.status`, en-aktiv-lease-per-enhet (tvålagers), historiska snapshots,
+förnyelsens atomicitet. T1.1 har idag **ingen bypass-yta** (7 `lease.update`-call-sites verifierade; AI
+rör aldrig `update()`; enda externa `monthlyRent`-skrivaren är den lagliga RentIncrease-vägen).
