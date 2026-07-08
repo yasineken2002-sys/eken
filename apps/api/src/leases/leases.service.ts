@@ -184,7 +184,9 @@ interface Tier1Spec {
   coalesceTrim?: boolean
 }
 
-const TIER1_LOCKED_ON_ACTIVE: readonly Tier1Spec[] = [
+// Exporterad så en test (leases-edit-lock-t11a.spec.ts) kan asserta att nyckel-
+// listan matchar @eken/shared LEASE_ACTIVE_LOCKED_FIELDS exakt (frontend-synk).
+export const TIER1_LOCKED_ON_ACTIVE: readonly Tier1Spec[] = [
   // Hyra + avgifter (del av total hyra, JB 12:19) → hyreshöjningsflödet
   { key: 'monthlyRent', label: 'Månadshyra', route: 'RENT', kind: 'decimal', nullMeansSkip: true },
   { key: 'parkingFee', label: 'Parkeringsavgift', route: 'RENT', kind: 'decimal', nullMeansSkip: true }, // prettier-ignore

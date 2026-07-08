@@ -11,6 +11,7 @@ import {
   Hash,
   Plus,
   X,
+  Lock,
   type LucideIcon,
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
@@ -20,9 +21,9 @@ import { cn } from '@/lib/cn'
 import { useProperties } from '@/features/properties/hooks/useProperties'
 import { useUnits } from '@/features/units/hooks/useUnits'
 import { useTenants } from '@/features/tenants/hooks/useTenants'
-import { formatCurrency } from '@eken/shared'
+import { formatCurrency, LEASE_ACTIVE_LOCKED_UI_FIELDS, LEASE_LOCK_ROUTE_HINT } from '@eken/shared'
 import type { CreateLeaseWithTenantInput } from '../api/leases.api'
-import type { Tenant, UnitType } from '@eken/shared'
+import type { LeaseLockRoute, Tenant, UnitType } from '@eken/shared'
 
 const UNIT_TYPE_LABELS: Record<UnitType, string> = {
   APARTMENT: 'Lägenhet',
@@ -274,6 +275,23 @@ interface Props {
    */
   mode?: 'create' | 'edit'
   submitLabel?: string
+  /**
+   * Kontraktets status i edit-läge. När den är 'ACTIVE' låses de bindande
+   * Tier-1-fälten (speglar backendens edit-lås, T1.1a) — samma fält-lista delas
+   * via @eken/shared (LEASE_ACTIVE_LOCKED_UI_FIELDS) så UI och backend inte kan
+   * divergera. DRAFT (och create) = allt redigerbart.
+   */
+  leaseStatus?: 'DRAFT' | 'ACTIVE' | 'EXPIRED' | 'TERMINATED'
+}
+
+// Liten inline-hint vid ett låst fält: talar om VART ändringen ska göras.
+function LockHint({ route }: { route: LeaseLockRoute }) {
+  return (
+    <p className="flex items-center gap-1 text-[11.5px] text-gray-400">
+      <Lock size={11} strokeWidth={2} className="shrink-0" />
+      {LEASE_LOCK_ROUTE_HINT[route]}
+    </p>
+  )
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -286,8 +304,14 @@ export function LeaseForm({
   isSubmitting,
   mode = 'create',
   submitLabel = 'Spara som utkast',
+  leaseStatus,
 }: Props) {
   const today = new Date().toISOString().slice(0, 10)
+  // Edit-lås: aktivt kontrakt → bindande fält låsta (T1.1a-backend speglas här).
+  const isActiveLock = mode === 'edit' && leaseStatus === 'ACTIVE'
+  const lockedSet = new Set<string>(LEASE_ACTIVE_LOCKED_UI_FIELDS)
+  // true om fältet ska vara disablat i UI:t just nu.
+  const locked = (field: string) => isActiveLock && lockedSet.has(field)
   // Vilken knapp som klickades senast — används för att veta om användaren
   // valde "Skapa & aktivera direkt" (primär) eller "Spara som utkast"
   // (sekundär). React Hook Form skickar inget event till handleSubmit så vi
@@ -498,6 +522,22 @@ export function LeaseForm({
 
   return (
     <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-5">
+      {/* Edit-lås-banner: förklarar VARFÖR bindande fält är låsta på ett aktivt
+          kontrakt och VART varje ändring ska göras (speglar backend-guarden). */}
+      {isActiveLock && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/70 px-3.5 py-3">
+          <Lock size={15} strokeWidth={2} className="mt-0.5 shrink-0 text-blue-600" />
+          <div className="space-y-1 text-[12.5px] text-blue-900">
+            <p className="font-semibold">Kontraktet är aktivt — bindande villkor är låsta</p>
+            <p className="text-blue-800/90">
+              Hyra ändras via hyreshöjning, slutdatum via uppsägning eller förnyelse, och byte av
+              enhet eller hyresgäst kräver ett nytt kontrakt. Anteckningar kan fortfarande
+              redigeras.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Section 1: Enhet ─────────────────────────────────────────────────── */}
       <SectionDivider label="Enhet" />
 
@@ -511,7 +551,11 @@ export function LeaseForm({
             render={({ field }) => (
               <select
                 {...field}
-                className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={locked('unitId')}
+                className={cn(
+                  'h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500',
+                  'disabled:cursor-not-allowed disabled:bg-gray-100/70 disabled:text-gray-500',
+                )}
               >
                 <option value="">Välj fastighet…</option>
                 {properties.map((p) => (
@@ -541,10 +585,11 @@ export function LeaseForm({
             render={({ field }) => (
               <select
                 {...field}
-                disabled={!propertyId}
+                disabled={!propertyId || locked('unitId')}
                 className={cn(
                   'h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500',
-                  !propertyId && 'cursor-not-allowed opacity-50',
+                  'disabled:cursor-not-allowed disabled:bg-gray-100/70 disabled:text-gray-500',
+                  !propertyId && !locked('unitId') && 'cursor-not-allowed opacity-50',
                 )}
               >
                 <option value="">{propertyId ? 'Välj enhet…' : 'Välj fastighet först'}</option>
@@ -568,10 +613,15 @@ export function LeaseForm({
             )}
           />
           {errors.unitId && <p className="text-[12px] text-red-600">{errors.unitId.message}</p>}
-          {units.some((u) => u.status === 'OCCUPIED') && (
-            <p className="text-[11.5px] text-gray-500">
-              Uthyrda enheter visas men kan inte väljas — ett aktivt kontrakt måste avslutas först.
-            </p>
+          {locked('unitId') ? (
+            <LockHint route="IDENTITY" />
+          ) : (
+            units.some((u) => u.status === 'OCCUPIED') && (
+              <p className="text-[11.5px] text-gray-500">
+                Uthyrda enheter visas men kan inte väljas — ett aktivt kontrakt måste avslutas
+                först.
+              </p>
+            )
           )}
         </div>
 
@@ -603,172 +653,182 @@ export function LeaseForm({
       {/* ── Section 2: Hyresgäst ─────────────────────────────────────────────── */}
       <SectionDivider label="Hyresgäst" />
 
-      {/* Mode toggle */}
-      <div className="flex gap-2">
-        {(['existing', 'new'] as const).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => setValue('tenantMode', mode, { shouldValidate: false })}
-            className={cn(
-              'h-9 flex-1 rounded-lg border px-4 text-[13px] font-medium transition-all active:scale-[0.97]',
-              tenantMode === mode
-                ? 'border-[#218F52] bg-blue-600/10 text-[#196638]'
-                : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
-            )}
-          >
-            {mode === 'existing' ? 'Befintlig hyresgäst' : 'Ny hyresgäst'}
-          </button>
-        ))}
-      </div>
+      {locked('tenantId') && <LockHint route="IDENTITY" />}
 
-      {tenantMode === 'existing' ? (
-        /* Existing tenant select */
-        <div className="space-y-1.5">
-          <label className="block text-[13px] font-medium text-gray-700">Hyresgäst</label>
-          <Controller
-            control={control}
-            name="existingTenantId"
-            render={({ field }) => (
-              <select
-                {...field}
-                className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Välj hyresgäst…</option>
-                {tenants.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {tenantLabel(t)}
-                  </option>
-                ))}
-              </select>
-            )}
-          />
-          {errors.existingTenantId && (
-            <p className="text-[12px] text-red-600">{errors.existingTenantId.message}</p>
-          )}
+      {/* Hela hyresgäst-ytan låses på ett aktivt kontrakt (tenantId = identitet →
+          succession). <fieldset disabled> disablar allt inuti nativt (toggle,
+          select, nya-hyresgäst-fälten) utan per-fält-risk. */}
+      <fieldset
+        disabled={locked('tenantId')}
+        className="m-0 min-w-0 space-y-3 border-0 p-0 disabled:opacity-70"
+      >
+        {/* Mode toggle */}
+        <div className="flex gap-2">
+          {(['existing', 'new'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setValue('tenantMode', mode, { shouldValidate: false })}
+              className={cn(
+                'h-9 flex-1 rounded-lg border px-4 text-[13px] font-medium transition-all active:scale-[0.97]',
+                tenantMode === mode
+                  ? 'border-[#218F52] bg-blue-600/10 text-[#196638]'
+                  : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
+              )}
+            >
+              {mode === 'existing' ? 'Befintlig hyresgäst' : 'Ny hyresgäst'}
+            </button>
+          ))}
         </div>
-      ) : (
-        /* New tenant fields */
-        <div className="space-y-3">
-          {/* Type toggle */}
+
+        {tenantMode === 'existing' ? (
+          /* Existing tenant select */
           <div className="space-y-1.5">
-            <label className="block text-[13px] font-medium text-gray-700">Typ</label>
-            <div className="flex gap-2">
-              {(['INDIVIDUAL', 'COMPANY'] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setValue('newTenantType', t, { shouldValidate: false })}
-                  className={cn(
-                    'h-9 flex-1 rounded-lg border px-4 text-[13px] font-medium transition-all active:scale-[0.97]',
-                    newTenantType === t
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
-                  )}
+            <label className="block text-[13px] font-medium text-gray-700">Hyresgäst</label>
+            <Controller
+              control={control}
+              name="existingTenantId"
+              render={({ field }) => (
+                <select
+                  {...field}
+                  className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {t === 'INDIVIDUAL' ? 'Privatperson' : 'Företag'}
-                </button>
-              ))}
-            </div>
+                  <option value="">Välj hyresgäst…</option>
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {tenantLabel(t)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            />
+            {errors.existingTenantId && (
+              <p className="text-[12px] text-red-600">{errors.existingTenantId.message}</p>
+            )}
           </div>
-
-          {newTenantType === 'INDIVIDUAL' ? (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Förnamn"
-                  placeholder="Anna"
-                  error={errors.firstName?.message}
-                  {...register('firstName')}
-                />
-                <Input
-                  label="Efternamn"
-                  placeholder="Svensson"
-                  error={errors.lastName?.message}
-                  {...register('lastName')}
-                />
+        ) : (
+          /* New tenant fields */
+          <div className="space-y-3">
+            {/* Type toggle */}
+            <div className="space-y-1.5">
+              <label className="block text-[13px] font-medium text-gray-700">Typ</label>
+              <div className="flex gap-2">
+                {(['INDIVIDUAL', 'COMPANY'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setValue('newTenantType', t, { shouldValidate: false })}
+                    className={cn(
+                      'h-9 flex-1 rounded-lg border px-4 text-[13px] font-medium transition-all active:scale-[0.97]',
+                      newTenantType === t
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
+                    )}
+                  >
+                    {t === 'INDIVIDUAL' ? 'Privatperson' : 'Företag'}
+                  </button>
+                ))}
               </div>
-              <Input
-                label="Personnummer (valfritt)"
-                placeholder="ÅÅÅÅMMDD-XXXX"
-                {...register('personalNumber')}
-              />
-            </>
-          ) : (
-            <>
-              <Input
-                label="Företagsnamn"
-                placeholder="Exempelföretaget AB"
-                error={errors.companyName?.message}
-                {...register('companyName')}
-              />
-              <Input
-                label="Organisationsnummer (valfritt)"
-                placeholder="556xxx-xxxx"
-                {...register('orgNumber')}
-              />
-            </>
-          )}
+            </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="E-post"
-              type="email"
-              placeholder="anna@exempel.se"
-              error={errors.email?.message}
-              {...register('email')}
-            />
-            <Input
-              label="Telefon (valfritt)"
-              type="tel"
-              placeholder="070-123 45 67"
-              {...register('phone')}
-            />
-          </div>
+            {newTenantType === 'INDIVIDUAL' ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Förnamn"
+                    placeholder="Anna"
+                    error={errors.firstName?.message}
+                    {...register('firstName')}
+                  />
+                  <Input
+                    label="Efternamn"
+                    placeholder="Svensson"
+                    error={errors.lastName?.message}
+                    {...register('lastName')}
+                  />
+                </div>
+                <Input
+                  label="Personnummer (valfritt)"
+                  placeholder="ÅÅÅÅMMDD-XXXX"
+                  {...register('personalNumber')}
+                />
+              </>
+            ) : (
+              <>
+                <Input
+                  label="Företagsnamn"
+                  placeholder="Exempelföretaget AB"
+                  error={errors.companyName?.message}
+                  {...register('companyName')}
+                />
+                <Input
+                  label="Organisationsnummer (valfritt)"
+                  placeholder="556xxx-xxxx"
+                  {...register('orgNumber')}
+                />
+              </>
+            )}
 
-          {/* Hyresgästens kontaktadress används bara om den AVVIKER från
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="E-post"
+                type="email"
+                placeholder="anna@exempel.se"
+                error={errors.email?.message}
+                {...register('email')}
+              />
+              <Input
+                label="Telefon (valfritt)"
+                type="tel"
+                placeholder="070-123 45 67"
+                {...register('phone')}
+              />
+            </div>
+
+            {/* Hyresgästens kontaktadress används bara om den AVVIKER från
               lägenhetens (t.ex. delad lägenhet, andrahand, juridisk c/o-adress).
               I normalfallet ärver hyresgästen lägenhetens adress på backend. */}
-          {!showAddressOverride ? (
-            <button
-              type="button"
-              onClick={() => setShowAddressOverride(true)}
-              className="flex w-full items-center justify-between gap-3 rounded-xl border border-dashed border-[#DDDFE4] bg-white px-3.5 py-2.5 text-left text-[13px] text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-800"
-            >
-              <span className="flex items-center gap-2">
-                <Plus size={14} strokeWidth={1.8} className="text-gray-400" />
-                <span>Använd annan kontaktadress än lägenhetens</span>
-              </span>
-              <span className="text-[11.5px] text-gray-400">valfritt</span>
-            </button>
-          ) : (
-            <div className="space-y-3 rounded-xl border border-[#EAEDF0] bg-amber-50/30 p-3.5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[12.5px] font-semibold text-gray-800">Annan kontaktadress</p>
-                  <p className="mt-0.5 text-[11.5px] text-gray-500">
-                    Lämna tomt om hyresgästen ska använda lägenhetens adress.
-                  </p>
+            {!showAddressOverride ? (
+              <button
+                type="button"
+                onClick={() => setShowAddressOverride(true)}
+                className="flex w-full items-center justify-between gap-3 rounded-xl border border-dashed border-[#DDDFE4] bg-white px-3.5 py-2.5 text-left text-[13px] text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-800"
+              >
+                <span className="flex items-center gap-2">
+                  <Plus size={14} strokeWidth={1.8} className="text-gray-400" />
+                  <span>Använd annan kontaktadress än lägenhetens</span>
+                </span>
+                <span className="text-[11.5px] text-gray-400">valfritt</span>
+              </button>
+            ) : (
+              <div className="space-y-3 rounded-xl border border-[#EAEDF0] bg-amber-50/30 p-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[12.5px] font-semibold text-gray-800">Annan kontaktadress</p>
+                    <p className="mt-0.5 text-[11.5px] text-gray-500">
+                      Lämna tomt om hyresgästen ska använda lägenhetens adress.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddressOverride(false)}
+                    aria-label="Ta bort kontaktadress"
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                  >
+                    <X size={14} strokeWidth={1.8} />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowAddressOverride(false)}
-                  aria-label="Ta bort kontaktadress"
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
-                >
-                  <X size={14} strokeWidth={1.8} />
-                </button>
-              </div>
 
-              <Input label="Gatuadress" placeholder="Storgatan 12" {...register('street')} />
-              <div className="grid grid-cols-2 gap-3">
-                <Input label="Postnummer" placeholder="123 45" {...register('postalCode')} />
-                <Input label="Stad" placeholder="Stockholm" {...register('city')} />
+                <Input label="Gatuadress" placeholder="Storgatan 12" {...register('street')} />
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Postnummer" placeholder="123 45" {...register('postalCode')} />
+                  <Input label="Stad" placeholder="Stockholm" {...register('city')} />
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </fieldset>
 
       {/* ── Section 3: Kontraktsvillkor ──────────────────────────────────────── */}
       <SectionDivider label="Kontraktsvillkor" />
@@ -787,9 +847,11 @@ export function LeaseForm({
               <button
                 key={t.id}
                 type="button"
+                disabled={locked('leaseType')}
                 onClick={() => setValue('leaseType', t.id, { shouldValidate: true })}
                 className={cn(
                   'h-9 flex-1 rounded-lg border px-4 text-[13px] font-medium transition-all active:scale-[0.97]',
+                  'disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100',
                   leaseType === t.id
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
                     : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
@@ -799,27 +861,39 @@ export function LeaseForm({
               </button>
             ))}
           </div>
-          <p className="text-[11px] text-gray-400">
-            {leaseType === 'INDEFINITE'
-              ? 'Tillsvidare: löper på obestämd tid, sägs upp med uppsägningstid.'
-              : 'Tidsbegränsat: har slutdatum och förlängs automatiskt om det inte sägs upp.'}
-          </p>
+          {locked('leaseType') ? (
+            <LockHint route="TERMS" />
+          ) : (
+            <p className="text-[11px] text-gray-400">
+              {leaseType === 'INDEFINITE'
+                ? 'Tillsvidare: löper på obestämd tid, sägs upp med uppsägningstid.'
+                : 'Tidsbegränsat: har slutdatum och förlängs automatiskt om det inte sägs upp.'}
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Input
-            label="Startdatum"
-            type="date"
-            error={errors.startDate?.message}
-            {...register('startDate')}
-          />
-          {leaseType === 'FIXED_TERM' ? (
+          <div className="space-y-1">
             <Input
-              label="Slutdatum"
+              label="Startdatum"
               type="date"
-              error={errors.endDate?.message}
-              {...register('endDate')}
+              disabled={locked('startDate')}
+              error={errors.startDate?.message}
+              {...register('startDate')}
             />
+            {locked('startDate') && <LockHint route="DATE_START" />}
+          </div>
+          {leaseType === 'FIXED_TERM' ? (
+            <div className="space-y-1">
+              <Input
+                label="Slutdatum"
+                type="date"
+                disabled={locked('endDate')}
+                error={errors.endDate?.message}
+                {...register('endDate')}
+              />
+              {locked('endDate') && <LockHint route="END_DATE" />}
+            </div>
           ) : (
             <div className="flex items-center text-[12px] text-gray-400">
               Inget slutdatum för tillsvidare-kontrakt
@@ -833,6 +907,7 @@ export function LeaseForm({
               label="Förlängningsperiod (månader)"
               type="number"
               placeholder="12"
+              disabled={locked('renewalPeriodMonths')}
               error={errors.renewalPeriodMonths?.message}
               {...register('renewalPeriodMonths')}
             />
@@ -840,6 +915,7 @@ export function LeaseForm({
               label="Uppsägningstid (månader)"
               type="number"
               placeholder="3"
+              disabled={locked('noticePeriodMonths')}
               error={errors.noticePeriodMonths?.message}
               {...register('noticePeriodMonths')}
             />
@@ -851,31 +927,44 @@ export function LeaseForm({
             label="Uppsägningstid (månader)"
             type="number"
             placeholder="3"
+            disabled={locked('noticePeriodMonths')}
             error={errors.noticePeriodMonths?.message}
             {...register('noticePeriodMonths')}
           />
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <Input
-            label="Månadshyra (kr)"
-            type="number"
-            placeholder="9 200"
-            error={errors.monthlyRent?.message}
-            {...register('monthlyRent')}
-          />
-          <Input
-            label="Deposition (kr, valfritt)"
-            type="number"
-            placeholder="27 600"
-            {...register('depositAmount')}
-          />
+          <div className="space-y-1">
+            <Input
+              label="Månadshyra (kr)"
+              type="number"
+              placeholder="9 200"
+              disabled={locked('monthlyRent')}
+              error={errors.monthlyRent?.message}
+              {...register('monthlyRent')}
+            />
+            {locked('monthlyRent') && <LockHint route="RENT" />}
+          </div>
+          <div className="space-y-1">
+            <Input
+              label="Deposition (kr, valfritt)"
+              type="number"
+              placeholder="27 600"
+              disabled={locked('depositAmount')}
+              {...register('depositAmount')}
+            />
+            {locked('depositAmount') && <LockHint route="DEPOSIT" />}
+          </div>
         </div>
       </div>
 
       {/* ── Section 4: Vad ingår i hyran ─────────────────────────────────────── */}
       <SectionDivider label="Vad ingår i hyran" />
-      <div className="grid grid-cols-2 gap-2 rounded-xl border border-[#EAEDF0] bg-gray-50/60 p-3 sm:grid-cols-3">
+      {locked('includesHeating') && <LockHint route="TERMS" />}
+      <fieldset
+        disabled={locked('includesHeating')}
+        className="m-0 grid min-w-0 grid-cols-2 gap-2 rounded-xl border border-[#EAEDF0] bg-gray-50/60 p-3 disabled:opacity-70 sm:grid-cols-3"
+      >
         {(
           [
             { name: 'includesHeating', label: 'Uppvärmning' },
@@ -901,19 +990,33 @@ export function LeaseForm({
             <span>{f.label}</span>
           </label>
         ))}
-      </div>
+      </fieldset>
 
       {/* ── Section 5: Tilläggshyror ─────────────────────────────────────────── */}
       <SectionDivider label="Tilläggshyror (valfritt)" />
+      {locked('parkingFee') && <LockHint route="RENT" />}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Input
           label="Parkering (kr/mån)"
           type="number"
           placeholder="0"
+          disabled={locked('parkingFee')}
           {...register('parkingFee')}
         />
-        <Input label="Förråd (kr/mån)" type="number" placeholder="0" {...register('storageFee')} />
-        <Input label="Garage (kr/mån)" type="number" placeholder="0" {...register('garageFee')} />
+        <Input
+          label="Förråd (kr/mån)"
+          type="number"
+          placeholder="0"
+          disabled={locked('storageFee')}
+          {...register('storageFee')}
+        />
+        <Input
+          label="Garage (kr/mån)"
+          type="number"
+          placeholder="0"
+          disabled={locked('garageFee')}
+          {...register('garageFee')}
+        />
       </div>
 
       {/* ── Section 6: Användningsändamål ────────────────────────────────────── */}
@@ -930,12 +1033,18 @@ export function LeaseForm({
               ? 't.ex. Kontorsverksamhet, butik för konfektion, restaurang…'
               : 't.ex. Bostad'
           }
+          disabled={locked('usagePurpose')}
           {...register('usagePurpose')}
         />
-        {selectedUnit && selectedUnit.type !== 'APARTMENT' && (
-          <p className="text-[11.5px] text-amber-700">
-            ⚠️ Krävs för indirekt besittningsskydd enligt 12 kap. 57 § JB.
-          </p>
+        {locked('usagePurpose') ? (
+          <LockHint route="TERMS" />
+        ) : (
+          selectedUnit &&
+          selectedUnit.type !== 'APARTMENT' && (
+            <p className="text-[11.5px] text-amber-700">
+              ⚠️ Krävs för indirekt besittningsskydd enligt 12 kap. 57 § JB.
+            </p>
+          )
         )}
       </div>
 
@@ -953,9 +1062,11 @@ export function LeaseForm({
             <button
               key={opt.value}
               type="button"
+              disabled={locked('petsAllowed')}
               onClick={() => setValue('petsAllowed', opt.value, { shouldValidate: false })}
               className={cn(
                 'h-9 flex-1 rounded-lg border px-4 text-[13px] font-medium transition-all active:scale-[0.97]',
+                'disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100',
                 petsAllowed === opt.value
                   ? 'border-blue-500 bg-blue-50 text-blue-700'
                   : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
@@ -965,6 +1076,8 @@ export function LeaseForm({
             </button>
           ))}
         </div>
+        {locked('petsAllowed') && <LockHint route="TERMS" />}
+        {/* Anteckningar är en ren annotation → INTE låst på ACTIVE (edit tillåts). */}
         <textarea
           rows={2}
           placeholder="Anteckningar (valfritt) — t.ex. ”små husdjur OK efter godkännande”."
@@ -975,7 +1088,11 @@ export function LeaseForm({
 
       {/* ── Section 8: Andrahand + försäkring ────────────────────────────────── */}
       <SectionDivider label="Övriga villkor" />
-      <div className="space-y-2">
+      {locked('sublettingAllowed') && <LockHint route="TERMS" />}
+      <fieldset
+        disabled={locked('sublettingAllowed')}
+        className="m-0 min-w-0 space-y-2 border-0 p-0 disabled:opacity-70"
+      >
         <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-[#EAEDF0] bg-white px-3.5 py-2.5">
           <input
             type="checkbox"
@@ -999,10 +1116,11 @@ export function LeaseForm({
             Hyresgästen ska teckna och vidmakthålla hem-/verksamhetsförsäkring
           </span>
         </label>
-      </div>
+      </fieldset>
 
       {/* ── Section 9: Indexklausul ──────────────────────────────────────────── */}
       <SectionDivider label="Indexklausul" />
+      {locked('indexClauseType') && <LockHint route="TERMS" />}
       <div className="space-y-3">
         <div className="space-y-1.5">
           <label className="block text-[13px] font-medium text-gray-700">Typ av klausul</label>
@@ -1012,7 +1130,8 @@ export function LeaseForm({
             render={({ field }) => (
               <select
                 {...field}
-                className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={locked('indexClauseType')}
+                className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100/70 disabled:text-gray-500"
               >
                 <option value="NONE">Ingen — fast hyra under perioden</option>
                 <option value="KPI">KPI — Konsumentprisindex (SCB)</option>
@@ -1039,6 +1158,7 @@ export function LeaseForm({
                 label="Basår (valfritt)"
                 type="number"
                 placeholder={String(new Date().getFullYear())}
+                disabled={locked('indexBaseYear')}
                 {...register('indexBaseYear')}
               />
               <div className="space-y-1.5">
@@ -1052,7 +1172,8 @@ export function LeaseForm({
                     <select
                       {...field}
                       value={field.value ?? ''}
-                      className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={locked('indexAdjustmentDate')}
+                      className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100/70 disabled:text-gray-500"
                     >
                       <option value="">— Ingen specifik dag —</option>
                       <option value="anniversary">Kontraktets årsdag</option>
@@ -1071,6 +1192,7 @@ export function LeaseForm({
                 type="number"
                 step="0.1"
                 placeholder="t.ex. 5"
+                disabled={locked('indexMaxIncrease')}
                 error={errors.indexMaxIncrease?.message}
                 {...register('indexMaxIncrease')}
               />
@@ -1079,11 +1201,13 @@ export function LeaseForm({
                 type="number"
                 step="0.1"
                 placeholder="t.ex. 0"
+                disabled={locked('indexMinIncrease')}
                 error={errors.indexMinIncrease?.message}
                 {...register('indexMinIncrease')}
               />
             </div>
             <div className="space-y-1.5">
+              {/* Anteckningar = ren annotation → INTE låst på ACTIVE. */}
               <label className="block text-[13px] font-medium text-gray-700">
                 Anteckningar (valfritt)
               </label>
@@ -1103,17 +1227,22 @@ export function LeaseForm({
       <div className="space-y-1.5">
         <textarea
           rows={4}
+          disabled={locked('specialTerms')}
           placeholder={
             'Egna villkor som inte täcks av standardparagraferna.\n\n' +
             "T.ex. 'Tillträde först efter städning av föregående hyresgäst', " +
             "'Garageplats nr 5 ingår'."
           }
           {...register('specialTerms')}
-          className="w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] leading-relaxed text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] leading-relaxed text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100/70 disabled:text-gray-500"
         />
-        <p className="text-[11.5px] text-gray-500">
-          Renderas som en egen § ”Övriga villkor &amp; särskilda bestämmelser” i kontraktet.
-        </p>
+        {locked('specialTerms') ? (
+          <LockHint route="TERMS" />
+        ) : (
+          <p className="text-[11.5px] text-gray-500">
+            Renderas som en egen § ”Övriga villkor &amp; särskilda bestämmelser” i kontraktet.
+          </p>
+        )}
       </div>
 
       {/* Hjälptext + två primära actions: spara som utkast (sekundär) eller
