@@ -846,6 +846,17 @@ unitType, contractual)`; `terminate()` tar `initiator` (default LANDLORD, `appro
   samtyckesbaserat tidigareläggande (hyresgästen vill flytta ut tidigare, hyresvärden godkänner) är inte en
   ensidig försämring (1 § 5 st skyddar bara mot ensidigt pålagt) och bör inte golvas — men saknar idag väg.
   Kräver explicit "hyresgästen samtycker till förtida upphörande"-flagga (för att inte bli en golv-bakväg).
+- **#74 [🟠 — EGET ÄRENDE, ej succession-seam (beslut 2026-07-08)] FIXED_TERM utan klausul som förfaller
+  och ej sägs upp ska bli INDEFINITE (JB 12:3 3 st p1).** Hyresjurist-fynd vid succession-kartläggningen:
+  `autoRenewExpiredFixedTerm()` hoppar korrekt över avtal UTAN `renewalPeriodMonths` (`continue`), men gör
+  då INGENTING alls. Enligt JB 12:3 3 st p1 ska ett tidsbestämt avtal som saknar bestämmelse om verkan av
+  utebliven uppsägning, och som passerat slutdatum utan uppsägning, **i lag anses förlängt på obestämd tid**.
+  Eveno flaggar/uppdaterar inte `leaseType`→INDEFINITE → systemets bild (FIXED_TERM, förfallet datum bakåt)
+  desyncar från rättslig verklighet. AUTO-ÖVERGÅNG, inte succession — eget ärende (egen liten flip-logik i
+  cronen: FIXED_TERM utan klausul + endDate passerat + terminatedAt null → sätt INDEFINITE, ingen ny lease).
+  Motsatsen (auto-förnyelse till nytt FIXED_TERM) är juridiskt korrekt eftersom `renewalPeriodMonths`-
+  klausulen faktiskt skrivs ut i kontraktstexten (verifierat, carve-out 3 st p1) — så de två fallen är rätt
+  åtskilda.
 
 ### 🆕 Systemiska ärenden (större än Svep 3)
 
@@ -886,25 +897,107 @@ unitType, contractual)`; `terminate()` tar `initiator` (default LANDLORD, `appro
   - _Tier 2 mjuka:_ `specialTerms`, `usagePurpose`, `petsAllowed` (endast lättnad), `sublettingAllowed`,
     `requiresHomeInsurance`, `indexNotes`.
   - **Regim-yta (från #69):** exponera `tenancyRegime` i skapande-/edit-flödet med en juridisk
-    kriteriefråga ("äger du bostaden privat / ej näringsverksamhet?") som medvetet sätter PRIVATE_RENTAL,
-    - möjlighet att ändra regim per kontrakt. Backend-fältet + validering (lokal nekas) finns redan (#69);
-      detta är UI/flödes-delen så privatuthyrning blir ett medvetet val, aldrig en default.
-- **T1.2 Central statusmaskin + delad activation-seam** (#60) — **med `skipDeposit=true` för
-  `origin:'succession'` från dag ett** (beslut 2026-07-08 — undviker dubbel deposit-fakturering som
-  code-review + bokförings-expert oberoende fångade). Seam parametriseras på
-  `origin:'manual'|'succession'`: delat = kontraktnr + unit-sync + PDF; endast `manual` = välkomstmejl +
-  deposit. Deposit-dedup-guard **inuti** `createInitialNoticesForLease`. Succession återanvänder INTE
-  `describeActiveBlocker`s exclude-self naivt (skulle falskt neka förnyelse). Dela `applyActivationEffects
-(tx)` från `dispatchActivationJobs(post-commit)`. Export `assertValidTransition` till `@eken/shared`.
-- **T1.3 Succession bär följdentiteter** (#42) — re-peka `Deposit` (unik leaseId, samma tx, FÖRE seam);
-  pending RentIncrease: **VOID-som-default** (hyresjurist), smalt repoint-undantag endast om hyra
-  oförändrad + samma gäst/enhet + ingen lucka + `currentRent` stämmer.
-  > **⚠️ FÖRUTSÄTTNING (från T2.1-bygget, bokförings-flaggat):** `Deposit.leaseId @unique` + nu även
-  > `Deposit.rentNoticeId @unique` betyder EN Deposit per lease. Succession kan därför INTE skapa en ny
-  > Deposit på det nya leaseId:t — den MÅSTE **re-peka** den befintliga (`leaseId` + ev. `rentNoticeId`)
-  > från gammalt → nytt lease, i samma tx, INNAN aktiverings-seam:en (T1.2 `skipDeposit=true`). Vill man
-  > modellera flera depositioner per lease över tid (ny deposition efter återbetalning) krävs en
-  > schemaändring (deposition-historik) — designa runt detta i T1.3.
+    kriteriefråga ("äger du bostaden privat / ej näringsverksamhet?") som medvetet sätter PRIVATE_RENTAL, - möjlighet att ändra regim per kontrakt. Backend-fältet + validering (lokal nekas) finns redan (#69);
+    detta är UI/flödes-delen så privatuthyrning blir ett medvetet val, aldrig en default.
+    > **SUCCESSION-SEAM — KARTLAGD + 3 SPECIALISTGRANSKNINGAR (2026-07-08).** bokförings-expert +
+    > code-reviewer + hyresjurist granskade planen mot faktisk kod. Ordning **LÅST: T1.2 (refaktor) FÖRST,
+    > sen T1.3 (pengar/juridik)**. Kärnfakta: `JournalEntry`/`JournalEntryLine` har **ingen FK mot `Lease`**
+    > (verifikat keyade på `sourceId`/`accountId`) → re-pekning av `Deposit.leaseId` är ren metadata, BFL-säker,
+    > kräver ingen omföring. Två LIVE-buggar utöver #42/#43/#48: **(a) RentIncrease-på-dött-avtal** —
+    > `applyDueIncreases` skriver `monthlyRent` på gamla (EXPIRED) leaseId + flippar APPLIED → höjningen
+    > konsumeras tyst; **(b) villkorsförlust** — renew/autoRenew kopierar bara ~10 fält, tappar resten till
+    > schema-defaults, inkl. **`monthlyRentExcludingVat`** (🔴 CRITICAL moms — momspliktig lokal slutar tyst ta
+    > ut 2611, ML 1994:200) och `consumptionBillingMode`.
+
+- **T1.2 Central statusmaskin + delad activation-seam** (#60) — **refaktor, FÖRST.** Bygger seam:en till
+  EN plats utan att lägga ny domänrisk.
+  - **3-lagers uppdelning (code-reviewer):** tvinga INTE in create-shape (renew `tx.lease.create`) och
+    update-shape (transitionStatus `tx.lease.update`) i en gemensam funktion. Dela i: (1)
+    `allocateContractNumberIfNeeded(tx, orgId, existing)` (redan fristående primitiv); (2) callern gör sin
+    EGEN update/create; (3) `applyActivationEffects(tx, {leaseId, unitId, orgId})` = BARA det gemensamma
+    efterledet (`syncUnitStatusFromLeases`) — döp så namnet inte lovar mer än det håller.
+  - **`dispatchActivationJobs(lease, {origin, actorUserId})` post-commit,** parametriserad:
+    `origin:'manual'` (transitionStatus) → PDF + välkomstmejl + `initialNotices` (deposit + första avi);
+    `origin:'succession'` (renew/autoRenew) → PDF + **gap-avi (`skipDeposit=true`, ingen deposit-avi)** +
+    INGEN välkomstmejl (samma hyresgäst). `skipDeposit` tråds till `createInitialNoticesForLease`.
+  - **Bevara i transitionStatus (får ej bakas in i seam:en):** `describeActiveBlocker` UTANFÖR tx
+    (optimistisk check) + `isActiveUnitConflict`-catch (race-skydd) + `TERMINATED && ACTIVE`→`terminate()`-
+    delegeringen (#65-golv). Succession anropar **ALDRIG** `describeActiveBlocker` (gamla leaset är ACTIVE
+    tills det flippas → skulle falskt neka VARJE förnyelse).
+  - **`assertValidTransition` → `@eken/shared`** (#60): gata BARA skrivningar på BEFINTLIGA rader
+    (renew/autoRenew ACTIVE→EXPIRED, terminateExpired ACTIVE→TERMINATED, transitionStatus). INTE på
+    `create` (nytt ACTIVE har ingen from-status). Alla 4 nuvarande övergångar är redan giltiga → ren
+    assertion, ändrar inget beteende. `lease_unit_active_unique` är per-statement (ej deferrable) → ordning
+    gammalt→EXPIRED FÖRE nytt→create är obligatorisk (redan korrekt, ska testas).
+- **T1.3 Succession bär följdentiteter + villkor** (#42) — **pengar/juridik-tung, EFTER T1.2.**
+  - **Villkors-carry via delad projektion:** `LEASE_SUCCESSION_CARRY_FIELDS` i `@eken/shared` =
+    `LEASE_ACTIVE_LOCKED_FIELDS` (T1.1a) **minus `{monthlyRent, startDate}`** (renew får omförhandla hyra
+    via `dto.monthlyRent`; startDate omräknas till oldEnd+1) **plus `{monthlyRentExcludingVat,
+consumptionBillingMode}`**. 🔴 `monthlyRentExcludingVat` är CRITICAL (moms), inte kosmetik. Skyddas av
+    ett **DMMF-baserat exhaustiveness-test**: varje skalärt `Lease`-fält måste finnas i carry-listan ELLER
+    en explicit exkluderingslista (`id, organizationId, unitId, tenantId, status, startDate, endDate,
+monthlyRent, activatedAt, terminatedAt, terminationReason, contractNumber, createdAt, updatedAt`) →
+    ny kolumn failar CI (fail-closed, samma mönster som edit-låset). Fixar även `indexClauseType`-
+    inkonsekvensen (idag kopieras `indexClause`-bool men inte typen).
+  - **Deposition:** re-peka **ENDAST `Deposit.leaseId`** gammalt→nytt (bokförings-expert: `rentNoticeId`/
+    `invoiceId` pekar på det HISTORISKA verifikat-underlaget (BFL 5:7) OCH bankmatchningen är keyad på
+    `rentNoticeId` → får INTE röras). EFTER `tx.lease.create` (FK), samma tx, **org-scopat** (`findFirst
+{leaseId, organizationId}`, FIX 2), **no-op om ingen deposition** (depositAmount:0 → ingen rad).
+    **v1 ändrar INTE `Deposit.amount`** — höjd deposition vid förnyelse = separat framtida flöde
+    (tilläggsavi 1510/2890 på deltat). `Lease.depositAmount`-fältet (avtalat värde) kopieras redan korrekt;
+    T1.3 rör bara `Deposit`-ENTITETEN.
+  - **RentIncrease vid förnyelse: BARA VOID-som-default + audit-log** (beslut 2026-07-08). **INGET
+    repoint-undantag** — säker failure-riktning (försenad höjning, aldrig felaktig); repoint har flera
+    villkor som alla måste stämma = subtil pengabugg-risk; hyresjuristen föredrar ren VOID (JB 12:19 —
+    hyran ska vara till beloppet bestämd i det NYA avtalet). Voida pending `RentIncrease` för gamla leaset,
+    logga audit-event (varför den aldrig applicerades).
+  - **Härda `applyDueIncreases` (oberoende zombie-fix):** lägg `lease: { status: 'ACTIVE' }` i `where`
+    (aldrig skriva `monthlyRent` mot icke-ACTIVE lease) OCH **serialisera**: kör `autoRenewExpiredFixedTerm`
+    (inkl. VOID-steget) HELT före `applyDueIncreases` i `processLifecycle` — ta bort dem ur samma
+    `Promise.all` (READ COMMITTED serialiserar dem INTE; det är en daglig 06:00-cron, ingen latensbudget).
+  - **Validering i renew/autoRenew:** lägg `minNoticePeriodMonths`/`maxDepositAmount` (create/update har
+    dem; renew saknar helt → sänkt hyra kan spränga 3×-depositionstaket).
+  - **Gap-avi:** förfallodag enligt JB 12:20 ("kortare tid än en månad" → före periodens start), inte
+    standard månadslogik; klassificera INTE gap-perioden som "den första" perioden. Proration via delad
+    `calculateProratedRent` (oldEnd+1 = exklusiv gräns, verifierat glappfri). Test: manuell `renew()` samma
+    dag som `generateMonthlyNotices` → gamla avtalets sista prorata-avi måste ändå genereras.
+    > **⚠️ FÖRUTSÄTTNING:** `Deposit.leaseId @unique` = EN deposition per lease → succession kan INTE skapa
+    > ny Deposit, MÅSTE re-peka. Flera depositioner per lease över tid (ny efter återbetalning) kräver
+    > schemaändring (deposition-historik) — utanför T1.3-scope.
+
+  > **✅ T1.3 BYGGD + GRANSKAD 2026-07-09** (branch `feat/t13-succession-carry`, cc046f8 + 13a82fc;
+  > 3 specialistgranskningar godkända; moms-verifikat 2611 live-bevisat Σd=Σk; 142/142 suites gröna).
+  > Utöver planen: **EXPIRED-grind** (bokförings-expert HIGH) — generisk `transitionStatus(ACTIVE→EXPIRED)`
+  > (HTTP + AI-verktyget) gatas nu på passerat slutdatum, annars skapades ett föräldralöst EXPIRED-avtal
+  > utan succession-sideeffects som via EXPIRED-inkluderingen i månadsgenereringen fortsatte faktureras.
+  > **Follow-ups från T1.3-granskningarna (beslut 2026-07-09: noterade, EJ nu):**
+  >
+  > - **F-T1.3:1 [🟠 hyresjurist] 54 a §-gate på RentIncrease-flödet:** `create()`/`accept()` saknar
+  >   `leaseType`-kontroll — tystnadsverkans-flödet (NOTICE_SENT→ACCEPTED) kan tillämpas på FIXED_TERM
+  >   trots att JB 12:54 a 1 st p 1 kräver avtal på obestämd tid. Gate mot `INDEFINITE`.
+  > - **F-T1.3:2 [🟡 hyresjurist] UI-bekräftelse i förnyelseflödet:** visa "N väntande höjningar
+  >   annulleras" INNAN `renew()` anropas (idag bara efterhandsnotis, best-effort).
+  > - **F-T1.3:3 [🟠 hyresjurist, JB 12:3 3 st] Eskalering av strandade ACTIVE-avtal förbi endDate:**
+  >   compliance-blockerad autoRenew (och gamla `renewalPeriodMonths == null`-grenen, som är HELT tyst)
+  >   lämnar avtalet ACTIVE förbi endDate med engångsnotis/ingen notis. Bor hyresgästen kvar >1 mån utan
+  >   anmodan att flytta övergår hyresförhållandet ENLIGT LAG till obestämd tid oavsett DB-status.
+  >   Upprepat/eskalerande larm >30 d + koppla till #74 (auto-övergång till INDEFINITE).
+  > - **F-T1.3:4 [🟡 code-reviewer] Orphan-RentIncrease-sweep:** manuell `renew()` kan raca den dagliga
+  >   cronens `applyDueIncreases` mitt i körningen → ACCEPTED-höjning strandad på EXPIRED-avtal (aldrig
+  >   APPLIED/VOIDED — pengasäkert men skräpar rapporter för alltid). Nattlig själv-läkning i
+  >   `processLifecycle`: VOIDa pending höjningar vars lease inte är ACTIVE.
+  > - **F-T1.3:5 [🟡 bokförings-expert] `supersededByLeaseId` som strukturellt facit:** status+endDate-
+  >   heuristiken i månadsgenereringens EXPIRED-inkludering är skör mot framtida statusvägar — en explicit
+  >   efterträdar-länk satt av `applySuccessionSideEffects` är robustare. Samordnas med **T1.3b**
+  >   (`predecessorLeaseId` — samma länk, två riktningar).
+  > - **F-T1.3:6 [⚪ code-reviewer] `@@index([organizationId, status])` på Lease** — månadsgenereringens
+  >   OR-where saknar komposit-index; ofarligt i nuvarande skala.
+
+- **T1.3b Kontinuitetslänk** (`predecessorLeaseId`, hyresjurist HIGH) — **EGEN PR EFTER T1.3** (annan yta:
+  migration + genomsökning av vem som läser `Lease.startDate` som varaktighets-proxy). Flera JB-regler
+  räknar på HYRESFÖRHÅLLANDETS sammanlagda tid, inte enskilda avtalet (3§3st 9 mån, 46§ p9 3 år, 55e§ 1 år,
+  35§ byte) → varje förnyelse nollställer tyst klockan via `startDate` och kan UNDERSKYDDA hyresgästen.
+  Lägg en ärvd länk/"hyresförhållande-sedan"-tidsstämpel.
 - **T1.4 Bakdaterad debitering** (#44) — #43 löses redan av T1.2. Kvar: `startDate` i förflutet →
   backfill saknade hela månader endast i öppet räkenskapsår (S-A), annars hård spärr.
 
