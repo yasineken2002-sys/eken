@@ -40,6 +40,12 @@ function txClient(created: Record<string, unknown> = {}) {
       count: jest.fn().mockResolvedValue(1),
     },
     unit: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    // T1.3: succession-sideeffects körs i samma tx (VOID + deposit-re-pekning).
+    rentIncrease: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    deposit: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      update: jest.fn().mockResolvedValue({}),
+    },
   }
 }
 
@@ -214,6 +220,8 @@ describe('T1.2 · autoRenewExpiredFixedTerm() dispatchar origin:succession', () 
       noticePeriodMonths: 3,
       tenancyRegime: 'TENANCY_ACT',
       indexClause: false,
+      // T1.3: compliance-återvalideringen läser unit.type/name på kandidaten.
+      unit: { type: 'APARTMENT', name: 'A1', property: { name: 'F1' } },
     }
     const prisma = {
       lease: { findMany: jest.fn().mockResolvedValue([candidate]) },

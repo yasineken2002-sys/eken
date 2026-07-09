@@ -29,6 +29,7 @@ import type { UnitType } from '@prisma/client'
 import type { RentNotice } from '@prisma/client'
 import {
   rentDueDateForMonth,
+  rentDueDateForPeriodStart,
   calculateProratedRent,
   calculateFirstPaymentDueDate,
   DEFAULT_BRAND_COLOR,
@@ -164,8 +165,23 @@ export class AviseringService {
   }
 
   async generateMonthlyNotices(orgId: string, month: number, year: number) {
+    const genMonthStart = new Date(year, month - 1, 1)
     const leases = await this.prisma.lease.findMany({
-      where: { organizationId: orgId, status: 'ACTIVE' },
+      where: {
+        organizationId: orgId,
+        OR: [
+          { status: 'ACTIVE' },
+          // T1.3: ett EXPIRED avtal som fortfarande täcker dagar i månaden
+          // måste få sin sista (prorata-)avi. EXPIRED sätts ENBART av
+          // succession (ACTIVE→EXPIRED, statusmaskinen #60) — flippas
+          // förnyelsen FÖRE månadsgenereringen tappades annars dagarna
+          // 1..gamla endDate tyst (ingen avi, ingen intäkt). Proration
+          // klipper mot endDate; nya avtalets avi börjar endDate+1 →
+          // glappfritt utan överlapp. TERMINATED ingår INTE: den statusen
+          // rymmer även avbrutna utkast som aldrig varit i kraft.
+          { status: 'EXPIRED', endDate: { gte: genMonthStart } },
+        ],
+      },
       include: {
         tenant: { select: SAFE_TENANT_SELECT },
         unit: { include: { property: true } },
@@ -326,7 +342,7 @@ export class AviseringService {
   // skapad" och hämtar befintlig istället.
   async createInitialNoticesForLease(
     leaseId: string,
-    opts: { skipDeposit?: boolean } = {},
+    opts: { skipDeposit?: boolean; succession?: boolean } = {},
   ): Promise<{
     deposit: RentNotice | null
     firstRent: RentNotice | null
@@ -358,7 +374,15 @@ export class AviseringService {
     const year = startDate.getFullYear()
     const month = startDate.getMonth() + 1
 
-    const dueDate = calculateFirstPaymentDueDate(startDate, org.daysBeforeMoveInForFirstPayment)
+    // T1.3: gap-avin vid succession är INTE en "första" period — hyresgästen
+    // bor redan i lägenheten och inflyttningslogiken (daysBeforeMoveIn-offset)
+    // är fel klassificering. JB 12 kap 20 § 2 st gäller rakt av: förfallodag
+    // senast sista vardagen före den period hyran avser (delmånad eller hel),
+    // framåtklampad om dagen redan passerat (auto-förnyelse körs dagen efter
+    // gamla slutdatumet — avin får inte födas förfallen in i kravtrappan).
+    const dueDate = opts.succession
+      ? rentDueDateForPeriodStart(startDate)
+      : calculateFirstPaymentDueDate(startDate, org.daysBeforeMoveInForFirstPayment)
 
     const ocrNumber = await this.ocrService.assignOcrToTenant(lease.tenantId, orgId)
 

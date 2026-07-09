@@ -23,6 +23,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'APPLIED', label: 'Tillämpade' },
   { id: 'REJECTED', label: 'Nekade' },
   { id: 'WITHDRAWN', label: 'Återkallade' },
+  { id: 'VOIDED', label: 'Annullerade' },
 ]
 
 function tenantName(t: Tenant): string {

@@ -18,12 +18,18 @@ import { CreateLeaseWithTenantDto } from './dto/create-lease-with-tenant.dto'
 import { TerminateLeaseDto } from './dto/terminate-lease.dto'
 import { RenewLeaseDto } from './dto/renew-lease.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
-import { addMonths, endOfNoticePeriod, isValidLeaseTransition } from '@eken/shared'
+import {
+  addMonths,
+  endOfNoticePeriod,
+  isValidLeaseTransition,
+  LEASE_SUCCESSION_CARRY_FIELDS,
+} from '@eken/shared'
 import {
   minNoticePeriodMonths,
   noticePeriodErrorMessage,
   maxDepositAmount,
   depositErrorMessage,
+  assertLeaseLegalLimits,
   terminationNoticeMonths,
   defaultTenancyRegime,
   type TerminationInitiator,
@@ -343,6 +349,21 @@ function detectLockedActiveChanges(
   return { fields, routes: [...routes] }
 }
 
+// ── T1.3: succession-carry ──────────────────────────────────────────────────
+// Projicera carry-fälten (delad lista i @eken/shared) från det gamla avtalet
+// till create-datat för det nya. Före T1.3 kopierades bara ~10 handplockade
+// fält — resten föll tyst till schema-defaults, inkl. 🔴 monthlyRentExcludingVat
+// (momspliktig lokal slutade tyst ta ut utgående moms 2611, ML 1994:200) och
+// consumptionBillingMode. Värdena kopieras rått (Decimal/enum/null) — null på
+// nullable kolumn är "samma villkor", inte "hoppa över". Fullständigheten
+// garanteras av DMMF-exhaustiveness-testet (leases-succession-t13.spec.ts):
+// en ny Lease-kolumn utan uttryckligt carry/exclude-beslut bryter CI.
+function pickSuccessionCarryData(lease: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const field of LEASE_SUCCESSION_CARRY_FIELDS) out[field] = lease[field]
+  return out
+}
+
 // Översätt Postgres unique-konflikt på partial index lease_unit_active_unique
 // till svensk BadRequest. Detta är skyddet mot race när två förfrågningar
 // samtidigt försöker skapa/aktivera ACTIVE-kontrakt på samma enhet.
@@ -636,10 +657,89 @@ export class LeasesService {
         leaseId: lease.id,
         organizationId: lease.organizationId,
         skipDeposit: opts.origin === 'succession',
+        succession: opts.origin === 'succession',
       })
       .catch((err: unknown) =>
         this.logger.error(`[Leases] enqueue initial-notices failed: ${String(err)}`),
       )
+  }
+
+  // ── T1.3: succession-följdeffekter (körs INOM avtalsbytets transaktion) ────
+  // Två saker som annars strandar på det ersatta (EXPIRED) avtalet:
+  //
+  // 1) Väntande hyreshöjningar → VOID (beslut 2026-07-08, INGET repoint-
+  //    undantag). Säker failure-riktning: en försenad höjning som hyresvärden
+  //    registrerar om på nya avtalet — aldrig en felaktig. Repoint kräver att
+  //    flera villkor samtidigt stämmer (basbelopp, effektivdatum, aviserings-
+  //    frist mot NYA avtalet) = subtil pengabugg-risk. JB 12 kap 19 §: hyran
+  //    ska vara till beloppet bestämd i det NYA avtalet. voidedAt/voidReason
+  //    är audit-spåret ("varför applicerades den aldrig?").
+  //
+  // 2) Depositionen re-pekas till det nya avtalet — ENDAST Deposit.leaseId.
+  //    rentNoticeId/invoiceId rörs ALDRIG: de pekar på det HISTORISKA
+  //    verifikat-underlaget (BFL 5 kap 7 §) och bankmatchningen är keyad på
+  //    rentNoticeId — att flytta dem bryter spårbarhet + betalningsmatchning.
+  //    Ingen omföring behövs: JournalEntry/JournalEntryLine saknar FK mot
+  //    Lease (verifikat keyade på sourceId/accountId) → re-pekningen är ren
+  //    metadata. Deposit.amount rörs INTE i v1 (höjd deposition vid förnyelse
+  //    = separat framtida flöde, tilläggsavi 1510/2890 på deltat).
+  //    Org-scopat uppslag (FIX 2); no-op när ingen deposition finns
+  //    (depositAmount 0 → ingen rad skapades). Deposit.leaseId är @unique och
+  //    det nyskapade avtalet kan inte ha någon deposition ännu → kollisionsfritt.
+  private async applySuccessionSideEffects(
+    tx: Prisma.TransactionClient,
+    args: { oldLeaseId: string; newLeaseId: string; organizationId: string },
+  ): Promise<{ voidedIncreases: number }> {
+    const voided = await tx.rentIncrease.updateMany({
+      where: {
+        leaseId: args.oldLeaseId,
+        organizationId: args.organizationId,
+        status: { in: ['DRAFT', 'NOTICE_SENT', 'ACCEPTED'] },
+      },
+      data: {
+        status: 'VOIDED',
+        voidedAt: new Date(),
+        voidReason:
+          'Avtalet förnyades innan höjningen hann tillämpas — höjningen hörde till det ' +
+          'ersatta avtalet. Registrera en ny hyreshöjning på det förnyade avtalet ' +
+          '(JB 12 kap 19 §: hyran bestäms till beloppet i det nya avtalet).',
+      },
+    })
+
+    const deposit = await tx.deposit.findFirst({
+      where: { leaseId: args.oldLeaseId, organizationId: args.organizationId },
+      select: { id: true },
+    })
+    if (deposit) {
+      await tx.deposit.update({
+        where: { id: deposit.id },
+        data: { leaseId: args.newLeaseId },
+      })
+    }
+
+    return { voidedIncreases: voided.count }
+  }
+
+  // Post-commit-notis när succession annullerade väntande hyreshöjningar —
+  // hyresvärden måste aktivt registrera om höjningen på det nya avtalet,
+  // annars uteblir den tyst. Best-effort (får aldrig fälla förnyelsen).
+  private notifyVoidedIncreases(
+    organizationId: string,
+    newLeaseId: string,
+    unitName: string | undefined,
+    count: number,
+  ): void {
+    void this.notifications
+      .createForAllOrgUsers(
+        organizationId,
+        'SYSTEM',
+        'Hyreshöjning annullerad vid förnyelse',
+        `${count} väntande hyreshöjning${count === 1 ? '' : 'ar'} annullerades när avtalet` +
+          `${unitName ? ` för ${unitName}` : ''} förnyades. Registrera höjningen på nytt på ` +
+          'det förnyade avtalet om den fortfarande är aktuell.',
+        { relatedEntityType: 'LEASE', relatedEntityId: newLeaseId },
+      )
+      .catch((err) => this.logger.error(`Notification error: ${String(err)}`))
   }
 
   async transitionStatus(
@@ -1043,12 +1143,24 @@ export class LeasesService {
       throw new BadRequestException('Slutdatum måste vara efter startdatum')
     }
 
+    // T1.3: förnyelsen ÅTER-validerar tvingande regler — create/update har dem,
+    // renew saknade dem helt. Uppsägningstidens golv (JB 12 kap 4 §) på det
+    // carry:ade värdet, och depositionstaket mot den EFFEKTIVA hyran: en
+    // omförhandlad (sänkt) hyra kan spränga 3×-taket trots att depositions-
+    // beloppet är oförändrat från gamla avtalet.
+    assertLeaseLegalLimits({
+      unitType: lease.unit.type,
+      monthlyRent: dto.monthlyRent ?? Number(lease.monthlyRent),
+      noticePeriodMonths: lease.noticePeriodMonths,
+      depositAmount: Number(lease.depositAmount),
+    })
+
     // Gamla avtalet går ACTIVE→EXPIRED (statusmaskin, #60). Ordning: gammalt→
     // EXPIRED FÖRE nytt→create — lease_unit_active_unique är per-statement (ej
     // deferrable) så ett ACTIVE måste bort innan nästa skapas på samma enhet.
     this.assertLeaseTransition(lease.status, 'EXPIRED')
 
-    const created = await this.prisma.$transaction(async (tx) => {
+    const { created, voidedIncreases } = await this.prisma.$transaction(async (tx) => {
       // Markera gamla kontraktet som EXPIRED
       await tx.lease.update({
         where: { id: lease.id },
@@ -1061,37 +1173,43 @@ export class LeasesService {
       // i samma transaktion så en abort inte lämnar hängande nummer.
       const contractNumber = await this.contractNumbers.allocate(organizationId, tx)
 
-      // Skapa nytt kontrakt — samma villkor men nya datum (och ev. ny hyra)
+      // Skapa nytt kontrakt — SAMTLIGA villkor bärs via carry-projektionen
+      // (T1.3, delad lista i @eken/shared, DMMF-skyddad); bara identitet,
+      // datum, hyra, status och nummer sätts explicit. De explicita fälten
+      // ligger EFTER spreaden och är disjunkta från carry-listan (testat).
       const created = await tx.lease.create({
         data: {
+          ...pickSuccessionCarryData(lease as unknown as Record<string, unknown>),
           organizationId,
           unitId: lease.unitId,
           tenantId: lease.tenantId,
           startDate: newStart,
           endDate: newEnd,
           monthlyRent: dto.monthlyRent ?? lease.monthlyRent,
-          depositAmount: lease.depositAmount,
           status: 'ACTIVE',
-          leaseType: 'FIXED_TERM',
           contractNumber,
-          ...(lease.renewalPeriodMonths != null
-            ? { renewalPeriodMonths: lease.renewalPeriodMonths }
-            : {}),
-          noticePeriodMonths: lease.noticePeriodMonths,
-          // Förnyelse bär regelverket vidare (#69) — en förnyad privatuthyrning
-          // förblir privatuthyrning, annars tappar hyresgästen sin 1-månadersrätt.
-          tenancyRegime: lease.tenancyRegime,
-          indexClause: lease.indexClause,
           activatedAt: new Date(),
-        },
+        } as Prisma.LeaseUncheckedCreateInput,
         include: INCLUDE,
+      })
+
+      // T1.3: VOIDa väntande hyreshöjningar + re-peka depositionen (efter
+      // tx.lease.create — FK:n kräver att nya raden finns).
+      const { voidedIncreases } = await this.applySuccessionSideEffects(tx, {
+        oldLeaseId: lease.id,
+        newLeaseId: created.id,
+        organizationId,
       })
 
       // Säkerställ att enhetsstatus förblir OCCUPIED (det nya avtalet är ACTIVE)
       await this.applyActivationEffects(tx, lease.unitId)
 
-      return created
+      return { created, voidedIncreases }
     })
+
+    if (voidedIncreases > 0) {
+      this.notifyVoidedIncreases(organizationId, created.id, lease.unit.name, voidedIncreases)
+    }
 
     // Succession-aktivering (post-commit): PDF (länkar föregående avtal) + gap-avi
     // (skipDeposit — depositionen re-pekas i T1.3, inte ny). INGEN välkomstmejl —
@@ -1110,8 +1228,15 @@ export class LeasesService {
   async processLifecycle(): Promise<void> {
     const today = startOfDay(new Date())
 
-    const [renewed, reminders, terminated, depositReminders, rentApplied] = await Promise.all([
-      this.autoRenewExpiredFixedTerm(today),
+    // T1.3 race-fix: auto-förnyelsen (inkl. VOID av väntande höjningar) körs
+    // HELT FÖRE applyDueIncreases. I samma Promise.all serialiserar READ
+    // COMMITTED dem INTE: applyDueIncreases kunde läsa en ACCEPTED höjning
+    // vars avtal samtidigt flippades EXPIRED, skriva monthlyRent på det döda
+    // avtalet och flippa APPLIED → höjningen konsumerades tyst utan att nya
+    // avtalet någonsin fick den. Daglig 06:00-cron — ingen latensbudget.
+    const renewed = await this.autoRenewExpiredFixedTerm(today)
+
+    const [reminders, terminated, depositReminders, rentApplied] = await Promise.all([
       this.sendExpiryReminders(today),
       this.terminateExpiredNoticeLeases(today),
       this.deposits.remindStaleRefundPending(),
@@ -1153,10 +1278,43 @@ export class LeasesService {
       const newStart = new Date(startOfDay(lease.endDate).getTime() + 86_400_000)
       const newEnd = addMonths(newStart, lease.renewalPeriodMonths)
 
+      // T1.3: samma tvingande återvalidering som manuell renew(). Hyran är
+      // oförändrad vid auto-förnyelse, så ett brott betyder att avtalet redan
+      // låg fel (eller att reglerna skärpts) — då får förnyelsen INTE tyst
+      // återskapa lagstridiga villkor. Skippa + larma org-admins: avtalet
+      // ligger kvar ACTIVE förbi endDate och kräver manuell åtgärd.
+      let complianceError: string | null = null
+      try {
+        assertLeaseLegalLimits({
+          unitType: lease.unit.type,
+          monthlyRent: Number(lease.monthlyRent),
+          noticePeriodMonths: lease.noticePeriodMonths,
+          depositAmount: Number(lease.depositAmount),
+        })
+      } catch (err) {
+        complianceError = err instanceof BadRequestException ? err.message : String(err)
+      }
+      if (complianceError) {
+        this.logger.error(
+          `[Leases] Auto-renew blocked for ${lease.id} (compliance): ${complianceError}`,
+        )
+        void this.notifications
+          .createForAllOrgUsers(
+            lease.organizationId,
+            'SYSTEM',
+            'Auto-förnyelse blockerad',
+            `Avtalet för ${lease.unit.name} kunde inte förnyas automatiskt: ${complianceError} ` +
+              'Åtgärda villkoren och förnya manuellt.',
+            { relatedEntityType: 'LEASE', relatedEntityId: lease.id },
+          )
+          .catch((err) => this.logger.error(`Notification error: ${String(err)}`))
+        continue
+      }
+
       try {
         // Gamla avtalet ACTIVE→EXPIRED (statusmaskin, #60).
         this.assertLeaseTransition(lease.status, 'EXPIRED')
-        const created = await this.prisma.$transaction(async (tx) => {
+        const { created, voidedIncreases } = await this.prisma.$transaction(async (tx) => {
           await tx.lease.update({
             where: { id: lease.id },
             data: { status: 'EXPIRED' },
@@ -1166,32 +1324,44 @@ export class LeasesService {
           // kontraktsnummer i samma transaktion (annars NULL contractNumber).
           const contractNumber = await this.contractNumbers.allocate(lease.organizationId, tx)
 
+          // SAMTLIGA villkor bärs via carry-projektionen (T1.3) — samma
+          // delade lista som manuell renew(); hyran är alltid oförändrad här.
           const newLease = await tx.lease.create({
             data: {
+              ...pickSuccessionCarryData(lease as unknown as Record<string, unknown>),
               organizationId: lease.organizationId,
               unitId: lease.unitId,
               tenantId: lease.tenantId,
               startDate: newStart,
               endDate: newEnd,
               monthlyRent: lease.monthlyRent,
-              depositAmount: lease.depositAmount,
               status: 'ACTIVE',
-              leaseType: 'FIXED_TERM',
               contractNumber,
-              renewalPeriodMonths: lease.renewalPeriodMonths,
-              noticePeriodMonths: lease.noticePeriodMonths,
-              // Förnyelse bär regelverket vidare (#69).
-              tenancyRegime: lease.tenancyRegime,
-              indexClause: lease.indexClause,
               activatedAt: new Date(),
-            },
+            } as Prisma.LeaseUncheckedCreateInput,
+          })
+
+          // T1.3: VOIDa väntande hyreshöjningar + re-peka depositionen.
+          const { voidedIncreases } = await this.applySuccessionSideEffects(tx, {
+            oldLeaseId: lease.id,
+            newLeaseId: newLease.id,
+            organizationId: lease.organizationId,
           })
 
           // Det nya avtalet är ACTIVE → enheten ska vara OCCUPIED (delat
           // in-tx-efterled, T1.2-seam).
           await this.applyActivationEffects(tx, lease.unitId)
-          return newLease
+          return { created: newLease, voidedIncreases }
         })
+
+        if (voidedIncreases > 0) {
+          this.notifyVoidedIncreases(
+            lease.organizationId,
+            created.id,
+            lease.unit.name,
+            voidedIncreases,
+          )
+        }
 
         // Succession-aktivering (post-commit): PDF + gap-avi (skipDeposit),
         // ingen välkomstmejl. Fixar #48 + #43 för auto-förnyelse-vägen.

@@ -33,6 +33,12 @@ export type LeaseActivationJob =
       // Bara gap-avin (första prorata-hyresavin) skapas. Default false (manuell
       // aktivering skapar både deposition och första avi).
       skipDeposit?: boolean
+      // T1.3: succession styr även gap-avins förfallodag (JB 12 kap 20 § —
+      // sista vardagen före perioden, INTE inflyttningslogiken). Skild flagga
+      // från skipDeposit så mekanism (ingen deposit-avi) och ursprung
+      // (förnyelse) inte blandas ihop; in-flight-jobb utan flaggan tolkas som
+      // skipDeposit-värdet i workern (bakåtkompatibelt).
+      succession?: boolean
     }
 
 const JOB_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -87,6 +93,7 @@ export class LeaseActivationQueue {
     leaseId: string
     organizationId: string
     skipDeposit?: boolean
+    succession?: boolean
   }): Promise<string> {
     const jobOptions: JobOptions = {
       attempts: 5,

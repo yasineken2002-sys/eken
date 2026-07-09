@@ -117,6 +117,9 @@ export function RentIncreaseStatusBadge({ status }: { status: string }) {
     REJECTED: { label: 'Nekad', variant: 'danger' },
     WITHDRAWN: { label: 'Återkallad', variant: 'default' },
     APPLIED: { label: 'Tillämpad', variant: 'success' },
+    // T1.3: annullerad av systemet vid avtalsförnyelse (succession) —
+    // höjningen hörde till det ersatta avtalet.
+    VOIDED: { label: 'Annullerad', variant: 'ghost' },
   }
   const { label, variant } = map[status] ?? { label: status, variant: 'default' as Variant }
   return (

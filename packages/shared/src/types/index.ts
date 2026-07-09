@@ -447,6 +447,7 @@ export type RentIncreaseStatus =
   | 'REJECTED'
   | 'WITHDRAWN'
   | 'APPLIED'
+  | 'VOIDED'
 
 export interface RentIncrease {
   id: string
@@ -461,6 +462,11 @@ export interface RentIncrease {
   status: RentIncreaseStatus
   respondedAt?: string
   rejectionReason?: string
+  // T1.3: sätts när höjningen annulleras av systemet vid avtalsförnyelse
+  // (succession) — höjningen pekade på det ersatta avtalet och måste
+  // registreras om på det nya (JB 12:19 — hyran bestäms i det NYA avtalet).
+  voidedAt?: string
+  voidReason?: string
   createdAt: string
   updatedAt: string
 }

@@ -2935,6 +2935,8 @@ enum RentIncreaseStatus {
   REJECTED    // Hyresgäst nekat
   WITHDRAWN   // Återkallad av hyresvärd
   APPLIED     // Den nya hyran har tillämpats på avtalet
+  VOIDED      // Annullerad av systemet vid avtalsförnyelse (T1.3) — höjningen
+              // pekade på det ersatta avtalet; registreras om på det nya
 }
 
 model RentIncrease {
@@ -2950,6 +2952,10 @@ model RentIncrease {
   status          RentIncreaseStatus @default(DRAFT)
   respondedAt     DateTime?
   rejectionReason String?
+  // T1.3 audit-spår: när och varför höjningen annullerades vid succession —
+  // "varför applicerades den aldrig?" ska kunna besvaras från raden själv.
+  voidedAt        DateTime?
+  voidReason      String?
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 

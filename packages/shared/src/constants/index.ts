@@ -161,3 +161,6 @@ export * from './platform'
 
 // Edit-lås på ACTIVE-hyresavtal (T1.1) — delad fält-lista backend↔frontend
 export * from './lease-edit-lock'
+
+// Succession-carry: villkor som en förnyelse bär vidare (T1.3) — fail-closed via DMMF-test
+export * from './lease-succession-carry'
