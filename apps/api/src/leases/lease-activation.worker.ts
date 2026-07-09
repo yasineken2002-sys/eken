@@ -60,6 +60,10 @@ export class LeaseActivationWorker {
     if (data.type === 'create-initial-notices') {
       await this.avisering.createInitialNoticesForLease(data.leaseId, {
         skipDeposit: data.skipDeposit ?? false,
+        // Bakåtkompatibelt: in-flight-jobb från före T1.3 saknar `succession`
+        // — då är skipDeposit den enda succession-signalen (T1.2 satte den
+        // uteslutande vid förnyelse).
+        succession: data.succession ?? data.skipDeposit ?? false,
       })
       return
     }

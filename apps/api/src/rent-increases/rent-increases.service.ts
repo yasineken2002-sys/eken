@@ -338,10 +338,18 @@ export class RentIncreasesService {
   // ── Cron-hjälpare: applicera ACCEPTED som nått effective date ─────────────
 
   async applyDueIncreases(today: Date): Promise<number> {
+    // T1.3-härdning: en höjning får ALDRIG skrivas mot ett icke-ACTIVE avtal.
+    // Utan guarden skrev cronen monthlyRent på ett EXPIRED (förnyat) avtal och
+    // flippade APPLIED → höjningen konsumerades tyst utan att någonsin nå det
+    // nya avtalet ("zombie-skrivning"). Dubbel spärr: lease-status i urvalet
+    // OCH ett villkorat updateMany i transaktionen — status kan hinna ändras
+    // mellan läsning och skrivning (succession-VOID äger höjningen då; den
+    // förblir ACCEPTED tills VOID-steget eller nästa cron avgör).
     const due = await this.prisma.rentIncrease.findMany({
       where: {
         status: 'ACCEPTED',
         effectiveDate: { lte: today },
+        lease: { status: 'ACTIVE' },
       },
       select: { id: true, leaseId: true, newRent: true },
     })
@@ -349,18 +357,27 @@ export class RentIncreasesService {
     let applied = 0
     for (const ri of due) {
       try {
-        await this.prisma.$transaction(async (tx) => {
-          await tx.lease.update({
-            where: { id: ri.leaseId },
+        const didApply = await this.prisma.$transaction(async (tx) => {
+          const res = await tx.lease.updateMany({
+            where: { id: ri.leaseId, status: 'ACTIVE' },
             data: { monthlyRent: ri.newRent },
           })
+          if (res.count === 0) return false // avtalet hann lämna ACTIVE — rör inget
           await tx.rentIncrease.update({
             where: { id: ri.id },
             data: { status: 'APPLIED' },
           })
+          return true
         })
-        this.logger.log(`[RentIncrease] Applied rent increase for lease ${ri.leaseId}`)
-        applied++
+        if (didApply) {
+          this.logger.log(`[RentIncrease] Applied rent increase for lease ${ri.leaseId}`)
+          applied++
+        } else {
+          this.logger.warn(
+            `[RentIncrease] Skipped ${ri.id}: lease ${ri.leaseId} är inte längre ACTIVE ` +
+              '(succession-VOID hanterar höjningen)',
+          )
+        }
       } catch (err) {
         this.logger.error(`[RentIncrease] Apply failed for ${ri.id}: ${String(err)}`)
       }

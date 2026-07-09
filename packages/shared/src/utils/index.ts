@@ -388,6 +388,37 @@ export function calculateProratedRent(params: {
 }
 
 /**
+ * Förfallodag för en avi vars hyresperiod börjar `periodStart` — JB 12 kap 20 §
+ * 2 st: hyran ska betalas senast sista vardagen före kalendermånadens början,
+ * eller om hyran "beräknas för kortare tid än en månad", senast sista vardagen
+ * före den tidsperiod hyran avser. Används för succession-gap-avin (T1.3):
+ * gap-perioden är INTE en "första" period med inflyttningslogik
+ * (calculateFirstPaymentDueDate) — hyresgästen bor redan i lägenheten och
+ * JB 12:20-regeln gäller rakt av, oavsett om perioden är en delmånad eller
+ * en hel kalendermånad (båda ger sista vardagen före periodstart).
+ *
+ * Aldrig bakåt i tiden: auto-förnyelsen körs dagen EFTER gamla slutdatumet,
+ * så den lagstadgade dagen har typiskt redan passerat — då klampas
+ * förfallodagen framåt till närmaste vardag (en avi får inte födas förfallen
+ * och trilla rakt in i kravtrappan).
+ */
+export function rentDueDateForPeriodStart(periodStart: Date): Date {
+  let d = addDays(periodStart, -1)
+  while (!isSwedishBusinessDay(d)) {
+    d = addDays(d, -1)
+  }
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (d < today) {
+    d = today
+    while (!isSwedishBusinessDay(d)) {
+      d = addDays(d, 1)
+    }
+  }
+  return d
+}
+
+/**
  * Förfallodatum för deposition / första hyresavi vid lease-aktivering.
  * Standard är `daysBeforeMoveIn` dagar före tillträde, justerat till sista
  * vardagen om det landar på helg/röd dag, och aldrig bakåt i tiden.
