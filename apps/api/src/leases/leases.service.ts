@@ -24,6 +24,7 @@ import {
   isValidLeaseTransition,
   LEASE_SUCCESSION_CARRY_FIELDS,
 } from '@eken/shared'
+import type { LeaseSuccessionCarryField } from '@eken/shared'
 import {
   minNoticePeriodMonths,
   noticePeriodErrorMessage,
@@ -358,10 +359,17 @@ function detectLockedActiveChanges(
 // nullable kolumn är "samma villkor", inte "hoppa över". Fullständigheten
 // garanteras av DMMF-exhaustiveness-testet (leases-succession-t13.spec.ts):
 // en ny Lease-kolumn utan uttryckligt carry/exclude-beslut bryter CI.
-function pickSuccessionCarryData(lease: Record<string, unknown>): Record<string, unknown> {
+//
+// Returtypen är Pick<LeaseUncheckedCreateInput, carry-fälten> så att create-
+// anropen INTE behöver någon blanket-cast — de explicita fälten (identitet,
+// datum, hyra, status, nummer) typcheckas fullt ut av tsc; bara den DMMF-
+// testade projektionen bär en per-fält-assertion.
+type SuccessionCarryData = Pick<Prisma.LeaseUncheckedCreateInput, LeaseSuccessionCarryField>
+
+function pickSuccessionCarryData(lease: Record<string, unknown>): SuccessionCarryData {
   const out: Record<string, unknown> = {}
   for (const field of LEASE_SUCCESSION_CARRY_FIELDS) out[field] = lease[field]
-  return out
+  return out as SuccessionCarryData
 }
 
 // Översätt Postgres unique-konflikt på partial index lease_unit_active_unique
@@ -762,6 +770,28 @@ export class LeasesService {
     // uppsägningstid och flippar direkt nedan.
     if (newStatus === 'TERMINATED' && lease.status === 'ACTIVE') {
       return this.terminate(id, {}, organizationId)
+    }
+
+    // T1.3 (bokförings-grind): ACTIVE→EXPIRED via den generiska status-vägen
+    // tillåts BARA när avtalet faktiskt har löpt ut (endDate passerat). Ett
+    // EXPIRED med framtida endDate skapas annars UTAN succession-sideeffects
+    // (ingen efterträdare, ingen deposition-re-pekning, ingen VOID av väntande
+    // höjningar) och skulle — via generateMonthlyNotices EXPIRED-inkludering —
+    // fortsätta faktureras och intäktsbokföras varje månad fram till endDate,
+    // trots att ingen upplåtelse längre finns registrerad. Förtida avslut =
+    // uppsägning (terminate: golv + månadsskiftesrundning); förlängning/nya
+    // villkor = förnyelse (renew: succession-seamen). Samma "rätt domänflöde
+    // gäller alla vägar"-princip som TERMINATED-delegeringen ovan — täcker
+    // även AI-verktyget transition_lease_status.
+    if (newStatus === 'EXPIRED' && lease.status === 'ACTIVE') {
+      const today = startOfDay(new Date())
+      const ended = lease.endDate && startOfDay(lease.endDate).getTime() < today.getTime()
+      if (!ended) {
+        throw new BadRequestException(
+          'Ett aktivt avtal kan markeras som utgånget först när slutdatumet har passerat. ' +
+            'Använd uppsägning för att avsluta det i förtid, eller förnyelse för att förlänga.',
+        )
+      }
     }
 
     // Optimistic check innan DRAFT→ACTIVE; partial unique index fångar race.
@@ -1189,7 +1219,7 @@ export class LeasesService {
           status: 'ACTIVE',
           contractNumber,
           activatedAt: new Date(),
-        } as Prisma.LeaseUncheckedCreateInput,
+        },
         include: INCLUDE,
       })
 
@@ -1338,7 +1368,7 @@ export class LeasesService {
               status: 'ACTIVE',
               contractNumber,
               activatedAt: new Date(),
-            } as Prisma.LeaseUncheckedCreateInput,
+            },
           })
 
           // T1.3: VOIDa väntande hyreshöjningar + re-peka depositionen.

@@ -808,14 +808,27 @@ function LeaseDetailPanel({
                     Säg upp kontrakt
                   </Button>
                 )}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  loading={isTransitioning}
-                  onClick={() => onTransition('EXPIRED')}
-                >
-                  Markera utgången
-                </Button>
+                {/* T1.3: backend tillåter ACTIVE→EXPIRED bara när slutdatumet
+                    passerat (annars skapas ett "föräldralöst" EXPIRED-avtal utan
+                    succession-sideeffects som ändå fortsätter aviseras). Visa
+                    knappen bara när den är giltig — förtida avslut går via
+                    uppsägning, förlängning via förnyelse. */}
+                {(() => {
+                  // days=0 = slutdatum idag → utgånget först IMORGON (backend
+                  // kräver endDate < idag) — visa knappen först vid days < 0.
+                  const days = daysUntil(selected.endDate)
+                  if (days == null || days >= 0) return null
+                  return (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={isTransitioning}
+                      onClick={() => onTransition('EXPIRED')}
+                    >
+                      Markera utgången
+                    </Button>
+                  )
+                })()}
               </>
             )}
             {(status === 'EXPIRED' || status === 'TERMINATED') && (

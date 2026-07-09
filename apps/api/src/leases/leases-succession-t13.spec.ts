@@ -20,6 +20,11 @@
  *   F) autoRenew: compliance-brott → skip + larm, ingen förnyelse.
  *   G) processLifecycle: autoRenew körs HELT före applyDueIncreases
  *      (race-fixen — READ COMMITTED serialiserar inte Promise.all).
+ *   H) Bokförings-grind: generisk transitionStatus(ACTIVE→EXPIRED) nekas när
+ *      slutdatumet INTE passerat — ett "föräldralöst" EXPIRED (utan
+ *      succession-sideeffects) skulle annars fortsätta aviseras/intäktsbokföras
+ *      varje månad fram till endDate via EXPIRED-inkluderingen i
+ *      generateMonthlyNotices. Faktiskt utlöpt avtal får dock stängas manuellt.
  */
 
 jest.mock('../contracts/contract-template.service', () => ({ ContractTemplateService: class {} }))
@@ -402,6 +407,80 @@ describe('T1.3 · F: autoRenew skippar + larmar vid compliance-brott', () => {
       'Hyreshöjning annullerad vid förnyelse',
       expect.stringContaining('1 väntande hyreshöjning'),
       expect.anything(),
+    )
+  })
+})
+
+// ── H: generisk ACTIVE→EXPIRED gatas på passerat slutdatum ──────────────────
+
+describe('T1.3 · H: transitionStatus(ACTIVE→EXPIRED) kräver passerat slutdatum', () => {
+  function makeForTransition(endDate: Date | null) {
+    const tx = makeTx()
+    const prisma = {
+      lease: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'lease-1',
+          status: 'ACTIVE',
+          organizationId: 'org-1',
+          unitId: 'unit-1',
+          tenantId: 'tenant-1',
+          contractNumber: 'KONT-2026-00001',
+          endDate,
+          terminatedAt: null,
+          unit: { type: 'OFFICE', name: 'Lokal 1', property: { name: 'F1' } },
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)),
+    }
+    const activationQueue = {
+      enqueueGenerateContract: jest.fn().mockResolvedValue('j1'),
+      enqueueWelcomeMail: jest.fn().mockResolvedValue('j2'),
+      enqueueInitialNotices: jest.fn().mockResolvedValue('j3'),
+    }
+    const noop = {} as never
+    const service = new LeasesService(
+      prisma as never,
+      noop,
+      noop,
+      noop,
+      noop,
+      noop,
+      noop,
+      activationQueue as never,
+    )
+    return { service, prisma, tx }
+  }
+
+  it('framtida slutdatum → nekas (förtida avslut = uppsägning, förlängning = förnyelse)', async () => {
+    const future = new Date()
+    future.setDate(future.getDate() + 30)
+    const { service, prisma } = makeForTransition(future)
+
+    await expect(service.transitionStatus('lease-1', 'EXPIRED', 'org-1')).rejects.toThrow(
+      /slutdatumet har passerat/,
+    )
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+  })
+
+  it('saknat slutdatum (INDEFINITE) → nekas', async () => {
+    const { service, prisma } = makeForTransition(null)
+
+    await expect(service.transitionStatus('lease-1', 'EXPIRED', 'org-1')).rejects.toThrow(
+      /slutdatumet har passerat/,
+    )
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+  })
+
+  it('passerat slutdatum → tillåts (manuell stängning av utlöpt avtal)', async () => {
+    const past = new Date()
+    past.setDate(past.getDate() - 2)
+    const { service, tx } = makeForTransition(past)
+
+    await service.transitionStatus('lease-1', 'EXPIRED', 'org-1')
+
+    expect(tx.lease.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'EXPIRED' }) }),
     )
   })
 })
