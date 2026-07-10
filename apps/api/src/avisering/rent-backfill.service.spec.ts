@@ -14,7 +14,7 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
-import { ConflictException, UnprocessableEntityException } from '@nestjs/common'
+import { ConflictException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { RentBackfillService } from './rent-backfill.service'
 
@@ -217,12 +217,56 @@ describe('T1.4 · RentBackfillService', () => {
       expect(warnCreatedOff).toBe(false)
 
       const on = base()
-      await on.service.createBackfillNotices('lease-1', 'org-1', { allowBeyondWarning: true })
+      await on.service.createBackfillNotices('lease-1', 'org-1', {
+        allowBeyondWarning: true,
+        actorRole: 'ADMIN',
+      })
       const warnCreatedOn = on.avisering.createBackfillRentNoticeInTx.mock.calls.some((c) => {
         const age = (2026 - c[2].year) * 12 + (7 - c[2].month)
         return age > 12
       })
       expect(warnCreatedOn).toBe(true)
+    })
+
+    // ── ADMIN/OWNER-grind för >12-mån-override (hyresjurist MEDIUM, #20) ───────
+    it('allowBeyondWarning från MANAGER → ForbiddenException, inget skapas', async () => {
+      const { service, avisering } = makeService({ startDate: new Date('2025-01-01') })
+      await expect(
+        service.createBackfillNotices('lease-1', 'org-1', {
+          allowBeyondWarning: true,
+          actorRole: 'MANAGER',
+        }),
+      ).rejects.toThrow(ForbiddenException)
+      expect(avisering.createBackfillRentNoticeInTx).not.toHaveBeenCalled()
+    })
+
+    it('allowBeyondWarning utan roll → ForbiddenException (fail-closed)', async () => {
+      const { service } = makeService({ startDate: new Date('2025-01-01') })
+      await expect(
+        service.createBackfillNotices('lease-1', 'org-1', { allowBeyondWarning: true }),
+      ).rejects.toThrow(ForbiddenException)
+    })
+
+    it.each(['ADMIN', 'OWNER'] as const)(
+      'allowBeyondWarning från %s → tillåtet (>12-mån skapas)',
+      async (actorRole) => {
+        const { service, avisering } = makeService({ startDate: new Date('2025-01-01') })
+        await service.createBackfillNotices('lease-1', 'org-1', {
+          allowBeyondWarning: true,
+          actorRole,
+        })
+        const warnCreated = avisering.createBackfillRentNoticeInTx.mock.calls.some((c) => {
+          const age = (2026 - c[2].year) * 12 + (7 - c[2].month)
+          return age > 12
+        })
+        expect(warnCreated).toBe(true)
+      },
+    )
+
+    it('MANAGER UTAN override → normal (≤12 mån) efterdebitering fungerar', async () => {
+      const { service } = makeService({ startDate: new Date('2026-05-01') }) // alla ≤12 mån
+      const res = await service.createBackfillNotices('lease-1', 'org-1', { actorRole: 'MANAGER' })
+      expect(res.created.length).toBeGreaterThan(0)
     })
 
     it('stängd period → ingen avi + SYSTEM-notis (hård spärr, aldrig orphan)', async () => {
@@ -300,6 +344,7 @@ describe('T1.4 · RentBackfillService', () => {
       await service.createBackfillNotices('lease-1', 'org-1', {
         allowBeyondWarning: true,
         actorUserId: 'user-1',
+        actorRole: 'ADMIN',
       })
       const warnCall = avisering.createBackfillRentNoticeInTx.mock.calls.find((c) => {
         const age = (2026 - c[2].year) * 12 + (7 - c[2].month)

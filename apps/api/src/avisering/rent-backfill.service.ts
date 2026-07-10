@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { ConflictException, UnprocessableEntityException } from '@nestjs/common'
-import { Prisma, RentNoticeType } from '@prisma/client'
+import { ConflictException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common'
+import { Prisma, RentNoticeType, UserRole } from '@prisma/client'
 import {
   BACKFILL_HARD_CAP_MONTHS,
   BACKFILL_WARNING_MONTHS,
@@ -208,8 +208,27 @@ export class RentBackfillService {
       // en momspliktig lokal får INTE efterdebiteras utan aktivt godkännande.
       vatDeclarationAcknowledged?: boolean
       actorUserId?: string | null
+      // Aktörens roll (hyresjurist MEDIUM, kopplat till #20 rollinversion): ett
+      // >12-mån-godkännande (allowBeyondWarning) är ett förhöjt beslut och kräver
+      // ADMIN/OWNER. Grindas HÄR (money-binding-chokepunkten), inte bara i UI/
+      // controller — så ingen framtida anropare (AI-verktyg, ny controller) kan
+      // kringgå det. En normal (≤12 mån) efterdebitering påverkas inte.
+      actorRole?: UserRole
     } = {},
   ): Promise<BackfillResult> {
+    // Behörighetsgrind FÖRE all beräkning: bara ADMIN/OWNER får godkänna den
+    // långa bakdateringen (>12 mån = sannolik datafel-signal). MANAGER kan
+    // fortfarande bekräfta normala efterdebiteringar — bara inte kringgå grinden.
+    if (
+      opts.allowBeyondWarning === true &&
+      opts.actorRole !== UserRole.OWNER &&
+      opts.actorRole !== UserRole.ADMIN
+    ) {
+      throw new ForbiddenException(
+        'Endast administratör eller ägare kan godkänna en efterdebitering äldre än 12 månader ' +
+          '(lång bakdatering kräver förhöjd behörighet).',
+      )
+    }
     const lease = (await this.prisma.lease.findFirst({
       where: { id: leaseId, organizationId },
       include: { unit: { select: { type: true, voluntaryTaxLiability: true } } },

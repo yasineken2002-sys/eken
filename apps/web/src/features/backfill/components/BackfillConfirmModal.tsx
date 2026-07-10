@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { X, AlertTriangle, ReceiptText, CheckCircle2, AlertCircle, Info } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { formatCurrency } from '@eken/shared'
+import { useAuthStore } from '@/stores/auth.store'
 import { useBackfillPreview, useConfirmBackfill } from '../hooks/useBackfill'
 import type { BackfillQueueItem, BackfillResult } from '../api/backfill.api'
 
@@ -34,6 +35,9 @@ function monthLabel(year: number, month: number): string {
 export function BackfillConfirmModal({ item, onClose, onDone }: Props) {
   const { data: preview, isLoading } = useBackfillPreview(item.leaseId)
   const confirm = useConfirmBackfill()
+  const role = useAuthStore((s) => s.user?.role)
+  // >12-mån-override kräver ADMIN/OWNER (grindas server-side; speglas här).
+  const canApproveBeyond = role === 'OWNER' || role === 'ADMIN'
   const [allowBeyond, setAllowBeyond] = useState(false)
   const [vatAck, setVatAck] = useState(false)
   const [result, setResult] = useState<BackfillResult | null>(null)
@@ -154,17 +158,24 @@ export function BackfillConfirmModal({ item, onClose, onDone }: Props) {
                           </li>
                         ))}
                       </ul>
-                      <label className="mt-3 flex cursor-pointer items-start gap-2">
-                        <input
-                          type="checkbox"
-                          checked={allowBeyond}
-                          onChange={(e) => setAllowBeyond(e.target.checked)}
-                          className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
-                        />
-                        <span className="text-[12.5px] font-medium text-amber-800">
-                          Startdatumet stämmer — efterdebitera även dessa månader
-                        </span>
-                      </label>
+                      {canApproveBeyond ? (
+                        <label className="mt-3 flex cursor-pointer items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={allowBeyond}
+                            onChange={(e) => setAllowBeyond(e.target.checked)}
+                            className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                          />
+                          <span className="text-[12.5px] font-medium text-amber-800">
+                            Startdatumet stämmer — efterdebitera även dessa månader
+                          </span>
+                        </label>
+                      ) : (
+                        <p className="mt-3 rounded-lg bg-amber-100/70 px-3 py-2 text-[12.5px] font-medium text-amber-800">
+                          Endast administratör eller ägare kan godkänna en så lång bakdatering.
+                          Övriga månader kan du fortfarande efterdebitera.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
