@@ -17,6 +17,7 @@ import { ConsumptionService } from '../consumption/consumption.service'
 import { MiscChargeService } from '../misc-charges/misc-charge.service'
 import { DepositsService } from '../deposits/deposits.service'
 import { computeRentDebt } from './rent-debt.service'
+import { RentNoticeEventsService } from './rent-notice-events.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import {
   PaymentMethod,
@@ -69,6 +70,7 @@ export class AviseringService {
     private readonly consumption: ConsumptionService,
     private readonly miscCharges: MiscChargeService,
     private readonly deposits: DepositsService,
+    private readonly rentNoticeEvents: RentNoticeEventsService,
   ) {}
 
   // Beräknar moms på en hyra utifrån enhetens upplåtelsetyp och frivilliga
@@ -408,9 +410,26 @@ export class AviseringService {
       endDate: Date | null
       unit: { type: UnitType; voluntaryTaxLiability: boolean }
     },
-    params: { year: number; month: number; ocrNumber: string; dueDate: Date },
+    params: {
+      year: number
+      month: number
+      ocrNumber: string
+      dueDate: Date
+      // T1.4 PR2 — audit-spår (hyresjurist MÅSTE): bevisar VEM som godkände en
+      // efterdebitering och att månaden var en medveten (ej tyst auto) handling.
+      // Skrivs som RentNoticeEvent i SAMMA tx som avin/verifikatet — rullas
+      // tillbaka tillsammans med dem om något i tx:en fallerar.
+      audit?: {
+        actorUserId?: string | null
+        ageMonths: number
+        beyondWarning: boolean // månaden låg i 12–36-grinden (BEYOND_WARNING)
+        allowBeyondWarning: boolean // aktören godkände uttryckligen >12 mån
+        hasVoluntaryTaxLiability?: boolean // momspliktig lokal (momsperiod-fråga)
+        vatDeclarationAcknowledged?: boolean // aktören bekräftade momsdeklarationen
+      }
+    },
   ): Promise<RentNotice | null> {
-    const { year, month, ocrNumber, dueDate } = params
+    const { year, month, ocrNumber, dueDate, audit } = params
     const { proration, vatAmount, totalAmount } = this.computeRentNoticeAmounts(lease, year, month)
     if (proration.daysCharged <= 0) return null
 
@@ -444,6 +463,35 @@ export class AviseringService {
     // avin — om perioden är stängd (VerifikationsnummerService) eller ett konto
     // saknas. Ingen orphan-avi kan uppstå på denna väg.
     await this.bookRentNoticeRevenue(lease.organizationId, notice, tx)
+
+    // Audit-spår i SAMMA tx: människo-bekräftelsen är den juridiskt bindande
+    // punkten (JB 12:21 + Preskriptionslagen 2 §). Rullar en verifikat-/
+    // stängningskonflikt tillbaka avin så rullas beviset tillbaka med den —
+    // ett CREATED-event finns ALDRIG utan en committad avi.
+    if (audit) {
+      const actorType = audit.actorUserId ? 'USER' : 'SYSTEM'
+      await this.rentNoticeEvents.record(
+        notice.id,
+        'CREATED',
+        actorType,
+        audit.actorUserId ?? null,
+        {
+          isBackfill: true,
+          year,
+          month,
+          periodStart: proration.periodStart.toISOString(),
+          periodEnd: proration.periodEnd.toISOString(),
+          ageMonths: audit.ageMonths,
+          beyondWarning: audit.beyondWarning,
+          allowBeyondWarning: audit.allowBeyondWarning,
+          hasVoluntaryTaxLiability: audit.hasVoluntaryTaxLiability ?? false,
+          vatDeclarationAcknowledged: audit.vatDeclarationAcknowledged ?? false,
+          totalAmount,
+        },
+        { tx },
+      )
+    }
+
     return notice
   }
 
@@ -849,6 +897,21 @@ export class AviseringService {
     const isDeposit = notice.type === RentNoticeType.DEPOSIT
     const isProrated = notice.isProrated
 
+    // T1.4 PR2 — efterdebiterings-text (hyresjurist MÅSTE, JB 12:21). En backfill-
+    // avi måste förklara VAD den avser oavsett om månaden är delmånad eller hel,
+    // annars kan hyresgästen inte bedöma sin bestridanderätt. Visas i BÅDA
+    // rent-grenarna (delmånad + hel månad).
+    const fmtDay = (d: Date | string): string =>
+      new Date(d).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', year: 'numeric' })
+    const backfillNoteHtml =
+      notice.isBackfill && notice.periodStart && notice.periodEnd
+        ? `<div style="font-size:10px;color:#8a5a00;background:#fff8e6;border-radius:4px;padding:6px 8px;margin-top:6px;line-height:1.5">
+            Efterfakturerad hyra för perioden ${fmtDay(notice.periodStart)}–${fmtDay(notice.periodEnd)} (sen registrering).
+            Avser en tidigare bebodd men ännu ej aviserad period.
+            Har du frågor om denna efterdebitering, kontakta oss innan förfallodagen.
+          </div>`
+        : ''
+
     const monthlyRent = Number(notice.lease?.monthlyRent ?? 0)
     const dailyRate =
       notice.totalDays && notice.totalDays > 0
@@ -894,6 +957,7 @@ export class AviseringService {
             Dagshyra: ${fmt(monthlyRent)} / ${notice.totalDays} =
             ${fmt(dailyRate)} kr
           </div>
+          ${backfillNoteHtml}
         </td>
         <td>${fmt(Number(notice.amount))} kr</td>
       </tr>`
@@ -904,6 +968,7 @@ export class AviseringService {
           Hyra ${monthLabel}
           ${unitNamePart}
           ${propertyPart}
+          ${backfillNoteHtml}
         </td>
         <td>${fmt(Number(notice.amount))} kr</td>
       </tr>`

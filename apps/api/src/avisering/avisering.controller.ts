@@ -17,9 +17,11 @@ import { AviseringService } from './avisering.service'
 import { AviseringScheduler } from './avisering.scheduler'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentBadDebtService } from './rent-bad-debt.service'
+import { RentBackfillService } from './rent-backfill.service'
 import { GenerateNoticesDto } from './dto/generate-notices.dto'
 import { SendNoticesDto } from './dto/send-notices.dto'
 import { MarkPaidDto } from './dto/mark-paid.dto'
+import { ConfirmBackfillDto } from './dto/confirm-backfill.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
@@ -34,7 +36,49 @@ export class AviseringController {
     private readonly scheduler: AviseringScheduler,
     private readonly rentNoticeEvents: RentNoticeEventsService,
     private readonly badDebt: RentBadDebtService,
+    private readonly backfill: RentBackfillService,
   ) {}
+
+  // ── T1.4 / #44 — efterdebitering (bakdaterad debitering) ───────────────────
+  // "Att efterdebitera"-kön är SKILD från lease-aktiveringen (jurist CRITICAL):
+  // hyresvärden tar pengabeslutet medvetet. Preview/kö skapar ALDRIG en avi;
+  // bara `confirm` gör det (den bindande människo-handlingen), och först då kör
+  // PR1-motorn med actor-audit.
+
+  // Kön: alla aktiva kontrakt med debiterbara luckor. Utgör även den manuella
+  // gap-detektions-retriggern (#58) — den körs på begäran, inte bara vid aktivering.
+  @Get('backfill/queue')
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
+  async backfillQueue(@OrgId() orgId: string) {
+    return this.backfill.detectQueue(orgId)
+  }
+
+  // Preview per kontrakt: månad-för-månad-detektion (belopp, period, status).
+  // Ren detektion — skapar/skickar inget.
+  @Get('backfill/:leaseId/preview')
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
+  async backfillPreview(@OrgId() orgId: string, @Param('leaseId') leaseId: string) {
+    return this.backfill.detectGaps(leaseId, orgId)
+  }
+
+  // Bekräftelse = den juridiskt BINDANDE punkten. Kör PR1-motorn som skapar
+  // avierna + verifikaten atomiskt och skriver actor-audit (vem godkände) per avi.
+  // Utan detta anrop skapas ingenting.
+  @Post('backfill/:leaseId/confirm')
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
+  @HttpCode(HttpStatus.OK)
+  async backfillConfirm(
+    @OrgId() orgId: string,
+    @Param('leaseId') leaseId: string,
+    @Body() dto: ConfirmBackfillDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.backfill.createBackfillNotices(leaseId, orgId, {
+      allowBeyondWarning: dto.allowBeyondWarning === true,
+      vatDeclarationAcknowledged: dto.vatDeclarationAcknowledged === true,
+      actorUserId: user.sub,
+    })
+  }
 
   @Post('generate')
   @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)

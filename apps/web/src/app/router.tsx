@@ -54,6 +54,7 @@ import { ContractBatchReviewPage } from '../features/contract-batch/ContractBatc
 import { AiPage } from '../features/ai/AiPage'
 import { MaintenancePage } from '../features/maintenance/MaintenancePage'
 import { AviseringPage } from '../features/avisering/AviseringPage'
+import { BackfillPage } from '../features/backfill/BackfillPage'
 import { CollectionsPage } from '../features/collections/CollectionsPage'
 import { InspectionsPage } from '../features/inspections/InspectionsPage'
 import { MaintenancePlanPage } from '../features/maintenance-plan/MaintenancePlanPage'
@@ -301,6 +302,7 @@ const contractBatchReviewRoute = appPage(
 const aiRoute = appPage('/ai', AiPage)
 const maintenanceRoute = appPage('/maintenance', MaintenancePage)
 const aviseringRoute = appPage('/avisering', AviseringPage)
+const backfillRoute = appPage('/backfill', BackfillPage)
 const inspectionsRoute = appPage('/inspections', InspectionsPage)
 const maintenancePlanRoute = appPage('/maintenance-plan', MaintenancePlanPage)
 const settingsRoute = appPage('/settings', SettingsPage)
@@ -359,6 +361,7 @@ const routeTree = rootRoute.addChildren([
     aiRoute,
     maintenanceRoute,
     aviseringRoute,
+    backfillRoute,
     inspectionsRoute,
     maintenancePlanRoute,
     settingsRoute,

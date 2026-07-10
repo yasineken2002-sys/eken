@@ -40,6 +40,7 @@ function makeService(opts: {
   billed?: Array<{ year: number; month: number }>
   closed?: Array<{ year: number; month: number }>
   createImpl?: (year: number, month: number) => unknown
+  voluntaryTaxLiability?: boolean
 }) {
   const lease = {
     id: 'lease-1',
@@ -50,7 +51,7 @@ function makeService(opts: {
     startDate: opts.startDate,
     endDate: null,
     status: 'ACTIVE',
-    unit: { type: 'APARTMENT', voluntaryTaxLiability: false },
+    unit: { type: 'APARTMENT', voluntaryTaxLiability: opts.voluntaryTaxLiability ?? false },
   }
 
   const created: Array<{ year: number; month: number }> = []
@@ -60,7 +61,20 @@ function makeService(opts: {
       async (
         _tx: unknown,
         _l: unknown,
-        p: { year: number; month: number; ocrNumber: string; dueDate: Date },
+        p: {
+          year: number
+          month: number
+          ocrNumber: string
+          dueDate: Date
+          audit?: {
+            actorUserId?: string | null
+            ageMonths: number
+            beyondWarning: boolean
+            allowBeyondWarning: boolean
+            hasVoluntaryTaxLiability?: boolean
+            vatDeclarationAcknowledged?: boolean
+          }
+        },
       ) => {
         if (opts.createImpl) return opts.createImpl(p.year, p.month)
         created.push({ year: p.year, month: p.month })
@@ -268,6 +282,172 @@ describe('T1.4 · RentBackfillService', () => {
       expect(res.created).toHaveLength(0)
       expect(notifications.createForAllOrgUsers).toHaveBeenCalledTimes(1)
       expect(notifications.createForAllOrgUsers.mock.calls[0][2]).toContain('konto')
+    })
+
+    // ── PR2: actor-audit trådas till varje skapad avi ────────────────────────
+    it('actor-audit: actorUserId + ageMonths trådas till varje createBackfillRentNoticeInTx', async () => {
+      const { service, avisering } = makeService({ startDate: new Date('2026-05-01') })
+      await service.createBackfillNotices('lease-1', 'org-1', { actorUserId: 'user-9' })
+      expect(avisering.createBackfillRentNoticeInTx).toHaveBeenCalledTimes(3)
+      for (const call of avisering.createBackfillRentNoticeInTx.mock.calls) {
+        expect(call[2].audit).toMatchObject({ actorUserId: 'user-9', allowBeyondWarning: false })
+        expect(typeof call[2].audit?.ageMonths).toBe('number')
+      }
+    })
+
+    it('actor-audit: >12-mån-avi loggas med beyondWarning=true + allowBeyondWarning=true', async () => {
+      const { service, avisering } = makeService({ startDate: new Date('2025-01-01') }) // 18 mån
+      await service.createBackfillNotices('lease-1', 'org-1', {
+        allowBeyondWarning: true,
+        actorUserId: 'user-1',
+      })
+      const warnCall = avisering.createBackfillRentNoticeInTx.mock.calls.find((c) => {
+        const age = (2026 - c[2].year) * 12 + (7 - c[2].month)
+        return age > 12
+      })!
+      expect(warnCall[2].audit).toMatchObject({
+        beyondWarning: true,
+        allowBeyondWarning: true,
+        actorUserId: 'user-1',
+      })
+    })
+  })
+
+  // ── Momsperiod-flagga (PR2 disclaimer-underlag) ────────────────────────────
+  it('detectGaps surfar hasVoluntaryTaxLiability för momspliktig lokal', async () => {
+    const on = makeService({ startDate: new Date('2026-05-01'), voluntaryTaxLiability: true })
+    expect((await on.service.detectGaps('lease-1', 'org-1')).hasVoluntaryTaxLiability).toBe(true)
+    const off = makeService({ startDate: new Date('2026-05-01') })
+    expect((await off.service.detectGaps('lease-1', 'org-1')).hasVoluntaryTaxLiability).toBe(false)
+  })
+
+  // ── Momsdeklarations-grind (bokförings HIGH) ───────────────────────────────
+  it('momspliktig lokal UTAN vatDeclarationAcknowledged → KASTAR, inget skapas', async () => {
+    const { service, avisering } = makeService({
+      startDate: new Date('2026-05-01'),
+      voluntaryTaxLiability: true,
+    })
+    await expect(
+      service.createBackfillNotices('lease-1', 'org-1', { actorUserId: 'u1' }),
+    ).rejects.toThrow(UnprocessableEntityException)
+    expect(avisering.createBackfillRentNoticeInTx).not.toHaveBeenCalled()
+  })
+
+  it('momspliktig lokal MED vatDeclarationAcknowledged → skapas + loggas i audit', async () => {
+    const { service, avisering } = makeService({
+      startDate: new Date('2026-05-01'),
+      voluntaryTaxLiability: true,
+    })
+    const res = await service.createBackfillNotices('lease-1', 'org-1', {
+      actorUserId: 'u1',
+      vatDeclarationAcknowledged: true,
+    })
+    expect(res.created.length).toBeGreaterThan(0)
+    for (const call of avisering.createBackfillRentNoticeInTx.mock.calls) {
+      expect(call[2].audit).toMatchObject({
+        hasVoluntaryTaxLiability: true,
+        vatDeclarationAcknowledged: true,
+      })
+    }
+  })
+
+  it('momsfri bostad → ingen momsgrind (vatDeclarationAcknowledged ej krävt)', async () => {
+    const { service } = makeService({ startDate: new Date('2026-05-01') })
+    const res = await service.createBackfillNotices('lease-1', 'org-1', { actorUserId: 'u1' })
+    expect(res.created.length).toBeGreaterThan(0)
+  })
+
+  // ── detectQueue: kön + manuell retrigger (#58) ─────────────────────────────
+  describe('detectQueue (kön över alla aktiva kontrakt = manuell retrigger #58)', () => {
+    function makeQueueService(
+      leases: Array<Record<string, unknown>>,
+      billedByLease: Record<string, Array<{ year: number; month: number }>> = {},
+    ) {
+      const avisering = {
+        computeRentNoticeAmounts: jest.fn((_l: unknown, y: number, m: number) =>
+          proratedFull(y, m),
+        ),
+      }
+      const prisma = {
+        lease: { findMany: jest.fn().mockResolvedValue(leases) },
+        rentNotice: {
+          findMany: jest.fn((args: { where: { leaseId: string } }) =>
+            Promise.resolve(billedByLease[args.where.leaseId] ?? []),
+          ),
+        },
+        closedAccountingPeriod: { findMany: jest.fn().mockResolvedValue([]) },
+      }
+      const service = new RentBackfillService(
+        prisma as never,
+        avisering as never,
+        {} as never,
+        {} as never,
+      )
+      return { service, prisma }
+    }
+
+    function leaseRow(over: Record<string, unknown>) {
+      return {
+        id: 'lease-A',
+        organizationId: 'org-1',
+        tenantId: 't-A',
+        monthlyRent: 10_000,
+        monthlyRentExcludingVat: false,
+        startDate: new Date('2026-05-01'),
+        endDate: null,
+        status: 'ACTIVE',
+        tenant: { type: 'INDIVIDUAL', firstName: 'Anna', lastName: 'Ek', companyName: null },
+        unit: {
+          type: 'APARTMENT',
+          voluntaryTaxLiability: false,
+          name: 'Lgh 1',
+          unitNumber: '1101',
+          property: { name: 'Fast', street: 'Storgatan 1' },
+        },
+        ...over,
+      }
+    }
+
+    it('listar kontrakt med debiterbara luckor med etiketter + flaggor', async () => {
+      const { service } = makeQueueService([
+        leaseRow({
+          id: 'lease-A',
+          unit: {
+            type: 'OFFICE',
+            voluntaryTaxLiability: true,
+            name: 'Lokal',
+            unitNumber: 'L1',
+            property: { name: 'Fast', street: 'Storgatan 1' },
+          },
+        }),
+      ])
+      const queue = await service.detectQueue('org-1')
+      expect(queue).toHaveLength(1)
+      expect(queue[0]).toMatchObject({
+        leaseId: 'lease-A',
+        tenantName: 'Anna Ek',
+        unitLabel: 'L1 — Lokal',
+        propertyLabel: 'Storgatan 1',
+        hasVoluntaryTaxLiability: true,
+        requiresApproval: false, // maj–jul 2026 = ≤12 mån
+      })
+      expect(queue[0]!.summary.billableCount).toBe(3)
+    })
+
+    it('requiresApproval=true när kontraktet har månader >12 mån bakåt', async () => {
+      const { service } = makeQueueService([
+        leaseRow({ id: 'lease-A', startDate: new Date('2025-01-01') }), // 18 mån → warning
+      ])
+      const queue = await service.detectQueue('org-1')
+      expect(queue[0]!.requiresApproval).toBe(true)
+      expect(queue[0]!.maxAgeMonths).toBeGreaterThan(12)
+    })
+
+    it('exkluderar kontrakt utan debiterbara luckor (framtida start → tom)', async () => {
+      const { service } = makeQueueService([
+        leaseRow({ id: 'lease-future', startDate: new Date('2026-12-01') }),
+      ])
+      expect(await service.detectQueue('org-1')).toHaveLength(0)
     })
   })
 })
