@@ -23,7 +23,13 @@
 //                                        fixar inkonsekvensen där bara boolen
 //                                        kopierades men inte typen
 //           petsApprovalNotes,         — annotationer hör till villkoren
-//           indexNotes }
+//           indexNotes,
+//           tenancyStartDate }         — 🔴 kontinuitetsmarkör (T1.3b): ärvs
+//                                        oförändrat så förhållandets sammanlagda
+//                                        tid överlever förnyelsen (JB 12 kap
+//                                        3 § 2 st / 8 § 1 st / 46 § p 9 / 55 e § /
+//                                        35 §). Nytt fält, inte i LOCKED_FIELDS —
+//                                        carry ÄR mekanismen.
 //
 // SYNK-KONTRAKT (fail-closed): ett DMMF-test i apps/api
 // (leases-succession-t13.spec.ts) asserterar att VARJE skalärt Lease-fält finns
@@ -41,6 +47,14 @@ export const LEASE_SUCCESSION_CARRY_FIELDS = [
   'leaseType',
   'noticePeriodMonths',
   'renewalPeriodMonths',
+  // 🔴 Kontinuitetsmarkör (T1.3b): hyresförhållandets faktiska början ÄRVS
+  // oförändrat genom varje förnyelse. Att den ligger i carry-listan ÄR hela
+  // implementationen — successorn får föregångarens tenancyStartDate rakt av,
+  // medan startDate omräknas till oldEnd+1. Flera JB-regler räknar på hela
+  // förhållandets tid (12 kap 3 § 2 st, 8 § 1 st, 46 § p 9, 55 e §, 35 §; ⚖️
+  // lagrum att verifiera mot lagtext vid juridisk slutgenomgång — etiketter, ej
+  // logik); utan carry nollställs den tyst vid förnyelse → underskydd.
+  'tenancyStartDate',
   // Regelverk (#69)
   'tenancyRegime',
   // 🔴 Moms-flaggan: hyran är avtalad exkl. moms → utgående moms (2611) ska

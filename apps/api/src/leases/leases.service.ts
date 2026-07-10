@@ -496,6 +496,9 @@ export class LeasesService {
         unitId: dto.unitId,
         tenantId: dto.tenantId,
         startDate: new Date(dto.startDate),
+        // T1.3b: första avtalet → kontinuitetsmarkören = startDate. Ärvs sedan
+        // oförändrat genom förnyelser via carry-projektionen.
+        tenancyStartDate: new Date(dto.startDate),
         ...(dto.endDate != null ? { endDate: new Date(dto.endDate) } : {}),
         monthlyRent: dto.monthlyRent,
         depositAmount: dto.depositAmount ?? 0,
@@ -600,7 +603,14 @@ export class LeasesService {
       data: {
         ...(dto.unitId != null ? { unitId: dto.unitId } : {}),
         ...(dto.tenantId != null ? { tenantId: dto.tenantId } : {}),
-        ...(dto.startDate != null ? { startDate: new Date(dto.startDate) } : {}),
+        // T1.3b: startDate är låst på ACTIVE → hit når bara DRAFT, som per
+        // definition är ett original (successors skapas direkt ACTIVE). Spegla
+        // därför kontinuitetsmarkören: flyttas startDate tidigare följer den med
+        // (mer varaktighet, säker riktning); flyttas den senare likaså — ett
+        // oförnyat avtals förhållande börjar just vid dess startDate.
+        ...(dto.startDate != null
+          ? { startDate: new Date(dto.startDate), tenancyStartDate: new Date(dto.startDate) }
+          : {}),
         ...(dto.endDate != null ? { endDate: new Date(dto.endDate) } : {}),
         ...(dto.monthlyRent != null ? { monthlyRent: dto.monthlyRent } : {}),
         ...(dto.depositAmount != null ? { depositAmount: dto.depositAmount } : {}),
@@ -996,6 +1006,8 @@ export class LeasesService {
             monthlyRent: dto.monthlyRent,
             depositAmount: dto.depositAmount ?? 0,
             startDate: new Date(dto.startDate),
+            // T1.3b: första avtalet → kontinuitetsmarkör = startDate.
+            tenancyStartDate: new Date(dto.startDate),
             ...(dto.endDate ? { endDate: new Date(dto.endDate) } : {}),
             status: 'DRAFT',
             leaseType,

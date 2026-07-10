@@ -210,6 +210,8 @@ export class TenantsService {
             unitId: dto.lease.unitId,
             tenantId: tenant.id,
             startDate: new Date(dto.lease.startDate),
+            // T1.3b: första avtalet → kontinuitetsmarkör = startDate.
+            tenancyStartDate: new Date(dto.lease.startDate),
             ...(dto.lease.endDate != null ? { endDate: new Date(dto.lease.endDate) } : {}),
             monthlyRent: dto.lease.monthlyRent,
             depositAmount: dto.lease.depositAmount ?? 0,

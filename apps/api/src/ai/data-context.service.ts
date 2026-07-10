@@ -136,6 +136,11 @@ export class DataContextService {
           id: true,
           monthlyRent: true,
           startDate: true,
+          // T1.3b: förhållandets faktiska början (ärvs genom förnyelser). Krävs
+          // för att AI:n inte ska underskatta boendetiden för en förnyad
+          // hyresgäst (andrahand 2-årsregeln, besittningsskydd — ⚖️ lagrum att
+          // verifiera mot lagtext vid juridisk slutgenomgång).
+          tenancyStartDate: true,
           endDate: true,
           tenant: {
             select: { id: true, type: true, firstName: true, lastName: true, companyName: true },
@@ -324,11 +329,16 @@ export class DataContextService {
             ? `${l.tenant.firstName ?? ''} ${l.tenant.lastName ?? ''}`.trim()
             : (l.tenant.companyName ?? '')
         const startStr = new Date(l.startDate).toISOString().slice(0, 10)
+        const tenancyStr = new Date(l.tenancyStartDate).toISOString().slice(0, 10)
         const endStr = l.endDate
           ? `löper ut ${new Date(l.endDate).toISOString().slice(0, 10)}`
           : 'tillsvidare'
+        // T1.3b: visa förhållandets början separat när avtalet är en förnyelse
+        // (tenancyStartDate < startDate) — den sammanlagda tiden styr flera
+        // JB-rättigheter, inte det enskilda avtalets startdatum.
+        const tenancyStr2 = tenancyStr !== startStr ? `, hyresförhållande sedan ${tenancyStr}` : ''
         lines.push(
-          `  - ${tenantName} → ${l.unit.name} ${l.unit.unitNumber} (LeaseID: ${l.id}): ${formatSEK(Number(l.monthlyRent))}/mån, startade ${startStr}, ${endStr}`,
+          `  - ${tenantName} → ${l.unit.name} ${l.unit.unitNumber} (LeaseID: ${l.id}): ${formatSEK(Number(l.monthlyRent))}/mån, startade ${startStr}${tenancyStr2}, ${endStr}`,
         )
       }
     }

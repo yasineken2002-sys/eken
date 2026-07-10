@@ -169,6 +169,27 @@ describe('T1.1a · Tier-1-fält nekas på ACTIVE, tillåts på DRAFT', () => {
   })
 })
 
+// T1.3b: på DRAFT (ett original — successors skapas direkt ACTIVE) speglar
+// startDate-ändringen kontinuitetsmarkören så ett oförnyat avtals förhållande
+// alltid börjar exakt vid dess startDate. På ACTIVE är startDate låst → markören
+// kan aldrig krympas via update().
+describe('T1.3b · update() speglar tenancyStartDate med startDate på DRAFT', () => {
+  it('DRAFT + ändrat startDate → tenancyStartDate skrivs till SAMMA datum', async () => {
+    const { service, prisma } = makeService({ status: 'DRAFT' })
+    await service.update('lease-1', { startDate: '2026-02-01' } as never, 'org-1')
+    const data = prisma.lease.update.mock.calls[0]![0].data as Record<string, unknown>
+    expect(data['startDate']).toEqual(new Date('2026-02-01'))
+    expect(data['tenancyStartDate']).toEqual(new Date('2026-02-01'))
+  })
+
+  it('DRAFT utan startDate i payloaden → tenancyStartDate rörs inte', async () => {
+    const { service, prisma } = makeService({ status: 'DRAFT' })
+    await service.update('lease-1', { monthlyRent: 11000 } as never, 'org-1')
+    const data = prisma.lease.update.mock.calls[0]![0].data as Record<string, unknown>
+    expect(Object.prototype.hasOwnProperty.call(data, 'tenancyStartDate')).toBe(false)
+  })
+})
+
 describe('T1.1a · komparatorn — oförändrat värde på ACTIVE släpps igenom', () => {
   it('Decimal-echo: oförändrad monthlyRent (10000, number vs Prisma.Decimal) → 200', async () => {
     const { service, prisma } = makeService()

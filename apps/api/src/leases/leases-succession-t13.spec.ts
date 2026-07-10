@@ -115,6 +115,9 @@ function oldLease(overrides: Record<string, unknown> = {}) {
     leaseType: 'FIXED_TERM',
     renewalPeriodMonths: 12,
     startDate: new Date('2025-07-01'),
+    // T1.3b: förhållandet började 2 år FÖRE detta avtals startDate (två tidigare
+    // förnyelser) — ska ärvas oförändrat, aldrig ersättas av nya startDate.
+    tenancyStartDate: new Date('2023-07-01'),
     endDate: new Date('2026-06-30'),
     monthlyRent: new Prisma.Decimal(10000),
     monthlyRentExcludingVat: true, // 🔴 momspliktig lokal — får ALDRIG tappas
@@ -539,5 +542,70 @@ describe('T1.3 · G: autoRenew körs HELT före applyDueIncreases', () => {
     await service.processLifecycle()
 
     expect(sequence).toEqual(['renew:start', 'renew:done', 'apply:start'])
+  })
+})
+
+// ── T1.3b: kontinuitetsmarkören (hyresförhållandets sammanlagda tid) ─────────
+describe('T1.3b · kontinuitetsmarkör: tenancyStartDate överlever förnyelser', () => {
+  it('tenancyStartDate står i carry-listan (ärvs, inte i exclude/omräknas)', () => {
+    const carry = new Set<string>(LEASE_SUCCESSION_CARRY_FIELDS)
+    const excluded = new Set<string>(LEASE_SUCCESSION_EXCLUDED_FIELDS)
+    expect(carry.has('tenancyStartDate')).toBe(true)
+    expect(excluded.has('tenancyStartDate')).toBe(false)
+    // startDate däremot omräknas (oldEnd+1) → hör hemma i exclude, inte carry.
+    expect(excluded.has('startDate')).toBe(true)
+    expect(carry.has('startDate')).toBe(false)
+  })
+
+  it('manuell renew() bär ursprungligt tenancyStartDate — INTE nya avtalets startDate', async () => {
+    const lease = oldLease() // tenancyStartDate 2023-07-01, endDate 2026-06-30
+    const tx = makeTx()
+    const { service } = makeService({ lease, tx })
+
+    await service.renew('lease-old', { monthlyRent: 11000 } as never, 'org-1')
+
+    const data = tx.lease.create.mock.calls[0]![0].data as Record<string, unknown>
+    // Ärvt oförändrat från föregångaren …
+    expect(data['tenancyStartDate']).toEqual(new Date('2023-07-01'))
+    // … medan det NYA avtalets startDate omräknas till oldEnd+1 (2026-07-01).
+    expect(data['startDate']).toEqual(new Date('2026-07-01'))
+    // Kontinuitetsmarkören ligger FÖRE avtalets egen start → mer varaktighet.
+    expect((data['tenancyStartDate'] as Date) < (data['startDate'] as Date)).toBe(true)
+  })
+
+  it('auto-förnyelse (cron) bär också ursprungligt tenancyStartDate', async () => {
+    const lease = oldLease({ endDate: new Date('2026-01-01') })
+    const tx = makeTx()
+    const { service } = makeService({ lease, tx, forAutoRenew: true })
+
+    await (
+      service as unknown as { autoRenewExpiredFixedTerm: (d: Date) => Promise<number> }
+    ).autoRenewExpiredFixedTerm(new Date('2026-06-01'))
+
+    const data = tx.lease.create.mock.calls[0]![0].data as Record<string, unknown>
+    expect(data['tenancyStartDate']).toEqual(new Date('2023-07-01'))
+    expect(data['startDate']).toEqual(new Date('2026-01-02')) // oldEnd+1
+  })
+
+  it('förnyad 3 ggr: markören förblir det ursprungliga inflyttningsdatumet (kedja)', async () => {
+    // Simulerar tre på varandra följande förnyelser. Varje successor matas
+    // tillbaka som "gammalt avtal" till nästa renew — tenancyStartDate ska
+    // aldrig röras, bara startDate rullar framåt.
+    let carried = new Date('2020-05-01') // ursprunglig inflyttning
+    let end = new Date('2021-04-30')
+    for (let gen = 1; gen <= 3; gen++) {
+      const lease = oldLease({ tenancyStartDate: carried, endDate: end })
+      const tx = makeTx()
+      const { service } = makeService({ lease, tx })
+      await service.renew('lease-old', {} as never, 'org-1')
+      const data = tx.lease.create.mock.calls[0]![0].data as Record<string, unknown>
+      // Oförändrad genom hela kedjan.
+      expect(data['tenancyStartDate']).toEqual(new Date('2020-05-01'))
+      // startDate rullar till oldEnd+1 varje gång (bevisar att de divergerar).
+      const newStart = data['startDate'] as Date
+      expect(newStart.getTime()).toBe(end.getTime() + 86_400_000)
+      carried = data['tenancyStartDate'] as Date
+      end = new Date(newStart.getFullYear() + 1, newStart.getMonth(), newStart.getDate() - 1)
+    }
   })
 })

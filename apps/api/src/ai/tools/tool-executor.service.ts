@@ -1596,6 +1596,9 @@ export class ToolExecutorService {
                 id: true,
                 monthlyRent: true,
                 startDate: true,
+                // T1.3b: varaktighets-proxyn nedan (>3 år) läser förhållandets
+                // sammanlagda tid, inte det enskilda avtalets startDate.
+                tenancyStartDate: true,
                 endDate: true,
                 unit: { select: { type: true, name: true, unitNumber: true } },
                 tenant: {
@@ -1685,8 +1688,11 @@ export class ToolExecutorService {
             return Number(l.monthlyRent) < (avg.sum / avg.count) * 0.85
           })
 
+          // T1.3b: "äldre än 3 år" mäter HELA hyresförhållandets tid, inte det
+          // enskilda avtalet — annars nollställer en förnyelse klockan tyst och
+          // ett i själva verket långvarigt förhållande faller ur listan.
           const oldOpenEnded = activeLeases.filter(
-            (l) => !l.endDate && new Date(l.startDate) < threeYearsAgo,
+            (l) => !l.endDate && new Date(l.tenancyStartDate) < threeYearsAgo,
           )
 
           const opportunities: string[] = ['OPTIMERINGSMÖJLIGHETER (prioriterad):']
@@ -1745,7 +1751,7 @@ export class ToolExecutorService {
             )
             for (const l of oldOpenEnded) {
               opportunities.push(
-                `  - ${formatTenantName(l.tenant)}, startade ${new Date(l.startDate).toISOString().slice(0, 10)}, ${formatAmount(Number(l.monthlyRent))} kr/mån`,
+                `  - ${formatTenantName(l.tenant)}, hyresförhållande sedan ${new Date(l.tenancyStartDate).toISOString().slice(0, 10)}, ${formatAmount(Number(l.monthlyRent))} kr/mån`,
               )
             }
           }
