@@ -637,6 +637,15 @@ export class ImportService {
             status,
             ...(contractNumber ? { contractNumber } : {}),
             startDate,
+            // T1.3b: CSV-import skapar varje rad oberoende och sätter
+            // kontinuitetsmarkören = radens eget startDate. v1-begränsning: om
+            // två importerade rader i själva verket är en redan skedd
+            // förnyelsekedja hos den gamla leverantören får den nyare raden ett
+            // för kort tenancyStartDate. Backlog (hyresjurist [INFO] 2026-07-10):
+            // kedjedetektion i importen ELLER ett manuellt "ursprungligt
+            // inflyttningsdatum"-fält. Migrationens backfill är däremot
+            // kedje-medveten (den har hela DB:n att följa adjacensen i).
+            tenancyStartDate: startDate,
             endDate: endDate ?? null,
             monthlyRent: this.parseAmount(data['monthlyRent'] ?? '') ?? 0,
             depositAmount: this.parseAmount(data['depositAmount'] ?? '') ?? 0,

@@ -1009,6 +1009,20 @@ model Lease {
   leaseType            LeaseType   @default(INDEFINITE)
   renewalPeriodMonths  Int? // Bara meningsfullt för FIXED_TERM
   startDate            DateTime    @db.Date
+  // ── Kontinuitetsmarkör: hyresförhållandets faktiska början (T1.3b) ─────────
+  // ÄRVS oförändrat genom varje förnyelse (LEASE_SUCCESSION_CARRY_FIELDS) —
+  // medan `startDate` nollställs till oldEnd+1 vid varje nytt avtal. Flera
+  // JB-regler räknar på HELA hyresförhållandets sammanlagda tid, inte det
+  // enskilda avtalet (JB 12 kap 3 § 2 st niomånadersregeln, 8 § 1 st skriftlig
+  // uppsägning >3 mån i följd, 46 § p 9 3-årsgränsen, 55 e § 1 år, 35 § byte).
+  // ⚖️ LAGRUM ATT VERIFIERA mot lagtext vid juridisk slutgenomgång — dessa är
+  // förklarande etiketter (ingen logik hänger på paragrafnumren).
+  // Utan denna markör nollställs "klockan" tyst vid varje förnyelse och
+  // hyresgästen kan UNDERSKYDDAS. Sätts = startDate
+  // vid FÖRSTA avtalet (create + migration-backfill); en successor ärver
+  // föregångarens värde via carry-projektionen. tenancyStartDate <= startDate
+  // alltid → osäkerhet ger MER varaktighet/skydd, aldrig mindre.
+  tenancyStartDate     DateTime    @db.Date
   endDate              DateTime?   @db.Date
   monthlyRent          Decimal     @db.Decimal(10, 2)
   // Anger att monthlyRent är avtalad EXKLUSIVE moms (netto). Moms läggs på
