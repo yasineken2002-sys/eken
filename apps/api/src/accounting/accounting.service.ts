@@ -1127,11 +1127,18 @@ export class AccountingService {
     },
     organizationId: string,
     createdById: string | null,
+    // Valfri yttre transaktion (T1.4 PR0): anges när hyresavin och dess
+    // intäktsverifikat måste skapas ATOMISKT (bakdaterad-debitering-backfillen
+    // skapar N avier och kan inte lämna en avi utan verifikat = orphan). Utan tx
+    // beter sig metoden som förr (createNumberedEntry öppnar egen transaktion).
+    // Speglar bookReminderFee/bookInterest.
+    tx?: Prisma.TransactionClient,
   ) {
     if (notice.type === RentNoticeType.DEPOSIT) return null
 
+    const db = tx ?? this.prisma
     const sourceId = `rent-notice:${notice.id}`
-    const accounts = await this.prisma.account.findMany({
+    const accounts = await db.account.findMany({
       where: { organizationId },
       select: { id: true, number: true },
     })
@@ -1140,7 +1147,7 @@ export class AccountingService {
     // Intäktskonto utifrån lägenhetens/lokalens typ (bostad 3911, lokal 3913,
     // p-plats 3912, övrigt 3914). Org-scopad findFirst (FIX 2) — ett leaseId
     // från en annan org → null → fallback till 3914.
-    const lease = await this.prisma.lease.findFirst({
+    const lease = await db.lease.findFirst({
       where: { id: notice.leaseId, organizationId },
       select: { unit: { select: { type: true } } },
     })
@@ -1156,7 +1163,17 @@ export class AccountingService {
 
     const receivableId = accountByNumber.get(1510)
     const revenueId = accountByNumber.get(revenueAccountNumber)
-    if (!receivableId || !revenueId) return null
+    if (!receivableId || !revenueId) {
+      // T1.4 PR0: tidigare TYST `return null` → en felkonfigurerad kontoplan
+      // gav en hyresavi UTAN intäktsverifikat (orphan-avi) utan att någon
+      // larmades. Samma allvar och loggnivå som momskonto-fallet nedan.
+      this.logger.error(
+        `[Accounting] Konto ${!receivableId ? 1510 : revenueAccountNumber} saknas i ` +
+          `kontoplanen (org ${organizationId}) — intäktsverifikat för hyresavi ` +
+          `${notice.noticeNumber} skapas ej.`,
+      )
+      return null
+    }
 
     const net = Number(notice.amount)
     const vat = Number(notice.vatAmount)
@@ -1211,6 +1228,7 @@ export class AccountingService {
       lines,
       idempotencyWhere: { organizationId, sourceId },
       include: { lines: { include: { account: true } } },
+      ...(tx ? { tx } : {}),
     })
   }
 

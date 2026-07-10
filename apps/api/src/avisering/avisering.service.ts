@@ -117,11 +117,21 @@ export class AviseringService {
       year: number
       month: number
     },
+    // T1.4 PR0: valfri yttre transaktion. Trädd igenom till
+    // createJournalEntryForRentNotice så avi + verifikat kan skapas atomiskt
+    // (bakdaterad-debitering-backfillen, PR1). När tx anges får ett bokförings-
+    // fel INTE sväljas här — det måste bubbla upp så den yttre transaktionen
+    // rullar tillbaka avin (annars orphan-avi). Utan tx behålls det tidigare
+    // best-effort-beteendet (avin är redan committad, felet loggas bara).
+    tx?: Prisma.TransactionClient,
   ): Promise<void> {
     if (notice.type === RentNoticeType.DEPOSIT) return
     try {
-      await this.accounting.createJournalEntryForRentNotice(notice, orgId, null)
+      await this.accounting.createJournalEntryForRentNotice(notice, orgId, null, tx)
     } catch (err) {
+      // Atomiskt läge (tx angiven): låt felet fälla den yttre transaktionen så
+      // ingen avi lämnas utan verifikat.
+      if (tx) throw err
       this.logger.error(
         `[Avisering] Bokföring av hyresavi ${notice.noticeNumber} misslyckades: ${
           err instanceof Error ? err.message : String(err)

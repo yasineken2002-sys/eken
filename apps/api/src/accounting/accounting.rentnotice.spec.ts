@@ -196,3 +196,91 @@ describe('FIX 9 · PR 2 — createJournalEntryForRentNotice', () => {
     expect(prisma.journalEntry.create).not.toHaveBeenCalled()
   })
 })
+
+// ── T1.4 PR0 — bokförings-härdning ──────────────────────────────────────────
+describe('T1.4 PR0 · createJournalEntryForRentNotice: error-logg + tx-atomicitet', () => {
+  it('saknat 1510-konto → loggar ERROR (tidigare tyst return null)', async () => {
+    const { service } = makeService({
+      unitType: 'APARTMENT',
+      // 1510 saknas → intäktskonto 3911 finns, men fordringskontot saknas.
+      accounts: [{ id: 'acc-3911', number: 3911 }],
+    })
+    const errSpy = jest
+      .spyOn((service as unknown as { logger: { error: (m: string) => void } }).logger, 'error')
+      .mockImplementation(() => {})
+    const result = await service.createJournalEntryForRentNotice(baseNotice, 'org-1', null)
+    expect(result).toBeNull()
+    expect(errSpy).toHaveBeenCalledTimes(1)
+    expect(errSpy.mock.calls[0]![0]).toContain('1510')
+    expect(errSpy.mock.calls[0]![0]).toContain('AVI-2026-06-0001')
+  })
+
+  it('saknat intäktskonto (39xx) → loggar ERROR med kontonumret', async () => {
+    const { service } = makeService({
+      unitType: 'APARTMENT',
+      // 1510 finns, men 3911 (bostadsintäkt) saknas.
+      accounts: [{ id: 'acc-1510', number: 1510 }],
+    })
+    const errSpy = jest
+      .spyOn((service as unknown as { logger: { error: (m: string) => void } }).logger, 'error')
+      .mockImplementation(() => {})
+    const result = await service.createJournalEntryForRentNotice(baseNotice, 'org-1', null)
+    expect(result).toBeNull()
+    expect(errSpy).toHaveBeenCalledTimes(1)
+    expect(errSpy.mock.calls[0]![0]).toContain('3911')
+  })
+
+  it('tx angiven → verifikatet skapas via tx, INGEN egen $transaction öppnas (atomiskt)', async () => {
+    const { service, prisma } = makeService({ unitType: 'APARTMENT' })
+    const txSpy = jest.spyOn(
+      prisma as unknown as { $transaction: (cb: (t: unknown) => unknown) => unknown },
+      '$transaction',
+    )
+    // En yttre transaktion — egen mock som speglar prisma-ytan.
+    let txCreated: unknown = null
+    const tx = {
+      account: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'acc-1510', number: 1510 },
+          { id: 'acc-3911', number: 3911 },
+        ]),
+      },
+      lease: { findFirst: jest.fn().mockResolvedValue({ unit: { type: 'APARTMENT' } }) },
+      journalEntry: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation((arg: unknown) => {
+          txCreated = arg
+          return Promise.resolve({ id: 'je-tx', ...(arg as object) })
+        }),
+      },
+    }
+    const result = await service.createJournalEntryForRentNotice(
+      baseNotice,
+      'org-1',
+      null,
+      tx as never,
+    )
+    // Verifikatet skapades på den YTTRE transaktionen …
+    expect(tx.journalEntry.create).toHaveBeenCalledTimes(1)
+    expect(txCreated).not.toBeNull()
+    expect(result).toMatchObject({ id: 'je-tx' })
+    // … och ingen ny inre $transaction öppnades, och den vanliga prisma-klienten
+    // rördes inte (allt gick via tx → atomiskt med anroparens övriga writes).
+    expect(prisma.journalEntry.create).not.toHaveBeenCalled()
+    expect(txSpy).not.toHaveBeenCalled()
+    expect(tx.account.findMany).toHaveBeenCalled()
+    expect(tx.lease.findFirst).toHaveBeenCalled()
+  })
+
+  it('utan tx → oförändrat beteende (egen $transaction, prisma-klienten används)', async () => {
+    const { service, prisma, getCreated } = makeService({ unitType: 'APARTMENT' })
+    const txSpy = jest.spyOn(
+      prisma as unknown as { $transaction: (cb: (t: unknown) => unknown) => unknown },
+      '$transaction',
+    )
+    const result = await service.createJournalEntryForRentNotice(baseNotice, 'org-1', null)
+    expect(getCreated()).not.toBeNull()
+    expect(result).toMatchObject({ id: 'je-1' })
+    expect(txSpy).toHaveBeenCalledTimes(1)
+  })
+})
