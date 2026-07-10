@@ -174,7 +174,11 @@ describe('TenantPortalService — RentNotice-läcktätning', () => {
 
     expect(result).toHaveLength(1)
     expectNoRentNoticeLeak(result[0] as Record<string, unknown>)
-    assertSelectShape(prisma.rentNotice.findMany.mock.calls[0][0])
+    const arg = prisma.rentNotice.findMany.mock.calls[0][0]
+    assertSelectShape(arg)
+    // T1.4 (hyresjurist): getNotices får ALDRIG visa PENDING/CANCELLED — en
+    // efterdebiterad (backfill) avi vilar i PENDING tills manuell frisläppning.
+    expect(arg.where.status).toEqual({ in: ['SENT', 'PAID', 'OVERDUE'] })
   })
 
   it('getRentNotices: svaret saknar interna fält + allow-list-select (status-filter bevarat)', async () => {

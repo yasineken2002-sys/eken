@@ -204,6 +204,14 @@ describe('escalateOverdueRentNotices (cron)', () => {
     expect(where).toMatchObject({ status: 'OVERDUE', type: 'RENT', collectionStage: 'NONE' })
   })
 
+  // T1.4 / #44: efterdebiterade avier isoleras från auto-eskaleringen.
+  it('urvalet EXKLUDERAR backfill-avier (isBackfill: false) — kravtrappe-isolering', async () => {
+    const { service, prisma } = makeService()
+    await service.escalateOverdueRentNotices()
+    const where = prisma.rentNotice.findMany.mock.calls[0]![0].where
+    expect(where).toMatchObject({ isBackfill: false })
+  })
+
   // ── PR 3a (INV-A) — eskalering gatar på faktisk OCR-restskuld ──────────────
   it('PR3a: fullt reglerad OCR (ocrOutstanding=0) → ingen avgift, ingen eskalering', async () => {
     const { service, prisma, pdfQueue, rentInterest } = makeService({ ocrOutstanding: 0 })

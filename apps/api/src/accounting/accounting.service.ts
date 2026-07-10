@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common'
 import { CompanyForm, PaymentMethod, RentNoticeType, UnitType } from '@prisma/client'
 import type {
   BankTransaction,
@@ -1167,11 +1173,20 @@ export class AccountingService {
       // T1.4 PR0: tidigare TYST `return null` → en felkonfigurerad kontoplan
       // gav en hyresavi UTAN intäktsverifikat (orphan-avi) utan att någon
       // larmades. Samma allvar och loggnivå som momskonto-fallet nedan.
+      const missing = !receivableId ? 1510 : revenueAccountNumber
       this.logger.error(
-        `[Accounting] Konto ${!receivableId ? 1510 : revenueAccountNumber} saknas i ` +
-          `kontoplanen (org ${organizationId}) — intäktsverifikat för hyresavi ` +
-          `${notice.noticeNumber} skapas ej.`,
+        `[Accounting] Konto ${missing} saknas i kontoplanen (org ${organizationId}) — ` +
+          `intäktsverifikat för hyresavi ${notice.noticeNumber} skapas ej.`,
       )
+      // T1.4 PR1 (bokförings-expert CRITICAL): i ATOMISKT läge (tx angiven) får
+      // detta INTE bli ett tyst null — då skulle den yttre transaktionen committa
+      // avin UTAN verifikat (orphan-avi, BFL 5 kap). Kasta så tx:en rullas
+      // tillbaka. Utan tx (best-effort) behålls null (oförändrat).
+      if (tx) {
+        throw new UnprocessableEntityException(
+          `Kontoplanen saknar konto ${missing} — efterdebitering kan inte bokföras atomiskt`,
+        )
+      }
       return null
     }
 
@@ -1198,6 +1213,12 @@ export class AccountingService {
         this.logger.error(
           `[Accounting] Okänd momssats ${rate}% för hyresavi ${notice.noticeNumber} — verifikation skapas ej`,
         )
+        // T1.4 PR1: kasta i atomiskt läge (orphan-avi annars).
+        if (tx) {
+          throw new UnprocessableEntityException(
+            `Okänd momssats ${rate}% — efterdebitering kan inte bokföras atomiskt`,
+          )
+        }
         return null
       }
       const vatAccountId = accountByNumber.get(vatAccountNumber)
@@ -1205,6 +1226,12 @@ export class AccountingService {
         this.logger.error(
           `[Accounting] Momskonto ${vatAccountNumber} saknas i kontoplanen för hyresavi ${notice.noticeNumber} — verifikation skapas ej`,
         )
+        // T1.4 PR1: kasta i atomiskt läge (orphan-avi annars).
+        if (tx) {
+          throw new UnprocessableEntityException(
+            `Kontoplanen saknar momskonto ${vatAccountNumber} — efterdebitering kan inte bokföras atomiskt`,
+          )
+        }
         return null
       }
       lines.push({ accountId: vatAccountId, credit: vat, description: `Moms ${rate}%` })

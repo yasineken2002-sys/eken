@@ -566,7 +566,16 @@ export class TenantPortalService {
     // probableLossAt …) + hela property-kedjan (fireSafetyNotes/monthlyRent) till
     // hyresgästen. Allow-list-select + mapper, samma mönster som getRentNotices.
     const rows = await this.prisma.rentNotice.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        // SECURITY / T1.4 (hyresjurist): visa BARA avier hyresvärden faktiskt
+        // skickat/markerat — aldrig PENDING/CANCELLED. Samma filter som
+        // getRentNotices. Kritiskt för bakdaterad debitering (#44): en
+        // efterdebiterad avi vilar i PENDING tills en människa aktivt släpper
+        // in den; utan detta filter skulle den synas för hyresgästen direkt vid
+        // skapandet, förbi det bindande kommunikationsbeslutet.
+        status: { in: ['SENT', 'PAID', 'OVERDUE'] },
+      },
       select: SAFE_PORTAL_RENT_NOTICE_SELECT,
       orderBy: { dueDate: 'desc' },
     })

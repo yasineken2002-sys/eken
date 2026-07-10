@@ -1049,6 +1049,30 @@ Notice`/`bookRentNoticeRevenue` (spegla `bookReminderFee`) + error-logg vid sakn
   >
   > Granskningsprocess: rapport innan varje PR → användaren granskar (bokföring) → bokförings-expert sista
   > grind → INGEN självmerge. Full karta + krav i minnet (`project_t14_bakdaterad_debitering`).
+  >
+  > **✅ PR0 MERGAD** (#191, 78cca0a): tx-atomicitet + orphan-avi-logg. **✅ PR1 BYGGD + GRANSKAD 2026-07-10**
+  > (branch `feat/t14-pr1-backfill-engine`; bokförings-expert godkänd-m-villkor, hyresjurist hållbar-m-villkor).
+  > **Åtgärdat i PR1:** bokförings-CRITICAL (atomicitet höll ej vid saknat konto → `createJournalEntryForRent-
+Notice` KASTAR nu under tx i alla 3 gren-fall, motorn får `skippedMissingAccount`-kategori + SYSTEM-notis);
+  > hyresjurist-läcka (`tenant-portal.getNotices` saknade status-filter → PENDING backfill-avi syntes för
+  > hyresgäst → filter tillagt, speglar `getRentNotices`); preskriptions-marginal (hård spärr `>=36` mån,
+  > dag-säker).
+  > **DEFERRED (låsta krav till PR2/PR3):**
+  >
+  > - **[PR2, hyresjurist] Audit-spår:** `createBackfillNotices.actorUserId` MÅSTE persisteras som
+  >   `RentNoticeEvent` per skapad avi (vem godkände, `ageMonths`, `allowBeyondWarning` + skäl vid
+  >   BEYOND_WARNING) — annars är "människo-bekräftelse" obevisad i tvist.
+  > - **[PR2, hyresjurist] PDF-mall:** `isBackfill`-textgren ("Efterfakturerad hyra för perioden X–Y…")
+  >   oavsett `isProrated`.
+  > - **[PR2→PR3, bokförings HIGH] Momsperiod-varning:** PR2:s bekräftelse-UI får INTE exponeras för org med
+  >   frivilligt skattskyldiga lokaler innan PR3 landat, ELLER PR2 lägger en disclaimer när
+  >   `voluntaryTaxLiability` bland månaderna (redan deklarerad momsperiod → rättelsedeklaration = människans
+  >   beslut, SFL 26 kap).
+  > - **[PR2/release] Framåt-ränta:** manuell release får ALDRIG beräkna ränta retroaktivt från historisk
+  >   månad — bara framåt från `backfillRentDueDate` (Räntelagen 3–4 §). Testas i release-PR.
+  > - **[backlog, bokförings INFO] P2002-diagnos:** `RentBackfillService` tolkar all P2002 som "redan
+  >   aviserad"; en (lågfrekvent, ärvd) `noticeNumber`-race felklassas som `skippedExisting`. Differentiera
+  >   på `err.meta.target`.
 
 **T2 — Deposition (PR-nedbruten):**
 
