@@ -1073,6 +1073,22 @@ Notice` KASTAR nu under tx i alla 3 gren-fall, motorn får `skippedMissingAccoun
   > - **[backlog, bokförings INFO] P2002-diagnos:** `RentBackfillService` tolkar all P2002 som "redan
   >   aviserad"; en (lågfrekvent, ärvd) `noticeNumber`-race felklassas som `skippedExisting`. Differentiera
   >   på `err.meta.target`.
+  >
+  > **✅ PR2 BYGGD + GRANSKAD 2026-07-10** (branch `feat/t14-pr2-backfill-confirmation-queue`; hyresjurist
+  > HÅLLBAR 0 CRITICAL/HIGH, bokförings-expert GODKÄND-m-villkor; användaren granskade pengar+JB+moms +
+  > godkände). Levererat: bekräftelse-kö skild från aktivering (`GET/POST avisering/backfill/queue|:leaseId/
+preview|confirm`), actor-audit (`CREATED`-`RentNoticeEvent` i samma tx: actorId/ageMonths/beyondWarning/
+  > allowBeyondWarning/period), PDF `isBackfill`-text (båda grenar) + bestridande-/kontaktrad, manuell
+  > retrigger (#58 via kön över alla aktiva kontrakt). **Momsperiod-krav UPPGRADERAT (bokförings HIGH
+  > infoldad):** ingen hårdspärr av momspliktig lokal (blankt block vore obokförda affärshändelser, BFL 4:1)
+  > — i stället AKTIV grind: `vatDeclarationAcknowledged` (kryss + server-side `UnprocessableEntity` 422 om
+  > momspliktig lokal utan ack + audit-loggat), speglar >12-mån-mönstret. Full svit 1350 grön; live E2E
+  > bevisad (utan confirm→0 avier; moms 422 utan ack).
+  > **NY FÖLJD-PR (ej PR2, hyresjurist MEDIUM):** kräv `ADMIN/OWNER` specifikt för `allowBeyondWarning`-
+  > override-grenen (server-side). Behörighetsändring → egen granskning, knyter till #20 (rollinversion).
+  > Säkert att skjuta: >12-mån kräver redan bekräftelse + kryss + audit, inget akut hål.
+  > **PR3 (fristående):** momsperiod-varning periodspecifik (t.ex. `VatReportingPeriod`-spårning) så
+  > disclaimern blir "dessa N månader faller i en redan lämnad momsdeklaration" i stället för generisk.
 
 **T2 — Deposition (PR-nedbruten):**
 
