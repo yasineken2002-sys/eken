@@ -2337,6 +2337,16 @@ model RentNotice {
   totalDays   Int?
   isProrated  Boolean        @default(false)
 
+  // ── Bakdaterad debitering (T1.4 / #44) ──────────────────────────────────
+  // Markerar en avi som skapad genom efterdebitering av en bebodd men aldrig
+  // aviserad månad (bakdaterad aktivering). Behåller type=RENT så
+  // @@unique([leaseId,year,month,type]) fortsatt hindrar dubbel-avisering av
+  // samma månad. Markören EXKLUDERAR avin från kravtrappans auto-eskalering
+  // (RentReminderService gejtar på isBackfill=false) — en hyresgäst får aldrig
+  // påminnelse/ränta/inkasso automatiskt för hyresvärdens sena registrering
+  // (JB 12 kap 42 §, oskälighet). Default false → befintliga avier oberörda.
+  isBackfill  Boolean        @default(false)
+
   // ── Förbrukningsdebitering (IMD, rad-på-avi) ────────────────────────────
   // amount/vatAmount/totalAmount avser HYRAN (bokförs av hyresverifikatet,
   // oförändrat). consumptionAmount är summan av förbrukningsrader (brutto) och

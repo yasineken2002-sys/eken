@@ -104,6 +104,14 @@ export class RentReminderService {
         status: 'OVERDUE',
         type: RentNoticeType.RENT,
         collectionStage: 'NONE',
+        // T1.4 / #44: efterdebiterade avier EXKLUDERAS från kravtrappans
+        // auto-eskalering (JB 12 kap 42 §, oskälighet). En hyresgäst får aldrig
+        // påminnelse/ränta/inkasso automatiskt för hyresvärdens sena
+        // registrering — dessa släpps in i normalflödet först vid manuell
+        // granskning (framtida PR). Enda auto-ingången till trappan är detta
+        // urval → en filter här isolerar hela trappan (ränta kristalliseras bara
+        // härifrån).
+        isBackfill: false,
         organization: { remindersEnabled: true },
       },
       include: { organization: true, tenant: { select: SAFE_TENANT_SELECT } },
@@ -222,6 +230,9 @@ export class RentReminderService {
           organizationId,
           status: 'OVERDUE',
           collectionStage: 'NONE',
+          // T1.4 / #44: försvar-i-djupet — även ett direkt anrop får aldrig
+          // eskalera en efterdebiterad avi (samma isolering som cron-urvalet).
+          isBackfill: false,
         },
         data: {
           collectionStage: 'REMINDED',

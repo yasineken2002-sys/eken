@@ -418,6 +418,57 @@ export function rentDueDateForPeriodStart(periodStart: Date): Date {
   return d
 }
 
+// ── Bakdaterad debitering (T1.4 / #44) — domänkonstanter ────────────────────
+// Preskription: en hyresfordran mot en bostadshyresgäst (konsument) preskriberas
+// efter 3 år (Preskriptionslagen 1981:130 2 § 2 st). Efterdebitering får ALDRIG
+// gå bortom detta — en så gammal fordran är sannolikt redan preskriberad.
+export const BACKFILL_HARD_CAP_MONTHS = 36
+// Varnings-/manuell-grind: en bakdatering längre än ett år är sannolikt ett
+// DATAFEL (felaktigt startDate) snarare än administrativ eftersläpning → kräver
+// uttryckligt manuellt godkännande (allowBeyondWarning), inte tyst skapande.
+export const BACKFILL_WARNING_MONTHS = 12
+// Minsta betalningsfrist på en efterdebiterad avi, från skapandedatum
+// (hyresjurist: adminfel får inte bli förverkandegrund → generös frist).
+export const BACKFILL_MIN_DAYS_UNTIL_DUE = 30
+
+/**
+ * Förfallodag för en BAKDATERAD (efterdebiterad) hyresavi (T1.4 / #44).
+ *
+ * En efterdebiterad avi avser alltid en period i det förflutna → JB 12:20-dagen
+ * har passerat för länge sedan. Att sätta den historiska förfallodagen skulle
+ * föda avin förfallen och (utan kravtrappe-isolering) omedelbart utlösa
+ * påminnelse/dröjsmålsränta för en försening som beror på hyresvärdens sena
+ * registrering, inte hyresgästens dröjsmål — juridiskt tveksamt (hyresjurist).
+ *
+ * Därför: förfallodagen klampas ALLTID framåt och ger dessutom en minsta
+ * betalningsfrist på {@link BACKFILL_MIN_DAYS_UNTIL_DUE} dagar från
+ * skapandedatumet (fromDate), avrundad till närmaste svensk vardag. Ränta löper
+ * först från denna dag (Räntelagen 3–4 § — medveten eftergift, aldrig
+ * retroaktivt). Kombineras med `isBackfill`-markören som helt exkluderar avin
+ * från kravtrappans auto-eskalering tills en människa släpper in den.
+ */
+export function backfillRentDueDate(fromDate: Date): Date {
+  const base = new Date(fromDate)
+  base.setHours(0, 0, 0, 0)
+  let d = addDays(base, BACKFILL_MIN_DAYS_UNTIL_DUE)
+  while (!isSwedishBusinessDay(d)) {
+    d = addDays(d, 1)
+  }
+  return d
+}
+
+/**
+ * Antal hela kalendermånader mellan två (år, månad) — positivt när `to` ligger
+ * efter `from`. Används för att mäta hur långt bakåt en efterdebitering sträcker
+ * sig (preskriptionsgrind, T1.4).
+ */
+export function monthsBetween(
+  from: { year: number; month: number },
+  to: { year: number; month: number },
+): number {
+  return (to.year - from.year) * 12 + (to.month - from.month)
+}
+
 /**
  * Förfallodatum för deposition / första hyresavi vid lease-aktivering.
  * Standard är `daysBeforeMoveIn` dagar före tillträde, justerat till sista

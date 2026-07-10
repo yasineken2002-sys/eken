@@ -154,13 +154,17 @@ export class AviseringService {
     year: number,
     month: number,
     offset = 0,
+    // T1.4: valfri transaktionsklient så backfillen kan allokera avinumret INUTI
+    // samma tx som avin + verifikatet skapas (atomiskt). Default: prisma.
+    db?: Prisma.TransactionClient,
   ): Promise<string> {
+    const client = db ?? this.prisma
     const prefix = `AVI-${year}-${pad2(month)}-`
     // SECURITY/korrekthet (H1): scopa sekvensen till organisationen. Utan
     // organizationId-filtret räknades max-sekvensen över ALLA orgars avier,
     // så en ny kunds serie kunde börja på t.ex. AVI-2026-06-0047. Träffar nu
     // @@index([organizationId, noticeNumber]) i stället för full table scan.
-    const existing = await this.prisma.rentNotice.findMany({
+    const existing = await client.rentNotice.findMany({
       where: { organizationId, noticeNumber: { startsWith: prefix } },
       select: { noticeNumber: true },
     })
@@ -339,6 +343,108 @@ export class AviseringService {
     }
 
     return { created, skipped, notices }
+  }
+
+  /**
+   * T1.4 / #44 — skapa EN efterdebiterad hyresavi för en bebodd men aldrig
+   * aviserad månad, ATOMISKT (avi + intäktsverifikat i samma `tx`). Anropas
+   * ENBART av RentBackfillService vid MÄNNISKO-BEKRÄFTAT skapande — aldrig av
+   * cron eller aktivering. Skiljer sig från generateMonthlyNotices på tre sätt:
+   *   1. `isBackfill: true` → avin exkluderas från kravtrappans auto-eskalering
+   *      (RentReminderService gejtar på isBackfill=false).
+   *   2. `dueDate` framåtklampad med 30-dagarsfrist (backfillRentDueDate) —
+   *      ALDRIG historisk. Ränta löper först från den nya dagen (Räntelagen
+   *      3–4 §, medveten eftergift; JB 12:20).
+   *   3. notis + verifikat i SAMMA tx → ett bokföringsfel (stängd period, saknat
+   *      konto) rullar tillbaka avin (ingen orphan-avi — PR0:s tx-kapacitet).
+   * Idempotens: @@unique([leaseId,year,month,type]) → en dubbelkörning ger P2002
+   * som anroparen tolkar som "månaden redan aviserad". Returnerar null om
+   * månaden inte täcker några debiterbara dagar (daysCharged <= 0).
+   *
+   * OBS: skapar ENBART hyresavin (inte förbruknings-/skaderader) — efterdebite-
+   * ring av IMD/MiscCharge har egna verifikat och ligger utanför T1.4-scope.
+   */
+  /**
+   * T1.4 — ren beräkning (skapar/bokför INGET) av en hyresavis proration + moms
+   * för en given månad. Enda källan för beloppen i BÅDE backfill-previewen
+   * (RentBackfillService.detect) och det faktiska skapandet nedan → previewens
+   * belopp kan aldrig divergera från det som faktiskt debiteras.
+   */
+  computeRentNoticeAmounts(
+    lease: {
+      monthlyRent: Prisma.Decimal | number
+      monthlyRentExcludingVat: boolean
+      startDate: Date
+      endDate: Date | null
+      unit: { type: UnitType; voluntaryTaxLiability: boolean }
+    },
+    year: number,
+    month: number,
+  ): {
+    proration: ReturnType<typeof calculateProratedRent>
+    vatAmount: number
+    totalAmount: number
+  } {
+    const proration = calculateProratedRent({
+      monthlyRent: Number(lease.monthlyRent),
+      year,
+      month,
+      leaseStart: lease.startDate,
+      leaseEnd: lease.endDate,
+    })
+    const { vatAmount, totalAmount } = this.rentVat(proration.amount, lease.unit, lease)
+    return { proration, vatAmount, totalAmount }
+  }
+
+  async createBackfillRentNoticeInTx(
+    tx: Prisma.TransactionClient,
+    lease: {
+      id: string
+      organizationId: string
+      tenantId: string
+      monthlyRent: Prisma.Decimal | number
+      monthlyRentExcludingVat: boolean
+      startDate: Date
+      endDate: Date | null
+      unit: { type: UnitType; voluntaryTaxLiability: boolean }
+    },
+    params: { year: number; month: number; ocrNumber: string; dueDate: Date },
+  ): Promise<RentNotice | null> {
+    const { year, month, ocrNumber, dueDate } = params
+    const { proration, vatAmount, totalAmount } = this.computeRentNoticeAmounts(lease, year, month)
+    if (proration.daysCharged <= 0) return null
+
+    const noticeNumber = await this.nextNoticeNumber(lease.organizationId, year, month, 0, tx)
+
+    const notice = (await tx.rentNotice.create({
+      data: {
+        organizationId: lease.organizationId,
+        tenantId: lease.tenantId,
+        leaseId: lease.id,
+        noticeNumber,
+        ocrNumber,
+        month,
+        year,
+        amount: proration.amount,
+        vatAmount,
+        totalAmount,
+        dueDate,
+        status: RentNoticeStatus.PENDING,
+        type: RentNoticeType.RENT,
+        isBackfill: true,
+        periodStart: proration.periodStart,
+        periodEnd: proration.periodEnd,
+        daysCharged: proration.daysCharged,
+        totalDays: proration.totalDays,
+        isProrated: proration.isProrated,
+      },
+    })) as unknown as RentNotice
+
+    // Atomiskt: avi + verifikat i SAMMA tx (PR0). Kastar — och rullar tillbaka
+    // avin — om perioden är stängd (VerifikationsnummerService) eller ett konto
+    // saknas. Ingen orphan-avi kan uppstå på denna väg.
+    await this.bookRentNoticeRevenue(lease.organizationId, notice, tx)
+    return notice
   }
 
   // ── Auto-skapa avier vid lease-aktivering (DRAFT → ACTIVE) ────────────────
