@@ -35,6 +35,10 @@ data. Ett enda läckt personnummer är en förtroendekris som inte går att ta t
 - **#20** — rollinversion i AI-vägen: ACCOUNTANT kan via AI utföra MANAGER/ADMIN-mutationer
   (bl.a. terminera hyresavtal). Fix: mappa varje verktyg till en `UserRole`-miniminivå och
   jämför mot `ROLE_HIERARCHY` i stället för strängmatchning.
+  > **⚠️ Konsekvenskrav (från T1.4-följd-PR #194):** backfill-`allowBeyondWarning`-override kräver
+  > ADMIN/OWNER, grindat i `RentBackfillService.createBackfillNotices` via `actorRole`. Om en AI-väg
+  > någonsin exponerar backfill-bekräftelse måste den skicka rätt `actorRole` och hanteras av samma
+  > minimirolls-mappning — annars kringgår AI-vägen grinden. Verifiera vid #20.
 
 ### Steg 3 — GDPR-radering (matar in i juridiska slutgenomgången)
 
@@ -1084,11 +1088,16 @@ preview|confirm`), actor-audit (`CREATED`-`RentNoticeEvent` i samma tx: actorId/
   > — i stället AKTIV grind: `vatDeclarationAcknowledged` (kryss + server-side `UnprocessableEntity` 422 om
   > momspliktig lokal utan ack + audit-loggat), speglar >12-mån-mönstret. Full svit 1350 grön; live E2E
   > bevisad (utan confirm→0 avier; moms 422 utan ack).
-  > **NY FÖLJD-PR (ej PR2, hyresjurist MEDIUM):** kräv `ADMIN/OWNER` specifikt för `allowBeyondWarning`-
-  > override-grenen (server-side). Behörighetsändring → egen granskning, knyter till #20 (rollinversion).
-  > Säkert att skjuta: >12-mån kräver redan bekräftelse + kryss + audit, inget akut hål.
-  > **PR3 (fristående):** momsperiod-varning periodspecifik (t.ex. `VatReportingPeriod`-spårning) så
-  > disclaimern blir "dessa N månader faller i en redan lämnad momsdeklaration" i stället för generisk.
+  > **✅ FÖLJD-PR MERGAD 2026-07-10** (PR #194, squash 0bdc533; grön CI; hyresjurist-MEDIUM + användaren
+  > godkände): `ADMIN/OWNER` krävs för `allowBeyondWarning`-override, grindat server-side i
+  > `RentBackfillService.createBackfillNotices` (money-binding-chokepunkten, ej bara controller/UI) →
+  > `ForbiddenException` fail-closed, ingen anropare kan kringgå; MANAGER opåverkad för ≤12-mån; UI döljer
+  >
+  > > 12-mån-kryss för icke-ADMIN/OWNER. Live-bevisat per roll (MANAGER+override→403 0 skapade; MANAGER
+  > > normal→13 billable+5 skippade; ADMIN+override→5 >12-mån skapade). **⚠️ Vid #20 (AI-rollinversion):
+  > > verifiera att backfill-override-rollen hanteras konsekvent även där (samma behörighetsyta).**
+  > > **PR3 (fristående):** momsperiod-varning periodspecifik (t.ex. `VatReportingPeriod`-spårning) så
+  > > disclaimern blir "dessa N månader faller i en redan lämnad momsdeklaration" i stället för generisk.
 
 **T2 — Deposition (PR-nedbruten):**
 
