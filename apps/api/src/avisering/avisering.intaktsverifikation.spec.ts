@@ -144,4 +144,51 @@ describe('FIX 9 · PR 2 — generateMonthlyNotices bokför hyresintäkt', () => 
     const data = prisma.rentNotice.create.mock.calls[0][0].data
     expect(data.vatAmount).toBe(0)
   })
+
+  // ── T1.4 PR0: bookRentNoticeRevenue atomiskt läge ─────────────────────────
+  describe('T1.4 PR0 · bookRentNoticeRevenue: tx trär igenom + fel-riktning', () => {
+    const rentNotice = {
+      id: 'rn-x',
+      noticeNumber: 'AVI-2026-06-0009',
+      leaseId: 'lease-1',
+      type: 'RENT',
+      amount: 10_000,
+      vatAmount: 0,
+      totalAmount: 10_000,
+      year: 2026,
+      month: 6,
+    }
+    type BookFn = (orgId: string, notice: unknown, tx?: unknown) => Promise<void>
+
+    it('MED tx: bokföringsfel BUBBLAR UPP (fäller yttre transaktionen → ingen orphan-avi)', async () => {
+      const { service, accounting } = makeService()
+      accounting.createJournalEntryForRentNotice.mockRejectedValueOnce(new Error('period stängd'))
+      const fakeTx = { marker: 'outer-tx' }
+      await expect(
+        (service as unknown as { bookRentNoticeRevenue: BookFn }).bookRentNoticeRevenue(
+          'org-1',
+          rentNotice,
+          fakeTx,
+        ),
+      ).rejects.toThrow('period stängd')
+      // tx trädd hela vägen ner till accounting-anropet (4:e argumentet).
+      expect(accounting.createJournalEntryForRentNotice).toHaveBeenCalledWith(
+        rentNotice,
+        'org-1',
+        null,
+        fakeTx,
+      )
+    })
+
+    it('UTAN tx: bokföringsfel SVÄLJS (best-effort oförändrat — avin redan committad)', async () => {
+      const { service, accounting } = makeService()
+      accounting.createJournalEntryForRentNotice.mockRejectedValueOnce(new Error('DB nere'))
+      await expect(
+        (service as unknown as { bookRentNoticeRevenue: BookFn }).bookRentNoticeRevenue(
+          'org-1',
+          rentNotice,
+        ),
+      ).resolves.toBeUndefined()
+    })
+  })
 })

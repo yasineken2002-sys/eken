@@ -1001,6 +1001,55 @@ monthlyRent, activatedAt, terminatedAt, terminationReason, contractNumber, creat
 - **T1.4 Bakdaterad debitering** (#44) — #43 löses redan av T1.2. Kvar: `startDate` i förflutet →
   backfill saknade hela månader endast i öppet räkenskapsår (S-A), annars hård spärr.
 
+  > **🔒 PLAN LÅST 2026-07-10** (kartlagd + två specialistgranskningar, båda "hållbar-med-villkor";
+  > användarbeslut på 3 öppna punkter). **Buggen:** `createInitialNoticesForLease`
+  > (`avisering.service.ts:343`) skapar bara EN avi för `startDate`-MÅNADEN; månadscronen
+  > `generateMonthlyNotices` (`avisering.service.ts:167`, cron `0 7 1 * *`) plockar bara ACTIVE-vid-körning.
+  > `startDate` 1 jan + aktivering 15 april → feb+mars+april aviseras ALDRIG. Distinkt från T1.3/#43
+  > (förnyelse-glapp) — ingen överlappning, #44 öppet.
+  >
+  > **MUST-krav (från granskningarna):**
+  >
+  > - **A [jurist CRITICAL] Människo-bekräftelse:** aldrig tyst auto vid aktivering. **Beslut: SEPARAT
+  >   "att efterdebitera"-kö**, blockerar INTE aktiveringen (skilj snabb operativ handling från övervägt
+  >   pengabeslut). Dialog "efterdebitera N mån (period X–Y), Z kr — bekräfta?". Varje rad periodtext
+  >   ("Hyra feb 2026 — efterfakturerad pga sen registrering"), BFL-verifikat + JB 12:21.
+  > - **B [jurist CRITICAL] Preskriptionstak:** JB 12:61 gäller EJ under pågående uthyrning — rätt spärr
+  >   är Preskriptionslagen 2 § (bostad/konsument 3 år). \*\*Beslut: hård spärr >36 mån; manuell grind
+  >   > 12 mån\*\* (>12 mån bakdatering = sannolikt DATAFEL, "ser konstigt ut"-spärr). Logga period per avi.
+  > - **C [jurist HIGH] Kravtrappe-isolering:** backfill-avier får egen markör/typ, EXKLUDERAD från
+  >   auto-eskalering (påminnelse→ränta→inkasso-ready) tills människa godkänt. Min 30 dagars frist (ej
+  >   1-veckas bostadsfrist), annars blir adminfel förverkandegrund → oskäligt JB 12:42 sista st.
+  > - **D [båda] Framåtklampad förfallodag + framåt-ränta:** `rentDueDateForPeriodStart` (T1.3), aldrig
+  >   historisk. Ränta endast från nya förfallodagen — explicit dokumenterad eftergift (Räntelagen 3–4 §),
+  >   ej implicit. Backfill = alltid "steg 1", ingen retroaktiv påminnelseavgift.
+  > - **E [bokförings] Atomicitet + per-månad stängd-koll:** stängd-period-för-koll PER MÅNAD i loopen
+  >   (backfill spänner över stängd/öppen-gräns); stängt → skapa INGEN avi + SYSTEM-notis (ej orphan;
+  >   not-i-öppen-period vore fel per K2/K3 rättelse). Notis+verifikat ATOMISKT per månad (`$transaction`)
+  >   — `tx`-param på `createJournalEntryForRentNotice`, spegla `bookReminderFee`. Fixa tyst `return null`
+  >   vid saknat 1510/intäktskonto (`accounting.service.ts:1159`) → logga `error`.
+  > - **F [bokförings MEDIUM] Momsperiod-varning:** momsperiod ≠ räkenskapsår (SFL 26 kap). Backfill av
+  >   momspliktig LOKAL in i redan-deklarerad period → VARNING (ej spärr; deklarationsrättelse = människans
+  >   beslut).
+  > - **Dubbeldebitering:** `@@unique([leaseId,year,month,type])` (hård DB-constraint) + idempotens-förkoll
+  >   per månad → re-körning/cron-overlap = no-op.
+  >
+  > **PR-ordning (låst):**
+  >
+  > - **PR0 — bokförings-härdning (FÖRST, fristående värde):** `tx`-param på `createJournalEntryForRent-
+Notice`/`bookRentNoticeRevenue` (spegla `bookReminderFee`) + error-logg vid saknat 1510/intäktskonto
+  >   (idag tyst `return null`). Fixar befintlig orphan-avi-risk oavsett #44 (samma princip som PSD2 P0).
+  > - **PR1 — backfill-motor (backend):** gap-detektion → **PREVIEW** (skapar/skickar INGET själv); per-
+  >   månad-loop med stängd-period-för-koll (E), atomisk notis+verifikat (E), framåtklampad förfallodag (D),
+  >   backfill-markör kravtrappe-exkluderad (C), preskriptionstak 36/12 (B), dokumenterad framåt-ränta (D).
+  > - **PR2 — bekräftelse-kö + UI (A):** "att efterdebitera"-kö skild från aktivering; bekräftelse triggar
+  >   PR1-motorn; manuell retrigger-endpoint (täcker även #58-gapet); ev. staggrade fakturor för stora belopp.
+  > - **PR3 — momsperiod-varning (F):** liten fristående.
+  > - **Följd (ej T1.4):** reconciliation-job som hittar `RentNotice` utan matchande `JournalEntry`.
+  >
+  > Granskningsprocess: rapport innan varje PR → användaren granskar (bokföring) → bokförings-expert sista
+  > grind → INGEN självmerge. Full karta + krav i minnet (`project_t14_bakdaterad_debitering`).
+
 **T2 — Deposition (PR-nedbruten):**
 
 - **T2.1 → #41 + #64:** skapa `Deposit{PENDING, invoiceId:null}` i samma tx som deposit-avin vid
