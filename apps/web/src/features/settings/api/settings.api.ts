@@ -17,6 +17,7 @@ export interface UpdateOrganizationInput {
   hasFSkatt?: boolean
   fSkattApprovedDate?: string
   vatNumber?: string
+  vatReportingPeriod?: 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
   daysBeforeMoveInForFirstPayment?: number
 }
 

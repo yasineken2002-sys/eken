@@ -105,6 +105,9 @@ export function SettingsPage() {
   const [hasFSkatt, setHasFSkatt] = useState(false)
   const [fSkattApprovedDate, setFSkattApprovedDate] = useState('')
   const [vatNumber, setVatNumber] = useState('')
+  const [vatReportingPeriod, setVatReportingPeriod] = useState<'MONTHLY' | 'QUARTERLY' | 'YEARLY'>(
+    'QUARTERLY',
+  )
   const [taxSavedFlash, setTaxSavedFlash] = useState(false)
   const [taxError, setTaxError] = useState<string | null>(null)
 
@@ -152,6 +155,7 @@ export function SettingsPage() {
       setHasFSkatt(org.hasFSkatt ?? false)
       setFSkattApprovedDate(org.fSkattApprovedDate ? org.fSkattApprovedDate.slice(0, 10) : '')
       setVatNumber(org.vatNumber ?? '')
+      setVatReportingPeriod(org.vatReportingPeriod ?? 'QUARTERLY')
       setDaysBeforeMoveIn(
         (org as { daysBeforeMoveInForFirstPayment?: number }).daysBeforeMoveInForFirstPayment ?? 7,
       )
@@ -172,6 +176,7 @@ export function SettingsPage() {
         hasFSkatt,
         ...(hasFSkatt && fSkattApprovedDate ? { fSkattApprovedDate } : {}),
         vatNumber,
+        vatReportingPeriod,
       },
       {
         onSuccess: () => {
@@ -835,6 +840,28 @@ export function SettingsPage() {
                     />
                     <p className="mt-1 text-[11px] text-gray-500">
                       EU-format: SE följt av 12 siffror. Lämna tomt om du inte är momsregistrerad.
+                    </p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-[12px] font-medium text-gray-700">
+                      Momsredovisningsperiod
+                    </label>
+                    <select
+                      value={vatReportingPeriod}
+                      onChange={(e) =>
+                        setVatReportingPeriod(e.target.value as 'MONTHLY' | 'QUARTERLY' | 'YEARLY')
+                      }
+                      className="h-9 w-full rounded-lg border border-[#DDDFE4] bg-white px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="MONTHLY">Månad</option>
+                      <option value="QUARTERLY">Kvartal</option>
+                      <option value="YEARLY">Helår</option>
+                    </select>
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      Hur ofta du redovisar moms till Skatteverket. Standard är kvartal —
+                      kontrollera att det stämmer mot din faktiska momsredovisning innan du litar på
+                      periodvarningen vid efterdebitering. Används bara för att visa vilka
+                      momsperioder en efterdebitering bakåt berör.
                     </p>
                   </div>
                 </div>

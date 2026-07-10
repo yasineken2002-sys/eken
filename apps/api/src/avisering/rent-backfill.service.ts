@@ -12,6 +12,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { OcrService } from '../common/ocr/ocr.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { AviseringService } from './avisering.service'
+import { vatPeriodLabelsForMonths } from './vat-period.util'
 
 /**
  * T1.4 / #44 — motor för bakdaterad debitering (efterdebitering av bebodda men
@@ -69,6 +70,11 @@ export interface BackfillPreview {
   // (SFL 26 kap ≠ räkenskapsår). Vi spärrar INTE (deklarationsrättelse = människans
   // beslut) men UI:t MÅSTE varna. Flaggan surfas till bekräftelse-UI:t.
   hasVoluntaryTaxLiability: boolean
+  // T1.4 PR3 — periodspecifik momsvarning: vilka momsperioder (org:ens
+  // redovisningsperiod) de debiterbara månaderna berör, t.ex. ["Q1 2026",
+  // "Q2 2026"]. Tom om lokalen inte är momspliktig. Namnger perioderna — avgör
+  // INTE om de är deklarerade (människans bedömning).
+  vatPeriods: string[]
 }
 
 /** En post i "att efterdebitera"-kön — ett kontrakt med saknade, debiterbara månader. */
@@ -127,15 +133,39 @@ export class RentBackfillService {
         months: [],
         summary: this.emptySummary(),
         hasVoluntaryTaxLiability: false,
+        vatPeriods: [],
       }
 
     const months = await this.computeGapMonths(lease)
     const summary = this.summarize(months)
+    const hasVoluntaryTaxLiability = lease.unit.voluntaryTaxLiability === true
+
+    // PR3: namnge berörda momsperioder — ENDAST för momspliktig lokal (annars
+    // ingen momsvarning alls). Baseras på de debiterbara (BILLABLE + BEYOND_
+    // WARNING) månaderna = det som faktiskt kan efterdebiteras.
+    let vatPeriods: string[] = []
+    if (hasVoluntaryTaxLiability) {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { vatReportingPeriod: true, fiscalYearStartMonth: true },
+      })
+      const chargeable = months.filter(
+        (m) => m.status === 'BILLABLE' || m.status === 'BEYOND_WARNING',
+      )
+      // fiscalYearStartMonth används bara för YEARLY (beskattningsår, SFL 26:11).
+      vatPeriods = vatPeriodLabelsForMonths(
+        chargeable,
+        org?.vatReportingPeriod ?? 'QUARTERLY',
+        org?.fiscalYearStartMonth ?? 1,
+      )
+    }
+
     return {
       leaseId,
       months,
       summary,
-      hasVoluntaryTaxLiability: lease.unit.voluntaryTaxLiability === true,
+      hasVoluntaryTaxLiability,
+      vatPeriods,
     }
   }
 
