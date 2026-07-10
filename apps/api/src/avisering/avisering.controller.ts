@@ -77,6 +77,8 @@ export class AviseringController {
       allowBeyondWarning: dto.allowBeyondWarning === true,
       vatDeclarationAcknowledged: dto.vatDeclarationAcknowledged === true,
       actorUserId: user.sub,
+      // >12-mån-override kräver ADMIN/OWNER — grindas i servicen (chokepunkten).
+      actorRole: user.role,
     })
   }
 
