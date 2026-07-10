@@ -50,6 +50,8 @@ function makeRig(opts: {
   }
   const accounting = new AccountingService(tx as never, verifikationsnummer as never)
   const noop = {} as never
+  // Audit-spårets spion (PR2): fångar CREATED-eventet som skrivs i tx:en.
+  const events = { record: jest.fn().mockResolvedValue({ id: 'ev-1' }) }
   const avisering = new AviseringService(
     tx as never, // prisma (createBackfillRentNoticeInTx tar tx explicit; prisma-ytan orörd)
     noop, // ocr
@@ -61,6 +63,7 @@ function makeRig(opts: {
     noop, // consumption
     noop, // miscCharges
     noop, // deposits
+    events as never, // rentNoticeEvents
   )
 
   const lease = {
@@ -77,7 +80,7 @@ function makeRig(opts: {
     },
   }
 
-  return { avisering, tx, journalCreates, getNotice: () => noticeData, lease }
+  return { avisering, tx, journalCreates, getNotice: () => noticeData, lease, events }
 }
 
 const sumD = (lines: Line[]) => lines.reduce((s, l) => s + (Number(l.debit) || 0), 0)
@@ -172,6 +175,88 @@ describe('T1.4 · backfill-avi bokförs balanserat (Σd = Σk)', () => {
     // Inget verifikat skapades → i en RIKTIG $transaction rullas även avin
     // tillbaka (mock:en saknar rollback, men kastet är beviset).
     expect(journalCreates).toHaveLength(0)
+  })
+
+  // ── T1.4 PR2 — actor-audit (hyresjurist MÅSTE) ─────────────────────────────
+  it('audit-spår: CREATED-event med actorUserId skrivs i SAMMA tx per skapad backfill-avi', async () => {
+    const { avisering, tx, events, lease } = makeRig({
+      unitType: 'APARTMENT',
+      accounts: [
+        { id: 'acc-1510', number: 1510 },
+        { id: 'acc-3911', number: 3911 },
+      ],
+    })
+    await avisering.createBackfillRentNoticeInTx(
+      tx as never,
+      lease as never,
+      {
+        year: 2026,
+        month: 2,
+        ocrNumber: '1234567890',
+        dueDate: backfillRentDueDate(new Date()),
+        audit: {
+          actorUserId: 'user-7',
+          ageMonths: 5,
+          beyondWarning: false,
+          allowBeyondWarning: false,
+        },
+      } as never,
+    )
+
+    expect(events.record).toHaveBeenCalledTimes(1)
+    const [noticeId, type, actorType, actorId, payload, opts] = events.record.mock.calls[0]!
+    expect(noticeId).toBe('rn-1')
+    expect(type).toBe('CREATED')
+    expect(actorType).toBe('USER')
+    expect(actorId).toBe('user-7') // VEM godkände — beviset i tvist
+    expect(payload).toMatchObject({ isBackfill: true, ageMonths: 5, allowBeyondWarning: false })
+    // Skrivs i SAMMA tx som avin/verifikatet (atomiskt) — inte fristående.
+    expect(opts).toEqual({ tx })
+  })
+
+  it('audit-spår: >12-mån-godkännande loggar beyondWarning + allowBeyondWarning (bevisar medvetet beslut)', async () => {
+    const { avisering, tx, events, lease } = makeRig({
+      unitType: 'APARTMENT',
+      accounts: [
+        { id: 'acc-1510', number: 1510 },
+        { id: 'acc-3911', number: 3911 },
+      ],
+    })
+    await avisering.createBackfillRentNoticeInTx(
+      tx as never,
+      lease as never,
+      {
+        year: 2024,
+        month: 2,
+        ocrNumber: '1234567890',
+        dueDate: backfillRentDueDate(new Date()),
+        audit: {
+          actorUserId: 'user-9',
+          ageMonths: 29,
+          beyondWarning: true,
+          allowBeyondWarning: true,
+        },
+      } as never,
+    )
+    const payload = events.record.mock.calls[0]![4]
+    expect(payload).toMatchObject({ beyondWarning: true, allowBeyondWarning: true, ageMonths: 29 })
+  })
+
+  it('utan audit-param skrivs INGET event (bakåtkompatibel väg orörd)', async () => {
+    const { avisering, tx, events, lease } = makeRig({
+      unitType: 'APARTMENT',
+      accounts: [
+        { id: 'acc-1510', number: 1510 },
+        { id: 'acc-3911', number: 3911 },
+      ],
+    })
+    await avisering.createBackfillRentNoticeInTx(tx as never, lease as never, {
+      year: 2026,
+      month: 2,
+      ocrNumber: '1234567890',
+      dueDate: backfillRentDueDate(new Date()),
+    })
+    expect(events.record).not.toHaveBeenCalled()
   })
 
   it('saknat momskonto (2611) under tx för momspliktig lokal → KASTAR', async () => {

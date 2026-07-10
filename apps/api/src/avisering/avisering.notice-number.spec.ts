@@ -31,6 +31,7 @@ function makeService(existing: Array<{ noticeNumber: string }>) {
     {} as never,
     {} as never, // miscCharges
     {} as never, // deposits
+    {} as never, // rentNoticeEvents
   )
   return { service: service as unknown as NoticeNumberAccess, findMany }
 }

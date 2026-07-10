@@ -88,6 +88,7 @@ function makeService() {
     noop as never, // consumption
     noop as never, // miscCharges
     { ensureDepositForNotice: jest.fn().mockResolvedValue({ created: false }) } as never, // deposits
+    {} as never, // rentNoticeEvents
   )
 }
 
@@ -167,5 +168,36 @@ describe('AviseringService.buildNoticePdfHtml — brandad shell + betalningsinte
   it('depositionsavi får titeln Depositionsavi via shellen', async () => {
     const html = await render({ type: 'DEPOSIT' })
     expect(html).toContain('Depositionsavi')
+  })
+
+  // ── T1.4 PR2 — efterdebiterings-text (JB 12:21, hyresjurist MÅSTE) ──────────
+  it('backfill-avi (hel månad): visar efterfakturerad-text för perioden ÄVEN när isProrated=false', async () => {
+    const html = await render({
+      isBackfill: true,
+      isProrated: false,
+      periodStart: new Date('2026-02-10T00:00:00Z'),
+      periodEnd: new Date('2026-02-20T00:00:00Z'),
+    })
+    expect(html).toContain('Efterfakturerad hyra för perioden')
+    expect(html).toContain('februari 2026')
+    expect(html).toContain('sen registrering')
+  })
+
+  it('backfill-avi (delmånad): efterfakturerad-text visas även i delmånads-grenen', async () => {
+    const html = await render({
+      isBackfill: true,
+      isProrated: true,
+      totalDays: 28,
+      daysCharged: 11,
+      periodStart: new Date('2026-02-10T00:00:00Z'),
+      periodEnd: new Date('2026-02-20T00:00:00Z'),
+    })
+    expect(html).toContain('Efterfakturerad hyra för perioden')
+    expect(html).toContain('sen registrering')
+  })
+
+  it('vanlig (icke-backfill) avi visar INTE efterfakturerad-text', async () => {
+    const html = await render()
+    expect(html).not.toContain('Efterfakturerad hyra')
   })
 })

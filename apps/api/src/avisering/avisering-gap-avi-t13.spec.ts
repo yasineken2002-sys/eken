@@ -76,6 +76,7 @@ function makeInitialNoticesRig(startDate: Date) {
     { attachRentNoticeLineCharges: jest.fn().mockResolvedValue(0) } as never,
     noop as never, // miscCharges
     { ensureDepositForNotice: jest.fn() } as never,
+    {} as never, // rentNoticeEvents
   )
   return { service, prisma }
 }
@@ -152,6 +153,7 @@ describe('T1.3 · C: EXPIRED avtal med dagar kvar i månaden aviseras', () => {
       { attachRentNoticeLineCharges: jest.fn().mockResolvedValue(0) } as never,
       { attachMiscChargesToRentNotice: jest.fn().mockResolvedValue(0) } as never,
       noop as never,
+      noop as never, // rentNoticeEvents
     )
     return { service, prisma }
   }

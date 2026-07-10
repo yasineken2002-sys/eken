@@ -89,6 +89,7 @@ function makeService(opts?: {
     noop as never, // consumption
     noop as never, // miscCharges
     { ensureDepositForNotice: jest.fn().mockResolvedValue({ created: false }) } as never, // deposits
+    {} as never, // rentNoticeEvents
   )
   return { service, prisma, accounting, eventCreate }
 }

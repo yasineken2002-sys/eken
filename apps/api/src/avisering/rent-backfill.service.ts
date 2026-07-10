@@ -51,17 +51,36 @@ export interface BackfillMonthPreview {
   status: BackfillMonthStatus
 }
 
+export interface BackfillSummary {
+  billableCount: number
+  billableTotal: number
+  beyondWarningCount: number
+  beyondWarningTotal: number
+  hardCappedCount: number
+  closedCount: number
+}
+
 export interface BackfillPreview {
   leaseId: string
   months: BackfillMonthPreview[]
-  summary: {
-    billableCount: number
-    billableTotal: number
-    beyondWarningCount: number
-    beyondWarningTotal: number
-    hardCappedCount: number
-    closedCount: number
-  }
+  summary: BackfillSummary
+  // T1.4 PR2 — momsperiod-disclaimer (bokförings HIGH): en efterdebitering av en
+  // frivilligt skattskyldig LOKAL kan falla i en redan deklarerad momsperiod
+  // (SFL 26 kap ≠ räkenskapsår). Vi spärrar INTE (deklarationsrättelse = människans
+  // beslut) men UI:t MÅSTE varna. Flaggan surfas till bekräftelse-UI:t.
+  hasVoluntaryTaxLiability: boolean
+}
+
+/** En post i "att efterdebitera"-kön — ett kontrakt med saknade, debiterbara månader. */
+export interface BackfillQueueItem {
+  leaseId: string
+  tenantName: string
+  unitLabel: string
+  propertyLabel: string
+  summary: BackfillSummary
+  requiresApproval: boolean // minst en månad ligger i 12–36-grinden (>12 mån)
+  maxAgeMonths: number
+  hasVoluntaryTaxLiability: boolean
 }
 
 export interface BackfillResult {
@@ -102,18 +121,94 @@ export class RentBackfillService {
       where: { id: leaseId, organizationId },
       include: { unit: { select: { type: true, voluntaryTaxLiability: true } } },
     })) as BackfillLease | null
-    if (!lease) return { leaseId, months: [], summary: this.emptySummary() }
+    if (!lease)
+      return {
+        leaseId,
+        months: [],
+        summary: this.emptySummary(),
+        hasVoluntaryTaxLiability: false,
+      }
 
     const months = await this.computeGapMonths(lease)
     const summary = this.summarize(months)
-    return { leaseId, months, summary }
+    return {
+      leaseId,
+      months,
+      summary,
+      hasVoluntaryTaxLiability: lease.unit.voluntaryTaxLiability === true,
+    }
+  }
+
+  // ── "Att efterdebitera"-kön — alla kontrakt med debiterbara luckor ──────────
+  // Skild från aktiveringen (jurist CRITICAL, beslut B): hyresvärden tar
+  // efterdebiterings-beslutet MEDVETET, inte som bieffekt av att aktivera.
+  // Enumererar ALLA aktiva kontrakt (inte bara nyss aktiverade) → utgör även den
+  // manuella retriggern (#58): gap-detektion kan köras när som helst, inte bara
+  // vid aktivering. Skapar INGET (ren detektion).
+  async detectQueue(organizationId: string): Promise<BackfillQueueItem[]> {
+    const leases = await this.prisma.lease.findMany({
+      where: { organizationId, status: 'ACTIVE' },
+      include: {
+        tenant: {
+          select: { type: true, firstName: true, lastName: true, companyName: true },
+        },
+        unit: {
+          select: {
+            type: true,
+            voluntaryTaxLiability: true,
+            name: true,
+            unitNumber: true,
+            property: { select: { name: true, street: true } },
+          },
+        },
+      },
+    })
+
+    const items: BackfillQueueItem[] = []
+    for (const lease of leases) {
+      const months = await this.computeGapMonths(lease as unknown as BackfillLease)
+      // Bara kontrakt med FAKTISKT debiterbara luckor visas i kön — månader som
+      // är preskriberade (>36) eller i stängd period är inte en operatörshandling.
+      const actionable = months.filter(
+        (m) => m.status === 'BILLABLE' || m.status === 'BEYOND_WARNING',
+      )
+      if (actionable.length === 0) continue
+
+      const t = lease.tenant
+      const tenantName =
+        t.type === 'INDIVIDUAL'
+          ? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()
+          : (t.companyName ?? '')
+      const unitLabel = lease.unit.unitNumber
+        ? `${lease.unit.unitNumber} — ${lease.unit.name}`
+        : lease.unit.name
+      const propertyLabel = lease.unit.property.street ?? lease.unit.property.name
+
+      items.push({
+        leaseId: lease.id,
+        tenantName,
+        unitLabel,
+        propertyLabel,
+        summary: this.summarize(months),
+        requiresApproval: actionable.some((m) => m.status === 'BEYOND_WARNING'),
+        maxAgeMonths: actionable.reduce((max, m) => Math.max(max, m.ageMonths), 0),
+        hasVoluntaryTaxLiability: lease.unit.voluntaryTaxLiability === true,
+      })
+    }
+    return items
   }
 
   // ── SKAPANDE — endast efter människo-bekräftelse (PR2) ──────────────────────
   async createBackfillNotices(
     leaseId: string,
     organizationId: string,
-    opts: { allowBeyondWarning?: boolean; actorUserId?: string | null } = {},
+    opts: {
+      allowBeyondWarning?: boolean
+      // Momsdeklarations-bekräftelse (bokförings HIGH). Grindas server-side —
+      // en momspliktig lokal får INTE efterdebiteras utan aktivt godkännande.
+      vatDeclarationAcknowledged?: boolean
+      actorUserId?: string | null
+    } = {},
   ): Promise<BackfillResult> {
     const lease = (await this.prisma.lease.findFirst({
       where: { id: leaseId, organizationId },
@@ -128,6 +223,17 @@ export class RentBackfillService {
         blockedHardCap: 0,
         skippedMissingAccount: 0,
       }
+    }
+
+    // Momsperiod-grind (bokförings HIGH, SFL 26 kap): en frivilligt skattskyldig
+    // lokal kan efterdebiteras in i en redan lämnad momsperiod → rättelse­deklaration
+    // = människans beslut. Kräv ett AKTIVT, loggbart godkännande (inte bara en
+    // passiv UI-ruta). Server-side så ett direkt API-anrop inte kan kringgå det.
+    if (lease.unit.voluntaryTaxLiability === true && opts.vatDeclarationAcknowledged !== true) {
+      throw new UnprocessableEntityException(
+        'Momsdeklarationen måste bekräftas innan en momspliktig lokal efterdebiteras ' +
+          '(efterdebiterade perioder kan kräva rättelsedeklaration, SFL 26 kap).',
+      )
     }
 
     const months = await this.computeGapMonths(lease)
@@ -172,6 +278,16 @@ export class RentBackfillService {
             month: m.month,
             ocrNumber,
             dueDate,
+            // Audit-spår per skapad avi (hyresjurist MÅSTE) — vem godkände, hur
+            // gammal månaden var och om det var ett uttryckligt >12-mån-godkännande.
+            audit: {
+              actorUserId: opts.actorUserId ?? null,
+              ageMonths: m.ageMonths,
+              beyondWarning: m.status === 'BEYOND_WARNING',
+              allowBeyondWarning: opts.allowBeyondWarning === true,
+              hasVoluntaryTaxLiability: lease.unit.voluntaryTaxLiability === true,
+              vatDeclarationAcknowledged: opts.vatDeclarationAcknowledged === true,
+            },
           }),
         )
         if (notice) result.created.push(notice)
