@@ -191,8 +191,8 @@ function buildPage1(data: MonthlyReportData): string {
       )}
       ${summaryCard(
         '#D97706',
-        'Förfallna fakturor',
-        `${s.overdue.count} st`,
+        'Förfallen skuld',
+        `${s.overdue.count} poster`,
         `${formatCurrency(s.overdue.totalAmount)} totalt`,
         `${s.overdue.over30Count} st över 30 dagar`,
       )}

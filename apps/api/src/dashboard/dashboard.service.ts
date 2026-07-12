@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from '../accounting/accounting.service'
-import { computeRentDebt } from '../avisering/rent-debt.service'
+import { OverdueDebtService } from '../overdue/overdue-debt.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 export interface TimeseriesPoint {
@@ -78,6 +78,7 @@ export class DashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
+    private readonly overdue: OverdueDebtService,
   ) {}
 
   /**
@@ -98,8 +99,7 @@ export class DashboardService {
     const now = new Date()
     const [
       invoiceGroups,
-      invoiceOverdueSum,
-      overdueNotices,
+      overdueSnapshot,
       organization,
       tenantGroups,
       propertyCount,
@@ -111,29 +111,10 @@ export class DashboardService {
         where: { organizationId },
         _count: { id: true },
       }),
-      // OVERDUE Invoice, EXKL. DEPOSIT (deposition = 2890-skuld, inte hyresskuld;
-      // fixar samma pre-existing type-läcka som PR1 gjorde på intäktssidan).
-      // Invoice saknar allokerings-/paidAmount-modell → en OVERDUE-faktura är
-      // fullt obetald, så .total ÄR restskulden (ingen klampning behövs här).
-      this.prisma.invoice.aggregate({
-        where: { organizationId, status: 'OVERDUE', type: { not: 'DEPOSIT' } },
-        _sum: { total: true },
-      }),
-      // OVERDUE hyresavier, EXKL. DEPOSIT. EN findMany (ingen N+1) med de fält
-      // computeRentDebt behöver + de granulära betalningsallokeringarna; skulden
-      // beräknas + klampas PER AVI i JS nedan (Σ max(0,x) ≠ max(0,Σx)).
-      this.prisma.rentNotice.findMany({
-        where: { organizationId, status: 'OVERDUE', type: { not: 'DEPOSIT' } },
-        select: {
-          type: true,
-          totalAmount: true,
-          consumptionAmount: true,
-          miscChargeAmount: true,
-          reminderFeeAmount: true,
-          interestAccruedAmount: true,
-          payments: { select: { amount: true } },
-        },
-      }),
+      // "Försenat belopp" via den DELADE sanningskällan (samma som månads-
+      // rapporten läser). Klampa-per-avi/outstanding/DEPOSIT-exkl/ingen
+      // dubbelräkning bor i OverdueDebtService — här bara .total.
+      this.overdue.getOverdueSnapshot(organizationId, now),
       this.prisma.organization.findUnique({
         where: { id: organizationId },
         select: { fiscalYearStartMonth: true },
@@ -175,29 +156,6 @@ export class DashboardService {
     const { from, to } = this.fiscalYearToDate(organization?.fiscalYearStartMonth ?? 1, now)
     const revenueTotal = await this.accounting.getRevenueTotal(organizationId, from, to)
 
-    // "Försenat belopp" = förfallen, OBETALD skuld. computeRentDebt klampar
-    // outstanding = max(0, claim) PER AVI (en betald/överbetald avi bidrar 0,
-    // aldrig negativt) och räknar bara resten på en delbetald avi. Summeras här
-    // — aldrig tvärtom. computeRentDebt-logiken rörs inte; vi summerar dess
-    // output. + OVERDUE Invoice (separat skuld, ingen överlappning → ingen
-    // dubbelräkning).
-    const rentOverdue = overdueNotices.reduce(
-      (sum, n) =>
-        sum +
-        computeRentDebt({
-          type: n.type,
-          totalAmount: n.totalAmount,
-          consumptionAmount: n.consumptionAmount,
-          miscChargeAmount: n.miscChargeAmount,
-          reminderFeeAmount: n.reminderFeeAmount,
-          interestAccruedAmount: n.interestAccruedAmount,
-          allocations: n.payments.map((p) => p.amount),
-        }).outstanding,
-      0,
-    )
-    const overdueTotal =
-      Math.round((rentOverdue + Number(invoiceOverdueSum._sum.total ?? 0)) * 100) / 100
-
     return {
       revenue: {
         total: revenueTotal,
@@ -205,7 +163,7 @@ export class DashboardService {
         to: to.toISOString(),
       },
       overdue: {
-        total: overdueTotal,
+        total: overdueSnapshot.total,
       },
       invoices: {
         total: totalInvoices,
