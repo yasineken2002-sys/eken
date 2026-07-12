@@ -8,10 +8,11 @@ import {
 import { Cron } from '@nestjs/schedule'
 import { Prisma, RentNoticeType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
-import { AccountingService } from '../accounting/accounting.service'
+import { AccountingService, MissingAccrualError } from '../accounting/accounting.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentDebtService } from './rent-debt.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
+import { NotificationsService } from '../notifications/notifications.service'
 
 interface BadDebtSummary {
   reclassified: number
@@ -20,6 +21,8 @@ interface BadDebtSummary {
   errors: number
   /** PR 4 (B) — avier vars befarad-omklassning pausats pga inaktuell betalningsdata. */
   pausedStale: number
+  /** T5 A2b — avier vars nedskrivning NEKATS (fail-closed): saknar bokförd fordran (orphan). */
+  blockedNoAccrual: number
 }
 
 // Fälten kundförlust-flödet behöver för att avgöra moms-status och belopp.
@@ -82,6 +85,9 @@ export class RentBadDebtService {
     // Bankavstämnings-härdning PR 4 (B) — pausa befarad-omklassningen + larma när
     // betalningsdatan är inaktuell (en befarad förlust är ett kravsteg framåt).
     private readonly freshness: PaymentFreshnessService,
+    // T5 A2b — SYSTEM-notis till org-admin när en nedskrivning nekas fail-closed
+    // (avin saknar bokförd fordran). Cronen är tyst, så en persistent notis behövs.
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -101,7 +107,10 @@ export class RentBadDebtService {
       skipped: 0,
       errors: 0,
       pausedStale: 0,
+      blockedNoAccrual: 0,
     }
+    // T5 A2b — orgar (→ antal) vars nedskrivning nekats fail-closed; larmas efter loopen.
+    const blockedByOrg = new Map<string, number>()
 
     const candidates = await this.prisma.rentNotice.findMany({
       where: {
@@ -142,6 +151,20 @@ export class RentBadDebtService {
           summary.skipped++
           continue
         }
+        // T5 A2b fail-closed: avin saknar bokförd fordran (pre-A1-orphan) → nedskrivningen
+        // NEKAD (ingen spökkredit; tx rullades tillbaka). Räkna + samla org för notis.
+        if (err instanceof MissingAccrualError) {
+          summary.blockedNoAccrual++
+          blockedByOrg.set(
+            notice.organizationId,
+            (blockedByOrg.get(notice.organizationId) ?? 0) + 1,
+          )
+          this.logger.error(
+            `Befarad kundförlust NEKAD (fail-closed) för avi ${notice.id} — saknar bokförd ` +
+              `fordran (obokförd avi). Måste repareras (bokförings-reparation) innan nedskrivning.`,
+          )
+          continue
+        }
         summary.errors++
         this.logger.error(
           `Befarad kundförlust misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
@@ -149,12 +172,51 @@ export class RentBadDebtService {
       }
     }
 
+    // T5 A2b — larma org-admin per org (utanför loopen, efter att tx:erna rullats
+    // tillbaka). Best-effort: en notis-fel får inte fälla cron-summeringen.
+    for (const [orgId, count] of blockedByOrg) {
+      await this.notifyBadDebtBlockedNoAccrual(orgId, count).catch((e: unknown) =>
+        this.logger.error(
+          `[A2b] SYSTEM-notis om blockerad kundförlust misslyckades för org ${orgId}: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        ),
+      )
+    }
+
     this.logger.log(
       `Befarad kundförlust: ${summary.reclassified} omklassade, ${summary.manual} manuella (moms), ` +
         `${summary.skipped} hoppade över, ${summary.pausedStale} pausade (inaktuell betalningsdata), ` +
-        `${summary.errors} fel`,
+        `${summary.blockedNoAccrual} nekade (saknar bokförd fordran), ${summary.errors} fel`,
     )
     return summary
+  }
+
+  // T5 A2b — SYSTEM-notis till org:ens OWNER/ADMIN när en eller flera avier nekats
+  // nedskrivning fail-closed (saknar bokförd fordran). Cronen är annars tyst.
+  private async notifyBadDebtBlockedNoAccrual(
+    organizationId: string,
+    count: number,
+  ): Promise<void> {
+    // Samma mottagarset som övriga bokförings-/rapportlarm (freshness, rapporter):
+    // ACCOUNTANT (redovisningskonsulten) är just den som ska reparera bokföringen.
+    const admins = await this.prisma.user.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        role: { in: ['OWNER', 'ADMIN', 'MANAGER', 'ACCOUNTANT'] },
+      },
+      select: { id: true },
+    })
+    const plural = count === 1 ? 'hyresavi' : 'hyresavier'
+    const title = 'Kundförlust blockerad — saknar bokförd fordran'
+    const message =
+      `${count} ${plural} kunde inte skrivas ned till befarad kundförlust: intäktsverifikatet ` +
+      `saknas i huvudboken (obokförd fordran). Ingen bokföring har skett (fail-closed) — 1510 ` +
+      `får aldrig krediteras utan sin debet. Avin/avierna måste repareras innan de kan skrivas ned.`
+    for (const u of admins) {
+      await this.notifications.create(organizationId, u.id, 'SYSTEM', title, message)
+    }
   }
 
   /**
@@ -222,6 +284,9 @@ export class RentBadDebtService {
         organizationId,
         source: 'RENT_NOTICE',
         sourceId: `bad-debt-probable:${noticeId}`,
+        // T5 A2b: avins fordran bokfördes vid avisering under 'rent-notice:<id>'
+        // (source='INVOICE'). Guarden nekar nedskrivningen om den saknas (pre-A1-orphan).
+        accrualSourceId: `rent-notice:${noticeId}`,
         amount,
         date: now,
         description: `Befarad kundförlust hyresavi ${notice.noticeNumber}`,

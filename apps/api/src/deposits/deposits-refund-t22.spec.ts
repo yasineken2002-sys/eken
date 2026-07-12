@@ -95,7 +95,13 @@ describe('T2.2 · createJournalEntryForDepositManualPayment — 1930 D / 1510 K'
     let created: Created | null = null
     const prisma = {
       journalEntry: {
-        findFirst: jest.fn().mockResolvedValue(null),
+        // A2b: guarden slår upp depositionens accrual (source='INVOICE',
+        // 'deposit-invoice:<id>') → finns; PAYMENT-idempotens → null (skapar nytt).
+        findFirst: jest
+          .fn()
+          .mockImplementation((args: { where?: { source?: string } }) =>
+            Promise.resolve(args?.where?.source === 'INVOICE' ? { id: 'accrual' } : null),
+          ),
         create: jest.fn().mockImplementation((arg: Created) => {
           created = arg
           return Promise.resolve({ id: 'je-1', ...arg })

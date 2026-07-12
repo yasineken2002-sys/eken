@@ -141,6 +141,16 @@ export function vatRateForRent(
   }
 }
 
+/**
+ * Kastas av fail-closed-guarden (T5 A2/A2b) när en 1510-kreditering (betalning
+ * ELLER nedskrivning) saknar sin motsvarande fordrans-debet (accrual-verifikat).
+ * Subklass av UnprocessableEntityException → befintliga `instanceof
+ * UnprocessableEntityException`-kontroller (A2) fortsätter matcha; callers som
+ * behöver särskilja just accrual-felet (t.ex. bad-debt-cronen som larmar) kan
+ * fånga `instanceof MissingAccrualError`.
+ */
+export class MissingAccrualError extends UnprocessableEntityException {}
+
 @Injectable()
 export class AccountingService {
   private readonly logger = new Logger(AccountingService.name)
@@ -356,13 +366,18 @@ export class AccountingService {
     organizationId: string
     source: JournalEntrySource
     sourceId: string
+    // T5 A2b: fordrans accrual-nyckel (t.ex. 'rent-notice:<noticeId>'). Fail-closed-
+    // guarden verifierar att 1510-DEBETEN faktiskt bokförts innan nedskrivningen
+    // krediterar 1510 — annars spökkredit på nedskrivningssidan (samma F1-fälla som
+    // A2 stängde för betalning). Skild från sourceId (nedskrivningens EGNA nyckel).
+    accrualSourceId: string
     amount: number
     description: string
     date?: Date
     createdById?: string | null
     tx?: Prisma.TransactionClient
   }): Promise<{ id: string } | null> {
-    const { organizationId, source, sourceId, amount, description } = params
+    const { organizationId, source, sourceId, accrualSourceId, amount, description } = params
     if (!Number.isFinite(amount) || amount <= 0) return null
 
     const db = params.tx ?? this.prisma
@@ -380,6 +395,10 @@ export class AccountingService {
       )
       return null
     }
+
+    // T5 A2b fail-closed: neka nedskrivningen (kastar MissingAccrualError) om
+    // fordrans accrual-debet saknas — 1510 får aldrig krediteras utan sin debet.
+    await this.assertReceivableAccrualBooked(db, organizationId, accrualSourceId, description)
 
     return this.createNumberedEntry({
       organizationId,
@@ -1183,6 +1202,16 @@ export class AccountingService {
     const receivableId = accountByNumber.get(1510)
     if (!debitAccountId || !receivableId) return null
 
+    // A2b fail-closed (sjätte 1510-vägen, FAR HIGH): depositionens 1510-debet bokförs
+    // under 'deposit-invoice:<depositId>' (createJournalEntryForDepositInvoice). Neka
+    // betalningen om den saknas — annars spökkredit på en obokförd deposition.
+    await this.assertReceivableAccrualBooked(
+      db,
+      organizationId,
+      `deposit-invoice:${depositId}`,
+      `deposition ${depositId}`,
+    )
+
     const sourceId = `deposit-manual-payment:${depositId}`
     return this.createNumberedEntry({
       organizationId,
@@ -1873,11 +1902,11 @@ export class AccountingService {
   private failClosedNoAccrual(label: string, organizationId: string, accrualKey: string): never {
     this.logger.error(
       `[Accounting] FAIL-CLOSED: ${label} saknar bokförd fordran (accrual '${accrualKey}', ` +
-        `org ${organizationId}) — betalningen bokförs INTE (skulle kreditera 1510 utan ` +
-        `motsvarande debet = spökkredit). Intäktsverifikatet måste repareras (T5 A3) först.`,
+        `org ${organizationId}) — 1510 krediteras INTE (skulle kreditera utan motsvarande ` +
+        `debet = spökkredit). Intäktsverifikatet måste repareras (T5 A3) först.`,
     )
-    throw new UnprocessableEntityException(
-      `${label} saknar bokförd fordran — betalningen kan inte bokföras utan att skapa en ` +
+    throw new MissingAccrualError(
+      `${label} saknar bokförd fordran — kan inte kreditera 1510 utan att skapa en ` +
         `obalanserad huvudbok (BFL 5:6). Avins/fakturans intäktsverifikat måste repareras först.`,
     )
   }

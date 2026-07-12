@@ -172,6 +172,35 @@ describe('T5 A2 · fail-closed accrual-guard på 1510-kreditering', () => {
     expect(created).toHaveLength(2) // båda vägar bokförde depositionsbetalningen
   })
 
+  it('deposit-manuell-betalning (avi-länkad) UTAN deposit-accrual → NEKAS (A2b sjätte vägen)', async () => {
+    const { service, created } = makeService({ accruals: [] })
+    await expect(
+      service.createJournalEntryForDepositManualPayment(
+        'dep-1',
+        'org-1',
+        5000,
+        new Date('2026-06-10'),
+        'BANK' as never,
+        null,
+      ),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException)
+    expect(created).toHaveLength(0)
+  })
+
+  it('deposit-manuell-betalning MED deposit-accrual → bokförs (1930 D / 1510 K)', async () => {
+    const { service, created } = makeService({ accruals: ['deposit-invoice:dep-1'] })
+    const entry = await service.createJournalEntryForDepositManualPayment(
+      'dep-1',
+      'org-1',
+      5000,
+      new Date('2026-06-10'),
+      'BANK' as never,
+      null,
+    )
+    expect(entry).not.toBeNull()
+    expect(created).toHaveLength(1)
+  })
+
   it('DEPOSIT-avi hoppar guarden (gatas av caller) → bokförs även utan rent-accrual', async () => {
     const { service, created } = makeService({ accruals: [] })
     const entry = await service.createJournalEntryForRentNoticePayment(

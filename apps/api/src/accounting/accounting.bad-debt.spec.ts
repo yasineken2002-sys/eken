@@ -10,10 +10,14 @@
  *   • idempotent via (org, source, sourceId), null vid belopp ≤ 0 eller saknat konto.
  */
 
-import { AccountingService } from './accounting.service'
+import { AccountingService, MissingAccrualError } from './accounting.service'
 
 function makeService(
-  opts: { accounts?: Array<{ id: string; number: number }>; existing?: boolean } = {},
+  opts: {
+    accounts?: Array<{ id: string; number: number }>
+    existing?: boolean
+    accrualMissing?: boolean
+  } = {},
   defaults: Array<{ id: string; number: number }> = [],
 ) {
   const accounts = opts.accounts ?? defaults
@@ -23,7 +27,21 @@ function makeService(
   const prisma = {
     account: { findMany: jest.fn().mockResolvedValue(accounts) },
     journalEntry: {
-      findFirst: jest.fn().mockResolvedValue(opts.existing ? { id: 'je-existing' } : null),
+      // A2b: source='INVOICE' = accrual-guardens uppslag (finns om ej accrualMissing);
+      // source='RENT_NOTICE' = createNumberedEntrys idempotens (existing/null).
+      findFirst: jest
+        .fn()
+        .mockImplementation((args: { where?: { source?: string } }) =>
+          Promise.resolve(
+            args?.where?.source === 'INVOICE'
+              ? opts.accrualMissing
+                ? null
+                : { id: 'accrual' }
+              : opts.existing
+                ? { id: 'je-existing' }
+                : null,
+          ),
+        ),
       create: jest.fn().mockImplementation((arg: typeof created) => {
         created = arg
         return Promise.resolve({ id: 'je-new', ...arg })
@@ -51,6 +69,7 @@ describe('AccountingService.bookBadDebtReclassification (befarad)', () => {
       organizationId: 'org-1',
       source: 'RENT_NOTICE',
       sourceId: 'bad-debt-probable:rn-1',
+      accrualSourceId: 'rent-notice:rn-1',
       amount: 8500,
       description: 'Befarad kundförlust hyresavi rn-1',
     })
@@ -68,6 +87,7 @@ describe('AccountingService.bookBadDebtReclassification (befarad)', () => {
       organizationId: 'org-1',
       source: 'RENT_NOTICE',
       sourceId: 'bad-debt-probable:rn-1',
+      accrualSourceId: 'rent-notice:rn-1',
       amount: 8500,
       description: 'x',
     })
@@ -86,6 +106,7 @@ describe('AccountingService.bookBadDebtReclassification (befarad)', () => {
       organizationId: 'org-1',
       source: 'RENT_NOTICE',
       sourceId: 'bad-debt-probable:rn-1',
+      accrualSourceId: 'rent-notice:rn-1',
       amount: 8500,
       description: 'x',
     })
@@ -100,6 +121,7 @@ describe('AccountingService.bookBadDebtReclassification (befarad)', () => {
         organizationId: 'org-1',
         source: 'RENT_NOTICE',
         sourceId: 'bad-debt-probable:rn-1',
+        accrualSourceId: 'rent-notice:rn-1',
         amount: 0,
         description: 'x',
       }),
@@ -114,10 +136,27 @@ describe('AccountingService.bookBadDebtReclassification (befarad)', () => {
         organizationId: 'org-1',
         source: 'RENT_NOTICE',
         sourceId: 'bad-debt-probable:rn-1',
+        accrualSourceId: 'rent-notice:rn-1',
         amount: 8500,
         description: 'x',
       }),
     ).toBeNull()
+    expect(prisma.journalEntry.create).not.toHaveBeenCalled()
+  })
+
+  it('T5 A2b FAIL-CLOSED: orphan-avi utan accrual → NEKAS (MissingAccrualError), ingen 1510-kredit', async () => {
+    const { service, prisma } = makeService({ accounts, accrualMissing: true })
+    await expect(
+      service.bookBadDebtReclassification({
+        organizationId: 'org-1',
+        source: 'RENT_NOTICE',
+        sourceId: 'bad-debt-probable:rn-1',
+        accrualSourceId: 'rent-notice:rn-1',
+        amount: 8500,
+        description: 'Befarad kundförlust hyresavi rn-1',
+      }),
+    ).rejects.toBeInstanceOf(MissingAccrualError)
+    // Ingen journalEntry.create → 1510 krediteras aldrig utan sin debet (ingen spökkredit).
     expect(prisma.journalEntry.create).not.toHaveBeenCalled()
   })
 })
