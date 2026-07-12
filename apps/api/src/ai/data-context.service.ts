@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { OverdueDebtService } from '../overdue/overdue-debt.service'
+import { AccountingService } from '../accounting/accounting.service'
 
 @Injectable()
 export class DataContextService {
@@ -10,6 +11,11 @@ export class DataContextService {
     // rapport). Ersätter den gamla Invoice-only-OVERDUE-siffran som var blind
     // för hyresavier och inte exkluderade DEPOSIT — AI:n sa fel skuld.
     private readonly overdue: OverdueDebtService,
+    // Delad sanningskälla för BOKFÖRD intäkt (Σ 3xxx accrual, räkenskapsår-till-
+    // idag) — samma tal som dashboardens "Totala intäkter". Skild från "förväntad
+    // månadshyra" (Σ avtalad monthlyRent) som är en teoretisk run-rate, inte
+    // bokförd intäkt.
+    private readonly accounting: AccountingService,
   ) {}
 
   async buildContext(organizationId: string): Promise<string> {
@@ -37,6 +43,7 @@ export class DataContextService {
       expiring90Count,
       paidInvoicesForBehavior,
       overdueSnapshot,
+      bookedRevenue,
     ] = await Promise.all([
       this.prisma.organization.findUnique({
         where: { id: organizationId },
@@ -177,6 +184,9 @@ export class DataContextService {
       // per avi + OVERDUE-fakturor, DEPOSIT exkl.) — samma tal som dashboardens
       // "Försenat belopp" och månadsrapporten. Org-scopat i tjänsten.
       this.overdue.getOverdueSnapshot(organizationId, now),
+      // Bokförd intäkt räkenskapsår-till-idag (Σ 3xxx accrual) — samma tal som
+      // dashboardens "Totala intäkter". Org-scopat i tjänsten.
+      this.accounting.getRevenueYearToDate(organizationId, now),
     ])
 
     // Build unit status map
@@ -233,7 +243,13 @@ export class DataContextService {
       `ORGANISATIONSÖVERSIKT – ${org?.name ?? 'Okänd organisation'} (${org?.city ?? ''})`,
       '',
       'PORTFÖLJSAMMANFATTNING:',
-      `Totala månadsinkomster: ${formatSEK(totalMonthlyIncome)}`,
+      // BOKFÖRD intäkt (Σ 3xxx accrual, räkenskapsår-till-idag) = samma tal som
+      // dashboardens "Totala intäkter". Den auktoritativa intäktssiffran.
+      `Bokförd intäkt i år (Σ 3xxx, räkenskapsår-till-idag): ${formatSEK(bookedRevenue.total)}`,
+      // FÖRVÄNTAD månadshyra = Σ avtalad monthlyRent på aktiva kontrakt. En
+      // TEORETISK run-rate (vad kontrakten ska ge/mån), INTE bokförd intäkt —
+      // ärligt etiketterad så AI:n aldrig förväxlar den med raden ovan.
+      `Förväntad månadshyra (avtalad, aktiva kontrakt): ${formatSEK(totalMonthlyIncome)}`,
       `Beläggningsgrad: ${occupancyPct}%`,
       // Förfallen skuld = delade snapshoten (hyresavier + fakturor, DEPOSIT exkl.),
       // identisk med dashboardens "Försenat belopp". Den enda auktoritativa
@@ -264,7 +280,13 @@ export class DataContextService {
       }
     }
 
-    lines.push('', '## FAKTUROR')
+    // ## FAKTUROR = fakturaposter per status, ENBART ANTAL. De monetära per-
+    // status-summorna (Σ Invoice.total) är Invoice-only och skulle konkurrera med
+    // de auktoritativa talen ovan: "Bokförd intäkt" (Σ 3xxx accrual) och
+    // "Förfallen skuld" (delade snapshoten). En hyresvärd som frågar AI:n om
+    // intäkt/skuld ska få dashboardens siffra, aldrig en Invoice-only-delmängd —
+    // därför bara antal här. OVERDUE utelämnas helt (täcks av "Förfallen skuld").
+    lines.push('', '## FAKTUROR (antal per status)')
     const statusLabels: Record<string, string> = {
       DRAFT: 'Utkast',
       SENT: 'Skickade',
@@ -274,13 +296,10 @@ export class DataContextService {
       VOID: 'Makulerade',
     }
     for (const [status, label] of Object.entries(statusLabels)) {
-      // OVERDUE rapporteras auktoritativt som "Förfallen skuld" ovan (delade
-      // snapshoten, inkl. hyresavier). Skippa här så kontexten inte innehåller
-      // två motstridiga förfallna-belopp (Invoice-only vs den harmoniserade).
       if (status === 'OVERDUE') continue
       const data = invoiceMap[status]
       if (data && data.count > 0) {
-        lines.push(`  ${label}: ${data.count} st, totalt ${formatSEK(data.total)}`)
+        lines.push(`  ${label}: ${data.count} st`)
       }
     }
 
@@ -340,7 +359,7 @@ export class DataContextService {
           0,
         )
         lines.push(
-          `  - ${p.name} (ID: ${p.id}): ${totalPropUnits} enheter, ${occupiedPropUnits} uthyrda (${propOccupancyPct}%), månadsinkomst: ${formatSEK(propMonthlyIncome)}`,
+          `  - ${p.name} (ID: ${p.id}): ${totalPropUnits} enheter, ${occupiedPropUnits} uthyrda (${propOccupancyPct}%), förväntad månadshyra: ${formatSEK(propMonthlyIncome)}`,
         )
       }
     }

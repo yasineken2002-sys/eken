@@ -49,6 +49,7 @@ function makePrisma() {
           },
         ])
       }),
+      count: jest.fn().mockResolvedValue(2),
     },
     unit: { findMany: jest.fn().mockResolvedValue([]) },
     lease: { findMany: jest.fn().mockResolvedValue([]) },
@@ -62,6 +63,11 @@ function makeService(getOverdueSnapshot: jest.Mock) {
     {} as never, // usage — ej rörd i fetchData
     {} as never, // quota — ej rörd i fetchData
     { getOverdueSnapshot } as never,
+    {
+      getRevenueYearToDate: jest
+        .fn()
+        .mockResolvedValue({ total: 0, from: new Date(), to: new Date() }),
+    } as never, // accounting — bokförd intäkt (egen spec nedan täcker talet)
   )
   return { service, prisma }
 }

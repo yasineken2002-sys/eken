@@ -785,6 +785,35 @@ export class AccountingService {
     return Math.round(revenue * 100) / 100
   }
 
+  /**
+   * Bokförd intäkt räkenskapsår-till-idag (Σ 3xxx accrual) för en organisation,
+   * inkl. den beräknade perioden. DELAD sanningskälla för "Totala intäkter" —
+   * samma bas som dashboardens KPI. Läser Organization.fiscalYearStartMonth och
+   * beräknar [räkenskapsårets start (UTC), now] med SAMMA formel som
+   * DashboardService.fiscalYearToDate (default 1 = kalenderår). Avsedd så att AI
+   * och dashboard rapporterar identisk intäkt för samma org/tidpunkt utan att
+   * duplicera vare sig period- eller summeringslogik. Ren LÄSNING.
+   *
+   * OBS spegling: dashboard har fortfarande en egen privat fiscalYearToDate;
+   * följdpunkt att låta även den anropa denna metod (då försvinner spegeln).
+   */
+  async getRevenueYearToDate(
+    organizationId: string,
+    now: Date = new Date(),
+  ): Promise<{ total: number; from: Date; to: Date }> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { fiscalYearStartMonth: true },
+    })
+    const fiscalYearStartMonth = org?.fiscalYearStartMonth ?? 1
+    const y = now.getUTCFullYear()
+    const currentMonth = now.getUTCMonth() + 1 // 1–12
+    const startYear = currentMonth >= fiscalYearStartMonth ? y : y - 1
+    const from = new Date(Date.UTC(startYear, fiscalYearStartMonth - 1, 1))
+    const total = await this.getRevenueTotal(organizationId, from, now)
+    return { total, from, to: now }
+  }
+
   // Balansräkning per ett datum: tillgångar (1xxx, debet−kredit) mot
   // skulder/eget kapital (2xxx, kredit−debet). difference ska vara 0 i en
   // balanserad bok.
