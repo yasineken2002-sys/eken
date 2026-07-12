@@ -117,8 +117,8 @@ export function DashboardPage() {
         >
           <motion.div variants={item}>
             <StatCard
-              title="Totala intäkter"
-              value={formatCurrency(stats?.invoices.totalRevenue ?? 0)}
+              title="Totala intäkter i år"
+              value={formatCurrency(stats?.revenue.total ?? 0)}
               icon={Banknote}
               iconColor="#2563EB"
             />

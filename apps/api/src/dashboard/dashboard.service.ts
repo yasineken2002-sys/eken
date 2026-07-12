@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { AccountingService } from '../accounting/accounting.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 export interface TimeseriesPoint {
@@ -13,13 +14,22 @@ export interface TimeseriesPoint {
 }
 
 export interface DashboardStats {
+  // Periodiserad intäkt (accrual) ur huvudboken: Σ kontoklass 3 (credit−debit)
+  // för räkenskapsåret till dags dato. Ersätter den tidigare Invoice-baserade
+  // "totalRevenue" (som var kassa-ish OCH blind för RentNotice OCH felaktigt
+  // räknade betalda DEPOSIT-fakturor som intäkt). from/to exponeras så UI kan
+  // ange perioden.
+  revenue: {
+    total: number
+    from: string
+    to: string
+  }
   invoices: {
     total: number
     draft: number
     sent: number
     paid: number
     overdue: number
-    totalRevenue: number
     overdueAmount: number
   }
   tenants: {
@@ -54,13 +64,31 @@ export class DashboardService {
   private timeseriesCache = new Map<string, { at: number; data: TimeseriesPoint[] }>()
   private static readonly TIMESERIES_TTL_MS = 5 * 60 * 1000
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accounting: AccountingService,
+  ) {}
+
+  /**
+   * Räkenskapsår-till-idag utifrån Organization.fiscalYearStartMonth (1–12).
+   * Allt i UTC för att matcha JournalEntry.date (@db.Date). from = första dagen
+   * i innevarande räkenskapsårs startmånad; to = nu (framtida-daterade avier,
+   * t.ex. förskottsgenererad hyra, faller utanför → accrual-korrekt).
+   */
+  private fiscalYearToDate(fiscalYearStartMonth: number, now: Date): { from: Date; to: Date } {
+    const y = now.getUTCFullYear()
+    const currentMonth = now.getUTCMonth() + 1 // 1–12
+    const startYear = currentMonth >= fiscalYearStartMonth ? y : y - 1
+    const from = new Date(Date.UTC(startYear, fiscalYearStartMonth - 1, 1))
+    return { from, to: now }
+  }
 
   async getStats(organizationId: string): Promise<DashboardStats> {
+    const now = new Date()
     const [
       invoiceGroups,
-      paidSum,
       overdueSum,
+      organization,
       tenantGroups,
       propertyCount,
       leaseGroups,
@@ -72,12 +100,12 @@ export class DashboardService {
         _count: { id: true },
       }),
       this.prisma.invoice.aggregate({
-        where: { organizationId, status: 'PAID' },
-        _sum: { total: true },
-      }),
-      this.prisma.invoice.aggregate({
         where: { organizationId, status: 'OVERDUE' },
         _sum: { total: true },
+      }),
+      this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { fiscalYearStartMonth: true },
       }),
       this.prisma.tenant.groupBy({
         by: ['type'],
@@ -110,14 +138,24 @@ export class DashboardService {
     const leaseByStatus = Object.fromEntries(leaseGroups.map((g) => [g.status, g._count.id]))
     const totalLeases = leaseGroups.reduce((s, g) => s + g._count.id, 0)
 
+    // "Totala intäkter" = periodiserad intäkt ur huvudboken (Σ 3xxx), aldrig
+    // Invoice+RentNotice parallellt. Defaultar fiscalYearStartMonth till 1
+    // (kalenderår) om organisationen saknar värde.
+    const { from, to } = this.fiscalYearToDate(organization?.fiscalYearStartMonth ?? 1, now)
+    const revenueTotal = await this.accounting.getRevenueTotal(organizationId, from, to)
+
     return {
+      revenue: {
+        total: revenueTotal,
+        from: from.toISOString(),
+        to: to.toISOString(),
+      },
       invoices: {
         total: totalInvoices,
         draft: invoiceByStatus['DRAFT'] ?? 0,
         sent: invoiceByStatus['SENT'] ?? 0,
         paid: invoiceByStatus['PAID'] ?? 0,
         overdue: invoiceByStatus['OVERDUE'] ?? 0,
-        totalRevenue: Number(paidSum._sum.total ?? 0),
         overdueAmount: Number(overdueSum._sum.total ?? 0),
       },
       tenants: {

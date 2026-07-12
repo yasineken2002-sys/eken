@@ -749,6 +749,42 @@ export class AccountingService {
     }
   }
 
+  /**
+   * Σ intäkt (BAS-kontoklass 3, kreditsaldo − debetsaldo) för perioden, direkt
+   * ur huvudboken. EN enda aggregate — DB:n summerar debit/credit, ingen
+   * radhydrering till Node (till skillnad från getProfitLossReport, som laddar
+   * hela periodens alla konton i minnet för att gruppera per konto/kontoklass).
+   * Avsedd för frekventa KPI-anrop (dashboardens "Totala intäkter").
+   *
+   * DUBBELRÄKNINGS-SÄKER: hyra (RentNotice → 39xx), förbrukning (Consumption-
+   * Charge → 30xx/3xxx) och manuella fakturor (Invoice → 39xx) konvergerar alla
+   * till kontoklass 3 via JournalEntry — varje krona bokförs exakt en gång.
+   * Depositioner (2890, skuld) ligger utanför spannet [3000,4000) och räknas
+   * därför ALDRIG som intäkt. Detta är den enda intäktskälla som strukturellt
+   * undviker att läsa Invoice och RentNotice parallellt (och dubbelräkna dem).
+   *
+   * ACCRUAL, inte kassa: intäkten bokförs vid avi-/fakturagenerering (den
+   * intjänade perioden), oavsett betalstatus — matchar resultaträkningen.
+   *
+   * Dubbelt org-scopat (account.organizationId + journalEntry.organizationId):
+   * summan kan aldrig spänna över fel tenant. Ren LÄSNING — rör aldrig
+   * verifikat/huvudbok.
+   */
+  async getRevenueTotal(organizationId: string, from: Date, to: Date): Promise<number> {
+    const agg = await this.prisma.journalEntryLine.aggregate({
+      where: {
+        account: { organizationId, number: { gte: 3000, lt: 4000 } },
+        journalEntry: {
+          organizationId,
+          date: { gte: from, lte: to },
+        },
+      },
+      _sum: { debit: true, credit: true },
+    })
+    const revenue = Number(agg._sum.credit ?? 0) - Number(agg._sum.debit ?? 0)
+    return Math.round(revenue * 100) / 100
+  }
+
   // Balansräkning per ett datum: tillgångar (1xxx, debet−kredit) mot
   // skulder/eget kapital (2xxx, kredit−debet). difference ska vara 0 i en
   // balanserad bok.
