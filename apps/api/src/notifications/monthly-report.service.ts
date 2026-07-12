@@ -2,6 +2,7 @@ import type { OnModuleInit } from '@nestjs/common'
 import { Injectable, Logger } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { OverdueDebtService } from '../overdue/overdue-debt.service'
 import { StorageService } from '../storage/storage.service'
 import { getLogoDataUrl } from '../common/branding'
 import { generateMonthlyReportHtml } from './templates/monthly-report.template'
@@ -56,6 +57,10 @@ export class MonthlyReportService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly moduleRef: ModuleRef,
     private readonly storage: StorageService,
+    // Delad sanningskälla för "Försenat belopp" (samma som dashboarden). Endast
+    // Prisma-beroende → ingen cirkelrisk, injiceras direkt (till skillnad från
+    // pdf/ai/dashboard som resolvas via ModuleRef).
+    private readonly overdue: OverdueDebtService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -131,7 +136,7 @@ export class MonthlyReportService implements OnModuleInit {
       revByType,
       unitsByStatus,
       paidInvoices,
-      overdueInvoices,
+      overdueSnapshot,
       monthInvoices,
       ticketGroups,
       incomingTickets,
@@ -158,10 +163,11 @@ export class MonthlyReportService implements OnModuleInit {
         where: { organizationId, paidAt: inMonth },
         select: { paidAt: true, dueDate: true },
       }),
-      this.prisma.invoice.findMany({
-        where: { organizationId, status: 'OVERDUE' },
-        select: { total: true, dueDate: true },
-      }),
+      // Förfallen skuld via DELADE sanningskällan (samma tal som dashboardens
+      // "Försenat belopp"). Ersätter den gamla Invoice-ENDAST-summeringen som
+      // var blind för RentNotice och inte exkluderade DEPOSIT (samma bug som
+      // dashboard-PR2 fixade — nu en sanningskälla för båda ytorna).
+      this.overdue.getOverdueSnapshot(organizationId, now),
       this.prisma.invoice.findMany({
         where: {
           organizationId,
@@ -238,11 +244,12 @@ export class MonthlyReportService implements OnModuleInit {
       else late30plus++
     }
 
-    // ── Förfallna fakturor (nuläge) ──────────────────────────────────────────
-    const overdueCount = overdueInvoices.length
-    const overdueAmount = overdueInvoices.reduce((s, i) => s + Number(i.total), 0)
-    const cutoff30 = now.getTime() - 30 * DAY_MS
-    const over30Count = overdueInvoices.filter((i) => i.dueDate.getTime() < cutoff30).length
+    // ── Förfallen skuld (nuläge) ─────────────────────────────────────────────
+    // Från den delade OverdueDebtService: hyresavier (outstanding, klampat per
+    // avi) + OVERDUE-fakturor, DEPOSIT exkluderad. Samma tal som dashboarden.
+    const overdueCount = overdueSnapshot.count
+    const overdueAmount = overdueSnapshot.total
+    const over30Count = overdueSnapshot.over30Count
 
     // ── Underhåll ────────────────────────────────────────────────────────────
     let avgResolutionDays: number | null = null
@@ -308,7 +315,7 @@ export class MonthlyReportService implements OnModuleInit {
       `Inbetalt under månaden: ${report.paidRevenue} kr`,
       `Intäkter per typ — hyra ${rent}, tjänster ${service}, förbrukning ${utility}, deposition ${deposit}, övrigt ${other}`,
       `Beläggning: ${ratePct}% (${occupied} uthyrda, ${vacant} lediga, ${renovation} under renovering, ${reserved} reserverade av ${totalUnits})`,
-      `Förfallna fakturor just nu: ${overdueCount} st, ${overdueAmount} kr, varav ${over30Count} äldre än 30 dagar`,
+      `Förfallen skuld just nu: ${overdueCount} poster, ${overdueAmount} kr, varav ${over30Count} äldre än 30 dagar`,
       `Nya kontrakt: ${report.newLeases}, avslutade kontrakt: ${report.terminatedLeases}`,
       `Betalningsmönster (betalda denna månad): i tid ${onTime}, 1-7 dagar sent ${late1to7}, 8-30 dagar ${late8to30}, 30+ dagar ${late30plus}`,
       `Underhåll: ${incomingTickets} inkomna ärenden, ${resolvedTickets.length} lösta, snittlösningstid ${avgResolutionDays ?? 'okänd'} dagar`,
