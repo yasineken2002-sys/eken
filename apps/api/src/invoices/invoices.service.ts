@@ -353,24 +353,20 @@ export class InvoicesService {
         { tx },
       )
 
+      // T5 A1 (BFL 5:6): bokför intäktsverifikatet i SAMMA transaktion som
+      // fakturan. Kastar bokföringen (stängd period, DB-fel ELLER saknad kontoplan
+      // — createJournalEntryForInvoice loggar + kastar i tx-läge, symmetriskt med
+      // avi-vägen) rullas HELA fakturan tillbaka → ingen orphan. Tidigare låg detta
+      // utanför tx och sväljdes/loggades, så fakturan kunde bli kvar UTAN verifikat.
+      await this.accountingService.createJournalEntryForInvoice(
+        created,
+        organizationId,
+        actorId,
+        tx,
+      )
+
       return created
     })
-
-    // H3 (BFL 5 kap 6 §): bokför intäktsverifikatet SYNKRONT med try/catch —
-    // samma mönster som AviseringService.bookRentNoticeRevenue. Tidigare var
-    // detta ett fire-and-forget `void ...catch(log)`: om bokföringen kastade
-    // (saknad kontoplan, DB-glapp) fanns fakturan kvar UTAN journalpost och
-    // utan återhämtning — ett BFL-gap. Saknad kontoplan loggas fortfarande
-    // (avin/fakturan är redan skapad) men felet blir nu synligt i request-
-    // kedjan i stället för att tystna i en bortglömd promise.
-    try {
-      await this.accountingService.createJournalEntryForInvoice(invoice, organizationId, actorId)
-    } catch (err) {
-      this.logger.error(
-        `Accounting journal entry failed for invoice ${invoice.invoiceNumber}`,
-        err instanceof Error ? err.stack : String(err),
-      )
-    }
 
     return invoice
   }

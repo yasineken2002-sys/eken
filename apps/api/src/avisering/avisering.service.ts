@@ -205,7 +205,7 @@ export class AviseringService {
     })
 
     if (leases.length === 0) {
-      return { created: 0, skipped: 0, notices: [] }
+      return { created: 0, skipped: 0, failed: 0, notices: [] }
     }
 
     // Idempotens på (lease, year, month, type=RENT) — generering kan köras
@@ -218,6 +218,11 @@ export class AviseringService {
 
     let created = 0
     let skipped = 0
+    // T5 A1 (#54): ett fel på EN lease får INTE avbryta resten av orgens avier.
+    // Varje lease körs i egen try/catch; ett fel loggas, räknas och hoppas —
+    // nästa lease fortsätter. (Tidigare kraschade ett enskilt lease-fel hela
+    // orgens körning så efterföljande leases fick ingen avi den månaden.)
+    let failed = 0
     const notices: RentNotice[] = []
 
     for (const lease of leases) {
@@ -252,50 +257,70 @@ export class AviseringService {
         continue
       }
 
-      const ocrNumber = await this.ocrService.assignOcrToTenant(lease.tenantId, orgId)
-      const noticeNumber = await this.nextNoticeNumber(orgId, year, month, created)
-      // Hyreslagen 12 kap. 20 § JB: hyran ska betalas senast sista
-      // vardagen i månaden FÖRE den hyresperiod avin avser.
-      const dueDate = rentDueDateForMonth(year, month)
+      let notice: RentNotice
+      try {
+        const ocrNumber = await this.ocrService.assignOcrToTenant(lease.tenantId, orgId)
+        // Hyreslagen 12 kap. 20 § JB: hyran ska betalas senast sista
+        // vardagen i månaden FÖRE den hyresperiod avin avser.
+        const dueDate = rentDueDateForMonth(year, month)
 
-      // Moms enligt upplåtelsetyp (ML 3 kap 2 § / 9 kap). Bostad → 0.
-      const { vatAmount, totalAmount } = this.rentVat(
-        proration.amount,
-        lease.unit,
-        lease,
-        `avi ${noticeNumber}`,
-      )
+        // Moms enligt upplåtelsetyp (ML 3 kap 2 § / 9 kap). Bostad → 0.
+        const { vatAmount, totalAmount } = this.rentVat(
+          proration.amount,
+          lease.unit,
+          lease,
+          `avi ${lease.id}`,
+        )
 
-      const notice = await this.prisma.rentNotice.create({
-        data: {
-          organizationId: orgId,
-          tenantId: lease.tenantId,
-          leaseId: lease.id,
-          noticeNumber,
-          ocrNumber,
-          month,
-          year,
-          amount: proration.amount,
-          vatAmount,
-          totalAmount,
-          dueDate,
-          status: RentNoticeStatus.PENDING,
-          type: RentNoticeType.RENT,
-          periodStart: proration.periodStart,
-          periodEnd: proration.periodEnd,
-          daysCharged: proration.daysCharged,
-          totalDays: proration.totalDays,
-          isProrated: proration.isProrated,
-        },
-        include: {
-          tenant: { select: SAFE_TENANT_SELECT },
-          lease: { include: { unit: { include: { property: true } } } },
-        },
-      })
-
-      // Intäktsverifikation (BFL): bokför hyresfordran 1510 D / 39xx K.
-      // amount/vatAmount/totalAmount = HYRA → hyresverifikatet bokför bara hyran.
-      await this.bookRentNoticeRevenue(orgId, notice)
+        // T5 A1 (BFL 5:6): avi + intäktsverifikat i EN transaktion — antingen båda
+        // eller ingendera. Kastar bokföringen (stängd period/DB-fel) rullas avin
+        // tillbaka (ingen orphan). Avinumret allokeras INUTI tx:en (backfill-
+        // mönstret). offset=created bevarar exakt befintlig numrering.
+        notice = await this.prisma.$transaction(async (tx) => {
+          const noticeNumber = await this.nextNoticeNumber(orgId, year, month, created, tx)
+          const n = (await tx.rentNotice.create({
+            data: {
+              organizationId: orgId,
+              tenantId: lease.tenantId,
+              leaseId: lease.id,
+              noticeNumber,
+              ocrNumber,
+              month,
+              year,
+              amount: proration.amount,
+              vatAmount,
+              totalAmount,
+              dueDate,
+              status: RentNoticeStatus.PENDING,
+              type: RentNoticeType.RENT,
+              periodStart: proration.periodStart,
+              periodEnd: proration.periodEnd,
+              daysCharged: proration.daysCharged,
+              totalDays: proration.totalDays,
+              isProrated: proration.isProrated,
+            },
+            include: {
+              tenant: { select: SAFE_TENANT_SELECT },
+              lease: { include: { unit: { include: { property: true } } } },
+            },
+          })) as unknown as RentNotice
+          // Intäktsverifikation (BFL): 1510 D / 39xx K. Kastar → rullar tillbaka
+          // avin. Returnerar null (org saknar kontoplan) → ingen bokföring, ingen
+          // rollback (orgen bokför inte alls — utanför A1/audit-scope).
+          await this.bookRentNoticeRevenue(orgId, n, tx)
+          return n
+        })
+      } catch (err) {
+        // Per-lease-isolering: logga + räkna + fortsätt. Ingen orphan (avin +
+        // verifikat rullades tillbaka atomiskt). Avin fångas nästa körning
+        // (idempotens) eller via T1.4-backfillen.
+        failed++
+        this.logger.error(
+          `[Avisering] Avi för lease ${lease.id} (org ${orgId}) misslyckades — hoppar, ` +
+            `övriga leases fortsätter: ${err instanceof Error ? err.message : String(err)}`,
+        )
+        continue
+      }
 
       // IMD (PR 4): koppla lease:ens redan bokförda förbruknings-charges som
       // avi-rader (2-mån-lag). Sätter RentNotice.consumptionAmount; förbrukningen
@@ -344,7 +369,7 @@ export class AviseringService {
       created++
     }
 
-    return { created, skipped, notices }
+    return { created, skipped, failed, notices }
   }
 
   /**
@@ -624,37 +649,55 @@ export class AviseringService {
 
     if (proration.daysCharged > 0) {
       try {
-        const noticeNumber = await this.nextNoticeNumber(orgId, year, month, depositNotice ? 1 : 0)
-        // Moms enligt upplåtelsetyp (ML 3 kap 2 § / 9 kap). Bostad → 0.
-        const { vatAmount, totalAmount } = this.rentVat(
-          proration.amount,
-          lease.unit,
-          lease,
-          `avi ${noticeNumber}`,
-        )
-        firstRentNotice = (await this.prisma.rentNotice.create({
-          data: {
-            organizationId: orgId,
-            tenantId: lease.tenantId,
-            leaseId: lease.id,
-            noticeNumber,
-            ocrNumber,
-            month,
+        // T5 A1 (BFL 5:6): första hyresavin + intäktsverifikatet i EN transaktion.
+        // Kastar bokföringen (stängd period/DB-fel) rullas avin tillbaka → ingen
+        // orphan (tidigare bokfördes den utanför tx och sväljdes/loggades).
+        firstRentNotice = await this.prisma.$transaction(async (tx) => {
+          const noticeNumber = await this.nextNoticeNumber(
+            orgId,
             year,
-            amount: proration.amount,
-            vatAmount,
-            totalAmount,
-            dueDate,
-            status: RentNoticeStatus.PENDING,
-            type: RentNoticeType.RENT,
-            periodStart: proration.periodStart,
-            periodEnd: proration.periodEnd,
-            daysCharged: proration.daysCharged,
-            totalDays: proration.totalDays,
-            isProrated: proration.isProrated,
-          },
-        })) as unknown as RentNotice
+            month,
+            depositNotice ? 1 : 0,
+            tx,
+          )
+          // Moms enligt upplåtelsetyp (ML 3 kap 2 § / 9 kap). Bostad → 0.
+          const { vatAmount, totalAmount } = this.rentVat(
+            proration.amount,
+            lease.unit,
+            lease,
+            `avi ${noticeNumber}`,
+          )
+          const n = (await tx.rentNotice.create({
+            data: {
+              organizationId: orgId,
+              tenantId: lease.tenantId,
+              leaseId: lease.id,
+              noticeNumber,
+              ocrNumber,
+              month,
+              year,
+              amount: proration.amount,
+              vatAmount,
+              totalAmount,
+              dueDate,
+              status: RentNoticeStatus.PENDING,
+              type: RentNoticeType.RENT,
+              periodStart: proration.periodStart,
+              periodEnd: proration.periodEnd,
+              daysCharged: proration.daysCharged,
+              totalDays: proration.totalDays,
+              isProrated: proration.isProrated,
+            },
+          })) as unknown as RentNotice
+          // Intäktsverifikation i SAMMA tx (skuld-avin, DEPOSIT, bokförs ej här —
+          // den går via deposits-modulen ovan). Kastar → rullar tillbaka avin.
+          await this.bookRentNoticeRevenue(orgId, n, tx)
+          return n
+        })
       } catch (err) {
+        // Idempotens: en samtidig aktivering/retry hann skapa avin (P2002 på
+        // @@unique(leaseId, year, month, type)). Den befintliga avin är redan
+        // atomiskt bokförd av sitt ursprungliga anrop → hämta, boka inte om.
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
           firstRentNotice = (await this.prisma.rentNotice.findFirst({
             where: { leaseId: lease.id, year, month, type: RentNoticeType.RENT },
@@ -663,12 +706,6 @@ export class AviseringService {
           throw err
         }
       }
-    }
-
-    // Intäktsverifikation (BFL): bokför hyresfordran för första hyresavin.
-    // Depositionsavin bokförs inte som intäkt (skuld — deposits-modulen).
-    if (firstRentNotice) {
-      await this.bookRentNoticeRevenue(orgId, firstRentNotice)
     }
 
     // ── 3. Mejla hyresgästen med båda avier som bilagor ─────────────────

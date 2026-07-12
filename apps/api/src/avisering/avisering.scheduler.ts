@@ -46,6 +46,7 @@ export class AviseringScheduler {
     organizations: number
     created: number
     skipped: number
+    failed: number
     queued: number
   }> {
     const orgs = await this.prisma.organization.findMany({
@@ -55,6 +56,7 @@ export class AviseringScheduler {
 
     let created = 0
     let skipped = 0
+    let failed = 0
     let queued = 0
 
     for (const org of orgs) {
@@ -62,6 +64,7 @@ export class AviseringScheduler {
         const result = await this.avisering.generateMonthlyNotices(org.id, month, year)
         created += result.created
         skipped += result.skipped
+        failed += result.failed
 
         if (result.notices.length > 0) {
           // Köa utskicket direkt så hyresgästerna har max tid på sig.
@@ -72,8 +75,12 @@ export class AviseringScheduler {
           queued += sendRes.queued
         }
 
-        this.logger.log(
-          `[avisering-cron] org=${org.name} created=${result.created} skipped=${result.skipped}`,
+        // T5 A1 (#54): per-lease-fel (failed>0) betyder att enskilda leases
+        // hoppades men resten av orgen fortsatte. Lyft som WARN så det syns —
+        // full Sentry-täckning för alla cron kommer i T5 B1.
+        const level = result.failed > 0 ? 'warn' : 'log'
+        this.logger[level](
+          `[avisering-cron] org=${org.name} created=${result.created} skipped=${result.skipped} failed=${result.failed}`,
         )
       } catch (err) {
         this.logger.error(
@@ -83,7 +90,7 @@ export class AviseringScheduler {
     }
 
     this.logger.log(
-      `[avisering-cron] done year=${year} month=${month} orgs=${orgs.length} created=${created} skipped=${skipped} queued=${queued}`,
+      `[avisering-cron] done year=${year} month=${month} orgs=${orgs.length} created=${created} skipped=${skipped} failed=${failed} queued=${queued}`,
     )
 
     return {
@@ -92,6 +99,7 @@ export class AviseringScheduler {
       organizations: orgs.length,
       created,
       skipped,
+      failed,
       queued,
     }
   }

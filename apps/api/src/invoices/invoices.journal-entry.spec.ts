@@ -1,10 +1,11 @@
 /**
- * H3 — faktura-bokföringen är synkron (awaited), inte fire-and-forget.
+ * T5 A1 (BFL 5:6) — faktura + intäktsverifikat skapas ATOMISKT i samma tx.
  *
  * Verifierar att InvoicesService.create():
  *   • hämtar fakturan MED rader i transaktionen (include: { lines: true })
  *   • awaitar createJournalEntryForInvoice med just det objektet (rader med)
- *   • inte kraschar om bokföringen fallerar (loggar, fakturan är redan skapad)
+ *   • ROLLBACKar fakturan om bokföringen fallerar (ingen orphan — tidigare
+ *     sväljdes felet och fakturan blev kvar utan verifikat)
  */
 
 jest.mock('./pdf.service', () => ({ PdfService: class {} }))
@@ -89,12 +90,14 @@ describe('InvoicesService.create — atomisk bokföring (H3)', () => {
     expect(Array.isArray(captured.invoice?.lines)).toBe(true)
   })
 
-  it('returnerar fakturan även om bokföringen fallerar (inget kast)', async () => {
+  it('rullar tillbaka fakturan om bokföringen fallerar (BFL 5:6 — ingen orphan)', async () => {
     const { service, createJournalEntryForInvoice } = makeService({ journalThrows: true })
 
-    const result = await service.create('org-1', 'user-1', DTO as never)
-
+    // Bokföringen sker nu INUTI fakturans tx → ett kast propagerar och rullar
+    // tillbaka hela fakturan (tidigare svaldes felet och fakturan blev kvar).
+    await expect(service.create('org-1', 'user-1', DTO as never)).rejects.toThrow(
+      'Kontoplan saknas',
+    )
     expect(createJournalEntryForInvoice).toHaveBeenCalledTimes(1)
-    expect(result).toMatchObject({ id: 'inv-1' })
   })
 })

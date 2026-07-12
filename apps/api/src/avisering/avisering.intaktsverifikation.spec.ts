@@ -56,6 +56,9 @@ describe('FIX 9 · PR 2 — generateMonthlyNotices bokför hyresintäkt', () => 
           }),
         ),
       },
+      // T5 A1: avi + verifikat skapas i prisma.$transaction. Mocken kör callbacken
+      // med hela prisma-mocken som tx → tx.rentNotice.create/findMany = samma mockar.
+      $transaction: (cb: (t: unknown) => unknown) => cb(prisma),
     }
 
     const ocrService = { assignOcrToTenant: jest.fn().mockResolvedValue('1234567890') }
@@ -99,11 +102,14 @@ describe('FIX 9 · PR 2 — generateMonthlyNotices bokför hyresintäkt', () => 
     expect(createdByArg).toBeNull()
   })
 
-  it('bokföringsfel fäller inte avi-genereringen (avin är redan skapad)', async () => {
+  it('T5 A1: bokföringsfel rullar tillbaka avin (ingen orphan) men avbryter inte körningen', async () => {
     const { service, accounting } = makeService()
     accounting.createJournalEntryForRentNotice.mockRejectedValueOnce(new Error('DB nere'))
     const result = await service.generateMonthlyNotices('org-1', 6, 2026)
-    expect(result.created).toBe(1)
+    // Avi + verifikat är atomiska: bokförings-felet rullar tillbaka avin →
+    // created=0, failed=1. Tidigare (best-effort) blev avin kvar utan verifikat.
+    expect(result.created).toBe(0)
+    expect(result.failed).toBe(1)
   })
 
   it('bostadsavi får INGEN moms (ML 3 kap 2 §)', async () => {

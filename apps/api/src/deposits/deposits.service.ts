@@ -184,22 +184,30 @@ export class DepositsService implements OnApplicationBootstrap {
         },
       })
 
+      // T5 A1: boka 1510 D / 2890 K i SAMMA transaktion som Invoice+Deposit
+      // (speglar ensureDepositForNotice). En Deposit får ALDRIG existera utan sin
+      // 1510-debet — annars blir bankmatchningens 1930 D/1510 K en ogrundad
+      // kreditering (F1-fällan). Kastar (eller null → kontoplan saknar 1510/2890)
+      // rullas HELA depositionen tillbaka. Tidigare låg bokföringen utanför tx och
+      // sväljdes, så en obokförd deposition kunde bli kvar.
+      const entry = await this.accounting.createJournalEntryForDepositInvoice(
+        deposit.id,
+        organizationId,
+        Number(invoice.total),
+        invoice.invoiceNumber,
+        invoice.issueDate,
+        userId,
+        tx,
+      )
+      if (entry === null) {
+        throw new InternalServerErrorException(
+          `Depositionens bokföringspost (1510 D / 2890 K) kunde inte skapas för faktura ` +
+            `${invoice.invoiceNumber} — kontoplanen saknar konto 1510 eller 2890.`,
+        )
+      }
+
       return { deposit, invoice }
     })
-
-    // Bokföringspost utanför transaktionen — samma mönster som invoices/reconciliation.
-    try {
-      await this.accounting.createJournalEntryForDepositInvoice(
-        result.deposit.id,
-        organizationId,
-        Number(result.invoice.total),
-        result.invoice.invoiceNumber,
-        result.invoice.issueDate,
-        userId,
-      )
-    } catch (err) {
-      this.logger.error(`Deposit accounting entry failed: ${String(err)}`)
-    }
 
     return result.deposit
   }

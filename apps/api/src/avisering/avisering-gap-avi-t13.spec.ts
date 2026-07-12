@@ -61,6 +61,9 @@ function makeInitialNoticesRig(startDate: Date) {
           Promise.resolve({ id: 'rn-1', ...data }),
         ),
     },
+    // T5 A1: första hyresavin skapas i prisma.$transaction — kör callbacken med
+    // prisma-mocken som tx (tx.rentNotice.create = samma mock).
+    $transaction: (cb: (t: unknown) => unknown) => cb(prisma),
   }
   const ocrService = { assignOcrToTenant: jest.fn().mockResolvedValue('1234567890') }
   const accounting = { createJournalEntryForRentNotice: jest.fn().mockResolvedValue({ id: 'je-1' }) } // prettier-ignore
@@ -140,6 +143,8 @@ describe('T1.3 · C: EXPIRED avtal med dagar kvar i månaden aviseras', () => {
           }),
         ),
       },
+      // T5 A1: avi + verifikat i prisma.$transaction (tx = prisma-mocken).
+      $transaction: (cb: (t: unknown) => unknown) => cb(prisma),
     }
     const noop = {}
     const service = new AviseringService(
