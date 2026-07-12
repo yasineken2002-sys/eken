@@ -39,6 +39,9 @@ export interface BackfillPreview {
   months: BackfillMonthPreview[]
   summary: BackfillSummary
   hasVoluntaryTaxLiability: boolean
+  // Momsperioder (org:ens redovisningsperiod) som efterdebiteringen berör, t.ex.
+  // ["Q1 2026", "Q2 2026"]. Tom om lokalen inte är momspliktig.
+  vatPeriods: string[]
 }
 
 export interface BackfillQueueItem {

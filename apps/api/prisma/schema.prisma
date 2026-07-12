@@ -27,6 +27,15 @@ enum UserRole {
   VIEWER
 }
 
+// Momsredovisningsperiod (SFL 26 kap). Kalenderbaserad. Används enbart för att
+// namnge berörda momsperioder vid bakdaterad debitering (T1.4) — påverkar aldrig
+// bokföring eller verifikat.
+enum VatReportingPeriod {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
 enum PropertyType {
   RESIDENTIAL
   COMMERCIAL
@@ -497,6 +506,12 @@ model Organization {
   // därmed verifikationsnummerserien (se VerifikationsnummerService).
   fiscalYearStartMonth Int @default(1)
   vatNumber            String?
+  // Momsredovisningsperiod (SFL 26 kap): månad/kvartal/år. Styr INTE bokföringen
+  // — används bara för att namnge vilka momsperioder en bakdaterad debitering
+  // (T1.4 backfill) berör, så hyresvärden vet vilken deklaration som kan behöva
+  // rättas. Default QUARTERLY = vanligast för segmentet (omsättning 1–40 MSEK).
+  // Kalenderbaserad (moms följer kalenderkvartal/-månad, ej brutet räkenskapsår).
+  vatReportingPeriod   VatReportingPeriod @default(QUARTERLY)
   // F-skatt: obligatoriskt på faktura enligt 11 kap. 8 § ML att visa.
   // hasFSkatt = true ⇒ "Godkänd för F-skatt" tryckt på faktura-PDF.
   hasFSkatt            Boolean   @default(false)

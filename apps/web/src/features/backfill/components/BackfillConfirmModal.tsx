@@ -194,11 +194,20 @@ export function BackfillConfirmModal({ item, onClose, onDone }: Props) {
                       <p className="text-[13.5px] font-semibold text-blue-800">
                         Momspliktig lokal — kontrollera momsdeklarationen
                       </p>
-                      <p className="mt-1 text-[12.5px] leading-relaxed text-blue-700">
-                        Perioderna kan falla i en redan lämnad momsdeklaration. En efterdebitering
-                        bakåt kan kräva att du rättar deklarationen för berörda perioder. Stäm av
-                        med din redovisning innan du bekräftar.
-                      </p>
+                      {preview.vatPeriods.length > 0 ? (
+                        <p className="mt-1 text-[12.5px] leading-relaxed text-blue-700">
+                          Efterdebiteringen berör momsperioderna{' '}
+                          <span className="font-semibold">{preview.vatPeriods.join(', ')}</span>.
+                          Har deklarationen för dessa perioder redan lämnats kan en
+                          rättelsedeklaration krävas. Stäm av med din redovisning innan du
+                          bekräftar.
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-[12.5px] leading-relaxed text-blue-700">
+                          En efterdebitering bakåt kan beröra en redan lämnad momsdeklaration. Stäm
+                          av med din redovisning innan du bekräftar.
+                        </p>
+                      )}
                       <label className="mt-3 flex cursor-pointer items-start gap-2">
                         <input
                           type="checkbox"

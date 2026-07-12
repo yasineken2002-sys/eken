@@ -41,6 +41,7 @@ function makeService(opts: {
   closed?: Array<{ year: number; month: number }>
   createImpl?: (year: number, month: number) => unknown
   voluntaryTaxLiability?: boolean
+  vatReportingPeriod?: 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
 }) {
   const lease = {
     id: 'lease-1',
@@ -94,6 +95,12 @@ function makeService(opts: {
       findMany: jest
         .fn()
         .mockResolvedValue((opts.closed ?? []).map((c) => ({ year: c.year, month: c.month }))),
+    },
+    organization: {
+      findUnique: jest.fn().mockResolvedValue({
+        vatReportingPeriod: opts.vatReportingPeriod ?? 'QUARTERLY',
+        fiscalYearStartMonth: 1,
+      }),
     },
     // $transaction kör callbacken direkt med en fejk-tx.
     $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb({ marker: 'tx' })),
@@ -364,6 +371,48 @@ describe('T1.4 · RentBackfillService', () => {
     expect((await on.service.detectGaps('lease-1', 'org-1')).hasVoluntaryTaxLiability).toBe(true)
     const off = makeService({ startDate: new Date('2026-05-01') })
     expect((await off.service.detectGaps('lease-1', 'org-1')).hasVoluntaryTaxLiability).toBe(false)
+  })
+
+  // ── PR3: periodspecifika momsperioder ──────────────────────────────────────
+  describe('detectGaps vatPeriods (PR3 — periodspecifik momsvarning)', () => {
+    it('momspliktig lokal → namnger berörda momsperioder (kvartal)', async () => {
+      // start maj 2026, idag juli 2026 → maj, jun (Q2), jul (Q3).
+      const { service } = makeService({
+        startDate: new Date('2026-05-01'),
+        voluntaryTaxLiability: true,
+        vatReportingPeriod: 'QUARTERLY',
+      })
+      const preview = await service.detectGaps('lease-1', 'org-1')
+      expect(preview.vatPeriods).toEqual(['Q2 2026', 'Q3 2026'])
+    })
+
+    it('respekterar org:ens redovisningsperiod (månad)', async () => {
+      const { service } = makeService({
+        startDate: new Date('2026-05-01'),
+        voluntaryTaxLiability: true,
+        vatReportingPeriod: 'MONTHLY',
+      })
+      const preview = await service.detectGaps('lease-1', 'org-1')
+      expect(preview.vatPeriods).toEqual(['maj 2026', 'juni 2026', 'juli 2026'])
+    })
+
+    it('helår → en periodetikett per år', async () => {
+      const { service } = makeService({
+        startDate: new Date('2026-05-01'),
+        voluntaryTaxLiability: true,
+        vatReportingPeriod: 'YEARLY',
+      })
+      const preview = await service.detectGaps('lease-1', 'org-1')
+      expect(preview.vatPeriods).toEqual(['2026'])
+    })
+
+    it('icke-momspliktig lokal → INGA momsperioder (ingen falsk varning)', async () => {
+      const { service, prisma } = makeService({ startDate: new Date('2026-05-01') })
+      const preview = await service.detectGaps('lease-1', 'org-1')
+      expect(preview.vatPeriods).toEqual([])
+      // ingen onödig org-query för icke-momspliktig lokal
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled()
+    })
   })
 
   // ── Momsdeklarations-grind (bokförings HIGH) ───────────────────────────────

@@ -9,7 +9,7 @@ import {
   Min,
   Max,
 } from 'class-validator'
-import { InvoiceTemplate, BrandFont } from '@prisma/client'
+import { InvoiceTemplate, BrandFont, VatReportingPeriod } from '@prisma/client'
 
 export class UpdateOrganizationDto {
   @IsString()
@@ -90,6 +90,12 @@ export class UpdateOrganizationDto {
   @IsString()
   @IsOptional()
   vatNumber?: string
+
+  // Momsredovisningsperiod (SFL 26 kap). Styr enbart hur berörda momsperioder
+  // NAMNGES vid bakdaterad debitering (T1.4) — aldrig bokföringen.
+  @IsEnum(VatReportingPeriod)
+  @IsOptional()
+  vatReportingPeriod?: VatReportingPeriod
 
   // ── Hyresavi-inställningar ───────────────────────────────────────────────
   // Antal dagar före tillträde som deposition + första hyresavi förfaller.
