@@ -593,6 +593,18 @@ i `RentNotice`, inte `Invoice`. En org som (som avsett) kör all hyra via aviser
 förstasidan (`DashboardPage.tsx:120-129`, generiska etiketter utan förbehåll), medan verkliga siffror
 bara finns på separata Avisering-sidan. **BEKRÄFTAT.** (Skild från #8 som gäller beläggningsgrad.)
 
+> **STATUS 2026-07-12:** "Totala intäkter" ÅTGÄRDAD (PR1 #196, `e9575a1`) — accrual ur huvudboken
+> (Σ 3xxx, räkenskapsår-till-idag) + strukturell DEPOSIT-exkludering. "Försenat belopp" ÅTGÄRDAD
+> (PR2 #197, `d1ba033`) — Σ `computeRentDebt().outstanding` för OVERDUE RentNotice (klampad per avi,
+> type≠DEPOSIT) + OVERDUE Invoice (type≠DEPOSIT), nytt `@@index([organizationId,status])`.
+>
+> **⚠️ PRIORITERAD FÖLJD-PR (samma bug, annan yta):** `monthly-report.service.ts:242-243`
+> (`overdueAmount`) har SAMMA fel — blind för `RentNotice` OCH ingen `type=DEPOSIT`-exkludering.
+> Ska harmoniseras SNART med PR2:s summeringslogik (**återanvänd** samma outstanding-summering,
+> kopiera inte). Ej lågprio-backlog. _Sveptanke (senare): samma "blind för RentNotice + ingen
+> DEPOSIT-exkl"-klass finns nu bekräftat på ≥3 ställen — värt ett dedikerat svep efter fler
+> summeringsställen._
+
 > **Koppling:** #43/#44 och hyreshöjnings-tappet vid förnyelse fördjupar känd **#3** (hyreshöjnings-cron
 > på döda avtal). #45/#46 är samma juridiska tema; #29 (approve-atomicitet) och #25 (deposit-refund
 > utan verifikat) kvarstår bekräftade i samma kodvägar.
