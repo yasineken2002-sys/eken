@@ -11,7 +11,13 @@
  *   • cron: momsfri inkasso-redo omklassas, momspliktig räknas som manuell.
  */
 
+// NotificationsService (A2b-notisen) drar transitivt in StorageService (→ @aws-sdk) —
+// mocka så importen inte laddar tunga beroenden i denna enhetstest.
+jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
+jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
+
 import { RentBadDebtService } from './rent-bad-debt.service'
+import { MissingAccrualError } from '../accounting/accounting.service'
 import { Decimal } from '@prisma/client/runtime/library'
 
 function notice(over: Record<string, unknown> = {}) {
@@ -67,6 +73,8 @@ function makeService(
             : opts.probableEntry,
         ),
     },
+    // A2b — cronen slår upp OWNER/ADMIN för SYSTEM-notisen vid fail-closed.
+    user: { findMany: jest.fn().mockResolvedValue([{ id: 'admin-1' }]) },
   }
   const accounting = {
     bookBadDebtReclassification: jest
@@ -92,14 +100,25 @@ function makeService(
   })
   const rentDebt = { outstanding }
   const evaluateAndAlert = jest.fn().mockResolvedValue(opts.staleOrgs ?? new Set())
+  const notifications = { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) } // A2b
   const service = new RentBadDebtService(
     prisma as never,
     accounting as never,
     rentNoticeEvents as never,
     rentDebt as never,
     { evaluateAndAlert } as never,
+    notifications as never,
   )
-  return { service, prisma, tx, accounting, rentNoticeEvents, outstanding, evaluateAndAlert }
+  return {
+    service,
+    prisma,
+    tx,
+    accounting,
+    rentNoticeEvents,
+    outstanding,
+    evaluateAndAlert,
+    notifications,
+  }
 }
 
 describe('reclassifyToProbableLoss (befarad)', () => {
@@ -314,6 +333,39 @@ describe('reclassifyProbableLosses (cron)', () => {
     expect(spy).toHaveBeenCalledWith('rn-fri', 'org-1', null)
     expect(summary.reclassified).toBe(1)
     expect(summary.manual).toBe(1)
+  })
+
+  // T5 A2b — orphan-avi (saknar bokförd fordran) NEKAS fail-closed + SYSTEM-notis.
+  it('A2b: MissingAccrualError → blockedNoAccrual++, ingen omklassning, SYSTEM-notis till admin', async () => {
+    const { service, prisma, notifications } = makeService()
+    prisma.rentNotice.findMany.mockResolvedValueOnce([
+      { id: 'rn-orphan', organizationId: 'org-1', vatAmount: new Decimal(0) },
+    ])
+    jest
+      .spyOn(service, 'reclassifyToProbableLoss')
+      .mockRejectedValue(new MissingAccrualError('rn-orphan saknar bokförd fordran'))
+
+    const summary = await service.reclassifyProbableLosses()
+
+    expect(summary.blockedNoAccrual).toBe(1)
+    expect(summary.reclassified).toBe(0)
+    expect(summary.errors).toBe(0) // fail-closed räknas separat, inte som generiskt fel
+    // SYSTEM-notis till org:ens OWNER/ADMIN (slog upp admins + skapade notis).
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: 'org-1',
+          role: { in: ['OWNER', 'ADMIN', 'MANAGER', 'ACCOUNTANT'] },
+        }),
+      }),
+    )
+    expect(notifications.create).toHaveBeenCalledWith(
+      'org-1',
+      'admin-1',
+      'SYSTEM',
+      expect.stringContaining('Kundförlust blockerad'),
+      expect.stringContaining('saknas i huvudboken'),
+    )
   })
 
   // PR 4 (B) — inaktuell betalningsdata pausar befarad-omklassningen (kravsteg framåt).
