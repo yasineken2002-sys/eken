@@ -861,9 +861,16 @@ export class AccountingService {
     invoice: Invoice & { lines: InvoiceLine[] },
     organizationId: string,
     createdById: string,
+    // T5 A1: valfri yttre transaktion så fakturan + intäktsverifikatet kan skapas
+    // ATOMISKT (BFL 5:6). Trädd genom till createNumberedEntry. Kastar den (stängd
+    // period/DB-fel) rullar den yttre tx:en tillbaka fakturan → ingen orphan.
+    // Returnerar null (org saknar 1510/intäktskonto) = ingen bokföring, ingen
+    // rollback (orgen bokför inte alls — utanför A1/audit-scope).
+    tx?: Prisma.TransactionClient,
   ) {
+    const db = tx ?? this.prisma
     // Look up account numbers
-    const accounts = await this.prisma.account.findMany({
+    const accounts = await db.account.findMany({
       where: { organizationId },
       select: { id: true, number: true },
     })
@@ -877,7 +884,7 @@ export class AccountingService {
       // Org-scopad findFirst (inte findUnique på enbart id) — FIX 2-mönstret mot
       // cross-tenant-läsning. Ett leaseId från en annan org → null → fallback
       // till default-intäktskonto (3914) i revenueAccountForUnitType.
-      const lease = await this.prisma.lease.findFirst({
+      const lease = await db.lease.findFirst({
         where: { id: invoice.leaseId, organizationId },
         select: { unit: { select: { type: true } } },
       })
@@ -897,8 +904,25 @@ export class AccountingService {
     const receivableId = accountByNumber.get(1510)
     const revenueId = accountByNumber.get(revenueAccountNumber)
 
-    // Skip if required accounts don't exist
-    if (!receivableId || !revenueId) return null
+    if (!receivableId || !revenueId) {
+      // T5 A1 (bokförings-expert HIGH): symmetriskt med createJournalEntryFor-
+      // RentNotice. Tidigare TYST `return null` → en felkonfigurerad kontoplan gav
+      // en faktura UTAN intäktsverifikat (orphan-faktura, A0-fyndet) utan att någon
+      // larmades. Logga ALLTID; och i ATOMISKT läge (tx angiven) KASTA så den yttre
+      // transaktionen rullar tillbaka fakturan i stället för att committa den utan
+      // verifikat. Utan tx (best-effort) behålls null (oförändrat).
+      const missing = !receivableId ? 1510 : revenueAccountNumber
+      this.logger.error(
+        `[Accounting] Konto ${missing} saknas i kontoplanen (org ${organizationId}) — ` +
+          `intäktsverifikat för faktura ${invoice.invoiceNumber} skapas ej.`,
+      )
+      if (tx) {
+        throw new UnprocessableEntityException(
+          `Kontoplanen saknar konto ${missing} — fakturan kan inte bokföras atomiskt`,
+        )
+      }
+      return null
+    }
 
     const subtotal = Number(invoice.subtotal)
     const vatTotal = Number(invoice.vatTotal)
@@ -952,6 +976,7 @@ export class AccountingService {
       lines,
       idempotencyWhere: { organizationId, sourceId: invoice.id },
       include: { lines: { include: { account: true } } },
+      ...(tx ? { tx } : {}),
     })
   }
 
