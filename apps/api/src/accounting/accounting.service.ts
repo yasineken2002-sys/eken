@@ -1055,6 +1055,9 @@ export class AccountingService {
     const amount = Number(transaction.amount)
     if (amount <= 0) return null
 
+    // A2 fail-closed (typ-medveten: vanlig faktura ELLER depositionsfaktura).
+    await this.assertInvoiceReceivableBacked(db, organizationId, invoice.id, invoice.invoiceNumber)
+
     const counterparty = await this.counterpartyForInvoice(invoice.id, organizationId)
 
     return this.createNumberedEntry({
@@ -1119,6 +1122,11 @@ export class AccountingService {
       )
       return null
     }
+
+    // A2 fail-closed (typ-medveten: en depositionsfaktura bokför sin 1510-debet
+    // under 'deposit-invoice:<depositId>', inte invoice.id — accepteras via länkad
+    // Deposit, annars falsk-nekas varje frisk depositionsbetalning).
+    await this.assertInvoiceReceivableBacked(db, organizationId, invoice.id, invoice.invoiceNumber)
 
     const sourceId = `invoice-manual-payment:${invoice.id}`
     const counterparty = await this.counterpartyForInvoice(invoice.id, organizationId)
@@ -1840,8 +1848,79 @@ export class AccountingService {
   // allokerade delbeloppet, så samma funktion bokför både full betalning och
   // delbetalning utan särfall. Kontoslagning + verifikatet körs på `tx` när den
   // anges; counterparty-läsningen är ren statisk data och får gå på poolen.
+  // T5 A2 (fail-closed — F1-fällan på intäkts-betalningssidan): en inbetalning
+  // krediterar 1510 (reglerar fordran). Om fordrans-DEBETEN (accrual-verifikatet)
+  // aldrig bokförts blir 1510-krediten en "spökkredit" → obalanserad huvudbok
+  // (BFL 5 kap 6 §). Speglar deposit/reconciliation-F1-mönstret (som redan gatar
+  // via länkad Deposit). Verifierar att accrual-verifikatet (source='INVOICE',
+  // sourceId=<accrualSourceId>: 'rent-notice:<id>' för avi, invoice.id för faktura)
+  // existerar; annars NEKAS betalningsbokningen (kastar) — aldrig tyst kreditering.
+  // Efter A1 har nya avier/fakturor alltid sin accrual atomiskt → detta träffar
+  // bara pre-A1-orphans tills A3 reparerat dem (exakt rätt: en orphan-avi ska inte
+  // kunna få en spökkredit-betalning innan den reparerats).
+  private async hasReceivableAccrual(
+    db: Prisma.TransactionClient,
+    organizationId: string,
+    accrualSourceId: string,
+  ): Promise<boolean> {
+    const accrual = await db.journalEntry.findFirst({
+      where: { organizationId, source: 'INVOICE', sourceId: accrualSourceId },
+      select: { id: true },
+    })
+    return accrual != null
+  }
+
+  private failClosedNoAccrual(label: string, organizationId: string, accrualKey: string): never {
+    this.logger.error(
+      `[Accounting] FAIL-CLOSED: ${label} saknar bokförd fordran (accrual '${accrualKey}', ` +
+        `org ${organizationId}) — betalningen bokförs INTE (skulle kreditera 1510 utan ` +
+        `motsvarande debet = spökkredit). Intäktsverifikatet måste repareras (T5 A3) först.`,
+    )
+    throw new UnprocessableEntityException(
+      `${label} saknar bokförd fordran — betalningen kan inte bokföras utan att skapa en ` +
+        `obalanserad huvudbok (BFL 5:6). Avins/fakturans intäktsverifikat måste repareras först.`,
+    )
+  }
+
+  // Avi-vägens accrual är entydigt nycklad 'rent-notice:<id>'.
+  private async assertReceivableAccrualBooked(
+    db: Prisma.TransactionClient,
+    organizationId: string,
+    accrualSourceId: string,
+    label: string,
+  ): Promise<void> {
+    if (await this.hasReceivableAccrual(db, organizationId, accrualSourceId)) return
+    this.failClosedNoAccrual(label, organizationId, accrualSourceId)
+  }
+
+  // Faktura-vägen är TYP-medveten: en vanlig faktura bokför sin fordran under
+  // sourceId=invoice.id, men en DEPOSITIONSFAKTURA (Invoice.type='DEPOSIT',
+  // Deposit.invoiceId satt) bokför sin 1510-debet under 'deposit-invoice:<depositId>'
+  // (createJournalEntryForDepositInvoice). Guarden accepterar därför BÅDA: annars
+  // skulle varje frisk depositionsbetalning falsk-nekas. En länkad Deposit ⇔ atomiskt
+  // bokförd deposit-invoice-accrual (T5 A1) — samma strukturgaranti reconciliation
+  // redan litar på (#41/#109). Fail-closed bara om INGEN av nycklarna finns.
+  private async assertInvoiceReceivableBacked(
+    db: Prisma.TransactionClient,
+    organizationId: string,
+    invoiceId: string,
+    invoiceNumber: string,
+  ): Promise<void> {
+    if (await this.hasReceivableAccrual(db, organizationId, invoiceId)) return
+    const deposit = await db.deposit.findFirst({
+      where: { organizationId, invoiceId },
+      select: { id: true },
+    })
+    if (
+      deposit &&
+      (await this.hasReceivableAccrual(db, organizationId, `deposit-invoice:${deposit.id}`))
+    )
+      return
+    this.failClosedNoAccrual(`faktura ${invoiceNumber}`, organizationId, invoiceId)
+  }
+
   async createJournalEntryForRentNoticePayment(
-    notice: { id: string; noticeNumber: string },
+    notice: { id: string; noticeNumber: string; type?: RentNoticeType },
     transaction: Pick<BankTransaction, 'id' | 'date' | 'amount'>,
     organizationId: string,
     createdById: string | null,
@@ -1856,6 +1935,18 @@ export class AccountingService {
     const bankAccountId = accountByNumber.get(1930)
     const receivableId = accountByNumber.get(1510)
     if (!bankAccountId || !receivableId) return null
+
+    // A2 fail-closed. DEPOSIT-avier gatas redan av callern (länkad Deposit-existens,
+    // #41/#109) och deras accrual är deposit-invoice-nycklad, inte rent-notice: →
+    // hoppa guarden här för DEPOSIT (annars falsk-nekas en frisk depositionsbetalning).
+    if (notice.type !== RentNoticeType.DEPOSIT) {
+      await this.assertReceivableAccrualBooked(
+        db,
+        organizationId,
+        `rent-notice:${notice.id}`,
+        `hyresavi ${notice.noticeNumber}`,
+      )
+    }
 
     // Beloppet bokförs på transaction.amount (= det allokerade delbeloppet vid
     // partiell bankmatchning). Avins totalAmount styr INTE verifikatet.
@@ -1937,6 +2028,14 @@ export class AccountingService {
       )
       return null
     }
+
+    // A2 fail-closed: RENT-only (DEPOSIT hoppas ovan). Neka om avins accrual saknas.
+    await this.assertReceivableAccrualBooked(
+      this.prisma,
+      organizationId,
+      `rent-notice:${notice.id}`,
+      `hyresavi ${notice.noticeNumber}`,
+    )
 
     const sourceId = `rent-notice-payment:${allocationId}`
 

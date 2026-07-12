@@ -35,7 +35,16 @@ function makeService(opts?: {
   let created: Created | null = null
   const prisma = {
     journalEntry: {
-      findFirst: jest.fn().mockResolvedValue(opts?.existing ?? null),
+      // A2 fail-closed-guarden slår upp accrual-verifikatet (source='INVOICE') →
+      // returnera ett så betalningen inte falsk-nekas. createNumberedEntrys
+      // idempotens-koll (source='PAYMENT') returnerar opts.existing/null som förr.
+      findFirst: jest
+        .fn()
+        .mockImplementation((args: { where?: { source?: string } }) =>
+          Promise.resolve(
+            args?.where?.source === 'INVOICE' ? { id: 'accrual-1' } : (opts?.existing ?? null),
+          ),
+        ),
       create: jest.fn().mockImplementation((arg: Created) => {
         created = arg
         return Promise.resolve({ id: 'je-pay-1', ...arg })
