@@ -24,6 +24,7 @@ import { InspectionsModule } from '../inspections/inspections.module'
 import { MaintenancePlanModule } from '../maintenance-plan/maintenance-plan.module'
 import { ReconciliationModule } from '../reconciliation/reconciliation.module'
 import { NotificationsModule } from '../notifications/notifications.module'
+import { OverdueModule } from '../overdue/overdue.module'
 import { CollectionsModule } from '../collections/collections.module'
 import { TenantPortalModule } from '../tenant-portal/tenant-portal.module'
 import { RentIncreasesModule } from '../rent-increases/rent-increases.module'
@@ -51,6 +52,11 @@ import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.ser
     ReconciliationModule,
     SigningModule,
     NotificationsModule,
+    // Delad sanningskälla för "Förfallen skuld" — samma OverdueDebtService som
+    // dashboarden och månadsrapporten. AI:n rapporterar nu samma skuldsiffra
+    // (hyresavier + fakturor, DEPOSIT exkl.) i stället för sin gamla blinda
+    // Invoice-only-OVERDUE. Enbart Prisma-beroende → ingen cirkelrisk.
+    OverdueModule,
     CollectionsModule,
     TenantPortalModule,
     RentIncreasesModule,
