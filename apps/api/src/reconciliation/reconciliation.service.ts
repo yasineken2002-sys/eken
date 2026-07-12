@@ -1183,7 +1183,9 @@ export class ReconciliationService {
         // 1930 D (bank) / 1510 K — stänger fordran som aktiveringen bokförde
         // 1510 D/2890 K. Netto över create+betalning = 1930 D / 2890 K (korrekt).
         const depEntry = await this.accounting.createJournalEntryForRentNoticePayment(
-          { id: noticeId, noticeNumber: notice.noticeNumber },
+          // type=DEPOSIT → hoppar A2 rent-accrual-guarden (deposition gatas redan
+          // ovan via länkad Deposit; dess accrual är deposit-invoice-nycklad).
+          { id: noticeId, noticeNumber: notice.noticeNumber, type: RentNoticeType.DEPOSIT },
           { id: transactionId, date: transactionDate, amount: remainingDep },
           organizationId,
           userId,
@@ -1308,7 +1310,9 @@ export class ReconciliationService {
       // Partialverifikatet ATOMISKT i samma tx. amount = det FAKTISKT allokerade
       // delbeloppet (1930 D / 1510 K). Faller bokföringen kastas felet → full rollback.
       const entry = await this.accounting.createJournalEntryForRentNoticePayment(
-        { id: noticeId, noticeNumber: notice.noticeNumber },
+        // RENT-avi → A2 fail-closed: kastar om avins accrual (rent-notice:<id>)
+        // saknas (pre-A1-orphan) → hela matchningen rullas tillbaka, ingen spökkredit.
+        { id: noticeId, noticeNumber: notice.noticeNumber, type: notice.type },
         { id: transactionId, date: transactionDate, amount: allocationAmount },
         organizationId,
         userId,

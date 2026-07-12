@@ -27,7 +27,13 @@ function makeService(opts: { kind: 'invoice' | 'rentNotice'; tenant?: Tenant | n
     .mockResolvedValue(opts.tenant !== undefined ? { tenant: opts.tenant } : null)
   const prisma = {
     journalEntry: {
-      findFirst: jest.fn().mockResolvedValue(null),
+      // A2: accrual-guarden (source='INVOICE') → returnera ett verifikat så
+      // betalningen bokförs; PAYMENT-idempotenskollen → null (skapar nytt).
+      findFirst: jest
+        .fn()
+        .mockImplementation((args: { where?: { source?: string } }) =>
+          Promise.resolve(args?.where?.source === 'INVOICE' ? { id: 'accrual-1' } : null),
+        ),
       create: jest.fn().mockImplementation((arg: Created) => {
         created = arg
         return Promise.resolve({ id: 'je-1', ...arg })
