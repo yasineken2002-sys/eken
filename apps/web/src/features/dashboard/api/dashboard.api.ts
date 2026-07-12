@@ -1,13 +1,19 @@
 import { get } from '@/lib/api'
 
 export interface DashboardStats {
+  // Periodiserad intäkt (accrual) ur huvudboken: Σ kontoklass 3 för
+  // räkenskapsåret till dags dato. from/to = periodens gränser (ISO).
+  revenue: {
+    total: number
+    from: string
+    to: string
+  }
   invoices: {
     total: number
     draft: number
     sent: number
     paid: number
     overdue: number
-    totalRevenue: number
     overdueAmount: number
   }
   tenants: {
