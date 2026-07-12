@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common'
 import Anthropic from '@anthropic-ai/sdk'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { OverdueDebtService } from '../overdue/overdue-debt.service'
+import { AccountingService } from '../accounting/accounting.service'
 import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { AI_MODELS } from './ai.config'
@@ -37,6 +38,10 @@ export class PortfolioAnalysisService {
     // rapport). Ersätter de blinda Invoice-only-OVERDUE-summorna i revenue-/
     // risks-sektionerna — AI-analysen sa fel skuld till hyresvärden.
     private readonly overdue: OverdueDebtService,
+    // Delad sanningskälla för BOKFÖRD intäkt (Σ 3xxx accrual, räkenskapsår-till-
+    // idag) — samma tal som dashboardens "Totala intäkter". Ersätter den blinda
+    // kassa-summan (Σ Invoice PAID) som missade all RentNotice-betalning.
+    private readonly accounting: AccountingService,
   ) {}
 
   async analyzePortfolio(
@@ -128,44 +133,27 @@ export class PortfolioAnalysisService {
       ? await this.overdue.getOverdueSnapshot(organizationId, now)
       : null
 
+    // BOKFÖRD intäkt räkenskapsår-till-idag (Σ 3xxx accrual) — samma tal som
+    // dashboardens "Totala intäkter". Ersätter den gamla kassa-blinda Σ Invoice
+    // PAID (missade all RentNotice-betalning) och den Invoice-only månadsvisa
+    // revenueByMonth. Hämtas en gång, bara när en sektion behöver den.
+    const needsRevenue = analysisType === 'revenue' || analysisType === 'full'
+    const bookedRevenue = needsRevenue
+      ? await this.accounting.getRevenueYearToDate(organizationId, now)
+      : null
+
     if (analysisType === 'revenue' || analysisType === 'full') {
-      const invoices = await this.prisma.invoice.findMany({
-        where: {
-          organizationId,
-          issueDate: { gte: twelveMonthsAgo },
-        },
-        select: {
-          status: true,
-          total: true,
-          issueDate: true,
-          paidAt: true,
-          tenant: { select: { firstName: true, lastName: true, companyName: true } },
-        },
-        orderBy: { issueDate: 'desc' },
+      // Fakturor senaste 12 mån behålls ENBART för antalet (fakturaaktivitet),
+      // inte längre som intäktsgrund — intäkten läses accrual ur huvudboken.
+      const invoiceCount = await this.prisma.invoice.count({
+        where: { organizationId, issueDate: { gte: twelveMonthsAgo } },
       })
 
-      // Månadsvis paid/sent ur Invoice (intäktsflöde). OVERDUE tas INTE per månad
-      // härifrån längre — förfallen skuld är ett nuläge (inte per fakturamånad)
-      // och rapporteras auktoritativt via den delade snapshoten nedan.
-      const revenueByMonth: Record<string, { paid: number; sent: number }> = {}
-      for (const inv of invoices) {
-        const month = inv.issueDate.toISOString().substring(0, 7)
-        if (!revenueByMonth[month]) revenueByMonth[month] = { paid: 0, sent: 0 }
-        const amount = Number(inv.total)
-        if (inv.status === 'PAID') revenueByMonth[month].paid += amount
-        else if (inv.status === 'SENT') revenueByMonth[month].sent += amount
-      }
-
-      const totalPaid = invoices
-        .filter((i) => i.status === 'PAID')
-        .reduce((s, i) => s + Number(i.total), 0)
-
       sections.push(
-        `INTÄKTSDATA (senaste 12 månader):
-Totalt betalt: ${totalPaid.toFixed(2)} SEK
+        `INTÄKTSDATA:
+Bokförd intäkt (Σ 3xxx accrual, räkenskapsår-till-idag): ${(bookedRevenue?.total ?? 0).toFixed(2)} SEK — samma som dashboardens "Totala intäkter"
 Förfallen skuld (nuläge, hyresavier + fakturor, exkl. deposition): ${(overdueSnapshot?.total ?? 0).toFixed(2)} SEK (${overdueSnapshot?.count ?? 0} poster)
-Antal fakturor: ${invoices.length}
-Månadsvis (betalt/skickat): ${JSON.stringify(revenueByMonth, null, 2)}`,
+Antal fakturor (senaste 12 mån): ${invoiceCount}`,
       )
     }
 
