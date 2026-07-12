@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common'
 import Anthropic from '@anthropic-ai/sdk'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { OverdueDebtService } from '../overdue/overdue-debt.service'
 import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { AI_MODELS } from './ai.config'
@@ -32,6 +33,10 @@ export class PortfolioAnalysisService {
     private prisma: PrismaService,
     private readonly usage: AiUsageService,
     private readonly quota: AiQuotaService,
+    // Delad sanningskälla för "Förfallen skuld" (samma som dashboard + månads-
+    // rapport). Ersätter de blinda Invoice-only-OVERDUE-summorna i revenue-/
+    // risks-sektionerna — AI-analysen sa fel skuld till hyresvärden.
+    private readonly overdue: OverdueDebtService,
   ) {}
 
   async analyzePortfolio(
@@ -50,6 +55,7 @@ export class PortfolioAnalysisService {
     const dataContext = await this.fetchData(
       organizationId,
       analysisType,
+      now,
       twelveMonthsAgo,
       sixtyDaysFromNow,
       thirtyDaysFromNow,
@@ -105,11 +111,22 @@ export class PortfolioAnalysisService {
   private async fetchData(
     organizationId: string,
     analysisType: AnalysisType,
+    now: Date,
     twelveMonthsAgo: Date,
     sixtyDaysFromNow: Date,
     thirtyDaysFromNow: Date,
   ): Promise<string> {
     const sections: string[] = []
+
+    // Förfallen skuld via DELADE sanningskällan — hämtas en gång och används i
+    // både revenue- och risks-sektionen. Identisk med dashboardens "Försenat
+    // belopp" (hyresavier + fakturor, DEPOSIT exkl., org-scopat). null när
+    // ingen sektion behöver den (occupancy).
+    const needsOverdue =
+      analysisType === 'revenue' || analysisType === 'risks' || analysisType === 'full'
+    const overdueSnapshot = needsOverdue
+      ? await this.overdue.getOverdueSnapshot(organizationId, now)
+      : null
 
     if (analysisType === 'revenue' || analysisType === 'full') {
       const invoices = await this.prisma.invoice.findMany({
@@ -127,29 +144,28 @@ export class PortfolioAnalysisService {
         orderBy: { issueDate: 'desc' },
       })
 
-      const revenueByMonth: Record<string, { paid: number; overdue: number; sent: number }> = {}
+      // Månadsvis paid/sent ur Invoice (intäktsflöde). OVERDUE tas INTE per månad
+      // härifrån längre — förfallen skuld är ett nuläge (inte per fakturamånad)
+      // och rapporteras auktoritativt via den delade snapshoten nedan.
+      const revenueByMonth: Record<string, { paid: number; sent: number }> = {}
       for (const inv of invoices) {
         const month = inv.issueDate.toISOString().substring(0, 7)
-        if (!revenueByMonth[month]) revenueByMonth[month] = { paid: 0, overdue: 0, sent: 0 }
+        if (!revenueByMonth[month]) revenueByMonth[month] = { paid: 0, sent: 0 }
         const amount = Number(inv.total)
         if (inv.status === 'PAID') revenueByMonth[month].paid += amount
-        else if (inv.status === 'OVERDUE') revenueByMonth[month].overdue += amount
         else if (inv.status === 'SENT') revenueByMonth[month].sent += amount
       }
 
       const totalPaid = invoices
         .filter((i) => i.status === 'PAID')
         .reduce((s, i) => s + Number(i.total), 0)
-      const totalOverdue = invoices
-        .filter((i) => i.status === 'OVERDUE')
-        .reduce((s, i) => s + Number(i.total), 0)
 
       sections.push(
         `INTÄKTSDATA (senaste 12 månader):
 Totalt betalt: ${totalPaid.toFixed(2)} SEK
-Totalt förfallet: ${totalOverdue.toFixed(2)} SEK
+Förfallen skuld (nuläge, hyresavier + fakturor, exkl. deposition): ${(overdueSnapshot?.total ?? 0).toFixed(2)} SEK (${overdueSnapshot?.count ?? 0} poster)
 Antal fakturor: ${invoices.length}
-Månadsvis: ${JSON.stringify(revenueByMonth, null, 2)}`,
+Månadsvis (betalt/skickat): ${JSON.stringify(revenueByMonth, null, 2)}`,
       )
     }
 
@@ -192,7 +208,10 @@ ${expiringLeases.map((l) => `- ${l.unit.name} (${l.tenant.companyName ?? `${l.te
 
     if (analysisType === 'risks' || analysisType === 'full') {
       const overdueInvoices = await this.prisma.invoice.findMany({
-        where: { organizationId, status: 'OVERDUE' },
+        // DEPOSIT exkluderas symmetriskt med OverdueDebtService (2890-skuld, inte
+        // hyresfordran) — urvalet ska aldrig visa en post som headline-skulden
+        // exkluderat.
+        where: { organizationId, status: 'OVERDUE', type: { not: 'DEPOSIT' } },
         select: {
           invoiceNumber: true,
           total: true,
@@ -220,7 +239,8 @@ ${expiringLeases.map((l) => `- ${l.unit.name} (${l.tenant.companyName ?? `${l.te
 
       sections.push(
         `RISKDATA:
-Förfallna fakturor (${overdueInvoices.length} st):
+Förfallen skuld totalt (hyresavier + fakturor, exkl. deposition): ${(overdueSnapshot?.total ?? 0).toFixed(2)} SEK, ${overdueSnapshot?.count ?? 0} poster, varav ${overdueSnapshot?.over30Count ?? 0} äldre än 30 dagar
+Förfallna fakturaposter (urval, exkl. hyresavier och depositioner):
 ${overdueInvoices
   .map((i) => {
     const p = i.tenant ?? i.customer

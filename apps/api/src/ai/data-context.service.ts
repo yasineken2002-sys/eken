@@ -1,9 +1,16 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { OverdueDebtService } from '../overdue/overdue-debt.service'
 
 @Injectable()
 export class DataContextService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Delad sanningskälla för "Förfallen skuld" (samma som dashboard + månads-
+    // rapport). Ersätter den gamla Invoice-only-OVERDUE-siffran som var blind
+    // för hyresavier och inte exkluderade DEPOSIT — AI:n sa fel skuld.
+    private readonly overdue: OverdueDebtService,
+  ) {}
 
   async buildContext(organizationId: string): Promise<string> {
     const now = new Date()
@@ -29,6 +36,7 @@ export class DataContextService {
       activeLeaseList,
       expiring90Count,
       paidInvoicesForBehavior,
+      overdueSnapshot,
     ] = await Promise.all([
       this.prisma.organization.findUnique({
         where: { id: organizationId },
@@ -51,7 +59,10 @@ export class DataContextService {
         _sum: { total: true },
       }),
       this.prisma.invoice.findMany({
-        where: { organizationId, status: 'OVERDUE' },
+        // DEPOSIT exkluderas symmetriskt med OverdueDebtService (2890-skuld, inte
+        // hyresfordran) så urvalet aldrig visar en post som headline-skulden
+        // ovan har exkluderat.
+        where: { organizationId, status: 'OVERDUE', type: { not: 'DEPOSIT' } },
         select: {
           invoiceNumber: true,
           total: true,
@@ -162,6 +173,10 @@ export class DataContextService {
         select: { tenantId: true, paidAt: true, dueDate: true },
         take: 200,
       }),
+      // Förfallen skuld via DELADE sanningskällan (hyresavier outstanding klampat
+      // per avi + OVERDUE-fakturor, DEPOSIT exkl.) — samma tal som dashboardens
+      // "Försenat belopp" och månadsrapporten. Org-scopat i tjänsten.
+      this.overdue.getOverdueSnapshot(organizationId, now),
     ])
 
     // Build unit status map
@@ -214,14 +229,16 @@ export class DataContextService {
     const formatDate = (d: Date | null) =>
       d ? new Intl.DateTimeFormat('sv-SE').format(new Date(d)) : 'okänt'
 
-    const overdueData = invoiceMap['OVERDUE']
     const lines: string[] = [
       `ORGANISATIONSÖVERSIKT – ${org?.name ?? 'Okänd organisation'} (${org?.city ?? ''})`,
       '',
       'PORTFÖLJSAMMANFATTNING:',
       `Totala månadsinkomster: ${formatSEK(totalMonthlyIncome)}`,
       `Beläggningsgrad: ${occupancyPct}%`,
-      `Förfallna fakturor: ${overdueData?.count ?? 0} st (${formatSEK(overdueData?.total ?? 0)})`,
+      // Förfallen skuld = delade snapshoten (hyresavier + fakturor, DEPOSIT exkl.),
+      // identisk med dashboardens "Försenat belopp". Den enda auktoritativa
+      // skuldsiffran i kontexten — FAKTUROR-listan nedan hoppar därför OVERDUE.
+      `Förfallen skuld: ${overdueSnapshot.count} poster (${formatSEK(overdueSnapshot.total)}), varav ${overdueSnapshot.over30Count} äldre än 30 dagar`,
       `Kontrakt som löper ut inom 90 dagar: ${expiring90Count} st`,
       '',
       '## FASTIGHETER & OBJEKT',
@@ -257,6 +274,10 @@ export class DataContextService {
       VOID: 'Makulerade',
     }
     for (const [status, label] of Object.entries(statusLabels)) {
+      // OVERDUE rapporteras auktoritativt som "Förfallen skuld" ovan (delade
+      // snapshoten, inkl. hyresavier). Skippa här så kontexten inte innehåller
+      // två motstridiga förfallna-belopp (Invoice-only vs den harmoniserade).
+      if (status === 'OVERDUE') continue
       const data = invoiceMap[status]
       if (data && data.count > 0) {
         lines.push(`  ${label}: ${data.count} st, totalt ${formatSEK(data.total)}`)
@@ -264,7 +285,10 @@ export class DataContextService {
     }
 
     if (overdueInvoices.length > 0) {
-      lines.push('', 'Förfallna fakturor (urval):')
+      // Detaljlista av OVERDUE-fakturaposter (delmängd, exkl. hyresavier och
+      // depositioner). Det auktoritativa skuldbeloppet är "Förfallen skuld" ovan
+      // — denna lista är bara referens till enskilda fakturor.
+      lines.push('', 'Förfallna fakturaposter (urval, exkl. hyresavier och depositioner):')
       for (const inv of overdueInvoices) {
         lines.push(
           `  - Faktura ${inv.invoiceNumber}, ${formatTenantName(inv.tenant ?? inv.customer)}, ${formatSEK(Number(inv.total))}, förföll ${formatDate(inv.dueDate)}`,
