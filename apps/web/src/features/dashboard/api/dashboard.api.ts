@@ -8,13 +8,17 @@ export interface DashboardStats {
     from: string
     to: string
   }
+  // Faktisk förfallen, obetald skuld (RentNotice outstanding + OVERDUE Invoice,
+  // exkl. deposition). Eget toppfält — spänner över båda skuldkällorna.
+  overdue: {
+    total: number
+  }
   invoices: {
     total: number
     draft: number
     sent: number
     paid: number
     overdue: number
-    overdueAmount: number
   }
   tenants: {
     total: number

@@ -2467,6 +2467,10 @@ model RentNotice {
   @@index([leaseId])
   // Kravtrappa-jobben (PR 2–5) filtrerar avier per steg per org.
   @@index([organizationId, collectionStage])
+  // Dashboardens "Försenat belopp" (T4/#47 PR2) + kravtrappan filtrerar avier
+  // per status per org (WHERE organizationId AND status=OVERDUE). Riktat
+  // kompositindex i stället för bitmap-AND av de två separata index.
+  @@index([organizationId, status])
 }
 
 // Radpost på en hyresavi. Idag bär RentNotice bara ett samlat amount; denna

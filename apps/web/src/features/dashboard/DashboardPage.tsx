@@ -126,7 +126,7 @@ export function DashboardPage() {
           <motion.div variants={item}>
             <StatCard
               title="Försenat belopp"
-              value={formatCurrency(stats?.invoices.overdueAmount ?? 0)}
+              value={formatCurrency(stats?.overdue.total ?? 0)}
               icon={AlertTriangle}
               iconColor="#EF4444"
             />
