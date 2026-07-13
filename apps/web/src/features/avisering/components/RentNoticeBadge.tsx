@@ -10,6 +10,7 @@ const CONFIG: Record<RentNoticeStatus, { label: string; className: string }> = {
   PAID: { label: 'Betald', className: 'bg-emerald-50 text-emerald-700' },
   OVERDUE: { label: 'Försenad', className: 'bg-red-50 text-red-600' },
   CANCELLED: { label: 'Avbruten', className: 'bg-gray-100 text-gray-500' },
+  FAILED: { label: 'Misslyckad', className: 'bg-red-100 text-red-700' },
 }
 
 export function RentNoticeBadge({ status }: Props) {

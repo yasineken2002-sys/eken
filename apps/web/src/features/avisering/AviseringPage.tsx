@@ -53,6 +53,7 @@ const STATUS_TABS: { value: RentNoticeStatus | 'ALL'; label: string }[] = [
   { value: 'SENT', label: 'Skickade' },
   { value: 'PAID', label: 'Betalda' },
   { value: 'OVERDUE', label: 'Försenade' },
+  { value: 'FAILED', label: 'Misslyckade' },
 ]
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.04 } } }
@@ -310,16 +311,31 @@ export function AviseringPage() {
                         {formatDate(notice.dueDate)}
                       </td>
                       <td className="px-4 py-3">
-                        <RentNoticeBadge status={notice.status} />
+                        <div className="flex items-center gap-1.5">
+                          <RentNoticeBadge status={notice.status} />
+                          {notice.status === 'FAILED' && notice.sendError && (
+                            <span
+                              title={notice.sendError}
+                              className="inline-flex cursor-help text-red-500"
+                            >
+                              <AlertCircle size={13} strokeWidth={1.8} />
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
-                          {notice.status === 'PENDING' && (
+                          {(notice.status === 'PENDING' || notice.status === 'FAILED') && (
                             <button
-                              title="Skicka avi"
+                              title={notice.status === 'FAILED' ? 'Skicka om avi' : 'Skicka avi'}
                               disabled={sendNotices.isPending}
                               onClick={() => void sendNotices.mutateAsync([notice.id])}
-                              className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
+                              className={cn(
+                                'flex h-7 w-7 items-center justify-center rounded-lg transition-colors',
+                                notice.status === 'FAILED'
+                                  ? 'text-red-500 hover:bg-red-50 hover:text-red-700'
+                                  : 'text-gray-400 hover:bg-blue-50 hover:text-blue-600',
+                              )}
                             >
                               <Send size={12} strokeWidth={1.8} />
                             </button>

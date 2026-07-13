@@ -1,6 +1,6 @@
 import { get, post, patch, del, api } from '@/lib/api'
 
-export type RentNoticeStatus = 'PENDING' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED'
+export type RentNoticeStatus = 'PENDING' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' | 'FAILED'
 
 export type PaymentMethod = 'BANK' | 'CASH' | 'SWISH' | 'MANUAL'
 
@@ -23,6 +23,9 @@ export interface RentNotice {
   status: RentNoticeStatus
   sentAt: string | null
   sentTo: string | null
+  // Felorsak när ett utskick misslyckats (status FAILED) — visas i UI:t så
+  // hyresvärden ser VARFÖR avin fastnat. Backenden returnerar hela modellen.
+  sendError: string | null
   createdAt: string
   updatedAt: string
   tenant: {
