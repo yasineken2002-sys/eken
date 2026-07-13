@@ -50,3 +50,21 @@ jobs:
 
       - name: Run lint
         run: pnpm exec turbo lint
+
+  index-guard:
+    name: Critical index guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — verifierar att
+      # kritiska partiella index som bara lever i migrations-SQL (t.ex.
+      # lease_unit_active_unique, som Prisma inte kan deklarera) inte tyst
+      # DROP:ats/försvagats av en `prisma migrate dev`-drift. Se #59 / T5 Fas B2.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify critical partial DB indexes survive migrations
+        run: node apps/api/scripts/check-critical-indexes.mjs
