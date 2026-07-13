@@ -21,6 +21,14 @@ const BROWSER_LAUNCH_ARGS = [
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
   '--disable-gpu',
+  // Överlevnadsflaggor för Railways restriktiva microVM-runtime (Firecracker).
+  // Utan dem dör Chromium vid start ("Failed to launch the browser process:
+  // Code: null") — multiprocess-modellen (zygote) och crashpad-hanteraren kan
+  // inte initiera i den avskalade miljön (saknar dbus + /sys/.../cpufreq).
+  //   --no-zygote        : ingen fork-server-process (klarar clone-restriktionen)
+  //   --disable-crashpad : starta inte crash-reportern (choke:ar på saknad sysfs)
+  '--no-zygote',
+  '--disable-crashpad',
 ] as const
 
 // Hur många PDF-renderingar vi tillåter samtidigt mot samma browser. Headless
