@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   Sparkles,
   Send,
@@ -400,7 +401,11 @@ export function AiPage() {
           setPendingAction(res.pendingAction)
         }
       } catch {
+        // Samma tysta fel-svälj som strömvägen hade: action-anropet (icke-
+        // strömmande /ai/chat) rensade state men gav ingen återkoppling vid
+        // AI-fel. Visa samma läsbara toast. isThinking släcks i finally.
         setPendingMessages([])
+        toast.error('AI-assistenten kunde inte svara just nu. Försök igen om en stund.')
       } finally {
         setIsThinking(false)
       }
@@ -454,10 +459,17 @@ export function AiPage() {
           })
         },
         onError: (_error) => {
+          // Släck BÅDA spinner-tillstånden (isStreaming för strömvägen,
+          // isThinking som defensiv säkerhet) + rensa strömnings-state. Utan
+          // detta snurrade "tänker"-indikatorn för evigt vid AI-fel. Visa ett
+          // läsbart fel via appens toast — aldrig den råa tekniska orsaken
+          // (_error kan innehålla t.ex. "credit balance too low").
           setIsStreaming(false)
+          setIsThinking(false)
           setStreamingText('')
           setToolEvents([])
           setPendingMessages([])
+          toast.error('AI-assistenten kunde inte svara just nu. Försök igen om en stund.')
         },
       })
     }
