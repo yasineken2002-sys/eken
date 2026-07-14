@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { allocatePlatformInvoiceNumber } from '../platform/invoices/platform-invoice-number'
 import { PLAN_LIMITS, getMonthStart, getNextResetAt, CREDIT_PACKAGES } from '@eken/shared'
 import type { SubscriptionPlan } from '@eken/shared'
 
@@ -125,22 +126,32 @@ export class AiUsagePageService {
     }
 
     const grossSek = Math.round(pkg.priceSek * 1.25 * 100) / 100
-    const invoiceNumber = await this.nextCreditInvoiceNumber()
 
+    // Nummer-allokering + insert i EN transaktion via den DELADE atomiska
+    // sekvensen (allocatePlatformInvoiceNumber) — samma källa och row-lock som
+    // PlatformInvoicesService.create(). Tidigare hade buyCredits en egen
+    // count()+1-numrering (nextCreditInvoiceNumber) UTANFÖR tx → två samtidiga
+    // credit-köp (dubbelklick / två flikar) kunde få samma CR-{åååmm}-nummer, och
+    // den kolliderade dessutom med den manuella admin-vägens create() för samma
+    // serie. Nu är PlatformInvoiceNumberSequence enda sanningskällan.
+    //
     // Beskrivningen MÅSTE börja med "<antal> " — PlatformInvoicesService.markPaid
     // läser av credits-antalet från denna prefix när Yasin markerar fakturan
     // som betald.
-    const invoice = await this.prisma.platformInvoice.create({
-      data: {
-        organizationId,
-        invoiceNumber,
-        amount: grossSek,
-        status: 'SENT',
-        type: 'AI_CREDITS',
-        description: `${pkg.amount} extra AI-credits (${pkg.priceSek} kr exkl moms)`,
-        dueDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
-        sentAt: new Date(),
-      },
+    const invoice = await this.prisma.$transaction(async (tx) => {
+      const invoiceNumber = await allocatePlatformInvoiceNumber(tx, 'AI_CREDITS')
+      return tx.platformInvoice.create({
+        data: {
+          organizationId,
+          invoiceNumber,
+          amount: grossSek,
+          status: 'SENT',
+          type: 'AI_CREDITS',
+          description: `${pkg.amount} extra AI-credits (${pkg.priceSek} kr exkl moms)`,
+          dueDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+          sentAt: new Date(),
+        },
+      })
     })
 
     return {
@@ -152,22 +163,5 @@ export class AiUsagePageService {
       dueDate: invoice.dueDate.toISOString(),
       status: invoice.status,
     }
-  }
-
-  /** Genererar ett kort fakturanummer av formen CR-YYYYMM-XXXX. */
-  private async nextCreditInvoiceNumber(): Promise<string> {
-    const now = new Date()
-    const prefix = `CR-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
-    const lastForMonth = await this.prisma.platformInvoice.findFirst({
-      where: { invoiceNumber: { startsWith: prefix } },
-      orderBy: { invoiceNumber: 'desc' },
-      select: { invoiceNumber: true },
-    })
-    let next = 1
-    if (lastForMonth) {
-      const match = lastForMonth.invoiceNumber.match(/-(\d+)$/)
-      if (match) next = Number(match[1]) + 1
-    }
-    return `${prefix}-${String(next).padStart(4, '0')}`
   }
 }

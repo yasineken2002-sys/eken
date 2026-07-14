@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { runCronSafely, forEachOrgSafely } from '../../common/cron/cron-safety'
+import { allocatePlatformInvoiceNumber } from './platform-invoice-number'
 import { MailService } from '../../mail/mail.service'
 import { PdfService } from '../../invoices/pdf.service'
 import { PdfQueue } from '../../pdf-jobs/pdf.queue'
@@ -81,6 +82,32 @@ function escapeMailText(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+}
+
+/**
+ * Avgör om en P2002 kommer från PERIOD-idempotens-indexet
+ * (platform_invoice_unique_period på organizationId+type+planPeriodStart) — dvs
+ * en BENIGN race där två samtidiga körningar skapar fakturan för samma org+period
+ * (en vinner, den andra ska tyst hoppas över). All ANNAN P2002 — särskilt en
+ * kollision på invoiceNumber-unikheten (ett nummer-race) — får ALDRIG behandlas
+ * som benign: den ska larma, inte tyst maskeras som "fakturan fanns redan".
+ *
+ * err.meta.target-formen är EMPIRISKT verifierad mot dev-Postgres (Prisma
+ * 5.19): BÅDA indexen rapporteras som en KOLUMN-ARRAY —
+ * periodindexet ["organizationId","type","planPeriodStart"], invoiceNumber
+ * ["invoiceNumber"]. Sträng-grenen (indexnamn) behålls som defensiv fallback ifall
+ * Prisma/drivern skulle byta form. Default (okänd/saknad target) = INTE benign →
+ * fail-safe: hellre ett larm än en tyst försvunnen faktura. (Jämför
+ * isActiveUnitConflict i leases.service.ts som hanterar sträng-formen.)
+ */
+function isPeriodIdempotencyConflict(err: Prisma.PrismaClientKnownRequestError): boolean {
+  const target = (err.meta as { target?: unknown } | undefined)?.target
+  // Verkligt fall: kolumn-array som innehåller planPeriodStart (periodindexets
+  // särskiljande kolumn; invoiceNumber-arrayen saknar den → INTE benign).
+  if (Array.isArray(target)) return target.includes('planPeriodStart')
+  // Defensiv fallback: om target någon gång rapporteras som indexnamn-sträng.
+  if (typeof target === 'string') return target.includes('platform_invoice_unique_period')
+  return false
 }
 
 @Injectable()
@@ -220,27 +247,33 @@ export class PlatformInvoicesService {
     if (input.amountNetSek <= 0) throw new BadRequestException('Beloppet måste vara > 0')
 
     const amountGross = roundSek(input.amountNetSek * (1 + VAT_RATE / 100))
-    const invoiceNumber = await this.nextInvoiceNumber(input.type)
     const dueDate = input.dueDate
       ? new Date(input.dueDate)
       : new Date(Date.now() + PLATFORM_COMPANY.paymentTermsDays * 24 * 60 * 60 * 1000)
 
-    const row = await this.prisma.platformInvoice.create({
-      data: {
-        organizationId: input.organizationId,
-        invoiceNumber,
-        amount: amountGross,
-        status: 'DRAFT',
-        type: input.type,
-        ...(input.description ? { description: input.description } : {}),
-        dueDate,
-        ...(input.planPeriodStart ? { planPeriodStart: new Date(input.planPeriodStart) } : {}),
-        ...(input.planPeriodEnd ? { planPeriodEnd: new Date(input.planPeriodEnd) } : {}),
-        ...(input.notes ? { notes: input.notes } : {}),
-      },
-      include: {
-        organization: { select: { id: true, name: true, email: true, billingEmail: true } },
-      },
+    // Nummer-allokering + insert i EN transaktion: allocatePlatformInvoiceNumber
+    // gör en atomär increment-UPSERT som tar Postgres row-lock på scope-raden, så
+    // två samtidiga faktureringar aldrig delar ut samma nummer (tidigare
+    // count()+1 UTANFÖR någon tx → race → P2002 på invoiceNumber-unikheten).
+    const row = await this.prisma.$transaction(async (tx) => {
+      const invoiceNumber = await allocatePlatformInvoiceNumber(tx, input.type)
+      return tx.platformInvoice.create({
+        data: {
+          organizationId: input.organizationId,
+          invoiceNumber,
+          amount: amountGross,
+          status: 'DRAFT',
+          type: input.type,
+          ...(input.description ? { description: input.description } : {}),
+          dueDate,
+          ...(input.planPeriodStart ? { planPeriodStart: new Date(input.planPeriodStart) } : {}),
+          ...(input.planPeriodEnd ? { planPeriodEnd: new Date(input.planPeriodEnd) } : {}),
+          ...(input.notes ? { notes: input.notes } : {}),
+        },
+        include: {
+          organization: { select: { id: true, name: true, email: true, billingEmail: true } },
+        },
+      })
     })
     return this.map(row)
   }
@@ -659,16 +692,27 @@ export class PlatformInvoicesService {
           invoiceId = inv.id
           summary.created += 1
         } catch (err) {
-          // P2002 = det partiella unika indexet slog till (samtidig race skapade
-          // fakturan) → idempotent skip, BENIGNT: inget larm, ingen dubbelfaktura.
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          // BENIGN skip ENDAST om P2002 kommer från PERIOD-idempotens-indexet
+          // (samtidig körning skapade fakturan för samma org+period) → idempotent,
+          // inget larm, ingen dubbelfaktura. isPeriodIdempotencyConflict kollar
+          // err.meta.target så att en P2002 på invoiceNumber-unikheten (ett
+          // nummer-race) INTE tyst maskeras som "fakturan fanns redan". Med den
+          // atomiska nummer-sekvensen (allocatePlatformInvoiceNumber) är ett
+          // nummer-race i praktiken omöjligt, men disambigueringen är fail-safe:
+          // om en invoiceNumber-P2002 ändå sker faller den igenom till failed +
+          // larm nedan i stället för att en faktura tyst försvinner.
+          if (
+            err instanceof Prisma.PrismaClientKnownRequestError &&
+            err.code === 'P2002' &&
+            isPeriodIdempotencyConflict(err)
+          ) {
             summary.skipped += 1
             this.logger.log(`${org.name}: faktura för ${periodTag} finns redan (race), hoppar över`)
             return
           }
-          // Oväntat fel (idempotens-koll ELLER skapande): räkna som failed + UI-rad
-          // OCH kasta vidare så forEachOrgSafely isolerar org:en (nästa org körs)
-          // och larmar Sentry.
+          // Allt annat (inkl en icke-period-P2002 som invoiceNumber-kollisionen,
+          // eller ett fel i idempotens-kollen): räkna som failed + UI-rad OCH kasta
+          // vidare så forEachOrgSafely isolerar org:en (nästa org körs) + larmar.
           summary.failed += 1
           const msg = err instanceof Error ? err.message : String(err)
           summary.failures.push(`${org.name}: fakturering misslyckades — ${msg}`)
@@ -1178,30 +1222,6 @@ export class PlatformInvoicesService {
         country: row.organization.country,
       },
     }
-  }
-
-  /**
-   * Fakturanummer:
-   *   PLT-YYYY-NNNNN  (PLAN_FEE / OTHER)
-   *   CR-YYYYMM-NNNN  (AI_CREDITS — behåller äldre prefix för konsistens)
-   */
-  private async nextInvoiceNumber(type: PlatformInvoiceType): Promise<string> {
-    const now = new Date()
-    if (type === 'AI_CREDITS') {
-      const prefix = `CR-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
-      const last = await this.prisma.platformInvoice.findFirst({
-        where: { invoiceNumber: { startsWith: prefix } },
-        orderBy: { invoiceNumber: 'desc' },
-        select: { invoiceNumber: true },
-      })
-      const next = last ? Number(last.invoiceNumber.split('-').pop()) + 1 : 1
-      return `${prefix}-${String(next).padStart(4, '0')}`
-    }
-    const prefix = `PLT-${now.getFullYear()}`
-    const count = await this.prisma.platformInvoice.count({
-      where: { invoiceNumber: { startsWith: `${prefix}-` } },
-    })
-    return `${prefix}-${String(count + 1).padStart(5, '0')}`
   }
 
   private extractCredits(description: string | null): number {

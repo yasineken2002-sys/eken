@@ -152,15 +152,17 @@ describe('PlatformInvoicesService — B1c idempotens + isolering (pengar)', () =
     )
   })
 
-  it('P2002 (race på partiella unika indexet) → skipped, INGET larm (benignt)', async () => {
+  it('P2002 på PERIOD-indexet (race) → skipped, INGET larm (benignt)', async () => {
     const orgs: OrgRow[] = [{ id: 'org-A', name: 'A AB', planMonthlyFee: 390 }]
     const { svc, findFirst } = makeService(orgs)
     findFirst.mockResolvedValue(null) // app-koll missar racet...
     jest.spyOn(svc, 'create').mockRejectedValue(
-      // ...DB-indexet fångar det istället:
+      // ...periodindexet fångar det istället. meta.target = kolumn-arrayen
+      // (EMPIRISKT verifierad Prisma-form) → disambigueras som benign.
       new Prisma.PrismaClientKnownRequestError('unik krock', {
         code: 'P2002',
         clientVersion: 'test',
+        meta: { target: ['organizationId', 'type', 'planPeriodStart'] },
       }),
     )
 

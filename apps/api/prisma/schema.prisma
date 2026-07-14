@@ -1930,6 +1930,21 @@ model InvoiceNumberSequence {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 }
 
+// Löpnummerserie för PLATTFORMS-fakturor (Evenos SaaS-avgifter). Till skillnad
+// från InvoiceNumberSequence ovan är plattformsfakturanumret GLOBALT över hela
+// plattformen (Eveno är avsändaren, inte en enskild org) → ingen organizationId,
+// ingen org-relation (som CustomerNumberSequence). "scope" = numret-prefixet
+// (serien): "PLT-{år}" (PLAN_FEE/OTHER, nollställs per år) resp. "CR-{åååmm}"
+// (AI_CREDITS, per månad); en rad per scope. Atomär increment via UPSERT tar
+// Postgres row-lock på scope-raden inuti faktura-transaktionen → två samtidiga
+// plattformsfaktureringar kan ALDRIG dela ut samma nummer (ersätter den tidigare
+// count()+1-racen som kunde ge samma nummer → P2002 på invoiceNumber-unikheten).
+model PlatformInvoiceNumberSequence {
+  scope      String   @id
+  lastNumber Int      @default(0)
+  updatedAt  DateTime @updatedAt
+}
+
 // Riksbankens referensränta (räntelagen 1975:635 9 §), fastställd HALVÅRSVIS
 // (gäller 1 jan / 1 jul). Dröjsmålsräntan på obetald hyra är referensränta +
 // 8 procentenheter (räntelagen 6 §). Referensräntan får ALDRIG hårdkodas i

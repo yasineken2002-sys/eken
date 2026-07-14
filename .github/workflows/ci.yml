@@ -68,3 +68,25 @@ jobs:
 
       - name: Verify critical partial DB indexes survive migrations
         run: node apps/api/scripts/check-critical-indexes.mjs
+
+  invoice-number-guard:
+    name: Platform invoice-number source guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — säkerställer att
+      # PlatformInvoice.invoiceNumber ENBART allokeras via den delade, race-säkra
+      # allocatePlatformInvoiceNumber() (atomär sekvens i tx). Fångar en framtida
+      # kringgång (create/createMany/upsert utan allokerare, update som omnumrerar,
+      # rå SQL) innan racet återuppstår. Se T5 FAR-uppföljning.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (good passes, bypass variants caught)
+        run: node apps/api/scripts/check-platform-invoice-number-source.mjs --self-test
+
+      - name: Verify invoice-number is only sourced from the shared sequence
+        run: node apps/api/scripts/check-platform-invoice-number-source.mjs
