@@ -16,6 +16,19 @@ import { join } from 'node:path'
 const BACKUP_PREFIX = 'db-backups/'
 const DEFAULT_RETENTION_DAYS = 30
 
+// T5 Fas C — timeout-golv på backupens EGNA R2-klient (samma Tier 1-fynd som
+// storage.service, men denna väg laddar upp en HEL pg_dump som kan vara stor).
+// Utan golv defaultar @smithy/node-http-handler till 0 = OÄNDLIGT → en R2-
+// hängning låter backup-cronet hänga för alltid (tyst: en HÄNGNING ger inget
+// fel, så scheduler-Sentryn larmar aldrig). VIKTIGT: till skillnad från
+// storage.service sätter vi INTE requestTimeout här — för en PutObject kommer
+// response-headers först NÄR hela kroppen sänts, så ett requestTimeout skulle
+// kapa en LEGITIM stor backup-uppladdning. socketTimeout är rätt golv: Node-
+// socketns idle-timeout återstartas av upload-aktivitet → bryter bara en ÄKTA
+// frysning (inget flöde), aldrig ett aktivt (om än stort/långsamt) flöde.
+const R2_BACKUP_CONNECTION_TIMEOUT_MS = 5_000 // TCP+TLS-handshake
+const R2_BACKUP_SOCKET_TIMEOUT_MS = 60_000 // idle-stall (generöst; upload-aktivitet återstartar)
+
 // ── Rena hjälpare (testbara utan DB/R2) ─────────────────────────────────────────
 
 // Sorterbar UTC-nyckel: db-backups/eken-20260707T030512Z.dump
@@ -96,6 +109,14 @@ export class BackupService {
       region: 'auto',
       endpoint: `https://${accountId ?? ''}.r2.cloudflarestorage.com`,
       credentials: { accessKeyId: accessKeyId ?? '', secretAccessKey: secretAccessKey ?? '' },
+      // Timeout-golv (se konstanterna ovan). ENDAST connection + socket (idle) —
+      // INGET requestTimeout, för att inte kapa en stor backup-uppladdning.
+      // maxAttempts lämnas default (3): async cron, ingen latensbudget, mer
+      // resiliens är önskvärt (till skillnad från storage.service:s synkrona väg).
+      requestHandler: {
+        connectionTimeout: R2_BACKUP_CONNECTION_TIMEOUT_MS,
+        socketTimeout: R2_BACKUP_SOCKET_TIMEOUT_MS,
+      },
     })
   }
 
