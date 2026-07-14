@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { runCronSafely, forEachOrgSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { PLAN_LIMITS, USAGE_WARNING_THRESHOLDS, getMonthStart } from '@eken/shared'
@@ -32,11 +33,19 @@ export class AiUsageNotifierService {
   @Cron('0 9 * * *')
   async dailyCheck(): Promise<void> {
     this.logger.log('Kör daglig AI-användnings + trial-kontroll')
-    try {
-      await Promise.all([this.checkAiUsage(), this.checkTrialStatus()])
-    } catch (err) {
-      this.logger.error('dailyCheck misslyckades', err as Error)
-    }
+    // T5 B1c — runCronSafely ersätter det tysta try/catch: ett fel på
+    // outer-findMany (org-listan) i endera delkontrollen larmar nu via Sentry
+    // i stället för att bara logga. Per-org-isoleringen sker med forEachOrgSafely
+    // INNE i varje delkontroll — ett org-fel (t.ex. i SUSPENDED-flippen) stoppar
+    // inte de andra orgarna. Cron-only (ingen manuell "kör nu"-controller), så
+    // hela kroppen kan lindas direkt.
+    await runCronSafely(
+      'ai-usage-daily-check',
+      async () => {
+        await Promise.all([this.checkAiUsage(), this.checkTrialStatus()])
+      },
+      { logger: this.logger },
+    )
   }
 
   /**
@@ -61,65 +70,74 @@ export class AiUsageNotifierService {
     const monthKey = new Date().toISOString().slice(0, 7) // YYYY-MM
     const monthStart = getMonthStart()
 
-    for (const org of orgs) {
-      const plan = org.subscriptionPlan as SubscriptionPlan
-      const limit = PLAN_LIMITS[plan]
-      if (!limit) continue
+    // T5 B1c — per-org-isolering: ett org-fel (aiUsageLog.count eller
+    // notifications.create kastar) isoleras + larmar via Sentry, övriga orgar
+    // fortsätter. Mail-fel sväljs redan lokalt (.catch nedan) — bara oväntade
+    // kast når wrappern.
+    await forEachOrgSafely(
+      'ai-usage-check-usage',
+      orgs,
+      async (org) => {
+        const plan = org.subscriptionPlan as SubscriptionPlan
+        const limit = PLAN_LIMITS[plan]
+        if (!limit) return
 
-      const used = await this.prisma.aiUsageLog.count({
-        where: {
-          organizationId: org.id,
-          isAutomated: false,
-          createdAt: { gte: monthStart },
-        },
-      })
-      const percentage = limit.monthlyAiCalls > 0 ? (used / limit.monthlyAiCalls) * 100 : 0
+        const used = await this.prisma.aiUsageLog.count({
+          where: {
+            organizationId: org.id,
+            isAutomated: false,
+            createdAt: { gte: monthStart },
+          },
+        })
+        const percentage = limit.monthlyAiCalls > 0 ? (used / limit.monthlyAiCalls) * 100 : 0
 
-      for (const threshold of USAGE_WARNING_THRESHOLDS) {
-        if (percentage < threshold) continue
+        for (const threshold of USAGE_WARNING_THRESHOLDS) {
+          if (percentage < threshold) continue
 
-        const idempotencyKey = `ai-usage-warning-${org.id}-${monthKey}-${threshold}`
+          const idempotencyKey = `ai-usage-warning-${org.id}-${monthKey}-${threshold}`
 
-        // In-app notification till alla owners/admins
-        for (const user of org.users) {
-          await this.notifications.create(
-            org.id,
-            user.id,
-            'SYSTEM',
-            this.warningTitle(threshold),
-            this.warningMessage(threshold, used, limit.monthlyAiCalls, org.aiCreditsBalance),
-          )
-
-          await this.mail
-            .enqueue({
-              template: 'custom',
-              priority: 'high',
-              to: user.email,
-              subject: this.warningSubject(threshold),
-              props: {
-                preview: this.warningTitle(threshold),
-                tenantName: user.firstName,
-                organizationName: org.name,
-                whyReceived:
-                  'Du fick det här mejlet eftersom du är admin för organisationen i Eveno.',
-                bodyHtml: this.warningBody(
-                  user.firstName,
-                  threshold,
-                  used,
-                  limit.monthlyAiCalls,
-                  org.aiCreditsBalance,
-                ),
-              },
-              idempotencyKey: `${idempotencyKey}-${user.id}`,
-            })
-            .catch((err: unknown) =>
-              this.logger.warn(
-                `AI-varning ${threshold}% misslyckades för ${user.email}: ${err instanceof Error ? err.message : String(err)}`,
-              ),
+          // In-app notification till alla owners/admins
+          for (const user of org.users) {
+            await this.notifications.create(
+              org.id,
+              user.id,
+              'SYSTEM',
+              this.warningTitle(threshold),
+              this.warningMessage(threshold, used, limit.monthlyAiCalls, org.aiCreditsBalance),
             )
+
+            await this.mail
+              .enqueue({
+                template: 'custom',
+                priority: 'high',
+                to: user.email,
+                subject: this.warningSubject(threshold),
+                props: {
+                  preview: this.warningTitle(threshold),
+                  tenantName: user.firstName,
+                  organizationName: org.name,
+                  whyReceived:
+                    'Du fick det här mejlet eftersom du är admin för organisationen i Eveno.',
+                  bodyHtml: this.warningBody(
+                    user.firstName,
+                    threshold,
+                    used,
+                    limit.monthlyAiCalls,
+                    org.aiCreditsBalance,
+                  ),
+                },
+                idempotencyKey: `${idempotencyKey}-${user.id}`,
+              })
+              .catch((err: unknown) =>
+                this.logger.warn(
+                  `AI-varning ${threshold}% misslyckades för ${user.email}: ${err instanceof Error ? err.message : String(err)}`,
+                ),
+              )
+          }
         }
-      }
-    }
+      },
+      { logger: this.logger, orgIdOf: (o) => o.id },
+    )
   }
 
   /**
@@ -148,34 +166,42 @@ export class AiUsageNotifierService {
     const now = new Date()
     const day = (date: Date) => Math.floor((now.getTime() - date.getTime()) / (24 * 60 * 60 * 1000))
 
-    for (const org of orgs) {
-      if (org.status === 'TRIAL' && org.trialEndsAt) {
-        const daysIn = day(org.planStartedAt)
-        const daysLeft = Math.ceil(
-          (org.trialEndsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000),
-        )
+    // T5 B1c — per-org-isolering: ett org-fel i SUSPENDED-flippen
+    // (organization.update kastar) isoleras + larmar via Sentry, övriga orgars
+    // trial-hantering avbryts inte. sendTrialMail sväljer redan sina egna fel.
+    await forEachOrgSafely(
+      'ai-usage-check-trial',
+      orgs,
+      async (org) => {
+        if (org.status === 'TRIAL' && org.trialEndsAt) {
+          const daysIn = day(org.planStartedAt)
+          const daysLeft = Math.ceil(
+            (org.trialEndsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000),
+          )
 
-        if (daysIn === 14) await this.sendTrialMail(org, 'day14', daysLeft)
-        if (daysIn === 25) await this.sendTrialMail(org, 'day25', daysLeft)
-        if (daysIn === 29) await this.sendTrialMail(org, 'day29', daysLeft)
+          if (daysIn === 14) await this.sendTrialMail(org, 'day14', daysLeft)
+          if (daysIn === 25) await this.sendTrialMail(org, 'day25', daysLeft)
+          if (daysIn === 29) await this.sendTrialMail(org, 'day29', daysLeft)
 
-        // Trial utgången → SUSPENDED
-        if (org.trialEndsAt < now) {
-          await this.prisma.organization.update({
-            where: { id: org.id },
-            data: { status: 'SUSPENDED', suspendedAt: now },
-          })
-          this.logger.log(`Org ${org.id} (${org.name}) trial utgången — satt till SUSPENDED`)
+          // Trial utgången → SUSPENDED
+          if (org.trialEndsAt < now) {
+            await this.prisma.organization.update({
+              where: { id: org.id },
+              data: { status: 'SUSPENDED', suspendedAt: now },
+            })
+            this.logger.log(`Org ${org.id} (${org.name}) trial utgången — satt till SUSPENDED`)
+          }
         }
-      }
 
-      if (org.status === 'SUSPENDED' && org.suspendedAt) {
-        const daysSuspended = day(org.suspendedAt)
-        if (daysSuspended === 60) await this.sendTrialMail(org, 'pre-deletion-warning', 0)
-        // Dag 120: slutgiltig radering hanteras av separat (medveten manuell)
-        // process — vi vill inte radera kunddata utan bekräftelse.
-      }
-    }
+        if (org.status === 'SUSPENDED' && org.suspendedAt) {
+          const daysSuspended = day(org.suspendedAt)
+          if (daysSuspended === 60) await this.sendTrialMail(org, 'pre-deletion-warning', 0)
+          // Dag 120: slutgiltig radering hanteras av separat (medveten manuell)
+          // process — vi vill inte radera kunddata utan bekräftelse.
+        }
+      },
+      { logger: this.logger, orgIdOf: (o) => o.id },
+    )
   }
 
   private async sendTrialMail(

@@ -2,7 +2,9 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { Prisma } from '@prisma/client'
 import type { LeaseStatus, LeaseType, TenancyRegime, UnitType } from '@prisma/client'
 import { Cron } from '@nestjs/schedule'
+import * as Sentry from '@sentry/nestjs'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { runCronSafely } from '../common/cron/cron-safety'
 import { NotificationsService } from '../notifications/notifications.service'
 import { DepositsService } from '../deposits/deposits.service'
 import { RentIncreasesService } from '../rent-increases/rent-increases.service'
@@ -1268,34 +1270,87 @@ export class LeasesService {
   //   c) avsluta uppsagda avtal som nått slutdatum
   @Cron('0 6 * * *')
   async processLifecycle(): Promise<void> {
-    const today = startOfDay(new Date())
+    // T5 B1c — linda hela kroppen: en transient DB-blipp på autoRenewens första
+    // findMany larmar nu via Sentry i stället för att dö tyst. Cron-only (ingen
+    // manuell controller-väg), så kroppen kan lindas direkt.
+    await runCronSafely(
+      'leases-process-lifecycle',
+      async () => {
+        const today = startOfDay(new Date())
 
-    // T1.3 race-fix: auto-förnyelsen (inkl. VOID av väntande höjningar) körs
-    // HELT FÖRE applyDueIncreases. I samma Promise.all serialiserar READ
-    // COMMITTED dem INTE: applyDueIncreases kunde läsa en ACCEPTED höjning
-    // vars avtal samtidigt flippades EXPIRED, skriva monthlyRent på det döda
-    // avtalet och flippa APPLIED → höjningen konsumerades tyst utan att nya
-    // avtalet någonsin fick den. Daglig 06:00-cron — ingen latensbudget.
-    const renewed = await this.autoRenewExpiredFixedTerm(today)
+        // T1.3 race-fix: auto-förnyelsen (inkl. VOID av väntande höjningar) körs
+        // HELT FÖRE applyDueIncreases. I samma Promise.all serialiserar READ
+        // COMMITTED dem INTE: applyDueIncreases kunde läsa en ACCEPTED höjning
+        // vars avtal samtidigt flippades EXPIRED, skriva monthlyRent på det döda
+        // avtalet och flippa APPLIED → höjningen konsumerades tyst utan att nya
+        // avtalet någonsin fick den. Daglig 06:00-cron — ingen latensbudget.
+        //
+        // Auto-förnyelsen är en HÅRD FÖRUTSÄTTNING för de fyra delsystemen, inte
+        // ett isolerbart delsystem: kastar den (bara om dess findMany failar —
+        // per-lease-loopen är redan internt isolerad) avbryts cronet av
+        // runCronSafely → Sentry, och vi kör INTE applyDueIncreases på ett
+        // icke-förnyat bestånd (annars kunde en höjning appliceras på ett avtal
+        // som borde ha förnyats/VOIDats).
+        const renewed = await this.autoRenewExpiredFixedTerm(today)
 
-    const [reminders, terminated, depositReminders, rentApplied] = await Promise.all([
-      this.sendExpiryReminders(today),
-      this.terminateExpiredNoticeLeases(today),
-      this.deposits.remindStaleRefundPending(),
-      this.rentIncreases.applyDueIncreases(today),
-    ])
+        // T5 B1c — de fyra delsystemen är inbördes oberoende. allSettled i
+        // stället för Promise.all: ett delsystems fel isoleras och tar inte ner
+        // de tre andra. Varje fel LARMAR med egen Sentry-tagg (subsystem, aldrig
+        // tyst) och räknas som '—' i loggraden; de lyckade körs klart. T1.3-
+        // ordningen bevaras: alla fyra startar först EFTER att autoRenew klarat.
+        const subsystems: Array<{ tag: string; run: () => Promise<number> }> = [
+          { tag: 'expiry-reminders', run: () => this.sendExpiryReminders(today) },
+          { tag: 'terminate-expired', run: () => this.terminateExpiredNoticeLeases(today) },
+          { tag: 'deposit-refund-reminders', run: () => this.deposits.remindStaleRefundPending() },
+          { tag: 'rent-increases-apply', run: () => this.rentIncreases.applyDueIncreases(today) },
+        ]
+        const settled = await Promise.allSettled(subsystems.map((s) => s.run()))
+        const [reminders, terminated, depositReminders, rentApplied] = settled.map((r, i) =>
+          // i indexerar alltid en giltig post (samma längd som subsystems).
+          this.reportLifecycleSubsystem(subsystems[i]!.tag, r),
+        )
 
-    // #73 catch-up (EFTER termineringssvepet ovan): läk PAID-depositioner på
-    // TERMINATED-kontrakt vars inline-flaggning i terminateExpiredNoticeLeases
-    // kan ha felat (transient). Idempotent självläkning.
-    const refundSwept = await this.deposits.sweepTerminatedLeasesForRefundPending().catch((err) => {
-      this.logger.error(`[Leases] Deposit refund-sweep failed: ${String(err)}`)
-      return 0
-    })
+        // #73 catch-up (EFTER termineringssvepet ovan): läk PAID-depositioner på
+        // TERMINATED-kontrakt vars inline-flaggning i terminateExpiredNoticeLeases
+        // kan ha felat (transient). Idempotent självläkning; egen .catch sedan
+        // tidigare — körs även om terminate-expired ovan larmade (det är just
+        // dess roll som säkerhetsnät).
+        const refundSwept = await this.deposits
+          .sweepTerminatedLeasesForRefundPending()
+          .catch((err) => {
+            this.logger.error(`[Leases] Deposit refund-sweep failed: ${String(err)}`)
+            return 0
+          })
 
-    this.logger.log(
-      `[Leases] Lifecycle done: ${renewed} renewed, ${reminders} reminders, ${terminated} terminated, ${depositReminders} deposit reminders, ${refundSwept} refund-sweep, ${rentApplied} rent increases applied`,
+        this.logger.log(
+          `[Leases] Lifecycle done: ${renewed} renewed, ${reminders ?? '—'} reminders, ${terminated ?? '—'} terminated, ${depositReminders ?? '—'} deposit reminders, ${refundSwept} refund-sweep, ${rentApplied ?? '—'} rent increases applied`,
+        )
+      },
+      { logger: this.logger },
     )
+  }
+
+  // T5 B1c — larmar ett enskilt lifecycle-delsystems fel (allSettled-rejected)
+  // och isolerar det: full detalj ENBART i lokal logg, ett SKRUBBAT syntetiskt
+  // fel + egen subsystem-tagg till Sentry (speglar cron-safety-mönstret). En
+  // rejected returnerar null → loggraden visar '—' för det delsystemet.
+  private reportLifecycleSubsystem(
+    tag: string,
+    result: PromiseSettledResult<number>,
+  ): number | null {
+    if (result.status === 'fulfilled') return result.value
+    const err = result.reason
+    this.logger.error(
+      `[Leases] Lifecycle-delsystem '${tag}' misslyckades: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      err instanceof Error ? err.stack : undefined,
+    )
+    Sentry.captureException(
+      new Error(`Cron leases-process-lifecycle/${tag} misslyckades (se serverlogg för detalj)`),
+      { tags: { cron: 'leases-process-lifecycle', subsystem: tag } },
+    )
+    return null
   }
 
   // a) Hitta FIXED_TERM ACTIVE där endDate < idag och terminatedAt IS NULL,
