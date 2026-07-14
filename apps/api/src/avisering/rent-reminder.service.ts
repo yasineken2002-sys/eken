@@ -8,6 +8,7 @@ import {
 import { Cron } from '@nestjs/schedule'
 import { Prisma, RentNoticeType, type RentNoticeEventType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
@@ -99,102 +100,118 @@ export class RentReminderService {
   async escalateOverdueRentNotices(): Promise<ReminderSummary> {
     const summary: ReminderSummary = { reminded: 0, skipped: 0, errors: 0, pausedStale: 0 }
 
-    const candidates = await this.prisma.rentNotice.findMany({
-      where: {
-        status: 'OVERDUE',
-        type: RentNoticeType.RENT,
-        collectionStage: 'NONE',
-        // T1.4 / #44: efterdebiterade avier EXKLUDERAS från kravtrappans
-        // auto-eskalering (JB 12 kap 42 §, oskälighet). En hyresgäst får aldrig
-        // påminnelse/ränta/inkasso automatiskt för hyresvärdens sena
-        // registrering — dessa släpps in i normalflödet först vid manuell
-        // granskning (framtida PR). Enda auto-ingången till trappan är detta
-        // urval → en filter här isolerar hela trappan (ränta kristalliseras bara
-        // härifrån).
-        isBackfill: false,
-        organization: { remindersEnabled: true },
-      },
-      include: { organization: true, tenant: { select: SAFE_TENANT_SELECT } },
-    })
-
-    // PR 4 (B) — pausa (och larma) eskaleringen för org vars betalningsdata är
-    // inaktuell: påminnelseavgiften FLYTTAR FRAM kravet och tar betalt, så den får
-    // inte rulla mot en hyresgäst som kan ha betalat utan att avstämningen vet det.
-    const staleOrgs = await this.freshness.evaluateAndAlert(candidates.map((n) => n.organizationId))
-
-    for (const notice of candidates) {
-      try {
-        if (staleOrgs.has(notice.organizationId)) {
-          summary.pausedStale++
-          continue
-        }
-        const daysOverdue = this.daysSince(notice.dueDate)
-        if (daysOverdue < notice.organization.rentReminderDay) {
-          summary.skipped++
-          continue
-        }
-        // INV-A (PR 3a): eskalera bara om det finns en OCR-reglerbar restskuld
-        // (hyra/förbrukning) att påminna om. ocrOutstanding EXKLUDERAR ränta — ren
-        // restränta driver aldrig kravtrappans framdrift (D1). En fullt reglerad
-        // avi (ocrOutstanding ≤ 0) eskalerar ALDRIG. Läses från den allokerings-
-        // derivade sanningskällan, inte status/paidAmount-cache. Ren läsning.
-        const debt = await this.rentDebt.outstanding(notice.id, notice.organizationId)
-        if (debt.ocrOutstanding <= 0) {
-          summary.skipped++
-          continue
-        }
-        // Ingen leveransbar adress → ta ALDRIG ut avgiften (en påminnelseavgift
-        // förutsätter att en påminnelse kan skickas). Avin förblir NONE och
-        // omprövas nästa dygn.
-        if (!notice.tenant.email) {
-          summary.skipped++
-          continue
-        }
-
-        const fee = Number(notice.organization.reminderFeeSek)
-        const escalated = await this.escalateNoticeToReminded(
-          notice.id,
-          notice.organizationId,
-          daysOverdue,
-          fee,
-        )
-        if (!escalated) {
-          summary.skipped++
-          continue
-        }
-
-        // Kristallisera upplupen dröjsmålsränta t.o.m. påminnelsedagen (PR 3).
-        // Egen atomisk transaktion; ett räntefel ska INTE fälla påminnelsen —
-        // avgiften är redan tagen och räntan fångas vid nästa kristalliserings-
-        // punkt (inkasso-ready, PR 4) via delta-beräkningen.
-        try {
-          await this.rentInterest.crystallizeInterest(notice.id, notice.organizationId, new Date())
-        } catch (err) {
-          this.logger.error(
-            `Räntekristallisering misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
-          )
-        }
-
-        // Avgift + kravsteg är nu bokförda atomiskt. Köa påminnelse-PDF:en — om
-        // utskicket fallerar är avgiften ändå korrekt tagen (samma mönster som
-        // faktura-/avi-flödet); leveransstatus loggas av jobbet.
-        await this.pdfQueue.enqueue({
-          kind: 'avisering-reminder',
-          organizationId: notice.organizationId,
-          noticeId: notice.id,
+    // T5 B1b — linda hela cron-kroppen: en DB-blipp på findMany/freshness larmar
+    // nu via Sentry istället för tyst död. Per-avi-isoleringen (try/catch nedan),
+    // pausStale-grinden och summeringen är OFÖRÄNDRADE — summary muteras in-place
+    // och returneras nedan.
+    await runCronSafely(
+      'rent-reminder-escalate-overdue',
+      async () => {
+        const candidates = await this.prisma.rentNotice.findMany({
+          where: {
+            status: 'OVERDUE',
+            type: RentNoticeType.RENT,
+            collectionStage: 'NONE',
+            // T1.4 / #44: efterdebiterade avier EXKLUDERAS från kravtrappans
+            // auto-eskalering (JB 12 kap 42 §, oskälighet). En hyresgäst får aldrig
+            // påminnelse/ränta/inkasso automatiskt för hyresvärdens sena
+            // registrering — dessa släpps in i normalflödet först vid manuell
+            // granskning (framtida PR). Enda auto-ingången till trappan är detta
+            // urval → en filter här isolerar hela trappan (ränta kristalliseras bara
+            // härifrån).
+            isBackfill: false,
+            organization: { remindersEnabled: true },
+          },
+          include: { organization: true, tenant: { select: SAFE_TENANT_SELECT } },
         })
-        summary.reminded++
-      } catch (err) {
-        this.logger.error(
-          `Påminnelse misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
-        )
-        summary.errors++
-      }
-    }
 
-    this.logger.log(
-      `Hyrespåminnelser: ${summary.reminded} skickade, ${summary.skipped} hoppades över, ` +
-        `${summary.pausedStale} pausade (inaktuell betalningsdata), ${summary.errors} fel`,
+        // PR 4 (B) — pausa (och larma) eskaleringen för org vars betalningsdata är
+        // inaktuell: påminnelseavgiften FLYTTAR FRAM kravet och tar betalt, så den får
+        // inte rulla mot en hyresgäst som kan ha betalat utan att avstämningen vet det.
+        const staleOrgs = await this.freshness.evaluateAndAlert(
+          candidates.map((n) => n.organizationId),
+        )
+
+        for (const notice of candidates) {
+          try {
+            if (staleOrgs.has(notice.organizationId)) {
+              summary.pausedStale++
+              continue
+            }
+            const daysOverdue = this.daysSince(notice.dueDate)
+            if (daysOverdue < notice.organization.rentReminderDay) {
+              summary.skipped++
+              continue
+            }
+            // INV-A (PR 3a): eskalera bara om det finns en OCR-reglerbar restskuld
+            // (hyra/förbrukning) att påminna om. ocrOutstanding EXKLUDERAR ränta — ren
+            // restränta driver aldrig kravtrappans framdrift (D1). En fullt reglerad
+            // avi (ocrOutstanding ≤ 0) eskalerar ALDRIG. Läses från den allokerings-
+            // derivade sanningskällan, inte status/paidAmount-cache. Ren läsning.
+            const debt = await this.rentDebt.outstanding(notice.id, notice.organizationId)
+            if (debt.ocrOutstanding <= 0) {
+              summary.skipped++
+              continue
+            }
+            // Ingen leveransbar adress → ta ALDRIG ut avgiften (en påminnelseavgift
+            // förutsätter att en påminnelse kan skickas). Avin förblir NONE och
+            // omprövas nästa dygn.
+            if (!notice.tenant.email) {
+              summary.skipped++
+              continue
+            }
+
+            const fee = Number(notice.organization.reminderFeeSek)
+            const escalated = await this.escalateNoticeToReminded(
+              notice.id,
+              notice.organizationId,
+              daysOverdue,
+              fee,
+            )
+            if (!escalated) {
+              summary.skipped++
+              continue
+            }
+
+            // Kristallisera upplupen dröjsmålsränta t.o.m. påminnelsedagen (PR 3).
+            // Egen atomisk transaktion; ett räntefel ska INTE fälla påminnelsen —
+            // avgiften är redan tagen och räntan fångas vid nästa kristalliserings-
+            // punkt (inkasso-ready, PR 4) via delta-beräkningen.
+            try {
+              await this.rentInterest.crystallizeInterest(
+                notice.id,
+                notice.organizationId,
+                new Date(),
+              )
+            } catch (err) {
+              this.logger.error(
+                `Räntekristallisering misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
+              )
+            }
+
+            // Avgift + kravsteg är nu bokförda atomiskt. Köa påminnelse-PDF:en — om
+            // utskicket fallerar är avgiften ändå korrekt tagen (samma mönster som
+            // faktura-/avi-flödet); leveransstatus loggas av jobbet.
+            await this.pdfQueue.enqueue({
+              kind: 'avisering-reminder',
+              organizationId: notice.organizationId,
+              noticeId: notice.id,
+            })
+            summary.reminded++
+          } catch (err) {
+            this.logger.error(
+              `Påminnelse misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
+            )
+            summary.errors++
+          }
+        }
+
+        this.logger.log(
+          `Hyrespåminnelser: ${summary.reminded} skickade, ${summary.skipped} hoppades över, ` +
+            `${summary.pausedStale} pausade (inaktuell betalningsdata), ${summary.errors} fel`,
+        )
+      },
+      { logger: this.logger },
     )
     return summary
   }
@@ -302,57 +319,71 @@ export class RentReminderService {
       pausedStale: 0,
     }
 
-    const candidates = await this.prisma.rentNotice.findMany({
-      where: {
-        status: 'OVERDUE',
-        type: RentNoticeType.RENT,
-        collectionStage: 'REMINDED',
-        organization: { remindersEnabled: true },
-      },
-      include: {
-        organization: { select: { rentReminderDay: true, rentInkassoDaysAfterReminder: true } },
-      },
-    })
+    // T5 B1b — linda hela cron-kroppen: en DB-blipp på findMany/freshness larmar
+    // nu via Sentry istället för tyst död. Per-avi-isoleringen (try/catch nedan,
+    // inkl. ConflictException=blocked-grinden) och summeringen är OFÖRÄNDRADE —
+    // summary muteras in-place och returneras nedan.
+    await runCronSafely(
+      'rent-reminder-escalate-inkasso-ready',
+      async () => {
+        const candidates = await this.prisma.rentNotice.findMany({
+          where: {
+            status: 'OVERDUE',
+            type: RentNoticeType.RENT,
+            collectionStage: 'REMINDED',
+            organization: { remindersEnabled: true },
+          },
+          include: {
+            organization: {
+              select: { rentReminderDay: true, rentInkassoDaysAfterReminder: true },
+            },
+          },
+        })
 
-    // PR 4 (B) — inkasso-redo FLYTTAR FRAM inkassoärendet (och slutkristalliserar
-    // ränta). Pausa + larma för org med inaktuell betalningsdata.
-    const staleOrgs = await this.freshness.evaluateAndAlert(candidates.map((n) => n.organizationId))
-
-    for (const notice of candidates) {
-      try {
-        if (staleOrgs.has(notice.organizationId)) {
-          summary.pausedStale++
-          continue
-        }
-        const daysOverdue = this.daysSince(notice.dueDate)
-        const threshold =
-          notice.organization.rentReminderDay + notice.organization.rentInkassoDaysAfterReminder
-        if (daysOverdue < threshold) {
-          summary.skipped++
-          continue
-        }
-
-        const res = await this.escalateNoticeToInkassoReady(notice.id, notice.organizationId)
-        if (res.flipped) summary.ready++
-        else summary.skipped++
-      } catch (err) {
-        // INV-B-grinden vägrade — ofullständigt underlag. Inte ett systemfel;
-        // avin omprövas nästa dygn. Avvikelsen är redan loggad i avins egen logg.
-        if (err instanceof ConflictException) {
-          summary.blocked++
-          this.logger.warn(`Inkasso-redo blockerad för avi ${notice.id}: ${err.message}`)
-          continue
-        }
-        summary.errors++
-        this.logger.error(
-          `Inkasso-redo misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
+        // PR 4 (B) — inkasso-redo FLYTTAR FRAM inkassoärendet (och slutkristalliserar
+        // ränta). Pausa + larma för org med inaktuell betalningsdata.
+        const staleOrgs = await this.freshness.evaluateAndAlert(
+          candidates.map((n) => n.organizationId),
         )
-      }
-    }
 
-    this.logger.log(
-      `Inkasso-redo: ${summary.ready} klara, ${summary.blocked} blockerade, ${summary.skipped} hoppade över, ` +
-        `${summary.pausedStale} pausade (inaktuell betalningsdata), ${summary.errors} fel`,
+        for (const notice of candidates) {
+          try {
+            if (staleOrgs.has(notice.organizationId)) {
+              summary.pausedStale++
+              continue
+            }
+            const daysOverdue = this.daysSince(notice.dueDate)
+            const threshold =
+              notice.organization.rentReminderDay + notice.organization.rentInkassoDaysAfterReminder
+            if (daysOverdue < threshold) {
+              summary.skipped++
+              continue
+            }
+
+            const res = await this.escalateNoticeToInkassoReady(notice.id, notice.organizationId)
+            if (res.flipped) summary.ready++
+            else summary.skipped++
+          } catch (err) {
+            // INV-B-grinden vägrade — ofullständigt underlag. Inte ett systemfel;
+            // avin omprövas nästa dygn. Avvikelsen är redan loggad i avins egen logg.
+            if (err instanceof ConflictException) {
+              summary.blocked++
+              this.logger.warn(`Inkasso-redo blockerad för avi ${notice.id}: ${err.message}`)
+              continue
+            }
+            summary.errors++
+            this.logger.error(
+              `Inkasso-redo misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
+            )
+          }
+        }
+
+        this.logger.log(
+          `Inkasso-redo: ${summary.ready} klara, ${summary.blocked} blockerade, ${summary.skipped} hoppade över, ` +
+            `${summary.pausedStale} pausade (inaktuell betalningsdata), ${summary.errors} fel`,
+        )
+      },
+      { logger: this.logger },
     )
     return summary
   }

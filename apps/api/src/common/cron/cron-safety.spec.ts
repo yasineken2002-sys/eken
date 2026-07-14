@@ -55,6 +55,37 @@ describe('runCronSafely', () => {
       expect.objectContaining({ tags: expect.objectContaining({ cron: 'rent-reminder' }) }),
     )
   })
+
+  it('sätter INGEN Sentry-nivå som default men höjer till fatal när level anges (månads-cron)', async () => {
+    const logger = fakeLogger()
+
+    // Default → ingen level (Sentrys standard = error).
+    await runCronSafely(
+      'daily-cron',
+      async () => {
+        throw new Error('x')
+      },
+      { logger },
+    )
+    expect(mockedCapture.mock.calls[0][1]).not.toHaveProperty('level')
+
+    mockedCapture.mockClear()
+
+    // Månads-cron → fatal.
+    await runCronSafely(
+      'avisering-generate-monthly',
+      async () => {
+        throw new Error('y')
+      },
+      { logger, level: 'fatal' },
+    )
+    expect(mockedCapture.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        level: 'fatal',
+        tags: expect.objectContaining({ cron: 'avisering-generate-monthly' }),
+      }),
+    )
+  })
 })
 
 describe('forEachOrgSafely', () => {

@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule'
 import { Prisma } from '@prisma/client'
 import type { PaymentReminderType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
 import { NotificationsService } from './notifications.service'
 import { AccountingService } from '../accounting/accounting.service'
@@ -45,68 +46,82 @@ export class PaymentReminderService {
       skipped: 0,
     }
 
-    const overdue = await this.prisma.invoice.findMany({
-      where: {
-        status: 'OVERDUE',
-        remindersPaused: false,
-      },
-      include: {
-        tenant: true,
-        customer: true,
-        organization: true,
-        paymentReminders: true,
-      },
-    })
+    // T5 B1b — linda hela cron-kroppen: en DB-blipp på findMany larmar nu via
+    // Sentry istället för tyst död. Per-invoice-isoleringen (try/catch nedan) och
+    // summeringen är OFÖRÄNDRADE — summary muteras in-place och returneras nedan.
+    await runCronSafely(
+      'payment-reminder-process-overdue',
+      async () => {
+        const overdue = await this.prisma.invoice.findMany({
+          where: {
+            status: 'OVERDUE',
+            remindersPaused: false,
+          },
+          include: {
+            tenant: true,
+            customer: true,
+            organization: true,
+            paymentReminders: true,
+          },
+        })
 
-    for (const invoice of overdue) {
-      try {
-        const org = invoice.organization
-        if (!org.remindersEnabled) {
-          summary.skipped++
-          continue
+        for (const invoice of overdue) {
+          try {
+            const org = invoice.organization
+            if (!org.remindersEnabled) {
+              summary.skipped++
+              continue
+            }
+
+            const party = invoice.tenant ?? invoice.customer
+            if (!party?.email) {
+              summary.skipped++
+              continue
+            }
+
+            const daysOverdue = this.daysSince(invoice.dueDate)
+            const sentTypes = new Set<PaymentReminderType>(
+              invoice.paymentReminders.map((r) => r.type),
+            )
+
+            // ── Dag 30+ → markera redo för inkasso ───────────────────────────
+            if (
+              daysOverdue >= org.reminderCollectionDay &&
+              !sentTypes.has('READY_FOR_COLLECTION')
+            ) {
+              await this.markReadyForCollection(invoice.id, org.id, daysOverdue)
+              summary.readyForCollection++
+              continue
+            }
+
+            // ── Dag formal+ → formell påminnelse + 60 kr avgift ──────────────
+            if (daysOverdue >= org.reminderFormalDay && !sentTypes.has('REMINDER_FORMAL')) {
+              await this.sendFormalReminder(invoice, party.email, daysOverdue)
+              summary.formalSent++
+              continue
+            }
+
+            // ── Dag 1-7 → vänlig påminnelse, ingen avgift ────────────────────
+            if (daysOverdue >= 1 && daysOverdue <= 7 && !sentTypes.has('REMINDER_FRIENDLY')) {
+              await this.sendFriendlyReminder(invoice, party.email, daysOverdue)
+              summary.friendlySent++
+              continue
+            }
+
+            summary.skipped++
+          } catch (err) {
+            this.logger.error(
+              `Reminder failed for invoice ${invoice.id}: ${err instanceof Error ? err.message : String(err)}`,
+            )
+            summary.errors++
+          }
         }
 
-        const party = invoice.tenant ?? invoice.customer
-        if (!party?.email) {
-          summary.skipped++
-          continue
-        }
-
-        const daysOverdue = this.daysSince(invoice.dueDate)
-        const sentTypes = new Set<PaymentReminderType>(invoice.paymentReminders.map((r) => r.type))
-
-        // ── Dag 30+ → markera redo för inkasso ───────────────────────────
-        if (daysOverdue >= org.reminderCollectionDay && !sentTypes.has('READY_FOR_COLLECTION')) {
-          await this.markReadyForCollection(invoice.id, org.id, daysOverdue)
-          summary.readyForCollection++
-          continue
-        }
-
-        // ── Dag formal+ → formell påminnelse + 60 kr avgift ──────────────
-        if (daysOverdue >= org.reminderFormalDay && !sentTypes.has('REMINDER_FORMAL')) {
-          await this.sendFormalReminder(invoice, party.email, daysOverdue)
-          summary.formalSent++
-          continue
-        }
-
-        // ── Dag 1-7 → vänlig påminnelse, ingen avgift ────────────────────
-        if (daysOverdue >= 1 && daysOverdue <= 7 && !sentTypes.has('REMINDER_FRIENDLY')) {
-          await this.sendFriendlyReminder(invoice, party.email, daysOverdue)
-          summary.friendlySent++
-          continue
-        }
-
-        summary.skipped++
-      } catch (err) {
-        this.logger.error(
-          `Reminder failed for invoice ${invoice.id}: ${err instanceof Error ? err.message : String(err)}`,
+        this.logger.log(
+          `Påminnelser: ${summary.friendlySent} vänliga, ${summary.formalSent} formella, ${summary.readyForCollection} markerade redo för inkasso, ${summary.errors} fel, ${summary.skipped} hoppades över`,
         )
-        summary.errors++
-      }
-    }
-
-    this.logger.log(
-      `Påminnelser: ${summary.friendlySent} vänliga, ${summary.formalSent} formella, ${summary.readyForCollection} markerade redo för inkasso, ${summary.errors} fel, ${summary.skipped} hoppades över`,
+      },
+      { logger: this.logger },
     )
     return summary
   }

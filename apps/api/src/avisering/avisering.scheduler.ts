@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { runCronSafely } from '../common/cron/cron-safety'
 import { AviseringService } from './avisering.service'
 
 /**
@@ -32,7 +33,18 @@ export class AviseringScheduler {
     const year = now.getFullYear()
     const month = now.getMonth() + 1
 
-    await this.runForMonth(year, month)
+    // T5 B1b — MÅNADS-cadence: ett fel (t.ex. DB-blipp på org-findMany i
+    // runForMonth) = hela månadens avier uteblir, nästa cron-försök först om
+    // ~30 dagar. Därför HÖGRE larmnivå ('fatal') än de dagliga cron:en. Cronet
+    // är självläkande i teorin — runForMonth kan köras om manuellt (admin/AI via
+    // avisering.controller) eller täckas av T1.4-backfill — MEN någon måste
+    // larmas inom dagar; fatal säkerställer det. Endast cron-vägen lindas;
+    // runForMonth lämnas orörd så det manuella anropet fortfarande kastar till
+    // sin anropare (UI ska se felet direkt).
+    await runCronSafely('avisering-generate-monthly', () => this.runForMonth(year, month), {
+      logger: this.logger,
+      level: 'fatal',
+    })
   }
 
   // Manuell trigger för admin / test. Körs av AI-tools eller "kör cron nu"-

@@ -13,7 +13,11 @@
 // storage.service (AWS SDK, ESM) som jest inte kan parsa. Stubbas — samma
 // mönster som övriga specar som transitivt rör storage. (Steg 3, PR 3a.)
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
+// T5 B1b — mocka Sentry för att bevisa att cronet nu LARMAR vid ett fel på
+// första query istället för att dö tyst (samma mönster som cron-safety.spec).
+jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }))
 
+import { captureException } from '@sentry/nestjs'
 import { NotificationsService } from './notifications.service'
 
 function makeService() {
@@ -62,5 +66,26 @@ describe('Inkasso PR 1 — markOverdueRentNotices', () => {
     const arg = prisma.rentNotice.updateMany.mock.calls[0]![0]
     // En enda statusvärde i filtret, och det är SENT.
     expect(arg.where.status).toBe('SENT')
+  })
+
+  // T5 B1b — bevisar RESILIENS-vinsten: ett fel på första query dör INTE tyst
+  // längre, det larmar via Sentry (och sväljs så @nestjs/schedule inte kraschar).
+  it('larmar via Sentry vid DB-blipp på första query istället för tyst död', async () => {
+    ;(captureException as jest.Mock).mockClear()
+    const { service, prisma } = makeService()
+    prisma.rentNotice.updateMany.mockRejectedValueOnce(new Error('transient DB-blipp'))
+
+    // Sväljs (resolvar, kastar inte) — @nestjs/schedule kraschar inte.
+    await expect(service.markOverdueRentNotices()).resolves.toBeUndefined()
+
+    // MEN felet larmas nu (skrubbat meddelande + cron-tagg).
+    expect(captureException as jest.Mock).toHaveBeenCalledTimes(1)
+    const [err, ctx] = (captureException as jest.Mock).mock.calls[0]
+    expect((err as Error).message).not.toContain('DB-blipp') // skrubbat
+    expect(ctx).toEqual(
+      expect.objectContaining({
+        tags: expect.objectContaining({ cron: 'mark-overdue-rent-notices' }),
+      }),
+    )
   })
 })

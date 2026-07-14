@@ -8,6 +8,7 @@ import {
 import { Cron } from '@nestjs/schedule'
 import { Prisma, RentNoticeType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { runCronSafely } from '../common/cron/cron-safety'
 import { AccountingService, MissingAccrualError } from '../accounting/accounting.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentDebtService } from './rent-debt.service'
@@ -112,82 +113,95 @@ export class RentBadDebtService {
     // T5 A2b — orgar (→ antal) vars nedskrivning nekats fail-closed; larmas efter loopen.
     const blockedByOrg = new Map<string, number>()
 
-    const candidates = await this.prisma.rentNotice.findMany({
-      where: {
-        type: RentNoticeType.RENT,
-        collectionStage: 'INKASSO_READY',
-        probableLossAt: null,
-        status: { notIn: ['PAID', 'CANCELLED'] },
-        organization: { remindersEnabled: true },
-      },
-      select: { id: true, organizationId: true, vatAmount: true },
-    })
+    // T5 B1b — linda ENDAST ytterst: en DB-blipp på findMany/freshness larmar nu
+    // via Sentry istället för tyst död. Den rika per-org-summeringen, per-avi-
+    // isoleringen (ConflictException/MissingAccrualError-taxonomin) OCH den
+    // efterföljande per-org-notisen (A2b) är OFÖRÄNDRADE — summary/blockedByOrg
+    // muteras in-place och summary returneras nedan.
+    await runCronSafely(
+      'rent-bad-debt-reclassify',
+      async () => {
+        const candidates = await this.prisma.rentNotice.findMany({
+          where: {
+            type: RentNoticeType.RENT,
+            collectionStage: 'INKASSO_READY',
+            probableLossAt: null,
+            status: { notIn: ['PAID', 'CANCELLED'] },
+            organization: { remindersEnabled: true },
+          },
+          select: { id: true, organizationId: true, vatAmount: true },
+        })
 
-    // PR 4 (B) — befarad kundförlust skriver ned 1510→1515 (kravsteg framåt). Pausa +
-    // larma för org med inaktuell betalningsdata — vi nedskriver inte en fordran som
-    // kan vara reglerad utan att avstämningen vet det.
-    const staleOrgs = await this.freshness.evaluateAndAlert(candidates.map((n) => n.organizationId))
-
-    for (const notice of candidates) {
-      try {
-        if (staleOrgs.has(notice.organizationId)) {
-          summary.pausedStale++
-          continue
-        }
-        // Momspliktig (lokalhyra) → manuell hantering tills revisorfrågan besvarats.
-        if (Number(notice.vatAmount) > 0) {
-          summary.manual++
-          this.logger.warn(
-            `Befarad kundförlust hoppas över för momspliktig avi ${notice.id} ` +
-              `(lokalhyra) — kräver manuell hantering, momsåterkrav väntar revisorbeslut`,
-          )
-          continue
-        }
-        const res = await this.reclassifyToProbableLoss(notice.id, notice.organizationId, null)
-        if (res.booked) summary.reclassified++
-        else summary.skipped++
-      } catch (err) {
-        if (err instanceof ConflictException) {
-          summary.skipped++
-          continue
-        }
-        // T5 A2b fail-closed: avin saknar bokförd fordran (pre-A1-orphan) → nedskrivningen
-        // NEKAD (ingen spökkredit; tx rullades tillbaka). Räkna + samla org för notis.
-        if (err instanceof MissingAccrualError) {
-          summary.blockedNoAccrual++
-          blockedByOrg.set(
-            notice.organizationId,
-            (blockedByOrg.get(notice.organizationId) ?? 0) + 1,
-          )
-          this.logger.error(
-            `Befarad kundförlust NEKAD (fail-closed) för avi ${notice.id} — saknar bokförd ` +
-              `fordran (obokförd avi). Måste repareras (bokförings-reparation) innan nedskrivning.`,
-          )
-          continue
-        }
-        summary.errors++
-        this.logger.error(
-          `Befarad kundförlust misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
+        // PR 4 (B) — befarad kundförlust skriver ned 1510→1515 (kravsteg framåt). Pausa +
+        // larma för org med inaktuell betalningsdata — vi nedskriver inte en fordran som
+        // kan vara reglerad utan att avstämningen vet det.
+        const staleOrgs = await this.freshness.evaluateAndAlert(
+          candidates.map((n) => n.organizationId),
         )
-      }
-    }
 
-    // T5 A2b — larma org-admin per org (utanför loopen, efter att tx:erna rullats
-    // tillbaka). Best-effort: en notis-fel får inte fälla cron-summeringen.
-    for (const [orgId, count] of blockedByOrg) {
-      await this.notifyBadDebtBlockedNoAccrual(orgId, count).catch((e: unknown) =>
-        this.logger.error(
-          `[A2b] SYSTEM-notis om blockerad kundförlust misslyckades för org ${orgId}: ${
-            e instanceof Error ? e.message : String(e)
-          }`,
-        ),
-      )
-    }
+        for (const notice of candidates) {
+          try {
+            if (staleOrgs.has(notice.organizationId)) {
+              summary.pausedStale++
+              continue
+            }
+            // Momspliktig (lokalhyra) → manuell hantering tills revisorfrågan besvarats.
+            if (Number(notice.vatAmount) > 0) {
+              summary.manual++
+              this.logger.warn(
+                `Befarad kundförlust hoppas över för momspliktig avi ${notice.id} ` +
+                  `(lokalhyra) — kräver manuell hantering, momsåterkrav väntar revisorbeslut`,
+              )
+              continue
+            }
+            const res = await this.reclassifyToProbableLoss(notice.id, notice.organizationId, null)
+            if (res.booked) summary.reclassified++
+            else summary.skipped++
+          } catch (err) {
+            if (err instanceof ConflictException) {
+              summary.skipped++
+              continue
+            }
+            // T5 A2b fail-closed: avin saknar bokförd fordran (pre-A1-orphan) → nedskrivningen
+            // NEKAD (ingen spökkredit; tx rullades tillbaka). Räkna + samla org för notis.
+            if (err instanceof MissingAccrualError) {
+              summary.blockedNoAccrual++
+              blockedByOrg.set(
+                notice.organizationId,
+                (blockedByOrg.get(notice.organizationId) ?? 0) + 1,
+              )
+              this.logger.error(
+                `Befarad kundförlust NEKAD (fail-closed) för avi ${notice.id} — saknar bokförd ` +
+                  `fordran (obokförd avi). Måste repareras (bokförings-reparation) innan nedskrivning.`,
+              )
+              continue
+            }
+            summary.errors++
+            this.logger.error(
+              `Befarad kundförlust misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
+            )
+          }
+        }
 
-    this.logger.log(
-      `Befarad kundförlust: ${summary.reclassified} omklassade, ${summary.manual} manuella (moms), ` +
-        `${summary.skipped} hoppade över, ${summary.pausedStale} pausade (inaktuell betalningsdata), ` +
-        `${summary.blockedNoAccrual} nekade (saknar bokförd fordran), ${summary.errors} fel`,
+        // T5 A2b — larma org-admin per org (utanför loopen, efter att tx:erna rullats
+        // tillbaka). Best-effort: en notis-fel får inte fälla cron-summeringen.
+        for (const [orgId, count] of blockedByOrg) {
+          await this.notifyBadDebtBlockedNoAccrual(orgId, count).catch((e: unknown) =>
+            this.logger.error(
+              `[A2b] SYSTEM-notis om blockerad kundförlust misslyckades för org ${orgId}: ${
+                e instanceof Error ? e.message : String(e)
+              }`,
+            ),
+          )
+        }
+
+        this.logger.log(
+          `Befarad kundförlust: ${summary.reclassified} omklassade, ${summary.manual} manuella (moms), ` +
+            `${summary.skipped} hoppade över, ${summary.pausedStale} pausade (inaktuell betalningsdata), ` +
+            `${summary.blockedNoAccrual} nekade (saknar bokförd fordran), ${summary.errors} fel`,
+        )
+      },
+      { logger: this.logger },
     )
     return summary
   }
