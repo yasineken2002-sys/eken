@@ -5,6 +5,7 @@ import { Cron, CronExpression } from '@nestjs/schedule'
 import type { Notification, NotificationType, Prisma } from '@prisma/client'
 import { formatCurrency } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
 import { AiAssistantService } from '../ai/ai-assistant.service'
 import { MonthlyReportService } from './monthly-report.service'
@@ -188,12 +189,20 @@ export class NotificationsService implements OnModuleInit {
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async markOverdueInvoices(): Promise<void> {
-    const now = new Date()
-    const result = await this.prisma.invoice.updateMany({
-      where: { status: 'SENT', dueDate: { lt: now } },
-      data: { status: 'OVERDUE' },
-    })
-    this.logger.log(`Marked ${result.count} invoices as OVERDUE`)
+    // T5 B1b — atomär bulk (en updateMany = commit-eller-rollback), ingen per-item;
+    // bara runCronSafely så en DB-blipp larmar via Sentry istället för tyst död.
+    await runCronSafely(
+      'mark-overdue-invoices',
+      async () => {
+        const now = new Date()
+        const result = await this.prisma.invoice.updateMany({
+          where: { status: 'SENT', dueDate: { lt: now } },
+          data: { status: 'OVERDUE' },
+        })
+        this.logger.log(`Marked ${result.count} invoices as OVERDUE`)
+      },
+      { logger: this.logger },
+    )
   }
 
   // Inkasso PR 1 — förfalloövervakning för hyresavier. Speglar
@@ -208,12 +217,19 @@ export class NotificationsService implements OnModuleInit {
   // rörs aldrig (filtret kräver status = SENT).
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async markOverdueRentNotices(): Promise<void> {
-    const now = new Date()
-    const result = await this.prisma.rentNotice.updateMany({
-      where: { status: 'SENT', dueDate: { lt: now } },
-      data: { status: 'OVERDUE' },
-    })
-    this.logger.log(`Marked ${result.count} rent notices as OVERDUE`)
+    // T5 B1b — atomär bulk (samma som markOverdueInvoices); bara runCronSafely.
+    await runCronSafely(
+      'mark-overdue-rent-notices',
+      async () => {
+        const now = new Date()
+        const result = await this.prisma.rentNotice.updateMany({
+          where: { status: 'SENT', dueDate: { lt: now } },
+          data: { status: 'OVERDUE' },
+        })
+        this.logger.log(`Marked ${result.count} rent notices as OVERDUE`)
+      },
+      { logger: this.logger },
+    )
   }
 
   async sendOverdueRemindersForOrg(organizationId: string): Promise<void> {

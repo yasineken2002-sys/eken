@@ -25,9 +25,18 @@ export interface CronItemFailure<T> {
   error: unknown
 }
 
+/**
+ * Sentry-larmnivå. Default (utelämnad) = Sentrys standard (error). Höj till
+ * 'fatal' för MÅNADS-cadence-cron där ett fel = hela månadens körning uteblir
+ * och nästa försök dröjer ~30 dagar (t.ex. avisering-generate-monthly).
+ */
+export type CronAlarmLevel = 'fatal' | 'error' | 'warning'
+
 export interface RunCronSafelyOptions {
   /** Cronets egen logger (bevarar klasskontext); default: intern CronSafety-logger. */
   logger?: Logger
+  /** Sentry-larmnivå (default: Sentrys standard). Höj till 'fatal' för månads-cron. */
+  level?: CronAlarmLevel
 }
 
 export interface ForEachOrgSafelyOptions<T> {
@@ -65,9 +74,11 @@ export async function runCronSafely<T>(
       err instanceof Error ? err.stack : undefined,
     )
     // Sentry får ett skrubbat meddelande + cron-tagg (bredare läsarkrets än
-    // de med DB-/infra-access). Speglar backup.service.ts.
+    // de med DB-/infra-access). Speglar backup.service.ts. Månads-cron höjer
+    // nivån till 'fatal' via options.level (ett fel = månadens körning uteblir).
     Sentry.captureException(new Error(`Cron ${cronName} misslyckades (se serverlogg för detalj)`), {
       tags: { cron: cronName },
+      ...(options.level ? { level: options.level } : {}),
     })
     return undefined
   }
