@@ -8,6 +8,19 @@ import {
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
+// T5 Fas C (#Tier1) — timeout-golv på R2/S3-klienten. Utan detta defaultar
+// @smithy/node-http-handler till 0 = OÄNDLIGT: en R2-hängning (uppkopplad men
+// inget svar) blockerar då anroparen för alltid. Kritiskt för de SYNKRONA
+// vägarna (faktura-PDF-logo, dokument-uppladdning m.fl.) där hängningen håller
+// en HTTP-request — Fastify/Node har ingen handler-timeout som räddar. Normala
+// ops mot små objekt (~50KB) tar tiotals ms, så golven bryter aldrig normalfall;
+// de gör en hängning till ett FEL (tydligt, syns) i stället för oändlig väntan.
+const R2_CONNECTION_TIMEOUT_MS = 5_000 // TCP+TLS-handshake (normalt <500ms)
+const R2_REQUEST_TIMEOUT_MS = 15_000 // socket-inaktivitet per försök (normalt <1s)
+// aws-sdk retrar timeout-fel; håll taket stramt på de synkrona vägarna → worst
+// case ~2×(5+15)=40s (bounded) i stället för default 3 försök.
+const R2_MAX_ATTEMPTS = 2
+
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name)
@@ -34,6 +47,25 @@ export class StorageService {
         accessKeyId: accessKeyId ?? '',
         secretAccessKey: secretAccessKey ?? '',
       },
+      // Timeout-golv (se konstanterna ovan) — ersätter SDK:ns oändliga default.
+      // Tre golv täcker tre faser av en request:
+      //   • connectionTimeout    — TCP+TLS-handshake hänger.
+      //   • requestTimeout       — uppkopplad men inga response-HEADERS kommer.
+      //     throwOnRequestTimeout: true är AVGÖRANDE — utan den bara LOGGAR
+      //     @smithy/node-http-handler (4.x) en varning och låter requesten hänga
+      //     vidare (empiriskt verifierat); med den ABORTAS anropet + kastar fel.
+      //   • socketTimeout        — HEADERS kom men BODY-strömmen fryser mitt i
+      //     (requestTimeout-timern rensas när headers anlänt → utan detta golv
+      //     kan getFileBuffer:s stream-läsning hänga oändligt). Node-socketns
+      //     idle-timeout (setTimeout) återstartas vid aktivitet → bryter bara vid
+      //     äkta frysning, aldrig ett aktivt (om än långsamt) flöde.
+      requestHandler: {
+        connectionTimeout: R2_CONNECTION_TIMEOUT_MS,
+        requestTimeout: R2_REQUEST_TIMEOUT_MS,
+        throwOnRequestTimeout: true,
+        socketTimeout: R2_REQUEST_TIMEOUT_MS,
+      },
+      maxAttempts: R2_MAX_ATTEMPTS,
     })
   }
 
