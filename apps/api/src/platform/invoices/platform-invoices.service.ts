@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule'
 import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { runCronSafely, forEachOrgSafely } from '../../common/cron/cron-safety'
 import { MailService } from '../../mail/mail.service'
 import { PdfService } from '../../invoices/pdf.service'
 import { PdfQueue } from '../../pdf-jobs/pdf.queue'
@@ -483,11 +484,28 @@ export class PlatformInvoicesService {
   // ─── Cron: månadsskapande ──────────────────────────────────────────────────
 
   /**
-   * Månadscron: 1:a varje månad kl 08:00. Genererar (och auto-skickar om
-   * AUTO_SEND_PLATFORM_INVOICES != false) PLAN_FEE-fakturor för
-   * föregående kalendermånad.
+   * MÅNADS-cron: 1:a varje månad kl 08:00. T5 B1c — cron-vägen lindas i
+   * runCronSafely med level:'fatal': MÅNADS-cadence, så en transient DB-blipp på
+   * org-listans findMany = hela månadens plattformsfakturor uteblir och nästa
+   * försök dröjer ~30 dagar → högsta larmnivå. Den manuella createMonthlyInvoices()
+   * (admin "kör nu" via controllern) lämnas ORÖRD så att UI:t ser felet direkt.
+   * Per-org-isoleringen + idempotensen sitter i generateInvoicesForPeriod och
+   * delas därför av båda vägarna.
    */
   @Cron('0 8 1 * *')
+  async createMonthlyInvoicesCron(): Promise<void> {
+    await runCronSafely('platform-invoices-monthly', () => this.createMonthlyInvoices(), {
+      logger: this.logger,
+      level: 'fatal',
+    })
+  }
+
+  /**
+   * Genererar (och auto-skickar om AUTO_SEND_PLATFORM_INVOICES != false)
+   * PLAN_FEE-fakturor för föregående kalendermånad. Anropas av månads-cronen
+   * ovan OCH manuellt av admin (controller "cron/monthly") — den manuella vägen
+   * kastar vidare så UI:t ser eventuella fel direkt.
+   */
   async createMonthlyInvoices(): Promise<GenerationResult> {
     const now = new Date()
     const periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
@@ -594,66 +612,92 @@ export class PlatformInvoicesService {
       select: { id: true, name: true, planMonthlyFee: true },
     })
 
-    let created = 0
-    let sent = 0
-    let failed = 0
-    let skipped = 0
-    const failures: string[] = []
+    const summary: GenerationResult = { created: 0, sent: 0, failed: 0, skipped: 0, failures: [] }
 
-    for (const org of orgs) {
-      const existing = await this.prisma.platformInvoice.findFirst({
-        where: { organizationId: org.id, type: 'PLAN_FEE', planPeriodStart: periodStart },
-        select: { id: true },
-      })
-      if (existing) {
-        skipped += 1
-        continue
-      }
+    // T5 B1c — per-org-isolering + idempotens PER ORG inne i callbacken (inte
+    // bara ett try runt hela loopen). Ett org-fel isoleras (nästa org körs) och
+    // LARMAR via Sentry (org-tagg). Idempotensen (findFirst + P2002-fångst)
+    // ligger kvar per org: körs generateInvoicesForPeriod två gånger hittar
+    // andra körningen fakturan och hoppar (skipped) → ingen dubbelfaktura.
+    // summary muteras in-place och returneras nedan (delas av cron + backfill).
+    await forEachOrgSafely(
+      'platform-invoices-monthly',
+      orgs,
+      async (org) => {
+        // 1+2) Idempotens-koll OCH skapande i SAMMA try. findFirst MÅSTE ligga
+        //   inne i try:et: kastar det (transient DB-blipp — precis det T5 B1
+        //   skyddar mot) räknas org:en som `failed` + får en UI-rad, exakt som
+        //   ett create-fel. Låg findFirst utanför → org:en isolerades av
+        //   forEachOrgSafely men FÖLL UR summary (failed/failures nämnde den
+        //   aldrig) → GenerationResult under-rapporterade tyst (created+sent+
+        //   skipped+failed summerade inte till antal orgar) och admin-"kör nu"
+        //   fick 200 med en org bortglömd. Kontraktet ska vara identiskt.
+        let invoiceNumber: string
+        let invoiceId: string
+        try {
+          // App-nivå idempotens (snabb väg): finns redan en PLAN_FEE för perioden
+          // → hoppa. Dubbelt skydd med det partiella unika DB-indexet (P2002
+          // nedan) som täcker samtidiga races mellan findFirst och create.
+          const existing = await this.prisma.platformInvoice.findFirst({
+            where: { organizationId: org.id, type: 'PLAN_FEE', planPeriodStart: periodStart },
+            select: { id: true },
+          })
+          if (existing) {
+            summary.skipped += 1
+            return
+          }
 
-      let invoiceNumber: string
-      let invoiceId: string
-      try {
-        const inv = await this.create({
-          organizationId: org.id,
-          type: 'PLAN_FEE',
-          amountNetSek: Number(org.planMonthlyFee),
-          planPeriodStart: periodStart,
-          planPeriodEnd: periodEnd,
-          description: `Eveno månadsavgift ${periodTag}`,
-        })
-        invoiceNumber = inv.invoiceNumber
-        invoiceId = inv.id
-        created += 1
-      } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-          skipped += 1
-          this.logger.log(`${org.name}: faktura för ${periodTag} finns redan (race), hoppar över`)
-          continue
+          const inv = await this.create({
+            organizationId: org.id,
+            type: 'PLAN_FEE',
+            amountNetSek: Number(org.planMonthlyFee),
+            planPeriodStart: periodStart,
+            planPeriodEnd: periodEnd,
+            description: `Eveno månadsavgift ${periodTag}`,
+          })
+          invoiceNumber = inv.invoiceNumber
+          invoiceId = inv.id
+          summary.created += 1
+        } catch (err) {
+          // P2002 = det partiella unika indexet slog till (samtidig race skapade
+          // fakturan) → idempotent skip, BENIGNT: inget larm, ingen dubbelfaktura.
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+            summary.skipped += 1
+            this.logger.log(`${org.name}: faktura för ${periodTag} finns redan (race), hoppar över`)
+            return
+          }
+          // Oväntat fel (idempotens-koll ELLER skapande): räkna som failed + UI-rad
+          // OCH kasta vidare så forEachOrgSafely isolerar org:en (nästa org körs)
+          // och larmar Sentry.
+          summary.failed += 1
+          const msg = err instanceof Error ? err.message : String(err)
+          summary.failures.push(`${org.name}: fakturering misslyckades — ${msg}`)
+          throw err
         }
-        failed += 1
-        const msg = err instanceof Error ? err.message : String(err)
-        failures.push(`${org.name}: skapande misslyckades — ${msg}`)
-        this.logger.warn(`${org.name}: skapande av månadsfaktura misslyckades: ${msg}`)
-        continue
-      }
 
-      if (!this.autoSendEnabled) {
-        this.logger.log(`${invoiceNumber}: skapad (auto-send av — lämnas som DRAFT)`)
-        continue
-      }
+        // 3) Auto-send av → lämna som DRAFT (gamla beteendet).
+        if (!this.autoSendEnabled) {
+          this.logger.log(`${invoiceNumber}: skapad (auto-send av — lämnas som DRAFT)`)
+          return
+        }
 
-      try {
-        await this.send(invoiceId)
-        sent += 1
-        this.logger.log(`${invoiceNumber}: skapad + skickad`)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        failures.push(`${invoiceNumber}: skapad men utskick misslyckades — ${msg}`)
-        this.logger.warn(`${invoiceNumber}: skapad men send misslyckades: ${msg}`)
-      }
-    }
+        // 4) Skicka. Ett utskicksfel lämnar en GILTIG DRAFT-faktura med
+        //    lastSendError satt (se send/processSendJob) → best-effort: vi kastar
+        //    INTE (fakturan finns, skickas om från admin-UI), bara UI-rad + warn.
+        try {
+          await this.send(invoiceId)
+          summary.sent += 1
+          this.logger.log(`${invoiceNumber}: skapad + skickad`)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          summary.failures.push(`${invoiceNumber}: skapad men utskick misslyckades — ${msg}`)
+          this.logger.warn(`${invoiceNumber}: skapad men send misslyckades: ${msg}`)
+        }
+      },
+      { logger: this.logger, orgIdOf: (o) => o.id },
+    )
 
-    return { created, sent, failed, skipped, failures }
+    return summary
   }
 
   /**
@@ -707,103 +751,128 @@ export class PlatformInvoicesService {
    */
   @Cron('0 9 * * *')
   async sendRemindersAndEscalate(): Promise<void> {
-    const now = new Date()
-    const day = 24 * 60 * 60 * 1000
+    // T5 B1c — cron-only (ingen manuell controller-väg). Linda hela kroppen i
+    // runCronSafely: en DB-blipp på reminder-findMany eller på bulk-eskaleringen
+    // (updateMany) larmar nu via Sentry i stället för tyst död. Daglig cadence →
+    // standard-larmnivå. Per-invoice-påminnelserna isoleras dessutom med
+    // forEachOrgSafely (ett fel stoppar inte resten + Sentry per org).
+    await runCronSafely(
+      'platform-invoices-reminders-escalate',
+      async () => {
+        const now = new Date()
+        const day = 24 * 60 * 60 * 1000
 
-    // 1) Päminnelser efter 7 dagar (sätter OVERDUE och mailar)
-    const sevenDaysAgo = new Date(now.getTime() - 7 * day)
-    const reminderCandidates = await this.prisma.platformInvoice.findMany({
-      where: {
-        status: { in: ['SENT', 'PENDING'] },
-        dueDate: { lt: sevenDaysAgo },
-      },
-      include: {
-        organization: { select: { id: true, name: true, email: true, billingEmail: true } },
-      },
-    })
+        // 1) Påminnelser efter 7 dagar (sätter OVERDUE och mailar). Mail-fel
+        //    sväljs redan lokalt (.catch); det som kan kasta är status-updaten →
+        //    forEachOrgSafely isolerar per invoice + larmar Sentry (org-tagg).
+        const sevenDaysAgo = new Date(now.getTime() - 7 * day)
+        const reminderCandidates = await this.prisma.platformInvoice.findMany({
+          where: {
+            status: { in: ['SENT', 'PENDING'] },
+            dueDate: { lt: sevenDaysAgo },
+          },
+          include: {
+            organization: { select: { id: true, name: true, email: true, billingEmail: true } },
+          },
+        })
 
-    for (const inv of reminderCandidates) {
-      try {
-        const recipient = inv.organization.billingEmail ?? inv.organization.email
-        await this.mail
-          .enqueue({
-            template: 'custom',
-            priority: 'high',
-            to: recipient,
-            subject: `Påminnelse: faktura ${inv.invoiceNumber} förfallen`,
-            props: {
-              preview: `Faktura ${inv.invoiceNumber} är förfallen sedan ${inv.dueDate.toISOString().slice(0, 10)}`,
-              tenantName: inv.organization.name,
-              organizationName: PLATFORM_COMPANY.legalName,
-              whyReceived: `Du fick det här mejlet eftersom ${inv.organization.name} har en obetald faktura hos ${PLATFORM_COMPANY.brandName}.`,
-              bodyHtml: `
+        await forEachOrgSafely(
+          'platform-invoices-reminders',
+          reminderCandidates,
+          async (inv) => {
+            const recipient = inv.organization.billingEmail ?? inv.organization.email
+            await this.mail
+              .enqueue({
+                template: 'custom',
+                priority: 'high',
+                to: recipient,
+                subject: `Påminnelse: faktura ${inv.invoiceNumber} förfallen`,
+                props: {
+                  preview: `Faktura ${inv.invoiceNumber} är förfallen sedan ${inv.dueDate.toISOString().slice(0, 10)}`,
+                  tenantName: inv.organization.name,
+                  organizationName: PLATFORM_COMPANY.legalName,
+                  whyReceived: `Du fick det här mejlet eftersom ${inv.organization.name} har en obetald faktura hos ${PLATFORM_COMPANY.brandName}.`,
+                  bodyHtml: `
                 <h1 style="color:#111827;font-size:22px;margin:0 0 16px;">Påminnelse – faktura ${inv.invoiceNumber}</h1>
                 <p>Vi har ännu inte mottagit betalning för faktura <strong>${inv.invoiceNumber}</strong> som förföll <strong>${inv.dueDate.toISOString().slice(0, 10)}</strong>.</p>
                 <p>Vänligen betala snarast med OCR <code>${generatePlatformOcr(inv.invoiceNumber)}</code> till bankgiro ${PLATFORM_COMPANY.bankgiro}.</p>
                 <p>Har ni redan betalt – tack, ignorera detta mejl. Frågor? Svara på det här mejlet.</p>
               `,
-            },
-            idempotencyKey: `platform-invoice-reminder-${inv.id}-${Math.floor((now.getTime() - inv.dueDate.getTime()) / day)}`,
-          })
-          .catch(() => undefined)
+                },
+                idempotencyKey: `platform-invoice-reminder-${inv.id}-${Math.floor((now.getTime() - inv.dueDate.getTime()) / day)}`,
+              })
+              .catch(() => undefined)
 
-        await this.prisma.platformInvoice.update({
-          where: { id: inv.id },
-          data: {
-            status: 'OVERDUE',
-            reminderCount: { increment: 1 },
-            lastReminderAt: now,
+            await this.prisma.platformInvoice.update({
+              where: { id: inv.id },
+              data: {
+                status: 'OVERDUE',
+                reminderCount: { increment: 1 },
+                lastReminderAt: now,
+              },
+            })
           },
-        })
-      } catch (err) {
-        this.logger.warn(
-          `Påminnelse misslyckades för ${inv.invoiceNumber}: ${err instanceof Error ? err.message : String(err)}`,
+          { logger: this.logger, orgIdOf: (inv) => inv.organizationId },
         )
-      }
-    }
 
-    // 2) 14 dagar förfallen → PAST_DUE
-    const fourteenDaysAgo = new Date(now.getTime() - 14 * day)
-    const fourteenOverdue = await this.prisma.platformInvoice.findMany({
-      where: { status: 'OVERDUE', dueDate: { lt: fourteenDaysAgo } },
-      select: { organizationId: true },
-    })
-    if (fourteenOverdue.length > 0) {
-      await this.prisma.organization.updateMany({
-        where: {
-          id: { in: fourteenOverdue.map((i) => i.organizationId) },
-          status: 'ACTIVE',
-        },
-        data: { status: 'PAST_DUE' },
-      })
-    }
+        // 2) 14 dagar förfallen → PAST_DUE (atomär bulk)
+        const fourteenDaysAgo = new Date(now.getTime() - 14 * day)
+        const fourteenOverdue = await this.prisma.platformInvoice.findMany({
+          where: { status: 'OVERDUE', dueDate: { lt: fourteenDaysAgo } },
+          select: { organizationId: true },
+        })
+        if (fourteenOverdue.length > 0) {
+          await this.prisma.organization.updateMany({
+            where: {
+              id: { in: fourteenOverdue.map((i) => i.organizationId) },
+              status: 'ACTIVE',
+            },
+            data: { status: 'PAST_DUE' },
+          })
+        }
 
-    // 3) 30 dagar förfallen → SUSPENDED
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * day)
-    const thirtyOverdue = await this.prisma.platformInvoice.findMany({
-      where: { status: 'OVERDUE', dueDate: { lt: thirtyDaysAgo } },
-      select: { organizationId: true },
-    })
-    if (thirtyOverdue.length > 0) {
-      await this.prisma.organization.updateMany({
-        where: {
-          id: { in: thirtyOverdue.map((i) => i.organizationId) },
-          status: { in: ['ACTIVE', 'PAST_DUE'] },
-        },
-        data: { status: 'SUSPENDED', suspendedAt: now },
-      })
-    }
+        // 3) 30 dagar förfallen → SUSPENDED (atomär bulk)
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * day)
+        const thirtyOverdue = await this.prisma.platformInvoice.findMany({
+          where: { status: 'OVERDUE', dueDate: { lt: thirtyDaysAgo } },
+          select: { organizationId: true },
+        })
+        if (thirtyOverdue.length > 0) {
+          await this.prisma.organization.updateMany({
+            where: {
+              id: { in: thirtyOverdue.map((i) => i.organizationId) },
+              status: { in: ['ACTIVE', 'PAST_DUE'] },
+            },
+            data: { status: 'SUSPENDED', suspendedAt: now },
+          })
+        }
 
-    this.logger.log(
-      `Påminnelse-cron: ${reminderCandidates.length} påminnelser, ${fourteenOverdue.length} PAST_DUE, ${thirtyOverdue.length} SUSPENDED`,
+        this.logger.log(
+          `Påminnelse-cron: ${reminderCandidates.length} påminnelser, ${fourteenOverdue.length} PAST_DUE, ${thirtyOverdue.length} SUSPENDED`,
+        )
+      },
+      { logger: this.logger },
     )
   }
 
   // ─── Cron: trial-livscykel ────────────────────────────────────────────────
 
   /**
-   * Daglig trial-konvertering kl 07:00 (en timme före månadsfaktura-cron).
-   *
+   * DAGLIG trial-konverterings-cron kl 07:00 (en timme före månadsfaktura-cron).
+   * T5 B1c — cron-vägen lindas i runCronSafely (DAGLIG cadence → standard-
+   * larmnivå, INTE fatal): en transient DB-blipp på org-listans findMany larmar
+   * via Sentry i stället för tyst död. Den manuella convertExpiredTrials()
+   * (admin "kör nu" via controllern) lämnas ORÖRD så UI:t ser felet. Per-org-
+   * isoleringen sitter i convertExpiredTrials och delas av båda vägarna.
+   */
+  @Cron('0 7 * * *')
+  async convertExpiredTrialsCron(): Promise<void> {
+    await runCronSafely('platform-invoices-convert-trials', () => this.convertExpiredTrials(), {
+      logger: this.logger,
+    })
+  }
+
+  /**
    * För varje organisation vars trial gått ut (utöver TRIAL_GRACE_PERIOD_DAYS):
    *  • Grandfather: konton skapade före lanseringen ({@link GRANDFATHER_CUTOFF})
    *    får en engångsförlängning på 30 dagar så de hinner få varningsmejlen
@@ -811,8 +880,10 @@ export class PlatformInvoicesService {
    *  • CASE A — plan vald (subscriptionPlan != TRIAL): → ACTIVE, sätt
    *    planMonthlyFee från PLAN_LIMITS, maila välkomstmejl.
    *  • CASE B — ingen plan vald: → SUSPENDED, maila "trial slut"-mejl.
+   *
+   * Anropas av daglig cron ovan OCH manuellt av admin (controller
+   * "cron/trials/convert") — den manuella vägen kastar vidare vid outer-fel.
    */
-  @Cron('0 7 * * *')
   async convertExpiredTrials(): Promise<{
     converted: number
     suspended: number
@@ -841,13 +912,18 @@ export class PlatformInvoicesService {
       },
     })
 
-    let converted = 0
-    let suspended = 0
-    let grandfathered = 0
-    let failed = 0
+    const summary = { converted: 0, suspended: 0, grandfathered: 0, failed: 0 }
 
-    for (const org of expired) {
-      try {
+    // T5 B1c — per-org-isolering: ett org-fel isoleras (nästa org körs) + larmar
+    // via Sentry (org-tagg); failed räknas från helperns fel-lista. Idempotent
+    // per org: grandfather sätter trialEndsAt > cutoff, CASE A sätter status
+    // ACTIVE och CASE B sätter SUSPENDED → nästa körning plockar inte upp samma
+    // org igen (where-filtret kräver status TRIAL + trialEndsAt < cutoff). Inget
+    // lokalt try/catch — oväntade kast bubblar till forEachOrgSafely.
+    const failures = await forEachOrgSafely(
+      'platform-invoices-convert-trials',
+      expired,
+      async (org) => {
         // Grandfather (engångs): pre-lansering-konto vars trial inte redan
         // skjutits förbi cutoff:en. Förlängningen sätter trialEndsAt > cutoff
         // vilket gör villkoret falskt vid nästa körning → idempotent.
@@ -860,11 +936,11 @@ export class PlatformInvoicesService {
             where: { id: org.id },
             data: { trialEndsAt: newEnd },
           })
-          grandfathered += 1
+          summary.grandfathered += 1
           this.logger.log(
             `Grandfather: ${org.name} trial förlängd till ${newEnd.toISOString().slice(0, 10)}`,
           )
-          continue
+          return
         }
 
         const owner = org.users[0]
@@ -897,7 +973,7 @@ export class PlatformInvoicesService {
             `,
             `platform-trial-converted-${org.id}`,
           )
-          converted += 1
+          summary.converted += 1
           this.logger.log(`Konverterade ${org.name} → ACTIVE plan ${plan} (${fee} kr)`)
         } else {
           // CASE B — ingen plan vald, pausa kontot
@@ -920,23 +996,18 @@ export class PlatformInvoicesService {
             `,
             `platform-trial-expired-${org.id}`,
           )
-          suspended += 1
+          summary.suspended += 1
           this.logger.log(`Suspenderade ${org.name} — trial slut utan planval`)
         }
-      } catch (err) {
-        failed += 1
-        this.logger.warn(
-          `Trial-konvertering misslyckades för ${org.name}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        )
-      }
-    }
+      },
+      { logger: this.logger, orgIdOf: (o) => o.id },
+    )
+    summary.failed = failures.length
 
     this.logger.log(
-      `Trial-cron klar: ${converted} konverterade, ${suspended} suspenderade, ${grandfathered} grandfathered, ${failed} fel`,
+      `Trial-cron klar: ${summary.converted} konverterade, ${summary.suspended} suspenderade, ${summary.grandfathered} grandfathered, ${summary.failed} fel`,
     )
-    return { converted, suspended, grandfathered, failed }
+    return summary
   }
 
   /**
