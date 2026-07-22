@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useFocusTrap } from '@eken/ui/hooks'
 import { confirmAiAction, sendAiMessage, type TenantAiPendingAction } from '@/api/portal.api'
 import styles from './TenantAiChat.module.css'
 
@@ -106,6 +107,17 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
     }
   }, [open, initialMessage, sendMutation])
 
+  // PR5: focus-trap + Escape (dialogen hade redan role/aria-modal/aria-label).
+  const trapRef = useFocusTrap<HTMLDivElement>(open)
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
   if (!open) return null
 
   const handleSend = (text?: string) => {
@@ -143,7 +155,7 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className={styles.drawer}>
+      <div className={styles.drawer} ref={trapRef}>
         <header className={styles.header}>
           <div>
             <div className={styles.headerTitle}>
