@@ -9,6 +9,8 @@
 // VIKTIGT: ingenting här byter ut någon befintlig hårdkodning ännu. Att importera
 // dessa konstanter ändrar inte hur en enda PDF eller ett enda mejl ser ut.
 
+import { EVENO_BRAND } from '@eken/ui'
+
 /**
  * EN sanning för organisationens default-varumärkesfärg (primär).
  *
@@ -44,8 +46,11 @@
  *     • apps/api/src/mail/templates/users/UserInvite.tsx
  *     • apps/api/src/mail/templates/users/PasswordReset.tsx
  *     • apps/api/src/auth/auth.service.ts
+ *
+ * Sanningen för värdet bor numera i `@eken/ui` (`EVENO_BRAND`) så att UI-paletten
+ * och dokument-/mejl-varumärket delar exakt samma konstant och aldrig kan glida isär.
  */
-export const DEFAULT_BRAND_COLOR = '#1a6b3c'
+export const DEFAULT_BRAND_COLOR = EVENO_BRAND
 
 /**
  * Den tidigare e-post-defaulten, bevarad som namngiven konstant så att

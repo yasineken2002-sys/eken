@@ -533,9 +533,18 @@ importers:
 
   packages/shared:
     dependencies:
+      '@eken/ui':
+        specifier: workspace:*
+        version: link:../ui
       zod:
         specifier: ^3.23.8
         version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ui:
     devDependencies:
       typescript:
         specifier: ^5.6.0

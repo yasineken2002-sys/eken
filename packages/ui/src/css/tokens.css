@@ -1,0 +1,15 @@
+/* GENERERAD FIL — redigera inte för hand.
+ * Källa: packages/ui/src/tokens.ts (EVENO_PALETTE → renderTokensCss()).
+ * Regenerera: pnpm --filter @eken/ui gen:tokens
+ */
+:root {
+  --ev-brand: #1a6b3c;
+  --ev-bg: #f6f4f0;
+  --ev-surface: #ffffff;
+  --ev-text: #241f1a;
+  --ev-text-muted: #5a5248;
+  --ev-border: #ece7e0;
+  --ev-status-success: #1a6b3c;
+  --ev-status-warning: #b8791a;
+  --ev-status-danger: #c6402f;
+}
