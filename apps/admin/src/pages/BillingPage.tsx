@@ -255,7 +255,7 @@ export function BillingPage() {
       <Card className="mt-4 overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-[#EAEDF0]">
+            <tr className="border-line border-b">
               <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
                 Nummer
               </th>
@@ -298,10 +298,7 @@ export function BillingPage() {
               </tr>
             )}
             {invoices.map((i) => (
-              <tr
-                key={i.id}
-                className="border-b border-[#EAEDF0] last:border-0 hover:bg-gray-50/80"
-              >
+              <tr key={i.id} className="border-line border-b last:border-0 hover:bg-gray-50/80">
                 <td className="px-5 py-3 font-mono text-[13px]">{i.invoiceNumber}</td>
                 <td className="px-3 py-3 text-[13.5px]">{i.organization.name}</td>
                 <td className="px-3 py-3">
@@ -865,11 +862,11 @@ function GenerationModal({
             )}
 
             {p.orgs.length > 0 && (
-              <div className="max-h-[28vh] overflow-y-auto rounded-xl border border-[#EAEDF0]">
+              <div className="border-line max-h-[28vh] overflow-y-auto rounded-xl border">
                 <table className="w-full">
                   <tbody>
                     {p.orgs.map((o) => (
-                      <tr key={o.id} className="border-b border-[#EAEDF0] last:border-0">
+                      <tr key={o.id} className="border-line border-b last:border-0">
                         <td className="px-3 py-2 text-[13px]">{o.name}</td>
                         <td className="px-3 py-2 text-[12px] text-gray-500">{o.plan}</td>
                         <td className="px-3 py-2 text-right text-[13px] tabular-nums">

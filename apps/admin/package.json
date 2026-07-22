@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@eken/shared": "workspace:*",
+    "@eken/ui": "workspace:*",
     "@hookform/resolvers": "^3.9.0",
     "@sentry/react": "^10.52.0",
     "@tanstack/react-query": "^5.59.0",

@@ -81,7 +81,7 @@ export function AppLayout() {
 
       <aside
         className={cn(
-          'z-40 flex w-64 flex-col border-r border-[#EAEDF0] bg-white',
+          'border-line z-40 flex w-64 flex-col border-r bg-white',
           // Mobilt: fast positionerad offcanvas som slidar in
           'fixed inset-y-0 left-0 transition-transform duration-200',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
@@ -129,7 +129,7 @@ export function AppLayout() {
             </NavLink>
           ))}
         </nav>
-        <div className="border-t border-[#EAEDF0] px-4 py-4">
+        <div className="border-line border-t px-4 py-4">
           <div className="mb-3 flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-[13px] font-semibold text-blue-700">
               {user ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}` : '?'}
@@ -151,9 +151,9 @@ export function AppLayout() {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 bg-[#F7F8FA]">
+      <main className="bg-canvas min-w-0 flex-1">
         {/* Mobil topbar med hamburger (syns bara under lg) */}
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-[#EAEDF0] bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
+        <header className="border-line sticky top-0 z-20 flex items-center gap-3 border-b bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
           <button
             onClick={() => setMobileOpen(true)}
             className="rounded-lg p-1.5 text-gray-600 hover:bg-gray-100"

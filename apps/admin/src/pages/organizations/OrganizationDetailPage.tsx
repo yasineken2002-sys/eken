@@ -237,7 +237,7 @@ function UsersTab({ org }: { org: OrgDetail }) {
     <Card className="overflow-hidden">
       <table className="w-full">
         <thead>
-          <tr className="border-b border-[#EAEDF0]">
+          <tr className="border-line border-b">
             <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
               Namn
             </th>
@@ -254,7 +254,7 @@ function UsersTab({ org }: { org: OrgDetail }) {
         </thead>
         <tbody>
           {org.users.map((u) => (
-            <tr key={u.id} className="border-b border-[#EAEDF0] last:border-0">
+            <tr key={u.id} className="border-line border-b last:border-0">
               <td className="px-5 py-3 text-[13.5px]">
                 {u.firstName} {u.lastName}
               </td>
@@ -297,7 +297,7 @@ function PropertiesTab({ orgId }: { orgId: string }) {
       <Card className="overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-[#EAEDF0]">
+            <tr className="border-line border-b">
               <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
                 Namn
               </th>
@@ -317,7 +317,7 @@ function PropertiesTab({ orgId }: { orgId: string }) {
           </thead>
           <tbody>
             {(list ?? []).map((p) => (
-              <tr key={p.id} className="border-b border-[#EAEDF0] last:border-0">
+              <tr key={p.id} className="border-line border-b last:border-0">
                 <td className="px-5 py-3 text-[13.5px]">{p.name}</td>
                 <td className="px-5 py-3 text-[13px] text-gray-600">{p.propertyDesignation}</td>
                 <td className="px-5 py-3 text-[13px]">{p.type}</td>
@@ -496,7 +496,7 @@ function InvoicesTab({ orgId }: { orgId: string }) {
     <Card className="overflow-hidden">
       <table className="w-full">
         <thead>
-          <tr className="border-b border-[#EAEDF0]">
+          <tr className="border-line border-b">
             <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
               Nummer
             </th>
@@ -516,7 +516,7 @@ function InvoicesTab({ orgId }: { orgId: string }) {
         </thead>
         <tbody>
           {(data?.items ?? []).map((i) => (
-            <tr key={i.id} className="border-b border-[#EAEDF0] last:border-0">
+            <tr key={i.id} className="border-line border-b last:border-0">
               <td className="px-5 py-3 font-mono text-[13px]">{i.invoiceNumber}</td>
               <td className="px-5 py-3 text-[13px] text-gray-600">{i.description ?? '—'}</td>
               <td className="px-5 py-3 text-right text-[13.5px] font-medium">
@@ -564,7 +564,7 @@ function ErrorsTab({ orgId }: { orgId: string }) {
         ) : data.items.length === 0 ? (
           <div className="py-6 text-center text-[13px] text-gray-500">Inga fel registrerade.</div>
         ) : (
-          <ul className="divide-y divide-[#EAEDF0]">
+          <ul className="divide-line divide-y">
             {data.items.map((e) => (
               <li key={e.id} className="py-3 first:pt-0 last:pb-0">
                 <div className="flex items-center gap-2 text-[13px]">

@@ -142,7 +142,7 @@ export function DashboardPage() {
                       contentStyle={{
                         fontSize: 12,
                         borderRadius: 8,
-                        border: '1px solid #EAEDF0',
+                        border: '1px solid var(--ev-border)',
                       }}
                     />
                     <Line

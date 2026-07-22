@@ -110,7 +110,7 @@ export function OrganizationsPage() {
       <Card className="mt-4 overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-[#EAEDF0]">
+            <tr className="border-line border-b">
               <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
                 Namn
               </th>
@@ -136,10 +136,7 @@ export function OrganizationsPage() {
           </thead>
           <tbody>
             {(data?.items ?? []).map((o) => (
-              <tr
-                key={o.id}
-                className="border-b border-[#EAEDF0] last:border-0 hover:bg-gray-50/80"
-              >
+              <tr key={o.id} className="border-line border-b last:border-0 hover:bg-gray-50/80">
                 <td className="px-5 py-3">
                   <Link
                     to={`/organizations/${o.id}`}
