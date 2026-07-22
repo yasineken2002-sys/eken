@@ -88,7 +88,7 @@ export function InviteUserModal({ open, onClose }: Props) {
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 border-t border-[#EAEDF0] pt-5">
+        <div className="border-line flex items-center justify-end gap-2 border-t pt-5">
           <Button
             type="button"
             variant="secondary"

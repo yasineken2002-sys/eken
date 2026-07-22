@@ -216,7 +216,7 @@ export function AppLayout({ children }: Props) {
       ?.label ?? 'Översikt'
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#F7F8FC]">
+    <div className="bg-canvas flex h-screen flex-col overflow-hidden">
       <ImpersonationBanner />
       <ViewerBanner />
       <div className="flex min-h-0 flex-1">
@@ -253,7 +253,7 @@ export function AppLayout({ children }: Props) {
             <div className="flex min-w-0 items-center gap-2.5">
               <div
                 className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-                style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)' }}
+                style={{ background: 'linear-gradient(135deg, #3B82F6 0%, var(--ev-brand) 100%)' }}
               >
                 <Building2 size={13} className="text-white" strokeWidth={2.2} />
               </div>

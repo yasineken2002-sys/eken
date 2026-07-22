@@ -189,7 +189,7 @@ export function ReadingForm({ onSubmit, onCancel, isSubmitting = false }: Readin
 
         {/* Aktiv lease (informativt) */}
         {unitId && (
-          <div className="col-span-2 rounded-lg border border-[#EAEDF0] bg-gray-50 px-3 py-2 text-[12px]">
+          <div className="border-line col-span-2 rounded-lg border bg-gray-50 px-3 py-2 text-[12px]">
             {activeLease ? (
               <span className="text-gray-600">
                 Aktivt hyresavtal hittat — avläsningen kopplas automatiskt till perioden.
@@ -260,7 +260,7 @@ export function ReadingForm({ onSubmit, onCancel, isSubmitting = false }: Readin
 
       {/* Neutral förbruknings-förhandsvisning */}
       {meterId && isBaseline && (
-        <div className="rounded-lg border border-[#EAEDF0] bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
+        <div className="border-line rounded-lg border bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
           Öppningsavläsning (baslinje) — ingen förbrukning debiteras för denna första avläsning.
         </div>
       )}

@@ -406,6 +406,9 @@ importers:
       '@eken/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@eken/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@hookform/resolvers':
         specifier: ^3.9.0
         version: 3.10.0(react-hook-form@7.71.2(react@18.3.1))

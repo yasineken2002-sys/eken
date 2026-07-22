@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@eken/shared": "workspace:*",
+    "@eken/ui": "workspace:*",
     "@hookform/resolvers": "^3.9.0",
     "@radix-ui/react-avatar": "^1.1.1",
     "@radix-ui/react-dialog": "^1.1.2",

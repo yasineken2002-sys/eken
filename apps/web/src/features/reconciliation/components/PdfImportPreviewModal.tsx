@@ -116,10 +116,10 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
       </p>
 
       {/* Tabell */}
-      <div className="max-h-[420px] overflow-y-auto rounded-xl border border-[#EAEDF0]">
+      <div className="border-line max-h-[420px] overflow-y-auto rounded-xl border">
         <table className="w-full text-[12.5px]">
           <thead className="sticky top-0 bg-white">
-            <tr className="border-b border-[#EAEDF0]">
+            <tr className="border-line border-b">
               {['Datum', 'Beskrivning', 'OCR', 'Belopp', ''].map((h) => (
                 <th
                   key={h}
@@ -138,7 +138,7 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
                 <tr
                   key={r._id}
                   className={cn(
-                    'border-b border-[#EAEDF0] last:border-0',
+                    'border-line border-b last:border-0',
                     isRemoved && 'line-through opacity-40',
                   )}
                 >

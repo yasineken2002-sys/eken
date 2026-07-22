@@ -10,7 +10,7 @@ interface Props {
 
 export function AuthCard({ title, description, children, footer }: Props) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-[#F7F8FA] px-6 py-12">
+    <div className="bg-canvas flex min-h-screen flex-col items-center justify-center px-6 py-12">
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -24,7 +24,7 @@ export function AuthCard({ title, description, children, footer }: Props) {
           <span className="text-[20px] font-bold tracking-tight text-gray-900">Eveno</span>
         </div>
 
-        <div className="rounded-2xl border border-[#EAEDF0] bg-white p-7 shadow-sm">
+        <div className="border-line rounded-2xl border bg-white p-7 shadow-sm">
           <h1 className="text-[22px] font-semibold tracking-tight text-gray-900">{title}</h1>
           {description && <p className="mt-1.5 text-[13.5px] text-gray-500">{description}</p>}
 

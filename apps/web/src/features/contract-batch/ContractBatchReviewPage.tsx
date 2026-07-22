@@ -133,7 +133,7 @@ export function ContractBatchReviewPage() {
       </div>
 
       {/* Tabell */}
-      <div className="mt-4 overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white">
+      <div className="border-line mt-4 overflow-hidden rounded-2xl border bg-white">
         {isLoading ? (
           <div className="p-8 text-center text-[13px] text-gray-400">Laddar…</div>
         ) : visibleRows.length === 0 ? (
@@ -149,7 +149,7 @@ export function ContractBatchReviewPage() {
         ) : (
           <table className="w-full">
             <thead>
-              <tr className="border-b border-[#EAEDF0]">
+              <tr className="border-line border-b">
                 <Th>Fil</Th>
                 <Th>Hyresgäst</Th>
                 <Th>Adress / enhet</Th>
@@ -194,7 +194,7 @@ function RowItem({
   const canQuickConfirm = row.matchStatus === 'AUTO_MATCHED'
 
   return (
-    <tr className="border-b border-[#EAEDF0] last:border-0 hover:bg-gray-50/80">
+    <tr className="border-line border-b last:border-0 hover:bg-gray-50/80">
       <Td className="max-w-[160px] truncate text-gray-500">{row.fileName}</Td>
       <Td className="font-medium text-gray-900">{d?.tenantName ?? '—'}</Td>
       <Td className="text-gray-600">{d?.propertyAddress ?? '—'}</Td>
@@ -335,7 +335,7 @@ function Kpi({
   accent?: 'emerald' | 'red' | undefined
 }) {
   return (
-    <div className="rounded-2xl border border-[#EAEDF0] bg-white p-4">
+    <div className="border-line rounded-2xl border bg-white p-4">
       <p className="text-[12px] text-gray-500">{label}</p>
       <p
         className={cn(

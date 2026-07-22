@@ -370,10 +370,10 @@ export function NewsPage() {
                 : {})}
             />
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white">
+            <div className="border-line overflow-hidden rounded-2xl border bg-white">
               <table className="w-full">
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #EAEDF0' }}>
+                  <tr style={{ borderBottom: '1px solid var(--ev-border)' }}>
                     <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
                       Titel
                     </th>
@@ -398,7 +398,7 @@ export function NewsPage() {
                       variants={itemAnim}
                       onClick={() => openEdit(post)}
                       className={cn(
-                        'cursor-pointer border-b border-[#EAEDF0] transition-colors last:border-0 hover:bg-gray-50/80',
+                        'border-line cursor-pointer border-b transition-colors last:border-0 hover:bg-gray-50/80',
                         selectedPost?.id === post.id && 'bg-blue-50/60',
                       )}
                     >
@@ -473,8 +473,8 @@ export function NewsPage() {
               transition={{ type: 'spring', stiffness: 360, damping: 32 }}
               className="w-[380px] flex-shrink-0"
             >
-              <div className="rounded-2xl border border-[#EAEDF0] bg-white">
-                <div className="flex items-center justify-between border-b border-[#EAEDF0] px-5 py-4">
+              <div className="border-line rounded-2xl border bg-white">
+                <div className="border-line flex items-center justify-between border-b px-5 py-4">
                   <p className="text-[15px] font-semibold text-gray-900">Redigera inlägg</p>
                   <button
                     onClick={closeEdit}
@@ -496,7 +496,7 @@ export function NewsPage() {
                     </div>
                   )}
 
-                  <div className="mt-5 flex gap-2 border-t border-[#EAEDF0] pt-4">
+                  <div className="border-line mt-5 flex gap-2 border-t pt-4">
                     <Button
                       variant="secondary"
                       size="sm"

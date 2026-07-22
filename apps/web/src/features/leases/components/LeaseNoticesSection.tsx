@@ -48,7 +48,7 @@ export function LeaseNoticesSection({ leaseId, startDate }: Props) {
   })
 
   return (
-    <section className="rounded-2xl border border-[#EAEDF0] bg-white p-5">
+    <section className="border-line rounded-2xl border bg-white p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-[14px] font-semibold text-gray-900">Hyresavier</h3>
         <span className="text-[11px] text-gray-400">Auto-genererade</span>
@@ -66,7 +66,7 @@ export function LeaseNoticesSection({ leaseId, startDate }: Props) {
             .map((n) => (
               <div
                 key={n.id}
-                className="flex items-center gap-3 rounded-xl border border-[#EAEDF0] bg-white px-3 py-2.5"
+                className="border-line flex items-center gap-3 rounded-xl border bg-white px-3 py-2.5"
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
                   {n.type === 'DEPOSIT' ? (

@@ -125,7 +125,7 @@ export function PropertyForm({
           <p className="shrink-0 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
             Adress
           </p>
-          <div className="h-px flex-1 bg-[#EAEDF0]" />
+          <div className="bg-line h-px flex-1" />
         </div>
         <div className="space-y-3">
           <Input

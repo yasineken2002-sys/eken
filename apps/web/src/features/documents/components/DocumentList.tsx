@@ -85,7 +85,7 @@ export function DocumentList({
         <p className="shrink-0 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
           {title}
         </p>
-        <div className="h-px flex-1 bg-[#EAEDF0]" />
+        <div className="bg-line h-px flex-1" />
         <span className="text-[12px] text-gray-400">{documents.length}</span>
         {allowUpload && (
           <Button variant="secondary" size="xs" onClick={() => setShowUpload(true)}>

@@ -139,7 +139,7 @@ interface ChartCardProps {
 
 function ChartCard({ title, subtitle, children }: ChartCardProps) {
   return (
-    <div className="rounded-2xl border border-[#EAEDF0] bg-white p-5">
+    <div className="border-line rounded-2xl border bg-white p-5">
       <div className="mb-3">
         <p className="text-[14px] font-semibold text-gray-900">{title}</p>
         {subtitle && <p className="mt-0.5 text-[12px] text-gray-500">{subtitle}</p>}
@@ -156,7 +156,7 @@ const AXIS_STYLE = {
 
 const TOOLTIP_STYLE = {
   background: '#fff',
-  border: '1px solid #EAEDF0',
+  border: '1px solid var(--ev-border)',
   borderRadius: 8,
   fontSize: 12,
   padding: '8px 10px',
@@ -190,7 +190,7 @@ function RevenueChart({ data }: ChartProps) {
             type="monotone"
             dataKey="revenue"
             name="Fakturerat"
-            stroke="#2563EB"
+            stroke="var(--ev-brand)"
             strokeWidth={2}
             dot={false}
           />

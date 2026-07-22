@@ -1,6 +1,23 @@
+/* @eken/ui: låst palett som CSS-variabler (--ev-*). Importeras FÖRST så att
+   webs neutrala override nedan (samma variabelnamn) vinner via källordning. */
+@import '@eken/ui/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Neutral token-mappning (PR3) ────────────────────────────────────────────
+   Web behåller EXAKT dagens utseende. Dessa override:ar pekar --ev-* på webs
+   NUVARANDE hex — inte målpaletten från @eken/ui. Färgflippen = ta bort detta
+   :root-block. --ev-brand hålls på dagens blå (#2563eb), INTE grön än.
+   OBS: webs egna HSL-tokens (--background/--border/--primary …) nedan är ett
+   separat system och rörs inte här. */
+:root {
+  --ev-bg: #f7f8fc; /* @eken/ui-mål #f6f4f0 → dagens dominerande app-bg #f7f8fc */
+  --ev-text: #111827; /* mål #241f1a → dagens #111827 */
+  --ev-border: #eaedf0; /* mål #ece7e0 → dagens dominerande kant #eaedf0 */
+  --ev-brand: #2563eb; /* mål #1a6b3c → dagens legacy-blå #2563eb (grön först vid flippen) */
+}
 
 @layer base {
   :root {
@@ -40,7 +57,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-[#F7F8FC] text-[#111827];
+    @apply bg-canvas text-ink;
     font-family:
       'Inter var',
       'Inter',
@@ -95,7 +112,7 @@
   }
   .cursor {
     animation: blink 1s step-end infinite;
-    color: #2563eb;
+    color: var(--ev-brand);
     font-weight: 600;
     margin-left: 1px;
   }

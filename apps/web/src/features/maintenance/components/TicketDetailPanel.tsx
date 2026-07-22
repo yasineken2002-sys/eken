@@ -69,10 +69,10 @@ export function TicketDetailPanel({ ticket: initialTicket, onClose }: Props) {
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.2 }}
-      className="flex h-full w-[420px] flex-shrink-0 flex-col overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white shadow-sm"
+      className="border-line flex h-full w-[420px] flex-shrink-0 flex-col overflow-hidden rounded-2xl border bg-white shadow-sm"
     >
       {/* Header */}
-      <div className="flex items-start justify-between border-b border-[#EAEDF0] px-5 py-4">
+      <div className="border-line flex items-start justify-between border-b px-5 py-4">
         <div className="min-w-0 flex-1 pr-3">
           <div className="mb-1 flex items-center gap-2">
             <span className="text-[11px] font-semibold text-gray-400">{ticket.ticketNumber}</span>
@@ -141,7 +141,7 @@ export function TicketDetailPanel({ ticket: initialTicket, onClose }: Props) {
                   key={img.id}
                   type="button"
                   onClick={() => setLightboxIndex(i)}
-                  className="group relative aspect-square overflow-hidden rounded-xl border border-[#EAEDF0] bg-gray-50 transition-shadow hover:shadow-sm"
+                  className="border-line group relative aspect-square overflow-hidden rounded-xl border bg-gray-50 transition-shadow hover:shadow-sm"
                 >
                   <img
                     src={img.storageUrl}
@@ -241,7 +241,7 @@ export function TicketDetailPanel({ ticket: initialTicket, onClose }: Props) {
                   'rounded-xl px-3.5 py-2.5 text-[13px]',
                   c.isInternal
                     ? 'border border-amber-100 bg-amber-50/70'
-                    : 'border border-[#EAEDF0] bg-white',
+                    : 'border-line border bg-white',
                 )}
               >
                 <div className="mb-0.5 flex items-center gap-1.5">

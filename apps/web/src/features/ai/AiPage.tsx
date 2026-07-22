@@ -89,7 +89,7 @@ const SUGGESTIONS = [
     bg: '#FEF2F2',
   },
   { icon: FileText, label: 'Skapa hyresfakturor för maj 2026', color: '#059669', bg: '#ECFDF5' },
-  { icon: TrendingUp, label: 'Visa intäkter för Q1 2026', color: '#2563EB', bg: '#EFF6FF' },
+  { icon: TrendingUp, label: 'Visa intäkter för Q1 2026', color: 'var(--ev-brand)', bg: '#EFF6FF' },
   {
     icon: AlertTriangle,
     label: 'Skicka påminnelser till förfallna fakturor',
@@ -684,7 +684,7 @@ export function AiPage() {
         </div>
 
         {/* ── Chat Area ── */}
-        <div className="flex min-w-0 flex-1 flex-col bg-[#F7F8FA]">
+        <div className="bg-canvas flex min-w-0 flex-1 flex-col">
           {/* Messages */}
           <div className="flex-1 overflow-y-auto">
             {isNewChat && !hasMessages ? (

@@ -238,7 +238,7 @@ export function MaintenancePage() {
           </div>
 
           {/* Table */}
-          <div className="mt-4 overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white">
+          <div className="border-line mt-4 overflow-hidden rounded-2xl border bg-white">
             {isLoading ? (
               <div className="py-16 text-center text-[13px] text-gray-400">Laddar ärenden...</div>
             ) : tickets.length === 0 ? (
@@ -265,7 +265,7 @@ export function MaintenancePage() {
               <motion.div variants={container} initial="hidden" animate="show">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-[#EAEDF0]">
+                    <tr className="border-line border-b">
                       {[
                         'Nr',
                         'Titel',
@@ -291,7 +291,7 @@ export function MaintenancePage() {
                         key={ticket.id}
                         variants={item}
                         onClick={() => setSelectedTicket(ticket)}
-                        className="cursor-pointer border-b border-[#EAEDF0] transition-colors last:border-0 hover:bg-gray-50/80"
+                        className="border-line cursor-pointer border-b transition-colors last:border-0 hover:bg-gray-50/80"
                       >
                         <td className="px-4 py-3 text-[12px] font-semibold text-gray-500">
                           {ticket.ticketNumber}

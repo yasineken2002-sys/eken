@@ -816,7 +816,7 @@ export function ReconciliationPage() {
           <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
             <table className="w-full">
               <thead>
-                <tr style={{ borderBottom: '1px solid #EAEDF0' }}>
+                <tr style={{ borderBottom: '1px solid var(--ev-border)' }}>
                   {['Datum', 'Beskrivning', 'Referens/OCR', 'Belopp', 'Status', 'Faktura', ''].map(
                     (h) => (
                       <th

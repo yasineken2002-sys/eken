@@ -179,7 +179,7 @@ function SectionDivider({ label }: { label: string }) {
       <p className="shrink-0 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
         {label}
       </p>
-      <div className="h-px flex-1 bg-[#EAEDF0]" />
+      <div className="bg-line h-px flex-1" />
     </div>
   )
 }
@@ -223,7 +223,7 @@ function UnitInfoCard({ unit, property }: UnitInfoCardProps) {
     `${property.address.street}, ${property.address.postalCode} ${property.address.city}`.trim()
 
   return (
-    <div className="space-y-3 rounded-xl border border-[#EAEDF0] bg-gray-50/60 p-4">
+    <div className="border-line space-y-3 rounded-xl border bg-gray-50/60 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-[13.5px] font-semibold text-gray-900">{property.name}</p>
@@ -231,7 +231,7 @@ function UnitInfoCard({ unit, property }: UnitInfoCardProps) {
             Fastighetsbeteckning {property.propertyDesignation}
           </p>
         </div>
-        <span className="shrink-0 rounded-full bg-white px-2.5 py-0.5 text-[11px] font-medium text-gray-600 ring-1 ring-[#EAEDF0]">
+        <span className="ring-line shrink-0 rounded-full bg-white px-2.5 py-0.5 text-[11px] font-medium text-gray-600 ring-1">
           {UNIT_TYPE_LABELS[unit.type] ?? unit.type}
         </span>
       </div>
@@ -251,7 +251,7 @@ function UnitInfoCard({ unit, property }: UnitInfoCardProps) {
         />
       </div>
 
-      <p className="border-t border-[#EAEDF0] pt-2.5 text-[11.5px] text-gray-500">
+      <p className="border-line border-t pt-2.5 text-[11.5px] text-gray-500">
         Uppgifterna ovan kommer från enheten och fastigheten — ändras de behöver enheten uppdateras
         i fastighetsregistret. Kontraktshyran kan ändå avvika och anges nedan.
       </p>
@@ -801,7 +801,7 @@ export function LeaseForm({
                 <span className="text-[11.5px] text-gray-400">valfritt</span>
               </button>
             ) : (
-              <div className="space-y-3 rounded-xl border border-[#EAEDF0] bg-amber-50/30 p-3.5">
+              <div className="border-line space-y-3 rounded-xl border bg-amber-50/30 p-3.5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[12.5px] font-semibold text-gray-800">Annan kontaktadress</p>
@@ -963,7 +963,7 @@ export function LeaseForm({
       {locked('includesHeating') && <LockHint route="TERMS" />}
       <fieldset
         disabled={locked('includesHeating')}
-        className="m-0 grid min-w-0 grid-cols-2 gap-2 rounded-xl border border-[#EAEDF0] bg-gray-50/60 p-3 disabled:opacity-70 sm:grid-cols-3"
+        className="border-line m-0 grid min-w-0 grid-cols-2 gap-2 rounded-xl border bg-gray-50/60 p-3 disabled:opacity-70 sm:grid-cols-3"
       >
         {(
           [
@@ -980,7 +980,7 @@ export function LeaseForm({
         ).map((f) => (
           <label
             key={f.name}
-            className="flex cursor-pointer items-center gap-2 rounded-lg bg-white px-3 py-2 text-[12.5px] text-gray-700 ring-1 ring-[#EAEDF0] transition-colors hover:bg-gray-50"
+            className="ring-line flex cursor-pointer items-center gap-2 rounded-lg bg-white px-3 py-2 text-[12.5px] text-gray-700 ring-1 transition-colors hover:bg-gray-50"
           >
             <input
               type="checkbox"
@@ -1093,7 +1093,7 @@ export function LeaseForm({
         disabled={locked('sublettingAllowed')}
         className="m-0 min-w-0 space-y-2 border-0 p-0 disabled:opacity-70"
       >
-        <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-[#EAEDF0] bg-white px-3.5 py-2.5">
+        <label className="border-line flex cursor-pointer items-start gap-2.5 rounded-lg border bg-white px-3.5 py-2.5">
           <input
             type="checkbox"
             {...register('sublettingAllowed')}
@@ -1106,7 +1106,7 @@ export function LeaseForm({
             </span>
           </span>
         </label>
-        <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-[#EAEDF0] bg-white px-3.5 py-2.5">
+        <label className="border-line flex cursor-pointer items-start gap-2.5 rounded-lg border bg-white px-3.5 py-2.5">
           <input
             type="checkbox"
             {...register('requiresHomeInsurance')}
@@ -1152,7 +1152,7 @@ export function LeaseForm({
         </div>
 
         {indexClauseType !== 'NONE' && (
-          <div className="space-y-3 rounded-xl border border-[#EAEDF0] bg-gray-50/60 p-3.5">
+          <div className="border-line space-y-3 rounded-xl border bg-gray-50/60 p-3.5">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Input
                 label="Basår (valfritt)"

@@ -55,7 +55,7 @@ export function TermsReacceptanceModal({ onAccepted }: { onAccepted: () => void 
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 8 }}
           transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-          className="w-full max-w-md rounded-2xl border border-[#EAEDF0] bg-white p-6 shadow-xl"
+          className="border-line w-full max-w-md rounded-2xl border bg-white p-6 shadow-xl"
         >
           <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
             <Scale className="h-5 w-5 text-blue-600" strokeWidth={1.8} />
@@ -75,7 +75,7 @@ export function TermsReacceptanceModal({ onAccepted }: { onAccepted: () => void 
               href={LEGAL_PATHS.terms}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center justify-between rounded-xl border border-[#EAEDF0] bg-white px-4 py-3 transition-colors hover:bg-gray-50"
+              className="border-line flex items-center justify-between rounded-xl border bg-white px-4 py-3 transition-colors hover:bg-gray-50"
             >
               <span className="text-[13.5px] font-medium text-gray-900">Användarvillkor</span>
               <ExternalLink className="h-3.5 w-3.5 text-gray-400" />
@@ -84,7 +84,7 @@ export function TermsReacceptanceModal({ onAccepted }: { onAccepted: () => void 
               href={LEGAL_PATHS.privacy}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center justify-between rounded-xl border border-[#EAEDF0] bg-white px-4 py-3 transition-colors hover:bg-gray-50"
+              className="border-line flex items-center justify-between rounded-xl border bg-white px-4 py-3 transition-colors hover:bg-gray-50"
             >
               <span className="text-[13.5px] font-medium text-gray-900">Integritetspolicy</span>
               <ExternalLink className="h-3.5 w-3.5 text-gray-400" />

@@ -223,7 +223,7 @@ export function CreateTicketModal({ open, onClose }: Props) {
           />
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-[#EAEDF0] pt-5">
+        <div className="border-line flex justify-end gap-2 border-t pt-5">
           <Button variant="secondary" type="button" onClick={onClose}>
             Avbryt
           </Button>

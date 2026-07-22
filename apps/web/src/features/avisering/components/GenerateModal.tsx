@@ -44,7 +44,7 @@ export function GenerateModal({ open, month, year, onClose, onSuccess }: Props) 
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        className="w-full max-w-md rounded-2xl border border-[#EAEDF0] bg-white p-6 shadow-xl"
+        className="border-line w-full max-w-md rounded-2xl border bg-white p-6 shadow-xl"
       >
         <div className="mb-5 flex items-start justify-between">
           <div>
@@ -68,7 +68,7 @@ export function GenerateModal({ open, month, year, onClose, onSuccess }: Props) 
           </div>
         )}
 
-        <div className="mb-5 rounded-xl border border-[#EAEDF0] bg-gray-50 px-4 py-3 text-[13px] text-gray-600">
+        <div className="border-line mb-5 rounded-xl border bg-gray-50 px-4 py-3 text-[13px] text-gray-600">
           <p>
             Avier genereras för alla <strong>aktiva hyreskontrakt</strong>.
           </p>
@@ -78,7 +78,7 @@ export function GenerateModal({ open, month, year, onClose, onSuccess }: Props) 
           <p className="mt-1">Avier som redan finns för perioden hoppas över.</p>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-[#EAEDF0] pt-5">
+        <div className="border-line flex justify-end gap-2 border-t pt-5">
           <Button variant="secondary" onClick={onClose} disabled={generate.isPending}>
             Avbryt
           </Button>

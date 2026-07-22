@@ -98,7 +98,7 @@ function MessageCard({
   return (
     <motion.div
       variants={itemAnim}
-      className="rounded-2xl border border-[#EAEDF0] bg-white transition-shadow hover:shadow-sm"
+      className="border-line rounded-2xl border bg-white transition-shadow hover:shadow-sm"
     >
       <button className="w-full p-4 text-left" onClick={() => setExpanded((v) => !v)}>
         <div className="flex items-start justify-between gap-3">
@@ -141,7 +141,7 @@ function MessageCard({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden border-t border-[#EAEDF0]"
+            className="border-line overflow-hidden border-t"
           >
             <div className="p-4">
               <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-700">
@@ -312,7 +312,7 @@ export function MessagesPage() {
       <div className="mt-6 flex flex-col gap-6 lg:flex-row">
         {/* ── LEFT: Compose ── */}
         <div className="w-full lg:w-[45%]">
-          <div className="rounded-2xl border border-[#EAEDF0] bg-white p-5">
+          <div className="border-line rounded-2xl border bg-white p-5">
             <h2 className="mb-4 text-[14px] font-semibold text-gray-900">Nytt meddelande</h2>
 
             {/* Recipient toggle */}
@@ -428,7 +428,7 @@ export function MessagesPage() {
                   exit={{ opacity: 0, height: 0 }}
                   className="mb-4 overflow-hidden"
                 >
-                  <div className="rounded-xl border border-[#EAEDF0] bg-[#F7F8FA] p-4">
+                  <div className="border-line bg-canvas rounded-xl border p-4">
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
                       Förhandsgranskning
                     </p>

@@ -73,7 +73,7 @@ export function UsersPanel() {
           variants={container}
           initial="hidden"
           animate="show"
-          className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-[#EAEDF0]"
+          className="border-line divide-y divide-gray-100 overflow-hidden rounded-xl border"
         >
           {users.map((u) => (
             <motion.li key={u.id} variants={item}>

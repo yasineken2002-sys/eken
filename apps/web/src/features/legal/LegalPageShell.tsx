@@ -43,8 +43,8 @@ export function LegalPageShell({
           body { background: white !important; }
         }
       `}</style>
-      <div className="min-h-screen bg-[#F7F8FA]">
-        <header className="legal-no-print sticky top-0 z-10 border-b border-[#EAEDF0] bg-white/95 backdrop-blur">
+      <div className="bg-canvas min-h-screen">
+        <header className="legal-no-print border-line sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
             <button
               onClick={onBack}
@@ -102,7 +102,7 @@ export function LegalPageShell({
               {children}
             </article>
 
-            <footer className="legal-no-print mt-16 flex flex-col gap-1 border-t border-[#EAEDF0] pt-6 text-[12px] text-gray-500">
+            <footer className="legal-no-print border-line mt-16 flex flex-col gap-1 border-t pt-6 text-[12px] text-gray-500">
               <p>
                 © {new Date().getFullYear()} {PLATFORM_COMPANY.legalName} · org.nr{' '}
                 {PLATFORM_COMPANY.orgNumber} · {PLATFORM_COMPANY.street},{' '}

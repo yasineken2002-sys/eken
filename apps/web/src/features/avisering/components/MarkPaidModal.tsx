@@ -43,7 +43,7 @@ export function MarkPaidModal({ notice, onClose, onSuccess }: Props) {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        className="w-full max-w-sm rounded-2xl border border-[#EAEDF0] bg-white p-6 shadow-xl"
+        className="border-line w-full max-w-sm rounded-2xl border bg-white p-6 shadow-xl"
       >
         <div className="mb-5 flex items-start justify-between">
           <h2 className="text-[17px] font-semibold text-gray-900">Markera som betald</h2>
@@ -115,7 +115,7 @@ export function MarkPaidModal({ notice, onClose, onSuccess }: Props) {
           </div>
         </div>
 
-        <div className="mt-5 flex justify-end gap-2 border-t border-[#EAEDF0] pt-5">
+        <div className="border-line mt-5 flex justify-end gap-2 border-t pt-5">
           <Button variant="secondary" onClick={onClose} disabled={markPaid.isPending}>
             Avbryt
           </Button>

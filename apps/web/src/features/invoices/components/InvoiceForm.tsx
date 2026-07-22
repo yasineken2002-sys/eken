@@ -416,7 +416,7 @@ export function InvoiceForm({
       </div>
 
       {/* ── Divider ────────────────────────────────────────────────────────── */}
-      <div className="mx-5 w-px shrink-0 bg-[#EAEDF0]" />
+      <div className="bg-line mx-5 w-px shrink-0" />
 
       {/* ── Right: Live preview ─────────────────────────────────────────────── */}
       <div className="flex-1 overflow-hidden">
