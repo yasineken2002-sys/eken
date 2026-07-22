@@ -36,9 +36,9 @@
 }
 
 .filterChipActive {
-  background: #1a6b3c;
+  background: var(--ev-brand);
   color: #ffffff;
-  border-color: #1a6b3c;
+  border-color: var(--ev-brand);
 }
 
 /* ── List ────────────────────────────────────────────── */
@@ -81,7 +81,7 @@
 .cardAmount {
   font-size: 26px;
   font-weight: 700;
-  color: #1a6b3c;
+  color: var(--ev-brand);
   margin-bottom: 8px;
   line-height: 1.1;
 }
@@ -166,7 +166,7 @@
   padding: 7px 14px;
   border-radius: 10px;
   background: #e8f4ee;
-  color: #1a6b3c;
+  color: var(--ev-brand);
   font-size: 12px;
   font-weight: 600;
   border: none;
@@ -217,7 +217,7 @@
 
 .tabActive {
   background: #ffffff;
-  color: #1a6b3c;
+  color: var(--ev-brand);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 

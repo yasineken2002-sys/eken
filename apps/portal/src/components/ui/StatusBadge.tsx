@@ -10,14 +10,14 @@ const INVOICE_LABELS: Record<string, BadgeStyle> = {
   PARTIAL: { label: 'Delvis betald', bg: '#fffbeb', color: '#92400e' },
   PAID: { label: 'Betald', bg: '#ecfdf5', color: '#065f46' },
   OVERDUE: { label: 'Förfallen', bg: '#fef2f2', color: '#991b1b' },
-  VOID: { label: 'Makulerad', bg: '#f9fafb', color: '#6b7280' },
+  VOID: { label: 'Makulerad', bg: '#f9fafb', color: 'var(--ev-text-muted)' },
 }
 
 const LEASE_LABELS: Record<string, BadgeStyle> = {
   DRAFT: { label: 'Utkast', bg: '#f3f4f6', color: '#374151' },
   ACTIVE: { label: 'Aktivt', bg: '#ecfdf5', color: '#065f46' },
   TERMINATED: { label: 'Uppsagt', bg: '#fef2f2', color: '#991b1b' },
-  EXPIRED: { label: 'Utgånget', bg: '#f9fafb', color: '#6b7280' },
+  EXPIRED: { label: 'Utgånget', bg: '#f9fafb', color: 'var(--ev-text-muted)' },
 }
 
 const MAINTENANCE_LABELS: Record<string, BadgeStyle> = {
@@ -25,8 +25,8 @@ const MAINTENANCE_LABELS: Record<string, BadgeStyle> = {
   IN_PROGRESS: { label: 'Pågår', bg: '#fffbeb', color: '#92400e' },
   SCHEDULED: { label: 'Planerad', bg: '#f5f3ff', color: '#6d28d9' },
   COMPLETED: { label: 'Åtgärdad', bg: '#ecfdf5', color: '#065f46' },
-  CLOSED: { label: 'Stängd', bg: '#f9fafb', color: '#6b7280' },
-  CANCELLED: { label: 'Avbruten', bg: '#f9fafb', color: '#6b7280' },
+  CLOSED: { label: 'Stängd', bg: '#f9fafb', color: 'var(--ev-text-muted)' },
+  CANCELLED: { label: 'Avbruten', bg: '#f9fafb', color: 'var(--ev-text-muted)' },
 }
 
 const RENT_NOTICE_LABELS: Record<string, BadgeStyle> = {
@@ -34,7 +34,7 @@ const RENT_NOTICE_LABELS: Record<string, BadgeStyle> = {
   SENT: { label: 'Skickad', bg: '#eff6ff', color: '#1d4ed8' },
   PAID: { label: 'Betald', bg: '#ecfdf5', color: '#065f46' },
   OVERDUE: { label: 'Förfallen', bg: '#fef2f2', color: '#991b1b' },
-  CANCELLED: { label: 'Makulerad', bg: '#f9fafb', color: '#6b7280' },
+  CANCELLED: { label: 'Makulerad', bg: '#f9fafb', color: 'var(--ev-text-muted)' },
   FAILED: { label: 'Skickfel', bg: '#fef2f2', color: '#991b1b' },
 }
 

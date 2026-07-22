@@ -1,6 +1,6 @@
 .shell {
   min-height: 100vh;
-  background: #f7f8fa;
+  background: var(--ev-bg);
   padding: 24px 16px 64px;
 }
 
@@ -33,7 +33,7 @@
 
 .backLink:hover {
   background: rgba(0, 0, 0, 0.04);
-  color: #111827;
+  color: var(--ev-text);
 }
 
 .printBtn {
@@ -58,13 +58,13 @@
   font-size: 28px;
   font-weight: 600;
   letter-spacing: -0.02em;
-  color: #111827;
+  color: var(--ev-text);
   margin: 16px 0 8px;
 }
 
 .description {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--ev-text-muted);
   margin: 0 0 12px;
   line-height: 1.5;
 }
@@ -121,7 +121,7 @@
 
 .tocList a:hover {
   background: #f3f4f6;
-  color: #111827;
+  color: var(--ev-text);
 }
 
 .content {
@@ -133,7 +133,7 @@
 .content h2 {
   font-size: 18px;
   font-weight: 600;
-  color: #111827;
+  color: var(--ev-text);
   margin: 32px 0 12px;
   scroll-margin-top: 16px;
 }
@@ -141,7 +141,7 @@
 .content h3 {
   font-size: 15px;
   font-weight: 600;
-  color: #111827;
+  color: var(--ev-text);
   margin: 24px 0 8px;
 }
 
@@ -201,7 +201,7 @@
   padding-top: 16px;
   border-top: 1px solid #eaedf0;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--ev-text-muted);
   line-height: 1.6;
 }
 

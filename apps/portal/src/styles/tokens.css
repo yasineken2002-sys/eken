@@ -1,22 +1,44 @@
+/* @eken/ui: låst palett som CSS-variabler (--ev-*). Importeras FÖRST så att
+   portalens neutrala override nedan vinner via källordning. Portalen kör INGEN
+   Tailwind — den konsumerar dessa RÅA CSS-variabler direkt (beviset att substratet
+   funkar för en icke-Tailwind-app). */
+@import '@eken/ui/tokens.css';
+
 :root {
-  --color-primary: #2563eb;
-  --color-primary-dark: #1d4ed8;
-  --color-primary-light: #eff6ff;
-  --color-success: #059669;
-  --color-success-light: #ecfdf5;
-  --color-warning: #d97706;
-  --color-warning-light: #fffbeb;
-  --color-danger: #dc2626;
-  --color-danger-light: #fef2f2;
+  /* ── Neutral token-mappning (PR4) ──────────────────────────────────────────
+     --ev-* bundna till portalens NUVARANDE värden (inte målpaletten). Portalens
+     varumärke är grönt (#1a6b3c) redan idag → --ev-brand = #1a6b3c här (blir grönt
+     "gratis" vid flippen; web/admin var blå). Flippen tar bort detta block. */
+  --ev-brand: #1a6b3c;
+  --ev-bg: #f7f8fa;
+  --ev-surface: #ffffff;
+  --ev-text: #111827;
+  --ev-text-muted: #6b7280;
+  --ev-border: #e5e7eb;
+  --ev-status-success: #059669;
+  --ev-status-warning: #d97706;
+  --ev-status-danger: #dc2626;
 
-  --color-bg: #f7f8fa;
-  --color-surface: #ffffff;
-  --color-border: #e5e7eb;
-  --color-border-strong: #d1d5db;
+  /* Portalens egna --color-*: aliasade till @eken/ui där värdet matchar (neutralt),
+     annars kvar som hex (inget matchande token i det låsta 9-schemat). */
+  --color-primary: #2563eb; /* portal-blå, mest oanvänd — inget ev-token, kvar */
+  --color-primary-dark: #1d4ed8; /* kvar */
+  --color-primary-light: #eff6ff; /* kvar */
+  --color-success: var(--ev-status-success);
+  --color-success-light: #ecfdf5; /* kvar */
+  --color-warning: var(--ev-status-warning);
+  --color-warning-light: #fffbeb; /* kvar */
+  --color-danger: var(--ev-status-danger);
+  --color-danger-light: #fef2f2; /* kvar */
 
-  --color-text: #111827;
-  --color-text-muted: #6b7280;
-  --color-text-faint: #9ca3af;
+  --color-bg: var(--ev-bg);
+  --color-surface: var(--ev-surface);
+  --color-border: var(--ev-border);
+  --color-border-strong: #d1d5db; /* inget ev-token — kvar */
+
+  --color-text: var(--ev-text);
+  --color-text-muted: var(--ev-text-muted);
+  --color-text-faint: #9ca3af; /* inget ev-token — kvar */
 
   --radius-sm: 8px;
   --radius-md: 12px;

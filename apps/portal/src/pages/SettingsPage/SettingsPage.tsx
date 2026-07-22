@@ -7,7 +7,7 @@ import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
 
 const card: React.CSSProperties = {
   background: '#fff',
-  border: '1px solid #e5e7eb',
+  border: '1px solid var(--ev-border)',
   borderRadius: 16,
   padding: 20,
 }
@@ -108,12 +108,12 @@ export function SettingsPage() {
             fontSize: 24,
             fontWeight: 600,
             letterSpacing: '-0.02em',
-            color: '#111827',
+            color: 'var(--ev-text)',
           }}
         >
           Inställningar
         </h1>
-        <p style={{ marginTop: 4, fontSize: 13, color: '#6b7280' }}>
+        <p style={{ marginTop: 4, fontSize: 13, color: 'var(--ev-text-muted)' }}>
           {tenant?.email ?? ''}
           {tenant?.firstName
             ? ` · ${tenant.firstName}`
@@ -124,10 +124,12 @@ export function SettingsPage() {
 
         <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
           <section style={card}>
-            <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#111827' }}>
+            <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ev-text)' }}>
               Dina rättigheter (GDPR)
             </h2>
-            <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.5, color: '#6b7280' }}>
+            <p
+              style={{ marginTop: 8, fontSize: 13, lineHeight: 1.5, color: 'var(--ev-text-muted)' }}
+            >
               Du har rätt att exportera och radera dina personuppgifter. Räkenskapsmaterial som
               måste sparas enligt Bokföringslagen (7 år) anonymiseras snarare än raderas.
             </p>
@@ -150,7 +152,7 @@ export function SettingsPage() {
                   <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500, color: '#1f2937' }}>
                     Exportera mina uppgifter
                   </p>
-                  <p style={{ margin: '2px 0 0', fontSize: 12.5, color: '#6b7280' }}>
+                  <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--ev-text-muted)' }}>
                     JSON-fil med all data om ditt konto.
                   </p>
                 </div>
@@ -185,7 +187,7 @@ export function SettingsPage() {
                     <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500, color: '#1f2937' }}>
                       Radera mitt konto
                     </p>
-                    <p style={{ margin: '2px 0 0', fontSize: 12.5, color: '#6b7280' }}>
+                    <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--ev-text-muted)' }}>
                       Detta kan inte ångras. Sessioner avslutas och kontot anonymiseras omedelbart.
                     </p>
                   </div>

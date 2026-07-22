@@ -146,7 +146,7 @@
 
 .bubbleUser {
   align-self: flex-end;
-  background: #1a6b3c;
+  background: var(--ev-brand);
   color: white;
   border-bottom-right-radius: 4px;
 }
@@ -191,7 +191,7 @@
 .suggestionChip {
   font-size: 12px;
   background: white;
-  color: #1a6b3c;
+  color: var(--ev-brand);
   border: 1px solid #cfe0d2;
   padding: 7px 12px;
   border-radius: 999px;
@@ -247,13 +247,13 @@
 }
 
 .confirmAccept {
-  background: #1a6b3c;
+  background: var(--ev-brand);
   color: white;
 }
 
 .confirmCancel {
   background: white;
-  color: #1a6b3c;
+  color: var(--ev-brand);
   border: 1px solid #cfe0d2 !important;
 }
 
@@ -279,12 +279,12 @@
 
 .composer textarea:focus {
   outline: none;
-  border-color: #1a6b3c;
+  border-color: var(--ev-brand);
   background: white;
 }
 
 .sendBtn {
-  background: #1a6b3c;
+  background: var(--ev-brand);
   color: white;
   border: none;
   border-radius: 12px;
