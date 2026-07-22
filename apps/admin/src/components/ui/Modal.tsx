@@ -33,10 +33,10 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: M
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            className={`w-full ${sizeClass[size]} rounded-2xl border border-[#EAEDF0] bg-white shadow-xl`}
+            className={`w-full ${sizeClass[size]} border-line rounded-2xl border bg-white shadow-xl`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-[#EAEDF0] px-5 py-4">
+            <div className="border-line flex items-center justify-between border-b px-5 py-4">
               <h2 className="text-[17px] font-semibold text-gray-900">{title}</h2>
               <button
                 onClick={onClose}
@@ -47,9 +47,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: M
             </div>
             <div className="px-5 py-5">{children}</div>
             {footer ? (
-              <div className="flex justify-end gap-2 border-t border-[#EAEDF0] px-5 py-4">
-                {footer}
-              </div>
+              <div className="border-line flex justify-end gap-2 border-t px-5 py-4">{footer}</div>
             ) : null}
           </motion.div>
         </motion.div>

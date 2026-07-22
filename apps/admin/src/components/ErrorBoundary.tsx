@@ -36,8 +36,8 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex min-h-screen items-center justify-center bg-[#F7F8FA] p-6">
-          <div className="max-w-lg rounded-2xl border border-[#EAEDF0] bg-white p-8 shadow-sm">
+        <div className="bg-canvas flex min-h-screen items-center justify-center p-6">
+          <div className="border-line max-w-lg rounded-2xl border bg-white p-8 shadow-sm">
             <h1 className="text-[20px] font-semibold text-gray-900">Något gick fel</h1>
             <p className="mt-2 text-[13.5px] text-gray-600">
               Felet har rapporterats. Försök ladda om sidan.

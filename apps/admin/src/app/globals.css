@@ -1,10 +1,25 @@
+/* @eken/ui: låst palett som CSS-variabler (--ev-*). Importeras FÖRST så att
+   admins neutrala override nedan (samma variabelnamn) vinner via källordning. */
+@import '@eken/ui/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ── Neutral token-mappning (PR2) ────────────────────────────────────────────
+   Admin behåller EXAKT dagens utseende. Dessa override:ar pekar --ev-* på admins
+   NUVARANDE hex — inte målpaletten från @eken/ui. Färgflippen = ta bort detta
+   :root-block, då slår målpaletten (grön/beige) igenom. Inter→Poppins är ett
+   separat, senare steg. Bara de tokens admin faktiskt konsumerar listas här. */
+:root {
+  --ev-bg: #f7f8fa; /* @eken/ui-mål #f6f4f0 → hålls på dagens #f7f8fa */
+  --ev-text: #111827; /* mål #241f1a → dagens #111827 */
+  --ev-border: #eaedf0; /* mål #ece7e0 → dagens #eaedf0 */
+}
+
 @layer base {
   body {
-    @apply bg-[#F7F8FA] text-[#111827];
+    @apply bg-canvas text-ink;
     font-family: 'Inter var', 'Inter', system-ui, sans-serif;
     font-feature-settings: 'cv01', 'cv02', 'cv03', 'cv04', 'ss01';
     -webkit-font-smoothing: antialiased;

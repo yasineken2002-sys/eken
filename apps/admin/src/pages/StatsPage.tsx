@@ -74,7 +74,11 @@ export function StatsPage() {
                     axisLine={false}
                   />
                   <Tooltip
-                    contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #EAEDF0' }}
+                    contentStyle={{
+                      fontSize: 12,
+                      borderRadius: 8,
+                      border: '1px solid var(--ev-border)',
+                    }}
                   />
                   <Bar dataKey="count" radius={[6, 6, 0, 0]}>
                     {planData.map((d) => (
@@ -94,7 +98,7 @@ export function StatsPage() {
           <CardBody className="p-0">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-[#EAEDF0]">
+                <tr className="border-line border-b">
                   <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
                     Kund
                   </th>
@@ -111,7 +115,7 @@ export function StatsPage() {
               </thead>
               <tbody>
                 {(top.data ?? []).map((o) => (
-                  <tr key={o.id} className="border-b border-[#EAEDF0] last:border-0">
+                  <tr key={o.id} className="border-line border-b last:border-0">
                     <td className="px-5 py-3 text-[13.5px]">
                       <div className="flex items-center gap-2">
                         <span>{o.name}</span>

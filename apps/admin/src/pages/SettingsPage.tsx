@@ -152,11 +152,7 @@ export function SettingsPage() {
                 <p>
                   Scanna QR-koden i din authenticator-app (Google Authenticator, 1Password, Authy).
                 </p>
-                <img
-                  src={qr}
-                  alt="TOTP QR"
-                  className="h-48 w-48 rounded-lg border border-[#EAEDF0]"
-                />
+                <img src={qr} alt="TOTP QR" className="border-line h-48 w-48 rounded-lg border" />
                 <div className="break-all text-[12px] text-gray-500">
                   Secret: <code className="font-mono">{secret}</code>
                 </div>

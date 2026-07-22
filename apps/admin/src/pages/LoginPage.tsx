@@ -68,8 +68,8 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#F7F8FA] p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-[#EAEDF0] bg-white p-8 shadow-sm">
+    <div className="bg-canvas flex min-h-screen items-center justify-center p-4">
+      <div className="border-line w-full max-w-sm rounded-2xl border bg-white p-8 shadow-sm">
         <div className="mb-6 text-center">
           <div className="text-[12px] font-semibold uppercase tracking-wide text-gray-400">
             Eveno

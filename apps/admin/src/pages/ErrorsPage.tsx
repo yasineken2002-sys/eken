@@ -75,7 +75,7 @@ export function ErrorsPage() {
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardBody className="p-0">
-            <ul className="divide-y divide-[#EAEDF0]">
+            <ul className="divide-line divide-y">
               {(data?.items ?? []).map((e) => (
                 <li
                   key={e.id}
