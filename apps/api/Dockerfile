@@ -23,6 +23,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages ./packages
 COPY . .
+# @eken/shared beror på @eken/ui (brandfärgens sanning, EVENO_BRAND). Bygg ui
+# FÖRST så att sharedens CJS-runtime-require('@eken/ui') hittar dist/cjs vid drift.
+RUN pnpm --filter=@eken/ui build
 RUN pnpm --filter=@eken/shared build
 WORKDIR /app/apps/api
 RUN npx prisma generate
