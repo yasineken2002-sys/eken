@@ -399,7 +399,7 @@ export function MaintenancePage() {
               style={{
                 width: '100%',
                 padding: '14px',
-                background: isSubmitting ? '#888' : '#1a6b3c',
+                background: isSubmitting ? '#888' : 'var(--ev-brand)',
                 color: 'white',
                 border: 'none',
                 borderRadius: '12px',

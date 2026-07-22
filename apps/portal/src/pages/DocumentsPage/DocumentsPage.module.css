@@ -90,7 +90,7 @@
   border: 1px solid #c8e0d0;
   font-size: 12px;
   font-weight: 600;
-  color: #1a6b3c;
+  color: var(--ev-brand);
   background: #ffffff;
   cursor: pointer;
   white-space: nowrap;

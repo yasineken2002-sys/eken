@@ -91,7 +91,7 @@
 .qty {
   font-size: 14px;
   font-weight: 600;
-  color: #1a6b3c;
+  color: var(--ev-brand);
   display: inline-flex;
   align-items: center;
   gap: 6px;

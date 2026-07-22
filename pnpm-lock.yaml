@@ -348,6 +348,9 @@ importers:
       '@eken/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@eken/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@sentry/react':
         specifier: ^10.52.0
         version: 10.52.0(react@18.3.1)

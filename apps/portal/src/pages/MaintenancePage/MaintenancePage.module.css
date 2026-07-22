@@ -25,7 +25,7 @@
   height: 36px;
   padding: 0 14px;
   border-radius: 999px;
-  background: #1a6b3c;
+  background: var(--ev-brand);
   color: #ffffff;
   font-size: 13px;
   font-weight: 600;
@@ -65,7 +65,7 @@
   height: 40px;
   padding: 0 18px;
   border-radius: 12px;
-  background: #1a6b3c;
+  background: var(--ev-brand);
   color: #ffffff;
   font-size: 14px;
   font-weight: 600;
@@ -215,14 +215,14 @@
 }
 
 .commentInput:focus {
-  border-color: #1a6b3c;
+  border-color: var(--ev-brand);
 }
 
 .commentBtn {
   align-self: flex-end;
   padding: 8px 18px;
   border-radius: 10px;
-  background: #1a6b3c;
+  background: var(--ev-brand);
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -336,7 +336,7 @@
 
 .input:focus,
 .textarea:focus {
-  border-color: #1a6b3c;
+  border-color: var(--ev-brand);
 }
 
 .textarea {
@@ -364,7 +364,7 @@
 .submitBtn {
   padding: 10px 20px;
   border-radius: 12px;
-  background: #1a6b3c;
+  background: var(--ev-brand);
   color: #fff;
   font-size: 14px;
   font-weight: 600;

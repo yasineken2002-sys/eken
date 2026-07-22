@@ -32,13 +32,13 @@ export function CookieBanner() {
         margin: '0 auto',
         padding: 20,
         background: '#fff',
-        border: '1px solid #e5e7eb',
+        border: '1px solid var(--ev-border)',
         borderRadius: 16,
         boxShadow: '0 12px 32px rgba(0,0,0,0.12)',
         zIndex: 50,
       }}
     >
-      <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#111827' }}>
+      <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ev-text)' }}>
         Vi värnar om din integritet
       </p>
       <p style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.5, color: '#4b5563' }}>

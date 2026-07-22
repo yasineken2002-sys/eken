@@ -87,7 +87,7 @@
   display: inline-block;
   margin-top: 10px;
   font-size: 13px;
-  color: #1a6b3c;
+  color: var(--ev-brand);
   font-weight: 600;
 }
 
@@ -203,7 +203,7 @@
 
 .sheetOrg {
   font-weight: 600;
-  color: #1a6b3c;
+  color: var(--ev-brand);
 }
 
 .sheetTitle {

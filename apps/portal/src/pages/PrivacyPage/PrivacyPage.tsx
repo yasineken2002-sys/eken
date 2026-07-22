@@ -24,17 +24,17 @@ export function PrivacyPage() {
             fontSize: 28,
             fontWeight: 600,
             letterSpacing: '-0.02em',
-            color: '#111827',
+            color: 'var(--ev-text)',
           }}
         >
           Integritetspolicy
         </h1>
-        <p style={{ marginTop: 8, fontSize: 13, color: '#6b7280' }}>
+        <p style={{ marginTop: 8, fontSize: 13, color: 'var(--ev-text-muted)' }}>
           Senast uppdaterad: 2026-05-03
         </p>
 
         <div style={{ marginTop: 32, fontSize: 14, lineHeight: 1.7, color: '#374151' }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginTop: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ev-text)', marginTop: 24 }}>
             1. Personuppgiftsansvarig
           </h2>
           <p>
@@ -44,7 +44,7 @@ export function PrivacyPage() {
             personuppgiftsansvarig.
           </p>
 
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginTop: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ev-text)', marginTop: 24 }}>
             2. Vilka uppgifter
           </h2>
           <ul style={{ marginTop: 8, paddingLeft: 24 }}>
@@ -54,7 +54,7 @@ export function PrivacyPage() {
             <li>Tekniska loggar (inloggning, session)</li>
           </ul>
 
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginTop: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ev-text)', marginTop: 24 }}>
             3. Cookies
           </h2>
           <p>
@@ -62,7 +62,7 @@ export function PrivacyPage() {
             för marknadsföring eller spårning sätts.
           </p>
 
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginTop: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ev-text)', marginTop: 24 }}>
             4. Dina rättigheter
           </h2>
           <ul style={{ marginTop: 8, paddingLeft: 24 }}>
@@ -83,7 +83,7 @@ export function PrivacyPage() {
             </li>
           </ul>
 
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginTop: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ev-text)', marginTop: 24 }}>
             5. Säkerhet
           </h2>
           <p>

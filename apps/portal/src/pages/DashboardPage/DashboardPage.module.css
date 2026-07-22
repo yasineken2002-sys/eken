@@ -94,7 +94,7 @@
 .leaseRent {
   font-size: 28px;
   font-weight: 700;
-  color: #1a6b3c;
+  color: var(--ev-brand);
   line-height: 1.1;
 }
 
@@ -224,7 +224,7 @@
 
 .noticeHeaderLink {
   font-size: 12px;
-  color: #1a6b3c;
+  color: var(--ev-brand);
   font-weight: 500;
   cursor: pointer;
 }
@@ -259,7 +259,7 @@
 .noticeAmount {
   font-size: 16px;
   font-weight: 700;
-  color: #1a6b3c;
+  color: var(--ev-brand);
 }
 
 /* ── AI helper chips ──────────────────────────────────── */
@@ -292,7 +292,7 @@
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  background: #1a6b3c;
+  background: var(--ev-brand);
   color: white;
   display: flex;
   align-items: center;
@@ -309,7 +309,7 @@
 .aiChip {
   background: white;
   border: 1px solid #cfe0d2;
-  color: #1a6b3c;
+  color: var(--ev-brand);
   padding: 7px 12px;
   border-radius: 999px;
   font-size: 12.5px;
