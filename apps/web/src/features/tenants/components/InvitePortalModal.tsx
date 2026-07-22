@@ -147,7 +147,7 @@ export function InvitePortalModal({ open, onClose }: Props) {
             'NO_EMAIL',
           ] as TenantInviteStatus[]
         ).map((s) => (
-          <div key={s} className="rounded-xl border border-[#EAEDF0] bg-white p-3">
+          <div key={s} className="border-line rounded-xl border bg-white p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
               {STATUS_META[s].label}
             </p>
@@ -181,7 +181,7 @@ export function InvitePortalModal({ open, onClose }: Props) {
       )}
 
       {/* Lista */}
-      <div className="mt-4 max-h-[280px] overflow-y-auto rounded-xl border border-[#EAEDF0]">
+      <div className="border-line mt-4 max-h-[280px] overflow-y-auto rounded-xl border">
         {isLoading ? (
           <p className="p-4 text-[13px] text-gray-400">Laddar…</p>
         ) : rows.length === 0 ? (
@@ -190,7 +190,7 @@ export function InvitePortalModal({ open, onClose }: Props) {
           rows.map((r) => (
             <label
               key={r.tenantId}
-              className="flex items-center gap-3 border-b border-[#EAEDF0] px-4 py-2.5 last:border-0 hover:bg-gray-50/80"
+              className="border-line flex items-center gap-3 border-b px-4 py-2.5 last:border-0 hover:bg-gray-50/80"
             >
               <input
                 type="checkbox"
@@ -215,7 +215,7 @@ export function InvitePortalModal({ open, onClose }: Props) {
       </div>
 
       {/* Åtgärder */}
-      <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-[#EAEDF0] pt-5">
+      <div className="border-line mt-5 flex flex-wrap items-center justify-end gap-2 border-t pt-5">
         <Button
           variant="secondary"
           size="sm"

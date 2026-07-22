@@ -164,7 +164,7 @@ export function CollectionsPage() {
       )}
 
       {/* Tabell */}
-      <div className="mt-4 overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white">
+      <div className="border-line mt-4 overflow-hidden rounded-2xl border bg-white">
         {isLoading ? (
           <div className="p-8 text-center text-[13px] text-gray-500">Laddar...</div>
         ) : invoices.length === 0 ? (
@@ -179,7 +179,7 @@ export function CollectionsPage() {
         ) : (
           <table className="w-full">
             <thead>
-              <tr className="border-b border-[#EAEDF0] bg-gray-50/50 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
+              <tr className="border-line border-b bg-gray-50/50 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
                 {bucket === 'ready' && (
                   <th className="px-4 py-3 text-left">
                     <input
@@ -252,7 +252,7 @@ function CollectionRow({
     <motion.tr
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="border-b border-[#EAEDF0] last:border-0 hover:bg-gray-50/80"
+      className="border-line border-b last:border-0 hover:bg-gray-50/80"
     >
       {bucket === 'ready' && (
         <td className="px-4 py-3">
@@ -342,7 +342,7 @@ function CollectionRow({
 
 function KpiCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-[#EAEDF0] bg-white p-4">
+    <div className="border-line rounded-2xl border bg-white p-4">
       <p className="text-[12px] text-gray-500">{label}</p>
       <p className="mt-1 text-[22px] font-semibold tracking-tight text-gray-900">{value}</p>
     </div>

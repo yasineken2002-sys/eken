@@ -111,14 +111,14 @@ export function DebitTenantCard({ ticket }: { ticket: TicketRef }) {
   // platshållare istället för att låta "ej debiterat"-grenen blinka fram en aktiv
   // "Debitera"-knapp för ett ärende som redan är debiterat.
   if (ticket.chargeId && chargeLoading) {
-    return <div className="h-[68px] animate-pulse rounded-xl border border-[#EAEDF0] bg-gray-50" />
+    return <div className="border-line h-[68px] animate-pulse rounded-xl border bg-gray-50" />
   }
 
   // ── Redan debiterat: visa status + åtgärder ────────────────────────────────
   if (ticket.chargeId && charge) {
     const total = Number(charge.totalAmount)
     return (
-      <div className="rounded-xl border border-[#EAEDF0] bg-white p-3.5">
+      <div className="border-line rounded-xl border bg-white p-3.5">
         <div className="mb-2 flex items-center justify-between">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
             Debitering
@@ -178,7 +178,7 @@ export function DebitTenantCard({ ticket }: { ticket: TicketRef }) {
   const canDebit = !!ticket.leaseId && !!ticket.tenantId
 
   return (
-    <div className="rounded-xl border border-[#EAEDF0] bg-white p-3.5">
+    <div className="border-line rounded-xl border bg-white p-3.5">
       <p className="text-[13px] font-semibold text-gray-800">Debitera hyresgäst</p>
       <p className="mt-1 text-[12px] text-gray-500">
         Skapa en debiterbar post (skada/övrigt) och bokför den mot hyresgästen. Ett verifikat skapas
@@ -247,7 +247,7 @@ export function DebitTenantCard({ ticket }: { ticket: TicketRef }) {
             )}
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-[#EAEDF0] pt-5">
+          <div className="border-line flex justify-end gap-2 border-t pt-5">
             <Button variant="secondary" type="button" onClick={() => setModalOpen(false)}>
               Avbryt
             </Button>

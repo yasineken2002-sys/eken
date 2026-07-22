@@ -170,10 +170,10 @@ export function NotificationBell() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 6 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            className="absolute right-0 top-10 z-50 w-80 rounded-2xl border border-[#EAEDF0] bg-white shadow-lg"
+            className="border-line absolute right-0 top-10 z-50 w-80 rounded-2xl border bg-white shadow-lg"
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-[#EAEDF0] px-4 py-3">
+            <div className="border-line flex items-center justify-between border-b px-4 py-3">
               <span className="text-[14px] font-semibold text-gray-900">Notifikationer</span>
               <div className="flex items-center gap-2">
                 {unreadCount > 0 && (
@@ -202,7 +202,7 @@ export function NotificationBell() {
                   <p className="text-[12px] text-gray-400">Du är à jour!</p>
                 </div>
               ) : (
-                <div className="divide-y divide-[#EAEDF0]">
+                <div className="divide-line divide-y">
                   {notifications.map((n) => (
                     <NotificationRow key={n.id} notification={n} onRead={handleRead} />
                   ))}
@@ -212,7 +212,7 @@ export function NotificationBell() {
 
             {/* Footer */}
             {notifications.length > 0 && (
-              <div className="border-t border-[#EAEDF0] px-4 py-2.5">
+              <div className="border-line border-t px-4 py-2.5">
                 <button
                   onClick={() => {
                     setOpen(false)

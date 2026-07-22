@@ -194,7 +194,7 @@ export function MaintenancePlanPage() {
                       </span>
                     )}
                   </div>
-                  <div className="mb-3 h-px bg-[#EAEDF0]" />
+                  <div className="bg-line mb-3 h-px" />
 
                   {yearEntry.plans.length === 0 ? (
                     <p className="text-[13px] italic text-gray-400">
@@ -217,7 +217,7 @@ export function MaintenancePlanPage() {
                             setSelectedPlan(selectedPlan?.id === plan.id ? null : plan)
                           }
                           className={cn(
-                            'flex cursor-pointer items-center gap-3 rounded-xl border border-l-4 border-[#EAEDF0] bg-white px-4 py-3 transition-all hover:shadow-sm',
+                            'border-line flex cursor-pointer items-center gap-3 rounded-xl border border-l-4 bg-white px-4 py-3 transition-all hover:shadow-sm',
                             PRIORITY_BORDER[plan.priority] ?? 'border-l-gray-200',
                             selectedPlan?.id === plan.id && 'ring-1 ring-blue-200',
                           )}

@@ -88,7 +88,7 @@ function NotificationRow({
       onClick={handleClick}
       className={cn(
         'flex cursor-pointer items-start gap-4 px-5 py-4 transition-colors hover:bg-gray-50/80',
-        'border-b border-[#EAEDF0] last:border-0',
+        'border-line border-b last:border-0',
         !notification.read && 'border-l-2 border-blue-500 bg-blue-50/20',
       )}
     >
@@ -174,9 +174,9 @@ export function NotificationsPage() {
 
       {/* List */}
       {isLoading ? (
-        <div className="overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white">
+        <div className="border-line overflow-hidden rounded-2xl border bg-white">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="border-b border-[#EAEDF0] px-5 py-4 last:border-0">
+            <div key={i} className="border-line border-b px-5 py-4 last:border-0">
               <div className="flex items-start gap-4">
                 <div className="h-8 w-8 animate-pulse rounded-xl bg-gray-100" />
                 <div className="flex-1 space-y-2">
@@ -188,7 +188,7 @@ export function NotificationsPage() {
           ))}
         </div>
       ) : notifications.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-[#EAEDF0] bg-white py-16 text-center">
+        <div className="border-line flex flex-col items-center justify-center gap-3 rounded-2xl border bg-white py-16 text-center">
           <BellOff size={28} strokeWidth={1.5} className="text-gray-300" />
           <p className="text-[14px] font-semibold text-gray-500">Inga notifikationer</p>
           <p className="text-[13px] text-gray-400">Du är à jour!</p>
@@ -198,7 +198,7 @@ export function NotificationsPage() {
           variants={container}
           initial="hidden"
           animate="show"
-          className="overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white"
+          className="border-line overflow-hidden rounded-2xl border bg-white"
         >
           {notifications.map((n) => (
             <NotificationRow key={n.id} notification={n} onRead={(id) => markOne.mutate(id)} />

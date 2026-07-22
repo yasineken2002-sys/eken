@@ -2,8 +2,14 @@ import type { Config } from 'tailwindcss'
 import { fontFamily } from 'tailwindcss/defaultTheme'
 import animate from 'tailwindcss-animate'
 import typography from '@tailwindcss/typography'
+import { evenoPreset } from '@eken/ui/tailwind-preset'
 
 export default {
+  // @eken/ui-preseten mappar var(--ev-*) → theme.colors (brand/canvas/ink/line/…).
+  // PR3: neutral adoption — utilities (bg-canvas/border-line/…) pekar på CSS-variabler
+  // som globals.css binder till webs NUVARANDE värden (ingen reskin). Preset-nycklarna
+  // krockar inte med webs egna (border/background/primary/…) → ren merge.
+  presets: [evenoPreset],
   darkMode: ['class'],
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {

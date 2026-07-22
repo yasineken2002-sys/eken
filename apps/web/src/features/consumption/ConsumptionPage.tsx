@@ -387,7 +387,7 @@ export function ConsumptionPage() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.07 }}
-            className="rounded-2xl border border-[#EAEDF0] bg-white p-5"
+            className="border-line rounded-2xl border bg-white p-5"
           >
             <p className="text-[12px] font-medium text-gray-400">{s.label}</p>
             <p className="mt-1 text-[26px] font-semibold tracking-tight text-gray-900">{s.value}</p>
@@ -569,7 +569,7 @@ export function ConsumptionPage() {
       ) : tab === 'readings' ? (
         <div className="mt-4 space-y-4">
           {/* Filter: enhet + period (mot avläsningens slutdatum, 1.1-filtret) */}
-          <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-[#EAEDF0] bg-white p-3">
+          <div className="border-line flex flex-wrap items-end gap-3 rounded-2xl border bg-white p-3">
             <div className="w-56">
               <Select
                 label="Enhet"
@@ -853,13 +853,13 @@ export function ConsumptionPage() {
               </div>
 
               {/* Beloppsruta — läses DIREKT från verifikatet, räknas aldrig om */}
-              <div className="overflow-hidden rounded-xl border border-[#EAEDF0]">
-                <div className="border-b border-[#EAEDF0] bg-gray-50 px-4 py-2.5">
+              <div className="border-line overflow-hidden rounded-xl border">
+                <div className="border-line border-b bg-gray-50 px-4 py-2.5">
                   <p className="text-[12px] font-semibold text-gray-500">
                     Belopp (från verifikatet)
                   </p>
                 </div>
-                <div className="divide-y divide-[#EAEDF0]">
+                <div className="divide-line divide-y">
                   <div className="flex justify-between px-4 py-2.5 text-[13px]">
                     <span className="text-gray-500">Netto</span>
                     <span className="font-medium text-gray-800">
@@ -919,7 +919,7 @@ export function ConsumptionPage() {
               )}
 
               {selectedCharge.status !== 'DRAFT' && (
-                <div className="flex items-center gap-2 rounded-xl border border-[#EAEDF0] bg-gray-50 p-3 text-[12px] text-gray-500">
+                <div className="border-line flex items-center gap-2 rounded-xl border bg-gray-50 p-3 text-[12px] text-gray-500">
                   <BookCheck size={14} strokeWidth={1.9} className="text-emerald-600" />
                   Posten är bokförd (verifikat skapat).
                 </div>
@@ -974,7 +974,7 @@ export function ConsumptionPage() {
               </div>
 
               {canWrite && (
-                <div className="flex items-center gap-2 border-t border-[#EAEDF0] pt-4">
+                <div className="border-line flex items-center gap-2 border-t pt-4">
                   <Button size="sm" onClick={() => setEditing(true)}>
                     <Pencil size={13} strokeWidth={1.8} />
                     Redigera

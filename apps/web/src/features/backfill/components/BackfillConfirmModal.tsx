@@ -75,10 +75,10 @@ export function BackfillConfirmModal({ item, onClose, onDone }: Props) {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-[#EAEDF0] bg-white shadow-xl"
+        className="border-line flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border bg-white shadow-xl"
       >
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-[#EAEDF0] p-6 pb-5">
+        <div className="border-line flex items-start justify-between border-b p-6 pb-5">
           <div>
             <h2 className="text-[17px] font-semibold text-gray-900">Efterdebitera hyra</h2>
             <p className="mt-1 text-[13px] text-gray-500">
@@ -104,11 +104,11 @@ export function BackfillConfirmModal({ item, onClose, onDone }: Props) {
               <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
                 Perioder att efterfakturera
               </p>
-              <div className="overflow-hidden rounded-xl border border-[#EAEDF0]">
+              <div className="border-line overflow-hidden rounded-xl border">
                 {billable.map((m) => (
                   <div
                     key={`${m.year}-${m.month}`}
-                    className="flex items-center justify-between border-b border-[#EAEDF0] px-3.5 py-2.5 last:border-0"
+                    className="border-line flex items-center justify-between border-b px-3.5 py-2.5 last:border-0"
                   >
                     <div>
                       <p className="text-[13.5px] font-medium text-gray-800">
@@ -243,7 +243,7 @@ export function BackfillConfirmModal({ item, onClose, onDone }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-2 border-t border-[#EAEDF0] p-6 pt-5">
+        <div className="border-line flex items-center justify-between gap-2 border-t p-6 pt-5">
           {result ? (
             <Button variant="primary" className="ml-auto" onClick={onDone}>
               Klar
@@ -312,11 +312,11 @@ function ResultView({ result }: { result: BackfillResult }) {
           {createdCount > 0 ? `${createdCount} avi(er) efterdebiterade` : 'Inga nya avier skapades'}
         </p>
       </div>
-      <div className="overflow-hidden rounded-xl border border-[#EAEDF0]">
+      <div className="border-line overflow-hidden rounded-xl border">
         {rows.map((r) => (
           <div
             key={r.label}
-            className="flex items-center justify-between border-b border-[#EAEDF0] px-3.5 py-2.5 text-[13px] last:border-0"
+            className="border-line flex items-center justify-between border-b px-3.5 py-2.5 text-[13px] last:border-0"
           >
             <span className="text-gray-600">{r.label}</span>
             <span

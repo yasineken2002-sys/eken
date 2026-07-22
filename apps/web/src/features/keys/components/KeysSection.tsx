@@ -64,7 +64,7 @@ export function KeysSection({ leaseId }: Props) {
             {lost > 0 ? ` · ${lost} förlorade` : ''}
           </p>
 
-          <ul className="divide-y divide-[#EAEDF0] overflow-hidden rounded-lg border border-[#EAEDF0]">
+          <ul className="divide-line border-line divide-y overflow-hidden rounded-lg border">
             {keys.map((k) => (
               <KeyRow key={k.id} keyItem={k} canWrite={canWrite} />
             ))}

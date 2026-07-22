@@ -46,7 +46,7 @@ export function ContractBatchUploadPage() {
         }
       />
 
-      <div className="mt-6 rounded-2xl border border-[#EAEDF0] bg-white p-5">
+      <div className="border-line mt-6 rounded-2xl border bg-white p-5">
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -80,7 +80,7 @@ export function ContractBatchUploadPage() {
               {files.map((f, i) => (
                 <li
                   key={`${f.name}-${i}`}
-                  className="flex items-center justify-between rounded-lg border border-[#EAEDF0] px-3 py-2"
+                  className="border-line flex items-center justify-between rounded-lg border px-3 py-2"
                 >
                   <span className="flex items-center gap-2 text-[13px] text-gray-700">
                     <FileText size={14} className="text-gray-400" />

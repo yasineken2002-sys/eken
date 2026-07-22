@@ -72,9 +72,9 @@ export function BackfillPage() {
             variants={container}
             initial="hidden"
             animate="show"
-            className="overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white"
+            className="border-line overflow-hidden rounded-2xl border bg-white"
           >
-            <div className="grid grid-cols-[1fr_auto_auto] items-center gap-4 border-b border-[#EAEDF0] px-4 py-2.5 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
+            <div className="border-line grid grid-cols-[1fr_auto_auto] items-center gap-4 border-b px-4 py-2.5 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
               <span>Kontrakt</span>
               <span className="text-right">Att debitera</span>
               <span className="w-5" />
@@ -86,7 +86,7 @@ export function BackfillPage() {
                   key={item.leaseId}
                   variants={rowItem}
                   onClick={() => setSelected(item)}
-                  className="grid w-full grid-cols-[1fr_auto_auto] items-center gap-4 border-b border-[#EAEDF0] px-4 py-3 text-left transition-colors last:border-0 hover:bg-gray-50/80"
+                  className="border-line grid w-full grid-cols-[1fr_auto_auto] items-center gap-4 border-b px-4 py-3 text-left transition-colors last:border-0 hover:bg-gray-50/80"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-[13.5px] font-medium text-gray-900">

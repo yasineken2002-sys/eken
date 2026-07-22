@@ -12,7 +12,7 @@ export function PasswordRequirements({ password, className }: Props) {
   const checks = passwordChecks(password)
   return (
     <ul
-      className={cn('space-y-1.5 rounded-xl border border-[#EAEDF0] bg-gray-50/60 p-3', className)}
+      className={cn('border-line space-y-1.5 rounded-xl border bg-gray-50/60 p-3', className)}
       aria-label="Lösenordskrav"
     >
       {checks.map((c) => (

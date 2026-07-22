@@ -45,10 +45,10 @@ export function MaintenancePlanDetailPanel({ plan, onClose }: Props) {
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.2 }}
-      className="flex h-full w-[450px] flex-shrink-0 flex-col overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white shadow-sm"
+      className="border-line flex h-full w-[450px] flex-shrink-0 flex-col overflow-hidden rounded-2xl border bg-white shadow-sm"
     >
       {/* Header */}
-      <div className="flex items-start justify-between border-b border-[#EAEDF0] px-5 py-4">
+      <div className="border-line flex items-start justify-between border-b px-5 py-4">
         <div className="min-w-0 flex-1 pr-3">
           <div className="mb-1 flex items-center gap-2">
             <MaintenancePlanStatusBadge status={plan.status} />
@@ -167,7 +167,7 @@ export function MaintenancePlanDetailPanel({ plan, onClose }: Props) {
         </div>
 
         {/* Delete */}
-        <div className="mt-6 border-t border-[#EAEDF0] pt-4">
+        <div className="border-line mt-6 border-t pt-4">
           <Button
             variant="ghost"
             size="sm"

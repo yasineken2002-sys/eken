@@ -89,7 +89,7 @@ interface Module {
 const MODULES: Module[] = [
   {
     icon: Building2,
-    color: '#2563EB',
+    color: 'var(--ev-brand)',
     bg: '#EFF6FF',
     name: 'Fastigheter',
     route: 'properties',
@@ -223,7 +223,7 @@ const ENDPOINT_GROUPS: EndpointGroup[] = [
   },
   {
     resource: 'PROPERTIES',
-    color: '#2563EB',
+    color: 'var(--ev-brand)',
     endpoints: [
       { method: 'GET', path: '/properties' },
       { method: 'GET', path: '/properties/:id' },
@@ -314,7 +314,7 @@ const ENDPOINT_GROUPS: EndpointGroup[] = [
 ]
 
 const METHOD_COLORS: Record<string, { bg: string; text: string }> = {
-  GET: { bg: '#EFF6FF', text: '#2563EB' },
+  GET: { bg: '#EFF6FF', text: 'var(--ev-brand)' },
   POST: { bg: '#F0FDF4', text: '#16A34A' },
   PATCH: { bg: '#FFF7ED', text: '#EA580C' },
   DELETE: { bg: '#FEF2F2', text: '#DC2626' },
@@ -620,7 +620,7 @@ export function OverviewPage() {
             {[
               {
                 icon: GitBranch,
-                color: '#2563EB',
+                color: 'var(--ev-brand)',
                 bg: '#F0FDF4',
                 title: 'CI Pipeline',
                 subtitle: 'GitHub Actions',
@@ -633,7 +633,7 @@ export function OverviewPage() {
               },
               {
                 icon: Cloud,
-                color: '#2563EB',
+                color: 'var(--ev-brand)',
                 bg: '#EFF6FF',
                 title: 'Produktionsmiljö',
                 subtitle: 'Railway',

@@ -196,7 +196,7 @@ export function PlanPanel() {
         <div className="h-[260px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={history ?? []} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#EAEDF0" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--ev-border)" />
               <XAxis
                 dataKey="date"
                 tick={{ fontSize: 11, fill: '#6B7280' }}
@@ -206,7 +206,7 @@ export function PlanPanel() {
               <Tooltip
                 contentStyle={{
                   borderRadius: 12,
-                  border: '1px solid #EAEDF0',
+                  border: '1px solid var(--ev-border)',
                   fontSize: 12,
                 }}
                 labelFormatter={(d: string) => formatDate(d)}
@@ -216,7 +216,7 @@ export function PlanPanel() {
                 type="monotone"
                 dataKey="manualCalls"
                 name="Manuella (räknas mot tak)"
-                stroke="#2563EB"
+                stroke="var(--ev-brand)"
                 strokeWidth={2}
                 dot={false}
               />

@@ -19,6 +19,9 @@ export function StatCard({
   change,
   changeLabel,
   icon: Icon,
+  // OBS: iconColor får INTE tokeniseras till var(--ev-brand) — den concateneras med
+  // alfa (`${iconColor}14`, rad nedan) och en CSS-variabel bryter den strängen.
+  // #2563EB kvarstår hårdkodad tills färgflippen refaktorerar tinten. Se PR3-not.
   iconColor = '#2563EB',
   delay = 0,
   compact,

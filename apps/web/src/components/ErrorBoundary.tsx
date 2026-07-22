@@ -41,8 +41,8 @@ export class ErrorBoundary extends Component<Props, State> {
     const isDev = import.meta.env.DEV
 
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F7F8FA] px-4">
-        <div className="w-full max-w-lg rounded-2xl border border-[#EAEDF0] bg-white p-8 shadow-sm">
+      <div className="bg-canvas flex min-h-screen items-center justify-center px-4">
+        <div className="border-line w-full max-w-lg rounded-2xl border bg-white p-8 shadow-sm">
           <div className="flex items-start gap-4">
             <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-50">
               <AlertTriangle className="h-6 w-6 text-red-600" strokeWidth={1.8} />
@@ -59,7 +59,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </div>
 
           {isDev && this.state.error && (
-            <details className="mt-5 rounded-lg border border-[#EAEDF0] bg-gray-50 p-3 text-[12px]">
+            <details className="border-line mt-5 rounded-lg border bg-gray-50 p-3 text-[12px]">
               <summary className="cursor-pointer font-medium text-gray-700">Detaljer (dev)</summary>
               <div className="mt-2 space-y-2 font-mono text-[11px] text-gray-700">
                 <div>

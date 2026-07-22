@@ -242,7 +242,7 @@ export function InvoiceTimeline({ events }: InvoiceTimelineProps) {
   return (
     <div className="relative pl-6">
       {/* Vertikal linje */}
-      <div className="absolute bottom-3 left-[10px] top-3 w-px bg-[#EAEDF0]" />
+      <div className="bg-line absolute bottom-3 left-[10px] top-3 w-px" />
 
       <motion.div variants={container} initial="hidden" animate="show" className="space-y-3">
         {events.map((event) => {

@@ -76,7 +76,7 @@ function CostGroup({
         </td>
       </tr>
       {group.accounts.map((a) => (
-        <tr key={a.number} className="border-b border-[#EAEDF0] last:border-0 hover:bg-gray-50/80">
+        <tr key={a.number} className="border-line border-b last:border-0 hover:bg-gray-50/80">
           <td className="px-4 py-2.5 text-[13px] tabular-nums text-gray-400">{a.number}</td>
           <td className="px-4 py-2.5 text-[13px] text-gray-700">{a.name}</td>
           <td className="px-4 py-2.5 text-right text-[13px] tabular-nums text-gray-900">
@@ -108,7 +108,7 @@ function ProfitLossView({ data }: { data: ProfitLossReport }) {
         </p>
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white">
+      <div className="border-line overflow-hidden rounded-2xl border bg-white">
         <table className="w-full">
           <tbody>
             <CostGroup label="Intäkter" group={data.revenue} />
@@ -149,8 +149,8 @@ function BalanceColumn({
   accounts: BalanceSheet['assets']['accounts']
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white">
-      <div className="flex items-center justify-between border-b border-[#EAEDF0] px-4 py-3">
+    <div className="border-line overflow-hidden rounded-2xl border bg-white">
+      <div className="border-line flex items-center justify-between border-b px-4 py-3">
         <span className="text-[13.5px] font-semibold text-gray-900">{title}</span>
         <span className="text-[13.5px] font-semibold tabular-nums text-gray-900">
           {formatCurrency(total)}
@@ -159,10 +159,7 @@ function BalanceColumn({
       <table className="w-full">
         <tbody>
           {accounts.map((a) => (
-            <tr
-              key={a.number}
-              className="border-b border-[#EAEDF0] last:border-0 hover:bg-gray-50/80"
-            >
+            <tr key={a.number} className="border-line border-b last:border-0 hover:bg-gray-50/80">
               <td className="px-4 py-2.5 text-[13px] tabular-nums text-gray-400">{a.number}</td>
               <td className="px-4 py-2.5 text-[13px] text-gray-700">{a.name}</td>
               <td className="px-4 py-2.5 text-right text-[13px] tabular-nums text-gray-900">
@@ -244,14 +241,14 @@ function VatView({ data }: { data: VatReport }) {
           iconColor={pay ? '#DC2626' : '#059669'}
         />
       </div>
-      <div className="overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white">
+      <div className="border-line overflow-hidden rounded-2xl border bg-white">
         <table className="w-full">
           <tbody>
             {rows.map((r) => (
               <tr
                 key={r.label}
                 className={cn(
-                  'border-b border-[#EAEDF0] last:border-0',
+                  'border-line border-b last:border-0',
                   r.label.startsWith('Summa') && 'bg-gray-50/60 font-semibold',
                 )}
               >

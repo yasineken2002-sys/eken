@@ -101,10 +101,10 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.2 }}
-      className="flex h-full w-[450px] flex-shrink-0 flex-col overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white shadow-sm"
+      className="border-line flex h-full w-[450px] flex-shrink-0 flex-col overflow-hidden rounded-2xl border bg-white shadow-sm"
     >
       {/* Header */}
-      <div className="flex items-start justify-between border-b border-[#EAEDF0] px-5 py-4">
+      <div className="border-line flex items-start justify-between border-b px-5 py-4">
         <div className="min-w-0 flex-1 pr-3">
           <div className="mb-1 flex items-center gap-2">
             <InspectionTypeBadge type={inspection.type} />
@@ -160,11 +160,11 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
               {Object.entries(rooms).map(([room, items]) => (
                 <div key={room}>
                   <p className="mb-2 text-[13px] font-semibold text-gray-700">{room}</p>
-                  <div className="space-y-2 overflow-hidden rounded-xl border border-[#EAEDF0]">
+                  <div className="border-line space-y-2 overflow-hidden rounded-xl border">
                     {items.map((item) => (
                       <div
                         key={item.id}
-                        className="grid grid-cols-[1fr,auto] gap-2 border-b border-[#EAEDF0] px-3 py-2.5 last:border-0"
+                        className="border-line grid grid-cols-[1fr,auto] gap-2 border-b px-3 py-2.5 last:border-0"
                       >
                         <div className="min-w-0">
                           <p className="text-[13px] font-medium text-gray-800">{item.item}</p>
@@ -251,7 +251,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
         )}
 
         {/* AI Analysis */}
-        <div className="border-t border-[#EAEDF0] pt-4">
+        <div className="border-line border-t pt-4">
           <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
             <Sparkles size={11} strokeWidth={1.8} />
             AI-analys
@@ -288,7 +288,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
               {pendingFiles.map((pf, i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-2 rounded-xl border border-[#EAEDF0] px-3 py-2"
+                  className="border-line flex items-center gap-2 rounded-xl border px-3 py-2"
                 >
                   <img
                     src={pf.previewUrl}
@@ -337,7 +337,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
 
           {analysisResult && (
             <div className="mt-3 space-y-3">
-              <div className="rounded-xl border border-[#EAEDF0] bg-gray-50/50 px-4 py-3">
+              <div className="border-line rounded-xl border bg-gray-50/50 px-4 py-3">
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
                   Helhetsskick
                 </p>
@@ -364,7 +364,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
               )}
 
               {analysisResult.estimatedTotalCost > 0 && (
-                <div className="flex items-center justify-between rounded-xl border border-[#EAEDF0] px-4 py-2.5">
+                <div className="border-line flex items-center justify-between rounded-xl border px-4 py-2.5">
                   <p className="text-[12px] font-semibold text-gray-600">Beräknad totalkostnad</p>
                   <p className="text-[13px] font-bold text-red-600">
                     {formatCurrency(analysisResult.estimatedTotalCost)}
@@ -445,7 +445,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
         )}
 
         {/* PDF download */}
-        <div className="border-t border-[#EAEDF0] pt-4">
+        <div className="border-line border-t pt-4">
           <Button
             variant="secondary"
             size="sm"
