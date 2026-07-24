@@ -11,6 +11,18 @@
       "require": "./dist/cjs/index.js",
       "default": "./dist/cjs/index.js"
     },
+    "./react": {
+      "types": "./src/react/index.ts",
+      "import": "./src/react/index.ts",
+      "require": "./dist/cjs/react/index.js",
+      "default": "./dist/cjs/react/index.js"
+    },
+    "./hooks": {
+      "types": "./src/react/useFocusTrap.ts",
+      "import": "./src/react/useFocusTrap.ts",
+      "require": "./dist/cjs/react/useFocusTrap.js",
+      "default": "./dist/cjs/react/useFocusTrap.js"
+    },
     "./tailwind-preset": {
       "types": "./src/tailwind-preset.ts",
       "import": "./src/tailwind-preset.ts",
@@ -34,7 +46,33 @@
     "gen:tokens": "tsc -p tsconfig.cjs.json && node scripts/generate-css.mjs",
     "lint": "eslint src"
   },
+  "peerDependencies": {
+    "framer-motion": ">=11",
+    "lucide-react": ">=0.4",
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "framer-motion": {
+      "optional": true
+    },
+    "lucide-react": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^0.462.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "typescript": "^5.6.0"
   }
 }

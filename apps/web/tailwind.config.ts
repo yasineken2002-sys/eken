@@ -11,7 +11,9 @@ export default {
   // krockar inte med webs egna (border/background/primary/…) → ren merge.
   presets: [evenoPreset],
   darkMode: ['class'],
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // Inkluderar @eken/ui/src så Tailwind genererar klasserna som den delade
+  // <Modal> (och kommande komponenter) använder — annars blir de ostylade.
+  content: ['./index.html', './src/**/*.{ts,tsx}', '../../packages/ui/src/**/*.{ts,tsx}'],
   theme: {
     container: {
       center: true,

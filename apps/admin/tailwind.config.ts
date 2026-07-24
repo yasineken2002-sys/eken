@@ -7,7 +7,9 @@ export default {
   // PR2: neutral adoption — utilities som bg-canvas/border-line/text-ink pekar på
   // CSS-variabler som globals.css binder till admins NUVARANDE värden (ingen reskin).
   presets: [evenoPreset],
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // Inkluderar @eken/ui/src så Tailwind genererar klasserna som den delade
+  // <Modal> (och kommande komponenter) använder — annars blir de ostylade.
+  content: ['./index.html', './src/**/*.{ts,tsx}', '../../packages/ui/src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       fontFamily: {

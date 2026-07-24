@@ -4,6 +4,7 @@ import { fetchNews } from '@/api/portal.api'
 import { Spinner } from '@/components/ui/Spinner'
 import { ErrorCard } from '@/components/ui/ErrorCard'
 import type { PortalNews } from '@/types/portal.types'
+import { useFocusTrap } from '@eken/ui/hooks'
 import styles from './NewsPage.module.css'
 
 function formatDateSv(dateStr: string): string {
@@ -35,6 +36,8 @@ function snippet(body: string, max = 140): string {
 
 export function NewsPage() {
   const [activePost, setActivePost] = useState<PortalNews | null>(null)
+  // PR5: focus-trap + Escape (dialogen hade redan role/aria-modal/aria-labelledby).
+  const sheetRef = useFocusTrap<HTMLDivElement>(!!activePost)
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['portal', 'news'],
@@ -50,6 +53,16 @@ export function NewsPage() {
     return () => {
       document.body.style.overflow = prev
     }
+  }, [activePost])
+
+  // Escape stänger bottom-sheeten (WCAG).
+  useEffect(() => {
+    if (!activePost) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setActivePost(null)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
   }, [activePost])
 
   if (isLoading) return <Spinner size="md" label="Laddar nyheter..." />
@@ -108,6 +121,7 @@ export function NewsPage() {
             aria-hidden="true"
           />
           <div
+            ref={sheetRef}
             className={styles.sheet}
             role="dialog"
             aria-modal="true"
