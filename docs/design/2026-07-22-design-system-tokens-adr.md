@@ -41,6 +41,26 @@ web/admins `theme.colors`. Portalen läser variablerna direkt.
 **Källa till sanning:** `packages/ui/src/tokens.ts` (`EVENO_PALETTE`). `tokens.css`
 GENERERAS ur den (`renderTokensCss()` → `pnpm --filter @eken/ui gen:tokens`).
 
+### Komponent-variabler (tillägg PR6)
+
+Paletten ovan förblir **9 tokens**. En delad komponent kan behöva en yta som inte har
+någon egen semantisk plats i paletten (första fallet: tabellradens hover-tint). Sådana
+variabler deklareras i `EVENO_COMPONENT_TOKENS` och emitteras i samma genererade
+`tokens.css`, under regeln:
+
+> En komponent-variabel måste ha ett **defaultvärde som härleds ur paletten** — aldrig
+> en egen hex.
+
+Då är paletten fortfarande enda källan till färg, och färgflippen (appen tar bort sitt
+neutrala override-block) ger komponenten ett korrekt värde utan att komponentkoden rörs.
+Apparna pinnar dem till sina nuvarande värden i det neutrala `:root`-blocket, precis som
+palett-tokens.
+
+| CSS-variabel      | Roll                        | Default (härledd)  |
+| ----------------- | --------------------------- | ------------------ |
+| `--ev-row-hover`  | Tabellradens hover-tint     | `var(--ev-bg)`     |
+| `--ev-row-border` | Avdelare mellan tabellrader | `var(--ev-border)` |
+
 ## Låst paketstruktur
 
 ```
@@ -78,9 +98,25 @@ till token-namnen, noll visuell ändring). Färgflippen till paletten ovan och I
 | PR3 | web adopterar tokens (störst)                                 |
 | PR4 | portal adopterar tokens (CSS Modules)                         |
 | PR5 | delad tillgänglig `<Modal>` (WCAG: role/aria/focus-trap)      |
-| PR6 | delad `<DataTable>` med keyboard-a11y                         |
+| PR6 | delad `<DataTable>` med keyboard-a11y (byggd, se not nedan)   |
 | PR7 | lint/stylelint-grind mot rå hex + `-[#..]` utanför `@eken/ui` |
 | —   | Färgflipp + Inter→Poppins (efter PR2–4)                       |
+
+## Not (PR6): klickbara tabellrader får INTE `role="button"`
+
+ARIA tillåter bara rollen `row` för ett `<tr>` inuti en tabell. Skriver man över den
+blir `<td>`-barnen (roll `cell`) föräldralösa och axe-regeln `aria-required-parent`
+fallerar — man byter alltså ett tangentbordsfel mot ett strukturfel. Den delade
+`<DataTable>` behåller därför radsemantiken och lägger bara till `tabIndex=0`,
+aktivering med Enter **och** Blanksteg samt en synlig `:focus-visible`-ring
+(`outline`, inte `ring` — box-shadow är opålitligt på `display: table-row`).
+Rader utan `onRowClick` blir inte fokuserbara.
+
+**Öppen punkt till flippen:** webs tabellstil är den delade baslinjen (kolumnrubrik
+`text-[11.5px] tracking-wider` + `bg-gray-50/60`, wrapper `border-gray-100`), medan
+CLAUDE.md:s tabellspec beskriver admins gamla stil (`text-[12px] tracking-wide`,
+wrapper `border-[#EAEDF0]`). Web valdes som baslinje för att hålla PR6 pixelneutral
+för den större appen. Att försona spec och komponent är ett eget beslut vid flippen.
 
 ## Städning i denna omgång
 

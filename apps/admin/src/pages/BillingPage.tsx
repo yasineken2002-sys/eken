@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { DataTable } from '@/components/ui/DataTable'
 import { KpiCard } from '@/components/ui/Kpi'
 import { Input, Label, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -253,116 +254,108 @@ export function BillingPage() {
 
       {/* Tabell */}
       <Card className="mt-4 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-line border-b">
-              <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Nummer
-              </th>
-              <th className="px-3 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Kund
-              </th>
-              <th className="px-3 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Typ
-              </th>
-              <th className="px-3 py-3 text-right text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Belopp
-              </th>
-              <th className="px-3 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Skapad
-              </th>
-              <th className="px-3 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Förfaller
-              </th>
-              <th className="px-3 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Status
-              </th>
-              <th className="px-5 py-3 text-right text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Åtgärder
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr>
-                <td colSpan={8} className="px-5 py-10 text-center text-[13px] text-gray-500">
-                  Laddar…
-                </td>
-              </tr>
-            )}
-            {!isLoading && invoices.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-5 py-10 text-center text-[13px] text-gray-500">
-                  Inga fakturor matchar filtret.
-                </td>
-              </tr>
-            )}
-            {invoices.map((i) => (
-              <tr key={i.id} className="border-line border-b last:border-0 hover:bg-gray-50/80">
-                <td className="px-5 py-3 font-mono text-[13px]">{i.invoiceNumber}</td>
-                <td className="px-3 py-3 text-[13.5px]">{i.organization.name}</td>
-                <td className="px-3 py-3">
-                  <TypeBadge type={i.type} />
-                </td>
-                <td className="px-3 py-3 text-right text-[13.5px] tabular-nums">
+        <DataTable
+          wrapper={false}
+          density="compact"
+          data={invoices}
+          keyExtractor={(i) => i.id}
+          loading={isLoading}
+          emptyMessage="Inga fakturor matchar filtret."
+          columns={[
+            {
+              key: 'number',
+              header: 'Nummer',
+              cellClassName: 'font-mono text-[13px]',
+              cell: (i) => i.invoiceNumber,
+            },
+            { key: 'customer', header: 'Kund', cell: (i) => i.organization.name },
+            { key: 'type', header: 'Typ', cell: (i) => <TypeBadge type={i.type} /> },
+            {
+              key: 'amount',
+              header: 'Belopp',
+              align: 'right',
+              cellClassName: 'tabular-nums',
+              cell: (i) => (
+                <>
                   <div className="font-medium text-gray-900">
                     {formatCurrency(i.amountGrossSek)}
                   </div>
                   <div className="text-[11px] text-gray-500">
                     {formatCurrency(i.amountNetSek)} exkl moms
                   </div>
-                </td>
-                <td className="px-3 py-3 text-[12.5px] text-gray-600">{formatDate(i.createdAt)}</td>
-                <td className="px-3 py-3 text-[12.5px] text-gray-600">{formatDate(i.dueDate)}</td>
-                <td className="px-3 py-3">
+                </>
+              ),
+            },
+            {
+              key: 'createdAt',
+              header: 'Skapad',
+              cellClassName: 'text-[12.5px] text-gray-600',
+              cell: (i) => formatDate(i.createdAt),
+            },
+            {
+              key: 'dueDate',
+              header: 'Förfaller',
+              cellClassName: 'text-[12.5px] text-gray-600',
+              cell: (i) => formatDate(i.dueDate),
+            },
+            {
+              key: 'status',
+              header: 'Status',
+              cell: (i) => (
+                <>
                   <StatusBadge status={i.status} />
                   {i.reminderCount > 0 && (
                     <div className="mt-0.5 text-[11px] text-amber-600">
                       {i.reminderCount} påminnelser
                     </div>
                   )}
-                </td>
-                <td className="px-5 py-3">
-                  <div className="flex flex-wrap justify-end gap-1.5">
-                    <a
-                      href={`/api/v1/platform/invoices/${i.id}/pdf`}
-                      target="_blank"
-                      rel="noreferrer"
+                </>
+              ),
+            },
+            {
+              key: 'actions',
+              header: 'Åtgärder',
+              align: 'right',
+              cell: (i) => (
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  <a
+                    href={`/api/v1/platform/invoices/${i.id}/pdf`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Button size="sm" variant="ghost">
+                      Visa PDF
+                    </Button>
+                  </a>
+                  {(i.status === 'DRAFT' ||
+                    i.status === 'SENT' ||
+                    i.status === 'PENDING' ||
+                    i.status === 'OVERDUE') && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => sendInvoice.mutate(i.id)}
+                      loading={sendInvoice.isPending && sendInvoice.variables === i.id}
                     >
-                      <Button size="sm" variant="ghost">
-                        Visa PDF
-                      </Button>
-                    </a>
-                    {(i.status === 'DRAFT' ||
-                      i.status === 'SENT' ||
-                      i.status === 'PENDING' ||
-                      i.status === 'OVERDUE') && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => sendInvoice.mutate(i.id)}
-                        loading={sendInvoice.isPending && sendInvoice.variables === i.id}
-                      >
-                        <Send size={12} />
-                        {i.status === 'DRAFT' ? 'Skicka' : 'Skicka igen'}
-                      </Button>
-                    )}
-                    {(i.status === 'SENT' || i.status === 'PENDING' || i.status === 'OVERDUE') && (
-                      <Button size="sm" variant="primary" onClick={() => setMarkPaidInvoice(i)}>
-                        Markera betald
-                      </Button>
-                    )}
-                    {i.status === 'DRAFT' && (
-                      <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(i)}>
-                        <Trash2 size={12} />
-                      </Button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                      <Send size={12} />
+                      {i.status === 'DRAFT' ? 'Skicka' : 'Skicka igen'}
+                    </Button>
+                  )}
+                  {(i.status === 'SENT' || i.status === 'PENDING' || i.status === 'OVERDUE') && (
+                    <Button size="sm" variant="primary" onClick={() => setMarkPaidInvoice(i)}>
+                      Markera betald
+                    </Button>
+                  )}
+                  {i.status === 'DRAFT' && (
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(i)}>
+                      <Trash2 size={12} />
+                    </Button>
+                  )}
+                </div>
+              ),
+            },
+          ]}
+        />
       </Card>
 
       <CreateInvoiceModal

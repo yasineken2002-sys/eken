@@ -2,4 +2,5 @@
 // web + admin. Ligger MEDVETET utanför paketets huvud-entry (@eken/ui) så att
 // branding-kedjan @eken/shared → @eken/ui aldrig drar in React i API:t.
 export { Modal, ModalFooter, type ModalProps } from './Modal'
+export { DataTable, type DataTableProps, type DataTableColumn } from './DataTable'
 export { useFocusTrap } from './useFocusTrap'

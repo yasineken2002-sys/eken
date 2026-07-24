@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
+import { DataTable } from '@/components/ui/DataTable'
 import { PlanBadge, OrgStatusBadge } from '@/components/ui/Badge'
 import { get } from '@/lib/api'
 
@@ -96,41 +97,40 @@ export function StatsPage() {
             <h3 className="text-[14px] font-semibold">Topp-10 kunder per fastighet</h3>
           </CardHeader>
           <CardBody className="p-0">
-            <table className="w-full">
-              <thead>
-                <tr className="border-line border-b">
-                  <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                    Kund
-                  </th>
-                  <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                    Plan
-                  </th>
-                  <th className="px-5 py-3 text-right text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                    Fast.
-                  </th>
-                  <th className="px-5 py-3 text-right text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                    Hyresg.
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {(top.data ?? []).map((o) => (
-                  <tr key={o.id} className="border-line border-b last:border-0">
-                    <td className="px-5 py-3 text-[13.5px]">
-                      <div className="flex items-center gap-2">
-                        <span>{o.name}</span>
-                        <OrgStatusBadge status={o.status} />
-                      </div>
-                    </td>
-                    <td className="px-5 py-3">
-                      <PlanBadge plan={o.plan} />
-                    </td>
-                    <td className="px-5 py-3 text-right text-[13px]">{o.propertyCount}</td>
-                    <td className="px-5 py-3 text-right text-[13px]">{o.tenantCount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <DataTable
+              wrapper={false}
+              data={top.data ?? []}
+              keyExtractor={(o) => o.id}
+              loading={top.isLoading}
+              emptyMessage="Inga kunder ännu."
+              columns={[
+                {
+                  key: 'name',
+                  header: 'Kund',
+                  cell: (o) => (
+                    <div className="flex items-center gap-2">
+                      <span>{o.name}</span>
+                      <OrgStatusBadge status={o.status} />
+                    </div>
+                  ),
+                },
+                { key: 'plan', header: 'Plan', cell: (o) => <PlanBadge plan={o.plan} /> },
+                {
+                  key: 'properties',
+                  header: 'Fast.',
+                  align: 'right',
+                  cellClassName: 'text-[13px]',
+                  cell: (o) => o.propertyCount,
+                },
+                {
+                  key: 'tenants',
+                  header: 'Hyresg.',
+                  align: 'right',
+                  cellClassName: 'text-[13px]',
+                  cell: (o) => o.tenantCount,
+                },
+              ]}
+            />
           </CardBody>
         </Card>
       </div>

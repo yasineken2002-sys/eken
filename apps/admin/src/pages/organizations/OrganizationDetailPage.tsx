@@ -5,6 +5,7 @@ import { LogIn, Pause, Play, Trash2, Plus } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
+import { DataTable } from '@/components/ui/DataTable'
 import { OrgStatusBadge, PlanBadge, InvoiceStatusBadge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Label, Select, Textarea } from '@/components/ui/Input'
@@ -235,38 +236,32 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 function UsersTab({ org }: { org: OrgDetail }) {
   return (
     <Card className="overflow-hidden">
-      <table className="w-full">
-        <thead>
-          <tr className="border-line border-b">
-            <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-              Namn
-            </th>
-            <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-              E-post
-            </th>
-            <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-              Roll
-            </th>
-            <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-              Senast inloggad
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {org.users.map((u) => (
-            <tr key={u.id} className="border-line border-b last:border-0">
-              <td className="px-5 py-3 text-[13.5px]">
-                {u.firstName} {u.lastName}
-              </td>
-              <td className="px-5 py-3 text-[13.5px] text-gray-600">{u.email}</td>
-              <td className="px-5 py-3 text-[13px]">{u.role}</td>
-              <td className="px-5 py-3 text-[13px] text-gray-600">
-                {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : '—'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <DataTable
+        wrapper={false}
+        data={org.users}
+        keyExtractor={(u) => u.id}
+        emptyMessage="Inga användare."
+        columns={[
+          {
+            key: 'name',
+            header: 'Namn',
+            cell: (u) => `${u.firstName} ${u.lastName}`,
+          },
+          {
+            key: 'email',
+            header: 'E-post',
+            cellClassName: 'text-gray-600',
+            cell: (u) => u.email,
+          },
+          { key: 'role', header: 'Roll', cellClassName: 'text-[13px]', cell: (u) => u.role },
+          {
+            key: 'lastLogin',
+            header: 'Senast inloggad',
+            cellClassName: 'text-[13px] text-gray-600',
+            cell: (u) => (u.lastLoginAt ? formatDateTime(u.lastLoginAt) : '—'),
+          },
+        ]}
+      />
     </Card>
   )
 }
@@ -295,45 +290,36 @@ function PropertiesTab({ orgId }: { orgId: string }) {
         </Button>
       </div>
       <Card className="overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-line border-b">
-              <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Namn
-              </th>
-              <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Beteckning
-              </th>
-              <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Typ
-              </th>
-              <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Ort
-              </th>
-              <th className="px-5 py-3 text-right text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-                Area
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {(list ?? []).map((p) => (
-              <tr key={p.id} className="border-line border-b last:border-0">
-                <td className="px-5 py-3 text-[13.5px]">{p.name}</td>
-                <td className="px-5 py-3 text-[13px] text-gray-600">{p.propertyDesignation}</td>
-                <td className="px-5 py-3 text-[13px]">{p.type}</td>
-                <td className="px-5 py-3 text-[13px] text-gray-600">{p.address.city}</td>
-                <td className="px-5 py-3 text-right text-[13px]">{p.totalArea} m²</td>
-              </tr>
-            ))}
-            {list && list.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-5 py-10 text-center text-[13px] text-gray-500">
-                  Inga fastigheter.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
+        <DataTable
+          wrapper={false}
+          data={list ?? []}
+          keyExtractor={(p) => p.id}
+          loading={!list}
+          emptyMessage="Inga fastigheter."
+          columns={[
+            { key: 'name', header: 'Namn', cell: (p) => p.name },
+            {
+              key: 'designation',
+              header: 'Beteckning',
+              cellClassName: 'text-[13px] text-gray-600',
+              cell: (p) => p.propertyDesignation,
+            },
+            { key: 'type', header: 'Typ', cellClassName: 'text-[13px]', cell: (p) => p.type },
+            {
+              key: 'city',
+              header: 'Ort',
+              cellClassName: 'text-[13px] text-gray-600',
+              cell: (p) => p.address.city,
+            },
+            {
+              key: 'area',
+              header: 'Area',
+              align: 'right',
+              cellClassName: 'text-[13px]',
+              cell: (p) => `${p.totalArea} m²`,
+            },
+          ]}
+        />
       </Card>
       <CreatePropertyModal
         open={open}
@@ -494,49 +480,45 @@ function InvoicesTab({ orgId }: { orgId: string }) {
   })
   return (
     <Card className="overflow-hidden">
-      <table className="w-full">
-        <thead>
-          <tr className="border-line border-b">
-            <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-              Nummer
-            </th>
-            <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-              Beskrivning
-            </th>
-            <th className="px-5 py-3 text-right text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-              Belopp
-            </th>
-            <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-              Status
-            </th>
-            <th className="px-5 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-              Förfaller
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {(data?.items ?? []).map((i) => (
-            <tr key={i.id} className="border-line border-b last:border-0">
-              <td className="px-5 py-3 font-mono text-[13px]">{i.invoiceNumber}</td>
-              <td className="px-5 py-3 text-[13px] text-gray-600">{i.description ?? '—'}</td>
-              <td className="px-5 py-3 text-right text-[13.5px] font-medium">
-                {formatCurrency(i.amount)}
-              </td>
-              <td className="px-5 py-3">
-                <InvoiceStatusBadge status={i.status} />
-              </td>
-              <td className="px-5 py-3 text-[13px] text-gray-600">{formatDate(i.dueDate)}</td>
-            </tr>
-          ))}
-          {data && data.items.length === 0 ? (
-            <tr>
-              <td colSpan={5} className="px-5 py-10 text-center text-[13px] text-gray-500">
-                Inga fakturor.
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
+      <DataTable
+        wrapper={false}
+        data={data?.items ?? []}
+        keyExtractor={(i) => i.id}
+        loading={!data}
+        emptyMessage="Inga fakturor."
+        columns={[
+          {
+            key: 'number',
+            header: 'Nummer',
+            cellClassName: 'font-mono text-[13px]',
+            cell: (i) => i.invoiceNumber,
+          },
+          {
+            key: 'description',
+            header: 'Beskrivning',
+            cellClassName: 'text-[13px] text-gray-600',
+            cell: (i) => i.description ?? '—',
+          },
+          {
+            key: 'amount',
+            header: 'Belopp',
+            align: 'right',
+            cellClassName: 'font-medium',
+            cell: (i) => formatCurrency(i.amount),
+          },
+          {
+            key: 'status',
+            header: 'Status',
+            cell: (i) => <InvoiceStatusBadge status={i.status} />,
+          },
+          {
+            key: 'dueDate',
+            header: 'Förfaller',
+            cellClassName: 'text-[13px] text-gray-600',
+            cell: (i) => formatDate(i.dueDate),
+          },
+        ]}
+      />
     </Card>
   )
 }

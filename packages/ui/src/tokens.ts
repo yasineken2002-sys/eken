@@ -44,6 +44,26 @@ export const EVENO_PALETTE = {
 export type EvenoTokenKey = keyof typeof EVENO_PALETTE
 
 /**
+ * KOMPONENT-VARIABLER (PR6) — ligger MEDVETET utanför den låsta 9-token-paletten.
+ *
+ * Vissa delade komponenter behöver en yta som inte har någon egen semantisk plats
+ * i paletten (t.ex. tabellradens hover-tint). Regeln, låst i ADR:n: en
+ * komponent-variabel måste ha ett DEFAULTVÄRDE som härleds ur paletten — aldrig
+ * en egen hex. Då fortsätter paletten vara enda källan till färg, och flippen
+ * (= appen tar bort sitt neutrala override-block) ger komponenten ett korrekt
+ * värde utan att någon rör komponentkoden.
+ *
+ * Apparna pinnar dem till sina NUVARANDE värden i sitt neutrala :root-block
+ * (PR2–4-mekaniken) precis som palett-tokens.
+ */
+export const EVENO_COMPONENT_TOKENS = {
+  /** Tabellradens hover-tint. Default: sidbakgrunden (klassisk "rad tonas mot ytan"). */
+  '--ev-row-hover': 'var(--ev-bg)',
+  /** Avdelare mellan tabellrader. Default: den vanliga kanten. */
+  '--ev-row-border': 'var(--ev-border)',
+} as const satisfies Record<`--ev-${string}`, string>
+
+/**
  * Låst schema: token-nyckel → CSS custom property-namn. Detta är kontraktet som
  * `tokens.css` (genererad) och `tailwind-preset.ts` (var-referenser) delar.
  */
@@ -71,6 +91,9 @@ export function renderTokensCss(): string {
   // (ingen drift mellan `gen:tokens` och det committade resultatet). TS-konstanterna
   // behåller sitt kanoniska skiftläge.
   const decls = keys.map((k) => `  ${EVENO_CSS_VAR_NAMES[k]}: ${EVENO_PALETTE[k].toLowerCase()};`)
+  const componentDecls = (
+    Object.keys(EVENO_COMPONENT_TOKENS) as Array<keyof typeof EVENO_COMPONENT_TOKENS>
+  ).map((name) => `  ${name}: ${EVENO_COMPONENT_TOKENS[name]};`)
   return [
     '/* GENERERAD FIL — redigera inte för hand.',
     ' * Källa: packages/ui/src/tokens.ts (EVENO_PALETTE → renderTokensCss()).',
@@ -78,6 +101,9 @@ export function renderTokensCss(): string {
     ' */',
     ':root {',
     ...decls,
+    '',
+    '  /* Komponent-variabler — härledda ur paletten ovan, aldrig egen hex. */',
+    ...componentDecls,
     '}',
     '',
   ].join('\n')

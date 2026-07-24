@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
+import { DataTable } from '@/components/ui/DataTable'
 import { KpiCard } from '@/components/ui/Kpi'
 import { PlanBadge, OrgStatusBadge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -188,127 +189,137 @@ export function AiUsagePage() {
 
       {/* Tabell */}
       <Card className="mt-4 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-100 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
-              <th className="px-5 py-3 text-left">Kund</th>
-              <th className="px-3 py-3 text-left">Plan</th>
-              <th className="px-3 py-3 text-right">Anrop</th>
-              <th className="px-3 py-3 text-left">% av tak</th>
-              <th className="px-3 py-3 text-right">AI-kost</th>
-              <th className="px-3 py-3 text-right">Margin</th>
-              <th className="px-3 py-3 text-center">Status</th>
-              <th className="px-5 py-3 text-right">Åtgärder</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !rowsQuery.isLoading ? (
-              <tr>
-                <td colSpan={8} className="px-5 py-10 text-center text-[13px] text-gray-500">
-                  Inga kunder matchar filtret.
-                </td>
-              </tr>
-            ) : null}
-            {rows.map((row) => {
-              const statusIcon =
+        <DataTable
+          wrapper={false}
+          density="compact"
+          data={rows}
+          keyExtractor={(row) => row.id}
+          loading={rowsQuery.isLoading}
+          emptyMessage="Inga kunder matchar filtret."
+          columns={[
+            {
+              key: 'customer',
+              header: 'Kund',
+              cell: (row) => (
+                <>
+                  <Link
+                    to={`/organizations/${row.id}`}
+                    className="font-medium text-gray-900 hover:text-blue-600"
+                  >
+                    {row.name}
+                  </Link>
+                  <div className="mt-0.5 flex items-center gap-2 text-[11px] text-gray-500">
+                    <OrgStatusBadge status={row.orgStatus} />
+                    {row.trialDaysLeft !== null && (
+                      <span>{row.trialDaysLeft} dagar kvar i trial</span>
+                    )}
+                    {row.creditsBalance > 0 && (
+                      <span className="text-emerald-600">+{row.creditsBalance} credits</span>
+                    )}
+                  </div>
+                </>
+              ),
+            },
+            { key: 'plan', header: 'Plan', cell: (row) => <PlanBadge plan={row.plan} /> },
+            {
+              key: 'calls',
+              header: 'Anrop',
+              align: 'right',
+              cellClassName: 'text-[13px] tabular-nums',
+              cell: (row) => (
+                <>
+                  <span className="font-medium text-gray-900">
+                    {row.manualCalls.toLocaleString('sv-SE')}
+                  </span>
+                  <span className="text-gray-400"> / {row.limit.toLocaleString('sv-SE')}</span>
+                </>
+              ),
+            },
+            {
+              key: 'percentage',
+              header: '% av tak',
+              cell: (row) => (
+                <div className="flex items-center gap-2">
+                  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      className={cn(
+                        'h-full rounded-full',
+                        row.status === 'over'
+                          ? 'bg-red-500'
+                          : row.status === 'warning'
+                            ? 'bg-amber-400'
+                            : 'bg-blue-500',
+                      )}
+                      style={{ width: `${Math.min(100, row.percentage)}%` }}
+                    />
+                  </div>
+                  <span className="text-[12px] tabular-nums text-gray-600">
+                    {Math.round(row.percentage)}%
+                  </span>
+                </div>
+              ),
+            },
+            {
+              key: 'aiCost',
+              header: 'AI-kost',
+              align: 'right',
+              cellClassName: 'text-[13px] tabular-nums text-gray-700',
+              cell: (row) => formatCurrency(row.aiCostSek),
+            },
+            {
+              key: 'margin',
+              header: 'Margin',
+              align: 'right',
+              cellClassName: 'text-[13px] font-medium tabular-nums',
+              cell: (row) => (
+                <span className={row.marginSek < 0 ? 'text-red-600' : 'text-emerald-700'}>
+                  {formatCurrency(row.marginSek)}
+                </span>
+              ),
+            },
+            {
+              key: 'status',
+              header: 'Status',
+              align: 'center',
+              cell: (row) =>
                 row.status === 'over' ? (
                   <AlertCircle size={14} className="text-red-500" />
                 ) : row.status === 'warning' ? (
                   <AlertTriangle size={14} className="text-amber-500" />
                 ) : (
                   <CheckCircle2 size={14} className="text-emerald-500" />
-                )
-              return (
-                <tr
-                  key={row.id}
-                  className="border-b border-gray-100 last:border-0 hover:bg-gray-50/80"
-                >
-                  <td className="px-5 py-3">
-                    <Link
-                      to={`/organizations/${row.id}`}
-                      className="font-medium text-gray-900 hover:text-blue-600"
-                    >
-                      {row.name}
-                    </Link>
-                    <div className="mt-0.5 flex items-center gap-2 text-[11px] text-gray-500">
-                      <OrgStatusBadge status={row.orgStatus} />
-                      {row.trialDaysLeft !== null && (
-                        <span>{row.trialDaysLeft} dagar kvar i trial</span>
-                      )}
-                      {row.creditsBalance > 0 && (
-                        <span className="text-emerald-600">+{row.creditsBalance} credits</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3">
-                    <PlanBadge plan={row.plan} />
-                  </td>
-                  <td className="px-3 py-3 text-right text-[13px] tabular-nums">
-                    <span className="font-medium text-gray-900">
-                      {row.manualCalls.toLocaleString('sv-SE')}
-                    </span>
-                    <span className="text-gray-400"> / {row.limit.toLocaleString('sv-SE')}</span>
-                  </td>
-                  <td className="px-3 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-gray-100">
-                        <div
-                          className={cn(
-                            'h-full rounded-full',
-                            row.status === 'over'
-                              ? 'bg-red-500'
-                              : row.status === 'warning'
-                                ? 'bg-amber-400'
-                                : 'bg-blue-500',
-                          )}
-                          style={{ width: `${Math.min(100, row.percentage)}%` }}
-                        />
-                      </div>
-                      <span className="text-[12px] tabular-nums text-gray-600">
-                        {Math.round(row.percentage)}%
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 text-right text-[13px] tabular-nums text-gray-700">
-                    {formatCurrency(row.aiCostSek)}
-                  </td>
-                  <td
-                    className={cn(
-                      'px-3 py-3 text-right text-[13px] font-medium tabular-nums',
-                      row.marginSek < 0 ? 'text-red-600' : 'text-emerald-700',
-                    )}
+                ),
+            },
+            {
+              key: 'actions',
+              header: 'Åtgärder',
+              align: 'right',
+              cell: (row) => (
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setCreditsRow(row)
+                    }}
                   >
-                    {formatCurrency(row.marginSek)}
-                  </td>
-                  <td className="px-3 py-3 text-center">{statusIcon}</td>
-                  <td className="px-5 py-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setCreditsRow(row)
-                        }}
-                      >
-                        + Credits
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setPlanRow(row)
-                          setNewPlan(row.plan)
-                        }}
-                      >
-                        Byt plan
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+                    + Credits
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setPlanRow(row)
+                      setNewPlan(row.plan)
+                    }}
+                  >
+                    Byt plan
+                  </Button>
+                </div>
+              ),
+            },
+          ]}
+        />
       </Card>
 
       {/* Lägg till credits-modal */}
