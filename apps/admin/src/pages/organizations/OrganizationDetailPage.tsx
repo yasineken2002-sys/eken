@@ -632,6 +632,7 @@ function ImpersonateModal({
           <Textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
+            /* design-tokens-allow: falsk positiv — "#123" är ett ärendenummer i en placeholder, inte en färg */
             placeholder="Support-ärende #123"
           />
         </div>

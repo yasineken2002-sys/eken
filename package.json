@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
-    "lint": "turbo run lint",
+    "lint": "turbo run lint && node scripts/check-design-tokens.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "db:migrate": "turbo run db:migrate --filter=@eken/api",

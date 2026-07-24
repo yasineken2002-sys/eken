@@ -488,11 +488,16 @@ export function SettingsPage() {
                 <div className="flex flex-wrap items-center gap-3">
                   {[
                     { hex: DEFAULT_BRAND_COLOR, label: 'Grön' },
+                    /* design-tokens-allow-start: valbar fakturafärg är KUNDDATA
+                       (org.invoiceColor), inte apptema — värdet sparas i DB och renderas i
+                       hyresvärdens egen PDF. Ska aldrig tokeniseras; står därför inte i
+                       flipp-skulden utan här. */
                     { hex: '#1a3a6b', label: 'Blå' },
                     { hex: '#6b1a1a', label: 'Röd' },
                     { hex: '#4a1a6b', label: 'Lila' },
                     { hex: '#1a5a6b', label: 'Petrol' },
                     { hex: '#2c2c2c', label: 'Svart' },
+                    /* design-tokens-allow-end */
                   ].map(({ hex }) => (
                     <button
                       key={hex}

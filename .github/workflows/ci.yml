@@ -100,10 +100,17 @@ jobs:
 
       # Rent statisk kontroll (fs-only, inga beroenden) — spärr mot att nya rå
       # färgvärden smyger in utanför @eken/ui och blir ytor som färgflippen inte
-      # når. Spärren är en ratchet mot en committad baseline (befintliga hex är
-      # tillåtna, nya inte), utom regeln palette-hex som är hård: @eken/ui:s låsta
-      # målvärden får aldrig hårdkodas — varumärkesfärgen ska komma ur en token
-      # eller DEFAULT_BRAND_COLOR. Se designsystem-ADR:n (PR7).
+      # når. Täcker hex, Tailwind-arbitrary (`bg-[#…]`) och rgb()/hsl(), i både
+      # CSS/CSS Modules och TS/TSX. Tre lager:
+      #   • hårt      — @eken/ui:s låsta målvärden och HELT NYA färger faller
+      #                 alltid; varumärkesfärgen ska komma ur en token eller
+      #                 DEFAULT_BRAND_COLOR.
+      #   • allowlist — flipp-skulden i scripts/design-tokens.baseline.json. Varje
+      #                 post pekar på en kategori med why + flip. Ratchet: fler
+      #                 träffar fäller, färre snävar åt. Ska nå noll vid flippen.
+      #   • inline    — `design-tokens-allow: <varför>` för färger som ALDRIG ska
+      #                 tokeniseras (kunddata, falska positiver).
+      # Kör även i `pnpm lint`; detta är den blockerande grinden. Se ADR:n (PR7).
       - uses: actions/setup-node@v4
         with:
           node-version: 20
