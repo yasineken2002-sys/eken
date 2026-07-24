@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { tint, TINT } from '@/lib/tint'
 
 interface Props {
   title: string
@@ -19,10 +20,9 @@ export function StatCard({
   change,
   changeLabel,
   icon: Icon,
-  // OBS: iconColor får INTE tokeniseras till var(--ev-brand) — den concateneras med
-  // alfa (`${iconColor}14`, rad nedan) och en CSS-variabel bryter den strängen.
-  // #2563EB kvarstår hårdkodad tills färgflippen refaktorerar tinten. Se PR3-not.
-  iconColor = '#2563EB',
+  // F2: tinten räknas ut med tint() i stället för `${iconColor}14`. Nu tål
+  // propen en CSS-variabel, och anropen pekar på tokens (var(--ev-brand) m.fl.).
+  iconColor = 'var(--ev-brand)',
   delay = 0,
   compact,
 }: Props) {
@@ -43,7 +43,7 @@ export function StatCard({
         {Icon && (
           <div
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl"
-            style={{ background: `${iconColor}14` }}
+            style={{ background: tint(iconColor, TINT.soft) }}
           >
             <Icon size={15} strokeWidth={1.8} style={{ color: iconColor }} />
           </div>

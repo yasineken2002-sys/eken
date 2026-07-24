@@ -553,7 +553,7 @@ export function LeaseForm({
                 {...field}
                 disabled={locked('unitId')}
                 className={cn(
-                  'h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500',
+                  'h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500',
                   'disabled:cursor-not-allowed disabled:bg-gray-100/70 disabled:text-gray-500',
                 )}
               >
@@ -587,7 +587,7 @@ export function LeaseForm({
                 {...field}
                 disabled={!propertyId || locked('unitId')}
                 className={cn(
-                  'h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500',
+                  'h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500',
                   'disabled:cursor-not-allowed disabled:bg-gray-100/70 disabled:text-gray-500',
                   !propertyId && !locked('unitId') && 'cursor-not-allowed opacity-50',
                 )}
@@ -673,7 +673,7 @@ export function LeaseForm({
                 'h-9 flex-1 rounded-lg border px-4 text-[13px] font-medium transition-all active:scale-[0.97]',
                 tenantMode === mode
                   ? 'border-[#218F52] bg-blue-600/10 text-[#196638]'
-                  : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
+                  : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700',
               )}
             >
               {mode === 'existing' ? 'Befintlig hyresgäst' : 'Ny hyresgäst'}
@@ -691,7 +691,7 @@ export function LeaseForm({
               render={({ field }) => (
                 <select
                   {...field}
-                  className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Välj hyresgäst…</option>
                   {tenants.map((t) => (
@@ -722,7 +722,7 @@ export function LeaseForm({
                       'h-9 flex-1 rounded-lg border px-4 text-[13px] font-medium transition-all active:scale-[0.97]',
                       newTenantType === t
                         ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700',
                     )}
                   >
                     {t === 'INDIVIDUAL' ? 'Privatperson' : 'Företag'}
@@ -792,7 +792,7 @@ export function LeaseForm({
               <button
                 type="button"
                 onClick={() => setShowAddressOverride(true)}
-                className="flex w-full items-center justify-between gap-3 rounded-xl border border-dashed border-[#DDDFE4] bg-white px-3.5 py-2.5 text-left text-[13px] text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-800"
+                className="border-input flex w-full items-center justify-between gap-3 rounded-xl border border-dashed bg-white px-3.5 py-2.5 text-left text-[13px] text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-800"
               >
                 <span className="flex items-center gap-2">
                   <Plus size={14} strokeWidth={1.8} className="text-gray-400" />
@@ -854,7 +854,7 @@ export function LeaseForm({
                   'disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100',
                   leaseType === t.id
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700',
                 )}
               >
                 {t.label}
@@ -1069,7 +1069,7 @@ export function LeaseForm({
                 'disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100',
                 petsAllowed === opt.value
                   ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-[#E5E7EB] text-gray-500 hover:border-gray-300 hover:text-gray-700',
+                  : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700',
               )}
             >
               {opt.label}
@@ -1082,7 +1082,7 @@ export function LeaseForm({
           rows={2}
           placeholder="Anteckningar (valfritt) — t.ex. ”små husdjur OK efter godkännande”."
           {...register('petsApprovalNotes')}
-          className="w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
@@ -1131,7 +1131,7 @@ export function LeaseForm({
               <select
                 {...field}
                 disabled={locked('indexClauseType')}
-                className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100/70 disabled:text-gray-500"
+                className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100/70 disabled:text-gray-500"
               >
                 <option value="NONE">Ingen — fast hyra under perioden</option>
                 <option value="KPI">KPI — Konsumentprisindex (SCB)</option>
@@ -1173,7 +1173,7 @@ export function LeaseForm({
                       {...field}
                       value={field.value ?? ''}
                       disabled={locked('indexAdjustmentDate')}
-                      className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100/70 disabled:text-gray-500"
+                      className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100/70 disabled:text-gray-500"
                     >
                       <option value="">— Ingen specifik dag —</option>
                       <option value="anniversary">Kontraktets årsdag</option>
@@ -1215,7 +1215,7 @@ export function LeaseForm({
                 rows={2}
                 placeholder="t.ex. ”justering meddelas senast 3 månader före ikraftträdande”."
                 {...register('indexNotes')}
-                className="w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -1234,7 +1234,7 @@ export function LeaseForm({
             "'Garageplats nr 5 ingår'."
           }
           {...register('specialTerms')}
-          className="w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] leading-relaxed text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100/70 disabled:text-gray-500"
+          className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] leading-relaxed text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100/70 disabled:text-gray-500"
         />
         {locked('specialTerms') ? (
           <LockHint route="TERMS" />

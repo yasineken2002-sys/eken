@@ -1,28 +1,27 @@
-/* @eken/ui: låst palett som CSS-variabler (--ev-*). Importeras FÖRST så att
-   webs neutrala override nedan (samma variabelnamn) vinner via källordning. */
+/* @eken/ui: låst palett som CSS-variabler (--ev-*). Efter F2 commit 2 är detta
+   webs enda källa för --ev-* — inget neutralt override-block står emellan. */
 @import '@eken/ui/tokens.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ── Neutral token-mappning (PR3) ────────────────────────────────────────────
-   Web behåller EXAKT dagens utseende. Dessa override:ar pekar --ev-* på webs
-   NUVARANDE hex — inte målpaletten från @eken/ui. Färgflippen = ta bort detta
-   :root-block. --ev-brand hålls på dagens blå (#2563eb), INTE grön än.
-   OBS: webs egna HSL-tokens (--background/--border/--primary …) nedan är ett
-   separat system och rörs inte här. */
-:root {
-  --ev-bg: #f7f8fc; /* @eken/ui-mål #f6f4f0 → dagens dominerande app-bg #f7f8fc */
-  --ev-text: #111827; /* mål #241f1a → dagens #111827 */
-  --ev-border: #eaedf0; /* mål #ece7e0 → dagens dominerande kant #eaedf0 */
-  --ev-brand: #2563eb; /* mål #1a6b3c → dagens legacy-blå #2563eb (grön först vid flippen) */
+/* ── FLIPPEN (F2 commit 2) ───────────────────────────────────────────────────
+   Webs neutrala override-block är BORTTAGET. Alla --ev-* — palett, komponent-
+   variabler och de härledda skalorna — kommer nu från @eken/ui:s låsta palett.
+   Kanvas #f7f8fc → #f6f4f0 (varm creme), text #111827 → #241f1a (bläck), kant
+   #eaedf0 → #ece7e0, fältkant #dddfe4 → var(--ev-border), och hela gråskalan
+   plus statusfamiljerna byter till de härledda varma skalorna.
 
-  /* Komponent-variabler (PR6, delad DataTable). Default i @eken/ui härleds ur
-     paletten (row-hover = --ev-bg, row-border = --ev-border); här pinnas de till
-     webs NUVARANDE tabellvärden så tabellerna är pixelneutrala. */
-  --ev-row-hover: #fafbff; /* dagens .table-row-base:hover */
-  --ev-row-border: #f0f2f5; /* dagens radavdelare (avviker från --ev-border) */
+   ETT undantag står kvar: --ev-brand. Blått → grönt är den synliga
+   varumärkesändringen och granskas som ett eget beslut för alla tre apparna
+   samtidigt — det är F5. Tills dess hålls webs accentfärg på dagens blå.
+
+   OBS: webs egna HSL-tokens (--background/--border/--primary … i @layer base
+   nedan) är ett SEPARAT system som inte rörs här. De är shadcn-arvet; bara
+   `input` pekades om (F2 commit 1) eftersom den inte användes någonstans. */
+:root {
+  --ev-brand: #2563eb; /* hålls kvar till F5 (brand-blue → #1a6b3c) */
 }
 
 @layer base {

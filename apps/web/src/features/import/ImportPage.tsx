@@ -88,7 +88,7 @@ function DropZone({ accept, onFile, disabled, hint }: DropZoneProps) {
         'relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 text-center transition-colors',
         dragging
           ? 'border-blue-400 bg-blue-50'
-          : 'border-[#E5E7EB] bg-gray-50/50 hover:border-blue-300 hover:bg-blue-50/30',
+          : 'border-gray-200 bg-gray-50/50 hover:border-blue-300 hover:bg-blue-50/30',
         disabled && 'pointer-events-none opacity-50',
       )}
       onClick={() => inputRef.current?.click()}
@@ -722,8 +722,8 @@ function ScanField({
           'h-8 w-full rounded-lg border px-2.5 text-[13px] outline-none transition-colors',
           'focus:border-blue-500 focus:ring-2 focus:ring-blue-500',
           !value
-            ? 'border-[#E5E7EB] bg-gray-50 text-gray-400 placeholder:text-gray-300'
-            : 'border-[#E5E7EB] bg-white text-gray-800',
+            ? 'border-gray-200 bg-gray-50 text-gray-400 placeholder:text-gray-300'
+            : 'border-gray-200 bg-white text-gray-800',
         )}
       />
     </div>

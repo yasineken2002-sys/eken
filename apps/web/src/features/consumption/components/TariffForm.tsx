@@ -200,7 +200,7 @@ export function TariffForm({ onSubmit, onCancel, isSubmitting = false }: TariffF
             id="tariff-calculation-basis"
             rows={3}
             placeholder="T.ex. ”Självkostnad: faktisk förbrukning × leverantörens spotpris, ingen marginal.”"
-            className="w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             {...register('calculationBasis')}
           />
           {errors.calculationBasis?.message ? (

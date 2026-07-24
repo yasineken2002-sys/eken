@@ -41,19 +41,19 @@ export function BackfillPage() {
             title="Kontrakt att efterdebitera"
             value={contractCount}
             icon={History}
-            iconColor="#2563EB"
+            iconColor="var(--ev-brand)"
           />
           <StatCard
             title="Debiterbart belopp (≤12 mån)"
             value={formatCurrency(billableTotal)}
             icon={ReceiptText}
-            iconColor="#059669"
+            iconColor="var(--ev-success-600)"
           />
           <StatCard
             title="Kräver extra godkännande"
             value={approvalCount}
             icon={AlertTriangle}
-            iconColor="#D97706"
+            iconColor="var(--ev-warning-600)"
           />
         </div>
       )}

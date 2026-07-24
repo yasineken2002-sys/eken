@@ -166,28 +166,30 @@ export function MaintenancePage() {
               title="Öppna ärenden"
               value={openCount}
               icon={Wrench}
-              iconColor="#2563EB"
+              iconColor="var(--ev-brand)"
               delay={0}
             />
             <StatCard
               title="Akuta ärenden"
               value={stats?.urgent ?? 0}
               icon={AlertTriangle}
-              iconColor={(stats?.urgent ?? 0) > 0 ? '#DC2626' : '#6B7280'}
+              iconColor={
+                (stats?.urgent ?? 0) > 0 ? 'var(--ev-danger-600)' : 'var(--ev-neutral-500)'
+              }
               delay={0.04}
             />
             <StatCard
               title="Schemalagda"
               value={stats?.byStatus.SCHEDULED ?? 0}
               icon={Calendar}
-              iconColor="#D97706"
+              iconColor="var(--ev-warning-600)"
               delay={0.08}
             />
             <StatCard
               title="Åtgärdade"
               value={completedThisMonth}
               icon={CheckCircle2}
-              iconColor="#059669"
+              iconColor="var(--ev-success-600)"
               delay={0.12}
             />
           </div>
@@ -215,7 +217,7 @@ export function MaintenancePage() {
             <select
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value as MaintenancePriority | '')}
-              className="h-8 rounded-lg border border-[#DDDFE4] px-3 text-[13px] text-gray-700 focus:border-blue-500 focus:outline-none"
+              className="border-input h-8 rounded-lg border px-3 text-[13px] text-gray-700 focus:border-blue-500 focus:outline-none"
             >
               {PRIORITY_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -227,7 +229,7 @@ export function MaintenancePage() {
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value as MaintenanceCategory | '')}
-              className="h-8 rounded-lg border border-[#DDDFE4] px-3 text-[13px] text-gray-700 focus:border-blue-500 focus:outline-none"
+              className="border-input h-8 rounded-lg border px-3 text-[13px] text-gray-700 focus:border-blue-500 focus:outline-none"
             >
               {CATEGORY_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>

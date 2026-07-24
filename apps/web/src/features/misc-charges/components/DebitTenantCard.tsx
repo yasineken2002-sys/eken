@@ -226,7 +226,7 @@ export function DebitTenantCard({ ticket }: { ticket: TicketRef }) {
               {...register('description')}
               rows={2}
               placeholder="T.ex. ersättning för krossad ruta"
-              className="w-full rounded-lg border border-[#DDDFE4] px-3 py-2 text-[13.5px] text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border-input w-full rounded-lg border px-3 py-2 text-[13.5px] text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {errors.description && (
               <p className="mt-1 text-[12px] text-red-500">{errors.description.message}</p>
@@ -240,7 +240,7 @@ export function DebitTenantCard({ ticket }: { ticket: TicketRef }) {
             <input
               type="date"
               {...register('incidentDate')}
-              className="h-9 w-full rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border-input h-9 w-full rounded-lg border px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {errors.incidentDate && (
               <p className="mt-1 text-[12px] text-red-500">{errors.incidentDate.message}</p>

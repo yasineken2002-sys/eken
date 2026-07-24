@@ -1,16 +1,16 @@
 {
   "$comment": "GENERERAD ALLOWLIST — FLIPP-SKULD, inte en regel-lucka. Varje post är rå färg som PR2–6 medvetet lämnade otokeniserad, knuten till en kategori i CATEGORIES (scripts/check-design-tokens.mjs) som säger VARFÖR den står kvar och HUR färgflippen tar bort den. CI faller på fler träffar — aldrig på färre. Listan ska krympa till noll när flippen är gjord.",
   "$howto": "Städat en fil? Kör `node scripts/check-design-tokens.mjs --update-baseline` så snävas spärren åt. Lägg ALDRIG till rader här för hand för att tysta ett nytt fynd — en ny färg ska tokeniseras, inte allowlistas.",
-  "total": 712,
+  "total": 531,
   "perCategory": {
-    "neutral-scale": 221,
-    "input-border": 115,
-    "status-tints": 91,
+    "neutral-scale": 212,
     "chart-colors": 86,
+    "status-tints": 80,
     "green-legacy": 76,
-    "alpha-concat": 76,
     "brand-blue": 25,
-    "shadow-alpha": 22
+    "shadow-alpha": 22,
+    "input-border": 16,
+    "alpha-concat": 14
   },
   "files": {
     "apps/admin/src/pages/DashboardPage.tsx": {
@@ -318,11 +318,6 @@
         "raw-hex": 1
       }
     },
-    "apps/web/src/components/CookieBanner.tsx": {
-      "input-border": {
-        "tw-arbitrary": 1
-      }
-    },
     "apps/web/src/components/layout/AppLayout.tsx": {
       "neutral-scale": {
         "raw-hex": 1,
@@ -332,42 +327,20 @@
         "raw-hex": 1
       }
     },
-    "apps/web/src/components/ui/Button.tsx": {
-      "input-border": {
-        "tw-arbitrary": 1
-      }
-    },
-    "apps/web/src/components/ui/Input.tsx": {
-      "input-border": {
-        "tw-arbitrary": 2
-      }
-    },
     "apps/web/src/components/ui/StatCard.tsx": {
-      "alpha-concat": {
-        "raw-hex": 1
-      },
       "shadow-alpha": {
         "raw-color-fn": 2
       }
     },
     "apps/web/src/features/ai/AiPage.tsx": {
-      "status-tints": {
-        "raw-hex": 6
-      },
       "brand-blue": {
         "raw-hex": 1
       },
       "chart-colors": {
         "raw-hex": 2
       },
-      "neutral-scale": {
-        "raw-hex": 2
-      },
       "green-legacy": {
         "tw-arbitrary": 1
-      },
-      "input-border": {
-        "tw-arbitrary": 2
       }
     },
     "apps/web/src/features/auth/LoginPage.tsx": {
@@ -380,62 +353,21 @@
       "neutral-scale": {
         "raw-hex": 1,
         "raw-color-fn": 2
-      },
-      "input-border": {
-        "tw-arbitrary": 3
-      }
-    },
-    "apps/web/src/features/auth/components/PasswordInput.tsx": {
-      "input-border": {
-        "tw-arbitrary": 1
-      }
-    },
-    "apps/web/src/features/avisering/AviseringPage.tsx": {
-      "alpha-concat": {
-        "raw-hex": 6
-      },
-      "input-border": {
-        "tw-arbitrary": 2
-      }
-    },
-    "apps/web/src/features/avisering/components/MarkPaidModal.tsx": {
-      "input-border": {
-        "tw-arbitrary": 2
-      }
-    },
-    "apps/web/src/features/backfill/BackfillPage.tsx": {
-      "alpha-concat": {
-        "raw-hex": 3
-      }
-    },
-    "apps/web/src/features/consumption/components/TariffForm.tsx": {
-      "input-border": {
-        "tw-arbitrary": 1
-      }
-    },
-    "apps/web/src/features/contract-batch/ContractBatchReviewPage.tsx": {
-      "input-border": {
-        "tw-arbitrary": 1
-      }
-    },
-    "apps/web/src/features/contract-batch/ContractBatchUploadPage.tsx": {
-      "input-border": {
-        "tw-arbitrary": 1
       }
     },
     "apps/web/src/features/customers/CustomersPage.tsx": {
       "alpha-concat": {
-        "raw-hex": 3
+        "raw-hex": 1
       }
     },
     "apps/web/src/features/dashboard/DashboardPage.tsx": {
       "alpha-concat": {
-        "raw-hex": 9
+        "raw-hex": 3
       }
     },
     "apps/web/src/features/dashboard/components/TrendsSection.tsx": {
       "neutral-scale": {
-        "raw-hex": 3
+        "raw-hex": 2
       },
       "chart-colors": {
         "raw-hex": 9
@@ -444,47 +376,14 @@
         "raw-color-fn": 1
       }
     },
-    "apps/web/src/features/deposits/DepositsPage.tsx": {
-      "alpha-concat": {
-        "raw-hex": 3
-      }
-    },
-    "apps/web/src/features/deposits/components/DepositSection.tsx": {
-      "input-border": {
-        "tw-arbitrary": 1
-      }
-    },
     "apps/web/src/features/documents/DocumentsPage.tsx": {
       "alpha-concat": {
-        "raw-hex": 3
-      },
-      "input-border": {
-        "tw-arbitrary": 2
-      }
-    },
-    "apps/web/src/features/documents/components/UploadDocumentModal.tsx": {
-      "input-border": {
-        "tw-arbitrary": 2
-      }
-    },
-    "apps/web/src/features/import/ImportPage.tsx": {
-      "input-border": {
-        "tw-arbitrary": 3
+        "raw-hex": 1
       }
     },
     "apps/web/src/features/inspections/InspectionsPage.tsx": {
       "alpha-concat": {
-        "raw-hex": 4
-      }
-    },
-    "apps/web/src/features/inspections/components/CreateInspectionModal.tsx": {
-      "input-border": {
-        "tw-arbitrary": 5
-      }
-    },
-    "apps/web/src/features/inspections/components/InspectionDetailPanel.tsx": {
-      "input-border": {
-        "tw-arbitrary": 4
+        "raw-hex": 1
       }
     },
     "apps/web/src/features/invoices/components/InvoiceForm.tsx": {
@@ -492,93 +391,27 @@
         "raw-hex": 22
       },
       "input-border": {
-        "raw-hex": 3,
-        "tw-arbitrary": 2
-      }
-    },
-    "apps/web/src/features/keys/components/KeysSection.tsx": {
-      "input-border": {
-        "tw-arbitrary": 2
+        "raw-hex": 3
       }
     },
     "apps/web/src/features/leases/LeasesPage.tsx": {
       "alpha-concat": {
-        "raw-hex": 3
-      }
-    },
-    "apps/web/src/features/leases/components/ContractTab.tsx": {
-      "input-border": {
-        "tw-arbitrary": 1
+        "raw-hex": 1
       }
     },
     "apps/web/src/features/leases/components/LeaseForm.tsx": {
-      "input-border": {
-        "tw-arbitrary": 13
-      },
       "green-legacy": {
         "tw-arbitrary": 2
       }
     },
-    "apps/web/src/features/legal/LegalPageShell.tsx": {
-      "input-border": {
-        "tw-arbitrary": 1
-      }
-    },
     "apps/web/src/features/maintenance-plan/MaintenancePlanPage.tsx": {
       "alpha-concat": {
-        "raw-hex": 4
-      },
-      "input-border": {
-        "tw-arbitrary": 2
-      }
-    },
-    "apps/web/src/features/maintenance-plan/components/CreateMaintenancePlanModal.tsx": {
-      "input-border": {
-        "tw-arbitrary": 4
-      }
-    },
-    "apps/web/src/features/maintenance/MaintenancePage.tsx": {
-      "alpha-concat": {
-        "raw-hex": 5
-      },
-      "input-border": {
-        "tw-arbitrary": 2
-      }
-    },
-    "apps/web/src/features/maintenance/components/CreateTicketModal.tsx": {
-      "input-border": {
-        "tw-arbitrary": 7
-      }
-    },
-    "apps/web/src/features/maintenance/components/TicketDetailPanel.tsx": {
-      "input-border": {
-        "tw-arbitrary": 1
+        "raw-hex": 1
       }
     },
     "apps/web/src/features/messages/MessagesPage.tsx": {
       "alpha-concat": {
-        "raw-hex": 4
-      },
-      "input-border": {
-        "tw-arbitrary": 3
-      }
-    },
-    "apps/web/src/features/misc-charges/components/DebitTenantCard.tsx": {
-      "input-border": {
-        "tw-arbitrary": 2
-      }
-    },
-    "apps/web/src/features/news/NewsPage.tsx": {
-      "alpha-concat": {
-        "raw-hex": 3
-      },
-      "input-border": {
-        "tw-arbitrary": 5
-      }
-    },
-    "apps/web/src/features/notifications/NotificationsPage.tsx": {
-      "input-border": {
-        "tw-arbitrary": 1
+        "raw-hex": 1
       }
     },
     "apps/web/src/features/overview/OverviewPage.tsx": {
@@ -589,10 +422,7 @@
         "raw-hex": 14
       },
       "status-tints": {
-        "raw-hex": 17
-      },
-      "neutral-scale": {
-        "raw-hex": 4
+        "raw-hex": 12
       },
       "shadow-alpha": {
         "raw-color-fn": 3
@@ -600,52 +430,23 @@
     },
     "apps/web/src/features/properties/PropertiesPage.tsx": {
       "alpha-concat": {
-        "raw-hex": 3
+        "raw-hex": 1
       }
     },
     "apps/web/src/features/reconciliation/ReconciliationPage.tsx": {
-      "alpha-concat": {
-        "raw-hex": 4
-      },
-      "neutral-scale": {
-        "raw-hex": 1
-      },
       "green-legacy": {
         "tw-arbitrary": 7
       },
       "input-border": {
-        "tw-arbitrary": 3
-      }
-    },
-    "apps/web/src/features/reconciliation/components/PdfImportPreviewModal.tsx": {
-      "input-border": {
-        "tw-arbitrary": 4
-      }
-    },
-    "apps/web/src/features/rent-increases/RentIncreasesPage.tsx": {
-      "alpha-concat": {
-        "raw-hex": 3
-      }
-    },
-    "apps/web/src/features/rent-increases/components/RentIncreaseSection.tsx": {
-      "input-border": {
         "tw-arbitrary": 1
-      }
-    },
-    "apps/web/src/features/reports/ReportsPage.tsx": {
-      "alpha-concat": {
-        "raw-hex": 4
       }
     },
     "apps/web/src/features/settings/SettingsPage.tsx": {
       "neutral-scale": {
-        "raw-hex": 2
+        "raw-hex": 1
       },
       "chart-colors": {
         "raw-hex": 16
-      },
-      "input-border": {
-        "tw-arbitrary": 7
       }
     },
     "apps/web/src/features/settings/components/PlanPanel.tsx": {
@@ -658,30 +459,12 @@
     },
     "apps/web/src/features/tenants/TenantsPage.tsx": {
       "alpha-concat": {
-        "raw-hex": 4
-      },
-      "input-border": {
-        "tw-arbitrary": 1
-      }
-    },
-    "apps/web/src/features/terminations/TerminationsPage.tsx": {
-      "alpha-concat": {
         "raw-hex": 3
       }
     },
     "apps/web/src/features/units/UnitsPage.tsx": {
       "alpha-concat": {
-        "raw-hex": 4
-      }
-    },
-    "apps/web/src/features/users/UsersPanel.tsx": {
-      "input-border": {
-        "tw-arbitrary": 3
-      }
-    },
-    "apps/web/src/features/users/components/InviteUserModal.tsx": {
-      "input-border": {
-        "tw-arbitrary": 1
+        "raw-hex": 1
       }
     }
   }

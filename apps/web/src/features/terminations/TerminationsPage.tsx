@@ -153,18 +153,23 @@ export function TerminationsPage() {
         variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}
         className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3"
       >
-        <StatCard title="Väntar på beslut" value={pendingCount} icon={Clock} iconColor="#D97706" />
+        <StatCard
+          title="Väntar på beslut"
+          value={pendingCount}
+          icon={Clock}
+          iconColor="var(--ev-warning-600)"
+        />
         <StatCard
           title="Godkända"
           value={requests.filter((r) => r.status === 'APPROVED').length}
           icon={Check}
-          iconColor="#10B981"
+          iconColor="var(--ev-success-500)"
         />
         <StatCard
           title="Avslagna"
           value={requests.filter((r) => r.status === 'REJECTED').length}
           icon={X}
-          iconColor="#DC2626"
+          iconColor="var(--ev-danger-600)"
         />
       </motion.div>
 

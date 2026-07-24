@@ -50,7 +50,7 @@ export function ContractBatchUploadPage() {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#DDDFE4] py-10 text-gray-500 transition-colors hover:border-blue-400 hover:bg-blue-50/40"
+          className="border-input flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-10 text-gray-500 transition-colors hover:border-blue-400 hover:bg-blue-50/40"
         >
           <Upload size={24} strokeWidth={1.8} />
           <span className="text-[13.5px] font-medium text-gray-700">Välj PDF-filer</span>
