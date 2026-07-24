@@ -17,6 +17,12 @@
   --ev-text: #111827; /* mål #241f1a → dagens #111827 */
   --ev-border: #eaedf0; /* mål #ece7e0 → dagens dominerande kant #eaedf0 */
   --ev-brand: #2563eb; /* mål #1a6b3c → dagens legacy-blå #2563eb (grön först vid flippen) */
+
+  /* Komponent-variabler (PR6, delad DataTable). Default i @eken/ui härleds ur
+     paletten (row-hover = --ev-bg, row-border = --ev-border); här pinnas de till
+     webs NUVARANDE tabellvärden så tabellerna är pixelneutrala. */
+  --ev-row-hover: #fafbff; /* dagens .table-row-base:hover */
+  --ev-row-border: #f0f2f5; /* dagens radavdelare (avviker från --ev-border) */
 }
 
 @layer base {
@@ -92,13 +98,6 @@
   }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background: rgba(0, 0, 0, 0.18);
-  }
-
-  .table-row-base {
-    @apply border-b border-[#F0F2F5] transition-colors duration-100 last:border-0;
-  }
-  .table-row-base:hover {
-    background: #fafbff;
   }
 
   @keyframes blink {

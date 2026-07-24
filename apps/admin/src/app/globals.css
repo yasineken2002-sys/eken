@@ -15,6 +15,12 @@
   --ev-bg: #f7f8fa; /* @eken/ui-mål #f6f4f0 → hålls på dagens #f7f8fa */
   --ev-text: #111827; /* mål #241f1a → dagens #111827 */
   --ev-border: #eaedf0; /* mål #ece7e0 → dagens #eaedf0 */
+  --ev-brand: #2563eb; /* mål #1a6b3c → dagens accent-blå (länkar/::selection) */
+
+  /* Komponent-variabler (PR6, delad DataTable). Default i @eken/ui härleds ur
+     paletten; här pinnas de till admins nuvarande tabellvärden. */
+  --ev-row-hover: #fafbfc; /* dagens hover:bg-gray-50/80, uträknad mot vit yta */
+  --ev-row-border: #eaedf0; /* = --ev-border, dagens border-line på radavdelare */
 }
 
 @layer base {
