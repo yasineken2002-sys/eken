@@ -367,7 +367,7 @@ function AppendixRow({
         <select
           value={isAppendixCategory ? doc.category : 'OTHER'}
           onChange={(e) => onSetCategory(e.target.value as AppendixCategory)}
-          className="h-7 shrink-0 rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="h-7 shrink-0 rounded-md border border-gray-200 bg-white px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
           <option value="ENERGY_DECLARATION">Energideklaration</option>
           <option value="HOUSE_RULES">Ordningsregler</option>

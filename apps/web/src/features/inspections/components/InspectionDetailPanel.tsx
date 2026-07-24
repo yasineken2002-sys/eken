@@ -178,7 +178,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                                   dto: { condition: e.target.value as InspectionItemCondition },
                                 })
                               }
-                              className="h-7 rounded-md border border-[#DDDFE4] px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              className="border-input h-7 rounded-md border px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             >
                               {CONDITIONS.map((c) => (
                                 <option key={c.value} value={c.value}>
@@ -203,7 +203,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                                     })
                                   }
                                 }}
-                                className="h-7 flex-1 rounded-md border border-[#DDDFE4] px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                className="border-input h-7 flex-1 rounded-md border px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               />
                               <input
                                 type="number"
@@ -219,7 +219,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                                     })
                                   }
                                 }}
-                                className="h-7 w-20 rounded-md border border-[#DDDFE4] px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                className="border-input h-7 w-20 rounded-md border px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               />
                             </div>
                           )}
@@ -265,7 +265,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                 addFiles(e.dataTransfer.files)
               }}
               onClick={() => fileInputRef.current?.click()}
-              className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#DDDFE4] bg-gray-50/50 px-4 py-5 text-center transition-colors hover:border-blue-400 hover:bg-blue-50/30"
+              className="border-input flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed bg-gray-50/50 px-4 py-5 text-center transition-colors hover:border-blue-400 hover:bg-blue-50/30"
             >
               <Upload size={16} className="mb-1.5 text-gray-400" strokeWidth={1.8} />
               <p className="text-[12px] font-medium text-gray-500">

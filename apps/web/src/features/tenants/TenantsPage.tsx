@@ -204,7 +204,7 @@ export function TenantsPage() {
             title="Totalt"
             value={tenants.length}
             icon={Users}
-            iconColor="#2563EB"
+            iconColor="var(--ev-brand)"
             delay={0}
           />
         </motion.div>
@@ -500,7 +500,7 @@ function PortalActivationCard({ tenantId }: { tenantId: string }) {
               onClick={handleResend}
               disabled={resend.isPending}
               className={cn(
-                'h-9 rounded-lg border border-[#DDDFE4] bg-white px-4 text-[13.5px] font-medium text-gray-700 shadow-sm transition-all',
+                'border-input h-9 rounded-lg border bg-white px-4 text-[13.5px] font-medium text-gray-700 shadow-sm transition-all',
                 'hover:bg-gray-50 active:scale-[0.97]',
                 resend.isPending && 'cursor-not-allowed opacity-60',
               )}

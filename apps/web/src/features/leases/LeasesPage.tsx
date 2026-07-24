@@ -364,7 +364,7 @@ export function LeasesPage() {
             title="Totalt"
             value={leases.length}
             icon={FileText}
-            iconColor="#2563EB"
+            iconColor="var(--ev-brand)"
             delay={0}
           />
         </motion.div>
@@ -382,7 +382,7 @@ export function LeasesPage() {
             title="Väntande"
             value={draftCount}
             icon={FileText}
-            iconColor="#F59E0B"
+            iconColor="var(--ev-warning-500)"
             delay={0.1}
           />
         </motion.div>

@@ -120,19 +120,19 @@ export function RentIncreasesPage() {
           title="Träder i kraft inom 30 dagar"
           value={stats.upcoming}
           icon={Clock}
-          iconColor="#D97706"
+          iconColor="var(--ev-warning-600)"
         />
         <StatCard
           title="Väntar svar"
           value={stats.awaiting}
           icon={TrendingUp}
-          iconColor="#2563EB"
+          iconColor="var(--ev-brand)"
         />
         <StatCard
           title="Tillämpade"
           value={stats.applied}
           icon={CheckCircle2}
-          iconColor="#10B981"
+          iconColor="var(--ev-success-500)"
         />
       </motion.div>
 

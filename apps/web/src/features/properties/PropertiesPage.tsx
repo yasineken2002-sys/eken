@@ -212,7 +212,7 @@ export function PropertiesPage() {
             title="Totalt fastigheter"
             value={properties.length}
             icon={Building2}
-            iconColor="#2563EB"
+            iconColor="var(--ev-brand)"
             delay={0}
           />
         </motion.div>
@@ -230,7 +230,7 @@ export function PropertiesPage() {
             title="Bostadsfastigheter"
             value={residentialCount}
             icon={Home}
-            iconColor="#2563EB"
+            iconColor="var(--ev-brand)"
             delay={0.1}
           />
         </motion.div>

@@ -98,7 +98,7 @@ function ProfitLossView({ data }: { data: ProfitLossReport }) {
           title="Resultat"
           value={formatCurrency(data.result)}
           icon={Scale}
-          iconColor={data.result >= 0 ? '#059669' : '#DC2626'}
+          iconColor={data.result >= 0 ? 'var(--ev-success-600)' : 'var(--ev-danger-600)'}
         />
       </div>
 
@@ -238,7 +238,7 @@ function VatView({ data }: { data: VatReport }) {
           title={pay ? 'Att betala' : 'Att få tillbaka'}
           value={formatCurrency(Math.abs(data.netToPay))}
           icon={Scale}
-          iconColor={pay ? '#DC2626' : '#059669'}
+          iconColor={pay ? 'var(--ev-danger-600)' : 'var(--ev-success-600)'}
         />
       </div>
       <div className="border-line overflow-hidden rounded-2xl border bg-white">

@@ -183,7 +183,7 @@ function RevenueChart({ data }: ChartProps) {
           <Tooltip
             contentStyle={TOOLTIP_STYLE}
             formatter={(value: number) => formatCurrency(value)}
-            labelStyle={{ color: '#111827', fontWeight: 600 }}
+            labelStyle={{ color: 'var(--ev-neutral-900)', fontWeight: 600 }}
           />
           <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" iconSize={8} />
           <Line

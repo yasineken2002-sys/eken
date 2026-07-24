@@ -145,7 +145,7 @@ export function AviseringPage() {
             value={month}
             disabled={searching}
             onChange={(e) => setMonth(parseInt(e.target.value, 10))}
-            className="h-8 rounded-lg border border-[#DDDFE4] px-3 text-[13px] text-gray-700 focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+            className="border-input h-8 rounded-lg border px-3 text-[13px] text-gray-700 focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
           >
             {MONTHS.map((m, i) => (
               <option key={i + 1} value={i + 1}>
@@ -157,7 +157,7 @@ export function AviseringPage() {
             value={year}
             disabled={searching}
             onChange={(e) => setYear(parseInt(e.target.value, 10))}
-            className="h-8 rounded-lg border border-[#DDDFE4] px-3 text-[13px] text-gray-700 focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+            className="border-input h-8 rounded-lg border px-3 text-[13px] text-gray-700 focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
           >
             {years.map((y) => (
               <option key={y} value={y}>
@@ -191,28 +191,32 @@ export function AviseringPage() {
             title="Totalt att fakturera"
             value={formatCurrency(stats?.totalAmount ?? 0)}
             icon={DollarSign}
-            iconColor="#2563EB"
+            iconColor="var(--ev-brand)"
             delay={0}
           />
           <StatCard
             title="Inkasserat"
             value={formatCurrency(stats?.paidAmount ?? 0)}
             icon={CheckCircle2}
-            iconColor="#059669"
+            iconColor="var(--ev-success-600)"
             delay={0.04}
           />
           <StatCard
             title="Utestående"
             value={formatCurrency(stats?.outstandingAmount ?? 0)}
             icon={Clock}
-            iconColor={(stats?.outstandingAmount ?? 0) > 0 ? '#D97706' : '#6B7280'}
+            iconColor={
+              (stats?.outstandingAmount ?? 0) > 0
+                ? 'var(--ev-warning-600)'
+                : 'var(--ev-neutral-500)'
+            }
             delay={0.08}
           />
           <StatCard
             title="Försenade"
             value={stats?.overdue ?? 0}
             icon={AlertCircle}
-            iconColor={(stats?.overdue ?? 0) > 0 ? '#DC2626' : '#6B7280'}
+            iconColor={(stats?.overdue ?? 0) > 0 ? 'var(--ev-danger-600)' : 'var(--ev-neutral-500)'}
             delay={0.12}
           />
         </div>

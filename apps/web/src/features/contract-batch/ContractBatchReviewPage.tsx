@@ -274,7 +274,7 @@ function EditRowModal({
           <select
             value={unitId}
             onChange={(e) => setUnitId(e.target.value)}
-            className="h-9 w-full rounded-lg border border-[#DDDFE4] px-2 text-[13.5px] focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+            className="border-input h-9 w-full rounded-lg border px-2 text-[13.5px] focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Välj enhet…</option>
             {units.map((u) => (

@@ -159,8 +159,18 @@ export function CustomersPage() {
 
       {/* Statistikkort */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard title="Privatpersoner" value={individualCount} icon={User} iconColor="#2563EB" />
-        <StatCard title="Företag" value={companyCount} icon={Building2} iconColor="#059669" />
+        <StatCard
+          title="Privatpersoner"
+          value={individualCount}
+          icon={User}
+          iconColor="var(--ev-brand)"
+        />
+        <StatCard
+          title="Företag"
+          value={companyCount}
+          icon={Building2}
+          iconColor="var(--ev-success-600)"
+        />
         <StatCard
           title="Fakturor totalt"
           value={totalInvoices}

@@ -120,7 +120,7 @@ export function DashboardPage() {
               title="Totala intäkter i år"
               value={formatCurrency(stats?.revenue.total ?? 0)}
               icon={Banknote}
-              iconColor="#2563EB"
+              iconColor="var(--ev-brand)"
             />
           </motion.div>
           <motion.div variants={item}>
@@ -128,7 +128,7 @@ export function DashboardPage() {
               title="Försenat belopp"
               value={formatCurrency(stats?.overdue.total ?? 0)}
               icon={AlertTriangle}
-              iconColor="#EF4444"
+              iconColor="var(--ev-danger-500)"
             />
           </motion.div>
           <motion.div variants={item}>
@@ -160,7 +160,7 @@ export function DashboardPage() {
               title="Osänt (utkast)"
               value={stats?.invoices.draft ?? 0}
               icon={TrendingUp}
-              iconColor="#F59E0B"
+              iconColor="var(--ev-warning-500)"
             />
           </motion.div>
           <motion.div variants={item}>
@@ -168,7 +168,7 @@ export function DashboardPage() {
               title="Förvaltat depositionskapital"
               value={formatCurrency(depositStats.managed)}
               icon={Wallet}
-              iconColor="#2563EB"
+              iconColor="var(--ev-brand)"
             />
           </motion.div>
           <motion.div variants={item}>
@@ -176,7 +176,7 @@ export function DashboardPage() {
               title="Depositioner att återbetala"
               value={depositStats.refundPending}
               icon={CreditCard}
-              iconColor="#D97706"
+              iconColor="var(--ev-warning-600)"
             />
           </motion.div>
           <motion.div variants={item}>
@@ -184,7 +184,7 @@ export function DashboardPage() {
               title="Hyreshöjningar inom 30 dagar"
               value={upcomingRentIncreases}
               icon={TrendingUp}
-              iconColor="#10B981"
+              iconColor="var(--ev-success-500)"
             />
           </motion.div>
         </motion.div>
