@@ -35,6 +35,13 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
 
+      # tailwind.config.ts laddas av jiti (CJS) → require-villkoret i @eken/ui
+      # pekar på dist/cjs/tailwind-preset.js, som är gitignorerad. `vercel build`
+      # kör bara appens egen build (tsc -b && vite build) och bygger aldrig
+      # workspace-beroenden — samma skäl som apps/api/Dockerfile bygger @eken/ui först.
+      - name: Build @eken/ui (CJS för tailwind-preset)
+        run: pnpm --filter @eken/ui build
+
       - name: Check if deploy is needed
         id: turbo-ignore
         continue-on-error: true
@@ -79,6 +86,10 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
 
+      # Se kommentaren i deploy-web: admin importerar samma tailwind-preset.
+      - name: Build @eken/ui (CJS för tailwind-preset)
+        run: pnpm --filter @eken/ui build
+
       - name: Check if deploy is needed
         id: turbo-ignore
         continue-on-error: true
@@ -122,6 +133,12 @@ jobs:
 
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
+
+      # Portalen saknar Tailwind och konsumerar bara @eken/ui/tokens.css (src),
+      # så den klarar sig utan dist idag — steget finns för symmetri och för att
+      # nästa @eken/ui-import inte ska falla i samma fälla.
+      - name: Build @eken/ui (CJS för tailwind-preset)
+        run: pnpm --filter @eken/ui build
 
       - name: Check if deploy is needed
         id: turbo-ignore
