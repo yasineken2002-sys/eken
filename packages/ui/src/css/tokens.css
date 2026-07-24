@@ -105,4 +105,15 @@
   --ev-danger-800-ch: 93 43 33;
   --ev-danger-900: #44261e;
   --ev-danger-900-ch: 68 38 30;
+
+  /* Mörka ytor — härledda ur ink/creme, se EVENO_DARK i tokens.ts. Kanalform
+     (-ch) medföljer för alfa-behov, som i F1/F2:s skalor. */
+  --ev-dark: #1f1a16;
+  --ev-dark-ch: 31 26 22;
+  --ev-dark-elevated: #302b27;
+  --ev-dark-elevated-ch: 48 43 39;
+  --ev-dark-text: #f6f4f0;
+  --ev-dark-text-ch: 246 244 240;
+  --ev-dark-text-muted: #8f8b87;
+  --ev-dark-text-muted-ch: 143 139 135;
 }

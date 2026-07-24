@@ -145,14 +145,17 @@ function NavGroup({ label, items, collapsed, onMobileClose }: NavGroupProps) {
               'group flex w-full items-center rounded-xl transition-all duration-150',
               collapsed ? 'h-10 justify-center px-0' : 'h-9 gap-3 px-3',
               active
-                ? 'bg-white/10 text-white'
-                : 'hover:bg-white/6 text-white/45 hover:text-white/80',
+                ? 'bg-[var(--ev-dark-elevated)] text-[var(--ev-dark-text)]'
+                : 'hover:bg-white/6 text-[var(--ev-dark-text-muted)] hover:text-white/80',
             )}
           >
             <item.icon
               size={15}
               strokeWidth={active ? 2.2 : 1.8}
-              className={cn('flex-shrink-0 transition-colors', active ? 'text-white' : '')}
+              className={cn(
+                'flex-shrink-0 transition-colors',
+                active ? 'text-[var(--ev-dark-text)]' : '',
+              )}
             />
             <AnimatePresence>
               {!collapsed && (
@@ -243,7 +246,7 @@ export function AppLayout({ children }: Props) {
             mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
             'transition-transform lg:transition-none',
           )}
-          style={{ background: '#0F1117' }}
+          style={{ background: 'var(--ev-dark)' }}
         >
           {/* Logo */}
           <div
