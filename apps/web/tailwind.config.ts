@@ -2,7 +2,7 @@ import type { Config } from 'tailwindcss'
 import { fontFamily } from 'tailwindcss/defaultTheme'
 import animate from 'tailwindcss-animate'
 import typography from '@tailwindcss/typography'
-import { evenoPreset } from '@eken/ui/tailwind-preset'
+import { evenoPreset, evenoScales } from '@eken/ui/tailwind-preset'
 
 export default {
   // @eken/ui-preseten mappar var(--ev-*) → theme.colors (brand/canvas/ink/line/…).
@@ -22,8 +22,21 @@ export default {
     },
     extend: {
       colors: {
+        // F2 commit 1: webs gråskala och statusfamiljer går genom @eken/ui:s
+        // härledda skalor i stället för Tailwinds egna. Ingen klass skrivs om —
+        // `text-gray-500` slår nu upp var(--ev-neutral-500), pinnad till dagens
+        // exakta Tailwind-hex i globals.css. Flippen (commit 2) tar bort pinnarna.
+        // Blå familjen lämnas MEDVETET orörd — den är varumärkesbytet i F5.
+        gray: evenoScales.neutral,
+        emerald: evenoScales.success,
+        amber: evenoScales.warning,
+        red: evenoScales.danger,
         border: 'hsl(var(--border))',
-        input: 'hsl(var(--input))',
+        // `input` pekade på webs shadcn-HSL men användes inte på en enda plats
+        // (0 träffar på border-input/bg-input/ring-input). Den pekas om till
+        // fältkant-tokenen, samma nyckel som admin fick i F1, och tar över de 62
+        // hårdkodade border-[#DDDFE4].
+        input: 'var(--ev-input-border)',
         ring: 'hsl(var(--ring))',
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',

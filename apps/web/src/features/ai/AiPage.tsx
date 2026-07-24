@@ -85,19 +85,29 @@ const SUGGESTIONS = [
   {
     icon: AlertTriangle,
     label: 'Vilka hyresgäster har förfallna fakturor?',
-    color: '#DC2626',
-    bg: '#FEF2F2',
+    color: 'var(--ev-danger-600)',
+    bg: 'var(--ev-danger-50)',
   },
-  { icon: FileText, label: 'Skapa hyresfakturor för maj 2026', color: '#059669', bg: '#ECFDF5' },
+  {
+    icon: FileText,
+    label: 'Skapa hyresfakturor för maj 2026',
+    color: 'var(--ev-success-600)',
+    bg: 'var(--ev-success-50)',
+  },
   { icon: TrendingUp, label: 'Visa intäkter för Q1 2026', color: 'var(--ev-brand)', bg: '#EFF6FF' },
   {
     icon: AlertTriangle,
     label: 'Skicka påminnelser till förfallna fakturor',
-    color: '#D97706',
-    bg: '#FFFBEB',
+    color: 'var(--ev-warning-600)',
+    bg: 'var(--ev-warning-50)',
   },
   { icon: Building2, label: 'Hur många lediga enheter finns?', color: '#7C3AED', bg: '#F5F3FF' },
-  { icon: Users, label: 'Exportera bokföring för 2026', color: '#6B7280', bg: '#F9FAFB' },
+  {
+    icon: Users,
+    label: 'Exportera bokföring för 2026',
+    color: 'var(--ev-neutral-500)',
+    bg: 'var(--ev-neutral-50)',
+  },
 ]
 
 function LoadingDots() {
@@ -231,7 +241,7 @@ function ConfirmationCard({
             <button
               onClick={onCancel}
               disabled={isLoading}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-4 text-[13.5px] font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 text-[13.5px] font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
             >
               <X size={13} strokeWidth={2} />
               Avbryt
@@ -846,7 +856,7 @@ export function AiPage() {
                   Lyssnar... Tala din fråga på svenska
                 </div>
               )}
-              <div className="flex items-end gap-3 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 transition-all focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100">
+              <div className="flex items-end gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 transition-all focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100">
                 <textarea
                   ref={textareaRef}
                   value={input}

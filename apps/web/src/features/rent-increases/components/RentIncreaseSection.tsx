@@ -222,7 +222,7 @@ function CreateForm({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <p className="mb-1 text-[12px] font-medium text-gray-600">Nuvarande hyra</p>
-          <div className="flex h-9 items-center rounded-lg border border-[#DDDFE4] bg-gray-50 px-3 text-[13.5px] text-gray-700">
+          <div className="border-input flex h-9 items-center rounded-lg border bg-gray-50 px-3 text-[13.5px] text-gray-700">
             {formatCurrency(currentRent)}/mån
           </div>
         </div>

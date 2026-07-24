@@ -47,6 +47,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import { get, del } from '@/lib/api'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
+import { tint, TINT } from '@/lib/tint'
 
 type SettingsTab = 'general' | 'plan' | 'security' | 'users'
 
@@ -394,7 +395,7 @@ export function SettingsPage() {
                       'flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-colors',
                       uploadMutation.isPending
                         ? 'border-blue-200 bg-blue-50'
-                        : 'border-[#E5E7EB] hover:border-blue-300 hover:bg-blue-50/40',
+                        : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/40',
                     )}
                     onClick={() => fileInputRef.current?.click()}
                     onDrop={handleDrop}
@@ -523,7 +524,7 @@ export function SettingsPage() {
                       type="color"
                       value={invoiceColor}
                       onChange={(e) => setInvoiceColor(e.target.value)}
-                      className="h-8 w-8 cursor-pointer rounded-full border border-[#E5E7EB] p-0.5"
+                      className="h-8 w-8 cursor-pointer rounded-full border border-gray-200 p-0.5"
                       title="Anpassad färg"
                     />
                     <span className="text-[12px] text-gray-400">Anpassad</span>
@@ -556,7 +557,10 @@ export function SettingsPage() {
                       )}
                       style={
                         invoiceTemplate === tpl.value
-                          ? { borderColor: invoiceColor, backgroundColor: `${invoiceColor}08` }
+                          ? {
+                              borderColor: invoiceColor,
+                              backgroundColor: tint(invoiceColor, TINT.faint),
+                            }
                           : {}
                       }
                     >
@@ -674,7 +678,10 @@ export function SettingsPage() {
                       </svg>
                       <p
                         className="text-center text-[13px] font-medium"
-                        style={{ color: invoiceTemplate === tpl.value ? invoiceColor : '#374151' }}
+                        style={{
+                          color:
+                            invoiceTemplate === tpl.value ? invoiceColor : 'var(--ev-neutral-700)',
+                        }}
                       >
                         {tpl.label}
                       </p>
@@ -691,7 +698,7 @@ export function SettingsPage() {
                 <select
                   value={brandFont}
                   onChange={(e) => setBrandFont(e.target.value)}
-                  className="h-9 w-full max-w-xs rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  className="border-input h-9 w-full max-w-xs rounded-lg border px-3 text-[13.5px] focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                 >
                   {BRAND_FONTS.map((f) => (
                     <option key={f} value={f}>
@@ -725,7 +732,7 @@ export function SettingsPage() {
                       type="color"
                       value={brandSecondaryColor}
                       onChange={(e) => setBrandSecondaryColor(e.target.value)}
-                      className="h-8 w-8 cursor-pointer rounded-full border border-[#E5E7EB] p-0.5"
+                      className="h-8 w-8 cursor-pointer rounded-full border border-gray-200 p-0.5"
                       title="Sekundärfärg"
                     />
                     <span className="text-[12px] text-gray-400">{brandSecondaryColor}</span>
@@ -803,7 +810,7 @@ export function SettingsPage() {
               </p>
 
               <div className="space-y-4">
-                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[#E5E7EB] bg-gray-50/50 p-3.5">
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-gray-200 bg-gray-50/50 p-3.5">
                   <input
                     type="checkbox"
                     className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500/30"
@@ -856,7 +863,7 @@ export function SettingsPage() {
                       onChange={(e) =>
                         setVatReportingPeriod(e.target.value as 'MONTHLY' | 'QUARTERLY' | 'YEARLY')
                       }
-                      className="h-9 w-full rounded-lg border border-[#DDDFE4] bg-white px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="border-input h-9 w-full rounded-lg border bg-white px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="MONTHLY">Månad</option>
                       <option value="QUARTERLY">Kvartal</option>
@@ -1162,7 +1169,7 @@ export function SettingsPage() {
                     Dagar före tillträde att deposition + första avi förfaller
                   </label>
                   <select
-                    className="h-9 w-full rounded-lg border border-[#DDDFE4] bg-white px-3 text-[13.5px] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="border-input h-9 w-full rounded-lg border bg-white px-3 text-[13.5px] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={daysBeforeMoveIn}
                     onChange={(e) => setDaysBeforeMoveIn(Number(e.target.value))}
                   >

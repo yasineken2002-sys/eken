@@ -311,7 +311,7 @@ function RefundForm({
             <button
               type="button"
               onClick={() => setDeductions((prev) => prev.filter((_, j) => j !== i))}
-              className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#DDDFE4] text-gray-400 hover:border-red-200 hover:text-red-500"
+              className="border-input mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-gray-400 hover:border-red-200 hover:text-red-500"
             >
               <Trash2 size={13} strokeWidth={1.8} />
             </button>

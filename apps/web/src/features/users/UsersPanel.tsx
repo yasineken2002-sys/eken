@@ -148,7 +148,7 @@ function UserRow({ user, isOwner, isSelf }: UserRowProps) {
             onChange={(e) =>
               updateRole.mutate({ id: user.id, role: e.target.value as AssignableRole })
             }
-            className="h-8 rounded-lg border border-[#DDDFE4] bg-white px-2.5 text-[12.5px] font-medium text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/15"
+            className="border-input h-8 rounded-lg border bg-white px-2.5 text-[12.5px] font-medium text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/15"
           >
             {ASSIGNABLE_ROLES.map((r) => (
               <option key={r.value} value={r.value}>
@@ -167,7 +167,7 @@ function UserRow({ user, isOwner, isSelf }: UserRowProps) {
               onClick={() => deactivate.mutate(user.id)}
               disabled={deactivate.isPending}
               title="Inaktivera användaren"
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#DDDFE4] text-gray-400 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+              className="border-input flex h-8 w-8 items-center justify-center rounded-lg border text-gray-400 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
             >
               <Power size={13} strokeWidth={1.8} />
             </button>
@@ -177,7 +177,7 @@ function UserRow({ user, isOwner, isSelf }: UserRowProps) {
               onClick={() => reactivate.mutate(user.id)}
               disabled={reactivate.isPending}
               title="Återaktivera användaren"
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#DDDFE4] text-gray-400 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-50"
+              className="border-input flex h-8 w-8 items-center justify-center rounded-lg border text-gray-400 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-50"
             >
               <RotateCw size={13} strokeWidth={1.8} />
             </button>

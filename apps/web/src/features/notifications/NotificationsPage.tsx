@@ -148,7 +148,7 @@ export function NotificationsPage() {
           <button
             onClick={() => markAll.mutate()}
             disabled={markAll.isPending}
-            className="flex items-center gap-1.5 rounded-lg border border-[#DDDFE4] bg-white px-3 py-1.5 text-[13px] font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
+            className="border-input flex items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-[13px] font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
           >
             <Check size={13} strokeWidth={2} />
             Markera alla lästa

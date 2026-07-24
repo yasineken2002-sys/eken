@@ -119,7 +119,7 @@ export function UploadDocumentModal({
   }
 
   const inputBase =
-    'h-9 w-full rounded-lg border border-[#E5E7EB] px-3 text-[13.5px] text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
+    'h-9 w-full rounded-lg border border-gray-200 px-3 text-[13.5px] text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
 
   return (
     <Modal open={open} onClose={handleClose} title="Ladda upp dokument" size="md">
@@ -156,7 +156,7 @@ export function UploadDocumentModal({
                   'flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed py-10 transition-colors',
                   dragOver
                     ? 'border-blue-400 bg-blue-50'
-                    : 'border-[#E5E7EB] hover:border-blue-300 hover:bg-gray-50',
+                    : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50',
                 )}
               >
                 <Upload

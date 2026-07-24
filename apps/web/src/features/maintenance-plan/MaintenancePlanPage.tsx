@@ -87,14 +87,14 @@ export function MaintenancePlanPage() {
           title="Planerade åtgärder"
           value={totalCount}
           icon={ListTodo}
-          iconColor="#2563EB"
+          iconColor="var(--ev-brand)"
           delay={0}
         />
         <StatCard
           title="Total budgeterad kostnad"
           value={formatCurrency(totalCost)}
           icon={Coins}
-          iconColor="#D97706"
+          iconColor="var(--ev-warning-600)"
           delay={0.04}
         />
         <StatCard
@@ -108,7 +108,7 @@ export function MaintenancePlanPage() {
           title="Slutförda"
           value={completedCount}
           icon={CheckCircle2}
-          iconColor="#059669"
+          iconColor="var(--ev-success-600)"
           delay={0.12}
         />
       </div>
@@ -121,7 +121,7 @@ export function MaintenancePlanPage() {
           <select
             value={fromYear}
             onChange={(e) => setFromYear(Number(e.target.value))}
-            className="h-8 rounded-lg border border-[#DDDFE4] px-2 text-[13px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="border-input h-8 rounded-lg border px-2 text-[13px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             {YEARS.map((y) => (
               <option key={y} value={y}>
@@ -133,7 +133,7 @@ export function MaintenancePlanPage() {
           <select
             value={toYear}
             onChange={(e) => setToYear(Number(e.target.value))}
-            className="h-8 rounded-lg border border-[#DDDFE4] px-2 text-[13px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="border-input h-8 rounded-lg border px-2 text-[13px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             {YEARS.map((y) => (
               <option key={y} value={y}>

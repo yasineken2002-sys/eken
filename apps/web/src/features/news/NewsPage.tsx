@@ -100,7 +100,7 @@ function PostForm({
           value={value.title}
           onChange={(e) => onChange({ ...value, title: e.target.value })}
           placeholder="Rubrik på nyheten"
-          className="h-9 w-full rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          className="border-input h-9 w-full rounded-lg border px-3 text-[13.5px] text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
         />
       </div>
       <div>
@@ -110,7 +110,7 @@ function PostForm({
           onChange={(e) => onChange({ ...value, content: e.target.value })}
           placeholder="Skriv nyhetsinnehållet här…"
           rows={8}
-          className="w-full resize-none rounded-lg border border-[#DDDFE4] px-3 py-2.5 text-[13.5px] text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          className="border-input w-full resize-none rounded-lg border px-3 py-2.5 text-[13.5px] text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
         />
       </div>
       <div>
@@ -123,7 +123,7 @@ function PostForm({
               'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-all',
               value.targetAll
                 ? 'border-blue-500 bg-blue-50 text-blue-700'
-                : 'border-[#DDDFE4] bg-white text-gray-600 hover:bg-gray-50',
+                : 'border-input bg-white text-gray-600 hover:bg-gray-50',
             )}
           >
             {value.targetAll && <Check size={12} strokeWidth={2.5} />}
@@ -137,7 +137,7 @@ function PostForm({
               'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-all',
               !value.targetAll
                 ? 'border-blue-500 bg-blue-50 text-blue-700'
-                : 'border-[#DDDFE4] bg-white text-gray-600 hover:bg-gray-50',
+                : 'border-input bg-white text-gray-600 hover:bg-gray-50',
             )}
           >
             {!value.targetAll && <Check size={12} strokeWidth={2.5} />}
@@ -152,7 +152,7 @@ function PostForm({
           <select
             value={value.propertyId}
             onChange={(e) => onChange({ ...value, propertyId: e.target.value })}
-            className="h-9 w-full rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            className="border-input h-9 w-full rounded-lg border px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="">Välj fastighet…</option>
             {properties.map((p) => (
@@ -291,21 +291,21 @@ export function NewsPage() {
           title="Publicerade"
           value={published.length}
           icon={Send}
-          iconColor="#059669"
+          iconColor="var(--ev-success-600)"
           delay={0}
         />
         <StatCard
           title="Utkast"
           value={drafts.length}
           icon={Newspaper}
-          iconColor="#6B7280"
+          iconColor="var(--ev-neutral-500)"
           delay={0.05}
         />
         <StatCard
           title="Totalt"
           value={posts.length}
           icon={Calendar}
-          iconColor="#2563EB"
+          iconColor="var(--ev-brand)"
           delay={0.1}
         />
       </div>

@@ -317,7 +317,7 @@ function ImportModal({
                       'rounded-lg border px-3 py-1.5 text-[12.5px] font-medium transition-colors',
                       bank === b.id
                         ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-[#DDDFE4] bg-white text-gray-600 hover:bg-gray-50',
+                        : 'border-input bg-white text-gray-600 hover:bg-gray-50',
                     )}
                   >
                     {b.label}
@@ -596,7 +596,7 @@ function ManualMatchModal({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Sök faktura..."
-          className="h-9 w-full rounded-lg border border-[#E5E7EB] pl-8 pr-3 text-[13px] focus:border-[#218F52] focus:outline-none focus:ring-2 focus:ring-[#218F52]/20"
+          className="h-9 w-full rounded-lg border border-gray-200 pl-8 pr-3 text-[13px] focus:border-[#218F52] focus:outline-none focus:ring-2 focus:ring-[#218F52]/20"
         />
       </div>
 
@@ -741,7 +741,7 @@ export function ReconciliationPage() {
             title="Totalt importerade"
             value={stats?.total ?? 0}
             icon={ArrowLeftRight}
-            iconColor="#6B7280"
+            iconColor="var(--ev-neutral-500)"
             delay={0}
           />
         </motion.div>
@@ -750,7 +750,7 @@ export function ReconciliationPage() {
             title="Matchade"
             value={`${stats?.matched ?? 0}`}
             icon={CheckCircle2}
-            iconColor="#2563EB"
+            iconColor="var(--ev-brand)"
             delay={0.05}
             {...(stats?.matchedAmount ? { changeLabel: formatCurrency(stats.matchedAmount) } : {})}
           />
@@ -760,7 +760,7 @@ export function ReconciliationPage() {
             title="Omatchade"
             value={stats?.unmatched ?? 0}
             icon={ArrowLeftRight}
-            iconColor="#D97706"
+            iconColor="var(--ev-warning-600)"
             delay={0.1}
           />
         </motion.div>
@@ -769,7 +769,7 @@ export function ReconciliationPage() {
             title="Ignorerade"
             value={stats?.ignored ?? 0}
             icon={XCircle}
-            iconColor="#9CA3AF"
+            iconColor="var(--ev-neutral-400)"
             delay={0.15}
           />
         </motion.div>
@@ -822,7 +822,7 @@ export function ReconciliationPage() {
                       <th
                         key={h}
                         className="px-4 py-2.5 text-left text-[11.5px] font-semibold uppercase tracking-wide"
-                        style={{ color: '#9CA3AF' }}
+                        style={{ color: 'var(--ev-neutral-400)' }}
                       >
                         {h}
                       </th>

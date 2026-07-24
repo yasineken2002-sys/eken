@@ -146,7 +146,7 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
                     <input
                       value={r.date}
                       onChange={(e) => updateRow(r._id, { date: e.target.value })}
-                      className="w-28 rounded border border-transparent bg-transparent px-1 py-0.5 hover:border-[#DDDFE4] focus:border-blue-500 focus:bg-white focus:outline-none"
+                      className="hover:border-input w-28 rounded border border-transparent bg-transparent px-1 py-0.5 focus:border-blue-500 focus:bg-white focus:outline-none"
                       disabled={isRemoved}
                     />
                   </td>
@@ -154,7 +154,7 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
                     <input
                       value={r.description}
                       onChange={(e) => updateRow(r._id, { description: e.target.value })}
-                      className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-gray-800 hover:border-[#DDDFE4] focus:border-blue-500 focus:bg-white focus:outline-none"
+                      className="hover:border-input w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-gray-800 focus:border-blue-500 focus:bg-white focus:outline-none"
                       disabled={isRemoved}
                     />
                   </td>
@@ -163,7 +163,7 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
                       value={r.ocr ?? ''}
                       placeholder="—"
                       onChange={(e) => updateRow(r._id, { ocr: e.target.value || null })}
-                      className="w-32 rounded border border-transparent bg-transparent px-1 py-0.5 text-gray-700 hover:border-[#DDDFE4] focus:border-blue-500 focus:bg-white focus:outline-none"
+                      className="hover:border-input w-32 rounded border border-transparent bg-transparent px-1 py-0.5 text-gray-700 focus:border-blue-500 focus:bg-white focus:outline-none"
                       disabled={isRemoved}
                     />
                   </td>
@@ -176,7 +176,7 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
                         updateRow(r._id, { amount: parseFloat(e.target.value) || 0 })
                       }
                       className={cn(
-                        'w-24 rounded border border-transparent bg-transparent px-1 py-0.5 text-right font-semibold hover:border-[#DDDFE4] focus:border-blue-500 focus:bg-white focus:outline-none',
+                        'hover:border-input w-24 rounded border border-transparent bg-transparent px-1 py-0.5 text-right font-semibold focus:border-blue-500 focus:bg-white focus:outline-none',
                         isIncoming ? 'text-emerald-600' : 'text-gray-400',
                       )}
                       disabled={isRemoved}

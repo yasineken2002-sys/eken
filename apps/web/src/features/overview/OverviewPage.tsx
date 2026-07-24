@@ -159,8 +159,8 @@ const MODULES: Module[] = [
   },
   {
     icon: Settings,
-    color: '#6B7280',
-    bg: '#F9FAFB',
+    color: 'var(--ev-neutral-500)',
+    bg: 'var(--ev-neutral-50)',
     name: 'Inställningar',
     route: 'settings',
     description: 'Organisationsinställningar',
@@ -169,8 +169,8 @@ const MODULES: Module[] = [
   },
   {
     icon: Lock,
-    color: '#DC2626',
-    bg: '#FEF2F2',
+    color: 'var(--ev-danger-600)',
+    bg: 'var(--ev-danger-50)',
     name: 'Autentisering',
     route: 'login',
     description: 'JWT-autentisering med refresh tokens',
@@ -213,7 +213,7 @@ interface EndpointGroup {
 const ENDPOINT_GROUPS: EndpointGroup[] = [
   {
     resource: 'AUTH',
-    color: '#DC2626',
+    color: 'var(--ev-danger-600)',
     endpoints: [
       { method: 'POST', path: '/auth/register' },
       { method: 'POST', path: '/auth/login' },
@@ -317,7 +317,7 @@ const METHOD_COLORS: Record<string, { bg: string; text: string }> = {
   GET: { bg: '#EFF6FF', text: 'var(--ev-brand)' },
   POST: { bg: '#F0FDF4', text: '#16A34A' },
   PATCH: { bg: '#FFF7ED', text: '#EA580C' },
-  DELETE: { bg: '#FEF2F2', text: '#DC2626' },
+  DELETE: { bg: 'var(--ev-danger-50)', text: 'var(--ev-danger-600)' },
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -348,7 +348,10 @@ function EndpointAccordion({ group }: { group: EndpointGroup }) {
       {open && (
         <div className="border-t border-gray-100 px-4 py-2">
           {group.endpoints.map((ep, i) => {
-            const mc = METHOD_COLORS[ep.method] ?? { bg: '#F3F4F6', text: '#374151' }
+            const mc = METHOD_COLORS[ep.method] ?? {
+              bg: 'var(--ev-neutral-100)',
+              text: 'var(--ev-neutral-700)',
+            }
             return (
               <div
                 key={i}

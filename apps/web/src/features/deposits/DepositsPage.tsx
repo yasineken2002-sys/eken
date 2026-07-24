@@ -105,15 +105,20 @@ export function DepositsPage() {
           title="Förvaltat depositionskapital"
           value={formatCurrency(totalManaged)}
           icon={Wallet}
-          iconColor="#2563EB"
+          iconColor="var(--ev-brand)"
         />
         <StatCard
           title="Väntar återbetalning"
           value={refundPending}
           icon={AlertCircle}
-          iconColor="#D97706"
+          iconColor="var(--ev-warning-600)"
         />
-        <StatCard title="Totalt" value={totalAll} icon={CreditCard} iconColor="#6B7280" />
+        <StatCard
+          title="Totalt"
+          value={totalAll}
+          icon={CreditCard}
+          iconColor="var(--ev-neutral-500)"
+        />
       </motion.div>
 
       <div className="mt-6 flex w-fit flex-wrap gap-1 rounded-xl bg-gray-100/70 p-1">

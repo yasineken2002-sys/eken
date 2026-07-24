@@ -54,7 +54,7 @@ export function LegalPageShell({
             </button>
             <button
               onClick={() => window.print()}
-              className="inline-flex items-center gap-2 rounded-lg border border-[#DDDFE4] bg-white px-3 py-1.5 text-[13px] font-medium text-gray-700 transition-colors hover:bg-gray-50"
+              className="border-input inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-1.5 text-[13px] font-medium text-gray-700 transition-colors hover:bg-gray-50"
             >
               <Printer className="h-3.5 w-3.5" /> Skriv ut
             </button>

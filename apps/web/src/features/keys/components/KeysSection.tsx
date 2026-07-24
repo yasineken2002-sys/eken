@@ -140,7 +140,7 @@ function KeyRow({ keyItem, canWrite }: { keyItem: KeyHandoverDetail; canWrite: b
               title="Markera förlorad"
               disabled={updateMutation.isPending}
               onClick={() => updateMutation.mutate({ id: keyItem.id, status: 'LOST' })}
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#DDDFE4] text-gray-400 hover:border-red-200 hover:text-red-500"
+              className="border-input flex h-7 w-7 items-center justify-center rounded-lg border text-gray-400 hover:border-red-200 hover:text-red-500"
             >
               <AlertTriangle size={12} strokeWidth={1.8} />
             </button>
@@ -191,7 +191,7 @@ function IssueKeyForm({ leaseId, onClose }: { leaseId: string; onClose: () => vo
         <select
           value={type}
           onChange={(e) => setType(e.target.value as KeyType)}
-          className="h-9 w-full rounded-lg border border-[#DDDFE4] bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border-input h-9 w-full rounded-lg border bg-white px-3 text-[13.5px] text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {KEY_TYPES.map((t) => (
             <option key={t.value} value={t.value}>
