@@ -1,121 +1,23 @@
-/* @eken/ui: låst palett som CSS-variabler (--ev-*). Importeras FÖRST så att
-   admins neutrala override nedan (samma variabelnamn) vinner via källordning. */
+/* @eken/ui: låst palett som CSS-variabler (--ev-*). Efter F1 commit 2 är detta
+   admins ENDA färgkälla — inget neutralt override-block står emellan längre. */
 @import '@eken/ui/tokens.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ── Neutral token-mappning (PR2) ────────────────────────────────────────────
-   Admin behåller EXAKT dagens utseende. Dessa override:ar pekar --ev-* på admins
-   NUVARANDE hex — inte målpaletten från @eken/ui. Färgflippen = ta bort detta
-   :root-block, då slår målpaletten (grön/beige) igenom. Inter→Poppins är ett
-   separat, senare steg. Bara de tokens admin faktiskt konsumerar listas här. */
+/* ── FLIPPEN (F1 commit 2) ───────────────────────────────────────────────────
+   Admins neutrala override-block är BORTTAGET. Alla --ev-* — palett, komponent-
+   variabler och de härledda skalorna — kommer nu från @eken/ui:s låsta palett.
+   Det som ändras visuellt: kanvas #f7f8fa → #f6f4f0 (varm creme), text #111827 →
+   #241f1a (bläck), kant #eaedf0 → #ece7e0, hela gråskalan blir varm och
+   statusfamiljerna får de härledda tinterna.
+
+   ETT undantag står kvar: --ev-brand. Att byta blått mot grönt är den SYNLIGA
+   varumärkesändringen och ska granskas som ett eget beslut — den är F5, för alla
+   tre apparna samtidigt. Tills dess hålls admins accentfärg på dagens blå. */
 :root {
-  --ev-bg: #f7f8fa; /* @eken/ui-mål #f6f4f0 → hålls på dagens #f7f8fa */
-  --ev-text: #111827; /* mål #241f1a → dagens #111827 */
-  --ev-border: #eaedf0; /* mål #ece7e0 → dagens #eaedf0 */
-  --ev-brand: #2563eb; /* mål #1a6b3c → dagens accent-blå (länkar/::selection) */
-
-  /* Komponent-variabler (PR6, delad DataTable). Default i @eken/ui härleds ur
-     paletten; här pinnas de till admins nuvarande tabellvärden. */
-  --ev-row-hover: #fafbfc; /* dagens hover:bg-gray-50/80, uträknad mot vit yta */
-  --ev-row-border: #eaedf0; /* = --ev-border, dagens border-line på radavdelare */
-  --ev-input-border: #dddfe4; /* mål var(--ev-border) → dagens fältkant */
-
-  /* ── Härledda skalor (F1 commit 1) ─────────────────────────────────────────
-     tailwind.config pekar familjerna gray/emerald/amber/red på var(--ev-*)
-     nedan. Här pinnas de till Tailwinds EXAKTA nuvarande värden — steget är
-     alltså pixelneutralt trots att ~240 klasser bytt uppslagsväg. Flippen tar
-     bort hela det här :root-blocket; då slår @eken/ui:s varma skalor igenom. */
-
-  /* gray → neutral (179 klassanvändningar) */
-  --ev-neutral-50: #f9fafb;
-  --ev-neutral-50-ch: 249 250 251;
-  --ev-neutral-100: #f3f4f6;
-  --ev-neutral-100-ch: 243 244 246;
-  --ev-neutral-200: #e5e7eb;
-  --ev-neutral-200-ch: 229 231 235;
-  --ev-neutral-300: #d1d5db;
-  --ev-neutral-300-ch: 209 213 219;
-  --ev-neutral-400: #9ca3af;
-  --ev-neutral-400-ch: 156 163 175;
-  --ev-neutral-500: #6b7280;
-  --ev-neutral-500-ch: 107 114 128;
-  --ev-neutral-600: #4b5563;
-  --ev-neutral-600-ch: 75 85 99;
-  --ev-neutral-700: #374151;
-  --ev-neutral-700-ch: 55 65 81;
-  --ev-neutral-800: #1f2937;
-  --ev-neutral-800-ch: 31 41 55;
-  --ev-neutral-900: #111827;
-  --ev-neutral-900-ch: 17 24 39;
-
-  /* emerald → success */
-  --ev-success-50: #ecfdf5;
-  --ev-success-50-ch: 236 253 245;
-  --ev-success-100: #d1fae5;
-  --ev-success-100-ch: 209 250 229;
-  --ev-success-200: #a7f3d0;
-  --ev-success-200-ch: 167 243 208;
-  --ev-success-300: #6ee7b7;
-  --ev-success-300-ch: 110 231 183;
-  --ev-success-400: #34d399;
-  --ev-success-400-ch: 52 211 153;
-  --ev-success-500: #10b981;
-  --ev-success-500-ch: 16 185 129;
-  --ev-success-600: #059669;
-  --ev-success-600-ch: 5 150 105;
-  --ev-success-700: #047857;
-  --ev-success-700-ch: 4 120 87;
-  --ev-success-800: #065f46;
-  --ev-success-800-ch: 6 95 70;
-  --ev-success-900: #064e3b;
-  --ev-success-900-ch: 6 78 59;
-
-  /* amber → warning */
-  --ev-warning-50: #fffbeb;
-  --ev-warning-50-ch: 255 251 235;
-  --ev-warning-100: #fef3c7;
-  --ev-warning-100-ch: 254 243 199;
-  --ev-warning-200: #fde68a;
-  --ev-warning-200-ch: 253 230 138;
-  --ev-warning-300: #fcd34d;
-  --ev-warning-300-ch: 252 211 77;
-  --ev-warning-400: #fbbf24;
-  --ev-warning-400-ch: 251 191 36;
-  --ev-warning-500: #f59e0b;
-  --ev-warning-500-ch: 245 158 11;
-  --ev-warning-600: #d97706;
-  --ev-warning-600-ch: 217 119 6;
-  --ev-warning-700: #b45309;
-  --ev-warning-700-ch: 180 83 9;
-  --ev-warning-800: #92400e;
-  --ev-warning-800-ch: 146 64 14;
-  --ev-warning-900: #78350f;
-  --ev-warning-900-ch: 120 53 15;
-
-  /* red → danger */
-  --ev-danger-50: #fef2f2;
-  --ev-danger-50-ch: 254 242 242;
-  --ev-danger-100: #fee2e2;
-  --ev-danger-100-ch: 254 226 226;
-  --ev-danger-200: #fecaca;
-  --ev-danger-200-ch: 254 202 202;
-  --ev-danger-300: #fca5a5;
-  --ev-danger-300-ch: 252 165 165;
-  --ev-danger-400: #f87171;
-  --ev-danger-400-ch: 248 113 113;
-  --ev-danger-500: #ef4444;
-  --ev-danger-500-ch: 239 68 68;
-  --ev-danger-600: #dc2626;
-  --ev-danger-600-ch: 220 38 38;
-  --ev-danger-700: #b91c1c;
-  --ev-danger-700-ch: 185 28 28;
-  --ev-danger-800: #991b1b;
-  --ev-danger-800-ch: 153 27 27;
-  --ev-danger-900: #7f1d1d;
-  --ev-danger-900-ch: 127 29 29;
+  --ev-brand: #2563eb; /* hålls kvar till F5 (brand-blue → #1a6b3c) */
 }
 
 @layer base {
