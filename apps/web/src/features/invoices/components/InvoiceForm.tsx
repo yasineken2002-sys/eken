@@ -5,7 +5,12 @@ import { Plus, Trash2, Building2 } from 'lucide-react'
 import { Input, Select } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { ModalFooter } from '@/components/ui/Modal'
-import { CreateInvoiceSchema, formatDate, type CreateInvoiceInput } from '@eken/shared'
+import {
+  CreateInvoiceSchema,
+  formatDate,
+  DEFAULT_BRAND_COLOR,
+  type CreateInvoiceInput,
+} from '@eken/shared'
 import { useLeases } from '@/features/leases/hooks/useLeases'
 import { useCustomers } from '@/features/customers/hooks/useCustomers'
 import { cn } from '@/lib/cn'
@@ -444,7 +449,7 @@ export function InvoiceForm({
             vatTotal={vatTotal}
             grandTotal={grandTotal}
             bankgiro={org?.bankgiro}
-            invoiceColor={org?.invoiceColor ?? '#1a6b3c'}
+            invoiceColor={org?.invoiceColor ?? DEFAULT_BRAND_COLOR}
             invoiceTemplate={org?.invoiceTemplate ?? 'classic'}
           />
         </div>
@@ -491,7 +496,7 @@ function InvoicePreview({
   vatTotal,
   grandTotal,
   bankgiro,
-  invoiceColor = '#1a6b3c',
+  invoiceColor = DEFAULT_BRAND_COLOR,
   invoiceTemplate = 'classic',
 }: InvoicePreviewProps) {
   // Build template-specific header

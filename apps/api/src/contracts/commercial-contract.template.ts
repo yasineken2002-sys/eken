@@ -12,6 +12,7 @@
 //     lokalfrågor utöver 12:58 § medling).
 //   – Försäkringsplikten är obligatorisk (verksamhets/ansvarsförsäkring).
 
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import {
   type ContractTemplateInput,
   buildHtmlShell,
@@ -41,7 +42,7 @@ import {
 export function buildCommercialContractHtml(input: ContractTemplateInput): string {
   const { lease, organization: org } = input
 
-  const primaryColor = org.invoiceColor ?? '#1a6b3c'
+  const primaryColor = org.invoiceColor ?? DEFAULT_BRAND_COLOR
   const variant = org.invoiceTemplate
   const contractNumber = contractNumberLabel(input)
   const today = new Date().toLocaleDateString('sv-SE')

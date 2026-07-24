@@ -1,0 +1,276 @@
+{
+  "$comment": "GENERERAD SPÄRR-BASELINE. Antal rå-hex per fil och regel som fanns när guarden infördes (PR7). CI faller på fler — aldrig på färre. Städar du en fil: kör `node scripts/check-design-tokens.mjs --update-baseline` så snävas spärren åt. Lägg ALDRIG till rader här för hand för att tysta ett nytt fynd.",
+  "total": 680,
+  "files": {
+    "apps/admin/src/components/ErrorBoundary.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/admin/src/components/ui/Button.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/admin/src/components/ui/Input.tsx": {
+      "tw-arbitrary": 2
+    },
+    "apps/admin/src/components/ui/PasswordInput.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/admin/src/pages/DashboardPage.tsx": {
+      "raw-hex": 4
+    },
+    "apps/admin/src/pages/StatsPage.tsx": {
+      "raw-hex": 10
+    },
+    "apps/admin/src/pages/organizations/OrganizationDetailPage.tsx": {
+      "raw-hex": 1
+    },
+    "apps/portal/src/components/CookieBanner.tsx": {
+      "raw-hex": 8
+    },
+    "apps/portal/src/components/ErrorBoundary.module.css": {
+      "raw-hex": 1
+    },
+    "apps/portal/src/components/PortalLayout/PortalLayout.module.css": {
+      "raw-hex": 11
+    },
+    "apps/portal/src/components/ui/PasswordRequirements.module.css": {
+      "raw-hex": 9
+    },
+    "apps/portal/src/components/ui/StatusBadge.tsx": {
+      "raw-hex": 41
+    },
+    "apps/portal/src/components/ui/ui.module.css": {
+      "raw-hex": 1
+    },
+    "apps/portal/src/features/ai/TenantAiChat.module.css": {
+      "raw-hex": 25
+    },
+    "apps/portal/src/pages/ActivatePage/ActivatePage.module.css": {
+      "raw-hex": 6
+    },
+    "apps/portal/src/pages/ConsumptionPage/ConsumptionPage.module.css": {
+      "raw-hex": 12
+    },
+    "apps/portal/src/pages/ConsumptionPage/ConsumptionPage.tsx": {
+      "raw-hex": 9
+    },
+    "apps/portal/src/pages/DashboardPage/DashboardPage.module.css": {
+      "raw-hex": 35
+    },
+    "apps/portal/src/pages/DashboardPage/DashboardPage.tsx": {
+      "raw-hex": 27
+    },
+    "apps/portal/src/pages/DocumentsPage/DocumentsPage.module.css": {
+      "raw-hex": 11
+    },
+    "apps/portal/src/pages/DocumentsPage/DocumentsPage.tsx": {
+      "raw-hex": 9
+    },
+    "apps/portal/src/pages/LoginPage/LoginPage.module.css": {
+      "raw-hex": 4
+    },
+    "apps/portal/src/pages/MaintenancePage/MaintenancePage.module.css": {
+      "raw-hex": 35
+    },
+    "apps/portal/src/pages/MaintenancePage/MaintenancePage.tsx": {
+      "raw-hex": 22
+    },
+    "apps/portal/src/pages/NewsPage/NewsPage.module.css": {
+      "raw-hex": 17
+    },
+    "apps/portal/src/pages/NewsPage/NewsPage.tsx": {
+      "raw-hex": 4
+    },
+    "apps/portal/src/pages/NoticesPage/NoticesPage.module.css": {
+      "raw-hex": 27
+    },
+    "apps/portal/src/pages/NoticesPage/NoticesPage.tsx": {
+      "raw-hex": 4
+    },
+    "apps/portal/src/pages/PrivacyPage/PrivacyPage.tsx": {
+      "raw-hex": 3
+    },
+    "apps/portal/src/pages/SettingsPage/SettingsPage.tsx": {
+      "raw-hex": 16
+    },
+    "apps/portal/src/pages/legal/LegalPageShell.module.css": {
+      "raw-hex": 19
+    },
+    "apps/web/src/components/CookieBanner.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/web/src/components/layout/AppLayout.tsx": {
+      "raw-hex": 2
+    },
+    "apps/web/src/components/ui/Button.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/web/src/components/ui/Input.tsx": {
+      "tw-arbitrary": 2
+    },
+    "apps/web/src/components/ui/StatCard.tsx": {
+      "raw-hex": 1
+    },
+    "apps/web/src/features/ai/AiPage.tsx": {
+      "raw-hex": 11,
+      "tw-arbitrary": 3
+    },
+    "apps/web/src/features/auth/LoginPage.tsx": {
+      "raw-hex": 1
+    },
+    "apps/web/src/features/auth/RegisterPage.tsx": {
+      "raw-hex": 1,
+      "tw-arbitrary": 3
+    },
+    "apps/web/src/features/auth/components/PasswordInput.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/web/src/features/avisering/AviseringPage.tsx": {
+      "raw-hex": 6,
+      "tw-arbitrary": 2
+    },
+    "apps/web/src/features/avisering/components/MarkPaidModal.tsx": {
+      "tw-arbitrary": 2
+    },
+    "apps/web/src/features/backfill/BackfillPage.tsx": {
+      "raw-hex": 3
+    },
+    "apps/web/src/features/consumption/components/TariffForm.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/web/src/features/contract-batch/ContractBatchReviewPage.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/web/src/features/contract-batch/ContractBatchUploadPage.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/web/src/features/customers/CustomersPage.tsx": {
+      "raw-hex": 3
+    },
+    "apps/web/src/features/dashboard/DashboardPage.tsx": {
+      "raw-hex": 9
+    },
+    "apps/web/src/features/dashboard/components/TrendsSection.tsx": {
+      "raw-hex": 12
+    },
+    "apps/web/src/features/deposits/DepositsPage.tsx": {
+      "raw-hex": 3
+    },
+    "apps/web/src/features/deposits/components/DepositSection.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/web/src/features/documents/DocumentsPage.tsx": {
+      "raw-hex": 3,
+      "tw-arbitrary": 2
+    },
+    "apps/web/src/features/documents/components/UploadDocumentModal.tsx": {
+      "tw-arbitrary": 2
+    },
+    "apps/web/src/features/import/ImportPage.tsx": {
+      "tw-arbitrary": 3
+    },
+    "apps/web/src/features/inspections/InspectionsPage.tsx": {
+      "raw-hex": 4
+    },
+    "apps/web/src/features/inspections/components/CreateInspectionModal.tsx": {
+      "tw-arbitrary": 5
+    },
+    "apps/web/src/features/inspections/components/InspectionDetailPanel.tsx": {
+      "tw-arbitrary": 4
+    },
+    "apps/web/src/features/invoices/components/InvoiceForm.tsx": {
+      "raw-hex": 25,
+      "tw-arbitrary": 2
+    },
+    "apps/web/src/features/keys/components/KeysSection.tsx": {
+      "tw-arbitrary": 2
+    },
+    "apps/web/src/features/leases/LeasesPage.tsx": {
+      "raw-hex": 3
+    },
+    "apps/web/src/features/leases/components/ContractTab.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/web/src/features/leases/components/LeaseForm.tsx": {
+      "tw-arbitrary": 15
+    },
+    "apps/web/src/features/legal/LegalPageShell.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/web/src/features/maintenance-plan/MaintenancePlanPage.tsx": {
+      "raw-hex": 4,
+      "tw-arbitrary": 2
+    },
+    "apps/web/src/features/maintenance-plan/components/CreateMaintenancePlanModal.tsx": {
+      "tw-arbitrary": 4
+    },
+    "apps/web/src/features/maintenance/MaintenancePage.tsx": {
+      "raw-hex": 5,
+      "tw-arbitrary": 2
+    },
+    "apps/web/src/features/maintenance/components/CreateTicketModal.tsx": {
+      "tw-arbitrary": 7
+    },
+    "apps/web/src/features/maintenance/components/TicketDetailPanel.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/web/src/features/messages/MessagesPage.tsx": {
+      "raw-hex": 4,
+      "tw-arbitrary": 3
+    },
+    "apps/web/src/features/misc-charges/components/DebitTenantCard.tsx": {
+      "tw-arbitrary": 2
+    },
+    "apps/web/src/features/news/NewsPage.tsx": {
+      "raw-hex": 3,
+      "tw-arbitrary": 5
+    },
+    "apps/web/src/features/notifications/NotificationsPage.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/web/src/features/overview/OverviewPage.tsx": {
+      "raw-hex": 39
+    },
+    "apps/web/src/features/properties/PropertiesPage.tsx": {
+      "raw-hex": 3
+    },
+    "apps/web/src/features/reconciliation/ReconciliationPage.tsx": {
+      "raw-hex": 5,
+      "tw-arbitrary": 10
+    },
+    "apps/web/src/features/reconciliation/components/PdfImportPreviewModal.tsx": {
+      "tw-arbitrary": 4
+    },
+    "apps/web/src/features/rent-increases/RentIncreasesPage.tsx": {
+      "raw-hex": 3
+    },
+    "apps/web/src/features/rent-increases/components/RentIncreaseSection.tsx": {
+      "tw-arbitrary": 1
+    },
+    "apps/web/src/features/reports/ReportsPage.tsx": {
+      "raw-hex": 4
+    },
+    "apps/web/src/features/settings/SettingsPage.tsx": {
+      "raw-hex": 23,
+      "tw-arbitrary": 7
+    },
+    "apps/web/src/features/settings/components/PlanPanel.tsx": {
+      "raw-hex": 3
+    },
+    "apps/web/src/features/tenants/TenantsPage.tsx": {
+      "raw-hex": 4,
+      "tw-arbitrary": 1
+    },
+    "apps/web/src/features/terminations/TerminationsPage.tsx": {
+      "raw-hex": 3
+    },
+    "apps/web/src/features/units/UnitsPage.tsx": {
+      "raw-hex": 4
+    },
+    "apps/web/src/features/users/UsersPanel.tsx": {
+      "tw-arbitrary": 3
+    },
+    "apps/web/src/features/users/components/InviteUserModal.tsx": {
+      "tw-arbitrary": 1
+    }
+  }
+}

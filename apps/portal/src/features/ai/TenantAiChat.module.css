@@ -5,7 +5,7 @@
   width: 56px;
   height: 56px;
   border-radius: 999px;
-  background: linear-gradient(135deg, #1a6b3c, #2d8c54);
+  background: linear-gradient(135deg, var(--ev-brand), #2d8c54);
   color: white;
   border: none;
   box-shadow:
@@ -82,7 +82,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  background: linear-gradient(135deg, #1a6b3c, #2d8c54);
+  background: linear-gradient(135deg, var(--ev-brand), #2d8c54);
   color: white;
 }
 

@@ -20,7 +20,7 @@ import { PdfService } from './pdf.service'
 import { MailService } from '../mail/mail.service'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { NotificationsService } from '../notifications/notifications.service'
-import { isValidTransition } from '@eken/shared'
+import { isValidTransition, DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { allocateInvoiceNumber } from './invoice-number'
 import { CreateInvoiceDto } from './dto/create-invoice.dto'
 import { UpdateInvoiceDto } from './dto/update-invoice.dto'
@@ -812,7 +812,7 @@ export class InvoicesService {
         dueDate: invoice.dueDate,
         pdfBuffer,
         organizationName: invoice.organization.name,
-        accentColor: invoice.organization.invoiceColor ?? '#1a6b3c',
+        accentColor: invoice.organization.invoiceColor ?? DEFAULT_BRAND_COLOR,
         idempotencyKey: `invoice-send-${id}`,
       })
 

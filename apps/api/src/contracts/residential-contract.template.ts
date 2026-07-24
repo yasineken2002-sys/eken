@@ -11,6 +11,7 @@
 //   – skriftligt godkännande för andrahandsuthyrning (12:39 §)
 //   – tvister till Hyresnämnden (12:69 §)
 
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import {
   type ContractTemplateInput,
   buildHtmlShell,
@@ -41,7 +42,7 @@ import {
 export function buildResidentialContractHtml(input: ContractTemplateInput): string {
   const { lease, organization: org } = input
 
-  const primaryColor = org.invoiceColor ?? '#1a6b3c'
+  const primaryColor = org.invoiceColor ?? DEFAULT_BRAND_COLOR
   const variant = org.invoiceTemplate
   const contractNumber = contractNumberLabel(input)
   const today = new Date().toLocaleDateString('sv-SE')

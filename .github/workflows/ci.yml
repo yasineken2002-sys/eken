@@ -90,3 +90,26 @@ jobs:
 
       - name: Verify invoice-number is only sourced from the shared sequence
         run: node apps/api/scripts/check-platform-invoice-number-source.mjs
+
+  design-token-guard:
+    name: Design token guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden) — spärr mot att nya rå
+      # färgvärden smyger in utanför @eken/ui och blir ytor som färgflippen inte
+      # når. Spärren är en ratchet mot en committad baseline (befintliga hex är
+      # tillåtna, nya inte), utom regeln palette-hex som är hård: @eken/ui:s låsta
+      # målvärden får aldrig hårdkodas — varumärkesfärgen ska komma ur en token
+      # eller DEFAULT_BRAND_COLOR. Se designsystem-ADR:n (PR7).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (detection, comment stripping, allowlist)
+        run: node scripts/check-design-tokens.mjs --self-test
+
+      - name: Verify no new raw colour values outside @eken/ui
+        run: node scripts/check-design-tokens.mjs

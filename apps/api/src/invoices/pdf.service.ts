@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, OnModuleDestroy } from '@nestjs/common'
 import { Logger } from '@nestjs/common'
 import puppeteer, { type Browser, type Page } from 'puppeteer'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
 import { generateInvoiceHtml } from './templates/invoice-pdf.template'
@@ -156,7 +157,7 @@ export class PdfService implements OnModuleDestroy {
     }
 
     const html = generateInvoiceHtml({
-      invoiceColor: invoice.organization.invoiceColor ?? '#1a6b3c',
+      invoiceColor: invoice.organization.invoiceColor ?? DEFAULT_BRAND_COLOR,
       invoiceTemplate: invoice.organization.invoiceTemplate ?? 'classic',
       invoice: {
         ...invoice,

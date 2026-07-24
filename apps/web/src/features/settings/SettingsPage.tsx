@@ -80,7 +80,7 @@ export function SettingsPage() {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [invoiceColor, setInvoiceColor] = useState('#1a6b3c')
+  const [invoiceColor, setInvoiceColor] = useState(DEFAULT_BRAND_COLOR)
   const [invoiceTemplate, setInvoiceTemplate] = useState('classic')
   // PDF-/dokumentvarumärke (Steg 3, PR 1). Påverkar ingen rendering ännu.
   const [brandFont, setBrandFont] = useState<string>(DEFAULT_BRAND_FONT)
@@ -135,7 +135,7 @@ export function SettingsPage() {
         bankgiro: org.bankgiro ?? '',
         paymentTermsDays: org.paymentTermsDays ?? 30,
       })
-      setInvoiceColor(org.invoiceColor ?? '#1a6b3c')
+      setInvoiceColor(org.invoiceColor ?? DEFAULT_BRAND_COLOR)
       setInvoiceTemplate(org.invoiceTemplate ?? 'classic')
       setBrandFont(org.brandFont ?? DEFAULT_BRAND_FONT)
       if (org.brandSecondaryColor) {
@@ -487,7 +487,7 @@ export function SettingsPage() {
                 </p>
                 <div className="flex flex-wrap items-center gap-3">
                   {[
-                    { hex: '#1a6b3c', label: 'Grön' },
+                    { hex: DEFAULT_BRAND_COLOR, label: 'Grön' },
                     { hex: '#1a3a6b', label: 'Blå' },
                     { hex: '#6b1a1a', label: 'Röd' },
                     { hex: '#4a1a6b', label: 'Lila' },
