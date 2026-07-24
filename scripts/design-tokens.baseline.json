@@ -1,276 +1,708 @@
 {
-  "$comment": "GENERERAD SPÄRR-BASELINE. Antal rå-hex per fil och regel som fanns när guarden infördes (PR7). CI faller på fler — aldrig på färre. Städar du en fil: kör `node scripts/check-design-tokens.mjs --update-baseline` så snävas spärren åt. Lägg ALDRIG till rader här för hand för att tysta ett nytt fynd.",
-  "total": 680,
+  "$comment": "GENERERAD ALLOWLIST — FLIPP-SKULD, inte en regel-lucka. Varje post är rå färg som PR2–6 medvetet lämnade otokeniserad, knuten till en kategori i CATEGORIES (scripts/check-design-tokens.mjs) som säger VARFÖR den står kvar och HUR färgflippen tar bort den. CI faller på fler träffar — aldrig på färre. Listan ska krympa till noll när flippen är gjord.",
+  "$howto": "Städat en fil? Kör `node scripts/check-design-tokens.mjs --update-baseline` så snävas spärren åt. Lägg ALDRIG till rader här för hand för att tysta ett nytt fynd — en ny färg ska tokeniseras, inte allowlistas.",
+  "total": 717,
+  "perCategory": {
+    "neutral-scale": 221,
+    "input-border": 120,
+    "status-tints": 91,
+    "chart-colors": 86,
+    "green-legacy": 76,
+    "alpha-concat": 76,
+    "brand-blue": 25,
+    "shadow-alpha": 22
+  },
   "files": {
     "apps/admin/src/components/ErrorBoundary.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/admin/src/components/ui/Button.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/admin/src/components/ui/Input.tsx": {
-      "tw-arbitrary": 2
+      "input-border": {
+        "tw-arbitrary": 2
+      }
     },
     "apps/admin/src/components/ui/PasswordInput.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/admin/src/pages/DashboardPage.tsx": {
-      "raw-hex": 4
+      "chart-colors": {
+        "raw-hex": 2
+      },
+      "neutral-scale": {
+        "raw-hex": 2
+      }
     },
     "apps/admin/src/pages/StatsPage.tsx": {
-      "raw-hex": 10
-    },
-    "apps/admin/src/pages/organizations/OrganizationDetailPage.tsx": {
-      "raw-hex": 1
+      "status-tints": {
+        "raw-hex": 2
+      },
+      "neutral-scale": {
+        "raw-hex": 4
+      },
+      "brand-blue": {
+        "raw-hex": 1
+      },
+      "chart-colors": {
+        "raw-hex": 3
+      }
     },
     "apps/portal/src/components/CookieBanner.tsx": {
-      "raw-hex": 8
+      "neutral-scale": {
+        "raw-hex": 5
+      },
+      "brand-blue": {
+        "raw-hex": 2
+      },
+      "input-border": {
+        "raw-hex": 1
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 1
+      }
     },
     "apps/portal/src/components/ErrorBoundary.module.css": {
-      "raw-hex": 1
+      "neutral-scale": {
+        "raw-hex": 1
+      }
+    },
+    "apps/portal/src/components/PasswordInput/PasswordInput.module.css": {
+      "shadow-alpha": {
+        "raw-color-fn": 1
+      },
+      "neutral-scale": {
+        "raw-color-fn": 2
+      }
     },
     "apps/portal/src/components/PortalLayout/PortalLayout.module.css": {
-      "raw-hex": 11
+      "green-legacy": {
+        "raw-hex": 7
+      },
+      "neutral-scale": {
+        "raw-hex": 4
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 1
+      }
     },
     "apps/portal/src/components/ui/PasswordRequirements.module.css": {
-      "raw-hex": 9
+      "neutral-scale": {
+        "raw-hex": 3
+      },
+      "input-border": {
+        "raw-hex": 3
+      },
+      "status-tints": {
+        "raw-hex": 3
+      }
     },
     "apps/portal/src/components/ui/StatusBadge.tsx": {
-      "raw-hex": 41
+      "neutral-scale": {
+        "raw-hex": 13
+      },
+      "brand-blue": {
+        "raw-hex": 6
+      },
+      "status-tints": {
+        "raw-hex": 20
+      },
+      "chart-colors": {
+        "raw-hex": 2
+      }
     },
     "apps/portal/src/components/ui/ui.module.css": {
-      "raw-hex": 1
+      "neutral-scale": {
+        "raw-hex": 1
+      }
     },
     "apps/portal/src/features/ai/TenantAiChat.module.css": {
-      "raw-hex": 25
+      "green-legacy": {
+        "raw-hex": 18
+      },
+      "neutral-scale": {
+        "raw-hex": 1,
+        "raw-color-fn": 5
+      },
+      "status-tints": {
+        "raw-hex": 6
+      }
     },
     "apps/portal/src/pages/ActivatePage/ActivatePage.module.css": {
-      "raw-hex": 6
+      "status-tints": {
+        "raw-hex": 1
+      },
+      "neutral-scale": {
+        "raw-hex": 4,
+        "raw-color-fn": 1
+      },
+      "green-legacy": {
+        "raw-hex": 1
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 1
+      }
     },
     "apps/portal/src/pages/ConsumptionPage/ConsumptionPage.module.css": {
-      "raw-hex": 12
+      "neutral-scale": {
+        "raw-hex": 7
+      },
+      "green-legacy": {
+        "raw-hex": 2
+      },
+      "status-tints": {
+        "raw-hex": 3
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 1
+      }
     },
     "apps/portal/src/pages/ConsumptionPage/ConsumptionPage.tsx": {
-      "raw-hex": 9
+      "status-tints": {
+        "raw-hex": 6
+      },
+      "brand-blue": {
+        "raw-hex": 2
+      },
+      "chart-colors": {
+        "raw-hex": 1
+      }
     },
     "apps/portal/src/pages/DashboardPage/DashboardPage.module.css": {
-      "raw-hex": 35
+      "green-legacy": {
+        "raw-hex": 15
+      },
+      "neutral-scale": {
+        "raw-hex": 16,
+        "raw-color-fn": 1
+      },
+      "status-tints": {
+        "raw-hex": 4
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 1
+      }
     },
     "apps/portal/src/pages/DashboardPage/DashboardPage.tsx": {
-      "raw-hex": 27
+      "chart-colors": {
+        "raw-hex": 21
+      },
+      "brand-blue": {
+        "raw-hex": 2
+      },
+      "status-tints": {
+        "raw-hex": 4
+      }
     },
     "apps/portal/src/pages/DocumentsPage/DocumentsPage.module.css": {
-      "raw-hex": 11
+      "neutral-scale": {
+        "raw-hex": 7
+      },
+      "green-legacy": {
+        "raw-hex": 4
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 1
+      }
     },
     "apps/portal/src/pages/DocumentsPage/DocumentsPage.tsx": {
-      "raw-hex": 9
+      "status-tints": {
+        "raw-hex": 2
+      },
+      "brand-blue": {
+        "raw-hex": 2
+      },
+      "neutral-scale": {
+        "raw-hex": 2
+      },
+      "chart-colors": {
+        "raw-hex": 3
+      }
     },
     "apps/portal/src/pages/LoginPage/LoginPage.module.css": {
-      "raw-hex": 4
+      "status-tints": {
+        "raw-hex": 1
+      },
+      "neutral-scale": {
+        "raw-hex": 3,
+        "raw-color-fn": 1
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 1
+      }
     },
     "apps/portal/src/pages/MaintenancePage/MaintenancePage.module.css": {
-      "raw-hex": 35
+      "neutral-scale": {
+        "raw-hex": 24,
+        "raw-color-fn": 1
+      },
+      "green-legacy": {
+        "raw-hex": 11
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 3
+      }
     },
     "apps/portal/src/pages/MaintenancePage/MaintenancePage.tsx": {
-      "raw-hex": 22
+      "brand-blue": {
+        "raw-hex": 2
+      },
+      "status-tints": {
+        "raw-hex": 8
+      },
+      "chart-colors": {
+        "raw-hex": 4
+      },
+      "neutral-scale": {
+        "raw-hex": 6
+      },
+      "input-border": {
+        "raw-hex": 2
+      }
     },
     "apps/portal/src/pages/NewsPage/NewsPage.module.css": {
-      "raw-hex": 17
+      "neutral-scale": {
+        "raw-hex": 13,
+        "raw-color-fn": 1
+      },
+      "green-legacy": {
+        "raw-hex": 3
+      },
+      "input-border": {
+        "raw-hex": 1
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 3
+      }
     },
     "apps/portal/src/pages/NewsPage/NewsPage.tsx": {
-      "raw-hex": 4
+      "chart-colors": {
+        "raw-hex": 4
+      }
     },
     "apps/portal/src/pages/NoticesPage/NoticesPage.module.css": {
-      "raw-hex": 27
+      "neutral-scale": {
+        "raw-hex": 17
+      },
+      "green-legacy": {
+        "raw-hex": 5
+      },
+      "status-tints": {
+        "raw-hex": 5
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 2
+      }
     },
     "apps/portal/src/pages/NoticesPage/NoticesPage.tsx": {
-      "raw-hex": 4
+      "chart-colors": {
+        "raw-hex": 4
+      }
     },
     "apps/portal/src/pages/PrivacyPage/PrivacyPage.tsx": {
-      "raw-hex": 3
+      "neutral-scale": {
+        "raw-hex": 3
+      }
     },
     "apps/portal/src/pages/SettingsPage/SettingsPage.tsx": {
-      "raw-hex": 16
+      "neutral-scale": {
+        "raw-hex": 11,
+        "raw-color-fn": 1
+      },
+      "brand-blue": {
+        "raw-hex": 1
+      },
+      "input-border": {
+        "raw-hex": 1
+      },
+      "status-tints": {
+        "raw-hex": 3
+      }
     },
     "apps/portal/src/pages/legal/LegalPageShell.module.css": {
-      "raw-hex": 19
+      "neutral-scale": {
+        "raw-hex": 14,
+        "raw-color-fn": 1
+      },
+      "input-border": {
+        "raw-hex": 4
+      },
+      "brand-blue": {
+        "raw-hex": 1
+      }
     },
     "apps/web/src/components/CookieBanner.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/web/src/components/layout/AppLayout.tsx": {
-      "raw-hex": 2
+      "neutral-scale": {
+        "raw-hex": 1,
+        "raw-color-fn": 3
+      },
+      "brand-blue": {
+        "raw-hex": 1
+      }
     },
     "apps/web/src/components/ui/Button.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/web/src/components/ui/Input.tsx": {
-      "tw-arbitrary": 2
+      "input-border": {
+        "tw-arbitrary": 2
+      }
     },
     "apps/web/src/components/ui/StatCard.tsx": {
-      "raw-hex": 1
+      "alpha-concat": {
+        "raw-hex": 1
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 2
+      }
     },
     "apps/web/src/features/ai/AiPage.tsx": {
-      "raw-hex": 11,
-      "tw-arbitrary": 3
+      "status-tints": {
+        "raw-hex": 6
+      },
+      "brand-blue": {
+        "raw-hex": 1
+      },
+      "chart-colors": {
+        "raw-hex": 2
+      },
+      "neutral-scale": {
+        "raw-hex": 2
+      },
+      "green-legacy": {
+        "tw-arbitrary": 1
+      },
+      "input-border": {
+        "tw-arbitrary": 2
+      }
     },
     "apps/web/src/features/auth/LoginPage.tsx": {
-      "raw-hex": 1
+      "neutral-scale": {
+        "raw-hex": 1,
+        "raw-color-fn": 2
+      }
     },
     "apps/web/src/features/auth/RegisterPage.tsx": {
-      "raw-hex": 1,
-      "tw-arbitrary": 3
+      "neutral-scale": {
+        "raw-hex": 1,
+        "raw-color-fn": 2
+      },
+      "input-border": {
+        "tw-arbitrary": 3
+      }
     },
     "apps/web/src/features/auth/components/PasswordInput.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/web/src/features/avisering/AviseringPage.tsx": {
-      "raw-hex": 6,
-      "tw-arbitrary": 2
+      "alpha-concat": {
+        "raw-hex": 6
+      },
+      "input-border": {
+        "tw-arbitrary": 2
+      }
     },
     "apps/web/src/features/avisering/components/MarkPaidModal.tsx": {
-      "tw-arbitrary": 2
+      "input-border": {
+        "tw-arbitrary": 2
+      }
     },
     "apps/web/src/features/backfill/BackfillPage.tsx": {
-      "raw-hex": 3
+      "alpha-concat": {
+        "raw-hex": 3
+      }
     },
     "apps/web/src/features/consumption/components/TariffForm.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/web/src/features/contract-batch/ContractBatchReviewPage.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/web/src/features/contract-batch/ContractBatchUploadPage.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/web/src/features/customers/CustomersPage.tsx": {
-      "raw-hex": 3
+      "alpha-concat": {
+        "raw-hex": 3
+      }
     },
     "apps/web/src/features/dashboard/DashboardPage.tsx": {
-      "raw-hex": 9
+      "alpha-concat": {
+        "raw-hex": 9
+      }
     },
     "apps/web/src/features/dashboard/components/TrendsSection.tsx": {
-      "raw-hex": 12
+      "neutral-scale": {
+        "raw-hex": 3
+      },
+      "chart-colors": {
+        "raw-hex": 9
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 1
+      }
     },
     "apps/web/src/features/deposits/DepositsPage.tsx": {
-      "raw-hex": 3
+      "alpha-concat": {
+        "raw-hex": 3
+      }
     },
     "apps/web/src/features/deposits/components/DepositSection.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/web/src/features/documents/DocumentsPage.tsx": {
-      "raw-hex": 3,
-      "tw-arbitrary": 2
+      "alpha-concat": {
+        "raw-hex": 3
+      },
+      "input-border": {
+        "tw-arbitrary": 2
+      }
     },
     "apps/web/src/features/documents/components/UploadDocumentModal.tsx": {
-      "tw-arbitrary": 2
+      "input-border": {
+        "tw-arbitrary": 2
+      }
     },
     "apps/web/src/features/import/ImportPage.tsx": {
-      "tw-arbitrary": 3
+      "input-border": {
+        "tw-arbitrary": 3
+      }
     },
     "apps/web/src/features/inspections/InspectionsPage.tsx": {
-      "raw-hex": 4
+      "alpha-concat": {
+        "raw-hex": 4
+      }
     },
     "apps/web/src/features/inspections/components/CreateInspectionModal.tsx": {
-      "tw-arbitrary": 5
+      "input-border": {
+        "tw-arbitrary": 5
+      }
     },
     "apps/web/src/features/inspections/components/InspectionDetailPanel.tsx": {
-      "tw-arbitrary": 4
+      "input-border": {
+        "tw-arbitrary": 4
+      }
     },
     "apps/web/src/features/invoices/components/InvoiceForm.tsx": {
-      "raw-hex": 25,
-      "tw-arbitrary": 2
+      "neutral-scale": {
+        "raw-hex": 22
+      },
+      "input-border": {
+        "raw-hex": 3,
+        "tw-arbitrary": 2
+      }
     },
     "apps/web/src/features/keys/components/KeysSection.tsx": {
-      "tw-arbitrary": 2
+      "input-border": {
+        "tw-arbitrary": 2
+      }
     },
     "apps/web/src/features/leases/LeasesPage.tsx": {
-      "raw-hex": 3
+      "alpha-concat": {
+        "raw-hex": 3
+      }
     },
     "apps/web/src/features/leases/components/ContractTab.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/web/src/features/leases/components/LeaseForm.tsx": {
-      "tw-arbitrary": 15
+      "input-border": {
+        "tw-arbitrary": 13
+      },
+      "green-legacy": {
+        "tw-arbitrary": 2
+      }
     },
     "apps/web/src/features/legal/LegalPageShell.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/web/src/features/maintenance-plan/MaintenancePlanPage.tsx": {
-      "raw-hex": 4,
-      "tw-arbitrary": 2
+      "alpha-concat": {
+        "raw-hex": 4
+      },
+      "input-border": {
+        "tw-arbitrary": 2
+      }
     },
     "apps/web/src/features/maintenance-plan/components/CreateMaintenancePlanModal.tsx": {
-      "tw-arbitrary": 4
+      "input-border": {
+        "tw-arbitrary": 4
+      }
     },
     "apps/web/src/features/maintenance/MaintenancePage.tsx": {
-      "raw-hex": 5,
-      "tw-arbitrary": 2
+      "alpha-concat": {
+        "raw-hex": 5
+      },
+      "input-border": {
+        "tw-arbitrary": 2
+      }
     },
     "apps/web/src/features/maintenance/components/CreateTicketModal.tsx": {
-      "tw-arbitrary": 7
+      "input-border": {
+        "tw-arbitrary": 7
+      }
     },
     "apps/web/src/features/maintenance/components/TicketDetailPanel.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/web/src/features/messages/MessagesPage.tsx": {
-      "raw-hex": 4,
-      "tw-arbitrary": 3
+      "alpha-concat": {
+        "raw-hex": 4
+      },
+      "input-border": {
+        "tw-arbitrary": 3
+      }
     },
     "apps/web/src/features/misc-charges/components/DebitTenantCard.tsx": {
-      "tw-arbitrary": 2
+      "input-border": {
+        "tw-arbitrary": 2
+      }
     },
     "apps/web/src/features/news/NewsPage.tsx": {
-      "raw-hex": 3,
-      "tw-arbitrary": 5
+      "alpha-concat": {
+        "raw-hex": 3
+      },
+      "input-border": {
+        "tw-arbitrary": 5
+      }
     },
     "apps/web/src/features/notifications/NotificationsPage.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/web/src/features/overview/OverviewPage.tsx": {
-      "raw-hex": 39
+      "brand-blue": {
+        "raw-hex": 4
+      },
+      "chart-colors": {
+        "raw-hex": 14
+      },
+      "status-tints": {
+        "raw-hex": 17
+      },
+      "neutral-scale": {
+        "raw-hex": 4
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 3
+      }
     },
     "apps/web/src/features/properties/PropertiesPage.tsx": {
-      "raw-hex": 3
+      "alpha-concat": {
+        "raw-hex": 3
+      }
     },
     "apps/web/src/features/reconciliation/ReconciliationPage.tsx": {
-      "raw-hex": 5,
-      "tw-arbitrary": 10
+      "alpha-concat": {
+        "raw-hex": 4
+      },
+      "neutral-scale": {
+        "raw-hex": 1
+      },
+      "green-legacy": {
+        "tw-arbitrary": 7
+      },
+      "input-border": {
+        "tw-arbitrary": 3
+      }
     },
     "apps/web/src/features/reconciliation/components/PdfImportPreviewModal.tsx": {
-      "tw-arbitrary": 4
+      "input-border": {
+        "tw-arbitrary": 4
+      }
     },
     "apps/web/src/features/rent-increases/RentIncreasesPage.tsx": {
-      "raw-hex": 3
+      "alpha-concat": {
+        "raw-hex": 3
+      }
     },
     "apps/web/src/features/rent-increases/components/RentIncreaseSection.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/web/src/features/reports/ReportsPage.tsx": {
-      "raw-hex": 4
+      "alpha-concat": {
+        "raw-hex": 4
+      }
     },
     "apps/web/src/features/settings/SettingsPage.tsx": {
-      "raw-hex": 23,
-      "tw-arbitrary": 7
+      "neutral-scale": {
+        "raw-hex": 2
+      },
+      "chart-colors": {
+        "raw-hex": 16
+      },
+      "input-border": {
+        "tw-arbitrary": 7
+      }
     },
     "apps/web/src/features/settings/components/PlanPanel.tsx": {
-      "raw-hex": 3
+      "neutral-scale": {
+        "raw-hex": 2
+      },
+      "chart-colors": {
+        "raw-hex": 1
+      }
     },
     "apps/web/src/features/tenants/TenantsPage.tsx": {
-      "raw-hex": 4,
-      "tw-arbitrary": 1
+      "alpha-concat": {
+        "raw-hex": 4
+      },
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     },
     "apps/web/src/features/terminations/TerminationsPage.tsx": {
-      "raw-hex": 3
+      "alpha-concat": {
+        "raw-hex": 3
+      }
     },
     "apps/web/src/features/units/UnitsPage.tsx": {
-      "raw-hex": 4
+      "alpha-concat": {
+        "raw-hex": 4
+      }
     },
     "apps/web/src/features/users/UsersPanel.tsx": {
-      "tw-arbitrary": 3
+      "input-border": {
+        "tw-arbitrary": 3
+      }
     },
     "apps/web/src/features/users/components/InviteUserModal.tsx": {
-      "tw-arbitrary": 1
+      "input-border": {
+        "tw-arbitrary": 1
+      }
     }
   }
 }

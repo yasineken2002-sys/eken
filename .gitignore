@@ -12,6 +12,10 @@ coverage
 # Turbo
 .turbo
 
+# Vercel — lokal projektlänk (`vercel link`). Innehåller projekt-/org-id och
+# nedladdade env-filer (.env.*.local) och ska aldrig committas.
+.vercel
+
 # Logs
 *.log
 npm-debug.log*
