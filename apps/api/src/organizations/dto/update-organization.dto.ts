@@ -10,6 +10,7 @@ import {
   Max,
 } from 'class-validator'
 import { InvoiceTemplate, BrandFont, VatReportingPeriod } from '@prisma/client'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 
 export class UpdateOrganizationDto {
   @IsString()
@@ -24,7 +25,7 @@ export class UpdateOrganizationDto {
   @IsOptional()
   @IsString()
   @Matches(/^#[0-9A-Fa-f]{6}$/, {
-    message: 'invoiceColor måste vara en giltig hex-färg, t.ex. #1a6b3c',
+    message: `invoiceColor måste vara en giltig hex-färg, t.ex. ${DEFAULT_BRAND_COLOR}`,
   })
   invoiceColor?: string
 

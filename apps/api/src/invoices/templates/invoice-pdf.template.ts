@@ -1,4 +1,5 @@
 import type { Decimal } from '@prisma/client/runtime/library'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 
 interface InvoicePdfData {
   invoiceColor?: string
@@ -126,7 +127,7 @@ function detectMime(logoUrl: string): string {
 
 export function generateInvoiceHtml(data: InvoicePdfData): string {
   const { invoice, logoBase64 } = data
-  const color = data.invoiceColor ?? '#1a6b3c'
+  const color = data.invoiceColor ?? DEFAULT_BRAND_COLOR
   const template = data.invoiceTemplate ?? 'classic'
   const { tenant, organization } = invoice
 

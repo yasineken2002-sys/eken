@@ -1,3 +1,5 @@
+import { DEFAULT_BRAND_COLOR } from './branding'
+
 // Plattformens juridiska identitet. Allt som behöver hänvisa till bolaget
 // (juridiska dokument, footer, mejl, fakturor) ska läsa från denna källa så
 // att uppgifterna är konsekventa och kan uppdateras på ett ställe.
@@ -31,7 +33,7 @@ export const PLATFORM_COMPANY = {
   // Default betalningsvillkor (dagar mellan fakturadatum och förfallodatum).
   paymentTermsDays: 14,
   // Färg som används som primärtoken i plattformsfaktura-PDF.
-  primaryColor: '#1a6b3c',
+  primaryColor: DEFAULT_BRAND_COLOR,
   // Juridisk hemvist för tvister enligt användarvillkoren
   jurisdiction: 'Stockholms tingsrätt',
 } as const

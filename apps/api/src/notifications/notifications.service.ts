@@ -3,7 +3,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import type { Notification, NotificationType, Prisma } from '@prisma/client'
-import { formatCurrency } from '@eken/shared'
+import { formatCurrency, DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
@@ -279,7 +279,7 @@ export class NotificationsService implements OnModuleInit {
           total: Number(invoice.total),
           dueDate: invoice.dueDate,
           organizationName: invoice.organization.name,
-          accentColor: invoice.organization.invoiceColor ?? '#1a6b3c',
+          accentColor: invoice.organization.invoiceColor ?? DEFAULT_BRAND_COLOR,
         })
 
         // Logga REMINDER_SENT EFTER lyckat utskick → dedup-fönstret stängs för
@@ -394,7 +394,7 @@ export class NotificationsService implements OnModuleInit {
               insights,
               today,
               organizationName: org.name,
-              accentColor: org.invoiceColor ?? '#1a6b3c',
+              accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
               // Stabil nyckel per (org, user, dag) — Bull-jobId dedupar dubbla
               // enqueues, och Resend dedupar dubbla worker-körningar (24h-fönster).
               idempotencyKey: `morning-insights-${org.id}-${user.id}-${dayKey}`,
@@ -493,7 +493,7 @@ export class NotificationsService implements OnModuleInit {
               summary,
               weekLabel,
               organizationName: org.name,
-              accentColor: org.invoiceColor ?? '#1a6b3c',
+              accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
               idempotencyKey: `weekly-summary-${org.id}-${user.id}-${weekKey}`,
             })
             sent++
