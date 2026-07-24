@@ -527,11 +527,20 @@ padding: p-4 (kompakt) | p-5 (standard)
 
 **Tabeller**
 
+Använd den delade `<DataTable>` från `@eken/ui/react` – handrulla inte tabeller.
+Specen nedan beskriver vad den komponenten faktiskt gör; webs stil är baslinjen
+(beslut 2026-07-24, löser PR6:s öppna punkt – specen ska följa koden, inte tvärtom).
+
 ```
-Wrapper:       overflow-hidden rounded-2xl border border-[#EAEDF0] bg-white
-Kolumnrubrik:  text-[12px] font-semibold text-gray-400 uppercase tracking-wide
-Rad-hover:     hover:bg-gray-50/80
-Radborder:     border-b border-[#EAEDF0] last:border-0
+Wrapper:       overflow-hidden rounded-2xl border border-gray-100 bg-white
+               shadow-[0_1px_4px_rgba(0,0,0,0.04)]
+Tabell:        w-full text-[13.5px]   ← storleken ärvs av cellerna
+Kolumnrubrik:  text-[11.5px] font-semibold uppercase tracking-wider text-gray-400
+Rubrikrad:     border-b border-gray-100 bg-gray-50/60
+Rad-hover:     hover:bg-[var(--ev-row-hover)]
+Radborder:     border-b border-[var(--ev-row-border)] last:border-0
+Cellhöjd:      py-3.5 (default) | py-3 (density="compact")
+Klickbar rad:  tabIndex 0 + Enter/Blanksteg + focus-visible:outline (INTE ring)
 ```
 
 **Knappar**

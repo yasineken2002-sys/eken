@@ -57,7 +57,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
               </button>
               <button
                 onClick={this.reset}
-                className="h-9 rounded-lg border border-[#DDDFE4] px-4 text-[13.5px] font-medium text-gray-700 hover:bg-gray-50"
+                className="border-input h-9 rounded-lg border px-4 text-[13.5px] font-medium text-gray-700 hover:bg-gray-50"
               >
                 Försök igen
               </button>

@@ -29,6 +29,39 @@ export interface EvenoTailwindPreset {
   }
 }
 
+/**
+ * HÄRLEDDA SKALOR som Tailwind-färgobjekt (F1). Peka en befintlig Tailwind-familj
+ * på en av dessa i appens egen config — `colors: { gray: evenoScales.neutral }` —
+ * så går appens alla `text-gray-500`/`bg-gray-50` genom `var(--ev-neutral-*)`
+ * UTAN att en enda klass skrivs om.
+ *
+ * Medvetet UTANFÖR `evenoPreset`: preseten delas av web och admin, och en app i
+ * taget ska flippas (F1 admin → F2 web). Låg preseten på dem skulle web bytt färg
+ * samtidigt som admin. Opt-in per app är hela poängen.
+ */
+const scaleSteps = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900] as const
+
+/**
+ * Ett skalsteg som Tailwind-färgvärde — KANALFORM.
+ *
+ * `bg-gray-50/60` (delade DataTable-headern) måste kunna få en alfa. En hex bakom
+ * `var()` går inte att dela upp: Tailwind ser en ogenomskinlig sträng och släpper
+ * modifieraren tyst, så headern blir opak. Kanalvariabeln (`90 82 72`) plus
+ * `<alpha-value>` ger exakt samma rgba() som Tailwind emitterar idag — mätt
+ * byte-identiskt, till skillnad från color-mix() som avvek ±1 i kompositeringen.
+ */
+const scaleVars = (scale: string): Record<string, string> =>
+  Object.fromEntries(
+    scaleSteps.map((step) => [String(step), `rgb(var(--ev-${scale}-${step}-ch) / <alpha-value>)`]),
+  )
+
+export const evenoScales = {
+  neutral: scaleVars('neutral'),
+  success: scaleVars('success'),
+  warning: scaleVars('warning'),
+  danger: scaleVars('danger'),
+}
+
 export const evenoPreset: EvenoTailwindPreset = {
   theme: {
     extend: {
