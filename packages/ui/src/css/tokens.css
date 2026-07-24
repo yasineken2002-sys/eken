@@ -16,4 +16,93 @@
   /* Komponent-variabler — härledda ur paletten ovan, aldrig egen hex. */
   --ev-row-hover: var(--ev-bg);
   --ev-row-border: var(--ev-border);
+  --ev-input-border: var(--ev-border);
+
+  /* neutral — härledd skala, se EVENO_SCALES i tokens.ts */
+  --ev-neutral-50: #fbfaf8;
+  --ev-neutral-50-ch: 251 250 248;
+  --ev-neutral-100: #f6f4f0;
+  --ev-neutral-100-ch: 246 244 240;
+  --ev-neutral-200: #ece7e0;
+  --ev-neutral-200-ch: 236 231 224;
+  --ev-neutral-300: #c8c2ba;
+  --ev-neutral-300-ch: 200 194 186;
+  --ev-neutral-400: #9c958c;
+  --ev-neutral-400-ch: 156 149 140;
+  --ev-neutral-500: #5a5248;
+  --ev-neutral-500-ch: 90 82 72;
+  --ev-neutral-600: #474038;
+  --ev-neutral-600-ch: 71 64 56;
+  --ev-neutral-700: #3a332c;
+  --ev-neutral-700-ch: 58 51 44;
+  --ev-neutral-800: #2f2923;
+  --ev-neutral-800-ch: 47 41 35;
+  --ev-neutral-900: #241f1a;
+  --ev-neutral-900-ch: 36 31 26;
+
+  /* success — härledd skala, se EVENO_SCALES i tokens.ts */
+  --ev-success-50: #f1f7f3;
+  --ev-success-50-ch: 241 247 243;
+  --ev-success-100: #e4f2e9;
+  --ev-success-100-ch: 228 242 233;
+  --ev-success-200: #cde9d8;
+  --ev-success-200-ch: 205 233 216;
+  --ev-success-300: #aeddc1;
+  --ev-success-300-ch: 174 221 193;
+  --ev-success-400: #7ed0a0;
+  --ev-success-400-ch: 126 208 160;
+  --ev-success-500: #1a6b3c;
+  --ev-success-500-ch: 26 107 60;
+  --ev-success-600: #1d5834;
+  --ev-success-600-ch: 29 88 52;
+  --ev-success-700: #1f492d;
+  --ev-success-700-ch: 31 73 45;
+  --ev-success-800: #213a26;
+  --ev-success-800-ch: 33 58 38;
+  --ev-success-900: #222e21;
+  --ev-success-900-ch: 34 46 33;
+
+  /* warning — härledd skala, se EVENO_SCALES i tokens.ts */
+  --ev-warning-50: #f8f4ef;
+  --ev-warning-50-ch: 248 244 239;
+  --ev-warning-100: #f3ece1;
+  --ev-warning-100-ch: 243 236 225;
+  --ev-warning-200: #eddfc8;
+  --ev-warning-200-ch: 237 223 200;
+  --ev-warning-300: #e4cca8;
+  --ev-warning-300-ch: 228 204 168;
+  --ev-warning-400: #dab174;
+  --ev-warning-400-ch: 218 177 116;
+  --ev-warning-500: #b8791a;
+  --ev-warning-500-ch: 184 121 26;
+  --ev-warning-600: #93631a;
+  --ev-warning-600-ch: 147 99 26;
+  --ev-warning-700: #75511a;
+  --ev-warning-700-ch: 117 81 26;
+  --ev-warning-800: #583f1a;
+  --ev-warning-800-ch: 88 63 26;
+  --ev-warning-900: #42311a;
+  --ev-warning-900-ch: 66 49 26;
+
+  /* danger — härledd skala, se EVENO_SCALES i tokens.ts */
+  --ev-danger-50: #f7f1f0;
+  --ev-danger-50-ch: 247 241 240;
+  --ev-danger-100: #f2e5e3;
+  --ev-danger-100-ch: 242 229 227;
+  --ev-danger-200: #ead0cc;
+  --ev-danger-200-ch: 234 208 204;
+  --ev-danger-300: #deb3ad;
+  --ev-danger-300-ch: 222 179 173;
+  --ev-danger-400: #d1877e;
+  --ev-danger-400-ch: 209 135 126;
+  --ev-danger-500: #c6402f;
+  --ev-danger-500-ch: 198 64 47;
+  --ev-danger-600: #9e382a;
+  --ev-danger-600-ch: 158 56 42;
+  --ev-danger-700: #7d3126;
+  --ev-danger-700-ch: 125 49 38;
+  --ev-danger-800: #5d2b21;
+  --ev-danger-800-ch: 93 43 33;
+  --ev-danger-900: #44261e;
+  --ev-danger-900-ch: 68 38 30;
 }
