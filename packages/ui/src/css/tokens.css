@@ -40,6 +40,28 @@
   --ev-neutral-900: #241f1a;
   --ev-neutral-900-ch: 36 31 26;
 
+  /* brand — härledd skala, se EVENO_SCALES i tokens.ts */
+  --ev-brand-50: #f1f7f3;
+  --ev-brand-50-ch: 241 247 243;
+  --ev-brand-100: #e4f2e9;
+  --ev-brand-100-ch: 228 242 233;
+  --ev-brand-200: #cde9d8;
+  --ev-brand-200-ch: 205 233 216;
+  --ev-brand-300: #aeddc1;
+  --ev-brand-300-ch: 174 221 193;
+  --ev-brand-400: #7ed0a0;
+  --ev-brand-400-ch: 126 208 160;
+  --ev-brand-500: #1a6b3c;
+  --ev-brand-500-ch: 26 107 60;
+  --ev-brand-600: #1d5834;
+  --ev-brand-600-ch: 29 88 52;
+  --ev-brand-700: #1f492d;
+  --ev-brand-700-ch: 31 73 45;
+  --ev-brand-800: #213a26;
+  --ev-brand-800-ch: 33 58 38;
+  --ev-brand-900: #222e21;
+  --ev-brand-900-ch: 34 46 33;
+
   /* success — härledd skala, se EVENO_SCALES i tokens.ts */
   --ev-success-50: #f1f7f3;
   --ev-success-50-ch: 241 247 243;

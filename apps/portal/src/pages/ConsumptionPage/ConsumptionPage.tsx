@@ -9,10 +9,20 @@ const METER: Record<
   PortalConsumptionCharge['meterType'],
   { label: string; unit: string; bg: string; color: string }
 > = {
-  ELECTRICITY: { label: 'El', unit: 'kWh', bg: '#fff4e0', color: '#d97706' },
+  ELECTRICITY: { label: 'El', unit: 'kWh', bg: '#fff4e0', color: 'var(--ev-warning-600)' },
   WATER_COLD: { label: 'Kallvatten', unit: 'm³', bg: '#e0f2fe', color: '#0284c7' },
-  WATER_HOT: { label: 'Varmvatten', unit: 'm³', bg: '#fce8e8', color: '#dc2626' },
-  HEATING: { label: 'Värme', unit: 'kWh', bg: '#fdeede', color: '#ea580c' },
+  WATER_HOT: {
+    label: 'Varmvatten',
+    unit: 'm³',
+    bg: 'var(--ev-danger-100)',
+    color: 'var(--ev-danger-500)',
+  },
+  HEATING: {
+    label: 'Värme',
+    unit: 'kWh',
+    bg: 'var(--ev-warning-300)',
+    color: 'var(--ev-warning-700)',
+  },
 }
 
 // Mjuk "hög förbrukning"-tröskel: en period som är mer än så här många gånger

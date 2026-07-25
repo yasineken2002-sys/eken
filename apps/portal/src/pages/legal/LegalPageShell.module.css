@@ -22,7 +22,7 @@
   gap: 6px;
   font-size: 13px;
   font-weight: 500;
-  color: #4b5563;
+  color: var(--ev-neutral-700);
   text-decoration: none;
   padding: 6px 8px;
   border-radius: 6px;
@@ -42,8 +42,8 @@
   gap: 6px;
   font-size: 13px;
   font-weight: 500;
-  color: #374151;
-  background: #ffffff;
+  color: var(--ev-neutral-800);
+  background: var(--ev-surface);
   border: 1px solid #dddfe4;
   border-radius: 8px;
   padding: 6px 12px;
@@ -51,7 +51,7 @@
 }
 
 .printBtn:hover {
-  background: #f9fafb;
+  background: var(--ev-neutral-50);
 }
 
 .title {
@@ -74,7 +74,7 @@
   flex-wrap: wrap;
   gap: 8px;
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--ev-neutral-300);
   margin-bottom: 24px;
 }
 
@@ -84,7 +84,7 @@
 }
 
 .toc {
-  background: #ffffff;
+  background: var(--ev-surface);
   border: 1px solid #eaedf0;
   border-radius: 12px;
   padding: 16px;
@@ -96,7 +96,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #9ca3af;
+  color: var(--ev-neutral-300);
   margin-bottom: 8px;
 }
 
@@ -114,20 +114,20 @@
   display: block;
   padding: 6px 4px;
   font-size: 13px;
-  color: #4b5563;
+  color: var(--ev-neutral-700);
   text-decoration: none;
   border-radius: 4px;
 }
 
 .tocList a:hover {
-  background: #f3f4f6;
+  background: var(--ev-neutral-200);
   color: var(--ev-text);
 }
 
 .content {
   font-size: 14px;
   line-height: 1.7;
-  color: #374151;
+  color: var(--ev-neutral-800);
 }
 
 .content h2 {
@@ -183,13 +183,13 @@
 }
 
 .content th {
-  background: #f9fafb;
+  background: var(--ev-neutral-50);
   font-weight: 600;
-  color: #374151;
+  color: var(--ev-neutral-800);
 }
 
 .content code {
-  background: #f3f4f6;
+  background: var(--ev-neutral-200);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -210,7 +210,7 @@
     display: none !important;
   }
   .shell {
-    background: #ffffff;
+    background: var(--ev-surface);
     padding: 0;
   }
 }

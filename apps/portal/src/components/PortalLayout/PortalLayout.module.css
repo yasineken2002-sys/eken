@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  background: #f0f4f0;
+  background: var(--ev-brand-50);
   max-width: 480px;
   margin: 0 auto;
   position: relative;
@@ -23,8 +23,8 @@
   transform: translateX(-50%);
   width: 100%;
   max-width: 480px;
-  background: #ffffff;
-  border-top: 0.5px solid #e8ede8;
+  background: var(--ev-surface);
+  border-top: 0.5px solid var(--ev-brand-100);
   display: flex;
   justify-content: space-around;
   padding: 12px 0 20px;
@@ -36,7 +36,7 @@
   flex-direction: column;
   align-items: center;
   gap: 3px;
-  color: #aaa;
+  color: var(--ev-neutral-400);
   text-decoration: none;
   padding: 0 4px;
   transition: color 0.15s;
@@ -82,7 +82,7 @@
   padding: 8px 20px;
   border: 1px solid #d6ddd6;
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--ev-surface);
   color: var(--ev-brand);
   font-size: 13px;
   font-weight: 600;
@@ -113,7 +113,7 @@
 }
 
 .footerLinks a {
-  color: #4b5563;
+  color: var(--ev-neutral-700);
   text-decoration: none;
   font-weight: 500;
 }

@@ -19,26 +19,108 @@
   --ev-status-warning: #d97706;
   --ev-status-danger: #dc2626;
 
+  /* ── Härledda skalor (F3 commit 1) ─────────────────────────────────────────
+     Portalen kör inga Tailwind-klasser — den läser variablerna rakt av i sina
+     CSS-moduler. Skalorna pinnas därför till portalens EXAKTA nuvarande hex, och
+     modulerna pekar om från rå hex till var(--ev-*). Steget är färgneutralt.
+
+     Varje värde ligger på det steg vars MÅLVÄRDE är närmast i ljushet. Det är
+     hela poängen: då blir commit 2 en omfärgning och inte en inversion. Pinnas en
+     ljus kortyta på ett mörkt steg blir den kolsvart vid flippen.
+
+     Portalen har fler distinkta värden än skalorna har steg (32 gröna på 10 steg).
+     De som inte får plats är INTE tvingade in på ett steg som skulle flytta dem —
+     de står kvar råa och är kvar i flipp-skulden. Se PR-beskrivningen.
+
+     Ingen kanalform (-ch) behövs här: portalen har inga alfa-modifierare (det var
+     ett Tailwind-problem i F1/F2). De rgba() som finns är skuggor och vit/svart-
+     överlägg, som inte är palettfärger — utom EN, se PR-beskrivningens fynd. */
+
+  /* neutral — portalens gråskala (#888 = dämpad text, #1a1a1a = rubrik).
+     300/400 är MEDVETET inte i ljushetsordning i pinnat läge: #aaa är portalens
+     svaga text på 354 element och ska landa på samma tertiärnivå (--ev-neutral-400,
+     #9c958c) som web och admin, så att den ENA tertiär-PR:en efter flippen fixar
+     alla tre apparna. Låg den på 300 blev den ljusare än idag (1.77:1) och skulle
+     missas av den PR:en. #9ca3af (3 träffar) får 300 i stället. */
+  --ev-neutral-50: #f9fafb;
+  --ev-neutral-100: #f1f5f9;
+  --ev-neutral-200: #f3f4f6;
+  --ev-neutral-300: #9ca3af;
+  --ev-neutral-400: #aaa;
+  --ev-neutral-500: #888;
+  --ev-neutral-600: #555;
+  --ev-neutral-700: #4b5563;
+  --ev-neutral-800: #374151;
+  --ev-neutral-900: #1a1a1a;
+
+  /* brand — portalens gröna YTOR (inte "success": en grön panel påstår inget
+     om ett lyckat utfall). Skalan härleds ur #1a6b3c i @eken/ui. */
+  --ev-brand-50: #f0f4f0;
+  --ev-brand-100: #e8ede8;
+  --ev-brand-200: #e3ebe4;
+  --ev-brand-300: #e0e8e0;
+  --ev-brand-400: #cfe0d2;
+  --ev-brand-700: #6c7a6e;
+  --ev-brand-800: #155a32;
+  --ev-brand-900: #1a4a28;
+  /* 500/600 lämnas opinnade: de värdena satt BARA i gradient-stopp som medvetet
+     står kvar råa (se DashboardPage.module.css och TenantAiChat.module.css).
+     900 pinnas däremot — #1a4a28 används också som rubrikfärg i AI-kortet. */
+
+  /* success/warning/danger — opinnade steg används inte av portalen och lämnas
+     med @eken/ui:s härledda värden (de kan inte synas förrän någon tar dem). */
+  --ev-success-50: #ecfdf5;
+  --ev-success-100: #dcfce7;
+  --ev-success-400: #10b981;
+  --ev-success-500: #16a34a;
+  --ev-success-600: #059669;
+  --ev-success-700: #047857;
+  --ev-success-800: #065f46;
+
+  --ev-warning-50: #fffbeb;
+  --ev-warning-100: #fff7ed;
+  --ev-warning-200: #fff8e0;
+  --ev-warning-300: #fdeede;
+  --ev-warning-400: #f59e0b;
+  --ev-warning-500: #ca8a04;
+  --ev-warning-600: #d97706;
+  --ev-warning-700: #ea580c;
+  --ev-warning-800: #6a5a14;
+  --ev-warning-900: #92400e;
+
+  --ev-danger-50: #fef2f2;
+  --ev-danger-100: #fce8e8;
+  --ev-danger-200: #fecaca;
+  --ev-danger-300: #f4caca;
+  --ev-danger-400: #ef4444;
+  --ev-danger-500: #dc2626;
+  --ev-danger-700: #991b1b;
+  --ev-danger-800: #8a1f1f;
+
+  /* Komponent-variabel: portalens "starka" kant (knapp-, chip- och boxkant).
+     @eken/ui:s default är var(--ev-border) — här pinnad till dagens värde. */
+  --ev-input-border: #d1d5db;
+
   /* Portalens egna --color-*: aliasade till @eken/ui där värdet matchar (neutralt),
      annars kvar som hex (inget matchande token i det låsta 9-schemat). */
   --color-primary: #2563eb; /* portal-blå, mest oanvänd — inget ev-token, kvar */
   --color-primary-dark: #1d4ed8; /* kvar */
   --color-primary-light: #eff6ff; /* kvar */
   --color-success: var(--ev-status-success);
-  --color-success-light: #ecfdf5; /* kvar */
+  --color-success-light: var(--ev-success-50);
   --color-warning: var(--ev-status-warning);
-  --color-warning-light: #fffbeb; /* kvar */
+  --color-warning-light: var(--ev-warning-50);
   --color-danger: var(--ev-status-danger);
-  --color-danger-light: #fef2f2; /* kvar */
+  --color-danger-light: var(--ev-danger-50);
 
   --color-bg: var(--ev-bg);
   --color-surface: var(--ev-surface);
   --color-border: var(--ev-border);
-  --color-border-strong: #d1d5db; /* inget ev-token — kvar */
+  --color-border-strong: var(--ev-input-border);
 
   --color-text: var(--ev-text);
   --color-text-muted: var(--ev-text-muted);
-  --color-text-faint: #9ca3af; /* inget ev-token — kvar */
+  --color-text-faint: var(--ev-neutral-300);
 
   --radius-sm: 8px;
   --radius-md: 12px;

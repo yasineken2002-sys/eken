@@ -31,7 +31,7 @@ export function CookieBanner() {
         maxWidth: 640,
         margin: '0 auto',
         padding: 20,
-        background: '#fff',
+        background: 'var(--ev-surface)',
         border: '1px solid var(--ev-border)',
         borderRadius: 16,
         boxShadow: '0 12px 32px rgba(0,0,0,0.12)',
@@ -41,7 +41,9 @@ export function CookieBanner() {
       <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ev-text)' }}>
         Vi värnar om din integritet
       </p>
-      <p style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.5, color: '#4b5563' }}>
+      <p
+        style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.5, color: 'var(--ev-neutral-700)' }}
+      >
         Eveno använder cookies som krävs för inloggning och säkerhet. Inga tredjepartscookies för
         marknadsföring eller spårning sätts.{' '}
         <Link to="/integritet" style={{ color: '#2563eb', fontWeight: 500 }}>
@@ -57,7 +59,7 @@ export function CookieBanner() {
             height: 36,
             padding: '0 16px',
             background: '#2563eb',
-            color: '#fff',
+            color: 'var(--ev-surface)',
             border: 'none',
             borderRadius: 8,
             fontSize: 13.5,
@@ -73,9 +75,9 @@ export function CookieBanner() {
           style={{
             height: 36,
             padding: '0 16px',
-            background: '#fff',
-            color: '#374151',
-            border: '1px solid #d1d5db',
+            background: 'var(--ev-surface)',
+            color: 'var(--ev-neutral-800)',
+            border: '1px solid var(--color-border-strong)',
             borderRadius: 8,
             fontSize: 13.5,
             fontWeight: 500,

@@ -260,9 +260,24 @@ export const EVENO_STATUS_SCALES = {
   danger: statusScale(P.statusDanger),
 } as const
 
+/**
+ * VARUMÄRKESSKALAN (F3) — samma härledning som statustinterna, ur `brand`.
+ *
+ * Portalen är den enda appen som redan bär grönt, och den bär det som YTOR: ljusa
+ * gröntonade kort och kanter, gröna gradient-huvuden, dämpad grön text. Det är
+ * inte "success" — en grön sidopanel påstår ingenting om ett lyckat utfall — så
+ * de ytorna behöver ett eget namn även om värdena råkar sammanfalla med
+ * success-skalan så länge `brand === statusSuccess`. Skiljer de sig åt någon gång
+ * följer portalens ytor varumärket, vilket är det rätta.
+ *
+ * Ingen egen hex: exakt samma `statusScale`-härledning som success/warning/danger.
+ */
+export const EVENO_BRAND_SCALE = statusScale(P.brand)
+
 /** Alla härledda skalor → CSS-variabelnamn. `--ev-neutral-500`, `--ev-success-50`, … */
 export const EVENO_SCALES = {
   neutral: EVENO_NEUTRAL_SCALE,
+  brand: EVENO_BRAND_SCALE,
   success: EVENO_STATUS_SCALES.success,
   warning: EVENO_STATUS_SCALES.warning,
   danger: EVENO_STATUS_SCALES.danger,

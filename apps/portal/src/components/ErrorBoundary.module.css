@@ -103,7 +103,7 @@
 
 .btnPrimary {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--ev-surface);
 }
 
 .btnPrimary:hover {

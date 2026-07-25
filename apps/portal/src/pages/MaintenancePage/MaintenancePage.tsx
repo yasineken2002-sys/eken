@@ -16,12 +16,22 @@ import styles from './MaintenancePage.module.css'
 
 const CATEGORIES: { value: string; label: string; bg: string; color: string }[] = [
   { value: 'PLUMBING', label: 'VVS', bg: '#e0f2fe', color: '#0284c7' },
-  { value: 'ELECTRICAL', label: 'El', bg: '#fef9c3', color: '#ca8a04' },
-  { value: 'HEATING', label: 'Värme/Ventilation', bg: '#fee2e2', color: '#dc2626' },
+  { value: 'ELECTRICAL', label: 'El', bg: '#fef9c3', color: 'var(--ev-warning-500)' },
+  { value: 'HEATING', label: 'Värme/Ventilation', bg: '#fee2e2', color: 'var(--ev-danger-500)' },
   { value: 'LOCKS', label: 'Lås/Dörrar', bg: '#f3e8ff', color: '#9333ea' },
-  { value: 'WINDOWS', label: 'Fönster', bg: '#dcfce7', color: '#16a34a' },
-  { value: 'APPLIANCES', label: 'Reparation', bg: '#fff7ed', color: '#ea580c' },
-  { value: 'OTHER', label: 'Övrigt', bg: '#f1f5f9', color: '#64748b' },
+  {
+    value: 'WINDOWS',
+    label: 'Fönster',
+    bg: 'var(--ev-success-100)',
+    color: 'var(--ev-success-500)',
+  },
+  {
+    value: 'APPLIANCES',
+    label: 'Reparation',
+    bg: 'var(--ev-warning-100)',
+    color: 'var(--ev-warning-700)',
+  },
+  { value: 'OTHER', label: 'Övrigt', bg: 'var(--ev-neutral-100)', color: '#64748b' },
 ]
 
 function getCategoryStyle(value: string) {
@@ -325,7 +335,7 @@ export function MaintenancePage() {
 
             {/* Image upload */}
             <div style={{ marginTop: '16px' }}>
-              <p style={{ fontSize: '13px', color: '#888', marginBottom: '8px' }}>
+              <p style={{ fontSize: '13px', color: 'var(--ev-neutral-500)', marginBottom: '8px' }}>
                 Bilder (valfritt, max 5)
               </p>
               <label
@@ -336,7 +346,7 @@ export function MaintenancePage() {
                   padding: '16px',
                   textAlign: 'center',
                   cursor: 'pointer',
-                  color: '#888',
+                  color: 'var(--ev-neutral-500)',
                   fontSize: '13px',
                 }}
               >
@@ -366,7 +376,7 @@ export function MaintenancePage() {
                         alignItems: 'center',
                         justifyContent: 'center',
                         fontSize: '11px',
-                        color: '#888',
+                        color: 'var(--ev-neutral-500)',
                         overflow: 'hidden',
                       }}
                     >
@@ -399,7 +409,7 @@ export function MaintenancePage() {
               style={{
                 width: '100%',
                 padding: '14px',
-                background: isSubmitting ? '#888' : 'var(--ev-brand)',
+                background: isSubmitting ? 'var(--ev-neutral-500)' : 'var(--ev-brand)',
                 color: 'white',
                 border: 'none',
                 borderRadius: '12px',

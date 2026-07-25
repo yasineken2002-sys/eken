@@ -1,16 +1,16 @@
 {
   "$comment": "GENERERAD ALLOWLIST — FLIPP-SKULD, inte en regel-lucka. Varje post är rå färg som PR2–6 medvetet lämnade otokeniserad, knuten till en kategori i CATEGORIES (scripts/check-design-tokens.mjs) som säger VARFÖR den står kvar och HUR färgflippen tar bort den. CI faller på fler träffar — aldrig på färre. Listan ska krympa till noll när flippen är gjord.",
   "$howto": "Städat en fil? Kör `node scripts/check-design-tokens.mjs --update-baseline` så snävas spärren åt. Lägg ALDRIG till rader här för hand för att tysta ett nytt fynd — en ny färg ska tokeniseras, inte allowlistas.",
-  "total": 529,
+  "total": 282,
   "perCategory": {
-    "neutral-scale": 210,
     "chart-colors": 86,
-    "status-tints": 80,
-    "green-legacy": 76,
+    "neutral-scale": 64,
+    "green-legacy": 38,
     "brand-blue": 25,
     "shadow-alpha": 22,
-    "input-border": 16,
-    "alpha-concat": 14
+    "status-tints": 21,
+    "alpha-concat": 14,
+    "input-border": 12
   },
   "files": {
     "apps/admin/src/pages/DashboardPage.tsx": {
@@ -36,22 +36,11 @@
       }
     },
     "apps/portal/src/components/CookieBanner.tsx": {
-      "neutral-scale": {
-        "raw-hex": 5
-      },
       "brand-blue": {
         "raw-hex": 2
       },
-      "input-border": {
-        "raw-hex": 1
-      },
       "shadow-alpha": {
         "raw-color-fn": 1
-      }
-    },
-    "apps/portal/src/components/ErrorBoundary.module.css": {
-      "neutral-scale": {
-        "raw-hex": 1
       }
     },
     "apps/portal/src/components/PasswordInput/PasswordInput.module.css": {
@@ -64,89 +53,55 @@
     },
     "apps/portal/src/components/PortalLayout/PortalLayout.module.css": {
       "green-legacy": {
-        "raw-hex": 7
-      },
-      "neutral-scale": {
-        "raw-hex": 4
+        "raw-hex": 5
       },
       "shadow-alpha": {
         "raw-color-fn": 1
       }
     },
     "apps/portal/src/components/ui/PasswordRequirements.module.css": {
-      "neutral-scale": {
-        "raw-hex": 3
-      },
       "input-border": {
-        "raw-hex": 3
-      },
-      "status-tints": {
-        "raw-hex": 3
+        "raw-hex": 1
       }
     },
     "apps/portal/src/components/ui/StatusBadge.tsx": {
-      "neutral-scale": {
-        "raw-hex": 13
-      },
       "brand-blue": {
         "raw-hex": 6
-      },
-      "status-tints": {
-        "raw-hex": 20
       },
       "chart-colors": {
         "raw-hex": 2
       }
     },
-    "apps/portal/src/components/ui/ui.module.css": {
-      "neutral-scale": {
-        "raw-hex": 1
-      }
-    },
     "apps/portal/src/features/ai/TenantAiChat.module.css": {
       "green-legacy": {
-        "raw-hex": 18
-      },
-      "neutral-scale": {
-        "raw-hex": 1,
-        "raw-color-fn": 5
+        "raw-hex": 10
       },
       "status-tints": {
-        "raw-hex": 6
+        "raw-hex": 2
+      },
+      "neutral-scale": {
+        "raw-color-fn": 5
       }
     },
     "apps/portal/src/pages/ActivatePage/ActivatePage.module.css": {
-      "status-tints": {
-        "raw-hex": 1
-      },
-      "neutral-scale": {
-        "raw-hex": 4,
-        "raw-color-fn": 1
-      },
       "green-legacy": {
         "raw-hex": 1
       },
       "shadow-alpha": {
         "raw-color-fn": 1
+      },
+      "neutral-scale": {
+        "raw-color-fn": 1
       }
     },
     "apps/portal/src/pages/ConsumptionPage/ConsumptionPage.module.css": {
-      "neutral-scale": {
-        "raw-hex": 7
-      },
-      "green-legacy": {
-        "raw-hex": 2
-      },
-      "status-tints": {
-        "raw-hex": 3
-      },
       "shadow-alpha": {
         "raw-color-fn": 1
       }
     },
     "apps/portal/src/pages/ConsumptionPage/ConsumptionPage.tsx": {
       "status-tints": {
-        "raw-hex": 6
+        "raw-hex": 1
       },
       "brand-blue": {
         "raw-hex": 2
@@ -157,14 +112,10 @@
     },
     "apps/portal/src/pages/DashboardPage/DashboardPage.module.css": {
       "green-legacy": {
-        "raw-hex": 15
+        "raw-hex": 6
       },
       "neutral-scale": {
-        "raw-hex": 16,
         "raw-color-fn": 1
-      },
-      "status-tints": {
-        "raw-hex": 4
       },
       "shadow-alpha": {
         "raw-color-fn": 1
@@ -178,53 +129,43 @@
         "raw-hex": 2
       },
       "status-tints": {
-        "raw-hex": 4
+        "raw-hex": 1
       }
     },
     "apps/portal/src/pages/DocumentsPage/DocumentsPage.module.css": {
-      "neutral-scale": {
-        "raw-hex": 7
-      },
       "green-legacy": {
-        "raw-hex": 4
+        "raw-hex": 2
       },
       "shadow-alpha": {
         "raw-color-fn": 1
       }
     },
     "apps/portal/src/pages/DocumentsPage/DocumentsPage.tsx": {
-      "status-tints": {
-        "raw-hex": 2
-      },
       "brand-blue": {
         "raw-hex": 2
       },
       "neutral-scale": {
-        "raw-hex": 2
+        "raw-hex": 1
       },
       "chart-colors": {
         "raw-hex": 3
       }
     },
     "apps/portal/src/pages/LoginPage/LoginPage.module.css": {
-      "status-tints": {
-        "raw-hex": 1
-      },
-      "neutral-scale": {
-        "raw-hex": 3,
+      "shadow-alpha": {
         "raw-color-fn": 1
       },
-      "shadow-alpha": {
+      "neutral-scale": {
         "raw-color-fn": 1
       }
     },
     "apps/portal/src/pages/MaintenancePage/MaintenancePage.module.css": {
-      "neutral-scale": {
-        "raw-hex": 24,
-        "raw-color-fn": 1
-      },
       "green-legacy": {
-        "raw-hex": 11
+        "raw-hex": 2
+      },
+      "neutral-scale": {
+        "raw-hex": 2,
+        "raw-color-fn": 1
       },
       "shadow-alpha": {
         "raw-color-fn": 3
@@ -235,28 +176,25 @@
         "raw-hex": 2
       },
       "status-tints": {
-        "raw-hex": 8
+        "raw-hex": 2
       },
       "chart-colors": {
         "raw-hex": 4
       },
       "neutral-scale": {
-        "raw-hex": 6
+        "raw-hex": 1
       },
       "input-border": {
         "raw-hex": 2
       }
     },
     "apps/portal/src/pages/NewsPage/NewsPage.module.css": {
-      "neutral-scale": {
-        "raw-hex": 13,
-        "raw-color-fn": 1
-      },
-      "green-legacy": {
-        "raw-hex": 3
-      },
       "input-border": {
         "raw-hex": 1
+      },
+      "neutral-scale": {
+        "raw-hex": 1,
+        "raw-color-fn": 1
       },
       "shadow-alpha": {
         "raw-color-fn": 3
@@ -268,14 +206,14 @@
       }
     },
     "apps/portal/src/pages/NoticesPage/NoticesPage.module.css": {
+      "status-tints": {
+        "raw-hex": 1
+      },
       "neutral-scale": {
-        "raw-hex": 17
+        "raw-hex": 2
       },
       "green-legacy": {
-        "raw-hex": 5
-      },
-      "status-tints": {
-        "raw-hex": 5
+        "raw-hex": 2
       },
       "shadow-alpha": {
         "raw-color-fn": 2
@@ -286,36 +224,24 @@
         "raw-hex": 4
       }
     },
-    "apps/portal/src/pages/PrivacyPage/PrivacyPage.tsx": {
-      "neutral-scale": {
-        "raw-hex": 3
-      }
-    },
     "apps/portal/src/pages/SettingsPage/SettingsPage.tsx": {
-      "neutral-scale": {
-        "raw-hex": 11,
-        "raw-color-fn": 1
-      },
       "brand-blue": {
         "raw-hex": 1
       },
-      "input-border": {
-        "raw-hex": 1
-      },
-      "status-tints": {
-        "raw-hex": 3
+      "neutral-scale": {
+        "raw-hex": 2,
+        "raw-color-fn": 1
       }
     },
     "apps/portal/src/pages/legal/LegalPageShell.module.css": {
-      "neutral-scale": {
-        "raw-hex": 14,
-        "raw-color-fn": 1
-      },
       "input-border": {
         "raw-hex": 4
       },
       "brand-blue": {
         "raw-hex": 1
+      },
+      "neutral-scale": {
+        "raw-color-fn": 1
       }
     },
     "apps/web/src/components/layout/AppLayout.tsx": {

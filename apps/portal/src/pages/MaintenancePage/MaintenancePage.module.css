@@ -15,7 +15,7 @@
 .pageTitle {
   font-size: 22px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
 }
 
 .headerBtn {
@@ -26,7 +26,7 @@
   padding: 0 14px;
   border-radius: 999px;
   background: var(--ev-brand);
-  color: #ffffff;
+  color: var(--ev-surface);
   font-size: 13px;
   font-weight: 600;
   border: none;
@@ -40,7 +40,7 @@
 }
 
 .headerBtn:hover {
-  background: #155a32;
+  background: var(--ev-brand-800);
 }
 
 .headerBtn:active {
@@ -66,7 +66,7 @@
   padding: 0 18px;
   border-radius: 12px;
   background: var(--ev-brand);
-  color: #ffffff;
+  color: var(--ev-surface);
   font-size: 14px;
   font-weight: 600;
   border: none;
@@ -78,7 +78,7 @@
 }
 
 .emptyCta:hover {
-  background: #155a32;
+  background: var(--ev-brand-800);
 }
 
 .emptyCta:active {
@@ -95,9 +95,9 @@
 }
 
 .ticketCard {
-  background: #ffffff;
+  background: var(--ev-surface);
   border-radius: 18px;
-  border: 0.5px solid #e0e8e0;
+  border: 0.5px solid var(--ev-brand-300);
   overflow: hidden;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
 }
@@ -123,7 +123,7 @@
 .ticketTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -131,7 +131,7 @@
 
 .ticketDate {
   font-size: 12px;
-  color: #888;
+  color: var(--ev-neutral-500);
   margin-top: 2px;
 }
 
@@ -145,13 +145,13 @@
 
 .ticketChevron {
   font-size: 9px;
-  color: #aaa;
+  color: var(--ev-neutral-400);
 }
 
 /* ── Expanded ticket body ────────────────────────────── */
 
 .ticketBody {
-  border-top: 0.5px solid #e8ede8;
+  border-top: 0.5px solid var(--ev-brand-100);
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -174,7 +174,7 @@
 .commentsTitle {
   font-size: 11px;
   font-weight: 600;
-  color: #aaa;
+  color: var(--ev-neutral-400);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -187,12 +187,12 @@
 
 .commentContent {
   font-size: 13px;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
 }
 
 .commentDate {
   font-size: 11px;
-  color: #aaa;
+  color: var(--ev-neutral-400);
   margin-top: 4px;
 }
 
@@ -205,7 +205,7 @@
 .commentInput {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #e0e8e0;
+  border: 1px solid var(--ev-brand-300);
   border-radius: 12px;
   font-size: 14px;
   resize: vertical;
@@ -223,7 +223,7 @@
   padding: 8px 18px;
   border-radius: 10px;
   background: var(--ev-brand);
-  color: #fff;
+  color: var(--ev-surface);
   font-size: 13px;
   font-weight: 600;
   transition: opacity 0.15s;
@@ -250,7 +250,7 @@
   transform: translateX(-50%) translateY(100%);
   width: 100%;
   max-width: 480px;
-  background: #ffffff;
+  background: var(--ev-surface);
   border-radius: 24px 24px 0 0;
   padding: 16px 20px 32px;
   z-index: 70;
@@ -265,14 +265,14 @@
   width: 36px;
   height: 4px;
   border-radius: 2px;
-  background: #e0e8e0;
+  background: var(--ev-brand-300);
   margin: 0 auto 20px;
 }
 
 .sheetTitle {
   font-size: 18px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
   margin-bottom: 20px;
 }
 
@@ -296,8 +296,8 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
-  color: #555;
-  background: #f1f5f9;
+  color: var(--ev-neutral-600);
+  background: var(--ev-neutral-100);
   border: 1px solid transparent;
   white-space: nowrap;
   cursor: pointer;
@@ -324,11 +324,11 @@
 .textarea {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #e0e8e0;
+  border: 1px solid var(--ev-brand-300);
   border-radius: 12px;
   font-size: 14px;
-  color: #1a1a1a;
-  background: #ffffff;
+  color: var(--ev-neutral-900);
+  background: var(--ev-surface);
   outline: none;
   font-family: inherit;
   transition: border-color 0.15s;
@@ -354,18 +354,18 @@
 .cancelBtn {
   padding: 10px 18px;
   border-radius: 12px;
-  border: 1px solid #e0e8e0;
+  border: 1px solid var(--ev-brand-300);
   font-size: 14px;
   font-weight: 500;
-  color: #888;
-  background: #ffffff;
+  color: var(--ev-neutral-500);
+  background: var(--ev-surface);
 }
 
 .submitBtn {
   padding: 10px 20px;
   border-radius: 12px;
   background: var(--ev-brand);
-  color: #fff;
+  color: var(--ev-surface);
   font-size: 14px;
   font-weight: 600;
   transition: opacity 0.15s;
@@ -389,7 +389,7 @@
   justify-content: center;
   width: 64px;
   height: 64px;
-  background: #f0f4f0;
+  background: var(--ev-brand-50);
   border-radius: 50%;
   margin-bottom: 12px;
 }
@@ -397,11 +397,11 @@
 .emptyTitle {
   font-size: 16px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
   margin-bottom: 6px;
 }
 
 .emptyText {
   font-size: 14px;
-  color: #888;
+  color: var(--ev-neutral-500);
 }
