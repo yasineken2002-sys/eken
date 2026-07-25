@@ -7,7 +7,7 @@ import {
 import { cn } from '@/lib/cn'
 
 const base =
-  'h-9 w-full rounded-lg border border-[#DDDFE4] bg-white px-3 text-[13.5px] text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:bg-gray-50'
+  'h-9 w-full rounded-lg border border-input bg-white px-3 text-[13.5px] text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:bg-gray-50'
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...rest }, ref) {
@@ -33,7 +33,7 @@ export const Textarea = forwardRef<
     <textarea
       ref={ref}
       className={cn(
-        'min-h-[80px] w-full rounded-lg border border-[#DDDFE4] bg-white px-3 py-2 text-[13.5px] text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30',
+        'border-input min-h-[80px] w-full rounded-lg border bg-white px-3 py-2 text-[13.5px] text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30',
         className,
       )}
       {...rest}

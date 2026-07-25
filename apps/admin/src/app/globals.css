@@ -1,26 +1,23 @@
-/* @eken/ui: låst palett som CSS-variabler (--ev-*). Importeras FÖRST så att
-   admins neutrala override nedan (samma variabelnamn) vinner via källordning. */
+/* @eken/ui: låst palett som CSS-variabler (--ev-*). Efter F1 commit 2 är detta
+   admins ENDA färgkälla — inget neutralt override-block står emellan längre. */
 @import '@eken/ui/tokens.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ── Neutral token-mappning (PR2) ────────────────────────────────────────────
-   Admin behåller EXAKT dagens utseende. Dessa override:ar pekar --ev-* på admins
-   NUVARANDE hex — inte målpaletten från @eken/ui. Färgflippen = ta bort detta
-   :root-block, då slår målpaletten (grön/beige) igenom. Inter→Poppins är ett
-   separat, senare steg. Bara de tokens admin faktiskt konsumerar listas här. */
-:root {
-  --ev-bg: #f7f8fa; /* @eken/ui-mål #f6f4f0 → hålls på dagens #f7f8fa */
-  --ev-text: #111827; /* mål #241f1a → dagens #111827 */
-  --ev-border: #eaedf0; /* mål #ece7e0 → dagens #eaedf0 */
-  --ev-brand: #2563eb; /* mål #1a6b3c → dagens accent-blå (länkar/::selection) */
+/* ── FLIPPEN (F1 commit 2) ───────────────────────────────────────────────────
+   Admins neutrala override-block är BORTTAGET. Alla --ev-* — palett, komponent-
+   variabler och de härledda skalorna — kommer nu från @eken/ui:s låsta palett.
+   Det som ändras visuellt: kanvas #f7f8fa → #f6f4f0 (varm creme), text #111827 →
+   #241f1a (bläck), kant #eaedf0 → #ece7e0, hela gråskalan blir varm och
+   statusfamiljerna får de härledda tinterna.
 
-  /* Komponent-variabler (PR6, delad DataTable). Default i @eken/ui härleds ur
-     paletten; här pinnas de till admins nuvarande tabellvärden. */
-  --ev-row-hover: #fafbfc; /* dagens hover:bg-gray-50/80, uträknad mot vit yta */
-  --ev-row-border: #eaedf0; /* = --ev-border, dagens border-line på radavdelare */
+   ETT undantag står kvar: --ev-brand. Att byta blått mot grönt är den SYNLIGA
+   varumärkesändringen och ska granskas som ett eget beslut — den är F5, för alla
+   tre apparna samtidigt. Tills dess hålls admins accentfärg på dagens blå. */
+:root {
+  --ev-brand: #2563eb; /* hålls kvar till F5 (brand-blue → #1a6b3c) */
 }
 
 @layer base {
