@@ -44,6 +44,41 @@ export const EVENO_PALETTE = {
 export type EvenoTokenKey = keyof typeof EVENO_PALETTE
 
 /**
+ * MÖRKA YTOR — sidomeny, inloggningens marknadspanel och andra mörka paneler.
+ *
+ * Basen är kolsvart och VARM (#1F1A16), samma familj som bläcket #241F1A — inte
+ * den kalla blåsvarta #0F1117 apparna bar tidigare, och medvetet INTE djupgrön
+ * (det övervägs tidigast efter F5). `base` är den enda literalen; resten härleds:
+ * en text som är cremen själv (palettspegel — creme på svart, svart på creme),
+ * en dämpad text som blandas fram till en AA-säker nivå, och en upphöjd yta ett
+ * snäpp ljusare för aktiv/hover-rad.
+ *
+ * De fina gradationerna i menyn (ikoner, kanter, sekundär text) får fortsätta
+ * vara white/opacity: de kompositeras över `base` och blir varma av sig själva
+ * när basen är varm. Tokens ägs för de bärande ytorna, inte varje nyans.
+ */
+const DARK_BASE = '#1F1A16'
+export const EVENO_DARK = {
+  /** Basyta (sidomeny, marknadspanel). Varm kolsvart, samma familj som ink. */
+  base: DARK_BASE,
+  /** Upphöjd yta — aktiv/hover-rad i menyn, ett snäpp ljusare. */
+  elevated: mixHex(DARK_BASE, EVENO_PALETTE.bg, 0.08),
+  /** Primär text på mörk yta = cremen själv (kontrast 15.7:1 mot basen, AAA). */
+  text: EVENO_PALETTE.bg,
+  /** Dämpad text (inaktiva menyposter). Blandad till AA (~5.1:1), inte tyst underkänd. */
+  textMuted: mixHex(DARK_BASE, EVENO_PALETTE.bg, 0.52),
+} as const
+
+export type EvenoDarkKey = keyof typeof EVENO_DARK
+
+const EVENO_DARK_VAR_NAMES = {
+  base: '--ev-dark',
+  elevated: '--ev-dark-elevated',
+  text: '--ev-dark-text',
+  textMuted: '--ev-dark-text-muted',
+} as const satisfies Record<EvenoDarkKey, `--ev-dark${string}`>
+
+/**
  * KOMPONENT-VARIABLER (PR6) — ligger MEDVETET utanför den låsta 9-token-paletten.
  *
  * Vissa delade komponenter behöver en yta som inte har någon egen semantisk plats
@@ -298,6 +333,15 @@ export function renderTokensCss(): string {
       `  ${scaleChannelVarName(scale, step)}: ${hexToChannels(value)};`,
     ]),
   ])
+  const darkBlock = [
+    '',
+    '  /* Mörka ytor — härledda ur ink/creme, se EVENO_DARK i tokens.ts. Kanalform',
+    '     (-ch) medföljer för alfa-behov, som i F1/F2:s skalor. */',
+    ...(Object.keys(EVENO_DARK) as EvenoDarkKey[]).flatMap((key) => [
+      `  ${EVENO_DARK_VAR_NAMES[key]}: ${EVENO_DARK[key].toLowerCase()};`,
+      `  ${EVENO_DARK_VAR_NAMES[key]}-ch: ${hexToChannels(EVENO_DARK[key])};`,
+    ]),
+  ]
   return [
     '/* GENERERAD FIL — redigera inte för hand.',
     ' * Källa: packages/ui/src/tokens.ts (EVENO_PALETTE → renderTokensCss()).',
@@ -309,6 +353,7 @@ export function renderTokensCss(): string {
     '  /* Komponent-variabler — härledda ur paletten ovan, aldrig egen hex. */',
     ...componentDecls,
     ...scaleBlocks,
+    ...darkBlock,
     '}',
     '',
   ].join('\n')

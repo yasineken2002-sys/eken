@@ -39,7 +39,7 @@ function BrandPanel() {
   return (
     <div
       className="relative hidden w-[46%] flex-shrink-0 flex-col justify-between overflow-hidden lg:flex"
-      style={{ background: '#0F1117' }}
+      style={{ background: 'var(--ev-dark)' }}
     >
       {/* Subtle grid pattern */}
       <div
