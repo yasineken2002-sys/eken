@@ -1,44 +1,44 @@
-/* @eken/ui: låst palett som CSS-variabler (--ev-*). Importeras FÖRST så att
-   portalens neutrala override nedan vinner via källordning. Portalen kör INGEN
-   Tailwind — den konsumerar dessa RÅA CSS-variabler direkt (beviset att substratet
-   funkar för en icke-Tailwind-app). */
+/* @eken/ui: låst palett som CSS-variabler (--ev-*). Efter F3 commit 2 är detta
+   portalens enda källa för --ev-* — inget neutralt override-block står emellan.
+   Portalen kör INGEN Tailwind: den konsumerar de RÅA CSS-variablerna direkt, och
+   är därmed beviset att substratet bär en icke-Tailwind-app hela vägen. */
 @import '@eken/ui/tokens.css';
 
-:root {
-  /* ── Neutral token-mappning (PR4) ──────────────────────────────────────────
-     --ev-* bundna till portalens NUVARANDE värden (inte målpaletten). Portalens
-     varumärke är grönt (#1a6b3c) redan idag → --ev-brand = #1a6b3c här (blir grönt
-     "gratis" vid flippen; web/admin var blå). Flippen tar bort detta block. */
-  --ev-brand: #1a6b3c;
-  --ev-bg: #f7f8fa;
-  --ev-surface: #ffffff;
-  --ev-text: #111827;
-  --ev-text-muted: #6b7280;
-  --ev-border: #e5e7eb;
-  --ev-status-success: #059669;
-  --ev-status-warning: #d97706;
-  --ev-status-danger: #dc2626;
+/* ── FLIPPEN (F3 commit 2) ───────────────────────────────────────────────────
+   Portalens neutrala override-block är BORTTAGET. Alla --ev-* — palett,
+   komponent-variabler och de härledda skalorna — kommer nu från @eken/ui:s låsta
+   palett. Kanvas #f7f8fa → #f6f4f0 (varm creme), text #111827 → #241f1a (bläck),
+   kant #e5e7eb → #ece7e0, fältkant #d1d5db → var(--ev-border), och hela grå-,
+   status- och varumärkesskalan byter till de härledda varma skalorna.
 
+   Till skillnad från web och admin ändras INGEN varumärkesfärg här: portalens
+   --ev-brand var redan #1a6b3c, alltså exakt målvärdet. Portalens flipp är kall
+   grå → varm creme, ingenting annat. F5 (blått → grönt) rör bara web och admin.
+
+   Portalens egna --color-* står kvar: de är portalens API mot sina CSS-moduler
+   och pekar nu rakt in i @eken/ui. Tre undantag bär fortfarande legacy-blått och
+   hör till F5 — de är namngivna nedan. */
+:root {
   /* Portalens egna --color-*: aliasade till @eken/ui där värdet matchar (neutralt),
      annars kvar som hex (inget matchande token i det låsta 9-schemat). */
-  --color-primary: #2563eb; /* portal-blå, mest oanvänd — inget ev-token, kvar */
-  --color-primary-dark: #1d4ed8; /* kvar */
-  --color-primary-light: #eff6ff; /* kvar */
+  --color-primary: #2563eb; /* legacy-blå → #1a6b3c i F5 */
+  --color-primary-dark: #1d4ed8; /* legacy-blå → F5 */
+  --color-primary-light: #eff6ff; /* legacy-blå → F5 */
   --color-success: var(--ev-status-success);
-  --color-success-light: #ecfdf5; /* kvar */
+  --color-success-light: var(--ev-success-50);
   --color-warning: var(--ev-status-warning);
-  --color-warning-light: #fffbeb; /* kvar */
+  --color-warning-light: var(--ev-warning-50);
   --color-danger: var(--ev-status-danger);
-  --color-danger-light: #fef2f2; /* kvar */
+  --color-danger-light: var(--ev-danger-50);
 
   --color-bg: var(--ev-bg);
   --color-surface: var(--ev-surface);
   --color-border: var(--ev-border);
-  --color-border-strong: #d1d5db; /* inget ev-token — kvar */
+  --color-border-strong: var(--ev-input-border);
 
   --color-text: var(--ev-text);
   --color-text-muted: var(--ev-text-muted);
-  --color-text-faint: #9ca3af; /* inget ev-token — kvar */
+  --color-text-faint: var(--ev-neutral-300);
 
   --radius-sm: 8px;
   --radius-md: 12px;

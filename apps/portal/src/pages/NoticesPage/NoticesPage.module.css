@@ -10,7 +10,7 @@
 .pageTitle {
   font-size: 22px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
 }
 
 /* ── Filter chips ────────────────────────────────────── */
@@ -27,9 +27,9 @@
   border-radius: 999px;
   font-size: 13px;
   font-weight: 500;
-  color: #555;
-  background: #ffffff;
-  border: 0.5px solid #e0e8e0;
+  color: var(--ev-neutral-600);
+  background: var(--ev-surface);
+  border: 0.5px solid var(--ev-brand-300);
   white-space: nowrap;
   cursor: pointer;
   transition: all 0.15s;
@@ -37,7 +37,7 @@
 
 .filterChipActive {
   background: var(--ev-brand);
-  color: #ffffff;
+  color: var(--ev-surface);
   border-color: var(--ev-brand);
 }
 
@@ -53,15 +53,15 @@
 /* ── Invoice card ────────────────────────────────────── */
 
 .card {
-  background: #ffffff;
+  background: var(--ev-surface);
   border-radius: 18px;
-  border: 0.5px solid #e0e8e0;
+  border: 0.5px solid var(--ev-brand-300);
   padding: 16px;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
 }
 
 .cardOverdue {
-  border-color: #fecaca;
+  border-color: var(--ev-danger-200);
   background: #fff8f8;
 }
 
@@ -75,7 +75,7 @@
 .cardMonth {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
 }
 
 .cardAmount {
@@ -95,16 +95,16 @@
 }
 
 .cardDueLabel {
-  color: #888;
+  color: var(--ev-neutral-500);
 }
 
 .cardDueLabelOverdue {
-  color: #dc2626;
+  color: var(--ev-danger-500);
   font-weight: 500;
 }
 
 .cardDueDate {
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
   font-weight: 500;
 }
 
@@ -114,7 +114,7 @@
 
 .paidText {
   font-size: 12px;
-  color: #059669;
+  color: var(--ev-success-600);
   font-weight: 500;
 }
 
@@ -131,7 +131,7 @@
 
 .cardOcrLabel {
   font-size: 11px;
-  color: #aaa;
+  color: var(--ev-neutral-400);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-weight: 600;
@@ -140,7 +140,7 @@
 .cardOcrValue {
   font-size: 13px;
   font-family: 'SF Mono', 'Menlo', monospace;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
   letter-spacing: 0.05em;
 }
 
@@ -154,7 +154,7 @@
 
 .cardProperty {
   font-size: 12px;
-  color: #888;
+  color: var(--ev-neutral-500);
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -198,7 +198,7 @@
   gap: 4px;
   margin: 12px 16px 0;
   padding: 4px;
-  background: #f1f5f9;
+  background: var(--ev-neutral-100);
   border-radius: 12px;
 }
 
@@ -216,14 +216,14 @@
 }
 
 .tabActive {
-  background: #ffffff;
+  background: var(--ev-surface);
   color: var(--ev-brand);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .errorRow {
   font-size: 12px;
-  color: #dc2626;
+  color: var(--ev-danger-500);
   margin-top: 6px;
 }
 
@@ -240,19 +240,19 @@
   justify-content: center;
   width: 64px;
   height: 64px;
-  background: #f0f4f0;
+  background: var(--ev-brand-50);
   border-radius: 50%;
   margin-bottom: 12px;
 }
 
 .emptyText {
   font-size: 15px;
-  color: #888;
+  color: var(--ev-neutral-500);
 }
 
 /* Liten ram-text ovanför debiteringslistan (ersättningskrav, ej "intäkt"). */
 .sectionHint {
   font-size: 12px;
-  color: #888;
+  color: var(--ev-neutral-500);
   padding: 0 2px 2px;
 }

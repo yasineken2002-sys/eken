@@ -27,8 +27,8 @@
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: #16a34a;
-  color: #fff;
+  background: var(--ev-success-500);
+  color: var(--ev-surface);
   font-weight: 700;
   font-size: 20px;
   display: flex;
@@ -108,7 +108,7 @@
   height: 48px;
   border-radius: var(--radius-sm);
   background: var(--color-primary);
-  color: #fff;
+  color: var(--ev-surface);
   font-size: 15px;
   font-weight: 600;
   display: flex;
@@ -131,7 +131,7 @@
   width: 18px;
   height: 18px;
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
+  border-top-color: var(--ev-surface);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }

@@ -17,9 +17,10 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 function getFileIconStyle(mimeType: string): { bg: string; color: string } {
-  if (mimeType === 'application/pdf') return { bg: '#fce8e8', color: '#ef4444' }
+  if (mimeType === 'application/pdf')
+    return { bg: 'var(--ev-danger-100)', color: 'var(--ev-danger-400)' }
   if (mimeType.startsWith('image/')) return { bg: '#e0f2fe', color: '#0284c7' }
-  return { bg: '#f1f5f9', color: '#64748b' }
+  return { bg: 'var(--ev-neutral-100)', color: '#64748b' }
 }
 
 function FileIcon({ mimeType }: { mimeType: string }) {

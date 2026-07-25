@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 
 export function PrivacyPage() {
   return (
-    <div style={{ minHeight: '100vh', background: '#f9fafb', padding: '48px 16px' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--ev-neutral-50)', padding: '48px 16px' }}>
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
         <Link
           to="/"
@@ -12,7 +12,7 @@ export function PrivacyPage() {
             gap: 8,
             fontSize: 13,
             fontWeight: 500,
-            color: '#4b5563',
+            color: 'var(--ev-neutral-700)',
             textDecoration: 'none',
           }}
         >
@@ -33,7 +33,9 @@ export function PrivacyPage() {
           Senast uppdaterad: 2026-05-03
         </p>
 
-        <div style={{ marginTop: 32, fontSize: 14, lineHeight: 1.7, color: '#374151' }}>
+        <div
+          style={{ marginTop: 32, fontSize: 14, lineHeight: 1.7, color: 'var(--ev-neutral-800)' }}
+        >
           <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ev-text)', marginTop: 24 }}>
             1. Personuppgiftsansvarig
           </h2>

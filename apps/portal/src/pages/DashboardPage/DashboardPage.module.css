@@ -7,6 +7,10 @@
 /* ── Green gradient header ──────────────────────────── */
 
 .header {
+  /* Alla tre stoppen lämnas RÅA. Mittstoppet (#1e6b35) får inget steg — skalan har
+     tio och portalen har 32 gröna — och en gradient där två stopp flyttas men det
+     tredje står kvar är det enda som garanterat ser trasigt ut vid flippen.
+     Helt eller inte alls; den här hör till nästa steg (se PR-beskrivningen). */
   background: linear-gradient(160deg, #1a4a28 0%, #1e6b35 50%, #2d8a46 100%);
   border-radius: 0 0 28px 28px;
   overflow: hidden;
@@ -24,7 +28,7 @@
 .greeting {
   font-size: 22px;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--ev-surface);
   line-height: 1.2;
 }
 
@@ -48,8 +52,8 @@
 /* ── Overdue alert ───────────────────────────────────── */
 
 .alertCard {
-  background: #fef2f2;
-  border: 0.5px solid #fecaca;
+  background: var(--ev-danger-50);
+  border: 0.5px solid var(--ev-danger-200);
   border-radius: 14px;
   padding: 12px 14px;
   display: flex;
@@ -61,14 +65,14 @@
 .alertText {
   font-size: 13px;
   font-weight: 600;
-  color: #991b1b;
+  color: var(--ev-danger-700);
 }
 
 .alertBtn {
   padding: 5px 14px;
   border-radius: 8px;
-  background: #dc2626;
-  color: #fff;
+  background: var(--ev-danger-500);
+  color: var(--ev-surface);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -77,9 +81,9 @@
 /* ── Lease card ──────────────────────────────────────── */
 
 .leaseCard {
-  background: #ffffff;
+  background: var(--ev-surface);
   border-radius: 20px;
-  border: 0.5px solid #e0e8e0;
+  border: 0.5px solid var(--ev-brand-300);
   padding: 18px 16px 14px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
@@ -100,7 +104,7 @@
 
 .leaseRentLabel {
   font-size: 12px;
-  color: #888;
+  color: var(--ev-neutral-500);
   margin-top: 2px;
 }
 
@@ -108,7 +112,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0;
-  border-top: 0.5px solid #e8ede8;
+  border-top: 0.5px solid var(--ev-brand-100);
   padding-top: 12px;
 }
 
@@ -122,12 +126,12 @@
 .leaseMetaBox + .leaseMetaBox {
   padding-left: 12px;
   padding-right: 0;
-  border-left: 0.5px solid #e8ede8;
+  border-left: 0.5px solid var(--ev-brand-100);
 }
 
 .leaseMetaLabel {
   font-size: 11px;
-  color: #aaa;
+  color: var(--ev-neutral-400);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-weight: 600;
@@ -136,16 +140,16 @@
 .leaseMetaValue {
   font-size: 13px;
   font-weight: 500;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
 }
 
 .noLeaseCard {
-  background: #ffffff;
+  background: var(--ev-surface);
   border-radius: 18px;
-  border: 0.5px solid #e0e8e0;
+  border: 0.5px solid var(--ev-brand-300);
   padding: 20px;
   text-align: center;
-  color: #888;
+  color: var(--ev-neutral-500);
   font-size: 14px;
 }
 
@@ -158,9 +162,9 @@
 }
 
 .actionCard {
-  background: #ffffff;
+  background: var(--ev-surface);
   border-radius: 18px;
-  border: 0.5px solid #e0e8e0;
+  border: 0.5px solid var(--ev-brand-300);
   padding: 16px 14px;
   display: flex;
   flex-direction: column;
@@ -190,22 +194,22 @@
 .actionTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
   line-height: 1.2;
 }
 
 .actionSub {
   font-size: 12px;
-  color: #888;
+  color: var(--ev-neutral-500);
   margin-top: -6px;
 }
 
 /* ── Latest notice card ──────────────────────────────── */
 
 .noticeCard {
-  background: #ffffff;
+  background: var(--ev-surface);
   border-radius: 18px;
-  border: 0.5px solid #e0e8e0;
+  border: 0.5px solid var(--ev-brand-300);
   padding: 14px 16px;
 }
 
@@ -219,7 +223,7 @@
 .noticeHeaderTitle {
   font-size: 13px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
 }
 
 .noticeHeaderLink {
@@ -239,13 +243,13 @@
 .noticeMonth {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
   text-transform: capitalize;
 }
 
 .noticeDue {
   font-size: 12px;
-  color: #888;
+  color: var(--ev-neutral-500);
   margin-top: 2px;
 }
 
@@ -265,7 +269,7 @@
 /* ── AI helper chips ──────────────────────────────────── */
 
 .aiCard {
-  background: linear-gradient(135deg, #f3f8f3, #ffffff);
+  background: linear-gradient(135deg, #f3f8f3, var(--ev-surface));
   border: 1px solid #d4e4d8;
   border-radius: 16px;
   padding: 14px 16px;
@@ -280,12 +284,12 @@
 
 .aiHeader strong {
   font-size: 14px;
-  color: #1a4a28;
+  color: var(--ev-brand-900);
 }
 
 .aiHeader span {
   font-size: 12px;
-  color: #6c7a6e;
+  color: var(--ev-brand-700);
 }
 
 .aiBadge {
@@ -308,7 +312,7 @@
 
 .aiChip {
   background: white;
-  border: 1px solid #cfe0d2;
+  border: 1px solid var(--ev-brand-400);
   color: var(--ev-brand);
   padding: 7px 12px;
   border-radius: 999px;

@@ -10,12 +10,12 @@
 .pageTitle {
   font-size: 22px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
 }
 
 .subtitle {
   font-size: 13px;
-  color: #888;
+  color: var(--ev-neutral-500);
   margin-top: 2px;
 }
 
@@ -31,9 +31,9 @@
 /* ── Charge card ─────────────────────────────────────── */
 
 .card {
-  background: #ffffff;
+  background: var(--ev-surface);
   border-radius: 18px;
-  border: 0.5px solid #e0e8e0;
+  border: 0.5px solid var(--ev-brand-300);
   padding: 14px;
   display: flex;
   align-items: center;
@@ -74,12 +74,12 @@
 .title {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--ev-neutral-900);
 }
 
 .period {
   font-size: 12px;
-  color: #888;
+  color: var(--ev-neutral-500);
   margin-top: 2px;
 }
 
@@ -100,7 +100,7 @@
 .qtyHigh {
   font-size: 14px;
   font-weight: 700;
-  color: #dc2626;
+  color: var(--ev-danger-500);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -109,15 +109,15 @@
 .highTag {
   font-size: 10px;
   font-weight: 700;
-  color: #dc2626;
-  background: #fce8e8;
+  color: var(--ev-danger-500);
+  background: var(--ev-danger-100);
   border-radius: 6px;
   padding: 1px 6px;
 }
 
 .amount {
   font-size: 12px;
-  color: #888;
+  color: var(--ev-neutral-500);
   margin-top: 3px;
 }
 
@@ -134,12 +134,12 @@
   justify-content: center;
   width: 64px;
   height: 64px;
-  background: #f0f4f0;
+  background: var(--ev-brand-50);
   border-radius: 50%;
   margin-bottom: 12px;
 }
 
 .emptyText {
   font-size: 15px;
-  color: #888;
+  color: var(--ev-neutral-500);
 }

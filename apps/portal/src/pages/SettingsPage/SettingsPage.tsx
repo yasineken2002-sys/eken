@@ -6,7 +6,7 @@ import { useSessionStore } from '@/store/session.store'
 import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
 
 const card: React.CSSProperties = {
-  background: '#fff',
+  background: 'var(--ev-surface)',
   border: '1px solid var(--ev-border)',
   borderRadius: 16,
   padding: 20,
@@ -16,7 +16,7 @@ const btnPrimary: React.CSSProperties = {
   height: 36,
   padding: '0 16px',
   background: '#2563eb',
-  color: '#fff',
+  color: 'var(--ev-surface)',
   border: 'none',
   borderRadius: 8,
   fontSize: 13,
@@ -27,9 +27,9 @@ const btnPrimary: React.CSSProperties = {
 const btnSecondary: React.CSSProperties = {
   height: 36,
   padding: '0 12px',
-  background: '#fff',
-  color: '#374151',
-  border: '1px solid #d1d5db',
+  background: 'var(--ev-surface)',
+  color: 'var(--ev-neutral-800)',
+  border: '1px solid var(--color-border-strong)',
   borderRadius: 8,
   fontSize: 13,
   fontWeight: 500,
@@ -86,7 +86,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f9fafb', padding: '32px 16px' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--ev-neutral-50)', padding: '32px 16px' }}>
       <div style={{ maxWidth: 640, margin: '0 auto' }}>
         <Link
           to="/"
@@ -96,7 +96,7 @@ export function SettingsPage() {
             gap: 8,
             fontSize: 13,
             fontWeight: 500,
-            color: '#4b5563',
+            color: 'var(--ev-neutral-700)',
             textDecoration: 'none',
           }}
         >
@@ -143,8 +143,8 @@ export function SettingsPage() {
                   justifyContent: 'space-between',
                   gap: 12,
                   padding: 14,
-                  background: '#f9fafb',
-                  border: '1px solid #f3f4f6',
+                  background: 'var(--ev-neutral-50)',
+                  border: '1px solid var(--ev-neutral-200)',
                   borderRadius: 12,
                 }}
               >
@@ -170,7 +170,7 @@ export function SettingsPage() {
                 style={{
                   padding: 14,
                   background: 'rgba(254, 226, 226, 0.4)',
-                  border: '1px solid #fecaca',
+                  border: '1px solid var(--ev-danger-200)',
                   borderRadius: 12,
                 }}
               >
@@ -206,7 +206,7 @@ export function SettingsPage() {
                     style={{
                       marginTop: 12,
                       paddingTop: 12,
-                      borderTop: '1px solid #fecaca',
+                      borderTop: '1px solid var(--ev-danger-200)',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: 8,
@@ -218,7 +218,9 @@ export function SettingsPage() {
                       onChange={(e) => setDeletePassword(e.target.value)}
                     />
                     {deleteError && (
-                      <p style={{ margin: 0, fontSize: 12, color: '#dc2626' }}>{deleteError}</p>
+                      <p style={{ margin: 0, fontSize: 12, color: 'var(--ev-danger-500)' }}>
+                        {deleteError}
+                      </p>
                     )}
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button
@@ -250,7 +252,7 @@ export function SettingsPage() {
             </div>
           </section>
 
-          <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af' }}>
+          <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--ev-neutral-300)' }}>
             <Link to="/integritet" style={{ color: 'inherit', textDecoration: 'none' }}>
               Integritetspolicy
             </Link>
