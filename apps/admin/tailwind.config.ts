@@ -1,5 +1,4 @@
 import type { Config } from 'tailwindcss'
-import { fontFamily } from 'tailwindcss/defaultTheme'
 import { evenoPreset, evenoScales } from '@eken/ui/tailwind-preset'
 
 export default {
@@ -27,7 +26,7 @@ export default {
         input: 'var(--ev-input-border)',
       },
       fontFamily: {
-        sans: ['Inter var', ...fontFamily.sans],
+        sans: ['var(--ev-font-sans)'],
       },
     },
   },

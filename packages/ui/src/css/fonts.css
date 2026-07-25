@@ -5,9 +5,22 @@
  * + `latin-ext` (täcker svenska å/ä/ö). Vikter 400/500/600/700, style normal.
  * Binärerna ligger i ../fonts/. font-display: swap.
  *
- * PR1: ingen app importerar denna fil ännu; @font-face definierar bara typsnittet.
- * Inter→Poppins-flippen (att faktiskt SÄTTA font-family) är ett senare steg.
+ * F4: alla tre apparna importerar nu denna fil och sätter sitt typsnitt via
+ * --ev-font-sans nedan. Inter (rsms.me-CDN) är borttaget ur samtliga index.html.
  */
+
+/**
+ * Typsnittsstacken — EN källa för alla tre apparna, precis som färgen.
+ *
+ * Fallbackkedjan är systemtypsnitt och inte Inter: Inter laddas inte längre
+ * någonstans, så att nämna det hade bara varit en död referens som ser ut som
+ * en avsikt. `font-display: swap` gör att fallbacken syns tills woff2:orna är
+ * inne — därför står de systemtypsnitt som ligger NÄRMAST Poppins i bredd först,
+ * så att omflödet mellan fallback och Poppins blir så litet som möjligt.
+ */
+:root {
+  --ev-font-sans: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
 
 /* ── 400 Regular ─────────────────────────────────────────────────────────── */
 @font-face {

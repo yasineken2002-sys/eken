@@ -1,5 +1,4 @@
 import type { Config } from 'tailwindcss'
-import { fontFamily } from 'tailwindcss/defaultTheme'
 import animate from 'tailwindcss-animate'
 import typography from '@tailwindcss/typography'
 import { evenoPreset, evenoScales } from '@eken/ui/tailwind-preset'
@@ -71,7 +70,7 @@ export default {
         sm: 'calc(var(--radius) - 4px)',
       },
       fontFamily: {
-        sans: ['Inter var', ...fontFamily.sans],
+        sans: ['var(--ev-font-sans)'],
       },
     },
   },
