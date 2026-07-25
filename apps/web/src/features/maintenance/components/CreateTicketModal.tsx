@@ -106,7 +106,7 @@ export function CreateTicketModal({ open, onClose }: Props) {
             {...register('description')}
             rows={3}
             placeholder="Beskriv felet i detalj..."
-            className="w-full rounded-lg border border-[#DDDFE4] px-3 py-2 text-[13.5px] text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border-input w-full rounded-lg border px-3 py-2 text-[13.5px] text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {errors.description && (
             <p className="mt-1 text-[12px] text-red-500">{errors.description.message}</p>
@@ -120,7 +120,7 @@ export function CreateTicketModal({ open, onClose }: Props) {
             </label>
             <select
               {...register('propertyId')}
-              className="h-9 w-full rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border-input h-9 w-full rounded-lg border px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Välj fastighet...</option>
               {properties?.map((p) => (
@@ -141,7 +141,7 @@ export function CreateTicketModal({ open, onClose }: Props) {
             <select
               {...register('unitId')}
               disabled={!selectedPropertyId}
-              className="h-9 w-full rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="border-input h-9 w-full rounded-lg border px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <option value="">Välj enhet...</option>
               {units?.map((u) => (
@@ -160,7 +160,7 @@ export function CreateTicketModal({ open, onClose }: Props) {
             </label>
             <select
               {...register('tenantId')}
-              className="h-9 w-full rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border-input h-9 w-full rounded-lg border px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Välj hyresgäst...</option>
               {tenants?.map((t) => (
@@ -177,7 +177,7 @@ export function CreateTicketModal({ open, onClose }: Props) {
             <label className="mb-1.5 block text-[13px] font-medium text-gray-700">Kategori</label>
             <select
               {...register('category')}
-              className="h-9 w-full rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border-input h-9 w-full rounded-lg border px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Välj kategori...</option>
               {CATEGORIES.map((c) => (
@@ -194,7 +194,7 @@ export function CreateTicketModal({ open, onClose }: Props) {
             <label className="mb-1.5 block text-[13px] font-medium text-gray-700">Prioritet</label>
             <select
               {...register('priority')}
-              className="h-9 w-full rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border-input h-9 w-full rounded-lg border px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {PRIORITIES.map((p) => (
                 <option key={p.value} value={p.value}>
@@ -211,7 +211,7 @@ export function CreateTicketModal({ open, onClose }: Props) {
             <input
               type="date"
               {...register('scheduledDate')}
-              className="h-9 w-full rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border-input h-9 w-full rounded-lg border px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 

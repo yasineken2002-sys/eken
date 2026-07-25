@@ -73,7 +73,7 @@ export function InviteUserModal({ open, onClose }: Props) {
         <div className="space-y-1.5">
           <label className="block text-[13px] font-medium text-gray-700">Roll</label>
           <select
-            className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3.5 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/15"
+            className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3.5 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/15"
             {...register('role')}
           >
             <option value="MANAGER">Förvaltare — fullständig hantering, ej ekonomi</option>

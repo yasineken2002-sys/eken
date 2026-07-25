@@ -58,7 +58,7 @@ export function CookieBanner() {
                 <button
                   type="button"
                   onClick={() => accept('necessary-only')}
-                  className="h-9 rounded-lg border border-[#DDDFE4] bg-white px-4 text-[13.5px] font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                  className="border-input h-9 rounded-lg border bg-white px-4 text-[13.5px] font-medium text-gray-700 transition-colors hover:bg-gray-50"
                 >
                   Endast nödvändiga
                 </button>

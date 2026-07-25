@@ -14,6 +14,7 @@ import {
 import { useLeases } from '@/features/leases/hooks/useLeases'
 import { useCustomers } from '@/features/customers/hooks/useCustomers'
 import { cn } from '@/lib/cn'
+import { tint, TINT } from '@/lib/tint'
 import { useOrganization } from '@/features/settings/hooks/useSettings'
 
 interface InvoiceFormProps {
@@ -254,7 +255,7 @@ export function InvoiceForm({
                   <label className="mb-1 block text-[13px] font-medium text-gray-700">
                     Hyresgäst
                   </label>
-                  <div className="flex h-9 items-center rounded-lg border border-[#DDDFE4] bg-gray-50 px-3 text-[13.5px] text-gray-700">
+                  <div className="border-input flex h-9 items-center rounded-lg border bg-gray-50 px-3 text-[13.5px] text-gray-700">
                     {tenantName ?? (
                       <span className="text-gray-400">Väljs automatiskt från avtalet</span>
                     )}
@@ -351,7 +352,7 @@ export function InvoiceForm({
                       <button
                         type="button"
                         onClick={() => remove(idx)}
-                        className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#E5E7EB] text-gray-400 hover:border-red-200 hover:text-red-500 active:scale-[0.97]"
+                        className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:border-red-200 hover:text-red-500 active:scale-[0.97]"
                       >
                         <Trash2 size={13} strokeWidth={1.8} />
                       </button>
@@ -560,7 +561,7 @@ function InvoicePreview({
               width: '36px',
               height: '36px',
               borderRadius: '8px',
-              background: `${invoiceColor}18`,
+              background: tint(invoiceColor, TINT.medium),
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

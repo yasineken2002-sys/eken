@@ -80,14 +80,14 @@ export function InspectionsPage() {
           title="Schemalagda"
           value={stats?.scheduled ?? 0}
           icon={Calendar}
-          iconColor="#D97706"
+          iconColor="var(--ev-warning-600)"
           delay={0}
         />
         <StatCard
           title="Pågående"
           value={stats?.inProgress ?? 0}
           icon={Activity}
-          iconColor="#2563EB"
+          iconColor="var(--ev-brand)"
           delay={0.04}
         />
         <StatCard
@@ -101,7 +101,7 @@ export function InspectionsPage() {
           title="Signerade"
           value={stats?.signed ?? 0}
           icon={PenLine}
-          iconColor="#059669"
+          iconColor="var(--ev-success-600)"
           delay={0.12}
         />
       </div>

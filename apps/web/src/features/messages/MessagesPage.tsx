@@ -282,21 +282,21 @@ export function MessagesPage() {
           title="Totalt skickade"
           value={stats?.total ?? 0}
           icon={MessageSquare}
-          iconColor="#2563EB"
+          iconColor="var(--ev-brand)"
           delay={0}
         />
         <StatCard
           title="Lyckade"
           value={stats?.sent ?? 0}
           icon={CheckCircle}
-          iconColor="#059669"
+          iconColor="var(--ev-success-600)"
           delay={0.05}
         />
         <StatCard
           title="Misslyckade"
           value={stats?.failed ?? 0}
           icon={XCircle}
-          iconColor="#DC2626"
+          iconColor="var(--ev-danger-600)"
           delay={0.1}
         />
         <StatCard
@@ -360,7 +360,7 @@ export function MessagesPage() {
                     <select
                       value={tenantId}
                       onChange={(e) => setTenantId(e.target.value)}
-                      className="h-9 w-full rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="border-input h-9 w-full rounded-lg border px-3 text-[13.5px] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Välj hyresgäst...</option>
                       {tenants.map((t) => (
@@ -391,7 +391,7 @@ export function MessagesPage() {
                 value={subject}
                 onChange={(e) => setSubject(e.target.value.slice(0, 200))}
                 placeholder="t.ex. Viktig information om fastigheten"
-                className="h-9 w-full rounded-lg border border-[#DDDFE4] px-3 text-[13.5px] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="border-input h-9 w-full rounded-lg border px-3 text-[13.5px] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -406,7 +406,7 @@ export function MessagesPage() {
                 onChange={(e) => setContent(e.target.value.slice(0, 5000))}
                 placeholder="Skriv ditt meddelande här..."
                 rows={8}
-                className="w-full resize-none rounded-lg border border-[#DDDFE4] px-3 py-2 text-[13.5px] leading-relaxed focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="border-input w-full resize-none rounded-lg border px-3 py-2 text-[13.5px] leading-relaxed focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 style={{ minHeight: 200 }}
               />
             </div>

@@ -397,7 +397,7 @@ export function RegisterPage() {
                       }
                       className={cn(
                         'flex h-10 w-full rounded-xl border bg-white px-3.5 text-[13.5px] text-gray-900',
-                        'border-[#E5E7EB] transition-all hover:border-gray-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/15',
+                        'border-gray-200 transition-all hover:border-gray-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/15',
                       )}
                     >
                       {COMPANY_FORM_OPTIONS.map((opt) => (
@@ -432,7 +432,7 @@ export function RegisterPage() {
                   </div>
 
                   {/* F-skatt — lagkrav att visas på faktura enligt 11 kap. 8 § ML */}
-                  <div className="rounded-xl border border-[#E5E7EB] bg-gray-50/50 p-3.5">
+                  <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-3.5">
                     <label className="flex cursor-pointer items-start gap-2.5">
                       <input
                         type="checkbox"
@@ -470,7 +470,7 @@ export function RegisterPage() {
                   {/* Acceptans-checkbox — krävs både av frontend-schemat och
                       backend-DTO. Länkarna öppnar i ny flik så att användaren
                       inte tappar formuläret. */}
-                  <div className="rounded-xl border border-[#E5E7EB] bg-gray-50/50 p-3.5">
+                  <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-3.5">
                     <label className="flex cursor-pointer items-start gap-2.5">
                       <input
                         type="checkbox"

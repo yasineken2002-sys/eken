@@ -223,7 +223,7 @@ export function UnitsPage() {
             title="Totalt"
             value={units.length}
             icon={LayoutGrid}
-            iconColor="#2563EB"
+            iconColor="var(--ev-brand)"
             delay={0}
           />
         </motion.div>
@@ -232,7 +232,7 @@ export function UnitsPage() {
             title="Lediga"
             value={vacantCount}
             icon={DoorOpen}
-            iconColor="#2563EB"
+            iconColor="var(--ev-brand)"
             delay={0.05}
           />
         </motion.div>
@@ -250,7 +250,7 @@ export function UnitsPage() {
             title="Underhåll"
             value={renovationCount}
             icon={Wrench}
-            iconColor="#D97706"
+            iconColor="var(--ev-warning-600)"
             delay={0.15}
           />
         </motion.div>

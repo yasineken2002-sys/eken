@@ -28,7 +28,7 @@ export const PasswordInput = forwardRef<HTMLInputElement, Props>(
               'transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-0',
               error
                 ? 'border-red-300 focus:border-red-400 focus:ring-red-500/15'
-                : 'border-[#E5E7EB] hover:border-gray-300 focus:border-blue-500 focus:ring-blue-500/15',
+                : 'border-gray-200 hover:border-gray-300 focus:border-blue-500 focus:ring-blue-500/15',
               className,
             )}
             {...props}
