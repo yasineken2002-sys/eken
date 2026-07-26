@@ -187,59 +187,33 @@ export function streamChat(
   return () => controller.abort()
 }
 
-const TOOL_LABELS: Record<string, string> = {
-  get_dashboard_stats: 'Hämtar översikt',
-  get_overdue_invoices: 'Hämtar förfallna fakturor',
-  get_expiring_leases: 'Letar efter kontrakt som löper ut',
-  get_tenants: 'Hämtar hyresgäster',
-  get_invoices: 'Hämtar fakturor',
-  get_properties: 'Hämtar fastigheter',
-  get_units: 'Hämtar enheter',
-  get_available_units: 'Letar efter lediga enheter',
-  get_leases: 'Hämtar kontrakt',
-  get_maintenance_tickets: 'Hämtar underhållsärenden',
-  get_maintenance_plan: 'Hämtar underhållsplan',
-  get_rent_notices: 'Hämtar hyresavier',
-  get_inspections: 'Hämtar besiktningar',
-  create_invoice: 'Förbereder ny faktura',
-  update_tenant: 'Uppdaterar hyresgäst',
-  send_invoice_email: 'Förbereder e-post med faktura',
-  send_overdue_reminders: 'Förbereder påminnelser',
-  mark_invoice_paid: 'Markerar faktura som betald',
-  create_lease: 'Förbereder kontrakt',
-  transition_lease_status: 'Ändrar kontraktsstatus',
-  create_property: 'Förbereder ny fastighet',
-  create_unit: 'Förbereder ny enhet',
-  export_sie4: 'Förbereder SIE4-export',
-  compose_and_send_email: 'Förbereder e-postutskick',
-  apply_rent_increase: 'Förbereder hyreshöjning',
-  generate_lease_contract: 'Förbereder kontraktsmall',
-  create_tenant_and_lease: 'Förbereder hyresgäst och kontrakt',
-  generate_rent_notices: 'Förbereder hyresavier',
-  create_inspection: 'Förbereder besiktning',
-  // Bankavstämning + bokföring
-  get_bank_transactions: 'Hämtar banktransaktioner',
-  get_unmatched_transactions: 'Hämtar omatchade transaktioner',
-  get_reconciliation_summary: 'Hämtar avstämningsläget',
-  match_bank_transaction: 'Förbereder manuell matchning',
-  import_bgmax_file: 'Förbereder BgMax-import',
-  unmatch_transaction: 'Förbereder avmatchning',
-  get_journal_entries: 'Hämtar verifikat',
-  get_account_balance: 'Hämtar kontosaldo',
-  get_vat_report: 'Genererar momsrapport',
-  get_profit_loss_report: 'Genererar resultaträkning',
-  get_balance_sheet: 'Genererar balansräkning',
-  create_journal_entry: 'Förbereder manuellt verifikat',
-  record_expense: 'Förbereder utgiftsbokning',
-  close_period: 'Förbereder periodstängning',
-  // Påminnelser och inkasso
-  get_overdue_status: 'Hämtar status på förfallna fakturor',
-  pause_reminders: 'Pausar påminnelser',
-  resume_reminders: 'Återupptar påminnelser',
-  export_for_collection: 'Skapar inkassounderlag',
-  mark_sent_to_collection: 'Markerar skickad till inkasso',
+/**
+ * Verktygskatalogen hämtas från backend — frontend håller INGEN egen lista.
+ *
+ * Den gamla `TOOL_LABELS` här drev isär från serverns `TOOLS`: 10 verktyg
+ * saknade etikett och visades som "Kör find optimization opportunities", och
+ * 2 etiketter (`get_units`, `get_leases`) pekade på verktyg som tagits bort.
+ * Etiketter och grupper bor nu i apps/api/src/ai/tools/ai-tools.catalog.ts,
+ * vaktade av ett test som fäller bygget vid drift åt båda hållen.
+ */
+export type ToolGroup =
+  | 'Ekonomi & avier'
+  | 'Bankavstämning'
+  | 'Avtal & hyresgäster'
+  | 'Fastigheter & underhåll'
+  | 'Dokument & juridik'
+
+export interface ToolCatalogEntry {
+  name: string
+  label: string
+  group: ToolGroup
+  /** true = kräver användarens bekräftelse innan den körs. */
+  binding: boolean
 }
 
-export function describeTool(name: string): string {
-  return TOOL_LABELS[name] ?? `Kör ${name.replace(/_/g, ' ')}`
+export const fetchToolCatalog = () => get<ToolCatalogEntry[]>('/ai/tools')
+
+/** name → etikett, för statusraden medan ett verktyg kör. */
+export function toolLabelMap(catalog: ToolCatalogEntry[]): Record<string, string> {
+  return Object.fromEntries(catalog.map((t) => [t.name, t.label]))
 }

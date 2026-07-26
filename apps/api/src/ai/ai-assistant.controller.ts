@@ -26,6 +26,7 @@ import { PortfolioAnalysisService } from './portfolio-analysis.service'
 import { DataContextService } from './data-context.service'
 import { ToolExecutorService } from './tools/tool-executor.service'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
+import { buildToolCatalog } from './tools/ai-tools.catalog'
 import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -429,6 +430,23 @@ export class AiAssistantController {
       user.sub,
       user.role,
     )
+  }
+
+  /**
+   * Verktygskatalogen — vad assistenten KAN, i den form användaren ska se den.
+   *
+   * Härledd ur TOOLS + ACTION_TOOLS vid varje anrop, så listan aldrig kan
+   * drifta från den assistenten faktiskt får. Innehållet är identiskt för alla
+   * organisationer (det är produktens förmågor, inte kunddata) men endpointen
+   * kräver samma auth som chatten.
+   *
+   * OBS: katalogen visar ALLA verktyg. Att ett verktyg syns här betyder inte
+   * att just den här användaren får köra det — rollgrindarna (ACTION_TOOLS,
+   * ACCOUNTING_ONLY_ACTIONS) sitter kvar i tool-executorn vid exekvering.
+   */
+  @Get('tools')
+  getToolCatalog(@OrgId() _orgId: string) {
+    return buildToolCatalog()
   }
 
   @Get('conversations')

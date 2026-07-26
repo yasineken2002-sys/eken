@@ -2,7 +2,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Sparkles } from 'lucide-react'
 import { LoadingDots } from './LoadingDots'
 import { MessageBubble } from './MessageBubble'
-import { describeTool } from '../api/ai.api'
 import { cn } from '@/lib/cn'
 import type { AiMessage } from '../api/ai.api'
 
@@ -18,6 +17,12 @@ interface MessageListProps {
   isStreaming: boolean
   streamingText: string
   toolEvents: ToolEvent[]
+  /**
+   * name → etikett ur backends verktygskatalog. Tom medan katalogen hämtas;
+   * då visas verktygsnamnet läsbart i stället. Frontend har medvetet ingen
+   * egen etikettlista — se ai.api.ts.
+   */
+  toolLabels: Record<string, string>
   /** Ankare längst ned som sidan scrollar till när något nytt kommer in. */
   endRef: React.RefObject<HTMLDivElement>
 }
@@ -32,8 +37,10 @@ export function MessageList({
   isStreaming,
   streamingText,
   toolEvents,
+  toolLabels,
   endRef,
 }: MessageListProps) {
+  const describe = (name: string) => toolLabels[name] ?? name.replace(/_/g, ' ')
   return (
     <div className="mx-auto max-w-3xl space-y-5 px-6 py-6">
       <AnimatePresence initial={false}>
@@ -86,7 +93,7 @@ export function MessageList({
                       )}
                     />
                     <span>
-                      {describeTool(evt.name)}
+                      {describe(evt.name)}
                       {evt.status === 'done' ? '' : '…'}
                     </span>
                   </motion.div>
