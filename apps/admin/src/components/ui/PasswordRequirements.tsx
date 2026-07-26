@@ -18,7 +18,7 @@ export function PasswordRequirements({ password }: Props) {
             className={
               c.passed
                 ? 'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white'
-                : 'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-300'
+                : 'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-400'
             }
           >
             {c.passed ? <Check size={10} strokeWidth={3} /> : <X size={9} strokeWidth={2.5} />}

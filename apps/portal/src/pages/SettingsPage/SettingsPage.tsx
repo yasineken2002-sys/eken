@@ -252,7 +252,7 @@ export function SettingsPage() {
             </div>
           </section>
 
-          <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--ev-neutral-300)' }}>
+          <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--ev-neutral-400)' }}>
             <Link to="/integritet" style={{ color: 'inherit', textDecoration: 'none' }}>
               Integritetspolicy
             </Link>

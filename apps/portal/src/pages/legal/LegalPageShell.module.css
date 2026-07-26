@@ -74,7 +74,7 @@
   flex-wrap: wrap;
   gap: 8px;
   font-size: 12px;
-  color: var(--ev-neutral-300);
+  color: var(--ev-neutral-400);
   margin-bottom: 24px;
 }
 
@@ -96,7 +96,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--ev-neutral-300);
+  color: var(--ev-neutral-400);
   margin-bottom: 8px;
 }
 

@@ -272,7 +272,7 @@ export function DashboardPage() {
           <button className={styles.actionCard} onClick={() => navigate('/news')}>
             <div
               className={styles.actionIcon}
-              style={{ background: '#fef3e2', color: 'var(--ev-warning-400)' }}
+              style={{ background: '#fef3e2', color: 'var(--ev-warning-600)' }}
             >
               <NyheterSvg />
             </div>
@@ -283,7 +283,7 @@ export function DashboardPage() {
           <button className={styles.actionCard} onClick={() => navigate('/maintenance')}>
             <div
               className={styles.actionIcon}
-              style={{ background: 'var(--ev-danger-100)', color: 'var(--ev-danger-400)' }}
+              style={{ background: 'var(--ev-danger-100)', color: 'var(--ev-danger-600)' }}
             >
               <FelanmalanSvg />
             </div>

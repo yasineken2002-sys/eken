@@ -166,7 +166,7 @@ export function UploadDocumentModal({
                 />
                 <p className="text-[13.5px] font-medium text-gray-700">Dra och släpp en fil hit</p>
                 <p className="mt-1 text-[12px] text-gray-400">eller klicka för att välja fil</p>
-                <p className="mt-2 text-[11px] text-gray-300">
+                <p className="mt-2 text-[11px] text-gray-400">
                   PDF, Word, Excel, JPG, PNG — max 20 MB
                 </p>
                 {sizeError && (

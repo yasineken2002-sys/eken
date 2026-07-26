@@ -308,7 +308,7 @@ export function LeasesPage() {
       header: 'Slutdatum',
       cell: (l: LeaseDetail) => {
         if (!l.endDate) {
-          return <span className="text-[12px] text-gray-300">Tillsvidare</span>
+          return <span className="text-[12px] text-gray-400">Tillsvidare</span>
         }
         const days = daysUntil(l.endDate)
         return (

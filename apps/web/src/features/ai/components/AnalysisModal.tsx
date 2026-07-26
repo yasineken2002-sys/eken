@@ -260,7 +260,7 @@ export function AnalysisModal({ open, onClose }: AnalysisModalProps) {
                   )}
 
                   {/* Footer */}
-                  <p className="text-right text-[11px] text-gray-300">
+                  <p className="text-right text-[11px] text-gray-400">
                     Genererad {formatDate(result.generatedAt)}
                   </p>
                 </motion.div>

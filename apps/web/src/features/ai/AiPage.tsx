@@ -645,7 +645,7 @@ export function AiPage() {
                             {lastMsg.content}
                           </p>
                         )}
-                        <p className="mt-0.5 text-[11px] text-gray-300">
+                        <p className="mt-0.5 text-[11px] text-gray-400">
                           {formatDate(conv.updatedAt)}
                         </p>
                       </div>
@@ -874,7 +874,7 @@ export function AiPage() {
                 />
                 <div className="flex flex-shrink-0 items-center gap-2">
                   {input.length > 0 && (
-                    <span className="text-[11px] text-gray-300">{input.length}</span>
+                    <span className="text-[11px] text-gray-400">{input.length}</span>
                   )}
                   <button
                     type="button"
@@ -898,7 +898,7 @@ export function AiPage() {
                   </button>
                 </div>
               </div>
-              <p className="mt-2 text-center text-[11px] text-gray-300">
+              <p className="mt-2 text-center text-[11px] text-gray-400">
                 Eveno AI kan utföra åtgärder — åtgärder kräver alltid din bekräftelse.
               </p>
             </div>
