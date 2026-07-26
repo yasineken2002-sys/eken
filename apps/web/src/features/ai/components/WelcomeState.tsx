@@ -1,116 +1,110 @@
 import { motion } from 'framer-motion'
 import {
   Sparkles,
-  AlertTriangle,
+  Receipt,
+  ArrowLeftRight,
   FileText,
   TrendingUp,
-  Building2,
-  Users,
   type LucideIcon,
 } from 'lucide-react'
 
 interface Suggestion {
   icon: LucideIcon
+  /** Kort etikett i chipet. */
   label: string
-  color: string
-  bg: string
+  /** Det som faktiskt skickas till assistenten när chipet klickas. */
+  prompt: string
 }
 
 /**
- * Snabbstart-chipsen i tomt läge. Etiketten skickas ordagrant som prompt, så
- * texten är inte bara en rubrik — den är indata till assistenten.
+ * Fyra snabbstarter, en per återkommande arbetsuppgift. Etiketten är kort och
+ * läsbar; `prompt` är den fullständiga frågan som skickas — de var samma sträng
+ * förut, vilket tvingade etiketterna att vara hela meningar.
+ *
+ * Ikonerna är samma linjeikoner som motsvarande sidor i sidomenyn använder, i
+ * varumärkesgrönt. (`text-blue-600` ÄR grönt sedan F5 — blå familjen pekar på
+ * varumärkesskalan.)
  */
 const SUGGESTIONS: Suggestion[] = [
   {
-    icon: AlertTriangle,
-    label: 'Vilka hyresgäster har förfallna fakturor?',
-    color: 'var(--ev-danger-600)',
-    bg: 'var(--ev-danger-50)',
+    icon: Receipt,
+    label: 'Förfallna avier',
+    prompt: 'Vilka hyresavier är förfallna just nu?',
+  },
+  {
+    icon: ArrowLeftRight,
+    label: 'Stäm av bank',
+    prompt: 'Visa omatchade banktransaktioner',
   },
   {
     icon: FileText,
-    label: 'Skapa hyresfakturor för maj 2026',
-    color: 'var(--ev-success-600)',
-    bg: 'var(--ev-success-50)',
+    label: 'Skapa faktura',
+    prompt: 'Skapa en faktura',
   },
   {
     icon: TrendingUp,
-    label: 'Visa intäkter för Q1 2026',
-    color: 'var(--ev-brand)',
-    bg: 'var(--ev-brand-50)',
-  },
-  {
-    icon: AlertTriangle,
-    label: 'Skicka påminnelser till förfallna fakturor',
-    color: 'var(--ev-warning-600)',
-    bg: 'var(--ev-warning-50)',
-  },
-  { icon: Building2, label: 'Hur många lediga enheter finns?', color: '#7C3AED', bg: '#F5F3FF' },
-  {
-    icon: Users,
-    label: 'Exportera bokföring för 2026',
-    color: 'var(--ev-neutral-500)',
-    bg: 'var(--ev-neutral-50)',
+    label: 'Hyreshöjning',
+    prompt: 'Beräkna hyreshöjningar för nästa år',
   },
 ]
 
-interface WelcomeStateProps {
-  onSuggestion: (label: string) => void
-}
-
-/** Tomt läge: hälsning + snabbstart-chips. Visas när ingen konversation är vald. */
-export function WelcomeState({ onSuggestion }: WelcomeStateProps) {
+/** Hälsningen ovanför kompositören i tomt läge. */
+export function WelcomeGreeting() {
   return (
-    <div className="flex h-full flex-col items-center justify-center px-8 py-12">
+    <div className="flex flex-col items-center">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.3 }}
-        className="flex h-16 w-16 items-center justify-center rounded-2xl border border-gray-100 bg-white shadow-md"
+        className="border-line bg-surface flex h-14 w-14 items-center justify-center rounded-2xl border shadow-sm"
       >
-        <Sparkles size={28} strokeWidth={1.5} className="text-blue-500" />
+        <Sparkles size={26} strokeWidth={1.5} className="text-blue-600" />
       </motion.div>
       <motion.h2
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="mt-4 text-[20px] font-semibold text-gray-900"
+        className="text-ink mt-4 text-[22px] font-semibold tracking-tight"
       >
-        Hej! Jag är Eveno AI
+        Hej! Vad vill du göra?
       </motion.h2>
       <motion.p
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.15 }}
-        className="mt-2 max-w-sm text-center text-[13.5px] text-gray-500"
+        className="mt-1.5 max-w-md text-center text-[13.5px] text-gray-500"
       >
-        Jag kan analysera din fastighetsportfölj, skapa fakturor, hantera hyresgäster och ge dig
-        konkreta råd — allt baserat på aktuell data.
+        Jag har tillgång till din portfölj — fråga om läget, eller be mig utföra något. Bindande
+        åtgärder visar jag alltid för bekräftelse först.
       </motion.p>
-
-      {/* Suggestion chips */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="mt-8 grid w-full max-w-lg grid-cols-2 gap-2"
-      >
-        {SUGGESTIONS.map((s) => (
-          <button
-            key={s.label}
-            onClick={() => onSuggestion(s.label)}
-            className="flex items-center gap-2.5 rounded-xl border border-gray-100 bg-white px-4 py-3 text-left transition-all hover:border-blue-200 hover:shadow-sm active:scale-[0.98]"
-          >
-            <div
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-              style={{ background: s.bg }}
-            >
-              <s.icon size={14} strokeWidth={1.8} style={{ color: s.color }} />
-            </div>
-            <span className="text-[12.5px] font-medium text-gray-700">{s.label}</span>
-          </button>
-        ))}
-      </motion.div>
     </div>
+  )
+}
+
+interface SuggestionChipsProps {
+  onSelect: (prompt: string) => void
+}
+
+/** Snabbstart-chipsen under kompositören i tomt läge. */
+export function SuggestionChips({ onSelect }: SuggestionChipsProps) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.2 }}
+      className="flex flex-wrap items-center justify-center gap-2"
+    >
+      {SUGGESTIONS.map((s) => (
+        <button
+          key={s.label}
+          onClick={() => onSelect(s.prompt)}
+          title={s.prompt}
+          className="border-line bg-surface flex items-center gap-2 rounded-full border px-3.5 py-2 transition-all hover:border-blue-300 hover:shadow-sm active:scale-[0.98]"
+        >
+          <s.icon size={14} strokeWidth={1.8} className="text-blue-600" />
+          <span className="text-[12.5px] font-medium text-gray-700">{s.label}</span>
+        </button>
+      ))}
+    </motion.div>
   )
 }
