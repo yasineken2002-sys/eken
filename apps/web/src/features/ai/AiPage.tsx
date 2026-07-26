@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { PageWrapper } from '@/components/ui/PageWrapper'
@@ -8,7 +8,7 @@ import { Composer } from './components/Composer'
 import { ConfirmationCard } from './components/ConfirmationCard'
 import { ConversationSidebar } from './components/ConversationSidebar'
 import { MessageList } from './components/MessageList'
-import { WelcomeState } from './components/WelcomeState'
+import { SuggestionChips, WelcomeGreeting } from './components/WelcomeState'
 import {
   useConversations,
   useConversation,
@@ -286,8 +286,9 @@ export function AiPage() {
     setPendingAction(null)
   }
 
-  const isNewChat = !activeConversationId
-  const hasMessages = allMessages.length > 0
+  // Tomt läge: ingen vald konversation OCH inget på väg in. Styr både
+  // kompositörens variant och om hälsning/chips visas.
+  const isEmpty = !activeConversationId && allMessages.length === 0
 
   return (
     <PageWrapper id="ai">
@@ -305,13 +306,22 @@ export function AiPage() {
           onOpenAnalysis={() => setAnalysisOpen(true)}
         />
 
-        {/* ── Chat Area ── */}
+        {/* ── Chat Area ──
+            Kompositören ligger på SAMMA plats i trädet i båda lägena och monteras
+            aldrig om — den byter bara variant. Skulle den flyttas mellan två
+            grenar hade React monterat om textarean och användaren tappat fokus
+            i samma ögonblick som konversationen startar. Ytorna över och under
+            den styr i stället var den hamnar: i tomt läge klämmer de in den mitt
+            på sidan, i konversationsläge fyller meddelandena ytan ovanför och
+            kompositören hamnar i botten. `layout` gör förflyttningen till en
+            glidning i stället för ett hopp. */}
         <div className="bg-canvas flex min-w-0 flex-1 flex-col">
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto">
-            {isNewChat && !hasMessages ? (
-              <WelcomeState onSuggestion={(label) => void handleSend(label)} />
-            ) : (
+          {isEmpty ? (
+            <div className="flex flex-1 flex-col items-center justify-end px-8 pb-7">
+              <WelcomeGreeting />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto">
               <MessageList
                 messages={allMessages}
                 isThinking={isThinking}
@@ -320,8 +330,8 @@ export function AiPage() {
                 toolEvents={toolEvents}
                 endRef={messagesEndRef}
               />
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Confirmation card — shown above input */}
           <AnimatePresence>
@@ -335,17 +345,25 @@ export function AiPage() {
             )}
           </AnimatePresence>
 
-          {/* Input area */}
-          <Composer
-            value={input}
-            onChange={setInput}
-            onSubmit={() => void handleSend()}
-            disabled={isThinking || isStreaming}
-            isListening={voice.isListening}
-            onStartVoice={voice.start}
-            onStopVoice={voice.stop}
-            textareaRef={textareaRef}
-          />
+          <motion.div layout transition={{ type: 'spring', stiffness: 320, damping: 34 }}>
+            <Composer
+              value={input}
+              onChange={setInput}
+              onSubmit={() => void handleSend()}
+              disabled={isThinking || isStreaming}
+              isListening={voice.isListening}
+              onStartVoice={voice.start}
+              onStopVoice={voice.stop}
+              variant={isEmpty ? 'hero' : 'docked'}
+              textareaRef={textareaRef}
+            />
+          </motion.div>
+
+          {isEmpty && (
+            <div className="flex flex-1 flex-col items-center justify-start px-8 pt-5">
+              <SuggestionChips onSelect={(prompt) => void handleSend(prompt)} />
+            </div>
+          )}
         </div>
       </div>
 
