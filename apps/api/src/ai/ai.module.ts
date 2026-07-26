@@ -8,6 +8,8 @@ import { PortfolioAnalysisService } from './portfolio-analysis.service'
 import { TenantAiController } from './tenant-ai.controller'
 import { TenantAiService } from './tenant-ai.service'
 import { TenantToolExecutorService } from './tools/tenant-tool-executor.service'
+import { AiAttachmentsController } from './attachments/ai-attachments.controller'
+import { AiAttachmentsService } from './attachments/ai-attachments.service'
 import { AiUsageModule } from './usage/ai-usage.module'
 import { AiAuditService } from './audit/ai-audit.service'
 import { PrismaModule } from '../common/prisma/prisma.module'
@@ -63,7 +65,7 @@ import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.ser
     TerminationsModule,
     DocumentsModule,
   ],
-  controllers: [AiAssistantController, TenantAiController],
+  controllers: [AiAssistantController, AiAttachmentsController, TenantAiController],
   providers: [
     AiAssistantService,
     DataContextService,
@@ -71,6 +73,7 @@ import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.ser
     MemoryService,
     PortfolioAnalysisService,
     AiAuditService,
+    AiAttachmentsService,
     TenantAiService,
     TenantToolExecutorService,
     LegalEmbeddingService,
