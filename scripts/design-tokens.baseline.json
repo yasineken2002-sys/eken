@@ -238,12 +238,14 @@
         "raw-color-fn": 2
       }
     },
-    "apps/web/src/features/ai/AiPage.tsx": {
-      "chart-colors": {
-        "raw-hex": 2
-      },
+    "apps/web/src/features/ai/components/MessageBubble.tsx": {
       "green-legacy": {
         "tw-arbitrary": 1
+      }
+    },
+    "apps/web/src/features/ai/components/WelcomeState.tsx": {
+      "chart-colors": {
+        "raw-hex": 2
       }
     },
     "apps/web/src/features/auth/LoginPage.tsx": {
