@@ -1,7 +1,10 @@
-import { Send, Mic, MicOff } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Send, Mic, MicOff, Paperclip } from 'lucide-react'
+import { AttachmentTray } from './AttachmentTray'
 import { ToolMenu } from './ToolMenu'
 import { cn } from '@/lib/cn'
-import type { ToolCatalogEntry } from '../api/ai.api'
+import { ATTACHMENT_ACCEPT, type ToolCatalogEntry } from '../api/ai.api'
+import type { PendingAttachment } from '../hooks/useAttachments'
 
 /** Max höjd på textarean innan den börjar scrolla internt. */
 const MAX_TEXTAREA_HEIGHT = 160
@@ -26,6 +29,15 @@ interface ComposerProps {
   toolCatalog: ToolCatalogEntry[] | undefined
   /** Val i verktygsmenyn. Fyller bara rutan; skickar aldrig. */
   onSelectTool: (entry: ToolCatalogEntry) => void
+  /** Bilagor på väg in i meddelandet (B4). */
+  attachments: PendingAttachment[]
+  onAddFiles: (files: File[]) => void
+  onRemoveAttachment: (localId: string) => void
+  /**
+   * Varför sändning är blockerad av bilagorna, eller null. Visas som titel på
+   * skicka-knappen så en avstängd knapp aldrig är oförklarad.
+   */
+  attachmentBlockingReason: string | null
   /**
    * Ägs av sidan: den nollställer höjden efter skickat meddelande och vid ny
    * konversation. Auto-resize under skrivandet sker här inne.
@@ -42,6 +54,10 @@ interface ComposerProps {
  * renderar `#1d5834`. Att i stället skriva `bg-brand` hade gett en annan
  * grön nyans (#1a6b3c) än appens alla andra primärknappar — konsekvensen
  * väger tyngre än att klassnamnet läser fel.
+ *
+ * TRE VÄGAR IN FÖR EN BILAGA (B4), för att folk gör olika: gemet öppnar
+ * filväljaren, Ctrl+V klistrar in en skärmdump, och drag-och-släpp tar en fil
+ * från skrivbordet. Alla tre går till samma `onAddFiles`.
  */
 export function Composer({
   value,
@@ -54,9 +70,19 @@ export function Composer({
   variant,
   toolCatalog,
   onSelectTool,
+  attachments,
+  onAddFiles,
+  onRemoveAttachment,
+  attachmentBlockingReason,
   textareaRef,
 }: ComposerProps) {
   const isHero = variant === 'hero'
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  // Räknare, inte boolean: dragenter/dragleave fyras även när pekaren rör sig
+  // mellan barnelement. Med en boolean slocknar markeringen så fort man passerar
+  // textarean, mitt i draget.
+  const dragDepth = useRef(0)
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value)
@@ -74,6 +100,28 @@ export function Composer({
     }
   }
 
+  /**
+   * Inklistring. Bara filer plockas upp — klistrar man in TEXT ska den hamna i
+   * textarean som vanligt, så `preventDefault` sker enbart när det faktiskt
+   * fanns en fil i urklippet.
+   */
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(e.clipboardData.files)
+    if (files.length === 0) return
+    e.preventDefault()
+    onAddFiles(files)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    dragDepth.current = 0
+    setIsDragging(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) onAddFiles(files)
+  }
+
+  const openFilePicker = () => fileInputRef.current?.click()
+
   return (
     <div className={cn('w-full', isHero ? 'px-8' : 'border-line bg-surface border-t px-6 py-4')}>
       <div className={cn('mx-auto w-full', isHero ? 'max-w-2xl' : 'max-w-3xl')}>
@@ -83,10 +131,32 @@ export function Composer({
             Lyssnar... Tala din fråga på svenska
           </div>
         )}
+
+        <AttachmentTray attachments={attachments} onRemove={onRemoveAttachment} />
+
+        {/* Släppzonen är hela inmatningsytan, inte en egen ruta: man siktar på
+            rutan man skriver i. `dragDepth` räknar in/ut så markeringen inte
+            blinkar när pekaren passerar barnelement. */}
         <div
+          onDragEnter={(e) => {
+            e.preventDefault()
+            dragDepth.current++
+            if (e.dataTransfer.types.includes('Files')) setIsDragging(true)
+          }}
+          onDragOver={(e) => e.preventDefault()}
+          onDragLeave={(e) => {
+            e.preventDefault()
+            dragDepth.current--
+            if (dragDepth.current <= 0) {
+              dragDepth.current = 0
+              setIsDragging(false)
+            }
+          }}
+          onDrop={handleDrop}
           className={cn(
             'border-line bg-surface flex items-end gap-3 border transition-all',
             'focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100',
+            isDragging && 'border-blue-400 bg-blue-50/60 ring-2 ring-blue-100',
             isHero ? 'rounded-3xl px-5 py-4 shadow-md' : 'rounded-2xl px-4 py-3',
           )}
         >
@@ -95,8 +165,13 @@ export function Composer({
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={
-              isHero ? 'Fråga om din portfölj, eller be mig göra något…' : 'Skriv ett meddelande…'
+              isDragging
+                ? 'Släpp filen här…'
+                : isHero
+                  ? 'Fråga om din portfölj, eller be mig göra något…'
+                  : 'Skriv ett meddelande…'
             }
             rows={isHero ? 2 : 1}
             className={cn(
@@ -106,6 +181,29 @@ export function Composer({
             style={{ maxHeight: `${MAX_TEXTAREA_HEIGHT}px` }}
           />
           <div className="flex flex-shrink-0 items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={ATTACHMENT_ACCEPT}
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? [])
+                if (files.length > 0) onAddFiles(files)
+                // Nollställ så samma fil kan väljas igen direkt efteråt —
+                // annars fyras inget change-event andra gången.
+                e.target.value = ''
+              }}
+            />
+            <button
+              type="button"
+              onClick={openFilePicker}
+              title="Bifoga PDF eller bild"
+              aria-label="Bifoga fil"
+              className="rounded-lg p-2 text-gray-400 transition-colors hover:text-gray-600"
+            >
+              <Paperclip size={isHero ? 18 : 16} strokeWidth={1.8} />
+            </button>
             <ToolMenu catalog={toolCatalog} onSelect={onSelectTool} compact={!isHero} />
             {value.length > 0 && <span className="text-[11px] text-gray-400">{value.length}</span>}
             <button
@@ -123,8 +221,10 @@ export function Composer({
             </button>
             <button
               onClick={onSubmit}
-              disabled={!value.trim() || disabled}
-              title="Skicka"
+              disabled={!value.trim() || disabled || attachmentBlockingReason !== null}
+              // En avstängd knapp ska aldrig vara oförklarad: säger bilagorna
+              // nej är det deras skäl som visas, inte ett generiskt "Skicka".
+              title={attachmentBlockingReason ?? 'Skicka'}
               className={cn(
                 'flex items-center justify-center rounded-xl bg-blue-600 text-white transition-colors hover:bg-blue-700 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40',
                 isHero ? 'h-10 w-10' : 'h-8 w-8',
@@ -134,8 +234,10 @@ export function Composer({
             </button>
           </div>
         </div>
+
         <p className="mt-2 text-center text-[11px] text-gray-400">
-          Eveno AI kan utföra åtgärder — åtgärder kräver alltid din bekräftelse.
+          {attachmentBlockingReason ??
+            'Eveno AI kan utföra åtgärder — åtgärder kräver alltid din bekräftelse.'}
         </p>
       </div>
     </div>
