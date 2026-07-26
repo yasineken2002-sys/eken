@@ -1,6 +1,8 @@
 /* @eken/ui: låst palett som CSS-variabler (--ev-*). Efter F2 commit 2 är detta
    webs enda källa för --ev-* — inget neutralt override-block står emellan. */
 @import '@eken/ui/tokens.css';
+/* Poppins, self-hostad. Definierar @font-face + --ev-font-sans (F4). */
+@import '@eken/ui/fonts.css';
 
 @tailwind base;
 @tailwind components;
@@ -63,13 +65,7 @@
   }
   body {
     @apply bg-canvas text-ink;
-    font-family:
-      'Inter var',
-      'Inter',
-      -apple-system,
-      BlinkMacSystemFont,
-      sans-serif;
-    font-feature-settings: 'cv01', 'cv02', 'cv03', 'cv04', 'ss01';
+    font-family: var(--ev-font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-size: 14px;

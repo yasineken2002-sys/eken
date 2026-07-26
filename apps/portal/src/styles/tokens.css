@@ -3,6 +3,8 @@
    Portalen kör INGEN Tailwind: den konsumerar de RÅA CSS-variablerna direkt, och
    är därmed beviset att substratet bär en icke-Tailwind-app hela vägen. */
 @import '@eken/ui/tokens.css';
+/* Poppins, self-hostad. Definierar @font-face + --ev-font-sans (F4). */
+@import '@eken/ui/fonts.css';
 
 /* ── FLIPPEN (F3 commit 2) ───────────────────────────────────────────────────
    Portalens neutrala override-block är BORTTAGET. Alla --ev-* — palett,
@@ -48,7 +50,7 @@
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
   --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.1);
 
-  --font-sans: 'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: var(--ev-font-sans);
 }
 
 *,

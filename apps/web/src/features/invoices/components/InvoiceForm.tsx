@@ -619,7 +619,12 @@ function InvoicePreview({
         border: '1px solid #e8eaed',
         borderRadius: '8px',
         padding: '40px 44px',
-        fontFamily: 'Inter, system-ui, sans-serif',
+        // Förhandsvisningen ska visa PDF:en, inte appen. Stacken är därför samma
+        // som invoice-pdf.template.ts renderar med — INTE --ev-font-sans. Att den
+        // stod 'Inter' först var redan fel: PDF:en har aldrig haft Inter, så
+        // förhandsvisningen ljög om utfallet. F4 tar bort Inter ur appen och
+        // rättar samtidigt den här stacken mot mallen.
+        fontFamily: 'system-ui, -apple-system, sans-serif',
         fontSize: '13px',
         color: '#1a1a1a',
       }}

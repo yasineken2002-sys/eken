@@ -1,6 +1,8 @@
 /* @eken/ui: låst palett som CSS-variabler (--ev-*). Efter F1 commit 2 är detta
    admins ENDA färgkälla — inget neutralt override-block står emellan längre. */
 @import '@eken/ui/tokens.css';
+/* Poppins, self-hostad. Definierar @font-face + --ev-font-sans (F4). */
+@import '@eken/ui/fonts.css';
 
 @tailwind base;
 @tailwind components;
@@ -23,8 +25,7 @@
 @layer base {
   body {
     @apply bg-canvas text-ink;
-    font-family: 'Inter var', 'Inter', system-ui, sans-serif;
-    font-feature-settings: 'cv01', 'cv02', 'cv03', 'cv04', 'ss01';
+    font-family: var(--ev-font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-size: 14px;
