@@ -1010,13 +1010,13 @@ export function SettingsPage() {
                 </div>
 
                 {/* Info box */}
-                <div className="bg-info-50 flex items-start gap-2.5 rounded-xl p-3.5">
+                <div className="flex items-start gap-2.5 rounded-xl bg-gray-200 p-3.5">
                   <Info
                     size={14}
                     strokeWidth={1.8}
-                    className="text-info-600 mt-0.5 flex-shrink-0"
+                    className="mt-0.5 flex-shrink-0 text-gray-500"
                   />
-                  <p className="text-info-700 text-[12.5px]">
+                  <p className="text-[12.5px] text-gray-500">
                     AI-assistenten använder din organisations data för att svara på frågor och
                     utföra åtgärder. All data stannar inom din organisation och delas aldrig med
                     andra.

@@ -809,7 +809,7 @@ export function AiPage() {
                                   'inline-flex h-1.5 w-1.5 rounded-full',
                                   evt.status === 'done'
                                     ? 'bg-emerald-500'
-                                    : 'bg-info-500 animate-pulse',
+                                    : 'animate-pulse bg-gray-500',
                                 )}
                               />
                               <span>

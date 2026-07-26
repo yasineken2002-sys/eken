@@ -315,7 +315,7 @@ export function InvoiceForm({
             />
 
             {/* OCR-info (auto-genereras av backend) */}
-            <div className="border-info-100 bg-info-50/60 text-info-700 col-span-2 rounded-lg border px-3 py-2 text-[12px]">
+            <div className="col-span-2 rounded-lg border border-gray-300 bg-gray-200/60 px-3 py-2 text-[12px] text-gray-500">
               OCR-nummer genereras automatiskt när fakturan sparas — Luhn-validerat och unikt per
               faktura.
             </div>

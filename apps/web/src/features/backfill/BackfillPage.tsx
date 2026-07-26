@@ -103,7 +103,7 @@ export function BackfillPage() {
                         </span>
                       )}
                       {item.hasVoluntaryTaxLiability && (
-                        <span className="bg-info-50 text-info-700 rounded-full px-2 py-0.5 text-[11px] font-medium">
+                        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-500">
                           Momspliktig lokal
                         </span>
                       )}

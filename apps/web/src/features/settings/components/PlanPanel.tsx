@@ -56,7 +56,7 @@ export function PlanPanel() {
         ? 'bg-amber-500'
         : percentageClamped >= 80
           ? 'bg-amber-400'
-          : 'bg-info-500'
+          : 'bg-gray-500'
   const monthlyResetText = formatDate(current.resetsAt)
 
   return (
@@ -178,9 +178,9 @@ export function PlanPanel() {
         </div>
 
         {/* Info-banner */}
-        <div className="border-info-100 bg-info-50/50 mt-5 flex items-start gap-2 rounded-xl border p-3">
-          <Info size={13} strokeWidth={1.8} className="text-info-600 mt-0.5 flex-shrink-0" />
-          <p className="text-info-800 text-[12px]">
+        <div className="mt-5 flex items-start gap-2 rounded-xl border border-gray-300 bg-gray-200/50 p-3">
+          <Info size={13} strokeWidth={1.8} className="mt-0.5 flex-shrink-0 text-gray-500" />
+          <p className="text-[12px] text-gray-700">
             Automatiska AI-aktiviteter (morgonrapporter, OCR, hyresgäst-AI, kontraktsskanning) ingår
             i basplanen och räknas <strong>inte</strong> mot detta tak. Bara manuella anrop från din
             AI-assistent räknas.

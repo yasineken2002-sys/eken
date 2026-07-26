@@ -60,7 +60,7 @@ function TargetLabel({ post }: { post: NewsPost }) {
   if (post.targetAll) {
     return (
       <span className="flex items-center gap-1 text-[13px] text-gray-600">
-        <Globe size={12} strokeWidth={1.8} className="text-info-500" />
+        <Globe size={12} strokeWidth={1.8} className="text-gray-500" />
         Alla hyresgäster
       </span>
     )

@@ -248,7 +248,7 @@ export function TicketDetailPanel({ ticket: initialTicket, onClose }: Props) {
                   {c.isInternal ? (
                     <Lock size={10} className="text-amber-500" strokeWidth={2} />
                   ) : (
-                    <Globe size={10} className="text-info-500" strokeWidth={2} />
+                    <Globe size={10} className="text-gray-500" strokeWidth={2} />
                   )}
                   <span className="text-[11px] text-gray-400">{formatDate(c.createdAt)}</span>
                 </div>

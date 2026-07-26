@@ -12,7 +12,7 @@ interface BadgeProps {
 export function InspectionTypeBadge({ type, className }: BadgeProps & { type: InspectionType }) {
   const map: Record<InspectionType, { label: string; cls: string }> = {
     MOVE_IN: { label: 'Inflyttning', cls: 'bg-emerald-50 text-emerald-700' },
-    MOVE_OUT: { label: 'Utflyttning', cls: 'bg-info-50 text-info-700' },
+    MOVE_OUT: { label: 'Utflyttning', cls: 'bg-gray-200 text-gray-500' },
     PERIODIC: { label: 'Periodisk', cls: 'bg-gray-100 text-gray-600' },
     DAMAGE: { label: 'Skada', cls: 'bg-red-50 text-red-600' },
   }
@@ -36,7 +36,7 @@ export function InspectionStatusBadge({
 }: BadgeProps & { status: InspectionStatus }) {
   const map: Record<InspectionStatus, { label: string; cls: string }> = {
     SCHEDULED: { label: 'Schemalagd', cls: 'bg-amber-50 text-amber-700' },
-    IN_PROGRESS: { label: 'Pågår', cls: 'bg-info-50 text-info-700' },
+    IN_PROGRESS: { label: 'Pågår', cls: 'bg-gray-200 text-gray-500' },
     COMPLETED: { label: 'Slutförd', cls: 'bg-violet-50 text-violet-700' },
     SIGNED: { label: 'Signerad', cls: 'bg-emerald-50 text-emerald-700' },
   }
@@ -52,7 +52,7 @@ export function InspectionStatusBadge({
       <span
         className={cn('mr-1.5 h-1.5 w-1.5 rounded-full', {
           'bg-amber-500': status === 'SCHEDULED',
-          'bg-info-500': status === 'IN_PROGRESS',
+          'bg-gray-500': status === 'IN_PROGRESS',
           'bg-violet-500': status === 'COMPLETED',
           'bg-emerald-500': status === 'SIGNED',
         })}

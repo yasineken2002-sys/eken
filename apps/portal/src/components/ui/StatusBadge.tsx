@@ -1,14 +1,14 @@
 /**
- * F5: de blå statusparen (#eff6ff/#1d4ed8) står KVAR blå med flit.
+ * Neutrala tillstånd är GRÅ — inte blå, inte en fjärde kulör.
  *
- * "Skickad" och "Ny" är neutrala tillstånd, och de sitter i samma tabell som
- * PAID "Betald" på var(--ev-success-50). Eftersom brand === statusSuccess ===
- * #1a6b3c hade en flipp av dessa gjort "Skickad" BOKSTAVLIGEN identisk med
- * "Betald" — en obetald avi som ser betald ut. Samma beslut som web/admin, där
- * motsvarande badges pinnades till `-info-*` i commit 1.
+ * "Skickad" och "Ny" påstår ingenting om utfallet: de är tillstånd utan
+ * åtgärd. F5 pinnade dem blå för att grönt hade gjort dem identiska med PAID
+ * "Betald" (brand === statusSuccess === #1a6b3c). Svaret på den öppna frågan är
+ * att de inte ska ha någon kulör alls: bakgrund var(--ev-neutral-200), text
+ * var(--ev-neutral-500) — 6.24:1, samma neutrala par som web/admin.
  *
- * Vad info-/statusblått ska vara i den varma gröna paletten är en egen
- * designfråga (fjärde statusfärg?), inte något F5 avgör tyst.
+ * Signalfärgerna är därmed reserverade för faktiska signaler: grön = klart,
+ * gul = uppmärksamhet, röd = fel.
  */
 interface BadgeStyle {
   label: string
@@ -18,7 +18,7 @@ interface BadgeStyle {
 
 const INVOICE_LABELS: Record<string, BadgeStyle> = {
   DRAFT: { label: 'Utkast', bg: 'var(--ev-neutral-200)', color: 'var(--ev-neutral-800)' },
-  SENT: { label: 'Skickad', bg: '#eff6ff', color: '#1d4ed8' },
+  SENT: { label: 'Skickad', bg: 'var(--ev-neutral-200)', color: 'var(--ev-neutral-500)' },
   PARTIAL: { label: 'Delvis betald', bg: 'var(--ev-warning-50)', color: 'var(--ev-warning-900)' },
   PAID: { label: 'Betald', bg: 'var(--ev-success-50)', color: 'var(--ev-success-800)' },
   OVERDUE: { label: 'Förfallen', bg: 'var(--ev-danger-50)', color: 'var(--ev-danger-700)' },
@@ -33,7 +33,7 @@ const LEASE_LABELS: Record<string, BadgeStyle> = {
 }
 
 const MAINTENANCE_LABELS: Record<string, BadgeStyle> = {
-  NEW: { label: 'Ny', bg: '#eff6ff', color: '#1d4ed8' },
+  NEW: { label: 'Ny', bg: 'var(--ev-neutral-200)', color: 'var(--ev-neutral-500)' },
   IN_PROGRESS: { label: 'Pågår', bg: 'var(--ev-warning-50)', color: 'var(--ev-warning-900)' },
   SCHEDULED: { label: 'Planerad', bg: '#f5f3ff', color: '#6d28d9' },
   COMPLETED: { label: 'Åtgärdad', bg: 'var(--ev-success-50)', color: 'var(--ev-success-800)' },
@@ -43,7 +43,7 @@ const MAINTENANCE_LABELS: Record<string, BadgeStyle> = {
 
 const RENT_NOTICE_LABELS: Record<string, BadgeStyle> = {
   PENDING: { label: 'Förbereds', bg: 'var(--ev-neutral-200)', color: 'var(--ev-neutral-800)' },
-  SENT: { label: 'Skickad', bg: '#eff6ff', color: '#1d4ed8' },
+  SENT: { label: 'Skickad', bg: 'var(--ev-neutral-200)', color: 'var(--ev-neutral-500)' },
   PAID: { label: 'Betald', bg: 'var(--ev-success-50)', color: 'var(--ev-success-800)' },
   OVERDUE: { label: 'Förfallen', bg: 'var(--ev-danger-50)', color: 'var(--ev-danger-700)' },
   CANCELLED: { label: 'Makulerad', bg: 'var(--ev-neutral-50)', color: 'var(--ev-text-muted)' },

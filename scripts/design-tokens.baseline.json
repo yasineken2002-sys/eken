@@ -1,16 +1,16 @@
 {
   "$comment": "GENERERAD ALLOWLIST — FLIPP-SKULD, inte en regel-lucka. Varje post är rå färg som PR2–6 medvetet lämnade otokeniserad, knuten till en kategori i CATEGORIES (scripts/check-design-tokens.mjs) som säger VARFÖR den står kvar och HUR färgflippen tar bort den. CI faller på fler träffar — aldrig på färre. Listan ska krympa till noll när flippen är gjord.",
   "$howto": "Städat en fil? Kör `node scripts/check-design-tokens.mjs --update-baseline` så snävas spärren åt. Lägg ALDRIG till rader här för hand för att tysta ett nytt fynd — en ny färg ska tokeniseras, inte allowlistas.",
-  "total": 273,
+  "total": 267,
   "perCategory": {
     "chart-colors": 86,
     "neutral-scale": 63,
     "green-legacy": 38,
     "shadow-alpha": 23,
     "status-tints": 21,
-    "brand-blue": 16,
     "alpha-concat": 14,
-    "input-border": 12
+    "input-border": 12,
+    "brand-blue": 10
   },
   "files": {
     "apps/admin/src/pages/DashboardPage.tsx": {
@@ -59,9 +59,6 @@
       }
     },
     "apps/portal/src/components/ui/StatusBadge.tsx": {
-      "brand-blue": {
-        "raw-hex": 6
-      },
       "chart-colors": {
         "raw-hex": 2
       }

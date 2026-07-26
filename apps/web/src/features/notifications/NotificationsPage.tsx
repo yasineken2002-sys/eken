@@ -32,7 +32,7 @@ const TYPE_ICON: Record<NotificationType, { icon: React.ElementType; color: stri
     MAINTENANCE_UPDATED: { icon: Wrench, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     LEASE_EXPIRING: { icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
     LEASE_EXPIRED: { icon: Clock, color: 'text-red-600', bg: 'bg-red-50' },
-    RENT_NOTICE_SENT: { icon: Receipt, color: 'text-info-600', bg: 'bg-info-50' },
+    RENT_NOTICE_SENT: { icon: Receipt, color: 'text-gray-500', bg: 'bg-gray-200' },
     RENT_NOTICE_OVERDUE: { icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50' },
     INSPECTION_SCHEDULED: { icon: ClipboardCheck, color: 'text-purple-600', bg: 'bg-purple-50' },
     MORNING_INSIGHT: { icon: Sunrise, color: 'text-amber-500', bg: 'bg-amber-50' },

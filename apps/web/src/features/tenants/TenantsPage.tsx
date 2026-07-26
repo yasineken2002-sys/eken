@@ -183,8 +183,8 @@ export function TenantsPage() {
       />
 
       {/* Banner som förklarar att skapande sker via Kontrakt-flödet */}
-      <div className="border-info-100 bg-info-50/60 text-info-900 mt-6 flex items-start gap-2.5 rounded-xl border px-4 py-3 text-[13px]">
-        <Info size={14} strokeWidth={1.8} className="text-info-500 mt-0.5 shrink-0" />
+      <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-gray-300 bg-gray-200/60 px-4 py-3 text-[13px] text-gray-700">
+        <Info size={14} strokeWidth={1.8} className="mt-0.5 shrink-0 text-gray-500" />
         <p>
           Hyresgäster skapas via <strong>Kontrakt</strong>-fliken när du registrerar ett nytt
           hyresavtal. Den här sidan är en översikt – för att lägga till en ny hyresgäst, gå till

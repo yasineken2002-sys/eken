@@ -50,8 +50,8 @@ const EVENT_META: Record<InvoiceEventType, EventMeta> = {
   'invoice.sent': {
     label: 'Faktura skickad',
     icon: Send,
-    iconColor: 'text-info-600',
-    dotColor: 'bg-info-50',
+    iconColor: 'text-gray-500',
+    dotColor: 'bg-gray-200',
   },
   'invoice.send_failed': {
     label: 'Utskick misslyckades',
@@ -86,8 +86,8 @@ const EVENT_META: Record<InvoiceEventType, EventMeta> = {
   'invoice.email_opened': {
     label: 'E-post sannolikt öppnad',
     icon: Mail,
-    iconColor: 'text-info-500',
-    dotColor: 'bg-info-50',
+    iconColor: 'text-gray-500',
+    dotColor: 'bg-gray-200',
     isSoftSignal: true,
   },
   'invoice.pdf_viewed': {

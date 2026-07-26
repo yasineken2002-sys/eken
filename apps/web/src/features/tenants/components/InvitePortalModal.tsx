@@ -36,7 +36,7 @@ const STATUS_META: Record<
     className: 'bg-amber-50 text-amber-700',
     icon: MailWarning,
   },
-  INVITED: { label: 'Inbjuden', className: 'bg-info-50 text-info-700', icon: Mail },
+  INVITED: { label: 'Inbjuden', className: 'bg-gray-200 text-gray-500', icon: Mail },
   NOT_INVITED: { label: 'Ej inbjuden', className: 'bg-gray-100 text-gray-600', icon: Clock },
   NO_EMAIL: { label: 'Saknar mejl', className: 'bg-red-50 text-red-600', icon: MailX },
 }
