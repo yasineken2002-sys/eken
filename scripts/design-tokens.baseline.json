@@ -1,14 +1,14 @@
 {
   "$comment": "GENERERAD ALLOWLIST — FLIPP-SKULD, inte en regel-lucka. Varje post är rå färg som PR2–6 medvetet lämnade otokeniserad, knuten till en kategori i CATEGORIES (scripts/check-design-tokens.mjs) som säger VARFÖR den står kvar och HUR färgflippen tar bort den. CI faller på fler träffar — aldrig på färre. Listan ska krympa till noll när flippen är gjord.",
   "$howto": "Städat en fil? Kör `node scripts/check-design-tokens.mjs --update-baseline` så snävas spärren åt. Lägg ALDRIG till rader här för hand för att tysta ett nytt fynd — en ny färg ska tokeniseras, inte allowlistas.",
-  "total": 281,
+  "total": 273,
   "perCategory": {
     "chart-colors": 86,
-    "neutral-scale": 64,
+    "neutral-scale": 63,
     "green-legacy": 38,
-    "shadow-alpha": 26,
+    "shadow-alpha": 23,
     "status-tints": 21,
-    "brand-blue": 20,
+    "brand-blue": 16,
     "alpha-concat": 14,
     "input-border": 12
   },
@@ -36,19 +36,13 @@
       }
     },
     "apps/portal/src/components/CookieBanner.tsx": {
-      "brand-blue": {
-        "raw-hex": 2
-      },
       "shadow-alpha": {
         "raw-color-fn": 1
       }
     },
     "apps/portal/src/components/PasswordInput/PasswordInput.module.css": {
-      "shadow-alpha": {
-        "raw-color-fn": 1
-      },
       "neutral-scale": {
-        "raw-color-fn": 2
+        "raw-color-fn": 1
       }
     },
     "apps/portal/src/components/PortalLayout/PortalLayout.module.css": {
@@ -86,9 +80,6 @@
     "apps/portal/src/pages/ActivatePage/ActivatePage.module.css": {
       "green-legacy": {
         "raw-hex": 1
-      },
-      "shadow-alpha": {
-        "raw-color-fn": 1
       },
       "neutral-scale": {
         "raw-color-fn": 1
@@ -152,9 +143,6 @@
       }
     },
     "apps/portal/src/pages/LoginPage/LoginPage.module.css": {
-      "shadow-alpha": {
-        "raw-color-fn": 1
-      },
       "neutral-scale": {
         "raw-color-fn": 1
       }
@@ -225,9 +213,6 @@
       }
     },
     "apps/portal/src/pages/SettingsPage/SettingsPage.tsx": {
-      "brand-blue": {
-        "raw-hex": 1
-      },
       "neutral-scale": {
         "raw-hex": 2,
         "raw-color-fn": 1
@@ -236,9 +221,6 @@
     "apps/portal/src/pages/legal/LegalPageShell.module.css": {
       "input-border": {
         "raw-hex": 4
-      },
-      "brand-blue": {
-        "raw-hex": 1
       },
       "neutral-scale": {
         "raw-color-fn": 1

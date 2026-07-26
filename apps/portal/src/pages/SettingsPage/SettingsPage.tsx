@@ -15,7 +15,7 @@ const card: React.CSSProperties = {
 const btnPrimary: React.CSSProperties = {
   height: 36,
   padding: '0 16px',
-  background: '#2563eb',
+  background: 'var(--ev-brand)',
   color: 'var(--ev-surface)',
   border: 'none',
   borderRadius: 8,
