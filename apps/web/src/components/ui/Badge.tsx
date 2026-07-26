@@ -7,7 +7,7 @@ const variants: Record<Variant, string> = {
   success: 'bg-emerald-50 text-emerald-700',
   warning: 'bg-amber-50 text-amber-700',
   danger: 'bg-red-50 text-red-600',
-  info: 'bg-info-50 text-info-700',
+  info: 'bg-gray-200 text-gray-500',
   ghost: 'border border-gray-200 text-gray-500 bg-transparent',
   purple: 'bg-purple-50 text-purple-700',
 }
@@ -17,7 +17,7 @@ const dotColors: Record<Variant, string> = {
   success: 'bg-emerald-500',
   warning: 'bg-amber-500',
   danger: 'bg-red-500',
-  info: 'bg-info-500',
+  info: 'bg-gray-500',
   ghost: 'bg-gray-400',
   purple: 'bg-purple-500',
 }

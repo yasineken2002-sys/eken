@@ -155,7 +155,7 @@ export function MeterForm({ onSubmit, onCancel, isSubmitting = false }: MeterFor
         />
       </div>
 
-      <div className="border-info-100 bg-info-50/60 text-info-700 rounded-lg border px-3 py-2 text-[12px]">
+      <div className="rounded-lg border border-gray-300 bg-gray-200/60 px-3 py-2 text-[12px] text-gray-500">
         Mätaren kopplas till enheten. Avläsningar och debitering hanteras i kommande steg — det här
         lägger bara upp själva mätaren.
       </div>

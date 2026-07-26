@@ -248,7 +248,7 @@ export function AiUsagePage() {
                           ? 'bg-red-500'
                           : row.status === 'warning'
                             ? 'bg-amber-400'
-                            : 'bg-info-500',
+                            : 'bg-gray-500',
                       )}
                       style={{ width: `${Math.min(100, row.percentage)}%` }}
                     />
@@ -438,7 +438,7 @@ export function AiUsagePage() {
         )}
       </Modal>
 
-      <div className="border-info-100 bg-info-50/50 text-info-800 mt-4 flex items-center gap-2 rounded-xl border p-3 text-[12px]">
+      <div className="mt-4 flex items-center gap-2 rounded-xl border border-gray-300 bg-gray-200/50 p-3 text-[12px] text-gray-700">
         <Mail size={13} strokeWidth={1.8} className="flex-shrink-0" />
         Påminnelsemejl skickas automatiskt vid 80%, 95% och 100% av tak. Trial-mejl skickas dag 14,
         25 och 29.

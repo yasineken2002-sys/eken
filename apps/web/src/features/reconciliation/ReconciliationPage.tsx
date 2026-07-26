@@ -275,7 +275,7 @@ function ImportModal({
 
           {/* BgMax-info — bank-väljaren är irrelevant för Bankgirots format */}
           {isBgMax && (
-            <div className="border-info-100 bg-info-50/60 text-info-700 rounded-lg border px-3 py-2.5 text-[12.5px]">
+            <div className="rounded-lg border border-gray-300 bg-gray-200/60 px-3 py-2.5 text-[12.5px] text-gray-500">
               Detekterat: <strong>BgMax (Bankgirot)</strong>. Inbetalningar matchas automatiskt mot
               fakturor och hyresavier via OCR-numret.
             </div>

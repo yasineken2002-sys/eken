@@ -292,7 +292,7 @@ export function AviseringPage() {
                       className="border-line border-b transition-colors last:border-0 hover:bg-gray-50/80"
                     >
                       <td className="px-4 py-3">
-                        <span className="bg-info-50 text-info-700 rounded-md px-2 py-0.5 font-mono text-[12px] font-semibold">
+                        <span className="rounded-md bg-gray-200 px-2 py-0.5 font-mono text-[12px] font-semibold text-gray-500">
                           {notice.ocrNumber}
                         </span>
                       </td>

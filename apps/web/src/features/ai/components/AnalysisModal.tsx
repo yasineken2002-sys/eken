@@ -25,8 +25,8 @@ const ANALYSIS_TYPES = [
     key: 'revenue',
     label: 'Intäktsanalys',
     icon: TrendingUp,
-    color: 'text-info-600',
-    bg: 'bg-info-50',
+    color: 'text-gray-500',
+    bg: 'bg-gray-200',
   },
   {
     key: 'occupancy',
@@ -56,14 +56,14 @@ function SeverityIcon({ severity }: { severity: PortfolioInsight['severity'] }) 
     return <AlertOctagon size={16} strokeWidth={1.8} className="flex-shrink-0 text-red-600" />
   if (severity === 'warning')
     return <AlertTriangle size={16} strokeWidth={1.8} className="flex-shrink-0 text-amber-600" />
-  return <Info size={16} strokeWidth={1.8} className="text-info-600 flex-shrink-0" />
+  return <Info size={16} strokeWidth={1.8} className="flex-shrink-0 text-gray-500" />
 }
 
 function SeverityBadge({ severity }: { severity: PortfolioInsight['severity'] }) {
   const map = {
     critical: 'bg-red-50 text-red-600',
     warning: 'bg-amber-50 text-amber-700',
-    info: 'bg-info-50 text-info-700',
+    info: 'bg-gray-200 text-gray-500',
   }
   const labels = { critical: 'Kritisk', warning: 'Varning', info: 'Info' }
   return (

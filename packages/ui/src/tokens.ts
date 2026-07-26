@@ -292,45 +292,21 @@ export const EVENO_STATUS_SCALES = {
 export const EVENO_BRAND_SCALE = statusScale(P.brand)
 
 /**
- * LEGACY INFO-BLÅ (F5) — PARKERAD, INTE EN PALETTUTVIDGNING.
+ * NEUTRALA TILLSTÅND HAR INGEN EGEN KULÖR.
  *
- * F5 pekar apparnas `blue-*`-familj på varumärkesskalan: blått ÄR varumärket i
- * web/admin (primärknapp, länk, fokusring, markerad rad). Men blått bär också
- * TVÅ betydelser som grönt inte kan bära:
+ * Här låg `EVENO_LEGACY_INFO_BLUE` — Tailwinds blå familj, pinnad ord för ord i
+ * F5 så att varumärkesflippen kunde gå fram utan att tysta över de ytor där
+ * blått bar BETYDELSE (info-nivån i Badge/callouts, samt domänstatus som
+ * "Skickad", "Pågår", "Godkänd", "Bokförd"). Den var uttryckligen SKULD med en
+ * öppen designfråga: vad ska info-nivån vara i en varm grön palett?
  *
- *   1. `info`-nivån i Badge/callouts — den fjärde statusnivån vid sidan av
- *      success/warning/danger. Den låsta paletten har bara tre statusfärger, och
- *      `brand === statusSuccess === #1a6b3c`: en grön info-badge blir BOKSTAVLIGEN
- *      identisk med en success-badge, och "till din information" läses som "klart".
- *   2. Domänstatus och kategori — "Skickad", "Pågår", "Godkänd", "Inbjuden",
- *      "Bokförd", BAS-kontoklass 3, filtyp, förbrukningsslag. Grönt här påstår ett
- *      lyckat utfall om ett neutralt tillstånd.
+ * Svaret är att den inte ska vara en färg alls. Ett neutralt tillstånd påstår
+ * ingenting om utfallet, så det får neutralskalans grå: yta `neutral-200`, text
+ * `neutral-500` (6.24:1). Signalfärgerna — grön, gul, röd — är därmed
+ * reserverade för faktiska signaler, och paletten slipper en fjärde kulör.
  *
- * Värdena är Tailwinds egen blå-familj, ORD FÖR ORD som apparna renderar idag.
- * Det gör pinningen visuellt nollställd: `bg-info-50` = exakt dagens `bg-blue-50`.
- *
- * Detta är alltså SKULD, inte ett beslut: F5 flyttar de betydelsebärande ytorna
- * hit så att flippen kan gå fram utan att tysta över dem. Vad info-nivån och
- * status-blått SKA vara i en varm grön palett är en egen designfråga (en fjärde
- * statusfärg? varm neutral? brand-tint med annan form?) — den tas i en egen PR.
- * Den dagen skalan avvecklas ska `-info-*`-klasserna vara den kompletta listan
- * över allt som väntar på svaret.
- *
- * Medvetet UTANFÖR `EVENO_PALETTE` och `EVENO_SCALES`: den emitteras inte till
- * tokens.css och kan aldrig förväxlas med ett låst palettvärde.
+ * Skalan är borttagen, inte utfasad: noll referenser återstod när den togs bort.
  */
-export const EVENO_LEGACY_INFO_BLUE = {
-  50: '#eff6ff',
-  100: '#dbeafe',
-  200: '#bfdbfe',
-  300: '#93c5fd',
-  400: '#60a5fa',
-  500: '#3b82f6',
-  600: '#2563eb',
-  700: '#1d4ed8',
-  800: '#1e40af',
-  900: '#1e3a8a',
-} as const
 
 /** Alla härledda skalor → CSS-variabelnamn. `--ev-neutral-500`, `--ev-success-50`, … */
 export const EVENO_SCALES = {

@@ -21,8 +21,6 @@
  * `tailwindcss` här — detta leaf-paket ska inte dra in Tailwind som beroende.
  * Konsumentens egen config har den fulla typen.
  */
-import { EVENO_LEGACY_INFO_BLUE } from './tokens'
-
 export interface EvenoTailwindPreset {
   theme: {
     extend: {
@@ -70,16 +68,6 @@ export const evenoScales = {
   warning: scaleVars('warning'),
   danger: scaleVars('danger'),
 }
-
-/**
- * PARKERAD info-/statusblå (F5) — se `EVENO_LEGACY_INFO_BLUE` i tokens.ts för
- * varför den finns. Opt-in per app: `colors: { info: legacyInfoBlue }` ger
- * `bg-info-50` / `text-info-700` med exakt dagens blå värden.
- *
- * Literal hex och INTE `var()`: den ska inte kunna flippas av misstag med
- * paletten, och Tailwind hanterar alfa på hex nativt (`bg-info-50/60`).
- */
-export const legacyInfoBlue: Record<string, string> = { ...EVENO_LEGACY_INFO_BLUE }
 
 export const evenoPreset: EvenoTailwindPreset = {
   theme: {

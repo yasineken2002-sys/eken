@@ -40,7 +40,7 @@ function FileIcon({ mimeType }: { mimeType: string }) {
     mimeType === 'application/msword' ||
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ) {
-    return <FileText size={18} strokeWidth={1.8} className="text-info-500" />
+    return <FileText size={18} strokeWidth={1.8} className="text-gray-500" />
   }
   if (
     mimeType === 'application/vnd.ms-excel' ||
