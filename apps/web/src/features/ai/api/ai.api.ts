@@ -205,7 +205,10 @@ export type ToolGroup =
 
 export interface ToolCatalogEntry {
   name: string
+  /** Pågående form ("Skapar faktura") — statusraden medan verktyget kör. */
   label: string
+  /** Imperativ form ("Skapa faktura") — verktygsmenyn i kompositören. */
+  menuLabel: string
   group: ToolGroup
   /** true = kräver användarens bekräftelse innan den körs. */
   binding: boolean

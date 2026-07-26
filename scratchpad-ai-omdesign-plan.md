@@ -40,14 +40,14 @@ Måldesignens fyra chips är en omskrivning av den listan.
 `event:`/`data:`-parsning (inte `EventSource` — den kan inte sätta `Authorization`).
 Events: `delta`, `tool`, `done`, `error`, `pendingAction`.
 
-### 2. Verktygen — 55 st, knappt exponerade
+### 2. Verktygen — 56 st, knappt exponerade
 
-`TOOLS` i `apps/api/src/ai/tools/ai-tools.definition.ts`: **55 unika verktyg** (inte 56).
+`TOOLS` i `apps/api/src/ai/tools/ai-tools.definition.ts`: **56 unika verktyg**.
 Därtill 8 separata hyresgäst-verktyg i `tenant-ai-tools.definition.ts`.
 
 Uppdelningen som "bekräftas"-taggen behöver finns redan:
 
-- **29 bindande** — `ACTION_TOOLS` (`ai-tools.definition.ts:1010`). Träffas ett av dem exekveras
+- **30 bindande** — `ACTION_TOOLS` (`ai-tools.definition.ts:1010`). Träffas ett av dem exekveras
   det inte: servern skapar en `pendingAction`, hashar inputen, och kräver `POST /v1/ai/confirm`.
 - **26 rena läsverktyg** — exekveras direkt.
 

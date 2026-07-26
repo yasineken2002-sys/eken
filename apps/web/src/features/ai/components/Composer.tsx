@@ -1,5 +1,7 @@
 import { Send, Mic, MicOff } from 'lucide-react'
+import { ToolMenu } from './ToolMenu'
 import { cn } from '@/lib/cn'
+import type { ToolCatalogEntry } from '../api/ai.api'
 
 /** Max höjd på textarean innan den börjar scrolla internt. */
 const MAX_TEXTAREA_HEIGHT = 160
@@ -20,6 +22,10 @@ interface ComposerProps {
   onStartVoice: () => void
   onStopVoice: () => void
   variant: ComposerVariant
+  /** Verktygskatalogen från backend — driver menyn. */
+  toolCatalog: ToolCatalogEntry[] | undefined
+  /** Val i verktygsmenyn. Fyller bara rutan; skickar aldrig. */
+  onSelectTool: (entry: ToolCatalogEntry) => void
   /**
    * Ägs av sidan: den nollställer höjden efter skickat meddelande och vid ny
    * konversation. Auto-resize under skrivandet sker här inne.
@@ -46,6 +52,8 @@ export function Composer({
   onStartVoice,
   onStopVoice,
   variant,
+  toolCatalog,
+  onSelectTool,
   textareaRef,
 }: ComposerProps) {
   const isHero = variant === 'hero'
@@ -98,6 +106,7 @@ export function Composer({
             style={{ maxHeight: `${MAX_TEXTAREA_HEIGHT}px` }}
           />
           <div className="flex flex-shrink-0 items-center gap-2">
+            <ToolMenu catalog={toolCatalog} onSelect={onSelectTool} compact={!isHero} />
             {value.length > 0 && <span className="text-[11px] text-gray-400">{value.length}</span>}
             <button
               type="button"
