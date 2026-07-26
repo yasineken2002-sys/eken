@@ -1,19 +1,16 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
 import { UpdateOrganizationDto } from './dto/update-organization.dto'
+import {
+  validateUploadedFile,
+  extensionForDetectedMime,
+  DETECTED_WEB_IMAGE_TYPES,
+  MAX_LOGO_BYTES,
+} from '../common/utils/file-validation'
 
 interface MultipartFile {
-  mimetype: string
   toBuffer(): Promise<Buffer>
-}
-
-const ALLOWED_MIMETYPES = ['image/png', 'image/jpeg', 'image/webp']
-
-function extFromMimetype(mime: string): string {
-  if (mime === 'image/png') return 'png'
-  if (mime === 'image/webp') return 'webp'
-  return 'jpg'
 }
 
 @Injectable()
@@ -92,13 +89,18 @@ export class OrganizationsService {
   }
 
   async uploadLogo(organizationId: string, file: MultipartFile) {
-    if (!ALLOWED_MIMETYPES.includes(file.mimetype)) {
-      throw new BadRequestException('Endast PNG, JPEG och WebP tillåts')
-    }
-
-    const ext = extFromMimetype(file.mimetype)
+    // SECURITY (H3): buffra FÖRST, validera sedan mot innehållet. Den gamla
+    // koden avgjorde både typ och filändelse på `file.mimetype` — en header
+    // klienten sätter själv — så en omdöpt .svg eller .html blev
+    // organisationens logotyp och renderades sedan i fakturor och PDF:er.
     const buffer = await file.toBuffer()
-    const storageKey = `logos/${organizationId}.${ext}`
+    const detected = validateUploadedFile(buffer, {
+      allowedDetectedMimes: DETECTED_WEB_IMAGE_TYPES,
+      maxBytes: MAX_LOGO_BYTES,
+    })
+
+    // Ändelsen (och därmed nyckeln) följer den validerade typen.
+    const storageKey = `logos/${organizationId}.${extensionForDetectedMime(detected)}`
 
     const existing = await this.prisma.organization.findUnique({
       where: { id: organizationId },
@@ -108,7 +110,7 @@ export class OrganizationsService {
       await this.storage.deleteFile(existing.logoStorageKey)
     }
 
-    const storageUrl = await this.storage.uploadFile(buffer, storageKey, file.mimetype)
+    const storageUrl = await this.storage.uploadFile(buffer, storageKey, detected ?? 'image/png')
 
     const updated = await this.prisma.organization.update({
       where: { id: organizationId },

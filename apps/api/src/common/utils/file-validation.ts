@@ -32,6 +32,12 @@ export const MAX_AI_IMAGE_BYTES = 5 * 1024 * 1024
 // (`countPdfPages`) så att en för lång fil avvisas när användaren väljer den —
 // inte vid modellanropet, efter uppladdning och betald överföring.
 export const MAX_AI_PDF_PAGES = 600
+// Felanmälans/portalens bilder (befintligt tak, flyttat hit så alla tak bor
+// på ett ställe) och besiktningsbilder (SAKNADE ett tak helt — 10 bilder ×
+// Fastifys 20 MB var 200 MB per analys).
+export const MAX_TICKET_IMAGE_BYTES = 15 * 1024 * 1024
+export const MAX_INSPECTION_IMAGE_BYTES = 15 * 1024 * 1024
+export const MAX_LOGO_BYTES = 2 * 1024 * 1024
 export const MAX_AI_ATTACHMENT_BYTES = 20 * 1024 * 1024
 
 // ── Detekterade MIME-typer (faktiskt innehåll, inte deklarerat) ──────────────
@@ -68,9 +74,32 @@ export const DETECTED_AI_CHAT_TYPES = [
   'image/webp',
 ] as const
 
+// Felanmälan + hyresgästportalens bilder. HEIC/HEIF ingår för att portalen
+// använder `accept="image/*"` och en iPhone levererar HEIC som standard — att
+// avvisa dem hade brutit den vanligaste vägen in för en hyresgäst.
+export const DETECTED_TICKET_IMAGE_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+] as const
+
+// Besiktningsbilder och organisationens logotyp: bara det som säkert går att
+// visa och (för besiktningar) skicka till vision-modellen. HEIC ingår INTE —
+// varken webbläsare eller vision-modellen läser den, och operatörens
+// filväljare erbjuder den inte.
+export const DETECTED_WEB_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
+
 // Excel-import (.xlsx = ZIP, .xls = CFB). Ren CSV är text utan signatur och
 // tillåts via allowTextWithoutSignature i anropet.
 export const DETECTED_SPREADSHEET_TYPES = ['application/zip', 'application/x-cfb'] as const
+
+// ISO-BMFF-varumärken. `heic`/`heix` är HEVC-kodad HEIF (vad en iPhone
+// skriver); `mif1`/`msf1` är den generiska HEIF-containern. Listorna är
+// avsiktligt SLUTNA — allt annat med "ftyp" (video) faller igenom som okänt.
+const HEIC_BRANDS = new Set(['heic', 'heix', 'heim', 'heis', 'hevc', 'hevx', 'hevm', 'hevs'])
+const HEIF_BRANDS = new Set(['mif1', 'msf1'])
 
 /**
  * Läs de magiska byten i filhuvudet och returnera en kanonisk MIME-typ, eller
@@ -109,6 +138,15 @@ export function detectMimeFromMagicBytes(buf: Buffer): string | null {
     buf[11] === 0x50
   ) {
     return 'image/webp'
+  }
+  // HEIC/HEIF (iPhone-foton): ISO-BMFF med "ftyp" på offset 4 och varumärket på
+  // offset 8. Varumärket måste matchas mot en LISTA — samma containerformat
+  // används av MP4/MOV (brands "isom", "mp42", "qt  "), så en bredare match
+  // hade släppt igenom videofiler som "bild".
+  if (buf.length >= 12 && buf.toString('latin1', 4, 8) === 'ftyp') {
+    const brand = buf.toString('latin1', 8, 12)
+    if (HEIC_BRANDS.has(brand)) return 'image/heic'
+    if (HEIF_BRANDS.has(brand)) return 'image/heif'
   }
   // ZIP / OOXML (.docx/.xlsx/.pptx är zip-containrar): "PK" + (03 04 | 05 06 | 07 08)
   if (
@@ -186,4 +224,32 @@ export function validateUploadedFile(
   }
 
   return detected
+}
+
+/**
+ * Filändelse per DETEKTERAD MIME-typ.
+ *
+ * Finns för att INGEN uppladdningsväg ska härleda sin lagringsnyckel ur
+ * klientens filnamn. Gör man det får en fil som klienten döpte till
+ * "faktura.exe" en .exe-nyckel i lagringen — ett namn som säger emot filens
+ * verifierade innehåll. Visningsnamnet får gärna behålla originalet; NYCKELN
+ * ska följa innehållet.
+ */
+const EXTENSION_BY_DETECTED_MIME: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
+  'application/zip': 'zip',
+  'application/x-cfb': 'doc',
+}
+
+/**
+ * Ändelse (utan punkt) för en validerad MIME-typ. `bin` för det som saknar
+ * mappning — hellre en intetsägande ändelse än klientens påhitt.
+ */
+export function extensionForDetectedMime(detectedMime: string | null): string {
+  return (detectedMime && EXTENSION_BY_DETECTED_MIME[detectedMime]) || 'bin'
 }

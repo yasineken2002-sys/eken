@@ -14,7 +14,6 @@ import {
   BadRequestException,
 } from '@nestjs/common'
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import * as path from 'path'
 import { v4 as uuid } from 'uuid'
 import { InspectionsService } from './inspections.service'
 import { InspectionAnalyzerService } from './inspection-analyzer.service'
@@ -27,6 +26,12 @@ import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
+import {
+  validateUploadedFile,
+  extensionForDetectedMime,
+  DETECTED_WEB_IMAGE_TYPES,
+  MAX_INSPECTION_IMAGE_BYTES,
+} from '../common/utils/file-validation'
 import type { JwtPayload } from '@eken/shared'
 import type { InspectionType, InspectionStatus } from '@prisma/client'
 
@@ -110,14 +115,14 @@ export class InspectionsController {
     @Param('id') id: string,
   ) {
     const inspection = await this.inspectionsService.findOne(id, orgId)
-    const ALLOWED = ['image/jpeg', 'image/png', 'image/webp']
-    const files: Array<{ buffer: Buffer; filename: string; mimetype: string }> = []
+    // `mimetype` från multiparten läses INTE — se valideringen nedan.
+    const files: Array<{ buffer: Buffer; filename: string }> = []
     const captions: Record<string, string> = {}
 
     for await (const part of request.parts()) {
       if (part.type === 'file') {
         const buffer = await part.toBuffer()
-        files.push({ buffer, filename: part.filename, mimetype: part.mimetype })
+        files.push({ buffer, filename: part.filename })
       } else {
         captions[part.fieldname] = part.value as string
       }
@@ -125,18 +130,30 @@ export class InspectionsController {
 
     if (files.length === 0) throw new BadRequestException('Inga bilder hittades')
     if (files.length > 10) throw new BadRequestException('Max 10 bilder per analys')
-    for (const f of files) {
-      if (!ALLOWED.includes(f.mimetype))
-        throw new BadRequestException(`Filtypen ${f.mimetype} stöds inte`)
-    }
+
+    // SECURITY (H3): typen avgörs av MAGISKA BYTEN, inte av klientens
+    // Content-Type. Den gamla allowlisten läste `part.mimetype`, en header
+    // klienten sätter själv — och typen skickades sedan vidare BÅDE till
+    // lagringen och som `media_type` till vision-modellen.
+    //
+    // Storlekstaket är NYTT: vägen hade inget alls. Med 10 bilder och Fastifys
+    // 20 MB-gräns per fil kunde en analys dra in 200 MB.
+    const detectedMimes = files.map((f) =>
+      validateUploadedFile(f.buffer, {
+        allowedDetectedMimes: DETECTED_WEB_IMAGE_TYPES,
+        maxBytes: MAX_INSPECTION_IMAGE_BYTES,
+      }),
+    )
 
     const imageInputs: ImageInput[] = []
     for (let i = 0; i < files.length; i++) {
       const f = files[i]!
-      const ext = path.extname(f.filename) || `.${f.mimetype.split('/')[1]}`
-      const safeName = `${uuid()}${ext}`
+      // Validerad typ hela vägen: nyckelns ändelse, lagringens Content-Type och
+      // vision-modellens media_type kommer alla från samma detektion.
+      const mimeType = detectedMimes[i] ?? 'image/jpeg'
+      const safeName = `${uuid()}.${extensionForDetectedMime(mimeType)}`
       const storageKey = `inspections/${orgId}/${safeName}`
-      const storageUrl = await this.storage.uploadFile(f.buffer, storageKey, f.mimetype)
+      const storageUrl = await this.storage.uploadFile(f.buffer, storageKey, mimeType)
       const caption = captions[`caption_${i}`] ?? null
       await this.prisma.inspectionImage.create({
         data: {
@@ -151,7 +168,7 @@ export class InspectionsController {
       })
       imageInputs.push({
         buffer: f.buffer,
-        mimeType: f.mimetype as ImageInput['mimeType'],
+        mimeType: mimeType as ImageInput['mimeType'],
         ...(caption ? { caption } : {}),
       })
     }
