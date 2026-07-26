@@ -21,7 +21,7 @@ import { useVoiceInput } from './hooks/useVoiceInput'
 import { streamChat, toolLabelMap } from './api/ai.api'
 import { useAuthStore } from '@/stores/auth.store'
 import type { ToolEvent } from './components/MessageList'
-import type { AiMessage, PendingAction } from './api/ai.api'
+import type { AiMessage, PendingAction, ToolCatalogEntry } from './api/ai.api'
 
 /**
  * AI-assistenten (operatör). Sidan äger tillstånd, sändningsflödet och layouten;
@@ -296,6 +296,28 @@ export function AiPage() {
   // kompositörens variant och om hälsning/chips visas.
   const isEmpty = !activeConversationId && allMessages.length === 0
 
+  /**
+   * Val i verktygsmenyn. Till skillnad från snabbstart-chipsen (som skickar
+   * direkt) STARTAR det här ingenting: prompten skrivs i rutan och användaren
+   * får skriva klart och skicka själv. Menyn listar även bindande verktyg, och
+   * ett bindande verktyg får aldrig vara ett klick från exekvering.
+   *
+   * Startprompten härleds ur `menuLabel` — katalogen är enda sanningskällan,
+   * frontend har ingen egen promptlista.
+   */
+  const handleSelectTool = (entry: ToolCatalogEntry) => {
+    const seed = `${entry.menuLabel} `
+    setInput(seed)
+    // Efter renderingen: fokus i rutan med markören sist, så användaren kan
+    // skriva vidare direkt ("Skapa faktura |").
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (!ta) return
+      ta.focus()
+      ta.setSelectionRange(seed.length, seed.length)
+    })
+  }
+
   return (
     <PageWrapper id="ai">
       <div className="flex h-[calc(100vh-52px)] overflow-hidden">
@@ -362,6 +384,8 @@ export function AiPage() {
               onStartVoice={voice.start}
               onStopVoice={voice.stop}
               variant={isEmpty ? 'hero' : 'docked'}
+              toolCatalog={toolCatalog}
+              onSelectTool={handleSelectTool}
               textareaRef={textareaRef}
             />
           </motion.div>

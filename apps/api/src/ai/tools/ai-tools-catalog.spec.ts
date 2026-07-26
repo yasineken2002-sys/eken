@@ -57,6 +57,19 @@ describe('verktygskatalogen', () => {
     }
   })
 
+  it('ger varje verktyg en imperativ menyetikett', () => {
+    for (const entry of buildToolCatalog()) {
+      expect(entry.menuLabel.trim().length).toBeGreaterThan(0)
+      expect(entry.menuLabel).not.toBe(entry.name)
+      // Menyn renderar etiketten som en sak användaren kan be om — versal start.
+      expect(entry.menuLabel[0]).toBe(entry.menuLabel[0]!.toUpperCase())
+      // Menyn härleder startprompten ur menuLabel och lägger själv till
+      // mellanslaget. Skräp i kanterna hamnar rakt i textarean.
+      expect(entry.menuLabel).toBe(entry.menuLabel.trim())
+      expect(entry.menuLabel).not.toMatch(/[.…:]$/)
+    }
+  })
+
   it('kastar med verktygets namn om en post saknas', () => {
     // Simulerar ett nytt verktyg utan katalogpost: buildToolCatalog läser TOOLS
     // vid anrop, så vi lägger till ett tillfälligt och städar efteråt.
