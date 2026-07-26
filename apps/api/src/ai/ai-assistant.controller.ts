@@ -27,21 +27,29 @@ import { DataContextService } from './data-context.service'
 import { ToolExecutorService } from './tools/tool-executor.service'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
 import { buildToolCatalog } from './tools/ai-tools.catalog'
+import { AiAttachmentsService } from './attachments/ai-attachments.service'
 import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { formatSourceSuffix } from './knowledge/grounding/legal-grounding'
-import { ChatDto, CHAT_MESSAGE_MAX_LENGTH } from './dto/chat.dto'
+import { ChatDto, CHAT_MESSAGE_MAX_LENGTH, CHAT_MAX_ATTACHMENTS } from './dto/chat.dto'
 import { ConfirmActionDto } from './dto/confirm-action.dto'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
-import { AI_MODELS } from './ai.config'
+import { AI_MODELS, CHAT_EFFORT } from './ai.config'
 
 const STREAM_MODEL = AI_MODELS.STREAM
 const STREAM_MAX_TOOL_ITERATIONS = 3
-const STREAM_MAX_TOKENS = 2048
+
+// Samma format som ChatDto:s @IsUUID('4') grindar på POST-vägen. SSE-vägen har
+// ingen ValidationPipe och måste därför göra kontrollen själv.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+// Höjt 2048 → 4096 tillsammans med modellbytet till Opus 5 — se MAX_TOKENS i
+// ai-assistant.service.ts för mätningen. På 2048 gick hela budgeten till
+// thinking och strömmen levererade noll textdeltan.
+const STREAM_MAX_TOKENS = 4096
 
 // C3: AI-assistenten kräver minst ACCOUNTANT. Utestänger VIEWER (som annars
 // nådde chat/stream/analys) men bevarar bokförings-AI för ekonomirollen —
@@ -60,6 +68,7 @@ export class AiAssistantController {
     private readonly quotaService: AiQuotaService,
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly attachmentsService: AiAttachmentsService,
   ) {}
 
   @Get('chat/stream')
@@ -67,6 +76,10 @@ export class AiAssistantController {
   async streamChat(
     @Query('message') message: string,
     @Query('conversationId') conversationId: string | undefined,
+    // B2: BARA id:n på URL:en, aldrig bytes — det var hela poängen med B1:s
+    // separata uppladdning. Kommaseparerad lista, eller upprepad parameter
+    // (Fastify ger då en array); båda formerna normaliseras nedan.
+    @Query('attachmentIds') attachmentIdsRaw: string | string[] | undefined,
     @OrgId() organizationId: string,
     @CurrentUser() user: JwtPayload,
     @Res() reply: FastifyReply,
@@ -80,6 +93,27 @@ export class AiAssistantController {
     }
     if (message.length > CHAT_MESSAGE_MAX_LENGTH) {
       throw new BadRequestException(`message får vara högst ${CHAT_MESSAGE_MAX_LENGTH} tecken`)
+    }
+
+    // SECURITY: samma resonemang som för `message` ovan — query-params går förbi
+    // ChatDto:s ValidationPipe, så SSE-vägen måste grinda bilage-id:n själv.
+    // Utan taket kunde en URL bära hundratals id:n och dra ner obegränsat med
+    // bytes ur R2 in i en enda request.
+    const attachmentIds = (
+      Array.isArray(attachmentIdsRaw)
+        ? attachmentIdsRaw
+        : typeof attachmentIdsRaw === 'string'
+          ? attachmentIdsRaw.split(',')
+          : []
+    )
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0)
+
+    if (attachmentIds.length > CHAT_MAX_ATTACHMENTS) {
+      throw new BadRequestException(`Högst ${CHAT_MAX_ATTACHMENTS} bilagor per meddelande`)
+    }
+    if (attachmentIds.some((id) => !UUID_RE.test(id))) {
+      throw new BadRequestException('attachmentIds måste vara giltiga id:n')
     }
 
     // Kvot-kontroll innan vi öppnar SSE-strömmen.
@@ -177,10 +211,35 @@ export class AiAssistantController {
       //    blocks-fallback (FAS 3) och sliding window för långa konversationer
       //    (FAS 4). Korta konversationer (≤30 meddelanden) returnerar
       //    historiken oförändrad — ingen beteendeskillnad.
+      // B2: bilagor → innehållsblock. Org-scopningen (org + user, och antalet
+      // träffar måste matcha antalet id:n) sker i buildContentBlocks och kastar
+      // innan strömmen hunnit kosta något.
+      const attached = await this.attachmentsService.buildContentBlocks(
+        attachmentIds,
+        organizationId,
+        user.sub,
+      )
+
+      // Text-only är OFÖRÄNDRAT: utan bilagor är content en ren sträng.
+      // Bilagorna läggs före texten så modellen läser underlaget innan frågan.
+      const userContent: string | Anthropic.ContentBlockParam[] =
+        attached.contentBlocks.length > 0
+          ? [...attached.contentBlocks, { type: 'text' as const, text: message }]
+          : message
+
+      // Det som PERSISTERAS är referenser, aldrig base64 — se ATTACHMENT_REF_BLOCK.
+      const userBlocks =
+        attached.refBlocks.length > 0
+          ? ([
+              ...attached.refBlocks,
+              { type: 'text', text: message },
+            ] as unknown as Prisma.InputJsonValue)
+          : null
+
       const history = await this.aiService.buildMessageHistoryForClaude(conversation)
       let currentMessages: Anthropic.MessageParam[] = [
         ...history,
-        { role: 'user' as const, content: message },
+        { role: 'user' as const, content: userContent },
       ]
 
       send('start', { conversationId: conversation.id })
@@ -211,6 +270,8 @@ export class AiAssistantController {
         const stream = anthropic.messages.stream({
           model: STREAM_MODEL,
           max_tokens: STREAM_MAX_TOKENS,
+          // Explicit resonemangsnivå — se CHAT_EFFORT i ai.config.ts.
+          output_config: { effort: CHAT_EFFORT },
           system: systemBlocks,
           tools: TOOLS,
           messages: currentMessages,
@@ -347,12 +408,20 @@ export class AiAssistantController {
       // 6. Spara — actions sparar bara user-meddelandet (svaret kommer vid bekräftelse)
       if (pendingAction) {
         await this.prisma.aiMessage.create({
-          data: { conversationId: conversation.id, role: 'user', content: message },
+          data: {
+            conversationId: conversation.id,
+            role: 'user',
+            content: message,
+            ...(userBlocks ? { blocks: userBlocks } : {}),
+          },
         })
         await this.prisma.aiConversation.update({
           where: { id: conversation.id },
           data: { updatedAt: new Date() },
         })
+        // Bilagan nådde modellen (den föreslog en åtgärd utifrån den) och ligger
+        // nu i historiken — konsumera så cronen inte städar bort den.
+        await this.attachmentsService.markConsumed(attached.ids, conversation.id)
         // SECURITY (RISK 1): persistera den föreslagna åtgärden så confirm-
         // endpointen kan binda bekräftelsen mot exakt denna åtgärd.
         await this.aiService.recordPendingAction(
@@ -368,7 +437,12 @@ export class AiAssistantController {
         // (final-turnens Anthropic ContentBlock[]). User-raden får ingen
         // blocks-kolumn satt — backwards-compatible.
         await this.prisma.aiMessage.create({
-          data: { conversationId: conversation.id, role: 'user', content: message },
+          data: {
+            conversationId: conversation.id,
+            role: 'user',
+            content: message,
+            ...(userBlocks ? { blocks: userBlocks } : {}),
+          },
         })
         await this.prisma.aiMessage.create({
           data: {
@@ -382,6 +456,7 @@ export class AiAssistantController {
           where: { id: conversation.id },
           data: { updatedAt: new Date() },
         })
+        await this.attachmentsService.markConsumed(attached.ids, conversation.id)
 
         // Minnesextraktion efter AVSLUTAD stream — exakt samma delade väg som non-stream
         // chat() (extractMemoriesInBackground → memory.extractAndSaveMemories). Får hela det
@@ -410,7 +485,14 @@ export class AiAssistantController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   chat(@OrgId() orgId: string, @CurrentUser() user: JwtPayload, @Body() dto: ChatDto) {
-    return this.aiService.chat(orgId, user.sub, user.role, dto.message, dto.conversationId)
+    return this.aiService.chat(
+      orgId,
+      user.sub,
+      user.role,
+      dto.message,
+      dto.conversationId,
+      dto.attachmentIds,
+    )
   }
 
   @Post('confirm')

@@ -71,6 +71,13 @@ function makeService() {
     {} as never,
     {} as never,
     {} as never, // legalRetrieval — nås aldrig (inga juridiska frågor i denna spec)
+    {
+      buildContentBlocks: jest
+        .fn()
+        .mockResolvedValue({ contentBlocks: [], refBlocks: [], ids: [] }),
+      markConsumed: jest.fn().mockResolvedValue(undefined),
+      rehydrateHistoryBlocks: jest.fn(),
+    } as never, // attachments (B2) — text-only i denna spec
   )
 }
 

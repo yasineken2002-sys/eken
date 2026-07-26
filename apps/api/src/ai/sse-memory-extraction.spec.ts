@@ -50,6 +50,13 @@ function makeService(extractImpl?: () => Promise<void>) {
     {} as never, // 7 quota
     {} as never, // 8 audit
     {} as never, // 9 legalRetrieval — nås aldrig (inga juridiska frågor i denna spec)
+    {
+      buildContentBlocks: jest
+        .fn()
+        .mockResolvedValue({ contentBlocks: [], refBlocks: [], ids: [] }),
+      markConsumed: jest.fn().mockResolvedValue(undefined),
+      rehydrateHistoryBlocks: jest.fn(),
+    } as never, // attachments (B2) — text-only i denna spec
   )
   return { service, extractAndSaveMemories }
 }
@@ -120,6 +127,13 @@ function makeController() {
     quotaService as never,
     prisma as never,
     configService as never,
+    {
+      buildContentBlocks: jest
+        .fn()
+        .mockResolvedValue({ contentBlocks: [], refBlocks: [], ids: [] }),
+      markConsumed: jest.fn().mockResolvedValue(undefined),
+      rehydrateHistoryBlocks: jest.fn(),
+    } as never, // attachments (B2) — text-only i dessa fall
   )
   const reply = { raw: { writeHead: jest.fn(), write: jest.fn(), end: jest.fn() } }
   return { controller, aiService, reply }
@@ -138,7 +152,14 @@ describe('SSE streamChat — minnesextraktion efter avslutad stream', () => {
       usage: { input_tokens: 10, output_tokens: 5 },
     })
 
-    await controller.streamChat('Vad är min hyresintäkt?', undefined, 'org-1', user, reply as never)
+    await controller.streamChat(
+      'Vad är min hyresintäkt?',
+      undefined,
+      undefined,
+      'org-1',
+      user,
+      reply as never,
+    )
 
     expect(aiService.extractMemoriesInBackground).toHaveBeenCalledTimes(1)
     expect(aiService.extractMemoriesInBackground).toHaveBeenCalledWith(
@@ -161,7 +182,14 @@ describe('SSE streamChat — minnesextraktion efter avslutad stream', () => {
     })
     const reply = { raw: { writeHead: jest.fn(), write: jest.fn(), end: jest.fn() } }
 
-    await controller.streamChat('Skapa en faktura', undefined, 'org-1', user, reply as never)
+    await controller.streamChat(
+      'Skapa en faktura',
+      undefined,
+      undefined,
+      'org-1',
+      user,
+      reply as never,
+    )
 
     expect(aiService.extractMemoriesInBackground).not.toHaveBeenCalled()
   })

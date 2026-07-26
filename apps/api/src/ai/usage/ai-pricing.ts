@@ -21,6 +21,13 @@ const PRICING: Record<string, ModelPricing> = {
   'claude-haiku-4-5-20251001': { input: 0.8, cacheWrite: 1.0, cacheRead: 0.08, output: 4 },
   // Opus 4.x
   'claude-opus-4-7': { input: 15, cacheWrite: 18.75, cacheRead: 1.5, output: 75 },
+  // Opus 5 — operatörschattens modell. MÅSTE finnas här: kostnadstaken
+  // (checkOrgDailyCostCap / checkUserDailyCostCap) summerar costSek ur den här
+  // tabellen, och DEFAULT_PRICING är Sonnet. Utan raden hade varje Opus
+  // 5-meddelande bokförts till Sonnet-pris — taken hade släppt igenom ~1,7×
+  // mer verklig spend än de är satta till, och kostnadsrapporten hade visat
+  // för lågt utan att något gick fel.
+  'claude-opus-5': { input: 5, cacheWrite: 6.25, cacheRead: 0.5, output: 25 },
 }
 
 const DEFAULT_PRICING: ModelPricing = PRICING['claude-sonnet-4-5']!
