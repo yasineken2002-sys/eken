@@ -94,7 +94,12 @@ const SUGGESTIONS = [
     color: 'var(--ev-success-600)',
     bg: 'var(--ev-success-50)',
   },
-  { icon: TrendingUp, label: 'Visa intäkter för Q1 2026', color: 'var(--ev-brand)', bg: '#EFF6FF' },
+  {
+    icon: TrendingUp,
+    label: 'Visa intäkter för Q1 2026',
+    color: 'var(--ev-brand)',
+    bg: 'var(--ev-brand-50)',
+  },
   {
     icon: AlertTriangle,
     label: 'Skicka påminnelser till förfallna fakturor',

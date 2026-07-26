@@ -25,8 +25,14 @@ export default {
         // härledda skalor i stället för Tailwinds egna. Ingen klass skrivs om —
         // `text-gray-500` slår nu upp var(--ev-neutral-500), pinnad till dagens
         // exakta Tailwind-hex i globals.css. Flippen (commit 2) tar bort pinnarna.
-        // Blå familjen lämnas MEDVETET orörd — den är varumärkesbytet i F5.
         gray: evenoScales.neutral,
+        // ── F5 commit 2: VARUMÄRKESBYTET ──────────────────────────────────────
+        // Blå familjen pekas på varumärkesskalan. Detta är hela flippen: 339
+        // klasser (primärknapp, länk, fokusring, markerad rad, växlare, logo,
+        // dropzone) blir gröna utan att en enda av dem skrivs om — samma mekanik
+        // som gray/emerald/amber/red ovan. Det som INTE är varumärke pekar sedan
+        // commit 1 på `info` och står kvar blått.
+        blue: evenoScales.brand,
         emerald: evenoScales.success,
         amber: evenoScales.warning,
         red: evenoScales.danger,

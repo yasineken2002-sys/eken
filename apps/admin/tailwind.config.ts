@@ -16,9 +16,13 @@ export default {
       // `text-gray-500` slår nu upp var(--ev-neutral-500). Värdet är pinnat till
       // dagens exakta Tailwind-hex i globals.css, så steget är pixelneutralt;
       // flippen (commit 2) tar bort pinnarna och skalorna blir varma.
-      // Blå familjen lämnas MEDVETET orörd — den är varumärkesbytet i F5.
       colors: {
         gray: evenoScales.neutral,
+        // ── F5 commit 2: VARUMÄRKESBYTET ──────────────────────────────────────
+        // Blå familjen pekas på varumärkesskalan — primärknapp, länk, fokusring
+        // och markerad rad blir gröna utan att en klass skrivs om. Det som bär
+        // betydelse pekar sedan commit 1 på `info` och står kvar blått.
+        blue: evenoScales.brand,
         emerald: evenoScales.success,
         amber: evenoScales.warning,
         red: evenoScales.danger,

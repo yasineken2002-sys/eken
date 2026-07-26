@@ -15,12 +15,9 @@
    #241f1a (bläck), kant #eaedf0 → #ece7e0, hela gråskalan blir varm och
    statusfamiljerna får de härledda tinterna.
 
-   ETT undantag står kvar: --ev-brand. Att byta blått mot grönt är den SYNLIGA
-   varumärkesändringen och ska granskas som ett eget beslut — den är F5, för alla
-   tre apparna samtidigt. Tills dess hålls admins accentfärg på dagens blå. */
-:root {
-  --ev-brand: #2563eb; /* hålls kvar till F5 (brand-blue → #1a6b3c) */
-}
+   F5 commit 2: --ev-brand-pinnen är BORTA. Admins accentfärg kommer nu ur
+   @eken/ui:s låsta palett — #2563eb → #1a6b3c. Tillsammans med
+   `blue: evenoScales.brand` i tailwind.config är det hela varumärkesbytet. */
 
 @layer base {
   body {
@@ -31,6 +28,7 @@
     font-size: 14px;
   }
   ::selection {
-    background: rgba(37, 99, 235, 0.12);
+    /* F5: markeringsfärgen är varumärket. Kanalform eftersom den bär alfa. */
+    background: rgb(var(--ev-brand-500-ch) / 0.12);
   }
 }

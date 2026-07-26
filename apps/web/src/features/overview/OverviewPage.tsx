@@ -90,7 +90,7 @@ const MODULES: Module[] = [
   {
     icon: Building2,
     color: 'var(--ev-brand)',
-    bg: '#EFF6FF',
+    bg: 'var(--ev-brand-50)',
     name: 'Fastigheter',
     route: 'properties',
     description: 'Hantera dina fastigheter',
@@ -314,7 +314,7 @@ const ENDPOINT_GROUPS: EndpointGroup[] = [
 ]
 
 const METHOD_COLORS: Record<string, { bg: string; text: string }> = {
-  GET: { bg: '#EFF6FF', text: 'var(--ev-brand)' },
+  GET: { bg: 'var(--ev-brand-50)', text: 'var(--ev-brand)' },
   POST: { bg: '#F0FDF4', text: '#16A34A' },
   PATCH: { bg: '#FFF7ED', text: '#EA580C' },
   DELETE: { bg: 'var(--ev-danger-50)', text: 'var(--ev-danger-600)' },
@@ -637,7 +637,7 @@ export function OverviewPage() {
               {
                 icon: Cloud,
                 color: 'var(--ev-brand)',
-                bg: '#EFF6FF',
+                bg: 'var(--ev-brand-50)',
                 title: 'Produktionsmiljö',
                 subtitle: 'Railway',
                 items: [

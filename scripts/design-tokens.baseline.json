@@ -1,14 +1,14 @@
 {
   "$comment": "GENERERAD ALLOWLIST — FLIPP-SKULD, inte en regel-lucka. Varje post är rå färg som PR2–6 medvetet lämnade otokeniserad, knuten till en kategori i CATEGORIES (scripts/check-design-tokens.mjs) som säger VARFÖR den står kvar och HUR färgflippen tar bort den. CI faller på fler träffar — aldrig på färre. Listan ska krympa till noll när flippen är gjord.",
   "$howto": "Städat en fil? Kör `node scripts/check-design-tokens.mjs --update-baseline` så snävas spärren åt. Lägg ALDRIG till rader här för hand för att tysta ett nytt fynd — en ny färg ska tokeniseras, inte allowlistas.",
-  "total": 282,
+  "total": 281,
   "perCategory": {
     "chart-colors": 86,
     "neutral-scale": 64,
     "green-legacy": 38,
-    "brand-blue": 25,
-    "shadow-alpha": 22,
+    "shadow-alpha": 26,
     "status-tints": 21,
+    "brand-blue": 20,
     "alpha-concat": 14,
     "input-border": 12
   },
@@ -245,11 +245,13 @@
       }
     },
     "apps/web/src/components/layout/AppLayout.tsx": {
-      "brand-blue": {
-        "raw-hex": 1
-      },
       "neutral-scale": {
         "raw-color-fn": 3
+      }
+    },
+    "apps/web/src/components/ui/Button.tsx": {
+      "shadow-alpha": {
+        "raw-color-fn": 2
       }
     },
     "apps/web/src/components/ui/StatCard.tsx": {
@@ -258,9 +260,6 @@
       }
     },
     "apps/web/src/features/ai/AiPage.tsx": {
-      "brand-blue": {
-        "raw-hex": 1
-      },
       "chart-colors": {
         "raw-hex": 2
       },
@@ -287,6 +286,9 @@
     "apps/web/src/features/dashboard/DashboardPage.tsx": {
       "alpha-concat": {
         "raw-hex": 3
+      },
+      "shadow-alpha": {
+        "raw-color-fn": 2
       }
     },
     "apps/web/src/features/dashboard/components/TrendsSection.tsx": {
@@ -339,14 +341,14 @@
       }
     },
     "apps/web/src/features/overview/OverviewPage.tsx": {
-      "brand-blue": {
-        "raw-hex": 4
-      },
       "chart-colors": {
         "raw-hex": 14
       },
       "status-tints": {
         "raw-hex": 12
+      },
+      "brand-blue": {
+        "raw-hex": 1
       },
       "shadow-alpha": {
         "raw-color-fn": 3
