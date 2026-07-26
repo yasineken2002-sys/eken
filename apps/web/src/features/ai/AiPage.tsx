@@ -1,26 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { AnimatePresence } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import {
-  Sparkles,
-  Send,
-  Plus,
-  Trash2,
-  MessageSquare,
-  Building2,
-  FileText,
-  AlertTriangle,
-  TrendingUp,
-  Users,
-  CheckCircle2,
-  X,
-  Mic,
-  MicOff,
-  BarChart2,
-} from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
-import { Button } from '@/components/ui/Button'
+import { AnalysisModal } from './components/AnalysisModal'
+import { Composer } from './components/Composer'
+import { ConfirmationCard } from './components/ConfirmationCard'
+import { ConversationSidebar } from './components/ConversationSidebar'
+import { MessageList } from './components/MessageList'
+import { WelcomeState } from './components/WelcomeState'
 import {
   useConversations,
   useConversation,
@@ -28,259 +16,22 @@ import {
   useConfirmAction,
   useDeleteConversation,
 } from './hooks/useAi'
-import { streamChat, describeTool } from './api/ai.api'
-import { AnalysisModal } from './components/AnalysisModal'
+import { useVoiceInput } from './hooks/useVoiceInput'
+import { streamChat } from './api/ai.api'
 import { useAuthStore } from '@/stores/auth.store'
-import { cn } from '@/lib/cn'
-import { formatDate } from '@eken/shared'
+import type { ToolEvent } from './components/MessageList'
 import type { AiMessage, PendingAction } from './api/ai.api'
 
-// Web Speech API — not yet in all TypeScript lib definitions
-interface SpeechRecognitionResult {
-  readonly length: number
-  readonly isFinal: boolean
-  item(index: number): SpeechRecognitionAlternative
-  [index: number]: SpeechRecognitionAlternative
-}
-
-interface SpeechRecognitionAlternative {
-  readonly transcript: string
-  readonly confidence: number
-}
-
-interface SpeechRecognitionResultList {
-  readonly length: number
-  item(index: number): SpeechRecognitionResult
-  [index: number]: SpeechRecognitionResult
-}
-
-interface SpeechRecognitionEvent extends Event {
-  readonly results: SpeechRecognitionResultList
-}
-
-interface SpeechRecognitionInstance extends EventTarget {
-  lang: string
-  continuous: boolean
-  interimResults: boolean
-  onstart: ((this: SpeechRecognitionInstance, ev: Event) => void) | null
-  onresult: ((this: SpeechRecognitionInstance, ev: SpeechRecognitionEvent) => void) | null
-  onend: ((this: SpeechRecognitionInstance, ev: Event) => void) | null
-  onerror: ((this: SpeechRecognitionInstance, ev: Event) => void) | null
-  start(): void
-  stop(): void
-}
-
-interface SpeechRecognitionConstructor {
-  new (): SpeechRecognitionInstance
-}
-
-declare global {
-  interface Window {
-    SpeechRecognition: SpeechRecognitionConstructor
-    webkitSpeechRecognition: SpeechRecognitionConstructor
-  }
-}
-
-const SUGGESTIONS = [
-  {
-    icon: AlertTriangle,
-    label: 'Vilka hyresgäster har förfallna fakturor?',
-    color: 'var(--ev-danger-600)',
-    bg: 'var(--ev-danger-50)',
-  },
-  {
-    icon: FileText,
-    label: 'Skapa hyresfakturor för maj 2026',
-    color: 'var(--ev-success-600)',
-    bg: 'var(--ev-success-50)',
-  },
-  {
-    icon: TrendingUp,
-    label: 'Visa intäkter för Q1 2026',
-    color: 'var(--ev-brand)',
-    bg: 'var(--ev-brand-50)',
-  },
-  {
-    icon: AlertTriangle,
-    label: 'Skicka påminnelser till förfallna fakturor',
-    color: 'var(--ev-warning-600)',
-    bg: 'var(--ev-warning-50)',
-  },
-  { icon: Building2, label: 'Hur många lediga enheter finns?', color: '#7C3AED', bg: '#F5F3FF' },
-  {
-    icon: Users,
-    label: 'Exportera bokföring för 2026',
-    color: 'var(--ev-neutral-500)',
-    bg: 'var(--ev-neutral-50)',
-  },
-]
-
-function LoadingDots() {
-  return (
-    <div className="flex items-center gap-1 py-1">
-      {[0, 1, 2].map((i) => (
-        <motion.div
-          key={i}
-          className="h-2 w-2 rounded-full bg-gray-300"
-          animate={{ opacity: [0.4, 1, 0.4] }}
-          transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-        />
-      ))}
-    </div>
-  )
-}
-
-function MessageBubble({ msg }: { msg: AiMessage }) {
-  const isUser = msg.role === 'user'
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
-    >
-      {!isUser && (
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">
-          <Sparkles size={14} strokeWidth={1.8} className="text-blue-500" />
-        </div>
-      )}
-      <div
-        className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
-          isUser
-            ? 'rounded-tr-sm bg-[#1A7C45] text-white'
-            : 'rounded-tl-sm border border-gray-100 bg-white text-gray-800'
-        }`}
-      >
-        <p
-          className={`whitespace-pre-wrap text-[13.5px] leading-relaxed ${
-            isUser ? 'text-white' : 'text-gray-800'
-          }`}
-        >
-          {msg.content}
-        </p>
-      </div>
-    </motion.div>
-  )
-}
-
-interface ConfirmationCardProps {
-  pendingAction: PendingAction
-  onConfirm: () => void
-  onCancel: () => void
-  isLoading: boolean
-}
-
-function ConfirmationCard({
-  pendingAction,
-  onConfirm,
-  onCancel,
-  isLoading,
-}: ConfirmationCardProps) {
-  const entries = Object.entries(pendingAction.details)
-  const isHighRisk = pendingAction.requiresDoubleConfirm === true
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 4, scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-      className="mx-auto max-w-3xl px-6 pb-4"
-    >
-      <div
-        className={cn(
-          'overflow-hidden rounded-2xl border border-l-4 border-gray-100 bg-white shadow-sm',
-          isHighRisk ? 'border-l-red-600' : 'border-l-green-600',
-        )}
-      >
-        <div className="px-5 pb-5 pt-4">
-          {/* Header */}
-          <div className="mb-3 flex items-center gap-2">
-            <div
-              className={cn(
-                'flex h-7 w-7 items-center justify-center rounded-lg',
-                isHighRisk ? 'bg-red-50' : 'bg-amber-50',
-              )}
-            >
-              <AlertTriangle
-                size={14}
-                strokeWidth={1.8}
-                className={isHighRisk ? 'text-red-600' : 'text-amber-600'}
-              />
-            </div>
-            <span className="text-[13.5px] font-semibold text-gray-900">
-              {isHighRisk ? 'Hög risk — bekräfta igen' : 'Bekräfta åtgärd'}
-            </span>
-          </div>
-
-          {/* High risk extra warning */}
-          {isHighRisk && (
-            <div className="mb-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2">
-              <p className="text-[12.5px] font-medium text-red-700">
-                OBS: Denna åtgärd påverkar flera poster eller ett högt belopp. Kontrollera
-                detaljerna nedan noggrant innan du bekräftar.
-              </p>
-            </div>
-          )}
-
-          {/* Confirmation message */}
-          <p className="mb-4 text-[14px] font-medium text-gray-800">
-            {pendingAction.confirmationMessage}
-          </p>
-
-          {/* Details grid */}
-          {entries.length > 0 && (
-            <div className="mb-5 grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-xl bg-gray-50 p-3">
-              {entries.map(([key, value]) => (
-                <div key={key} className="flex flex-col">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                    {key}
-                  </span>
-                  <span className="text-[13px] font-medium text-gray-700">{value}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onCancel}
-              disabled={isLoading}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 text-[13.5px] font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-            >
-              <X size={13} strokeWidth={2} />
-              Avbryt
-            </button>
-            <button
-              onClick={onConfirm}
-              disabled={isLoading}
-              className={cn(
-                'flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg px-4 text-[13.5px] font-medium text-white transition-colors active:scale-[0.97] disabled:opacity-50',
-                isHighRisk ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700',
-              )}
-            >
-              {isLoading ? (
-                <LoadingDots />
-              ) : (
-                <>
-                  <CheckCircle2 size={14} strokeWidth={2} />
-                  {isHighRisk ? 'Ja, jag är säker — utför ändå' : 'Bekräfta och utför'}
-                </>
-              )}
-            </button>
-          </div>
-
-          <p className="mt-2.5 text-center text-[11px] text-gray-400">
-            {isHighRisk
-              ? 'Åtgärden kan inte enkelt ångras efter utförande'
-              : 'Åtgärden utförs direkt efter bekräftelse'}
-          </p>
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
+/**
+ * AI-assistenten (operatör). Sidan äger tillstånd, sändningsflödet och layouten;
+ * presentationen ligger i `components/`. Två vägar in till assistenten:
+ *
+ *  • ÅTGÄRDSVÄGEN (icke-strömmande `POST /ai/chat`) — används när meddelandet
+ *    ser ut att vilja göra något, eller när vi redan är i en konversation, för
+ *    att följdsvar ska nå Claudes verktyg.
+ *  • LÄSVÄGEN (SSE `GET /ai/chat/stream`) — frågor, med verktygsspår och
+ *    bekräftelseflöde.
+ */
 export function AiPage() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [input, setInput] = useState('')
@@ -289,16 +40,14 @@ export function AiPage() {
   const [isThinking, setIsThinking] = useState(false)
   const [streamingText, setStreamingText] = useState<string>('')
   const [isStreaming, setIsStreaming] = useState(false)
-  const [toolEvents, setToolEvents] = useState<
-    Array<{ id: string; name: string; status: 'starting' | 'executing' | 'done' }>
-  >([])
+  const [toolEvents, setToolEvents] = useState<ToolEvent[]>([])
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-  const [isListening, setIsListening] = useState(false)
   const [analysisOpen, setAnalysisOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const streamCleanupRef = useRef<(() => void) | null>(null)
-  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
+
+  const voice = useVoiceInput(setInput)
 
   const queryClient = useQueryClient()
   const { data: conversations = [], isLoading: convLoading } = useConversations()
@@ -323,50 +72,8 @@ export function AiPage() {
     [],
   )
 
-  const startVoiceInput = () => {
-    if (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window)) {
-      alert('Din webbläsare stöder inte röstinmatning')
-      return
-    }
-    const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition
-    const recognition = new SR()
-    recognition.lang = 'sv-SE'
-    recognition.continuous = false
-    recognition.interimResults = true
-    recognition.onstart = () => setIsListening(true)
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let transcript = ''
-      for (let i = 0; i < event.results.length; i++) {
-        const result = event.results.item(i)
-        transcript += result?.item(0)?.transcript ?? ''
-      }
-      setInput(transcript)
-    }
-    recognition.onend = () => {
-      setIsListening(false)
-      recognitionRef.current = null
-    }
-    recognition.onerror = () => {
-      setIsListening(false)
-      recognitionRef.current = null
-    }
-    recognition.start()
-    recognitionRef.current = recognition
-  }
-
-  const stopVoiceInput = () => {
-    recognitionRef.current?.stop()
-    setIsListening(false)
-  }
-
-  // Auto-resize textarea
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value)
-    const ta = textareaRef.current
-    if (ta) {
-      ta.style.height = 'auto'
-      ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`
-    }
+  const resetTextareaHeight = () => {
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
   const handleSend = async (text?: string) => {
@@ -374,7 +81,7 @@ export function AiPage() {
     if (!msg || isThinking || isStreaming) return
 
     setInput('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    resetTextareaHeight()
     setPendingAction(null)
 
     const tempUser: AiMessage = {
@@ -549,13 +256,6 @@ export function AiPage() {
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      void handleSend()
-    }
-  }
-
   const handleNewConversation = () => {
     streamCleanupRef.current?.()
     setActiveConversationId(null)
@@ -564,7 +264,7 @@ export function AiPage() {
     setIsStreaming(false)
     setStreamingText('')
     setInput('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    resetTextareaHeight()
   }
 
   const handleDelete = async (id: string) => {
@@ -580,6 +280,12 @@ export function AiPage() {
     setConfirmDeleteId(null)
   }
 
+  const handleSelectConversation = (id: string) => {
+    setActiveConversationId(id)
+    setPendingMessages([])
+    setPendingAction(null)
+  }
+
   const isNewChat = !activeConversationId
   const hasMessages = allMessages.length > 0
 
@@ -587,256 +293,33 @@ export function AiPage() {
     <PageWrapper id="ai">
       <div className="flex h-[calc(100vh-52px)] overflow-hidden">
         {/* ── Left Sidebar ── */}
-        <div className="flex w-[280px] flex-shrink-0 flex-col border-r border-gray-100 bg-white">
-          {/* Header */}
-          <div className="border-b border-gray-100 px-4 py-3">
-            <div className="mb-3 flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50">
-                <Sparkles size={14} strokeWidth={1.8} className="text-blue-600" />
-              </div>
-              <span className="text-[14px] font-semibold text-gray-900">Eveno AI</span>
-            </div>
-            <Button variant="primary" size="sm" className="w-full" onClick={handleNewConversation}>
-              <Plus size={13} strokeWidth={2} />
-              Ny konversation
-            </Button>
-          </div>
-
-          {/* Conversation list */}
-          <div className="flex-1 overflow-y-auto py-2">
-            {convLoading ? (
-              <div className="space-y-1 px-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-12 animate-pulse rounded-lg bg-gray-100" />
-                ))}
-              </div>
-            ) : conversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
-                <MessageSquare size={20} strokeWidth={1.5} className="mb-2 text-gray-200" />
-                <p className="text-[12.5px] text-gray-400">Inga konversationer ännu</p>
-              </div>
-            ) : (
-              <div className="space-y-0.5 px-2">
-                {conversations.map((conv) => {
-                  const active = activeConversationId === conv.id
-                  const lastMsg = conv.messages[0]
-                  return (
-                    <div
-                      key={conv.id}
-                      className={`group relative flex cursor-pointer items-start gap-2 rounded-lg px-3 py-2.5 transition-colors ${
-                        active ? 'bg-blue-50' : 'hover:bg-gray-50'
-                      }`}
-                      onClick={() => {
-                        setActiveConversationId(conv.id)
-                        setPendingMessages([])
-                        setPendingAction(null)
-                      }}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p
-                          className={`truncate text-[13px] font-medium ${
-                            active ? 'text-blue-700' : 'text-gray-800'
-                          }`}
-                        >
-                          {conv.title}
-                        </p>
-                        {lastMsg && (
-                          <p className="mt-0.5 truncate text-[11.5px] text-gray-400">
-                            {lastMsg.content}
-                          </p>
-                        )}
-                        <p className="mt-0.5 text-[11px] text-gray-400">
-                          {formatDate(conv.updatedAt)}
-                        </p>
-                      </div>
-
-                      {confirmDeleteId === conv.id ? (
-                        <div
-                          className="flex flex-shrink-0 items-center gap-1"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            onClick={() => void handleDelete(conv.id)}
-                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-red-600 hover:bg-red-50"
-                          >
-                            Ja
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteId(null)}
-                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-gray-500 hover:bg-gray-100"
-                          >
-                            Nej
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setConfirmDeleteId(conv.id)
-                          }}
-                          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-gray-300 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100"
-                        >
-                          <Trash2 size={12} strokeWidth={1.8} />
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Analysis button */}
-          <div className="border-t border-gray-100 p-3">
-            <button
-              onClick={() => setAnalysisOpen(true)}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-gray-600 transition-colors hover:bg-gray-50"
-            >
-              <BarChart2 size={14} strokeWidth={1.8} className="text-purple-500" />
-              Analysera portfölj
-            </button>
-          </div>
-        </div>
+        <ConversationSidebar
+          conversations={conversations}
+          isLoading={convLoading}
+          activeConversationId={activeConversationId}
+          confirmDeleteId={confirmDeleteId}
+          onSelect={handleSelectConversation}
+          onNewConversation={handleNewConversation}
+          onRequestDelete={setConfirmDeleteId}
+          onConfirmDelete={(id) => void handleDelete(id)}
+          onOpenAnalysis={() => setAnalysisOpen(true)}
+        />
 
         {/* ── Chat Area ── */}
         <div className="bg-canvas flex min-w-0 flex-1 flex-col">
           {/* Messages */}
           <div className="flex-1 overflow-y-auto">
             {isNewChat && !hasMessages ? (
-              /* Welcome state */
-              <div className="flex h-full flex-col items-center justify-center px-8 py-12">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.3 }}
-                  className="flex h-16 w-16 items-center justify-center rounded-2xl border border-gray-100 bg-white shadow-md"
-                >
-                  <Sparkles size={28} strokeWidth={1.5} className="text-blue-500" />
-                </motion.div>
-                <motion.h2
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                  className="mt-4 text-[20px] font-semibold text-gray-900"
-                >
-                  Hej! Jag är Eveno AI
-                </motion.h2>
-                <motion.p
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.15 }}
-                  className="mt-2 max-w-sm text-center text-[13.5px] text-gray-500"
-                >
-                  Jag kan analysera din fastighetsportfölj, skapa fakturor, hantera hyresgäster och
-                  ge dig konkreta råd — allt baserat på aktuell data.
-                </motion.p>
-
-                {/* Suggestion chips */}
-                <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="mt-8 grid w-full max-w-lg grid-cols-2 gap-2"
-                >
-                  {SUGGESTIONS.map((s) => (
-                    <button
-                      key={s.label}
-                      onClick={() => void handleSend(s.label)}
-                      className="flex items-center gap-2.5 rounded-xl border border-gray-100 bg-white px-4 py-3 text-left transition-all hover:border-blue-200 hover:shadow-sm active:scale-[0.98]"
-                    >
-                      <div
-                        className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-                        style={{ background: s.bg }}
-                      >
-                        <s.icon size={14} strokeWidth={1.8} style={{ color: s.color }} />
-                      </div>
-                      <span className="text-[12.5px] font-medium text-gray-700">{s.label}</span>
-                    </button>
-                  ))}
-                </motion.div>
-              </div>
+              <WelcomeState onSuggestion={(label) => void handleSend(label)} />
             ) : (
-              <div className="mx-auto max-w-3xl space-y-5 px-6 py-6">
-                <AnimatePresence initial={false}>
-                  {allMessages.map((msg) => (
-                    <MessageBubble key={msg.id} msg={msg} />
-                  ))}
-                </AnimatePresence>
-
-                {isThinking && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex gap-3"
-                  >
-                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">
-                      <Sparkles size={14} strokeWidth={1.8} className="text-blue-500" />
-                    </div>
-                    <div className="rounded-2xl rounded-tl-sm border border-gray-100 bg-white px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <LoadingDots />
-                        <span className="text-[12px] text-gray-400">Analyserar din data...</span>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {isStreaming && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex gap-3"
-                  >
-                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">
-                      <Sparkles
-                        size={14}
-                        strokeWidth={1.8}
-                        className="animate-pulse text-blue-500"
-                      />
-                    </div>
-                    <div className="max-w-[70%] rounded-2xl rounded-tl-sm border border-gray-100 bg-white px-4 py-2.5">
-                      {toolEvents.length > 0 && (
-                        <div className="mb-2 flex flex-col gap-1">
-                          {toolEvents.map((evt) => (
-                            <motion.div
-                              key={evt.id}
-                              initial={{ opacity: 0, x: -4 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              className="flex items-center gap-2 text-[12px] text-gray-500"
-                            >
-                              <span
-                                className={cn(
-                                  'inline-flex h-1.5 w-1.5 rounded-full',
-                                  evt.status === 'done'
-                                    ? 'bg-emerald-500'
-                                    : 'animate-pulse bg-gray-500',
-                                )}
-                              />
-                              <span>
-                                {describeTool(evt.name)}
-                                {evt.status === 'done' ? '' : '…'}
-                              </span>
-                            </motion.div>
-                          ))}
-                        </div>
-                      )}
-                      {streamingText ? (
-                        <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-gray-800">
-                          {streamingText}
-                          <span className="cursor">▋</span>
-                        </p>
-                      ) : toolEvents.length === 0 ? (
-                        <div className="flex items-center gap-2">
-                          <LoadingDots />
-                          <span className="text-[12px] text-gray-400">Tänker...</span>
-                        </div>
-                      ) : null}
-                    </div>
-                  </motion.div>
-                )}
-
-                <div ref={messagesEndRef} />
-              </div>
+              <MessageList
+                messages={allMessages}
+                isThinking={isThinking}
+                isStreaming={isStreaming}
+                streamingText={streamingText}
+                toolEvents={toolEvents}
+                endRef={messagesEndRef}
+              />
             )}
           </div>
 
@@ -853,56 +336,16 @@ export function AiPage() {
           </AnimatePresence>
 
           {/* Input area */}
-          <div className="border-t border-gray-100 bg-white px-6 py-4">
-            <div className="mx-auto max-w-3xl">
-              {isListening && (
-                <div className="mb-2 flex items-center gap-2 text-[13px] text-red-500">
-                  <span className="animate-pulse">●</span>
-                  Lyssnar... Tala din fråga på svenska
-                </div>
-              )}
-              <div className="flex items-end gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 transition-all focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100">
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Skriv ett meddelande... (Enter för att skicka)"
-                  rows={1}
-                  className="flex-1 resize-none bg-transparent text-[13.5px] text-gray-800 placeholder-gray-400 outline-none"
-                  style={{ maxHeight: '120px' }}
-                />
-                <div className="flex flex-shrink-0 items-center gap-2">
-                  {input.length > 0 && (
-                    <span className="text-[11px] text-gray-400">{input.length}</span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={isListening ? stopVoiceInput : startVoiceInput}
-                    className={cn(
-                      'rounded-lg p-2 transition-all',
-                      isListening
-                        ? 'animate-pulse bg-red-100 text-red-600'
-                        : 'text-gray-400 hover:text-gray-600',
-                    )}
-                    title={isListening ? 'Stoppa inspelning' : 'Tala'}
-                  >
-                    {isListening ? <MicOff size={18} /> : <Mic size={18} />}
-                  </button>
-                  <button
-                    onClick={() => void handleSend()}
-                    disabled={!input.trim() || isThinking || isStreaming}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white transition-colors hover:bg-blue-700 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Send size={14} strokeWidth={2} />
-                  </button>
-                </div>
-              </div>
-              <p className="mt-2 text-center text-[11px] text-gray-400">
-                Eveno AI kan utföra åtgärder — åtgärder kräver alltid din bekräftelse.
-              </p>
-            </div>
-          </div>
+          <Composer
+            value={input}
+            onChange={setInput}
+            onSubmit={() => void handleSend()}
+            disabled={isThinking || isStreaming}
+            isListening={voice.isListening}
+            onStartVoice={voice.start}
+            onStopVoice={voice.stop}
+            textareaRef={textareaRef}
+          />
         </div>
       </div>
 
