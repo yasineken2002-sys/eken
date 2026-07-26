@@ -146,13 +146,30 @@ const P = EVENO_PALETTE
  * Neutralskalan. Ankrad i paletten: 100 = bakgrunden, 200 = kanten,
  * 500 = dämpad text, 900 = primär text. Mellanstegen är blandningar. Skalan blir
  * varm av sig själv eftersom ändpunkterna är varma — ingen ton väljs för hand.
+ *
+ * ── 400 ÄR TERTIÄR TEXT OCH MÅSTE KLARA WCAG AA ─────────────────────────────
+ * Steget bär tidsstämplar, metadata, hjälptext, den delade DataTable-rubriken
+ * och portalens svaga text (som lades hit i F3 just för att EN fix skulle lyfta
+ * alla tre apparna). Med blandningsfaktor 0.55 gav det #9c958c = **2.70:1** mot
+ * kanvasen — långt under AA:s 4.5:1 för normal text. Steget kan inte vara både
+ * "svagast tänkbara grå" och "läsbar text"; läsbarheten vinner.
+ *
+ * Faktorn är därför framräknad, inte vald: minsta värde som når 4.5:1 mot
+ * kanvasen är 0.8048. 0.82 tas för marginal → #746d63 = 4.65:1 mot kanvas
+ * (#f6f4f0), 5.11:1 mot kort (#ffffff), 4.90:1 mot gray-50. Fortfarande 79 %
+ * ljusare i luminans än 500, så trestegshierarkin tertiär → dämpad → primär
+ * står kvar. Ingen egen hex: värdet är alltjämt en blandning av kant och
+ * dämpad text, bara med en annan vikt.
+ *
+ * Alternativet — att flytta tertiär text till 500 — förkastades: 500 ÄR den
+ * dämpade texten, så ~350 anropsställen hade kollapsat två nivåer till en.
  */
 export const EVENO_NEUTRAL_SCALE = {
   50: mixHex(P.surface, P.bg, 0.5),
   100: P.bg,
   200: P.border,
   300: mixHex(P.border, P.textMuted, 0.25),
-  400: mixHex(P.border, P.textMuted, 0.55),
+  400: mixHex(P.border, P.textMuted, 0.82),
   500: P.textMuted,
   600: mixHex(P.textMuted, P.text, 0.35),
   700: mixHex(P.textMuted, P.text, 0.6),
