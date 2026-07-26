@@ -265,7 +265,7 @@ export function ReadingForm({ onSubmit, onCancel, isSubmitting = false }: Readin
         </div>
       )}
       {meterId && !isBaseline && currentConsumption !== undefined && (
-        <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-[12px] text-blue-700">
+        <div className="border-info-100 bg-info-50/60 text-info-700 rounded-lg border px-3 py-2 text-[12px]">
           Beräknad förbrukning för perioden:{' '}
           <span className="font-semibold">
             {currentConsumption.toLocaleString('sv-SE', { maximumFractionDigits: 3 })} {measure}

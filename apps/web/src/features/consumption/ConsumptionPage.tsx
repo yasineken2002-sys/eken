@@ -91,7 +91,7 @@ const READING_TYPE_LABELS: Record<ReadingType, string> = {
 
 const CHARGE_STATUS: Record<ConsumptionChargeStatus, { label: string; cls: string }> = {
   DRAFT: { label: 'Utkast', cls: 'bg-amber-50 text-amber-700' },
-  CONFIRMED: { label: 'Bokförd', cls: 'bg-blue-50 text-blue-700' },
+  CONFIRMED: { label: 'Bokförd', cls: 'bg-info-50 text-info-700' },
   ATTACHED: { label: 'Kopplad', cls: 'bg-emerald-50 text-emerald-700' },
   CANCELLED: { label: 'Annullerad', cls: 'bg-gray-100 text-gray-500' },
 }
@@ -888,7 +888,7 @@ export function ConsumptionPage() {
 
               {/* Leveranssätt SEPARATE_INVOICE — statisk info, INGEN faktura-knapp */}
               {selectedCharge.deliveryMode === 'SEPARATE_INVOICE' && (
-                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-[12px] text-blue-700">
+                <div className="border-info-100 bg-info-50/60 text-info-700 rounded-xl border p-3 text-[12px]">
                   Leveranssätt: separat faktura. Fakturan genereras i ett kommande steg när den
                   juridiska granskningen är klar — ingen faktura skapas härifrån.
                 </div>

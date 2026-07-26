@@ -804,7 +804,7 @@ export function AiPage() {
                                   'inline-flex h-1.5 w-1.5 rounded-full',
                                   evt.status === 'done'
                                     ? 'bg-emerald-500'
-                                    : 'animate-pulse bg-blue-500',
+                                    : 'bg-info-500 animate-pulse',
                                 )}
                               />
                               <span>

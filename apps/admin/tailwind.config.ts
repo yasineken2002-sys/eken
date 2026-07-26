@@ -1,5 +1,5 @@
 import type { Config } from 'tailwindcss'
-import { evenoPreset, evenoScales } from '@eken/ui/tailwind-preset'
+import { evenoPreset, evenoScales, legacyInfoBlue } from '@eken/ui/tailwind-preset'
 
 export default {
   // @eken/ui-preseten mappar var(--ev-*) → theme.colors (brand/canvas/ink/line/…).
@@ -22,6 +22,10 @@ export default {
         emerald: evenoScales.success,
         amber: evenoScales.warning,
         red: evenoScales.danger,
+        // F5 commit 1: `info` = dagens blå, ord för ord (se EVENO_LEGACY_INFO_BLUE).
+        // Badge-varianten `info` och de blå ytor som bär betydelse skrivs om till
+        // `-info-*`. Rent pinnat — `bg-info-50` renderar exakt som `bg-blue-50`.
+        info: legacyInfoBlue,
         // Fältkant (input/select/textarea) — ersätter border-[#DDDFE4].
         input: 'var(--ev-input-border)',
       },

@@ -101,7 +101,7 @@ export function LeaseNoticesSection({ leaseId, startDate }: Props) {
         </div>
       )}
 
-      <div className="mt-3 flex items-start gap-2 rounded-xl bg-blue-50/60 px-3 py-2.5 text-[12px] text-blue-700">
+      <div className="bg-info-50/60 text-info-700 mt-3 flex items-start gap-2 rounded-xl px-3 py-2.5 text-[12px]">
         <Info size={14} strokeWidth={1.8} className="mt-0.5 shrink-0" />
         <span>
           Nästa avi ({nextLabel}) skapas automatiskt den 1:a kommande månad och mejlas till

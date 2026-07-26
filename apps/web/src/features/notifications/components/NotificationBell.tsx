@@ -45,7 +45,7 @@ const TYPE_ICON: Record<NotificationType, { icon: React.ElementType; color: stri
   MAINTENANCE_UPDATED: { icon: Wrench, color: 'text-emerald-600' },
   LEASE_EXPIRING: { icon: Clock, color: 'text-amber-600' },
   LEASE_EXPIRED: { icon: Clock, color: 'text-red-600' },
-  RENT_NOTICE_SENT: { icon: Receipt, color: 'text-blue-600' },
+  RENT_NOTICE_SENT: { icon: Receipt, color: 'text-info-600' },
   RENT_NOTICE_OVERDUE: { icon: AlertTriangle, color: 'text-orange-600' },
   INSPECTION_SCHEDULED: { icon: ClipboardCheck, color: 'text-purple-600' },
   MORNING_INSIGHT: { icon: Sunrise, color: 'text-amber-500' },

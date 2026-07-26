@@ -66,7 +66,7 @@ function FileTypeIcon({ mimeType }: { mimeType: string }) {
     mimeType === 'application/msword' ||
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ) {
-    return <FileText size={14} strokeWidth={1.8} className="text-blue-500" />
+    return <FileText size={14} strokeWidth={1.8} className="text-info-500" />
   }
   if (
     mimeType === 'application/vnd.ms-excel' ||

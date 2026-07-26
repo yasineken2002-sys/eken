@@ -6,7 +6,7 @@ interface Props {
 
 const CONFIG: Record<RentNoticeStatus, { label: string; className: string }> = {
   PENDING: { label: 'Väntande', className: 'bg-amber-50 text-amber-700' },
-  SENT: { label: 'Skickad', className: 'bg-blue-50 text-blue-700' },
+  SENT: { label: 'Skickad', className: 'bg-info-50 text-info-700' },
   PAID: { label: 'Betald', className: 'bg-emerald-50 text-emerald-700' },
   OVERDUE: { label: 'Försenad', className: 'bg-red-50 text-red-600' },
   CANCELLED: { label: 'Avbruten', className: 'bg-gray-100 text-gray-500' },

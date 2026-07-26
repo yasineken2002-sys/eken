@@ -52,7 +52,7 @@ export function MaintenancePlanStatusBadge({
 }: BadgeProps & { status: MaintenancePlanStatus }) {
   const map: Record<MaintenancePlanStatus, { label: string; cls: string; dot: string }> = {
     PLANNED: { label: 'Planerad', cls: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' },
-    APPROVED: { label: 'Godkänd', cls: 'bg-blue-50 text-blue-700', dot: 'bg-blue-500' },
+    APPROVED: { label: 'Godkänd', cls: 'bg-info-50 text-info-700', dot: 'bg-info-500' },
     IN_PROGRESS: { label: 'Pågår', cls: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
     COMPLETED: { label: 'Slutförd', cls: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
     CANCELLED: { label: 'Avbruten', cls: 'bg-red-50 text-red-600', dot: 'bg-red-500' },

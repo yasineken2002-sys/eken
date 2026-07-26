@@ -183,19 +183,19 @@ export function BackfillConfirmModal({ item, onClose, onDone }: Props) {
 
               {/* Momsperiod-disclaimer (momspliktig lokal) */}
               {preview.hasVoluntaryTaxLiability && (
-                <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <div className="border-info-200 bg-info-50 mt-4 rounded-xl border p-4">
                   <div className="flex items-start gap-2.5">
                     <Info
                       size={16}
                       strokeWidth={1.8}
-                      className="mt-0.5 flex-shrink-0 text-blue-600"
+                      className="text-info-600 mt-0.5 flex-shrink-0"
                     />
                     <div>
-                      <p className="text-[13.5px] font-semibold text-blue-800">
+                      <p className="text-info-800 text-[13.5px] font-semibold">
                         Momspliktig lokal — kontrollera momsdeklarationen
                       </p>
                       {preview.vatPeriods.length > 0 ? (
-                        <p className="mt-1 text-[12.5px] leading-relaxed text-blue-700">
+                        <p className="text-info-700 mt-1 text-[12.5px] leading-relaxed">
                           Efterdebiteringen berör momsperioderna{' '}
                           <span className="font-semibold">{preview.vatPeriods.join(', ')}</span>.
                           Har deklarationen för dessa perioder redan lämnats kan en
@@ -203,7 +203,7 @@ export function BackfillConfirmModal({ item, onClose, onDone }: Props) {
                           bekräftar.
                         </p>
                       ) : (
-                        <p className="mt-1 text-[12.5px] leading-relaxed text-blue-700">
+                        <p className="text-info-700 mt-1 text-[12.5px] leading-relaxed">
                           En efterdebitering bakåt kan beröra en redan lämnad momsdeklaration. Stäm
                           av med din redovisning innan du bekräftar.
                         </p>
@@ -213,9 +213,9 @@ export function BackfillConfirmModal({ item, onClose, onDone }: Props) {
                           type="checkbox"
                           checked={vatAck}
                           onChange={(e) => setVatAck(e.target.checked)}
-                          className="mt-0.5 h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                          className="border-info-300 text-info-600 focus:ring-info-500 mt-0.5 h-4 w-4 rounded"
                         />
-                        <span className="text-[12.5px] font-medium text-blue-800">
+                        <span className="text-info-800 text-[12.5px] font-medium">
                           Jag har kontrollerat momsdeklarationen för berörda perioder
                         </span>
                       </label>
