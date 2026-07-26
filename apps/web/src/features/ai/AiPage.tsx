@@ -15,9 +15,10 @@ import {
   useSendMessage,
   useConfirmAction,
   useDeleteConversation,
+  useToolCatalog,
 } from './hooks/useAi'
 import { useVoiceInput } from './hooks/useVoiceInput'
-import { streamChat } from './api/ai.api'
+import { streamChat, toolLabelMap } from './api/ai.api'
 import { useAuthStore } from '@/stores/auth.store'
 import type { ToolEvent } from './components/MessageList'
 import type { AiMessage, PendingAction } from './api/ai.api'
@@ -55,6 +56,11 @@ export function AiPage() {
   const sendMutation = useSendMessage()
   const confirmMutation = useConfirmAction()
   const deleteMutation = useDeleteConversation()
+  const { data: toolCatalog } = useToolCatalog()
+
+  // Etiketter för verktygsspåret. Kommer från backends katalog — frontend har
+  // ingen egen lista (den drev isär förr).
+  const toolLabels = toolCatalog ? toolLabelMap(toolCatalog) : {}
 
   // Merge DB messages with pending
   const allMessages: AiMessage[] = [...(conversation?.messages ?? []), ...pendingMessages]
@@ -328,6 +334,7 @@ export function AiPage() {
                 isStreaming={isStreaming}
                 streamingText={streamingText}
                 toolEvents={toolEvents}
+                toolLabels={toolLabels}
                 endRef={messagesEndRef}
               />
             </div>

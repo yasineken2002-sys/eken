@@ -5,7 +5,20 @@ import {
   sendMessage,
   confirmAction,
   deleteConversation,
+  fetchToolCatalog,
 } from '../api/ai.api'
+
+/**
+ * Assistentens verktygskatalog. Statisk under en session — verktygen ändras
+ * bara vid deploy — så den cachas hårt i stället för att hämtas per meddelande.
+ */
+export function useToolCatalog() {
+  return useQuery({
+    queryKey: ['ai-tool-catalog'],
+    queryFn: fetchToolCatalog,
+    staleTime: Infinity,
+  })
+}
 
 export function useConversations() {
   return useQuery({
