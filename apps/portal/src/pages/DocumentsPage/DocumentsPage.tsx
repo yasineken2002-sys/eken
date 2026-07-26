@@ -18,7 +18,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 function getFileIconStyle(mimeType: string): { bg: string; color: string } {
   if (mimeType === 'application/pdf')
-    return { bg: 'var(--ev-danger-100)', color: 'var(--ev-danger-400)' }
+    return { bg: 'var(--ev-danger-100)', color: 'var(--ev-danger-600)' }
   if (mimeType.startsWith('image/')) return { bg: '#e0f2fe', color: '#0284c7' }
   return { bg: 'var(--ev-neutral-100)', color: '#64748b' }
 }

@@ -28,7 +28,7 @@ export function PasswordRequirements({ password, className }: Props) {
                 'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full',
                 c.passed
                   ? 'bg-emerald-500 text-white'
-                  : 'border border-gray-300 bg-white text-gray-300',
+                  : 'border border-gray-300 bg-white text-gray-400',
               )}
             >
               {c.passed ? <Check size={10} strokeWidth={3} /> : <X size={9} strokeWidth={2.5} />}

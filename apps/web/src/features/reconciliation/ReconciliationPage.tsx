@@ -851,7 +851,7 @@ export function ReconciliationPage() {
                           {tx.rawOcr ?? tx.reference}
                         </span>
                       ) : (
-                        <span className="text-[13px] text-gray-300">–</span>
+                        <span className="text-[13px] text-gray-400">–</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -866,7 +866,7 @@ export function ReconciliationPage() {
                       {tx.invoice ? (
                         <Badge variant="info">{tx.invoice.invoiceNumber}</Badge>
                       ) : (
-                        <span className="text-[13px] text-gray-300">–</span>
+                        <span className="text-[13px] text-gray-400">–</span>
                       )}
                     </td>
                     <td className="px-4 py-3">

@@ -43,7 +43,10 @@
 
   --color-text: var(--ev-text);
   --color-text-muted: var(--ev-text-muted);
-  --color-text-faint: var(--ev-neutral-300);
+  /* Enda konsumenten är .smallHint (12px text) i LoginPage. Steg 300 gav 1.69:1
+     mot kortet — under AA. Pekad på tertiärnivån (400 = 4.65:1). Namnet "faint"
+     är kvar som portalens API-namn; det är nivån som ändrats, inte rollen. */
+  --color-text-faint: var(--ev-neutral-400);
 
   --radius-sm: 8px;
   --radius-md: 12px;

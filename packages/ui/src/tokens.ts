@@ -242,6 +242,14 @@ function hslToHex(hDeg: number, s: number, l: number): string {
  * den ska dras mot bläcket, inte mot svart.
  *
  * 500 = den låsta färgen själv, orörd.
+ *
+ * ── 50–400 ÄR YT-STEG, INTE FÖRGRUNDSSTEG ───────────────────────────────────
+ * De ljusa stegen är framblandade för att bära text och ikoner, inte för att
+ * VARA dem. `danger-400` på `danger-100` ger 2.29:1 och `warning-400` på sin
+ * tint 1.82:1 — under 1.4.11:s 3:1 för grafiska objekt och långt under AA:s
+ * 4.5:1 för text. Behövs statusfärgen som förgrund: använd 500 (den låsta
+ * färgen) eller 600 (5.60:1 respektive 4.74:1 mot sin egen tint). Samma sak i
+ * neutralskalan: 300 är avdelare och dekor, 400 är den svagaste LÄSBARA nivån.
  */
 const LIGHT_STEPS: Record<number, [lightness: number, saturationFactor: number]> = {
   50: [0.955, 0.55],
