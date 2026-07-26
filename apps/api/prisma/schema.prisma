@@ -2067,6 +2067,10 @@ model AiAttachment {
   filename       String
   mimeType       String
   sizeBytes      Int
+  // Antal sidor för PDF. NULL för bilder och för PDF:er vars sidträd inte gick
+  // att läsa (se countPdfPages) — en oräknelig fil blockeras inte, den släpps
+  // fram med en logg. Sätts vid uppladdning; B4 kan visa den i miniatyren.
+  pageCount      Int?
   storageKey     String
   consumedAt     DateTime?
   expiresAt      DateTime

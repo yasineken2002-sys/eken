@@ -27,7 +27,11 @@ import { DataContextService } from './data-context.service'
 import { ToolExecutorService } from './tools/tool-executor.service'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
 import { buildToolCatalog } from './tools/ai-tools.catalog'
-import { AiAttachmentsService } from './attachments/ai-attachments.service'
+import {
+  AiAttachmentsService,
+  MAX_ATTACHMENT_BUDGET_BYTES,
+} from './attachments/ai-attachments.service'
+import { assertRequestWithinLimit } from './attachments/request-size'
 import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -236,7 +240,10 @@ export class AiAssistantController {
             ] as unknown as Prisma.InputJsonValue)
           : null
 
-      const history = await this.aiService.buildMessageHistoryForClaude(conversation)
+      const history = await this.aiService.buildMessageHistoryForClaude(
+        conversation,
+        MAX_ATTACHMENT_BUDGET_BYTES - attached.encodedBytes,
+      )
       let currentMessages: Anthropic.MessageParam[] = [
         ...history,
         { role: 'user' as const, content: userContent },
@@ -267,6 +274,15 @@ export class AiAssistantController {
       let assistantContent: Anthropic.ContentBlock[] = []
 
       while (iterations < STREAM_MAX_TOOL_ITERATIONS) {
+        // B3 — sista grinden före anropet. Pre-flight-kollen i
+        // buildContentBlocks såg bara de NYA bilagorna; först här är hela
+        // requesten känd (bilagor + rehydrerad historik + system + verktyg).
+        assertRequestWithinLimit({
+          system: systemBlocks,
+          tools: TOOLS,
+          messages: currentMessages,
+        })
+
         const stream = anthropic.messages.stream({
           model: STREAM_MODEL,
           max_tokens: STREAM_MAX_TOKENS,

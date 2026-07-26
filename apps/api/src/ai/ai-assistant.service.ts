@@ -30,7 +30,11 @@ import {
   type LegalGroundingResult,
 } from './knowledge/grounding/legal-grounding'
 import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.service'
-import { AiAttachmentsService, MAX_REHYDRATE_BYTES } from './attachments/ai-attachments.service'
+import {
+  AiAttachmentsService,
+  MAX_ATTACHMENT_BUDGET_BYTES,
+} from './attachments/ai-attachments.service'
+import { assertRequestWithinLimit } from './attachments/request-size'
 
 // Höjt 2048 → 4096 i samma PR som modellbytet till Opus 5. Opus 5 lägger en
 // del av output-budgeten på ett thinking-block, och på 2048 åt resonemanget upp
@@ -621,7 +625,10 @@ export class AiAssistantService {
     //    blocks-fallback (FAS 3) och sliding window för långa konversationer
     //    (FAS 4). Korta konversationer (≤30 meddelanden) returnerar
     //    historiken oförändrad — ingen beteendeskillnad.
-    const history = await this.buildMessageHistoryForClaude(conversation)
+    const history = await this.buildMessageHistoryForClaude(
+      conversation,
+      MAX_ATTACHMENT_BUDGET_BYTES - attached.encodedBytes,
+    )
     const messages: Anthropic.MessageParam[] = [
       ...history,
       { role: 'user' as const, content: userContent },
@@ -1026,6 +1033,10 @@ export class AiAssistantService {
       where: { id: conversationId, organizationId, userId },
     })
     if (!conversation) throw new NotFoundException('Konversation hittades inte')
+    // B3: ta bort bilagefilerna FÖRE raderingen. Cascade tar bort raderna, men
+    // databasen vet ingenting om R2 — utan det här blir objekten kvar utan att
+    // någon rad pekar på dem, och då kan ingen städning hitta dem igen.
+    await this.attachments.deleteConversationFiles(conversationId)
     await this.prisma.aiConversation.delete({ where: { id: conversationId } })
   }
 
@@ -1066,6 +1077,50 @@ export class AiAssistantService {
   ): Promise<Anthropic.Message> {
     const memorySection = memoriesCtx ? `\n\n${memoriesCtx}` : ''
     const dateContext = this.dataContext.getCurrentDateContext()
+
+    const systemBlocks: Anthropic.TextBlockParam[] = [
+      {
+        type: 'text',
+        text: `${SYSTEM_PROMPT}\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}${memorySection}`,
+        cache_control: { type: 'ephemeral' },
+      },
+      {
+        type: 'text',
+        text: dateContext,
+      },
+      // Verifierad lagtext (PR 2.3a) eller miss-grindens ärlighetsblock
+      // (PR 2.3b) läggs EFTER prefix-breakpointen så den frågespecifika
+      // injektionen aldrig invaliderar det cachade prefixet.
+      //
+      // PR 2.4: blocket har ett EGET cache-breakpoint. Cache-hierarkin
+      // (longest-prefix-matchning, max 4 breakpoints per request) är:
+      //   1. TOOLS (sista verktyget, statiskt)       — befintlig
+      //   2. SYSTEM_PROMPT + portföljdata + minnen   — befintlig
+      //   3. datum + lagtext/miss-block              — NY (denna)
+      // Breakpoint 3 ligger efter 1–2 och kan därför aldrig invalidera
+      // deras prefix. Datumblocket är datum-only (stabilt ≫ 5-min-TTL:n),
+      // så segment 3 återanvänds inom tool-loopen och vid snabba följd-
+      // frågor med samma hämtade paragrafer — cachad läsning kostar ~10 %
+      // av normalpris. Användarens fråga ligger i messages, efter alla
+      // breakpoints, och bryter ingen cache.
+      ...(grounding
+        ? [
+            {
+              type: 'text' as const,
+              text: grounding.contextBlock,
+              cache_control: { type: 'ephemeral' as const },
+            },
+          ]
+        : []),
+    ]
+
+    // B3 — sista grinden före anropet. Pre-flight-kollen i buildContentBlocks
+    // såg bara de NYA bilagorna; först här är hela requesten känd (bilagor +
+    // rehydrerad historik + system + verktyg). Ligger UTANFÖR try:t nedan med
+    // flit: catch-blocket översätter allt till 503 "Kunde inte nå Claude API",
+    // och det vore ett falskt besked — requesten är för stor, inte API:t nere.
+    assertRequestWithinLimit({ system: systemBlocks, tools: TOOLS, messages })
+
     try {
       const response = await this.client.messages.create({
         model: AI_MODELS.CHAT,
@@ -1073,41 +1128,7 @@ export class AiAssistantService {
         // Explicit resonemangsnivå — se CHAT_EFFORT i ai.config.ts. Lämnas den
         // osatt tar Opus 5:s default hela tokenbudgeten och svaret blir tomt.
         output_config: { effort: CHAT_EFFORT },
-        system: [
-          {
-            type: 'text',
-            text: `${SYSTEM_PROMPT}\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}${memorySection}`,
-            cache_control: { type: 'ephemeral' },
-          },
-          {
-            type: 'text',
-            text: dateContext,
-          },
-          // Verifierad lagtext (PR 2.3a) eller miss-grindens ärlighetsblock
-          // (PR 2.3b) läggs EFTER prefix-breakpointen så den frågespecifika
-          // injektionen aldrig invaliderar det cachade prefixet.
-          //
-          // PR 2.4: blocket har ett EGET cache-breakpoint. Cache-hierarkin
-          // (longest-prefix-matchning, max 4 breakpoints per request) är:
-          //   1. TOOLS (sista verktyget, statiskt)       — befintlig
-          //   2. SYSTEM_PROMPT + portföljdata + minnen   — befintlig
-          //   3. datum + lagtext/miss-block              — NY (denna)
-          // Breakpoint 3 ligger efter 1–2 och kan därför aldrig invalidera
-          // deras prefix. Datumblocket är datum-only (stabilt ≫ 5-min-TTL:n),
-          // så segment 3 återanvänds inom tool-loopen och vid snabba följd-
-          // frågor med samma hämtade paragrafer — cachad läsning kostar ~10 %
-          // av normalpris. Användarens fråga ligger i messages, efter alla
-          // breakpoints, och bryter ingen cache.
-          ...(grounding
-            ? [
-                {
-                  type: 'text' as const,
-                  text: grounding.contextBlock,
-                  cache_control: { type: 'ephemeral' as const },
-                },
-              ]
-            : []),
-        ],
+        system: systemBlocks,
         tools: TOOLS,
         messages,
       })
@@ -1144,13 +1165,26 @@ export class AiAssistantService {
    * Returnerar HISTORIK utan det nya user-meddelandet — caller appendar det
    * själv (samma mönster som tidigare).
    */
-  async buildMessageHistoryForClaude(conversation: {
-    id: string
-    organizationId: string
-    summary: string | null
-    summarizedUpToMessageId: string | null
-    messages: Array<{ id: string; role: string; content: string; blocks: Prisma.JsonValue | null }>
-  }): Promise<Anthropic.MessageParam[]> {
+  async buildMessageHistoryForClaude(
+    conversation: {
+      id: string
+      organizationId: string
+      summary: string | null
+      summarizedUpToMessageId: string | null
+      messages: Array<{
+        id: string
+        role: string
+        content: string
+        blocks: Prisma.JsonValue | null
+      }>
+    },
+    /**
+     * Kodade byte historikens bilagor får uppta. De NYA bilagorna i det aktuella
+     * meddelandet har redan tagit sin del av 32 MB-budgeten — historiken får det
+     * som blev över. Utan argumentet (t.ex. i äldre anrop) gäller hela budgeten.
+     */
+    historyAttachmentBudgetBytes: number = MAX_ATTACHMENT_BUDGET_BYTES,
+  ): Promise<Anthropic.MessageParam[]> {
     const allMessages = conversation.messages
 
     /**
@@ -1164,7 +1198,7 @@ export class AiAssistantService {
      * med många bilagor tappar alltså de äldsta filerna (till en textnotis),
      * inte de senaste, vilket är den ordning en användare förväntar sig.
      */
-    const rehydrateBudget = { remainingBytes: MAX_REHYDRATE_BYTES }
+    const rehydrateBudget = { remainingBytes: historyAttachmentBudgetBytes }
 
     const toClaudeMany = async (
       msgs: Array<{ role: string; content: string; blocks: Prisma.JsonValue | null }>,
