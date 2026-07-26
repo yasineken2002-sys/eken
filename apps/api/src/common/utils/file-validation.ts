@@ -21,6 +21,15 @@ export const MAX_CSV_BYTES = 10 * 1024 * 1024 // CSV/Excel/BgMax: 10 MB
 export const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024 // Dokumentarkiv: 20 MB
 export const MAX_CONTRACT_BYTES = 10 * 1024 * 1024 // Hyreskontrakt (PDF/bild): 10 MB
 
+// AI-chattens bilagor. Två tak, för de har OLIKA orsaker:
+//  • Bild 5 MB — Anthropics API avvisar en enskild bild över 5 MB. Ett högre
+//    tak här hade bara flyttat felet till modellanropet, efter uppladdningen.
+//  • PDF 20 MB — samma tak som dokumentarkivet och Fastifys multipart-gräns.
+//    Anthropics 32 MB gäller HELA requesten (alla bilagor + historiken), och
+//    är därför inte ett per-fil-tak; det taket hör till B2/B3.
+export const MAX_AI_IMAGE_BYTES = 5 * 1024 * 1024
+export const MAX_AI_ATTACHMENT_BYTES = 20 * 1024 * 1024
+
 // ── Detekterade MIME-typer (faktiskt innehåll, inte deklarerat) ──────────────
 export const DETECTED_PDF_TYPES = ['application/pdf'] as const
 
@@ -42,6 +51,17 @@ export const DETECTED_DOCUMENT_TYPES = [
   'image/webp',
   'application/zip',
   'application/x-cfb',
+] as const
+
+// AI-chattens bilagor. MEDVETET SMALARE än dokumentarkivet: bara det Anthropics
+// API faktiskt kan läsa som `document`- eller `image`-block. Office-filer och
+// ZIP finns inte med — de skulle laddas upp, lagras och sedan visa sig omöjliga
+// att skicka till modellen. Hellre ett tydligt fel vid uppladdningen.
+export const DETECTED_AI_CHAT_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
 ] as const
 
 // Excel-import (.xlsx = ZIP, .xls = CFB). Ren CSV är text utan signatur och
