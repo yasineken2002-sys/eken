@@ -17,7 +17,7 @@ import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { AiAuditService } from './audit/ai-audit.service'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
-import { AI_MODELS } from './ai.config'
+import { AI_MODELS, CHAT_EFFORT } from './ai.config'
 import { detectLegalDocumentWarning } from './legal-document-warning'
 import {
   isLegalQuestion,
@@ -30,8 +30,14 @@ import {
   type LegalGroundingResult,
 } from './knowledge/grounding/legal-grounding'
 import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.service'
+import { AiAttachmentsService, MAX_REHYDRATE_BYTES } from './attachments/ai-attachments.service'
 
-const MAX_TOKENS = 2048
+// Höjt 2048 → 4096 i samma PR som modellbytet till Opus 5. Opus 5 lägger en
+// del av output-budgeten på ett thinking-block, och på 2048 åt resonemanget upp
+// HELA budgeten: uppmätt stop_reason=max_tokens med 0 tecken svarstext. Med
+// CHAT_EFFORT='low' landar samma fråga på ~2000 tokens, så 4096 ger marginal
+// utan att bli ett tak som aldrig binder. Höjs effort måste detta höjas med.
+const MAX_TOKENS = 4096
 
 // ─── Sliding window för långa konversationer ─────────────────────────────────
 // För korta konversationer (≤ SLIDING_WINDOW_THRESHOLD) skickas hela historiken
@@ -531,6 +537,7 @@ export class AiAssistantService {
     private readonly quota: AiQuotaService,
     private readonly audit: AiAuditService,
     private readonly legalRetrieval: LegalRetrievalService,
+    private readonly attachments: AiAttachmentsService,
   ) {
     this.client = new Anthropic({
       apiKey: this.configService.get<string>('ANTHROPIC_API_KEY', ''),
@@ -545,6 +552,7 @@ export class AiAssistantService {
     userRole: string,
     message: string,
     conversationId?: string,
+    attachmentIds?: string[],
   ): Promise<ChatResponse> {
     const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY', '')
     if (!apiKey) {
@@ -581,6 +589,34 @@ export class AiAssistantService {
     //     handleTextResponse — aldrig av AI:n (gap A).
     const grounding = await this.resolveLegalGrounding(message, organizationId, userId)
 
+    // 2.6 B2: bilagor → Anthropic-innehållsblock. Org-scopningen sker i
+    //     buildContentBlocks (org + user, och antalet träffar måste matcha
+    //     antalet id:n), så en referens till en annan organisations bilaga
+    //     kastar innan vi hunnit spendera något.
+    const attached = await this.attachments.buildContentBlocks(
+      attachmentIds ?? [],
+      organizationId,
+      userId,
+    )
+
+    // Text-only är OFÖRÄNDRAT: utan bilagor är content en ren sträng, precis
+    // som före B2. Blockarrayen används bara när det faktiskt finns något att
+    // bifoga — bilagorna först, texten sist (modellen läser underlaget innan
+    // frågan om det).
+    const userContent: string | Anthropic.ContentBlockParam[] =
+      attached.contentBlocks.length > 0
+        ? [...attached.contentBlocks, { type: 'text' as const, text: message }]
+        : message
+
+    // Det som PERSISTERAS är referenser, inte bytes — se ATTACHMENT_REF_BLOCK.
+    const userBlocks =
+      attached.refBlocks.length > 0
+        ? ([
+            ...attached.refBlocks,
+            { type: 'text', text: message },
+          ] as unknown as Prisma.InputJsonValue)
+        : null
+
     // 3. Build message history via gemensam helper som hanterar både
     //    blocks-fallback (FAS 3) och sliding window för långa konversationer
     //    (FAS 4). Korta konversationer (≤30 meddelanden) returnerar
@@ -588,7 +624,7 @@ export class AiAssistantService {
     const history = await this.buildMessageHistoryForClaude(conversation)
     const messages: Anthropic.MessageParam[] = [
       ...history,
-      { role: 'user' as const, content: message },
+      { role: 'user' as const, content: userContent },
     ]
 
     // 4. Call Claude — tool loop with iteration cap
@@ -616,12 +652,21 @@ export class AiAssistantService {
       // Action tool → defer execution to confirmAction()
       if (ACTION_TOOLS.has(toolName)) {
         await this.prisma.aiMessage.create({
-          data: { conversationId: conversation.id, role: 'user', content: message },
+          data: {
+            conversationId: conversation.id,
+            role: 'user',
+            content: message,
+            ...(userBlocks ? { blocks: userBlocks } : {}),
+          },
         })
         await this.prisma.aiConversation.update({
           where: { id: conversation.id },
           data: { updatedAt: new Date() },
         })
+        // Bilagan är skickad till modellen — den föreslog ju en åtgärd utifrån
+        // den — så den konsumeras även på den här vägen. Annars hade cronen
+        // kunnat städa bort en fil som ligger i en levande konversation.
+        await this.attachments.markConsumed(attached.ids, conversation.id)
         await this.enrichDoubleConfirmContext(toolName, toolInput, organizationId)
         const needsDoubleConfirm = requiresDoubleConfirmation(toolName, toolInput)
         // SECURITY (RISK 1): persistera den föreslagna åtgärden så confirm kan
@@ -693,6 +738,7 @@ export class AiAssistantService {
       organizationId,
       userId,
       grounding,
+      { blocks: userBlocks, ids: attached.ids },
     )
   }
 
@@ -1024,6 +1070,9 @@ export class AiAssistantService {
       const response = await this.client.messages.create({
         model: AI_MODELS.CHAT,
         max_tokens: MAX_TOKENS,
+        // Explicit resonemangsnivå — se CHAT_EFFORT i ai.config.ts. Lämnas den
+        // osatt tar Opus 5:s default hela tokenbudgeten och svaret blir tomt.
+        output_config: { effort: CHAT_EFFORT },
         system: [
           {
             type: 'text',
@@ -1104,20 +1153,38 @@ export class AiAssistantService {
   }): Promise<Anthropic.MessageParam[]> {
     const allMessages = conversation.messages
 
-    const toClaude = (m: {
-      role: string
-      content: string
-      blocks: Prisma.JsonValue | null
-    }): Anthropic.MessageParam => ({
-      role: m.role as 'user' | 'assistant',
-      content: Array.isArray(m.blocks)
-        ? (m.blocks as unknown as Anthropic.ContentBlockParam[])
-        : m.content,
-    })
+    /**
+     * B2: ett meddelande vars `blocks` innehåller bilage-REFERENSER måste
+     * översättas tillbaka till riktiga innehållsblock (bytes ur R2) innan det
+     * kan skickas. Referensblocken är Eveno-egna och skulle avvisas av
+     * Anthropics API om de slank igenom oöversatta.
+     *
+     * Budgeten delas av hela historiken och konsumeras NYASTE FÖRST — därför
+     * körs mappningen i omvänd ordning och vänds tillbaka efteråt. Ett samtal
+     * med många bilagor tappar alltså de äldsta filerna (till en textnotis),
+     * inte de senaste, vilket är den ordning en användare förväntar sig.
+     */
+    const rehydrateBudget = { remainingBytes: MAX_REHYDRATE_BYTES }
+
+    const toClaudeMany = async (
+      msgs: Array<{ role: string; content: string; blocks: Prisma.JsonValue | null }>,
+    ): Promise<Anthropic.MessageParam[]> => {
+      const out: Anthropic.MessageParam[] = []
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i]!
+        out.push({
+          role: m.role as 'user' | 'assistant',
+          content: Array.isArray(m.blocks)
+            ? await this.attachments.rehydrateHistoryBlocks(m.blocks as unknown[], rehydrateBudget)
+            : m.content,
+        })
+      }
+      return out.reverse()
+    }
 
     // Kort konversation → ingen window, samma beteende som idag.
     if (allMessages.length <= SLIDING_WINDOW_THRESHOLD) {
-      return allMessages.map(toClaude)
+      return toClaudeMany(allMessages)
     }
 
     // Lång konversation → splittra i recent + old.
@@ -1158,7 +1225,7 @@ export class AiAssistantService {
         role: 'assistant' as const,
         content: SUMMARY_ACK_TEXT,
       },
-      ...recentMessages.map(toClaude),
+      ...(await toClaudeMany(recentMessages)),
     ]
   }
 
@@ -1221,6 +1288,11 @@ export class AiAssistantService {
     organizationId: string,
     userId: string,
     grounding: LegalGroundingResult = null,
+    /** B2: bilagornas referensblock (persisteras) + id:n (konsumeras). */
+    attachments: { blocks: Prisma.InputJsonValue | null; ids: string[] } = {
+      blocks: null,
+      ids: [],
+    },
   ): Promise<ChatResponse> {
     // CITAT-INTEGRITET (gap A): på ett grundat svar appendar KODEN den
     // auktoritativa källhänvisningen, byggd ur de hämtade chunkarnas metadata
@@ -1235,7 +1307,15 @@ export class AiAssistantService {
     // (Anthropic ContentBlock[] från final-turn). Backwards-compatible:
     // user-raden får ingen blocks-kolumn satt, gamla rader får NULL.
     await this.prisma.aiMessage.create({
-      data: { conversationId, role: 'user', content: userMessage },
+      data: {
+        conversationId,
+        role: 'user',
+        content: userMessage,
+        // B2: user-raden får blocks BARA när meddelandet bar bilagor —
+        // referenser + textblocket, i den ordning modellen såg dem. Utan
+        // bilagor är kolumnen NULL som förut.
+        ...(attachments.blocks ? { blocks: attachments.blocks } : {}),
+      },
     })
     await this.prisma.aiMessage.create({
       data: {
@@ -1249,6 +1329,8 @@ export class AiAssistantService {
       where: { id: conversationId },
       data: { updatedAt: new Date() },
     })
+    // Först NU är bilagan bevisligen skickad och sparad i historiken.
+    await this.attachments.markConsumed(attachments.ids, conversationId)
 
     // Fire-and-forget minnesextraktion — delad väg med SSE-streamChat (se nedan).
     this.extractMemoriesInBackground(userMessage, reply, organizationId, userId)

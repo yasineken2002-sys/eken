@@ -127,6 +127,13 @@ function makeService(
       {} as never,
       { embed: jest.fn().mockRejectedValue(new Error('inget Voyage i test')) } as never,
     ),
+    {
+      buildContentBlocks: jest
+        .fn()
+        .mockResolvedValue({ contentBlocks: [], refBlocks: [], ids: [] }),
+      markConsumed: jest.fn().mockResolvedValue(undefined),
+      rehydrateHistoryBlocks: jest.fn(),
+    } as never, // attachments (B2) — text-only i denna spec
   )
   ;(service as unknown as { client: unknown }).client = { messages: { create } }
   return { service, create, prisma }
@@ -326,6 +333,13 @@ function makeController(groundingResult: unknown) {
     } as never,
     prisma as never,
     { get: jest.fn().mockReturnValue('test-key') } as never,
+    {
+      buildContentBlocks: jest
+        .fn()
+        .mockResolvedValue({ contentBlocks: [], refBlocks: [], ids: [] }),
+      markConsumed: jest.fn().mockResolvedValue(undefined),
+      rehydrateHistoryBlocks: jest.fn(),
+    } as never, // attachments (B2) — text-only i dessa fall
   )
   const reply = { raw: { writeHead: jest.fn(), write: jest.fn(), end: jest.fn() } }
   return { controller, prisma, reply, resolveLegalGrounding }
@@ -357,7 +371,7 @@ describe('SSE streamChat — delad grind + kod-bunden källa', () => {
     const expected = expectedGrounding(LEGAL_QUESTION)
     const { controller, prisma, reply, resolveLegalGrounding } = makeController(expected)
 
-    await controller.streamChat(LEGAL_QUESTION, undefined, 'org-1', user, reply as never)
+    await controller.streamChat(LEGAL_QUESTION, undefined, undefined, 'org-1', user, reply as never)
 
     // Exakt samma delade grind som non-stream chat().
     expect(resolveLegalGrounding).toHaveBeenCalledWith(LEGAL_QUESTION, 'org-1', 'user-1')
@@ -390,7 +404,7 @@ describe('SSE streamChat — delad grind + kod-bunden källa', () => {
     streamedText = 'Enligt 999 § hyreslagen (SFS 9999:999) kan du vräka direkt.'
     const { controller, prisma, reply } = makeController(expected)
 
-    await controller.streamChat(LEGAL_QUESTION, undefined, 'org-1', user, reply as never)
+    await controller.streamChat(LEGAL_QUESTION, undefined, undefined, 'org-1', user, reply as never)
 
     const assistantRow = (prisma.aiMessage.create as jest.Mock).mock.calls
       .map((c) => c[0].data)
@@ -410,7 +424,7 @@ describe('SSE streamChat — delad grind + kod-bunden källa', () => {
     const miss = buildLegalGroundingMiss('judge-rejected')
     const { controller, prisma, reply } = makeController(miss)
 
-    await controller.streamChat(LEGAL_QUESTION, undefined, 'org-1', user, reply as never)
+    await controller.streamChat(LEGAL_QUESTION, undefined, undefined, 'org-1', user, reply as never)
 
     expect(streamCalls[0]!.system).toHaveLength(3)
     expect(streamCalls[0]!.system[2]!.text).toContain('UTAN TILLRÄCKLIGT LAGSTÖD')
@@ -433,7 +447,14 @@ describe('SSE streamChat — delad grind + kod-bunden källa', () => {
     })
     const { controller, reply } = makeController(null)
 
-    await controller.streamChat(OPERATIONAL_QUESTION, undefined, 'org-1', user, reply as never)
+    await controller.streamChat(
+      OPERATIONAL_QUESTION,
+      undefined,
+      undefined,
+      'org-1',
+      user,
+      reply as never,
+    )
 
     expect(streamCalls[0]!.system).toHaveLength(2)
     const deltas = parseEvents(reply.raw.write as jest.Mock).filter((e) => e.event === 'delta')

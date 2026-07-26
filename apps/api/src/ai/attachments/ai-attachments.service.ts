@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { Cron } from '@nestjs/schedule'
 import { v4 as uuid } from 'uuid'
 import * as path from 'path'
+import type Anthropic from '@anthropic-ai/sdk'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { StorageService } from '../../storage/storage.service'
 import {
@@ -31,6 +32,18 @@ export const MAX_PENDING_ATTACHMENTS_PER_USER = 10
  */
 export const MAX_ATTACHMENTS_PER_CONVERSATION = 20
 
+/**
+ * Tak på hur många MB bilagor som får läsas tillbaka ur R2 när en HISTORIK
+ * rehydreras. Ett långt samtal kan bära 20 bilagor (konversationskvoten), och
+ * utan tak hade varje ny fråga i det samtalet dragit ner alla 20 igen och
+ * spräckt både Anthropics request-tak och tålamodet.
+ *
+ * Nyaste bilagor först — de äldsta faller bort till en textnotis så modellen
+ * VET att något inte längre är bifogat i stället för att tro att det aldrig
+ * fanns. Ett riktigt tak mot Anthropics 32 MB, med sidräkning, hör till B3.
+ */
+export const MAX_REHYDRATE_BYTES = 12 * 1024 * 1024
+
 export type AttachmentKind = 'image' | 'document'
 
 /**
@@ -57,12 +70,41 @@ export interface AttachmentResponse {
 }
 
 /**
- * SPÅR B1 — uppladdning av bilagor till AI-chatten.
+ * Det som PERSISTERAS i `AiMessage.blocks` för en bilaga — en REFERENS, aldrig
+ * bytes.
  *
- * Den här tjänsten LAGRAR bara. Ingenting av det som laddas upp når Anthropic
- * i den här PR:n: chatten bygger fortfarande `content` som en sträng, så en
- * bilaga är i dag en rad i databasen och ett objekt i R2 och inget mer.
- * Multimodal input är B2.
+ * Att spara det färdiga Anthropic-blocket hade betytt base64 i en JSONB-kolumn:
+ * en 20 MB PDF blir ~27 MB text, per meddelande, för alltid. Referensen är
+ * några hundra byte, och innehållet hämtas ur R2 när historiken rehydreras
+ * (`rehydrateHistoryBlocks`). Blocktypen är medvetet Eveno-egen så att en
+ * oöversatt referens blir ett TYDLIGT fel mot Anthropics API i stället för att
+ * tyst skickas vidare.
+ */
+export const ATTACHMENT_REF_BLOCK = 'eveno_attachment_ref' as const
+
+export interface AttachmentRefBlock {
+  type: typeof ATTACHMENT_REF_BLOCK
+  attachmentId: string
+  kind: AttachmentKind
+  filename: string
+  mimeType: string
+}
+
+export function isAttachmentRefBlock(block: unknown): block is AttachmentRefBlock {
+  return (
+    typeof block === 'object' &&
+    block !== null &&
+    (block as { type?: unknown }).type === ATTACHMENT_REF_BLOCK
+  )
+}
+
+/**
+ * SPÅR B — bilagor till AI-chatten.
+ *
+ * B1 lade uppladdningen (`upload`/`remove` + städning). B2 lade vägen in till
+ * modellen: `buildContentBlocks` gör id:n till Anthropic-innehållsblock,
+ * `markConsumed` stänger dem för återanvändning, och `rehydrateHistoryBlocks`
+ * hämtar tillbaka innehållet när ett gammalt meddelande läses in i historiken.
  *
  * Anledningen till att uppladdningen är sin EGEN endpoint, i stället för ett
  * fält i chatt-anropet: SSE-vägen tar sitt meddelande som query-parameter, och
@@ -145,6 +187,174 @@ export class AiAttachmentsService {
       mimeType: attachment.mimeType,
       sizeBytes: attachment.sizeBytes,
       expiresAt: attachment.expiresAt,
+    }
+  }
+
+  /**
+   * B2 — gör bilage-id:n till Anthropic-innehållsblock inför ett chattanrop.
+   *
+   * Returnerar BÅDE de färdiga blocken (bytes, går till modellen) och
+   * referensblocken (går till `AiMessage.blocks`). De byggs på ett ställe så att
+   * det som modellen fick och det som historiken minns aldrig kan divergera.
+   *
+   * Org-scopningen är hela poängen: `findMany` filtrerar på organizationId OCH
+   * userId, och antalet träffar jämförs med antalet begärda id:n. En användare
+   * som gissar ett id ur en annan organisation får ett fel, inte innehållet.
+   */
+  async buildContentBlocks(
+    attachmentIds: string[],
+    organizationId: string,
+    userId: string,
+  ): Promise<{
+    contentBlocks: Anthropic.ContentBlockParam[]
+    refBlocks: AttachmentRefBlock[]
+    ids: string[]
+  }> {
+    if (attachmentIds.length === 0) {
+      return { contentBlocks: [], refBlocks: [], ids: [] }
+    }
+
+    // Dedup: samma id två gånger ska inte betala för samma bytes två gånger.
+    const uniqueIds = [...new Set(attachmentIds)]
+
+    const rows = await this.prisma.aiAttachment.findMany({
+      where: { id: { in: uniqueIds }, organizationId, userId },
+    })
+
+    if (rows.length !== uniqueIds.length) {
+      const found = new Set(rows.map((r) => r.id))
+      const missing = uniqueIds.filter((id) => !found.has(id))
+      // Samma fel oavsett om bilagan inte finns eller tillhör någon annan —
+      // svaret får inte gå att använda för att avgöra vilket av de två som gäller.
+      throw new NotFoundException(
+        `Bilagan hittades inte (${missing.length} av ${uniqueIds.length} id:n kunde inte användas)`,
+      )
+    }
+
+    const alreadyUsed = rows.filter((r) => r.consumedAt)
+    if (alreadyUsed.length > 0) {
+      // En konsumerad bilaga ligger redan i historiken. Att skicka den igen
+      // skulle dubbeldebitera tokens och göra samtalet motsägelsefullt.
+      throw new BadRequestException(
+        `${alreadyUsed.length} av bilagorna är redan skickade i konversationen`,
+      )
+    }
+
+    // Behåll anroparens ordning — den speglar hur användaren bifogade filerna.
+    const byId = new Map(rows.map((r) => [r.id, r]))
+    const ordered = uniqueIds.map((id) => byId.get(id)!)
+
+    const contentBlocks: Anthropic.ContentBlockParam[] = []
+    const refBlocks: AttachmentRefBlock[] = []
+
+    for (const row of ordered) {
+      const buffer = await this.storage.getFileBuffer(row.storageKey)
+      contentBlocks.push(this.toAnthropicBlock(row.mimeType, buffer))
+      refBlocks.push({
+        type: ATTACHMENT_REF_BLOCK,
+        attachmentId: row.id,
+        kind: attachmentKind(row.mimeType),
+        filename: row.filename,
+        mimeType: row.mimeType,
+      })
+    }
+
+    return { contentBlocks, refBlocks, ids: ordered.map((r) => r.id) }
+  }
+
+  /**
+   * B2 — markera bilagor som skickade. Anropas EFTER att meddelandet gått
+   * igenom, av två skäl: cronen ska inte städa bort något som ligger i en
+   * levande konversation, och samma bilaga ska inte kunna skickas en andra gång
+   * (`buildContentBlocks` vägrar konsumerade).
+   *
+   * Sätter samtidigt `conversationId` om bilagan laddades upp innan samtalet
+   * fanns — det är först nu vi vet vilket samtal det blev.
+   */
+  async markConsumed(attachmentIds: string[], conversationId: string): Promise<void> {
+    if (attachmentIds.length === 0) return
+    await this.prisma.aiAttachment.updateMany({
+      where: { id: { in: attachmentIds }, consumedAt: null },
+      data: { consumedAt: new Date(), conversationId },
+    })
+  }
+
+  /**
+   * B2 — översätt persisterade referensblock tillbaka till riktiga
+   * innehållsblock genom att hämta bytes ur R2.
+   *
+   * Tre saker att veta:
+   *  • NYASTE FÖRST mot `MAX_REHYDRATE_BYTES`. Det som inte får plats blir en
+   *    textnotis, inte tystnad — modellen ska veta att en bilaga funnits.
+   *  • En R2-miss (städad, borttagen, nere) blir också en notis. Historiken ska
+   *    kunna läsas även när en gammal fil är borta.
+   *  • Blocken går in i samma ordning de låg i meddelandet; det är bara
+   *    INNEHÅLLET som kan degraderas.
+   */
+  async rehydrateHistoryBlocks(
+    blocks: unknown[],
+    budget: { remainingBytes: number },
+  ): Promise<Anthropic.ContentBlockParam[]> {
+    const refs = blocks.filter(isAttachmentRefBlock)
+    if (refs.length === 0) {
+      return blocks as Anthropic.ContentBlockParam[]
+    }
+
+    const rows = await this.prisma.aiAttachment.findMany({
+      where: { id: { in: refs.map((r) => r.attachmentId) } },
+      select: { id: true, storageKey: true, sizeBytes: true, mimeType: true },
+    })
+    const byId = new Map(rows.map((r) => [r.id, r]))
+
+    const loaded = new Map<string, Anthropic.ContentBlockParam>()
+    for (const ref of refs) {
+      const row = byId.get(ref.attachmentId)
+      if (!row) continue
+      if (row.sizeBytes > budget.remainingBytes) continue
+      try {
+        const buffer = await this.storage.getFileBuffer(row.storageKey)
+        loaded.set(ref.attachmentId, this.toAnthropicBlock(row.mimeType, buffer))
+        budget.remainingBytes -= row.sizeBytes
+      } catch (error) {
+        this.logger.warn(
+          `Kunde inte läsa bilaga ${ref.attachmentId} för historiken: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+      }
+    }
+
+    return blocks.map((block) => {
+      if (!isAttachmentRefBlock(block)) return block as Anthropic.ContentBlockParam
+      return (
+        loaded.get(block.attachmentId) ?? {
+          type: 'text' as const,
+          text: `[Bilagan "${block.filename}" bifogades tidigare i samtalet men är inte tillgänglig i det här sammanhanget.]`,
+        }
+      )
+    })
+  }
+
+  /**
+   * Ett `image`- eller `document`-block, valt ur MIME-typen via samma
+   * `attachmentKind` som uppladdningen använde. `media_type` är den DETEKTERADE
+   * typen — klientens påstående kom aldrig så här långt.
+   */
+  private toAnthropicBlock(mimeType: string, buffer: Buffer): Anthropic.ContentBlockParam {
+    const data = buffer.toString('base64')
+    if (attachmentKind(mimeType) === 'image') {
+      return {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
+          data,
+        },
+      }
+    }
+    return {
+      type: 'document',
+      source: { type: 'base64', media_type: 'application/pdf', data },
     }
   }
 

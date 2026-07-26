@@ -14,7 +14,11 @@ import { TENANT_TOOLS, TENANT_ACTION_TOOLS } from './tools/tenant-ai-tools.defin
 import { hashPendingAction, PENDING_ACTION_TTL_MS } from './ai-assistant.service'
 import { AI_MODELS } from './ai.config'
 
-const TENANT_MODEL = AI_MODELS.CHAT
+// Portalen har sin EGEN modellnyckel sedan operatörschatten gick till Opus 5.
+// Delad nyckel hade betytt att ett byte i operatörschatten tyst ändrat
+// hyresgästernas assistent — och TENANT_MAX_TOKENS 1024 räcker inte till ett
+// Opus 5-resonemang (uppmätt: vid 2048 blev svaret tomt).
+const TENANT_MODEL = AI_MODELS.TENANT_CHAT
 const TENANT_MAX_TOKENS = 1024
 const TENANT_MAX_TOOL_ITERATIONS = 3
 
