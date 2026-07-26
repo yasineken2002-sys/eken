@@ -18,10 +18,16 @@ import {
   useToolCatalog,
 } from './hooks/useAi'
 import { useVoiceInput } from './hooks/useVoiceInput'
+import { useAttachments } from './hooks/useAttachments'
 import { streamChat, toolLabelMap } from './api/ai.api'
 import { useAuthStore } from '@/stores/auth.store'
 import type { ToolEvent } from './components/MessageList'
 import type { AiMessage, PendingAction, ToolCatalogEntry } from './api/ai.api'
+
+/** Rad under texten i det temporära user-meddelandet medan svaret hämtas. */
+function attachmentNote(count: number): string {
+  return `_(${count} ${count === 1 ? 'bilaga' : 'bilagor'} bifogad${count === 1 ? '' : 'e'})_`
+}
 
 /**
  * AI-assistenten (operatör). Sidan äger tillstånd, sändningsflödet och layouten;
@@ -49,6 +55,10 @@ export function AiPage() {
   const streamCleanupRef = useRef<(() => void) | null>(null)
 
   const voice = useVoiceInput(setInput)
+
+  // Bilagorna (B4). Hooken äger uppladdning, förhandsvisning och städning;
+  // sidan frågar bara efter `readyIds` när meddelandet skickas.
+  const attach = useAttachments()
 
   const queryClient = useQueryClient()
   const { data: conversations = [], isLoading: convLoading } = useConversations()
@@ -85,16 +95,29 @@ export function AiPage() {
   const handleSend = async (text?: string) => {
     const msg = (text ?? input).trim()
     if (!msg || isThinking || isStreaming) return
+    // Blockerad av en pågående uppladdning eller ett felkort — hade vi skickat
+    // nu gått meddelandet iväg utan sin bilaga. Skäl visas i kompositören.
+    if (attach.blockingReason) return
+
+    // Läs id:na FÖRE nollställningen: `attach.clear()` nedan tömmer brickan,
+    // och de här id:na är det enda sättet servern hittar bilagorna.
+    const attachmentIds = attach.readyIds
 
     setInput('')
     resetTextareaHeight()
     setPendingAction(null)
+    // Brickan töms direkt vid sändning. Bilagorna blir konsumerade på servern,
+    // och ett kort som ligger kvar hade avvisats med "redan skickade" nästa
+    // gång — bättre att UI:t speglar att de nu hör till meddelandet.
+    attach.clear()
 
     const tempUser: AiMessage = {
       id: `tmp-user-${Date.now()}`,
       conversationId: activeConversationId ?? '',
       role: 'user',
-      content: msg,
+      // Bilagorna visas som en rad under texten tills konversationen hämtats
+      // om — annars ser det ut som att de försvann i det ögonblick man skickade.
+      content: attachmentIds.length > 0 ? `${msg}\n\n${attachmentNote(attachmentIds.length)}` : msg,
       createdAt: new Date().toISOString(),
     }
     setPendingMessages((prev) => [...prev, tempUser])
@@ -112,6 +135,7 @@ export function AiPage() {
         const res = await sendMutation.mutateAsync({
           message: msg,
           ...(activeConversationId ? { conversationId: activeConversationId } : {}),
+          ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
         })
 
         if (!activeConversationId) {
@@ -144,62 +168,69 @@ export function AiPage() {
       setStreamingText('')
       setToolEvents([])
 
-      streamCleanupRef.current = streamChat(msg, activeConversationId ?? undefined, token, {
-        onDelta: (text) => setStreamingText(text),
-        onToolUseStart: ({ id, name }) => {
-          setToolEvents((prev) => [...prev, { id, name, status: 'starting' }])
-        },
-        onToolUseExecuting: ({ id }) => {
-          setToolEvents((prev) =>
-            prev.map((e) => (e.id === id ? { ...e, status: 'executing' } : e)),
-          )
-        },
-        onToolResult: ({ id }) => {
-          setToolEvents((prev) => prev.map((e) => (e.id === id ? { ...e, status: 'done' } : e)))
-        },
-        onPendingAction: (action) => {
-          setIsStreaming(false)
-          setStreamingText('')
-          setToolEvents([])
-          setActiveConversationId(action.conversationId)
-          setPendingAction({
-            toolName: action.toolName,
-            toolInput: action.toolInput,
-            confirmationMessage: action.confirmationMessage,
-            details: action.details,
-            ...(action.requiresDoubleConfirm ? { requiresDoubleConfirm: true } : {}),
-          })
-          void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
-          void queryClient
-            .refetchQueries({ queryKey: ['ai-conversation', action.conversationId] })
-            .then(() => {
+      streamCleanupRef.current = streamChat(
+        msg,
+        activeConversationId ?? undefined,
+        token,
+        {
+          onDelta: (text) => setStreamingText(text),
+          onToolUseStart: ({ id, name }) => {
+            setToolEvents((prev) => [...prev, { id, name, status: 'starting' }])
+          },
+          onToolUseExecuting: ({ id }) => {
+            setToolEvents((prev) =>
+              prev.map((e) => (e.id === id ? { ...e, status: 'executing' } : e)),
+            )
+          },
+          onToolResult: ({ id }) => {
+            setToolEvents((prev) => prev.map((e) => (e.id === id ? { ...e, status: 'done' } : e)))
+          },
+          onPendingAction: (action) => {
+            setIsStreaming(false)
+            setStreamingText('')
+            setToolEvents([])
+            setActiveConversationId(action.conversationId)
+            setPendingAction({
+              toolName: action.toolName,
+              toolInput: action.toolInput,
+              confirmationMessage: action.confirmationMessage,
+              details: action.details,
+              ...(action.requiresDoubleConfirm ? { requiresDoubleConfirm: true } : {}),
+            })
+            void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
+            void queryClient
+              .refetchQueries({ queryKey: ['ai-conversation', action.conversationId] })
+              .then(() => {
+                setPendingMessages([])
+              })
+          },
+          onDone: (convId) => {
+            setIsStreaming(false)
+            setStreamingText('')
+            setToolEvents([])
+            setActiveConversationId(convId)
+            void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
+            void queryClient.refetchQueries({ queryKey: ['ai-conversation', convId] }).then(() => {
               setPendingMessages([])
             })
-        },
-        onDone: (convId) => {
-          setIsStreaming(false)
-          setStreamingText('')
-          setToolEvents([])
-          setActiveConversationId(convId)
-          void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
-          void queryClient.refetchQueries({ queryKey: ['ai-conversation', convId] }).then(() => {
+          },
+          onError: (_error) => {
+            // Släck BÅDA spinner-tillstånden (isStreaming för strömvägen,
+            // isThinking som defensiv säkerhet) + rensa strömnings-state. Utan
+            // detta snurrade "tänker"-indikatorn för evigt vid AI-fel. Visa ett
+            // läsbart fel via appens toast — aldrig den råa tekniska orsaken
+            // (_error kan innehålla t.ex. "credit balance too low").
+            setIsStreaming(false)
+            setIsThinking(false)
+            setStreamingText('')
+            setToolEvents([])
             setPendingMessages([])
-          })
+            toast.error('AI-assistenten kunde inte svara just nu. Försök igen om en stund.')
+          },
         },
-        onError: (_error) => {
-          // Släck BÅDA spinner-tillstånden (isStreaming för strömvägen,
-          // isThinking som defensiv säkerhet) + rensa strömnings-state. Utan
-          // detta snurrade "tänker"-indikatorn för evigt vid AI-fel. Visa ett
-          // läsbart fel via appens toast — aldrig den råa tekniska orsaken
-          // (_error kan innehålla t.ex. "credit balance too low").
-          setIsStreaming(false)
-          setIsThinking(false)
-          setStreamingText('')
-          setToolEvents([])
-          setPendingMessages([])
-          toast.error('AI-assistenten kunde inte svara just nu. Försök igen om en stund.')
-        },
-      })
+        // Bara id:n går på URL:en — bytes ligger redan på servern.
+        attachmentIds.length > 0 ? attachmentIds : undefined,
+      )
     }
   }
 
@@ -264,6 +295,9 @@ export function AiPage() {
 
   const handleNewConversation = () => {
     streamCleanupRef.current?.()
+    // Bilagor som laddats upp men aldrig skickats hör till det övergivna
+    // meddelandet. Tas bort här; TTL-cronen städar dem annars inom ett dygn.
+    attach.attachments.forEach((a) => attach.remove(a.localId))
     setActiveConversationId(null)
     setPendingMessages([])
     setPendingAction(null)
@@ -386,6 +420,10 @@ export function AiPage() {
               variant={isEmpty ? 'hero' : 'docked'}
               toolCatalog={toolCatalog}
               onSelectTool={handleSelectTool}
+              attachments={attach.attachments}
+              onAddFiles={(files) => attach.addFiles(files, activeConversationId ?? undefined)}
+              onRemoveAttachment={attach.remove}
+              attachmentBlockingReason={attach.blockingReason}
               textareaRef={textareaRef}
             />
           </motion.div>

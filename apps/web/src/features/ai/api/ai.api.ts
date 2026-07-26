@@ -1,4 +1,5 @@
-import { get, post, del } from '@/lib/api'
+import { api, get, post, del } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth.store'
 
 export interface AiMessage {
   id: string
@@ -34,8 +35,73 @@ export interface ChatResponse {
   downloadUrl?: string
 }
 
-export async function sendMessage(message: string, conversationId?: string): Promise<ChatResponse> {
-  return post<ChatResponse>('/ai/chat', { message, ...(conversationId ? { conversationId } : {}) })
+/**
+ * En bilaga som ligger på servern och väntar på att skickas — svaret från
+ * `POST /v1/ai/attachments` (spår B1).
+ *
+ * `mimeType` är serverns DETEKTERADE typ (magiska byten), inte den webbläsaren
+ * gissade på `File.type`. De kan skilja sig, och serverns är den sanna.
+ */
+export interface AiAttachment {
+  id: string
+  kind: 'image' | 'document'
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  /** Antal sidor för PDF; null för bilder och PDF:er som inte gick att räkna. */
+  pageCount: number | null
+  expiresAt: string
+}
+
+/**
+ * Serverns gränser, speglade här för att kunna ge svar direkt i UI:t i stället
+ * för efter en uppladdning. SERVERN ÄR ALLTID AUKTORITETEN — den validerar
+ * magiska byten, sidantal och totalstorlek oavsett vad som står här. Det här är
+ * bara till för att slippa skicka en fil som ändå kommer avvisas.
+ */
+export const ATTACHMENT_LIMITS = {
+  maxPerMessage: 5,
+  maxImageBytes: 5 * 1024 * 1024,
+  maxDocumentBytes: 20 * 1024 * 1024,
+  /** Samma allowlist som serverns DETECTED_AI_CHAT_TYPES. */
+  acceptedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] as const,
+} as const
+
+/** `accept`-attributet till filväljaren, härlett ur allowlisten ovan. */
+export const ATTACHMENT_ACCEPT = ATTACHMENT_LIMITS.acceptedMimeTypes.join(',')
+
+export async function uploadAttachment(file: File, conversationId?: string): Promise<AiAttachment> {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (conversationId) formData.append('conversationId', conversationId)
+
+  const token = useAuthStore.getState().accessToken
+  const { data } = await api.post<{ data: AiAttachment }>('/ai/attachments', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  })
+  return data.data
+}
+
+/** Tar bort en bilaga som ännu inte skickats. Servern vägrar för skickade. */
+export async function deleteAttachment(id: string): Promise<void> {
+  return del(`/ai/attachments/${id}`)
+}
+
+export async function sendMessage(
+  message: string,
+  conversationId?: string,
+  attachmentIds?: string[],
+): Promise<ChatResponse> {
+  return post<ChatResponse>('/ai/chat', {
+    message,
+    ...(conversationId ? { conversationId } : {}),
+    // Utelämnas helt när inget är bifogat — text-only-vägen ska se exakt ut
+    // som före spår B.
+    ...(attachmentIds?.length ? { attachmentIds } : {}),
+  })
 }
 
 export async function confirmAction(params: {
@@ -96,10 +162,15 @@ export function streamChat(
   conversationId: string | undefined,
   token: string,
   handlers: StreamChatHandlers,
+  attachmentIds?: string[],
 ): () => void {
   const controller = new AbortController()
   const params = new URLSearchParams({ message })
   if (conversationId) params.set('conversationId', conversationId)
+  // BARA id:n på URL:en — bytes ligger redan på servern sedan uppladdningen.
+  // Det är hela skälet till att uppladdningen är en egen endpoint: base64 får
+  // inte plats i en query-param.
+  if (attachmentIds?.length) params.set('attachmentIds', attachmentIds.join(','))
 
   let buffer = ''
 

@@ -40,8 +40,21 @@ export function useConversation(id: string | null) {
 export function useSendMessage() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ message, conversationId }: { message: string; conversationId?: string }) =>
-      sendMessage(message, conversationId),
+    // attachmentIds MÅSTE med hela vägen. Den här mutationen destrukturerade
+    // tidigare bara { message, conversationId } och tappade bilagorna tyst på
+    // POST-vägen — och POST-vägen är den vanliga (alla följdfrågor i ett samtal
+    // och allt som ser ut som en åtgärd går dit). TypeScript fångade det inte:
+    // ett villkorat spread i anropet gör att excess-property-kontrollen inte
+    // slår till.
+    mutationFn: ({
+      message,
+      conversationId,
+      attachmentIds,
+    }: {
+      message: string
+      conversationId?: string
+      attachmentIds?: string[]
+    }) => sendMessage(message, conversationId, attachmentIds),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
       if (data.conversationId) {
