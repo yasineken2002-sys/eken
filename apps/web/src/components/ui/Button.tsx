@@ -8,8 +8,12 @@ const base =
   'inline-flex items-center justify-center gap-1.5 font-medium rounded-[10px] transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-1 disabled:opacity-50 disabled:pointer-events-none select-none active:scale-[0.97]'
 
 const variants: Record<Variant, string> = {
+  // F5: primärknappens skugga var brand-blå i rgba-form — den följer nu
+  // varumärket via kanalvariabeln i stället för att stå kvar blå under en grön
+  // knapp. (rgba(37,99,235,…) passerade grinden osynligt: rgb()-formen matchas
+  // inte av palette-hex-regeln.)
   primary:
-    'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-[0_1px_2px_rgba(37,99,235,0.3),0_0_0_1px_rgba(37,99,235,0.08)]',
+    'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-[0_1px_2px_rgb(var(--ev-brand-500-ch)/0.3),0_0_0_1px_rgb(var(--ev-brand-500-ch)/0.08)]',
   secondary:
     'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300 shadow-[0_1px_2px_rgba(0,0,0,0.05)]',
   outline:

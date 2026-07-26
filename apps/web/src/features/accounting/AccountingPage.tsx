@@ -53,7 +53,7 @@ function AccountRow({ account, delay }: { account: Account; delay: number }) {
       : firstDigit === 2
         ? 'bg-red-50 text-red-700'
         : firstDigit === 3
-          ? 'bg-blue-50 text-blue-700'
+          ? 'bg-info-50 text-info-700'
           : 'bg-amber-50 text-amber-700'
   return (
     <motion.div

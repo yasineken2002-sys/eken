@@ -147,11 +147,11 @@ export function ContractTab({ leaseId }: Props) {
           </div>
         </div>
       ) : (
-        <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-[13px] text-blue-900">
-          <FileText size={16} strokeWidth={1.8} className="mt-0.5 shrink-0 text-blue-600" />
+        <div className="border-info-100 bg-info-50/50 text-info-900 flex items-start gap-3 rounded-xl border p-4 text-[13px]">
+          <FileText size={16} strokeWidth={1.8} className="text-info-600 mt-0.5 shrink-0" />
           <div>
             <p className="font-medium">Kontrakt genererat — väntar på signering</p>
-            <p className="mt-0.5 text-blue-700/80">
+            <p className="text-info-700/80 mt-0.5">
               När hyresgästen aktiverar kontot via portallänken signeras PDF:en digitalt och låses
               automatiskt med en SHA-256-hash.
             </p>

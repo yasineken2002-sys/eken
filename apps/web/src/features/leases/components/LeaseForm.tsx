@@ -525,11 +525,11 @@ export function LeaseForm({
       {/* Edit-lås-banner: förklarar VARFÖR bindande fält är låsta på ett aktivt
           kontrakt och VART varje ändring ska göras (speglar backend-guarden). */}
       {isActiveLock && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/70 px-3.5 py-3">
-          <Lock size={15} strokeWidth={2} className="mt-0.5 shrink-0 text-blue-600" />
-          <div className="space-y-1 text-[12.5px] text-blue-900">
+        <div className="border-info-100 bg-info-50/70 flex items-start gap-2.5 rounded-xl border px-3.5 py-3">
+          <Lock size={15} strokeWidth={2} className="text-info-600 mt-0.5 shrink-0" />
+          <div className="text-info-900 space-y-1 text-[12.5px]">
             <p className="font-semibold">Kontraktet är aktivt — bindande villkor är låsta</p>
-            <p className="text-blue-800/90">
+            <p className="text-info-800/90">
               Hyra ändras via hyreshöjning, slutdatum via uppsägning eller förnyelse, och byte av
               enhet eller hyresgäst kräver ett nytt kontrakt. Anteckningar kan fortfarande
               redigeras.
@@ -1249,7 +1249,7 @@ export function LeaseForm({
           skapa & aktivera direkt (primär). I edit-läge har vi bara en
           spara-knapp eftersom aktivering sker via separat knapp i detaljvyn. */}
       {mode === 'create' && (
-        <p className="rounded-lg bg-blue-50/70 px-3.5 py-2.5 text-[12.5px] text-blue-900">
+        <p className="bg-info-50/70 text-info-900 rounded-lg px-3.5 py-2.5 text-[12.5px]">
           💡 <strong>Skapa &amp; aktivera direkt</strong> skickar mejl till hyresgästen omedelbart
           med aktiveringslänk. <strong>Spara som utkast</strong> låter dig granska kontraktet först.
         </p>

@@ -46,7 +46,7 @@ export function CookieBanner() {
       >
         Eveno använder cookies som krävs för inloggning och säkerhet. Inga tredjepartscookies för
         marknadsföring eller spårning sätts.{' '}
-        <Link to="/integritet" style={{ color: '#2563eb', fontWeight: 500 }}>
+        <Link to="/integritet" style={{ color: 'var(--ev-brand)', fontWeight: 500 }}>
           Läs vår integritetspolicy
         </Link>
         .
@@ -58,7 +58,7 @@ export function CookieBanner() {
           style={{
             height: 36,
             padding: '0 16px',
-            background: '#2563eb',
+            background: 'var(--ev-brand)',
             color: 'var(--ev-surface)',
             border: 'none',
             borderRadius: 8,

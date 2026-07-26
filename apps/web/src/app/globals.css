@@ -15,16 +15,16 @@
    #eaedf0 → #ece7e0, fältkant #dddfe4 → var(--ev-border), och hela gråskalan
    plus statusfamiljerna byter till de härledda varma skalorna.
 
-   ETT undantag står kvar: --ev-brand. Blått → grönt är den synliga
-   varumärkesändringen och granskas som ett eget beslut för alla tre apparna
-   samtidigt — det är F5. Tills dess hålls webs accentfärg på dagens blå.
+   F5 commit 2: --ev-brand-pinnen är BORTA. Webs accentfärg kommer nu ur
+   @eken/ui:s låsta palett — #2563eb → #1a6b3c. Tillsammans med
+   `blue: evenoScales.brand` i tailwind.config är det hela varumärkesbytet.
 
    OBS: webs egna HSL-tokens (--background/--border/--primary … i @layer base
    nedan) är ett SEPARAT system som inte rörs här. De är shadcn-arvet; bara
-   `input` pekades om (F2 commit 1) eftersom den inte användes någonstans. */
-:root {
-  --ev-brand: #2563eb; /* hålls kvar till F5 (brand-blue → #1a6b3c) */
-}
+   `input` pekades om (F2 commit 1) eftersom den inte användes någonstans.
+   --primary och --ring är fortfarande blå HSL men har 0 träffar i hela web
+   (inga bg-primary/ring-ring/var(--primary)) — död kod som hör till en egen
+   shadcn-städning, inte till varumärkesbytet. */
 
 @layer base {
   :root {
@@ -71,7 +71,11 @@
     font-size: 14px;
   }
   ::selection {
-    background: rgba(37, 99, 235, 0.12);
+    /* F5: markeringsfärgen är varumärket. Kanalform eftersom den bär alfa —
+       `rgba(var(--ev-brand))` går inte, en hex bakom var() kan inte delas upp.
+       Låg den kvar som rgba(37,99,235,…) hade den passerat grinden osynligt:
+       rgb()-formen matchas inte av palette-hex-regeln. */
+    background: rgb(var(--ev-brand-500-ch) / 0.12);
   }
 }
 

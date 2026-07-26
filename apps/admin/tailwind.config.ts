@@ -1,5 +1,5 @@
 import type { Config } from 'tailwindcss'
-import { evenoPreset, evenoScales } from '@eken/ui/tailwind-preset'
+import { evenoPreset, evenoScales, legacyInfoBlue } from '@eken/ui/tailwind-preset'
 
 export default {
   // @eken/ui-preseten mappar var(--ev-*) → theme.colors (brand/canvas/ink/line/…).
@@ -16,12 +16,20 @@ export default {
       // `text-gray-500` slår nu upp var(--ev-neutral-500). Värdet är pinnat till
       // dagens exakta Tailwind-hex i globals.css, så steget är pixelneutralt;
       // flippen (commit 2) tar bort pinnarna och skalorna blir varma.
-      // Blå familjen lämnas MEDVETET orörd — den är varumärkesbytet i F5.
       colors: {
         gray: evenoScales.neutral,
+        // ── F5 commit 2: VARUMÄRKESBYTET ──────────────────────────────────────
+        // Blå familjen pekas på varumärkesskalan — primärknapp, länk, fokusring
+        // och markerad rad blir gröna utan att en klass skrivs om. Det som bär
+        // betydelse pekar sedan commit 1 på `info` och står kvar blått.
+        blue: evenoScales.brand,
         emerald: evenoScales.success,
         amber: evenoScales.warning,
         red: evenoScales.danger,
+        // F5 commit 1: `info` = dagens blå, ord för ord (se EVENO_LEGACY_INFO_BLUE).
+        // Badge-varianten `info` och de blå ytor som bär betydelse skrivs om till
+        // `-info-*`. Rent pinnat — `bg-info-50` renderar exakt som `bg-blue-50`.
+        info: legacyInfoBlue,
         // Fältkant (input/select/textarea) — ersätter border-[#DDDFE4].
         input: 'var(--ev-input-border)',
       },

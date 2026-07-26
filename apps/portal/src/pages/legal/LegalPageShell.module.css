@@ -159,7 +159,7 @@
 }
 
 .content a {
-  color: #2563eb;
+  color: var(--ev-brand);
   text-decoration: none;
 }
 

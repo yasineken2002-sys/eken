@@ -1,3 +1,15 @@
+/**
+ * F5: de blå statusparen (#eff6ff/#1d4ed8) står KVAR blå med flit.
+ *
+ * "Skickad" och "Ny" är neutrala tillstånd, och de sitter i samma tabell som
+ * PAID "Betald" på var(--ev-success-50). Eftersom brand === statusSuccess ===
+ * #1a6b3c hade en flipp av dessa gjort "Skickad" BOKSTAVLIGEN identisk med
+ * "Betald" — en obetald avi som ser betald ut. Samma beslut som web/admin, där
+ * motsvarande badges pinnades till `-info-*` i commit 1.
+ *
+ * Vad info-/statusblått ska vara i den varma gröna paletten är en egen
+ * designfråga (fjärde statusfärg?), inte något F5 avgör tyst.
+ */
 interface BadgeStyle {
   label: string
   bg: string

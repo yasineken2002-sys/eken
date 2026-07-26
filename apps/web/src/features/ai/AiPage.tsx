@@ -94,7 +94,12 @@ const SUGGESTIONS = [
     color: 'var(--ev-success-600)',
     bg: 'var(--ev-success-50)',
   },
-  { icon: TrendingUp, label: 'Visa intäkter för Q1 2026', color: 'var(--ev-brand)', bg: '#EFF6FF' },
+  {
+    icon: TrendingUp,
+    label: 'Visa intäkter för Q1 2026',
+    color: 'var(--ev-brand)',
+    bg: 'var(--ev-brand-50)',
+  },
   {
     icon: AlertTriangle,
     label: 'Skicka påminnelser till förfallna fakturor',
@@ -804,7 +809,7 @@ export function AiPage() {
                                   'inline-flex h-1.5 w-1.5 rounded-full',
                                   evt.status === 'done'
                                     ? 'bg-emerald-500'
-                                    : 'animate-pulse bg-blue-500',
+                                    : 'bg-info-500 animate-pulse',
                                 )}
                               />
                               <span>

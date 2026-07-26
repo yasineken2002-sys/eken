@@ -1,7 +1,7 @@
 import type { Config } from 'tailwindcss'
 import animate from 'tailwindcss-animate'
 import typography from '@tailwindcss/typography'
-import { evenoPreset, evenoScales } from '@eken/ui/tailwind-preset'
+import { evenoPreset, evenoScales, legacyInfoBlue } from '@eken/ui/tailwind-preset'
 
 export default {
   // @eken/ui-preseten mappar var(--ev-*) → theme.colors (brand/canvas/ink/line/…).
@@ -25,11 +25,24 @@ export default {
         // härledda skalor i stället för Tailwinds egna. Ingen klass skrivs om —
         // `text-gray-500` slår nu upp var(--ev-neutral-500), pinnad till dagens
         // exakta Tailwind-hex i globals.css. Flippen (commit 2) tar bort pinnarna.
-        // Blå familjen lämnas MEDVETET orörd — den är varumärkesbytet i F5.
         gray: evenoScales.neutral,
+        // ── F5 commit 2: VARUMÄRKESBYTET ──────────────────────────────────────
+        // Blå familjen pekas på varumärkesskalan. Detta är hela flippen: 339
+        // klasser (primärknapp, länk, fokusring, markerad rad, växlare, logo,
+        // dropzone) blir gröna utan att en enda av dem skrivs om — samma mekanik
+        // som gray/emerald/amber/red ovan. Det som INTE är varumärke pekar sedan
+        // commit 1 på `info` och står kvar blått.
+        blue: evenoScales.brand,
         emerald: evenoScales.success,
         amber: evenoScales.warning,
         red: evenoScales.danger,
+        // F5 commit 1: `info` = dagens blå, ord för ord (se EVENO_LEGACY_INFO_BLUE).
+        // De blå ytor som bär BETYDELSE — info-nivån i Badge/callouts samt
+        // domänstatus ("Skickad", "Pågår", "Godkänd", "Bokförd") och kategori
+        // (BAS-kontoklass, filtyp) — skrivs om till `-info-*` här. Rent pinnat:
+        // `bg-info-50` renderar exakt som `bg-blue-50` gjorde. Först därefter kan
+        // commit 2 peka hela `blue`-familjen på grönt utan att tysta över dem.
+        info: legacyInfoBlue,
         border: 'hsl(var(--border))',
         // `input` pekade på webs shadcn-HSL men användes inte på en enda plats
         // (0 träffar på border-input/bg-input/ring-input). Den pekas om till

@@ -98,7 +98,16 @@ const HEX_RE = /#[0-9a-fA-F]{3,8}\b/g
 const TW_ARBITRARY_RE = /-\[#[0-9a-fA-F]{3,8}\]/g
 // rgb()/hsl() är samma synd som rå hex och var tidigare en öppen kringgång:
 // `background: rgb(37, 99, 235)` passerade hex-regeln obemärkt.
-const COLOR_FN_RE = /\b(?:rgba?|hsla?)\(\s*[^)]*\)/g
+// Ett nivås nästning måste med, annars kapas `rgb(var(--ev-brand-500-ch) / .12)`
+// vid den INRE parentesen och matchen blir den obalanserade `rgb(var(--ev-brand-500-ch`
+// — då kan kanalformen inte kännas igen (F5).
+//
+// GRINDHÅL som stängs här (F5): startgränsen var `\b`, och i en Tailwind-arbitrary
+// separeras värden med UNDERSTRECK — `shadow-[0_1px_2px_rgba(37,99,235,0.3)]`. Mellan
+// `_` och `r` står två ordtecken, alltså ingen ordgräns, alltså ingen match: hela
+// familjen rgba-i-arbitrary har varit osynlig för grinden. Primärknappens blå skugga
+// låg där. `(?<![a-zA-Z0-9])` släpper igenom efter `_` men fångar inte `myrgb(`.
+const COLOR_FN_RE = /(?<![a-zA-Z0-9])(?:rgba?|hsla?)\(\s*(?:[^()]|\([^()]*\))*\)/g
 
 /**
  * Inline-undantag:
@@ -107,6 +116,18 @@ const COLOR_FN_RE = /\b(?:rgba?|hsla?)\(\s*[^)]*\)/g
  *   `design-tokens-allow-end`                  — … som stängs här
  * Alltid i en kommentar, alltid med motivering.
  */
+/**
+ * `rgb(var(--ev-brand-500-ch) / 0.12)` — token + alfa, inte en rå färg.
+ * Kräver minst en `var(--ev-…)` och att INGET annat än var()-referenser,
+ * separatorer och ett alfatal står i argumenten.
+ */
+export function isTokenizedColorFn(text) {
+  const args = text.slice(text.indexOf('(') + 1, text.lastIndexOf(')'))
+  if (!/var\(\s*--ev-/.test(args)) return false
+  const withoutVars = args.replace(/var\(\s*--ev-[a-z0-9-]+\s*\)/g, '')
+  return /^[\s,/]*(?:0?\.\d+|[01](?:\.\d+)?|\d{1,3}%)?[\s,/]*$/.test(withoutVars)
+}
+
 const INLINE_ALLOW_RE = /design-tokens-allow:\s*(\S.*?)(?:\*\/|$)/
 const REGION_START_RE = /design-tokens-allow-start:\s*(\S.*?)(?:\*\/|$)/
 const REGION_END_RE = /design-tokens-allow-end\b/
@@ -365,6 +386,14 @@ export function scanSource(rawText, relPath) {
   }
 
   for (const m of stripped.matchAll(COLOR_FN_RE)) {
+    // TOKENISERAD KANALFORM är inte en rå färg (F5). `rgb(var(--ev-brand-500-ch) / 0.12)`
+    // är det ENDA sättet att ge en token-färg alfa: en hex bakom var() kan inte delas
+    // upp, och color-mix() avviker ±1 i kompositeringen. Räknades den som skuld skulle
+    // grinden straffa exakt det mönster den finns för att driva fram — och den enda
+    // vägen att bli av med posten vore att gå tillbaka till literal rgb().
+    // Snävt med flit: BARA var(--ev-*) + alfa passerar. `rgb(37 99 235 / .12)` och
+    // `rgb(var(--nagot-annat))` faller som förut.
+    if (isTokenizedColorFn(m[0])) continue
     push('raw-color-fn', m.index, m[0].replace(/\s+/g, ' '))
   }
 
@@ -657,6 +686,25 @@ const other = '#6b7280'
       h6['raw-color-fn'][1].category === 'shadow-alpha',
     String(cats(h6['raw-color-fn'])),
   )
+
+  // Kanalform (F5): token + alfa ska INTE räknas som rå färg.
+  const chan = `.a { background: rgb(var(--ev-brand-500-ch) / 0.12); }`
+  t('kanalform räknas inte som rå färg', scanSource(chan, 'apps/web/src/c.css').hits['raw-color-fn'].length === 0)
+  const chanNoAlpha = `.a { color: rgb(var(--ev-neutral-500-ch)); }`
+  t('kanalform utan alfa passerar också', scanSource(chanNoAlpha, 'apps/web/src/c2.css').hits['raw-color-fn'].length === 0)
+  const fakeToken = `.a { background: rgb(var(--nagot-annat) / 0.12); }`
+  t('var() som inte är --ev-* faller fortfarande', scanSource(fakeToken, 'apps/web/src/c3.css').hits['raw-color-fn'].length === 1)
+  const litChannels = `.a { background: rgb(37 99 235 / 0.12); }`
+  t('literala kanaler faller fortfarande', scanSource(litChannels, 'apps/web/src/c4.css').hits['raw-color-fn'].length === 1)
+  const mixedArgs = `.a { background: rgb(var(--ev-brand-500-ch) 99 235); }`
+  t('var() blandad med literala kanaler faller', scanSource(mixedArgs, 'apps/web/src/c5.css').hits['raw-color-fn'].length === 1)
+  // Grindhålet: rgba inuti en Tailwind-arbitrary (understreck före) ska fångas.
+  const twShadow = `const c = 'shadow-[0_1px_2px_rgba(37,99,235,0.3)]'`
+  const hTw = scanSource(twShadow, 'apps/web/src/tw.tsx').hits['raw-color-fn']
+  t('rgba i tw-arbitrary (efter understreck) fångas', hTw.length === 1, JSON.stringify(hTw.map((x) => x.value)))
+  t('och klassas som shadow-alpha', hTw[0]?.category === 'shadow-alpha', String(hTw[0]?.category))
+  const notAColorFn = `const myrgb = 1; const x = myrgb(2)`
+  t('identifierare som slutar på rgb matchas inte', scanSource(notAColorFn, 'apps/web/src/id.ts').hits['raw-color-fn'].length === 0)
 
   // inline-undantag
   const inl = `const c = '#ff00ff' // design-tokens-allow: kunddata, färgen väljs av hyresvärden och sparas i DB`

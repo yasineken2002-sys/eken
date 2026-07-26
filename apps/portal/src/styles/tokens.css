@@ -13,19 +13,22 @@
    kant #e5e7eb → #ece7e0, fältkant #d1d5db → var(--ev-border), och hela grå-,
    status- och varumärkesskalan byter till de härledda varma skalorna.
 
-   Till skillnad från web och admin ändras INGEN varumärkesfärg här: portalens
-   --ev-brand var redan #1a6b3c, alltså exakt målvärdet. Portalens flipp är kall
-   grå → varm creme, ingenting annat. F5 (blått → grönt) rör bara web och admin.
+   Portalens --ev-brand var redan #1a6b3c, alltså exakt målvärdet — dess YTOR
+   (gröna kort, gradienter, panelkanter) var gröna redan före F5.
 
-   Portalens egna --color-* står kvar: de är portalens API mot sina CSS-moduler
-   och pekar nu rakt in i @eken/ui. Tre undantag bär fortfarande legacy-blått och
-   hör till F5 — de är namngivna nedan. */
+   Men portalens INTERAKTION var inte det: --color-primary-trion bar fortfarande
+   legacy-blått, och den driver inloggningens primärknapp, aktiveringssidans
+   knapp/länkar, fältfokus, spinnern och felsidans knapp. F5 commit 3 släpper
+   dem — det är sista blå varumärkesytan i produkten. */
 :root {
   /* Portalens egna --color-*: aliasade till @eken/ui där värdet matchar (neutralt),
      annars kvar som hex (inget matchande token i det låsta 9-schemat). */
-  --color-primary: #2563eb; /* legacy-blå → #1a6b3c i F5 */
-  --color-primary-dark: #1d4ed8; /* legacy-blå → F5 */
-  --color-primary-light: #eff6ff; /* legacy-blå → F5 */
+  /* F5 commit 3: legacy-blå → varumärkesgrön. Trion är portalens primärfärg-API
+     mot CSS-modulerna (16 var()-referenser); den pekas på skalan i stället för att
+     varje modul rörs. -dark är hover/aktiv, -light är den ljusa tinten. */
+  --color-primary: var(--ev-brand);
+  --color-primary-dark: var(--ev-brand-600);
+  --color-primary-light: var(--ev-brand-50);
   --color-success: var(--ev-status-success);
   --color-success-light: var(--ev-success-50);
   --color-warning: var(--ev-status-warning);

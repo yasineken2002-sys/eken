@@ -7,7 +7,7 @@ const toneClass: Record<Tone, string> = {
   success: 'bg-emerald-50 text-emerald-700',
   warning: 'bg-amber-50 text-amber-700',
   danger: 'bg-red-50 text-red-600',
-  info: 'bg-blue-50 text-blue-700',
+  info: 'bg-info-50 text-info-700',
   default: 'bg-gray-100 text-gray-700',
   ghost: 'border border-gray-200 text-gray-500',
 }
