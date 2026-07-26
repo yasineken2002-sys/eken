@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  PayloadTooLargeException,
+} from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { v4 as uuid } from 'uuid'
 import * as path from 'path'
@@ -10,7 +16,10 @@ import {
   DETECTED_AI_CHAT_TYPES,
   MAX_AI_ATTACHMENT_BYTES,
   MAX_AI_IMAGE_BYTES,
+  MAX_AI_PDF_PAGES,
 } from '../../common/utils/file-validation'
+import { countPdfPages } from './pdf-page-count'
+import { ATTACHMENT_PAYLOAD_BUDGET_BYTES, base64Bytes, formatMb } from './request-size'
 
 /** Hur länge en oanvänd bilaga får ligga kvar innan cronen städar bort den. */
 export const ATTACHMENT_TTL_MS = 24 * 60 * 60 * 1000
@@ -33,16 +42,47 @@ export const MAX_PENDING_ATTACHMENTS_PER_USER = 10
 export const MAX_ATTACHMENTS_PER_CONVERSATION = 20
 
 /**
- * Tak på hur många MB bilagor som får läsas tillbaka ur R2 när en HISTORIK
- * rehydreras. Ett långt samtal kan bära 20 bilagor (konversationskvoten), och
- * utan tak hade varje ny fråga i det samtalet dragit ner alla 20 igen och
- * spräckt både Anthropics request-tak och tålamodet.
+ * Bilagornas andel av Anthropics 32 MB-tak, i KODADE byte — se `request-size.ts`.
  *
- * Nyaste bilagor först — de äldsta faller bort till en textnotis så modellen
- * VET att något inte längre är bifogat i stället för att tro att det aldrig
- * fanns. Ett riktigt tak mot Anthropics 32 MB, med sidräkning, hör till B3.
+ * Nya bilagor och rehydrerad historik delar på samma budget, och de NYA går
+ * först: det användaren just bifogade är alltid viktigare än en fil från tio
+ * meddelanden sedan. Vad historiken får kvar är alltså vad de nya lämnade
+ * över.
+ *
+ * Historiken rehydreras dessutom NYASTE FÖRST inom sin del. Det som inte får
+ * plats blir en textnotis, inte tystnad — modellen ska veta att en bilaga
+ * funnits i stället för att tro att den aldrig fanns.
  */
-export const MAX_REHYDRATE_BYTES = 12 * 1024 * 1024
+export const MAX_ATTACHMENT_BUDGET_BYTES = ATTACHMENT_PAYLOAD_BUDGET_BYTES
+
+/**
+ * Hur länge en KONSUMERAD bilagas fil sparas efter att dess samtal senast
+ * rördes. Motiveringen står vid `cleanupConsumedAttachments`.
+ */
+export const CONSUMED_RETENTION_DAYS = 90
+
+/** Hur många bilagor en städkörning tar per kategori. */
+export const CLEANUP_BATCH_SIZE = 500
+
+/**
+ * Bildformaten Anthropic tar emot. Listan speglar SDK:ns `Base64ImageSource`
+ * och används för att SMALNA AV, inte för att påstå — se `toAnthropicBlock`.
+ */
+export const ANTHROPIC_IMAGE_MEDIA_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+] as const
+export type AnthropicImageMediaType = (typeof ANTHROPIC_IMAGE_MEDIA_TYPES)[number]
+
+/** Filändelse per DETEKTERAD typ — aldrig ur klientens filnamn. */
+const EXTENSION_BY_MIME: Record<string, string> = {
+  'application/pdf': '.pdf',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+}
 
 export type AttachmentKind = 'image' | 'document'
 
@@ -66,6 +106,8 @@ export interface AttachmentResponse {
   filename: string
   mimeType: string
   sizeBytes: number
+  /** Antal sidor för PDF; null för bilder och oräkneliga PDF:er. */
+  pageCount: number | null
   expiresAt: Date
 }
 
@@ -145,6 +187,27 @@ export class AiAttachmentsService {
       throw new BadRequestException(`Bilden är för stor (max ${mb} MB)`)
     }
 
+    // B3: sidräkning för PDF. Anthropic tar max 600 sidor per dokument — utan
+    // kontrollen här upptäcks en 700-sidig fil först vid modellanropet, efter
+    // uppladdning och betald överföring.
+    let pageCount: number | null = null
+    if (detected === 'application/pdf') {
+      pageCount = countPdfPages(file.buffer)
+      if (pageCount !== null && pageCount > MAX_AI_PDF_PAGES) {
+        throw new BadRequestException(
+          `PDF:en har ${pageCount} sidor (max ${MAX_AI_PDF_PAGES}). Dela upp den eller skicka de sidor det gäller.`,
+        )
+      }
+      if (pageCount === null) {
+        // MEDVETET INTE ETT FEL: att avvisa en giltig PDF för att vår räknare
+        // inte förstod dess sidträd vore värre än att i sällsynta fall låta
+        // Anthropic avvisa den. Loggas så att mönstret syns om det blir vanligt.
+        this.logger.warn(
+          `Kunde inte räkna sidor i "${path.basename(file.filename)}" — släpps fram oräknad`,
+        )
+      }
+    }
+
     // Kvoterna kollas FÖRE R2-uppladdningen: en avvisad fil ska inte hinna
     // lägga ett objekt i lagringen som ingen sedan städar.
     await this.assertWithinQuota(organizationId, userId, conversationId)
@@ -161,8 +224,11 @@ export class AiAttachmentsService {
       }
     }
 
-    const ext = path.extname(file.filename)
-    const storageKey = `ai-chat/${organizationId}/${uuid()}${ext}`
+    // Filändelsen härleds ur den DETEKTERADE typen, inte ur klientens filnamn.
+    // Annars hade en PDF som klienten döpte till "faktura.exe" fått en
+    // .exe-nyckel i lagringen — en fil vars namn säger emot dess verifierade
+    // innehåll. Visningsnamnet (`filename`) behåller användarens original.
+    const storageKey = `ai-chat/${organizationId}/${uuid()}${EXTENSION_BY_MIME[detected] ?? ''}`
     await this.storage.uploadFile(file.buffer, storageKey, detected)
 
     const attachment = await this.prisma.aiAttachment.create({
@@ -175,6 +241,7 @@ export class AiAttachmentsService {
         filename: path.basename(file.filename),
         mimeType: detected,
         sizeBytes: file.buffer.length,
+        pageCount,
         storageKey,
         expiresAt: new Date(Date.now() + ATTACHMENT_TTL_MS),
       },
@@ -186,6 +253,7 @@ export class AiAttachmentsService {
       filename: attachment.filename,
       mimeType: attachment.mimeType,
       sizeBytes: attachment.sizeBytes,
+      pageCount: attachment.pageCount,
       expiresAt: attachment.expiresAt,
     }
   }
@@ -209,9 +277,11 @@ export class AiAttachmentsService {
     contentBlocks: Anthropic.ContentBlockParam[]
     refBlocks: AttachmentRefBlock[]
     ids: string[]
+    /** Kodade byte de nya bilagorna upptar — dras av historikens budget. */
+    encodedBytes: number
   }> {
     if (attachmentIds.length === 0) {
-      return { contentBlocks: [], refBlocks: [], ids: [] }
+      return { contentBlocks: [], refBlocks: [], ids: [], encodedBytes: 0 }
     }
 
     // Dedup: samma id två gånger ska inte betala för samma bytes två gånger.
@@ -240,6 +310,23 @@ export class AiAttachmentsService {
       )
     }
 
+    // B3 — PRE-FLIGHT MOT 32 MB-TAKET, före en enda byte lästs ur R2.
+    //
+    // `CHAT_MAX_ATTACHMENTS = 5` räcker inte som skydd: fem filer på 20 MB är
+    // 100 MB råa och ~133 MB som base64. Taket måste ligga på TOTALA byte, och
+    // det räknas i KODADE byte eftersom det är så de går på tråden.
+    //
+    // Kollen görs på `sizeBytes` ur databasen — den skrevs av uppladdningen
+    // efter att filen validerats, så vi behöver inte hämta något för att veta
+    // hur stort det blir.
+    const encodedBytes = rows.reduce((sum, r) => sum + base64Bytes(r.sizeBytes), 0)
+    if (encodedBytes > MAX_ATTACHMENT_BUDGET_BYTES) {
+      throw new PayloadTooLargeException(
+        `Bilagorna är tillsammans för stora (${formatMb(encodedBytes)} kodat, max ` +
+          `${formatMb(MAX_ATTACHMENT_BUDGET_BYTES)}). Skicka färre eller mindre filer.`,
+      )
+    }
+
     // Behåll anroparens ordning — den speglar hur användaren bifogade filerna.
     const byId = new Map(rows.map((r) => [r.id, r]))
     const ordered = uniqueIds.map((id) => byId.get(id)!)
@@ -259,7 +346,13 @@ export class AiAttachmentsService {
       })
     }
 
-    return { contentBlocks, refBlocks, ids: ordered.map((r) => r.id) }
+    // De nya bilagorna har första tjing på budgeten; historiken får resten.
+    return {
+      contentBlocks,
+      refBlocks,
+      ids: ordered.map((r) => r.id),
+      encodedBytes,
+    }
   }
 
   /**
@@ -284,8 +377,9 @@ export class AiAttachmentsService {
    * innehållsblock genom att hämta bytes ur R2.
    *
    * Tre saker att veta:
-   *  • NYASTE FÖRST mot `MAX_REHYDRATE_BYTES`. Det som inte får plats blir en
-   *    textnotis, inte tystnad — modellen ska veta att en bilaga funnits.
+   *  • NYASTE FÖRST mot den budget som blev över efter de nya bilagorna. Det
+   *    som inte får plats blir en textnotis, inte tystnad — modellen ska veta
+   *    att en bilaga funnits.
    *  • En R2-miss (städad, borttagen, nere) blir också en notis. Historiken ska
    *    kunna läsas även när en gammal fil är borta.
    *  • Blocken går in i samma ordning de låg i meddelandet; det är bara
@@ -309,12 +403,17 @@ export class AiAttachmentsService {
     const loaded = new Map<string, Anthropic.ContentBlockParam>()
     for (const ref of refs) {
       const row = byId.get(ref.attachmentId)
-      if (!row) continue
-      if (row.sizeBytes > budget.remainingBytes) continue
+      // Tom storageKey = filen är städad enligt retentionen. Raden finns kvar
+      // så historiken kan säga att en bilaga funnits — men det finns inget att
+      // hämta, så den faller till notisen längre ner.
+      if (!row || row.storageKey === '') continue
+      // Kodade byte, samma valuta som budgeten och som tråden.
+      const cost = base64Bytes(row.sizeBytes)
+      if (cost > budget.remainingBytes) continue
       try {
         const buffer = await this.storage.getFileBuffer(row.storageKey)
         loaded.set(ref.attachmentId, this.toAnthropicBlock(row.mimeType, buffer))
-        budget.remainingBytes -= row.sizeBytes
+        budget.remainingBytes -= cost
       } catch (error) {
         this.logger.warn(
           `Kunde inte läsa bilaga ${ref.attachmentId} för historiken: ${
@@ -343,11 +442,19 @@ export class AiAttachmentsService {
   private toAnthropicBlock(mimeType: string, buffer: Buffer): Anthropic.ContentBlockParam {
     const data = buffer.toString('base64')
     if (attachmentKind(mimeType) === 'image') {
+      // B3: RIKTIG avsmalning i stället för en cast. Den gamla raden
+      // (`mimeType as 'image/jpeg' | ...`) påstod en typ som TypeScript aldrig
+      // kontrollerade — hade allowlisten någon gång vidgats, eller en rad i
+      // databasen burit något annat, hade fel media_type gått till Anthropic
+      // tyst. Nu kastar vi i stället, med värdet i felet.
+      if (!ANTHROPIC_IMAGE_MEDIA_TYPES.includes(mimeType as AnthropicImageMediaType)) {
+        throw new BadRequestException(`Bildformatet ${mimeType} stöds inte`)
+      }
       return {
         type: 'image',
         source: {
           type: 'base64',
-          media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
+          media_type: mimeType as AnthropicImageMediaType,
           data,
         },
       }
@@ -404,21 +511,49 @@ export class AiAttachmentsService {
   }
 
   /**
-   * Städar bilagor som laddades upp men aldrig skickades. Utan den här cronen
-   * vore uppladdnings-endpointen en lagringssänka som bara växer: varje
-   * påbörjat men avbrutet meddelande hade lämnat en fil i R2 för alltid.
+   * RETENTION — två skäl att ta bort en bilaga, med olika frister.
    *
-   * KONSUMERADE bilagor rörs INTE — de ingår i ett samtals historik, och hur
-   * länge den historiken ska leva är en egen fråga (B3).
+   * 1. OANVÄND (`consumedAt = null`) efter 24 h. Varje påbörjat men avbrutet
+   *    meddelande lämnar annars en fil i R2 för alltid.
+   *
+   * 2. KONSUMERAD men i ett samtal som legat stilla längre än
+   *    `CONSUMED_RETENTION_DAYS`. B2 undantog konsumerade bilagor helt, vilket
+   *    var rätt då (de behövs för rehydreringen) men gjorde lagringen
+   *    obegränsat växande: en aktiv organisation som bifogar dagligen fyller
+   *    R2 utan bortre gräns.
+   *
+   *    90 dagar valt så här: bilagan behövs bara så länge samtalet kan
+   *    fortsätta. Glidfönstret behåller 20 meddelanden, och ett samtal som
+   *    varit rört på ett kvartal återupptas i praktiken inte — men ett kvartal
+   *    är också gott om tid för en hyresvärd att gå tillbaka till "det där
+   *    kontoutdraget i maj". Kortare hade riskerat att kapa levande ärenden
+   *    (en inkassotrappa löper över månader), längre hade inte tillfört något
+   *    eftersom underlaget då hör hemma i dokumentarkivet, inte i en chatt.
+   *
+   *    Fristen räknas på samtalets `updatedAt`, inte bilagans ålder: ett samtal
+   *    som fortfarande används behåller sina bilagor hur gamla de än är.
+   *    RADEN blir kvar när filen städas — historiken visar då notisen
+   *    "bifogades tidigare men är inte tillgänglig", vilket är sannare än att
+   *    låtsas att bilagan aldrig funnits.
    */
   @Cron('0 4 * * *')
   async cleanupExpiredAttachments(): Promise<void> {
+    const removedUnused = await this.cleanupUnusedAttachments()
+    const removedConsumed = await this.cleanupConsumedAttachments()
+    if (removedUnused + removedConsumed > 0) {
+      this.logger.log(
+        `Städade ${removedUnused} oanvända och ${removedConsumed} konsumerade AI-bilagor`,
+      )
+    }
+  }
+
+  /** Bilagor som laddades upp men aldrig skickades — rad och fil tas bort. */
+  private async cleanupUnusedAttachments(): Promise<number> {
     const expired = await this.prisma.aiAttachment.findMany({
       where: { consumedAt: null, expiresAt: { lt: new Date() } },
       select: { id: true, storageKey: true },
-      take: 500,
+      take: CLEANUP_BATCH_SIZE,
     })
-    if (expired.length === 0) return
 
     let removed = 0
     for (const attachment of expired) {
@@ -436,6 +571,74 @@ export class AiAttachmentsService {
         )
       }
     }
-    this.logger.log(`Städade ${removed} av ${expired.length} utgångna AI-bilagor`)
+    return removed
+  }
+
+  /**
+   * Konsumerade bilagor i samtal som legat stilla längre än fristen. FILEN tas
+   * bort ur R2 men RADEN blir kvar (med `storageKey` nollställd) — historiken
+   * ska kunna berätta att en bilaga funnits.
+   */
+  private async cleanupConsumedAttachments(): Promise<number> {
+    const cutoff = new Date(Date.now() - CONSUMED_RETENTION_DAYS * 24 * 60 * 60 * 1000)
+    const stale = await this.prisma.aiAttachment.findMany({
+      where: {
+        consumedAt: { not: null },
+        storageKey: { not: '' },
+        conversation: { updatedAt: { lt: cutoff } },
+      },
+      select: { id: true, storageKey: true },
+      take: CLEANUP_BATCH_SIZE,
+    })
+
+    let removed = 0
+    for (const attachment of stale) {
+      try {
+        await this.storage.deleteFile(attachment.storageKey)
+        // Tom nyckel = filen är städad. Rehydreringen hoppar över den och
+        // lämnar sin textnotis; nästa städning plockar inte upp den igen.
+        await this.prisma.aiAttachment.update({
+          where: { id: attachment.id },
+          data: { storageKey: '' },
+        })
+        removed++
+      } catch (error) {
+        this.logger.error(
+          `Kunde inte städa konsumerad bilaga ${attachment.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+      }
+    }
+    return removed
+  }
+
+  /**
+   * Ta bort R2-objekten för ett samtals bilagor. Anropas INNAN samtalet
+   * raderas.
+   *
+   * Utan det här läcker varje raderad konversation sina filer: `onDelete:
+   * Cascade` tar bort AiAttachment-RADEN, men databasen vet ingenting om R2 —
+   * objektet blir kvar utan att någon rad längre pekar på det, alltså utan att
+   * någon städning någonsin kan hitta det. Städcronen letar via rader.
+   */
+  async deleteConversationFiles(conversationId: string): Promise<void> {
+    const attachments = await this.prisma.aiAttachment.findMany({
+      where: { conversationId, storageKey: { not: '' } },
+      select: { id: true, storageKey: true },
+    })
+    for (const attachment of attachments) {
+      try {
+        await this.storage.deleteFile(attachment.storageKey)
+      } catch (error) {
+        // Loggas men stoppar inte raderingen: användaren har bett om att få
+        // samtalet borttaget, och en R2-miss får inte hindra det.
+        this.logger.error(
+          `Kunde inte ta bort bilagefil ${attachment.id} vid radering av samtal: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+      }
+    }
   }
 }

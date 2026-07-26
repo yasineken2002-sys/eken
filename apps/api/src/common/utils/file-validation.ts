@@ -28,6 +28,10 @@ export const MAX_CONTRACT_BYTES = 10 * 1024 * 1024 // Hyreskontrakt (PDF/bild): 
 //    Anthropics 32 MB gäller HELA requesten (alla bilagor + historiken), och
 //    är därför inte ett per-fil-tak; det taket hör till B2/B3.
 export const MAX_AI_IMAGE_BYTES = 5 * 1024 * 1024
+// Anthropic tar emot max 600 sidor per PDF. Räknas vid uppladdning
+// (`countPdfPages`) så att en för lång fil avvisas när användaren väljer den —
+// inte vid modellanropet, efter uppladdning och betald överföring.
+export const MAX_AI_PDF_PAGES = 600
 export const MAX_AI_ATTACHMENT_BYTES = 20 * 1024 * 1024
 
 // ── Detekterade MIME-typer (faktiskt innehåll, inte deklarerat) ──────────────

@@ -5,8 +5,9 @@ import {
   AiAttachmentsService,
   ATTACHMENT_REF_BLOCK,
   isAttachmentRefBlock,
-  MAX_REHYDRATE_BYTES,
+  MAX_ATTACHMENT_BUDGET_BYTES,
 } from './ai-attachments.service'
+import { base64Bytes } from './request-size'
 
 /**
  * B2 — vägen från bilage-id till Anthropic-innehållsblock.
@@ -63,7 +64,7 @@ describe('buildContentBlocks', () => {
   it('utan id:n: inga block och INGEN R2-läsning (text-only oförändrat)', async () => {
     const { service, storage, prisma } = makeService([])
     const res = await service.buildContentBlocks([], 'org-1', 'user-1')
-    expect(res).toEqual({ contentBlocks: [], refBlocks: [], ids: [] })
+    expect(res).toEqual({ contentBlocks: [], refBlocks: [], ids: [], encodedBytes: 0 })
     expect(storage.getFileBuffer).not.toHaveBeenCalled()
     expect(prisma.aiAttachment.findMany).not.toHaveBeenCalled()
   })
@@ -183,7 +184,7 @@ describe('rehydrateHistoryBlocks', () => {
     const { service, storage } = makeService([])
     const blocks = [{ type: 'text', text: 'hej' }]
     await expect(
-      service.rehydrateHistoryBlocks(blocks, { remainingBytes: MAX_REHYDRATE_BYTES }),
+      service.rehydrateHistoryBlocks(blocks, { remainingBytes: MAX_ATTACHMENT_BUDGET_BYTES }),
     ).resolves.toEqual(blocks)
     expect(storage.getFileBuffer).not.toHaveBeenCalled()
   })
@@ -201,7 +202,7 @@ describe('rehydrateHistoryBlocks', () => {
         },
         { type: 'text', text: 'Vad står på sista raden?' },
       ],
-      { remainingBytes: MAX_REHYDRATE_BYTES },
+      { remainingBytes: MAX_ATTACHMENT_BUDGET_BYTES },
     )
     expect(out[0]).toMatchObject({ type: 'document' })
     expect(out[1]).toEqual({ type: 'text', text: 'Vad står på sista raden?' })
@@ -243,7 +244,7 @@ describe('rehydrateHistoryBlocks', () => {
           mimeType: 'application/pdf',
         },
       ],
-      { remainingBytes: MAX_REHYDRATE_BYTES },
+      { remainingBytes: MAX_ATTACHMENT_BUDGET_BYTES },
     )
     expect(out[0]).toMatchObject({ type: 'text' })
   })
@@ -260,7 +261,7 @@ describe('rehydrateHistoryBlocks', () => {
           mimeType: 'image/png',
         },
       ],
-      { remainingBytes: MAX_REHYDRATE_BYTES },
+      { remainingBytes: MAX_ATTACHMENT_BUDGET_BYTES },
     )
     expect(out[0]).toMatchObject({ type: 'text' })
     expect((out[0] as { text: string }).text).toContain('gammal.png')
@@ -268,7 +269,7 @@ describe('rehydrateHistoryBlocks', () => {
 
   it('drar av läst storlek ur budgeten så ett långt samtal inte växer obegränsat', async () => {
     const { service } = makeService([PDF_ROW])
-    const budget = { remainingBytes: MAX_REHYDRATE_BYTES }
+    const budget = { remainingBytes: MAX_ATTACHMENT_BUDGET_BYTES }
     await service.rehydrateHistoryBlocks(
       [
         {
@@ -281,6 +282,7 @@ describe('rehydrateHistoryBlocks', () => {
       ],
       budget,
     )
-    expect(budget.remainingBytes).toBe(MAX_REHYDRATE_BYTES - PDF_ROW.sizeBytes)
+    // B3: budgeten räknas i KODADE byte — det är så de går på tråden.
+    expect(budget.remainingBytes).toBe(MAX_ATTACHMENT_BUDGET_BYTES - base64Bytes(PDF_ROW.sizeBytes))
   })
 })
