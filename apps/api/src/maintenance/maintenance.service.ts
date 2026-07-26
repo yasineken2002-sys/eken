@@ -2,6 +2,12 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { PrismaService } from '../common/prisma/prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { StorageService } from '../storage/storage.service'
+import {
+  validateUploadedFile,
+  extensionForDetectedMime,
+  DETECTED_TICKET_IMAGE_TYPES,
+  MAX_TICKET_IMAGE_BYTES,
+} from '../common/utils/file-validation'
 import { CreateMaintenanceTicketDto } from './dto/create-maintenance-ticket.dto'
 import { UpdateMaintenanceTicketDto } from './dto/update-maintenance-ticket.dto'
 import type { MaintenanceStatus, MaintenancePriority, MaintenanceCategory } from '@prisma/client'
@@ -18,15 +24,7 @@ interface UploadedImage {
   buffer: Buffer
 }
 
-const ALLOWED_IMAGE_MIMETYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/heic',
-  'image/heif',
-]
 const MAX_IMAGES_PER_TICKET = 10
-const MAX_IMAGE_SIZE = 15 * 1024 * 1024
 
 export interface MaintenanceImageRecord {
   id: string
@@ -386,13 +384,18 @@ export class MaintenanceService {
   }
 
   /**
-   * Ladda upp bilder till en felanmälan. Anropas från:
-   *   - admin (tenant-portal? nej — i admin-flödet är det `create`-flödet),
-   *   - hyresgästportalen (efter create), via TenantPortalController.
+   * Ladda upp bilder till en felanmälan.
    *
-   * Upload-mönstret följer OrganizationsService.uploadLogo: validera
-   * mimetype/storlek, ladda till R2, och spara storageKey + initial
-   * presigned URL. URL:en regenereras vid varje read i refreshImageUrls.
+   * ENDA anroparen i dag är `TenantPortalController` — alltså en HYRESGÄST, den
+   * enda uppladdaren i systemet som inte är anställd hos kunden. Operatörens
+   * maintenance-controller har ingen bild-route (bilder kommer in med
+   * felanmälan från portalen). Det gör den här funktionen till systemets mest
+   * exponerade uppladdningsväg, och skälet till att valideringen nedan är
+   * strikt.
+   *
+   * Validerar MAGISKA BYTEN (inte klientens mimetype) + storlek, laddar till
+   * R2 och sparar storageKey + initial presigned URL. URL:en regenereras vid
+   * varje read i refreshImageUrls.
    */
   async addImages(ticketId: string, files: UploadedImage[]) {
     if (!files.length) throw new BadRequestException('Inga bilder bifogade')
@@ -404,26 +407,34 @@ export class MaintenanceService {
       )
     }
 
-    const created: MaintenanceImageRecord[] = []
-    for (const file of files) {
-      if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
-        throw new BadRequestException(
-          `Filtyp ${file.mimetype} stöds inte (tillåt: JPEG, PNG, WebP, HEIC)`,
-        )
-      }
-      const buffer = file.buffer
-      if (buffer.length > MAX_IMAGE_SIZE) {
-        throw new BadRequestException('Bilden är för stor (max 15MB)')
-      }
+    // SECURITY (H3): typen avgörs av filens FAKTISKA innehåll, aldrig av
+    // `file.mimetype`. Den här vägen delas av operatörens felanmälan OCH
+    // hyresgästportalen — portalen är den enda uppladdningsvägen i systemet där
+    // uppladdaren inte är en anställd, och den satte tidigare bara sin egen
+    // Content-Type-header. En omdöpt .html/.svg gick rakt igenom.
+    //
+    // ALLA filer valideras FÖRE den första laddas upp. Validerade vi inne i
+    // loopen hade en avvisad fil sist i satsen lämnat de tidigare kvar i
+    // lagringen, utan rader som pekar på dem — alltså skräp ingen städning
+    // hittar.
+    const detectedMimes = files.map((file) =>
+      validateUploadedFile(file.buffer, {
+        allowedDetectedMimes: DETECTED_TICKET_IMAGE_TYPES,
+        maxBytes: MAX_TICKET_IMAGE_BYTES,
+      }),
+    )
 
-      const ext = file.filename.includes('.') ? file.filename.split('.').pop() : 'jpg'
-      const safeExt =
-        (ext ?? 'jpg')
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, '')
-          .slice(0, 6) || 'jpg'
-      const storageKey = `maintenance/${ticketId}/${crypto.randomUUID()}.${safeExt}`
-      const storageUrl = await this.storage.uploadFile(buffer, storageKey, file.mimetype)
+    const created: MaintenanceImageRecord[] = []
+    for (const [index, file] of files.entries()) {
+      const buffer = file.buffer
+      const detected = detectedMimes[index] ?? 'image/jpeg'
+
+      // Nyckeln följer den VALIDERADE typen, inte klientens filnamn — annars
+      // får en fil som heter "bild.exe" en .exe-nyckel i lagringen.
+      const storageKey = `maintenance/${ticketId}/${crypto.randomUUID()}.${extensionForDetectedMime(detected)}`
+      // Content-Type i lagringen sätts också till den detekterade typen: det är
+      // den som gäller när objektet senare läses ut via presignerad URL.
+      const storageUrl = await this.storage.uploadFile(buffer, storageKey, detected)
 
       const row = await this.prisma.maintenanceImage.create({
         data: {
