@@ -26,6 +26,7 @@ import type {
   VatReport,
 } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { encodeCp437 } from './cp437'
 import { VerifikationsnummerService } from './verifikationsnummer.service'
 import { basChartFor } from './bas-chart'
 
@@ -152,6 +153,55 @@ export function vatRateForRent(
  * fånga `instanceof MissingAccrualError`.
  */
 export class MissingAccrualError extends UnprocessableEntityException {}
+
+/**
+ * Räkenskapsår som täcks av ett exportintervall, numrerade enligt SIE-specen.
+ *
+ * §#RAR pt 1: "Räkenskapsårets start och slutdatum anges i formatet ÅÅÅÅMMDD.
+ * Årsnr sätts till 0 för innevarande år och -1 för föregående år."
+ * §#RAR pt 2: ytterligare jämförelseår läggs som -2, -3 osv.
+ *
+ * Årsnr 0 = räkenskapsåret som exportens SLUTDATUM ligger i. Ett intervall som
+ * spänner flera räkenskapsår ger en rad per år, äldre år med negativa nummer.
+ *
+ * `fiscalYearStartMonth` är 1–12. Med startmånad 1 sammanfaller räkenskapsåret
+ * med kalenderåret; med t.ex. 5 löper det maj–april.
+ */
+export function fiscalYearsCovering(
+  from: string,
+  to: string,
+  fiscalYearStartMonth: number,
+): Array<{ number: number; start: string; end: string }> {
+  const compact = (d: Date): string =>
+    `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(
+      d.getUTCDate(),
+    ).padStart(2, '0')}`
+
+  // Vilket räkenskapsår ett datum tillhör: före startmånaden hör det till
+  // föregående år (samma regel som VerifikationsnummerService.fiscalYearFor).
+  const fiscalYearOf = (iso: string): number => {
+    const d = new Date(`${iso}T00:00:00Z`)
+    const year = d.getUTCFullYear()
+    const month = d.getUTCMonth() + 1
+    return month < fiscalYearStartMonth ? year - 1 : year
+  }
+
+  const boundsFor = (fy: number): { start: string; end: string } => {
+    const start = new Date(Date.UTC(fy, fiscalYearStartMonth - 1, 1))
+    // Slutet = dagen före nästa räkenskapsårs start.
+    const end = new Date(Date.UTC(fy + 1, fiscalYearStartMonth - 1, 1))
+    end.setUTCDate(end.getUTCDate() - 1)
+    return { start: compact(start), end: compact(end) }
+  }
+
+  const firstFy = fiscalYearOf(from)
+  const lastFy = fiscalYearOf(to)
+  const out: Array<{ number: number; start: string; end: string }> = []
+  for (let fy = lastFy; fy >= firstFy; fy--) {
+    out.push({ number: fy - lastFy, ...boundsFor(fy) })
+  }
+  return out
+}
 
 @Injectable()
 export class AccountingService {
@@ -563,7 +613,7 @@ export class AccountingService {
   async exportSie4(organizationId: string, from: string, to: string): Promise<Buffer> {
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { name: true, orgNumber: true },
+      select: { name: true, orgNumber: true, fiscalYearStartMonth: true },
     })
 
     // Dedikerad hämtning för export: ALLA verifikationer i perioden, kronologiskt
@@ -578,8 +628,18 @@ export class AccountingService {
       orderBy: [{ date: 'asc' }, { series: 'asc' }, { verNumber: 'asc' }],
     })
 
-    const fromCompact = from.replace(/-/g, '')
-    const toCompact = to.replace(/-/g, '')
+    // ── #RAR: RÄKENSKAPSÅRET, inte exportintervallet ─────────────────────────
+    //
+    // Tidigare skrevs `#RAR 0 <from> <to>` — alltså exportens datumintervall.
+    // Specen (§#RAR pt 1): "Räkenskapsårets start och slutdatum anges i formatet
+    // ÅÅÅÅMMDD. Årsnr sätts till 0 för innevarande år och -1 för föregående år."
+    // Exporterade man en månad påstod filen att räkenskapsåret var den månaden,
+    // vilket får mottagande bokslutsprogram att periodisera fel.
+    //
+    // Räkenskapsåret härleds ur organisationens fiscalYearStartMonth — samma
+    // regel som verifikationsnumreringen använder (VerifikationsnummerService).
+    const startMonth = org?.fiscalYearStartMonth ?? 1
+    const fiscalYears = fiscalYearsCovering(from, to, startMonth)
 
     // SIE4-format enligt SIE Gruppen specifikation 4B.
     // Källa: https://sie.se/wp-content/uploads/2020/05/SIE_filformat_ver_4B_080930.pdf
@@ -596,7 +656,10 @@ export class AccountingService {
       '#SIETYP 4',
       `#ORGNR ${org?.orgNumber ?? organizationId}`,
       `#FNAMN "${(org?.name ?? 'Okänd organisation').replace(/"/g, '')}"`,
-      `#RAR 0 ${fromCompact} ${toCompact}`,
+      // Årsnr 0 = det räkenskapsår exporten SLUTAR i; tidigare år numreras
+      // -1, -2 … Spänner exporten över flera räkenskapsår skrivs en rad per år,
+      // vilket specen uttryckligen tillåter (§#RAR pt 2).
+      ...fiscalYears.map((fy) => `#RAR ${fy.number} ${fy.start} ${fy.end}`),
       '',
     ]
 
@@ -627,7 +690,10 @@ export class AccountingService {
       lines.push('')
     }
 
-    return Buffer.from(lines.join('\n'), 'utf8')
+    // Filen deklarerar `#FORMAT PC8` — då MÅSTE bytena vara CP437, annars
+    // motsäger deklarationen innehållet och å/ä/ö blir skräptecken hos
+    // mottagaren. Specen tillåter ingen annan teckenuppsättning (§5.8).
+    return encodeCp437(lines.join('\n'))
   }
 
   // ── Finansiella rapporter ───────────────────────────────────────────────
