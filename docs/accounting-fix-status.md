@@ -41,8 +41,9 @@ Utanför auditen, samma omgång:
 ## Kvar av KOD — inte bokföring
 
 **Personnummer krypteras i vila.** Byggt i
-[#255](https://github.com/yasineken2002-sys/eken/pull/255) — **ÖPPEN, väntar
-användarens merge**. `Tenant.personalNumber` och `Customer.personalNumber` låg i
+[#255](https://github.com/yasineken2002-sys/eken/pull/255) — **MERGAD och
+UTRULLAD 2026-07-27** (squash `0247456`). `Tenant.personalNumber` och
+`Customer.personalNumber` låg i
 klartext; nu AES-256-GCM (`personalNumberEnc`) + HMAC-SHA256-blind-index
 (`personalNumberHash`) via `PersonalNumberService`, som delegerar varje operation
 till befintliga `SigningCryptoService` — samma mönster och samma nycklar som
@@ -50,15 +51,32 @@ signeringsbevisen (`SignatureEvidence`). Ingen ny kryptografi; blind-indexet
 delar pepper med flit, så en BankID-identitet kan jämföras mot hyresgästens hash
 utan att någon rad dekrypteras.
 
+### Produktions-backfillen — körd och verifierad 2026-07-27
+
+Backfillen kördes i deploy-vägen (`migrate-and-start.sh`, mellan `migrate deploy`
+och appstart). Att appen startade är i sig beviset att den lyckades: `set -eu`
+stoppar containern om backfillen felar.
+
+|                                            | före                     | efter      |
+| ------------------------------------------ | ------------------------ | ---------- |
+| Klartext-personnummer                      | 1 (Tenant), 0 (Customer) | **0**      |
+| Krypterade rader                           | 0                        | **1**      |
+| `personalNumberEnc` / `personalNumberHash` | kolumnerna fanns inte    | båda satta |
+
+Raden verifierades genom att blind-indexet av originalet fångades **före** mergen
+och jämfördes mot ett omräknat index från det dekrypterade värdet efteråt:
+dekryptering OK med verifierad GCM-tagg, 12 siffror, index matchar både databasens
+`personalNumberHash` och det förfångade värdet. Det senare är det som bevisar att
+raden bär _samma_ nummer som förut och inte bara ett välformat. `/v1/health` grön.
+
 Två uppföljningar:
 
-1. **`DROP COLUMN "personalNumber"` återstår.** #255 är expand-fasen — migrationen
-   lägger bara till kolumner, och `src/scripts/backfill-personal-numbers.ts` krypterar
-   befintliga rader (kört av `migrate-and-start.sh` mellan `migrate deploy` och
-   appstart). Klartextkolumnen finns kvar i DB men heter `personalNumberLegacy` i
-   Prisma (`@map("personalNumber")`), så varje kvarvarande användning är ett
-   kompileringsfel. Contract-fasen blir egen PR **när produktions-backfillen är
-   bekräftad körd** — inte före.
+1. **`DROP COLUMN "personalNumber"` återstår — nu ogrindat.** #255 var
+   expand-fasen: migrationen lägger bara till kolumner. Klartextkolumnen finns kvar
+   i DB men heter `personalNumberLegacy` i Prisma (`@map("personalNumber")`), så
+   varje kvarvarande användning är ett kompileringsfel. Villkoret för contract-fasen
+   — bekräftad produktions-backfill — är **uppfyllt**; den kan tas som egen PR när
+   som helst.
 2. **`ContractImportRow` lagrar fortfarande personnummer i klartext.**
    `originalScanData` / `reviewedData` / `confirmedData` är `Json`-kolumner och
    kontraktsskannern extraherar `personalNumber` dit. Det är en tredje
@@ -69,7 +87,8 @@ Två uppföljningar:
 
 `SIGNING_PII_KEY` (64 hex-tecken / 32 byte) och `SIGNING_PII_PEPPER` (≥16 tecken)
 ligger sedan #255 i `CRITICAL` i `env.validation.ts` — **appen vägrar starta i
-produktion utan dem**. Läs detta innan någon rör dem:
+produktion utan dem**. Satta i Railway 2026-07-27, och sedan backfillen samma dag
+är produktionsdata beroende av dem. Läs detta innan någon rör dem:
 
 - **Förlorad `SIGNING_PII_KEY` = alla personnummer är permanent oläsbara.** Det
   finns ingen återställningsväg: AES-256-GCM utan nyckeln är inte knäckbart, och
