@@ -71,12 +71,19 @@ raden bär _samma_ nummer som förut och inte bara ett välformat. `/v1/health` 
 
 Två uppföljningar:
 
-1. **`DROP COLUMN "personalNumber"` återstår — nu ogrindat.** #255 var
-   expand-fasen: migrationen lägger bara till kolumner. Klartextkolumnen finns kvar
-   i DB men heter `personalNumberLegacy` i Prisma (`@map("personalNumber")`), så
-   varje kvarvarande användning är ett kompileringsfel. Villkoret för contract-fasen
-   — bekräftad produktions-backfill — är **uppfyllt**; den kan tas som egen PR när
-   som helst.
+1. **`DROP COLUMN "personalNumber"` är byggd men MEDVETET PARKERAD** —
+   [#256](https://github.com/yasineken2002-sys/eken/pull/256), öppen och verifierad.
+   #255 var expand-fasen: migrationen lägger bara till kolumner. Klartextkolumnen
+   finns kvar i DB men heter `personalNumberLegacy` i Prisma
+   (`@map("personalNumber")`), så varje kvarvarande användning är ett
+   kompileringsfel.
+
+   **Varför den inte mergas direkt** (beslut 2026-07-27): den tömda kolumnen är
+   **rollback-nätet**. Så länge den finns kvar går krypteringen att backa utan att
+   data är förlorad; `DROP COLUMN` är oåterkalleligt och tar bort den möjligheten.
+   Prod ska därför köra med krypteringen aktiv i några dagar först, och contract-fasen
+   mergas när den är bevisad i verklig drift. Det som saknas är drifttid — inte kod,
+   inte verifiering.
 2. **`ContractImportRow` lagrar fortfarande personnummer i klartext.**
    `originalScanData` / `reviewedData` / `confirmedData` är `Json`-kolumner och
    kontraktsskannern extraherar `personalNumber` dit. Det är en tredje
@@ -130,6 +137,38 @@ branch protection är varje merge manuellt grindad.
 `USER_DAILY_LIMIT_SEK` (50) mäter per tenant. Anthropic-nyckeln är en enda
 konto-resurs, så en kostnad som sprids över många orgar kan strukturellt aldrig
 lösa ut något tak. Se **S-D** i `launch-readiness-atgardslista.md`.
+
+## Next: assistant behaviour (not yet started)
+
+Nästa spår efter pengalagret. **Ingen kod är skriven, ingen design är beslutad** —
+det här är målbilden, inte en plan.
+
+**Mål:** AI:n ska gå från reaktiv fråga-svar-chatt med 56 verktyg till en
+**assistent** som lyfter saker själv och tar ägarskap. I stället för att vänta på
+att bli tillfrågad ska den säga sådant som _"3 avier förföll idag, jag har
+förberett påminnelser — vill du skicka?"_.
+
+**Hård gräns:** bindande verktyg (`ACTION_TOOLS`) kräver fortfarande explicit
+mänsklig bekräftelse via `pendingAction` → `/v1/ai/confirm`. Proaktivitet handlar
+om att **upptäcka och förbereda**, aldrig om att köra pengar- eller
+juridik-påverkande åtgärder av sig själv. Den principen är inte förhandlingsbar —
+den är samma som resten av systemet vilar på: maskinen föreslår, människan
+bekräftar det bindande.
+
+**Designuppgift först, bygge sedan.** Tre frågor måste besvaras innan en rad kod
+skrivs:
+
+1. VAD ska den vara proaktiv om? (vilka signaler är värda att avbryta någon för)
+2. HUR proaktiv utan att bli påträngande? (frekvens, kanal, tystnad som default)
+3. VAR går bekräftelselinjen? (vad får förberedas oombett, vad kräver ett ja
+   innan ens förberedelsen sker)
+
+**Varför nu och inte tidigare:** spåret vilar på det härdade bokförings- och
+verktygslagret. En assistent som proaktivt agerar på en huvudbok utan balansgrind,
+eller på betalningar som bokförs fel, förstärker bara felen. Därför kommer det
+efter pengafixarna — inte före.
+
+**Kräver en egen session.**
 
 ## Arbetssätt
 
