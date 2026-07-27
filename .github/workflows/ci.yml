@@ -51,6 +51,44 @@ jobs:
       - name: Run lint
         run: pnpm exec turbo lint
 
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    # Sviten går på ~1 min; taket täcker install + build av @eken/shared.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # postinstall kör `prisma generate` — sviten kompilerar mot Prisma-klientens
+      # typer, så den MÅSTE finnas innan jest startar.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `test:ci` = `jest --ci --runInBand`. SERIELLT är ett medvetet val, inte
+      # en genväg: ubuntu-latest har 2 kärnor / ~7 GB, och med parallella workers
+      # dödar OS:ets OOM-hanterare jest-workers mitt i körningen
+      # ("A jest worker process was terminated ... signal=SIGTERM"). Det ger
+      # slumpvis röda sviter UTAN ett enda testfel — precis den sortens flakiga
+      # grind som lär folk att trycka om i stället för att läsa felet.
+      #
+      # Uppmätt på identisk hårdvara (2 kärnor): --maxWorkers=2 → 154 s med 5
+      # OOM-dödade sviter; --runInBand → 48 s, 176/176 gröna. Seriellt är alltså
+      # både snabbare OCH deterministiskt här — workerstart och ts-jest-
+      # kompilering per worker dominerade tiden.
+      #
+      # turbo-tasken har dependsOn ["^build"] → @eken/shared byggs först.
+      - name: Run test suite
+        run: pnpm exec turbo test:ci
+
   index-guard:
     name: Critical index guard
     runs-on: ubuntu-latest
