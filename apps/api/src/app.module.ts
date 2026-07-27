@@ -72,8 +72,24 @@ import { Psd2Module } from './psd2/psd2.module'
       }),
     }),
 
-    // Task scheduling
-    ScheduleModule.forRoot(),
+    // Task scheduling.
+    //
+    // Cron registreras BARA där jobben ska köras: i produktion, eller när en
+    // utvecklare uttryckligen sätter CRON_ENABLED=true. En utvecklares
+    // codespace ska aldrig fan-outa schemalagda jobb över alla organisationer.
+    //
+    // Bakgrund (2026-07-27): weekly-summary-cronen gör ett AI-anrop per org och
+    // itererar ALLA orgar. Dev-databasen har 224 testorgar, så varje söndag
+    // 18:00 — om dev-servern råkade vara igång — brändes ~17 kr i Anthropic-
+    // krediter på sammanfattningar till skräpkonton. Eftersom dev och prod
+    // delade API-nyckel drabbade det samma saldo som produktionen.
+    //
+    // Grinden gäller alla 23 @Cron-jobb, inte bara AI-jobben: backup, kravtrappa,
+    // påminnelser och plattformsfakturering ska heller aldrig utlösas från en
+    // utvecklingsmiljö mot delade externa resurser (R2, Resend, Anthropic).
+    ...(process.env['NODE_ENV'] === 'production' || process.env['CRON_ENABLED'] === 'true'
+      ? [ScheduleModule.forRoot()]
+      : []),
 
     // Queue
     BullModule.forRootAsync({
