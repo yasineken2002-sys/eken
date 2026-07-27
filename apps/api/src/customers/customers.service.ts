@@ -7,11 +7,7 @@ import { CreateCustomerDto } from './dto/create-customer.dto'
 import { UpdateCustomerDto } from './dto/update-customer.dto'
 
 /** Personnummer-kolumnerna får aldrig serialiseras — se mapCustomer. */
-const CUSTOMER_PN_KEYS = [
-  'personalNumberEnc',
-  'personalNumberHash',
-  'personalNumberLegacy',
-] as const
+const CUSTOMER_PN_KEYS = ['personalNumberEnc', 'personalNumberHash'] as const
 
 type CustomerPnKey = (typeof CUSTOMER_PN_KEYS)[number]
 

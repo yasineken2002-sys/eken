@@ -16,13 +16,11 @@ const TENANT_CREDENTIAL_KEYS = [
   'activationTokenExpiresAt',
   'passwordResetTokenHash',
   'passwordResetTokenExpiresAt',
-  // Personnummer-kolumnerna: chiffertext, blind-index och den kvarvarande
-  // legacy-klartextkolumnen får aldrig serialiseras. Klartexten läggs tillbaka
-  // som `personalNumber` av den som faktiskt ska visa den, via
-  // PersonalNumberService.reveal().
+  // Personnummer-kolumnerna: chiffertext och blind-index får aldrig
+  // serialiseras. Klartexten läggs tillbaka som `personalNumber` av den som
+  // faktiskt ska visa den, via PersonalNumberService.reveal().
   'personalNumberEnc',
   'personalNumberHash',
-  'personalNumberLegacy',
 ] as const
 
 type TenantCredentialKey = (typeof TENANT_CREDENTIAL_KEYS)[number]

@@ -16,7 +16,6 @@ const SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set([
   'personalNumber',
   'personalNumberEnc',
   'personalNumberHash',
-  'personalNumberLegacy',
   'passwordHash',
   'activationToken',
   'activationTokenExpiresAt',

@@ -903,14 +903,11 @@ model Tenant {
   //                      någon rad. Samma pepper som signeringsbevisen, så en
   //                      BankID-identitet kan jämföras direkt mot hyresgästens hash.
   //
-  // personalNumberLegacy är KLARTEXT-kolumnen (DB-namnet är oförändrat
-  // "personalNumber"). Prisma-fältet är omdöpt med flit: varje kvarvarande
-  // läsning/skrivning blir ett kompileringsfel i stället för en tyst klartext-
-  // hantering. Kolumnen töms av backfillen och droppas i uppföljande PR när
-  // produktions-backfillen är bekräftad körd.
+  // Klartextkolumnen "personalNumber" är BORTTAGEN (contract-fasen, migration
+  // 20260728000000). Den krypterades av backfillen och droppades först när
+  // produktions-backfillen var bekräftad körd och verifierad.
   personalNumberEnc    String?
   personalNumberHash   String?
-  personalNumberLegacy String? @map("personalNumber")
   email          String
   phone          String?
   street         String?
@@ -1021,7 +1018,6 @@ model Customer {
   // Customer på blind-indexet utan att någon rad dekrypteras.
   personalNumberEnc    String?
   personalNumberHash   String?
-  personalNumberLegacy String? @map("personalNumber")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoices     Invoice[]
