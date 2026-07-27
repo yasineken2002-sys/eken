@@ -19,6 +19,7 @@ import type {
   Invoice,
 } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { stockholmCivilDate } from '../common/time/stockholm-period'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { CreateMeterDto } from './dto/create-meter.dto'
 import { UpdateMeterDto } from './dto/update-meter.dto'
@@ -878,10 +879,11 @@ export class ConsumptionService {
     yearEndDate: Date,
     reversalDate: Date,
   ): Promise<void> {
-    const periods = [
-      { year: yearEndDate.getUTCFullYear(), month: yearEndDate.getUTCMonth() + 1 },
-      { year: reversalDate.getUTCFullYear(), month: reversalDate.getUTCMonth() + 1 },
-    ]
+    // Svensk civil tid — perioden avgörs av datumet i Sverige, inte i UTC.
+    const periods = [yearEndDate, reversalDate].map((d) => {
+      const { year, month } = stockholmCivilDate(d)
+      return { year, month }
+    })
     for (const p of periods) {
       const closed = await this.prisma.closedAccountingPeriod.findUnique({
         where: {

@@ -1,6 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { stockholmCivilDate, stockholmFiscalYear } from '../common/time/stockholm-period'
 
 // Standardserie för automatverifikat enligt SIE4-konventionen (SIE Gruppen 4B).
 // "A" = automatiskt genererade poster (fakturering, betalning, hyresavi, m.m.).
@@ -35,9 +36,10 @@ export class VerifikationsnummerService {
    * post före startmånaden till föregående kalenderårs räkenskapsår.
    */
   static fiscalYearFor(date: Date, fiscalYearStartMonth: number): number {
-    const year = date.getUTCFullYear()
-    const month = date.getUTCMonth() + 1 // 1–12
-    return month < fiscalYearStartMonth ? year - 1 : year
+    // Svensk civil tid, inte UTC: en verifikation daterad 1 januari 00:30
+    // svensk tid är 31 december 23:30 UTC och hade annars tilldelats fel
+    // räkenskapsår. Se stockholm-period.ts.
+    return stockholmFiscalYear(date, fiscalYearStartMonth)
   }
 
   /**
@@ -63,8 +65,10 @@ export class VerifikationsnummerService {
     const fiscalYear = VerifikationsnummerService.fiscalYearFor(date, startMonth)
 
     // ClosedAccountingPeriod är nyckelad på kalenderår + kalendermånad.
-    const calYear = date.getUTCFullYear()
-    const calMonth = date.getUTCMonth() + 1
+    // Samma skäl som ovan: perioden en post tillhör avgörs av datumet i
+    // Sverige. Med UTC kunde en post 1 januari skrivas in i december — och
+    // därmed förbi en redan stängd period.
+    const { year: calYear, month: calMonth } = stockholmCivilDate(date)
     const closed = await client.closedAccountingPeriod.findUnique({
       where: {
         organizationId_year_month: { organizationId, year: calYear, month: calMonth },

@@ -2,6 +2,7 @@ import { Injectable, ForbiddenException, BadRequestException, Logger } from '@ne
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { stockholmCivilDate } from '../../common/time/stockholm-period'
 import { InvoicesService, toPaymentMethod } from '../../invoices/invoices.service'
 import { PdfService } from '../../invoices/pdf.service'
 import { TenantsService } from '../../tenants/tenants.service'
@@ -3072,14 +3073,15 @@ export class ToolExecutorService {
           const closed = await this.prisma.closedAccountingPeriod.findFirst({
             where: {
               organizationId,
-              year: date.getUTCFullYear(),
-              month: date.getUTCMonth() + 1,
+              // Svensk civil tid — se stockholm-period.ts.
+              year: stockholmCivilDate(date).year,
+              month: stockholmCivilDate(date).month,
             },
           })
           if (closed) {
             return {
               success: false,
-              message: `Bokföringsperioden ${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')} är stängd. Ändra datum eller återöppna perioden manuellt.`,
+              message: `Bokföringsperioden ${stockholmCivilDate(date).year}-${String(stockholmCivilDate(date).month).padStart(2, '0')} är stängd. Ändra datum eller återöppna perioden manuellt.`,
             }
           }
           const accounts = await this.prisma.account.findMany({
@@ -3183,14 +3185,15 @@ export class ToolExecutorService {
           const closed = await this.prisma.closedAccountingPeriod.findFirst({
             where: {
               organizationId,
-              year: date.getUTCFullYear(),
-              month: date.getUTCMonth() + 1,
+              // Svensk civil tid — se stockholm-period.ts.
+              year: stockholmCivilDate(date).year,
+              month: stockholmCivilDate(date).month,
             },
           })
           if (closed) {
             return {
               success: false,
-              message: `Bokföringsperioden ${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')} är stängd.`,
+              message: `Bokföringsperioden ${stockholmCivilDate(date).year}-${String(stockholmCivilDate(date).month).padStart(2, '0')} är stängd.`,
             }
           }
           const accounts = await this.prisma.account.findMany({

@@ -26,6 +26,7 @@ import type {
   VatReport,
 } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { stockholmCivilDate } from '../common/time/stockholm-period'
 import { encodeCp437 } from './cp437'
 import { VerifikationsnummerService } from './verifikationsnummer.service'
 import { basChartFor } from './bas-chart'
@@ -945,8 +946,9 @@ export class AccountingService {
       select: { fiscalYearStartMonth: true },
     })
     const fiscalYearStartMonth = org?.fiscalYearStartMonth ?? 1
-    const y = now.getUTCFullYear()
-    const currentMonth = now.getUTCMonth() + 1 // 1–12
+    // Svensk civil tid: vid årsskiftet avgör datumet i Sverige vilket
+    // räkenskapsår som är "innevarande".
+    const { year: y, month: currentMonth } = stockholmCivilDate(now)
     const startYear = currentMonth >= fiscalYearStartMonth ? y : y - 1
     const from = new Date(Date.UTC(startYear, fiscalYearStartMonth - 1, 1))
     const total = await this.getRevenueTotal(organizationId, from, now)
