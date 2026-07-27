@@ -26,6 +26,11 @@
       "inputs": ["$TURBO_DEFAULT$", ".env.test"],
       "outputs": ["coverage/**"]
     },
+    "test:ci": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env.test"],
+      "outputs": []
+    },
     "db:migrate": {
       "cache": false
     },
