@@ -5,7 +5,10 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common'
-import { CompanyForm, PaymentMethod, RentNoticeType, UnitType } from '@prisma/client'
+// `Prisma` importeras som VÄRDE (inte `import type`) — `Prisma.Decimal` används
+// för momsaritmetiken i createJournalEntryForInvoice. Namnrymden ger fortfarande
+// typerna (Prisma.TransactionClient m.fl.), så inget annat behöver ändras.
+import { CompanyForm, PaymentMethod, Prisma, RentNoticeType, UnitType } from '@prisma/client'
 import type {
   BankTransaction,
   ConsumptionVatStatus,
@@ -13,7 +16,6 @@ import type {
   InvoiceLine,
   JournalEntrySource,
   MeterType,
-  Prisma,
 } from '@prisma/client'
 import type { Decimal } from '@prisma/client/runtime/library'
 import type {
@@ -944,7 +946,6 @@ export class AccountingService {
     }
 
     const subtotal = Number(invoice.subtotal)
-    const vatTotal = Number(invoice.vatTotal)
     const total = Number(invoice.total)
 
     // Build journal lines
@@ -960,29 +961,92 @@ export class AccountingService {
       { accountId: revenueId, credit: subtotal, description: 'Hyresintäkt' },
     ]
 
-    // Credit VAT accounts if applicable
-    if (vatTotal > 0) {
-      // Group VAT by rate
-      const vatByRate = new Map<number, number>()
-      for (const line of invoice.lines) {
-        const vat = Number(line.quantity) * Number(line.unitPrice) * (line.vatRate / 100)
-        vatByRate.set(line.vatRate, (vatByRate.get(line.vatRate) ?? 0) + vat)
-      }
+    // ── Moms per momssats ────────────────────────────────────────────────────
+    //
+    // Momsen HÄRLEDS ur radernas lagrade belopp med EXAKT samma metod som
+    // faktureringen använde (computeInvoiceAmounts i invoices.service.ts):
+    // radens moms = brutto − netto, där brutto är det redan öresavrundade
+    // `line.total` och nettot avrundas likadant.
+    //
+    // Tidigare räknades momsen om från grunden och OAVRUNDAT:
+    //
+    //     const vat = Number(q) * Number(unitPrice) * (vatRate / 100)
+    //
+    // Det är en ANNAN formel än fakturans (som tar brutto − netto per rad, båda
+    // öresavrundade). På enradsfakturor sammanföll de; på flerradsfakturor gjorde
+    // de inte det, och verifikatet blev OBALANSERAT — debet togs från det lagrade
+    // `invoice.total` medan krediten byggdes av den omräknade momsen:
+    //
+    //     3 rader à 33,33 kr @ 25 %:  debet 124,98  kredit 124,99  → 1 öre fel
+    //     7 rader à 14,29 kr @ 25 %:  debet 125,02  kredit 125,04  → 2 öre fel
+    //
+    // Ingenting upptäckte det: createNumberedEntry kontrollerar inte att debet =
+    // kredit (den globala grinden är ett eget ärende, C1), och Decimal(10,2)
+    // avrundade tyst vid skrivning så raderna SÅG rimliga ut.
+    //
+    // Aritmetiken görs i Decimal, inte i float. Summan av per-sats-momsen blir
+    // per konstruktion exakt `invoice.vatTotal` — fakturan byggde vatTotal ur
+    // samma per-rad-värden — så krediten (netto + moms) blir exakt lika med
+    // debet (total).
+    const vatByRate = new Map<number, Prisma.Decimal>()
+    for (const line of invoice.lines) {
+      if (line.vatRate === 0) continue // momsbefriat — ingen momsrad
+      const net = new Prisma.Decimal(line.quantity).times(line.unitPrice).toDecimalPlaces(2)
+      const lineVat = new Prisma.Decimal(line.total).minus(net)
+      const prev = vatByRate.get(line.vatRate) ?? new Prisma.Decimal(0)
+      vatByRate.set(line.vatRate, prev.plus(lineVat))
+    }
 
-      for (const [rate, amount] of vatByRate) {
-        // 0% är momsbefriat — bokförs inte mot momskonto.
-        if (rate === 0 || amount <= 0) continue
-        const vatAccountNumber = VAT_TO_ACCOUNT[rate]
-        if (!vatAccountNumber) continue
-        const vatAccountId = accountByNumber.get(vatAccountNumber)
-        if (vatAccountId) {
-          lines.push({
-            accountId: vatAccountId,
-            credit: amount,
-            description: `Moms ${rate}%`,
-          })
-        }
+    for (const [rate, amount] of vatByRate) {
+      if (amount.lte(0)) continue
+      const vatAccountNumber = VAT_TO_ACCOUNT[rate]
+      if (!vatAccountNumber) {
+        // En momssats utan konto skulle tyst utelämna krediten och lämna
+        // verifikatet obalanserat. DTO:n begränsar satsen till 0/6/12/25, så
+        // detta nås bara via en väg som kringgår valideringen — men då ska det
+        // fela högt, inte tyst.
+        throw new UnprocessableEntityException(
+          `Okänd momssats ${rate}% på faktura ${invoice.invoiceNumber} — verifikatet kan inte balanseras`,
+        )
       }
+      const vatAccountId = accountByNumber.get(vatAccountNumber)
+      if (!vatAccountId) {
+        // Samma resonemang: saknat momskonto får inte ge ett tyst tapp av
+        // momsraden. (Symmetriskt med createJournalEntryForRentNotice, som
+        // redan kastar i motsvarande läge.)
+        throw new UnprocessableEntityException(
+          `Kontoplanen saknar momskonto ${vatAccountNumber} (moms ${rate}%) — ` +
+            `faktura ${invoice.invoiceNumber} kan inte bokföras balanserat`,
+        )
+      }
+      lines.push({
+        accountId: vatAccountId,
+        credit: amount.toNumber(),
+        description: `Moms ${rate}%`,
+      })
+    }
+
+    // Invarianten som hela fixen finns för: debet = kredit, exakt.
+    //
+    // Detta är INTE den globala balansgrinden (C1) — den hör hemma i
+    // createNumberedEntry och gäller alla 15 verifikatvägar. Här kontrolleras
+    // bara att just den här funktionens egen aritmetik går ihop, så att ett
+    // dataavvikelse-fall (t.ex. rader vars summa inte matchar fakturans totaler)
+    // fälls i stället för att skrivas till huvudboken.
+    const creditSum = lines.reduce(
+      (s, l) => (l.credit != null ? s.plus(l.credit) : s),
+      new Prisma.Decimal(0),
+    )
+    const debitSum = lines.reduce(
+      (s, l) => (l.debit != null ? s.plus(l.debit) : s),
+      new Prisma.Decimal(0),
+    )
+    if (!creditSum.equals(debitSum)) {
+      throw new UnprocessableEntityException(
+        `Verifikatet för faktura ${invoice.invoiceNumber} balanserar inte ` +
+          `(debet ${debitSum.toFixed(2)} / kredit ${creditSum.toFixed(2)}) — ` +
+          `fakturans radbelopp stämmer inte mot dess totaler`,
+      )
     }
 
     return this.createNumberedEntry({
