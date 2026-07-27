@@ -187,6 +187,58 @@ export class AccountingService {
     // Utan tx öppnar metoden en egen transaktion som tidigare.
     tx?: Prisma.TransactionClient
   }) {
+    // ── C1: DEN GLOBALA BALANSGRINDEN ────────────────────────────────────────
+    //
+    // Ett verifikat MÅSTE balansera: summa debet = summa kredit (BFL 5 kap).
+    // Fram till nu fanns ingen sådan kontroll någonstans i skrivvägen — alla
+    // 15 verifikatvägar förlitade sig på att var och en av dem var individuellt
+    // korrekt, utan nät. C2 visade att det inte höll: fakturans momsberäkning
+    // gick isär med ett öre på flerradsfakturor och skrevs rakt in i huvudboken.
+    //
+    // Grinden ligger HÄR, i den delade skrivaren, i stället för i varje
+    // anropare — det är den enda punkt alla verifikat passerar. Den körs FÖRE
+    // verifikationsnumret allokeras, så ett obalanserat verifikat aldrig hinner
+    // förbruka ett nummer (numret ska vara gap-fritt).
+    //
+    // NOLLTOLERANS. Belopp är Decimal(10,2) och summeras i Decimal — ett öre är
+    // ett fel, inte brus. En tolerans hade bara flyttat gränsen för vad som får
+    // vara fel.
+    //
+    // Verifierat säkert att aktivera: samtliga 627 verifikat i dev-databasen
+    // balanserar, och datainvarianten total = netto + moms håller i RentNotice,
+    // ConsumptionCharge, MiscCharge och Invoice. Ingen befintlig väg producerar
+    // en obalans.
+    if (params.lines.length === 0) {
+      throw new UnprocessableEntityException(
+        `Verifikat utan konteringsrader kan inte skapas (${params.source} ${params.sourceId ?? '—'})`,
+      )
+    }
+
+    let debitSum = new Prisma.Decimal(0)
+    let creditSum = new Prisma.Decimal(0)
+    for (const line of params.lines) {
+      const hasDebit = line.debit != null
+      const hasCredit = line.credit != null
+      // En rad ska bära EN sida. Bär den båda räknas den in i två summor och
+      // balanskontrollen blir meningslös; bär den ingen är den en tom rad.
+      if (hasDebit === hasCredit) {
+        throw new UnprocessableEntityException(
+          `Konteringsrad måste ha antingen debet eller kredit, inte ${
+            hasDebit ? 'båda' : 'ingetdera'
+          } (${params.source} ${params.sourceId ?? '—'})`,
+        )
+      }
+      if (hasDebit) debitSum = debitSum.plus(line.debit!)
+      else creditSum = creditSum.plus(line.credit!)
+    }
+
+    if (!debitSum.equals(creditSum)) {
+      throw new UnprocessableEntityException(
+        `Verifikatet balanserar inte: debet ${debitSum.toFixed(2)} ≠ kredit ${creditSum.toFixed(2)} ` +
+          `(${params.source} ${params.sourceId ?? '—'}: ${params.description})`,
+      )
+    }
+
     const run = async (tx: Prisma.TransactionClient) => {
       // Idempotenskontrollen körs inuti transaktionen och matchar samma
       // (org, source, sourceId) som det unika DB-indexet — så app-kontroll och
