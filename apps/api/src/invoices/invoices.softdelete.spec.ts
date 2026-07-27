@@ -17,7 +17,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { InvoicesService } from './invoices.service'
 
-function makeService(invoiceStatus: string | null) {
+function makeService(invoiceStatus: string | null, allocations: Array<{ id: string }> = []) {
   const found =
     invoiceStatus === null
       ? null
@@ -34,6 +34,8 @@ function makeService(invoiceStatus: string | null) {
       delete: jest.fn(),
     },
     invoiceEvent: { deleteMany: jest.fn() },
+    // C4/C5: VOID-guarden läser faktiska betalningsallokeringar (inte status).
+    invoicePayment: { findMany: jest.fn().mockResolvedValue(allocations) },
     $transaction: undefined as unknown,
   }
   ;(prisma as { $transaction: unknown }).$transaction = (cb: (tx: unknown) => unknown) => cb(prisma)
@@ -109,12 +111,31 @@ describe('FIX 9 · PR 5 — InvoicesService.remove (soft-delete)', () => {
 })
 
 describe('transitionStatus → VOID: blockera makulering av delvis betald faktura', () => {
-  it('PARTIAL → VOID avvisas (mottagen delbetalning får inte lämnas oadresserad)', async () => {
-    const { service, prisma } = makeService('PARTIAL')
+  // BETEENDEÄNDRING (C4/C5): guarden nyckar på FAKTISKA allokeringar, inte på
+  // status === 'PARTIAL'. Statusvarianten (PR #166) räckte så länge PARTIAL var
+  // onåbart; med delbetalningsmodellen tillåter INVOICE_TRANSITIONS
+  // PARTIAL → OVERDUE → VOID, och PATCH /status blockerar bara PAID — så en
+  // delbetald faktura kunde makuleras i två steg förbi den gamla spärren.
+  it('PARTIAL MED registrerad betalning → VOID avvisas', async () => {
+    const { service, prisma } = makeService('PARTIAL', [{ id: 'pay-1' }])
     await expect(
       service.transitionStatus('inv-1', 'org-1', 'VOID', 'user-1', 'USER'),
-    ).rejects.toThrow(/delvis betald/i)
+    ).rejects.toThrow(/registrerad betalning/i)
     expect(prisma.invoice.update).not.toHaveBeenCalled()
+  })
+
+  it('OVERDUE MED registrerad betalning → VOID avvisas (hålet statusvarianten missade)', async () => {
+    const { service, prisma } = makeService('OVERDUE', [{ id: 'pay-1' }])
+    await expect(
+      service.transitionStatus('inv-1', 'org-1', 'VOID', 'user-1', 'USER'),
+    ).rejects.toThrow(/registrerad betalning/i)
+    expect(prisma.invoice.update).not.toHaveBeenCalled()
+  })
+
+  it('PARTIAL UTAN registrerad betalning → VOID tillåts (inga pengar att strandsätta)', async () => {
+    const { service, prisma } = makeService('PARTIAL', [])
+    await service.transitionStatus('inv-1', 'org-1', 'VOID', 'user-1', 'USER')
+    expect(prisma.invoice.update).toHaveBeenCalled()
   })
 
   it('SENT → VOID tillåts (ingen delbetalning att strandsätta)', async () => {

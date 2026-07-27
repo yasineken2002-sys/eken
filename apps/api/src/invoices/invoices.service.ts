@@ -486,14 +486,29 @@ export class InvoicesService {
         throw new BadRequestException(`Ogiltig statusövergång: ${invoice.status} → ${newStatus}`)
       }
 
-      // En delvis betald faktura (PARTIAL) får inte makuleras rakt av — en mottagen
-      // delbetalning skulle lämna en oadresserad kundkredit på 1510. Hantera
-      // betalningen först. (Symmetriskt med cancelNotice för hyresavier.)
-      if (newStatus === 'VOID' && invoice.status === 'PARTIAL') {
-        throw new BadRequestException(
-          'Kan inte makulera en delvis betald faktura — hantera den mottagna ' +
-            'betalningen först (avmatcha/återbetala).',
-        )
+      // En faktura med MOTTAGEN BETALNING får inte makuleras rakt av — pengarna
+      // skulle lämna en oadresserad kundkredit på 1510. Hantera betalningen
+      // först. (Symmetriskt med cancelNotice för hyresavier.)
+      //
+      // C4/C5: grinden nyckas på FAKTISKA allokeringar, inte på status ===
+      // 'PARTIAL'. Statusvarianten (PR #166) räckte så länge PARTIAL i praktiken
+      // var onåbart, men med delbetalningsmodellen är den nåbar — och
+      // INVOICE_TRANSITIONS tillåter PARTIAL → OVERDUE → VOID. Eftersom
+      // PATCH /invoices/:id/status bara blockerar PAID kunde en delbetald
+      // faktura annars makuleras i två steg, förbi spärren, med mottagna pengar
+      // kvar obokade. (PAID är terminalt i statusmaskinen och kan aldrig
+      // makuleras — den vägen var redan stängd.)
+      if (newStatus === 'VOID') {
+        const allocations = await tx.invoicePayment.findMany({
+          where: { invoiceId: id },
+          select: { id: true },
+        })
+        if (allocations.length > 0) {
+          throw new BadRequestException(
+            'Kan inte makulera en faktura med registrerad betalning — hantera den ' +
+              'mottagna betalningen först (avmatcha/återbetala).',
+          )
+        }
       }
 
       const updated = await tx.invoice.update({

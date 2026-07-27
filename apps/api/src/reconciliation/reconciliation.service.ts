@@ -1035,6 +1035,12 @@ export class ReconciliationService {
 
       // Klassificera beloppet mot AKTUELL restskuld. Samma tolerans som
       // automatmatchningen (1 kr) för att fånga öresavrundning i bankfilen.
+      // TOLERANS 1,00 kr — speglad från hyresavins bankmatchning. Fångar
+      // öresavrundning i bankfilen så en inbetalning på 1249,99 mot en faktura
+      // på 1250,00 räknas som full reglering i stället för att lämna en
+      // öresskuld som aldrig regleras.
+      // ⚠️ FLAGGAD FÖR REDOVISNINGSKONSULT: både att tolerans används och dess
+      // storlek är ett affärsbeslut, inte en teknisk konstant.
       const tolerance = new Decimal('1.00')
       const diff = remaining.minus(transactionAmount)
       let allocation: Decimal
