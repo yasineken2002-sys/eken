@@ -40,11 +40,52 @@ Utanför auditen, samma omgång:
 
 ## Kvar av KOD — inte bokföring
 
-**Personnummer lagras i klartext.** `Tenant.personalNumber` och
-`Customer.personalNumber` är `String?` (`schema.prisma:894`, `:986`). Ska
-krypteras. Mönstret finns redan i signeringskoden: `SignatureEvidence` använder
-`personalNumberEnc` (AES-256-GCM envelope) + `personalNumberHash` (HMAC-blind-
-index för uppslag utan att exponera numret), `schema.prisma:1893-1894`.
+**Personnummer krypteras i vila.** Byggt i
+[#255](https://github.com/yasineken2002-sys/eken/pull/255) — **ÖPPEN, väntar
+användarens merge**. `Tenant.personalNumber` och `Customer.personalNumber` låg i
+klartext; nu AES-256-GCM (`personalNumberEnc`) + HMAC-SHA256-blind-index
+(`personalNumberHash`) via `PersonalNumberService`, som delegerar varje operation
+till befintliga `SigningCryptoService` — samma mönster och samma nycklar som
+signeringsbevisen (`SignatureEvidence`). Ingen ny kryptografi; blind-indexet
+delar pepper med flit, så en BankID-identitet kan jämföras mot hyresgästens hash
+utan att någon rad dekrypteras.
+
+Två uppföljningar:
+
+1. **`DROP COLUMN "personalNumber"` återstår.** #255 är expand-fasen — migrationen
+   lägger bara till kolumner, och `src/scripts/backfill-personal-numbers.ts` krypterar
+   befintliga rader (kört av `migrate-and-start.sh` mellan `migrate deploy` och
+   appstart). Klartextkolumnen finns kvar i DB men heter `personalNumberLegacy` i
+   Prisma (`@map("personalNumber")`), så varje kvarvarande användning är ett
+   kompileringsfel. Contract-fasen blir egen PR **när produktions-backfillen är
+   bekräftad körd** — inte före.
+2. **`ContractImportRow` lagrar fortfarande personnummer i klartext.**
+   `originalScanData` / `reviewedData` / `confirmedData` är `Json`-kolumner och
+   kontraktsskannern extraherar `personalNumber` dit. Det är en tredje
+   klartextlagring, utanför #255:s scope. Att kryptera fritt formade JSON-blobbar är
+   ett annat jobb än två kolumner — **flaggat, egen PR**.
+
+### ⚠️ Nycklarna: säkerhetskopiera, rotera aldrig lättvindigt
+
+`SIGNING_PII_KEY` (64 hex-tecken / 32 byte) och `SIGNING_PII_PEPPER` (≥16 tecken)
+ligger sedan #255 i `CRITICAL` i `env.validation.ts` — **appen vägrar starta i
+produktion utan dem**. Läs detta innan någon rör dem:
+
+- **Förlorad `SIGNING_PII_KEY` = alla personnummer är permanent oläsbara.** Det
+  finns ingen återställningsväg: AES-256-GCM utan nyckeln är inte knäckbart, och
+  klartexten är borta efter backfillen. Samma sak för en förlorad
+  `SIGNING_PII_PEPPER`: alla blind-index blir omatchbara, vilket bryter
+  signeringens identitetsbindning och INV-B-grinden i kravtrappan.
+- **Rotation kräver omskrivning av all data.** Byte av nyckeln kräver att varje
+  `personalNumberEnc` dekrypteras med den gamla och krypteras om med den nya; byte
+  av peppern kräver att varje `personalNumberHash` beräknas om — och hasharna kan
+  bara räknas om från dekrypterad klartext, alltså behövs den gamla nyckeln även
+  vid ren pepper-rotation. Ett "rotera secrets"-svep som byter dessa två utan
+  migreringsskript förstör datan tyst.
+- **Säkerhetskopiera dem utanför Railway** (lösenordshanterare eller motsvarande),
+  åtskilt från databasbackuperna — en backup som ligger bredvid nyckeln skyddar
+  ingenting. Nycklarna ingår inte i `pg_dump`-backupen och återskapas inte av en
+  restore.
 
 ## Affärsregler — implementerade, väntar konsultens signatur
 
