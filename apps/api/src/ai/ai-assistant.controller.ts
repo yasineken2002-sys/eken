@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  Logger,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Throttle } from '@nestjs/throttler'
@@ -32,6 +33,12 @@ import {
   MAX_ATTACHMENT_BUDGET_BYTES,
 } from './attachments/ai-attachments.service'
 import { assertRequestWithinLimit } from './attachments/request-size'
+import {
+  enforceToolPairInvariant,
+  sanitizeBlocksForPersistence,
+  wasRepaired,
+  describeRepair,
+} from './history-integrity'
 import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -62,6 +69,8 @@ const STREAM_MAX_TOKENS = 4096
 @Controller('ai')
 @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
 export class AiAssistantController {
+  private readonly logger = new Logger(AiAssistantController.name)
+
   constructor(
     private readonly aiService: AiAssistantService,
     private readonly memoryService: MemoryService,
@@ -283,6 +292,15 @@ export class AiAssistantController {
           messages: currentMessages,
         })
 
+        // SISTA GRINDEN: par-invarianten (samma delade regel som non-stream-
+        // vägen). Backstop mot historikrader skrivna före fixen — ett obesvarat
+        // tool_use i historiken hade annars fällt varje request i den
+        // konversationen.
+        const { messages: safeMessages, repair } = enforceToolPairInvariant(currentMessages)
+        if (wasRepaired(repair)) {
+          this.logger.warn(`Historiken sanerades före stream: ${describeRepair(repair)}`)
+        }
+
         const stream = anthropic.messages.stream({
           model: STREAM_MODEL,
           max_tokens: STREAM_MAX_TOKENS,
@@ -290,7 +308,7 @@ export class AiAssistantController {
           output_config: { effort: CHAT_EFFORT },
           system: systemBlocks,
           tools: TOOLS,
-          messages: currentMessages,
+          messages: safeMessages,
         })
 
         // Stream textdeltan direkt till klienten
@@ -460,12 +478,18 @@ export class AiAssistantController {
             ...(userBlocks ? { blocks: userBlocks } : {}),
           },
         })
+        // Aldrig ett halvt par i historiken — se sanitizeBlocksForPersistence.
+        // Träffas när tool-loopen tog slut på iterationer med stop_reason
+        // fortfarande 'tool_use': den turen bar då tool_use utan resultat.
+        const persistedBlocks = sanitizeBlocksForPersistence(assistantContent)
         await this.prisma.aiMessage.create({
           data: {
             conversationId: conversation.id,
             role: 'assistant',
             content: assistantText || 'Inget svar.',
-            blocks: assistantContent as unknown as Prisma.InputJsonValue,
+            ...(persistedBlocks
+              ? { blocks: persistedBlocks as unknown as Prisma.InputJsonValue }
+              : {}),
           },
         })
         await this.prisma.aiConversation.update({

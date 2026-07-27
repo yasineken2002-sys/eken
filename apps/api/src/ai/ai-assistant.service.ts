@@ -35,6 +35,12 @@ import {
   MAX_ATTACHMENT_BUDGET_BYTES,
 } from './attachments/ai-attachments.service'
 import { assertRequestWithinLimit } from './attachments/request-size'
+import {
+  enforceToolPairInvariant,
+  sanitizeBlocksForPersistence,
+  wasRepaired,
+  describeRepair,
+} from './history-integrity'
 
 // Höjt 2048 → 4096 i samma PR som modellbytet till Opus 5. Opus 5 lägger en
 // del av output-budgeten på ett thinking-block, och på 2048 åt resonemanget upp
@@ -648,16 +654,27 @@ export class AiAssistantService {
     )
 
     while (response.stop_reason === 'tool_use' && iterations < MAX_TOOL_ITERATIONS) {
-      const toolBlock = response.content.find(
+      // ALLA tool_use i turen, inte bara den första.
+      //
+      // Det här var produktionsbuggen: Claude kan begära flera verktyg i SAMMA
+      // svar (parallella anrop). Koden tog `.find()`, körde ett verktyg och
+      // lade till ETT tool_result — de övriga anropen blev obesvarade, och
+      // Anthropic avvisade nästa request med
+      // "messages.N: tool_use ids were found without tool_result blocks".
+      // SSE-vägen gjorde redan rätt; det var divergensen mellan vägarna som
+      // var felet. Par-invarianten bor nu i history-integrity.ts.
+      const toolUses = response.content.filter(
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
       )
-      if (!toolBlock) break
+      if (toolUses.length === 0) break
 
-      const toolName = toolBlock.name
-      const toolInput = toolBlock.input as Record<string, unknown>
-
-      // Action tool → defer execution to confirmAction()
-      if (ACTION_TOOLS.has(toolName)) {
+      // Bindande verktyg någonstans i turen → INGENTING körs, hela turen går
+      // till bekräftelse. Samma regel som SSE-vägen. Att köra läsverktygen
+      // först hade dessutom lämnat deras tool_result utan sin assistent-tur.
+      const actionBlock = toolUses.find((tu) => ACTION_TOOLS.has(tu.name))
+      if (actionBlock) {
+        const toolName = actionBlock.name
+        const toolInput = actionBlock.input as Record<string, unknown>
         await this.prisma.aiMessage.create({
           data: {
             conversationId: conversation.id,
@@ -692,37 +709,40 @@ export class AiAssistantService {
         }
       }
 
-      // Read tool → execute immediately and feed result back
-      let toolResult: unknown
-      try {
-        toolResult = await this.toolExecutor.executeTool(
-          toolName,
-          toolBlock.input as Record<string, unknown>,
-          organizationId,
-          userId,
-          userRole,
-          { conversationId: conversation.id },
-        )
-      } catch (err) {
-        toolResult = {
-          success: false,
-          message: err instanceof Error ? err.message : 'Fel vid verktygsanrop',
-        }
-      }
+      // Läsverktyg → kör ALLA i turen och mata tillbaka ETT tool_result per
+      // anrop. Ett resultat per tool_use, alltid — det är par-invarianten.
+      const toolResultBlocks: Anthropic.ToolResultBlockParam[] = await Promise.all(
+        toolUses.map(async (tu) => {
+          let toolResult: unknown
+          try {
+            toolResult = await this.toolExecutor.executeTool(
+              tu.name,
+              tu.input as Record<string, unknown>,
+              organizationId,
+              userId,
+              userRole,
+              { conversationId: conversation.id },
+            )
+          } catch (err) {
+            // Ett fel blir ett RESULTAT, inte ett uteblivet svar. Att hoppa
+            // över blocket hade lämnat anropet obesvarat och gett 400.
+            toolResult = {
+              success: false,
+              message: err instanceof Error ? err.message : 'Fel vid verktygsanrop',
+            }
+          }
+          return {
+            type: 'tool_result' as const,
+            tool_use_id: tu.id,
+            content: JSON.stringify(toolResult),
+          }
+        }),
+      )
 
       currentMessages = [
         ...currentMessages,
         { role: 'assistant' as const, content: response.content },
-        {
-          role: 'user' as const,
-          content: [
-            {
-              type: 'tool_result' as const,
-              tool_use_id: toolBlock.id,
-              content: JSON.stringify(toolResult),
-            },
-          ],
-        },
+        { role: 'user' as const, content: toolResultBlocks },
       ]
 
       response = await this.callClaude(
@@ -1121,6 +1141,14 @@ export class AiAssistantService {
     // och det vore ett falskt besked — requesten är för stor, inte API:t nere.
     assertRequestWithinLimit({ system: systemBlocks, tools: TOOLS, messages })
 
+    // SISTA GRINDEN: par-invarianten. Backstop mot historikrader som redan
+    // ligger i databasen från före fixen — ett obesvarat tool_use där hade
+    // annars fällt varje request i den konversationen för alltid.
+    const { messages: safeMessages, repair } = enforceToolPairInvariant(messages)
+    if (wasRepaired(repair)) {
+      this.logger.warn(`Historiken sanerades före anrop: ${describeRepair(repair)}`)
+    }
+
     try {
       const response = await this.client.messages.create({
         model: AI_MODELS.CHAT,
@@ -1130,7 +1158,7 @@ export class AiAssistantService {
         output_config: { effort: CHAT_EFFORT },
         system: systemBlocks,
         tools: TOOLS,
-        messages,
+        messages: safeMessages,
       })
       // Logga kostnad — fire-and-forget. Loggning får aldrig blockera AI:n.
       void this.usage
@@ -1351,12 +1379,20 @@ export class AiAssistantService {
         ...(attachments.blocks ? { blocks: attachments.blocks } : {}),
       },
     })
+    // Aldrig ett halvt par i historiken. `sanitizeBlocksForPersistence` strippar
+    // tool_use, för tool_result-blocken persisteras aldrig — ett sparat
+    // tool_use blir därför ett obesvarat anrop som 400:ar VARJE följande
+    // meddelande i konversationen. Det inträffade när tool-loopen tog slut på
+    // iterationer med stop_reason fortfarande 'tool_use'.
+    const assistantBlocks = sanitizeBlocksForPersistence(response.content)
     await this.prisma.aiMessage.create({
       data: {
         conversationId,
         role: 'assistant',
         content: reply,
-        blocks: response.content as unknown as Prisma.InputJsonValue,
+        // null → ingen blocks-kolumn; rehydreringen faller tillbaka på
+        // `content`, precis som för rader skrivna innan kolumnen fanns.
+        ...(assistantBlocks ? { blocks: assistantBlocks as unknown as Prisma.InputJsonValue } : {}),
       },
     })
     await this.prisma.aiConversation.update({
