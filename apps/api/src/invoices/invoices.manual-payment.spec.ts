@@ -5,7 +5,7 @@
  * verifikat: 1510 (Kundfordringar) stod kvar öppen (BFL 5 kap 6 §-brott).
  * markAsPaidManually ska istället:
  *   • atomiskt claima fakturan (SENT/PARTIAL/OVERDUE/SENT_TO_COLLECTION → PAID)
- *   • boka betalningen (likvidkonto D / 1510 K) med fakturans totalbelopp
+ *   • boka betalningen (likvidkonto D / 1510 K) med det MOTTAGNA beloppet
  *   • ÅNGRA statusen om verifikatet uteblir (kontoplan saknas)
  *   • vägra dubbelbetalning och ogiltiga övergångar
  */
@@ -16,7 +16,12 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { InvoicesService, toPaymentMethod } from './invoices.service'
 
 function makeService(
-  opts: { status?: string; journalReturnsNull?: boolean; claimCount?: number } = {},
+  opts: {
+    status?: string
+    journalReturnsNull?: boolean
+    claimCount?: number
+    priorAllocations?: Array<{ amount: number }>
+  } = {},
 ) {
   const status = opts.status ?? 'SENT'
   const invoiceRow = {
@@ -29,8 +34,16 @@ function makeService(
   const updateMany = jest.fn().mockResolvedValue({ count: opts.claimCount ?? 1 })
   const findFirst = jest.fn().mockResolvedValue(invoiceRow)
   const findFirstOrThrow = jest.fn().mockResolvedValue({ ...invoiceRow, status: 'PAID' })
+  // Allokeringsmodellen (C4/C5). Tom lista = inga tidigare betalningar, så
+  // restskulden är hela totalen och en full betalning reglerar fakturan.
+  const invoicePaymentCreate = jest.fn().mockResolvedValue({})
   const prisma = {
     invoice: { findFirst, findFirstOrThrow, updateMany },
+    invoicePayment: {
+      findMany: jest.fn().mockResolvedValue(opts.priorAllocations ?? []),
+      create: invoicePaymentCreate,
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
   }
 
   const createJournalEntryForInvoiceManualPayment = jest.fn(() =>
@@ -54,6 +67,7 @@ function makeService(
   return {
     service,
     updateMany,
+    invoicePaymentCreate,
     createJournalEntryForInvoiceManualPayment,
     eventsService,
     notificationsService,
@@ -61,7 +75,7 @@ function makeService(
 }
 
 describe('InvoicesService.markAsPaidManually — bokför inbetalningen', () => {
-  it('bokför likvidkonto D / 1510 K med fakturans totalbelopp och sätter PAID', async () => {
+  it('full betalning: bokför det mottagna beloppet (= hela restskulden) och sätter PAID', async () => {
     const { service, updateMany, createJournalEntryForInvoiceManualPayment, eventsService } =
       makeService()
 
@@ -73,7 +87,9 @@ describe('InvoicesService.markAsPaidManually — bokför inbetalningen', () => {
     // atomisk claim till PAID
     expect(updateMany).toHaveBeenCalledTimes(1)
     expect(updateMany.mock.calls[0]?.[0]).toMatchObject({ data: { status: 'PAID' } })
-    // bokför med totalbeloppet (settlement), inte det inmatade beloppet
+    // Bokför det MOTTAGNA beloppet. Här sammanfaller det med totalen (1250),
+    // vilket är varför detta test aldrig kunde fånga C5 — se
+    // invoices.partial-payment.spec.ts för fallet där de skiljer sig.
     expect(createJournalEntryForInvoiceManualPayment).toHaveBeenCalledTimes(1)
     const args = createJournalEntryForInvoiceManualPayment.mock.calls[0] as unknown[]
     expect(args[1]).toBe(1250)
