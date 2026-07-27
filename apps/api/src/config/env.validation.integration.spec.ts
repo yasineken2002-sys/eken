@@ -26,6 +26,9 @@ const CRITICAL_KEYS = [
   'WEB_URL',
   'ADMIN_URL',
   'PORTAL_URL',
+  // Alltid-kritiska sedan personnummer krypteras at-rest på Tenant/Customer.
+  'SIGNING_PII_KEY',
+  'SIGNING_PII_PEPPER',
 ]
 
 const FULL_PROD: Record<string, string> = {
@@ -45,6 +48,8 @@ const FULL_PROD: Record<string, string> = {
   WEB_URL: 'https://app.eveno.se',
   ADMIN_URL: 'https://admin.eveno.se',
   PORTAL_URL: 'https://portal.eveno.se',
+  SIGNING_PII_KEY: 'a'.repeat(64),
+  SIGNING_PII_PEPPER: 'p'.repeat(16),
 }
 
 async function boot(env: Record<string, string>) {

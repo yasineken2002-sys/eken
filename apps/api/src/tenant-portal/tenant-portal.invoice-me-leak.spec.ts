@@ -180,7 +180,9 @@ const EXPECTED_ME_KEYS = [
 
 describe('mapMe — getMe defense-in-depth', () => {
   it('svaret saknar interna fält + organization exponerar bara name (ej id)', () => {
-    const me = mapMe(dirtyTenant() as never, '19850101-1234') as Record<string, unknown>
+    // mapMe tar numera klartexten som argument — controllern dekrypterar den ur
+    // personalNumberEnc vid visningen. Testet matar samma värde fixturen bär.
+    const me = mapMe(dirtyTenant() as never, '19900101-1234') as Record<string, unknown>
 
     for (const key of FORBIDDEN_ME_FIELDS) {
       expect(me).not.toHaveProperty(key)

@@ -28,6 +28,10 @@ function fullProdEnv(): Record<string, string> {
     WEB_URL: 'https://app.eveno.se',
     ADMIN_URL: 'https://admin.eveno.se',
     PORTAL_URL: 'https://portal.eveno.se',
+    // Personnummer-kryptering: alltid-kritisk sedan Tenant/Customer krypteras
+    // at-rest, inte längre villkorad på SIGNING_ENABLED.
+    SIGNING_PII_KEY: 'a'.repeat(64),
+    SIGNING_PII_PEPPER: 'p'.repeat(16),
   }
 }
 
