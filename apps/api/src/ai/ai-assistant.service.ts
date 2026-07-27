@@ -17,7 +17,8 @@ import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { AiAuditService } from './audit/ai-audit.service'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
-import { AI_MODELS, CHAT_EFFORT } from './ai.config'
+import { AI_MODELS, chatRequestOptions, pickChatProfile } from './ai.config'
+import type { ChatModelProfile } from './ai.config'
 import { detectLegalDocumentWarning } from './legal-document-warning'
 import {
   isLegalQuestion,
@@ -40,14 +41,13 @@ import {
   sanitizeBlocksForPersistence,
   wasRepaired,
   describeRepair,
+  stripThinkingBlocks,
 } from './history-integrity'
 
-// Höjt 2048 → 4096 i samma PR som modellbytet till Opus 5. Opus 5 lägger en
-// del av output-budgeten på ett thinking-block, och på 2048 åt resonemanget upp
-// HELA budgeten: uppmätt stop_reason=max_tokens med 0 tecken svarstext. Med
-// CHAT_EFFORT='low' landar samma fråga på ~2000 tokens, så 4096 ger marginal
-// utan att bli ett tak som aldrig binder. Höjs effort måste detta höjas med.
-const MAX_TOKENS = 4096
+// Tokentaket är INTE längre en konstant här — det hör till modellprofilen
+// (CHAT_PROFILE_TEXT / CHAT_PROFILE_VISION i ai.config.ts). Sonnet klarar sig på
+// 2048, Opus 5 behöver 4096 för att inte lägga hela budgeten på thinking och
+// svara tomt. Ett gemensamt tak hade svultit den ena eller slösat på den andra.
 
 // ─── Sliding window för långa konversationer ─────────────────────────────────
 // För korta konversationer (≤ SLIDING_WINDOW_THRESHOLD) skickas hela historiken
@@ -609,6 +609,12 @@ export class AiAssistantService {
       userId,
     )
 
+    // MODELLVALET för hela den här turen. Grundas på vad som FAKTISKT blev
+    // innehållsblock, inte på id-listans längd: ett id som inte gick att läsa
+    // ger inget block, och då finns ingen bild att betala Opus-pris för.
+    // Profilen följer med genom hela tool-loopen nedan.
+    const profile = pickChatProfile(attached.contentBlocks.length > 0)
+
     // Text-only är OFÖRÄNDRAT: utan bilagor är content en ren sträng, precis
     // som före B2. Blockarrayen används bara när det faktiskt finns något att
     // bifoga — bilagorna först, texten sist (modellen läser underlaget innan
@@ -650,6 +656,7 @@ export class AiAssistantService {
       memoriesCtx,
       organizationId,
       userId,
+      profile,
       grounding,
     )
 
@@ -751,6 +758,10 @@ export class AiAssistantService {
         memoriesCtx,
         organizationId,
         userId,
+        // SAMMA profil som första anropet — modellen får aldrig växla mitt i
+        // en tur. Byte här hade både brutit prompt-cachen per iteration och
+        // skickat en fortsättning till en annan modell än den som började.
+        profile,
         grounding,
       )
       iterations++
@@ -1093,6 +1104,11 @@ export class AiAssistantService {
     memoriesCtx: string,
     organizationId: string,
     userId: string,
+    // Obligatorisk och placerad FÖRE det valfria `grounding`: modellprofilen
+    // väljs en gång per användarmeddelande och måste vara samma genom hela
+    // tool-loopen. Ett defaultvärde här hade tyst kunnat skicka en bilagetur
+    // till Sonnet — kompilatorn ska tvinga anroparen att välja.
+    profile: ChatModelProfile,
     grounding: LegalGroundingResult = null,
   ): Promise<Anthropic.Message> {
     const memorySection = memoriesCtx ? `\n\n${memoriesCtx}` : ''
@@ -1141,32 +1157,44 @@ export class AiAssistantService {
     // och det vore ett falskt besked — requesten är för stor, inte API:t nere.
     assertRequestWithinLimit({ system: systemBlocks, tools: TOOLS, messages })
 
-    // SISTA GRINDEN: par-invarianten. Backstop mot historikrader som redan
-    // ligger i databasen från före fixen — ett obesvarat tool_use där hade
-    // annars fällt varje request i den konversationen för alltid.
-    const { messages: safeMessages, repair } = enforceToolPairInvariant(messages)
+    // SISTA GRINDEN, två steg — båda backstops mot historik som redan ligger i
+    // databasen och inte kan skrivas om i efterhand:
+    //
+    //  1. stripThinkingBlocks — resonemangsblock är modellbundna, och sedan
+    //     modellvalet blev per meddelande kan en konversation blanda Sonnet- och
+    //     Opus-turer. Nya rader bär dem inte längre (se
+    //     sanitizeBlocksForPersistence), men äldre rader gör det.
+    //  2. enforceToolPairInvariant — ett obesvarat tool_use i historiken hade
+    //     annars fällt varje request i den konversationen för alltid.
+    //
+    // Ordningen spelar roll: blir ett meddelande tomt av steg 1 plockas det
+    // bort av steg 3 i par-invarianten (tom content-array avvisas också).
+    const { messages: safeMessages, repair } = enforceToolPairInvariant(
+      stripThinkingBlocks(messages),
+    )
     if (wasRepaired(repair)) {
       this.logger.warn(`Historiken sanerades före anrop: ${describeRepair(repair)}`)
     }
 
     try {
       const response = await this.client.messages.create({
-        model: AI_MODELS.CHAT,
-        max_tokens: MAX_TOKENS,
-        // Explicit resonemangsnivå — se CHAT_EFFORT i ai.config.ts. Lämnas den
-        // osatt tar Opus 5:s default hela tokenbudgeten och svaret blir tomt.
-        output_config: { effort: CHAT_EFFORT },
+        // Modell + tokentak + effort kommer SAMLAT från profilen. Den valdes en
+        // gång i chat() utifrån om meddelandet bar en bilaga, och är densamma
+        // för alla iterationer i tool-loopen.
+        ...chatRequestOptions(profile),
         system: systemBlocks,
         tools: TOOLS,
         messages: safeMessages,
       })
       // Logga kostnad — fire-and-forget. Loggning får aldrig blockera AI:n.
+      // Modellen loggas från profilen, inte från en konstant: annars hade
+      // kostnadstaken räknat Opus-anrop till Sonnet-pris (eller tvärtom).
       void this.usage
         .logUsage({
           organizationId,
           userId,
           endpoint: 'chat',
-          model: AI_MODELS.CHAT,
+          model: profile.model,
           usage: response.usage,
           isAutomated: false,
           source: 'manual_chat',

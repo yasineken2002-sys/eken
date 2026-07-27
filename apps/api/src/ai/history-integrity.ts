@@ -21,15 +21,35 @@ function blocksOf(message: Anthropic.MessageParam): Block[] | null {
 }
 
 /**
+ * Blocktyper som ALDRIG persisteras i en assistent-rads `blocks`.
+ *
+ * `tool_use` — tool_result-blocken persisteras aldrig; de lever bara i minnet
+ * under tool-loopen. Ett sparat `tool_use` är därför ett halvt par per
+ * definition, och när konversationen läses in igen 400:ar VARJE följande
+ * meddelande. Konversationen blir permanent förgiftad. Det inträffade när
+ * tool-loopen tog slut på iterationer med `stop_reason` fortfarande `tool_use`.
+ *
+ * `thinking` / `redacted_thinking` — resonemangsblock. De persisterades förr,
+ * vilket var ofarligt så länge HELA chatten körde en enda modell. Sedan
+ * modellvalet blev per meddelande (Sonnet för text, Opus 5 för bilagor) kan en
+ * och samma konversation innehålla turer från olika modeller, och då blir ett
+ * sparat thinking-block en koppling mellan historiken och den modell som råkade
+ * skriva den. Två skäl att strippa dem:
+ *
+ *  1. De bär ingen information. Opus 5 returnerar aldrig sin råa tankekedja —
+ *     med default-`display` är `thinking`-fältet tomt. Vi sparar alltså ett
+ *     block utan innehåll och skickar tillbaka det i varje efterföljande tur.
+ *  2. De är modellbundna. Att spela upp ett resonemangsblock för en ANNAN modell
+ *     än den som skapade det är i bästa fall en no-op och i värsta fall ett
+ *     avvisat anrop. Utan blocken är historiken modelloberoende av konstruktion
+ *     i stället för att förlita sig på att API:t är förlåtande.
+ *
+ * Textblocken — det användaren faktiskt läste — är opåverkade.
+ */
+const NON_PERSISTED_BLOCK_TYPES = new Set(['tool_use', 'thinking', 'redacted_thinking'])
+
+/**
  * Vad som får PERSISTERAS som en assistent-rads `blocks`.
- *
- * `tool_use` STRIPPAS. Skälet: tool_result-blocken persisteras aldrig — de
- * lever bara i minnet under tool-loopen. Ett sparat `tool_use` är därför ett
- * halvt par per definition, och när konversationen läses in igen 400:ar VARJE
- * följande meddelande. Konversationen blir permanent förgiftad.
- *
- * Det inträffade när tool-loopen tog slut på iterationer med `stop_reason`
- * fortfarande `tool_use`: den turen persisterades rakt av.
  *
  * Returnerar `null` när ingenting meningsfullt återstår — anroparen sparar då
  * ingen `blocks`-kolumn och rehydreringen faller tillbaka på `content`
@@ -38,10 +58,27 @@ function blocksOf(message: Anthropic.MessageParam): Block[] | null {
 export function sanitizeBlocksForPersistence(
   content: Anthropic.ContentBlock[],
 ): Anthropic.ContentBlock[] | null {
-  const kept = content.filter((b) => b.type !== 'tool_use')
+  const kept = content.filter((b) => !NON_PERSISTED_BLOCK_TYPES.has(b.type))
   // Utan ett textblock finns inget att återge — bara resonemang eller tomhet.
   if (!kept.some((b) => b.type === 'text')) return null
   return kept
+}
+
+/**
+ * Rensar resonemangsblock ur en historik som redan ligger i databasen.
+ *
+ * Backstop för rader skrivna FÖRE stripningen ovan: de kan bära thinking-block
+ * från en Opus-tur, och nästa meddelande i samma konversation kan gå till
+ * Sonnet. Körs på väg IN till modellen, precis som par-invarianten.
+ */
+export function stripThinkingBlocks(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  return messages.map((message) => {
+    const blocks = blocksOf(message)
+    if (!blocks) return message
+    const kept = blocks.filter((b) => b['type'] !== 'thinking' && b['type'] !== 'redacted_thinking')
+    if (kept.length === blocks.length) return message
+    return { ...message, content: kept as unknown as Anthropic.ContentBlockParam[] }
+  })
 }
 
 /** tool_use_id:n som besvaras av ett meddelande (tomt om det inte är svar). */
