@@ -9,6 +9,7 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { BadRequestException } from '@nestjs/common'
 import { ContractTemplateService } from './contract-template.service'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 function makeService(activeSigning: boolean) {
   const prisma = {
@@ -25,6 +26,7 @@ function makeService(activeSigning: boolean) {
   const locks = { runWithLock: jest.fn((_k: string, fn: () => unknown) => fn()) }
   const service = new ContractTemplateService(
     prisma as never,
+    testPersonalNumberService(),
     pdf as never,
     storage as never,
     locks as never,

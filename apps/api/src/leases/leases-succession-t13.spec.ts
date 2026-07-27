@@ -34,6 +34,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { Prisma } from '@prisma/client'
 import { LEASE_SUCCESSION_CARRY_FIELDS, LEASE_SUCCESSION_EXCLUDED_FIELDS } from '@eken/shared'
 import { LeasesService } from './leases.service'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 // ── A: DMMF-exhaustiveness (fail-closed) ────────────────────────────────────
 
@@ -201,6 +202,7 @@ function makeService(args: {
   const noop = {} as never
   const service = new LeasesService(
     prisma as never,
+    testPersonalNumberService(),
     notifications as never,
     noop, // deposits
     noop, // rentIncreases
@@ -444,6 +446,7 @@ describe('T1.3 · H: transitionStatus(ACTIVE→EXPIRED) kräver passerat slutdat
     const noop = {} as never
     const service = new LeasesService(
       prisma as never,
+      testPersonalNumberService(),
       noop,
       noop,
       noop,
@@ -505,7 +508,8 @@ describe('T1.3 · G: autoRenew körs HELT före applyDueIncreases', () => {
       }),
     }
     const service = new LeasesService(
-      noop, // prisma — nås inte, alla delsteg spy:as
+      noop,
+      testPersonalNumberService(), // prisma — nås inte, alla delsteg spy:as
       noop,
       deposits as never,
       rentIncreases as never,

@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core'
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { validateEnv } from './config/env.validation'
+import { PersonalNumberModule } from './common/crypto/personal-number.module'
 import { ThrottlerModule } from '@nestjs/throttler'
 import { UserOrIpThrottlerGuard } from './common/throttler/user-or-ip.throttler-guard'
 import { ScheduleModule } from '@nestjs/schedule'
@@ -58,6 +59,11 @@ import { Psd2Module } from './psd2/psd2.module'
   imports: [
     // Config
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env', validate: validateEnv }),
+
+    // Personnummer-kryptering (AES-256-GCM + HMAC-blind-index). @Global — skrivs
+    // och läses i tenants, customers, leases, import, contracts, collections och
+    // tenant-portal.
+    PersonalNumberModule,
 
     // Rate limiting
     ThrottlerModule.forRootAsync({

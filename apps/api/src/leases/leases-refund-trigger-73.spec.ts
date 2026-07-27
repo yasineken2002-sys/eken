@@ -12,6 +12,7 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { LeasesService } from './leases.service'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 describe('#73 · terminateExpiredNoticeLeases triggar refund-pending vid utflytt', () => {
   it('lease vars endDate passerat → TERMINATED + markRefundPendingForLease körs', async () => {
@@ -30,6 +31,7 @@ describe('#73 · terminateExpiredNoticeLeases triggar refund-pending vid utflytt
     const noop = {} as never
     const service = new LeasesService(
       prisma as never,
+      testPersonalNumberService(),
       noop, // notifications
       deposits as never,
       noop,

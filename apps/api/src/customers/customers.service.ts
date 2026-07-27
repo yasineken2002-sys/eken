@@ -1,13 +1,40 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { normalizeEmail } from '../common/utils/normalize-email'
 import { CreateCustomerDto } from './dto/create-customer.dto'
 import { UpdateCustomerDto } from './dto/update-customer.dto'
 
+/** Personnummer-kolumnerna får aldrig serialiseras — se mapCustomer. */
+const CUSTOMER_PN_KEYS = [
+  'personalNumberEnc',
+  'personalNumberHash',
+  'personalNumberLegacy',
+] as const
+
+type CustomerPnKey = (typeof CUSTOMER_PN_KEYS)[number]
+
 @Injectable()
 export class CustomersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pn: PersonalNumberService,
+  ) {}
+
+  /**
+   * Byter ut chiffertext + blind-index mot klartext-personnumret i svaret.
+   * Enda stället kunder dekrypteras för operatörs-API:t; alla läsvägar nedan
+   * går igenom den här.
+   */
+  private mapCustomer<T extends { personalNumberEnc: string | null }>(
+    customer: T,
+  ): Omit<T, CustomerPnKey> & { personalNumber: string | null } {
+    const rest = { ...customer } as Record<string, unknown>
+    const personalNumber = this.pn.reveal(customer.personalNumberEnc)
+    for (const key of CUSTOMER_PN_KEYS) delete rest[key]
+    return { ...rest, personalNumber } as Omit<T, CustomerPnKey> & { personalNumber: string | null }
+  }
 
   async findAll(
     organizationId: string,
@@ -30,13 +57,14 @@ export class CustomersService {
         : {}),
     }
 
-    return this.prisma.customer.findMany({
+    const customers = await this.prisma.customer.findMany({
       where,
       include: {
         _count: { select: { invoices: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
+    return customers.map((c) => this.mapCustomer(c))
   }
 
   async findOne(id: string, organizationId: string) {
@@ -52,7 +80,7 @@ export class CustomersService {
       },
     })
     if (!customer) throw new NotFoundException('Kunden hittades inte')
-    return customer
+    return this.mapCustomer(customer)
   }
 
   async create(dto: CreateCustomerDto, organizationId: string) {
@@ -63,13 +91,13 @@ export class CustomersService {
       throw new BadRequestException('Företagsnamn krävs för företag')
     }
 
-    return this.prisma.customer.create({
+    const created = await this.prisma.customer.create({
       data: {
         organizationId,
         type: dto.type,
         ...(dto.firstName != null ? { firstName: dto.firstName } : {}),
         ...(dto.lastName != null ? { lastName: dto.lastName } : {}),
-        ...(dto.personalNumber != null ? { personalNumber: dto.personalNumber } : {}),
+        ...this.pn.protect(dto.personalNumber),
         ...(dto.companyName != null ? { companyName: dto.companyName } : {}),
         ...(dto.orgNumber != null ? { orgNumber: dto.orgNumber } : {}),
         ...(dto.contactPerson != null ? { contactPerson: dto.contactPerson } : {}),
@@ -83,19 +111,20 @@ export class CustomersService {
         ...(dto.notes != null ? { notes: dto.notes } : {}),
       },
     })
+    return this.mapCustomer(created)
   }
 
   async update(id: string, dto: UpdateCustomerDto, organizationId: string) {
     const existing = await this.prisma.customer.findFirst({ where: { id, organizationId } })
     if (!existing) throw new NotFoundException('Kunden hittades inte')
 
-    return this.prisma.customer.update({
+    const updated = await this.prisma.customer.update({
       where: { id },
       data: {
         ...(dto.type != null ? { type: dto.type } : {}),
         ...(dto.firstName != null ? { firstName: dto.firstName } : {}),
         ...(dto.lastName != null ? { lastName: dto.lastName } : {}),
-        ...(dto.personalNumber != null ? { personalNumber: dto.personalNumber } : {}),
+        ...this.pn.protect(dto.personalNumber),
         ...(dto.companyName != null ? { companyName: dto.companyName } : {}),
         ...(dto.orgNumber != null ? { orgNumber: dto.orgNumber } : {}),
         ...(dto.contactPerson != null ? { contactPerson: dto.contactPerson } : {}),
@@ -110,6 +139,7 @@ export class CustomersService {
         ...(dto.isActive != null ? { isActive: dto.isActive } : {}),
       },
     })
+    return this.mapCustomer(updated)
   }
 
   /**

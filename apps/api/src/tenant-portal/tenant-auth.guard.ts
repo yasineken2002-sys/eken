@@ -39,7 +39,11 @@ export class TenantAuthGuard implements CanActivate {
         // dev-bypass aldrig sätter request.tenant med passwordHash/token-hashar.
         const tenant = await this.prisma.tenant.findUnique({
           where: { id: devTenantId },
-          select: { ...SAFE_TENANT_SELECT, organization: { select: { id: true, name: true } } },
+          select: {
+            ...SAFE_TENANT_SELECT,
+            personalNumberEnc: true,
+            organization: { select: { id: true, name: true } },
+          },
         })
         if (tenant) {
           this.logger.warn(`Dev tenant bypass aktiv för tenantId=${devTenantId}`)

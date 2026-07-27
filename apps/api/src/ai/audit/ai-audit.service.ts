@@ -33,6 +33,13 @@ const FORBIDDEN_FIELDS: ReadonlySet<string> = new Set([
   'apiKey',
 ])
 
+const PERSONAL_NUMBER_FIELDS: ReadonlySet<string> = new Set([
+  'personalNumber',
+  'personalNumberEnc',
+  'personalNumberHash',
+  'personalNumberLegacy',
+])
+
 export function sanitizeForAudit<T>(value: T, depth = 0): T {
   if (depth > 12) return value
   if (value === null || value === undefined) return value
@@ -46,9 +53,11 @@ export function sanitizeForAudit<T>(value: T, depth = 0): T {
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (FORBIDDEN_FIELDS.has(k)) continue
-      // Personnummer-fältet på Tenant ersätts med REPLACEMENT så vi vet
-      // att det fanns men inte vad det var.
-      if (k === 'personalNumber') {
+      // Personnummer-fälten på Tenant/Customer ersätts med REPLACEMENT så vi
+      // vet att de fanns men inte vad de var. Blind-indexet räknas som känsligt
+      // det med: det är deterministiskt och därmed en korrelerbar identifierare
+      // för en fysisk person, även om det inte går att vända till ett personnr.
+      if (PERSONAL_NUMBER_FIELDS.has(k)) {
         out[k] = REPLACEMENT
         continue
       }

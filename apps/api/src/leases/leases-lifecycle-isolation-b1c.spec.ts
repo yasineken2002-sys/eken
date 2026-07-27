@@ -9,6 +9,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { captureException } from '@sentry/nestjs'
 import { LeasesService } from './leases.service'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 const mockedCapture = captureException as jest.Mock
 
@@ -21,6 +22,7 @@ function makeService() {
   const rentIncreases = { applyDueIncreases: jest.fn().mockResolvedValue(4) }
   const svc = new LeasesService(
     prisma,
+    testPersonalNumberService(),
     {} as never,
     deposits as never,
     rentIncreases as never,

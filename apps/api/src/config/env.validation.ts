@@ -55,6 +55,13 @@ const CRITICAL: Record<string, z.ZodTypeAny> = {
   R2_ACCESS_KEY_ID: nonEmpty,
   R2_SECRET_ACCESS_KEY: nonEmpty,
   R2_BUCKET_NAME: nonEmpty,
+  // Personnummer-kryptering (Tenant/Customer at-rest + signeringsbevisen).
+  // Var tidigare flagg-villkorad på SIGNING_ENABLED — men hyresgäster finns
+  // oavsett om e-signering är på, så utan nycklarna går det inte att spara ett
+  // personnummer alls. Fail-closed med flit: alternativet vore att tyst falla
+  // tillbaka på klartext.
+  SIGNING_PII_KEY: z.string().regex(hex64, '64 hex-tecken (32 byte)'),
+  SIGNING_PII_PEPPER: secret16,
   // Publika URL:er — annars localhost-länkar i mejl + felaktig CORS i prod
   APP_URL: url, // kund-webb (CORS + länkar)
   WEB_URL: url, // reset-/inbjudningslänkar
@@ -97,6 +104,10 @@ function collectFeatureFlagErrors(config: EnvRecord): string[] {
     }
   }
 
+  // SIGNING_PII_KEY/_PEPPER ligger sedan personnummer-krypteringen ÄVEN i
+  // CRITICAL (de behövs för Tenant/Customer oavsett signeringsflaggan). Den här
+  // grenen behålls ändå: CRITICAL felar bara i produktion, medan en påslagen
+  // SIGNING_ENABLED ska fail-fasta i ALLA miljöer — precis som modul-factoryn.
   if (String(config.SIGNING_ENABLED) === 'true') {
     const key = config.SIGNING_PII_KEY
     if (typeof key !== 'string' || !hex64.test(key)) {

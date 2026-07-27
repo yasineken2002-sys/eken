@@ -4,6 +4,7 @@ import type { LeaseStatus, LeaseType, TenancyRegime, UnitType } from '@prisma/cl
 import { Cron } from '@nestjs/schedule'
 import * as Sentry from '@sentry/nestjs'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { NotificationsService } from '../notifications/notifications.service'
 import { DepositsService } from '../deposits/deposits.service'
@@ -409,6 +410,7 @@ export class LeasesService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly pn: PersonalNumberService,
     private readonly notifications: NotificationsService,
     private readonly deposits: DepositsService,
     private readonly rentIncreases: RentIncreasesService,
@@ -985,7 +987,7 @@ export class LeasesService {
               ...(lastName ? { lastName } : {}),
               ...(companyName ? { companyName } : {}),
               ...(phone ? { phone } : {}),
-              ...(personalNumber ? { personalNumber } : {}),
+              ...this.pn.protect(personalNumber),
               ...(orgNumber ? { orgNumber } : {}),
               ...(street ? { street } : {}),
               ...(city ? { city } : {}),

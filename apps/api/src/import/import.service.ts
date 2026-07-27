@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import * as XLSX from 'xlsx'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { ContractNumberService } from '../contracts/contract-number.service'
 import { syncUnitStatusFromLeases } from '../units/unit-status.sync'
 import { normalizeEmail } from '../common/utils/normalize-email'
@@ -79,6 +80,7 @@ export class ImportService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly contractNumbers: ContractNumberService,
+    private readonly pn: PersonalNumberService,
   ) {}
 
   // ─── File Parsing ──────────────────────────────────────────────────────────
@@ -524,7 +526,7 @@ export class ImportService {
             companyName: data['companyName'] || null,
             email: importEmail,
             phone: data['phone'] || null,
-            personalNumber: data['personalNumber'] || null,
+            ...this.pn.protect(data['personalNumber'] || null),
             orgNumber: data['orgNumber'] || null,
             street: data['street'] || null,
             city: data['city'] || null,

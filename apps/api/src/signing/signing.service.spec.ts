@@ -11,6 +11,7 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { Prisma } from '@prisma/client'
+import * as crypto from 'crypto'
 import { SigningService } from './signing.service'
 import { SigningCryptoService } from './signing-crypto.service'
 import { MockSigningProvider } from './providers/mock-signing.provider'
@@ -18,6 +19,9 @@ import { MockSigningProvider } from './providers/mock-signing.provider'
 const KEY = '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff'
 const PEPPER = 'test-pepper-1234567890'
 const TENANT_PN = '199001011234'
+// Blind-indexet som PersonalNumberService/backfillen skulle ha lagrat för
+// TENANT_PN. Identitetsbindningen jämför mot den här, aldrig mot klartexten.
+const TENANT_PN_HASH = crypto.createHmac('sha256', PEPPER).update(TENANT_PN).digest('hex')
 const FROZEN_HASH = 'frozen-content-hash'
 
 function makeFakePrisma() {
@@ -68,7 +72,7 @@ function makeFakePrisma() {
       ),
     },
     lease: {
-      findFirst: jest.fn(() => Promise.resolve({ tenant: { personalNumber: TENANT_PN } })),
+      findFirst: jest.fn(() => Promise.resolve({ tenant: { personalNumberHash: TENANT_PN_HASH } })),
     },
     signingRequest: {
       findFirst: jest.fn(
@@ -171,7 +175,7 @@ describe('SigningService.createSigningRequest', () => {
     const { service, prisma, signingRequests } = makeService(provider)
     // Hyresgäst utan personnummer → ingen identitetsbindning möjlig.
     ;(prisma.lease.findFirst as jest.Mock).mockResolvedValueOnce({
-      tenant: { personalNumber: null },
+      tenant: { personalNumberHash: null },
     })
     await expect(service.createSigningRequest('org-1', 'user-1', 'doc-1')).rejects.toThrow(
       /personnummer/i,

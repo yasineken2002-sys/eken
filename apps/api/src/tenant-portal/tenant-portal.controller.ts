@@ -35,6 +35,7 @@ import { Roles } from '../common/decorators/roles.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { StorageService } from '../storage/storage.service'
 import { MaintenanceService } from '../maintenance/maintenance.service'
 import { PdfService } from '../invoices/pdf.service'
@@ -449,6 +450,7 @@ export class TenantPortalController {
     private readonly maintenanceService: MaintenanceService,
     private readonly pdfService: PdfService,
     private readonly aviseringService: AviseringService,
+    private readonly pn: PersonalNumberService,
   ) {}
 
   @Get('me')
@@ -456,7 +458,8 @@ export class TenantPortalController {
     // SECURITY (defense-in-depth): mappa till hyresgästens egen profil (lager 2).
     // Råa `tenant` exponerade organizationId/activationReminderSentAt/timestamps +
     // organization.id som hyresgästen inte behöver. Se mapMe för visa/dölj-listan.
-    return mapMe(tenant)
+    // Hyresgästens egna personnummer dekrypteras här, vid visningen.
+    return mapMe(tenant, this.pn.reveal(tenant.personalNumberEnc))
   }
 
   @Get('me/export')

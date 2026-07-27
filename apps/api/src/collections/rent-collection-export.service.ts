@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import type { Prisma } from '@prisma/client'
 import JSZip from 'jszip'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
@@ -20,8 +21,17 @@ import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 // audit-notering. Evenos ansvar slutar vid exportfilen; inkassobolaget driver
 // kravet. Ingen kod för inkassokrav, förverkande eller avhysning finns här.
 
+// Inkassoexporten behöver gäldenärens personnummer i klartext (inkassobolaget
+// måste kunna identifiera gäldenären). SAFE_TENANT_SELECT bär det medvetet inte
+// längre, så den krypterade kolumnen väljs EXPLICIT här och dekrypteras först
+// vid utskriften.
+const COLLECTION_TENANT_SELECT = {
+  ...SAFE_TENANT_SELECT,
+  personalNumberEnc: true,
+} as const satisfies Prisma.TenantSelect
+
 const RENT_COLLECTION_INCLUDE = {
-  tenant: { select: SAFE_TENANT_SELECT },
+  tenant: { select: COLLECTION_TENANT_SELECT },
   organization: true,
   lease: { include: { unit: { include: { property: true } } } },
   events: { orderBy: { createdAt: 'asc' } },
@@ -69,6 +79,7 @@ export class RentCollectionExportService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly pn: PersonalNumberService,
     private readonly pdf: PdfService,
     private readonly storage: StorageService,
     private readonly pdfQueue: PdfQueue,
@@ -421,7 +432,7 @@ export class RentCollectionExportService {
         o.name,
         `${o.street}, ${o.postalCode} ${o.city}`.trim(),
         partyName,
-        t.personalNumber ?? '',
+        this.pn.reveal(t.personalNumberEnc) ?? '',
         t.orgNumber ?? '',
         t.email ?? '',
         t.phone ?? '',
@@ -439,6 +450,9 @@ export class RentCollectionExportService {
     const f = this.figures(notice)
     const t = notice.tenant
     const o = notice.organization
+    // Dekryptering vid användningstillfället — kravbrevet ska bära gäldenärens
+    // personnummer. Inget annat i den här filen behöver klartexten.
+    const tenantPersonalNumber = this.pn.reveal(t.personalNumberEnc)
     const partyName =
       t.type === 'INDIVIDUAL'
         ? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()
@@ -526,8 +540,8 @@ export class RentCollectionExportService {
       <div class="label">Gäldenär (hyresgäst)</div>
       <strong>${escapeHtml(partyName)}</strong><br>
       ${
-        t.personalNumber
-          ? `Personnr: ${escapeHtml(t.personalNumber)}<br>`
+        tenantPersonalNumber
+          ? `Personnr: ${escapeHtml(tenantPersonalNumber)}<br>`
           : t.orgNumber
             ? `Org.nr: ${escapeHtml(t.orgNumber)}<br>`
             : ''

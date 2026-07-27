@@ -29,6 +29,10 @@ import { validatePasswordStrength } from '@eken/shared'
  */
 const SAFE_PORTAL_TENANT_SELECT = {
   ...SAFE_TENANT_SELECT,
+  // Hyresgästen får se sitt EGET personnummer i portalprofilen. Chiffertexten
+  // väljs explicit (SAFE_TENANT_SELECT bär inte personnumret) och dekrypteras
+  // först i mapMe, vid visningen.
+  personalNumberEnc: true,
   organization: { select: { id: true, name: true } },
 } satisfies Prisma.TenantSelect
 

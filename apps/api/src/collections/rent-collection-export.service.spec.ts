@@ -18,6 +18,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import JSZip from 'jszip'
 import { RentCollectionExportService } from './rent-collection-export.service'
 import { Decimal } from '@prisma/client/runtime/library'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 function completeNotice(over: Record<string, unknown> = {}) {
   return {
@@ -43,7 +44,7 @@ function completeNotice(over: Record<string, unknown> = {}) {
       firstName: 'Anna',
       lastName: 'Andersson',
       companyName: null,
-      personalNumber: '900101-1234',
+      ...testPersonalNumberService().protect('900101-1234'),
       orgNumber: null,
       email: 'g@x.se',
       phone: '070-1',
@@ -125,6 +126,7 @@ function makeService(
   const rentDebt = { outstanding }
   const service = new RentCollectionExportService(
     prisma as never,
+    testPersonalNumberService(),
     pdf as never,
     storage as never,
     pdfQueue as never,
@@ -214,7 +216,7 @@ describe('exportForNotice', () => {
           companyName: '=HYPERLINK("http://evil","x")',
           firstName: null,
           lastName: null,
-          personalNumber: null,
+          personalNumberEnc: null,
           orgNumber: '556000-9999',
           email: null,
           phone: null,
@@ -239,7 +241,7 @@ describe('exportForNotice', () => {
           firstName: 'Anna',
           lastName: 'A',
           companyName: null,
-          personalNumber: '900101-1234',
+          ...testPersonalNumberService().protect('900101-1234'),
           orgNumber: null,
           email: null,
           phone: null,
@@ -405,6 +407,7 @@ describe('PR2 · export-grind (INV-D): faktisk skuld, inte collectionStage', () 
       )
     const service = new RentCollectionExportService(
       prisma as never,
+      testPersonalNumberService(),
       { generateFromHtml: jest.fn() } as never,
       { uploadFile: jest.fn(), getFileBuffer: jest.fn() } as never,
       { enqueue: jest.fn() } as never,

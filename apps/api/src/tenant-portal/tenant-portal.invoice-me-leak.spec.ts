@@ -14,6 +14,7 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { TenantPortalService, mapMe } from './tenant-portal.service'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 // ── getInvoices ─────────────────────────────────────────────────────────────
 
@@ -77,7 +78,12 @@ describe('TenantPortalService — getInvoices defense-in-depth', () => {
     const prisma = {
       invoice: { findMany: jest.fn().mockResolvedValue([dirtyInvoice()]) },
     }
-    const service = new TenantPortalService(prisma as never, {} as never, {} as never)
+    const service = new TenantPortalService(
+      prisma as never,
+      testPersonalNumberService(),
+      {} as never,
+      {} as never,
+    )
 
     const result = await service.getInvoices('tenant-1')
 
@@ -174,7 +180,9 @@ const EXPECTED_ME_KEYS = [
 
 describe('mapMe — getMe defense-in-depth', () => {
   it('svaret saknar interna fält + organization exponerar bara name (ej id)', () => {
-    const me = mapMe(dirtyTenant() as never) as Record<string, unknown>
+    // mapMe tar numera klartexten som argument — controllern dekrypterar den ur
+    // personalNumberEnc vid visningen. Testet matar samma värde fixturen bär.
+    const me = mapMe(dirtyTenant() as never, '19900101-1234') as Record<string, unknown>
 
     for (const key of FORBIDDEN_ME_FIELDS) {
       expect(me).not.toHaveProperty(key)
