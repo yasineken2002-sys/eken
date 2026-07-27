@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid'
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { SigningRequestStatus } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { LockService } from '../common/redis/lock.service'
@@ -50,6 +51,7 @@ function fingerprintTemplateInput(input: ContractTemplateInput): string {
 export class ContractTemplateService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly pn: PersonalNumberService,
     private readonly pdfService: PdfService,
     private readonly storage: StorageService,
     private readonly locks: LockService,
@@ -174,7 +176,10 @@ export class ContractTemplateService {
         lastName: lease.tenant.lastName,
         companyName: lease.tenant.companyName,
         contactPerson: lease.tenant.contactPerson,
-        personalNumber: lease.tenant.personalNumber,
+        // Hyresavtalet ska bära hyresgästens personnummer — det är part-
+        // identifieringen i ett bindande avtal. Dekrypteras här, vid
+        // dokumentbygget, och går aldrig vidare någon annanstans.
+        personalNumber: this.pn.reveal(lease.tenant.personalNumberEnc),
         orgNumber: lease.tenant.orgNumber,
         email: lease.tenant.email,
         phone: lease.tenant.phone,

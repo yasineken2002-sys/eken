@@ -18,6 +18,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { terminationNoticeMonths, defaultTenancyRegime } from './leases.compliance'
 import { LeasesService } from './leases.service'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 // ── A0. Default-regim: ALLTID hyreslagen (privatuthyrning = medvetet opt-in) ────
 describe('#69 · defaultTenancyRegime — aldrig privatuthyrning per default', () => {
@@ -122,6 +123,7 @@ function makeService(leaseOverrides: Record<string, unknown> = {}) {
   const noop = {} as never
   const service = new LeasesService(
     prisma as never,
+    testPersonalNumberService(),
     notifications as never,
     deposits as never,
     noop,

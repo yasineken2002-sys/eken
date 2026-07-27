@@ -7,6 +7,7 @@ import type {
   Tenant,
 } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { MaintenanceService } from '../maintenance/maintenance.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
@@ -465,7 +466,10 @@ export function mapExportInvoice(inv: PortalExportInvoiceRow) {
  *   createdAt, updatedAt (interna record-timestamps).
  *   credentials (passwordHash/*TokenHash/*TokenExpiresAt) finns inte ens — lager 1.
  */
-export function mapMe(tenant: Tenant & { organization: { id: string; name: string } }) {
+export function mapMe(
+  tenant: Tenant & { organization: { id: string; name: string } },
+  personalNumber: string | null,
+) {
   return {
     id: tenant.id,
     type: tenant.type,
@@ -474,7 +478,7 @@ export function mapMe(tenant: Tenant & { organization: { id: string; name: strin
     companyName: tenant.companyName,
     email: tenant.email,
     phone: tenant.phone,
-    personalNumber: tenant.personalNumber,
+    personalNumber,
     orgNumber: tenant.orgNumber,
     contactPerson: tenant.contactPerson,
     street: tenant.street,
@@ -494,6 +498,7 @@ export class TenantPortalService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly pn: PersonalNumberService,
     private readonly maintenanceService: MaintenanceService,
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -943,7 +948,7 @@ export class TenantPortalService {
         companyName: tenant.companyName,
         email: tenant.email,
         phone: tenant.phone,
-        personalNumber: tenant.personalNumber,
+        personalNumber: this.pn.reveal(tenant.personalNumberEnc),
         orgNumber: tenant.orgNumber,
         street: tenant.street,
         city: tenant.city,
@@ -981,7 +986,12 @@ export class TenantPortalService {
           companyName: 'Raderad hyresgäst',
           email: `${masked}@gdpr.invalid`,
           phone: null,
-          personalNumber: null,
+          // Radera personnumret i ALLA tre kolumnerna: chiffertext, blind-index
+          // och den kvarvarande legacy-klartexten. Missas blind-indexet går
+          // personen fortfarande att korrelera efter en Art. 17-radering.
+          personalNumberEnc: null,
+          personalNumberHash: null,
+          personalNumberLegacy: null,
           orgNumber: null,
           street: null,
           city: null,

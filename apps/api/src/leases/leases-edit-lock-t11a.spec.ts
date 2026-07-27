@@ -29,6 +29,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { Decimal } from '@prisma/client/runtime/library'
 import { LEASE_ACTIVE_LOCKED_FIELDS, LEASE_LOCK_FIELD_ROUTE } from '@eken/shared'
 import { LeasesService, TIER1_LOCKED_ON_ACTIVE } from './leases.service'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 function baseLease(overrides: Record<string, unknown> = {}) {
   return {
@@ -88,6 +89,7 @@ function makeService(overrides: Record<string, unknown> = {}) {
   const noop = {} as never
   const service = new LeasesService(
     prisma as never,
+    testPersonalNumberService(),
     noop, // notifications
     noop, // deposits
     noop, // rentIncreases

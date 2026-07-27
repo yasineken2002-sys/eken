@@ -23,6 +23,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { isValidLeaseTransition } from '@eken/shared'
 import { LeasesService } from './leases.service'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 function makeQueue() {
   return {
@@ -85,6 +86,7 @@ function makeForTransition(leaseStatus: string) {
   const noop = {} as never
   const service = new LeasesService(
     prisma as never,
+    testPersonalNumberService(),
     noop, // notifications
     noop, // deposits
     noop, // rentIncreases
@@ -170,6 +172,7 @@ describe('T1.2 · renew() dispatchar origin:succession', () => {
     const noop = {} as never
     const service = new LeasesService(
       prisma as never,
+      testPersonalNumberService(),
       noop,
       noop,
       noop,
@@ -231,6 +234,7 @@ describe('T1.2 · autoRenewExpiredFixedTerm() dispatchar origin:succession', () 
     const noop = {} as never
     const service = new LeasesService(
       prisma as never,
+      testPersonalNumberService(),
       noop,
       noop,
       noop,

@@ -14,6 +14,9 @@ import { TENANT_ACTION_TOOLS } from './tenant-ai-tools.definition'
  */
 const SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set([
   'personalNumber',
+  'personalNumberEnc',
+  'personalNumberHash',
+  'personalNumberLegacy',
   'passwordHash',
   'activationToken',
   'activationTokenExpiresAt',

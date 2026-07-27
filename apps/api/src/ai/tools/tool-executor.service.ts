@@ -58,6 +58,9 @@ const EMAIL_BULK_COOLDOWN_SECONDS = 15 * 60
 
 const SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set([
   'personalNumber',
+  'personalNumberEnc',
+  'personalNumberHash',
+  'personalNumberLegacy',
   'passwordHash',
   'activationToken',
   'activationTokenExpiresAt',

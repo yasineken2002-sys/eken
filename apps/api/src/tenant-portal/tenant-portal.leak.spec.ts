@@ -21,6 +21,7 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { TenantPortalService, mapPortalImage } from './tenant-portal.service'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 // De interna fält som ALDRIG får nå hyresgästen (PR 5a allow-list-exkludering).
 const FORBIDDEN_TICKET_FIELDS = [
@@ -121,7 +122,12 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
         findMany: jest.fn().mockResolvedValue([dirtyTicket()]),
       },
     }
-    const service = new TenantPortalService(prisma as never, {} as never, {} as never)
+    const service = new TenantPortalService(
+      prisma as never,
+      testPersonalNumberService(),
+      {} as never,
+      {} as never,
+    )
 
     const result = await service.getMaintenanceTickets('tenant-1')
 
@@ -148,7 +154,12 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
         create: jest.fn().mockResolvedValue({ id: 'c-new' }),
       },
     }
-    const service = new TenantPortalService(prisma as never, {} as never, {} as never)
+    const service = new TenantPortalService(
+      prisma as never,
+      testPersonalNumberService(),
+      {} as never,
+      {} as never,
+    )
 
     const result = await service.addMaintenanceComment('tenant-1', 'ticket-1', 'Tack!')
 
@@ -180,6 +191,7 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
     }
     const service = new TenantPortalService(
       prisma as never,
+      testPersonalNumberService(),
       maintenanceService as never,
       notifications as never,
     )
@@ -206,7 +218,12 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
         }),
       },
     }
-    const service = new TenantPortalService(prisma as never, {} as never, {} as never)
+    const service = new TenantPortalService(
+      prisma as never,
+      testPersonalNumberService(),
+      {} as never,
+      {} as never,
+    )
 
     await service.exportTenantData('tenant-1')
 
@@ -256,7 +273,12 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
 
   it('getLease: query använder allow-list-select; läcker aldrig property.fireSafetyNotes / unit.monthlyRent / documents', async () => {
     const prisma = { lease: { findFirst: jest.fn().mockResolvedValue(null) } }
-    const service = new TenantPortalService(prisma as never, {} as never, {} as never)
+    const service = new TenantPortalService(
+      prisma as never,
+      testPersonalNumberService(),
+      {} as never,
+      {} as never,
+    )
 
     await service.getLease('tenant-1')
 
@@ -280,7 +302,12 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
 
   it('getDocuments: query selekterar allow-list; läcker aldrig storageKey/uploadedById/signedFromIp', async () => {
     const prisma = { document: { findMany: jest.fn().mockResolvedValue([]) } }
-    const service = new TenantPortalService(prisma as never, {} as never, {} as never)
+    const service = new TenantPortalService(
+      prisma as never,
+      testPersonalNumberService(),
+      {} as never,
+      {} as never,
+    )
 
     await service.getDocuments('tenant-1')
 
@@ -309,7 +336,12 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
         findFirst: jest.fn().mockResolvedValue(null),
       },
     }
-    const service = new TenantPortalService(prisma as never, {} as never, {} as never)
+    const service = new TenantPortalService(
+      prisma as never,
+      testPersonalNumberService(),
+      {} as never,
+      {} as never,
+    )
 
     const result = await service.getDashboard('tenant-1')
 

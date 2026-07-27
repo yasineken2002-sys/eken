@@ -357,7 +357,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
         firstName: 'Anna',
         lastName: 'A',
         companyName: null,
-        personalNumber: '900101-1234',
+        personalNumberHash: 'a'.repeat(64), // blind-index: numret FINNS
         orgNumber: null,
         email: 'g@x.se',
         phone: '070-1',
@@ -526,7 +526,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
           type: 'INDIVIDUAL',
           firstName: 'Anna',
           lastName: 'A',
-          personalNumber: null,
+          personalNumberHash: null, // inget registrerat personnummer
           orgNumber: null,
           street: null,
           postalCode: null,

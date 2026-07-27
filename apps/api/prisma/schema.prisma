@@ -891,10 +891,26 @@ model Tenant {
   type           TenantType
   firstName      String?
   lastName       String?
-  personalNumber String?
   companyName    String?
   orgNumber      String?
   contactPerson  String?
+
+  // ─── Personnummer: krypterat i vila ────────────────────────────────────────
+  // personalNumberEnc  = AES-256-GCM envelope (base64: iv[12] + authTag[16] + ct),
+  //                      samma schema som SignatureEvidence.
+  // personalNumberHash = HMAC-SHA256(normaliserat personnr, pepper) — deterministiskt
+  //                      blind-index. Gör uppslag/dedup möjligt UTAN att dekryptera
+  //                      någon rad. Samma pepper som signeringsbevisen, så en
+  //                      BankID-identitet kan jämföras direkt mot hyresgästens hash.
+  //
+  // personalNumberLegacy är KLARTEXT-kolumnen (DB-namnet är oförändrat
+  // "personalNumber"). Prisma-fältet är omdöpt med flit: varje kvarvarande
+  // läsning/skrivning blir ett kompileringsfel i stället för en tyst klartext-
+  // hantering. Kolumnen töms av backfillen och droppas i uppföljande PR när
+  // produktions-backfillen är bekräftad körd.
+  personalNumberEnc    String?
+  personalNumberHash   String?
+  personalNumberLegacy String? @map("personalNumber")
   email          String
   phone          String?
   street         String?
@@ -970,6 +986,7 @@ model Tenant {
 
   @@unique([organizationId, email])
   @@index([organizationId])
+  @@index([organizationId, personalNumberHash])
 }
 
 // ─── Customer (Externt kundregister, separerat från Tenant) ───────────────────
@@ -983,7 +1000,6 @@ model Customer {
 
   firstName      String?
   lastName       String?
-  personalNumber String?
   companyName    String?
   orgNumber      String?
   contactPerson  String?
@@ -1000,6 +1016,13 @@ model Customer {
   notes          String?
   isActive       Boolean      @default(true)
 
+  // Personnummer krypterat i vila — se kommentaren på Tenant för schemat.
+  // Samma nyckel och pepper, så en fysisk person kan matchas mellan Tenant och
+  // Customer på blind-indexet utan att någon rad dekrypteras.
+  personalNumberEnc    String?
+  personalNumberHash   String?
+  personalNumberLegacy String? @map("personalNumber")
+
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoices     Invoice[]
 
@@ -1007,6 +1030,7 @@ model Customer {
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
+  @@index([organizationId, personalNumberHash])
   @@index([email])
 }
 

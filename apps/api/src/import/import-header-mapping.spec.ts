@@ -10,10 +10,11 @@
  */
 
 import { ImportService } from './import.service'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 function service() {
   // normalizeHeaders använder inga injicerade beroenden.
-  return new ImportService(null as never, null as never, null as never)
+  return new ImportService(null as never, null as never, null as never, testPersonalNumberService())
 }
 
 describe('ImportService.normalizeHeaders', () => {

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import type { Prisma } from '@prisma/client'
 import JSZip from 'jszip'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
@@ -9,9 +10,20 @@ import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 
+/**
+ * Inkassoexporten är ett av få ställen där personnumret verkligen behövs i
+ * klartext — inkassobolaget måste kunna identifiera gäldenären. Selecten väljer
+ * därför `personalNumberEnc` EXPLICIT ovanpå SAFE_TENANT_SELECT (som medvetet
+ * inte bär personnumret) och dekrypterar först vid utskriften.
+ */
+const COLLECTION_TENANT_SELECT = {
+  ...SAFE_TENANT_SELECT,
+  personalNumberEnc: true,
+} as const satisfies Prisma.TenantSelect
+
 type InvoiceWithCollectionData = Prisma.InvoiceGetPayload<{
   include: {
-    tenant: { select: typeof SAFE_TENANT_SELECT }
+    tenant: { select: typeof COLLECTION_TENANT_SELECT }
     customer: true
     organization: true
     paymentReminders: { orderBy: { sentAt: 'asc' } }
@@ -35,6 +47,7 @@ export class CollectionExportService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly pn: PersonalNumberService,
     private readonly pdf: PdfService,
     private readonly storage: StorageService,
     private readonly pdfQueue: PdfQueue,
@@ -252,7 +265,7 @@ export class CollectionExportService {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, organizationId },
       include: {
-        tenant: { select: SAFE_TENANT_SELECT },
+        tenant: { select: COLLECTION_TENANT_SELECT },
         customer: true,
         organization: true,
         paymentReminders: { orderBy: { sentAt: 'asc' } },
@@ -303,7 +316,7 @@ export class CollectionExportService {
         inv.organization.orgNumber ?? '',
         inv.organization.name,
         partyName,
-        party?.personalNumber ?? '',
+        this.pn.reveal(party?.personalNumberEnc) ?? '',
         party?.orgNumber ?? '',
         party?.email ?? '',
         party?.phone ?? '',
@@ -320,6 +333,9 @@ export class CollectionExportService {
 
   private async buildPdfHtml(invoice: InvoiceWithCollectionData): Promise<string> {
     const party = invoice.tenant ?? invoice.customer
+    // Dekryptering vid användningstillfället — kravbrevet ska bära gäldenärens
+    // personnummer, inget annat i den här filen behöver klartexten.
+    const partyPersonalNumber = this.pn.reveal(party?.personalNumberEnc)
     const partyName = party
       ? (party.companyName ?? `${party.firstName ?? ''} ${party.lastName ?? ''}`.trim())
       : '–'
@@ -414,8 +430,8 @@ export class CollectionExportService {
       <div class="label">Gäldenär (hyresgäst)</div>
       <strong>${escapeHtml(partyName)}</strong><br>
       ${
-        party?.personalNumber
-          ? `Personnr: ${escapeHtml(party.personalNumber)}<br>`
+        partyPersonalNumber
+          ? `Personnr: ${escapeHtml(partyPersonalNumber)}<br>`
           : party?.orgNumber
             ? `Org.nr: ${escapeHtml(party.orgNumber)}<br>`
             : ''

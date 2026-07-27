@@ -44,7 +44,10 @@ interface InkassoReadySummary {
 // dokumentationen är komplett (gäldenär + fordringsägare). Org redan verifierad
 // av anroparen (findFirst på organizationId) innan grinden körs.
 const INKASSO_READY_INCLUDE = {
-  tenant: { select: SAFE_TENANT_SELECT },
+  // personalNumberHash, inte personnumret: grinden ska bara veta OM gäldenären
+  // har ett registrerat personnummer. Blind-indexet svarar på det utan att en
+  // enda rad dekrypteras.
+  tenant: { select: { ...SAFE_TENANT_SELECT, personalNumberHash: true } },
   organization: true,
 } satisfies Prisma.RentNoticeInclude
 
@@ -548,7 +551,7 @@ export class RentReminderService {
 
     // 6. Komplett gäldenär: person- ELLER organisationsnummer.
     const t = notice.tenant
-    if (!t?.personalNumber && !t?.orgNumber) {
+    if (!t?.personalNumberHash && !t?.orgNumber) {
       missing.push('gäldenärens person-/organisationsnummer saknas')
     }
 

@@ -22,6 +22,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { endOfNoticePeriod } from '@eken/shared'
 import { LeasesService } from './leases.service'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 // ── A. Delad helper — månadsskiftesrundning ────────────────────────────────────
 describe('#66 · endOfNoticePeriod — rundar upp till månadsskifte', () => {
@@ -84,6 +85,7 @@ function makeService(leaseOverrides: Record<string, unknown> = {}) {
 
   const service = new LeasesService(
     prisma as never,
+    testPersonalNumberService(),
     notifications as never,
     deposits as never,
     noop, // rentIncreases

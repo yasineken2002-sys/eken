@@ -158,7 +158,10 @@ export class SigningService {
       select: {
         tenant: {
           select: {
-            personalNumber: true,
+            // Blind-indexet räcker: hyresgästens personnummer behöver ALDRIG
+            // dekrypteras för identitetsbindningen. Beviset jämförs mot samma
+            // HMAC med samma pepper, så hasharna är direkt jämförbara.
+            personalNumberHash: true,
             firstName: true,
             lastName: true,
             companyName: true,
@@ -167,8 +170,8 @@ export class SigningService {
       },
     })
     const tenant = lease?.tenant
-    const pn = tenant?.personalNumber
-    if (!pn) {
+    const pnHash = tenant?.personalNumberHash
+    if (!pnHash) {
       throw new BadRequestException(
         'Hyresgästen saknar registrerat personnummer — kan inte identitetsverifieras för signering',
       )
@@ -177,7 +180,7 @@ export class SigningService {
       tenant?.companyName ||
       [tenant?.firstName, tenant?.lastName].filter(Boolean).join(' ') ||
       'Hyresgäst'
-    return [{ role: 'TENANT', name, expectedPersonalNumberHash: this.crypto.blindIndex(pn) }]
+    return [{ role: 'TENANT', name, expectedPersonalNumberHash: pnHash }]
   }
 
   // ── Uppdatera status (poll ELLER webhook) ─────────────────────────────────────

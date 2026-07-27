@@ -29,6 +29,7 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { CollectionExportService } from './collection-export.service'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 function formatSek(amount: number): string {
   return `${amount.toLocaleString('sv-SE', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} kr`
@@ -61,7 +62,7 @@ const INVOICE = {
     firstName: 'Anna',
     lastName: "O'Brien & <x>", // apostrof + &/<> → escapas (aldrig rått)
     companyName: null,
-    personalNumber: '900101-1234',
+    ...testPersonalNumberService().protect('900101-1234'),
     orgNumber: null,
     email: 'anna@example.se',
     phone: '070-111 22 33',
@@ -83,7 +84,8 @@ const INVOICE = {
 function makeService(): CollectionExportService {
   const noop = {}
   return new CollectionExportService(
-    noop as never, // prisma
+    noop as never,
+    testPersonalNumberService(), // prisma
     noop as never, // pdf
     noop as never, // storage
     noop as never, // pdfQueue

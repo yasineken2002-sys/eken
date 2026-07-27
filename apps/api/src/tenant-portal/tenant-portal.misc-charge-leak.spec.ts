@@ -11,6 +11,7 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { TenantPortalService } from './tenant-portal.service'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 // Interna fält som ALDRIG får nå hyresgästen (PR 5-kartläggningens allow-list).
 const FORBIDDEN_FIELDS = [
@@ -64,7 +65,12 @@ describe('TenantPortalService — 5b MiscCharge-läcktätning + DRAFT/IDOR', () 
     const prisma = {
       miscCharge: { findMany: jest.fn().mockResolvedValue([dirtyMiscCharge()]) },
     }
-    const service = new TenantPortalService(prisma as never, {} as never, {} as never)
+    const service = new TenantPortalService(
+      prisma as never,
+      testPersonalNumberService(),
+      {} as never,
+      {} as never,
+    )
 
     const result = await service.getMiscCharges('tenant-1')
 
@@ -90,7 +96,12 @@ describe('TenantPortalService — 5b MiscCharge-läcktätning + DRAFT/IDOR', () 
     const prisma = {
       miscCharge: { findMany: jest.fn().mockResolvedValue([]) },
     }
-    const service = new TenantPortalService(prisma as never, {} as never, {} as never)
+    const service = new TenantPortalService(
+      prisma as never,
+      testPersonalNumberService(),
+      {} as never,
+      {} as never,
+    )
 
     await service.getMiscCharges('tenant-1')
 
@@ -118,7 +129,12 @@ describe('TenantPortalService — 5b MiscCharge-läcktätning + DRAFT/IDOR', () 
         ),
       },
     }
-    const service = new TenantPortalService(prisma as never, {} as never, {} as never)
+    const service = new TenantPortalService(
+      prisma as never,
+      testPersonalNumberService(),
+      {} as never,
+      {} as never,
+    )
 
     // tenantId kommer ENBART från @CurrentTenant i controllern — aldrig från input.
     const aResult = await service.getMiscCharges('tenant-A')

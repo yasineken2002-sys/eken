@@ -31,6 +31,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { RentCollectionExportService } from './rent-collection-export.service'
 import { Decimal } from '@prisma/client/runtime/library'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 function formatSek(amount: number): string {
   return `${amount.toLocaleString('sv-SE', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} kr`
@@ -97,7 +98,7 @@ function makeNotice(over: Record<string, unknown> = {}) {
       firstName: 'Anna',
       lastName: "O'Brien & <x>", // apostrof + &/<> → escapas (aldrig rått)
       companyName: null,
-      personalNumber: '900101-1234',
+      ...testPersonalNumberService().protect('900101-1234'),
       orgNumber: null,
       email: 'anna@example.se',
       phone: '070-111 22 33',
@@ -124,7 +125,8 @@ function makeNotice(over: Record<string, unknown> = {}) {
 function makeService(): RentCollectionExportService {
   const noop = {}
   return new RentCollectionExportService(
-    noop as never, // prisma
+    noop as never,
+    testPersonalNumberService(), // prisma
     noop as never, // pdf
     noop as never, // storage
     noop as never, // pdfQueue

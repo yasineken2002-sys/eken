@@ -18,6 +18,7 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { TenantPortalService } from './tenant-portal.service'
+import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
 // Interna fält som ALDRIG får nå hyresgästen. reminderFeeAmount selekteras
 // (behövs för payableTotal-beräkningen) men exponeras ALDRIG i svaret — därför
@@ -168,7 +169,12 @@ describe('TenantPortalService — RentNotice-läcktätning', () => {
     const prisma = {
       rentNotice: { findMany: jest.fn().mockResolvedValue([dirtyRentNotice()]) },
     }
-    const service = new TenantPortalService(prisma as never, {} as never, {} as never)
+    const service = new TenantPortalService(
+      prisma as never,
+      testPersonalNumberService(),
+      {} as never,
+      {} as never,
+    )
 
     const result = await service.getNotices('tenant-1')
 
@@ -185,7 +191,12 @@ describe('TenantPortalService — RentNotice-läcktätning', () => {
     const prisma = {
       rentNotice: { findMany: jest.fn().mockResolvedValue([dirtyRentNotice()]) },
     }
-    const service = new TenantPortalService(prisma as never, {} as never, {} as never)
+    const service = new TenantPortalService(
+      prisma as never,
+      testPersonalNumberService(),
+      {} as never,
+      {} as never,
+    )
 
     const result = await service.getRentNotices('tenant-1')
 
@@ -210,7 +221,12 @@ describe('TenantPortalService — RentNotice-läcktätning', () => {
         }),
       },
     }
-    const service = new TenantPortalService(prisma as never, {} as never, {} as never)
+    const service = new TenantPortalService(
+      prisma as never,
+      testPersonalNumberService(),
+      {} as never,
+      {} as never,
+    )
 
     await service.exportTenantData('tenant-1')
 
