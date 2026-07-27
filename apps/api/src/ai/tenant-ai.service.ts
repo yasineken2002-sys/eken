@@ -174,16 +174,20 @@ export class TenantAiService {
     let response = await this.callClaude(currentMessages, tenantContext, organizationId, tenantId)
 
     while (response.stop_reason === 'tool_use' && iterations < TENANT_MAX_TOOL_ITERATIONS) {
-      const toolBlock = response.content.find(
+      // ALLA tool_use i turen — se history-integrity.ts. Samma bugg som fanns i
+      // operatörschatten: `.find()` besvarade bara det första av flera
+      // parallella anrop, och Anthropic avvisade nästa request med 400.
+      const toolUses = response.content.filter(
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
       )
-      if (!toolBlock) break
+      if (toolUses.length === 0) break
 
-      const toolName = toolBlock.name
-      const toolInput = toolBlock.input as Record<string, unknown>
-
-      // Action — defer execution
-      if (TENANT_ACTION_TOOLS.has(toolName)) {
+      // Bindande verktyg någonstans i turen → ingenting körs, hela turen går
+      // till bekräftelse.
+      const actionBlock = toolUses.find((tu) => TENANT_ACTION_TOOLS.has(tu.name))
+      if (actionBlock) {
+        const toolName = actionBlock.name
+        const toolInput = actionBlock.input as Record<string, unknown>
         await this.prisma.aiTenantMessage.create({
           data: { conversationId: conversation.id, role: 'user', content: message },
         })
@@ -209,36 +213,36 @@ export class TenantAiService {
         }
       }
 
-      // Read — execute and feed back
-      let toolResult: unknown
-      try {
-        toolResult = await this.toolExecutor.executeTool(
-          toolName,
-          toolInput,
-          tenantId,
-          organizationId,
-          { conversationId: conversation.id },
-        )
-      } catch (err) {
-        toolResult = {
-          success: false,
-          message: err instanceof Error ? err.message : 'Något gick fel',
-        }
-      }
+      // Läsverktyg — kör ALLA och svara på var och en.
+      const toolResultBlocks: Anthropic.ToolResultBlockParam[] = await Promise.all(
+        toolUses.map(async (tu) => {
+          let toolResult: unknown
+          try {
+            toolResult = await this.toolExecutor.executeTool(
+              tu.name,
+              tu.input as Record<string, unknown>,
+              tenantId,
+              organizationId,
+              { conversationId: conversation.id },
+            )
+          } catch (err) {
+            toolResult = {
+              success: false,
+              message: err instanceof Error ? err.message : 'Något gick fel',
+            }
+          }
+          return {
+            type: 'tool_result' as const,
+            tool_use_id: tu.id,
+            content: JSON.stringify(toolResult),
+          }
+        }),
+      )
 
       currentMessages = [
         ...currentMessages,
         { role: 'assistant' as const, content: response.content },
-        {
-          role: 'user' as const,
-          content: [
-            {
-              type: 'tool_result' as const,
-              tool_use_id: toolBlock.id,
-              content: JSON.stringify(toolResult),
-            },
-          ],
-        },
+        { role: 'user' as const, content: toolResultBlocks },
       ]
 
       response = await this.callClaude(currentMessages, tenantContext, organizationId, tenantId)
