@@ -30,12 +30,24 @@ function makeService(
     claimed?: boolean
     journalReturnsNull?: boolean
     depositCount?: number
+    priorAllocations?: Array<{ amount: unknown }>
   } = {},
 ) {
   const txMock = {
     bankTransaction: { update: jest.fn().mockResolvedValue({}) },
     // deposit-F1: applyMatchToInvoice synkar en ev. länkad Deposit → PAID.
     deposit: { updateMany: jest.fn().mockResolvedValue({ count: opts.depositCount ?? 0 }) },
+    // C4: allokeringsmodellen. Tom lista = inga tidigare betalningar → hela
+    // totalen är restskuld. OCR_TX.amount är lika med INVOICE.total, så dessa
+    // tester exercerar FULL reglering (delbetalning täcks av egen svit).
+    invoicePayment: {
+      findMany: jest.fn().mockResolvedValue(opts.priorAllocations ?? []),
+      create: jest.fn().mockResolvedValue({}),
+    },
+    invoice: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findFirstOrThrow: jest.fn().mockResolvedValue({ invoiceNumber: INVOICE.invoiceNumber }),
+    },
   }
 
   const claimPaidWithinTx = jest

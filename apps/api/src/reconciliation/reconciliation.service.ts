@@ -13,6 +13,7 @@ import type { BankTransaction } from '@prisma/client'
 import * as XLSX from 'xlsx'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { InvoicesService } from '../invoices/invoices.service'
+import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
@@ -766,9 +767,14 @@ export class ReconciliationService {
             invoice.id,
             organizationId,
             invoice.total,
+            transaction.amount,
             transaction.date,
             null,
             null,
+            // Automatmatchning: ALDRIG partiell. Grenen nås bara när beloppet
+            // redan ligger inom toleransen för fakturans total, och en maskinell
+            // gissning ska inte kunna skapa en delbetalning.
+            false,
           )
         ) {
           return true
@@ -832,9 +838,14 @@ export class ReconciliationService {
             invoice.id,
             organizationId,
             invoice.total,
+            transaction.amount,
             transaction.date,
             null,
             null,
+            // Automatmatchning: ALDRIG partiell. Grenen nås bara när beloppet
+            // redan ligger inom toleransen för fakturans total, och en maskinell
+            // gissning ska inte kunna skapa en delbetalning.
+            false,
           )
         ) {
           return true
@@ -986,34 +997,128 @@ export class ReconciliationService {
   //
   // Returnerar true om fakturan reglerades, false om den redan var betald/makulerad
   // (callern låter då transaktionen förbli UNMATCHED / falla vidare till nästa gren).
+  // C4 — PARTIELL BANKMATCHNING MOT FAKTURA.
+  //
+  // Speglar applyMatchToRentNotice (hyresavins motsvarighet, i drift sedan PR 3b).
+  //
+  // Tidigare tog funktionen `invoiceTotal` och bokförde ALLTID det beloppet,
+  // oavsett vad som faktiskt kommit in på kontot. En manuell matchning av en
+  // inbetalning på 500 kr mot en faktura på 10 000 kr debiterade 1930 med
+  // 10 000 kr — 1930 divergerade från kontoutdraget, och fakturan flippades
+  // till PAID trots att 9 500 kr var obetalt.
+  //
+  // Nu allokeras det FAKTISKA transaktionsbeloppet (InvoicePayment) och
+  // verifikatet bokförs på det. Restskulden är beräknad, aldrig lagrad.
   private async applyMatchToInvoice(
     transactionId: string,
     invoiceId: string,
     organizationId: string,
     invoiceTotal: Decimal,
+    transactionAmount: Decimal,
     transactionDate: Date,
     userId: string | null,
     actorLabel: string | null,
+    allowPartial: boolean,
   ): Promise<boolean> {
     const claimedNumber = await this.prisma.$transaction(async (tx) => {
-      // Rad-lås + status-guardad PAID-claim + PAYMENT_RECEIVED-event i samma tx.
-      const { claimed, invoiceNumber } = await this.invoices.claimPaidWithinTx(
-        tx,
-        invoiceId,
-        organizationId,
-        transactionDate,
-        userId,
-        userId ? 'USER' : 'SYSTEM',
-        {
-          transactionId,
-          amount: invoiceTotal.toNumber(),
-          date: transactionDate.toISOString(),
-          source: 'bank_reconciliation',
-          ...(actorLabel ? { actorLabel } : {}),
+      // Restskulden FÖRE denna betalning — beräknat tillstånd, inte lagrat.
+      const priorAllocations = await tx.invoicePayment.findMany({
+        where: { invoiceId },
+        select: { amount: true },
+      })
+      const debtBefore = computeInvoiceDebt({
+        total: invoiceTotal,
+        allocations: priorAllocations.map((a) => a.amount),
+      })
+      const remaining = debtBefore.outstanding
+      if (remaining.lte(0)) return null // redan fullt reglerad
+
+      // Klassificera beloppet mot AKTUELL restskuld. Samma tolerans som
+      // automatmatchningen (1 kr) för att fånga öresavrundning i bankfilen.
+      // TOLERANS 1,00 kr — speglad från hyresavins bankmatchning. Fångar
+      // öresavrundning i bankfilen så en inbetalning på 1249,99 mot en faktura
+      // på 1250,00 räknas som full reglering i stället för att lämna en
+      // öresskuld som aldrig regleras.
+      // ⚠️ FLAGGAD FÖR REDOVISNINGSKONSULT: både att tolerans används och dess
+      // storlek är ett affärsbeslut, inte en teknisk konstant.
+      const tolerance = new Decimal('1.00')
+      const diff = remaining.minus(transactionAmount)
+      let allocation: Decimal
+      let completesInvoice: boolean
+      if (diff.abs().lte(tolerance)) {
+        // Full reglering (inom tolerans) — allokera hela restskulden.
+        allocation = remaining
+        completesInvoice = true
+      } else if (transactionAmount.lt(remaining.minus(tolerance))) {
+        // Delbetalning.
+        if (!allowPartial) return null
+        allocation = transactionAmount
+        completesInvoice = false
+      } else {
+        // Överbetalning — hanteras inte (se markAsPaidManually för samma regel).
+        return null
+      }
+      const eventPayload = {
+        transactionId,
+        amount: allocation.toNumber(),
+        outstandingAfter: remaining.minus(allocation).toNumber(),
+        date: transactionDate.toISOString(),
+        source: 'bank_reconciliation',
+        ...(actorLabel ? { actorLabel } : {}),
+      }
+
+      let invoiceNumber: string
+      if (completesInvoice) {
+        // Rad-lås + status-guardad PAID-claim + PAYMENT_RECEIVED-event i samma tx.
+        const claim = await this.invoices.claimPaidWithinTx(
+          tx,
+          invoiceId,
+          organizationId,
+          transactionDate,
+          userId,
+          userId ? 'USER' : 'SYSTEM',
+          eventPayload,
+        )
+        // Redan reglerad/makulerad (eller race-förlorare) → boka inget.
+        if (!claim.claimed) return null
+        invoiceNumber = claim.invoiceNumber
+      } else {
+        // Delbetalning: status → PARTIAL, paidAt lämnas orörd (fakturan är inte
+        // betald). Status-guardad mot samma betalbara tillstånd som PAID-claimen.
+        const partial = await tx.invoice.updateMany({
+          where: {
+            id: invoiceId,
+            organizationId,
+            status: { in: ['SENT', 'PARTIAL', 'OVERDUE', 'SENT_TO_COLLECTION'] },
+          },
+          data: { status: 'PARTIAL' },
+        })
+        if (partial.count === 0) return null
+        const row = await tx.invoice.findFirstOrThrow({
+          where: { id: invoiceId, organizationId },
+          select: { invoiceNumber: true },
+        })
+        invoiceNumber = row.invoiceNumber
+        await this.events.record(
+          invoiceId,
+          'PAYMENT_PARTIAL',
+          userId ? 'USER' : 'SYSTEM',
+          userId,
+          { previousStatus: 'SENT', newStatus: 'PARTIAL', ...eventPayload },
+          { tx },
+        )
+      }
+
+      // Allokeringen — den registrerade, faktiska betalningen.
+      await tx.invoicePayment.create({
+        data: {
+          invoiceId,
+          bankTransactionId: transactionId,
+          amount: allocation,
+          paidAt: transactionDate,
+          source: 'BANK_RECONCILIATION',
         },
-      )
-      // Redan reglerad/makulerad (eller race-förlorare) → boka inget, lämna tx-raden orörd.
-      if (!claimed) return null
+      })
 
       // Länka banktransaktionen till fakturan. matchedRentNoticeId nollställs för XOR.
       await tx.bankTransaction.update({
@@ -1030,7 +1135,8 @@ export class ReconciliationService {
       // Bokför inbetalningen i SAMMA tx — kastar (→ rollback) om kontoplanen saknas.
       const entry = await this.accounting.createJournalEntryForPayment(
         { id: invoiceId, invoiceNumber, total: invoiceTotal },
-        { id: transactionId, date: transactionDate, amount: invoiceTotal },
+        // Det FAKTISKT mottagna (allokerade) beloppet — inte fakturans total.
+        { id: transactionId, date: transactionDate, amount: allocation },
         organizationId,
         userId,
         tx,
@@ -1050,18 +1156,23 @@ export class ReconciliationService {
       // deposition-faktura matchar `Deposit.invoiceId = invoiceId` ingen rad → no-op.
       // Ingen kontering ändras (fakturan bokförde redan 1510 D/2890 K vid create,
       // och createJournalEntryForPayment ovan stänger 1510 — samma som markPaid).
-      await tx.deposit.updateMany({
-        where: { invoiceId, organizationId, status: 'PENDING' },
-        data: { status: 'PAID', paidAt: transactionDate },
-      })
+      // Bara vid FULL reglering — en delbetald deposition är inte betald.
+      if (completesInvoice) {
+        await tx.deposit.updateMany({
+          where: { invoiceId, organizationId, status: 'PENDING' },
+          data: { status: 'PAID', paidAt: transactionDate },
+        })
+      }
 
-      return invoiceNumber
+      return completesInvoice ? invoiceNumber : ''
     })
 
     if (claimedNumber === null) return false
 
-    // Notis efter commit (fire-and-forget) — parity med tidigare transitionStatus-beteende.
-    this.invoices.notifyInvoicePaid(organizationId, invoiceId, claimedNumber)
+    // Notis bara när fakturan faktiskt blev betald (tom sträng = delbetalning).
+    if (claimedNumber !== '') {
+      this.invoices.notifyInvoicePaid(organizationId, invoiceId, claimedNumber)
+    }
     return true
   }
 
@@ -1448,14 +1559,19 @@ export class ReconciliationService {
         where: { id: target.invoiceId, organizationId },
       })
       if (!invoice) throw new NotFoundException('Faktura hittades inte')
+      // C4: manuell matchning respekterar det FAKTISKA transaktionsbeloppet.
+      // allowPartial=true — operatören har deterministiskt valt fakturan, precis
+      // som i hyresavins motsvarighet.
       const matched = await this.applyMatchToInvoice(
         transactionId,
         target.invoiceId,
         organizationId,
         invoice.total,
+        transaction.amount,
         transaction.date,
         userId,
         null,
+        true,
       )
       if (!matched) {
         throw new BadRequestException(

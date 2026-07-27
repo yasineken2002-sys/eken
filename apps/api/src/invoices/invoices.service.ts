@@ -6,13 +6,11 @@ import {
   ConflictException,
   InternalServerErrorException,
 } from '@nestjs/common'
-import type {
-  Invoice,
-  InvoiceStatus,
-  InvoiceEventType,
-  PaymentMethod,
-  Prisma,
-} from '@prisma/client'
+// `Prisma` som VÄRDE — Prisma.Decimal används för betalningsaritmetiken
+// (belopp får aldrig passera float på väg till ett bokföringsbeslut).
+import { Prisma } from '@prisma/client'
+import type { Invoice, InvoiceStatus, InvoiceEventType, PaymentMethod } from '@prisma/client'
+import { computeInvoiceDebt } from './invoice-debt'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { OcrService } from '../common/ocr/ocr.service'
 import { InvoiceEventsService } from './invoice-events.service'
@@ -488,14 +486,29 @@ export class InvoicesService {
         throw new BadRequestException(`Ogiltig statusövergång: ${invoice.status} → ${newStatus}`)
       }
 
-      // En delvis betald faktura (PARTIAL) får inte makuleras rakt av — en mottagen
-      // delbetalning skulle lämna en oadresserad kundkredit på 1510. Hantera
-      // betalningen först. (Symmetriskt med cancelNotice för hyresavier.)
-      if (newStatus === 'VOID' && invoice.status === 'PARTIAL') {
-        throw new BadRequestException(
-          'Kan inte makulera en delvis betald faktura — hantera den mottagna ' +
-            'betalningen först (avmatcha/återbetala).',
-        )
+      // En faktura med MOTTAGEN BETALNING får inte makuleras rakt av — pengarna
+      // skulle lämna en oadresserad kundkredit på 1510. Hantera betalningen
+      // först. (Symmetriskt med cancelNotice för hyresavier.)
+      //
+      // C4/C5: grinden nyckas på FAKTISKA allokeringar, inte på status ===
+      // 'PARTIAL'. Statusvarianten (PR #166) räckte så länge PARTIAL i praktiken
+      // var onåbart, men med delbetalningsmodellen är den nåbar — och
+      // INVOICE_TRANSITIONS tillåter PARTIAL → OVERDUE → VOID. Eftersom
+      // PATCH /invoices/:id/status bara blockerar PAID kunde en delbetald
+      // faktura annars makuleras i två steg, förbi spärren, med mottagna pengar
+      // kvar obokade. (PAID är terminalt i statusmaskinen och kan aldrig
+      // makuleras — den vägen var redan stängd.)
+      if (newStatus === 'VOID') {
+        const allocations = await tx.invoicePayment.findMany({
+          where: { invoiceId: id },
+          select: { id: true },
+        })
+        if (allocations.length > 0) {
+          throw new BadRequestException(
+            'Kan inte makulera en faktura med registrerad betalning — hantera den ' +
+              'mottagna betalningen först (avmatcha/återbetala).',
+          )
+        }
       }
 
       const updated = await tx.invoice.update({
@@ -579,15 +592,65 @@ export class InvoicesService {
 
     const previousStatus = invoice.status as InvoiceStatus
     const paymentDate = opts.paidAt ?? new Date()
-    // Status PAID = fakturan reglerad i sin helhet → kreditera 1510 med hela fordran
-    // (samma belopp som debiterades vid fakturering). Det inmatade beloppet sparas i
-    // händelseloggen för spårbarhet men styr inte bokföringen.
-    const settlementAmount = Number(invoice.total)
+
+    // ── C5: beloppet STYR bokföringen ────────────────────────────────────────
+    //
+    // Tidigare stod här `const settlementAmount = Number(invoice.total)` med
+    // kommentaren att det inmatade beloppet "sparas i händelseloggen för
+    // spårbarhet men styr inte bokföringen". En operatör som registrerade en
+    // delbetalning på 500 kr mot en faktura på 10 000 kr bokförde alltså
+    // 10 000 kr mot likvidkontot och flippade fakturan till PAID.
+    //
+    // Nu: det mottagna beloppet allokeras mot fakturan (InvoicePayment) och
+    // bokförs som det är. Utelämnat belopp = "betala resten", vilket bevarar
+    // det tidigare beteendet för den vanliga full-betalningen.
+    const priorAllocations = await this.prisma.invoicePayment.findMany({
+      where: { invoiceId: id },
+      select: { amount: true },
+    })
+    const debtBefore = computeInvoiceDebt({
+      total: invoice.total,
+      allocations: priorAllocations.map((a) => a.amount),
+    })
+    if (debtBefore.outstanding.lte(0)) {
+      throw new BadRequestException('Fakturan är redan fullt reglerad')
+    }
+
+    const settlement =
+      opts.enteredAmount != null ? new Prisma.Decimal(opts.enteredAmount) : debtBefore.outstanding
+
+    if (settlement.lte(0)) {
+      throw new BadRequestException('Betalningsbeloppet måste vara större än noll')
+    }
+    // ÖVERBETALNING AVVISAS (se PR-beskrivningen — affärsregel att bekräfta).
+    // Att tyst acceptera mer än restskulden skulle skapa en kundkredit som
+    // systemet inte har någon modell för; att klampa beloppet skulle bokföra
+    // mindre än vad som faktiskt kommit in. Båda är sämre än att säga ifrån.
+    if (settlement.gt(debtBefore.outstanding)) {
+      throw new BadRequestException(
+        `Beloppet ${settlement.toFixed(2)} kr överstiger fakturans restskuld ` +
+          `${debtBefore.outstanding.toFixed(2)} kr — överbetalning hanteras inte`,
+      )
+    }
+
+    const debtAfter = computeInvoiceDebt({
+      total: invoice.total,
+      allocations: [...priorAllocations.map((a) => a.amount), settlement],
+    })
+    const completesInvoice = debtAfter.isSettled
+    const newStatus: InvoiceStatus = completesInvoice ? 'PAID' : 'PARTIAL'
 
     // 1. Atomisk, race-säker status-claim — endast från ett betalbart tillstånd.
+    //    PARTIAL ingår i PAYABLE_STATUSES, så en andra delbetalning kan claima
+    //    en faktura som redan står på PARTIAL.
     const claim = await this.prisma.invoice.updateMany({
       where: { id, organizationId, status: { in: PAYABLE_STATUSES } },
-      data: { status: 'PAID', paidAt: paymentDate },
+      data: {
+        status: newStatus,
+        // paidAt sätts bara när fakturan faktiskt är reglerad — en delbetalning
+        // gör inte fakturan betald.
+        ...(completesInvoice ? { paidAt: paymentDate } : {}),
+      },
     })
     if (claim.count === 0) {
       // En parallell process (bankavstämning, makulering) hann reglera/avbryta fakturan.
@@ -596,11 +659,20 @@ export class InvoicesService {
       )
     }
 
-    // 2. Bokför betalningen; ångra statusövergången om verifikatet uteblir.
+    // 2. Allokering + bokföring; ångra statusövergången om något fallerar.
     try {
+      await this.prisma.invoicePayment.create({
+        data: {
+          invoiceId: id,
+          amount: settlement,
+          paidAt: paymentDate,
+          source: 'MANUAL',
+        },
+      })
+
       const entry = await this.accountingService.createJournalEntryForInvoiceManualPayment(
         { id: invoice.id, invoiceNumber: invoice.invoiceNumber },
-        settlementAmount,
+        settlement.toNumber(),
         paymentDate,
         paymentMethod,
         organizationId,
@@ -613,11 +685,14 @@ export class InvoicesService {
         )
       }
     } catch (err) {
-      // Återställ fakturan till sitt tidigare tillstånd (status-guardad på PAID så vi
-      // bara ångrar vår egen claim, inte en betalning en parallell process hunnit boka).
+      // Återställ fakturan till sitt tidigare tillstånd (status-guardad på den
+      // status vi själva satte, så vi bara ångrar vår egen claim).
+      await this.prisma.invoicePayment
+        .deleteMany({ where: { invoiceId: id, source: 'MANUAL', paidAt: paymentDate } })
+        .catch(() => undefined)
       await this.prisma.invoice
         .updateMany({
-          where: { id, organizationId, status: 'PAID' },
+          where: { id, organizationId, status: newStatus },
           data: { status: previousStatus, paidAt: null },
         })
         .catch((revertErr) => {
@@ -630,17 +705,26 @@ export class InvoicesService {
     }
 
     // 3. Append-only händelse + notifikation (efter lyckad bokning).
-    await this.eventsService.record(id, 'PAYMENT_RECEIVED', actorType, actorId, {
-      previousStatus,
-      newStatus: 'PAID',
-      settlementAmount,
-      paymentMethod,
-      ...(opts.enteredAmount != null ? { amount: opts.enteredAmount } : {}),
-      ...(opts.reference ? { reference: opts.reference } : {}),
-      paidAt: paymentDate.toISOString(),
-    })
+    await this.eventsService.record(
+      id,
+      completesInvoice ? 'PAYMENT_RECEIVED' : 'PAYMENT_PARTIAL',
+      actorType,
+      actorId,
+      {
+        previousStatus,
+        newStatus,
+        settlementAmount: settlement.toNumber(),
+        outstandingAfter: debtAfter.outstanding.toNumber(),
+        paymentMethod,
+        ...(opts.enteredAmount != null ? { amount: opts.enteredAmount } : {}),
+        ...(opts.reference ? { reference: opts.reference } : {}),
+        paidAt: paymentDate.toISOString(),
+      },
+    )
 
-    this.notifyInvoicePaid(organizationId, invoice.id, invoice.invoiceNumber)
+    if (completesInvoice) {
+      this.notifyInvoicePaid(organizationId, invoice.id, invoice.invoiceNumber)
+    }
 
     return this.prisma.invoice.findFirstOrThrow({ where: { id, organizationId } })
   }
