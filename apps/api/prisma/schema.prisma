@@ -1205,6 +1205,7 @@ model Invoice {
   lease            Lease?             @relation(fields: [leaseId], references: [id])
   lines            InvoiceLine[]
   events           InvoiceEvent[]
+  payments         InvoicePayment[]
   bankTransactions BankTransaction[]
   deposit          Deposit?
   paymentReminders PaymentReminder[]
@@ -1260,6 +1261,57 @@ model InvoiceEvent {
   @@index([invoiceId, type])
   // Index för global aktivitetsfeed
   @@index([createdAt])
+}
+
+// Betalningsallokering mot en faktura (C4/C5).
+//
+// SPEGLAR RentNoticePayment — hyresavins delbetalningsmodell, som redan är
+// granskad och i drift. Samma form, samma invarianter, medvetet ingen ny design.
+//
+// Varför modellen behövs: före den bokförde BÅDA fakturans betalvägar
+// (bankmatchning och POST /invoices/:id/pay) alltid `invoice.total`, oavsett
+// hur mycket som faktiskt kommit in. En delbetalning på 500 kr mot en faktura
+// på 10 000 kr debiterade 1930 med 10 000 och flippade fakturan till PAID.
+// 1930 divergerade därmed från kontoutdraget, och statusen ljög om skulden.
+//
+// Utestående skuld är ETT BERÄKNAT TILLSTÅND, aldrig ett lagrat gissningsvärde:
+//   outstanding = invoice.total − Σ payments.amount
+model InvoicePayment {
+  id        String @id @default(uuid())
+  invoiceId String
+
+  // Bank-transaktionen som gav upphov till allokeringen (BANK_RECONCILIATION).
+  // NULL för manuell betalning (POST /pay, source = MANUAL). @unique är
+  // dubbel-allokeringsskyddet: en bank-transaktion kan allokeras till EXAKT en
+  // faktura. Postgres behandlar NULL som distinkt i unika index → flera manuella
+  // allokeringar kan samexistera på samma faktura.
+  bankTransactionId String? @unique
+
+  // Allokerat belopp — det FAKTISKT mottagna, inte fakturans total.
+  // Decimal(10,2) speglar Invoice.total.
+  amount Decimal @db.Decimal(10, 2)
+
+  // Betalningsdatum (banktransaktionens datum, resp. det angivna paidAt).
+  paidAt DateTime
+
+  source InvoicePaymentSource
+
+  createdAt DateTime @default(now())
+
+  invoice         Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  // SetNull, inte Cascade: en bank-transaktion är räkenskapsinformation och
+  // raderas aldrig i praktiken. Skulle den ändå tas bort ska allokeringen
+  // finnas kvar med bankTransactionId = NULL — betalningen har ju skett.
+  bankTransaction BankTransaction? @relation(fields: [bankTransactionId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+}
+
+// Ursprunget för en betalningsallokering mot faktura. Speglar
+// RentNoticePaymentSource.
+enum InvoicePaymentSource {
+  BANK_RECONCILIATION
+  MANUAL
 }
 
 model InvoiceLine {
@@ -1441,6 +1493,10 @@ model BankTransaction {
   // Härledd betalningsallokering (PR 1). Optional 1:1 — bankTransactionId @unique
   // på RentNoticePayment-sidan ger en allokering per transaktion.
   rentNoticePayment RentNoticePayment?
+  // Motsvarande för fakturasidan (C4/C5). @unique på InvoicePayment-sidan ger
+  // en allokering per transaktion — en bank-transaktion kan inte allokeras till
+  // både en avi och en faktura, och inte till två fakturor.
+  invoicePayment    InvoicePayment?
 
   @@unique([organizationId, externalId])
   @@index([organizationId])
