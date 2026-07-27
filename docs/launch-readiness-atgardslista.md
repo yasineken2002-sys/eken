@@ -897,6 +897,20 @@ unitType, contractual)`; `terminate()` tar `initiator` (default LANDLORD, `appro
   `prepare_contract_signing`). `create_tenant_and_lease` bör dubbelbekräftas.
 - **S-C: Hyresförhandlingslagen 3 § ej inläst** — öppen fråga om §54a-tystnadsverkan ens är rätt regel
   för Evenos standardkund (liten privat värd utan förhandlingsordning). Eget granskningsärende.
+- **S-D: AI-kostnadstaken är per-org/per-user — inget KONTO-tak finns.** (Noterat 2026-07-27,
+  EGEN PR — ingen kod ändrad.) `ORG_DAILY_LIMIT_SEK = 200` och `USER_DAILY_LIMIT_SEK = 50`
+  (`ai-quota.service.ts:15-16`) mäter båda per tenant. Anthropic-nyckeln är däremot **en enda
+  konto-resurs**. En kostnad som sprids över många orgar kan därför strukturellt aldrig lösa ut
+  något tak: 216 orgar × ~0,08 kr passerar ett 200 kr-cap obemärkt och tömmer ändå saldot.
+  Upptäckt när dev-nyckeln fick slut på krediter — weekly-summary-cronen fan-outade över 224 orgar.
+  Vilande-org-grinden (`hasMeaningfulData`) täpper det konkreta hålet men inte det strukturella:
+  216 orgar med _riktig_ data skulle fortfarande passera. **Behövs:** ett dygnstak på total spend
+  oavsett org-fördelning, mätt över hela `AiUsageLog` — plus larm när det närmar sig.
+  _Följdpunkt i samma PR:_ prislistan underskattar Haiku 4.5 (`ai-pricing.ts:21` säger $0,80/$4,
+  faktiskt $1/$5 — marginellt idag men taken räknar på den).
+  _Åtgärdat sedan noteringen skrevs:_ dev och prod delade samma `ANTHROPIC_API_KEY` (verifierat
+  2026-07-27 via fingeravtryck). Nyckeln är roterad och miljöerna har separata nycklar, så
+  konto-taket går nu att mäta per miljö. Det strukturella hålet kvarstår oberoende av det.
 
 ### Tema-ordning + PR-plan (granskad, beslutad)
 

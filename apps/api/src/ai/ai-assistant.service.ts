@@ -1801,7 +1801,41 @@ export class AiAssistantService {
 
   // ── Proactive insights ─────────────────────────────────────────────────────
 
+  /**
+   * Vilande-org-grind för de automatiska AI-jobben (morgonrapport, vecko- och
+   * månadssammanfattning). En org helt utan förvaltningsdata har ingenting att
+   * sammanfatta — men cron-jobben itererar ALLA orgar, så utan den här grinden
+   * betalar vi ett fullt modellanrop för att skriva "du har inga fastigheter"
+   * till ett vilande konto.
+   *
+   * Grinden är avsiktligt bred: fastighet ELLER avtal ELLER avi räcker. En org
+   * mitt i onboarding (fastighet inlagd, inget avtal än) ska fortfarande få sin
+   * rapport — bara den som är tom på alla tre hoppas över.
+   *
+   * VARFÖR den behövs utöver kostnadscapet: checkOrgDailyCostCap() mäter PER
+   * ORG. En fan-out över N tomma orgar lägger bara ~0,08 kr på var och en, så
+   * capet kan strukturellt aldrig lösa ut hur många orgar det än gäller. Den
+   * här grinden stoppar kostnaden vid källan i stället.
+   */
+  private async hasMeaningfulData(organizationId: string): Promise<boolean> {
+    const [properties, leases, notices] = await Promise.all([
+      this.prisma.property.count({ where: { organizationId } }),
+      this.prisma.lease.count({ where: { organizationId } }),
+      this.prisma.rentNotice.count({ where: { organizationId } }),
+    ])
+    return properties > 0 || leases > 0 || notices > 0
+  }
+
   async generateDailyInsights(organizationId: string): Promise<string> {
+    // Vilande org → ingen rapport, inget modellanrop. Anroparen
+    // (sendMorningInsights) hanterar tom sträng via `if (!insights) continue`.
+    if (!(await this.hasMeaningfulData(organizationId))) {
+      this.logger.warn(
+        `Hoppar över morgonrapport för org ${organizationId}: ingen förvaltningsdata`,
+      )
+      return ''
+    }
+
     // Kostnadscap-kontroll: morgonrapporten är ett automatiskt anrop men kostar
     // fortfarande pengar. Hoppa över generering om organisationen redan nått sin
     // dagliga AI-budget. Additivt — orgs under cap påverkas inte. Anroparen
@@ -1870,6 +1904,15 @@ export class AiAssistantService {
   }
 
   async generateWeeklySummary(organizationId: string): Promise<string> {
+    // Vilande org → ingen sammanfattning, inget modellanrop. Anroparen
+    // (sendWeeklySummary) hanterar tom sträng via `if (!summary) continue`.
+    if (!(await this.hasMeaningfulData(organizationId))) {
+      this.logger.warn(
+        `Hoppar över veckosammanfattning för org ${organizationId}: ingen förvaltningsdata`,
+      )
+      return ''
+    }
+
     // Samma kostnadscap-logik som generateDailyInsights — automatiskt anrop,
     // hoppa över om orgen nått dagsbudgeten. Anroparen (sendWeeklySummary)
     // hanterar tom sträng via `if (!summary) continue`.
@@ -1943,6 +1986,15 @@ export class AiAssistantService {
    * tom sträng om kostnadscapet är nått — PDF:en renderar då en fallback-text.
    */
   async generateMonthlyInsights(organizationId: string, monthSummary: string): Promise<string> {
+    // Vilande org → ingen analysdel. PDF:en renderar samma fallback-text som
+    // när kostnadscapet är nått.
+    if (!(await this.hasMeaningfulData(organizationId))) {
+      this.logger.warn(
+        `Hoppar över månadsrapport-insikter för org ${organizationId}: ingen förvaltningsdata`,
+      )
+      return ''
+    }
+
     try {
       await this.quota.checkOrgDailyCostCap(organizationId)
     } catch {
