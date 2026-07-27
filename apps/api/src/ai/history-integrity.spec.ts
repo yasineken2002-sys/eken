@@ -50,14 +50,27 @@ describe('sanitizeBlocksForPersistence', () => {
     expect(sanitizeBlocksForPersistence(blocks)).toEqual(blocks)
   })
 
-  it('behåller thinking-block så länge det finns text kvar', () => {
+  // BETEENDEÄNDRING (modellval per meddelande): thinking-block persisteras inte
+  // längre. Tidigare bevarades de, vilket var ofarligt när hela chatten körde en
+  // enda modell. Nu kan samma konversation blanda Sonnet- och Opus-turer, och ett
+  // sparat resonemangsblock hade bundit historiken till modellen som skrev det.
+  // Se NON_PERSISTED_BLOCK_TYPES i history-integrity.ts.
+  it('strippar thinking-block — historiken ska vara modelloberoende', () => {
     const out = sanitizeBlocksForPersistence([
       { type: 'thinking', thinking: 'hmm', signature: 'sig' },
       text('Svar.'),
       toolUse('toolu_1'),
     ] as unknown as Anthropic.ContentBlock[])
-    expect(out).toHaveLength(2)
-    expect(out!.some((b) => b.type === 'tool_use')).toBe(false)
+    // Bara textblocket överlever: thinking OCH tool_use är borta.
+    expect(out).toEqual([text('Svar.')])
+  })
+
+  it('strippar redacted_thinking på samma grund', () => {
+    const out = sanitizeBlocksForPersistence([
+      { type: 'redacted_thinking', data: 'xxx' },
+      text('Svar.'),
+    ] as unknown as Anthropic.ContentBlock[])
+    expect(out).toEqual([text('Svar.')])
   })
 
   it('returnerar null när bara tool_use fanns — rehydreringen faller på content', () => {

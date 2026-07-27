@@ -38,6 +38,7 @@ import {
   sanitizeBlocksForPersistence,
   wasRepaired,
   describeRepair,
+  stripThinkingBlocks,
 } from './history-integrity'
 import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
@@ -49,18 +50,16 @@ import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
-import { AI_MODELS, CHAT_EFFORT } from './ai.config'
+import { chatRequestOptions, pickChatProfile } from './ai.config'
 
-const STREAM_MODEL = AI_MODELS.STREAM
 const STREAM_MAX_TOOL_ITERATIONS = 3
 
 // Samma format som ChatDto:s @IsUUID('4') grindar på POST-vägen. SSE-vägen har
 // ingen ValidationPipe och måste därför göra kontrollen själv.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-// Höjt 2048 → 4096 tillsammans med modellbytet till Opus 5 — se MAX_TOKENS i
-// ai-assistant.service.ts för mätningen. På 2048 gick hela budgeten till
-// thinking och strömmen levererade noll textdeltan.
-const STREAM_MAX_TOKENS = 4096
+// Tokentaket är INTE längre en konstant här — det kommer från modellprofilen
+// (se CHAT_PROFILE_TEXT / CHAT_PROFILE_VISION i ai.config.ts). SSE-vägen och den
+// icke-strömmande vägen delar samma profil, så de kan inte drifta isär.
 
 // C3: AI-assistenten kräver minst ACCOUNTANT. Utestänger VIEWER (som annars
 // nådde chat/stream/analys) men bevarar bokförings-AI för ekonomirollen —
@@ -233,6 +232,11 @@ export class AiAssistantController {
         user.sub,
       )
 
+      // MODELLVALET för hela strömmen. Samma regel som i den icke-strömmande
+      // vägen: grundas på faktiska innehållsblock, inte på id-listans längd,
+      // och är oföränderlig genom hela tool-loopen nedan.
+      const profile = pickChatProfile(attached.contentBlocks.length > 0)
+
       // Text-only är OFÖRÄNDRAT: utan bilagor är content en ren sträng.
       // Bilagorna läggs före texten så modellen läser underlaget innan frågan.
       const userContent: string | Anthropic.ContentBlockParam[] =
@@ -292,20 +296,21 @@ export class AiAssistantController {
           messages: currentMessages,
         })
 
-        // SISTA GRINDEN: par-invarianten (samma delade regel som non-stream-
-        // vägen). Backstop mot historikrader skrivna före fixen — ett obesvarat
-        // tool_use i historiken hade annars fällt varje request i den
-        // konversationen.
-        const { messages: safeMessages, repair } = enforceToolPairInvariant(currentMessages)
+        // SISTA GRINDEN — exakt samma tvåstegssanering som non-stream-vägen,
+        // ur samma modul: resonemangsblock ut (modellbundna, historiken kan
+        // blanda Sonnet- och Opus-turer), sedan par-invarianten (ett obesvarat
+        // tool_use hade annars fällt varje request i konversationen).
+        const { messages: safeMessages, repair } = enforceToolPairInvariant(
+          stripThinkingBlocks(currentMessages),
+        )
         if (wasRepaired(repair)) {
           this.logger.warn(`Historiken sanerades före stream: ${describeRepair(repair)}`)
         }
 
         const stream = anthropic.messages.stream({
-          model: STREAM_MODEL,
-          max_tokens: STREAM_MAX_TOKENS,
-          // Explicit resonemangsnivå — se CHAT_EFFORT i ai.config.ts.
-          output_config: { effort: CHAT_EFFORT },
+          // Modell + tokentak + effort samlat från profilen — vald en gång
+          // ovan, oförändrad genom alla iterationer.
+          ...chatRequestOptions(profile),
           system: systemBlocks,
           tools: TOOLS,
           messages: safeMessages,
@@ -427,7 +432,9 @@ export class AiAssistantController {
           organizationId,
           userId: user.sub,
           endpoint: 'stream',
-          model: STREAM_MODEL,
+          // Från profilen, inte en konstant — annars bokförs Opus-anrop till
+          // Sonnet-pris och kostnadstaken räknar fel.
+          model: profile.model,
           usage: {
             input_tokens: inputTokens,
             output_tokens: outputTokens,
