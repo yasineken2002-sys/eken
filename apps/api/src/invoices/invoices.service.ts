@@ -12,6 +12,7 @@ import { Prisma } from '@prisma/client'
 import type { Invoice, InvoiceStatus, InvoiceEventType, PaymentMethod } from '@prisma/client'
 import { computeInvoiceDebt } from './invoice-debt'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { stockholmCivilDate } from '../common/time/stockholm-period'
 import { OcrService } from '../common/ocr/ocr.service'
 import { InvoiceEventsService } from './invoice-events.service'
 import { PdfService } from './pdf.service'
@@ -267,8 +268,10 @@ export class InvoicesService {
             // Bara HYRES-avin riskerar dubbelbokas — en DEPOSIT-avi för samma
             // period (som avisering skapar vid tillträde) ska inte falskblockera.
             type: 'RENT',
-            month: period.getUTCMonth() + 1,
-            year: period.getUTCFullYear(),
+            // Svensk civil tid — annars kunde en avi daterad 1 januari matchas
+            // mot december och dubblettspärren missa (eller falskblockera).
+            month: stockholmCivilDate(period).month,
+            year: stockholmCivilDate(period).year,
             status: { not: 'CANCELLED' },
           },
           select: { id: true },

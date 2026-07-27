@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { stockholmCivilDate } from '../common/time/stockholm-period'
 import { AccountingService } from '../accounting/accounting.service'
 import { OverdueDebtService } from '../overdue/overdue-debt.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
@@ -88,8 +89,8 @@ export class DashboardService {
    * t.ex. förskottsgenererad hyra, faller utanför → accrual-korrekt).
    */
   private fiscalYearToDate(fiscalYearStartMonth: number, now: Date): { from: Date; to: Date } {
-    const y = now.getUTCFullYear()
-    const currentMonth = now.getUTCMonth() + 1 // 1–12
+    // Svensk civil tid (samma regel som getRevenueYearToDate).
+    const { year: y, month: currentMonth } = stockholmCivilDate(now)
     const startYear = currentMonth >= fiscalYearStartMonth ? y : y - 1
     const from = new Date(Date.UTC(startYear, fiscalYearStartMonth - 1, 1))
     return { from, to: now }
