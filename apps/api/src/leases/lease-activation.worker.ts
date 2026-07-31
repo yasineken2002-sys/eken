@@ -6,7 +6,11 @@ import { TenantAuthService } from '../tenant-portal/tenant-auth.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AviseringService } from '../avisering/avisering.service'
-import { LEASE_ACTIVATION_QUEUE, type LeaseActivationJob } from './lease-activation.queue'
+import {
+  LEASE_ACTIVATION_QUEUE,
+  INITIAL_NOTICES_FAILED_TITLE,
+  type LeaseActivationJob,
+} from './lease-activation.queue'
 
 /**
  * Worker för lease-activation-kön. Tre jobbtyper:
@@ -91,7 +95,7 @@ export class LeaseActivationWorker {
           ? 'Kontrakts-PDF kunde inte genereras'
           : job.data.type === 'send-welcome-mail'
             ? 'Välkomstmejl kunde inte skickas'
-            : 'Avier kunde inte genereras automatiskt'
+            : INITIAL_NOTICES_FAILED_TITLE
       const message =
         job.data.type === 'generate-contract-pdf'
           ? `Auto-generering misslyckades efter ${attempt} försök. Generera manuellt från kontraktssidan. Fel: ${err.message}`

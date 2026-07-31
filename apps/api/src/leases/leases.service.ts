@@ -6,6 +6,8 @@ import * as Sentry from '@sentry/nestjs'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { runCronSafely } from '../common/cron/cron-safety'
+import { enqueueSafely, isEnqueueProblem } from '../common/queue/enqueue-safety'
+import type { EnqueueOutcome } from '../common/queue/enqueue-safety'
 import { NotificationsService } from '../notifications/notifications.service'
 import { DepositsService } from '../deposits/deposits.service'
 import { RentIncreasesService } from '../rent-increases/rent-increases.service'
@@ -13,7 +15,11 @@ import { TenantAuthService } from '../tenant-portal/tenant-auth.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
 import { ContractNumberService } from '../contracts/contract-number.service'
 import { syncUnitStatusFromLeases } from '../units/unit-status.sync'
-import { LeaseActivationQueue } from './lease-activation.queue'
+import {
+  LeaseActivationQueue,
+  LEASE_ACTIVATION_QUEUE,
+  INITIAL_NOTICES_FAILED_TITLE,
+} from './lease-activation.queue'
 import { normalizeEmail } from '../common/utils/normalize-email'
 import { CreateLeaseDto } from './dto/create-lease.dto'
 import { UpdateLeaseDto } from './dto/update-lease.dto'
@@ -654,36 +660,90 @@ export class LeasesService {
   //   'manual'     → PDF + välkomstmejl + initial-avier (deposition + första avi)
   //   'succession' → PDF + gap-avi (skipDeposit, ingen ny deposition) + INGEN välkomst
   // Alla enqueue:ar är best-effort (Bull retry + SYSTEM-notis vid permanent fail).
+  //
+  // T5 C2a (#58): själva KÖANDET kan också fallera. Tidigare sväljdes det i en
+  // `.catch(logger.error)` — utan Sentry, utan notis — och kunde dessutom hänga
+  // i minuter (mätt: 233 s vid nere Redis, aldrig vid frusen). enqueueSafely ger
+  // både larm och ett väntegolv. Vi kastar fortfarande inte: avtalet ÄR aktivt
+  // (committat ovan) och ska inte rullas tillbaka av ett kö-fel.
   private async dispatchActivationJobs(
     lease: { id: string; organizationId: string; tenantId: string },
     opts: { origin: 'manual' | 'succession'; actorUserId: string | null },
   ): Promise<void> {
-    await this.activationQueue
-      .enqueueGenerateContract({
-        leaseId: lease.id,
-        organizationId: lease.organizationId,
-        actorUserId: opts.actorUserId,
-      })
-      .catch((err) =>
-        this.logger.error(`[Leases] enqueue generate-contract failed: ${String(err)}`),
-      )
-
-    if (opts.origin === 'manual') {
-      await this.activationQueue
-        .enqueueWelcomeMail({ tenantId: lease.tenantId })
-        .catch((err) => this.logger.error(`[Leases] enqueue welcome-mail failed: ${String(err)}`))
+    const base = {
+      queue: LEASE_ACTIVATION_QUEUE,
+      organizationId: lease.organizationId,
+      logger: this.logger,
     }
 
-    await this.activationQueue
-      .enqueueInitialNotices({
-        leaseId: lease.id,
-        organizationId: lease.organizationId,
-        skipDeposit: opts.origin === 'succession',
-        succession: opts.origin === 'succession',
-      })
-      .catch((err: unknown) =>
-        this.logger.error(`[Leases] enqueue initial-notices failed: ${String(err)}`),
+    await enqueueSafely(
+      () =>
+        this.activationQueue.enqueueGenerateContract({
+          leaseId: lease.id,
+          organizationId: lease.organizationId,
+          actorUserId: opts.actorUserId,
+        }),
+      { ...base, jobType: 'generate-contract-pdf' },
+    )
+
+    if (opts.origin === 'manual') {
+      await enqueueSafely(
+        () => this.activationQueue.enqueueWelcomeMail({ tenantId: lease.tenantId }),
+        {
+          ...base,
+          jobType: 'send-welcome-mail',
+        },
       )
+    }
+
+    const noticesOutcome = await enqueueSafely(
+      () =>
+        this.activationQueue.enqueueInitialNotices({
+          leaseId: lease.id,
+          organizationId: lease.organizationId,
+          skipDeposit: opts.origin === 'succession',
+          succession: opts.origin === 'succession',
+        }),
+      { ...base, jobType: 'create-initial-notices' },
+    )
+
+    // Den här grenen är #58:s kärna: utan avi-jobbet faktureras hyresgästen
+    // aldrig, tyst. Workern larmar org-admins när JOBBET misslyckas permanent
+    // (lease-activation.worker.ts:onFailed) — men den koden nås aldrig om jobbet
+    // aldrig kom in i kön. Vi ger samma signal via samma väg, så hyresvärden ser
+    // saken oavsett var den brast.
+    if (isEnqueueProblem(noticesOutcome)) {
+      await this.notifyInitialNoticesNotQueued(lease.organizationId, noticesOutcome)
+    }
+  }
+
+  // SYSTEM-notis när avi-jobbet inte kunde köas. SAMMA titel som workerns
+  // permanent-fail-notis — en signalväg, inte två divergerande.
+  //
+  // Texten är medvetet MJUKARE än workerns ("kunde inte bekräftas", inte "kunde
+  // inte skapas"): en timeout kan inte avbryta köandet, så jobbet kan ha landat
+  // ändå. Formuleringen är sann i båda fallen, och åtgärden är ofarlig även vid
+  // falsklarm (createInitialNoticesForLease är idempotent + A1-atomisk).
+  private async notifyInitialNoticesNotQueued(
+    organizationId: string,
+    outcome: Extract<EnqueueOutcome, { status: 'failed' | 'timeout' }>,
+  ): Promise<void> {
+    const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error)
+    try {
+      await this.notifications.createForAllOrgUsers(
+        organizationId,
+        'SYSTEM',
+        INITIAL_NOTICES_FAILED_TITLE,
+        `Deposition + första hyresavi kunde inte bekräftas som köade när kontraktet aktiverades — ` +
+          `jobbkön svarade inte. Kontrollera avisering-sidan och skapa avierna manuellt om de saknas. ` +
+          `Fel: ${reason}`,
+      )
+    } catch (notifyErr) {
+      // Notisen är best-effort; Sentry-larmet från enqueueSafely har redan gått.
+      this.logger.error(
+        `[Leases] kunde inte skapa notis om ej köade initial-avier (org ${organizationId}): ${String(notifyErr)}`,
+      )
+    }
   }
 
   // ── T1.3: succession-följdeffekter (körs INOM avtalsbytets transaktion) ────

@@ -7,7 +7,8 @@ import {
   DETECTED_CONTRACT_TYPES,
   MAX_CONTRACT_BYTES,
 } from '../common/utils/file-validation'
-import { ContractScanBatchQueue } from './contract-scan-batch.queue'
+import { ContractScanBatchQueue, CONTRACT_SCAN_BATCH_QUEUE } from './contract-scan-batch.queue'
+import { enqueueSafely, isEnqueueProblem } from '../common/queue/enqueue-safety'
 import { estimateBatchCostSek, MAX_BATCH_FILES_ABSOLUTE } from './contract-scan-cost'
 import { deterministicUnitMatcher } from './unit-matcher'
 import { buildLeaseDtoFromScan } from './contract-lease-builder'
@@ -179,8 +180,30 @@ export class ContractScanBatchService {
 
     // Enqueue en skanning per rad. Om enqueue mot Redis fallerar fångar vi det
     // per rad — batchen finns redan (raderna står PENDING och kan re-enqueueas).
+    //
+    // T5 C2a: den per-rad-hanteringen fanns tidigare BARA i kommentaren. Utan
+    // den kastade rad N:s kö-fel ur hela metoden → anroparen fick 500, raderna
+    // efter N köades aldrig, och batchen låg kvar halvköad utan larm.
+    // enqueueSafely isolerar raden, larmar via Sentry och golvar väntetiden.
+    let failedRows = 0
     for (const row of batch.rows) {
-      await this.queue.enqueueRow({ rowId: row.id, organizationId })
+      const outcome = await enqueueSafely(
+        () => this.queue.enqueueRow({ rowId: row.id, organizationId }),
+        {
+          queue: CONTRACT_SCAN_BATCH_QUEUE,
+          jobType: 'contract-scan-row',
+          organizationId,
+          logger: this.logger,
+        },
+      )
+      if (isEnqueueProblem(outcome)) failedRows++
+    }
+    if (failedRows > 0) {
+      // Raderna står kvar som PENDING och är re-enqueue-bara — surfa antalet i
+      // loggen så det syns bredvid Sentry-larmen.
+      this.logger.warn(
+        `Contract-batch ${batch.id}: ${failedRows} av ${batch.rows.length} rader kunde inte köas (står kvar PENDING)`,
+      )
     }
 
     this.logger.log(

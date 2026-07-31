@@ -44,6 +44,15 @@ export type LeaseActivationJob =
 const JOB_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 /**
+ * Notis-titel när initial-avierna (deposition + första hyresavi) inte blev av.
+ * Delad avsiktligt: workern använder den när JOBBET misslyckas permanent, och
+ * LeasesService när jobbet aldrig ens kunde KÖAS (T5 C2a / #58). Hyresvärden
+ * ska se EN signal, inte två divergerande — därför en konstant, inte två
+ * likalydande strängar som kan glida isär.
+ */
+export const INITIAL_NOTICES_FAILED_TITLE = 'Avier kunde inte genereras automatiskt'
+
+/**
  * Producer för lease-activation-kön. Används från LeasesService när status
  * flippas till ACTIVE — istället för fire-and-forget får vi automatisk retry
  * (1m → 2m → 4m → 8m → 16m → permanent fail) om Puppeteer kraschar eller

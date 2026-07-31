@@ -6,6 +6,8 @@ import { PrismaService } from '../../common/prisma/prisma.service'
 import { runCronSafely, forEachOrgSafely } from '../../common/cron/cron-safety'
 import { allocatePlatformInvoiceNumber } from './platform-invoice-number'
 import { MailService } from '../../mail/mail.service'
+import { QUEUE_HIGH } from '../../mail/mail.types'
+import { enqueueSafely } from '../../common/queue/enqueue-safety'
 import { PdfService } from '../../invoices/pdf.service'
 import { PdfQueue } from '../../pdf-jobs/pdf.queue'
 import {
@@ -825,27 +827,38 @@ export class PlatformInvoicesService {
           reminderCandidates,
           async (inv) => {
             const recipient = inv.organization.billingEmail ?? inv.organization.email
-            await this.mail
-              .enqueue({
-                template: 'custom',
-                priority: 'high',
-                to: recipient,
-                subject: `Påminnelse: faktura ${inv.invoiceNumber} förfallen`,
-                props: {
-                  preview: `Faktura ${inv.invoiceNumber} är förfallen sedan ${inv.dueDate.toISOString().slice(0, 10)}`,
-                  tenantName: inv.organization.name,
-                  organizationName: PLATFORM_COMPANY.legalName,
-                  whyReceived: `Du fick det här mejlet eftersom ${inv.organization.name} har en obetald faktura hos ${PLATFORM_COMPANY.brandName}.`,
-                  bodyHtml: `
+            // T5 C2a (#58): köandet sväljdes helt tyst (`.catch(() => undefined)`)
+            // — en Redis-outage kunde alltså stoppa alla betalningspåminnelser
+            // utan ett spår. enqueueSafely larmar och golvar väntetiden. Statusen
+            // uppdateras fortfarande (påminnelsecykeln drivs vidare, oförändrat).
+            await enqueueSafely(
+              () =>
+                this.mail.enqueue({
+                  template: 'custom',
+                  priority: 'high',
+                  to: recipient,
+                  subject: `Påminnelse: faktura ${inv.invoiceNumber} förfallen`,
+                  props: {
+                    preview: `Faktura ${inv.invoiceNumber} är förfallen sedan ${inv.dueDate.toISOString().slice(0, 10)}`,
+                    tenantName: inv.organization.name,
+                    organizationName: PLATFORM_COMPANY.legalName,
+                    whyReceived: `Du fick det här mejlet eftersom ${inv.organization.name} har en obetald faktura hos ${PLATFORM_COMPANY.brandName}.`,
+                    bodyHtml: `
                 <h1 style="color:#111827;font-size:22px;margin:0 0 16px;">Påminnelse – faktura ${inv.invoiceNumber}</h1>
                 <p>Vi har ännu inte mottagit betalning för faktura <strong>${inv.invoiceNumber}</strong> som förföll <strong>${inv.dueDate.toISOString().slice(0, 10)}</strong>.</p>
                 <p>Vänligen betala snarast med OCR <code>${generatePlatformOcr(inv.invoiceNumber)}</code> till bankgiro ${PLATFORM_COMPANY.bankgiro}.</p>
                 <p>Har ni redan betalt – tack, ignorera detta mejl. Frågor? Svara på det här mejlet.</p>
               `,
-                },
-                idempotencyKey: `platform-invoice-reminder-${inv.id}-${Math.floor((now.getTime() - inv.dueDate.getTime()) / day)}`,
-              })
-              .catch(() => undefined)
+                  },
+                  idempotencyKey: `platform-invoice-reminder-${inv.id}-${Math.floor((now.getTime() - inv.dueDate.getTime()) / day)}`,
+                }),
+              {
+                queue: QUEUE_HIGH,
+                jobType: 'platform-invoice-reminder',
+                organizationId: inv.organizationId,
+                logger: this.logger,
+              },
+            )
 
             await this.prisma.platformInvoice.update({
               where: { id: inv.id },
