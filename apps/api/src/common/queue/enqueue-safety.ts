@@ -46,8 +46,25 @@ import * as Sentry from '@sentry/nestjs'
  * därefter — se `EnqueueOutcome.status`.
  */
 
-/** Hur lång tid vi som mest väntar på att ett jobb ska bli KÖAT (inte utfört). */
+/**
+ * Hur lång tid vi som mest väntar på att ett jobb ska bli KÖAT (inte utfört).
+ *
+ * 5 s är valt för ANROPARENS latens (aktivering sker i en HTTP-request; mätt
+ * normalfall 0–27 ms ⇒ ~180× marginal). Det är MEDVETET kortare än den mätta
+ * återhämtningen efter en kort blip (5–8 s outage ⇒ jobbet landade efter
+ * 11,3 s): vi vill inte hålla requesten så länge. Konsekvensen är att en blip
+ * ger status 'timeout' trots att jobbet landar strax efter — därför skiljer vi
+ * på LARM (Sentry, teknisk publik, får gärna vara tidigt) och MÄNSKLIG NOTIS
+ * (se onLateOutcome: den avgörs på det slutliga utfallet, inte på timeouten).
+ */
 export const ENQUEUE_TIMEOUT_MS = 5_000
+
+/**
+ * Hur länge vi FORTSÄTTER följa ett enqueue som passerade timeouten, för att
+ * kunna avgöra om det landade ändå. Väl tilltaget mot den mätta blip-
+ * återhämtningen (11,3 s) och mot Bulls reconnect-backoff.
+ */
+export const ENQUEUE_LATE_GRACE_MS = 60_000
 
 /**
  * Utfallet av ett skyddat enqueue-försök.
@@ -80,6 +97,19 @@ export interface EnqueueSafelyOptions {
   logger?: Logger
   /** Väntegolv i ms (default ENQUEUE_TIMEOUT_MS). */
   timeoutMs?: number
+  /**
+   * Anropas ENDAST när golvet löste ut, med det slutliga utfallet: `true` om
+   * jobbet landade ändå (falsklarm), `false` om det bevisligen misslyckades
+   * eller inte hade landat inom `lateGraceMs`.
+   *
+   * Finns för att skilja larm från människo-notis. En kort Redis-blip ger
+   * 'timeout' men jobbet landar strax efter — då ska ingen hyresvärd få en
+   * notis om att något gick fel. Callbacken körs FRÅNKOPPLAT (efter att
+   * anroparen redan fått sitt svar) och får aldrig kasta vidare.
+   */
+  onLateOutcome?: (landed: boolean) => void | Promise<void>
+  /** Hur länge onLateOutcome väntar på besked (default ENQUEUE_LATE_GRACE_MS). */
+  lateGraceMs?: number
 }
 
 const defaultLogger = new Logger('EnqueueSafety')
@@ -113,7 +143,16 @@ export async function enqueueSafely(
 
   // Notera: vi avbryter INTE det underliggande anropet vid timeout — det går
   // inte. Ett sent jobb landar och dedupas av sitt jobId.
-  const inflight = enqueue()
+  //
+  // enqueue() anropas i try/catch trots att den är deklarerad async: kontraktet
+  // säger "kastar ALDRIG", och en framtida anropare kan skicka in en funktion
+  // som validerar synkront innan den returnerar sin promise.
+  let inflight: Promise<string>
+  try {
+    inflight = enqueue()
+  } catch (error) {
+    return reportProblem({ status: 'failed', error }, { logger, queue, jobType, organizationId })
+  }
 
   // KRITISKT: Promise.race lämnar förlorarens utfall obevakat. Vinner vår
   // timeout racet och enqueue:t rejectar FÖRST DÄREFTER (mätt: upp till 233 s
@@ -122,10 +161,11 @@ export async function enqueueSafely(
   // alltså ta ned API:et. Vi hänger på en observatör direkt, vilket markerar
   // rejectionen som hanterad och samtidigt loggar det sena utfallet (nyttigt:
   // det är så man ser att ett larm var ett falsklarm).
-  // Flaggan sätts ENBART av timeout-callbacken. Att i stället markera "klar i
+  //
+  // `timedOut` sätts ENBART av timeout-callbacken. Att i stället markera "klar i
   // tid" i race:ets fortsättning vore fel: observatören nedan registreras först
   // och kör därför före den fortsättningen i mikrotask-ordningen — varje normalt
-  // enqueue skulle loggas som ett sent falsklarm.
+  // enqueue skulle loggas som ett sent falsklarm (fångades av regressionstestet).
   let timedOut = false
   void inflight.then(
     (jobId) => {
@@ -133,6 +173,13 @@ export async function enqueueSafely(
         logger.warn(
           `[enqueue:${queue}/${jobType}] landade SENT (efter tidsgränsen) — jobId=${jobId}. Tidigare larm var ett falsklarm.`,
         )
+        // Breadcrumb (inte ett nytt fel): den som utreder timeout-larmet i
+        // Sentry ska kunna se att det löste sig, utan tillgång till serverloggen.
+        Sentry.addBreadcrumb({
+          category: 'enqueue',
+          level: 'info',
+          message: `Enqueue ${queue}/${jobType} landade efter tidsgränsen (tidigare larm var ett falsklarm)`,
+        })
       }
     },
     (err: unknown) => {
@@ -142,6 +189,11 @@ export async function enqueueSafely(
             err instanceof Error ? err.message : String(err)
           }`,
         )
+        Sentry.addBreadcrumb({
+          category: 'enqueue',
+          level: 'warning',
+          message: `Enqueue ${queue}/${jobType} misslyckades slutgiltigt efter tidsgränsen`,
+        })
       }
     },
   )
@@ -168,6 +220,54 @@ export async function enqueueSafely(
 
   if (outcome.status === 'ok') return outcome
 
+  // Golvet löste ut: följ jobbet vidare frånkopplat och lämna det SLUTLIGA
+  // beskedet till den som vill notifiera en människa. Larmet har redan gått
+  // (teknisk publik); notisen ska bara gå om jobbet faktiskt inte blev av.
+  if (outcome.status === 'timeout' && options.onLateOutcome) {
+    const graceMs = options.lateGraceMs ?? ENQUEUE_LATE_GRACE_MS
+    const onLate = options.onLateOutcome
+    void settleLate(inflight, graceMs)
+      .then((landed) => onLate(landed))
+      .catch((err: unknown) =>
+        logger.error(
+          `[enqueue:${queue}/${jobType}] onLateOutcome kastade: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        ),
+      )
+  }
+
+  return reportProblem(outcome, { logger, queue, jobType, organizationId })
+}
+
+/**
+ * Väntar på det slutliga utfallet av ett enqueue som passerade golvet.
+ * Returnerar `true` bara om jobbet bevisligen landade inom `graceMs`.
+ * Kastar aldrig.
+ */
+async function settleLate(inflight: Promise<string>, graceMs: number): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      inflight.then(
+        () => true,
+        () => false,
+      ),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), graceMs)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+/** Loggar fullt lokalt + larmar skrubbat till Sentry. Returnerar utfallet. */
+function reportProblem(
+  outcome: Extract<EnqueueOutcome, { status: 'failed' | 'timeout' }>,
+  ctx: { logger: Logger; queue: string; jobType: string; organizationId?: string | undefined },
+): EnqueueOutcome {
+  const { logger, queue, jobType, organizationId } = ctx
   const orgSuffix = organizationId ? ` (org ${organizationId})` : ''
   const verb = outcome.status === 'timeout' ? 'BEKRÄFTADES INTE' : 'MISSLYCKADES'
   logger.error(

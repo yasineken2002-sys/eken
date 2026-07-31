@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common'
 import * as Sentry from '@sentry/nestjs'
 import { enqueueSafely, isEnqueueProblem, ENQUEUE_TIMEOUT_MS } from './enqueue-safety'
 
-jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }))
+jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), addBreadcrumb: jest.fn() }))
 
 const captureException = Sentry.captureException as jest.MockedFunction<
   typeof Sentry.captureException
@@ -144,6 +144,136 @@ describe('enqueueSafely (T5 C2a / #58)', () => {
 
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('landade SENT'))
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('falsklarm'))
+  })
+
+  describe('onLateOutcome — skiljer LARM från MÄNSKLIG NOTIS', () => {
+    it('blip: jobbet landar efter golvet → landed=true (ingen notis ska skickas)', async () => {
+      // Mätt verklighet: en 5–8 s Redis-blip landar jobbet efter ~11 s. Utan
+      // den här grenen hade varje sådan blip gett hyresvärden en notis om en
+      // avi som faktiskt skapades.
+      const late: boolean[] = []
+      let resolveLate: (id: string) => void = () => undefined
+
+      const outcome = await enqueueSafely(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveLate = resolve
+          }),
+        {
+          ...OPTS,
+          logger,
+          timeoutMs: 30,
+          lateGraceMs: 2000,
+          onLateOutcome: (l) => {
+            late.push(l)
+          },
+        },
+      )
+      expect(outcome.status).toBe('timeout')
+      expect(late).toEqual([]) // ännu inte avgjort
+
+      resolveLate('job-late')
+      await new Promise((r) => setTimeout(r, 60))
+
+      expect(late).toEqual([true])
+    })
+
+    it('äkta outage: jobbet landar aldrig inom grace → landed=false (notis ska skickas)', async () => {
+      const late: boolean[] = []
+
+      const outcome = await enqueueSafely(() => new Promise<string>(() => undefined), {
+        ...OPTS,
+        logger,
+        timeoutMs: 20,
+        lateGraceMs: 60,
+        onLateOutcome: (l) => {
+          late.push(l)
+        },
+      })
+      expect(outcome.status).toBe('timeout')
+
+      await new Promise((r) => setTimeout(r, 140))
+      expect(late).toEqual([false])
+    })
+
+    it('sen rejection → landed=false', async () => {
+      const late: boolean[] = []
+      let rejectLate: (e: Error) => void = () => undefined
+
+      await enqueueSafely(
+        () =>
+          new Promise<string>((_, reject) => {
+            rejectLate = reject
+          }),
+        {
+          ...OPTS,
+          logger,
+          timeoutMs: 20,
+          lateGraceMs: 2000,
+          onLateOutcome: (l) => {
+            late.push(l)
+          },
+        },
+      )
+      rejectLate(new Error('MaxRetriesPerRequestError'))
+      await new Promise((r) => setTimeout(r, 60))
+
+      expect(late).toEqual([false])
+    })
+
+    it('anropas ALDRIG när golvet inte löste ut (normalfall + direkt fel)', async () => {
+      const late: boolean[] = []
+      await enqueueSafely(async () => 'job-1', {
+        ...OPTS,
+        logger,
+        onLateOutcome: (l) => {
+          late.push(l)
+        },
+      })
+      await enqueueSafely(() => Promise.reject(new Error('nere')), {
+        ...OPTS,
+        logger,
+        onLateOutcome: (l) => {
+          late.push(l)
+        },
+      })
+      await new Promise((r) => setTimeout(r, 40))
+
+      expect(late).toEqual([])
+    })
+
+    it('en callback som kastar tas om hand och läcker inte ut', async () => {
+      const unhandled: unknown[] = []
+      const onUnhandled = (reason: unknown) => unhandled.push(reason)
+      process.on('unhandledRejection', onUnhandled)
+
+      await enqueueSafely(() => new Promise<string>(() => undefined), {
+        ...OPTS,
+        logger,
+        timeoutMs: 20,
+        lateGraceMs: 40,
+        onLateOutcome: () => {
+          throw new Error('notis-fel')
+        },
+      })
+      await new Promise((r) => setTimeout(r, 120))
+      process.off('unhandledRejection', onUnhandled)
+
+      expect(unhandled).toHaveLength(0)
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('onLateOutcome kastade'))
+    })
+  })
+
+  it('en synkront kastande enqueue ger failed i stället för att kasta vidare', async () => {
+    const outcome = await enqueueSafely(
+      () => {
+        throw new Error('ogiltigt jobbnamn')
+      },
+      { ...OPTS, logger },
+    )
+
+    expect(outcome.status).toBe('failed')
+    expect(captureException).toHaveBeenCalledTimes(1)
   })
 
   it('org utelämnad: taggen finns men är undefined, inget kastar', async () => {

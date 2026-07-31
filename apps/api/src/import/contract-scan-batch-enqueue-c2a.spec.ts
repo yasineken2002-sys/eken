@@ -8,13 +8,18 @@
  *
  * Bevisar:
  *   A) En rads kö-fel isoleras — ALLA rader försöks, övriga köas.
- *   B) Batchen returneras (metoden kastar inte) och raderna står kvar PENDING,
- *      alltså re-enqueue-bara.
+ *   B) Batchen returneras (metoden kastar inte) och den oköade raden markeras
+ *      FAILED. Att lämna den PENDING vore en fälla: ingen worker hämtar den, och
+ *      recomputeBatchCompletion räknar PENDING som "återstår" → batchen hade
+ *      aldrig kunnat nå COMPLETED igen.
  *   C) Varje misslyckad rad larmas till Sentry med kö-/jobbtyp-/org-tagg.
- *   D) Normalfallet är opåverkat: inget larm.
+ *   D) Normalfallet är opåverkat: inget larm, ingen radändring.
+ *   E) Om INGEN rad kunde köas markeras hela batchen FAILED (annars ser den ut
+ *      att pågå för evigt — workern som annars flyttar PENDING→SCANNING kommer
+ *      aldrig att köra).
  */
 
-jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }))
+jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), addBreadcrumb: jest.fn() }))
 
 import * as Sentry from '@sentry/nestjs'
 import { ContractScanBatchService } from './contract-scan-batch.service'
@@ -28,7 +33,7 @@ function pdf(tag: string): Buffer {
 }
 
 function make(enqueueRow: jest.Mock) {
-  const rows = [{ id: 'row-1' }, { id: 'row-2' }, { id: 'row-3' }]
+  const rows: { id: string }[] = [{ id: 'row-1' }, { id: 'row-2' }, { id: 'row-3' }]
   const prisma = {
     organization: {
       findUnique: jest
@@ -71,13 +76,13 @@ function make(enqueueRow: jest.Mock) {
 describe('T5 C2a · contract-scan-batch köar rad för rad med isolering', () => {
   beforeEach(() => jest.clearAllMocks())
 
-  it('A+B: rad 2:s kö-fel stoppar inte rad 3 — batchen returneras ändå', async () => {
+  it('A+B: rad 2:s kö-fel stoppar inte rad 3, och rad 2 markeras FAILED', async () => {
     const enqueueRow = jest
       .fn()
       .mockResolvedValueOnce('job-1')
       .mockRejectedValueOnce(new Error('MaxRetriesPerRequestError'))
       .mockResolvedValueOnce('job-3')
-    const { service, files } = make(enqueueRow)
+    const { service, prisma, files } = make(enqueueRow)
 
     const batch = await service.createBatch(files, 'org-1', 'user-1')
 
@@ -88,8 +93,35 @@ describe('T5 C2a · contract-scan-batch köar rad för rad med isolering', () =>
       'row-2',
       'row-3',
     ])
-    // Metoden kastar inte: batchen finns, raderna står PENDING (re-enqueue-bara).
-    expect(batch).toMatchObject({ id: 'batch-1', status: 'PENDING', totalRows: 3 })
+    // Metoden kastar inte, och antalet surfas i svaret.
+    expect(batch).toMatchObject({ id: 'batch-1', status: 'PENDING', totalRows: 3, failedRows: 1 })
+
+    // Rad 2 lämnas INTE i PENDING — annars kan batchen aldrig nå COMPLETED.
+    expect(prisma.contractImportRow.update).toHaveBeenCalledTimes(1)
+    const call = prisma.contractImportRow.update.mock.calls[0]![0] as {
+      where: { id: string }
+      data: { rowStatus: string; errorMessage: string; fileData: null }
+    }
+    expect(call.where.id).toBe('row-2')
+    expect(call.data.rowStatus).toBe('FAILED')
+    expect(call.data.errorMessage).toContain('Ladda upp filen igen')
+    expect(call.data.fileData).toBeNull() // råfilen purgas som i övriga terminala banor
+    // Batchen som helhet lever vidare — två rader är på väg.
+    expect(prisma.contractImportBatch.update).not.toHaveBeenCalled()
+  })
+
+  it('E: ingen rad kunde köas → hela batchen markeras FAILED (inte evigt "pågår")', async () => {
+    const enqueueRow = jest.fn().mockRejectedValue(new Error('Redis nere'))
+    const { service, prisma, files } = make(enqueueRow)
+
+    const batch = await service.createBatch(files, 'org-1', 'user-1')
+
+    expect(prisma.contractImportRow.update).toHaveBeenCalledTimes(3)
+    expect(prisma.contractImportBatch.update).toHaveBeenCalledWith({
+      where: { id: 'batch-1' },
+      data: { status: 'FAILED' },
+    })
+    expect(batch).toMatchObject({ status: 'FAILED', failedRows: 3 })
   })
 
   it('C: den misslyckade raden larmas med kö-, jobbtyp- och org-tagg', async () => {
@@ -115,13 +147,16 @@ describe('T5 C2a · contract-scan-batch köar rad för rad med isolering', () =>
     expect(captured.message).not.toContain('ECONNREFUSED')
   })
 
-  it('D: normalfallet — alla rader köas, inget larm', async () => {
+  it('D: normalfallet — alla rader köas, inget larm, ingen radändring', async () => {
     const enqueueRow = jest.fn().mockResolvedValue('job-x')
-    const { service, files } = make(enqueueRow)
+    const { service, prisma, files } = make(enqueueRow)
 
-    await service.createBatch(files, 'org-1', 'user-1')
+    const batch = await service.createBatch(files, 'org-1', 'user-1')
 
     expect(enqueueRow).toHaveBeenCalledTimes(3)
     expect(captureException).not.toHaveBeenCalled()
+    expect(prisma.contractImportRow.update).not.toHaveBeenCalled()
+    expect(prisma.contractImportBatch.update).not.toHaveBeenCalled()
+    expect(batch).toMatchObject({ status: 'PENDING', failedRows: 0 })
   })
 })

@@ -25,6 +25,12 @@ export interface CreateBatchResult {
   status: string
   totalRows: number
   estimatedCostSek: number
+  /**
+   * Antal rader som inte kunde köas för skanning (jobbkön svarade inte). De är
+   * markerade FAILED och behöver laddas upp igen. Normalt 0 — surfas så att
+   * UI:t kan säga "3 av 5 rader köades" i stället för att tiga.
+   */
+  failedRows: number
 }
 
 // Rad-vy som EXPONERAS via API:t — innehåller ALDRIG den råa PDF:en (fileData).
@@ -178,13 +184,17 @@ export class ContractScanBatchService {
       select: { id: true, status: true, totalRows: true, rows: { select: { id: true } } },
     })
 
-    // Enqueue en skanning per rad. Om enqueue mot Redis fallerar fångar vi det
-    // per rad — batchen finns redan (raderna står PENDING och kan re-enqueueas).
+    // Enqueue en skanning per rad, isolerat per rad.
     //
     // T5 C2a: den per-rad-hanteringen fanns tidigare BARA i kommentaren. Utan
     // den kastade rad N:s kö-fel ur hela metoden → anroparen fick 500, raderna
     // efter N köades aldrig, och batchen låg kvar halvköad utan larm.
-    // enqueueSafely isolerar raden, larmar via Sentry och golvar väntetiden.
+    //
+    // En rad som inte kunde köas markeras FAILED (inte kvarlämnad PENDING):
+    // ingen worker kommer någonsin hämta den, och recomputeBatchCompletion
+    // räknar PENDING som "återstår" → en enda oköad rad hade annars låst hela
+    // batchen utanför COMPLETED för alltid. FAILED är den befintliga terminala
+    // banan (jfr recordScanFailure) och syns per rad i granskningsvyn.
     let failedRows = 0
     for (const row of batch.rows) {
       const outcome = await enqueueSafely(
@@ -196,14 +206,42 @@ export class ContractScanBatchService {
           logger: this.logger,
         },
       )
-      if (isEnqueueProblem(outcome)) failedRows++
+      if (!isEnqueueProblem(outcome)) continue
+
+      failedRows++
+      // Purgar råfilen som alla andra terminala banor (svällning + GDPR:
+      // kontrakten innehåller personnummer). Operatören laddar upp filen igen.
+      await this.prisma.contractImportRow
+        .update({
+          where: { id: row.id },
+          data: {
+            rowStatus: 'FAILED',
+            errorMessage:
+              'Kunde inte köas för skanning (jobbkön svarade inte). Ladda upp filen igen.',
+            fileData: null,
+          },
+        })
+        .catch((err: unknown) =>
+          this.logger.error(
+            `Kunde inte markera rad ${row.id} som FAILED efter kö-fel: ${String(err)}`,
+          ),
+        )
     }
+
     if (failedRows > 0) {
-      // Raderna står kvar som PENDING och är re-enqueue-bara — surfa antalet i
-      // loggen så det syns bredvid Sentry-larmen.
       this.logger.warn(
-        `Contract-batch ${batch.id}: ${failedRows} av ${batch.rows.length} rader kunde inte köas (står kvar PENDING)`,
+        `Contract-batch ${batch.id}: ${failedRows} av ${batch.rows.length} rader kunde inte köas (markerade FAILED)`,
       )
+      // Ingen enda rad kom in i kön → inget kommer någonsin flytta batchen från
+      // PENDING (bumpBatchToScanning körs av workern). Markera den FAILED direkt
+      // så den inte ser ut att pågå för evigt.
+      if (failedRows === batch.rows.length) {
+        await this.prisma.contractImportBatch
+          .update({ where: { id: batch.id }, data: { status: 'FAILED' } })
+          .catch((err: unknown) =>
+            this.logger.error(`Kunde inte markera batch ${batch.id} som FAILED: ${String(err)}`),
+          )
+      }
     }
 
     this.logger.log(
@@ -213,9 +251,10 @@ export class ContractScanBatchService {
 
     return {
       id: batch.id,
-      status: batch.status,
+      status: failedRows === batch.rows.length && failedRows > 0 ? 'FAILED' : batch.status,
       totalRows: batch.totalRows,
       estimatedCostSek,
+      failedRows,
     }
   }
 

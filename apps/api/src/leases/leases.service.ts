@@ -6,8 +6,7 @@ import * as Sentry from '@sentry/nestjs'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { runCronSafely } from '../common/cron/cron-safety'
-import { enqueueSafely, isEnqueueProblem } from '../common/queue/enqueue-safety'
-import type { EnqueueOutcome } from '../common/queue/enqueue-safety'
+import { enqueueSafely } from '../common/queue/enqueue-safety'
 import { NotificationsService } from '../notifications/notifications.service'
 import { DepositsService } from '../deposits/deposits.service'
 import { RentIncreasesService } from '../rent-increases/rent-increases.service'
@@ -676,67 +675,78 @@ export class LeasesService {
       logger: this.logger,
     }
 
-    await enqueueSafely(
-      () =>
-        this.activationQueue.enqueueGenerateContract({
-          leaseId: lease.id,
-          organizationId: lease.organizationId,
-          actorUserId: opts.actorUserId,
-        }),
-      { ...base, jobType: 'generate-contract-pdf' },
-    )
-
-    if (opts.origin === 'manual') {
-      await enqueueSafely(
-        () => this.activationQueue.enqueueWelcomeMail({ tenantId: lease.tenantId }),
+    // De tre jobben är oberoende av varandra. Sekventiella await:ar skulle vid
+    // en Redis-outage lägga tre väntegolv i rad (~15 s) på en HTTP-request som
+    // redan har committat sin transaktion; parallellt blir taket ett golv.
+    const [, , noticesOutcome] = await Promise.all([
+      enqueueSafely(
+        () =>
+          this.activationQueue.enqueueGenerateContract({
+            leaseId: lease.id,
+            organizationId: lease.organizationId,
+            actorUserId: opts.actorUserId,
+          }),
+        { ...base, jobType: 'generate-contract-pdf' },
+      ),
+      opts.origin === 'manual'
+        ? enqueueSafely(
+            () => this.activationQueue.enqueueWelcomeMail({ tenantId: lease.tenantId }),
+            { ...base, jobType: 'send-welcome-mail' },
+          )
+        : Promise.resolve(null),
+      enqueueSafely(
+        () =>
+          this.activationQueue.enqueueInitialNotices({
+            leaseId: lease.id,
+            organizationId: lease.organizationId,
+            skipDeposit: opts.origin === 'succession',
+            succession: opts.origin === 'succession',
+          }),
         {
           ...base,
-          jobType: 'send-welcome-mail',
+          jobType: 'create-initial-notices',
+          // Golvet är satt för REQUESTENS latens, inte för sanningen. Vid timeout
+          // vet vi ännu inte om jobbet blev av — en kort Redis-blip landar det
+          // efter ~11 s (mätt). Notisen till hyresvärden avgörs därför på det
+          // SLUTLIGA utfallet, frånkopplat från requesten: landade det ändå blir
+          // det ingen notis alls (inget falsklarm), annars kommer den.
+          onLateOutcome: (landed: boolean) => {
+            if (!landed) void this.notifyInitialNoticesNotQueued(lease.organizationId)
+          },
         },
-      )
-    }
-
-    const noticesOutcome = await enqueueSafely(
-      () =>
-        this.activationQueue.enqueueInitialNotices({
-          leaseId: lease.id,
-          organizationId: lease.organizationId,
-          skipDeposit: opts.origin === 'succession',
-          succession: opts.origin === 'succession',
-        }),
-      { ...base, jobType: 'create-initial-notices' },
-    )
+      ),
+    ])
 
     // Den här grenen är #58:s kärna: utan avi-jobbet faktureras hyresgästen
     // aldrig, tyst. Workern larmar org-admins när JOBBET misslyckas permanent
     // (lease-activation.worker.ts:onFailed) — men den koden nås aldrig om jobbet
     // aldrig kom in i kön. Vi ger samma signal via samma väg, så hyresvärden ser
     // saken oavsett var den brast.
-    if (isEnqueueProblem(noticesOutcome)) {
-      await this.notifyInitialNoticesNotQueued(lease.organizationId, noticesOutcome)
+    //
+    // Bara 'failed' notifierar direkt (då VET vi att kön avvisade jobbet).
+    // 'timeout' hanteras av onLateOutcome ovan när sanningen är känd.
+    if (noticesOutcome.status === 'failed') {
+      await this.notifyInitialNoticesNotQueued(lease.organizationId)
     }
   }
 
-  // SYSTEM-notis när avi-jobbet inte kunde köas. SAMMA titel som workerns
+  // SYSTEM-notis när avi-jobbet inte blev köat. SAMMA titel som workerns
   // permanent-fail-notis — en signalväg, inte två divergerande.
   //
   // Texten är medvetet MJUKARE än workerns ("kunde inte bekräftas", inte "kunde
-  // inte skapas"): en timeout kan inte avbryta köandet, så jobbet kan ha landat
-  // ändå. Formuleringen är sann i båda fallen, och åtgärden är ofarlig även vid
-  // falsklarm (createInitialNoticesForLease är idempotent + A1-atomisk).
-  private async notifyInitialNoticesNotQueued(
-    organizationId: string,
-    outcome: Extract<EnqueueOutcome, { status: 'failed' | 'timeout' }>,
-  ): Promise<void> {
-    const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error)
+  // inte skapas") och bär INGEN teknisk feltext: den läses av hyresvärden i
+  // notis-klockan, inte av en utvecklare. Full detalj finns i serverloggen och
+  // ett skrubbat larm i Sentry (enqueueSafely) — org-användaren är en tredje,
+  // mindre betrodd publik och ska inte få infra-adresser.
+  private async notifyInitialNoticesNotQueued(organizationId: string): Promise<void> {
     try {
       await this.notifications.createForAllOrgUsers(
         organizationId,
         'SYSTEM',
         INITIAL_NOTICES_FAILED_TITLE,
-        `Deposition + första hyresavi kunde inte bekräftas som köade när kontraktet aktiverades — ` +
-          `jobbkön svarade inte. Kontrollera avisering-sidan och skapa avierna manuellt om de saknas. ` +
-          `Fel: ${reason}`,
+        'Deposition + första hyresavi kunde inte bekräftas som köade när kontraktet aktiverades — ' +
+          'jobbkön svarade inte. Kontrollera avisering-sidan: saknade hyresmånader kan skapas via ' +
+          '"Att efterdebitera". Saknas depositionsavin behöver den läggas upp manuellt.',
       )
     } catch (notifyErr) {
       // Notisen är best-effort; Sentry-larmet från enqueueSafely har redan gått.

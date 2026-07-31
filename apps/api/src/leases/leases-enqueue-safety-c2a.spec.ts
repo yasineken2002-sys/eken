@@ -21,7 +21,7 @@
 jest.mock('../contracts/contract-template.service', () => ({ ContractTemplateService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
-jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }))
+jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), addBreadcrumb: jest.fn() }))
 
 import * as Sentry from '@sentry/nestjs'
 import { LeasesService } from './leases.service'
@@ -132,6 +132,21 @@ describe('T5 C2a · aktivering när KÖANDET fallerar (#58)', () => {
     expect(message).toContain('Kontrollera avisering-sidan')
     // Får INTE påstå något som blir osant när jobbet landade efter timeouten.
     expect(message).not.toMatch(/kunde inte skapas/)
+    // Åtgärden ska vara sann i dag: hyresmånader går via backfill-kön, men
+    // depositionsavin har ingen egen knapp (det är C2b).
+    expect(message).toContain('Att efterdebitera')
+  })
+
+  it('C: notisen bär INGEN teknisk feltext — hyresvärden är inte utvecklare', async () => {
+    const { service, notifications } = makeService({
+      notices: () => Promise.reject(new Error('connect ECONNREFUSED 10.0.0.7:6379')),
+    })
+    await service.transitionStatus('lease-1', 'ACTIVE', 'org-1', 'user-9')
+
+    const message = (notifications.createForAllOrgUsers.mock.calls[0] as string[])[3] as string
+    expect(message).not.toContain('ECONNREFUSED')
+    expect(message).not.toContain('10.0.0.7')
+    expect(message).not.toContain('6379')
   })
 
   it('A: kö-felet larmas till Sentry med kö-, jobbtyp- och org-tagg', async () => {
