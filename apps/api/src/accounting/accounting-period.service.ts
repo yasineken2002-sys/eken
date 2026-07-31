@@ -8,6 +8,7 @@ import {
 import { Prisma, RentNoticeType, UserRole } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { vatPeriodLabelsForMonths } from '../avisering/vat-period.util'
+import { stockholmCivilDate, stockholmMonthBounds } from '../common/time/stockholm-period'
 import { getClosedPeriods, periodKeyOf, type PeriodKey } from './closed-period'
 import { DEFAULT_VER_SERIES, VerifikationsnummerService } from './verifikationsnummer.service'
 
@@ -84,10 +85,12 @@ export class AccountingPeriodService {
    */
   async getOverview(organizationId: string, months = 12): Promise<PeriodOverview> {
     const span = Math.min(Math.max(months, 1), 36)
-    const now = new Date()
+    // Innevarande månad i svensk tid — annars kan fönstret hoppa ett dygn i
+    // förtid nära månadsskiftet.
+    const today = stockholmCivilDate(new Date())
     const keys: PeriodKey[] = []
-    let y = now.getUTCFullYear()
-    let m = now.getUTCMonth() + 1
+    let y = today.year
+    let m = today.month
     for (let i = 0; i < span; i++) {
       keys.push({ year: y, month: m })
       m--
@@ -137,23 +140,26 @@ export class AccountingPeriodService {
    */
   async precheck(organizationId: string, year: number, month: number): Promise<PeriodPrecheck> {
     this.assertValidPeriod(year, month)
-    const from = new Date(Date.UTC(year, month - 1, 1))
-    const to = new Date(Date.UTC(year, month, 1))
+    // Svenska månadsgränser, inte UTC: `allocate` placerar en post i den period
+    // datumet tillhör I SVERIGE, och kontrollerna MÅSTE räkna samma post till
+    // samma månad. En post 22:30 UTC den 31 mars är 00:30 svensk tid den 1 april.
+    const { from, to } = stockholmMonthBounds(year, month)
 
     const closedSet = await getClosedPeriods(this.prisma, organizationId, [{ year, month }])
     const alreadyClosed = closedSet.has(periodKeyOf({ year, month }))
 
-    const checks: PeriodCheck[] = []
-    for (const check of [
-      await this.checkUnbalancedEntries(organizationId, from, to),
-      await this.checkNoticesWithoutEntry(organizationId, year, month),
-      await this.checkInvoicesWithoutEntry(organizationId, from, to),
-      await this.checkUnbilledLeases(organizationId, year, month),
-      await this.checkUnmatchedBankTransactions(organizationId, from, to),
-      await this.checkVerificationNumberGaps(organizationId, from),
-    ]) {
-      if (check) checks.push(check)
-    }
+    // Kontrollerna är oberoende av varandra — kör dem parallellt. precheck
+    // anropas både när stängningsdialogen öppnas och en gång till i closePeriod.
+    const checks = (
+      await Promise.all([
+        this.checkUnbalancedEntries(organizationId, from, to),
+        this.checkNoticesWithoutEntry(organizationId, year, month),
+        this.checkInvoicesWithoutEntry(organizationId, from, to),
+        this.checkUnbilledLeases(organizationId, year, month),
+        this.checkUnmatchedBankTransactions(organizationId, from, to),
+        this.checkVerificationNumberGaps(organizationId, from),
+      ])
+    ).filter((c): c is PeriodCheck => c != null)
 
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
@@ -315,7 +321,18 @@ export class AccountingPeriodService {
     }
   }
 
-  /** Fakturor i perioden utan verifikat — samma princip på fakturasidan. */
+  /**
+   * Fakturor i perioden utan verifikat — samma princip på fakturasidan.
+   *
+   * NYCKELKONVENTIONEN ÄR INTE ENHETLIG: en vanlig faktura bokförs under
+   * sourceId=invoice.id, men en DEPOSITIONSfaktura bokförs av depositionsflödet
+   * under sourceId='deposit-invoice:<depositId>' (1510/2890 — en skuld, inte en
+   * intäkt). Slås bara den första nyckeln upp flaggas varje korrekt bokförd
+   * deposition som saknande verifikat — ett dagligt falsklarm för i praktiken
+   * alla bostadsuthyrare, och den sortens brus lär operatören att ignorera
+   * varningar. Samma tvånyckel-hantering finns redan i
+   * accounting.service.assertInvoiceReceivableBacked (A2).
+   */
   private async checkInvoicesWithoutEntry(
     organizationId: string,
     from: Date,
@@ -326,12 +343,25 @@ export class AccountingPeriodService {
       select: { id: true },
     })
     if (invoices.length === 0) return null
+
+    // Depositionsfakturor: verifikatet hänger på Deposit-id:t, inte fakturans.
+    const deposits = await this.prisma.deposit.findMany({
+      where: { organizationId, invoiceId: { in: invoices.map((i) => i.id) } },
+      select: { id: true, invoiceId: true },
+    })
+    const depositKeyByInvoice = new Map(
+      deposits
+        .filter((d): d is typeof d & { invoiceId: string } => d.invoiceId != null)
+        .map((d) => [d.invoiceId, `deposit-invoice:${d.id}`]),
+    )
+    const keyFor = (invoiceId: string): string => depositKeyByInvoice.get(invoiceId) ?? invoiceId
+
     const booked = await this.prisma.journalEntry.findMany({
-      where: { organizationId, sourceId: { in: invoices.map((i) => i.id) } },
+      where: { organizationId, sourceId: { in: invoices.map((i) => keyFor(i.id)) } },
       select: { sourceId: true },
     })
     const bookedIds = new Set(booked.map((b) => b.sourceId))
-    const missing = invoices.filter((i) => !bookedIds.has(i.id)).length
+    const missing = invoices.filter((i) => !bookedIds.has(keyFor(i.id))).length
     if (missing === 0) return null
     return {
       code: 'invoices-without-entry',
@@ -347,8 +377,8 @@ export class AccountingPeriodService {
     year: number,
     month: number,
   ): Promise<PeriodCheck | null> {
-    const monthStart = new Date(Date.UTC(year, month - 1, 1))
-    const monthEnd = new Date(Date.UTC(year, month, 0))
+    const { from: monthStart, to: monthAfter } = stockholmMonthBounds(year, month)
+    const monthEnd = new Date(monthAfter.getTime() - 1)
     const leases = await this.prisma.lease.findMany({
       where: {
         organizationId,
@@ -415,17 +445,19 @@ export class AccountingPeriodService {
       periodStart,
       org?.fiscalYearStartMonth ?? 1,
     )
-    const entries = await this.prisma.journalEntry.findMany({
+    // Aggregat i DB i stället för att hämta hem hela årets verifikationsnummer
+    // och sortera dem i Node — en aktiv org har tusentals rader per år.
+    const agg = await this.prisma.journalEntry.aggregate({
       where: { organizationId, fiscalYear, series: DEFAULT_VER_SERIES },
-      select: { verNumber: true },
+      _min: { verNumber: true },
+      _max: { verNumber: true },
+      _count: { verNumber: true },
     })
-    if (entries.length === 0) return null
-    const numbers = entries
-      .map((e) => e.verNumber)
-      .filter((n): n is number => typeof n === 'number')
-      .sort((a, b) => a - b)
-    const expected = numbers[numbers.length - 1]! - numbers[0]! + 1
-    const gaps = expected - numbers.length
+    const count = agg._count.verNumber
+    const min = agg._min.verNumber
+    const max = agg._max.verNumber
+    if (count === 0 || min == null || max == null) return null
+    const gaps = max - min + 1 - count
     if (gaps <= 0) return null
     return {
       code: 'verification-number-gaps',
@@ -441,8 +473,9 @@ export class AccountingPeriodService {
     year: number,
     month: number,
   ): Promise<PeriodSummary> {
-    const from = new Date(Date.UTC(year, month - 1, 1))
-    const to = new Date(Date.UTC(year, month, 1))
+    // Samma svenska gränser som precheck — summaryn är en ögonblicksbild som
+    // ALDRIG räknas om, så en post som hamnar i fel månad blir permanent fel.
+    const { from, to } = stockholmMonthBounds(year, month)
     const lines = await this.prisma.journalEntryLine.findMany({
       where: { journalEntry: { organizationId, date: { gte: from, lt: to } } },
       include: { account: true },

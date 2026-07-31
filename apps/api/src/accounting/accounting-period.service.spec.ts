@@ -23,6 +23,8 @@ interface RigOpts {
   bookedNoticeIds?: string[]
   invoices?: string[]
   bookedInvoiceIds?: string[]
+  /** invoiceId → depositId, för fakturor som bokförts via depositionsflödet. */
+  depositInvoices?: Record<string, string>
   activeLeases?: string[]
   unmatchedBankTx?: number
   verNumbers?: number[]
@@ -67,6 +69,13 @@ function makeRig(opts: RigOpts = {}) {
       ),
     },
     invoice: { findMany: jest.fn().mockResolvedValue((opts.invoices ?? []).map((id) => ({ id }))) },
+    deposit: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue(
+          Object.entries(opts.depositInvoices ?? {}).map(([invoiceId, id]) => ({ id, invoiceId })),
+        ),
+    },
     journalEntry: {
       findMany: jest.fn(
         ({
@@ -87,6 +96,16 @@ function makeRig(opts: RigOpts = {}) {
           )
         },
       ),
+      // Luckkontrollen aggregerar i DB (min/max/count) i stället för att hämta
+      // hem hela årets nummerserie.
+      aggregate: jest.fn(() => {
+        const nums = opts.verNumbers ?? []
+        return Promise.resolve({
+          _min: { verNumber: nums.length ? Math.min(...nums) : null },
+          _max: { verNumber: nums.length ? Math.max(...nums) : null },
+          _count: { verNumber: nums.length },
+        })
+      }),
     },
     lease: {
       findMany: jest.fn().mockResolvedValue((opts.activeLeases ?? []).map((id) => ({ id }))),
@@ -160,6 +179,30 @@ describe('T5 PR1a · AccountingPeriodService', () => {
       )
       expect(pre.checks.find((c) => c.code === 'verification-number-gaps')!.count).toBe(2)
       expect(pre.canClose).toBe(true)
+    })
+
+    it('depositionsfaktura bokförd via deposit-invoice-nyckeln flaggas INTE (FAR HIGH)', async () => {
+      // En DEPOSIT-faktura bokförs som skuld (1510/2890) av depositionsflödet
+      // under sourceId='deposit-invoice:<depositId>' — inte under fakturans id.
+      // Slås bara fakturanyckeln upp blir varje korrekt bokförd deposition ett
+      // falsklarm, och sådant brus lär operatören att ignorera varningarna.
+      const { service } = makeRig({
+        invoices: ['inv-dep'],
+        depositInvoices: { 'inv-dep': 'dep-1' },
+        bookedInvoiceIds: ['deposit-invoice:dep-1'],
+      })
+
+      const pre = await service.precheck('org-1', 2026, 5)
+      expect(pre.checks.find((c) => c.code === 'invoices-without-entry')).toBeUndefined()
+    })
+
+    it('faktura som verkligen saknar verifikat flaggas fortfarande', async () => {
+      const { service } = makeRig({ invoices: ['inv-1'], bookedInvoiceIds: [] })
+
+      const pre = await service.precheck('org-1', 2026, 5)
+      const check = pre.checks.find((c) => c.code === 'invoices-without-entry')!
+      expect(check.severity).toBe('warning')
+      expect(check.count).toBe(1)
     })
 
     it('ren period → inga upptäckter alls', async () => {

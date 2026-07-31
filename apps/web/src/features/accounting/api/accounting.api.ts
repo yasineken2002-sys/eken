@@ -40,6 +40,16 @@ export interface PeriodOverview {
   open: Array<{ year: number; month: number }>
 }
 
+export interface PeriodSummary {
+  month: number
+  year: number
+  revenue: number
+  expenses: number
+  result: number
+  entriesCount: number
+  generatedAt: string
+}
+
 export interface PeriodPrecheck {
   year: number
   month: number
@@ -58,5 +68,5 @@ export const fetchPeriodPrecheck = (year: number, month: number): Promise<Period
 export const closePeriod = (
   year: number,
   month: number,
-): Promise<{ year: number; month: number; checks: PeriodCheck[] }> =>
+): Promise<{ year: number; month: number; summary: PeriodSummary; checks: PeriodCheck[] }> =>
   post(`/accounting/periods/${year}/${month}/close`)

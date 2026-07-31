@@ -195,9 +195,12 @@ export class RentBackfillService {
       },
     })
 
+    // En uppslagning för hela kön i stället för en per kontrakt.
+    const closedSet = await getClosedPeriods(this.prisma, organizationId)
+
     const items: BackfillQueueItem[] = []
     for (const lease of leases) {
-      const months = await this.computeGapMonths(lease as unknown as BackfillLease)
+      const months = await this.computeGapMonths(lease as unknown as BackfillLease, closedSet)
       // Bara kontrakt med FAKTISKT debiterbara luckor visas i kön — månader som
       // är preskriberade (>36) eller i stängd period är inte en operatörshandling.
       const actionable = months.filter(
@@ -398,7 +401,13 @@ export class RentBackfillService {
   }
 
   // ── Delad kärna: hitta saknade månader + klassa dem ─────────────────────────
-  private async computeGapMonths(lease: BackfillLease): Promise<BackfillMonthPreview[]> {
+  private async computeGapMonths(
+    lease: BackfillLease,
+    // Förhämtad mängd stängda perioder. detectQueue itererar ALLA aktiva
+    // kontrakt i samma org — utan detta gjordes samma uppslag en gång per
+    // kontrakt (N+1). Utelämnad → hämtas här (enskilt kontrakt).
+    preloadedClosed?: Set<string>,
+  ): Promise<BackfillMonthPreview[]> {
     const now = new Date()
     const curYear = now.getFullYear()
     const curMonth = now.getMonth() + 1
@@ -420,7 +429,7 @@ export class RentBackfillService {
     // OBS nyckelformen: hjälparen använder nollutfylld månad (`2026-03`) medan
     // den lokala `billed`-mängden nedan använder rå månad (`2026-3`). De två
     // mängderna får ALDRIG jämföras med samma nyckel — därav periodKeyOf här.
-    const closedSet = await getClosedPeriods(this.prisma, lease.organizationId)
+    const closedSet = preloadedClosed ?? (await getClosedPeriods(this.prisma, lease.organizationId))
 
     const months: BackfillMonthPreview[] = []
     let y = startYear
