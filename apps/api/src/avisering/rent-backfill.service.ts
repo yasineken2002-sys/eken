@@ -9,6 +9,7 @@ import {
 } from '@eken/shared'
 import type { RentNotice, UnitType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { getClosedPeriods, periodKeyOf } from '../accounting/closed-period'
 import { OcrService } from '../common/ocr/ocr.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { AviseringService } from './avisering.service'
@@ -411,12 +412,15 @@ export class RentBackfillService {
     })
     const billed = new Set(existing.map((e) => `${e.year}-${e.month}`))
 
-    // Stängda perioder för org:en (per-månad-koll).
-    const closed = await this.prisma.closedAccountingPeriod.findMany({
-      where: { organizationId: lease.organizationId },
-      select: { year: true, month: true },
-    })
-    const closedSet = new Set(closed.map((c) => `${c.year}-${c.month}`))
+    // Stängda perioder för org:en (per-månad-koll). Uppslaget är delat med
+    // allocate/consumption via closed-period.ts — beteendet här är oförändrat:
+    // en stängd månad klassas CLOSED_PERIOD, hoppas över och notifieras (den
+    // hårda spärren i allocate är sista utposten, inte den här).
+    //
+    // OBS nyckelformen: hjälparen använder nollutfylld månad (`2026-03`) medan
+    // den lokala `billed`-mängden nedan använder rå månad (`2026-3`). De två
+    // mängderna får ALDRIG jämföras med samma nyckel — därav periodKeyOf här.
+    const closedSet = await getClosedPeriods(this.prisma, lease.organizationId)
 
     const months: BackfillMonthPreview[] = []
     let y = startYear
@@ -447,7 +451,7 @@ export class RentBackfillService {
             vatAmount,
             totalAmount,
             ageMonths,
-            status: this.classify(ageMonths, closedSet.has(key)),
+            status: this.classify(ageMonths, closedSet.has(periodKeyOf({ year: y, month: m }))),
           })
         }
       }

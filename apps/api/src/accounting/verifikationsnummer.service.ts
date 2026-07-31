@@ -1,7 +1,8 @@
-import { ConflictException, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
-import { stockholmCivilDate, stockholmFiscalYear } from '../common/time/stockholm-period'
+import { stockholmFiscalYear } from '../common/time/stockholm-period'
+import { assertPeriodOpen } from './closed-period'
 
 // Standardserie för automatverifikat enligt SIE4-konventionen (SIE Gruppen 4B).
 // "A" = automatiskt genererade poster (fakturering, betalning, hyresavi, m.m.).
@@ -64,22 +65,13 @@ export class VerifikationsnummerService {
     const startMonth = org?.fiscalYearStartMonth ?? 1
     const fiscalYear = VerifikationsnummerService.fiscalYearFor(date, startMonth)
 
-    // ClosedAccountingPeriod är nyckelad på kalenderår + kalendermånad.
-    // Samma skäl som ovan: perioden en post tillhör avgörs av datumet i
-    // Sverige. Med UTC kunde en post 1 januari skrivas in i december — och
-    // därmed förbi en redan stängd period.
-    const { year: calYear, month: calMonth } = stockholmCivilDate(date)
-    const closed = await client.closedAccountingPeriod.findUnique({
-      where: {
-        organizationId_year_month: { organizationId, year: calYear, month: calMonth },
-      },
-      select: { id: true },
-    })
-    if (closed) {
-      throw new ConflictException(
-        `Bokföringsperioden ${calYear}-${String(calMonth).padStart(2, '0')} är stängd — ny verifikation kan inte skapas`,
-      )
-    }
+    // ClosedAccountingPeriod är nyckelad på kalenderår + kalendermånad, och
+    // perioden en post tillhör avgörs av datumet i SVERIGE (samma skäl som
+    // ovan: med UTC kunde en post 1 januari skrivas in i december och därmed
+    // förbi en redan stängd period). Uppslaget är delat med övriga vägar via
+    // closed-period.ts — det här är fortfarande den enda punkt som VERKSTÄLLER
+    // låset, men frågan ställs numera likadant överallt.
+    await assertPeriodOpen(client, organizationId, date, 'ny verifikation kan inte skapas')
 
     const row = await client.journalEntrySequence.upsert({
       where: {

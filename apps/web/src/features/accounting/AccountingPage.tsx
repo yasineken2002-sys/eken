@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { BookOpen, FileX, Database } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PeriodsPanel } from './components/PeriodsPanel'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
@@ -13,7 +14,7 @@ import type { Account, JournalEntry, JournalEntryLine } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import { useAccounts, useSeedAccounts, useJournalEntries } from './hooks/useAccounting'
 
-type View = 'chart' | 'journal'
+type View = 'chart' | 'journal' | 'periods'
 
 const accountTypeLabel: Record<string, string> = {
   ASSET: 'Tillgångar',
@@ -179,8 +180,12 @@ export function AccountingPage() {
     {} as Record<string, Account[]>,
   )
 
-  const isLoading = view === 'chart' ? accounts.isLoading : journalEntries.isLoading
-  const isError = view === 'chart' ? accounts.isError : journalEntries.isError
+  // Periodvyn hämtar sitt eget data (usePeriods) och ska därför inte styras av
+  // kontoplanens/journalens laddnings- eller felflaggor.
+  const isLoading =
+    view === 'chart' ? accounts.isLoading : view === 'journal' ? journalEntries.isLoading : false
+  const isError =
+    view === 'chart' ? accounts.isError : view === 'journal' ? journalEntries.isError : false
 
   return (
     <PageWrapper id="accounting">
@@ -202,6 +207,7 @@ export function AccountingPage() {
           [
             { id: 'chart', label: 'Kontoplan' },
             { id: 'journal', label: 'Verifikationer' },
+            { id: 'periods', label: 'Perioder' },
           ] as const
         ).map((v) => (
           <button
@@ -236,6 +242,8 @@ export function AccountingPage() {
           />
         </div>
       )}
+
+      {view === 'periods' && <PeriodsPanel />}
 
       {!isLoading && !isError && view === 'chart' && (
         <div className="mt-5 space-y-4">

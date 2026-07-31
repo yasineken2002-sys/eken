@@ -15,3 +15,48 @@ export const fetchJournalEntries = (filters?: {
 
 export const fetchJournalEntry = (id: string): Promise<JournalEntry> =>
   get<JournalEntry>(`/accounting/journal/${id}`)
+
+// ── Bokföringsperioder (T5 PR1a) ─────────────────────────────────────────────
+// Stängningen fanns tidigare bara som AI-verktyg. Spärren mot att bokföra i en
+// stängd period är oförändrad och ligger kvar i backend (allocate).
+
+export interface PeriodCheck {
+  code: string
+  severity: 'blocking' | 'warning'
+  message: string
+  count: number
+}
+
+export interface PeriodOverviewItem {
+  year: number
+  month: number
+  closed: boolean
+  closedAt: string | null
+}
+
+export interface PeriodOverview {
+  items: PeriodOverviewItem[]
+  lastClosed: { year: number; month: number } | null
+  open: Array<{ year: number; month: number }>
+}
+
+export interface PeriodPrecheck {
+  year: number
+  month: number
+  alreadyClosed: boolean
+  canClose: boolean
+  checks: PeriodCheck[]
+  vatPeriods: string[]
+}
+
+export const fetchPeriods = (months?: number): Promise<PeriodOverview> =>
+  get<PeriodOverview>('/accounting/periods', months ? { months } : undefined)
+
+export const fetchPeriodPrecheck = (year: number, month: number): Promise<PeriodPrecheck> =>
+  get<PeriodPrecheck>(`/accounting/periods/${year}/${month}/precheck`)
+
+export const closePeriod = (
+  year: number,
+  month: number,
+): Promise<{ year: number; month: number; checks: PeriodCheck[] }> =>
+  post(`/accounting/periods/${year}/${month}/close`)
