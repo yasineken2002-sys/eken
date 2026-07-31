@@ -37,7 +37,6 @@ const PERSONAL_NUMBER_FIELDS: ReadonlySet<string> = new Set([
   'personalNumber',
   'personalNumberEnc',
   'personalNumberHash',
-  'personalNumberLegacy',
 ])
 
 export function sanitizeForAudit<T>(value: T, depth = 0): T {

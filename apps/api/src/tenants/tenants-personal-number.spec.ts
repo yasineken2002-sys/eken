@@ -64,7 +64,6 @@ describe('krav 8 — TenantsService skriver chiffertext, aldrig klartext', () =>
     const data = writtenData(create)
     // Det gamla, trasiga beteendet: data.personalNumber === '19850101-1234'.
     expect(data['personalNumber']).toBeUndefined()
-    expect(data['personalNumberLegacy']).toBeUndefined()
     expect(data['personalNumberEnc']).toEqual(expect.any(String))
     expect(data['personalNumberEnc']).not.toContain('1985')
     expect(pn.reveal(data['personalNumberEnc'] as string)).toBe(PN)
@@ -163,7 +162,6 @@ describe('krav 8 — CustomersService skriver chiffertext, aldrig klartext', () 
     expect(result['personalNumber']).toBe(PN)
     expect(result).not.toHaveProperty('personalNumberEnc')
     expect(result).not.toHaveProperty('personalNumberHash')
-    expect(result).not.toHaveProperty('personalNumberLegacy')
   })
 })
 
@@ -175,7 +173,6 @@ describe('krav 3 — personnumret rider inte med i delade selects', () => {
     expect(SAFE_TENANT_SELECT).not.toHaveProperty('personalNumber')
     expect(SAFE_TENANT_SELECT).not.toHaveProperty('personalNumberEnc')
     expect(SAFE_TENANT_SELECT).not.toHaveProperty('personalNumberHash')
-    expect(SAFE_TENANT_SELECT).not.toHaveProperty('personalNumberLegacy')
   })
 
   it('hyresgästsvaret exponerar klartexten men inte kryptokolumnerna', async () => {
@@ -197,6 +194,5 @@ describe('krav 3 — personnumret rider inte med i delade selects', () => {
     expect(result['personalNumber']).toBe(PN)
     expect(result).not.toHaveProperty('personalNumberEnc')
     expect(result).not.toHaveProperty('personalNumberHash')
-    expect(result).not.toHaveProperty('personalNumberLegacy')
   })
 })

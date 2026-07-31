@@ -6,6 +6,7 @@ import * as Sentry from '@sentry/nestjs'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { runCronSafely } from '../common/cron/cron-safety'
+import { enqueueSafely } from '../common/queue/enqueue-safety'
 import { NotificationsService } from '../notifications/notifications.service'
 import { DepositsService } from '../deposits/deposits.service'
 import { RentIncreasesService } from '../rent-increases/rent-increases.service'
@@ -13,7 +14,11 @@ import { TenantAuthService } from '../tenant-portal/tenant-auth.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
 import { ContractNumberService } from '../contracts/contract-number.service'
 import { syncUnitStatusFromLeases } from '../units/unit-status.sync'
-import { LeaseActivationQueue } from './lease-activation.queue'
+import {
+  LeaseActivationQueue,
+  LEASE_ACTIVATION_QUEUE,
+  INITIAL_NOTICES_FAILED_TITLE,
+} from './lease-activation.queue'
 import { normalizeEmail } from '../common/utils/normalize-email'
 import { CreateLeaseDto } from './dto/create-lease.dto'
 import { UpdateLeaseDto } from './dto/update-lease.dto'
@@ -654,36 +659,102 @@ export class LeasesService {
   //   'manual'     → PDF + välkomstmejl + initial-avier (deposition + första avi)
   //   'succession' → PDF + gap-avi (skipDeposit, ingen ny deposition) + INGEN välkomst
   // Alla enqueue:ar är best-effort (Bull retry + SYSTEM-notis vid permanent fail).
+  //
+  // T5 C2a (#58): själva KÖANDET kan också fallera. Tidigare sväljdes det i en
+  // `.catch(logger.error)` — utan Sentry, utan notis — och kunde dessutom hänga
+  // i minuter (mätt: 233 s vid nere Redis, aldrig vid frusen). enqueueSafely ger
+  // både larm och ett väntegolv. Vi kastar fortfarande inte: avtalet ÄR aktivt
+  // (committat ovan) och ska inte rullas tillbaka av ett kö-fel.
   private async dispatchActivationJobs(
     lease: { id: string; organizationId: string; tenantId: string },
     opts: { origin: 'manual' | 'succession'; actorUserId: string | null },
   ): Promise<void> {
-    await this.activationQueue
-      .enqueueGenerateContract({
-        leaseId: lease.id,
-        organizationId: lease.organizationId,
-        actorUserId: opts.actorUserId,
-      })
-      .catch((err) =>
-        this.logger.error(`[Leases] enqueue generate-contract failed: ${String(err)}`),
-      )
-
-    if (opts.origin === 'manual') {
-      await this.activationQueue
-        .enqueueWelcomeMail({ tenantId: lease.tenantId })
-        .catch((err) => this.logger.error(`[Leases] enqueue welcome-mail failed: ${String(err)}`))
+    const base = {
+      queue: LEASE_ACTIVATION_QUEUE,
+      organizationId: lease.organizationId,
+      logger: this.logger,
     }
 
-    await this.activationQueue
-      .enqueueInitialNotices({
-        leaseId: lease.id,
-        organizationId: lease.organizationId,
-        skipDeposit: opts.origin === 'succession',
-        succession: opts.origin === 'succession',
-      })
-      .catch((err: unknown) =>
-        this.logger.error(`[Leases] enqueue initial-notices failed: ${String(err)}`),
+    // De tre jobben är oberoende av varandra. Sekventiella await:ar skulle vid
+    // en Redis-outage lägga tre väntegolv i rad (~15 s) på en HTTP-request som
+    // redan har committat sin transaktion; parallellt blir taket ett golv.
+    const [, , noticesOutcome] = await Promise.all([
+      enqueueSafely(
+        () =>
+          this.activationQueue.enqueueGenerateContract({
+            leaseId: lease.id,
+            organizationId: lease.organizationId,
+            actorUserId: opts.actorUserId,
+          }),
+        { ...base, jobType: 'generate-contract-pdf' },
+      ),
+      opts.origin === 'manual'
+        ? enqueueSafely(
+            () => this.activationQueue.enqueueWelcomeMail({ tenantId: lease.tenantId }),
+            { ...base, jobType: 'send-welcome-mail' },
+          )
+        : Promise.resolve(null),
+      enqueueSafely(
+        () =>
+          this.activationQueue.enqueueInitialNotices({
+            leaseId: lease.id,
+            organizationId: lease.organizationId,
+            skipDeposit: opts.origin === 'succession',
+            succession: opts.origin === 'succession',
+          }),
+        {
+          ...base,
+          jobType: 'create-initial-notices',
+          // Golvet är satt för REQUESTENS latens, inte för sanningen. Vid timeout
+          // vet vi ännu inte om jobbet blev av — en kort Redis-blip landar det
+          // efter ~11 s (mätt). Notisen till hyresvärden avgörs därför på det
+          // SLUTLIGA utfallet, frånkopplat från requesten: landade det ändå blir
+          // det ingen notis alls (inget falsklarm), annars kommer den.
+          onLateOutcome: (landed: boolean) => {
+            if (!landed) void this.notifyInitialNoticesNotQueued(lease.organizationId)
+          },
+        },
+      ),
+    ])
+
+    // Den här grenen är #58:s kärna: utan avi-jobbet faktureras hyresgästen
+    // aldrig, tyst. Workern larmar org-admins när JOBBET misslyckas permanent
+    // (lease-activation.worker.ts:onFailed) — men den koden nås aldrig om jobbet
+    // aldrig kom in i kön. Vi ger samma signal via samma väg, så hyresvärden ser
+    // saken oavsett var den brast.
+    //
+    // Bara 'failed' notifierar direkt (då VET vi att kön avvisade jobbet).
+    // 'timeout' hanteras av onLateOutcome ovan när sanningen är känd.
+    if (noticesOutcome.status === 'failed') {
+      await this.notifyInitialNoticesNotQueued(lease.organizationId)
+    }
+  }
+
+  // SYSTEM-notis när avi-jobbet inte blev köat. SAMMA titel som workerns
+  // permanent-fail-notis — en signalväg, inte två divergerande.
+  //
+  // Texten är medvetet MJUKARE än workerns ("kunde inte bekräftas", inte "kunde
+  // inte skapas") och bär INGEN teknisk feltext: den läses av hyresvärden i
+  // notis-klockan, inte av en utvecklare. Full detalj finns i serverloggen och
+  // ett skrubbat larm i Sentry (enqueueSafely) — org-användaren är en tredje,
+  // mindre betrodd publik och ska inte få infra-adresser.
+  private async notifyInitialNoticesNotQueued(organizationId: string): Promise<void> {
+    try {
+      await this.notifications.createForAllOrgUsers(
+        organizationId,
+        'SYSTEM',
+        INITIAL_NOTICES_FAILED_TITLE,
+        'Deposition + första hyresavi kunde inte bekräftas som köade när kontraktet aktiverades — ' +
+          'jobbkön svarade inte. Kontrollera Hyresavier: saknas hyresavin kan den skapas på sidan ' +
+          'Efterdebitering. Saknas depositionsavin behöver depositionen läggas upp manuellt under ' +
+          'Depositioner.',
       )
+    } catch (notifyErr) {
+      // Notisen är best-effort; Sentry-larmet från enqueueSafely har redan gått.
+      this.logger.error(
+        `[Leases] kunde inte skapa notis om ej köade initial-avier (org ${organizationId}): ${String(notifyErr)}`,
+      )
+    }
   }
 
   // ── T1.3: succession-följdeffekter (körs INOM avtalsbytets transaktion) ────

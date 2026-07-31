@@ -986,12 +986,11 @@ export class TenantPortalService {
           companyName: 'Raderad hyresgäst',
           email: `${masked}@gdpr.invalid`,
           phone: null,
-          // Radera personnumret i ALLA tre kolumnerna: chiffertext, blind-index
-          // och den kvarvarande legacy-klartexten. Missas blind-indexet går
-          // personen fortfarande att korrelera efter en Art. 17-radering.
+          // Radera personnumret i BÅDA kolumnerna: chiffertext och blind-index.
+          // Missas blind-indexet går personen fortfarande att korrelera efter en
+          // Art. 17-radering.
           personalNumberEnc: null,
           personalNumberHash: null,
-          personalNumberLegacy: null,
           orgNumber: null,
           street: null,
           city: null,

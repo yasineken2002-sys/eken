@@ -13,6 +13,8 @@ import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
+import { QUEUE_PDF } from '../pdf-jobs/pdf.types'
+import { enqueueSafely, isEnqueueProblem } from '../common/queue/enqueue-safety'
 import { AccountingService } from '../accounting/accounting.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
@@ -195,11 +197,30 @@ export class RentReminderService {
             // Avgift + kravsteg är nu bokförda atomiskt. Köa påminnelse-PDF:en — om
             // utskicket fallerar är avgiften ändå korrekt tagen (samma mönster som
             // faktura-/avi-flödet); leveransstatus loggas av jobbet.
-            await this.pdfQueue.enqueue({
-              kind: 'avisering-reminder',
-              organizationId: notice.organizationId,
-              noticeId: notice.id,
-            })
+            //
+            // T5 C2a (#58): pengaställe — avgiften ÄR bokförd, så om köandet
+            // fallerar tyst debiteras hyresgästen en påminnelseavgift utan att
+            // någon påminnelse går ut. enqueueSafely larmar (Sentry) och golvar
+            // väntetiden; utfallet räknas som fel, precis som ett kast gjorde
+            // förut (enqueueSafely kastar inte).
+            const outcome = await enqueueSafely(
+              () =>
+                this.pdfQueue.enqueue({
+                  kind: 'avisering-reminder',
+                  organizationId: notice.organizationId,
+                  noticeId: notice.id,
+                }),
+              {
+                queue: QUEUE_PDF,
+                jobType: 'avisering-reminder',
+                organizationId: notice.organizationId,
+                logger: this.logger,
+              },
+            )
+            if (isEnqueueProblem(outcome)) {
+              summary.errors++
+              continue
+            }
             summary.reminded++
           } catch (err) {
             this.logger.error(
