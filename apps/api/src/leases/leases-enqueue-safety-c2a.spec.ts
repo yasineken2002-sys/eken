@@ -131,12 +131,9 @@ describe('T5 C2a · aktivering när KÖANDET fallerar (#58)', () => {
     expect(message).toContain('kunde inte bekräftas som köade')
     // Får INTE påstå något som blir osant när jobbet landade efter timeouten.
     expect(message).not.toMatch(/kunde inte skapas/)
-    // Åtgärden ska peka på vägar som FAKTISKT finns i UI:t i dag: hyresavin via
-    // sidan Efterdebitering (backfill-kön hittar den saknade första månaden),
-    // depositionen manuellt under Depositioner. Ingen egen retrigger-knapp
-    // finns ännu — det är C2b.
-    expect(message).toContain('Efterdebitering')
-    expect(message).toContain('Depositioner')
+    // Åtgärden ska peka på något som FAKTISKT går att göra. Sedan C2b finns
+    // knappen på kontraktet; innan dess pekade texten på omvägar.
+    expect(message).toContain('Skapa avierna nu')
   })
 
   it('C: notisen bär INGEN teknisk feltext — hyresvärden är inte utvecklare', async () => {

@@ -1,16 +1,21 @@
 import { useQuery } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   fetchNotices,
   downloadNoticePdf,
   type RentNotice,
 } from '@/features/avisering/api/avisering.api'
 import { Button } from '@/components/ui/Button'
-import { Download, Receipt, ShieldCheck, Info } from 'lucide-react'
+import { Download, Receipt, ShieldCheck, Info, RefreshCw } from 'lucide-react'
 import { formatCurrency, formatDate } from '@eken/shared'
+import { useCreateInitialNotices } from '../hooks/useLeases'
+import { extractApiError } from '@/lib/api'
 
 interface Props {
   leaseId: string
   startDate: string
+  /** Kontraktets status — avgör om det tomma tillståndet är väntat eller ett fel. */
+  status: string
 }
 
 interface NoticeWithType extends RentNotice {
@@ -26,12 +31,40 @@ interface NoticeWithType extends RentNotice {
 // hyresavi vid aktivering. När månadscronen kör läggs framtida månader till
 // här efter hand. För DRAFT-kontrakt visas en informativ text om vad som
 // händer vid aktivering, så administratören vet att flödet är automatiskt.
-export function LeaseNoticesSection({ leaseId, startDate }: Props) {
+export function LeaseNoticesSection({ leaseId, startDate, status }: Props) {
   const { data: allNotices } = useQuery({
     queryKey: ['avisering', 'list-by-lease', leaseId],
     queryFn: () => fetchNotices(),
     staleTime: 30_000,
   })
+  const createInitial = useCreateInitialNotices()
+
+  function handleCreateInitial() {
+    createInitial.mutate(leaseId, {
+      onSuccess: (res) => {
+        const created = [res.deposit ? 'deposition' : null, res.firstRent ? 'hyresavi' : null]
+          .filter(Boolean)
+          .join(' + ')
+        if (!created) {
+          toast.success('Avierna fanns redan — inget nytt skapades.')
+          return
+        }
+        // Depositionen hoppas medvetet över vid förnyelse/redan uttagen
+        // deposition. Säg det rakt ut, annars ser det ut som ett fel.
+        toast.success(
+          `Skapade ${created}.` +
+            (res.skippedDeposit
+              ? res.skipDepositReason === 'succession'
+                ? ' Depositionen hoppades över — den följer med från det tidigare avtalet.'
+                : ' Depositionen hoppades över — den är redan uttagen.'
+              : '') +
+            (res.mailed ? ' Mejl till hyresgästen är köat.' : ''),
+        )
+      },
+      onError: (err: unknown) =>
+        toast.error(extractApiError(err, 'Kunde inte skapa avierna för kontraktet.')),
+    })
+  }
 
   const notices = (allNotices ?? []).filter((n) => n.leaseId === leaseId) as NoticeWithType[]
 
@@ -47,6 +80,29 @@ export function LeaseNoticesSection({ leaseId, startDate }: Props) {
     year: 'numeric',
   })
 
+  // Nyckla åtgärden på att HYRESAVIN saknas, inte på "inga avier alls".
+  // Motorn skapar depositionsavin först (egen commit) och hyresavin i en
+  // transaktion — misslyckas den senare blir det vanligaste feltillståndet
+  // "deposition finns, hyresavi saknas". Ett villkor på tomt tillstånd hade
+  // därför dolt knappen i just det läge som notisen hänvisar till (FAR-fynd).
+  // Depositionens frånvaro duger INTE som signal: en förnyelse har legitimt
+  // ingen egen depositionsavi (den följer med från föregående avtal).
+  const missingRentNotice = !initialNotices.some((n) => n.type !== 'DEPOSIT')
+  const showRetrigger = status === 'ACTIVE' && missingRentNotice
+
+  const retriggerButton = (
+    <Button
+      variant="secondary"
+      size="sm"
+      className="mt-3"
+      disabled={createInitial.isPending}
+      onClick={handleCreateInitial}
+    >
+      <RefreshCw size={13} strokeWidth={1.8} />
+      {createInitial.isPending ? 'Skapar…' : 'Skapa avierna nu'}
+    </Button>
+  )
+
   return (
     <section className="border-line rounded-2xl border bg-white p-5">
       <div className="mb-3 flex items-center justify-between">
@@ -54,11 +110,37 @@ export function LeaseNoticesSection({ leaseId, startDate }: Props) {
         <span className="text-[11px] text-gray-400">Auto-genererade</span>
       </div>
 
-      {initialNotices.length === 0 ? (
-        <div className="rounded-xl bg-gray-50 p-4 text-[13px] text-gray-600">
-          Inga avier ännu. Vid aktivering skapas deposition (om belopp angivet) och första hyresavi
-          automatiskt och mejlas till hyresgästen.
+      {/* Delvis skapade avier: listan nedan visar det som finns, men hyresavin
+          saknas — lyft åtgärden ovanför listan så den syns. */}
+      {showRetrigger && initialNotices.length > 0 && (
+        <div className="mb-3 rounded-xl bg-amber-50 p-4">
+          <p className="text-[13px] text-amber-900">
+            Hyresavin för tillträdesmånaden saknas. Den automatiska genereringen verkar ha avbrutits
+            vid aktiveringen.
+          </p>
+          {retriggerButton}
         </div>
+      )}
+
+      {initialNotices.length === 0 ? (
+        status === 'ACTIVE' ? (
+          // Ett AKTIVT kontrakt utan initial-avier är inte ett väntat läge — det
+          // betyder att aktiveringens avi-jobb aldrig blev av (#58). Dagens text
+          // ("skapas vid aktivering") är då direkt missvisande: aktiveringen HAR
+          // skett. Erbjud åtgärden i stället.
+          <div className="rounded-xl bg-amber-50 p-4">
+            <p className="text-[13px] text-amber-900">
+              Kontraktet är aktivt men saknar avier. Det betyder oftast att den automatiska
+              genereringen inte gick igenom vid aktiveringen.
+            </p>
+            {retriggerButton}
+          </div>
+        ) : (
+          <div className="rounded-xl bg-gray-50 p-4 text-[13px] text-gray-600">
+            Inga avier ännu. Vid aktivering skapas deposition (om belopp angivet) och första
+            hyresavi automatiskt och mejlas till hyresgästen.
+          </div>
+        )
       ) : (
         <div className="space-y-2">
           {initialNotices

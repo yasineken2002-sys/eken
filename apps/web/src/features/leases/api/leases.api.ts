@@ -171,6 +171,21 @@ export function createLeaseWithTenant(dto: CreateLeaseWithTenantInput): Promise<
   return post<LeaseDetail>('/leases/with-tenant', dto)
 }
 
+export interface InitialNoticesResult {
+  deposit: { id: string; noticeNumber: string } | null
+  firstRent: { id: string; noticeNumber: string } | null
+  mailed: boolean
+  skippedDeposit: boolean
+  skipDepositReason: 'succession' | 'deposit-finns' | 'depositionsavi-finns' | null
+}
+
+// Skapar aktiveringens avier manuellt när köandet fallerade (#58). Servern
+// härleder själv om depositionen ska hoppas över — klienten skickar inga
+// flaggor, just för att en felaktig flagga skulle kunna dubbeldebitera.
+export function createInitialNotices(leaseId: string): Promise<InitialNoticesResult> {
+  return post<InitialNoticesResult>(`/leases/${leaseId}/initial-notices`, {})
+}
+
 export function generateLeaseContract(
   leaseId: string,
 ): Promise<{ documentId: string; message: string }> {

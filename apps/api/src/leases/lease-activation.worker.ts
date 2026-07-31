@@ -101,7 +101,10 @@ export class LeaseActivationWorker {
           ? `Auto-generering misslyckades efter ${attempt} försök. Generera manuellt från kontraktssidan. Fel: ${err.message}`
           : job.data.type === 'send-welcome-mail'
             ? `Aktiveringsmejlet kunde inte skickas efter ${attempt} försök. Återskicka från hyresgäst-vyn. Fel: ${err.message}`
-            : `Deposition + första hyresavi kunde inte skapas automatiskt efter ${attempt} försök. Skapa manuellt från avisering-sidan. Fel: ${err.message}`
+            : // T5 C2b: tidigare hänvisade texten till "avisering-sidan", där det
+              // inte fanns någon sådan åtgärd. Nu finns knappen på kontraktet.
+              `Deposition + första hyresavi kunde inte skapas automatiskt efter ${attempt} försök. ` +
+              `Öppna kontraktet och välj "Skapa avierna nu" under Hyresavier. Fel: ${err.message}`
 
       await this.notifications.createForAllOrgUsers(organizationId, 'SYSTEM', title, message)
     } catch (notifyErr) {

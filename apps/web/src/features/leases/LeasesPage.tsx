@@ -740,7 +740,11 @@ function LeaseDetailPanel({
               för alla statusar — för DRAFT visas en informativ text om
               vad som händer vid aktivering. */}
           <div className="mt-6">
-            <LeaseNoticesSection leaseId={selected.id} startDate={selected.startDate} />
+            <LeaseNoticesSection
+              leaseId={selected.id}
+              startDate={selected.startDate}
+              status={selected.status}
+            />
           </div>
 
           {/* Deposition */}
