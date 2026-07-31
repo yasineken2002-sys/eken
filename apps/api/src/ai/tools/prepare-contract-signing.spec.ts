@@ -42,7 +42,7 @@ describe('AI-seam: prepare_contract_signing (prepare-only)', () => {
     const noop = {} as never
     const signing = { createSigningRequest } as never
     const audit = { logToolExecution: jest.fn().mockResolvedValue(undefined) } as never
-    // 23 positionsargument — signingService är den 23:e (sist).
+    // 24 positionsargument — accountingPeriods är den 24:e (sist, T5 PR1a).
     return new ToolExecutorService(
       noop,
       noop,
@@ -67,6 +67,7 @@ describe('AI-seam: prepare_contract_signing (prepare-only)', () => {
       audit, // 21 audit
       noop, // 22 documentDelivery
       signing, // 23 signingService
+      noop, // 24 accountingPeriods
     )
   }
 

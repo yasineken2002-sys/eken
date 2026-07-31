@@ -58,3 +58,48 @@ export function stockholmFiscalYear(instant: Date, fiscalYearStartMonth: number)
   const { year, month } = stockholmCivilDate(instant)
   return month < fiscalYearStartMonth ? year - 1 : year
 }
+
+/**
+ * UTC-ögonblicken som avgränsar en svensk kalendermånad: `[from, to)`.
+ *
+ * MOTSVARIGHETEN till stockholmCivilDate åt andra hållet. Den funktionen svarar
+ * "vilken period tillhör den här posten?" — den här svarar "vilka poster tillhör
+ * den här perioden?". Båda MÅSTE ge samma svar, annars kan en rapport eller
+ * kontroll räkna en post till en annan månad än den spärren placerade den i.
+ *
+ * Naiva `Date.UTC(year, month - 1, 1)` duger inte: en post skapad 22:30 UTC den
+ * 31 mars är 00:30 svensk tid den 1 april (sommartid) — den tillhör april enligt
+ * spärren, men ett UTC-fönster hade räknat den till mars.
+ *
+ * Offseten hämtas från IANA-data via `Intl` (samma skäl som ovan: Sverige växlar
+ * CET/CEST). Vi tar UTC-midnatt för dagen, läser den faktiska offseten just då
+ * och drar av den — månadsgränser ligger aldrig nära DST-omställningen (sista
+ * söndagen i mars/oktober), så den enkla formen räcker och är entydig.
+ */
+export function stockholmMonthBounds(year: number, month: number): { from: Date; to: Date } {
+  const boundary = (y: number, m: number): Date => {
+    const utcMidnight = Date.UTC(y, m - 1, 1)
+    return new Date(utcMidnight - stockholmOffsetMs(new Date(utcMidnight)))
+  }
+  const nextYear = month === 12 ? year + 1 : year
+  const nextMonth = month === 12 ? 1 : month + 1
+  return { from: boundary(year, month), to: boundary(nextYear, nextMonth) }
+}
+
+/** Sveriges UTC-offset (ms) vid ett givet ögonblick — +1h (CET) eller +2h (CEST). */
+function stockholmOffsetMs(instant: Date): number {
+  const { year, month, day } = stockholmCivilDate(instant)
+  const parts = STOCKHOLM_TIME.formatToParts(instant)
+  const get = (type: 'hour' | 'minute'): number => Number(parts.find((p) => p.type === type)!.value)
+  // Vad klockan är i Sverige, uttryckt som om det vore UTC, minus det faktiska
+  // UTC-ögonblicket = offseten.
+  const asUtc = Date.UTC(year, month - 1, day, get('hour'), get('minute'))
+  return asUtc - instant.getTime()
+}
+
+const STOCKHOLM_TIME = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Stockholm',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})

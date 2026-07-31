@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Controller,
   Get,
+  HttpCode,
   Post,
   Param,
   Query,
@@ -12,7 +13,10 @@ import type { FastifyReply } from 'fastify'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
+import { CurrentUser } from '../common/decorators/current-user.decorator'
+import type { JwtPayload } from '@eken/shared'
 import { AccountingService } from './accounting.service'
+import { AccountingPeriodService } from './accounting-period.service'
 
 // Validerar ISO-datum (YYYY-MM-DD) från query. Kastar 400 vid saknat/felaktigt
 // format så rapporterna aldrig kör mot ogiltiga Date-objekt (NaN-period).
@@ -50,11 +54,59 @@ function optionalUuid(value: string | undefined, field: string): string | undefi
 @UseGuards(JwtAuthGuard)
 @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
 export class AccountingController {
-  constructor(private readonly accountingService: AccountingService) {}
+  constructor(
+    private readonly accountingService: AccountingService,
+    private readonly periods: AccountingPeriodService,
+  ) {}
 
   @Get('accounts')
   async getAccounts(@OrgId() organizationId: string) {
     return this.accountingService.getAccounts(organizationId)
+  }
+
+  // ── Bokföringsperioder (T5 PR1a) ─────────────────────────────────────────
+  // Gör den befintliga ClosedAccountingPeriod-mekanismen nåbar utanför AI-
+  // assistenten. Ingen ny spärr: allocate() är fortsatt den enda punkt som
+  // hindrar en bokföring i en stängd period.
+
+  /** Översikt: vilka perioder är stängda, vilka är öppna, vad stängdes senast. */
+  @Get('periods')
+  async getPeriods(@OrgId() organizationId: string, @Query('months') months?: string) {
+    const parsed = months != null ? Number(months) : undefined
+    return this.periods.getOverview(
+      organizationId,
+      Number.isFinite(parsed) ? (parsed as number) : undefined,
+    )
+  }
+
+  /** Vad är ofullständigt i perioden? Visas innan operatören låser. */
+  @Get('periods/:year/:month/precheck')
+  async precheckPeriod(
+    @OrgId() organizationId: string,
+    @Param('year') year: string,
+    @Param('month') month: string,
+  ) {
+    return this.periods.precheck(organizationId, Number(year), Number(month))
+  }
+
+  /**
+   * Stänger perioden. Rollkravet upprepas i tjänsten (fail-closed chokepunkt,
+   * #194-mönstret) — dekoratorn här är bekvämlighet, inte skyddet. MANAGER
+   * utesluts medvetet: stängning är en redovisningshandling, inte förvaltning.
+   */
+  @Post('periods/:year/:month/close')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
+  @HttpCode(200)
+  async closePeriod(
+    @OrgId() organizationId: string,
+    @Param('year') year: string,
+    @Param('month') month: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.periods.closePeriod(organizationId, Number(year), Number(month), {
+      actorRole: user.role,
+      actorUserId: user.sub,
+    })
   }
 
   @Post('accounts/seed')

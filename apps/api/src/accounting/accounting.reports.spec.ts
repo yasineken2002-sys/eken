@@ -115,7 +115,8 @@ describe('AccountingController — query-validering', () => {
       getBalanceSheet: jest.fn().mockResolvedValue({ ok: true }),
       getVatReport: jest.fn().mockResolvedValue({ ok: true }),
     }
-    const controller = new AccountingController(service as never)
+    // PR1a: controllern tar även AccountingPeriodService (periodvyn).
+    const controller = new AccountingController(service as never, {} as never)
     return { controller, service }
   }
 

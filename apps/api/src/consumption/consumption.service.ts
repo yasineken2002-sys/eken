@@ -1,10 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  BadRequestException,
-  ConflictException,
-} from '@nestjs/common'
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
 import type {
   Meter,
   MeterStatus,
@@ -19,7 +13,7 @@ import type {
   Invoice,
 } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
-import { stockholmCivilDate } from '../common/time/stockholm-period'
+import { assertPeriodOpen } from '../accounting/closed-period'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { CreateMeterDto } from './dto/create-meter.dto'
 import { UpdateMeterDto } from './dto/update-meter.dto'
@@ -874,28 +868,17 @@ export class ConsumptionService {
     }
   }
 
+  // Bokslutsposten OCH dess vändning måste båda ligga i öppna perioder — annars
+  // skulle den ena halvan kunna bokföras och den andra fällas senare.
+  // Uppslaget delas med allocate/backfill via closed-period.ts (en sanningskälla,
+  // inklusive den subtila civil-tid-härledningen).
   private async assertPeriodOpen(
     organizationId: string,
     yearEndDate: Date,
     reversalDate: Date,
   ): Promise<void> {
-    // Svensk civil tid — perioden avgörs av datumet i Sverige, inte i UTC.
-    const periods = [yearEndDate, reversalDate].map((d) => {
-      const { year, month } = stockholmCivilDate(d)
-      return { year, month }
-    })
-    for (const p of periods) {
-      const closed = await this.prisma.closedAccountingPeriod.findUnique({
-        where: {
-          organizationId_year_month: { organizationId, year: p.year, month: p.month },
-        },
-        select: { id: true },
-      })
-      if (closed) {
-        throw new ConflictException(
-          `Bokföringsperioden ${p.year}-${String(p.month).padStart(2, '0')} är stängd — bokslutspost kan inte skapas`,
-        )
-      }
+    for (const date of [yearEndDate, reversalDate]) {
+      await assertPeriodOpen(this.prisma, organizationId, date, 'bokslutspost kan inte skapas')
     }
   }
 

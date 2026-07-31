@@ -1,6 +1,6 @@
 import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import type { InvoiceStatus, LeaseStatus } from '@prisma/client'
+import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { stockholmCivilDate } from '../../common/time/stockholm-period'
 import { InvoicesService, toPaymentMethod } from '../../invoices/invoices.service'
@@ -13,6 +13,7 @@ import { normalizeEmail } from '../../common/utils/normalize-email'
 import { PropertiesService } from '../../properties/properties.service'
 import { UnitsService } from '../../units/units.service'
 import { AccountingService } from '../../accounting/accounting.service'
+import { AccountingPeriodService } from '../../accounting/accounting-period.service'
 import { VerifikationsnummerService } from '../../accounting/verifikationsnummer.service'
 import { MailService } from '../../mail/mail.service'
 import { MaintenanceService } from '../../maintenance/maintenance.service'
@@ -346,6 +347,11 @@ export class ToolExecutorService {
     // S2 AI-seam: AI får FÖRBEREDA en signering (createSigningRequest), aldrig
     // fullborda den. Ingen refresh/seal-metod exponeras här.
     private readonly signingService: SigningService,
+    // T5 PR1a: period-stängningen delas med REST/UI-vägen. Medvetet SIST i
+    // konstruktorn — befintliga specar konstruerar tjänsten positionellt, och
+    // en parameter insatt i mitten hade tyst förskjutit alla efterföljande
+    // beroenden hos dem.
+    private readonly accountingPeriods: AccountingPeriodService,
   ) {}
 
   /**
@@ -3281,63 +3287,43 @@ export class ToolExecutorService {
           if (!Number.isFinite(month) || month < 1 || month > 12 || !Number.isFinite(year)) {
             return { success: false, message: 'Ogiltig månad eller år' }
           }
-          const existing = await this.prisma.closedAccountingPeriod.findFirst({
-            where: { organizationId, month, year },
-          })
-          if (existing) {
+          // T5 PR1a: stängningen bor numera i AccountingPeriodService, som även
+          // REST/UI-vägen använder — EN stängningsväg, inte två som kan glida
+          // isär. Verktyget får därmed också förhandskontrollen: ett obalanserat
+          // verifikat i perioden BLOCKERAR stängningen (ConflictException),
+          // övriga upptäckter följer med som varningar i svaret.
+          try {
+            const closed = await this.accountingPeriods.closePeriod(organizationId, year, month, {
+              // userRole är en sträng här; AI-lagret har redan grindat verktyget
+              // till ACCOUNTANT/ADMIN/OWNER (ACCOUNTING_ONLY_ACTIONS), men
+              // tjänsten grindar om — fail-closed på okänt värde.
+              actorRole: userRole as UserRole,
+              actorUserId: userId,
+            })
+            const warnings = closed.checks.filter((c) => c.severity === 'warning')
+            return {
+              success: true,
+              data: closed.summary,
+              message:
+                `Period ${year}-${String(month).padStart(2, '0')} stängd. ` +
+                `Intäkter ${formatAmount(closed.summary.revenue)} kr, kostnader ` +
+                `${formatAmount(closed.summary.expenses)} kr, resultat ` +
+                `${formatAmount(closed.summary.result)} kr.` +
+                (warnings.length > 0
+                  ? ` Observera: ${warnings.map((w) => w.message).join(' ')}`
+                  : ''),
+              nextSteps: [
+                'Använd get_vat_report för att förbereda momsdeklarationen',
+                'Använd export_sie4 för att skicka bokföringen till revisorn',
+              ],
+            }
+          } catch (err) {
+            // Redan stängd, blockerande fynd eller otillräcklig roll → tala om
+            // varför i klartext i stället för att låta felet bubbla som ett kast.
             return {
               success: false,
-              message: `Perioden ${year}-${String(month).padStart(2, '0')} är redan stängd (stängdes ${existing.closedAt.toISOString().slice(0, 10)}).`,
+              message: err instanceof Error ? err.message : 'Perioden kunde inte stängas',
             }
-          }
-          const from = new Date(Date.UTC(year, month - 1, 1))
-          const to = new Date(Date.UTC(year, month, 1))
-          // Generera periodrapport innan låsning
-          const lines = await this.prisma.journalEntryLine.findMany({
-            where: {
-              journalEntry: {
-                organizationId,
-                date: { gte: from, lt: to },
-              },
-            },
-            include: { account: true },
-          })
-          let revenue = 0
-          let expenses = 0
-          for (const l of lines) {
-            const num = l.account.number
-            const debit = Number(l.debit ?? 0)
-            const credit = Number(l.credit ?? 0)
-            if (num >= 3000 && num < 4000) revenue += credit - debit
-            else if (num >= 5000 && num < 9000) expenses += debit - credit
-          }
-          const result = revenue - expenses
-          const summary = {
-            month,
-            year,
-            revenue,
-            expenses,
-            result,
-            entriesCount: new Set(lines.map((l) => l.journalEntryId)).size,
-            generatedAt: new Date().toISOString(),
-          }
-          await this.prisma.closedAccountingPeriod.create({
-            data: {
-              organizationId,
-              month,
-              year,
-              closedById: userId,
-              summary: summary as unknown as Prisma.InputJsonValue,
-            },
-          })
-          return {
-            success: true,
-            data: summary,
-            message: `Period ${year}-${String(month).padStart(2, '0')} stängd. Intäkter ${formatAmount(revenue)} kr, kostnader ${formatAmount(expenses)} kr, resultat ${formatAmount(result)} kr.`,
-            nextSteps: [
-              'Använd get_vat_report för att förbereda momsdeklarationen',
-              'Använd export_sie4 för att skicka bokföringen till revisorn',
-            ],
           }
         }
 
