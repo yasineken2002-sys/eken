@@ -236,8 +236,18 @@ export class ContractScanBatchService {
       // PENDING (bumpBatchToScanning körs av workern). Markera den FAILED direkt
       // så den inte ser ut att pågå för evigt.
       if (failedRows === batch.rows.length) {
+        // Räknarna sätts HÄR och inte av recomputeBatch: den anropas bara av
+        // workern, och ingen worker rör en rad som aldrig kom in i kön. Dessutom
+        // returnerar recomputeBatch tidigt för terminala statusar, så en batch
+        // som just satts FAILED kan aldrig självläka räknarna senare — utan
+        // detta hade vyn visat "0 misslyckade" på en FAILED batch där ALLA
+        // rader misslyckats. (Vid partiellt fel självläker det: de köade
+        // radernas recomputeBatch räknar om från faktiskt DB-state.)
         await this.prisma.contractImportBatch
-          .update({ where: { id: batch.id }, data: { status: 'FAILED' } })
+          .update({
+            where: { id: batch.id },
+            data: { status: 'FAILED', failedRows, scannedRows: 0 },
+          })
           .catch((err: unknown) =>
             this.logger.error(`Kunde inte markera batch ${batch.id} som FAILED: ${String(err)}`),
           )

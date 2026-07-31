@@ -253,6 +253,11 @@ async function settleLate(inflight: Promise<string>, graceMs: number): Promise<b
         () => true,
         () => false,
       ),
+      // Medvetet INTE .unref():ad — timern ska hålla beskedet vid liv även om
+      // event-loopen annars vore tom. Ofarligt i dag (Fastify-lyssnaren håller
+      // ändå loopen igång och main.ts registrerar ingen SIGTERM-dränering); om
+      // enableShutdownHooks() någon gång läggs till bör detta ses över så en
+      // graceful shutdown inte väntar ut hela graceMs.
       new Promise<boolean>((resolve) => {
         timer = setTimeout(() => resolve(false), graceMs)
       }),

@@ -129,12 +129,14 @@ describe('T5 C2a · aktivering när KÖANDET fallerar (#58)', () => {
 
     const message = (notifications.createForAllOrgUsers.mock.calls[0] as string[])[3] as string
     expect(message).toContain('kunde inte bekräftas som köade')
-    expect(message).toContain('Kontrollera avisering-sidan')
     // Får INTE påstå något som blir osant när jobbet landade efter timeouten.
     expect(message).not.toMatch(/kunde inte skapas/)
-    // Åtgärden ska vara sann i dag: hyresmånader går via backfill-kön, men
-    // depositionsavin har ingen egen knapp (det är C2b).
-    expect(message).toContain('Att efterdebitera')
+    // Åtgärden ska peka på vägar som FAKTISKT finns i UI:t i dag: hyresavin via
+    // sidan Efterdebitering (backfill-kön hittar den saknade första månaden),
+    // depositionen manuellt under Depositioner. Ingen egen retrigger-knapp
+    // finns ännu — det är C2b.
+    expect(message).toContain('Efterdebitering')
+    expect(message).toContain('Depositioner')
   })
 
   it('C: notisen bär INGEN teknisk feltext — hyresvärden är inte utvecklare', async () => {

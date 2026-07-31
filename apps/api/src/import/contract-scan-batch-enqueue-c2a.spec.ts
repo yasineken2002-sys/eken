@@ -117,9 +117,12 @@ describe('T5 C2a · contract-scan-batch köar rad för rad med isolering', () =>
     const batch = await service.createBatch(files, 'org-1', 'user-1')
 
     expect(prisma.contractImportRow.update).toHaveBeenCalledTimes(3)
+    // Räknarna MÅSTE sättas i samma skrivning: recomputeBatch körs bara av
+    // workern (som aldrig ser dessa rader) och returnerar dessutom tidigt för
+    // terminala statusar → annars visar vyn "0 misslyckade" på en FAILED batch.
     expect(prisma.contractImportBatch.update).toHaveBeenCalledWith({
       where: { id: 'batch-1' },
-      data: { status: 'FAILED' },
+      data: { status: 'FAILED', failedRows: 3, scannedRows: 0 },
     })
     expect(batch).toMatchObject({ status: 'FAILED', failedRows: 3 })
   })
