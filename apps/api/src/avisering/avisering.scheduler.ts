@@ -78,6 +78,7 @@ export class AviseringScheduler {
         skipped += result.skipped
         failed += result.failed
 
+        let sendFailed = 0
         if (result.notices.length > 0) {
           // Köa utskicket direkt så hyresgästerna har max tid på sig.
           const sendRes = await this.avisering.sendNotices(
@@ -85,14 +86,19 @@ export class AviseringScheduler {
             result.notices.map((n) => n.id),
           )
           queued += sendRes.queued
+          // T5 C2b: sendNotices kastar inte längre vid kö-fel (enqueueSafely
+          // larmar per avi i stället). Rapportera antalet här så cron-loggen
+          // förblir sann — avierna ÄR skapade, det är utskicket som uteblev.
+          sendFailed = sendRes.failed
         }
 
         // T5 A1 (#54): per-lease-fel (failed>0) betyder att enskilda leases
         // hoppades men resten av orgen fortsatte. Lyft som WARN så det syns —
         // full Sentry-täckning för alla cron kommer i T5 B1.
-        const level = result.failed > 0 ? 'warn' : 'log'
+        const level = result.failed > 0 || sendFailed > 0 ? 'warn' : 'log'
         this.logger[level](
-          `[avisering-cron] org=${org.name} created=${result.created} skipped=${result.skipped} failed=${result.failed}`,
+          `[avisering-cron] org=${org.name} created=${result.created} skipped=${result.skipped} ` +
+            `failed=${result.failed}${sendFailed > 0 ? ` ej-köade-utskick=${sendFailed}` : ''}`,
         )
       } catch (err) {
         this.logger.error(

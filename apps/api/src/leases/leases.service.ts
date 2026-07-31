@@ -745,9 +745,8 @@ export class LeasesService {
         'SYSTEM',
         INITIAL_NOTICES_FAILED_TITLE,
         'Deposition + första hyresavi kunde inte bekräftas som köade när kontraktet aktiverades — ' +
-          'jobbkön svarade inte. Kontrollera Hyresavier: saknas hyresavin kan den skapas på sidan ' +
-          'Efterdebitering. Saknas depositionsavin behöver depositionen läggas upp manuellt under ' +
-          'Depositioner.',
+          'jobbkön svarade inte. Öppna kontraktet och kontrollera Hyresavier; saknas avierna kan ' +
+          'du skapa dem där med "Skapa avierna nu".',
       )
     } catch (notifyErr) {
       // Notisen är best-effort; Sentry-larmet från enqueueSafely har redan gått.

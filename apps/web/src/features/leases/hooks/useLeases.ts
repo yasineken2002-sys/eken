@@ -9,6 +9,7 @@ import {
   createLeaseWithTenant,
   terminateLease,
   renewLease,
+  createInitialNotices,
 } from '../api/leases.api'
 import type {
   CreateLeaseInput,
@@ -69,6 +70,22 @@ export function useTransitionLeaseStatus() {
       void queryClient.invalidateQueries({ queryKey: LEASES_LIST })
       void queryClient.invalidateQueries({ queryKey: LEASE_DETAIL(variables.id) })
     },
+  })
+}
+
+// Manuell retrigger av aktiveringens avier (#58). Invaliderar avi-cachen så
+// LeaseNoticesSection visar de nyskapade avierna direkt.
+export function useCreateInitialNotices() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (leaseId: string) => createInitialNotices(leaseId),
+    onSuccess: (_data, leaseId) => {
+      void queryClient.invalidateQueries({ queryKey: ['avisering'] })
+      void queryClient.invalidateQueries({ queryKey: LEASE_DETAIL(leaseId) })
+    },
+    // Anroparen visar en kontextuell toast (inkl. när depositionen medvetet
+    // hoppades över) i sin onError/onSuccess.
+    meta: { handlesOwnError: true },
   })
 }
 

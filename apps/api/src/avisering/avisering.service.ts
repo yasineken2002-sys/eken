@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   InternalServerErrorException,
 } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -12,6 +13,8 @@ import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
+import { QUEUE_PDF } from '../pdf-jobs/pdf.types'
+import { enqueueSafely } from '../common/queue/enqueue-safety'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { ConsumptionService } from '../consumption/consumption.service'
 import { MiscChargeService } from '../misc-charges/misc-charge.service'
@@ -25,6 +28,7 @@ import {
   RentCollectionStage,
   RentNoticeStatus,
   RentNoticeType,
+  UserRole,
 } from '@prisma/client'
 import type { UnitType } from '@prisma/client'
 import type { RentNotice } from '@prisma/client'
@@ -520,6 +524,101 @@ export class AviseringService {
     return notice
   }
 
+  // ── T5 C2b (#58) — MANUELL retrigger av aktiveringens avier ───────────────
+  //
+  // Aktiveringen köar `create-initial-notices`. Om KÖANDET fallerar (Redis nere/
+  // frusen) blir avierna aldrig av och hyresgästen faktureras aldrig — C2a larmar
+  // om det, men fram tills nu fanns ingen åtgärd: `createInitialNoticesForLease`
+  // hade exakt en anropare (workern). Det här är den saknade åtgärden.
+  //
+  // SYNKRON, inte köad. En köad retrigger vore en attrapp: jobben har statiska
+  // jobId (`initial-notices-<leaseId>`) och `removeOnFail: age 7d`, så ett
+  // permanent misslyckat jobb BLOCKERAR sitt eget id i en vecka. Uppmätt mot
+  // riktig bull: `add` med samma jobId efter ett permanent fail ger waiting=0 och
+  // jobbet står kvar `failed` — anroparen får 200 utan att något händer. Motorn
+  // är dessutom idempotent (P2002 → hämtar befintlig) och atomisk (A1: avi +
+  // verifikat i samma tx), så den är säker att köra rakt av och ger ett SANT
+  // svar direkt i stället för ett jobb-id att gissa om.
+  //
+  // 🔴 PENGASKYDD — flaggorna HÄRLEDS ur leasets tillstånd, aldrig från
+  // anroparen. Ett förnyat avtal (succession) är ett NYTT lease-id vars
+  // deposition re-pekats från föregångaren (T1.3, `Deposit.leaseId` @unique) och
+  // vars `depositAmount` följt med i carry-fälten. Ett blint `skipDeposit:false`
+  // träffar därför INGEN P2002 (nyckeln (leaseId, year, month, DEPOSIT) är ny)
+  // → en ANDRA depositionsavi skapas och `ensureDepositForNotice` bokför en
+  // ANDRA deposition (1510/2890) = hyresgästen krävs på deposition två gånger.
+  // Tre oberoende signaler får därför spärra depositionen; vilken som helst
+  // räcker (fail-safe åt "kräv inte pengar igen").
+  async retriggerInitialNotices(
+    leaseId: string,
+    organizationId: string,
+    opts: { actorRole?: UserRole } = {},
+  ): Promise<{
+    deposit: RentNotice | null
+    firstRent: RentNotice | null
+    mailed: boolean
+    skippedDeposit: boolean
+    skipDepositReason: 'succession' | 'deposit-finns' | 'depositionsavi-finns' | null
+  }> {
+    // Rollgrind på TJÄNSTEN (chokepunkten), inte bara i controllern — speglar
+    // RentBackfillService (#194). Fail-closed: okänd/saknad roll nekas.
+    const allowed: UserRole[] = [UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER]
+    if (!opts.actorRole || !allowed.includes(opts.actorRole)) {
+      throw new ForbiddenException('Du saknar behörighet att skapa avierna för kontraktet')
+    }
+
+    const lease = await this.prisma.lease.findFirst({
+      where: { id: leaseId, organizationId },
+      select: { id: true, status: true, startDate: true, tenancyStartDate: true },
+    })
+    if (!lease) throw new NotFoundException('Kontraktet hittades inte')
+    if (lease.status !== 'ACTIVE') {
+      throw new BadRequestException(
+        'Avierna kan bara skapas för ett aktivt kontrakt. Aktivera kontraktet först.',
+      )
+    }
+
+    // Signal 1 — kontinuitetsmarkören (T1.3b): en successor ärver föregångarens
+    // tenancyStartDate medan startDate nollställs till oldEnd+1, så
+    // tenancyStartDate < startDate ⇔ förnyelse. Styr BÅDE depositionsspärren och
+    // gap-avins förfallodagsregel (JB 12 kap 20 § 2 st — hyresgästen bor redan
+    // där, inflyttningsoffseten är fel klassificering).
+    const succession = lease.tenancyStartDate.getTime() < lease.startDate.getTime()
+
+    // Signal 2 — depositionen är redan uttagen (eller re-pekad hit vid förnyelse).
+    const existingDeposit = await this.prisma.deposit.findFirst({
+      where: { leaseId: lease.id, organizationId },
+      select: { id: true },
+    })
+
+    // Signal 3 — en depositionsavi finns redan för kontraktet, oavsett period.
+    // Motorns egen P2002-idempotens täcker bara (leaseId, year, month, DEPOSIT);
+    // den här bredare kontrollen kostar en query och stänger resten.
+    const existingDepositNotice = await this.prisma.rentNotice.findFirst({
+      where: { leaseId: lease.id, organizationId, type: RentNoticeType.DEPOSIT },
+      select: { id: true },
+    })
+
+    const skipDepositReason = succession
+      ? ('succession' as const)
+      : existingDeposit
+        ? ('deposit-finns' as const)
+        : existingDepositNotice
+          ? ('depositionsavi-finns' as const)
+          : null
+    const skipDeposit = skipDepositReason !== null
+
+    this.logger.log(
+      `[Avisering] Manuell retrigger av initial-avier för lease ${lease.id} ` +
+        `(succession=${succession}, skipDeposit=${skipDeposit}${
+          skipDepositReason ? ` [${skipDepositReason}]` : ''
+        })`,
+    )
+
+    const result = await this.createInitialNoticesForLease(lease.id, { skipDeposit, succession })
+    return { ...result, skippedDeposit: skipDeposit, skipDepositReason }
+  }
+
   // ── Auto-skapa avier vid lease-aktivering (DRAFT → ACTIVE) ────────────────
   // Skapar två avier vid behov: deposition (om depositAmount > 0) och första
   // hyresavi (proportionellt om tillträde mitt i månaden). Båda får samma
@@ -737,17 +836,33 @@ export class AviseringService {
   async sendNotices(
     orgId: string,
     noticeIds: string[],
-  ): Promise<{ queued: number; jobIds: string[] }> {
+  ): Promise<{ queued: number; failed: number; jobIds: string[] }> {
     const jobIds: string[] = []
+    let failed = 0
     for (const noticeId of noticeIds) {
-      const jobId = await this.pdfQueue.enqueue({
-        kind: 'avisering-send',
-        organizationId: orgId,
-        noticeId,
-      })
-      jobIds.push(jobId)
+      // T5 C2b: samma klass som #58 och oadresserad av C2a. Anropas den här
+      // metoden från createInitialNoticesForLease ligger den i en try/catch som
+      // sväljer till logger.warn → avierna skapas men mejlet köas aldrig, avierna
+      // står kvar PENDING och ingen larmas. enqueueSafely larmar (Sentry) och
+      // golvar väntetiden. Per avi, så en trasig avi inte tystar de övriga.
+      const outcome = await enqueueSafely(
+        () =>
+          this.pdfQueue.enqueue({
+            kind: 'avisering-send',
+            organizationId: orgId,
+            noticeId,
+          }),
+        {
+          queue: QUEUE_PDF,
+          jobType: 'avisering-send',
+          organizationId: orgId,
+          logger: this.logger,
+        },
+      )
+      if (outcome.status === 'ok') jobIds.push(outcome.jobId)
+      else failed++
     }
-    return { queued: jobIds.length, jobIds }
+    return { queued: jobIds.length, failed, jobIds }
   }
 
   /**
