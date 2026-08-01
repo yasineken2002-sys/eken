@@ -228,11 +228,18 @@ export class CollectionExportService {
    * inkassobolag genom externt system (t.ex. Vismas portal). Vi pausar
    * påminnelser och loggar att det är gjort.
    */
+  /**
+   * BOKFÖR INGENTING. Fordran finns kvar — den drivs bara in av någon annan.
+   * En eventuell nedskrivning/konstaterad kundförlust bokförs separat och
+   * senare, i RentBadDebtService. Metoden sätter status, pausar påminnelser och
+   * skriver ett append-only InvoiceEvent.
+   */
   async markSentToCollection(
     invoiceId: string,
     organizationId: string,
     note?: string,
     actorRole?: UserRole,
+    actorId?: string,
   ): Promise<{ id: string; status: 'SENT_TO_COLLECTION' }> {
     assertMayActOnCollections(actorRole, 'markera som skickad till inkasso')
     const invoice = await this.prisma.invoice.findFirst({
@@ -253,11 +260,18 @@ export class CollectionExportService {
         remindersPausedReason: note ?? 'Skickad till externt inkassobolag',
       },
     })
+    // Av de fem grindade handlingarna är detta den ENDA som är en genuint
+    // manuell användarhandling — export/bulk-export körs av workern och loggas
+    // som SYSTEM. Den skrev tidigare actorType USER men lämnade actorId tomt,
+    // så loggen sa "en människa gjorde detta" utan att säga vem. Det är precis
+    // den fråga som ställs först om en hyresgäst bestrider en
+    // inkassoöverlämning. actorId trådas därför in från den inloggade aktören.
     await this.prisma.invoiceEvent.create({
       data: {
         invoiceId: invoice.id,
         type: 'DEBT_COLLECTION',
         actorType: 'USER',
+        ...(actorId ? { actorId } : {}),
         actorLabel: 'Manuell markering',
         payload: note ? { note } : {},
       },

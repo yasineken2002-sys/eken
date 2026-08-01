@@ -52,7 +52,7 @@ function makeInvoiceService() {
     {} as never,
     { enqueue } as never,
   )
-  return { svc, enqueue, update }
+  return { svc, enqueue, update, prisma }
 }
 
 function makeNoticeService() {
@@ -169,11 +169,44 @@ describe('R1 · behörighetsgränsen mot inkasso', () => {
     })
   })
 
-  describe('Worker-vägarna är MEDVETET ogrindad', () => {
-    it('exportForInvoice/exportBulk/exportForNotice tar ingen roll', () => {
-      // De anropas av PdfWorker efter att jobbet redan köats — där finns ingen
-      // aktör att grinda på, och grinden har redan passerats vid köandet. En
-      // grind här hade brutit workern, inte skyddat något.
+  describe('Spårbarheten: VEM lämnade över skulden (FAR HIGH)', () => {
+    it('markSentToCollection skriver actorId, inte bara "en människa"', async () => {
+      const { svc, prisma } = makeInvoiceService()
+      await svc.markSentToCollection('inv-1', 'org-1', 'note', UserRole.ACCOUNTANT, 'user-42')
+
+      const event = prisma.invoiceEvent.create.mock.calls[0]![0] as {
+        data: Record<string, unknown>
+      }
+      expect(event.data).toMatchObject({
+        type: 'DEBT_COLLECTION',
+        actorType: 'USER',
+        actorId: 'user-42',
+      })
+    })
+
+    it('utan känd aktör sätts INGEN actorId — vi hittar inte på en', async () => {
+      const { svc, prisma } = makeInvoiceService()
+      await svc.markSentToCollection('inv-1', 'org-1', undefined, UserRole.OWNER)
+
+      const event = prisma.invoiceEvent.create.mock.calls[0]![0] as {
+        data: Record<string, unknown>
+      }
+      expect(event.data).not.toHaveProperty('actorId')
+    })
+  })
+
+  describe('Render-vägarna tar ingen roll — och VARFÖR det är säkert', () => {
+    it('exportForInvoice/exportForNotice har ingen rollparameter', () => {
+      // De anropas av PdfWorker efter att jobbet köats. Där finns ingen aktör,
+      // och grinden passerades redan vid köandet — en grind här hade brutit
+      // workern utan att skydda något.
+      //
+      // MEN: PdfWorker är inte enda anroparen. AI-verktyget
+      // `export_for_collection` anropar exportForInvoice SYNKRONT, förbi kön och
+      // därmed förbi enqueue-grinden (FAR-fynd). Där FINNS en aktör, så den
+      // vägen grindas vid sitt eget anropsställe i tool-executor.service.ts med
+      // samma delade assertMayActOnCollections. Påståendet "ingen aktör finns"
+      // gäller alltså PdfWorker, inte render-metoderna i allmänhet.
       expect(CollectionExportService.prototype.exportForInvoice.length).toBeLessThanOrEqual(3)
       expect(RentCollectionExportService.prototype.exportForNotice.length).toBeLessThanOrEqual(3)
     })

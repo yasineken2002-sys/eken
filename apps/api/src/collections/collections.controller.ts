@@ -114,7 +114,13 @@ export class CollectionsController {
     @OrgId() organizationId: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.exportService.markSentToCollection(invoiceId, organizationId, dto.note, user.role)
+    return this.exportService.markSentToCollection(
+      invoiceId,
+      organizationId,
+      dto.note,
+      user.role,
+      user.sub,
+    )
   }
 
   @Patch('reminders/:invoiceId/pause')

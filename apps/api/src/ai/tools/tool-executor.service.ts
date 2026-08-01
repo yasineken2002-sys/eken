@@ -15,6 +15,7 @@ import { AccountingService } from '../../accounting/accounting.service'
 import { AccountingPeriodService } from '../../accounting/accounting-period.service'
 import { VerifikationsnummerService } from '../../accounting/verifikationsnummer.service'
 import { isPeriodClosed, periodKeyOf, periodOfDate } from '../../accounting/closed-period'
+import { assertMayActOnCollections } from '../../common/authz/collections-authz'
 import { MailService } from '../../mail/mail.service'
 import { MaintenanceService } from '../../maintenance/maintenance.service'
 import { AviseringService } from '../../avisering/avisering.service'
@@ -3377,6 +3378,13 @@ export class ToolExecutorService {
           if (!invoiceId) {
             return { success: false, message: 'invoiceId krävs' }
           }
+          // CHOKEPUNKT: till skillnad från HTTP-vägen köar AI:t inte jobbet utan
+          // anropar render-vägen SYNKRONT (svaret bär en downloadUrl). Den vägen
+          // passerar därför INTE enqueue-grinden. AI-lagrets
+          // ACCOUNTING_ONLY_ACTIONS nekar redan MANAGER här, men det är en
+          // separat lista — och två listor som kan glida isär är precis det R1
+          // finns till för att stänga. Samma delade grind appliceras därför här.
+          assertMayActOnCollections(userRole as UserRole, 'exportera underlag till inkasso')
           const result = await this.collectionExport.exportForInvoice(invoiceId, organizationId)
           return {
             success: true,
@@ -3405,6 +3413,7 @@ export class ToolExecutorService {
             organizationId,
             note,
             userRole as UserRole,
+            userId,
           )
           return {
             success: true,

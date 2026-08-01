@@ -36,6 +36,18 @@ import { UserRole } from '@prisma/client'
  * Samma gräns drar AI-lagret redan (export/mark-sent i ACCOUNTING_ONLY_ACTIONS,
  * pause/resume i MANAGER_ALLOWED_ACTIONS). R1 rättar HTTP-vägen till att säga
  * samma sak, i stället för att låta de två lagren vara oense.
+ *
+ * ── Var grinden anropas ──────────────────────────────────────────────────────
+ *
+ *  • HTTP: i tjänstens enqueue-metoder (CollectionExportService,
+ *    RentCollectionExportService) — innan något jobb köas.
+ *  • AI: vid anropsstället i tool-executor, eftersom AI-verktyget
+ *    `export_for_collection` anropar render-vägen SYNKRONT och alltså inte
+ *    passerar enqueue-grinden. AI-lagrets ACCOUNTING_ONLY_ACTIONS nekar redan
+ *    MANAGER där, men det är en separat lista — och två listor som kan glida
+ *    isär är precis vad R1 finns till för att stänga.
+ *  • PdfWorker: INTE grindad, medvetet. Den kör efter köandet, har ingen aktör,
+ *    och grinden har redan passerats.
  */
 
 /**
