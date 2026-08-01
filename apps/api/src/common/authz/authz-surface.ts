@@ -251,9 +251,14 @@ export interface CrossLayerOperation {
  *
  * Listan är avsiktligt kort: bara BINDANDE handlingar har chokepunkt i tjänsten.
  */
-/** Delad motivering för de nio förvaltningsoperationerna nedan. */
-const OBESLUTAD_FORVALTNINGSGRANS =
-  'OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT; AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är ett produktbeslut om vad en bokförare respektive förvaltare ska få göra, och det hör till rollarbetet — spårat i #269. Posten finns här för att skillnaden ska vara bevakad under tiden: ändras något lager failar testet i stället för att glida vidare.'
+/**
+ * Delad motivering för de nio förvaltningsoperationerna nedan.
+ *
+ * BESLUTAT 2026-08-01: AI-lagret ska rätta sig efter HTTP, inte tvärtom.
+ * MANAGER ja, ACCOUNTANT nej.
+ */
+const FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD =
+  'BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska inte kunna skapa ett hyresavtal via assistenten som API:et nekar. Implementationen ligger i #269. Tills dess står posten kvar som declared, för skillnaden FINNS fortfarande — den är känd och bevakad, inte avsedd.'
 
 export const CROSS_LAYER_OPERATIONS: readonly CrossLayerOperation[] = [
   {
@@ -310,11 +315,17 @@ export const CROSS_LAYER_OPERATIONS: readonly CrossLayerOperation[] = [
   // felanmälan i webben men inte genom att be assistenten, och en bokförare
   // tvärtom.
   //
-  // De ligger som `declared` och INTE `must-agree`, av två skäl. `must-agree`
-  // hade tvingat fram policybeslutet nu, i en PR som uttryckligen bara bygger
-  // bevakning. Och skillnaden ÄR verklig — den ska stå skriven, inte döljas.
-  // Men "deklarerad" betyder här "känd och bevakad", inte "avsedd": vilken sida
-  // som har rätt är obestämt och hör till rollarbetet (#269, R3/R4).
+  // BESLUTET ÄR FATTAT (2026-08-01): AI-lagret ska rätta sig efter HTTP.
+  // MANAGER ja, ACCOUNTANT nej. Att skapa fastigheter och avtal och att byta
+  // avtalsstatus är förvaltning, inte ekonomi — samma linje som R1 drog för
+  // inkasso. Genomförandet (lägg verktygen i MANAGER_ALLOWED_ACTIONS och stäng
+  // dem för ACCOUNTANT) är eget arbete och ligger i #269.
+  //
+  // De står kvar som `declared` tills dess, för skillnaden FINNS fortfarande.
+  // `must-agree` här och nu hade gjort sviten röd utan att någon rättat något —
+  // ett test som failar på en känd, planerad skillnad slutar man läsa. Den dagen
+  // #269 landar ska de nio bytas till `must-agree`, och då bevakar testet att de
+  // aldrig glider isär igen.
   //
   // Att lämna dem utanför kartan hade varit inkonsekvent — verktygets viktigaste
   // fynd utanför verktygets starkaste detektor.
@@ -323,63 +334,63 @@ export const CROSS_LAYER_OPERATIONS: readonly CrossLayerOperation[] = [
     endpoints: ['POST /properties'],
     serviceGate: null,
     aiTool: 'create_property',
-    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
   },
   {
     operation: 'Skapa en lägenhet eller lokal',
     endpoints: ['POST /units'],
     serviceGate: null,
     aiTool: 'create_unit',
-    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
   },
   {
     operation: 'Skapa ett hyresavtal',
     endpoints: ['POST /leases'],
     serviceGate: null,
     aiTool: 'create_lease',
-    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
   },
   {
     operation: 'Skapa hyresgäst och avtal i ett steg',
     endpoints: ['POST /leases/with-tenant'],
     serviceGate: null,
     aiTool: 'create_tenant_and_lease',
-    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
   },
   {
     operation: 'Uppdatera en hyresgäst',
     endpoints: ['PATCH /tenants/:id'],
     serviceGate: null,
     aiTool: 'update_tenant',
-    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
   },
   {
     operation: 'Byta status på ett hyresavtal',
     endpoints: ['PATCH /leases/:id/status'],
     serviceGate: null,
     aiTool: 'transition_lease_status',
-    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
   },
   {
     operation: 'Skapa en felanmälan',
     endpoints: ['POST /maintenance'],
     serviceGate: null,
     aiTool: 'create_maintenance_ticket',
-    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
   },
   {
     operation: 'Uppdatera en felanmälans status',
     endpoints: ['PATCH /maintenance/:id'],
     serviceGate: null,
     aiTool: 'update_maintenance_status',
-    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
   },
   {
     operation: 'Skapa en besiktning',
     endpoints: ['POST /inspections'],
     serviceGate: null,
     aiTool: 'create_inspection',
-    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
   },
   {
     operation: 'Öppna en stängd period igen',

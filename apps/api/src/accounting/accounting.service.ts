@@ -61,6 +61,10 @@ interface JournalFilters {
  * MANAGER utesluts medvetet — att bokföra en rättelse är en redovisningshandling,
  * inte förvaltning. VIEWER stängs ute redan av controllerns klassgrind.
  *
+ * ADMIN står med av samma medvetna skäl som i `CLOSE_ROLES` — se motiveringen
+ * där (beslut 2026-08-01: kalibrerat mot ett kundsegment där ägare och
+ * administratör är samma person, omprövas om större organisationer tillkommer).
+ *
  * Exporterad av samma skäl som `CLOSE_ROLES`: `accounting-role-gates.spec.ts`
  * kräver att controllerns `@Roles`-lista säger exakt samma sak, så att de två
  * lagren inte kan glida isär obemärkt.
