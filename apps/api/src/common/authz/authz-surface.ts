@@ -117,6 +117,19 @@ export function collectEndpointRoles(srcDir: string): EndpointRoles[] {
         continue
       }
       if (t.startsWith('@')) {
+        // Vakt VID KÄLLAN: parsern läser en rad i taget. En `@Roles(` utan
+        // avslutande parentes på samma rad betyder att dekoratorn brutits, och
+        // då kan ingenting nedanför lita på tolkningen — vare sig metodens egen
+        // lista eller klassens. Att fånga det här, före all annan logik, täcker
+        // båda: en metodlista som annars gett skräp, och en KLASSlista som
+        // annars tyst hade smittat varje endpoint i filen.
+        if (/^@Roles\(/.test(t) && !t.includes(')')) {
+          throw new Error(
+            `authz-surface: flerradig @Roles(...) i ${file}. Parsern läser en rad i taget ` +
+              'och kan inte tolka den. Slå ihop dekoratorn till en rad, eller utöka parsern ' +
+              'till att ackumulera fram till matchande parentes.',
+          )
+        }
         pending.push(t)
         continue
       }
@@ -238,6 +251,10 @@ export interface CrossLayerOperation {
  *
  * Listan är avsiktligt kort: bara BINDANDE handlingar har chokepunkt i tjänsten.
  */
+/** Delad motivering för de nio förvaltningsoperationerna nedan. */
+const OBESLUTAD_FORVALTNINGSGRANS =
+  'OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT; AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är ett produktbeslut om vad en bokförare respektive förvaltare ska få göra, och det hör till rollarbetet. Posten finns här för att skillnaden ska vara bevakad under tiden: ändras något lager failar testet i stället för att glida vidare.'
+
 export const CROSS_LAYER_OPERATIONS: readonly CrossLayerOperation[] = [
   {
     operation: 'Stänga en bokföringsperiod',
@@ -284,6 +301,85 @@ export const CROSS_LAYER_OPERATIONS: readonly CrossLayerOperation[] = [
         'Samma sak som exporten ovan: klassnivålistan bär även läsvägarna, så ' +
         'MANAGER passerar dekoratorn och stoppas i tjänsten.',
     },
+  },
+  // ── Förvaltningshandlingar: HTTP och AI drar olika gränser ────────────────
+  //
+  // Hittat AV den här filen, första gången ytan ställdes bredvid sig själv.
+  // Mönstret är systematiskt över nio operationer: HTTP släpper in MANAGER men
+  // inte ACCOUNTANT, AI-lagret tvärtom. En förvaltare kan alltså skapa en
+  // felanmälan i webben men inte genom att be assistenten, och en bokförare
+  // tvärtom.
+  //
+  // De ligger som `declared` och INTE `must-agree`, av två skäl. `must-agree`
+  // hade tvingat fram policybeslutet nu, i en PR som uttryckligen bara bygger
+  // bevakning. Och skillnaden ÄR verklig — den ska stå skriven, inte döljas.
+  // Men "deklarerad" betyder här "känd och bevakad", inte "avsedd": vilken sida
+  // som har rätt är obestämt och hör till rollarbetet (R3/R4).
+  //
+  // Att lämna dem utanför kartan hade varit inkonsekvent — verktygets viktigaste
+  // fynd utanför verktygets starkaste detektor.
+  {
+    operation: 'Skapa en fastighet',
+    endpoints: ['POST /properties'],
+    serviceGate: null,
+    aiTool: 'create_property',
+    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+  },
+  {
+    operation: 'Skapa en lägenhet eller lokal',
+    endpoints: ['POST /units'],
+    serviceGate: null,
+    aiTool: 'create_unit',
+    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+  },
+  {
+    operation: 'Skapa ett hyresavtal',
+    endpoints: ['POST /leases'],
+    serviceGate: null,
+    aiTool: 'create_lease',
+    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+  },
+  {
+    operation: 'Skapa hyresgäst och avtal i ett steg',
+    endpoints: ['POST /leases/with-tenant'],
+    serviceGate: null,
+    aiTool: 'create_tenant_and_lease',
+    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+  },
+  {
+    operation: 'Uppdatera en hyresgäst',
+    endpoints: ['PATCH /tenants/:id'],
+    serviceGate: null,
+    aiTool: 'update_tenant',
+    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+  },
+  {
+    operation: 'Byta status på ett hyresavtal',
+    endpoints: ['PATCH /leases/:id/status'],
+    serviceGate: null,
+    aiTool: 'transition_lease_status',
+    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+  },
+  {
+    operation: 'Skapa en felanmälan',
+    endpoints: ['POST /maintenance'],
+    serviceGate: null,
+    aiTool: 'create_maintenance_ticket',
+    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+  },
+  {
+    operation: 'Uppdatera en felanmälans status',
+    endpoints: ['PATCH /maintenance/:id'],
+    serviceGate: null,
+    aiTool: 'update_maintenance_status',
+    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
+  },
+  {
+    operation: 'Skapa en besiktning',
+    endpoints: ['POST /inspections'],
+    serviceGate: null,
+    aiTool: 'create_inspection',
+    comparison: { kind: 'declared', reason: OBESLUTAD_FORVALTNINGSGRANS },
   },
   {
     operation: 'Öppna en stängd period igen',
@@ -395,6 +491,11 @@ export function renderSurface(input: {
   out.push('Utfallet är MÄTT, inte härlett: varje verktyg körs mot tool-executorns')
   out.push('riktiga rollgrindar för varje roll, och raden visar vilka som tog sig förbi.')
   out.push('Läsande verktyg saknas här — de grindas inte på roll.')
+  out.push('')
+  out.push('"Insläppt" betyder att rollen passerade den INLEDANDE rollgrinden — inte att')
+  out.push('handlingen lyckas. Ett verktyg kan fortfarande neka längre ner av skäl som inte')
+  out.push('rör roll (saknad resurs, ogiltigt läge). Raden mäter behörighetsgränsen, inte')
+  out.push('utfallet.')
   out.push('')
   out.push('⚠ LÄS DEN HÄR SEKTIONEN BREDVID SEKTION 1. För förvaltningshandlingar säger')
   out.push('  lagren nästan motsatta saker: HTTP ger "ADMIN, MANAGER, OWNER" (POST')

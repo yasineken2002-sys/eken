@@ -201,6 +201,11 @@ Utfallet är MÄTT, inte härlett: varje verktyg körs mot tool-executorns
 riktiga rollgrindar för varje roll, och raden visar vilka som tog sig förbi.
 Läsande verktyg saknas här — de grindas inte på roll.
 
+"Insläppt" betyder att rollen passerade den INLEDANDE rollgrinden — inte att
+handlingen lyckas. Ett verktyg kan fortfarande neka längre ner av skäl som inte
+rör roll (saknad resurs, ogiltigt läge). Raden mäter behörighetsgränsen, inte
+utfallet.
+
 ⚠ LÄS DEN HÄR SEKTIONEN BREDVID SEKTION 1. För förvaltningshandlingar säger
   lagren nästan motsatta saker: HTTP ger "ADMIN, MANAGER, OWNER" (POST
   /properties, /units, /leases, /maintenance, /tenants …) medan AI ger
@@ -244,7 +249,7 @@ update_maintenance_status         ACCOUNTANT, ADMIN, OWNER
 update_tenant                     ACCOUNTANT, ADMIN, OWNER
 
 
-## 4. Operationer som finns i flera lager (5 st)
+## 4. Operationer som finns i flera lager (14 st)
 
 Här upptäcks DRIFT. R1 var en oenighet mellan HTTP-lagret och AI-lagret som
 ingen hade skrivit ner — och det svagare lagret vann. Skillnader är tillåtna,
@@ -292,6 +297,132 @@ men de måste vara deklarerade. En odeklarerad skillnad failar testet.
   → LAGREN SKILJER SIG, DEKLARERAT:
     Samma sak som exporten ovan: klassnivålistan bär även läsvägarna, så
     MANAGER passerar dekoratorn och stoppas i tjänsten.
+
+### Skapa en fastighet
+
+  HTTP    POST /properties                                      ADMIN, MANAGER, OWNER
+  Tjänst  —                                                     (ingen chokepunkt)
+  AI      create_property                                       ACCOUNTANT, ADMIN, OWNER
+
+  → LAGREN SKILJER SIG, DEKLARERAT:
+    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
+    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
+    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
+    och det hör till rollarbetet. Posten finns här för att skillnaden ska
+    vara bevakad under tiden: ändras något lager failar testet i stället för
+    att glida vidare.
+
+### Skapa en lägenhet eller lokal
+
+  HTTP    POST /units                                           ADMIN, MANAGER, OWNER
+  Tjänst  —                                                     (ingen chokepunkt)
+  AI      create_unit                                           ACCOUNTANT, ADMIN, OWNER
+
+  → LAGREN SKILJER SIG, DEKLARERAT:
+    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
+    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
+    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
+    och det hör till rollarbetet. Posten finns här för att skillnaden ska
+    vara bevakad under tiden: ändras något lager failar testet i stället för
+    att glida vidare.
+
+### Skapa ett hyresavtal
+
+  HTTP    POST /leases                                          ADMIN, MANAGER, OWNER
+  Tjänst  —                                                     (ingen chokepunkt)
+  AI      create_lease                                          ACCOUNTANT, ADMIN, OWNER
+
+  → LAGREN SKILJER SIG, DEKLARERAT:
+    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
+    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
+    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
+    och det hör till rollarbetet. Posten finns här för att skillnaden ska
+    vara bevakad under tiden: ändras något lager failar testet i stället för
+    att glida vidare.
+
+### Skapa hyresgäst och avtal i ett steg
+
+  HTTP    POST /leases/with-tenant                              ADMIN, MANAGER, OWNER
+  Tjänst  —                                                     (ingen chokepunkt)
+  AI      create_tenant_and_lease                               ACCOUNTANT, ADMIN, OWNER
+
+  → LAGREN SKILJER SIG, DEKLARERAT:
+    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
+    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
+    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
+    och det hör till rollarbetet. Posten finns här för att skillnaden ska
+    vara bevakad under tiden: ändras något lager failar testet i stället för
+    att glida vidare.
+
+### Uppdatera en hyresgäst
+
+  HTTP    PATCH /tenants/:id                                    ADMIN, MANAGER, OWNER
+  Tjänst  —                                                     (ingen chokepunkt)
+  AI      update_tenant                                         ACCOUNTANT, ADMIN, OWNER
+
+  → LAGREN SKILJER SIG, DEKLARERAT:
+    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
+    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
+    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
+    och det hör till rollarbetet. Posten finns här för att skillnaden ska
+    vara bevakad under tiden: ändras något lager failar testet i stället för
+    att glida vidare.
+
+### Byta status på ett hyresavtal
+
+  HTTP    PATCH /leases/:id/status                              ADMIN, MANAGER, OWNER
+  Tjänst  —                                                     (ingen chokepunkt)
+  AI      transition_lease_status                               ACCOUNTANT, ADMIN, OWNER
+
+  → LAGREN SKILJER SIG, DEKLARERAT:
+    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
+    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
+    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
+    och det hör till rollarbetet. Posten finns här för att skillnaden ska
+    vara bevakad under tiden: ändras något lager failar testet i stället för
+    att glida vidare.
+
+### Skapa en felanmälan
+
+  HTTP    POST /maintenance                                     ADMIN, MANAGER, OWNER
+  Tjänst  —                                                     (ingen chokepunkt)
+  AI      create_maintenance_ticket                             ACCOUNTANT, ADMIN, OWNER
+
+  → LAGREN SKILJER SIG, DEKLARERAT:
+    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
+    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
+    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
+    och det hör till rollarbetet. Posten finns här för att skillnaden ska
+    vara bevakad under tiden: ändras något lager failar testet i stället för
+    att glida vidare.
+
+### Uppdatera en felanmälans status
+
+  HTTP    PATCH /maintenance/:id                                ADMIN, MANAGER, OWNER
+  Tjänst  —                                                     (ingen chokepunkt)
+  AI      update_maintenance_status                             ACCOUNTANT, ADMIN, OWNER
+
+  → LAGREN SKILJER SIG, DEKLARERAT:
+    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
+    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
+    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
+    och det hör till rollarbetet. Posten finns här för att skillnaden ska
+    vara bevakad under tiden: ändras något lager failar testet i stället för
+    att glida vidare.
+
+### Skapa en besiktning
+
+  HTTP    POST /inspections                                     ADMIN, MANAGER, OWNER
+  Tjänst  —                                                     (ingen chokepunkt)
+  AI      create_inspection                                     ACCOUNTANT, ADMIN, OWNER
+
+  → LAGREN SKILJER SIG, DEKLARERAT:
+    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
+    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
+    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
+    och det hör till rollarbetet. Posten finns här för att skillnaden ska
+    vara bevakad under tiden: ändras något lager failar testet i stället för
+    att glida vidare.
 
 ### Öppna en stängd period igen
 
