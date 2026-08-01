@@ -254,6 +254,9 @@ function CategoryOption({
   return (
     <button
       type="button"
+      // Växlingsknapp i en exklusiv grupp — aria-pressed är ärligare än att
+      // fejka radiogrupps-semantik med role="radio" utan pilnavigering.
+      aria-pressed={selected}
       onClick={onSelect}
       className={`flex w-full gap-2.5 rounded-xl border p-3 text-left transition-colors ${
         selected ? 'border-blue-500 bg-blue-50/60' : 'border-line bg-white hover:bg-gray-50'

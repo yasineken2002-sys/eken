@@ -1,8 +1,10 @@
 import { Lock, LockOpen } from 'lucide-react'
 import { formatDate } from '@eken/shared'
-import type { PeriodHistoryEvent } from '../api/accounting.api'
+import type { PeriodHistoryEvent, PeriodReasonCategory } from '../api/accounting.api'
 
-const CATEGORY_LABELS: Record<string, string> = {
+// Uttömmande mot PeriodReasonCategory: en ny kategori (t.ex. när revisor-
+// undantaget landar) ger kompileringsfel här i stället för en tom etikett i UI:t.
+const CATEGORY_LABELS: Record<PeriodReasonCategory, string> = {
   MISSING_ENTRY: 'En post saknades',
   EXISTING_ENTRY_INCORRECT: 'En bokförd post var felaktig',
 }

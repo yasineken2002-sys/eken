@@ -116,6 +116,14 @@ export class AccountingController {
    * Periodens historik + underlaget återöppningsdialogen behöver (momsperioder,
    * räkenskapsårsfönstret). Egen endpoint, inte påhängd på översikten — den ska
    * inte bära N händelser per period för en sida som listar tolv månader.
+   *
+   * ROLLGRINDEN ÄR MEDVETET KLASSNIVÅNS (minst ACCOUNTANT), inte OWNER-only som
+   * själva återöppningen. Att LÄSA vad som hänt med en period är inte samma sak
+   * som att få ändra det, och den som ska kunna stänga behöver kunna se varför
+   * perioden öppnades. `reason` är fritext och kan nämna en enskild avi ("hyres-
+   * avin för lgh 12") — men samma läsare når redan hela verifikationsjournalen
+   * (`GET journal`) under samma grind, så historiken exponerar inget nytt.
+   * VIEWER stängs ute av klassnivån.
    */
   @Get('periods/:year/:month/history')
   async getPeriodHistory(

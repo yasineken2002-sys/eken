@@ -17,7 +17,7 @@
  */
 
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common'
-import { UserRole } from '@prisma/client'
+import { Prisma, UserRole } from '@prisma/client'
 import { AccountingPeriodService, canReopenForCorrection } from './accounting-period.service'
 
 interface RigOpts {
@@ -275,6 +275,58 @@ describe('T5 PR1c · återöppning', () => {
         }),
       ).rejects.toThrow(/inte stängd/)
       expect(events).toHaveLength(0)
+    })
+
+    it('ATOMÄRT: skrivningen vägrar även om tjänstens snabb-nej passerats', async () => {
+      // TOCTOU-fönstret: tjänstens kontroll ligger UTANFÖR transaktionen. Två
+      // samtidiga återöppningar kunde annars båda slinka igenom och ge kedjan
+      // CLOSED → REOPENED → REOPENED. Här simuleras exakt det: snabb-nejet ser
+      // en stängd period, men när transaktionen väl läser är den redan öppnad.
+      const { service, prisma, events } = makeRig()
+      const p = currentPeriod()
+      let call = 0
+      const base = { createdAt: new Date(), actorLabel: null, reason: null, reasonCategory: null }
+      prisma.accountingPeriodEvent.findFirst = jest.fn(() => {
+        call += 1
+        // 1:a = tjänstens snabb-nej (stängd). 2:a = inuti tx (någon hann före).
+        return Promise.resolve(
+          call === 1
+            ? { ...base, seq: 1, type: 'CLOSED' as const, summary: null }
+            : { ...base, seq: 2, type: 'REOPENED' as const, summary: null },
+        )
+      })
+
+      await expect(
+        service.reopenPeriod('org-1', p.year, p.month, {
+          ...OWNER,
+          reason: GOOD_REASON,
+          reasonCategory: 'MISSING_ENTRY',
+        }),
+      ).rejects.toThrow(/inte stängd/)
+      expect(events).toHaveLength(0)
+    })
+
+    it('P2002 från unik-indexet blir ett begripligt besked, inte en 500', async () => {
+      // Den ÄKTA samtidigheten: båda transaktionerna läser samma max(seq) och
+      // försöker skriva seq N+1. Unik-indexet låter en vinna; förloraren ska få
+      // ett svar användaren förstår, inte en CRITICAL i Sentry för ett dubbelklick.
+      const { service, prisma } = makeRig()
+      const p = currentPeriod()
+      const p2002 = Object.assign(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      )
+      prisma.accountingPeriodEvent.create = jest.fn().mockRejectedValue(p2002)
+
+      await expect(
+        service.reopenPeriod('org-1', p.year, p.month, {
+          ...OWNER,
+          reason: GOOD_REASON,
+          reasonCategory: 'MISSING_ENTRY',
+        }),
+      ).rejects.toThrow(/är redan öppen/)
     })
 
     it('redan återöppnad period kan inte öppnas igen', async () => {

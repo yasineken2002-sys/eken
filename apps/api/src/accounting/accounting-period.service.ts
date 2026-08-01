@@ -498,6 +498,14 @@ export class AccountingPeriodService {
     }
 
     // GRIND 4 — tillstånd. Samma härledning som spärren i allocate använder.
+    //
+    // OBS: det här är ett SNABB-NEJ, inte den verkställande kontrollen. Den
+    // riktiga ligger inuti transaktionen i `appendPeriodReopenedEvent` — mellan
+    // den här läsningen och skrivningen finns annars ett fönster där två
+    // samtidiga återöppningar båda kan slinka igenom och ge kedjan
+    // `CLOSED → REOPENED → REOPENED`. Den här kontrollen finns kvar för att
+    // slippa göra org-uppslag och räkenskapsårsberäkning för en period som
+    // uppenbart redan är öppen.
     const { from } = stockholmMonthBounds(year, month)
     if (!(await isPeriodClosed(this.prisma, organizationId, from))) {
       throw new ConflictException(
@@ -512,17 +520,29 @@ export class AccountingPeriodService {
 
     const actorLabel = await this.actorLabelFor(opts.actorUserId ?? null)
 
-    await this.prisma.$transaction(async (tx) =>
-      appendPeriodReopenedEvent(tx, {
-        organizationId,
-        year,
-        month,
-        reason,
-        reasonCategory: opts.reasonCategory,
-        actorUserId: opts.actorUserId ?? null,
-        actorLabel,
-      }),
-    )
+    try {
+      await this.prisma.$transaction(async (tx) =>
+        appendPeriodReopenedEvent(tx, {
+          organizationId,
+          year,
+          month,
+          reason,
+          reasonCategory: opts.reasonCategory,
+          actorUserId: opts.actorUserId ?? null,
+          actorLabel,
+        }),
+      )
+    } catch (err) {
+      // Äkta samtidighet: två återöppningar som läser samma max(seq) och båda
+      // försöker skriva seq N+1 — unik-indexet låter en vinna. Utan den här
+      // översättningen hade förloraren fått en rå 500 och en CRITICAL i Sentry
+      // för vad som i praktiken är ett dubbelklick. Samma mönster som
+      // closePeriod redan använder.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException(`Perioden ${periodKeyOf({ year, month })} är redan öppen.`)
+      }
+      throw err
+    }
 
     this.logger.warn(
       `[period] ${periodKeyOf({ year, month })} ÅTERÖPPNAD för org ${organizationId} ` +

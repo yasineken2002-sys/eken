@@ -326,10 +326,30 @@ export async function appendPeriodClosedEvent(
  * konsistenskontrollera de två mot varandra före DROP: de kommer legitimt att
  * säga olika saker.
  *
- * GRINDARNA LIGGER INTE HÄR. Roll, orsakskategori, räkenskapsårsspärr och
- * tillståndskontroll sitter i `AccountingPeriodService.reopenPeriod` — den här
- * funktionen skriver bara händelsen, och ska aldrig anropas utan att ha passerat
- * dem.
+ * ROLL, ORSAK OCH RÄKENSKAPSÅR grindas i `AccountingPeriodService.reopenPeriod`
+ * — den här funktionen skriver bara händelsen och ska aldrig anropas utan att ha
+ * passerat dem.
+ *
+ * TILLSTÅNDSKONTROLLEN ligger dock HÄR, inuti transaktionen, och det är
+ * avsiktligt. Tjänsten kontrollerar också att perioden är stängd, men den
+ * kontrollen sker UTANFÖR transaktionen och är därmed bara en snabb-nej för
+ * UX:ens skull. Mellan den och skrivningen finns ett fönster:
+ *
+ *   A: läser "stängd" → öppnar tx → skriver REOPENED(seq n+1) → committar
+ *   B: läser "stängd" (före A:s commit) → öppnar tx EFTER A → läser seq n+1
+ *      → skriver REOPENED(seq n+2)
+ *
+ * B får ett eget, unikt seq och krockar därför INTE med unik-indexet. Utan en
+ * kontroll här hade kedjan blivit `CLOSED → REOPENED → REOPENED` — två
+ * återöppningar utan mellanliggande stängning, tyst, från ett dubbelklick i två
+ * flikar. Ingen bokföring hamnar fel av det (perioden är öppen i båda fallen),
+ * men historiken är hela poängen med den här modellen: den ska gå att läsa som
+ * `stängd → öppnad → stängd` av den som granskar långt senare.
+ *
+ * Kontrollen kostar ingenting extra — samma `findFirst` som ger `seq` bär redan
+ * `type`. Den ÄKTA samtidigheten (båda läser samma seq) fångas som förut av
+ * unik-indexet och kastar P2002, som anroparen översätter till ett begripligt
+ * besked.
  */
 export async function appendPeriodReopenedEvent(
   tx: PeriodReopenClient,
@@ -350,9 +370,19 @@ export async function appendPeriodReopenedEvent(
   const last = await tx.accountingPeriodEvent.findFirst({
     where: { organizationId, year, month },
     orderBy: { seq: 'desc' },
-    select: { seq: true },
+    select: { seq: true, type: true },
   })
-  const seq = (last?.seq ?? 0) + 1
+
+  // ATOMÄR TILLSTÅNDSKONTROLL — samma läsning som ger `seq` avgör också om
+  // perioden faktiskt är stängd, i SAMMA transaktion som skrivningen. Se
+  // docblocket ovan för fönstret detta stänger.
+  if (last?.type !== AccountingPeriodEventType.CLOSED) {
+    throw new ConflictException(
+      `Perioden ${periodKeyOf({ year, month })} är inte stängd och kan därför inte öppnas igen.`,
+    )
+  }
+
+  const seq = last.seq + 1
 
   await tx.accountingPeriodEvent.create({
     data: {
