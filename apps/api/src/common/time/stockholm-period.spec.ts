@@ -137,19 +137,20 @@ describe('H5 — stängd-period-grinden använder svensk civil tid', () => {
     typeof import('../../accounting/verifikationsnummer.service')
   >('../../accounting/verifikationsnummer.service')
 
+  // PR1b: spärren slår upp periodens SENASTE händelse i stället för en rad per
+  // period. Perioden ett datum tillhör härleds fortfarande i svensk civil tid —
+  // det är precis det den här sviten vaktar, och det är oförändrat.
   function makeTx(closedPeriods: Array<{ year: number; month: number }>) {
-    const findUnique = jest.fn(
-      (args: { where: { organizationId_year_month: { year: number; month: number } } }) => {
-        const { year, month } = args.where.organizationId_year_month
-        const hit = closedPeriods.some((p) => p.year === year && p.month === month)
-        return Promise.resolve(hit ? { id: 'closed-1' } : null)
-      },
-    )
+    const findFirst = jest.fn((args: { where: { year: number; month: number } }) => {
+      const { year, month } = args.where
+      const hit = closedPeriods.some((p) => p.year === year && p.month === month)
+      return Promise.resolve(hit ? { type: 'CLOSED' } : null)
+    })
     return {
       organization: { findUnique: jest.fn().mockResolvedValue({ fiscalYearStartMonth: 1 }) },
-      closedAccountingPeriod: { findUnique },
+      accountingPeriodEvent: { findFirst },
       journalEntrySequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 1 }) },
-      _findUnique: findUnique,
+      _findFirst: findFirst,
     }
   }
 
@@ -166,9 +167,9 @@ describe('H5 — stängd-period-grinden använder svensk civil tid', () => {
 
     // Med UTC hade den träffat den stängda december-perioden och kastat.
     expect(result.fiscalYear).toBe(2026)
-    expect(tx._findUnique).toHaveBeenCalledWith(
+    expect(tx._findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { organizationId_year_month: { organizationId: 'org-1', year: 2026, month: 1 } },
+        where: { organizationId: 'org-1', year: 2026, month: 1 },
       }),
     )
   })

@@ -671,6 +671,7 @@ model Organization {
   rentIncreases      RentIncrease[]
   customers          Customer[]
   closedPeriods      ClosedAccountingPeriod[]
+  periodEvents       AccountingPeriodEvent[]
   terminationRequests TerminationRequest[]
   keyHandovers       KeyHandover[]
   meters             Meter[]
@@ -730,6 +731,7 @@ model User {
   invitations         UserInvitation[]
   journalEntries      JournalEntry[]
   closedPeriods       ClosedAccountingPeriod[]
+  periodEvents        AccountingPeriodEvent[]
   documents           Document[]
   importJobs          ImportJob[]
   aiConversations     AiConversation[]
@@ -1447,9 +1449,15 @@ model JournalEntryLine {
   @@index([accountId])
 }
 
-// Stänger en bokföringsperiod (månad+år) — efter close_period kan inga nya
-// verifikat skapas med datum inom perioden. Append-only: en stängd period
-// kan inte återöppnas via API (skulle kräva manuell DB-åtgärd).
+// ÖVERGÅNGSTILLSTÅND (T5 PR1b): den här tabellen är INTE LÄNGRE SANNINGSKÄLLAN.
+// Frågan "är perioden stängd?" härleds numera ur AccountingPeriodEvent (senaste
+// händelsen per period). Raden här skrivs fortfarande vid stängning, men enbart
+// som en ICKE-AUKTORITATIV SPEGLING och ren rollback-fallskärm: rullas API:t
+// tillbaka till PR1a-kod läser den koden den här tabellen, och utan speglingen
+// hade perioder stängda under övergången tyst blivit öppna igen.
+//
+// INGEN kodväg LÄSER den här tabellen längre (CI-vakt: check-period-lookup-source.mjs).
+// Den slutar skrivas och DROPas i PR1d, efter att reopen (PR1c) gått en deploycykel.
 model ClosedAccountingPeriod {
   id             String   @id @default(uuid())
   organizationId String
@@ -1459,12 +1467,88 @@ model ClosedAccountingPeriod {
   closedById     String?
   summary        Json?
 
-  // Bokföringslagen (1999:1078): stängda perioder är räkenskapsinformation, bevaras 7 år.
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   closedBy     User?        @relation(fields: [closedById], references: [id])
 
   @@unique([organizationId, year, month])
   @@index([organizationId])
+}
+
+// Vad som hände med en bokföringsperiod. REOPENED deklareras här men skrivs av
+// INGEN kodväg i PR1b — återöppningsfunktionen är PR1c. Härledningen hanterar
+// den redan (och är testad mot den), så funktionen kan landa utan att röra
+// uppslagningen igen.
+enum AccountingPeriodEventType {
+  CLOSED
+  REOPENED
+}
+
+// ─── AccountingPeriodEvent — behandlingshistorik för periodstängning ──────────
+//
+// APPEND-ONLY. En stängning eller återöppning skrivs som en NY rad; ingen rad
+// ändras eller raderas någonsin. "Är perioden stängd?" = händelsen med HÖGST
+// `seq` för (organizationId, year, month) har type = CLOSED.
+//
+// VARFÖR HÄNDELSER I STÄLLET FÖR ETT FÄLT: en stängning/återöppning är
+// räkenskapsinformation som ska bevaras — och `summary` är en ögonblicksbild av
+// vad den som låste FAKTISKT SÅG vid låsningen. Med ett mutbart tillstånd på en
+// rad-per-period skriver en omstängning över den ursprungliga bilden, och kedjan
+// "stängd → öppnad (av vem, varför) → stängd igen" går inte längre att följa.
+// (Bokföringslagens krav på behandlingshistorik — exakt lagrum medvetet inte
+// citerat här; SFS-hänvisningar skrivs först efter mänsklig verifiering.)
+//
+// VARFÖR `seq` OCH INTE `createdAt`: "senaste händelsen" måste vara ENTYDIG.
+// createdAt är timestamp(3) — två händelser i samma millisekund ger godtycklig
+// ordning, och just den tvetydigheten betyder "perioden är slumpvis öppen".
+// `seq` är en per-period monoton räknare som allokeras i samma transaktion.
+//
+// `seq` BÄR OCKSÅ SERIALISERINGEN: dagens skydd mot dubbelstängning är det unika
+// indexet (organizationId, year, month) på ClosedAccountingPeriod. En ren
+// händelselogg hade tappat det. @@unique([organizationId, year, month, seq]) ger
+// exakt samma skydd: två samtidiga stängningar beräknar båda seq = N+1, en får
+// P2002 och förlorar. Inte svagare än förut — samma mekanism, annan nyckel.
+model AccountingPeriodEvent {
+  id             String                    @id @default(uuid())
+  organizationId String
+  year           Int
+  month          Int
+  // Per-period monoton räknare (1, 2, 3 …). Se docblocket ovan.
+  seq            Int
+  type           AccountingPeriodEventType
+
+  // Aktör — vem/vad som utlöste händelsen. Samma enum som Invoice-/RentNoticeEvent.
+  // Typade fält i stället för InvoiceEvents generiska `payload Json`: händelsen har
+  // exakt två former och `reason` måste kunna tvingas fram på DB-nivå (CHECK), vilket
+  // ett JSON-fält inte klarar.
+  actorType   EventActorType
+  actorUserId String?
+  actorLabel  String? // Denormaliserat: "Anna Svensson" / "System"
+
+  // Obligatoriskt vid REOPENED, alltid null vid CLOSED. Tvingas av en CHECK
+  // constraint i migrationen — inte bara av tjänstelagret, så att ett framtida
+  // internt skript eller en migrering inte kan skriva en återöppning utan skäl.
+  reason String?
+
+  // Resultat-ögonblicksbild vid stängning (bara på CLOSED). Räknas ALDRIG om:
+  // en omstängning lägger en ny CLOSED-händelse med en NY summary bredvid den
+  // gamla, i stället för att skriva över vad den förra låsningen såg.
+  summary Json?
+
+  // Immutabilitetsgaranti: ingen updatedAt (samma mönster som RentNoticeEvent).
+  createdAt DateTime @default(now())
+
+  // Restrict, aldrig Cascade: raderna är räkenskapsinformation och får inte
+  // försvinna med sin organisation.
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  actor        User?        @relation(fields: [actorUserId], references: [id])
+
+  // Bär BÅDE serialiseringen (se ovan) och den enda heta frågan: "senaste
+  // händelsen för perioden". Något separat DESC-index behövs INTE — verifierat
+  // med EXPLAIN att Postgres löser `WHERE org/year/month ORDER BY seq DESC
+  // LIMIT 1` med en BAKÅTSCAN av det här indexet, och att den väljer det även
+  // när ett dedikerat DESC-index finns bredvid. Ett andra index hade varit ren
+  // skrivkostnad.
+  @@unique([organizationId, year, month, seq])
 }
 
 // ─── Bank Reconciliation (Bankavstämning) ─────────────────────────────────────

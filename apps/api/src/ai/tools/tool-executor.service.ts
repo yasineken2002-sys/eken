@@ -2,7 +2,6 @@ import { Injectable, ForbiddenException, BadRequestException, Logger } from '@ne
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
-import { stockholmCivilDate } from '../../common/time/stockholm-period'
 import { InvoicesService, toPaymentMethod } from '../../invoices/invoices.service'
 import { PdfService } from '../../invoices/pdf.service'
 import { TenantsService } from '../../tenants/tenants.service'
@@ -15,6 +14,7 @@ import { UnitsService } from '../../units/units.service'
 import { AccountingService } from '../../accounting/accounting.service'
 import { AccountingPeriodService } from '../../accounting/accounting-period.service'
 import { VerifikationsnummerService } from '../../accounting/verifikationsnummer.service'
+import { isPeriodClosed, periodKeyOf, periodOfDate } from '../../accounting/closed-period'
 import { MailService } from '../../mail/mail.service'
 import { MaintenanceService } from '../../maintenance/maintenance.service'
 import { AviseringService } from '../../avisering/avisering.service'
@@ -3078,18 +3078,15 @@ export class ToolExecutorService {
           if (isNaN(date.getTime())) {
             return { success: false, message: `Ogiltigt datum: ${dateStr}` }
           }
-          const closed = await this.prisma.closedAccountingPeriod.findFirst({
-            where: {
-              organizationId,
-              // Svensk civil tid — se stockholm-period.ts.
-              year: stockholmCivilDate(date).year,
-              month: stockholmCivilDate(date).month,
-            },
-          })
-          if (closed) {
+          // Förhandsbesked, INTE spärren: den verkställande kontrollen sitter i
+          // allocate() inuti transaktionen nedan. Frågan ställs via den delade
+          // uppslagningen (closed-period.ts) så att AI-vägen och spärren aldrig
+          // kan svara olika — en egen kopia här hade blivit en tyst tillåtare
+          // den dag representationen ändras.
+          if (await isPeriodClosed(this.prisma, organizationId, date)) {
             return {
               success: false,
-              message: `Bokföringsperioden ${stockholmCivilDate(date).year}-${String(stockholmCivilDate(date).month).padStart(2, '0')} är stängd. Ändra datum eller återöppna perioden manuellt.`,
+              message: `Bokföringsperioden ${periodKeyOf(periodOfDate(date))} är stängd. Ändra datum eller återöppna perioden manuellt.`,
             }
           }
           const accounts = await this.prisma.account.findMany({
@@ -3190,18 +3187,11 @@ export class ToolExecutorService {
           if (isNaN(date.getTime())) {
             return { success: false, message: `Ogiltigt datum: ${dateStr}` }
           }
-          const closed = await this.prisma.closedAccountingPeriod.findFirst({
-            where: {
-              organizationId,
-              // Svensk civil tid — se stockholm-period.ts.
-              year: stockholmCivilDate(date).year,
-              month: stockholmCivilDate(date).month,
-            },
-          })
-          if (closed) {
+          // Förhandsbesked, INTE spärren — se create_journal_entry ovan.
+          if (await isPeriodClosed(this.prisma, organizationId, date)) {
             return {
               success: false,
-              message: `Bokföringsperioden ${stockholmCivilDate(date).year}-${String(stockholmCivilDate(date).month).padStart(2, '0')} är stängd.`,
+              message: `Bokföringsperioden ${periodKeyOf(periodOfDate(date))} är stängd.`,
             }
           }
           const accounts = await this.prisma.account.findMany({

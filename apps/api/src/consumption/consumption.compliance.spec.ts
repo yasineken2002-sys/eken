@@ -561,7 +561,10 @@ function makeAccrual(o: AccrualOpts = {}) {
         .fn()
         .mockResolvedValue({ fiscalYearStartMonth: o.fiscalYearStartMonth ?? 1 }),
     },
-    closedAccountingPeriod: { findUnique: jest.fn().mockResolvedValue(o.closed ?? null) },
+    // PR1b: stängt tillstånd = periodens senaste händelse är CLOSED.
+    accountingPeriodEvent: {
+      findFirst: jest.fn().mockResolvedValue(o.closed ? { type: 'CLOSED' } : null),
+    },
     meter: { findMany: jest.fn().mockResolvedValue(o.meters ?? [accrualMeter()]) },
     lease: {
       findFirst: jest

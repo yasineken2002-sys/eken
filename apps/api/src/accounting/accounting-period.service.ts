@@ -9,7 +9,13 @@ import { Prisma, RentNoticeType, UserRole } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { vatPeriodLabelsForMonths } from '../avisering/vat-period.util'
 import { stockholmCivilDate, stockholmMonthBounds } from '../common/time/stockholm-period'
-import { getClosedPeriods, periodKeyOf, type PeriodKey } from './closed-period'
+import {
+  appendPeriodClosedEvent,
+  getClosedPeriodStates,
+  isPeriodClosed,
+  periodKeyOf,
+  type PeriodKey,
+} from './closed-period'
 import { DEFAULT_VER_SERIES, VerifikationsnummerService } from './verifikationsnummer.service'
 
 /**
@@ -17,18 +23,22 @@ import { DEFAULT_VER_SERIES, VerifikationsnummerService } from './verifikationsn
  *
  * VIKTIGT om ansvarsfördelningen (PR1a): den här tjänsten VERKSTÄLLER inget nytt
  * lås. Spärren som faktiskt hindrar en bokföring i en stängd period är och
- * förblir `VerifikationsnummerService.allocate` — den rörs inte. Tjänsten gör den
- * BEFINTLIGA `ClosedAccountingPeriod`-mekanismen nåbar utanför AI-assistenten,
- * och ger operatören ett besked om vad som är ofullständigt innan hen låser.
+ * förblir `VerifikationsnummerService.allocate` — den rörs inte. Tjänsten gör
+ * stängningsmekanismen nåbar utanför AI-assistenten, och ger operatören ett
+ * besked om vad som är ofullständigt innan hen låser.
  *
- * Stängningen skriver samma rad som AI-verktyget `close_period` alltid gjort —
- * verktyget delegerar numera hit, så det finns EN stängningsväg och inte två som
- * kan glida isär.
+ * Stängningen har EN väg — AI-verktyget `close_period` delegerar hit, så det
+ * finns inte två stängningsvägar som kan glida isär.
  *
- * ÅTERÖPPNING ingår INTE här. Den kräver en append-only händelsemodell (annars
- * skrivs den ursprungliga stängningens ögonblicksbild över vid omstängning, och
- * en stängning/återöppning ÄR räkenskapsinformation som ska bevaras 7 år — BFL
- * 1 kap 2 § p.9 + 7 kap 2 §) samt en ändring av allocate. Det är PR1b.
+ * PR1b: stängningen skriver numera en append-only CLOSED-HÄNDELSE
+ * (`AccountingPeriodEvent`) i stället för en mutbar rad per period, och
+ * "är perioden stängd?" härleds ur den senaste händelsen. Skrivningen ligger i
+ * `appendPeriodClosedEvent` (closed-period.ts) tillsammans med uppslagningen —
+ * en fil äger både frågan och svaret.
+ *
+ * ÅTERÖPPNING ingår fortfarande INTE. Modellen bär den (REOPENED finns och
+ * härledningen hanterar den), men själva handlingen kräver egna grindar — roll,
+ * obligatoriskt skäl, spärr mot för gamla räkenskapsår — och är PR1c.
  */
 
 /** En upptäckt som förhandskontrollen gjorde inför en stängning. */
@@ -100,10 +110,11 @@ export class AccountingPeriodService {
       }
     }
 
-    const rows = await this.prisma.closedAccountingPeriod.findMany({
-      where: { organizationId },
-      select: { year: true, month: true, closedAt: true },
-    })
+    // Perioder som är stängda JUST NU, härlett ur den senaste händelsen per
+    // period (samma härledning som spärren i allocate använder — översikten kan
+    // aldrig visa "öppen" för en period som spärren anser stängd, eller tvärtom).
+    // `closedAt` är den GÄLLANDE stängningens tidpunkt.
+    const rows = await getClosedPeriodStates(this.prisma, organizationId)
     const closedByKey = new Map(rows.map((r) => [periodKeyOf(r), r.closedAt]))
 
     const items: PeriodOverviewItem[] = keys.map((k) => {
@@ -145,8 +156,11 @@ export class AccountingPeriodService {
     // samma månad. En post 22:30 UTC den 31 mars är 00:30 svensk tid den 1 april.
     const { from, to } = stockholmMonthBounds(year, month)
 
-    const closedSet = await getClosedPeriods(this.prisma, organizationId, [{ year, month }])
-    const alreadyClosed = closedSet.has(periodKeyOf({ year, month }))
+    // PUNKTfrågan, inte bulkformen: det här gäller EN period. Bulkformen hämtar
+    // hela organisationens periodhistorik och sållar i Node — rätt för
+    // backfillens gap-detektion, fel här. `from` är månadens första ögonblick i
+    // svensk tid, så uppslaget landar på exakt (year, month).
+    const alreadyClosed = await isPeriodClosed(this.prisma, organizationId, from)
 
     // Kontrollerna är oberoende av varandra — kör dem parallellt. precheck
     // anropas både när stängningsdialogen öppnas och en gång till i closePeriod.
@@ -226,23 +240,42 @@ export class AccountingPeriodService {
 
     const summary = await this.buildSummary(organizationId, year, month)
 
-    // Skrivningen är oförändrad mot AI-verktygets: en rad per period, med
-    // resultat-ögonblicksbild. summary är just en ÖGONBLICKSBILD vid
-    // stängningstillfället och räknas aldrig om i efterhand (FAR: att uppdatera
-    // den retroaktivt vore att påstå att den som stängde såg siffror hen aldrig
-    // såg). Vid återöppning + omstängning behövs därför en händelselogg — PR1b.
+    // Aktörsnamnet denormaliseras in i händelsen: loggen ska gå att läsa om sju
+    // år, när User-raden kan vara borttagen eller personen ha bytt namn. Saknas
+    // användaren lämnas etiketten tom — vi fabricerar aldrig en aktör.
+    let actorLabel: string | null = null
+    if (opts.actorUserId) {
+      const actor = await this.prisma.user.findUnique({
+        where: { id: opts.actorUserId },
+        select: { firstName: true, lastName: true },
+      })
+      actorLabel = actor ? `${actor.firstName} ${actor.lastName}`.trim() || null : null
+    }
+
+    // summary är en ÖGONBLICKSBILD vid stängningstillfället och räknas aldrig om
+    // i efterhand (FAR: att uppdatera den retroaktivt vore att påstå att den som
+    // stängde såg siffror hen aldrig såg). Därför skrivs den in i händelsen och
+    // rörs sedan aldrig — en framtida omstängning lägger en NY händelse med en
+    // NY bild bredvid den gamla i stället för att skriva över den.
+    //
+    // Transaktionen omsluter både händelsen och speglingen till den gamla
+    // tabellen: de två får aldrig kunna hamna i otakt.
     try {
-      await this.prisma.closedAccountingPeriod.create({
-        data: {
+      await this.prisma.$transaction(async (tx) =>
+        appendPeriodClosedEvent(tx, {
           organizationId,
           year,
           month,
-          ...(opts.actorUserId ? { closedById: opts.actorUserId } : {}),
+          actorUserId: opts.actorUserId ?? null,
+          actorLabel,
           summary: summary as unknown as Prisma.InputJsonValue,
-        },
-      })
+        }),
+      )
     } catch (err) {
-      // Två samtidiga stängningar av samma period: unikt index (org, år, månad).
+      // Två samtidiga stängningar av samma period. Vilket av de två unika indexen
+      // som slår (händelsens (org, år, månad, seq) eller speglingens
+      // (org, år, månad)) spelar ingen roll — båda betyder exakt samma sak:
+      // någon annan hann före, perioden är redan stängd.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException(`Perioden ${periodKeyOf({ year, month })} är redan stängd.`)
       }
