@@ -6,15 +6,12 @@ import { UserRole } from '@prisma/client'
  *
  * ── Varför den här filen finns ────────────────────────────────────────────────
  *
- * NÄR R1 SKREVS var `RolesGuard` hierarkisk: `userLevel >= NIVÅ[krav]`, så bara
- * den LÄGSTA rollen i en `@Roles`-lista hade effekt. `@Roles('OWNER','ADMIN',
- * 'ACCOUNTANT')` läste som "dessa tre" men BETYDDE "ACCOUNTANT och uppåt" — och
- * MANAGER låg över ACCOUNTANT och släpptes därför in utan att nämnas.
- *
- * Inkasso-controllerna bar precis den listan. Följden: en förvaltare kunde
- * exportera en hyresgästs skuld till inkasso och markera den skickad — en
- * bindande handling mot en enskild person — utan att någon spärr sa ifrån.
- * Tjänsterna hade ingen egen rollkontroll att falla tillbaka på.
+ * BAKGRUNDEN (rollgrindens semantik och varför den ändrades) står samlad i
+ * `common/guards/roles.guard.ts`. Kort: när R1 skrevs var guarden hierarkisk, så
+ * inkasso-controllernas lista släppte in MANAGER utan att nämna den — och en
+ * förvaltare kunde därför lämna över en hyresgästs skuld till inkasso utan att
+ * någon spärr sa ifrån. Tjänsterna hade ingen egen rollkontroll att falla
+ * tillbaka på.
  *
  * R2 steg 2 tog bort hierarkin: guarden matchar numera exakt, så en lista KAN nu
  * uttrycka "ACCOUNTANT men inte MANAGER". Grinden här är därför inte längre en

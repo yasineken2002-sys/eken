@@ -73,13 +73,13 @@ function legacyHierarchicalAllows(required: string[], role: string): boolean {
 }
 
 /** SUBJEKTET: den riktiga guarden, med en Reflector-attrapp som matar in listan. */
-function actualGuardAllows(required: string[], role: string): boolean {
+function runGuard(required: string[], request: unknown): boolean {
   const reflector = { getAllAndOverride: () => required } as unknown as Reflector
   const guard = new RolesGuard(reflector)
   const context = {
     getHandler: () => () => undefined,
     getClass: () => class {},
-    switchToHttp: () => ({ getRequest: () => ({ user: { role } }) }),
+    switchToHttp: () => ({ getRequest: () => request }),
   } as unknown as ExecutionContext
   try {
     return guard.canActivate(context) === true
@@ -87,6 +87,10 @@ function actualGuardAllows(required: string[], role: string): boolean {
     if (err instanceof ForbiddenException) return false
     throw err
   }
+}
+
+function actualGuardAllows(required: string[], role: string): boolean {
+  return runGuard(required, { user: { role } })
 }
 
 interface RoleList {
@@ -207,10 +211,23 @@ describe('R2 steg 2 · bytet till exakt matchning är en no-op', () => {
     }
   })
 
-  it('okänd roll nekas (fail-closed, oförändrat)', () => {
+  it('okänd, tom eller saknad roll nekas (fail-closed, oförändrat)', () => {
     // Hierarkin gav okänd roll nivå 0 → passerade ingenting. Exakt matchning
     // hittar den inte i någon lista → samma utfall, av en annan anledning.
     expect(actualGuardAllows(['VIEWER'], 'REVISOR_SOM_INTE_FINNS')).toBe(false)
     expect(actualGuardAllows(['OWNER', 'ADMIN'], '')).toBe(false)
+    // `undefined` är formen man får av en JWT-payload utan `role` — den vägen
+    // ska neka, inte krascha. `includes(undefined)` är falskt, inte ett kast.
+    expect(actualGuardAllows(['OWNER', 'ADMIN'], undefined as unknown as string)).toBe(false)
+    expect(actualGuardAllows([], undefined as unknown as string)).toBe(true) // ingen @Roles → orört
+  })
+
+  it('helt saknad användare nekas med 403 — inte TypeError som blir 500', () => {
+    // Kräver @Public() + @Roles() på samma route, vilket inte finns i dag. Utan
+    // grindens egen kontroll kastar `user.role` TypeError; GlobalExceptionFilter
+    // fångar och svarar 500, så ingen åtkomst beviljas — men fail-closed ska vara
+    // grindens egenskap, inte en biprodukt av felhanteringen.
+    expect(runGuard(['OWNER'], {})).toBe(false)
+    expect(runGuard(['OWNER'], { user: undefined })).toBe(false)
   })
 })

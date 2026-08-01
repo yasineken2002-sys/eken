@@ -61,8 +61,18 @@ export class RolesGuard implements CanActivate {
     // Ingen @Roles → autentiserad men inte rollgrindad. Oförändrat.
     if (!requiredRoles?.length) return true
 
-    const request = context.switchToHttp().getRequest<FastifyRequest & { user: JwtPayload }>()
+    const request = context.switchToHttp().getRequest<FastifyRequest & { user?: JwtPayload }>()
     const user = request.user
+
+    // Ingen autentiserad användare men ändå ett rollkrav → neka rent.
+    //
+    // Kombinationen kräver `@Public()` OCH `@Roles()` på samma route, vilket inte
+    // finns i kodbasen i dag. Utan raden hade `user.role` kastat TypeError i
+    // stället: `GlobalExceptionFilter` fångar det och svarar 500, så ingen
+    // åtkomst beviljas — men 500 är fel besked, larmar i onödan, och lutar sig
+    // mot ett skyddsnät i stället för att neka på egen hand. Fail-closed ska
+    // vara en egenskap hos grinden, inte en biprodukt av felhanteringen.
+    if (!user) throw new ForbiddenException('Otillräckliga rättigheter')
 
     // Fail-closed: en roll som inte står i listan kommer inte in — inklusive en
     // okänd eller saknad roll, som aldrig matchar något.
