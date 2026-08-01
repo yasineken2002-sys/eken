@@ -8,6 +8,7 @@ import {
   fetchPeriodHistory,
   closePeriod,
   reopenPeriod,
+  reverseJournalEntry,
 } from '../api/accounting.api'
 
 export function useAccounts() {
@@ -85,6 +86,25 @@ export function useReopenPeriod() {
       void qc.invalidateQueries({ queryKey: ['accounting', 'periods'] })
       void qc.invalidateQueries({ queryKey: ['accounting', 'period-precheck'] })
       void qc.invalidateQueries({ queryKey: ['accounting', 'period-history'] })
+    },
+    meta: { handlesOwnError: true },
+  })
+}
+
+// ── Rättelse av verifikat (T5 PR1c2) ─────────────────────────────────────────
+
+/**
+ * Rättar ett verifikat. Invaliderar journalen (både originalet och rättelsen
+ * ändrar hur listan ser ut) och periodens förhandskontroll (rättelsen är ett
+ * nytt verifikat i innevarande period).
+ */
+export function useReverseJournalEntry() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => reverseJournalEntry(id, reason),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['accounting', 'journal'] })
+      void qc.invalidateQueries({ queryKey: ['accounting', 'period-precheck'] })
     },
     meta: { handlesOwnError: true },
   })

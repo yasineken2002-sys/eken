@@ -20,6 +20,7 @@ import { AccountingService } from './accounting.service'
 import { AccountingPeriodService } from './accounting-period.service'
 // Värde-import, inte `import type` — ValidationPipe behöver klassen i runtime.
 import { ReopenPeriodDto } from './dto/reopen-period.dto'
+import { ReverseEntryDto } from './dto/reverse-entry.dto'
 
 // Validerar ISO-datum (YYYY-MM-DD) från query. Kastar 400 vid saknat/felaktigt
 // format så rapporterna aldrig kör mot ogiltiga Date-objekt (NaN-period).
@@ -185,6 +186,36 @@ export class AccountingController {
   @Get('journal/:id')
   async getJournalEntry(@Param('id') id: string, @OrgId() organizationId: string) {
     return this.accountingService.getJournalEntry(id, organizationId)
+  }
+
+  /**
+   * RÄTTAR ett verifikat genom att bokföra dess motsats, daterad idag.
+   *
+   * Originalet rörs inte — det står kvar exakt som det bokfördes, och rättelsen
+   * länkas till det. Rättelsen går genom `allocate` som all annan bokföring och
+   * träffar därför periodspärren om innevarande period är stängd; det finns
+   * ingen specialväg förbi låset.
+   *
+   * MANAGER utesluts (klassgrinden släpper in dem, metodgrinden inte): att
+   * bokföra en rättelse är en redovisningshandling, inte förvaltning. Rollkravet
+   * upprepas i tjänsten — dekoratorn är bekvämlighet, inte skyddet.
+   */
+  @Post('journal/:id/reverse')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
+  @HttpCode(201)
+  async reverseJournalEntry(
+    @Param('id') id: string,
+    @OrgId() organizationId: string,
+    @Body() dto: ReverseEntryDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.accountingService.reverseJournalEntry({
+      entryId: id,
+      organizationId,
+      actorRole: user.role,
+      actorUserId: user.sub,
+      reason: dto.reason,
+    })
   }
 
   // ── Finansiella rapporter ───────────────────────────────────────────────
