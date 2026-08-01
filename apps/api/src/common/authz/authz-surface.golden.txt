@@ -305,12 +305,15 @@ men de måste vara deklarerade. En odeklarerad skillnad failar testet.
   AI      create_property                                       ACCOUNTANT, ADMIN, OWNER
 
   → LAGREN SKILJER SIG, DEKLARERAT:
-    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
-    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
-    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
-    och det hör till rollarbetet — spårat i #269. Posten finns här för att
-    skillnaden ska vara bevakad under tiden: ändras något lager failar
-    testet i stället för att glida vidare.
+    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
+    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
+    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
+    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
+    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
+    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
+    Implementationen ligger i #269. Tills dess står posten kvar som
+    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
+    inte avsedd.
 
 ### Skapa en lägenhet eller lokal
 
@@ -319,12 +322,15 @@ men de måste vara deklarerade. En odeklarerad skillnad failar testet.
   AI      create_unit                                           ACCOUNTANT, ADMIN, OWNER
 
   → LAGREN SKILJER SIG, DEKLARERAT:
-    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
-    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
-    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
-    och det hör till rollarbetet — spårat i #269. Posten finns här för att
-    skillnaden ska vara bevakad under tiden: ändras något lager failar
-    testet i stället för att glida vidare.
+    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
+    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
+    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
+    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
+    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
+    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
+    Implementationen ligger i #269. Tills dess står posten kvar som
+    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
+    inte avsedd.
 
 ### Skapa ett hyresavtal
 
@@ -333,12 +339,15 @@ men de måste vara deklarerade. En odeklarerad skillnad failar testet.
   AI      create_lease                                          ACCOUNTANT, ADMIN, OWNER
 
   → LAGREN SKILJER SIG, DEKLARERAT:
-    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
-    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
-    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
-    och det hör till rollarbetet — spårat i #269. Posten finns här för att
-    skillnaden ska vara bevakad under tiden: ändras något lager failar
-    testet i stället för att glida vidare.
+    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
+    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
+    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
+    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
+    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
+    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
+    Implementationen ligger i #269. Tills dess står posten kvar som
+    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
+    inte avsedd.
 
 ### Skapa hyresgäst och avtal i ett steg
 
@@ -347,12 +356,15 @@ men de måste vara deklarerade. En odeklarerad skillnad failar testet.
   AI      create_tenant_and_lease                               ACCOUNTANT, ADMIN, OWNER
 
   → LAGREN SKILJER SIG, DEKLARERAT:
-    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
-    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
-    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
-    och det hör till rollarbetet — spårat i #269. Posten finns här för att
-    skillnaden ska vara bevakad under tiden: ändras något lager failar
-    testet i stället för att glida vidare.
+    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
+    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
+    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
+    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
+    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
+    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
+    Implementationen ligger i #269. Tills dess står posten kvar som
+    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
+    inte avsedd.
 
 ### Uppdatera en hyresgäst
 
@@ -361,12 +373,15 @@ men de måste vara deklarerade. En odeklarerad skillnad failar testet.
   AI      update_tenant                                         ACCOUNTANT, ADMIN, OWNER
 
   → LAGREN SKILJER SIG, DEKLARERAT:
-    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
-    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
-    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
-    och det hör till rollarbetet — spårat i #269. Posten finns här för att
-    skillnaden ska vara bevakad under tiden: ändras något lager failar
-    testet i stället för att glida vidare.
+    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
+    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
+    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
+    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
+    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
+    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
+    Implementationen ligger i #269. Tills dess står posten kvar som
+    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
+    inte avsedd.
 
 ### Byta status på ett hyresavtal
 
@@ -375,12 +390,15 @@ men de måste vara deklarerade. En odeklarerad skillnad failar testet.
   AI      transition_lease_status                               ACCOUNTANT, ADMIN, OWNER
 
   → LAGREN SKILJER SIG, DEKLARERAT:
-    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
-    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
-    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
-    och det hör till rollarbetet — spårat i #269. Posten finns här för att
-    skillnaden ska vara bevakad under tiden: ändras något lager failar
-    testet i stället för att glida vidare.
+    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
+    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
+    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
+    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
+    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
+    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
+    Implementationen ligger i #269. Tills dess står posten kvar som
+    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
+    inte avsedd.
 
 ### Skapa en felanmälan
 
@@ -389,12 +407,15 @@ men de måste vara deklarerade. En odeklarerad skillnad failar testet.
   AI      create_maintenance_ticket                             ACCOUNTANT, ADMIN, OWNER
 
   → LAGREN SKILJER SIG, DEKLARERAT:
-    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
-    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
-    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
-    och det hör till rollarbetet — spårat i #269. Posten finns här för att
-    skillnaden ska vara bevakad under tiden: ändras något lager failar
-    testet i stället för att glida vidare.
+    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
+    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
+    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
+    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
+    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
+    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
+    Implementationen ligger i #269. Tills dess står posten kvar som
+    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
+    inte avsedd.
 
 ### Uppdatera en felanmälans status
 
@@ -403,12 +424,15 @@ men de måste vara deklarerade. En odeklarerad skillnad failar testet.
   AI      update_maintenance_status                             ACCOUNTANT, ADMIN, OWNER
 
   → LAGREN SKILJER SIG, DEKLARERAT:
-    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
-    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
-    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
-    och det hör till rollarbetet — spårat i #269. Posten finns här för att
-    skillnaden ska vara bevakad under tiden: ändras något lager failar
-    testet i stället för att glida vidare.
+    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
+    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
+    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
+    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
+    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
+    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
+    Implementationen ligger i #269. Tills dess står posten kvar som
+    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
+    inte avsedd.
 
 ### Skapa en besiktning
 
@@ -417,12 +441,15 @@ men de måste vara deklarerade. En odeklarerad skillnad failar testet.
   AI      create_inspection                                     ACCOUNTANT, ADMIN, OWNER
 
   → LAGREN SKILJER SIG, DEKLARERAT:
-    OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT;
-    AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är
-    ett produktbeslut om vad en bokförare respektive förvaltare ska få göra,
-    och det hör till rollarbetet — spårat i #269. Posten finns här för att
-    skillnaden ska vara bevakad under tiden: ändras något lager failar
-    testet i stället för att glida vidare.
+    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
+    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
+    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
+    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
+    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
+    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
+    Implementationen ligger i #269. Tills dess står posten kvar som
+    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
+    inte avsedd.
 
 ### Öppna en stängd period igen
 

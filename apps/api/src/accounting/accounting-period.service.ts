@@ -108,9 +108,30 @@ export interface PeriodDetail {
  * Vem som får stänga en period. MANAGER utesluts medvetet — att låsa en månad är
  * en redovisningshandling, inte förvaltning.
  *
- * Exporterad för att `accounting-role-gates.spec.ts` ska kunna kräva att
- * controllerns `@Roles`-lista säger EXAKT samma sak. Två lager är ett skydd bara
- * så länge de är överens; glider de isär blir det andra lagret tyst overksamt.
+ * ── VARFÖR ADMIN STÅR MED (beslut 2026-08-01) ────────────────────────────────
+ *
+ * ADMIN är i grunden en systemadministratörsroll, inte en ekonomiroll, och i
+ * större organisationer hålls "får administrera systemet" och "får röra
+ * bokföringen" ofta medvetet isär. Att ADMIN ändå får stänga perioder och rätta
+ * verifikat är ett MEDVETET val, inte ett förbiseende — FAR flaggade det och
+ * frågan avgjordes.
+ *
+ * Skälet är målgruppen: 1–50 enheter, där ägaren och administratören nästan
+ * alltid är samma människa. En uppdelning hade kostat verklig friktion för varje
+ * kund för att skydda mot en ansvarsblandning som knappt någon av dem har.
+ *
+ * Beslutet är alltså kalibrerat mot dagens kundsegment och inte mot principen.
+ * Tillkommer kunder med flera administratörer, där ansvarsfördelning faktiskt
+ * betyder något, ska det omprövas — och då är rätt lösning sannolikt en egen
+ * ekonomiroll, inte att beskära ADMIN.
+ *
+ * Samma resonemang gäller `REVERSAL_ROLES` i accounting.service.ts.
+ *
+ * ── Varför den är exporterad ─────────────────────────────────────────────────
+ *
+ * `accounting-role-gates.spec.ts` kräver att controllerns `@Roles`-lista säger
+ * EXAKT samma sak. Två lager är ett skydd bara så länge de är överens; glider de
+ * isär blir det andra lagret tyst overksamt.
  */
 export const CLOSE_ROLES: UserRole[] = [UserRole.ACCOUNTANT, UserRole.ADMIN, UserRole.OWNER]
 
