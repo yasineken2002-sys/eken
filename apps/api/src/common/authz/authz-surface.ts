@@ -253,7 +253,7 @@ export interface CrossLayerOperation {
  */
 /** Delad motivering för de nio förvaltningsoperationerna nedan. */
 const OBESLUTAD_FORVALTNINGSGRANS =
-  'OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT; AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är ett produktbeslut om vad en bokförare respektive förvaltare ska få göra, och det hör till rollarbetet. Posten finns här för att skillnaden ska vara bevakad under tiden: ändras något lager failar testet i stället för att glida vidare.'
+  'OBESLUTAT, inte avsett. HTTP släpper in MANAGER men inte ACCOUNTANT; AI-lagret gör tvärtom. Vilken sida som har rätt är inte avgjort — det är ett produktbeslut om vad en bokförare respektive förvaltare ska få göra, och det hör till rollarbetet — spårat i #269. Posten finns här för att skillnaden ska vara bevakad under tiden: ändras något lager failar testet i stället för att glida vidare.'
 
 export const CROSS_LAYER_OPERATIONS: readonly CrossLayerOperation[] = [
   {
@@ -314,7 +314,7 @@ export const CROSS_LAYER_OPERATIONS: readonly CrossLayerOperation[] = [
   // hade tvingat fram policybeslutet nu, i en PR som uttryckligen bara bygger
   // bevakning. Och skillnaden ÄR verklig — den ska stå skriven, inte döljas.
   // Men "deklarerad" betyder här "känd och bevakad", inte "avsedd": vilken sida
-  // som har rätt är obestämt och hör till rollarbetet (R3/R4).
+  // som har rätt är obestämt och hör till rollarbetet (#269, R3/R4).
   //
   // Att lämna dem utanför kartan hade varit inkonsekvent — verktygets viktigaste
   // fynd utanför verktygets starkaste detektor.
