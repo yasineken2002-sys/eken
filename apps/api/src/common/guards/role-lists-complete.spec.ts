@@ -28,6 +28,13 @@
  * av dem drar in ESM-beroenden (aws-sdk, Anthropic) som ts-jest inte
  * transformerar. Parsern har därför en egen rimlighetskontroll längst ned: hittar
  * den för få listor är den trasig, inte kodbasen ren.
+ *
+ * DYNAMISKA LISTOR: en statisk parser kan inte utvärdera `@Roles(...KONSTANT)`
+ * eller en dekorator som slår in `Roles(...)`. Sådana finns inte i dag (verifierat),
+ * och skulle någon skriva en blir tokenet oigenkännligt och faller på det TREDJE
+ * testet ("bara kända roller") — alltså högljutt, inte tyst. Den utgången är
+ * avsiktlig: får du ett tredje-test-fel på något som inte ser ut som en stavfel,
+ * är det förmodligen en dynamisk lista som behöver skrivas ut.
  */
 
 import { readFileSync, readdirSync } from 'node:fs'
@@ -128,8 +135,12 @@ describe('R2 steg 1 · @Roles-listorna är fullständiga', () => {
 
   it('parsern hittar faktiskt listor (rimlighetskontroll)', () => {
     // Utan den här kan en trasig parser rapportera "allt rent" genom att inte
-    // hitta något alls. Kodbasen hade 159 grindade endpoints när R2 skrevs.
-    expect(lists.length).toBeGreaterThan(120)
+    // hitta något alls. Golvet ligger nära det verkliga antalet (159 när R2
+    // steg 1 landade) i stället för löst under: en parser som tyst slutar se en
+    // handfull filer — t.ex. efter en import-omflyttning som stör
+    // `export class`-matchningen, eller en controller i en katalog `walk()`
+    // inte når — ska falla, inte glida igenom med marginal.
+    expect(lists.length).toBeGreaterThan(150)
   })
 
   it('ingen lista släpper in en roll den inte nämner', () => {
