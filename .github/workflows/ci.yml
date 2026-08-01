@@ -129,6 +129,30 @@ jobs:
       - name: Verify invoice-number is only sourced from the shared sequence
         run: node apps/api/scripts/check-platform-invoice-number-source.mjs
 
+  period-lookup-guard:
+    name: Accounting period lookup guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — säkerställer att
+      # frågan "är bokföringsperioden stängd?" ENBART ställs via den delade
+      # accounting/closed-period.ts, och att AccountingPeriodEvent förblir
+      # append-only (ingen update/delete/upsert någonstans, inte ens där).
+      # En egen kopia kan ställa en annan fråga än spärren i allocate() och bli en
+      # TYST TILLÅTARE — verifikat i en stängd period utan att något säger ifrån.
+      # Se T5 PR1b.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (legitimate code passes, bypass variants caught)
+        run: node apps/api/scripts/check-period-lookup-source.mjs --self-test
+
+      - name: Verify period state is only looked up via the shared helper
+        run: node apps/api/scripts/check-period-lookup-source.mjs
+
   design-token-guard:
     name: Design token guard
     runs-on: ubuntu-latest

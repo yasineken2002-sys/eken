@@ -27,8 +27,9 @@ function makeClient(opts: {
             : { fiscalYearStartMonth: opts.fiscalYearStartMonth ?? 1 },
         ),
     },
-    closedAccountingPeriod: {
-      findUnique: jest.fn().mockResolvedValue(opts.closed ? { id: 'closed-1' } : null),
+    // PR1b: stängt tillstånd härleds ur periodens SENASTE händelse.
+    accountingPeriodEvent: {
+      findFirst: jest.fn().mockResolvedValue(opts.closed ? { type: 'CLOSED' } : null),
     },
     journalEntrySequence: { upsert },
   }

@@ -91,11 +91,16 @@ function makeService(opts: {
         .fn()
         .mockResolvedValue((opts.billed ?? []).map((b) => ({ year: b.year, month: b.month }))),
     },
-    closedAccountingPeriod: {
-      findMany: jest
-        .fn()
-        .mockResolvedValue((opts.closed ?? []).map((c) => ({ year: c.year, month: c.month }))),
-    },
+    // PR1b: getClosedPeriods plockar senaste händelsen per period (DISTINCT ON)
+    // och filtrerar CLOSED. Riggen matar in resultatet av det uppslaget.
+    $queryRaw: jest.fn().mockResolvedValue(
+      (opts.closed ?? []).map((c) => ({
+        year: c.year,
+        month: c.month,
+        type: 'CLOSED',
+        createdAt: new Date('2026-04-01T10:00:00Z'),
+      })),
+    ),
     organization: {
       findUnique: jest.fn().mockResolvedValue({
         vatReportingPeriod: opts.vatReportingPeriod ?? 'QUARTERLY',
@@ -469,7 +474,7 @@ describe('T1.4 · RentBackfillService', () => {
             Promise.resolve(billedByLease[args.where.leaseId] ?? []),
           ),
         },
-        closedAccountingPeriod: { findMany: jest.fn().mockResolvedValue([]) },
+        $queryRaw: jest.fn().mockResolvedValue([]),
       }
       const service = new RentBackfillService(
         prisma as never,

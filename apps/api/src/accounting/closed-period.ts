@@ -1,4 +1,5 @@
 import { ConflictException } from '@nestjs/common'
+import { AccountingPeriodEventType, EventActorType } from '@prisma/client'
 import type { Prisma } from '@prisma/client'
 import { stockholmCivilDate } from '../common/time/stockholm-period'
 
@@ -20,6 +21,36 @@ import { stockholmCivilDate } from '../common/time/stockholm-period'
  * inte kringgås. Modulen samlar bara UPPSLAGNINGEN så att alla frågar likadant,
  * och låter andra vägar ställa frågan TIDIGT (innan de hunnit göra halva jobbet)
  * i stället för att träffa spärren mitt i ett flöde.
+ *
+ * ── PR1b: VAD frågan ställs MOT bytte, INTE vad den betyder ─────────────────
+ *
+ * Tidigare: `ClosedAccountingPeriod.findUnique(org, år, månad) !== null`.
+ * Nu:       händelsen med HÖGST `seq` för (org, år, månad) har type = CLOSED.
+ *
+ * Betydelsen är identisk — en period utan händelser är öppen, en period vars
+ * senaste händelse är CLOSED är stängd — men representationen bär nu hela
+ * kedjan (stängd → öppnad av vem och varför → stängd igen) i stället för ett
+ * tillstånd som skrivs över. `allocate` självt är ORÖRT; hela bytet ligger här.
+ *
+ * TVÅ REGLER SOM INTE FÅR BRYTAS I DEN HÄR FILEN:
+ *
+ *  1. FRÅGA ALDRIG MED TYPFILTER. Uppslagningen hämtar den senaste händelsen
+ *     OAVSETT typ och inspekterar `type` efteråt. En fråga som filtrerar på typ
+ *     ställer en annan fråga än den vi tror: `where: { type: 'REOPENED' }` läser
+ *     som "har perioden någonsin återöppnats → öppen", vilket gör perioden
+ *     permanent öppen även efter en omstängning. Det är den enda vägen härifrån
+ *     till en TYST TILLÅTARE — ett verifikat som landar i en stängd period utan
+ *     att någon spärr säger ifrån. Testat i closed-period.derivation.spec.ts.
+ *
+ *  2. `organizationId` I VARJE WHERE. Den gamla `findUnique` på den sammansatta
+ *     nyckeln kunde inte glömma org-scopet; en `findFirst` kan. En glömd
+ *     org-scopning betyder att en ANNAN organisations händelser avgör om DIN
+ *     period är stängd.
+ *
+ * Att ordningen är entydig vilar på `seq` (per-period monoton räknare), inte på
+ * `createdAt`: två händelser i samma millisekund skulle annars ge godtycklig
+ * ordning — och godtycklig ordning på just den här frågan betyder "perioden är
+ * slumpvis öppen". Se docblocket på modellen i schema.prisma.
  */
 
 /** En period identifierad som kalenderår + kalendermånad (1–12). */
@@ -28,8 +59,20 @@ export interface PeriodKey {
   month: number
 }
 
-/** Minsta Prisma-yta hjälparna behöver — funkar med både PrismaService och tx. */
-type PeriodClient = Pick<Prisma.TransactionClient, 'closedAccountingPeriod'>
+/**
+ * Minsta Prisma-yta LÄSNINGARNA behöver — funkar med både PrismaService och tx.
+ * `$queryRaw` krävs av bulkformen (DISTINCT ON, se getClosedPeriodStates).
+ */
+type PeriodClient = Pick<Prisma.TransactionClient, 'accountingPeriodEvent' | '$queryRaw'>
+
+/**
+ * Minsta Prisma-yta SKRIVNINGEN behöver. `closedAccountingPeriod` ingår för
+ * speglingen (rollback-fallskärmen) — se appendPeriodClosedEvent.
+ */
+type PeriodWriteClient = Pick<
+  Prisma.TransactionClient,
+  'accountingPeriodEvent' | 'closedAccountingPeriod'
+>
 
 /** `2026-03` — nyckelform som används i mängder och felmeddelanden. */
 export function periodKeyOf(period: PeriodKey): string {
@@ -45,6 +88,10 @@ export function periodOfDate(date: Date): PeriodKey {
 /**
  * Är perioden som datumet tillhör stängd? Ren läsning — kastar inte.
  * Använd `assertPeriodOpen` när svaret ska stoppa en skrivning.
+ *
+ * Det här är punktformen som `allocate` anropar i varje verifikations-
+ * transaktion: ett indexträff (organizationId, year, month, seq DESC) + LIMIT 1.
+ * INGET typfilter — se regel 1 i filens docblock.
  */
 export async function isPeriodClosed(
   client: PeriodClient,
@@ -52,11 +99,12 @@ export async function isPeriodClosed(
   date: Date,
 ): Promise<boolean> {
   const { year, month } = periodOfDate(date)
-  const closed = await client.closedAccountingPeriod.findUnique({
-    where: { organizationId_year_month: { organizationId, year, month } },
-    select: { id: true },
+  const latest = await client.accountingPeriodEvent.findFirst({
+    where: { organizationId, year, month },
+    orderBy: { seq: 'desc' },
+    select: { type: true },
   })
-  return closed !== null
+  return latest?.type === AccountingPeriodEventType.CLOSED
 }
 
 /**
@@ -85,6 +133,41 @@ export async function assertPeriodOpen(
   }
 }
 
+/** En period som är stängd just nu, med tidpunkten för den GÄLLANDE stängningen. */
+export interface ClosedPeriodState extends PeriodKey {
+  /** createdAt på den SENASTE CLOSED-händelsen — inte den första, om perioden omstängts. */
+  closedAt: Date
+}
+
+/**
+ * BULKFORM: organisationens samtliga perioder som är stängda just nu.
+ *
+ * DISTINCT ON plockar den senaste händelsen per (år, månad) — utan typfilter,
+ * precis som punktformen — och först därefter filtreras CLOSED fram. Skrivet i
+ * rå SQL för att uttrycka "senaste per grupp" i ETT anrop; Prismas `distinct`
+ * hade behövt hämta hem varje periods hela historik och sålla i Node.
+ *
+ * Ordningen (seq DESC) är samma entydiga ordning som punktformen använder — de
+ * två får aldrig kunna svara olika på samma period.
+ */
+export async function getClosedPeriodStates(
+  client: PeriodClient,
+  organizationId: string,
+): Promise<ClosedPeriodState[]> {
+  const rows = await client.$queryRaw<
+    Array<{ year: number; month: number; type: string; createdAt: Date }>
+  >`
+    SELECT DISTINCT ON ("year", "month")
+      "year", "month", "type"::text AS "type", "createdAt"
+    FROM "AccountingPeriodEvent"
+    WHERE "organizationId" = ${organizationId}
+    ORDER BY "year", "month", "seq" DESC
+  `
+  return rows
+    .filter((r) => r.type === AccountingPeriodEventType.CLOSED)
+    .map((r) => ({ year: Number(r.year), month: Number(r.month), closedAt: r.createdAt }))
+}
+
 /**
  * BULKFORM: vilka av de angivna perioderna är stängda?
  *
@@ -92,22 +175,118 @@ export async function assertPeriodOpen(
  * gap-detektion) och som INTE ska kasta, utan märka upp och hoppa över. Returnerar
  * en mängd med nycklar på formen `2026-03` (se `periodKeyOf`).
  *
- * `months` utelämnad → alla organisationens stängda perioder (billigare än N
- * uppslag när anroparen ändå itererar ett långt spann).
+ * `months` utelämnad → alla organisationens stängda perioder.
  */
 export async function getClosedPeriods(
   client: PeriodClient,
   organizationId: string,
   months?: readonly PeriodKey[],
 ): Promise<Set<string>> {
-  const rows = await client.closedAccountingPeriod.findMany({
-    where: {
-      organizationId,
-      ...(months && months.length > 0
-        ? { OR: months.map((m) => ({ year: m.year, month: m.month })) }
-        : {}),
-    },
-    select: { year: true, month: true },
+  const closed = await getClosedPeriodStates(client, organizationId)
+  const wanted = months && months.length > 0 ? new Set(months.map(periodKeyOf)) : null
+  return new Set(closed.map(periodKeyOf).filter((k) => wanted == null || wanted.has(k)))
+}
+
+/**
+ * SKRIVNINGEN: lägger en CLOSED-händelse för perioden.
+ *
+ * MÅSTE anropas med en transaktionsklient — händelsen och speglingen nedan ska
+ * stå och falla ihop.
+ *
+ * `seq` allokeras som max(seq)+1 för perioden inuti transaktionen. Två samtidiga
+ * stängningar läser båda samma max, försöker skriva samma seq, och det unika
+ * indexet (organizationId, year, month, seq) låter exakt en vinna — den andra
+ * får P2002. Det är samma serialisering som det gamla unika indexet
+ * (organizationId, year, month) gav, bara flyttad till en nyckel som tål flera
+ * händelser per period.
+ *
+ * SPEGLINGEN till `ClosedAccountingPeriod` är INTE en andra sanningskälla: ingen
+ * kodväg läser den tabellen längre (CI-vakt: check-period-lookup-source.mjs).
+ * Den finns enbart som rollback-fallskärm under övergången — rullas API:t
+ * tillbaka till PR1a-kod läser den koden den gamla tabellen, och utan speglingen
+ * hade varje period som stängts under övergångsfönstret tyst blivit öppen igen.
+ * Speglingen tas bort tillsammans med tabellen i PR1d.
+ *
+ * ENDAST CLOSED: det finns medvetet ingen väg härifrån att skriva REOPENED.
+ * Återöppning är PR1c och kräver egna grindar (roll, skäl, räkenskapsårsspärr)
+ * som inte ska kunna kringgås av att någon råkar anropa en generisk hjälpare.
+ */
+export async function appendPeriodClosedEvent(
+  tx: PeriodWriteClient,
+  params: {
+    organizationId: string
+    year: number
+    month: number
+    actorUserId?: string | null
+    actorLabel?: string | null
+    summary: Prisma.InputJsonValue
+  },
+): Promise<{ seq: number }> {
+  const { organizationId, year, month, summary } = params
+  const actorUserId = params.actorUserId ?? null
+  const actorLabel = params.actorLabel ?? null
+
+  const last = await tx.accountingPeriodEvent.findFirst({
+    where: { organizationId, year, month },
+    orderBy: { seq: 'desc' },
+    select: { seq: true },
   })
-  return new Set(rows.map((r) => periodKeyOf(r)))
+  const seq = (last?.seq ?? 0) + 1
+
+  await tx.accountingPeriodEvent.create({
+    data: {
+      organizationId,
+      year,
+      month,
+      seq,
+      type: AccountingPeriodEventType.CLOSED,
+      // Ingen känd aktör (AI-vägen utan användare, interna anropare) → SYSTEM.
+      // Vi fabricerar aldrig en användare som inte fanns.
+      actorType: actorUserId ? EventActorType.USER : EventActorType.SYSTEM,
+      ...(actorUserId ? { actorUserId } : {}),
+      ...(actorLabel ? { actorLabel } : {}),
+      summary,
+    },
+  })
+
+  // Spegling — se docblocket ovan. Write-only, läses av ingen.
+  //
+  // UPSERT, inte create: den gamla tabellen har kvar sitt unika index
+  // (organizationId, year, month) och tål därför bara EN rad per period. I PR1b
+  // spelar det ingen roll — en period stängs en gång, och en andra stängning
+  // stoppas av prechecken innan den når hit. Men i PR1c skriver en OMSTÄNGNING
+  // efter återöppning en andra CLOSED-händelse via just den här funktionen, och
+  // ett `create` hade då krockat med den kvarvarande spegelraden. Krocken sker i
+  // samma transaktion som händelsen → hela den legitima omstängningen rullas
+  // tillbaka, och P2002-hanteringen hos anroparen rapporterar det som "perioden
+  // är redan stängd" — fel besked, och ett fel som inget test i PR1b hade övat.
+  //
+  // Upserten ändrar INGENTING i PR1b:s beteende: create-grenen är identisk med
+  // det som skrevs förut, och update-grenen är oåtkomlig så länge ingen kan
+  // stänga en period två gånger. Den finns för att PR1c inte ska ärva en dold
+  // spärr i en tabell som enligt sin egen kommentar inte längre är auktoritativ.
+  //
+  // SERIALISERINGEN PÅVERKAS INTE: händelsen skrivs FÖRE speglingen, så två
+  // samtidiga stängningar krockar redan på (organizationId, year, month, seq)
+  // och den förlorande transaktionen når aldrig hit.
+  await tx.closedAccountingPeriod.upsert({
+    where: { organizationId_year_month: { organizationId, year, month } },
+    create: {
+      organizationId,
+      year,
+      month,
+      ...(actorUserId ? { closedById: actorUserId } : {}),
+      summary,
+    },
+    // Speglingen ska visa den GÄLLANDE stängningen — samma sak som händelsen med
+    // högst seq säger. `closedById: null` är avsiktligt tillåtet: en omstängning
+    // utan känd aktör ska inte ärva den förra stängningens användare.
+    update: {
+      closedAt: new Date(),
+      closedById: actorUserId,
+      summary,
+    },
+  })
+
+  return { seq }
 }

@@ -33,23 +33,53 @@ interface RigOpts {
 
 function makeRig(opts: RigOpts = {}) {
   const created: Array<Record<string, unknown>> = []
+  const events: Array<Record<string, unknown>> = []
   const notices = opts.notices ?? []
   const bookedNotice = new Set((opts.bookedNoticeIds ?? []).map((id) => `rent-notice:${id}`))
   const bookedInvoice = new Set(opts.bookedInvoiceIds ?? [])
 
+  // PR1b: stängt tillstånd härleds ur senaste händelsen per period. Riggen matar
+  // därför in en CLOSED-händelse per period i `opts.closed` — motsvarigheten till
+  // vad DISTINCT ON hade returnerat från AccountingPeriodEvent.
+  const closedEventRows = (opts.closed ?? []).map((c) => ({
+    year: c.year,
+    month: c.month,
+    type: 'CLOSED',
+    createdAt: c.closedAt ?? new Date('2026-04-01T10:00:00Z'),
+  }))
+
+  // Stängningen skriver händelse + spegling i EN transaktion. Deklareras före
+  // `prisma` med explicit returtyp — annars blir objektet självrefererande för TS.
+  const $transaction = jest.fn(
+    (fn: (tx: unknown) => Promise<unknown>): Promise<unknown> => fn(prisma),
+  )
+
   const prisma = {
-    closedAccountingPeriod: {
-      findMany: jest.fn().mockResolvedValue(
-        (opts.closed ?? []).map((c) => ({
-          year: c.year,
-          month: c.month,
-          closedAt: c.closedAt ?? new Date('2026-04-01T10:00:00Z'),
-        })),
-      ),
-      create: jest.fn((args: { data: Record<string, unknown> }) => {
-        created.push(args.data)
-        return Promise.resolve({ id: 'cap-1', ...args.data })
+    accountingPeriodEvent: {
+      // Två anropare: prechecks punktuppslag ("är perioden stängd?") och
+      // appendPeriodClosedEvents seq-allokering. Attrappen svarar på båda utifrån
+      // periodens historik i `opts.closed`.
+      findFirst: jest.fn((args: { where: { year: number; month: number } }) => {
+        const hit = closedEventRows.find(
+          (r) => r.year === args.where.year && r.month === args.where.month,
+        )
+        return Promise.resolve(hit ? { type: 'CLOSED', seq: 1 } : null)
       }),
+      create: jest.fn((args: { data: Record<string, unknown> }) => {
+        events.push(args.data)
+        return Promise.resolve({ id: 'ape-1', ...args.data })
+      }),
+    },
+    closedAccountingPeriod: {
+      // Speglingen upsertas (create-grenen är den som gäller i PR1b — perioden
+      // kan inte stängas två gånger här).
+      upsert: jest.fn((args: { create: Record<string, unknown> }) => {
+        created.push(args.create)
+        return Promise.resolve({ id: 'cap-1', ...args.create })
+      }),
+    },
+    user: {
+      findUnique: jest.fn().mockResolvedValue({ firstName: 'Anna', lastName: 'Svensson' }),
     },
     organization: {
       findUnique: jest.fn().mockResolvedValue({
@@ -112,11 +142,19 @@ function makeRig(opts: RigOpts = {}) {
     },
     bankTransaction: { count: jest.fn().mockResolvedValue(opts.unmatchedBankTx ?? 0) },
     journalEntryLine: { findMany: jest.fn().mockResolvedValue([]) },
-    $queryRaw: jest.fn().mockResolvedValue([{ count: BigInt(opts.unbalancedCount ?? 0) }]),
+    // Två skilda råa frågor delar den här mocken: obalans-räkningen (precheck)
+    // och DISTINCT ON-uppslagningen av senaste periodhändelse (closed-period.ts).
+    // De skiljs på SQL-texten, inte på anropsordning.
+    $queryRaw: jest.fn((strings: TemplateStringsArray) => {
+      const sql = (strings.raw ?? strings).join('')
+      if (sql.includes('AccountingPeriodEvent')) return Promise.resolve(closedEventRows)
+      return Promise.resolve([{ count: BigInt(opts.unbalancedCount ?? 0) }])
+    }),
+    $transaction,
   }
 
   const service = new AccountingPeriodService(prisma as never)
-  return { service, prisma, created }
+  return { service, prisma, created, events }
 }
 
 const ACTOR = { actorRole: UserRole.ACCOUNTANT, actorUserId: 'user-1' }
@@ -226,10 +264,56 @@ describe('T5 PR1a · AccountingPeriodService', () => {
   })
 
   describe('Stängning', () => {
-    it('skriver ClosedAccountingPeriod med ögonblicksbild och stängande användare', async () => {
-      const { service, created } = makeRig()
+    it('skriver en CLOSED-händelse med ögonblicksbild, aktör och seq=1', async () => {
+      const { service, events } = makeRig()
       await service.closePeriod('org-1', 2026, 5, ACTOR)
 
+      expect(events).toHaveLength(1)
+      expect(events[0]).toMatchObject({
+        organizationId: 'org-1',
+        year: 2026,
+        month: 5,
+        seq: 1,
+        type: 'CLOSED',
+        actorType: 'USER',
+        actorUserId: 'user-1',
+        // Denormaliserat så loggen går att läsa när User-raden är borta.
+        actorLabel: 'Anna Svensson',
+      })
+      const summary = events[0]!.summary as { generatedAt: string; month: number }
+      expect(summary.month).toBe(5)
+      expect(typeof summary.generatedAt).toBe('string')
+    })
+
+    it('okänd aktör → SYSTEM, ingen påhittad användare', async () => {
+      const { service, events } = makeRig()
+      await service.closePeriod('org-1', 2026, 5, { actorRole: UserRole.OWNER })
+
+      expect(events[0]).toMatchObject({ actorType: 'SYSTEM' })
+      expect(events[0]).not.toHaveProperty('actorUserId')
+      expect(events[0]).not.toHaveProperty('actorLabel')
+    })
+
+    it('seq fortsätter från periodens historik (N+1), inte från 1', async () => {
+      // Formeln `seq = (last?.seq ?? 0) + 1` bär hela serialiseringsargumentet.
+      // Tom historik täcks av testerna ovan; det här pinnar N+1-grenen i den
+      // snabba sviten (den DB-backade samtidighetskörningen kompletterar, men
+      // går inte i CI).
+      const { service, prisma, events } = makeRig()
+      prisma.accountingPeriodEvent.findFirst = jest.fn().mockResolvedValue({ seq: 3 })
+
+      await service.closePeriod('org-1', 2026, 5, ACTOR)
+      expect(events[0]).toMatchObject({ seq: 4 })
+    })
+
+    it('speglar till den gamla tabellen i SAMMA transaktion (rollback-fallskärm)', async () => {
+      const { service, created, events, prisma } = makeRig()
+      await service.closePeriod('org-1', 2026, 5, ACTOR)
+
+      // Speglingen läses av ingen, men får aldrig hamna i otakt med händelsen:
+      // en rollback till PR1a-kod läser den gamla tabellen.
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+      expect(events).toHaveLength(1)
       expect(created).toHaveLength(1)
       expect(created[0]).toMatchObject({
         organizationId: 'org-1',
@@ -237,9 +321,7 @@ describe('T5 PR1a · AccountingPeriodService', () => {
         month: 5,
         closedById: 'user-1',
       })
-      const summary = created[0]!.summary as { generatedAt: string; month: number }
-      expect(summary.month).toBe(5)
-      expect(typeof summary.generatedAt).toBe('string')
+      expect(created[0]!.summary).toEqual(events[0]!.summary)
     })
 
     it('redan stängd period avvisas', async () => {
@@ -310,14 +392,23 @@ describe('T5 PR1a · AccountingPeriodService', () => {
   })
 
   describe('Den VERKSTÄLLANDE spärren är orörd (allocate)', () => {
-    it('stängd period → allocate kastar och ingen sekvens ökas', async () => {
-      const upsert = jest.fn()
+    /**
+     * PR1b bytte VAD spärren slår upp (senaste händelsen i stället för en rad per
+     * period), inte VAD den betyder. Testerna nedan matar in periodens senaste
+     * händelse och kräver exakt samma utfall som mot den gamla representationen.
+     */
+    function allocateRig(latest: { type: string } | null) {
+      const upsert = jest.fn().mockResolvedValue({ lastNumber: 7 })
       const tx = {
         organization: { findUnique: jest.fn().mockResolvedValue({ fiscalYearStartMonth: 1 }) },
-        closedAccountingPeriod: { findUnique: jest.fn().mockResolvedValue({ id: 'closed-1' }) },
+        accountingPeriodEvent: { findFirst: jest.fn().mockResolvedValue(latest) },
         journalEntrySequence: { upsert },
       }
-      const service = new VerifikationsnummerService({} as never)
+      return { tx, upsert, service: new VerifikationsnummerService({} as never) }
+    }
+
+    it('stängd period → allocate kastar och ingen sekvens ökas', async () => {
+      const { tx, upsert, service } = allocateRig({ type: 'CLOSED' })
 
       await expect(
         service.allocate(tx as never, 'org-1', new Date('2026-05-15T10:00:00Z')),
@@ -326,16 +417,33 @@ describe('T5 PR1a · AccountingPeriodService', () => {
       expect(upsert).not.toHaveBeenCalled()
     })
 
-    it('öppen period → allocate tilldelar nummer som förut', async () => {
-      const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ fiscalYearStartMonth: 1 }) },
-        closedAccountingPeriod: { findUnique: jest.fn().mockResolvedValue(null) },
-        journalEntrySequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 7 }) },
-      }
-      const service = new VerifikationsnummerService({} as never)
+    it('period utan händelser (aldrig stängd) → allocate tilldelar nummer som förut', async () => {
+      const { tx, service } = allocateRig(null)
 
       const result = await service.allocate(tx as never, 'org-1', new Date('2026-05-15T10:00:00Z'))
       expect(result).toEqual({ series: 'A', verNumber: 7, fiscalYear: 2026 })
+    })
+
+    it('senaste händelsen REOPENED → allocate släpper igenom (perioden ÄR öppen)', async () => {
+      const { tx, service } = allocateRig({ type: 'REOPENED' })
+
+      const result = await service.allocate(tx as never, 'org-1', new Date('2026-05-15T10:00:00Z'))
+      expect(result.verNumber).toBe(7)
+    })
+
+    it('spärren frågar org-scopat, utan typfilter och på senaste seq', async () => {
+      const { tx, service } = allocateRig(null)
+      await service.allocate(tx as never, 'org-1', new Date('2026-05-15T10:00:00Z'))
+
+      const args = tx.accountingPeriodEvent.findFirst.mock.calls[0]![0] as {
+        where: Record<string, unknown>
+        orderBy: Record<string, unknown>
+      }
+      expect(args.where).toEqual({ organizationId: 'org-1', year: 2026, month: 5 })
+      // Ett typfilter hade gjort frågan till "har något hänt" i stället för
+      // "vad hände senast" — den enda vägen till en tyst tillåtare.
+      expect(args.where).not.toHaveProperty('type')
+      expect(args.orderBy).toEqual({ seq: 'desc' })
     })
   })
 })
