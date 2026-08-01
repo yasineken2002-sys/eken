@@ -9,6 +9,8 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+import { UserRole } from '@prisma/client'
+import { assertMayActOnCollections } from '../common/authz/collections-authz'
 
 /**
  * Inkassoexporten är ett av få ställen där personnumret verkligen behövs i
@@ -60,7 +62,11 @@ export class CollectionExportService {
   async enqueueExportForInvoice(
     invoiceId: string,
     organizationId: string,
+    actorRole?: UserRole,
   ): Promise<{ jobId: string }> {
+    // Grinden ligger HÄR, inte i controllern: dekoratorns hierarki kan inte
+    // uttrycka "ACCOUNTANT men inte MANAGER". Se common/authz/collections-authz.ts.
+    assertMayActOnCollections(actorRole, 'exportera underlag till inkasso')
     const jobId = await this.pdfQueue.enqueue({
       kind: 'collections-export',
       organizationId,
@@ -76,7 +82,9 @@ export class CollectionExportService {
   async enqueueBulkExport(
     invoiceIds: string[],
     organizationId: string,
+    actorRole?: UserRole,
   ): Promise<{ jobId: string }> {
+    assertMayActOnCollections(actorRole, 'bulk-exportera underlag till inkasso')
     const jobId = await this.pdfQueue.enqueue({
       kind: 'collections-bulk-export',
       organizationId,
@@ -220,11 +228,20 @@ export class CollectionExportService {
    * inkassobolag genom externt system (t.ex. Vismas portal). Vi pausar
    * påminnelser och loggar att det är gjort.
    */
+  /**
+   * BOKFÖR INGENTING. Fordran finns kvar — den drivs bara in av någon annan.
+   * En eventuell nedskrivning/konstaterad kundförlust bokförs separat och
+   * senare, i RentBadDebtService. Metoden sätter status, pausar påminnelser och
+   * skriver ett append-only InvoiceEvent.
+   */
   async markSentToCollection(
     invoiceId: string,
     organizationId: string,
     note?: string,
+    actorRole?: UserRole,
+    actorId?: string,
   ): Promise<{ id: string; status: 'SENT_TO_COLLECTION' }> {
+    assertMayActOnCollections(actorRole, 'markera som skickad till inkasso')
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, organizationId },
     })
@@ -243,11 +260,18 @@ export class CollectionExportService {
         remindersPausedReason: note ?? 'Skickad till externt inkassobolag',
       },
     })
+    // Av de fem grindade handlingarna är detta den ENDA som är en genuint
+    // manuell användarhandling — export/bulk-export körs av workern och loggas
+    // som SYSTEM. Den skrev tidigare actorType USER men lämnade actorId tomt,
+    // så loggen sa "en människa gjorde detta" utan att säga vem. Det är precis
+    // den fråga som ställs först om en hyresgäst bestrider en
+    // inkassoöverlämning. actorId trådas därför in från den inloggade aktören.
     await this.prisma.invoiceEvent.create({
       data: {
         invoiceId: invoice.id,
         type: 'DEBT_COLLECTION',
         actorType: 'USER',
+        ...(actorId ? { actorId } : {}),
         actorLabel: 'Manuell markering',
         payload: note ? { note } : {},
       },
