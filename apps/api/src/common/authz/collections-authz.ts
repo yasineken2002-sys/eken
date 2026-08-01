@@ -6,22 +6,29 @@ import { UserRole } from '@prisma/client'
  *
  * ── Varför den här filen finns ────────────────────────────────────────────────
  *
- * `RolesGuard` är HIERARKISK: `userLevel >= ROLE_HIERARCHY[krav]`. Bara den
- * LÄGSTA rollen i en `@Roles`-lista har effekt, resten är dekoration. Det gör
- * att `@Roles('OWNER','ADMIN','ACCOUNTANT')` läses som "dessa tre" men BETYDER
- * "ACCOUNTANT och uppåt" — och MANAGER (nivå 3) ligger över ACCOUNTANT (nivå 2)
- * och släpps därför in utan att nämnas.
+ * BAKGRUNDEN (rollgrindens semantik och varför den ändrades) står samlad i
+ * `common/guards/roles.guard.ts`. Kort: när R1 skrevs var guarden hierarkisk, så
+ * inkasso-controllernas lista släppte in MANAGER utan att nämna den — och en
+ * förvaltare kunde därför lämna över en hyresgästs skuld till inkasso utan att
+ * någon spärr sa ifrån. Tjänsterna hade ingen egen rollkontroll att falla
+ * tillbaka på.
  *
- * Inkasso-controllerna bar precis den listan. Följden: en förvaltare kunde
- * exportera en hyresgästs skuld till inkasso och markera den skickad — en
- * bindande handling mot en enskild person — utan att någon spärr sa ifrån.
- * Tjänsterna hade ingen egen rollkontroll att falla tillbaka på.
+ * R2 steg 2 tog bort hierarkin: guarden matchar numera exakt, så en lista KAN nu
+ * uttrycka "ACCOUNTANT men inte MANAGER". Grinden här är därför inte längre en
+ * nödlösning för något dekoratorn inte klarade — men den står kvar, av två skäl
+ * som båda gäller oavsett guardens semantik:
  *
- * Dekoratorn KAN inte uttrycka avsikten, eftersom hierarkin inte har något sätt
- * att säga "ACCOUNTANT men inte MANAGER". Därför ligger den bärande grinden här,
- * i tjänstelagret, med EXAKT mängdmatchning — samma semantik som bokföringens
- * grindar (CLOSE_ROLES, REVERSAL_ROLES) och AI-lagrets ACCOUNTING_ONLY_ACTIONS
- * redan använder. Dekoratorn blir en grovsållning som stänger ute VIEWER.
+ *   1. INTE ALLA VÄGAR GÅR VIA HTTP. AI-verktyget `export_for_collection`
+ *      anropar render-vägen synkront, förbi kön och förbi varje dekorator. En
+ *      spärr som bara finns på controllern skyddar inte den vägen.
+ *   2. DET ÄR EN BINDANDE HANDLING. Två oberoende lager är rätt nivå för något
+ *      som inte går att ta tillbaka, och tjänstelagret är den punkt varje
+ *      framtida anropare måste passera.
+ *
+ * Klassdekoratorn på inkasso-controllerna är fortsatt en grovsållning: den
+ * täcker både läsning (som MANAGER ska ha) och de bindande handlingarna (som
+ * MANAGER inte ska ha), och en klassnivålista kan inte skilja dem åt. Det är
+ * tjänstegrinden som drar den linjen.
  *
  * ── Var gränsen går ──────────────────────────────────────────────────────────
  *
