@@ -20,165 +20,165 @@ Endpoints utan @Roles saknas här med flit: de är autentiserade men inte
 rollgrindade, och de flesta är självscopade (byt mitt lösenord, läs mina
 notiser). Vill du veta vilka de är: sök efter controllers utan @Roles.
 
-DELETE /ai/attachments/:id                             ACCOUNTANT, ADMIN, MANAGER, OWNER
-DELETE /ai/conversations/:id                           ACCOUNTANT, ADMIN, MANAGER, OWNER
-DELETE /ai/memory                                      ACCOUNTANT, ADMIN, MANAGER, OWNER
-DELETE /avisering/:id                                  ADMIN, OWNER
-DELETE /customers/:id                                  ADMIN, OWNER
-DELETE /documents/:id                                  ADMIN, OWNER
-DELETE /import/contract-batches/:id                    ADMIN, MANAGER, OWNER
-DELETE /inspections/:id                                ADMIN, OWNER
-DELETE /invoices/:id                                   ADMIN, OWNER
-DELETE /leases/:id                                     ADMIN, OWNER
-DELETE /maintenance-plans/:id                          ADMIN, OWNER
-DELETE /maintenance/:id                                ADMIN, OWNER
-DELETE /news/:id                                       ADMIN, OWNER
-DELETE /notifications/old                              ADMIN, OWNER
-DELETE /properties/:id                                 ADMIN, OWNER
-DELETE /reconciliation/imports/:id                     ADMIN, MANAGER, OWNER
-DELETE /reconciliation/psd2/consents/:id               ADMIN, OWNER
-DELETE /tenants/:id                                    ADMIN, OWNER
-DELETE /units/:id                                      ADMIN, OWNER
-DELETE /users/:id                                      OWNER
-GET /accounting/accounts                               ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /accounting/journal/:id                            ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /accounting/journal                                ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /accounting/periods/:year/:month/history           ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /accounting/periods/:year/:month/precheck          ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /accounting/periods                                ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /accounting/reports/balance-sheet                  ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /accounting/reports/profit-loss                    ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /accounting/reports/sie4                           ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /accounting/reports/vat                            ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /ai/analysis                                       ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /ai/chat/stream                                    ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /ai/conversations/:id                              ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /ai/conversations                                  ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /ai/tools                                          ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /ai/usage/breakdown                                ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /ai/usage                                          ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /avisering/backfill/:leaseId/preview               ADMIN, MANAGER, OWNER
-GET /avisering/backfill/queue                          ADMIN, MANAGER, OWNER
-GET /collections/overdue-status                        ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /import/contract-batches/:id                       ADMIN, MANAGER, OWNER
-GET /misc-charges/:id                                  ADMIN, MANAGER, OWNER
-GET /misc-charges                                      ADMIN, MANAGER, OWNER
-GET /reconciliation/psd2/consents                      ADMIN, OWNER
-GET /rent-collections/ready                            ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /tenant-portal/activation-status/:tenantId         ADMIN, MANAGER, OWNER
-GET /tenant-portal/invitations                         ADMIN, MANAGER, OWNER
-GET /users                                             ADMIN, OWNER
-PATCH /avisering/:id/paid                              ADMIN, MANAGER, OWNER
-PATCH /collections/reminders/:invoiceId/pause          ACCOUNTANT, ADMIN, MANAGER, OWNER
-PATCH /collections/reminders/:invoiceId/resume         ACCOUNTANT, ADMIN, MANAGER, OWNER
-PATCH /consumption/charges/:id/confirm                 ADMIN, MANAGER, OWNER
-PATCH /consumption/meters/:id                          ADMIN, MANAGER, OWNER
-PATCH /contracts/:leaseId/appendices/:documentId       ADMIN, MANAGER, OWNER
-PATCH /customers/:id                                   ADMIN, MANAGER, OWNER
-PATCH /deposits/:id/pay                                ADMIN, MANAGER, OWNER
-PATCH /deposits/:id/refund                             ADMIN, MANAGER, OWNER
-PATCH /inspections/:id/items/:itemId                   ADMIN, MANAGER, OWNER
-PATCH /inspections/:id                                 ADMIN, MANAGER, OWNER
-PATCH /invoices/:id/status                             ADMIN, MANAGER, OWNER
-PATCH /invoices/:id                                    ADMIN, MANAGER, OWNER
-PATCH /keys/:id/return                                 ADMIN, MANAGER, OWNER
-PATCH /keys/:id                                        ADMIN, MANAGER, OWNER
-PATCH /leases/:id/renew                                ADMIN, MANAGER, OWNER
-PATCH /leases/:id/status                               ADMIN, MANAGER, OWNER
-PATCH /leases/:id/terminate                            ADMIN, OWNER
-PATCH /leases/:id                                      ADMIN, MANAGER, OWNER
-PATCH /maintenance-plans/:id                           ADMIN, MANAGER, OWNER
-PATCH /maintenance/:id                                 ADMIN, MANAGER, OWNER
-PATCH /news/:id                                        ADMIN, MANAGER, OWNER
-PATCH /organizations/me/logo                           ADMIN, OWNER
-PATCH /organizations/me                                ADMIN, OWNER
-PATCH /properties/:id                                  ADMIN, MANAGER, OWNER
-PATCH /reconciliation/transactions/:id/ignore          ADMIN, MANAGER, OWNER
-PATCH /reconciliation/transactions/:id/match           ADMIN, MANAGER, OWNER
-PATCH /reconciliation/transactions/:id/unmatch         ADMIN, MANAGER, OWNER
-PATCH /rent-increases/:id/accept                       ADMIN, MANAGER, OWNER
-PATCH /rent-increases/:id/reject                       ADMIN, MANAGER, OWNER
-PATCH /rent-increases/:id/withdraw                     ADMIN, MANAGER, OWNER
-PATCH /tenants/:id                                     ADMIN, MANAGER, OWNER
-PATCH /terminations/:id/approve                        ADMIN, OWNER
-PATCH /terminations/:id/reject                         ADMIN, OWNER
-PATCH /units/:id                                       ADMIN, MANAGER, OWNER
-PATCH /users/:id/role                                  OWNER
-POST /accounting/accounts/seed                         ACCOUNTANT, ADMIN, MANAGER, OWNER
-POST /accounting/journal/:id/reverse                   ACCOUNTANT, ADMIN, OWNER
-POST /accounting/periods/:year/:month/close            ACCOUNTANT, ADMIN, OWNER
-POST /accounting/periods/:year/:month/reopen           OWNER
-POST /ai-usage/buy-credits                             ADMIN, OWNER
-POST /ai/attachments                                   ACCOUNTANT, ADMIN, MANAGER, OWNER
-POST /ai/chat                                          ACCOUNTANT, ADMIN, MANAGER, OWNER
-POST /ai/confirm                                       ACCOUNTANT, ADMIN, MANAGER, OWNER
-POST /avisering/:id/bad-debt/confirm                   ACCOUNTANT, ADMIN, MANAGER, OWNER
-POST /avisering/:id/bad-debt/probable                  ACCOUNTANT, ADMIN, MANAGER, OWNER
-POST /avisering/backfill/:leaseId/confirm              ADMIN, MANAGER, OWNER
-POST /avisering/cron/run/:year/:month                  ADMIN, OWNER
-POST /avisering/generate                               ADMIN, MANAGER, OWNER
-POST /avisering/send-all/:month/:year                  ADMIN, MANAGER, OWNER
-POST /avisering/send                                   ADMIN, MANAGER, OWNER
-POST /collections/bulk-export                          ACCOUNTANT, ADMIN, MANAGER, OWNER
-POST /collections/export/:invoiceId                    ACCOUNTANT, ADMIN, MANAGER, OWNER
-POST /collections/mark-sent/:invoiceId                 ACCOUNTANT, ADMIN, MANAGER, OWNER
-POST /consumption/leases/:leaseId/invoice              ADMIN, MANAGER, OWNER
-POST /consumption/meters                               ADMIN, MANAGER, OWNER
-POST /consumption/readings                             ADMIN, MANAGER, OWNER
-POST /consumption/tariffs                              ADMIN, MANAGER, OWNER
-POST /consumption/year-end-accrual                     ACCOUNTANT, ADMIN, MANAGER, OWNER
-POST /contracts/generate/:leaseId                      ADMIN, MANAGER, OWNER
-POST /customers                                        ADMIN, MANAGER, OWNER
-POST /deposits                                         ADMIN, MANAGER, OWNER
-POST /documents                                        ADMIN, MANAGER, OWNER
-POST /import/contract-batches/:id/confirm-safe         ADMIN, MANAGER, OWNER
-POST /import/contract-batches/:id/rows/:rowId/confirm  ADMIN, MANAGER, OWNER
-POST /import/contract-batches/:id/rows/:rowId/skip     ADMIN, MANAGER, OWNER
-POST /import/contract-batches                          ADMIN, MANAGER, OWNER
-POST /import/execute                                   ADMIN, OWNER
-POST /import/preview                                   ADMIN, OWNER
-POST /import/scan-contract                             ADMIN, OWNER
-POST /inspections/:id/analyze                          ADMIN, MANAGER, OWNER
-POST /inspections                                      ADMIN, MANAGER, OWNER
-POST /invoices/:id/pay                                 ADMIN, MANAGER, OWNER
-POST /invoices/:id/send-email                          ADMIN, MANAGER, OWNER
-POST /invoices                                         ADMIN, MANAGER, OWNER
-POST /keys                                             ADMIN, MANAGER, OWNER
-POST /leases/:id/initial-notices                       ADMIN, MANAGER, OWNER
-POST /leases/with-tenant                               ADMIN, MANAGER, OWNER
-POST /leases                                           ADMIN, MANAGER, OWNER
-POST /maintenance-plans                                ADMIN, MANAGER, OWNER
-POST /maintenance/:id/comments                         ADMIN, MANAGER, OWNER
-POST /maintenance                                      ADMIN, MANAGER, OWNER
-POST /messages/:id/retry                               ADMIN, MANAGER, OWNER
-POST /messages/send                                    ADMIN, MANAGER, OWNER
-POST /misc-charges/:id/cancel                          ADMIN, MANAGER, OWNER
-POST /misc-charges/:id/confirm                         ADMIN, MANAGER, OWNER
-POST /misc-charges                                     ADMIN, MANAGER, OWNER
-POST /news/:id/publish                                 ADMIN, MANAGER, OWNER
-POST /news                                             ADMIN, MANAGER, OWNER
-POST /notifications/send-overdue-reminders             ADMIN, OWNER
-POST /properties                                       ADMIN, MANAGER, OWNER
-POST /reconciliation/auto-match                        ADMIN, MANAGER, OWNER
-POST /reconciliation/import-bgmax                      ADMIN, MANAGER, OWNER
-POST /reconciliation/import-pdf                        ADMIN, MANAGER, OWNER
-POST /reconciliation/imports/:id/confirm               ADMIN, MANAGER, OWNER
-POST /reconciliation/import                            ADMIN, MANAGER, OWNER
-POST /reconciliation/psd2/consents                     ADMIN, OWNER
-POST /reconciliation/psd2/sync                         ADMIN, OWNER
-POST /rent-collections/bulk-export                     ACCOUNTANT, ADMIN, MANAGER, OWNER
-POST /rent-collections/export/:noticeId                ACCOUNTANT, ADMIN, MANAGER, OWNER
-POST /rent-increases/:id/send-notice                   ADMIN, MANAGER, OWNER
-POST /rent-increases                                   ADMIN, MANAGER, OWNER
-POST /signing/requests/:id/refresh                     ADMIN, MANAGER, OWNER
-POST /signing/requests                                 ADMIN, MANAGER, OWNER
-POST /tenant-portal/invitations/resend                 ADMIN, MANAGER, OWNER
-POST /tenant-portal/invitations                        ADMIN, MANAGER, OWNER
-POST /tenant-portal/resend-activation/:tenantId        ADMIN, MANAGER, OWNER
-POST /tenants                                          ADMIN, MANAGER, OWNER
-POST /units                                            ADMIN, MANAGER, OWNER
-POST /users/:id/reactivate                             OWNER
-POST /users/invite                                     ADMIN, OWNER
+DELETE /ai/attachments/:id                                      ACCOUNTANT, ADMIN, MANAGER, OWNER
+DELETE /ai/conversations/:id                                    ACCOUNTANT, ADMIN, MANAGER, OWNER
+DELETE /ai/memory                                               ACCOUNTANT, ADMIN, MANAGER, OWNER
+DELETE /avisering/:id                                           ADMIN, OWNER
+DELETE /customers/:id                                           ADMIN, OWNER
+DELETE /documents/:id                                           ADMIN, OWNER
+DELETE /import/contract-batches/:id                             ADMIN, MANAGER, OWNER
+DELETE /inspections/:id                                         ADMIN, OWNER
+DELETE /invoices/:id                                            ADMIN, OWNER
+DELETE /leases/:id                                              ADMIN, OWNER
+DELETE /maintenance-plans/:id                                   ADMIN, OWNER
+DELETE /maintenance/:id                                         ADMIN, OWNER
+DELETE /news/:id                                                ADMIN, OWNER
+DELETE /notifications/old                                       ADMIN, OWNER
+DELETE /properties/:id                                          ADMIN, OWNER
+DELETE /reconciliation/imports/:id                              ADMIN, MANAGER, OWNER
+DELETE /reconciliation/psd2/consents/:id                        ADMIN, OWNER
+DELETE /tenants/:id                                             ADMIN, OWNER
+DELETE /units/:id                                               ADMIN, OWNER
+DELETE /users/:id                                               OWNER
+GET /accounting/accounts                                        ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /accounting/journal/:id                                     ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /accounting/journal                                         ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /accounting/periods/:year/:month/history                    ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /accounting/periods/:year/:month/precheck                   ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /accounting/periods                                         ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /accounting/reports/balance-sheet                           ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /accounting/reports/profit-loss                             ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /accounting/reports/sie4                                    ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /accounting/reports/vat                                     ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /ai/analysis                                                ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /ai/chat/stream                                             ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /ai/conversations/:id                                       ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /ai/conversations                                           ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /ai/tools                                                   ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /ai/usage/breakdown                                         ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /ai/usage                                                   ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /avisering/backfill/:leaseId/preview                        ADMIN, MANAGER, OWNER
+GET /avisering/backfill/queue                                   ADMIN, MANAGER, OWNER
+GET /collections/overdue-status                                 ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /import/contract-batches/:id                                ADMIN, MANAGER, OWNER
+GET /misc-charges/:id                                           ADMIN, MANAGER, OWNER
+GET /misc-charges                                               ADMIN, MANAGER, OWNER
+GET /reconciliation/psd2/consents                               ADMIN, OWNER
+GET /rent-collections/ready                                     ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /tenant-portal/activation-status/:tenantId                  ADMIN, MANAGER, OWNER
+GET /tenant-portal/invitations                                  ADMIN, MANAGER, OWNER
+GET /users                                                      ADMIN, OWNER
+PATCH /avisering/:id/paid                                       ADMIN, MANAGER, OWNER
+PATCH /collections/reminders/:invoiceId/pause                   ACCOUNTANT, ADMIN, MANAGER, OWNER
+PATCH /collections/reminders/:invoiceId/resume                  ACCOUNTANT, ADMIN, MANAGER, OWNER
+PATCH /consumption/charges/:id/confirm                          ADMIN, MANAGER, OWNER
+PATCH /consumption/meters/:id                                   ADMIN, MANAGER, OWNER
+PATCH /contracts/:leaseId/appendices/:documentId                ADMIN, MANAGER, OWNER
+PATCH /customers/:id                                            ADMIN, MANAGER, OWNER
+PATCH /deposits/:id/pay                                         ADMIN, MANAGER, OWNER
+PATCH /deposits/:id/refund                                      ADMIN, MANAGER, OWNER
+PATCH /inspections/:id/items/:itemId                            ADMIN, MANAGER, OWNER
+PATCH /inspections/:id                                          ADMIN, MANAGER, OWNER
+PATCH /invoices/:id/status                                      ADMIN, MANAGER, OWNER
+PATCH /invoices/:id                                             ADMIN, MANAGER, OWNER
+PATCH /keys/:id/return                                          ADMIN, MANAGER, OWNER
+PATCH /keys/:id                                                 ADMIN, MANAGER, OWNER
+PATCH /leases/:id/renew                                         ADMIN, MANAGER, OWNER
+PATCH /leases/:id/status                                        ADMIN, MANAGER, OWNER
+PATCH /leases/:id/terminate                                     ADMIN, OWNER
+PATCH /leases/:id                                               ADMIN, MANAGER, OWNER
+PATCH /maintenance-plans/:id                                    ADMIN, MANAGER, OWNER
+PATCH /maintenance/:id                                          ADMIN, MANAGER, OWNER
+PATCH /news/:id                                                 ADMIN, MANAGER, OWNER
+PATCH /organizations/me/logo                                    ADMIN, OWNER
+PATCH /organizations/me                                         ADMIN, OWNER
+PATCH /properties/:id                                           ADMIN, MANAGER, OWNER
+PATCH /reconciliation/transactions/:id/ignore                   ADMIN, MANAGER, OWNER
+PATCH /reconciliation/transactions/:id/match                    ADMIN, MANAGER, OWNER
+PATCH /reconciliation/transactions/:id/unmatch                  ADMIN, MANAGER, OWNER
+PATCH /rent-increases/:id/accept                                ADMIN, MANAGER, OWNER
+PATCH /rent-increases/:id/reject                                ADMIN, MANAGER, OWNER
+PATCH /rent-increases/:id/withdraw                              ADMIN, MANAGER, OWNER
+PATCH /tenants/:id                                              ADMIN, MANAGER, OWNER
+PATCH /terminations/:id/approve                                 ADMIN, OWNER
+PATCH /terminations/:id/reject                                  ADMIN, OWNER
+PATCH /units/:id                                                ADMIN, MANAGER, OWNER
+PATCH /users/:id/role                                           OWNER
+POST /accounting/accounts/seed                                  ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /accounting/journal/:id/reverse                            ACCOUNTANT, ADMIN, OWNER
+POST /accounting/periods/:year/:month/close                     ACCOUNTANT, ADMIN, OWNER
+POST /accounting/periods/:year/:month/reopen                    OWNER
+POST /ai-usage/buy-credits                                      ADMIN, OWNER
+POST /ai/attachments                                            ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /ai/chat                                                   ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /ai/confirm                                                ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /avisering/:id/bad-debt/confirm                            ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /avisering/:id/bad-debt/probable                           ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /avisering/backfill/:leaseId/confirm                       ADMIN, MANAGER, OWNER
+POST /avisering/cron/run/:year/:month                           ADMIN, OWNER
+POST /avisering/generate                                        ADMIN, MANAGER, OWNER
+POST /avisering/send-all/:month/:year                           ADMIN, MANAGER, OWNER
+POST /avisering/send                                            ADMIN, MANAGER, OWNER
+POST /collections/bulk-export                                   ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /collections/export/:invoiceId                             ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /collections/mark-sent/:invoiceId                          ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /consumption/leases/:leaseId/invoice                       ADMIN, MANAGER, OWNER
+POST /consumption/meters                                        ADMIN, MANAGER, OWNER
+POST /consumption/readings                                      ADMIN, MANAGER, OWNER
+POST /consumption/tariffs                                       ADMIN, MANAGER, OWNER
+POST /consumption/year-end-accrual                              ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /contracts/generate/:leaseId                               ADMIN, MANAGER, OWNER
+POST /customers                                                 ADMIN, MANAGER, OWNER
+POST /deposits                                                  ADMIN, MANAGER, OWNER
+POST /documents                                                 ADMIN, MANAGER, OWNER
+POST /import/contract-batches/:id/confirm-safe                  ADMIN, MANAGER, OWNER
+POST /import/contract-batches/:id/rows/:rowId/confirm           ADMIN, MANAGER, OWNER
+POST /import/contract-batches/:id/rows/:rowId/skip              ADMIN, MANAGER, OWNER
+POST /import/contract-batches                                   ADMIN, MANAGER, OWNER
+POST /import/execute                                            ADMIN, OWNER
+POST /import/preview                                            ADMIN, OWNER
+POST /import/scan-contract                                      ADMIN, OWNER
+POST /inspections/:id/analyze                                   ADMIN, MANAGER, OWNER
+POST /inspections                                               ADMIN, MANAGER, OWNER
+POST /invoices/:id/pay                                          ADMIN, MANAGER, OWNER
+POST /invoices/:id/send-email                                   ADMIN, MANAGER, OWNER
+POST /invoices                                                  ADMIN, MANAGER, OWNER
+POST /keys                                                      ADMIN, MANAGER, OWNER
+POST /leases/:id/initial-notices                                ADMIN, MANAGER, OWNER
+POST /leases/with-tenant                                        ADMIN, MANAGER, OWNER
+POST /leases                                                    ADMIN, MANAGER, OWNER
+POST /maintenance-plans                                         ADMIN, MANAGER, OWNER
+POST /maintenance/:id/comments                                  ADMIN, MANAGER, OWNER
+POST /maintenance                                               ADMIN, MANAGER, OWNER
+POST /messages/:id/retry                                        ADMIN, MANAGER, OWNER
+POST /messages/send                                             ADMIN, MANAGER, OWNER
+POST /misc-charges/:id/cancel                                   ADMIN, MANAGER, OWNER
+POST /misc-charges/:id/confirm                                  ADMIN, MANAGER, OWNER
+POST /misc-charges                                              ADMIN, MANAGER, OWNER
+POST /news/:id/publish                                          ADMIN, MANAGER, OWNER
+POST /news                                                      ADMIN, MANAGER, OWNER
+POST /notifications/send-overdue-reminders                      ADMIN, OWNER
+POST /properties                                                ADMIN, MANAGER, OWNER
+POST /reconciliation/auto-match                                 ADMIN, MANAGER, OWNER
+POST /reconciliation/import-bgmax                               ADMIN, MANAGER, OWNER
+POST /reconciliation/import-pdf                                 ADMIN, MANAGER, OWNER
+POST /reconciliation/imports/:id/confirm                        ADMIN, MANAGER, OWNER
+POST /reconciliation/import                                     ADMIN, MANAGER, OWNER
+POST /reconciliation/psd2/consents                              ADMIN, OWNER
+POST /reconciliation/psd2/sync                                  ADMIN, OWNER
+POST /rent-collections/bulk-export                              ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /rent-collections/export/:noticeId                         ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /rent-increases/:id/send-notice                            ADMIN, MANAGER, OWNER
+POST /rent-increases                                            ADMIN, MANAGER, OWNER
+POST /signing/requests/:id/refresh                              ADMIN, MANAGER, OWNER
+POST /signing/requests                                          ADMIN, MANAGER, OWNER
+POST /tenant-portal/invitations/resend                          ADMIN, MANAGER, OWNER
+POST /tenant-portal/invitations                                 ADMIN, MANAGER, OWNER
+POST /tenant-portal/resend-activation/:tenantId                 ADMIN, MANAGER, OWNER
+POST /tenants                                                   ADMIN, MANAGER, OWNER
+POST /units                                                     ADMIN, MANAGER, OWNER
+POST /users/:id/reactivate                                      OWNER
+POST /users/invite                                              ADMIN, OWNER
 
 
 ## 2. Tjänstegrindar (3 st)
@@ -187,12 +187,12 @@ Chokepunkter med exakt matchning i tjänsten. Varje anropare passerar dem —
 även de som aldrig ser en dekorator (AI-verktyg, köade jobb, interna
 anropare). Det är här den bärande spärren ligger för bindande handlingar.
 
-CLOSE_ROLES              ACCOUNTANT, ADMIN, OWNER
-                         └─ stänga en bokföringsperiod
-REVERSAL_ROLES           ACCOUNTANT, ADMIN, OWNER
-                         └─ rätta ett verifikat
-COLLECTION_ACTION_ROLES  ACCOUNTANT, ADMIN, OWNER
-                         └─ exportera/markera skickad till inkasso
+CLOSE_ROLES                 ACCOUNTANT, ADMIN, OWNER
+                            └─ stänga en bokföringsperiod
+REVERSAL_ROLES              ACCOUNTANT, ADMIN, OWNER
+                            └─ rätta ett verifikat
+COLLECTION_ACTION_ROLES     ACCOUNTANT, ADMIN, OWNER
+                            └─ exportera/markera skickad till inkasso
 
 
 ## 3. AI-verktyg som utför handlingar (30 st)
@@ -212,36 +212,36 @@ Läsande verktyg saknas här — de grindas inte på roll.
   inte ändrad behörighet). Sektion 4 nedan täcker än så länge bara de
   bindande bokförings- och inkassohandlingarna.
 
-apply_rent_increase        ACCOUNTANT, ADMIN, OWNER
-close_period               ACCOUNTANT, ADMIN, OWNER
-compose_and_send_email     ACCOUNTANT, ADMIN, MANAGER, OWNER
-create_inspection          ACCOUNTANT, ADMIN, OWNER
-create_invoice             ACCOUNTANT, ADMIN, MANAGER, OWNER
-create_journal_entry       ACCOUNTANT, ADMIN, OWNER
-create_lease               ACCOUNTANT, ADMIN, OWNER
-create_maintenance_ticket  ACCOUNTANT, ADMIN, OWNER
-create_property            ACCOUNTANT, ADMIN, OWNER
-create_tenant_and_lease    ACCOUNTANT, ADMIN, OWNER
-create_unit                ACCOUNTANT, ADMIN, OWNER
-export_for_collection      ACCOUNTANT, ADMIN, OWNER
-export_sie4                ACCOUNTANT, ADMIN, OWNER
-generate_lease_contract    ACCOUNTANT, ADMIN, OWNER
-generate_rent_notices      ACCOUNTANT, ADMIN, OWNER
-import_bgmax_file          ACCOUNTANT, ADMIN, OWNER
-mark_invoice_paid          ACCOUNTANT, ADMIN, MANAGER, OWNER
-mark_sent_to_collection    ACCOUNTANT, ADMIN, OWNER
-match_bank_transaction     ACCOUNTANT, ADMIN, OWNER
-pause_reminders            ACCOUNTANT, ADMIN, MANAGER, OWNER
-prepare_contract_signing   ADMIN, OWNER
-record_expense             ACCOUNTANT, ADMIN, OWNER
-resume_reminders           ACCOUNTANT, ADMIN, MANAGER, OWNER
-send_document_to_tenant    ACCOUNTANT, ADMIN, MANAGER, OWNER
-send_invoice_email         ACCOUNTANT, ADMIN, MANAGER, OWNER
-send_overdue_reminders     ACCOUNTANT, ADMIN, MANAGER, OWNER
-transition_lease_status    ACCOUNTANT, ADMIN, OWNER
-unmatch_transaction        ACCOUNTANT, ADMIN, OWNER
-update_maintenance_status  ACCOUNTANT, ADMIN, OWNER
-update_tenant              ACCOUNTANT, ADMIN, OWNER
+apply_rent_increase               ACCOUNTANT, ADMIN, OWNER
+close_period                      ACCOUNTANT, ADMIN, OWNER
+compose_and_send_email            ACCOUNTANT, ADMIN, MANAGER, OWNER
+create_inspection                 ACCOUNTANT, ADMIN, OWNER
+create_invoice                    ACCOUNTANT, ADMIN, MANAGER, OWNER
+create_journal_entry              ACCOUNTANT, ADMIN, OWNER
+create_lease                      ACCOUNTANT, ADMIN, OWNER
+create_maintenance_ticket         ACCOUNTANT, ADMIN, OWNER
+create_property                   ACCOUNTANT, ADMIN, OWNER
+create_tenant_and_lease           ACCOUNTANT, ADMIN, OWNER
+create_unit                       ACCOUNTANT, ADMIN, OWNER
+export_for_collection             ACCOUNTANT, ADMIN, OWNER
+export_sie4                       ACCOUNTANT, ADMIN, OWNER
+generate_lease_contract           ACCOUNTANT, ADMIN, OWNER
+generate_rent_notices             ACCOUNTANT, ADMIN, OWNER
+import_bgmax_file                 ACCOUNTANT, ADMIN, OWNER
+mark_invoice_paid                 ACCOUNTANT, ADMIN, MANAGER, OWNER
+mark_sent_to_collection           ACCOUNTANT, ADMIN, OWNER
+match_bank_transaction            ACCOUNTANT, ADMIN, OWNER
+pause_reminders                   ACCOUNTANT, ADMIN, MANAGER, OWNER
+prepare_contract_signing          ADMIN, OWNER
+record_expense                    ACCOUNTANT, ADMIN, OWNER
+resume_reminders                  ACCOUNTANT, ADMIN, MANAGER, OWNER
+send_document_to_tenant           ACCOUNTANT, ADMIN, MANAGER, OWNER
+send_invoice_email                ACCOUNTANT, ADMIN, MANAGER, OWNER
+send_overdue_reminders            ACCOUNTANT, ADMIN, MANAGER, OWNER
+transition_lease_status           ACCOUNTANT, ADMIN, OWNER
+unmatch_transaction               ACCOUNTANT, ADMIN, OWNER
+update_maintenance_status         ACCOUNTANT, ADMIN, OWNER
+update_tenant                     ACCOUNTANT, ADMIN, OWNER
 
 
 ## 4. Operationer som finns i flera lager (5 st)

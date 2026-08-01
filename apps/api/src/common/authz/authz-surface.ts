@@ -126,11 +126,23 @@ export function collectEndpointRoles(srcDir: string): EndpointRoles[] {
         const path = /\(\s*['"`]([^'"`]*)['"`]/.exec(http)?.[1] ?? ''
         const roles = rolesOf(pending) || classRoles
         if (roles) {
-          found.push({
-            file: file.split('/').pop()!,
-            endpoint: `${verb.toUpperCase()} /${base}${path ? `/${path}` : ''}`,
-            roles: normalizeRoles(roles.split(',').filter(Boolean)),
-          })
+          const endpoint = `${verb.toUpperCase()} /${base}${path ? `/${path}` : ''}`
+          const parsed = normalizeRoles(roles.split(',').filter(Boolean))
+          // Parsern läser en rad i taget och antar att `@Roles(...)` ryms på en
+          // rad — sant i hela kodbasen i dag, och Prettier bryter inte
+          // dekoratorargument. Bryts den ändå matchar regexen inte, och strängen
+          // "@Roles(" skulle överleva som ett "rollnamn": endpointen hamnar i
+          // filen med SKRÄP i rollkolumnen i stället för att försvinna. Det är
+          // subtilare än ett bortfall och lättare att godkänna av misstag.
+          const okanda = parsed.filter((r) => !(ALL_ROLES as readonly string[]).includes(r))
+          if (okanda.length) {
+            throw new Error(
+              `authz-surface: kunde inte tolka rollerna för ${endpoint} i ${file}: ` +
+                `${okanda.join(', ')}. Sträcker sig @Roles(...) över flera rader? ` +
+                'Parsern läser en rad i taget.',
+            )
+          }
+          found.push({ file: file.split('/').pop()!, endpoint, roles: parsed })
         }
         pending = []
       } else if (t && !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*')) {
@@ -297,6 +309,22 @@ export interface AiToolRoles {
   roles: string[]
 }
 
+/**
+ * FASTA kolumnbredder, inte `Math.max(...)` över innehållet.
+ *
+ * En innehållsberoende bredd låter den LÄNGSTA raden bestämma indraget för alla
+ * andra: lägger någon till en endpoint som är ett tecken längre än dagens
+ * längsta, flyttar sig 159 rader och en ändring av EN roll drunknar i
+ * whitespace-brus. Det är precis det filen finns för att förhindra.
+ *
+ * Bredderna har marginal mot dagens längsta (53, 23 resp. 25 tecken). Spränger
+ * något ändå taket degraderar `pad` tyst till en oformaterad rad — en skev rad
+ * är billigt, en omflödad sektion är det inte.
+ */
+const ENDPOINT_COL = 62
+const GATE_COL = 26
+const TOOL_COL = 32
+
 function pad(s: string, n: number): string {
   return s.length >= n ? s : s + ' '.repeat(n - s.length)
 }
@@ -343,9 +371,8 @@ export function renderSurface(input: {
   out.push('rollgrindade, och de flesta är självscopade (byt mitt lösenord, läs mina')
   out.push('notiser). Vill du veta vilka de är: sök efter controllers utan @Roles.')
   out.push('')
-  const epWidth = Math.max(...endpoints.map((e) => e.endpoint.length), 10)
   for (const e of endpoints) {
-    out.push(`${pad(e.endpoint, epWidth)}  ${rolesCell(e.roles)}`)
+    out.push(`${pad(e.endpoint, ENDPOINT_COL)}  ${rolesCell(e.roles)}`)
   }
 
   out.push('')
@@ -356,10 +383,9 @@ export function renderSurface(input: {
   out.push('även de som aldrig ser en dekorator (AI-verktyg, köade jobb, interna')
   out.push('anropare). Det är här den bärande spärren ligger för bindande handlingar.')
   out.push('')
-  const sgWidth = Math.max(...serviceGates.map((g) => g.name.length), 10)
   for (const g of serviceGates) {
-    out.push(`${pad(g.name, sgWidth)}  ${rolesCell(g.roles)}`)
-    out.push(`${pad('', sgWidth)}  └─ ${g.guards}`)
+    out.push(`${pad(g.name, GATE_COL)}  ${rolesCell(g.roles)}`)
+    out.push(`${pad('', GATE_COL)}  └─ ${g.guards}`)
   }
 
   out.push('')
@@ -381,9 +407,8 @@ export function renderSurface(input: {
   out.push('  inte ändrad behörighet). Sektion 4 nedan täcker än så länge bara de')
   out.push('  bindande bokförings- och inkassohandlingarna.')
   out.push('')
-  const toolWidth = Math.max(...aiTools.map((t) => t.tool.length), 10)
   for (const t of aiTools) {
-    out.push(`${pad(t.tool, toolWidth)}  ${rolesCell(t.roles)}`)
+    out.push(`${pad(t.tool, TOOL_COL)}  ${rolesCell(t.roles)}`)
   }
 
   out.push('')

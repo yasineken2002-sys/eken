@@ -73,8 +73,10 @@ type Unsafe = (
 ) => Promise<unknown>
 
 function makeExecutor(): Unsafe {
-  // 30+ beroenden, alla oanvända före rollgrinden. `never[]` för att slippa
-  // attrappa en graf som ändå aldrig anropas.
+  // Konstruktorn tar 24 beroenden i dag; 40 ger marginal så att en tillagd
+  // parameter inte tyst blir `undefined` på en position vi trodde vi fyllt. Alla
+  // är oanvända före rollgrinden, så `never[]` räcker — att attrappa en graf som
+  // aldrig anropas hade bara varit underhåll.
   const Ctor = ToolExecutorService as unknown as new (...args: never[]) => ToolExecutorService
   const svc = new Ctor(...(Array.from({ length: 40 }, () => undefined) as never[]))
   return (svc as unknown as { executeToolUnsafe: Unsafe }).executeToolUnsafe.bind(svc) as Unsafe
