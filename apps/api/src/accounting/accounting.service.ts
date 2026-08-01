@@ -60,8 +60,12 @@ interface JournalFilters {
  * Vem som får rätta ett verifikat. Samma kalibrering som periodstängningen:
  * MANAGER utesluts medvetet — att bokföra en rättelse är en redovisningshandling,
  * inte förvaltning. VIEWER stängs ute redan av controllerns klassgrind.
+ *
+ * Exporterad av samma skäl som `CLOSE_ROLES`: `accounting-role-gates.spec.ts`
+ * kräver att controllerns `@Roles`-lista säger exakt samma sak, så att de två
+ * lagren inte kan glida isär obemärkt.
  */
-const REVERSAL_ROLES: UserRole[] = [UserRole.ACCOUNTANT, UserRole.ADMIN, UserRole.OWNER]
+export const REVERSAL_ROLES: UserRole[] = [UserRole.ACCOUNTANT, UserRole.ADMIN, UserRole.OWNER]
 
 /** Skälet blir rättelsens beskrivning i huvudboken — det måste gå att förstå. */
 const REVERSAL_REASON_MIN_LENGTH = 10

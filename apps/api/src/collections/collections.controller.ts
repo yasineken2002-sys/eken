@@ -40,10 +40,15 @@ class MarkSentDto {
 /**
  * Inkasso — fakturaflödet.
  *
- * ROLLGRINDEN ÄR TVÅDELAD, och dekoratorn är den grova halvan. `RolesGuard` är
- * hierarkisk, så `@Roles('ACCOUNTANT', …)` betyder "ACCOUNTANT och uppåt" —
- * MANAGER ligger ÖVER ACCOUNTANT och släpps därför in oavsett hur listan skrivs.
- * Klassnivån stänger alltså bara ute VIEWER.
+ * ROLLGRINDEN ÄR TVÅDELAD, och dekoratorn är den grova halvan. Klassnivån gäller
+ * BÅDE läsning (som MANAGER ska ha) och de bindande handlingarna (som MANAGER
+ * inte ska ha) — en enda lista kan inte skilja dem åt, oavsett semantik. Den
+ * stänger därför bara ute VIEWER.
+ *
+ * (När R1 skrevs kunde listan dessutom inte utesluta MANAGER ens om man ville:
+ * guarden var hierarkisk och släppte in allt över den lägsta listade rollen.
+ * R2 steg 2 tog bort det. Uppdelningen nedan står kvar för att den är rätt, inte
+ * för att den är påtvingad.)
  *
  * Gränsen som faktiskt gäller ligger i tjänsten:
  *   • LÄSA (förfallostatus) och PAUSA/ÅTERUPPTA kravtrappan → även MANAGER.

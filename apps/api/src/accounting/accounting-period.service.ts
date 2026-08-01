@@ -104,7 +104,15 @@ export interface PeriodDetail {
   withinReopenWindow: boolean
 }
 
-const CLOSE_ROLES: UserRole[] = [UserRole.ACCOUNTANT, UserRole.ADMIN, UserRole.OWNER]
+/**
+ * Vem som får stänga en period. MANAGER utesluts medvetet — att låsa en månad är
+ * en redovisningshandling, inte förvaltning.
+ *
+ * Exporterad för att `accounting-role-gates.spec.ts` ska kunna kräva att
+ * controllerns `@Roles`-lista säger EXAKT samma sak. Två lager är ett skydd bara
+ * så länge de är överens; glider de isär blir det andra lagret tyst overksamt.
+ */
+export const CLOSE_ROLES: UserRole[] = [UserRole.ACCOUNTANT, UserRole.ADMIN, UserRole.OWNER]
 
 /** Vilka som får veta att en period öppnats igen. VIEWER/MANAGER utelämnas. */
 const REOPEN_NOTIFICATION_ROLES: UserRole[] = [UserRole.OWNER, UserRole.ADMIN, UserRole.ACCOUNTANT]
@@ -149,11 +157,17 @@ const CORRECTION_NOT_A_REOPEN_MESSAGE =
  * ändring på en rad i den här funktionen — inte en utgrävning genom flödet efter
  * varje ställe som råkar resonera om kategorier.
  *
- * Undantaget går INTE att uttrycka i dagens rollsystem: RolesGuard är strikt
- * hierarkisk (`userLevel >= krav`), så allt som ges till ACCOUNTANT ges
- * automatiskt till ADMIN och OWNER — och spärren hade blivit verkningslös för
- * just hyresvärden, som är den den finns för. Revisor blir därför en egen
- * kontotyp, inte ett femte UserRole, och den här funktionen får då ta emot den.
+ * FORMEN på det undantaget är däremot inte längre avgjord. Argumentet som stod
+ * här — att en revisorsroll var omöjlig att uttrycka, eftersom RolesGuard var
+ * hierarkisk och allt som gavs till ACCOUNTANT automatiskt hamnade hos ADMIN och
+ * OWNER (alltså hos hyresvärden själv, som spärren finns för) — gäller inte
+ * längre. R2 steg 2 tog bort hierarkin: en lista kan numera betyda exakt
+ * "revisor, men inte ägaren".
+ *
+ * Slutsatsen "revisor blir en egen kontotyp, inte ett femte UserRole" vilade på
+ * den premissen och är därmed öppen igen. Båda vägarna är nu möjliga, och valet
+ * hör hemma i revisors-arbetet — inte i en kommentar här. Funktionen tar emot
+ * beslutet oavsett vilken form det får.
  */
 export function canReopenForCorrection(_actorRole: UserRole): boolean {
   return false
