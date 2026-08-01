@@ -3396,10 +3396,15 @@ export class ToolExecutorService {
             return { success: false, message: 'invoiceId krävs' }
           }
           const note = typeof toolInput.note === 'string' ? toolInput.note : undefined
+          // Rollen trådas in så AI-vägen träffar SAMMA tjänstegrind som HTTP-vägen
+          // (R1). AI-lagrets ACCOUNTING_ONLY_ACTIONS nekar redan MANAGER här —
+          // tjänstegrinden är andra lagret, och det som gäller om den listan
+          // någonsin skulle ändras.
           const result = await this.collectionExport.markSentToCollection(
             invoiceId,
             organizationId,
             note,
+            userRole as UserRole,
           )
           return {
             success: true,

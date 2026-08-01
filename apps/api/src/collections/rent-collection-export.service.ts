@@ -10,6 +10,8 @@ import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { RentDebtService } from '../avisering/rent-debt.service'
 import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+import { UserRole } from '@prisma/client'
+import { assertMayActOnCollections } from '../common/authz/collections-authz'
 
 // Inkasso PR 4b — steg 3. Read-only export av INKASSO_READY-hyresavier till ett
 // externt inkassobolag. SPEGLAR collections/CollectionExportService (faktura-
@@ -145,7 +147,10 @@ export class RentCollectionExportService {
   async enqueueExportForNotice(
     noticeId: string,
     organizationId: string,
+    actorRole?: UserRole,
   ): Promise<{ jobId: string }> {
+    // Se collection-export.service.ts — samma grind, samma skäl.
+    assertMayActOnCollections(actorRole, 'exportera underlag till inkasso')
     const jobId = await this.pdfQueue.enqueue({
       kind: 'rent-collections-export',
       organizationId,
@@ -155,7 +160,12 @@ export class RentCollectionExportService {
   }
 
   /** Köar bulk-export (samlad ZIP) — hela bygget sker i PdfWorker i ett jobb. */
-  async enqueueBulkExport(noticeIds: string[], organizationId: string): Promise<{ jobId: string }> {
+  async enqueueBulkExport(
+    noticeIds: string[],
+    organizationId: string,
+    actorRole?: UserRole,
+  ): Promise<{ jobId: string }> {
+    assertMayActOnCollections(actorRole, 'bulk-exportera underlag till inkasso')
     const jobId = await this.pdfQueue.enqueue({
       kind: 'rent-collections-bulk-export',
       organizationId,

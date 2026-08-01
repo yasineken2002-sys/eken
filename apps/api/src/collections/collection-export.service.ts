@@ -9,6 +9,8 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+import { UserRole } from '@prisma/client'
+import { assertMayActOnCollections } from '../common/authz/collections-authz'
 
 /**
  * Inkassoexporten är ett av få ställen där personnumret verkligen behövs i
@@ -60,7 +62,11 @@ export class CollectionExportService {
   async enqueueExportForInvoice(
     invoiceId: string,
     organizationId: string,
+    actorRole?: UserRole,
   ): Promise<{ jobId: string }> {
+    // Grinden ligger HÄR, inte i controllern: dekoratorns hierarki kan inte
+    // uttrycka "ACCOUNTANT men inte MANAGER". Se common/authz/collections-authz.ts.
+    assertMayActOnCollections(actorRole, 'exportera underlag till inkasso')
     const jobId = await this.pdfQueue.enqueue({
       kind: 'collections-export',
       organizationId,
@@ -76,7 +82,9 @@ export class CollectionExportService {
   async enqueueBulkExport(
     invoiceIds: string[],
     organizationId: string,
+    actorRole?: UserRole,
   ): Promise<{ jobId: string }> {
+    assertMayActOnCollections(actorRole, 'bulk-exportera underlag till inkasso')
     const jobId = await this.pdfQueue.enqueue({
       kind: 'collections-bulk-export',
       organizationId,
@@ -224,7 +232,9 @@ export class CollectionExportService {
     invoiceId: string,
     organizationId: string,
     note?: string,
+    actorRole?: UserRole,
   ): Promise<{ id: string; status: 'SENT_TO_COLLECTION' }> {
+    assertMayActOnCollections(actorRole, 'markera som skickad till inkasso')
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, organizationId },
     })

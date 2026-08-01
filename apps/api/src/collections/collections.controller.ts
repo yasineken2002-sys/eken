@@ -13,6 +13,8 @@ import {
 import { IsArray, IsOptional, IsString, IsUUID, MinLength } from 'class-validator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
+import { CurrentUser } from '../common/decorators/current-user.decorator'
+import type { JwtPayload } from '@eken/shared'
 import { PaymentReminderService } from '../notifications/payment-reminder.service'
 import { CollectionExportService } from './collection-export.service'
 
@@ -35,8 +37,27 @@ class MarkSentDto {
   note?: string
 }
 
+/**
+ * Inkasso — fakturaflödet.
+ *
+ * ROLLGRINDEN ÄR TVÅDELAD, och dekoratorn är den grova halvan. `RolesGuard` är
+ * hierarkisk, så `@Roles('ACCOUNTANT', …)` betyder "ACCOUNTANT och uppåt" —
+ * MANAGER ligger ÖVER ACCOUNTANT och släpps därför in oavsett hur listan skrivs.
+ * Klassnivån stänger alltså bara ute VIEWER.
+ *
+ * Gränsen som faktiskt gäller ligger i tjänsten:
+ *   • LÄSA (förfallostatus) och PAUSA/ÅTERUPPTA kravtrappan → även MANAGER.
+ *     Förvaltaren har hyresgästkontakten, och båda är reversibla.
+ *   • EXPORTERA och MARKERA SKICKAD till inkasso → endast ekonomi
+ *     (ACCOUNTANT/ADMIN/OWNER), exakt matchning i
+ *     common/authz/collections-authz.ts. Att lämna över en skuld är bindande
+ *     mot en enskild person och går inte att ta tillbaka.
+ *
+ * Samma gräns drar AI-lagret redan (ACCOUNTING_ONLY_ACTIONS respektive
+ * MANAGER_ALLOWED_ACTIONS) — R1 rättade HTTP-vägen till att säga samma sak.
+ */
 @Controller('collections')
-@Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+@Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
 export class CollectionsController {
   constructor(
     private readonly exportService: CollectionExportService,
@@ -64,17 +85,25 @@ export class CollectionsController {
 
   @Post('export/:invoiceId')
   @HttpCode(HttpStatus.ACCEPTED)
-  async exportSingle(@Param('invoiceId') invoiceId: string, @OrgId() organizationId: string) {
-    return this.exportService.enqueueExportForInvoice(invoiceId, organizationId)
+  async exportSingle(
+    @Param('invoiceId') invoiceId: string,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.exportService.enqueueExportForInvoice(invoiceId, organizationId, user.role)
   }
 
   @Post('bulk-export')
   @HttpCode(HttpStatus.ACCEPTED)
-  async exportBulk(@Body() dto: BulkExportDto, @OrgId() organizationId: string) {
+  async exportBulk(
+    @Body() dto: BulkExportDto,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
     if (!dto.invoiceIds?.length) {
       throw new BadRequestException('invoiceIds får inte vara tom')
     }
-    return this.exportService.enqueueBulkExport(dto.invoiceIds, organizationId)
+    return this.exportService.enqueueBulkExport(dto.invoiceIds, organizationId, user.role)
   }
 
   @Post('mark-sent/:invoiceId')
@@ -83,8 +112,9 @@ export class CollectionsController {
     @Param('invoiceId') invoiceId: string,
     @Body() dto: MarkSentDto,
     @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.exportService.markSentToCollection(invoiceId, organizationId, dto.note)
+    return this.exportService.markSentToCollection(invoiceId, organizationId, dto.note, user.role)
   }
 
   @Patch('reminders/:invoiceId/pause')
