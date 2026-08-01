@@ -157,11 +157,17 @@ const CORRECTION_NOT_A_REOPEN_MESSAGE =
  * ändring på en rad i den här funktionen — inte en utgrävning genom flödet efter
  * varje ställe som råkar resonera om kategorier.
  *
- * Undantaget går INTE att uttrycka i dagens rollsystem: RolesGuard är strikt
- * hierarkisk (`userLevel >= krav`), så allt som ges till ACCOUNTANT ges
- * automatiskt till ADMIN och OWNER — och spärren hade blivit verkningslös för
- * just hyresvärden, som är den den finns för. Revisor blir därför en egen
- * kontotyp, inte ett femte UserRole, och den här funktionen får då ta emot den.
+ * FORMEN på det undantaget är däremot inte längre avgjord. Argumentet som stod
+ * här — att en revisorsroll var omöjlig att uttrycka, eftersom RolesGuard var
+ * hierarkisk och allt som gavs till ACCOUNTANT automatiskt hamnade hos ADMIN och
+ * OWNER (alltså hos hyresvärden själv, som spärren finns för) — gäller inte
+ * längre. R2 steg 2 tog bort hierarkin: en lista kan numera betyda exakt
+ * "revisor, men inte ägaren".
+ *
+ * Slutsatsen "revisor blir en egen kontotyp, inte ett femte UserRole" vilade på
+ * den premissen och är därmed öppen igen. Båda vägarna är nu möjliga, och valet
+ * hör hemma i revisors-arbetet — inte i en kommentar här. Funktionen tar emot
+ * beslutet oavsett vilken form det får.
  */
 export function canReopenForCorrection(_actorRole: UserRole): boolean {
   return false

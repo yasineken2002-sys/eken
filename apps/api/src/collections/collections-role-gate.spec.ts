@@ -1,11 +1,15 @@
 /**
  * R1 — BEHÖRIGHETSGRÄNSEN MOT INKASSO.
  *
- * Problemet som stängs: `RolesGuard` är hierarkisk, så `@Roles('OWNER','ADMIN',
- * 'ACCOUNTANT')` betyder "ACCOUNTANT och uppåt" — och MANAGER (nivå 3) ligger
- * ÖVER ACCOUNTANT (nivå 2). Dekoratorn kunde alltså aldrig utesluta MANAGER,
- * och tjänsterna hade ingen egen kontroll. En förvaltare kunde lämna över en
- * hyresgästs skuld till inkasso.
+ * Problemet som stängdes: `RolesGuard` VAR hierarkisk när R1 skrevs, så
+ * `@Roles('OWNER','ADMIN','ACCOUNTANT')` betydde "ACCOUNTANT och uppåt" — och
+ * MANAGER (nivå 3) låg ÖVER ACCOUNTANT (nivå 2). Dekoratorn kunde alltså aldrig
+ * utesluta MANAGER, och tjänsterna hade ingen egen kontroll. En förvaltare kunde
+ * lämna över en hyresgästs skuld till inkasso.
+ *
+ * R2 steg 2 tog bort hierarkin — en lista kan numera utesluta MANAGER på egen
+ * hand. Det gör INTE testerna nedan överflödiga: de går på tjänsten, som är den
+ * enda punkt varje anropare passerar.
  *
  * Testerna nedan går därför på TJÄNSTEN, inte på controllern — det är där
  * gränsen ligger, och det är den vägen en framtida intern anropare eller ett

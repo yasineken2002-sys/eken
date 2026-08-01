@@ -2,7 +2,7 @@
  * RBAC-regressionstest för säkerhetsfixarna C1, C2, C3.
  *
  * Verifierar mot de RIKTIGA controllernas @Roles-metadata via den RIKTIGA
- * RolesGuard (hierarkisk) att:
+ * RolesGuard (exakt mängdmatchning sedan R2 steg 2) att:
  *   • VIEWER nekas (ForbiddenException → 403) på de tre tidigare öppna ytorna,
  *   • behörig roll släpps igenom (canActivate=true → 200),
  *   • öppna läs-endpoints (ai-usage GET) förblir öppna.
