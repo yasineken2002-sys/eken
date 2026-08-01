@@ -95,11 +95,20 @@ export class AccountingController {
 
   /**
    * Stänger perioden. Rollkravet upprepas i tjänsten (fail-closed chokepunkt,
-   * #194-mönstret) — dekoratorn här är bekvämlighet, inte skyddet. MANAGER
-   * utesluts medvetet: stängning är en redovisningshandling, inte förvaltning.
+   * #194-mönstret) — dekoratorn här är bekvämlighet, inte skyddet.
+   *
+   * AVSIKTEN är att utesluta MANAGER: stängning är en redovisningshandling, inte
+   * förvaltning. Den avsikten UPPRÄTTHÅLLS av `CLOSE_ROLES` i tjänsten, som
+   * matchar exakt. Dekoratorn kan den inte uttrycka — `RolesGuard` är hierarkisk
+   * och släpper in allt över den lägsta listade rollen, alltså MANAGER.
+   *
+   * R2 steg 1: listan skriver därför ut MANAGER, eftersom det är vad guarden
+   * FAKTISKT gör i dag. Att låta listan se snävare ut än den är, är just den
+   * fällan R2 finns till för att ta bort. Steg 3 tar bort MANAGER igen — då
+   * betyder det något.
    */
   @Post('periods/:year/:month/close')
-  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
   @HttpCode(200)
   async closePeriod(
     @OrgId() organizationId: string,
@@ -196,12 +205,16 @@ export class AccountingController {
    * träffar därför periodspärren om innevarande period är stängd; det finns
    * ingen specialväg förbi låset.
    *
-   * MANAGER utesluts (klassgrinden släpper in dem, metodgrinden inte): att
-   * bokföra en rättelse är en redovisningshandling, inte förvaltning. Rollkravet
-   * upprepas i tjänsten — dekoratorn är bekvämlighet, inte skyddet.
+   * AVSIKTEN är att utesluta MANAGER: att bokföra en rättelse är en
+   * redovisningshandling, inte förvaltning. Den avsikten upprätthålls av
+   * `REVERSAL_ROLES` i tjänsten (exakt matchning) — dekoratorn kan den inte
+   * uttrycka, eftersom `RolesGuard` är hierarkisk.
+   *
+   * R2 steg 1: listan skriver ut MANAGER, eftersom det är vad guarden faktiskt
+   * gör i dag. Steg 3 tar bort den igen, när listan betyder vad den säger.
    */
   @Post('journal/:id/reverse')
-  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
   @HttpCode(201)
   async reverseJournalEntry(
     @Param('id') id: string,

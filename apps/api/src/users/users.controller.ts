@@ -25,15 +25,20 @@ import type { JwtPayload } from '@eken/shared'
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 
+  // R2 steg 1: OWNER skrivs ut. Hierarkin släpper redan in ägaren (nivå 5 > 4),
+  // så listan `['ADMIN']` betydde i praktiken `['ADMIN','OWNER']` — den såg bara
+  // snävare ut. Utan den här raden hade steg 2 (exakt matchning) låst ute
+  // ägaren från sin egen användarlista.
   @Get()
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'OWNER')
   @ApiOperation({ summary: 'Lista alla användare i organisationen' })
   findAll(@OrgId() organizationId: string) {
     return this.users.findAll(organizationId)
   }
 
+  // R2 steg 1: samma sak — ägaren kunde alltid bjuda in, listan sa bara inte det.
   @Post('invite')
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'OWNER')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Bjud in en ny användare till organisationen' })
   invite(
