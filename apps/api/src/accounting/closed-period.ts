@@ -1,6 +1,6 @@
 import { ConflictException } from '@nestjs/common'
 import { AccountingPeriodEventType, EventActorType } from '@prisma/client'
-import type { Prisma } from '@prisma/client'
+import type { AccountingPeriodEventReasonCategory, Prisma } from '@prisma/client'
 import { stockholmCivilDate } from '../common/time/stockholm-period'
 
 /**
@@ -73,6 +73,13 @@ type PeriodWriteClient = Pick<
   Prisma.TransactionClient,
   'accountingPeriodEvent' | 'closedAccountingPeriod'
 >
+
+/**
+ * Minsta Prisma-yta ÅTERÖPPNINGEN behöver. Medvetet SNÄVARE än
+ * `PeriodWriteClient`: `closedAccountingPeriod` saknas, så det är strukturellt
+ * omöjligt för återöppningen att röra speglingen. Se appendPeriodReopenedEvent.
+ */
+type PeriodReopenClient = Pick<Prisma.TransactionClient, 'accountingPeriodEvent'>
 
 /** `2026-03` — nyckelform som används i mängder och felmeddelanden. */
 export function periodKeyOf(period: PeriodKey): string {
@@ -289,4 +296,168 @@ export async function appendPeriodClosedEvent(
   })
 
   return { seq }
+}
+
+/**
+ * SKRIVNINGEN: lägger en REOPENED-händelse för perioden (T5 PR1c).
+ *
+ * MÅSTE anropas med en transaktionsklient. `seq` allokeras med samma
+ * max(seq)+1-formel och samma unika index som stängningen, så en samtidig
+ * återöppning och omstängning kan aldrig båda vinna: den ena får P2002.
+ *
+ * RÖR INTE `ClosedAccountingPeriod` — varken raderar eller uppdaterar den.
+ * Klienttypen saknar tabellen, så det är inte ens möjligt härifrån. Två skäl:
+ *
+ *  1. Det BEHÖVS inte. Speglingen skrivs som `upsert` (PR1b), så en senare
+ *     omstängning fungerar oavsett om spegelraden ligger kvar (`update`-grenen)
+ *     eller är borta (`create`-grenen). Ingen spegel-logik i återöppningen alls
+ *     är alltså den enklaste korrekta implementationen.
+ *
+ *  2. Att lämna raden ger RÄTT FELRIKTNING gratis. Speglingens hela syfte är
+ *     rollback-skydd: rullas API:t tillbaka till PR1a-kod läser den koden den
+ *     gamla tabellen. Med raden kvar läses en återöppnad period som fortfarande
+ *     STÄNGD — användaren är låst en stund till, men ingen bokföring läcker in i
+ *     en period som någon medvetet stängt. Hade återöppningen raderat raden vore
+ *     felriktningen den motsatta: gammal kod hade tyst släppt in bokföring.
+ *
+ * Följden är att speglingen blir INAKTUELL för en period som återöppnats och
+ * inte stängts igen — den säger "stängd" medan sanningen säger "öppen". Det är
+ * ofarligt eftersom ingen kodväg läser den, men PR1d får INTE försöka
+ * konsistenskontrollera de två mot varandra före DROP: de kommer legitimt att
+ * säga olika saker.
+ *
+ * ROLL, ORSAK OCH RÄKENSKAPSÅR grindas i `AccountingPeriodService.reopenPeriod`
+ * — den här funktionen skriver bara händelsen och ska aldrig anropas utan att ha
+ * passerat dem.
+ *
+ * TILLSTÅNDSKONTROLLEN ligger dock HÄR, inuti transaktionen, och det är
+ * avsiktligt. Tjänsten kontrollerar också att perioden är stängd, men den
+ * kontrollen sker UTANFÖR transaktionen och är därmed bara en snabb-nej för
+ * UX:ens skull. Mellan den och skrivningen finns ett fönster:
+ *
+ *   A: läser "stängd" → öppnar tx → skriver REOPENED(seq n+1) → committar
+ *   B: läser "stängd" (före A:s commit) → öppnar tx EFTER A → läser seq n+1
+ *      → skriver REOPENED(seq n+2)
+ *
+ * B får ett eget, unikt seq och krockar därför INTE med unik-indexet. Utan en
+ * kontroll här hade kedjan blivit `CLOSED → REOPENED → REOPENED` — två
+ * återöppningar utan mellanliggande stängning, tyst, från ett dubbelklick i två
+ * flikar. Ingen bokföring hamnar fel av det (perioden är öppen i båda fallen),
+ * men historiken är hela poängen med den här modellen: den ska gå att läsa som
+ * `stängd → öppnad → stängd` av den som granskar långt senare.
+ *
+ * Kontrollen kostar ingenting extra — samma `findFirst` som ger `seq` bär redan
+ * `type`. Den ÄKTA samtidigheten (båda läser samma seq) fångas som förut av
+ * unik-indexet och kastar P2002, som anroparen översätter till ett begripligt
+ * besked.
+ */
+export async function appendPeriodReopenedEvent(
+  tx: PeriodReopenClient,
+  params: {
+    organizationId: string
+    year: number
+    month: number
+    reason: string
+    reasonCategory: AccountingPeriodEventReasonCategory
+    actorUserId?: string | null
+    actorLabel?: string | null
+  },
+): Promise<{ seq: number }> {
+  const { organizationId, year, month, reason, reasonCategory } = params
+  const actorUserId = params.actorUserId ?? null
+  const actorLabel = params.actorLabel ?? null
+
+  const last = await tx.accountingPeriodEvent.findFirst({
+    where: { organizationId, year, month },
+    orderBy: { seq: 'desc' },
+    select: { seq: true, type: true },
+  })
+
+  // ATOMÄR TILLSTÅNDSKONTROLL — samma läsning som ger `seq` avgör också om
+  // perioden faktiskt är stängd, i SAMMA transaktion som skrivningen. Se
+  // docblocket ovan för fönstret detta stänger.
+  if (last?.type !== AccountingPeriodEventType.CLOSED) {
+    throw new ConflictException(
+      `Perioden ${periodKeyOf({ year, month })} är inte stängd och kan därför inte öppnas igen.`,
+    )
+  }
+
+  const seq = last.seq + 1
+
+  await tx.accountingPeriodEvent.create({
+    data: {
+      organizationId,
+      year,
+      month,
+      seq,
+      type: AccountingPeriodEventType.REOPENED,
+      actorType: actorUserId ? EventActorType.USER : EventActorType.SYSTEM,
+      ...(actorUserId ? { actorUserId } : {}),
+      ...(actorLabel ? { actorLabel } : {}),
+      reason,
+      reasonCategory,
+      // Ingen summary: en återöppning har ingen ögonblicksbild att ta. Tvingas
+      // också av CHECK i DB.
+    },
+  })
+
+  return { seq }
+}
+
+/**
+ * Hur många gånger varje period har återöppnats, nyckelad `2026-03`.
+ *
+ * För översikten: en period som varit öppnad ska synas som det i listan, annars
+ * måste man klicka in på varje period för att upptäcka att den har en historia.
+ * Egen fråga i stället för att bakas in i `getClosedPeriodStates` — den senare
+ * svarar på "vad gäller NU", den här på "vad har hänt".
+ */
+export async function getReopenCounts(
+  client: PeriodClient,
+  organizationId: string,
+): Promise<Map<string, number>> {
+  const rows = await client.accountingPeriodEvent.groupBy({
+    by: ['year', 'month'],
+    where: { organizationId, type: AccountingPeriodEventType.REOPENED },
+    _count: { _all: true },
+  })
+  return new Map(rows.map((r) => [periodKeyOf(r), r._count._all]))
+}
+
+/** En händelse i periodens historik, i den ordning `seq` ger. */
+export interface PeriodHistoryEvent {
+  seq: number
+  type: AccountingPeriodEventType
+  createdAt: Date
+  actorLabel: string | null
+  reason: string | null
+  reasonCategory: AccountingPeriodEventReasonCategory | null
+  summary: Prisma.JsonValue | null
+}
+
+/**
+ * Hela kedjan för EN period, äldst först — `[stängd → öppnad → stängd]`.
+ *
+ * Läsning för historikvyn. `seq` följer med ut som ordningsnyckel men är intern:
+ * UI:t visar aldrig siffran, bara ordningen den ger.
+ */
+export async function getPeriodHistory(
+  client: PeriodClient,
+  organizationId: string,
+  year: number,
+  month: number,
+): Promise<PeriodHistoryEvent[]> {
+  return client.accountingPeriodEvent.findMany({
+    where: { organizationId, year, month },
+    orderBy: { seq: 'asc' },
+    select: {
+      seq: true,
+      type: true,
+      createdAt: true,
+      actorLabel: true,
+      reason: true,
+      reasonCategory: true,
+      summary: true,
+    },
+  })
 }

@@ -29,6 +29,13 @@ interface RigOpts {
   unmatchedBankTx?: number
   verNumbers?: number[]
   vatReportingPeriod?: 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
+  /** PR1c: antal återöppningar per period, för översiktens markering. */
+  reopened?: Array<{ year: number; month: number; count: number }>
+  /** PR1c: periodens händelsekedja, som getPeriodHistory returnerar den. */
+  history?: Array<Record<string, unknown>>
+  fiscalYearStartMonth?: number
+  /** Aktiva mottagare av återöppnings-notisen. */
+  notifyUsers?: string[]
 }
 
 function makeRig(opts: RigOpts = {}) {
@@ -69,7 +76,17 @@ function makeRig(opts: RigOpts = {}) {
         events.push(args.data)
         return Promise.resolve({ id: 'ape-1', ...args.data })
       }),
+      // Översikten räknar återöppningar per period (PR1c).
+      groupBy: jest.fn().mockResolvedValue(
+        (opts.reopened ?? []).map((r) => ({
+          year: r.year,
+          month: r.month,
+          _count: { _all: r.count },
+        })),
+      ),
+      findMany: jest.fn().mockResolvedValue(opts.history ?? []),
     },
+    notification: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
     closedAccountingPeriod: {
       // Speglingen upsertas (create-grenen är den som gäller i PR1b — perioden
       // kan inte stängas två gånger här).
@@ -80,11 +97,14 @@ function makeRig(opts: RigOpts = {}) {
     },
     user: {
       findUnique: jest.fn().mockResolvedValue({ firstName: 'Anna', lastName: 'Svensson' }),
+      findMany: jest
+        .fn()
+        .mockResolvedValue((opts.notifyUsers ?? ['u-owner']).map((id) => ({ id }))),
     },
     organization: {
       findUnique: jest.fn().mockResolvedValue({
         vatReportingPeriod: opts.vatReportingPeriod ?? 'MONTHLY',
-        fiscalYearStartMonth: 1,
+        fiscalYearStartMonth: opts.fiscalYearStartMonth ?? 1,
       }),
     },
     rentNotice: {

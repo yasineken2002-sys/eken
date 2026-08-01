@@ -911,7 +911,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'close_period',
     description:
-      'Stänger en bokföringsperiod (månad/år) — efter detta kan inga nya verifikat skapas med datum inom perioden. Genererar periodrapport. Kräver ALLTID dubbelbekräftelse — kan inte återöppnas via API.',
+      'Stänger en bokföringsperiod (månad/år) — efter detta kan inga nya verifikat skapas med datum inom perioden. Genererar periodrapport. Kräver ALLTID dubbelbekräftelse. Att öppna perioden igen går bara att göra av kontoägaren, i webbgränssnittet under Bokföring → Perioder, med angivet skäl — och bara när en post SAKNAS. Är en bokförd post felaktig rättas det med en ny post i innevarande period, aldrig genom att öppna den gamla månaden.',
     input_schema: {
       type: 'object',
       properties: {

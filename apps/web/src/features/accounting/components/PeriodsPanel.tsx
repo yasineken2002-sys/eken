@@ -6,40 +6,25 @@ import { Badge } from '@/components/ui/Badge'
 import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { extractApiError } from '@/lib/api'
+import { ReopenPeriodModal } from './ReopenPeriodModal'
+import { periodLabel } from './period-label'
 import { usePeriods, usePeriodPrecheck, useClosePeriod } from '../hooks/useAccounting'
 import type { PeriodOverviewItem } from '../api/accounting.api'
-
-const MONTH_NAMES = [
-  'januari',
-  'februari',
-  'mars',
-  'april',
-  'maj',
-  'juni',
-  'juli',
-  'augusti',
-  'september',
-  'oktober',
-  'november',
-  'december',
-]
-
-function periodLabel(p: { year: number; month: number }): string {
-  return `${MONTH_NAMES[p.month - 1]} ${p.year}`
-}
 
 /**
  * Bokföringsperioder — stänger och visar. Stängningen gick tidigare bara att nå
  * via AI-assistenten; spärren mot att bokföra i en stängd period är oförändrad
  * och ligger i backend.
  *
- * En stängning går inte att ångra i produkten ännu (återöppning byggs separat),
- * så bekräftelsen säger det rakt ut i stället för att låta operatören upptäcka
- * det efteråt.
+ * PR1c: en stängning går att ångra — men bara av kontoägaren, bara när en post
+ * SAKNAS, och alltid med ett skäl som sparas i periodens historik. Är en bokförd
+ * post felaktig är återöppning fel verktyg; den dialogen förklarar varför i
+ * stället för att bara neka. Se ReopenPeriodModal.
  */
 export function PeriodsPanel() {
   const periods = usePeriods()
   const [pending, setPending] = useState<{ year: number; month: number } | null>(null)
+  const [detail, setDetail] = useState<{ year: number; month: number } | null>(null)
   const precheck = usePeriodPrecheck(pending)
   const close = useClosePeriod()
 
@@ -122,7 +107,35 @@ export function PeriodsPanel() {
               </div>
             </div>
             {item.closed ? (
-              <Badge variant="default">Stängd</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="default">Stängd</Badge>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setDetail({ year: item.year, month: item.month })}
+                >
+                  Öppna igen
+                </Button>
+              </div>
+            ) : item.reopenedCount > 0 ? (
+              // Öppen EFTER en återöppning — historiken är det intressanta här,
+              // inte att stänga igen (det gör man när posten väl är på plats).
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setDetail({ year: item.year, month: item.month })}
+                >
+                  Historik
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setPending({ year: item.year, month: item.month })}
+                >
+                  Stäng period
+                </Button>
+              </div>
             ) : (
               <Button
                 variant="secondary"
@@ -177,7 +190,8 @@ export function PeriodsPanel() {
               </p>
             )}
             <p className="text-[12px] text-gray-500">
-              Stängningen kan inte ångras i systemet ännu.
+              Behöver perioden öppnas igen kan kontoägaren göra det — men bara om en post saknas,
+              och alltid med angivet skäl som sparas i historiken.
             </p>
           </div>
         )}
@@ -195,6 +209,8 @@ export function PeriodsPanel() {
           </Button>
         </ModalFooter>
       </Modal>
+
+      {detail && <ReopenPeriodModal period={detail} onClose={() => setDetail(null)} />}
     </div>
   )
 }
