@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { extractApiError } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth.store'
 import { ReopenPeriodModal } from './ReopenPeriodModal'
 import { periodLabel } from './period-label'
 import { usePeriods, usePeriodPrecheck, useClosePeriod } from '../hooks/useAccounting'
@@ -27,6 +28,15 @@ export function PeriodsPanel() {
   const [detail, setDetail] = useState<{ year: number; month: number } | null>(null)
   const precheck = usePeriodPrecheck(pending)
   const close = useClosePeriod()
+
+  // Att stänga en period är en redovisningshandling — MANAGER utesluts, precis
+  // som server-side (R2 steg 3). Speglat här så knappen inte visas för den som
+  // ändå nekas; grinden svarar "Otillräckliga rättigheter", vilket inte
+  // förklarar något för en förvaltare som undrar varför det inte går.
+  // Samma mönster som mayReverse i AccountingPage och isOwner i
+  // ReopenPeriodModal. Läsning är oförändrad: listan och historiken syns.
+  const role = useAuthStore((s) => s.user?.role)
+  const mayClose = role === 'ACCOUNTANT' || role === 'ADMIN' || role === 'OWNER'
 
   function handleClose() {
     if (!pending) return
@@ -128,15 +138,17 @@ export function PeriodsPanel() {
                 >
                   Historik
                 </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPending({ year: item.year, month: item.month })}
-                >
-                  Stäng period
-                </Button>
+                {mayClose && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setPending({ year: item.year, month: item.month })}
+                  >
+                    Stäng period
+                  </Button>
+                )}
               </div>
-            ) : (
+            ) : mayClose ? (
               <Button
                 variant="secondary"
                 size="sm"
@@ -144,7 +156,7 @@ export function PeriodsPanel() {
               >
                 Stäng period
               </Button>
-            )}
+            ) : null}
           </div>
         ))}
       </div>
