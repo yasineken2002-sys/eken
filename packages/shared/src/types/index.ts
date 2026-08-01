@@ -499,6 +499,27 @@ export interface JournalEntry {
   lines: JournalEntryLine[]
   createdById: string
   createdAt: string
+  /** Verifikationsnummer i sin serie (BFL 5 kap 6 §) — visas som t.ex. "A12". */
+  series?: string
+  verNumber?: number
+  /**
+   * Rättelsekedja (T5 PR1c2). Ett verifikat ändras aldrig i efterhand — en
+   * felaktig post rättas med ett nytt, omvänt verifikat daterat den dag felet
+   * upptäcktes, och paret länkas.
+   */
+  reversalOfEntryId?: string | null
+  /** Rättelsen AV den här posten. Finns → posten är redan rättad. */
+  reversedBy?: JournalEntryRef | null
+  /** Posten den här RÄTTAR. Finns → den här posten ÄR en rättelse. */
+  reversalOf?: JournalEntryRef | null
+}
+
+/** Minimal referens till ett verifikat — för rättelsekedjans båda riktningar. */
+export interface JournalEntryRef {
+  id: string
+  series: string
+  verNumber: number
+  date: string
 }
 
 export interface JournalEntryLine {

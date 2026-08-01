@@ -132,7 +132,8 @@ const CORRECTION_NOT_A_REOPEN_MESSAGE =
   'genom att du bokför en ny post idag som tar ut den felaktiga, och en ny ' +
   'korrekt post bredvid. Den felaktiga posten står kvar precis som den var: det ' +
   'ska gå att se vad som faktiskt bokfördes, när felet upptäcktes och hur det ' +
-  'rättades.'
+  'rättades. Gör så här i stället: öppna Verifikationer, klicka på den felaktiga ' +
+  'posten och välj "Rätta verifikatet" — systemet bokför motsatsen åt dig.'
 
 /**
  * Får den här aktören återöppna en period för att RÄTTA en befintlig post?

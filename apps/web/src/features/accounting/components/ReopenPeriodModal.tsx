@@ -156,8 +156,12 @@ export function ReopenPeriodModal({ period, onClose }: Props) {
                     att posten alltid varit rätt.
                   </p>
                   <p>
-                    Har du en redovisningskonsult — be hen göra rättelsen. Vet du själv vilka konton
-                    som berörs kan du använda AI-assistentens ”Bokför manuellt verifikat”.
+                    Så här gör du: öppna <span className="font-medium">Verifikationer</span>, klicka
+                    på den felaktiga posten och välj{' '}
+                    <span className="font-medium">Rätta verifikatet</span>. Systemet bokför
+                    motsatsen åt dig — du behöver inte välja konton själv. Behöver du därefter
+                    bokföra rätt belopp gör du det på vanligt sätt, eller ber din
+                    redovisningskonsult.
                   </p>
                 </section>
               )}

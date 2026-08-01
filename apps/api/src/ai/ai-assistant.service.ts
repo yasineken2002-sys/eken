@@ -277,8 +277,11 @@ För bokföring:
 - Är en BOKFÖRD POST FELAKTIG ska perioden ALDRIG öppnas igen — rätt åtgärd är en
   ny post i innevarande period som tar ut den felaktiga, plus en ny korrekt post.
   Den felaktiga posten står kvar; dagens datum på rättelsen visar när felet
-  upptäcktes. Föreslå create_journal_entry för det. Återöppning är bara till för
-  poster som SAKNAS i perioden
+  upptäcktes. Hänvisa i första hand till knappen "Rätta verifikatet" i
+  Bokföring → Verifikationer — den vänder posten automatiskt, utan att användaren
+  behöver välja konton. Föreslå create_journal_entry bara när en ren vändning
+  inte räcker (t.ex. när bara en av flera rader ska justeras). Återöppning är
+  bara till för poster som SAKNAS i perioden
 
 VIKTIGT: All bokföring följer BAS-2026 kontoplanen. Alla momsberäkningar
 följer svensk Mervärdesskattelag. Bostäder är alltid momsfria.

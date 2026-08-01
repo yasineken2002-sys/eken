@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { BookOpen, FileX, Database } from 'lucide-react'
+import { BookOpen, FileX, Database, ArrowRightLeft } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { Modal } from '@/components/ui/Modal'
+import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatCard } from '@/components/ui/StatCard'
 import { formatCurrency, formatDate } from '@eken/shared'
@@ -13,6 +13,8 @@ import type { Account, JournalEntry, JournalEntryLine } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import { useAccounts, useSeedAccounts, useJournalEntries } from './hooks/useAccounting'
 import { PeriodsPanel } from './components/PeriodsPanel'
+import { ReverseEntryModal } from './components/ReverseEntryModal'
+import { useAuthStore } from '@/stores/auth.store'
 
 type View = 'chart' | 'journal' | 'periods'
 
@@ -165,6 +167,11 @@ function JournalLinesDetail({ lines }: { lines: JournalEntryLine[] }) {
 export function AccountingPage() {
   const [view, setView] = useState<View>('chart')
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null)
+  const [reversing, setReversing] = useState<JournalEntry | null>(null)
+  // Rättelse är en redovisningshandling — MANAGER utesluts, precis som
+  // server-side. Speglat här så knappen inte visas för den som ändå nekas.
+  const role = useAuthStore((s) => s.user?.role)
+  const mayReverse = role === 'ACCOUNTANT' || role === 'ADMIN' || role === 'OWNER'
 
   const accounts = useAccounts()
   const seedAccounts = useSeedAccounts()
@@ -319,8 +326,57 @@ export function AccountingPage() {
         title={selectedEntry?.description ?? ''}
         description={selectedEntry ? formatDate(selectedEntry.date) : ''}
       >
-        {selectedEntry && <JournalLinesDetail lines={selectedEntry.lines} />}
+        {selectedEntry && (
+          <>
+            <JournalLinesDetail lines={selectedEntry.lines} />
+
+            {/* Rättelsekedjan, om posten är en del av en. */}
+            {selectedEntry.reversalOf && (
+              <p className="mt-4 rounded-xl bg-gray-50 p-3 text-[12.5px] text-gray-600">
+                Det här verifikatet rättar{' '}
+                <span className="font-medium text-gray-900">
+                  {selectedEntry.reversalOf.series}
+                  {selectedEntry.reversalOf.verNumber}
+                </span>{' '}
+                från {formatDate(selectedEntry.reversalOf.date)}.
+              </p>
+            )}
+            {selectedEntry.reversedBy && (
+              <p className="mt-4 rounded-xl bg-gray-50 p-3 text-[12.5px] text-gray-600">
+                Rättat med verifikat{' '}
+                <span className="font-medium text-gray-900">
+                  {selectedEntry.reversedBy.series}
+                  {selectedEntry.reversedBy.verNumber}
+                </span>{' '}
+                den {formatDate(selectedEntry.reversedBy.date)}.
+              </p>
+            )}
+
+            {mayReverse && !selectedEntry.reversedBy && (
+              <ModalFooter>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setReversing(selectedEntry)
+                    setSelectedEntry(null)
+                  }}
+                >
+                  <ArrowRightLeft size={14} strokeWidth={1.8} className="mr-1.5" />
+                  Rätta verifikatet
+                </Button>
+              </ModalFooter>
+            )}
+          </>
+        )}
       </Modal>
+
+      {reversing && (
+        <ReverseEntryModal
+          entry={reversing}
+          onClose={() => setReversing(null)}
+          onDone={() => setReversing(null)}
+        />
+      )}
     </PageWrapper>
   )
 }

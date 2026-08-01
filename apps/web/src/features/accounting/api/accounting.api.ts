@@ -16,6 +16,13 @@ export const fetchJournalEntries = (filters?: {
 export const fetchJournalEntry = (id: string): Promise<JournalEntry> =>
   get<JournalEntry>(`/accounting/journal/${id}`)
 
+/**
+ * Rättar ett verifikat: bokför dess motsats, daterad idag. Originalet rörs inte.
+ * Svaret är det NYA rättelseverifikatet.
+ */
+export const reverseJournalEntry = (id: string, reason: string): Promise<JournalEntry> =>
+  post<JournalEntry>(`/accounting/journal/${id}/reverse`, { reason })
+
 // ── Bokföringsperioder (T5 PR1a) ─────────────────────────────────────────────
 // Stängningen fanns tidigare bara som AI-verktyg. Spärren mot att bokföra i en
 // stängd period är oförändrad och ligger kvar i backend (allocate).

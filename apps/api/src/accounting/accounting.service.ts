@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -8,7 +10,14 @@ import {
 // `Prisma` importeras som VÄRDE (inte `import type`) — `Prisma.Decimal` används
 // för momsaritmetiken i createJournalEntryForInvoice. Namnrymden ger fortfarande
 // typerna (Prisma.TransactionClient m.fl.), så inget annat behöver ändras.
-import { CompanyForm, PaymentMethod, Prisma, RentNoticeType, UnitType } from '@prisma/client'
+import {
+  CompanyForm,
+  PaymentMethod,
+  Prisma,
+  RentNoticeType,
+  UnitType,
+  UserRole,
+} from '@prisma/client'
 import type {
   BankTransaction,
   ConsumptionVatStatus,
@@ -47,6 +56,40 @@ interface JournalFilters {
 
 // Map VAT rate to account number. 0% (momsbefriad) ska INTE bokföras som
 // momskredit alls — då hoppas raden över i createJournalEntryForInvoice.
+/**
+ * Vem som får rätta ett verifikat. Samma kalibrering som periodstängningen:
+ * MANAGER utesluts medvetet — att bokföra en rättelse är en redovisningshandling,
+ * inte förvaltning. VIEWER stängs ute redan av controllerns klassgrind.
+ */
+const REVERSAL_ROLES: UserRole[] = [UserRole.ACCOUNTANT, UserRole.ADMIN, UserRole.OWNER]
+
+/** Skälet blir rättelsens beskrivning i huvudboken — det måste gå att förstå. */
+const REVERSAL_REASON_MIN_LENGTH = 10
+
+/**
+ * Betyder den här P2002:an "någon hann före med rättelsen"?
+ *
+ * JournalEntry har tre unika index och de betyder olika saker:
+ *   • reversalOfEntryId               → en rättelse finns redan (ofarligt race)
+ *   • (org, source, sourceId)         → samma sak, via idempotensnyckeln
+ *   • (org, series, fiscalYear, verNumber) → DUBBLETT I VERIFIKATIONSSERIEN.
+ *     Det är ett allvarligt fel som måste fortsätta upp, inte maskeras.
+ *
+ * Prisma rapporterar `meta.target` som en kolumn-ARRAY (empiriskt verifierat i
+ * #214 — inte sträng-formen som äldre kod antar). Sträng-fallbacken finns för
+ * säkerhets skull; okänd form klassas som "inte ett race" och kastas vidare.
+ */
+function isReversalRaceConflict(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false
+  const target = (err.meta as { target?: unknown } | undefined)?.target
+  const fields = Array.isArray(target)
+    ? target.map(String)
+    : typeof target === 'string'
+      ? [target]
+      : []
+  return fields.some((f) => f === 'reversalOfEntryId' || f === 'sourceId')
+}
+
 const VAT_TO_ACCOUNT: Record<number, number> = {
   25: 2611,
   12: 2621,
@@ -232,6 +275,10 @@ export class AccountingService {
     lines: JournalLineInput[]
     idempotencyWhere: Prisma.JournalEntryWhereInput
     include?: Prisma.JournalEntryInclude
+    // Länk till verifikatet den här posten RÄTTAR (T5 PR1c2). Sätts bara av den
+    // operatörsstyrda rättelsevägen; de automatiska motverifikaten (annullerad
+    // avi, makulerad faktura, hävd matchning) lämnar den tom och är oförändrade.
+    reversalOfEntryId?: string
     // Valfri yttre transaktion. Anges när verifikatet måste skapas ATOMISKT
     // tillsammans med andra DB-writes (t.ex. unmatch-flödet som måste rulla
     // tillbaka statusändringar om bokföringen fallerar — BFL 5 kap 5 §/9 §).
@@ -317,6 +364,9 @@ export class AccountingService {
           fiscalYear,
           ...(params.sourceId != null ? { sourceId: params.sourceId } : {}),
           ...(params.createdById != null ? { createdById: params.createdById } : {}),
+          ...(params.reversalOfEntryId != null
+            ? { reversalOfEntryId: params.reversalOfEntryId }
+            : {}),
           lines: {
             create: params.lines.map((l) => ({
               accountId: l.accountId,
@@ -606,6 +656,10 @@ export class AccountingService {
         lines: {
           include: { account: true },
         },
+        // Rättelsekedjan (PR1c2): `reversedBy` = rättelsen av DEN HÄR posten
+        // (finns → knappen ska vara låst), `reversalOf` = posten den här RÄTTAR.
+        reversedBy: { select: { id: true, series: true, verNumber: true, date: true } },
+        reversalOf: { select: { id: true, series: true, verNumber: true, date: true } },
       },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       take: 100,
@@ -619,6 +673,8 @@ export class AccountingService {
         lines: {
           include: { account: true },
         },
+        reversedBy: { select: { id: true, series: true, verNumber: true, date: true } },
+        reversalOf: { select: { id: true, series: true, verNumber: true, date: true } },
       },
     })
     if (!entry) throw new NotFoundException('Verifikation hittades inte')
@@ -1802,6 +1858,95 @@ export class AccountingService {
   // sourceId='misc-charge-reversal:{id}' — andra annulleringen ger inget andra
   // motverifikat. Valfri `tx` så reversal + status-flip körs atomiskt (cancel-
   // flödet: faller reversalen flippas aldrig status → ingen halv-annullering).
+  // ── Motverifikat: en mekanism, fem anropare ────────────────────────────────
+  //
+  // Ett verifikat ändras ALDRIG i efterhand. Ska en bokförd post tas tillbaka
+  // sker det med ett nytt verifikat som vänder den, daterat den dag felet
+  // upptäcktes — originalet står kvar precis som det var. Det är själva poängen:
+  // det ska gå att se vad som faktiskt bokfördes, när felet upptäcktes och hur
+  // det rättades. Ett bakåtdaterat "rättat" original hade sett ut som att posten
+  // alltid varit rätt.
+  //
+  // Radvändningen och skrivningen fanns i FYRA identiska kopior (annullerad
+  // debitering, annullerad hyresavi, makulerad faktura, hävd bankmatchning).
+  // PR1c2 lade till en femte anropare — den operatörsstyrda rättelsen — och
+  // samlade dem alla här. Samma regel på fem ställen är en regel som glider isär.
+
+  /**
+   * Vänder ett verifikats rader: debet blir kredit och tvärtom.
+   *
+   * `prefix` styr radbeskrivningen. De automatiska vägarna behåller sitt
+   * engelska "Reversal" (oförändrat beteende); den operatörsstyrda rättelsen
+   * använder svenska, eftersom den texten faktiskt läses av en hyresvärd.
+   */
+  private buildReversalLines(
+    lines: Array<{
+      accountId: string
+      debit: Prisma.Decimal | null
+      credit: Prisma.Decimal | null
+      description: string | null
+    }>,
+    prefix = 'Reversal',
+  ): JournalLineInput[] {
+    return lines.map((l) => ({
+      accountId: l.accountId,
+      ...(l.debit != null ? { credit: Number(l.debit) } : {}),
+      ...(l.credit != null ? { debit: Number(l.credit) } : {}),
+      ...(l.description ? { description: `${prefix}: ${l.description}` } : {}),
+    }))
+  }
+
+  /**
+   * Skriver motverifikatet. Delad kropp för samtliga fem vägar.
+   *
+   * Datumet är ALLTID dagens — aldrig originalets. Posten går därför genom
+   * `allocate` som vilken bokföring som helst och träffar periodspärren om
+   * innevarande period skulle vara stängd. Det finns medvetet ingen specialväg
+   * förbi låset: en rättelse är en bokföring, inte ett undantag.
+   *
+   * Idempotent via det unika indexet (org, source, sourceId) — en redan skapad
+   * reversering returneras i stället för att bokföras en gång till.
+   */
+  private async createReversalEntry(params: {
+    organizationId: string
+    original: {
+      description: string
+      lines: Array<{
+        accountId: string
+        debit: Prisma.Decimal | null
+        credit: Prisma.Decimal | null
+        description: string | null
+      }>
+    }
+    source: JournalEntrySource
+    reversalSourceId: string
+    description: string
+    createdById: string | null
+    linePrefix?: string
+    reversalOfEntryId?: string
+    include?: Prisma.JournalEntryInclude
+    tx?: Prisma.TransactionClient
+  }) {
+    return this.createNumberedEntry({
+      organizationId: params.organizationId,
+      // Rättelseverifikatet dateras till dagen det skapas, inte originalets datum.
+      date: new Date(),
+      description: params.description,
+      source: params.source,
+      sourceId: params.reversalSourceId,
+      createdById: params.createdById,
+      lines: this.buildReversalLines(params.original.lines, params.linePrefix),
+      idempotencyWhere: {
+        organizationId: params.organizationId,
+        source: params.source,
+        sourceId: params.reversalSourceId,
+      },
+      ...(params.reversalOfEntryId ? { reversalOfEntryId: params.reversalOfEntryId } : {}),
+      ...(params.include ? { include: params.include } : {}),
+      ...(params.tx ? { tx: params.tx } : {}),
+    })
+  }
+
   async reverseJournalEntryForMiscCharge(
     miscChargeId: string,
     organizationId: string,
@@ -1816,24 +1961,13 @@ export class AccountingService {
     })
     if (!original) return
 
-    const reversalLines: JournalLineInput[] = original.lines.map((l) => ({
-      accountId: l.accountId,
-      ...(l.debit != null ? { credit: Number(l.debit) } : {}),
-      ...(l.credit != null ? { debit: Number(l.credit) } : {}),
-      ...(l.description ? { description: `Reversal: ${l.description}` } : {}),
-    }))
-
-    const reversalSourceId = `misc-charge-reversal:${miscChargeId}`
-    await this.createNumberedEntry({
+    await this.createReversalEntry({
       organizationId,
-      // Rättelseverifikatet dateras till annulleringsdagen, inte originalets datum.
-      date: new Date(),
-      description: `Annullerad debitering: ${original.description}`,
+      original,
       source: 'MISC_CHARGE',
-      sourceId: reversalSourceId,
+      reversalSourceId: `misc-charge-reversal:${miscChargeId}`,
+      description: `Annullerad debitering: ${original.description}`,
       createdById,
-      lines: reversalLines,
-      idempotencyWhere: { organizationId, source: 'MISC_CHARGE', sourceId: reversalSourceId },
       ...(tx ? { tx } : {}),
     })
   }
@@ -1859,23 +1993,13 @@ export class AccountingService {
     })
     if (!original) return
 
-    const reversalLines: JournalLineInput[] = original.lines.map((l) => ({
-      accountId: l.accountId,
-      ...(l.debit != null ? { credit: Number(l.debit) } : {}),
-      ...(l.credit != null ? { debit: Number(l.credit) } : {}),
-      ...(l.description ? { description: `Reversal: ${l.description}` } : {}),
-    }))
-
-    const reversalSourceId = `rent-notice-reversal:${noticeId}`
-    await this.createNumberedEntry({
+    await this.createReversalEntry({
       organizationId,
-      date: new Date(),
-      description: `Annullerad hyresavi: ${original.description}`,
+      original,
       source: 'INVOICE',
-      sourceId: reversalSourceId,
+      reversalSourceId: `rent-notice-reversal:${noticeId}`,
+      description: `Annullerad hyresavi: ${original.description}`,
       createdById,
-      lines: reversalLines,
-      idempotencyWhere: { organizationId, source: 'INVOICE', sourceId: reversalSourceId },
       ...(tx ? { tx } : {}),
     })
   }
@@ -1898,25 +2022,147 @@ export class AccountingService {
     })
     if (!original) return
 
-    const reversalLines: JournalLineInput[] = original.lines.map((l) => ({
-      accountId: l.accountId,
-      ...(l.debit != null ? { credit: Number(l.debit) } : {}),
-      ...(l.credit != null ? { debit: Number(l.credit) } : {}),
-      ...(l.description ? { description: `Reversal: ${l.description}` } : {}),
-    }))
-
-    const reversalSourceId = `invoice-reversal:${invoiceId}`
-    await this.createNumberedEntry({
+    await this.createReversalEntry({
       organizationId,
-      date: new Date(),
-      description: `Makulerad faktura: ${original.description}`,
+      original,
       source: 'INVOICE',
-      sourceId: reversalSourceId,
+      reversalSourceId: `invoice-reversal:${invoiceId}`,
+      description: `Makulerad faktura: ${original.description}`,
       createdById,
-      lines: reversalLines,
-      idempotencyWhere: { organizationId, source: 'INVOICE', sourceId: reversalSourceId },
       ...(tx ? { tx } : {}),
     })
+  }
+
+  /**
+   * OPERATÖRSSTYRD RÄTTELSE (T5 PR1c2): vänder ETT valt verifikat.
+   *
+   * Den femte anroparen av motverifikat-mekanismen, och den enda som en människa
+   * startar. Den finns för att PR1c:s spärr ska peka på en ÅTGÄRD i stället för
+   * en hänvisning: när en bokförd post är fel är rätt svar inte att öppna den
+   * gamla månaden, utan att bokföra en rättelse i innevarande — och det ska vara
+   * en knapp, inte en instruktion om att välja BAS-konton.
+   *
+   * MEDVETET RIKTAD, inte fri. Det finns ingen konto-väljare: funktionen vänder
+   * ett specifikt, redan bokfört verifikat. Kontona och beloppen kommer från
+   * originalet, så den som rättar behöver inte kunna kontoplanen. Fri kontering
+   * finns kvar i AI-assistenten för de fall en ren vändning inte räcker.
+   *
+   * ORIGINALET RÖRS INTE. Ingen UPDATE, ingen DELETE — det står kvar exakt som
+   * det bokfördes. Rättelsen är en NY post daterad idag, med en länk tillbaka.
+   *
+   * EN GÅNG PER VERIFIKAT. En andra rättelse hade tagit ut den första och lämnat
+   * tre verifikat där en rättelse skedde. Har man rättat fel verifikat reverserar
+   * man i stället SIN rättelse — den är också ett verifikat och får också rättas
+   * en gång. Kontrollen finns här (begripligt besked) och som unikt index i DB
+   * (spärr mot samtidiga dubbelklick).
+   */
+  async reverseJournalEntry(params: {
+    entryId: string
+    organizationId: string
+    actorRole?: UserRole
+    actorUserId: string | null
+    reason: string
+  }) {
+    // Rollgrinden ligger HÄR, i chokepunkten — inte bara i controllern. En
+    // rättelse skapar ett verifikat; det är en redovisningshandling.
+    // Fail-closed: okänd eller saknad roll nekas.
+    if (!params.actorRole || !REVERSAL_ROLES.includes(params.actorRole)) {
+      throw new ForbiddenException('Du saknar behörighet att rätta ett verifikat')
+    }
+
+    const reason = params.reason?.trim() ?? ''
+    if (reason.length < REVERSAL_REASON_MIN_LENGTH) {
+      throw new BadRequestException(
+        `Ange varför verifikatet rättas (minst ${REVERSAL_REASON_MIN_LENGTH} tecken). ` +
+          'Skälet blir rättelsens beskrivning i huvudboken och går inte att ändra efteråt.',
+      )
+    }
+
+    const original = await this.prisma.journalEntry.findFirst({
+      where: { id: params.entryId, organizationId: params.organizationId },
+      include: { lines: true, reversedBy: { select: { series: true, verNumber: true } } },
+    })
+    if (!original) throw new NotFoundException('Verifikation hittades inte')
+
+    if (original.reversedBy) {
+      const { series, verNumber } = original.reversedBy
+      throw new ConflictException(
+        `Verifikatet är redan rättat, med verifikat ${series}${verNumber}. ` +
+          'Ett verifikat rättas en gång — behöver du ändra igen, rätta rättelsen.',
+      )
+    }
+
+    const bookedOn = original.date.toISOString().slice(0, 10)
+    const intendedDescription = `Rättelse av verifikat ${original.series}${original.verNumber} (bokfört ${bookedOn}): ${reason}`
+
+    try {
+      const created = await this.createReversalEntry({
+        organizationId: params.organizationId,
+        original,
+        // MANUAL, inte originalets källa: det här är en operatörshandling, inte en
+        // följd av en affärshändelse i något domänflöde. Det gör den dessutom
+        // filtrerbar som "manuella poster" i verifikationslistan.
+        source: 'MANUAL',
+        reversalSourceId: `entry-reversal:${params.entryId}`,
+        description: intendedDescription,
+        createdById: params.actorUserId,
+        linePrefix: 'Rättelse',
+        reversalOfEntryId: params.entryId,
+        include: { lines: { include: { account: true } } },
+      })
+
+      // IDEMPOTENSTRÄFF = någon annan hann före.
+      //
+      // `createNumberedEntry` returnerar en befintlig post i stället för att
+      // skriva en dubblett. För de fyra AUTOMATISKA motverifikaten är det rätt:
+      // varje anrop för samma sourceId är logiskt identiskt, så en retry ÄR
+      // idempotent. Här är det inte det — `reason` är fritext, och två
+      // samtidiga rättelser kan bära olika skäl. Utan den här kontrollen får
+      // förloraren "rättelse bokförd" för en post som bär MOTPARTENS skäl,
+      // medan hens eget tyst kastades. Skälet är dokumenterat som något som
+      // "går inte att ändra efteråt" — då får det inte tyst försvinna.
+      //
+      // Beskrivningen är deterministisk ur (originalets nummer, dess datum,
+      // skälet), så en avvikelse betyder att posten skrevs av någon annan.
+      // Skrev de exakt samma skäl är utfallet detsamma som avsett och vi säger
+      // inget — då hände faktiskt det användaren bad om.
+      if (created.description !== intendedDescription) {
+        // Fångas INTE av catch-blocket nedan: isReversalRaceConflict kräver en
+        // PrismaClientKnownRequestError, så en ConflictException faller igenom
+        // till `throw err` oförändrad.
+        throw new ConflictException(
+          `Verifikatet rättades precis av någon annan, med verifikat ${created.series}${created.verNumber}. ` +
+            'Ditt angivna skäl bokfördes inte — ladda om sidan och läs vad som redan står.',
+        )
+      }
+      return created
+    } catch (err) {
+      // SAMTIDIGHET: kontrollen av `reversedBy` ovan sker före skrivningen, så
+      // två dubbelklick kan båda passera den. Den som förlorar krockar på ett
+      // unikt index — utan den här översättningen får hen en rå 500 och en
+      // CRITICAL i Sentry för vad som i praktiken är ett dubbelklick.
+      //
+      // MEN: JournalEntry har TRE unika index, och de betyder INTE samma sak.
+      // (org, source, sourceId) och reversalOfEntryId betyder båda "någon hann
+      // före med rättelsen". (org, series, fiscalYear, verNumber) betyder att
+      // verifikationsserien fått en dubblett — ett allvarligt fel som måste
+      // fortsätta upp som ett fel, inte maskeras som en ofarlig krock. Därför
+      // disambiguering på err.meta.target (lärdomen från plattforms-
+      // fakturanumret, #214), inte en blind P2002-fångst.
+      if (isReversalRaceConflict(err)) {
+        const winner = await this.prisma.journalEntry.findFirst({
+          where: { reversalOfEntryId: params.entryId },
+          select: { series: true, verNumber: true },
+        })
+        throw new ConflictException(
+          winner
+            ? `Verifikatet är redan rättat, med verifikat ${winner.series}${winner.verNumber}. ` +
+                'Ett verifikat rättas en gång — behöver du ändra igen, rätta rättelsen.'
+            : 'Verifikatet rättades precis av någon annan. Ladda om sidan.',
+        )
+      }
+      throw err
+    }
   }
 
   // Bokslutspost: upplupen förbrukningsintäkt (IMD). Förbrukning som är konsumerad
@@ -2291,29 +2537,13 @@ export class AccountingService {
     })
     if (!original) return
 
-    // Motverifikatet byter plats på debet/kredit. createNumberedEntry är
-    // idempotent via det unika indexet på (org, source, sourceId) — en redan
-    // skapad reversal returneras utan att en dubblett bokförs.
-    const reversalLines: JournalLineInput[] = original.lines.map((l) => ({
-      accountId: l.accountId,
-      ...(l.debit != null ? { credit: Number(l.debit) } : {}),
-      ...(l.credit != null ? { debit: Number(l.credit) } : {}),
-      ...(l.description ? { description: `Reversal: ${l.description}` } : {}),
-    }))
-
-    await this.createNumberedEntry({
+    await this.createReversalEntry({
       organizationId,
-      date: new Date(),
-      description: `Hävd matchning: ${original.description}`,
+      original,
       source: 'PAYMENT',
-      sourceId: `reversal:${transactionId}`,
+      reversalSourceId: `reversal:${transactionId}`,
+      description: `Hävd matchning: ${original.description}`,
       createdById,
-      lines: reversalLines,
-      idempotencyWhere: {
-        organizationId,
-        source: 'PAYMENT',
-        sourceId: `reversal:${transactionId}`,
-      },
       ...(tx ? { tx } : {}),
     })
   }

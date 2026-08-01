@@ -1413,6 +1413,27 @@ model JournalEntry {
   series         String             @default("A")
   verNumber      Int
 
+  // ── Rättelsekedja (T5 PR1c2) ──────────────────────────────────────────────
+  // Pekar från ett RÄTTELSEVERIFIKAT till det verifikat det rättar. Null på allt
+  // annat. Ett verifikat ändras aldrig i efterhand — en felaktig post rättas med
+  // ett nytt, omvänt verifikat daterat den dag felet upptäcktes, och den här
+  // länken är det som gör paret läsbart åt båda håll i efterhand.
+  //
+  // Konventionen `sourceId = 'entry-reversal:<id>'` bär redan samma information,
+  // men som en sträng man måste tolka. En riktig relation går att fråga på:
+  // "är det här verifikatet redan rättat?" är `reversedBy != null`, inte en
+  // sourceId-parsning.
+  //
+  // Restrict, aldrig SetNull eller Cascade: verifikat raderas aldrig (det finns
+  // ingen raderingsväg, och organization-relationen är Restrict av samma skäl).
+  // SetNull hade varit en död gren med fel förtecken — lade någon till en
+  // raderingsväg skulle rättelsen TYST tappa länken till sitt original i stället
+  // för att raderingen stoppades.
+  reversalOfEntryId String?       @unique
+  reversalOf        JournalEntry? @relation("JournalEntryReversal", fields: [reversalOfEntryId], references: [id], onDelete: Restrict)
+  // Som mest EN rättelse per verifikat — @unique på FK:n ovan gör relationen 1-1.
+  reversedBy        JournalEntry? @relation("JournalEntryReversal")
+
   // Bokföringslagen (1999:1078): journalposter är räkenskapsinformation, bevaras 7 år.
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   createdBy    User?              @relation(fields: [createdById], references: [id])
