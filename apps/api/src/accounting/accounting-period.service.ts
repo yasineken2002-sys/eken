@@ -104,7 +104,15 @@ export interface PeriodDetail {
   withinReopenWindow: boolean
 }
 
-const CLOSE_ROLES: UserRole[] = [UserRole.ACCOUNTANT, UserRole.ADMIN, UserRole.OWNER]
+/**
+ * Vem som får stänga en period. MANAGER utesluts medvetet — att låsa en månad är
+ * en redovisningshandling, inte förvaltning.
+ *
+ * Exporterad för att `accounting-role-gates.spec.ts` ska kunna kräva att
+ * controllerns `@Roles`-lista säger EXAKT samma sak. Två lager är ett skydd bara
+ * så länge de är överens; glider de isär blir det andra lagret tyst overksamt.
+ */
+export const CLOSE_ROLES: UserRole[] = [UserRole.ACCOUNTANT, UserRole.ADMIN, UserRole.OWNER]
 
 /** Vilka som får veta att en period öppnats igen. VIEWER/MANAGER utelämnas. */
 const REOPEN_NOTIFICATION_ROLES: UserRole[] = [UserRole.OWNER, UserRole.ADMIN, UserRole.ACCOUNTANT]

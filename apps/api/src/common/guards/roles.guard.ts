@@ -39,15 +39,28 @@ export const ROLES_KEY = 'roles'
  * granska rätt rad.
  *
  * Bytet var en bevisad no-op: steg 1 gjorde varje lista fullständig först, och
- * roles-guard-equivalence.spec.ts kör samtliga listor × samtliga roller genom
- * både den gamla och den nya implementationen och kräver identiskt svar.
+ * ett ekvivalenstest körde samtliga listor × samtliga roller genom både den
+ * gamla och den nya implementationen och krävde identiskt svar (795 av 795
+ * lika, #265). Testet är sedan steg 3 borttaget — se roles-guard.spec.ts för
+ * varför en övergiven modell inte får leva kvar som facit.
+ *
+ * Steg 3 (#266) drog sedan åt de två accounting-listorna som hierarkin hade
+ * hållit vidare öppna än avsett: att stänga en period och att rätta ett
+ * verifikat listar inte längre MANAGER.
  *
  * ── Detta är inte hela skyddet ────────────────────────────────────────────────
  *
- * Där avsikten är snävare än vad en lista kan uttrycka — eller där en väg inte
- * går via HTTP alls — ligger den bärande spärren i tjänstelagret med exakt
- * mängdmatchning: CLOSE_ROLES, REVERSAL_ROLES (accounting) och
- * COLLECTION_ACTION_ROLES (inkasso). Dekoratorn är första lagret, inte enda.
+ * En lista kan numera uttrycka vilken mängd som helst — men den gäller bara den
+ * som kommer via HTTP. Där en väg går förbi dekoratorn helt (AI-verktyg som
+ * anropar tjänsten direkt, köade jobb, framtida interna anropare) ligger den
+ * bärande spärren i tjänstelagret med exakt mängdmatchning: CLOSE_ROLES,
+ * REVERSAL_ROLES (accounting) och COLLECTION_ACTION_ROLES (inkasso). Dekoratorn
+ * är första lagret, inte enda.
+ *
+ * De två lagren måste säga SAMMA sak. Glider de isär ser det fortfarande ut som
+ * två skydd medan det yttre tyst slutat betyda något — samma sorts tystnad som
+ * hierarkin en gång orsakade. accounting-role-gates.spec.ts kräver därför
+ * identiska mängder, inte bara att båda nekar rätt roll.
  */
 @Injectable()
 export class RolesGuard implements CanActivate {

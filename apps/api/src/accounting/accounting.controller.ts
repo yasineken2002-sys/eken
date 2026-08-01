@@ -50,10 +50,11 @@ function optionalUuid(value: string | undefined, field: string): string | undefi
   return value
 }
 
-// C1: hela bokföringen kräver minst ACCOUNTANT — konsekvent med accounts/seed
-// och collections (ekonomidomänen = ACCOUNTANT och uppåt). Utan detta kunde
-// VIEWER läsa hela verifikationsjournalen. Klass-nivå täcker alla GET-routes;
-// hierarkisk RolesGuard släpper in ACCOUNTANT/MANAGER/ADMIN/OWNER, ej VIEWER.
+// C1: att LÄSA bokföringen kräver en roll som arbetar i verksamheten — utan
+// klassgrinden kunde VIEWER läsa hela verifikationsjournalen. MANAGER står med
+// avsiktligt: en förvaltare får se bokföringen, men inte agera bindande i den.
+// Den linjen dras per endpoint (close/reverse listar inte MANAGER), inte här.
+// Klass-nivån täcker alla GET-routes och stänger ute VIEWER.
 @Controller('accounting')
 @UseGuards(JwtAuthGuard)
 @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
@@ -94,21 +95,20 @@ export class AccountingController {
   }
 
   /**
-   * Stänger perioden. Rollkravet upprepas i tjänsten (fail-closed chokepunkt,
-   * #194-mönstret) — dekoratorn här är bekvämlighet, inte skyddet.
+   * Stänger perioden. MANAGER utesluts: att låsa en månad är en
+   * redovisningshandling, inte förvaltning.
    *
-   * AVSIKTEN är att utesluta MANAGER: stängning är en redovisningshandling, inte
-   * förvaltning. Den avsikten UPPRÄTTHÅLLS av `CLOSE_ROLES` i tjänsten, som
-   * matchar exakt. Dekoratorn kan den inte uttrycka — `RolesGuard` är hierarkisk
-   * och släpper in allt över den lägsta listade rollen, alltså MANAGER.
+   * Den avsikten fanns här hela tiden, men listan kunde inte uttrycka den förrän
+   * R2 steg 2 — den hierarkiska guarden släppte in allt över den lägsta listade
+   * rollen, alltså MANAGER, och `CLOSE_ROLES` i tjänsten fick bära spärren
+   * ensam. Nu säger listan vad den gör: MANAGER nekas av grinden.
    *
-   * R2 steg 1: listan skriver därför ut MANAGER, eftersom det är vad guarden
-   * FAKTISKT gör i dag. Att låta listan se snävare ut än den är, är just den
-   * fällan R2 finns till för att ta bort. Steg 3 tar bort MANAGER igen — då
-   * betyder det något.
+   * Tjänstegrinden står ändå kvar (#194-mönstret). Den är inte överflödig bara
+   * för att dekoratorn blivit ärlig: AI-vägen och framtida interna anropare når
+   * `closePeriod` utan att passera någon dekorator alls.
    */
   @Post('periods/:year/:month/close')
-  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
   @HttpCode(200)
   async closePeriod(
     @OrgId() organizationId: string,
@@ -205,16 +205,16 @@ export class AccountingController {
    * träffar därför periodspärren om innevarande period är stängd; det finns
    * ingen specialväg förbi låset.
    *
-   * AVSIKTEN är att utesluta MANAGER: att bokföra en rättelse är en
-   * redovisningshandling, inte förvaltning. Den avsikten upprätthålls av
-   * `REVERSAL_ROLES` i tjänsten (exakt matchning) — dekoratorn kan den inte
-   * uttrycka, eftersom `RolesGuard` är hierarkisk.
+   * MANAGER utesluts: att bokföra en rättelse är en redovisningshandling, inte
+   * förvaltning. Rättelsen är ett eget verifikat i huvudboken med förvaltarens
+   * fritext som beskrivning — den syns i redovisningen för alltid.
    *
-   * R2 steg 1: listan skriver ut MANAGER, eftersom det är vad guarden faktiskt
-   * gör i dag. Steg 3 tar bort den igen, när listan betyder vad den säger.
+   * Samma historia som periodstängningen ovan: avsikten låg i `REVERSAL_ROLES`
+   * tills R2 steg 2 gjorde det möjligt för listan att säga den själv.
+   * Tjänstegrinden står kvar som andra lager.
    */
   @Post('journal/:id/reverse')
-  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
   @HttpCode(201)
   async reverseJournalEntry(
     @Param('id') id: string,
