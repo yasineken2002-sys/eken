@@ -1,6 +1,6 @@
 # Eveno — Tidigare buggar & fix
 
-> Senast uppdaterad: 2026-05-29
+> Senast uppdaterad: 2026-08-01
 > Källa: git log + PR-historik på `main`-branch
 
 Detta dokument samlar de **viktigaste failure modes** vi redan har betalat för i produktion. Varje fix här representerar ett tillfälle då en bug nådde användarna eller var nära att göra det. Granska all ny kod mot listan — vi har **inte råd** att upprepa dessa.
@@ -390,6 +390,99 @@ dubbelbokning). Speglar det redan beprövade mönstret i `applyMatchToRentNotice
 
 ---
 
+## FIX 9 — `@Roles()`-listan såg ut som en mängd men var en ordning
+
+**När:** 2026-07 till 2026-08
+**Commit-ref:** #263 (R1), #264 (R2 steg 1), #265 (R2 steg 2), #266 (R2 steg 3)
+**Severity (vid upptäckt):** HIGH — nådde inte produktionsskada, men vägen dit var öppen
+
+### Vad gick fel
+
+`RolesGuard` var **hierarkisk**. Varje roll hade en nivå, och kontrollen var:
+
+```ts
+const userLevel = ROLE_HIERARCHY[user.role] ?? 0
+const hasRole = requiredRoles.some((r) => userLevel >= ROLE_HIERARCHY[r])
+```
+
+Följden: bara den **lägsta** rollen i en lista hade effekt. Resten var dekoration.
+`@Roles('ACCOUNTANT', 'ADMIN', 'OWNER')` läste som "dessa tre" men betydde
+"ACCOUNTANT och uppåt" — och MANAGER (nivå 3) låg över ACCOUNTANT (nivå 2).
+Listan släppte alltså in en roll den inte nämnde.
+
+Det var inte en läsbarhetsfråga. Nio inkasso-endpoints bar precis den listan, och
+tjänsterna hade ingen egen rollkontroll att falla tillbaka på. En **förvaltare
+kunde lämna över en hyresgästs skuld till inkasso** — bindande mot en enskild
+person, syns i hens kreditupplysning, går inte att ta tillbaka.
+
+Samma missläsning fanns i bokföringen: `close` och `reverse` var skrivna som om
+MANAGER var utesluten, men guarden släppte in den. Där räddades vi av att
+tjänstelagret hade en egen exakt kontroll — inte av dekoratorn.
+
+### Rotorsak
+
+**Notationen var en mängd, semantiken var en ordning.** Man läser `@Roles(...)`
+på anropsstället och ser en uppräkning; man läser aldrig guarden. Ingenting på
+raden avslöjar att uppräkningen egentligen betyder "minst den lägsta av dessa".
+
+Felmodet var dessutom **tyst**: det släpper in någon man inte tänkt på. Det ger
+inget larm, ingen 403, ingen felrapport — bara en användare som lyckas med något
+hen inte borde. Upptäcks bara om någon råkar granska rätt rad.
+
+Hierarkin gjorde också en REVISOR-roll omöjlig att placera: den kräver en total
+ordning, medan en revisor är en mängd (ser allt, får en specifik sak ägaren inte
+får, saknar förvaltningsbefogenheter).
+
+### Fix
+
+Fyra PR:er, medvetet uppdelade — luckan stängdes först, felklassen sedan:
+
+1. **#263 (R1)** — stängde den faktiska luckan med en grind i **tjänsten**, inte
+   controllern: `assertMayActOnCollections()` med exakt matchning, fail-closed.
+   Tjänsten är chokepunkten varje anropare passerar — även AI-verktyget
+   `export_for_collection`, som anropar render-vägen synkront förbi kön och förbi
+   varje dekorator.
+2. **#264 (R2 steg 1)** — skrev ut alla roller varje lista **faktiskt** släppte
+   in. Fyra listor var ofullständiga. Noll beteendeändring; efteråt betydde
+   `some(level >= H[r])` och `includes(role)` per definition samma sak.
+3. **#265 (R2 steg 2)** — bytte guarden till `requiredRoles.includes(user.role)`.
+   `ROLE_HIERARCHY` borttagen. **Bevisad** no-op: ett test körde samtliga 159
+   listor × 5 roller genom både den gamla och den nya implementationen och krävde
+   identiskt svar — 795 av 795 lika.
+4. **#266 (R2 steg 3)** — tog bort MANAGER ur de två accounting-listorna. Enda
+   steget som ändrar beteende, och det ändrar till vad koden redan påstod.
+
+Att steg 2 gick att **bevisa** som no-op är hela poängen med uppdelningen: "gör
+listan ärlig" hölls isär från "ändra vad den gör", så att en granskare kunde
+godkänna det ena utan att behöva lita på det andra.
+
+### Vad du måste kontrollera framöver
+
+- **En `@Roles`-lista betyder numera exakt vad den säger.** Ska ägaren in måste
+  `OWNER` stå där — även på en endpoint som "egentligen" är för administratörer.
+  Den nya felmöjligheten är att GLÖMMA en roll, och den failar högljutt: den
+  glömda rollen får 403 och någon hör av sig. Det är rätt riktning att fela.
+- **Dekoratorn skyddar bara HTTP-vägen.** Går det att nå operationen från ett
+  AI-verktyg, ett köat jobb eller en annan tjänst? Då ska grinden ligga i
+  tjänsten. Mönstret: `CLOSE_ROLES`, `REVERSAL_ROLES`, `COLLECTION_ACTION_ROLES`.
+- **Två lager skyddar bara så länge de är överens.** Vidgas dekoratorn men inte
+  tjänsten ser det fortfarande ut som två skydd medan det yttre tyst slutat
+  betyda något. `accounting-role-gates.spec.ts` kräver därför **identiska**
+  mängder, inte bara att båda nekar rätt roll. Gör likadant för nya par.
+- **En kommentar som förklarar varför en grind SAKNAS måste gälla för _varje_
+  anropare.** I R1 stämde "den här vägen har ingen aktör" för `PdfWorker` men
+  inte för AI-verktyget, som nådde samma kod synkront. Räkna upp anroparna innan
+  du skriver motiveringen.
+- **Grep efter påståenden som blivit falska:** `grep -rn "hierarkisk" apps/api/src`
+  — fyra kommentarer levde kvar och påstod i presens att guarden är hierarkisk,
+  varav en bar ett designbeslut (revisor som kontotyp) på den fallna premissen.
+- **Ett migrationsbevis ska pensioneras när dess orakel överges.** Ekvivalens-
+  testet i #265 hade den gamla hierarkin som facit; när #266 avvek med flit
+  failade det korrekt och togs bort — inte undantagslistades. Men notera vad som
+  försvann med det (bred bevakning av alla listor) och spåra ersättningen: #267.
+
+---
+
 ## Sammanfattning — checklist för varje ny PR
 
 Innan du säger "klart", verifiera systematiskt:
@@ -402,6 +495,9 @@ Innan du säger "klart", verifiera systematiskt:
 [ ] FIX 5: All routing via TanStack Router, inte useState<Route>?
 [ ] FIX 6: Reconciliation/matching använder FIFO + låsning + idempotency?
 [ ] FIX 7: AI-anrop loggar token-cost och har confidence/disclaimer?
+[ ] FIX 8: Ny betalväg? Alla länkade sido-entiteter med egen statusmaskin synkade i samma tx?
+[ ] FIX 9: @Roles-listan räknar upp ALLA roller som ska in (exakt matchning, ingen hierarki)?
+[ ] FIX 9: Nåbar förbi HTTP (AI/kö/intern anropare)? → grind i tjänsten, inte bara dekoratorn.
 ```
 
 Om du är osäker på något: säg det i PR-beskrivningen. Det är bättre att flagga osäkerhet än att smyga in en regression.
