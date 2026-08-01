@@ -5,15 +5,20 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common'
-import { Prisma, RentNoticeType, UserRole } from '@prisma/client'
+import { NotificationType, Prisma, RentNoticeType, UserRole } from '@prisma/client'
+import type { AccountingPeriodEventReasonCategory } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { vatPeriodLabelsForMonths } from '../avisering/vat-period.util'
 import { stockholmCivilDate, stockholmMonthBounds } from '../common/time/stockholm-period'
 import {
   appendPeriodClosedEvent,
+  appendPeriodReopenedEvent,
   getClosedPeriodStates,
+  getPeriodHistory,
+  getReopenCounts,
   isPeriodClosed,
   periodKeyOf,
+  type PeriodHistoryEvent,
   type PeriodKey,
 } from './closed-period'
 import { DEFAULT_VER_SERIES, VerifikationsnummerService } from './verifikationsnummer.service'
@@ -36,9 +41,10 @@ import { DEFAULT_VER_SERIES, VerifikationsnummerService } from './verifikationsn
  * `appendPeriodClosedEvent` (closed-period.ts) tillsammans med uppslagningen —
  * en fil äger både frågan och svaret.
  *
- * ÅTERÖPPNING ingår fortfarande INTE. Modellen bär den (REOPENED finns och
- * härledningen hanterar den), men själva handlingen kräver egna grindar — roll,
- * obligatoriskt skäl, spärr mot för gamla räkenskapsår — och är PR1c.
+ * PR1c: ÅTERÖPPNING finns nu (`reopenPeriod`), bakom fyra grindar som alla
+ * ligger HÄR i tjänsten och inte bara i controllern — se metodens docblock.
+ * Det finns MEDVETET inget AI-verktyg för återöppning: en väg förbi grindarna
+ * vore en väg förbi hela poängen.
  */
 
 /** En upptäckt som förhandskontrollen gjorde inför en stängning. */
@@ -69,6 +75,8 @@ export interface PeriodOverviewItem {
   month: number
   closed: boolean
   closedAt: Date | null
+  /** Antal gånger perioden återöppnats. > 0 → perioden har en historia att visa. */
+  reopenedCount: number
 }
 
 export interface PeriodOverview {
@@ -79,7 +87,76 @@ export interface PeriodOverview {
   open: PeriodKey[]
 }
 
+/** Allt återöppningsdialogen behöver för att visa läget INNAN något skickas. */
+export interface PeriodDetail {
+  year: number
+  month: number
+  closed: boolean
+  /** Hela kedjan, äldst först. `seq` är intern ordning — visas aldrig i UI. */
+  events: PeriodHistoryEvent[]
+  /** Momsperioder månaden berör — underlag för varningen, aldrig ett påstående. */
+  vatPeriods: string[]
+  /** Räkenskapsåret perioden tillhör. */
+  fiscalYear: number
+  /** Räkenskapsårets sista dag (ISO). */
+  fiscalYearEnd: string
+  /** Falskt om räkenskapsårsspärren stänger dörren — roll/kategori avgörs vid POST. */
+  withinReopenWindow: boolean
+}
+
 const CLOSE_ROLES: UserRole[] = [UserRole.ACCOUNTANT, UserRole.ADMIN, UserRole.OWNER]
+
+/** Vilka som får veta att en period öppnats igen. VIEWER/MANAGER utelämnas. */
+const REOPEN_NOTIFICATION_ROLES: UserRole[] = [UserRole.OWNER, UserRole.ADMIN, UserRole.ACCOUNTANT]
+
+/** Speglar CHECK-villkoret i DB (`length(btrim(reason)) >= 10`). */
+const REOPEN_REASON_MIN_LENGTH = 10
+
+/** Sex månader efter räkenskapsårets slut — se reopenWindow. */
+const REOPEN_WINDOW_MONTHS = 6
+
+/**
+ * Beskedet när någon vill öppna en period för att RÄTTA en befintlig post.
+ *
+ * Det nekar inte bara — det förklarar varför, och vad man ska göra i stället.
+ * Den pedagogiska kärnan är att dagens datum på rättelsen är själva poängen: det
+ * visar NÄR felet upptäcktes. En "rättelse" bakåt i den gamla perioden hade i
+ * efterhand sett ut som att posten alltid varit rätt.
+ *
+ * Samma text visas i UI:t innan något skickas — det här är sista utposten för
+ * den som når endpointen direkt.
+ */
+const CORRECTION_NOT_A_REOPEN_MESSAGE =
+  'Perioden behöver inte öppnas för det här. En bokförd post ändras aldrig i ' +
+  'efterhand — inte i någon månad, hur ny den än är. Ett fel rättas i stället ' +
+  'genom att du bokför en ny post idag som tar ut den felaktiga, och en ny ' +
+  'korrekt post bredvid. Den felaktiga posten står kvar precis som den var: det ' +
+  'ska gå att se vad som faktiskt bokfördes, när felet upptäcktes och hur det ' +
+  'rättades.'
+
+/**
+ * Får den här aktören återöppna en period för att RÄTTA en befintlig post?
+ *
+ * Svaret är i dag alltid nej, för alla. Rätt åtgärd vid en felaktig bokförd post
+ * är en rättelse i innevarande period — inte att öppna den gamla månaden och
+ * ändra där, vilket i efterhand hade sett ut som att posten alltid varit rätt.
+ *
+ * VARFÖR EN NAMNGIVEN FUNKTION SOM ALLTID RETURNERAR FALSE, i stället för ett
+ * `if (kategori === EXISTING_ENTRY_INCORRECT) throw` inne i flödet: undantaget
+ * ÄR planerat. En revisor ska få göra det här (med varning och spårning) när
+ * revisorskonton finns. Med regeln samlad på ett ställe blir det undantaget en
+ * ändring på en rad i den här funktionen — inte en utgrävning genom flödet efter
+ * varje ställe som råkar resonera om kategorier.
+ *
+ * Undantaget går INTE att uttrycka i dagens rollsystem: RolesGuard är strikt
+ * hierarkisk (`userLevel >= krav`), så allt som ges till ACCOUNTANT ges
+ * automatiskt till ADMIN och OWNER — och spärren hade blivit verkningslös för
+ * just hyresvärden, som är den den finns för. Revisor blir därför en egen
+ * kontotyp, inte ett femte UserRole, och den här funktionen får då ta emot den.
+ */
+export function canReopenForCorrection(_actorRole: UserRole): boolean {
+  return false
+}
 
 @Injectable()
 export class AccountingPeriodService {
@@ -114,12 +191,21 @@ export class AccountingPeriodService {
     // period (samma härledning som spärren i allocate använder — översikten kan
     // aldrig visa "öppen" för en period som spärren anser stängd, eller tvärtom).
     // `closedAt` är den GÄLLANDE stängningens tidpunkt.
-    const rows = await getClosedPeriodStates(this.prisma, organizationId)
+    const [rows, reopenCounts] = await Promise.all([
+      getClosedPeriodStates(this.prisma, organizationId),
+      getReopenCounts(this.prisma, organizationId),
+    ])
     const closedByKey = new Map(rows.map((r) => [periodKeyOf(r), r.closedAt]))
 
     const items: PeriodOverviewItem[] = keys.map((k) => {
       const closedAt = closedByKey.get(periodKeyOf(k))
-      return { year: k.year, month: k.month, closed: closedAt != null, closedAt: closedAt ?? null }
+      return {
+        year: k.year,
+        month: k.month,
+        closed: closedAt != null,
+        closedAt: closedAt ?? null,
+        reopenedCount: reopenCounts.get(periodKeyOf(k)) ?? 0,
+      }
     })
 
     // Senast stängda = högsta år/månad bland ALLA stängda (inte bara i fönstret).
@@ -243,14 +329,7 @@ export class AccountingPeriodService {
     // Aktörsnamnet denormaliseras in i händelsen: loggen ska gå att läsa om sju
     // år, när User-raden kan vara borttagen eller personen ha bytt namn. Saknas
     // användaren lämnas etiketten tom — vi fabricerar aldrig en aktör.
-    let actorLabel: string | null = null
-    if (opts.actorUserId) {
-      const actor = await this.prisma.user.findUnique({
-        where: { id: opts.actorUserId },
-        select: { firstName: true, lastName: true },
-      })
-      actorLabel = actor ? `${actor.firstName} ${actor.lastName}`.trim() || null : null
-    }
+    const actorLabel = await this.actorLabelFor(opts.actorUserId ?? null)
 
     // summary är en ÖGONBLICKSBILD vid stängningstillfället och räknas aldrig om
     // i efterhand (FAR: att uppdatera den retroaktivt vore att påstå att den som
@@ -288,6 +367,273 @@ export class AccountingPeriodService {
     )
 
     return { year, month, summary, checks: pre.checks }
+  }
+
+  // ── Återöppning (PR1c) ─────────────────────────────────────────────────────
+
+  /**
+   * Periodens hela historik + underlaget dialogen behöver innan något skickas.
+   * Ren läsning.
+   */
+  async getDetail(organizationId: string, year: number, month: number): Promise<PeriodDetail> {
+    this.assertValidPeriod(year, month)
+    const { from } = stockholmMonthBounds(year, month)
+
+    const [events, closed, org] = await Promise.all([
+      getPeriodHistory(this.prisma, organizationId, year, month),
+      isPeriodClosed(this.prisma, organizationId, from),
+      this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { vatReportingPeriod: true, fiscalYearStartMonth: true },
+      }),
+    ])
+
+    const startMonth = org?.fiscalYearStartMonth ?? 1
+    const window = this.reopenWindow(year, month, startMonth)
+
+    return {
+      year,
+      month,
+      closed,
+      events,
+      vatPeriods: vatPeriodLabelsForMonths(
+        [{ year, month }],
+        org?.vatReportingPeriod ?? 'QUARTERLY',
+        startMonth,
+      ),
+      fiscalYear: window.fiscalYear,
+      fiscalYearEnd: window.lastDay.toISOString().slice(0, 10),
+      withinReopenWindow: window.within,
+    }
+  }
+
+  /**
+   * Öppnar en stängd period igen. FYRA GRINDAR, alla här i tjänsten och inte
+   * bara i controllern — det här är chokepunkten, och en framtida intern
+   * anropare (eller ett AI-verktyg som någon lägger till) ska träffa samma
+   * spärrar. Alla fail-closed: saknad/okänd indata nekas.
+   *
+   *  1. ROLL — endast OWNER. Stängning är rutinmässig redovisningshygien och
+   *     räcker med ACCOUNTANT; återöppning rör ett läge som kan ligga till grund
+   *     för en fastställd årsredovisning eller en lämnad momsdeklaration. Den som
+   *     upptäcker behovet (ofta ACCOUNTANT) kan alltså inte själv trycka på
+   *     knappen utan måste förklara varför för den som bär bokföringsansvaret.
+   *
+   *  2. ORSAK — `canReopenForCorrection`. En saknad post får hämtas in i sin
+   *     period; en FELAKTIG post rättas i innevarande period och aldrig genom att
+   *     öppna den gamla månaden. Se funktionens docblock.
+   *
+   *  3. RÄKENSKAPSÅR — perioder vars räkenskapsår slutade för mer än sex månader
+   *     sedan öppnas inte, utan override. Det är inte bara en produktbegränsning:
+   *     fel som upptäcks efter att ett räkenskapsår avslutats hanteras som en
+   *     justering i innevarande period med notering om vilket år felet avser. En
+   *     bakväg här hade uppmuntrat fel praxis.
+   *
+   *  4. TILLSTÅND — perioden måste faktiskt vara stängd. En redan öppen period
+   *     kan inte öppnas igen (409), och en period utan historik har aldrig
+   *     stängts.
+   *
+   * Skrivningen rör bara `AccountingPeriodEvent` — se appendPeriodReopenedEvent
+   * för varför speglingen lämnas orörd.
+   */
+  async reopenPeriod(
+    organizationId: string,
+    year: number,
+    month: number,
+    opts: {
+      actorRole?: UserRole
+      actorUserId?: string | null
+      reason: string
+      reasonCategory: AccountingPeriodEventReasonCategory
+    },
+  ): Promise<{
+    year: number
+    month: number
+    reopenedAt: Date
+    reason: string
+    reasonCategory: AccountingPeriodEventReasonCategory
+    /** Ögonblicksbilden från den stängning som nu hävts — oförändrad, aldrig omräknad. */
+    previousSummary: PeriodSummary | null
+  }> {
+    // GRIND 1 — roll.
+    if (opts.actorRole !== UserRole.OWNER) {
+      throw new ForbiddenException(
+        'Endast kontoägaren (OWNER) får öppna en stängd bokföringsperiod igen.',
+      )
+    }
+    this.assertValidPeriod(year, month)
+
+    const reason = opts.reason?.trim() ?? ''
+    if (reason.length < REOPEN_REASON_MIN_LENGTH) {
+      throw new BadRequestException(
+        `Ange varför perioden öppnas igen (minst ${REOPEN_REASON_MIN_LENGTH} tecken). ` +
+          'Skälet sparas i periodens historik och går inte att ändra i efterhand.',
+      )
+    }
+
+    // GRIND 2 — orsak. Regeln bor i canReopenForCorrection, inte här.
+    if (
+      opts.reasonCategory === 'EXISTING_ENTRY_INCORRECT' &&
+      !canReopenForCorrection(opts.actorRole)
+    ) {
+      throw new ConflictException(CORRECTION_NOT_A_REOPEN_MESSAGE)
+    }
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { fiscalYearStartMonth: true },
+    })
+    const window = this.reopenWindow(year, month, org?.fiscalYearStartMonth ?? 1)
+
+    // GRIND 3 — räkenskapsår. Hård, ingen override.
+    if (!window.within) {
+      throw new ConflictException(
+        `Räkenskapsåret ${window.fiscalYear} avslutades ${window.lastDay
+          .toISOString()
+          .slice(0, 10)} och kan inte öppnas igen. ` +
+          'Fel som upptäcks efter att ett räkenskapsår avslutats rättas i innevarande ' +
+          'period, med en notering om vilket år felet gäller. Stäm av med din ' +
+          'redovisningskonsult.',
+      )
+    }
+
+    // GRIND 4 — tillstånd. Samma härledning som spärren i allocate använder.
+    const { from } = stockholmMonthBounds(year, month)
+    if (!(await isPeriodClosed(this.prisma, organizationId, from))) {
+      throw new ConflictException(
+        `Perioden ${periodKeyOf({ year, month })} är inte stängd och kan därför inte öppnas igen.`,
+      )
+    }
+
+    // Ögonblicksbilden från stängningen som nu hävs — läses ut FÖRE skrivningen
+    // så svaret kan visa vad den som låste faktiskt såg. Den rörs aldrig.
+    const history = await getPeriodHistory(this.prisma, organizationId, year, month)
+    const lastClosed = [...history].reverse().find((e) => e.type === 'CLOSED')
+
+    const actorLabel = await this.actorLabelFor(opts.actorUserId ?? null)
+
+    await this.prisma.$transaction(async (tx) =>
+      appendPeriodReopenedEvent(tx, {
+        organizationId,
+        year,
+        month,
+        reason,
+        reasonCategory: opts.reasonCategory,
+        actorUserId: opts.actorUserId ?? null,
+        actorLabel,
+      }),
+    )
+
+    this.logger.warn(
+      `[period] ${periodKeyOf({ year, month })} ÅTERÖPPNAD för org ${organizationId} ` +
+        `av ${opts.actorUserId ?? 'okänd'} (${opts.reasonCategory})`,
+    )
+
+    void this.notifyReopened(organizationId, year, month, actorLabel, reason)
+
+    return {
+      year,
+      month,
+      reopenedAt: new Date(),
+      reason,
+      reasonCategory: opts.reasonCategory,
+      previousSummary: (lastClosed?.summary as unknown as PeriodSummary | null) ?? null,
+    }
+  }
+
+  /**
+   * Räkenskapsårsfönstret för en period.
+   *
+   * Sex månader räknas från RÄKENSKAPSÅRETS SLUT, inte från månaden — en period
+   * i mars kan höra till ett räkenskapsår som nyss avslutats (brutet år) eller
+   * till ett som stängde för länge sedan (kalenderår). Aritmetiken är CIVIL
+   * månadsräkning, inte 180 dagar: månader är olika långa och Sverige växlar
+   * sommartid.
+   */
+  private reopenWindow(
+    year: number,
+    month: number,
+    fiscalYearStartMonth: number,
+  ): { fiscalYear: number; lastDay: Date; deadline: Date; within: boolean } {
+    const { from: periodStart } = stockholmMonthBounds(year, month)
+    const fiscalYear = VerifikationsnummerService.fiscalYearFor(periodStart, fiscalYearStartMonth)
+
+    // Ögonblicket EFTER räkenskapsårets sista dag = första ögonblicket i nästa
+    // räkenskapsår. Håller för både kalenderår (fym=1) och brutet år.
+    const endBoundary = stockholmMonthBounds(fiscalYear + 1, fiscalYearStartMonth).from
+    const lastDay = new Date(endBoundary.getTime() - 1)
+
+    const c = stockholmCivilDate(endBoundary)
+    let m = c.month + REOPEN_WINDOW_MONTHS
+    let y = c.year
+    if (m > 12) {
+      m -= 12
+      y += 1
+    }
+    const deadline = stockholmMonthBounds(y, m).from
+
+    return { fiscalYear, lastDay, deadline, within: Date.now() <= deadline.getTime() }
+  }
+
+  /**
+   * Denormaliserat aktörsnamn — loggen ska gå att läsa om sju år, när User-raden
+   * kan vara borttagen. Saknas användaren lämnas etiketten tom; vi fabricerar
+   * aldrig en aktör.
+   */
+  private async actorLabelFor(actorUserId: string | null): Promise<string | null> {
+    if (!actorUserId) return null
+    const actor = await this.prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { firstName: true, lastName: true },
+    })
+    return actor ? `${actor.firstName} ${actor.lastName}`.trim() || null : null
+  }
+
+  /**
+   * Notis till dem som bär ansvar för bokföringen. Best-effort: en utebliven
+   * notis får aldrig rulla tillbaka en genomförd återöppning — händelsen i
+   * loggen är det som räknas.
+   */
+  private async notifyReopened(
+    organizationId: string,
+    year: number,
+    month: number,
+    actorLabel: string | null,
+    reason: string,
+  ): Promise<void> {
+    try {
+      // Skrivs direkt i stället för via NotificationsService: NotificationsModule
+      // importerar redan AccountingModule, så ett beroende åt andra hållet vore
+      // en modulcykel som bara går att lösa med forwardRef på båda sidor. Tio
+      // rader här är billigare än den kopplingen.
+      //
+      // ROLLFILTRERAT: VIEWER och MANAGER utelämnas — en återöppnad period är en
+      // redovisningshändelse, och en notis som når fel publik lär folk att
+      // ignorera notiser.
+      const recipients = await this.prisma.user.findMany({
+        where: { organizationId, isActive: true, role: { in: REOPEN_NOTIFICATION_ROLES } },
+        select: { id: true },
+      })
+      if (recipients.length === 0) return
+      await this.prisma.notification.createMany({
+        data: recipients.map((u) => ({
+          organizationId,
+          userId: u.id,
+          type: NotificationType.SYSTEM,
+          title: 'Bokföringsperiod öppnad igen',
+          message:
+            `${periodKeyOf({ year, month })} har öppnats igen` +
+            `${actorLabel ? ` av ${actorLabel}` : ''}. Angivet skäl: ${reason}`,
+          link: '/accounting',
+        })),
+      })
+    } catch (err) {
+      this.logger.error(
+        `[period] kunde inte notifiera om återöppning av ${periodKeyOf({ year, month })}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      )
+    }
   }
 
   // ── Kontrollerna ───────────────────────────────────────────────────────────

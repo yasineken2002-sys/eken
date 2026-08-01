@@ -5,7 +5,9 @@ import {
   fetchJournalEntries,
   fetchPeriods,
   fetchPeriodPrecheck,
+  fetchPeriodHistory,
   closePeriod,
+  reopenPeriod,
 } from '../api/accounting.api'
 
 export function useAccounts() {
@@ -58,6 +60,31 @@ export function useClosePeriod() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['accounting', 'periods'] })
       void qc.invalidateQueries({ queryKey: ['accounting', 'period-precheck'] })
+      void qc.invalidateQueries({ queryKey: ['accounting', 'period-history'] })
+    },
+    meta: { handlesOwnError: true },
+  })
+}
+
+// ── Återöppning (T5 PR1c) ────────────────────────────────────────────────────
+
+/** Historik + underlag för dialogen. Hämtas först när en period valts. */
+export function usePeriodHistory(period: { year: number; month: number } | null) {
+  return useQuery({
+    queryKey: ['accounting', 'period-history', period?.year, period?.month],
+    queryFn: () => fetchPeriodHistory(period!.year, period!.month),
+    enabled: period != null,
+  })
+}
+
+export function useReopenPeriod() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: reopenPeriod,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['accounting', 'periods'] })
+      void qc.invalidateQueries({ queryKey: ['accounting', 'period-precheck'] })
+      void qc.invalidateQueries({ queryKey: ['accounting', 'period-history'] })
     },
     meta: { handlesOwnError: true },
   })

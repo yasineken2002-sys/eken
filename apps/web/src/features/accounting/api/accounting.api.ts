@@ -32,6 +32,32 @@ export interface PeriodOverviewItem {
   month: number
   closed: boolean
   closedAt: string | null
+  /** > 0 → perioden har en historia värd att visa. */
+  reopenedCount: number
+}
+
+export type PeriodReasonCategory = 'MISSING_ENTRY' | 'EXISTING_ENTRY_INCORRECT'
+
+/** En händelse i periodens kedja. `seq` är intern ordning och visas ALDRIG. */
+export interface PeriodHistoryEvent {
+  seq: number
+  type: 'CLOSED' | 'REOPENED'
+  createdAt: string
+  actorLabel: string | null
+  reason: string | null
+  reasonCategory: PeriodReasonCategory | null
+}
+
+export interface PeriodDetail {
+  year: number
+  month: number
+  closed: boolean
+  events: PeriodHistoryEvent[]
+  vatPeriods: string[]
+  fiscalYear: number
+  fiscalYearEnd: string
+  /** Falskt → räkenskapsårsspärren stänger dörren, oavsett orsak och roll. */
+  withinReopenWindow: boolean
 }
 
 export interface PeriodOverview {
@@ -70,3 +96,24 @@ export const closePeriod = (
   month: number,
 ): Promise<{ year: number; month: number; summary: PeriodSummary; checks: PeriodCheck[] }> =>
   post(`/accounting/periods/${year}/${month}/close`)
+
+export const fetchPeriodHistory = (year: number, month: number): Promise<PeriodDetail> =>
+  get<PeriodDetail>(`/accounting/periods/${year}/${month}/history`)
+
+export const reopenPeriod = (args: {
+  year: number
+  month: number
+  reason: string
+  reasonCategory: PeriodReasonCategory
+}): Promise<{
+  year: number
+  month: number
+  reopenedAt: string
+  reason: string
+  reasonCategory: PeriodReasonCategory
+  previousSummary: PeriodSummary | null
+}> =>
+  post(`/accounting/periods/${args.year}/${args.month}/reopen`, {
+    reason: args.reason,
+    reasonCategory: args.reasonCategory,
+  })

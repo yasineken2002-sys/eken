@@ -1474,13 +1474,37 @@ model ClosedAccountingPeriod {
   @@index([organizationId])
 }
 
-// Vad som hände med en bokföringsperiod. REOPENED deklareras här men skrivs av
-// INGEN kodväg i PR1b — återöppningsfunktionen är PR1c. Härledningen hanterar
-// den redan (och är testad mot den), så funktionen kan landa utan att röra
-// uppslagningen igen.
+// Vad som hände med en bokföringsperiod.
 enum AccountingPeriodEventType {
   CLOSED
   REOPENED
+}
+
+// VARFÖR en period återöppnades — och den enda punkt i hela kedjan som skiljer
+// "får" från "får inte".
+//
+// MISSING_ENTRY: en affärshändelse saknas i perioden (en hyresavi som aldrig
+// bokfördes, ett kvitto som glömdes). Att lägga in den i rätt period är korrekt.
+//
+// EXISTING_ENTRY_INCORRECT: en post SOM FINNS är fel. Då är återöppning fel
+// verktyg — en bokförd post ändras aldrig i efterhand, utan rättas med en ny
+// post i innevarande period. Öppnar man den gamla månaden och "rättar" där ser
+// det i efterhand ut som att posten alltid varit rätt, och när felet upptäcktes
+// går inte längre att se.
+//
+// EGEN KOLUMN, INTE FRITEXT (FAR): kategorin GRINDAR — den avvisas eller släpps
+// igenom av `canReopenForCorrection` innan någon händelse skrivs. Fritext går
+// inte att grinda pålitligt mot, och gör det omöjligt att i efterhand svara på
+// hur många återöppningar som skedde av vilken orsak. `reason` bär den mänskliga
+// förklaringen bredvid.
+//
+// SJÄLVDEKLARERAD: systemet kan inte verifiera vilket fall det faktiskt är. Den
+// som väljer MISSING_ENTRY släpps igenom. Kategorin förebygger alltså inget
+// tekniskt — den gör en namngiven användare ansvarig för ett intyg vid en given
+// tidpunkt, och den syns i historiken för den som granskar i efterhand.
+enum AccountingPeriodEventReasonCategory {
+  MISSING_ENTRY
+  EXISTING_ENTRY_INCORRECT
 }
 
 // ─── AccountingPeriodEvent — behandlingshistorik för periodstängning ──────────
@@ -1528,6 +1552,11 @@ model AccountingPeriodEvent {
   // constraint i migrationen — inte bara av tjänstelagret, så att ett framtida
   // internt skript eller en migrering inte kan skriva en återöppning utan skäl.
   reason String?
+
+  // VARFÖR perioden återöppnades. Obligatorisk vid REOPENED, alltid null vid
+  // CLOSED — bägge riktningarna tvingas av CHECK i migrationen. Se enumets
+  // docblock för varför detta är en kolumn och inte en del av `reason`.
+  reasonCategory AccountingPeriodEventReasonCategory?
 
   // Resultat-ögonblicksbild vid stängning (bara på CLOSED). Räknas ALDRIG om:
   // en omstängning lägger en ny CLOSED-händelse med en NY summary bredvid den

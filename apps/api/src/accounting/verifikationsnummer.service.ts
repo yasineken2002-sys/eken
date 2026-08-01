@@ -49,8 +49,11 @@ export class VerifikationsnummerService {
    * förlorad (en rollback ska kunna återställa sekvensökningen).
    *
    * Vägrar tilldela nummer om postens datum ligger i en stängd bokförings-
-   * period (ClosedAccountingPeriod) — ett stängt räkenskapsår får inte öppnas
-   * implicit av en efterhandsbokförd post. Kastar ConflictException.
+   * period — ett stängt räkenskapsår får inte öppnas implicit av en
+   * efterhandsbokförd post. Kastar ConflictException. Frågan ställs via den
+   * delade uppslagningen i closed-period.ts, som härleder svaret ur periodens
+   * senaste händelse (PR1b); den här funktionen känner inte till hur
+   * tillståndet lagras.
    */
   async allocate(
     client: Prisma.TransactionClient,

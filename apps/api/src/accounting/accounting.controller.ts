@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -17,6 +18,8 @@ import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { AccountingService } from './accounting.service'
 import { AccountingPeriodService } from './accounting-period.service'
+// Värde-import, inte `import type` — ValidationPipe behöver klassen i runtime.
+import { ReopenPeriodDto } from './dto/reopen-period.dto'
 
 // Validerar ISO-datum (YYYY-MM-DD) från query. Kastar 400 vid saknat/felaktigt
 // format så rapporterna aldrig kör mot ogiltiga Date-objekt (NaN-period).
@@ -106,6 +109,47 @@ export class AccountingController {
     return this.periods.closePeriod(organizationId, Number(year), Number(month), {
       actorRole: user.role,
       actorUserId: user.sub,
+    })
+  }
+
+  /**
+   * Periodens historik + underlaget återöppningsdialogen behöver (momsperioder,
+   * räkenskapsårsfönstret). Egen endpoint, inte påhängd på översikten — den ska
+   * inte bära N händelser per period för en sida som listar tolv månader.
+   */
+  @Get('periods/:year/:month/history')
+  async getPeriodHistory(
+    @OrgId() organizationId: string,
+    @Param('year') year: string,
+    @Param('month') month: string,
+  ) {
+    return this.periods.getDetail(organizationId, Number(year), Number(month))
+  }
+
+  /**
+   * Öppnar en stängd period igen. OWNER-only — men dekoratorn är inte skyddet:
+   * rollen, orsakskategorin, räkenskapsårsspärren och tillståndskontrollen
+   * upprepas alla i tjänsten (fail-closed chokepunkt, #194-mönstret), så en
+   * framtida intern anropare träffar samma grindar.
+   *
+   * ACCOUNTANT får stänga men INTE öppna: den som upptäcker behovet ska behöva
+   * förklara det för den som bär bokföringsansvaret.
+   */
+  @Post('periods/:year/:month/reopen')
+  @Roles('OWNER')
+  @HttpCode(200)
+  async reopenPeriod(
+    @OrgId() organizationId: string,
+    @Param('year') year: string,
+    @Param('month') month: string,
+    @Body() dto: ReopenPeriodDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.periods.reopenPeriod(organizationId, Number(year), Number(month), {
+      actorRole: user.role,
+      actorUserId: user.sub,
+      reason: dto.reason,
+      reasonCategory: dto.reasonCategory,
     })
   }
 

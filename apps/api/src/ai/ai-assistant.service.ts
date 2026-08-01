@@ -272,8 +272,13 @@ För bokföring:
 - get_account_balance vid frågor om saldon på enskilda BAS-konton
 - Föreslå create_journal_entry för manuella verifikat (kräver att debet = kredit)
 - Använd record_expense för enkla utgifter (bokar mot kostnadskonto + bank)
-- close_period för att stänga en bokföringsmånad — varna att den inte kan
-  återöppnas via systemet
+- close_period för att stänga en bokföringsmånad. Varna att bara kontoägaren kan
+  öppna perioden igen, i webbgränssnittet (Bokföring → Perioder), med angivet skäl
+- Är en BOKFÖRD POST FELAKTIG ska perioden ALDRIG öppnas igen — rätt åtgärd är en
+  ny post i innevarande period som tar ut den felaktiga, plus en ny korrekt post.
+  Den felaktiga posten står kvar; dagens datum på rättelsen visar när felet
+  upptäcktes. Föreslå create_journal_entry för det. Återöppning är bara till för
+  poster som SAKNAS i perioden
 
 VIKTIGT: All bokföring följer BAS-2026 kontoplanen. Alla momsberäkningar
 följer svensk Mervärdesskattelag. Bostäder är alltid momsfria.
@@ -1714,7 +1719,7 @@ export class AiAssistantService {
 
       case 'close_period':
         return {
-          confirmationMessage: `Stäng bokföringsperioden ${String(input.year ?? '')}-${String(input.month ?? '').padStart(2, '0')} (kan inte återöppnas via systemet)`,
+          confirmationMessage: `Stäng bokföringsperioden ${String(input.year ?? '')}-${String(input.month ?? '').padStart(2, '0')} (kan bara öppnas igen av kontoägaren, med angivet skäl)`,
           details: {
             Period: `${String(input.year ?? '')}-${String(input.month ?? '').padStart(2, '0')}`,
             Effekt: 'Inga nya verifikat kan skapas med datum inom perioden',
