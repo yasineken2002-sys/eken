@@ -137,15 +137,24 @@ describe('Behörighetsytan · golden-fil (#267)', () => {
   })
 
   it('varje AI-verktyg har ett MÄTT utfall, inte ett tomt', () => {
-    // Ett verktyg som varken släpper in eller nekar någon betyder att sonden
-    // slutat fungera — inte att verktyget är öppet.
+    // Sondens hälsa mäts mot två invarianter som gäller för VARJE handlingsverktyg
+    // och som skulle brytas om den tappade kontakten med den riktiga koden:
+    //
+    //   OWNER släpps alltid in  — ingen av grindarna utesluter kontoägaren, så ett
+    //                             verktyg utan OWNER betyder att sonden felaktigt
+    //                             tolkar något annat kast som ett rollnekande.
+    //   VIEWER nekas alltid     — grindens allra första rad. Släpps VIEWER in har
+    //                             sonden slutat nå grinden överhuvudtaget.
+    //
+    // Tillsammans utesluter de både "allt ser nekat ut" och "allt ser tillåtet ut",
+    // vilket är de två sätt en trasig sond tyst kan producera en trovärdig fil.
+    const utanOwner = aiTools.filter((t) => !t.roles.includes('OWNER')).map((t) => t.tool)
+    const medViewer = aiTools.filter((t) => t.roles.includes('VIEWER')).map((t) => t.tool)
+    expect({ utanOwner, medViewer }).toEqual({ utanOwner: [], medViewer: [] })
+
     for (const t of aiTools) {
-      expect(ALL_ROLES.some((r) => t.roles.includes(r) || !t.roles.includes(r))).toBe(true)
       expect(t.roles.every((r) => (ALL_ROLES as readonly string[]).includes(r))).toBe(true)
     }
-    // VIEWER får aldrig utföra en handling — grindens första rad. Faller den här
-    // har sonden tappat kontakten med den riktiga koden.
-    expect(aiTools.every((t) => !t.roles.includes('VIEWER'))).toBe(true)
   })
 
   it('ytan matchar golden-filen', () => {
