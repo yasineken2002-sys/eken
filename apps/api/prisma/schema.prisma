@@ -1424,10 +1424,13 @@ model JournalEntry {
   // "är det här verifikatet redan rättat?" är `reversedBy != null`, inte en
   // sourceId-parsning.
   //
-  // SetNull, aldrig Cascade: skulle originalet någonsin försvinna (det ska det
-  // inte — verifikat raderas aldrig) får rättelsen inte följa med i fallet.
+  // Restrict, aldrig SetNull eller Cascade: verifikat raderas aldrig (det finns
+  // ingen raderingsväg, och organization-relationen är Restrict av samma skäl).
+  // SetNull hade varit en död gren med fel förtecken — lade någon till en
+  // raderingsväg skulle rättelsen TYST tappa länken till sitt original i stället
+  // för att raderingen stoppades.
   reversalOfEntryId String?       @unique
-  reversalOf        JournalEntry? @relation("JournalEntryReversal", fields: [reversalOfEntryId], references: [id], onDelete: SetNull)
+  reversalOf        JournalEntry? @relation("JournalEntryReversal", fields: [reversalOfEntryId], references: [id], onDelete: Restrict)
   // Som mest EN rättelse per verifikat — @unique på FK:n ovan gör relationen 1-1.
   reversedBy        JournalEntry? @relation("JournalEntryReversal")
 

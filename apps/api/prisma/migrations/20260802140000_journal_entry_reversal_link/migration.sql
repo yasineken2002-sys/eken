@@ -25,7 +25,12 @@ ALTER TABLE "JournalEntry" ADD COLUMN "reversalOfEntryId" TEXT;
 CREATE UNIQUE INDEX "JournalEntry_reversalOfEntryId_key" ON "JournalEntry"("reversalOfEntryId");
 
 -- AddForeignKey
--- SET NULL, aldrig CASCADE: verifikat raderas aldrig, men skulle originalet mot
--- förmodan försvinna får rättelsen inte följa med i fallet — den är egen
--- räkenskapsinformation.
-ALTER TABLE "JournalEntry" ADD CONSTRAINT "JournalEntry_reversalOfEntryId_fkey" FOREIGN KEY ("reversalOfEntryId") REFERENCES "JournalEntry"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- RESTRICT, inte SetNull och absolut inte Cascade.
+--
+-- Verifikat raderas aldrig — det finns ingen raderingsväg i kodbasen, och
+-- JournalEntry.organization är redan Restrict av samma skäl. SetNull hade därför
+-- varit en död gren, men en död gren med fel förtecken: om någon NÅGONSIN lade
+-- till en raderingsväg skulle rättelsen TYST tappa länken till sitt original i
+-- stället för att raderingen stoppades. Restrict gör att den vägen måste
+-- konfronteras medvetet i stället för att spegla ett fel.
+ALTER TABLE "JournalEntry" ADD CONSTRAINT "JournalEntry_reversalOfEntryId_fkey" FOREIGN KEY ("reversalOfEntryId") REFERENCES "JournalEntry"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

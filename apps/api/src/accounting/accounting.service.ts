@@ -2093,8 +2093,10 @@ export class AccountingService {
     }
 
     const bookedOn = original.date.toISOString().slice(0, 10)
+    const intendedDescription = `Rättelse av verifikat ${original.series}${original.verNumber} (bokfört ${bookedOn}): ${reason}`
+
     try {
-      return await this.createReversalEntry({
+      const created = await this.createReversalEntry({
         organizationId: params.organizationId,
         original,
         // MANUAL, inte originalets källa: det här är en operatörshandling, inte en
@@ -2102,12 +2104,35 @@ export class AccountingService {
         // filtrerbar som "manuella poster" i verifikationslistan.
         source: 'MANUAL',
         reversalSourceId: `entry-reversal:${params.entryId}`,
-        description: `Rättelse av verifikat ${original.series}${original.verNumber} (bokfört ${bookedOn}): ${reason}`,
+        description: intendedDescription,
         createdById: params.actorUserId,
         linePrefix: 'Rättelse',
         reversalOfEntryId: params.entryId,
         include: { lines: { include: { account: true } } },
       })
+
+      // IDEMPOTENSTRÄFF = någon annan hann före.
+      //
+      // `createNumberedEntry` returnerar en befintlig post i stället för att
+      // skriva en dubblett. För de fyra AUTOMATISKA motverifikaten är det rätt:
+      // varje anrop för samma sourceId är logiskt identiskt, så en retry ÄR
+      // idempotent. Här är det inte det — `reason` är fritext, och två
+      // samtidiga rättelser kan bära olika skäl. Utan den här kontrollen får
+      // förloraren "rättelse bokförd" för en post som bär MOTPARTENS skäl,
+      // medan hens eget tyst kastades. Skälet är dokumenterat som något som
+      // "går inte att ändra efteråt" — då får det inte tyst försvinna.
+      //
+      // Beskrivningen är deterministisk ur (originalets nummer, dess datum,
+      // skälet), så en avvikelse betyder att posten skrevs av någon annan.
+      // Skrev de exakt samma skäl är utfallet detsamma som avsett och vi säger
+      // inget — då hände faktiskt det användaren bad om.
+      if (created.description !== intendedDescription) {
+        throw new ConflictException(
+          `Verifikatet rättades precis av någon annan, med verifikat ${created.series}${created.verNumber}. ` +
+            'Ditt angivna skäl bokfördes inte — ladda om sidan och läs vad som redan står.',
+        )
+      }
+      return created
     } catch (err) {
       // SAMTIDIGHET: kontrollen av `reversedBy` ovan sker före skrivningen, så
       // två dubbelklick kan båda passera den. Den som förlorar krockar på ett

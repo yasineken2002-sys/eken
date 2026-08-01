@@ -274,6 +274,52 @@ describe('T5 PR1c2 · rättelse av verifikat', () => {
       ).rejects.toThrow(/redan rättat, med verifikat A9/)
     })
 
+    it('IDEMPOTENSTRÄFF: förloraren får INTE "bokfört" när skälet var någon annans', async () => {
+      // Den tredje samtidighetsgrenen: B:s transaktion startar EFTER att A
+      // committat, så idempotenskontrollen returnerar A:s post i stället för att
+      // krocka. För de fyra AUTOMATISKA motverifikaten är det rätt (identiska
+      // anrop), men här bär posten A:s skäl medan B:s tyst kastades — och skälet
+      // är dokumenterat som något som inte går att ändra efteråt.
+      const { service, prisma, original } = makeRig()
+      prisma.journalEntry.findFirst = jest.fn((args: { where: Record<string, unknown> }) => {
+        if (args.where.id != null) return Promise.resolve(original)
+        // Idempotenskontrollen: vinnarens rättelse finns redan, med ANNAT skäl.
+        return Promise.resolve({
+          id: 'je-rev-a',
+          series: 'A',
+          verNumber: 9,
+          description: 'Rättelse av verifikat A7 (bokfört 2026-03-15): Nagon annans skal',
+        })
+      }) as never
+
+      await expect(
+        service.reverseJournalEntry({
+          entryId: 'je-1',
+          organizationId: 'org-1',
+          ...ACTOR,
+          reason: REASON,
+        }),
+      ).rejects.toThrow(/rättades precis av någon annan, med verifikat A9.*skäl bokfördes inte/s)
+    })
+
+    it('identiskt skäl → tyst OK, för då hände det användaren bad om', async () => {
+      const { service, prisma, original } = makeRig()
+      const sameDescription = `Rättelse av verifikat A7 (bokfört 2026-03-15): ${REASON}`
+      prisma.journalEntry.findFirst = jest.fn((args: { where: Record<string, unknown> }) => {
+        if (args.where.id != null) return Promise.resolve(original)
+        return Promise.resolve({ id: 'x', series: 'A', verNumber: 9, description: sameDescription })
+      }) as never
+
+      await expect(
+        service.reverseJournalEntry({
+          entryId: 'je-1',
+          organizationId: 'org-1',
+          ...ACTOR,
+          reason: REASON,
+        }),
+      ).resolves.toMatchObject({ description: sameDescription })
+    })
+
     it('P2002 på VERIFIKATIONSSERIEN maskeras INTE — det är ett annat fel', async () => {
       // Tre unika index på JournalEntry betyder tre olika saker. En dubblett i
       // nummerserien (BFL 5 kap 6 §) är allvarlig och måste fortsätta upp som
