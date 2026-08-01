@@ -2127,6 +2127,9 @@ export class AccountingService {
       // Skrev de exakt samma skäl är utfallet detsamma som avsett och vi säger
       // inget — då hände faktiskt det användaren bad om.
       if (created.description !== intendedDescription) {
+        // Fångas INTE av catch-blocket nedan: isReversalRaceConflict kräver en
+        // PrismaClientKnownRequestError, så en ConflictException faller igenom
+        // till `throw err` oförändrad.
         throw new ConflictException(
           `Verifikatet rättades precis av någon annan, med verifikat ${created.series}${created.verNumber}. ` +
             'Ditt angivna skäl bokfördes inte — ladda om sidan och läs vad som redan står.',
