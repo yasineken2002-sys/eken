@@ -1083,3 +1083,34 @@ export const MANAGEMENT_ONLY_ACTIONS = new Set([
   'update_maintenance_status',
   'create_inspection',
 ])
+
+// Verktyg MANAGER får använda utöver läsverktygen.
+//
+// Flyttad hit från tool-executor.service i R4.0: alla tre rollmängder bor nu på
+// samma ställe, och rollbeslutet (common/authz/ai-tool-authz.ts) kan importera
+// dem utan en cirkulär import via tjänsten.
+export const MANAGER_ALLOWED_ACTIONS = new Set([
+  'create_invoice',
+  'send_invoice_email',
+  'send_overdue_reminders',
+  'mark_invoice_paid',
+  'compose_and_send_email',
+  'send_document_to_tenant',
+  'pause_reminders',
+  'resume_reminders',
+  // ── Förvaltningshandlingar (#269) ─────────────────────────────────────────
+  // HTTP har alltid släppt in MANAGER här (POST /properties, /units, /leases,
+  // /maintenance, PATCH /tenants/:id …). AI-lagret gjorde det inte, så samma
+  // förvaltare kunde skapa en felanmälan i webben men inte genom att be
+  // assistenten. Nio operationer, samma mönster — se MANAGEMENT_ONLY_ACTIONS
+  // för andra halvan av rättningen och för beslutet bakom.
+  'create_property',
+  'create_unit',
+  'create_lease',
+  'create_tenant_and_lease',
+  'update_tenant',
+  'transition_lease_status',
+  'create_maintenance_ticket',
+  'update_maintenance_status',
+  'create_inspection',
+])

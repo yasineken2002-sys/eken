@@ -30,11 +30,8 @@ import { AiAuditService } from '../audit/ai-audit.service'
 import { DocumentDeliveryService } from '../../documents/document-delivery.service'
 import { SigningService } from '../../signing/signing.service'
 import type { PortalDocumentCategory } from '../../documents/document-delivery.service'
-import {
-  ACTION_TOOLS,
-  ACCOUNTING_ONLY_ACTIONS,
-  MANAGEMENT_ONLY_ACTIONS,
-} from './ai-tools.definition'
+import { ACTION_TOOLS } from './ai-tools.definition'
+import { decideAiToolAccess } from '../../common/authz/ai-tool-authz'
 import { neutralizeUntrusted } from './untrusted-content'
 
 // ─── Mass-mejl säkerhetsgränser ──────────────────────────────────────────────
@@ -137,33 +134,6 @@ export interface ToolResult {
   suggestCreateTenant?: boolean
   tenantName?: string
 }
-
-// Tools MANAGER is allowed to use (beyond read tools)
-const MANAGER_ALLOWED_ACTIONS = new Set([
-  'create_invoice',
-  'send_invoice_email',
-  'send_overdue_reminders',
-  'mark_invoice_paid',
-  'compose_and_send_email',
-  'send_document_to_tenant',
-  'pause_reminders',
-  'resume_reminders',
-  // ── Förvaltningshandlingar (#269) ─────────────────────────────────────────
-  // HTTP har alltid släppt in MANAGER här (POST /properties, /units, /leases,
-  // /maintenance, PATCH /tenants/:id …). AI-lagret gjorde det inte, så samma
-  // förvaltare kunde skapa en felanmälan i webben men inte genom att be
-  // assistenten. Nio operationer, samma mönster — se MANAGEMENT_ONLY_ACTIONS
-  // för andra halvan av rättningen och för beslutet bakom.
-  'create_property',
-  'create_unit',
-  'create_lease',
-  'create_tenant_and_lease',
-  'update_tenant',
-  'transition_lease_status',
-  'create_maintenance_ticket',
-  'update_maintenance_status',
-  'create_inspection',
-])
 
 function formatAmount(n: number): string {
   return n.toLocaleString('sv-SE')
@@ -610,41 +580,12 @@ export class ToolExecutorService {
   ): Promise<ToolResult> {
     // ── Role guards (propagate as HTTP exceptions) ────────────────────────────
 
-    if (ACTION_TOOLS.has(toolName)) {
-      if (userRole === 'VIEWER') {
-        throw new ForbiddenException('Du har inte behörighet att utföra åtgärder.')
-      }
-      if (userRole === 'MANAGER' && !MANAGER_ALLOWED_ACTIONS.has(toolName)) {
-        throw new ForbiddenException('Du har inte behörighet för denna åtgärd.')
-      }
-      // Bokförings- och bankavstämnings-action-tools kräver ACCOUNTANT eller högre.
-      // ADMIN/OWNER har redan allt; MANAGER blockas explicit ovan.
-      if (ACCOUNTING_ONLY_ACTIONS.has(toolName)) {
-        if (userRole !== 'ACCOUNTANT' && userRole !== 'ADMIN' && userRole !== 'OWNER') {
-          throw new ForbiddenException(
-            'Endast bokförare (ACCOUNTANT) eller administratörer får använda bokförings-verktyg.',
-          )
-        }
-      }
-      // Spegelvänt (#269): förvaltnings-action-tools kräver MANAGER eller högre.
-      // ADMIN/OWNER har redan allt; ACCOUNTANT stängs ute här — att skapa
-      // fastigheter och avtal är förvaltning, inte ekonomi, och HTTP har alltid
-      // sagt det. Utan den här raden går AI-vägen förbi den gränsen.
-      if (MANAGEMENT_ONLY_ACTIONS.has(toolName)) {
-        if (userRole !== 'MANAGER' && userRole !== 'ADMIN' && userRole !== 'OWNER') {
-          throw new ForbiddenException(
-            'Endast förvaltare (MANAGER) eller administratörer får använda förvaltnings-verktyg.',
-          )
-        }
-      }
-      // Signeringsförberedelse är en bindande handling → endast OWNER/ADMIN (propagerar
-      // som 403, till skillnad från en mjuk handler-retur). AI:n förbereder bara.
-      if (toolName === 'prepare_contract_signing' && userRole !== 'OWNER' && userRole !== 'ADMIN') {
-        throw new ForbiddenException(
-          'Endast OWNER/ADMIN får förbereda en signering (bindande handling).',
-        )
-      }
-    }
+    // Rollbeslutet bor i common/authz/ai-tool-authz.ts (R4.0). Det är en
+    // ALLOW-LIST med `default: neka` — en roll som inte står utskriven där får
+    // ingenting. Tidigare låg kedjan här och var deny-by-exception, så en roll
+    // utanför de fem föll igenom till "tillåtet".
+    const beslut = decideAiToolAccess(toolName, userRole)
+    if (!beslut.allowed) throw new ForbiddenException(beslut.reason)
 
     // ── Tool execution — FIX 4: top-level try/catch ───────────────────────────
 

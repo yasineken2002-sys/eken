@@ -49,13 +49,21 @@ import { CLOSE_ROLES } from '../../accounting/accounting-period.service'
 import { REVERSAL_ROLES } from '../../accounting/accounting.service'
 import { COLLECTION_ACTION_ROLES } from './collections-authz'
 
-export const ALL_ROLES: readonly UserRole[] = [
-  UserRole.OWNER,
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.ACCOUNTANT,
-  UserRole.VIEWER,
-]
+/**
+ * Alla roller som finns i schemat — HÄRLEDDA, inte handskrivna (R4.0).
+ *
+ * Listan stod tidigare uppräknad här. Den blir aldrig fel i sig, men den kan bli
+ * OFULLSTÄNDIG: läggs en roll till i Prisma-enumet utan att någon minns den här
+ * filen mäter sonden aldrig den nya rollen, och golden-filen ser komplett ut
+ * medan den tiger om en hel roll. Samma tysta lucka som objektinventariet
+ * hanterar med sitt rimlighetsgolv (#273) — en bevakning som inte vet vad den
+ * inte mäter.
+ *
+ * `Object.values` på Prisma-enumet gör listan självuppdaterande: en ny roll
+ * dyker upp i mätningen, hamnar i golden-filen som en diff, och någon måste
+ * godkänna den.
+ */
+export const ALL_ROLES: readonly UserRole[] = Object.values(UserRole)
 
 /** Sorterar en rollmängd deterministiskt, så golden-filen inte brusar. */
 export function normalizeRoles(roles: readonly string[]): string[] {
