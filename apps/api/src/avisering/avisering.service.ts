@@ -1762,10 +1762,15 @@ export class AviseringService {
         // men en svälten transaktion ska FAILA TYDLIGT (P2028) i stället för att
         // hänga. Samma fail-fast-princip som timeouterna mot R2-lagringen.
         //
-        // Värdena är MÄTTA, inte gissade. 12 körningar mot eken_dev: median
-        // 8,8 ms, långsammaste 27,9 ms. I produktion går varje tur-och-retur över
-        // nätet i stället för loopback — räkna med en storleksordning mer, alltså
-        // några hundra millisekunder i värsta fall.
+        // Värdena är MÄTTA, inte gissade. 12 betalningar mot eken_dev MED SKARP
+        // AccountingService: median 20,1 ms, långsammaste 35,6 ms. I produktion går
+        // varje tur-och-retur över nätet i stället för loopback — räkna med en
+        // storleksordning mer, alltså några hundra millisekunder i värsta fall.
+        //
+        // (Siffran som stod här när #289 mergades — median 8,8 ms — var mätt med
+        // bokföringsanropet STUBBAT och utelämnade alltså dess rundor. Rättad i
+        // #288, där samma mätfel upptäcktes på faktura-vägen. Valet av 8 s ändras
+        // inte: det är fortfarande drygt hundrafalt över det uppmätta.)
         //
         //   timeout 8 s — drygt tjugofalt över det projicerade värsta fallet, och
         //     långt under den punkt där ett anrop läser som hängt. Något

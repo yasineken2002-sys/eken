@@ -992,7 +992,8 @@ export class ReconciliationService {
   // bokföringen kastas felet och HELA matchningen rullas tillbaka (ingen faktura kan
   // bli PAID utan verifikat, BFL 5 kap 6 §). Rad-låset + status-guarden (i
   // claimPaidWithinTx) serialiserar mot en samtidig manuell betalning
-  // (markAsPaidManually) så samma inbetalning aldrig dubbelbokförs. Speglar
+  // (markAsPaidManually — som sedan #288 tar samma lås, inte bara en status-guard)
+  // så samma inbetalning aldrig dubbelbokförs. Speglar
   // applyMatchToRentNotice (den deterministiska hyresavi-vägen).
   //
   // Returnerar true om fakturan reglerades, false om den redan var betald/makulerad

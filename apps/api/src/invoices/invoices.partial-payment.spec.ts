@@ -38,18 +38,43 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
 
   const updateMany = jest.fn().mockResolvedValue({ count: 1 })
   const invoicePaymentCreate = jest.fn().mockResolvedValue({})
-  const prisma = {
-    invoice: {
-      findFirst: jest.fn().mockResolvedValue(invoiceRow),
-      findFirstOrThrow: jest.fn().mockResolvedValue(invoiceRow),
-      updateMany,
-    },
+
+  // #288 — transaktionsklienten får EGNA mockar, av samma skäl som beskrivs i
+  // invoices.manual-payment.spec.ts: en attrapp där tx === prisma kan inte skilja
+  // en skrivning innanför transaktionen från en som läckt utanför, och just den
+  // buggen uppstod under bygget av #288. Den här filen testar samma funktion och
+  // måste ha samma skydd — annars är halva testytan blind för regressionen.
+  const tx = {
+    invoice: { findFirst: jest.fn().mockResolvedValue(invoiceRow), updateMany },
     invoicePayment: {
       findMany: jest.fn().mockResolvedValue(priors.map((a) => ({ amount: new Prisma.Decimal(a) }))),
       create: invoicePaymentCreate,
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    $queryRaw: jest.fn().mockResolvedValue([]),
   }
+  const utanförTx = {
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    create: jest.fn().mockResolvedValue({}),
+    deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    findMany: jest.fn().mockResolvedValue([]),
+    findFirst: jest.fn().mockResolvedValue(invoiceRow),
+  }
+  const prisma = {
+    invoice: {
+      findFirst: utanförTx.findFirst,
+      findFirstOrThrow: jest.fn().mockResolvedValue(invoiceRow),
+      updateMany: utanförTx.updateMany,
+    },
+    invoicePayment: {
+      findMany: utanförTx.findMany,
+      create: utanförTx.create,
+      deleteMany: utanförTx.deleteMany,
+    },
+    $transaction: undefined as unknown as jest.Mock,
+    $queryRaw: jest.fn().mockResolvedValue([]),
+  }
+  prisma.$transaction = jest.fn((cb: (t: unknown) => unknown) => cb(tx))
 
   const createJournalEntryForInvoiceManualPayment = jest.fn().mockResolvedValue({ id: 'je-pay-1' })
   const eventsService = { record: jest.fn().mockResolvedValue(undefined) }
@@ -67,6 +92,8 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
 
   return {
     service,
+    tx,
+    utanförTx,
     updateMany,
     invoicePaymentCreate,
     createJournalEntryForInvoiceManualPayment,
@@ -134,6 +161,27 @@ describe('C5 — /pay bokför det MOTTAGNA beloppet, inte fakturans total', () =
     await service.markAsPaidManually('inv-1', 'org-1', 'BANK', 'user-1', 'USER', {})
 
     expect(bookedAmount(createJournalEntryForInvoiceManualPayment)).toBe(7_500)
+  })
+})
+
+describe('C5 — delbetalningen skrivs INNANFÖR transaktionen (#288)', () => {
+  it('varken allokering eller claim går utanför tx', async () => {
+    // Delbetalningen är den gren där en läckt this.prisma-skrivning gör MEST
+    // skada: statusen blir PARTIAL och allokeringen finns, men skulle överleva
+    // en rollback av bokföringen. Kontrollen är möjlig först sedan attrappen
+    // skiljer tx från prisma.
+    const { service, tx, utanförTx } = makeService()
+
+    await service.markAsPaidManually('inv-1', 'org-1', 'BANK', 'user-1', 'USER', {
+      enteredAmount: 500,
+    })
+
+    expect(tx.invoice.updateMany).toHaveBeenCalledTimes(1)
+    expect(tx.invoicePayment.create).toHaveBeenCalledTimes(1)
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1) // radlåset
+    expect(utanförTx.updateMany).not.toHaveBeenCalled()
+    expect(utanförTx.create).not.toHaveBeenCalled()
+    expect(utanförTx.findMany).not.toHaveBeenCalled()
   })
 })
 

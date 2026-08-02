@@ -566,13 +566,36 @@ export class InvoicesService {
   /**
    * Registrera en manuell betalning på en faktura (utan bankavstämning).
    *
-   * Till skillnad från bankmatchningen — som bokför via createJournalEntryForPayment
-   * SEPARAT efter transitionStatus — måste denna väg GARANTERA att inbetalningen
-   * bokförs. Annars markeras fakturan som betald medan 1510 (Kundfordringar) står
-   * kvar öppen: en affärshändelse utan verifikation (BFL 5 kap 6 §). Mönstret speglar
+   * Denna väg måste GARANTERA att inbetalningen bokförs. Annars markeras fakturan
+   * som betald medan 1510 (Kundfordringar) står kvar öppen: en affärshändelse utan
+   * verifikation (BFL 5 kap 6 §).
+   *
+   * ── ATOMICITET (#288) ──────────────────────────────────────────────────────
+   *
+   * Allt som skrivs — claim, allokering, verifikat och händelsepost — ligger i EN
+   * transaktion med radlås. Docblocken sa tidigare att mönstret "speglar
    * AviseringService.markAsPaid: atomisk status-claim → bokför → ångra statusen om
-   * verifikatet uteblir. Status PAID är terminal (INVOICE_TRANSITIONS) → fakturan
-   * regleras i sin helhet, så likvidkontot krediterar 1510 med fakturans totalbelopp.
+   * verifikatet uteblir". Det stämde: bägge vägarna bar samma KOMPENSERANDE
+   * mönster, och avi-vägen skrevs om i #108/#289 just för att det inte håller.
+   *
+   * Kompensationen förutsätter att processen lever tillräckligt länge för att köra
+   * sitt catch — precis vad en SIGKILL, en OOM-dödad container eller en
+   * deploy-omstart bryter. Två halvtillstånd kunde överleva:
+   *
+   *   • allokering utan verifikat → en verklig inbetalning saknar post i
+   *     huvudboken. Permanent, ingen självläkning.
+   *   • PAID/PARTIAL utan allokering → fakturan ser reglerad ut medan fordran
+   *     kvarstår på 1510.
+   *
+   * RADLÅSET GÖR OCKSÅ SYSKONVÄGENS LÖFTE SANT. `claimPaidWithinTx` (bankvägen)
+   * tar `FOR UPDATE` och dess docblock påstod att det serialiserar mot en samtidig
+   * markAsPaidManually — men den manuella vägen tog aldrig något lås, så skyddet
+   * vilade ensamt på status-guarden i claimen. Nu tar båda vägarna samma lås på
+   * samma rad, och påståendet håller.
+   *
+   * All validering ligger INNANFÖR låset — till skillnad från avi-vägen behövs
+   * ingen separat preflight, eftersom varje kontroll läser just den rad vi låser.
+   * Statusen kan alltså inte hinna ändras mellan kontroll och claim.
    */
   async markAsPaidManually(
     id: string,
@@ -582,152 +605,199 @@ export class InvoicesService {
     actorType: 'USER' | 'SYSTEM',
     opts: { enteredAmount?: number; reference?: string; paidAt?: Date } = {},
   ): Promise<Invoice> {
-    const invoice = await this.prisma.invoice.findFirst({
-      where: { id, organizationId },
-      select: { id: true, status: true, invoiceNumber: true, total: true },
-    })
-    if (!invoice) throw new NotFoundException('Faktura hittades inte')
-    if (invoice.status === 'PAID') throw new BadRequestException('Fakturan är redan betald')
-    if (!isValidTransition(invoice.status as InvoiceStatus, 'PAID')) {
-      throw new BadRequestException(
-        `Kan inte registrera betalning: statusövergången ${invoice.status} → PAID är inte tillåten`,
-      )
-    }
-
-    const previousStatus = invoice.status as InvoiceStatus
     const paymentDate = opts.paidAt ?? new Date()
 
-    // ── C5: beloppet STYR bokföringen ────────────────────────────────────────
-    //
-    // Tidigare stod här `const settlementAmount = Number(invoice.total)` med
-    // kommentaren att det inmatade beloppet "sparas i händelseloggen för
-    // spårbarhet men styr inte bokföringen". En operatör som registrerade en
-    // delbetalning på 500 kr mot en faktura på 10 000 kr bokförde alltså
-    // 10 000 kr mot likvidkontot och flippade fakturan till PAID.
-    //
-    // Nu: det mottagna beloppet allokeras mot fakturan (InvoicePayment) och
-    // bokförs som det är. Utelämnat belopp = "betala resten", vilket bevarar
-    // det tidigare beteendet för den vanliga full-betalningen.
-    const priorAllocations = await this.prisma.invoicePayment.findMany({
-      where: { invoiceId: id },
-      select: { amount: true },
-    })
-    const debtBefore = computeInvoiceDebt({
-      total: invoice.total,
-      allocations: priorAllocations.map((a) => a.amount),
-    })
-    if (debtBefore.outstanding.lte(0)) {
-      throw new BadRequestException('Fakturan är redan fullt reglerad')
-    }
+    const utfall = await this.prisma.$transaction(
+      async (tx) => {
+        // Rad-lås FÖRST — serialiserar mot bankvägens claimPaidWithinTx och mot
+        // andra manuella registreringar på samma faktura.
+        await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${id} AND "organizationId" = ${organizationId} FOR UPDATE`
 
-    const settlement =
-      opts.enteredAmount != null ? new Prisma.Decimal(opts.enteredAmount) : debtBefore.outstanding
-
-    if (settlement.lte(0)) {
-      throw new BadRequestException('Betalningsbeloppet måste vara större än noll')
-    }
-    // ÖVERBETALNING AVVISAS (se PR-beskrivningen — affärsregel att bekräfta).
-    // Att tyst acceptera mer än restskulden skulle skapa en kundkredit som
-    // systemet inte har någon modell för; att klampa beloppet skulle bokföra
-    // mindre än vad som faktiskt kommit in. Båda är sämre än att säga ifrån.
-    if (settlement.gt(debtBefore.outstanding)) {
-      throw new BadRequestException(
-        `Beloppet ${settlement.toFixed(2)} kr överstiger fakturans restskuld ` +
-          `${debtBefore.outstanding.toFixed(2)} kr — överbetalning hanteras inte`,
-      )
-    }
-
-    const debtAfter = computeInvoiceDebt({
-      total: invoice.total,
-      allocations: [...priorAllocations.map((a) => a.amount), settlement],
-    })
-    const completesInvoice = debtAfter.isSettled
-    const newStatus: InvoiceStatus = completesInvoice ? 'PAID' : 'PARTIAL'
-
-    // 1. Atomisk, race-säker status-claim — endast från ett betalbart tillstånd.
-    //    PARTIAL ingår i PAYABLE_STATUSES, så en andra delbetalning kan claima
-    //    en faktura som redan står på PARTIAL.
-    const claim = await this.prisma.invoice.updateMany({
-      where: { id, organizationId, status: { in: PAYABLE_STATUSES } },
-      data: {
-        status: newStatus,
-        // paidAt sätts bara när fakturan faktiskt är reglerad — en delbetalning
-        // gör inte fakturan betald.
-        ...(completesInvoice ? { paidAt: paymentDate } : {}),
-      },
-    })
-    if (claim.count === 0) {
-      // En parallell process (bankavstämning, makulering) hann reglera/avbryta fakturan.
-      throw new ConflictException(
-        'Fakturan är redan reglerad eller makulerad — uppdatera sidan och försök igen',
-      )
-    }
-
-    // 2. Allokering + bokföring; ångra statusövergången om något fallerar.
-    try {
-      await this.prisma.invoicePayment.create({
-        data: {
-          invoiceId: id,
-          amount: settlement,
-          paidAt: paymentDate,
-          source: 'MANUAL',
-        },
-      })
-
-      const entry = await this.accountingService.createJournalEntryForInvoiceManualPayment(
-        { id: invoice.id, invoiceNumber: invoice.invoiceNumber },
-        settlement.toNumber(),
-        paymentDate,
-        paymentMethod,
-        organizationId,
-        actorId,
-      )
-      if (entry === null) {
-        throw new InternalServerErrorException(
-          `Betalningsverifikat kunde inte skapas för faktura ${invoice.invoiceNumber} — ` +
-            'kontrollera att kontoplanen innehåller konto 1510 och rätt likvidkonto.',
-        )
-      }
-    } catch (err) {
-      // Återställ fakturan till sitt tidigare tillstånd (status-guardad på den
-      // status vi själva satte, så vi bara ångrar vår egen claim).
-      await this.prisma.invoicePayment
-        .deleteMany({ where: { invoiceId: id, source: 'MANUAL', paidAt: paymentDate } })
-        .catch(() => undefined)
-      await this.prisma.invoice
-        .updateMany({
-          where: { id, organizationId, status: newStatus },
-          data: { status: previousStatus, paidAt: null },
+        const invoice = await tx.invoice.findFirst({
+          where: { id, organizationId },
+          select: { id: true, status: true, invoiceNumber: true, total: true },
         })
-        .catch((revertErr) => {
-          this.logger.error(
-            `[Invoices] Kunde inte ångra betalningsstatus för faktura ${invoice.invoiceNumber}: ` +
-              `${revertErr instanceof Error ? revertErr.message : String(revertErr)}`,
+        if (!invoice) throw new NotFoundException('Faktura hittades inte')
+        if (invoice.status === 'PAID') throw new BadRequestException('Fakturan är redan betald')
+        if (!isValidTransition(invoice.status as InvoiceStatus, 'PAID')) {
+          throw new BadRequestException(
+            `Kan inte registrera betalning: statusövergången ${invoice.status} → PAID är inte tillåten`,
           )
-        })
-      throw err
-    }
+        }
 
-    // 3. Append-only händelse + notifikation (efter lyckad bokning).
-    await this.eventsService.record(
-      id,
-      completesInvoice ? 'PAYMENT_RECEIVED' : 'PAYMENT_PARTIAL',
-      actorType,
-      actorId,
+        const previousStatus = invoice.status as InvoiceStatus
+
+        // ── C5: beloppet STYR bokföringen ────────────────────────────────────
+        //
+        // Tidigare stod här `const settlementAmount = Number(invoice.total)` med
+        // kommentaren att det inmatade beloppet "sparas i händelseloggen för
+        // spårbarhet men styr inte bokföringen". En operatör som registrerade en
+        // delbetalning på 500 kr mot en faktura på 10 000 kr bokförde alltså
+        // 10 000 kr mot likvidkontot och flippade fakturan till PAID.
+        //
+        // Nu: det mottagna beloppet allokeras mot fakturan (InvoicePayment) och
+        // bokförs som det är. Utelämnat belopp = "betala resten", vilket bevarar
+        // det tidigare beteendet för den vanliga full-betalningen.
+        //
+        // Läsningen ligger INNANFÖR låset (#288): låg den utanför kunde en
+        // samtidig bankmatchning skriva en allokering emellan och göra
+        // restskulden — och därmed både överbetalningskontrollen och
+        // completesInvoice — beräknad på inaktuell grund.
+        const priorAllocations = await tx.invoicePayment.findMany({
+          where: { invoiceId: id },
+          select: { amount: true },
+        })
+        const debtBefore = computeInvoiceDebt({
+          total: invoice.total,
+          allocations: priorAllocations.map((a) => a.amount),
+        })
+        if (debtBefore.outstanding.lte(0)) {
+          throw new BadRequestException('Fakturan är redan fullt reglerad')
+        }
+
+        const settlement =
+          opts.enteredAmount != null
+            ? new Prisma.Decimal(opts.enteredAmount)
+            : debtBefore.outstanding
+
+        if (settlement.lte(0)) {
+          throw new BadRequestException('Betalningsbeloppet måste vara större än noll')
+        }
+        // ÖVERBETALNING AVVISAS (se PR-beskrivningen — affärsregel att bekräfta).
+        // Att tyst acceptera mer än restskulden skulle skapa en kundkredit som
+        // systemet inte har någon modell för; att klampa beloppet skulle bokföra
+        // mindre än vad som faktiskt kommit in. Båda är sämre än att säga ifrån.
+        if (settlement.gt(debtBefore.outstanding)) {
+          throw new BadRequestException(
+            `Beloppet ${settlement.toFixed(2)} kr överstiger fakturans restskuld ` +
+              `${debtBefore.outstanding.toFixed(2)} kr — överbetalning hanteras inte`,
+          )
+        }
+
+        const debtAfter = computeInvoiceDebt({
+          total: invoice.total,
+          allocations: [...priorAllocations.map((a) => a.amount), settlement],
+        })
+        const completesInvoice = debtAfter.isSettled
+        const newStatus: InvoiceStatus = completesInvoice ? 'PAID' : 'PARTIAL'
+
+        // 1. Atomisk, race-säker status-claim — endast från ett betalbart tillstånd.
+        //    PARTIAL ingår i PAYABLE_STATUSES, så en andra delbetalning kan claima
+        //    en faktura som redan står på PARTIAL.
+        const claim = await tx.invoice.updateMany({
+          where: { id, organizationId, status: { in: PAYABLE_STATUSES } },
+          data: {
+            status: newStatus,
+            // paidAt sätts bara när fakturan faktiskt är reglerad — en delbetalning
+            // gör inte fakturan betald.
+            ...(completesInvoice ? { paidAt: paymentDate } : {}),
+          },
+        })
+        if (claim.count === 0) {
+          // En parallell process (bankavstämning, makulering) hann reglera/avbryta fakturan.
+          throw new ConflictException(
+            'Fakturan är redan reglerad eller makulerad — uppdatera sidan och försök igen',
+          )
+        }
+
+        // 2. Allokering + bokföring. Ingen kompensation längre: kastar något
+        //    härifrån rullar transaktionen tillbaka claimen med.
+        await tx.invoicePayment.create({
+          data: {
+            invoiceId: id,
+            amount: settlement,
+            paidAt: paymentDate,
+            source: 'MANUAL',
+          },
+        })
+
+        const entry = await this.accountingService.createJournalEntryForInvoiceManualPayment(
+          { id: invoice.id, invoiceNumber: invoice.invoiceNumber },
+          settlement.toNumber(),
+          paymentDate,
+          paymentMethod,
+          organizationId,
+          actorId,
+          tx,
+        )
+        // null = saknat likvidkonto/1510 → bokföringsfel, inte ett giltigt no-op.
+        if (entry === null) {
+          throw new InternalServerErrorException(
+            `Betalningsverifikat kunde inte skapas för faktura ${invoice.invoiceNumber} — ` +
+              'kontrollera att kontoplanen innehåller konto 1510 och rätt likvidkonto.',
+          )
+        }
+
+        // 3. Append-only händelse i SAMMA transaktion.
+        //
+        // Avi-vägen (#289) skriver sin trail EFTER commit; här ligger den innanför,
+        // och det är avsiktligt. Skillnaden är vad posten ÄR: där en villkorad
+        // spårrad om ett nollställt kravsteg, här själva betalningsposten i
+        // fakturans append-only logg. Bankvägens claimPaidWithinTx skriver redan
+        // sin PAYMENT_RECEIVED innanför transaktionen — låg den manuella vägens
+        // utanför skulle två vägar som skriver samma sorts post ge olika garanti,
+        // och en krasch mellan commit och loggskrivning lämna en betalning utan
+        // spår i loggen.
+        await this.eventsService.record(
+          id,
+          completesInvoice ? 'PAYMENT_RECEIVED' : 'PAYMENT_PARTIAL',
+          actorType,
+          actorId,
+          {
+            previousStatus,
+            newStatus,
+            settlementAmount: settlement.toNumber(),
+            outstandingAfter: debtAfter.outstanding.toNumber(),
+            paymentMethod,
+            ...(opts.enteredAmount != null ? { amount: opts.enteredAmount } : {}),
+            ...(opts.reference ? { reference: opts.reference } : {}),
+            paidAt: paymentDate.toISOString(),
+          },
+          { tx },
+        )
+
+        return {
+          completesInvoice,
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+        }
+      },
       {
-        previousStatus,
-        newStatus,
-        settlementAmount: settlement.toNumber(),
-        outstandingAfter: debtAfter.outstanding.toNumber(),
-        paymentMethod,
-        ...(opts.enteredAmount != null ? { amount: opts.enteredAmount } : {}),
-        ...(opts.reference ? { reference: opts.reference } : {}),
-        paidAt: paymentDate.toISOString(),
+        // ── Varför explicita gränser på transaktionen (#288) ──────────────────
+        //
+        // Samma skäl som avi-vägen (#289): atomiciteten håller radlåset över ett
+        // tiotal tur-och-retur i stället för ett par, och en svälten transaktion
+        // ska FAILA TYDLIGT (P2028) i stället för att hänga. Ingen deadlock —
+        // låsordningen faktura → verifikationsnummer-sekvens är identisk i alla
+        // betalvägar.
+        //
+        // Värdena är MÄTTA FÖR DEN HÄR VÄGEN, inte kopierade från avi-vägen: den
+        // skriver dessutom en händelsepost innanför låset, alltså fler rundor.
+        //
+        // 12 fulla betalningar mot eken_dev MED SKARP AccountingService (inte
+        // stubbad — en stubbad mätning utelämnar bokföringens rundor och gav här
+        // 5,7 ms, alltså knappt en tredjedel av sanningen): median 16,5 ms,
+        // långsammaste 83,0 ms. Produktion går över nät i stället för loopback —
+        // räkna med en storleksordning mer.
+        //
+        //   timeout 8 s — generöst över det projicerade värsta fallet, långt under
+        //     det som läser som en hängning. Något över Prismas 5 s-default med
+        //     flit: att avbryta en betalning som nästan är klar kostar mer än att
+        //     vänta en stund till.
+        //   maxWait 3 s — tid att få en anslutning ur poolen. Är poolen slut så
+        //     länge är det ett systemfel som ska synas, inte köas.
+        //
+        // Höjs de här: höj för att en MÄTNING säger det, inte för att något
+        // tajmade ut.
+        timeout: 8_000,
+        maxWait: 3_000,
       },
     )
 
-    if (completesInvoice) {
-      this.notifyInvoicePaid(organizationId, invoice.id, invoice.invoiceNumber)
+    // Notifikationen ligger UTANFÖR transaktionen — den skickar e-post och får
+    // inte gå iväg för en betalning som rullas tillbaka.
+    if (utfall.completesInvoice) {
+      this.notifyInvoicePaid(organizationId, utfall.invoiceId, utfall.invoiceNumber)
     }
 
     return this.prisma.invoice.findFirstOrThrow({ where: { id, organizationId } })
@@ -737,7 +807,14 @@ export class InvoicesService {
    * Atomisk PAID-claim på en faktura INOM en pågående transaktion — anropas av
    * bankavstämningens applyMatchToInvoice. Rad-lås (FOR UPDATE) + status-guard
    * serialiserar mot en samtidig manuell betalning (markAsPaidManually) så samma
-   * faktura aldrig kan dubbelbokföras (BFL 4 kap 2 §). PAYMENT_RECEIVED-eventet
+   * faktura aldrig kan dubbelbokföras (BFL 4 kap 2 §).
+   *
+   * DET PÅSTÅENDET BLEV SANT FÖRST MED #288. Fram till dess tog den manuella vägen
+   * inget lås alls — serialiseringen vilade ensamt på dess status-guard, och en
+   * samtidig manuell betalning kunde läsa restskulden på inaktuell grund. Nu tar
+   * båda vägarna samma `FOR UPDATE` på samma rad.
+   *
+   * PAYMENT_RECEIVED-eventet
    * skrivs i SAMMA tx. Bokföring och notis ligger UTANFÖR (callern bokför i samma
    * tx och notifierar först efter commit) så att ett bokföringsfel rullar tillbaka
    * hela claimen — ingen faktura kan bli PAID utan verifikat.
