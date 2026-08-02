@@ -30,7 +30,11 @@ import { AiAuditService } from '../audit/ai-audit.service'
 import { DocumentDeliveryService } from '../../documents/document-delivery.service'
 import { SigningService } from '../../signing/signing.service'
 import type { PortalDocumentCategory } from '../../documents/document-delivery.service'
-import { ACTION_TOOLS, ACCOUNTING_ONLY_ACTIONS } from './ai-tools.definition'
+import {
+  ACTION_TOOLS,
+  ACCOUNTING_ONLY_ACTIONS,
+  MANAGEMENT_ONLY_ACTIONS,
+} from './ai-tools.definition'
 import { neutralizeUntrusted } from './untrusted-content'
 
 // ─── Mass-mejl säkerhetsgränser ──────────────────────────────────────────────
@@ -144,6 +148,21 @@ const MANAGER_ALLOWED_ACTIONS = new Set([
   'send_document_to_tenant',
   'pause_reminders',
   'resume_reminders',
+  // ── Förvaltningshandlingar (#269) ─────────────────────────────────────────
+  // HTTP har alltid släppt in MANAGER här (POST /properties, /units, /leases,
+  // /maintenance, PATCH /tenants/:id …). AI-lagret gjorde det inte, så samma
+  // förvaltare kunde skapa en felanmälan i webben men inte genom att be
+  // assistenten. Nio operationer, samma mönster — se MANAGEMENT_ONLY_ACTIONS
+  // för andra halvan av rättningen och för beslutet bakom.
+  'create_property',
+  'create_unit',
+  'create_lease',
+  'create_tenant_and_lease',
+  'update_tenant',
+  'transition_lease_status',
+  'create_maintenance_ticket',
+  'update_maintenance_status',
+  'create_inspection',
 ])
 
 function formatAmount(n: number): string {
@@ -604,6 +623,17 @@ export class ToolExecutorService {
         if (userRole !== 'ACCOUNTANT' && userRole !== 'ADMIN' && userRole !== 'OWNER') {
           throw new ForbiddenException(
             'Endast bokförare (ACCOUNTANT) eller administratörer får använda bokförings-verktyg.',
+          )
+        }
+      }
+      // Spegelvänt (#269): förvaltnings-action-tools kräver MANAGER eller högre.
+      // ADMIN/OWNER har redan allt; ACCOUNTANT stängs ute här — att skapa
+      // fastigheter och avtal är förvaltning, inte ekonomi, och HTTP har alltid
+      // sagt det. Utan den här raden går AI-vägen förbi den gränsen.
+      if (MANAGEMENT_ONLY_ACTIONS.has(toolName)) {
+        if (userRole !== 'MANAGER' && userRole !== 'ADMIN' && userRole !== 'OWNER') {
+          throw new ForbiddenException(
+            'Endast förvaltare (MANAGER) eller administratörer får använda förvaltnings-verktyg.',
           )
         }
       }

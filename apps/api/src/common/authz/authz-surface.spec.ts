@@ -61,6 +61,7 @@ const ROLE_DENIAL_MESSAGES = new Set([
   'Du har inte behörighet att utföra åtgärder.',
   'Du har inte behörighet för denna åtgärd.',
   'Endast bokförare (ACCOUNTANT) eller administratörer får använda bokförings-verktyg.',
+  'Endast förvaltare (MANAGER) eller administratörer får använda förvaltnings-verktyg.',
   'Endast OWNER/ADMIN får förbereda en signering (bindande handling).',
 ])
 

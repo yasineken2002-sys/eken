@@ -206,28 +206,29 @@ handlingen lyckas. Ett verktyg kan fortfarande neka längre ner av skäl som int
 rör roll (saknad resurs, ogiltigt läge). Raden mäter behörighetsgränsen, inte
 utfallet.
 
-⚠ LÄS DEN HÄR SEKTIONEN BREDVID SEKTION 1. För förvaltningshandlingar säger
-  lagren nästan motsatta saker: HTTP ger "ADMIN, MANAGER, OWNER" (POST
-  /properties, /units, /leases, /maintenance, /tenants …) medan AI ger
-  "ACCOUNTANT, ADMIN, OWNER" för motsvarande verktyg. En förvaltare kan
-  alltså skapa en felanmälan i webben men inte genom att be assistenten,
-  och en bokförare kan skapa en fastighet via assistenten men inte via API:et.
-  Det är samma sorts odokumenterade oenighet mellan lager som var R1 — hittad
-  av den här filen, spårad separat, INTE åtgärdad här (#267 bygger bevakning,
-  inte ändrad behörighet). Sektion 4 nedan täcker än så länge bara de
-  bindande bokförings- och inkassohandlingarna.
+LÄS DEN HÄR SEKTIONEN BREDVID SEKTION 1. För förvaltningshandlingar sa lagren
+  tidigare nästan motsatta saker: HTTP gav "ADMIN, MANAGER, OWNER" (POST
+  /properties, /units, /leases, /maintenance, PATCH /tenants/:id …) medan AI
+  gav "ACCOUNTANT, ADMIN, OWNER" för motsvarande verktyg. En förvaltare kunde
+  skapa en felanmälan i webben men inte genom att be assistenten, och en
+  bokförare tvärtom. Samma sorts odokumenterade oenighet som var R1, hittad
+  av den här filen (#267).
+
+  ÅTGÄRDAT i #269: AI-lagret rättade sig efter HTTP — de nio verktygen ligger
+  i MANAGER_ALLOWED_ACTIONS, och MANAGEMENT_ONLY_ACTIONS stänger dem för
+  ACCOUNTANT. De står som must-agree i sektion 4, så drift failar testet.
 
 apply_rent_increase               ACCOUNTANT, ADMIN, OWNER
 close_period                      ACCOUNTANT, ADMIN, OWNER
 compose_and_send_email            ACCOUNTANT, ADMIN, MANAGER, OWNER
-create_inspection                 ACCOUNTANT, ADMIN, OWNER
+create_inspection                 ADMIN, MANAGER, OWNER
 create_invoice                    ACCOUNTANT, ADMIN, MANAGER, OWNER
 create_journal_entry              ACCOUNTANT, ADMIN, OWNER
-create_lease                      ACCOUNTANT, ADMIN, OWNER
-create_maintenance_ticket         ACCOUNTANT, ADMIN, OWNER
-create_property                   ACCOUNTANT, ADMIN, OWNER
-create_tenant_and_lease           ACCOUNTANT, ADMIN, OWNER
-create_unit                       ACCOUNTANT, ADMIN, OWNER
+create_lease                      ADMIN, MANAGER, OWNER
+create_maintenance_ticket         ADMIN, MANAGER, OWNER
+create_property                   ADMIN, MANAGER, OWNER
+create_tenant_and_lease           ADMIN, MANAGER, OWNER
+create_unit                       ADMIN, MANAGER, OWNER
 export_for_collection             ACCOUNTANT, ADMIN, OWNER
 export_sie4                       ACCOUNTANT, ADMIN, OWNER
 generate_lease_contract           ACCOUNTANT, ADMIN, OWNER
@@ -243,10 +244,10 @@ resume_reminders                  ACCOUNTANT, ADMIN, MANAGER, OWNER
 send_document_to_tenant           ACCOUNTANT, ADMIN, MANAGER, OWNER
 send_invoice_email                ACCOUNTANT, ADMIN, MANAGER, OWNER
 send_overdue_reminders            ACCOUNTANT, ADMIN, MANAGER, OWNER
-transition_lease_status           ACCOUNTANT, ADMIN, OWNER
+transition_lease_status           ADMIN, MANAGER, OWNER
 unmatch_transaction               ACCOUNTANT, ADMIN, OWNER
-update_maintenance_status         ACCOUNTANT, ADMIN, OWNER
-update_tenant                     ACCOUNTANT, ADMIN, OWNER
+update_maintenance_status         ADMIN, MANAGER, OWNER
+update_tenant                     ADMIN, MANAGER, OWNER
 
 
 ## 4. Operationer som finns i flera lager (14 st)
@@ -302,154 +303,73 @@ men de måste vara deklarerade. En odeklarerad skillnad failar testet.
 
   HTTP    POST /properties                                      ADMIN, MANAGER, OWNER
   Tjänst  —                                                     (ingen chokepunkt)
-  AI      create_property                                       ACCOUNTANT, ADMIN, OWNER
+  AI      create_property                                       ADMIN, MANAGER, OWNER
 
-  → LAGREN SKILJER SIG, DEKLARERAT:
-    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
-    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
-    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
-    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
-    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
-    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
-    Implementationen ligger i #269. Tills dess står posten kvar som
-    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
-    inte avsedd.
+  → lagren ska vara ÖVERENS
 
 ### Skapa en lägenhet eller lokal
 
   HTTP    POST /units                                           ADMIN, MANAGER, OWNER
   Tjänst  —                                                     (ingen chokepunkt)
-  AI      create_unit                                           ACCOUNTANT, ADMIN, OWNER
+  AI      create_unit                                           ADMIN, MANAGER, OWNER
 
-  → LAGREN SKILJER SIG, DEKLARERAT:
-    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
-    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
-    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
-    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
-    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
-    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
-    Implementationen ligger i #269. Tills dess står posten kvar som
-    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
-    inte avsedd.
+  → lagren ska vara ÖVERENS
 
 ### Skapa ett hyresavtal
 
   HTTP    POST /leases                                          ADMIN, MANAGER, OWNER
   Tjänst  —                                                     (ingen chokepunkt)
-  AI      create_lease                                          ACCOUNTANT, ADMIN, OWNER
+  AI      create_lease                                          ADMIN, MANAGER, OWNER
 
-  → LAGREN SKILJER SIG, DEKLARERAT:
-    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
-    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
-    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
-    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
-    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
-    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
-    Implementationen ligger i #269. Tills dess står posten kvar som
-    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
-    inte avsedd.
+  → lagren ska vara ÖVERENS
 
 ### Skapa hyresgäst och avtal i ett steg
 
   HTTP    POST /leases/with-tenant                              ADMIN, MANAGER, OWNER
   Tjänst  —                                                     (ingen chokepunkt)
-  AI      create_tenant_and_lease                               ACCOUNTANT, ADMIN, OWNER
+  AI      create_tenant_and_lease                               ADMIN, MANAGER, OWNER
 
-  → LAGREN SKILJER SIG, DEKLARERAT:
-    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
-    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
-    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
-    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
-    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
-    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
-    Implementationen ligger i #269. Tills dess står posten kvar som
-    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
-    inte avsedd.
+  → lagren ska vara ÖVERENS
 
 ### Uppdatera en hyresgäst
 
   HTTP    PATCH /tenants/:id                                    ADMIN, MANAGER, OWNER
   Tjänst  —                                                     (ingen chokepunkt)
-  AI      update_tenant                                         ACCOUNTANT, ADMIN, OWNER
+  AI      update_tenant                                         ADMIN, MANAGER, OWNER
 
-  → LAGREN SKILJER SIG, DEKLARERAT:
-    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
-    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
-    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
-    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
-    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
-    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
-    Implementationen ligger i #269. Tills dess står posten kvar som
-    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
-    inte avsedd.
+  → lagren ska vara ÖVERENS
 
 ### Byta status på ett hyresavtal
 
   HTTP    PATCH /leases/:id/status                              ADMIN, MANAGER, OWNER
   Tjänst  —                                                     (ingen chokepunkt)
-  AI      transition_lease_status                               ACCOUNTANT, ADMIN, OWNER
+  AI      transition_lease_status                               ADMIN, MANAGER, OWNER
 
-  → LAGREN SKILJER SIG, DEKLARERAT:
-    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
-    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
-    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
-    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
-    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
-    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
-    Implementationen ligger i #269. Tills dess står posten kvar som
-    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
-    inte avsedd.
+  → lagren ska vara ÖVERENS
 
 ### Skapa en felanmälan
 
   HTTP    POST /maintenance                                     ADMIN, MANAGER, OWNER
   Tjänst  —                                                     (ingen chokepunkt)
-  AI      create_maintenance_ticket                             ACCOUNTANT, ADMIN, OWNER
+  AI      create_maintenance_ticket                             ADMIN, MANAGER, OWNER
 
-  → LAGREN SKILJER SIG, DEKLARERAT:
-    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
-    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
-    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
-    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
-    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
-    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
-    Implementationen ligger i #269. Tills dess står posten kvar som
-    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
-    inte avsedd.
+  → lagren ska vara ÖVERENS
 
 ### Uppdatera en felanmälans status
 
   HTTP    PATCH /maintenance/:id                                ADMIN, MANAGER, OWNER
   Tjänst  —                                                     (ingen chokepunkt)
-  AI      update_maintenance_status                             ACCOUNTANT, ADMIN, OWNER
+  AI      update_maintenance_status                             ADMIN, MANAGER, OWNER
 
-  → LAGREN SKILJER SIG, DEKLARERAT:
-    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
-    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
-    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
-    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
-    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
-    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
-    Implementationen ligger i #269. Tills dess står posten kvar som
-    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
-    inte avsedd.
+  → lagren ska vara ÖVERENS
 
 ### Skapa en besiktning
 
   HTTP    POST /inspections                                     ADMIN, MANAGER, OWNER
   Tjänst  —                                                     (ingen chokepunkt)
-  AI      create_inspection                                     ACCOUNTANT, ADMIN, OWNER
+  AI      create_inspection                                     ADMIN, MANAGER, OWNER
 
-  → LAGREN SKILJER SIG, DEKLARERAT:
-    BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret
-    ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa
-    fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte
-    ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin
-    = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska
-    inte kunna skapa ett hyresavtal via assistenten som API:et nekar.
-    Implementationen ligger i #269. Tills dess står posten kvar som
-    declared, för skillnaden FINNS fortfarande — den är känd och bevakad,
-    inte avsedd.
+  → lagren ska vara ÖVERENS
 
 ### Öppna en stängd period igen
 

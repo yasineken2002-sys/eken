@@ -251,15 +251,6 @@ export interface CrossLayerOperation {
  *
  * Listan är avsiktligt kort: bara BINDANDE handlingar har chokepunkt i tjänsten.
  */
-/**
- * Delad motivering för de nio förvaltningsoperationerna nedan.
- *
- * BESLUTAT 2026-08-01: AI-lagret ska rätta sig efter HTTP, inte tvärtom.
- * MANAGER ja, ACCOUNTANT nej.
- */
-const FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD =
-  'BESLUTAT men ännu inte implementerat. Riktningen är avgjord: AI-lagret ska rätta sig efter HTTP — MANAGER ja, ACCOUNTANT nej. Att skapa fastigheter och avtal och att byta avtalsstatus är FÖRVALTNING, inte ekonomi; samma gräns som R1 drog för inkasso (agera bindande i ekonomin = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt). En bokförare ska inte kunna skapa ett hyresavtal via assistenten som API:et nekar. Implementationen ligger i #269. Tills dess står posten kvar som declared, för skillnaden FINNS fortfarande — den är känd och bevakad, inte avsedd.'
-
 export const CROSS_LAYER_OPERATIONS: readonly CrossLayerOperation[] = [
   {
     operation: 'Stänga en bokföringsperiod',
@@ -307,90 +298,88 @@ export const CROSS_LAYER_OPERATIONS: readonly CrossLayerOperation[] = [
         'MANAGER passerar dekoratorn och stoppas i tjänsten.',
     },
   },
-  // ── Förvaltningshandlingar: HTTP och AI drar olika gränser ────────────────
+  // ── Förvaltningshandlingar: lagren är överens sedan #269 ──────────────────
   //
   // Hittat AV den här filen, första gången ytan ställdes bredvid sig själv.
-  // Mönstret är systematiskt över nio operationer: HTTP släpper in MANAGER men
-  // inte ACCOUNTANT, AI-lagret tvärtom. En förvaltare kan alltså skapa en
-  // felanmälan i webben men inte genom att be assistenten, och en bokförare
-  // tvärtom.
+  // Mönstret var systematiskt över nio operationer: HTTP släppte in MANAGER men
+  // inte ACCOUNTANT, AI-lagret tvärtom. En förvaltare kunde skapa en felanmälan
+  // i webben men inte genom att be assistenten, och en bokförare tvärtom.
   //
-  // BESLUTET ÄR FATTAT (2026-08-01): AI-lagret ska rätta sig efter HTTP.
-  // MANAGER ja, ACCOUNTANT nej. Att skapa fastigheter och avtal och att byta
-  // avtalsstatus är förvaltning, inte ekonomi — samma linje som R1 drog för
-  // inkasso. Genomförandet (lägg verktygen i MANAGER_ALLOWED_ACTIONS och stäng
-  // dem för ACCOUNTANT) är eget arbete och ligger i #269.
+  // BESLUTAT 2026-08-01: AI-lagret rättar sig efter HTTP. MANAGER ja,
+  // ACCOUNTANT nej. Att skapa fastigheter och avtal och att byta avtalsstatus
+  // är förvaltning, inte ekonomi — samma linje som R1 drog för inkasso (agera
+  // bindande i ekonomin = ACCOUNTANT och uppåt, förvalta = MANAGER och uppåt).
   //
-  // De står kvar som `declared` tills dess, för skillnaden FINNS fortfarande.
-  // `must-agree` här och nu hade gjort sviten röd utan att någon rättat något —
-  // ett test som failar på en känd, planerad skillnad slutar man läsa. Den dagen
-  // #269 landar ska de nio bytas till `must-agree`, och då bevakar testet att de
-  // aldrig glider isär igen.
+  // GENOMFÖRT i #269: de nio ligger i MANAGER_ALLOWED_ACTIONS, och
+  // MANAGEMENT_ONLY_ACTIONS stänger dem för ACCOUNTANT — spegelbilden av
+  // ACCOUNTING_ONLY_ACTIONS, som saknades och var hela skälet till att
+  // ACCOUNTANT-sidan inte gick att uttrycka.
   //
-  // Att lämna dem utanför kartan hade varit inkonsekvent — verktygets viktigaste
-  // fynd utanför verktygets starkaste detektor.
+  // Därför står de som `must-agree` numera, inte `declared`: bevakningen har
+  // gått från att VETA OM skillnaden till att FÖRHINDRA den. Glider något lager
+  // isär igen failar testet i stället för att beskriva läget.
   {
     operation: 'Skapa en fastighet',
     endpoints: ['POST /properties'],
     serviceGate: null,
     aiTool: 'create_property',
-    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
+    comparison: { kind: 'must-agree' },
   },
   {
     operation: 'Skapa en lägenhet eller lokal',
     endpoints: ['POST /units'],
     serviceGate: null,
     aiTool: 'create_unit',
-    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
+    comparison: { kind: 'must-agree' },
   },
   {
     operation: 'Skapa ett hyresavtal',
     endpoints: ['POST /leases'],
     serviceGate: null,
     aiTool: 'create_lease',
-    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
+    comparison: { kind: 'must-agree' },
   },
   {
     operation: 'Skapa hyresgäst och avtal i ett steg',
     endpoints: ['POST /leases/with-tenant'],
     serviceGate: null,
     aiTool: 'create_tenant_and_lease',
-    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
+    comparison: { kind: 'must-agree' },
   },
   {
     operation: 'Uppdatera en hyresgäst',
     endpoints: ['PATCH /tenants/:id'],
     serviceGate: null,
     aiTool: 'update_tenant',
-    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
+    comparison: { kind: 'must-agree' },
   },
   {
     operation: 'Byta status på ett hyresavtal',
     endpoints: ['PATCH /leases/:id/status'],
     serviceGate: null,
     aiTool: 'transition_lease_status',
-    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
+    comparison: { kind: 'must-agree' },
   },
   {
     operation: 'Skapa en felanmälan',
     endpoints: ['POST /maintenance'],
     serviceGate: null,
     aiTool: 'create_maintenance_ticket',
-    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
+    comparison: { kind: 'must-agree' },
   },
   {
     operation: 'Uppdatera en felanmälans status',
     endpoints: ['PATCH /maintenance/:id'],
     serviceGate: null,
     aiTool: 'update_maintenance_status',
-    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
+    comparison: { kind: 'must-agree' },
   },
   {
     operation: 'Skapa en besiktning',
     endpoints: ['POST /inspections'],
     serviceGate: null,
     aiTool: 'create_inspection',
-    comparison: { kind: 'declared', reason: FORVALTNINGSGRANS_BESLUTAD_EJ_IMPLEMENTERAD },
+    comparison: { kind: 'must-agree' },
   },
   {
     operation: 'Öppna en stängd period igen',
@@ -508,16 +497,17 @@ export function renderSurface(input: {
   out.push('rör roll (saknad resurs, ogiltigt läge). Raden mäter behörighetsgränsen, inte')
   out.push('utfallet.')
   out.push('')
-  out.push('⚠ LÄS DEN HÄR SEKTIONEN BREDVID SEKTION 1. För förvaltningshandlingar säger')
-  out.push('  lagren nästan motsatta saker: HTTP ger "ADMIN, MANAGER, OWNER" (POST')
-  out.push('  /properties, /units, /leases, /maintenance, /tenants …) medan AI ger')
-  out.push('  "ACCOUNTANT, ADMIN, OWNER" för motsvarande verktyg. En förvaltare kan')
-  out.push('  alltså skapa en felanmälan i webben men inte genom att be assistenten,')
-  out.push('  och en bokförare kan skapa en fastighet via assistenten men inte via API:et.')
-  out.push('  Det är samma sorts odokumenterade oenighet mellan lager som var R1 — hittad')
-  out.push('  av den här filen, spårad separat, INTE åtgärdad här (#267 bygger bevakning,')
-  out.push('  inte ändrad behörighet). Sektion 4 nedan täcker än så länge bara de')
-  out.push('  bindande bokförings- och inkassohandlingarna.')
+  out.push('LÄS DEN HÄR SEKTIONEN BREDVID SEKTION 1. För förvaltningshandlingar sa lagren')
+  out.push('  tidigare nästan motsatta saker: HTTP gav "ADMIN, MANAGER, OWNER" (POST')
+  out.push('  /properties, /units, /leases, /maintenance, PATCH /tenants/:id …) medan AI')
+  out.push('  gav "ACCOUNTANT, ADMIN, OWNER" för motsvarande verktyg. En förvaltare kunde')
+  out.push('  skapa en felanmälan i webben men inte genom att be assistenten, och en')
+  out.push('  bokförare tvärtom. Samma sorts odokumenterade oenighet som var R1, hittad')
+  out.push('  av den här filen (#267).')
+  out.push('')
+  out.push('  ÅTGÄRDAT i #269: AI-lagret rättade sig efter HTTP — de nio verktygen ligger')
+  out.push('  i MANAGER_ALLOWED_ACTIONS, och MANAGEMENT_ONLY_ACTIONS stänger dem för')
+  out.push('  ACCOUNTANT. De står som must-agree i sektion 4, så drift failar testet.')
   out.push('')
   for (const t of aiTools) {
     out.push(`${pad(t.tool, TOOL_COL)}  ${rolesCell(t.roles)}`)
