@@ -12,17 +12,20 @@ och säg i PR:en hur den nya skrivningen är scopad.
 
 FILEN BEVISAR INGEN SÄKERHET. Skyddsformen är DETEKTERAD, inte verifierad —
 en heuristik som säger "det här mönstret syns i funktionen", inte "id:t är
-kontrollerat". Filen garanterar att ingen skrivväg via en modells EGEN
-Prisma-accessor (invoiceLine + create) tillkommer obemärkt — inte mer än så.
-Se object-scope.ts för varför mer inte går att göra statiskt.
+kontrollerat". Det enda filen garanterar är att ingen skrivväg tillkommer
+obemärkt. Se object-scope.ts för varför mer inte går att göra statiskt.
 
-INTE BEVAKAT: NÄSTLADE SKRIVNINGAR. En skrivning som går via förälderns
-data-objekt — invoice.create({ data: { lines: { createMany: … } } }) — nämner
-aldrig barnets accessor och syns därför inte här. Sju sådana ställen finns i
-kodbasen (JournalEntryLine ×3, InvoiceLine ×4); de är manuellt granskade
-2026-08-02 och listade med fil:rad i object-scope.ts. Att InvoiceLine och
-JournalEntryLine står klassificerade längst ned betyder alltså INTE att deras
-skrivyta är komplett här. En ny nästlad skrivning larmar inte.
+TVÅ SKRIVFORMER INGÅR:
+  DIREKT   invoiceLine + create — barnets egen accessor står i koden.
+  NÄSTLAD  invoice.create({ data: { lines: { createMany: … } } }) — barnet
+           skrivs via förälderns data-objekt och nämner aldrig sin accessor.
+           Märks med "← nästlad via <Förälder>.<fält>". Modellen härleds ur
+           schema.prisma: lines betyder InvoiceLine under Invoice och
+           JournalEntryLine under JournalEntry.
+
+Utanför: nyttolast som byggs i en annan funktion än anropet, dynamiska
+fältnamn och rå SQL. Inget av det finns i kodbasen i dag — men skillnaden
+mellan "finns inte" och "fångas" ska stå skriven.
 
 FORM 1 = update/delete på ett id (den klassiska IDOR:en, #114).
 FORM 2 = create med förälder-FK (ser inte ut som ett behörighetsproblem,
@@ -33,8 +36,11 @@ SKYDDSFORMER:
   B  namngiven hjälpare:        assertRelationsInOrg(orgId, { … })
   C  scopat metodanrop:         await this.findOne(id, organizationId)
   D  annan scopningsnyckel:     findFirst({ where: { id, tenantId } })  ← portalen
+  P  förälderns anrop binder org: invoice.update({ where: { id, organizationId } })
+     Bara nästlade rader. Den nästlade skrivningen träffar de rader föräldern
+     pekar ut, så frågan är alltid om FÖRÄLDERN är bunden till anroparens org.
 
-En femte form går inte att detektera: en intern hjälpare utan aktörskontext,
+En form till går inte att detektera: en intern hjälpare utan aktörskontext,
 där scopningen är anroparens ansvar. Den måste skrivas ner i CALLER_SCOPED med
 ett påstående om vem som scopar i stället — se sista sektionen.
 
@@ -52,7 +58,7 @@ Unit                    updateMany  units/unit-status.sync.ts                   
 Unit                    delete      units/units.service.ts                                  A kedje-query
 Unit                    update      units/units.service.ts                                  A kedje-query
 
-## Form 2 — create (29 rader)
+## Form 2 — create (34 rader)
 
 AiMessage               create      ai/ai-assistant.controller.ts                       ×3  A kedje-query + C scopat anrop
 AiMessage               create      ai/ai-assistant.service.ts                          ×7  A kedje-query + C scopat anrop
@@ -66,9 +72,14 @@ InvoiceEvent            create      deposits/deposits.service.ts                
 InvoiceEvent            create      invoices/invoice-events.service.ts                      INGEN UPPTÄCKT
 InvoiceEvent            create      notifications/notifications.service.ts                  A kedje-query
 InvoiceEvent            create      notifications/payment-reminder.service.ts           ×3  INGEN UPPTÄCKT
+InvoiceLine             create      consumption/consumption.service.ts                      P förälder org-bunden  ← nästlad via Invoice.lines
+InvoiceLine             create      deposits/deposits.service.ts                            P förälder org-bunden  ← nästlad via Invoice.lines
+InvoiceLine             createMany  invoices/invoices.service.ts                        ×2  A kedje-query + P förälder org-bunden  ← nästlad via Invoice.lines
 InvoiceLine             create      notifications/payment-reminder.service.ts               INGEN UPPTÄCKT
 InvoicePayment          create      invoices/invoices.service.ts                            A kedje-query
 InvoicePayment          create      reconciliation/reconciliation.service.ts                A kedje-query
+JournalEntryLine        create      accounting/accounting.service.ts                        P förälder org-bunden  ← nästlad via JournalEntry.lines
+JournalEntryLine        create      ai/tools/tool-executor.service.ts                   ×2  P förälder org-bunden  ← nästlad via JournalEntry.lines
 MaintenanceComment      create      maintenance/maintenance.service.ts                      C scopat anrop
 MaintenanceComment      create      tenant-portal/tenant-portal.service.ts                  D annan nyckel
 MaintenanceImage        create      maintenance/maintenance.service.ts                      INGEN UPPTÄCKT
