@@ -95,7 +95,16 @@ describe('T5 PR1c · återöppning', () => {
   beforeEach(() => jest.clearAllMocks())
 
   describe('Grind 2 — orsaken avgör, och regeln bor på ETT ställe', () => {
-    it('canReopenForCorrection säger nej för ALLA roller (revisor finns inte än)', () => {
+    it('canReopenForCorrection säger nej för ALLA roller — permanent, inte "än"', () => {
+      // Tidigare hette det här testet "(revisor finns inte än)", vilket bar
+      // premissen att svaret skulle ändras när en revisorsroll fanns. Den
+      // premissen är prövad och förkastad (BESLUT 2026-08-02, se funktionens
+      // docblock): regeln är rollagnostisk, för verkan på räkenskaperna är
+      // densamma oavsett vems konto som trycker.
+      //
+      // Slingan går över hela UserRole-enumet, så en roll som tillkommer i
+      // schemat omfattas automatiskt — utan att någon behöver minnas det här
+      // testet.
       for (const role of Object.values(UserRole)) {
         expect(canReopenForCorrection(role)).toBe(false)
       }
