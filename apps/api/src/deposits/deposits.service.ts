@@ -12,6 +12,7 @@ import type { Deposit, DepositStatus } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { allocateInvoiceNumber } from '../invoices/invoice-number'
+import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { NotificationsService } from '../notifications/notifications.service'
 import { CreateDepositDto } from './dto/create-deposit.dto'
 import { RefundDepositDto } from './dto/refund-deposit.dto'
@@ -337,84 +338,143 @@ export class DepositsService implements OnApplicationBootstrap {
       const now = new Date()
 
       // Status-guardad claim på DEPOSITIONEN (sanningskällan för "betald") — race-säker.
-      const claim = await tx.deposit.updateMany({
-        where: { id, organizationId, status: 'PENDING' },
-        data: { status: 'PAID', paidAt: now },
-      })
-      if (claim.count === 0) {
-        throw new ConflictException(
-          'Depositionen är redan reglerad — uppdatera sidan och försök igen',
-        )
+      const claimaDeposition = async () => {
+        const claim = await tx.deposit.updateMany({
+          where: { id, organizationId, status: 'PENDING' },
+          data: { status: 'PAID', paidAt: now },
+        })
+        if (claim.count === 0) {
+          throw new ConflictException(
+            'Depositionen är redan reglerad — uppdatera sidan och försök igen',
+          )
+        }
       }
 
       if (deposit.invoiceId) {
-        // Rad-lås deposit-fakturan → serialisera mot bankavstämningens applyMatchToInvoice
-        // så samma inbetalning aldrig dubbelbokförs.
+        // ── LÅSORDNING (#293) ────────────────────────────────────────────────
+        //
+        // Fakturan låses FÖRST och depositionen claimas SIST i den här grenen.
+        // Bankvägen tar samma resurser i den ordningen (applyMatchToInvoice:
+        // FOR UPDATE på fakturan, därefter updateMany på Deposit). Tog vi dem i
+        // omvänd ordning kunde de två vägarna vänta in varandra korsvis och
+        // Postgres avbryta en av dem med deadlock.
+        //
+        // Avi-grenen (rentNoticeId) behåller claim-FÖRST med flit: där finns
+        // ingen faktura att låsa, och Deposit-statusen ÄR dess serialisering mot
+        // bankmatchningen (som kräver Deposit=PENDING).
         await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${deposit.invoiceId} AND "organizationId" = ${organizationId} FOR UPDATE`
         const inv = await tx.invoice.findFirst({
           where: { id: deposit.invoiceId, organizationId },
-          select: { id: true, status: true, invoiceNumber: true },
+          select: { id: true, status: true, invoiceNumber: true, total: true },
         })
 
         // Boka bara om fakturan inte redan reglerats (t.ex. av en bankmatch) — annars
         // står vi kvar med en redan bokförd betalning och ska inte dubbelbokföra.
+        //
+        // STATUS-GRINDEN ÄR KVAR MED FLIT, den ersätts INTE av restskulds-
+        // beräkningen nedan: en depositionsfaktura som reglerades före #290 står
+        // PAID med NOLL allokeringar, och för den skulle restskulden räknas till
+        // hela totalen. Statusgrinden är det som håller den utanför.
         if (inv && inv.status !== 'PAID' && inv.status !== 'VOID') {
-          await tx.invoice.update({
-            where: { id: inv.id },
-            data: { status: 'PAID', paidAt: now },
-          })
-          await tx.invoiceEvent.create({
-            data: {
-              invoiceId: inv.id,
-              type: 'PAYMENT_RECEIVED',
-              actorType: 'USER',
-              actorId: userId,
-              payload: { source: 'deposit', amount: Number(deposit.amount) },
-            },
-          })
-
-          // #290: allokeringen depositionsvägen aldrig skrev. Fakturan flippades
-          // till PAID med noll InvoicePayment-rader — osynlig för
-          // computeInvoiceDebt, som är sanningskällan för restskuld på alla andra
-          // vägar. Raden är den betalning som ändå bokförs på raden nedanför
-          // (samma belopp, samma datum), och den bär verifikatets idempotensnyckel.
+          // ── #293: BELOPPET ÄR RESTSKULDEN, INTE deposit.amount ─────────────
           //
-          // Ingen dubbelräkning: allokeringen skrivs BARA i den gren som också
-          // sätter status PAID, och den grenen körs bara en gång per deposition
-          // (Deposit-status-claimen PENDING→PAID ovan). Huvudboken och
-          // allokeringstabellen är dessutom skilda dataplan — ingen vy, rapport
-          // eller kravtrappa summerar båda.
-          const allocation = await tx.invoicePayment.create({
-            data: {
-              invoiceId: inv.id,
-              amount: deposit.amount,
-              paidAt: now,
-              source: 'MANUAL',
-            },
+          // En depositionsfaktura är en helt vanlig Invoice utan typfilter i
+          // reconciliation.service.ts och kan därför delbetalas via
+          // manualMatch(..., allowPartial: true) → status PARTIAL, en allokering
+          // och ett verifikat på delbeloppet. Deposit synkas INTE vid partiell
+          // matchning (bara vid full reglering) utan ligger kvar PENDING.
+          //
+          // Den här grenen läste tidigare bara inv.status, aldrig
+          // allokeringsmodellen, och bokförde blint hela deposit.amount ovanpå
+          // det som redan kommit in: en 20 000-faktura med 5 000 bankmatchat gav
+          // 25 000 mot 1930 — 5 000 kr som aldrig tagits emot (BFL 5 kap 6 §:
+          // verifikationen ska motsvara en verklig affärshändelse).
+          //
+          // Restskulden läses INNANFÖR radlåset, av samma skäl som
+          // markAsPaidManually gör det (#288): låg läsningen utanför kunde en
+          // samtidig bankmatchning skriva en allokering emellan och göra
+          // beloppet beräknat på inaktuell grund.
+          //
+          // Ingen ny semantik: "markera betald utan angivet belopp" = "betala
+          // restskulden" är precis vad markAsPaidManually redan gör när
+          // enteredAmount utelämnas. Utan tidigare allokeringar är restskulden
+          // hela totalen — normalfallet bokför alltså exakt som förut.
+          const priorAllocations = await tx.invoicePayment.findMany({
+            where: { invoiceId: inv.id },
+            select: { amount: true },
+          })
+          const debt = computeInvoiceDebt({
+            total: inv.total,
+            allocations: priorAllocations.map((a) => a.amount),
           })
 
-          // Bokför inbetalningen (likvidkonto 1930 D / 1510 K) i SAMMA tx. Reglerar
-          // depositionens kundfordran som bokfördes vid create (1510 D / 2890 K).
-          // Utan detta stod 1510 kvar öppen trots betald deposition (BFL 5 kap 6 §).
-          // Verifikatet uteblir (null) → kasta → hela markPaid rullas tillbaka.
-          const entry = await this.accounting.createJournalEntryForInvoiceManualPayment(
-            { id: inv.id, invoiceNumber: inv.invoiceNumber },
-            Number(deposit.amount),
-            now,
-            'MANUAL',
-            organizationId,
-            userId,
-            allocation.id,
-            tx,
-          )
-          if (entry === null) {
-            throw new InternalServerErrorException(
-              `Betalningsverifikat kunde inte skapas för deposition ${id} — ` +
-                'kontrollera att kontoplanen innehåller konto 1930 och 1510.',
+          // Restskuld ≤ 0: fordran är redan reglerad i sin helhet (kan inträffa
+          // om banken hunnit före utan att statusen speglar det). Då finns inget
+          // att bokföra — depositionen claimas ändå nedan, vilket läker den
+          // hängande PENDING-statusen utan att röra huvudboken.
+          if (debt.outstanding.gt(0)) {
+            await tx.invoice.update({
+              where: { id: inv.id },
+              data: { status: 'PAID', paidAt: now },
+            })
+            await tx.invoiceEvent.create({
+              data: {
+                invoiceId: inv.id,
+                type: 'PAYMENT_RECEIVED',
+                actorType: 'USER',
+                actorId: userId,
+                // Loggen bär det FAKTISKT bokförda beloppet, inte deposit.amount
+                // — annars påstår spåret något annat än verifikatet (#293).
+                payload: { source: 'deposit', amount: debt.outstanding.toNumber() },
+              },
+            })
+
+            // #290: allokeringen depositionsvägen aldrig skrev. Fakturan flippades
+            // till PAID med noll InvoicePayment-rader — osynlig för
+            // computeInvoiceDebt, som är sanningskällan för restskuld på alla andra
+            // vägar. Raden är den betalning som ändå bokförs på raden nedanför
+            // (samma belopp, samma datum), och den bär verifikatets idempotensnyckel.
+            //
+            // Ingen dubbelräkning: allokeringen skrivs BARA i den gren som också
+            // sätter status PAID, och den grenen körs bara en gång per deposition
+            // (Deposit-status-claimen PENDING→PAID nedan). Huvudboken och
+            // allokeringstabellen är dessutom skilda dataplan — ingen vy, rapport
+            // eller kravtrappa summerar båda.
+            const allocation = await tx.invoicePayment.create({
+              data: {
+                invoiceId: inv.id,
+                amount: debt.outstanding,
+                paidAt: now,
+                source: 'MANUAL',
+              },
+            })
+
+            // Bokför inbetalningen (likvidkonto 1930 D / 1510 K) i SAMMA tx. Reglerar
+            // depositionens kundfordran som bokfördes vid create (1510 D / 2890 K).
+            // Utan detta stod 1510 kvar öppen trots betald deposition (BFL 5 kap 6 §).
+            // Verifikatet uteblir (null) → kasta → hela markPaid rullas tillbaka.
+            const entry = await this.accounting.createJournalEntryForInvoiceManualPayment(
+              { id: inv.id, invoiceNumber: inv.invoiceNumber },
+              debt.outstanding.toNumber(),
+              now,
+              'MANUAL',
+              organizationId,
+              userId,
+              allocation.id,
+              tx,
             )
+            if (entry === null) {
+              throw new InternalServerErrorException(
+                `Betalningsverifikat kunde inte skapas för deposition ${id} — ` +
+                  'kontrollera att kontoplanen innehåller konto 1930 och 1510.',
+              )
+            }
           }
         }
+
+        await claimaDeposition()
       } else if (deposit.rentNoticeId) {
+        await claimaDeposition()
         // #41/T2.2: avi-länkad deposition utan Invoice → boka manuell betalning
         // 1930 D / 1510 K keyat på depositId, och flippa den länkade avin → PAID.
         // Deposit-status-claimen ovan (PENDING→PAID) serialiserar mot bankmatchningen
@@ -444,6 +504,10 @@ export class DepositsService implements OnApplicationBootstrap {
           },
           data: { status: 'PAID', paidAt: now },
         })
+      } else {
+        // Deposition utan länkad faktura ELLER avi (registrerad utanför de två
+        // flödena) — inget att bokföra, men statusen ska claimas som förut.
+        await claimaDeposition()
       }
 
       return tx.deposit.findFirstOrThrow({ where: { id, organizationId }, include: INCLUDE })
