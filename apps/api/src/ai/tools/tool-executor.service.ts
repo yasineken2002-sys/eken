@@ -33,6 +33,7 @@ import type { PortalDocumentCategory } from '../../documents/document-delivery.s
 import { ACTION_TOOLS } from './ai-tools.definition'
 import { decideAiToolAccess } from '../../common/authz/ai-tool-authz'
 import { neutralizeUntrusted } from './untrusted-content'
+import { SAFE_TENANT_SELECT } from '../../tenants/tenants.service'
 
 // ─── Mass-mejl säkerhetsgränser ──────────────────────────────────────────────
 // Skyddar mot oavsiktliga eller AI-hallucinerade massutskick. Tre lager:
@@ -1968,7 +1969,9 @@ export class ToolExecutorService {
           const activeLeases = await this.prisma.lease.findMany({
             where: { organizationId, status: 'ACTIVE' },
             include: {
-              tenant: true,
+              // SAFE_TENANT_SELECT, inte `tenant: true`: hyreshöjningen behöver
+              // namn och kontaktuppgifter, aldrig personnumret (#284).
+              tenant: { select: SAFE_TENANT_SELECT },
               unit: { include: { property: true } },
             },
           })
@@ -2128,7 +2131,7 @@ export class ToolExecutorService {
             this.prisma.lease.findFirst({
               where: { id: leaseId, unit: { property: { organizationId } } },
               include: {
-                tenant: true,
+                tenant: { select: SAFE_TENANT_SELECT },
                 unit: { include: { property: true } },
               },
             }),

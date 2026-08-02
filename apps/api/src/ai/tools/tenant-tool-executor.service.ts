@@ -6,6 +6,7 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { AiAuditService } from '../audit/ai-audit.service'
 import { TerminationsService } from '../../terminations/terminations.service'
 import { TENANT_ACTION_TOOLS } from './tenant-ai-tools.definition'
+import { SAFE_TENANT_SELECT } from '../../tenants/tenants.service'
 
 /**
  * Whitelista vilka fält som är säkra att returnera till hyresgäst-AI:n.
@@ -345,7 +346,8 @@ export class TenantToolExecutorService {
             where: { tenantId, status: 'ACTIVE' },
             include: {
               unit: { include: { property: true } },
-              tenant: true,
+              // Portalens felanmälan behöver hyresgästens namn, inte personnumret.
+              tenant: { select: SAFE_TENANT_SELECT },
             },
           })
           if (!lease) {

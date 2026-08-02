@@ -11,6 +11,48 @@ const CUSTOMER_PN_KEYS = ['personalNumberEnc', 'personalNumberHash'] as const
 
 type CustomerPnKey = (typeof CUSTOMER_PN_KEYS)[number]
 
+/**
+ * Säkert Prisma-SELECT för kunddata som lämnar backend.
+ *
+ * Motsvarigheten till `SAFE_TENANT_SELECT` i tenants.service.ts. Den fanns för
+ * hyresgästen sedan en tidigare audit; kunden fick aldrig sin, och därför
+ * fortsatte `include: { customer: true }` att dra med `personalNumberEnc` och
+ * `personalNumberHash` — invarianten på rad 9 i den här filen gällde alltså
+ * bara `mapCustomer`, inte varje ställe en Customer inkluderas (#284).
+ *
+ * INNEHÅLLER ALLA icke-känsliga kolumner men ALDRIG de två personnummer-
+ * kolumnerna. Chiffertexten är inte klartext, men blind-indexet är en
+ * deterministisk HMAC: den som har hashen kan verifiera en GISSNING genom att
+ * hasha ett misstänkt personnummer och jämföra. Svagare än klartext, inte
+ * ingenting.
+ *
+ * Behöver du fler icke-känsliga fält: LÄGG TILL dem här. Behöver du
+ * personnumret: välj `personalNumberEnc` explicit och dekryptera vid
+ * användningstillfället, som inkassoexporten gör. Använd aldrig rå
+ * `include: { customer: true }`.
+ */
+export const SAFE_CUSTOMER_SELECT = {
+  id: true,
+  organizationId: true,
+  type: true,
+  firstName: true,
+  lastName: true,
+  companyName: true,
+  orgNumber: true,
+  contactPerson: true,
+  email: true,
+  phone: true,
+  street: true,
+  city: true,
+  postalCode: true,
+  country: true,
+  reference: true,
+  notes: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+} as const
+
 @Injectable()
 export class CustomersService {
   constructor(

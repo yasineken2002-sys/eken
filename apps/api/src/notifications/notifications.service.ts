@@ -9,9 +9,15 @@ import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
 import { AiAssistantService } from '../ai/ai-assistant.service'
 import { MonthlyReportService } from './monthly-report.service'
+import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 type InvoiceWithRelations = Prisma.InvoiceGetPayload<{
-  include: { tenant: true; customer: true; organization: true }
+  include: {
+    tenant: { select: typeof SAFE_TENANT_SELECT }
+    customer: { select: typeof SAFE_CUSTOMER_SELECT }
+    organization: true
+  }
 }>
 
 // Strukturerad referens till entiteten en notis handlar om. Frontend mappar
@@ -235,7 +241,11 @@ export class NotificationsService implements OnModuleInit {
   async sendOverdueRemindersForOrg(organizationId: string): Promise<void> {
     const invoices: InvoiceWithRelations[] = await this.prisma.invoice.findMany({
       where: { organizationId, status: 'OVERDUE' },
-      include: { tenant: true, customer: true, organization: true },
+      include: {
+        tenant: { select: SAFE_TENANT_SELECT },
+        customer: { select: SAFE_CUSTOMER_SELECT },
+        organization: true,
+      },
     })
 
     // Idempotensfönstret är dagen (lokal serverdag). Samma dedup som den
