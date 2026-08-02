@@ -1051,3 +1051,35 @@ export const ACCOUNTING_ONLY_ACTIONS = new Set([
   'export_for_collection',
   'mark_sent_to_collection',
 ])
+
+/**
+ * Förvaltnings-tools — endast MANAGER, ADMIN, OWNER. ACCOUNTANT blockeras.
+ *
+ * Spegelbilden av ACCOUNTING_ONLY_ACTIONS ovan, med samma form och samma
+ * semantik: en lista som pekar ut en yrkesroll och stänger den andra ute.
+ * Tillsammans uttrycker de gränsen R1 drog — agera bindande i ekonomin kräver
+ * ACCOUNTANT och uppåt, förvalta kräver MANAGER och uppåt.
+ *
+ * VARFÖR DEN BEHÖVDES (#269). MANAGER-sidan gick att uttrycka redan: lägg
+ * verktyget i MANAGER_ALLOWED_ACTIONS. ACCOUNTANT-sidan gick inte — det fanns
+ * inget sätt att säga "det här är förvaltning, bokföraren ska inte hit", så
+ * ACCOUNTANT nådde create_property, create_lease och transition_lease_status
+ * via assistenten trots att API:et nekar samma handlingar. Behörighetsytans
+ * golden-fil (#267) hittade oenigheten; beslutet (2026-08-01) blev att
+ * AI-lagret rättar sig efter HTTP, inte tvärtom.
+ *
+ * De nio är exakt de operationer som står i CROSS_LAYER_OPERATIONS med
+ * `must-agree` — listan här och kartan där ska säga samma sak, och testet
+ * failar om de glider isär.
+ */
+export const MANAGEMENT_ONLY_ACTIONS = new Set([
+  'create_property',
+  'create_unit',
+  'create_lease',
+  'create_tenant_and_lease',
+  'update_tenant',
+  'transition_lease_status',
+  'create_maintenance_ticket',
+  'update_maintenance_status',
+  'create_inspection',
+])
