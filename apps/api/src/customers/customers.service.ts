@@ -19,15 +19,21 @@ export class CustomersService {
   ) {}
 
   /**
-   * Byter ut chiffertext + blind-index mot klartext-personnumret i svaret.
+   * Byter ut chiffertext + blind-index mot personnumret i svaret.
    * Enda stället kunder dekrypteras för operatörs-API:t; alla läsvägar nedan
    * går igenom den här.
+   *
+   * `avslöja` styr om klartexten faktiskt hämtas fram. Fältet finns kvar i
+   * svaret oavsett — bara alltid tomt när det är falskt — så svarets FORM är
+   * densamma för varje anropare. Att ta bort nyckeln hade brutit typkontrakt i
+   * onödan; nu ser den som visar fältet "–" i stället för att krascha.
    */
   private mapCustomer<T extends { personalNumberEnc: string | null }>(
     customer: T,
+    avslöja: boolean,
   ): Omit<T, CustomerPnKey> & { personalNumber: string | null } {
     const rest = { ...customer } as Record<string, unknown>
-    const personalNumber = this.pn.reveal(customer.personalNumberEnc)
+    const personalNumber = avslöja ? this.pn.reveal(customer.personalNumberEnc) : null
     for (const key of CUSTOMER_PN_KEYS) delete rest[key]
     return { ...rest, personalNumber } as Omit<T, CustomerPnKey> & { personalNumber: string | null }
   }
@@ -60,7 +66,21 @@ export class CustomersService {
       },
       orderBy: { createdAt: 'desc' },
     })
-    return customers.map((c) => this.mapCustomer(c))
+    // LISTAN BÄR INTE PERSONNUMMER (dataminimering, 2026-08-02 — #280).
+    //
+    // `GET /customers` saknar rollgrind (R1: läsning är öppen för alla roller)
+    // och listan dekrypterade varje rad. Ett enda anrop lämnade ut samtliga
+    // privatkunders personnummer, till vem som helst med ett konto.
+    //
+    // Rätt svar är inte att stänga listan för läsande roller — det bryter R1:s
+    // beslut och löser fel problem — utan att listan slutar bära uppgiften. Man
+    // navigerar en kundlista på namn och kundnummer, inte på personnummer.
+    // Detaljvyn (`findOne`) avslöjar det fortfarande: en uppslagning av EN kund
+    // är ett berättigat behov, en lista över ALLA är det inte.
+    //
+    // Samma beslut och samma form som hyresgästlistan (#281). Två listor med
+    // samma sorts persondata ska behandlas lika.
+    return customers.map((c) => this.mapCustomer(c, false))
   }
 
   async findOne(id: string, organizationId: string) {
@@ -76,7 +96,7 @@ export class CustomersService {
       },
     })
     if (!customer) throw new NotFoundException('Kunden hittades inte')
-    return this.mapCustomer(customer)
+    return this.mapCustomer(customer, true)
   }
 
   async create(dto: CreateCustomerDto, organizationId: string) {
@@ -107,7 +127,7 @@ export class CustomersService {
         ...(dto.notes != null ? { notes: dto.notes } : {}),
       },
     })
-    return this.mapCustomer(created)
+    return this.mapCustomer(created, true)
   }
 
   async update(id: string, dto: UpdateCustomerDto, organizationId: string) {
@@ -135,7 +155,7 @@ export class CustomersService {
         ...(dto.isActive != null ? { isActive: dto.isActive } : {}),
       },
     })
-    return this.mapCustomer(updated)
+    return this.mapCustomer(updated, true)
   }
 
   /**

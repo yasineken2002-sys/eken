@@ -274,3 +274,67 @@ describe('krav 4 — LISTAN bär inte personnumret (dataminimering 2026-08-02)',
     expect(result['personalNumber']).toBe(PN)
   })
 })
+
+describe('krav 9 — KUNDLISTAN bär inte personnumret (dataminimering 2026-08-02, #280)', () => {
+  /**
+   * Samma beslut och samma form som hyresgästlistan (krav 4 ovan): `GET
+   * /customers` saknar rollgrind (R1: läsning är öppen för alla roller) och
+   * `findAll` dekrypterade varje rad — ett anrop lämnade ut samtliga
+   * privatkunders personnummer.
+   *
+   * Skillnaden mot hyresgästlistan var att kundlistan FAKTISKT visade numret, i
+   * en kolumn rubricerad "Org/personnummer". Att ta bort kolumnen var därför ett
+   * produktbeslut, inte bara en teknisk fix: man navigerar en kundlista på namn
+   * och kundnummer, inte på personnummer. Maskering avvisades medvetet — de sista
+   * fyra siffrorna är fortfarande personuppgift bredvid namnet, backend hade
+   * ändå behövt dekryptera hela numret för att maskera det, och en maskerad
+   * kolumn ser säker ut utan att vara det.
+   *
+   * Två listor med samma sorts persondata ska behandlas lika.
+   */
+  function listSetup() {
+    const prisma = {
+      customer: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'c1', firstName: 'Bo', lastName: 'Bo', type: 'INDIVIDUAL', ...pn.protect(PN) },
+          ]),
+      },
+    }
+    return { prisma, service: new CustomersService(prisma as never, pn) }
+  }
+
+  it('listan returnerar INTE klartexten', async () => {
+    const { service } = listSetup()
+    const [första] = (await service.findAll('org-1')) as Record<string, unknown>[]
+    expect(första!['personalNumber']).toBeNull()
+  })
+
+  it('listan bär inte heller chiffertext eller blind-index', async () => {
+    const { service } = listSetup()
+    const [första] = (await service.findAll('org-1')) as Record<string, unknown>[]
+    expect(första).not.toHaveProperty('personalNumberEnc')
+    expect(första).not.toHaveProperty('personalNumberHash')
+  })
+
+  it('fältet finns kvar i svaret — formen ändras inte för anroparna', async () => {
+    const { service } = listSetup()
+    const [första] = (await service.findAll('org-1')) as Record<string, unknown>[]
+    expect(första).toHaveProperty('personalNumber')
+  })
+
+  it('DETALJVYN avslöjar fortfarande — minimeringen gäller bara listan', async () => {
+    // Negativ kontroll mot en överdriven fix. Detaljvyn är vad
+    // redigeringsformuläret förifylls från, så hade den också minimerats hade
+    // den som redigerar sett ett tomt fält för en kund som har ett nummer.
+    const prisma = {
+      customer: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'c1', firstName: 'Bo', ...pn.protect(PN) }),
+      },
+    }
+    const service = new CustomersService(prisma as never, pn)
+    const result = (await service.findOne('c1', 'org-1')) as Record<string, unknown>
+    expect(result['personalNumber']).toBe(PN)
+  })
+})
