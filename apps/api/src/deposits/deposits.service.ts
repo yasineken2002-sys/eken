@@ -474,6 +474,24 @@ export class DepositsService implements OnApplicationBootstrap {
 
         await claimaDeposition()
       } else if (deposit.rentNoticeId) {
+        // ⚠️ CLAIM-FÖRST ÄR AVSIKTLIGT HÄR — och det bär en spärr (#296, #298).
+        //
+        // Fakturagrenen ovan claimar depositionen SIST (låsordning faktura →
+        // deposition, samma som bankvägen). Den här grenen gör TVÄRTOM, och det ser
+        // ut som en inkonsekvens. Det är det inte:
+        //
+        //   denna väg:  Deposit (claim här)  →  ...  →  RentNotice (updateMany)
+        //   bankvägen:  RentNotice (FOR UPDATE) →  ...  →  Deposit (updateMany)
+        //
+        // Motsatta riktningar, med flit. Krockar de dödar Postgres en av dem innan
+        // någon hunnit bokföra dubbelt — och det är det ENDA som håller #296 stängt,
+        // eftersom bankvägens deposit-updateMany aldrig kontrollerar sin `count`.
+        //
+        // MÄTT (#296): 440 parallella försök → 440/440 ett verifikat. Med bankvägens
+        // avi-lås borttaget: 39/40 gav två verifikat och 40 000 kr mot en 20 000-fordran.
+        //
+        // RÄTAR DU ORDNINGEN HÄR utan att först ge bankvägen en egen spärr tänder du
+        // ett penningfel där. Läs #298 innan du rör den.
         await claimaDeposition()
         // #41/T2.2: avi-länkad deposition utan Invoice → boka manuell betalning
         // 1930 D / 1510 K keyat på depositId, och flippa den länkade avin → PAID.
