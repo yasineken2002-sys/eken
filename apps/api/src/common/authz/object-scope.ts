@@ -24,6 +24,11 @@
  * En grind som kräver form A hade larmat falskt på B, C och D — alltså på
  * majoriteten av korrekt kod. En grind man lär sig ignorera är värre än ingen.
  *
+ * A–D letar dessutom efter mönstret NÅGONSTANS i funktionen, utan att binda det
+ * till vilket id som faktiskt skrivs. Att den kopplingen inte byggs är ett
+ * avgjort beslut med skäl och omprövningsvillkor — det står i `detectProtection`
+ * och dupliceras inte här.
+ *
  * För NÄSTLADE skrivningar (se nedan) finns en femte form som DÄREMOT är
  * avgörbar på plats:
  *
@@ -227,18 +232,6 @@ export interface WriteSite {
 }
 
 /**
- * Vilken skyddsform syns i den omslutande funktionen?
- *
- * Detekteras, underhålls inte för hand — en handskriven klassificering hade
- * ruttnat i takt med att koden ändrades, och en ruttnad annotering är värre än
- * ingen: den ser ut som en granskning som gjorts.
- *
- * Ordningen är avsiktlig. A är starkast (scopningen syns på raden), D svagast av
- * de giltiga (rätt princip, annan nyckel). `INGEN` betyder att inget av de fyra
- * mönstren syns någonstans i funktionen — vilket för form 1 är den strukturella
- * kontrollens larm, och för form 2 en rad någon bör titta på.
- */
-/**
  * Blankar ut strängar och kommentarer, men behåller längden.
  *
  * Mönstren nedan letar efter KOD. En sträng eller kommentar som råkar innehålla
@@ -278,6 +271,77 @@ function stripLiterals(src: string): string {
   return ut
 }
 
+/**
+ * Vilken skyddsform syns i den omslutande funktionen?
+ *
+ * Detekteras, underhålls inte för hand — en handskriven klassificering hade
+ * ruttnat i takt med att koden ändrades, och en ruttnad annotering är värre än
+ * ingen: den ser ut som en granskning som gjorts.
+ *
+ * Ordningen är avsiktlig. A är starkast (scopningen syns på raden), D svagast av
+ * de giltiga (rätt princip, annan nyckel). `INGEN` betyder att inget av de fyra
+ * mönstren syns någonstans i funktionen — vilket för form 1 är den strukturella
+ * kontrollens larm, och för form 2 en rad någon bör titta på.
+ *
+ * ── BESLUT 2026-08-02: ingen dataflödeskoppling byggs ───────────────────────
+ *
+ * Den här funktionen letar efter skyddsmönster NÅGONSTANS i den omslutande
+ * funktionen, utan att koppla dem till VILKET id som skrivs. En funktion som
+ * org-scopar id A och sedan skriver på id B märks alltså som skyddad. Det är en
+ * verklig strukturell svaghet, den är känd, och den lämnas MEDVETET öppen.
+ * Frågan kartlades och avgjordes — det här är inte ett förbiseende.
+ *
+ * SKÄLEN, i fallande tyngd:
+ *
+ *   1. Kodbasens dominerande scopnings-idiom går inte att följa lokalt. Det ser
+ *      ut så här: `const invoice = await this.service.findOne(id, orgId)` och
+ *      sedan `invoice.id` i skrivningen. Medlemsåtkomst på ett objekt ur ett
+ *      scopat METODANROP — över 20 av 67 skrivställen. En koppling som bara ser
+ *      den egna funktionen landar på "okänt" för samtliga.
+ *
+ *   2. Det enda form 1-fall en namnkoppling inte klarar är KORREKT kod:
+ *      inspections.controller.ts:183 hämtar besiktningen via ett scopat anrop,
+ *      plockar ut posten ur en relationsarray med `.find()` och skriver på
+ *      `existing.id` — metodgräns, array, medlemsåtkomst. Larmet därifrån kan
+ *      bara tystas med ett CALLER_SCOPED-undantag för något som inte är ett
+ *      undantag, och att lägga in undantag för korrekt kod är exakt hur en vakt
+ *      ruttnar.
+ *
+ *   3. Buggen har aldrig inträffat här. Två säkerhetsgranskningar (#273, #274)
+ *      har stickprovat samtliga form 1-rader utan att hitta ett enda fall där
+ *      det verifierade id:t skiljer sig från det skrivna.
+ *
+ *   4. Priset vore 12 nedgraderade rader och ett falsklarm — alltså att byta en
+ *      TYST strukturell svaghet mot SYNLIGT brus. Fel riktning: en grind man lär
+ *      sig ignorera är värre än ingen.
+ *
+ *   5. Att göra det ordentligt kräver interprocedurell analys — ett eget
+ *      statiskt analysverktyg med symbolupplösning. Det vore en mekanism ingen
+ *      kan resonera om genom att läsa den här filen, tvärtemot hela designidén:
+ *      säg bara det som är avgörbart, och var ärlig om resten.
+ *
+ * MÄTNING SOM STÄNGER EN NÄRLIGGANDE UTVÄG. Att i stället "göra A–D mer som P"
+ * — alltså läsa skrivningens egen bindning — ger två rader: bara 2 av 60 direkta
+ * skrivningar bär scopningen i sitt eget `where`. P är precis av konstruktion,
+ * men har nästan ingen yta bland direkta anrop.
+ *
+ * RIKTNINGEN SOM FAKTISKT GER EN GARANTI (eget projekt, inte nu). Den statiska
+ * vägen har nått avtagande avkastning. Buggklassen försvinner inte av bättre
+ * läsning utan av att göras omöjlig att skriva: org-scopning framtvingad i
+ * frågelagret (en Prisma client extension som kräver org-bindning på skrivningar
+ * mot förälder-scopade modeller) eller row-level security i Postgres. Då blir
+ * #114:s form ett RUNTIME-fel i stället för något en granskare ska upptäcka —
+ * en garanti i stället för en heuristik.
+ *
+ * OMPRÖVAS OM något av detta inträffar:
+ *
+ *   • en granskning hittar ett verkligt fall av "verifierar A, skriver B", eller
+ *   • kodbasen börjar skriva id:n som kommer direkt ur request-body medan ett
+ *     ANNAT id verifieras.
+ *
+ * Då är antagandet bakom beslutet brutet och frågan ska ställas om — inte
+ * besvaras med samma nej.
+ */
 function detectProtection(rawBody: string): ProtectionForm {
   const fnBody = stripLiterals(rawBody)
   // A — scopningen står i själva queryn, via en relation som bär organizationId.
