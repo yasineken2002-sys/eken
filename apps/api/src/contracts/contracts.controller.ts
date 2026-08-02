@@ -82,6 +82,30 @@ export class ContractsController {
    * gamla flödet (knapp som klickades innan auto-generering kördes) och
    * sparar samtidigt PDF:en i R2 så framtida nedladdningar går direkt.
    *
+   * ── ROLLGRINDEN (2026-08-02) ─────────────────────────────────────────────
+   *
+   * Samma lista som `generate` och `updateAppendix` i den här filen. Att den
+   * saknades här var ett förbiseende, inte ett beslut: metoden låg ogrindad
+   * bland två grindade syskon.
+   *
+   * Två skäl, varav det andra är det tyngre:
+   *
+   *   1. Kontraktet BÄR hyresgästens personnummer (contract-template.service:
+   *      182 — det är partsidentifieringen i ett bindande avtal). Svaret är en
+   *      presigned URL till en PDF, och en PDF lämnar systemet: när den väl är
+   *      nedladdad kan den sparas, vidarebefordras och laddas upp någon
+   *      annanstans. Tillsammans med den ogrindade `GET /leases` fanns en
+   *      komplett kedja — lista alla leaseId, hämta varje avtal.
+   *
+   *   2. Metoden SKRIVER. Saknas kontraktet anropar den
+   *      `generateLeaseContract` (Puppeteer-rendering, R2-PUT, ny
+   *      Document-rad) — exakt den operation `@Post('generate/:leaseId')`
+   *      grindar. En ogrindad GET nådde alltså den grindade skrivningen.
+   *
+   * Läsytan i övrigt är medvetet öppen för alla roller (R1: läsa = förvaltning
+   * får se, agera bindande = ekonomi). Den här grinden ändrar inte den
+   * policyn — den rättar ett ställe som redan var tänkt att vara grindat.
+   *
    * Innan presigned URL skickas verifieras filens SHA-256-hash mot
    * Document.contentHash. Vid mismatch (R2-objektet har modifierats utanför
    * vår pipeline, eller laddats upp på fel storageKey) loggas en
@@ -89,6 +113,7 @@ export class ContractsController {
    * kontrakt som inte längre matchar det vi själva skrev.
    */
   @Get('download/:leaseId')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async download(
     @OrgId() orgId: string,
