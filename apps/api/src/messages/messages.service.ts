@@ -6,6 +6,7 @@ import sanitizeHtml from 'sanitize-html'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const result: T[][] = []
@@ -233,7 +234,7 @@ export class MessagesService {
   ): Promise<SentMessage> {
     const original = await this.prisma.sentMessage.findFirst({
       where: { id: messageId, organizationId },
-      include: { tenant: true },
+      include: { tenant: { select: SAFE_TENANT_SELECT } },
     })
     if (!original) throw new NotFoundException('Meddelande hittades inte')
     if (original.status === 'SENT') throw new BadRequestException('Meddelandet är redan skickat')

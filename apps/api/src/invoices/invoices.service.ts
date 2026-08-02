@@ -25,6 +25,7 @@ import { CreateInvoiceDto } from './dto/create-invoice.dto'
 import { UpdateInvoiceDto } from './dto/update-invoice.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
+import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 
 // Mappar InvoiceStatus → Prisma InvoiceEventType enum-värde
 const STATUS_TO_EVENT_TYPE: Partial<Record<InvoiceStatus, InvoiceEventType>> = {
@@ -161,7 +162,7 @@ export class InvoicesService {
       include: {
         lines: true,
         tenant: { select: SAFE_TENANT_SELECT },
-        customer: true,
+        customer: { select: SAFE_CUSTOMER_SELECT },
         lease: true,
         events: { orderBy: { createdAt: 'asc' } },
         bankTransactions: {
@@ -830,7 +831,10 @@ export class InvoicesService {
   ): Promise<{ jobId: string }> {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id, organizationId },
-      include: { tenant: { select: SAFE_TENANT_SELECT }, customer: true },
+      include: {
+        tenant: { select: SAFE_TENANT_SELECT },
+        customer: { select: SAFE_CUSTOMER_SELECT },
+      },
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
     if (invoice.status === 'VOID' || invoice.status === 'PAID') {
@@ -863,7 +867,7 @@ export class InvoicesService {
       include: {
         lines: true,
         tenant: { select: SAFE_TENANT_SELECT },
-        customer: true,
+        customer: { select: SAFE_CUSTOMER_SELECT },
         organization: true,
       },
     })

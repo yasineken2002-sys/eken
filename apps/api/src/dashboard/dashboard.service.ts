@@ -4,6 +4,7 @@ import { stockholmCivilDate } from '../common/time/stockholm-period'
 import { AccountingService } from '../accounting/accounting.service'
 import { OverdueDebtService } from '../overdue/overdue-debt.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 
 export interface TimeseriesPoint {
   month: string
@@ -135,7 +136,10 @@ export class DashboardService {
         where: { organizationId },
         orderBy: { createdAt: 'desc' },
         take: 5,
-        include: { tenant: { select: SAFE_TENANT_SELECT }, customer: true },
+        include: {
+          tenant: { select: SAFE_TENANT_SELECT },
+          customer: { select: SAFE_CUSTOMER_SELECT },
+        },
       }),
     ])
 

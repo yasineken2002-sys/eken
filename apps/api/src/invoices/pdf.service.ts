@@ -5,6 +5,8 @@ import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
 import { generateInvoiceHtml } from './templates/invoice-pdf.template'
+import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 // Liten HTML-escape för values vi väver in i Puppeteers header/footer-
 // templates (kontraktsnummer, orgnamn). Templates tolkas som HTML, så vi
@@ -134,8 +136,8 @@ export class PdfService implements OnModuleDestroy {
       where: { id: invoiceId, organizationId },
       include: {
         lines: true,
-        tenant: true,
-        customer: true,
+        tenant: { select: SAFE_TENANT_SELECT },
+        customer: { select: SAFE_CUSTOMER_SELECT },
         organization: true,
       },
     })

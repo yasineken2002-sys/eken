@@ -7,6 +7,8 @@ import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
 import { NotificationsService } from './notifications.service'
 import { AccountingService } from '../accounting/accounting.service'
+import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
+import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 interface ProcessSummary {
   friendlySent: number
@@ -58,8 +60,8 @@ export class PaymentReminderService {
             remindersPaused: false,
           },
           include: {
-            tenant: true,
-            customer: true,
+            tenant: { select: SAFE_TENANT_SELECT },
+            customer: { select: SAFE_CUSTOMER_SELECT },
             organization: true,
             paymentReminders: true,
           },
@@ -168,8 +170,8 @@ export class PaymentReminderService {
         status: { in: ['OVERDUE', 'SENT_TO_COLLECTION'] },
       },
       include: {
-        tenant: true,
-        customer: true,
+        tenant: { select: SAFE_TENANT_SELECT },
+        customer: { select: SAFE_CUSTOMER_SELECT },
         paymentReminders: { orderBy: { sentAt: 'desc' } },
       },
       orderBy: { dueDate: 'asc' },
@@ -215,7 +217,12 @@ export class PaymentReminderService {
 
   private async sendFriendlyReminder(
     invoice: Prisma.InvoiceGetPayload<{
-      include: { tenant: true; customer: true; organization: true; paymentReminders: true }
+      include: {
+        tenant: { select: typeof SAFE_TENANT_SELECT }
+        customer: { select: typeof SAFE_CUSTOMER_SELECT }
+        organization: true
+        paymentReminders: true
+      }
     }>,
     email: string,
     daysOverdue: number,
@@ -260,7 +267,12 @@ export class PaymentReminderService {
 
   private async sendFormalReminder(
     invoice: Prisma.InvoiceGetPayload<{
-      include: { tenant: true; customer: true; organization: true; paymentReminders: true }
+      include: {
+        tenant: { select: typeof SAFE_TENANT_SELECT }
+        customer: { select: typeof SAFE_CUSTOMER_SELECT }
+        organization: true
+        paymentReminders: true
+      }
     }>,
     email: string,
     daysOverdue: number,
@@ -359,7 +371,10 @@ export class PaymentReminderService {
 
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
-      include: { tenant: true, customer: true },
+      include: {
+        tenant: { select: SAFE_TENANT_SELECT },
+        customer: { select: SAFE_CUSTOMER_SELECT },
+      },
     })
     const party = invoice?.tenant ?? invoice?.customer
     const tenantName = party
