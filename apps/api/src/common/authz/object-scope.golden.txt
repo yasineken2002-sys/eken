@@ -1,0 +1,144 @@
+# Objektnivå-scopning — skrivningar mot förälder-scopade modeller
+
+GENERERAD FIL — redigera den aldrig för hand.
+
+En rad per fil × modell × operation. Ändras en rad har någon lagt till, tagit
+bort eller flyttat en skrivning mot data som bara kan scopas via sin förälder.
+Uppdatera med
+
+    pnpm --filter @eken/api authz:objects
+
+och säg i PR:en hur den nya skrivningen är scopad.
+
+FILEN BEVISAR INGEN SÄKERHET. Skyddsformen är DETEKTERAD, inte verifierad —
+en heuristik som säger "det här mönstret syns i funktionen", inte "id:t är
+kontrollerat". Filen garanterar att ingen skrivväg via en modells EGEN
+Prisma-accessor (invoiceLine + create) tillkommer obemärkt — inte mer än så.
+Se object-scope.ts för varför mer inte går att göra statiskt.
+
+INTE BEVAKAT: NÄSTLADE SKRIVNINGAR. En skrivning som går via förälderns
+data-objekt — invoice.create({ data: { lines: { createMany: … } } }) — nämner
+aldrig barnets accessor och syns därför inte här. Sju sådana ställen finns i
+kodbasen (JournalEntryLine ×3, InvoiceLine ×4); de är manuellt granskade
+2026-08-02 och listade med fil:rad i object-scope.ts. Att InvoiceLine och
+JournalEntryLine står klassificerade längst ned betyder alltså INTE att deras
+skrivyta är komplett här. En ny nästlad skrivning larmar inte.
+
+FORM 1 = update/delete på ett id (den klassiska IDOR:en, #114).
+FORM 2 = create med förälder-FK (ser inte ut som ett behörighetsproblem,
+         men skriver in i förälderns objekt — därför bevakad).
+
+SKYDDSFORMER:
+  A  scopningen står i queryn:  findFirst({ where: { id, parent: { organizationId } } })
+  B  namngiven hjälpare:        assertRelationsInOrg(orgId, { … })
+  C  scopat metodanrop:         await this.findOne(id, organizationId)
+  D  annan scopningsnyckel:     findFirst({ where: { id, tenantId } })  ← portalen
+
+En femte form går inte att detektera: en intern hjälpare utan aktörskontext,
+där scopningen är anroparens ansvar. Den måste skrivas ner i CALLER_SCOPED med
+ett påstående om vem som scopar i stället — se sista sektionen.
+
+
+## Form 1 — update/delete (10 rader)
+
+AiTenantConversation    delete      ai/tenant-ai.service.ts                                 D annan nyckel
+AiTenantConversation    update      ai/tenant-ai.service.ts                             ×4  C scopat anrop + INGEN UPPTÄCKT
+AiTenantConversation    updateMany  ai/tenant-ai.service.ts                                 C scopat anrop
+InspectionItem          update      inspections/inspections.controller.ts                   C scopat anrop
+InspectionItem          update      inspections/inspections.service.ts                      A kedje-query
+InvoiceLine             deleteMany  invoices/invoices.service.ts                            A kedje-query
+RentNoticePayment       deleteMany  reconciliation/reconciliation.service.ts                A kedje-query
+Unit                    updateMany  units/unit-status.sync.ts                           ×2  INGEN UPPTÄCKT
+Unit                    delete      units/units.service.ts                                  A kedje-query
+Unit                    update      units/units.service.ts                                  A kedje-query
+
+## Form 2 — create (29 rader)
+
+AiMessage               create      ai/ai-assistant.controller.ts                       ×3  A kedje-query + C scopat anrop
+AiMessage               create      ai/ai-assistant.service.ts                          ×7  A kedje-query + C scopat anrop
+AiTenantConversation    create      ai/tenant-ai.service.ts                                 D annan nyckel
+InspectionImage         create      inspections/inspections.controller.ts                   C scopat anrop
+InspectionItem          create      inspections/inspections.controller.ts                   C scopat anrop
+InspectionItem          createMany  inspections/inspections.service.ts                      B hjälpare
+InvoiceEvent            create      collections/collection-export.service.ts            ×3  A kedje-query + C scopat anrop
+InvoiceEvent            create      consumption/consumption.service.ts                      A kedje-query
+InvoiceEvent            create      deposits/deposits.service.ts                        ×2  A kedje-query
+InvoiceEvent            create      invoices/invoice-events.service.ts                      INGEN UPPTÄCKT
+InvoiceEvent            create      notifications/notifications.service.ts                  A kedje-query
+InvoiceEvent            create      notifications/payment-reminder.service.ts           ×3  INGEN UPPTÄCKT
+InvoiceLine             create      notifications/payment-reminder.service.ts               INGEN UPPTÄCKT
+InvoicePayment          create      invoices/invoices.service.ts                            A kedje-query
+InvoicePayment          create      reconciliation/reconciliation.service.ts                A kedje-query
+MaintenanceComment      create      maintenance/maintenance.service.ts                      C scopat anrop
+MaintenanceComment      create      tenant-portal/tenant-portal.service.ts                  D annan nyckel
+MaintenanceImage        create      maintenance/maintenance.service.ts                      INGEN UPPTÄCKT
+PaymentReminder         create      notifications/payment-reminder.service.ts           ×3  INGEN UPPTÄCKT
+RentNoticeEvent         create      avisering/rent-notice-events.service.ts                 INGEN UPPTÄCKT
+RentNoticeEvent         create      collections/rent-collection-export.service.ts       ×2  C scopat anrop
+RentNoticeEvent         create      reconciliation/reconciliation.service.ts                A kedje-query
+RentNoticeEvent         create      webhooks/resend-webhook.service.ts                      INGEN UPPTÄCKT
+RentNoticeLine          create      consumption/consumption.service.ts                      A kedje-query
+RentNoticeLine          create      misc-charges/misc-charge.service.ts                     A kedje-query
+RentNoticePayment       create      avisering/avisering.service.ts                          A kedje-query
+RentNoticePayment       create      reconciliation/reconciliation.service.ts            ×2  A kedje-query
+Unit                    create      import/import.service.ts                                A kedje-query
+Unit                    create      units/units.service.ts                                  A kedje-query
+
+
+## Undantag: scopningen ligger hos anroparen (2 st)
+
+Interna hjälpare utan aktörskontext. Formen är INTE automatiskt ofarlig — en
+privat metod som tar ett id är exakt den skepnad en verklig IDOR gömmer sig i.
+Därför står de här med ett verifierat påstående om vem som scopar i stället,
+i stället för att detekteras bort.
+
+AiTenantConversation.update  —  ai/tenant-ai.service.ts  (1 st)
+    handleTextResponse(response, conversationId, message) är privat och rör bara
+    updatedAt. Dess enda anropare skickar conversation.id från
+    getOrCreateConversation(tenantId, …), som scopar på tenantId (form D). Id:t
+    har alltså redan passerat portalens scopning innan det når hit.
+
+Unit.updateMany  —  units/unit-status.sync.ts  (2 st)
+    syncUnitStatusFromLeases(db, unitId) är den enda platsen som håller
+    Unit.status i synk med kontrakten (I1/#62). Den tar en prisma- ELLER
+    transaktionsklient och har ingen aktörskontext alls — den kan inte scopa.
+    Alla tre anropare skickar ett unitId de redan laddat: import.service
+    (unit.id), leases.service (unitId i en redan org-verifierad lease-operation,
+    samt lease.unitId). Skrivningen är dessutom en idempotent statussynk, inte
+    en väg att sätta godtyckliga värden.
+
+
+## Modeller utan eget organizationId
+
+Varje sådan modell måste vara klassificerad. Tillkommer en oklassificerad
+failar testet — en ny förälder-scopad modell ska inte glida in obemärkt.
+
+AiMessage                       förälder-scopad via AiConversation
+AiTenantConversation            förälder-scopad via Tenant
+AiTenantMessage                 utanför: når bara via AiTenantConversation, som är klassificerad ovan
+CustomerNumberSequence          utanför: global singleton-sekvens
+FailedEmail                     utanför: systemdata, ingen kundadresserbar väg
+InspectionImage                 förälder-scopad via Inspection
+InspectionItem                  förälder-scopad via Inspection
+InvoiceEvent                    förälder-scopad via Invoice
+InvoiceLine                     förälder-scopad via Invoice
+InvoicePayment                  förälder-scopad via Invoice
+JournalEntryLine                förälder-scopad via JournalEntry
+LegalChunkEmbedding             utanför: global juridisk referensdata (RAG)
+MaintenanceComment              förälder-scopad via MaintenanceTicket
+MaintenanceImage                förälder-scopad via MaintenanceTicket
+Organization                    utanför: toppnivån själv — inget att scopa mot
+PasswordResetToken              utanför: auth-realm: scopas av tokenvärdet
+PaymentReminder                 förälder-scopad via Invoice
+PlatformInvoiceNumberSequence   utanför: global singleton-sekvens
+PlatformRefreshToken            utanför: egen realm, scopas av tokenvärdet
+PlatformUser                    utanför: egen realm (PlatformGuard), ingen org-koppling
+ReferenceInterestRate           utanför: global referensdata (Riksbanken)
+RefreshToken                    utanför: auth-realm: scopas av tokenvärdet, inte av ett id
+RentNoticeEvent                 förälder-scopad via RentNotice
+RentNoticeLine                  förälder-scopad via RentNotice
+RentNoticePayment               förälder-scopad via RentNotice
+TenantMagicLink                 utanför: auth-realm: scopas av tokenvärdet
+TenantSession                   utanför: auth-realm: scopas av sessionstoken
+Unit                            förälder-scopad via Property
+UserInvitation                  utanför: auth-realm: scopas av tokenvärdet
