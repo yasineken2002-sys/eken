@@ -144,9 +144,21 @@ export class TenantsService {
     return tenants.map((t) => {
       const { leases, ...rest } = t
       return {
-        // Hyresgästlistan i operatörs-UI:t visar personnumret — dekryptera här,
-        // vid användningstillfället, inte i något delat select.
-        ...mapTenant(rest, this.pn.reveal(rest.personalNumberEnc)),
+        // LISTAN BÄR INTE PERSONNUMMER (dataminimering, 2026-08-02).
+        //
+        // `mapTenant` anropas med null i stället för `this.pn.reveal(...)`:
+        // fältet finns kvar i svaret men är alltid tomt, så formen är oförändrad
+        // för varje anropare. Detaljvyn (`findOne`) avslöjar det fortfarande —
+        // en enskild uppslagning av EN hyresgäst är ett berättigat behov
+        // (fakturering, tvist, kravhantering), en lista över ALLA är det inte.
+        //
+        // Skillnaden är blottningsytan: ett `GET /tenants` lämnade ut samtliga
+        // personnummer i organisationen i ett enda anrop — till varje
+        // autentiserad roll, eftersom endpointen saknar rollgrind per R1:s
+        // medvetna policy att läsning är öppen. Rätt svar på det är inte att
+        // stänga listan för läsande roller, utan att listan slutar bära
+        // uppgiften. Se launch-readiness #36.
+        ...mapTenant(rest, null),
         activeLease: leases[0] ?? null,
       }
     })

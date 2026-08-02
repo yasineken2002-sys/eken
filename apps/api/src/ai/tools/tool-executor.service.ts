@@ -763,8 +763,14 @@ export class ToolExecutorService {
           const search = typeof toolInput.search === 'string' ? toolInput.search : undefined
           const tenants = await this.tenantsService.findAll(organizationId, search)
           // Whitelista — tenantsService.findAll returnerar HELA Tenant-objektet
-          // inkl. personalNumber, passwordHash och activationToken. Skicka
-          // endast säkra fält till AI:n.
+          // inkl. passwordHash och activationToken. Skicka endast säkra fält
+          // till AI:n.
+          //
+          // `personalNumber` bärs inte längre av listan (dataminimering
+          // 2026-08-02, se tenants.service.ts) och kan alltså inte läcka
+          // härifrån ens om whitelistan tappas. Whitelistan står kvar ändå:
+          // den skyddar de övriga fälten, och två lager är rätt nivå för det
+          // AI:n får se.
           const safeTenants = tenants.map((t) => {
             const safe = pickSafeTenantFields(t as UnsafeTenant)
             // activeLease kommer från leases-include — vi behåller bara
