@@ -63,6 +63,10 @@ const ROLE_DENIAL_MESSAGES = new Set([
   'Endast bokförare (ACCOUNTANT) eller administratörer får använda bokförings-verktyg.',
   'Endast förvaltare (MANAGER) eller administratörer får använda förvaltnings-verktyg.',
   'Endast OWNER/ADMIN får förbereda en signering (bindande handling).',
+  // R4.0: nekandet för en roll som inte står utskriven i allow-listen. Ingen av
+  // de fem kända rollerna kan träffa den — men sonden ska känna igen den den dag
+  // en sjätte roll läggs till, annars klassas nekandet som ett insläpp.
+  'Din roll har ingen behörighet att utföra åtgärder via assistenten.',
 ])
 
 type Unsafe = (
