@@ -1286,8 +1286,9 @@ export class AccountingService {
   private async counterpartyForRentNotice(
     noticeId: string,
     organizationId: string,
+    tx?: Prisma.TransactionClient,
   ): Promise<string | null> {
-    const row = await this.prisma.rentNotice.findFirst({
+    const row = await (tx ?? this.prisma).rentNotice.findFirst({
       where: { id: noticeId, organizationId },
       select: { tenant: { select: { companyName: true, firstName: true, lastName: true } } },
     })
@@ -2472,6 +2473,11 @@ export class AccountingService {
     organizationId: string,
     createdById: string | null,
     allocationId: string,
+    // Valfri yttre transaktion — anges av AviseringService.markAsPaid så att
+    // claim, allokering och detta verifikat skapas ATOMISKT (#108). Faller
+    // bokföringen rullas HELA registreringen tillbaka av databasen, inte av ett
+    // catch-block som förutsätter att processen fortfarande lever.
+    tx?: Prisma.TransactionClient,
   ) {
     if (notice.type === RentNoticeType.DEPOSIT) return null
 
@@ -2480,7 +2486,8 @@ export class AccountingService {
 
     const debitAccountNumber = PAYMENT_METHOD_TO_ACCOUNT[paymentMethod]
 
-    const accounts = await this.prisma.account.findMany({
+    const db = tx ?? this.prisma
+    const accounts = await db.account.findMany({
       where: { organizationId },
       select: { id: true, number: true },
     })
@@ -2497,8 +2504,10 @@ export class AccountingService {
     }
 
     // A2 fail-closed: RENT-only (DEPOSIT hoppas ovan). Neka om avins accrual saknas.
+    // A2 läses genom SAMMA klient som skriver — annars kan grinden se ett annat
+    // snapshot än verifikatet skrivs mot.
     await this.assertReceivableAccrualBooked(
-      this.prisma,
+      db,
       organizationId,
       `rent-notice:${notice.id}`,
       `hyresavi ${notice.noticeNumber}`,
@@ -2506,7 +2515,7 @@ export class AccountingService {
 
     const sourceId = `rent-notice-payment:${allocationId}`
 
-    const counterparty = await this.counterpartyForRentNotice(notice.id, organizationId)
+    const counterparty = await this.counterpartyForRentNotice(notice.id, organizationId, tx)
 
     return this.createNumberedEntry({
       organizationId,
@@ -2525,6 +2534,7 @@ export class AccountingService {
       ],
       idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId },
       include: { lines: { include: { account: true } } },
+      ...(tx ? { tx } : {}),
     })
   }
 

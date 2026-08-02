@@ -49,9 +49,12 @@ function makeService(opts?: {
   const eventCreate = jest.fn().mockResolvedValue({})
   const prisma = {
     rentNotice: {
-      // 1:a findFirst = ladda avin, 2:a = re-fetch för returvärdet.
+      // #108: markAsPaid läser avin TRE gånger — preflight (tydliga felmeddelanden),
+      // omläsning INNANFÖR radlåset (sanningen), och en re-fetch för returvärdet.
+      // De två första ska se den ÖPPNA avin; först därefter den betalda.
       findFirst: jest
         .fn()
+        .mockResolvedValueOnce(notice)
         .mockResolvedValueOnce(notice)
         .mockResolvedValue({ ...notice, status: 'PAID' }),
       updateMany: jest.fn().mockResolvedValue({ count: opts?.claimCount ?? 1 }),
@@ -67,7 +70,10 @@ function makeService(opts?: {
     rentNoticeEvent: { create: eventCreate },
     // cancelNotice kör statusflip + motverifikat (fix #4) atomiskt i $transaction.
     // Deklareras här, tilldelas nedan (undviker cirkulär typinferens på `prisma`).
-    $transaction: undefined as unknown as (cb: (t: unknown) => unknown) => unknown,
+    $transaction: undefined as unknown as jest.Mock,
+    // #108 — radlåset. Attrappen behöver bara svara; låsets EFFEKT (serialisering)
+    // kan inte modelleras utan en riktig databas och bevisas därför separat.
+    $queryRaw: jest.fn().mockResolvedValue([]),
   }
   prisma.$transaction = jest.fn((cb: (t: unknown) => unknown) => cb(prisma))
 
@@ -134,25 +140,63 @@ describe('FIX 9 · PR 6 — AviseringService.markAsPaid', () => {
     expect(order).toEqual(['claim', 'book'])
   })
 
-  it('bokföringen KASTAR → statusövergången ångras och felet propageras', async () => {
+  it('bokföringen KASTAR → felet propageras och INGEN kompenserande revert görs', async () => {
+    // #108: tidigare gjordes ett andra updateMany som backade statusen, och en
+    // delete som städade allokeringen. Båda är borta — transaktionen rullar
+    // tillbaka. Att INGEN revert sker är alltså beviset på att koden litar på
+    // databasen i stället för på att processen överlever sitt eget catch-block.
+    //
+    // Att rollbacken FAKTISKT sker kan inte visas här: attrappens $transaction
+    // kör bara callbacken och kan inte ångra något. Det bevisas mot en riktig
+    // databas — se rapporten i PR:en.
     const { service, prisma, accounting } = makeService()
     accounting.createJournalEntryForRentNoticeManualPayment.mockRejectedValueOnce(
       new Error('DB nere'),
     )
     await expect(service.markAsPaid('rn-1', 'org-1', 10_000, 'BANK')).rejects.toThrow('DB nere')
-    // Två updateMany-anrop: claim + revert.
-    expect(prisma.rentNotice.updateMany).toHaveBeenCalledTimes(2)
-    const revert = prisma.rentNotice.updateMany.mock.calls[1][0]
-    expect(revert.data).toMatchObject({ status: 'SENT', paidAt: null, paymentMethod: null })
+    expect(prisma.rentNotice.updateMany).toHaveBeenCalledTimes(1) // bara claimen
+    expect(prisma.rentNoticePayment.delete).not.toHaveBeenCalled()
   })
 
-  it('saknat konto (bokföring returnerar null) för RENT → 500 och status ångras', async () => {
+  it('allt som skrivs ligger i SAMMA transaktion som bokföringen', async () => {
+    // Kärnan i #108. Claim, allokering och verifikat måste ta emot samma
+    // transaktionsklient — annars är atomiciteten bara skenbar.
+    const { service, prisma, accounting } = makeService()
+    await service.markAsPaid('rn-1', 'org-1', 10_000, 'BANK')
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+    // Radlåset tas FÖRST, före varje läsning som beslutet vilar på.
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1)
+    // Bokföringen får transaktionsklienten som sista argument.
+    const bokförArgs = accounting.createJournalEntryForRentNoticeManualPayment.mock.calls[0]
+    expect(bokförArgs[bokförArgs.length - 1]).toBe(prisma)
+  })
+
+  it('transaktionen har EXPLICITA gränser — en svälten betalning failar, hänger inte', async () => {
+    // Låstiden växte med atomiciteten (~tio tur-och-retur i stället för ett par).
+    // Utan uttalade gränser ärvs Prismas defaults tyst, och nästa läsare kan inte
+    // se att någon tagit ställning. Testet kontrollerar BANDET, inte siffran:
+    // gränserna ska vara generösa mot det uppmätta normalfallet (median 8,8 ms)
+    // och långt under det som läser som en hängning.
+    const { service, prisma } = makeService()
+    await service.markAsPaid('rn-1', 'org-1', 10_000, 'BANK')
+    const optioner = prisma.$transaction.mock.calls[0]![1] as {
+      timeout: number
+      maxWait: number
+    }
+    expect(optioner).toBeDefined()
+    expect(optioner.timeout).toBeGreaterThanOrEqual(2_000)
+    expect(optioner.timeout).toBeLessThanOrEqual(15_000)
+    expect(optioner.maxWait).toBeGreaterThanOrEqual(1_000)
+    expect(optioner.maxWait).toBeLessThanOrEqual(optioner.timeout)
+  })
+
+  it('saknat konto (bokföring returnerar null) för RENT → 500, transaktionen rullas tillbaka', async () => {
     const { service, prisma, accounting } = makeService()
     accounting.createJournalEntryForRentNoticeManualPayment.mockResolvedValueOnce(null)
     await expect(service.markAsPaid('rn-1', 'org-1', 10_000, 'SWISH')).rejects.toBeInstanceOf(
       InternalServerErrorException,
     )
-    expect(prisma.rentNotice.updateMany).toHaveBeenCalledTimes(2) // claim + revert
+    expect(prisma.rentNotice.updateMany).toHaveBeenCalledTimes(1) // bara claimen
   })
 
   it('DEPOSIT-avi: BLOCKERAS (#41/T2.2 — betalas via deposits.markPaid/bankmatch, en kanonisk väg)', async () => {
@@ -222,14 +266,17 @@ describe('FIX 9 · PR 6 — AviseringService.markAsPaid', () => {
     expect((data.paidAt as Date).toISOString().slice(0, 10)).toBe('2026-06-15')
   })
 
-  it('PR1: bokföringen KASTAR → allokeringen städas (delete) och felet propageras', async () => {
+  it('PR1→#108: allokeringen städas inte längre manuellt — den rullas tillbaka', async () => {
+    // PR1 skrev allokeringen först och raderade den i ett catch om verifikatet
+    // uteblev. Den städningen var själv .catch:ad och bara loggad: misslyckades
+    // DEN blev allokeringen kvar utan verifikat. Nu ligger båda i samma
+    // transaktion — inget att städa, och inget som kan misslyckas med att städa.
     const { service, prisma, accounting } = makeService()
     accounting.createJournalEntryForRentNoticeManualPayment.mockRejectedValueOnce(
       new Error('DB nere'),
     )
     await expect(service.markAsPaid('rn-1', 'org-1', 10_000, 'BANK')).rejects.toThrow('DB nere')
-    // Allokeringen som skrevs före verifikatet rullas tillbaka.
-    expect(prisma.rentNoticePayment.delete).toHaveBeenCalledWith({ where: { id: 'rnp-1' } })
+    expect(prisma.rentNoticePayment.delete).not.toHaveBeenCalled()
   })
 
   // ── Bankavstämnings-härdning PR 2 · kravstegs-nollställning ────────────────
@@ -305,17 +352,18 @@ describe('PR3b · D5 — markAsPaid med delbelopp', () => {
     })
   })
 
-  it('delbetalning vars bokföring KASTAR → paidAmount återställs till Σ tidigare allokeringar (ej null)', async () => {
+  it('delbetalning vars bokföring KASTAR → ingen revert-uträkning behövs längre', async () => {
+    // Den gamla koden räknade fram vad paidAmount skulle återställas TILL (Σ
+    // tidigare allokeringar, inte null — annars raderades cachen för redan
+    // registrerade delbetalningar). Den uträkningen var en källa till fel i sig.
+    // Transaktionen återställer det exakta tidigare värdet utan att någon behöver
+    // räkna ut det.
     const { service, prisma, accounting } = makeService({ priorAllocations: [{ amount: 6_000 }] })
     accounting.createJournalEntryForRentNoticeManualPayment.mockRejectedValueOnce(
       new Error('DB nere'),
     )
-    // Betalar 1 000 → delbetalning (Σ 7 000 < 10 000). Bokföringen kastar → revert.
     await expect(service.markAsPaid('rn-1', 'org-1', 1_000, 'BANK')).rejects.toThrow('DB nere')
-
-    const revert = prisma.rentNotice.updateMany.mock.calls[1][0]
-    // paidAmount återställs till 6 000 (de tidigare delbetalningarna), inte null.
-    expect(revert.data.paidAmount).toBe(6_000)
+    expect(prisma.rentNotice.updateMany).toHaveBeenCalledTimes(1) // bara claimen
   })
 
   it('delbetalning på INKASSO_READY-avi → INGEN kravstegs-nollställning, ingen trail', async () => {
