@@ -13,7 +13,6 @@ import * as crypto from 'crypto'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 import { normalizeEmail } from '../common/utils/normalize-email'
-import type { InvitableRole } from './dto/invite-user.dto'
 import type { AssignableRole } from './dto/update-user-role.dto'
 import type { UserRole } from '@eken/shared'
 
@@ -58,10 +57,19 @@ export class UsersService {
   }
 
   async invite(
-    dto: { email: string; firstName: string; lastName: string; role: InvitableRole },
+    dto: { email: string; firstName: string; lastName: string; role: AssignableRole },
     organizationId: string,
     invitedByUserId: string,
   ) {
+    // Ägarrollen kan inte delas ut via en inbjudan. Kontrollen ligger HÄR och
+    // inte bara i DTO:ns @IsIn, av samma skäl som R1: skyddet hör där varje
+    // anropare passerar. En intern anropare, ett framtida verktyg eller en
+    // felkonfigurerad ValidationPipe når tjänsten utan att ha passerat
+    // DTO-valideringen. Speglar updateRole och deactivate, som redan gör det.
+    if ((dto.role as string) === 'OWNER') {
+      throw new ForbiddenException('Ägarrollen kan inte tilldelas via inbjudan')
+    }
+
     const inviter = await this.prisma.user.findFirst({
       where: { id: invitedByUserId, organizationId },
       select: { firstName: true, lastName: true, email: true },

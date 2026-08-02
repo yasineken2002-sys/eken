@@ -10,6 +10,7 @@ import { InviteUserModal } from './components/InviteUserModal'
 import type { OrgUser, AssignableRole } from './api/users.api'
 import { formatDate } from '@eken/shared'
 import type { UserRole } from '@eken/shared'
+import { ASSIGNABLE_ROLES } from '@eken/shared'
 
 const ROLE_LABELS: Record<UserRole, string> = {
   OWNER: 'Ägare',
@@ -19,12 +20,12 @@ const ROLE_LABELS: Record<UserRole, string> = {
   VIEWER: 'Läsbehörighet',
 }
 
-const ASSIGNABLE_ROLES: { value: AssignableRole; label: string }[] = [
-  { value: 'ADMIN', label: 'Administratör' },
-  { value: 'MANAGER', label: 'Förvaltare' },
-  { value: 'ACCOUNTANT', label: 'Ekonomi' },
-  { value: 'VIEWER', label: 'Läsbehörighet' },
-]
+// Rollvalen kommer ur @eken/shared (R3) och etiketten ur ROLE_LABELS ovan, som
+// täcker alla roller. Två listor att hålla i synk blev en.
+const ROLE_OPTIONS: { value: AssignableRole; label: string }[] = ASSIGNABLE_ROLES.map((value) => ({
+  value,
+  label: ROLE_LABELS[value],
+}))
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.04 } } }
 const item = {
@@ -150,7 +151,7 @@ function UserRow({ user, isOwner, isSelf }: UserRowProps) {
             }
             className="border-input h-8 rounded-lg border bg-white px-2.5 text-[12.5px] font-medium text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/15"
           >
-            {ASSIGNABLE_ROLES.map((r) => (
+            {ROLE_OPTIONS.map((r) => (
               <option key={r.value} value={r.value}>
                 {r.label}
               </option>
