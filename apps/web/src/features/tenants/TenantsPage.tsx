@@ -328,9 +328,13 @@ function DetailPanel({ selected, selectedTenant }: DetailPanelProps) {
           <InfoRow
             icon={Hash}
             label={selected.type === 'INDIVIDUAL' ? 'Personnummer' : 'Org.nummer'}
+            // Personnumret kommer från DETALJSVARET (`selectedTenant`), inte ur
+            // listan: listan bär det inte längre (dataminimering, se
+            // tenants.service.ts findAll). Panelen hämtade redan detaljen — den
+            // råkade bara rendera list-objektet.
             value={
               selected.type === 'INDIVIDUAL'
-                ? (selected.personalNumber ?? '–')
+                ? (selectedTenant?.personalNumber ?? '–')
                 : (selected.orgNumber ?? '–')
             }
           />

@@ -196,3 +196,81 @@ describe('krav 3 — personnumret rider inte med i delade selects', () => {
     expect(result).not.toHaveProperty('personalNumberHash')
   })
 })
+
+describe('krav 4 — LISTAN bär inte personnumret (dataminimering 2026-08-02)', () => {
+  /**
+   * `GET /tenants` saknar rollgrind (R1: läsning är öppen för alla roller) och
+   * `findAll` dekrypterade personnumret för VARJE rad. Ett enda anrop lämnade
+   * alltså ut samtliga personnummer i organisationen — till vem som helst med
+   * ett konto, inklusive VIEWER.
+   *
+   * Rätt svar är inte att stänga listan för läsande roller — det bryter R1:s
+   * beslut och löser fel problem — utan att listan slutar bära uppgiften.
+   * Detaljvyn (`findOne`, krav 3 ovan) avslöjar den fortfarande: en uppslagning
+   * av EN hyresgäst är ett berättigat behov, en lista över ALLA är det inte.
+   *
+   * Testet finns för att minimeringen inte ska kunna backas av misstag. Det är
+   * skrivet så att det FALLER om `pn.reveal(...)` återinförs i findAll —
+   * verifierat genom att göra just det.
+   */
+  function listSetup() {
+    const prisma = {
+      tenant: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 't1',
+            firstName: 'Anna',
+            lastName: 'Andersson',
+            street: null,
+            leases: [],
+            ...pn.protect(PN),
+          },
+        ]),
+      },
+    }
+    return { prisma, service: new TenantsService(prisma as never, pn) }
+  }
+
+  it('listan returnerar INTE klartexten', async () => {
+    const { service } = listSetup()
+    const [första] = (await service.findAll('org-1')) as Record<string, unknown>[]
+    expect(första!['personalNumber']).toBeNull()
+  })
+
+  it('listan bär inte heller chiffertext eller blind-index', async () => {
+    // Kryptokolumnerna får inte serialiseras som ersättning — ett blind-index
+    // är deterministiskt och därmed en identifierare i sig.
+    const { service } = listSetup()
+    const [första] = (await service.findAll('org-1')) as Record<string, unknown>[]
+    expect(första).not.toHaveProperty('personalNumberEnc')
+    expect(första).not.toHaveProperty('personalNumberHash')
+  })
+
+  it('fältet finns kvar i svaret — formen ändras inte för anroparna', async () => {
+    // Att ta bort nyckeln helt hade brutit typkontrakt hos varje konsument.
+    // Fältet är kvar, alltid tomt: en anropare som visar det ser "–", inte en
+    // krasch.
+    const { service } = listSetup()
+    const [första] = (await service.findAll('org-1')) as Record<string, unknown>[]
+    expect(första).toHaveProperty('personalNumber')
+  })
+
+  it('DETALJVYN avslöjar fortfarande — minimeringen gäller bara listan', async () => {
+    // Negativ kontroll mot en överdriven fix: hade minimeringen råkat träffa
+    // findOne också vore fakturering och kravhantering utan personnummer.
+    const prisma = {
+      tenant: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 't1',
+          firstName: 'Anna',
+          street: null,
+          leases: [],
+          ...pn.protect(PN),
+        }),
+      },
+    }
+    const service = new TenantsService(prisma as never, pn)
+    const result = (await service.findOne('t1', 'org-1')) as Record<string, unknown>
+    expect(result['personalNumber']).toBe(PN)
+  })
+})
