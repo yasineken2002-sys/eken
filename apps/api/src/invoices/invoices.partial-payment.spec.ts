@@ -37,7 +37,28 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
   }
 
   const updateMany = jest.fn().mockResolvedValue({ count: 1 })
-  const invoicePaymentCreate = jest.fn().mockResolvedValue({})
+
+  // #290 — allokeringstabellen är STATEFUL i attrappen: create returnerar ett
+  // eget id per rad och findMany svarar med det som faktiskt skrivits.
+  //
+  // En attrapp som returnerar `{}` (som den gjorde före #290) ger allokeringen
+  // id === undefined. Då blir verifikatets nyckel
+  // "invoice-manual-payment:undefined" för BÅDA delbetalningarna — attrappen
+  // utplånar exakt den distinktion testet ska bevisa, och den gamla
+  // faktura-nycklade koden hade sett likadan ut. Samma läxa som #288:s
+  // tx === prisma.
+  const allocations: Array<{ id: string; amount: Prisma.Decimal }> = priors.map((a, i) => ({
+    id: `prior-${i + 1}`,
+    amount: new Prisma.Decimal(a),
+  }))
+  const invoicePaymentCreate = jest.fn((arg: { data: Record<string, unknown> }) => {
+    const rad = {
+      id: `alloc-${allocations.length + 1}`,
+      amount: new Prisma.Decimal(arg.data.amount as Prisma.Decimal),
+    }
+    allocations.push(rad)
+    return Promise.resolve(rad)
+  })
 
   // #288 — transaktionsklienten får EGNA mockar, av samma skäl som beskrivs i
   // invoices.manual-payment.spec.ts: en attrapp där tx === prisma kan inte skilja
@@ -47,7 +68,7 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
   const tx = {
     invoice: { findFirst: jest.fn().mockResolvedValue(invoiceRow), updateMany },
     invoicePayment: {
-      findMany: jest.fn().mockResolvedValue(priors.map((a) => ({ amount: new Prisma.Decimal(a) }))),
+      findMany: jest.fn(() => Promise.resolve(allocations.map((a) => ({ ...a })))),
       create: invoicePaymentCreate,
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
@@ -122,7 +143,7 @@ describe('C5 — /pay bokför det MOTTAGNA beloppet, inte fakturans total', () =
     expect(updateMany.mock.calls[0]?.[0]?.data?.paidAt).toBeUndefined()
 
     // Allokeringen registreras med det faktiska beloppet.
-    const alloc = invoicePaymentCreate.mock.calls[0]?.[0]?.data
+    const alloc = invoicePaymentCreate.mock.calls[0]![0].data
     expect(Number(alloc.amount)).toBe(500)
     expect(alloc.source).toBe('MANUAL')
 
@@ -151,6 +172,42 @@ describe('C5 — /pay bokför det MOTTAGNA beloppet, inte fakturans total', () =
     const debt = computeInvoiceDebt({ total: TOTAL, allocations: [500, 9_500] })
     expect(debt.outstanding.toNumber()).toBe(0)
     expect(debt.isSettled).toBe(true)
+  })
+
+  it('#290: två delbetalningar → verifikaten nycklas på VAR SIN allokering', async () => {
+    // Reproduktionen som avslöjade #290, på enhetsnivå: 500 + 9 500 mot 10 000.
+    // Före fixen fick båda verifikaten nyckeln "invoice-manual-payment:inv-1";
+    // den andra betalningen träffade den förstas verifikat, createNumberedEntry
+    // returnerade det befintliga, callern såg ett icke-null-svar och fakturan
+    // flippades till PAID med 9 500 kr obokade. Att verifikaten FAKTISKT blir två
+    // i huvudboken bevisas mot riktig Postgres — här låses nyckeln.
+    const { service, invoicePaymentCreate, createJournalEntryForInvoiceManualPayment } =
+      makeService()
+
+    await service.markAsPaidManually('inv-1', 'org-1', 'BANK', 'user-1', 'USER', {
+      enteredAmount: 500,
+    })
+    await service.markAsPaidManually('inv-1', 'org-1', 'BANK', 'user-1', 'USER', {
+      enteredAmount: 9_500,
+    })
+
+    expect(invoicePaymentCreate).toHaveBeenCalledTimes(2)
+    const anrop = createJournalEntryForInvoiceManualPayment.mock.calls as unknown[][]
+    expect(anrop).toHaveLength(2)
+
+    // Nyckelargumentet är den allokering som just skapades — inte fakturans id.
+    const nycklar = anrop.map((a) => a[6])
+    expect(nycklar).toEqual(['alloc-1', 'alloc-2'])
+    expect(nycklar[0]).not.toBe(nycklar[1])
+    expect(nycklar).not.toContain('inv-1')
+
+    // Beloppen följer allokeringarna: 500 + 9 500 = hela fakturan.
+    expect(anrop.map((a) => a[1])).toEqual([500, 9_500])
+    expect((anrop[0]![1] as number) + (anrop[1]![1] as number)).toBe(TOTAL)
+
+    // Transaktionsklienten ligger kvar SIST (#288) — allokerings-id sköts in före den.
+    expect(anrop[0]![7]).toBeDefined()
+    expect(anrop[0]!).toHaveLength(8)
   })
 
   it('utelämnat belopp = betala resten (bevarar beteendet för normalfallet)', async () => {

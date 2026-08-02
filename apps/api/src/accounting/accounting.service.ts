@@ -1357,10 +1357,26 @@ export class AccountingService {
   // Utan denna bokning markeras fakturan som betald medan 1510 står kvar öppen —
   // en affärshändelse (mottagen betalning) utan verifikation (BFL 5 kap 6 §).
   //
-  // Idempotent via sourceId = "invoice-manual-payment:<invoiceId>". En manuell
-  // betalning reglerar fakturan i sin helhet (status PAID är terminal och
-  // status-guardas i markAsPaidManually), så en enda nyckel per faktura räcker —
-  // till skillnad från hyresavins delbetalnings-scenario som nycklar per allokering.
+  // #290 (KRITISK FIX): idempotensen nycklas på ALLOKERINGEN (sourceId =
+  // "invoice-manual-payment:<allocationId>"), INTE på fakturan. Samma form som
+  // avi-vägen fick i PR 3b, av exakt samma skäl — faktura-vägen fick den bara
+  // aldrig.
+  //
+  // Docblocken sa tidigare att "en manuell betalning reglerar fakturan i sin
+  // helhet ... så en enda nyckel per faktura räcker". Det slutade vara sant med
+  // C5: en delbetalning lämnar fakturan PARTIAL, och PARTIAL ingår i
+  // PAYABLE_STATUSES → markAsPaidManually kan köras flera gånger mot SAMMA
+  // faktura. Med faktura-nycklad sourceId hittade den ANDRA delbetalningen den
+  // förstas verifikat, createNumberedEntry returnerade det befintliga, och
+  // callern såg ett icke-null-svar → inget fel. Allokering + status skrevs,
+  // huvudboken fick ingenting. Reproducerat mot riktig Postgres: 500 + 9 500 kr
+  // gav fakturastatus PAID, 10 000 kr i allokeringar och 500 kr på 1930 — 1510
+  // stod öppen med 9 500 kr på en faktura som sa sig vara betald (BFL 5 kap 6 §).
+  //
+  // Per allokering (unik UUID, samma strategi som bankvägens
+  // sourceId=bankTransactionId) får varje delbetalning sitt EGNA verifikat.
+  // Beloppet är det FAKTISKT inbetalda — vid delbetalning regleras fordran bara
+  // delvis, korrekt dubbel bokföring.
   async createJournalEntryForInvoiceManualPayment(
     invoice: Pick<Invoice, 'id' | 'invoiceNumber'>,
     paidAmount: number,
@@ -1368,6 +1384,12 @@ export class AccountingService {
     paymentMethod: PaymentMethod,
     organizationId: string,
     createdById: string | null,
+    // InvoicePayment-radens id — allokeringen detta verifikat reglerar. BÅDA
+    // anroparna skriver en sådan rad: markAsPaidManually sedan C5,
+    // DepositsService.markPaid sedan #290 (den flippade tidigare
+    // depositionsfakturan till PAID helt utan allokering, alltså osynlig för
+    // computeInvoiceDebt som är sanningskällan för restskuld).
+    allocationId: string,
     // Valfri yttre transaktion — anges av deposits-modulens markPaid så att
     // depositions-/faktura-statusflip och detta verifikat skapas ATOMISKT.
     tx?: Prisma.TransactionClient,
@@ -1399,7 +1421,7 @@ export class AccountingService {
     // Deposit, annars falsk-nekas varje frisk depositionsbetalning).
     await this.assertInvoiceReceivableBacked(db, organizationId, invoice.id, invoice.invoiceNumber)
 
-    const sourceId = `invoice-manual-payment:${invoice.id}`
+    const sourceId = `invoice-manual-payment:${allocationId}`
     const counterparty = await this.counterpartyForInvoice(invoice.id, organizationId, tx)
 
     return this.createNumberedEntry({

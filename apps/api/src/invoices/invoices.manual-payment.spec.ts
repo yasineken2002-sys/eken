@@ -53,7 +53,12 @@ function makeService(
   const findFirstOrThrow = jest.fn().mockResolvedValue({ ...invoiceRow, status: 'PAID' })
   // Allokeringsmodellen (C4/C5). Tom lista = inga tidigare betalningar, så
   // restskulden är hela totalen och en full betalning reglerar fakturan.
-  const invoicePaymentCreate = jest.fn().mockResolvedValue({})
+  //
+  // #290 — raden returnerar ett RIKTIGT id. En attrapp som svarar `{}` ger
+  // allokeringen id === undefined, och då blir verifikatets nyckel densamma
+  // ("...:undefined") oavsett hur många betalningar som registreras — attrappen
+  // skulle utplåna just den distinktion nyckeln bygger på.
+  const invoicePaymentCreate = jest.fn().mockResolvedValue({ id: 'alloc-1' })
 
   // Transaktionsklienten — egna mockar, se docblocken överst. Attrappen kör bara
   // callbacken; att rollbacken FAKTISKT sker bevisas mot riktig Postgres.
@@ -144,6 +149,11 @@ describe('InvoicesService.markAsPaidManually — bokför inbetalningen', () => {
     const args = createJournalEntryForInvoiceManualPayment.mock.calls[0] as unknown[]
     expect(args[1]).toBe(1250)
     expect(args[3]).toBe('BANK')
+    // #290 — verifikatet nycklas på den allokering som just skapades, inte på
+    // fakturan. Även en full betalning går den vägen: en faktura kan ha fått en
+    // delbetalning tidigare, och då är detta den andra allokeringen.
+    expect(args[6]).toBe('alloc-1')
+    expect(args[6]).not.toBe('inv-1')
     // append-only PAYMENT_RECEIVED-händelse
     expect(eventsService.record).toHaveBeenCalledWith(
       'inv-1',
@@ -189,9 +199,11 @@ describe('InvoicesService.markAsPaidManually — bokför inbetalningen', () => {
     // TRANSAKTIONSKLIENTEN, inte bredvid den.
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1)
     expect(utanförTx.queryRaw).not.toHaveBeenCalled()
-    // Bokföringen får transaktionsklienten som sista argument.
+    // Bokföringen får transaktionsklienten som sista argument. Allokerings-id:t
+    // (#290) sköts in FÖRE den — tx ligger kvar sist, som avi-vägen.
     const bokförArgs = createJournalEntryForInvoiceManualPayment.mock.calls[0] as unknown[]
     expect(bokförArgs[bokförArgs.length - 1]).toBe(tx)
+    expect(bokförArgs).toHaveLength(8)
   })
 
   it('INGEN skrivning går utanför transaktionen (#288 — fångar en glömd this.prisma)', async () => {

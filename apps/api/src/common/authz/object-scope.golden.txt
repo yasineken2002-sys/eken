@@ -58,7 +58,7 @@ Unit                    updateMany  units/unit-status.sync.ts                   
 Unit                    delete      units/units.service.ts                                  A kedje-query
 Unit                    update      units/units.service.ts                                  A kedje-query
 
-## Form 2 — create (34 rader)
+## Form 2 — create (35 rader)
 
 AiMessage               create      ai/ai-assistant.controller.ts                       ×3  A kedje-query + C scopat anrop
 AiMessage               create      ai/ai-assistant.service.ts                          ×7  A kedje-query + C scopat anrop
@@ -76,6 +76,7 @@ InvoiceLine             create      consumption/consumption.service.ts          
 InvoiceLine             create      deposits/deposits.service.ts                            P förälder org-bunden  ← nästlad via Invoice.lines
 InvoiceLine             createMany  invoices/invoices.service.ts                        ×2  A kedje-query + P förälder org-bunden  ← nästlad via Invoice.lines
 InvoiceLine             create      notifications/payment-reminder.service.ts               INGEN UPPTÄCKT
+InvoicePayment          create      deposits/deposits.service.ts                            A kedje-query
 InvoicePayment          create      invoices/invoices.service.ts                            A kedje-query
 InvoicePayment          create      reconciliation/reconciliation.service.ts                A kedje-query
 JournalEntryLine        create      accounting/accounting.service.ts                        P förälder org-bunden  ← nästlad via JournalEntry.lines

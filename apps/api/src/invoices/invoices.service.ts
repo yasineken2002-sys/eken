@@ -702,7 +702,7 @@ export class InvoicesService {
 
         // 2. Allokering + bokföring. Ingen kompensation längre: kastar något
         //    härifrån rullar transaktionen tillbaka claimen med.
-        await tx.invoicePayment.create({
+        const allocation = await tx.invoicePayment.create({
           data: {
             invoiceId: id,
             amount: settlement,
@@ -711,6 +711,12 @@ export class InvoicesService {
           },
         })
 
+        // #290 (KRITISK): verifikatets idempotens nycklas på ALLOKERINGEN, inte
+        // på fakturan — annars bokförs en ANDRA delbetalning aldrig
+        // (sourceId-kollision → createNumberedEntry returnerar den förstas
+        // verifikat, callern ser ett icke-null-svar och fakturan flippas till
+        // PAID) och 1510 understiger Σ allokeringar. Samma nyckelform som
+        // avi-vägen. Se createJournalEntryForInvoiceManualPayment.
         const entry = await this.accountingService.createJournalEntryForInvoiceManualPayment(
           { id: invoice.id, invoiceNumber: invoice.invoiceNumber },
           settlement.toNumber(),
@@ -718,6 +724,7 @@ export class InvoicesService {
           paymentMethod,
           organizationId,
           actorId,
+          allocation.id,
           tx,
         )
         // null = saknat likvidkonto/1510 → bokföringsfel, inte ett giltigt no-op.
