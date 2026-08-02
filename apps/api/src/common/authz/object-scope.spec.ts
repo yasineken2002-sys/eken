@@ -20,6 +20,8 @@ import {
   MODEL_SCOPES,
   collectWriteSites,
   modelsWithoutOrgId,
+  nestedWritesInSource,
+  relationFields,
   renderInventory,
   toInventory,
   staleExceptions,
@@ -31,7 +33,7 @@ const SCHEMA = join(__dirname, '..', '..', '..', 'prisma', 'schema.prisma')
 const GOLDEN_PATH = join(__dirname, 'object-scope.golden.txt')
 
 describe('Objektnivå-scopning (#114-uppföljning)', () => {
-  const sites = collectWriteSites(SRC_DIR)
+  const sites = collectWriteSites(SRC_DIR, SCHEMA)
   const rows = toInventory(sites)
 
   it('parsern ser fortfarande kodbasen (rimlighetsgolv)', () => {
@@ -43,8 +45,14 @@ describe('Objektnivå-scopning (#114-uppföljning)', () => {
       ([, v]) => v.scope === 'parent-scoped',
     )
     expect(klassificerade.length).toBeGreaterThanOrEqual(15)
-    expect(sites.length).toBeGreaterThanOrEqual(50)
+    expect(sites.length).toBeGreaterThanOrEqual(55)
     expect(sites.filter((s) => s.form === 1).length).toBeGreaterThanOrEqual(10)
+    // EGET GOLV FÖR DEN NÄSTLADE YTAN. Utan det kan hela den nästlade insamlingen
+    // gå sönder — trasig relationskarta, ändrad schemasökväg, felaktig
+    // klammermatchning — och grinden faller tillbaka till exakt den blindhet
+    // #273 dokumenterade, med ett inventarium som fortfarande ser fullt ut.
+    // Ett totalgolv hade inte fångat det: 60 direkta räcker för att passera.
+    expect(sites.filter((s) => s.via).length).toBeGreaterThanOrEqual(5)
   })
 
   it('alla fyra skyddsformerna detekteras fortfarande', () => {
@@ -60,7 +68,10 @@ describe('Objektnivå-scopning (#114-uppföljning)', () => {
       B: funna.has('B'),
       C: funna.has('C'),
       D: funna.has('D'),
-    }).toEqual({ A: true, B: true, C: true, D: true })
+      // P bär hela den nästlade ytan: slutar den matcha faller sex av sju
+      // nästlade rader till INGEN, och grinden börjar larma på korrekt kod.
+      P: funna.has('P'),
+    }).toEqual({ A: true, B: true, C: true, D: true, P: true })
   })
 
   it('inget undantag har blivit inaktuellt', () => {
@@ -91,6 +102,159 @@ describe('Objektnivå-scopning (#114-uppföljning)', () => {
     expect(spöken).toEqual([])
   })
 
+  describe('nästlade skrivningar', () => {
+    const rel = relationFields(SCHEMA)
+
+    it('samma fältnamn ger OLIKA modell beroende på förälder', () => {
+      // Kärnan i varför kartan måste komma ur schemat. `lines` är tre olika
+      // modeller under tre olika föräldrar. En parser som gissade ur fältnamnet
+      // hade satt fel modell på raden — vilket är både ett falsklarm (rad mot en
+      // modell som inte skrivs) och en miss (den som skrivs syns inte).
+      const träff = (förälder: string) => rel.get(förälder)?.get('lines')?.model
+      expect({
+        Invoice: träff('Invoice'),
+        JournalEntry: träff('JournalEntry'),
+        RentNotice: träff('RentNotice'),
+      }).toEqual({
+        Invoice: 'InvoiceLine',
+        JournalEntry: 'JournalEntryLine',
+        RentNotice: 'RentNoticeLine',
+      })
+    })
+
+    it('hittar skrivningen och namnger rätt modell', () => {
+      const funna = nestedWritesInSource(
+        `
+  async skapa(organizationId: string) {
+    await this.prisma.journalEntry.create({
+      data: { organizationId, lines: { create: rader } },
+    })
+  }
+`,
+        rel,
+      )
+      expect(funna.map((s) => `${s.model}.${s.op} ${s.protection} via ${s.via}`)).toEqual([
+        'JournalEntryLine.create P via JournalEntry.lines',
+      ])
+    })
+
+    it('nyttolast byggd i en variabel räknas också', () => {
+      // invoices.service.ts:421 har den här formen. Missas den ser inventariet
+      // komplett ut medan den enda nästlade skrivningen under en update saknas.
+      const funna = nestedWritesInSource(
+        `
+  async uppdatera(id: string, organizationId: string) {
+    const data: Prisma.InvoiceUpdateInput = {}
+    data.lines = { createMany: { data: rader } }
+    await this.prisma.invoice.update({ where: { id, organizationId }, data })
+  }
+`,
+        rel,
+      )
+      expect(funna.map((s) => `${s.model}.${s.op}`)).toEqual(['InvoiceLine.createMany'])
+    })
+
+    it('FILTER och SKALÄRER ger inga rader', () => {
+      // Den andra riktningen, och den som avgör om grinden är värd något: en
+      // vakt som larmar på `where: { lines: { some } }` eller på `{ set: … }`
+      // mot ett skalärfält lär man sig att ignorera.
+      const funna = nestedWritesInSource(
+        `
+  async läs(organizationId: string) {
+    await this.prisma.invoice.update({
+      where: { id, organizationId, lines: { some: { total: { gt: 0 } } } },
+      data: { reference: { set: 'X' }, notes: 'oförändrad' },
+      include: { lines: true },
+    })
+  }
+`,
+        rel,
+      )
+      expect(funna).toEqual([])
+    })
+
+    it('set/disconnect räknas bara mot LISTRELATIONER', () => {
+      // Mot en enkelrelation sätter de FK:n på raden man redan skriver — alltså
+      // föräldern. En rad mot barnet hade då varit direkt felaktig.
+      const enkel = nestedWritesInSource(
+        `
+  async koppla() {
+    await this.prisma.invoice.update({ where: { id }, data: { lease: { disconnect: true } } })
+  }
+`,
+        rel,
+      )
+      expect(enkel).toEqual([])
+
+      const lista = nestedWritesInSource(
+        `
+  async koppla() {
+    await this.prisma.invoice.update({ where: { id }, data: { lines: { set: [] } } })
+  }
+`,
+        rel,
+      )
+      expect(lista.map((s) => `${s.model}.${s.op}`)).toEqual(['InvoiceLine.set'])
+    })
+
+    it('oskyddad nästlad skrivning saknar skyddsform', () => {
+      // #273:s hypotetiska fall, nu ett verkligt testfall: förälderns where bär
+      // bara ett id från klienten, och ingen av formerna A–D syns i funktionen.
+      const funna = nestedWritesInSource(
+        `
+  async ersätt(dto: ErsättDto) {
+    await this.prisma.invoice.update({
+      where: { id: dto.invoiceId },
+      data: { lines: { deleteMany: {}, create: dto.lines } },
+    })
+  }
+`,
+        rel,
+      )
+      expect(funna.map((s) => `${s.model}.${s.op} form ${s.form} ${s.protection}`)).toEqual([
+        'InvoiceLine.deleteMany form 1 INGEN',
+        'InvoiceLine.create form 2 INGEN',
+      ])
+      // …och form 1-raden fälls av den strukturella kontrollen.
+      const öppna = unscopedForm1(funna.map((s) => ({ ...s, file: 'fixtur.ts' })))
+      expect(öppna.map((s) => `${s.model}.${s.op}`)).toEqual(['InvoiceLine.deleteMany'])
+    })
+
+    it('ordet organizationId i en STRÄNG eller KOMMENTAR är inget skydd', () => {
+      // Säkerhetsgranskningens HIGH på den här PR:en. Första versionen avgjorde
+      // skyddsform P med en textsökning över spannet, och då räckte en decoy för
+      // att en helt oskyddad skrivning skulle märkas "P förälder org-bunden".
+      //
+      // Det är inte ett falsklarm utan dess MOTSATS: raden såg granskad ut i
+      // golden-filen, och den strukturella kontrollen slutade fälla den. Just
+      // den kommentaren — "TODO: verifiera organizationId" — är dessutom den en
+      // utvecklare skriver när scopningen SAKNAS.
+      const medDecoy = (fält: string) => `
+  async ersätt(dto: ErsättDto) {
+    await this.prisma.invoice.update({
+      where: { id: dto.invoiceId }, ${fält}
+      data: { lines: { deleteMany: {}, create: dto.lines } },
+    })
+  }
+`
+      for (const decoy of [
+        `// TODO: verifiera organizationId när multi-tenant landar`,
+        `notes: 'ändrat av admin, organizationId-migrering pågår',`,
+      ]) {
+        const funna = nestedWritesInSource(medDecoy(decoy), rel)
+        expect(funna.map((s) => s.protection)).toEqual(['INGEN', 'INGEN'])
+        const öppna = unscopedForm1(funna.map((s) => ({ ...s, file: 'fixtur.ts' })))
+        expect(öppna.map((s) => s.op)).toEqual(['deleteMany'])
+      }
+    })
+
+    it('verktygets egna filer inventeras inte', () => {
+      // Utan uteslutningen inventerar dokumentationen sig själv — det hände i
+      // #273, där ett exempel i en kommentar blev en rad i form 2.
+      expect(sites.filter((s) => s.file.includes('common/authz/object-scope'))).toEqual([])
+    })
+  })
+
   describe('den strukturella kontrollen', () => {
     it('ingen update/delete på id saknar scopning helt', () => {
       // Avgörbart utan dataflödesanalys: syns INGEN av de fyra formerna någonstans
@@ -104,6 +268,15 @@ describe('Objektnivå-scopning (#114-uppföljning)', () => {
                 .map((s) => {
                   const scope = MODEL_SCOPES[s.model]
                   const parent = scope?.scope === 'parent-scoped' ? scope.parent : '(okänd)'
+                  if (s.via) {
+                    return (
+                      `  ${s.file}:${s.line}\n` +
+                      `    ${s.model}.${s.op}() — NÄSTLAD skrivning via ${s.via}.\n` +
+                      `    Den träffar de rader föräldern pekar ut, men förälderns anrop\n` +
+                      `    binder ingen organisation (varken where eller data nämner\n` +
+                      `    organizationId), och ingen av formerna A–D syns i funktionen.\n`
+                    )
+                  }
                   return (
                     `  ${s.file}:${s.line}\n` +
                     `    ${s.model}.${s.op}() — ${s.model} saknar eget organizationId och\n` +

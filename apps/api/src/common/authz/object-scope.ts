@@ -24,49 +24,53 @@
  * En grind som kräver form A hade larmat falskt på B, C och D — alltså på
  * majoriteten av korrekt kod. En grind man lär sig ignorera är värre än ingen.
  *
- * ── Vad grinden inte SER — en annan sorts lucka ──────────────────────────────
+ * För NÄSTLADE skrivningar (se nedan) finns en femte form som DÄREMOT är
+ * avgörbar på plats:
  *
- * Formerna A–D ovan handlar om att inte kunna BEVISA skydd på ett skrivställe
- * grinden ser. Det som följer är något annat, och värre: skrivställen den inte
- * ser alls.
+ *   P  förälder org-bunden   invoice.update({ where: { id, organizationId }, … })
  *
- * Sökmönstret byggs av Prisma-accessorerna för de förälder-scopade modellerna —
- * punkt, accessor, punkt, operation: `invoiceLine` + `create`. (Exemplen här
- * skrivs medvetet utan den inledande punkten: med den hade parsern inventerat
- * sin egen dokumentation.) En NÄSTLAD skrivning går aldrig via barnets accessor:
+ * Den nästlade skrivningen kan inte scopas för egen del — den träffar de rader
+ * föräldern pekar ut. Frågan är därför alltid "är föräldern bunden till en org?",
+ * och svaret står i förälderns eget `where` eller `data`. A–D används fortfarande
+ * som reserv när P inte syns.
+ *
+ * ── Två skrivformer: direkt och nästlad ─────────────────────────────────────
+ *
+ * DIREKT skrivning nämner barnets egen accessor: `invoiceLine` + `create`. Den
+ * är trivial att hitta.
+ *
+ * NÄSTLAD skrivning gör det inte:
  *
  *     tx.invoice.create({ data: { …, lines: { createMany: … } } })
  *
- * Här skrivs InvoiceLine, men i källan står bara `.invoice.` — och Invoice bär
- * eget organizationId, så modellen är inte ens med i accessor-listan. Hela
- * klassen nästlade skrivningar (`create`/`createMany`/`update`/`updateMany`/
- * `upsert`/`delete`/`deleteMany`/`connectOrCreate` inuti ett `data`-objekt) är
- * därmed osynlig för BÅDA mekanismerna: inventariet får ingen rad, och den
- * strukturella kontrollen itererar bara över det inventariet samlat in.
+ * Här skrivs InvoiceLine, men i källan står bara `.invoice.`. Ett mönster byggt
+ * på accessorer ser ingenting — och Invoice bär eget organizationId, så modellen
+ * är inte ens med i accessor-listan. Det var #273:s HIGH-fynd: sju sådana
+ * skrivningar fanns i kodbasen och stod i ingen rad i inventariet, samtidigt som
+ * InvoiceLine och JournalEntryLine stod klassificerade som förälder-scopade och
+ * därmed fick ytan att se inventerad ut.
  *
- * Konsekvensen ska sägas rakt: för den skrivformen gäller INTE löftet att ingen
- * skrivväg kan tillkomma obemärkt. Ett framtida
- * `invoice.update({ where: { id: klientId }, data: { lines: { deleteMany, create } } })`
- * utan organizationId i `where` hade passerat båda mekanismerna tyst.
+ * Båda formerna inventeras nu. Den nästlade kräver tre saker som är värda att
+ * känna till, för de är också dess gränser:
  *
- * KÄNDA NÄSTLADE SKRIVSTÄLLEN — manuellt granskade 2026-08-02, ej bevakade:
+ *   MODELLEN HÄRLEDS UR SCHEMAT. `lines` är InvoiceLine under Invoice och
+ *   JournalEntryLine under JournalEntry — samma fältnamn, olika modell. Att
+ *   gissa ur namnet hade gett både falsklarm och missar. Kartan byggs ur
+ *   schema.prisma, samma sanning som Prisma-klienten genereras ur.
  *
- *     accounting/accounting.service.ts:378       JournalEntryLine
- *     ai/tools/tool-executor.service.ts:3155     JournalEntryLine
- *     ai/tools/tool-executor.service.ts:3263     JournalEntryLine
- *     invoices/invoices.service.ts:331           InvoiceLine
- *     invoices/invoices.service.ts:421           InvoiceLine
- *     consumption/consumption.service.ts:655     InvoiceLine
- *     deposits/deposits.service.ts:150           InvoiceLine
+ *   BARA RELATIONSFÄLT FÖLJS. Det är spärren mot falsklarm: `where: { lines:
+ *   { some: … } }` är ett filter, `data: { name: { set: … } }` är en skalär.
+ *   Ingen av dem är en relationsskrivning, och ingen av dem kan bli en rad.
  *
- * Alla sju är verifierat org-scopade vid granskningstillfället: de sex create-
- * fallen sätter organizationId från en JWT-härledd parameter, och invoices:421
- * skriver på ett id som org-verifierats tidigare i samma funktion. Listan är en
- * ögonblicksbild, inte en grind — den ruttnar, och radnumren först. Den står här
- * för att en läsare annars drar slutsatsen att InvoiceLine och JournalEntryLine
- * är inventerade (de står klassificerade som förälder-scopade), när fyra av sex
- * InvoiceLine-vägar och samtliga JournalEntryLine-vägar saknas. Att flytta in
- * formen i inventariet är egen uppföljning.
+ *   NYTTOLASTEN KAN LIGGA I EN VARIABEL. `updateData.lines = { createMany: … }`
+ *   följt av `data: updateData` är samma skrivning, och den enda av de sju som
+ *   sitter under en `update`. En parser som bara läste anropets objektlitteral
+ *   hade missat just det farligaste fallet och ändå sett komplett ut.
+ *
+ * Kvar utanför: nyttolast som byggs i en ANNAN funktion eller modul än anropet,
+ * relationsfält som slås upp dynamiskt (`data: { [fält]: … }`), och rå SQL.
+ * Ingen av dem förekommer i kodbasen i dag — men de är inte bevakade, och det är
+ * skillnad på "finns inte" och "fångas".
  *
  * ── Vad som DÄREMOT går ──────────────────────────────────────────────────────
  *
@@ -206,7 +210,7 @@ function riskFormOf(op: string): 1 | 2 {
   return op.startsWith('create') ? 2 : 1
 }
 
-export type ProtectionForm = 'A' | 'B' | 'C' | 'D' | 'INGEN'
+export type ProtectionForm = 'A' | 'B' | 'C' | 'D' | 'P' | 'INGEN'
 
 export interface WriteSite {
   file: string
@@ -215,6 +219,11 @@ export interface WriteSite {
   line: number
   form: 1 | 2
   protection: ProtectionForm
+  /**
+   * Satt bara för NÄSTLADE skrivningar: `Invoice.lines`, alltså förälder-modellen
+   * och relationsfältet skrivningen gick igenom. Direkta anrop saknar den.
+   */
+  via?: string
 }
 
 /**
@@ -229,7 +238,48 @@ export interface WriteSite {
  * mönstren syns någonstans i funktionen — vilket för form 1 är den strukturella
  * kontrollens larm, och för form 2 en rad någon bör titta på.
  */
-function detectProtection(fnBody: string): ProtectionForm {
+/**
+ * Blankar ut strängar och kommentarer, men behåller längden.
+ *
+ * Mönstren nedan letar efter KOD. En sträng eller kommentar som råkar innehålla
+ * rätt ord är inte ett skydd — den är text. Utan saneringen räcker
+ * `notes: 'admin, organizationId-migrering pågår'` för att form C ska matcha och
+ * skrivningen se scopad ut. Samma rotorsak som P-formen hade; se
+ * `bindsOrganization`.
+ */
+function stripLiterals(src: string): string {
+  let ut = ''
+  let i = 0
+  while (i < src.length) {
+    const c = src[i]!
+    if (c === "'" || c === '"' || c === '`') {
+      const slut = skipString(src, i)
+      ut += ' '.repeat(slut - i)
+      i = slut
+      continue
+    }
+    if (c === '/' && src[i + 1] === '/') {
+      const nl = src.indexOf('\n', i)
+      const slut = nl === -1 ? src.length : nl
+      ut += ' '.repeat(slut - i)
+      i = slut
+      continue
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      const e = src.indexOf('*/', i)
+      const slut = e === -1 ? src.length : e + 2
+      ut += ' '.repeat(slut - i)
+      i = slut
+      continue
+    }
+    ut += c
+    i++
+  }
+  return ut
+}
+
+function detectProtection(rawBody: string): ProtectionForm {
+  const fnBody = stripLiterals(rawBody)
   // A — scopningen står i själva queryn, via en relation som bär organizationId.
   if (/\bfind(First|Unique|Many)\b[\s\S]*?\{[^}]*\b\w+:\s*\{[^}]*organizationId/.test(fnBody)) {
     return 'A'
@@ -258,7 +308,7 @@ function detectProtection(fnBody: string): ProtectionForm {
  * Därför taket nedan: hittas ingen signatur används ett begränsat fönster i
  * stället för hela filen.
  */
-function enclosingFunction(lines: string[], index: number): string {
+function enclosingFunctionSpan(lines: string[], index: number): [number, number] {
   const SIGNATURE =
     /^ {2}(?:(?:private|public|protected|static|readonly)\s+)*(?:async\s+)?[a-zA-Z_]\w*\s*[(<]/
   let start = -1
@@ -277,7 +327,31 @@ function enclosingFunction(lines: string[], index: number): string {
       break
     }
   }
+  return [start, end]
+}
+
+function enclosingFunction(lines: string[], index: number): string {
+  const [start, end] = enclosingFunctionSpan(lines, index)
   return lines.slice(start, end).join('\n')
+}
+
+/**
+ * Verktygets egna filer. Uteslutna, och det är INTE en bekvämlighet.
+ *
+ * Filen måste kunna visa hur ett skrivanrop ser ut för att förklara vad den
+ * letar efter. Utan uteslutningen inventerar dokumentationen sig själv: i #273
+ * gick form 2 från 29 till 30 rader av ett exempel i en kommentar, och raden såg
+ * ut som en riktig skrivning i `common/authz/object-scope.ts`.
+ *
+ * Uteslutningen är säker just här och ingen annanstans: de här filerna innehåller
+ * per konstruktion ingen Prisma-klient och kan därför inte dölja en verklig
+ * skrivning. Listan får aldrig växa till kataloger eller mönster — då blir den
+ * ett gömställe i stället för en avgränsning.
+ */
+const EGNA_FILER = ['object-scope.ts', 'object-scope.spec.ts', 'object-scope.golden.txt']
+
+function ärEgenFil(path: string): boolean {
+  return EGNA_FILER.some((f) => path.endsWith(`/common/authz/${f}`))
 }
 
 function walkTs(dir: string): string[] {
@@ -285,13 +359,15 @@ function walkTs(dir: string): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, entry.name)
     if (entry.isDirectory()) out.push(...walkTs(p))
-    else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts')) out.push(p)
+    else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts') && !ärEgenFil(p)) {
+      out.push(p)
+    }
   }
   return out
 }
 
-/** Alla skrivningar mot förälder-scopade modeller, med detekterad skyddsform. */
-export function collectWriteSites(srcDir: string): WriteSite[] {
+/** Direkta anrop: `prisma.invoiceLine.create(…)`. Barnets egen accessor står i koden. */
+function collectDirectWriteSites(srcDir: string): WriteSite[] {
   const parentScoped = Object.entries(MODEL_SCOPES)
     .filter(([, v]) => v.scope === 'parent-scoped')
     .map(([model]) => model)
@@ -324,6 +400,549 @@ export function collectWriteSites(srcDir: string): WriteSite[] {
   return sites
 }
 
+// ── Nästlade skrivningar ─────────────────────────────────────────────────────
+
+/**
+ * NÄSTLAD SKRIVNING: barnet skrivs via förälderns `data`-objekt.
+ *
+ *     tx.invoice.create({ data: { …, lines: { createMany: { data: rader } } } })
+ *
+ * Skrivningen träffar InvoiceLine, men barnets accessor står ingenstans i koden.
+ * Ett mönster byggt på accessorer kan därför inte se den — det var #273:s HIGH.
+ *
+ * MODELLEN HÄRLEDS UR SCHEMAT, ALDRIG UR FÄLTNAMNET. `lines` betyder InvoiceLine
+ * under Invoice och JournalEntryLine under JournalEntry, och `items` betyder
+ * olika saker på fyra ställen. Att gissa ur namnet hade gett både falsklarm (fel
+ * modell → rad mot en modell som inte skrivs) och missar (fält vars namn inte
+ * liknar sin modell). Kartan nedan kommer från schema.prisma, som är samma
+ * sanning Prisma-klienten själv genereras ur.
+ */
+export interface RelationField {
+  /** Modellen fältet pekar på. */
+  model: string
+  /** Listrelation (`lines InvoiceLine[]`) eller enkelrelation (`lease Lease`). */
+  isList: boolean
+}
+
+/** modell → relationsfält → vad fältet pekar på. Grunden för nästlad detektion. */
+export function relationFields(schemaPath: string): Map<string, Map<string, RelationField>> {
+  const src = readFileSync(schemaPath, 'utf8')
+  const blocks = [...src.matchAll(/^model (\w+) \{([\s\S]*?)^\}/gm)]
+  const modelNames = new Set(blocks.map((b) => b[1]!))
+  const out = new Map<string, Map<string, RelationField>>()
+  for (const b of blocks) {
+    const fields = new Map<string, RelationField>()
+    for (const rad of b[2]!.split('\n')) {
+      const trimmad = rad.trim()
+      if (!trimmad || trimmad.startsWith('//') || trimmad.startsWith('@@')) continue
+      const m = /^(\w+)\s+(\w+)(\[\])?/.exec(trimmad)
+      if (!m) continue
+      // Bara fält vars TYP är en modell är relationer. Skalärer och enum:ar
+      // faller bort här — det är därför `data: { name: { set: … } }` aldrig kan
+      // förväxlas med en relationsskrivning.
+      if (!modelNames.has(m[2]!)) continue
+      fields.set(m[1]!, { model: m[2]!, isList: m[3] === '[]' })
+    }
+    out.set(b[1]!, fields)
+  }
+  return out
+}
+
+/**
+ * Nästlade operationer som SKRIVER barnraden.
+ *
+ * `connect`/`set`/`disconnect` skriver också — men bara mot LISTRELATIONER, där
+ * de flyttar barnets främmande nyckel. Mot en enkelrelation sätter de i stället
+ * FK:n på raden man redan skriver, alltså föräldern, och då vore en rad mot
+ * barnet direkt felaktig. Skillnaden avgörs av `isList` ur schemat.
+ */
+const NESTED_OPS = [
+  'create',
+  'createMany',
+  'update',
+  'updateMany',
+  'upsert',
+  'delete',
+  'deleteMany',
+  'connectOrCreate',
+] as const
+const NESTED_LIST_ONLY_OPS = ['set', 'disconnect', 'connect'] as const
+
+/** Föräldraoperationer som kan bära ett nästlat skrivblock. */
+const PARENT_OPS = ['create', 'update', 'upsert', 'updateMany'] as const
+
+function skipString(src: string, start: number): number {
+  const quote = src[start]!
+  let i = start + 1
+  while (i < src.length) {
+    const c = src[i]!
+    if (c === '\\') {
+      i += 2
+      continue
+    }
+    if (c === quote) return i + 1
+    if (quote === '`' && c === '$' && src[i + 1] === '{') {
+      const slut = matchingBracket(src, i + 1)
+      i = slut === -1 ? src.length : slut
+      continue
+    }
+    i++
+  }
+  return src.length
+}
+
+/**
+ * Index EFTER klammern som stänger den som står på `open`. -1 vid obalans.
+ *
+ * Strängar och kommentarer hoppas över — en `{` i en textsträng får inte räknas,
+ * annars glider fönstret och parsern läser fel objekt.
+ */
+function matchingBracket(src: string, open: number): number {
+  const par: Record<string, string> = { '{': '}', '[': ']', '(': ')' }
+  const stack: string[] = [par[src[open]!]!]
+  let i = open + 1
+  while (i < src.length && stack.length > 0) {
+    const c = src[i]!
+    if (c === "'" || c === '"' || c === '`') {
+      i = skipString(src, i)
+      continue
+    }
+    if (c === '/' && src[i + 1] === '/') {
+      const nl = src.indexOf('\n', i)
+      i = nl === -1 ? src.length : nl
+      continue
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      const slut = src.indexOf('*/', i)
+      i = slut === -1 ? src.length : slut + 2
+      continue
+    }
+    if (c === '{' || c === '[' || c === '(') stack.push(par[c]!)
+    else if (c === '}' || c === ']' || c === ')') {
+      if (stack[stack.length - 1] !== c) return -1
+      stack.pop()
+    }
+    i++
+  }
+  return stack.length === 0 ? i : -1
+}
+
+interface ObjectKey {
+  key: string
+  /** Index för nyckelns första tecken — radnumret rapporteras härifrån. */
+  at: number
+  /** Index för värdets första icke-blanka tecken. */
+  value: number
+  /** `{ data }` i stället för `{ data: … }` — värdet ÄR nyckelns namn. */
+  shorthand: boolean
+}
+
+/** Slutet på ett värde: index efter kommat, eller objektets slut. */
+function endOfValue(src: string, start: number, end: number): number {
+  let i = start
+  while (i < end) {
+    const c = src[i]!
+    if (c === "'" || c === '"' || c === '`') {
+      i = skipString(src, i)
+      continue
+    }
+    if (c === '/' && src[i + 1] === '/') {
+      const nl = src.indexOf('\n', i)
+      i = nl === -1 ? end : nl
+      continue
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      const slut = src.indexOf('*/', i)
+      i = slut === -1 ? end : slut + 2
+      continue
+    }
+    // Klamrar hoppas över i sin helhet — ett komma inuti dem avslutar inte
+    // värdet, och en pilfunktion i en map() får inte klippa objektet mitt itu.
+    if (c === '{' || c === '[' || c === '(') {
+      const slut = matchingBracket(src, i)
+      i = slut === -1 ? end : slut
+      continue
+    }
+    if (c === ',') return i + 1
+    if (c === '}' || c === ']' || c === ')') return i
+    i++
+  }
+  return end
+}
+
+/**
+ * Nycklarna på ÖVERSTA nivån i objektet vars `{` står på `open`.
+ *
+ * Värdet hoppas över i sin helhet efter varje nyckel. Utan det läser skannern
+ * `data: updateData` som TVÅ nycklar — `data`, och sedan identifieraren
+ * `updateData` som om den vore en kortformsnyckel.
+ */
+function topLevelKeys(src: string, open: number): ObjectKey[] {
+  const end = matchingBracket(src, open)
+  if (end === -1) return []
+  const out: ObjectKey[] = []
+  let i = open + 1
+  while (i < end - 1) {
+    const c = src[i]!
+    if (/\s/.test(c) || c === ',' || c === ';') {
+      i++
+      continue
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      i = skipString(src, i)
+      continue
+    }
+    if (c === '/' && src[i + 1] === '/') {
+      const nl = src.indexOf('\n', i)
+      i = nl === -1 ? end : nl
+      continue
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      const slut = src.indexOf('*/', i)
+      i = slut === -1 ? end : slut + 2
+      continue
+    }
+    const rest = src.slice(i, i + 160)
+    const medVärde = /^(\w+)\s*:/.exec(rest)
+    if (medVärde) {
+      let v = i + medVärde[0]!.length
+      while (v < end && /\s/.test(src[v]!)) v++
+      out.push({ key: medVärde[1]!, at: i, value: v, shorthand: false })
+      i = endOfValue(src, v, end)
+      continue
+    }
+    // Kortform: `{ where, data }`. Värdet är variabeln med samma namn.
+    const kortform = /^(\w+)\s*(?=[,}])/.exec(rest)
+    if (kortform) {
+      out.push({ key: kortform[1]!, at: i, value: i, shorthand: true })
+      i += kortform[1]!.length
+      continue
+    }
+    i = endOfValue(src, i, end)
+  }
+  return out
+}
+
+/** Radnummer (1-baserat) för ett index. */
+function lineAt(src: string, index: number): number {
+  let rad = 1
+  for (let i = 0; i < index && i < src.length; i++) if (src[i] === '\n') rad++
+  return rad
+}
+
+interface NestedHit {
+  model: string
+  op: string
+  index: number
+  via: string
+}
+
+/**
+ * Går igenom ett `data`-objekt för `model` och plockar ut nästlade skrivningar.
+ *
+ * Bara relationsfält följs. Det är den avgörande spärren mot falsklarm: ett
+ * `where: { lines: { some: … } }` är ett FILTER, inte en skrivning, och når hit
+ * bara om `some` råkar heta som en skrivoperation — vilket den inte gör. Och
+ * eftersom vi aldrig stiger ned i något annat än relationsfält och deras
+ * operationsblock, kan select/include/orderBy aldrig producera en rad.
+ */
+function scanPayload(
+  src: string,
+  objOpen: number,
+  model: string,
+  rel: Map<string, Map<string, RelationField>>,
+  hits: NestedHit[],
+  depth: number,
+): void {
+  if (depth > 8) return
+  const fält = rel.get(model)
+  if (!fält) return
+  for (const nyckel of topLevelKeys(src, objOpen)) {
+    const relation = fält.get(nyckel.key)
+    if (!relation) continue
+    if (src[nyckel.value] !== '{') continue
+    scanRelationBlock(src, nyckel.value, model, nyckel.key, relation, rel, hits, depth, nyckel.at)
+  }
+}
+
+/**
+ * Blocket som står EFTER ett relationsfält: `{ create: … }`, `{ deleteMany: … }`.
+ *
+ * Radnumret ankras på RELATIONSFÄLTET, inte på operationen. De ligger ofta på
+ * skilda rader (`lines: {` … `createMany: {`), och fältet är det en granskare
+ * letar efter — det är där man ser vilken förälder skrivningen går igenom.
+ */
+function scanRelationBlock(
+  src: string,
+  blockOpen: number,
+  parentModel: string,
+  field: string,
+  relation: RelationField,
+  rel: Map<string, Map<string, RelationField>>,
+  hits: NestedHit[],
+  depth: number,
+  anchor: number,
+): void {
+  for (const op of topLevelKeys(src, blockOpen)) {
+    const ärSkrivning =
+      (NESTED_OPS as readonly string[]).includes(op.key) ||
+      (relation.isList && (NESTED_LIST_ONLY_OPS as readonly string[]).includes(op.key))
+    if (!ärSkrivning) continue
+    hits.push({
+      model: relation.model,
+      op: op.key,
+      index: anchor,
+      via: `${parentModel}.${field}`,
+    })
+    recurseOpPayload(src, op.value, relation.model, rel, hits, depth + 1)
+  }
+}
+
+/** Nyttolasten för en nästlad operation kan i sin tur bära nästlade skrivningar. */
+function recurseOpPayload(
+  src: string,
+  value: number,
+  model: string,
+  rel: Map<string, Map<string, RelationField>>,
+  hits: NestedHit[],
+  depth: number,
+): void {
+  if (depth > 8) return
+  if (src[value] === '[') {
+    // `create: [ { … }, { … } ]`
+    const end = matchingBracket(src, value)
+    if (end === -1) return
+    let i = value + 1
+    while (i < end - 1) {
+      const c = src[i]!
+      if (c === '{') {
+        scanPayload(src, i, model, rel, hits, depth)
+        const slut = matchingBracket(src, i)
+        i = slut === -1 ? end : slut
+        continue
+      }
+      i++
+    }
+    return
+  }
+  if (src[value] !== '{') return
+  // `update: { where: …, data: { … } }` — nyttolasten ligger under data/create/
+  // update. Saknas de är objektet självt nyttolasten (`create: { … }`).
+  const nycklar = topLevelKeys(src, value)
+  const inre = nycklar.filter((k) => k.key === 'data' || k.key === 'create' || k.key === 'update')
+  if (inre.length === 0) {
+    scanPayload(src, value, model, rel, hits, depth)
+    return
+  }
+  for (const k of inre) {
+    if (src[k.value] === '{') scanPayload(src, k.value, model, rel, hits, depth)
+    else if (src[k.value] === '[') recurseOpPayload(src, k.value, model, rel, hits, depth)
+  }
+}
+
+/**
+ * Nyttolast byggd i en VARIABEL, inte i anropet:
+ *
+ *     updateData.lines = { createMany: { data: rader } }
+ *     await tx.invoice.update({ where: { id }, data: updateData })
+ *
+ * Utan den här vägen missas invoices.service.ts helt — och det är just den av de
+ * sju kända skrivningarna som sitter under en `update` (alltså den enda med
+ * form 1-karaktär i föräldern). En parser som bara läser anropets objektlitteral
+ * hade alltså missat det farligaste fallet och sett komplett ut.
+ *
+ * Sökningen begränsas till den omslutande funktionen. Ett variabelnamn som
+ * `updateData` återanvänds i flera metoder i samma fil, och utan begränsningen
+ * hade en tilldelning i en annan metod tillskrivits det här anropet.
+ */
+function scanIdentifierPayload(
+  src: string,
+  radStart: number[],
+  lines: string[],
+  callIndex: number,
+  ident: string,
+  model: string,
+  rel: Map<string, Map<string, RelationField>>,
+  hits: NestedHit[],
+): void {
+  const fält = rel.get(model)
+  if (!fält) return
+  const [startLine, endLine] = enclosingFunctionSpan(lines, lineAt(src, callIndex) - 1)
+  const från = radStart[startLine] ?? 0
+  const till = radStart[endLine] ?? src.length
+  const fönster = src.slice(från, till)
+
+  const tilldelning = new RegExp(`\\b${ident}\\.(\\w+)\\s*=\\s*\\{`, 'g')
+  let m: RegExpExecArray | null
+  while ((m = tilldelning.exec(fönster)) !== null) {
+    const relation = fält.get(m[1]!)
+    if (!relation) continue
+    const blockOpen = från + m.index + m[0]!.length - 1
+    scanRelationBlock(src, blockOpen, model, m[1]!, relation, rel, hits, 0, från + m.index)
+  }
+
+  const deklaration = new RegExp(`\\b(?:const|let|var)\\s+${ident}\\b[^=\\n]*=\\s*\\{`, 'g')
+  while ((m = deklaration.exec(fönster)) !== null) {
+    scanPayload(src, från + m.index + m[0]!.length - 1, model, rel, hits, 0)
+  }
+}
+
+/** Radernas startindex — för att kunna klippa ut en funktion ur källtexten. */
+function lineOffsets(lines: string[]): number[] {
+  const out: number[] = [0]
+  let pos = 0
+  for (const rad of lines) {
+    pos += rad.length + 1
+    out.push(pos)
+  }
+  return out
+}
+
+/**
+ * Bär FÖRÄLDERNS anrop scopningen? Formen som bara finns för nästlade rader.
+ *
+ * En nästlad skrivning kan inte scopas för egen del — den träffar de rader
+ * föräldern pekar ut. Frågan är därför alltid "är FÖRÄLDERN scopad?", och den
+ * har två synliga svar: `where` som binder organizationId (uppdatering av en rad
+ * i anroparens org) eller `data` som sätter organizationId (raden skapas i
+ * anroparens org). Båda är avgörbara på plats, till skillnad från A–D som måste
+ * letas i hela funktionen.
+ */
+function parentScoping(src: string, argOpen: number): boolean {
+  for (const k of topLevelKeys(src, argOpen)) {
+    if (k.key !== 'where' && k.key !== 'data' && k.key !== 'create' && k.key !== 'update') continue
+    if (k.shorthand || src[k.value] !== '{') continue
+    if (bindsOrganization(src, k.value, 0)) return true
+  }
+  return false
+}
+
+/**
+ * Finns `organizationId` som NYCKEL i objektet — inte bara som text?
+ *
+ * Skillnaden är hela poängen. En första version testade regexet
+ * `/\borganizationId\b/` mot spannets råtext, och då räckte en kommentar
+ * ("// TODO: verifiera organizationId när multi-tenant landar") eller ett
+ * strängvärde för att en helt oskyddad skrivning skulle märkas P. Det är inte ett
+ * falsklarm utan dess motsats: raden såg granskad ut, och den strukturella
+ * kontrollen slutade fälla den — precis den #114-klass verktyget finns för.
+ * Säkerhetsgranskningen av den här PR:en hittade det och det är bevisat körbart.
+ *
+ * Nyckelläsaren hoppar över strängar och kommentarer, så den kan inte luras av
+ * text. Både `{ id, organizationId }` (kortform) och `{ organizationId: orgId }`
+ * räknas, liksom kedjan `{ id, invoice: { organizationId } }` — alla tre binder
+ * raden till en organisation.
+ */
+function bindsOrganization(src: string, objOpen: number, depth: number): boolean {
+  if (depth > 6) return false
+  for (const k of topLevelKeys(src, objOpen)) {
+    if (k.key === 'organizationId') return true
+    if (k.shorthand || src[k.value] !== '{') continue
+    if (bindsOrganization(src, k.value, depth + 1)) return true
+  }
+  return false
+}
+
+/**
+ * Nästlade skrivningar i EN källtext.
+ *
+ * Exporterad för att kunna bevisas mot fixturer i stället för mot kodbasen. Ett
+ * mönster som bara testas mot verklig kod kan bara visa att den koden passerar —
+ * inte att en oskyddad skrivning FAKTISKT hade fällts, och inte att ett filter
+ * (`where: { lines: { some } }`) INTE fälls. Båda riktningarna behöver bevisas.
+ */
+export function nestedWritesInSource(
+  src: string,
+  rel: Map<string, Map<string, RelationField>>,
+): Array<Omit<WriteSite, 'file'>> {
+  const parentScoped = new Set(
+    Object.entries(MODEL_SCOPES)
+      .filter(([, v]) => v.scope === 'parent-scoped')
+      .map(([model]) => model),
+  )
+  const accessorTillModell = new Map([...rel.keys()].map((m) => [accessorOf(m), m]))
+  const anropsMönster = new RegExp(`\\.(\\w+)\\.(${PARENT_OPS.join('|')})\\(`, 'g')
+  const sites: Array<Omit<WriteSite, 'file'>> = []
+  {
+    const lines = src.split('\n')
+    const radStart = lineOffsets(lines)
+    // Samma nästlade skrivning kan nås från två föräldraanrop i samma funktion
+    // (två update-anrop som delar nyttolastvariabel). Den ska räknas EN gång.
+    const sedda = new Set<string>()
+    anropsMönster.lastIndex = 0
+    let m: RegExpExecArray | null
+    while ((m = anropsMönster.exec(src)) !== null) {
+      const modell = accessorTillModell.get(m[1]!)
+      if (!modell) continue
+      const parenOpen = m.index + m[0]!.length - 1
+      let argOpen = parenOpen + 1
+      while (argOpen < src.length && /\s/.test(src[argOpen]!)) argOpen++
+      if (src[argOpen] !== '{') continue
+
+      const hits: NestedHit[] = []
+      for (const k of topLevelKeys(src, argOpen)) {
+        if (k.key !== 'data' && k.key !== 'create' && k.key !== 'update') continue
+        if (!k.shorthand && src[k.value] === '{') scanPayload(src, k.value, modell, rel, hits, 0)
+        else if (!k.shorthand && src[k.value] === '[') {
+          recurseOpPayload(src, k.value, modell, rel, hits, 0)
+        } else {
+          // `data: updateData` eller kortformen `{ where, data }` — nyttolasten
+          // byggs i en variabel, som måste följas i den omslutande funktionen.
+          const ident = /^([A-Za-z_]\w*)/.exec(src.slice(k.value, k.value + 60))
+          if (ident) {
+            scanIdentifierPayload(src, radStart, lines, m.index, ident[1]!, modell, rel, hits)
+          }
+        }
+      }
+      if (hits.length === 0) continue
+
+      const föräldernScopad = parentScoping(src, argOpen)
+      for (const hit of hits) {
+        const nyckel = `${hit.model}|${hit.op}|${hit.index}|${hit.via}`
+        if (sedda.has(nyckel)) continue
+        sedda.add(nyckel)
+        // Bara barn som saknar eget organizationId kan bära en objektnivå-IDOR.
+        // Ett nästlat barn med egen org-kolumn står redan i sin egen dimension.
+        if (!parentScoped.has(hit.model)) continue
+        const rad = lineAt(src, hit.index)
+        sites.push({
+          model: hit.model,
+          op: hit.op,
+          line: rad,
+          form: riskFormOf(hit.op),
+          protection: föräldernScopad ? 'P' : detectProtection(enclosingFunction(lines, rad - 1)),
+          via: hit.via,
+        })
+      }
+    }
+  }
+  return sites
+}
+
+/** Alla nästlade skrivningar mot förälder-scopade modeller i kodbasen. */
+function collectNestedWriteSites(srcDir: string, schemaPath: string): WriteSite[] {
+  const rel = relationFields(schemaPath)
+  const sites: WriteSite[] = []
+  for (const file of walkTs(srcDir)) {
+    const src = readFileSync(file, 'utf8')
+    for (const s of nestedWritesInSource(src, rel)) {
+      sites.push({ ...s, file: file.split('/src/')[1] ?? file })
+    }
+  }
+  return sites
+}
+
+/**
+ * Hela skrivytan: direkta anrop OCH nästlade skrivningar.
+ *
+ * Två insamlare, ett inventarium. Skillnaden syns i `via`-fältet och i
+ * golden-filen, för en granskare behöver veta vilken fråga som gäller: för ett
+ * direkt anrop "är det här id:t scopat?", för en nästlad "är FÖRÄLDERN scopad?".
+ */
+export function collectWriteSites(srcDir: string, schemaPath: string): WriteSite[] {
+  return [...collectDirectWriteSites(srcDir), ...collectNestedWriteSites(srcDir, schemaPath)]
+}
+
 // ── Inventariets rader ───────────────────────────────────────────────────────
 
 export interface InventoryRow {
@@ -334,6 +953,8 @@ export interface InventoryRow {
   form: 1 | 2
   /** Alla former som förekommer på stället — sorterade, så raden är stabil. */
   protections: ProtectionForm[]
+  /** `Invoice.lines` för nästlade rader, tomt för direkta anrop. */
+  via?: string
 }
 
 /**
@@ -346,7 +967,10 @@ export interface InventoryRow {
 export function toInventory(sites: WriteSite[]): InventoryRow[] {
   const byKey = new Map<string, InventoryRow>()
   for (const s of sites) {
-    const key = `${s.file}|${s.model}|${s.op}`
+    // `via` ingår i nyckeln: en nästlad skrivning och ett direkt anrop mot samma
+    // modell i samma fil är TVÅ skrivvägar med olika scopningsfråga, och att slå
+    // ihop dem hade dolt den ena bakom den andras skyddsform.
+    const key = `${s.file}|${s.model}|${s.op}|${s.via ?? ''}`
     const row = byKey.get(key)
     if (row) {
       row.count++
@@ -359,17 +983,26 @@ export function toInventory(sites: WriteSite[]): InventoryRow[] {
         count: 1,
         form: s.form,
         protections: [s.protection],
+        ...(s.via === undefined ? {} : { via: s.via }),
       })
     }
   }
   for (const row of byKey.values()) row.protections.sort()
   // Kodpunkts-sortering, INTE localeCompare: filen committas och jämförs mellan
   // maskiner, och locale-ordning beror på ICU-bygget (samma läxa som #267).
-  return [...byKey.values()].sort((a, b) => {
-    const ka = `${a.model}|${a.file}|${a.op}`
-    const kb = `${b.model}|${b.file}|${b.op}`
-    return ka < kb ? -1 : ka > kb ? 1 : 0
-  })
+  //
+  // FÄLTVIS jämförelse, inte en sammanslagen nyckel. En avgränsare hamnar i
+  // kodpunktsordning bland bokstäverna (`|` ligger efter versaler), så `update`
+  // och `updateMany` byter plats så fort ett fält läggs till i nyckeln — orörda
+  // rader flyttar sig i diffen och ser ut som ändringar.
+  const jämför = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
+  return [...byKey.values()].sort(
+    (a, b) =>
+      jämför(a.model, b.model) ||
+      jämför(a.file, b.file) ||
+      jämför(a.op, b.op) ||
+      jämför(a.via ?? '', b.via ?? ''),
+  )
 }
 
 /**
@@ -431,8 +1064,11 @@ export const CALLER_SCOPED: readonly CallerScopedException[] = [
   },
 ]
 
-function exceptionKey(x: { file: string; model: string; op: string }): string {
-  return `${x.file}|${x.model}|${x.op}`
+function exceptionKey(x: { file: string; model: string; op: string; via?: string }): string {
+  // Nästlade rader får aldrig konsumera ett undantag skrivet för ett direkt
+  // anrop: `via` är tomt för direkta och ifyllt för nästlade, så nycklarna kan
+  // inte kollidera. Undantagen i CALLER_SCOPED gäller alltså bara direkta anrop.
+  return `${x.file}|${x.model}|${x.op}|${x.via ?? ''}`
 }
 
 /**
@@ -477,6 +1113,7 @@ const FORM_LABELS: Record<ProtectionForm, string> = {
   B: 'B hjälpare',
   C: 'C scopat anrop',
   D: 'D annan nyckel',
+  P: 'P förälder org-bunden',
   INGEN: 'INGEN UPPTÄCKT',
 }
 
@@ -496,17 +1133,20 @@ export function renderInventory(rows: InventoryRow[]): string {
   out.push('')
   out.push('FILEN BEVISAR INGEN SÄKERHET. Skyddsformen är DETEKTERAD, inte verifierad —')
   out.push('en heuristik som säger "det här mönstret syns i funktionen", inte "id:t är')
-  out.push('kontrollerat". Filen garanterar att ingen skrivväg via en modells EGEN')
-  out.push('Prisma-accessor (invoiceLine + create) tillkommer obemärkt — inte mer än så.')
-  out.push('Se object-scope.ts för varför mer inte går att göra statiskt.')
+  out.push('kontrollerat". Det enda filen garanterar är att ingen skrivväg tillkommer')
+  out.push('obemärkt. Se object-scope.ts för varför mer inte går att göra statiskt.')
   out.push('')
-  out.push('INTE BEVAKAT: NÄSTLADE SKRIVNINGAR. En skrivning som går via förälderns')
-  out.push('data-objekt — invoice.create({ data: { lines: { createMany: … } } }) — nämner')
-  out.push('aldrig barnets accessor och syns därför inte här. Sju sådana ställen finns i')
-  out.push('kodbasen (JournalEntryLine ×3, InvoiceLine ×4); de är manuellt granskade')
-  out.push('2026-08-02 och listade med fil:rad i object-scope.ts. Att InvoiceLine och')
-  out.push('JournalEntryLine står klassificerade längst ned betyder alltså INTE att deras')
-  out.push('skrivyta är komplett här. En ny nästlad skrivning larmar inte.')
+  out.push('TVÅ SKRIVFORMER INGÅR:')
+  out.push('  DIREKT   invoiceLine + create — barnets egen accessor står i koden.')
+  out.push('  NÄSTLAD  invoice.create({ data: { lines: { createMany: … } } }) — barnet')
+  out.push('           skrivs via förälderns data-objekt och nämner aldrig sin accessor.')
+  out.push('           Märks med "← nästlad via <Förälder>.<fält>". Modellen härleds ur')
+  out.push('           schema.prisma: lines betyder InvoiceLine under Invoice och')
+  out.push('           JournalEntryLine under JournalEntry.')
+  out.push('')
+  out.push('Utanför: nyttolast som byggs i en annan funktion än anropet, dynamiska')
+  out.push('fältnamn och rå SQL. Inget av det finns i kodbasen i dag — men skillnaden')
+  out.push('mellan "finns inte" och "fångas" ska stå skriven.')
   out.push('')
   out.push('FORM 1 = update/delete på ett id (den klassiska IDOR:en, #114).')
   out.push('FORM 2 = create med förälder-FK (ser inte ut som ett behörighetsproblem,')
@@ -519,8 +1159,11 @@ export function renderInventory(rows: InventoryRow[]): string {
   out.push('  B  namngiven hjälpare:        assertRelationsInOrg(orgId, { … })')
   out.push('  C  scopat metodanrop:         await this.findOne(id, organizationId)')
   out.push('  D  annan scopningsnyckel:     findFirst({ where: { id, tenantId } })  ← portalen')
+  out.push('  P  förälderns anrop binder org: invoice.update({ where: { id, organizationId } })')
+  out.push('     Bara nästlade rader. Den nästlade skrivningen träffar de rader föräldern')
+  out.push('     pekar ut, så frågan är alltid om FÖRÄLDERN är bunden till anroparens org.')
   out.push('')
-  out.push('En femte form går inte att detektera: en intern hjälpare utan aktörskontext,')
+  out.push('En form till går inte att detektera: en intern hjälpare utan aktörskontext,')
   out.push('där scopningen är anroparens ansvar. Den måste skrivas ner i CALLER_SCOPED med')
   out.push('ett påstående om vem som scopar i stället — se sista sektionen.')
   out.push('')
@@ -537,9 +1180,11 @@ export function renderInventory(rows: InventoryRow[]): string {
     out.push('')
     for (const r of group) {
       const n = r.count > 1 ? `×${r.count}` : '  '
+      const via = r.via ? `  ← nästlad via ${r.via}` : ''
       out.push(
         `${pad(r.model, MODEL_COL)}${pad(r.op, OP_COL)}${pad(r.file, FILE_COL)}${n}  ` +
-          r.protections.map((p) => FORM_LABELS[p]).join(' + '),
+          r.protections.map((p) => FORM_LABELS[p]).join(' + ') +
+          via,
       )
     }
   }
