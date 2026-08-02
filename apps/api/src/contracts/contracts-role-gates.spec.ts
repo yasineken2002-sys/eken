@@ -1,5 +1,5 @@
 /**
- * Kontraktsnedladdningen grindas som sina syskon.
+ * Contracts-controllerns rollgrindar.
  *
  * `GET /contracts/download/:leaseId` låg ogrindad mellan två grindade metoder
  * i samma controller (`POST generate/:leaseId` och `PATCH
@@ -18,6 +18,21 @@
  * riktiga metoderna, och subjektet är den riktiga `RolesGuard`. Ett test som
  * matade in en handskriven lista hade bevisat att testfilen är konsekvent med
  * sig själv — inte att endpointen är grindad.
+ *
+ * ── `status` (2026-08-02) ────────────────────────────────────────────────────
+ *
+ * Samma fil, samma klass av fynd. `GET status/:leaseId` returnerar
+ * `signedFromIp`, `signedUserAgent`, `signatureName` och den signerande
+ * hyresgästens namn — exakt de fält som MEDVETET ströks ur hyresgästportalen i
+ * PR 5a, med motiveringen att de är "data OM hyresgästen". Systemet hade alltså
+ * redan bedömt dem som känsliga, medan operatörssidan delade ut dem till varje
+ * autentiserad roll. Inte en glömska: en inkonsekvens mellan två delar som
+ * bedömt samma data olika.
+ *
+ * `appendices` förblir ogrindad med flit — den filtrerar bort CONTRACT och
+ * returnerar bara bilagornas metadata, vilket är R1:s medvetna policy (läsning
+ * av besiktningsunderlag är förvaltning). Testet låser att den POLICYN inte
+ * regredierar när grannarna stramas åt.
  */
 
 // Controllern drar in StorageService (S3) transitivt. Attrapperna gäller inte
@@ -67,6 +82,8 @@ const proto = ContractsController.prototype
 const DOWNLOAD = proto.download as unknown as Handler
 const GENERATE = proto.generate as unknown as Handler
 const UPDATE_APPENDIX = proto.updateAppendix as unknown as Handler
+const STATUS = proto.status as unknown as Handler
+const APPENDICES = proto.listAppendices as unknown as Handler
 
 describe('kontraktsnedladdning · rollgrind', () => {
   it('riggen läser faktisk metadata (annars bevisar testet ingenting)', () => {
@@ -127,5 +144,43 @@ describe('kontraktsnedladdning · rollgrind', () => {
       generate: guardAllows(GENERATE, r),
     }))
     expect(utfall.filter((u) => u.download !== u.generate)).toEqual([])
+  })
+
+  describe('signeringsstatus', () => {
+    it('riggen läser faktisk metadata för status', () => {
+      expect(declaredRoles(STATUS).length).toBeGreaterThan(0)
+    })
+
+    it('VIEWER och ACCOUNTANT nekas signeringsspåret', () => {
+      // signedFromIp, signedUserAgent, signatureName + hyresgästens namn.
+      expect(guardAllows(STATUS, UserRole.VIEWER)).toBe(false)
+      expect(guardAllows(STATUS, UserRole.ACCOUNTANT)).toBe(false)
+    })
+
+    it('MANAGER, ADMIN och OWNER läser status som förut', () => {
+      const nekade = [UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER].filter(
+        (r) => !guardAllows(STATUS, r),
+      )
+      expect(nekade).toEqual([])
+    })
+
+    it('status har samma rollmängd som resten av kontraktsytan', () => {
+      const sortera = (r: string[]) => [...r].sort()
+      expect(sortera(declaredRoles(STATUS))).toEqual(sortera(declaredRoles(DOWNLOAD)))
+      expect(sortera(declaredRoles(STATUS))).toEqual(sortera(declaredRoles(GENERATE)))
+    })
+  })
+
+  describe('appendices förblir öppen — R1:s policy', () => {
+    it('varje roll passerar grinden', () => {
+      // Ingen regression: bilagor är besiktningsunderlag och liknande, inte
+      // kontraktet självt. Metoden filtrerar bort CONTRACT i sin egen query.
+      const nekade = ALL_ROLES.filter((r) => !guardAllows(APPENDICES, r))
+      expect(nekade).toEqual([])
+    })
+
+    it('och är alltså medvetet OGRINDAD, inte glömd', () => {
+      expect(declaredRoles(APPENDICES)).toEqual([])
+    })
   })
 })

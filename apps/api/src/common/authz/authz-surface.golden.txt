@@ -14,7 +14,7 @@ Filen säger inget om huruvida en gräns är RÄTT. Den gör bara omöjligt att
 flytta en gräns utan att någon ser det. Se authz-surface.ts.
 
 
-## 1. HTTP-endpoints med rollgrind (160 st)
+## 1. HTTP-endpoints med rollgrind (161 st)
 
 Endpoints utan @Roles saknas här med flit: de är autentiserade men inte
 rollgrindade, och de flesta är självscopade (byt mitt lösenord, läs mina
@@ -61,6 +61,7 @@ GET /avisering/backfill/:leaseId/preview                        ADMIN, MANAGER, 
 GET /avisering/backfill/queue                                   ADMIN, MANAGER, OWNER
 GET /collections/overdue-status                                 ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /contracts/download/:leaseId                                ADMIN, MANAGER, OWNER
+GET /contracts/status/:leaseId                                  ADMIN, MANAGER, OWNER
 GET /import/contract-batches/:id                                ADMIN, MANAGER, OWNER
 GET /misc-charges/:id                                           ADMIN, MANAGER, OWNER
 GET /misc-charges                                               ADMIN, MANAGER, OWNER

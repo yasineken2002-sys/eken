@@ -185,7 +185,28 @@ export class ContractsController {
    * Hämta status + versionskedja för leasens kontrakts-PDF:er.
    * Returnerar tom lista om inget kontrakt har genererats än.
    */
+  /**
+   * Signeringsstatus per kontraktsversion.
+   *
+   * ── ROLLGRINDEN (2026-08-02) ─────────────────────────────────────────────
+   *
+   * Svaret bär `signedFromIp`, `signedUserAgent`, `signatureName` och den
+   * signerande hyresgästens namn. Att metoden låg ogrindad var inte en glömska
+   * utan en INKONSEKVENS: exakt de fälten ströks MEDVETET ur hyresgästportalen
+   * i PR 5a, med motiveringen att de är "data OM hyresgästen"
+   * (tenant-portal.service.ts). Systemet hade alltså redan bedömt dem som
+   * känsliga — och operatörssidan delade ut dem ändå, till varje autentiserad
+   * roll.
+   *
+   * Samma mönster som #269 (HTTP och AI-lagret drog olika gränser för samma
+   * handling) och R1 (dekoratorn och tjänstegrinden sa olika saker): två delar
+   * av systemet hade bedömt samma data olika, och den svagare bedömningen vann
+   * eftersom ingen ställde dem bredvid varandra.
+   *
+   * Samma lista som generate/download/updateAppendix i den här filen.
+   */
   @Get('status/:leaseId')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async status(@OrgId() orgId: string, @Param('leaseId') leaseId: string) {
     const lease = await this.prisma.lease.findFirst({
       where: { id: leaseId, organizationId: orgId },
