@@ -1578,154 +1578,217 @@ export class AviseringService {
 
     const paymentDate = paidAt ? new Date(paidAt) : new Date()
 
-    // ── D5 (bank-härdning PR 3b): delbetalning lämnar avin OBETALD ────────────
-    // Läs befintliga allokeringar och avgör om DENNA betalning reglerar avins
-    // OCR-skuld (ocrOutstanding ≤ 0, EXKL. ränta — samma waterfall-grind som
-    // bankvägen och kravtrappan). Tidigare flippade markAsPaid OVILLKORLIGT till
-    // PAID även vid ett delbelopp (latent bugg). Nu: bara full reglering → PAID;
-    // ett delbelopp registrerar allokering + delverifikat men behåller status/steg.
-    const priorAllocs = await this.prisma.rentNoticePayment.findMany({
-      where: { rentNoticeId: noticeId },
-      select: { amount: true },
-    })
-    const priorPaid = priorAllocs.reduce<number>((s, a) => s + Number(a.amount), 0)
-    const debtAfter = computeRentDebt({
-      type: notice.type,
-      totalAmount: notice.totalAmount,
-      consumptionAmount: notice.consumptionAmount,
-      miscChargeAmount: notice.miscChargeAmount,
-      reminderFeeAmount: notice.reminderFeeAmount,
-      interestAccruedAmount: notice.interestAccruedAmount,
-      allocations: [...priorAllocs.map((a) => a.amount), paidAmount],
-    })
-    const completesNotice = debtAfter.ocrOutstanding <= 0
-    const paidSum = debtAfter.paid
+    // ── ATOMICITET (#108) ───────────────────────────────────────────────────
+    //
+    // Hela registreringen — låsning, omvalidering, claim, allokering och verifikat
+    // — ligger i EN transaktion med radlås, samma mönster som bankvägens
+    // `applyMatchToRentNotice` redan bevisar i produktion.
+    //
+    // Tidigare låg här ett KOMPENSERANDE mönster: skriv först, ångra i ett catch
+    // om bokföringen sa nej. Det fungerar bara om processen lever tillräckligt
+    // länge för att köra sitt catch — och det är precis vad en SIGKILL, en
+    // OOM-dödad container eller en deploy-omstart bryter. Två halvtillstånd kunde
+    // överleva en sådan krasch:
+    //
+    //   • allokering utan verifikat  → en verklig inbetalning saknar post i
+    //     huvudboken. Permanent, ingen självläkning. Farligast vid KONTANT
+    //     betalning: bankavstämningen kan aldrig upptäcka glappet i efterhand.
+    //   • PAID utan allokering       → avin ser reglerad ut medan fordran
+    //     kvarstår. collectionStage nollställs med claimen, så fordran lämnar
+    //     kravtrappan tyst: ingen påminnelse, ingen ränta, ingen inkasso, ingen
+    //     nedskrivning. I praktiken en oredovisad avskrivning.
+    //
+    // En databastransaktion ger atomicitet oavsett vad som händer med processen.
+    // Ett try/catch gör det aldrig — skillnaden mellan en garanti och en
+    // förhoppning.
+    //
+    // RADLÅSET LÖSER OCKSÅ TOCTOU:t. `priorAllocs` lästes förut innan claimen, så
+    // en samtidig bankmatchning kunde skriva en allokering emellan och göra
+    // `completesNotice` beräknad på inaktuell grund. Läsningen ligger nu INNANFÖR
+    // låset, och bankvägen tar samma lås — de två vägarna serialiseras mot
+    // varandra. Ingen separat TOCTOU-mekanism behövs.
+    const utfall = await this.prisma.$transaction(
+      async (tx) => {
+        // Rad-lås FÖRST — serialiserar mot bankvägen och mot andra manuella
+        // registreringar på samma avi.
+        await tx.$queryRaw`SELECT id FROM "RentNotice" WHERE id = ${noticeId} AND "organizationId" = ${orgId} FOR UPDATE`
 
-    // ── 1. Atomisk, race-säker statusövergång (eller ren paidAmount-uppdatering) ─
-    const claim = await this.prisma.rentNotice.updateMany({
-      where: {
-        id: noticeId,
-        organizationId: orgId,
-        status: {
-          in: [
-            RentNoticeStatus.PENDING,
-            RentNoticeStatus.SENT,
-            RentNoticeStatus.OVERDUE,
-            RentNoticeStatus.FAILED,
-          ],
-        },
-      },
-      data: completesNotice
-        ? {
-            status: RentNoticeStatus.PAID,
-            paidAt: paymentDate,
-            paidAmount: paidSum,
-            paymentMethod,
-            // Bankavstämnings-härdning PR 2 — hängslen-och-livrem: en reglerad avi
-            // lämnar kravtrappan. collectionStage nollställs ATOMISKT med PAID-claimen
-            // (samma status-guardade updateMany → idempotent: körs en gång). Även om
-            // export-grinden skulle missas finns ingen kvarvarande INKASSO_READY på en
-            // betald avi. Ingen bokföring rörs (ren statusmarkering).
-            collectionStage: RentCollectionStage.NONE,
-          }
-        : {
-            // D5 — delbetalning: behåll status och kravsteg, uppdatera bara
-            // paidAmount-spegeln (Σ allokeringar) + senast använt betalsätt.
-            paidAmount: paidSum,
-            paymentMethod,
-          },
-    })
-    if (claim.count === 0) {
-      // En parallell process (t.ex. bankavstämning) hann reglera eller avbryta avin.
-      throw new ConflictException(
-        'Avin är redan reglerad eller avbruten — uppdatera sidan och försök igen',
-      )
-    }
-
-    // ── 2. Bokför betalningen; ångra statusövergången om verifikatet uteblir ──
-    // Bankavstämnings-härdning PR 1 — additiv MANUAL-allokering (ingen bank-tx).
-    // Skrivs FÖRST i try-blocket så att samma revert som ångrar statusen även
-    // städar bort allokeringen om verifikatet uteblir. Härledd spegel av
-    // paidAmount; rör inte huvudboken.
-    let allocationId: string | null = null
-    try {
-      const allocation = await this.prisma.rentNoticePayment.create({
-        data: {
-          rentNoticeId: noticeId,
-          bankTransactionId: null,
-          amount: paidAmount,
-          paidAt: paymentDate,
-          source: 'MANUAL',
-        },
-      })
-      allocationId = allocation.id
-
-      // PR 3b (KRITISK): nyckla verifikatets idempotens på ALLOKERINGEN, inte avin —
-      // annars bokförs en ANDRA manuell delbetalning aldrig (sourceId-kollision) och
-      // 1510 understiger Σ allokeringar. Se createJournalEntryForRentNoticeManualPayment.
-      const entry = await this.accounting.createJournalEntryForRentNoticeManualPayment(
-        { id: notice.id, noticeNumber: notice.noticeNumber, type: notice.type },
-        paidAmount,
-        paymentDate,
-        paymentMethod,
-        orgId,
-        createdById ?? null,
-        allocationId,
-      )
-      // null = saknat likvidkonto/1510 → bokföringsfel, inte ett giltigt no-op.
-      // (DEPOSIT-avier når aldrig hit — de blockeras överst; deposits-modulen äger
-      // deras 1510/2890-flöde.)
-      if (entry === null) {
-        throw new InternalServerErrorException(
-          `Betalningsverifikat kunde inte skapas för avi ${notice.noticeNumber} — ` +
-            'kontrollera att kontoplanen innehåller konto 1510 och rätt likvidkonto.',
-        )
-      }
-    } catch (err) {
-      // Städa bort allokeringen (PR 1) så spegeln Σ allokeringar == paidAmount
-      // hålls konsekvent när statusen ångras nedan.
-      if (allocationId) {
-        await this.prisma.rentNoticePayment
-          .delete({ where: { id: allocationId } })
-          .catch((cleanupErr) => {
-            this.logger.error(
-              `[Avisering] Kunde inte städa allokering för avi ${notice.noticeNumber}: ` +
-                `${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-            )
-          })
-      }
-      // Återställ avin till sitt PRE-CLAIM-tillstånd så att den kan regleras på nytt.
-      // paidAmount återställs till Σ TIDIGARE allokeringar (priorPaid) — inte null —
-      // så att en ångrad DELbetalning inte raderar cachen för redan registrerade
-      // delbetalningar. collectionStage återställs till sitt tidigare värde (PR 2) så
-      // en ångrad betalning inte lämnar en inkasso-redo avi felaktigt nollställd.
-      // Ingen status-guard på PAID: vid en ångrad delbetalning är status oförändrad
-      // (aldrig PAID), och vi äger raden (claim.count === 1).
-      await this.prisma.rentNotice
-        .updateMany({
+        // Omläsning INNANFÖR låset. Preflight-kontrollerna ovan ger tydliga
+        // felmeddelanden, men det är den här läsningen som är sanningen: mellan
+        // preflight och lås kan en annan process ha hunnit reglera eller avbryta.
+        const låst = await tx.rentNotice.findFirst({
           where: { id: noticeId, organizationId: orgId },
-          data: {
-            status: notice.status,
-            paidAt: null,
-            paidAmount: priorPaid > 0 ? priorPaid : null,
-            paymentMethod: notice.paymentMethod ?? null,
-            collectionStage: notice.collectionStage,
+          select: {
+            id: true,
+            noticeNumber: true,
+            status: true,
+            collectionStage: true,
+            type: true,
+            totalAmount: true,
+            consumptionAmount: true,
+            miscChargeAmount: true,
+            reminderFeeAmount: true,
+            interestAccruedAmount: true,
           },
         })
-        .catch((revertErr) => {
-          this.logger.error(
-            `[Avisering] Kunde inte ångra betalningsstatus för avi ${notice.noticeNumber}: ` +
-              `${revertErr instanceof Error ? revertErr.message : String(revertErr)}`,
-          )
+        if (!låst) throw new NotFoundException('Avi hittades inte')
+        if (låst.status === RentNoticeStatus.CANCELLED) {
+          throw new BadRequestException('Kan inte markera avbruten avi som betald')
+        }
+        if (låst.status === RentNoticeStatus.PAID) {
+          throw new BadRequestException('Avin är redan betald')
+        }
+
+        // DEPOSIT omprövas MEDVETET inte här, till skillnad från status ovan.
+        // Status är föränderlig — en annan process kan reglera eller avbryta avin
+        // mellan preflight och lås, och därför måste den läsas om. `type` sätts vid
+        // skapandet och ändras aldrig av någon skrivväg, så preflight-kontrollen
+        // kan inte bli inaktuell på det sätt status kan.
+        //
+        // Och skulle den ändå kringgås finns ett andra, oberoende skydd:
+        // createJournalEntryForRentNoticeManualPayment har en egen DEPOSIT-spärr
+        // och returnerar null, vilket kastar och rullar tillbaka hela
+        // transaktionen. Två skydd som inte delar förutsättning — luckan är alltså
+        // inte nåbar, varken i dag eller om preflighten skulle flyttas.
+        // (Verifierat i säkerhetsgranskningen av #108; skrivet här så nästa läsare
+        // inte behöver härleda det på nytt.)
+
+        // ── D5 (bank-härdning PR 3b): delbetalning lämnar avin OBETALD ──────────
+        // Avgör om DENNA betalning reglerar avins OCR-skuld (ocrOutstanding ≤ 0,
+        // EXKL. ränta — samma waterfall-grind som bankvägen och kravtrappan). Bara
+        // full reglering → PAID; ett delbelopp registrerar allokering + delverifikat
+        // men behåller status och kravsteg.
+        const priorAllocs = await tx.rentNoticePayment.findMany({
+          where: { rentNoticeId: noticeId },
+          select: { amount: true },
         })
-      throw err
-    }
+        const debtAfter = computeRentDebt({
+          type: låst.type,
+          totalAmount: låst.totalAmount,
+          consumptionAmount: låst.consumptionAmount,
+          miscChargeAmount: låst.miscChargeAmount,
+          reminderFeeAmount: låst.reminderFeeAmount,
+          interestAccruedAmount: låst.interestAccruedAmount,
+          allocations: [...priorAllocs.map((a) => a.amount), paidAmount],
+        })
+        const completesNotice = debtAfter.ocrOutstanding <= 0
+
+        // Status-guarden står kvar trots radlåset. Låset serialiserar, men guarden
+        // uttrycker VILKA statusar som får ta emot en betalning — den skulle fånga
+        // ett framtida anrop som når hit utan att ha passerat omläsningen ovan.
+        const claim = await tx.rentNotice.updateMany({
+          where: {
+            id: noticeId,
+            organizationId: orgId,
+            status: {
+              in: [
+                RentNoticeStatus.PENDING,
+                RentNoticeStatus.SENT,
+                RentNoticeStatus.OVERDUE,
+                RentNoticeStatus.FAILED,
+              ],
+            },
+          },
+          data: completesNotice
+            ? {
+                status: RentNoticeStatus.PAID,
+                paidAt: paymentDate,
+                paidAmount: debtAfter.paid,
+                paymentMethod,
+                // Betald avi lämnar kravtrappan. Nollställs i samma transaktion som
+                // statusen — ingen kvarvarande INKASSO_READY på en betald avi.
+                collectionStage: RentCollectionStage.NONE,
+              }
+            : {
+                // D5 — delbetalning: behåll status och kravsteg, uppdatera bara
+                // paidAmount-spegeln (Σ allokeringar) + senast använt betalsätt.
+                paidAmount: debtAfter.paid,
+                paymentMethod,
+              },
+        })
+        if (claim.count === 0) {
+          throw new ConflictException(
+            'Avin är redan reglerad eller avbruten — uppdatera sidan och försök igen',
+          )
+        }
+
+        // Allokeringen är den härledda spegeln av paidAmount; den rör inte huvudboken.
+        const allocation = await tx.rentNoticePayment.create({
+          data: {
+            rentNoticeId: noticeId,
+            bankTransactionId: null,
+            amount: paidAmount,
+            paidAt: paymentDate,
+            source: 'MANUAL',
+          },
+        })
+
+        // PR 3b (KRITISK): nyckla verifikatets idempotens på ALLOKERINGEN, inte avin —
+        // annars bokförs en ANDRA manuell delbetalning aldrig (sourceId-kollision) och
+        // 1510 understiger Σ allokeringar. Se createJournalEntryForRentNoticeManualPayment.
+        const entry = await this.accounting.createJournalEntryForRentNoticeManualPayment(
+          { id: låst.id, noticeNumber: låst.noticeNumber, type: låst.type },
+          paidAmount,
+          paymentDate,
+          paymentMethod,
+          orgId,
+          createdById ?? null,
+          allocation.id,
+          tx,
+        )
+        // null = saknat likvidkonto/1510 → bokföringsfel, inte ett giltigt no-op.
+        // Kastet rullar tillbaka HELA transaktionen: ingen allokering, ingen
+        // statusflip. (DEPOSIT-avier når aldrig hit — de blockeras överst.)
+        if (entry === null) {
+          throw new InternalServerErrorException(
+            `Betalningsverifikat kunde inte skapas för avi ${låst.noticeNumber} — ` +
+              'kontrollera att kontoplanen innehåller konto 1510 och rätt likvidkonto.',
+          )
+        }
+
+        return {
+          completesNotice,
+          noticeNumber: låst.noticeNumber,
+          priorCollectionStage: låst.collectionStage,
+        }
+      },
+      {
+        // ── Varför explicita gränser på transaktionen (#108) ──────────────────
+        //
+        // Atomiciteten kostar låstid: radlåset hålls nu över ett tiotal tur-och-
+        // retur mot databasen i stället för ett par. En annan betalning i samma
+        // org väntar därför något längre på verifikationsnummer-sekvensen. Ingen
+        // deadlock — låsordningen (avi → sekvens) är identisk i alla betalvägar —
+        // men en svälten transaktion ska FAILA TYDLIGT (P2028) i stället för att
+        // hänga. Samma fail-fast-princip som timeouterna mot R2-lagringen.
+        //
+        // Värdena är MÄTTA, inte gissade. 12 körningar mot eken_dev: median
+        // 8,8 ms, långsammaste 27,9 ms. I produktion går varje tur-och-retur över
+        // nätet i stället för loopback — räkna med en storleksordning mer, alltså
+        // några hundra millisekunder i värsta fall.
+        //
+        //   timeout 8 s — drygt tjugofalt över det projicerade värsta fallet, och
+        //     långt under den punkt där ett anrop läser som hängt. Något
+        //     generösare än Prismas 5 s-default med flit: att avbryta en betalning
+        //     som nästan är klar kostar mer än att vänta en stund till.
+        //   maxWait 3 s — tid att få en anslutning ur poolen. Är poolen slut så
+        //     länge är det ett systemfel som ska synas, inte köas.
+        //
+        // Höjs de här: höj för att en MÄTNING säger det, inte för att något
+        // tajmade ut. Ett timeout som växer varje gång det slår är inget skydd.
+        timeout: 8_000,
+        maxWait: 3_000,
+      },
+    )
 
     // Bankavstämnings-härdning PR 2 — append-only trail för kravstegs-nollställningen
     // (endast om avin faktiskt var i kravtrappan OCH betalningen reglerade avin —
     // en delbetalning nollställer INTE kravsteget, så ingen trail då). Skrivs efter
     // lyckad bokning så noteringen aldrig avser en revertad betalning. Ingen bokföring rörs.
-    if (completesNotice && notice.collectionStage !== RentCollectionStage.NONE) {
+    //
+    // Skrivs EFTER commit, med flit: en trail som skrivs innan transaktionen
+    // committat kan överleva en rollback och beskriva något som aldrig hände.
+    if (utfall.completesNotice && utfall.priorCollectionStage !== RentCollectionStage.NONE) {
       await this.prisma.rentNoticeEvent
         .create({
           data: {
@@ -1735,14 +1798,14 @@ export class AviseringService {
             ...(createdById ? { actorId: createdById } : { actorLabel: 'System' }),
             payload: {
               action: 'collection-stage-reset',
-              from: notice.collectionStage,
+              from: utfall.priorCollectionStage,
               reason: 'paid',
             },
           },
         })
         .catch((trailErr) => {
           this.logger.error(
-            `[Avisering] Kunde inte skriva kravstegs-trail för avi ${notice.noticeNumber}: ` +
+            `[Avisering] Kunde inte skriva kravstegs-trail för avi ${utfall.noticeNumber}: ` +
               `${trailErr instanceof Error ? trailErr.message : String(trailErr)}`,
           )
         })
