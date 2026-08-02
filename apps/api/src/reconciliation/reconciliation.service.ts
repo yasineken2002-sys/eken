@@ -1216,6 +1216,28 @@ export class ReconciliationService {
 
     return this.prisma.$transaction(async (tx) => {
       // Rad-lås FÖRST: serialiserar samtidiga delbetalningar på samma avi.
+      //
+      // ⚠️ LÅSORDNINGEN ÄR EN SPÄRR, INTE BARA SERIALISERING (#296, #298).
+      //
+      // Det här låset är det ENDA som hindrar DEPOSIT-grenen nedan från att
+      // dubbelbokföra mot en samtidig DepositsService.markPaid. Ordningen är:
+      //
+      //   denna väg:  RentNotice (lås här)  →  ...  →  Deposit (updateMany)
+      //   markPaid:   Deposit (claim)       →  ...  →  RentNotice (updateMany)
+      //
+      // Motsatta riktningar. Krockar de sluts cirkeln och Postgres dödar en av
+      // transaktionerna INNAN någon hunnit bokföra dubbelt. Skyddet är alltså en
+      // sidoeffekt av låsordningen — inte en avsedd kontroll.
+      //
+      // MÄTT, INTE GISSAT (#296): 440 parallella försök mot riktig Postgres, elva
+      // startförskjutningar i båda riktningarna → 440/440 gav ETT verifikat. Med
+      // fönstret konstlat vidgat till 200 ms: fortfarande 40/40 ett verifikat.
+      // Med DETTA LÅS BORTTAGET och samma vidgade fönster: 39/40 gav TVÅ verifikat,
+      // 40 000 kr bokfört mot en fordran på 20 000.
+      //
+      // TAR DU BORT ELLER VÄNDER DEN HÄR ORDNINGEN tänder du ett penningfel i en
+      // annan kodväg än den du ändrar. Fixa #296 (deposit-updateMany:ns count
+      // kontrolleras aldrig, se kommentaren där) FÖRE eller SAMTIDIGT.
       await tx.$queryRaw`SELECT id FROM "RentNotice" WHERE id = ${noticeId} AND "organizationId" = ${organizationId} FOR UPDATE`
 
       const notice = await tx.rentNotice.findFirst({
@@ -1278,6 +1300,18 @@ export class ReconciliationService {
         })
         // Deposition → PAID: sanningskällan för återbetalning (markRefundPendingForLease
         // hittar den vid uppsägning). Status-guardad mot samtidig markPaid-flip.
+        //
+        // ⚠️ #296: GUARDEN ÄR HALV — `count` kontrolleras ALDRIG. Uppdaterar den noll
+        // rader (en samtidig markPaid hann claima depositionen efter läsningen ovan,
+        // som är OLÅST) fortsätter transaktionen ändå: den skriver rentNoticePayment,
+        // flippar avin och bokför ett EGET verifikat under en annan idempotensnyckel
+        // än markPaids `deposit-manual-payment:<id>`. Två verifikat på samma
+        // deposition, inget unikt index som fångar det.
+        //
+        // Att det inte händer idag beror ENBART på avins radlås högst upp i denna
+        // transaktion — se låsordningskommentaren där. Bevisat i #296: med det låset
+        // borttaget gav 39 av 40 parallella försök två verifikat och 40 000 kr
+        // bokfört mot en fordran på 20 000.
         await tx.deposit.updateMany({
           where: { id: deposit.id, organizationId, status: 'PENDING' },
           data: { status: 'PAID', paidAt: transactionDate },
