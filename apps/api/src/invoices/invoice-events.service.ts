@@ -23,9 +23,17 @@ export class InvoiceEventsService {
 
     // Denormalisera aktörsetikett vid skrivtillfället.
     // Om användaren senare tas bort finns etiketten kvar i historiken.
+    //
+    // Uppslagningen går via `db`, inte `this.prisma` (#288). Den låg förut alltid
+    // på den poolade klienten, även när anroparen skickat med en transaktion —
+    // alltså en andra anslutning ockuperad under hela tiden transaktionen håller
+    // sitt radlås. Det märktes inte när den enda anroparen med tx var
+    // bankmatchningen; sedan #288 går varje manuell betalning samma väg, och en
+    // liten pool (Prismas default är num_cpus*2+1) hade då kunnat svälta sig
+    // själv och trigga maxWait i onödan.
     let actorLabel: string | undefined
     if (actorType === 'USER' && actorId) {
-      const user = await this.prisma.user.findUnique({
+      const user = await db.user.findUnique({
         where: { id: actorId },
         select: { firstName: true, lastName: true },
       })

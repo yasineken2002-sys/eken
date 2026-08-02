@@ -1275,8 +1275,11 @@ export class AccountingService {
   private async counterpartyForInvoice(
     invoiceId: string,
     organizationId: string,
+    // #288 — samma skärpning som systerfunktionen nedan: läses den härifrån inuti
+    // en transaktion ska den läsa i transaktionens värld, inte bredvid den.
+    tx?: Prisma.TransactionClient,
   ): Promise<string | null> {
-    const row = await this.prisma.invoice.findFirst({
+    const row = await (tx ?? this.prisma).invoice.findFirst({
       where: { id: invoiceId, organizationId },
       select: { tenant: { select: { companyName: true, firstName: true, lastName: true } } },
     })
@@ -1326,7 +1329,7 @@ export class AccountingService {
     // A2 fail-closed (typ-medveten: vanlig faktura ELLER depositionsfaktura).
     await this.assertInvoiceReceivableBacked(db, organizationId, invoice.id, invoice.invoiceNumber)
 
-    const counterparty = await this.counterpartyForInvoice(invoice.id, organizationId)
+    const counterparty = await this.counterpartyForInvoice(invoice.id, organizationId, tx)
 
     return this.createNumberedEntry({
       organizationId,
@@ -1397,7 +1400,7 @@ export class AccountingService {
     await this.assertInvoiceReceivableBacked(db, organizationId, invoice.id, invoice.invoiceNumber)
 
     const sourceId = `invoice-manual-payment:${invoice.id}`
-    const counterparty = await this.counterpartyForInvoice(invoice.id, organizationId)
+    const counterparty = await this.counterpartyForInvoice(invoice.id, organizationId, tx)
 
     return this.createNumberedEntry({
       organizationId,
