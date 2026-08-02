@@ -7,12 +7,28 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useInviteUser } from '../hooks/useUsers'
 import { readErrorMessage } from '@/features/auth/lib/password-schema'
+import { ASSIGNABLE_ROLES } from '@eken/shared'
+import type { AssignableRole } from '../api/users.api'
+
+/**
+ * Rollvalen kommer ur @eken/shared (R3), inte ur en handskriven lista här.
+ *
+ * `ROLE_DESCRIPTIONS` är typad på hela listan, så en ny roll gör bygget rött
+ * tills någon skrivit vad rollen innebär — ett alternativ ska inte kunna dyka
+ * upp i en rullgardin utan text.
+ */
+const ROLE_DESCRIPTIONS: Record<AssignableRole, string> = {
+  ADMIN: 'Administratör — kan hantera allt utom ägarrätt',
+  MANAGER: 'Förvaltare — fullständig hantering, ej ekonomi',
+  ACCOUNTANT: 'Ekonomi — bokföring, avstämning och inkasso',
+  VIEWER: 'Läsbehörighet — kan se, men inte ändra',
+}
 
 const schema = z.object({
   email: z.string().email('Ogiltig e-postadress'),
   firstName: z.string().min(1, 'Förnamn krävs').max(100),
   lastName: z.string().min(1, 'Efternamn krävs').max(100),
-  role: z.enum(['ADMIN', 'MANAGER']),
+  role: z.enum(ASSIGNABLE_ROLES),
 })
 type FormValues = z.infer<typeof schema>
 
@@ -76,8 +92,11 @@ export function InviteUserModal({ open, onClose }: Props) {
             className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3.5 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/15"
             {...register('role')}
           >
-            <option value="MANAGER">Förvaltare — fullständig hantering, ej ekonomi</option>
-            <option value="ADMIN">Administratör — kan hantera allt utom ägarrätt</option>
+            {ASSIGNABLE_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {ROLE_DESCRIPTIONS[r]}
+              </option>
+            ))}
           </select>
           {errors.role && <p className="text-[12px] text-red-500">{errors.role.message}</p>}
         </div>

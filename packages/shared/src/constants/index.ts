@@ -80,6 +80,51 @@ export const CORE_ACCOUNTS = {
 
 export const USER_ROLES = ['OWNER', 'ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER'] as const
 
+/**
+ * Rollerna en organisation kan ge någon — vid inbjudan OCH vid rollbyte.
+ *
+ * EN lista, med flit. Tidigare fanns två: `INVITABLE_ROLES` (ADMIN, MANAGER) och
+ * `ASSIGNABLE_ROLES` (ADMIN, MANAGER, ACCOUNTANT, VIEWER). Skillnaden var aldrig
+ * ett säkerhetsbeslut — kommentaren sa "för att hålla UI:t enkelt" — men den gav
+ * en ekonomiansvarig en omväg i två steg: bjud in som förvaltare, låt sedan
+ * ägaren byta rollen till ekonomi. Samma slutresultat, fler steg, och två listor
+ * som motsade varandra utan att någon skrivit ner varför (R3).
+ *
+ * OWNER står inte här. Ägaren är organisationens skapare och rollen är skyddad
+ * på flera ställen — den kan varken tilldelas, ändras eller inaktiveras — så ett
+ * ägarbyte är en egen handling med egna spärrar, inte ett rollval i en lista.
+ *
+ * Ordningen är fallande behörighet, samma som USER_ROLES, för att listan ska gå
+ * att läsa som en rangordning i ett UI.
+ *
+ * ── BESLUT 2026-08-02: ADMIN får skapa ekonomi- och läskonton direkt ─────────
+ *
+ * Sammanslagningen ändrar VEM som kan skapa ett ACCOUNTANT- eller VIEWER-konto,
+ * och det ska sägas rakt ut i stället för att upptäckas av nästa granskare.
+ *
+ * Före: inbjudan tillät bara ADMIN och MANAGER, och `PATCH /users/:id/role` är
+ * OWNER-only. Varje väg till ett ACCOUNTANT-konto krävde alltså att ägaren var
+ * inblandad — inte för att någon bestämt det, utan som en bieffekt av att den
+ * ena listan var snävare än den andra.
+ *
+ * Efter: `POST /users/invite` är fortfarande `@Roles('ADMIN', 'OWNER')`, men en
+ * ADMIN kan nu skapa kontot i ett steg utan ägaren.
+ *
+ * Det är avsiktligt, av två skäl. En ADMIN kunde redan bjuda in en ANNAN ADMIN —
+ * en strikt mäktigare roll än ACCOUNTANT — så taket för vad ADMIN kan skapa
+ * höjs inte; det är omvägen som försvinner. Och beslutet 2026-08-01 (#271) gav
+ * ADMIN fullt bokföringsmandat i det här kundsegmentet: att neka samma person
+ * att skapa en bokförare, men tillåta hen att skapa en administratör, vore
+ * inkonsekvent.
+ *
+ * OMPRÖVAS TILLSAMMANS MED #271. Skiljs ADMIN någon gång från bokförings-
+ * mandatet — vilket #271:s eget omprövningsvillkor pekar ut: större kunder med
+ * flera administratörer, där rätt lösning sannolikt är en egen ekonomiroll —
+ * ska den här listan omprövas i samma veva. De två besluten vilar på samma
+ * antagande om vem ADMIN är, och får inte glida isär.
+ */
+export const ASSIGNABLE_ROLES = ['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER'] as const
+
 // ─── Invoice Event Types ──────────────────────────────────────────────────────
 
 export const INVOICE_EVENT_TYPES = [

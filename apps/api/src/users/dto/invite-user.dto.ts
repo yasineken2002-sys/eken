@@ -1,12 +1,12 @@
 import { IsEmail, IsIn, IsString, MaxLength, MinLength } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
-import type { UserRole } from '@eken/shared'
+import { ASSIGNABLE_ROLES } from '@eken/shared'
+import type { AssignableRole } from './update-user-role.dto'
 
-// OWNER kan ej bjudas in — OWNER är organisationens skapare. ACCOUNTANT/VIEWER
-// är inte exponerade i den första iterationen för att hålla UI:t enkelt.
-export const INVITABLE_ROLES = ['ADMIN', 'MANAGER'] as const satisfies readonly UserRole[]
-export type InvitableRole = (typeof INVITABLE_ROLES)[number]
-
+/**
+ * Inbjudan tilldelar en roll — därför samma lista som rollbytet (R3).
+ * Historiken och beslutet står vid `ASSIGNABLE_ROLES` i @eken/shared.
+ */
 export class InviteUserDto {
   @ApiProperty()
   @IsEmail({}, { message: 'Ogiltig e-postadress' })
@@ -24,7 +24,7 @@ export class InviteUserDto {
   @MaxLength(100)
   lastName!: string
 
-  @ApiProperty({ enum: INVITABLE_ROLES })
-  @IsIn(INVITABLE_ROLES)
-  role!: InvitableRole
+  @ApiProperty({ enum: ASSIGNABLE_ROLES })
+  @IsIn(ASSIGNABLE_ROLES)
+  role!: AssignableRole
 }
