@@ -167,28 +167,116 @@ const CORRECTION_NOT_A_REOPEN_MESSAGE =
 /**
  * Får den här aktören återöppna en period för att RÄTTA en befintlig post?
  *
- * Svaret är i dag alltid nej, för alla. Rätt åtgärd vid en felaktig bokförd post
- * är en rättelse i innevarande period — inte att öppna den gamla månaden och
- * ändra där, vilket i efterhand hade sett ut som att posten alltid varit rätt.
+ * Nej. För alla, alltid.
  *
- * VARFÖR EN NAMNGIVEN FUNKTION SOM ALLTID RETURNERAR FALSE, i stället för ett
- * `if (kategori === EXISTING_ENTRY_INCORRECT) throw` inne i flödet: undantaget
- * ÄR planerat. En revisor ska få göra det här (med varning och spårning) när
- * revisorskonton finns. Med regeln samlad på ett ställe blir det undantaget en
- * ändring på en rad i den här funktionen — inte en utgrävning genom flödet efter
- * varje ställe som råkar resonera om kategorier.
+ * ── BESLUT 2026-08-02: regeln är LÅST, inte en platshållare ──────────────────
  *
- * FORMEN på det undantaget är däremot inte längre avgjord. Argumentet som stod
- * här — att en revisorsroll var omöjlig att uttrycka, eftersom RolesGuard var
- * hierarkisk och allt som gavs till ACCOUNTANT automatiskt hamnade hos ADMIN och
- * OWNER (alltså hos hyresvärden själv, som spärren finns för) — gäller inte
- * längre. R2 steg 2 tog bort hierarkin: en lista kan numera betyda exakt
- * "revisor, men inte ägaren".
+ * Funktionen stod länge här som ett förberett undantag: "en revisor ska få göra
+ * det här när revisorskonton finns". Den premissen är PRÖVAD OCH FÖRKASTAD.
+ * `false` är numera ett avsiktligt låst svar, inte ett provisorium i väntan på
+ * en roll som kan lyfta det.
  *
- * Slutsatsen "revisor blir en egen kontotyp, inte ett femte UserRole" vilade på
- * den premissen och är därmed öppen igen. Båda vägarna är nu möjliga, och valet
- * hör hemma i revisors-arbetet — inte i en kommentar här. Funktionen tar emot
- * beslutet oavsett vilken form det får.
+ * Frågan ställdes i R4-kartläggningen, i formen "revisorn ska få göra en sak
+ * ägaren inte får". Svaret var ett bestämt nej, av skäl som gäller oavsett
+ * vilken form en revisorsroll får.
+ *
+ * Underlaget kommer från granskarrollen FAR — projektets interna beteckning på
+ * den redovisningsgranskning som görs före bokföringsnära ändringar, jämförbar
+ * med security-auditor och code-reviewer. Det är alltså INTE ett uttalande från
+ * branschorganisationen Föreningen Auktoriserade Revisorer; se "Öppen
+ * verifieringspunkt" nedan. Beslutet att låsa regeln är produktägarens, på det
+ * underlaget — samma ansvarsfördelning som CLOSE_ROLES-beslutet ovan.
+ *
+ * SKÄL 1 — BOKFÖRINGSPRINCIPEN ÄR ROLLAGNOSTISK. Regeln "en felaktig post rättas
+ * aldrig genom att öppna den gamla perioden" är en METODfråga, inte en
+ * behörighetsfråga. Verkan på räkenskaperna är identisk oavsett vems konto som
+ * trycker på knappen: RAPPORTERNA för den stängda månaden — resultat- och
+ * balansräkning, en redan lämnad momsdeklaration, ett fastställt årsbokslut —
+ * skulle ändras utan någon markering i rapporterna själva. Spåret är inte helt
+ * dolt (`reopenPeriod` skriver en append-only REOPENED-händelse oavsett orsak),
+ * men den som läser periodens siffror ser en månad som ser ut att alltid ha
+ * varit rätt. Att öppna hålet för en ny rollkategori efter att ha stängt det för
+ * alla andra är därför inte en avvägning mellan behörigheter — det är att
+ * montera ner en korrekt utformad absolut regel, och att göra det i just det
+ * fall där den behövs mest.
+ *
+ * SKÄL 2 — OBEROENDET. Om revisorn utför eller låser upp en bokföringsåtgärd
+ * uppstår ett självgranskningshot: hon skulle senare granska en bokföring hon
+ * själv medverkat till att ändra. Det är dessutom medverkan i en ledningsuppgift
+ * — bokföringsskyldigheten vilar på BOLAGET, inte på revisorn. Revisorns rätta
+ * roll här är att UPPTÄCKA OCH PÅTALA, inte att utföra.
+ *
+ * SKÄL 3 — FALLET HAR REDAN EN LÖSNING, OCH DEN ÄR LAGREGLERAD. En felaktig post
+ * rättas med en motverifikation i innevarande period. Bokföringslagen 5 kap 5 §
+ * kräver att det vid en rättelse anges NÄR den skett och VEM som gjort den, och
+ * att en granskare "utan svårighet" ska kunna få kännedom om rättelsen när den
+ * sker genom en särskild rättelsepost; 5 kap 9 § ställer samma krav när en
+ * verifikation rättas. Den riktade rättelseknappen (T5 PR1c2) gör exakt det:
+ * rättelseposten dateras i dag, inte till originalets datum, och bär en
+ * hänvisning till vilket verifikat som rättas. Ingen återöppning behövs, varken
+ * för bolaget eller för en granskare. Det som ÄR tillåtet — att hämta in en GLÖMD
+ * post i sin rätta period (MISSING_ENTRY) — är en annan sak och rörs inte.
+ *
+ * SPÄRREN ÄR TIDSOBEROENDE. Räkenskapsårsspärren i samma fil
+ * (`REOPEN_WINDOW_MONTHS`) är en tidsgräns för det TILLÅTNA fallet — hur länge
+ * en glömd post får hämtas in. Den här spärren är något annat: ett absolut nej
+ * för det otillåtna fallet, lika giltigt dag ett efter stängning som år tre. De
+ * två ska inte läsas ihop.
+ *
+ * ── Skälen vilar på olika slags källor. Det ska synas. ──────────────────────
+ *
+ * SKÄL 3 har ett VERIFIERAT lagstöd. Paragraferna ovan är hämtade ur projektets
+ * egen lagkälla, `.claude/knowledge/lagar/bokforingslagen.md` (verifierad
+ * 2026-05-29, med källhänvisning) — inte ur en modells minne. Regeln att AI
+ * aldrig skriver lagrum i produktionskod finns för att hindra att ett
+ * paragrafnummer hittas på eller minns fel; den risken finns inte när citatet
+ * kommer ur en människoverifierad källa i repot, och kodbasen citerar redan
+ * därifrån på flera ställen (se t.ex. verifikationsnummerkontrollen i den här
+ * filen).
+ *
+ * SKÄL 2 har det INTE. Det vilar på professionsnormer om revisorns oberoende
+ * (revisorslagen, FAR:s analysmodell), som inte finns i projektets lagkälla och
+ * som FAR själv flaggade som obekräftade. Därför står skäl 2 med noll
+ * paragrafnummer — och ska fortsätta göra det tills en verksam revisor bekräftat
+ * normkällan. Att skriva ut ett lagrum där hade varit att låtsas om en säkerhet
+ * som inte finns.
+ *
+ * Skillnaden är inte formalia: den avgör vilket skäl som kan ifrågasättas av en
+ * granskare med lagboken i hand, och vilket som först måste stämmas av med
+ * någon som yrkesmässigt kan normen.
+ *
+ * ── Omprövas om ─────────────────────────────────────────────────────────────
+ *
+ *   • en verksam revisor motsäger oberoenderesonemanget i skäl 2, ELLER
+ *   • normkällan visar sig säga något annat än vad skäl 2 antar, ELLER
+ *   • en rättelseform tillkommer som gör en bakdaterad post SYNLIG som rättelse
+ *     i rapporterna för den stängda perioden — då faller skäl 1:s premiss, ELLER
+ *   • ett verkligt fall visar sig där motverifikation i innevarande period inte
+ *     ger en rättvisande bild: t.ex. ett fel som sträcker sig över flera redan
+ *     avslutade räkenskapsår vars resultat redan är fastställda. Då faller
+ *     skäl 3.
+ *
+ * SKÄL 1 BÄR BESLUTET ENSAMT. Faller dess premiss är frågan öppen igen, även om
+ * skäl 3 står kvar — skäl 3 är ett understödjande argument, inte en självständig
+ * pelare, och vilar dessutom på en generell lagregel som knappast kan falla i
+ * praktiken. Att kräva att båda faller hade varit en hårdare låsning än skäl 1
+ * motiverar, alltså ett villkor som aldrig går att uppfylla.
+ *
+ * Faller bara skäl 2 kvarstår regeln, men motiveringen ska skrivas om — ett skäl
+ * som visat sig fel får inte ligga kvar och bära ett beslut det inte längre
+ * håller uppe.
+ *
+ * ── Varför funktionen finns kvar ────────────────────────────────────────────
+ *
+ * Regeln är samlad på ett ställe i stället för utspridd som ett
+ * `if (kategori === EXISTING_ENTRY_INCORRECT) throw` inne i flödet. Det var
+ * ursprungligen för att undantaget skulle bli lätt att införa; nu är det i
+ * stället för att beslutet ska vara lätt att HITTA. Den som söker efter var
+ * regeln bor möter motiveringen på samma gång.
+ *
+ * Parametern behålls av samma skäl: signaturen visar att frågan "vem frågar?"
+ * har ställts och besvarats med "det spelar ingen roll" — inte att den aldrig
+ * ställdes.
  */
 export function canReopenForCorrection(_actorRole: UserRole): boolean {
   return false
