@@ -36,6 +36,10 @@ function makeService(opts: { invoiceStatus?: string; journalReturnsNull?: boolea
       update: jest.fn().mockResolvedValue({}),
     },
     invoiceEvent: { create: jest.fn().mockResolvedValue({}) },
+    // #290 — allokeringen depositionsvägen aldrig skrev. Attrappen returnerar
+    // ett RIKTIGT id: med `{}` vore nyckeln "...:undefined" och testet nedan
+    // kunde inte skilja en verklig allokeringsnyckel från ingen alls.
+    invoicePayment: { create: jest.fn().mockResolvedValue({ id: 'alloc-dep-1' }) },
   }
 
   const prisma = {
@@ -72,7 +76,54 @@ describe('DepositsService.markPaid — bokför inbetalningen', () => {
     const args = createJournalEntryForInvoiceManualPayment.mock.calls[0] as unknown[]
     expect(args[1]).toBe(20_000)
     expect(args[3]).toBe('MANUAL')
-    expect(args[6]).toBe(txMock)
+    // #290 — allokerings-id:t sköts in FÖRE tx; tx ligger kvar sist.
+    expect(args[6]).toBe('alloc-dep-1')
+    expect(args[7]).toBe(txMock)
+  })
+
+  it('#290: skriver allokeringen som saknades — verifikatet i övrigt OFÖRÄNDRAT', async () => {
+    // Depositionsvägen flippade fakturan till PAID med noll InvoicePayment-rader.
+    // Restskulden är ett BERÄKNAT tillstånd (computeInvoiceDebt läser
+    // allokeringarna), så betalningen var osynlig för samma sanningskälla som
+    // alla andra vägar använder. Raden är den betalning som ändå bokförs.
+    const { service, txMock, createJournalEntryForInvoiceManualPayment } = makeService()
+
+    await service.markPaid('dep-1', 'org-1', 'user-1')
+
+    expect(txMock.invoicePayment.create).toHaveBeenCalledTimes(1)
+    const rad = (txMock.invoicePayment.create.mock.calls[0] as unknown[])[0] as {
+      data: { invoiceId: string; amount: number; paidAt: Date; source: string }
+    }
+    expect(rad.data.invoiceId).toBe('inv-1')
+    // Allokeringen bär SAMMA belopp som verifikatet — ingen ny sanning, bara den
+    // som redan bokfördes, nu synlig för restskuldsberäkningen.
+    expect(Number(rad.data.amount)).toBe(20_000)
+    expect(rad.data.source).toBe('MANUAL')
+
+    const args = createJournalEntryForInvoiceManualPayment.mock.calls[0] as unknown[]
+    // Verifikatets argument fält för fält — allt utom nyckeln är som före #290.
+    expect(args[0]).toEqual({ id: 'inv-1', invoiceNumber: 'F-2026-0001' }) // samma faktura
+    expect(args[1]).toBe(20_000) // samma belopp
+    expect(args[2]).toBe(rad.data.paidAt) // samma datum som allokeringen
+    expect(args[3]).toBe('MANUAL') // samma betalsätt → samma likvidkonto
+    expect(args[4]).toBe('org-1')
+    expect(args[5]).toBe('user-1')
+    // Moms och kontering ligger i accounting-lagret och rörs inte av #290 — se
+    // accounting.invoice-payment.spec.ts.
+  })
+
+  it('#290: allokeringen skrivs BARA i grenen som också sätter PAID (ingen dubbelräkning)', async () => {
+    // Fakturan redan reglerad av en bankmatch → varken verifikat, statusskrivning
+    // ELLER allokering. Annars hade bankvägens allokering fått en tvilling och
+    // Σ allokeringar överstigit det som faktiskt kommit in.
+    const { service, txMock, createJournalEntryForInvoiceManualPayment } = makeService({
+      invoiceStatus: 'PAID',
+    })
+
+    await service.markPaid('dep-1', 'org-1', 'user-1')
+
+    expect(txMock.invoicePayment.create).not.toHaveBeenCalled()
+    expect(createJournalEntryForInvoiceManualPayment).not.toHaveBeenCalled()
   })
 
   it('rullar tillbaka (kastar) om verifikatet uteblir — ingen PAID utan verifikat', async () => {

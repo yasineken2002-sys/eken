@@ -373,6 +373,26 @@ export class DepositsService implements OnApplicationBootstrap {
             },
           })
 
+          // #290: allokeringen depositionsvägen aldrig skrev. Fakturan flippades
+          // till PAID med noll InvoicePayment-rader — osynlig för
+          // computeInvoiceDebt, som är sanningskällan för restskuld på alla andra
+          // vägar. Raden är den betalning som ändå bokförs på raden nedanför
+          // (samma belopp, samma datum), och den bär verifikatets idempotensnyckel.
+          //
+          // Ingen dubbelräkning: allokeringen skrivs BARA i den gren som också
+          // sätter status PAID, och den grenen körs bara en gång per deposition
+          // (Deposit-status-claimen PENDING→PAID ovan). Huvudboken och
+          // allokeringstabellen är dessutom skilda dataplan — ingen vy, rapport
+          // eller kravtrappa summerar båda.
+          const allocation = await tx.invoicePayment.create({
+            data: {
+              invoiceId: inv.id,
+              amount: deposit.amount,
+              paidAt: now,
+              source: 'MANUAL',
+            },
+          })
+
           // Bokför inbetalningen (likvidkonto 1930 D / 1510 K) i SAMMA tx. Reglerar
           // depositionens kundfordran som bokfördes vid create (1510 D / 2890 K).
           // Utan detta stod 1510 kvar öppen trots betald deposition (BFL 5 kap 6 §).
@@ -384,6 +404,7 @@ export class DepositsService implements OnApplicationBootstrap {
             'MANUAL',
             organizationId,
             userId,
+            allocation.id,
             tx,
           )
           if (entry === null) {

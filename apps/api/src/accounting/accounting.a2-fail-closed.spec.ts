@@ -112,6 +112,7 @@ describe('T5 A2 · fail-closed accrual-guard på 1510-kreditering', () => {
         'BANK' as never,
         'org-1',
         null,
+        'alloc-1',
       ),
     ).rejects.toBeInstanceOf(UnprocessableEntityException)
     expect(created).toHaveLength(0)
@@ -139,6 +140,7 @@ describe('T5 A2 · fail-closed accrual-guard på 1510-kreditering', () => {
       'BANK' as never,
       'org-1',
       null,
+      'alloc-1',
     )
     expect(entry).not.toBeNull()
     expect(created).toHaveLength(1)
@@ -159,6 +161,7 @@ describe('T5 A2 · fail-closed accrual-guard på 1510-kreditering', () => {
       'BANK' as never,
       'org-1',
       null,
+      'alloc-1',
     )
     expect(m).not.toBeNull()
     // bankväg (applyMatchToInvoice fuzzy)
