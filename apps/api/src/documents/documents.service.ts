@@ -15,6 +15,11 @@ import {
   DETECTED_DOCUMENT_TYPES,
   MAX_DOCUMENT_BYTES,
 } from '../common/utils/file-validation'
+import {
+  assertMayAccessContractDocument,
+  mayAccessContractDocuments,
+} from '../common/authz/documents-authz'
+import type { UserRole } from '@prisma/client'
 
 const ALLOWED_MIME_TYPES = [
   'application/pdf',
@@ -63,7 +68,16 @@ export class DocumentsService {
       tenantId?: string
       category?: DocumentCategory
     },
+    actorRole?: UserRole,
   ) {
+    // Hyreskontrakt bär personnummer. Roller som inte får se dem ska inte heller
+    // få veta att de finns — listan delar annars ut dokument-id:t, som är allt
+    // nedladdningen behöver. Se documents-authz.ts.
+    const döljKontrakt = !mayAccessContractDocuments(actorRole)
+    // Uttrycklig ?category=CONTRACT från en roll som inte får se dem: tom lista.
+    // Måste ligga FÖRE where-bygget — filtret nedan spreds annars efter grinden
+    // och skrev över den, så just den som frågade rakt ut fick svaret.
+    if (döljKontrakt && filters?.category === DocumentCategory.CONTRACT) return []
     const documents = await this.prisma.document.findMany({
       where: {
         organizationId,
@@ -71,7 +85,14 @@ export class DocumentsService {
         ...(filters?.unitId ? { unitId: filters.unitId } : {}),
         ...(filters?.leaseId ? { leaseId: filters.leaseId } : {}),
         ...(filters?.tenantId ? { tenantId: filters.tenantId } : {}),
-        ...(filters?.category ? { category: filters.category } : {}),
+        // Kategorivillkoret sist och som ETT uttryck: antingen den begärda
+        // kategorin, eller — för roller utan kontraktsbehörighet — allt utom
+        // CONTRACT. Två separata spreadar hade låtit det ena skriva över det andra.
+        ...(filters?.category
+          ? { category: filters.category }
+          : döljKontrakt
+            ? { category: { not: DocumentCategory.CONTRACT } }
+            : {}),
       },
       include: {
         uploadedBy: { select: { firstName: true, lastName: true } },
@@ -219,8 +240,14 @@ export class DocumentsService {
   async getDownloadUrl(
     id: string,
     organizationId: string,
+    actorRole?: UserRole,
   ): Promise<{ url: string; document: Awaited<ReturnType<DocumentsService['findOne']>> }> {
     const document = await this.findOne(id, organizationId)
+    // Nekandet sker FÖRE den presignerade URL:en skapas — en URL som hunnit
+    // genereras är en nyckel som redan lämnat systemet, oavsett vad vi svarar.
+    if (document.category === DocumentCategory.CONTRACT) {
+      assertMayAccessContractDocument(actorRole)
+    }
     const url = await this.storage.getPresignedUrl(document.storageKey, 300)
     return { url, document }
   }

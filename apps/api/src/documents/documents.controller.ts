@@ -31,19 +31,26 @@ export class DocumentsController {
   @ApiOperation({ summary: 'Lista dokument med valfria filter' })
   findAll(
     @OrgId() orgId: string,
+    @CurrentUser() user: JwtPayload,
     @Query('propertyId') propertyId?: string,
     @Query('unitId') unitId?: string,
     @Query('leaseId') leaseId?: string,
     @Query('tenantId') tenantId?: string,
     @Query('category') category?: DocumentCategory,
   ) {
-    return this.service.findAll(orgId, {
-      ...(propertyId ? { propertyId } : {}),
-      ...(unitId ? { unitId } : {}),
-      ...(leaseId ? { leaseId } : {}),
-      ...(tenantId ? { tenantId } : {}),
-      ...(category ? { category } : {}),
-    })
+    // Aktörsrollen skickas vidare — grinden mot hyreskontrakt bor i tjänsten
+    // (documents-authz.ts), inte här, eftersom den ska gälla varje anropare.
+    return this.service.findAll(
+      orgId,
+      {
+        ...(propertyId ? { propertyId } : {}),
+        ...(unitId ? { unitId } : {}),
+        ...(leaseId ? { leaseId } : {}),
+        ...(tenantId ? { tenantId } : {}),
+        ...(category ? { category } : {}),
+      },
+      user.role,
+    )
   }
 
   @Post()
@@ -117,13 +124,13 @@ export class DocumentsController {
 
   @Get(':id/download')
   @ApiOperation({ summary: 'Hämta presignerad nedladdnings-URL för dokument' })
-  async download(@Param('id') id: string, @OrgId() orgId: string) {
+  async download(@Param('id') id: string, @OrgId() orgId: string, @CurrentUser() user: JwtPayload) {
     // Returnerar presigned R2-URL (~5 min TTL) som JSON istället för 302-redirect.
     // Tidigare lösning krävde att webbläsaren skickade Authorization-headern på
     // den initiala GET:en, vilket är omöjligt vid window.open() — resultatet
     // blev 401 UNAUTHORIZED. Frontend hämtar nu URL:en med auth via fetch och
     // öppnar sedan den signerade URL:en direkt mot R2.
-    const { url, document } = await this.service.getDownloadUrl(id, orgId)
+    const { url, document } = await this.service.getDownloadUrl(id, orgId, user.role)
     return { url, filename: document.name, mimeType: document.mimeType }
   }
 
