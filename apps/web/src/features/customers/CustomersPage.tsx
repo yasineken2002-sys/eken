@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { cn } from '@/lib/cn'
 import {
   useCustomers,
+  useCustomer,
   useCreateCustomer,
   useUpdateCustomer,
   useDeleteCustomer,
@@ -61,6 +62,11 @@ export function CustomersPage() {
   }, [debouncedSearch, tab])
 
   const { data: customers = [], isLoading } = useCustomers(filters)
+  // Personnumret bärs inte längre av listan (dataminimering, se
+  // customers.service.ts findAll). Redigeringsformuläret förifylls därför från
+  // DETALJSVARET — annars hade fältet stått tomt för en kund som har ett nummer,
+  // och den som redigerar hade trott att uppgiften saknades.
+  const { data: selectedDetail, isPending: detailPending } = useCustomer(selected?.id ?? null)
 
   const createMutation = useCreateCustomer()
   const updateMutation = useUpdateCustomer()
@@ -115,10 +121,15 @@ export function CustomersPage() {
       ),
     },
     {
+      // Kolumnen visade tidigare "Org/personnummer" och föll tillbaka på
+      // personnumret för privatkunder. Den visar nu bara organisationsnummer:
+      // man navigerar en kundlista på namn och kundnummer, inte på personnummer,
+      // och listan bär inte längre uppgiften (#280). Privatpersoner får "–",
+      // vilket är korrekt — de HAR inget organisationsnummer.
       key: 'orgNumber',
-      header: 'Org/personnummer',
+      header: 'Org.nummer',
       cell: (c: CustomerWithCount) => (
-        <span className="text-[13px] text-gray-600">{c.orgNumber ?? c.personalNumber ?? '–'}</span>
+        <span className="text-[13px] text-gray-600">{c.orgNumber ?? '–'}</span>
       ),
     },
     {
@@ -281,18 +292,31 @@ export function CustomersPage() {
           }
           size="md"
         >
-          <CustomerForm
-            defaultValues={selected}
-            submitLabel="Spara ändringar"
-            onSubmit={(data) =>
-              updateMutation.mutate(
-                { id: selected.id, ...data },
-                { onSuccess: () => setSelected(null) },
-              )
-            }
-            onCancel={() => setSelected(null)}
-            isSubmitting={updateMutation.isPending}
-          />
+          {/* Formuläret monteras FÖRST när detaljsvaret finns. React Hook Form
+              läser `defaultValues` bara vid första mount — ett `selectedDetail
+              ?? selected` hade därför förifyllt från listan varje gång posten
+              inte redan låg varm i cachen, alltså i praktiken alltid, och
+              personnummerfältet stått tomt för en kund som har ett. */}
+          {detailPending || !selectedDetail ? (
+            <div className="space-y-3 py-2">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-10 animate-pulse rounded-xl bg-gray-50" />
+              ))}
+            </div>
+          ) : (
+            <CustomerForm
+              defaultValues={selectedDetail}
+              submitLabel="Spara ändringar"
+              onSubmit={(data) =>
+                updateMutation.mutate(
+                  { id: selected.id, ...data },
+                  { onSuccess: () => setSelected(null) },
+                )
+              }
+              onCancel={() => setSelected(null)}
+              isSubmitting={updateMutation.isPending}
+            />
+          )}
 
           <div className="mt-5 flex justify-between border-t border-gray-100 pt-4">
             {selected.isActive ? (
