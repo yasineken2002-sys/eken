@@ -34,6 +34,9 @@ function makeService(
   } = {},
 ) {
   const txMock = {
+    // #307 C: radlåset på fakturan tas först i transaktionen. Returvärdet används
+    // inte — låset ÄR effekten.
+    $queryRaw: jest.fn().mockResolvedValue([]),
     bankTransaction: { update: jest.fn().mockResolvedValue({}) },
     // deposit-F1: applyMatchToInvoice synkar en ev. länkad Deposit → PAID.
     deposit: { updateMany: jest.fn().mockResolvedValue({ count: opts.depositCount ?? 0 }) },
@@ -45,8 +48,13 @@ function makeService(
       create: jest.fn().mockResolvedValue({}),
     },
     invoice: {
+      // Statusen läses ur den låsta raden (#307 C). Dessa tester kör FULL
+      // reglering via claimPaidWithinTx, men läsningen sker före grenvalet.
+      findFirst: jest.fn().mockResolvedValue({
+        status: 'SENT',
+        invoiceNumber: INVOICE.invoiceNumber,
+      }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      findFirstOrThrow: jest.fn().mockResolvedValue({ invoiceNumber: INVOICE.invoiceNumber }),
     },
   }
 

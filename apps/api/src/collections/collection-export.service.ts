@@ -333,6 +333,21 @@ export class CollectionExportService {
    *      varandra. Föll den andra stod fakturan `SENT_TO_COLLECTION` utan spår
    *      av VARFÖR — i den logg som är själva behandlingshistoriken.
    *
+   * ── ORDNINGEN, I EN FÖLJD (#307 C) ────────────────────────────────────────
+   *
+   * Vägen fick aldrig ett eget avsnitt när den härdades, trots att ordningen är
+   * hela poängen. Den står här för att vara läsbar utan att pusslas ihop:
+   *
+   *   1. `$transaction` — allt nedan är atomiskt eller inget av det.
+   *   2. `SELECT … FOR UPDATE` på fakturaraden — FÖRST, före varje läsning som
+   *      ska fatta ett beslut om raden.
+   *   3. Statusgrinden (`transitionBlockReason`) — ur statusmaskinen, inte en
+   *      handskriven lista (#307 PR 2b).
+   *   4. Skuldberäkningen INNANFÖR låset: `invoicePayment.findMany` →
+   *      `computeInvoiceDebt` → `debtBlockReason`. Ingen skuld, inget krav (#318).
+   *   5. `updateMany` med `COLLECTION_SOURCE_STATUSES` i WHERE — en TILLÅTLISTA
+   *      härledd ur `INVOICE_TRANSITIONS`, aldrig en förbudslista.
+   *
    * SKULDBERÄKNINGEN LIGGER INNANFÖR TRANSAKTIONEN OCH INNANFÖR LÅSET. Låg den
    * utanför kunde en betalning landa mellan grinden och skrivningen och grinden
    * hade uttalat sig om ett inaktuellt saldo. (Samma läxa som #288 drog i
@@ -423,6 +438,16 @@ export class CollectionExportService {
       // sådan blind skrivare fram till #315, så "en framtida skrivare glömmer
       // disciplinen" är inte hypotetiskt. Utan guarden blir det en tyst
       // datakorruption i stället för ett fel. (FAR-granskning av PR 2b.)
+      //
+      // ⚠️ #307 C — LÅSDISCIPLIN ÄR INTE STATUSDISCIPLIN. Påståendet ovan höll,
+      // och räckte ändå inte. De tre betalningsskrivarna TOG sitt lås (eller fick
+      // ett i C) — men skrev fel status innanför det: en delbetalning mot en
+      // inkassofaktura flippade `SENT_TO_COLLECTION → PARTIAL` utan att röra
+      // `remindersPaused`/`sentToCollectionAt`. `claim.count` såg inget fel,
+      // eftersom raden aldrig ändrades av någon ANNAN transaktion — den ändrades
+      // korrekt serialiserat till fel värde. Guarden nedan skyddar mot samtidighet,
+      // inte mot en skrivare som är ensam och har fel. Rätt status är därför härledd
+      // ur en delad källa (`invoice-payment-status.ts`), inte bevakad här.
       if (claim.count === 0) {
         throw new ConflictException(
           `Faktura ${invoice.invoiceNumber} ändrades under markeringen — den är nu betald, ` +

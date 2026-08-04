@@ -21,9 +21,15 @@ import { ReconciliationService } from './reconciliation.service'
 const dec = (n: number | string) => new Decimal(n)
 const INVOICE = { id: 'inv-1', invoiceNumber: 'F-2026-0001', total: dec('10000') }
 
-function makeService(opts: { priorAllocations?: number[] } = {}) {
+function makeService(opts: { priorAllocations?: number[]; status?: string } = {}) {
   const priors = opts.priorAllocations ?? []
+  // #307 C: fakturans FAKTISKA status läses nu ur den låsta raden (den styr både
+  // målstatusen och `previousStatus` i händelseloggen). Attrappen måste därför
+  // bära en status — utan den mätte testerna en faktura utan tillstånd.
+  const status = opts.status ?? 'SENT'
   const txMock = {
+    // Radlåset (#307 C). Prisma returnerar en tom lista; värdet används inte.
+    $queryRaw: jest.fn().mockResolvedValue([]),
     bankTransaction: { update: jest.fn().mockResolvedValue({}) },
     deposit: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     invoicePayment: {
@@ -31,8 +37,8 @@ function makeService(opts: { priorAllocations?: number[] } = {}) {
       create: jest.fn().mockResolvedValue({}),
     },
     invoice: {
+      findFirst: jest.fn().mockResolvedValue({ status, invoiceNumber: INVOICE.invoiceNumber }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      findFirstOrThrow: jest.fn().mockResolvedValue({ invoiceNumber: INVOICE.invoiceNumber }),
     },
   }
 
