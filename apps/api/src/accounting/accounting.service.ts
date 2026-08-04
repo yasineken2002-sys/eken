@@ -2006,13 +2006,78 @@ export class AccountingService {
     })
   }
 
+  // ── #301: motverifikat för DEPOSITIONENS accrual ───────────────────────────
+  //
+  // Depositionens 1510 D / 2890 K ligger i en EGEN NAMNRYMD:
+  //   sourceId = `deposit-invoice:<depositId>`
+  // …och nyckeln är DEPOSITIONENS id, inte fakturans eller avins.
+  //
+  // Det är hela poängen med #301. De två syskonfunktionerna nedan letar på
+  // `<invoiceId>` respektive `rent-notice:<noticeId>` och kan därför ALDRIG träffa
+  // depositionens post — inte för att den är fel-nycklad, utan för att den bor
+  // någon annanstans. En "fix" som bara letar på fler ställen missar att
+  // kopplingen faktura→deposition (eller avi→deposition) måste slås upp för att
+  // nyckeln över huvud taget ska gå att konstruera.
+  //
+  // Uppslaget speglar assertInvoiceReceivableBacked, som redan gör exakt samma sak
+  // för betalningsguarden. Ingen ny konvention — bara samma namnrymdshopp.
+  //
+  // BÅDA skapandevägarna bokför under samma nyckel (createJournalEntryForDeposit-
+  // Invoice): DepositsService.create() via faktura, och ensureDepositForNotice()
+  // via avi. Därför är depositId den enda gemensamma nämnaren och den enda nyckel
+  // som fungerar för båda anroparna — avi-länkade depositioner saknar Invoice helt
+  // och kan inte ens konstruera en invoiceId-nyckel.
+  //
+  // reasonPrefix kommer från anroparen (`Makulerad faktura` / `Annullerad hyresavi`)
+  // så verifikatstexten visar VARFÖR reverseringen skedde — samma två prefix som
+  // syskonen redan använder, ingen ny vokabulär. BFL 5 kap 6 §: verifikationen ska
+  // ange vad transaktionen avser.
+  //
+  // Inget reversalOfEntryId: de systemtriggade syskonen sätter det inte, bara den
+  // operatörsstyrda reverseJournalEntry (som behöver det för sin engångsspärr).
+  async reverseJournalEntryForDepositAccrual(
+    depositId: string,
+    organizationId: string,
+    reasonPrefix: string,
+    createdById: string | null,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const db = tx ?? this.prisma
+    const sourceId = `deposit-invoice:${depositId}`
+    const original = await db.journalEntry.findFirst({
+      where: { organizationId, source: 'INVOICE', sourceId },
+      include: { lines: true },
+    })
+    if (!original) return
+
+    await this.createReversalEntry({
+      organizationId,
+      original,
+      source: 'INVOICE',
+      // Speglar originalets nyckel, precis som misc-charge-reversal speglar
+      // misc-charge och rent-notice-reversal speglar rent-notice. Idempotent:
+      // två makuleringsförsök ger ETT motverifikat.
+      reversalSourceId: `deposit-invoice-reversal:${depositId}`,
+      description: `${reasonPrefix}: ${original.description}`,
+      createdById,
+      ...(tx ? { tx } : {}),
+    })
+  }
+
   // Motverifikat vid annullering av en hyresavi (cancelNotice). Intäkten bokas vid
   // avi-genereringen (createJournalEntryForRentNotice: 1510 D / 39xx K / ev. 26xx K,
   // sourceId="rent-notice:<id>"). Utan en reversering vid annullering kvarstår en
   // fantomintäkt, fantomfordran och — för lokal med moms — utgående moms som betalas
   // in för en affärshändelse som aldrig fullbordades (BFL 5 kap 5 §/9 §). Speglar
   // reverseJournalEntryForMiscCharge: byter debet/kredit, eget sourceId, idempotent.
-  // No-op om ingen originalpost finns (t.ex. DEPOSIT-avi som aldrig intäktsbokfördes).
+  //
+  // No-op om ingen originalpost finns. För en DEPOSIT-avi är det ALLTID fallet —
+  // men det betyder inte att den saknar bokföring. Kommentaren här påstod tidigare
+  // "DEPOSIT-avi som aldrig intäktsbokfördes", vilket var sant före #41 och fel
+  // efter: sedan dess bokför ensureDepositForNotice alltid 1510 D / 2890 K, bara
+  // under `deposit-invoice:<depositId>`. Den posten reverseras av
+  // reverseJournalEntryForDepositAccrual ovan, som cancelNotice anropar separat.
+  // No-op:en här är alltså korrekt — men bara för att någon annan tar den posten.
   async reverseJournalEntryForRentNotice(
     noticeId: string,
     organizationId: string,

@@ -543,6 +543,47 @@ export class InvoicesService {
       // No-op om fakturan aldrig bokförts.
       if (newStatus === 'VOID') {
         await this.accountingService.reverseJournalEntryForInvoice(id, organizationId, actorId, tx)
+
+        // ── #301: DEPOSITIONSFAKTURANS ACCRUAL LIGGER I EN ANNAN NAMNRYMD ─────
+        //
+        // Raden ovan är en no-op för en depositionsfaktura, och det är inte ett
+        // fel i den: en DEPOSIT-faktura går ALDRIG genom InvoicesService.create(),
+        // så det finns ingen post under sourceId=<invoiceId> att hitta.
+        // DepositsService.create() skapar Invoice-raden direkt och bokför
+        // 1510 D / 2890 K under `deposit-invoice:<depositId>`.
+        //
+        // Utan det här anropet stod alltså fordran OCH skulden kvar öppna efter
+        // makulering — för en affärshändelse som aldrig fullbordades. FAR:s
+        // beslut (#301): reversera alltid. Grunden är INTE fantomintäkt/moms
+        // (depositionsfakturan har vatTotal 0 och rör inga 3xxx-konton) utan
+        // BFL 5 kap 6 § — efter makulering finns varken en verklig fordran
+        // (hyresgästen är inte skyldig att betala en makulerad faktura) eller en
+        // verklig skuld (ingen deposition har mottagits).
+        //
+        // Nyckeln kan bara konstrueras via depositionen, därav uppslaget.
+        // Speglar assertInvoiceReceivableBacked, som gör samma namnrymdshopp.
+        const deposit = await tx.deposit.findFirst({
+          where: { organizationId, invoiceId: id },
+          select: { id: true, status: true },
+        })
+
+        // SPÄRR: reversera BARA en oreglerad deposition.
+        //
+        // Allokeringsgrinden ovan blockerar redan VOID när en InvoicePayment
+        // finns, så det här är andra försvarslinjen — men den är inte överflödig:
+        // den kodar FAR:s villkor ("när ingen betalning inkommit") mot
+        // depositionens EGEN status i stället för mot en spegel av den. Är
+        // depositionen PAID/REFUNDED/FORFEITED är 1930 D / 1510 K redan bokfört,
+        // och en reversering skulle kreditera 1510 en andra gång.
+        if (deposit && deposit.status === 'PENDING') {
+          await this.accountingService.reverseJournalEntryForDepositAccrual(
+            deposit.id,
+            organizationId,
+            'Makulerad faktura',
+            actorId,
+            tx,
+          )
+        }
       }
 
       return updated

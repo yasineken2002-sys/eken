@@ -36,6 +36,10 @@ function makeService(invoiceStatus: string | null, allocations: Array<{ id: stri
     invoiceEvent: { deleteMany: jest.fn() },
     // C4/C5: VOID-guarden läser faktiska betalningsallokeringar (inte status).
     invoicePayment: { findMany: jest.fn().mockResolvedValue(allocations) },
+    // #301: radlåset på fakturan (låsordning Invoice → Deposit) + uppslaget som
+    // hittar depositionens accrual i sin egen namnrymd. Utan deposition → no-op.
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    deposit: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: undefined as unknown,
   }
   ;(prisma as { $transaction: unknown }).$transaction = (cb: (tx: unknown) => unknown) => cb(prisma)

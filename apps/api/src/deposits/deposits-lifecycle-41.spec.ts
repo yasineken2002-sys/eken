@@ -96,7 +96,13 @@ describe('#41/T2.2 · markPaid bokför avi-länkad deposition (1930 D/1510 K)', 
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findFirstOrThrow: jest.fn().mockResolvedValue({ id: 'dep-1', status: 'PAID' }),
       },
-      rentNotice: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      rentNotice: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        // #301: avi-grenen läser den länkade avins status efter claimen och
+        // vägrar bokföra mot en ANNULLERAD avi (annulleringen har då redan
+        // reverserat accrualen). SENT här = oförändrat beteende.
+        findFirst: jest.fn().mockResolvedValue({ noticeNumber: 'A-2026-0001', status: 'SENT' }),
+      },
     }
     const prisma = {
       deposit: {
