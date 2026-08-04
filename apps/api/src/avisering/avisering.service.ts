@@ -1846,6 +1846,50 @@ export class AviseringService {
     // kvarstår fantomintäkt + utgående moms (BFL 5 kap 5 §/9 §). Faller reverseringen
     // rullas hela annulleringen tillbaka — ingen CANCELLED-avi utan motverifikat.
     await this.prisma.$transaction(async (tx) => {
+      // ── LÅSORDNING: DEPOSITION FÖRST (#296, #298, #299, #301) ───────────────
+      //
+      // Sedan #301 reverserar annulleringen även depositionens accrual, och då
+      // måste vi serialisera mot en samtidig DepositsService.markPaid som kan
+      // bokföra 1930 D / 1510 K mitt i vår transaktion. Utan låset läser markPaid
+      // vår avi INNAN vi committat, ser den fortfarande öppen, och bokför:
+      //
+      //   T1 (cancelNotice) reverserar accrualen  →  avin CANCELLED
+      //   T2 (markPaid)     läste avin som ÖPPEN  →  bokför 1930 D / 1510 K
+      //   → 1510 krediterad två gånger mot en debet
+      //
+      // DET HÄR LÅSET ÄR LOAD-BEARING, till skillnad från syskonlåset i
+      // invoices.service.ts. MÄTT (#301:s bevisrigg, S7): utan låset gav 22 av 30
+      // parallella körningar dubbelkrediterad 1510 — TROTS att CANCELLED-grinden i
+      // markPaid satt på plats. Grinden ensam räcker inte, eftersom den läser en
+      // avi som hinner bli inaktuell. Med låset: 0 av 30. Och omvänt, med låset men
+      // UTAN grinden: 28 av 30 fel. Båda behövs.
+      //
+      // ⚠️ RIKTNINGEN ÄR VALD MED FLIT, OCH DEN ÄR INTE DEN "SYMMETRISKA".
+      //
+      //   denna väg:  Deposit (lås här)     →  ...  →  RentNotice (updateMany)
+      //   markPaid:   Deposit (claim)       →  ...  →  RentNotice (updateMany)
+      //   bankvägen:  RentNotice (FOR UPDATE) →  ...  →  Deposit (updateMany)
+      //
+      // Vi ansluter till markPaid-sidan. Det är markPaid som HOTAR reverseringen,
+      // och Deposit-först serialiserar direkt mot hotet. Lade vi låset efter
+      // rentNotice-uppdateringen nedan (ordning RentNotice → Deposit, alltså
+      // banksidan) skulle vi i stället få en ABBA mot markPaid — deadlock utan att
+      // racet stängs. Det ser symmetriskt ut och är sämre.
+      //
+      // MOT BANKVÄGEN blir vi därmed motsatta, precis som markPaid redan är. Det
+      // är samma konstruktion #299 skrev ned: krockar de sluts cirkeln och Postgres
+      // dödar en av dem innan någon hunnit bokföra dubbelt. En bankmatchning och en
+      // annullering av SAMMA depositionsavi ska inte båda gå igenom.
+      //
+      // #296:S SKYDD ÄR ORÖRT: det vilar på att bankvägen och markPaid går åt olika
+      // håll. #301 vänder ingen av dem — den lägger bara till en väg på den sida
+      // som redan finns. Vänder du ordningen här tänder du ett penningfel i en
+      // annan kodväg än den du ändrar; läs #296/#298 först.
+      const depositForNotice = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Deposit"
+        WHERE "rentNoticeId" = ${noticeId} AND "organizationId" = ${orgId}
+        FOR UPDATE`
+
       // Bankavstämnings-härdning PR 2 — en avbruten avi lämnar kravtrappan: nollställ
       // collectionStage till NONE ATOMISKT. updateMany med organizationId i WHERE
       // org-scopar uppdateringen (defense-in-depth mot ett läckt noticeId).
@@ -1858,8 +1902,51 @@ export class AviseringService {
         throw new ConflictException('Avin är redan reglerad — uppdatera sidan och försök igen')
       }
 
-      // Motverifikat (no-op om avin aldrig intäktsbokfördes, t.ex. DEPOSIT-avi).
+      // Motverifikat för avins INTÄKT (1510 D / 39xx K / ev. 26xx K). No-op för en
+      // DEPOSIT-avi — den intäktsbokförs aldrig. Dess accrual hanteras nedan.
       await this.accounting.reverseJournalEntryForRentNotice(noticeId, orgId, actorId ?? null, tx)
+
+      // ── #301: DEPOSITIONSAVINS ACCRUAL LIGGER I EN ANNAN NAMNRYMD ───────────
+      //
+      // En DEPOSIT-avi bokförs sedan #41 ALLTID: ensureDepositForNotice skapar
+      // Deposit-raden och 1510 D / 2890 K i samma transaktion, under
+      // `deposit-invoice:<depositId>`. Raden ovan letar på `rent-notice:<id>` och
+      // kan därför aldrig träffa den — inte för att posten är fel-nycklad, utan
+      // för att den bor i en annan namnrymd, nycklad på DEPOSITIONENS id.
+      //
+      // Utan det här anropet stod fordran och skulden kvar öppna efter en
+      // annullering (BFL 5 kap 6 §). Kommentaren på den gamla raden ovan påstod
+      // att no-op:en var korrekt "DEPOSIT-avi som aldrig intäktsbokfördes" — sant
+      // före #41, fel sedan dess. Se accounting.service.ts för samma rättelse.
+      //
+      // Depositionen är redan låst högst upp i transaktionen; statusen läses här,
+      // innanför låset, av samma skäl som markPaid läser restskulden innanför sitt.
+      if (depositForNotice.length > 0) {
+        const deposit = await tx.deposit.findFirst({
+          where: { rentNoticeId: noticeId, organizationId: orgId },
+          select: { id: true, status: true },
+        })
+
+        // SPÄRR: reversera BARA en oreglerad deposition.
+        //
+        // Avins status === PAID stoppas redan ovan, men den spegeln räcker inte.
+        // markPaids avi-gren claimar depositionen FÖRST och flippar sedan avin med
+        // `status in (SENT, PENDING, OVERDUE)`. RentNoticeStatus har sex värden —
+        // FAILED ingår inte. En depositionsavi som fastnat i FAILED (misslyckat
+        // utskick) kan alltså stå kvar medan depositionen är PAID, och släpps då
+        // igenom PAID-grinden ovan. Utan den här kontrollen skulle vi reversera en
+        // accrual vars 1930 D / 1510 K redan är bokförd → 1510 krediterad två
+        // gånger. Vi grindar därför på depositionens EGEN status, inte på avins.
+        if (deposit && deposit.status === 'PENDING') {
+          await this.accounting.reverseJournalEntryForDepositAccrual(
+            deposit.id,
+            orgId,
+            'Annullerad hyresavi',
+            actorId ?? null,
+            tx,
+          )
+        }
+      }
     })
 
     // Append-only trail för kravstegs-nollställningen (endast om avin var i trappan).

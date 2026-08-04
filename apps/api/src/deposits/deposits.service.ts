@@ -390,14 +390,16 @@ export class DepositsService implements OnApplicationBootstrap {
         // (reconciliation.service.ts, DEPOSIT-grenen: "ingen Deposit-rad →
         // return false, FAIL-CLOSED"). Samma princip, samma svar.
         //
-        // ⚠️ SEPARAT DEFEKT, MEDVETET INTE LAGAD HÄR: makuleringen reverserar
-        // INTE depositionens accrual. reverseJournalEntryForInvoice söker
-        // source='INVOICE' + sourceId=<invoiceId>, men depositionens post ligger
-        // under sourceId='deposit-invoice:<depositId>' — findFirst ger null och
-        // reverseringen blir en no-op. Efter VOID står alltså 1510 D / 2890 K
-        // kvar öppen. Det är ett fel i MAKULERINGSVÄGEN, inte något markPaid ska
-        // dölja genom att flippa depositionen till PAID. Verifierat mot riktig
-        // Postgres i #297:s bevisrigg (E2E-scenario S2).
+        // FÖR ÖVRIGT (#301, lagad): makuleringen reverserar numera även
+        // depositionens accrual. Den posten ligger i en egen namnrymd
+        // (`deposit-invoice:<depositId>`), så reverseJournalEntryForInvoice —
+        // som söker på `<invoiceId>` — träffar den aldrig; VOID-grenen slår
+        // därför upp depositionen och anropar reverseJournalEntryForDeposit-
+        // Accrual separat. Efter makulering är alltså 1510 och 2890 stängda.
+        //
+        // Det ändrar INTE resonemanget ovan: en makulerad faktura är fortfarande
+        // ett annullerat underlag som inte kan ta emot en betalning, och nu finns
+        // dessutom ingen öppen fordran kvar att reglera.
         //
         // AVGRÄNSNING: grinden gäller BARA makulerad/saknad faktura. Fallet
         // "restskuld 0" (banken hann före) läker fortfarande depositionen till
@@ -552,6 +554,43 @@ export class DepositsService implements OnApplicationBootstrap {
         // RÄTAR DU ORDNINGEN HÄR utan att först ge bankvägen en egen spärr tänder du
         // ett penningfel där. Läs #298 innan du rör den.
         await claimaDeposition()
+
+        // ── #301: ANNULLERAD AVI KASTAR — SAMMA SPÄRR SOM #297 GAV FAKTURAGRENEN ─
+        //
+        // #297 stängde fakturagrenen: en makulerad faktura kan inte ta emot en
+        // betalning. Avi-grenen fick aldrig sin motsvarighet, och det var ofarligt
+        // så länge annulleringen inte rörde bokföringen. Sedan #301 reverserar
+        // cancelNotice depositionens accrual, och då KOSTAR hålet pengar:
+        //
+        //   cancelNotice:  reverserar 1510 (kredit)  →  avin CANCELLED
+        //   markPaid här:  bokför 1930 D / 1510 K    →  1510 krediterad IGEN
+        //   → 1510: debet 20 000, kredit 40 000
+        //
+        // MÄTT i #301:s bevisrigg: 29 av 30 parallella körningar gav exakt det,
+        // och sekventiellt (annullera först, klicka betald sedan) gav det alltid.
+        //
+        // Låset räcker INTE i sig: cancelNotice ändrar inte depositionens status,
+        // så claimen ovan lyckas fortfarande när annulleringen committat före oss.
+        // Serialisering utan den här grinden ger bara ett prydligt ordnat fel.
+        //
+        // LÄSNINGEN LIGGER EFTER CLAIMEN MED FLIT. Claimen tar Deposit-radlåset,
+        // och cancelNotice tar samma lås FÖRST (se låsordningen där). En samtidig
+        // annullering är därför antingen helt klar när vi kommer hit — och då ser
+        // vi CANCELLED — eller så väntar den på oss. Läste vi avin före claimen
+        // kunde vi se ett inaktuellt SENT och bokföra ändå.
+        const linkedNotice = await tx.rentNotice.findFirst({
+          where: { id: deposit.rentNoticeId, organizationId },
+          select: { noticeNumber: true, status: true },
+        })
+        if (linkedNotice?.status === 'CANCELLED') {
+          throw new ConflictException(
+            `Depositionsavin ${linkedNotice.noticeNumber} är annullerad — en annullerad avi ` +
+              'kan inte ta emot en betalning, så depositionen kan inte markeras som betald. ' +
+              'Annulleringen återförde depositionsfordran; kontakta supporten om hyresgästen ' +
+              'har betalat depositionen.',
+          )
+        }
+
         // #41/T2.2: avi-länkad deposition utan Invoice → boka manuell betalning
         // 1930 D / 1510 K keyat på depositId, och flippa den länkade avin → PAID.
         // Deposit-status-claimen ovan (PENDING→PAID) serialiserar mot bankmatchningen

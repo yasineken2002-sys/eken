@@ -338,6 +338,10 @@ describe('C4/C5 — VOID-guarden nyckar på ALLOKERINGAR, inte status', () => {
       invoicePayment: {
         findMany: jest.fn().mockResolvedValue(opts.allocations.map((id) => ({ id: String(id) }))),
       },
+      // #301: radlåset (låsordning Invoice → Deposit) + namnrymdsuppslaget för
+      // depositionens accrual. Ingen deposition här → reverseringen blir no-op.
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      deposit: { findFirst: jest.fn().mockResolvedValue(null) },
     }
     const prisma = {
       invoice: { findFirst: jest.fn().mockResolvedValue(invoiceRow) },

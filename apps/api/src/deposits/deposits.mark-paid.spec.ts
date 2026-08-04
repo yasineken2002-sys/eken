@@ -36,15 +36,35 @@ function makeService(
      * fakturagrenen tas som vanligt; det är LÄSNINGEN som ger null.
      */
     invoiceMissing?: boolean
+    /**
+     * #301 — avi-länkad deposition i stället för fakturalänkad, och den länkade
+     * avins status. `CANCELLED` ska kasta: annulleringen har redan reverserat
+     * accrualen, så en betalning skulle kreditera 1510 en andra gång.
+     */
+    aviLankad?: boolean
+    noticeStatus?: string
   } = {},
 ) {
-  const deposit = {
-    id: 'dep-1',
-    status: 'PENDING',
-    amount: DEPOSITION,
-    invoiceId: 'inv-1',
-    invoice: { id: 'inv-1', invoiceNumber: 'F-2026-0001', status: opts.invoiceStatus ?? 'DRAFT' },
-  }
+  const deposit = opts.aviLankad
+    ? {
+        id: 'dep-1',
+        status: 'PENDING',
+        amount: DEPOSITION,
+        invoiceId: null,
+        rentNoticeId: 'avi-1',
+        invoice: null,
+      }
+    : {
+        id: 'dep-1',
+        status: 'PENDING',
+        amount: DEPOSITION,
+        invoiceId: 'inv-1',
+        invoice: {
+          id: 'inv-1',
+          invoiceNumber: 'F-2026-0001',
+          status: opts.invoiceStatus ?? 'DRAFT',
+        },
+      }
 
   // Anropsordningen fångas för att kunna bevisa LÅSORDNINGEN: fakturan låses
   // före depositionen claimas (samma ordning som bankvägen tar dem).
@@ -77,6 +97,14 @@ function makeService(
       update: jest.fn().mockResolvedValue({}),
     },
     invoiceEvent: { create: jest.fn().mockResolvedValue({}) },
+    // #301: avi-grenen läser den länkade avins status EFTER claimen.
+    rentNotice: {
+      findFirst: jest.fn().mockResolvedValue({
+        noticeNumber: 'A-2026-0001',
+        status: opts.noticeStatus ?? 'SENT',
+      }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
     // #290 — allokeringen depositionsvägen aldrig skrev. Attrappen returnerar
     // ett RIKTIGT id: med `{}` vore nyckeln "...:undefined" och testet nedan
     // kunde inte skilja en verklig allokeringsnyckel från ingen alls.
@@ -101,11 +129,23 @@ function makeService(
   const createJournalEntryForInvoiceManualPayment = jest.fn(() =>
     opts.journalReturnsNull ? Promise.resolve(null) : Promise.resolve({ id: 'je-pay-1' }),
   )
-  const accounting = { createJournalEntryForInvoiceManualPayment }
+  const createJournalEntryForDepositManualPayment = jest.fn(() =>
+    opts.journalReturnsNull ? Promise.resolve(null) : Promise.resolve({ id: 'je-dep-pay-1' }),
+  )
+  const accounting = {
+    createJournalEntryForInvoiceManualPayment,
+    createJournalEntryForDepositManualPayment,
+  }
   const notifications = { createForAllOrgUsers: jest.fn() }
 
   const service = new DepositsService(prisma as never, accounting as never, notifications as never)
-  return { service, txMock, createJournalEntryForInvoiceManualPayment, ordning }
+  return {
+    service,
+    txMock,
+    createJournalEntryForInvoiceManualPayment,
+    createJournalEntryForDepositManualPayment,
+    ordning,
+  }
 }
 
 /** Beloppet som faktiskt gick till bokföringen (arg 1 i journalanropet). */
@@ -369,6 +409,50 @@ describe('DepositsService.markPaid — bokför inbetalningen', () => {
     })
 
     await expect(service.markPaid('dep-1', 'org-1', 'user-1')).resolves.toBeDefined()
+    expect(txMock.deposit.updateMany).toHaveBeenCalledTimes(1)
+  })
+
+  // ── #301 — annullerad avi kastar (samma spärr som #297 gav fakturagrenen) ───
+
+  it('#301: avi-länkad deposition mot ANNULLERAD avi → KASTAR, inget verifikat', async () => {
+    // cancelNotice reverserar sedan #301 accrualen. Utan den här grinden skulle
+    // markPaid bokföra 1930 D / 1510 K ovanpå reverseringen → 1510 krediterad
+    // två gånger mot en debet. MÄTT i bevisriggen: 29/30 parallella körningar.
+    const { service, txMock, createJournalEntryForDepositManualPayment } = makeService({
+      aviLankad: true,
+      noticeStatus: 'CANCELLED',
+    })
+
+    await expect(service.markPaid('dep-1', 'org-1', 'user-1')).rejects.toThrow(
+      /annullerad avi kan inte ta emot en betalning/i,
+    )
+
+    expect(createJournalEntryForDepositManualPayment).not.toHaveBeenCalled()
+    expect(txMock.rentNotice.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('#301: avi-läsningen sker EFTER claimen — annars kan den vara inaktuell', async () => {
+    // Claimen tar Deposit-radlåset och cancelNotice tar SAMMA lås först. Läser vi
+    // avin före claimen kan vi se ett inaktuellt SENT och bokföra ändå.
+    const { service, txMock } = makeService({ aviLankad: true })
+
+    await service.markPaid('dep-1', 'org-1', 'user-1')
+
+    const claimOrder = txMock.deposit.updateMany.mock.invocationCallOrder[0]!
+    const readOrder = txMock.rentNotice.findFirst.mock.invocationCallOrder[0]!
+    expect(claimOrder).toBeLessThan(readOrder)
+  })
+
+  it('#301: öppen avi (SENT) är OFÖRÄNDRAD — bokför och flippar avin som förut', async () => {
+    const { service, txMock, createJournalEntryForDepositManualPayment } = makeService({
+      aviLankad: true,
+      noticeStatus: 'SENT',
+    })
+
+    await service.markPaid('dep-1', 'org-1', 'user-1')
+
+    expect(createJournalEntryForDepositManualPayment).toHaveBeenCalledTimes(1)
+    expect(txMock.rentNotice.updateMany).toHaveBeenCalledTimes(1)
     expect(txMock.deposit.updateMany).toHaveBeenCalledTimes(1)
   })
 
