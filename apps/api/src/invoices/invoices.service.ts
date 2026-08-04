@@ -479,6 +479,32 @@ export class InvoicesService {
     actorType: 'USER' | 'SYSTEM',
     payload: Record<string, unknown> = {},
   ): Promise<Invoice> {
+    // ── SENT_TO_COLLECTION ÄR INGET MANUELLT MÅLVÄRDE (#307 PR 2b) ───────────
+    //
+    // VAD DEN HÄR RADEN ÄR — OCH INTE ÄR. Den stänger inget öppet hål idag:
+    // TransitionStatusDto:s `@IsEnum` räknar inte upp SENT_TO_COLLECTION, så
+    // ValidationPipe avvisar redan värdet på PATCH /invoices/:id/status (mätt,
+    // se invoices.collection-status-block.spec.ts). Spärren LÅSER FAST att det
+    // förblir så.
+    //
+    // Varför det behövs: DTO-enumet är en HANDSKRIVEN statuslista vid sidan av
+    // statusmaskinen — exakt den sortens andra lista som PR 2b finns för att bli
+    // av med. PR 2b vidgar INVOICE_TRANSITIONS med PARTIAL → SENT_TO_COLLECTION;
+    // den dagen någon utökar DTO-enumet (eller lägger en ny anropare på den här
+    // publika metoden) öppnas inkassovägen här utan skuldgrind och utan
+    // assertMayActOnCollections. Grinden hör hemma vid statusen, inte bara i DTO:n.
+    //
+    // MINIMAL MED FLIT. Att i stället bygga skuldgrind + rollgrind här vore en
+    // TREDJE kopia av inkassovägen, och frågan "ska inkasso kunna nås manuellt
+    // alls?" är ett produktbeslut, inte en teknisk konsekvens av PR 2b. Öppet
+    // ärende: #323. Väljs alternativ (b) där — samma grindar som exportvägen —
+    // ska den här spärren tas bort igen.
+    if (newStatus === 'SENT_TO_COLLECTION') {
+      throw new BadRequestException(
+        'Inkasso nås via inkassoexporten (POST /collections/export/:invoiceId), inte via manuell statusändring',
+      )
+    }
+
     const result = await this.prisma.$transaction(async (tx) => {
       // ── RADLÅS: FAKTURAN FÖRST (#302) ──────────────────────────────────────
       //
