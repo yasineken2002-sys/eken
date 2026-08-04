@@ -30,6 +30,12 @@ function makeService(
     priorAllocations?: number[]
     /** Fakturans total, om den ska skilja sig från depositionsbeloppet. */
     invoiceTotal?: number
+    /**
+     * #297 — depositionen pekar på en faktura som inte går att läsa (raderad,
+     * eller utanför organisationen). `invoiceId` är kvar på depositionen, så
+     * fakturagrenen tas som vanligt; det är LÄSNINGEN som ger null.
+     */
+    invoiceMissing?: boolean
   } = {},
 ) {
   const deposit = {
@@ -58,12 +64,16 @@ function makeService(
       findFirstOrThrow: jest.fn().mockResolvedValue({ ...deposit, status: 'PAID' }),
     },
     invoice: {
-      findFirst: jest.fn().mockResolvedValue({
-        id: 'inv-1',
-        status: opts.invoiceStatus ?? 'DRAFT',
-        invoiceNumber: 'F-2026-0001',
-        total: new Prisma.Decimal(opts.invoiceTotal ?? DEPOSITION),
-      }),
+      findFirst: jest.fn().mockResolvedValue(
+        opts.invoiceMissing
+          ? null
+          : {
+              id: 'inv-1',
+              status: opts.invoiceStatus ?? 'DRAFT',
+              invoiceNumber: 'F-2026-0001',
+              total: new Prisma.Decimal(opts.invoiceTotal ?? DEPOSITION),
+            },
+      ),
       update: jest.fn().mockResolvedValue({}),
     },
     invoiceEvent: { create: jest.fn().mockResolvedValue({}) },
@@ -277,6 +287,89 @@ describe('DepositsService.markPaid — bokför inbetalningen', () => {
     await expect(service.markPaid('dep-1', 'org-1', 'user-1')).rejects.toThrow(
       /verifikat kunde inte skapas/i,
     )
+  })
+
+  // ── #297 — makulerad/saknad faktura kastar i stället för att läka tyst ──────
+  //
+  // Före fixen föll VOID igenom bokningsgrinden och landade rakt i
+  // claimaDeposition(): depositionen blev PAID utan en enda bokförd krona.
+  // Tyst och oupptäckbart — och dessutom fel bokföring att läka, eftersom
+  // makuleringen redan reverserat depositionens 1510 D / 2890 K.
+  //
+  // RIGGEN ÄR DISKRIMINERANDE PÅ SAMMA SÄTT SOM #293:s: fakturans total (18 000)
+  // skiljer sig från depositionsbeloppet (20 000), så ett test som ändå råkar
+  // bokföra inte kan råka bokföra "rätt" siffra. Och varje test hävdar VILKET
+  // fel som kastades — annars kunde ett kast av helt annan orsak (t.ex. att
+  // attrappen returnerar null där den inte ska) passera som grönt.
+
+  it('#297: VOID-faktura → KASTAR, ingen statusflipp, inget verifikat, ingen allokering', async () => {
+    const { service, txMock, createJournalEntryForInvoiceManualPayment } = makeService({
+      invoiceStatus: 'VOID',
+      invoiceTotal: 18_000,
+    })
+
+    await expect(service.markPaid('dep-1', 'org-1', 'user-1')).rejects.toThrow(
+      /makulerad faktura kan inte ta emot en betalning/i,
+    )
+
+    // DET HÄR är assertionen som fäller den gamla koden: depositionen flippades
+    // förut till PAID i exakt det här läget.
+    expect(txMock.deposit.updateMany).not.toHaveBeenCalled()
+    // Inget verifikat, ingen allokering, ingen statusskrivning på fakturan.
+    expect(createJournalEntryForInvoiceManualPayment).not.toHaveBeenCalled()
+    expect(txMock.invoicePayment.create).not.toHaveBeenCalled()
+    expect(txMock.invoice.update).not.toHaveBeenCalled()
+    expect(txMock.invoiceEvent.create).not.toHaveBeenCalled()
+    // Beslutet fattades INNANFÖR radlåset, inte på en läsning bredvid det.
+    expect(txMock.$queryRaw).toHaveBeenCalledTimes(1)
+  })
+
+  it('#297: felet namnger fakturan och säger vad som gäller — inte en rå exception', async () => {
+    const { service } = makeService({ invoiceStatus: 'VOID' })
+
+    const err = await service.markPaid('dep-1', 'org-1', 'user-1').catch((e: unknown) => e)
+    const message = (err as Error).message
+
+    // Operatören ska få veta VILKEN faktura det gäller…
+    expect(message).toContain('F-2026-0001')
+    // …varför det inte går…
+    expect(message).toMatch(/makulerad/i)
+    // …och vad som gäller i stället. Meddelandet lovar ingen knapp som saknas —
+    // makuleringen går inte att ångra, så det säger just det.
+    expect(message).toMatch(/går inte att ångra/i)
+    expect(message).toMatch(/kontakta supporten/i)
+    // 409: ett tillståndsfel, inte ett fel i operatörens indata.
+    expect((err as { status?: number }).status).toBe(409)
+  })
+
+  it('#297: saknad faktura (läsningen ger null) → KASTAR, ingen statusflipp', async () => {
+    // Depositionen bär fortfarande sitt invoiceId — det är läsningen som ger
+    // null. Före fixen tog `inv &&`-grinden hand om det tyst och claimade ändå.
+    const { service, txMock, createJournalEntryForInvoiceManualPayment } = makeService({
+      invoiceMissing: true,
+    })
+
+    await expect(service.markPaid('dep-1', 'org-1', 'user-1')).rejects.toThrow(
+      /faktura hittades inte/i,
+    )
+
+    expect(txMock.deposit.updateMany).not.toHaveBeenCalled()
+    expect(createJournalEntryForInvoiceManualPayment).not.toHaveBeenCalled()
+    expect(txMock.invoicePayment.create).not.toHaveBeenCalled()
+    expect(txMock.invoice.update).not.toHaveBeenCalled()
+  })
+
+  it('#297: rör INTE den avsedda läkningen — restskuld 0 flippar fortfarande depositionen', async () => {
+    // Avgränsningen i #297: bara VOID/saknad faktura fail-closar. "Banken hann
+    // före" har en verklig, bokförd betalning bakom sig och ska fortsätta läka
+    // den hängande PENDING-depositionen — annars kan den aldrig återbetalas.
+    const { service, txMock } = makeService({
+      invoiceStatus: 'PARTIAL',
+      priorAllocations: [DEPOSITION],
+    })
+
+    await expect(service.markPaid('dep-1', 'org-1', 'user-1')).resolves.toBeDefined()
+    expect(txMock.deposit.updateMany).toHaveBeenCalledTimes(1)
   })
 
   it('dubbelbokför inte om fakturan redan reglerats av en bankmatch (status PAID)', async () => {
