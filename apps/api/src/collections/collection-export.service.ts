@@ -17,6 +17,7 @@ import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/brand
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { UserRole } from '@prisma/client'
 import { assertMayActOnCollections } from '../common/authz/collections-authz'
+import { csvCell } from '../common/csv/csv-cell'
 import { computeInvoiceDebt, type InvoiceDebt } from '../invoices/invoice-debt'
 
 /**
@@ -845,10 +846,4 @@ export class CollectionExportService {
 
 function formatSek(amount: number): string {
   return `${amount.toLocaleString('sv-SE', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} kr`
-}
-
-function csvCell(value: string): string {
-  const needsEscape = /[",\n]/.test(value)
-  if (!needsEscape) return value
-  return `"${value.replace(/"/g, '""')}"`
 }
