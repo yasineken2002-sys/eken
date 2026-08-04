@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common'
+import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { Cron } from '@nestjs/schedule'
 import { Prisma } from '@prisma/client'
 import type { PaymentReminderType } from '@prisma/client'
@@ -173,6 +174,9 @@ export class PaymentReminderService {
         tenant: { select: SAFE_TENANT_SELECT },
         customer: { select: SAFE_CUSTOMER_SELECT },
         paymentReminders: { orderBy: { sentAt: 'desc' } },
+        // #307A: vyn ska visa RESTSKULDEN, inte ursprungsbeloppet — därför
+        // behövs allokeringarna. Selecten är avsiktligt smal: bara beloppet.
+        payments: { select: { amount: true } },
       },
       orderBy: { dueDate: 'asc' },
     })
@@ -186,7 +190,25 @@ export class PaymentReminderService {
         id: inv.id,
         invoiceNumber: inv.invoiceNumber,
         status: inv.status,
-        total: Number(inv.total),
+        // ── #307A: RESTSKULDEN, INTE URSPRUNGSBELOPPET ────────────────────
+        //
+        // Här stod `Number(inv.total)`. Urvalet ovan innehåller
+        // SENT_TO_COLLECTION, och en delbetald faktura KAN stå där: exporten
+        // släppte igenom PARTIAL, statusen blev SENT_TO_COLLECTION, och den här
+        // vyn visade sedan hela ursprungsbeloppet. Inkassovyn och AI-verktyget
+        // (tool-executor `get_overdue_status`) läser båda den här siffran, så
+        // operatörens beslutsunderlag ljög om skuldens storlek.
+        //
+        // Till skillnad från PR 2a rör det INTE ett dokument som går externt —
+        // ingen Inkassolagen-fråga — men det är underlaget en människa fattar
+        // beslut på, och samma sanningskälla ska gälla överallt.
+        //
+        // URVALET ÄR OFÖRÄNDRAT. Bara beloppet ändras; exakt samma fakturor
+        // listas som förut.
+        total: computeInvoiceDebt({
+          total: inv.total,
+          allocations: inv.payments.map((p) => p.amount),
+        }).outstanding.toNumber(),
         dueDate: inv.dueDate,
         daysOverdue,
         remindersPaused: inv.remindersPaused,
