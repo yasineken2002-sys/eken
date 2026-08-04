@@ -368,6 +368,62 @@ export class DepositsService implements OnApplicationBootstrap {
           select: { id: true, status: true, invoiceNumber: true, total: true },
         })
 
+        // ── #297: MAKULERAD/SAKNAD FAKTURA KASTAR — INGEN TYST LÄKNING ───────
+        //
+        // Tidigare föll båda de här fallen igenom bokningsgrinden nedan och
+        // landade rakt i claimaDeposition(): depositionen flippades till PAID
+        // helt utan bokning. Resultatet var ett tyst tillstånd ingen upptäcker —
+        // depositionen ser betald ut, fakturan är makulerad, huvudboken vet
+        // ingenting. Ingen felkod, ingen avvikande status, ingen post att stämma
+        // av mot. Följdrisk: refund() kräver status === 'PAID' och skulle alltså
+        // kunna betala tillbaka en deposition som aldrig bokförts.
+        //
+        // ATT NEKA KOSTAR INGENTING. En faktura med registrerad betalning KAN
+        // inte makuleras (invoices.service.ts spärrar VOID när allokeringar
+        // finns), så en VOID depositionsfaktura har per konstruktion aldrig tagit
+        // emot pengar. Vi stänger alltså ingen väg som bär ett verkligt belopp.
+        //
+        // Och att boka VORE fel: en makulerad faktura är ett annullerat underlag.
+        // Att registrera en inbetalning mot den — utan att någon tagit ställning
+        // till makuleringen — är precis den sortens obevakade kreditering som
+        // bankvägen redan vägrar göra för orphan-depositionsavier
+        // (reconciliation.service.ts, DEPOSIT-grenen: "ingen Deposit-rad →
+        // return false, FAIL-CLOSED"). Samma princip, samma svar.
+        //
+        // ⚠️ SEPARAT DEFEKT, MEDVETET INTE LAGAD HÄR: makuleringen reverserar
+        // INTE depositionens accrual. reverseJournalEntryForInvoice söker
+        // source='INVOICE' + sourceId=<invoiceId>, men depositionens post ligger
+        // under sourceId='deposit-invoice:<depositId>' — findFirst ger null och
+        // reverseringen blir en no-op. Efter VOID står alltså 1510 D / 2890 K
+        // kvar öppen. Det är ett fel i MAKULERINGSVÄGEN, inte något markPaid ska
+        // dölja genom att flippa depositionen till PAID. Verifierat mot riktig
+        // Postgres i #297:s bevisrigg (E2E-scenario S2).
+        //
+        // AVGRÄNSNING: grinden gäller BARA makulerad/saknad faktura. Fallet
+        // "restskuld 0" (banken hann före) läker fortfarande depositionen till
+        // PAID längre ned — där finns en verklig, bokförd betalning bakom.
+        //
+        // Läsningen ligger INNANFÖR radlåset av samma skäl som restskulden gör
+        // det: statusen vi fattar beslutet på ska inte kunna ändras under oss.
+        if (!inv) {
+          throw new ConflictException(
+            'Depositionens faktura hittades inte — depositionen kan inte markeras som ' +
+              'betald utan sin faktura. Kontrollera fakturan innan betalningen registreras.',
+          )
+        }
+        if (inv.status === 'VOID') {
+          // Meddelandet lovar INTE en väg som inte finns: en makulering kan inte
+          // ångras, och en ny depositionsfaktura går inte att utfärda (Deposit
+          // är unik per kontrakt, och en andra accrual skulle dubblera 1510).
+          // Då är rätt svar att säga det, inte att peka på en knapp som saknas.
+          throw new ConflictException(
+            `Depositionsfakturan ${inv.invoiceNumber} är makulerad — en makulerad faktura kan ` +
+              'inte ta emot en betalning, så depositionen kan inte markeras som betald. ' +
+              'Makuleringen går inte att ångra i systemet: kontakta supporten för att koppla ' +
+              'loss depositionen, oavsett om hyresgästen hunnit betala eller inte.',
+          )
+        }
+
         // Boka bara om fakturan inte redan reglerats (t.ex. av en bankmatch) — annars
         // står vi kvar med en redan bokförd betalning och ska inte dubbelbokföra.
         //
@@ -375,7 +431,10 @@ export class DepositsService implements OnApplicationBootstrap {
         // beräkningen nedan: en depositionsfaktura som reglerades före #290 står
         // PAID med NOLL allokeringar, och för den skulle restskulden räknas till
         // hela totalen. Statusgrinden är det som håller den utanför.
-        if (inv && inv.status !== 'PAID' && inv.status !== 'VOID') {
+        //
+        // VOID-grenen är utbruten ovan (#297) och når aldrig hit; PAID läker
+        // fortfarande, som förut.
+        if (inv.status !== 'PAID') {
           // ── #293: BELOPPET ÄR RESTSKULDEN, INTE deposit.amount ─────────────
           //
           // En depositionsfaktura är en helt vanlig Invoice utan typfilter i
