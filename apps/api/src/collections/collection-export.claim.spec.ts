@@ -31,6 +31,13 @@ function makeService(
     invoices?: Array<{ id: string; invoiceNumber: string; status: string }>
     /** count som claimens updateMany returnerar (0 = någon hann före). */
     claimCount?: number
+    /**
+     * #307 PR3 — registrerade betalningar per faktura-id. DET HÄR är parametern
+     * som gör riggen diskriminerande för skuldgrinden: utan den är restskulden
+     * alltid = totalen och ingen attrapp kan se skillnad på "har skuld" och
+     * "grinden kollar inte".
+     */
+    payments?: Record<string, number[]>
   } = {},
 ) {
   const rows = opts.invoices ?? [{ id: 'inv-1', invoiceNumber: 'F-2026-0001', status: 'OVERDUE' }]
@@ -55,9 +62,10 @@ function makeService(
   const prisma = {
     invoice: {
       // loadInvoice — matar ut raderna i tur och ordning.
-      findFirst: jest.fn(() =>
-        Promise.resolve({
-          ...rows.shift(),
+      findFirst: jest.fn(() => {
+        const rad = rows.shift()
+        return Promise.resolve({
+          ...rad,
           total: 11_000,
           dueDate: new Date('2026-01-31'),
           issueDate: new Date('2026-01-01'),
@@ -72,12 +80,12 @@ function makeService(
           },
           lines: [],
           paymentReminders: [],
-          payments: [],
+          payments: (opts.payments?.[rad?.id ?? ''] ?? []).map((a) => ({ amount: a })),
           tenant: null,
           customer: null,
           lease: null,
-        }),
-      ),
+        })
+      }),
       update: jest.fn((..._a: unknown[]) => {
         ordning.push('skriv-nyckel')
         return Promise.resolve({})
@@ -224,5 +232,101 @@ describe('#307 — exportBulk: bara claimade fakturor kommer med', () => {
 
     await expect(service.exportBulk(['a', 'b'], ORG)).rejects.toBeInstanceOf(BadRequestException)
     expect(storage.uploadFile).not.toHaveBeenCalled()
+  })
+})
+
+describe('#307 PR3 — ingen skuld, inget krav', () => {
+  it('fullt allokerad faktura → export NEKAS, ingen händelse, ingen PDF', async () => {
+    // Statusen har inte hunnit bli PAID, men allokeringarna täcker hela
+    // fakturan. Före grinden exporterades den med ett krav på 0 kr — ett
+    // inkassoärende öppnat, en permanent DEBT_COLLECTION-post skriven och
+    // påminnelser pausade, allt för en fordran som inte finns.
+    const { service, tx, pdf, storage } = makeService({ payments: { 'inv-1': [11_000] } })
+
+    await expect(service.exportForInvoice('inv-1', ORG)).rejects.toThrow(/ingen kvarstående skuld/i)
+
+    expect(tx.invoice.updateMany).not.toHaveBeenCalled()
+    expect(tx.invoiceEvent.create).not.toHaveBeenCalled()
+    expect(pdf.generateFromHtml).not.toHaveBeenCalled()
+    expect(storage.uploadFile).not.toHaveBeenCalled()
+  })
+
+  it('ÖVERBETALD → nekas, men med ETT ANNAT skäl än reglerad', async () => {
+    // Reglerad och överbetald kräver olika åtgärd: den ena är en status att
+    // rätta, den andra pengar att betala tillbaka. Ett gemensamt meddelande
+    // hade pekat operatören åt fel håll. (FAR:s LOW i PR3-granskningen.)
+    const { service, pdf } = makeService({ payments: { 'inv-1': [8_000, 5_000] } })
+
+    const err = await service.exportForInvoice('inv-1', ORG).catch((e: unknown) => e)
+
+    const message = (err as Error).message
+    expect(message).toMatch(/ÖVERBETALD/)
+    expect(message).toMatch(/återbetalas/i)
+    // …och INTE det meddelande en exakt reglerad faktura får.
+    expect(message).not.toMatch(/hela beloppet är betalt/i)
+    expect(pdf.generateFromHtml).not.toHaveBeenCalled()
+  })
+
+  it('DELBETALD med kvarstående skuld → går igenom (PR 2a:s beteende oförändrat)', async () => {
+    // 11 000 − 9 000 = 2 000 kvar. Grinden får inte fälla en verklig fordran.
+    const { service, tx, pdf } = makeService({ payments: { 'inv-1': [9_000] } })
+
+    await service.exportForInvoice('inv-1', ORG)
+
+    expect(tx.invoice.updateMany).toHaveBeenCalledTimes(1)
+    expect(pdf.generateFromHtml).toHaveBeenCalledTimes(1)
+  })
+
+  it('litet restbelopp går igenom — INGET minimibelopp (det är #310)', async () => {
+    // 11 000 − 10 999 = 1 krona. En verklig fordran är en verklig fordran;
+    // en undre gräns är ett produktbeslut, inte en spärr mot felaktiga krav.
+    const { service, pdf } = makeService({ payments: { 'inv-1': [10_999] } })
+
+    await service.exportForInvoice('inv-1', ORG)
+
+    expect(pdf.generateFromHtml).toHaveBeenCalledTimes(1)
+  })
+
+  it('OBETALD → oförändrat', async () => {
+    const { service, tx, pdf } = makeService()
+
+    await service.exportForInvoice('inv-1', ORG)
+
+    expect(tx.invoice.updateMany).toHaveBeenCalledTimes(1)
+    expect(pdf.generateFromHtml).toHaveBeenCalledTimes(1)
+  })
+
+  it('OMKÖRNING av redan överlämnad faktura som hunnit bli betald → NEKAS', async () => {
+    // alreadyClaimed-grenen får inte kringgå skuldgrinden: en omkörning efter
+    // ett R2-fel ska inte producera ett nytt 0 kr-krav om betalningen kommit in
+    // under tiden.
+    const { service, pdf } = makeService({
+      invoices: [{ id: 'inv-1', invoiceNumber: 'F-2026-0001', status: 'SENT_TO_COLLECTION' }],
+      payments: { 'inv-1': [11_000] },
+    })
+
+    await expect(service.exportForInvoice('inv-1', ORG)).rejects.toThrow(/ingen kvarstående skuld/i)
+    expect(pdf.generateFromHtml).not.toHaveBeenCalled()
+  })
+
+  it('BULK: faktura utan skuld hoppas över, övriga exporteras', async () => {
+    // Samma mönster som #311:s S4 — bulk får inte fällas för att en av flera
+    // saknar skuld, och den utan skuld får inget krav i ZIP:en.
+    const { service, pdf } = makeService({
+      invoices: [
+        { id: 'a', invoiceNumber: 'F-1', status: 'OVERDUE' },
+        { id: 'b', invoiceNumber: 'F-2', status: 'OVERDUE' },
+        { id: 'c', invoiceNumber: 'F-3', status: 'OVERDUE' },
+      ],
+      payments: { b: [11_000] },
+    })
+
+    const res = await service.exportBulk(['a', 'b', 'c'], ORG)
+
+    expect(res.count).toBe(2)
+    expect(res.skipped.map((x) => x.invoiceNumber)).toEqual(['F-2'])
+    expect(res.skipped[0]!.reason).toMatch(/ingen kvarstående skuld/i)
+    // TVÅ renderingar, inte tre.
+    expect(pdf.generateFromHtml).toHaveBeenCalledTimes(2)
   })
 })

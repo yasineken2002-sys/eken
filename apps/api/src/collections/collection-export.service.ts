@@ -17,7 +17,7 @@ import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/brand
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { UserRole } from '@prisma/client'
 import { assertMayActOnCollections } from '../common/authz/collections-authz'
-import { computeInvoiceDebt } from '../invoices/invoice-debt'
+import { computeInvoiceDebt, type InvoiceDebt } from '../invoices/invoice-debt'
 
 /**
  * Inkassoexporten är ett av få ställen där personnumret verkligen behövs i
@@ -141,6 +141,7 @@ export class CollectionExportService {
       invoice.invoiceNumber,
       invoice.status,
       'Skickad till inkasso',
+      this.outstandingFor(invoice),
     )
 
     // Först HÄR börjar det dyra arbetet. Misslyckades claimen har vi redan
@@ -238,6 +239,7 @@ export class CollectionExportService {
           inv.invoiceNumber,
           inv.status,
           'Skickad till inkasso (bulk)',
+          this.outstandingFor(inv),
         )
         invoices.push(inv)
       } catch (err) {
@@ -313,6 +315,28 @@ export class CollectionExportService {
       throw new BadRequestException('Fakturan är redan avslutad')
     }
 
+    // ── #307 PR3: SAMMA SKULDGRIND SOM EXPORTVÄGARNA ───────────────────────
+    //
+    // Den här vägen genererar inget underlag, men den gör samma BINDANDE sak:
+    // markerar fordran som överlämnad till inkasso, pausar påminnelser och
+    // skriver en permanent DEBT_COLLECTION-post. Utan grinden kan en operatör
+    // låsa den posten på en faktura som ekonomiskt redan är reglerad — statusen
+    // släpar bara efter. Påpekat av FAR i granskningen av PR 2a.
+    //
+    // Betalningarna laddas separat: den här metoden använder en enkel findFirst
+    // (inte loadInvoice), och ska inte dra in hela PDF-underlaget för en
+    // statusmarkering.
+    const payments = await this.prisma.invoicePayment.findMany({
+      where: { invoiceId },
+      select: { amount: true },
+    })
+    const debt = computeInvoiceDebt({
+      total: invoice.total,
+      allocations: payments.map((p) => p.amount),
+    })
+    const blockReason = this.debtBlockReason(invoice.invoiceNumber, debt)
+    if (blockReason) throw new BadRequestException(blockReason)
+
     await this.prisma.invoice.update({
       where: { id: invoice.id },
       data: {
@@ -344,6 +368,43 @@ export class CollectionExportService {
   }
 
   // ── Privata hjälpare ─────────────────────────────────────────────────────
+
+  /**
+   * #307: EN beräkning av restskulden för hela exporten — grinden, PDF-kravboxen
+   * och CSV-kolumnen. Skulle de kunna divergera vore grinden meningslös: en
+   * faktura kunde nekas på en siffra och exporteras på en annan.
+   */
+  private outstandingFor(invoice: InvoiceWithCollectionData): InvoiceDebt {
+    return computeInvoiceDebt({
+      total: invoice.total,
+      allocations: invoice.payments.map((p) => p.amount),
+    })
+  }
+
+  /**
+   * #307 PR3: skälet en faktura inte får lämnas till inkasso, eller null om den
+   * får det. Skiljer REGLERAD från ÖVERBETALD med flit — de kräver olika
+   * åtgärd av operatören, och ett gemensamt "hela beloppet är betalt" hade
+   * pekat åt fel håll i det andra fallet (då finns pengar att betala tillbaka,
+   * inte bara en status att rätta).
+   */
+  private debtBlockReason(invoiceNumber: string, debt: InvoiceDebt): string | null {
+    if (debt.claim.isNegative()) {
+      return (
+        `Faktura ${invoiceNumber} är ÖVERBETALD — mer är inbetalt än fakturerat. Inget ` +
+        'inkassounderlag skapades. Kontrollera om mellanskillnaden ska återbetalas eller ' +
+        'avräknas mot en annan faktura.'
+      )
+    }
+    if (debt.outstanding.lte(0)) {
+      return (
+        `Faktura ${invoiceNumber} har ingen kvarstående skuld — hela beloppet är betalt. ` +
+        'Inget inkassounderlag skapades. Kontrollera om fakturans status behöver rättas ' +
+        'till betald.'
+      )
+    }
+    return null
+  }
 
   /**
    * #307 — ATOMISK, STATUS-GUARDAD CLAIM AV `SENT_TO_COLLECTION`.
@@ -383,14 +444,49 @@ export class CollectionExportService {
     invoiceNumber: string,
     currentStatus: string,
     reason: string,
+    debt: InvoiceDebt,
   ): Promise<{ alreadyClaimed: boolean }> {
     if (currentStatus === 'PAID' || currentStatus === 'VOID') {
       throw new BadRequestException(
         'Kan inte skapa inkassounderlag för betald eller makulerad faktura',
       )
     }
+
+    // ── #307 PR3: INGEN SKULD, INGET KRAV ──────────────────────────────────
+    //
+    // Statusgrinden ovan räcker inte. En faktura kan vara fullt allokerad utan
+    // att statusen hunnit bli PAID — och exporterades då med ett krav på 0 kr.
+    // Mindre fel än att skicka hela beloppet (det stängde PR 2a), men fortfarande
+    // ett felaktigt krav till en extern part: ett inkassoärende öppnas, en
+    // permanent DEBT_COLLECTION-post skrivs, och påminnelser pausas — allt för en
+    // fordran som inte finns.
+    //
+    // Grinden ligger i CLAIMEN, före all I/O, av samma skäl som #311 flyttade hit
+    // statusövergången: misslyckas den ska ingen PDF genereras och ingen
+    // append-only-händelse skrivas.
+    //
+    // SPEGLAR SYSKONVÄGENS exportBlockReason (rent-collection-export.service.ts),
+    // men bara till den del som har en motsvarighet här. Av dess fyra villkor:
+    //   · status ej PAID/CANCELLED  → finns redan ovan (PAID/VOID)
+    //   · collectionStage = INKASSO_READY → INGEN MOTSVARIGHET. Invoice har ingen
+    //     kravtrappa-stege; kravstegen lever bara på RentNotice.
+    //   · outstanding > 0           → DET HÄR
+    //   · ingen betalning efter collectionReadyAt → INGEN MOTSVARIGHET. Invoice
+    //     har inget collectionReadyAt; exporten ÄR markeringen. En betalning som
+    //     landar efteråt fångas i stället av att restskulden räknas om vid varje
+    //     omkörning.
+    //
+    // INGET MINIMIBELOPP. En faktura med bara påminnelseavgifter kvar, eller några
+    // kronor, är fortfarande en verklig fordran och ska kunna drivas in. Om en
+    // undre gräns ska finnas är det ett produktbeslut (#310), inte en spärr mot
+    // felaktiga krav.
+    const blockReason = this.debtBlockReason(invoiceNumber, debt)
+    if (blockReason) throw new BadRequestException(blockReason)
+
     // Redan överlämnad: ingen ny statusövergång, ingen ny händelse. Anroparen
     // får ändå generera om underlaget (t.ex. efter ett avbrutet R2-anrop).
+    // Skuldgrinden ovan gäller ÄVEN här: har fakturan blivit fullt betald sedan
+    // överlämningen ska en omkörning inte producera ett nytt 0 kr-krav.
     if (currentStatus === 'SENT_TO_COLLECTION') return { alreadyClaimed: true }
 
     await this.prisma.$transaction(async (tx) => {
@@ -566,10 +662,8 @@ export class CollectionExportService {
     // skriver in dem i invoice.total när den formella påminnelsen skickas, så
     // de ingår i totalen och därmed i restskulden. Noten under beloppet
     // fortsätter redovisa dem separat.
-    const debt = computeInvoiceDebt({
-      total: invoice.total,
-      allocations: invoice.payments.map((p) => p.amount),
-    })
+    // Samma beräkning som grinden i claimForExport använde — se outstandingFor.
+    const debt = this.outstandingFor(invoice)
     // debt.paid, INTE total − outstanding: outstanding är klampad till 0 vid
     // överbetalning, så subtraktionen hade visat ett för lågt betalt-belopp på
     // ett dokument som går till inkasso. Fångat av båda granskarna oberoende.
