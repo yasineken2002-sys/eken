@@ -76,6 +76,10 @@ const INVOICE = {
     { type: 'REMINDER_FRIENDLY', sentAt: new Date('2026-06-05T00:00:00Z'), feeAmount: 60 },
     { type: 'REMINDER_FORMAL', sentAt: new Date('2026-06-20T00:00:00Z'), feeAmount: 60 },
   ],
+  // #307 PR2a: kravet avser numera RESTSKULDEN. Basfixturen är obetald, så
+  // restskulden = invoice.total och alla belopp nedan är oförändrade — vilket
+  // är precis vad (b) ska fortsätta bevaka. Delbetalningsfallet testas separat.
+  payments: [],
   lease: {
     unit: { name: 'Lgh 1001', unitNumber: '1001', property: { name: 'Storgatan 1' } },
   },
@@ -92,11 +96,12 @@ function makeService(): CollectionExportService {
   )
 }
 
-async function render(): Promise<string> {
+async function render(overrides: Record<string, unknown> = {}): Promise<string> {
   // buildPdfHtml är privat men är den enda rena renderingsvägen.
-  return (makeService() as unknown as { buildPdfHtml(i: unknown): Promise<string> }).buildPdfHtml(
-    INVOICE,
-  )
+  return (makeService() as unknown as { buildPdfHtml(i: unknown): Promise<string> }).buildPdfHtml({
+    ...INVOICE,
+    ...overrides,
+  })
 }
 
 describe('CollectionExportService.buildPdfHtml — brandad shell + juridisk/ekonomisk integritet (PR 3e)', () => {
@@ -116,11 +121,34 @@ describe('CollectionExportService.buildPdfHtml — brandad shell + juridisk/ekon
     expect(text).toContain('Borgenären ansvarar för att')
   })
 
-  it('(b) alla belopp är oförändrade: radbelopp, total skuld, påminnelseavgifter', async () => {
+  it('(b) alla belopp är oförändrade: radbelopp, kvarstående skuld, påminnelseavgifter', async () => {
     const html = await render()
     expect(html).toContain(`${formatSek(8000)}`) // radbelopp (à-pris + summa)
-    expect(html).toContain(`${formatSek(8120)}`) // total skuld = invoice.total
+    // #307 PR2a: beloppet är nu RESTSKULDEN. För en obetald faktura är den
+    // identisk med invoice.total, så siffran här är oförändrad — fixen ska inte
+    // röra normalfallet. Rubriken heter numera "Kvarstående skuld".
+    expect(html).toContain(`${formatSek(8120)}`)
+    expect(html).toContain('Kvarstående skuld')
     expect(html).toContain(`Inkluderar påminnelseavgifter ${formatSek(120)}`) // 60 + 60
+    // Ingen avräkningsrad när ingenting är betalt.
+    expect(html).not.toContain('− betalt')
+  })
+
+  it('(b2) #307 PR2a: DELBETALD faktura → kravet avser restskulden, inte totalen', async () => {
+    // Kärnan i PR2a. Före fixen begärde kravbrevet hela ursprungsbeloppet av en
+    // person som redan betalat en del av det.
+    const html = await render({
+      payments: [
+        { amount: 5000, paidAt: new Date('2026-06-10T00:00:00Z') },
+        { amount: 1120, paidAt: new Date('2026-06-25T00:00:00Z') },
+      ],
+    })
+    // 8 120 − 6 120 = 2 000.
+    expect(html).toContain(`${formatSek(2000)}`)
+    // …och det gamla, felaktiga beloppet står INTE i kravboxen.
+    expect(html).not.toContain(`<div class="amt">${formatSek(8120)}</div>`)
+    // Avräkningen redovisas så dokumentet förklarar sig självt.
+    expect(html).toContain(`Fakturabelopp ${formatSek(8120)} − betalt ${formatSek(6120)}`)
   })
 
   it('(c) borgenär, gäldenär, förfallodatum och kontraktsreferens bevaras', async () => {

@@ -17,6 +17,7 @@ import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/brand
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { UserRole } from '@prisma/client'
 import { assertMayActOnCollections } from '../common/authz/collections-authz'
+import { computeInvoiceDebt } from '../invoices/invoice-debt'
 
 /**
  * Inkassoexporten är ett av få ställen där personnumret verkligen behövs i
@@ -37,6 +38,7 @@ type InvoiceWithCollectionData = Prisma.InvoiceGetPayload<{
     paymentReminders: { orderBy: { sentAt: 'asc' } }
     lines: true
     lease: { include: { unit: { include: { property: true } } } }
+    payments: { orderBy: { paidAt: 'asc' } }
   }
 }>
 
@@ -450,6 +452,11 @@ export class CollectionExportService {
         paymentReminders: { orderBy: { sentAt: 'asc' } },
         lines: true,
         lease: { include: { unit: { include: { property: true } } } },
+        // #307 PR2a: KRAVET SKA AVSE RESTSKULDEN, INTE URSPRUNGSBELOPPET.
+        // Utan allokeringarna kan exporten inte veta vad som redan betalats —
+        // och det var precis det som gjorde att ett inkassokrav mot en delbetald
+        // faktura begärde hela `invoice.total`.
+        payments: { orderBy: { paidAt: 'asc' } },
       },
     })
     if (!invoice) throw new NotFoundException(`Faktura ${invoiceId} hittades inte`)
@@ -460,7 +467,16 @@ export class CollectionExportService {
     const headers = [
       'fakturanummer',
       'forfallodatum',
-      'totalbelopp',
+      // #307 PR2a: KOLUMNEN BYTTE BÅDE VÄRDE OCH NAMN. Den bar tidigare
+      // `invoice.total` under rubriken `totalbelopp`; nu bär den restskulden.
+      // Att låta rubriken stå kvar vore värre än att byta den — en kolumn som
+      // heter "totalbelopp" men innehåller 2 000 för en faktura på 10 000
+      // mislabelar det inkassobolaget läser in maskinellt, och det är precis
+      // den sortens oklarhet ett bestridande hänger på.
+      //
+      // ⚠️ FORMATÄNDRING MOT EXTERN PART: inkassobolag som mappar kolumner på
+      // rubriknamn måste få veta. Se PR-beskrivningen.
+      'restskuld',
       'paminnelseavgifter',
       'organisationsnummer_borgenar',
       'borgenar_namn',
@@ -490,7 +506,14 @@ export class CollectionExportService {
       return [
         inv.invoiceNumber,
         inv.dueDate.toISOString().slice(0, 10),
-        Number(inv.total).toFixed(2),
+        // #307 PR2a: restskulden, inte ursprungsbeloppet — se buildPdfHtml.
+        // Det HÄR är kolumnen inkassobolaget läser in maskinellt.
+        computeInvoiceDebt({
+          total: inv.total,
+          allocations: inv.payments.map((p) => p.amount),
+        })
+          .outstanding.toNumber()
+          .toFixed(2),
         reminderFees.toFixed(2),
         inv.organization.orgNumber ?? '',
         inv.organization.name,
@@ -523,7 +546,35 @@ export class CollectionExportService {
       : ''
     const reminders = invoice.paymentReminders
     const totalFees = reminders.reduce((s, r) => s + Number(r.feeAmount), 0)
-    const totalDue = Number(invoice.total)
+
+    // ── #307 PR2a: KRAVET AVSER RESTSKULDEN, INTE URSPRUNGSBELOPPET ────────
+    //
+    // Här stod `Number(invoice.total)`. Filen konsulterade aldrig
+    // allokeringsmodellen — noll referenser till computeInvoiceDebt, och
+    // loadInvoice laddade inte ens betalningarna. Ett inkassokrav mot en
+    // delbetald faktura begärde därför HELA ursprungsbeloppet: ett krav mot en
+    // person på pengar de inte längre är skyldiga, skickat till ett
+    // inkassobolag (Inkassolagen 4 §, god inkassosed — kravet ska avse en
+    // riktig fordran).
+    //
+    // Exakt samma mönster var redan fixat i betalningsvägarna. invoice-debt.ts
+    // bär kommentaren om att "båda betalvägarna bokförde invoice.total oavsett
+    // mottaget belopp" — fixen gjordes där och missades här. Nu delas
+    // sanningskällan: computeInvoiceDebt, samma helper, samma Decimal-säkerhet.
+    //
+    // Påminnelseavgifterna ligger KVAR i kravet: payment-reminder.service.ts
+    // skriver in dem i invoice.total när den formella påminnelsen skickas, så
+    // de ingår i totalen och därmed i restskulden. Noten under beloppet
+    // fortsätter redovisa dem separat.
+    const debt = computeInvoiceDebt({
+      total: invoice.total,
+      allocations: invoice.payments.map((p) => p.amount),
+    })
+    // debt.paid, INTE total − outstanding: outstanding är klampad till 0 vid
+    // överbetalning, så subtraktionen hade visat ett för lågt betalt-belopp på
+    // ett dokument som går till inkasso. Fångat av båda granskarna oberoende.
+    const alreadyPaid = debt.paid
+    const totalDue = debt.outstanding.toNumber()
     const today = new Date().toLocaleDateString('sv-SE')
     const leaseRef = invoice.lease
       ? `${invoice.lease.unit.property.name} – ${invoice.lease.unit.name} (${invoice.lease.unit.unitNumber})`
@@ -636,8 +687,15 @@ export class CollectionExportService {
 
   <div class="total-box">
     <div>
-      <div class="label">Total skuld</div>
+      <div class="label">Kvarstående skuld</div>
       <div class="meta">Inkluderar påminnelseavgifter ${formatSek(totalFees)}</div>
+      ${
+        alreadyPaid.gt(0)
+          ? `<div class="meta">Fakturabelopp ${formatSek(
+              debt.total.toNumber(),
+            )} − betalt ${formatSek(alreadyPaid.toNumber())}</div>`
+          : ''
+      }
     </div>
     <div class="amt">${formatSek(totalDue)}</div>
   </div>
