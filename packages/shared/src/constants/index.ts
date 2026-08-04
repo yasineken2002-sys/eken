@@ -159,7 +159,21 @@ import type { InvoiceStatus, InvoiceEventType, LeaseStatus } from '../types'
 export const INVOICE_TRANSITIONS: Record<InvoiceStatus, InvoiceStatus[]> = {
   DRAFT: ['SENT', 'VOID'],
   SENT: ['PARTIAL', 'PAID', 'OVERDUE', 'VOID'],
-  PARTIAL: ['PAID', 'OVERDUE', 'VOID'],
+  // #307 PR 2b: PARTIAL → SENT_TO_COLLECTION. En DELBETALD fordran är en
+  // verklig fordran, och inkassovägen har alltid kunnat lämna över den —
+  // `claimForExport` grindade på `notIn ['PAID','VOID','SENT_TO_COLLECTION']`
+  // och konsulterade aldrig den här tabellen. Kanten fanns alltså i koden men
+  // inte i modellen.
+  //
+  // Att i stället flippa PARTIAL → OVERDUE före överlämningen (det uppenbara
+  // alternativet) VALDES BORT: OverdueDebtService — dashboardens och
+  // månadsrapportens delade sanningskälla för "Försenat belopp" — räknar
+  // Invoice-sidan som `inv.total` på det dokumenterade antagandet att en
+  // OVERDUE-faktura är fullt obetald. En delbetald faktura som flippas till
+  // OVERDUE hade därför lagt in HELA ursprungsbeloppet i den siffran, inte
+  // restskulden. Fixen hade gjort en rapporterad siffra fel för att blidka
+  // statusmaskinen.
+  PARTIAL: ['PAID', 'OVERDUE', 'VOID', 'SENT_TO_COLLECTION'],
   OVERDUE: ['PARTIAL', 'PAID', 'VOID', 'SENT_TO_COLLECTION'],
   SENT_TO_COLLECTION: ['PAID', 'VOID'],
   PAID: [],

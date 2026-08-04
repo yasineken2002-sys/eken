@@ -14,7 +14,8 @@ import { StorageService } from '../storage/storage.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
-import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+import { DEFAULT_BRAND_COLOR, INVOICE_TRANSITIONS, isValidTransition } from '@eken/shared'
+import type { InvoiceStatus } from '@eken/shared'
 import { UserRole } from '@prisma/client'
 import { assertMayActOnCollections } from '../common/authz/collections-authz'
 import { csvCell } from '../common/csv/csv-cell'
@@ -42,6 +43,24 @@ type InvoiceWithCollectionData = Prisma.InvoiceGetPayload<{
     payments: { orderBy: { paidAt: 'asc' } }
   }
 }>
+
+/**
+ * #307 PR 2b — DE STATUSAR EN FAKTURA FÅR LÄMNAS TILL INKASSO IFRÅN.
+ *
+ * HÄRLEDD ur `INVOICE_TRANSITIONS`, inte handskriven. Hela poängen med PR 2b är
+ * att den här vägen slutade kringgå statusmaskinen: den skrev `SENT_TO_COLLECTION`
+ * från VILKEN status som helst utom PAID/VOID (`notIn`-guarden), och `grep
+ * isValidTransition apps/api/src/collections/` gav noll träffar. En handskriven
+ * `in ['PARTIAL','OVERDUE']` hade bara bytt ut en lista mot en annan — samma
+ * fel, snyggare stavat. Listan MÅSTE komma ur tabellen, annars kan de två glida
+ * isär igen (jfr den duplicerade `csvCell` i #317).
+ *
+ * Idag: `['PARTIAL', 'OVERDUE']`. Låst av ett test, så en framtida utvidgning av
+ * `INVOICE_TRANSITIONS` inte tyst öppnar inkassodörren från fler statusar.
+ */
+export const COLLECTION_SOURCE_STATUSES: InvoiceStatus[] = (
+  Object.keys(INVOICE_TRANSITIONS) as InvoiceStatus[]
+).filter((from) => isValidTransition(from, 'SENT_TO_COLLECTION'))
 
 export interface CollectionExportResult {
   invoiceId: string
@@ -299,6 +318,39 @@ export class CollectionExportService {
    * En eventuell nedskrivning/konstaterad kundförlust bokförs separat och
    * senare, i RentBadDebtService. Metoden sätter status, pausar påminnelser och
    * skriver ett append-only InvoiceEvent.
+   *
+   * ── #315 / #307 PR 2b: ALLT LIGGER I EN TRANSAKTION ──────────────────────
+   *
+   * Metoden gjorde tidigare `findFirst` → statuskontroll → skuldgrind →
+   * `update` → `invoiceEvent.create`, allt som fristående anrop utan
+   * transaktion, utan status-guard och utan `count`-kontroll. Två fel i ett:
+   *
+   *   1. TOCTOU. En betalning som landade mellan läsningen och skrivningen fick
+   *      sin status överskriven. `PAID` är TERMINAL (`INVOICE_TRANSITIONS.PAID
+   *      = []`), så skrivningen reverserade en terminal status — samma fel som
+   *      #311 stängde i exportvägarna, bara med ett kortare fönster.
+   *   2. Statusskrivningen och händelseskrivningen var inte atomiska mot
+   *      varandra. Föll den andra stod fakturan `SENT_TO_COLLECTION` utan spår
+   *      av VARFÖR — i den logg som är själva behandlingshistoriken.
+   *
+   * SKULDBERÄKNINGEN LIGGER INNANFÖR TRANSAKTIONEN OCH INNANFÖR LÅSET. Låg den
+   * utanför kunde en betalning landa mellan grinden och skrivningen och grinden
+   * hade uttalat sig om ett inaktuellt saldo. (Samma läxa som #288 drog i
+   * `markAsPaidManually`.)
+   *
+   * RADLÅS HÄR, MEN INTE I `claimForExport`. Skillnaden är avsiktlig: den här
+   * vägen gör INGEN extern I/O — ingen Puppeteer, ingen R2-uppladdning — så
+   * DoS-invändningen som förbjuder ett lås där gäller inte här. Låset är
+   * dessutom det som gör läsningen av `InvoicePayment` genuint samtidig med
+   * skrivningen. Vägen rör BARA `Invoice`, så ingen låsordning kan vändas
+   * (#296/#298/#299).
+   *
+   * Av de fem grindade handlingarna är detta den ENDA som är en genuint manuell
+   * användarhandling — export/bulk-export körs av workern och loggas som
+   * SYSTEM. Den skrev tidigare actorType USER men lämnade actorId tomt, så
+   * loggen sa "en människa gjorde detta" utan att säga vem. Det är precis den
+   * fråga som ställs först om en hyresgäst bestrider en inkassoöverlämning.
+   * actorId trådas därför in från den inloggade aktören.
    */
   async markSentToCollection(
     invoiceId: string,
@@ -308,64 +360,96 @@ export class CollectionExportService {
     actorId?: string,
   ): Promise<{ id: string; status: 'SENT_TO_COLLECTION' }> {
     assertMayActOnCollections(actorRole, 'markera som skickad till inkasso')
-    const invoice = await this.prisma.invoice.findFirst({
-      where: { id: invoiceId, organizationId },
-    })
-    if (!invoice) throw new NotFoundException('Faktura hittades inte')
-    if (invoice.status === 'PAID' || invoice.status === 'VOID') {
-      throw new BadRequestException('Fakturan är redan avslutad')
-    }
 
-    // ── #307 PR3: SAMMA SKULDGRIND SOM EXPORTVÄGARNA ───────────────────────
-    //
-    // Den här vägen genererar inget underlag, men den gör samma BINDANDE sak:
-    // markerar fordran som överlämnad till inkasso, pausar påminnelser och
-    // skriver en permanent DEBT_COLLECTION-post. Utan grinden kan en operatör
-    // låsa den posten på en faktura som ekonomiskt redan är reglerad — statusen
-    // släpar bara efter. Påpekat av FAR i granskningen av PR 2a.
-    //
-    // Betalningarna laddas separat: den här metoden använder en enkel findFirst
-    // (inte loadInvoice), och ska inte dra in hela PDF-underlaget för en
-    // statusmarkering.
-    const payments = await this.prisma.invoicePayment.findMany({
-      where: { invoiceId },
-      select: { amount: true },
-    })
-    const debt = computeInvoiceDebt({
-      total: invoice.total,
-      allocations: payments.map((p) => p.amount),
-    })
-    const blockReason = this.debtBlockReason(invoice.invoiceNumber, debt)
-    if (blockReason) throw new BadRequestException(blockReason)
+    await this.prisma.$transaction(async (tx) => {
+      // Radlås FÖRST — serialiserar mot markAsPaidManually och bankvägens
+      // claimPaidWithinTx, som båda tar FOR UPDATE på samma rad.
+      await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${invoiceId} AND "organizationId" = ${organizationId} FOR UPDATE`
 
-    await this.prisma.invoice.update({
-      where: { id: invoice.id },
-      data: {
-        status: 'SENT_TO_COLLECTION',
-        sentToCollectionAt: new Date(),
-        remindersPaused: true,
-        remindersPausedAt: new Date(),
-        remindersPausedReason: note ?? 'Skickad till externt inkassobolag',
-      },
-    })
-    // Av de fem grindade handlingarna är detta den ENDA som är en genuint
-    // manuell användarhandling — export/bulk-export körs av workern och loggas
-    // som SYSTEM. Den skrev tidigare actorType USER men lämnade actorId tomt,
-    // så loggen sa "en människa gjorde detta" utan att säga vem. Det är precis
-    // den fråga som ställs först om en hyresgäst bestrider en
-    // inkassoöverlämning. actorId trådas därför in från den inloggade aktören.
-    await this.prisma.invoiceEvent.create({
-      data: {
-        invoiceId: invoice.id,
-        type: 'DEBT_COLLECTION',
-        actorType: 'USER',
-        ...(actorId ? { actorId } : {}),
-        actorLabel: 'Manuell markering',
-        payload: note ? { note } : {},
-      },
+      const invoice = await tx.invoice.findFirst({
+        where: { id: invoiceId, organizationId },
+        select: { id: true, status: true, invoiceNumber: true, total: true },
+      })
+      if (!invoice) throw new NotFoundException('Faktura hittades inte')
+
+      // #307 PR 2b: SAMMA statusregel som exportvägarna, ur statusmaskinen.
+      // Tidigare stod här enbart `status === 'PAID' || 'VOID'` — ett utkast
+      // eller en ännu inte förfallen faktura kunde alltså markeras som
+      // överlämnad till inkasso.
+      const transitionBlocked = this.transitionBlockReason(invoice.invoiceNumber, invoice.status)
+      if (transitionBlocked) throw new BadRequestException(transitionBlocked)
+
+      // ── #307 PR3: SAMMA SKULDGRIND SOM EXPORTVÄGARNA ─────────────────────
+      //
+      // Den här vägen genererar inget underlag, men den gör samma BINDANDE sak:
+      // markerar fordran som överlämnad till inkasso, pausar påminnelser och
+      // skriver en permanent DEBT_COLLECTION-post. Utan grinden kan en operatör
+      // låsa den posten på en faktura som ekonomiskt redan är reglerad —
+      // statusen släpar bara efter. Påpekat av FAR i granskningen av PR 2a.
+      //
+      // Betalningarna laddas separat: den här metoden använder en enkel
+      // findFirst (inte loadInvoice), och ska inte dra in hela PDF-underlaget
+      // för en statusmarkering.
+      const payments = await tx.invoicePayment.findMany({
+        where: { invoiceId },
+        select: { amount: true },
+      })
+      const debt = computeInvoiceDebt({
+        total: invoice.total,
+        allocations: payments.map((p) => p.amount),
+      })
+      const debtBlocked = this.debtBlockReason(invoice.invoiceNumber, debt)
+      if (debtBlocked) throw new BadRequestException(debtBlocked)
+
+      const now = new Date()
+      const claim = await tx.invoice.updateMany({
+        where: { id: invoiceId, organizationId, status: { in: COLLECTION_SOURCE_STATUSES } },
+        data: {
+          status: 'SENT_TO_COLLECTION',
+          sentToCollectionAt: now,
+          remindersPaused: true,
+          remindersPausedAt: now,
+          // NOTEN, inte en generisk sträng. Operatörens egen formulering är det
+          // enda som säger VARFÖR påminnelserna pausades, och den ska överleva
+          // in i `remindersPausedReason` (uttryckligt krav i #315).
+          remindersPausedReason: note ?? 'Skickad till externt inkassobolag',
+        },
+      })
+      // SÄKERHETSNÄT, INTE EN AKTIV KODVÄG. Grenen är onåbar så länge alla
+      // Invoice-statusskrivare tar `FOR UPDATE` på raden (markAsPaidManually,
+      // claimPaidWithinTx, transitionStatus och den här): grinden ovan läser då
+      // samma låsta rad som claimen skriver, inom samma transaktion, och de kan
+      // inte divergera. Den står kvar ändå — `markSentToCollection` VAR själv en
+      // sådan blind skrivare fram till #315, så "en framtida skrivare glömmer
+      // disciplinen" är inte hypotetiskt. Utan guarden blir det en tyst
+      // datakorruption i stället för ett fel. (FAR-granskning av PR 2b.)
+      if (claim.count === 0) {
+        throw new ConflictException(
+          `Faktura ${invoice.invoiceNumber} ändrades under markeringen — den är nu betald, ` +
+            'makulerad eller redan överlämnad. Ingen markering gjordes. Uppdatera sidan och ' +
+            'kontrollera fakturan innan du försöker igen.',
+        )
+      }
+
+      // SAMMA transaktion som claimen. DEBT_COLLECTION är append-only (BFL 5 kap
+      // 6–9 §): den får varken skrivas utan en lyckad claim eller utebli efter en.
+      await tx.invoiceEvent.create({
+        data: {
+          invoiceId,
+          type: 'DEBT_COLLECTION',
+          actorType: 'USER',
+          ...(actorId ? { actorId } : {}),
+          actorLabel: 'Manuell markering',
+          payload: note ? { note } : {},
+        },
+      })
     })
 
-    return { id: invoice.id, status: 'SENT_TO_COLLECTION' }
+    // SKRIVER INGEN `collectionExportKey`. Den manuella markeringen betyder att
+    // överlämningen skett i ett EXTERNT system (Vismas portal e.d.) — det finns
+    // inget underlag i vår lagring att peka på, och en påhittad nyckel vore
+    // värre än ingen (#315).
+    return { id: invoiceId, status: 'SENT_TO_COLLECTION' }
   }
 
   // ── Privata hjälpare ─────────────────────────────────────────────────────
@@ -408,6 +492,57 @@ export class CollectionExportService {
   }
 
   /**
+   * #307 PR 2b: skälet en faktura inte får GÅ ÖVER till `SENT_TO_COLLECTION`
+   * från sin nuvarande status, eller null om den får det.
+   *
+   * REGELN ÄR DELAD MELLAN BÅDA VÄGARNA (exportvägarna och den manuella
+   * markeringen). Mekaniken skiljer sig av dokumenterade skäl — den ena tar
+   * radlås, den andra inte; den ena skriver en SYSTEM-händelse, den andra en
+   * USER-händelse — men VILKA statusar som får lämnas över får inte kunna
+   * skilja sig åt. Det var precis så `csvCell` gled isär i #317.
+   *
+   * Verdikten kommer ur `isValidTransition`; switchen nedan väljer bara ORDEN.
+   * Ett generiskt "ogiltig statusövergång DRAFT → SENT_TO_COLLECTION" hade varit
+   * korrekt och obegripligt för en operatör som bara vill veta varför knappen
+   * inte gör något.
+   */
+  private transitionBlockReason(invoiceNumber: string, from: InvoiceStatus): string | null {
+    if (isValidTransition(from, 'SENT_TO_COLLECTION')) return null
+    switch (from) {
+      case 'PAID':
+      case 'VOID':
+        return 'Kan inte skapa inkassounderlag för betald eller makulerad faktura'
+      case 'SENT_TO_COLLECTION':
+        // Exportvägarna når aldrig hit — de behandlar det här som idempotens och
+        // fyller bara i underlagsnyckeln. Den MANUELLA markeringen har inget
+        // underlag att fylla i, så där är en andra markering ingen omkörning
+        // utan en dubblett: den hade skrivit en ANDRA permanent
+        // DEBT_COLLECTION-post för samma överlämning i en append-only-logg
+        // (BFL 5 kap 6–9 §).
+        return (
+          `Faktura ${invoiceNumber} är redan överlämnad till inkasso. Ingen ny markering ` +
+          'gjordes — överlämningen finns redan i fakturans händelselogg.'
+        )
+      case 'DRAFT':
+        return (
+          `Faktura ${invoiceNumber} är ett UTKAST och har aldrig skickats till mottagaren. ` +
+          'En faktura som gäldenären aldrig fått kan inte lämnas till inkasso — skicka ' +
+          'fakturan först.'
+        )
+      case 'SENT':
+        return (
+          `Faktura ${invoiceNumber} är utskickad men ännu inte markerad som förfallen. ` +
+          'Inkassoöverlämning kräver att förfallodagen passerat; markeringen sker ' +
+          'automatiskt kl. 09:00. Vänta till dess, eller registrera betalningen om ' +
+          'fakturan redan är delvis reglerad.'
+        )
+      default:
+        // Fail-closed: en framtida status utan egen gren nekas, inte släpps in.
+        return `Faktura ${invoiceNumber} kan inte lämnas till inkasso från status ${from}.`
+    }
+  }
+
+  /**
    * #307 — ATOMISK, STATUS-GUARDAD CLAIM AV `SENT_TO_COLLECTION`.
    *
    * Speglar `markAsPaidManually`/`claimPaidWithinTx`: `updateMany` med en
@@ -434,23 +569,29 @@ export class CollectionExportService {
    * faktura betyder det att uppladdningen aldrig lyckades — se #307:s
    * följdpunkt om drift-larm för just det tillståndet.
    *
-   * OBS: metoden validerar INTE övergången mot `INVOICE_TRANSITIONS`. Att
-   * exporten kan skriva SENT_TO_COLLECTION från t.ex. SENT eller PARTIAL — som
-   * statusmaskinen bara tillåter från OVERDUE — är ett separat fel som inte
-   * kräver samtidighet, och det hör till #307:s PR 2.
+   * #307 PR 2b: metoden validerar numera övergången mot `INVOICE_TRANSITIONS`.
+   * Den skrev tidigare `SENT_TO_COLLECTION` från VILKEN status som helst utom
+   * PAID/VOID — ett utkast som aldrig nått mottagaren, eller en faktura som
+   * ännu inte förfallit, kunde alltså lämnas över till inkasso. Grinden och
+   * claimen är SAMMA operation: `COLLECTION_SOURCE_STATUSES` står i WHERE-satsen
+   * nedan, så statusmaskinen utvärderas atomiskt vid skrivögonblicket och inte
+   * som en fristående förkontroll som en samtidig skrivning kan hinna förbi.
    */
   private async claimForExport(
     invoiceId: string,
     organizationId: string,
     invoiceNumber: string,
-    currentStatus: string,
+    currentStatus: InvoiceStatus,
     reason: string,
     debt: InvoiceDebt,
   ): Promise<{ alreadyClaimed: boolean }> {
-    if (currentStatus === 'PAID' || currentStatus === 'VOID') {
-      throw new BadRequestException(
-        'Kan inte skapa inkassounderlag för betald eller makulerad faktura',
-      )
+    // SENT_TO_COLLECTION hanteras som IDEMPOTENS längre ned, inte som ett fel —
+    // därför undantas den här. Statusmaskinen säger nej till den (den är inte
+    // sin egen giltiga målstatus), men för exportvägarna betyder den bara
+    // "claimen är redan gjord, bara underlaget saknas".
+    if (currentStatus !== 'SENT_TO_COLLECTION') {
+      const transitionBlocked = this.transitionBlockReason(invoiceNumber, currentStatus)
+      if (transitionBlocked) throw new BadRequestException(transitionBlocked)
     }
 
     // ── #307 PR3: INGEN SKULD, INGET KRAV ──────────────────────────────────
@@ -495,10 +636,16 @@ export class CollectionExportService {
       const claim = await tx.invoice.updateMany({
         // Guarden läser databasens NUVARANDE status, inte den som lästes innan.
         // Hann fakturan bli betald eller makulerad uppdateras noll rader.
+        //
+        // #307 PR 2b: guarden är numera en TILLÅTLISTA härledd ur statusmaskinen
+        // (`in COLLECTION_SOURCE_STATUSES`), inte en förbudslista (`notIn
+        // PAID/VOID/SENT_TO_COLLECTION`). Skillnaden är riktningen på felet: en
+        // förbudslista släpper igenom varje status någon glömmer lägga till i
+        // den. Det var så DRAFT och SENT kunde exporteras.
         where: {
           id: invoiceId,
           organizationId,
-          status: { notIn: ['PAID', 'VOID', 'SENT_TO_COLLECTION'] },
+          status: { in: COLLECTION_SOURCE_STATUSES },
         },
         data: {
           status: 'SENT_TO_COLLECTION',

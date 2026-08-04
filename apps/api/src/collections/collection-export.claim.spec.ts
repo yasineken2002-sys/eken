@@ -21,7 +21,7 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { BadRequestException, ConflictException } from '@nestjs/common'
-import { CollectionExportService } from './collection-export.service'
+import { CollectionExportService, COLLECTION_SOURCE_STATUSES } from './collection-export.service'
 
 const ORG = 'org-1'
 
@@ -144,7 +144,13 @@ describe('#307 — claimForExport: claim före I/O', () => {
     expect(where.where['organizationId']).toBe(ORG)
     // Guarden är det som gör claimen atomisk: hann fakturan bli reglerad
     // matchar updateMany noll rader.
-    expect(where.where['status']).toEqual({ notIn: ['PAID', 'VOID', 'SENT_TO_COLLECTION'] })
+    //
+    // #307 PR 2b: guarden är numera en TILLÅTLISTA ur statusmaskinen, inte en
+    // förbudslista. Riktningen på felet är hela poängen — en förbudslista
+    // släpper igenom varje status någon glömmer lägga till i den, och det var
+    // så DRAFT och SENT kunde exporteras.
+    expect(where.where['status']).toEqual({ in: COLLECTION_SOURCE_STATUSES })
+    expect(COLLECTION_SOURCE_STATUSES).toEqual(['PARTIAL', 'OVERDUE'])
   })
 
   it('count === 0 → ConflictException, INGEN händelse, INGET dyrt arbete', async () => {

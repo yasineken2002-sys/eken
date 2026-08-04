@@ -40,24 +40,32 @@ const DENIED = [UserRole.MANAGER, UserRole.VIEWER]
 
 function makeInvoiceService() {
   const enqueue = jest.fn().mockResolvedValue('job-1')
-  const update = jest.fn().mockResolvedValue({ id: 'inv-1' })
-  const prisma = {
+  // #315: markSentToCollection kör numera ALLT i en transaktion — radlås,
+  // läsning, skuldberäkning, status-guardad claim och händelse. Attrappen
+  // speglar det: `tx` är ett EGET objekt, skilt från `prisma` (läxan från #288),
+  // så ett test inte kan råka hävda en skrivning som gick vid sidan av
+  // transaktionen.
+  const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'inv-1' }]),
     invoice: {
-      findFirst: jest
-        .fn()
-        .mockResolvedValue({
-          id: 'inv-1',
-          invoiceNumber: 'F-2026-0001',
-          status: 'OVERDUE',
-          total: 10_000,
-        }),
-      update,
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'inv-1',
+        invoiceNumber: 'F-2026-0001',
+        status: 'OVERDUE',
+        total: 10_000,
+      }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     // #307 PR3: markSentToCollection grindar numera på restskuld > 0. Utan
     // betalningar är restskulden hela totalen → grinden släpper igenom, och
     // testerna nedan mäter det de alltid mätt (spårbarheten).
     invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
     invoiceEvent: { create: jest.fn() },
+  }
+  const prisma = {
+    invoice: { findFirst: jest.fn(), update: jest.fn() },
+    invoiceEvent: { create: jest.fn() },
+    $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)),
   }
   // (prisma, personalNumber, pdf, storage, pdfQueue)
   const svc = new CollectionExportService(
@@ -67,7 +75,7 @@ function makeInvoiceService() {
     {} as never,
     { enqueue } as never,
   )
-  return { svc, enqueue, update, prisma }
+  return { svc, enqueue, prisma, tx }
 }
 
 function makeNoticeService() {
@@ -134,11 +142,18 @@ describe('R1 · behörighetsgränsen mot inkasso', () => {
     })
 
     it.each(DENIED)('%s nekas markera-skickad och fakturan rörs INTE', async (role) => {
-      const { svc, update } = makeInvoiceService()
+      const { svc, prisma, tx } = makeInvoiceService()
       await expect(
         svc.markSentToCollection('inv-1', 'org-1', undefined, role),
       ).rejects.toBeInstanceOf(ForbiddenException)
-      expect(update).not.toHaveBeenCalled()
+      // #315 flyttade skrivningen från `prisma.invoice.update` till en
+      // status-guardad `updateMany` inuti en transaktion. Assertionen följde
+      // med — hade den stått kvar på den gamla metoden hade den varit sann av
+      // en olycka (metoden anropas inte längre av någon kodväg alls) och testet
+      // hade slutat mäta rollgrinden. Transaktionen ska inte ens öppnas.
+      expect(prisma.$transaction).not.toHaveBeenCalled()
+      expect(tx.invoice.updateMany).not.toHaveBeenCalled()
+      expect(tx.invoiceEvent.create).not.toHaveBeenCalled()
     })
 
     it('saknad roll nekas (fail-closed) — även om anroparen glömt tråda den', async () => {
@@ -186,10 +201,10 @@ describe('R1 · behörighetsgränsen mot inkasso', () => {
 
   describe('Spårbarheten: VEM lämnade över skulden (FAR HIGH)', () => {
     it('markSentToCollection skriver actorId, inte bara "en människa"', async () => {
-      const { svc, prisma } = makeInvoiceService()
+      const { svc, prisma, tx } = makeInvoiceService()
       await svc.markSentToCollection('inv-1', 'org-1', 'note', UserRole.ACCOUNTANT, 'user-42')
 
-      const event = prisma.invoiceEvent.create.mock.calls[0]![0] as {
+      const event = tx.invoiceEvent.create.mock.calls[0]![0] as {
         data: Record<string, unknown>
       }
       expect(event.data).toMatchObject({
@@ -197,13 +212,15 @@ describe('R1 · behörighetsgränsen mot inkasso', () => {
         actorType: 'USER',
         actorId: 'user-42',
       })
+      // …och den skrevs på TRANSAKTIONSKLIENTEN, inte vid sidan av den (#288).
+      expect(prisma.invoiceEvent.create).not.toHaveBeenCalled()
     })
 
     it('utan känd aktör sätts INGEN actorId — vi hittar inte på en', async () => {
-      const { svc, prisma } = makeInvoiceService()
+      const { svc, tx } = makeInvoiceService()
       await svc.markSentToCollection('inv-1', 'org-1', undefined, UserRole.OWNER)
 
-      const event = prisma.invoiceEvent.create.mock.calls[0]![0] as {
+      const event = tx.invoiceEvent.create.mock.calls[0]![0] as {
         data: Record<string, unknown>
       }
       expect(event.data).not.toHaveProperty('actorId')
