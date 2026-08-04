@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { csvCell } from '../common/csv/csv-cell'
 import type { Prisma } from '@prisma/client'
 import JSZip from 'jszip'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -688,15 +689,4 @@ function encodeSegments(segments: InterestSegment[]): string {
 
 function formatSek(amount: number): string {
   return `${amount.toLocaleString('sv-SE', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} kr`
-}
-
-function csvCell(value: string): string {
-  // CSV formula-injection (säkerhetsgranskning MEDIUM): ett gäldenärsnamn/adress
-  // som börjar på = + - @ (eller tab/CR) körs som formel när inkassobolaget
-  // öppnar filen i Excel/Calc. Neutralisera med ett inledande apostrof — fältet
-  // är gäldenärs-/användarkontrollerat och hamnar i en fil som öppnas externt.
-  const guarded = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
-  const needsEscape = /[",\n]/.test(guarded)
-  if (!needsEscape) return guarded
-  return `"${guarded.replace(/"/g, '""')}"`
 }
