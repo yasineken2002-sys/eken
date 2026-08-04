@@ -66,7 +66,7 @@ AiTenantConversation    create      ai/tenant-ai.service.ts                     
 InspectionImage         create      inspections/inspections.controller.ts                   C scopat anrop
 InspectionItem          create      inspections/inspections.controller.ts                   C scopat anrop
 InspectionItem          createMany  inspections/inspections.service.ts                      B hjälpare
-InvoiceEvent            create      collections/collection-export.service.ts            ×3  A kedje-query + C scopat anrop
+InvoiceEvent            create      collections/collection-export.service.ts            ×2  A kedje-query + INGEN UPPTÄCKT
 InvoiceEvent            create      consumption/consumption.service.ts                      A kedje-query
 InvoiceEvent            create      deposits/deposits.service.ts                        ×2  A kedje-query
 InvoiceEvent            create      invoices/invoice-events.service.ts                      INGEN UPPTÄCKT

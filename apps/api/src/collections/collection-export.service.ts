@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import JSZip from 'jszip'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -103,12 +109,40 @@ export class CollectionExportService {
     organizationId: string,
   ): Promise<CollectionExportResult> {
     const invoice = await this.loadInvoice(invoiceId, organizationId)
-    if (invoice.status === 'PAID' || invoice.status === 'VOID') {
-      throw new BadRequestException(
-        'Kan inte skapa inkassounderlag för betald eller makulerad faktura',
-      )
-    }
 
+    // ── #307: CLAIMA FÖRST, GÖR I/O EFTERÅT ────────────────────────────────
+    //
+    // Ordningen var tvärtom: läs status → generera PDF → ladda upp till R2 →
+    // skriv status blint. Mellan läsningen och skrivningen låg SEKUNDER av
+    // verkligt I/O (Puppeteer + två R2-uppladdningar, den senare med
+    // requestTimeout 15 s × 2 försök). Hann fakturan bli betald i det fönstret
+    // skrevs PAID över med SENT_TO_COLLECTION — och en hyresgäst fick kravbrev
+    // för något de redan betalat.
+    //
+    // Det är inte ett vanligt race: PAID är TERMINAL i INVOICE_TRANSITIONS
+    // (`PAID: []`). Skrivningen reverserade alltså en terminal status, vilket
+    // ingen annan statusskrivare i kodbasen gör.
+    //
+    // (Motsatt riktning — betalning EFTER export — är inget fel och behöver
+    // ingen spärr: SENT_TO_COLLECTION → PAID är en giltig övergång och statusen
+    // ingår i PAYABLE_STATUSES. En hyresgäst som betalar direkt till
+    // hyresvärden trots inkassokrav ska kunna registreras.)
+    //
+    // Claimen nedan är atomisk och status-guardad, och den gör fönstret till en
+    // enda DB-transaktion. Den tar INGET radlås med flit — ett lås som hålls
+    // under extern I/O vore en DoS-yta (samma skäl som att `send()` genererar
+    // PDF utanför sin transaktion, verifierat i #302). En status-guardad
+    // updateMany är självserialiserande och behöver inget lås.
+    await this.claimForExport(
+      invoice.id,
+      organizationId,
+      invoice.invoiceNumber,
+      invoice.status,
+      'Skickad till inkasso',
+    )
+
+    // Först HÄR börjar det dyra arbetet. Misslyckades claimen har vi redan
+    // kastat — ingen PDF genererad, ingen InvoiceEvent skriven.
     const pdfBuffer = await this.pdf.generateFromHtml(await this.buildPdfHtml(invoice))
     const csvBuffer = Buffer.from(this.buildCsv([invoice]), 'utf8')
 
@@ -122,35 +156,20 @@ export class CollectionExportService {
       this.storage.uploadFile(csvBuffer, csvKey, 'text/csv'),
     ])
 
-    // Markera faktura som skickad till inkasso om den inte redan var det.
-    // Pausa påminnelser så cron-jobbet inte fortsätter spamma hyresgästen.
-    if (invoice.status !== 'SENT_TO_COLLECTION') {
-      await this.prisma.invoice.update({
-        where: { id: invoice.id },
-        data: {
-          status: 'SENT_TO_COLLECTION',
-          sentToCollectionAt: new Date(),
-          remindersPaused: true,
-          remindersPausedAt: new Date(),
-          remindersPausedReason: 'Skickad till inkasso',
-          collectionExportKey: pdfKey,
-        },
-      })
-      await this.prisma.invoiceEvent.create({
-        data: {
-          invoiceId: invoice.id,
-          type: 'DEBT_COLLECTION',
-          actorType: 'SYSTEM',
-          actorLabel: 'Inkassounderlag genererat',
-          payload: { pdfKey, csvKey },
-        },
-      })
-    } else {
-      await this.prisma.invoice.update({
-        where: { id: invoice.id },
-        data: { collectionExportKey: pdfKey },
-      })
-    }
+    // Statusen är redan satt av claimen ovan. Kvar är bara att peka ut filen —
+    // nyckeln kan inte vara känd före uppladdningen, så den skrivs här.
+    //
+    // Att claimen ligger före betyder att en faktura kan stå SENT_TO_COLLECTION
+    // med collectionExportKey = null om R2 fallerar efter claimen. Det är den
+    // avsiktliga sidan av avvägningen: alternativet vore ett inkassokrav
+    // uppladdat för en faktura som hunnit bli betald. En omkörning läker
+    // tillståndet — claimen ser då SENT_TO_COLLECTION, hoppar över
+    // statusskrivningen (ingen andra DEBT_COLLECTION-händelse) och fyller i
+    // nyckeln.
+    await this.prisma.invoice.update({
+      where: { id: invoice.id },
+      data: { collectionExportKey: pdfKey },
+    })
 
     return {
       invoiceId: invoice.id,
@@ -169,11 +188,71 @@ export class CollectionExportService {
   async exportBulk(
     invoiceIds: string[],
     organizationId: string,
-  ): Promise<{ zipKey: string; zipUrl: string; count: number }> {
+  ): Promise<{
+    zipKey: string
+    zipUrl: string
+    count: number
+    /** #307: fakturor som inte kunde claimas — med skälet, så operatören ser vilka. */
+    skipped: Array<{ invoiceNumber: string; reason: string }>
+  }> {
     if (invoiceIds.length === 0) {
       throw new BadRequestException('Inga fakturor angivna')
     }
-    const invoices = await Promise.all(invoiceIds.map((id) => this.loadInvoice(id, organizationId)))
+    const laddade = await Promise.all(invoiceIds.map((id) => this.loadInvoice(id, organizationId)))
+
+    // ── #307: CLAIMA VARJE FAKTURA FÖRE ZIP-BYGGET ─────────────────────────
+    //
+    // Två fel stängs här, och bara det ena är ett race:
+    //
+    // 1) STALE-LÄSNINGEN. Statuskontrollen låg tidigare i skriv-transaktionen
+    //    längst ned och itererade de objekt som lästes FÖRE zip-bygget.
+    //    Transaktionen gav atomicitet åt skrivningarna men läste aldrig om
+    //    statusen — den skyddade alltså inte mot att en faktura hann bli betald
+    //    under de N PDF-renderingarna. Claimen nedan läser om, i databasen.
+    //
+    // 2) ZIP:EN FILTRERADE INTE ALLS. Loopen renderade en PDF för VARJE begärd
+    //    faktura, oavsett status. En betald eller makulerad faktura fick alltså
+    //    ett fullständigt inkassokrav i den ZIP som skickas till
+    //    inkassobolaget — helt utan samtidighet inblandad. Skrivloopen hoppade
+    //    över den, så fakturan såg orörd ut i systemet medan kravet ändå låg i
+    //    batchen. Nu kommer bara claimade fakturor in i ZIP:en.
+    //
+    // En faktura som inte kan claimas HOPPAS ÖVER — bulk får inte fällas för
+    // att en av tjugo hann bli betald. De överhoppade returneras i `skipped`.
+    //
+    // ⚠️ `skipped` NÅR INTE OPERATÖREN ÄNNU. Bulk-exporten körs av PdfWorker via
+    // Bull-kön, och workern kastar returvärdet — det finns ingen jobb-status-
+    // endpoint som förmedlar det vidare. Fältet är alltså korrekt ifyllt men
+    // osynligt i produktionsvägen. Det är en känd lucka (#307 följdpunkt), inte
+    // ett löfte som infrias idag: skriv inte UI mot `skipped` förrän kö-vägen
+    // kan leverera det.
+    const invoices: InvoiceWithCollectionData[] = []
+    const skipped: Array<{ invoiceNumber: string; reason: string }> = []
+    for (const inv of laddade) {
+      try {
+        await this.claimForExport(
+          inv.id,
+          organizationId,
+          inv.invoiceNumber,
+          inv.status,
+          'Skickad till inkasso (bulk)',
+        )
+        invoices.push(inv)
+      } catch (err) {
+        if (err instanceof BadRequestException || err instanceof ConflictException) {
+          skipped.push({ invoiceNumber: inv.invoiceNumber, reason: err.message })
+          continue
+        }
+        throw err
+      }
+    }
+
+    if (invoices.length === 0) {
+      throw new BadRequestException(
+        'Ingen av de valda fakturorna kunde exporteras — samtliga är betalda, makulerade ' +
+          'eller ändrades under exporten. Inget underlag skapades.',
+      )
+    }
 
     const zip = new JSZip()
     for (const invoice of invoices) {
@@ -190,37 +269,19 @@ export class CollectionExportService {
     const zipKey = `collections/${organizationId}/${date}/inkasso-batch-${Date.now()}.zip`
     const zipUrl = await this.storage.uploadFile(zipBuffer, zipKey, 'application/zip')
 
-    // Markera alla fakturor som skickade till inkasso
+    // Statusen är redan claimad per faktura ovan; här pekas bara filen ut.
+    // Ingen statuskontroll behövs — `invoices` innehåller per konstruktion bara
+    // de som claimades, och nyckeln kan inte vara känd före uppladdningen.
     await this.prisma.$transaction(async (tx) => {
-      const now = new Date()
       for (const inv of invoices) {
-        if (inv.status === 'PAID' || inv.status === 'VOID') continue
-        if (inv.status !== 'SENT_TO_COLLECTION') {
-          await tx.invoice.update({
-            where: { id: inv.id },
-            data: {
-              status: 'SENT_TO_COLLECTION',
-              sentToCollectionAt: now,
-              remindersPaused: true,
-              remindersPausedAt: now,
-              remindersPausedReason: 'Skickad till inkasso (bulk)',
-              collectionExportKey: zipKey,
-            },
-          })
-          await tx.invoiceEvent.create({
-            data: {
-              invoiceId: inv.id,
-              type: 'DEBT_COLLECTION',
-              actorType: 'SYSTEM',
-              actorLabel: 'Inkassounderlag (bulk)',
-              payload: { zipKey },
-            },
-          })
-        }
+        await tx.invoice.update({
+          where: { id: inv.id },
+          data: { collectionExportKey: zipKey },
+        })
       }
     })
 
-    return { zipKey, zipUrl, count: invoices.length }
+    return { zipKey, zipUrl, count: invoices.length, skipped }
   }
 
   /**
@@ -281,6 +342,100 @@ export class CollectionExportService {
   }
 
   // ── Privata hjälpare ─────────────────────────────────────────────────────
+
+  /**
+   * #307 — ATOMISK, STATUS-GUARDAD CLAIM AV `SENT_TO_COLLECTION`.
+   *
+   * Speglar `markAsPaidManually`/`claimPaidWithinTx`: `updateMany` med en
+   * status-guard i WHERE, och `count === 0` betyder att någon hann före.
+   * Skillnaden mot dem är att den här vägen medvetet INTE tar något radlås —
+   * anroparen gör sekunder av extern I/O efteråt, och ett lås som hålls under
+   * den tiden vore en DoS-yta. En status-guardad updateMany behöver inget lås:
+   * villkoret utvärderas atomiskt av databasen vid skrivögonblicket.
+   *
+   * Claimen OCH händelsen skrivs i samma transaktion. `DEBT_COLLECTION` är
+   * append-only och får aldrig raderas (BFL 5 kap 6–9 §) — en felaktig post på
+   * en betald faktura vore permanent. Därför måste den vara omöjlig att skriva
+   * utan en lyckad claim, och tvärtom.
+   *
+   * Idempotent: en faktura som redan är SENT_TO_COLLECTION returnerar
+   * `alreadyClaimed` utan att skriva en andra händelse. Det gör omkörning efter
+   * ett R2-fel ofarlig.
+   *
+   * UNDERLAGSREFERENSEN BOR I `Invoice.collectionExportKey`, INTE I HÄNDELSEN.
+   * Eftersom claimen ligger före uppladdningen kan händelsens payload omöjligt
+   * bära pdfKey/csvKey/zipKey — de existerar inte än. Kolumnen är därför den
+   * auktoritativa hänvisningen till underlaget (BFL 5 kap 6 §), och den skrivs
+   * av anroparen när nyckeln blir känd. Är den `null` för en SENT_TO_COLLECTION-
+   * faktura betyder det att uppladdningen aldrig lyckades — se #307:s
+   * följdpunkt om drift-larm för just det tillståndet.
+   *
+   * OBS: metoden validerar INTE övergången mot `INVOICE_TRANSITIONS`. Att
+   * exporten kan skriva SENT_TO_COLLECTION från t.ex. SENT eller PARTIAL — som
+   * statusmaskinen bara tillåter från OVERDUE — är ett separat fel som inte
+   * kräver samtidighet, och det hör till #307:s PR 2.
+   */
+  private async claimForExport(
+    invoiceId: string,
+    organizationId: string,
+    invoiceNumber: string,
+    currentStatus: string,
+    reason: string,
+  ): Promise<{ alreadyClaimed: boolean }> {
+    if (currentStatus === 'PAID' || currentStatus === 'VOID') {
+      throw new BadRequestException(
+        'Kan inte skapa inkassounderlag för betald eller makulerad faktura',
+      )
+    }
+    // Redan överlämnad: ingen ny statusövergång, ingen ny händelse. Anroparen
+    // får ändå generera om underlaget (t.ex. efter ett avbrutet R2-anrop).
+    if (currentStatus === 'SENT_TO_COLLECTION') return { alreadyClaimed: true }
+
+    await this.prisma.$transaction(async (tx) => {
+      const now = new Date()
+      const claim = await tx.invoice.updateMany({
+        // Guarden läser databasens NUVARANDE status, inte den som lästes innan.
+        // Hann fakturan bli betald eller makulerad uppdateras noll rader.
+        where: {
+          id: invoiceId,
+          organizationId,
+          status: { notIn: ['PAID', 'VOID', 'SENT_TO_COLLECTION'] },
+        },
+        data: {
+          status: 'SENT_TO_COLLECTION',
+          sentToCollectionAt: now,
+          remindersPaused: true,
+          remindersPausedAt: now,
+          remindersPausedReason: reason,
+        },
+      })
+      if (claim.count === 0) {
+        throw new ConflictException(
+          `Faktura ${invoiceNumber} ändrades under exporten — den är nu betald, makulerad ` +
+            'eller redan överlämnad. Inget inkassounderlag skapades. Uppdatera sidan och ' +
+            'kontrollera fakturan innan du försöker igen.',
+        )
+      }
+      // SCOPAD, men inte på ett sätt det statiska verktyget känner igen:
+      // `invoiceId` är BEVISAT höra till `organizationId` av updateMany:n precis
+      // ovan. En lyckad claim (count > 0) på primärnyckeln `id` kan bara ske om
+      // raden också matchade `organizationId` i samma WHERE — annars är count 0
+      // och vi har redan kastat. Ingen separat find/assert behövs därför här.
+      // (object-scope-heuristiken rapporterar "INGEN UPPTÄCKT" för den här
+      // formen; se golden-filen och #308.)
+      await tx.invoiceEvent.create({
+        data: {
+          invoiceId,
+          type: 'DEBT_COLLECTION',
+          actorType: 'SYSTEM',
+          actorLabel: 'Inkassounderlag genererat',
+          payload: { reason },
+        },
+      })
+    })
+
+    return { alreadyClaimed: false }
+  }
 
   private async loadInvoice(
     invoiceId: string,
