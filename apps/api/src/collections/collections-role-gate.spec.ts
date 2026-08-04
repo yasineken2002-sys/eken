@@ -43,9 +43,20 @@ function makeInvoiceService() {
   const update = jest.fn().mockResolvedValue({ id: 'inv-1' })
   const prisma = {
     invoice: {
-      findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', status: 'OVERDUE' }),
+      findFirst: jest
+        .fn()
+        .mockResolvedValue({
+          id: 'inv-1',
+          invoiceNumber: 'F-2026-0001',
+          status: 'OVERDUE',
+          total: 10_000,
+        }),
       update,
     },
+    // #307 PR3: markSentToCollection grindar numera på restskuld > 0. Utan
+    // betalningar är restskulden hela totalen → grinden släpper igenom, och
+    // testerna nedan mäter det de alltid mätt (spårbarheten).
+    invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
     invoiceEvent: { create: jest.fn() },
   }
   // (prisma, personalNumber, pdf, storage, pdfQueue)
