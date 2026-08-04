@@ -480,6 +480,62 @@ export class InvoicesService {
     payload: Record<string, unknown> = {},
   ): Promise<Invoice> {
     const result = await this.prisma.$transaction(async (tx) => {
+      // ── RADLÅS: FAKTURAN FÖRST (#302) ──────────────────────────────────────
+      //
+      // VAD LÅSET STÄNGER: ett TILLSTÅNDSFEL, inte ett penningfel.
+      //
+      // Läsningen nedan — inklusive allokeringsgrinden som ska hindra att en
+      // BETALD faktura makuleras (C4/C5) — togs utan lås och kunde därför hinna
+      // bli inaktuell innan skrivningen:
+      //
+      //   T1 (VOID)     läser fakturan, ser noll allokeringar
+      //   T2 (markPaid) låser fakturan, allokerar, bokför 1930 D / 1510 K, commit
+      //   T1            skriver ändå status VOID
+      //   → makulerad faktura MED registrerad betalning, rakt förbi grinden
+      //
+      // Låset måste ligga FÖRE allokeringsgrinden — det är den läsningen som
+      // annars fattar beslut på inaktuell grund.
+      //
+      // MÄTT (#302:s bevisrigg, fönstret vidgat till 200 ms med samma
+      // Prisma-middleware-metod som #296 — utan vidgning träffas racet aldrig):
+      //   utan låset: 20/20 körningar gav faktura VOID med registrerad betalning
+      //   med låset:  0/20
+      //
+      // ⚠️ OM DU LÄSER DET HÄR SOM "BARA ETT TILLSTÅNDSFEL" — LÄS EN RAD TILL.
+      // Konsekvensen skiljer sig åt beroende på FAKTURATYP, och att blanda ihop
+      // dem har redan kostat ett scope-beslut på fel underlag en gång:
+      //
+      //   DEPOSITIONSFAKTURA: huvudboken förblir balanserad även utan låset.
+      //     1510 dubbelkrediteras inte, eftersom deposit.status-grinden i
+      //     VOID-blocket längre ned (#301) stoppar reverseringen när betalningen
+      //     hunnit bokföras. Felet stannar vid tillståndet. (Mätt: S1/S2.)
+      //
+      //   VANLIG FAKTURA: ingen sådan grind finns. reverseJournalEntryForInvoice
+      //     reverserar accrualen OVILLKORLIGT, utan att fråga om fakturan hunnit
+      //     bli betald — så samma race ger 1510 debet 13 750 / kredit 27 500.
+      //     Ett äkta penningfel. (Mätt: S7, 20/20 utan lås.)
+      //
+      // Låset stänger alltså BÅDA. Den första versionen av den här kommentaren
+      // påstod generellt "aldrig ett penningfel" på grundval av ett testfall som
+      // inte kunde visa något annat — övergeneraliseringen fälldes i granskning.
+      //
+      // LÅSORDNING: Invoice → Deposit. Samma riktning som alla andra vägar som
+      // rör båda raderna:
+      //
+      //   markPaid (fakturagren):  Invoice (FOR UPDATE) → Deposit (claim)
+      //   applyMatchToInvoice:     Invoice (FOR UPDATE) → Deposit (updateMany)
+      //   denna väg:               Invoice (FOR UPDATE) → Deposit (läs + reversera)
+      //
+      // INGEN väg i systemet tar Deposit → Invoice. Den ABBA:n togs bort i #293
+      // och får inte återinföras — vänder du ordningen här kan de tre vägarna
+      // vänta in varandra korsvis och Postgres döda en av dem.
+      //
+      // RÖR INTE #296: det som håller det ärendet stängt är att bankvägen och
+      // markPaids AVI-gren tar RentNotice/Deposit i motsatta riktningar (se
+      // reconciliation.service.ts och deposits.service.ts). Den här raden rör
+      // bara Invoice ↔ Deposit och vänder ingen av de pilarna. Verifierat.
+      await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${id} AND "organizationId" = ${organizationId} FOR UPDATE`
+
       const invoice = await tx.invoice.findFirst({
         where: { id, organizationId },
         select: { id: true, status: true, invoiceNumber: true },

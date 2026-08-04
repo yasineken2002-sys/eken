@@ -24,6 +24,10 @@ function makeService(
   const invoiceRow = { id: 'inv-1', status: opts.status ?? 'DRAFT', invoiceNumber: 'F-2026-0001' }
 
   const tx = {
+    $queryRaw: jest.fn((..._a: unknown[]) => {
+      ordning.push('lås-faktura')
+      return Promise.resolve([])
+    }),
     invoice: {
       findFirst: jest.fn().mockResolvedValue(invoiceRow),
       update: jest.fn().mockResolvedValue(invoiceRow),
@@ -92,12 +96,19 @@ describe('#301 — transitionStatus(VOID) reverserar depositionens accrual', () 
     expect(args[4]).toBe(tx)
   })
 
-  // LÅSORDNINGSTESTET LIGGER INTE HÄR. Radlåset i VOID-grenen stänger ett
-  // TILLSTÅNDSFEL (faktura VOID trots registrerad betalning) som fanns före #301
-  // och som #301 inte förvärrar — mätt: huvudboken var balanserad i 20/20
-  // körningar även utan låset, eftersom PENDING-spärren nedan stoppar
-  // dubbelkrediteringen. Låset och dess test flyttades därför till ett eget
-  // ärende i stället för att åka snålskjuts på den här PR:n. Se #302.
+  it('#302 LÅSORDNING: fakturan låses FÖRST, före varje läsning beslutet vilar på', async () => {
+    // Låset kom i #302, inte #301 — det stänger ett TILLSTÅNDSFEL (faktura VOID
+    // trots registrerad betalning), inte en spökkredit. Riktningen är
+    // Invoice → Deposit, samma som markPaid och applyMatchToInvoice. Ingen väg
+    // tar Deposit → Invoice; den ABBA:n togs bort i #293.
+    const { service, ordning, tx } = makeService()
+
+    await service.transitionStatus('inv-1', 'org-1', 'VOID', 'user-1', 'USER')
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1)
+    expect(ordning[0]).toBe('lås-faktura')
+    expect(ordning.indexOf('lås-faktura')).toBeLessThan(ordning.indexOf('läs-deposition'))
+  })
 
   it('SPÄRR: deposition som inte är PENDING → INGEN reversering', async () => {
     // 1930 D / 1510 K är redan bokfört; en reversering skulle kreditera 1510 en
