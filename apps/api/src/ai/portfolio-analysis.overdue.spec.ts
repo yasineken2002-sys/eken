@@ -25,6 +25,9 @@ function makePrisma() {
             {
               invoiceNumber: 'F-1',
               total: 5000,
+              // #307A: raden visar numera restskulden. Utan allokeringar är den
+              // identisk med totalen, så testets siffror är oförändrade.
+              payments: [],
               dueDate: new Date('2026-05-01T00:00:00Z'),
               tenant: { firstName: 'A', lastName: 'B', companyName: null, email: 'a@b.se' },
               customer: null,

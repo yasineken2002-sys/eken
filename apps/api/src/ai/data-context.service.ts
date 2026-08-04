@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { OverdueDebtService } from '../overdue/overdue-debt.service'
 import { AccountingService } from '../accounting/accounting.service'
@@ -73,6 +74,8 @@ export class DataContextService {
         select: {
           invoiceNumber: true,
           total: true,
+          // #307A: allokeringarna behövs för att kunna visa restskulden.
+          payments: { select: { amount: true } },
           dueDate: true,
           tenant: { select: { firstName: true, lastName: true, companyName: true } },
           customer: { select: { firstName: true, lastName: true, companyName: true } },
@@ -310,7 +313,12 @@ export class DataContextService {
       lines.push('', 'Förfallna fakturaposter (urval, exkl. hyresavier och depositioner):')
       for (const inv of overdueInvoices) {
         lines.push(
-          `  - Faktura ${inv.invoiceNumber}, ${formatTenantName(inv.tenant ?? inv.customer)}, ${formatSEK(Number(inv.total))}, förföll ${formatDate(inv.dueDate)}`,
+          `  - Faktura ${inv.invoiceNumber}, ${formatTenantName(inv.tenant ?? inv.customer)}, ${formatSEK(
+            computeInvoiceDebt({
+              total: inv.total,
+              allocations: inv.payments.map((p) => p.amount),
+            }).outstanding.toNumber(),
+          )}, förföll ${formatDate(inv.dueDate)}`,
         )
       }
     }

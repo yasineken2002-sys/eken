@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common'
+import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import Anthropic from '@anthropic-ai/sdk'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { OverdueDebtService } from '../overdue/overdue-debt.service'
@@ -203,6 +204,8 @@ ${expiringLeases.map((l) => `- ${l.unit.name} (${l.tenant.companyName ?? `${l.te
         select: {
           invoiceNumber: true,
           total: true,
+          // #307A: allokeringarna behövs för att kunna visa restskulden.
+          payments: { select: { amount: true } },
           dueDate: true,
           tenant: { select: { firstName: true, lastName: true, companyName: true, email: true } },
           customer: { select: { firstName: true, lastName: true, companyName: true, email: true } },
@@ -233,7 +236,15 @@ ${overdueInvoices
   .map((i) => {
     const p = i.tenant ?? i.customer
     const partyName = p ? (p.companyName ?? `${p.firstName ?? ''} ${p.lastName ?? ''}`.trim()) : '–'
-    return `- Faktura ${i.invoiceNumber}: ${Number(i.total).toFixed(2)} SEK, förfallen ${i.dueDate.toISOString().substring(0, 10)}, mottagare: ${partyName}`
+    // #307A: restskulden, inte ursprungsbeloppet. En OVERDUE-faktura är i
+    // praktiken fullt obetald idag (markOverdueInvoices flippar bara SENT →
+    // OVERDUE), men PARTIAL → OVERDUE är nåbar manuellt och via AI-verktyget —
+    // och då ljög siffran. Samma sanningskälla som resten av systemet.
+    const outstanding = computeInvoiceDebt({
+      total: i.total,
+      allocations: i.payments.map((p) => p.amount),
+    }).outstanding
+    return `- Faktura ${i.invoiceNumber}: ${outstanding.toNumber().toFixed(2)} SEK, förfallen ${i.dueDate.toISOString().substring(0, 10)}, mottagare: ${partyName}`
   })
   .join('\n')}
 
