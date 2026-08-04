@@ -14,6 +14,7 @@ import * as XLSX from 'xlsx'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { InvoicesService } from '../invoices/invoices.service'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
+import { paymentTargetStatus, isPaymentTransitionAllowed } from '../invoices/invoice-payment-status'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
@@ -1022,6 +1023,35 @@ export class ReconciliationService {
     allowPartial: boolean,
   ): Promise<boolean> {
     const claimedNumber = await this.prisma.$transaction(async (tx) => {
+      // ── RADLÅS FÖRST (#307 C) ──────────────────────────────────────────────
+      //
+      // Låset är LASTBÄRANDE för statusrättningen, inte en allmän härdning: både
+      // målstatusen och den `previousStatus` som skrivs till händelseloggen läses
+      // ur den här raden. Läses den olåst kan båda vara inaktuella när de skrivs —
+      // och en händelselogg som påstår fel utgångsstatus är precis defekten C
+      // stänger.
+      //
+      // Låset fanns redan i den fulla betalningens gren (`claimPaidWithinTx` tar
+      // samma `FOR UPDATE`) och i syskonvägen `applyMatchToRentNotice`. DELBETALNINGS-
+      // grenen saknade det: `priorAllocations` lästes olåst, så restskulden — och
+      // därmed klassificeringen full/del/överbetalning — kunde beräknas på inaktuell
+      // grund vid samtidiga matchningar. Att flytta upp låset stänger den luckan på
+      // köpet. Att ta det två gånger i den fulla grenen är en no-op (samma tx).
+      //
+      // LÅSORDNING OFÖRÄNDRAD: Invoice → BankTransaction → Deposit. Låset tas
+      // tidigare i transaktionen, men Invoice låg först i BÅDA grenarna redan
+      // (updateMany respektive claimPaidWithinTx föregick `bankTransaction.update`).
+      // `unmatchTransaction` rör aldrig Invoice-status → ingen väg tar den motsatta
+      // ordningen. Ingen ABBA.
+      await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${invoiceId} AND "organizationId" = ${organizationId} FOR UPDATE`
+
+      const invoiceRow = await tx.invoice.findFirst({
+        where: { id: invoiceId, organizationId },
+        select: { status: true, invoiceNumber: true },
+      })
+      if (!invoiceRow) return null
+      const previousStatus = invoiceRow.status
+
       // Restskulden FÖRE denna betalning — beräknat tillstånd, inte lagrat.
       const priorAllocations = await tx.invoicePayment.findMany({
         where: { invoiceId },
@@ -1084,28 +1114,42 @@ export class ReconciliationService {
         if (!claim.claimed) return null
         invoiceNumber = claim.invoiceNumber
       } else {
-        // Delbetalning: status → PARTIAL, paidAt lämnas orörd (fakturan är inte
-        // betald). Status-guardad mot samma betalbara tillstånd som PAID-claimen.
+        // Delbetalning: paidAt lämnas orörd (fakturan är inte betald).
+        //
+        // #307 C — MÅLSTATUSEN KOMMER UR `paymentTargetStatus`, samma källa som den
+        // manuella vägen. Här stod tidigare `data: { status: 'PARTIAL' }` rakt av,
+        // med SENT_TO_COLLECTION i WHERE-tillåtlistan: en delbetalning mot en
+        // inkassofaktura flippade alltså statusen medan `remindersPaused` och
+        // `sentToCollectionAt` stod kvar från överlämningen. Raden blev internt
+        // motsägelsefull och fordran osynlig i både inkassovyn och kravtrappan.
+        const newStatus = paymentTargetStatus(previousStatus, false)
+
+        // Tillåtlistan är HÄRLEDD ur statusmaskinen i stället för handskriven.
+        // Den gamla `in [...]`-listan räknade upp exakt de statusar varifrån
+        // → PARTIAL är en giltig kant; `isPaymentTransitionAllowed` svarar på samma
+        // fråga utan att listan kan glida isär från tabellen (jfr
+        // COLLECTION_SOURCE_STATUSES i #307 PR 2b). DRAFT/VOID/PAID faller därmed
+        // fortfarande igenom som förut — utan att stå uppräknade någonstans.
+        if (!isPaymentTransitionAllowed(previousStatus, newStatus)) return null
+
+        // WHERE nyckas på `previousStatus`: den utförda övergången är per
+        // konstruktion den som validerades ovan.
         const partial = await tx.invoice.updateMany({
-          where: {
-            id: invoiceId,
-            organizationId,
-            status: { in: ['SENT', 'PARTIAL', 'OVERDUE', 'SENT_TO_COLLECTION'] },
-          },
-          data: { status: 'PARTIAL' },
+          where: { id: invoiceId, organizationId, status: previousStatus },
+          data: { status: newStatus },
         })
         if (partial.count === 0) return null
-        const row = await tx.invoice.findFirstOrThrow({
-          where: { id: invoiceId, organizationId },
-          select: { invoiceNumber: true },
-        })
-        invoiceNumber = row.invoiceNumber
+        invoiceNumber = invoiceRow.invoiceNumber
         await this.events.record(
           invoiceId,
           'PAYMENT_PARTIAL',
           userId ? 'USER' : 'SYSTEM',
           userId,
-          { previousStatus: 'SENT', newStatus: 'PARTIAL', ...eventPayload },
+          // FAKTISK utgångsstatus. Här stod `previousStatus: 'SENT'` hårdkodat —
+          // vid delbetalning mot en inkassofaktura loggade alltså den enda historik
+          // som finns över händelsen att fakturan gått från SENT. En
+          // behandlingshistorik som säger fel är värre än ingen (BFL 5 kap 6–9 §).
+          { previousStatus, newStatus, ...eventPayload },
           { tx },
         )
       }

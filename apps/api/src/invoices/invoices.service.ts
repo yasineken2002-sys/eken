@@ -11,6 +11,7 @@ import {
 import { Prisma } from '@prisma/client'
 import type { Invoice, InvoiceStatus, InvoiceEventType, PaymentMethod } from '@prisma/client'
 import { computeInvoiceDebt } from './invoice-debt'
+import { paymentTargetStatus, isPaymentTransitionAllowed } from './invoice-payment-status'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { stockholmCivilDate } from '../common/time/stockholm-period'
 import { OcrService } from '../common/ocr/ocr.service'
@@ -742,13 +743,16 @@ export class InvoicesService {
         })
         if (!invoice) throw new NotFoundException('Faktura hittades inte')
         if (invoice.status === 'PAID') throw new BadRequestException('Fakturan är redan betald')
-        if (!isValidTransition(invoice.status as InvoiceStatus, 'PAID')) {
-          throw new BadRequestException(
-            `Kan inte registrera betalning: statusövergången ${invoice.status} → PAID är inte tillåten`,
-          )
-        }
 
         const previousStatus = invoice.status as InvoiceStatus
+        // STATUSVALIDERINGEN LIGGER LÄNGRE NED (#307 C) — den kan inte göras här.
+        //
+        // Här stod tidigare `isValidTransition(invoice.status, 'PAID')`. Kontrollen
+        // avsåg en annan övergång än den koden sedan utförde: målstatusen beror på
+        // om betalningen REGLERAR fakturan, och det vet vi först när restskulden är
+        // beräknad (`debtAfter`, nedan). Se invoice-payment-status.ts för vad den
+        // divergensen kostade. Valideringen sker därför på `newStatus` — samma värde
+        // som skrivs — så fort det värdet finns.
 
         // ── C5: beloppet STYR bokföringen ────────────────────────────────────
         //
@@ -802,13 +806,30 @@ export class InvoicesService {
           allocations: [...priorAllocations.map((a) => a.amount), settlement],
         })
         const completesInvoice = debtAfter.isSettled
-        const newStatus: InvoiceStatus = completesInvoice ? 'PAID' : 'PARTIAL'
+        // EN uträkning av målstatusen — samma värde valideras, skrivs och loggas.
+        const newStatus = paymentTargetStatus(previousStatus, completesInvoice)
 
-        // 1. Atomisk, race-säker status-claim — endast från ett betalbart tillstånd.
-        //    PARTIAL ingår i PAYABLE_STATUSES, så en andra delbetalning kan claima
-        //    en faktura som redan står på PARTIAL.
+        // Valideringen avser nu exakt den övergång som utförs på raden nedan.
+        // Delbetalning mot en inkassofaktura ger newStatus === previousStatus:
+        // ingen övergång, inget som ska valideras mot statusmaskinen.
+        if (!isPaymentTransitionAllowed(previousStatus, newStatus)) {
+          throw new BadRequestException(
+            `Kan inte registrera betalning: statusövergången ${previousStatus} → ${newStatus} är inte tillåten`,
+          )
+        }
+
+        // 1. Atomisk, race-säker status-claim.
+        //
+        //    WHERE nyckas på `previousStatus` — INTE på `PAYABLE_STATUSES`. Det är
+        //    den strukturella halvan av #307 C: claimen får bara träffa om raden
+        //    fortfarande står i exakt den status vi validerade övergången FRÅN.
+        //    Med en bred tillåtlista i WHERE kunde den validerade och den utförda
+        //    övergången avse olika utgångsstatusar; nu är de per konstruktion samma.
+        //    (Under radlåset ovan kan statusen inte hinna ändras — guarden är
+        //    därför ett bevis på plats, inte en aktiv kodväg. Jfr säkerhetsnätet i
+        //    markSentToCollection.)
         const claim = await tx.invoice.updateMany({
-          where: { id, organizationId, status: { in: PAYABLE_STATUSES } },
+          where: { id, organizationId, status: previousStatus },
           data: {
             status: newStatus,
             // paidAt sätts bara när fakturan faktiskt är reglerad — en delbetalning
