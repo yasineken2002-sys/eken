@@ -72,6 +72,7 @@ function makeService(
           },
           lines: [],
           paymentReminders: [],
+          payments: [],
           tenant: null,
           customer: null,
           lease: null,
