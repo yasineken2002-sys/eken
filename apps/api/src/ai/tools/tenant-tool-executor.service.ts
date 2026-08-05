@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common'
 import { MaintenanceCategory, MaintenancePriority } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { computeInvoiceDebt } from '../../invoices/invoice-debt'
 import { MaintenanceService } from '../../maintenance/maintenance.service'
 import { NotificationsService } from '../../notifications/notifications.service'
 import { AiAuditService } from '../audit/ai-audit.service'
@@ -187,11 +188,35 @@ export class TenantToolExecutorService {
               dueDate: true,
               issueDate: true,
               paidAt: true,
+              // ── #342: TREDJE HYRESGÄST-YTAN ────────────────────────────────
+              //
+              // Hyresgästens AI-assistent svarar på "vad är min faktura på?" och
+              // läste `total` — ursprungsbeloppet. Efter #329 (breven) och
+              // #342 (portalen) hade assistenten varit den enda kvarvarande
+              // ytan som svarade med ett annat tal än de andra två, och den nås
+              // från samma dashboard som den här PR:en ändrar.
+              //
+              // Bara `amount`: allokeringens id, datum, källa och bank-koppling
+              // stannar internt (samma disciplin som portalens mappers).
+              payments: { select: { amount: true } },
             },
           })
           return {
             success: true,
-            data: invoices.map((i) => ({ ...i, total: Number(i.total) })),
+            data: invoices.map(({ payments, ...i }) => {
+              const debt = computeInvoiceDebt({
+                total: i.total,
+                allocations: payments.map((p) => p.amount),
+              })
+              return {
+                ...i,
+                total: Number(i.total),
+                // Modellen ska svara på vad hyresgästen ÄR SKYLDIG, inte vad
+                // fakturan ursprungligen löd på.
+                paid: debt.paid.toNumber(),
+                outstanding: debt.outstanding.toNumber(),
+              }
+            }),
             message: `${invoices.length} fakturor${status ? ` med status ${status}` : ''} hittades.`,
           }
         }

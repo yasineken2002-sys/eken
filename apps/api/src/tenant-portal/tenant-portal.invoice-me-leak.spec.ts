@@ -56,16 +56,28 @@ function dirtyInvoice() {
     tenantId: 'tenant-1',
     leaseId: 'lease-1',
     lines: [{ id: 'l1', description: 'INTERN RADTEXT' }],
+    // #342 — allokeringar. Selecten hämtar bara `amount`; en fixtur med fler
+    // fält bevisar att mappern inte släpper vidare dem.
+    payments: [],
   }
 }
 
-// Exakt det mapInvoice producerade FÖRE refaktorn (byte-identisk referens).
+// Exakt det mapInvoice producerar. Referensen är UTTÖMMANDE: den listar varje
+// fält som får nå hyresgästen, så ett nytt fält kan aldrig glida in oupptäckt.
+//
+// #342 la till `paid` och `outstanding`. Det var en MEDVETEN utökning — portalen
+// visade fakturans nominella total medan påminnelsebrevet visade restskulden,
+// så samma person såg två tal för samma skuld. `payments` läses nu i selecten,
+// men BARA `amount`: allokeringens id, datum, källa och bank-koppling stannar
+// internt, och den här referensen bevisar det.
 const EXPECTED_INVOICE_DTO = {
   id: 'inv-1',
   invoiceNumber: 'F-2026-001',
   type: 'SERVICE',
   status: 'SENT',
   total: 1500,
+  paid: 0,
+  outstanding: 1500,
   dueDate: '2026-06-30T00:00:00.000Z',
   issueDate: '2026-06-01T00:00:00.000Z',
   paidAt: null,

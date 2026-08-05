@@ -86,6 +86,15 @@
   line-height: 1.1;
 }
 
+/* #342 — sekundär rad som förklarar vad det stora talet är. Visas bara när
+   fakturan faktiskt har delbetalningar. */
+.cardAmountSub {
+  font-size: 12px;
+  color: var(--ev-neutral-500);
+  margin-top: -4px;
+  margin-bottom: 8px;
+}
+
 .cardDueRow {
   display: flex;
   align-items: center;

@@ -12,6 +12,7 @@ import { MaintenanceService } from '../maintenance/maintenance.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
+import { computeInvoiceDebt } from '../invoices/invoice-debt'
 
 /**
  * Safe Prisma SELECT för MaintenanceTicket som exponeras mot hyresgästportalen.
@@ -347,6 +348,17 @@ export const SAFE_PORTAL_INVOICE_SELECT = {
   type: true,
   status: true,
   total: true,
+  // ── #342: RESTSKULDEN GÅR INTE ATT RÄKNA UTAN ALLOKERINGARNA ─────────────
+  //
+  // Efter #329 bär påminnelsebreven restskulden. Portalen visade fortfarande
+  // fakturans nominella total — så en hyresgäst som betalat 8 000 av 10 000 såg
+  // 2 000 i brevet och 10 000 i portalen. Samma person, samma skuld, två tal.
+  //
+  // BARA `amount` LÄSES. Allokeringens id, datum, källa och bank-koppling är
+  // internt och har inget i ett hyresgäst-svar att göra (samma disciplin som
+  // portal-läcktätningen #156–#160). `mapInvoice` bygger dessutom DTO:n fält
+  // för fält, så raden kan inte följa med ut även om selecten skulle drifta.
+  payments: { select: { amount: true } },
   dueDate: true,
   issueDate: true,
   paidAt: true,
@@ -839,12 +851,34 @@ export class TenantPortalService {
   }
 
   private mapInvoice(inv: PortalInvoiceRow) {
+    const debt = computeInvoiceDebt({
+      total: inv.total,
+      allocations: inv.payments.map((p) => p.amount),
+    })
     return {
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,
       type: inv.type,
       status: inv.status,
+      // NOMINELL TOTAL — fakturans belopp som det utfärdades. FAR: korrekt på
+      // ett fakturadokument och ska INTE ersättas här.
       total: Number(inv.total),
+      // #342 — vad som faktiskt återstår, ur `invoiceOutstanding` (delad sedan
+      // #329). Ingen fjärde beräkning: breven, vyerna, inkassoexporten och
+      // portalen läser nu samma uttryck.
+      //
+      // `paid` följer med som DISKRIMINATOR: gränssnittet visar det andra talet
+      // bara när något faktiskt är betalt. Utan delbetalningar är `outstanding`
+      // identisk med `total`, och två likadana siffror förklarar ingenting —
+      // de förvirrar.
+      // BÅDA UR SAMMA BERÄKNING. Först stod `paid: total − outstanding` — men
+      // `outstanding` är KLAMPAT vid 0, så en överbetalning på 12 000 mot en
+      // faktura på 10 000 rapporterades som "10 000 betalt". De extra 2 000
+      // försvann tyst ur det hyresgästen ser, trots att allokeringen finns.
+      // Samma klass av tyst fel siffra som #342 finns för att stänga — i den
+      // kod som skulle stänga den. (Fångat av BÅDA granskarna.)
+      paid: debt.paid.toNumber(),
+      outstanding: debt.outstanding.toNumber(),
       dueDate: inv.dueDate.toISOString(),
       issueDate: inv.issueDate.toISOString(),
       paidAt: inv.paidAt?.toISOString() ?? null,
