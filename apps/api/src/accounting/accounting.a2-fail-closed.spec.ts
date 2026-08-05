@@ -126,6 +126,7 @@ describe('T5 A2 · fail-closed accrual-guard på 1510-kreditering', () => {
         TXN,
         'org-1',
         null,
+        'alloc-1', // #326 F1: allokerings-nyckeln är obligatorisk
       ),
     ).rejects.toBeInstanceOf(UnprocessableEntityException)
     expect(created).toHaveLength(0)
@@ -170,6 +171,7 @@ describe('T5 A2 · fail-closed accrual-guard på 1510-kreditering', () => {
       { id: 'bt-2', date: new Date('2026-06-10'), amount: 5000 } as never,
       'org-1',
       null,
+      'alloc-2', // #326 F1: allokerings-nyckeln är obligatorisk
     )
     expect(b).not.toBeNull()
     expect(created).toHaveLength(2) // båda vägar bokförde depositionsbetalningen
