@@ -58,6 +58,9 @@ function makeService(transaction: unknown, statusInsideTx?: string) {
     },
     bankTransaction: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     rentNoticePayment: {
+      // #326 D — allokeringens id läses FÖRE raderingen (verifikatets nyckel).
+      // XOR: en fakturamatchad transaktion har ingen avi-allokering, och tvärtom.
+      findFirst: jest.fn().mockResolvedValue(outerInvoice ? null : { id: 'rnp-1' }),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       findMany: jest.fn().mockResolvedValue([]),
     },
@@ -77,6 +80,7 @@ function makeService(transaction: unknown, statusInsideTx?: string) {
     // Allokeringsstädningen (#326 B).
     invoicePayment: {
       findFirst: jest.fn().mockResolvedValue({
+        id: 'ip-1',
         invoiceId: outerInvoice ? (transaction as { invoice: { id: string } }).invoice.id : null,
         amount: new Decimal(3000),
         paidAt: new Date('2026-07-20'),
