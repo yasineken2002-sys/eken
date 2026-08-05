@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   BadRequestException,
+  ConflictException,
   NotFoundException,
   ForbiddenException,
   InternalServerErrorException,
@@ -228,6 +229,26 @@ export function computeBankDedupKey(day: Date, amount: Decimal, ocr: string): st
     .createHash('sha256')
     .update(`${day.toISOString().slice(0, 10)}|${amount.toFixed(2)}|${ocr}`)
     .digest('hex')
+}
+
+/**
+ * #326 A — texten när avmatchning nekas för en överlämnad fordran.
+ *
+ * EN källa, TVÅ kontrollpunkter: den snabba förkontrollen och omprövningen
+ * innanför radlåset kastar ordagrant samma fel. Skrevs texten på två ställen
+ * kunde operatören få två olika förklaringar till samma nekande beroende på
+ * exakt när i tiden anropet råkade landa.
+ *
+ * Säger INGENTING om vad inkassobolaget mottagit — se motiveringen vid
+ * anropsstället.
+ */
+function collectionUnmatchBlockedMessage(invoiceNumber: string): string {
+  return (
+    `Faktura ${invoiceNumber} är överlämnad till inkasso och kan inte avmatchas. Backas ` +
+    'matchningen växer restskulden tillbaka medan överlämningen bygger på det lägre beloppet ' +
+    '— fordran skulle drivas in på fel underlag. Systemet har ingen väg att ta tillbaka en ' +
+    'överlämnad fordran: kontakta supporten för att rätta matchningen och stämma av kravet.'
+  )
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -1726,6 +1747,67 @@ export class ReconciliationService {
       )
     }
 
+    // ── #326 A: EN ÖVERLÄMNAD FORDRAN AVMATCHAS INTE ────────────────────────
+    //
+    // VARFÖR SPÄRR OCH INTE STÄDNING. Metoden raderar `rentNoticePayment` men
+    // ALDRIG `invoicePayment`, och rör aldrig `Invoice.status`. Avmatchas en
+    // delbetald faktura reverseras alltså verifikatet medan allokeringen ligger
+    // kvar: huvudboken visar hela fordran på 1510, `computeInvoiceDebt` visar
+    // total − allokering. De två divergerar, och det är den lägre siffran
+    // inkassoexportens skuldgrind och kravbelopp läser (#318).
+    //
+    // Det är #307 A spegelvänt. Där visade inkassoytorna ursprungsbeloppet i
+    // stället för restskulden; här skulle inkassobolaget sitta kvar med ett krav
+    // byggt på en restskuld som just växt tillbaka — och gäldenären krävas på
+    // för lite. Att kräva för lite av fel skäl är inte en mildare variant av att
+    // kräva för mycket: fordran är densamma, kravunderlaget är fel, och ingen
+    // upptäcker det eftersom båda siffrorna ser rimliga ut var för sig.
+    //
+    // PAID-spärren ovan är samma resonemang en status längre fram, och den här
+    // grinden lånar dess form med flit: en tydlig, tidig neka framför ett
+    // halvvägs städat tillstånd.
+    //
+    // MEN INTE DESS STATUSKOD. PAID-spärren kastar 400; den här kastar 409.
+    // Begäran är välformad — det är resursens NUVARANDE tillstånd som hindrar
+    // den, vilket är definitionen av en konflikt. #297 (deposits.service.ts)
+    // etablerade 409 för exakt den här klassen efter granskning, och det är rätt
+    // referenspunkt att spegla, inte den äldre 400:an intill. Att harmonisera
+    // PAID-spärren är ett eget ärende — den ändras inte här.
+    //
+    // ATT NEKA STÄNGER INGEN FUNGERANDE VÄG. Den enda operation spärren tar bort
+    // är den som lämnar systemet i det divergerade tillståndet. Ingen intern
+    // anropare finns (bara HTTP-routen och AI-verktyget `unmatch_transaction`,
+    // som båda går genom just den här metoden), och ingen kravtrappa eller cron
+    // avmatchar.
+    //
+    // MEDDELANDET LOVAR INGEN VÄG SOM INTE FINNS. `INVOICE_TRANSITIONS` ger
+    // SENT_TO_COLLECTION exakt två utgångar — PAID och VOID — och VOID spärras
+    // av allokeringsgrinden (invoices.service.ts) så snart en `InvoicePayment`
+    // finns, vilket den per definition gör här. Det finns alltså ingen
+    // återkallningsväg i produkten att hänvisa till, och då är rätt svar att
+    // säga det. (VOID-grindens egen text säger "avmatcha/återbetala" och pekar
+    // på just den här metoden — den blir en rundgång så länge allokeringen inte
+    // städas. Den texten hör till B och rörs inte här.)
+    //
+    // AVGRÄNSNING — SPÄRREN ÄR INTE FIXEN. Divergensen finns kvar för
+    // PARTIAL och för alla andra statusar; den stängs av #326 B (radera
+    // allokeringen + återställ status), som kräver en ny kant i statusmaskinen
+    // och därför är ett eget beslut. Den här spärren är slutläge tills
+    // produktbeslutet om en rättelseväg för överlämnade fordringar är fattat.
+    // Avi-vägen (RentNotice) har egna hål och rörs inte — de hör till B/C.
+    //
+    // MEDDELANDET PÅSTÅR INGET OM VAD INKASSOBOLAGET FAKTISKT MOTTAGIT.
+    // `claimForExport` sätter statusen FÖRE uppladdningen, och
+    // `markSentToCollection` används när överlämningen skett i ett externt
+    // system utan underlag i vår lagring (`collectionExportKey` är då null).
+    // Att skriva "inkassobolaget har fått ett kravunderlag" vore alltså ett
+    // påstående om en extern händelse vi inte kan verifiera. (FAR-granskning.)
+    if (transaction.invoice && transaction.invoice.status === 'SENT_TO_COLLECTION') {
+      throw new ConflictException(
+        collectionUnmatchBlockedMessage(transaction.invoice.invoiceNumber),
+      )
+    }
+
     const matchedNoticeId = transaction.matchedRentNotice?.id ?? null
 
     // BFL 5 kap 5 §/9 §: statusåterställningen och motverifikatet måste ske
@@ -1738,6 +1820,42 @@ export class ReconciliationService {
     // (avin förblir PAID, banktransaktionen MATCHED) och operatören får felet.
     // (Issue #33; samma awaited-mönster som faktura-bokföringen i PR #27 H3.)
     await this.prisma.$transaction(async (tx) => {
+      // ── #326 A: OMPRÖVNINGEN INNANFÖR RADLÅSET ÄR DEN LASTBÄRANDE ─────────
+      //
+      // Förkontrollen ovan läser statusen OLÅST, utanför transaktionen. Den är
+      // en snabb väg till ett tydligt fel — inte en garanti. `claimForExport`
+      // (collection-export.service.ts) tar medvetet INGET radlås utan claimar
+      // med en status-guardad `updateMany`, så en pågående inkassoexport kan
+      // committa PARTIAL → SENT_TO_COLLECTION i fönstret mellan vår läsning och
+      // vår skrivning. Utan den här omprövningen skulle avmatchningen då rulla
+      // vidare på en inaktuell status och lämna exakt den divergens spärren
+      // finns för — på en faktura som FAKTISKT är överlämnad.
+      //
+      // Samma resonemang som #307 C:s radlås i `applyMatchToInvoice`: statusen
+      // ett beslut fattas på måste läsas under det lås som skrivningen håller,
+      // annars uttalar sig grinden om ett tillstånd som redan passerat.
+      //
+      // LÅSORDNING OFÖRÄNDRAD: Invoice → BankTransaction → Deposit. Invoice tas
+      // som FÖRSTA sats i transaktionen, före `bankTransaction.updateMany` längre
+      // ned. `claimForExport` och `markSentToCollection` rör aldrig
+      // BankTransaction, och Invoice/RentNotice är ömsesidigt uteslutande (XOR)
+      // på en banktransaktion — ingen väg tar den motsatta ordningen. Ingen ABBA.
+      //
+      // PAID-SPÄRREN RÖRS INTE. Den har samma teoretiska fönster (en samtidig
+      // betalning kan flippa till PAID), men att stänga det ändrar beteendet på
+      // en befintlig grind och är ett eget ärende — inte något den här spärren
+      // ska smyga in.
+      if (transaction.invoice) {
+        await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${transaction.invoice.id} AND "organizationId" = ${organizationId} FOR UPDATE`
+        const current = await tx.invoice.findFirst({
+          where: { id: transaction.invoice.id, organizationId },
+          select: { status: true, invoiceNumber: true },
+        })
+        if (current?.status === 'SENT_TO_COLLECTION') {
+          throw new ConflictException(collectionUnmatchBlockedMessage(current.invoiceNumber))
+        }
+      }
+
       // Bankavstämnings-härdning PR 1/3b — ta bort allokeringen som hörde till denna
       // bank-transaktion FÖRST, i SAMMA atomiska transaktion. bankTransactionId är
       // unikt → 0 eller 1 rad. Raderas före paidAmount-omräkningen nedan så Σ avser
