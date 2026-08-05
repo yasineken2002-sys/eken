@@ -6,7 +6,14 @@ import { formatSek, formatDate } from '../shared/format'
 export interface ReminderFormalProps {
   tenantName: string
   invoiceNumber: string
-  originalTotal: number
+  /**
+   * #329 — OBETALT belopp FÖRE avgiften, inte fakturans ursprungliga total.
+   * Hette `originalTotal` när det var fakturans nominella belopp. Efter #329 bär
+   * det restskulden, och etiketten "Originalbelopp" påstod då att en faktura på
+   * 10 000 kr ursprungligen var på 2 000 kr — i ett formellt krav enligt lag
+   * (1981:739). Siffran var rätt, ordet fel.
+   */
+  outstandingBeforeFee: number
   feeAmount: number
   newTotal: number
   dueDate: Date | string
@@ -20,7 +27,7 @@ export interface ReminderFormalProps {
 export function ReminderFormal({
   tenantName,
   invoiceNumber,
-  originalTotal,
+  outstandingBeforeFee,
   feeAmount,
   newTotal,
   dueDate,
@@ -60,7 +67,8 @@ export function ReminderFormal({
       <Section style={amountBox}>
         <Text style={amountStyle}>{formatSek(newTotal)}</Text>
         <Text style={amountSub}>
-          (Originalbelopp {formatSek(originalTotal)} + påminnelseavgift {formatSek(feeAmount)})
+          (Obetalt belopp {formatSek(outstandingBeforeFee)} + påminnelseavgift{' '}
+          {formatSek(feeAmount)})
         </Text>
       </Section>
 

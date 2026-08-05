@@ -533,7 +533,8 @@ export class MailService {
     to: string
     tenantName: string
     invoiceNumber: string
-    originalTotal: number
+    /** #329 — obetalt belopp FÖRE avgiften, inte fakturans ursprungliga total. */
+    outstandingBeforeFee: number
     feeAmount: number
     newTotal: number
     dueDate: Date | string
@@ -550,7 +551,7 @@ export class MailService {
       {
         tenantName: opts.tenantName,
         invoiceNumber: opts.invoiceNumber,
-        originalTotal: opts.originalTotal,
+        outstandingBeforeFee: opts.outstandingBeforeFee,
         feeAmount: opts.feeAmount,
         newTotal: opts.newTotal,
         dueDate: opts.dueDate,

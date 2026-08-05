@@ -15,13 +15,20 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { NotificationsService } from './notifications.service'
 
-function makeInvoice(id: string, email: string | null = 'hyresgast@example.se') {
+function makeInvoice(
+  id: string,
+  email: string | null = 'hyresgast@example.se',
+  // #329 — allokeringar. Utan dem gick restskulden inte att räkna, och breven
+  // bar ursprungsbeloppet.
+  payments: Array<{ amount: number }> = [],
+) {
   return {
     id,
     organizationId: 'org-1',
     status: 'OVERDUE',
     invoiceNumber: `F-${id}`,
     total: 1000,
+    payments,
     dueDate: new Date('2026-05-01'),
     tenant: email
       ? { type: 'COMPANY', companyName: 'Hyresgäst AB', email }
