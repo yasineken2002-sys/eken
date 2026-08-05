@@ -60,6 +60,7 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
     { record: jest.fn().mockResolvedValue(undefined) } as never,
     { createJournalEntryForPayment } as never,
     {} as never,
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
   )
   return { service, txMock, claimPaidWithinTx, notifyInvoicePaid, createJournalEntryForPayment }
 }

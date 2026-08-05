@@ -52,6 +52,9 @@ function makeService(transaction: unknown, statusInsideTx?: string) {
   const outerInvoice = (transaction as { invoice?: { status: string; invoiceNumber: string } })
     ?.invoice
   const tx = {
+    // #326 C — behandlingshistoriken på avi-sidan.
+    rentNoticeEvent: { create: jest.fn().mockResolvedValue({}) },
+
     rentNotice: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       findFirst: jest.fn().mockResolvedValue(null),
@@ -60,7 +63,17 @@ function makeService(transaction: unknown, statusInsideTx?: string) {
     rentNoticePayment: {
       // #326 D — allokeringens id läses FÖRE raderingen (verifikatets nyckel).
       // XOR: en fakturamatchad transaktion har ingen avi-allokering, och tvärtom.
-      findFirst: jest.fn().mockResolvedValue(outerInvoice ? null : { id: 'rnp-1' }),
+      findFirst: jest.fn().mockResolvedValue(
+        outerInvoice
+          ? null
+          : {
+              id: 'rnp-1',
+              rentNoticeId: 'rn-1',
+              amount: new Decimal(5000),
+              paidAt: new Date('2026-07-20T00:00:00.000Z'),
+              source: 'BANK_RECONCILIATION',
+            },
+      ),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       findMany: jest.fn().mockResolvedValue([]),
     },
@@ -110,7 +123,8 @@ function makeService(transaction: unknown, statusInsideTx?: string) {
     {} as never,
     new InvoiceEventsService(prisma as never) as never,
     { reverseJournalEntryForPayment } as never,
-    {} as never, // PaymentFreshnessService — ej använd i unmatch-vägen
+    {} as never, // PaymentFreshnessService — ej använd i unmatch-vägen,
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
   )
   return { service, prisma, tx, $transaction, reverseJournalEntryForPayment }
 }

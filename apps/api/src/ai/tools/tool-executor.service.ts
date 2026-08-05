@@ -2910,7 +2910,16 @@ export class ToolExecutorService {
           if (!transactionId || !reason) {
             return { success: false, message: 'transactionId och reason krävs' }
           }
-          await this.reconciliationService.unmatchTransaction(transactionId, organizationId, userId)
+          // #326 C — `reason` skrivs nu in i händelseloggen i stället för att
+          // bara ekas tillbaka i chatt-svaret. Att fråga efter ett skäl, få det
+          // och sedan slänga det är sämre än att inte fråga: användaren tror
+          // att det är dokumenterat.
+          await this.reconciliationService.unmatchTransaction(
+            transactionId,
+            organizationId,
+            userId,
+            reason,
+          )
           return {
             success: true,
             message: `Matchningen ångrades. Motverifikat skapades i bokföringen. Anledning: ${reason}`,

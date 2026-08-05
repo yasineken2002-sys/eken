@@ -1,0 +1,19 @@
+-- #326 C — händelselogg vid avmatchning på avi-sidan.
+--
+-- `unmatchTransaction` raderade `RentNoticePayment` utan att skriva någon
+-- händelse. Enda spåret var motverifikatet (som inte skiljer felallokering från
+-- återbetalning) och en logger-rad som inte är räkenskapsinformation.
+-- Kombinationen delete + noll behandlingshistorik bryter BFL 5 kap 11 §.
+-- Fakturasidan fick sin `PAYMENT_REVERSED` i #326 B; avi-sidan saknade
+-- motsvarande värde i sitt enum.
+--
+-- EGEN TYP, INTE NOTE_ADDED. `RentNoticeEvent` har `@@index([rentNoticeId, type])`
+-- — en förstklassig typ går att fråga via indexet, medan en payload-
+-- diskriminerad NOTE_ADDED kräver att man läser JSON i varje rad.
+--
+-- ADDITIV. `ALTER TYPE ... ADD VALUE` skriver inte om några rader och gör inga
+-- befintliga värden ogiltiga. Samma form som tidigare enum-utökningar i det här
+-- repot (DocumentCategory, JournalEntrySource). Värdet ANVÄNDS inte i den här
+-- migrationen — Postgres tillåter inte att ett nytillagt enum-värde används i
+-- samma transaktion som det skapades.
+ALTER TYPE "RentNoticeEventType" ADD VALUE 'PAYMENT_REVERSED';

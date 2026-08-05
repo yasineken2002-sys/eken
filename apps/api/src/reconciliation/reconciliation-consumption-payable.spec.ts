@@ -48,7 +48,8 @@ function makeService(noticeRow: Record<string, unknown> | null) {
     {} as never,
     {} as never,
     {} as never,
-    {} as never, // PaymentFreshnessService — ej använd i matchnings-vägen
+    {} as never, // PaymentFreshnessService — ej använd i matchnings-vägen,
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
   )
   const apply = jest.fn().mockResolvedValue(true)
   // Isolera matchningslogiken: ersätt den privata appliceringen med en spion.

@@ -90,6 +90,9 @@ function makeService(
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       findMany: jest.fn().mockResolvedValue([]),
     },
+    // #326 C — behandlingshistoriken på avi-sidan.
+    rentNoticeEvent: { create: jest.fn().mockResolvedValue({}) },
+
     rentNotice: {
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       findFirst: jest.fn().mockResolvedValue(null),
@@ -132,6 +135,7 @@ function makeService(
     new InvoiceEventsService(prisma as never) as never,
     { reverseJournalEntryForPayment } as never,
     {} as never,
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
   )
   return { service, tx, order, reverseJournalEntryForPayment }
 }
@@ -252,7 +256,13 @@ describe('#326 D — XOR-invarianten mellan faktura- och avi-allokering', () => 
 
   it('bara avi-allokering → ingen konflikt, avmatchningen går igenom', async () => {
     const { service, tx } = makeService({ allocation: null })
-    tx.rentNoticePayment.findFirst.mockResolvedValue({ id: 'rnp-1' })
+    tx.rentNoticePayment.findFirst.mockResolvedValue({
+      id: 'rnp-1',
+      rentNoticeId: 'rn-1',
+      amount: new Decimal(5000),
+      paidAt: new Date('2026-07-20T00:00:00.000Z'),
+      source: 'BANK_RECONCILIATION',
+    })
 
     await expect(service.unmatchTransaction(TX_ID, 'org-1', 'user-1')).resolves.not.toThrow()
   })

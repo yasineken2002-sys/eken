@@ -18,7 +18,8 @@ function makeService(bankTransaction: { findFirst: jest.Mock; create: jest.Mock 
     {} as never, // invoices
     {} as never, // events
     {} as never, // accounting
-    {} as never, // freshness
+    {} as never, // freshness,
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
   )
   return service
 }
