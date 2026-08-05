@@ -54,6 +54,7 @@ function makeService(
       findFirst: jest.fn().mockResolvedValue(
         allocation
           ? {
+              id: 'ip-1',
               invoiceId: allocation.invoiceId,
               amount: new Decimal(allocation.amount),
               paidAt: new Date('2026-07-20T00:00:00.000Z'),
@@ -81,6 +82,11 @@ function makeService(
       }),
     },
     rentNoticePayment: {
+      // #326 D — allokeringens id läses FÖRE raderingen (verifikatets nyckel).
+      // NULL som default: den här filen testar FAKTURA-matchade transaktioner,
+      // och XOR-invarianten säger att de aldrig har en avi-allokering. Testet
+      // som bryter invarianten sätter den explicit.
+      findFirst: jest.fn().mockResolvedValue(null),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       findMany: jest.fn().mockResolvedValue([]),
     },
@@ -226,6 +232,29 @@ describe('#326 B — statusen läses ur loggen, gissas aldrig', () => {
       /pekar på en annan faktura/,
     )
     expect(tx.invoicePayment.deleteMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('#326 D — XOR-invarianten mellan faktura- och avi-allokering', () => {
+  it('FAIL-CLOSED: allokeringar i BÅDA tabellerna → kastar i stället för att tyst reversera fel verifikat', async () => {
+    // Invarianten (en banktransaktion är faktura- ELLER avi-matchad) bärs av
+    // app-lagret, inte av en DB-constraint. Bryts den skulle avi-grenen tyst
+    // skriva över fakturagrenens reverseringsnyckel — fakturans verifikat
+    // reverseras aldrig medan allokeringen raderas och statusen återställs.
+    // (Säkerhetsgranskning av #326 D.)
+    const { service, tx } = makeService()
+    tx.rentNoticePayment.findFirst.mockResolvedValue({ id: 'rnp-drift' })
+
+    await expect(service.unmatchTransaction(TX_ID, 'org-1', 'user-1')).rejects.toThrow(
+      /allokeringar i BÅDA tabellerna/,
+    )
+  })
+
+  it('bara avi-allokering → ingen konflikt, avmatchningen går igenom', async () => {
+    const { service, tx } = makeService({ allocation: null })
+    tx.rentNoticePayment.findFirst.mockResolvedValue({ id: 'rnp-1' })
+
+    await expect(service.unmatchTransaction(TX_ID, 'org-1', 'user-1')).resolves.not.toThrow()
   })
 })
 

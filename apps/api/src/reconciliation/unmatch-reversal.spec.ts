@@ -46,6 +46,8 @@ function makeService(opts: {
     // Bankavstämnings-härdning PR 1/3b — allokeringen städas i samma transaktion;
     // findMany läser KVARVARANDE allokeringar för paidAmount-omräkningen.
     rentNoticePayment: {
+      // #326 D — allokeringens id läses FÖRE raderingen (verifikatets nyckel).
+      findFirst: jest.fn().mockResolvedValue({ id: 'rnp-1' }),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       findMany: jest.fn().mockResolvedValue(opts.remainingAllocations ?? []),
     },
@@ -100,7 +102,16 @@ describe('ReconciliationService.unmatchTransaction — atomisk reversering (#33)
     )
     // reversering anropad MED transaktionsklienten (4:e argumentet) → atomiskt
     expect(reverseJournalEntryForPayment).toHaveBeenCalledTimes(1)
-    expect(reverseJournalEntryForPayment).toHaveBeenCalledWith('tx-1', 'org-1', 'user-1', tx)
+    // #326 D — reverseringen får ALLOKERINGENS nyckel, inte bara transaktions-id.
+    // Utan den letar den efter en post skrivaren aldrig skrev, hittar inget, och
+    // blir en tyst no-op (`if (!original) return`).
+    expect(reverseJournalEntryForPayment).toHaveBeenCalledWith(
+      'tx-1',
+      'org-1',
+      'user-1',
+      tx,
+      'rent-notice-bank-payment:rnp-1',
+    )
 
     // Bankavstämnings-härdning PR 1 — allokeringen raderas i SAMMA transaktion,
     // nycklad på bank-transaktionen (0 eller 1 rad).
@@ -183,7 +194,13 @@ describe('ReconciliationService.unmatchTransaction — partiell unmatch (PR 3b)'
     expect(Number(upd.data.paidAmount)).toBe(5_000)
     expect(upd.data.status).toBeUndefined()
     expect(upd.data.paidAt).toBeUndefined()
-    expect(reverseJournalEntryForPayment).toHaveBeenCalledWith('tx-part-2', 'org-1', 'user-1', tx)
+    expect(reverseJournalEntryForPayment).toHaveBeenCalledWith(
+      'tx-part-2',
+      'org-1',
+      'user-1',
+      tx,
+      'rent-notice-bank-payment:rnp-1', // #326 D — allokeringens nyckel
+    )
   })
 
   it('avmatchar SLUTbetalningen (avi PAID, prior delbetalning kvar) → reopen SENT + paidAmount = Σ kvarvarande', async () => {

@@ -255,6 +255,25 @@ export function fiscalYearsCovering(
   return out
 }
 
+/**
+ * #326 D — sourceId för ett BANKMATCHAT betalningsverifikat.
+ *
+ * EN KÄLLA, TRE ANVÄNDNINGAR: skrivaren (`createJournalEntryForPayment` /
+ * `createJournalEntryForRentNoticePayment`), reverseringen
+ * (`reverseJournalEntryForPayment`) och testerna. Byggdes nyckeln på tre ställen
+ * kunde reverseringen leta efter en post skrivaren aldrig skrev — och en
+ * reversering som inte hittar sitt original är en tyst no-op (`if (!original)
+ * return`), alltså exakt den sortens fel som inte syns förrän böckerna stäms av.
+ *
+ * Formen speglar de manuella vägarnas redan etablerade nycklar
+ * (`invoice-manual-payment:<id>`, `rent-notice-payment:<id>` från #290/PR 3b).
+ */
+export function bankPaymentSourceId(kind: 'invoice' | 'rent-notice', allocationId: string): string {
+  return kind === 'invoice'
+    ? `invoice-bank-payment:${allocationId}`
+    : `rent-notice-bank-payment:${allocationId}`
+}
+
 @Injectable()
 export class AccountingService {
   private readonly logger = new Logger(AccountingService.name)
@@ -1299,8 +1318,12 @@ export class AccountingService {
   }
 
   // BAS-bokning vid bankbetalning: 1930 (Företagskonto) Debet → 1510 (Kundfordringar) Kredit.
-  // Idempotent — sourceId = bankTransaction.id, så samma transaktion kan inte
-  // bokas två gånger även om matchen ångras och görs om.
+  //
+  // Idempotent per ALLOKERING (#326 D), inte per banktransaktion. Här stod
+  // tidigare att "samma transaktion inte kan bokas två gånger även om matchen
+  // ångras och görs om" — det var sant om utfallet och fel om orsaken: en
+  // ommatchning bokade inte om, den ÅTERANVÄNDE det gamla, redan reverserade
+  // verifikatet och bokförde ingenting alls. Se `allocationId` nedan.
   async createJournalEntryForPayment(
     invoice: Pick<Invoice, 'id' | 'invoiceNumber' | 'total'>,
     transaction: Pick<BankTransaction, 'id' | 'date' | 'amount'>,
@@ -1310,6 +1333,28 @@ export class AccountingService {
     // att statusflip, bank-länk och detta verifikat skapas ATOMISKT. Faller
     // bokföringen rullas hela matchningen tillbaka (ingen PAID utan verifikat).
     tx?: Prisma.TransactionClient,
+    // ── #326 D: IDEMPOTENSEN NYCKLAS PÅ ALLOKERINGEN ────────────────────────
+    //
+    // Nyckeln var `transaction.id`. Det höll så länge en banktransaktion kunde
+    // bokföras EXAKT en gång — vilket den kunde, av en slump: efter en
+    // avmatchning låg allokeringen kvar och dess `bankTransactionId @unique`
+    // gav P2002 på varje ommatchningsförsök. #326 B städar allokeringen, och
+    // därmed föll den spärren bort.
+    //
+    // Utan den här nyckeln blir följden: ommatchning → `createNumberedEntry`
+    // hittar det GAMLA, redan reverserade verifikatet under samma
+    // (org, PAYMENT, sourceId), returnerar det, och callern ser ett
+    // icke-null-svar. Ingen ny bokföring sker — men en ny allokering skrivs.
+    // Fakturan ser betald ut medan 1510 är orörd. Samma felmekanism som #290
+    // stängde på den manuella vägen, med en annan utlösare.
+    //
+    // Per allokering (unik UUID) får varje matchning sitt EGNA verifikat, och en
+    // ommatchning efter avmatchning bokförs som den nya affärshändelse den är.
+    //
+    // UTELÄMNAS BARA AV FUZZY-GRENEN, som inte skapar någon allokering alls
+    // (eget ärende). Den behåller den gamla nyckeln — den flippar PAID, och en
+    // PAID faktura kan inte avmatchas, så ommatchningsvägen når den aldrig.
+    allocationId?: string,
   ) {
     const db = tx ?? this.prisma
     const accounts = await db.account.findMany({
@@ -1331,18 +1376,20 @@ export class AccountingService {
 
     const counterparty = await this.counterpartyForInvoice(invoice.id, organizationId, tx)
 
+    const sourceId = allocationId ? bankPaymentSourceId('invoice', allocationId) : transaction.id
+
     return this.createNumberedEntry({
       organizationId,
       date: transaction.date,
       description: `Inbetalning faktura ${invoice.invoiceNumber}${counterparty ? ` (${counterparty})` : ''}`,
       source: 'PAYMENT',
-      sourceId: transaction.id,
+      sourceId,
       createdById,
       lines: [
         { accountId: bankAccountId, debit: amount, description: 'Inbetalning bank' },
         { accountId: receivableId, credit: amount, description: 'Reglering kundfordran' },
       ],
-      idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId: transaction.id },
+      idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId },
       include: { lines: { include: { account: true } } },
       ...(tx ? { tx } : {}),
     })
@@ -2397,8 +2444,8 @@ export class AccountingService {
   // Bokföring av hyresinbetalning (RentNotice). Använder samma BAS-konton som
   // Invoice-betalning (1930 D bank / 1510 K kundfordran) — hyresavin är en
   // kundfordran på samma sätt. Vi indexerar med samma source='PAYMENT' och
-  // sourceId=transaction.id så reverseJournalEntryForPayment fungerar för
-  // båda typerna utan särfall.
+  // (sedan #326 D) en allokerings-nycklad sourceId, så
+  // reverseJournalEntryForPayment fungerar för båda typerna utan särfall.
   //
   // Bankavstämnings-härdning PR 3b — valfri `tx`: när verifikatet måste skapas
   // ATOMISKT tillsammans med allokeringen + ev. status-flip (partiell bankmatchning,
@@ -2483,6 +2530,12 @@ export class AccountingService {
     organizationId: string,
     createdById: string | null,
     tx?: Prisma.TransactionClient,
+    // #326 D — allokerings-nycklad idempotens. Se motiveringen vid
+    // `createJournalEntryForPayment`. Avi-vägen hade SAMMA nyckelform och
+    // därmed samma fälla; att den inte var nåbar via ommatchning berodde på att
+    // `RentNoticePayment.bankTransactionId @unique` fyllde samma tillfälliga
+    // roll som fakturasidans. Båda vägarna nycklas nu likadant.
+    allocationId?: string,
   ) {
     const db = tx ?? this.prisma
     const accounts = await db.account.findMany({
@@ -2513,18 +2566,22 @@ export class AccountingService {
 
     const counterparty = await this.counterpartyForRentNotice(notice.id, organizationId)
 
+    const sourceId = allocationId
+      ? bankPaymentSourceId('rent-notice', allocationId)
+      : transaction.id
+
     return this.createNumberedEntry({
       organizationId,
       date: transaction.date,
       description: `Inbetalning hyresavi ${notice.noticeNumber}${counterparty ? ` (${counterparty})` : ''}`,
       source: 'PAYMENT',
-      sourceId: transaction.id,
+      sourceId,
       createdById,
       lines: [
         { accountId: bankAccountId, debit: amount, description: 'Inbetalning bank' },
         { accountId: receivableId, credit: amount, description: 'Reglering hyresfordran' },
       ],
-      idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId: transaction.id },
+      idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId },
       include: { lines: { include: { account: true } } },
       ...(tx ? { tx } : {}),
     })
@@ -2637,23 +2694,49 @@ export class AccountingService {
     // Valfri yttre transaktion — när reverseringen måste ske atomiskt med en
     // statusåterställning (unmatch). Utan den körs den fristående som förut.
     tx?: Prisma.TransactionClient,
+    // ── #326 D: ALLOKERINGENS NYCKEL, MED LEGACY-FALLBACK ───────────────────
+    //
+    // Sedan D nycklas bankvägens betalningsverifikat på ALLOKERINGEN, inte på
+    // banktransaktionen. Reverseringen måste leta efter samma nyckel som
+    // skrivaren använde — därför skickar `unmatchTransaction` in den
+    // allokering den är på väg att radera.
+    //
+    // FALLBACK PÅ `transactionId` ÄR INTE VALFRI. Poster skrivna FÖRE D bär
+    // fortfarande den gamla nyckeln, och en reversering som inte hittar sitt
+    // original är en TYST no-op (`if (!original) return`) — avmatchningen skulle
+    // se ut att lyckas medan verifikatet står kvar och 1510 blir dubbelkrediterad
+    // vid nästa matchning. Fallbacken är alltså skillnaden mellan en migrering
+    // och en tyst dataförstörelse.
+    allocationSourceId?: string,
   ): Promise<void> {
     const db = tx ?? this.prisma
-    const original = await db.journalEntry.findFirst({
-      where: { organizationId, source: 'PAYMENT', sourceId: transactionId },
-      include: { lines: true },
-    })
-    if (!original) return
 
-    await this.createReversalEntry({
-      organizationId,
-      original,
-      source: 'PAYMENT',
-      reversalSourceId: `reversal:${transactionId}`,
-      description: `Hävd matchning: ${original.description}`,
-      createdById,
-      ...(tx ? { tx } : {}),
-    })
+    // Ny nyckel först, gammal som fallback. Ordningen spelar roll bara i
+    // teorin (en och samma betalning kan inte ha båda), men den uttrycker vilken
+    // som är den gällande formen.
+    const candidates = [
+      ...(allocationSourceId ? [allocationSourceId] : []),
+      transactionId, // legacy: poster skrivna före #326 D
+    ]
+
+    for (const sourceId of candidates) {
+      const original = await db.journalEntry.findFirst({
+        where: { organizationId, source: 'PAYMENT', sourceId },
+        include: { lines: true },
+      })
+      if (!original) continue
+
+      await this.createReversalEntry({
+        organizationId,
+        original,
+        source: 'PAYMENT',
+        reversalSourceId: `reversal:${sourceId}`,
+        description: `Hävd matchning: ${original.description}`,
+        createdById,
+        ...(tx ? { tx } : {}),
+      })
+      return
+    }
   }
 
   // BAS för registrering av deposition: 1510 D (kundfordran) / 2890 K (skuld

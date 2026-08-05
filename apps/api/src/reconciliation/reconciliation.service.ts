@@ -21,7 +21,7 @@ import {
   statusBeforePartialPayment,
 } from '../invoices/invoice-payment-reversal'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
-import { AccountingService } from '../accounting/accounting.service'
+import { AccountingService, bankPaymentSourceId } from '../accounting/accounting.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { computeRentDebt } from '../avisering/rent-debt.service'
 import {
@@ -1180,7 +1180,8 @@ export class ReconciliationService {
       }
 
       // Allokeringen — den registrerade, faktiska betalningen.
-      await tx.invoicePayment.create({
+      // #326 D: id:t bär verifikatets idempotensnyckel (se nedan).
+      const allocationRow = await tx.invoicePayment.create({
         data: {
           invoiceId,
           bankTransactionId: transactionId,
@@ -1188,6 +1189,7 @@ export class ReconciliationService {
           paidAt: transactionDate,
           source: 'BANK_RECONCILIATION',
         },
+        select: { id: true },
       })
 
       // Länka banktransaktionen till fakturan. matchedRentNoticeId nollställs för XOR.
@@ -1210,6 +1212,9 @@ export class ReconciliationService {
         organizationId,
         userId,
         tx,
+        // #326 D — nyckla på ALLOKERINGEN. Utan detta återanvänder en
+        // ommatchning av samma transaktion det gamla, reverserade verifikatet.
+        allocationRow.id,
       )
       if (entry === null) {
         throw new InternalServerErrorException(
@@ -1354,7 +1359,8 @@ export class ReconciliationService {
         // Deposition betalas i sin helhet (allt-eller-inget) — delbetalning ej meningsfull.
         if (transactionAmount.minus(remainingDep).abs().gt(tolerance)) return false
 
-        await tx.rentNoticePayment.create({
+        // #326 D: id:t bär verifikatets idempotensnyckel.
+        const depAllocation = await tx.rentNoticePayment.create({
           data: {
             rentNoticeId: noticeId,
             bankTransactionId: transactionId,
@@ -1362,6 +1368,7 @@ export class ReconciliationService {
             paidAt: transactionDate,
             source: 'BANK_RECONCILIATION',
           },
+          select: { id: true },
         })
         await tx.rentNotice.updateMany({
           where: { id: noticeId, organizationId, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } },
@@ -1405,6 +1412,7 @@ export class ReconciliationService {
           organizationId,
           userId,
           tx,
+          depAllocation.id, // #326 D — nyckla på allokeringen
         )
         if (depEntry === null) {
           throw new InternalServerErrorException(
@@ -1451,7 +1459,8 @@ export class ReconciliationService {
       }
 
       // Allokeringen (bankTransactionId @unique skyddar mot dubbel-allokering).
-      await tx.rentNoticePayment.create({
+      // #326 D: id:t bär verifikatets idempotensnyckel.
+      const noticeAllocation = await tx.rentNoticePayment.create({
         data: {
           rentNoticeId: noticeId,
           bankTransactionId: transactionId,
@@ -1459,6 +1468,7 @@ export class ReconciliationService {
           paidAt: transactionDate,
           source: 'BANK_RECONCILIATION',
         },
+        select: { id: true },
       })
 
       // Σ allokeringar EFTER denna betalning — paidAmount-spegeln hålls i synk.
@@ -1532,6 +1542,7 @@ export class ReconciliationService {
         organizationId,
         userId,
         tx,
+        noticeAllocation.id, // #326 D — nyckla på allokeringen
       )
       // null = saknat 1930/1510 → bokföringsfel (ej giltigt no-op). Kasta så hela
       // transaktionen rullas tillbaka — ingen allokering utan verifikat. (DEPOSIT
@@ -1823,6 +1834,12 @@ export class ReconciliationService {
     // transaktion — fallerar motverifikatet rullas hela unmatchen tillbaka
     // (avin förblir PAID, banktransaktionen MATCHED) och operatören får felet.
     // (Issue #33; samma awaited-mönster som faktura-bokföringen i PR #27 H3.)
+    // #326 D — nyckeln till det betalningsverifikat som ska reverseras. Sätts
+    // inne i transaktionen av den gren (faktura eller avi) som faktiskt hittar
+    // en allokering; lämnas tom för poster skrivna före D, som då hittas via
+    // reverseringens legacy-fallback på transaktions-id.
+    let reversalSourceId: string | undefined
+
     await this.prisma.$transaction(async (tx) => {
       // ── #326 A: OMPRÖVNINGEN INNANFÖR RADLÅSET ÄR DEN LASTBÄRANDE ─────────
       //
@@ -1894,8 +1911,13 @@ export class ReconciliationService {
         // anropet avser. (Fuzzy-grenens saknade allokering är ett eget ärende.)
         const removedAllocation = await tx.invoicePayment.findFirst({
           where: { bankTransactionId: transactionId },
-          select: { invoiceId: true, amount: true, paidAt: true, source: true },
+          select: { id: true, invoiceId: true, amount: true, paidAt: true, source: true },
         })
+        // #326 D — verifikatet är nycklat på allokeringen; reverseringen måste
+        // få samma nyckel eller den hittar ingenting och blir en tyst no-op.
+        if (removedAllocation) {
+          reversalSourceId = bankPaymentSourceId('invoice', removedAllocation.id)
+        }
 
         if (removedAllocation) {
           // `current` är null bara om fakturan inte finns i den här
@@ -2014,6 +2036,34 @@ export class ReconciliationService {
       // unikt → 0 eller 1 rad. Raderas före paidAmount-omräkningen nedan så Σ avser
       // KVARVARANDE allokeringar (kritiskt vid partiell unmatch: bara EN av flera
       // delbetalningar tas bort — paidAmount får inte spegla den borttagna).
+      // #326 D — läs FÖRE raderingen: allokeringens id är verifikatets
+      // idempotensnyckel, och raden finns inte kvar efteråt.
+      const removedNoticeAllocation = await tx.rentNoticePayment.findFirst({
+        where: { bankTransactionId: transactionId },
+        select: { id: true },
+      })
+      if (removedNoticeAllocation) {
+        // FAIL-CLOSED PÅ XOR-INVARIANTEN. En banktransaktion är antingen
+        // faktura- eller avi-matchad, aldrig båda — men det är app-lagrets
+        // disciplin, inte en DB-constraint. Hittas allokeringar i BÅDA
+        // tabellerna skulle den här raden tyst skriva över fakturagrenens
+        // nyckel, och fakturans verifikat aldrig reverseras: allokeringen
+        // raderad, statusen återställd, huvudboken orörd. Exakt den divergens
+        // #326 B stängde, i motsatt riktning.
+        //
+        // Speglar faktura-grenens egen drift-kontroll några rader upp
+        // (`removedAllocation.invoiceId !== transaction.invoice.id`) — samma
+        // princip: stanna hellre än att rätta i blindo. (Säkerhetsgranskning
+        // av #326 D.)
+        if (reversalSourceId) {
+          throw new InternalServerErrorException(
+            `Banktransaktion ${transactionId} har betalningsallokeringar i BÅDA tabellerna ` +
+              '(faktura och hyresavi). Avmatchningen avbryts — kontakta supporten.',
+          )
+        }
+        reversalSourceId = bankPaymentSourceId('rent-notice', removedNoticeAllocation.id)
+      }
+
       await tx.rentNoticePayment.deleteMany({
         where: { bankTransactionId: transactionId },
       })
@@ -2087,10 +2137,18 @@ export class ReconciliationService {
       })
 
       // Motverifikatet inom samma transaktion. reverseJournalEntryForPayment
-      // slår på sourceId=transaction.id (samma strategi för Invoice- och
-      // RentNotice-betalningar) och är idempotent (sourceId reversal:<id>) — en
-      // retry efter ett tidigare lyckat anrop dubbelbokför aldrig.
-      await this.accounting.reverseJournalEntryForPayment(transactionId, organizationId, userId, tx)
+      // slår sedan #326 D på ALLOKERINGENS nyckel (`reversalSourceId` ovan) med
+      // transaktions-id som legacy-fallback för poster skrivna före D — samma
+      // strategi för Invoice- och RentNotice-betalningar. Reverseringen är
+      // idempotent (sourceId `reversal:<sourceId>`) — en retry efter ett
+      // tidigare lyckat anrop dubbelbokför aldrig.
+      await this.accounting.reverseJournalEntryForPayment(
+        transactionId,
+        organizationId,
+        userId,
+        tx,
+        reversalSourceId,
+      )
     })
 
     this.logger.log(
