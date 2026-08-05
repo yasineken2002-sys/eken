@@ -51,7 +51,12 @@ export interface PortalInvoice {
   invoiceNumber: string
   type: string
   status: 'DRAFT' | 'SENT' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'VOID'
+  /** Fakturans nominella belopp, som den utfärdades. */
   total: number
+  /** #342 — summan av registrerade betalningar. 0 när inget är betalt. */
+  paid: number
+  /** #342 — vad som återstår att betala. Samma tal som påminnelsebrevet visar. */
+  outstanding: number
   dueDate: string
   issueDate: string
   paidAt: string | null

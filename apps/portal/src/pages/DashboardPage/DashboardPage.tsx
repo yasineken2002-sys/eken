@@ -319,7 +319,16 @@ export function DashboardPage() {
                 </p>
               </div>
               <div className={styles.noticeRight}>
-                <p className={styles.noticeAmount}>{formatCurrencySv(upcomingInvoice.total)}</p>
+                {/* #342 — se NoticesPage: restskulden är talet hyresgästen ska
+                    agera på, och den ska stämma med brevet. */}
+                <p className={styles.noticeAmount}>
+                  {formatCurrencySv(upcomingInvoice.outstanding)}
+                </p>
+                {upcomingInvoice.paid > 0 && (
+                  <p className={styles.noticeAmountSub}>
+                    Kvar av {formatCurrencySv(upcomingInvoice.total)}
+                  </p>
+                )}
                 <StatusBadge type="invoice" status={upcomingInvoice.status} />
               </div>
             </div>

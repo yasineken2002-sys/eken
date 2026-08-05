@@ -358,7 +358,17 @@ function InvoicesList({
               <StatusBadge type="invoice" status={invoice.status} />
             </div>
 
-            <p className={styles.cardAmount}>{formatCurrencySv(invoice.total)}</p>
+            {/* #342 — det STORA talet är vad hyresgästen faktiskt ska betala,
+                samma tal som påminnelsebrevet visar. Utan delbetalningar är
+                `outstanding` identisk med `total`, så vyn är oförändrad för det
+                vanliga fallet. Är något betalt tillkommer en rad som SÄGER vad
+                talet är — etiketten var precis det som var fel i #341. */}
+            <p className={styles.cardAmount}>{formatCurrencySv(invoice.outstanding)}</p>
+            {invoice.paid > 0 && (
+              <p className={styles.cardAmountSub}>
+                Kvar av {formatCurrencySv(invoice.total)} — {formatCurrencySv(invoice.paid)} betalt
+              </p>
+            )}
 
             <div className={styles.cardDueRow}>
               <span
