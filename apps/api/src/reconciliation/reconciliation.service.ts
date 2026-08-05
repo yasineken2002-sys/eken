@@ -16,6 +16,10 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { InvoicesService } from '../invoices/invoices.service'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { paymentTargetStatus, isPaymentTransitionAllowed } from '../invoices/invoice-payment-status'
+import {
+  paymentReversalTargetStatus,
+  statusBeforePartialPayment,
+} from '../invoices/invoice-payment-reversal'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
@@ -1853,6 +1857,155 @@ export class ReconciliationService {
         })
         if (current?.status === 'SENT_TO_COLLECTION') {
           throw new ConflictException(collectionUnmatchBlockedMessage(current.invoiceNumber))
+        }
+
+        // ── #326 B: ALLOKERINGEN FÖLJER HUVUDBOKEN ─────────────────────────
+        //
+        // Fram till nu raderade den här metoden `rentNoticePayment` men ALDRIG
+        // `invoicePayment`. En avmatchad delbetalning reverserade alltså
+        // verifikatet medan allokeringen låg kvar: 1510 visade hela fordran,
+        // `computeInvoiceDebt` visade total − allokering. Den LÄGRE siffran är
+        // den inkassoexportens skuldgrind och kravbelopp läser (#318) — en
+        // gäldenär kunde krävas på för lite utan att någon såg det.
+        //
+        // FAR:s beslut (#326-förgranskningen): HUVUDBOKEN ÄR FACIT. Avmatchning
+        // påstår inte att pengarna lämnat banken — den upphäver kopplingen till
+        // just den här fordran. Banktransaktionen består som UNMATCHED och kan
+        // matchas rätt. Allokeringen ska därför följa det reverserade verifikatet.
+        //
+        // RADERING ÄR TILLÅTEN, MEN BARA MED SPÅR. `InvoicePayment` är
+        // sidoordnad bokföring (BFL 5 kap 4 §), inte verifikationen (5 kap 6 §) —
+        // den får korrigeras. Men delete UTAN spår bryter 5 kap 11 §
+        // (behandlingshistorik): då försvinner till och med att en allokering
+        // funnits. Därför skrivs `PAYMENT_REVERSED` i SAMMA transaktion nedan.
+        // `JournalEntry`/`-Line` rörs aldrig — de motverifikeras, aldrig raderas.
+        //
+        // Allokeringen läses FÖRE raderingen: beloppet och betalningsdatumet ska
+        // in i händelseloggen, och finns inte kvar efteråt. `bankTransactionId`
+        // är @unique → 0 eller 1 rad.
+        //
+        // 0 RADER ÄR INGET FEL, OCH INGEN TYST LUCKA. En fakturamatchad
+        // banktransaktion utan allokering kan bara komma från fuzzy-grenen
+        // (`matchTransaction`, som flippar PAID utan att allokera) — och en PAID
+        // faktura spärras redan av PAID-grinden ovan. Finns ingen allokering
+        // finns heller ingenting att rätta: ingen radering, ingen
+        // statusåterställning, ingen händelse. Att statusåterställa på en
+        // allokering vi ALDRIG tog bort vore att rätta något annat än det
+        // anropet avser. (Fuzzy-grenens saknade allokering är ett eget ärende.)
+        const removedAllocation = await tx.invoicePayment.findFirst({
+          where: { bankTransactionId: transactionId },
+          select: { invoiceId: true, amount: true, paidAt: true, source: true },
+        })
+
+        if (removedAllocation) {
+          // `current` är null bara om fakturan inte finns i den här
+          // organisationen — invarianten som håller `BankTransaction.invoiceId`
+          // org-intern är applikationsnivå, inte DB-nivå. PR A:s grind ovan
+          // lämnar det fallet orört (den frågar bara efter SENT_TO_COLLECTION),
+          // men rättelsen KAN inte köras utan att veta statusen. Fail-closed
+          // hellre än att rätta i blindo.
+          if (!current) {
+            throw new InternalServerErrorException(
+              `Fakturan för transaktion ${transactionId} kunde inte läsas i organisationen. ` +
+                'Avmatchningen avbryts — kontakta supporten.',
+            )
+          }
+          if (removedAllocation.invoiceId !== transaction.invoice.id) {
+            // FAIL-CLOSED. Allokeringen och banktransaktionen ska per
+            // konstruktion peka på samma faktura (`applyMatchToInvoice` skriver
+            // båda i en transaktion). Gör de inte det är det datadrift, och då
+            // ska vi varken röra en ANNAN fakturas allokering eller tyst låta
+            // divergensen stå kvar — vi ska stanna och säga till.
+            //
+            // DEFENSE-IN-DEPTH, INTE EN FULLSTÄNDIG TOCTOU-STÄNGNING.
+            // `transaction.invoice.id` kommer från den OLÅSTA läsningen ovan;
+            // bara statusen omprövas under låset (PR A). Jämförelsen fångar
+            // alltså drift mellan de två läsningarna, men `invoice.id` i sig
+            // omprövas aldrig. Fönstret är smalt — det kräver att
+            // `BankTransaction.invoiceId` byter värde mellan läsningen och
+            // transaktionen, och `manualMatch` skriver bara det fältet via
+            // `applyMatchToInvoice`. Samma accepterade nivå som PR A. (FAR-granskning.)
+            throw new InternalServerErrorException(
+              `Betalningsallokeringen för transaktion ${transactionId} pekar på en annan ` +
+                'faktura än banktransaktionen. Avmatchningen avbryts — kontakta supporten.',
+            )
+          }
+
+          await tx.invoicePayment.deleteMany({ where: { bankTransactionId: transactionId } })
+
+          // Σ KVARVARANDE allokeringar — läses EFTER raderingen, av samma skäl
+          // som avi-vägen gör det: en av flera delbetalningar kan tas bort och
+          // beslutet ska avse det som faktiskt är kvar.
+          const remaining = await tx.invoicePayment.findMany({
+            where: { invoiceId: transaction.invoice.id },
+            select: { amount: true },
+          })
+
+          // Utgångsstatusen GISSAS INTE — den läses ur append-only-loggen.
+          // `PAYMENT_PARTIAL` bär `previousStatus` sedan #307 C, som infördes
+          // just för att en händelselogg som säger fel är värre än ingen.
+          const partialEvents = await tx.invoiceEvent.findMany({
+            where: { invoiceId: transaction.invoice.id, type: 'PAYMENT_PARTIAL' },
+            select: { payload: true },
+            orderBy: { createdAt: 'desc' },
+          })
+
+          const decision = paymentReversalTargetStatus({
+            current: current.status,
+            hasRemainingAllocations: remaining.length > 0,
+            statusBeforePartial: statusBeforePartialPayment(partialEvents),
+          })
+
+          // FAIL-CLOSED: PARTIAL utan kvarvarande allokeringar MÅSTE kunna
+          // återställas. Kan utgångsstatusen inte läsas ur loggen skriver vi
+          // hellre ingenting alls än en påhittad status (BFL 5 kap 11 §).
+          if (
+            current.status === 'PARTIAL' &&
+            remaining.length === 0 &&
+            decision.action !== 'restore'
+          ) {
+            throw new InternalServerErrorException(
+              `Faktura ${current.invoiceNumber} kan inte återställas: utgångsstatusen före ` +
+                'delbetalningen saknas i händelseloggen. Avmatchningen avbryts — kontakta ' +
+                'supporten.',
+            )
+          }
+
+          if (decision.action === 'restore') {
+            // NAMNGIVEN RÄTTELSEVÄG, INTE `transitionStatus`. Se
+            // invoice-payment-reversal.ts: `INVOICE_TRANSITIONS` beskriver
+            // affärshändelser, och en avmatchning är en rättelse av ett misstag.
+            // WHERE nyckas på statusen vi läste under låset.
+            await tx.invoice.updateMany({
+              where: { id: transaction.invoice.id, organizationId, status: 'PARTIAL' },
+              data: { status: decision.target, paidAt: null },
+            })
+          }
+
+          // BFL 5 kap 11 § — behandlingshistoriken. Posten bär BELOPP och
+          // TRANSAKTION i payload; AKTÖR (actorId/actorType/actorLabel) och
+          // TIDPUNKT (createdAt) är `InvoiceEvent`s egna kolumner och skrivs av
+          // `record()`. Samma transaktion som raderingen: den får varken skrivas
+          // utan att raderingen skedde eller utebli efter den.
+          await this.events.record(
+            transaction.invoice.id,
+            'PAYMENT_REVERSED',
+            userId ? 'USER' : 'SYSTEM',
+            userId,
+            {
+              transactionId,
+              amount: removedAllocation.amount.toNumber(),
+              paidAt: removedAllocation.paidAt.toISOString(),
+              allocationSource: removedAllocation.source,
+              previousStatus: current.status,
+              newStatus: decision.action === 'restore' ? decision.target : current.status,
+              statusRestored: decision.action === 'restore',
+              ...(decision.action === 'keep' ? { statusKeptReason: decision.reason } : {}),
+              remainingAllocations: remaining.length,
+              source: 'bank_reconciliation_unmatch',
+            },
+            { tx },
+          )
         }
       }
 

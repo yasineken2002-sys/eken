@@ -29,7 +29,9 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { ConflictException } from '@nestjs/common'
+import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
+import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { ToolExecutorService } from '../ai/tools/tool-executor.service'
 
 /**
@@ -40,6 +42,11 @@ import { ToolExecutorService } from '../ai/tools/tool-executor.service'
  * `statusInsideTx` styr vad omprövningen INNANFÖR radlåset ser. Att den kan
  * skilja sig från statusen den yttre läsningen såg är hela poängen: det är så
  * racet mot en samtidig inkassoexport uttrycks deterministiskt.
+ *
+ * #326 B: attrappen bär nu även `invoicePayment` och `invoiceEvent`, eftersom
+ * avmatchningen städar allokeringen. De två PARTIAL-testerna längre ned hävdade
+ * tidigare att allokeringen INTE städades — det var korrekt då och är fel nu;
+ * de är omskrivna, inte borttagna, så avgränsningen fortfarande går att läsa.
  */
 function makeService(transaction: unknown, statusInsideTx?: string) {
   const outerInvoice = (transaction as { invoice?: { status: string; invoiceNumber: string } })
@@ -65,7 +72,24 @@ function makeService(transaction: unknown, statusInsideTx?: string) {
             }
           : null,
       ),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
+    // Allokeringsstädningen (#326 B).
+    invoicePayment: {
+      findFirst: jest.fn().mockResolvedValue({
+        invoiceId: outerInvoice ? (transaction as { invoice: { id: string } }).invoice.id : null,
+        amount: new Decimal(3000),
+        paidAt: new Date('2026-07-20'),
+        source: 'BANK_RECONCILIATION',
+      }),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    invoiceEvent: {
+      findMany: jest.fn().mockResolvedValue([{ payload: { previousStatus: 'SENT' } }]),
+      create: jest.fn().mockResolvedValue({}),
+    },
+    user: { findUnique: jest.fn().mockResolvedValue(null) },
   }
   const $transaction = jest.fn((cb: (t: unknown) => unknown) => cb(tx))
   const prisma = {
@@ -80,7 +104,7 @@ function makeService(transaction: unknown, statusInsideTx?: string) {
   const service = new ReconciliationService(
     prisma as never,
     {} as never,
-    {} as never,
+    new InvoiceEventsService(prisma as never) as never,
     { reverseJournalEntryForPayment } as never,
     {} as never, // PaymentFreshnessService — ej använd i unmatch-vägen
   )
@@ -197,16 +221,18 @@ describe('#326 A — omprövningen innanför radlåset är den lastbärande', ()
 })
 
 describe('#326 A — spärren är avgränsad: allt annat är oförändrat', () => {
-  it('PARTIAL avmatchas fortfarande — och allokeringen städas fortfarande INTE (buggen kvarstår tills B)', async () => {
+  // OMSKRIVET AV #326 B. Testet hävdade tidigare att allokeringen INTE städades
+  // ("buggen kvarstår tills B") — sant då, fel nu. Det står kvar i A:s fil för
+  // att avgränsningen ska gå att läsa: spärren gäller SENT_TO_COLLECTION, och
+  // PARTIAL avmatchas fortfarande. Vad som HÄNDER vid den avmatchningen ägs av
+  // B och bevisas i unmatch-invoice-payment-cleanup.spec.ts.
+  it('PARTIAL avmatchas fortfarande — spärren gäller bara överlämnade fordringar', async () => {
     const { service, tx, $transaction, reverseJournalEntryForPayment } = makeService(PARTIAL_TX)
 
     await service.unmatchTransaction('tx-partial', 'org-1', 'user-1')
 
     expect($transaction).toHaveBeenCalledTimes(1)
     expect(reverseJournalEntryForPayment).toHaveBeenCalledTimes(1)
-    // AVSIKTLIGT: `invoicePayment` finns inte ens på attrapp-klienten, eftersom
-    // koden aldrig rör den. Skulle B implementeras utan att uppdatera det här
-    // testet kraschar det på en saknad modell — precis den signal vi vill ha.
     expect(tx.bankTransaction.updateMany).toHaveBeenCalledTimes(1)
     expect(tx.rentNotice.updateMany).not.toHaveBeenCalled() // ingen avi inblandad
   })
