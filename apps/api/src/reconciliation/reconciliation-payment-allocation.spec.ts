@@ -101,7 +101,8 @@ function makeService(opts: {
     {} as never, // invoices
     events as never,
     accounting as never,
-    {} as never, // PaymentFreshnessService — ej använd i matchnings-/unmatch-vägen
+    {} as never, // PaymentFreshnessService — ej använd i matchnings-/unmatch-vägen,
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
   )
   return { service, prisma, txMock, createJournalEntryForRentNoticePayment }
 }

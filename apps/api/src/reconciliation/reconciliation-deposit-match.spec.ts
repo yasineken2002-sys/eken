@@ -76,6 +76,7 @@ function makeService(opts: { linkedDeposit?: Record<string, unknown> | null }) {
     events as never,
     accounting as never,
     {} as never,
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
   )
   return { service, txMock, createJournalEntryForRentNoticePayment }
 }

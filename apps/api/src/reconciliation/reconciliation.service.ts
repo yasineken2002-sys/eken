@@ -24,6 +24,7 @@ import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { AccountingService, bankPaymentSourceId } from '../accounting/accounting.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { computeRentDebt } from '../avisering/rent-debt.service'
+import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import {
   validateUploadedFile,
   DETECTED_SPREADSHEET_TYPES,
@@ -269,6 +270,12 @@ export class ReconciliationService {
     // Bankavstämnings-härdning PR 4 (B) — varje lyckad import flyttar fram
     // paymentDataThrough (färskhetssignal som kravtrappans crons gatar på).
     private readonly freshness: PaymentFreshnessService,
+    // #326 C — avi-sidans händelselogg. Egen tjänst i stället för en rå
+    // `tx.rentNoticeEvent.create`, av samma skäl som fakturasidan använder
+    // `InvoiceEventsService`: den DENORMALISERAR aktörsetiketten vid
+    // skrivtillfället, så historiken bär ett namn även om användaren senare
+    // raderas (`users.service.ts` gör en riktig delete, ingen soft-delete).
+    private readonly rentNoticeEvents: RentNoticeEventsService,
   ) {}
 
   // Senaste giltiga transaktionsdatum i en importerad batch = den dag t.o.m. vilken
@@ -1769,6 +1776,22 @@ export class ReconciliationService {
     transactionId: string,
     organizationId: string,
     userId: string | null = null,
+    // ── #326 C: SKÄLET ÄR RÄKENSKAPSINFORMATION ─────────────────────────────
+    //
+    // AI-verktyget `unmatch_transaction` KRÄVER redan ett `reason` av
+    // användaren — och kastade bort det: strängen ekades tillbaka i chatt-svaret
+    // och skrevs aldrig någonstans. Att fråga efter ett skäl, få det, och sedan
+    // slänga det är sämre än att inte fråga: användaren tror att det är
+    // dokumenterat.
+    //
+    // Skälet är just det motverifikatet INTE kan bära. En reversering av
+    // debet/kredit ser likadan ut oavsett om betalningen var felallokerad,
+    // återbetald eller registrerad på fel avi — och det är skillnaden en
+    // granskare behöver (BFL 5 kap 11 §).
+    //
+    // Valfritt: HTTP-vägen har inget skäl-fält idag (eget ärende). Saknas det
+    // skrivs händelsen ändå — utan påhittad text.
+    reason?: string,
   ): Promise<void> {
     const transaction = await this.prisma.bankTransaction.findFirst({
       where: { id: transactionId, organizationId },
@@ -2051,6 +2074,10 @@ export class ReconciliationService {
               ...(decision.action === 'keep' ? { statusKeptReason: decision.reason } : {}),
               remainingAllocations: remaining.length,
               source: 'bank_reconciliation_unmatch',
+              // #326 C — operatörens/AI:ns skäl. TILLKOMMER bara när det finns;
+              // #326 B:s post är i övrigt oförändrad i typ, tidpunkt, villkor
+              // och samtliga befintliga fält.
+              ...(reason ? { reason } : {}),
             },
             { tx },
           )
@@ -2064,9 +2091,11 @@ export class ReconciliationService {
       // delbetalningar tas bort — paidAmount får inte spegla den borttagna).
       // #326 D — läs FÖRE raderingen: allokeringens id är verifikatets
       // idempotensnyckel, och raden finns inte kvar efteråt.
+      // #326 C — belopp, betalningsdatum och källa läses här av samma skäl som
+      // id:t: raden finns inte kvar när händelsen ska skrivas.
       const removedNoticeAllocation = await tx.rentNoticePayment.findFirst({
         where: { bankTransactionId: transactionId },
-        select: { id: true },
+        select: { id: true, rentNoticeId: true, amount: true, paidAt: true, source: true },
       })
       if (removedNoticeAllocation) {
         // FAIL-CLOSED PÅ XOR-INVARIANTEN. En banktransaktion är antingen
@@ -2145,6 +2174,56 @@ export class ReconciliationService {
             },
           })
         }
+      }
+
+      // ── #326 C: BEHANDLINGSHISTORIKEN (BFL 5 kap 11 §) ────────────────────
+      //
+      // Avmatchningen raderade `RentNoticePayment` utan att lämna något spår.
+      // Motverifikatet räcker inte: en vänd debet/kredit ser likadan ut oavsett
+      // om betalningen var felallokerad, återbetald eller registrerad på fel
+      // avi — och `logger.log` är inte räkenskapsinformation (loggen roterar
+      // bort och går inte att söka i produkten).
+      //
+      // Allokeringstabellerna är sidoordnad bokföring (BFL 5 kap 4 §) och FÅR
+      // korrigeras. Men delete UTAN spår raderar även det faktum att en
+      // allokering funnits — och det är kombinationen som bryter 5 kap 11 §.
+      // Fakturasidan fick sin post i #326 B; den här är dess spegling, med
+      // SAMMA fyra fält: BELOPP och TRANSAKTION i payload, AKTÖR och TIDPUNKT
+      // i händelsens egna kolumner.
+      //
+      // SAMMA TRANSAKTION som raderingen — posten får varken skrivas utan att
+      // raderingen skedde eller utebli efter den.
+      if (removedNoticeAllocation) {
+        // FAIL-CLOSED PÅ SPEGELN. `matchedRentNoticeId` på banktransaktionen är
+        // ett härlett fält; allokeringen bär sitt eget `rentNoticeId`. Går de
+        // isär skulle spåret hamna på EN avi medan paidAmount/status räknas om
+        // på en ANNAN — en tyst inkonsekvens mellan logg och tillstånd. Samma
+        // kontroll som fakturagrenen redan har (`removedAllocation.invoiceId
+        // !== transaction.invoice.id`). (Kodgranskning av #326 C.)
+        if (matchedNoticeId && removedNoticeAllocation.rentNoticeId !== matchedNoticeId) {
+          throw new InternalServerErrorException(
+            `Betalningsallokeringen för transaktion ${transactionId} pekar på en annan hyresavi ` +
+              'än banktransaktionens spegelfält. Avmatchningen avbryts — kontakta supporten.',
+          )
+        }
+
+        // NYCKLAS PÅ ALLOKERINGENS EGET `rentNoticeId`: spåret ska följa raden
+        // som faktiskt togs bort, inte spegeln.
+        await this.rentNoticeEvents.record(
+          removedNoticeAllocation.rentNoticeId,
+          'PAYMENT_REVERSED',
+          userId ? 'USER' : 'SYSTEM',
+          userId,
+          {
+            transactionId,
+            amount: removedNoticeAllocation.amount.toNumber(),
+            paidAt: removedNoticeAllocation.paidAt.toISOString(),
+            allocationSource: removedNoticeAllocation.source,
+            source: 'bank_reconciliation_unmatch',
+            ...(reason ? { reason } : {}),
+          },
+          { tx },
+        )
       }
 
       // Övriga statusar lämnas oförändrade — vi länkar bara bort

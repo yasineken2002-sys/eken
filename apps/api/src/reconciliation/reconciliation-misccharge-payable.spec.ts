@@ -49,6 +49,7 @@ function makeService(candidates: Array<Record<string, unknown>>) {
     {} as never,
     {} as never,
     {} as never,
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
   )
   const apply = jest.fn().mockResolvedValue(true)
   ;(service as unknown as { applyMatchToRentNotice: unknown }).applyMatchToRentNotice = apply

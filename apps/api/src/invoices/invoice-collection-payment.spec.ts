@@ -114,6 +114,7 @@ function makeReconciliation(opts: { status: InvoiceStatus; priorAllocations?: nu
     events as never,
     { createJournalEntryForPayment: jest.fn().mockResolvedValue({ id: 'je-1' }) } as never,
     {} as never,
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
   )
   const applyMatch = (amount: number, allowPartial = true): Promise<boolean> =>
     (

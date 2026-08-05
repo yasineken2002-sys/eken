@@ -53,6 +53,7 @@ import { RentBackfillService } from './rent-backfill.service'
   // Tillåtna outstanding()-läsare vaktas statiskt av rent-debt-money-neutrality.spec.ts.
   exports: [
     AviseringService,
+    RentNoticeEventsService,
     RentReminderService,
     RentInterestService,
     RentDebtService,

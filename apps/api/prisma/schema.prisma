@@ -303,6 +303,13 @@ enum RentNoticeEventType {
   INTEREST_ACCRUED
   COLLECTION_READY
   WRITTEN_OFF
+  // #326 C — avmatchad betalning. Speglar `InvoiceEventType.PAYMENT_REVERSED`,
+  // som fakturasidan redan hade. Egen typ i stället för NOTE_ADDED med en
+  // action-flagga i payloaden: `@@index([rentNoticeId, type])` gör en
+  // förstklassig typ sökbar, medan en payload-diskriminerad NOTE_ADDED bara går
+  // att hitta genom att läsa JSON i varje rad. En behandlingshistorik som inte
+  // går att fråga är svår att granska (BFL 5 kap 11 §).
+  PAYMENT_REVERSED
   NOTE_ADDED
 }
 

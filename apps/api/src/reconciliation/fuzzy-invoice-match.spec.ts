@@ -45,6 +45,7 @@ function makeService(opts: {
     {} as never,
     {} as never,
     {} as never,
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
   )
   // Vägarna stubbas — det som testas är DIRIGERINGEN, inte deras insida
   // (den är bevisad i sina egna sviter och i riggen).

@@ -34,7 +34,11 @@ export class RentNoticeEventsService {
     // historiken även om användaren senare tas bort.
     let actorLabel: string | undefined
     if (actorType === 'USER' && actorId) {
-      const user = await this.prisma.user.findUnique({
+      // #326 C: uppslaget går via `db`, inte `this.prisma` — samma fix som
+      // fakturasidans `InvoiceEventsService` fick i #288. Låg det på poolen
+      // ockuperades en andra anslutning under hela tiden anroparens transaktion
+      // håller sitt radlås, och en liten pool kan svälta sig själv.
+      const user = await db.user.findUnique({
         where: { id: actorId },
         select: { firstName: true, lastName: true },
       })

@@ -15,15 +15,21 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { BadRequestException, ForbiddenException } from '@nestjs/common'
+import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
 
 function makeService(opts: {
   transaction?: unknown
+  /** #326 C — allokeringens avi. Ska spegla transaktionens matchedRentNotice. */
+  allocationNoticeId?: string
   reverseThrows?: boolean
   remainingAllocations?: Array<{ amount: number }>
   noticeRow?: Record<string, unknown> | null
 }) {
   const tx = {
+    // #326 C — behandlingshistoriken på avi-sidan.
+    rentNoticeEvent: { create: jest.fn().mockResolvedValue({}) },
+
     rentNotice: {
       // PR 3b — org-scopad updateMany (defense-in-depth), inte update på enbart id.
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -47,7 +53,13 @@ function makeService(opts: {
     // findMany läser KVARVARANDE allokeringar för paidAmount-omräkningen.
     rentNoticePayment: {
       // #326 D — allokeringens id läses FÖRE raderingen (verifikatets nyckel).
-      findFirst: jest.fn().mockResolvedValue({ id: 'rnp-1' }),
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'rnp-1',
+        rentNoticeId: opts.allocationNoticeId ?? 'rn-1',
+        amount: new Decimal(5000),
+        paidAt: new Date('2026-07-20T00:00:00.000Z'),
+        source: 'BANK_RECONCILIATION',
+      }),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       findMany: jest.fn().mockResolvedValue(opts.remainingAllocations ?? []),
     },
@@ -73,7 +85,8 @@ function makeService(opts: {
     {} as never,
     {} as never,
     accounting as never,
-    {} as never, // PaymentFreshnessService — ej använd i unmatch-vägen
+    {} as never, // PaymentFreshnessService — ej använd i unmatch-vägen,
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
   )
   return { service, prisma, tx, reverseJournalEntryForPayment }
 }
@@ -170,6 +183,7 @@ describe('ReconciliationService.unmatchTransaction — partiell unmatch (PR 3b)'
         invoice: null,
         matchedRentNotice: { id: 'rn-9', status: 'SENT' },
       },
+      allocationNoticeId: 'rn-9',
       remainingAllocations: [{ amount: 5_000 }],
       noticeRow: {
         type: 'RENT',
@@ -211,6 +225,7 @@ describe('ReconciliationService.unmatchTransaction — partiell unmatch (PR 3b)'
         invoice: null,
         matchedRentNotice: { id: 'rn-10', status: 'PAID' },
       },
+      allocationNoticeId: 'rn-10',
       remainingAllocations: [{ amount: 3_000 }],
       noticeRow: {
         type: 'RENT',

@@ -78,6 +78,7 @@ function makeService() {
     {} as never,
     {} as never,
     {} as never,
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
   )
   const matchSpy = jest.spyOn(service, 'matchTransaction').mockResolvedValue(true)
   return { service, matchSpy, ...fake }
