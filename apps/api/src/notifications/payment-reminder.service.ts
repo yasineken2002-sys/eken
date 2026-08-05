@@ -1,11 +1,11 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common'
-import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { Cron } from '@nestjs/schedule'
 import { Prisma } from '@prisma/client'
 import type { PaymentReminderType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
+import { computeInvoiceDebt, invoiceOutstanding } from '../invoices/invoice-debt'
 import { NotificationsService } from './notifications.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
@@ -65,6 +65,16 @@ export class PaymentReminderService {
             customer: { select: SAFE_CUSTOMER_SELECT },
             organization: true,
             paymentReminders: true,
+            // ── #329: RESTSKULDEN GÅR INTE ATT RÄKNA UTAN ALLOKERINGARNA ────
+            //
+            // Breven visade `invoice.total` — ursprungsbeloppet — medan vyerna
+            // sedan #322 visar restskulden. Operatören såg 2 000 i systemet
+            // medan hyresgästen fick krav på 10 000.
+            //
+            // URVALET ÄR OFÖRÄNDRAT: `where` rörs inte, bara `include`. Exakt
+            // samma fakturor påminns som förut — det enda som ändras är vilket
+            // belopp brevet bär.
+            payments: { select: { amount: true } },
           },
         })
 
@@ -244,6 +254,7 @@ export class PaymentReminderService {
         customer: { select: typeof SAFE_CUSTOMER_SELECT }
         organization: true
         paymentReminders: true
+        payments: { select: { amount: true } }
       }
     }>,
     email: string,
@@ -258,7 +269,9 @@ export class PaymentReminderService {
       to: email,
       tenantName,
       invoiceNumber: invoice.invoiceNumber,
-      total: Number(invoice.total),
+      // #329 — RESTSKULDEN, inte ursprungsbeloppet. Brevet ber hyresgästen
+      // betala; då måste siffran vara vad hen faktiskt är skyldig.
+      total: invoiceOutstanding(invoice),
       dueDate: invoice.dueDate,
       daysOverdue,
       organizationName: invoice.organization.name,
@@ -294,6 +307,7 @@ export class PaymentReminderService {
         customer: { select: typeof SAFE_CUSTOMER_SELECT }
         organization: true
         paymentReminders: true
+        payments: { select: { amount: true } }
       }
     }>,
     email: string,
@@ -305,8 +319,27 @@ export class PaymentReminderService {
       : 'Hyresgäst'
 
     const fee = Number(invoice.organization.reminderFeeSek)
-    const originalTotal = Number(invoice.total)
-    const newTotal = originalTotal + fee
+
+    // ── #329: TVÅ OLIKA BELOPP, TIDIGARE SAMMA VARIABEL ──────────────────────
+    //
+    // `originalTotal = Number(invoice.total)` användes till TVÅ saker som bara
+    // råkade sammanfalla när fakturan var obetald:
+    //
+    //   1. FAKTURANS NOMINELLA TOTAL, som avgiften skrivs in i. Här är
+    //      `invoice.total` RÄTT och SKA växa — fakturan är på ett större belopp
+    //      efter att avgiften lagts till. Rör man den blir avgiftsbokföringen
+    //      fel i stället.
+    //   2. BELOPPET I BREVET till hyresgästen. Här är `invoice.total` FEL så
+    //      snart något är betalt: brevet krävde ursprungsbeloppet av någon som
+    //      redan betalat en del av det.
+    //
+    // De är åtskilda nu, med namn som säger vilket som är vilket.
+    const nominalTotal = Number(invoice.total)
+    const nominalTotalWithFee = nominalTotal + fee
+
+    // Restskulden FÖRE avgiften — det hyresgästen är skyldig just nu.
+    const outstandingBefore = invoiceOutstanding(invoice)
+    const outstandingWithFee = outstandingBefore + fee
 
     // Lägg till påminnelseavgift som ny faktura-rad och uppdatera total.
     // Använd Prisma-transaktion så avgift och total alltid skrivs atomärt.
@@ -324,7 +357,10 @@ export class PaymentReminderService {
       await tx.invoice.update({
         where: { id: invoice.id },
         data: {
-          total: new Prisma.Decimal(newTotal.toFixed(2)),
+          // NOMINELLT belopp — inte restskulden. Fakturan är på ett större
+          // belopp efter avgiften; restskulden följer med automatiskt eftersom
+          // den är `total − Σ allokeringar`.
+          total: new Prisma.Decimal(nominalTotalWithFee.toFixed(2)),
         },
       })
     })
@@ -336,9 +372,10 @@ export class PaymentReminderService {
       to: email,
       tenantName,
       invoiceNumber: invoice.invoiceNumber,
-      originalTotal,
+      // #329 — brevets siffror är RESTSKULDEN, inte fakturans nominella total.
+      outstandingBeforeFee: outstandingBefore,
       feeAmount: fee,
-      newTotal,
+      newTotal: outstandingWithFee,
       dueDate: invoice.dueDate,
       daysOverdue,
       organizationName: invoice.organization.name,

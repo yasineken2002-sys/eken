@@ -2,6 +2,7 @@ import { Injectable, ForbiddenException, BadRequestException, Logger } from '@ne
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { invoiceOutstanding } from '../../invoices/invoice-debt'
 import { InvoicesService, toPaymentMethod } from '../../invoices/invoices.service'
 import { PdfService } from '../../invoices/pdf.service'
 import { TenantsService } from '../../tenants/tenants.service'
@@ -971,6 +972,9 @@ export class ToolExecutorService {
                 },
               },
               organization: { select: { name: true } },
+              // #329 — restskulden går inte att räkna utan allokeringarna.
+              // `where` orört: samma fakturor påminns.
+              payments: { select: { amount: true } },
             },
           })
 
@@ -987,7 +991,9 @@ export class ToolExecutorService {
                 to: inv.tenant.email,
                 tenantName,
                 invoiceNumber: inv.invoiceNumber,
-                total: Number(inv.total),
+                // #329 — RESTSKULDEN, inte ursprungsbeloppet. AI-verktyget
+                // skickade samma brev som cronen och hade samma fel.
+                total: invoiceOutstanding(inv),
                 dueDate: inv.dueDate,
                 organizationName: inv.organization.name,
               })

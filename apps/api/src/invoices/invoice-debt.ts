@@ -52,3 +52,28 @@ export function computeInvoiceDebt(input: {
     isSettled: outstanding.isZero(),
   }
 }
+
+/**
+ * #329 — restskulden för en faktura vars allokeringar laddats.
+ *
+ * Samma uttryck som `computeInvoiceDebt`, men i den form de tre brevvägarna
+ * behöver: en Prisma-rad med `payments` inkluderat, ut ett tal.
+ *
+ * LIGGER HÄR, INTE I EN AV BREVVÄGARNA. Först stod den lokalt i
+ * `payment-reminder.service.ts` medan de två andra vägarna upprepade uttrycket
+ * för hand — och det var precis den sortens spretande beräkning #329 finns för
+ * att ta bort. En källa, tre anropare.
+ *
+ * TYPEN ÄR SPÄRREN. `payments` är obligatorisk, så en `findMany` utan
+ * `include: { payments: ... }` typcheckar inte. Det skyddet är inte kosmetiskt:
+ * en tom array hade gett ursprungsbeloppet i ett BREV till en hyresgäst, tyst.
+ */
+export function invoiceOutstanding(invoice: {
+  total: Prisma.Decimal
+  payments: Array<{ amount: Prisma.Decimal }>
+}): number {
+  return computeInvoiceDebt({
+    total: invoice.total,
+    allocations: invoice.payments.map((p) => p.amount),
+  }).outstanding.toNumber()
+}

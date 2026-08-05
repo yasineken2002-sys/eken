@@ -5,6 +5,7 @@ import { Cron, CronExpression } from '@nestjs/schedule'
 import type { Notification, NotificationType, Prisma } from '@prisma/client'
 import { formatCurrency, DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { invoiceOutstanding } from '../invoices/invoice-debt'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
 import { AiAssistantService } from '../ai/ai-assistant.service'
@@ -17,6 +18,7 @@ type InvoiceWithRelations = Prisma.InvoiceGetPayload<{
     tenant: { select: typeof SAFE_TENANT_SELECT }
     customer: { select: typeof SAFE_CUSTOMER_SELECT }
     organization: true
+    payments: { select: { amount: true } }
   }
 }>
 
@@ -245,6 +247,9 @@ export class NotificationsService implements OnModuleInit {
         tenant: { select: SAFE_TENANT_SELECT },
         customer: { select: SAFE_CUSTOMER_SELECT },
         organization: true,
+        // #329 — utan allokeringarna går restskulden inte att räkna. `where`
+        // orört: exakt samma fakturor påminns.
+        payments: { select: { amount: true } },
       },
     })
 
@@ -286,7 +291,10 @@ export class NotificationsService implements OnModuleInit {
           to: party.email,
           tenantName,
           invoiceNumber: invoice.invoiceNumber,
-          total: Number(invoice.total),
+          // #329 — RESTSKULDEN. Den här manuella vägen (POST från
+          // notifications-controllern) skickade ursprungsbeloppet precis som
+          // den tierade cronen gjorde. Samma brev, samma mottagare, samma fel.
+          total: invoiceOutstanding(invoice),
           dueDate: invoice.dueDate,
           organizationName: invoice.organization.name,
           accentColor: invoice.organization.invoiceColor ?? DEFAULT_BRAND_COLOR,
