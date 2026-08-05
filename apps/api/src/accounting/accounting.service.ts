@@ -1329,10 +1329,6 @@ export class AccountingService {
     transaction: Pick<BankTransaction, 'id' | 'date' | 'amount'>,
     organizationId: string,
     createdById: string | null,
-    // Valfri yttre transaktion — anges av bankavstämningens applyMatchToInvoice så
-    // att statusflip, bank-länk och detta verifikat skapas ATOMISKT. Faller
-    // bokföringen rullas hela matchningen tillbaka (ingen PAID utan verifikat).
-    tx?: Prisma.TransactionClient,
     // ── #326 D: IDEMPOTENSEN NYCKLAS PÅ ALLOKERINGEN ────────────────────────
     //
     // Nyckeln var `transaction.id`. Det höll så länge en banktransaktion kunde
@@ -1351,10 +1347,23 @@ export class AccountingService {
     // Per allokering (unik UUID) får varje matchning sitt EGNA verifikat, och en
     // ommatchning efter avmatchning bokförs som den nya affärshändelse den är.
     //
-    // UTELÄMNAS BARA AV FUZZY-GRENEN, som inte skapar någon allokering alls
-    // (eget ärende). Den behåller den gamla nyckeln — den flippar PAID, och en
-    // PAID faktura kan inte avmatchas, så ommatchningsvägen når den aldrig.
-    allocationId?: string,
+    // OBLIGATORISK SEDAN #326 F1. Parametern var valfri, med ett undantag för
+    // fuzzy-grenen som inte skapade någon allokering alls. Motiveringen där var
+    // för smal: den handlade bara om att ommatchning inte kan nå en PAID
+    // faktura, och sa ingenting om att den grenen samtidigt saknade allokering,
+    // Deposit-synk och ett verifikat som kastar. F1 leder fuzzy genom
+    // `applyMatchToInvoice`, som alltid allokerar — undantaget har därmed ingen
+    // kvarvarande anropare, och det som var en valfri parameter med en tyst
+    // fallback blir ett krav. En framtida gren kan inte längre av misstag
+    // återanvända den gamla nyckeln genom att låta bli att skicka in något.
+    //
+    // (`reverseJournalEntryForPayment` behåller sin legacy-fallback — den läser
+    // poster som redan är skrivna, och de kan bära den gamla nyckeln.)
+    allocationId: string,
+    // Valfri yttre transaktion — anges av bankavstämningens applyMatchToInvoice så
+    // att statusflip, bank-länk och detta verifikat skapas ATOMISKT. Faller
+    // bokföringen rullas hela matchningen tillbaka (ingen PAID utan verifikat).
+    tx?: Prisma.TransactionClient,
   ) {
     const db = tx ?? this.prisma
     const accounts = await db.account.findMany({
@@ -1376,7 +1385,7 @@ export class AccountingService {
 
     const counterparty = await this.counterpartyForInvoice(invoice.id, organizationId, tx)
 
-    const sourceId = allocationId ? bankPaymentSourceId('invoice', allocationId) : transaction.id
+    const sourceId = bankPaymentSourceId('invoice', allocationId)
 
     return this.createNumberedEntry({
       organizationId,

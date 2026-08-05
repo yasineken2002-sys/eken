@@ -45,7 +45,10 @@ function makeService(
     // tester exercerar FULL reglering (delbetalning täcks av egen svit).
     invoicePayment: {
       findMany: jest.fn().mockResolvedValue(opts.priorAllocations ?? []),
-      create: jest.fn().mockResolvedValue({}),
+      // MÅSTE returnera ett id. `create → {}` är #290:s fälla: allokerings-id:t
+      // blir `undefined` och verifikatets nyckel `...:undefined` — attrappen
+      // utplånar då just den distinktion testet bygger på.
+      create: jest.fn().mockResolvedValue({ id: 'ip-1' }),
     },
     invoice: {
       // Statusen läses ur den låsta raden (#307 C). Dessa tester kör FULL
@@ -164,9 +167,15 @@ describe('applyMatchToInvoice — atomisk bank-matchning', () => {
       data: { status: 'MATCHED', invoiceId: 'inv-1', matchedRentNoticeId: null },
     })
 
-    // Verifikatet bokas ATOMISKT — tx är sista argumentet
+    // Verifikatet bokas ATOMISKT — transaktionsklienten skickas med.
+    // Hävdas på INNEHÅLL, inte på position: #326 F1 flyttade `tx` bakom det nu
+    // obligatoriska `allocationId`, och ett index-beroende test faller då av fel
+    // skäl (signaturen ändrades, inte atomiciteten).
     expect(createJournalEntryForPayment).toHaveBeenCalledTimes(1)
-    expect((createJournalEntryForPayment.mock.calls[0] as unknown[])?.[4]).toBe(txMock)
+    const journalArgs = createJournalEntryForPayment.mock.calls[0] as unknown[]
+    expect(journalArgs).toContain(txMock)
+    // …och allokeringens id är med (nyckeln verifikatet idempotens-märks på).
+    expect(journalArgs).toContain('ip-1')
 
     // Notis efter commit
     expect(notifyInvoicePaid).toHaveBeenCalledWith('org-1', 'inv-1', 'F-2026-0001')

@@ -63,7 +63,7 @@ describe('BFL 5 kap 7 § (#35) — motpart i betalningsverifikat', () => {
         kind: 'invoice',
         tenant: { companyName: 'Tenant AB', firstName: null, lastName: null },
       })
-      await service.createJournalEntryForPayment(invoice, txn, 'org-1', null)
+      await service.createJournalEntryForPayment(invoice, txn, 'org-1', null, 'alloc-1')
       expect(getCreated()!.data.description).toBe('Inbetalning faktura F-2026-0042 (Tenant AB)')
     })
 
@@ -72,13 +72,13 @@ describe('BFL 5 kap 7 § (#35) — motpart i betalningsverifikat', () => {
         kind: 'invoice',
         tenant: { companyName: null, firstName: 'Erik', lastName: 'Svensson' },
       })
-      await service.createJournalEntryForPayment(invoice, txn, 'org-1', null)
+      await service.createJournalEntryForPayment(invoice, txn, 'org-1', null, 'alloc-1')
       expect(getCreated()!.data.description).toBe('Inbetalning faktura F-2026-0042 (Erik Svensson)')
     })
 
     it('faktura utan tenant → ingen parentes', async () => {
       const { service, getCreated } = makeService({ kind: 'invoice', tenant: null })
-      await service.createJournalEntryForPayment(invoice, txn, 'org-1', null)
+      await service.createJournalEntryForPayment(invoice, txn, 'org-1', null, 'alloc-1')
       expect(getCreated()!.data.description).toBe('Inbetalning faktura F-2026-0042')
     })
 
@@ -87,7 +87,7 @@ describe('BFL 5 kap 7 § (#35) — motpart i betalningsverifikat', () => {
         kind: 'invoice',
         tenant: { companyName: 'Tenant AB', firstName: null, lastName: null },
       })
-      await service.createJournalEntryForPayment(invoice, txn, 'org-1', null)
+      await service.createJournalEntryForPayment(invoice, txn, 'org-1', null, 'alloc-1')
       expect(prisma.invoice.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'inv-1', organizationId: 'org-1' } }),
       )

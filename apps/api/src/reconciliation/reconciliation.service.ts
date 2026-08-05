@@ -950,44 +950,56 @@ export class ReconciliationService {
 
     if (invMatches.length === 1 && invMatches[0]) {
       const candidate = invMatches[0]
-      // Optimistic claim: en parallell bank-import kan annars också matcha
-      // samma faktura. Status-guardad updateMany serialiserar på rad-nivå
-      // i Postgres — bara en körning får count=1.
-      const claim = await db.invoice.updateMany({
-        where: { id: candidate.id, status: { in: ['SENT', 'OVERDUE'] } },
-        data: { status: 'PAID', paidAt: transaction.date },
-      })
-      if (claim.count === 0) return false
-
-      await db.bankTransaction.update({
-        where: { id: transaction.id },
-        data: { status: 'MATCHED', invoiceId: candidate.id, matchedAt: new Date() },
-      })
-
-      await this.events.record(candidate.id, 'PAYMENT_RECEIVED', 'SYSTEM', null, {
-        transactionId: transaction.id,
-        amount: candidate.total.toNumber(),
-        date: transaction.date.toISOString(),
-        source: 'bank_reconciliation',
-        previousStatus: candidate.status,
-        newStatus: 'PAID',
-        matchType: 'fuzzy',
-      })
-
-      try {
-        await this.accounting.createJournalEntryForPayment(
-          { id: candidate.id, invoiceNumber: candidate.invoiceNumber, total: candidate.total },
-          { id: transaction.id, date: transaction.date, amount: candidate.total },
-          organizationId,
-          null,
-        )
-      } catch (err) {
-        this.logger.error(
-          'Accounting journal entry failed',
-          err instanceof Error ? err.stack : String(err),
-        )
-      }
-      return true
+      // ── #326 F1: FUZZY GÅR GENOM DEN BEPRÖVADE VÄGEN ───────────────────────
+      //
+      // Här stod en HANDRULLAD matchningssekvens: status-guardad `updateMany`
+      // till PAID (utan radlås och utan `organizationId` i WHERE), bank-länk,
+      // händelse, och verifikatet i ett `try/catch` som SVALDE felet. Fem
+      // separata skrivningar utan transaktion. Det var den ENDA fakturagrenen
+      // som inte gick genom `applyMatchToInvoice` — alltså förbi allt som
+      // byggts i #288/#290/#293/#307 C/#326.
+      //
+      // Vad det kostade:
+      //   • INGEN allokering skapades. `computeInvoiceDebt` (total − Σ
+      //     allokeringar) sa full restskuld medan huvudboken sa reglerad —
+      //     #326:s divergens spegelvänd.
+      //   • Depositionsfakturor är fuzzy-matchbara (kandidatfiltret har inget
+      //     typfilter). Utan `applyMatchToInvoice`s Deposit-synk stod
+      //     depositionen kvar PENDING för evigt → `refund()` nekade. Det är
+      //     deposit-F1-buggen återinförd via en parallell väg.
+      //   • Bokföringsfel var TYSTA i två riktningar: kastet fångades, och
+      //     `null`-returen (saknat 1930/1510) ignorerades utan att ens loggas.
+      //     Sentry har ingen logger-integration och `ErrorLog` skrivs bara av
+      //     `GlobalExceptionFilter` — som aldrig nåddes. Fakturan kunde stå PAID
+      //     utan att en krona bokförts (BFL 5 kap 1 §).
+      //
+      // ANTAGANDENA HÅLLER FÖR EN FUZZY-TRÄFF. Kandidaterna hämtas med
+      // `status in ['SENT','OVERDUE']` (ovan), så PARTIAL ingår aldrig; utan
+      // tidigare allokeringar är restskulden = totalen, och vägens
+      // klassificering mot restskulden blir därmed matematiskt identisk med
+      // fuzzy-filtrets mot totalen. Har fakturan mot förmodan en allokering
+      // klassas beloppet som överbetalning → ingen match, faller till UNMATCHED.
+      //
+      // allowPartial=false — SAMMA REGEL SOM AVI-GRENEN NEDAN (D3). En
+      // icke-deterministisk beloppsträff får aldrig bli en delbetalning; då
+      // vore det en gissning om VILKEN faktura OCH om HUR MYCKET.
+      //
+      // PREMISSEN RÖRS INTE HÄR. Huruvida en gissning över huvud taget ska få
+      // reglera en fordran automatiskt, i stället för att föreslås för en
+      // människa, är ett produktbeslut (eget ärende) — inte något en bugfix ska
+      // avgöra i förbifarten.
+      return this.applyMatchToInvoice(
+        transaction.id,
+        candidate.id,
+        organizationId,
+        candidate.total,
+        transaction.amount,
+        transaction.date,
+        null,
+        null,
+        false,
+        'fuzzy',
+      )
     }
 
     if (noticeMatches[0]) {
@@ -1046,6 +1058,19 @@ export class ReconciliationService {
     userId: string | null,
     actorLabel: string | null,
     allowPartial: boolean,
+    // ── #326 F1: HUR MATCHNINGEN GJORDES ────────────────────────────────────
+    //
+    // 'fuzzy' betyder att regleringen vilar på en GISSNING: belopp inom 1 kr,
+    // 90-dagarsfönster, exakt en kandidat — ingen OCR, ingen referens. Det ska
+    // gå att i efterhand plocka fram precis de regleringar som vilar på en
+    // sannolikhet och granska dem särskilt (BFL 5 kap 11 §).
+    //
+    // EGEN PARAMETER, INTE `actorLabel`. Den senare betyder VEM överallt annars
+    // i kodbasen ('System', 'Manuell markering', 'Inkassounderlag genererat')
+    // och är dessutom en egen kolumn på händelsen. Att stoppa in 'fuzzy' där
+    // hade sagt att aktören var fuzzy, och samtidigt tappat den `matchType`-
+    // nyckel som redan var den sökbara formen. HUR och VEM är olika frågor.
+    matchType?: 'fuzzy',
   ): Promise<boolean> {
     const claimedNumber = await this.prisma.$transaction(async (tx) => {
       // ── RADLÅS FÖRST (#307 C) ──────────────────────────────────────────────
@@ -1121,6 +1146,7 @@ export class ReconciliationService {
         date: transactionDate.toISOString(),
         source: 'bank_reconciliation',
         ...(actorLabel ? { actorLabel } : {}),
+        ...(matchType ? { matchType } : {}),
       }
 
       let invoiceNumber: string
@@ -1211,10 +1237,10 @@ export class ReconciliationService {
         { id: transactionId, date: transactionDate, amount: allocation },
         organizationId,
         userId,
-        tx,
         // #326 D — nyckla på ALLOKERINGEN. Utan detta återanvänder en
         // ommatchning av samma transaktion det gamla, reverserade verifikatet.
         allocationRow.id,
+        tx,
       )
       if (entry === null) {
         throw new InternalServerErrorException(
