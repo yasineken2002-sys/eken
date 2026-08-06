@@ -172,3 +172,118 @@ export class RentDebtService {
     })
   }
 }
+
+/**
+ * #344 — vad hyresgästen ska betala på en avi som har allokeringar.
+ *
+ * Speglar `invoiceOutstanding` på fakturasidan (#329/#342). BYGGER INGEN NY
+ * BERÄKNING FÖR HYRESAVIER: delegerar till `computeRentDebt`, samma uttryck som
+ * kravtrappans eskaleringsgrind redan läser. (DEPOSIT har en egen gren — se
+ * kommentaren i funktionskroppen; den typen har ingen grind att glida ifrån.)
+ *
+ * `ocrOutstanding` — inte `claim` eller `outstanding` — är rätt storhet mot
+ * hyresgästen: det är den OCR-REGLERBARA restskulden (kapital + förbrukning +
+ * övrig debitering + påminnelseavgift, minus betalt), exklusive dröjsmålsränta.
+ * Ränta går inte att betala med avins OCR, så ett krav som räknar in den ber om
+ * ett belopp mottagaren inte kan betala på det sätt brevet anvisar.
+ *
+ * `paid` LÄSES UR ALLOKERINGARNA, aldrig som `brutto − restskuld`. Restskulden
+ * är klampad vid 0, så den härledningen gömmer en överbetalning — precis det
+ * felet #342 fick rättat i granskning.
+ *
+ * TYPEN ÄR SPÄRREN: `payments` är obligatorisk, så en query utan
+ * `include: { payments: ... }` typcheckar inte. En tom array hade gett
+ * bruttobeloppet i ett formellt krav, tyst.
+ *
+ * RADERNA MÅSTE SUMMERA (FAR, granskning av #344). Kravbrevet specificerar sina
+ * poster (lag 1981:739 5 §), så det som visas måste gå ihop:
+ *
+ *     nominalBeforeFee + fee − paid + overpaid === payable
+ *
+ * Därför returneras posterna NOMINELLT (som de bokfördes) med betalningen som en
+ * egen avdragsrad, i stället för ett per-post klampat restvärde. Första versionen
+ * returnerade `payableBeforeFee = max(0, ocrOutstanding − fee)`, och när en
+ * betalning täckt hela kapitaldelen men bara en del av avgiften klampades den
+ * raden till 0 medan avgiftsraden stod kvar på sitt nominella belopp — brevet
+ * visade då `0 + 60` under en total på `10`. Nåbart: avgiften bokförs vid
+ * eskaleringen, brevet renderas först i PDF-jobbet, och en bankbetalning kan
+ * landa däremellan.
+ */
+export function rentNoticeOutstanding(notice: {
+  type: RentNoticeType
+  totalAmount: Decimal | number
+  consumptionAmount: Decimal | number
+  miscChargeAmount: Decimal | number
+  reminderFeeAmount: Decimal | number
+  interestAccruedAmount: Decimal | number
+  payments: Array<{ amount: Decimal | number }>
+}): {
+  /** Att betala nu — OCR-reglerbar restskuld, klampad vid 0. */
+  payable: number
+  /** Avins nominella OCR-belopp inkl. påminnelseavgift. Aldrig klampat. */
+  nominalTotal: number
+  /** Avins nominella belopp utan påminnelseavgiften (som avin utfärdades). */
+  nominalBeforeFee: number
+  /** Påminnelseavgiften, nominellt bokförd. */
+  fee: number
+  /** Σ allokeringar. Läses ur allokeringarna, aldrig `brutto − restskuld`. */
+  paid: number
+  /** Betalt utöver den nominella fordran. 0 i normalfallet. */
+  overpaid: number
+} {
+  // ── DEPOSITIONSAVIN RÄKNAS UR SINA EGNA FÄLT ─────────────────────────────
+  //
+  // `computeRentDebt` kortsluter till nollor för DEPOSIT. Den kortslutningen är
+  // riktig FÖR SIN GRIND: en deposition ägs av deposits-modulens 1510/2890-flöde
+  // och ska aldrig driva kravtrappan. Men den är ett SKULDPÅSTÅENDE, inte ett
+  // beloppspåstående — och #344 var den första som ledde en VISNINGSyta genom
+  // den. Resultatet: portalen visade `0 kr` på en depositionsavi som hyresgästen
+  // faktiskt ska betala. Bevisat mot riktig Postgres (7 400 kr → 0 kr).
+  //
+  // Före #344 gick portalen via `rentNoticePayableTotal`, som saknar typgren och
+  // därför råkade vara rätt här. Grenen nedan återställer det beloppet och
+  // drar dessutom av faktiska allokeringar (bankmatchningen skapar en även för
+  // depositioner) — aldrig mindre korrekt än det som gällde före.
+  //
+  // Ingen kravyta påverkas: kravtrappans cron filtrerar på `type: RENT`, så en
+  // depositionsavi kan aldrig nå påminnelsebrevet.
+  if (notice.type === RentNoticeType.DEPOSIT) {
+    const nominalBeforeFee = round2(
+      Number(notice.totalAmount) +
+        Number(notice.consumptionAmount) +
+        Number(notice.miscChargeAmount),
+    )
+    const fee = round2(Number(notice.reminderFeeAmount))
+    const nominalTotal = round2(nominalBeforeFee + fee)
+    const paid = round2(notice.payments.reduce((sum, p) => sum + Number(p.amount), 0))
+    return {
+      payable: Math.max(0, round2(nominalTotal - paid)),
+      nominalTotal,
+      nominalBeforeFee,
+      fee,
+      paid,
+      overpaid: Math.max(0, round2(paid - nominalTotal)),
+    }
+  }
+
+  const debt = computeRentDebt({
+    type: notice.type,
+    totalAmount: notice.totalAmount,
+    consumptionAmount: notice.consumptionAmount,
+    miscChargeAmount: notice.miscChargeAmount,
+    reminderFeeAmount: notice.reminderFeeAmount,
+    interestAccruedAmount: notice.interestAccruedAmount,
+    allocations: notice.payments.map((p) => p.amount),
+  })
+  const nominalBeforeFee = round2(debt.capital + debt.consumption + debt.miscCharge)
+  const nominalTotal = round2(nominalBeforeFee + debt.reminderFee)
+  const paid = round2(debt.paid)
+  return {
+    payable: debt.ocrOutstanding,
+    nominalTotal,
+    nominalBeforeFee,
+    fee: debt.reminderFee,
+    paid,
+    overpaid: Math.max(0, round2(paid - nominalTotal)),
+  }
+}

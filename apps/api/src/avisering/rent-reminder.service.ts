@@ -17,7 +17,7 @@ import { QUEUE_PDF } from '../pdf-jobs/pdf.types'
 import { enqueueSafely, isEnqueueProblem } from '../common/queue/enqueue-safety'
 import { AccountingService } from '../accounting/accounting.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
-import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
+import { rentNoticeOutstanding } from './rent-debt.service'
 import { getLogoDataUrl } from './avisering.service'
 import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
@@ -59,6 +59,15 @@ const REMINDER_NOTICE_INCLUDE = {
   tenant: { select: SAFE_TENANT_SELECT },
   lease: { include: { unit: { include: { property: true } } } },
   lines: true,
+  // ── #344: RESTSKULDEN GÅR INTE ATT RÄKNA UTAN ALLOKERINGARNA ──────────────
+  //
+  // Brevet krävde `rentNoticePayableTotal` — bruttot. Betalade hyresgästen
+  // 4 000 av 9 000 kom nästa morgon ett formellt krav på 9 000.
+  //
+  // Systemet VISSTE redan vad som återstod: eskaleringsgrinden läser
+  // `ocrOutstanding` några rader tidigare, just för att avgöra om påminnelsen
+  // ska skickas alls — och skickade sedan bruttot ändå.
+  payments: { select: { amount: true } },
 } satisfies Prisma.RentNoticeInclude
 
 type ReminderNotice = Prisma.RentNoticeGetPayload<{ include: typeof REMINDER_NOTICE_INCLUDE }>
@@ -652,17 +661,26 @@ export class RentReminderService {
           ? `${notice.tenant.firstName ?? ''} ${notice.tenant.lastName ?? ''}`.trim()
           : (notice.tenant.companyName ?? notice.tenant.email)
 
+      const { payable, nominalBeforeFee, fee, paid, overpaid } = rentNoticeOutstanding(notice)
+
       const messageId = await this.mailService.sendRentNoticeReminder({
         to: notice.tenant.email,
         tenantName,
         noticeNumber: notice.noticeNumber,
         ocrNumber: notice.ocrNumber,
-        originalAmount:
-          Number(notice.totalAmount) +
-          Number(notice.consumptionAmount) +
-          Number(notice.miscChargeAmount),
-        feeAmount: Number(notice.reminderFeeAmount),
-        payableTotal: rentNoticePayableTotal(notice),
+        // ── #344: RESTSKULDEN, INTE BRUTTOT ────────────────────────────────
+        //
+        // `payable` — det KRÄVDA beloppet — är den OCR-reglerbara restskulden
+        // INKLUSIVE den avgift som just bokförts (avgiften skrivs in i
+        // `reminderFeeAmount` av `escalateNoticeToReminded`, före det här jobbet
+        // körs). Specifikationen ovanför totalen står NOMINELLT med betalningen
+        // som eget avdrag, så raderna summerar till totalen i varje läge —
+        // inklusive när en betalning hunnit äta in på avgiften (FAR, #344).
+        noticeAmount: nominalBeforeFee,
+        feeAmount: fee,
+        payableTotal: payable,
+        paidSoFar: paid,
+        overpaidAmount: overpaid,
         dueDate: notice.dueDate,
         daysOverdue: this.daysSince(notice.dueDate),
         organizationName: org.name,
@@ -746,12 +764,14 @@ export class RentReminderService {
     const fmt = (n: number): string =>
       Number(n).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-    const original =
-      Number(notice.totalAmount) +
-      Number(notice.consumptionAmount) +
-      Number(notice.miscChargeAmount)
-    const fee = Number(notice.reminderFeeAmount)
-    const payable = rentNoticePayableTotal(notice)
+    // ── #344: PDF:en ÄR KRAVET — den ska bära restskulden ────────────────────
+    //
+    // Den här ytan namngavs inte i ärendet; den hittades genom att inventera
+    // ALLA konsumenter av `rentNoticePayableTotal`. Brevet hänvisar uttryckligen
+    // till bilagan ("bifogad påminnelse visar beloppet"), så en PDF med bruttot
+    // och ett mejl med restskulden vore värre än två fel siffror — de hade
+    // motsagt varandra i samma försändelse.
+    const { payable, nominalBeforeFee, fee, paid, overpaid } = rentNoticeOutstanding(notice)
     const daysOverdue = this.daysSince(notice.dueDate)
     const dueDateStr = notice.dueDate.toLocaleDateString('sv-SE')
 
@@ -764,6 +784,24 @@ export class RentReminderService {
       fee > 0
         ? `<tr><td style="padding:6px 0;color:#6B7280">Påminnelseavgift</td>
              <td style="padding:6px 0;text-align:right;color:#111827">${fmt(fee)} kr</td></tr>`
+        : ''
+
+    // #344 — bara när något faktiskt är betalt. Beloppet är Σ allokeringar,
+    // aldrig ett klampat restvärde: raden är avdraget som gör att posterna ovan
+    // summerar till "Att betala nu".
+    const paidRowHtml =
+      paid > 0
+        ? `<tr><td style="padding:6px 0;color:#6B7280">Registrerad betalning</td>
+             <td style="padding:6px 0;text-align:right;color:#111827">−${fmt(paid)} kr</td></tr>`
+        : ''
+
+    // Överbetalning: utan den här raden hade posterna summerat till ett negativt
+    // tal medan totalen visade 0 (klampad). Sällsynt — men brevet ska gå ihop i
+    // varje läge, inte i de vanliga.
+    const overpaidRowHtml =
+      overpaid > 0
+        ? `<tr><td style="padding:6px 0;color:#6B7280">Överbetalt belopp</td>
+             <td style="padding:6px 0;text-align:right;color:#111827">${fmt(overpaid)} kr</td></tr>`
         : ''
 
     // Fordringsägarens (hyresvärdens) namn + adress måste framgå av påminnelsen
@@ -787,8 +825,17 @@ export class RentReminderService {
     // dokumenttitel, typsnitt och varumärkesfärg. hideFooter:true (samma val som
     // hyresavin): fordringsägarens namn/adress (lag 1981:739 5 §) och betalnings-
     // rutan ligger i innehållet; ingen generisk footer efter dem. Tonen/texten och
-    // ALLA betalningsbärande fält (OCR, ursprungsbelopp, avgift, total, bankgiro,
-    // förfallodatum, mottagare) är byte-för-byte oförändrade — bara ramen brandas.
+    // ALLA betalningsbärande fält (OCR, avgift, total, bankgiro, förfallodatum,
+    // mottagare) bar samma värden som före brandningen — den ändringen rörde
+    // bara ramen.
+    //
+    // #344 ÄNDRADE BELOPPEN MED FLIT: TOTALEN ("Att betala nu") bar bruttot och
+    // bär nu restskulden. Posterna ovanför totalen står kvar NOMINELLT — så som
+    // de bokfördes — med betalningen som egen avdragsrad, vilket är både sant och
+    // summerbart (FAR:s krav i granskningen). Raden hette "Ursprungligt belopp"
+    // med ett tal som inte längre var ursprungligt; den heter nu "Avins belopp"
+    // och bär just det. Brödtexten påstår inte längre att ingen betalning
+    // registrerats — vilket var FALSKT för en delbetald avi.
     const contentCss = `
   .bp-content { color: #111827; }
   table { width:100%; border-collapse:collapse; font-size:13.5px; }
@@ -804,15 +851,17 @@ export class RentReminderService {
 
   <p style="font-size:13.5px;line-height:1.6">
     ${tenantName ? `Hej ${escapeHtml(tenantName)},<br/>` : ''}
-    vi har inte registrerat någon betalning för hyresavi <strong>${notice.noticeNumber}</strong>
-    som förföll ${dueDateStr}. Vänligen betala snarast. En påminnelseavgift enligt
+    hyresavi <strong>${notice.noticeNumber}</strong> förföll ${dueDateStr} och är ännu inte
+    fullt betald. Vänligen betala snarast. En påminnelseavgift enligt
     lag (1981:739) om ersättning för inkassokostnader har tillkommit.
   </p>
 
   <table style="margin-top:24px">
-    <tr><td style="padding:6px 0;color:#6B7280">Ursprungligt belopp</td>
-        <td style="padding:6px 0;text-align:right;color:#111827">${fmt(original)} kr</td></tr>
+    <tr><td style="padding:6px 0;color:#6B7280">Avins belopp</td>
+        <td style="padding:6px 0;text-align:right;color:#111827">${fmt(nominalBeforeFee)} kr</td></tr>
     ${feeRowHtml}
+    ${paidRowHtml}
+    ${overpaidRowHtml}
     <tr class="totalrow"><td>Att betala nu</td>
         <td style="text-align:right">${fmt(payable)} kr</td></tr>
   </table>

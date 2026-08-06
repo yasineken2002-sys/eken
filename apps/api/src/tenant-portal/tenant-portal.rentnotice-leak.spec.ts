@@ -20,8 +20,9 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { TenantPortalService } from './tenant-portal.service'
 import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
-// Interna fält som ALDRIG får nå hyresgästen. reminderFeeAmount selekteras
-// (behövs för payableTotal-beräkningen) men exponeras ALDRIG i svaret — därför
+// Interna fält som ALDRIG får nå hyresgästen. reminderFeeAmount,
+// interestAccruedAmount, type och payments selekteras (behövs för
+// payableTotal-beräkningen) men exponeras ALDRIG i svaret — därför
 // är den med i OUTPUT-listan men inte i SELECT-listan.
 const INTERNAL_FIELDS = [
   'organizationId',
@@ -38,9 +39,7 @@ const INTERNAL_FIELDS = [
   'collectionReadyAt',
   'writtenOffAt',
   'probableLossAt',
-  'interestAccruedAmount',
   'interestAccruedThrough',
-  'type',
   'periodStart',
   'periodEnd',
   'daysCharged',
@@ -48,7 +47,18 @@ const INTERNAL_FIELDS = [
   'isProrated',
 ] as const
 
-const FORBIDDEN_IN_OUTPUT = [...INTERNAL_FIELDS, 'reminderFeeAmount'] as const
+/**
+ * #344 — fält VYNS select hämtar för restskuldsberäkningen, men som mappern
+ * aldrig släpper vidare. De får finnas i vyns select och FÅR INTE finnas i
+ * GDPR-exportens (som returnerar raderna RAW, utan mapper).
+ */
+const CALCULATION_ONLY_FIELDS = ['type', 'interestAccruedAmount', 'payments'] as const
+
+const FORBIDDEN_IN_OUTPUT = [
+  ...INTERNAL_FIELDS,
+  'reminderFeeAmount',
+  ...CALCULATION_ONLY_FIELDS,
+] as const
 
 const EXPECTED_OUTPUT_KEYS = [
   'amount',
@@ -57,8 +67,10 @@ const EXPECTED_OUTPUT_KEYS = [
   'id',
   'miscChargeAmount',
   'month',
+  'nominalTotal',
   'noticeNumber',
   'ocrNumber',
+  'paid',
   'paidAt',
   'payableTotal',
   'propertyName',
@@ -85,6 +97,10 @@ function dirtyRentNotice() {
     consumptionAmount: 250,
     miscChargeAmount: 500,
     reminderFeeAmount: 60,
+    // #344 — fälten restskulden räknas ur. `payments` bär medvetet FLER fält än
+    // selecten hämtar, för att bevisa att mappern (lager 2) inte släpper vidare
+    // dem även om selecten skulle drifta.
+    payments: [{ amount: 3000, id: 'rnp-HEMLIGT', bankTransactionId: 'tx-HEMLIGT' }],
     dueDate: new Date('2026-06-30T00:00:00.000Z'),
     paidAt: null,
     status: 'SENT',
@@ -142,17 +158,33 @@ function expectNoRentNoticeLeak(notice: Record<string, unknown>) {
   // Endast namnet från property/unit — aldrig hela objektet.
   expect(notice.propertyName).toBe('Storgatan 1')
   expect(notice.unitName).toBe('Lgh 1001')
-  // payableTotal = hyra + förbrukning + övrig debitering + påminnelseavgift.
-  expect(notice.payableTotal).toBe(8000 + 250 + 500 + 60)
+  // #344 — payableTotal är RESTSKULDEN: brutto minus registrerad betalning.
+  // Före #344 stod här bruttot (8 810) trots att 3 000 var betalt.
+  expect(notice.payableTotal).toBe(8000 + 250 + 500 + 60 - 3000)
+  expect(notice.paid).toBe(3000)
+  // Nominell fordran — oberoende av betalningar. Gränssnittets "Kvar av" läser
+  // det här fältet i stället för payableTotal + paid, som blir fel vid
+  // överbetalning (granskningsfynd i #344).
+  expect(notice.nominalTotal).toBe(8000 + 250 + 500 + 60)
 }
 
-function assertSelectShape(arg: Record<string, unknown>) {
+/**
+ * `allowCalculationFields` — vyns select FÅR hämta `type`/`interestAccruedAmount`/
+ * `payments`; exportens får INTE. Första versionen av #344 la dem i den DELADE
+ * selecten och läckte dem rakt in i GDPR-exporten (som saknar mapper). Det här
+ * testet fångade det, och delningen nedan är vad som håller dem isär.
+ */
+function assertSelectShape(arg: Record<string, unknown>, allowCalculationFields = false) {
   expect(arg.select).toBeDefined()
   expect(arg.include).toBeUndefined()
   expect(arg.omit).toBeUndefined()
   const select = arg.select as Record<string, unknown>
   for (const key of INTERNAL_FIELDS) {
     expect(select).not.toHaveProperty(key)
+  }
+  for (const key of CALCULATION_ONLY_FIELDS) {
+    if (allowCalculationFields) expect(select).toHaveProperty(key)
+    else expect(select).not.toHaveProperty(key)
   }
   // property/unit-kedjan exponerar bara säkra fält (5a:s allow-lists).
   const propSelect = (
@@ -181,7 +213,7 @@ describe('TenantPortalService — RentNotice-läcktätning', () => {
     expect(result).toHaveLength(1)
     expectNoRentNoticeLeak(result[0] as Record<string, unknown>)
     const arg = prisma.rentNotice.findMany.mock.calls[0][0]
-    assertSelectShape(arg)
+    assertSelectShape(arg, true)
     // T1.4 (hyresjurist): getNotices får ALDRIG visa PENDING/CANCELLED — en
     // efterdebiterad (backfill) avi vilar i PENDING tills manuell frisläppning.
     expect(arg.where.status).toEqual({ in: ['SENT', 'PAID', 'OVERDUE'] })
@@ -202,7 +234,7 @@ describe('TenantPortalService — RentNotice-läcktätning', () => {
 
     expectNoRentNoticeLeak(result[0] as Record<string, unknown>)
     const arg = prisma.rentNotice.findMany.mock.calls[0][0]
-    assertSelectShape(arg)
+    assertSelectShape(arg, true)
     // Bara SENT/PAID/OVERDUE till hyresgästen (oförändrat beteende).
     expect(arg.where.status).toEqual({ in: ['SENT', 'PAID', 'OVERDUE'] })
   })
@@ -235,7 +267,9 @@ describe('TenantPortalService — RentNotice-läcktätning', () => {
     expect(rentNoticesArg).not.toBe(true)
     expect(rentNoticesArg.omit).toBeUndefined()
     expect(rentNoticesArg.select).toBeDefined()
-    for (const key of INTERNAL_FIELDS) {
+    for (const key of [...INTERNAL_FIELDS, ...CALCULATION_ONLY_FIELDS]) {
+      // #344 — beräkningsfälten hör till VYNS select, aldrig exportens.
+      // Exporten returnerar raderna RAW; allt som selekteras hamnar i filen.
       expect(rentNoticesArg.select).not.toHaveProperty(key)
     }
   })
