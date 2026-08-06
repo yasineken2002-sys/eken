@@ -252,6 +252,33 @@ export class CollectionExportService {
     const invoices: InvoiceWithCollectionData[] = []
     const skipped: Array<{ invoiceNumber: string; reason: string }> = []
     for (const inv of laddade) {
+      // ── #352 PR 2: DEPOSITIONER SVEPS INTE MED I EN BATCH ─────────────────
+      //
+      // Invändningen gäller verktygets NATUR, inte listans längd. Bulk-vägen är
+      // byggd för att svepa, och en operatör som bockar "markera alla" har inte
+      // tagit ställning till just den här depositionen. En inkasso-överlämning
+      // av en deposition ska vara ett uttryckligt beslut per fall — hyresgästen
+      // bor kvar och relationen pågår. (FAR-granskat, #352.)
+      //
+      // VÄGEN FINNS KVAR. `POST /collections/export/:invoiceId`, `mark-sent` och
+      // AI-verktygen (som kräver dubbelbekräftelse) är ORÖRDA — en människa som
+      // pekar ut precis den här fakturan kan fortfarande lämna den till inkasso.
+      // Det är skillnaden mellan att stänga en genväg och att ta bort en
+      // möjlighet.
+      //
+      // KONTROLLEN LIGGER FÖRE `claimForExport` med flit: claimen skriver
+      // SENT_TO_COLLECTION och pausar påminnelser. Hoppade vi över fakturan
+      // efteråt vore den redan överlämnad i systemets ögon utan att ha kommit
+      // med i ZIP:en.
+      if (inv.type === 'DEPOSIT') {
+        skipped.push({
+          invoiceNumber: inv.invoiceNumber,
+          reason:
+            'Depositionsfordran kräver enskild bedömning — exkluderad ur bulk-export. ' +
+            'Använd export för enskild faktura.',
+        })
+        continue
+      }
       try {
         await this.claimForExport(
           inv.id,

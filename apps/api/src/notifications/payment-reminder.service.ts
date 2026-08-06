@@ -98,6 +98,27 @@ export class PaymentReminderService {
             )
 
             // ── Dag 30+ → markera redo för inkasso ───────────────────────────
+            //
+            // #352 PR 2 FÖRSÖKTE LÄGGA EN DEPOSIT-SPÄRR HÄR OCH BACKADE. Skälet
+            // är mätt, inte antaget, och är värt att spara:
+            //
+            // Grenarna är en if/continue-kedja — inkasso (30+), formell (14+),
+            // vänlig (1–7). Spärras BARA inkassogrenen för DEPOSIT faller
+            // fakturan ner i nästa gren i stället för att lämnas i fred. För en
+            // deposition som når dag 30+ UTAN att ha fått sin formella
+            // påminnelse (pausad och återupptagen, utebliven cron-körning,
+            // bakdaterad förfallodag) blir följden att den i stället får
+            // FORMELL PÅMINNELSE MED AVGIFT bokförd på 3593.
+            //
+            // Mätt: deposition 40 dagar, inga tidigare påminnelser →
+            //   före spärr:  readyForCollection 1, avgift 0
+            //   efter spärr: formalSent 1,        avgift 1
+            //
+            // Spärren gjorde alltså saken VÄRRE i exakt den dimension #352 finns
+            // för att laga. Steg 5 kan därför inte stängas isolerat — det kräver
+            // att steg 4 stängs samtidigt, och det är PR 1b, som väntar på ett
+            // juridiskt beslut. PR 1b är alltså inte bara "nästa" utan en
+            // FÖRUTSÄTTNING för den här spärren.
             if (
               daysOverdue >= org.reminderCollectionDay &&
               !sentTypes.has('READY_FOR_COLLECTION')
@@ -200,6 +221,13 @@ export class PaymentReminderService {
         id: inv.id,
         invoiceNumber: inv.invoiceNumber,
         status: inv.status,
+        // #352 PR 2 — TYPEN MÅSTE NÅ VYN. En förfallen deposition SKA synas här
+        // (annars går den enskilda export-vägen inte att hitta), men den kan
+        // inte bulk-exporteras. Utan `type` kan gränssnittet inte skilja på
+        // "kan exporteras i batch" och "kräver enskilt beslut" — och en
+        // kryssruta som ser markerad ut men tyst faller bort ur resultatet är
+        // en fälla, inte ett skydd.
+        type: inv.type,
         // ── #307A: RESTSKULDEN, INTE URSPRUNGSBELOPPET ────────────────────
         //
         // Här stod `Number(inv.total)`. Urvalet ovan innehåller

@@ -88,9 +88,20 @@ export function CollectionsPage() {
     })
   }
 
-  const allSelected = invoices.length > 0 && invoices.every((i) => selected.has(i.id))
+  // #352 — DEPOSITIONER GÅR INTE ATT BULK-EXPORTERA.
+  //
+  // Backend hoppar över dem i batchen (collection-export.service.ts), men en
+  // kryssruta som ser markerad ut och sedan tyst faller bort ur resultatet är
+  // en fälla, inte ett skydd. Urvalet exkluderar dem därför redan här, och
+  // raden visar en badge som säger varför.
+  //
+  // Den ENSKILDA export-vägen finns kvar för depositioner — det är den
+  // uttryckliga mänskliga bedömning per fall som en inkasso-överlämning av en
+  // deposition kräver.
+  const bulkSelectable = invoices.filter((i) => i.type !== 'DEPOSIT')
+  const allSelected = bulkSelectable.length > 0 && bulkSelectable.every((i) => selected.has(i.id))
   const toggleAll = () => {
-    setSelected(allSelected ? new Set() : new Set(invoices.map((i) => i.id)))
+    setSelected(allSelected ? new Set() : new Set(bulkSelectable.map((i) => i.id)))
   }
 
   const summary = useMemo(() => {
@@ -182,11 +193,15 @@ export function CollectionsPage() {
               <tr className="border-line border-b bg-gray-50/50 text-[12px] font-semibold uppercase tracking-wide text-gray-400">
                 {bucket === 'ready' && (
                   <th className="px-4 py-3 text-left">
+                    {/* #352 — inaktiverad när listan bara innehåller depositioner:
+                        ett klick vore annars en no-op utan förklaring. */}
                     <input
                       type="checkbox"
                       checked={allSelected}
                       onChange={toggleAll}
+                      disabled={bulkSelectable.length === 0}
                       aria-label="Välj alla"
+                      className="disabled:cursor-not-allowed disabled:opacity-40"
                     />
                   </th>
                 )}
@@ -256,16 +271,32 @@ function CollectionRow({
     >
       {bucket === 'ready' && (
         <td className="px-4 py-3">
+          {/* #352 — depositioner kan inte bulk-exporteras; kryssrutan är därför
+              inaktiverad i stället för att tyst falla bort ur resultatet. */}
           <input
             type="checkbox"
             checked={selected}
             onChange={onToggle}
-            aria-label={`Välj ${invoice.invoiceNumber}`}
+            disabled={invoice.type === 'DEPOSIT'}
+            aria-label={
+              invoice.type === 'DEPOSIT'
+                ? `${invoice.invoiceNumber} är en deposition och kan inte bulk-exporteras`
+                : `Välj ${invoice.invoiceNumber}`
+            }
+            className="disabled:cursor-not-allowed disabled:opacity-40"
           />
         </td>
       )}
       <td className="px-4 py-3 text-[13.5px] font-medium text-gray-900">
         {invoice.invoiceNumber}
+        {invoice.type === 'DEPOSIT' && (
+          <span
+            className="ml-2 inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700"
+            title="Depositionsfordran — lämnas till inkasso enskilt, aldrig i batch"
+          >
+            Deposition
+          </span>
+        )}
         {invoice.remindersPaused && (
           <span className="ml-2 inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
             <Pause size={10} /> Pausad

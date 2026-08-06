@@ -441,6 +441,25 @@ export class RentReminderService {
    * claim count=0 → flipped=false utan att skriva ett andra COLLECTION_READY.
    * Redan INKASSO_READY/WRITTEN_OFF → no-op (ingen omgrindning, ingen ombokning).
    */
+  // ── #352: DEPOSITIONS-AVIER HÅLLS UTE AV URVALET, INTE AV DEN HÄR METODEN ──
+  //
+  // `RentNotice` har också typen DEPOSIT, och en depositionsavi ska aldrig
+  // eskalera till inkasso — samma skäl som på fakturasidan (#352): en
+  // deposition är en säkerhet som ställs vid kontraktsstart, inte en löpande
+  // hyresskuld, och en överlämning kräver ett uttryckligt mänskligt beslut.
+  //
+  // I DAG HÅLLER DET, MEN INVARIANTEN ÄR IMPLICIT. `collectionStage` sätts
+  // enbart från cron-looparna ovan, och de filtrerar `type: RentNoticeType.RENT`
+  // i sina `where`. Den här metoden grindar däremot på `collectionStage`, INTE
+  // på typ — den är alltså säker bara så länge den enda vägen in går via de
+  // filtrerade looparna.
+  //
+  // EN FRAMTIDA ENDPOINT SOM EXPONERAR DEN HÄR METODEN DIREKT skulle tyst
+  // återinföra #352 i syskonsystemet: en depositionsavi vars `collectionStage`
+  // satts på något annat sätt skulle passera rakt igenom. Lägg då ett typfilter
+  // HÄR, inte bara i den nya anroparen. (Kartlagt i code-reviewer-granskningen
+  // av #352 PR 2 — verifierat säkert i dag, dokumenterat för att det inte ska
+  // förbli en tyst slump.)
   async escalateNoticeToInkassoReady(
     noticeId: string,
     organizationId: string,
