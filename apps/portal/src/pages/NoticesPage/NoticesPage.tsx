@@ -268,12 +268,15 @@ function RentNoticesList({
                 betalt), samma tal som påminnelsebrevet visar. Visa aldrig
                 totalAmount (bara hyran) — det vore för lågt. Den förklarande
                 raden bara vid delbetalning: utan den är två tal bara brus.
-                Samma formulering som fakturakortet ovan. */}
+                Samma FORMULERING som fakturakortet ovan, men inte samma villkor:
+                fakturakortet visar raden så fort paid > 0, avin döljer den även
+                vid exakt full betalning (paid === nominalTotal) — då är payable
+                0 och raden skulle inte förklara något. */}
             <p className={styles.cardAmount}>{formatCurrencySv(notice.payableTotal)}</p>
             {notice.paid > 0 && notice.paid !== notice.nominalTotal && (
               <p className={styles.cardAmountSub}>
-                Kvar av {formatCurrencySv(notice.nominalTotal)} —{' '}
-                {formatCurrencySv(notice.paid)} betalt
+                Kvar av {formatCurrencySv(notice.nominalTotal)} — {formatCurrencySv(notice.paid)}{' '}
+                betalt
               </p>
             )}
 

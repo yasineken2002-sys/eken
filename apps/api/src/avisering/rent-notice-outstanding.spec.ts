@@ -136,8 +136,47 @@ describe('#344 — rentNoticeOutstanding', () => {
     expect(rentNoticeOutstanding(n).paid).toBe(debt.paid)
   })
 
-  it('DEPOSIT-avi → noll (deras 1510/2890-flöde ägs av deposits-modulen)', () => {
-    const dep = { ...notice({ payments: [1000] }), type: RentNoticeType.DEPOSIT }
-    expect(rentNoticeOutstanding(dep).payable).toBe(0)
+  // ── DEPOSITIONSAVIN — regression funnen av bevisriggen ────────────────────
+  //
+  // `computeRentDebt` kortsluter till nollor för DEPOSIT. Det är rätt för
+  // KRAVTRAPPANS grind (en deposition ska aldrig drivas in där), men det är ett
+  // skuldpåstående — inte ett beloppspåstående. #344 var den första ändringen som
+  // ledde en VISNINGSyta genom den kortslutningen, och portalen började visa
+  // `0 kr` på en depositionsavi hyresgästen faktiskt ska betala.
+  //
+  // Bevisat mot riktig Postgres innan fixen: en 7 400 kr-deposition, skapad av
+  // den skarpa aktiveringsvägen och skickad av det skarpa utskicksjobbet, kom
+  // fram i portalen som 0 kr.
+  it('DEPOSIT-avi → depositionens BELOPP, inte noll', () => {
+    const dep = { ...notice({ payments: [], fee: 0, interest: 0 }), type: RentNoticeType.DEPOSIT }
+    // 8 000 + 250 + 500 = 8 750. Före fixen: 0.
+    expect(rentNoticeOutstanding(dep).payable).toBe(8750)
+    expect(rentNoticeOutstanding(dep).nominalTotal).toBe(8750)
+  })
+
+  it('DEPOSIT-avi → registrerad betalning dras av (bankmatchningen skapar allokering)', () => {
+    const dep = {
+      ...notice({ payments: [1000], fee: 0, interest: 0 }),
+      type: RentNoticeType.DEPOSIT,
+    }
+    expect(rentNoticeOutstanding(dep).paid).toBe(1000)
+    expect(rentNoticeOutstanding(dep).payable).toBe(7750)
+  })
+
+  it('DEPOSIT-avin når ALDRIG kravtrappan — computeRentDebt är fortsatt noll där', () => {
+    // Spärren åt andra hållet: fixen ovan får inte göra depositionen synlig för
+    // eskaleringsgrinden, som läser computeRentDebt (inte den här helpern).
+    const dep = notice({ payments: [1000] })
+    expect(
+      computeRentDebt({
+        type: RentNoticeType.DEPOSIT,
+        totalAmount: dep.totalAmount,
+        consumptionAmount: dep.consumptionAmount,
+        miscChargeAmount: dep.miscChargeAmount,
+        reminderFeeAmount: dep.reminderFeeAmount,
+        interestAccruedAmount: dep.interestAccruedAmount,
+        allocations: dep.payments.map((p) => p.amount),
+      }).ocrOutstanding,
+    ).toBe(0)
   })
 })

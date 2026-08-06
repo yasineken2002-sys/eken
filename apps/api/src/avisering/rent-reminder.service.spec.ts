@@ -333,11 +333,10 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
   // `rentNoticeOutstanding` är testad för sig i rent-notice-outstanding.spec.ts.
   // Att hjälparen räknar rätt säger dock INGENTING om att anroparen kopplar dess
   // utdata till rätt parameter — en framtida omkastning av `paidSoFar` och
-  // `noticeAmount` hade passerat hela den sviten. Bevisriggen mot riktig Postgres
-  // fångade det, men riggar lever inte i repot. Det här gör det. (Samma form som
-  // fakturasidans payment-reminder-outstanding.spec.ts.)
+  // `noticeAmount` hade passerat hela den sviten. Det är vad testerna nedan
+  // låser. (Samma form som fakturasidans payment-reminder-outstanding.spec.ts.)
   it('#344 — delbetald avi: brevet får RESTSKULDEN och de nominella posterna', async () => {
-    const { service, mailService } = makeSendService({ payments: [4000] });
+    const { service, mailService } = makeSendService({ payments: [4000] })
     await service.processReminderSendJob('org-1', 'rn-1')
 
     const letter = mailService.sendRentNoticeReminder.mock.calls[0][0]
@@ -362,9 +361,10 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
 
   it('#344 — PDF:EN bär samma tal som mejlet, med betalningsraden utskriven', async () => {
     const { service, notice, org } = makeSendService({ payments: [4000] })
-    const html = (
-      await service.buildReminderPdfHtml(notice as never, org as never)
-    ).replace(/\u00a0/g, ' ')
+    const html = (await service.buildReminderPdfHtml(notice as never, org as never)).replace(
+      /\u00a0/g,
+      ' ',
+    )
 
     expect(html).toContain('Avins belopp')
     expect(html).toContain('8 000,00 kr')
@@ -379,9 +379,10 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
 
   it('#344 — överbetald avi: PDF:en redovisar överbetalningen i stället för att gå ihop fel', async () => {
     const { service, notice, org } = makeSendService({ payments: [9000] })
-    const html = (
-      await service.buildReminderPdfHtml(notice as never, org as never)
-    ).replace(/\u00a0/g, ' ')
+    const html = (await service.buildReminderPdfHtml(notice as never, org as never)).replace(
+      /\u00a0/g,
+      ' ',
+    )
 
     // 8 060 nominellt, 9 000 betalt → 0 att betala, 940 överbetalt.
     expect(html).toContain('Överbetalt belopp')
