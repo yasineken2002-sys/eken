@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { invoiceOutstanding } from '../../invoices/invoice-debt'
+import { bearsOpenDebt, isAtCollection } from '../../invoices/invoice-payment-status'
 import { InvoicesService, toPaymentMethod } from '../../invoices/invoices.service'
 import { PdfService } from '../../invoices/pdf.service'
 import { TenantsService } from '../../tenants/tenants.service'
@@ -1396,7 +1397,14 @@ export class ToolExecutorService {
               paidOnTime: number
               late: number
               lateDaysSum: number
-              outstanding: number
+              // #347 — TRE TAL, SJÄLVFÖRKLARANDE NYCKLAR. `data` går rakt till
+              // modellen; hade totalen hetat bara `outstanding` bredvid de två
+              // delarna kunde modellen plocka fel av dem och rapportera en för
+              // låg skuld. Namnen bär semantiken, inte verktygsbeskrivningen
+              // (FAR:s invändning, #347 punkt 4).
+              outstandingTotal: number
+              outstandingOwn: number
+              outstandingAtCollection: number
             }
           >()
 
@@ -1414,7 +1422,9 @@ export class ToolExecutorService {
                 paidOnTime: 0,
                 late: 0,
                 lateDaysSum: 0,
-                outstanding: 0,
+                outstandingTotal: 0,
+                outstandingOwn: 0,
+                outstandingAtCollection: 0,
               })
             }
             const entry = tenantMap.get(inv.tenantId)!
@@ -1431,17 +1441,33 @@ export class ToolExecutorService {
                 entry.lateDaysSum += lateDays
               }
             }
-            // #325 — RESTSKULDEN, inte ursprungsbeloppet. Fältet renderas som
-            // "utestående: X kr" till hyresvärden; en SENT/OVERDUE-faktura med
-            // allokeringar räknade hela sitt ursprungsbelopp och gjorde ordet
-            // osant.
+            // #325 gav RESTSKULDEN (inte ursprungsbeloppet). #347 ger MÄNGDEN.
             //
-            // KVARSTÅENDE TÄCKNINGSHÅL, MEDVETET UTANFÖR #325: statusfiltret
-            // utelämnar PARTIAL och SENT_TO_COLLECTION, som också bär öppen
-            // skuld. Att vidga det ändrar VILKA hyresgäster som får en
-            // utestående-siffra — ett annat beslut än den här aritmetiken.
-            if (inv.status === 'SENT' || inv.status === 'OVERDUE') {
-              entry.outstanding += invoiceOutstanding(inv)
+            // Här stod `status === 'SENT' || status === 'OVERDUE'`. PARTIAL och
+            // SENT_TO_COLLECTION bär också öppen fordran, så "utestående"
+            // UNDERSKATTADE: en hyresgäst med enbart en delbetald faktura fick
+            // ingen siffra alls.
+            //
+            // MÄNGDEN HÄRLEDS NU (`DEBT_BEARING_STATUSES`) i stället för att
+            // stavas här — se invoice-payment-status.ts.
+            //
+            // SENT_TO_COLLECTION RÄKNAS IN, den exkluderas aldrig. Överlämningen
+            // till inkasso bokför INGENTING: fordran ligger kvar på 1510 och
+            // hyresgästen är fortfarande skyldig pengarna — inkassobolaget är
+            // ombud, inte ny borgenär. Att utelämna den hade låtit rapporten visa
+            // en lägre skuld än huvudboken (BFL 4 kap 2 §, konsekvens). Det finns
+            // dessutom ingen nedskrivningsväg för Invoice alls — `RentBadDebtService`
+            // rör bara RentNotice — så fordran är öppen tills den betalas eller
+            // makuleras. (FAR-granskat, #347.)
+            //
+            // Den SÄRREDOVISAS ändå, för att skillnaden är handlingsmässig: en
+            // hyresvärd som ser ett odelat tal kan börja jaga en skuld som redan
+            // ligger hos ombudet.
+            if (bearsOpenDebt(inv.status)) {
+              const outstanding = invoiceOutstanding(inv)
+              entry.outstandingTotal += outstanding
+              if (isAtCollection(inv.status)) entry.outstandingAtCollection += outstanding
+              else entry.outstandingOwn += outstanding
             }
           }
 
@@ -1454,12 +1480,23 @@ export class ToolExecutorService {
             const onTimePct =
               entry.total > 0 ? Math.round((entry.paidOnTime / entry.total) * 100) : 0
             const avgLate = entry.late > 0 ? Math.round(entry.lateDaysSum / entry.late) : 0
+            // #347 — ETIKETTEN FÖLJER MÄNGDEN.
+            //
+            // Ligger ingenting hos inkasso är hela skulden hyresvärdens egen, och
+            // då är det gamla ordet fortfarande sant — ingen anledning att tvinga
+            // på läsaren en uppdelning som saknar innehåll ("hos inkasso: 0 kr").
+            // Finns en inkassodel NAMNGES båda talen, så att "utestående" aldrig
+            // står ensamt över ett belopp som delvis ligger hos ett ombud.
+            const debtClause =
+              entry.outstandingAtCollection > 0
+                ? `, utestående hos dig: ${formatAmount(entry.outstandingOwn)} kr, hos inkasso: ${formatAmount(entry.outstandingAtCollection)} kr`
+                : entry.outstandingOwn > 0
+                  ? `, utestående: ${formatAmount(entry.outstandingOwn)} kr`
+                  : ''
             lines.push(
               `  ${entry.name}: ${entry.total} fakturor, ${onTimePct}% i tid` +
                 (entry.late > 0 ? `, genomsnittlig försening ${avgLate} dagar` : '') +
-                (entry.outstanding > 0
-                  ? `, utestående: ${formatAmount(entry.outstanding)} kr`
-                  : ''),
+                debtClause,
             )
           }
 
@@ -1629,6 +1666,23 @@ export class ToolExecutorService {
               },
             }),
             this.prisma.invoice.findMany({
+              // #347 — `OVERDUE` ENSAMT ÄR RÄTT HÄR. RÖR INTE.
+              //
+              // Den här ytan svarar på "VAD ÄR FÖRFALLET", inte "vad är
+              // skyldigt". Det är en annan fråga än `analyze_payment_behavior`s
+              // "utestående", som i #347 vidgades till hela
+              // `DEBT_BEARING_STATUSES` — och den skillnaden är avsiktlig.
+              //
+              // En delbetald faktura (PARTIAL) hamnar därför inte här, ens om
+              // förfallodagen passerat: cronen `markOverdueInvoices` flippar bara
+              // SENT → OVERDUE. PARTIAL är en egen hink — "en skuld som aktivt
+              // betalas av" — vilket är samma läsning som `OverdueDebtService`
+              // och fakturasidans KPI redan har, och skälet till att
+              // PARTIAL → SENT_TO_COLLECTION lades som EGEN kant i stället för
+              // omvägen via OVERDUE (se INVOICE_TRANSITIONS-kommentaren).
+              //
+              // Att "harmonisera" hit vore alltså inte en fix utan en
+              // betydelseändring av rubriken "Förfallna fakturor >30 dagar".
               where: { organizationId, status: 'OVERDUE', dueDate: { lte: thirtyDaysAgo } },
               select: {
                 invoiceNumber: true,

@@ -127,13 +127,20 @@ describe('#325 · analyze_payment_behavior — "utestående" betyder utestående
     }
 
     const res = await run(prisma, 'analyze_payment_behavior')
-    const rows = res.data as Record<string, { outstanding: number }>
+    const rows = res.data as Record<string, { outstandingTotal: number }>
 
-    expect(rows['t1']?.outstanding).toBe(RESTSKULD)
-    expect(rows['t1']?.outstanding).not.toBe(FAKTURERAT)
+    // #347 döpte om fältet (outstandingTotal/Own/AtCollection); talet är
+    // detsamma som #325 låste.
+    expect(rows['t1']?.outstandingTotal).toBe(RESTSKULD)
+    expect(rows['t1']?.outstandingTotal).not.toBe(FAKTURERAT)
     // Prosan som modellen läser måste bära samma tal som strukturdatan.
+    //
+    // HÅRT MELLANSLAG: `toLocaleString('sv-SE')` ger U+00A0. Stod det "10 000"
+    // med vanligt mellanslag här kunde negativkontrollen aldrig matcha och var
+    // alltså tyst grön oavsett vad koden gjorde. (Upptäckt i #347.)
     expect(res.message).toContain('utestående')
-    expect(res.message).not.toContain('10 000')
+    expect(res.message).not.toContain(FAKTURERAT.toLocaleString('sv-SE'))
+    expect(res.message).toContain(RESTSKULD.toLocaleString('sv-SE'))
   })
 
   it('fullt obetald faktura är oförändrad — fixen rör bara de delbetalda', async () => {
@@ -154,7 +161,9 @@ describe('#325 · analyze_payment_behavior — "utestående" betyder utestående
     }
 
     const res = await run(prisma, 'analyze_payment_behavior')
-    expect((res.data as Record<string, { outstanding: number }>)['t1']?.outstanding).toBe(4000)
+    expect((res.data as Record<string, { outstandingTotal: number }>)['t1']?.outstandingTotal).toBe(
+      4000,
+    )
   })
 })
 
