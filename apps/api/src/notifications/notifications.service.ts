@@ -242,7 +242,18 @@ export class NotificationsService implements OnModuleInit {
 
   async sendOverdueRemindersForOrg(organizationId: string): Promise<void> {
     const invoices: InvoiceWithRelations[] = await this.prisma.invoice.findMany({
-      where: { organizationId, status: 'OVERDUE' },
+      // ── #352: DEPOSITIONER PÅMINNS INTE HÄRIFRÅN ──────────────────────────
+      //
+      // En depositionsfaktura är en riktig fordran (1510 D / 2890 K, #348) men
+      // en ENGÅNGSBETALNING vid kontraktsstart, inte en löpande skuldrelation.
+      // Kravtrappan är byggd för det senare, och en obetald deposition ska
+      // hanteras som ett eget spår — inte matas in i hyresmaskineriet.
+      //
+      // `markOverdueInvoices` (statusflippen) är MEDVETET ORÖRD: den är
+      // penganeutral och bär depositionens SYNLIGHET, som #348 uttryckligen
+      // fastställde ska finnas kvar. Synlighet och automatisk eskalering med
+      // ekonomiska konsekvenser är två skilda saker. (FAR-granskat, #352.)
+      where: { organizationId, status: 'OVERDUE', type: { not: 'DEPOSIT' } },
       include: {
         tenant: { select: SAFE_TENANT_SELECT },
         customer: { select: SAFE_CUSTOMER_SELECT },

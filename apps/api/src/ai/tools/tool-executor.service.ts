@@ -968,9 +968,20 @@ export class ToolExecutorService {
           const invoiceIds = toolInput.invoiceIds as string[] | undefined
 
           const overdueInvoices = await this.prisma.invoice.findMany({
+            // #352 — depositioner påminns inte via AI-verktyget heller. Samma
+            // skäl som cronens org-variant: en deposition är en engångsbetalning
+            // vid kontraktsstart, inte en löpande skuld, och hör inte hemma i
+            // hyresmaskineriet. Spärren ligger i `where` OCH gäller även när
+            // modellen skickar med explicita `invoiceIds` — annars hade en
+            // uppmanad AI kunnat kringgå den genom att namnge fakturan.
+            //
+            // Synligheten är orörd: `get_overdue_invoices` och förfallolistan
+            // visar fortfarande depositionen (#348). Det är eskaleringen som
+            // stoppas, inte insynen.
             where: {
               organizationId,
               status: 'OVERDUE',
+              type: { not: 'DEPOSIT' },
               ...(invoiceIds && invoiceIds.length > 0 ? { id: { in: invoiceIds } } : {}),
             },
             include: {
