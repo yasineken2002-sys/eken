@@ -1,5 +1,5 @@
 import type { InvoiceStatus } from '@prisma/client'
-import { isValidTransition } from '@eken/shared'
+import { isValidTransition, INVOICE_TRANSITIONS } from '@eken/shared'
 
 /**
  * #307 C — MÅLSTATUSEN FÖR EN BETALNING. EN KÄLLA, TVÅ ANVÄNDNINGAR.
@@ -55,6 +55,41 @@ export function paymentTargetStatus(
  * kräver därför ingen kant — men det får inte förväxlas med att kringgå tabellen:
  * varje övergång som FAKTISKT byter status valideras mot `isValidTransition`.
  */
+/**
+ * #347 — DE STATUSAR SOM KAN BÄRA EN ÖPPEN FORDRAN. HÄRLEDD, INTE HANDSKRIVEN.
+ *
+ * En status bär öppen skuld exakt när en betalning kan landa på den: man kan
+ * bara betala ett krav som är öppet. Regeln frågar därför de två funktionerna
+ * ovan i stället för att räkna upp statusar — samma princip som
+ * `COLLECTION_SOURCE_STATUSES` i #307 PR 2b (härled ur tabellen, så att listan
+ * och tabellen inte kan glida isär).
+ *
+ * Idag blir det `SENT`, `PARTIAL`, `OVERDUE`, `SENT_TO_COLLECTION`. Den listan
+ * fanns redan HANDSKRIVEN som `PAYABLE` i invoice-collection-payment.spec.ts —
+ * precis den sortens andra lista vid sidan av statusmaskinen som #307 finns för
+ * att bli av med. DRAFT (aldrig utställd, ingen fordran har uppstått), PAID
+ * (reglerad) och VOID (makulerad) faller ut av sig själva.
+ */
+export const DEBT_BEARING_STATUSES: InvoiceStatus[] = (
+  Object.keys(INVOICE_TRANSITIONS) as InvoiceStatus[]
+).filter((s) => isPaymentTransitionAllowed(s, paymentTargetStatus(s, false)))
+
+export function bearsOpenDebt(status: InvoiceStatus): boolean {
+  return DEBT_BEARING_STATUSES.includes(status)
+}
+
+/**
+ * #347 — ligger fordran hos ETT INKASSOOMBUD i stället för hos hyresvärden själv?
+ *
+ * Skillnaden är INTE bokföringsmässig: överlämningen bokför ingenting, fordran
+ * ligger kvar på 1510 och hyresgästen är fortfarande skyldig pengarna (FAR,
+ * #347). Den är HANDLINGSMÄSSIG — den svarar på "måste jag göra något själv,
+ * eller ligger det hos ombudet". Därför särredovisas den, aldrig exkluderas.
+ */
+export function isAtCollection(status: InvoiceStatus): boolean {
+  return status === 'SENT_TO_COLLECTION'
+}
+
 export function isPaymentTransitionAllowed(current: InvoiceStatus, target: InvoiceStatus): boolean {
   if (target === current) {
     // SJÄLVÖVERGÅNGEN ÄR HÄRLEDD, INTE GENERELL. Ett rakt `return true` här hade
