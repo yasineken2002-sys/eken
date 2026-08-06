@@ -53,13 +53,25 @@ function makeInvoice(opts: { total?: number; payments?: number[]; daysOverdue?: 
 
 function makeService(invoice: ReturnType<typeof makeInvoice>) {
   const invoiceUpdate = jest.fn().mockResolvedValue({})
+  // #357: hela avgiften ligger numera i EN transaktion med idempotensmarkören
+  // först, så `tx` måste bära markören och händelseloggen också. Assertionerna
+  // nedan är OFÖRÄNDRADE — det som mäts (brevets siffror vs det nominella
+  // beloppet) är exakt detsamma; bara skrivvägen har flyttat in i transaktionen.
   const tx = {
+    paymentReminder: {
+      createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
     invoiceLine: { create: jest.fn().mockResolvedValue({}) },
     invoice: { update: invoiceUpdate },
+    invoiceEvent: { create: jest.fn().mockResolvedValue({}) },
   }
   const prisma = {
     invoice: { findMany: jest.fn().mockResolvedValue([invoice]), update: invoiceUpdate },
-    paymentReminder: { create: jest.fn().mockResolvedValue({}) },
+    paymentReminder: {
+      create: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
     invoiceEvent: { create: jest.fn().mockResolvedValue({}) },
     account: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)),

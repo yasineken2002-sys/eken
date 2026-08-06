@@ -486,7 +486,17 @@ export class PaymentReminderService {
     // misslyckat köande får inte göra avgiften ogjord.
     if (outcome.status === 'ok') {
       await this.prisma.paymentReminder.updateMany({
-        where: { invoiceId: invoice.id, type: 'REMINDER_FORMAL' },
+        // `PaymentReminder` bär inget eget `organizationId` och kan bara scopas
+        // via `Invoice`. Bindningen står här som FÖRSVAR I DJUPET: cronen äger
+        // alla organisationer och `invoice` kommer från dess eget urval, så det
+        // finns ingen anropare som kan smuggla in ett främmande id — men en
+        // framtida anropare ska inte kunna det heller, och scopningen ska gå att
+        // granska på plats. (Objektnivå-grinden, #273/#274.)
+        where: {
+          invoiceId: invoice.id,
+          type: 'REMINDER_FORMAL',
+          invoice: { organizationId: invoice.organizationId },
+        },
         data: { emailMessageId: outcome.jobId },
       })
     } else {

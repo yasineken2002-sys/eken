@@ -1126,6 +1126,20 @@ export const CALLER_SCOPED: readonly CallerScopedException[] = [
       'getOrCreateConversation(tenantId, …), som scopar på tenantId (form D). Id:t har ' +
       'alltså redan passerat portalens scopning innan det når hit.',
   },
+  {
+    file: 'notifications/payment-reminder.service.ts',
+    model: 'PaymentReminder',
+    op: 'updateMany',
+    sites: 1,
+    reason:
+      'sendFormalReminder skriver emailMessageId på markören efter commit (#357). ' +
+      'Skrivningen ÄR org-bunden — `where` innehåller `invoice: { organizationId: ' +
+      'invoice.organizationId }` — men heuristikens form A känner bara igen bindningen ' +
+      'på find*, inte i en skrivnings where, så den syns inte. Invoice-objektet kommer ' +
+      'från processOverdueReminders eget findMany; cronen äger alla organisationer och ' +
+      'har ingen aktör att scopa mot. Skrivningen rör ett enda noteringsfält och kan ' +
+      'inte sätta belopp, status eller kravsteg.',
+  },
 ]
 
 function exceptionKey(x: { file: string; model: string; op: string; via?: string }): string {
