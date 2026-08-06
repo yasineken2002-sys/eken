@@ -54,6 +54,23 @@ function makeExecutor(prisma: unknown) {
 
 type Row = { outstandingTotal: number; outstandingOwn: number; outstandingAtCollection: number }
 
+/**
+ * VARFÖR DEN HÄR FILEN INTE BEHÖVER ASSERTA PÅ `where` (#348).
+ *
+ * Attrappen returnerar en fast array oavsett `where`, så testerna här är blinda
+ * för query-filtret — samma blindhet som gjorde att nio tester i
+ * `deposit-in-tenant-debt.spec.ts` förblev gröna när DEPOSIT exkluderades.
+ *
+ * Här är det ofarligt, men bara av ett skäl som är värt att skriva ut:
+ * statusmängden filtreras IN-MEMORY (`bearsOpenDebt(inv.status)` i loopen), inte
+ * i `where`. Skulle någon flytta filtreringen till queryn måste attrappen
+ * returnera en tom lista för att spegla det, och då faller beloppstesterna
+ * nedan av sig själva.
+ *
+ * DET ANTAGANDET ÄR SKÖRT. Flyttas filtreringen till `where` utan att
+ * attrapperna följer med blir filen tyst grön. Lägg då till en assertion på
+ * `findMany.mock.calls[0][0].where`, som i #348.
+ */
 async function analyze(invoices: unknown[]) {
   const prisma = { invoice: { findMany: jest.fn().mockResolvedValue(invoices) } }
   const res = await (
