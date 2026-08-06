@@ -53,6 +53,9 @@ function makeInvoice(opts: { total?: number; payments?: number[]; daysOverdue?: 
 
 function makeService(invoice: ReturnType<typeof makeInvoice>) {
   const invoiceUpdate = jest.fn().mockResolvedValue({})
+  // #357: fakturans total räknas upp med `updateMany` + `increment`, inte med
+  // ett absolut värde. count måste vara 1, annars kastar tillståndsomprövningen.
+  const invoiceBump = jest.fn().mockResolvedValue({ count: 1 })
   // #357: hela avgiften ligger numera i EN transaktion med idempotensmarkören
   // först, så `tx` måste bära markören och händelseloggen också. Assertionerna
   // nedan är OFÖRÄNDRADE — det som mäts (brevets siffror vs det nominella
@@ -63,7 +66,7 @@ function makeService(invoice: ReturnType<typeof makeInvoice>) {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     invoiceLine: { create: jest.fn().mockResolvedValue({}) },
-    invoice: { update: invoiceUpdate },
+    invoice: { update: invoiceUpdate, updateMany: invoiceBump },
     invoiceEvent: { create: jest.fn().mockResolvedValue({}) },
   }
   const prisma = {
@@ -89,7 +92,7 @@ function makeService(invoice: ReturnType<typeof makeInvoice>) {
     notifications as never,
     accounting as never,
   )
-  return { service, prisma, mail, tx, invoiceUpdate }
+  return { service, prisma, mail, tx, invoiceUpdate, invoiceBump }
 }
 
 describe('#329 — vänliga påminnelsen (dag 7)', () => {
@@ -139,17 +142,24 @@ describe('#329 — formella påminnelsen (dag 14): brev och bokföring skiljs å
     expect(letter.newTotal).toBe(2060) // restskuld + avgift, INTE 10 060
   })
 
-  it('BOKFÖRINGEN bär det NOMINELLA beloppet — avgiften skrivs in i fakturans total', async () => {
+  it('BOKFÖRINGEN rör bara avgiften — fakturans total kan inte skrivas ner till restskulden', async () => {
     // Den kritiska distinktionen. Skulle brevets siffra läcka in här skulle
     // fakturan skrivas ner från 10 000 till 2 060 och avgiftsbokföringen bli
     // fel i stället — värre än felet vi lagar.
-    const { service, invoiceUpdate } = formal([8000])
+    //
+    // #357 gjorde den felformen STRUKTURELLT OMÖJLIG: totalen räknas upp med
+    // `increment: fee` i stället för att skrivas som ett absolut värde härlett
+    // ur en läsning utanför transaktionen. Ett relativt tillägg kan inte bära
+    // restskulden av misstag. Testet mäter därför den nya formen — och att den
+    // gamla absoluta skrivvägen inte används alls.
+    const { service, invoiceUpdate, invoiceBump } = formal([8000])
 
     await service.processOverdueReminders()
 
-    expect(invoiceUpdate).toHaveBeenCalledTimes(1)
-    const written = invoiceUpdate.mock.calls[0]![0].data.total
-    expect(Number(written)).toBe(10060) // 10 000 + 60, INTE 2 060
+    expect(invoiceBump).toHaveBeenCalledTimes(1)
+    const data = invoiceBump.mock.calls[0]![0].data
+    expect(Number(data.total.increment)).toBe(60) // avgiften, INTE 2 060 och INTE 10 060
+    expect(invoiceUpdate).not.toHaveBeenCalled()
   })
 
   it('avgiftsraden skrivs på avgiftens belopp, orörd av restskulden', async () => {
@@ -179,14 +189,15 @@ describe('#329 — TESTET SPÄRREN KRÄVDE: restskulden bär avgiften', () => {
     // med resonemang". Resonemanget är att restskulden = total − Σ allokeringar,
     // och att den formella påminnelsen ökar `total` med avgiften — alltså ökar
     // restskulden lika mycket. Här mäts det.
-    const { service, invoiceUpdate } = makeService(
+    const { service, invoiceBump } = makeService(
       makeInvoice({ total: 10000, payments: [8000], daysOverdue: 15 }),
     )
 
     await service.processOverdueReminders()
 
-    // Fakturans nya nominella total, som den faktiskt skrevs till DB:n.
-    const newNominal = Number(invoiceUpdate.mock.calls[0]![0].data.total)
+    // Fakturans nya nominella total: ursprunget plus det som faktiskt skrevs
+    // till DB:n. (#357 — uppräkningen är relativ, se testet ovan.)
+    const newNominal = 10000 + Number(invoiceBump.mock.calls[0]![0].data.total.increment)
 
     // Restskulden räknad ur det NYA tillståndet — samma uttryck som breven och
     // vyerna använder.

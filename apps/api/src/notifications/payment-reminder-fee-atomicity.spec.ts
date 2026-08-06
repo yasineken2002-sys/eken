@@ -31,6 +31,7 @@ interface Recorder {
 
 function makeService(opts: {
   claimCount?: number
+  bumpCount?: number
   bookReturns?: { id: string } | null
   mailRejects?: boolean
   fee?: number
@@ -86,6 +87,10 @@ function makeService(opts: {
         rec.ordning.push('total')
         return invoice
       }),
+      updateMany: jest.fn(async () => {
+        rec.ordning.push('bump')
+        return { count: opts.bumpCount ?? 1 }
+      }),
       findMany: jest.fn(async () => [invoice]),
     },
     invoiceEvent: {
@@ -96,8 +101,28 @@ function makeService(opts: {
     },
   }
 
+  // `prisma` får EGNA funktioner, inte spridda referenser från `txClient`.
+  // Med `{ ...txClient }` blev `prisma.invoiceLine.create === txClient.invoiceLine.create`,
+  // och då kunde testet inte skilja en skrivning på transaktionsklienten från en
+  // på den vanliga klienten inuti callbacken — "allt ligger inuti transaktionen"
+  // var alltså inte mätt. (Kodgranskning #357.)
+  const nonTx = <T>(namn: string, svar: T) =>
+    jest.fn(async () => {
+      rec.ordning.push(`ICKE-TX:${namn}`)
+      return svar
+    })
   const prisma = {
-    ...txClient,
+    paymentReminder: {
+      createMany: nonTx('claim', { count: claimCount }),
+      updateMany: nonTx('messageId', { count: 1 }),
+    },
+    invoiceLine: { create: nonTx('avgiftsrad', { id: 'line-1' }) },
+    invoice: {
+      update: nonTx('total', invoice),
+      updateMany: nonTx('bump', { count: 1 }),
+      findMany: jest.fn(async () => [invoice]),
+    },
+    invoiceEvent: { create: nonTx('händelse', { id: 'ev-1' }) },
     $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => {
       rec.ordning.push('tx:start')
       const res = await cb(txClient)
@@ -150,7 +175,7 @@ describe('#357 — sendFormalReminder tar avgiften atomiskt', () => {
     // Fyra skrivningar, en transaktion.
     const start = h.rec.ordning.indexOf('tx:start')
     const commit = h.rec.ordning.indexOf('tx:commit')
-    for (const steg of ['claim', 'avgiftsrad', 'total', 'verifikat', 'händelse']) {
+    for (const steg of ['claim', 'bump', 'avgiftsrad', 'verifikat', 'händelse']) {
       const i = h.rec.ordning.indexOf(steg)
       expect(i).toBeGreaterThan(start)
       expect(i).toBeLessThan(commit)
@@ -159,6 +184,41 @@ describe('#357 — sendFormalReminder tar avgiften atomiskt', () => {
     // Utskicket ligger EFTER commit — aldrig inuti transaktionen.
     expect(h.rec.ordning.indexOf('utskick')).toBeGreaterThan(commit)
     expect(h.prisma.$transaction).toHaveBeenCalledTimes(1)
+
+    // Och det enda som rör den ICKE-transaktionella klienten är
+    // leveranskorrelationen. Skulle någon skrivning glida ut ur transaktionen
+    // dyker den upp här.
+    expect(h.rec.ordning.filter((x) => x.startsWith('ICKE-TX:'))).toEqual(['ICKE-TX:messageId'])
+  })
+
+  it('fakturan ändrar tillstånd under körningen → ConflictException, inget utskick', async () => {
+    // Status och pausflaggan lästes i cronens findMany före loopen. Betalas
+    // fakturan eller pausas kravtrappan mitt i körningen ska ingen avgift tas.
+    const h = makeService({ bumpCount: 0 })
+
+    await expect(sendFormal(h)).rejects.toThrow(/ändrade tillstånd/)
+
+    expect(h.txClient.invoiceLine.create).not.toHaveBeenCalled()
+    expect(h.accounting.bookReminderFee).not.toHaveBeenCalled()
+    expect(h.mail.sendReminderFormal).not.toHaveBeenCalled()
+    expect(h.rec.ordning).not.toContain('tx:commit')
+  })
+
+  it('totalen räknas upp med increment, inte med ett absolut värde', async () => {
+    // Absolut värde härlett ur en läsning UTANFÖR transaktionen är lost
+    // update-formen. `increment` är atomiskt i databasen.
+    const h = makeService({})
+    await sendFormal(h)
+
+    const calls = h.txClient.invoice.updateMany.mock.calls as unknown as Array<
+      [{ data: { total: { increment: unknown } }; where: Record<string, unknown> }]
+    >
+    expect(calls).toHaveLength(1)
+    expect(Number(calls[0]![0].data.total.increment)).toBe(60)
+    // Och omprövningen av förutsättningarna står i samma where.
+    expect(calls[0]![0].where).toMatchObject({ status: 'OVERDUE', remindersPaused: false })
+    // Den gamla absoluta skrivningen ska vara borta.
+    expect(h.txClient.invoice.update).not.toHaveBeenCalled()
   })
 
   it('verifikatet bokförs med samma tx som avgiftsraden (INV-A)', async () => {
@@ -205,6 +265,10 @@ describe('#357 — sendFormalReminder tar avgiften atomiskt', () => {
 
     expect(h.accounting.bookReminderFee).not.toHaveBeenCalled()
     expect(h.mail.sendReminderFormal).toHaveBeenCalled()
+    // Och ingen 0-kronorsrad: den är ingen affärshändelse, men skulle följa med
+    // ut på fakturaunderlaget och i inkassokravet och påstå en lagstadgad
+    // avgift på noll kronor. (FAR-granskning #357.)
+    expect(h.txClient.invoiceLine.create).not.toHaveBeenCalled()
   })
 
   it('kö-fel efter commit → avgiften står kvar, markören rörs inte, felet loggas', async () => {
@@ -224,17 +288,45 @@ describe('#357 — sendFormalReminder tar avgiften atomiskt', () => {
 
     // Men det är ett pengaställe: hyresgästen har debiterats utan att få brevet.
     // Det får aldrig passera tyst.
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('utskicket kunde inte köas'))
+    // FAILED formuleras som "blev inte av" — och får inte förväxlas med TIMEOUT,
+    // som bara betyder "kunde inte bekräftas" (jobbet kan ha landat ändå).
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('utskicket MISSLYCKADES'))
+    expect(spy).not.toHaveBeenCalledWith(expect.stringContaining('KUNDE INTE BEKRÄFTAS'))
 
     // Leveranskorrelationen skrivs INTE när köandet misslyckades.
-    expect(h.txClient.paymentReminder.updateMany).not.toHaveBeenCalled()
+    expect(h.prisma.paymentReminder.updateMany).not.toHaveBeenCalled()
+
+    // En kompenserande SEND_FAILED-post skrivs: REMINDER_SENT ligger redan i
+    // den append-only loggen och kan aldrig rättas.
+    const events = h.prisma.invoiceEvent.create.mock.calls as unknown as Array<
+      [{ data: { type: string } }]
+    >
+    expect(events.map((c) => c[0].data.type)).toContain('SEND_FAILED')
+  })
+
+  it('kö-fel → returnerar false så cronen räknar det som fel, inte som skickat', async () => {
+    const h = makeService({ mailRejects: true })
+    const priv = h.service as unknown as {
+      sendFormalReminder: (inv: unknown, e: string, d: number) => Promise<boolean>
+    }
+    await expect(priv.sendFormalReminder(h.invoice, 'hg@example.se', 20)).resolves.toBe(false)
+  })
+
+  it('lyckat utskick → returnerar true', async () => {
+    const h = makeService({})
+    const priv = h.service as unknown as {
+      sendFormalReminder: (inv: unknown, e: string, d: number) => Promise<boolean>
+    }
+    await expect(priv.sendFormalReminder(h.invoice, 'hg@example.se', 20)).resolves.toBe(true)
   })
 
   it('lyckat utskick → leveranskorrelationen skrivs efter commit, inte i transaktionen', async () => {
     const h = makeService({})
     await sendFormal(h)
 
-    expect(h.txClient.paymentReminder.updateMany).toHaveBeenCalledTimes(1)
-    expect(h.rec.ordning.indexOf('messageId')).toBeGreaterThan(h.rec.ordning.indexOf('tx:commit'))
+    expect(h.prisma.paymentReminder.updateMany).toHaveBeenCalledTimes(1)
+    expect(h.rec.ordning.indexOf('ICKE-TX:messageId')).toBeGreaterThan(
+      h.rec.ordning.indexOf('tx:commit'),
+    )
   })
 })
