@@ -1374,6 +1374,12 @@ export class ToolExecutorService {
               dueDate: true,
               total: true,
               status: true,
+              // #348 — typen behövs för att kunna SÄRREDOVISA depositionsdelen.
+              // `where` är fortfarande orört: alla fakturor analyseras, inklusive
+              // depositioner, och de räknas även i "% i tid"-nämnaren — en sent
+              // betald deposition är en lika verklig betalningsdatapunkt som en
+              // sent betald hyra.
+              type: true,
               // #325 — fältet nedan heter "utestående" och måste därför bära
               // restskulden. `where` orört: samma fakturor analyseras.
               payments: { select: { amount: true } },
@@ -1405,6 +1411,11 @@ export class ToolExecutorService {
               outstandingTotal: number
               outstandingOwn: number
               outstandingAtCollection: number
+              // #348 — DELMÄNGD, INTE EN FJÄRDE HINK. Namnet säger "portion" med
+              // flit: `Own + AtCollection === Total` är en fullständig
+              // uppdelning, och depositionsdelen skär TVÄRS igenom den. En modell
+              // som adderar den till de andra dubbelräknar.
+              outstandingDepositPortion: number
             }
           >()
 
@@ -1425,6 +1436,7 @@ export class ToolExecutorService {
                 outstandingTotal: 0,
                 outstandingOwn: 0,
                 outstandingAtCollection: 0,
+                outstandingDepositPortion: 0,
               })
             }
             const entry = tenantMap.get(inv.tenantId)!
@@ -1463,11 +1475,56 @@ export class ToolExecutorService {
             // Den SÄRREDOVISAS ändå, för att skillnaden är handlingsmässig: en
             // hyresvärd som ser ett odelat tal kan börja jaga en skuld som redan
             // ligger hos ombudet.
+            // ── #348: DEPOSITIONER RÄKNAS MED — AVSIKTLIGT ────────────────────
+            //
+            // Det här var ingen lucka som fylldes; det var en lucka som GJORDES
+            // TILL ETT BESLUT. Ingen kommentar resonerade om DEPOSIT här, så
+            // inkluderingen var oavsiktlig — och nästa granskare hade lika gärna
+            // kunnat "fixa" bort den.
+            //
+            // EN OBETALD DEPOSITION ÄR EN VERKLIG FORDRAN. `deposits.service.ts`
+            // bokför 1510 D / 2890 K när depositionsfakturan skapas; 1510 står
+            // öppen tills den betalas (1930 D / 1510 K). Samma kontoklass som en
+            // obetald hyresfaktura.
+            //
+            // VARFÖR ANDRA YTOR EXKLUDERAR DEPOSIT — OCH VARFÖR DET INTE GÄLLER
+            // HÄR. `OverdueDebtService` exkluderar den för att "Försenat belopp"
+            // är PARAT MOT INTÄKTSSIDAN (Σ 3xxx) på dashboarden, och en
+            // deposition krediteras 2890 (skuld), aldrig 3xxx. `data-context` och
+            // `portfolio-analysis` ärver exkluderingen för att de är DETALJVYER
+            // av exakt samma headline-tal — de får aldrig visa en rad som
+            // totalen uteslutit.
+            //
+            // Den här ytan är ingen detaljvy av "Försenat belopp". Den svarar på
+            // "vad är hyresgästen skyldig och sköter hen sina betalningar?" och
+            // ärver därför inte parningsskälet. "Det är ingen intäkt" och "det är
+            // ingen fordran" är två olika påståenden — att blanda ihop dem är
+            // samma kortslutning som `computeRentDebt`s DEPOSIT-gren, och DEN är
+            // en KRAVTRAPPE-grind (en deposition eskalerar aldrig automatiskt),
+            // inte ett beloppspåstående. (FAR-granskat, #348.)
             if (bearsOpenDebt(inv.status)) {
               const outstanding = invoiceOutstanding(inv)
               entry.outstandingTotal += outstanding
               if (isAtCollection(inv.status)) entry.outstandingAtCollection += outstanding
               else entry.outstandingOwn += outstanding
+              // SÄRREDOVISNINGENS SKÄL ÄR FORDRANS NATUR, inte vad systemet gör
+              // med den. En deposition är bokföringsmässigt och rättsligt en
+              // ANNAN SORTS FORDRAN — motposten är 2890 (skuld till hyresgästen
+              // när den väl betalats in), aldrig 3xxx intäkt. Den ska därför inte
+              // blandas ihop med hyresskuld i en summerad presentation.
+              //
+              // HÄR STOD FÖRST "ingen kravtrappa löper på en deposition". DET VAR
+              // FALSKT, och felet är värt att skriva ut: `computeRentDebt` håller
+              // förvisso depositioner utanför kravtrappan — men den styr
+              // RentNotice. Depositions-FAKTUROR går en annan väg
+              // (`deposits.service.ts` skapar en riktig Invoice), och varken
+              // `markOverdueInvoices` eller `processOverdueReminders` har något
+              // typfilter. En obetald depositionsfaktura eskalerar alltså i dag
+              // som vilken hyresfordran som helst, avgift inkluderad. Det är en
+              // egen bugg (#352) — och prosan
+              // nedan påstår därför INGENTING om kravtrappestatus, varken att den
+              // löper eller inte.
+              if (inv.type === 'DEPOSIT') entry.outstandingDepositPortion += outstanding
             }
           }
 
@@ -1493,10 +1550,28 @@ export class ToolExecutorService {
                 : entry.outstandingOwn > 0
                   ? `, utestående: ${formatAmount(entry.outstandingOwn)} kr`
                   : ''
+            // #348 — "VARAV" ÄR RÄTT ORD HÄR, till skillnad från i #347.
+            //
+            // Inkassodelen och den egna delen är en UPPDELNING av totalen och
+            // fick därför två egna namngivna tal. Depositionsdelen är en
+            // DELMÄNGD som skär tvärs igenom den uppdelningen — då är "varav"
+            // det sanna ordet, inte en fotnot som smiter undan.
+            //
+            // KLAUSULEN PÅSTÅR BARA VAD BELOPPET ÄR — inte vad systemet gör med
+            // det. Här stod först "ingen kravtrappa, kräver manuell åtgärd";
+            // det var ett obelagt påstående om systembeteende som dessutom var
+            // falskt (se blocket vid ackumuleringen ovan). Att i stället skriva
+            // "kravtrappa körs" vore att normalisera en bugg i en text
+            // hyresvärden läser. Typen är det enda som går att belägga här.
+            const depositClause =
+              entry.outstandingDepositPortion > 0
+                ? ` (varav ${formatAmount(entry.outstandingDepositPortion)} kr deposition)`
+                : ''
             lines.push(
               `  ${entry.name}: ${entry.total} fakturor, ${onTimePct}% i tid` +
                 (entry.late > 0 ? `, genomsnittlig försening ${avgLate} dagar` : '') +
-                debtClause,
+                debtClause +
+                depositClause,
             )
           }
 
@@ -1689,6 +1764,20 @@ export class ToolExecutorService {
                 total: true,
                 // #325 — restskulden kräver allokeringarna. `where` orört.
                 payments: { select: { amount: true } },
+                // #348 — DEPOSITIONER STANNAR I LISTAN, men märks ut.
+                //
+                // En obetald deposition är en verklig fordran: `deposits.service.ts`
+                // bokför 1510 D / 2890 K när fakturan skapas, och 1510 står öppen
+                // tills den betalas. En åtgärdslista över förfallna fordringar ska
+                // därför visa den.
+                //
+                // `OverdueDebtService` exkluderar DEPOSIT av ett skäl som är
+                // LOKALT till den ytan: "Försenat belopp" är parat mot
+                // intäktssidan (Σ 3xxx) på dashboarden, och en deposition
+                // krediteras 2890. Det är ingen generell regel om att
+                // depositioner saknar fordran — och den här listan är inte parad
+                // mot intäktssidan. (FAR-granskat, #348.)
+                type: true,
                 dueDate: true,
                 tenant: {
                   select: {
@@ -1784,8 +1873,19 @@ export class ToolExecutorService {
               `\n🔴 PRIORITET 1 — Förfallna fakturor >30 dagar (${overdueOldOpen.length} st, ${formatAmount(totalOverdue)} kr återstår):`,
             )
             for (const { inv, outstanding } of overdueOldOpen) {
+              // #348 — MÄRK DEPOSITIONEN MED VAD DEN ÄR, inget mer. En
+              // deposition är en annan sorts fordran (2890-motpost, aldrig
+              // intäkt) och hör inte hemma oskild bland hyresfordringar på en
+              // åtgärdslista.
+              //
+              // Markören sa först "(deposition — ingen kravtrappa)". Falskt:
+              // depositions-FAKTUROR går Invoice-vägen, och varken
+              // `markOverdueInvoices` eller `processOverdueReminders` har något
+              // typfilter — de eskalerar. Kravtrappe-påståendet är struket helt
+              // hellre än ersatt med ett nytt; buggen spåras i #352.
+              const depositMark = inv.type === 'DEPOSIT' ? ' (deposition)' : ''
               opportunities.push(
-                `  - Faktura ${inv.invoiceNumber}, ${formatTenantName(inv.tenant ?? inv.customer)}, ${formatAmount(outstanding)} kr återstår, förföll ${inv.dueDate.toISOString().slice(0, 10)}`,
+                `  - Faktura ${inv.invoiceNumber}, ${formatTenantName(inv.tenant ?? inv.customer)}, ${formatAmount(outstanding)} kr återstår, förföll ${inv.dueDate.toISOString().slice(0, 10)}${depositMark}`,
               )
             }
           }
