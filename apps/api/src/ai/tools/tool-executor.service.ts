@@ -653,13 +653,24 @@ export class ToolExecutorService {
                   email: true,
                 },
               },
+              // #325 — allokeringarna behövs för `outstanding` nedan.
+              payments: { select: { amount: true } },
             },
             orderBy: { dueDate: 'asc' },
           })
+          // #325 — modellen fick tidigare bara `total` och kunde inte göra annat
+          // än att läsa ursprungsbeloppet som skulden. `outstanding` läggs till
+          // (samma beräkning som dashboarden) UTAN att `total` tas bort: båda är
+          // sanna påståenden om fakturan, och de svarar på olika frågor
+          // ("fakturerat" vs "återstår"). `where` orört — samma fakturor.
+          const withDebt = invoices.map((inv) => ({
+            ...inv,
+            outstanding: invoiceOutstanding(inv),
+          }))
           return {
             success: true,
-            data: invoices,
-            message: `${invoices.length} förfallna fakturor hittades`,
+            data: withDebt,
+            message: `${withDebt.length} förfallna fakturor hittades`,
           }
         }
 
@@ -1362,6 +1373,9 @@ export class ToolExecutorService {
               dueDate: true,
               total: true,
               status: true,
+              // #325 — fältet nedan heter "utestående" och måste därför bära
+              // restskulden. `where` orört: samma fakturor analyseras.
+              payments: { select: { amount: true } },
               tenant: {
                 select: {
                   id: true,
@@ -1417,8 +1431,17 @@ export class ToolExecutorService {
                 entry.lateDaysSum += lateDays
               }
             }
+            // #325 — RESTSKULDEN, inte ursprungsbeloppet. Fältet renderas som
+            // "utestående: X kr" till hyresvärden; en SENT/OVERDUE-faktura med
+            // allokeringar räknade hela sitt ursprungsbelopp och gjorde ordet
+            // osant.
+            //
+            // KVARSTÅENDE TÄCKNINGSHÅL, MEDVETET UTANFÖR #325: statusfiltret
+            // utelämnar PARTIAL och SENT_TO_COLLECTION, som också bär öppen
+            // skuld. Att vidga det ändrar VILKA hyresgäster som får en
+            // utestående-siffra — ett annat beslut än den här aritmetiken.
             if (inv.status === 'SENT' || inv.status === 'OVERDUE') {
-              entry.outstanding += Number(inv.total)
+              entry.outstanding += invoiceOutstanding(inv)
             }
           }
 
@@ -1610,6 +1633,8 @@ export class ToolExecutorService {
               select: {
                 invoiceNumber: true,
                 total: true,
+                // #325 — restskulden kräver allokeringarna. `where` orört.
+                payments: { select: { amount: true } },
                 dueDate: true,
                 tenant: {
                   select: {
@@ -1691,14 +1716,22 @@ export class ToolExecutorService {
 
           const opportunities: string[] = ['OPTIMERINGSMÖJLIGHETER (prioriterad):']
 
-          if (overdueOld.length > 0) {
-            const totalOverdue = overdueOld.reduce((s, i) => s + Number(i.total), 0)
+          // #325 — restskulden, inte ursprungsbeloppet, på BÅDA raderna (summan
+          // och posterna). Samma regel som OverdueDebtService: klampat per
+          // faktura, och en faktura utan kvarvarande skuld hör inte hemma på en
+          // åtgärdslista som säger "driv in det här" — den filtreras därför bort
+          // ur både antalet och summan.
+          const overdueOldOpen = overdueOld
+            .map((i) => ({ inv: i, outstanding: invoiceOutstanding(i) }))
+            .filter((r) => r.outstanding > 0)
+          if (overdueOldOpen.length > 0) {
+            const totalOverdue = overdueOldOpen.reduce((s, r) => s + r.outstanding, 0)
             opportunities.push(
-              `\n🔴 PRIORITET 1 — Förfallna fakturor >30 dagar (${overdueOld.length} st, ${formatAmount(totalOverdue)} kr):`,
+              `\n🔴 PRIORITET 1 — Förfallna fakturor >30 dagar (${overdueOldOpen.length} st, ${formatAmount(totalOverdue)} kr återstår):`,
             )
-            for (const inv of overdueOld) {
+            for (const { inv, outstanding } of overdueOldOpen) {
               opportunities.push(
-                `  - Faktura ${inv.invoiceNumber}, ${formatTenantName(inv.tenant ?? inv.customer)}, ${formatAmount(Number(inv.total))} kr, förföll ${inv.dueDate.toISOString().slice(0, 10)}`,
+                `  - Faktura ${inv.invoiceNumber}, ${formatTenantName(inv.tenant ?? inv.customer)}, ${formatAmount(outstanding)} kr återstår, förföll ${inv.dueDate.toISOString().slice(0, 10)}`,
               )
             }
           }
@@ -1759,7 +1792,12 @@ export class ToolExecutorService {
           return {
             success: true,
             data: {
-              overdueOldCount: overdueOld.length,
+              // #325 — SAMMA MÄNGD SOM `message` RÄKNAR. `data` och `message`
+              // serialiseras in i SAMMA tool_result och läses av samma modell;
+              // stod det `overdueOld.length` här sa prosan "1 st, 3 000 kr
+              // återstår" medan strukturdatan sa 2 — ett självmotsägande svar,
+              // exakt den defekt #325 finns för att ta bort.
+              overdueOldCount: overdueOldOpen.length,
               expiringCount: expiringLeases.length,
               vacantCount: vacantUnits.length,
               belowMarketCount: belowMarket.length,

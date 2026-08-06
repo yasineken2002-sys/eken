@@ -6,10 +6,19 @@ import type { RegisterPaymentInput } from '../api/invoices.api'
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
+/**
+ * #325 — listsvaret bär ALLTID `outstanding` (restskulden), till skillnad från
+ * detaljsvaret. TYPEN ÄR SPÄRREN: genom att kräva fältet här kan en yta som
+ * läser listan inte tyst falla tillbaka på `total` och råka visa
+ * ursprungsbeloppet som skuld på en delbetald faktura.
+ */
+export type InvoiceListItem = Invoice & { outstanding: number }
+
 export function useInvoices(filters?: { status?: InvoiceStatus; tenantId?: string }) {
   return useQuery({
     queryKey: ['invoices', filters],
-    queryFn: () => get<Invoice[]>('/invoices', filters as Record<string, unknown> | undefined),
+    queryFn: () =>
+      get<InvoiceListItem[]>('/invoices', filters as Record<string, unknown> | undefined),
   })
 }
 

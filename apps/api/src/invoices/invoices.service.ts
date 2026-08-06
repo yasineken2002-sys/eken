@@ -10,7 +10,7 @@ import {
 // (belopp får aldrig passera float på väg till ett bokföringsbeslut).
 import { Prisma } from '@prisma/client'
 import type { Invoice, InvoiceStatus, InvoiceEventType, PaymentMethod } from '@prisma/client'
-import { computeInvoiceDebt } from './invoice-debt'
+import { computeInvoiceDebt, invoiceOutstanding } from './invoice-debt'
 import { paymentTargetStatus, isPaymentTransitionAllowed } from './invoice-payment-status'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { stockholmCivilDate } from '../common/time/stockholm-period'
@@ -133,7 +133,7 @@ export class InvoicesService {
       tenantId?: string
     },
   ) {
-    return this.prisma.invoice.findMany({
+    const invoices = await this.prisma.invoice.findMany({
       where: {
         organizationId,
         ...(filters?.status && { status: filters.status }),
@@ -152,9 +152,31 @@ export class InvoicesService {
           select: { id: true, date: true, amount: true, description: true, rawOcr: true },
           orderBy: { date: 'desc' },
         },
+        // #325 — allokeringarna, för `outstanding` nedan.
+        payments: { select: { amount: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
+
+    // ── #325: RESTSKULDEN BERÄKNAS HÄR, INTE I KLIENTEN ─────────────────────
+    //
+    // Fakturalistans KPI "Försenat belopp" summerade `total` över OVERDUE-rader
+    // och visade alltså ursprungsbeloppet på en delbetald faktura. Fältet
+    // beräknas server-side med SAMMA `invoiceOutstanding` som dashboarden,
+    // månadsrapporten och breven — hade klienten summerat `payments` själv vore
+    // det en FJÄRDE kopia av uttrycket, och det är just spretandet #329 tog bort.
+    //
+    // `total` behålls: fakturerat belopp och återstående belopp är två olika,
+    // båda sanna, uppgifter. `where` är orört — samma fakturor returneras.
+    //
+    // `payments` plockas BORT ur svaret. Den hämtas bara för att kunna räkna
+    // `outstanding` här; att skicka med den hade lagt ett fält på tråden som
+    // `Invoice`-typen inte deklarerar, och bjudit in nästa yta att summera
+    // allokeringarna själv i stället för att läsa `outstanding`.
+    return invoices.map(({ payments: _payments, ...inv }) => ({
+      ...inv,
+      outstanding: invoiceOutstanding({ total: inv.total, payments: _payments }),
+    }))
   }
 
   async findOne(id: string, organizationId: string) {

@@ -236,10 +236,20 @@ ${overdueInvoices
   .map((i) => {
     const p = i.tenant ?? i.customer
     const partyName = p ? (p.companyName ?? `${p.firstName ?? ''} ${p.lastName ?? ''}`.trim()) : '–'
-    // #307A: restskulden, inte ursprungsbeloppet. En OVERDUE-faktura är i
-    // praktiken fullt obetald idag (markOverdueInvoices flippar bara SENT →
-    // OVERDUE), men PARTIAL → OVERDUE är nåbar manuellt och via AI-verktyget —
-    // och då ljög siffran. Samma sanningskälla som resten av systemet.
+    // #307A: restskulden, inte ursprungsbeloppet. `markOverdueInvoices` flippar
+    // bara SENT → OVERDUE, men PARTIAL → OVERDUE är en giltig kant och når hit
+    // via PATCH /invoices/:id/status (MANAGER+) — och då ljög siffran.
+    //
+    // #325 RÄTTAR NÅBARHETEN: här stod "nåbar manuellt och via AI-verktyget".
+    // AI-delen är fel — inget AI-verktyg anropar `transitionStatus` på fakturor
+    // (leases-varianten finns, fakturavarianten inte), och `get_invoices`
+    // OVERDUE-enum är ett LÄSFILTER, inte en skrivväg. Den manuella PATCH-vägen
+    // är den enda. Ett obelagt nåbarhetspåstående i en kommentar är lika dyrt
+    // som ett obelagt beloppspåstående i koden: nästa läsare planerar utifrån det.
+    //
+    // Rubriksiffran ovan (`overdueSnapshot.total`) räknade fram till #325
+    // bruttot medan den här listan räknade restskulden — samma AI-svar påstod
+    // alltså två olika belopp om samma faktura. Båda läser nu samma uttryck.
     const outstanding = computeInvoiceDebt({
       total: i.total,
       allocations: i.payments.map((p) => p.amount),
