@@ -32,9 +32,11 @@ export interface DashboardStats {
   // RentNotice-delen = Σ computeRentDebt(n).outstanding per OVERDUE-avi
   // (type≠DEPOSIT), klampad PER AVI innan summering (en överbetald avi bidrar 0,
   // aldrig negativt) och räknar bara det OBETALDA (outstanding), inte hela avins
-  // belopp. Invoice-delen = Σ OVERDUE Invoice.total (type≠DEPOSIT). De två
-  // överlappar aldrig: en manuell RENT-faktura blockeras när en RentNotice finns
-  // för perioden → ingen dubbelräkning.
+  // belopp. Invoice-delen = Σ invoiceOutstanding(inv) per OVERDUE-faktura
+  // (type≠DEPOSIT), klampad PER FAKTURA på exakt samma sätt — #325 bytte bort
+  // `Invoice.total`, som räknade ursprungsbeloppet på en delbetald faktura. De
+  // två överlappar aldrig: en manuell RENT-faktura blockeras när en RentNotice
+  // finns för perioden → ingen dubbelräkning.
   overdue: {
     total: number
   }

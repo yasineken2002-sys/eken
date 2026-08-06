@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { computeRentDebt } from '../avisering/rent-debt.service'
+import { invoiceOutstanding } from '../invoices/invoice-debt'
 
 const DAY_MS = 86_400_000
 const OVERDUE_AGE_DAYS = 30
@@ -27,8 +28,9 @@ const EMPTY: OverdueSnapshot = { total: 0, count: 0, over30Count: 0 }
  *   • RentNotice: Σ computeRentDebt(n).outstanding för OVERDUE-avier, KLAMPAT
  *     PER AVI (en överbetald avi bidrar 0, aldrig negativt) och bara det
  *     OBETALDA (outstanding, inte totalAmount). En delbetald avi räknar resten.
- *   • Invoice: OVERDUE Invoice.total. Invoice saknar allokeringsmodell → en
- *     OVERDUE-faktura är fullt obetald, så .total ÄR restskulden.
+ *   • Invoice: Σ invoiceOutstanding(inv) för OVERDUE-fakturor, KLAMPAT PER
+ *     FAKTURA och bara det OBETALDA — exakt samma regel som RentNotice-grenen
+ *     ovan. Se #325-blocket nedan för vad som stod här förut och varför.
  *   • DEPOSIT exkluderas på BÅDA källorna (2890-skuld, inte hyresskuld) —
  *     symmetriskt med intäktssidan (PR1).
  *   • Ingen dubbelräkning: en manuell RENT-faktura blockeras när en RentNotice
@@ -60,8 +62,12 @@ export class OverdueDebtService {
         },
       }),
       this.prisma.invoice.findMany({
+        // `where` ORÖRT — #325 ändrar vad som SUMMERAS, inte vilka fakturor
+        // som hämtas. Urvalskriteriet är fortfarande "OVERDUE, ej deposition".
         where: { organizationId, status: 'OVERDUE', type: { not: 'DEPOSIT' } },
-        select: { total: true, dueDate: true },
+        // #325 — allokeringarna går inte att räkna restskuld utan. Typen på
+        // `invoiceOutstanding` är spärren: utan `payments` typcheckar det inte.
+        select: { total: true, dueDate: true, payments: { select: { amount: true } } },
       }),
     ])
 
@@ -88,14 +94,35 @@ export class OverdueDebtService {
       if (n.dueDate < cutoff30) over30Count += 1
     }
 
-    // Symmetriskt med RentNotice-loopen: räkna bara poster med reell skuld. En
-    // OVERDUE Invoice med total <= 0 (inget DB-constraint hindrar) ska varken
-    // höja beloppet eller antalet — annars visar "Försenat belopp" fler poster
-    // än det finns öppen fordran.
+    // ── #325: RESTSKULDEN, INTE URSPRUNGSBELOPPET ───────────────────────────
+    //
+    // HÄR STOD `Number(inv.total)`, på det uttryckliga antagandet att "Invoice
+    // saknar allokeringsmodell → en OVERDUE-faktura är fullt obetald". Det var
+    // sant när raden skrevs. Det är det inte längre: `InvoicePayment` (#307) gav
+    // fakturan samma granulära allokering som RentNotice redan hade, och
+    // `PARTIAL → OVERDUE` är en giltig kant (INVOICE_TRANSITIONS) som når hit
+    // via PATCH /invoices/:id/status. En faktura på 10 000 med 9 000 allokerat
+    // bidrog därför med 10 000 till "Försenat belopp" i stället för 1 000.
+    //
+    // ANTAGANDET SKYDDADES INTE — DET GJORDES SANT. Alternativet (blockera
+    // kanten) hade lagat ETT sätt att bryta invarianten och lämnat siffran
+    // beroende av att ingen hittar ett annat; att räkna rätt gör påståendet sant
+    // oavsett hur fakturan hamnade i OVERDUE. (FAR-granskat, #325.)
+    //
+    // Samma klampning PER POST som RentNotice-loopen ovan: Σmax(0,x) ≠ max(0,Σx)
+    // — en överbetald faktura bidrar 0, den kvittar aldrig mot en ANNAN fakturas
+    // fordran (varje faktura är en egen verifikationskedja; en kvittning kräver
+    // en bokförd kvittningshandling).
+    //
+    // `outstanding <= 0` hoppas, precis som på avi-sidan: en fullt reglerad men
+    // ännu OVERDUE-flaggad faktura är ingen öppen fordran och ska varken höja
+    // beloppet ELLER antalet. Statusfältet är då en förlegad etikett, inte ett
+    // skuldpåstående. Detta ändrar alltså `count`/`over30Count`, inte bara
+    // `total` — avsiktligt, och symmetriskt med raden ovan.
     for (const inv of invoices) {
-      const invTotal = Number(inv.total)
-      if (invTotal <= 0) continue
-      total += invTotal
+      const outstanding = invoiceOutstanding(inv)
+      if (outstanding <= 0) continue
+      total += outstanding
       count += 1
       if (inv.dueDate < cutoff30) over30Count += 1
     }

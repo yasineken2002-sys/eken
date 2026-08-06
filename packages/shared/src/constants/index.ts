@@ -173,6 +173,13 @@ export const INVOICE_TRANSITIONS: Record<InvoiceStatus, InvoiceStatus[]> = {
   // OVERDUE hade därför lagt in HELA ursprungsbeloppet i den siffran, inte
   // restskulden. Fixen hade gjort en rapporterad siffra fel för att blidka
   // statusmaskinen.
+  //
+  // HISTORIK — HÅLET ÄR STÄNGT (#325). OverdueDebtService räknar sedan dess
+  // Invoice-sidan som `invoiceOutstanding(inv)`, alltså restskulden, symmetriskt
+  // med RentNotice-grenen. Argumentet ovan gäller alltså inte längre som skäl att
+  // undvika kanten — men bortvalet STÅR KVAR på egna meriter: PARTIAL →
+  // SENT_TO_COLLECTION är den ärliga modelleringen av "en delbetald fordran är en
+  // fordran", och att gå omvägen via OVERDUE hade dolt att fakturan är delbetald.
   PARTIAL: ['PAID', 'OVERDUE', 'VOID', 'SENT_TO_COLLECTION'],
   OVERDUE: ['PARTIAL', 'PAID', 'VOID', 'SENT_TO_COLLECTION'],
   SENT_TO_COLLECTION: ['PAID', 'VOID'],

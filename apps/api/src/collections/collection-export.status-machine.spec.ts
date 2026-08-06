@@ -96,8 +96,10 @@ describe('#307 PR 2b · källstatusarna kommer UR statusmaskinen', () => {
     // Kanten fanns redan i koden (notIn-guarden släppte igenom PARTIAL) men
     // saknades i modellen. Alternativet — att flippa PARTIAL → OVERDUE före
     // överlämningen — hade lagt in HELA ursprungsbeloppet i dashboardens
-    // "Försenat belopp", eftersom OverdueDebtService räknar Invoice-sidan som
-    // `inv.total`. Se `overdueDebtService`-blocket längst ned.
+    // "Försenat belopp", eftersom OverdueDebtService DÅ räknade Invoice-sidan som
+    // `inv.total`. Sedan #325 räknar den `invoiceOutstanding(inv)` (restskulden),
+    // så det argumentet är historik — bortvalet står kvar på egna meriter, se
+    // INVOICE_TRANSITIONS-kommentaren i packages/shared.
     expect(isValidTransition('PARTIAL', 'SENT_TO_COLLECTION')).toBe(true)
     expect(isValidTransition('OVERDUE', 'SENT_TO_COLLECTION')).toBe(true)
   })

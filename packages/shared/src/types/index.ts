@@ -273,6 +273,11 @@ export interface Invoice {
   trackingToken: string
   createdAt: string
   updatedAt: string
+  // #325 — RESTSKULDEN (total − Σ allokeringar, klampad till ≥0), beräknad av
+  // API:et med samma `invoiceOutstanding` som dashboarden och breven. Valfri:
+  // bara listsvaret (GET /invoices) fyller den. Läs ALDRIG `total` som skuld —
+  // på en delbetald faktura är de två olika tal.
+  outstanding?: number
   // Matchade banktransaktioner — fylls bara av invoice-detail/list-svar.
   bankTransactions?: Array<{
     id: string

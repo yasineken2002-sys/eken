@@ -175,9 +175,18 @@ export function InvoicesPage() {
   const totalPaid = allInvoices
     .filter((i) => i.status === 'PAID')
     .reduce((s, i) => s + Number(i.total), 0)
-  const totalOverdue = allInvoices
-    .filter((i) => i.status === 'OVERDUE')
-    .reduce((s, i) => s + Number(i.total), 0)
+  // #325 — RESTSKULDEN, inte ursprungsbeloppet. En OVERDUE-faktura kan bära
+  // allokeringar (PARTIAL → OVERDUE är en giltig kant), och då räknade den här
+  // raden hela det fakturerade beloppet som försenat. `outstanding` beräknas av
+  // API:et med samma uttryck som dashboarden — summera aldrig `payments` här,
+  // det vore ännu en kopia av beräkningen.
+  //
+  // Fakturor utan kvarvarande skuld räknas inte, symmetriskt med
+  // OverdueDebtService: en reglerad faktura är inget försenat belopp. BELOPPET
+  // OCH ANTALET MÅSTE MÄTA SAMMA MÄNGD — därför härleds badgen "N fakturor" ur
+  // exakt den här listan, inte ur ett eget filter.
+  const overdueOpen = allInvoices.filter((i) => i.status === 'OVERDUE' && Number(i.outstanding) > 0)
+  const totalOverdue = overdueOpen.reduce((s, i) => s + Number(i.outstanding), 0)
   const totalDraft = allInvoices
     .filter((i) => i.status === 'DRAFT')
     .reduce((s, i) => s + Number(i.total), 0)
@@ -313,7 +322,11 @@ export function InvoicesPage() {
             label: 'Försenat belopp',
             value: formatCurrency(totalOverdue),
             color: 'red',
-            tag: `${allInvoices.filter((i) => i.status === 'OVERDUE').length} fakturor`,
+            // #325 — samma mängd som beloppet summerar (se `overdueOpen`). Stod
+            // här förut: ett eget filter över ALLA OVERDUE, vilket efter bytet
+            // till restskuld hade kunnat visa "3 fakturor" ovanför ett belopp
+            // som bara avsåg 2 av dem.
+            tag: `${overdueOpen.length} fakturor`,
           },
           {
             label: 'Obesvarade utkast',
