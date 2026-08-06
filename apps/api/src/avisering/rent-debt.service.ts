@@ -172,3 +172,82 @@ export class RentDebtService {
     })
   }
 }
+
+/**
+ * #344 — vad hyresgästen ska betala på en avi som har allokeringar.
+ *
+ * Speglar `invoiceOutstanding` på fakturasidan (#329/#342). BYGGER INGEN NY
+ * BERÄKNING: delegerar till `computeRentDebt`, samma uttryck som kravtrappans
+ * eskaleringsgrind redan läser.
+ *
+ * `ocrOutstanding` — inte `claim` eller `outstanding` — är rätt storhet mot
+ * hyresgästen: det är den OCR-REGLERBARA restskulden (kapital + förbrukning +
+ * övrig debitering + påminnelseavgift, minus betalt), exklusive dröjsmålsränta.
+ * Ränta går inte att betala med avins OCR, så ett krav som räknar in den ber om
+ * ett belopp mottagaren inte kan betala på det sätt brevet anvisar.
+ *
+ * `paid` LÄSES UR ALLOKERINGARNA, aldrig som `brutto − restskuld`. Restskulden
+ * är klampad vid 0, så den härledningen gömmer en överbetalning — precis det
+ * felet #342 fick rättat i granskning.
+ *
+ * TYPEN ÄR SPÄRREN: `payments` är obligatorisk, så en query utan
+ * `include: { payments: ... }` typcheckar inte. En tom array hade gett
+ * bruttobeloppet i ett formellt krav, tyst.
+ *
+ * RADERNA MÅSTE SUMMERA (FAR, granskning av #344). Kravbrevet specificerar sina
+ * poster (lag 1981:739 5 §), så det som visas måste gå ihop:
+ *
+ *     nominalBeforeFee + fee − paid + overpaid === payable
+ *
+ * Därför returneras posterna NOMINELLT (som de bokfördes) med betalningen som en
+ * egen avdragsrad, i stället för ett per-post klampat restvärde. Första versionen
+ * returnerade `payableBeforeFee = max(0, ocrOutstanding − fee)`, och när en
+ * betalning täckt hela kapitaldelen men bara en del av avgiften klampades den
+ * raden till 0 medan avgiftsraden stod kvar på sitt nominella belopp — brevet
+ * visade då `0 + 60` under en total på `10`. Nåbart: avgiften bokförs vid
+ * eskaleringen, brevet renderas först i PDF-jobbet, och en bankbetalning kan
+ * landa däremellan.
+ */
+export function rentNoticeOutstanding(notice: {
+  type: RentNoticeType
+  totalAmount: Decimal | number
+  consumptionAmount: Decimal | number
+  miscChargeAmount: Decimal | number
+  reminderFeeAmount: Decimal | number
+  interestAccruedAmount: Decimal | number
+  payments: Array<{ amount: Decimal | number }>
+}): {
+  /** Att betala nu — OCR-reglerbar restskuld, klampad vid 0. */
+  payable: number
+  /** Avins nominella OCR-belopp inkl. påminnelseavgift. Aldrig klampat. */
+  nominalTotal: number
+  /** Avins nominella belopp utan påminnelseavgiften (som avin utfärdades). */
+  nominalBeforeFee: number
+  /** Påminnelseavgiften, nominellt bokförd. */
+  fee: number
+  /** Σ allokeringar. Läses ur allokeringarna, aldrig `brutto − restskuld`. */
+  paid: number
+  /** Betalt utöver den nominella fordran. 0 i normalfallet. */
+  overpaid: number
+} {
+  const debt = computeRentDebt({
+    type: notice.type,
+    totalAmount: notice.totalAmount,
+    consumptionAmount: notice.consumptionAmount,
+    miscChargeAmount: notice.miscChargeAmount,
+    reminderFeeAmount: notice.reminderFeeAmount,
+    interestAccruedAmount: notice.interestAccruedAmount,
+    allocations: notice.payments.map((p) => p.amount),
+  })
+  const nominalBeforeFee = round2(debt.capital + debt.consumption + debt.miscCharge)
+  const nominalTotal = round2(nominalBeforeFee + debt.reminderFee)
+  const paid = round2(debt.paid)
+  return {
+    payable: debt.ocrOutstanding,
+    nominalTotal,
+    nominalBeforeFee,
+    fee: debt.reminderFee,
+    paid,
+    overpaid: Math.max(0, round2(paid - nominalTotal)),
+  }
+}

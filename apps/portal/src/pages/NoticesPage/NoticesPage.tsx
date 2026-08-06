@@ -264,10 +264,18 @@ function RentNoticesList({
               <StatusBadge type="rent-notice" status={notice.status} />
             </div>
 
-            {/* payableTotal = hyra + förbrukning + övrig debitering + ev.
-                påminnelseavgift = det hyresgästen FAKTISKT ska betala (OCR-raden).
-                Visa aldrig totalAmount (bara hyran) — det vore för lågt. */}
+            {/* #344 — payableTotal är RESTSKULDEN (OCR-raden minus redan
+                betalt), samma tal som påminnelsebrevet visar. Visa aldrig
+                totalAmount (bara hyran) — det vore för lågt. Den förklarande
+                raden bara vid delbetalning: utan den är två tal bara brus.
+                Samma formulering som fakturakortet ovan. */}
             <p className={styles.cardAmount}>{formatCurrencySv(notice.payableTotal)}</p>
+            {notice.paid > 0 && notice.paid !== notice.nominalTotal && (
+              <p className={styles.cardAmountSub}>
+                Kvar av {formatCurrencySv(notice.nominalTotal)} —{' '}
+                {formatCurrencySv(notice.paid)} betalt
+              </p>
+            )}
 
             <div className={styles.cardDueRow}>
               <span

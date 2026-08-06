@@ -11,7 +11,7 @@ import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { MaintenanceService } from '../maintenance/maintenance.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
-import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
+import { rentNoticeOutstanding } from '../avisering/rent-debt.service'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
 
 /**
@@ -252,8 +252,27 @@ export const SAFE_PORTAL_RENT_NOTICE_SELECT = {
   },
 } as const satisfies Prisma.RentNoticeSelect
 
+/**
+ * ── #344: VYNS SELECT ÄR INTE EXPORTENS ──────────────────────────────────────
+ *
+ * Restskulden kräver `type`, `interestAccruedAmount` och `payments`. De fälten
+ * fick INTE läggas i `SAFE_PORTAL_RENT_NOTICE_SELECT`, för den används RAW av
+ * GDPR-exporten (`exportTenantData` returnerar `tenant.rentNotices` utan
+ * mapper) — allt som selekteras där hamnar i exportfilen.
+ *
+ * Första försöket la dem i den delade selecten och läckte dem rakt in i
+ * exporten. Läcktestet fångade det. Vyn har därför en EGEN select ovanpå den
+ * säkra; exportens är orörd.
+ */
+export const PORTAL_RENT_NOTICE_VIEW_SELECT = {
+  ...SAFE_PORTAL_RENT_NOTICE_SELECT,
+  type: true,
+  interestAccruedAmount: true,
+  payments: { select: { amount: true } },
+} as const satisfies Prisma.RentNoticeSelect
+
 type PortalRentNoticeRow = Prisma.RentNoticeGetPayload<{
-  select: typeof SAFE_PORTAL_RENT_NOTICE_SELECT
+  select: typeof PORTAL_RENT_NOTICE_VIEW_SELECT
 }>
 
 /**
@@ -262,6 +281,7 @@ type PortalRentNoticeRow = Prisma.RentNoticeGetPayload<{
  * skulle driva.
  */
 export function mapRentNotice(notice: PortalRentNoticeRow) {
+  const { payable, nominalTotal, paid } = rentNoticeOutstanding(notice)
   return {
     id: notice.id,
     noticeNumber: notice.noticeNumber,
@@ -276,7 +296,26 @@ export function mapRentNotice(notice: PortalRentNoticeRow) {
     consumptionAmount: Number(notice.consumptionAmount),
     miscChargeAmount: Number(notice.miscChargeAmount),
     totalAmount: Number(notice.totalAmount),
-    payableTotal: rentNoticePayableTotal(notice),
+    // ── #344: RESTSKULDEN, INTE BRUTTOT ────────────────────────────────────
+    //
+    // `payableTotal` bar avins bruttobelopp. Efter den här ändringen bär den
+    // samma tal som påminnelsebrevet och dess PDF — vilket var hela poängen:
+    // en hyresgäst som betalat 4 000 av 9 000 ska se 5 000 överallt.
+    //
+    // NAMNET BEHÅLLS. `payableTotal` betyder "vad hyresgästen ska betala", och
+    // det är precis vad det är nu — till skillnad från fakturasidans
+    // `originalTotal`, som blev falskt när innebörden ändrades. Kontraktet mot
+    // portalen är oförändrat; bara talet är sant nu.
+    payableTotal: payable,
+    // Avins NOMINELLA OCR-belopp — motsvarigheten till `invoice.total` på
+    // fakturasidan. Portalens "Kvar av X" behöver ett tal som ALDRIG är klampat:
+    // räknade gränssnittet i stället ut `payableTotal + paid` blev X lika med
+    // det inbetalda beloppet vid en överbetalning, dvs. en avi på 8 810 påstods
+    // ha varit på 10 000. Samma felklass som #342:s must-fix, i motsatt riktning.
+    nominalTotal,
+    // `paid` LÄSES UR ALLOKERINGARNA, aldrig som brutto − restskuld: den
+    // härledningen gömmer en överbetalning (#342:s must-fix).
+    paid,
     dueDate: notice.dueDate.toISOString(),
     paidAt: notice.paidAt?.toISOString() ?? null,
     status: notice.status,
@@ -593,7 +632,7 @@ export class TenantPortalService {
         // skapandet, förbi det bindande kommunikationsbeslutet.
         status: { in: ['SENT', 'PAID', 'OVERDUE'] },
       },
-      select: SAFE_PORTAL_RENT_NOTICE_SELECT,
+      select: PORTAL_RENT_NOTICE_VIEW_SELECT,
       orderBy: { dueDate: 'desc' },
     })
     return rows.map(mapRentNotice)
@@ -631,7 +670,7 @@ export class TenantPortalService {
         // hyresvärden faktiskt skickat eller markerat betalda.
         status: { in: ['SENT', 'PAID', 'OVERDUE'] },
       },
-      select: SAFE_PORTAL_RENT_NOTICE_SELECT,
+      select: PORTAL_RENT_NOTICE_VIEW_SELECT,
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
     })
     return rows.map(mapRentNotice)

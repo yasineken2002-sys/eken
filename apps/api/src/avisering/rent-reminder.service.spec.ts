@@ -242,7 +242,9 @@ describe('escalateOverdueRentNotices (cron)', () => {
 })
 
 describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id', () => {
-  function makeSendService(opts: { messageId?: string | null; uploadFails?: boolean } = {}) {
+  function makeSendService(
+    opts: { messageId?: string | null; uploadFails?: boolean; payments?: number[] } = {},
+  ) {
     const notice = {
       id: 'rn-1',
       noticeNumber: 'AVI-2026-07-0001',
@@ -252,6 +254,10 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
       consumptionAmount: new Decimal(0),
       miscChargeAmount: new Decimal(0),
       reminderFeeAmount: new Decimal(60),
+      // #344 — fälten restskulden räknas ur.
+      interestAccruedAmount: new Decimal(0),
+      type: 'RENT',
+      payments: (opts.payments ?? []).map((a) => ({ amount: new Decimal(a) })),
       tenant: { type: 'INDIVIDUAL', email: 'g@x.se', firstName: 'Anna', lastName: 'A' },
       lease: null,
       lines: [],
@@ -287,7 +293,7 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
       { outstanding: jest.fn() } as never, // PR 3a: send-jobbet läser inte skuld
       { evaluateAndAlert: jest.fn().mockResolvedValue(new Set()) } as never,
     )
-    return { service, prisma, update, uploadFile, mailService, rentNoticeEvents }
+    return { service, prisma, update, uploadFile, mailService, rentNoticeEvents, notice, org }
   }
 
   it('laddar upp påminnelse-PDF org-scopat och persisterar nyckel + message-id', async () => {
@@ -320,6 +326,67 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
       expect.objectContaining({ reminderPdfStorageKey: expect.any(String) }),
     )
     expect(datas).toContainEqual({ reminderMessageId: 'resend-msg-1' })
+  })
+
+  // ── #344: KOPPLINGEN, inte bara hjälparen ───────────────────────────────────
+  //
+  // `rentNoticeOutstanding` är testad för sig i rent-notice-outstanding.spec.ts.
+  // Att hjälparen räknar rätt säger dock INGENTING om att anroparen kopplar dess
+  // utdata till rätt parameter — en framtida omkastning av `paidSoFar` och
+  // `noticeAmount` hade passerat hela den sviten. Bevisriggen mot riktig Postgres
+  // fångade det, men riggar lever inte i repot. Det här gör det. (Samma form som
+  // fakturasidans payment-reminder-outstanding.spec.ts.)
+  it('#344 — delbetald avi: brevet får RESTSKULDEN och de nominella posterna', async () => {
+    const { service, mailService } = makeSendService({ payments: [4000] });
+    await service.processReminderSendJob('org-1', 'rn-1')
+
+    const letter = mailService.sendRentNoticeReminder.mock.calls[0][0]
+    // 8 000 hyra + 60 avgift − 4 000 betalt = 4 060 att betala.
+    expect(letter.payableTotal).toBe(4060)
+    // Posterna står NOMINELLT och summerar till totalen (FAR:s krav).
+    expect(letter.noticeAmount).toBe(8000)
+    expect(letter.feeAmount).toBe(60)
+    expect(letter.paidSoFar).toBe(4000)
+    expect(letter.overpaidAmount).toBe(0)
+    expect(letter.noticeAmount + letter.feeAmount - letter.paidSoFar).toBe(letter.payableTotal)
+  })
+
+  it('#344 — obetald avi: brevet är oförändrat och paidSoFar är 0', async () => {
+    const { service, mailService } = makeSendService()
+    await service.processReminderSendJob('org-1', 'rn-1')
+
+    const letter = mailService.sendRentNoticeReminder.mock.calls[0][0]
+    expect(letter.payableTotal).toBe(8060)
+    expect(letter.paidSoFar).toBe(0)
+  })
+
+  it('#344 — PDF:EN bär samma tal som mejlet, med betalningsraden utskriven', async () => {
+    const { service, notice, org } = makeSendService({ payments: [4000] })
+    const html = (
+      await service.buildReminderPdfHtml(notice as never, org as never)
+    ).replace(/\u00a0/g, ' ')
+
+    expect(html).toContain('Avins belopp')
+    expect(html).toContain('8 000,00 kr')
+    expect(html).toContain('Registrerad betalning')
+    expect(html).toContain('−4 000,00 kr')
+    expect(html).toContain('4 060,00 kr') // att betala nu = samma som mejlets payableTotal
+    // Bruttot får inte stå kvar någonstans som ett krav.
+    expect(html).not.toContain('8 060,00 kr')
+    // Etiketten som ljög i #341 finns inte kvar.
+    expect(html).not.toContain('Ursprungligt belopp')
+  })
+
+  it('#344 — överbetald avi: PDF:en redovisar överbetalningen i stället för att gå ihop fel', async () => {
+    const { service, notice, org } = makeSendService({ payments: [9000] })
+    const html = (
+      await service.buildReminderPdfHtml(notice as never, org as never)
+    ).replace(/\u00a0/g, ' ')
+
+    // 8 060 nominellt, 9 000 betalt → 0 att betala, 940 överbetalt.
+    expect(html).toContain('Överbetalt belopp')
+    expect(html).toContain('940,00 kr')
+    expect(html).toContain('0,00 kr')
   })
 
   it('saknat message-id från Resend → ingen reminderMessageId-skrivning', async () => {
@@ -686,6 +753,10 @@ describe('buildReminderPdfHtml — innehåll (lag 1981:739 5 §)', () => {
     consumptionAmount: new Decimal(0),
     miscChargeAmount: new Decimal(0),
     reminderFeeAmount: new Decimal(60),
+    // #344 — fälten restskulden räknas ur.
+    interestAccruedAmount: new Decimal(0),
+    type: 'RENT',
+    payments: [],
     tenant: { type: 'INDIVIDUAL', firstName: 'Anna', lastName: 'Andersson' },
   }
 

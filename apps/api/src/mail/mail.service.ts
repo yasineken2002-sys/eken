@@ -220,9 +220,22 @@ export interface SendRentNoticeReminderOptions {
   tenantName: string
   noticeNumber: string
   ocrNumber: string
-  originalAmount: number
+  /**
+   * #344 — avins NOMINELLA belopp utan påminnelseavgiften, dvs. det avin
+   * utfärdades på. Hette `originalAmount` och bar bruttot; det KRÄVDA beloppet
+   * är numera `payableTotal` (restskulden), medan specifikationsraderna står
+   * kvar nominellt med betalningen som eget avdrag — så att raderna summerar
+   * till totalen (lag 1981:739 5 §, FAR:s krav i granskningen av #344). Ett
+   * per-post klampat restvärde gjorde att `0 + 60` stod under en total på `10`.
+   */
+  noticeAmount: number
   feeAmount: number
+  /** OCR-reglerbar restskuld inkl. avgiften — vad som ska betalas nu. */
   payableTotal: number
+  /** #344 — redan registrerad betalning (Σ allokeringar). 0 när inget betalts. */
+  paidSoFar: number
+  /** #344 — betalt utöver den nominella fordran. 0 i normalfallet. */
+  overpaidAmount: number
   dueDate: Date | string
   daysOverdue: number
   organizationName: string
@@ -576,17 +589,33 @@ export class MailService {
         ? `<tr><td style="padding:8px 0;color:#6B7280;font-size:13px">Påminnelseavgift</td>
               <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:600;text-align:right">${formatSek(opts.feeAmount)}</td></tr>`
         : ''
+    // #344 — visas BARA när något faktiskt är betalt. Utan delbetalning vore
+    // raden en nolla som inte förklarar något.
+    const paidRow =
+      opts.paidSoFar > 0
+        ? `<tr><td style="padding:8px 0;color:#6B7280;font-size:13px">Registrerad betalning</td>
+              <td style="padding:8px 0;color:#111827;font-size:14px;text-align:right">−${formatSek(opts.paidSoFar)}</td></tr>`
+        : ''
+    // Överbetalning: utan raden hade posterna summerat till ett negativt tal
+    // medan totalen visade 0 (klampad).
+    const overpaidRow =
+      opts.overpaidAmount > 0
+        ? `<tr><td style="padding:8px 0;color:#6B7280;font-size:13px">Överbetalt belopp</td>
+              <td style="padding:8px 0;color:#111827;font-size:14px;text-align:right">${formatSek(opts.overpaidAmount)}</td></tr>`
+        : ''
     const bodyHtml = `
       <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px">
-        Vi har inte registrerat någon betalning för hyresavi <strong>${opts.noticeNumber}</strong>
-        som förföll ${formatDateSv(opts.dueDate)}. Vänligen betala snarast — bifogad
-        påminnelse visar beloppet. En påminnelseavgift enligt lag (1981:739) har tillkommit.
+        Hyresavi <strong>${opts.noticeNumber}</strong> förföll ${formatDateSv(opts.dueDate)} och
+        är ännu inte fullt betald. Vänligen betala snarast — bifogad påminnelse visar
+        beloppet. En påminnelseavgift enligt lag (1981:739) har tillkommit.
       </p>
       <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:20px 24px;margin:24px 0">
         <table style="width:100%;border-collapse:collapse">
-          <tr><td style="padding:8px 0;color:#6B7280;font-size:13px">Ursprungligt belopp</td>
-              <td style="padding:8px 0;color:#111827;font-size:14px;text-align:right">${formatSek(opts.originalAmount)}</td></tr>
+          <tr><td style="padding:8px 0;color:#6B7280;font-size:13px">Avins belopp</td>
+              <td style="padding:8px 0;color:#111827;font-size:14px;text-align:right">${formatSek(opts.noticeAmount)}</td></tr>
           ${feeRow}
+          ${paidRow}
+          ${overpaidRow}
           <tr><td style="padding:8px 0;color:#111827;font-size:14px;font-weight:700;border-top:1px solid #E5E7EB">Att betala nu</td>
               <td style="padding:8px 0;color:#111827;font-size:15px;font-weight:700;text-align:right;border-top:1px solid #E5E7EB">${formatSek(opts.payableTotal)}</td></tr>
           <tr><td style="padding:8px 0;color:#6B7280;font-size:13px">OCR-nummer</td>

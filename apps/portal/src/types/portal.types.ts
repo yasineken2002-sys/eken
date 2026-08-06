@@ -73,13 +73,23 @@ export interface PortalRentNotice {
   amount: number
   vatAmount: number
   // consumptionAmount = förbrukning (IMD); miscChargeAmount = övrig debitering
-  // (skada/nyckel); totalAmount = hyran. payableTotal = vad hyresgästen FAKTISKT
-  // ska betala (hyra + förbrukning + övrig debitering + ev. påminnelseavgift) och
-  // är beloppet på OCR-raden. Visa payableTotal, aldrig totalAmount.
+  // (skada/nyckel); totalAmount = hyran. Visa payableTotal, aldrig totalAmount.
   consumptionAmount: number
   miscChargeAmount: number
   totalAmount: number
+  /**
+   * #344 — vad hyresgästen ska betala NU: hyra + förbrukning + övrig debitering
+   * + ev. påminnelseavgift, MINUS redan registrerade betalningar. Samma tal som
+   * påminnelsebrevet och dess PDF visar. Bar tidigare bruttot.
+   */
   payableTotal: number
+  /**
+   * #344 — avins NOMINELLA belopp (motsvarigheten till `invoice.total`). Aldrig
+   * klampat. `payableTotal + paid` hade gett fel tal vid överbetalning.
+   */
+  nominalTotal: number
+  /** #344 — redan registrerad betalning (Σ allokeringar). 0 när inget betalts. */
+  paid: number
   dueDate: string
   paidAt: string | null
   status: 'PENDING' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' | 'FAILED'
