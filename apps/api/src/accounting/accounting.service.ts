@@ -2238,6 +2238,25 @@ export class AccountingService {
   // Därför sveps hela prefixet. Kolonet i `interest:<id>:` är med med flit —
   // utan det hade prefixet kunnat matcha ett annat avi-id som råkar börja likadant.
   //
+  // ⚠️ MOTVERIFIKATETS NYCKEL MÅSTE LIGGA UTANFÖR SVEPETS PREFIX.
+  //
+  // Den här funktionen både LETAR med ett prefix och SKRIVER nya poster. Föll
+  // motverifikaten inom samma prefix skulle en andra körning reversera
+  // reverseringarna — och idempotensen skyddar INTE mot det, eftersom de nya
+  // posterna får nya, lediga nycklar. Skulden hade svängt fram och tillbaka en
+  // gång per körning.
+  //
+  // `interest-reversal:<id>:<punkt>` ligger utanför `interest:<id>:` på ETT
+  // TECKEN — bindestrecket där svepet väntar sig ett kolon. Det är en tunn
+  // marginal, och den är avsiktlig men inte självklar: `interest:<id>:reversal:…`
+  // hade sett minst lika rimligt ut och öppnat hålet direkt. Byt aldrig nyckeln
+  // utan att kontrollera prefixet. accounting.fee-interest-reversal.spec.ts
+  // ("SVEPET FÅR INTE PLOCKA UPP SINA EGNA MOTVERIFIKAT") jämför kodens faktiska
+  // prefix mot dess faktiska skrivna nyckel och faller om de överlappar — mätt
+  // genom att tillfälligt byta nyckeln till den överlappande formen.
+  //
+  // Avgiften har inte problemet: den slås upp med EXAKT sourceId, inte prefix.
+  //
   // EN REVERSERING PER ORIGINAL, inte en klumpsumma: varje motverifikat pekar på
   // sin egen kristalliseringspunkt och bär dess datum i både nyckel och text.
   // En klumppost hade balanserat lika bra och gjort spårbarheten sämre.

@@ -286,6 +286,32 @@ describe('B — dröjsmålsräntans motverifikat (N poster)', () => {
     expect(skrivna).toHaveLength(1)
   })
 
+  it('SVEPET FÅR INTE PLOCKA UPP SINA EGNA MOTVERIFIKAT', async () => {
+    // Funktionen både LETAR med ett prefix och SKRIVER nya poster. Hamnade
+    // motverifikaten inom samma prefix skulle en andra körning reversera
+    // reverseringarna — och idempotens per nyckel skyddar INTE, eftersom de nya
+    // posterna skulle få nya, lediga nycklar.
+    //
+    // Skyddet vilar på ETT TECKEN: `interest:` mot `interest-`. Döper någon om
+    // reverseringsnyckeln till `interest:reversal:…` öppnas hålet utan att något
+    // annat test faller. Det här testet är spärren mot just det.
+    //
+    // Båda värdena läses ur KODENS faktiska utdata — prefixet den frågar med och
+    // nyckeln den skriver — inte ur handskrivna literaler bredvid.
+    const { service, skrivna, findMany } = makeService()
+
+    await service.reverseJournalEntryForInterest(NOTICE_ID, 'org-1', 'Annullerad hyresavi', null)
+
+    const prefix = (findMany.mock.calls[0]![0] as { where: { sourceId: { startsWith: string } } })
+      .where.sourceId.startsWith
+
+    for (const post of skrivna) {
+      expect(post.sourceId.startsWith(prefix)).toBe(false)
+    }
+    // …och prefixet fångar bevisligen originalen, annars vore ovanstående tomt.
+    expect(`interest:${NOTICE_ID}:2026-07-20`.startsWith(prefix)).toBe(true)
+  })
+
   it('ingen ränta bokförd → no-op', async () => {
     const { service, skrivna } = makeService({ rantepunkter: [] })
 
