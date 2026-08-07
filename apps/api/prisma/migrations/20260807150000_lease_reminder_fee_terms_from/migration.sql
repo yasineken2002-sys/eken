@@ -1,0 +1,28 @@
+-- G1: avtalsgrund för påminnelseavgift (lag 1981:739)
+--
+-- Påminnelseavgift får inte debiteras utan avtalsvillkor. Villkoret binder bara
+-- framåt: avgift får inte tas ut på hyra vars skuld uppkom innan villkoret trädde
+-- i kraft. Fältet bär den tidpunkten per hyresavtal.
+--
+-- ⚠️ INGEN BACKFILL — OCH DET ÄR AVSIKTLIGT, INTE ETT FÖRBISEENDE.
+--
+-- Kolumnen läggs till som NULL för samtliga befintliga rader. Den fylls INTE med
+-- kontraktets startDate, inte med activatedAt, inte med dagens datum, inte med
+-- något annat värde.
+--
+-- Skälet: NULL betyder "ingen avtalsgrund", och det är sanningen för varje avtal
+-- som finns i dag. Inget befintligt kontrakt bär en klausul som uppfyller
+-- lagens krav — kontraktsmallens `RENT_DUE_TEXT` nämner visserligen avgiften,
+-- men den saknade tills nyligen både belopp och giltighetsdatum, och avtal som
+-- tecknats utanför systemet har ingen klausul alls.
+--
+-- Att fylla i ett datum här vore att FABRICERA RÄTTSGRUND. Systemet skulle sedan
+-- debitera avgifter på ett villkor som ingen hyresgäst har godkänt, och den
+-- felaktiga debiteringen skulle bära en tidsstämpel som fick den att se
+-- kontrollerad ut. En tom kolumn som stoppar avgiften är rätt utfall.
+--
+-- Fältet fylls i först när hyresgästen aktivt har godkänt villkoret — i ett nytt
+-- kontrakt eller genom tilläggsavtal (G5/G6). Aktivt samtycke krävs; ensidig
+-- underrättelse räcker inte och tystnad är inte accept.
+
+ALTER TABLE "Lease" ADD COLUMN "reminderFeeTermsFrom" DATE;

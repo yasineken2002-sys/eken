@@ -1132,6 +1132,26 @@ model Lease {
   indexMinIncrease    Decimal? @db.Decimal(5, 2)
   indexNotes          String?
 
+  // ── Avtalsgrund för påminnelseavgift (G1) ───────────────────────────────
+  //
+  // Påminnelseavgift får INTE debiteras utan avtalsvillkor (2 § lagen
+  // 1981:739). Villkoret binder bara FRAMÅT: avgift får inte tas ut på hyra
+  // vars skuld uppkom innan villkoret trädde i kraft.
+  //
+  // ETT DATUMFÄLT, INGEN BOOLEAN BREDVID. Två fält kan säga emot varandra —
+  // en `hasReminderFeeTerms: true` med `termsFrom: null` hade varit ett
+  // tillstånd utan mening, och den som läser vet inte vilket som gäller.
+  // NULL betyder "ingen avtalsgrund" och är det enda sättet att uttrycka det.
+  //
+  // Fältet sitter på Lease, inte på Tenant eller Organization: villkoret
+  // avtalas per hyresavtal, och samma person kan ha flera avtal tecknade vid
+  // olika tillfällen. `Lease.tenantId` är singulär — ingen kopplingstabell
+  // för medhyresgäster finns — så ett datum per avtal är entydigt.
+  //
+  // Jämförs mot skuldens uppkomst, inte mot avtalets tecknande. Se grinden i
+  // `AccountingService.bookReminderFee` för vilket datum som faktiskt används.
+  reminderFeeTermsFrom DateTime? @db.Date
+
   // ── Försäkring ──────────────────────────────────────────────────────────
   requiresHomeInsurance Boolean @default(true)
 
