@@ -33,6 +33,11 @@ function makeService(
       update: jest.fn().mockResolvedValue(invoiceRow),
     },
     invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
+    // A: VOID plockar bort avgiftsraden och drar av den från totalen.
+    invoiceLine: {
+      findMany: jest.fn().mockResolvedValue([]),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
     deposit: {
       findFirst: jest.fn((..._a: unknown[]) => {
         ordning.push('läs-deposition')
@@ -58,7 +63,13 @@ function makeService(
     { record: jest.fn().mockResolvedValue(undefined) } as never,
     {} as never,
     {} as never,
-    { reverseJournalEntryForInvoice, reverseJournalEntryForDepositAccrual } as never,
+    {
+      reverseJournalEntryForInvoice,
+      reverseJournalEntryForDepositAccrual,
+      // A: avgiftens motverifikat. Beteendet bevisas i
+      // accounting.fee-interest-reversal.spec.ts + invoices.void-reminder-fee.spec.ts.
+      reverseJournalEntryForReminderFee: jest.fn().mockResolvedValue(undefined),
+    } as never,
     { createForAllOrgUsers: jest.fn().mockResolvedValue(undefined) } as never,
     {} as never,
     {} as never,

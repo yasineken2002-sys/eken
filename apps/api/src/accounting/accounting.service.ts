@@ -2159,6 +2159,126 @@ export class AccountingService {
     })
   }
 
+  // ── A: MOTVERIFIKAT FÖR PÅMINNELSEAVGIFTEN ─────────────────────────────────
+  //
+  // Avgiften (1510 D / 3593 K, momsfri) ligger i en EGEN namnrymd,
+  // `reminder-fee:<dokumentId>`, och syskonen ovan letar på `<invoiceId>` respektive
+  // `rent-notice:<id>`. De kan därför aldrig träffa den — samma namnrymdshopp som
+  // #301, med skillnaden att nyckeln här går att konstruera direkt ur dokumentets
+  // id. Utan det här anropet står en momsfri intäkt på 3593 och en fordran på 1510
+  // kvar för ett dokument som makulerats (BFL 5 kap 6 §).
+  //
+  // `source` MÅSTE skickas in, och den skiljer sig mellan dokumenttyperna:
+  //
+  //   faktura:  source = INVOICE      sourceId = reminder-fee:<invoiceId>
+  //   hyresavi: source = RENT_NOTICE  sourceId = reminder-fee:<noticeId>
+  //
+  // Nyckeln skiljer sig alltså på TVÅ axlar, inte en. En uppslagning som bara
+  // vidgar sourceId-mönstret men gissar source hittar fortfarande ingenting —
+  // det unika indexet är (org, source, sourceId).
+  //
+  // FAR (kartläggningen 2026-08-07): reversering är default utan undantagsväg.
+  // Avgiftens rättsgrund är att gäldenären var i dröjsmål med en giltig fordran;
+  // makuleras grunddokumentet faller den grunden i det överväldigande vanliga
+  // fallet, och VOID bär inget skäl som kan skilja undantaget från regeln. Ska
+  // avgiften undantagsvis stå kvar bokför operatören den manuellt på nytt — det
+  // är den explicita mänskliga handlingen, och den lämnar ett eget verifikat.
+  async reverseJournalEntryForReminderFee(
+    source: JournalEntrySource,
+    documentId: string,
+    organizationId: string,
+    reasonPrefix: string,
+    createdById: string | null,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const db = tx ?? this.prisma
+    const sourceId = `reminder-fee:${documentId}`
+    const original = await db.journalEntry.findFirst({
+      where: { organizationId, source, sourceId },
+      include: { lines: true },
+    })
+    if (!original) return
+
+    await this.createReversalEntry({
+      organizationId,
+      original,
+      source,
+      reversalSourceId: `reminder-fee-reversal:${documentId}`,
+      // Originalets beskrivning bärs med — den namnger fakturanumret/avin och
+      // motparten (BFL 5 kap 7 §, FAR M7 i #357). Ett motverifikat som bara sa
+      // "Makulerad faktura" hade dolt VAD som vändes.
+      description: `${reasonPrefix}: ${original.description}`,
+      createdById,
+      ...(tx ? { tx } : {}),
+    })
+  }
+
+  // ── B: MOTVERIFIKAT FÖR DRÖJSMÅLSRÄNTAN — N POSTER, INTE EN ────────────────
+  //
+  // Räntan (1510 D / 8131 K) skiljer sig från alla andra motverifikat i systemet:
+  // den har INTE en post per dokument utan EN POST PER KRISTALLISERINGSPUNKT,
+  // `interest:<noticeId>:<YYYY-MM-DD>`. En `findFirst` hade vänt den första och
+  // tyst lämnat resten — och en delvis reverserad räntefordran är värre än ingen,
+  // eftersom den ser reverserad ut i verifikationslistan.
+  //
+  // HUR MÅNGA KAN DET FINNAS? Mätt och läst, i den ordningen:
+  //
+  //   MÄTT (eken_dev): max 1 per avi i dagens data. Det är ett GOLV, inte ett tak
+  //     — ingen avi i dev har nått inkasso-redo, så den andra punkten har aldrig
+  //     inträffat. Att designa mot den siffran vore att förväxla "har inte hänt"
+  //     med "kan inte hända".
+  //   LÄST: `crystallizeInterest` anropas från TVÅ ställen, båda i
+  //     rent-reminder.service.ts — vid påminnelsen (rad 195) och vid inkasso-redo
+  //     (rad 506). Det ger normalt två. Men anropet på rad 506 ligger FÖRE
+  //     claimen på rad 510 och i en EGEN transaktion: faller flippen efter att
+  //     räntan committats plockar nästa dygns cron upp avin igen (den är kvar i
+  //     REMINDED), kristalliserar mot ett NYTT datum och skriver en tredje post.
+  //     Antalet är alltså inte bundet av koden.
+  //
+  // Därför sveps hela prefixet. Kolonet i `interest:<id>:` är med med flit —
+  // utan det hade prefixet kunnat matcha ett annat avi-id som råkar börja likadant.
+  //
+  // EN REVERSERING PER ORIGINAL, inte en klumpsumma: varje motverifikat pekar på
+  // sin egen kristalliseringspunkt och bär dess datum i både nyckel och text.
+  // En klumppost hade balanserat lika bra och gjort spårbarheten sämre.
+  //
+  // Räntan finns ENDAST på avi-sidan. `bookInterest` har exakt en anropare
+  // (rent-interest.service.ts) och fakturavägen kristalliserar aldrig ränta —
+  // därför tar den här funktionen ett noticeId och inget `source`-argument.
+  // Bygg inte en fakturamotsvarighet "för symmetrins skull"; det finns ingen post
+  // att vända där.
+  async reverseJournalEntryForInterest(
+    noticeId: string,
+    organizationId: string,
+    reasonPrefix: string,
+    createdById: string | null,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const db = tx ?? this.prisma
+    const prefix = `interest:${noticeId}:`
+    const originals = await db.journalEntry.findMany({
+      where: { organizationId, source: 'RENT_NOTICE', sourceId: { startsWith: prefix } },
+      include: { lines: true },
+      orderBy: { sourceId: 'asc' },
+    })
+
+    for (const original of originals) {
+      // Kristalliseringspunktens datum bärs vidare till reverseringens nyckel, så
+      // idempotensen blir per punkt precis som originalets. Två annulleringsförsök
+      // ger ETT motverifikat per punkt.
+      const punkt = original.sourceId!.slice(prefix.length)
+      await this.createReversalEntry({
+        organizationId,
+        original,
+        source: 'RENT_NOTICE',
+        reversalSourceId: `interest-reversal:${noticeId}:${punkt}`,
+        description: `${reasonPrefix}: ${original.description}`,
+        createdById,
+        ...(tx ? { tx } : {}),
+      })
+    }
+  }
+
   // Motverifikat vid makulering av en faktura (Invoice VOID). Intäkten bokas redan
   // vid create() (createJournalEntryForInvoice: 1510 D / 39xx K / ev. 26xx K,
   // sourceId=invoice.id) oavsett status — även DRAFT. Utan reversering vid VOID

@@ -52,7 +52,7 @@ AiTenantConversation    update      ai/tenant-ai.service.ts                     
 AiTenantConversation    updateMany  ai/tenant-ai.service.ts                                 C scopat anrop
 InspectionItem          update      inspections/inspections.controller.ts                   C scopat anrop
 InspectionItem          update      inspections/inspections.service.ts                      A kedje-query
-InvoiceLine             deleteMany  invoices/invoices.service.ts                            A kedje-query
+InvoiceLine             deleteMany  invoices/invoices.service.ts                        ×2  A kedje-query
 InvoicePayment          deleteMany  reconciliation/reconciliation.service.ts                A kedje-query
 PaymentReminder         updateMany  notifications/payment-reminder.service.ts               INGEN UPPTÄCKT
 RentNoticePayment       deleteMany  reconciliation/reconciliation.service.ts                A kedje-query

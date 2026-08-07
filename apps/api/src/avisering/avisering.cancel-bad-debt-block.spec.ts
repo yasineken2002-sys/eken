@@ -92,6 +92,11 @@ function makeService(
   anyService['accounting'] = {
     reverseJournalEntryForRentNotice,
     reverseJournalEntryForDepositAccrual,
+    // A+B: avgiftens och räntans motverifikat. Stubbade här — deras
+    // beteende bevisas i accounting.fee-interest-reversal.spec.ts och i
+    // bevisriggen, inte av att den här attrappen råkar finnas.
+    reverseJournalEntryForReminderFee: jest.fn().mockResolvedValue(undefined),
+    reverseJournalEntryForInterest: jest.fn().mockResolvedValue(undefined),
   }
   anyService['logger'] = { error: jest.fn(), log: jest.fn(), warn: jest.fn() }
 

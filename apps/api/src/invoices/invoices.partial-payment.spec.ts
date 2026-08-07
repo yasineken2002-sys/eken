@@ -342,6 +342,11 @@ describe('C4/C5 — VOID-guarden nyckar på ALLOKERINGAR, inte status', () => {
       // depositionens accrual. Ingen deposition här → reverseringen blir no-op.
       $queryRaw: jest.fn().mockResolvedValue([]),
       deposit: { findFirst: jest.fn().mockResolvedValue(null) },
+      // A: VOID plockar bort avgiftsraden. Ingen avgift här → ingen radändring.
+      invoiceLine: {
+        findMany: jest.fn().mockResolvedValue([]),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
     }
     const prisma = {
       invoice: { findFirst: jest.fn().mockResolvedValue(invoiceRow) },
@@ -352,7 +357,10 @@ describe('C4/C5 — VOID-guarden nyckar på ALLOKERINGAR, inte status', () => {
       { record: jest.fn().mockResolvedValue(undefined) } as never,
       {} as never,
       {} as never,
-      { reverseJournalEntryForInvoice: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        reverseJournalEntryForInvoice: jest.fn().mockResolvedValue(undefined),
+        reverseJournalEntryForReminderFee: jest.fn().mockResolvedValue(undefined),
+      } as never,
       { createForAllOrgUsers: jest.fn().mockResolvedValue(undefined) } as never,
       {} as never,
       {} as never,

@@ -81,6 +81,10 @@ function makeService(opts?: {
     createJournalEntryForRentNoticeManualPayment: jest.fn().mockResolvedValue({ id: 'je-pay-1' }),
     // Fix #4 — annullering reverserar avins intäktsverifikat (no-op-mock räcker).
     reverseJournalEntryForRentNotice: jest.fn().mockResolvedValue(undefined),
+    // A+B — annulleringen vänder även avgift och ränta (no-op-mock räcker här;
+    // beteendet bevisas i accounting.fee-interest-reversal.spec.ts).
+    reverseJournalEntryForReminderFee: jest.fn().mockResolvedValue(undefined),
+    reverseJournalEntryForInterest: jest.fn().mockResolvedValue(undefined),
   }
   const noop = {}
 

@@ -36,6 +36,11 @@ function makeService(invoiceStatus: string | null, allocations: Array<{ id: stri
     invoiceEvent: { deleteMany: jest.fn() },
     // C4/C5: VOID-guarden läser faktiska betalningsallokeringar (inte status).
     invoicePayment: { findMany: jest.fn().mockResolvedValue(allocations) },
+    // A: VOID plockar bort avgiftsraden och drar av den från totalen.
+    invoiceLine: {
+      findMany: jest.fn().mockResolvedValue([]),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
     // #301: radlåset på fakturan (låsordning Invoice → Deposit) + uppslaget som
     // hittar depositionens accrual i sin egen namnrymd. Utan deposition → no-op.
     $queryRaw: jest.fn().mockResolvedValue([]),
@@ -49,6 +54,7 @@ function makeService(invoiceStatus: string | null, allocations: Array<{ id: stri
   // VOID reverserar fakturans intäktsverifikat (fix #4) — no-op-mock räcker här.
   const accountingService = {
     reverseJournalEntryForInvoice: jest.fn().mockResolvedValue(undefined),
+    reverseJournalEntryForReminderFee: jest.fn().mockResolvedValue(undefined),
   }
 
   // Övriga konstruktorberoenden används inte av remove()/transitionStatus.
