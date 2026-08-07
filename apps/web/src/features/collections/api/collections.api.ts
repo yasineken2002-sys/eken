@@ -12,6 +12,10 @@ export interface OverdueInvoice {
   id: string
   invoiceNumber: string
   status: 'OVERDUE' | 'SENT_TO_COLLECTION' | 'DRAFT' | 'SENT' | 'PARTIAL' | 'PAID' | 'VOID'
+  // #352 — fakturatypen avgör om posten får bulk-exporteras. En deposition
+  // syns i inkassovyn (den enskilda export-vägen finns kvar) men sveps aldrig
+  // med i en batch — se `bulkSelectable` i CollectionsPage.
+  type: 'RENT' | 'DEPOSIT' | 'SERVICE' | 'UTILITY' | 'OTHER'
   total: number
   dueDate: string
   daysOverdue: number
