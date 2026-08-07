@@ -14,7 +14,7 @@ Filen säger inget om huruvida en gräns är RÄTT. Den gör bara omöjligt att
 flytta en gräns utan att någon ser det. Se authz-surface.ts.
 
 
-## 1. HTTP-endpoints med rollgrind (161 st)
+## 1. HTTP-endpoints med rollgrind (163 st)
 
 Endpoints utan @Roles saknas här med flit: de är autentiserade men inte
 rollgrindade, och de flesta är självscopade (byt mitt lösenord, läs mina
@@ -116,6 +116,7 @@ POST /ai/chat                                                   ACCOUNTANT, ADMI
 POST /ai/confirm                                                ACCOUNTANT, ADMIN, MANAGER, OWNER
 POST /avisering/:id/bad-debt/confirm                            ACCOUNTANT, ADMIN, MANAGER, OWNER
 POST /avisering/:id/bad-debt/probable                           ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /avisering/:id/reminder-fee/reverse                        ACCOUNTANT, ADMIN, MANAGER, OWNER
 POST /avisering/backfill/:leaseId/confirm                       ADMIN, MANAGER, OWNER
 POST /avisering/cron/run/:year/:month                           ADMIN, OWNER
 POST /avisering/generate                                        ADMIN, MANAGER, OWNER
@@ -143,6 +144,7 @@ POST /import/scan-contract                                      ADMIN, OWNER
 POST /inspections/:id/analyze                                   ADMIN, MANAGER, OWNER
 POST /inspections                                               ADMIN, MANAGER, OWNER
 POST /invoices/:id/pay                                          ADMIN, MANAGER, OWNER
+POST /invoices/:id/reminder-fee/reverse                         ACCOUNTANT, ADMIN, MANAGER, OWNER
 POST /invoices/:id/send-email                                   ADMIN, MANAGER, OWNER
 POST /invoices                                                  ADMIN, MANAGER, OWNER
 POST /keys                                                      ADMIN, MANAGER, OWNER
