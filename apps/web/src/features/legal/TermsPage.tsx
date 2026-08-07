@@ -1,5 +1,10 @@
 import { LegalPageShell, type TocItem } from './LegalPageShell'
-import { CURRENT_TERMS_VERSION, LEGAL_DOCUMENT_UPDATED_AT, PLATFORM_COMPANY } from '@eken/shared'
+import {
+  CURRENT_TERMS_VERSION,
+  LEGAL_DOCUMENT_UPDATED_AT,
+  PLATFORM_COMPANY,
+  REMINDER_FEE_MAX_SEK,
+} from '@eken/shared'
 
 interface Props {
   onBack: () => void
@@ -136,8 +141,8 @@ export function TermsPage({ onBack }: Props) {
           <strong>Dröjsmålsränta:</strong> Referensräntan + 8 procentenheter enligt 6 § räntelagen
         </li>
         <li>
-          <strong>Påminnelseavgift:</strong> 60 kr enligt 4 § lagen (1981:739) om ersättning för
-          inkassokostnader
+          <strong>Påminnelseavgift:</strong> {REMINDER_FEE_MAX_SEK} kr enligt 4 § lagen (1981:739)
+          om ersättning för inkassokostnader
         </li>
       </ul>
       <p>

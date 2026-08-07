@@ -29,6 +29,7 @@ import type {
 import type { Decimal } from '@prisma/client/runtime/library'
 
 import { isReminderFeeContractuallyAllowed } from './debt-origin'
+import { REMINDER_FEE_MAX_SEK } from '@eken/shared'
 import type { DebtOriginDate } from './debt-origin'
 import type {
   BalanceSheet,
@@ -484,6 +485,37 @@ export class AccountingService {
     // var tillåten men bokföringen ändå uteblev.
     if (!isReminderFeeContractuallyAllowed(debtOrigin, termsFrom)) return null
 
+    // ── G3: DET LAGSTADGADE TAKET, KLAMPAT VID DEBITERINGSTILLFÄLLET ──────
+    //
+    // Lager 2 av två. `@Max(REMINDER_FEE_MAX_SEK)` i UpdateOrganizationDto
+    // hindrar att ett för högt värde skrivs in — men validering skyddar bara
+    // framtida skrivningar GENOM DEN VÄGEN. Ett värde som redan ligger i
+    // databasen, eller som kommer in via seed, direkt SQL eller en framtida
+    // importväg, passerar den obehindrat. Klampningen här är sista linjen.
+    //
+    // TAKET GÄLLER ALLA HYRESGÄSTTYPER. 6 § första stycket lagen (1981:739)
+    // gör ett avtalsvillkor som utvidgar gäldenärens ersättningsskyldighet
+    // ogiltigt, och ordalydelsen har ingen konsumentavgränsning — ett avtalat
+    // belopp över taket är ogiltigt i den överskjutande delen även mellan
+    // företag. Ingen INDIVIDUAL/COMPANY-förgrening ska införas här.
+    //
+    // KLAMPAS, INTE VÄGRAS. Att returnera null hade tagit bort hela avgiften
+    // och därmed straffat hyresvärden för en felkonfiguration — de 60 kronorna
+    // är hen faktiskt berättigad till. Bara det överskjutande är ogiltigt.
+    //
+    // OCH DEN ÄR INTE TYST. Till skillnad från avtalsgrundens vägran (som är
+    // ett normalt utfall för varje avtal utan villkor) betyder en klampning att
+    // någon konfigurerat ett olagligt belopp. Den som skrivit in 150 ska kunna
+    // få veta varför det blev 60.
+    const cappedFee = Math.min(fee, REMINDER_FEE_MAX_SEK)
+    if (cappedFee < fee) {
+      this.logger.warn(
+        `Påminnelseavgift klampad till det lagstadgade taket för organisation ` +
+          `${organizationId}: ${fee} kr begärt, ${cappedFee} kr debiterat ` +
+          `(4 § lagen 1981:739 — taket är tvingande, 6 § 1 st).`,
+      )
+    }
+
     const db = params.tx ?? this.prisma
     const accounts = await db.account.findMany({
       where: { organizationId, number: { in: [1510, 3593] } },
@@ -508,8 +540,12 @@ export class AccountingService {
       sourceId,
       createdById: params.createdById ?? null,
       lines: [
-        { accountId: receivableId, debit: fee, description: 'Påminnelseavgift fordran' },
-        { accountId: reminderRevenueId, credit: fee, description: 'Påminnelseintäkt (momsfri)' },
+        { accountId: receivableId, debit: cappedFee, description: 'Påminnelseavgift fordran' },
+        {
+          accountId: reminderRevenueId,
+          credit: cappedFee,
+          description: 'Påminnelseintäkt (momsfri)',
+        },
       ],
       idempotencyWhere: { organizationId, source, sourceId },
       ...(params.tx ? { tx: params.tx } : {}),

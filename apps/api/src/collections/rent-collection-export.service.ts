@@ -10,7 +10,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { RentDebtService } from '../avisering/rent-debt.service'
 import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
-import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+import { DEFAULT_BRAND_COLOR, REMINDER_FEE_MAX_SEK } from '@eken/shared'
 import { UserRole } from '@prisma/client'
 import { assertMayActOnCollections } from '../common/authz/collections-authz'
 
@@ -616,7 +616,7 @@ export class RentCollectionExportService {
   <p class="legal">
     Detta dokument är ett underlag för inkassoärende. Borgenären ansvarar för att
     skicka det vidare till sitt valda inkassobolag (t.ex. Visma Collectors, Intrum
-    eller Lindorff). Påminnelseavgift (60 kr) utgår enligt 4 § lagen (1981:739)
+    eller Lindorff). Påminnelseavgift (${REMINDER_FEE_MAX_SEK} kr) utgår enligt 4 § lagen (1981:739)
     om ersättning för inkassokostnader. Dröjsmålsränta beräknas enligt räntelagen
     (1975:635) 6 § (referensränta + 8 procentenheter) och redovisas per period
     enligt 9 §. <strong>Inkassobolaget ansvarar för att utfärda formellt

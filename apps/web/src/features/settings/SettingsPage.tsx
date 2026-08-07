@@ -23,6 +23,7 @@ import {
   BRAND_FONT_LABELS,
   DEFAULT_BRAND_FONT,
   DEFAULT_BRAND_COLOR,
+  REMINDER_FEE_MAX_SEK,
 } from '@eken/shared'
 
 const COMPANY_FORM_LABEL: Record<CompanyForm, string> = {
@@ -1078,7 +1079,7 @@ export function SettingsPage() {
                       onChange={(e) => setReminderFeeSek(Number(e.target.value))}
                     />
                     <p className="mt-1 text-[11px] text-gray-500">
-                      Max enligt 4 § lagen (1981:739): 60 kr
+                      Max enligt 4 § lagen (1981:739): {REMINDER_FEE_MAX_SEK} kr
                     </p>
                   </div>
                   <div>
