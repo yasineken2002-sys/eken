@@ -57,13 +57,32 @@ const FEE_LINE_CONST = 'REMINDER_FEE_LINE_DESCRIPTION'
 // Hur långt före skrivningen predikatet måste synas (samma tx/funktionsblock).
 //
 // MÄTT, INTE GISSAT. Avståndet hos de två legitima skrivarna:
-//   avi-sidan      (rent-reminder.service.ts)     ~700 tecken
+//   avi-sidan      (rent-reminder.service.ts)       550 tecken
 //   fakturasidan   (payment-reminder.service.ts)  4 240 tecken
 //
 // Fakturasidans avstånd är stort för att predikatet måste ligga FÖRE anspråket
 // medan raden skrivs EFTER det, med utförliga kommentarblock däremellan. 6000
 // ger marginal utan att spänna över en typisk funktionsgräns — vid 4000 föll
 // den legitima skrivaren, vilket är hur siffran hittades.
+//
+// ⚠️ VAD NÄRHETSKONTROLLEN INTE KAN — LÄS INNAN DU LITAR PÅ DEN.
+//
+// Regeln är "predikatet syns någonstans i de föregående 6000 tecknen", inte
+// "predikatets svar styr just den här skrivningen". Den har därför en
+// FALSK-GODKÄNN-RIKTNING: en skrivare som kringgår predikatet men råkar ligga
+// inom fönstret från ett ORELATERAT predikatanrop passerar tyst.
+//
+// Vakten fångar alltså FÖRBISEENDET — någon lägger till en avgiftsskrivning i
+// en ny fil eller ett nytt block och glömmer avtalsgrunden. Den fångar inte ett
+// kringgående som råkar hamna nära ett befintligt anrop, och den är inget skydd
+// mot uppsåt. Samma avgränsning som brandet på DebtOriginDate: skydd mot
+// misstaget, inte mot avsikten.
+//
+// ⚠️ VILL NÅGON HÖJA TALET ÄR DET ETT SYMTOM, INTE EN LÖSNING. Växer avståndet
+// mellan predikatet och skrivningen betyder det att de glidit isär i koden —
+// och ju större fönstret blir, desto fler orelaterade anrop kan råka godkänna
+// en skrivning. Flytta koden så att beslutet och skrivningen står nära
+// varandra. Höj inte fönstret för att slippa göra det.
 const PRECEDING_WINDOW = 6000 // tecken
 
 function sliceCall(text, openParenIdx) {
