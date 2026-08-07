@@ -68,6 +68,14 @@ function makeService(opts?: {
     },
     // PR 2 — append-only trail för kravstegs-nollställningen.
     rentNoticeEvent: { create: eventCreate },
+    // F+E: cancelNotice lossar charges från den annullerade avin. Ingen
+    // charge i de här fallen — beteendet bevisas i detach-specarna.
+    rentNoticeLine: {
+      findMany: jest.fn().mockResolvedValue([]),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    consumptionCharge: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    miscCharge: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     // cancelNotice kör statusflip + motverifikat (fix #4) atomiskt i $transaction.
     // Deklareras här, tilldelas nedan (undviker cirkulär typinferens på `prisma`).
     $transaction: undefined as unknown as jest.Mock,

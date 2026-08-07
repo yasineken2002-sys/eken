@@ -43,6 +43,13 @@ function makeService() {
       findFirst: jest.fn().mockResolvedValue(null),
     },
     deposit: { findFirst: jest.fn().mockResolvedValue(null) },
+    // F+E: charges lossas vid annullering. Ingen charge i de här fallen.
+    rentNoticeLine: {
+      findMany: jest.fn().mockResolvedValue([]),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    consumptionCharge: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    miscCharge: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
   }
   const prisma = {
     rentNotice: { findFirst: jest.fn().mockResolvedValue(notice) },

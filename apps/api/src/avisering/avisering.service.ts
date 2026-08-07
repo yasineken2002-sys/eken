@@ -2021,6 +2021,80 @@ export class AviseringService {
         tx,
       )
 
+      // ── F + E: DEBITERINGARNA LOSSAS — BOKFÖRINGEN RÖRS ALDRIG ──────────────
+      //
+      // HÄR VÄNDER PRINCIPEN, OCH DET ÄR AVSIKTLIGT.
+      //
+      // Allt ovanför reverserar. Det här gör tvärtom, för att affärshändelsen är
+      // av ett annat slag: elen levererades faktiskt, skadan skedde faktiskt.
+      // Förbruknings- och övrigdebiteringen är bokförd på EGEN grund vid
+      // debiteringstillfället (`consumption-charge:<id>` resp. `misc-charge:<id>`,
+      // 1510 D / 3xxx|3990 K), oberoende av vilket dokument som senare presenterar
+      // den för hyresgästen. Att reversera den vore att bokföringsmässigt påstå
+      // att leveransen aldrig ägde rum. FAR:s ställningstagande i kartläggningen:
+      // makulering betyder "detta dokument gäller inte", inte "affärshändelsen
+      // ägde aldrig rum".
+      //
+      // MÄTT ATT DET ÄR SÄKERT: bokföringen utlöses vid CONFIRM (DRAFT→CONFIRMED),
+      // aldrig vid påläggning. Ingen av de tre attach-vägarna
+      // (attachRentNoticeLineCharges, attachMiscChargesToRentNotice,
+      // invoiceSeparateCharges) rör AccountingService — noll träffar. En omlagd
+      // charge bokförs därför inte en andra gång. Skulle någon ändå anropa
+      // confirm igen är både `createJournalEntryForMiscCharge` och
+      // `createJournalEntryForConsumptionCharge` idempotenta på sina sourceId.
+      //
+      // ⚠️ RADEN MÅSTE BORT, INTE BARA STATUSEN BYTAS.
+      //
+      // `RentNoticeLine.consumptionChargeId` och `.miscChargeId` är båda `@unique`.
+      // Lämnas raden kvar kan chargen ALDRIG läggas på en ny avi — nästa
+      // attach-körning gör `rentNoticeLine.create` med samma charge-id och far in
+      // i unikhetsindexet. Statusen hade sagt CONFIRMED medan posten i praktiken
+      // var lika inlåst som förut: samma limbo, bara ett annat ord i kolumnen.
+      //
+      // Att i stället nolla FK:n och behålla raden VALDES BORT: en rad utan vare
+      // sig consumptionChargeId eller miscChargeId bryter XOR-invarianten
+      // (`assertRentNoticeLineChargeXor`) och blir en föräldralös rad som inget
+      // flöde vet vad den ska göra med.
+      //
+      // Beloppsfälten nollas i samma veva — annars påstår den annullerade avin
+      // förbrukning och skadedebitering vars rader inte längre finns, och
+      // `computeRentDebt` skulle räkna komponenter utan underlag.
+      const chargeLines = await tx.rentNoticeLine.findMany({
+        where: {
+          rentNoticeId: noticeId,
+          OR: [{ consumptionChargeId: { not: null } }, { miscChargeId: { not: null } }],
+        },
+        select: { id: true, consumptionChargeId: true, miscChargeId: true },
+      })
+
+      if (chargeLines.length > 0) {
+        const consumptionIds = chargeLines
+          .map((l) => l.consumptionChargeId)
+          .filter((v): v is string => v != null)
+        const miscIds = chargeLines.map((l) => l.miscChargeId).filter((v): v is string => v != null)
+
+        // Villkorat på ATTACHED: en charge som hunnit bli CANCELLED av sin egen
+        // annulleringsväg ska inte återuppstå som CONFIRMED här.
+        if (consumptionIds.length > 0) {
+          await tx.consumptionCharge.updateMany({
+            where: { id: { in: consumptionIds }, organizationId: orgId, status: 'ATTACHED' },
+            data: { status: 'CONFIRMED' },
+          })
+        }
+        if (miscIds.length > 0) {
+          await tx.miscCharge.updateMany({
+            where: { id: { in: miscIds }, organizationId: orgId, status: 'ATTACHED' },
+            data: { status: 'CONFIRMED' },
+          })
+        }
+
+        await tx.rentNoticeLine.deleteMany({ where: { id: { in: chargeLines.map((l) => l.id) } } })
+        await tx.rentNotice.updateMany({
+          where: { id: noticeId, organizationId: orgId },
+          data: { consumptionAmount: 0, miscChargeAmount: 0 },
+        })
+      }
+
       // ── #301: DEPOSITIONSAVINS ACCRUAL LIGGER I EN ANNAN NAMNRYMD ───────────
       //
       // En DEPOSIT-avi bokförs sedan #41 ALLTID: ensureDepositForNotice skapar

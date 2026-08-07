@@ -689,6 +689,38 @@ export class InvoicesService {
         // konsistent igen. `deleteMany` + summering hanterar dessutom flera rader
         // utan särfall — efter #357 kan bara en uppstå, men den spärren är ung och
         // koden här ska inte anta att den alltid hållit.
+        // ── E: FÖRBRUKNINGSDEBITERINGAR LOSSAS FRÅN DEN MAKULERADE FAKTURAN ──
+        //
+        // En UTILITY-faktura (`invoiceSeparateCharges`) är ETT RENT DOKUMENT: den
+        // bokförs aldrig, eftersom charges redan bär sin egen 1510-fordran från
+        // CONFIRM-tillfället. `reverseJournalEntryForInvoice` ovan är därför en
+        // no-op för den — det finns ingen post under `<invoiceId>` att hitta.
+        //
+        // Utan det här blocket blev charges PERMANENT ÖVERGIVNA: `ATTACHED` till
+        // en makulerad faktura, utan väg tillbaka till `CONFIRMED` och utan något
+        // levande dokument att drivas in mot. Fordran var korrekt bokförd och
+        // omöjlig att kräva. Bokföringen rörs inte — grunden består.
+        //
+        // MISC-CHARGES SAKNAS HÄR MED FLIT, OCH DET ÄR MÄTT: `MiscCharge` har
+        // ingen `invoiceId`-kolumn (bara relationen `rentNoticeLine`). En övrig
+        // debitering kan bara hamna på en hyresavi, aldrig på en faktura. De fyra
+        // teoretiska kombinationerna är alltså tre — ett anrop här hade grindat
+        // mot något som inte kan uppstå.
+        //
+        // FAKTURARADERNA LÄMNAS KVAR, till skillnad från avgiftsraden ovan.
+        // Skillnaden är inte godtycklig: avgiftens verifikat REVERSERAS, så
+        // dokumentet får inte fortsätta kräva den. Förbrukningens verifikat STÅR
+        // KVAR och fordran är alltjämt verklig — raderna är då korrekt historik
+        // över vad den makulerade fakturan en gång presenterade. Ingen
+        // dubbelkrävning uppstår: en VOID-faktura bär ingen skuld
+        // (`bearsOpenDebt`), medan chargen drivs in via sitt nya dokument. Något
+        // unikhetsindex som tvingar fram borttagning finns inte här, till skillnad
+        // från avi-sidans `RentNoticeLine`.
+        await tx.consumptionCharge.updateMany({
+          where: { invoiceId: id, organizationId, status: 'ATTACHED' },
+          data: { status: 'CONFIRMED', invoiceId: null },
+        })
+
         const feeLines = await tx.invoiceLine.findMany({
           where: { invoiceId: id, description: REMINDER_FEE_LINE_DESCRIPTION },
           select: { id: true, total: true },

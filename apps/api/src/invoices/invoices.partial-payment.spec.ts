@@ -347,6 +347,8 @@ describe('C4/C5 — VOID-guarden nyckar på ALLOKERINGAR, inte status', () => {
         findMany: jest.fn().mockResolvedValue([]),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      // E: förbrukningsdebiteringar lossas vid VOID. Ingen charge här.
+      consumptionCharge: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     }
     const prisma = {
       invoice: { findFirst: jest.fn().mockResolvedValue(invoiceRow) },

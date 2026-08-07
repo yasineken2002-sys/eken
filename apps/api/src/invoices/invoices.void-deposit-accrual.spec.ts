@@ -38,6 +38,8 @@ function makeService(
       findMany: jest.fn().mockResolvedValue([]),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    // E: förbrukningsdebiteringar lossas vid VOID. Ingen charge här.
+    consumptionCharge: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     deposit: {
       findFirst: jest.fn((..._a: unknown[]) => {
         ordning.push('läs-deposition')
