@@ -12,6 +12,7 @@ import { Prisma } from '@prisma/client'
 import type { Invoice, InvoiceStatus, InvoiceEventType, PaymentMethod } from '@prisma/client'
 import { computeInvoiceDebt, invoiceOutstanding } from './invoice-debt'
 import { paymentTargetStatus, isPaymentTransitionAllowed } from './invoice-payment-status'
+import { REMINDER_FEE_LINE_DESCRIPTION } from './reminder-fee-line'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { stockholmCivilDate } from '../common/time/stockholm-period'
 import { OcrService } from '../common/ocr/ocr.service'
@@ -648,6 +649,63 @@ export class InvoicesService {
       // No-op om fakturan aldrig bokförts.
       if (newStatus === 'VOID') {
         await this.accountingService.reverseJournalEntryForInvoice(id, organizationId, actorId, tx)
+
+        // ── A: PÅMINNELSEAVGIFTEN LIGGER I EN ANNAN NAMNRYMD ─────────────────
+        //
+        // Raden ovan letar på `sourceId = <invoiceId>` och kan aldrig träffa
+        // avgiften, som bokförts under `reminder-fee:<invoiceId>` (1510 D / 3593 K,
+        // momsfri). Utan det här anropet står en påminnelseintäkt och en fordran
+        // kvar för en makulerad faktura. Samma klass som #301.
+        //
+        // Räntan har INGEN motsvarighet här: `bookInterest` anropas bara från
+        // avi-sidans RentInterestService, och fakturavägen kristalliserar aldrig
+        // ränta. Att lägga ett anrop här "för symmetrins skull" hade varit en
+        // uppslagning som per konstruktion aldrig kan träffa något.
+        await this.accountingService.reverseJournalEntryForReminderFee(
+          'INVOICE',
+          id,
+          organizationId,
+          'Makulerad faktura',
+          actorId,
+          tx,
+        )
+
+        // ── …OCH DOKUMENTET MÅSTE FÖLJA MED, INTE BARA HUVUDBOKEN ────────────
+        //
+        // Avgiften togs på TVÅ ställen: ett verifikat OCH en rad på fakturan med
+        // `total` uppräknad (payment-reminder.service.ts). Reverseras bara
+        // verifikatet blir dokumentet och räkenskaperna oense — fakturan
+        // fortsätter kräva avgiften medan huvudboken inte längre bär den. Det är
+        // exakt den divergens #357 stängde, med omvänt tecken.
+        //
+        // Raden RADERAS, den nollas inte. En rad på 0,00 kr med texten
+        // "Påminnelseavgift enligt lag" påstår en lagstadgad avgift på noll
+        // kronor och följer med ut på fakturaunderlaget — FAR:s M1 i #357 avvisade
+        // just den konstruktionen på skrivsidan, och den är inte bättre här.
+        //
+        // Summan tas från RADERNA, inte från verifikatet: det är raderna som
+        // byggt upp `total`, och det är de två som måste stämma inbördes. Skulle
+        // de någon gång ha glidit isär är det radernas summa som gör dokumentet
+        // konsistent igen. `deleteMany` + summering hanterar dessutom flera rader
+        // utan särfall — efter #357 kan bara en uppstå, men den spärren är ung och
+        // koden här ska inte anta att den alltid hållit.
+        const feeLines = await tx.invoiceLine.findMany({
+          where: { invoiceId: id, description: REMINDER_FEE_LINE_DESCRIPTION },
+          select: { id: true, total: true },
+        })
+        if (feeLines.length > 0) {
+          const feeSum = feeLines.reduce(
+            (sum, l) => sum.plus(new Prisma.Decimal(l.total)),
+            new Prisma.Decimal(0),
+          )
+          await tx.invoiceLine.deleteMany({
+            where: { id: { in: feeLines.map((l) => l.id) } },
+          })
+          await tx.invoice.update({
+            where: { id },
+            data: { total: { decrement: feeSum } },
+          })
+        }
 
         // ── #301: DEPOSITIONSFAKTURANS ACCRUAL LIGGER I EN ANNAN NAMNRYMD ─────
         //

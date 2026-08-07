@@ -15,6 +15,7 @@ import { enqueueSafely } from '../common/queue/enqueue-safety'
 import { MailService } from '../mail/mail.service'
 import { QUEUE_NORMAL } from '../mail/mail.types'
 import { computeInvoiceDebt, invoiceOutstanding } from '../invoices/invoice-debt'
+import { REMINDER_FEE_LINE_DESCRIPTION } from '../invoices/reminder-fee-line'
 import { NotificationsService } from './notifications.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
@@ -472,7 +473,9 @@ export class PaymentReminderService {
         await tx.invoiceLine.create({
           data: {
             invoiceId: invoice.id,
-            description: 'Påminnelseavgift enligt lag (1981:739)',
+            // Delad konstant — VOID-grenen i InvoicesService plockar bort raden
+            // igen och känner bara igen den på texten (InvoiceLine saknar typkolumn).
+            description: REMINDER_FEE_LINE_DESCRIPTION,
             quantity: new Prisma.Decimal(1),
             unitPrice: new Prisma.Decimal(safeFee.toFixed(2)),
             vatRate: 0,

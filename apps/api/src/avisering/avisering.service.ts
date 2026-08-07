@@ -1987,6 +1987,40 @@ export class AviseringService {
       // DEPOSIT-avi — den intäktsbokförs aldrig. Dess accrual hanteras nedan.
       await this.accounting.reverseJournalEntryForRentNotice(noticeId, orgId, actorId ?? null, tx)
 
+      // ── A + B: AVGIFTEN OCH RÄNTAN BOR I EGNA NAMNRYMDER ────────────────────
+      //
+      // Raden ovan letar på `rent-notice:<id>` och vänder KAPITALET. Avins krav är
+      // fem komponenter (computeRentDebt: kapital + förbrukning + övrig debitering
+      // + avgift + ränta) fördelade på fem nyckelrymder i huvudboken. Utan de här
+      // två anropen reverserade annulleringen en av dem, medan reskontran släppte
+      // hela avin — avin lämnar `OverdueDebtService` (som bara läser OVERDUE) och
+      // står som CANCELLED, samtidigt som 3593 och 8131 behåller sina intäkter med
+      // bärande fordran kvar på 1510.
+      //
+      // Avgiften har SAMMA form på båda dokumenttyperna men olika `source`
+      // (RENT_NOTICE här, INVOICE på fakturasidan) — därför skickas den in.
+      // Räntan finns BARA här; fakturavägen kristalliserar aldrig ränta.
+      //
+      // Ordningen kapital → avgift → ränta är verifikationslistans läsordning och
+      // speglar den ordning posterna uppstod. Bokföringsmässigt är den likgiltig
+      // (alla tre är oberoende motverifikat i samma transaktion), men en granskare
+      // som läser uppifrån och ner ska se kravet vändas i den ordning det byggdes.
+      await this.accounting.reverseJournalEntryForReminderFee(
+        'RENT_NOTICE',
+        noticeId,
+        orgId,
+        'Annullerad hyresavi',
+        actorId ?? null,
+        tx,
+      )
+      await this.accounting.reverseJournalEntryForInterest(
+        noticeId,
+        orgId,
+        'Annullerad hyresavi',
+        actorId ?? null,
+        tx,
+      )
+
       // ── #301: DEPOSITIONSAVINS ACCRUAL LIGGER I EN ANNAN NAMNRYMD ───────────
       //
       // En DEPOSIT-avi bokförs sedan #41 ALLTID: ensureDepositForNotice skapar

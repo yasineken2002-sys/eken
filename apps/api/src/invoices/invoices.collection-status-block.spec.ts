@@ -52,6 +52,11 @@ function makeService(invoiceStatus: string, allocations: Array<{ id: string }> =
         ),
     },
     invoicePayment: { findMany: jest.fn().mockResolvedValue(allocations) },
+    // A: VOID plockar bort avgiftsraden och drar av den från totalen.
+    invoiceLine: {
+      findMany: jest.fn().mockResolvedValue([]),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
     $queryRaw: jest.fn().mockResolvedValue([]),
     deposit: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: undefined as unknown,
@@ -62,6 +67,7 @@ function makeService(invoiceStatus: string, allocations: Array<{ id: string }> =
   const notificationsService = { createForAllOrgUsers: jest.fn().mockResolvedValue(undefined) }
   const accountingService = {
     reverseJournalEntryForInvoice: jest.fn().mockResolvedValue(undefined),
+    reverseJournalEntryForReminderFee: jest.fn().mockResolvedValue(undefined),
   }
 
   const service = new InvoicesService(
