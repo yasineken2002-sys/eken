@@ -911,7 +911,7 @@ export class CollectionExportService {
 
     // Egen html/head/body + egen header/titel ersätts av den gemensamma brandade
     // shellen (logga, primär/sekundärfärg, typsnitt, titel). ALLT juridiskt och
-    // ekonomiskt bindande innehåll — disclaimern (lag 1981:739), alla belopp
+    // ekonomiskt bindande innehåll — disclaimern (4 § lagen 1981:739), alla belopp
     // (kapital, påminnelseavgifter, total skuld), borgenär/gäldenär, förfallo-
     // datum och kontraktsreferens — är byte-för-byte oförändrat. Bara ramen brandas.
     const contentCss = `
@@ -1017,8 +1017,8 @@ export class CollectionExportService {
     Detta dokument är ett underlag för inkassoärende. Borgenären ansvarar för att
     skicka det vidare till sitt valda inkassobolag (t.ex. Visma Collectors, Intrum
     eller Lindorff). Eveno är ett fastighetssystem och bedriver INTE
-    inkassoverksamhet. Påminnelseavgift utgår enligt lag (1981:739) om ersättning
-    för inkassokostnader.
+    inkassoverksamhet. Påminnelseavgift utgår enligt 4 § lagen (1981:739) om
+    ersättning för inkassokostnader.
   </p>`
 
     return buildBrandedPdfHtml({
@@ -1032,7 +1032,7 @@ export class CollectionExportService {
       title: 'Inkassounderlag',
       contentHtml,
       // Footern DÖLJS medvetet. Den juristgranskade inkasso-disclaimern
-      // (lag 1981:739 + "Eveno bedriver INTE inkassoverksamhet") är ett
+      // (4 § lagen 1981:739 + "Eveno bedriver INTE inkassoverksamhet") är ett
       // BLOCKING-krav och MÅSTE vara dokumentets sista ord. En generisk
       // brand-footer (org-adress/bankgiro/kontakt) efter den vore strukturellt
       // fel och kunde dessutom antyda en betalningsväg (bankgiro) som motsäger

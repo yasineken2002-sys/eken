@@ -1078,7 +1078,7 @@ export function SettingsPage() {
                       onChange={(e) => setReminderFeeSek(Number(e.target.value))}
                     />
                     <p className="mt-1 text-[11px] text-gray-500">
-                      Max enligt lag (1981:739): 60 kr
+                      Max enligt 4 § lagen (1981:739): 60 kr
                     </p>
                   </div>
                   <div>

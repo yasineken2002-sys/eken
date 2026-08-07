@@ -872,7 +872,7 @@ export class RentReminderService {
     ${tenantName ? `Hej ${escapeHtml(tenantName)},<br/>` : ''}
     hyresavi <strong>${notice.noticeNumber}</strong> förföll ${dueDateStr} och är ännu inte
     fullt betald. Vänligen betala snarast. En påminnelseavgift enligt
-    lag (1981:739) om ersättning för inkassokostnader har tillkommit.
+    4 § lagen (1981:739) om ersättning för inkassokostnader har tillkommit.
   </p>
 
   <table style="margin-top:24px">

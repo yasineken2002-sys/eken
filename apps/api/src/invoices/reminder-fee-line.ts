@@ -21,4 +21,4 @@
  * (noll fakturor), men en textändring efter lansering kräver en migrering av
  * befintliga rader — inte bara en ny literal här.
  */
-export const REMINDER_FEE_LINE_DESCRIPTION = 'Påminnelseavgift enligt lag (1981:739)'
+export const REMINDER_FEE_LINE_DESCRIPTION = 'Påminnelseavgift enligt 4 § lagen (1981:739)'

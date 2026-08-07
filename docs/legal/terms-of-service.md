@@ -134,7 +134,7 @@ sker till det bankgiro som anges på fakturan.
 referensräntan + 8 procentenheter enligt 6 § räntelagen.
 
 6.4 **Påminnelse- och inkassoavgifter.** Vid utebliven betalning debiteras
-påminnelseavgift om 60 kr och inkassokostnad om 180 kr enligt lag
+påminnelseavgift om 60 kr och inkassokostnad om 180 kr enligt 4 § lagen
 (1981:739) om ersättning för inkassokostnader.
 
 6.5 **Eskalering vid utebliven betalning.**
