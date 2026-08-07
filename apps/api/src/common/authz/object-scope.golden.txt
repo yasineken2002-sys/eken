@@ -45,7 +45,7 @@ där scopningen är anroparens ansvar. Den måste skrivas ner i CALLER_SCOPED me
 ett påstående om vem som scopar i stället — se sista sektionen.
 
 
-## Form 1 — update/delete (11 rader)
+## Form 1 — update/delete (12 rader)
 
 AiTenantConversation    delete      ai/tenant-ai.service.ts                                 D annan nyckel
 AiTenantConversation    update      ai/tenant-ai.service.ts                             ×4  C scopat anrop + INGEN UPPTÄCKT
@@ -54,12 +54,13 @@ InspectionItem          update      inspections/inspections.controller.ts       
 InspectionItem          update      inspections/inspections.service.ts                      A kedje-query
 InvoiceLine             deleteMany  invoices/invoices.service.ts                            A kedje-query
 InvoicePayment          deleteMany  reconciliation/reconciliation.service.ts                A kedje-query
+PaymentReminder         updateMany  notifications/payment-reminder.service.ts               INGEN UPPTÄCKT
 RentNoticePayment       deleteMany  reconciliation/reconciliation.service.ts                A kedje-query
 Unit                    updateMany  units/unit-status.sync.ts                           ×2  INGEN UPPTÄCKT
 Unit                    delete      units/units.service.ts                                  A kedje-query
 Unit                    update      units/units.service.ts                                  A kedje-query
 
-## Form 2 — create (35 rader)
+## Form 2 — create (36 rader)
 
 AiMessage               create      ai/ai-assistant.controller.ts                       ×3  A kedje-query + C scopat anrop
 AiMessage               create      ai/ai-assistant.service.ts                          ×7  A kedje-query + C scopat anrop
@@ -85,7 +86,8 @@ JournalEntryLine        create      ai/tools/tool-executor.service.ts           
 MaintenanceComment      create      maintenance/maintenance.service.ts                      C scopat anrop
 MaintenanceComment      create      tenant-portal/tenant-portal.service.ts                  D annan nyckel
 MaintenanceImage        create      maintenance/maintenance.service.ts                      INGEN UPPTÄCKT
-PaymentReminder         create      notifications/payment-reminder.service.ts           ×3  INGEN UPPTÄCKT
+PaymentReminder         create      notifications/payment-reminder.service.ts           ×2  INGEN UPPTÄCKT
+PaymentReminder         createMany  notifications/payment-reminder.service.ts               INGEN UPPTÄCKT
 RentNoticeEvent         create      avisering/rent-notice-events.service.ts                 INGEN UPPTÄCKT
 RentNoticeEvent         create      collections/rent-collection-export.service.ts       ×2  C scopat anrop
 RentNoticeEvent         create      reconciliation/reconciliation.service.ts                A kedje-query
@@ -98,7 +100,7 @@ Unit                    create      import/import.service.ts                    
 Unit                    create      units/units.service.ts                                  A kedje-query
 
 
-## Undantag: scopningen ligger hos anroparen (2 st)
+## Undantag: scopningen ligger hos anroparen (3 st)
 
 Interna hjälpare utan aktörskontext. Formen är INTE automatiskt ofarlig — en
 privat metod som tar ett id är exakt den skepnad en verklig IDOR gömmer sig i.
@@ -110,6 +112,15 @@ AiTenantConversation.update  —  ai/tenant-ai.service.ts  (1 st)
     updatedAt. Dess enda anropare skickar conversation.id från
     getOrCreateConversation(tenantId, …), som scopar på tenantId (form D). Id:t
     har alltså redan passerat portalens scopning innan det når hit.
+
+PaymentReminder.updateMany  —  notifications/payment-reminder.service.ts  (1 st)
+    sendFormalReminder skriver emailMessageId på markören efter commit (#357).
+    Skrivningen ÄR org-bunden — `where` innehåller `invoice: { organizationId:
+    invoice.organizationId }` — men heuristikens form A känner bara igen
+    bindningen på find*, inte i en skrivnings where, så den syns inte.
+    Invoice-objektet kommer från processOverdueReminders eget findMany; cronen
+    äger alla organisationer och har ingen aktör att scopa mot. Skrivningen rör
+    ett enda noteringsfält och kan inte sätta belopp, status eller kravsteg.
 
 Unit.updateMany  —  units/unit-status.sync.ts  (2 st)
     syncUnitStatusFromLeases(db, unitId) är den enda platsen som håller

@@ -1,10 +1,19 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common'
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+  InternalServerErrorException,
+  ConflictException,
+} from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { Prisma } from '@prisma/client'
 import type { PaymentReminderType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { runCronSafely } from '../common/cron/cron-safety'
+import { enqueueSafely } from '../common/queue/enqueue-safety'
 import { MailService } from '../mail/mail.service'
+import { QUEUE_NORMAL } from '../mail/mail.types'
 import { computeInvoiceDebt, invoiceOutstanding } from '../invoices/invoice-debt'
 import { NotificationsService } from './notifications.service'
 import { AccountingService } from '../accounting/accounting.service'
@@ -130,8 +139,13 @@ export class PaymentReminderService {
 
             // ── Dag formal+ → formell påminnelse + 60 kr avgift ──────────────
             if (daysOverdue >= org.reminderFormalDay && !sentTypes.has('REMINDER_FORMAL')) {
-              await this.sendFormalReminder(invoice, party.email, daysOverdue)
-              summary.formalSent++
+              // #357: utfallet avgör räknaren. `enqueueSafely` kastar aldrig, så
+              // ett misslyckat köande hade annars räknats som en skickad formell
+              // påminnelse och loggraden hade påstått det. Avi-vägen gör samma
+              // sak via `isEnqueueProblem` (rent-reminder.service.ts:229).
+              const sent = await this.sendFormalReminder(invoice, party.email, daysOverdue)
+              if (sent) summary.formalSent++
+              else summary.errors++
               continue
             }
 
@@ -340,7 +354,7 @@ export class PaymentReminderService {
     }>,
     email: string,
     daysOverdue: number,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const party = invoice.tenant ?? invoice.customer
     const tenantName = party
       ? (party.companyName ?? `${party.firstName ?? ''} ${party.lastName ?? ''}`.trim())
@@ -361,76 +375,262 @@ export class PaymentReminderService {
     //      snart något är betalt: brevet krävde ursprungsbeloppet av någon som
     //      redan betalat en del av det.
     //
-    // De är åtskilda nu, med namn som säger vilket som är vilket.
-    const nominalTotal = Number(invoice.total)
-    const nominalTotalWithFee = nominalTotal + fee
+    // #357 tog bort den första variabeln helt: fakturans total räknas nu upp med
+    // `increment` inne i transaktionen, så det nominella beloppet läses aldrig
+    // ut hit. Sammanblandningen är därmed inte längre möjlig att göra — bara
+    // brevets belopp beräknas här.
+    //
+    // #357 (FAR M2): klampa som avi-vägen. `bookReminderFee` returnerar null för
+    // ALLA fee <= 0, medan anroparen bara grindar på > 0 — ett negativt belopp
+    // hade därför skrivit en negativ avgiftsrad, MINSKAT fakturans total och inte
+    // bokfört något. Samma divergens som den här PR:en stänger, med omvänt tecken.
+    // I praktiken spärrat av `@Min(0)` i DTO:n, men speglingen ska vara komplett.
+    const safeFee = Number.isFinite(fee) && fee > 0 ? fee : 0
 
     // Restskulden FÖRE avgiften — det hyresgästen är skyldig just nu.
     const outstandingBefore = invoiceOutstanding(invoice)
-    const outstandingWithFee = outstandingBefore + fee
+    const outstandingWithFee = outstandingBefore + safeFee
 
-    // Lägg till påminnelseavgift som ny faktura-rad och uppdatera total.
-    // Använd Prisma-transaktion så avgift och total alltid skrivs atomärt.
-    await this.prisma.$transaction(async (tx) => {
-      await tx.invoiceLine.create({
+    // ── #357: HELA AVGIFTEN I EN TRANSAKTION, MARKÖREN FÖRST ─────────────────
+    //
+    // Tidigare skrevs avgiftsraden, verifikatet, utskicket och markören i FYRA
+    // separata transaktioner med markören SIST. Ett kast däremellan (kön nere,
+    // DB-blipp, processdöd) lämnade fakturan uppskriven UTAN markör — och nästa
+    // dygns cron-körning såg ingen `REMINDER_FORMAL` i `sentTypes` och lade på
+    // en avgiftsrad till. `bookReminderFee` är däremot idempotent på sin
+    // `sourceId`, så verifikatet skrevs bara en gång:
+    //
+    //     reskontra 120 kr krävt   vs   huvudbok 60 kr bokfört
+    //
+    // Mätt mot riktig Postgres (#357): två `InvoiceLine`, `total` 9120, ETT
+    // verifikat på 3593. `@@unique([invoiceId, type])` fanns hela tiden men kan
+    // bara verka på en rad som skrivits — en spärr som skrivs sist är ingen
+    // spärr mot det som kastar innan.
+    //
+    // MALLEN ÄR AVI-VÄGEN, inte något nytt: `escalateNoticeToReminded` tar ett
+    // VILLKORAT ANSPRÅK först, bokför i samma `tx`, kastar om verifikatet
+    // uteblir, och köar utskicket EFTER commit. Riggen försökte fälla den i två
+    // scenarier och lyckades inte. Här speglas exakt det.
+    //
+    // `createMany` + `skipDuplicates` är fakturasidans motsvarighet till avins
+    // `updateMany`-claim: unik-villkoret gör `count === 0` till ett entydigt
+    // "någon annan har redan tagit avgiften" — utan att göra undantag till
+    // styrflöde, och race-säkert eftersom villkoret ligger i databasen.
+    const claimed = await this.prisma.$transaction(async (tx) => {
+      const claim = await tx.paymentReminder.createMany({
+        data: [
+          {
+            invoiceId: invoice.id,
+            type: 'REMINDER_FORMAL',
+            feeAmount: new Prisma.Decimal(safeFee.toFixed(2)),
+          },
+        ],
+        skipDuplicates: true,
+      })
+      if (claim.count === 0) return false
+
+      // ── ANDRA ANSPRÅKET: förutsättningarna omprövas INNE i transaktionen ────
+      //
+      // Avi-vägens claim omprövar affärsvillkoren (`status`, `collectionStage`,
+      // `isBackfill`, `organizationId`); fakturasidans markör-claim säger bara
+      // "inte redan påmind". Allt annat — status, pausflaggan, restskulden —
+      // lästes i cronens `findMany` FÖRE loopen, och loopen kan gå länge (varje
+      // faktura väntar upp till 5 s på köandet). Betalar hyresgästen eller
+      // pausar operatören kravtrappan mitt i körningen togs avgiften ändå, och
+      // bokfördes. (FAR M3 — beteendet fanns före #357, men den nya strukturen
+      // är platsen att stänga det.)
+      //
+      // `increment` i stället för ett absolut värde: totalen härleddes ur en
+      // läsning UTANFÖR transaktionen (`nominalTotal + safeFee`), vilket är lost
+      // update-formen. Inte utlösbar i dag, men fel form — och ett relativt
+      // tillägg kan dessutom aldrig bära restskulden av misstag, vilket var
+      // felformen #329 lagade. (FAR M4.)
+      //
+      // Körs även när avgiften är 0 — då är det en ren omprövning av
+      // förutsättningarna, och `increment: 0` skriver inget belopp.
+      const bumped = await tx.invoice.updateMany({
+        where: {
+          id: invoice.id,
+          organizationId: invoice.organizationId,
+          status: 'OVERDUE',
+          remindersPaused: false,
+        },
+        data: { total: { increment: new Prisma.Decimal(safeFee.toFixed(2)) } },
+      })
+      if (bumped.count === 0) {
+        throw new ConflictException(
+          `Faktura ${invoice.id} ändrade tillstånd under påminnelsekörningen ` +
+            '(betald, pausad eller makulerad) — ingen avgift togs.',
+        )
+      }
+
+      // Avgiftsrad OCH bokföring grindas på samma villkor. En rad på 0,00 kr med
+      // texten "enligt lag" är ingen affärshändelse, men den följer med ut på
+      // fakturaunderlaget och i inkassokravets radtabell och påstår där en
+      // lagstadgad avgift på noll kronor. (FAR M1.)
+      if (safeFee > 0) {
+        await tx.invoiceLine.create({
+          data: {
+            invoiceId: invoice.id,
+            description: 'Påminnelseavgift enligt lag (1981:739)',
+            quantity: new Prisma.Decimal(1),
+            unitPrice: new Prisma.Decimal(safeFee.toFixed(2)),
+            vatRate: 0,
+            total: new Prisma.Decimal(safeFee.toFixed(2)),
+          },
+        })
+
+        // INV-A (avi-vägens invariant, nu även här): ingen avgift utan verifikat.
+        // `bookReminderFee` returnerar null både när avgiften är ≤ 0 OCH när
+        // 1510/3593 saknas i kontoplanen — de två fallen får INTE behandlas lika.
+        // Här är avgiften bevisligen > 0, så null betyder saknad kontoplan: då
+        // ska hela transaktionen rullas tillbaka i stället för att kräva
+        // hyresgästen på något som aldrig når räkenskaperna.
+        const entry = await this.accounting.bookReminderFee({
+          organizationId: invoice.organizationId,
+          source: 'INVOICE',
+          sourceId: `reminder-fee:${invoice.id}`,
+          fee: safeFee,
+          // BFL 5 kap 7 §: verifikationen ska ange vad händelsen avser och vilken
+          // motpart den berör, sökbart utan svårighet. Ett UUID är inget en
+          // revisor kan slå upp i reskontran — fakturanumret är det. (FAR M7.)
+          description: `Påminnelseavgift faktura ${invoice.invoiceNumber} – ${tenantName}`,
+          tx,
+        })
+        if (!entry) {
+          throw new InternalServerErrorException(
+            `Påminnelseavgift kunde inte bokföras för faktura ${invoice.id} — ` +
+              'kontrollera att kontoplanen innehåller konto 1510 och 3593.',
+          )
+        }
+      }
+
+      await tx.invoiceEvent.create({
         data: {
           invoiceId: invoice.id,
-          description: 'Påminnelseavgift enligt lag (1981:739)',
-          quantity: new Prisma.Decimal(1),
-          unitPrice: new Prisma.Decimal(fee.toFixed(2)),
-          vatRate: 0,
-          total: new Prisma.Decimal(fee.toFixed(2)),
+          type: 'REMINDER_SENT',
+          actorType: 'SYSTEM',
+          actorLabel: 'Formell påminnelse',
+          payload: { reminderType: 'REMINDER_FORMAL', daysOverdue, fee: safeFee },
         },
       })
-      await tx.invoice.update({
-        where: { id: invoice.id },
+      return true
+    })
+
+    // Anspråket togs av någon annan (dubbel cron-fire, retry efter lyckad
+    // körning). Ingen andra avgift, inget andra utskick — och ingen räknas som
+    // skickad.
+    if (!claimed) return false
+
+    // ── Utskicket ligger EFTER commit — samma ordning som avi-vägen ───────────
+    //
+    // Pengarna är nu korrekt tagna och bokförda. Ett kö-fel får därför inte
+    // rulla tillbaka avgiften: då hade vi bytt en osynk mot en annan. Men det
+    // är ett PENGASTÄLLE — avgiften ÄR debiterad, så ett tyst misslyckat
+    // utskick betyder att hyresgästen betalar för en påminnelse som aldrig kom.
+    // `enqueueSafely` kastar aldrig, golvar väntetiden och larmar via Sentry
+    // (samma hantering som `rent-reminder.service.ts` gör på sitt pengaställe).
+    const outcome = await enqueueSafely(
+      () =>
+        this.mail.sendReminderFormal({
+          to: email,
+          tenantName,
+          invoiceNumber: invoice.invoiceNumber,
+          // #329 — brevets siffror är RESTSKULDEN, inte fakturans nominella total.
+          outstandingBeforeFee: outstandingBefore,
+          feeAmount: safeFee,
+          newTotal: outstandingWithFee,
+          dueDate: invoice.dueDate,
+          daysOverdue,
+          organizationName: invoice.organization.name,
+          ocrNumber: invoice.ocrNumber,
+          bankgiro: invoice.organization.bankgiro,
+          collectionDay: invoice.organization.reminderCollectionDay,
+          idempotencyKey: `reminder-formal-${invoice.id}`,
+        }),
+      {
+        queue: QUEUE_NORMAL,
+        jobType: 'reminder-formal',
+        organizationId: invoice.organizationId,
+        logger: this.logger,
+        // Landar jobbet efter golvet är det ett FALSKLARM, och markören ska inte
+        // för alltid se ut som en missad leverans. Jobb-id:t är deterministiskt
+        // (`jobId = idempotencyKey`), så korrelationen kan skrivas i efterhand.
+        // Callbacken körs frånkopplat och får aldrig kasta vidare. (FAR M6.)
+        onLateOutcome: (landed) => {
+          if (!landed) return
+          void this.prisma.paymentReminder
+            .updateMany({
+              where: {
+                invoiceId: invoice.id,
+                type: 'REMINDER_FORMAL',
+                invoice: { organizationId: invoice.organizationId },
+              },
+              data: { emailMessageId: `reminder-formal-${invoice.id}` },
+            })
+            .catch(() => undefined)
+        },
+      },
+    )
+
+    // Leveranskorrelationen skrivs i efterhand. Den är en NOTERING, inte en
+    // spärr: markören som styr idempotensen är redan committad ovan, och ett
+    // misslyckat köande får inte göra avgiften ogjord.
+    if (outcome.status === 'ok') {
+      await this.prisma.paymentReminder.updateMany({
+        // `PaymentReminder` bär inget eget `organizationId` och kan bara scopas
+        // via `Invoice`. Bindningen står här som FÖRSVAR I DJUPET: cronen äger
+        // alla organisationer och `invoice` kommer från dess eget urval, så det
+        // finns ingen anropare som kan smuggla in ett främmande id — men en
+        // framtida anropare ska inte kunna det heller, och scopningen ska gå att
+        // granska på plats. (Objektnivå-grinden, #273/#274.)
+        where: {
+          invoiceId: invoice.id,
+          type: 'REMINDER_FORMAL',
+          invoice: { organizationId: invoice.organizationId },
+        },
+        data: { emailMessageId: outcome.jobId },
+      })
+      return true
+    }
+
+    // ── FAILED och TIMEOUT är INTE samma sak ─────────────────────────────────
+    //
+    // `enqueue-safety.ts` är uttrycklig: TIMEOUT betyder "kunde inte bekräftas",
+    // inte "blev inte av" — mätt där: en 5–8 s Redis-blip ger timeout men jobbet
+    // landar efter 11,3 s. Att i det läget påstå att hyresgästen inte fått
+    // brevet är ett påstående systemet inte kan belägga, och det kan leda till
+    // att en korrekt avgift krediteras i onödan. (FAR M6.)
+    this.logger.error(
+      outcome.status === 'failed'
+        ? `Formell påminnelse faktura ${invoice.invoiceNumber}: avgiften är bokförd men ` +
+            'utskicket MISSLYCKADES — hyresgästen har debiterats utan att ha fått brevet.'
+        : `Formell påminnelse faktura ${invoice.invoiceNumber}: avgiften är bokförd men ` +
+            'köandet KUNDE INTE BEKRÄFTAS inom tidsgränsen — brevet kan ha gått ut ändå. ' +
+            'Kontrollera leveransen innan avgiften ifrågasätts.',
+    )
+
+    // `InvoiceEvent` är append-only: `REMINDER_SENT` skrevs i transaktionen,
+    // innan utskicket var känt, och kan aldrig rättas. Utan en kompenserande
+    // post säger den logg som operatören — och inkassoexporten — läser att ett
+    // brev gick ut. Båda systerflödena skriver `SEND_FAILED` i just det läget.
+    await this.prisma.invoiceEvent
+      .create({
         data: {
-          // NOMINELLT belopp — inte restskulden. Fakturan är på ett större
-          // belopp efter avgiften; restskulden följer med automatiskt eftersom
-          // den är `total − Σ allokeringar`.
-          total: new Prisma.Decimal(nominalTotalWithFee.toFixed(2)),
+          invoiceId: invoice.id,
+          type: 'SEND_FAILED',
+          actorType: 'SYSTEM',
+          actorLabel: 'Formell påminnelse',
+          payload: {
+            reminderType: 'REMINDER_FORMAL',
+            fee: safeFee,
+            enqueueStatus: outcome.status,
+          },
         },
       })
-    })
+      .catch(() => undefined)
 
-    // Bokför påminnelseavgift på BAS 3593 (Påminnelseavgifter)
-    await this.bookReminderFee(invoice.id, invoice.organizationId, fee)
-
-    const messageId = await this.mail.sendReminderFormal({
-      to: email,
-      tenantName,
-      invoiceNumber: invoice.invoiceNumber,
-      // #329 — brevets siffror är RESTSKULDEN, inte fakturans nominella total.
-      outstandingBeforeFee: outstandingBefore,
-      feeAmount: fee,
-      newTotal: outstandingWithFee,
-      dueDate: invoice.dueDate,
-      daysOverdue,
-      organizationName: invoice.organization.name,
-      ocrNumber: invoice.ocrNumber,
-      bankgiro: invoice.organization.bankgiro,
-      collectionDay: invoice.organization.reminderCollectionDay,
-      idempotencyKey: `reminder-formal-${invoice.id}`,
-    })
-
-    await this.prisma.paymentReminder.create({
-      data: {
-        invoiceId: invoice.id,
-        type: 'REMINDER_FORMAL',
-        feeAmount: new Prisma.Decimal(fee.toFixed(2)),
-        emailMessageId: messageId,
-      },
-    })
-
-    await this.prisma.invoiceEvent.create({
-      data: {
-        invoiceId: invoice.id,
-        type: 'REMINDER_SENT',
-        actorType: 'SYSTEM',
-        actorLabel: 'Formell påminnelse',
-        payload: { reminderType: 'REMINDER_FORMAL', daysOverdue, fee },
-      },
-    })
+    return false
   }
 
   private async markReadyForCollection(
@@ -479,20 +679,10 @@ export class PaymentReminderService {
       .catch(() => undefined)
   }
 
-  // Bokför påminnelseavgiften via den DELADE kärnan i AccountingService — samma
-  // 1510 D / 3593 K, samma idempotens (source=INVOICE, sourceId=reminder-fee:{id}),
-  // som hyresavi-flödet använder. Ingen egen bokföringslogik längre här.
-  private async bookReminderFee(
-    invoiceId: string,
-    organizationId: string,
-    fee: number,
-  ): Promise<void> {
-    await this.accounting.bookReminderFee({
-      organizationId,
-      source: 'INVOICE',
-      sourceId: `reminder-fee:${invoiceId}`,
-      fee,
-      description: `Påminnelseavgift faktura ${invoiceId}`,
-    })
-  }
+  // #357: den privata `bookReminderFee`-wrappern är BORTTAGEN. Den anropade den
+  // delade kärnan UTAN `tx` och UTAN att kontrollera returvärdet — vilket var
+  // exakt det som gjorde att en avgift kunde debiteras utan verifikat när
+  // 1510/3593 saknades. Anropet ligger nu inlinat i `sendFormalReminder`, inuti
+  // transaktionen och med `null` som kastfall. Konteringen sker fortfarande
+  // enbart i AccountingService — ingen bokföringslogik har flyttat hit.
 }
