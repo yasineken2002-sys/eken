@@ -38,6 +38,11 @@ function makeInvoice(opts: { total?: number; payments?: number[]; daysOverdue?: 
     tenant: { type: 'COMPANY', companyName: 'Hyresgäst AB', email: 'h@example.se' },
     customer: null,
     paymentReminders: [] as Array<{ type: string }>,
+    // G2: avtalsgrunden. Villkoret trädde i kraft långt före fakturans
+    // utställande, så de befintliga fallen beskriver oförändrat beteende.
+    // Grindens vägran prövas i accounting.fee-terms-gate.spec.ts.
+    issueDate: new Date('2026-05-01'),
+    lease: { reminderFeeTermsFrom: new Date('2020-01-01') },
     organization: {
       name: 'Värd AB',
       remindersEnabled: true,

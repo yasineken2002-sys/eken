@@ -49,6 +49,11 @@ function makeService(opts: {
     ocrNumber: '1234567',
     payments: [],
     paymentReminders: [],
+    // G2: avtalsgrunden. Villkoret trädde i kraft långt före fakturans
+    // utställande, så de befintliga fallen beskriver oförändrat beteende.
+    // Grindens vägran prövas i accounting.fee-terms-gate.spec.ts.
+    issueDate: new Date('2026-05-01'),
+    lease: { reminderFeeTermsFrom: new Date('2020-01-01') },
     tenant: { type: 'INDIVIDUAL', firstName: 'Hyres', lastName: 'Gäst', email: 'hg@example.se' },
     customer: null,
     organization: {

@@ -24,6 +24,10 @@ import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentInterestService } from './rent-interest.service'
 import { RentDebtService } from './rent-debt.service'
+import {
+  resolveNoticeDebtOrigin,
+  isReminderFeeContractuallyAllowed,
+} from '../accounting/debt-origin'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 
 interface ReminderSummary {
@@ -136,7 +140,12 @@ export class RentReminderService {
             isBackfill: false,
             organization: { remindersEnabled: true },
           },
-          include: { organization: true, tenant: { select: SAFE_TENANT_SELECT } },
+          include: {
+            organization: true,
+            tenant: { select: SAFE_TENANT_SELECT },
+            // G2: avtalsgrunden för påminnelseavgiften bor på avtalet.
+            lease: { select: { reminderFeeTermsFrom: true } },
+          },
         })
 
         // PR 4 (B) — pausa (och larma) eskaleringen för org vars betalningsdata är
@@ -271,9 +280,35 @@ export class RentReminderService {
     fee: number,
   ): Promise<boolean> {
     const now = new Date()
-    const safeFee = Number.isFinite(fee) && fee > 0 ? fee : 0
+    const begärdAvgift = Number.isFinite(fee) && fee > 0 ? fee : 0
 
     return this.prisma.$transaction(async (tx) => {
+      // ── G2: AVTALSGRUNDEN AVGÖRS FÖRE ANSPRÅKET ─────────────────────────
+      //
+      // Måste ske före `updateMany` nedan, inte efter: anspråket skriver
+      // `reminderFeeAmount` i reskontran, och vägrade grinden först i
+      // bokföringen skulle avin kräva 60 kr som huvudboken inte bär — samma
+      // divergens som #357 stängde, med omvänt tecken.
+      //
+      // Datumet konstrueras ALDRIG här. `resolveNoticeDebtOrigin` äger regeln
+      // (tidigaste av periodStart och dueDate, null om periodStart saknas),
+      // och dess brandade returtyp är det enda `bookReminderFee` accepterar.
+      const grund = await tx.rentNotice.findFirstOrThrow({
+        where: { id: noticeId, organizationId },
+        select: {
+          periodStart: true,
+          dueDate: true,
+          lease: { select: { reminderFeeTermsFrom: true } },
+        },
+      })
+      const debtOrigin = resolveNoticeDebtOrigin(grund)
+      const termsFrom = grund.lease?.reminderFeeTermsFrom ?? null
+
+      // Saknas avtalsgrund klampas avgiften till 0 — påminnelsen går ut ändå.
+      // Hyresgästen ska påminnas om sin obetalda hyra; hen ska bara inte
+      // debiteras för det utan att ha godkänt villkoret.
+      const safeFee = isReminderFeeContractuallyAllowed(debtOrigin, termsFrom) ? begärdAvgift : 0
+
       const claim = await tx.rentNotice.updateMany({
         where: {
           id: noticeId,
@@ -300,6 +335,8 @@ export class RentReminderService {
           sourceId: `reminder-fee:${noticeId}`,
           fee: safeFee,
           description: `Påminnelseavgift hyresavi ${noticeId}`,
+          debtOrigin,
+          termsFrom,
           tx,
         })
         // null = saknat 1510/3593 → bokföring omöjlig. INV-A: avbryt eskaleringen

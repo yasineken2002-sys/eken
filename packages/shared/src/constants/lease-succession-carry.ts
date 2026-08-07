@@ -110,6 +110,26 @@ export const LEASE_SUCCESSION_EXCLUDED_FIELDS = [
   'contractNumber', // ny allokering ur ContractNumberSequence
   'createdAt', // Prisma-default
   'updatedAt', // Prisma-default
+  // 🔴 Påminnelseavgiftens avtalsgrund (G1/G2) — MEDVETET EXKLUDERAD.
+  //
+  // Att bära den vidare vore att påstå att samtycket till avgiftsvillkoret i
+  // avtal A också gäller avtal B. Det är ett JURIDISKT påstående, inte en
+  // teknisk följd, och det kan jag inte belägga: en förnyelse är formellt ett
+  // nytt avtal, och villkoret måste vara avtalat "senast i samband med skuldens
+  // uppkomst" (lagen 1981:739) för de skulder det nya avtalet ger upphov till.
+  //
+  // Det är samma sorts påstående som migreringen vägrade göra när den lät bli
+  // att backfilla befintliga avtal. Att fabricera rättsgrund är fel oavsett om
+  // det sker i en migrering eller i en carry-lista.
+  //
+  // KOSTNADEN ÄR RÄTT RIKTNING: en förnyelse nollställer villkorsdatumet och
+  // avgiften uteblir tills den avtalas på nytt. En avgift för lite är en
+  // utebliven sextiolapp; en för mycket är ett olagligt krav.
+  //
+  // ⚠️ ÖPPEN FRÅGA FÖR HYRESJURIST (#374): överlever samtycket en förnyelse när
+  // hyresförhållandet är obrutet (tenancyStartDate bärs ju vidare)? Blir svaret
+  // ja ska fältet flyttas till carry-listan. Tills dess står det här.
+  'reminderFeeTermsFrom',
 ] as const
 
 export type LeaseSuccessionExcludedField = (typeof LEASE_SUCCESSION_EXCLUDED_FIELDS)[number]

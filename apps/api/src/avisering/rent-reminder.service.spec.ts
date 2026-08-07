@@ -23,7 +23,20 @@ import { Decimal } from '@prisma/client/runtime/library'
 const DAY = 24 * 60 * 60 * 1000
 
 function makeService(opts: { ocrOutstanding?: number; staleOrgs?: Set<string> } = {}) {
-  const tx = { rentNotice: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } }
+  // G2: grinden läser avins periodfält + avtalets villkorsdatum FÖRE anspråket.
+  // Default här är den TILLÅTNA vägen (villkor 2020, skuld 2026), så de
+  // befintliga fallen beskriver oförändrat beteende. Grindens vägran prövas i
+  // accounting.fee-terms-gate.spec.ts och i bevisriggen.
+  const tx = {
+    rentNotice: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findFirstOrThrow: jest.fn().mockResolvedValue({
+        periodStart: new Date('2026-07-01'),
+        dueDate: new Date('2026-06-30'),
+        lease: { reminderFeeTermsFrom: new Date('2020-01-01') },
+      }),
+    },
+  }
   const prisma = {
     $transaction: jest.fn().mockImplementation((cb: (t: typeof tx) => unknown) => cb(tx)),
     rentNotice: { findMany: jest.fn().mockResolvedValue([]) },

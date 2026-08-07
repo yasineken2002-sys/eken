@@ -16,6 +16,10 @@ import { MailService } from '../mail/mail.service'
 import { QUEUE_NORMAL } from '../mail/mail.types'
 import { computeInvoiceDebt, invoiceOutstanding } from '../invoices/invoice-debt'
 import { REMINDER_FEE_LINE_DESCRIPTION } from '../invoices/reminder-fee-line'
+import {
+  resolveInvoiceDebtOrigin,
+  isReminderFeeContractuallyAllowed,
+} from '../accounting/debt-origin'
 import { NotificationsService } from './notifications.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
@@ -75,6 +79,9 @@ export class PaymentReminderService {
             customer: { select: SAFE_CUSTOMER_SELECT },
             organization: true,
             paymentReminders: true,
+            // G2: avtalsgrunden för påminnelseavgiften bor på avtalet. En
+            // faktura utan lease (kundfaktura) får null → ingen avgift.
+            lease: { select: { reminderFeeTermsFrom: true } },
             // ── #329: RESTSKULDEN GÅR INTE ATT RÄKNA UTAN ALLOKERINGARNA ────
             //
             // Breven visade `invoice.total` — ursprungsbeloppet — medan vyerna
@@ -298,6 +305,7 @@ export class PaymentReminderService {
         organization: true
         paymentReminders: true
         payments: { select: { amount: true } }
+        lease: { select: { reminderFeeTermsFrom: true } }
       }
     }>,
     email: string,
@@ -351,6 +359,7 @@ export class PaymentReminderService {
         organization: true
         paymentReminders: true
         payments: { select: { amount: true } }
+        lease: { select: { reminderFeeTermsFrom: true } }
       }
     }>,
     email: string,
@@ -386,7 +395,25 @@ export class PaymentReminderService {
     // hade därför skrivit en negativ avgiftsrad, MINSKAT fakturans total och inte
     // bokfört något. Samma divergens som den här PR:en stänger, med omvänt tecken.
     // I praktiken spärrat av `@Min(0)` i DTO:n, men speglingen ska vara komplett.
-    const safeFee = Number.isFinite(fee) && fee > 0 ? fee : 0
+    const begärdAvgift = Number.isFinite(fee) && fee > 0 ? fee : 0
+
+    // ── G2: AVTALSGRUNDEN AVGÖRS FÖRE ANSPRÅKET ───────────────────────────
+    //
+    // Måste ske här, inte i bokföringen: anspråket nedan räknar upp
+    // `invoice.total` och skriver avgiftsraden. Vägrade grinden först i
+    // `bookReminderFee` skulle fakturan kräva 60 kr som huvudboken inte bär —
+    // exakt den divergens #357 stängde, med omvänt tecken.
+    //
+    // Datumet konstrueras ALDRIG här. `resolveInvoiceDebtOrigin` äger regeln
+    // (fakturans `issueDate`), och dess brandade returtyp är det enda
+    // `bookReminderFee` accepterar.
+    //
+    // En faktura utan hyresavtal (ren kundfaktura) har ingen avtalsgrund alls
+    // → `termsFrom` null → ingen avgift. Det är rätt utfall: villkoret avtalas
+    // i hyresavtalet, och finns inget avtal finns inget villkor.
+    const debtOrigin = resolveInvoiceDebtOrigin(invoice)
+    const termsFrom = invoice.lease?.reminderFeeTermsFrom ?? null
+    const safeFee = isReminderFeeContractuallyAllowed(debtOrigin, termsFrom) ? begärdAvgift : 0
 
     // Restskulden FÖRE avgiften — det hyresgästen är skyldig just nu.
     const outstandingBefore = invoiceOutstanding(invoice)
@@ -498,6 +525,8 @@ export class PaymentReminderService {
           // motpart den berör, sökbart utan svårighet. Ett UUID är inget en
           // revisor kan slå upp i reskontran — fakturanumret är det. (FAR M7.)
           description: `Påminnelseavgift faktura ${invoice.invoiceNumber} – ${tenantName}`,
+          debtOrigin,
+          termsFrom,
           tx,
         })
         if (!entry) {

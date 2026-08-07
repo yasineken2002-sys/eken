@@ -9,6 +9,18 @@
  */
 
 import { AccountingService } from './accounting.service'
+import { resolveNoticeDebtOrigin } from './debt-origin'
+
+// De befintliga fallen beskriver den TILLÅTNA vägen: villkoret trädde i kraft
+// (2026-01-01) före skuldens uppkomst (2026-06-30). G2:s grind — de tre skälen
+// att VÄGRA — prövas separat i accounting.fee-terms-gate.spec.ts.
+const TILLÅTEN = {
+  debtOrigin: resolveNoticeDebtOrigin({
+    periodStart: new Date('2026-07-01'),
+    dueDate: new Date('2026-06-30'),
+  }),
+  termsFrom: new Date('2026-01-01'),
+}
 
 function makeService(
   opts: { accounts?: Array<{ id: string; number: number }>; existing?: boolean } = {},
@@ -47,6 +59,7 @@ describe('Inkasso PR 2 — AccountingService.bookReminderFee', () => {
       source: 'RENT_NOTICE',
       sourceId: 'reminder-fee:rn-1',
       fee: 60,
+      ...TILLÅTEN,
       description: 'Påminnelseavgift hyresavi rn-1',
     })
     expect(entry).toMatchObject({ id: 'je-new' })
@@ -64,6 +77,7 @@ describe('Inkasso PR 2 — AccountingService.bookReminderFee', () => {
       source: 'RENT_NOTICE',
       sourceId: 'reminder-fee:rn-1',
       fee: 60,
+      ...TILLÅTEN,
       description: 'x',
     })
     // Kontouppslaget frågar BARA efter 1510 och 3593 — aldrig ett momskonto.
@@ -86,6 +100,7 @@ describe('Inkasso PR 2 — AccountingService.bookReminderFee', () => {
       source: 'RENT_NOTICE',
       sourceId: 'reminder-fee:rn-1',
       fee: 60,
+      ...TILLÅTEN,
       description: 'x',
     })
     expect(getCreated()?.data.source).toBe('RENT_NOTICE')
@@ -99,6 +114,7 @@ describe('Inkasso PR 2 — AccountingService.bookReminderFee', () => {
       source: 'RENT_NOTICE',
       sourceId: 'reminder-fee:rn-1',
       fee: 60,
+      ...TILLÅTEN,
       description: 'x',
     })
     expect(entry).toMatchObject({ id: 'je-existing' })
@@ -113,6 +129,7 @@ describe('Inkasso PR 2 — AccountingService.bookReminderFee', () => {
         source: 'RENT_NOTICE',
         sourceId: 'reminder-fee:rn-1',
         fee: 0,
+        ...TILLÅTEN,
         description: 'x',
       }),
     ).toBeNull()
@@ -127,6 +144,7 @@ describe('Inkasso PR 2 — AccountingService.bookReminderFee', () => {
         source: 'RENT_NOTICE',
         sourceId: 'reminder-fee:rn-1',
         fee: 60,
+        ...TILLÅTEN,
         description: 'x',
       }),
     ).toBeNull()

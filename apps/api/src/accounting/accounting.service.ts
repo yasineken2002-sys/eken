@@ -27,6 +27,9 @@ import type {
   MeterType,
 } from '@prisma/client'
 import type { Decimal } from '@prisma/client/runtime/library'
+
+import { isReminderFeeContractuallyAllowed } from './debt-origin'
+import type { DebtOriginDate } from './debt-origin'
 import type {
   BalanceSheet,
   ProfitLossReport,
@@ -432,11 +435,54 @@ export class AccountingService {
     sourceId: string
     fee: number
     description: string
+    // ── G2: AVTALSGRUNDEN, KRÄVD ─────────────────────────────────────────
+    //
+    // Båda fälten är obligatoriska och får inte utelämnas. En anropare som
+    // inte skickar dem kompilerar inte — det är hela poängen: grinden ska
+    // inte gå att glömma bort, och den ska inte gå att gå runt.
+    //
+    // `debtOrigin` är BRANDAD (`DebtOriginDate`) och går bara att få ur
+    // `resolveNoticeDebtOrigin`/`resolveInvoiceDebtOrigin`. En krävd `Date`
+    // hade hindrat glömska men inte att någon skickar `notice.dueDate` rakt
+    // av och därmed kringgår den tidigaste-av-två-regeln utan att märka det.
+    // null = ursprunget gick inte att fastställa → avgiften vägras.
+    //
+    // `termsFrom` är `Lease.reminderFeeTermsFrom`. null = ingen avtalsgrund.
+    debtOrigin: DebtOriginDate | null
+    termsFrom: Date | null
     createdById?: string | null
     tx?: Prisma.TransactionClient
   }): Promise<{ id: string } | null> {
-    const { organizationId, source, sourceId, fee, description } = params
+    const { organizationId, source, sourceId, fee, description, debtOrigin, termsFrom } = params
     if (!Number.isFinite(fee) || fee <= 0) return null
+
+    // ── GRINDEN: INGEN AVGIFT UTAN AVTALSVILLKOR ─────────────────────────
+    //
+    // Påminnelseavgift får inte debiteras utan avtalsvillkor (2 § lagen
+    // 1981:739), och villkoret binder bara FRAMÅT: "senast i samband med
+    // skuldens uppkomst". Tre skäl att vägra, alla på ett ställe:
+    //
+    //   1. Skuldens uppkomst gick inte att fastställa (`debtOrigin` null).
+    //      Vägrar hellre än gissar — se resolveNoticeDebtOrigin.
+    //   2. Ingen avtalsgrund alls (`termsFrom` null). Det är tillståndet för
+    //      varje avtal som finns i dag; migreringen backfillade med flit inte.
+    //   3. Villkoret trädde i kraft EFTER att skulden uppkom. Avgiften vore
+    //      retroaktiv, och en retroaktiv avgift är ett olagligt krav.
+    //
+    // Vägran är TYST (null, som en avgift ≤ 0) och inte ett kast. Anroparna
+    // behandlar redan null från `fee <= 0` som "ingen avgift, fortsätt med
+    // påminnelsen" — och det är rätt utfall också här: hyresgästen ska ändå
+    // påminnas om sin obetalda hyra, bara inte debiteras för det. Ett kast
+    // hade stoppat påminnelsen, vilket vore att straffa hyresvärden för ett
+    // villkor hyresgästen inte skrivit under.
+    //
+    // ⚠️ ANROPARNA SKILJER PÅ NULL-ORSAKER. `bookReminderFee` returnerar null
+    // både här och när kontoplanen saknar 1510/3593 — och de två fallen får
+    // INTE behandlas lika. Kontoplansfallet ska kasta (INV-A: ingen avgift
+    // utan verifikat); det här fallet ska inte. Anroparna grindar därför på
+    // avtalsgrunden FÖRE de anropar, och kastar bara när de vet att avgiften
+    // var tillåten men bokföringen ändå uteblev.
+    if (!isReminderFeeContractuallyAllowed(debtOrigin, termsFrom)) return null
 
     const db = params.tx ?? this.prisma
     const accounts = await db.account.findMany({
