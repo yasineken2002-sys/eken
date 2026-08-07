@@ -414,7 +414,7 @@ export class AccountingService {
    * faktura-flödet (PaymentReminderService) och hyresavi-flödet (RentReminder-
    * Service, inkasso PR 2) — ingen bokföringslogik byggs på annat håll.
    *
-   * Momsfri: avgiften är en lagstadgad påföljd (lag 1981:739), inte omsättning
+   * Momsfri: avgiften är en lagstadgad påföljd (4 § lagen 1981:739), inte omsättning
    * — den får ALDRIG moms, oavsett om underliggande hyra var bostad (0 %) eller
    * lokal (25 %). 3593 är ett momsfritt intäktskonto; inget 26xx-momskonto rörs.
    *

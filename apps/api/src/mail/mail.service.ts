@@ -607,7 +607,7 @@ export class MailService {
       <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px">
         Hyresavi <strong>${opts.noticeNumber}</strong> förföll ${formatDateSv(opts.dueDate)} och
         är ännu inte fullt betald. Vänligen betala snarast — bifogad påminnelse visar
-        beloppet. En påminnelseavgift enligt lag (1981:739) har tillkommit.
+        beloppet. En påminnelseavgift enligt 4 § lagen (1981:739) har tillkommit.
       </p>
       <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:20px 24px;margin:24px 0">
         <table style="width:100%;border-collapse:collapse">

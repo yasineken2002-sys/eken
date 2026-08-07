@@ -20,7 +20,7 @@ Dessa är inmatade som **konfiguration/data**, aldrig hårdkodade i logiken:
 
 - **Påminnelse:** dag 7 efter förfallodag. Påminnelseavgift 60 kr, **momsfri**,
   konfigurerbar per fastighetsägare (`Organization.reminderFeeSek`,
-  `rentReminderDay`). Lagstöd: lag (1981:739) om ersättning för inkassokostnader.
+  `rentReminderDay`). Lagstöd: 4 § lagen (1981:739) om ersättning för inkassokostnader.
 - **Inkasso-ready:** 14 dagar efter påminnelsen (`rentInkassoDaysAfterReminder`).
 - **Dröjsmålsränta:** referensränta + 8 procentenheter, från dagen efter
   förfallodag. Referensräntan fastställs halvårsvis och lever i tabellen

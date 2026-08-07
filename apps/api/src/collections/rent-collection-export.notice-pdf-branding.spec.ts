@@ -146,8 +146,8 @@ describe('RentCollectionExportService.buildPdfHtml — brandad shell + juridisk/
     expect(text).toContain(
       'Detta dokument är ett underlag för inkassoärende. Borgenären ansvarar för att ' +
         'skicka det vidare till sitt valda inkassobolag (t.ex. Visma Collectors, Intrum ' +
-        'eller Lindorff). Påminnelseavgift (60 kr) utgår enligt lag (1981:739) om ' +
-        'ersättning för inkassokostnader. Dröjsmålsränta beräknas enligt räntelagen ' +
+        'eller Lindorff). Påminnelseavgift (60 kr) utgår enligt 4 § lagen (1981:739) ' +
+        'om ersättning för inkassokostnader. Dröjsmålsränta beräknas enligt räntelagen ' +
         '(1975:635) 6 § (referensränta + 8 procentenheter) och redovisas per period ' +
         'enligt 9 §. <strong>Inkassobolaget ansvarar för att utfärda formellt ' +
         'inkassokrav enligt inkassolagen (1974:182) 5 § med skälig betalningstid innan ' +
@@ -159,7 +159,7 @@ describe('RentCollectionExportService.buildPdfHtml — brandad shell + juridisk/
     expect(text).toContain('Inkassobolaget ansvarar för att utfärda formellt inkassokrav')
     expect(text).toContain('inkassolagen (1974:182) 5 §')
     expect(text).toContain('bedriver INTE inkassoverksamhet och har inte tillstånd enligt')
-    expect(text).toContain('lag (1981:739)')
+    expect(text).toContain('4 § lagen (1981:739)')
     expect(text).toContain('räntelagen (1975:635) 6 §')
   })
 

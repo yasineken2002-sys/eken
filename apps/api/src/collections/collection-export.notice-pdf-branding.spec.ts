@@ -112,12 +112,12 @@ describe('CollectionExportService.buildPdfHtml — brandad shell + juridisk/ekon
       'Detta dokument är ett underlag för inkassoärende. Borgenären ansvarar för att ' +
         'skicka det vidare till sitt valda inkassobolag (t.ex. Visma Collectors, Intrum ' +
         'eller Lindorff). Eveno är ett fastighetssystem och bedriver INTE ' +
-        'inkassoverksamhet. Påminnelseavgift utgår enligt lag (1981:739) om ersättning ' +
-        'för inkassokostnader.',
+        'inkassoverksamhet. Påminnelseavgift utgår enligt 4 § lagen (1981:739) om ' +
+        'ersättning för inkassokostnader.',
     )
     // Lagrum + de tre laddade fraserna explicit (icke förhandlingsbart).
     expect(text).toContain('bedriver INTE inkassoverksamhet')
-    expect(text).toContain('lag (1981:739)')
+    expect(text).toContain('4 § lagen (1981:739)')
     expect(text).toContain('Borgenären ansvarar för att')
   })
 

@@ -255,7 +255,7 @@ export const RENT_DUE_TEXT =
   'Hyran ska betalas i förskott senast sista vardagen i månaden före den månad' +
   ' hyran avser, i enlighet med 12 kap. 20 § Jordabalken. Vid försenad' +
   ' betalning utgår dröjsmålsränta enligt räntelagen (1975:635) samt påminnelse-' +
-  ' och inkassoavgifter enligt lagen (1981:739) om ersättning för inkassokostnader.'
+  ' och inkassoavgifter enligt 4 § lagen (1981:739) om ersättning för inkassokostnader.'
 
 // ─── Variant-tokens ──────────────────────────────────────────────────────
 // Tre stilar: classic (formell, traditionell — som dagens), modern (rundade

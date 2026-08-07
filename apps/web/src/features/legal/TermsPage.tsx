@@ -136,7 +136,7 @@ export function TermsPage({ onBack }: Props) {
           <strong>Dröjsmålsränta:</strong> Referensräntan + 8 procentenheter enligt 6 § räntelagen
         </li>
         <li>
-          <strong>Påminnelseavgift:</strong> 60 kr enligt lag (1981:739) om ersättning för
+          <strong>Påminnelseavgift:</strong> 60 kr enligt 4 § lagen (1981:739) om ersättning för
           inkassokostnader
         </li>
       </ul>

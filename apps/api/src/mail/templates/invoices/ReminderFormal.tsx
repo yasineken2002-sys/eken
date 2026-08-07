@@ -59,9 +59,9 @@ export function ReminderFormal({
       </Text>
 
       <Text style={textStyle}>
-        I enlighet med <strong>lag (1981:739) om ersättning för inkassokostnader</strong> har en
-        påminnelseavgift på <strong>{formatSek(feeAmount)}</strong> lagts till. Det totala beloppet
-        att betala är nu:
+        I enlighet med <strong>4 § lagen (1981:739) om ersättning för inkassokostnader</strong> har
+        en påminnelseavgift på <strong>{formatSek(feeAmount)}</strong> lagts till. Det totala
+        beloppet att betala är nu:
       </Text>
 
       <Section style={amountBox}>
