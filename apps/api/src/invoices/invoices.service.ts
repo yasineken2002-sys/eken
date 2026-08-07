@@ -828,6 +828,8 @@ export class InvoicesService {
     organizationId: string,
     reason: string,
     actorId: string | null,
+    // Se avi-sidans motsvarighet och `impersonatorOf` — spår, inte lösning (#379).
+    impersonatedById: string | null = null,
   ) {
     const trimmedReason = reason?.trim() ?? ''
     if (trimmedReason.length < REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH) {
@@ -898,7 +900,11 @@ export class InvoicesService {
         'REMINDER_FEE_REVERSED',
         actorId ? 'USER' : 'SYSTEM',
         actorId,
-        { amount: feeSum.toNumber(), reason: trimmedReason },
+        {
+          amount: feeSum.toNumber(),
+          reason: trimmedReason,
+          ...(impersonatedById ? { impersonatedBy: impersonatedById } : {}),
+        },
         { tx },
       )
     })

@@ -24,6 +24,7 @@ import { UpdateInvoiceDto } from './dto/update-invoice.dto'
 import { TransitionStatusDto } from './dto/transition-status.dto'
 import { RegisterPaymentDto } from './dto/register-payment.dto'
 import { ReverseReminderFeeDto } from '../avisering/dto/reverse-reminder-fee.dto'
+import { impersonatorOf } from '../common/auth/impersonation'
 import { BadRequestException } from '@nestjs/common'
 import type { InvoiceStatus } from '@prisma/client'
 
@@ -143,7 +144,13 @@ export class InvoicesController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: ReverseReminderFeeDto,
   ) {
-    return this.invoicesService.reverseReminderFee(id, organizationId, dto.reason, user.sub)
+    return this.invoicesService.reverseReminderFee(
+      id,
+      organizationId,
+      dto.reason,
+      user.sub,
+      impersonatorOf(user),
+    )
   }
 
   // Manuell betalningsregistrering med bokföring (likvidkonto D / 1510 K).

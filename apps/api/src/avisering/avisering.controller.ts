@@ -18,6 +18,7 @@ import { AviseringScheduler } from './avisering.scheduler'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentBadDebtService } from './rent-bad-debt.service'
 import { ReverseReminderFeeDto } from './dto/reverse-reminder-fee.dto'
+import { impersonatorOf } from '../common/auth/impersonation'
 import { RentBackfillService } from './rent-backfill.service'
 import { GenerateNoticesDto } from './dto/generate-notices.dto'
 import { SendNoticesDto } from './dto/send-notices.dto'
@@ -218,7 +219,13 @@ export class AviseringController {
     @Body() dto: ReverseReminderFeeDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.aviseringService.reverseReminderFee(id, orgId, dto.reason, user.sub)
+    return this.aviseringService.reverseReminderFee(
+      id,
+      orgId,
+      dto.reason,
+      user.sub,
+      impersonatorOf(user),
+    )
   }
 
   @Post(':id/bad-debt/probable')

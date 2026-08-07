@@ -2232,6 +2232,10 @@ export class AviseringService {
     orgId: string,
     reason: string,
     actorId: string | null,
+    // Den faktiska människan när handlingen sker via impersonation. Sparas i
+    // händelsen — INTE i verifikatets createdById, som fortfarande namnger
+    // org-användaren. Se `impersonatorOf` och ärende #379.
+    impersonatedById: string | null = null,
   ) {
     const trimmedReason = reason?.trim() ?? ''
     if (trimmedReason.length < REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH) {
@@ -2318,7 +2322,11 @@ export class AviseringService {
         'REMINDER_FEE_REVERSED',
         actorId ? 'USER' : 'SYSTEM',
         actorId,
-        { amount: fee, reason: trimmedReason },
+        {
+          amount: fee,
+          reason: trimmedReason,
+          ...(impersonatedById ? { impersonatedBy: impersonatedById } : {}),
+        },
         { tx },
       )
     })
