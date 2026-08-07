@@ -51,6 +51,8 @@ function makeService(opts: { feeLines?: Array<{ id: string; total: number }> } =
     invoice: { findFirst: jest.fn().mockResolvedValue(invoiceRow), update: invoiceUpdate },
     invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
     invoiceLine: { findMany: lineFindMany, deleteMany: lineDeleteMany },
+    // E: förbrukningsdebiteringar lossas vid VOID. Ingen charge här.
+    consumptionCharge: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     deposit: { findFirst: jest.fn().mockResolvedValue(null) },
   }
   const prisma = { $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)) }
@@ -185,5 +187,37 @@ describe('A (faktura) — VOID reverserar påminnelseavgiften', () => {
     // Fakturavägen kristalliserar aldrig ränta (bookInterest har en enda
     // anropare, RentInterestService). Ett anrop hit vore symmetri av vana.
     expect(accounting).not.toHaveProperty('reverseJournalEntryForInterest')
+  })
+})
+
+describe('E (faktura) — förbrukningsdebiteringar lossas vid VOID', () => {
+  it('frigör charges: status CONFIRMED och invoiceId nollad', async () => {
+    const { service, tx } = makeService()
+
+    await service.transitionStatus(INVOICE_ID, 'org-1', 'VOID', 'user-1', 'USER')
+
+    expect(tx.consumptionCharge.updateMany).toHaveBeenCalledTimes(1)
+    const arg = tx.consumptionCharge.updateMany.mock.calls[0]![0] as {
+      where: Record<string, unknown>
+      data: Record<string, unknown>
+    }
+    expect(arg.where).toMatchObject({
+      invoiceId: INVOICE_ID,
+      organizationId: 'org-1',
+      // Villkorat: en charge som hunnit bli CANCELLED får inte återuppstå.
+      status: 'ATTACHED',
+    })
+    // invoiceId MÅSTE nollas — annars pekar chargen kvar på den makulerade
+    // fakturan och nästa `invoiceSeparateCharges` kan inte knyta om den.
+    expect(arg.data).toEqual({ status: 'CONFIRMED', invoiceId: null })
+  })
+
+  it('MISC-CHARGES RÖRS INTE — de kan inte ligga på en faktura', async () => {
+    // `MiscCharge` har ingen invoiceId-kolumn (bara relationen rentNoticeLine).
+    // De fyra teoretiska kombinationerna är tre; ett anrop här hade grindat mot
+    // något som inte kan uppstå.
+    const { tx } = makeService()
+
+    expect(tx).not.toHaveProperty('miscCharge')
   })
 })

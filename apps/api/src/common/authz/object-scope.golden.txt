@@ -45,7 +45,7 @@ där scopningen är anroparens ansvar. Den måste skrivas ner i CALLER_SCOPED me
 ett påstående om vem som scopar i stället — se sista sektionen.
 
 
-## Form 1 — update/delete (12 rader)
+## Form 1 — update/delete (13 rader)
 
 AiTenantConversation    delete      ai/tenant-ai.service.ts                                 D annan nyckel
 AiTenantConversation    update      ai/tenant-ai.service.ts                             ×4  C scopat anrop + INGEN UPPTÄCKT
@@ -55,6 +55,7 @@ InspectionItem          update      inspections/inspections.service.ts          
 InvoiceLine             deleteMany  invoices/invoices.service.ts                        ×2  A kedje-query
 InvoicePayment          deleteMany  reconciliation/reconciliation.service.ts                A kedje-query
 PaymentReminder         updateMany  notifications/payment-reminder.service.ts               INGEN UPPTÄCKT
+RentNoticeLine          deleteMany  avisering/avisering.service.ts                          A kedje-query
 RentNoticePayment       deleteMany  reconciliation/reconciliation.service.ts                A kedje-query
 Unit                    updateMany  units/unit-status.sync.ts                           ×2  INGEN UPPTÄCKT
 Unit                    delete      units/units.service.ts                                  A kedje-query

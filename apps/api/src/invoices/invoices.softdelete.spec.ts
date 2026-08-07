@@ -41,6 +41,8 @@ function makeService(invoiceStatus: string | null, allocations: Array<{ id: stri
       findMany: jest.fn().mockResolvedValue([]),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    // E: förbrukningsdebiteringar lossas vid VOID. Ingen charge här.
+    consumptionCharge: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     // #301: radlåset på fakturan (låsordning Invoice → Deposit) + uppslaget som
     // hittar depositionens accrual i sin egen namnrymd. Utan deposition → no-op.
     $queryRaw: jest.fn().mockResolvedValue([]),

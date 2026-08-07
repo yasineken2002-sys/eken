@@ -57,6 +57,8 @@ function makeService(invoiceStatus: string, allocations: Array<{ id: string }> =
       findMany: jest.fn().mockResolvedValue([]),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    // E: förbrukningsdebiteringar lossas vid VOID. Ingen charge här.
+    consumptionCharge: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     $queryRaw: jest.fn().mockResolvedValue([]),
     deposit: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: undefined as unknown,
