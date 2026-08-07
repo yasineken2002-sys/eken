@@ -1,4 +1,9 @@
-import { CURRENT_TERMS_VERSION, LEGAL_DOCUMENT_UPDATED_AT, PLATFORM_COMPANY } from '@eken/shared'
+import {
+  CURRENT_TERMS_VERSION,
+  LEGAL_DOCUMENT_UPDATED_AT,
+  PLATFORM_COMPANY,
+  REMINDER_FEE_MAX_SEK,
+} from '@eken/shared'
 import { LegalPageShell, type TocItem } from './LegalPageShell'
 
 const TOC: TocItem[] = [
@@ -105,7 +110,7 @@ export function TermsPage() {
           <strong>Dröjsmålsränta:</strong> Referensräntan + 8 procentenheter (6 § räntelagen)
         </li>
         <li>
-          <strong>Påminnelseavgift:</strong> 60 kr enligt 4 § lagen (1981:739)
+          <strong>Påminnelseavgift:</strong> {REMINDER_FEE_MAX_SEK} kr enligt 4 § lagen (1981:739)
         </li>
       </ul>
       <p>

@@ -307,7 +307,8 @@ Debet  1510 Kundfordringar (Anna Andersson)       60,00
 Kredit 3999 Övriga rörelseintäkter                60,00
 ```
 
-(Påminnelseavgift har särskild status i Inkassoförordningen — max 60 kr.)
+(Påminnelseavgift har särskild status i 4 § lagen (1981:739) — max 60 kr.
+Inkassoförordningen (1981:1057) är UPPHÄVD sedan 2013-03-16 och angav 50 kr.)
 
 ### 6. Konstaterad kundförlust efter inkasso
 

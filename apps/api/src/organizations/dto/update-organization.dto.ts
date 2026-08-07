@@ -10,7 +10,7 @@ import {
   Max,
 } from 'class-validator'
 import { InvoiceTemplate, BrandFont, VatReportingPeriod } from '@prisma/client'
-import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+import { DEFAULT_BRAND_COLOR, REMINDER_FEE_MAX_SEK } from '@eken/shared'
 
 export class UpdateOrganizationDto {
   @IsString()
@@ -56,9 +56,14 @@ export class UpdateOrganizationDto {
   @IsOptional()
   remindersEnabled?: boolean
 
+  // Taket är lagstadgat och tvingande (4 § och 6 § 1 st lagen 1981:739) — även
+  // mot näringsidkare. Lager 1 av två: den här spärren hindrar att ett för högt
+  // värde SKRIVS IN. Lager 2 klampar vid debiteringstillfället, för värden som
+  // redan ligger i databasen eller kommer in någon annan väg.
   @IsNumber()
   @IsOptional()
   @Min(0)
+  @Max(REMINDER_FEE_MAX_SEK)
   reminderFeeSek?: number
 
   @IsNumber()

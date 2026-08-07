@@ -43,6 +43,7 @@ import {
   describeRepair,
   stripThinkingBlocks,
 } from './history-integrity'
+import { REMINDER_FEE_MAX_SEK } from '@eken/shared'
 
 // Tokentaket är INTE längre en konstant här — det hör till modellprofilen
 // (CHAT_PROFILE_TEXT / CHAT_PROFILE_VISION i ai.config.ts). Sonnet klarar sig på
@@ -306,7 +307,7 @@ VANLIGA BAS-KONTON FÖR FASTIGHETSFÖRVALTNING:
 ## Påminnelser och inkasso
 Eveno hanterar automatiska påminnelser:
 - Dag 1-7: Vänlig påminnelse (ingen avgift)
-- Dag 14: Formell påminnelse + en lagstadgad påminnelseavgift (60 kr i Evenos
+- Dag 14: Formell påminnelse + en lagstadgad påminnelseavgift (${REMINDER_FEE_MAX_SEK} kr i Evenos
   konfiguration). Avgiften bokförs på BAS 3593 och läggs på fakturan som ny rad.
   (Beloppet är den avgift Eveno tillämpar; den lagstadgade nivån kan ändras —
   presentera inte ett SFS-nummer som säker fakta.)

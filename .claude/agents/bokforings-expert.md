@@ -106,7 +106,7 @@ För **varje** `JournalEntry`:
 - Dröjsmålsränta = referensränta + 8 procentenheter, från förfallodag.
 - Referensränta sätts av Riksbanken halvårsvis (RL 9 §). Hårdkoda inte — hämta aktuell.
 - Beräkning: belopp × ränta × dagar / 365 (taggad period efter förfallodag).
-- Påminnelse-/inkassoavgifter (60 kr per påminnelse, 180 kr inkassokrav) regleras av Inkassolagen och Inkassoförordningen — separat från Räntelagen.
+- Påminnelse-/inkassoavgifter (60 kr per påminnelse, 180 kr inkassokrav) regleras av 4 § lagen (1981:739) om ersättning för inkassokostnader — separat från Räntelagen. Taket är tvingande även mot näringsidkare (6 § 1 st). Inkassoförordningen (1981:1057) är UPPHÄVD sedan 2013-03-16.
 
 ### 8. Statusmaskin & händelselogg (Eveno-specifikt)
 

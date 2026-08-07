@@ -574,6 +574,11 @@ model Organization {
   // för skriftlig påminnelse, 180 kr för inkassokrav. Vi tar bara ut
   // påminnelseavgiften — själva inkassoärendet hanteras externt.
   remindersEnabled       Boolean @default(true)
+  // Default = det lagstadgade taket (4 § lagen 1981:739). Literalen står kvar
+  // för att Prisma-schemat inte är TypeScript och inte kan importera —
+  // sanningskällan är REMINDER_FEE_MAX_SEK i @eken/shared, och taket klampas
+  // dessutom vid debiteringstillfället (bookReminderFee). Ändras taket i lag
+  // måste den här raden ändras separat.
   reminderFeeSek         Decimal @default(60) @db.Decimal(10, 2)
   reminderFormalDay      Int     @default(14) // dagar efter förfall för formell påminnelse
   reminderCollectionDay  Int     @default(30) // dagar efter förfall innan markering "redo för inkasso"

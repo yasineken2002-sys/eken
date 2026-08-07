@@ -32,6 +32,33 @@ export function getVatRateForUnitType(unitType: string, taxedCommercial = false)
   }
 }
 
+// ─── Påminnelseavgiftens lagstadgade tak (G3) ────────────────────────────────
+//
+// 4 § lagen (1981:739) om ersättning för inkassokostnader anger 60 kr för
+// skriftlig betalningspåminnelse (beloppet står där sedan SFS 2013:56 — den
+// tidigare förordningen 1981:1057 är upphävd och angav 50 kr).
+//
+// TAKET ÄR TVINGANDE ÄVEN MOT NÄRINGSIDKARE. 6 § första stycket gör ett
+// avtalsvillkor som utvidgar gäldenärens ersättningsskyldigheter ogiltigt, och
+// ordalydelsen har ingen konsumentavgränsning. Ett avtalat belopp över taket är
+// därför ogiltigt i den överskjutande delen även mellan företag — det finns
+// ingen INDIVIDUAL/COMPANY-förgrening att göra här, och den som funderar på att
+// införa en ska läsa 6 § först.
+//
+// EN KONSTANT, ALLA FÖREKOMSTER. Talet stod tidigare på flera ställen: DTO:ns
+// validering, inställningssidans "Max enligt lag"-text, villkorssidorna i web
+// och portal, inkassounderlagets disclaimer och AI-assistentens systemprompt.
+// Två literaler som ska föreställa samma tak glider isär — och glider de isär
+// är det en av dem som kräver hyresgästen på fel belopp.
+//
+// KAN INTE LÄSA KONSTANTEN, med flit dokumenterat:
+//   • `schema.prisma` (`reminderFeeSek Decimal @default(60)`) — Prisma-schemat
+//     är inte TypeScript och kan inte importera. Literalen står kvar med en
+//     kommentar som pekar hit.
+//   • markdown i `docs/` och `.claude/knowledge/` — statisk text.
+// Båda är dokumenterade snarare än tyst duplicerade.
+export const REMINDER_FEE_MAX_SEK = 60
+
 export const DEFAULT_NOTICE_PERIOD_MONTHS = 3
 export const DEFAULT_PAGE_SIZE = 20
 export const MAX_PAGE_SIZE = 100
