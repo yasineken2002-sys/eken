@@ -1841,6 +1841,58 @@ export class AviseringService {
       )
     }
 
+    // ── EN NEDSKRIVEN FORDRAN KAN INTE ANNULLERAS UNDER SIG SJÄLV ────────────
+    //
+    // DET HÄR ÄR EN SPÄRR MOT ETT PENNINGFEL, inte mot ett tillståndsfel.
+    //
+    // `reverseJournalEntryForRentNotice` speglar originalposten OVILLKORLIGT:
+    // den slår upp `rent-notice:<id>`, byter debet↔kredit och krediterar 1510
+    // med HELA kapitalbeloppet. Den frågar aldrig om fordran hunnit skrivas ned.
+    //
+    // Har `reclassifyToProbableLoss` körts först är 1510 redan tömd för den här
+    // tråden: nedskrivningen bokför 1515 D / 1510 K på `debt.outstanding`, alltså
+    // HELA kravet — kapital + förbrukning + övrig debitering + påminnelseavgift +
+    // ränta, inte bara kapitalet (rent-bad-debt.service.ts, `amount = debt.outstanding`).
+    // En annullering därefter krediterar 1510 en ANDRA gång:
+    //
+    //   1510 D <total>                    (avins accrual)
+    //   1515 D <outstanding> / 1510 K     (nedskrivningen tömmer 1510)
+    //   39xx D <total> / 1510 K           (annulleringens motverifikat)
+    //   → 1510 NEGATIVT med exakt kapitalbeloppet, 1515 kvar med hela kravet
+    //
+    // Ett negativt kundfordringssaldo är inget en revisor kan stämma av mot
+    // kundreskontran, och 1515 blir en öppen nedskrivning av en fordran som
+    // formellt inte längre finns. Varje enskilt verifikat balanserar — felet
+    // uppstår först i sekvensen, vilket är precis varför ingen enskild
+    // verifikat-kontroll fångar det.
+    //
+    // GRINDEN LIGGER PÅ `probableLossAt`, ALDRIG PÅ STATUS. `WRITTEN_OFF` är ett
+    // värde i `RentCollectionStage`, inte i `RentNoticeStatus` — en avskriven avi
+    // står kvar med status OVERDUE och glider rakt genom PAID-kontrollen ovan.
+    // `writtenOffAt` kontrolleras också: `confirmLoss` förutsätter en föregående
+    // nedskrivning, men grinden ska vara fail-closed även om den ordningen
+    // någon gång luckras upp.
+    //
+    // FAKTURASIDAN BERÖRS INTE — och det är MÄTT, inte antaget: `Invoice` saknar
+    // `probableLossAt`, `writtenOffAt` och `collectionStage` helt, och
+    // `RentBadDebtService` rör bara `rentNotice`/`journalEntry`/`user`. Hela
+    // bad-debt-ytan är två avi-scopade endpoints. Får `Invoice` någon gång en
+    // nedskrivningsväg MÅSTE samma grind in i `invoices.service.ts` i SAMMA PR —
+    // invoices.bad-debt-drift.spec.ts faller den dagen fältet dyker upp.
+    //
+    // INGEN VÄG UT ÄNNU (#365): en avi som var felaktig redan från början och
+    // sedan skrevs ned kan efter den här spärren varken annulleras eller rättas
+    // via produktvägarna. Att lämna hålet öppet var inte ett alternativ — det
+    // kostar pengar i huvudboken — men utvägen är ett eget ärende och kräver
+    // FAR:s svar på om en befarad förlust över huvud taget får reverseras.
+    if (notice.probableLossAt != null || notice.writtenOffAt != null) {
+      throw new BadRequestException(
+        `Avi ${notice.noticeNumber} kan inte annulleras — fordran är bokförd som ` +
+          'kundförlust (1515/6352). En annullering skulle kreditera kundfordringar ' +
+          'en andra gång. Hantera fordran via kundförlust-flödet i stället.',
+      )
+    }
+
     // Statusflip + motverifikat körs ATOMISKT. Intäkten bokades vid avi-genereringen
     // (1510 D / 39xx K / ev. 26xx K); en annullering MÅSTE reversera den, annars
     // kvarstår fantomintäkt + utgående moms (BFL 5 kap 5 §/9 §). Faller reverseringen
@@ -1894,10 +1946,39 @@ export class AviseringService {
       // collectionStage till NONE ATOMISKT. updateMany med organizationId i WHERE
       // org-scopar uppdateringen (defense-in-depth mot ett läckt noticeId).
       const cancelled = await tx.rentNotice.updateMany({
-        where: { id: noticeId, organizationId: orgId, status: { not: RentNoticeStatus.PAID } },
+        where: {
+          id: noticeId,
+          organizationId: orgId,
+          status: { not: RentNoticeStatus.PAID },
+          // Nedskrivningsgrinden ligger ÄVEN här, inte bara i förläsningen ovan.
+          // Den läsningen sker utanför transaktionen och kan hinna bli inaktuell:
+          //
+          //   T1 (cancelNotice) läser avin — probableLossAt är null, släpps igenom
+          //   T2 (reclassifyToProbableLoss) låser, bokför 1515 D / 1510 K, commit
+          //   T1 annullerar ändå → 1510 krediteras en andra gång
+          //
+          // Samma TOCTOU som #302 stängde på fakturasidan. Villkoret i claimen gör
+          // fönstret verkningslöst: hann nedskrivningen före oss matchar inga rader.
+          probableLossAt: null,
+          writtenOffAt: null,
+        },
         data: { status: RentNoticeStatus.CANCELLED, collectionStage: RentCollectionStage.NONE },
       })
       if (cancelled.count === 0) {
+        // Claimen har tre skäl att missa. Läs om raden och säg vilket det var —
+        // "redan reglerad" om nedskrivningen vann kapplöpningen vore ett felaktigt
+        // besked om vad som hänt med fordran, och operatören skulle leta på fel
+        // ställe. Läsningen sker i samma tx, efter claimen, så den ser sanningen.
+        const aktuell = await tx.rentNotice.findFirst({
+          where: { id: noticeId, organizationId: orgId },
+          select: { probableLossAt: true, writtenOffAt: true, noticeNumber: true },
+        })
+        if (aktuell && (aktuell.probableLossAt != null || aktuell.writtenOffAt != null)) {
+          throw new ConflictException(
+            `Avi ${aktuell.noticeNumber} skrevs ned som kundförlust under annulleringen — ` +
+              'annulleringen avbröts. Hantera fordran via kundförlust-flödet.',
+          )
+        }
         // En parallell process hann reglera avin mellan läsning och uppdatering.
         throw new ConflictException('Avin är redan reglerad — uppdatera sidan och försök igen')
       }
