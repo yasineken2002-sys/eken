@@ -13,6 +13,9 @@ import type { Invoice, InvoiceStatus, InvoiceEventType, PaymentMethod } from '@p
 import { computeInvoiceDebt, invoiceOutstanding } from './invoice-debt'
 import { paymentTargetStatus, isPaymentTransitionAllowed } from './invoice-payment-status'
 import { REMINDER_FEE_LINE_DESCRIPTION } from './reminder-fee-line'
+
+// Speglar avi-sidans konstant och AccountingService.REVERSAL_REASON_MIN_LENGTH.
+const REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH = 10
 import { PrismaService } from '../common/prisma/prisma.service'
 import { stockholmCivilDate } from '../common/time/stockholm-period'
 import { OcrService } from '../common/ocr/ocr.service'
@@ -797,6 +800,116 @@ export class InvoicesService {
     }
 
     return result
+  }
+
+  /**
+   * G4a — STRYK EN FELAKTIGT DEBITERAD PÅMINNELSEAVGIFT på en faktura, utan att
+   * makulera fakturan.
+   *
+   * Syskonet till `AviseringService.reverseReminderFee`; se den för resonemanget
+   * om varför strykningen är en RÄTTELSE och inte en eftergift, och varför
+   * gränsen är aritmetisk. Skillnaderna mot avi-sidan:
+   *
+   *   • Avgiften bor på TRE ställen här, inte två: verifikatet, en `InvoiceLine`
+   *     och `invoice.total`. Alla tre måste följas åt.
+   *   • Raden RADERAS, den nollas inte — en rad på 0,00 kr med texten
+   *     "Påminnelseavgift enligt lag" påstår en lagstadgad avgift på noll kronor
+   *     (FAR:s M1 i #357). Samma val som VOID-grenen redan gör.
+   *   • `total` räknas om FRÅN RADERNAS SUMMA, inte genom att subtrahera
+   *     avgiften. Det är raderna som byggt upp totalen, och skulle de någon gång
+   *     ha glidit isär är det radernas summa som gör dokumentet konsistent igen.
+   *   • Ingen nedskrivningsgrind behövs: `Invoice` saknar `probableLossAt` och
+   *     `writtenOffAt` helt — kundförlust finns bara på avi-sidan. Får fakturan
+   *     någon gång en sådan väg måste grinden hit, och
+   *     `invoices.bad-debt-drift.spec.ts` faller den dagen fältet införs.
+   */
+  async reverseReminderFee(
+    invoiceId: string,
+    organizationId: string,
+    reason: string,
+    actorId: string | null,
+    // Se avi-sidans motsvarighet och `impersonatorOf` — spår, inte lösning (#379).
+    impersonatedById: string | null = null,
+  ) {
+    const trimmedReason = reason?.trim() ?? ''
+    if (trimmedReason.length < REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH) {
+      throw new BadRequestException(
+        `Ange varför avgiften stryks (minst ${REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH} tecken). ` +
+          'Skälet blir motverifikatets beskrivning i huvudboken och går inte att ändra efteråt.',
+      )
+    }
+
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      include: { lines: true, payments: { select: { amount: true } } },
+    })
+    if (!invoice) throw new NotFoundException('Faktura hittades inte')
+
+    const feeLines = invoice.lines.filter((l) => l.description === REMINDER_FEE_LINE_DESCRIPTION)
+    if (feeLines.length === 0) {
+      throw new BadRequestException('Fakturan bär ingen påminnelseavgift att stryka')
+    }
+    const feeSum = feeLines.reduce(
+      (sum, l) => sum.plus(new Prisma.Decimal(l.total)),
+      new Prisma.Decimal(0),
+    )
+
+    // Aritmetiska gränsen — samma som avi-sidan: strykningen får inte kunna
+    // skapa en överbetalning, eftersom `invoiceOutstanding` klampar den till 0
+    // och pengarna blir osynliga (#378).
+    const paid = invoice.payments.reduce(
+      (sum, p) => sum.plus(new Prisma.Decimal(p.amount)),
+      new Prisma.Decimal(0),
+    )
+    const takWithoutFee = new Prisma.Decimal(invoice.total).minus(feeSum)
+    if (paid.greaterThan(takWithoutFee)) {
+      throw new BadRequestException(
+        `Avgiften kan inte strykas: betalt belopp (${paid.toFixed(2)} kr) överstiger ` +
+          `fakturans belopp utan avgiften (${takWithoutFee.toFixed(2)} kr), så strykningen ` +
+          `skulle skapa en överbetalning på ${paid.minus(takWithoutFee).toFixed(2)} kr. ` +
+          'Överbetalning kan i dag inte visas (se ärende #378) — avmatcha eller ' +
+          'återbetala betalningen först.',
+      )
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.invoiceLine.deleteMany({ where: { id: { in: feeLines.map((l) => l.id) } } })
+
+      // Totalen HÄRLEDS ur de kvarvarande raderna.
+      const kvar = await tx.invoiceLine.findMany({
+        where: { invoiceId },
+        select: { total: true },
+      })
+      const nyTotal = kvar.reduce(
+        (sum, l) => sum.plus(new Prisma.Decimal(l.total)),
+        new Prisma.Decimal(0),
+      )
+      await tx.invoice.update({ where: { id: invoiceId }, data: { total: nyTotal } })
+
+      await this.accountingService.reverseJournalEntryForReminderFee(
+        'INVOICE',
+        invoiceId,
+        organizationId,
+        `Struken påminnelseavgift (${trimmedReason})`,
+        actorId,
+        tx,
+      )
+
+      await this.eventsService.record(
+        invoiceId,
+        'REMINDER_FEE_REVERSED',
+        actorId ? 'USER' : 'SYSTEM',
+        actorId,
+        {
+          amount: feeSum.toNumber(),
+          reason: trimmedReason,
+          ...(impersonatedById ? { impersonatedBy: impersonatedById } : {}),
+        },
+        { tx },
+      )
+    })
+
+    return this.findOne(invoiceId, organizationId)
   }
 
   /**

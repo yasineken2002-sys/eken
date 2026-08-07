@@ -17,6 +17,8 @@ import { AviseringService } from './avisering.service'
 import { AviseringScheduler } from './avisering.scheduler'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentBadDebtService } from './rent-bad-debt.service'
+import { ReverseReminderFeeDto } from './dto/reverse-reminder-fee.dto'
+import { impersonatorOf } from '../common/auth/impersonation'
 import { RentBackfillService } from './rent-backfill.service'
 import { GenerateNoticesDto } from './dto/generate-notices.dto'
 import { SendNoticesDto } from './dto/send-notices.dto'
@@ -202,6 +204,30 @@ export class AviseringController {
   // bostadshyra; momspliktig lokalhyra vägras (docs/legal/46 fråga 1).
 
   // BEFARAD kundförlust: omklassar inkasso-redo, momsfri fordran 1510 → 1515.
+  // G4a — stryk en felaktigt debiterad påminnelseavgift utan att annullera avin.
+  // Bokföringshandling (motverifikat 3593 D / 1510 K) → samma rolluppsättning
+  // som kundförlust-vägarna nedan, alltså ACCOUNTANT tillåts.
+  //
+  // Endast RÄTTELSE. Eftergift av en giltig fordran är en annan affärshändelse
+  // med annan kontering och finns inte här (G4b, väntar FAR:s kontobeslut).
+  @Post(':id/reminder-fee/reverse')
+  @Roles(UserRole.ACCOUNTANT, UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
+  @HttpCode(HttpStatus.OK)
+  async reverseReminderFee(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+    @Body() dto: ReverseReminderFeeDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.aviseringService.reverseReminderFee(
+      id,
+      orgId,
+      dto.reason,
+      user.sub,
+      impersonatorOf(user),
+    )
+  }
+
   @Post(':id/bad-debt/probable')
   @Roles(UserRole.ACCOUNTANT, UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
   @HttpCode(HttpStatus.OK)

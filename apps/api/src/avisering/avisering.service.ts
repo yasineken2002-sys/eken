@@ -21,6 +21,13 @@ import { MiscChargeService } from '../misc-charges/misc-charge.service'
 import { DepositsService } from '../deposits/deposits.service'
 import { computeRentDebt } from './rent-debt.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
+
+// Speglar REVERSAL_REASON_MIN_LENGTH i AccountingService: ett skäl som bara är
+// "fel" hjälper ingen som granskar huvudboken ett år senare.
+const REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH = 10
+
+/** Öresavrundning, samma form som rent-debt.service.ts använder. */
+const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import {
   PaymentMethod,
@@ -2162,6 +2169,167 @@ export class AviseringService {
           )
         })
     }
+
+    return this.prisma.rentNotice.findFirst({ where: { id: noticeId, organizationId: orgId } })
+  }
+
+  /**
+   * G4a — STRYK EN FELAKTIGT DEBITERAD PÅMINNELSEAVGIFT, utan att röra avin i
+   * övrigt.
+   *
+   * ── VARFÖR FUNKTIONEN BEHÖVS ────────────────────────────────────────────
+   *
+   * Fram till nu fanns ingen väg att ta bort en avgift utan att ANNULLERA HELA
+   * AVIN — vilket också reverserar hyresintäkten och räntan och tar bort ett
+   * dokument som i övrigt är korrekt. Det vanligaste fallet uppstår av sig
+   * självt: hyresgästen betalade i tid, men överföringen var inte matchad när
+   * cronen körde (avgiftsvägen grindar på `debt.ocrOutstanding`, alltså på
+   * REGISTRERAD betalning). Avgiften tas, och när betalningen sedan matchas
+   * täcker den bara kapitalet — avin stannar i OVERDUE för 60 kr hyresgästen
+   * aldrig skulle ha krävts på.
+   *
+   * ── RÄTTELSE, INTE EFTERGIFT ────────────────────────────────────────────
+   *
+   * FAR:s prövning är EN fråga, inte fyra fall: var avgiften en giltig fordran
+   * givet de FAKTISKA förhållandena vid debiteringstillfället — oavsett vad
+   * systemet trodde då? Nej → rättelse av fel, och motverifikatet speglar
+   * originalet (3593 D / 1510 K).
+   *
+   * Ja → EFTERGIFT av en giltig fordran, vilket är en annan affärshändelse med
+   * annan kontering: att reversera 3593 skulle påstå att intäkten aldrig
+   * funnits, vilket är osant, och snedvrider en annan periods
+   * intäktsredovisning om eftergiften sker senare. Den vägen (G4b) är INTE
+   * byggd — FAR:s kontoförslag (6352) är uttryckligen en bedömning som ska
+   * verifieras av människa först. Den här funktionen är rättelsen, och bara den.
+   *
+   * ── DEN ARITMETISKA GRÄNSEN ─────────────────────────────────────────────
+   *
+   * Strykningen minskar kravet. Är kravet redan täckt av betalning uppstår en
+   * ÖVERBETALNING — och `computeRentDebt` klampar med `Math.max(0, …)`, så
+   * mellanskillnaden blir noll på varje yta och pengarna hos hyresvärden blir
+   * osynliga (#378).
+   *
+   * Gränsen är därför aritmetisk, inte beskrivande: strykningen tillåts bara när
+   * den INTE KAN skapa en överbetalning, alltså `paid <= ocrGross - avgiften`.
+   * Att i stället vägra på `paid > 0` hade varit meningslöst — huvudfallet ovan
+   * har ALLTID en registrerad betalning; det är just den som avslöjar att
+   * avgiften var felaktig.
+   *
+   * ── VAD SOM SKER ATOMISKT ───────────────────────────────────────────────
+   *
+   * Motverifikat, nollad reskontramarkering och händelse i EN transaktion. En
+   * reversering i huvudboken utan att nolla `reminderFeeAmount` ger exakt den
+   * divergens #357 stängde, med omvänt tecken: avin fortsätter kräva 60 kr som
+   * huvudboken inte längre bär.
+   *
+   * SAMMA REVERSAL-NYCKEL som `cancelNotice` använder
+   * (`reminder-fee-reversal:<id>`). Annulleras avin senare hittar dess
+   * reversering den befintliga posten via idempotensen och skriver ingen
+   * dubblett — hade G4a valt en egen nyckel skulle 3593 debiterats två gånger.
+   */
+  async reverseReminderFee(
+    noticeId: string,
+    orgId: string,
+    reason: string,
+    actorId: string | null,
+    // Den faktiska människan när handlingen sker via impersonation. Sparas i
+    // händelsen — INTE i verifikatets createdById, som fortfarande namnger
+    // org-användaren. Se `impersonatorOf` och ärende #379.
+    impersonatedById: string | null = null,
+  ) {
+    const trimmedReason = reason?.trim() ?? ''
+    if (trimmedReason.length < REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH) {
+      throw new BadRequestException(
+        `Ange varför avgiften stryks (minst ${REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH} tecken). ` +
+          'Skälet blir motverifikatets beskrivning i huvudboken och går inte att ändra efteråt.',
+      )
+    }
+
+    const notice = await this.prisma.rentNotice.findFirst({
+      where: { id: noticeId, organizationId: orgId },
+      include: { payments: { select: { amount: true } } },
+    })
+    if (!notice) throw new NotFoundException('Avi hittades inte')
+
+    const fee = Number(notice.reminderFeeAmount)
+    if (!(fee > 0)) {
+      throw new BadRequestException('Avin bär ingen påminnelseavgift att stryka')
+    }
+
+    // Samma spärr som cancelNotice, av samma skäl: `reclassifyToProbableLoss`
+    // har flyttat HELA kravet — inklusive avgiften — till 1515. Att kreditera
+    // 1510 för avgiften här skulle kreditera en post som redan flyttats.
+    if (notice.probableLossAt != null || notice.writtenOffAt != null) {
+      throw new BadRequestException(
+        `Avi ${notice.noticeNumber} är bokförd som kundförlust — avgiften ingår i ` +
+          'nedskrivningen och kan inte strykas separat. Hantera fordran via ' +
+          'kundförlust-flödet.',
+      )
+    }
+
+    // ── DEN ARITMETISKA GRÄNSEN, räknad ur allokeringarna ────────────────
+    const ocrGross =
+      Number(notice.totalAmount) +
+      Number(notice.consumptionAmount) +
+      Number(notice.miscChargeAmount) +
+      fee
+    const paid = notice.payments.reduce((sum, p) => sum + Number(p.amount), 0)
+    const takWithoutFee = round2(ocrGross - fee)
+    if (paid > takWithoutFee) {
+      throw new BadRequestException(
+        `Avgiften kan inte strykas: betalt belopp (${paid} kr) överstiger kravet utan ` +
+          `avgiften (${takWithoutFee} kr), så strykningen skulle skapa en överbetalning ` +
+          `på ${round2(paid - takWithoutFee)} kr. Överbetalning kan i dag inte visas ` +
+          '(se ärende #378) — avmatcha eller återbetala betalningen först.',
+      )
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Villkorat anspråk: nollställningen får bara ske från det belopp vi läste,
+      // annars kan en samtidig eskalering ha ändrat avgiften under oss.
+      const claim = await tx.rentNotice.updateMany({
+        where: {
+          id: noticeId,
+          organizationId: orgId,
+          probableLossAt: null,
+          writtenOffAt: null,
+          reminderFeeAmount: notice.reminderFeeAmount,
+        },
+        // Literal 0 — matchar `isZeroing` i CI-vakten från #375, som släpper
+        // igenom nollställning utan predikat eftersom den aldrig kan
+        // överdebitera. Ett beräknat värde hade fällt vakten, och rätteligen så.
+        data: { reminderFeeAmount: 0 },
+      })
+      if (claim.count === 0) {
+        throw new ConflictException(
+          'Avgiften ändrades under strykningen — uppdatera sidan och försök igen',
+        )
+      }
+
+      await this.accounting.reverseJournalEntryForReminderFee(
+        'RENT_NOTICE',
+        noticeId,
+        orgId,
+        `Struken påminnelseavgift (${trimmedReason})`,
+        actorId,
+        tx,
+      )
+
+      // Utan händelsen är åtgärden osynlig: till skillnad från VOID ändras ingen
+      // status på dokumentet som förklarar varför beloppet försvann.
+      await this.rentNoticeEvents.record(
+        noticeId,
+        'REMINDER_FEE_REVERSED',
+        actorId ? 'USER' : 'SYSTEM',
+        actorId,
+        {
+          amount: fee,
+          reason: trimmedReason,
+          ...(impersonatedById ? { impersonatedBy: impersonatedById } : {}),
+        },
+        { tx },
+      )
+    })
 
     return this.prisma.rentNotice.findFirst({ where: { id: noticeId, organizationId: orgId } })
   }
