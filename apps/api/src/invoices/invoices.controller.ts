@@ -23,6 +23,7 @@ import { CreateInvoiceDto } from './dto/create-invoice.dto'
 import { UpdateInvoiceDto } from './dto/update-invoice.dto'
 import { TransitionStatusDto } from './dto/transition-status.dto'
 import { RegisterPaymentDto } from './dto/register-payment.dto'
+import { ReverseReminderFeeDto } from '../avisering/dto/reverse-reminder-fee.dto'
 import { BadRequestException } from '@nestjs/common'
 import type { InvoiceStatus } from '@prisma/client'
 
@@ -126,6 +127,23 @@ export class InvoicesController {
       'USER',
       dto.payload ?? {},
     )
+  }
+
+  // G4a — stryk en felaktigt debiterad påminnelseavgift utan att makulera
+  // fakturan. Bokföringshandling (motverifikat 3593 D / 1510 K) → ACCOUNTANT
+  // tillåts, som på avi-sidans motsvarighet och kundförlust-vägarna.
+  //
+  // Endast RÄTTELSE. Eftergift av en giltig fordran är en annan affärshändelse
+  // med annan kontering och finns inte här (G4b, väntar FAR:s kontobeslut).
+  @Post(':id/reminder-fee/reverse')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
+  async reverseReminderFee(
+    @Param('id') id: string,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ReverseReminderFeeDto,
+  ) {
+    return this.invoicesService.reverseReminderFee(id, organizationId, dto.reason, user.sub)
   }
 
   // Manuell betalningsregistrering med bokföring (likvidkonto D / 1510 K).

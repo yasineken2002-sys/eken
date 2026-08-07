@@ -184,6 +184,8 @@ enum InvoiceEventType {
   // Korrigeringar
   VOIDED
   CREDIT_NOTE_CREATED
+  // G4a — struken påminnelseavgift (rättelse). Se RentNoticeEventType.
+  REMINDER_FEE_REVERSED
   // Administrativt
   NOTE_ADDED
   VIEWED_BY_USER
@@ -310,6 +312,11 @@ enum RentNoticeEventType {
   // att hitta genom att läsa JSON i varje rad. En behandlingshistorik som inte
   // går att fråga är svår att granska (BFL 5 kap 11 §).
   PAYMENT_REVERSED
+  // G4a — struken påminnelseavgift (rättelse). Egen typ av samma skäl som
+  // PAYMENT_REVERSED ovan: strykningen nollar reminderFeeAmount utan att
+  // dokumentets status ändras, så utan en sökbar händelse är åtgärden osynlig
+  // i historiken. Eftergift (G4b) får en egen typ när kontot är avgjort.
+  REMINDER_FEE_REVERSED
   NOTE_ADDED
 }
 
