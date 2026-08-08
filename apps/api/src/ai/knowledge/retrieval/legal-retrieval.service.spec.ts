@@ -373,11 +373,21 @@ describe('LegalRetrievalService (Etapp 3, PR 3.3a)', () => {
       return { service, countMock }
     }
 
-    it('lika antal → ingen varning', async () => {
-      const { service, countMock } = makeParityService(buildLegalChunks().length)
+    it('lika antal → ingen varning, men en POSITIV kvittens med båda talen', async () => {
+      const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined)
+      const expected = buildLegalChunks().length
+      const { service, countMock } = makeParityService(expected)
       await service.onModuleInit()
+
       expect(countMock).toHaveBeenCalledWith({ where: { model: expect.any(String) } })
       expect(warnSpy).not.toHaveBeenCalled()
+      // Tystnad duger inte som bevis — den är oskiljbar från "kontrollen kördes
+      // aldrig". Paritet måste kunna VERIFIERAS, inte antas.
+      expect(logSpy).toHaveBeenCalledTimes(1)
+      const msg = String(logSpy.mock.calls[0]![0])
+      expect(msg).toContain('paritet OK')
+      expect(msg).toContain(`${expected} chunkar = ${expected} rader`)
+      logSpy.mockRestore()
     })
 
     it('överskott av rader → varnar om FÖRÄLDRALÖSA och anger båda talen', async () => {

@@ -108,7 +108,16 @@ export class LegalRetrievalService implements OnModuleInit {
       return
     }
 
-    if (stored === expected) return
+    // Positiv kvittens vid paritet. Tystnad vore ett SÄMRE bevis: den ser
+    // likadan ut som att kontrollen aldrig kördes (modulen initierades inte,
+    // räkningen kastade). En rad vid boot gör "paritet OK" verifierbart, inte
+    // bara antaget.
+    if (stored === expected) {
+      this.logger.log(
+        `Lagtext/vektor-paritet OK: ${expected} chunkar = ${stored} rader (modell ${VOYAGE_EMBEDDINGS.MODEL})`,
+      )
+      return
+    }
 
     const riktning =
       stored > expected
