@@ -14,7 +14,7 @@
  *
  * Kör: `pnpm --filter @eken/api knowledge:generate`
  */
-import { readFileSync, writeFileSync, readdirSync, mkdirSync } from 'fs'
+import { readFileSync, writeFileSync, readdirSync, mkdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 
 const SRC_DIR = join(__dirname, '../../../.claude/knowledge/lagar')
@@ -124,9 +124,31 @@ function main(): void {
   }
   writeFileSync(join(OUT_DIR, 'index.generated.ts'), indexSource(docs))
 
+  // ── Radera föräldralösa genererade moduler (#382) ─────────────────────────
+  //
+  // Generatorn SKREV bara. Togs en källfil bort blev dess `.generated.ts` kvar
+  // på disk — index.generated.ts slutade importera den, så den var osynlig för
+  // både bygget och testerna, men den låg kvar i repot som död kod med
+  // fullständig lagtext i sig. Bekräftat i praktiken: när
+  // mervärdesskattelagen.md togs bort i #382 blev
+  // mervardesskattelagen.generated.ts kvar och fick raderas för hand.
+  //
+  // Bara `*.generated.ts` rörs, och index.generated.ts skyddas explicit —
+  // katalogen får aldrig städas bredare än det generatorn själv äger.
+  const expected = new Set([...docs.map((d) => `${d.id}.generated.ts`), 'index.generated.ts'])
+  const orphans = readdirSync(OUT_DIR).filter(
+    (f) => f.endsWith('.generated.ts') && !expected.has(f),
+  )
+  for (const file of orphans) {
+    unlinkSync(join(OUT_DIR, file))
+  }
+
   console.warn(
     `[knowledge] genererade ${docs.length} lagtext-moduler → ${OUT_DIR}\n` +
-      docs.map((d) => `  • ${d.id} (${d.sfs}, verifierad ${d.verifieradPer})`).join('\n'),
+      docs.map((d) => `  • ${d.id} (${d.sfs}, verifierad ${d.verifieradPer})`).join('\n') +
+      (orphans.length > 0
+        ? `\n[knowledge] raderade ${orphans.length} föräldralös(a) modul(er) utan källfil: ${orphans.join(', ')}`
+        : ''),
   )
 }
 
