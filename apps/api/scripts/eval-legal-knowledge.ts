@@ -49,6 +49,12 @@
  */
 import { PrismaClient } from '@prisma/client'
 import { ConfigService } from '@nestjs/config'
+import {
+  requireApiKey,
+  verifyAnthropicKey,
+  verifyVoyageKey,
+  exitOnPreflightError,
+} from './preflight-keys'
 import Anthropic from '@anthropic-ai/sdk'
 import { LegalEmbeddingService } from '../src/ai/knowledge/embedding/legal-embedding.service'
 import { LegalRetrievalService } from '../src/ai/knowledge/retrieval/legal-retrieval.service'
@@ -62,7 +68,7 @@ import {
 import { chunksToSources } from '../src/ai/knowledge/retrieval/legal-retrieval-runner'
 import { scoreRun } from '../src/ai/knowledge/eval/legal-eval-harness'
 import { LEGAL_EVAL_SET } from '../src/ai/knowledge/eval/legal-eval-set'
-import { AI_MODELS } from '../src/ai/ai.config'
+import { AI_MODELS, VOYAGE_EMBEDDINGS } from '../src/ai/ai.config'
 import type { LegalChunk } from '../src/ai/knowledge/retrieval/legal-chunk'
 
 interface EvalRow {
@@ -83,12 +89,29 @@ function hasChunk(row: EvalRow, lawId: string, paragraphs: string[]): boolean {
 }
 
 async function main(): Promise<void> {
+  // FÖRHANDSKONTROLL (#385): båda nycklarna verifieras INNAN något arbete görs.
+  // Utan den föll scriptet på ett opakt 401 mitt i körningen — efter att ha
+  // spenderat ~22 Voyage-embeddings på en körning som ändå inte kunde slutföras.
+  const anthropicKey = requireApiKey({
+    envVar: 'ANTHROPIC_API_KEY',
+    whatFor: 'relevansdomaren i knowledge:eval',
+    expectedPrefix: 'sk-ant-',
+  })
+  const voyageKey = requireApiKey({
+    envVar: 'VOYAGE_API_KEY',
+    whatFor: 'query-embeddingarna i knowledge:eval',
+    expectedPrefix: 'pa-',
+  })
+  await verifyVoyageKey(voyageKey, VOYAGE_EMBEDDINGS.MODEL)
+  await verifyAnthropicKey(anthropicKey)
+  console.warn('[eval] förhandskontroll OK — båda nycklarna accepteras.\n')
+
   const prisma = new PrismaClient()
   const retrievalService = new LegalRetrievalService(
     prisma as never,
     new LegalEmbeddingService(new ConfigService()),
   )
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' })
+  const anthropic = new Anthropic({ apiKey: anthropicKey })
 
   const rows: EvalRow[] = []
   try {
@@ -244,7 +267,4 @@ async function main(): Promise<void> {
   console.warn('\n[eval] ALLA hårda invarianter håller. ✓')
 }
 
-main().catch((err: unknown) => {
-  console.error('[eval] MISSLYCKADES:', err instanceof Error ? err.message : err)
-  process.exit(1)
-})
+main().catch((err: unknown) => exitOnPreflightError(err, 'eval'))
