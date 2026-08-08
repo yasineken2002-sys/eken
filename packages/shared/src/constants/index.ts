@@ -11,26 +11,19 @@ export type VatRate = (typeof VAT_RATES)[number]
 export const VAT_RATE_RESIDENTIAL_RENT = 0
 export const VAT_RATE_COMMERCIAL_RENT_TAXED = 25
 
-/**
- * Returnerar tillåten momssats för en hyrestyp. Bostad får aldrig moms.
- * Lokal kan ha 0% (utan frivillig skattskyldighet) eller 25%.
- */
-export function getVatRateForUnitType(unitType: string, taxedCommercial = false): VatRate {
-  switch (unitType) {
-    case 'APARTMENT':
-      return 0
-    case 'OFFICE':
-    case 'RETAIL':
-    case 'STORAGE':
-      return taxedCommercial ? 25 : 0
-    case 'PARKING':
-      // Parkering till hyresgäst i samma fastighet följer bostaden (0%);
-      // separat parkering till utomstående är 25%. Default till 0% här.
-      return 0
-    default:
-      return 0
-  }
-}
+// MOMSSATSEN PER UPPLÅTELSETYP BOR I `vatRateForRent`
+// (apps/api/src/accounting/accounting.service.ts) — den enda momskällan, och
+// den som faktiskt grindar fakturering, avisering och IMD-debitering.
+//
+// Här fanns tidigare en andra funktion, `getVatRateForUnitType`, som gav ett
+// ANNAT svar för PARKING (0 % mot 25 %) och hade noll anropare. Den togs bort i
+// #393: en död funktion som bär en regel ingen kör ser ut som täckning och är
+// därför sämre än ingen funktion alls.
+//
+// Regeln den bar — att parkering underordnad en momsfri bostads- eller
+// lokaluthyrning följer huvudupplåtelsen — är BEVARAD I #393, tillsammans med
+// Skatteverkets ställningstagande (tillämpas 2026-10-01) och konstaterandet att
+// datamodellen ännu inte kan uttrycka villkoret. Sök "parkeringsmoms" → #393.
 
 // ─── Påminnelseavgiftens lagstadgade tak (G3) ────────────────────────────────
 //
