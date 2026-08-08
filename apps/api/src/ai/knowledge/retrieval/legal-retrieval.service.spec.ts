@@ -354,6 +354,63 @@ describe('LegalRetrievalService (Etapp 3, PR 3.3a)', () => {
     })
   })
 
+  // #382: stale-hash-vakten itererar över DB-RADER, så en chunk som saknar rad
+  // passerar helt tyst. Efter en rollback (gammal image + städad databas) får
+  // BM25 tillbaka full förmåga att citera en borttagen lag som "gällande
+  // lydelse" utan en enda varning. Paritetskontrollen är det som gör det synligt.
+  describe('Paritetskontroll vid uppstart: chunkar i bundlen vs rader i databasen', () => {
+    const makeParityService = (
+      count: number | Error,
+    ): { service: LegalRetrievalService; countMock: jest.Mock } => {
+      const countMock =
+        count instanceof Error
+          ? jest.fn().mockRejectedValue(count)
+          : jest.fn().mockResolvedValue(count)
+      const service = new LegalRetrievalService(
+        { legalChunkEmbedding: { count: countMock } } as never,
+        { embed: jest.fn() } as never,
+      )
+      return { service, countMock }
+    }
+
+    it('lika antal → ingen varning', async () => {
+      const { service, countMock } = makeParityService(buildLegalChunks().length)
+      await service.onModuleInit()
+      expect(countMock).toHaveBeenCalledWith({ where: { model: expect.any(String) } })
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
+
+    it('överskott av rader → varnar om FÖRÄLDRALÖSA och anger båda talen', async () => {
+      const expected = buildLegalChunks().length
+      const { service } = makeParityService(expected + 140)
+      await service.onModuleInit()
+
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+      const msg = String(warnSpy.mock.calls[0]![0])
+      expect(msg).toContain(`${expected} chunkar`)
+      expect(msg).toContain(`${expected + 140} rader`)
+      expect(msg).toContain('140 FÖRÄLDRALÖSA')
+    })
+
+    it('underskott av rader (rollback-fallet) → varnar om chunkar utan vektor', async () => {
+      const expected = buildLegalChunks().length
+      const { service } = makeParityService(expected - 140)
+      await service.onModuleInit()
+
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+      const msg = String(warnSpy.mock.calls[0]![0])
+      expect(msg).toContain(`${expected} chunkar`)
+      expect(msg).toContain(`${expected - 140} rader`)
+      expect(msg).toContain('140 chunkar SAKNAR vektor')
+    })
+
+    it('kastar ALDRIG — en otillgänglig databas får inte fälla uppstarten', async () => {
+      const { service } = makeParityService(new Error('databasen nere vid boot'))
+      await expect(service.onModuleInit()).resolves.toBeUndefined()
+      expect(String(warnSpy.mock.calls[0]![0])).toContain('databasen nere vid boot')
+    })
+  })
+
   describe('Gap A oförändrad: källraden byggs ur chunk-metadata även för semantik-only chunkar', () => {
     it('grundning ur en fused-lista med semantik-only §45 citerar §45 ur metadatan', () => {
       const retrieved = [

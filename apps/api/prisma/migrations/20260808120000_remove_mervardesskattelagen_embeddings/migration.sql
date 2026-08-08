@@ -1,0 +1,26 @@
+-- #382 — mervärdesskattelagen (1994:200) är borttagen ur kunskapsbasen.
+--
+-- Lagen upphävdes 2023-07-01 och ersattes av mervärdesskattelagen (2023:200)
+-- med ny struktur och andra paragrafnummer. Korpustexten är borttagen i samma
+-- ändring (.claude/knowledge/lagar/ + src/ai/knowledge/generated/). Den här
+-- migrationen städar motsvarande vektorer.
+--
+-- VARFÖR EN MIGRATION OCH INTE ETT MANUELLT KOMMANDO: scripts/embed-legal-
+-- knowledge.ts är upsert-only och raderar ALDRIG en rad vars chunk försvunnit.
+-- Utan detta steg blir de 140 raderna föräldralösa i produktion. Stale-hash-
+-- vakten i legal-retrieval.service.ts släpper dem visserligen — men FÖRST
+-- efter SQL:ens LIMIT 10, så de äter kandidatplatser. Uppmätt 2026-08-08 på
+-- moms-färgade frågor: upp till 10 av 10 platser i semantiska kanalens topp-K
+-- gick åt till föräldralösa rader. Migrationen gör städningen omöjlig att
+-- glömma och binder den till samma deploy som textborttagningen.
+--
+-- ROLLBACK: raderingen är inte reversibel härifrån. Rullas imagen tillbaka
+-- till en revision som fortfarande har lagtexten saknar de 140 chunkarna sina
+-- vektorer. Det är TYST i retrieval-vakten (den itererar över rader, inte
+-- chunkar) — men paritetskontrollen i LegalRetrievalService.onModuleInit
+-- larmar vid boot. Full paritet återställs med `pnpm --filter @eken/api
+-- knowledge:embed`.
+--
+-- Idempotent: DELETE på ett tomt urval är en no-op.
+
+DELETE FROM "LegalChunkEmbedding" WHERE "lawId" = 'mervardesskattelagen';

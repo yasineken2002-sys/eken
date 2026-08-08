@@ -12,7 +12,8 @@ describe('legal-chunk identitet', () => {
   const chunks = buildLegalChunks()
 
   it('producerar paragraf-chunkar för alla verifierade lagar', () => {
-    expect(chunks.length).toBeGreaterThan(500)
+    // 420 efter #382 (mervärdesskattelagens 140 chunkar borttagna ur 560).
+    expect(chunks.length).toBeGreaterThan(400)
   })
 
   it('legalChunkId är UNIKT över alla chunkar (annars skrivs embeddings över)', () => {

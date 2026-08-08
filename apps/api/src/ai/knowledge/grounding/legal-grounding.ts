@@ -107,20 +107,43 @@ export function isLegalQuestion(message: string): boolean {
 /** Samma topK som retrieval-mätningen i PR 2.2 (12/18 answerable). */
 export const GROUNDING_TOP_K = 3
 
-// ── Steg 1: deterministiska golv, kalibrerade mot eval-setet (2026-06-10) ─────
+// ── Steg 1: deterministiska golv, OMKALIBRERADE mot 420-chunks-korpusen (#382) ─
 //
-// Uppmätt (topp-BM25 / topp-täckning) på eval-setet:
-//   Svagast GODKÄNDA träff:  besittningsskydd-lokal      10.38 / 0.43
-//   Ska fastna (svaga):      hyresgastval-diskriminering  9.42 / 0.29
-//                            kontrakt-tidsbestamt          8.94 / 0.38
-//                            hyreshojning-formkrav         7.49 / 0.50
-//                            hyressattning-bruksvarde      6.35 / 0.50
-//                            deposition-storlek           10.58 / 0.33  ← bara täckning skiljer
-// Golven ligger mitt i de uppmätta gapen. Lexikalt starka men semantiskt fel
-// träffar (altan 22.4/0.50, eget-behov 17.5/0.45, besittningsskydd-förstahand
-// 20.6/0.46) är INTE separerbara här — de går vidare som kandidater och fälls
-// av relevansdomaren (steg 2).
-const MIN_TOP_SCORE = 10
+// VARFÖR OM: BM25:s statistik är KORPUS-GLOBAL (N, docFreq, avgLength i
+// legal-retrieval.ts buildIndex). När mervärdesskattelagen togs bort föll N
+// 560 → 420 (−25 %) och avgLength 53.40 → 52.63, vilket sänkte IDF för VARJE
+// term i VARJE kvarvarande chunk. Uppmätt effekt: topp-BM25 sjönk 8–11 % rakt
+// igenom eval-setet (faktor ≈ 1.09). Golvet 10 var kalibrerat mot den GAMLA
+// skalan och fällde därför besittningsskydd-lokal — ett HYRESRÄTTS-fall som
+// inget hade med momslagen att göra. Rescale: 10 / 1.09 ≈ 9.17.
+//
+// Uppmätt på 420-chunks-korpusen (topp-BM25 / topp-täckning, 2026-08-08):
+//   Svagast GODKÄNDA träff:   besittningsskydd-lokal        9.51 / 0.43
+//   Starkaste som måste fällas AV POÄNGEN (täckning ≥ 0.4, så bandet nedan
+//   kan inte hjälpa):         hyreshojning-formkrav          6.81 / 0.50
+//                             hyressattning-bruksvarde       5.80 / 0.50
+// Intervallet 6.81–9.51 är TOMT — inget eval-fall ligger däremellan. Golvet 9
+// sitter i det gapet med 0.51 marginal till svagast godkända och 2.19 till
+// starkaste som ska fällas.
+//
+// NEGATIVKONTROLL (de två som ska förbli ute, uppmätt vid golv 9):
+//   deposition-storlek           9.66 / 0.33 → fälls, täckning < 0.4 i bandet
+//   hyresgastval-diskriminering  8.63 / 0.29 → fälls, både poäng och täckning
+// Båda ligger kvar utanför vid VARJE golv 8.5–10 (mätt) — det är TÄCKNINGEN
+// som skiljer dem från besittningsskydd-lokal, inte poängen. Ett golv som
+// släppte in dem vore inget golv.
+//
+// LOW_SCORE_BAND och MIN_COVERAGE_IN_BAND är OFÖRÄNDRADE, och det är mätt, inte
+// antaget: täckning är korpus-oberoende (andel av frågans stammar som finns i
+// chunken) och identisk före/efter. Inget eval-fall passerade tidigare bandets
+// övre kant på poäng med täckning < 0.4 och hamnar innanför den efter skalbytet
+// (svagaste sådana är delgivning-uppsagning 15.89 / 0.36, långt över 12).
+//
+// Lexikalt starka men semantiskt fel träffar (altan 20.4/0.50, eget-behov
+// 15.9/0.45, besittningsskydd-förstahand 18.6/0.46) är fortfarande INTE
+// separerbara här — de går vidare som kandidater och fälls av relevansdomaren
+// (steg 2).
+const MIN_TOP_SCORE = 9
 const LOW_SCORE_BAND = 12
 const MIN_COVERAGE_IN_BAND = 0.4
 
@@ -147,6 +170,14 @@ const MIN_COVERAGE_IN_BAND = 0.4
 // (0.605) ligger ÖVER golvet och är INTE separerbar här — den släpps in som
 // kandidat och fälls av domaren (§22/§28 saknar storleksregel → NEJ → miss),
 // exakt som de lexikalt starka felträffarna ovan. Verifieras av knowledge:eval.
+//
+// OFÖRÄNDRAT av #382, och det är MÄTT: cosine beräknas parvis mellan fråge-
+// vektorn och en lagrad vektor — ingen korpus-global normalisering, ingen IDF.
+// Att ta bort 140 vektorer kan per konstruktion inte flytta en annan vektors
+// cosine. Ommätning 2026-08-08 reproducerade tabellen ovan inom ±0.002. Enda
+// avvikelsen är agandeform-skatt (0.488 → 0.455): dess semantiska topp var en
+// moms-chunk och blir nu en bokföringschunk. Fallet är ändå ej-juridiskt och
+// når aldrig kanalen.
 const MIN_TOP_COSINE = 0.52
 
 /**

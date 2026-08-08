@@ -109,12 +109,14 @@ describe('Legal grounding (Etapp 2, PR 2.3a + 2.3b)', () => {
     })
 
     it('mätbart svaga träffar fastnar deterministiskt (utan domaranrop)', () => {
+      // Tal uppmätta på 420-chunks-korpusen (#382 — se MIN_TOP_SCORE-blocket i
+      // legal-grounding.ts för varför hela skalan krympte ~9 %).
       const weakIds = [
-        'deposition-storlek', // no-clear-rule: 10.58/0.33 — täckningsgolvet fäller
-        'hyresgastval-diskriminering', // 9.42 — under score-golvet
-        'hyreshojning-formkrav', // 7.49
-        'hyressattning-bruksvarde', // 6.35
-        'kontrakt-tidsbestamt-forlangning', // 8.94
+        'deposition-storlek', // 9.66/0.33 — täckningsgolvet fäller, TROTS högre poäng
+        'hyresgastval-diskriminering', // 8.63/0.29 — under BÅDE score-golvet och täckningen
+        'hyreshojning-formkrav', // 6.81/0.50 — bara score-golvet fäller den
+        'hyressattning-bruksvarde', // 5.80/0.50 — bara score-golvet
+        'kontrakt-tidsbestamt-forlangning', // 8.00/0.38
       ]
       for (const id of weakIds) {
         const candidate = evaluateLegalRetrieval(caseById(id).question)

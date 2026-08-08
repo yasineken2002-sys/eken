@@ -69,18 +69,32 @@ Tabell `LegalChunkEmbedding`, mätt mot prod 2026-08-07: **560 chunks, 6 förfat
 
 Korpusen härrör från filerna i `.claude/knowledge/lagar/` nedan. **Citationsintegriteten hindrar påhittade lagrum men säger ingenting om upphävda eller ändrade** — ett lagrum som verkligen fanns 2026-05-29 citeras med full trovärdighet även om det ändrats sedan dess.
 
+> **Utfall 2026-08-08 (#382):** raden ovan beskrev en risk. Den realiserades.
+> `mervardesskattelagen` (1994:200) upphävdes 2023-07-01 och ersattes av
+> 2023:200 med ny struktur och andra paragrafnummer — verifierat mot
+> primärkällor av människa. Uppmätt före borttagningen svarade relevansdomaren
+> **JA** (3/3) på ML-chunkar för en momsfråga, varpå koden hade tryckt
+> källraden "SFS 1994:200, gällande lydelse verifierad 2026-05-29". En ren
+> bruksvärdesfråga (`hyressattning-bruksvarde`) grundades dessutom med
+> `mervardesskattelagen:10` bland källorna. Ingen sådan fråga hade ställts i
+> prod (0 `legal-judge`-anrop t.o.m. 2026-08-07), så exponeringen var latent.
+> Lagen är borttagen ur korpusen; korpusen är nu **420 chunks, 5
+> författningar**. Ingen ersättningstext har lagts in — 2023:200 kräver
+> människoverifiering först. Momsfrågor besvaras därför med ärlighetsblocket
+> och hänvisning till revisor.
+
 ## Yta 1b — lagtextfilerna (reproduktioner, ej härledda påståenden)
 
 Dessa filer är kopior av författningstext, inte påståenden **om** rätten. Det verifierbara påståendet är metadatahuvudets: att texten var gällande lydelse per angivet datum, hämtad från angiven källa. Varje fil bär en `verifierad_per`-stämpel.
 
-| Fil                     | SFS       | verifierad_per | §-rubriker | Källa                       |
-| ----------------------- | --------- | -------------- | ---------: | --------------------------- |
-| bokforingslagen.md      | 1999:1078 | 2026-05-29     |         62 | lagen.nu                    |
-| bostadsrattslagen.md    | 1991:614  | 2026-05-29     |        156 | lagen.nu                    |
-| diskrimineringslagen.md | 2008:567  | 2026-05-29     |         87 | lagen.nu                    |
-| hyreslagen.md           | 1970:994  | 2026-05-29     |        102 | lagen.nu (K12)              |
-| mervardesskattelagen.md | 1994:200  | 2026-05-29     |        140 | lagen.nu, "utvalda kapitel" |
-| ranteslagen.md          | 1975:635  | 2026-05-29     |         13 | lagen.nu                    |
+| Fil                         | SFS          | verifierad_per | §-rubriker | Källa                                                  |
+| --------------------------- | ------------ | -------------- | ---------: | ------------------------------------------------------ |
+| bokforingslagen.md          | 1999:1078    | 2026-05-29     |         62 | lagen.nu                                               |
+| bostadsrattslagen.md        | 1991:614     | 2026-05-29     |        156 | lagen.nu                                               |
+| diskrimineringslagen.md     | 2008:567     | 2026-05-29     |         87 | lagen.nu                                               |
+| hyreslagen.md               | 1970:994     | 2026-05-29     |        102 | lagen.nu (K12)                                         |
+| ~~mervardesskattelagen.md~~ | ~~1994:200~~ | ~~2026-05-29~~ |    ~~140~~ | BORTTAGEN 2026-08-08 (#382) — lagen upphävd 2023-07-01 |
+| ranteslagen.md              | 1975:635     | 2026-05-29     |         13 | lagen.nu                                               |
 
 Två observationer, utan bedömning:
 
@@ -1224,7 +1238,7 @@ Två observationer, utan bedömning:
 - **rad 412** — _C1 belopp i kronor_ — belopp/frist: 0 kr
   > "Deposition? (standard: 0 kr)"
 - **rad 455** — _C4 kontoplan-rad_ — belopp/frist: 1000
-  > export const PENDING_ACTION_TTL_MS = 5 _ 60 _ 1000
+  > export const PENDING*ACTION_TTL_MS = 5 * 60 \_ 1000
 - **rad 482** — _C1 belopp i kronor_ — belopp/frist: 50 000 kr
   > // Large single invoice (>50 000 kr)
 - **rad 490** — _C1 belopp i kronor_ — belopp/frist: 100 000 kr
