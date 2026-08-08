@@ -85,6 +85,60 @@ describe('Legal grounding (Etapp 2, PR 2.3a + 2.3b)', () => {
       }
     })
 
+    // #382 PR3: momsfrågor nådde inte grinden alls — de besvarades utan att
+    // grindutfallet ens beräknades och utan källrad. Nu går de samma väg som
+    // varje annan rättsfråga. Detta löser INTE #386 (systemprompten svarar
+    // självsäkert även på en miss) — det är ett produktbeslut, inte en trigger.
+    describe('Moms som rättsfråga (#382 PR3)', () => {
+      it('rättsfrågor om moms passerar ingångsgrinden', () => {
+        const legal = [
+          'Måste jag lägga moms på hyran för en lokal?',
+          'Ska jag ta ut moms när jag vidarefakturerar el till hyresgästen?',
+          'Vilken momssats gäller för vatten jag debiterar hyresgästen?',
+          'Vad gäller för frivillig skattskyldighet för moms vid uthyrning av lokal?',
+          'Måste jag redovisa moms på depositionen?',
+        ]
+        for (const q of legal) {
+          expect({ q, legal: isLegalQuestion(q) }).toEqual({ q, legal: true })
+        }
+      })
+
+      // Den dyra riktningen. Grindas en datafråga hedgar AI:n om ett tal den
+      // kan hämta — produkten blir sämre, inte säkrare. Varje rad här drogs in
+      // av ett tidigare utkast som listade normativa ORD (momsplikt, momsfri,
+      // momssats, skattskyldig) i stället för frågans FORM.
+      it('datafrågor om moms grindas INTE — de handlar om bokförda belopp', () => {
+        const data = [
+          'Vad blev momsen på förra månadens fakturor?',
+          'Hur mycket moms har jag redovisat i år?',
+          'Hur mycket moms ska jag betala in den här perioden?',
+          'Visa momsrapporten för Q2',
+          'Summera utgående moms per fastighet',
+          'Vilka fakturor saknar moms?',
+          'Vilka fakturor är momsfria?',
+          'Vilka fakturor är momspliktiga?',
+          'Vilka lokaler är skattskyldiga just nu?',
+          'Lista alla momsfria hyresintäkter',
+          'Hur många av mina enheter har momssats 25?',
+          'Bokför utgiften på 2 000 kr med 500 kr moms',
+          'Skapa en faktura på 8 500 kr exklusive moms till Anna',
+        ]
+        for (const q of data) {
+          expect({ q, legal: isLegalQuestion(q) }).toEqual({ q, legal: false })
+        }
+      })
+
+      // Mönstren är oankrade och överlever därför inledande text — det
+      // vanligaste i en chattprodukt. Ett ^-ankrat ja/nej-mönster prövades och
+      // ströks just för att det missade 5 av 9 sådana formuleringar utan att
+      // bära någon uppmätt miss (se #390).
+      it('inledande hälsningsfras avväpnar inte mönstren', () => {
+        expect(isLegalQuestion('Jag undrar en sak. Ska jag ta ut moms på el?')).toBe(true)
+        expect(isLegalQuestion('Snabb fråga: måste jag lägga moms på hyran?')).toBe(true)
+        expect(isLegalQuestion('Hej! Vilken momssats gäller för vatten?')).toBe(true)
+      })
+    })
+
     it('operativa kommandon triggar INTE juridisk grundning', () => {
       const operational = [
         'Skapa en faktura på 8 500 kr till Anna Svensson med förfallodatum 2026-07-01',
