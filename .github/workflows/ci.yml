@@ -208,3 +208,39 @@ jobs:
 
       - name: Verify no new raw colour values outside @eken/ui
         run: node scripts/check-design-tokens.mjs
+
+  generated-knowledge-sync-guard:
+    name: Generated legal knowledge sync guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Spärr mot att `knowledge:generate` glöms (#382, PR2). Generatorn körs för
+      # hand, och `.claude/` följer INTE med i prod-imagen — det är
+      # `src/ai/knowledge/generated/` som faktiskt körs i drift. Committas en
+      # verifierad lagtextändring utan att generatorn körts om kör produktionen
+      # en äldre lydelse än den en människa granskade, samtidigt som
+      # citat-integriteten stämplar den gamla texten med den nya filens
+      # `verifieradPer`. Samma felklass som #382 med omvänt tecken: där citerades
+      # en upphävd lag som gällande, här når en gällande ändring aldrig fram.
+      #
+      # Grinden kör den RIKTIGA generatorn och kräver rent arbetsträd — den
+      # reimplementerar ingenting, så generatorn förblir enda sanningen om hur en
+      # modul ska se ut. Kräver därför pnpm install (generatorn är ts-node),
+      # till skillnad från de fs-only-grindar som ligger ovan.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Self-test the guard (a source edit without regeneration must fail it)
+        run: node apps/api/scripts/check-generated-knowledge-sync.mjs --self-test
+
+      - name: Verify generated/ matches .claude/knowledge/lagar/
+        run: node apps/api/scripts/check-generated-knowledge-sync.mjs

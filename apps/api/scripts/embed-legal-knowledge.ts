@@ -13,6 +13,11 @@
  * Voyage-anrop = 0 kostnad. Avbryts scriptet mitt i är redan skrivna rader kvar
  * och hoppas över vid omkörning (säker resume) — ingen tyst halvfylld tabell.
  *
+ * TVÅVÄGS SEDAN #382: scriptet var upsert-only och kunde bara lägga till. Nu
+ * raderar det också rader vars chunk försvunnit ur korpusen (se PRUNE nedan),
+ * så tabellen speglar LEGAL_KNOWLEDGE i BÅDA riktningarna. Paritetskontrollen i
+ * LegalRetrievalService.onModuleInit larmar om de ändå glider isär.
+ *
  * GDPR: endast publik lagtext (LEGAL_KNOWLEDGE) skickas till Voyage. Embedding-
  * wrappern (LegalEmbeddingService) tar bara strängar och kan inte läsa kunddata.
  */
@@ -85,6 +90,41 @@ async function main(): Promise<void> {
       select: { id: true, contentHash: true, model: true },
     })
     const existingById = new Map(existing.map((e) => [e.id, e]))
+
+    // ── PRUNE: rader vars chunk inte längre finns i LEGAL_KNOWLEDGE (#382) ────
+    //
+    // Scriptet var upsert-only fram till #382-serien: en chunk som försvann ur
+    // korpusen lämnade sin vektor kvar för alltid. Det var precis så de 140
+    // mervärdesskattelag-raderna blev föräldralösa, och de var inte harmlösa:
+    // stale-hash-vakten i legal-retrieval.service.ts släpper dem, men FÖRST
+    // efter SQL:ens LIMIT, så de äter kandidatplatser i den semantiska kanalen.
+    // Uppmätt på moms-färgade frågor: upp till 10 av 10 platser gick åt till
+    // rader som sedan kastades.
+    //
+    // KÖRS FÖRE early-returnen nedan. Att ta bort en lag ger noll chunkar att
+    // embedda — hade prune legat efter "inget att göra"-grenen hade den aldrig
+    // körts i exakt det fall den finns för.
+    //
+    // id är PK, så en chunk kan bara ha EN rad oavsett modell. Prune på id är
+    // därför entydig: en rad utan chunk är död oavsett vilken modell den bär.
+    const chunkIds = new Set(chunks.map(legalChunkId))
+    const orphans = existing.filter((e) => !chunkIds.has(e.id))
+    if (orphans.length > 0) {
+      const perLaw = new Map<string, number>()
+      for (const o of orphans) {
+        const lawId = o.id.split(':')[0] ?? '(okänt)'
+        perLaw.set(lawId, (perLaw.get(lawId) ?? 0) + 1)
+      }
+      const { count } = await prisma.legalChunkEmbedding.deleteMany({
+        where: { id: { in: orphans.map((o) => o.id) } },
+      })
+      console.warn(
+        `[embed] PRUNE: ${count} föräldralösa rader raderade (saknar chunk i LEGAL_KNOWLEDGE) — ` +
+          [...perLaw].map(([lawId, n]) => `${lawId}: ${n}`).join(', '),
+      )
+    } else {
+      console.warn('[embed] PRUNE: 0 föräldralösa rader — tabellen speglar korpusen.')
+    }
 
     const toEmbed = chunks
       .map((c) => ({ chunk: c, id: legalChunkId(c), hash: legalChunkContentHash(c.text) }))

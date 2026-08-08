@@ -30,3 +30,23 @@ Thumbs.db
 
 # Prisma
 prisma/migrations/dev*
+
+# Arbetsartefakter som ALDRIG ska committas (#382 PR2)
+#
+# `git add -A` har tre gånger dragit in arbetsfiler i en commit som sedan fått
+# plockas bort för hand — bevisriggen i #307 A+B, scratchpad/ och .proof-g4/ i
+# #382 PR2, och scratchpad-ai-omdesign-plan.md som faktiskt slank hela vägen in
+# i #239 och ligger kvar i repot.
+#
+# .proof-*/    Bevisriggar mot riktig Postgres (docs/runbooks/bevisrigg-riktig-
+#              postgres.md). Ligger under apps/api/, därför INTE rot-ankrat.
+#              Riggen är ett mätverktyg för en enskild fråga — den committas
+#              aldrig; mallen i docs/runbooks/ är det som är återanvändbart.
+# /scratchpad/ Arbetskatalog för engångs-SQL och riggar. Rot-ankrad så en
+#              legitim `scratchpad/` längre ner i trädet inte tystas av misstag.
+# scratchpad-*.md  Överlämningsfiler i roten som användaren kopierar ur.
+#              Konventionen är att bara EN finns åt gången och att den ersätts —
+#              de är alltså per definition efemära.
+.proof-*/
+/scratchpad/
+scratchpad-*.md
