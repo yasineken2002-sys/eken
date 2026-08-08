@@ -36,7 +36,7 @@ export class MiscChargeService {
   // ── DRAFT: skapa + prissätt (momssnapshot fryses här) ──────────────────────
   //
   // netAmount/vatStatus/vatRate/vatAmount/totalAmount sätts EN gång; momsen läses
-  // aldrig om senare (PR 2 äger regeln, EXEMPT v1 = bostad, ML 3 kap 2 §). När
+  // aldrig om senare (PR 2 äger regeln, EXEMPT v1 = bostad, ML 10 kap. 35 §). När
   // källan är ett felanmälningsärende claim:as MaintenanceTicket.chargeId atomiskt
   // — en debitering per ärende (@unique är backstop, service-claimet är auktoritet).
   async createMiscCharge(dto: CreateMiscChargeDto, organizationId: string): Promise<MiscCharge> {

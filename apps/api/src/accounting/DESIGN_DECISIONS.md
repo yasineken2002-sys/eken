@@ -9,7 +9,7 @@ auktoriserad redovisningskonsult (bokforings-expert) vid varje ändring.
 
 **Lagrum:** BFL 1999:1078 5 kap 6 § (verifikationsnummer i obruten följd),
 5 kap 7 § (verifikationens innehåll), 4 kap 2 § (god redovisningssed),
-ML 11 kap 8 § (fakturanummer i fortlöpande serie).
+ML 17 kap. 24 § (fakturanummer i fortlöpande serie).
 
 ### Beslut
 
@@ -103,7 +103,7 @@ att korrigera mot. Verifierat gap-free per (org, räkenskapsår).
 ## FIX 9 · PR 5 — Soft-delete av fakturor (LAGBROTT 1)
 
 **Lagrum:** BFL 1999:1078 7 kap 2 § (räkenskapsinformation bevaras 7 år),
-5 kap 11 § (behandlingshistorik), 4 kap 2 § (god redovisningssed), ML 11 kap 8 §.
+5 kap 11 § (behandlingshistorik), 4 kap 2 § (god redovisningssed), ML 17 kap. 24 §.
 
 ### Beslut
 
@@ -604,7 +604,7 @@ markörfält (`RentNotice.probableLossAt`) + migration.
 ### KRITISK JURIDISK AVGRÄNSNING — endast momsfri bostadshyra (docs/legal/46 fråga 1)
 
 Momsåterkravet vid kundförlust på LOKALHYRA (momspliktig under frivillig
-skattskyldighet, ML 9 kap) är en ÖPPEN revisorfråga: när en momspliktig fordran
+beskattning, ML 12 kap.) är en ÖPPEN revisorfråga: när en momspliktig fordran
 blir konstaterad kundförlust ska tidigare redovisad utgående moms (2611) normalt
 minskas/återkrävas — men mot vilket underlag/vilken period är inte bekräftat.
 

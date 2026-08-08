@@ -3,7 +3,7 @@
 // avtalet till det nya vid succession (renew/autoRenew). Före T1.3 kopierade
 // förnyelsen bara ~10 handplockade fält — resten föll tyst tillbaka till
 // schema-defaults ("villkorsförlust"), inklusive 🔴 `monthlyRentExcludingVat`:
-// en momspliktig lokal (frivillig skattskyldighet, ML 1994:200) vars förnyelse
+// en momspliktig lokal (frivillig skattskyldighet, ML 2023:200) vars förnyelse
 // tappade fältet slutade TYST ta ut utgående moms (2611) på gap-avin och varje
 // efterföljande avi = Skatteverket-avvikelse. Carry-listan + DMMF-testet är
 // skyddet mot att det händer igen.
@@ -58,7 +58,7 @@ export const LEASE_SUCCESSION_CARRY_FIELDS = [
   // Regelverk (#69)
   'tenancyRegime',
   // 🔴 Moms-flaggan: hyran är avtalad exkl. moms → utgående moms (2611) ska
-  // fortsätta tas ut på det förnyade avtalet (ML 1994:200)
+  // fortsätta tas ut på det förnyade avtalet (ML 2023:200)
   'monthlyRentExcludingVat',
   // Vad ingår i hyran
   'includesHeating',

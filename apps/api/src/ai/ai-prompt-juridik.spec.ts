@@ -53,6 +53,14 @@ describe('AI-systemprompt — avväpnad juridik', () => {
       expect(SYSTEM_PROMPT).not.toContain('Mervärdesskattelagen 9 kap. 1 §')
       expect(SYSTEM_PROMPT).not.toContain('12:20 JB')
       expect(SYSTEM_PROMPT).not.toContain('(1981:739)')
+      // #382 PR4: spärren måste följa med när numren byter lag. De gamla raderna
+      // ovan skyddar inte mot att någon skriver in 2023:200:s lagrum i stället —
+      // och en spärr som bara känner den upphävda lagen är ingen spärr.
+      expect(SYSTEM_PROMPT).not.toContain('10 kap. 35 §')
+      expect(SYSTEM_PROMPT).not.toContain('12 kap. 5 §')
+      expect(SYSTEM_PROMPT).not.toContain('13 kap. 6 §')
+      expect(SYSTEM_PROMPT).not.toContain('17 kap. 24 §')
+      expect(SYSTEM_PROMPT).not.toContain('(2023:200)')
     })
 
     it('innehåller inte längre föråldrade exakta skattesiffror ur minnet', () => {

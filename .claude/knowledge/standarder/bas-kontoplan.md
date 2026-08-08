@@ -134,9 +134,9 @@ Aktiveras vid större investeringar innan färdigställande.
 
 **KRITISKT för Eveno:**
 
-- **Bostadshyra** (ML 3 kap 2 §) → **ingen** moms. Endast 3911, ingen 2611.
+- **Bostadshyra** (ML 10 kap. 35 §) → **ingen** moms. Endast 3911, ingen 2611.
 - **Lokalhyra utan frivillig skattskyldighet** → ingen moms. Endast 3913, ingen 2611.
-- **Lokalhyra med frivillig skattskyldighet** (ML 9 kap) → 25% moms. 3913 (netto) + 2611 (moms).
+- **Lokalhyra med frivillig beskattning** (ML 12 kap.) → 25% moms. 3913 (netto) + 2611 (moms).
 
 ### 2700-2799 — Personalrelaterade skulder (lön, sociala avgifter)
 

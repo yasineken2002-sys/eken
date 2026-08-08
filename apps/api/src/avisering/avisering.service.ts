@@ -85,7 +85,7 @@ export class AviseringService {
   ) {}
 
   // Beräknar moms på en hyra utifrån enhetens upplåtelsetyp och frivilliga
-  // skattskyldighet (ML 1994:200). Bostad → 0 %, lokal → 25 % endast vid
+  // skattskyldighet (ML 2023:200). Bostad → 0 %, lokal → 25 % endast vid
   // frivillig skattskyldighet, parkering → 25 %. Öresavrundning på momsbeloppet.
   //
   // Netto-gate (JB 12 kap 19 § 3 st): moms läggs ENDAST på om hyran uttryckligen
@@ -275,7 +275,7 @@ export class AviseringService {
         // vardagen i månaden FÖRE den hyresperiod avin avser.
         const dueDate = rentDueDateForMonth(year, month)
 
-        // Moms enligt upplåtelsetyp (ML 3 kap 2 § / 9 kap). Bostad → 0.
+        // Moms enligt upplåtelsetyp (ML 10 kap. 35 § / 9 kap). Bostad → 0.
         const { vatAmount, totalAmount } = this.rentVat(
           proration.amount,
           lease.unit,
@@ -766,7 +766,7 @@ export class AviseringService {
             depositNotice ? 1 : 0,
             tx,
           )
-          // Moms enligt upplåtelsetyp (ML 3 kap 2 § / 9 kap). Bostad → 0.
+          // Moms enligt upplåtelsetyp (ML 10 kap. 35 § / 9 kap). Bostad → 0.
           const { vatAmount, totalAmount } = this.rentVat(
             proration.amount,
             lease.unit,

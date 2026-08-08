@@ -17,7 +17,7 @@ Bokföringsbedömningen har fastslagit: intäkt bruttoredovisad (3920 el/värme,
 från fakturadatum, mätunderlag arkiveras 7 år (BFL), bokslutspost upplupen
 intäkt (1790).
 
-Momsdefault för bostad är `EXEMPT` (momsfri, ML 3 kap 2 § 2 st). Snapshotas på
+Momsdefault för bostad är `EXEMPT` (momsfri, ML 10 kap. 35 §). Snapshotas på
 varje `ConsumptionCharge` från lease/unit-konfiguration vid skapande.
 
 ## Öppna frågor
@@ -25,7 +25,7 @@ varje `ConsumptionCharge` från lease/unit-konfiguration vid skapande.
 ### Fråga 1 — Bryter separat faktura hyreskopplingen?
 
 `RENT_NOTICE_LINE` har stark koppling till hyran → följer bostadshyrans
-momsfrihet (ML 3 kap 2 §). När el/vatten faktureras **skilt** från hyran
+momsfrihet (ML 10 kap. 35 §). När el/vatten faktureras **skilt** från hyran
 (`SEPARATE_INVOICE`) – bryts den starka kopplingen så att tillhandahållandet
 blir ett självständigt, **momspliktigt** tillhandahållande (25 %)?
 

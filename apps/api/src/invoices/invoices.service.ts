@@ -255,8 +255,8 @@ export class InvoicesService {
         throw new BadRequestException('Endast aktiva eller utkast-avtal kan faktureras')
       }
 
-      // Momskontroll (ML 1994:200): en momsfri upplåtelse får inte faktureras
-      // med moms. Bostad (APARTMENT) är alltid undantagen (ML 3 kap 2 §); lokal
+      // Momskontroll (ML 2023:200): en momsfri upplåtelse får inte faktureras
+      // med moms. Bostad (APARTMENT) är alltid undantagen (ML 10 kap. 35 §); lokal
       // utan frivillig skattskyldighet likaså. Annars skulle felaktig moms
       // debiteras hyresgästen och redovisas till staten.
       const allowedVatRate = vatRateForRent(lease.unit.type, lease.unit.voluntaryTaxLiability)
@@ -266,9 +266,9 @@ export class InvoicesService {
         if (offending) {
           throw new BadRequestException(
             lease.unit.type === 'APARTMENT'
-              ? 'Bostadshyra är undantagen från moms enligt ML 3 kap 2 § — vatRate måste vara 0'
-              : 'Lokalen saknar frivillig skattskyldighet — hyran är momsfri (ML 3 kap 3 § 2 st). ' +
-                  'Sätt frivillig skattskyldighet på enheten eller använd vatRate 0.',
+              ? 'Bostadshyra är undantagen från moms enligt ML 10 kap. 35 § — vatRate måste vara 0'
+              : 'Lokalen saknar frivillig beskattning — hyran är momsfri (ML 12 kap. 5 §). ' +
+                  'Sätt frivillig beskattning på enheten eller använd vatRate 0.',
           )
         }
       } else {
@@ -278,8 +278,8 @@ export class InvoicesService {
         if (offending) {
           throw new BadRequestException(
             lease.unit.type === 'PARKING'
-              ? `Parkeringsplats är momspliktig enligt ML 3 kap 3 § 5 — vatRate måste vara ${allowedVatRate}`
-              : `Lokalen har frivillig skattskyldighet — vatRate måste vara ${allowedVatRate} (ML 9 kap)`,
+              ? `Parkeringsplats är momspliktig enligt ML 10 kap. 36 § — vatRate måste vara ${allowedVatRate}`
+              : `Lokalen har frivillig beskattning — vatRate måste vara ${allowedVatRate} (ML 12 kap.)`,
           )
         }
       }

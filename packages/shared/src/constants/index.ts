@@ -6,7 +6,7 @@
 export const VAT_RATES = [0, 6, 12, 25] as const
 export type VatRate = (typeof VAT_RATES)[number]
 
-// Per Mervärdesskattelagen (1994:200): bostadshyra är momsbefriad. Lokalhyra
+// Per Mervärdesskattelagen (2023:200): bostadshyra är momsbefriad. Lokalhyra
 // kan vara momsbefriad eller 25% beroende på frivillig skattskyldighet.
 export const VAT_RATE_RESIDENTIAL_RENT = 0
 export const VAT_RATE_COMMERCIAL_RENT_TAXED = 25
@@ -79,7 +79,7 @@ export const ACCOUNT_CLASS_RANGES = {
   EXPENSE: { min: 4000, max: 8999 },
 } as const
 
-// Hyresintäktskonton per upplåtelsetyp (ML 3 kap 2 §, BAS 2024). Det finns
+// Hyresintäktskonton per upplåtelsetyp (ML 10 kap. 35 §, BAS 2024). Det finns
 // INGEN enskild "RENT_REVENUE" — bostad får aldrig moms, lokal/p-plats kan.
 // Den auktoritativa mappningen är accounting.service.ts:revenueAccountForUnitType();
 // dessa konstanter är referensvärden, bokför aldrig direkt mot ett enda konto.

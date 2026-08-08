@@ -362,7 +362,7 @@ function detectLockedActiveChanges(
 // Projicera carry-fälten (delad lista i @eken/shared) från det gamla avtalet
 // till create-datat för det nya. Före T1.3 kopierades bara ~10 handplockade
 // fält — resten föll tyst till schema-defaults, inkl. 🔴 monthlyRentExcludingVat
-// (momspliktig lokal slutade tyst ta ut utgående moms 2611, ML 1994:200) och
+// (momspliktig lokal slutade tyst ta ut utgående moms 2611, ML 2023:200) och
 // consumptionBillingMode. Värdena kopieras rått (Decimal/enum/null) — null på
 // nullable kolumn är "samma villkor", inte "hoppa över". Fullständigheten
 // garanteras av DMMF-exhaustiveness-testet (leases-succession-t13.spec.ts):

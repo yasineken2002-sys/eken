@@ -112,7 +112,7 @@ describe('FIX 9 · PR 2 — generateMonthlyNotices bokför hyresintäkt', () => 
     expect(result.failed).toBe(1)
   })
 
-  it('bostadsavi får INGEN moms (ML 3 kap 2 §)', async () => {
+  it('bostadsavi får INGEN moms (ML 10 kap. 35 §)', async () => {
     const { service, prisma } = makeService({ type: 'APARTMENT' })
     await service.generateMonthlyNotices('org-1', 6, 2026)
     const data = prisma.rentNotice.create.mock.calls[0][0].data

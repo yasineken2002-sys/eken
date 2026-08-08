@@ -1,11 +1,11 @@
 /**
- * FIX 9 · PR 3 — Momshantering bostad/lokal (LAGBROTT 5, ML 1994:200).
+ * FIX 9 · PR 3 — Momshantering bostad/lokal (LAGBROTT 5, ML 2023:200).
  *
  * vatRateForRent kodifierar momssatsen per upplåtelsetyp:
- *   • Bostad (APARTMENT)          → 0 % alltid (ML 3 kap 2 §; frivillig
+ *   • Bostad (APARTMENT)          → 0 % alltid (ML 10 kap. 35 §; frivillig
  *     skattskyldighet får aldrig avse stadigvarande bostad, 3 kap 3 § 2 st).
  *   • Lokal (OFFICE/RETAIL)       → 0 %, eller 25 % vid frivillig skattskyldighet.
- *   • Parkering (PARKING)         → 25 % (momspliktig enligt ML 3 kap 3 § 5).
+ *   • Parkering (PARKING)         → 25 % (momspliktig enligt ML 10 kap. 36 §).
  *   • Förråd/övrigt (STORAGE/OTHER) → 0 %, eller 25 % vid frivillig skattskyldighet.
  */
 

@@ -42,9 +42,9 @@ Dessa är inmatade som **konfiguration/data**, aldrig hårdkodade i logiken:
 
 ### Fråga 1 — Momsåterkrav vid kundförlust på LOKALhyra
 
-Bostadshyra är momsfri (ML 3 kap 2 §) → ingen utgående moms, ingen
-momskomplikation vid kundförlust. **Lokalhyra under frivillig skattskyldighet**
-(ML 9 kap) är däremot momspliktig: utgående moms har redovisats på avin. När en
+Bostadshyra är momsfri (ML 10 kap. 35 §) → ingen utgående moms, ingen
+momskomplikation vid kundförlust. **Lokalhyra under frivillig beskattning**
+(ML 12 kap.) är däremot momspliktig: utgående moms har redovisats på avin. När en
 sådan fordran blir konstaterad kundförlust ska den tidigare redovisade utgående
 momsen normalt få **minskas/återkrävas**.
 
