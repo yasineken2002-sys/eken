@@ -143,7 +143,29 @@ export const GROUNDING_TOP_K = 3
 // 15.9/0.45, besittningsskydd-förstahand 18.6/0.46) är fortfarande INTE
 // separerbara här — de går vidare som kandidater och fälls av relevansdomaren
 // (steg 2).
+//
+// ⚠ 9 ÄR INTE ETT ALLMÄNT VÄRDE. Det gäller för EN korpusstorlek: N = 420
+// (se MIN_TOP_SCORE_CALIBRATED_AT_CHUNKS nedan). Eftersom BM25 är korpus-
+// globalt flyttas HELA poängskalan när korpusen ändras, och golvet slutar
+// betyda det det mättes till — utan att något beteende ser trasigt ut. VÄXER
+// korpusen (t.ex. när en verifierad mervärdesskattelag 2023:200 läggs
+// tillbaka, PR5 i #382-planen) stiger alla poäng och 9 blir för TILLÅTANDE:
+// svaga träffar släpps in till domaren. KRYMPER den blir 9 för strängt och
+// giltiga fall fälls — exakt det som hände besittningsskydd-lokal här.
+// Tripwiren nedan tvingar fram en ommätning i båda riktningarna.
 const MIN_TOP_SCORE = 9
+
+/**
+ * Korpusstorleken MIN_TOP_SCORE kalibrerades vid (#382, 2026-08-08).
+ *
+ * Golvet är en tröskel på en KORPUS-BEROENDE skala, så det är bara giltigt för
+ * det N det mättes vid. Konstanten finns här — bredvid golvet den villkorar —
+ * i stället för i testet, så att de två inte kan glida isär: den som ändrar
+ * golvet ser omedelbart vilket N det gäller. Låses av legal-grounding.spec.ts,
+ * som failar med en ommätnings-instruktion så snart buildLegalChunks() ger ett
+ * annat antal.
+ */
+export const MIN_TOP_SCORE_CALIBRATED_AT_CHUNKS = 420
 const LOW_SCORE_BAND = 12
 const MIN_COVERAGE_IN_BAND = 0.4
 
