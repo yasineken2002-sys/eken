@@ -30,6 +30,7 @@ import {
 } from '../src/ai/knowledge/retrieval/legal-chunk'
 import { LegalEmbeddingService } from '../src/ai/knowledge/embedding/legal-embedding.service'
 import { VOYAGE_EMBEDDINGS } from '../src/ai/ai.config'
+import { requireApiKey, verifyVoyageKey, exitOnPreflightError } from './preflight-keys'
 
 // Voyage tar flera texter per anrop. Chunkarna är korta paragrafer, så en rimlig
 // batch sparar kvot utan att slå i token-/storlekstaket. Konfigurerbar via env:
@@ -67,6 +68,9 @@ async function embedWithRetry(
     } catch (err) {
       lastErr = err
       const msg = err instanceof Error ? err.message : String(err)
+      // AUTH-FEL ÄR INTE TRANSIENTA (#385). En återkallad nyckel blir aldrig
+      // giltig av att man väntar — utan detta blev en 401 åtta försök à 5 s.
+      if (/\b(401|403)\b/.test(msg)) throw err
       console.warn(
         `[embed] ${label}: ${msg.slice(0, 120)} — retry ${attempt}/${EMBED_RETRIES} om ${RETRY_BACKOFF_MS / 1000}s`,
       )
@@ -77,6 +81,16 @@ async function embedWithRetry(
 }
 
 async function main(): Promise<void> {
+  // FÖRHANDSKONTROLL (#385) före allt arbete: en trasig nyckel ska kosta noll
+  // anrop och ge ett besked, inte ett 401 mitt i en batch.
+  const voyageKey = requireApiKey({
+    envVar: 'VOYAGE_API_KEY',
+    whatFor: 'indexeringen i knowledge:embed',
+    expectedPrefix: 'pa-',
+  })
+  await verifyVoyageKey(voyageKey, VOYAGE_EMBEDDINGS.MODEL)
+  console.warn('[embed] förhandskontroll OK — Voyage-nyckeln accepteras.')
+
   const prisma = new PrismaClient()
   const embedder = new LegalEmbeddingService(new ConfigService())
   const model = VOYAGE_EMBEDDINGS.MODEL
@@ -191,7 +205,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  console.error('[embed] MISSLYCKADES:', err instanceof Error ? err.message : err)
   // contentHash gör omkörning säker — redan skrivna rader hoppas över nästa gång.
-  process.exit(1)
+  exitOnPreflightError(err, 'embed')
 })
