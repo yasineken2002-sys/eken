@@ -96,6 +96,50 @@ const LEGAL_TRIGGERS: readonly RegExp[] = [
   /deposition|dröjsmålsränt|referensränt|skriftlig/,
   /förfallodag|när ska hyran( senast)? betalas/,
   /vad gäller|har jag rätt|har hyresgästen rätt|får jag kräva|vad säger lagen/,
+  // ── Moms som RÄTTSFRÅGA (#382 PR3) ────────────────────────────────────────
+  //
+  // Uppmätt: 3 av 10 realistiska momsfrågor nådde inte ens grinden, utan
+  // besvarades utan att grindutfallet ens beräknades och utan källrad. De ska gå
+  // samma väg som varje annan rättsfråga: genom kedjan, och — så länge ingen
+  // människoverifierad momslag finns i korpusen (#382) — ut som MISS med
+  // hänvisning till revisor.
+  //
+  // GRÄNSDRAGNINGEN ÄR MOT DATAFRÅGOR, inte mot moms. "Vad blev momsen på förra
+  // månadens fakturor?" frågar om bokförda belopp, inte om vad lagen kräver.
+  // Grindas den blir produkten SÄMRE: AI:n hedgar om ett tal den kan hämta.
+  //
+  // FÖRSTA UTKASTET LISTADE NORMATIVA ORD (momsplikt, momsfri, momssats,
+  // skattskyldig) som fristående triggers. Det mättes och föll: VARJE sådant ord
+  // används också beskrivande. "Vilka fakturor är momsfria?", "Vilka lokaler är
+  // skattskyldiga just nu?" och "Hur många enheter har momssats 25?" drogs alla
+  // in — fem av fem uppmätta datafrågor. Skillnaden ligger inte i ORDET utan i
+  // frågans FORM: en regelfråga är ja/nej eller "vad gäller", en datafråga är en
+  // uppräkning ("vilka…", "lista…", "hur många…"). Mönstren nedan kodar formen.
+  //
+  // Ordföljden är avsiktlig i båda riktningarna, och båda är mätta:
+  //   "Ska jag ta ut moms…"            → regelfråga, verbet står FÖRE moms
+  //   "Hur mycket moms ska jag betala" → avläsning av egna siffror, verbet EFTER
+  // Ett symmetriskt mönster hade dragit in den senare.
+  //
+  // ETT ^-ANKRAT JA/NEJ-MÖNSTER PRÖVADES OCH STRÖKS. Det skulle fånga
+  // "Är bostadshyra momsfri?" och skiljas från "Vilka fakturor är momsfria?"
+  // genom att kräva att frågan står först. Mätt föll det: ^ matchar bara när
+  // frågan inleder MEDDELANDET, och 5 av 9 realistiska chattformuleringar
+  // ("Hej! Är bostadshyra momsfri?") missades. Framför allt bar det INGEN av de
+  // tre uppmätta missarna — de fångas av mönstren nedan — så det utökade PR:en
+  // utan att stänga något mätt hål.
+  //
+  // Ett meningsankare hade fungerat på papperet (6/6 rätt, 0 falska positiva),
+  // men vilade på två ÄNDLIGA ordlistor — inledande konjunktioner och
+  // anaforiska pronomen — avstämda mot meningar jag hittat på. Prod har 16
+  // användarmeddelanden och noll om moms: vi vet inte hur frågorna faktiskt
+  // formuleras. Uppföljning när det finns riktig data att mäta mot: #390.
+  /(måste|ska|får|behöver|bör|tillåtet)\s[^.?!]{0,30}\bmoms/,
+  // "Vilken momssats gäller för…" — rättsfråga i vilken-form, men bunden till
+  // moms + gäller, så den inte fångar "Vilka fakturor gäller juni?".
+  /\bmoms\w*[^.?!]{0,20}gäller|gäller[^.?!]{0,25}\bmoms/,
+  // Egennamn på rättsliga konstruktioner — ingen datafråga formuleras så.
+  /frivillig skattskyldighet|mervärdesskatt/,
 ]
 
 /** Sant om meddelandet ser ut som en juridisk fråga (se LEGAL_TRIGGERS). */
