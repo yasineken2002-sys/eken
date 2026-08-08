@@ -110,8 +110,8 @@ const VAT_TO_ACCOUNT: Record<number, number> = {
 
 // BAS 2024-konto för hyresintäkt per upplåtelsetyp. Avgör vilket 39xx-konto
 // en hyresfaktura/-avi krediteras mot. Bostäder (3911) är undantagna moms
-// (ML 3 kap 2 §); lokaler (3913) kan vara momspliktiga vid frivillig
-// skattskyldighet (ML 9 kap). Saknas koppling till en Unit används 3914
+// (ML 10 kap. 35 §); lokaler (3913) kan vara momspliktiga vid frivillig
+// beskattning (ML 12 kap.). Saknas koppling till en Unit används 3914
 // (övriga rörelseintäkter) som säker fallback.
 const REVENUE_ACCOUNT_BY_UNIT_TYPE: Record<UnitType, number> = {
   APARTMENT: 3911,
@@ -169,13 +169,13 @@ const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   MANUAL: 'Inbetalning (manuell registrering)',
 }
 
-// Tillämplig momssats (%) för hyresintäkt per upplåtelsetyp (ML 1994:200):
-//   • Bostad (APARTMENT)         → 0 %. Undantagen moms (ML 3 kap 2 §). Frivillig
+// Tillämplig momssats (%) för hyresintäkt per upplåtelsetyp (ML 2023:200):
+//   • Bostad (APARTMENT)         → 0 %. Undantagen moms (ML 10 kap. 35 §). Frivillig
 //     skattskyldighet får ALDRIG avse stadigvarande bostad (3 kap 3 § 2 st) —
 //     därför alltid 0 % oavsett voluntaryTaxLiability.
 //   • Lokal (OFFICE/RETAIL)      → 0 % som huvudregel; 25 % endast vid frivillig
-//     skattskyldighet (ML 9 kap, 3 kap 3 § 2 st).
-//   • Parkering (PARKING)        → 25 %. Momspliktig enligt lag (ML 3 kap 3 § 5),
+//     beskattning (ML 12 kap. 5 §).
+//   • Parkering (PARKING)        → 25 %. Momspliktig enligt lag (ML 10 kap. 36 §),
 //     oberoende av frivillig skattskyldighet. Gäller fristående p-plats; ingår
 //     platsen i en bostadsupplåtelse hör den till APARTMENT-enheten.
 //   • Förråd/övrigt (STORAGE/OTHER) → 0 % som huvudregel; 25 % vid frivillig
@@ -1901,7 +1901,7 @@ export class AccountingService {
   //   3990 K  net          (övrig rörelseintäkt)
   //
   // Belopp tas DIREKT från postens snapshot (Decimal → Number, ingen omräkning).
-  // EXEMPT (bostad, ML 3 kap 2 §) ger ingen 26xx-rad och net === total. Momsregeln
+  // EXEMPT (bostad, ML 10 kap. 35 §) ger ingen 26xx-rad och net === total. Momsregeln
   // spikas ALDRIG i kod — vi läser vatStatus/vatAmount från posten så att en
   // framtida TAXABLE_25 (lokal m. frivillig skattskyldighet) faller ut av sig
   // självt utan kodändring i konteringen.
@@ -1975,7 +1975,7 @@ export class AccountingService {
 
     // Momsraden tas DIREKT från snapshotet — beräknas aldrig om. v1 är posterna
     // EXEMPT (bostad) → ingen 26xx-rad. TODO: moms för lokal m. frivillig
-    // skattskyldighet (ML 9 kap) — väntar FAR-konsult, se docs/legal/45. När den
+    // skattskyldighet (ML 12 kap.) — väntar FAR-konsult, se docs/legal/45. När den
     // bekräftas räcker det att posten skapas med vatStatus=TAXABLE_25/vatAmount>0;
     // konteringen nedan hanterar redan momsraden utan kodändring.
     if (charge.vatStatus === 'TAXABLE_25' && vat > 0) {

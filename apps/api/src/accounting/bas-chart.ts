@@ -65,9 +65,9 @@ const COMMON_ACCOUNTS: BasAccountSeed[] = [
   // Intäkter — BAS 2024 fastighet, 3900-serien.
   //
   // Hyresintäkter delas per upplåtelsetyp eftersom momsbehandlingen skiljer:
-  //   • Bostäder (3911) är undantagna moms enligt ML 3 kap 2 § — alltid 0%.
-  //   • Lokaler (3913) kan vara momspliktiga vid frivillig skattskyldighet
-  //     (ML 9 kap) — annars 0%.
+  //   • Bostäder (3911) är undantagna moms enligt ML 10 kap. 35 § — alltid 0%.
+  //   • Lokaler (3913) kan vara momspliktiga vid frivillig beskattning
+  //     (ML 12 kap.) — annars 0%.
   //   • Parkering (3912) och förråd/övrigt (3914) följer samma logik.
   // Kontovalet vid auto-postering styrs av Unit.type, se
   // `REVENUE_ACCOUNT_BY_UNIT_TYPE` i accounting.service.ts.

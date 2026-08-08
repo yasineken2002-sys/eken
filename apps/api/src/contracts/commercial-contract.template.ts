@@ -113,7 +113,7 @@ export function buildCommercialContractHtml(input: ContractTemplateInput): strin
     skriftligen avstått från detta enligt 12 kap. 56 § fjärde stycket.
   </div>
 
-  <h2>§ 4 — Hyra, betalning och vad som ingår <span class="lawref">(12 kap. 19–20 §§ JB · ML 9 kap.)</span></h2>
+  <h2>§ 4 — Hyra, betalning och vad som ingår <span class="lawref">(12 kap. 19–20 §§ JB · ML 12 kap.)</span></h2>
   <div class="info-grid">
     <div class="info-item">
       <div class="label">Månadshyra (exkl. moms)</div>
@@ -131,8 +131,8 @@ export function buildCommercialContractHtml(input: ContractTemplateInput): strin
   <div class="clause"><span class="clause-number">4.1</span> ${RENT_DUE_TEXT}</div>
   <div class="clause">
     <span class="clause-number">4.2</span>
-    Om hyresvärden är frivilligt skattskyldig till mervärdesskatt enligt
-    9 kap. mervärdesskattelagen (2023:200) tillkommer mervärdesskatt på
+    Om hyresvärden omfattas av frivillig beskattning för mervärdesskatt enligt
+    12 kap. mervärdesskattelagen (2023:200) tillkommer mervärdesskatt på
     hyran. Hyresgästen ska bedriva momspliktig verksamhet i lokalen och
     inkomma med skriftligt intyg om så krävs av hyresvärden.
   </div>

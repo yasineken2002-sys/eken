@@ -7,7 +7,7 @@
  *      FIELDS. En påhittad ny kolumn utan beslut → testet failar (CI-grind
  *      mot framtida tyst villkorsförlust — samma mönster som edit-låset).
  *   B) renew() bär ALLA villkor via carry-projektionen — inkl. 🔴
- *      monthlyRentExcludingVat (moms, ML 1994:200), consumptionBillingMode
+ *      monthlyRentExcludingVat (moms, ML 2023:200), consumptionBillingMode
  *      och indexClauseType (fixar indexClause-inkonsekvensen). Explicita
  *      fält (ny hyra, nya datum, nytt kontraktsnummer) skrivs över carry.
  *   C) Deposition re-pekas: ENDAST Deposit.leaseId (org-scopat uppslag),
@@ -56,7 +56,7 @@ function assertSuccessionExhaustive(scalarFields: string[]): void {
         'LEASE_SUCCESSION_CARRY_FIELDS (kopieras vid förnyelse) ELLER ' +
         'LEASE_SUCCESSION_EXCLUDED_FIELDS (sätts explicit/utelämnas) i ' +
         '@eken/shared/constants/lease-succession-carry.ts — annars tappas ' +
-        'villkoret TYST vid varje förnyelse (jfr moms-fältet, ML 1994:200).',
+        'villkoret TYST vid varje förnyelse (jfr moms-fältet, ML 2023:200).',
     )
   }
 

@@ -1406,3 +1406,27 @@ Två observationer, utan bedömning:
   > - Efter 90 dagar raderas all Kunddata permanent, med undantag för data
 - **rad 199** — _C2 frist/tidsgräns_ — belopp/frist: 7 år
   > tvingande lagstiftning (typiskt 7 år för fakturor och journalposter)
+
+---
+
+## Efterkontroll 2026-08-08 (#382 PR4) — citaten nedan är en ögonblicksbild
+
+Inventeringen citerar källfilerna **som de såg ut 2026-08-07**. PR4 bytte
+lagrummen i flera av dem efter att en människa verifierat mervärdesskattelagen
+(2023:200) mot primärkälla. Citaten i den här filen är därför medvetet **inte**
+uppdaterade — de är protokoll över vad inventeringen fann, inte en spegling av
+nuläget. Läs dem som historik.
+
+Bytta lagrum (verifierade): bostadsundantaget 3 kap 2 § → **10 kap. 35 §**;
+frivillig beskattning 3 kap 3 § / 9 kap → **12 kap.**, grundbestämmelsen
+**12 kap. 5 §**; avdrag för ingående skatt 8 kap → **13 kap.**, grundregeln
+**13 kap. 6 §**; fakturans innehåll 11 kap 8 § → **17 kap. 24 §**.
+
+Terminologi: 2023:200 tog bort "omsättning" och "skattskyldig". "Frivillig
+skattskyldighet" heter numera **frivillig beskattning**.
+
+Fortfarande obelagda och därför orörda — se PR4:s beskrivning: parkeringens
+skatteplikt (gamla 3 kap 3 § 5), bostadsbegränsningen inom frivillig beskattning
+(gamla 3 kap 3 § 2 st), felaktig momsredovisning (gamla 1 kap 1 §) samt
+F-skatt-texternas hänvisning till 11 kap. 8 § ML, som sannolikt är fel i sak och
+inte bara inaktuell.

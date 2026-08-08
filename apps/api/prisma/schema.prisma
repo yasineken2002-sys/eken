@@ -880,11 +880,11 @@ model Unit {
   storageNumber      String?
   parkingSpaceNumber String?
 
-  // Frivillig skattskyldighet för moms (ML 9 kap). Endast relevant för lokaler
+  // Frivillig beskattning för moms (ML 12 kap. 5 §). Endast relevant för lokaler
   // (OFFICE/RETAIL/STORAGE/OTHER) som hyrs ut till momspliktig verksamhet — då
   // läggs 25% moms på hyran. Bostäder (APARTMENT) är ALLTID undantagna moms
-  // (ML 3 kap 2 §) oavsett detta fält. Parkering är momspliktig enligt lag
-  // (ML 3 kap 3 § 5) oberoende av frivillig skattskyldighet.
+  // (ML 10 kap. 35 §) oavsett detta fält. Parkering är momspliktig enligt lag
+  // (ML 10 kap. 36 §) oberoende av frivillig beskattning.
   voluntaryTaxLiability Boolean @default(false)
 
   property           Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
@@ -2167,7 +2167,7 @@ model CustomerNumberSequence {
   updatedAt  DateTime @updatedAt
 }
 
-// Global löpnummerserie för fakturanummer per organisation (ML 11 kap 8 §:
+// Global löpnummerserie för fakturanummer per organisation (ML 17 kap. 24 §:
 // fortlöpande serie som entydigt identifierar fakturan). En rad per org;
 // numret nollställs INTE per år (året i F-{år}-{nr} är kosmetiskt, numret är
 // global obruten sekvens — bevarar OCR-unikhet som härleds ur sekvensen).
@@ -3442,7 +3442,7 @@ enum ConsumptionChargeKind {
 }
 
 // Momsstatus snapshotad på charge:n från lease/unit-konfiguration vid skapande.
-// EXEMPT default för bostad (ML 3 kap 2 §). Regeln spikas ALDRIG i kod — läses
+// EXEMPT default för bostad (ML 10 kap. 35 §). Regeln spikas ALDRIG i kod — läses
 // från konfiguration. Se öppen momsfråga 1 om SEPARATE_INVOICE.
 enum ConsumptionVatStatus {
   EXEMPT
@@ -3691,7 +3691,7 @@ enum MiscChargeStatus {
 }
 
 // Momsstatus snapshotad från lease/unit-konfiguration vid skapande. EXEMPT
-// default för bostad (ML 3 kap 2 §). Regeln spikas ALDRIG i kod — momsbeslutet
+// default för bostad (ML 10 kap. 35 §). Regeln spikas ALDRIG i kod — momsbeslutet
 // dokumenteras i PR 2.
 enum MiscChargeVatStatus {
   EXEMPT

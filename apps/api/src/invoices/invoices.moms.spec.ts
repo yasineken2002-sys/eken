@@ -1,10 +1,10 @@
 /**
- * FIX 9 · PR 3 — Momsvalidering vid fakturering (LAGBROTT 5, ML 3 kap 2 §).
+ * FIX 9 · PR 3 — Momsvalidering vid fakturering (LAGBROTT 5, ML 10 kap. 35 §).
  *
  * En momsfri upplåtelse får inte faktureras med moms:
  *   • Bostad (APARTMENT) → alltid momsfri.
- *   • Lokal utan frivillig skattskyldighet → momsfri.
- * Lokal MED frivillig skattskyldighet får faktureras med 25 %.
+ *   • Lokal utan frivillig beskattning → momsfri.
+ * Lokal MED frivillig beskattning får faktureras med 25 %.
  */
 
 // InvoicesService → PdfService → StorageService drar in @aws-sdk/client-s3 (ESM
@@ -57,16 +57,16 @@ function dto(vatRate: number) {
 }
 
 describe('FIX 9 · PR 3 — InvoicesService.create momsvalidering', () => {
-  it('bostad + moms 25% → BadRequestException (ML 3 kap 2 §)', async () => {
+  it('bostad + moms 25% → BadRequestException (ML 10 kap. 35 §)', async () => {
     const { service } = makeService({ type: 'APARTMENT', voluntaryTaxLiability: false })
     await expect(service.create('org-1', 'user-1', dto(25))).rejects.toThrow(BadRequestException)
-    await expect(service.create('org-1', 'user-1', dto(25))).rejects.toThrow(/3 kap 2 §/)
+    await expect(service.create('org-1', 'user-1', dto(25))).rejects.toThrow(/10 kap\. 35 §/)
   })
 
-  it('lokal utan frivillig skattskyldighet + moms 25% → BadRequestException', async () => {
+  it('lokal utan frivillig beskattning + moms 25% → BadRequestException', async () => {
     const { service } = makeService({ type: 'OFFICE', voluntaryTaxLiability: false })
     await expect(service.create('org-1', 'user-1', dto(25))).rejects.toThrow(
-      /frivillig skattskyldighet/,
+      /frivillig beskattning/,
     )
   })
 
@@ -76,16 +76,16 @@ describe('FIX 9 · PR 3 — InvoicesService.create momsvalidering', () => {
     expect(prisma.$transaction).toHaveBeenCalled()
   })
 
-  it('lokal MED frivillig skattskyldighet + moms 25% → tillåts', async () => {
+  it('lokal MED frivillig beskattning + moms 25% → tillåts', async () => {
     const { service, prisma } = makeService({ type: 'OFFICE', voluntaryTaxLiability: true })
     await service.create('org-1', 'user-1', dto(25))
     expect(prisma.$transaction).toHaveBeenCalled()
   })
 
   // Omvänd kontroll: momspliktig upplåtelse får inte faktureras momsfritt.
-  it('parkering + moms 0% → BadRequestException (ML 3 kap 3 § 5)', async () => {
+  it('parkering + moms 0% → BadRequestException (ML 10 kap. 36 §)', async () => {
     const { service } = makeService({ type: 'PARKING', voluntaryTaxLiability: false })
-    await expect(service.create('org-1', 'user-1', dto(0))).rejects.toThrow(/3 kap 3 § 5/)
+    await expect(service.create('org-1', 'user-1', dto(0))).rejects.toThrow(/10 kap\. 36 §/)
   })
 
   it('parkering + moms 25% → tillåts', async () => {
@@ -94,10 +94,8 @@ describe('FIX 9 · PR 3 — InvoicesService.create momsvalidering', () => {
     expect(prisma.$transaction).toHaveBeenCalled()
   })
 
-  it('lokal MED frivillig skattskyldighet + moms 0% → BadRequestException', async () => {
+  it('lokal MED frivillig beskattning + moms 0% → BadRequestException', async () => {
     const { service } = makeService({ type: 'OFFICE', voluntaryTaxLiability: true })
-    await expect(service.create('org-1', 'user-1', dto(0))).rejects.toThrow(
-      /frivillig skattskyldighet/,
-    )
+    await expect(service.create('org-1', 'user-1', dto(0))).rejects.toThrow(/frivillig beskattning/)
   })
 })
