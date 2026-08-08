@@ -7,18 +7,32 @@ import { LEGAL_KNOWLEDGE, LEGAL_DOCUMENT_IDS, getLegalDocument } from './legal-k
  * #129-fixen bygger på). Ingen retrieval/AI testas här — den byggs i Etapp 2.
  */
 describe('Legal knowledge — runtime-katalog (Etapp 1)', () => {
-  it('innehåller alla sex verifierade juridik-/skattelagar', () => {
+  it('innehåller alla fem verifierade juridiklagar', () => {
     expect(LEGAL_DOCUMENT_IDS).toEqual(
       expect.arrayContaining([
         'hyreslagen',
         'bostadsrattslagen',
         'diskrimineringslagen',
-        'mervardesskattelagen',
         'bokforingslagen',
         'ranteslagen',
       ]),
     )
-    expect(LEGAL_KNOWLEDGE).toHaveLength(6)
+    expect(LEGAL_KNOWLEDGE).toHaveLength(5)
+  })
+
+  // #382: mervärdesskattelagen (1994:200) upphävdes 2023-07-01 och ersattes av
+  // 2023:200 med ny struktur och andra paragrafnummer. Korpusen får inte
+  // innehålla den — citat-integriteten hindrar PÅHITTADE lagrum men säger
+  // ingenting om UPPHÄVDA: en paragraf som verkligen fanns 2026-05-29 citeras
+  // med full trovärdighet som "gällande lydelse". Uppmätt före borttagningen:
+  // relevansdomaren svarade JA på ML-chunkar för en momsfråga (3/3), varpå
+  // koden hade tryckt "SFS 1994:200, gällande lydelse verifierad 2026-05-29".
+  it('innehåller INTE den upphävda mervärdesskattelagen (1994:200)', () => {
+    expect(LEGAL_DOCUMENT_IDS).not.toContain('mervardesskattelagen')
+    expect(getLegalDocument('mervardesskattelagen')).toBeUndefined()
+    for (const doc of LEGAL_KNOWLEDGE) {
+      expect(doc.sfs).not.toBe('1994:200')
+    }
   })
 
   it('varje dokument bär komplett metadata (säkerhetsgap D — versionering)', () => {

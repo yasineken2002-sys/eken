@@ -28,7 +28,7 @@
  * (fused === lexical), exakt dagens beteende, loggad varning. Det gör också
  * CI deterministisk utan nät.
  */
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, type OnModuleInit } from '@nestjs/common'
 import { PrismaService } from '../../../common/prisma/prisma.service'
 import { LegalEmbeddingService } from '../../knowledge/embedding/legal-embedding.service'
 import { VOYAGE_EMBEDDINGS } from '../../ai.config'
@@ -64,7 +64,7 @@ interface EmbeddingRow {
 }
 
 @Injectable()
-export class LegalRetrievalService {
+export class LegalRetrievalService implements OnModuleInit {
   private readonly logger = new Logger(LegalRetrievalService.name)
   /** legalChunkId → chunk, memoiserad (lagtexten är statisk per process). */
   private chunkById: Map<string, LegalChunk> | null = null
@@ -73,6 +73,62 @@ export class LegalRetrievalService {
     private readonly prisma: PrismaService,
     private readonly embedder: LegalEmbeddingService,
   ) {}
+
+  /**
+   * PARITETSKONTROLL (#382): jämför antalet chunkar i bundlen mot antalet
+   * lagrade vektorer för den AKTIVA modellen, och varnar vid avvikelse.
+   *
+   * VARFÖR UPPSTART: lagtexten är kompilerad in i imagen (generated/*.ts) medan
+   * vektorerna bor i databasen. Boot är den ENDA punkt där de två artefakterna
+   * paras ihop — och det är exakt vad en rollback gör: en gammal image mot en
+   * nyare databas.
+   *
+   * VARFÖR DEN BEHÖVS: stale-hash-vakten i semanticChannel() itererar över
+   * DB-RADER. En chunk som SAKNAR rad passerar därför helt tyst — vakten ser
+   * den aldrig. Rullas imagen tillbaka efter att rader raderats får BM25 alltså
+   * tillbaka full förmåga att citera en borttagen lag som "gällande lydelse",
+   * utan att en enda varning skrivs. Räkningen fångar BÅDA riktningarna:
+   * överskott (föräldralösa rader äter top-K-platser) och underskott (chunkar
+   * utan vektor → tyst kvalitetsbortfall).
+   *
+   * DEGRADERING FÖRBLIR DEGRADERING: kastar aldrig, blockerar aldrig boot.
+   * Ett trasigt tillstånd ska synas, inte fälla API:et.
+   */
+  async onModuleInit(): Promise<void> {
+    const expected = buildLegalChunks().length
+    let stored: number
+    try {
+      stored = await this.prisma.legalChunkEmbedding.count({
+        where: { model: VOYAGE_EMBEDDINGS.MODEL },
+      })
+    } catch (err) {
+      this.logger.warn(
+        `Paritetskontrollen kunde inte köras (räkning misslyckades): ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return
+    }
+
+    // Positiv kvittens vid paritet. Tystnad vore ett SÄMRE bevis: den ser
+    // likadan ut som att kontrollen aldrig kördes (modulen initierades inte,
+    // räkningen kastade). En rad vid boot gör "paritet OK" verifierbart, inte
+    // bara antaget.
+    if (stored === expected) {
+      this.logger.log(
+        `Lagtext/vektor-paritet OK: ${expected} chunkar = ${stored} rader (modell ${VOYAGE_EMBEDDINGS.MODEL})`,
+      )
+      return
+    }
+
+    const riktning =
+      stored > expected
+        ? `${stored - expected} FÖRÄLDRALÖSA rader (lagtext borttagen utan att vektorerna städades)`
+        : `${expected - stored} chunkar SAKNAR vektor (omindexering ej körd, eller image återrullad efter radering)`
+    this.logger.warn(
+      `Lagtext/vektor-paritet BRUTEN för modell ${VOYAGE_EMBEDDINGS.MODEL}: ` +
+        `${expected} chunkar i bundlen, ${stored} rader i LegalChunkEmbedding — ${riktning}. ` +
+        'Semantiska kanalen är degraderad; kör knowledge:embed och städa bort rader utan chunk.',
+    )
+  }
 
   /**
    * Hybrid-retrieval för en juridisk fråga. Tar ENBART den råa frågesträngen —

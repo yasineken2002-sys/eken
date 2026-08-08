@@ -29,8 +29,10 @@ import {
   appendCodeBoundSource,
   formatSourceSuffix,
   SOURCE_SUFFIX_MARKER,
+  MIN_TOP_SCORE_CALIBRATED_AT_CHUNKS,
   type LegalGrounding,
 } from './legal-grounding'
+import { buildLegalChunks } from '../retrieval/legal-chunk'
 import { chunksToSources } from '../retrieval/legal-retrieval-runner'
 import { scoreRun } from '../eval/legal-eval-harness'
 import { LEGAL_EVAL_SET } from '../eval/legal-eval-set'
@@ -100,6 +102,46 @@ describe('Legal grounding (Etapp 2, PR 2.3a + 2.3b)', () => {
     })
   })
 
+  // #382: golvet är en tröskel på en KORPUS-BEROENDE skala. Utan den här
+  // spärren kan korpusen ändras — t.ex. när en verifierad mervärdesskattelag
+  // (2023:200) läggs tillbaka — utan att någon tvingas mäta om golvet, och
+  // ingenting ser trasigt ut. Det är samma tysta felläge som gjorde att en
+  // upphävd lag kunde citeras som "gällande lydelse" i två månader.
+  describe('Golvet är bundet till korpusstorleken (tripwire)', () => {
+    it('en ändrad korpus tvingar fram ommätning av MIN_TOP_SCORE', () => {
+      const faktiskt = buildLegalChunks().length
+      if (faktiskt !== MIN_TOP_SCORE_CALIBRATED_AT_CHUNKS) {
+        throw new Error(
+          [
+            `KORPUSEN HAR ÄNDRATS: ${faktiskt} chunkar, men MIN_TOP_SCORE är kalibrerat ` +
+              `vid ${MIN_TOP_SCORE_CALIBRATED_AT_CHUNKS}.`,
+            '',
+            'Det här är INTE ett tal som ska uppdateras för att få testet grönt.',
+            'BM25 är korpus-globalt (N, docFreq, avgLength i legal-retrieval.ts',
+            'buildIndex), så en ändrad korpus flyttar HELA poängskalan — golvet',
+            'betyder inte längre det det mättes till.',
+            `  • Fler chunkar (${faktiskt > MIN_TOP_SCORE_CALIBRATED_AT_CHUNKS ? 'som nu' : 'ej nu'}): alla poäng STIGER → golvet blir för TILLÅTANDE,`,
+            '    svaga träffar släpps in till relevansdomaren.',
+            `  • Färre chunkar (${faktiskt < MIN_TOP_SCORE_CALIBRATED_AT_CHUNKS ? 'som nu' : 'ej nu'}): alla poäng SJUNKER → golvet blir för STRÄNGT,`,
+            '    giltiga fall fälls (så gick besittningsskydd-lokal förlorat i #382).',
+            '',
+            'GÖR SÅ HÄR:',
+            '  1. Mät topp-BM25 och täckning för hela eval-setet mot den nya korpusen.',
+            '  2. Välj nytt golv i det uppmätta gapet mellan svagast GODKÄNDA träff',
+            '     och starkaste som ska fällas AV POÄNGEN (täckning >= 0.4).',
+            '  3. Kör negativkontrollen: deposition-storlek och',
+            '     hyresgastval-diskriminering MÅSTE förbli utanför. Ett golv som',
+            '     släpper in dem är inget golv.',
+            '  4. Kör knowledge:eval före och efter — invariant 5 (>= 14/18) ska hålla.',
+            '  5. Uppdatera kalibreringsblocket i legal-grounding.ts med de NYA',
+            `     uppmätta talen, och sätt MIN_TOP_SCORE_CALIBRATED_AT_CHUNKS = ${faktiskt}.`,
+          ].join('\n'),
+        )
+      }
+      expect(faktiskt).toBe(MIN_TOP_SCORE_CALIBRATED_AT_CHUNKS)
+    })
+  })
+
   describe('MISS-GRIND steg 1 (gap B): deterministisk kalibrering mot eval-setet', () => {
     it('alla 12 retrieval-träffade answerable-fall passerar som kandidater (grinden kväver inte)', () => {
       for (const id of RETRIEVAL_HIT_IDS) {
@@ -109,12 +151,14 @@ describe('Legal grounding (Etapp 2, PR 2.3a + 2.3b)', () => {
     })
 
     it('mätbart svaga träffar fastnar deterministiskt (utan domaranrop)', () => {
+      // Tal uppmätta på 420-chunks-korpusen (#382 — se MIN_TOP_SCORE-blocket i
+      // legal-grounding.ts för varför hela skalan krympte ~9 %).
       const weakIds = [
-        'deposition-storlek', // no-clear-rule: 10.58/0.33 — täckningsgolvet fäller
-        'hyresgastval-diskriminering', // 9.42 — under score-golvet
-        'hyreshojning-formkrav', // 7.49
-        'hyressattning-bruksvarde', // 6.35
-        'kontrakt-tidsbestamt-forlangning', // 8.94
+        'deposition-storlek', // 9.66/0.33 — täckningsgolvet fäller, TROTS högre poäng
+        'hyresgastval-diskriminering', // 8.63/0.29 — under BÅDE score-golvet och täckningen
+        'hyreshojning-formkrav', // 6.81/0.50 — bara score-golvet fäller den
+        'hyressattning-bruksvarde', // 5.80/0.50 — bara score-golvet
+        'kontrakt-tidsbestamt-forlangning', // 8.00/0.38
       ]
       for (const id of weakIds) {
         const candidate = evaluateLegalRetrieval(caseById(id).question)
