@@ -514,16 +514,33 @@ export class AccountingService {
     // och därmed straffat hyresvärden för en felkonfiguration — de 60 kronorna
     // är hen faktiskt berättigad till. Bara det överskjutande är ogiltigt.
     //
-    // OCH DEN ÄR INTE TYST. Till skillnad från avtalsgrundens vägran (som är
-    // ett normalt utfall för varje avtal utan villkor) betyder en klampning att
-    // någon konfigurerat ett olagligt belopp. Den som skrivit in 150 ska kunna
-    // få veta varför det blev 60.
+    // OCH DEN ÄR INTE TYST — MEN DEN BETYDER NÅGOT ANNAT ÄN FÖRR.
+    //
+    // Före resolvern var ett utfall här en KONFIGURATION: någon hade skrivit in
+    // ett olagligt belopp, och raden fanns för att hen skulle få veta varför det
+    // blev 60. Den betydelsen är övertagen av `reminderFeeCapMessage` hos
+    // anroparen, som dessutom kan namnge avin eller fakturan.
+    //
+    // Ett utfall HÄR betyder nu i stället en DEFEKT: en anropare har skrivit
+    // avgiften utan att gå genom `resolveReminderFee`. Och eftersom reskontran
+    // skrivs FÖRE bokföringen är skadan sannolikt redan skedd — verifikatet är
+    // det enda som räddats. Därför `error`, inte `warn`: raden är inte en
+    // upplysning om en inställning, den är ett fynd om ett krav som kan vara för
+    // högt. Nivån väljs efter vad ett utfall betyder, inte efter hur ovanligt
+    // det är.
+    //
+    // Raden bär `source`/`sourceId` för att det ska gå att hitta VILKET krav som
+    // berörs — utan dem säger larmet bara att något är fel någonstans i en
+    // organisation.
     const cappedFee = Math.min(fee, REMINDER_FEE_MAX_SEK)
     if (cappedFee < fee) {
-      this.logger.warn(
-        `Påminnelseavgift klampad till det lagstadgade taket för organisation ` +
-          `${organizationId}: ${fee} kr begärt, ${cappedFee} kr debiterat ` +
-          `(4 § lagen 1981:739 — taket är tvingande, 6 § 1 st).`,
+      this.logger.error(
+        `ANROPARE FÖRBI resolveReminderFee: påminnelseavgiften för ${source} ${sourceId} ` +
+          `(organisation ${organizationId}) kom hit på ${fee} kr och klampades till ` +
+          `${cappedFee} kr (taket i 4 § lagen 1981:739, tvingande enligt 6 § 1 st). ` +
+          `Verifikatet är räddat — men reskontran skrivs av anroparen FÖRE bokföringen ` +
+          `och bär sannolikt ${fee} kr. Kontrollera kravet mot hyresgästen, och hitta ` +
+          `skrivaren: beloppet ska komma ur resolveReminderFee.`,
       )
     }
 

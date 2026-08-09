@@ -7,9 +7,11 @@
  * avgränsning. Det finns därför ingen INDIVIDUAL/COMPANY-förgrening att testa —
  * och testerna nedan låser fast att ingen införs.
  *
- * TVÅ LAGER. `@Max` i UpdateOrganizationDto hindrar att ett för högt värde
- * skrivs in; klampningen här fångar värden som redan ligger i databasen eller
- * kommer in någon annan väg. Det här specet prövar lager 2.
+ * TRE LAGER. `@Max` i UpdateOrganizationDto hindrar att ett för högt värde
+ * skrivs in; `resolveReminderFee` klampar hos anroparen INNAN någon skrivning
+ * sker; klampningen här är sista linjen mot en anropare som gått förbi den.
+ * Det här specet prövar lager 3 — och att ett utfall därifrån larmar som den
+ * defekt det numera är.
  *
  * DISKRIMINERANDE BELOPP: 500 är varken en multipel av 60 eller nära det, så en
  * klampning som råkade ge fel tal syns direkt.
@@ -45,12 +47,9 @@ function makeService() {
     } as never,
   )
   const warn = jest.fn()
-  ;(service as unknown as { logger: unknown }).logger = {
-    warn,
-    error: jest.fn(),
-    log: jest.fn(),
-  }
-  return { service, created, warn }
+  const error = jest.fn()
+  ;(service as unknown as { logger: unknown }).logger = { warn, error, log: jest.fn() }
+  return { service, created, warn, error }
 }
 
 /** Avtalsgrunden är på plats i samtliga fall — här prövas bara taket. */
@@ -91,37 +90,51 @@ describe('G3 — taket klampas vid debiteringstillfället', () => {
     expect(belopp(created).debet).not.toBe(500)
   })
 
-  it('klampningen LOGGAS — den som skrev in 500 ska kunna få veta varför', async () => {
-    const { service, warn } = makeService()
+  it('klampningen loggas som ERROR och namnger defekten, inte konfigurationen', async () => {
+    // Betydelsen har flyttat. Sedan `resolveReminderFee` klampar hos anroparen
+    // kan den HÄR klampningen bara betyda att en anropare gått förbi den — och
+    // eftersom reskontran skrivs före bokföringen är kravet sannolikt redan
+    // ställt på det oklampade beloppet. Det är ett fynd, inte en upplysning.
+    const { service, error, warn } = makeService()
 
     await service.bookReminderFee({ ...bas, fee: 500 })
 
-    expect(warn).toHaveBeenCalledTimes(1)
-    const text = String(warn.mock.calls[0]![0])
+    expect(error).toHaveBeenCalledTimes(1)
+    // Inte warn: en nivå som drunknar bland inställningsmeddelanden hade gjort
+    // fyndet osynligt i drift.
+    expect(warn).not.toHaveBeenCalled()
+
+    const text = String(error.mock.calls[0]![0])
+    expect(text).toContain('resolveReminderFee')
     expect(text).toContain('org-1')
     expect(text).toContain('500')
     expect(text).toContain('60')
     expect(text).toContain('1981:739')
+    // Vilket krav som berörs — utan source/sourceId går skadan inte att hitta.
+    expect(text).toContain('RENT_NOTICE')
+    expect(text).toContain('reminder-fee:rn-1')
   })
 
   it('60 kr → oförändrat, och INGEN logg (inget är fel)', async () => {
-    const { service, created, warn } = makeService()
+    const { service, created, warn, error } = makeService()
 
     await service.bookReminderFee({ ...bas, fee: REMINDER_FEE_MAX_SEK })
 
     expect(belopp(created)).toEqual({ debet: 60, kredit: 60 })
     expect(warn).not.toHaveBeenCalled()
+    expect(error).not.toHaveBeenCalled()
   })
 
   it('under taket klampas inte — 40 kr förblir 40 kr', async () => {
     // Taket är ett tak, inte ett golv. En org som valt en lägre avgift ska
     // behålla den.
-    const { service, created, warn } = makeService()
+    const { service, created, warn, error } = makeService()
 
     await service.bookReminderFee({ ...bas, fee: 40 })
 
     expect(belopp(created)).toEqual({ debet: 40, kredit: 40 })
     expect(warn).not.toHaveBeenCalled()
+    expect(error).not.toHaveBeenCalled()
   })
 
   it('0 kr → ingen bokföring alls (oförändrat beteende)', async () => {
