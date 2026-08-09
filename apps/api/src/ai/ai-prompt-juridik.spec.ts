@@ -70,6 +70,12 @@ describe('AI-systemprompt — avväpnad juridik', () => {
       expect(SYSTEM_PROMPT).not.toContain('2012:978') // uthyrning av egen bostad
       expect(SYSTEM_PROMPT).not.toContain('10 kap. 12 §')
       expect(SYSTEM_PROMPT).not.toContain('12 kap. 4 §')
+      // #382-restposterna: de lagrum som ersatte 1 kap 1 § och 3 kap 3 § 6 när de
+      // sista gamla ML-numren rättades. Formtestet nedan fångar dem redan — det
+      // här är dokumentationen av vilka nummer som faktiskt rörts.
+      expect(SYSTEM_PROMPT).not.toContain('2 kap. 12 §')
+      expect(SYSTEM_PROMPT).not.toContain('16 kap. 23 §')
+      expect(SYSTEM_PROMPT).not.toContain('10 kap. 36 §')
     })
 
     // Uppräkningarna ovan dokumenterar VILKA fel som begåtts, men de kan bara
