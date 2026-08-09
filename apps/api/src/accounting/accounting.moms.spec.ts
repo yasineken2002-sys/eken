@@ -3,10 +3,10 @@
  *
  * vatRateForRent kodifierar momssatsen per upplåtelsetyp:
  *   • Bostad (APARTMENT)          → 0 % alltid (ML 10 kap. 35 §; frivillig
- *     skattskyldighet får aldrig avse stadigvarande bostad, 3 kap 3 § 2 st).
- *   • Lokal (OFFICE/RETAIL)       → 0 %, eller 25 % vid frivillig skattskyldighet.
+ *     beskattning får aldrig avse stadigvarande bostad, ML 12 kap. 5 §).
+ *   • Lokal (OFFICE/RETAIL)       → 0 %, eller 25 % vid frivillig beskattning.
  *   • Parkering (PARKING)         → 25 % (momspliktig enligt ML 10 kap. 36 §).
- *   • Förråd/övrigt (STORAGE/OTHER) → 0 %, eller 25 % vid frivillig skattskyldighet.
+ *   • Förråd/övrigt (STORAGE/OTHER) → 0 %, eller 25 % vid frivillig beskattning.
  */
 
 import type { UnitType } from '@prisma/client'
