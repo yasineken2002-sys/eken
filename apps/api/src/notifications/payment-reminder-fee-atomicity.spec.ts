@@ -335,3 +335,71 @@ describe('#357 — sendFormalReminder tar avgiften atomiskt', () => {
     )
   })
 })
+
+// ── G3: TAKET NÅR ALLA SKRIVNINGAR, INTE BARA VERIFIKATET ────────────────────
+//
+// Samma fil som #357 för att kravet är detsamma: fakturans FYRA utgångar måste
+// bära samma tal. #357 höll dem samman i tiden (en transaktion); det här håller
+// dem samman i belopp.
+//
+// Klampningen låg tidigare enbart i `bookReminderFee` och nådde därför bara
+// verifikatet. Ett belopp över taket som kommit in förbi DTO:t (direkt SQL,
+// skript, framtida importväg) gav hyresgästen kravet på 500 kr medan huvudboken
+// bokförde 60 — mätt mot riktig Postgres innan `resolveReminderFee` fanns.
+describe('G3 — org konfigurerad över taket: varje skrivning bär det klampade beloppet', () => {
+  /** Mockarna är argumentlösa, så `mock.calls` typas som tomma tupler — casta listan. */
+  const calls = <T>(fn: { mock: { calls: unknown[] } }) => fn.mock.calls as unknown as Array<[T]>
+
+  it('markör, total, avgiftsrad, verifikat och brev bär 60 när orgen har 500', async () => {
+    const h = makeService({ fee: 500 })
+    await sendFormal(h)
+
+    // 1. Anspråket — summeras rakt in i inkassounderlagets avgiftskolumn.
+    const claim = calls<{ data: Array<{ feeAmount: unknown }> }>(
+      h.txClient.paymentReminder.createMany,
+    )[0]![0]
+    expect(Number(claim.data[0]!.feeAmount)).toBe(60)
+
+    // 2. Fakturans total — det hyresgästen ska betala.
+    const bump = calls<{ data: { total: { increment: unknown } } }>(
+      h.txClient.invoice.updateMany,
+    )[0]![0]
+    expect(Number(bump.data.total.increment)).toBe(60)
+
+    // 3. Avgiftsraden — det hyresgästen ser på fakturan.
+    const rad = calls<{ data: { unitPrice: unknown; total: unknown } }>(
+      h.txClient.invoiceLine.create,
+    )[0]![0]
+    expect(Number(rad.data.unitPrice)).toBe(60)
+    expect(Number(rad.data.total)).toBe(60)
+
+    // 4. Verifikatet — huvudboken.
+    expect(calls<{ fee: number }>(h.accounting.bookReminderFee)[0]![0]).toMatchObject({ fee: 60 })
+
+    // 5. Brevet — beloppet hyresgästen läser och restskulden det ingår i.
+    const brev = calls<{
+      feeAmount: number
+      newTotal: number
+      outstandingBeforeFee: number
+    }>(h.mail.sendReminderFormal)[0]![0]
+    expect(brev.feeAmount).toBe(60)
+    expect(brev.newTotal).toBe(brev.outstandingBeforeFee + 60)
+  })
+
+  it('under taket rörs ingenting — 40 kr förblir 40 på alla utgångar', async () => {
+    // Negativ kontroll i testet självt: klampade koden allt till 60 skulle den
+    // här falla, och då mätte det förra testet ingenting.
+    const h = makeService({ fee: 40 })
+    await sendFormal(h)
+
+    const claim = calls<{ data: Array<{ feeAmount: unknown }> }>(
+      h.txClient.paymentReminder.createMany,
+    )[0]![0]
+    const bump = calls<{ data: { total: { increment: unknown } } }>(
+      h.txClient.invoice.updateMany,
+    )[0]![0]
+    expect(Number(claim.data[0]!.feeAmount)).toBe(40)
+    expect(Number(bump.data.total.increment)).toBe(40)
+    expect(calls<{ fee: number }>(h.accounting.bookReminderFee)[0]![0]).toMatchObject({ fee: 40 })
+  })
+})

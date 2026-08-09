@@ -24,10 +24,8 @@ import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentInterestService } from './rent-interest.service'
 import { RentDebtService } from './rent-debt.service'
-import {
-  resolveNoticeDebtOrigin,
-  isReminderFeeContractuallyAllowed,
-} from '../accounting/debt-origin'
+import { resolveNoticeDebtOrigin } from '../accounting/debt-origin'
+import { resolveReminderFee, reminderFeeCapMessage } from '../accounting/reminder-fee'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 
 interface ReminderSummary {
@@ -280,10 +278,9 @@ export class RentReminderService {
     fee: number,
   ): Promise<boolean> {
     const now = new Date()
-    const begärdAvgift = Number.isFinite(fee) && fee > 0 ? fee : 0
 
     return this.prisma.$transaction(async (tx) => {
-      // ── G2: AVTALSGRUNDEN AVGÖRS FÖRE ANSPRÅKET ─────────────────────────
+      // ── G2: AVGIFTENS BELOPP AVGÖRS FÖRE ANSPRÅKET ──────────────────────
       //
       // Måste ske före `updateMany` nedan, inte efter: anspråket skriver
       // `reminderFeeAmount` i reskontran, och vägrade grinden först i
@@ -304,10 +301,17 @@ export class RentReminderService {
       const debtOrigin = resolveNoticeDebtOrigin(grund)
       const termsFrom = grund.lease?.reminderFeeTermsFrom ?? null
 
-      // Saknas avtalsgrund klampas avgiften till 0 — påminnelsen går ut ändå.
-      // Hyresgästen ska påminnas om sin obetalda hyra; hen ska bara inte
-      // debiteras för det utan att ha godkänt villkoret.
-      const safeFee = isReminderFeeContractuallyAllowed(debtOrigin, termsFrom) ? begärdAvgift : 0
+      // BÅDA reglerna besvaras här: avtalsgrunden OCH det lagstadgade taket.
+      // Saknas avtalsgrund blir avgiften 0 — påminnelsen går ut ändå, för
+      // hyresgästen ska påminnas om sin obetalda hyra; hen ska bara inte
+      // debiteras för det utan att ha godkänt villkoret. Ligger ett för högt
+      // belopp i `Organization.reminderFeeSek` klampas det till taket, så att
+      // reskontran nedan och verifikatet längre ner bär SAMMA tal.
+      const feeDecision = resolveReminderFee(fee, debtOrigin, termsFrom)
+      const safeFee = feeDecision.amount
+      if (feeDecision.cappedByLaw) {
+        this.logger.warn(reminderFeeCapMessage(organizationId, feeDecision, `avi ${noticeId}`))
+      }
 
       const claim = await tx.rentNotice.updateMany({
         where: {

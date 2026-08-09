@@ -141,6 +141,23 @@ describe('escalateNoticeToReminded', () => {
     expect(Number(tx.rentNotice.updateMany.mock.calls[0]![0].data.reminderFeeAmount)).toBe(0)
     expect(rentNoticeEvents.record.mock.calls[0]![4]).toMatchObject({ fee: 0 })
   })
+
+  // ── G3: TAKET NÅR RESKONTRAN, INTE BARA VERIFIKATET ────────────────────────
+  //
+  // Klampningen låg tidigare enbart i `bookReminderFee`. Ett belopp över taket
+  // som kommit in förbi DTO:t gav då avin `reminderFeeAmount = 500` medan
+  // huvudboken bokförde 60 — reskontra ≠ huvudbok. Det som mäts här är att
+  // ALLA tre utgångarna bär samma tal.
+  it('org konfigurerad över taket → anspråket, bokföringen OCH händelsen bär 60', async () => {
+    const { service, tx, accounting, rentNoticeEvents } = makeService()
+
+    const ok = await service.escalateNoticeToReminded('rn-1', 'org-1', 9, 500)
+    expect(ok).toBe(true)
+
+    expect(Number(tx.rentNotice.updateMany.mock.calls[0]![0].data.reminderFeeAmount)).toBe(60)
+    expect(accounting.bookReminderFee.mock.calls[0]![0]).toMatchObject({ fee: 60 })
+    expect(rentNoticeEvents.record.mock.calls[0]![4]).toMatchObject({ fee: 60 })
+  })
 })
 
 describe('escalateOverdueRentNotices (cron)', () => {

@@ -99,6 +99,7 @@ export function SettingsPage() {
   const [reminderCollectionDay, setReminderCollectionDay] = useState(30)
   const [collectionAgencyName, setCollectionAgencyName] = useState('')
   const [collectionsSavedFlash, setCollectionsSavedFlash] = useState(false)
+  const [collectionsError, setCollectionsError] = useState<string | null>(null)
   // Hyresavi-inställningar: hur många dagar före tillträde som depositions-
   // och första hyresavi förfaller. Hyresgästföreningens default är 7.
   const [daysBeforeMoveIn, setDaysBeforeMoveIn] = useState(7)
@@ -184,6 +185,46 @@ export function SettingsPage() {
         onSuccess: () => {
           setTaxSavedFlash(true)
           setTimeout(() => setTaxSavedFlash(false), 2500)
+        },
+      },
+    )
+  }
+
+  // ── Påminnelseavgiftens tak, i gränssnittet ────────────────────────────────
+  //
+  // `max` på inputen räcker INTE: fältet ligger inte i ett <form>, sparandet
+  // sker via en onClick som anropar mutate direkt, och då gör webbläsaren ingen
+  // native validering. Attributet styr bara stegpilarna — skriver man 500 och
+  // klickar Spara går anropet iväg och möts av DTO:ns 400 utan förklaring.
+  //
+  // Spärren här ersätter inte serverns: taket upprätthålls av `@Max` i DTO:t och
+  // klampas dessutom av `resolveReminderFee` innan något krav skrivs. Den finns
+  // för att svaret ska bli begripligt på svenska i stället för ett generiskt
+  // API-fel, och för att felet ska synas där talet skrevs in.
+  const handleSaveCollections = () => {
+    setCollectionsError(null)
+    if (!Number.isFinite(reminderFeeSek) || reminderFeeSek < 0) {
+      setCollectionsError('Påminnelseavgiften måste vara ett belopp i kronor, lägst 0.')
+      return
+    }
+    if (reminderFeeSek > REMINDER_FEE_MAX_SEK) {
+      setCollectionsError(
+        `Påminnelseavgiften får vara högst ${REMINDER_FEE_MAX_SEK} kr enligt 4 § lagen ` +
+          '(1981:739). Taket är tvingande och gäller även mot företagskunder.',
+      )
+      return
+    }
+    updateMutation.mutate(
+      {
+        reminderFeeSek,
+        reminderFormalDay,
+        reminderCollectionDay,
+        collectionAgencyName,
+      },
+      {
+        onSuccess: () => {
+          setCollectionsSavedFlash(true)
+          setTimeout(() => setCollectionsSavedFlash(false), 2500)
         },
       },
     )
@@ -1078,9 +1119,13 @@ export function SettingsPage() {
                     <Input
                       type="number"
                       min={0}
+                      max={REMINDER_FEE_MAX_SEK}
                       step={1}
                       value={reminderFeeSek}
-                      onChange={(e) => setReminderFeeSek(Number(e.target.value))}
+                      onChange={(e) => {
+                        setReminderFeeSek(Number(e.target.value))
+                        setCollectionsError(null)
+                      }}
                     />
                     <p className="mt-1 text-[11px] text-gray-500">
                       Max enligt 4 § lagen (1981:739): {REMINDER_FEE_MAX_SEK} kr
@@ -1127,27 +1172,15 @@ export function SettingsPage() {
                   </p>
                 </div>
 
+                {collectionsError && (
+                  <div className="flex items-center gap-1.5 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-[12.5px] text-red-600">
+                    <AlertCircle size={13} />
+                    {collectionsError}
+                  </div>
+                )}
+
                 <div className="flex items-center gap-3 border-t border-gray-100 pt-3">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => {
-                      updateMutation.mutate(
-                        {
-                          reminderFeeSek,
-                          reminderFormalDay,
-                          reminderCollectionDay,
-                          collectionAgencyName,
-                        },
-                        {
-                          onSuccess: () => {
-                            setCollectionsSavedFlash(true)
-                            setTimeout(() => setCollectionsSavedFlash(false), 2500)
-                          },
-                        },
-                      )
-                    }}
-                  >
+                  <Button variant="primary" size="sm" onClick={handleSaveCollections}>
                     Spara inställningar
                   </Button>
                   {collectionsSavedFlash && (
