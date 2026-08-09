@@ -56,7 +56,7 @@ export const RegisterSchema = z
     organizationName: z.string().min(1).max(200),
     companyForm: CompanyFormSchema.default('AB'),
     orgNumber: z.string().optional(),
-    // F-skatt: enligt 11 kap. 8 § ML krävs uppgift på faktura. Defaultar
+    // F-skatt: frivillig uppgift på faktura, inte lagkrav (#392). Defaultar
     // till false så att nya konton inte felaktigt påstår att de är
     // godkända — användaren bockar i själv när de fått beslutet.
     hasFSkatt: z.boolean().default(false),

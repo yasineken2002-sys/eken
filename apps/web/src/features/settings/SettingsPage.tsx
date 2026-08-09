@@ -806,8 +806,11 @@ export function SettingsPage() {
               </div>
 
               <p className="mb-4 text-[12.5px] text-gray-500">
-                F-skatt-status visas på alla fakturor enligt 11 kap. 8 § mervärdesskattelagen.
-                Uppdatera så snart Skatteverket godkänt din ansökan.
+                "Godkänd för F-skatt" skrivs ut på fakturor för arbete som ni utför. Det är en
+                frivillig upplysning, inte ett lagkrav: den visar utbetalaren att inget skatteavdrag
+                ska göras på ersättning för arbete. På hyresavier har uppgiften ingen rättslig
+                funktion och skrivs därför inte ut. Uppdatera så snart Skatteverket godkänt din
+                ansökan.
               </p>
 
               <div className="space-y-4">
@@ -824,7 +827,8 @@ export function SettingsPage() {
                   <div>
                     <p className="text-[13px] font-medium text-gray-800">Vi innehar F-skatt</p>
                     <p className="mt-0.5 text-[12px] text-gray-500">
-                      Skrivs ut som "Godkänd för F-skatt" på fakturor.
+                      Skrivs ut som "Godkänd för F-skatt" på fakturor för arbete — inte på
+                      hyresavier.
                     </p>
                   </div>
                 </label>

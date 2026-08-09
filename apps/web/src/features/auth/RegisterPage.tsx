@@ -431,7 +431,8 @@ export function RegisterPage() {
                     )}
                   </div>
 
-                  {/* F-skatt — lagkrav att visas på faktura enligt 11 kap. 8 § ML */}
+                  {/* F-skatt — frivillig uppgift på faktura för arbete, inte lagkrav.
+                      Kanonisk not: apps/api/src/invoices/templates/invoice-pdf.template.ts (#392) */}
                   <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-3.5">
                     <label className="flex cursor-pointer items-start gap-2.5">
                       <input
@@ -445,7 +446,8 @@ export function RegisterPage() {
                       <div>
                         <p className="text-[13px] font-medium text-gray-800">Vi innehar F-skatt</p>
                         <p className="mt-0.5 text-[12px] text-gray-500">
-                          Skrivs ut som "Godkänd för F-skatt" på fakturor (11 kap. 8 § ML).
+                          Skrivs ut som "Godkänd för F-skatt" på fakturor för arbete. Frivillig
+                          upplysning — inget lagkrav, och den används inte på hyresavier.
                         </p>
                       </div>
                     </label>

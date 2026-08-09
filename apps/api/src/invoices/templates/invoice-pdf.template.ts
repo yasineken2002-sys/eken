@@ -44,8 +44,9 @@ interface InvoicePdfData {
       postalCode: string | null
       bankgiro: string | null
       logoUrl: string | null
-      // Skatteinformation — krav enligt 11 kap. 8 § ML att F-skatt-status
-      // visas på faktura. vatNumber visas som "Momsregistreringsnummer:
+      // Skatteinformation. F-skatt-status trycks som FRIVILLIG uppgift på
+      // fakturan — inte lagkrav; se den kanoniska noten vid fSkattLine
+      // nedan. vatNumber visas som "Momsregistreringsnummer:
       // SE{vatNumber}01" om det finns. companyForm används för att skriva
       // ut korrekt företagsformsetikett ("Aktiebolag", "Enskild firma" m.m.).
       hasFSkatt: boolean
@@ -188,9 +189,24 @@ export function generateInvoiceHtml(data: InvoicePdfData): string {
     'Adress saknas — komplettera organisationsuppgifterna'
 
   // ── Skatteinformation: F-skatt + momsnr ────────────────────────────────
-  // Lagkrav per 11 kap. 8 § ML — F-skatt-status ska anges. Om hasFSkatt
-  // är false skriver vi ändå ut det negativa beskedet så att mottagaren
-  // vet att inga skatter dras av automatiskt vid betalning.
+  // KANONISK NOT om F-skatt (#392) — övriga ställen hänvisar hit.
+  //
+  // Det finns INGEN skyldighet att ange F-skatt på en faktura. Uppgiften är
+  // frivillig kutym: den signalerar till utbetalaren att denne slipper göra
+  // skatteavdrag. Grunden är skatteförfarandelagen (2011:1244) 10 kap.
+  // 11–13 §§, särskilt 10 kap. 12 §, med identifikationsuppgifterna i 2 §
+  // skatteförfarandeförordningen (2011:1261) — och den gäller ersättning för
+  // ARBETE. Hyra är inte ersättning för arbete, så på en hyresavi har
+  // uppgiften ingen rättslig funktion (hyresavin renderas separat via
+  // buildNoticePdfHtml i avisering.service.ts och trycker med rätta ingen
+  // F-skatt-rad). Lagrummen är människoverifierade mot primärkälla 2026-08-09.
+  //
+  // Tidigare stod här "Lagkrav per 11 kap. 8 § ML" — fel i SAK, inte bara i
+  // numrering: F-skatt regleras inte i mervärdesskattelagen över huvud taget.
+  // Skriv inte tillbaka ett lagkrav här utan nytt människoverifierat underlag.
+  //
+  // hasFSkatt = false ⇒ ingen rad alls. (Den gamla kommentaren påstod att ett
+  // negativt besked trycktes — det har koden nedan aldrig gjort.)
   const fSkattLine = organization.hasFSkatt
     ? `Godkänd för F-skatt${organization.fSkattApprovedDate ? ` (sedan ${formatDate(organization.fSkattApprovedDate)})` : ''}`
     : null
@@ -321,7 +337,7 @@ ${headerHtml}
   </div>
 </div>
 
-<!-- SKATTEINFORMATION (lagkrav per 11 kap. 8 § ML) -->
+<!-- SKATTEINFORMATION (frivillig uppgift — se noten vid fSkattLine) -->
 ${
   fSkattLine || vatLine
     ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;">

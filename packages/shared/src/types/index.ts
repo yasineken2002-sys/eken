@@ -89,9 +89,9 @@ export interface Organization {
   // Momsredovisningsperiod (SFL 26 kap). Styr bara hur berörda momsperioder
   // namnges vid bakdaterad debitering (T1.4) — aldrig bokföringen.
   vatReportingPeriod?: 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
-  // F-skatt: skrivs ut som "Godkänd för F-skatt" på faktura-PDF
-  // (lagkrav 11 kap. 8 § ML). Kan ändras i Inställningar när Skatteverket
-  // godkänner ansökan.
+  // F-skatt: skrivs ut som "Godkänd för F-skatt" på faktura-PDF — frivillig
+  // uppgift, inte lagkrav (kanonisk not i invoice-pdf.template.ts, #392).
+  // Kan ändras i Inställningar när Skatteverket godkänner ansökan.
   hasFSkatt?: boolean
   fSkattApprovedDate?: string | null
   email: string

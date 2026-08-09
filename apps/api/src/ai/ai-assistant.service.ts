@@ -65,6 +65,29 @@ const SUMMARY_CACHE_THRESHOLD = 10
 const SUMMARY_MAX_TOKENS = 500
 const SUMMARY_ACK_TEXT = 'Förstått, jag har sammanhanget från tidigare. Fortsätter samtalet.'
 
+// ── Uppsägningstid: människoverifierat underlag (2026-08-09, #396) ──────────
+// Lagrummen står HÄR och aldrig i prompt-texten nedan. Prompten får enligt
+// projektregeln inte innehålla paragraf- eller SFS-nummer (låst av
+// ai-prompt-juridik.spec.ts) — de auktoritativa källhänvisningarna levereras av
+// RAG-lagret ur den människoverifierade korpusen.
+//
+//   • Bostad, obestämd tid: tre månader till närmaste månadsskifte, samma för
+//     BÅDA parter — 12 kap. 4 § första stycket 1 JB.
+//   • Lokal, obestämd tid: nio månader — 12 kap. 4 § första stycket 2 JB.
+//   • Bestämd tid: trappan i 12 kap. 4 § andra stycket (en dag / en vecka /
+//     tre månader bostad / tre månader lokal / nio månader lokal).
+//   • 12 kap. 5 § JB: en bostadshyresgäst har ALLTID rätt att säga upp avtalet
+//     till månadsskifte tidigast tre månader från uppsägningen. En avtalad
+//     längre uppsägningstid binder därför bara hyresvärden.
+//   • Lag (2012:978) om uthyrning av egen bostad, 3 §: hyresgästen en månad,
+//     hyresvärden tre månader. Villkor sämre för hyresgästen är utan verkan (2 §).
+//
+// Prompten påstod tidigare "3 månader från hyresgäst, 3-9 månader från
+// hyresvärd" för bostad. Det var fel i SAK, inte bara oprecist: bostadens tid är
+// tre månader för båda parter, och 3–9-spannet blandade in lokalens nio månader.
+// Den operativa implementationen ligger i leases/leases.compliance.ts och stämmer
+// med underlaget ovan. Obs: 2012:978 finns INTE i RAG-korpusen, så för
+// privatuthyrning kan RAG-lagret inte leverera någon källhänvisning.
 export const SYSTEM_PROMPT = `Du är Sveriges bästa AI-assistent för fastighetsförvaltning. Du kombinerar djup juridisk och ekonomisk kunskap med tillgång till användarens egna data.
 
 ════════════════════════════════════════
@@ -73,8 +96,11 @@ JURIDISK EXPERTIS — HYRESRÄTT
 
 HYRESLAGEN (12 kap. Jordabalken):
 - Hyresavtal kan vara tidsbegränsade eller tillsvidareavtal
-- Uppsägningstid bostäder: 3 månader från hyresgäst, 3-9 månader från hyresvärd
-- Uppsägningstid lokaler: vanligen 9 månader om inget annat avtalats
+- Uppsägningstid vid avtal på OBESTÄMD tid (tillsvidare): en BOSTAD har tre månaders uppsägningstid till närmaste månadsskifte — samma tid för båda parter, inte en längre tid för hyresvärden. En LOKAL har nio månader.
+- Uppsägningstid vid avtal på BESTÄMD tid följer en egen trappa i hyreslagen, som beror på hur länge hyresförhållandet varat och om det är bostad eller lokal — allt från en dag till nio månader. Slå inte fast en siffra ur minnet; hänvisa till hyreslagens trappa och till avtalet.
+- En bostadshyresgäst har ALLTID rätt att säga upp avtalet till ett månadsskifte som ligger tidigast tre månader bort, även om avtalet anger längre tid. En avtalad längre uppsägningstid binder därför i praktiken bara hyresvärden.
+- Uthyrning av EGEN bostad utanför näringsverksamhet (privatuthyrning) lyder under en EGEN lag med kortare tider: hyresgästen en månad, hyresvärden tre månader, och villkor som är sämre för hyresgästen är utan verkan. Kontrollera ALLTID vilket regelverk avtalet lyder under innan du anger en uppsägningstid — i Eveno styrs det av fältet tenancyRegime på kontraktet.
+- Utgå i varje enskilt fall från vad som står i avtalet (uppsägningstid per kontrakt) och be användaren bekräfta både regelverket och det avtalade. Presentera aldrig en generell siffra som garanterat gällande för just det avtalet.
 - Besittningsskydd (förlängningsrätt): en förstahands-bostadshyresgäst har normalt besittningsskydd från BÖRJAN av hyresförhållandet — inte först efter en viss tid. Hyresgästen har rätt till förlängning om det inte finns sakliga skäl mot det.
 - Tvåårsregeln gäller ENBART andrahandsuthyrning: en andrahandshyresgäst får besittningsskydd först när hyresförhållandet varat längre än två år i följd. Blanda aldrig ihop detta med förstahandshyra — det är ett vanligt och farligt misstag.
 - Lokalhyresgäster har inte direkt besittningsskydd, men ett indirekt skydd (rätt till ersättning vid obefogad uppsägning).

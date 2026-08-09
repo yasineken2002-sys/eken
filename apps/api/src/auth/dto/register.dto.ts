@@ -40,7 +40,7 @@ export class RegisterDto {
   @IsString()
   orgNumber?: string
 
-  // ─── F-skatt och moms (lagkrav på faktura) ───────────────────────────────
+  // ─── F-skatt och moms (frivillig uppgift resp. momsnr på faktura, #392) ──
   @ApiPropertyOptional({ default: false })
   @IsOptional()
   @IsBoolean()
