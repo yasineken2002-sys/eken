@@ -526,8 +526,10 @@ model Organization {
   // rättas. Default QUARTERLY = vanligast för segmentet (omsättning 1–40 MSEK).
   // Kalenderbaserad (moms följer kalenderkvartal/-månad, ej brutet räkenskapsår).
   vatReportingPeriod   VatReportingPeriod @default(QUARTERLY)
-  // F-skatt: obligatoriskt på faktura enligt 11 kap. 8 § ML att visa.
-  // hasFSkatt = true ⇒ "Godkänd för F-skatt" tryckt på faktura-PDF.
+  // F-skatt: FRIVILLIG uppgift på faktura, inte lagkrav. Grunden är skatte-
+  // förfarandelagen (2011:1244) 10 kap. 11–13 §§ och den gäller ersättning för
+  // ARBETE — inte hyra. hasFSkatt = true ⇒ "Godkänd för F-skatt" tryckt på
+  // faktura-PDF, aldrig på hyresavi. Kanonisk not: invoice-pdf.template.ts (#392).
   hasFSkatt            Boolean   @default(false)
   fSkattApprovedDate   DateTime?
   email                String

@@ -14,7 +14,8 @@ export const PLATFORM_COMPANY = {
   // Placeholder tills Eveno AB är registrerat — uppdatera här och deploya.
   orgNumber: '559999-9999',
   vatNumber: 'SE559999999901',
-  // F-skatt-status visas på fakturan; obligatoriskt enligt 11 kap. 8 § ML.
+  // F-skatt-status visas på plattformsfakturan som frivillig uppgift — inte
+  // ett lagkrav (kanonisk not i invoices/templates/invoice-pdf.template.ts, #392).
   hasFSkatt: true,
   street: 'Sveavägen 1',
   postalCode: '111 57',
