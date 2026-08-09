@@ -485,13 +485,24 @@ export class AccountingService {
     // var tillåten men bokföringen ändå uteblev.
     if (!isReminderFeeContractuallyAllowed(debtOrigin, termsFrom)) return null
 
-    // ── G3: DET LAGSTADGADE TAKET, KLAMPAT VID DEBITERINGSTILLFÄLLET ──────
+    // ── G3: DET LAGSTADGADE TAKET, SISTA LINJEN ───────────────────────────
     //
-    // Lager 2 av två. `@Max(REMINDER_FEE_MAX_SEK)` i UpdateOrganizationDto
-    // hindrar att ett för högt värde skrivs in — men validering skyddar bara
-    // framtida skrivningar GENOM DEN VÄGEN. Ett värde som redan ligger i
-    // databasen, eller som kommer in via seed, direkt SQL eller en framtida
-    // importväg, passerar den obehindrat. Klampningen här är sista linjen.
+    // Tredje och sista lagret. `@Max(REMINDER_FEE_MAX_SEK)` i
+    // UpdateOrganizationDto hindrar att ett för högt värde skrivs in, men
+    // validering skyddar bara skrivningar GENOM DEN VÄGEN. `resolveReminderFee`
+    // klampar hos anroparen, före anspråket, så att reskontran och huvudboken
+    // bär samma tal. Klampningen här fångar den anropare som inte gjort det.
+    //
+    // ⚠️ DEN FÄLLER INTE I PRODUKTION, OCH SKA INTE GÖRA DET. Båda dagens
+    // anropare skickar redan ett klampat belopp, så varningen nedan är tyst för
+    // dem — den som larmar om felkonfigurationen är `reminderFeeCapMessage` hos
+    // anroparen, med avi- eller fakturanummer i loggraden. Fäller den här
+    // klampningen betyder det att en NY anropare skriver reskontran med ett
+    // oklampat belopp, och då är verifikatet det enda som räddats. Behandla ett
+    // utfall härifrån som ett fynd, inte som att skyddet fungerade.
+    //
+    // Att den ändå står kvar är poängen med försvar i djupet: en spärr som bara
+    // finns hos anroparen är ingen spärr mot nästa anropare.
     //
     // TAKET GÄLLER ALLA HYRESGÄSTTYPER. 6 § första stycket lagen (1981:739)
     // gör ett avtalsvillkor som utvidgar gäldenärens ersättningsskyldighet

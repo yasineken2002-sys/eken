@@ -129,31 +129,34 @@ jobs:
       - name: Verify invoice-number is only sourced from the shared sequence
         run: node apps/api/scripts/check-platform-invoice-number-source.mjs
 
-  reminder-fee-terms-guard:
-    name: Reminder fee contractual-basis guard
+  reminder-fee-guard:
+    name: Reminder fee amount guard
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
       # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — säkerställer att
-      # varje skrivare av påminnelseavgiften går genom avtalsgrunds-predikatet
-      # isReminderFeeContractuallyAllowed. Typsystemet skyddar redan BOKFÖRINGS-
-      # sidan (bookReminderFee kräver debtOrigin + termsFrom), men avgiften tas
-      # på TVÅ ställen: reskontramarkeringen (RentNotice.reminderFeeAmount resp.
-      # fakturans avgiftsrad) skrivs FÖRE bokföringen och passerar inte
-      # kompilatorns grind. En skrivare som hoppar över predikatet får avin att
-      # kräva 60 kr som huvudboken inte bär — samma divergens som #357 stängde,
-      # med omvänt tecken. Se G2 / lagen (1981:739) 2 §.
+      # varje skrivare av påminnelseavgiften hämtar beloppet ur resolveReminderFee,
+      # som bär BÅDE avtalsgrunden (2 § lagen 1981:739) och det lagstadgade taket
+      # (4 §, tvingande enligt 6 § 1 st). Typsystemet skyddar redan BOKFÖRINGS-
+      # sidan (bookReminderFee kräver debtOrigin + termsFrom och klampar), men
+      # avgiften skrivs på FLER ställen: RentNotice.reminderFeeAmount,
+      # PaymentReminder.feeAmount (summeras in i inkassounderlagets avgiftskolumn)
+      # och fakturans avgiftsrad skrivs FÖRE bokföringen och passerar inte
+      # kompilatorns grind. En skrivare som hoppar över resolvern får reskontran
+      # att kräva ett belopp huvudboken inte bär — samma divergens som #357
+      # stängde, med omvänt tecken. Guarden krävde tidigare bara predikatet; det
+      # kravet var uppfyllt av precis den kod som skrev oklampade belopp.
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Self-test the guard (good passes, bypass variants caught)
-        run: node apps/api/scripts/check-reminder-fee-terms-source.mjs --self-test
+        run: node apps/api/scripts/check-reminder-fee-source.mjs --self-test
 
-      - name: Verify every reminder-fee writer goes through the contractual-basis predicate
-        run: node apps/api/scripts/check-reminder-fee-terms-source.mjs
+      - name: Verify every reminder-fee writer resolves its amount through the shared rule
+        run: node apps/api/scripts/check-reminder-fee-source.mjs
 
   period-lookup-guard:
     name: Accounting period lookup guard
