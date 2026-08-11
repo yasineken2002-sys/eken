@@ -187,11 +187,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: SLASK — avsiktligt brott (#405, required-check-test)
-        run: |
-          echo 'Bryter med flit. Denna PR ska ALDRIG mergas.'
-          exit 1
-
       - uses: actions/checkout@v4
 
       # Rent statisk kontroll (fs-only, inga beroenden) — spärr mot att nya rå
