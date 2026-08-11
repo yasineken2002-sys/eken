@@ -95,12 +95,59 @@ gh pr view N --json body -q .body | tr '\n' ' ' | tr -s ' ' | grep -F 'din fras'
 Det fallet inträffade i #410, ett steg efter att punkt 5 skrivits: en fras
 rapporterades saknad, hittades inte ens med `tr '\n' ' '`, och fanns hela tiden.
 
+**6. Välj korta, obrytbara tokens som verifieringsnycklar — inte satser.**
+
+Punkt 5 är läkemedlet. Det här är förebyggandet: väljer du rätt nyckel uppstår
+problemet inte.
+
+Två gånger i rad rapporterade verifieringen "saknas" om text som fanns, båda gångerna
+för att sökfrasen var en **mening**. En mening kan radbrytas, indragas, ombrytas av en
+editor, renderas om av GitHub eller få sina blanksteg normaliserade. En sha kan inte
+det.
+
+Verifiera därför på det minsta som är unikt för skrivningen:
+
+| bra nyckel                         | varför                                                  |
+| ---------------------------------- | ------------------------------------------------------- |
+| `8ee3280`, `f9e2ec68`              | sha-prefix — kan inte brytas eller ombrytas             |
+| `verifiera-att-skrivningen-tog.md` | filnamn — ett token, inga blanksteg                     |
+| `#410`                             | ärendenummer                                            |
+| `420 chunkar = 420 rader`          | uppmätt tal — kort, distinkt, och bär själva påståendet |
+| `--fail-with-body`                 | flaggnamn                                               |
+
+Undvik: `"en skrivning som inte lästs tillbaka är ett obelagt påstående"`. Den är
+läsbar för en människa och skör för en `grep`.
+
+Ett tal duger som nyckel bara om det är **distinkt** — `0` eller `200` matchar för
+mycket. `420 chunkar = 420 rader` är bra just för att kombinationen bara kan komma
+från den rad du vill bevisa. Jämför punkt 4: nyckeln ska inte kunna matcha före
+skrivningen heller.
+
+En nyckel som börjar med `-` eller `--` äts av argumentparsern innan den blir ett
+sökmönster. `grep -F "--fail-with-body"` gav
+`invalid option --fail-with-body` och rapporterades som "saknas" — frasen fanns.
+**Avsluta flaggparsningen med `--`:**
+
+```bash
+grep -qF -- "--fail-with-body" fil    # -- säger: allt härefter är argument, inte flaggor
+```
+
+Det hände när punkt 6 verifierades på sig själv, med `--fail-with-body` hämtad ur
+punktens egen tabell över bra nycklar. Den är bra i brytbarhetsmening och usel som
+skalargument — två olika egenskaper hos samma sträng.
+
+Detta gäller också loggar. Paritetsraden i prod verifieras med `420 chunkar = 420
+rader`, inte med hela meningen `Lagtext/vektor-paritet OK: …` — och loggen skrivs
+till fil först, eftersom `railway logs | grep` gav tomt medan `railway logs > fil`
+följt av `grep fil` gav träff. Ännu en variant av punkt 2.
+
 ## Checklista
 
 - [ ] Skrivningen kördes med cwd där verktyget kräver det
 - [ ] Felutmatningen pipades inte bort
 - [ ] Resultatet lästes tillbaka **från destinationen**
 - [ ] Kontrollen letade efter något som bara kan finnas efter skrivningen
+- [ ] Verifieringsnyckeln är ett kort, obrytbart token — inte en mening
 - [ ] Ett rött utfall verifierades vara innehållets fel, inte verktygets
 - [ ] Rapporten till användaren säger bara det som lästs tillbaka
 
