@@ -84,6 +84,17 @@ gett grönt. Slog uppslagningen upp något? Matchar mönstret formen på det du 
 (radvis vs helt dokument, skiftläge, radbrytningar, backticks)? Skrev kommandot till
 stderr i stället för stdout?
 
+För markdown som hämtas tillbaka från GitHub räcker det inte att platta radbrytningar
+— indenterade fortsättningsrader i listor lämnar kvar sitt indrag, så ett mellanslag i
+sökfrasen möter tre i texten. **Normalisera blanksteg också:**
+
+```bash
+gh pr view N --json body -q .body | tr '\n' ' ' | tr -s ' ' | grep -F 'din fras'
+```
+
+Det fallet inträffade i #410, ett steg efter att punkt 5 skrivits: en fras
+rapporterades saknad, hittades inte ens med `tr '\n' ' '`, och fanns hela tiden.
+
 ## Checklista
 
 - [ ] Skrivningen kördes med cwd där verktyget kräver det
