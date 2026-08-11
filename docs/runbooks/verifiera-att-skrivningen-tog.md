@@ -131,10 +131,33 @@ gav `FILEN SKILJER SIG`. Grenen var redan raderad lokalt, så `git rev-parse` ku
 inte slå upp den och kastade `ambiguous argument` — vilket `diff` tolkade som en
 skillnad. Med rätt sha (`gh pr view --json headRefOid`) var träden identiska.
 
+_Arbetskatalogen som såg ut som en saknad fil._ `cat railway.toml` gav tomt och
+`find . -maxdepth 2 -name "railway*"` gav noll träffar. Slutsatsen blev att filen inte
+fanns i repot — trots att `health.controller.ts` och `CLAUDE.md` båda hänvisar till
+den. Det var på väg att bli **ett ärende om obelagda påståenden i produktionskod,
+byggt på ett obelagt påstående**. Kommandona kördes från `apps/api`, inte från
+repo-roten. Filen fanns, var spårad i git, och innehöll exakt det kommentaren påstod.
+
+Det fallet är värt att dröja vid, för det visar hur regeln missas. Punkt 6 hade
+tillämpats fyra gånger samma dag — på grep-mönster, radbrytningar, indrag och
+flaggparsning — men inte på arbetskatalogen, trots att `find` som ger noll träffar är
+exakt samma sorts röda utfall. **Arbetskatalogen är ett verktygsvillkor, i samma
+klass som grep-mönstret och argumentparsningen.** Ett `cat`, `find`, `ls` eller
+`grep` som ger tomt svarar på frågan "finns det _här_", inte "finns det".
+
+Det som fångade felet var att någon bad om belägg för _var_ påståendet stod. Att leta
+upp raderna tvingade fram en sökning från rätt katalog, och då dök filen upp.
+
 Innan ett rött utfall rapporteras som ett fynd: kontrollera att kontrollen kunde ha
-gett grönt. Slog uppslagningen upp något? Matchar mönstret formen på det du söker
-(radvis vs helt dokument, skiftläge, radbrytningar, backticks)? Skrev kommandot till
-stderr i stället för stdout?
+gett grönt. **Var stod du?** (`pwd` — särskilt efter en `cd` några kommandon tidigare,
+eller när ett `cd` misslyckats med "No such file or directory" för att du redan var
+där.) Slog uppslagningen upp något? Matchar mönstret formen på det du söker (radvis vs
+helt dokument, skiftläge, radbrytningar, backticks)? Skrev kommandot till stderr i
+stället för stdout?
+
+För sökningar i ett repo: ange absoluta sökvägar, eller sök från repo-roten
+(`git rev-parse --show-toplevel`). `git ls-files <mönster>` är dessutom oberoende av
+cwd på ett sätt `find .` inte är.
 
 För markdown som hämtas tillbaka från GitHub räcker det inte att platta radbrytningar
 — indenterade fortsättningsrader i listor lämnar kvar sitt indrag, så ett mellanslag i
@@ -202,6 +225,7 @@ följt av `grep fil` gav träff. Ännu en variant av punkt 2.
 - [ ] Fanns ett facit? Då jämfördes hela texten i stället för att söka fragment
 - [ ] Om sökning ändå: nyckeln är ett kort, obrytbart token — inte en mening
 - [ ] Ett rött utfall verifierades vara innehållets fel, inte verktygets
+- [ ] För sökningar i repot: rätt arbetskatalog, eller absolut sökväg
 - [ ] Rapporten till användaren säger bara det som lästs tillbaka
 
 ## Relaterade fällor med samma form
