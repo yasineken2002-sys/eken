@@ -190,56 +190,81 @@ export function isLegalQuestion(message: string): boolean {
 /** Samma topK som retrieval-mätningen i PR 2.2 (12/18 answerable). */
 export const GROUNDING_TOP_K = 3
 
-// ── Steg 1: deterministiska golv, OMKALIBRERADE mot 420-chunks-korpusen (#382) ─
+// ── Steg 1: deterministiska golv, OMMÄTTA mot 427-chunks-korpusen (#400) ──────
 //
 // VARFÖR OM: BM25:s statistik är KORPUS-GLOBAL (N, docFreq, avgLength i
-// legal-retrieval.ts buildIndex). När mervärdesskattelagen togs bort föll N
-// 560 → 420 (−25 %) och avgLength 53.40 → 52.63, vilket sänkte IDF för VARJE
-// term i VARJE kvarvarande chunk. Uppmätt effekt: topp-BM25 sjönk 8–11 % rakt
-// igenom eval-setet (faktor ≈ 1.09). Golvet 10 var kalibrerat mot den GAMLA
-// skalan och fällde därför besittningsskydd-lokal — ett HYRESRÄTTS-fall som
-// inget hade med momslagen att göra. Rescale: 10 / 1.09 ≈ 9.17.
+// legal-retrieval.ts buildIndex), så varje korpusändring flyttar skalan och
+// tvingar fram en ommätning via tripwiren nedan. #400 lade till lagen (1981:739)
+// om ersättning för inkassokostnader: N 420 → 427 (+7 chunkar, +1,7 %) och
+// avgLength 52.63 → 52.29.
 //
-// Uppmätt på 420-chunks-korpusen (topp-BM25 / topp-täckning, 2026-08-08):
+// EFFEKTEN ÄR INTE ENHETLIGT UPPÅT, och det är mätt. Tripwirens text säger att
+// fler chunkar höjer alla poäng — det är sant för N-termen i IDF, men den
+// konkurrerar med två krafter åt andra hållet: avgLength SJUNKER (kortare
+// paragrafer i den nya lagen → hårdare längdnormalisering) och docFreq STIGER
+// för varje stam den nya lagen delar med frågan. Uppmätt över alla 22 eval-fall
+// (2026-08-11): 17 steg, 3 SJÖNK, 2 oförändrade. De tre som sjönk delar alla
+// stammar med inkassokostnadslagens text ("skriftlig", "betalning", "avtal"):
+//   hyra-forfallodag           23.06 → 22.80  (−0.25)
+//   kontrakt-skriftligt        11.77 → 11.55  (−0.22)
+//   uppsagning-skriftlig-form  16.10 → 15.93  (−0.18)
+// Största rörelsen åt något håll är 0.25 — jämför #382:s −8–11 % vid −25 % N.
+// En liten korpusändring flyttar skalan försumbart; det är storleken på
+// ändringen som avgör, inte att den skedde.
+//
+// Uppmätt på 427-chunks-korpusen (topp-BM25 / topp-täckning, 2026-08-11):
 //   Svagast GODKÄNDA träff:   besittningsskydd-lokal        9.51 / 0.43
 //   Starkaste som måste fällas AV POÄNGEN (täckning ≥ 0.4, så bandet nedan
-//   kan inte hjälpa):         hyreshojning-formkrav          6.81 / 0.50
-//                             hyressattning-bruksvarde       5.80 / 0.50
-// Intervallet 6.81–9.51 är TOMT — inget eval-fall ligger däremellan. Golvet 9
-// sitter i det gapet med 0.51 marginal till svagast godkända och 2.19 till
-// starkaste som ska fällas.
+//   kan inte hjälpa):         hyreshojning-formkrav          6.82 / 0.50
+//                             hyressattning-bruksvarde       5.82 / 0.50
+// Intervallet 6.82–9.51 är TOMT för fall med täckning ≥ 0.4 — de tre fall som
+// ligger däremellan (kontrakt-tidsbestamt 8.02/0.38, hyresgastval 8.65/0.29,
+// agandeform 7.18/0.20) fälls alla av TÄCKNINGEN i bandet, inte av poängen.
+// Golvet 9 sitter i gapet med 0.51 marginal till svagast godkända och 2.18 till
+// starkaste som ska fällas — praktiskt taget oförändrat från 420-mätningen.
 //
-// NEGATIVKONTROLL (de två som ska förbli ute, uppmätt vid golv 9):
-//   deposition-storlek           9.66 / 0.33 → fälls, täckning < 0.4 i bandet
-//   hyresgastval-diskriminering  8.63 / 0.29 → fälls, både poäng och täckning
+// GOLVET ÄR ALLTSÅ KVAR PÅ 9. Det är ett MÄTT utfall, inte ett uteblivet
+// arbete: förhandsmätningen (#400) sa att golvet håller så länge frågans
+// stammar inte finns i fler än 3 av de 7 nya paragraferna, och den skarpa
+// mätningen på den riktiga lagtexten bekräftade det (besittningsskydd-lokal
+// 9.51 → 9.51, Δ −0.003).
+//
+// NEGATIVKONTROLL (de två som ska förbli ute, uppmätt vid golv 9 på 427):
+//   deposition-storlek           9.70 / 0.33 → fälls, täckning < 0.4 i bandet
+//   hyresgastval-diskriminering  8.65 / 0.29 → fälls, både poäng och täckning
 // Båda ligger kvar utanför vid VARJE golv 8.5–10 (mätt) — det är TÄCKNINGEN
 // som skiljer dem från besittningsskydd-lokal, inte poängen. Ett golv som
 // släppte in dem vore inget golv.
 //
 // LOW_SCORE_BAND och MIN_COVERAGE_IN_BAND är OFÖRÄNDRADE, och det är mätt, inte
 // antaget: täckning är korpus-oberoende (andel av frågans stammar som finns i
-// chunken) och identisk före/efter. Inget eval-fall passerade tidigare bandets
-// övre kant på poäng med täckning < 0.4 och hamnar innanför den efter skalbytet
-// (svagaste sådana är delgivning-uppsagning 15.89 / 0.36, långt över 12).
+// chunken) och identisk före/efter på samtliga 22 fall. Inget eval-fall
+// passerade tidigare bandets övre kant på poäng med täckning < 0.4 och hamnar
+// innanför den efter skalbytet (svagaste sådana är delgivning-uppsagning
+// 15.94 / 0.36, långt över 12).
 //
-// Lexikalt starka men semantiskt fel träffar (altan 20.4/0.50, eget-behov
-// 15.9/0.45, besittningsskydd-förstahand 18.6/0.46) är fortfarande INTE
+// Lexikalt starka men semantiskt fel träffar (altan 20.5/0.50, eget-behov
+// 15.9/0.45, besittningsskydd-förstahand 18.7/0.46) är fortfarande INTE
 // separerbara här — de går vidare som kandidater och fälls av relevansdomaren
 // (steg 2).
 //
-// ⚠ 9 ÄR INTE ETT ALLMÄNT VÄRDE. Det gäller för EN korpusstorlek: N = 420
+// ⚠ 9 ÄR INTE ETT ALLMÄNT VÄRDE. Det gäller för EN korpusstorlek: N = 427
 // (se MIN_TOP_SCORE_CALIBRATED_AT_CHUNKS nedan). Eftersom BM25 är korpus-
 // globalt flyttas HELA poängskalan när korpusen ändras, och golvet slutar
 // betyda det det mättes till — utan att något beteende ser trasigt ut. VÄXER
 // korpusen (t.ex. när en verifierad mervärdesskattelag 2023:200 läggs
-// tillbaka, PR5 i #382-planen) stiger alla poäng och 9 blir för TILLÅTANDE:
-// svaga träffar släpps in till domaren. KRYMPER den blir 9 för strängt och
-// giltiga fall fälls — exakt det som hände besittningsskydd-lokal här.
-// Tripwiren nedan tvingar fram en ommätning i båda riktningarna.
+// tillbaka, PR5 i #382-planen) stiger poängen för de flesta frågor och 9 blir
+// för TILLÅTANDE: svaga träffar släpps in till domaren. KRYMPER den blir 9 för
+// strängt och giltiga fall fälls — exakt det som hände besittningsskydd-lokal
+// i #382. Tripwiren nedan tvingar fram en ommätning i båda riktningarna.
+//
+// Att golvet överlevde #400 OFÖRÄNDRAT är inget argument för att hoppa över
+// nästa ommätning: det överlevde för att ändringen var +1,7 %, och det gick
+// bara att veta genom att mäta.
 const MIN_TOP_SCORE = 9
 
 /**
- * Korpusstorleken MIN_TOP_SCORE kalibrerades vid (#382, 2026-08-08).
+ * Korpusstorleken MIN_TOP_SCORE senast mättes om vid (#400, 2026-08-11).
  *
  * Golvet är en tröskel på en KORPUS-BEROENDE skala, så det är bara giltigt för
  * det N det mättes vid. Konstanten finns här — bredvid golvet den villkorar —
@@ -248,7 +273,7 @@ const MIN_TOP_SCORE = 9
  * som failar med en ommätnings-instruktion så snart buildLegalChunks() ger ett
  * annat antal.
  */
-export const MIN_TOP_SCORE_CALIBRATED_AT_CHUNKS = 420
+export const MIN_TOP_SCORE_CALIBRATED_AT_CHUNKS = 427
 const LOW_SCORE_BAND = 12
 const MIN_COVERAGE_IN_BAND = 0.4
 

@@ -7,7 +7,7 @@ import { LEGAL_KNOWLEDGE, LEGAL_DOCUMENT_IDS, getLegalDocument } from './legal-k
  * #129-fixen bygger på). Ingen retrieval/AI testas här — den byggs i Etapp 2.
  */
 describe('Legal knowledge — runtime-katalog (Etapp 1)', () => {
-  it('innehåller alla fem verifierade juridiklagar', () => {
+  it('innehåller alla sex verifierade juridiklagar', () => {
     expect(LEGAL_DOCUMENT_IDS).toEqual(
       expect.arrayContaining([
         'hyreslagen',
@@ -15,9 +15,14 @@ describe('Legal knowledge — runtime-katalog (Etapp 1)', () => {
         'diskrimineringslagen',
         'bokforingslagen',
         'ranteslagen',
+        // #400: lagen (1981:739) om ersättning för inkassokostnader. Grunden för
+        // hela avgiftsarbetet G0–G4a, och citerad i text som går till hyresgäster
+        // — utan den kunde RAG:en inte belägga en enda av de regler produkten
+        // skriver ut.
+        'inkassokostnadslagen',
       ]),
     )
-    expect(LEGAL_KNOWLEDGE).toHaveLength(5)
+    expect(LEGAL_KNOWLEDGE).toHaveLength(6)
   })
 
   // #382: mervärdesskattelagen (1994:200) upphävdes 2023-07-01 och ersattes av
