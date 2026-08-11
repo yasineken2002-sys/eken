@@ -96,6 +96,45 @@ const LEGAL_TRIGGERS: readonly RegExp[] = [
   /deposition|dröjsmålsränt|referensränt|skriftlig/,
   /förfallodag|när ska hyran( senast)? betalas/,
   /vad gäller|har jag rätt|har hyresgästen rätt|får jag kräva|vad säger lagen/,
+  // ── "Får jag ta ut …" som TILLÅTELSEFRÅGA (#400) ──────────────────────────
+  //
+  // Samma form som "får jag kräva" ovan: en fråga om vad lagen tillåter. Den
+  // saknades, och det var den som gjorde att "Får jag ta ut en påminnelseavgift
+  // när hyran betalas för sent?" aldrig ens nådde retrieval — trots att
+  // avgiftens rättsliga grund (2 § lagen 1981:739) är den regel produktens egen
+  // grind implementerar.
+  //
+  // NAKET ORDVAL MÄTTES OCH FÖLL. Till skillnad från "kräva" är "ta ut" också
+  // ett OPERATIVT verb i den här produkten — man tar ut en rapport, en export,
+  // ett underlag. Ett blott /får jag ta ut/ drog in 8 av 8 prövade datafrågor
+  // ("Får jag ta ut rapporten för juni?", "Får jag ta ut saldot på Annas
+  // konto?"). Samma slutsats som momsmönstren nedan: skillnaden ligger inte i
+  // ordet utan i frågans FORM. Mönstret kodar därför tre formkrav:
+  //
+  //   1. OBJEKTET ÄR RÄTTSLIGT och står EFTER verbet. En påföljd tas ut
+  //      (avgift/ersättning/ränta/påminnelse), en rapport tas bara hämtad.
+  //   2. FRÅGAN ÄR INTE EN UPPRÄKNING. "Vilka avgifter får jag ta ut…" och
+  //      "Hur många påminnelseavgifter…" är datafrågor trots rättsligt objekt.
+  //      Uppräkningsordet spärras var som helst i meddelandet — det står inte
+  //      alltid omedelbart före verbet, vilket en lookbehind-variant mättes och
+  //      föll på. "Hur mycket" är INTE med i listan: det är en regelfråga om
+  //      taket, och den ska fångas.
+  //   3. OBJEKTET SLUTAR SOM EGET ORD. Utan det matchade "avgiftsrapporten" och
+  //      "påminnelselistan" på sitt prefix. Lösningen är en böjningsbudget
+  //      (högst tre bokstäver, sedan måste ordet ta slut) i stället för en
+  //      uppräkning av sammansättningsfogar — en fog-lista är samma ändliga
+  //      uppräkning som #382 varnade för, och sammansättningsrymden är oändlig.
+  //
+  // Ankaret ^ används BARA för att förankra uppräknings-lookaheaden över hela
+  // meddelandet; [\s\S]* efter den gör mönstret oankrat i praktiken, så
+  // "Hej! Får jag ta ut…" och flerradiga meddelanden fångas. Det är alltså inte
+  // det ^-ankrade ja/nej-mönster som prövades och ströks i #382 PR3.
+  //
+  // Uppmätt: 30 prövade formuleringar (12 regelfrågor / 18 data- och
+  // driftfrågor) → 0 falska positiva, 0 missade regelfrågor. Låst åt båda håll i
+  // legal-grounding.spec.ts. KVARSTÅENDE RISK, oförändrad från #390: listorna är
+  // ändliga och avstämda mot formuleringar vi hittat på, inte mot prod-data.
+  /^(?![\s\S]*\b(vilka|vilken|vilket|lista|hur många)\b)[\s\S]*får jag ta ut[^.?!]{0,20}(avgift|ersättning|ränta|påminnelse)[a-zåäö]{0,3}(?![a-zåäö])/,
   // ── Moms som RÄTTSFRÅGA (#382 PR3) ────────────────────────────────────────
   //
   // Uppmätt: 3 av 10 realistiska momsfrågor nådde inte ens grinden, utan

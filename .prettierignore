@@ -5,3 +5,13 @@ build
 coverage
 *.generated.*
 prisma/migrations
+
+# Människoverifierad lagtext (#400). Filerna här är ordagrann SFS-text som en
+# människa hämtat, jämfört mot källan och skrivit under med `verifierad_per`.
+# Prettier körde på inkassokostnadslagen.md via lint-staged och lade till
+# blankrader före två numrerade listor — semantiskt neutralt, men filen var
+# då inte längre byte-för-byte det källan levererade. Invarianten ska vara
+# enkel nog att hålla om ett halvår: filen är vad en människa verifierade,
+# utan undantag. Hela katalogen ignoreras så att nästa inlagda lag ärver
+# skyddet utan att någon behöver komma ihåg det.
+.claude/knowledge/lagar/
