@@ -88,6 +88,43 @@ cd apps/api && pnpm db:generate         # prisma generate (uppdaterar klient)
 cd apps/api && pnpm db:seed             # ts-node prisma/seed.ts (även db:seed:platform, db:seed:properties)
 ```
 
+### API-nycklar i `apps/api/.env`
+
+**Prod-nyckeln får ALDRIG läggas i `apps/api/.env`.** Dev-körningar hamnar då på
+produktionskvoten, och `AiQuotaService` stoppar organisationer som överskrider sin
+månadsbudget — en skenande dev-loop kan alltså slå ut riktiga kunder. En prod-
+credential på en utvecklarmaskin är dessutom en onödig exponering, och så länge den
+fungerar som reserv märks det inte att dev-miljön är trasig. Dev ska ha en **egen**
+nyckel med egen kvot. (Regeln kommer ur #385, där dev-nyckeln var död i två månader.)
+
+Behöver en nyckel bara gälla för en enstaka körning: en explicit satt miljövariabel
+vinner över `node --env-file-if-exists=.env` (verifierat empiriskt).
+
+```bash
+ANTHROPIC_API_KEY=… pnpm --filter @eken/api knowledge:eval
+```
+
+**Att byta en nyckel i `.env` — vägen som fungerar.** Filen är gitignorerad
+(rot-`.gitignore` rad 7, `.env`) och därmed **inte spårad**: den finns inte på
+github.com och går inte att redigera i webbläsaren. Redigera den i codespacets egen
+terminal:
+
+```bash
+sed -i 's|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=sk-ant-…|' /workspaces/eken/apps/api/.env
+```
+
+Verifiera sedan **utan att skriva ut nyckeln** — ett sha256-prefix räcker för att se
+att den faktiskt byttes, och ett gratis `GET /v1/models` för att se att den accepteras:
+
+```bash
+cd /workspaces/eken/apps/api
+node --env-file-if-exists=.env -e 'console.warn(require("crypto").createHash("sha256").update(process.env.ANTHROPIC_API_KEY.trim()).digest("hex").slice(0,16))'
+```
+
+`scripts/preflight-keys.ts` skiljer dessutom de tre tillstånden åt — SAKNAS,
+FELFORMAD, OGILTIG — och körs före allt arbete i `knowledge:eval`/`knowledge:embed`,
+så en trasig nyckel kostar noll Voyage-anrop.
+
 ### Övriga kommandon
 
 ```bash
