@@ -18,12 +18,17 @@ const OK_RESULT = {
   details: { database: { status: 'up' as const } },
 }
 
-function makeController(check = jest.fn().mockResolvedValue(OK_RESULT)) {
+function makeController(
+  check = jest.fn().mockResolvedValue(OK_RESULT),
+  count: jest.Mock = jest.fn().mockResolvedValue(427),
+) {
   const health = { check }
   const prismaHealth = { isHealthy: jest.fn() }
+  const prisma = { legalChunkEmbedding: { count } }
   return {
-    controller: new HealthController(health as never, prismaHealth as never),
+    controller: new HealthController(health as never, prismaHealth as never, prisma as never),
     check,
+    count,
   }
 }
 
@@ -111,7 +116,17 @@ describe('HealthController.check', () => {
 
     const result = await controller.check()
 
-    expect(Object.keys(result).sort()).toEqual(['details', 'error', 'info', 'revision', 'status'])
+    expect(Object.keys(result).sort()).toEqual([
+      'details',
+      'error',
+      'info',
+      'legalKnowledge',
+      'revision',
+      'status',
+    ])
+    // Paritetsfältet bär EXAKT tre nycklar. En publik endpoint ska inte råka
+    // få med sig något mer när fältet byggs ut.
+    expect(Object.keys(result.legalKnowledge).sort()).toEqual(['chunks', 'model', 'vectors'])
   })
 
   it('läcker inga andra RAILWAY_-variabler', async () => {
@@ -147,5 +162,74 @@ describe('HealthController.check', () => {
     const { controller } = makeController(failing)
 
     await expect(controller.check()).rejects.toThrow('database down')
+  })
+
+  describe('legalKnowledge — paritetsfältet (#414)', () => {
+    it('bär BÅDA TALEN, inte ett omdöme', async () => {
+      const { controller } = makeController(undefined, jest.fn().mockResolvedValue(427))
+
+      const result = await controller.check()
+
+      // '427 = 427' går att kontrollera av den som läser. 'ok' går inte — då
+      // måste man lita på vår jämförelse i stället för att göra den själv.
+      expect(result.legalKnowledge.vectors).toBe(427)
+      expect(typeof result.legalKnowledge.chunks).toBe('number')
+      expect(result.legalKnowledge.model).toBe('voyage-4')
+      // Ingen flagga, inget omdöme, ingen sammanfattning.
+      expect(result.legalKnowledge).not.toHaveProperty('parity')
+      expect(result.legalKnowledge).not.toHaveProperty('status')
+      expect(result.legalKnowledge).not.toHaveProperty('ok')
+    })
+
+    it('BRUTEN paritet syns som två olika tal — inte som ett fel', async () => {
+      // Fältets hela poäng. Ett fält som aldrig setts visa fel är samma sak som
+      // en vakt som aldrig setts falla.
+      const { controller } = makeController(undefined, jest.fn().mockResolvedValue(420))
+
+      const result = await controller.check()
+
+      expect(result.legalKnowledge.vectors).toBe(420)
+      expect(result.legalKnowledge.chunks).not.toBe(420)
+      // Bruten paritet får INTE fälla hälsokontrollen — Railway pollar
+      // endpointen och skulle starta om tjänsten. Degraderad retrieval är inte
+      // skäl att ta ned API:t.
+      expect(result.status).toBe('ok')
+    })
+
+    it('räknar bara den AKTIVA modellens rader', async () => {
+      const count = jest.fn().mockResolvedValue(427)
+      const { controller } = makeController(undefined, count)
+
+      await controller.check()
+
+      expect(count).toHaveBeenCalledWith({ where: { model: 'voyage-4' } })
+    })
+
+    it('DB-talet räknas per anrop — bundle-talet gör det inte', async () => {
+      // Asymmetrin är avsiktlig: bundlen kan inte ändras medan processen lever,
+      // databasen kan (knowledge:embed mot en levande instans, #400).
+      const count = jest.fn().mockResolvedValue(427)
+      const { controller } = makeController(undefined, count)
+
+      await controller.check()
+      await controller.check()
+      await controller.check()
+
+      expect(count).toHaveBeenCalledTimes(3)
+    })
+
+    it('en DB-räkning som kastar ger vectors: null — och tar ALDRIG ned endpointen', async () => {
+      // null är ett faktum ('kunde inte räknas'), inte ett omdöme. Samma
+      // avvägning som för revision: att veta något om korpusen får aldrig kunna
+      // fälla hälsokontrollen.
+      const count = jest.fn().mockRejectedValue(new Error('relation does not exist'))
+      const { controller } = makeController(undefined, count)
+
+      const result = await controller.check()
+
+      expect(result.legalKnowledge.vectors).toBeNull()
+      expect(result.status).toBe('ok')
+      expect(result.revision).toBeDefined()
+    })
   })
 })
