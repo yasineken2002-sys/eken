@@ -235,6 +235,17 @@ export const LEGAL_EVAL_SET: LegalEvalCase[] = [
     expectedOutcome: 'answerable',
   },
   {
+    id: 'paminnelseavgift-hogre-i-avtal',
+    category: 'inkassokostnader',
+    question: 'Kan jag avtala om en högre påminnelseavgift än lagens belopp?',
+    expectedSources: [{ lawId: 'inkassokostnadslagen', paragraphs: ['6'] }],
+    expectedAnswerCore:
+      'Nej. Ett avtalsvillkor som utvidgar gäldenärens skyldighet att ersätta kostnaderna utöver vad lagen medger är ogiltigt. Taket kan alltså inte avtalas bort uppåt — inte ens om hyresgästen skrivit under.',
+    shouldRecommendJurist: false,
+    expectedOutcome: 'answerable',
+    note: '6 § avgör takfrågan: 2 § ger rätten, 4 § beloppet, och 6 § gör det omöjligt att avtala sig förbi beloppet. Utan 6 § är svaret "du får ta ut en avgift" utan den begränsning som gör svaret sant. Hör därför hemma i mätstickan, inte bara i korpusen.',
+  },
+  {
     id: 'kravbrev-avgift',
     category: 'inkassokostnader',
     question: 'Får jag ta ut en avgift för kravbrevet?',

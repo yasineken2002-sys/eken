@@ -245,7 +245,7 @@ describe('Legal grounding (Etapp 2, PR 2.3a + 2.3b)', () => {
             '  3. Kör negativkontrollen: deposition-storlek och',
             '     hyresgastval-diskriminering MÅSTE förbli utanför. Ett golv som',
             '     släpper in dem är inget golv.',
-            '  4. Kör knowledge:eval före och efter — invariant 5 (>= 15/25) ska hålla.',
+            '  4. Kör knowledge:eval före och efter — invariant 5 (>= 15/26) ska hålla.',
             '  5. Uppdatera kalibreringsblocket i legal-grounding.ts med de NYA',
             `     uppmätta talen, och sätt MIN_TOP_SCORE_CALIBRATED_AT_CHUNKS = ${faktiskt}.`,
           ].join('\n'),
@@ -451,7 +451,7 @@ describe('Legal grounding (Etapp 2, PR 2.3a + 2.3b)', () => {
   })
 
   describe('Uppmätt grundningstäckning mot eval-setet (regressionsspärr)', () => {
-    it('steg 1 + godkänd domare träffar rätt paragraf i minst 13/25 answerable-fall', () => {
+    it('steg 1 + godkänd domare träffar rätt paragraf i minst 13/26 answerable-fall', () => {
       // Övre gräns för grinden: med domaren bypassad (JA på alla kandidater)
       // ska kandidat-vägen prestera exakt som PR 2.2:s retrieval-mätning.
       // Domaren (steg 2) kan bara byta felgrundade svar mot ärliga missar —
@@ -467,11 +467,11 @@ describe('Legal grounding (Etapp 2, PR 2.3a + 2.3b)', () => {
         }
         if (scoreRun(c, output).sourceHit) hits++
       }
-      // Nämnaren pinnad med avsikt (se legal-retrieval.spec.ts): #406 la sju
-      // inkassokostnadsfall → 18 blev 25. Golvet 13 är uppmätt 2026-08-11 och
+      // Nämnaren pinnad med avsikt (se legal-retrieval.spec.ts): #406 la åtta
+      // inkassokostnadsfall → 18 blev 26. Golvet 13 är uppmätt 2026-08-11 och
       // ligger ETT under BM25-baslinjens 14: kravbrev-avgift hämtas av retrieval
       // (BM25 6,6) men fälls av grindens golv innan domaren ens ser den.
-      expect(ANSWERABLE.length).toBe(25)
+      expect(ANSWERABLE.length).toBe(26)
       expect(hits).toBeGreaterThanOrEqual(13)
     })
   })

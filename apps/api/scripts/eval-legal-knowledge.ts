@@ -22,9 +22,9 @@
  *   3. deposition-storlek grundas ALDRIG (golv eller domare — domaren är
  *      designförsvaret: cosine 0.605 ligger över golvet).
  *   4. agandeform-skatt-paketering är ej-juridisk (fångas före retrieval).
- *   5. answerableHits ≥ 15 av 25 (stabilt reproducerad nivå 2026-08-11, 3×
- *      identiska körningar). Nivån var 14 av 18 fram till #406:s sju nya
- *      inkassokostnadsfall; nämnaren steg med 7 och täljaren med 1
+ *   5. answerableHits ≥ 15 av 26 (stabilt reproducerad nivå 2026-08-11, 3×
+ *      identiska körningar). Nivån var 14 av 18 fram till #406:s åtta nya
+ *      inkassokostnadsfall; nämnaren steg med 8 och täljaren med 1
  *      (paminnelseavgift-lagens-egna-ord). Kvoten är alltså SÄNKT i andel och
  *      HÖJD i absoluta tal — den kodar vad som faktiskt mättes, inte vad
  *      #406-fixen förväntas ge. Höj den när PR2 mäter ett nytt stabilt värde,
@@ -70,7 +70,7 @@
  *      2026-08-11 är dess BM25-score 0,00 medan den enda inkasso-paragraf som
  *      får lexikal poäng är 4 a § — förseningsersättning mellan näringsidkare,
  *      alltså fel regel för en bostadshyresgäst. Invariant 9 spärrar det utfallet.
- *   9. INGET av de sju inkassokostnadsfallen får ett OSÄKERT utfall: ärlig miss
+ *   9. INGET av de åtta inkassokostnadsfallen får ett OSÄKERT utfall: ärlig miss
  *      ELLER grundad med fallets egen facit-paragraf — aldrig grundad med fel
  *      paragraf, och ALDRIG med 4 a § bland källorna. Samma mönster som
  *      invarianterna 2, 6 och 7.
@@ -81,6 +81,27 @@
  *      ska mätas på VILKEN paragraf den lyfter, och den här invarianten är den
  *      mätningen. GRÖN i dag (3/3 körningar 2026-08-11) och måste förbli grön
  *      genom hela #406-serien.
+ *
+ * AVGRÄNSNING — #406 ÄR TVÅ PROBLEM, OCH PR-PLANEN LÖSER ETT (uppmätt 2026-08-11):
+ *   Av de åtta inkassokostnadsfallen når SEX aldrig grinden: de fälls av
+ *   miss:weak-retrieval, alltså BM25 under golvet 9 OCH cosine under 0,52.
+ *     paminnelseavgift-taket            1,8 / 0,50  ·  cosine 0,417
+ *     paminnelseavgift-avtalskravet     6,4 / 0,50  ·  cosine 0,465
+ *     paminnelseavgift-vad-galler       5,2 / 0,67  ·  cosine 0,444
+ *     paminnelseavgift-vad-sager-lagen  6,5 / 0,25  ·  cosine 0,456
+ *     paminnelseavgift-hogre-i-avtal    8,9 / 0,57  ·  cosine 0,409  ← fälls med 0,1
+ *     kravbrev-avgift                   6,6 / 0,50  ·  cosine 0,461
+ *   Endast paminnelseavgift-ratten blir kandidat och fälls av domaren; endast
+ *   paminnelseavgift-lagens-egna-ord grundas.
+ *
+ *   Den planerade fixen (bredare kandidatfält + per-chunk-selektiv domare)
+ *   angriper FÖNSTRET. Den kan per konstruktion inte hjälpa de sex — en domare
+ *   som aldrig får se en kandidat kan inte välja den. Grind-halvan behöver en
+ *   egen kartläggning; cosine-golvet 0,52 står inte på bordet. Invariant 8
+ *   mäter fönster-halvan och ska bli grön av fixen. De sex är AVSIKTLIGT inte
+ *   låsta av någon invariant: vi vet ännu inte att de kan lösas, och en
+ *   invariant för något som saknar känt lösningsutrymme är ett löfte, inte ett
+ *   krav. Invariant 9 skyddar dem ändå mot det farliga utfallet (fel paragraf).
  */
 import { PrismaClient } from '@prisma/client'
 import { ConfigService } from '@nestjs/config'
