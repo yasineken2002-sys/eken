@@ -139,6 +139,65 @@ describe('Legal grounding (Etapp 2, PR 2.3a + 2.3b)', () => {
       })
     })
 
+    // #400: "får jag ta ut" saknades och lät en tillåtelsefråga om
+    // påminnelseavgift passera som icke-juridisk. Låst åt BÅDA håll, för det
+    // nakna ordvalet drog in 8 av 8 prövade datafrågor — "ta ut" är också ett
+    // operativt verb här (ta ut en rapport, en export). Se kalibreringsblocket i
+    // legal-grounding.ts för de tre formkraven mönstret kodar.
+    describe('"Får jag ta ut …" — tillåtelsefråga vs datafråga (#400)', () => {
+      it('tillåtelsefrågor om en rättslig påföljd grindas', () => {
+        const legal = [
+          'Får jag ta ut en påminnelseavgift när hyran betalas för sent?',
+          'Får jag ta ut en avgift för sen betalning?',
+          'Får jag ta ut avgifter för påminnelser?',
+          'Får jag ta ut avgiften i förskott?',
+          'Får jag ta ut ersättning för ett inkassokrav?',
+          'Får jag ta ut ersättningen för inkassokravet?',
+          'Får jag ta ut ränta på obetald hyra?',
+          'Får jag ta ut räntan från förfallodagen?',
+          'Får jag ta ut en avgift för att skicka pappersfaktura?',
+          // Regelfråga om TAKET — "hur mycket" är avsiktligt inte spärrat.
+          'Hur mycket får jag ta ut i påminnelseavgift?',
+          // Oankrat i praktiken: inledande text och flera rader ska överleva.
+          'Hej! Får jag ta ut en påminnelseavgift på en obetald avi?',
+          'Tack för hjälpen.\nEn sak till: får jag ta ut en avgift för påminnelser?',
+        ]
+        for (const q of legal) {
+          expect({ q, legal: isLegalQuestion(q) }).toEqual({ q, legal: true })
+        }
+      })
+
+      it('uppräkningar och driftfrågor grindas INTE, trots samma verb', () => {
+        const data = [
+          // Uppräkningsformen — rättsligt objekt, men frågan är en lista.
+          'Vilka avgifter får jag ta ut för påminnelser?',
+          'Vilken ersättning får jag ta ut vid inkasso?',
+          'Vilket belopp får jag ta ut i avgift?',
+          'Lista vad jag får jag ta ut för avgifter',
+          'Hur många påminnelseavgifter får jag ta ut i ersättning per år?',
+          // Sammansättningar: objektet är ett PREFIX, inte frågans ämne.
+          'Får jag ta ut avgiftsrapporten?',
+          'Får jag ta ut avgiftsunderlaget för juni?',
+          'Får jag ta ut ersättningsrapporten?',
+          'Får jag ta ut räntespecifikationen?',
+          'Får jag ta ut påminnelselistan?',
+          'Får jag ta ut påminnelserapporten för Q2?',
+          'Får jag ta ut avgiftsjournalen?',
+          // Rent operativa uttag.
+          'Får jag ta ut rapporten för juni?',
+          'Får jag ta ut en kopia av kontraktet ur systemet?',
+          'Får jag ta ut listan på förfallna avier?',
+          'Får jag ta ut bokföringsunderlaget för Q2?',
+          'Får jag ta ut en export av hyresgästerna?',
+          'Får jag ta ut saldot på Annas konto?',
+        ]
+        for (const q of data) {
+          expect({ q, legal: isLegalQuestion(q) }).toEqual({ q, legal: false })
+          expect(evaluateLegalRetrieval(q)).toBeNull()
+        }
+      })
+    })
+
     it('operativa kommandon triggar INTE juridisk grundning', () => {
       const operational = [
         'Skapa en faktura på 8 500 kr till Anna Svensson med förfallodatum 2026-07-01',
