@@ -123,6 +123,19 @@ mycket. `420 chunkar = 420 rader` är bra just för att kombinationen bara kan k
 från den rad du vill bevisa. Jämför punkt 4: nyckeln ska inte kunna matcha före
 skrivningen heller.
 
+En nyckel som börjar med `-` eller `--` äts av argumentparsern innan den blir ett
+sökmönster. `grep -F "--fail-with-body"` gav
+`invalid option --fail-with-body` och rapporterades som "saknas" — frasen fanns.
+**Avsluta flaggparsningen med `--`:**
+
+```bash
+grep -qF -- "--fail-with-body" fil    # -- säger: allt härefter är argument, inte flaggor
+```
+
+Det hände när punkt 6 verifierades på sig själv, med `--fail-with-body` hämtad ur
+punktens egen tabell över bra nycklar. Den är bra i brytbarhetsmening och usel som
+skalargument — två olika egenskaper hos samma sträng.
+
 Detta gäller också loggar. Paritetsraden i prod verifieras med `420 chunkar = 420
 rader`, inte med hela meningen `Lagtext/vektor-paritet OK: …` — och loggen skrivs
 till fil först, eftersom `railway logs | grep` gav tomt medan `railway logs > fil`
