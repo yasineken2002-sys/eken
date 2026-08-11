@@ -59,12 +59,38 @@ En kontroll som alltid är sann bevisar ingenting. Grep:a efter en fras som **ba
 finns i den nya versionen, inte efter något som fanns i båda — en grep som hade
 matchat även före skrivningen är en tautologi och passerar tyst.
 
+**5. En misslyckad verifiering kan bero på verktyget lika gärna som på innehållet —
+och skillnaden måste mätas.**
+
+Ett rött utfall är inte automatiskt ett fynd. Det säger bara att _kontrollen_ inte
+gick igenom, och orsaken kan lika gärna ligga i hur du frågade.
+
+Två fall ur samma arbetspass:
+
+_Radbrytning som såg ut som saknat innehåll._ Fem fraser kontrollerades i en
+PR-kropp; fyra gav träff, den femte — `commit statuses` — rapporterades saknad.
+Frasen fanns, men GitHub hade radbrutit mitt i den, och `grep` arbetar radvis. Mätt
+med `tr '\n' ' '` först fanns den. Hade utfallet tagits för sant vore slutsatsen
+"texten skrevs ofullständigt" — fel, och den felaktiga slutsatsen hade lett till en
+onödig omskrivning.
+
+_Uppslagning som såg ut som en filskillnad._ En träd-jämförelse mot en mergad gren
+gav `FILEN SKILJER SIG`. Grenen var redan raderad lokalt, så `git rev-parse` kunde
+inte slå upp den och kastade `ambiguous argument` — vilket `diff` tolkade som en
+skillnad. Med rätt sha (`gh pr view --json headRefOid`) var träden identiska.
+
+Innan ett rött utfall rapporteras som ett fynd: kontrollera att kontrollen kunde ha
+gett grönt. Slog uppslagningen upp något? Matchar mönstret formen på det du söker
+(radvis vs helt dokument, skiftläge, radbrytningar, backticks)? Skrev kommandot till
+stderr i stället för stdout?
+
 ## Checklista
 
 - [ ] Skrivningen kördes med cwd där verktyget kräver det
 - [ ] Felutmatningen pipades inte bort
 - [ ] Resultatet lästes tillbaka **från destinationen**
 - [ ] Kontrollen letade efter något som bara kan finnas efter skrivningen
+- [ ] Ett rött utfall verifierades vara innehållets fel, inte verktygets
 - [ ] Rapporten till användaren säger bara det som lästs tillbaka
 
 ## Relaterade fällor med samma form

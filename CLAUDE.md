@@ -49,8 +49,18 @@ kill $(lsof -ti:3000) 2>/dev/null; kill $(lsof -ti:5173) 2>/dev/null
 ### Verifiera att allt körs
 
 ```bash
-curl -s http://localhost:3000/v1/health   # Förväntat: { success: true, data: { status: "ok" } }
-curl -s http://localhost:5173 | head -c 50 # Förväntat: <!doctype html>
+# -f = fäll på HTTP-fel, -sS = tyst men visa transportfel. Utan -f/-S blir en
+# nedstängd server TOM UTDATA i stället för ett fel — och en pipe (| head, | jq)
+# gör dessutom exitkoden till det sista kommandots, så inget kan fälla alls.
+curl -fsS http://localhost:3000/v1/health   # OK: { success: true, data: { status: "ok" } }
+curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:5173   # OK: 200
+```
+
+Misslyckande ser ut så här — synligt fel **och** nollskild exitkod:
+
+```
+curl: (7) Failed to connect to localhost port 3000 after 0 ms: Connection refused
+$? = 7   # 7 = servern svarar inte, 22 = HTTP 4xx/5xx
 ```
 
 ### Loggar
@@ -239,21 +249,32 @@ import type { RegisterDto } from './dto/register.dto'
 ### Testa endpoints lokalt
 
 ```bash
-# Hälsokontroll
-curl -s http://localhost:3000/v1/health | jq .
+# OBS om pipen till jq: `-f` ger curl nollskild exitkod, men en pipe gör $? till
+# SISTA kommandots — alltså jq:s. `-sS` räddar det som betyder mest här (felet
+# skrivs synligt till stderr i stället för att ge tom utdata), men ska exitkoden
+# betyda något: kör utan pipe, eller `set -o pipefail` först. Uppmätt:
+#   curl -fsS <nedstängd> | jq .                      → exit 0   (tyst framgång)
+#   set -o pipefail; curl -fsS <nedstängd> | jq .     → exit 7
 
-# Registrera konto
-curl -s -X POST http://localhost:3000/v1/auth/register \
+# Hälsokontroll
+curl -fsS http://localhost:3000/v1/health | jq .
+
+# Registrera konto. --fail-with-body i stället för -f: vi vill BÅDE ha nollskild
+# exitkod på 4xx OCH se API:ets felsvar ({ success: false, error: { … } }).
+curl -sS --fail-with-body -X POST http://localhost:3000/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"test@test.se","password":"Test123!","firstName":"Test","lastName":"User","organizationName":"Test AB","orgNumber":"556000-0001"}' | jq .
 
-# Logga in och hämta token
-TOKEN=$(curl -s -X POST http://localhost:3000/v1/auth/login \
+# Logga in och hämta token. Kontrollen är inte pynt: misslyckas inloggningen blir
+# TOKEN tom eller "null", och nästa anrop svarar 401 — ett fel som ser ut att
+# handla om behörighet i stället för om inloggningen.
+TOKEN=$(curl -sS --fail-with-body -X POST http://localhost:3000/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"test@test.se","password":"Test123!"}' | jq -r '.data.accessToken')
+[ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || echo "INLOGGNING MISSLYCKADES — TOKEN är '$TOKEN'" >&2
 
 # Autentiserad request
-curl -s http://localhost:3000/v1/properties \
+curl -sS --fail-with-body http://localhost:3000/v1/properties \
   -H "Authorization: Bearer $TOKEN" | jq .
 ```
 
