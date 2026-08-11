@@ -247,3 +247,61 @@ jobs:
 
       - name: Verify generated/ matches .claude/knowledge/lagar/
         run: node apps/api/scripts/check-generated-knowledge-sync.mjs
+
+  # ── Paraply: EN check att pinna en required-regel mot (#405) ────────────────
+  #
+  # VARFÖR: en branch protection-regel pinnas mot ett CHECKNAMN, inte mot ett
+  # jobb. Nio namn i en regel är nio strängar som kan glida — jobbnamn i den här
+  # filen har redan bytts två gånger (`Build` → `Lint`, och
+  # `Reminder fee contractual-basis guard` → `Reminder fee amount guard` i #404),
+  # och en regel som pekar på ett namn som inte längre rapporteras blir tyst
+  # verkningslös: PR:en blir grön för att checken aldrig dyker upp. Med ett
+  # paraply finns EN sträng att pinna, och den strängen ändras inte när ett
+  # underliggande jobb byter namn.
+  #
+  # ⚠ NEEDS-LISTAN ÄR EN UPPRÄKNING — VARJE NY VAKT MÅSTE IN PÅ TVÅ STÄLLEN.
+  # Läggs ett jobb till i den här filen men inte i `needs` nedan, kör det
+  # fortfarande, men paraplyet väntar inte på det och bryr sig inte om utfallet.
+  # Den nya vakten grindar då ingenting, och ingenting säger till. Det är samma
+  # felklass som paraplyet finns för att stänga, en nivå upp. Se PR-texten till
+  # #405 för varför en uppräkning ändå valdes framför alternativen.
+  ci-passed:
+    name: CI passed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # `always()` är BÄRANDE, inte kosmetik. Utan den skippas det här jobbet så
+    # snart något i `needs` failar — och GitHub räknar en SKIPPAD required check
+    # som GODKÄND. Paraplyet vore då grönt exakt när sviten är röd. Uppmätt i
+    # den här PR:en: ett kontrolljobb utan `always()` fick result `skipped` när
+    # dess beroende failade, medan det här jobbet fick `failure`.
+    if: always()
+    needs:
+      - typecheck
+      - lint
+      - test
+      - index-guard
+      - invoice-number-guard
+      - reminder-fee-guard
+      - period-lookup-guard
+      - design-token-guard
+      - generated-knowledge-sync-guard
+    steps:
+      # `always()` får jobbet att KÖRA, men säger ingenting om utfallet — utan
+      # den här kontrollen skulle det köra och lyckas oavsett vad som hänt.
+      # Kravet är `success` för VARJE jobb: `failure`, `cancelled` och `skipped`
+      # fäller alla. Inget jobb i den här filen har ett `if:`, så inget skippas
+      # legitimt; skulle det ändras är ett fall bättre än ett tyst godkännande.
+      - name: Verify every CI job succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "  \(.value.result)\t\(.key)"' | sort
+          failed=$(echo "$NEEDS" | jq -r 'to_entries | map(select(.value.result != "success")) | .[].key')
+          if [ -n "$failed" ]; then
+            echo ""
+            echo "CI FAILED — dessa jobb gav inte 'success':"
+            echo "$failed" | sed 's/^/  • /'
+            exit 1
+          fi
+          echo ""
+          echo "Alla $(echo "$NEEDS" | jq 'length') CI-jobb gav success."
