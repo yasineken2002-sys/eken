@@ -789,6 +789,32 @@ Kör detta mentalt innan varje feature anses klar:
   Deployas av `.github/workflows/deploy.yml` på push till `main` (CI = `ci.yml`: typecheck + lint).
 - **Postgres + Redis** → Railway-plugins.
 
+### CI-skyddet slutar vid merge-punkten — inte vid deploy
+
+`main` skyddas av rulesetet **`main`** (active, tom bypass-lista) med **`CI passed`**
+som required check. Alla nio CI-jobb måste ge `success` innan en PR kan mergas;
+GitHub blockerar merge-knappen annars (`mergeStateStatus: BLOCKED`). Uppmätt i #405.
+
+**Men skyddet gäller bara fram till merge.** `deploy.yml` bygger de tre SPA:erna och
+har `needs: ci` — **API:t deployas av Railways egen git-integration**, som lyssnar
+direkt på `main` och inte känner till GitHubs checkar. Hamnar något på `main` ändå,
+går det ut.
+
+Praktiskt betyder det två saker:
+
+1. **En required check är en spärr mot att fel kod _mergas_, inte mot att den
+   _deployas_.** För frontend är kedjan mekanisk; för API:t bryts den efter merge.
+2. **`/v1/health`-fältet `revision` är enda sättet att se vad som faktiskt kör.**
+   Det är därför fältet finns. Efter varje merge:
+
+   ```bash
+   curl -fsS https://eken-production.up.railway.app/v1/health \
+     | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["revision"])'
+   ```
+
+   Matchar det inte squash-commiten är antingen deployen inte klar, eller så kör prod
+   något annat än du tror.
+
 ### Docker Compose (lokal fullstack)
 
 ```bash
