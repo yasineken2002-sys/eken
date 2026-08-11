@@ -30,7 +30,6 @@ Gäldenären är skyldig att utge ersättning för skriftlig betalningspåminnel
 ## 3 §
 
 Gäldenären är vidare skyldig att utge ersättning för
-
 1. krav rörande skulden, om kravbrev som har utformats på ett sådant sätt som anges i 5§ inkassolagen (1974:182) har lämnats över eller sänts till gäldenären,
 2. upprättande av fullständig plan för amortering av återstående del av skulden, om planen har tillkommit i samråd med gäldenären samt har satts upp skriftligt och lämnats över eller sänts till gäldenären.
 
@@ -39,7 +38,6 @@ Gäldenären är vidare skyldig att utge ersättning för
 Gäldenärens ersättningsskyldighet enligt 2 och 3 §§ gäller endast kostnader som har varit skäligen påkallade för att ta till vara borgenärens rätt.
 
 Ersättning ska betalas, om det inte finns särskilda skäl till annat, med högst
-
 1. sextio kronor för skriftlig betalningspåminnelse som avses i 2 §,
 2. etthundraåttio kronor för krav som avses i 3 § 1,
 3. etthundrasjuttio kronor för upprättande av amorteringsplan som avses i 3 § 2. Lag (2013:56).
