@@ -88,12 +88,18 @@ describe('Legal retrieval (Etapp 2, PR 2.2)', () => {
   })
 
   describe('Uppmätt träffsäkerhet mot eval-setet (ärlig baslinje)', () => {
-    it('BM25-retrieval når minst 12/18 answerable-fall (uppmätt baslinje)', async () => {
+    it('BM25-retrieval når minst 14/25 answerable-fall (uppmätt baslinje)', async () => {
       const report = await runRetrievalEval()
-      expect(report.answerableTotal).toBe(18)
-      // Uppmätt: 12/18 med BM25 (naiv substräng-räkning gav 8/18). Floor-assertion
-      // = regressionsspärr; höj den om retrieval förbättras.
-      expect(report.answerableHits).toBeGreaterThanOrEqual(12)
+      // Nämnaren är pinnad med avsikt: den som lägger till eval-fall ska tvingas
+      // MÄTA om golvet nedan, inte se det tyst spädas ut. #406 la sju
+      // inkassokostnadsfall → 18 blev 25 (uppmätt 2026-08-11).
+      expect(report.answerableTotal).toBe(25)
+      // Uppmätt: 14/25 med BM25 (var 12/18 före #406; naiv substräng-räkning gav
+      // 8/18). Av de sju nya fallen träffar BM25 två — paminnelseavgift-lagens-
+      // egna-ord och kravbrev-avgift, båda formulerade med lagens EGNA ord.
+      // De fem övriga är #406:s vokabulärgap. Floor-assertion = regressionsspärr;
+      // höj den om retrieval förbättras.
+      expect(report.answerableHits).toBeGreaterThanOrEqual(14)
     })
 
     it('de entydiga fallen träffar tillförlitligt', async () => {
