@@ -184,9 +184,15 @@ jobs:
 
   design-token-guard:
     name: Design token guard
+    # NEGATIVKONTROLL (#405) — TILLFÄLLIG, tas bort före merge.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: AVSIKTLIGT BROTT (negativkontroll #405)
+        run: |
+          echo 'Detta jobb failar med flit — paraplyet MÅSTE falla.'
+          exit 1
+
       - uses: actions/checkout@v4
 
       # Rent statisk kontroll (fs-only, inga beroenden) — spärr mot att nya rå
@@ -305,3 +311,14 @@ jobs:
           fi
           echo ""
           echo "Alla $(echo "$NEEDS" | jq 'length') CI-jobb gav success."
+
+  # NEGATIVKONTROLL (#405) — TILLFÄLLIG, tas bort före merge.
+  # Mäter premissen som stod som obekräftad i ärendet: ett needs-jobb vars
+  # beroende failar blir SKIPPAT, inte failat. Inget `if: always()` här — det är
+  # hela poängen. Jämför resultatet med `CI passed`, som har always().
+  skipped-probe:
+    name: PROBE utan always (ska bli skipped)
+    runs-on: ubuntu-latest
+    needs: [design-token-guard]
+    steps:
+      - run: echo "Om du ser det här körde jobbet — då är premissen fel."
