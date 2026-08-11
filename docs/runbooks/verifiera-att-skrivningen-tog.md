@@ -35,7 +35,8 @@ gh pr edit 407 --body-file body.md && echo "klart"
 # rätt: läser tillbaka det som faktiskt ligger på GitHub, och jämför mot facit
 gh pr edit 407 --body-file "$PWD/body.md"
 gh pr view 407 --json body -q .body > hamtad.md
-diff body.md hamtad.md && echo "verifierat" || echo "SKREVS ALDRIG / SKILJER SIG"
+diff <(printf '%s\n' "$(cat body.md)") <(printf '%s\n' "$(cat hamtad.md)") \
+  && echo "verifierat" || echo "SKREVS ALDRIG / SKILJER SIG"
 ```
 
 Samma sak för filer: läs tillbaka innehållet, eller mät en hash, i stället för att
@@ -69,8 +70,17 @@ av den:
 ```bash
 gh pr edit N --body-file "$PWD/body.md"
 gh pr view N --json body -q .body > hamtad.md
-diff body.md hamtad.md && echo "identisk" || echo "SKILJER SIG — se diffen ovan"
+
+# $(...) strippar avslutande nyrader, printf lägger tillbaka exakt en.
+# GitHub lägger till en tom rad i slutet av varje kropp — utan den här
+# normaliseringen larmar jämförelsen varje gång, och regeln överges vid
+# första falsklarmet. Uppmätt på #412: enda diffen var "59a60 > ".
+diff <(printf '%s\n' "$(cat body.md)") <(printf '%s\n' "$(cat hamtad.md)") \
+  && echo "identisk" || echo "SKILJER SIG — se diffen ovan"
 ```
+
+Normaliseringen är smal med avsikt: den rör bara avslutande nyrader. En ändrad rad
+mitt i texten fäller fortfarande (mätt).
 
 En jämförelse kan inte falla på radbrytning, indrag eller argumentparsning, för
 **ingen sökfras används**. Den svarar dessutom på en bättre fråga: inte "finns den här
