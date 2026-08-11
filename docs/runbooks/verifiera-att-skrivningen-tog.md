@@ -32,14 +32,15 @@ negativkontroll — en grind som aldrig setts falla är ingen grind.
 # fel: bekräftar bara att den lokala filen finns
 gh pr edit 407 --body-file body.md && echo "klart"
 
-# rätt: läser tillbaka det som faktiskt ligger på GitHub
+# rätt: läser tillbaka det som faktiskt ligger på GitHub, och jämför mot facit
 gh pr edit 407 --body-file "$PWD/body.md"
-gh pr view 407 --json body -q .body > check.md
-grep -q "den fras som skulle tillkomma" check.md && echo "verifierat" || echo "SKREVS ALDRIG"
+gh pr view 407 --json body -q .body > hamtad.md
+diff body.md hamtad.md && echo "verifierat" || echo "SKREVS ALDRIG / SKILJER SIG"
 ```
 
 Samma sak för filer: läs tillbaka innehållet, eller mät en hash, i stället för att
-lita på att skrivkommandot inte klagade.
+lita på att skrivkommandot inte klagade. Jämför hela texten när du kan — se punkt 5
+för varför fragmentsökning är sämre.
 
 **2. Pipa aldrig bort felutmatning från en skrivning.**
 
@@ -59,8 +60,49 @@ En kontroll som alltid är sann bevisar ingenting. Grep:a efter en fras som **ba
 finns i den nya versionen, inte efter något som fanns i båda — en grep som hade
 matchat även före skrivningen är en tautologi och passerar tyst.
 
-**5. En misslyckad verifiering kan bero på verktyget lika gärna som på innehållet —
+**5. Sök inte efter fragment. Jämför hela texten.**
+
+Har du själv skrivit PR-kroppen, ärendet eller filen, så **finns den avsedda texten
+redan**. Jämför den mot den hämtade i sin helhet, i stället för att leta efter delar
+av den:
+
+```bash
+gh pr edit N --body-file "$PWD/body.md"
+gh pr view N --json body -q .body > hamtad.md
+diff body.md hamtad.md && echo "identisk" || echo "SKILJER SIG — se diffen ovan"
+```
+
+En jämförelse kan inte falla på radbrytning, indrag eller argumentparsning, för
+**ingen sökfras används**. Den svarar dessutom på en bättre fråga: inte "finns den här
+biten?" utan "är det jag skrev det som ligger där?".
+
+Tre gånger i samma session gav fragmentsökning "saknas" om text som fanns — tre olika
+orsaker, samma utfall, och alla tre hade uteblivit med en jämförelse:
+
+| orsak                | vad som hände                                                                                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Radbrytning**      | `commit statuses` bröts mitt itu av GitHub; `grep` arbetar radvis                                                                                    |
+| **Indrag**           | listpunktens fortsättningsrad behöll sitt indrag, så ett mellanslag i sökfrasen mötte tre i texten — `tr '\n' ' '` räckte inte, `tr -s ' '` behövdes |
+| **Argumentparsning** | `--fail-with-body` åts som en flagga: `grep: invalid option`. Krävde `grep -qF --`                                                                   |
+
+Alla tre gav **falskt negativt** — kontrollen sa "saknas" om något som fanns. Det är
+den ofarliga riktningen: den kostar tid och kan leda till en onödig omskrivning, men
+den kan inte få dig att rapportera en skrivning som gjord när den inte är det. Den
+farliga riktningen är falskt positivt, och den täcks av punkt 4: nyckeln får inte
+kunna matcha före skrivningen.
+
+**Asymmetrin är avsiktlig.** En verifiering ska hellre larma i onödan än tiga när det
+är fel, eftersom ett falskt negativt upptäcks direkt av den som tittar på utfallet,
+medan ett falskt positivt aldrig upptäcks alls — det ser ut som framgång, och det var
+precis så den här filen kom till. Välj därför den strängare kontrollen när du väljer,
+och betala priset i enstaka falsklarm.
+
+**6. En misslyckad verifiering kan bero på verktyget lika gärna som på innehållet —
 och skillnaden måste mätas.**
+
+Punkt 5 gäller när du har ett facit. Punkterna 6 och 7 gäller när du **inte** har det
+— när texten är något du hämtar och inte själv skrivit, och det enda tillgängliga är
+sökning. Då behövs både normaliseringen nedan och de obrytbara nycklarna i punkt 7.
 
 Ett rött utfall är inte automatiskt ett fynd. Det säger bara att _kontrollen_ inte
 gick igenom, och orsaken kan lika gärna ligga i hur du frågade.
@@ -92,13 +134,13 @@ sökfrasen möter tre i texten. **Normalisera blanksteg också:**
 gh pr view N --json body -q .body | tr '\n' ' ' | tr -s ' ' | grep -F 'din fras'
 ```
 
-Det fallet inträffade i #410, ett steg efter att punkt 5 skrivits: en fras
+Det fallet inträffade i #410, ett steg efter att punkt 6 skrivits: en fras
 rapporterades saknad, hittades inte ens med `tr '\n' ' '`, och fanns hela tiden.
 
-**6. Välj korta, obrytbara tokens som verifieringsnycklar — inte satser.**
+**7. Välj korta, obrytbara tokens som verifieringsnycklar — inte satser.**
 
-Punkt 5 är läkemedlet. Det här är förebyggandet: väljer du rätt nyckel uppstår
-problemet inte.
+Punkt 6 är läkemedlet. Det här är förebyggandet: måste du söka, så väljer du rätt
+nyckel och problemet uppstår inte.
 
 Två gånger i rad rapporterade verifieringen "saknas" om text som fanns, båda gångerna
 för att sökfrasen var en **mening**. En mening kan radbrytas, indragas, ombrytas av en
@@ -132,7 +174,7 @@ sökmönster. `grep -F "--fail-with-body"` gav
 grep -qF -- "--fail-with-body" fil    # -- säger: allt härefter är argument, inte flaggor
 ```
 
-Det hände när punkt 6 verifierades på sig själv, med `--fail-with-body` hämtad ur
+Det hände när punkt 7 verifierades på sig själv, med `--fail-with-body` hämtad ur
 punktens egen tabell över bra nycklar. Den är bra i brytbarhetsmening och usel som
 skalargument — två olika egenskaper hos samma sträng.
 
@@ -147,7 +189,8 @@ följt av `grep fil` gav träff. Ännu en variant av punkt 2.
 - [ ] Felutmatningen pipades inte bort
 - [ ] Resultatet lästes tillbaka **från destinationen**
 - [ ] Kontrollen letade efter något som bara kan finnas efter skrivningen
-- [ ] Verifieringsnyckeln är ett kort, obrytbart token — inte en mening
+- [ ] Fanns ett facit? Då jämfördes hela texten i stället för att söka fragment
+- [ ] Om sökning ändå: nyckeln är ett kort, obrytbart token — inte en mening
 - [ ] Ett rött utfall verifierades vara innehållets fel, inte verktygets
 - [ ] Rapporten till användaren säger bara det som lästs tillbaka
 
