@@ -1,0 +1,82 @@
+# Runbook: en skrivning som inte lästs tillbaka är ett obelagt påstående
+
+Gäller **allt du skriver ut ur repot** — PR-texter, ärendekroppar, kommentarer,
+filer, konfiguration — och den gäller **rapporteringen om arbetet**, inte bara
+arbetet självt.
+
+Regeln i en mening: _skrivningen är inte klar när kommandot returnerat, den är klar
+när du läst tillbaka resultatet från det ställe det ska ligga på._
+
+## Varför den här filen finns
+
+`gh pr edit 407 --body-file body.md` kördes med arbetskatalogen i en
+scratchpad-katalog utanför repot. `gh` kräver ett git-repo som cwd och dog med
+`fatal: not a git repository`. Utdatan pipades genom `2>&1 | tail -1`, som åt upp
+felraden, och `&&`-kedjan såg ut att ha gått igenom.
+
+PR-texten var oförändrad på GitHub. Det upptäcktes två turer senare, av en slump, när
+kroppen råkade läsas för en annan anledning. Under tiden var det som rapporterats till
+användaren fel — inte för att arbetet var fel, utan för att **rapporten om arbetet var
+overifierad**.
+
+Det är samma felklass som en grön testsvit som aldrig kört: ingenting ser trasigt ut,
+och tystnaden är oskiljbar från framgång. Jämför
+[bevisrigg-riktig-postgres.md](./bevisrigg-riktig-postgres.md), avsnittet om
+negativkontroll — en grind som aldrig setts falla är ingen grind.
+
+## Regeln
+
+**1. Läs tillbaka från destinationen, inte från källan.**
+
+```bash
+# fel: bekräftar bara att den lokala filen finns
+gh pr edit 407 --body-file body.md && echo "klart"
+
+# rätt: läser tillbaka det som faktiskt ligger på GitHub
+gh pr edit 407 --body-file "$PWD/body.md"
+gh pr view 407 --json body -q .body > check.md
+grep -q "den fras som skulle tillkomma" check.md && echo "verifierat" || echo "SKREVS ALDRIG"
+```
+
+Samma sak för filer: läs tillbaka innehållet, eller mät en hash, i stället för att
+lita på att skrivkommandot inte klagade.
+
+**2. Pipa aldrig bort felutmatning från en skrivning.**
+
+`cmd | tail -N` gör att `$?` blir **tails** exitkod, inte `cmd`:s. Ett misslyckat
+kommando blir tyst framgång. Samma sak för `| head`, `| grep`, `2>/dev/null` och
+`|| true`. Vill du korta ned utdata: skriv den till fil och läs filen, eller sätt
+`set -o pipefail`.
+
+**3. `gh` kräver git-repo som cwd.**
+
+Kör `gh` från repo-roten och peka på body-filen med absolut sökväg. `cd` till en
+temp-katalog först dödar kommandot.
+
+**4. Verifiera med något som skulle kunna falla.**
+
+En kontroll som alltid är sann bevisar ingenting. Grep:a efter en fras som **bara**
+finns i den nya versionen, inte efter något som fanns i båda — en grep som hade
+matchat även före skrivningen är en tautologi och passerar tyst.
+
+## Checklista
+
+- [ ] Skrivningen kördes med cwd där verktyget kräver det
+- [ ] Felutmatningen pipades inte bort
+- [ ] Resultatet lästes tillbaka **från destinationen**
+- [ ] Kontrollen letade efter något som bara kan finnas efter skrivningen
+- [ ] Rapporten till användaren säger bara det som lästs tillbaka
+
+## Relaterade fällor med samma form
+
+`until`-loopar som väntar på GitHub-checkar snurrar för evigt om villkoret bara
+täcker check runs:
+
+```bash
+# snurrar för evigt: Vercel-raderna är commit statuses och har .status == null
+until [ "$(gh pr view N --json statusCheckRollup \
+  -q '[.statusCheckRollup[] | select(.status != "COMPLETED")] | length')" = 0 ]; do sleep 20; done
+```
+
+Check runs bär `.status`/`.conclusion`; commit statuses bär `.state`. Läs hellre av
+läget en gång och tolka båda fälten än att loopa på ett av dem.
