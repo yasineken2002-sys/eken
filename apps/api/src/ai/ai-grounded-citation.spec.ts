@@ -48,6 +48,7 @@ import {
   SOURCE_SUFFIX_MARKER,
   type LegalGrounding,
 } from './knowledge/grounding/legal-grounding'
+import { expandWithBackwardReferences } from './knowledge/retrieval/legal-cross-reference'
 import { AI_MODELS } from './ai.config'
 
 const LEGAL_QUESTION =
@@ -55,11 +56,20 @@ const LEGAL_QUESTION =
 const WEAK_LEGAL_QUESTION = 'Hur stor deposition (säkerhet) får jag kräva av en hyresgäst?'
 const OPERATIONAL_QUESTION = 'Hur många lediga lägenheter har jag?'
 
-/** Förväntad grundning om domaren säger JA (samma byggare som produktionen). */
+/**
+ * Förväntad grundning om domaren säger JA (samma byggare som produktionen).
+ *
+ * Expansionssteget (#406 PR2, korsreferens bakåt) måste ligga här också —
+ * annars mäter oraklet en väg produktionen inte längre går, och den skulle falla
+ * på att källraden nu bär även de korsrefererande paragraferna. Att källraden
+ * VIDGAS av PR2 är avsiktligt och synligt: den citerar exakt de chunkar som
+ * injicerades, varken fler eller färre. Gap A-beviset är oförändrat — raden
+ * byggs fortfarande ur chunk-metadata och kan inte se AI-text.
+ */
 function expectedGrounding(question: string): LegalGrounding {
   const candidate = evaluateLegalRetrieval(question)
   if (candidate?.outcome !== 'candidate') throw new Error('Frågan är ingen kandidat')
-  return groundLegalCandidate(candidate.retrieved)
+  return groundLegalCandidate(expandWithBackwardReferences(candidate.retrieved))
 }
 
 /** Den auktoritativa (kod-skrivna) källsektionen = allt efter sista markören. */

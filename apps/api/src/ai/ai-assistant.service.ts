@@ -30,6 +30,7 @@ import {
   appendCodeBoundSource,
   type LegalGroundingResult,
 } from './knowledge/grounding/legal-grounding'
+import { expandWithBackwardReferences } from './knowledge/retrieval/legal-cross-reference'
 import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.service'
 import {
   AiAttachmentsService,
@@ -953,6 +954,10 @@ export class AiAssistantService {
    *     grindutfall som före hybriden; ingen/svag träff → MISS direkt (inget
    *     domaranrop, ingen kostnad). RRF-fusionen påverkar bara VILKA chunkar
    *     en godkänd kandidat bär till domaren.
+   *   Steg 1.5 (korsreferens bakåt, #406 PR2): en insläppt kandidat får sällskap
+   *     av de samma-lags-paragrafer som REFERERAR till dess ankare (taket som
+   *     pekar tillbaka på rätten). Körs EFTER grinden och kan därför inte ändra
+   *     ett grindutfall — bara fönstret domaren och grundningen ser.
    *   Steg 2 (semantisk): Haiku-relevansdomaren avgör om kandidat-paragraferna
    *     innehåller den materiella regel frågan gäller. JA → grundning med
    *     kod-bunden källa (gap A, oförändrad från 2.3a). NEJ/fel/ogiltigt svar
@@ -970,8 +975,16 @@ export class AiAssistantService {
     if (candidate === null) return null
     if (candidate.outcome === 'miss') return buildLegalGroundingMiss(candidate.reason)
 
+    // Steg 1.5 (#406, PR2): KORSREFERENS BAKÅT. Ankaret är redan insläppt —
+    // grinden ovan har kört klart och läste kanal-rena signaler (retrieval.lexical,
+    // retrieval.semanticTopCosine) som denna rad per konstruktion inte kan nå.
+    // Expansionen breddar alltså FÖNSTRET (vad domaren och grundningen ser),
+    // aldrig GRINDEN. Vinsten är paret rätt+tak: hämtas 2 § lagen (1981:739) drar
+    // 4 § — "…som avses i 2 §" — med sig automatiskt.
+    const enriched = expandWithBackwardReferences(candidate.retrieved)
+
     try {
-      const chunks = candidate.retrieved.map((r) => r.chunk)
+      const chunks = enriched.map((r) => r.chunk)
       const response = await this.client.messages.create({
         model: AI_MODELS.MEMORY,
         max_tokens: 8,
@@ -993,7 +1006,7 @@ export class AiAssistantService {
 
       const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
       const verdict = parseRelevanceVerdict(textBlock?.text ?? '')
-      if (verdict === true) return groundLegalCandidate(candidate.retrieved)
+      if (verdict === true) return groundLegalCandidate(enriched)
       return buildLegalGroundingMiss(verdict === false ? 'judge-rejected' : 'judge-unavailable')
     } catch (err) {
       this.logger.warn(
