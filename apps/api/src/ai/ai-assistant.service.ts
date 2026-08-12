@@ -954,15 +954,16 @@ export class AiAssistantService {
    *     grindutfall som före hybriden; ingen/svag träff → MISS direkt (inget
    *     domaranrop, ingen kostnad). RRF-fusionen påverkar bara VILKA chunkar
    *     en godkänd kandidat bär till domaren.
-   *   Steg 1.5 (korsreferens bakåt, #406 PR2): en insläppt kandidat får sällskap
-   *     av de samma-lags-paragrafer som REFERERAR till dess ankare (taket som
-   *     pekar tillbaka på rätten). Körs EFTER grinden och kan därför inte ändra
-   *     ett grindutfall — bara fönstret domaren och grundningen ser.
    *   Steg 2 (semantisk): Haiku-relevansdomaren avgör om kandidat-paragraferna
-   *     innehåller den materiella regel frågan gäller. JA → grundning med
+   *     innehåller den materiella regel frågan gäller. Domaren ser ENBART
+   *     `candidate.retrieved` — de insläppta originalen. JA → grundning med
    *     kod-bunden källa (gap A, oförändrad från 2.3a). NEJ/fel/ogiltigt svar
    *     → MISS (fail-safe: hellre ärlig jurist-hänvisning än ett svar grundat
    *     på en overifierad träff).
+   *   Steg 3 (korsreferens bakåt, #406 PR2): FÖRST efter ett JA får kandidaten
+   *     sällskap av de samma-lags-paragrafer som REFERERAR till dess ankare
+   *     (taket som pekar tillbaka på rätten). Rör alltså varken grind eller
+   *     domare — bara vad ett redan beviljat svar grundas i.
    */
   async resolveLegalGrounding(
     message: string,
@@ -975,16 +976,17 @@ export class AiAssistantService {
     if (candidate === null) return null
     if (candidate.outcome === 'miss') return buildLegalGroundingMiss(candidate.reason)
 
-    // Steg 1.5 (#406, PR2): KORSREFERENS BAKÅT. Ankaret är redan insläppt —
-    // grinden ovan har kört klart och läste kanal-rena signaler (retrieval.lexical,
-    // retrieval.semanticTopCosine) som denna rad per konstruktion inte kan nå.
-    // Expansionen breddar alltså FÖNSTRET (vad domaren och grundningen ser),
-    // aldrig GRINDEN. Vinsten är paret rätt+tak: hämtas 2 § lagen (1981:739) drar
-    // 4 § — "…som avses i 2 §" — med sig automatiskt.
-    const enriched = expandWithBackwardReferences(candidate.retrieved)
-
     try {
-      const chunks = enriched.map((r) => r.chunk)
+      // DÖM PÅ ORIGINALEN. Domaren ser exakt de insläppta kandidaterna, aldrig
+      // korsreferens-grannarna — bit-för-bit samma indata som före #406 PR2.
+      //
+      // Det är inte försiktighet, det är en MÄTT nödvändighet. Med grannarna i
+      // domarpromptens indata flippade besittningsskydd-lokal från ärlig miss
+      // till självsäkert grundat svar UTAN §57 (5/5 körningar, isolerad probe):
+      // grannen hyreslagen 56 § säger "Bestämmelserna i 57-60 §§ gäller för
+      // upplåtelser av lokaler…" och domaren godtog PEKAREN som om den vore
+      // regeln. En paragraf som hänvisar till rätt regel är inte rätt regel.
+      const chunks = candidate.retrieved.map((r) => r.chunk)
       const response = await this.client.messages.create({
         model: AI_MODELS.MEMORY,
         max_tokens: 8,
@@ -1006,7 +1008,12 @@ export class AiAssistantService {
 
       const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
       const verdict = parseRelevanceVerdict(textBlock?.text ?? '')
-      if (verdict === true) return groundLegalCandidate(enriched)
+      // GRUNDA PÅ DE UTÖKADE. Först här — efter ett JA på originalen — breddas
+      // fönstret med de paragrafer som refererar tillbaka till ankaret, så att
+      // ett beviljat svar bär både rätten och taket (2 § + 4 § lagen 1981:739).
+      if (verdict === true) {
+        return groundLegalCandidate(expandWithBackwardReferences(candidate.retrieved))
+      }
       return buildLegalGroundingMiss(verdict === false ? 'judge-rejected' : 'judge-unavailable')
     } catch (err) {
       this.logger.warn(

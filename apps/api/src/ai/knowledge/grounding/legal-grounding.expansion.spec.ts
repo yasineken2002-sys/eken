@@ -1,18 +1,28 @@
 /**
- * #406 PR2 — INVARIANTEN: korsreferens-expansionen rör FÖNSTRET, inte GRINDEN.
+ * #406 PR2 — INVARIANTEN: "döm på originalen, grunda på de utökade."
  *
- * Hela PR:en vilar på en ordningsföljd i koden: `evaluateLegalCandidate` körs
- * FÖRE `expandWithBackwardReferences` och läser kanal-rena signaler
- * (`retrieval.lexical`, `retrieval.semanticTopCosine`) som expansionen aldrig
- * skriver till. Håller inte det, har PR2 tyst flyttat ett grindutfall — och ett
- * grindutfall är skillnaden mellan ett grundat juridiskt svar och en ärlig
- * jurist-hänvisning.
+ * Korsreferens-expansionen rör FÖNSTRET. Den får aldrig ändra ett grindutfall
+ * och aldrig ett domarutfall — de två är skillnaden mellan ett grundat juridiskt
+ * svar och en ärlig jurist-hänvisning.
  *
- * Ordningsföljden är dock inte något ett test kan LÄSA sig till; den bevisas
- * här genom att MÄTA att grinden ger bit-för-bit samma utfall vare sig
- * expansionen körts eller ej, och att grannarna bär signaler (0/0/ingen cosine)
- * som inte kan lyfta någon över ett golv. Ett kodläsande test (regex på
- * radordningen) hade varit ett textpåstående, inte en mätning.
+ * MOT GRINDEN är invarianten strukturell: `evaluateLegalCandidate` läser
+ * kanal-rena signaler (`retrieval.lexical`, `retrieval.semanticTopCosine`) som
+ * expansionen aldrig skriver till, och grannarna bär 0/0/ingen cosine.
+ *
+ * MOT DOMAREN är den en ORDNINGSFÖLJD, och den ordningen är dyrköpt. Första
+ * versionen av PR2 matade domaren med den expanderade listan. Mätt med isolerad
+ * probe (samma retrieval, 5 anrop per variant, temperature 0) flippade
+ * besittningsskydd-lokal 5/5 från ärlig miss till självsäkert grundat svar UTAN
+ * §57: grannen hyreslagen 56 § säger "Bestämmelserna i 57-60 §§ gäller för
+ * upplåtelser av lokaler…" och domaren godtog PEKAREN som om den vore regeln.
+ * En paragraf som hänvisar till rätt regel är inte rätt regel — och ett svar som
+ * grundas på hänvisningen är sämre än inget svar. Därav: domaren ser
+ * `candidate.retrieved`, aldrig `enriched`.
+ *
+ * Testerna nedan MÄTER båda invarianterna i stället för att läsa koden; ett
+ * regex på radordningen hade varit ett textpåstående. Domar-invarianten låses
+ * dessutom end-to-end i ai-grounded-citation.spec, där promptargumentet fångas
+ * från en mockad klient.
  *
  * Ingen AI, ingen modell, inget nät.
  */
@@ -20,14 +30,21 @@ import {
   evaluateLegalCandidate,
   evaluateLegalRetrieval,
   groundLegalCandidate,
+  buildRelevanceJudgePrompt,
   GROUNDING_TOP_K,
 } from './legal-grounding'
 import { expandWithBackwardReferences } from '../retrieval/legal-cross-reference'
-import { retrieveLegalChunks } from '../retrieval/legal-retrieval'
-import { legalChunkId } from '../retrieval/legal-chunk'
+import { retrieveLegalChunks, type RetrievedChunk } from '../retrieval/legal-retrieval'
+import { buildLegalChunks, legalChunkId, type LegalChunk } from '../retrieval/legal-chunk'
 import { LEGAL_EVAL_SET } from '../eval/legal-eval-set'
 
 const QUESTIONS = LEGAL_EVAL_SET.map((c) => c.question)
+
+function chunkByParagraph(lawId: string, paragraph: string): LegalChunk {
+  const found = buildLegalChunks().find((c) => c.lawId === lawId && c.paragraph === paragraph)
+  if (!found) throw new Error(`Saknar ${lawId} ${paragraph} § i korpusen`)
+  return found
+}
 
 describe('#406 PR2: grinden är orörd av expansionen', () => {
   it('evaluateLegalCandidate ger IDENTISKT utfall med och utan expanderad indata', () => {
@@ -89,6 +106,56 @@ describe('#406 PR2: grinden är orörd av expansionen', () => {
       const expanded = expandWithBackwardReferences(candidate.retrieved)
       expect(expanded.slice(0, candidate.retrieved.length)).toEqual(candidate.retrieved)
     }
+  })
+})
+
+describe('#406 PR2: domaren dömer på originalen', () => {
+  it('domarprompten på originalen bär INTE grannarnas text — de två är inte utbytbara', () => {
+    // Att valet spelar roll är själva poängen: hade prompterna varit lika hade
+    // "döm på originalen" varit en tom regel. Här mäts skillnaden.
+    let compared = 0
+    for (const question of QUESTIONS) {
+      const candidate = evaluateLegalRetrieval(question)
+      if (candidate?.outcome !== 'candidate') continue
+      const enriched = expandWithBackwardReferences(candidate.retrieved)
+      const added = enriched.slice(candidate.retrieved.length)
+      if (added.length === 0) continue
+      compared++
+
+      const onOriginals = buildRelevanceJudgePrompt(
+        question,
+        candidate.retrieved.map((r) => r.chunk),
+      )
+      const onEnriched = buildRelevanceJudgePrompt(
+        question,
+        enriched.map((r) => r.chunk),
+      )
+      expect(onOriginals).not.toBe(onEnriched)
+      for (const neighbour of added) {
+        expect(onOriginals).not.toContain(neighbour.chunk.text)
+        expect(onEnriched).toContain(neighbour.chunk.text)
+      }
+    }
+    expect(compared).toBeGreaterThan(0)
+  })
+
+  it('MOTFALLET besittningsskydd-lokal: 56 § är en granne, inte en kandidat', () => {
+    // Det uppmätta haveriet i konkret form. 56 § kommer in som granne till
+    // ankaret 28 § och HÄNVISAR till 57-60 §§ utan att innehålla regeln. Den får
+    // synas i grundningen men aldrig i domarens underlag.
+    const anchor: RetrievedChunk = {
+      chunk: chunkByParagraph('hyreslagen', '28'),
+      score: 12,
+      coverage: 0.5,
+    }
+    const neighbours = expandWithBackwardReferences([anchor]).slice(1)
+    const p56 = neighbours.find((r) => r.chunk.paragraph === '56')
+    expect(p56).toBeDefined()
+    expect(p56!.chunk.text).toContain('Bestämmelserna i 57-60 §§ gäller')
+    // …och den innehåller alltså INTE §57:s materiella regel.
+    expect(p56!.chunk.paragraph).not.toBe('57')
+    // Domarprompten på ankaret ensamt kan per konstruktion inte se den.
+    expect(buildRelevanceJudgePrompt('fråga', [anchor.chunk])).not.toContain(p56!.chunk.text)
   })
 })
 

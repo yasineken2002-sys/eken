@@ -214,12 +214,11 @@ async function main(): Promise<void> {
       }
 
       row.gate = 'kandidat'
-      // Steg 1.5 (#406 PR2): korsreferens bakåt — SAMMA anrop och samma ordning
-      // som resolveLegalGrounding. Utan denna rad mäter gate-evalen en kedja
-      // produktionen inte längre går, och ett "inget utfall ändrades" hade varit
-      // ett påstående om riggen i stället för om produkten.
-      const enriched = expandWithBackwardReferences(candidate.retrieved)
-      const chunks = enriched.map((r) => r.chunk)
+      // DÖM PÅ ORIGINALEN, GRUNDA PÅ DE UTÖKADE (#406 PR2) — samma ordning som
+      // resolveLegalGrounding. Utan att spegla den mäter gate-evalen en kedja
+      // produktionen inte går, och ett "inget utfall ändrades" blir ett
+      // påstående om riggen i stället för om produkten.
+      const chunks = candidate.retrieved.map((r) => r.chunk)
       const response = await anthropic.messages.create({
         model: AI_MODELS.MEMORY,
         max_tokens: 8,
@@ -231,6 +230,7 @@ async function main(): Promise<void> {
       row.judge = verdict === true ? 'JA' : verdict === false ? 'NEJ' : 'ogiltig'
 
       if (verdict === true) {
+        const enriched = expandWithBackwardReferences(candidate.retrieved)
         const grounding = groundLegalCandidate(enriched)
         row.outcome = 'grundad'
         row.chunks = grounding.chunks
