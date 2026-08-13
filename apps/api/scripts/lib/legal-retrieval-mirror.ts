@@ -187,6 +187,16 @@ export interface Variant {
   indexText: (chunk: LegalChunk) => string
   /** Tesaurusen frågesidan expanderas med. Utelämnad = PR3-baslinjen. */
   conceptGroups?: readonly (readonly string[])[]
+  /**
+   * Stammarna som utgör TÄCKNINGENS NÄMNARE. Utelämnad = samma mängd som
+   * poängen räknas på, vilket är produktionen i dag (#425).
+   *
+   * Att nämnaren är utbrytbar är hela poängen med #425:s variant 1 — den
+   * ändrar INTE en enda score, bara vilken mängd täckningen är en andel AV.
+   * Poängen och täckningen kan därför inte längre antas dela mängd, och en
+   * variant som rör bara den ena blir mätbar.
+   */
+  coverageStems?: (variant: Variant, query: string) => Set<string>
 }
 
 export const baselineAnalyze = (text: string): string[] => tokenize(text).map(stem)
@@ -260,9 +270,15 @@ export function queryStems(variant: Variant, query: string): Set<string> {
  * med `queryStems`; att den är utbrytbar är vad som gör det möjligt att mäta
  * en enskild stams bidrag utan att duplicera matematiken.
  */
-export function scoreAllForStems(idx: VariantIndex, stems: Set<string>): Scored[] {
+export function scoreAllForStems(
+  idx: VariantIndex,
+  stems: Set<string>,
+  coverageStems?: Set<string>,
+): Scored[] {
   if (stems.size === 0) return []
-  const scorable = [...stems].filter((s) => s.length >= 4)
+  // Nämnaren är som standard poängens egen mängd — produktionen i dag. En
+  // variant kan skicka en annan mängd utan att röra en enda score (#425).
+  const scorable = [...(coverageStems ?? stems)].filter((s) => s.length >= 4)
   const N = idx.chunks.length
   return idx.chunks.map((chunk, i) => {
     const tf = idx.termFreqs[i]!
@@ -285,7 +301,8 @@ export function scoreAllForStems(idx: VariantIndex, stems: Set<string>): Scored[
 }
 
 export function scoreAll(idx: VariantIndex, query: string): Scored[] {
-  return scoreAllForStems(idx, queryStems(idx.variant, query))
+  const stems = queryStems(idx.variant, query)
+  return scoreAllForStems(idx, stems, idx.variant.coverageStems?.(idx.variant, query))
 }
 
 export function ranked(idx: VariantIndex, query: string): Scored[] {
@@ -499,10 +516,17 @@ export function assertBaselineParity(
  *
  * Att hårdkoda antagandet skulle göra skriptet obrukbart så snart
  * produktionsvägen ändras — och värre: grönt av fel skäl. Här MÄTS det i
- * stället: exakt en variant måste reproducera produktionens score bit-för-bit.
- * Noll träffar betyder att produktionen driftat från allt som mätts; fler än en
- * betyder att varianterna inte är åtskiljbara och att mätningen inte visar
- * något.
+ * stället: exakt en variant måste reproducera produktionens RÅSIGNALER
+ * bit-för-bit. Noll träffar betyder att produktionen driftat från allt som
+ * mätts; fler än en betyder att varianterna inte är åtskiljbara och att
+ * mätningen inte visar något.
+ *
+ * BÅDE score OCH täckning jämförs. Att bara jämföra score räckte så länge de
+ * två alltid räknades på samma stammängd, men #425:s variant 1 ändrar enbart
+ * täckningens nämnare: dess score är per konstruktion identisk med T5:s. Med
+ * enbart score-jämförelse hade de två varit oskiljbara och funktionen fällt
+ * hela mätningen på "fler än en variant matchade" — ett rött utfall med rätt
+ * mekanism och fel slutsats.
  */
 export function detectProductionVariant(indexes: readonly VariantIndex[]): VariantIndex {
   const matches = indexes.filter((idx) =>
@@ -510,7 +534,11 @@ export function detectProductionVariant(indexes: readonly VariantIndex[]): Varia
       const mine = new Map(scoreAll(idx, c.question).map((r) => [legalChunkId(r.chunk), r]))
       return scoreAllLegalChunks(c.question).every((t) => {
         const m = mine.get(legalChunkId(t.chunk))
-        return m !== undefined && Math.abs(m.score - t.score) <= 1e-12
+        return (
+          m !== undefined &&
+          Math.abs(m.score - t.score) <= 1e-12 &&
+          Math.abs(m.coverage - t.coverage) <= 1e-12
+        )
       })
     }),
   )
