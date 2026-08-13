@@ -5,6 +5,12 @@
 > Spegeln som mäts i är densamma som i `406-grind-kartlaggning.md`
 > (`scripts/lib/legal-retrieval-mirror.ts`) och verifieras numeriskt mot
 > produktionen före varje mätning.
+>
+> **Läsanvisning efter #406 PR4:** kolumnen `PR3` är tillståndet FÖRE PR4 —
+> det mätningen jämför mot — och formuleringar som "i dag" i texten avser
+> det tillståndet. PR4 införde variant **T5** i produktionen, vilket den här
+> körningens kontrollrad bekräftar (produktionen identifieras som T5 genom
+> bit-för-bit identisk score, inte genom ett antagande).
 
 ## Hypotesen
 
@@ -169,7 +175,7 @@ fråga som utlöser gruppen.
 Format: `score/täckning (Δscore)`. `ej-jur` = fälls av ingångsgrinden och når
 aldrig retrieval.
 
-| fall                                   | facit                         | PROD       | NOEXP              | T1                 | T2                 | T3                 | T4                 | T5                 |
+| fall                                   | facit                         | PR3        | NOEXP              | T1                 | T2                 | T3                 | T4                 | T5                 |
 | -------------------------------------- | ----------------------------- | ---------- | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ |
 | `besittningsskydd-forstahand-1ar`      | hyresl:45 hyresl:46           | 18.67/0.46 | 6.71/0.40 (-12.0)  | 18.67/0.46 (0)     | 18.67/0.46 (0)     | 18.67/0.46 (0)     | 18.67/0.46 (0)     | 18.67/0.46 (0)     |
 | `besittningsskydd-andrahand-2ar`       | hyresl:45                     | 17.29/0.42 | —/— (-17.3)        | 17.29/0.42 (0)     | 17.29/0.42 (0)     | 17.29/0.42 (0)     | 17.29/0.42 (0)     | 17.29/0.42 (0)     |
@@ -206,7 +212,7 @@ aldrig retrieval.
 
 Grinden hålls FAST vid produktionens värden: golv 9, band 12 / täckning 0.4. En rad är grön bara om score ≥ golvet OCH bandet inte fäller den.
 
-### `PROD`
+### `PR3`
 
 | fall                               | facit | score | täckning | ≥ golv 9? | fälls av bandet? | lexikalt insläpp |
 | ---------------------------------- | ----- | ----- | -------- | --------- | ---------------- | ---------------- |
@@ -319,7 +325,7 @@ sker på `lower.includes(term)`, alltså på DELSTRÄNG, inte på ord. `formkrav
 `kravbrev` matchar därför `krav` lika bra som ordet självt. Sonderingen nedan är
 KONSTRUERAD (samma kvarstående svaghet som #390) och mäter bara den lexikala vägen.
 
-| konstruerad fråga                                            | juridisk? | PROD topp             | T1 topp (score/täckning) | T2 topp (score/täckning) | T3 topp (score/täckning) | T4 topp (score/täckning) | T5 topp (score/täckning) |
+| konstruerad fråga                                            | juridisk? | PR3 topp              | T1 topp (score/täckning) | T2 topp (score/täckning) | T3 topp (score/täckning) | T4 topp (score/täckning) | T5 topp (score/täckning) |
 | ------------------------------------------------------------ | --------- | --------------------- | ------------------------ | ------------------------ | ------------------------ | ------------------------ | ------------------------ |
 | Vilka formkrav gäller för en uppsägning?                     | ja        | hyresl:58 a 13.2/0.44 | **inkass:2 30.8/0.26**   | hyresl:58 a 13.2/0.44    | hyresl:58 a 13.2/0.44    | hyresl:58 a 13.2/0.44    | hyresl:58 a 13.2/0.44    |
 | Vad ställer lagen för krav på en besiktning vid avflyttning? | ja        | hyresl:26 10.4/0.50   | **inkass:2 30.8/0.29**   | hyresl:26 10.4/0.50      | hyresl:26 10.4/0.50      | hyresl:26 10.4/0.50      | hyresl:26 10.4/0.50      |
@@ -332,7 +338,7 @@ om inkassokostnader.
 ### Expansionen är också en nämnare — mätt åt båda hållen
 
 Två fall i korpusen avgörs i dag av att en BEFINTLIG grupp lägger till stammar som
-inte ger poäng. Båda syns genom att jämföra `PROD` mot `NOEXP`, och de pekar åt
+inte ger poäng. Båda syns genom att jämföra `PR3` mot `NOEXP`, och de pekar åt
 motsatta håll — vilket är själva poängen: täckning är inte en relevanssignal som
 bara skyddar, den är ett kvottal som expansionen kan flytta i vilken riktning som
 helst.
@@ -368,7 +374,7 @@ av hur många stammar frågan råkar ha. Stammarna, term för term:
 
 | variant | deposition-storlek (score/täckning) | ute?                | hyresgastval-diskriminering (score/täckning) | ute? |
 | ------- | ----------------------------------- | ------------------- | -------------------------------------------- | ---- |
-| `PROD`  | 9.70/0.33                           | JA                  | 8.66/0.29                                    | JA   |
+| `PR3`   | 9.70/0.33                           | JA                  | 8.66/0.29                                    | JA   |
 | `NOEXP` | 9.70/0.40                           | **NEJ — släpps in** | 8.66/0.29                                    | JA   |
 | `T1`    | 9.70/0.33                           | JA                  | 8.66/0.29                                    | JA   |
 | `T2`    | 9.70/0.33                           | JA                  | 8.66/0.29                                    | JA   |
@@ -384,7 +390,7 @@ ute. Bandet hålls fast vid produktionens värden.
 
 | variant | säkert golvintervall (a+b) | max inkassofall in | vid golv | vid dagens golv 9                          |
 | ------- | -------------------------- | ------------------ | -------- | ------------------------------------------ |
-| `PROD`  | 0.50–9.50                  | **5/8**            | 0.50     | 3/8 in                                     |
+| `PR3`   | 0.50–9.50                  | **5/8**            | 0.50     | 3/8 in                                     |
 | `NOEXP` | **tomt**                   | **0/8**            | —        | 4/8 in, TAPPAR behåll, SLÄPPER IN kontroll |
 | `T1`    | 0.50–9.50                  | **8/8**            | 0.50     | 8/8 in                                     |
 | `T2`    | 0.50–9.50                  | **8/8**            | 0.50     | 8/8 in                                     |
@@ -398,7 +404,7 @@ Ett insläpp utan rättad ranking ger domaren fel paragrafer. Tabellen visar per
 inkassofall: den lexikala topp-3, hela lagens paragrafrangordning, och FÖNSTRET
 domaren faktiskt ser (RRF-fuserad topp-3 mot samma semantiska kanal).
 
-### `PROD`
+### `PR3`
 
 | fall                               | facit | lexikal topp-3                                                      | facit lexikal rank | inkassoparagrafernas ordning                      | domarens fönster                         | facit i fönstret? |
 | ---------------------------------- | ----- | ------------------------------------------------------------------- | ------------------ | ------------------------------------------------- | ---------------------------------------- | ----------------- |
@@ -480,7 +486,7 @@ domaren faktiskt ser (RRF-fuserad topp-3 mot samma semantiska kanal).
 
 | variant | de fem över golvet | grindinsläpp totalt (8 inkasso) | facit i fönstret (8) | facit FÖRST i fönstret (8) | tappade fall | max Δ utanför inkasso |
 | ------- | ------------------ | ------------------------------- | -------------------- | -------------------------- | ------------ | --------------------- |
-| `PROD`  | 0/5                | 3/8                             | 7/8                  | 6/8                        | —            | 0.00                  |
+| `PR3`   | 0/5                | 3/8                             | 7/8                  | 6/8                        | —            | 0.00                  |
 | `T1`    | 5/5                | 8/8                             | 8/8                  | 5/8                        | —            | 0.00                  |
 | `T2`    | 5/5                | 8/8                             | 7/8                  | 7/8                        | —            | 0.00                  |
 | `T3`    | 5/5                | 8/8                             | 7/8                  | 7/8                        | —            | 0.00                  |
@@ -523,7 +529,7 @@ och släpps in.
 - **`paminnelseavgift-hogre-i-avtal` (facit 6 §) blir SÄMRE av att släppas in av en ORIKTAD grupp.** 6 § ligger på lexikal rank 11 i T3 och når inte domarens fönster; fönstret blir `inkass:2 · inkass:4 · bostad:7:14`. Kandidaten går alltså in med RÄTTEN (2 §) och TAKET (4 §)
   men utan ogiltighetsregeln — det svar #406:s eval-fall uttryckligen kallar osant.
 - **T1 blandar ihop paragraferna.** I `kravbrev-avgift` (facit 3 §) tappar 3 § förstaplatsen till 2 § (lexikal rank 2), och 1 § — tillämpningsparagrafen, aldrig ett svar — tar en lexikal
-  topp-3-plats i 8 av 8 inkassofall (i dag: 0). Facit ligger FÖRST i fönstret i 5/8 fall mot 6/8 i dag:
+  topp-3-plats i 8 av 8 inkassofall (före PR4: 0). Facit ligger FÖRST i fönstret i 5/8 fall mot 6/8 före PR4:
   T1 gör rankingen sämre samtidigt som den öppnar grinden. Det är exakt det utfall
   `kravbrev-avgift` skrevs för att fånga.
 - **Separationen (T2/T3) håller ordningen** — 7/8 facit först, 1 § i topp-3 i 0 fall — men lyfter
@@ -554,7 +560,7 @@ därför inte se skillnaden — det är en mätning av instrumentet, inte av kor
 
 ## Kontroller
 
-- Paritet mot produktionen (variant `PROD`): **max |Δscore| = 0, max |Δcoverage| = 0**, noll grindavvikelser och noll fused-avvikelser (30 frågor × 427 chunkar).
+- Paritet mot produktionen (variant `T5`): **max |Δscore| = 0, max |Δcoverage| = 0**, noll grindavvikelser och noll fused-avvikelser (30 frågor × 427 chunkar).
 - Lagtextens content-hashar: **oförändrade** (427 chunkar).
 - Korpus: N = 427, identisk med golvets kalibrerings-N.
 - Trösklar: `MIN_TOP_SCORE`, `LOW_SCORE_BAND`, `MIN_COVERAGE_IN_BAND` och

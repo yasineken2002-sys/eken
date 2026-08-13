@@ -6,6 +6,17 @@
  * (4 a §, förseningsersättning mellan näringsidkare) och utan att rasera
  * golvets kalibrering för resten av korpusen?
  *
+ * ── HISTORISK EFTER #406 PR4 — LÄS DETTA FÖRST ──────────────────────────────
+ * Skriptets varianter uttrycks mot tesaurusen som den såg ut vid PR3
+ * (`CONCEPT_GROUPS_PR3` i spegeln). PR4 lade tre grupper till produktionen, så
+ * ingen variant här matchar längre produktionen bit-för-bit och
+ * `detectProductionVariant` AVBRYTER körningen. Det är avsiktligt, inte trasigt:
+ * en spegel som inte kan valideras mot produktionen får inte tyst skriva om en
+ * rapport. `docs/research/406-grind-kartlaggning.md` dokumenterar mätningen som
+ * motiverade PR3 och ska läsas som ett tillstånd, inte som något reproducerbart
+ * mot dagens kod. Ska frågan ställas om måste varianterna mätas om mot den
+ * nuvarande tesaurusen — och då är det en ny mätning, med nya tal.
+ *
  * KÖRS MANUELLT (inte i CI):
  *   cd apps/api && node --env-file-if-exists=.env \
  *     -r ts-node/register scripts/measure-406-gate.ts [--no-semantic]

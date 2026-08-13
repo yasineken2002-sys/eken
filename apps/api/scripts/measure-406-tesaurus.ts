@@ -46,7 +46,7 @@ import {
   MIN_TOP_SCORE,
   LOW_SCORE_BAND,
   MIN_COVERAGE_IN_BAND,
-  BASELINE_CONCEPT_GROUPS,
+  CONCEPT_GROUPS_PR3,
   stem,
   tokenize,
   baselineAnalyze,
@@ -145,19 +145,19 @@ const CANDIDATES: Candidate[] = [
   {
     id: 'T1',
     label: 'förslaget ordagrant — en blandad inkassogrupp (8 termer)',
-    groups: [...BASELINE_CONCEPT_GROUPS, GROUP_T1],
+    groups: [...CONCEPT_GROUPS_PR3, GROUP_T1],
     added: [{ name: 'inkasso (blandad)', terms: GROUP_T1 }],
   },
   {
     id: 'T2',
     label: 'bara påminnelse-begreppet (3 termer)',
-    groups: [...BASELINE_CONCEPT_GROUPS, GROUP_T2_PAMINNELSE],
+    groups: [...CONCEPT_GROUPS_PR3, GROUP_T2_PAMINNELSE],
     added: [{ name: 'påminnelse', terms: GROUP_T2_PAMINNELSE }],
   },
   {
     id: 'T3',
     label: 'påminnelse + separat krav-grupp',
-    groups: [...BASELINE_CONCEPT_GROUPS, GROUP_T2_PAMINNELSE, GROUP_T3_KRAV],
+    groups: [...CONCEPT_GROUPS_PR3, GROUP_T2_PAMINNELSE, GROUP_T3_KRAV],
     added: [
       { name: 'påminnelse', terms: GROUP_T2_PAMINNELSE },
       { name: 'krav', terms: GROUP_T3_KRAV },
@@ -166,7 +166,7 @@ const CANDIDATES: Candidate[] = [
   {
     id: 'T4',
     label: 'T3 + ogiltighetsgrupp (skriven mot 6 §:s fällpunkt)',
-    groups: [...BASELINE_CONCEPT_GROUPS, GROUP_T2_PAMINNELSE, GROUP_T3_KRAV, GROUP_T4_OGILTIGHET],
+    groups: [...CONCEPT_GROUPS_PR3, GROUP_T2_PAMINNELSE, GROUP_T3_KRAV, GROUP_T4_OGILTIGHET],
     added: [
       { name: 'påminnelse', terms: GROUP_T2_PAMINNELSE },
       { name: 'krav', terms: GROUP_T3_KRAV },
@@ -176,7 +176,7 @@ const CANDIDATES: Candidate[] = [
   {
     id: 'T5',
     label: 'T3 + ogiltighetsgrupp med termer som faktiskt utlöses',
-    groups: [...BASELINE_CONCEPT_GROUPS, GROUP_T2_PAMINNELSE, GROUP_T3_KRAV, GROUP_T5_OGILTIGHET],
+    groups: [...CONCEPT_GROUPS_PR3, GROUP_T2_PAMINNELSE, GROUP_T3_KRAV, GROUP_T5_OGILTIGHET],
     added: [
       { name: 'påminnelse', terms: GROUP_T2_PAMINNELSE },
       { name: 'krav', terms: GROUP_T3_KRAV },
@@ -328,8 +328,8 @@ async function main(): Promise<void> {
   // ── Varianterna ────────────────────────────────────────────────────────────
   const variants: Variant[] = [
     {
-      id: 'PROD',
-      label: 'produktionen i dag (16 grupper, söktermer i indexet)',
+      id: 'PR3',
+      label: 'före PR4: 16 grupper (tillståndet mätningen jämförs mot)',
       analyze: baselineAnalyze,
       indexText: searchTermIndexText,
     },
@@ -354,11 +354,15 @@ async function main(): Promise<void> {
 
   const indexes = variants.map((v) => buildVariantIndex(v, chunks))
   const byVariant = new Map(indexes.map((i) => [i.variant.id, i]))
+  // EFTER PR4 ska produktionen implementera T5 — och att den gör det är inte
+  // ett antagande här utan en mätning: detectProductionVariant kräver
+  // bit-för-bit identisk score på samtliga frågor × chunkar. Före PR4 var
+  // svaret PR3-baslinjen; båda accepteras, allt annat är drift.
   const prodVariant = detectProductionVariant(indexes)
   console.warn(`[mät] produktionen implementerar variant: ${prodVariant.variant.id}`)
-  if (prodVariant.variant.id !== 'PROD') {
+  if (!['PR3', 'T5'].includes(prodVariant.variant.id)) {
     throw new Error(
-      `produktionsvarianten identifierades som ${prodVariant.variant.id}, väntade PROD`,
+      `produktionen implementerar ${prodVariant.variant.id} — väntade PR3 (före #406 PR4) eller T5 (efter).`,
     )
   }
   assertBaselineParity(prodVariant, cosineByCase, fusedByCase, semanticByCase)
@@ -367,11 +371,11 @@ async function main(): Promise<void> {
   for (const idx of indexes) {
     results.set(idx.variant.id, measureVariant(idx, cosineByCase, semanticByCase, PROBES))
   }
-  const base = results.get('PROD')!
+  const base = results.get('PR3')!
   const baseById = new Map(base.map((m) => [m.id, m]))
   const keepIds = new Set(base.filter((m) => m.legal && m.lexicalPass).map((m) => m.id))
 
-  const prodIdx = byVariant.get('PROD')!
+  const prodIdx = byVariant.get('PR3')!
   const legalCases = LEGAL_EVAL_SET.filter((c) => isLegalQuestion(c.question))
 
   // ── Rapport ────────────────────────────────────────────────────────────────
@@ -384,6 +388,12 @@ async function main(): Promise<void> {
   out('> Spegeln som mäts i är densamma som i `406-grind-kartlaggning.md`')
   out('> (`scripts/lib/legal-retrieval-mirror.ts`) och verifieras numeriskt mot')
   out('> produktionen före varje mätning.')
+  out('>')
+  out('> **Läsanvisning efter #406 PR4:** kolumnen `PR3` är tillståndet FÖRE PR4 —')
+  out('> det mätningen jämför mot — och formuleringar som "i dag" i texten avser')
+  out('> det tillståndet. PR4 införde variant **T5** i produktionen, vilket den här')
+  out('> körningens kontrollrad bekräftar (produktionen identifieras som T5 genom')
+  out('> bit-för-bit identisk score, inte genom ett antagande).')
   out()
   out('## Hypotesen')
   out()
@@ -579,7 +589,7 @@ async function main(): Promise<void> {
       const m = results.get(idx.variant.id)!.find((x) => x.id === c.id)!
       if (!m.legal) return ' ej-jur |'
       const d =
-        idx.variant.id === 'PROD'
+        idx.variant.id === 'PR3'
           ? ''
           : (() => {
               const delta = (m.topScore ?? 0) - (baseById.get(c.id)!.topScore ?? 0)
@@ -600,7 +610,7 @@ async function main(): Promise<void> {
       'En rad är grön bara om score ≥ golvet OCH bandet inte fäller den.',
   )
   out()
-  for (const cand of ['PROD', ...CANDIDATES.map((c) => c.id)]) {
+  for (const cand of ['PR3', ...CANDIDATES.map((c) => c.id)]) {
     const ms = new Map(results.get(cand)!.map((m) => [m.id, m]))
     out(`### \`${cand}\``)
     out()
@@ -718,7 +728,7 @@ async function main(): Promise<void> {
   out()
   out(
     [
-      '| konstruerad fråga | juridisk? | PROD topp |',
+      '| konstruerad fråga | juridisk? | PR3 topp |',
       ...CANDIDATES.map((c) => ` ${c.id} topp (score/täckning) |`),
     ].join(''),
   )
@@ -750,7 +760,7 @@ async function main(): Promise<void> {
   out('### Expansionen är också en nämnare — mätt åt båda hållen')
   out()
   out('Två fall i korpusen avgörs i dag av att en BEFINTLIG grupp lägger till stammar som')
-  out('inte ger poäng. Båda syns genom att jämföra `PROD` mot `NOEXP`, och de pekar åt')
+  out('inte ger poäng. Båda syns genom att jämföra `PR3` mot `NOEXP`, och de pekar åt')
   out('motsatta håll — vilket är själva poängen: täckning är inte en relevanssignal som')
   out('bara skyddar, den är ett kvottal som expansionen kan flytta i vilken riktning som')
   out('helst.')
@@ -764,7 +774,7 @@ async function main(): Promise<void> {
     const withG = baseById.get(id)!
     const without = noexpById.get(id)!
     const groups = triggeredGroups(prodIdx.variant, c.question)
-      .map((g) => `#${g} (${BASELINE_CONCEPT_GROUPS[g]![0]!})`)
+      .map((g) => `#${g} (${CONCEPT_GROUPS_PR3[g]![0]!})`)
       .join(', ')
     out(
       `| \`${id}\` | ${groups} | ${fmt(withG.topScore)} | ${fmt(withG.topCoverage)} | ${fmt(without.topCoverage)} | ` +
@@ -849,7 +859,7 @@ async function main(): Promise<void> {
   out('inkassofall: den lexikala topp-3, hela lagens paragrafrangordning, och FÖNSTRET')
   out('domaren faktiskt ser (RRF-fuserad topp-3 mot samma semantiska kanal).')
   out()
-  for (const vid of ['PROD', ...CANDIDATES.map((c) => c.id)]) {
+  for (const vid of ['PR3', ...CANDIDATES.map((c) => c.id)]) {
     const ms = new Map(results.get(vid)!.map((m) => [m.id, m]))
     out(`### \`${vid}\``)
     out()
@@ -900,7 +910,7 @@ async function main(): Promise<void> {
     '| variant | de fem över golvet | grindinsläpp totalt (8 inkasso) | facit i fönstret (8) | facit FÖRST i fönstret (8) | tappade fall | max Δ utanför inkasso |',
   )
   out('| --- | --- | --- | --- | --- | --- | --- |')
-  for (const vid of ['PROD', ...CANDIDATES.map((c) => c.id)]) {
+  for (const vid of ['PR3', ...CANDIDATES.map((c) => c.id)]) {
     const ms = new Map(results.get(vid)!.map((m) => [m.id, m]))
     const fiveIn = FIVE_REMAINING.filter((id) => ms.get(id)!.lexicalPass).length
     const gateIn = INKASSO_IDS.filter((id) => ms.get(id)!.gate === 'kandidat').length
@@ -946,7 +956,7 @@ async function main(): Promise<void> {
       ).length,
     }
   }
-  const sPROD = summary('PROD')
+  const sPR3 = summary('PR3')
   const sT1 = summary('T1')
   const sT3 = summary('T3')
   const sT5 = summary('T5')
@@ -1015,7 +1025,7 @@ async function main(): Promise<void> {
       `(lexikal rank ${sT1.krav.probe['3 §']!.rank ?? '—'}), och 1 § — tillämpningsparagrafen, aldrig ett svar — tar en lexikal`,
   )
   out(
-    `  topp-3-plats i ${sT1.oneInTop3} av 8 inkassofall (i dag: ${sPROD.oneInTop3}). Facit ligger FÖRST i fönstret i ${sT1.first}/8 fall mot ${sPROD.first}/8 i dag:`,
+    `  topp-3-plats i ${sT1.oneInTop3} av 8 inkassofall (före PR4: ${sPR3.oneInTop3}). Facit ligger FÖRST i fönstret i ${sT1.first}/8 fall mot ${sPR3.first}/8 före PR4:`,
   )
   out('  T1 gör rankingen sämre samtidigt som den öppnar grinden. Det är exakt det utfall')
   out('  `kravbrev-avgift` skrevs för att fånga.')

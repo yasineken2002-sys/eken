@@ -94,8 +94,20 @@ export const STOPWORDS = new Set([
   'nu',
 ])
 
-/** Produktionens tesaurus, ordagrant. Baslinjen varje kandidatgrupp mäts mot. */
-export const BASELINE_CONCEPT_GROUPS: readonly (readonly string[])[] = [
+/**
+ * Tesaurusen SOM DEN SÅG UT VID #406 PR3 — 16 grupper, ordagrant.
+ *
+ * HISTORISK BASLINJE, inte "produktionens lista". PR4 lade till tre grupper
+ * (INKASSO_CONCEPT_GROUPS i legal-retrieval.ts), så produktionen har flyttat
+ * sig förbi den här listan. Att den ändå står kvar frusen är avsiktligt: båda
+ * #406-mätningarna uttrycker sina varianter som "det här PLUS x", och skrivs
+ * baslinjen om blir varje mätt före/efter-siffra i rapporterna obegriplig.
+ *
+ * Följden är att `detectProductionVariant` efter PR4 hittar VARIANT T5, inte
+ * baslinjen — vilket är precis den kontroll som visar att produktionen
+ * implementerar exakt den variant som mättes.
+ */
+export const CONCEPT_GROUPS_PR3: readonly (readonly string[])[] = [
   ['uppsägning', 'uppsäga', 'säga upp', 'säg upp', 'sägs upp', 'sagt upp', 'uppsagd', 'upphöra'],
   ['besittningsskydd', 'besittning', 'förlängning', 'förlänga', 'bo kvar', 'rätt till förläng'],
   [
@@ -173,7 +185,7 @@ export interface Variant {
   analyze: (text: string) => string[]
   /** Texten som INDEXERAS för en chunk (skild från citerbar text i PR3-vägen). */
   indexText: (chunk: LegalChunk) => string
-  /** Tesaurusen frågesidan expanderas med. Utelämnad = produktionens. */
+  /** Tesaurusen frågesidan expanderas med. Utelämnad = PR3-baslinjen. */
   conceptGroups?: readonly (readonly string[])[]
 }
 
@@ -224,7 +236,7 @@ export function buildVariantIndex(variant: Variant, chunks: LegalChunk[]): Varia
 /** Vilka tesaurusgrupper frågan utlöser (index i variantens grupplista). */
 export function triggeredGroups(variant: Variant, query: string): number[] {
   const lower = query.toLowerCase()
-  const groups = variant.conceptGroups ?? BASELINE_CONCEPT_GROUPS
+  const groups = variant.conceptGroups ?? CONCEPT_GROUPS_PR3
   const hits: number[] = []
   groups.forEach((group, i) => {
     if (group.some((term) => lower.includes(term))) hits.push(i)
@@ -235,7 +247,7 @@ export function triggeredGroups(variant: Variant, query: string): number[] {
 export function queryStems(variant: Variant, query: string): Set<string> {
   const lower = query.toLowerCase()
   const stems = new Set<string>(variant.analyze(query))
-  for (const group of variant.conceptGroups ?? BASELINE_CONCEPT_GROUPS) {
+  for (const group of variant.conceptGroups ?? CONCEPT_GROUPS_PR3) {
     if (group.some((term) => lower.includes(term))) {
       for (const term of group) for (const s of variant.analyze(term)) stems.add(s)
     }
