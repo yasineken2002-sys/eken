@@ -22,9 +22,40 @@
  *   3. deposition-storlek grundas ALDRIG (golv eller domare — domaren är
  *      designförsvaret: cosine 0.605 ligger över golvet).
  *   4. agandeform-skatt-paketering är ej-juridisk (fångas före retrieval).
- *   5. answerableHits ≥ 21 av 26 (stabilt reproducerad nivå 2026-08-13, 3×
- *      körningar). Nivån kodar vad som faktiskt MÄTTS, aldrig vad en kommande
- *      fix förväntas ge — höj den först när ett nytt stabilt värde uppmätts.
+ *   5. answerableHits ≥ 21 av 26 (uppmätt 2026-08-13). Nivån kodar vad som
+ *      faktiskt MÄTTS, aldrig vad en kommande fix förväntas ge — höj den först
+ *      när ett nytt värde uppmätts.
+ *
+ *      ⚠ EN NIVÅ ÄR EN OBSERVERAD FREKVENS, INTE ETT FIXT VÄRDE. Formuleringen
+ *      "stabilt reproducerad, 3× identiska körningar" stod här tidigare och är
+ *      känt otillräcklig sedan 2026-08-13: RELEVANSDOMAREN ÄR INTE
+ *      DETERMINISTISK VID `temperature: 0`. Uppmätt på
+ *      paminnelseavgift-vad-galler med bit-för-bit identisk prompt:
+ *      **8 JA / 59 NEJ över 67 körningar** (mätt i
+ *      docs/research/406-domare-vs-fonster.md). Temperature 0 gör inferensen
+ *      nästan-deterministisk, inte deterministisk, och skillnaden syns just i
+ *      gränsfall nära domarens beslutsgräns.
+ *
+ *      TRE FÖLJDER FÖR HUR DEN HÄR SIFFRAN SKA LÄSAS OCH SÄTTAS:
+ *
+ *      a) Varje utfall som beror på ett enskilt domaranrop är en DRAGNING.
+ *         Kvoten kan därför röra sig utan att en rad kod ändras, och tre
+ *         identiska körningar bevisar inte determinism — det gjorde de inte
+ *         heller här: fyra eval-körningar i följd gav alla NEJ på det fall som
+ *         i själva verket flippar i ~12 % av dragningarna.
+ *
+ *      b) GOLVET SKA HA MARGINAL MOT DET UPPMÄTTA VÄRDET, inte sitta på det.
+ *         Ett golv som ligger exakt på observationen gör varje ogynnsam
+ *         dragning till ett rött bygge. Golvet 21 sitter i dag PÅ sitt uppmätta
+ *         värde (21/26) och har alltså ingen marginal — det är en känd
+ *         stramhet, medvetet oförändrad i den här textändringen eftersom en
+ *         sänkning är ett eget beslut som ska mätas, inte en redigering.
+ *
+ *      c) EN ENSTAKA AVVIKANDE KÖRNING ÄR INTE I SIG EN REGRESSION. Faller
+ *         kvoten med ett fall: kör om innan något felsöks, och jämför
+ *         fördelningar (≥ 10 körningar) snarare än enskilda verdikt. Är det
+ *         samma fall som rör sig fram och tillbaka är det domarbrus; är det ett
+ *         nytt fall som konsekvent tappas är det en regression.
  *
  *      HISTORIK, och varför varje steg togs i efterhand:
  *        14 av 18 → fram till #406:s åtta nya inkassokostnadsfall.
@@ -55,10 +86,13 @@
  *              en ärlig miss.
  *          FEMTE FALLET STEG INTE, och det är avsiktligt inte bortförklarat:
  *          paminnelseavgift-vad-galler når numera domaren (grind kandidat,
- *          BM25 23,0 / täckning 0,60) men fälls av honom — NEJ i 3 av 3
- *          körningar, till skillnad från sina två nästan identiska tvillingar.
- *          Miss före och efter, av ett annat skäl. Ett säkert utfall, men
- *          domarens skäl att skilja dem åt är okänt och värt en egen mätning.
+ *          BM25 23,0 / täckning 0,60, facit på fused-plats 1) men fälls av
+ *          honom i de flesta dragningar — 8 JA / 59 NEJ över 67 körningar med
+ *          identisk prompt, till skillnad från sina två nästan identiska
+ *          tvillingar. (Här stod tidigare "NEJ i 3 av 3 körningar". Det var
+ *          sant om de tre körningarna och fel som beskrivning av fallet — se
+ *          domarbrus-noten ovan.) Ett säkert utfall, men domarens skäl att
+ *          skilja tvillingarna åt är okänt och värt en egen mätning.
  *          Uppmätt mot en separat FÖRE-körning på main (17/26), inte härlett:
  *          exakt de fem fallen ändrade utfall, och inget icke-inkassofall rörde
  *          sig ens i BM25-score. Alla tre EFTER-körningarna gav byte-identiska
@@ -352,7 +386,11 @@ async function main(): Promise<void> {
     failures.push('agandeform-skatt-paketering passerade ingångsgrinden (ska vara ej-juridisk)')
   }
   if (answerableHits < 21) {
-    failures.push(`answerableHits ${answerableHits} < 21 (stabil uppmätt nivå 2026-08-13, 3×)`)
+    failures.push(
+      `answerableHits ${answerableHits} < 21 (uppmätt nivå 2026-08-13). OBS: domaren är ` +
+        'inte deterministisk vid temperature 0 — kör om innan du felsöker, och jämför ' +
+        'fördelningar över ≥ 10 körningar, inte enskilda verdikt.',
+    )
   }
   const lokal = byId.get('besittningsskydd-lokal')!
   if (!(lokal.outcome === 'miss' || hasChunk(lokal, 'hyreslagen', ['57']))) {
