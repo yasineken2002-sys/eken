@@ -1,0 +1,25 @@
+{
+  // Typecheck-konfig, INTE byggkonfig.
+  //
+  // `tsconfig.json` har `include: ["src"]` av ett skäl som inte får rivas:
+  // `nest build` använder samma fil, och tsc sätter `rootDir` till minsta
+  // gemensamma katalog för det som ingår. Läggs `scripts` dit flyttas rootDir
+  // från `src` till `apps/api`, och emittet blir `dist/src/main.js` i stället
+  // för `dist/main.js` — vilket bryter containerns start
+  // (`node dist/main.js`, se scripts/migrate-and-start.sh).
+  //
+  // Därför en egen fil med `noEmit`, där rootDir saknar betydelse. Den täcker
+  // src PLUS allt körbart som stod utanför: mätskripten, kunskaps-pipelinen,
+  // preflight-kontrollen och prisma-seedarna. De importerar produktionsmoduler
+  // och kunde tidigare gå sönder tyst — ts-node typkollar först vid körning,
+  // alltså långt efter merge.
+  //
+  // `.proof-*/` utelämnas medvetet: gitignorerade engångssonder, inte kod som
+  // någon annan ska kunna lita på.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src", "scripts/**/*.ts", "prisma/*.ts", "jest.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
