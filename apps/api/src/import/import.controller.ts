@@ -51,6 +51,16 @@ export class ImportController {
   // ─── Jobs ──────────────────────────────────────────────────────────────────
 
   @Get('jobs')
+  // Samma nivå som handlingen vars utfall listan visar: jobben SKAPAS av
+  // POST /import/execute (ADMIN, OWNER). Utan raden ärvde endpointen bara det
+  // globala JwtAuthGuard, så varje inloggad roll — inklusive VIEWER — kunde
+  // läsa organisationens importhistorik (#81).
+  //
+  // Ingen persondata låg exponerad: ImportJob.errors är `{ row, message }` med
+  // rena valideringstexter ("Namn saknas"), aldrig radinnehåll. Det som stod
+  // öppet var filnamn och importaktivitet — och framför allt asymmetrin: att
+  // läsa utfallet av en handling bara ADMIN/OWNER får utföra.
+  @Roles('ADMIN', 'OWNER')
   @ApiOperation({ summary: 'Lista importjobb för organisationen' })
   getJobs(@OrgId() orgId: string) {
     return this.importService.getImportJobs(orgId)
