@@ -161,7 +161,12 @@ describe('T2.2 · refund() är atomisk (#25) + race-säker claim', () => {
         .fn()
         .mockResolvedValue(opts.entryReturnsNull ? null : { id: 'je-refund' }),
     }
-    const service = new DepositsService(prisma as never, accounting as never, {} as never)
+    const service = new DepositsService(
+      prisma as never,
+      accounting as never,
+      {} as never,
+      { record: jest.fn().mockResolvedValue(undefined) } as never,
+    )
     return { service, txMock, accounting }
   }
 
@@ -203,7 +208,12 @@ describe('#73 · sweepTerminatedLeasesForRefundPending (självläkning)', () => 
   it('flaggar PAID-depositioner på TERMINATED-kontrakt → REFUND_PENDING (idempotent)', async () => {
     const updateMany = jest.fn().mockResolvedValue({ count: 3 })
     const prisma = { deposit: { updateMany } }
-    const service = new DepositsService(prisma as never, {} as never, {} as never)
+    const service = new DepositsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      { record: jest.fn().mockResolvedValue(undefined) } as never,
+    )
     const n = await service.sweepTerminatedLeasesForRefundPending()
     expect(n).toBe(3)
     expect(updateMany.mock.calls[0]![0]).toMatchObject({

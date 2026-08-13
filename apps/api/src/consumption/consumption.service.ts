@@ -15,6 +15,7 @@ import type {
 import { PrismaService } from '../common/prisma/prisma.service'
 import { assertPeriodOpen } from '../accounting/closed-period'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
+import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { CreateMeterDto } from './dto/create-meter.dto'
 import { UpdateMeterDto } from './dto/update-meter.dto'
 import { CreateTariffDto } from './dto/create-tariff.dto'
@@ -53,6 +54,8 @@ export class ConsumptionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
+    // #340: händelser skrivs via record(), som denormaliserar aktörsetiketten.
+    private readonly invoiceEvents: InvoiceEventsService,
   ) {}
 
   // ══ Mätare (Meter) ══════════════════════════════════════════════════════════
@@ -672,15 +675,18 @@ export class ConsumptionService {
         })
       }
 
-      await tx.invoiceEvent.create({
-        data: {
-          invoiceId: invoice.id,
-          type: 'CREATED',
-          actorType: 'USER',
-          actorId: userId,
-          payload: { invoiceNumber, consumptionChargeIds: charges.map((c) => c.id) },
-        },
-      })
+      // #340 (svepningen): via `record()`, inte en rå create. Den skrev bara
+      // `actorId` — ett UUID — och `users.service.ts` gör en riktig delete, så
+      // raderas användaren är namnet borta ur historiken för alltid.
+      // `record()` denormaliserar etiketten vid skrivtillfället.
+      await this.invoiceEvents.record(
+        invoice.id,
+        'CREATED',
+        'USER',
+        userId,
+        { invoiceNumber, consumptionChargeIds: charges.map((c) => c.id) },
+        { tx },
+      )
 
       return invoice
     })

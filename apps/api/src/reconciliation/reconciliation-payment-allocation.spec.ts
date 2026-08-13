@@ -95,6 +95,10 @@ function makeService(opts: {
 
   const accounting = { createJournalEntryForRentNoticePayment }
   const events = { record: jest.fn().mockResolvedValue(undefined) }
+  // #340: kravstegs-trailen går numera via RentNoticeEventsService.record(), som
+  // denormaliserar aktörsetiketten. Attrappen namnges så testet kan assertera
+  // på ANROPET i stället för på en rå rentNoticeEvent.create.
+  const rentNoticeEvents = { record: jest.fn().mockResolvedValue({}) }
 
   const service = new ReconciliationService(
     prisma as never,
@@ -102,9 +106,9 @@ function makeService(opts: {
     events as never,
     accounting as never,
     {} as never, // PaymentFreshnessService — ej använd i matchnings-/unmatch-vägen,
-    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
+    rentNoticeEvents as never, // #326 C — RentNoticeEventsService
   )
-  return { service, prisma, txMock, createJournalEntryForRentNoticePayment }
+  return { service, prisma, txMock, createJournalEntryForRentNoticePayment, rentNoticeEvents }
 }
 
 const OCR_TX = (amount: number) => ({
@@ -327,7 +331,7 @@ describe('PR3b · D3 — fuzzy är allt-eller-inget', () => {
 // ── 7. PR2-regression: full betalning av INKASSO_READY → NONE + trail ──────────
 describe('PR3b · full betalning nollställer kravsteget (PR2 oförändrat)', () => {
   it('OCR FULL betalning av INKASSO_READY-avi → status PAID + collectionStage NONE + trail', async () => {
-    const { service, txMock } = makeService({
+    const { service, txMock, rentNoticeEvents } = makeService({
       transaction: OCR_TX(8000),
       ocrCandidate: { id: 'rn-1' },
       txNotice: {
@@ -349,12 +353,20 @@ describe('PR3b · full betalning nollställer kravsteget (PR2 oförändrat)', ()
       status: 'PAID',
       collectionStage: 'NONE',
     })
-    const ev = txMock.rentNoticeEvent.create.mock.calls[0]![0].data
-    expect(ev.payload).toMatchObject({
+    // #340: skrivningen går via record() — inte en rå create — så aktörsetiketten
+    // denormaliseras och överlever att användaren raderas.
+    const [noticeId, type, actorType, actorId, payload] = rentNoticeEvents.record.mock.calls[0]!
+    expect(noticeId).toBe('rn-1')
+    expect(type).toBe('NOTE_ADDED')
+    expect(actorType).toBe('SYSTEM')
+    expect(actorId).toBeNull()
+    expect(payload).toMatchObject({
       action: 'collection-stage-reset',
       from: 'INKASSO_READY',
       reason: 'paid',
     })
+    // Ingen rå create kvar på den här vägen.
+    expect(txMock.rentNoticeEvent.create).not.toHaveBeenCalled()
   })
 
   it('PARTIELL betalning av INKASSO_READY-avi → kravsteget rörs INTE, ingen trail', async () => {

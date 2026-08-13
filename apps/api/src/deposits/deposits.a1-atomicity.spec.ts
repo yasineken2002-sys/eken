@@ -45,7 +45,12 @@ function make(opts: { accrual?: 'ok' | 'null' | 'throw' } = {}) {
     return Promise.resolve({ id: 'je-accrual' })
   })
   const accounting = { createJournalEntryForDepositInvoice }
-  const service = new DepositsService(prisma as never, accounting as never, {} as never)
+  const service = new DepositsService(
+    prisma as never,
+    accounting as never,
+    {} as never,
+    { record: jest.fn().mockResolvedValue(undefined) } as never,
+  )
   return { service, tx, accounting }
 }
 
