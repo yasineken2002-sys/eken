@@ -493,7 +493,25 @@ export class PaymentReminderService {
           status: 'OVERDUE',
           remindersPaused: false,
         },
-        data: { total: { increment: new Prisma.Decimal(safeFee.toFixed(2)) } },
+        // ── #363: SUBTOTAL FÖLJER MED TOTAL ────────────────────────────────
+        //
+        // `computeInvoiceAmounts` håller invarianten "subtotal + moms = total"
+        // exakt, och faktura-PDF:en skriver ut alla tre som egna poster. Växte
+        // bara `total` summerade "Netto exkl. moms" + "Moms" inte längre till
+        // "Att betala" — de skiljde exakt avgiften, i ett dokument hyresgästen
+        // kan räkna efter.
+        //
+        // `vatTotal` rörs INTE: avgiftsraden skrivs med `vatRate: 0` några rader
+        // ned och bokförs 1510 D / 3593 K utan momskonto. Hela beloppet hör till
+        // nettot, så att flytta momsen hade brutit invarianten i andra riktningen.
+        //
+        // Relativt tillägg av samma skäl som `total` (#357, FAR M4): ett absolut
+        // värde här hade härletts ur en läsning UTANFÖR transaktionen, alltså
+        // lost update-formen.
+        data: {
+          total: { increment: new Prisma.Decimal(safeFee.toFixed(2)) },
+          subtotal: { increment: new Prisma.Decimal(safeFee.toFixed(2)) },
+        },
       })
       if (bumped.count === 0) {
         throw new ConflictException(
