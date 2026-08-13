@@ -22,7 +22,7 @@
  *   3. deposition-storlek grundas ALDRIG (golv eller domare — domaren är
  *      designförsvaret: cosine 0.605 ligger över golvet).
  *   4. agandeform-skatt-paketering är ej-juridisk (fångas före retrieval).
- *   5. answerableHits ≥ 17 av 26 (stabilt reproducerad nivå 2026-08-13, 3×
+ *   5. answerableHits ≥ 21 av 26 (stabilt reproducerad nivå 2026-08-13, 3×
  *      körningar). Nivån kodar vad som faktiskt MÄTTS, aldrig vad en kommande
  *      fix förväntas ge — höj den först när ett nytt stabilt värde uppmätts.
  *
@@ -43,12 +43,33 @@
  *          byte-identiska och körning 3 skilde sig på en enda tredjedecimal i
  *          altan-utan-lov-tvists cosine (0,498 → 0,499) — pgvector-brus som
  *          inte rör något utfall.
+ *        21 av 26 → #406 PR4 (tesaurus-grupper för påminnelse/krav/ogiltighet,
+ *          2026-08-13). Täljaren steg med fyra, nämnaren är oförändrad 26:
+ *            paminnelseavgift-taket            — grundad med sin egen 4 §.
+ *            paminnelseavgift-avtalskravet     — grundad med sin egen 2 §.
+ *            paminnelseavgift-vad-sager-lagen  — grundad med sin egen 2 §.
+ *            paminnelseavgift-hogre-i-avtal    — grundad MED 6 §, alltså med
+ *              ogiltighetsregeln och inte bara rätten + taket. Att 6 § ligger
+ *              först är låst av legal-retrieval-thesaurus.spec.ts: utan den
+ *              hade svaret blivit sant-men-ofullständigt, vilket är sämre än
+ *              en ärlig miss.
+ *          FEMTE FALLET STEG INTE, och det är avsiktligt inte bortförklarat:
+ *          paminnelseavgift-vad-galler når numera domaren (grind kandidat,
+ *          BM25 23,0 / täckning 0,60) men fälls av honom — NEJ i 3 av 3
+ *          körningar, till skillnad från sina två nästan identiska tvillingar.
+ *          Miss före och efter, av ett annat skäl. Ett säkert utfall, men
+ *          domarens skäl att skilja dem åt är okänt och värt en egen mätning.
+ *          Uppmätt mot en separat FÖRE-körning på main (17/26), inte härlett:
+ *          exakt de fem fallen ändrade utfall, och inget icke-inkassofall rörde
+ *          sig ens i BM25-score. Alla tre EFTER-körningarna gav byte-identiska
+ *          resultattabeller — ingen cosine-drift den här gången.
  *
  *      16 av 18 observerades en gång i en tidigare mätning men var INTE stabil:
  *      besittningsskydd-lokal och drojsmalsranta-sen-hyra är domar-gränsfall som
  *      flappar mellan grundad och ärlig miss (se invariant 7) — golvet kodar den
  *      nivå som håller oavsett vilken sida de landar på. Båda missade i samtliga
- *      2026-08-11- OCH 2026-08-13-körningar, så 17 vilar inte på dem.
+ *      2026-08-11- OCH 2026-08-13-körningar, inklusive PR4:s tre, så 21 vilar inte
+ *      på dem.
  *   6. altan/eget-behov (needs-jurist): grundas de alls måste rätt källa
  *      (§24 ELLER §42 resp. §46) finnas bland chunkarna — grundat svar med
  *      rätt källa + jurist-rekommendation är OK; grundat med fel källa är det
@@ -69,10 +90,15 @@
  *      försvaret som håller deposition-storlek (invariant 3) ute.
  *   8. paminnelseavgift-ratten GRUNDAS med inkassokostnadslagen 2 §.
  *
- *      ⚠ DENNA INVARIANT ÄR RÖD I DAG, AVSIKTLIGT. Den är #406:s mätsticka och
- *      blir grön först när fixen landar. Att köra knowledge:eval på main innan
- *      dess ger alltså exit 1 med exakt detta fel — det är avsett. Scriptet är
- *      manuellt och ingår inte i CI, så det blockerar ingen merge.
+ *      GRÖN sedan #424 (#406 PR3, söktermer i chunk-metadata) och verifierad i
+ *      samtliga körningar därefter, inklusive PR4:s tre. Den skrevs medvetet
+ *      RÖD innan fixen fanns — som en mätsticka, inte som ett fel: så länge
+ *      lagen (1981:739) låg i korpusen utan att någonsin hämtas var det den här
+ *      raden som gjorde bristen synlig och exit-kodad. En invariant som skrivs
+ *      först när den redan håller mäter ingenting.
+ *
+ *      Den är kvar av samma skäl som den skrevs: den är nu regressionsspärren
+ *      för att 2 § FORTSÄTTER nå fram.
  *
  *      VARFÖR EGEN INVARIANT OCH INTE BARA KVOTEN (invariant 5): en aggregerad
  *      kvot kan uppfyllas medan just den nya lagen aldrig hämtas — det var
@@ -98,26 +124,34 @@
  *      mätningen. GRÖN i dag (3/3 körningar 2026-08-11) och måste förbli grön
  *      genom hela #406-serien.
  *
- * AVGRÄNSNING — #406 ÄR TVÅ PROBLEM, OCH PR-PLANEN LÖSER ETT (uppmätt 2026-08-11):
- *   Av de åtta inkassokostnadsfallen når SEX aldrig grinden: de fälls av
- *   miss:weak-retrieval, alltså BM25 under golvet 9 OCH cosine under 0,52.
+ * AVGRÄNSNING — #406 VAR TVÅ PROBLEM, OCH BÅDA ÄR NU ÅTGÄRDADE FÖR
+ * INKASSOKOSTNADSLAGEN (uppmätt 2026-08-13, efter PR4):
+ *   Läget 2026-08-11 var att SEX av de åtta inkassokostnadsfallen aldrig nådde
+ *   grinden — de fälldes av miss:weak-retrieval, alltså BM25 under golvet 9 OCH
+ *   cosine under 0,52:
  *     paminnelseavgift-taket            1,8 / 0,50  ·  cosine 0,417
  *     paminnelseavgift-avtalskravet     6,4 / 0,50  ·  cosine 0,465
  *     paminnelseavgift-vad-galler       5,2 / 0,67  ·  cosine 0,444
  *     paminnelseavgift-vad-sager-lagen  6,5 / 0,25  ·  cosine 0,456
  *     paminnelseavgift-hogre-i-avtal    8,9 / 0,57  ·  cosine 0,409  ← fälls med 0,1
  *     kravbrev-avgift                   6,6 / 0,50  ·  cosine 0,461
- *   Endast paminnelseavgift-ratten blir kandidat och fälls av domaren; endast
- *   paminnelseavgift-lagens-egna-ord grundas.
+ *   FÖNSTER-halvan löstes av PR3 (söktermer i chunk-metadata) och GRIND-halvan
+ *   av PR4 (tesaurus-grupper) — den senare efter en egen kartläggning, som
+ *   avgränsningen nedan förutsåg att den skulle kräva. Alla åtta passerar nu
+ *   grinden; sju grundas med sin egen facit-paragraf och en (vad-galler) fälls
+ *   av domaren, se invariant 5.
  *
- *   Den planerade fixen (bredare kandidatfält + per-chunk-selektiv domare)
- *   angriper FÖNSTRET. Den kan per konstruktion inte hjälpa de sex — en domare
- *   som aldrig får se en kandidat kan inte välja den. Grind-halvan behöver en
- *   egen kartläggning; cosine-golvet 0,52 står inte på bordet. Invariant 8
- *   mäter fönster-halvan och ska bli grön av fixen. De sex är AVSIKTLIGT inte
- *   låsta av någon invariant: vi vet ännu inte att de kan lösas, och en
- *   invariant för något som saknar känt lösningsutrymme är ett löfte, inte ett
- *   krav. Invariant 9 skyddar dem ändå mot det farliga utfallet (fel paragraf).
+ *   Cosine-golvet 0,52 stod aldrig på bordet och rördes inte: samtliga lyft är
+ *   lexikala. Fallen är fortfarande inte var för sig låsta av en egen invariant
+ *   — kvoten (5) och paragrafspärren (9) bär dem tillsammans, och den senare
+ *   är det som gör att ett insläpp inte kan bli ett självsäkert svar med fel
+ *   paragraf.
+ *
+ *   ⚠ #406 ÄR INTE LÖST I STORT. Vokabulärgapet är stängt för EN lag. Samma
+ *   mekanism — hyresvärdens ord ≠ lagstiftarens — gäller korpusens övriga
+ *   lagar, och de fyra hyreslagsfall ärendet pekade ut (hyreshojning-formkrav,
+ *   hyressattning-bruksvarde, kontrakt-tidsbestamt-forlangning,
+ *   hyresgastval-diskriminering) är oberörda av PR3 och PR4.
  */
 import { PrismaClient } from '@prisma/client'
 import { ConfigService } from '@nestjs/config'
@@ -317,8 +351,8 @@ async function main(): Promise<void> {
   if (skatt.outcome !== 'ej-juridisk') {
     failures.push('agandeform-skatt-paketering passerade ingångsgrinden (ska vara ej-juridisk)')
   }
-  if (answerableHits < 17) {
-    failures.push(`answerableHits ${answerableHits} < 17 (stabil uppmätt nivå 2026-08-13, 3×)`)
+  if (answerableHits < 21) {
+    failures.push(`answerableHits ${answerableHits} < 21 (stabil uppmätt nivå 2026-08-13, 3×)`)
   }
   const lokal = byId.get('besittningsskydd-lokal')!
   if (!(lokal.outcome === 'miss' || hasChunk(lokal, 'hyreslagen', ['57']))) {
