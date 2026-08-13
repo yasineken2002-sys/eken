@@ -7,8 +7,14 @@
  * golvets kalibrering för resten av korpusen?
  *
  * KÖRS MANUELLT (inte i CI):
- *   pnpm --filter @eken/api exec node --env-file-if-exists=.env \
+ *   cd apps/api && node --env-file-if-exists=.env \
  *     -r ts-node/register scripts/measure-406-gate.ts [--no-semantic]
+ *   npx prettier --write docs/research/406-grind-kartlaggning.md
+ *
+ * Prettier-steget hör till receptet, inte till städningen: lint-staged
+ * formaterar om rapporten vid commit, så utan det ger varje ny körning en
+ * diff mot grenen och det går inte att se om SIFFRORNA ändrats eller bara
+ * radbrytningarna. Med det är en oförändrad mätning en tom diff.
  *
  * VAD SKRIPTET FÅR GÖRA: importera och mäta. Det skriver ALDRIG till
  * produktionsvägen, rör ingen tröskel och ingen lagtext. Chunkarnas
