@@ -46,6 +46,7 @@ import {
   collectEndpointRoles,
   normalizeRoles,
   renderSurface,
+  collectUngatedEndpoints,
   type AiToolRoles,
 } from './authz-surface'
 
@@ -128,8 +129,10 @@ describe('Behörighetsytan · golden-fil (#267)', () => {
 
   beforeAll(async () => {
     endpoints = collectEndpointRoles(SRC_DIR)
+    // #434: ogrindade endpoints registreras nu också.
+    const ungated = collectUngatedEndpoints(SRC_DIR)
     aiTools = await measureAiTools()
-    generated = renderSurface({ endpoints, serviceGates: SERVICE_GATES, aiTools })
+    generated = renderSurface({ endpoints, serviceGates: SERVICE_GATES, aiTools, ungated })
   }, 120_000)
 
   it('parsern ser fortfarande kodbasen (rimlighetsgolv)', () => {
