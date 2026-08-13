@@ -11,7 +11,10 @@ export default [
       '**/.next/**',
       '**/coverage/**',
       '**/.vite/**',
-      '**/prisma/seed.ts',
+      // `.proof-*/` är gitignorerade engångssonder (rot-.gitignore rad 50).
+      // Flat config läser INTE .gitignore, så utan raden här skulle `eslint .`
+      // dra in dem. Samma avgränsning som tsconfig.typecheck.json gör.
+      '**/.proof-*/**',
     ],
   },
   {
