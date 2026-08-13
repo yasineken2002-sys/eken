@@ -47,9 +47,24 @@
  *      b) GOLVET SKA HA MARGINAL MOT DET UPPMÄTTA VÄRDET, inte sitta på det.
  *         Ett golv som ligger exakt på observationen gör varje ogynnsam
  *         dragning till ett rött bygge. Golvet 21 sitter i dag PÅ sitt uppmätta
- *         värde (21/26) och har alltså ingen marginal — det är en känd
- *         stramhet, medvetet oförändrad i den här textändringen eftersom en
- *         sänkning är ett eget beslut som ska mätas, inte en redigering.
+ *         värde (21/26) och har alltså ingen marginal.
+ *
+ *         MEN RIKTNINGEN RÄDDAR DET, och utan den läser stramheten som en
+ *         större risk än den är: DE FEM ANSWERABLE-MISSARNA KAN BARA FLYTTA
+ *         KVOTEN UPPÅT. Det kända instabila fallet
+ *         (paminnelseavgift-vad-galler, ~12 % JA) är en MISS — det räknas inte
+ *         in i de 21, så dess vändning går NEJ → JA och tar kvoten till 22.
+ *         Golvets hela exponering ligger på de 21 TRÄFFARNA, och där
+ *         observerades noll vändningar över 21 × 13 = 273 falldragningar
+ *         (13 körningar, samtliga 21/26, spridning 0 — se
+ *         docs/research/eval-golvets-marginal.md).
+ *
+ *         Vad de 13 körningarna INTE visar: trestegsregeln ger bara en övre
+ *         gräns på ~21 % per körning för att någon av träffarna vänder. Noll
+ *         observerade fall är inte bevisad stabilitet. Golvet står kvar på 21
+ *         eftersom instabiliteten vi belagt pekar uppåt och grinden är manuell
+ *         (knowledge:eval finns inte i någon workflow — en ogynnsam dragning
+ *         kostar en omkörning, inte en merge), inte för att risken är noll.
  *
  *      c) EN ENSTAKA AVVIKANDE KÖRNING ÄR INTE I SIG EN REGRESSION. Faller
  *         kvoten med ett fall: kör om innan något felsöks, och jämför
