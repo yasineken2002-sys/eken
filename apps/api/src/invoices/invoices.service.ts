@@ -196,10 +196,28 @@ export class InvoicesService {
           where: { status: 'MATCHED' },
           orderBy: { date: 'desc' },
         },
+        // #349 — allokeringarna, för `outstanding` nedan. Samma skäl som i
+        // findAll: restskulden räknas HÄR, inte i klienten.
+        payments: { select: { amount: true } },
       },
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
-    return invoice
+    // ── #349: DETALJSVARET BÄR OCKSÅ RESTSKULDEN ────────────────────────────
+    //
+    // `outstanding` fanns bara på listsvaret. Betalningsmodalen kan öppnas från
+    // listan (där fältet finns) men också via deep-link från notifikationer, där
+    // raden kommer från `useInvoice(id)` — och då saknades det. En
+    // `?? total`-fallback i klienten hade smugit tillbaka bruttot, vilket är
+    // exakt fällan #325 stängde på KPI-sidan.
+    //
+    // `payments` plockas BORT ur svaret, av samma skäl som i findAll: att skicka
+    // med den hade bjudit in nästa yta att summera allokeringarna själv i
+    // stället för att läsa `outstanding`.
+    const { payments: _payments, ...inv } = invoice
+    return {
+      ...inv,
+      outstanding: invoiceOutstanding({ total: inv.total, payments: _payments }),
+    }
   }
 
   async getTimeline(id: string, organizationId: string) {

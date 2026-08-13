@@ -24,6 +24,7 @@ import { InvoiceTimeline } from './components/InvoiceTimeline'
 import { InvoiceForm } from './components/InvoiceForm'
 import {
   useInvoices,
+  useInvoice,
   useInvoiceEvents,
   useCreateInvoice,
   useUpdateInvoice,
@@ -32,6 +33,7 @@ import {
   useRegisterPayment,
   useSendInvoiceEmail,
 } from './hooks/useInvoiceQueries'
+import type { InvoiceWithOutstanding } from './hooks/useInvoiceQueries'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { Invoice, InvoiceStatus, CreateInvoiceInput, Tenant } from '@eken/shared'
 import { downloadInvoicePdf } from './api/invoices.api'
@@ -75,13 +77,21 @@ function PaymentSubForm({
   onCancel,
   isSubmitting,
 }: {
-  invoice: Invoice
+  // #349: TYPEN ÄR SPÄRREN. Kräver `outstanding` — utan det kunde formuläret
+  // förifylla bruttot på en delbetald faktura och föreslå en överbetalning.
+  invoice: InvoiceWithOutstanding
   onConfirm: (data: PaymentFormState) => void
   onCancel: () => void
   isSubmitting: boolean
 }) {
   const [form, setForm] = useState<PaymentFormState>({
-    amount: String(Number(invoice.total)),
+    // #349: RESTSKULDEN, inte bruttot. På en faktura där 9 000 av 10 000 är
+    // allokerat föreslog fältet 10 000 kr, och operatören som klickade igenom
+    // fick ett överbetalningsförsök. Backend avvisar det (markAsPaidManually
+    // grindar mot computeInvoiceDebt), så det var aldrig ett penningfel — men
+    // förifyllningen är ett BELOPPSPÅSTÅENDE om vad som ska betalas, och den
+    // sa fel sak.
+    amount: String(Number(invoice.outstanding)),
     paymentMethod: 'Bankgiro',
     reference: invoice.reference ?? '',
   })
@@ -156,6 +166,10 @@ export function InvoicesPage() {
   // som räkenskapsinformation (soft-delete, BFL 1999:1078).
   const displayedInvoices = tab === 'ALL' ? invoices.filter((i) => i.status !== 'VOID') : invoices
   const { data: selectedEvents = [] } = useInvoiceEvents(selected?.id ?? '')
+  // #349: betalningsmodalens belopp ska vara RESTSKULDEN, och den finns bara på
+  // detaljsvaret (och listsvaret). Hämtas när modalen är öppen — `useInvoice`
+  // är `enabled: !!id`, så tom sträng betyder ingen förfrågan.
+  const { data: paymentInvoice } = useInvoice(showPayment && selected ? selected.id : '')
   const { data: tenants = [] } = useTenants()
 
   // ── Mutations ─────────────────────────────────────────────────────────────
@@ -730,14 +744,29 @@ export function InvoicesPage() {
           open={showPayment}
           onClose={() => setShowPayment(false)}
           title="Registrera betalning"
-          description={`${selected.invoiceNumber} · ${formatCurrency(Number(selected.total))}`}
+          description={
+            paymentInvoice
+              ? `${paymentInvoice.invoiceNumber} · ${formatCurrency(Number(paymentInvoice.outstanding))} att betala`
+              : selected.invoiceNumber
+          }
         >
-          <PaymentSubForm
-            invoice={selected}
-            onConfirm={handlePayment}
-            onCancel={() => setShowPayment(false)}
-            isSubmitting={payMutation.isPending}
-          />
+          {/* #349: formuläret får fakturan från DETALJQUERYN, inte från `selected`.
+              `selected` sätts både från listan och från mutationssvar (setSelected(updated)),
+              och mutationssvaren bär inte restskulden — att typa hela state:t hade
+              tvingat fram `outstanding` på fyra endpoints och en DB-läsning per
+              mutation. Att hämta här är dessutom MER korrekt: beloppet bygger på
+              serverns sanning när modalen öppnas, inte på en möjligen inaktuell
+              listrad. */}
+          {paymentInvoice ? (
+            <PaymentSubForm
+              invoice={paymentInvoice}
+              onConfirm={handlePayment}
+              onCancel={() => setShowPayment(false)}
+              isSubmitting={payMutation.isPending}
+            />
+          ) : (
+            <p className="py-6 text-center text-[13px] text-gray-500">Hämtar restskuld…</p>
+          )}
         </Modal>
       )}
 

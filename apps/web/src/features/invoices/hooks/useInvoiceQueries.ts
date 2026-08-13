@@ -7,12 +7,20 @@ import type { RegisterPaymentInput } from '../api/invoices.api'
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
 /**
- * #325 — listsvaret bär ALLTID `outstanding` (restskulden), till skillnad från
- * detaljsvaret. TYPEN ÄR SPÄRREN: genom att kräva fältet här kan en yta som
- * läser listan inte tyst falla tillbaka på `total` och råka visa
- * ursprungsbeloppet som skuld på en delbetald faktura.
+ * #325 — listsvaret bär ALLTID `outstanding` (restskulden). TYPEN ÄR SPÄRREN:
+ * genom att kräva fältet kan en yta som läser listan inte tyst falla tillbaka
+ * på `total` och råka visa ursprungsbeloppet som skuld på en delbetald faktura.
+ *
+ * #349 — DETALJSVARET BÄR DET NU OCKSÅ. Betalningsmodalen kan öppnas från
+ * listan men också via deep-link från notifikationer, där raden kommer från
+ * `useInvoice(id)`. Saknades fältet där var alternativet en `?? total`-fallback,
+ * alltså bruttot tillbaka i ett beloppspåstående — precis det #325 stängde.
+ * Samma typ används därför för båda svaren.
  */
-export type InvoiceListItem = Invoice & { outstanding: number }
+export type InvoiceWithOutstanding = Invoice & { outstanding: number }
+
+/** Bakåtkompatibelt namn — listan och detaljen har samma form sedan #349. */
+export type InvoiceListItem = InvoiceWithOutstanding
 
 export function useInvoices(filters?: { status?: InvoiceStatus; tenantId?: string }) {
   return useQuery({
@@ -25,7 +33,7 @@ export function useInvoices(filters?: { status?: InvoiceStatus; tenantId?: strin
 export function useInvoice(id: string) {
   return useQuery({
     queryKey: ['invoice', id],
-    queryFn: () => get<Invoice>(`/invoices/${id}`),
+    queryFn: () => get<InvoiceWithOutstanding>(`/invoices/${id}`),
     enabled: !!id,
   })
 }
