@@ -48,6 +48,7 @@ import {
   SOURCE_SUFFIX_MARKER,
   type LegalGrounding,
 } from './knowledge/grounding/legal-grounding'
+import { expandWithBackwardReferences } from './knowledge/retrieval/legal-cross-reference'
 import { AI_MODELS } from './ai.config'
 
 const LEGAL_QUESTION =
@@ -55,11 +56,20 @@ const LEGAL_QUESTION =
 const WEAK_LEGAL_QUESTION = 'Hur stor deposition (säkerhet) får jag kräva av en hyresgäst?'
 const OPERATIONAL_QUESTION = 'Hur många lediga lägenheter har jag?'
 
-/** Förväntad grundning om domaren säger JA (samma byggare som produktionen). */
+/**
+ * Förväntad grundning om domaren säger JA (samma byggare som produktionen).
+ *
+ * Expansionssteget (#406 PR2, korsreferens bakåt) måste ligga här också —
+ * annars mäter oraklet en väg produktionen inte längre går, och den skulle falla
+ * på att källraden nu bär även de korsrefererande paragraferna. Att källraden
+ * VIDGAS av PR2 är avsiktligt och synligt: den citerar exakt de chunkar som
+ * injicerades, varken fler eller färre. Gap A-beviset är oförändrat — raden
+ * byggs fortfarande ur chunk-metadata och kan inte se AI-text.
+ */
 function expectedGrounding(question: string): LegalGrounding {
   const candidate = evaluateLegalRetrieval(question)
   if (candidate?.outcome !== 'candidate') throw new Error('Frågan är ingen kandidat')
-  return groundLegalCandidate(candidate.retrieved)
+  return groundLegalCandidate(expandWithBackwardReferences(candidate.retrieved))
 }
 
 /** Den auktoritativa (kod-skrivna) källsektionen = allt efter sista markören. */
@@ -149,7 +159,9 @@ const textResponse = (text: string) => ({
 function chatCalls(create: jest.Mock): Array<{ model: string; system: Array<unknown> }> {
   return create.mock.calls.map(([args]) => args).filter((a) => a.model !== AI_MODELS.MEMORY)
 }
-function judgeCalls(create: jest.Mock): Array<{ model: string }> {
+function judgeCalls(
+  create: jest.Mock,
+): Array<{ model: string; messages: Array<{ content: string }> }> {
   return create.mock.calls.map(([args]) => args).filter((a) => a.model === AI_MODELS.MEMORY)
 }
 
@@ -175,6 +187,33 @@ describe('chat() — kod-bunden källa på grundade svar (domare: JA)', () => {
     // Max 4 breakpoints per request: TOOLS (1, låst av tool-caching.spec) +
     // dessa 2 i system = 3 totalt. Fler än 2 i system får aldrig smyga in.
     expect(system.filter((b) => b.cache_control).length).toBe(2)
+  })
+
+  it('#406 PR2: domaren ser ORIGINALEN — grundningen ser de utökade', async () => {
+    // "Döm på originalen, grunda på de utökade." Den ordningen är hela skälet
+    // till att expansionen är säker: matades domaren med grannarna flippade
+    // besittningsskydd-lokal 5/5 till ett självsäkert svar utan §57, för att
+    // grannen hyreslagen 56 § HÄNVISAR till 57-60 §§ utan att innehålla regeln.
+    const candidate = evaluateLegalRetrieval(LEGAL_QUESTION)
+    if (candidate?.outcome !== 'candidate') throw new Error('Frågan är ingen kandidat')
+    const originals = candidate.retrieved.map((r) => r.chunk)
+    const expanded = expandWithBackwardReferences(candidate.retrieved).map((r) => r.chunk)
+    // Testet är bara diskriminerande om expansionen FAKTISKT lägger till något.
+    expect(expanded.length).toBeGreaterThan(originals.length)
+
+    const { service, create } = makeService(textResponse('Hon har förlängningsrätt.'))
+    const res = await service.chat('o1', 'u1', 'ADMIN', LEGAL_QUESTION)
+
+    const judgePrompt = judgeCalls(create)[0]!.messages[0]!.content
+    // Promptens kandidater är numrerade [1]..[n] — n är exakt originalens antal.
+    expect(judgePrompt).toContain(`[${originals.length}]`)
+    expect(judgePrompt).not.toContain(`[${originals.length + 1}]`)
+    for (const extra of expanded.slice(originals.length)) {
+      expect(judgePrompt).not.toContain(extra.text)
+    }
+    // …medan den kod-bundna källraden bär hela den utökade mängden.
+    const source = authoritativeSourceSection(res.reply)
+    for (const chunk of expanded) expect(source).toContain(`${chunk.paragraph} §`)
   })
 
   it('svaret avslutas med den kod-bundna källraden och persisteras med den', async () => {

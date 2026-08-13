@@ -122,6 +122,7 @@ import {
   parseRelevanceVerdict,
 } from '../src/ai/knowledge/grounding/legal-grounding'
 import { chunksToSources } from '../src/ai/knowledge/retrieval/legal-retrieval-runner'
+import { expandWithBackwardReferences } from '../src/ai/knowledge/retrieval/legal-cross-reference'
 import { scoreRun } from '../src/ai/knowledge/eval/legal-eval-harness'
 import { LEGAL_EVAL_SET } from '../src/ai/knowledge/eval/legal-eval-set'
 import { AI_MODELS, VOYAGE_EMBEDDINGS } from '../src/ai/ai.config'
@@ -213,6 +214,10 @@ async function main(): Promise<void> {
       }
 
       row.gate = 'kandidat'
+      // DÖM PÅ ORIGINALEN, GRUNDA PÅ DE UTÖKADE (#406 PR2) — samma ordning som
+      // resolveLegalGrounding. Utan att spegla den mäter gate-evalen en kedja
+      // produktionen inte går, och ett "inget utfall ändrades" blir ett
+      // påstående om riggen i stället för om produkten.
       const chunks = candidate.retrieved.map((r) => r.chunk)
       const response = await anthropic.messages.create({
         model: AI_MODELS.MEMORY,
@@ -225,11 +230,12 @@ async function main(): Promise<void> {
       row.judge = verdict === true ? 'JA' : verdict === false ? 'NEJ' : 'ogiltig'
 
       if (verdict === true) {
-        const grounding = groundLegalCandidate(candidate.retrieved)
+        const enriched = expandWithBackwardReferences(candidate.retrieved)
+        const grounding = groundLegalCandidate(enriched)
         row.outcome = 'grundad'
         row.chunks = grounding.chunks
         row.sourceHit = scoreRun(c, {
-          retrievedSources: chunksToSources(candidate.retrieved),
+          retrievedSources: chunksToSources(enriched),
           answer: '',
           recommendedJurist: false,
         }).sourceHit
