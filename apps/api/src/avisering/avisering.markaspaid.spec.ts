@@ -397,9 +397,13 @@ describe('PR2 — cancelNotice nollställer collectionStage (anti-zombie)', () =
     await service.cancelNotice('rn-1', 'org-1')
 
     const call = prisma.rentNotice.updateMany.mock.calls[0]![0]
-    // Org-scopad updateMany med PAID-guard (inte update på enbart id).
+    // Org-scopad updateMany med statusguard (inte update på enbart id).
     expect(call.where).toMatchObject({ id: 'rn-1', organizationId: 'org-1' })
-    expect(call.where.status).toEqual({ not: 'PAID' })
+    // #367: villkoret var `{ not: 'PAID' }` — CANCELLED matchade det, så claimen
+    // träffade sin egen redan annullerade rad. Assertionens AVSIKT (claimen är
+    // org-scopad och statusgrindad) är oförändrad; det är formen som utökats.
+    // Uteslutningen i sig prövas i avisering.cancel-double.spec.ts.
+    expect(call.where.status).toEqual({ notIn: ['PAID', 'CANCELLED'] })
     expect(call.data).toMatchObject({ status: 'CANCELLED', collectionStage: 'NONE' })
     // Trail dokumenterar nollställningen.
     expect(eventCreate.mock.calls[0]![0].data.payload).toMatchObject({
