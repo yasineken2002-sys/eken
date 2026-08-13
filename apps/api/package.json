@@ -8,7 +8,7 @@
     "start": "node dist/main",
     "postinstall": "prisma generate",
     "lint": "eslint src",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "jest",
     "test:ci": "jest --ci --runInBand",
     "test:watch": "jest --watch",
