@@ -104,12 +104,59 @@ const STOPWORDS = new Set([
   'nu',
 ])
 
+// ── Inkassokostnader (#406 PR4) — TRE grupper, inte en ────────────────────
+//
+// Grupperna nedan är variant T5 ur docs/research/406-tesaurus-inkasso.md,
+// ORDAGRANT. Både uppdelningen och den exakta ordformen är MÄTTA utfall, och
+// de tre vanligaste "förenklingarna" av listan är alla prövade och föll:
+//
+// 1. SLÅ IHOP DEM TILL EN INKASSOGRUPP (mätt som T1). En grupp är ORIKTAD:
+//    varje term läggs till varje fråga som utlöser gruppen. En blandad
+//    påminnelse/krav-grupp drog därför 3 § in i påminnelsefrågor och 2 § in i
+//    kravfrågor. Uppmätt: 1 § (tillämpningsparagrafen — aldrig ett svar) tog
+//    en lexikal topp-3-plats i 8 av 8 inkassofall, kravbrev-avgift tappade
+//    3 §:s förstaplats till 2 §, och "facit först i domarens fönster" sjönk
+//    från 6/8 till 5/8. Separationen är alltså inte kosmetik — den ÄR det
+//    som gör att rätt paragraf hamnar först.
+//
+// 2. LÄGGA TILL DET NAKNA ORDET "krav". Utlösningen sker på DELSTRÄNG
+//    (lower.includes), så "krav" matchar "formkrav" lika bra som sig självt.
+//    Uppmätt i T1: fyra konstruerade icke-inkassofrågor med "krav" i sig —
+//    bl.a. "Vilka formkrav gäller för en uppsägning?" — fick alla
+//    inkassokostnadslagen 2 § som lexikal etta, med score långt över
+//    täckningsbandets kant så att bandet inte kunde fälla dem. Termerna här
+//    är därför sammansättningar (kravavgift/kravbrev/inkassokrav) som inte
+//    kan utlösas av ett orelaterat sammansatt ord. T5 ger 0 av 4
+//    kontaminerade sonderingar. Låst av legal-retrieval-thesaurus.spec.ts.
+//
+// 3. SKRIVA TRIGGERN SOM EN FRAS. Samma delsträngsmatchning gör flerordiga
+//    termer sprödare än de ser ut: kandidat T4 hade 'avtala om högre', vilket
+//    INTE är en delsträng av frågans "avtala om **en** högre
+//    påminnelseavgift". T4 mättes som en exakt no-op — bit-för-bit identisk
+//    med T3. Därav 'avtala om' här: kortast möjliga form som faktiskt faller
+//    ut. En längre, "tydligare" fras utlöses inte alls.
+//
+// Ogiltighetsgruppen bär sitt eget skäl: utan den ligger 6 § på lexikal rank
+// 11 och når inte domarens fönster, så paminnelseavgift-hogre-i-avtal skulle
+// släppas in och grundas på RÄTTEN (2 §) och TAKET (4 §) utan den regel som
+// gör svaret sant — att taket inte kan avtalas bort uppåt. Med gruppen är
+// 6 § lexikal rank 1 på den frågan. Låst av legal-retrieval-thesaurus.spec.ts.
+//
+// RÖR INTE utan att mäta om: apps/api/scripts/measure-406-tesaurus.ts kör
+// hela jämförelsen (före/efter, ranking, kontaminering, negativkontroller)
+// mot en spegel som verifieras numeriskt mot den här modulen.
+export const INKASSO_CONCEPT_GROUPS: readonly (readonly string[])[] = [
+  ['påminnelseavgift', 'påminnelse', 'betalningspåminnelse'],
+  ['kravavgift', 'kravbrev', 'inkassokrav'],
+  ['avtala om', 'ogiltigt avtalsvillkor', 'utvidgas utöver', 'tvingande regel'],
+]
+
 /**
  * Allmän juridisk tesaurus: knyter naturligt språk (som en hyresvärd skriver)
  * till lagtextens formella vokabulär. Generell, inte fall-anpassad. Om frågan
  * innehåller någon term i en grupp expanderas sökningen med hela gruppen.
  */
-const CONCEPT_GROUPS: string[][] = [
+const CONCEPT_GROUPS: readonly (readonly string[])[] = [
   ['uppsägning', 'uppsäga', 'säga upp', 'säg upp', 'sägs upp', 'sagt upp', 'uppsagd', 'upphöra'],
   ['besittningsskydd', 'besittning', 'förlängning', 'förlänga', 'bo kvar', 'rätt till förläng'],
   [
@@ -134,6 +181,7 @@ const CONCEPT_GROUPS: string[][] = [
   ['förfallodag', 'betalas', 'betalning av hyra'],
   ['kontrakt', 'hyresavtal', 'avtal'],
   ['tidsbestämt', 'bestämd tid', 'obestämd tid', 'förlängt'],
+  ...INKASSO_CONCEPT_GROUPS,
 ]
 
 /** Lätt svensk stamning: kapar vanliga böjningsändelser. Pure. */
