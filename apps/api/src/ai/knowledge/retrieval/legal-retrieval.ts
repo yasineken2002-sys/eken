@@ -12,6 +12,7 @@
  * synkron, nätfri — och gap B-grindens enda signalkälla.
  */
 import { buildLegalChunks, type LegalChunk } from './legal-chunk'
+import { searchTermsFor } from './legal-search-terms'
 
 export interface RetrievedChunk {
   chunk: LegalChunk
@@ -221,7 +222,16 @@ function buildIndex(): Bm25Index {
   let totalLength = 0
 
   for (const chunk of chunks) {
-    const tokens = tokenize(chunk.text).map(stem)
+    // INDEXERAD text ≠ CITERBAR text (#406 PR3): paragrafens söktermer
+    // indexeras jämte lagtexten, men existerar bara här. De når aldrig
+    // legalChunkContentHash (embeddingarnas idempotensnyckel), aldrig
+    // buildContextBlock/buildRelevanceJudgePrompt (AI:n och domaren) och
+    // aldrig buildSourceCitation (källraden) — de läser chunk.text och
+    // metadata. Se legal-search-terms.ts; gränserna låses av dess spec.
+    const searchTerms = searchTermsFor(chunk)
+    const indexText =
+      searchTerms.length > 0 ? `${chunk.text}\n${searchTerms.join(' ')}` : chunk.text
+    const tokens = tokenize(indexText).map(stem)
     const tf = new Map<string, number>()
     for (const t of tokens) tf.set(t, (tf.get(t) ?? 0) + 1)
     for (const term of tf.keys()) docFreq.set(term, (docFreq.get(term) ?? 0) + 1)

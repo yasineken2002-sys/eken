@@ -22,17 +22,33 @@
  *   3. deposition-storlek grundas ALDRIG (golv eller domare — domaren är
  *      designförsvaret: cosine 0.605 ligger över golvet).
  *   4. agandeform-skatt-paketering är ej-juridisk (fångas före retrieval).
- *   5. answerableHits ≥ 15 av 26 (stabilt reproducerad nivå 2026-08-11, 3×
- *      identiska körningar). Nivån var 14 av 18 fram till #406:s åtta nya
- *      inkassokostnadsfall; nämnaren steg med 8 och täljaren med 1
- *      (paminnelseavgift-lagens-egna-ord). Kvoten är alltså SÄNKT i andel och
- *      HÖJD i absoluta tal — den kodar vad som faktiskt mättes, inte vad
- *      #406-fixen förväntas ge. Höj den när PR2 mäter ett nytt stabilt värde,
- *      aldrig i förskott. 16 av 18 har observerats i en tidigare mätning men var
- *      INTE stabil: besittningsskydd-lokal och drojsmalsranta-sen-hyra är
- *      domar-gränsfall som flappar mellan grundad och ärlig miss (se invariant
- *      7) — golvet kodar den nivå som håller oavsett vilken sida de landar på.
- *      (Båda missade i alla tre 2026-08-11-körningarna.)
+ *   5. answerableHits ≥ 17 av 26 (stabilt reproducerad nivå 2026-08-13, 3×
+ *      körningar). Nivån kodar vad som faktiskt MÄTTS, aldrig vad en kommande
+ *      fix förväntas ge — höj den först när ett nytt stabilt värde uppmätts.
+ *
+ *      HISTORIK, och varför varje steg togs i efterhand:
+ *        14 av 18 → fram till #406:s åtta nya inkassokostnadsfall.
+ *        15 av 26 → #406 PR0: nämnaren steg med 8 och täljaren med 1
+ *          (paminnelseavgift-lagens-egna-ord). Kvoten SÄNKTES i andel och
+ *          HÖJDES i absoluta tal, för det var vad mätningen visade.
+ *        17 av 26 → #406 PR3 (söktermer i chunk-metadata, 2026-08-13).
+ *          Täljaren steg med två fall, nämnaren är oförändrad 26:
+ *            paminnelseavgift-ratten  — domaren gick från NEJ till JA när 2 §
+ *              äntligen nådde fönstret (invariant 8, nu grön).
+ *            kravbrev-avgift          — BM25 6,6 → 12,0/1,00, alltså från
+ *              miss:weak-retrieval till grundad med sin egen 3 §.
+ *          Uppmätt mot en separat FÖRE-körning med inkopplingen backad, inte
+ *          härlett: övriga 28 fall gav identiska grindutfall, domarverdikt och
+ *          källor. Kvoten var 17/26 i alla tre körningarna; körning 1 och 2 var
+ *          byte-identiska och körning 3 skilde sig på en enda tredjedecimal i
+ *          altan-utan-lov-tvists cosine (0,498 → 0,499) — pgvector-brus som
+ *          inte rör något utfall.
+ *
+ *      16 av 18 observerades en gång i en tidigare mätning men var INTE stabil:
+ *      besittningsskydd-lokal och drojsmalsranta-sen-hyra är domar-gränsfall som
+ *      flappar mellan grundad och ärlig miss (se invariant 7) — golvet kodar den
+ *      nivå som håller oavsett vilken sida de landar på. Båda missade i samtliga
+ *      2026-08-11- OCH 2026-08-13-körningar, så 17 vilar inte på dem.
  *   6. altan/eget-behov (needs-jurist): grundas de alls måste rätt källa
  *      (§24 ELLER §42 resp. §46) finnas bland chunkarna — grundat svar med
  *      rätt källa + jurist-rekommendation är OK; grundat med fel källa är det
@@ -301,8 +317,8 @@ async function main(): Promise<void> {
   if (skatt.outcome !== 'ej-juridisk') {
     failures.push('agandeform-skatt-paketering passerade ingångsgrinden (ska vara ej-juridisk)')
   }
-  if (answerableHits < 15) {
-    failures.push(`answerableHits ${answerableHits} < 15 (stabil uppmätt nivå 2026-08-11, 3×)`)
+  if (answerableHits < 17) {
+    failures.push(`answerableHits ${answerableHits} < 17 (stabil uppmätt nivå 2026-08-13, 3×)`)
   }
   const lokal = byId.get('besittningsskydd-lokal')!
   if (!(lokal.outcome === 'miss' || hasChunk(lokal, 'hyreslagen', ['57']))) {
