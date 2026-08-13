@@ -61,7 +61,7 @@ Unit                    updateMany  units/unit-status.sync.ts                   
 Unit                    delete      units/units.service.ts                                  A kedje-query
 Unit                    update      units/units.service.ts                                  A kedje-query
 
-## Form 2 — create (36 rader)
+## Form 2 — create (33 rader)
 
 AiMessage               create      ai/ai-assistant.controller.ts                       ×3  A kedje-query + C scopat anrop
 AiMessage               create      ai/ai-assistant.service.ts                          ×7  A kedje-query + C scopat anrop
@@ -70,8 +70,6 @@ InspectionImage         create      inspections/inspections.controller.ts       
 InspectionItem          create      inspections/inspections.controller.ts                   C scopat anrop
 InspectionItem          createMany  inspections/inspections.service.ts                      B hjälpare
 InvoiceEvent            create      collections/collection-export.service.ts            ×2  A kedje-query + INGEN UPPTÄCKT
-InvoiceEvent            create      consumption/consumption.service.ts                      A kedje-query
-InvoiceEvent            create      deposits/deposits.service.ts                        ×2  A kedje-query
 InvoiceEvent            create      invoices/invoice-events.service.ts                      INGEN UPPTÄCKT
 InvoiceEvent            create      notifications/notifications.service.ts                  A kedje-query
 InvoiceEvent            create      notifications/payment-reminder.service.ts           ×3  INGEN UPPTÄCKT
@@ -91,7 +89,6 @@ PaymentReminder         create      notifications/payment-reminder.service.ts   
 PaymentReminder         createMany  notifications/payment-reminder.service.ts               INGEN UPPTÄCKT
 RentNoticeEvent         create      avisering/rent-notice-events.service.ts                 INGEN UPPTÄCKT
 RentNoticeEvent         create      collections/rent-collection-export.service.ts       ×2  C scopat anrop
-RentNoticeEvent         create      reconciliation/reconciliation.service.ts                A kedje-query
 RentNoticeEvent         create      webhooks/resend-webhook.service.ts                      INGEN UPPTÄCKT
 RentNoticeLine          create      consumption/consumption.service.ts                      A kedje-query
 RentNoticeLine          create      misc-charges/misc-charge.service.ts                     A kedje-query

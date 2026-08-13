@@ -138,10 +138,21 @@ function makeService(
   }
   const notifications = { createForAllOrgUsers: jest.fn() }
 
-  const service = new DepositsService(prisma as never, accounting as never, notifications as never)
+  // #340: händelsen skrivs numera via InvoiceEventsService.record(), som
+  // denormaliserar aktörsetiketten. Attrappen namnges så testet kan assertera
+  // på anropet i stället för på en rå invoiceEvent.create.
+  const invoiceEvents = { record: jest.fn().mockResolvedValue(undefined) }
+
+  const service = new DepositsService(
+    prisma as never,
+    accounting as never,
+    notifications as never,
+    invoiceEvents as never,
+  )
   return {
     service,
     txMock,
+    invoiceEvents,
     createJournalEntryForInvoiceManualPayment,
     createJournalEntryForDepositManualPayment,
     ordning,
@@ -226,10 +237,11 @@ describe('DepositsService.markPaid — bokför inbetalningen', () => {
     // läste den här grenen bara inv.status och bokförde blint deposit.amount
     // ovanpå det som redan kommit in: 5 000 + 20 000 = 25 000 mot 1930 på en
     // fordran på 20 000, alltså 5 000 kr som aldrig tagits emot.
-    const { service, txMock, createJournalEntryForInvoiceManualPayment } = makeService({
-      invoiceStatus: 'PARTIAL',
-      priorAllocations: [5_000],
-    })
+    const { service, txMock, createJournalEntryForInvoiceManualPayment, invoiceEvents } =
+      makeService({
+        invoiceStatus: 'PARTIAL',
+        priorAllocations: [5_000],
+      })
 
     await service.markPaid('dep-1', 'org-1', 'user-1')
 
@@ -250,10 +262,11 @@ describe('DepositsService.markPaid — bokför inbetalningen', () => {
     expect(5_000 + Number(rad.data.amount)).toBe(DEPOSITION)
 
     // Händelseloggen påstår samma sak som verifikatet, inte deposit.amount.
-    const event = (txMock.invoiceEvent.create.mock.calls[0] as unknown[])[0] as {
-      data: { payload: { amount: number } }
-    }
-    expect(event.data.payload.amount).toBe(15_000)
+    // #340: via record() — argument 5 är payloaden.
+    const [, type, actorType, , payload] = invoiceEvents.record.mock.calls[0]!
+    expect(type).toBe('PAYMENT_RECEIVED')
+    expect(actorType).toBe('USER')
+    expect((payload as { amount: number }).amount).toBe(15_000)
 
     // Fordran är helt reglerad → fakturan blir PAID.
     expect(txMock.invoice.update).toHaveBeenCalledTimes(1)

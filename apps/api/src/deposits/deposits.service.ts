@@ -13,6 +13,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { allocateInvoiceNumber } from '../invoices/invoice-number'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
+import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { CreateDepositDto } from './dto/create-deposit.dto'
 import { RefundDepositDto } from './dto/refund-deposit.dto'
@@ -37,6 +38,8 @@ export class DepositsService implements OnApplicationBootstrap {
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
     private readonly notifications: NotificationsService,
+    // #340: händelser skrivs via record(), som denormaliserar aktörsetiketten.
+    private readonly invoiceEvents: InvoiceEventsService,
   ) {}
 
   // #41: kör backfillen EN gång vid uppstart (efter migrate deploy) så befintliga
@@ -175,15 +178,17 @@ export class DepositsService implements OnApplicationBootstrap {
         include: INCLUDE,
       })
 
-      await tx.invoiceEvent.create({
-        data: {
-          invoiceId: invoice.id,
-          type: 'CREATED',
-          actorType: 'USER',
-          actorId: userId,
-          payload: { invoiceNumber, depositId: deposit.id },
-        },
-      })
+      // #340 (svepningen): via `record()` — den råa varianten skrev bara ett
+      // UUID i `actorId`. `users.service.ts` gör en riktig delete, så namnet
+      // försvinner ur historiken när användaren tas bort.
+      await this.invoiceEvents.record(
+        invoice.id,
+        'CREATED',
+        'USER',
+        userId,
+        { invoiceNumber, depositId: deposit.id },
+        { tx },
+      )
 
       // T5 A1: boka 1510 D / 2890 K i SAMMA transaktion som Invoice+Deposit
       // (speglar ensureDepositForNotice). En Deposit får ALDRIG existera utan sin
@@ -478,17 +483,17 @@ export class DepositsService implements OnApplicationBootstrap {
               where: { id: inv.id },
               data: { status: 'PAID', paidAt: now },
             })
-            await tx.invoiceEvent.create({
-              data: {
-                invoiceId: inv.id,
-                type: 'PAYMENT_RECEIVED',
-                actorType: 'USER',
-                actorId: userId,
-                // Loggen bär det FAKTISKT bokförda beloppet, inte deposit.amount
-                // — annars påstår spåret något annat än verifikatet (#293).
-                payload: { source: 'deposit', amount: debt.outstanding.toNumber() },
-              },
-            })
+            // #340 (svepningen): via `record()` — se createDeposit ovan.
+            await this.invoiceEvents.record(
+              inv.id,
+              'PAYMENT_RECEIVED',
+              'USER',
+              userId,
+              // Loggen bär det FAKTISKT bokförda beloppet, inte deposit.amount
+              // — annars påstår spåret något annat än verifikatet (#293).
+              { source: 'deposit', amount: debt.outstanding.toNumber() },
+              { tx },
+            )
 
             // #290: allokeringen depositionsvägen aldrig skrev. Fakturan flippades
             // till PAID med noll InvoicePayment-rader — osynlig för

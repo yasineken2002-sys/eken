@@ -59,6 +59,7 @@ describe('Hyreslagen-compliance: deposits.create() — depositionstak', () => {
       prisma as never,
       accounting as never,
       notifications as never,
+      { record: jest.fn().mockResolvedValue(undefined) } as never,
     )
     return { service, prisma }
   }

@@ -132,7 +132,11 @@ function makeService(o: Opts = {}) {
     createJournalEntryForConsumptionCharge: jest.fn().mockResolvedValue({ id: 'je-1' }),
   }
   return {
-    service: new ConsumptionService(prisma as never, accounting as never),
+    service: new ConsumptionService(
+      prisma as never,
+      accounting as never,
+      { record: jest.fn().mockResolvedValue(undefined) } as never,
+    ),
     prisma: prisma as unknown as MockPrisma,
     accounting,
   }
@@ -381,7 +385,11 @@ function makeLeverans(charges: Record<string, unknown>[]) {
     createJournalEntryForConsumptionCharge: jest.fn(),
     createJournalEntryForInvoice: jest.fn(),
   }
-  const service = new ConsumptionService(prisma as never, accounting as never)
+  const service = new ConsumptionService(
+    prisma as never,
+    accounting as never,
+    { record: jest.fn().mockResolvedValue(undefined) } as never,
+  )
   return { service, prisma: prisma as unknown as LeveransPrisma, accounting, created }
 }
 
@@ -594,7 +602,11 @@ function makeAccrual(o: AccrualOpts = {}) {
   const accounting = {
     createConsumptionAccrualEntry: jest.fn().mockResolvedValue({ accrual: {}, reversal: {} }),
   }
-  const service = new ConsumptionService(prisma as never, accounting as never)
+  const service = new ConsumptionService(
+    prisma as never,
+    accounting as never,
+    { record: jest.fn().mockResolvedValue(undefined) } as never,
+  )
   return { service, accounting, prisma }
 }
 

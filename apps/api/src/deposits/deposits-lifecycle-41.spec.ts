@@ -31,7 +31,12 @@ function make(opts: { existingDeposit?: unknown; accrualReturnsNull?: boolean } 
       .fn()
       .mockResolvedValue(opts.accrualReturnsNull ? null : { id: 'je-accrual' }),
   }
-  const service = new DepositsService(prisma as never, accounting as never, {} as never)
+  const service = new DepositsService(
+    prisma as never,
+    accounting as never,
+    {} as never,
+    { record: jest.fn().mockResolvedValue(undefined) } as never,
+  )
   return { service, prisma, txDeposit, accounting }
 }
 
@@ -125,7 +130,12 @@ describe('#41/T2.2 · markPaid bokför avi-länkad deposition (1930 D/1510 K)', 
         .fn()
         .mockResolvedValue(opts.manualReturnsNull ? null : { id: 'je-manual' }),
     }
-    const service = new DepositsService(prisma as never, accounting as never, {} as never)
+    const service = new DepositsService(
+      prisma as never,
+      accounting as never,
+      {} as never,
+      { record: jest.fn().mockResolvedValue(undefined) } as never,
+    )
     return { service, txMock, accounting }
   }
 

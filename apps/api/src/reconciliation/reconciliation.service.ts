@@ -1549,20 +1549,25 @@ export class ReconciliationService {
 
       // Kravstegs-trail bara när vi faktiskt nollställde en aktiv trappa (full betalning).
       if (completesNotice && notice.collectionStage !== 'NONE') {
-        await tx.rentNoticeEvent.create({
-          data: {
-            rentNoticeId: noticeId,
-            type: 'NOTE_ADDED',
-            actorType: userId ? 'USER' : 'SYSTEM',
-            ...(userId ? { actorId: userId } : { actorLabel: 'System' }),
-            payload: {
-              action: 'collection-stage-reset',
-              from: notice.collectionStage,
-              reason: 'paid',
-              source: 'bank_reconciliation',
-            },
+        // #340: via `record()`, inte en rå create. Den råa varianten satte
+        // `actorLabel` BARA i SYSTEM-grenen — för en verklig användare skrevs
+        // bara ett UUID. `users.service.ts` gör en riktig delete, ingen
+        // soft-delete, så raderas användaren är namnet borta ur historiken för
+        // alltid. Det är precis vad denormaliseringen i `record()` finns för.
+        // Samma hål som #326 C stängde för PAYMENT_REVERSED, en nivå bort.
+        await this.rentNoticeEvents.record(
+          noticeId,
+          'NOTE_ADDED',
+          userId ? 'USER' : 'SYSTEM',
+          userId ?? null,
+          {
+            action: 'collection-stage-reset',
+            from: notice.collectionStage,
+            reason: 'paid',
+            source: 'bank_reconciliation',
           },
-        })
+          { tx },
+        )
       }
 
       // Partialverifikatet ATOMISKT i samma tx. amount = det FAKTISKT allokerade
