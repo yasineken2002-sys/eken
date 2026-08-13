@@ -736,9 +736,16 @@ export class InvoicesService {
           await tx.invoiceLine.deleteMany({
             where: { id: { in: feeLines.map((l) => l.id) } },
           })
+          // #363: `subtotal` följer med `total` — avgiften är momsfri
+          // (`vatRate: 0`, konto 3593), så hela beloppet hör till nettot och
+          // `vatTotal` ska stå still. Utan subtotal-raden lämnar makuleringen
+          // dokumentet skevt åt ANDRA hållet än påläggningen gjorde.
           await tx.invoice.update({
             where: { id },
-            data: { total: { decrement: feeSum } },
+            data: {
+              total: { decrement: feeSum },
+              subtotal: { decrement: feeSum },
+            },
           })
         }
 
@@ -884,7 +891,17 @@ export class InvoicesService {
         (sum, l) => sum.plus(new Prisma.Decimal(l.total)),
         new Prisma.Decimal(0),
       )
-      await tx.invoice.update({ where: { id: invoiceId }, data: { total: nyTotal } })
+      // #363: `subtotal` följer med. Den räknas RELATIVT medan `total` sätts
+      // absolut, och det är avsiktligt: totalen går att härleda ur raderna
+      // (varje rad bär sitt bruttobelopp), men nettot gör det inte utan att
+      // dela upp varje rad i net/moms med samma avrundning som
+      // `computeInvoiceAmounts` — en dubblering av den logiken här vore en
+      // andra sanningskälla för momsen. Avgiften är momsfri, så det som
+      // försvinner ur nettot är exakt `feeSum`, och `vatTotal` står still.
+      await tx.invoice.update({
+        where: { id: invoiceId },
+        data: { total: nyTotal, subtotal: { decrement: feeSum } },
+      })
 
       await this.accountingService.reverseJournalEntryForReminderFee(
         'INVOICE',
