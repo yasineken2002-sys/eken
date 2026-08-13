@@ -146,6 +146,117 @@ export const LEGAL_EVAL_SET: LegalEvalCase[] = [
     note: 'Cross-law: räntelagen, inte hyreslagen.',
   },
 
+  // ── Påminnelseavgift / inkassokostnader (#406) ─────────────────────────────
+  //
+  // VARFÖR DE FINNS: #400 lade lagen (1981:739) i korpusen (7 chunkar) utan att
+  // lägga ett enda eval-fall. Gate-evalen kunde därför inte se att lagen aldrig
+  // hämtades — den mätte bara det den redan kunde. Utan dessa fall mäter en
+  // #406-fix sitt eget minne av problemet, inte problemet.
+  //
+  // VAD DE MÄTER: vokabulärgapet. Hyresvärden skriver "påminnelseavgift", lagen
+  // skriver "skriftlig betalningspåminnelse" och "ersättning". BM25 poängsätter
+  // exakta stammar, så 2 § får score 0 (uppmätt 2026-08-11) medan den enda
+  // inkasso-paragraf som får lexikal poäng är 4 a § — förseningsersättning
+  // MELLAN NÄRINGSIDKARE, alltså fel regel för en bostadshyresgäst.
+  //
+  // VALET AV FORMULERINGAR ÄR MÄTT, INTE HITTAT PÅ RAKT AV: 14 kandidater
+  // prövades mot isLegalQuestion och de 7 som passerade valdes. Fall som föll på
+  // INGÅNGSGRINDEN hör till #390 och skulle här ha mätt fel sak — de blir
+  // 'ej-juridisk' och når aldrig retrieval. Formuleringarna är däremot
+  // fortfarande KONSTRUERADE, inte hämtade ur prod-data: samma kvarstående risk
+  // som #390 håller öppen.
+  //
+  // FACIT ÄR EN JURIDISK BEDÖMNING och ska människoverifieras: 2 § bär RÄTTEN
+  // (och avtalskravet — "om avtal därom har träffats senast i samband med
+  // skuldens uppkomst"), 4 § bär TAKET (högst sextio kronor för påminnelse
+  // enligt 2 §), 3 § bär kravbrevet. Att 2 § är den regel produktens egen grind
+  // isReminderFeeContractuallyAllowed implementerar är verifierat i koden.
+  {
+    id: 'paminnelseavgift-ratten',
+    category: 'inkassokostnader',
+    question: 'Får jag ta ut en påminnelseavgift när hyran betalas för sent?',
+    expectedSources: [{ lawId: 'inkassokostnadslagen', paragraphs: ['2'] }],
+    expectedAnswerCore:
+      'Ja, men bara om det avtalats senast i samband med att skulden uppkom — alltså i hyresavtalet, inte i efterhand. Ersättningen avser en skriftlig betalningspåminnelse.',
+    shouldRecommendJurist: false,
+    expectedOutcome: 'answerable',
+    note: '#406-huvudfallet. Facit är ENDAST 2 §: sourceHit kräver bara EN träff, så ett facit med både 2 och 4 § hade kunnat uppfyllas av taket allena och dolt att rätten aldrig hämtades.',
+  },
+  {
+    id: 'paminnelseavgift-lagens-egna-ord',
+    category: 'inkassokostnader',
+    question: 'Får jag ta ut ersättning för en skriftlig betalningspåminnelse?',
+    expectedSources: [{ lawId: 'inkassokostnadslagen', paragraphs: ['2'] }],
+    expectedAnswerCore:
+      'Ja, om ersättningen avtalats senast i samband med skuldens uppkomst. Paragrafen förutsätter att påminnelsen är skriftlig.',
+    shouldRecommendJurist: false,
+    expectedOutcome: 'answerable',
+    note: 'DISKRIMINERANDE KONTROLLFALL: frågan använder lagens EGNA ord ("ersättning", "skriftlig betalningspåminnelse"). Missar även detta fall är diagnosen i #406 fel — då är problemet inte vokabulärgapet.',
+  },
+  {
+    id: 'paminnelseavgift-taket',
+    category: 'inkassokostnader',
+    question: 'Hur mycket får jag ta ut i påminnelseavgift?',
+    expectedSources: [{ lawId: 'inkassokostnadslagen', paragraphs: ['4'] }],
+    expectedAnswerCore:
+      'Högst sextio kronor för en skriftlig betalningspåminnelse, och bara för kostnader som varit skäligen påkallade. Beloppet gäller om det inte finns särskilda skäl till annat.',
+    shouldRecommendJurist: false,
+    expectedOutcome: 'answerable',
+    note: 'Taket, inte rätten. Paret 2 § + 4 § är det fullständiga svaret till en hyresvärd — rätten utan taket är ett sämre svar än ingen träff alls.',
+  },
+  {
+    id: 'paminnelseavgift-avtalskravet',
+    category: 'inkassokostnader',
+    question: 'Har jag rätt att ta ut en avgift för påminnelsen jag skickade?',
+    expectedSources: [{ lawId: 'inkassokostnadslagen', paragraphs: ['2'] }],
+    expectedAnswerCore:
+      'Bara om avgiften avtalats senast i samband med skuldens uppkomst. Har den inte avtalats i förväg finns ingen rätt till ersättning för påminnelsen.',
+    shouldRecommendJurist: false,
+    expectedOutcome: 'answerable',
+  },
+  {
+    id: 'paminnelseavgift-vad-galler',
+    category: 'inkassokostnader',
+    question: 'Vad gäller för påminnelseavgift på en sen hyra?',
+    expectedSources: [{ lawId: 'inkassokostnadslagen', paragraphs: ['2'] }],
+    expectedAnswerCore:
+      'Ersättning för skriftlig betalningspåminnelse förutsätter avtal senast i samband med skuldens uppkomst.',
+    shouldRecommendJurist: false,
+    expectedOutcome: 'answerable',
+  },
+  {
+    id: 'paminnelseavgift-vad-sager-lagen',
+    category: 'inkassokostnader',
+    question: 'Vad säger lagen om påminnelseavgifter till hyresgäster?',
+    expectedSources: [{ lawId: 'inkassokostnadslagen', paragraphs: ['2'] }],
+    expectedAnswerCore:
+      'Rätten till ersättning för skriftlig betalningspåminnelse kräver avtal senast i samband med skuldens uppkomst. Ett avtalsvillkor som utvidgar ersättningsskyldigheten utöver lagen är ogiltigt.',
+    shouldRecommendJurist: false,
+    expectedOutcome: 'answerable',
+  },
+  {
+    id: 'paminnelseavgift-hogre-i-avtal',
+    category: 'inkassokostnader',
+    question: 'Kan jag avtala om en högre påminnelseavgift än lagens belopp?',
+    expectedSources: [{ lawId: 'inkassokostnadslagen', paragraphs: ['6'] }],
+    expectedAnswerCore:
+      'Nej. Ett avtalsvillkor som utvidgar gäldenärens skyldighet att ersätta kostnaderna utöver vad lagen medger är ogiltigt. Taket kan alltså inte avtalas bort uppåt — inte ens om hyresgästen skrivit under.',
+    shouldRecommendJurist: false,
+    expectedOutcome: 'answerable',
+    note: '6 § avgör takfrågan: 2 § ger rätten, 4 § beloppet, och 6 § gör det omöjligt att avtala sig förbi beloppet. Utan 6 § är svaret "du får ta ut en avgift" utan den begränsning som gör svaret sant. Hör därför hemma i mätstickan, inte bara i korpusen.',
+  },
+  {
+    id: 'kravbrev-avgift',
+    category: 'inkassokostnader',
+    question: 'Får jag ta ut en avgift för kravbrevet?',
+    expectedSources: [{ lawId: 'inkassokostnadslagen', paragraphs: ['3'] }],
+    expectedAnswerCore:
+      'Ersättning för krav förutsätter att kravbrevet utformats enligt inkassolagens krav. Det är en annan grund än påminnelseavgiften och har ett eget belopp.',
+    shouldRecommendJurist: false,
+    expectedOutcome: 'answerable',
+    note: 'Skiljefall: krav (3 §) är INTE påminnelse (2 §). Fångar en fix som drar in hela inkassokostnadslagen oavsett vad frågan gäller.',
+  },
+
   // ── Förverkande & störningar ───────────────────────────────────────────────
   {
     id: 'forverkande-obetald-hyra',
