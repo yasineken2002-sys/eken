@@ -1836,6 +1836,23 @@ export class AviseringService {
     if (notice.status === RentNoticeStatus.PAID) {
       throw new BadRequestException('Kan inte avbryta en betald avi')
     }
+    // #367: CANCELLED → CANCELLED är ingen giltig övergång. Utan den här raden
+    // — och utan `notIn` i claimen nedan — träffade claimen sin egen redan
+    // annullerade rad, skrev om samma statusvärde och returnerade count 1, så
+    // anroparen fick ett normalt svar på en händelse som inte inträffade.
+    //
+    // Att det inte kostade pengar berodde på att alla fyra reverseringsvägar är
+    // idempotenta på sina `sourceId` — skyddet låg i BOKFÖRINGSLAGRET, inte i
+    // statusmaskinen. En spärr som råkar hålla är ingen spärr; nästa väg som
+    // läggs här behöver inte vara idempotent.
+    //
+    // FAILED utesluts INTE: en avi vars utskick misslyckats är precis en som
+    // behöver kunna avbrytas.
+    if (notice.status === RentNoticeStatus.CANCELLED) {
+      throw new BadRequestException(
+        `Avi ${notice.noticeNumber} är redan annullerad — ingen ytterligare åtgärd behövs.`,
+      )
+    }
     // En DELVIS betald avi får inte annulleras rakt av: motverifikatet reverserar
     // fordran, men den redan mottagna delbetalningen (RentNoticePayment + eget
     // likvidverifikat) skulle lämna en oadresserad kundkredit på 1510. Kräv att
@@ -1956,7 +1973,10 @@ export class AviseringService {
         where: {
           id: noticeId,
           organizationId: orgId,
-          status: { not: RentNoticeStatus.PAID },
+          // #367: CANCELLED måste stå med. `{ not: PAID }` släppte igenom en
+          // redan annullerad rad — förläsningen ovan sker utanför transaktionen
+          // och kan hinna bli inaktuell, precis som för nedskrivningen nedan.
+          status: { notIn: [RentNoticeStatus.PAID, RentNoticeStatus.CANCELLED] },
           // Nedskrivningsgrinden ligger ÄVEN här, inte bara i förläsningen ovan.
           // Den läsningen sker utanför transaktionen och kan hinna bli inaktuell:
           //
@@ -1978,12 +1998,29 @@ export class AviseringService {
         // ställe. Läsningen sker i samma tx, efter claimen, så den ser sanningen.
         const aktuell = await tx.rentNotice.findFirst({
           where: { id: noticeId, organizationId: orgId },
-          select: { probableLossAt: true, writtenOffAt: true, noticeNumber: true },
+          select: {
+            probableLossAt: true,
+            writtenOffAt: true,
+            noticeNumber: true,
+            // #367: statusen behövs för att skilja "annullerad av någon annan"
+            // från "reglerad". Utan den föll båda ihop i ett besked som var fel
+            // i det ena fallet.
+            status: true,
+          },
         })
         if (aktuell && (aktuell.probableLossAt != null || aktuell.writtenOffAt != null)) {
           throw new ConflictException(
             `Avi ${aktuell.noticeNumber} skrevs ned som kundförlust under annulleringen — ` +
               'annulleringen avbröts. Hantera fordran via kundförlust-flödet.',
+          )
+        }
+        // #367: en parallell annullering hann före. Det är inte ett fel som
+        // kräver åtgärd — resultatet operatören ville ha finns redan — men det
+        // ska sägas rätt, inte som "redan reglerad" (vilket antyder betalning).
+        if (aktuell?.status === RentNoticeStatus.CANCELLED) {
+          throw new ConflictException(
+            `Avi ${aktuell.noticeNumber} annullerades av någon annan under tiden — ` +
+              'ingen ytterligare åtgärd behövs.',
           )
         }
         // En parallell process hann reglera avin mellan läsning och uppdatering.
