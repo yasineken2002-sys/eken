@@ -78,6 +78,18 @@ export interface EndpointRoles {
   roles: string[]
 }
 
+/**
+ * En endpoint UTAN rollgrind. `public` = `@Public()`, alltså helt utanför
+ * JwtAuthGuard; annars är den autentiserad men öppen för varje roll (#434).
+ */
+export interface UngatedEndpoint {
+  file: string
+  endpoint: string
+  public: boolean
+  /** `@UseGuards(...)` som gäller (klass- eller metodnivå), tom om ingen. */
+  guards: string
+}
+
 function walkControllers(dir: string): string[] {
   const out: string[] = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -97,14 +109,42 @@ function walkControllers(dir: string): string[] {
  * här kodbasen. Metodnivåns lista vinner över klassnivåns, precis som
  * `Reflector.getAllAndOverride` gör i runtime.
  */
+/**
+ * #434 — endpoints UTAN rollgrind. Samma parsning som `collectEndpointRoles`;
+ * det är komplementmängden, inte en andra läsning av källan.
+ */
+export function collectUngatedEndpoints(srcDir: string): UngatedEndpoint[] {
+  return parseControllers(srcDir).ungated
+}
+
 export function collectEndpointRoles(srcDir: string): EndpointRoles[] {
+  return parseControllers(srcDir).gated
+}
+
+function parseControllers(srcDir: string): {
+  gated: EndpointRoles[]
+  ungated: UngatedEndpoint[]
+} {
   const found: EndpointRoles[] = []
+  const ungated: UngatedEndpoint[] = []
   for (const file of walkControllers(srcDir)) {
     const src = readFileSync(file, 'utf8')
     const base = /@Controller\(\s*['"`]([^'"`]*)['"`]/.exec(src)?.[1] ?? ''
     let classRoles = ''
+    let classGuards = ''
+    let classIsPublic = false
     let seenClass = false
     let pending: string[] = []
+
+    // #434: `@UseGuards(...)` är den ANDRA mekanismen. Frånvaro av @Roles
+    // betyder inte att endpointen är ostyrd — plattformsadmin går via
+    // PlatformGuard och hyresgästportalen via sin egen session. Utan den här
+    // kolumnen hade avsnitt 1b lästs som en lista över hål, vilket vore falskt.
+    const guardsOf = (decorators: string[]): string =>
+      decorators
+        .filter((d) => d.startsWith('@UseGuards'))
+        .map((d) => d.replace(/.*@UseGuards\(([^)]*)\).*/, '$1').replace(/\s/g, ''))
+        .join(' ')
 
     const rolesOf = (decorators: string[]): string => {
       const last = decorators.filter((d) => d.startsWith('@Roles')).pop()
@@ -120,6 +160,8 @@ export function collectEndpointRoles(srcDir: string): EndpointRoles[] {
       const t = line.trim()
       if (/^export class /.test(t)) {
         classRoles = rolesOf(pending)
+        classGuards = guardsOf(pending)
+        classIsPublic = pending.some((d) => /^@Public\(/.test(d))
         pending = []
         seenClass = true
         continue
@@ -164,6 +206,19 @@ export function collectEndpointRoles(srcDir: string): EndpointRoles[] {
             )
           }
           found.push({ file: file.split('/').pop()!, endpoint, roles: parsed })
+        } else {
+          // #434: ingen rollgrind. Raden hamnade tidigare INGENSTANS — golden-
+          // filen registrerade bara det som HADE en gräns, så en SAKNAD gräns
+          // var per konstruktion osynlig för driftbevakningen. Det var ett
+          // medvetet val ("de flesta är självscopade"), men #81 visade att
+          // "de flesta" inte räcker: GET /import/jobs var varken självscopad
+          // eller avsedd att vara öppen, och ingenting fångade det.
+          ungated.push({
+            file: file.split('/').pop()!,
+            endpoint: `${verb.toUpperCase()} /${base}${path ? `/${path}` : ''}`,
+            public: pending.some((d) => /^@Public\(/.test(d)) || classIsPublic,
+            guards: guardsOf(pending) || classGuards,
+          })
         }
         pending = []
       } else if (t && !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*')) {
@@ -175,11 +230,12 @@ export function collectEndpointRoles(srcDir: string): EndpointRoles[] {
   // mellan maskiner, och locale-ordning beror på ICU-bygget. Datan är ASCII
   // (URL:er och verktygsnamn), så det enda locale skulle tillföra är en
   // miljöberoende ordning som kan få golden-filen att brusa i CI.
-  return found.sort((a, b) => {
+  const bySort = <T extends { endpoint: string; file: string }>(a: T, b: T): number => {
     const ka = `${a.endpoint}|${a.file}`
     const kb = `${b.endpoint}|${b.file}`
     return ka < kb ? -1 : ka > kb ? 1 : 0
-  })
+  }
+  return { gated: found.sort(bySort), ungated: ungated.sort(bySort) }
 }
 
 // ── Lager 2: tjänstegrindarna ────────────────────────────────────────────────
@@ -448,8 +504,9 @@ export function renderSurface(input: {
   endpoints: EndpointRoles[]
   serviceGates: readonly ServiceGate[]
   aiTools: AiToolRoles[]
+  ungated: UngatedEndpoint[]
 }): string {
-  const { endpoints, serviceGates, aiTools } = input
+  const { endpoints, serviceGates, aiTools, ungated } = input
   const out: string[] = []
 
   out.push('# Behörighetsytan i Eveno')
@@ -471,12 +528,65 @@ export function renderSurface(input: {
   out.push('')
   out.push(`## 1. HTTP-endpoints med rollgrind (${endpoints.length} st)`)
   out.push('')
-  out.push('Endpoints utan @Roles saknas här med flit: de är autentiserade men inte')
-  out.push('rollgrindade, och de flesta är självscopade (byt mitt lösenord, läs mina')
-  out.push('notiser). Vill du veta vilka de är: sök efter controllers utan @Roles.')
+  out.push('Endpoints utan @Roles står i avsnitt 1b — de saknades helt fram till #434.')
   out.push('')
   for (const e of endpoints) {
     out.push(`${pad(e.endpoint, ENDPOINT_COL)}  ${rolesCell(e.roles)}`)
+  }
+
+  // #434 — TRE hinkar, inte två. `@Public()` betyder "inte den globala
+  // JwtAuthGuard", INTE "oautentiserad": hyresgästportalen och plattformsadmin
+  // opt:ar ur org-JWT:n och in i sin EGEN guard. En tvådelning hade påstått att
+  // varje @Public-endpoint ligger öppen, vilket är falskt för de flesta av dem.
+  const annanMekanism = ungated.filter((e) => e.guards !== '')
+  const publika = ungated.filter((e) => e.public && e.guards === '')
+  const öppna = ungated.filter((e) => !e.public && e.guards === '')
+
+  out.push('')
+  out.push('')
+  out.push(`## 1b. HTTP-endpoints UTAN rollgrind (${ungated.length} st)`)
+  out.push('')
+  out.push('DE HÄR RADERNA ÄR INTE GRANSKADE. De står här för att en NY ogrindad')
+  out.push('endpoint ska bli en diff någon måste godkänna — inte för att någon har')
+  out.push('intygat att var och en av dem ska vara öppen.')
+  out.push('')
+  out.push('Fram till #434 saknades de helt. Motiveringen som stod här var att de')
+  out.push('"flesta är självscopade", och just därför var luckan farlig: filen')
+  out.push('registrerade bara det som HADE en gräns, så en SAKNAD gräns var per')
+  out.push('konstruktion osynlig för driftbevakningen. #81 visade vad det kostade —')
+  out.push('GET /import/jobs var varken självscopad eller avsedd att vara öppen, låg')
+  out.push('öppen för VIEWER, och fanns inte i den här filen medan hålet var öppet.')
+  out.push('')
+  out.push(`### a) Org-inloggad, öppen för VARJE roll (${öppna.length} st)`)
+  out.push('')
+  out.push('Enbart den globala JwtAuthGuard. Många är självscopade (byt mitt lösenord,')
+  out.push('läs mina notiser) — men "många" är inte "alla", och raden säger inte')
+  out.push('vilket. Det är den här hinken #81 kom ur.')
+  out.push('')
+  for (const e of öppna) {
+    out.push(`${pad(e.endpoint, ENDPOINT_COL)}  ${e.file}`)
+  }
+
+  out.push('')
+  out.push(`### b) Styrda av en ANNAN mekanism (${annanMekanism.length} st)`)
+  out.push('')
+  out.push('@UseGuards(...) med egen guard. Frånvaro av @Roles betyder inte ostyrd:')
+  out.push('plattformsadmin går via PlatformGuard, hyresgästportalen via sin egen')
+  out.push('session. Raderna står här för fullständighetens skull — deras gräns bor')
+  out.push('i guarden, inte i en rollista, och bevakas därför inte av kolumnen.')
+  out.push('')
+  for (const e of annanMekanism) {
+    out.push(`${pad(e.endpoint, ENDPOINT_COL)}  ${pad(e.guards, 28)}  ${e.file}`)
+  }
+
+  out.push('')
+  out.push(`### c) VERKLIGT ÖPPNA — ingen autentisering alls (${publika.length} st)`)
+  out.push('')
+  out.push('@Public() utan någon egen guard. Ingen inloggning krävs. En NY rad här är')
+  out.push('den mest säkerhetskänsliga ändring den här filen kan visa.')
+  out.push('')
+  for (const e of publika) {
+    out.push(`${pad(e.endpoint, ENDPOINT_COL)}  ${e.file}`)
   }
 
   out.push('')
