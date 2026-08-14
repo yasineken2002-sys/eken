@@ -30,8 +30,8 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { skaläraKolumner } from '../common/testing/schema-columns'
 import { SAFE_ORGANIZATION_SELECT } from './organization-select'
+import { partitioneraKolumner } from '../common/testing/column-partition'
 
 const SERVICE = join(__dirname, 'organizations.service.ts')
 
@@ -111,22 +111,33 @@ describe('SAFE_ORGANIZATION_SELECT', () => {
   })
 
   it('varje kolumn på modellen är antingen vald eller medvetet utelämnad', () => {
-    const kolumner = skaläraKolumner('Organization')
-    // Golv mot en parser som slutat hitta fält.
-    expect(kolumner.length).toBeGreaterThanOrEqual(50)
-
-    const oklassade = kolumner.filter((k) => !valda.includes(k) && !(k in MEDVETET_UTELÄMNADE))
-    expect(oklassade).toEqual([])
-
-    // En motivering för en kolumn som inte längre finns är en inaktuell text som
-    // döljer nästa riktiga fråga — samma skäl som `declared` i authz-surfacens
-    // driftkontroll.
-    const föråldrade = Object.keys(MEDVETET_UTELÄMNADE).filter((k) => !kolumner.includes(k))
-    expect(föråldrade).toEqual([])
-
-    // Partitionen ska vara just en partition (lärdom från #444:s negativkontroll:
-    // ett fält i BÅDA mängderna faller ur båda filtren och får vakten att tiga).
-    const iBåda = valda.filter((k) => k in MEDVETET_UTELÄMNADE)
-    expect(iBåda).toEqual([])
+    // Delad partition (#445-utbrytningen). Konfigurationen är DATA — modellnamn,
+    // burna nycklar, undantagskarta, golv — aldrig ett predikat. Hjälparen har
+    // egna negativkontroller i column-partition.spec.ts; de namngivna
+    // kontrollerna ovan i den här filen är avsiktligt KVAR, så att en regression
+    // i hjälparen blir röd här också och inte bara där.
+    const r = partitioneraKolumner({
+      modell: 'Organization',
+      burna: [valda],
+      utelämnade: MEDVETET_UTELÄMNADE,
+      golv: 50,
+    })
+    expect(r.oklassade).toEqual([])
+    expect(r.föråldrade).toEqual([])
+    expect(r.iBåda).toEqual([])
+    // KANARIEFÅGEL — villkor 2 för utbrytningen (#445).
+    //
+    // Utan den här är en trasig hjälpare TYST: returnerar `partitioneraKolumner`
+    // alltid tomma mängder passerar varje konsument, även med en verklig
+    // överträdelse i schemat. Uppmätt under utbrytningen — en bruten hjälpare
+    // plus en oklassad kolumn gav grönt på alla fyra.
+    //
+    // Kontrollen matar in en partition som MÅSTE ge utslag och kräver att den
+    // gör det. En regression i hjälparen blir därmed röd på fyra ställen i
+    // stället för noll, vilket var hela villkoret utbrytningen vilade på.
+    expect(
+      partitioneraKolumner({ modell: 'Organization', burna: [[]], utelämnade: {}, golv: 1 })
+        .oklassade.length,
+    ).toBeGreaterThan(0)
   })
 })

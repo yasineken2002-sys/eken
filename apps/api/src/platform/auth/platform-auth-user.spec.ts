@@ -35,7 +35,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { skaläraKolumner } from '../../common/testing/schema-columns'
+import { partitioneraKolumner } from '../../common/testing/column-partition'
 
 const SERVICE = join(__dirname, 'platform-auth.service.ts')
 
@@ -91,22 +91,34 @@ describe('PlatformAuthUser — superadminens svarstyp', () => {
   })
 
   it('varje kolumn på modellen är antingen i svarstypen eller medvetet utelämnad', () => {
-    const kolumner = skaläraKolumner('PlatformUser')
-    // Golv mot en parser som slutat hitta fält — annars vore "inga oklassade"
-    // tomt-mängd-sant. Jfr #273:s rimlighetsgolv.
-    expect(kolumner.length).toBeGreaterThanOrEqual(8)
-
-    const oklassade = kolumner.filter((k) => !fält.includes(k) && !(k in MEDVETET_UTELÄMNADE))
-    expect(oklassade).toEqual([])
-
-    // En motivering för en kolumn som inte längre finns är en inaktuell text som
-    // döljer nästa riktiga fråga.
-    const föråldrade = Object.keys(MEDVETET_UTELÄMNADE).filter((k) => !kolumner.includes(k))
-    expect(föråldrade).toEqual([])
-
-    // Partitionen ska vara just en partition (lärdom från #444:s negativkontroll).
-    const iBåda = fält.filter((k) => k in MEDVETET_UTELÄMNADE)
-    expect(iBåda).toEqual([])
+    // Delad partition (#445-utbrytningen). Konfigurationen är DATA — modellnamn,
+    // burna nycklar, undantagskarta, golv — aldrig ett predikat. Hjälparen har
+    // egna negativkontroller i column-partition.spec.ts; de namngivna
+    // kontrollerna ovan i den här filen är avsiktligt KVAR, så att en regression
+    // i hjälparen blir röd här också och inte bara där.
+    const r = partitioneraKolumner({
+      modell: 'PlatformUser',
+      burna: [fält],
+      utelämnade: MEDVETET_UTELÄMNADE,
+      golv: 8,
+    })
+    expect(r.oklassade).toEqual([])
+    expect(r.föråldrade).toEqual([])
+    expect(r.iBåda).toEqual([])
+    // KANARIEFÅGEL — villkor 2 för utbrytningen (#445).
+    //
+    // Utan den här är en trasig hjälpare TYST: returnerar `partitioneraKolumner`
+    // alltid tomma mängder passerar varje konsument, även med en verklig
+    // överträdelse i schemat. Uppmätt under utbrytningen — en bruten hjälpare
+    // plus en oklassad kolumn gav grönt på alla fyra.
+    //
+    // Kontrollen matar in en partition som MÅSTE ge utslag och kräver att den
+    // gör det. En regression i hjälparen blir därmed röd på fyra ställen i
+    // stället för noll, vilket var hela villkoret utbrytningen vilade på.
+    expect(
+      partitioneraKolumner({ modell: 'PlatformUser', burna: [[]], utelämnade: {}, golv: 1 })
+        .oklassade.length,
+    ).toBeGreaterThan(0)
   })
 
   it('varje metod som returnerar en användare har en DEKLARERAD returtyp', () => {

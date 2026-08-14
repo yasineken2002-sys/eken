@@ -26,7 +26,6 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { skaläraKolumner } from '../common/testing/schema-columns'
 // Importeras från sin EGNA modul, inte från invoices.service.ts: den drar in
 // pdf.service → storage.service → @aws-sdk/client-s3, vars ESM-kedja ts-jest inte
 // transformerar. Samma skäl som får authz-surface.ts att läsa källan statiskt.
@@ -34,6 +33,7 @@ import {
   SAFE_INVOICE_BANK_TRANSACTION_SELECT,
   RECONCILIATION_TRANSACTION_FIELDS,
 } from './bank-transaction-views'
+import { partitioneraKolumner } from '../common/testing/column-partition'
 
 const INVOICES = join(__dirname, '..', 'invoices', 'invoices.service.ts')
 
@@ -45,9 +45,20 @@ function utanKommentarer(src: string): string {
 }
 
 /**
- * Kolumner som MEDVETET utelämnas, med skälet. Formen är densamma som
- * MEDVETNA_UNDANTAG i invoice-customer-select.spec.ts: ett utelämnande ska vara
- * ett skrivet påstående någon kan ifrågasätta, inte en tyst frånvaro.
+ * Kolumner som utelämnas ur SAMTLIGA svarsformer, med skälet.
+ *
+ * BETYDELSEN SKÄRPTES när partitionen bröts ut (#445). Kartan skrevs för #444,
+ * när modellen bara hade EN form, och blandade då två slags utelämnanden: fält
+ * som aldrig ska ut (`balance`, `matchedBy`) och fält som bara var ointressanta
+ * i fakturakontexten (`status`, `reference`, `invoiceId`, `matchedAt` …).
+ *
+ * När form 2 tillkom bar den flera av den andra sorten — helt legitimt — och den
+ * gamla bespoke-kontrollen såg det inte, eftersom den bara jämförde kartan mot
+ * form 1. Den delade partitionen fällde det direkt: sex fält stod i BÅDA
+ * mängderna, alltså var kartan ingen partition längre.
+ *
+ * Nu betyder den EN sak: aldrig ut, i någon form. Per-form-motiveringarna bor i
+ * modulens doc, där de hör hemma — de är påståenden om vyerna, inte om modellen.
  */
 /**
  * Delmängden av utelämnandena som hör till BANKKONTOT och därför inte får bära
@@ -59,21 +70,13 @@ const BANKKONTOTS_FÄLT: string[] = ['balance', 'matchedBy', 'externalId', 'dedu
 const MEDVETET_UTELÄMNADE: Record<string, string> = {
   balance:
     'Kontosaldot vid transaktionen — organisationens likviditet. Har ingenting ' +
-    'med den enskilda fakturan att göra. Den allvarligaste av dem alla.',
+    'med vare sig en enskild faktura eller avstämningsarbetet att göra.',
   matchedBy:
     'userId på den som matchade — aktörsfältet för en MANAGER+-handling, samma ' +
     'sort som #440 grindade i /reconciliation/transactions.',
-  matchedAt: 'Tidsstämpel för samma matchningskörning.',
-  createdAt: 'När raden importerades — importkörningens metadata, inte fakturans.',
   externalId: 'Bankens/aggregatorns transaktions-id (PSD2-källidentitet).',
   dedupKey: 'Deterministisk cross-source-nyckel — rent avstämningsmaskineri.',
   organizationId: 'Internt scopingfält utan klientanvändning.',
-  status: 'Alltid MATCHED via where-klausulen — bär ingen information här.',
-  invoiceId: 'FK tillbaka till fakturan man just hämtade.',
-  matchedRentNoticeId: 'XOR-partnern, alltid null när invoiceId är satt.',
-  reference:
-    'Bankens fria referensfält. Inte känsligt, men ingen yta läser det — ' +
-    'utelämnas på dataminimering.',
 }
 
 describe('#440-rättelse: BankTransaction i fakturasvar', () => {
@@ -109,43 +112,42 @@ describe('#440-rättelse: BankTransaction i fakturasvar', () => {
   })
 
   it('varje kolumn på modellen är klassad mot BÅDA svarsformerna', () => {
-    // UTÖKAD (#445-uppföljningen): partitionen täcker nu form 1
-    // (fakturakontexten, en Prisma-select) OCH form 2 (avstämningsvyn, en
-    // handprojicering). En ny kolumn blir röd EN gång och tvingar fram ett
-    // beslut för båda samtidigt — i stället för två vakter som kan drifta isär.
-    //
-    // Att en kolumn står i form 2 men inte i form 1 är LEGITIMT och beskrivet i
-    // modulens doc: vyerna tjänar olika arbeten. Kravet är bara att varje kolumn
-    // är klassad någonstans — vald i minst en form, eller medvetet utelämnad.
-    const kolumner = skaläraKolumner('BankTransaction')
-    // Golv mot en parser som slutat hitta fält.
-    expect(kolumner.length).toBeGreaterThanOrEqual(14)
-
+    // Delad partition (#445-utbrytningen), med TVÅ burna listor: form 1
+    // (fakturakontexten, en Prisma-select) och form 2 (avstämningsvyn, en
+    // handprojicering). En kolumn räknas som klassad om NÅGON form bär den —
+    // att en kolumn står i form 2 men inte i form 1 är legitimt och beskrivet i
+    // modulens doc. En ny kolumn blir röd EN gång och tvingar fram ett beslut
+    // för båda formerna samtidigt.
     const formTvå = [...RECONCILIATION_TRANSACTION_FIELDS] as string[]
-    const oklassade = kolumner.filter(
-      (k) => !valda.includes(k) && !formTvå.includes(k) && !(k in MEDVETET_UTELÄMNADE),
-    )
-    expect(oklassade).toEqual([])
+    const r = partitioneraKolumner({
+      modell: 'BankTransaction',
+      burna: [valda, formTvå],
+      utelämnade: MEDVETET_UTELÄMNADE,
+      golv: 14,
+    })
+    expect(r.oklassade).toEqual([])
+    expect(r.föråldrade).toEqual([])
+    expect(r.iBåda).toEqual([])
+    // KANARIEFÅGEL — villkor 2 för utbrytningen (#445).
+    //
+    // Utan den här är en trasig hjälpare TYST: returnerar `partitioneraKolumner`
+    // alltid tomma mängder passerar varje konsument, även med en verklig
+    // överträdelse i schemat. Uppmätt under utbrytningen — en bruten hjälpare
+    // plus en oklassad kolumn gav grönt på alla fyra.
+    //
+    // Kontrollen matar in en partition som MÅSTE ge utslag och kräver att den
+    // gör det. En regression i hjälparen blir därmed röd på fyra ställen i
+    // stället för noll, vilket var hela villkoret utbrytningen vilade på.
+    expect(
+      partitioneraKolumner({ modell: 'BankTransaction', burna: [[]], utelämnade: {}, golv: 1 })
+        .oklassade.length,
+    ).toBeGreaterThan(0)
 
-    // Form 2 får inte bära något som är klassat som bankkontots — den grinden
-    // gäller båda vyerna, inte bara fakturakontexten.
-    const formTvåBärBankfält = formTvå.filter(
-      (k) => k in MEDVETET_UTELÄMNADE && BANKKONTOTS_FÄLT.includes(k),
-    )
+    // MODELLSPECIFIK, stannar här: form 2 får inte bära något ur bankkontots
+    // fält. Den grinden gäller alla vyer, inte bara fakturakontexten — och den
+    // är ett påstående om DEN HÄR modellens semantik, inte om partitionsformen.
+    // Hjälparen ska inte lära sig den; då blir konfigurationen logik.
+    const formTvåBärBankfält = formTvå.filter((k) => BANKKONTOTS_FÄLT.includes(k))
     expect(formTvåBärBankfält).toEqual([])
-
-    // Åt andra hållet: en motivering för en kolumn som inte längre finns är en
-    // inaktuell text som döljer nästa riktiga fråga. Samma skäl som `declared`
-    // i authz-surfacens driftkontroll.
-    const föråldrade = Object.keys(MEDVETET_UTELÄMNADE).filter((k) => !kolumner.includes(k))
-    expect(föråldrade).toEqual([])
-
-    // Partitionen ska vara just en partition. Upptäckt i negativkontrollen: med
-    // `balance` återinförd i selecten passerade den här kontrollen ändå, för då
-    // stod fältet i BÅDA mängderna och föll ur båda filtren. Det fångades av de
-    // två första testerna, men en motsägelse som får en vakt att tiga hör inte
-    // hemma i vakten.
-    const iBåda = valda.filter((k) => k in MEDVETET_UTELÄMNADE)
-    expect(iBåda).toEqual([])
   })
 })
