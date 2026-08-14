@@ -15,6 +15,7 @@ import { MailService } from '../mail/mail.service'
 import { normalizeEmail } from '../common/utils/normalize-email'
 import type { AssignableRole } from './dto/update-user-role.dto'
 import type { UserRole } from '@eken/shared'
+import { SAFE_USER_SELECT } from './user-select'
 
 function sha256(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex')
@@ -27,20 +28,6 @@ const ROLE_LABELS: Record<UserRole, string> = {
   ACCOUNTANT: 'Ekonomi',
   VIEWER: 'Läsbehörighet',
 }
-
-const PUBLIC_USER_FIELDS = {
-  id: true,
-  email: true,
-  firstName: true,
-  lastName: true,
-  role: true,
-  isActive: true,
-  mustChangePassword: true,
-  lastLoginAt: true,
-  avatarUrl: true,
-  createdAt: true,
-  updatedAt: true,
-} as const
 
 @Injectable()
 export class UsersService {
@@ -55,7 +42,7 @@ export class UsersService {
   async findAll(organizationId: string) {
     return this.prisma.user.findMany({
       where: { organizationId },
-      select: PUBLIC_USER_FIELDS,
+      select: SAFE_USER_SELECT,
       orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }],
     })
   }
@@ -105,7 +92,7 @@ export class UsersService {
           passwordHash: null,
           isActive: false, // aktiveras vid accept-invite
         },
-        select: PUBLIC_USER_FIELDS,
+        select: SAFE_USER_SELECT,
       })
 
       // SHA-256 av token, aldrig klartexten. Samma skäl och samma form som
@@ -169,7 +156,7 @@ export class UsersService {
 
     const target = await this.prisma.user.findFirst({
       where: { id: targetUserId, organizationId },
-      select: PUBLIC_USER_FIELDS,
+      select: SAFE_USER_SELECT,
     })
     if (!target) throw new NotFoundException('Användaren hittades inte')
     if (target.role === 'OWNER') {
@@ -179,7 +166,7 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id: targetUserId },
       data: { role },
-      select: PUBLIC_USER_FIELDS,
+      select: SAFE_USER_SELECT,
     })
   }
 
@@ -190,7 +177,7 @@ export class UsersService {
 
     const target = await this.prisma.user.findFirst({
       where: { id: targetUserId, organizationId },
-      select: PUBLIC_USER_FIELDS,
+      select: SAFE_USER_SELECT,
     })
     if (!target) throw new NotFoundException('Användaren hittades inte')
     if (target.role === 'OWNER') {
@@ -203,7 +190,7 @@ export class UsersService {
       const updated = await tx.user.update({
         where: { id: targetUserId },
         data: { isActive: false },
-        select: PUBLIC_USER_FIELDS,
+        select: SAFE_USER_SELECT,
       })
       await tx.refreshToken.updateMany({
         where: { userId: targetUserId, revokedAt: null },
@@ -216,14 +203,14 @@ export class UsersService {
   async reactivate(targetUserId: string, organizationId: string) {
     const target = await this.prisma.user.findFirst({
       where: { id: targetUserId, organizationId },
-      select: PUBLIC_USER_FIELDS,
+      select: SAFE_USER_SELECT,
     })
     if (!target) throw new NotFoundException('Användaren hittades inte')
 
     return this.prisma.user.update({
       where: { id: targetUserId },
       data: { isActive: true },
-      select: PUBLIC_USER_FIELDS,
+      select: SAFE_USER_SELECT,
     })
   }
 
