@@ -31,7 +31,22 @@ export class SigningController {
     return this.signing.createSigningRequest(organizationId, user.sub, dto.documentId)
   }
 
+  // Rollistan är TVILLINGENS, inte #440:s enhetliga ACCOUNTANT+.
+  //
+  // `GET /contracts/status/:leaseId` är ADMIN/MANAGER/OWNER. Båda endpointsen
+  // svarar på samma fråga — hur långt har ett dokumentflöde kommit — och en
+  // signeringsbegäran finns bara för att någon körde POST /signing/requests
+  // (MANAGER+). Att två statusytor för samma sorts flöde har olika gräns är just
+  // den odeklarerade avvikelsen #267 finns för att fånga, så den matchas i stället
+  // för att uppfinna en tredje lista.
+  //
+  // Fältnivån var redan härdad: SAFE_SIGNATURE_EVIDENCE_SELECT, och
+  // `projectRequest` lyfter bort `expectedPersonalNumberHash` ur `requiredRoles`.
+  // Modulen är dessutom inert i produktion (SIGNING_ENABLED=false → stub som
+  // kastar 503) — vilket gör det här det billigaste tillfället att sätta gränsen
+  // rätt, innan S3 tänds.
   @Get('requests/:id')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
   async status(@OrgId() organizationId: string, @Param('id') id: string) {
     return this.signing.getStatusSafe(organizationId, id)
   }

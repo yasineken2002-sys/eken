@@ -618,12 +618,26 @@ export class AiAssistantController {
     return this.portfolioAnalysisService.analyzePortfolio(orgId, analysisType)
   }
 
+  // SNÄVARE ÄN KLASSLISTAN — MANAGER tas bort (#441).
+  //
+  // Klassnivåns @Roles täcker AI-assistenten och släpper in MANAGER. De två
+  // usage-endpointsen ärvde den listan av bekvämlighet, inte av ett beslut om
+  // datat: svaret är organisationens prenumerationsförhållande (plan, månadsavgift,
+  // creditsaldo, trial), inte assistentfunktionalitet. Se noten på
+  // ai-usage.controller.ts `current` för hela resonemanget och för de fyra ytor
+  // som bar samma block.
   @Get('usage')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
   getUsage(@OrgId() orgId: string) {
     return this.quotaService.getStatus(orgId)
   }
 
+  // Samma rollista, men den här bär MER än de andra tre ytorna: `getMonthlyBreakdown`
+  // grupperar `_sum: { costSek }` och antal anrop PER `userId`. Det är inte
+  // kostnadsdata i allmänhet — det är kostnad per namngiven kollega, alltså en
+  // aktivitetsprofil över de anställda. MANAGER såg den för hela organisationen.
   @Get('usage/breakdown')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
   getUsageBreakdown(@OrgId() orgId: string) {
     return this.usageService.getMonthlyBreakdown(orgId)
   }
