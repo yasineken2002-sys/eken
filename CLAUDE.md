@@ -134,6 +134,26 @@ pnpm build       # Full production build
 pnpm format      # Prettier
 ```
 
+### Testsviten – kör HELA den, inte modulgrupper
+
+```bash
+cd apps/api && npx jest          # 255 sviter, 2547 tester, ~70 s
+```
+
+Mätt 2026-08-14 i codespace (8 GB): sviten går på ~70 s **både** seriellt
+(`--runInBand`, 69,5 s) och parallellt (default, 67,7 s). Ingen OOM i något läge.
+
+`pnpm test:ci` (= `jest --ci --runInBand`) är seriellt av ett **CI-runner**-skäl —
+runnern har färre kärnor och mindre RAM, och dess OOM-hanterare dödar parallella
+workers mitt i körningen (`ci.yml:76-84`). Det skälet gäller inte din maskin.
+
+**Kör aldrig bara den modul du ändrat.** En modulavgränsad körning är en
+täckningsgräns, inte en prestandainställning: den som kör per modul vet inte vad
+hen inte kört. Uppmätt kostnad (#449): en rolländring i `ai-usage/` verifierades
+mot fem modulgrupper, alla gröna — assertionen som föll låg i `common/guards/` och
+fastnaglade beslutet ändringen upphävde. Bara CI såg den. Hela sviten hade tagit
+70 sekunder.
+
 ---
 
 ## Arkitektur
@@ -788,6 +808,39 @@ Kör detta mentalt innan varje feature anses klar:
 - **web / admin / portal** → **Vercel** (Vite-builds; API-proxy via varje apps `vercel.json`-rewrite).
   Deployas av `.github/workflows/deploy.yml` på push till `main` (CI = `ci.yml`: typecheck + lint).
 - **Postgres + Redis** → Railway-plugins.
+
+### `--delete-branch` på en PR som är BAS för en annan stänger den beroende PR:en
+
+Mekaniken, inte en tillsägelse. En stackad PR har `base` satt till den andra PR:ens
+gren i stället för `main`. Raderas den grenen — vilket `gh pr merge --delete-branch`
+gör som en del av merge:n — förlorar den beroende PR:en sin bas. GitHub stänger den
+då automatiskt, och den går **inte** att återöppna:
+
+```
+gh pr view  <n>  → {"state":"CLOSED","mergeStateStatus":"DIRTY"}
+gh pr reopen <n> → GraphQL: Could not open the pull request.
+gh pr edit <n> --base main
+                 → GraphQL: Cannot change the base branch of a closed pull request.
+```
+
+Commitsen är oskadda — bara PR:en är borta. Återställning: rebasa grenen på main
+och öppna en **ny** PR. Beskrivning, granskningskommentarer och CI-historik följer
+inte med.
+
+**Se det i förväg.** Innan du mergar med `--delete-branch`, lista vilka öppna
+PR:er som inte utgår från `main`:
+
+```bash
+gh pr list --json number,title,headRefName,baseRefName \
+  --jq '.[] | select(.baseRefName != "main") | "\(.number) bas=\(.baseRefName)"'
+```
+
+Tom utdata = inga stackar, `--delete-branch` är riskfritt. Står din grens namn i
+`bas=`-kolumnen är den bas för någon annan: merga utan `--delete-branch`, merga
+den beroende PR:en först, eller rikta om dess bas till `main` (`gh pr edit <n>
+--base main`) **innan** du rör basgrenen — det går bara medan PR:en är öppen.
+
+Hände i #447 (bas var #446:s gren), ersatt av #448.
 
 ### CI-skyddet slutar vid merge-punkten — inte vid deploy
 
