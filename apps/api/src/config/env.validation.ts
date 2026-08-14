@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { authThrottleRelaxed } from '../common/throttler/auth-throttle-mode'
 
 /**
  * Boot-validering av miljövariabler (launch-readiness #1).
@@ -164,6 +165,18 @@ export function validateEnv(config: EnvRecord): EnvRecord {
 
   // 3. Flagg-villkorade: hård fail-fast i alla miljöer (speglar modul-factoryn).
   errors.push(...collectFeatureFlagErrors(config))
+
+  // 4. E2E-uppmjukad auth-strypning får ALDRIG gälla i produktion. Kontrollen
+  //    ligger här för att den ska smälla vid boot, före första requesten —
+  //    samma skäl som SIGNING_ENABLED-kontrollen ovan. Guardens konstruktor gör
+  //    samma kontroll som andra lager; den här ger det tidigare och tydligare
+  //    felet. `authThrottleRelaxed` kastar bara i just den otillåtna
+  //    kombinationen, så anropet är en no-op i alla andra lägen.
+  try {
+    authThrottleRelaxed(config as NodeJS.ProcessEnv)
+  } catch (err) {
+    errors.push(`  • ${err instanceof Error ? err.message : String(err)}`)
+  }
 
   if (warnings.length > 0) {
     console.warn(
