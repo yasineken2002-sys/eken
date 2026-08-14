@@ -16,6 +16,10 @@ import { normalizeEmail } from '../common/utils/normalize-email'
 import type { AssignableRole } from './dto/update-user-role.dto'
 import type { UserRole } from '@eken/shared'
 
+function sha256(input: string): string {
+  return crypto.createHash('sha256').update(input).digest('hex')
+}
+
 const ROLE_LABELS: Record<UserRole, string> = {
   OWNER: 'Ägare',
   ADMIN: 'Administratör',
@@ -104,8 +108,13 @@ export class UsersService {
         select: PUBLIC_USER_FIELDS,
       })
 
+      // SHA-256 av token, aldrig klartexten. Samma skäl och samma form som
+      // refreshToken i auth.service.ts (se kommentaren vid `refreshTokenHash`
+      // där): ett databasintrång ska inte räcka för att acceptera en inbjudan
+      // i någon annans namn. Hashen är deterministisk just för att
+      // acceptInvite ska kunna slå upp på den; bcrypt hade omöjliggjort det.
       await tx.userInvitation.create({
-        data: { userId: user.id, token, expiresAt },
+        data: { userId: user.id, token: sha256(token), expiresAt },
       })
 
       return user
@@ -130,7 +139,16 @@ export class UsersService {
         acceptUrl,
         organizationName: org?.name ?? 'Eveno',
         validForDays: 7,
-        idempotencyKey: `invite:${token}`,
+        // INBJUDNINGS-ID + prefix, ALDRIG hela token. Nyckeln blir jobId i
+        // Bull och loggas vid enqueue, varje försök, lyckat utskick och fel —
+        // samt skickas till Resend. Hela token där är klartext i loggen, och
+        // det hjälper inte att kolumnen är hashad.
+        //
+        // Det är ID:T som gör nyckeln unik; de åtta hex-tecknen är läsbarhet.
+        // Enbart en trunkerad token hade gett 32 bitar som idempotensnyckel,
+        // och en kollision yttrar sig som ett mejl som TYST aldrig skickas.
+        // Speglar tenant-portalens form (tenant-auth.service.ts:381).
+        idempotencyKey: `invite:${created.id}-${token.substring(0, 8)}`,
       })
       .catch((err: unknown) => {
         this.logger.error('Invite mail failed', err instanceof Error ? err.stack : String(err))
