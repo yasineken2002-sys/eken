@@ -41,20 +41,32 @@ oförändrade appar). API:et deployas av Railway direkt från GitHub.
 
 `apps/api/.env.example` är den **auktoritativa listan**. Grupperat:
 
-| Grupp             | Variabler                                                                                                                                                                                             |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Kärna             | `NODE_ENV`, `PORT` (8080), `DATABASE_URL`, `REDIS_URL`                                                                                                                                                |
-| JWT (operatör)    | `JWT_SECRET`, `JWT_ACCESS_EXPIRES_IN` (15m), `JWT_REFRESH_EXPIRES_IN` (30d)                                                                                                                           |
-| JWT (plattform)   | `PLATFORM_JWT_SECRET`, `PLATFORM_JWT_REFRESH_SECRET`, `PLATFORM_JWT_ACCESS_EXPIRES_IN`, `PLATFORM_JWT_REFRESH_EXPIRES_IN`, `PLATFORM_SEED_EMAIL`/`PLATFORM_SEED_FIRST_NAME`/`PLATFORM_SEED_LAST_NAME` |
-| URL:er & CORS     | `APP_URL`, `API_URL`, `ADMIN_URL`, `PORTAL_URL`, `WEB_URL`, `ALLOWED_ORIGINS`                                                                                                                         |
-| E-post (Resend)   | `RESEND_API_KEY`, `MAIL_FROM`, `RESEND_WEBHOOK_SECRET` (Svix-signering av leveransstatus-webhook)                                                                                                     |
-| AI                | `ANTHROPIC_API_KEY`                                                                                                                                                                                   |
-| Fillagring (R2)   | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` (Cloudflare R2)                                                                                                         |
-| Felspårning       | `SENTRY_DSN`, `SENTRY_RELEASE`                                                                                                                                                                        |
-| Plattform/billing | `AUTO_SEND_PLATFORM_INVOICES`, `TRIAL_GRACE_PERIOD_DAYS`                                                                                                                                              |
-| Rate limiting     | `THROTTLE_TTL` (ms), `THROTTLE_LIMIT`                                                                                                                                                                 |
+| Grupp                   | Variabler                                                                                                                                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kärna                   | `NODE_ENV`, `PORT` (8080), `DATABASE_URL`, `REDIS_URL`                                                                                                                                                |
+| JWT (operatör)          | `JWT_SECRET`, `JWT_ACCESS_EXPIRES_IN` (15m), `JWT_REFRESH_EXPIRES_IN` (30d)                                                                                                                           |
+| JWT (plattform)         | `PLATFORM_JWT_SECRET`, `PLATFORM_JWT_REFRESH_SECRET`, `PLATFORM_JWT_ACCESS_EXPIRES_IN`, `PLATFORM_JWT_REFRESH_EXPIRES_IN`, `PLATFORM_SEED_EMAIL`/`PLATFORM_SEED_FIRST_NAME`/`PLATFORM_SEED_LAST_NAME` |
+| URL:er & CORS           | `APP_URL`, `API_URL`, `ADMIN_URL`, `PORTAL_URL`, `WEB_URL`, `ALLOWED_ORIGINS`                                                                                                                         |
+| E-post (Resend)         | `RESEND_API_KEY`, `MAIL_FROM`, `RESEND_WEBHOOK_SECRET` (Svix-signering av leveransstatus-webhook)                                                                                                     |
+| AI                      | `ANTHROPIC_API_KEY`                                                                                                                                                                                   |
+| Fillagring (R2)         | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` (Cloudflare R2)                                                                                                         |
+| Felspårning             | `SENTRY_DSN`, `SENTRY_RELEASE`                                                                                                                                                                        |
+| Plattform/billing       | `AUTO_SEND_PLATFORM_INVOICES`, `TRIAL_GRACE_PERIOD_DAYS`                                                                                                                                              |
+| Rate limiting           | `THROTTLE_TTL` (ms), `THROTTLE_LIMIT`                                                                                                                                                                 |
+| **Personnummer-krypto** | `SIGNING_PII_KEY` (64 hex), `SIGNING_PII_PEPPER` (≥16 tecken) — **appen vägrar starta i produktion utan dem**                                                                                         |
 
 > **E-post sker via Resend, inte SMTP.** Det finns inga `SMTP_*`-variabler.
+
+> **⚠️ `SIGNING_PII_KEY` och `SIGNING_PII_PEPPER` får inte roteras i ett vanligt
+> secrets-svep.** De krypterar personnummer at-rest på `Tenant` och `Customer` och
+> bär blind-indexet som binder BankID-identiteter till rätt part. Byts peppern
+> slutar uppslagningen matcha **tyst** — inget felmeddelande, bara att
+> identitetsbindningen och INV-B-grinden aldrig hittar sin motpart.
+>
+> Omhashning kräver den **gamla nyckeln** (hasharna kan bara räknas om från
+> dekrypterad klartext), och något migreringsskript finns inte i dag. Läs
+> [#459](https://github.com/yasineken2002-sys/eken/issues/459) innan du rör dem,
+> och säkerhetskopiera båda utanför Railway — de ingår inte i `pg_dump`-backupen.
 
 ---
 
