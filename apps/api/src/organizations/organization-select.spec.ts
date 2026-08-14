@@ -125,5 +125,19 @@ describe('SAFE_ORGANIZATION_SELECT', () => {
     expect(r.oklassade).toEqual([])
     expect(r.föråldrade).toEqual([])
     expect(r.iBåda).toEqual([])
+    // KANARIEFÅGEL — villkor 2 för utbrytningen (#445).
+    //
+    // Utan den här är en trasig hjälpare TYST: returnerar `partitioneraKolumner`
+    // alltid tomma mängder passerar varje konsument, även med en verklig
+    // överträdelse i schemat. Uppmätt under utbrytningen — en bruten hjälpare
+    // plus en oklassad kolumn gav grönt på alla fyra.
+    //
+    // Kontrollen matar in en partition som MÅSTE ge utslag och kräver att den
+    // gör det. En regression i hjälparen blir därmed röd på fyra ställen i
+    // stället för noll, vilket var hela villkoret utbrytningen vilade på.
+    expect(
+      partitioneraKolumner({ modell: 'Organization', burna: [[]], utelämnade: {}, golv: 1 })
+        .oklassade.length,
+    ).toBeGreaterThan(0)
   })
 })
