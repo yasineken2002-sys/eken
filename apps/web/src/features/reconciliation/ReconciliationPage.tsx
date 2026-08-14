@@ -38,6 +38,7 @@ import { useInvoices } from '@/features/invoices/hooks/useInvoiceQueries'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { BankTransaction, ImportResult, Invoice } from '@eken/shared'
 import { cn } from '@/lib/cn'
+import { useCanWrite } from '@/hooks/useCanWrite'
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -682,6 +683,7 @@ export function ReconciliationPage() {
 
   const filters = tab === 'ALL' ? undefined : { status: tab }
   const { data: transactions = [], isLoading, isError: nekad } = useTransactions(filters)
+  const kanSkriva = useCanWrite()
   const { data: stats } = useReconciliationStats()
   const ignoreMutation = useIgnoreTransaction()
   const unmatchMutation = useUnmatchTransaction()
@@ -716,16 +718,25 @@ export function ReconciliationPage() {
             {autoMatchFlash && (
               <span className="text-[12px] font-medium text-emerald-600">{autoMatchFlash}</span>
             )}
-            <Button
-              onClick={handleAutoMatch}
-              disabled={unmatchedCount === 0}
-              loading={autoMatchMutation.isPending}
-            >
-              <Sparkles size={14} /> Auto-matcha
-            </Button>
-            <Button variant="primary" onClick={() => setImportOpen(true)}>
-              <Upload size={14} /> Importera kontoutdrag
-            </Button>
+            {/* Avstämningens skrivningar är MANAGER+ (auto-match, import). En
+                knapp som en roll inte kan använda är ett falskt löfte — samma
+                sorts osanning som det tomma tillståndet nedan. useCanWrite är
+                redan idiomet i åtta andra vyer. Upptäckt av E2E-testet: nekandet
+                renderades men knapparna stod kvar. (#442) */}
+            {kanSkriva && (
+              <>
+                <Button
+                  onClick={handleAutoMatch}
+                  disabled={unmatchedCount === 0}
+                  loading={autoMatchMutation.isPending}
+                >
+                  <Sparkles size={14} /> Auto-matcha
+                </Button>
+                <Button variant="primary" onClick={() => setImportOpen(true)}>
+                  <Upload size={14} /> Importera kontoutdrag
+                </Button>
+              </>
+            )}
           </div>
         }
       />
