@@ -156,8 +156,24 @@ test('portal: förbruknings-kort renderas + röd hög-markering', async ({ page,
   const highTag = page.getByText('Hög', { exact: true })
   await expect(highTag).toHaveCount(1)
   await expect(highTag).toBeVisible()
-  // "Hög"-taggen är röd (#dc2626 → rgb(220, 38, 38)).
-  await expect(highTag).toHaveCSS('color', 'rgb(220, 38, 38)')
+  // "Hög"-taggen bär designsystemets DANGER-token, inte en hårdkodad röd.
+  //
+  // Testet pinnade tidigare `rgb(220, 38, 38)` — Tailwinds red-600 — och blev
+  // rött när portalen tokeniserades i färgflippen: taggen renderar numera
+  // `--ev-status-danger` (#C6402F). Produkten var alltså riktig och testet
+  // inaktuellt, vilket bara syntes när E2E:t började köras i CI.
+  //
+  // Assertionen läser nu tokenens FAKTISKA värde ur dokumentet i stället för
+  // att upprepa det. Påståendet blir därmed "hög förbrukning markeras med
+  // farge-tokenen" — vilket är vad vyn ska göra — i stället för "är den här
+  // exakta nyansen röd", som går sönder vid varje palettändring utan att något
+  // faktiskt blivit fel.
+  const dangerToken = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--ev-status-danger').trim(),
+  )
+  expect(dangerToken).not.toBe('')
+  const [r, g, b] = (dangerToken.match(/\w\w/g) as string[]).map((h) => parseInt(h, 16))
+  await expect(highTag).toHaveCSS('color', `rgb(${r}, ${g}, ${b})`)
 
   await page.screenshot({ path: 'test-results/imd-portal-consumption.png', fullPage: true })
 })
