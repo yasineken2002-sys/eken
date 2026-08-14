@@ -458,8 +458,13 @@ export class AuthService {
     const token = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1h
 
+    // SHA-256 av token, aldrig klartexten — samma skäl och samma form som
+    // refreshToken ovan (se kommentaren vid `refreshTokenHash`): ett
+    // databasintrång ska inte räcka för att kapa ett konto. Hashen är
+    // deterministisk just för att uppslagningen i resetPassword ska kunna slå
+    // upp på den; bcrypt hade omöjliggjort det.
     await this.prisma.passwordResetToken.create({
-      data: { userId: user.id, token, expiresAt },
+      data: { userId: user.id, token: sha256(token), expiresAt },
     })
 
     const webUrl = this.config.get<string>('WEB_URL') ?? 'http://localhost:5173'
@@ -473,7 +478,16 @@ export class AuthService {
         resetUrl,
         organizationName: user.organization.name,
         validForHours: 1,
-        idempotencyKey: `pwreset:${token}`,
+        // ANVÄNDAR-ID + prefix, ALDRIG hela token. Nyckeln blir jobId i Bull
+        // och loggas vid enqueue, varje försök, lyckat utskick och fel — samt
+        // skickas till Resend. Hela token där är klartext i loggen, och det
+        // hjälper inte att kolumnen är hashad.
+        //
+        // Det är ID:T som gör nyckeln unik; de åtta hex-tecknen är läsbarhet.
+        // Enbart en trunkerad token hade gett 32 bitar som idempotensnyckel,
+        // och en kollision yttrar sig som ett mejl som TYST aldrig skickas.
+        // Speglar tenant-portalens form (tenant-auth.service.ts:381).
+        idempotencyKey: `pwreset:${user.id}-${token.substring(0, 8)}`,
       })
       .catch((err: unknown) => {
         this.logger.error(
@@ -484,7 +498,11 @@ export class AuthService {
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
-    const stored = await this.prisma.passwordResetToken.findUnique({ where: { token } })
+    // Klienten håller den ohashade token (den kom i mejllänken); vi hashar och
+    // slår upp. Spegelbilden av skrivningen i requestPasswordReset.
+    const stored = await this.prisma.passwordResetToken.findUnique({
+      where: { token: sha256(token) },
+    })
     if (!stored) throw new BadRequestException('Ogiltig eller utgången återställningslänk')
     if (stored.usedAt) throw new BadRequestException('Återställningslänken har redan använts')
     if (stored.expiresAt < new Date()) {
@@ -512,8 +530,10 @@ export class AuthService {
   }
 
   async acceptInvite(token: string, newPassword: string): Promise<{ email: string }> {
+    // Klienten håller den ohashade token (den kom i mejllänken); vi hashar och
+    // slår upp. Spegelbilden av skrivningen i UsersService.invite.
     const invite = await this.prisma.userInvitation.findUnique({
-      where: { token },
+      where: { token: sha256(token) },
     })
     if (!invite) throw new BadRequestException('Ogiltig inbjudningslänk')
     if (invite.usedAt) throw new BadRequestException('Inbjudningslänken har redan använts')

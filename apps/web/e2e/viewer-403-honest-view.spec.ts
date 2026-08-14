@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import type { APIRequestContext } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
+import { randomBytes, createHash } from 'node:crypto'
 import { registerOrg } from './helpers/seed'
 
 /**
@@ -43,9 +44,22 @@ async function unwrap<T>(
   return body.data as T
 }
 
-/** Hämtar inbjudans token direkt ur DB — mejlet går inte att läsa i test. */
-function invitationToken(email: string): string {
-  const out = execFileSync(
+/**
+ * Sätter en KÄND inbjudningstoken och returnerar råvärdet.
+ *
+ * Går inte att läsa ur DB: kolumnen bär sha256 av token sedan #456, och mejlet
+ * är inte läsbart i test. Vi genererar därför råtoken själva och skriver in
+ * HASHEN — exakt som portal-helpern gör för aktiveringstoken (seed.ts:336-339),
+ * vars kolumn varit hashad hela tiden.
+ *
+ * Att den gamla varianten gick sönder av hashningen är i sig ett kvitto på att
+ * den bet: den läste kolumnvärdet och postade det som råtoken, vilket nu ger
+ * 400 "Ogiltig inbjudningslänk".
+ */
+function sättInvitationToken(email: string): string {
+  const raw = randomBytes(32).toString('hex')
+  const hash = createHash('sha256').update(raw).digest('hex')
+  execFileSync(
     'psql',
     [
       '-h',
@@ -59,13 +73,11 @@ function invitationToken(email: string): string {
       '-t',
       '-A',
       '-c',
-      `SELECT i.token FROM "UserInvitation" i JOIN "User" u ON u.id = i."userId" WHERE u.email = '${email}' ORDER BY i."createdAt" DESC LIMIT 1`,
+      `UPDATE "UserInvitation" SET token = '${hash}' WHERE "userId" = (SELECT id FROM "User" WHERE email = '${email}')`,
     ],
     { env: { ...process.env, PGPASSWORD: 'eken' }, encoding: 'utf-8' },
   )
-  const token = out.trim()
-  if (!token) throw new Error(`Hittade ingen inbjudan för ${email}`)
-  return token
+  return raw
 }
 
 async function login(request: APIRequestContext, email: string, password: string): Promise<string> {
@@ -121,7 +133,7 @@ test('VIEWER får ett ärligt nekande på bankavstämningen, inte "Inga transakt
   )
   await unwrap(
     await request.post(`${API}/auth/accept-invite`, {
-      data: { token: invitationToken(viewerEmail), newPassword: viewerPassword },
+      data: { token: sättInvitationToken(viewerEmail), newPassword: viewerPassword },
     }),
     'Acceptera inbjudan',
   )
