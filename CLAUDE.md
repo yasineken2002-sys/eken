@@ -775,6 +775,37 @@ Varje feature-sida ska ha exakt denna struktur:
 
 ---
 
+## Vakter: en kontroll som inte kan falla mäter ingenting
+
+Kodbasen har ett tiotal automatiska vakter — kolumnpartitioner, mönsterkontroller,
+golden-filer — som ska bli RÖDA när någon flyttar en gräns. Den vanligaste
+defekten i dem är inte att de har fel, utan att de går BLINDA: slutar mäta, utan
+att sluta vara gröna.
+
+**Namngivna negativkontroller skyddar mot SPECIFIKA återfall. De upptäcker inte
+att mekanismen gått blind.** `expect(valda).not.toContain('passwordHash')` fångar
+att just det fältet återinförs — men inte att partitionen som skulle fånga alla
+andra fält har slutat fungera.
+
+En delad vakt behöver därför en **kanariefågel**: en kontroll som matar in något
+som MÅSTE ge utslag, och kräver att det gör det. Bryts mekanismen blir varje
+konsument röd, inte bara hjälparens egen spec.
+
+Belägget är uppmätt (#463), inte resonerat:
+
+```
+trasig hjälpare + verklig oklassad kolumn i schemat
+  före kanariefågeln   →  4/4 konsumenter GRÖNA
+  efter                →  4/4 konsumenter RÖDA
+```
+
+Samma princip gäller utanför testerna. Ett CI-jobb som tyst hoppar över sina steg
+är grönt för alltid; ett fail-fast som aldrig prövats i det läge det ska fånga är
+en kommentar. **Fråga alltid: vad skulle få den här kontrollen att falla — och
+har jag sett den falla?**
+
+---
+
 ## Kvalitetschecklist
 
 Kör detta mentalt innan varje feature anses klar:
@@ -842,11 +873,59 @@ den beroende PR:en först, eller rikta om dess bas till `main` (`gh pr edit <n>
 
 Hände i #447 (bas var #446:s gren), ersatt av #448.
 
+### Frontend-deployer kan vara strypta i 24 timmar
+
+Vercel rate-limitar builds (`upgradeToPro=build-rate-limit`). När taket slås i
+failar `Vercel – eken-web/admin/portal` medan `CI passed` förblir grön — **en
+grön required-check betyder alltså inte att webben är ute**.
+
+Det är samma form som avsnittet om Railway ovan, fast åt andra hållet: där
+deployas MER än man tror (Railway lyssnar på `main` utan att bry sig om CI), här
+MINDRE (bygget körs aldrig). Båda gör `CI passed` till ett svagt bevis om vad som
+faktiskt kör.
+
+Kontrollera `deploy.yml`-körningen för squash-commiten innan du påstår att en
+frontend-ändring är ute.
+
+### Committa före VARJE negativkontroll — inte bara den första
+
+En negativkontroll innebär att man med flit bryter något och sedan återställer med
+`git checkout --`. Det kommandot tar med sig **allt** ocommittat i filen, inte
+bara det man nyss bröt. Har man gjort fler ändringar efter förra commiten
+försvinner de tyst.
+
+Hände tre gånger på en dag. Commita, bryt, mät, återställ — i den ordningen, varje
+gång.
+
+### En grön check efter en edit betyder inget om diffen är tom
+
+`cd` som faller i en kommandokedja, en `python3 -c` som körs från fel katalog, en
+`sed` vars mönster inte matchar — alla ger tyst ingen ändring. Kör man då
+`pnpm typecheck` och får grönt är det inte en bekräftelse: det är en check som
+inte kunde falla.
+
+Kontrollera att ändringen **landade** — `git status --short`, en `grep` efter det
+nya innehållet — innan du tolkar grönt som bevis.
+
+### En negativkontrolls sond ska ha ett namn som bevisligen inte finns
+
+Injicerar du en påhittad kolumn, fil eller flagga för att se att vakten fäller
+den: **sök på namnet först**. En sond som råkar heta samma sak som något
+befintligt gör din egen verifiering tvetydig — du kan inte skilja din injektion
+från det som redan fanns.
+
+Hände med `totpSecret`, som redan låg på `PlatformUser`. Kontrollen av att
+schemat var återställt gav då en träff som inte var min.
+
 ### CI-skyddet slutar vid merge-punkten — inte vid deploy
 
 `main` skyddas av rulesetet **`main`** (active, tom bypass-lista) med **`CI passed`**
-som required check. Alla nio CI-jobb måste ge `success` innan en PR kan mergas;
-GitHub blockerar merge-knappen annars (`mergeStateStatus: BLOCKED`). Uppmätt i #405.
+som required check. Alla nio CI-jobb i `ci-passed`:s `needs` måste ge `success`
+innan en PR kan mergas; GitHub blockerar merge-knappen annars
+(`mergeStateStatus: BLOCKED`). Uppmätt i #405.
+
+`E2E (icke-blockerande)` är ett tionde jobb som står MEDVETET utanför den listan,
+med ett utgångsdatum skrivet i `ci.yml` — se noten där.
 
 **Men skyddet gäller bara fram till merge.** `deploy.yml` bygger de tre SPA:erna och
 har `needs: ci` — **API:t deployas av Railways egen git-integration**, som lyssnar
