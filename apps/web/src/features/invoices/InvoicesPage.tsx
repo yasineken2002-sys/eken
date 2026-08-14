@@ -165,7 +165,7 @@ export function InvoicesPage() {
   // "Makulerade". Ett makulerat utkast känns därmed "borttaget" men bevaras
   // som räkenskapsinformation (soft-delete, BFL 1999:1078).
   const displayedInvoices = tab === 'ALL' ? invoices.filter((i) => i.status !== 'VOID') : invoices
-  const { data: selectedEvents = [] } = useInvoiceEvents(selected?.id ?? '')
+  const { data: selectedEvents = [], isError: historikNekad } = useInvoiceEvents(selected?.id ?? '')
   // #349: betalningsmodalens belopp ska vara RESTSKULDEN, och den finns bara på
   // detaljsvaret (och listsvaret). Hämtas när modalen är öppen — `useInvoice`
   // är `enabled: !!id`, så tom sträng betyder ingen förfrågan.
@@ -695,7 +695,18 @@ export function InvoicesPage() {
             </div>
           )}
 
-          {detailTab === 'historik' && <InvoiceTimeline events={selectedEvents} />}
+          {detailTab === 'historik' &&
+            /* Panelen påstod "Ingen historik ännu" vid 403 — GET /invoices/:id/events
+               är ACCOUNTANT+ sedan #440. Panelnivå, så ingen helsidesvy. (#442) */
+            (historikNekad ? (
+              <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                <p className="text-[13px] text-gray-400">
+                  Din roll får inte se fakturans historik.
+                </p>
+              </div>
+            ) : (
+              <InvoiceTimeline events={selectedEvents} />
+            ))}
         </Modal>
       )}
 

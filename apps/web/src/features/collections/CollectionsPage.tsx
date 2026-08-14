@@ -6,6 +6,7 @@ import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { InvoiceStatusBadge } from '@/components/ui/Badge'
+import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import { formatCurrency, formatDate } from '@eken/shared'
 import {
   fetchOverdueStatus,
@@ -46,7 +47,11 @@ export function CollectionsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const queryClient = useQueryClient()
 
-  const { data: invoices = [], isLoading } = useQuery({
+  const {
+    data: invoices = [],
+    isLoading,
+    isError: nekad,
+  } = useQuery({
     queryKey: ['collections', 'overdue', bucket],
     queryFn: () => fetchOverdueStatus(bucket),
     staleTime: 30_000,
@@ -178,6 +183,10 @@ export function CollectionsPage() {
       <div className="border-line mt-4 overflow-hidden rounded-2xl border bg-white">
         {isLoading ? (
           <div className="p-8 text-center text-[13px] text-gray-500">Laddar...</div>
+        ) : nekad ? (
+          // GET /collections/overdue-status är ACCOUNTANT+. Utan grenen påstod
+          // sidan "Inga fakturor i denna kategori just nu" (#442).
+          <PermissionDeniedState vad="inkassoöversikten" />
         ) : invoices.length === 0 ? (
           <div className="p-12 text-center">
             <Gavel size={28} className="mx-auto mb-3 text-gray-300" />

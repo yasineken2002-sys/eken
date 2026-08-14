@@ -4,6 +4,7 @@ import { UserPlus, ShieldCheck, Mail, Clock, Power, RotateCw, Lock } from 'lucid
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUsers, useUpdateUserRole, useDeactivateUser, useReactivateUser } from './hooks/useUsers'
 import { InviteUserModal } from './components/InviteUserModal'
@@ -34,7 +35,7 @@ const item = {
 }
 
 export function UsersPanel() {
-  const { data: users = [], isLoading } = useUsers()
+  const { data: users = [], isLoading, isError: nekad } = useUsers()
   const [inviteOpen, setInviteOpen] = useState(false)
   const currentUser = useAuthStore((s) => s.user)
   const isOwner = currentUser?.role === 'OWNER'
@@ -63,6 +64,8 @@ export function UsersPanel() {
             <div key={i} className="h-14 animate-pulse rounded-xl bg-gray-50" />
           ))}
         </div>
+      ) : nekad ? (
+        <PermissionDeniedState vad="användarlistan" />
       ) : users.length === 0 ? (
         <EmptyState
           icon={ShieldCheck}

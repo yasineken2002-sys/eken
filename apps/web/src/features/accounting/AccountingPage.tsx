@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatCard } from '@/components/ui/StatCard'
+import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { Account, JournalEntry, JournalEntryLine } from '@eken/shared'
 import { cn } from '@/lib/cn'
@@ -15,6 +16,7 @@ import { useAccounts, useSeedAccounts, useJournalEntries } from './hooks/useAcco
 import { PeriodsPanel } from './components/PeriodsPanel'
 import { ReverseEntryModal } from './components/ReverseEntryModal'
 import { useAuthStore } from '@/stores/auth.store'
+import { isForbidden } from '@/lib/api'
 
 type View = 'chart' | 'journal' | 'periods'
 
@@ -193,6 +195,10 @@ export function AccountingPage() {
     view === 'chart' ? accounts.isLoading : view === 'journal' ? journalEntries.isLoading : false
   const isError =
     view === 'chart' ? accounts.isError : view === 'journal' ? journalEntries.isError : false
+  // Sidan skilde inte på "gick sönder" och "får inte se". Alla /accounting/*
+  // är ACCOUNTANT+, så för VIEWER var felet ALLTID ett 403 — och rådet
+  // "Försök igen" kunde per definition aldrig hjälpa. (#442)
+  const nekad = isForbidden(view === 'chart' ? accounts.error : journalEntries.error)
 
   return (
     <PageWrapper id="accounting">
@@ -242,11 +248,15 @@ export function AccountingPage() {
 
       {isError && (
         <div className="mt-5">
-          <EmptyState
-            icon={FileX}
-            title="Något gick fel"
-            description="Kunde inte ladda bokföringsdata. Försök igen."
-          />
+          {nekad ? (
+            <PermissionDeniedState vad="bokföringen" />
+          ) : (
+            <EmptyState
+              icon={FileX}
+              title="Något gick fel"
+              description="Kunde inte ladda bokföringsdata. Försök igen."
+            />
+          )}
         </div>
       )}
 

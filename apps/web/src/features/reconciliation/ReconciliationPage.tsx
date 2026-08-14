@@ -21,6 +21,7 @@ import { StatCard } from '@/components/ui/StatCard'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { InvoiceStatusBadge } from '@/components/ui/Badge'
+import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import {
   useTransactions,
   useReconciliationStats,
@@ -680,7 +681,7 @@ export function ReconciliationPage() {
   const [autoMatchFlash, setAutoMatchFlash] = useState<string | null>(null)
 
   const filters = tab === 'ALL' ? undefined : { status: tab }
-  const { data: transactions = [], isLoading } = useTransactions(filters)
+  const { data: transactions = [], isLoading, isError: nekad } = useTransactions(filters)
   const { data: stats } = useReconciliationStats()
   const ignoreMutation = useIgnoreTransaction()
   const unmatchMutation = useUnmatchTransaction()
@@ -801,6 +802,11 @@ export function ReconciliationPage() {
           <div className="flex h-32 items-center justify-center text-[13px] text-gray-400">
             Laddar transaktioner...
           </div>
+        ) : nekad ? (
+          // Utan den här grenen renderades EmptyState nedan — "Inga transaktioner",
+          // med en primärknapp som själv 403:ar. Ett falskt påstående om
+          // organisationens data plus en återvändsgränd (#442).
+          <PermissionDeniedState vad="bankavstämningen" />
         ) : transactions.length === 0 ? (
           <EmptyState
             icon={ArrowLeftRight}
