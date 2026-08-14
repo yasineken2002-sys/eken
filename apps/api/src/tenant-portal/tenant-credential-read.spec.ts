@@ -57,6 +57,11 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { TenantWithCredentials, PublicTenant } from './tenant-credential-read'
+import {
+  readTenantWithCredentials,
+  findTenantWithCredentials,
+  readManyTenantsWithCredentials,
+} from './tenant-credential-read'
 
 const PORTAL = join(__dirname)
 
@@ -159,5 +164,53 @@ describe('TenantWithCredentials — typspärren biter', () => {
       void läcka
     }
     expect(typeof kontroll).toBe('function')
+  })
+})
+
+describe('läsvägarna behåller sina Prisma-semantiker', () => {
+  /**
+   * VARFÖR DET HÄR TESTET FINNS.
+   *
+   * Första utkastet lät BÅDA varianterna gå via `findFirst`, vilket tyst tog
+   * bort `findUnique`:s krav på ett unikt villkor. Det upptäcktes bara för att
+   * två orelaterade läck-specar råkar mocka `findUnique` och därför sprack —
+   * alltså av TUR, inte av bevakning. Nästa refaktorering av samma funktion hade
+   * varit lika oskyddad.
+   *
+   * Här är påståendet explicit: varje variant anropar den Prisma-metod den heter
+   * efter, och skickar argumenten vidare orörda.
+   */
+  const fejkPrisma = (): { tenant: Record<string, jest.Mock> } => ({
+    tenant: {
+      findUnique: jest.fn().mockResolvedValue({ id: 't-1' }),
+      findFirst: jest.fn().mockResolvedValue({ id: 't-1' }),
+      findMany: jest.fn().mockResolvedValue([{ id: 't-1' }]),
+    },
+  })
+
+  it('readTenantWithCredentials → findUnique (unikt villkor bevaras)', async () => {
+    const prisma = fejkPrisma()
+    const args = { where: { id: 't-1' } }
+    await readTenantWithCredentials(prisma as never, args)
+
+    expect(prisma.tenant.findUnique).toHaveBeenCalledWith(args)
+    expect(prisma.tenant.findFirst).not.toHaveBeenCalled()
+  })
+
+  it('findTenantWithCredentials → findFirst (icke-unika villkor)', async () => {
+    const prisma = fejkPrisma()
+    const args = { where: { email: 'a@b.se' } }
+    await findTenantWithCredentials(prisma as never, args)
+
+    expect(prisma.tenant.findFirst).toHaveBeenCalledWith(args)
+    expect(prisma.tenant.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('readManyTenantsWithCredentials → findMany', async () => {
+    const prisma = fejkPrisma()
+    const args = { where: { organizationId: 'org-1' } }
+    await readManyTenantsWithCredentials(prisma as never, args)
+
+    expect(prisma.tenant.findMany).toHaveBeenCalledWith(args)
   })
 })

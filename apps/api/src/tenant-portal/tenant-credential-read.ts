@@ -54,18 +54,30 @@ export type TenantWithCredentials<T = Tenant> = T & {
 /**
  * Tenant där credential-kolumnerna är borta. Enda vägen hit: strippning.
  *
- * `?: never` på brandet är det som får spärren att BITA. Ett första utkast lät
- * PublicTenant bara vara `Omit<...>` — och då var den brandade typen fritt
- * tilldelningsbar dit, eftersom ett objekt med FLER egenskaper är strukturellt
- * kompatibelt med en typ som har färre. Typen såg ut att garantera något och
- * garanterade ingenting. Fångat av en tsc-probe, inte av granskning.
+ * TRE delar, alla HÄRLEDDA ur `TENANT_CREDENTIAL_KEYS` (#453) — ingen egen lista.
+ * Det är avgörande: en handskriven uppräkning här hade varit en TREDJE kopia av
+ * credential-listan och divergerat precis som de två i #453 gjorde, fast i det
+ * lager som är svårast att inspektera.
  *
- * Med `?: never` blir brandets värde ('credentials-not-stripped') otillåtet, och
- * tilldelningen faller. Kontrollen hålls levande av typnivå-testet i specen.
+ *   Omit<T, TenantCredentialKey>            tar bort kolumnerna ur formen
+ *   { [K in TenantCredentialKey]?: never }  gör dem OTILLÅTNA att bära — den
+ *                                           här delen stoppar en OBRANDAD läsning
+ *   { [CREDENTIAL_BRAND]?: never }          stoppar den brandade typen
+ *
+ * Mellandelen tillkom efter en mätning: med bara `Omit` + brand-never gick en rå
+ * `Tenant` från en bar `prisma.tenant.findUnique` — alltså med `passwordHash`
+ * kvar — fritt att tilldela hit, eftersom ett objekt med FLER egenskaper är
+ * strukturellt kompatibelt med en typ som har färre. Spärren fångade bara det
+ * den själv hade brandat, inte det som aldrig passerade den.
+ *
+ * Följden av att allt är härlett: #453:s partitionstest — keyat på mönster mot
+ * schema.prisma och redan negativkontrollerat — bevakar även den här spärren. En
+ * ny credential-kolumn blir röd på ETT ställe, och att lägga till den i
+ * TENANT_CREDENTIAL_KEYS rättar både strippningen och typen.
  */
 export type PublicTenant<T = Tenant> = Omit<T, TenantCredentialKey> & {
-  readonly [CREDENTIAL_BRAND]?: never
-}
+  [K in TenantCredentialKey]?: never
+} & { readonly [CREDENTIAL_BRAND]?: never }
 
 /**
  * Läser en tenant MED credentials via `findUnique`. Enda tillåtna vägen till en
