@@ -151,7 +151,29 @@ export class ReconciliationController {
    * GET /reconciliation/imports/:id
    * Hämtar en DRAFT (PARSED) för granskning.
    */
+  // Utan raden ärvde endpointen bara det globala JwtAuthGuard, så VIEWER kunde
+  // läsa HELA BankStatementImport-raden: `accountNumber` (organisationens
+  // kontonummer) och `parsedData`/`originalParsedData`/`confirmedData` — den råa
+  // kontoutdragstexten med betalarnamn, belopp och OCR. Läsningen är spåret efter
+  // POST /reconciliation/import{,-bgmax,-pdf} (MANAGER, ADMIN, OWNER): raden
+  // finns bara för att någon körde en import. Det är #81:s form — org-scopet var
+  // aldrig brustet, asymmetrin var defekten.
+  //
+  // ── Varför ACCOUNTANT ingår trots att importen är MANAGER+ ──────────────────
+  //
+  // Det är ett BESLUT, inte en glidning, och gäller alla tre läsningarna i den
+  // här controllern. Att läsa bankavstämning är den rollens arbetsuppgift. Och
+  // AI-verktygen `get_bank_transactions`/`get_reconciliation_summary` anropar
+  // redan `reconciliationService.getTransactions/getStats` UTAN rollkontroll
+  // (tool-executor.service.ts), och AI-chatten är öppen för ACCOUNTANT — en
+  // snävare HTTP-grind hade alltså varit en gräns bara på pappret, och
+  // golden-filen hade påstått något som inte gäller. VIEWER når inte AI-chatten
+  // och har därmed ingen motsvarande väg runt.
+  //
+  // Att ACCOUNTANT saknas i SKRIVNINGARNA kan vara en egen lucka. Den hör till
+  // #68 och avgörs inte här.
   @Get('imports/:id')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
   async getImport(@Param('id') id: string, @OrgId() organizationId: string) {
     return this.statementImports.getImport(id, organizationId)
   }
@@ -197,7 +219,13 @@ export class ReconciliationController {
    * GET /reconciliation/transactions
    * Query params: status, from, to
    */
+  // VIEWER kunde läsa varje BankTransaction: `description` (betalarnamnet så som
+  // banken levererar det), `balance` (kontosaldot vid transaktionen), `rawOcr`
+  // och `matchedBy`. Läsningen är spåret efter importen och matchningen
+  // (PATCH transactions/:id/{match,ignore,unmatch}, POST auto-match — MANAGER,
+  // ADMIN, OWNER). Rollistan och ACCOUNTANT-beslutet: se getImport ovan.
   @Get('transactions')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
   async getTransactions(
     @OrgId() organizationId: string,
     @Query('status') status?: string,
@@ -214,7 +242,30 @@ export class ReconciliationController {
   /**
    * GET /reconciliation/stats
    */
+  // Grindas trots att svaret bara är räknare och summor — inga persondata, ingen
+  // kontoidentitet, inget saldo (`balance` sitter på transaktionsraderna, inte i
+  // aggregatet).
+  //
+  // ── Varför raden inte är omotiverad, fastän grannen står öppen ──────────────
+  //
+  // GET /avisering/stats/:month/:year är samma sorts aggregat och förblir
+  // OGRINDAD. Skillnaden är inte datakänslighet, och kriteriet var aldrig det.
+  // Mätt, så att nästa läsare slipper göra om den: bankaggregatet röjer INTE mer
+  // än hyresaggregatet. Tvärtom — hyresaggregatets `outstandingAmount` är obetald
+  // hyra per period, alltså kreditexponering, och enumererbar över godtyckligt
+  // många månader via path-parametrarna. Bankaggregatets unika bidrag är
+  // `totalAmount - matchedAmount`: inbetalt-men-ej-härlett, en driftkvalitets-
+  // siffra. Skrivnivån skiljer dem inte heller — aviseringens LÄGSTA skrivning är
+  // ACCOUNTANT (POST :id/bad-debt/*), avstämningens är MANAGER.
+  //
+  // Kriteriet är vad resursen ÄR. Hyresavier är domändata hyresvärden förvaltar:
+  // där är händelseloggen spåret och grindas, medan resursen och dess aggregat
+  // står öppna. En BankTransaction har inget domänobjekt under sig — den finns
+  // bara för att någon körde en import. Hela avstämningsresursen är spår,
+  // aggregatet inkluderat. Spegelmotiveringen står vid /avisering/stats i
+  // authz-surface.golden.txt, avsnitt 1b a).
   @Get('stats')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
   async getStats(@OrgId() organizationId: string) {
     return this.reconciliationService.getStats(organizationId)
   }

@@ -485,6 +485,115 @@ const ENDPOINT_COL = 62
 const GATE_COL = 26
 const TOOL_COL = 32
 
+/**
+ * Hink 1b a) genomgången endpoint för endpoint (#434-uppföljningen).
+ *
+ * Hinken bar texten "DE HÄR RADERNA ÄR INTE GRANSKADE", och det var sant för
+ * varenda rad. Nu är det sant för några. Den här tabellen är skillnaden: en rad
+ * som står här är avsiktligt öppen och skälet står bredvid; en rad i hinken som
+ * INTE står här har ingen granskat.
+ *
+ * Kriteriet var inte "skrivningen är grindad men läsningen är öppen" — det
+ * träffar också properties, customers och news, där det är precis vad VIEWER ska
+ * betyda. Frågan var: läser VIEWER DOMÄNDATA (det rollen finns till för) eller
+ * det OPERATIVA SPÅRET av en handling som kräver högre roll? Spåren grindades
+ * och flyttade därmed till avsnitt 1.
+ *
+ * LÄGG BARA TILL en rad här när någon faktiskt har läst servicemetoden — inte
+ * controllerns signatur — och kan säga vad som konkret returneras. Annars
+ * påstår filen granskning som inte skett, vilket är värre än att sakna den.
+ */
+const GRANSKAD_HINK_A: ReadonlyMap<string, string> = new Map([
+  ['GET /auth/me', 'Självscopad på JWT:ns `sub` — läser inte organisationen, utan den inloggade.'],
+  [
+    'GET /users/me/export',
+    'Självscopad. GDPR Art. 15: en VIEWER har samma registerutdragsrätt som en\n' +
+      'OWNER, så en rollgrind vore direkt fel.',
+  ],
+  [
+    'DELETE /users/me',
+    'SJÄLVSCOPAD SKRIVNING — raderar `current.sub`, inte en godtycklig användare\n' +
+      '(det är DELETE /users/:id, som är OWNER). GDPR Art. 17, och kräver dessutom\n' +
+      'lösenordsbekräftelse. En rollgrind hade nekat en VIEWER att radera sitt eget\n' +
+      'konto.',
+  ],
+  [
+    'POST /auth/change-password',
+    'Självscopad skrivning på den inloggade. Varje roll måste kunna byta sitt eget\n' + 'lösenord.',
+  ],
+  ['POST /auth/logout', 'Självscopad skrivning: återkallar anroparens egen refresh-token.'],
+  [
+    'POST /auth/accept-terms',
+    'Självscopad skrivning: stämplar den inloggades eget godkännande av villkoren.',
+  ],
+  [
+    'GET /properties',
+    'Domändata — kärnan i vad VIEWER finns till för. Inga persondata; listan bär\n' +
+      'fastighet plus `_count` av objekt.',
+  ],
+  ['GET /properties/:id', 'Domändata, som listan. Inga persondata.'],
+  ['GET /news', 'Domändata. Enda personuppgiften är författarens `firstName`/`lastName`.'],
+  ['GET /news/:id', 'Domändata, som listan.'],
+  [
+    'GET /customers',
+    'Domändata. Personnummer-frågan är redan avgjord och kommenterad i\n' +
+      'customers.service.ts (#280/#281): LISTAN bär inte personnummer.',
+  ],
+  [
+    'GET /customers/:id',
+    'Domändata. Detaljvyn avslöjar personnumret — samma beslut som ovan: en\n' +
+      'uppslagning av EN kund är ett berättigat behov, en lista över alla inte.',
+  ],
+  [
+    'GET /inspections',
+    'Domändata. `FULL_INCLUDE` går via SAFE_TENANT_SELECT, så ingen hyresgäst-\n' +
+      'credential eller personnummer följer med.',
+  ],
+  ['GET /inspections/:id', 'Domändata, som listan.'],
+  ['GET /inspections/stats', 'Enbart räknare per status och typ.'],
+  ['GET /inspections/:id/pdf', 'Renderar samma domändata som detaljvyn.'],
+  [
+    'GET /documents',
+    'REDAN GRINDAD — i tjänsten, inte på controllern, och därför osynlig för den\n' +
+      'här kolumnen. common/authz/documents-authz.ts filtrerar bort CONTRACT-rader\n' +
+      'för roller utan kontraktsbehörighet (listan delar annars ut dokument-id:t,\n' +
+      'som är allt nedladdningen behöver).',
+  ],
+  [
+    'GET /documents/:id/download',
+    'REDAN GRINDAD i tjänsten: assertMayAccessContractDocument, fail-closed, före\n' +
+      'den presignerade URL:en skapas. Övriga kategorier (besiktningsfoton,\n' +
+      'ritningar, försäkringsbrev) är avsiktligt öppna.',
+  ],
+  [
+    'GET /avisering',
+    'Domändata — hyresavier är vad hyresvärden förvaltar. SAFE_TENANT_SELECT plus\n' +
+      'explicit `omit` av `reminderPdfStorageKey`/`reminderMessageId`.',
+  ],
+  ['GET /avisering/:id', 'Domändata, som listan, med samma omit.'],
+  ['GET /avisering/:id/pdf', 'Renderar samma domändata som detaljvyn.'],
+  [
+    'GET /avisering/stats/:month/:year',
+    'Aggregat över domändata: räknare per status plus totalt/betalt/utestående för\n' +
+      'EN månad.\n' +
+      '\n' +
+      'Läs den här raden ihop med GET /reconciliation/stats, som GRINDADES i samma\n' +
+      'genomgång. Att de landar olika är ett beslut, inte en glidning, och skälet är\n' +
+      'inte datakänslighet — mätningen visade tvärtom att den här endpointen röjer\n' +
+      'MER: `outstandingAmount` är obetald hyra per period, alltså organisationens\n' +
+      'kreditexponering, och enumererbar över godtyckligt många månader via\n' +
+      'path-parametrarna. Bankaggregatets unika bidrag är inbetalt-men-ej-härlett,\n' +
+      'en driftkvalitetssiffra. Skrivnivån skiljer dem inte heller: aviseringens\n' +
+      'lägsta skrivning är ACCOUNTANT (bad-debt/*), avstämningens är MANAGER.\n' +
+      '\n' +
+      'Kriteriet är vad resursen ÄR. Hyresavier är domändata — där grindas spåret\n' +
+      '(:id/events) men inte resursen eller dess aggregat. En BankTransaction har\n' +
+      'inget domänobjekt under sig; den finns bara för att någon körde en import,\n' +
+      'så hela den resursen är spår. Motiveringen åt andra hållet står i\n' +
+      'reconciliation.controller.ts över @Roles på getStats.',
+  ],
+])
+
 function pad(s: string, n: number): string {
   return s.length >= n ? s : s + ' '.repeat(n - s.length)
 }
@@ -546,9 +655,10 @@ export function renderSurface(input: {
   out.push('')
   out.push(`## 1b. HTTP-endpoints UTAN rollgrind (${ungated.length} st)`)
   out.push('')
-  out.push('DE HÄR RADERNA ÄR INTE GRANSKADE. De står här för att en NY ogrindad')
-  out.push('endpoint ska bli en diff någon måste godkänna — inte för att någon har')
-  out.push('intygat att var och en av dem ska vara öppen.')
+  out.push('RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som')
+  out.push('granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli')
+  out.push('en diff någon måste godkänna, inte för att någon har intygat att var och en')
+  out.push('av dem ska vara öppen.')
   out.push('')
   out.push('Fram till #434 saknades de helt. Motiveringen som stod här var att de')
   out.push('"flesta är självscopade", och just därför var luckan farlig: filen')
@@ -563,17 +673,61 @@ export function renderSurface(input: {
   out.push('läs mina notiser) — men "många" är inte "alla", och raden säger inte')
   out.push('vilket. Det är den här hinken #81 kom ur.')
   out.push('')
-  for (const e of öppna) {
+  out.push('Hinken gicks igenom endpoint för endpoint i #434-uppföljningen. Frågan var')
+  out.push('inte "är skrivningen grindad men läsningen öppen" — det träffar också')
+  out.push('properties, customers och news, där det är precis vad VIEWER ska betyda.')
+  out.push('Frågan var: läser VIEWER DOMÄNDATA, eller det OPERATIVA SPÅRET av en')
+  out.push('handling som kräver högre roll? Spåren grindades och står nu i avsnitt 1.')
+
+  const granskade = öppna.filter((e) => GRANSKAD_HINK_A.has(e.endpoint))
+  const ogranskade = öppna.filter((e) => !GRANSKAD_HINK_A.has(e.endpoint))
+
+  out.push('')
+  out.push(`GRANSKADE — avsiktligt öppna, med skälet (${granskade.length} st)`)
+  out.push('')
+  for (const e of granskade) {
+    out.push(`${pad(e.endpoint, ENDPOINT_COL)}  ${e.file}`)
+    for (const rad of (GRANSKAD_HINK_A.get(e.endpoint) as string).split('\n')) {
+      out.push(rad === '' ? '' : `    ${rad}`)
+    }
+    out.push('')
+  }
+
+  out.push(`EJ GRANSKADE (${ogranskade.length} st)`)
+  out.push('')
+  out.push('Ingen har intygat att de ska vara öppna. En NY rad hamnar här tills någon')
+  out.push('läst servicemetoden och skrivit skälet i GRANSKAD_HINK_A i authz-surface.ts.')
+  out.push('')
+  for (const e of ogranskade) {
     out.push(`${pad(e.endpoint, ENDPOINT_COL)}  ${e.file}`)
   }
 
   out.push('')
+  const baraGlobal = annanMekanism.filter((e) => e.guards === 'JwtAuthGuard')
+
   out.push(`### b) Styrda av en ANNAN mekanism (${annanMekanism.length} st)`)
   out.push('')
   out.push('@UseGuards(...) med egen guard. Frånvaro av @Roles betyder inte ostyrd:')
   out.push('plattformsadmin går via PlatformGuard, hyresgästportalen via sin egen')
   out.push('session. Raderna står här för fullständighetens skull — deras gräns bor')
   out.push('i guarden, inte i en rollista, och bevakas därför inte av kolumnen.')
+  out.push('')
+  out.push(
+    `VARNING: det stycket är sant för ${annanMekanism.length - baraGlobal.length} av raderna och FALSKT för`,
+  )
+  out.push(`${baraGlobal.length}. Hinken delar på om @UseGuards FINNS, inte på vad guarden GÖR.`)
+  out.push('JwtAuthGuard och RolesGuard är redan globala (auth.module.ts), så ett')
+  out.push('klassnivå-@UseGuards(JwtAuthGuard) är rent redundant — men det lyfter raden')
+  out.push('ur hink a) och hit. De raderna är exakt lika öppna som hink a):s: varje')
+  out.push('inloggad roll, VIEWER inkluderad. Den faktiska mängden "öppen för VARJE')
+  out.push(
+    `roll" är alltså ${öppna.length} + ${baraGlobal.length} = ${öppna.length + baraGlobal.length}, inte ${öppna.length}.`,
+  )
+  out.push('')
+  out.push('Upptäckt när hink a) granskades: GET /invoices/:id/events låg här och var')
+  out.push('ogrindad på exakt samma sätt som sitt syskon GET /avisering/:id/events i')
+  out.push('hink a). Det grindades i samma PR. De övriga JwtAuthGuard-raderna är INTE')
+  out.push('genomgångna.')
   out.push('')
   for (const e of annanMekanism) {
     out.push(`${pad(e.endpoint, ENDPOINT_COL)}  ${pad(e.guards, 28)}  ${e.file}`)

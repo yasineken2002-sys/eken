@@ -164,7 +164,20 @@ export class AviseringController {
 
   // Krav-/leveranstidslinje för en avi. Org-verifieras i servicen (avin måste
   // tillhöra organisationen innan händelser returneras).
+  //
+  // Utan raden ärvde endpointen bara det globala JwtAuthGuard, så VIEWER kunde
+  // läsa hela tidslinjen rått: `actorLabel` ("Anna Svensson"), `actorId` och
+  // `payload` med `feeOre`, `ratePercent`, `journalEntryId` och Resends
+  // `messageId`. Läsningen är spåret efter handlingar VIEWER inte får utföra —
+  // markPaid (MANAGER+), cancel (ADMIN/OWNER), reminder-fee/reverse och
+  // bad-debt/* (ACCOUNTANT+) samt kravtrappans cron. Det är #81:s form:
+  // utfallet av en handling låg öppet för en roll utan del i handlingen.
+  //
+  // ACCOUNTANT ingår för att den rollen utför tre av handlingarna som hamnar i
+  // loggen. Ingen vy i web/admin/portal anropar endpointen (greppat), så ingen
+  // frontend tappar åtkomst.
   @Get(':id/events')
+  @Roles(UserRole.ACCOUNTANT, UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
   async events(@OrgId() orgId: string, @Param('id') id: string) {
     return this.rentNoticeEvents.getTimeline(id, orgId)
   }

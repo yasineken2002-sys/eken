@@ -88,7 +88,26 @@ export class InvoicesController {
    * GET /invoices/:id/events
    * Hämtar komplett fakturahistorik (tidslinje) för en faktura.
    */
+  // Syskonet till GET /avisering/:id/events — samma form, samma append-only logg,
+  // samma defekt: VIEWER läste `actorLabel`, `actorId` och `payload` (belopp,
+  // journalEntryId, messageId) rått. Läsningen är spåret efter fakturans
+  // handlingar: statusövergång, betalning och e-postutskick (MANAGER+),
+  // makulering (ADMIN/OWNER), reminder-fee/reverse (ACCOUNTANT+).
+  //
+  // Raden låg i golden-filens hink b) och inte i a), och det är ett artefakt-
+  // fynd värt att känna till: klassificeringen delar på om @UseGuards finns, inte
+  // på vad guarden gör (authz-surface.ts). Den här controllern deklarerar
+  // @UseGuards(JwtAuthGuard) på klassen — redundant, eftersom JwtAuthGuard redan
+  // är global (auth.module.ts) — och därmed lyftes raden ur "öppen för VARJE
+  // roll" till "styrd av en ANNAN mekanism". Den såg styrd ut och var det inte.
+  // 44 rader i hink b) delar den egenskapen; se ärendet som följer #434.
+  //
+  // Frontend: InvoicesPage.tsx:168 matar InvoiceTimeline med `[]` vid 403, och
+  // panelen påstår då "Ingen historik ännu". Falskt men inte trasigt — samma
+  // klass som de VIEWER-vyer som redan 403:ar tyst (/import, /collections,
+  // /accounting, /users), och den hör till det ärendet, inte hit.
   @Get(':id/events')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
   async getTimeline(@Param('id') id: string, @OrgId() organizationId: string) {
     return this.invoicesService.getTimeline(id, organizationId)
   }

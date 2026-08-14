@@ -14,7 +14,7 @@ Filen säger inget om huruvida en gräns är RÄTT. Den gör bara omöjligt att
 flytta en gräns utan att någon ser det. Se authz-surface.ts.
 
 
-## 1. HTTP-endpoints med rollgrind (164 st)
+## 1. HTTP-endpoints med rollgrind (169 st)
 
 Endpoints utan @Roles står i avsnitt 1b — de saknades helt fram till #434.
 
@@ -55,6 +55,7 @@ GET /ai/conversations                                           ACCOUNTANT, ADMI
 GET /ai/tools                                                   ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /ai/usage/breakdown                                         ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /ai/usage                                                   ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /avisering/:id/events                                       ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /avisering/backfill/:leaseId/preview                        ADMIN, MANAGER, OWNER
 GET /avisering/backfill/queue                                   ADMIN, MANAGER, OWNER
 GET /collections/overdue-status                                 ACCOUNTANT, ADMIN, MANAGER, OWNER
@@ -62,9 +63,13 @@ GET /contracts/download/:leaseId                                ADMIN, MANAGER, 
 GET /contracts/status/:leaseId                                  ADMIN, MANAGER, OWNER
 GET /import/contract-batches/:id                                ADMIN, MANAGER, OWNER
 GET /import/jobs                                                ADMIN, OWNER
+GET /invoices/:id/events                                        ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /misc-charges/:id                                           ADMIN, MANAGER, OWNER
 GET /misc-charges                                               ADMIN, MANAGER, OWNER
+GET /reconciliation/imports/:id                                 ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /reconciliation/psd2/consents                               ADMIN, OWNER
+GET /reconciliation/stats                                       ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /reconciliation/transactions                                ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /rent-collections/ready                                     ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /tenant-portal/activation-status/:tenantId                  ADMIN, MANAGER, OWNER
 GET /tenant-portal/invitations                                  ADMIN, MANAGER, OWNER
@@ -184,11 +189,12 @@ POST /users/:id/reactivate                                      OWNER
 POST /users/invite                                              ADMIN, OWNER
 
 
-## 1b. HTTP-endpoints UTAN rollgrind (162 st)
+## 1b. HTTP-endpoints UTAN rollgrind (157 st)
 
-DE HÄR RADERNA ÄR INTE GRANSKADE. De står här för att en NY ogrindad
-endpoint ska bli en diff någon måste godkänna — inte för att någon har
-intygat att var och en av dem ska vara öppen.
+RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som
+granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli
+en diff någon måste godkänna, inte för att någon har intygat att var och en
+av dem ska vara öppen.
 
 Fram till #434 saknades de helt. Motiveringen som stod här var att de
 "flesta är självscopade", och just därför var luckan farlig: filen
@@ -197,45 +203,142 @@ konstruktion osynlig för driftbevakningen. #81 visade vad det kostade —
 GET /import/jobs var varken självscopad eller avsedd att vara öppen, låg
 öppen för VIEWER, och fanns inte i den här filen medan hålet var öppet.
 
-### a) Org-inloggad, öppen för VARJE roll (26 st)
+### a) Org-inloggad, öppen för VARJE roll (22 st)
 
 Enbart den globala JwtAuthGuard. Många är självscopade (byt mitt lösenord,
 läs mina notiser) — men "många" är inte "alla", och raden säger inte
 vilket. Det är den här hinken #81 kom ur.
 
-DELETE /users/me                                                users.controller.ts
-GET /auth/me                                                    auth.controller.ts
-GET /avisering/:id/events                                       avisering.controller.ts
-GET /avisering/:id/pdf                                          avisering.controller.ts
-GET /avisering/:id                                              avisering.controller.ts
-GET /avisering/stats/:month/:year                               avisering.controller.ts
-GET /avisering                                                  avisering.controller.ts
-GET /customers/:id                                              customers.controller.ts
-GET /customers                                                  customers.controller.ts
-GET /documents/:id/download                                     documents.controller.ts
-GET /documents                                                  documents.controller.ts
-GET /inspections/:id/pdf                                        inspections.controller.ts
-GET /inspections/:id                                            inspections.controller.ts
-GET /inspections/stats                                          inspections.controller.ts
-GET /inspections                                                inspections.controller.ts
-GET /news/:id                                                   news.controller.ts
-GET /news                                                       news.controller.ts
-GET /properties/:id                                             properties.controller.ts
-GET /properties                                                 properties.controller.ts
-GET /reconciliation/imports/:id                                 reconciliation.controller.ts
-GET /reconciliation/stats                                       reconciliation.controller.ts
-GET /reconciliation/transactions                                reconciliation.controller.ts
-GET /users/me/export                                            users.controller.ts
-POST /auth/accept-terms                                         auth.controller.ts
-POST /auth/change-password                                      auth.controller.ts
-POST /auth/logout                                               auth.controller.ts
+Hinken gicks igenom endpoint för endpoint i #434-uppföljningen. Frågan var
+inte "är skrivningen grindad men läsningen öppen" — det träffar också
+properties, customers och news, där det är precis vad VIEWER ska betyda.
+Frågan var: läser VIEWER DOMÄNDATA, eller det OPERATIVA SPÅRET av en
+handling som kräver högre roll? Spåren grindades och står nu i avsnitt 1.
 
-### b) Styrda av en ANNAN mekanism (111 st)
+GRANSKADE — avsiktligt öppna, med skälet (22 st)
+
+DELETE /users/me                                                users.controller.ts
+    SJÄLVSCOPAD SKRIVNING — raderar `current.sub`, inte en godtycklig användare
+    (det är DELETE /users/:id, som är OWNER). GDPR Art. 17, och kräver dessutom
+    lösenordsbekräftelse. En rollgrind hade nekat en VIEWER att radera sitt eget
+    konto.
+
+GET /auth/me                                                    auth.controller.ts
+    Självscopad på JWT:ns `sub` — läser inte organisationen, utan den inloggade.
+
+GET /avisering/:id/pdf                                          avisering.controller.ts
+    Renderar samma domändata som detaljvyn.
+
+GET /avisering/:id                                              avisering.controller.ts
+    Domändata, som listan, med samma omit.
+
+GET /avisering/stats/:month/:year                               avisering.controller.ts
+    Aggregat över domändata: räknare per status plus totalt/betalt/utestående för
+    EN månad.
+
+    Läs den här raden ihop med GET /reconciliation/stats, som GRINDADES i samma
+    genomgång. Att de landar olika är ett beslut, inte en glidning, och skälet är
+    inte datakänslighet — mätningen visade tvärtom att den här endpointen röjer
+    MER: `outstandingAmount` är obetald hyra per period, alltså organisationens
+    kreditexponering, och enumererbar över godtyckligt många månader via
+    path-parametrarna. Bankaggregatets unika bidrag är inbetalt-men-ej-härlett,
+    en driftkvalitetssiffra. Skrivnivån skiljer dem inte heller: aviseringens
+    lägsta skrivning är ACCOUNTANT (bad-debt/*), avstämningens är MANAGER.
+
+    Kriteriet är vad resursen ÄR. Hyresavier är domändata — där grindas spåret
+    (:id/events) men inte resursen eller dess aggregat. En BankTransaction har
+    inget domänobjekt under sig; den finns bara för att någon körde en import,
+    så hela den resursen är spår. Motiveringen åt andra hållet står i
+    reconciliation.controller.ts över @Roles på getStats.
+
+GET /avisering                                                  avisering.controller.ts
+    Domändata — hyresavier är vad hyresvärden förvaltar. SAFE_TENANT_SELECT plus
+    explicit `omit` av `reminderPdfStorageKey`/`reminderMessageId`.
+
+GET /customers/:id                                              customers.controller.ts
+    Domändata. Detaljvyn avslöjar personnumret — samma beslut som ovan: en
+    uppslagning av EN kund är ett berättigat behov, en lista över alla inte.
+
+GET /customers                                                  customers.controller.ts
+    Domändata. Personnummer-frågan är redan avgjord och kommenterad i
+    customers.service.ts (#280/#281): LISTAN bär inte personnummer.
+
+GET /documents/:id/download                                     documents.controller.ts
+    REDAN GRINDAD i tjänsten: assertMayAccessContractDocument, fail-closed, före
+    den presignerade URL:en skapas. Övriga kategorier (besiktningsfoton,
+    ritningar, försäkringsbrev) är avsiktligt öppna.
+
+GET /documents                                                  documents.controller.ts
+    REDAN GRINDAD — i tjänsten, inte på controllern, och därför osynlig för den
+    här kolumnen. common/authz/documents-authz.ts filtrerar bort CONTRACT-rader
+    för roller utan kontraktsbehörighet (listan delar annars ut dokument-id:t,
+    som är allt nedladdningen behöver).
+
+GET /inspections/:id/pdf                                        inspections.controller.ts
+    Renderar samma domändata som detaljvyn.
+
+GET /inspections/:id                                            inspections.controller.ts
+    Domändata, som listan.
+
+GET /inspections/stats                                          inspections.controller.ts
+    Enbart räknare per status och typ.
+
+GET /inspections                                                inspections.controller.ts
+    Domändata. `FULL_INCLUDE` går via SAFE_TENANT_SELECT, så ingen hyresgäst-
+    credential eller personnummer följer med.
+
+GET /news/:id                                                   news.controller.ts
+    Domändata, som listan.
+
+GET /news                                                       news.controller.ts
+    Domändata. Enda personuppgiften är författarens `firstName`/`lastName`.
+
+GET /properties/:id                                             properties.controller.ts
+    Domändata, som listan. Inga persondata.
+
+GET /properties                                                 properties.controller.ts
+    Domändata — kärnan i vad VIEWER finns till för. Inga persondata; listan bär
+    fastighet plus `_count` av objekt.
+
+GET /users/me/export                                            users.controller.ts
+    Självscopad. GDPR Art. 15: en VIEWER har samma registerutdragsrätt som en
+    OWNER, så en rollgrind vore direkt fel.
+
+POST /auth/accept-terms                                         auth.controller.ts
+    Självscopad skrivning: stämplar den inloggades eget godkännande av villkoren.
+
+POST /auth/change-password                                      auth.controller.ts
+    Självscopad skrivning på den inloggade. Varje roll måste kunna byta sitt eget
+    lösenord.
+
+POST /auth/logout                                               auth.controller.ts
+    Självscopad skrivning: återkallar anroparens egen refresh-token.
+
+EJ GRANSKADE (0 st)
+
+Ingen har intygat att de ska vara öppna. En NY rad hamnar här tills någon
+läst servicemetoden och skrivit skälet i GRANSKAD_HINK_A i authz-surface.ts.
+
+
+### b) Styrda av en ANNAN mekanism (110 st)
 
 @UseGuards(...) med egen guard. Frånvaro av @Roles betyder inte ostyrd:
 plattformsadmin går via PlatformGuard, hyresgästportalen via sin egen
 session. Raderna står här för fullständighetens skull — deras gräns bor
 i guarden, inte i en rollista, och bevakas därför inte av kolumnen.
+
+VARNING: det stycket är sant för 67 av raderna och FALSKT för
+43. Hinken delar på om @UseGuards FINNS, inte på vad guarden GÖR.
+JwtAuthGuard och RolesGuard är redan globala (auth.module.ts), så ett
+klassnivå-@UseGuards(JwtAuthGuard) är rent redundant — men det lyfter raden
+ur hink a) och hit. De raderna är exakt lika öppna som hink a):s: varje
+inloggad roll, VIEWER inkluderad. Den faktiska mängden "öppen för VARJE
+roll" är alltså 22 + 43 = 65, inte 22.
+
+Upptäckt när hink a) granskades: GET /invoices/:id/events låg här och var
+ogrindad på exakt samma sätt som sitt syskon GET /avisering/:id/events i
+hink a). Det grindades i samma PR. De övriga JwtAuthGuard-raderna är INTE
+genomgångna.
 
 DELETE /platform/invoices/:id                                   PlatformGuard                 platform-invoices.controller.ts
 DELETE /platform/organizations/:id                              PlatformGuard                 platform-organizations.controller.ts
@@ -254,7 +357,6 @@ GET /dashboard/stats                                            JwtAuthGuard    
 GET /dashboard/timeseries                                       JwtAuthGuard                  dashboard.controller.ts
 GET /deposits/:id                                               JwtAuthGuard                  deposits.controller.ts
 GET /deposits                                                   JwtAuthGuard                  deposits.controller.ts
-GET /invoices/:id/events                                        JwtAuthGuard                  invoices.controller.ts
 GET /invoices/:id/pdf                                           JwtAuthGuard                  invoices.controller.ts
 GET /invoices/:id                                               JwtAuthGuard                  invoices.controller.ts
 GET /invoices                                                   JwtAuthGuard                  invoices.controller.ts
