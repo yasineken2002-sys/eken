@@ -115,3 +115,18 @@ export function extractApiError(err: unknown, fallback = 'Något gick fel'): str
   if (err instanceof Error && err.message) return err.message
   return fallback
 }
+
+/**
+ * Är felet ett 403 från backend — alltså ett NEKANDE, inte ett haveri?
+ *
+ * Skiljelinjen finns för att de två kräver olika svar i gränssnittet. Ett 500
+ * är "något gick sönder, försök igen"; ett 403 är "systemet fungerar, du får
+ * inte se det här". Att visa det andra som det första gör en korrekt
+ * behörighetsgräns till en upplevd bugg.
+ *
+ * 401 räknas INTE hit: interceptorn ovan försöker refresha token och loggar ut
+ * vid misslyckande, så ett 401 blir aldrig ett stabilt lästillstånd.
+ */
+export function isForbidden(err: unknown): boolean {
+  return axios.isAxiosError(err) && err.response?.status === 403
+}

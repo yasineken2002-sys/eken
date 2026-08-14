@@ -732,7 +732,7 @@ function ScanField({
 
 // ─── History Table ────────────────────────────────────────────────────────────
 
-function ImportHistory({ jobs }: { jobs: ImportJob[] }) {
+function ImportHistory({ jobs, nekad }: { jobs: ImportJob[]; nekad?: boolean }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
       <table className="w-full text-[13px]">
@@ -752,7 +752,10 @@ function ImportHistory({ jobs }: { jobs: ImportJob[] }) {
           {jobs.length === 0 && (
             <tr>
               <td colSpan={7} className="px-4 py-8 text-center text-[13px] text-gray-400">
-                Inga importer än
+                {/* Ett 403 gav tidigare "Inga importer än" — ett falskt påstående
+                    om organisationens historik. GET /import/jobs är ADMIN/OWNER
+                    sedan #81. (#442) */}
+                {nekad ? 'Din roll får inte se importhistoriken.' : 'Inga importer än'}
               </td>
             </tr>
           )}
@@ -800,7 +803,7 @@ const item = {
 
 export function ImportPage() {
   const [activeTab, setActiveTab] = useState<string>('PROPERTIES')
-  const { data: jobs = [] } = useImportJobs()
+  const { data: jobs = [], isError: jobbNekade } = useImportJobs()
 
   return (
     <PageWrapper id="import">
@@ -882,7 +885,7 @@ export function ImportPage() {
           className="mt-6"
         >
           <h2 className="mb-3 text-[14px] font-semibold text-gray-900">Importhistorik</h2>
-          <ImportHistory jobs={jobs} />
+          <ImportHistory jobs={jobs} nekad={jobbNekade} />
         </motion.div>
       </div>
     </PageWrapper>

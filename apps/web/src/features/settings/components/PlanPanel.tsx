@@ -15,11 +15,12 @@ import { PLAN_LIMITS, PLAN_ORDER, CREDIT_PACKAGES, formatCurrency, formatDate } 
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import { useAiUsageCurrent, useAiUsageHistory, useBuyAiCredits } from '../hooks/usePlan'
 import { cn } from '@/lib/cn'
 
 export function PlanPanel() {
-  const { data: current, isLoading } = useAiUsageCurrent()
+  const { data: current, isLoading, isError: nekad } = useAiUsageCurrent()
   const { data: history } = useAiUsageHistory(30)
   const [creditsModalOpen, setCreditsModalOpen] = useState(false)
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
@@ -35,6 +36,14 @@ export function PlanPanel() {
     const diffMs = new Date(current.trialEndsAt).getTime() - Date.now()
     return Math.max(0, Math.ceil(diffMs / (24 * 60 * 60 * 1000)))
   }, [current?.trialEndsAt])
+
+  // FÖRE isLoading-grenen: `isLoading || !current` gjorde ett 403 till en
+  // skelettvy som aldrig löste sig, eftersom `current` förblir undefined och
+  // `isLoading` är false efter att retry:n gett upp. Av #442:s sju ytor var den
+  // här den enda som fastnade i ett laddningsläge i stället för ett tomt.
+  if (nekad) {
+    return <PermissionDeniedState vad="planen och AI-förbrukningen" />
+  }
 
   if (isLoading || !current) {
     return (
