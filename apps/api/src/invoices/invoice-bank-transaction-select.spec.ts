@@ -26,13 +26,13 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { skaläraKolumner } from '../common/testing/schema-columns'
 // Importeras från sin EGNA modul, inte från invoices.service.ts: den drar in
 // pdf.service → storage.service → @aws-sdk/client-s3, vars ESM-kedja ts-jest inte
 // transformerar. Samma skäl som får authz-surface.ts att läsa källan statiskt.
 import { SAFE_INVOICE_BANK_TRANSACTION_SELECT } from './invoice-bank-transaction-select'
 
 const SERVICE = join(__dirname, 'invoices.service.ts')
-const SCHEMA = join(__dirname, '..', '..', 'prisma', 'schema.prisma')
 
 /** Blankar kommentarer men behåller radnumreringen. */
 function utanKommentarer(src: string): string {
@@ -64,31 +64,6 @@ const MEDVETET_UTELÄMNADE: Record<string, string> = {
   reference:
     'Bankens fria referensfält. Inte känsligt, men ingen yta läser det — ' +
     'utelämnas på dataminimering.',
-}
-
-/** Skalära kolumner på en modell i schema.prisma (relationer räknas inte). */
-function skaläraKolumner(modell: string): string[] {
-  const src = readFileSync(SCHEMA, 'utf8')
-  const start = src.indexOf(`model ${modell} {`)
-  expect(start).toBeGreaterThan(-1)
-  const kropp = src.slice(start, src.indexOf('\n}', start))
-  const ut: string[] = []
-  for (const rad of kropp.split('\n').slice(1)) {
-    const t = rad.trim()
-    if (t === '' || t.startsWith('//') || t.startsWith('@@')) continue
-    const m = /^(\w+)\s+(\w+)(\[\])?(\?)?/.exec(t)
-    if (!m) continue
-    const namn = m[1]
-    const typ = m[2]
-    const lista = m[3]
-    if (namn === undefined || typ === undefined) continue
-    // Relationsfält hoppas över: listor (`X[]`) och de modelltyper
-    // BankTransaction pekar på. Enums (BankTransactionStatus) räknas som
-    // skalära — de serialiseras och kan läcka som vilket fält som helst.
-    const ärRelation = lista !== undefined || /^(Organization|Invoice|RentNotice)/.test(typ)
-    if (!ärRelation) ut.push(namn)
-  }
-  return ut
 }
 
 describe('#440-rättelse: BankTransaction i fakturasvar', () => {

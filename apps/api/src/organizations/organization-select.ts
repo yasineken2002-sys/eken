@@ -36,10 +36,12 @@
  * taint-analys och därmed antingen brus eller tyst. Det här är den tolfte
  * SAFE_*_SELECT i kodbasen och den första som läggs enligt den regeln.
  *
- * De två interna räknarna (`maintenanceTicketSequence`, `invoiceNumberSequence`)
- * BEHÅLLS. De är inte känsliga, ingen klient läser dem, och att ta bort dem hade
- * ändrat svarsformen av en anledning som inte hör till den här PR:en. Att de är
- * medvetet kvar och inte förbisedda är just vad partitionstestet gör synligt.
+ * INGA RELATIONER. `maintenanceTicketSequence` och `invoiceNumberSequence` ser ut
+ * som kolumner i schemat men är 1:1-RELATIONER till sekvenstabellerna. De stod i
+ * ett tidigare utkast av den här konstanten, och typspärren visade då att de kom
+ * ut som OBJEKT i svaret — alltså två relaterade rader som den bara `findUnique`
+ * ALDRIG returnerade. Åtgärden hade infört sin egen läcka, i miniatyr. Behöver en
+ * relation följa med får den sin egen SAFE_*_SELECT.
  */
 export const SAFE_ORGANIZATION_SELECT = {
   // Identitet
@@ -95,10 +97,6 @@ export const SAFE_ORGANIZATION_SELECT = {
   // Villkorsacceptans — läses av re-acceptance-modalen i frontend
   termsAcceptedAt: true,
   termsVersion: true,
-
-  // Interna räknare, se noten ovan
-  maintenanceTicketSequence: true,
-  invoiceNumberSequence: true,
 
   createdAt: true,
   updatedAt: true,

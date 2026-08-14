@@ -30,10 +30,10 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { skaläraKolumner } from '../common/testing/schema-columns'
 import { SAFE_ORGANIZATION_SELECT } from './organization-select'
 
 const SERVICE = join(__dirname, 'organizations.service.ts')
-const SCHEMA = join(__dirname, '..', '..', 'prisma', 'schema.prisma')
 
 function utanKommentarer(src: string): string {
   return src
@@ -61,31 +61,6 @@ const MEDVETET_UTELÄMNADE: Record<string, string> = {
   cancellationReason: 'Uppsägningsskäl — fritext om kundförhållandet.',
   lastTrialReminderDays: 'Intern påminnelsemarkör för trial-utskicken.',
   excludeFromBilling: 'Intern flagga: undantas från plattformsfaktureringen.',
-}
-
-/** Skalära kolumner på en modell i schema.prisma (relationer räknas inte). */
-function skaläraKolumner(modell: string): string[] {
-  const src = readFileSync(SCHEMA, 'utf8')
-  const start = src.indexOf(`model ${modell} {`)
-  expect(start).toBeGreaterThan(-1)
-  const kropp = src.slice(start, src.indexOf('\n}', start))
-  const ut: string[] = []
-  for (const rad of kropp.split('\n').slice(1)) {
-    const t = rad.trim()
-    if (t === '' || t.startsWith('//') || t.startsWith('@@')) continue
-    const m = /^(\w+)\s+(\w+)(\[\])?(\?)?/.exec(t)
-    if (!m) continue
-    const namn = m[1]
-    const typ = m[2]
-    const lista = m[3]
-    if (namn === undefined || typ === undefined) continue
-    // Relationer hoppas över: listor (`X[]`) och versala modelltyper som inte är
-    // enums. Enums (CompanyForm, OrgStatus, …) räknas som skalära — de
-    // serialiseras och kan läcka som vilket fält som helst.
-    const ärRelation = lista !== undefined || /^(User|Property|Tenant|Customer|Invoice)$/.test(typ)
-    if (!ärRelation) ut.push(namn)
-  }
-  return ut
 }
 
 describe('SAFE_ORGANIZATION_SELECT', () => {
