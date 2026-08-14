@@ -265,6 +265,170 @@ jobs:
   # Den nya vakten grindar då ingenting, och ingenting säger till. Det är samma
   # felklass som paraplyet finns för att stänga, en nivå upp. Se PR-texten till
   # #405 för varför en uppräkning ändå valdes framför alternativen.
+  e2e:
+    name: E2E (icke-blockerande)
+    runs-on: ubuntu-latest
+    # Riggen är ~1 min (postgres 2 s, migrate 8 s, API-boot 43 s, web 3 s) och
+    # varje spec ~13 s varm. Åtta specar ≈ 2,5 min; taket täcker install + cache-miss.
+    timeout-minutes: 25
+
+    # ── ICKE-BLOCKERANDE, MED UTGÅNGSDATUM ────────────────────────────────────
+    #
+    # Jobbet står MEDVETET utanför `needs` i `ci-passed`, så en flakig E2E inte
+    # kan blockera merge på main. Men ett permanent icke-blockerande jobb är per
+    # definition en vakt som aldrig kan vara röd på ett sätt någon reagerar på —
+    # alltså ingen vakt.
+    #
+    # DÄRFÖR ETT DATUM: infört 2026-08-14. Senast 2026-08-21 ska jobbet antingen
+    # befordras till `ci-passed`:s `needs` (om flakdata visar det stabilt) eller
+    # tas bort. Ingen tredje väg. Den som läser det här efter 2026-08-21 utan att
+    # beslutet är fattat ska ta upp frågan, inte förlänga tystnaden.
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: eken_dev
+          POSTGRES_USER: eken
+          POSTGRES_PASSWORD: eken
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U eken"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://eken:eken@localhost:5432/eken_dev
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: e2e-jwt-secret-minst-sexton-tecken
+      PLATFORM_JWT_SECRET: e2e-platform-secret-minst-sexton
+      PLATFORM_JWT_REFRESH_SECRET: e2e-platform-refresh-minst-sexton
+      RESEND_API_KEY: re_e2e_dummy
+      RESEND_WEBHOOK_SECRET: whsec_e2e_dummy
+      ANTHROPIC_API_KEY: sk-ant-e2e-dummy
+      # Personnummerkrypto: testnycklar. Utan dem kastar PersonalNumberService
+      # när en seed skriver ett personnummer. Rotationsvarningen i .env.example
+      # gäller INTE dessa — de skyddar ingen riktig data och kastas efter körningen.
+      SIGNING_PII_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
+      SIGNING_PII_PEPPER: e2e-pepper-minst-sexton-tecken
+      APP_URL: http://localhost:5173
+      WEB_URL: http://localhost:5173
+      ADMIN_URL: http://localhost:5175
+      PORTAL_URL: http://localhost:5174
+      API_URL: http://localhost:3000
+
+      # ── VARFÖR DEN HÄR VARIABELN STÅR HÄR ───────────────────────────────────
+      #
+      # `register` 5/60 s, `login` 5/60 s och `accept-invite` 5/10 min är brute
+      # force-skyddet, inte testhinder. De åtta specarna gör ~18 auth-anrop och
+      # slår i taket när de körs i följd — ett 429 mitt i ett E2E ser ut som ett
+      # testfel utan att vara det, och skulle göra jobbet flakigt av fel skäl.
+      #
+      # Uppmjukningen är bunden till körningsläget (#454): allt utom exakt 'true'
+      # ger strikt, och 'true' + NODE_ENV=production får appen att VÄGRA STARTA
+      # — kontrollerat både i validateEnv och i guardens konstruktor. Den kan
+      # alltså inte råka gälla skarpt.
+      #
+      # Steget "Verifiera att uppmjukningen är aktiv" nedan kontrollerar att den
+      # faktiskt NÅDDE API-processen innan en enda spec körs. Utan den kontrollen
+      # hade ett 429-fel sett ut som en flakig spec.
+      E2E_RELAX_AUTH_THROTTLE: 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # psql används av tre specar för att sätta/läsa kända tokens och rader.
+      - name: Install postgresql-client
+        run: sudo apt-get install -y --no-install-recommends postgresql-client
+
+      # Chromium är ~130 MB. Utan cache betalar varje körning nedladdningen och
+      # ett 2,5-minutersjobb blir ett femminutersjobb av fel skäl. Nyckeln binds
+      # till Playwright-VERSIONEN — en uppgradering måste ge en cache-miss,
+      # annars kör vi en webbläsare som inte matchar biblioteket.
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('./apps/web/package.json').devDependencies['@playwright/test'].replace(/[^0-9.]/g,'')")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter @eken/web exec playwright install --with-deps chromium
+
+      # Cache-träff hoppar över nedladdningen men OS-beroendena finns inte i
+      # cachen — de måste installeras ändå.
+      - name: Install browser OS deps (cache hit)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter @eken/web exec playwright install-deps chromium
+
+      - name: Apply migrations
+        run: pnpm --filter @eken/api exec prisma migrate deploy
+
+      # Playwrights `webServer` startar api/web/portal. Här startas API:t separat
+      # först, ENBART för att kunna kontrollera att uppmjukningen nådde processen
+      # — se noten vid E2E_RELAX_AUTH_THROTTLE. reuseExistingServer gör att
+      # Playwright sedan återanvänder den.
+      - name: Start API and verify throttle relaxation reached it
+        run: |
+          pnpm --filter @eken/api dev > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS -o /dev/null http://localhost:3000/v1/health && break
+            sleep 3
+          done
+          curl -fsS http://localhost:3000/v1/health > /dev/null
+          if ! grep -q "UPPMJUKAD" /tmp/api.log; then
+            echo "::error::E2E_RELAX_AUTH_THROTTLE nådde inte API-processen."
+            echo "Specarna hade 429:at och sett flakiga ut. Se #454."
+            tail -40 /tmp/api.log
+            exit 1
+          fi
+          echo "Uppmjukningen aktiv — auth-strypningen stryper inte under körningen."
+
+      # De 50x-riggarna körs INTE här, och det är ett beslut och inte en
+      # glömska: avi-pdf-50x, bank-reconciliation-50x och tenant-creation-50x
+      # bevisar en invariant EN gång genom att upprepa ett flöde femtio gånger.
+      # De är bevistester, inte regressionstester — de tar minuter, säger samma
+      # sak varje körning, och lägga till dem här vore att betala den tiden per
+      # push för information vi redan har. LÄGG INTE TILL DEM utan att först
+      # skriva varför invarianten behöver bevisas om vid varje ändring.
+      - name: Run E2E (billiga specar)
+        working-directory: apps/web
+        run: |
+          npx playwright test --reporter=line \
+            e2e/viewer-403-honest-view.spec.ts \
+            e2e/avi-paid-flow.spec.ts \
+            e2e/create-base-data.spec.ts \
+            e2e/consumption-charge-confirm.spec.ts \
+            e2e/consumption-reading-warning.spec.ts \
+            e2e/portal-tenant-flow.spec.ts \
+            e2e/portal-consumption.spec.ts \
+            e2e/ai-attachment-composer.spec.ts
+
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: apps/web/test-results/
+          retention-days: 7
+
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
