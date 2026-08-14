@@ -136,5 +136,13 @@ describe('#440-rättelse: BankTransaction i fakturasvar', () => {
     // i authz-surfacens driftkontroll.
     const föråldrade = Object.keys(MEDVETET_UTELÄMNADE).filter((k) => !kolumner.includes(k))
     expect(föråldrade).toEqual([])
+
+    // Partitionen ska vara just en partition. Upptäckt i negativkontrollen: med
+    // `balance` återinförd i selecten passerade den här kontrollen ändå, för då
+    // stod fältet i BÅDA mängderna och föll ur båda filtren. Det fångades av de
+    // två första testerna, men en motsägelse som får en vakt att tiga hör inte
+    // hemma i vakten.
+    const iBåda = valda.filter((k) => k in MEDVETET_UTELÄMNADE)
+    expect(iBåda).toEqual([])
   })
 })
