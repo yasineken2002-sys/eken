@@ -111,17 +111,41 @@ describe('PlatformAuthUser — superadminens svarstyp', () => {
 
   it('varje metod som returnerar en användare har en DEKLARERAD returtyp', () => {
     // Det är returtypen som bär skyddet här — inte en select, inte en mapper.
-    // En metod utan deklarerad typ får inferrera, och då kan en rå rad slinka
-    // ut utan att kompilatorn säger något. Den här kontrollen är vad som gör
-    // mekanismen bevakad i stället för bara närvarande.
+    // En metod utan deklarerad typ får inferrera, och då kan en rå rad slinka ut
+    // utan att kompilatorn säger något.
+    //
+    // PARENTESMATCHNING, inte en lat regex. Första versionen använde
+    // `async (\w+)\(([\s\S]*?)\)(\s*:\s*[^{]+)?\{` — och den lata
+    // parametergruppen lät matchningen löpa FÖRBI metodkroppen och plocka upp
+    // NÄSTA metods returtyp. Negativkontrollen avslöjade det: getProfile med
+    // borttagen returtyp rapporterades som `Promise<PlatformTokenPair>`, vilket
+    // är issueTokens signatur. Vakten var blind, inte röd — exakt den defektform
+    // #434, #441, #444 och #453 handlar om, den här gången i vakten själv.
     const src = utanKommentarer(readFileSync(SERVICE, 'utf8'))
-    const metoder = [
-      ...src.matchAll(/^ {2}(?:private )?async (\w+)\(([\s\S]*?)\)(\s*:\s*[^{]+)?\{/gm),
-    ]
-    // Golv: hittar regexen inga metoder har den slutat matcha koden.
+    const metoder: { namn: string; returtyp: string | null }[] = []
+
+    for (const m of src.matchAll(/^ {2}(?:private )?async (\w+)\(/gm)) {
+      const namn = m[1] as string
+      // Balansera parentesen som öppnar parameterlistan.
+      let i = (m.index as number) + m[0].length - 1
+      let djup = 0
+      for (; i < src.length; i++) {
+        if (src[i] === '(') djup++
+        else if (src[i] === ')') {
+          djup--
+          if (djup === 0) break
+        }
+      }
+      // Mellan `)` och kroppens `{` står returtypen, om den finns.
+      const kropp = src.indexOf('{', i)
+      const mellan = src.slice(i + 1, kropp).trim()
+      metoder.push({ namn, returtyp: mellan.startsWith(':') ? mellan : null })
+    }
+
+    // Golv: hittar parsern inga metoder har den slutat matcha koden.
     expect(metoder.length).toBeGreaterThanOrEqual(6)
 
-    const utanReturtyp = metoder.filter((m) => m[3] === undefined).map((m) => m[1])
+    const utanReturtyp = metoder.filter((m) => m.returtyp === null).map((m) => m.namn)
     expect(utanReturtyp).toEqual([])
   })
 })
