@@ -217,7 +217,17 @@ det är precis vad VIEWER ska betyda. Frågan är: läser VIEWER DOMÄNDATA,
 eller det OPERATIVA SPÅRET av en handling som kräver högre roll? Spåren
 grindas och flyttar därmed till avsnitt 1.
 
-GRANSKADE — avsiktligt öppna, med skälet (22 st)
+GRANSKADE — avsiktligt öppna, med skälet (60 st)
+
+RÄCKVIDD: granskad som ANROPSYTA — vem som får anropa. INTE som SVARSYTA:
+vad svaret bär är inte prövat här. Se #445.
+
+Skillnaden är inte akademisk. Två läckor hittades 2026-08-14 på endpoints
+vars rollgräns var HELT KORREKT: faktureringsblocket, som nåddes via fyra
+ytor varav ingen ägde det, och banktransaktionsraden, som nåddes genom ett
+`include` på en annan resurs och därmed gjorde två av #440:s färska grindar
+verkningslösa. Ingen av dem hade upptäckts av en genomgång av den här hinken,
+hur noggrann den än varit — frågan ställs aldrig här.
 
 DELETE /users/me                                                users.controller.ts
     SJÄLVSCOPAD SKRIVNING — raderar `current.sub`, inte en godtycklig användare
@@ -257,6 +267,31 @@ GET /avisering                                                  avisering.contro
     Domändata — hyresavier är vad hyresvärden förvaltar. SAFE_TENANT_SELECT plus
     explicit `omit` av `reminderPdfStorageKey`/`reminderMessageId`.
 
+GET /consumption/charges/:id                                    consumption.controller.ts
+    Domändata, som listan, samma include.
+
+GET /consumption/charges                                        consumption.controller.ts
+    Domändata. `CHARGE_INCLUDE` tar med hyresgästens namn (id, för-/efternamn,
+    företagsnamn) — inget personnummer, ingen kontaktuppgift.
+
+GET /consumption/meters/:id                                     consumption.controller.ts
+    Domändata, som listan.
+
+GET /consumption/meters                                         consumption.controller.ts
+    Domändata. IMD-mätare: serienummer, typ, status, leverantör. Ingen persondata.
+
+GET /consumption/readings                                       consumption.controller.ts
+    Domändata. Mätarställningar per period — förbrukning, inte person.
+
+GET /consumption/tariffs                                        consumption.controller.ts
+    Domändata. Prisuppgifter per mätartyp och giltighetsperiod, ingen motpart.
+
+GET /contracts/:leaseId/appendices                              contracts.controller.ts
+    Domändata. Ser ut som ett undantag — syskonen GET /contracts/download/:leaseId
+    och /status/:leaseId är ADMIN/MANAGER/OWNER — men skillnaden är principiell:
+    endpointen filtrerar `NOT: { category: CONTRACT }` och drar därmed exakt samma
+    gräns som documents-authz.ts. Syskonen är grindade för att de ÄR kontraktet.
+
 GET /customers/:id                                              customers.controller.ts
     Domändata. Detaljvyn avslöjar personnumret — samma beslut som ovan: en
     uppslagning av EN kund är ett berättigat behov, en lista över alla inte.
@@ -264,6 +299,23 @@ GET /customers/:id                                              customers.contro
 GET /customers                                                  customers.controller.ts
     Domändata. Personnummer-frågan är redan avgjord och kommenterad i
     customers.service.ts (#280/#281): LISTAN bär inte personnummer.
+
+GET /dashboard/stats                                            dashboard.controller.ts
+    Aggregat över domändata: räknare per status, intäkt ur huvudboken (Σ 3xxx) och
+    de fem senaste fakturorna. Organisationsraden läses med
+    `select: { fiscalYearStartMonth: true }` — inte hela raden. Fakturorna går via
+    SAFE_TENANT_SELECT och SAFE_CUSTOMER_SELECT.
+
+GET /dashboard/timeseries                                       dashboard.controller.ts
+    Aggregat per månad: intäkt, betalt, nya/avslutade avtal, uthyrningsgrad,
+    öppna ärenden. Enbart tal, inga rader.
+
+GET /deposits/:id                                               deposits.controller.ts
+    Domändata, som listan, samma include.
+
+GET /deposits                                                   deposits.controller.ts
+    Domändata. `INCLUDE` går via SAFE_TENANT_SELECT; fakturan projiceras till
+    id/nummer/status/summa.
 
 GET /documents/:id/download                                     documents.controller.ts
     REDAN GRINDAD i tjänsten: assertMayAccessContractDocument, fail-closed, före
@@ -289,11 +341,76 @@ GET /inspections                                                inspections.cont
     Domändata. `FULL_INCLUDE` går via SAFE_TENANT_SELECT, så ingen hyresgäst-
     credential eller personnummer följer med.
 
+GET /invoices/:id/pdf                                           invoices.controller.ts
+    Renderar samma domändata som detaljvyn.
+
+GET /invoices/:id                                               invoices.controller.ts
+    Domändata, som listan. Bar tidigare hela händelseloggen och hela
+    BankTransaction-raden och gjorde därmed två av #440:s grindar verkningslösa —
+    åtgärdat i PR #444. Koherent med aviseringsbeslutet: resursen öppen,
+    händelseloggen grindad på sin egen endpoint.
+
+GET /invoices                                                   invoices.controller.ts
+    Domändata — fakturor är vad hyresvärden förvaltar. Hyresgäst och kund
+    projiceras till namnfälten. Banktransaktionerna smalnades i #440-rättelsen
+    (PR #444) till id/date/amount/description/rawOcr: kontosaldo och aktörsfält
+    följer inte längre med.
+
+GET /keys/:id                                                   keys.controller.ts
+    Domändata, som listan.
+
+GET /keys                                                       keys.controller.ts
+    Domändata. Nyckelkvittens; `INCLUDE` går via SAFE_TENANT_SELECT och
+    projicerar enheten till id/namn/nummer.
+
+GET /leases/:id                                                 leases.controller.ts
+    Domändata, som listan.
+
+GET /leases                                                     leases.controller.ts
+    Domändata — hyresavtalen är kärnan i förvaltningen. `INCLUDE` går via
+    SAFE_TENANT_SELECT.
+
+GET /maintenance-plans/:id                                      maintenance-plan.controller.ts
+    Domändata, som listan.
+
+GET /maintenance-plans/summary                                  maintenance-plan.controller.ts
+    Aggregat över samma domändata.
+
+GET /maintenance-plans                                          maintenance-plan.controller.ts
+    Domändata. Planerat underhåll per fastighet och år.
+
+GET /maintenance/:id                                            maintenance.controller.ts
+    Domändata, som listan.
+
+GET /maintenance/stats                                          maintenance.controller.ts
+    Aggregat: räknare per status, prioritet och kategori.
+
+GET /maintenance                                                maintenance.controller.ts
+    Domändata. Felanmälningar; hyresgästen projiceras till namn och typ.
+
+GET /messages/stats                                             messages.controller.ts
+    Aggregat över samma: antal skickade, misslyckade, mottagare.
+
+GET /messages                                                   messages.controller.ts
+    GRÄNSFALL, avgjort som domändata 2026-08-14. `SentMessage` bär `subject`,
+    `content`, `sentBy` och `errorLog` — alltså aktör, innehåll och utfall av en
+    ADMIN/MANAGER/OWNER-handling, vilket har spårets form. Men det är också
+    korrespondensen med hyresgästerna, och den är lika mycket förvaltningsdata som
+    avierna, som lämnades öppna i #440. En läsande roll som ska kunna svara på
+    "vad har vi sagt till den här hyresgästen" behöver den.
+
 GET /news/:id                                                   news.controller.ts
     Domändata, som listan.
 
 GET /news                                                       news.controller.ts
     Domändata. Enda personuppgiften är författarens `firstName`/`lastName`.
+
+GET /notifications/count                                        notifications.controller.ts
+    Självscopad, som listan: `getUnreadCount(orgId, user.sub)`.
+
+GET /notifications                                              notifications.controller.ts
+    SJÄLVSCOPAD. `findAll(organizationId, user.sub, ...)` — den inloggades egna
+    notiser, inte organisationens. Precis arketypen hinkens rubriktext nämner.
 
 GET /properties/:id                                             properties.controller.ts
     Domändata, som listan. Inga persondata.
@@ -302,9 +419,47 @@ GET /properties                                                 properties.contr
     Domändata — kärnan i vad VIEWER finns till för. Inga persondata; listan bär
     fastighet plus `_count` av objekt.
 
+GET /rent-increases/:id                                         rent-increases.controller.ts
+    Domändata, som listan.
+
+GET /rent-increases                                             rent-increases.controller.ts
+    Domändata. `INCLUDE` går via SAFE_TENANT_SELECT. Själva höjningen är bindande
+    och dess handlingar (send-notice, accept, reject, withdraw) är MANAGER+.
+
+GET /tenants/:id                                                tenants.controller.ts
+    Domändata. Detaljvyn avslöjar personnumret — en uppslagning av EN hyresgäst är
+    ett berättigat behov (fakturering, tvist, kravhantering), en lista över ALLA
+    är det inte.
+
+GET /tenants                                                    tenants.controller.ts
+    Domändata. LISTAN BÄR INTE PERSONNUMMER — `mapTenant(rest, null)`. Samma
+    beslut och samma form som kundlistan (#281, launch-readiness #36): rätt svar
+    är inte att stänga listan för läsande roller, utan att den slutar bära
+    uppgiften.
+
+GET /terminations/:id                                           terminations.controller.ts
+    Domändata, som listan.
+
+GET /terminations                                               terminations.controller.ts
+    Domändata. Uppsägningar; `INCLUDE` går via SAFE_TENANT_SELECT. Besluten
+    (approve/reject) är ADMIN/OWNER.
+
+GET /units/:id                                                  units.controller.ts
+    Domändata. Tar med enhetens avtal, vars hyresgäst går via SAFE_TENANT_SELECT.
+
+GET /units                                                      units.controller.ts
+    Domändata. Objekt med fastighetsnamn och avtalsräknare.
+
 GET /users/me/export                                            users.controller.ts
     Självscopad. GDPR Art. 15: en VIEWER har samma registerutdragsrätt som en
     OWNER, så en rollgrind vore direkt fel.
+
+PATCH /notifications/:id/read                                   notifications.controller.ts
+    SJÄLVSCOPAD SKRIVNING: `markAsRead(id, user.sub)`. Varje roll måste kunna
+    kvittera sina egna notiser.
+
+PATCH /notifications/read-all                                   notifications.controller.ts
+    Självscopad skrivning, som ovan.
 
 POST /auth/accept-terms                                         auth.controller.ts
     Självscopad skrivning: stämplar den inloggades eget godkännande av villkoren.
@@ -316,53 +471,15 @@ POST /auth/change-password                                      auth.controller.
 POST /auth/logout                                               auth.controller.ts
     Självscopad skrivning: återkallar anroparens egen refresh-token.
 
-EJ GRANSKADE (42 st)
+EJ GRANSKADE (4 st)
 
 Ingen har intygat att de ska vara öppna. En NY rad hamnar här tills någon
 läst servicemetoden och skrivit skälet i GRANSKAD_HINK_A i authz-surface.ts.
 
 GET /ai-usage/current                                           ai-usage.controller.ts
 GET /ai-usage/history                                           ai-usage.controller.ts
-GET /consumption/charges/:id                                    consumption.controller.ts
-GET /consumption/charges                                        consumption.controller.ts
-GET /consumption/meters/:id                                     consumption.controller.ts
-GET /consumption/meters                                         consumption.controller.ts
-GET /consumption/readings                                       consumption.controller.ts
-GET /consumption/tariffs                                        consumption.controller.ts
-GET /contracts/:leaseId/appendices                              contracts.controller.ts
-GET /dashboard/stats                                            dashboard.controller.ts
-GET /dashboard/timeseries                                       dashboard.controller.ts
-GET /deposits/:id                                               deposits.controller.ts
-GET /deposits                                                   deposits.controller.ts
-GET /invoices/:id/pdf                                           invoices.controller.ts
-GET /invoices/:id                                               invoices.controller.ts
-GET /invoices                                                   invoices.controller.ts
-GET /keys/:id                                                   keys.controller.ts
-GET /keys                                                       keys.controller.ts
-GET /leases/:id                                                 leases.controller.ts
-GET /leases                                                     leases.controller.ts
-GET /maintenance-plans/:id                                      maintenance-plan.controller.ts
-GET /maintenance-plans/summary                                  maintenance-plan.controller.ts
-GET /maintenance-plans                                          maintenance-plan.controller.ts
-GET /maintenance/:id                                            maintenance.controller.ts
-GET /maintenance/stats                                          maintenance.controller.ts
-GET /maintenance                                                maintenance.controller.ts
-GET /messages/stats                                             messages.controller.ts
-GET /messages                                                   messages.controller.ts
-GET /notifications/count                                        notifications.controller.ts
-GET /notifications                                              notifications.controller.ts
 GET /organizations/me                                           organizations.controller.ts
-GET /rent-increases/:id                                         rent-increases.controller.ts
-GET /rent-increases                                             rent-increases.controller.ts
 GET /signing/requests/:id                                       signing.controller.ts
-GET /tenants/:id                                                tenants.controller.ts
-GET /tenants                                                    tenants.controller.ts
-GET /terminations/:id                                           terminations.controller.ts
-GET /terminations                                               terminations.controller.ts
-GET /units/:id                                                  units.controller.ts
-GET /units                                                      units.controller.ts
-PATCH /notifications/:id/read                                   notifications.controller.ts
-PATCH /notifications/read-all                                   notifications.controller.ts
 
 ### b) Styrda av en ANNAN mekanism (67 st)
 

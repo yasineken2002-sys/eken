@@ -592,6 +592,138 @@ const GRANSKAD_HINK_A: ReadonlyMap<string, string> = new Map([
       'så hela den resursen är spår. Motiveringen åt andra hållet står i\n' +
       'reconciliation.controller.ts över @Roles på getStats.',
   ],
+
+  // ── Hink b):s 42 rader, genomgångna efter #441:s uppdelning ────────────────
+
+  [
+    'GET /consumption/meters',
+    'Domändata. IMD-mätare: serienummer, typ, status, leverantör. Ingen persondata.',
+  ],
+  ['GET /consumption/meters/:id', 'Domändata, som listan.'],
+  [
+    'GET /consumption/readings',
+    'Domändata. Mätarställningar per period — förbrukning, inte person.',
+  ],
+  [
+    'GET /consumption/tariffs',
+    'Domändata. Prisuppgifter per mätartyp och giltighetsperiod, ingen motpart.',
+  ],
+  [
+    'GET /consumption/charges',
+    'Domändata. `CHARGE_INCLUDE` tar med hyresgästens namn (id, för-/efternamn,\n' +
+      'företagsnamn) — inget personnummer, ingen kontaktuppgift.',
+  ],
+  ['GET /consumption/charges/:id', 'Domändata, som listan, samma include.'],
+  [
+    'GET /dashboard/stats',
+    'Aggregat över domändata: räknare per status, intäkt ur huvudboken (Σ 3xxx) och\n' +
+      'de fem senaste fakturorna. Organisationsraden läses med\n' +
+      '`select: { fiscalYearStartMonth: true }` — inte hela raden. Fakturorna går via\n' +
+      'SAFE_TENANT_SELECT och SAFE_CUSTOMER_SELECT.',
+  ],
+  [
+    'GET /dashboard/timeseries',
+    'Aggregat per månad: intäkt, betalt, nya/avslutade avtal, uthyrningsgrad,\n' +
+      'öppna ärenden. Enbart tal, inga rader.',
+  ],
+  [
+    'GET /deposits',
+    'Domändata. `INCLUDE` går via SAFE_TENANT_SELECT; fakturan projiceras till\n' +
+      'id/nummer/status/summa.',
+  ],
+  ['GET /deposits/:id', 'Domändata, som listan, samma include.'],
+  [
+    'GET /invoices',
+    'Domändata — fakturor är vad hyresvärden förvaltar. Hyresgäst och kund\n' +
+      'projiceras till namnfälten. Banktransaktionerna smalnades i #440-rättelsen\n' +
+      '(PR #444) till id/date/amount/description/rawOcr: kontosaldo och aktörsfält\n' +
+      'följer inte längre med.',
+  ],
+  [
+    'GET /invoices/:id',
+    'Domändata, som listan. Bar tidigare hela händelseloggen och hela\n' +
+      'BankTransaction-raden och gjorde därmed två av #440:s grindar verkningslösa —\n' +
+      'åtgärdat i PR #444. Koherent med aviseringsbeslutet: resursen öppen,\n' +
+      'händelseloggen grindad på sin egen endpoint.',
+  ],
+  ['GET /invoices/:id/pdf', 'Renderar samma domändata som detaljvyn.'],
+  [
+    'GET /keys',
+    'Domändata. Nyckelkvittens; `INCLUDE` går via SAFE_TENANT_SELECT och\n' +
+      'projicerar enheten till id/namn/nummer.',
+  ],
+  ['GET /keys/:id', 'Domändata, som listan.'],
+  [
+    'GET /leases',
+    'Domändata — hyresavtalen är kärnan i förvaltningen. `INCLUDE` går via\n' +
+      'SAFE_TENANT_SELECT.',
+  ],
+  ['GET /leases/:id', 'Domändata, som listan.'],
+  ['GET /maintenance-plans', 'Domändata. Planerat underhåll per fastighet och år.'],
+  ['GET /maintenance-plans/:id', 'Domändata, som listan.'],
+  ['GET /maintenance-plans/summary', 'Aggregat över samma domändata.'],
+  ['GET /maintenance', 'Domändata. Felanmälningar; hyresgästen projiceras till namn och typ.'],
+  ['GET /maintenance/:id', 'Domändata, som listan.'],
+  ['GET /maintenance/stats', 'Aggregat: räknare per status, prioritet och kategori.'],
+  [
+    'GET /messages',
+    'GRÄNSFALL, avgjort som domändata 2026-08-14. `SentMessage` bär `subject`,\n' +
+      '`content`, `sentBy` och `errorLog` — alltså aktör, innehåll och utfall av en\n' +
+      'ADMIN/MANAGER/OWNER-handling, vilket har spårets form. Men det är också\n' +
+      'korrespondensen med hyresgästerna, och den är lika mycket förvaltningsdata som\n' +
+      'avierna, som lämnades öppna i #440. En läsande roll som ska kunna svara på\n' +
+      '"vad har vi sagt till den här hyresgästen" behöver den.',
+  ],
+  ['GET /messages/stats', 'Aggregat över samma: antal skickade, misslyckade, mottagare.'],
+  [
+    'GET /notifications',
+    'SJÄLVSCOPAD. `findAll(organizationId, user.sub, ...)` — den inloggades egna\n' +
+      'notiser, inte organisationens. Precis arketypen hinkens rubriktext nämner.',
+  ],
+  ['GET /notifications/count', 'Självscopad, som listan: `getUnreadCount(orgId, user.sub)`.'],
+  [
+    'PATCH /notifications/:id/read',
+    'SJÄLVSCOPAD SKRIVNING: `markAsRead(id, user.sub)`. Varje roll måste kunna\n' +
+      'kvittera sina egna notiser.',
+  ],
+  ['PATCH /notifications/read-all', 'Självscopad skrivning, som ovan.'],
+  [
+    'GET /rent-increases',
+    'Domändata. `INCLUDE` går via SAFE_TENANT_SELECT. Själva höjningen är bindande\n' +
+      'och dess handlingar (send-notice, accept, reject, withdraw) är MANAGER+.',
+  ],
+  ['GET /rent-increases/:id', 'Domändata, som listan.'],
+  [
+    'GET /tenants',
+    'Domändata. LISTAN BÄR INTE PERSONNUMMER — `mapTenant(rest, null)`. Samma\n' +
+      'beslut och samma form som kundlistan (#281, launch-readiness #36): rätt svar\n' +
+      'är inte att stänga listan för läsande roller, utan att den slutar bära\n' +
+      'uppgiften.',
+  ],
+  [
+    'GET /tenants/:id',
+    'Domändata. Detaljvyn avslöjar personnumret — en uppslagning av EN hyresgäst är\n' +
+      'ett berättigat behov (fakturering, tvist, kravhantering), en lista över ALLA\n' +
+      'är det inte.',
+  ],
+  [
+    'GET /terminations',
+    'Domändata. Uppsägningar; `INCLUDE` går via SAFE_TENANT_SELECT. Besluten\n' +
+      '(approve/reject) är ADMIN/OWNER.',
+  ],
+  ['GET /terminations/:id', 'Domändata, som listan.'],
+  ['GET /units', 'Domändata. Objekt med fastighetsnamn och avtalsräknare.'],
+  [
+    'GET /units/:id',
+    'Domändata. Tar med enhetens avtal, vars hyresgäst går via SAFE_TENANT_SELECT.',
+  ],
+  [
+    'GET /contracts/:leaseId/appendices',
+    'Domändata. Ser ut som ett undantag — syskonen GET /contracts/download/:leaseId\n' +
+      'och /status/:leaseId är ADMIN/MANAGER/OWNER — men skillnaden är principiell:\n' +
+      'endpointen filtrerar `NOT: { category: CONTRACT }` och drar därmed exakt samma\n' +
+      'gräns som documents-authz.ts. Syskonen är grindade för att de ÄR kontraktet.',
+  ],
 ])
 
 function pad(s: string, n: number): string {
@@ -724,6 +856,16 @@ export function renderSurface(input: {
 
   out.push('')
   out.push(`GRANSKADE — avsiktligt öppna, med skälet (${granskade.length} st)`)
+  out.push('')
+  out.push('RÄCKVIDD: granskad som ANROPSYTA — vem som får anropa. INTE som SVARSYTA:')
+  out.push('vad svaret bär är inte prövat här. Se #445.')
+  out.push('')
+  out.push('Skillnaden är inte akademisk. Två läckor hittades 2026-08-14 på endpoints')
+  out.push('vars rollgräns var HELT KORREKT: faktureringsblocket, som nåddes via fyra')
+  out.push('ytor varav ingen ägde det, och banktransaktionsraden, som nåddes genom ett')
+  out.push('`include` på en annan resurs och därmed gjorde två av #440:s färska grindar')
+  out.push('verkningslösa. Ingen av dem hade upptäckts av en genomgång av den här hinken,')
+  out.push('hur noggrann den än varit — frågan ställs aldrig här.')
   out.push('')
   for (const e of granskade) {
     out.push(`${pad(e.endpoint, ENDPOINT_COL)}  ${e.file}`)
