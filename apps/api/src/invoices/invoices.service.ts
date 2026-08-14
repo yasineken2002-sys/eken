@@ -26,6 +26,7 @@ import { AccountingService, vatRateForRent } from '../accounting/accounting.serv
 import { NotificationsService } from '../notifications/notifications.service'
 import { isValidTransition, DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { allocateInvoiceNumber } from './invoice-number'
+import { SAFE_INVOICE_BANK_TRANSACTION_SELECT } from './invoice-bank-transaction-select'
 import { CreateInvoiceDto } from './dto/create-invoice.dto'
 import { UpdateInvoiceDto } from './dto/update-invoice.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
@@ -153,7 +154,7 @@ export class InvoicesService {
         },
         bankTransactions: {
           where: { status: 'MATCHED' },
-          select: { id: true, date: true, amount: true, description: true, rawOcr: true },
+          select: SAFE_INVOICE_BANK_TRANSACTION_SELECT,
           orderBy: { date: 'desc' },
         },
         // #325 — allokeringarna, för `outstanding` nedan.
@@ -191,9 +192,17 @@ export class InvoicesService {
         tenant: { select: SAFE_TENANT_SELECT },
         customer: { select: SAFE_CUSTOMER_SELECT },
         lease: true,
-        events: { orderBy: { createdAt: 'asc' } },
+        // `events` BORTTAGET (#440-rättelse). Detaljsvaret bar hela
+        // InvoiceEvent[] — aktörsfält och payload — till varje roll, medan
+        // GET /invoices/:id/events grindades till ACCOUNTANT+ i samma PR. Grinden
+        // satt rätt och var ändå verkningslös: samma data låg i det öppna
+        // detaljsvaret. Ingen yta i web/admin/portal läste fältet härifrån —
+        // InvoicesPage hämtar tidslinjen via det grindade anropet
+        // (useInvoiceEvents), och `getTimeline` nedan är den enda vägen som ska
+        // finnas.
         bankTransactions: {
           where: { status: 'MATCHED' },
+          select: SAFE_INVOICE_BANK_TRANSACTION_SELECT,
           orderBy: { date: 'desc' },
         },
         // #349 — allokeringarna, för `outstanding` nedan. Samma skäl som i
