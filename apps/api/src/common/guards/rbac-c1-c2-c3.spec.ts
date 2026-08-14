@@ -74,10 +74,36 @@ describe('RBAC C2 — köp av AI-credits kräver minst ADMIN', () => {
     expect(allows(proto.buyCredits as () => unknown, AiUsageController, role)).toBe(true)
   })
 
-  it.each(['current', 'history'] as const)(
-    'lämnar GET %s öppet för VIEWER (lässtatistik)',
-    (method) => {
-      expect(allows(proto[method] as () => unknown, AiUsageController, 'VIEWER')).toBe(true)
+  // ── C2:S LÄSBESLUT ÄR UPPHÄVT (#441, 2026-08-14) ──────────────────────────
+  //
+  // Här stod tidigare "lämnar GET current/history öppet för VIEWER
+  // (lässtatistik)". Premissen var fel: svaret är inte statistik utan
+  // organisationens PRENUMERATIONSFÖRHÅLLANDE — subscriptionPlan,
+  // planMonthlyFee, aiCreditsBalance, trialEndsAt, status — och `history` bär
+  // dessutom faktisk kostnad (costUsd) per dag.
+  //
+  // Att det inte upptäcktes vid C2 har en mekanisk förklaring värd att minnas:
+  // fyra endpoints bar samma fältblock och INGEN av dem ägde det. Var och en såg
+  // rimlig i sin egen kontext. Se noten i ai-usage.controller.ts.
+  //
+  // Ett test som fastnaglar ett upphävt beslut är farligare än inget test — det
+  // gör återställningen till en röd svit och ser ut som en regression. Därför
+  // ersätts påståendet i stället för att tas bort.
+  it.each(['current', 'history'] as const)('nekar VIEWER på GET %s (403)', (method) => {
+    expect(allows(proto[method] as () => unknown, AiUsageController, 'VIEWER')).toBe(false)
+  })
+
+  it.each(['current', 'history'] as const)('nekar MANAGER på GET %s (403)', (method) => {
+    // MANAGER är utestängd med avsikt och är den enda rollen som FÖRLORAR åtkomst
+    // i #441: prenumerationskostnaden är ett kommersiellt förhållande som
+    // bokföraren har yrkesmässig del i (den ska konteras), förvaltaren inte.
+    expect(allows(proto[method] as () => unknown, AiUsageController, 'MANAGER')).toBe(false)
+  })
+
+  it.each(['ACCOUNTANT', 'ADMIN', 'OWNER'] as const)(
+    'släpper in %s på GET current (200)',
+    (role) => {
+      expect(allows(proto.current as () => unknown, AiUsageController, role)).toBe(true)
     },
   )
 })
@@ -107,6 +133,22 @@ describe('RBAC C3 — AI-assistenten kräver minst ACCOUNTANT', () => {
     'släpper in %s på AI-chat (200)',
     (role) => {
       expect(allows(proto.chat as () => unknown, AiAssistantController, role)).toBe(true)
+    },
+  )
+
+  // De två usage-endpointsen är SNÄVARE än klasslistan sedan #441 — MANAGER tas
+  // bort. De ärvde klassens lista av bekvämlighet, inte av ett beslut om datat:
+  // svaret är prenumerationsförhållandet, inte assistentfunktionalitet.
+  // `getUsageBreakdown` bär dessutom kostnad PER userId, alltså en
+  // aktivitetsprofil över namngivna kollegor.
+  it.each(['getUsage', 'getUsageBreakdown'] as const)('nekar MANAGER på %s (403)', (method) => {
+    expect(allows(proto[method] as () => unknown, AiAssistantController, 'MANAGER')).toBe(false)
+  })
+
+  it.each(['getUsage', 'getUsageBreakdown'] as const)(
+    'släpper in ACCOUNTANT på %s (200)',
+    (method) => {
+      expect(allows(proto[method] as () => unknown, AiAssistantController, 'ACCOUNTANT')).toBe(true)
     },
   )
 })
