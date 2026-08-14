@@ -30,9 +30,12 @@ import { skaläraKolumner } from '../common/testing/schema-columns'
 // Importeras från sin EGNA modul, inte från invoices.service.ts: den drar in
 // pdf.service → storage.service → @aws-sdk/client-s3, vars ESM-kedja ts-jest inte
 // transformerar. Samma skäl som får authz-surface.ts att läsa källan statiskt.
-import { SAFE_INVOICE_BANK_TRANSACTION_SELECT } from './invoice-bank-transaction-select'
+import {
+  SAFE_INVOICE_BANK_TRANSACTION_SELECT,
+  RECONCILIATION_TRANSACTION_FIELDS,
+} from './bank-transaction-views'
 
-const SERVICE = join(__dirname, 'invoices.service.ts')
+const INVOICES = join(__dirname, '..', 'invoices', 'invoices.service.ts')
 
 /** Blankar kommentarer men behåller radnumreringen. */
 function utanKommentarer(src: string): string {
@@ -46,6 +49,13 @@ function utanKommentarer(src: string): string {
  * MEDVETNA_UNDANTAG i invoice-customer-select.spec.ts: ett utelämnande ska vara
  * ett skrivet påstående någon kan ifrågasätta, inte en tyst frånvaro.
  */
+/**
+ * Delmängden av utelämnandena som hör till BANKKONTOT och därför inte får bära
+ * ut i NÅGON vy — till skillnad från t.ex. `status` eller `invoiceId`, som är
+ * ointressanta i fakturakontexten men bärande i avstämningsvyn.
+ */
+const BANKKONTOTS_FÄLT: string[] = ['balance', 'matchedBy', 'externalId', 'dedupKey']
+
 const MEDVETET_UTELÄMNADE: Record<string, string> = {
   balance:
     'Kontosaldot vid transaktionen — organisationens likviditet. Har ingenting ' +
@@ -81,7 +91,7 @@ describe('#440-rättelse: BankTransaction i fakturasvar', () => {
   })
 
   it('varje bankTransactions-include i tjänsten använder konstanten', () => {
-    const src = utanKommentarer(readFileSync(SERVICE, 'utf8'))
+    const src = utanKommentarer(readFileSync(INVOICES, 'utf8'))
     const träffar = [...src.matchAll(/bankTransactions:\s*\{([\s\S]*?)\n\s{8}\}/g)]
     // Golv: hittar regexen inga block har den slutat matcha koden, och ett
     // "inga överträdelser" hade då varit tomt-mängd-sant. Jfr #273:s rimlighetsgolv.
@@ -94,17 +104,35 @@ describe('#440-rättelse: BankTransaction i fakturasvar', () => {
   it('fakturans detaljsvar drar inte längre in händelseloggen', () => {
     // GET /invoices/:id/events är ACCOUNTANT+ sedan #440. Ett `events:`-include
     // i det öppna detaljsvaret gör den grinden verkningslös.
-    const src = utanKommentarer(readFileSync(SERVICE, 'utf8'))
+    const src = utanKommentarer(readFileSync(INVOICES, 'utf8'))
     expect(src).not.toMatch(/^\s*events:\s*\{/m)
   })
 
-  it('varje kolumn på modellen är antingen vald eller medvetet utelämnad', () => {
+  it('varje kolumn på modellen är klassad mot BÅDA svarsformerna', () => {
+    // UTÖKAD (#445-uppföljningen): partitionen täcker nu form 1
+    // (fakturakontexten, en Prisma-select) OCH form 2 (avstämningsvyn, en
+    // handprojicering). En ny kolumn blir röd EN gång och tvingar fram ett
+    // beslut för båda samtidigt — i stället för två vakter som kan drifta isär.
+    //
+    // Att en kolumn står i form 2 men inte i form 1 är LEGITIMT och beskrivet i
+    // modulens doc: vyerna tjänar olika arbeten. Kravet är bara att varje kolumn
+    // är klassad någonstans — vald i minst en form, eller medvetet utelämnad.
     const kolumner = skaläraKolumner('BankTransaction')
     // Golv mot en parser som slutat hitta fält.
     expect(kolumner.length).toBeGreaterThanOrEqual(14)
 
-    const oklassade = kolumner.filter((k) => !valda.includes(k) && !(k in MEDVETET_UTELÄMNADE))
+    const formTvå = [...RECONCILIATION_TRANSACTION_FIELDS] as string[]
+    const oklassade = kolumner.filter(
+      (k) => !valda.includes(k) && !formTvå.includes(k) && !(k in MEDVETET_UTELÄMNADE),
+    )
     expect(oklassade).toEqual([])
+
+    // Form 2 får inte bära något som är klassat som bankkontots — den grinden
+    // gäller båda vyerna, inte bara fakturakontexten.
+    const formTvåBärBankfält = formTvå.filter(
+      (k) => k in MEDVETET_UTELÄMNADE && BANKKONTOTS_FÄLT.includes(k),
+    )
+    expect(formTvåBärBankfält).toEqual([])
 
     // Åt andra hållet: en motivering för en kolumn som inte längre finns är en
     // inaktuell text som döljer nästa riktiga fråga. Samma skäl som `declared`

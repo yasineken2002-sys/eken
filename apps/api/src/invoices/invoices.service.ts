@@ -26,7 +26,7 @@ import { AccountingService, vatRateForRent } from '../accounting/accounting.serv
 import { NotificationsService } from '../notifications/notifications.service'
 import { isValidTransition, DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { allocateInvoiceNumber } from './invoice-number'
-import { SAFE_INVOICE_BANK_TRANSACTION_SELECT } from './invoice-bank-transaction-select'
+import { SAFE_INVOICE_BANK_TRANSACTION_SELECT } from '../reconciliation/bank-transaction-views'
 import { CreateInvoiceDto } from './dto/create-invoice.dto'
 import { UpdateInvoiceDto } from './dto/update-invoice.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'

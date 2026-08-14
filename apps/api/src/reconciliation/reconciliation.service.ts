@@ -30,6 +30,10 @@ import {
   DETECTED_SPREADSHEET_TYPES,
   MAX_CSV_BYTES,
 } from '../common/utils/file-validation'
+import {
+  projectReconciliationTransaction,
+  type ReconciliationTransactionView,
+} from './bank-transaction-views'
 
 export interface ImportResult {
   imported: number
@@ -1602,7 +1606,7 @@ export class ReconciliationService {
   async getTransactions(
     organizationId: string,
     filters?: { status?: string; from?: string; to?: string },
-  ) {
+  ): Promise<ReconciliationTransactionView[]> {
     const where: Prisma.BankTransactionWhereInput = { organizationId }
 
     if (filters?.status) {
@@ -1614,7 +1618,7 @@ export class ReconciliationService {
       if (filters?.to) where.date.lte = new Date(filters.to)
     }
 
-    return this.prisma.bankTransaction.findMany({
+    const rader = await this.prisma.bankTransaction.findMany({
       where,
       include: {
         invoice: { select: { id: true, invoiceNumber: true, status: true } },
@@ -1625,6 +1629,12 @@ export class ReconciliationService {
       orderBy: { date: 'desc' },
       take: 200,
     })
+    // HANDPROJICERING, inte bara en typ. En deklarerad returtyp ensam hade
+    // ändrat vad TypeScript VISAR anroparen medan `balance` och `matchedBy`
+    // fortsatte gå över tråden — TransformInterceptor wrappar bara i
+    // { success, data } och kodbasen har ingen ClassSerializerInterceptor.
+    // Typen hade då påstått något osant, vilket är sämre än ingen typ.
+    return rader.map(projectReconciliationTransaction)
   }
 
   // ── Stats ────────────────────────────────────────────────────────────────────
