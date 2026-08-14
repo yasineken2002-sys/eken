@@ -51,8 +51,21 @@ export type TenantWithCredentials<T = Tenant> = T & {
   readonly [CREDENTIAL_BRAND]: 'credentials-not-stripped'
 }
 
-/** Tenant där credential-kolumnerna är borta. Enda vägen hit: strippning. */
-export type PublicTenant<T = Tenant> = Omit<T, TenantCredentialKey>
+/**
+ * Tenant där credential-kolumnerna är borta. Enda vägen hit: strippning.
+ *
+ * `?: never` på brandet är det som får spärren att BITA. Ett första utkast lät
+ * PublicTenant bara vara `Omit<...>` — och då var den brandade typen fritt
+ * tilldelningsbar dit, eftersom ett objekt med FLER egenskaper är strukturellt
+ * kompatibelt med en typ som har färre. Typen såg ut att garantera något och
+ * garanterade ingenting. Fångat av en tsc-probe, inte av granskning.
+ *
+ * Med `?: never` blir brandets värde ('credentials-not-stripped') otillåtet, och
+ * tilldelningen faller. Kontrollen hålls levande av typnivå-testet i specen.
+ */
+export type PublicTenant<T = Tenant> = Omit<T, TenantCredentialKey> & {
+  readonly [CREDENTIAL_BRAND]?: never
+}
 
 /**
  * Läser en tenant MED credentials via `findUnique`. Enda tillåtna vägen till en

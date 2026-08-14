@@ -56,6 +56,7 @@
 
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import type { TenantWithCredentials, PublicTenant } from './tenant-credential-read'
 
 const PORTAL = join(__dirname)
 
@@ -136,5 +137,27 @@ describe('tenant-portal: credential-bärande läsningar går EN väg', () => {
     }
     // Åtta i tenant-auth.service.ts, en i controllern, en i GDPR-exporten.
     expect(träffar).toBeGreaterThanOrEqual(10)
+  })
+})
+
+describe('TenantWithCredentials — typspärren biter', () => {
+  it('går inte att tilldela som PublicTenant utan strippning', () => {
+    // TYPNIVÅ-TEST. `@ts-expect-error` är själva assertionen: slutar raden nedan
+    // vara ett fel blir direktivet i sin tur ett fel, och typechecken faller.
+    //
+    // Den här kontrollen finns för att ett första utkast INTE bet. PublicTenant
+    // var bara `Omit<T, TenantCredentialKey>`, och den brandade typen var fritt
+    // tilldelningsbar dit — ett objekt med FLER egenskaper är strukturellt
+    // kompatibelt med en typ som har färre. Typen såg ut att garantera något och
+    // garanterade ingenting; en tsc-probe avslöjade det, inte granskning.
+    //
+    // `?: never` på brandet i PublicTenant är det som stänger hålet, och den här
+    // raden är det som håller det stängt.
+    const kontroll = (medCreds: TenantWithCredentials): void => {
+      // @ts-expect-error credential-bärande tenant får inte passera som publik form
+      const läcka: PublicTenant = medCreds
+      void läcka
+    }
+    expect(typeof kontroll).toBe('function')
   })
 })
