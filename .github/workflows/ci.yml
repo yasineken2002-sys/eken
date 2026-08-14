@@ -378,6 +378,13 @@ jobs:
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: pnpm --filter @eken/web exec playwright install-deps chromium
 
+      # `dev` = `nest start --watch` och går UTANFÖR turbo, så den ärver ingen
+      # `dependsOn: ["^build"]`. Utan det här steget hittar API:t inte @eken/shared
+      # och dör innan den lyssnar — vilket är exakt hur den första körningen
+      # failade: 60 misslyckade curl-försök utan att loggen visades.
+      - name: Build @eken/shared
+        run: pnpm exec turbo build --filter=@eken/shared
+
       - name: Apply migrations
         run: pnpm --filter @eken/api exec prisma migrate deploy
 
@@ -389,10 +396,18 @@ jobs:
         run: |
           pnpm --filter @eken/api dev > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do
-            curl -fsS -o /dev/null http://localhost:3000/v1/health && break
+            curl -fsS -o /dev/null http://localhost:3000/v1/health 2>/dev/null && break
             sleep 3
           done
-          curl -fsS http://localhost:3000/v1/health > /dev/null
+          # Loggen dumpas vid VARJE fel, inte bara vid grep-fallet. Första
+          # körningen dog här med 60 anslutningsfel och INGEN logg — felet syntes
+          # men orsaken inte, vilket gjorde ett trasigt jobb svårare att laga än
+          # ett tyst. `if !` i stället för `set -e`-kast av just det skälet.
+          if ! curl -fsS -o /dev/null http://localhost:3000/v1/health; then
+            echo "::error::API:t startade aldrig — E2E kan inte köras."
+            tail -60 /tmp/api.log
+            exit 1
+          fi
           if ! grep -q "UPPMJUKAD" /tmp/api.log; then
             echo "::error::E2E_RELAX_AUTH_THROTTLE nådde inte API-processen."
             echo "Specarna hade 429:at och sett flakiga ut. Se #454."
