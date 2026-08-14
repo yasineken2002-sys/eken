@@ -598,6 +598,30 @@ function pad(s: string, n: number): string {
   return s.length >= n ? s : s + ' '.repeat(n - s.length)
 }
 
+/**
+ * Guards som redan gäller ÖVERALLT via `APP_GUARD` i auth.module.ts. Att räkna
+ * upp dem i ett `@UseGuards(...)` ändrar ingenting i runtime.
+ */
+const GLOBALA_GUARDS: ReadonlySet<string> = new Set(['JwtAuthGuard', 'RolesGuard'])
+
+/**
+ * Byter endpointen faktiskt mekanism, eller upprepar den bara den globala?
+ *
+ * Skiljelinjen mellan hink b) och hinkarna a)/c) i avsnitt 1b. En endpoint som
+ * bara deklarerar globala guards är precis lika öppen som en utan dekorator alls
+ * — den hör hemma bland de öppna, inte bland de styrda (#441).
+ *
+ * Okänt guard-namn ⇒ egen mekanism. Fail-closed åt rätt håll: en ny guard
+ * hamnar i "styrd" tills någon lagt till den här, medan motsatsen hade låtit en
+ * riktig grind klassas som ingen grind.
+ */
+function harEgenMekanism(guards: string): boolean {
+  return guards
+    .split(/[\s,]+/)
+    .filter((g) => g !== '')
+    .some((g) => !GLOBALA_GUARDS.has(g))
+}
+
 function rolesCell(roles: string[]): string {
   return roles.length ? roles.join(', ') : '(ingen släpps in)'
 }
@@ -647,9 +671,23 @@ export function renderSurface(input: {
   // JwtAuthGuard", INTE "oautentiserad": hyresgästportalen och plattformsadmin
   // opt:ar ur org-JWT:n och in i sin EGEN guard. En tvådelning hade påstått att
   // varje @Public-endpoint ligger öppen, vilket är falskt för de flesta av dem.
-  const annanMekanism = ungated.filter((e) => e.guards !== '')
-  const publika = ungated.filter((e) => e.public && e.guards === '')
-  const öppna = ungated.filter((e) => !e.public && e.guards === '')
+  //
+  // #441 — hinkarna delar på vad guarden GÖR, inte på om @UseGuards FINNS.
+  // Den ursprungliga uppdelningen var `e.guards !== ''`, och den gjorde en
+  // KODSTILSDETALJ till hinkgräns: `JwtAuthGuard` och `RolesGuard` är redan
+  // globala (auth.module.ts), så ett klassnivå-@UseGuards(JwtAuthGuard) är rent
+  // redundant — men det lyfte raden ur "öppen för VARJE roll" och in i "styrd av
+  // en ANNAN mekanism". 43 rader var därmed exakt lika öppna som hink a):s medan
+  // hinkens brödtext intygade att deras gräns bodde i guarden.
+  //
+  // Kostnaden var inte teoretisk: GET /invoices/:id/events låg där, ogrindat, och
+  // hittades bara för att dess syskon GET /avisering/:id/events råkade ligga i
+  // hinken som lästes (#440). Två rader med identisk verkan får inte hamna i
+  // olika hinkar — då är gränsen en artefakt, och den hink som ser ofarlig ut är
+  // den man göms i.
+  const annanMekanism = ungated.filter((e) => harEgenMekanism(e.guards))
+  const publika = ungated.filter((e) => e.public && !harEgenMekanism(e.guards))
+  const öppna = ungated.filter((e) => !e.public && !harEgenMekanism(e.guards))
 
   out.push('')
   out.push('')
@@ -669,15 +707,17 @@ export function renderSurface(input: {
   out.push('')
   out.push(`### a) Org-inloggad, öppen för VARJE roll (${öppna.length} st)`)
   out.push('')
-  out.push('Enbart den globala JwtAuthGuard. Många är självscopade (byt mitt lösenord,')
-  out.push('läs mina notiser) — men "många" är inte "alla", och raden säger inte')
-  out.push('vilket. Det är den här hinken #81 kom ur.')
+  out.push('Enbart globala guards — antingen ingen @UseGuards alls, eller en som bara')
+  out.push('räknar upp JwtAuthGuard/RolesGuard och därmed inte ändrar något (#441).')
+  out.push('Varje inloggad roll släpps in, VIEWER inkluderad. Många är självscopade')
+  out.push('(byt mitt lösenord, läs mina notiser) — men "många" är inte "alla", och')
+  out.push('raden säger inte vilket. Det är den här hinken #81 kom ur.')
   out.push('')
-  out.push('Hinken gicks igenom endpoint för endpoint i #434-uppföljningen. Frågan var')
-  out.push('inte "är skrivningen grindad men läsningen öppen" — det träffar också')
-  out.push('properties, customers och news, där det är precis vad VIEWER ska betyda.')
-  out.push('Frågan var: läser VIEWER DOMÄNDATA, eller det OPERATIVA SPÅRET av en')
-  out.push('handling som kräver högre roll? Spåren grindades och står nu i avsnitt 1.')
+  out.push('Kriteriet vid genomgång (#440): frågan är INTE "är skrivningen grindad men')
+  out.push('läsningen öppen" — det träffar också properties, customers och news, där')
+  out.push('det är precis vad VIEWER ska betyda. Frågan är: läser VIEWER DOMÄNDATA,')
+  out.push('eller det OPERATIVA SPÅRET av en handling som kräver högre roll? Spåren')
+  out.push('grindas och flyttar därmed till avsnitt 1.')
 
   const granskade = öppna.filter((e) => GRANSKAD_HINK_A.has(e.endpoint))
   const ogranskade = öppna.filter((e) => !GRANSKAD_HINK_A.has(e.endpoint))
@@ -703,31 +743,19 @@ export function renderSurface(input: {
   }
 
   out.push('')
-  const baraGlobal = annanMekanism.filter((e) => e.guards === 'JwtAuthGuard')
-
   out.push(`### b) Styrda av en ANNAN mekanism (${annanMekanism.length} st)`)
   out.push('')
-  out.push('@UseGuards(...) med egen guard. Frånvaro av @Roles betyder inte ostyrd:')
-  out.push('plattformsadmin går via PlatformGuard, hyresgästportalen via sin egen')
-  out.push('session. Raderna står här för fullständighetens skull — deras gräns bor')
-  out.push('i guarden, inte i en rollista, och bevakas därför inte av kolumnen.')
+  out.push('@UseGuards(...) med en guard som faktiskt BYTER mekanism. Frånvaro av')
+  out.push('@Roles betyder inte ostyrd: plattformsadmin går via PlatformGuard,')
+  out.push('hyresgästportalen via sin egen session. Raderna står här för')
+  out.push('fullständighetens skull — deras gräns bor i guarden, inte i en rollista,')
+  out.push('och bevakas därför inte av kolumnen.')
   out.push('')
-  out.push(
-    `VARNING: det stycket är sant för ${annanMekanism.length - baraGlobal.length} av raderna och FALSKT för`,
-  )
-  out.push(`${baraGlobal.length}. Hinken delar på om @UseGuards FINNS, inte på vad guarden GÖR.`)
-  out.push('JwtAuthGuard och RolesGuard är redan globala (auth.module.ts), så ett')
-  out.push('klassnivå-@UseGuards(JwtAuthGuard) är rent redundant — men det lyfter raden')
-  out.push('ur hink a) och hit. De raderna är exakt lika öppna som hink a):s: varje')
-  out.push('inloggad roll, VIEWER inkluderad. Den faktiska mängden "öppen för VARJE')
-  out.push(
-    `roll" är alltså ${öppna.length} + ${baraGlobal.length} = ${öppna.length + baraGlobal.length}, inte ${öppna.length}.`,
-  )
-  out.push('')
-  out.push('Upptäckt när hink a) granskades: GET /invoices/:id/events låg här och var')
-  out.push('ogrindad på exakt samma sätt som sitt syskon GET /avisering/:id/events i')
-  out.push('hink a). Det grindades i samma PR. De övriga JwtAuthGuard-raderna är INTE')
-  out.push('genomgångna.')
+  out.push('Hinken delar på vad guarden GÖR, inte på om @UseGuards finns (#441).')
+  out.push('JwtAuthGuard och RolesGuard är redan globala (auth.module.ts), så en rad')
+  out.push('som bara räknar upp dem hör hemma i a) — den är exakt lika öppen som en')
+  out.push('rad utan dekorator alls. Fram till #441 låg 43 sådana rader här och')
+  out.push('lånade den här textens intyg om att gränsen bodde i guarden.')
   out.push('')
   for (const e of annanMekanism) {
     out.push(`${pad(e.endpoint, ENDPOINT_COL)}  ${pad(e.guards, 28)}  ${e.file}`)

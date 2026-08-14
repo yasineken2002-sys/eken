@@ -203,17 +203,19 @@ konstruktion osynlig för driftbevakningen. #81 visade vad det kostade —
 GET /import/jobs var varken självscopad eller avsedd att vara öppen, låg
 öppen för VIEWER, och fanns inte i den här filen medan hålet var öppet.
 
-### a) Org-inloggad, öppen för VARJE roll (22 st)
+### a) Org-inloggad, öppen för VARJE roll (64 st)
 
-Enbart den globala JwtAuthGuard. Många är självscopade (byt mitt lösenord,
-läs mina notiser) — men "många" är inte "alla", och raden säger inte
-vilket. Det är den här hinken #81 kom ur.
+Enbart globala guards — antingen ingen @UseGuards alls, eller en som bara
+räknar upp JwtAuthGuard/RolesGuard och därmed inte ändrar något (#441).
+Varje inloggad roll släpps in, VIEWER inkluderad. Många är självscopade
+(byt mitt lösenord, läs mina notiser) — men "många" är inte "alla", och
+raden säger inte vilket. Det är den här hinken #81 kom ur.
 
-Hinken gicks igenom endpoint för endpoint i #434-uppföljningen. Frågan var
-inte "är skrivningen grindad men läsningen öppen" — det träffar också
-properties, customers och news, där det är precis vad VIEWER ska betyda.
-Frågan var: läser VIEWER DOMÄNDATA, eller det OPERATIVA SPÅRET av en
-handling som kräver högre roll? Spåren grindades och står nu i avsnitt 1.
+Kriteriet vid genomgång (#440): frågan är INTE "är skrivningen grindad men
+läsningen öppen" — det träffar också properties, customers och news, där
+det är precis vad VIEWER ska betyda. Frågan är: läser VIEWER DOMÄNDATA,
+eller det OPERATIVA SPÅRET av en handling som kräver högre roll? Spåren
+grindas och flyttar därmed till avsnitt 1.
 
 GRANSKADE — avsiktligt öppna, med skälet (22 st)
 
@@ -314,67 +316,72 @@ POST /auth/change-password                                      auth.controller.
 POST /auth/logout                                               auth.controller.ts
     Självscopad skrivning: återkallar anroparens egen refresh-token.
 
-EJ GRANSKADE (0 st)
+EJ GRANSKADE (42 st)
 
 Ingen har intygat att de ska vara öppna. En NY rad hamnar här tills någon
 läst servicemetoden och skrivit skälet i GRANSKAD_HINK_A i authz-surface.ts.
 
+GET /ai-usage/current                                           ai-usage.controller.ts
+GET /ai-usage/history                                           ai-usage.controller.ts
+GET /consumption/charges/:id                                    consumption.controller.ts
+GET /consumption/charges                                        consumption.controller.ts
+GET /consumption/meters/:id                                     consumption.controller.ts
+GET /consumption/meters                                         consumption.controller.ts
+GET /consumption/readings                                       consumption.controller.ts
+GET /consumption/tariffs                                        consumption.controller.ts
+GET /contracts/:leaseId/appendices                              contracts.controller.ts
+GET /dashboard/stats                                            dashboard.controller.ts
+GET /dashboard/timeseries                                       dashboard.controller.ts
+GET /deposits/:id                                               deposits.controller.ts
+GET /deposits                                                   deposits.controller.ts
+GET /invoices/:id/pdf                                           invoices.controller.ts
+GET /invoices/:id                                               invoices.controller.ts
+GET /invoices                                                   invoices.controller.ts
+GET /keys/:id                                                   keys.controller.ts
+GET /keys                                                       keys.controller.ts
+GET /leases/:id                                                 leases.controller.ts
+GET /leases                                                     leases.controller.ts
+GET /maintenance-plans/:id                                      maintenance-plan.controller.ts
+GET /maintenance-plans/summary                                  maintenance-plan.controller.ts
+GET /maintenance-plans                                          maintenance-plan.controller.ts
+GET /maintenance/:id                                            maintenance.controller.ts
+GET /maintenance/stats                                          maintenance.controller.ts
+GET /maintenance                                                maintenance.controller.ts
+GET /messages/stats                                             messages.controller.ts
+GET /messages                                                   messages.controller.ts
+GET /notifications/count                                        notifications.controller.ts
+GET /notifications                                              notifications.controller.ts
+GET /organizations/me                                           organizations.controller.ts
+GET /rent-increases/:id                                         rent-increases.controller.ts
+GET /rent-increases                                             rent-increases.controller.ts
+GET /signing/requests/:id                                       signing.controller.ts
+GET /tenants/:id                                                tenants.controller.ts
+GET /tenants                                                    tenants.controller.ts
+GET /terminations/:id                                           terminations.controller.ts
+GET /terminations                                               terminations.controller.ts
+GET /units/:id                                                  units.controller.ts
+GET /units                                                      units.controller.ts
+PATCH /notifications/:id/read                                   notifications.controller.ts
+PATCH /notifications/read-all                                   notifications.controller.ts
 
-### b) Styrda av en ANNAN mekanism (110 st)
+### b) Styrda av en ANNAN mekanism (67 st)
 
-@UseGuards(...) med egen guard. Frånvaro av @Roles betyder inte ostyrd:
-plattformsadmin går via PlatformGuard, hyresgästportalen via sin egen
-session. Raderna står här för fullständighetens skull — deras gräns bor
-i guarden, inte i en rollista, och bevakas därför inte av kolumnen.
+@UseGuards(...) med en guard som faktiskt BYTER mekanism. Frånvaro av
+@Roles betyder inte ostyrd: plattformsadmin går via PlatformGuard,
+hyresgästportalen via sin egen session. Raderna står här för
+fullständighetens skull — deras gräns bor i guarden, inte i en rollista,
+och bevakas därför inte av kolumnen.
 
-VARNING: det stycket är sant för 67 av raderna och FALSKT för
-43. Hinken delar på om @UseGuards FINNS, inte på vad guarden GÖR.
-JwtAuthGuard och RolesGuard är redan globala (auth.module.ts), så ett
-klassnivå-@UseGuards(JwtAuthGuard) är rent redundant — men det lyfter raden
-ur hink a) och hit. De raderna är exakt lika öppna som hink a):s: varje
-inloggad roll, VIEWER inkluderad. Den faktiska mängden "öppen för VARJE
-roll" är alltså 22 + 43 = 65, inte 22.
-
-Upptäckt när hink a) granskades: GET /invoices/:id/events låg här och var
-ogrindad på exakt samma sätt som sitt syskon GET /avisering/:id/events i
-hink a). Det grindades i samma PR. De övriga JwtAuthGuard-raderna är INTE
-genomgångna.
+Hinken delar på vad guarden GÖR, inte på om @UseGuards finns (#441).
+JwtAuthGuard och RolesGuard är redan globala (auth.module.ts), så en rad
+som bara räknar upp dem hör hemma i a) — den är exakt lika öppen som en
+rad utan dekorator alls. Fram till #441 låg 43 sådana rader här och
+lånade den här textens intyg om att gränsen bodde i guarden.
 
 DELETE /platform/invoices/:id                                   PlatformGuard                 platform-invoices.controller.ts
 DELETE /platform/organizations/:id                              PlatformGuard                 platform-organizations.controller.ts
 DELETE /tenant-portal/ai/conversations/:id                      TenantAuthGuard               tenant-ai.controller.ts
 DELETE /tenant-portal/me                                        TenantAuthGuard               tenant-portal.controller.ts
-GET /ai-usage/current                                           JwtAuthGuard                  ai-usage.controller.ts
-GET /ai-usage/history                                           JwtAuthGuard                  ai-usage.controller.ts
-GET /consumption/charges/:id                                    JwtAuthGuard                  consumption.controller.ts
-GET /consumption/charges                                        JwtAuthGuard                  consumption.controller.ts
-GET /consumption/meters/:id                                     JwtAuthGuard                  consumption.controller.ts
-GET /consumption/meters                                         JwtAuthGuard                  consumption.controller.ts
-GET /consumption/readings                                       JwtAuthGuard                  consumption.controller.ts
-GET /consumption/tariffs                                        JwtAuthGuard                  consumption.controller.ts
-GET /contracts/:leaseId/appendices                              JwtAuthGuard                  contracts.controller.ts
-GET /dashboard/stats                                            JwtAuthGuard                  dashboard.controller.ts
-GET /dashboard/timeseries                                       JwtAuthGuard                  dashboard.controller.ts
-GET /deposits/:id                                               JwtAuthGuard                  deposits.controller.ts
-GET /deposits                                                   JwtAuthGuard                  deposits.controller.ts
-GET /invoices/:id/pdf                                           JwtAuthGuard                  invoices.controller.ts
-GET /invoices/:id                                               JwtAuthGuard                  invoices.controller.ts
-GET /invoices                                                   JwtAuthGuard                  invoices.controller.ts
-GET /keys/:id                                                   JwtAuthGuard                  keys.controller.ts
-GET /keys                                                       JwtAuthGuard                  keys.controller.ts
-GET /leases/:id                                                 JwtAuthGuard                  leases.controller.ts
-GET /leases                                                     JwtAuthGuard                  leases.controller.ts
-GET /maintenance-plans/:id                                      JwtAuthGuard                  maintenance-plan.controller.ts
-GET /maintenance-plans/summary                                  JwtAuthGuard                  maintenance-plan.controller.ts
-GET /maintenance-plans                                          JwtAuthGuard                  maintenance-plan.controller.ts
-GET /maintenance/:id                                            JwtAuthGuard                  maintenance.controller.ts
-GET /maintenance/stats                                          JwtAuthGuard                  maintenance.controller.ts
-GET /maintenance                                                JwtAuthGuard                  maintenance.controller.ts
-GET /messages/stats                                             JwtAuthGuard                  messages.controller.ts
-GET /messages                                                   JwtAuthGuard                  messages.controller.ts
-GET /notifications/count                                        JwtAuthGuard                  notifications.controller.ts
-GET /notifications                                              JwtAuthGuard                  notifications.controller.ts
-GET /organizations/me                                           JwtAuthGuard                  organizations.controller.ts
 GET /platform/ai-usage/kpis                                     PlatformGuard                 platform-ai-usage.controller.ts
 GET /platform/ai-usage                                          PlatformGuard                 platform-ai-usage.controller.ts
 GET /platform/auth/me                                           PlatformGuard                 platform-auth.controller.ts
@@ -394,9 +401,6 @@ GET /platform/stats/growth                                      PlatformGuard   
 GET /platform/stats/overview                                    PlatformGuard                 platform-stats.controller.ts
 GET /platform/stats/plan-breakdown                              PlatformGuard                 platform-stats.controller.ts
 GET /platform/stats/top-organizations                           PlatformGuard                 platform-stats.controller.ts
-GET /rent-increases/:id                                         JwtAuthGuard                  rent-increases.controller.ts
-GET /rent-increases                                             JwtAuthGuard                  rent-increases.controller.ts
-GET /signing/requests/:id                                       JwtAuthGuard                  signing.controller.ts
 GET /tenant-portal/ai/conversations/:id                         TenantAuthGuard               tenant-ai.controller.ts
 GET /tenant-portal/ai/conversations                             TenantAuthGuard               tenant-ai.controller.ts
 GET /tenant-portal/consumption                                  TenantAuthGuard               tenant-portal.controller.ts
@@ -414,14 +418,6 @@ GET /tenant-portal/news                                         TenantAuthGuard 
 GET /tenant-portal/notices                                      TenantAuthGuard               tenant-portal.controller.ts
 GET /tenant-portal/rent-notices/:id/download                    TenantAuthGuard               tenant-portal.controller.ts
 GET /tenant-portal/rent-notices                                 TenantAuthGuard               tenant-portal.controller.ts
-GET /tenants/:id                                                JwtAuthGuard                  tenants.controller.ts
-GET /tenants                                                    JwtAuthGuard                  tenants.controller.ts
-GET /terminations/:id                                           JwtAuthGuard                  terminations.controller.ts
-GET /terminations                                               JwtAuthGuard                  terminations.controller.ts
-GET /units/:id                                                  JwtAuthGuard                  units.controller.ts
-GET /units                                                      JwtAuthGuard                  units.controller.ts
-PATCH /notifications/:id/read                                   JwtAuthGuard                  notifications.controller.ts
-PATCH /notifications/read-all                                   JwtAuthGuard                  notifications.controller.ts
 PATCH /platform/invoices/:id                                    PlatformGuard                 platform-invoices.controller.ts
 PATCH /platform/organizations/:id                               PlatformGuard                 platform-organizations.controller.ts
 POST /platform/ai-usage/:id/credits                             PlatformGuard                 platform-ai-usage.controller.ts
@@ -444,14 +440,13 @@ POST /platform/organizations/:id/suspend                        PlatformGuard   
 POST /platform/organizations/:id/unsuspend                      PlatformGuard                 platform-organizations.controller.ts
 POST /platform/organizations/:orgId/properties                  PlatformGuard                 platform-properties.controller.ts
 POST /platform/organizations                                    PlatformGuard                 platform-organizations.controller.ts
-POST /signing/callback                                          JwtAuthGuard                  signing.controller.ts
 POST /tenant-portal/ai/chat                                     TenantAuthGuard               tenant-ai.controller.ts
 POST /tenant-portal/ai/confirm                                  TenantAuthGuard               tenant-ai.controller.ts
 POST /tenant-portal/maintenance/:id/comment                     TenantAuthGuard               tenant-portal.controller.ts
 POST /tenant-portal/maintenance/:id/images                      TenantAuthGuard               tenant-portal.controller.ts
 POST /tenant-portal/maintenance                                 TenantAuthGuard               tenant-portal.controller.ts
 
-### c) VERKLIGT ÖPPNA — ingen autentisering alls (25 st)
+### c) VERKLIGT ÖPPNA — ingen autentisering alls (26 st)
 
 @Public() utan någon egen guard. Ingen inloggning krävs. En NY rad här är
 den mest säkerhetskänsliga ändring den här filen kan visa.
@@ -475,6 +470,7 @@ POST /platform/auth/logout                                      platform-auth.co
 POST /platform/auth/refresh                                     platform-auth.controller.ts
 POST /platform/errors/report                                    platform-errors.controller.ts
 POST /platform/impersonate/end                                  impersonation.controller.ts
+POST /signing/callback                                          signing.controller.ts
 POST /tenant-portal/activate                                    tenant-portal.controller.ts
 POST /tenant-portal/forgot-password                             tenant-portal.controller.ts
 POST /tenant-portal/login                                       tenant-portal.controller.ts
