@@ -19,6 +19,11 @@ import { normalizeEmail } from '../common/utils/normalize-email'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { validatePasswordStrength } from '@eken/shared'
 import { stripTenantCredentialKeys } from '../tenants/tenant-credential-keys'
+import {
+  readTenantWithCredentials,
+  findTenantWithCredentials,
+  readManyTenantsWithCredentials,
+} from './tenant-credential-read'
 
 /**
  * SELECT för en hyresgäst som autentiserats via portal-session och returneras
@@ -176,7 +181,7 @@ export class TenantAuthService {
       }>
     }
   > {
-    const tenant = await this.prisma.tenant.findUnique({
+    const tenant = await readTenantWithCredentials(this.prisma, {
       where: { activationTokenHash: sha256(token) },
       include: {
         organization: { select: { id: true, name: true } },
@@ -231,7 +236,7 @@ export class TenantAuthService {
     assertStrongPassword(password)
 
     const tokenHash = sha256(token)
-    const tenant = await this.prisma.tenant.findUnique({
+    const tenant = await readTenantWithCredentials(this.prisma, {
       where: { activationTokenHash: tokenHash },
       include: { organization: { select: { id: true, name: true } } },
     })
@@ -323,7 +328,7 @@ export class TenantAuthService {
     const where = organizationId
       ? { email: normalizedEmail, organizationId }
       : { email: normalizedEmail }
-    const tenant = await this.prisma.tenant.findFirst({
+    const tenant = await findTenantWithCredentials(this.prisma, {
       where,
       include: { organization: { select: { id: true, name: true } } },
     })
@@ -348,7 +353,7 @@ export class TenantAuthService {
    * fel så hyresvärden kan felsöka.
    */
   async sendForgotPassword(email: string): Promise<void> {
-    const tenant = await this.prisma.tenant.findFirst({
+    const tenant = await findTenantWithCredentials(this.prisma, {
       where: { email: normalizeEmail(email) },
       include: { organization: { select: { id: true, name: true } } },
     })
@@ -384,7 +389,7 @@ export class TenantAuthService {
     assertStrongPassword(password)
 
     const tokenHash = sha256(token)
-    const tenant = await this.prisma.tenant.findUnique({
+    const tenant = await readTenantWithCredentials(this.prisma, {
       where: { passwordResetTokenHash: tokenHash },
       include: { organization: { select: { id: true, name: true } } },
     })
@@ -471,7 +476,7 @@ export class TenantAuthService {
    * loggas det men kontraktsaktiveringen rullas inte tillbaka.
    */
   async sendWelcomeWithContract(tenantId: string): Promise<void> {
-    const tenant = await this.prisma.tenant.findUnique({
+    const tenant = await readTenantWithCredentials(this.prisma, {
       where: { id: tenantId },
       include: { organization: { select: { name: true } } },
     })
@@ -510,7 +515,7 @@ export class TenantAuthService {
    * trigga genom att retra aktiveringen (det blir en ny token + nytt doc-id).
    */
   async sendSignatureConfirmation(tenantId: string, documentId: string): Promise<void> {
-    const tenant = await this.prisma.tenant.findUnique({
+    const tenant = await readTenantWithCredentials(this.prisma, {
       where: { id: tenantId },
       include: { organization: { select: { name: true } } },
     })
@@ -596,7 +601,7 @@ export class TenantAuthService {
     const now = Date.now()
     const reminderCutoff = new Date(now - REMINDER_AFTER_MS)
 
-    const candidates = await this.prisma.tenant.findMany({
+    const candidates = await readManyTenantsWithCredentials(this.prisma, {
       where: {
         activationTokenHash: { not: null },
         activationTokenExpiresAt: { gt: new Date() },
