@@ -18,6 +18,7 @@ import { ContractTemplateService } from '../contracts/contract-template.service'
 import { normalizeEmail } from '../common/utils/normalize-email'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { validatePasswordStrength } from '@eken/shared'
+import { stripTenantCredentialKeys } from '../tenants/tenant-credential-keys'
 
 /**
  * SELECT för en hyresgäst som autentiserats via portal-session och returneras
@@ -57,31 +58,21 @@ function assertStrongPassword(password: string): void {
   }
 }
 
-// Portal-credentials som ALDRIG får ingå i ett tenant-objekt som lämnar
-// servicen. Speglar TENANT_CREDENTIAL_KEYS i tenants.service.ts.
-const TENANT_CREDENTIAL_KEYS = [
-  'passwordHash',
-  'activationTokenHash',
-  'activationTokenExpiresAt',
-  'passwordResetTokenHash',
-  'passwordResetTokenExpiresAt',
-] as const
-
 /**
- * Strippar portal-credentials ur ett tenant-objekt. SECURITY (B1, defense-in-
- * depth): login()/activate()/resetPassword() hämtar tenant med full
- * `include` (passwordHash krävs för bcrypt-jämförelsen i login). Här
- * garanterar vi att SessionResult.tenant aldrig bär credentials — så att en
+ * Strippar credential-kolumnerna ur ett tenant-objekt innan det lämnar servicen.
+ *
+ * SECURITY (B1, defense-in-depth): login()/activate()/resetPassword() hämtar
+ * tenant med full `include` (passwordHash krävs för bcrypt-jämförelsen i login).
+ * Här garanterar vi att SessionResult.tenant aldrig bär credentials — så att en
  * framtida controller som returnerar result.tenant rakt av (samma misstag som
  * orsakade B1) inte kan läcka dem.
+ *
+ * Listan är DELAD med hyresvärds-API:ts mapTenant sedan uppföljningen till #445.
+ * Den låg tidigare duplicerad här och hade divergerat: de två
+ * personnummerkolumnerna saknades, så en direktreturnerad SessionResult.tenant
+ * hade läckt chiffertext OCH blind-index trots att funktionen såg ut att skydda.
  */
-function stripTenantCredentials<T extends Record<string, unknown>>(tenant: T): T {
-  const clone = { ...tenant }
-  for (const key of TENANT_CREDENTIAL_KEYS) {
-    delete (clone as Record<string, unknown>)[key]
-  }
-  return clone
-}
+const stripTenantCredentials = stripTenantCredentialKeys
 
 interface SessionResult {
   sessionToken: string

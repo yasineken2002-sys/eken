@@ -6,24 +6,7 @@ import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { normalizeEmail } from '../common/utils/normalize-email'
 import { CreateTenantDto } from './dto/create-tenant.dto'
 import { UpdateTenantDto } from './dto/update-tenant.dto'
-
-// Tenant-portal credentials. Dessa kolumner finns i DB för portalens
-// autentisering (se Tenant-modellen i schema.prisma) men får ALDRIG nå det
-// hyresvärds-vända API:t — mapTenant strippar dem ur varje svar. (Audit HIGH #2.)
-const TENANT_CREDENTIAL_KEYS = [
-  'passwordHash',
-  'activationTokenHash',
-  'activationTokenExpiresAt',
-  'passwordResetTokenHash',
-  'passwordResetTokenExpiresAt',
-  // Personnummer-kolumnerna: chiffertext och blind-index får aldrig
-  // serialiseras. Klartexten läggs tillbaka som `personalNumber` av den som
-  // faktiskt ska visa den, via PersonalNumberService.reveal().
-  'personalNumberEnc',
-  'personalNumberHash',
-] as const
-
-type TenantCredentialKey = (typeof TENANT_CREDENTIAL_KEYS)[number]
+import { TENANT_CREDENTIAL_KEYS, type TenantCredentialKey } from './tenant-credential-keys'
 
 /**
  * Safe Prisma SELECT for tenant data exposed via API.
