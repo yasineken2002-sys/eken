@@ -13,6 +13,7 @@ import { NotificationsService } from '../notifications/notifications.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { rentNoticeOutstanding } from '../avisering/rent-debt.service'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
+import { readTenantWithCredentials } from './tenant-credential-read'
 
 /**
  * Safe Prisma SELECT för MaintenanceTicket som exponeras mot hyresgästportalen.
@@ -959,7 +960,11 @@ export class TenantPortalService {
    * GDPR Art. 15: maskinläsbar kopia av all hyresgästens data.
    */
   async exportTenantData(tenantId: string) {
-    const tenant = await this.prisma.tenant.findUnique({
+    // Credential-bärande med avsikt: exporten dekrypterar hyresgästens EGET
+    // personnummer (Art. 15) ur personalNumberEnc. Går därför genom den enda
+    // tillåtna vägen — svaret byggs sedan fält för fält nedan, inte genom att
+    // raden serialiseras.
+    const tenant = await readTenantWithCredentials(this.prisma, {
       where: { id: tenantId },
       include: {
         organization: { select: { id: true, name: true } },

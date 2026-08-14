@@ -47,6 +47,7 @@ import { TenantInvitationsService, type TenantInviteStatus } from './tenant-invi
 import { TenantAuthGuard } from './tenant-auth.guard'
 import { CurrentTenant } from './current-tenant.decorator'
 import type { Tenant } from '@prisma/client'
+import { readTenantWithCredentials } from './tenant-credential-read'
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
@@ -427,8 +428,11 @@ export class TenantPortalAdminController {
   @Post('resend-activation/:tenantId')
   @HttpCode(HttpStatus.OK)
   async resendActivation(@Param('tenantId') tenantId: string, @OrgId() organizationId: string) {
+    // Existenskontroll + org-scope. Bara id:t används vidare, så läsningen
+    // behöver inga credentials — explicit select i stället för en bar läsning.
     const tenant = await this.prisma.tenant.findFirst({
       where: { id: tenantId, organizationId },
+      select: { id: true },
     })
     if (!tenant) throw new NotFoundException('Hyresgästen hittades inte')
 
@@ -475,7 +479,9 @@ export class TenantPortalController {
     @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
     @Body() dto: DeleteAccountDto,
   ): Promise<void> {
-    const fresh = await this.prisma.tenant.findUnique({ where: { id: tenant.id } })
+    // Kräver passwordHash för bcrypt-jämförelsen vid kontoradering — alltså en
+    // credential-bärande läsning, och den går genom den enda tillåtna vägen.
+    const fresh = await readTenantWithCredentials(this.prisma, { where: { id: tenant.id } })
     if (!fresh?.passwordHash) {
       throw new UnauthorizedException('Kontot saknar lösenord')
     }
