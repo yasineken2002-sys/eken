@@ -14,7 +14,7 @@ Filen säger inget om huruvida en gräns är RÄTT. Den gör bara omöjligt att
 flytta en gräns utan att någon ser det. Se authz-surface.ts.
 
 
-## 1. HTTP-endpoints med rollgrind (169 st)
+## 1. HTTP-endpoints med rollgrind (172 st)
 
 Endpoints utan @Roles står i avsnitt 1b — de saknades helt fram till #434.
 
@@ -48,13 +48,15 @@ GET /accounting/reports/balance-sheet                           ACCOUNTANT, ADMI
 GET /accounting/reports/profit-loss                             ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /accounting/reports/sie4                                    ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /accounting/reports/vat                                     ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /ai-usage/current                                           ACCOUNTANT, ADMIN, OWNER
+GET /ai-usage/history                                           ACCOUNTANT, ADMIN, OWNER
 GET /ai/analysis                                                ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /ai/chat/stream                                             ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /ai/conversations/:id                                       ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /ai/conversations                                           ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /ai/tools                                                   ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /ai/usage/breakdown                                         ACCOUNTANT, ADMIN, MANAGER, OWNER
-GET /ai/usage                                                   ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /ai/usage/breakdown                                         ACCOUNTANT, ADMIN, OWNER
+GET /ai/usage                                                   ACCOUNTANT, ADMIN, OWNER
 GET /avisering/:id/events                                       ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /avisering/backfill/:leaseId/preview                        ADMIN, MANAGER, OWNER
 GET /avisering/backfill/queue                                   ADMIN, MANAGER, OWNER
@@ -71,6 +73,7 @@ GET /reconciliation/psd2/consents                               ADMIN, OWNER
 GET /reconciliation/stats                                       ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /reconciliation/transactions                                ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /rent-collections/ready                                     ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /signing/requests/:id                                       ADMIN, MANAGER, OWNER
 GET /tenant-portal/activation-status/:tenantId                  ADMIN, MANAGER, OWNER
 GET /tenant-portal/invitations                                  ADMIN, MANAGER, OWNER
 GET /users                                                      ADMIN, OWNER
@@ -189,7 +192,7 @@ POST /users/:id/reactivate                                      OWNER
 POST /users/invite                                              ADMIN, OWNER
 
 
-## 1b. HTTP-endpoints UTAN rollgrind (157 st)
+## 1b. HTTP-endpoints UTAN rollgrind (154 st)
 
 RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som
 granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli
@@ -203,7 +206,7 @@ konstruktion osynlig för driftbevakningen. #81 visade vad det kostade —
 GET /import/jobs var varken självscopad eller avsedd att vara öppen, låg
 öppen för VIEWER, och fanns inte i den här filen medan hålet var öppet.
 
-### a) Org-inloggad, öppen för VARJE roll (64 st)
+### a) Org-inloggad, öppen för VARJE roll (61 st)
 
 Enbart globala guards — antingen ingen @UseGuards alls, eller en som bara
 räknar upp JwtAuthGuard/RolesGuard och därmed inte ändrar något (#441).
@@ -217,7 +220,7 @@ det är precis vad VIEWER ska betyda. Frågan är: läser VIEWER DOMÄNDATA,
 eller det OPERATIVA SPÅRET av en handling som kräver högre roll? Spåren
 grindas och flyttar därmed till avsnitt 1.
 
-GRANSKADE — avsiktligt öppna, med skälet (60 st)
+GRANSKADE — avsiktligt öppna, med skälet (61 st)
 
 RÄCKVIDD: granskad som ANROPSYTA — vem som får anropa. INTE som SVARSYTA:
 vad svaret bär är inte prövat här. Se #445.
@@ -412,6 +415,18 @@ GET /notifications                                              notifications.co
     SJÄLVSCOPAD. `findAll(organizationId, user.sub, ...)` — den inloggades egna
     notiser, inte organisationens. Precis arketypen hinkens rubriktext nämner.
 
+GET /organizations/me                                           organizations.controller.ts
+    Öppen med avsikt och MÅSTE vara det — namn, logotyp, adress och
+    fakturabranding behövs i praktiskt taget varje vy. Men gränsen sitter på
+    FÄLTEN, inte på endpointen: raden hämtades tidigare med `findUnique` utan
+    select och bar då hela prenumerations- och faktureringsblocket
+    (subscriptionPlan, planMonthlyFee, aiCreditsBalance, trialEndsAt,
+    billingEmail, suspendedAt, cancellationReason, excludeFromBilling), som är
+    avgjort som ACCOUNTANT/ADMIN/OWNER. SAFE_ORGANIZATION_SELECT lyfter bort det;
+    partitionstestet i organization-select.spec.ts kräver att varje ny kolumn
+    klassas. Den här raden är därmed den enda i hinken som är granskad som BÅDE
+    anropsyta och svarsyta.
+
 GET /properties/:id                                             properties.controller.ts
     Domändata, som listan. Inga persondata.
 
@@ -471,15 +486,11 @@ POST /auth/change-password                                      auth.controller.
 POST /auth/logout                                               auth.controller.ts
     Självscopad skrivning: återkallar anroparens egen refresh-token.
 
-EJ GRANSKADE (4 st)
+EJ GRANSKADE (0 st)
 
 Ingen har intygat att de ska vara öppna. En NY rad hamnar här tills någon
 läst servicemetoden och skrivit skälet i GRANSKAD_HINK_A i authz-surface.ts.
 
-GET /ai-usage/current                                           ai-usage.controller.ts
-GET /ai-usage/history                                           ai-usage.controller.ts
-GET /organizations/me                                           organizations.controller.ts
-GET /signing/requests/:id                                       signing.controller.ts
 
 ### b) Styrda av en ANNAN mekanism (67 st)
 
