@@ -155,7 +155,7 @@ test('VIEWER får ett ärligt nekande på bankavstämningen, inte "Inga transakt
   await page.goto('/reconciliation')
 
   // Nekandet syns, med rollen utskriven.
-  await expect(page.getByText('Du har inte behörighet')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('AVSIKTLIGT TRASIG NEGATIVKONTROLL')).toBeVisible({ timeout: 5_000 })
   await expect(page.getByText(/VIEWER/)).toBeVisible()
 
   // Och lögnen är borta. Den här assertionen är den som faktiskt fångar
