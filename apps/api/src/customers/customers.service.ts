@@ -21,10 +21,43 @@ type CustomerPnKey = (typeof CUSTOMER_PN_KEYS)[number]
  * bara `mapCustomer`, inte varje ställe en Customer inkluderas (#284).
  *
  * INNEHÅLLER ALLA icke-känsliga kolumner men ALDRIG de två personnummer-
- * kolumnerna. Chiffertexten är inte klartext, men blind-indexet är en
- * deterministisk HMAC: den som har hashen kan verifiera en GISSNING genom att
- * hasha ett misstänkt personnummer och jämföra. Svagare än klartext, inte
- * ingenting.
+ * kolumnerna.
+ *
+ * ── Varför inte, korrekt formulerat ──────────────────────────────────────────
+ *
+ * Här stod tidigare att "den som har hashen kan verifiera en GISSNING genom att
+ * hasha ett misstänkt personnummer och jämföra". Det är FEL: `blindIndex` är
+ * HMAC-SHA256 med `SIGNING_PII_PEPPER` (signing-crypto.service.ts), och utan
+ * peppern går gissningen inte att beräkna. Premissen ledde till rätt slutsats av
+ * fel skäl, och ett fel skäl överlever tills någon väger det mot en kostnad.
+ *
+ * De tre skäl som faktiskt bär:
+ *
+ * 1. HASHEN ÄR EN KORRELATIONSNYCKEL. Samma hash = samma person, över tabeller
+ *    OCH över organisationer. En läcka möjliggör länkning och avanonymisering
+ *    utan att någonting knäcks — det räcker att jämföra hashar med varandra.
+ *
+ * 2. SKYDDET ÄR VILLKORAT AV EN HEMLIGHET SOM BOR NÅGON ANNANSTANS. Läcker
+ *    `SIGNING_PII_PEPPER` blir varje REDAN LAGRAD hash gissningsbar, retroaktivt
+ *    — inte bara framtida. En läckt hash är alltså inte ofarlig, den är
+ *    villkorat ofarlig, och villkoret ligger utanför den här filen.
+ *
+ * 3. PEPPERN DELAS MEDVETET MED SignatureEvidence, så att en BankID-identitet kan
+ *    matchas mot rätt part utan att någon rad dekrypteras. Sprängradien spänner
+ *    därmed två delsystem. Signeringsmodulen är inert i produktion i dag
+ *    (SIGNING_ENABLED=false) men är avsedd att tändas.
+ *
+ * ── Rotationsvägen: kravet är dokumenterat, mekanismen finns inte ────────────
+ *
+ * docs/accounting-fix-status.md beskriver vad rotation KRÄVER — varje
+ * `personalNumberHash` måste räknas om, och det går bara från dekrypterad
+ * klartext, så den gamla NYCKELN behövs även vid ren pepper-rotation. Något
+ * migreringsskript finns inte (#459), och ett "rotera secrets"-svep utan ett
+ * sådant förstör datan tyst. Läs #459 innan någon rör variablerna.
+ *
+ * Chiffertexten (`personalNumberEnc`) är AES-256-GCM och oanvändbar utan
+ * `SIGNING_PII_KEY`. Även den hålls utanför: en select som bär den bjuder in
+ * nästa yta att dekryptera "eftersom fältet ändå är där".
  *
  * Behöver du fler icke-känsliga fält: LÄGG TILL dem här. Behöver du
  * personnumret: välj `personalNumberEnc` explicit och dekryptera vid
