@@ -718,6 +718,19 @@ const GRANSKAD_HINK_A: ReadonlyMap<string, string> = new Map([
     'Domändata. Tar med enhetens avtal, vars hyresgäst går via SAFE_TENANT_SELECT.',
   ],
   [
+    'GET /organizations/me',
+    'Öppen med avsikt och MÅSTE vara det — namn, logotyp, adress och\n' +
+      'fakturabranding behövs i praktiskt taget varje vy. Men gränsen sitter på\n' +
+      'FÄLTEN, inte på endpointen: raden hämtades tidigare med `findUnique` utan\n' +
+      'select och bar då hela prenumerations- och faktureringsblocket\n' +
+      '(subscriptionPlan, planMonthlyFee, aiCreditsBalance, trialEndsAt,\n' +
+      'billingEmail, suspendedAt, cancellationReason, excludeFromBilling), som är\n' +
+      'avgjort som ACCOUNTANT/ADMIN/OWNER. SAFE_ORGANIZATION_SELECT lyfter bort det;\n' +
+      'partitionstestet i organization-select.spec.ts kräver att varje ny kolumn\n' +
+      'klassas. Den här raden är därmed den enda i hinken som är granskad som BÅDE\n' +
+      'anropsyta och svarsyta.',
+  ],
+  [
     'GET /contracts/:leaseId/appendices',
     'Domändata. Ser ut som ett undantag — syskonen GET /contracts/download/:leaseId\n' +
       'och /status/:leaseId är ADMIN/MANAGER/OWNER — men skillnaden är principiell:\n' +

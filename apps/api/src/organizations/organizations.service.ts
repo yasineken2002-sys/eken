@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { SAFE_ORGANIZATION_SELECT } from './organization-select'
 import { StorageService } from '../storage/storage.service'
 import { UpdateOrganizationDto } from './dto/update-organization.dto'
 import {
@@ -20,9 +22,18 @@ export class OrganizationsService {
     private readonly storage: StorageService,
   ) {}
 
-  async findMyOrganization(organizationId: string) {
+  // Returtypen härleds UR SELECTEN (`OrganizationGetPayload`), inte skrivs
+  // separat. Då snävas typen i takt med queryn: läser en anropare ett fält som
+  // lyfts ur selecten faller `pnpm typecheck`, i stället för att fältet tyst blir
+  // `undefined` i runtime. Samma mekanik som avslöjade fyra vägar i #349.
+  async findMyOrganization(
+    organizationId: string,
+  ): Promise<Prisma.OrganizationGetPayload<{ select: typeof SAFE_ORGANIZATION_SELECT }>> {
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
+      // Prenumerations- och faktureringsblocket lämnar inte den här endpointen.
+      // Se organization-select.ts för hela resonemanget.
+      select: SAFE_ORGANIZATION_SELECT,
     })
     if (!org) throw new NotFoundException('Organisationen hittades inte')
 
