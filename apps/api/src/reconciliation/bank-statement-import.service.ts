@@ -23,6 +23,7 @@ import {
   DETECTED_PDF_TYPES,
   MAX_PDF_BYTES,
 } from '../common/utils/file-validation'
+import type { BankStatementImportStatus } from '@prisma/client'
 
 export interface ImportCommitResult {
   importId: string
@@ -30,6 +31,29 @@ export interface ImportCommitResult {
   duplicates: number
   autoMatched: number
   unmatched: number
+}
+
+/**
+ * Vad `GET /reconciliation/imports/:id` bär. Se noten på `getImport` för vad som
+ * medvetet utelämnats och varför — kort: kontoutdragets INNEHÅLL
+ * (`parsedData`/`originalParsedData`/`confirmedData`) och organisationens
+ * `accountNumber` hör inte till en statusuppslagning.
+ */
+export interface BankStatementImportSummary {
+  id: string
+  status: BankStatementImportStatus
+  fileName: string
+  fileType: string
+  fileSize: number
+  bank: string | null
+  periodStart: Date | null
+  periodEnd: Date | null
+  transactionCount: number
+  matchedCount: number | null
+  unmatchedCount: number | null
+  errorMessage: string | null
+  uploadedAt: Date
+  confirmedAt: Date | null
 }
 
 @Injectable()
@@ -114,12 +138,52 @@ export class BankStatementImportService {
   }
 
   // ── Hämta DRAFT (för granskningsvyn) ────────────────────────────────────
-  async getImport(id: string, organizationId: string) {
+  /**
+   * MINIMAL PROJEKTION — och en not om varför den är just minimal.
+   *
+   * Endpointen har NOLL frontend-anropare. Mätt i web, admin och portal: PDF-
+   * flödet använder svaret från `uploadAndParsePdf` direkt och går sedan till
+   * `confirm`; ingen väg återhämtar utkastet. Svaret projiceras därför till det
+   * endpointen logiskt lovar — "hämta en DRAFT för granskning" — och inte till
+   * allt raden råkar bära.
+   *
+   * UTELÄMNAT, med skälet:
+   *   accountNumber        organisationens kontonummer. Oläst: förhandsgransknings-
+   *                        modalen tar sitt accountNumber ur `draft.parsed`
+   *                        (ParsedBankStatement från AI-tolkningen), inte ur den
+   *                        här kolumnen. De två har samma namn, vilket är precis
+   *                        hur ett sådant fält överlever en dataminimering.
+   *   parsedData           hela det tolkade kontoutdraget: betalarnamn, belopp,
+   *                        OCR. Förhandsgranskningen får det ur uppladdningssvaret.
+   *   originalParsedData   AI:ns råtolkning, bevarad för BFL-behandlingshistorik.
+   *   confirmedData        listan som faktiskt commitades. Räkenskapsinformation.
+   *
+   * Att lägga tillbaka något av dem ska vara ett BESLUT, inte en återställning av
+   * något någon tror fanns. Mätningen ovan är underlaget.
+   */
+  async getImport(id: string, organizationId: string): Promise<BankStatementImportSummary> {
     const row = await this.prisma.bankStatementImport.findFirst({
       where: { id, organizationId },
     })
     if (!row) throw new NotFoundException('Importen hittades inte')
-    return row
+    // Handprojicering, inte bara en typ: en deklarerad returtyp ensam hade låtit
+    // fälten gå över tråden och bara dolt dem för TypeScript.
+    return {
+      id: row.id,
+      status: row.status,
+      fileName: row.fileName,
+      fileType: row.fileType,
+      fileSize: row.fileSize,
+      bank: row.bank,
+      periodStart: row.periodStart,
+      periodEnd: row.periodEnd,
+      transactionCount: row.transactionCount,
+      matchedCount: row.matchedCount,
+      unmatchedCount: row.unmatchedCount,
+      errorMessage: row.errorMessage,
+      uploadedAt: row.uploadedAt,
+      confirmedAt: row.confirmedAt,
+    }
   }
 
   // ── Steg 2: användaren bekräftar → commit BankTransaction-rader ──────
