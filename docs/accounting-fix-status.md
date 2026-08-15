@@ -71,19 +71,28 @@ raden bär _samma_ nummer som förut och inte bara ett välformat. `/v1/health` 
 
 Två uppföljningar:
 
-1. **`DROP COLUMN "personalNumber"` är byggd men MEDVETET PARKERAD** —
-   [#256](https://github.com/yasineken2002-sys/eken/pull/256), öppen och verifierad.
-   #255 var expand-fasen: migrationen lägger bara till kolumner. Klartextkolumnen
-   finns kvar i DB men heter `personalNumberLegacy` i Prisma
-   (`@map("personalNumber")`), så varje kvarvarande användning är ett
-   kompileringsfel.
+1. **`DROP COLUMN "personalNumber"` ÄR KÖRD — klartextkolumnen finns inte längre.**
 
-   **Varför den inte mergas direkt** (beslut 2026-07-27): den tömda kolumnen är
-   **rollback-nätet**. Så länge den finns kvar går krypteringen att backa utan att
-   data är förlorad; `DROP COLUMN` är oåterkalleligt och tar bort den möjligheten.
-   Prod ska därför köra med krypteringen aktiv i några dagar först, och contract-fasen
-   mergas när den är bevisad i verklig drift. Det som saknas är drifttid — inte kod,
-   inte verifiering.
+   Migrationen `20260728000000_drop_personal_number_cleartext` applicerades i
+   produktion **2026-07-31T12:44:36Z** (`_prisma_migrations`, `rolled_back_at` är
+   NULL). `Tenant` och `Customer` bär i dag enbart `personalNumberEnc` och
+   `personalNumberHash` — direktmätt mot prods `information_schema.columns`
+   2026-08-15. Prisma-fältet `personalNumberLegacy` finns inte kvar någonstans i
+   källkoden.
+
+   **Hur den gick in är värt att veta.** [#256](https://github.com/yasineken2002-sys/eken/pull/256)
+   var medvetet parkerad (beslut 2026-07-27: den tömda kolumnen var rollback-nätet,
+   och prod skulle köra några dagar med krypteringen aktiv först). Men
+   [#257](https://github.com/yasineken2002-sys/eken/pull/257) var stackad ovanpå
+   #256:s gren, så dess squash (`671eede`) bar med sig **hela** #256 — migration,
+   schemaändring och raderingen av backfill-skriptet — under titeln _"larm +
+   väntegolv när själva köandet fallerar"_. #256 stängdes 2026-08-15 utan att
+   mergas, eftersom det inte fanns något kvar att merga.
+
+   Parkeringsvillkoret blev alltså uppfyllt i efterhand, men rollback-nätet var
+   borttaget innan någon konstaterade det. Det är stackade PR:ers andra felmod:
+   inte att en beroende PR förloras, utan att den bär mer än sin titel säger. Se
+   CLAUDE.md samt migrations-annoteringen i CI.
 
 2. **`ContractImportRow` lagrar fortfarande personnummer i klartext.**
    `originalScanData` / `reviewedData` / `confirmedData` är `Json`-kolumner och
