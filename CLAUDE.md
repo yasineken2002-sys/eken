@@ -907,6 +907,48 @@ inte kunde falla.
 Kontrollera att ändringen **landade** — `git status --short`, en `grep` efter det
 nya innehållet — innan du tolkar grönt som bevis.
 
+### `railway variables` skriver ut VÄRDEN — inte bara namn
+
+`railway variables --service <namn>` och `--kv`/`--json` dumpar varje hemlighet i
+klartext till terminalen. Det står i CLI:ns egen hjälptext (`-k, --kv … This
+prints raw values`), men flaggnamnet antyder det inte, och `| head -40` räddar
+ingenting — de första raderna ÄR hemligheterna.
+
+Kostnaden är inte teoretisk: 2026-08-15 hamnade åtta prod-credentials i en
+sessionslogg på det viset och fick roteras.
+
+**Prod-hemligheter ska aldrig passera en terminal vars utdata sparas.** Det gäller
+den här sessionen, CI-loggar och delade skärmar lika mycket.
+
+Behöver du veta VILKA variabler som finns — nästan alltid det man faktiskt är ute
+efter:
+
+```bash
+railway variables --service eken --kv | sed 's/=.*//' | sort
+```
+
+Behöver du veta OM ett värde är rätt: jämför hash mot hash, aldrig värde mot
+värde. Värdet går in i hashningen, aldrig till stdout:
+
+```bash
+railway variables --service eken --kv \
+  | python3 -c 'import hashlib,sys; [print(k, hashlib.sha256(v.encode()).hexdigest()[:16]) for k,v in (l.rstrip("\n").split("=",1) for l in sys.stdin if "=" in l)]'
+```
+
+Behöver du SÄTTA ett värde: `--stdin`, så att det aldrig står på kommandoraden
+(som sparas i historik och i sessionsloggen):
+
+```bash
+openssl rand -base64 48 | railway variable set JWT_SECRET --service eken --stdin --skip-deploys
+```
+
+`--skip-deploys` på alla utom den sista, så tre variabelbyten ger en omstart och
+inte tre.
+
+Samma fälla som `gh`: **`railway` kräver den länkade katalogen som cwd.** Körs den
+från `/tmp` blir svaret `No linked project found` — och i en `$(...)` blir
+resultatet tom sträng i stället för ett synligt fel.
+
 ### En negativkontrolls sond ska ha ett namn som bevisligen inte finns
 
 Injicerar du en påhittad kolumn, fil eller flagga för att se att vakten fäller
