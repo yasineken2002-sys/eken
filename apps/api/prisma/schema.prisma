@@ -3751,3 +3751,39 @@ model LegalChunkEmbedding {
 
   @@index([lawId])
 }
+
+// ─── PiiSecretRotation ────────────────────────────────────────────────────────
+// Operationsspår för rotation av SIGNING_PII_KEY / SIGNING_PII_PEPPER (#459).
+//
+// Rotationen skriver i SignatureEvidence, som är append-only. Skälet att det är
+// försvarbart är att en omkryptering byter LAGRINGSFORM, inte innehåll — men det
+// argumentet håller bara om transformationen går att se i efterhand. Den här
+// tabellen är den synligheten: utan den ser en ändrad bevisrad oförklarad ut.
+//
+// INNEHÅLLER ALDRIG ETT VÄRDE. Inga nycklar, ingen pepper, ingen hash, ingen
+// chiffertext, inga person-id:n — bara läge, utfall, antal och tidsstämplar.
+// `abortReason` är verktygets egen felformulering, som med flit aldrig bär ett
+// värde (se rotate-pii-secrets.ts).
+//
+// Append-only i samma anda som InvoiceEvent: ingen updatedAt, aldrig UPDATE.
+// Global, inte per organisation — en rotation rör hela databasen.
+model PiiSecretRotation {
+  id                 String   @id @default(uuid())
+  /// 'PEPPER' | 'KEY' — de två oberoende lägena.
+  mode               String
+  /// 'COMPLETED' | 'ABORTED' | 'DRY_RUN'
+  status             String
+  startedAt          DateTime
+  finishedAt         DateTime
+  rowsScanned        Int
+  rowsRotated        Int
+  rowsAlreadyRotated Int
+  rowsSkipped        Int
+  /// Per tabell: { Tenant: { scanned, rotated, … }, … }. Bara antal.
+  perTable           Json?
+  /// Verktygets felformulering vid avbrott. Aldrig ett värde.
+  abortReason        String?
+  createdAt          DateTime @default(now())
+
+  @@index([startedAt])
+}

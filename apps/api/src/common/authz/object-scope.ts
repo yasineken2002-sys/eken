@@ -183,6 +183,13 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
   ReferenceInterestRate: { scope: 'out', reason: 'global referensdata (Riksbanken)' },
   FailedEmail: { scope: 'out', reason: 'systemdata, ingen kundadresserbar väg' },
   LegalChunkEmbedding: { scope: 'out', reason: 'global juridisk referensdata (RAG)' },
+  PiiSecretRotation: {
+    scope: 'out',
+    reason:
+      'operationsspår för nyckel-/pepper-rotation: global (rör hela databasen), ' +
+      'skrivs bara av CLI-skriptet och har ingen HTTP-yta alls — bär varken ' +
+      'organisationsdata eller ett id någon kan gissa sig till',
+  },
 }
 
 /** Modeller i schemat som saknar `organizationId`. Grunden för klassificeringen. */

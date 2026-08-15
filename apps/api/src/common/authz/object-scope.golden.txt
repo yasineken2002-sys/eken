@@ -152,6 +152,7 @@ MaintenanceImage                förälder-scopad via MaintenanceTicket
 Organization                    utanför: toppnivån själv — inget att scopa mot
 PasswordResetToken              utanför: auth-realm: scopas av tokenvärdet
 PaymentReminder                 förälder-scopad via Invoice
+PiiSecretRotation               utanför: operationsspår för nyckel-/pepper-rotation: global (rör hela databasen), skrivs bara av CLI-skriptet och har ingen HTTP-yta alls — bär varken organisationsdata eller ett id någon kan gissa sig till
 PlatformInvoiceNumberSequence   utanför: global singleton-sekvens
 PlatformRefreshToken            utanför: egen realm, scopas av tokenvärdet
 PlatformUser                    utanför: egen realm (PlatformGuard), ingen org-koppling
