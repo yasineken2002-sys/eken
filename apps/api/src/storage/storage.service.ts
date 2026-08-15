@@ -26,6 +26,7 @@ export class StorageService {
   private readonly logger = new Logger(StorageService.name)
   private readonly s3: S3Client
   private readonly bucket: string
+  private readonly hasCredentials: boolean
 
   constructor(private readonly config: ConfigService) {
     const accountId = config.get<string>('R2_ACCOUNT_ID')
@@ -40,6 +41,7 @@ export class StorageService {
     }
 
     this.bucket = bucket ?? ''
+    this.hasCredentials = Boolean(accountId && accessKeyId && secretAccessKey)
     this.s3 = new S3Client({
       region: 'auto',
       endpoint: `https://${accountId ?? ''}.r2.cloudflarestorage.com`,
@@ -67,6 +69,20 @@ export class StorageService {
       },
       maxAttempts: R2_MAX_ATTEMPTS,
     })
+  }
+
+  /**
+   * True om alla fyra R2-variablerna är satta.
+   *
+   * Konstruktorn kastar med flit INTE när de saknas — de flesta vägar tål att
+   * lagringen är otillgänglig och ska inte hindra appen från att starta. Men en
+   * anropare som MÅSTE ha lagringen (kontraktsarkivet, #473) behöver kunna
+   * avvisa DIREKT i stället för att låta AWS-SDK:n gå i timeout mot
+   * `https://.r2.cloudflarestorage.com` och returnera ett obegripligt fel efter
+   * ~40 sekunder. Speglar `SigningCryptoService.configured`.
+   */
+  get configured(): boolean {
+    return this.bucket !== '' && this.hasCredentials
   }
 
   async uploadFile(buffer: Buffer, key: string, mimeType: string): Promise<string> {
