@@ -148,6 +148,48 @@ describe('validateEnv — boot-validering (#1)', () => {
     })
   })
 
+  describe('SIGNING_PII_KEY_OLD — valfri, men aldrig felformad', () => {
+    // Frånvarande är normaltillståndet: varen finns bara under en pågående
+    // nyckelrotation. Satt och felformad läses som "ingen fallback", vilket gör
+    // felet osynligt ända tills den gamla nyckeln kastas — då är datan förlorad.
+    it('frånvarande → bootar, ingen varning', () => {
+      expect(() => validateEnv(fullProdEnv())).not.toThrow()
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
+
+    it('giltig 64-hex → bootar', () => {
+      const env = fullProdEnv()
+      env.SIGNING_PII_KEY_OLD = 'b'.repeat(64)
+      expect(() => validateEnv(env)).not.toThrow()
+    })
+
+    it('tom sträng räknas som frånvarande (Railway kan bära tomma värden)', () => {
+      const env = fullProdEnv()
+      env.SIGNING_PII_KEY_OLD = ''
+      expect(() => validateEnv(env)).not.toThrow()
+    })
+
+    it('satt men felformad → KASTAR, och felet säger varför det spelar roll', () => {
+      const env = fullProdEnv()
+      env.SIGNING_PII_KEY_OLD = 'inte-en-hex-nyckel'
+      expect(() => validateEnv(env)).toThrow(/SIGNING_PII_KEY_OLD/)
+      expect(() => validateEnv(env)).toThrow(/ingen fallback/)
+    })
+
+    it('för kort hex → KASTAR (63 tecken räcker inte)', () => {
+      const env = fullProdEnv()
+      env.SIGNING_PII_KEY_OLD = 'b'.repeat(63)
+      expect(() => validateEnv(env)).toThrow(/SIGNING_PII_KEY_OLD/)
+    })
+
+    it('kastar även i dev — rotationen är lika oåterkallelig där', () => {
+      const env = fullProdEnv()
+      env.NODE_ENV = 'development'
+      env.SIGNING_PII_KEY_OLD = 'trasig'
+      expect(() => validateEnv(env)).toThrow(/SIGNING_PII_KEY_OLD/)
+    })
+  })
+
   describe('valfria med default', () => {
     it('ogiltigt PORT-format → varning, ej boot-krasch ens i prod', () => {
       const env = fullProdEnv()

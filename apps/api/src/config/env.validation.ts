@@ -127,6 +127,30 @@ function collectFeatureFlagErrors(config: EnvRecord): string[] {
     }
   }
 
+  // SIGNING_PII_KEY_OLD är VALFRI: den ska bara finnas under en pågående
+  // nyckelrotation, och frånvarande är normaltillståndet — ingen varning, inget
+  // fel. SATT OCH FELFORMAD är däremot alltid ett fel, och medvetet ett KAST och
+  // inte en varning.
+  //
+  // Skälet är att felet annars är osynligt tills det blir oåterkalleligt.
+  // `SigningCryptoService` behandlar en ogiltig _OLD som "ingen fallback", så
+  // appen kör vidare som om rotationen vore möjlig: operatören deployar steg 1,
+  // ser inget fel, skriver om rader i steg 2 — och upptäcker först i steg 5, när
+  // den gamla nyckeln kastats, att fallbacken aldrig fanns. Då är datan förlorad.
+  // En varning duger inte: den läses inte i tid av någon.
+  //
+  // Att kasta flyttar felet till den enda tidpunkt där det är gratis — deploy av
+  // steg 1, innan en enda rad skrivits om. Samma kriterium som #466: appen skulle
+  // annars KÖRA i ett tillstånd operatören tror är säkert men inte är det.
+  const previousKey = config.SIGNING_PII_KEY_OLD
+  if (typeof previousKey === 'string' && previousKey !== '' && !hex64.test(previousKey)) {
+    errs.push(
+      '  • SIGNING_PII_KEY_OLD är satt men ogiltig (kräver 64 hex-tecken). ' +
+        'Den läses som "ingen fallback", så en nyckelrotation skulle se ut att ' +
+        'fungera ända tills den gamla nyckeln tas bort. Rätta eller ta bort den.',
+    )
+  }
+
   return errs
 }
 
