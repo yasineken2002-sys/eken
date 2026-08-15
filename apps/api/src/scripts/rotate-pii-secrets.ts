@@ -515,24 +515,79 @@ export async function rotatePiiSecrets(
 }
 
 /**
- * Read-only kontroll: vad är tillståndet just nu?
+ * Slutraden: vad betyder räknarna för den som just nu står och ska fatta ett
+ * beslut?
  *
- * Samma klassificerare som rotationen, med `dryRun`. Lyckad rotation = allt i
- * `alreadyRotated`, noll i `rotated`. Halvvägs-misslyckande syns som
- * `rotated > 0`; ett tredje ursprung avbryter med skäl.
+ * `rotated` betyder OLIKA saker i de två lägena, och det är hela grunden till
+ * att den här funktionen måste veta vilket läge den beskriver:
+ *
+ * | läge      | `rotated` betyder            | rätt besked        |
+ * |-----------|------------------------------|--------------------|
+ * | torrkörn. | rader som SKULLE ha roterats | `OFULLSTÄNDIG`     |
+ * | skarpt    | rader som NYSS roterades     | `KLAR`             |
+ *
+ * Flaggan läses ur `result.dryRun` och tas medvetet INTE som parameter.
+ * `RotationResult` bär den redan, och både flaggan och räknarna produceras av
+ * samma `rotatePiiSecrets`-anrop — de kan alltså inte hamna i otakt. En
+ * parameter (även en obligatorisk) hade gjort utelämnande omöjligt men inte
+ * FEL: `true` och `false` typkontrollerar lika bra, och fakta hade fått en
+ * andra källa som kan glida isär från den första.
  *
  * NOLL KONTROLLERBARA RADER GER "KAN EJ VERIFIERAS", ALDRIG "OK" — en tom
- * tabell får inte se ut som en lyckad kontroll.
+ * tabell får inte se ut som en lyckad kontroll. Det gäller båda lägena och
+ * prövas före allt annat.
  */
 export function describeVerification(result: RotationResult): string {
   const kontrollerbara = result.total.scanned - result.total.skipped
   if (kontrollerbara === 0) {
     return 'KAN EJ VERIFIERAS — noll rader bär personnummer, så ingenting kunde prövas'
   }
+
+  if (!result.dryRun) {
+    // En skarp körning som nått hit har skrivit klart. Varje kontrollerbar rad
+    // bär nu den nya hemligheten — de som just skrevs om OCH de som redan var
+    // roterade sedan en tidigare körning.
+    //
+    // Nästa steg står i meddelandet med flit. Raden läses i exakt det ögonblick
+    // operatören avgör om den gamla hemligheten får kastas, och efter det finns
+    // ingen väg tillbaka. Ett besked utan nästa steg inbjuder till att hoppa
+    // över verifieringen.
+    const bar = result.total.rotated + result.total.alreadyRotated
+    return (
+      `KLAR — ${bar} av ${kontrollerbara} rader bär den nya hemligheten.\n` +
+      'Verifiera boot-kontrollens utfall innan _OLD tas bort.'
+    )
+  }
+
   if (result.total.rotated === 0) {
     return `OK — ${result.total.alreadyRotated} av ${kontrollerbara} rader bär den nya hemligheten`
   }
   return `OFULLSTÄNDIG — ${result.total.rotated} av ${kontrollerbara} rader bär fortfarande den gamla hemligheten`
+}
+
+/**
+ * Avbrottsraden — samma sammanblandning som slutraden, åt andra hållet.
+ *
+ * En torrkörning som avbryter har inte skrivit någonting. Att då rapportera
+ * "N skrivna rader — databasen är delvis roterad" skickar en operatör att
+ * reparera en databas som är orörd.
+ *
+ * Fälten är namngivna i ett objekt, inte positionella: här finns inget
+ * `RotationResult` att läsa flaggan ur (körningen kastade innan den byggdes),
+ * så en parameter är oundviklig — men två booleska/numeriska argument i rad går
+ * att kasta om utan att kompilatorn märker det.
+ */
+export function describeAbort(arg: {
+  dryRun: boolean
+  rowsRotated: number
+  category: string
+}): string {
+  const { dryRun, rowsRotated, category } = arg
+  return dryRun
+    ? `AVBRUTEN efter ${rowsRotated} rader som SKULLE ha roterats — spår skrivet (${category}). ` +
+        'Torrkörning: databasen är ORÖRD. Åtgärda orsaken och kör om.'
+    : `AVBRUTEN efter ${rowsRotated} skrivna rader — spår skrivet (${category}). ` +
+        'Databasen är delvis roterad; kör om efter att orsaken är åtgärdad.'
 }
 
 /* istanbul ignore next -- entry point, logiken testas via rotatePiiSecrets */
@@ -597,10 +652,7 @@ async function main(): Promise<void> {
     // hemma i operatörens terminal, inte i en global spårtabell.
     const kategori = err instanceof RotationAbort ? err.category : 'OVANTAT_FEL'
     await skrivSpar('ABORTED', kategori)
-    log(
-      `AVBRUTEN efter ${progress.total.rotated} skrivna rader — spår skrivet (${kategori}). ` +
-        'Databasen är delvis roterad; kör om efter att orsaken är åtgärdad.',
-    )
+    log(describeAbort({ dryRun, rowsRotated: progress.total.rotated, category: kategori }))
     throw err
   } finally {
     await prisma.$disconnect()

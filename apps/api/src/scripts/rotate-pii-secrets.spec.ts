@@ -7,6 +7,7 @@ import {
   blindIndex,
   classifyForKey,
   classifyForPepper,
+  describeAbort,
   describeVerification,
   encrypt,
   rotatePiiSecrets,
@@ -434,6 +435,85 @@ describe('describeVerification — tom mängd är inte OK', () => {
     expect(describeVerification(bas({ scanned: 3, rotated: 1, alreadyRotated: 2 }))).toMatch(
       /^OFULLSTÄNDIG/,
     )
+  })
+})
+
+describe('describeVerification — skarp körning rapporterar KLAR, inte OFULLSTÄNDIG', () => {
+  /**
+   * Defekten som hittades vid den skarpa pepper-rotationen i produktion
+   * 2026-08-15: en lyckad körning skrev ut "OFULLSTÄNDIG — 1 av 1 rader bär
+   * fortfarande den gamla hemligheten".
+   *
+   * Konsekvensen är inte ett felaktigt ord. Raden läses i exakt det ögonblick
+   * operatören avgör om den gamla hemligheten får kastas — och när den är kastad
+   * finns ingen väg tillbaka. Ett falskt OFULLSTÄNDIG uppmanar alltså till en
+   * återställning som är omöjlig, i ett läge där ingenting är fel.
+   */
+  const skarp = (o: Partial<RotationCounts>): RotationResult => ({
+    mode: 'pepper',
+    dryRun: false,
+    perTable: {},
+    total: { scanned: 0, rotated: 0, alreadyRotated: 0, skipped: 0, ...o },
+  })
+  const torr = (o: Partial<RotationCounts>): RotationResult => ({
+    ...skarp(o),
+    dryRun: true,
+  })
+
+  it('skarp körning med nyss roterade rader ger KLAR', () => {
+    const text = describeVerification(skarp({ scanned: 1, rotated: 1 }))
+    expect(text).toMatch(/^KLAR/)
+    expect(text).not.toMatch(/OFULLSTÄNDIG/)
+    expect(text).not.toMatch(/fortfarande den gamla/)
+  })
+
+  it('exakt samma räknare ger OFULLSTÄNDIG i torrkörning — flaggan är det som skiljer', () => {
+    expect(describeVerification(torr({ scanned: 1, rotated: 1 }))).toMatch(/^OFULLSTÄNDIG/)
+  })
+
+  it('KLAR räknar både nyss roterade och redan roterade rader', () => {
+    expect(describeVerification(skarp({ scanned: 5, rotated: 3, alreadyRotated: 2 }))).toContain(
+      '5 av 5 rader',
+    )
+  })
+
+  it('KLAR-raden bär nästa steg: verifiera boot-kontrollen innan _OLD tas bort', () => {
+    const text = describeVerification(skarp({ scanned: 1, rotated: 1 }))
+    expect(text).toMatch(/boot-kontroll/i)
+    expect(text).toMatch(/_OLD/)
+  })
+
+  it('noll kontrollerbara rader ger KAN EJ VERIFIERAS även i skarpt läge', () => {
+    expect(describeVerification(skarp({}))).toMatch(/KAN EJ VERIFIERAS/)
+    expect(describeVerification(skarp({ scanned: 9, skipped: 9 }))).toMatch(/KAN EJ VERIFIERAS/)
+  })
+
+  it('rapporteringen är LÄGESOBEROENDE — pepper och key ger identisk text', () => {
+    // Defekten satt i en delad väg, inte i pepper-grenen. Den här kontrollen
+    // fäller en framtida ändring som inför en lägesberoende gren utan att också
+    // ge nyckelläget rätt besked.
+    for (const dryRun of [true, false]) {
+      const räknare: RotationCounts = { scanned: 4, rotated: 1, alreadyRotated: 2, skipped: 1 }
+      const p = describeVerification({ mode: 'pepper', dryRun, perTable: {}, total: räknare })
+      const k = describeVerification({ mode: 'key', dryRun, perTable: {}, total: räknare })
+      expect(p).toBe(k)
+    }
+  })
+})
+
+describe('describeAbort — en torrkörning har inte skrivit någonting', () => {
+  it('skarp avbrytning säger att databasen är delvis roterad', () => {
+    const text = describeAbort({ dryRun: false, rowsRotated: 7, category: 'OKANT_URSPRUNG' })
+    expect(text).toMatch(/7 skrivna rader/)
+    expect(text).toMatch(/delvis roterad/)
+    expect(text).toContain('OKANT_URSPRUNG')
+  })
+
+  it('torr avbrytning säger att databasen är ORÖRD', () => {
+    const text = describeAbort({ dryRun: true, rowsRotated: 7, category: 'OKANT_URSPRUNG' })
+    expect(text).toMatch(/ORÖRD/)
+    expect(text).not.toMatch(/delvis roterad/)
+    expect(text).not.toMatch(/7 skrivna rader/)
   })
 })
 
