@@ -16,6 +16,14 @@ import { StubSigningProvider } from './providers/stub-signing.provider'
  * - `SIGNING_ENABLED` == 'true' → fail-fast vid uppstart: krypto-nycklar krävs, och
  *   någon skarp adapter (Scrive) levereras först i S3. Går alltså inte att aktivera
  *   i S1 — precis avsikten (redo men inaktivt).
+ *
+ * ATT TÄNDA FLAGGAN BÄR ETT VILLKOR TILL: `PiiCoherenceService`
+ * (`common/crypto/pii-coherence.service.ts`) kontrollerar vid uppstart att
+ * SIGNING_PII_KEY/SIGNING_PII_PEPPER fortfarande hör ihop med datan, och larmar
+ * i dag bara (Sentry). Med `SIGNING_ENABLED=true` bär peppern en aktiv
+ * säkerhetsfunktion — identitetsbindningen mot BankID-personnumret går genom
+ * blind-indexet — och kontrollen ska då BEFORDRAS TILL FAIL-FAST, i samma
+ * grind som nycklarna redan kontrolleras i. Skälet står utskrivet i den filen.
  */
 @Module({
   controllers: [SigningController],
