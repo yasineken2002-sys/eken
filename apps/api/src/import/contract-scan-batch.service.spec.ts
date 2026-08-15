@@ -342,6 +342,34 @@ describe('ContractScanBatchService — PR3 commit (avtal skapas via /leases/with
     }
   }
 
+  it('länkar det arkiverade originalet till avtalet vid commit (#473)', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValue(scannedRow({ documentId: 'doc-7' }))
+    mocks.leases.createWithTenant.mockResolvedValue({ id: 'lease-9' })
+    mocks.prisma.contractImportBatch.findUnique.mockResolvedValue({ status: 'SCANNED' })
+
+    await service.confirmRow('batch-1', 'row-1', 'org-1', 'user-1')
+
+    expect(mocks.archive.linkToLease).toHaveBeenCalledWith(
+      'doc-7',
+      expect.objectContaining({ leaseId: 'lease-9' }),
+    )
+  })
+
+  it('en rad UTAN arkiverat original committas ändå (gamla importer)', async () => {
+    // documentId är null för allt som importerades innan arkiveringen fanns.
+    // De filerna går inte att återskapa, och avtalet ska inte blockeras av det.
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValue(scannedRow({ documentId: null }))
+    mocks.leases.createWithTenant.mockResolvedValue({ id: 'lease-9' })
+    mocks.prisma.contractImportBatch.findUnique.mockResolvedValue({ status: 'SCANNED' })
+
+    const res = await service.confirmRow('batch-1', 'row-1', 'org-1', 'user-1')
+
+    expect(res.leaseId).toBe('lease-9')
+    expect(mocks.archive.linkToLease).not.toHaveBeenCalled()
+  })
+
   it('per-rad commit: AUTO_MATCHED → skapar avtal + markerar COMMITTED', async () => {
     const { service, mocks } = make()
     mocks.prisma.contractImportRow.findFirst.mockResolvedValue(scannedRow())
@@ -532,6 +560,29 @@ describe('ContractScanBatchService.cancelBatch — purgar rå PDF', () => {
         where: { batchId: 'batch-1' },
         data: expect.objectContaining({ fileData: null }),
       }),
+    )
+  })
+
+  it('KANARIEFÅGEL: purgar även de ARKIVERADE originalen (#473)', async () => {
+    // Att nolla fileData men lämna kvar dokumentet i R2 gör avbrytningen till en
+    // HALV radering — filen bär personnummer och batchen blev aldrig ett avtal.
+    // Utan det här testet är purge-anropet borttagbart utan att något blir rött.
+    const { service, mocks } = make()
+    mocks.prisma.contractImportBatch.findFirst.mockResolvedValue({
+      id: 'batch-1',
+      status: 'SCANNED',
+    })
+    mocks.prisma.contractImportRow.findMany.mockResolvedValue([
+      { documentId: 'doc-1' },
+      { documentId: 'doc-2' },
+    ])
+
+    await service.cancelBatch('batch-1', 'org-1')
+
+    expect(mocks.archive.purge).toHaveBeenCalledWith(['doc-1', 'doc-2'])
+    // Och arkivpekaren nollas, så raden inte pekar på något raderat.
+    expect(mocks.prisma.contractImportRow.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ documentId: null }) }),
     )
   })
 
