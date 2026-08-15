@@ -1,5 +1,10 @@
 import { z } from 'zod'
 import { authThrottleRelaxed } from '../common/throttler/auth-throttle-mode'
+import {
+  PLACEHOLDER_CHECKED_VARS,
+  SECRET_FORM_VARS,
+  placeholderRejection,
+} from './env-placeholders'
 
 /**
  * Boot-validering av miljövariabler (launch-readiness #1).
@@ -163,10 +168,24 @@ export function validateEnv(config: EnvRecord): EnvRecord {
     }
   }
 
-  // 3. Flagg-villkorade: hård fail-fast i alla miljöer (speglar modul-factoryn).
+  // 3. Platshållarvärden: en hemlighet som passerar formkontrollen men är
+  //    oförändrad från exempelfilen — eller ser ut som en handskriven
+  //    platshållare — är lika illa som en saknad. Prod → error, dev/test →
+  //    varning: `.env.example` ÄR platshållare, och en lokal utvecklare ska inte
+  //    blockeras av att ha kopierat den. Se env-placeholders.ts för de två
+  //    reglerna och varför uppräkningen ensam inte räcker.
+  const checked = new Set([...PLACEHOLDER_CHECKED_VARS, ...SECRET_FORM_VARS])
+  for (const name of checked) {
+    const raw = config[name]
+    if (typeof raw !== 'string' || raw.length === 0) continue // saknas → punkt 1
+    const why = placeholderRejection(name, raw)
+    if (why) (isProd ? errors : warnings).push(`  • ${name} ${why}`)
+  }
+
+  // 4. Flagg-villkorade: hård fail-fast i alla miljöer (speglar modul-factoryn).
   errors.push(...collectFeatureFlagErrors(config))
 
-  // 4. E2E-uppmjukad auth-strypning får ALDRIG gälla i produktion. Kontrollen
+  // 5. E2E-uppmjukad auth-strypning får ALDRIG gälla i produktion. Kontrollen
   //    ligger här för att den ska smälla vid boot, före första requesten —
   //    samma skäl som SIGNING_ENABLED-kontrollen ovan. Guardens konstruktor gör
   //    samma kontroll som andra lager; den här ger det tidigare och tydligare
