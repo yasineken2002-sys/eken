@@ -3,11 +3,13 @@ import { Module } from '@nestjs/common'
 import { PrismaModule } from '../common/prisma/prisma.module'
 import { AiUsageModule } from '../ai/usage/ai-usage.module'
 import { ContractsModule } from '../contracts/contracts.module'
+import { StorageModule } from '../storage/storage.module'
 import { LeasesModule } from '../leases/leases.module'
 import { ImportController } from './import.controller'
 import { ContractBatchController } from './contract-batch.controller'
 import { ImportService } from './import.service'
 import { ContractScannerService } from './contract-scanner.service'
+import { ContractArchiveService } from './contract-archive.service'
 import { ContractScanBatchService } from './contract-scan-batch.service'
 import { ContractScanBatchQueue, CONTRACT_SCAN_BATCH_QUEUE } from './contract-scan-batch.queue'
 import { ContractScanBatchWorker } from './contract-scan-batch.worker'
@@ -20,12 +22,14 @@ import { LeasesService } from '../leases/leases.service'
     AiUsageModule,
     ContractsModule,
     LeasesModule,
+    StorageModule,
     BullModule.registerQueue({ name: CONTRACT_SCAN_BATCH_QUEUE }),
   ],
   controllers: [ImportController, ContractBatchController],
   providers: [
     ImportService,
     ContractScannerService,
+    ContractArchiveService,
     ContractScanBatchService,
     ContractScanBatchQueue,
     ContractScanBatchWorker,

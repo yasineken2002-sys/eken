@@ -73,7 +73,7 @@ export function ContractBatchUploadPage() {
             <EmptyState
               icon={FileText}
               title="Inga filer valda"
-              description="Lägg till kontrakts-PDF:er för att skapa en skanningsbatch."
+              description="Lägg till kontrakts-PDF:er för att skapa en skanningsbatch. Originalen sparas och kopplas till de avtal som skapas."
             />
           ) : (
             <ul className="space-y-1.5">

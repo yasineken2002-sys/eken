@@ -195,7 +195,31 @@ function RowItem({
 
   return (
     <tr className="border-line border-b last:border-0 hover:bg-gray-50/80">
-      <Td className="max-w-[160px] truncate text-gray-500">{row.fileName}</Td>
+      {/*
+        #473: filnamnet är en LÄNK till originalet, inte bara text. Ett filnamn
+        utan väg till filen är ett påstående om att dokumentet finns — och
+        granskningen går ut på att jämföra AI:ns avläsning mot källan.
+        Rader importerade innan arkiveringen fanns saknar original och visas
+        som text med en förklaring, inte som en trasig länk.
+      */}
+      <Td className="max-w-[160px] truncate">
+        {row.documentId ? (
+          <a
+            href={`/api/v1/documents/${row.documentId}/download`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+            title="Öppna det uppladdade originalet"
+          >
+            <FileText size={13} strokeWidth={1.8} />
+            <span className="truncate">{row.fileName}</span>
+          </a>
+        ) : (
+          <span className="text-gray-500" title="Originalet sparades inte vid importen">
+            {row.fileName}
+          </span>
+        )}
+      </Td>
       <Td className="font-medium text-gray-900">{d?.tenantName ?? '—'}</Td>
       <Td className="text-gray-600">{d?.propertyAddress ?? '—'}</Td>
       <Td className="text-gray-600">

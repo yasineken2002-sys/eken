@@ -62,7 +62,7 @@ export class ContractBatchController {
           `Filen "${part.filename}" är för stor (max ${MAX_CONTRACT_BYTES / 1024 / 1024} MB).`,
         )
       }
-      files.push({ fileName: part.filename, buffer })
+      files.push({ fileName: part.filename, buffer, mimeType: part.mimetype })
     }
     if (files.length === 0) {
       throw new BadRequestException('Inga filer hittades i formuläret.')

@@ -1896,6 +1896,15 @@ model ContractImportRow {
   matchedUnitId String?
   matchedUnit   Unit?                   @relation(fields: [matchedUnitId], references: [id], onDelete: SetNull)
 
+  // Arkiverat original (#473). Den uppladdade filen lagras i R2 + Document
+  // FÖRE skanningen, så att (a) granskningsvyn har en källa att jämföra AI:ns
+  // avläsning mot, och (b) det undertecknade dokumentet finns kvar när avtalet
+  // väl förvaltas — databasraden bär kontraktets data, inte underskriften.
+  // Plain ID (ingen FK), som createdLeaseId: en arkivpekare, inte en hård
+  // relation. Dokumentet länkas till Lease/Tenant vid commit och tas bort med
+  // fileData när en batch avbryts.
+  documentId String?
+
   // Commit (PR3). confirmedData fryses EN gång när operatören godkänner raden
   // (de exakta avtalsfält som skickades till /leases/with-tenant — audit).
   // createdLeaseId är en idempotensnyckel: är den satt har raden redan skapat

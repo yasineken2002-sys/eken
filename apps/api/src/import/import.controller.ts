@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagg
 import type { FastifyRequest } from 'fastify'
 import { ImportService } from './import.service'
 import { ContractScannerService } from './contract-scanner.service'
+import { ContractArchiveService } from './contract-archive.service'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
@@ -20,6 +21,7 @@ export class ImportController {
   constructor(
     private readonly importService: ImportService,
     private readonly contractScanner: ContractScannerService,
+    private readonly archive: ContractArchiveService,
   ) {}
 
   // ─── Preview ───────────────────────────────────────────────────────────────
@@ -79,6 +81,7 @@ export class ImportController {
   ) {
     let fileBuffer: Buffer | null = null
     let mimeType = ''
+    let fileName = 'kontrakt'
     let fileSize = 0
 
     const parts = request.parts()
@@ -86,6 +89,7 @@ export class ImportController {
       if (part.type === 'file') {
         fileBuffer = await part.toBuffer()
         mimeType = part.mimetype
+        fileName = part.filename
         fileSize = fileBuffer.length
         break
       }
@@ -103,7 +107,25 @@ export class ImportController {
       throw new BadRequestException('Filformatet stöds inte. Ladda upp PDF, JPG, PNG eller WEBP.')
     }
 
-    return this.contractScanner.scanContract(fileBuffer, organizationId, user.sub)
+    // #473: arkivera originalet FÖRE skanningen. Den här vägen persisterade
+    // tidigare INGENTING — bufferten kastades när requesten tog slut, så det
+    // uppladdade kontraktet fanns aldrig kvar. Skanningen fyller ett formulär
+    // som operatören sedan skapar ett avtal ur; utan arkivet förvaltar Eveno
+    // ett avtal vars underlag det inte kan visa.
+    //
+    // scanContract validerar magiska byten själv och kastar på fel innehåll.
+    // Arkiveringen sker ändå först: en fil som avvisas av skannern är fortfarande
+    // något hyresvärden laddade upp, och ett dokument utan skanningsresultat är
+    // ett mindre problem än ett avtal utan underlag.
+    const { documentId } = await this.archive.archive({
+      buffer: fileBuffer,
+      fileName,
+      mimeType,
+      organizationId,
+      uploadedById: user.sub,
+    })
+    const scan = await this.contractScanner.scanContract(fileBuffer, organizationId, user.sub)
+    return { ...scan, documentId }
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────

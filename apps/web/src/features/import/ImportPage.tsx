@@ -474,7 +474,8 @@ function ContractScannerPanel() {
   return (
     <div className="space-y-4">
       <p className="text-[13px] text-gray-500">
-        Ladda upp ett hyreskontrakt — AI:n läser av informationen automatiskt.
+        Ladda upp ett hyreskontrakt — AI:n läser av informationen automatiskt. Originalet sparas som
+        dokument, så att avtalet alltid har sitt underlag.
       </p>
 
       {scanState === 'idle' && (
