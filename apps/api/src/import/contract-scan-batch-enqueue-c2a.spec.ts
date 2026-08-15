@@ -1,3 +1,4 @@
+jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 /**
  * T5 C2a — per-rad-isolering vid köandet i batch-kontraktsskanningen.
  *
@@ -68,8 +69,18 @@ function make(enqueueRow: jest.Mock) {
     quota as never,
     { enqueueRow } as never,
     { createWithTenant: jest.fn() } as never,
+    // #473: arkivtjänsten. Mockad — dess egen spec äger beteendet.
+    {
+      archive: jest.fn().mockResolvedValue({ documentId: 'doc-1', contentHash: 'h' }),
+      linkToLease: jest.fn().mockResolvedValue(undefined),
+      purge: jest.fn().mockResolvedValue(undefined),
+    } as never,
   )
-  const files = rows.map((_, i) => ({ fileName: `k${i}.pdf`, buffer: pdf(String(i)) }))
+  const files = rows.map((_, i) => ({
+    fileName: `k${i}.pdf`,
+    buffer: pdf(String(i)),
+    mimeType: 'application/pdf',
+  }))
   return { service, prisma, files }
 }
 

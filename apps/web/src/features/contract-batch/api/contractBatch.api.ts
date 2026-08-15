@@ -49,6 +49,11 @@ export interface ContractBatchRow {
   matchedUnitId: string | null
   createdLeaseId: string | null
   errorMessage: string | null
+  /**
+   * Arkiverat original (#473). Null för rader importerade före arkiveringen
+   * fanns — de filerna raderades vid skanning och går inte att återskapa.
+   */
+  documentId: string | null
 }
 
 export interface ContractBatch {

@@ -10,6 +10,7 @@ import {
 import { ContractScanBatchQueue, CONTRACT_SCAN_BATCH_QUEUE } from './contract-scan-batch.queue'
 import { enqueueSafely, isEnqueueProblem } from '../common/queue/enqueue-safety'
 import { estimateBatchCostSek, MAX_BATCH_FILES_ABSOLUTE } from './contract-scan-cost'
+import { ContractArchiveService } from './contract-archive.service'
 import { deterministicUnitMatcher } from './unit-matcher'
 import { buildLeaseDtoFromScan } from './contract-lease-builder'
 import { LEASE_CREATOR, type LeaseCreator } from './lease-creator.token'
@@ -18,6 +19,8 @@ import type { ScannedContract } from './contract-scanner.service'
 export interface UploadedFile {
   fileName: string
   buffer: Buffer
+  /** Faktiskt format — uppladdningen tillåter PDF, JPG, PNG och WEBP (#473). */
+  mimeType: string
 }
 
 export interface CreateBatchResult {
@@ -101,6 +104,7 @@ export class ContractScanBatchService {
     private readonly quota: AiQuotaService,
     private readonly queue: ContractScanBatchQueue,
     @Inject(LEASE_CREATOR) private readonly leases: LeaseCreator,
+    private readonly archive: ContractArchiveService,
   ) {}
 
   // ── Steg 1: skapa batch (med tak), lagra rader, enqueue skanning ──────────
@@ -161,6 +165,24 @@ export class ContractScanBatchService {
     // redan slagit i dagens AI-budget avvisas batchen innan den startar.
     await this.quota.checkOrgDailyCostCap(organizationId)
 
+    // #473: arkivera originalet FÖRE skanningen. `fileData` är fortfarande
+    // transient (workern läser den, den nollas vid SCANNED) — men filen finns nu
+    // kvar i R2 + Document, så granskningsvyn har en källa och avtalet har sitt
+    // undertecknade underlag. Arkiveras filen inte går raden inte att granska
+    // mot något, så ett fel här ska stoppa uppladdningen, inte tigas ihjäl.
+    const arkiverade: Array<{ documentId: string }> = []
+    for (const f of files) {
+      arkiverade.push(
+        await this.archive.archive({
+          buffer: f.buffer,
+          fileName: f.fileName,
+          mimeType: f.mimeType,
+          organizationId,
+          uploadedById: userId ?? undefined,
+        }),
+      )
+    }
+
     // Skapa batch + rader (rå PDF lagras transient i fileData) i en operation.
     const batch = await this.prisma.contractImportBatch.create({
       data: {
@@ -172,11 +194,12 @@ export class ContractScanBatchService {
         fileCapApplied: fileCap,
         costCapApplied: new Prisma.Decimal(costCap),
         rows: {
-          create: files.map((f) => ({
+          create: files.map((f, i) => ({
             organizationId,
             fileName: f.fileName,
             fileSize: f.buffer.length,
             fileData: f.buffer,
+            documentId: arkiverade[i]!.documentId,
             rowStatus: 'PENDING' as const,
           })),
         },
@@ -306,6 +329,7 @@ export class ContractScanBatchService {
             matchedUnitId: true,
             createdLeaseId: true,
             errorMessage: true,
+            documentId: true,
           },
         },
       },
@@ -335,6 +359,10 @@ export class ContractScanBatchService {
         matchedUnitId: r.matchedUnitId,
         createdLeaseId: r.createdLeaseId,
         errorMessage: r.errorMessage,
+        // #473: granskningsvyn behöver kunna VISA originalet, inte bara dess
+        // filnamn. Ett filnamn utan väg till filen är ett påstående om att
+        // dokumentet finns.
+        documentId: r.documentId,
       })),
     }
   }
@@ -356,11 +384,21 @@ export class ContractScanBatchService {
     // inget operationellt syfte för PII:n (personnummer, e-post m.m.).
     // (GDPR-dataminimering.) confirmedData/createdLeaseId finns aldrig på
     // SCANNED/PENDING-rader, så de behöver inte röras.
+    // #473: ta bort de arkiverade originalen också. Att nolla fileData men
+    // lämna kvar dokumentet i R2 hade gjort avbrytningen till en HALV radering —
+    // filen bär personnummer, och en avbruten batch blev aldrig ett avtal.
+    const attPurga = await this.prisma.contractImportRow.findMany({
+      where: { batchId: id, documentId: { not: null } },
+      select: { documentId: true },
+    })
+    await this.archive.purge(attPurga.map((r) => r.documentId!))
+
     await this.prisma.$transaction([
       this.prisma.contractImportRow.updateMany({
         where: { batchId: id },
         data: {
           fileData: null,
+          documentId: null,
           originalScanData: Prisma.JsonNull,
           reviewedData: Prisma.JsonNull,
         },
@@ -439,7 +477,12 @@ export class ContractScanBatchService {
   async matchRow(rowId: string): Promise<void> {
     const row = await this.prisma.contractImportRow.findUnique({
       where: { id: rowId },
-      select: { organizationId: true, rowStatus: true, reviewedData: true, confidence: true },
+      select: {
+        organizationId: true,
+        rowStatus: true,
+        reviewedData: true,
+        confidence: true,
+      },
     })
     if (!row || row.rowStatus !== 'SCANNED') return
     const scan = row.reviewedData as ScannedContract | null
@@ -512,6 +555,7 @@ export class ContractScanBatchService {
         rowStatus: true,
         matchStatus: true,
         matchedUnitId: true,
+        documentId: true,
         reviewedData: true,
         createdLeaseId: true,
       },
@@ -595,6 +639,19 @@ export class ContractScanBatchService {
         errorMessage: null,
       },
     })
+
+    // #473: koppla det arkiverade originalet till avtalet det gav upphov till.
+    // Efter avtalsskapandet med flit — misslyckas kopplingen är dokumentet kvar
+    // och kan länkas i efterhand, medan ett tillbakarullat avtal är en verklig
+    // förlust. `linkToLease` loggar och kastar inte.
+    if (row.documentId) {
+      // Bara leaseId och unitId länkas: LeaseCreator returnerar { id } och
+      // exponerar ingen tenantId. Att slå upp den bara för att fylla ett
+      // valfritt kopplingsfält är inte värt en extra query — dokumentet hittas
+      // via avtalet.
+      await this.archive.linkToLease(row.documentId, { leaseId: lease.id, unitId })
+    }
+
     await this.recomputeBatchCompletion(batchId, organizationId)
 
     return { rowId, leaseId: lease.id, alreadyCommitted: false }

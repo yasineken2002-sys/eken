@@ -1,3 +1,4 @@
+jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 /**
  * PR1 batch-kontraktsskanning — tjänstelogik.
  *
@@ -38,6 +39,7 @@ interface Mocks {
   quota: { checkOrgDailyCostCap: jest.Mock }
   queue: { enqueueRow: jest.Mock }
   leases: { createWithTenant: jest.Mock }
+  archive: { archive: jest.Mock; linkToLease: jest.Mock; purge: jest.Mock }
 }
 
 function make(overrides?: { maxFiles?: number; maxCostSek?: number; capThrows?: boolean }) {
@@ -74,12 +76,19 @@ function make(overrides?: { maxFiles?: number; maxCostSek?: number; capThrows?: 
     },
     queue: { enqueueRow: jest.fn().mockResolvedValue('job-1') },
     leases: { createWithTenant: jest.fn().mockResolvedValue({ id: 'lease-1' }) },
+    // #473: arkivtjänsten. Mockad här — dess egen spec äger beteendet.
+    archive: {
+      archive: jest.fn().mockResolvedValue({ documentId: 'doc-1', contentHash: 'h' }),
+      linkToLease: jest.fn().mockResolvedValue(undefined),
+      purge: jest.fn().mockResolvedValue(undefined),
+    },
   }
   const service = new ContractScanBatchService(
     mocks.prisma as never,
     mocks.quota as never,
     mocks.queue as never,
     mocks.leases as never,
+    mocks.archive as never,
   )
   return { service, mocks }
 }
@@ -97,6 +106,7 @@ describe('ContractScanBatchService.createBatch — batch-tak', () => {
     const files = [pdf('a'), pdf('b'), pdf('c')].map((b, i) => ({
       fileName: `k${i}.pdf`,
       buffer: b,
+      mimeType: 'application/pdf',
     }))
     await expect(service.createBatch(files, 'org-1', 'user-1')).rejects.toThrow(/För många filer/)
     expect(mocks.prisma.contractImportBatch.create).not.toHaveBeenCalled()
@@ -106,8 +116,12 @@ describe('ContractScanBatchService.createBatch — batch-tak', () => {
   it('avvisar en icke-PDF (magic-byte) innan något skapas', async () => {
     const { service, mocks } = make()
     const files = [
-      { fileName: 'ok.pdf', buffer: pdf() },
-      { fileName: 'evil.pdf', buffer: Buffer.from('<html>not a pdf</html>') },
+      { fileName: 'ok.pdf', buffer: pdf(), mimeType: 'application/pdf' },
+      {
+        fileName: 'evil.pdf',
+        buffer: Buffer.from('<html>not a pdf</html>'),
+        mimeType: 'application/pdf',
+      },
     ]
     await expect(service.createBatch(files, 'org-1', 'user-1')).rejects.toThrow(/Fil 2/)
     expect(mocks.prisma.contractImportBatch.create).not.toHaveBeenCalled()
@@ -115,14 +129,14 @@ describe('ContractScanBatchService.createBatch — batch-tak', () => {
 
   it('avvisar när estimerad kostnad överstiger kostnadstaket', async () => {
     const { service, mocks } = make({ maxCostSek: 0.0001 })
-    const files = [{ fileName: 'k.pdf', buffer: pdf() }]
+    const files = [{ fileName: 'k.pdf', buffer: pdf(), mimeType: 'application/pdf' }]
     await expect(service.createBatch(files, 'org-1', 'user-1')).rejects.toThrow(/överstiger taket/)
     expect(mocks.prisma.contractImportBatch.create).not.toHaveBeenCalled()
   })
 
   it('avvisar när den dagliga org-kostnadsbromsen redan slagit till', async () => {
     const { service, mocks } = make({ capThrows: true })
-    const files = [{ fileName: 'k.pdf', buffer: pdf() }]
+    const files = [{ fileName: 'k.pdf', buffer: pdf(), mimeType: 'application/pdf' }]
     await expect(service.createBatch(files, 'org-1', 'user-1')).rejects.toThrow(BadRequestException)
     expect(mocks.prisma.contractImportBatch.create).not.toHaveBeenCalled()
     expect(mocks.queue.enqueueRow).not.toHaveBeenCalled()
@@ -137,8 +151,8 @@ describe('ContractScanBatchService.createBatch — batch-tak', () => {
       rows: [{ id: 'row-1' }, { id: 'row-2' }],
     })
     const files = [
-      { fileName: 'a.pdf', buffer: pdf('a') },
-      { fileName: 'b.pdf', buffer: pdf('b') },
+      { fileName: 'a.pdf', buffer: pdf('a'), mimeType: 'application/pdf' },
+      { fileName: 'b.pdf', buffer: pdf('b'), mimeType: 'application/pdf' },
     ]
     const result = await service.createBatch(files, 'org-1', 'user-1')
 
@@ -327,6 +341,34 @@ describe('ContractScanBatchService — PR3 commit (avtal skapas via /leases/with
       ...over,
     }
   }
+
+  it('länkar det arkiverade originalet till avtalet vid commit (#473)', async () => {
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValue(scannedRow({ documentId: 'doc-7' }))
+    mocks.leases.createWithTenant.mockResolvedValue({ id: 'lease-9' })
+    mocks.prisma.contractImportBatch.findUnique.mockResolvedValue({ status: 'SCANNED' })
+
+    await service.confirmRow('batch-1', 'row-1', 'org-1', 'user-1')
+
+    expect(mocks.archive.linkToLease).toHaveBeenCalledWith(
+      'doc-7',
+      expect.objectContaining({ leaseId: 'lease-9' }),
+    )
+  })
+
+  it('en rad UTAN arkiverat original committas ändå (gamla importer)', async () => {
+    // documentId är null för allt som importerades innan arkiveringen fanns.
+    // De filerna går inte att återskapa, och avtalet ska inte blockeras av det.
+    const { service, mocks } = make()
+    mocks.prisma.contractImportRow.findFirst.mockResolvedValue(scannedRow({ documentId: null }))
+    mocks.leases.createWithTenant.mockResolvedValue({ id: 'lease-9' })
+    mocks.prisma.contractImportBatch.findUnique.mockResolvedValue({ status: 'SCANNED' })
+
+    const res = await service.confirmRow('batch-1', 'row-1', 'org-1', 'user-1')
+
+    expect(res.leaseId).toBe('lease-9')
+    expect(mocks.archive.linkToLease).not.toHaveBeenCalled()
+  })
 
   it('per-rad commit: AUTO_MATCHED → skapar avtal + markerar COMMITTED', async () => {
     const { service, mocks } = make()
@@ -518,6 +560,29 @@ describe('ContractScanBatchService.cancelBatch — purgar rå PDF', () => {
         where: { batchId: 'batch-1' },
         data: expect.objectContaining({ fileData: null }),
       }),
+    )
+  })
+
+  it('KANARIEFÅGEL: purgar även de ARKIVERADE originalen (#473)', async () => {
+    // Att nolla fileData men lämna kvar dokumentet i R2 gör avbrytningen till en
+    // HALV radering — filen bär personnummer och batchen blev aldrig ett avtal.
+    // Utan det här testet är purge-anropet borttagbart utan att något blir rött.
+    const { service, mocks } = make()
+    mocks.prisma.contractImportBatch.findFirst.mockResolvedValue({
+      id: 'batch-1',
+      status: 'SCANNED',
+    })
+    mocks.prisma.contractImportRow.findMany.mockResolvedValue([
+      { documentId: 'doc-1' },
+      { documentId: 'doc-2' },
+    ])
+
+    await service.cancelBatch('batch-1', 'org-1')
+
+    expect(mocks.archive.purge).toHaveBeenCalledWith(['doc-1', 'doc-2'])
+    // Och arkivpekaren nollas, så raden inte pekar på något raderat.
+    expect(mocks.prisma.contractImportRow.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ documentId: null }) }),
     )
   })
 
