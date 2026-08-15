@@ -248,6 +248,45 @@ jobs:
       - name: Verify generated/ matches .claude/knowledge/lagar/
         run: node apps/api/scripts/check-generated-knowledge-sync.mjs
 
+  migration-annotation:
+    name: Migrationer i denna PR (annotering)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Kräver en bas att diffa mot. På push till main finns ingen PR-bas, och då
+    # har annoteringen heller ingen läsare — granskningen har redan hänt.
+    if: github.event_name == 'pull_request'
+
+    # ── ICKE-BLOCKERANDE, OCH MEDVETET UTANFÖR `ci-passed` ────────────────────
+    # Jobbet PÅSTÅR INGENTING OM ATT NÅGOT ÄR FEL. En migration i en PR är
+    # normalt; att fälla PR:en för det vore fel. Det som saknades i #256/#257 var
+    # inte en regel utan SYNLIGHET: #257 var stackad ovanpå #256, så squashen bar
+    # med sig en oåterkallelig `DROP COLUMN` under titeln "larm + väntegolv när
+    # själva köandet fallerar". Ingen bröt mot någon regel — #257:s PR-text var
+    # korrekt för sitt eget arbete. Informationen fanns bara ingenstans.
+    #
+    # Därför står jobbet med flit UTANFÖR `ci-passed`:s needs-lista nedan. Det är
+    # inte ett förbiseende av den ⚠-noten; det är dess motsats. Ett jobb vars
+    # utfall alltid är "här är vad jag hittade" har ingen grind att bidra med.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Hela historiken — annars finns inte basen att diffa mot.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Kanariefågeln: matar in den VERKLIGA #257-migrationen och kräver att den
+      # plockas upp med DROP COLUMN, plus diskriminerande fall (ADD COLUMN och
+      # kommenterad DDL får INTE flaggas). En annoteringsvakt som slutat hitta
+      # något blir tyst, och tystnad ser exakt ut som "inga migrationer".
+      - name: Self-test the annotator (real #257 case detected, additive DDL not)
+        run: node apps/api/scripts/annotate-added-migrations.selftest.mjs
+
+      - name: List migrations added by this PR
+        run: node apps/api/scripts/annotate-added-migrations.mjs "${{ github.event.pull_request.base.sha }}"
+
   # ── Paraply: EN check att pinna en required-regel mot (#405) ────────────────
   #
   # VARFÖR: en branch protection-regel pinnas mot ett CHECKNAMN, inte mot ett
