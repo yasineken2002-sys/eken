@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common'
 import { SigningCryptoService } from '../../signing/signing-crypto.service'
 import { PersonalNumberService } from './personal-number.service'
+import { PiiCoherenceService } from './pii-coherence.service'
 
 /**
  * Gör personnummer-kryptot tillgängligt i hela appen.
@@ -15,10 +16,15 @@ import { PersonalNumberService } from './personal-number.service'
  * när SIGNING_ENABLED=true utan skarp adapter, och den fail-fasten hör till
  * signeringsfunktionen — inte till att spara en hyresgäst. Klassen är samma
  * klass, så nyckel-, IV- och authtag-hanteringen är bokstavligen densamma.
+ *
+ * `PiiCoherenceService` hör hemma här och inte i SigningModule av samma skäl:
+ * den kontrollerar att nyckeln och peppern fortfarande hör ihop med datan, och
+ * den datan skrivs av tenants/customers långt utanför signeringsflödet. Den
+ * exporteras inte — ingen anropar den, den larmar av sig själv vid uppstart.
  */
 @Global()
 @Module({
-  providers: [SigningCryptoService, PersonalNumberService],
+  providers: [SigningCryptoService, PersonalNumberService, PiiCoherenceService],
   exports: [PersonalNumberService],
 })
 export class PersonalNumberModule {}

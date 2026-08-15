@@ -18,6 +18,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:seed": "ts-node prisma/seed.ts",
+    "pii:rotate": "node --env-file-if-exists=.env -r ts-node/register src/scripts/rotate-pii-secrets.ts",
     "db:seed:platform": "ts-node prisma/seed-platform.ts",
     "db:seed:properties": "ts-node prisma/seed-properties.ts",
     "knowledge:generate": "ts-node scripts/generate-legal-knowledge.ts",

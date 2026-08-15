@@ -84,6 +84,7 @@ Två uppföljningar:
    Prod ska därför köra med krypteringen aktiv i några dagar först, och contract-fasen
    mergas när den är bevisad i verklig drift. Det som saknas är drifttid — inte kod,
    inte verifiering.
+
 2. **`ContractImportRow` lagrar fortfarande personnummer i klartext.**
    `originalScanData` / `reviewedData` / `confirmedData` är `Json`-kolumner och
    kontraktsskannern extraherar `personalNumber` dit. Det är en tredje
@@ -108,6 +109,21 @@ produktion utan dem**. Satta i Railway 2026-07-27, och sedan backfillen samma da
   bara räknas om från dekrypterad klartext, alltså behövs den gamla nyckeln även
   vid ren pepper-rotation. Ett "rotera secrets"-svep som byter dessa två utan
   migreringsskript förstör datan tyst.
+- **Vägen finns nu: `pnpm --filter @eken/api pii:rotate` (#459).** Två oberoende
+  lägen, ett i taget — `--mode=pepper` (räknar om blind-indexen) och `--mode=key`
+  (krypterar om chiffertexten). Kör **alltid `--dry-run` först**. Verktyget är
+  idempotent utan markörkolumn (rotationsstatus läses ur datan), avbryter HELA
+  körningen på en rad det inte kan klassificera, och skriver ingen rad vars
+  klartext det inte först läst tillbaka identiskt.
+
+  Två saker uppräkningen ovan missar, och som verktyget täcker:
+  **nyckelrotationen rör fem kolumner, inte tre** — `SignatureEvidence`s
+  `signaturePayload` och `certificate` krypteras med samma nyckel och blir
+  permanent oläsbara om de hoppas över. Och **peppar-rotationen kräver att inga
+  signeringsbegäranden är i luften**: `SigningRequest.requiredRoles` bär ett fryst
+  blind-index som inte kan räknas om utan att flytta identitetsbindningen.
+  Verktyget vägrar starta i det läget.
+
 - **Säkerhetskopiera dem utanför Railway** (lösenordshanterare eller motsvarande),
   åtskilt från databasbackuperna — en backup som ligger bredvid nyckeln skyddar
   ingenting. Nycklarna ingår inte i `pg_dump`-backupen och återskapas inte av en
