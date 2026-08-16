@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule'
 import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { isP2002From } from '../../common/prisma/p2002-constraint'
 import { runCronSafely, forEachOrgSafely } from '../../common/cron/cron-safety'
 import { allocatePlatformInvoiceNumber } from './platform-invoice-number'
 import { MailService } from '../../mail/mail.service'
@@ -94,22 +95,16 @@ function escapeMailText(s: string): string {
  * kollision på invoiceNumber-unikheten (ett nummer-race) — får ALDRIG behandlas
  * som benign: den ska larma, inte tyst maskeras som "fakturan fanns redan".
  *
- * err.meta.target-formen är EMPIRISKT verifierad mot dev-Postgres (Prisma
- * 5.19): BÅDA indexen rapporteras som en KOLUMN-ARRAY —
- * periodindexet ["organizationId","type","planPeriodStart"], invoiceNumber
- * ["invoiceNumber"]. Sträng-grenen (indexnamn) behålls som defensiv fallback ifall
- * Prisma/drivern skulle byta form. Default (okänd/saknad target) = INTE benign →
- * fail-safe: hellre ett larm än en tyst försvunnen faktura. (Jämför
- * isActiveUnitConflict i leases.service.ts som hanterar sträng-formen.)
+ * `planPeriodStart` är periodindexets SÄRSKILJANDE kolumn — invoiceNumber-indexet
+ * (["invoiceNumber"]) saknar den, så ett nummer-race kan inte råka klassas som
+ * benignt. Formen på err.meta.target och fail-closed-defaulten bärs numera av
+ * `isP2002From`; maskineriet låg tidigare inline här i en egen kopia.
  */
 function isPeriodIdempotencyConflict(err: Prisma.PrismaClientKnownRequestError): boolean {
-  const target = (err.meta as { target?: unknown } | undefined)?.target
-  // Verkligt fall: kolumn-array som innehåller planPeriodStart (periodindexets
-  // särskiljande kolumn; invoiceNumber-arrayen saknar den → INTE benign).
-  if (Array.isArray(target)) return target.includes('planPeriodStart')
-  // Defensiv fallback: om target någon gång rapporteras som indexnamn-sträng.
-  if (typeof target === 'string') return target.includes('platform_invoice_unique_period')
-  return false
+  return isP2002From(err, {
+    column: 'planPeriodStart',
+    indexName: 'platform_invoice_unique_period',
+  })
 }
 
 @Injectable()

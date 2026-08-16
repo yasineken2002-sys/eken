@@ -30,6 +30,7 @@ const REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH = 10
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { assertPaymentWithinDebt } from '../common/payments/payment-within-debt'
+import { isP2002From } from '../common/prisma/p2002-constraint'
 import {
   PaymentMethod,
   Prisma,
@@ -66,6 +67,23 @@ type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
 function pad2(n: number) {
   return String(n).padStart(2, '0')
 }
+
+/**
+ * Den ENDA P2002 aviseringens aktiveringsväg får behandla som benign idempotens.
+ *
+ * `RentNotice` har två unika index:
+ *   @@unique([leaseId, year, month, type])        ← periodnyckeln, benign
+ *   @@unique([organizationId, noticeNumber])      ← avinumret, ALDRIG benign
+ *
+ * `leaseId` är särskiljande: avinummer-indexet är ["organizationId","noticeNumber"]
+ * och saknar den, så ett nummer-race kan inte råka klassas som benignt.
+ * Indexnamnet (sträng-grenen) är verifierat mot migrationen
+ * 20260509200000_rent_notice_proration.
+ */
+const RENT_NOTICE_PERIOD_UNIQUE = {
+  column: 'leaseId',
+  indexName: 'RentNotice_leaseId_year_month_type_key',
+} as const
 
 @Injectable()
 export class AviseringService {
@@ -152,6 +170,38 @@ export class AviseringService {
         }`,
       )
     }
+  }
+
+  /**
+   * Hämtar avin som en BENIGN periodkollision påstår redan finns.
+   *
+   * Premissen i den grenen är exakt: `@@unique(leaseId, year, month, type)` bröts,
+   * alltså FINNS raden. Kommer `null` tillbaka är premissen falsk — och då är det
+   * inte idempotens vi råkat ut för utan något vi inte förstår. Att returnera
+   * `null` där vore att skriva tillbaka precis den tystnad den här ändringen
+   * stänger: `{ firstRent: null, mailed: false }` som ser ut som en lyckad
+   * aktivering.
+   *
+   * Därför en assertion, inte en `?? null`.
+   */
+  private async hämtaBefintligAvi(
+    leaseId: string,
+    year: number,
+    month: number,
+    type: RentNoticeType,
+  ): Promise<RentNotice> {
+    const befintlig = (await this.prisma.rentNotice.findFirst({
+      where: { leaseId, year, month, type },
+    })) as unknown as RentNotice | null
+
+    if (!befintlig) {
+      throw new InternalServerErrorException(
+        `Avisering: unikhetsbrottet på (leaseId, år, månad, typ) sa att avin redan fanns för ` +
+          `lease ${leaseId} ${year}-${month} (${type}), men ingen rad hittades. ` +
+          'Aktiveringen avbryts hellre än att rapporteras som lyckad utan avi.',
+      )
+    }
+    return befintlig
   }
 
   // Allokerar nästa avinummer i sekvensen AVI-{year}-{month}-{NNNN}. Vi
@@ -710,10 +760,14 @@ export class AviseringService {
           },
         })) as unknown as RentNotice
       } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-          depositNotice = (await this.prisma.rentNotice.findFirst({
-            where: { leaseId: lease.id, year, month, type: RentNoticeType.DEPOSIT },
-          })) as unknown as RentNotice | null
+        // Bara periodnyckeln är benign — se RENT_NOTICE_PERIOD_UNIQUE.
+        if (isP2002From(err, RENT_NOTICE_PERIOD_UNIQUE)) {
+          depositNotice = await this.hämtaBefintligAvi(
+            lease.id,
+            year,
+            month,
+            RentNoticeType.DEPOSIT,
+          )
         } else {
           throw err
         }
@@ -805,10 +859,14 @@ export class AviseringService {
         // Idempotens: en samtidig aktivering/retry hann skapa avin (P2002 på
         // @@unique(leaseId, year, month, type)). Den befintliga avin är redan
         // atomiskt bokförd av sitt ursprungliga anrop → hämta, boka inte om.
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-          firstRentNotice = (await this.prisma.rentNotice.findFirst({
-            where: { leaseId: lease.id, year, month, type: RentNoticeType.RENT },
-          })) as unknown as RentNotice | null
+        //
+        // Villkoret var tidigare bara `err.code === 'P2002'` — ALLA unikhetsbrott.
+        // En kollision på @@unique(organizationId, noticeNumber) klassades därmed
+        // som benign, `findFirst` hittade ingenting, och aktiveringen returnerade
+        // `{ firstRent: null, mailed: false }` som om allt gått bra. Hyresgästen
+        // fick aldrig sin första avi, och ingenting larmade.
+        if (isP2002From(err, RENT_NOTICE_PERIOD_UNIQUE)) {
+          firstRentNotice = await this.hämtaBefintligAvi(lease.id, year, month, RentNoticeType.RENT)
         } else {
           throw err
         }
