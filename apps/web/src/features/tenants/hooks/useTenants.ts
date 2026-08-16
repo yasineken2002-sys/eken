@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
+  anonymizeTenant,
   fetchActivationStatus,
   fetchTenants,
   fetchTenant,
@@ -66,6 +67,24 @@ export function useResendActivation() {
     mutationFn: (tenantId: string) => resendActivation(tenantId),
     onSuccess: (_data, tenantId) => {
       void queryClient.invalidateQueries({ queryKey: ACTIVATION_STATUS(tenantId) })
+    },
+  })
+}
+
+/**
+ * Avidentifiering (GDPR Art. 17) utförd av operatören.
+ *
+ * Invaliderar både listan och detaljen: hyresgästens namn ändras till
+ * "Raderad hyresgäst" och syns på båda ytorna. Nycklarna är disjunkta, så
+ * detaljen måste invalideras explicit.
+ */
+export function useAnonymizeTenant() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => anonymizeTenant(id, reason),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: tenantQueryKeys.allLists() })
+      void queryClient.invalidateQueries({ queryKey: TENANT_DETAIL(variables.id) })
     },
   })
 }

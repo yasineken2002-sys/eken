@@ -188,6 +188,11 @@ export interface Tenant {
   // välkomstmejlets aktiveringslänk och valt eget lösenord.
   portalActivated?: boolean
   portalActivatedAt?: string | null
+  // Satt när en raderingsbegäran (GDPR Art. 17) verkställts. Raden bevaras —
+  // underlaget måste finnas kvar — men de identifierande fälten är nollade.
+  // Fältet finns för att tillståndet ska vara läsbart: utan det är enda spåret
+  // att e-posten råkar matcha `gdpr-deleted-*@gdpr.invalid`.
+  anonymizedAt?: string | null
   createdAt: string
   updatedAt: string
 }

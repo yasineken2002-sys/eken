@@ -683,6 +683,7 @@ model Organization {
   sentMessages       SentMessage[]
   platformInvoices   PlatformInvoice[]
   impersonationLogs  ImpersonationLog[]
+  tenantAnonymizationLogs TenantAnonymizationLog[]
   errorLogs          ErrorLog[]
   contractNumberSequences ContractNumberSequence[]
   maintenanceTicketSequence MaintenanceTicketSequence?
@@ -765,6 +766,7 @@ model User {
   notifications       Notification[]
   newsPosts           NewsPost[]
   sentMessages        SentMessage[]
+  tenantAnonymizationLogs TenantAnonymizationLog[] @relation("TenantAnonymizationPerformedBy")
   impersonationLogs   ImpersonationLog[]   @relation("ImpersonationTargetUser")
 
   createdAt DateTime @default(now())
@@ -989,6 +991,22 @@ model Tenant {
   inviteComplainedAt  DateTime?
   lastInviteMessageId String?   @unique
 
+  // ── GDPR Art. 17: AVIDENTIFIERING, INTE RADERING ───────────────────────────
+  //
+  // Sätts när hyresgästens identifierande fält nollats. Fältet finns av två skäl,
+  // och det andra är det som gör det nödvändigt snarare än trevligt:
+  //
+  //   1. Tillståndet blir LÄSBART. Utan markören är enda spåret att en rad är
+  //      avidentifierad att e-posten råkar matcha `gdpr-deleted-*@gdpr.invalid`
+  //      — ett mönster, inte ett tillstånd.
+  //   2. Det gör hårdraderingens grind möjlig (se TenantsService.remove).
+  //
+  // Raderna BEVARAS: BFL kräver att räkenskapsunderlaget finns kvar, och en
+  // hyresgäst med historik går ändå aldrig att radera (elva Restrict-relationer
+  // pekar hit). Avidentifiering är därför den enda operation som faktiskt kan
+  // verkställa en raderingsbegäran här.
+  anonymizedAt DateTime?
+
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   leases             Lease[]
   invoices           Invoice[]
@@ -1008,6 +1026,7 @@ model Tenant {
   keyHandovers       KeyHandover[]
   consumptionCharges ConsumptionCharge[]
   miscCharges        MiscCharge[]
+  anonymizationLogs  TenantAnonymizationLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3271,6 +3290,46 @@ model ImpersonationLog {
   @@index([organizationId])
   @@index([targetUserId])
   @@index([startedAt])
+}
+
+/// Revisionsspår för verkställd avidentifiering (GDPR Art. 17).
+///
+/// FORMEN ÄR SPEGLAD, INTE UPPFUNNEN. `ImpersonationLog` besvarar redan frågan
+/// "vem gjorde vad mot vem, när, varifrån" i den här kodbasen, och en
+/// operatörsutförd avidentifiering är samma sorts händelse. Samma fältuppsättning
+/// (aktör, mål, tidpunkt, ipAddress, userAgent, reason) och samma
+/// Restrict-på-organisationen, av samma skäl: ett revisionsspår som försvinner
+/// när organisationen tas bort kan inte bevisa något.
+///
+/// `performedById` är NULLBAR, och nullvärdet betyder något bestämt: hyresgästen
+/// verkställde raderingen SJÄLV via portalen. Då finns ingen `User` att peka på.
+/// Att logga även den vägen är avsiktligt — en logg som bara känner till halva
+/// historiken ger fel svar på frågan "har den här personen begärt radering?".
+///
+/// Append-only i praktiken: raderna skrivs en gång och uppdateras aldrig. En
+/// upprepad avidentifiering av samma hyresgäst skriver INGEN ny rad (se
+/// anonymizeTenantWithin) — annars skulle en idempotent operation se ut som
+/// upprepade raderingsbegäranden i spåret.
+model TenantAnonymizationLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  tenantId       String
+  // null = hyresgästen själv via portalen; satt = operatör i webbappen.
+  performedById  String?
+  performedAt    DateTime @default(now())
+  ipAddress      String?
+  userAgent      String?
+  reason         String?
+
+  // Revisionsspåret måste bevaras vid org-borttagning (Restrict), av samma skäl
+  // som ImpersonationLog.
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  performedBy  User?        @relation("TenantAnonymizationPerformedBy", fields: [performedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([tenantId])
+  @@index([performedAt])
 }
 
 model ErrorLog {

@@ -17,6 +17,7 @@ import {
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
+import { useAuthStore } from '@/stores/auth.store'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { DataTable } from '@/components/ui/DataTable'
@@ -32,6 +33,7 @@ import {
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { Tenant } from '@eken/shared'
 import { InvitePortalModal } from './components/InvitePortalModal'
+import { AnonymizeTenantModal } from './components/AnonymizeTenantModal'
 import type { TenantWithCount, TenantDetail, LeaseWithUnit } from './api/tenants.api'
 import { cn } from '@/lib/cn'
 
@@ -314,6 +316,10 @@ interface DetailPanelProps {
 }
 
 function DetailPanel({ selected, selectedTenant }: DetailPanelProps) {
+  const role = useAuthStore((s) => s.user?.role)
+  const [anonymizeOpen, setAnonymizeOpen] = useState(false)
+  const alreadyAnonymized = !!selected.anonymizedAt
+
   return (
     <div className="space-y-5">
       {/* Portal-aktivering */}
@@ -415,6 +421,46 @@ function DetailPanel({ selected, selectedTenant }: DetailPanelProps) {
           </div>
         )}
       </div>
+
+      {/* GDPR — bara OWNER, av samma skäl som endpointet: åtgärden tar bort en
+          persons uppgifter ur ett underlag som måste bevaras, och går inte att
+          ångra. Se TenantsController.anonymize. */}
+      {role === 'OWNER' && (
+        <div className="border-t border-[#EAEDF0] pt-5">
+          <p className="mb-3 text-[13px] font-semibold text-gray-700">Personuppgifter</p>
+          {alreadyAnonymized ? (
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+              <p className="text-[13px] font-medium text-gray-700">Redan avidentifierad</p>
+              <p className="mt-1 text-[12px] text-gray-500">
+                Personuppgifterna togs bort {formatDate(selected.anonymizedAt!)}. Historiken bevaras
+                som underlag.
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-start justify-between gap-4 rounded-xl border border-gray-100 p-4">
+              <p className="text-[12px] text-gray-500">
+                Verkställ en raderingsbegäran enligt GDPR. Personuppgifterna tas bort permanent,
+                medan avtal, avier och verifikat bevaras.
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setAnonymizeOpen(true)}
+                className="shrink-0"
+              >
+                Avidentifiera
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <AnonymizeTenantModal
+        open={anonymizeOpen}
+        onClose={() => setAnonymizeOpen(false)}
+        tenantId={selected.id}
+        tenantName={displayName(selected)}
+      />
     </div>
   )
 }

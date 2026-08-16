@@ -478,6 +478,7 @@ export class TenantPortalController {
   async deleteMyAccount(
     @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
     @Body() dto: DeleteAccountDto,
+    @Req() req: FastifyRequest,
   ): Promise<void> {
     // Kräver passwordHash för bcrypt-jämförelsen vid kontoradering — alltså en
     // credential-bärande läsning, och den går genom den enda tillåtna vägen.
@@ -487,7 +488,12 @@ export class TenantPortalController {
     }
     const valid = await bcrypt.compare(dto.password, fresh.passwordHash)
     if (!valid) throw new UnauthorizedException('Felaktigt lösenord')
-    await this.portalService.deleteTenantAccount(tenant.id)
+    const ipAddress = req.ip
+    const userAgent = (req.headers['user-agent'] as string | undefined) ?? undefined
+    await this.portalService.deleteTenantAccount(tenant.id, {
+      ...(ipAddress ? { ipAddress } : {}),
+      ...(userAgent ? { userAgent } : {}),
+    })
   }
 
   @Get('dashboard')

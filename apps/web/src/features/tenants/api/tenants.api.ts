@@ -15,6 +15,16 @@ export type TenantDetail = TenantWithCount & {
   leases: LeaseWithUnit[]
 }
 
+export type AnonymizeResult = {
+  /** false = hyresgästen var redan avidentifierad; ingen ny loggpost skrevs. */
+  performed: boolean
+  anonymizedAt: string
+}
+
+export function anonymizeTenant(id: string, reason?: string): Promise<AnonymizeResult> {
+  return post<AnonymizeResult>(`/tenants/${id}/anonymize`, reason ? { reason } : {})
+}
+
 export type UpdateTenantInput = {
   type?: 'INDIVIDUAL' | 'COMPANY'
   firstName?: string

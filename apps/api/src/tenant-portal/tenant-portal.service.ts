@@ -14,6 +14,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { rentNoticeOutstanding } from '../avisering/rent-debt.service'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { readTenantWithCredentials } from './tenant-credential-read'
+import { anonymizeTenantWithin } from '../common/gdpr/anonymize-tenant'
 
 /**
  * Safe Prisma SELECT för MaintenanceTicket som exponeras mot hyresgästportalen.
@@ -1053,38 +1054,28 @@ export class TenantPortalService {
    * personuppgifterna (namn, e-post, telefon, personnummer) så ingen
    * återidentifiering är möjlig.
    */
-  async deleteTenantAccount(tenantId: string) {
-    await this.prisma.$transaction(async (tx) => {
-      const masked = `gdpr-deleted-${tenantId.slice(0, 8)}`
-      await tx.tenant.update({
-        where: { id: tenantId },
-        data: {
-          firstName: null,
-          lastName: null,
-          companyName: 'Raderad hyresgäst',
-          email: `${masked}@gdpr.invalid`,
-          phone: null,
-          // Radera personnumret i BÅDA kolumnerna: chiffertext och blind-index.
-          // Missas blind-indexet går personen fortfarande att korrelera efter en
-          // Art. 17-radering.
-          personalNumberEnc: null,
-          personalNumberHash: null,
-          orgNumber: null,
-          street: null,
-          city: null,
-          postalCode: null,
-          contactPerson: null,
-          passwordHash: null,
-          portalActivated: false,
-          activationTokenHash: null,
-          activationTokenExpiresAt: null,
-          activationReminderSentAt: null,
-          passwordResetTokenHash: null,
-          passwordResetTokenExpiresAt: null,
-        },
-      })
-      // Radera alla aktiva sessioner
-      await tx.tenantSession.deleteMany({ where: { tenantId } })
+  /**
+   * Hyresgästens EGEN radering via portalen (GDPR Art. 17).
+   *
+   * Skrubben ligger i `anonymizeTenantWithin`, delad med operatörsvägen
+   * (`TenantsService.anonymize`). Fältlistan låg tidigare inline här; två kopior
+   * divergerar första gången någon lägger till en kolumn, och den divergensen
+   * syns inte i något test som bara kör en av vägarna.
+   *
+   * `performedById: null` betyder i loggen att hyresgästen verkställde själv —
+   * det finns ingen `User` att peka på här.
+   */
+  async deleteTenantAccount(tenantId: string, meta?: { ipAddress?: string; userAgent?: string }) {
+    const tenant = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { organizationId: true },
     })
+    return this.prisma.$transaction(async (tx) =>
+      anonymizeTenantWithin(tx, tenantId, tenant.organizationId, {
+        performedById: null,
+        ...(meta?.ipAddress ? { ipAddress: meta.ipAddress } : {}),
+        ...(meta?.userAgent ? { userAgent: meta.userAgent } : {}),
+      }),
+    )
   }
 }
