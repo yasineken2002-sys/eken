@@ -10,6 +10,9 @@ export interface AutoMatchResult {
   /** Matchningen KASTADE (bokföringsfel, timeout, DB-fel). Inte samma sak som att
    *  ingen match hittades — se kommentaren i reconciliation.service.ts. */
   failed: number
+  /** Bar en OCR som inte löste ut, och beloppsgissades därför inte. Ingår i
+   *  `unmatched` — "en ledtråd som inte stämde" är något annat än "ingen ledtråd". */
+  skippedUnresolvedOcr: number
 }
 
 // ─── PDF-import (AI-tolkat kontoutdrag) ──────────────────────────────────────

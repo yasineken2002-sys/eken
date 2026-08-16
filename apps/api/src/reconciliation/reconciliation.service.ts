@@ -62,6 +62,13 @@ export interface AutoMatchResult {
    * har ingen anledning att titta i loggen.
    */
   failed: number
+  /**
+   * Transaktioner som bar en OCR som inte löste ut, och som därför INTE
+   * beloppsgissades. De ingår i `unmatched` — räknaren finns för att skilja
+   * "ingen ledtråd alls" från "en ledtråd som inte stämde", vilket är två helt
+   * olika saker för den som ska granska manuellt.
+   */
+  skippedUnresolvedOcr: number
 }
 
 /**
@@ -946,6 +953,44 @@ export class ReconciliationService {
       }
     }
 
+    // ── M2: EN EXPLICIT MEN OLÖST OCR GISSAS INTE PÅ ──────────────────────
+    //
+    // Kommer vi hit med `rawOcr` SATT har betalaren angett en identifierare som
+    // INTE löste ut — varken mot faktura, avi eller referensnummer. Att då gå
+    // vidare till fuzzy är att ersätta ett känt fel med en kvalificerad
+    // chansning: fuzzy matchar på BELOPP (unik kandidat inom 1 kr, 90 dagar) och
+    // kan därför kreditera en TREDJE PARTS avi.
+    //
+    // ── VARFÖR JUST DEN HÄR GRENEN INTE SKA GISSA (mätt) ───────────────────
+    //
+    // Luhn-kontrollsiffran avgör vilka fel som ens blir en `rawOcr`:
+    //
+    //     enkelsiffrig felskrivning   0 av 396 passerar   (0,0 %)
+    //     transponerade grannar       4 av 12  passerar   (33,3 %)
+    //     två samtidiga fel          23 av 220 passerar   (10,5 %)
+    //
+    // En enkel felskrivning fångas alltså till HUNDRA procent — den blir aldrig
+    // en `rawOcr` utan `rawOcr = null`, och går redan i dag till fuzzy helt
+    // legitimt. Populationen som når hit består i stället av transpositioner som
+    // klarade Luhn, OCR från en ANNAN organisation, och gamla OCR för redan
+    // reglerade avier. I inget av de fallen är en beloppsgissning rätt svar.
+    //
+    // ── ORSAKEN, INTE BARA UTFALLET ───────────────────────────────────────
+    //
+    // Transaktionen förblir UNMATCHED, vilket redan betyder "väntar på manuell
+    // matchning" — inget nytt tillstånd behövs. Det som saknades var ORSAKEN.
+    // Det finns ingen händelsetabell för banktransaktioner, så orsaken bärs som
+    // en TYPAD anledning i utfallet plus en loggrad, samma mönster som
+    // `ApiIngestResult`s `rejected`-gren: "INGET tyst bortfall."
+    if (transaction.rawOcr) {
+      this.logger.warn(
+        `[reconciliation] transaktion ${transaction.id} (org ${organizationId}) bär OCR ` +
+          `${transaction.rawOcr} som inte löste ut mot någon faktura eller avi. Lämnas ` +
+          'UNMATCHED för manuell granskning — beloppsgissning (fuzzy) hoppas över med flit.',
+      )
+      return false
+    }
+
     // ── 3. Fuzzy-match: belopp + datum-fönster över BÅDA tabellerna ────
     // 90-dagarsfönstret håller oss inom rimligt sortiment och hindrar gamla
     // obetalda fakturor från att felmatcha mot dagsfärska betalningar.
@@ -1735,10 +1780,16 @@ export class ReconciliationService {
 
     let matched = 0
     let failed = 0
+    // M2: transaktioner som bar en OCR som inte löste ut. Härledbart utan att
+    // ändra `matchTransaction`s signatur — den tidiga returen är EXAKT fallet
+    // "rawOcr satt och ingen match", eftersom varje väg som löser ut en satt OCR
+    // returnerar true.
+    let skippedUnresolvedOcr = 0
     for (const tx of candidates) {
       try {
         const ok = await this.matchTransaction(tx, organizationId)
         if (ok) matched++
+        else if (tx.rawOcr) skippedUnresolvedOcr++
       } catch (err) {
         // ── FÖRVÄNTAT vs FEL ──────────────────────────────────────────────
         //
@@ -1776,7 +1827,20 @@ export class ReconciliationService {
 
     // `unmatched` är resten EFTER att felen räknats bort — den får inte längre
     // svälja dem. matched + unmatched + failed === candidates.length, alltid.
-    return { matched, unmatched: candidates.length - matched - failed, failed }
+    if (skippedUnresolvedOcr > 0) {
+      this.logger.warn(
+        `[reconciliation] auto-match för org ${organizationId}: ${skippedUnresolvedOcr} ` +
+          'transaktion(er) bar en OCR som inte löste ut och beloppsgissades därför INTE. ' +
+          'De väntar på manuell granskning.',
+      )
+    }
+
+    return {
+      matched,
+      unmatched: candidates.length - matched - failed,
+      failed,
+      skippedUnresolvedOcr,
+    }
   }
 
   /**
