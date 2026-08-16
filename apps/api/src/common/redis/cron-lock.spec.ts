@@ -198,8 +198,22 @@ describe('FAIL-CLOSED FÅR INTE BLI FAIL-FOREVER', () => {
     const locks = new LockService(redis as never)
     const kört: string[] = []
 
-    // Simulera en replik som dog mitt i jobbet: låset togs, releasen kom aldrig.
-    await redis.client.set('lock:cron:morning-insights', 'död-replik', 'EX', 1800, 'NX')
+    // Simulera en replik som dog mitt i jobbet: låset togs GENOM runIfUnlocked,
+    // men releasen kom aldrig fram.
+    //
+    // Att så låset för hand hade varit enklare — och hade mätt fel sak. Då
+    // prövas bara att "ett lås med TTL löper ut", inte att den TTL runIfUnlocked
+    // SJÄLV sätter gör det. Uppmätt: med handsått lås förblev det här testet
+    // grönt när SET fick en TTL på 999999999 s.
+    redis.client.eval = jest.fn(async (_lua: string, _n: number, _k: string, _t: string) => {
+      throw new Error('release tappad')
+    })
+    // Anropet LYCKAS — ett misslyckat släpp får med flit inte fälla jobbet, det
+    // loggas bara. Men låset blir kvar, och det är hela problemet.
+    await expect(
+      locks.runIfUnlocked('cron:morning-insights', async () => undefined, { ttlSec: 1800 }),
+    ).resolves.toEqual({ ran: true, value: undefined })
+    expect(redis.has('lock:cron:morning-insights')).toBe(true)
 
     // Nästa schemalagda körning hoppas över — det är meningen.
     const under = await locks.runIfUnlocked(
