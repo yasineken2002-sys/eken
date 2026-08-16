@@ -688,6 +688,7 @@ model Organization {
   maintenanceTicketSequence MaintenanceTicketSequence?
   journalEntrySequences JournalEntrySequence[]
   rentNoticeNumberSequences RentNoticeNumberSequence[]
+  tenantOcrSequence  TenantOcrSequence?
   invoiceNumberSequence InvoiceNumberSequence?
   deposits           Deposit[]
   rentIncreases      RentIncrease[]
@@ -939,7 +940,13 @@ model Tenant {
   postalCode     String?
   country        String?    @default("SE")
 
-  ocrNumber String? @unique
+  // H1: unikt PER ORGANISATION, inte globalt. Globalt unikt var inte ett
+  // funktionellt krav — varje OCR-uppslag i matchningen bär organizationId
+  // (reconciliation.service.ts:798-801, :839-842) eftersom betalningen landar på
+  // organisationens EGET bankgiro. Globaliteten gjorde däremot prefixkollisionen
+  // till ett hårt fel: två orgar som delade prefix kunde inte båda ha en tenant
+  // #1. Se docs/ och OcrService.
+  ocrNumber String?
 
   // ─── Portal-aktivering & lösenordsautentisering ─────────────────────────────
   // portalActivated sätts när hyresgästen genomfört aktiveringsflödet
@@ -1006,6 +1013,7 @@ model Tenant {
   updatedAt DateTime @updatedAt
 
   @@unique([organizationId, email])
+  @@unique([organizationId, ocrNumber])
   @@index([organizationId])
   @@index([organizationId, personalNumberHash])
 }
@@ -2178,6 +2186,27 @@ model JournalEntrySequence {
 //
 // Speglar JournalEntrySequence ovan: komposit-@@id, lastNumber, atomisk
 // increment-UPSERT (se rent-notice-number.ts).
+// ─── TenantOcrSequence (H1) ───────────────────────────────────────────────────
+//
+// OCR-numret tilldelades tidigare med `tenant.count() + 1` plus ett prefix
+// härlett ur organisationens UUID (`(first4hex mod 9000) + 1000`). Två fel i ett:
+//
+//   • count()+1 är en race — två samtidiga tilldelningar får samma nummer.
+//   • Prefixhinken rymmer 9000 värden. Vid 112 organisationer är risken 50 % att
+//     minst två delar prefix, och delade de prefix fick deras tenant #1 IDENTISKT
+//     OCR. Med den dåvarande GLOBALA unikheten kastade den andra orgens
+//     tilldelning P2002 och hyresgästen fick inget OCR alls.
+//
+// En räknare per organisation löser båda. Scopet är hela nyckeln — unikheten är
+// numera @@unique([organizationId, ocrNumber]), så två orgar får dela nummer.
+model TenantOcrSequence {
+  organizationId String   @id
+  lastNumber     Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+}
+
 model RentNoticeNumberSequence {
   organizationId String
   year           Int
