@@ -13,6 +13,8 @@ import {
   MEMORY_RETENTION_DAYS,
   RETENTION_BATCH_SIZE,
   USAGE_LOG_RETENTION_DAYS,
+  RETENTION_DECISION_DEADLINE,
+  retentionDeadlinePassed,
   retentionModeFromEnv,
   type RetentionMode,
 } from './ai-retention.constants'
@@ -236,6 +238,17 @@ export class AiRetentionService {
    */
   private report(outcome: RetentionOutcome): void {
     const label = outcome.mode === 'enforce' ? 'VERKSTÄLLT' : 'TORRKÖRNING (raderade inget)'
+
+    // Datumet i konstanterna är annars bara en kommentar. Har det passerat medan
+    // cronen fortfarande torrkör är gallringen en åtgärdad post som inte gallrar
+    // — och det ska synas i varje körning, inte upptäckas av en slump.
+    if (retentionDeadlinePassed(outcome.mode)) {
+      this.logger.warn(
+        `[ai-retention] BESLUTSDATUMET ${RETENTION_DECISION_DEADLINE} HAR PASSERAT och cronen ` +
+          'torrkör fortfarande. Sätt AI_RETENTION_MODE=enforce eller ta bort cronen — ' +
+          'ingen tredje väg. Se GDPR-ärendet.',
+      )
+    }
 
     if (outcome.total === 0) {
       this.logger.log(`[ai-retention] ${label}: inget att gallra.`)

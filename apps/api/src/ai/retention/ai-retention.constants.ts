@@ -97,8 +97,40 @@ export const RETENTION_BATCH_SIZE = 500
  *
  * Samma ordning som `rotate-pii-secrets`: mätning före verkställighet.
  */
+/**
+ * ── BESLUTSDATUM: 2026-09-16 ────────────────────────────────────────────────
+ *
+ * Torrkörning som default är rätt konstruktion för att komma igång, och fel som
+ * varaktigt tillstånd. En gallring som aldrig gallrar är inte en mitigering —
+ * den är en post som SER åtgärdad ut i backloggen medan exponeringen växer
+ * precis som förut. Det är den farligaste formen av det här bygget.
+ *
+ * DÄRFÖR ETT DATUM: infört 2026-08-16. Senast **2026-09-16**, alltså efter en
+ * månads nattliga torrkörningar, ska läget antingen sättas till `enforce` i
+ * produktion eller så ska hela cronen tas bort. Ingen tredje väg.
+ *
+ * En månad är valt så att den kortaste fristen (90 dagar för läsande verktyg)
+ * hinner ge utslag i loggen på riktig data innan beslutet fattas — annars fattas
+ * det på noll mätpunkter.
+ *
+ * Den som läser det här efter 2026-09-16 utan att beslutet är fattat ska ta upp
+ * frågan, inte förlänga tystnaden. Se GDPR-ärendet.
+ */
+export const RETENTION_DECISION_DEADLINE = '2026-09-16'
+
 export type RetentionMode = 'dry-run' | 'enforce'
 
 export function retentionModeFromEnv(env: NodeJS.ProcessEnv = process.env): RetentionMode {
   return env['AI_RETENTION_MODE'] === 'enforce' ? 'enforce' : 'dry-run'
+}
+
+/**
+ * Har beslutsdatumet passerat utan att läget satts?
+ *
+ * Kontrollen finns för att datumet ovan annars bara är en kommentar. Passeras
+ * det medan cronen fortfarande torrkör säger loggen ifrån vid varje körning —
+ * en tyst torrkörning är exakt det tillstånd datumet ska förhindra.
+ */
+export function retentionDeadlinePassed(mode: RetentionMode, now = new Date()): boolean {
+  return mode === 'dry-run' && now.toISOString().slice(0, 10) > RETENTION_DECISION_DEADLINE
 }

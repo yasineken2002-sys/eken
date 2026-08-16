@@ -12,7 +12,12 @@
 jest.mock('../../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { AiRetentionService } from './ai-retention.service'
-import { CONVERSATION_RETENTION_DAYS, MEMORY_RETENTION_DAYS } from './ai-retention.constants'
+import {
+  CONVERSATION_RETENTION_DAYS,
+  MEMORY_RETENTION_DAYS,
+  RETENTION_DECISION_DEADLINE,
+  retentionDeadlinePassed,
+} from './ai-retention.constants'
 import {
   ACCOUNTING_TOOL_RETENTION_DAYS,
   READ_TOOL_RETENTION_DAYS,
@@ -327,5 +332,28 @@ describe('rapportering per organisation', () => {
     // En gallring som inte kan svara "vems rader tog du" går inte att granska
     // i efterhand — raderna är ju borta.
     expect(mem?.perOrganization).toEqual({ 'org-1': 2, 'org-2': 1 })
+  })
+})
+
+describe('beslutsdatumet', () => {
+  it('varnar när datumet passerat och cronen fortfarande torrkör', () => {
+    // Utan den här kontrollen är datumet en kommentar, och en gallring som
+    // aldrig gallrar ser ut som en åtgärdad post i backloggen.
+    expect(retentionDeadlinePassed('dry-run', new Date('2099-01-01'))).toBe(true)
+  })
+
+  it('varnar INTE när läget är enforce — då är beslutet fattat', () => {
+    expect(retentionDeadlinePassed('enforce', new Date('2099-01-01'))).toBe(false)
+  })
+
+  it('varnar INTE före datumet', () => {
+    expect(retentionDeadlinePassed('dry-run', new Date('2026-08-17'))).toBe(false)
+  })
+
+  it('datumet ligger efter den kortaste fristen, annars fattas beslutet på noll mätpunkter', () => {
+    const infört = new Date('2026-08-16')
+    const beslut = new Date(RETENTION_DECISION_DEADLINE)
+    const dagar = Math.round((beslut.getTime() - infört.getTime()) / (24 * 60 * 60 * 1000))
+    expect(dagar).toBeGreaterThanOrEqual(28)
   })
 })
