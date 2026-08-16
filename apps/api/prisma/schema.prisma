@@ -687,6 +687,7 @@ model Organization {
   contractNumberSequences ContractNumberSequence[]
   maintenanceTicketSequence MaintenanceTicketSequence?
   journalEntrySequences JournalEntrySequence[]
+  rentNoticeNumberSequences RentNoticeNumberSequence[]
   invoiceNumberSequence InvoiceNumberSequence?
   deposits           Deposit[]
   rentIncreases      RentIncrease[]
@@ -2161,6 +2162,32 @@ model JournalEntrySequence {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@id([organizationId, fiscalYear, series])
+}
+
+// ─── RentNoticeNumberSequence (M3) ────────────────────────────────────────────
+//
+// Avinumret allokerades tidigare med max+1: läs högsta befintliga suffix för
+// (org, år, månad) och lägg på ett. Två överlappande genereringar läste samma
+// max och fick SAMMA nummer — mätt, inte antaget.
+//
+// Scopet är (organizationId, year, month) därför att numret bär år och månad i
+// STRÄNGEN (`AVI-{år}-{mm}-{NNNN}`). Unikheten är @@unique([organizationId,
+// noticeNumber]) — per org — men eftersom prefixet skiljer januari från februari
+// räcker det att löpnumret är unikt inom sin månad. Sekvensens scope matchar
+// alltså den del av strängen som faktiskt kan kollidera.
+//
+// Speglar JournalEntrySequence ovan: komposit-@@id, lastNumber, atomisk
+// increment-UPSERT (se rent-notice-number.ts).
+model RentNoticeNumberSequence {
+  organizationId String
+  year           Int
+  month          Int
+  lastNumber     Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@id([organizationId, year, month])
 }
 
 // Plattformsglobal löpnummerserie för organisationernas kundnummer

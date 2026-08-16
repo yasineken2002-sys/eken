@@ -13,6 +13,8 @@ import { AviseringService } from './avisering.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { backfillRentDueDate, BACKFILL_MIN_DAYS_UNTIL_DUE } from '@eken/shared'
 
+let __seq = 0
+
 type Line = { accountId: string; debit?: number; credit?: number; description: string }
 
 function makeRig(opts: {
@@ -25,6 +27,11 @@ function makeRig(opts: {
   let noticeData: Record<string, unknown> | null = null
 
   const tx = {
+    // M3: avinumret allokeras ur RentNoticeNumberSequence. Räknaren gör att
+    // riggen ger löpande nummer i stället för samma varje gång.
+    rentNoticeNumberSequence: {
+      upsert: jest.fn().mockImplementation(() => Promise.resolve({ lastNumber: ++__seq })),
+    },
     rentNotice: {
       findMany: jest.fn().mockResolvedValue([]), // nextNoticeNumber → serie 0001
       create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => {

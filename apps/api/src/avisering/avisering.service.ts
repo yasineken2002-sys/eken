@@ -31,6 +31,7 @@ const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 1
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { assertPaymentWithinDebt } from '../common/payments/payment-within-debt'
 import { isP2002From } from '../common/prisma/p2002-constraint'
+import { allocateRentNoticeNumber } from './rent-notice-number'
 import {
   PaymentMethod,
   Prisma,
@@ -63,10 +64,6 @@ type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
     lines: true
   }
 }>
-
-function pad2(n: number) {
-  return String(n).padStart(2, '0')
-}
 
 /**
  * Den ENDA P2002 aviseringens aktiveringsväg får behandla som benign idempotens.
@@ -204,43 +201,14 @@ export class AviseringService {
     return befintlig
   }
 
-  // Allokerar nästa avinummer i sekvensen AVI-{year}-{month}-{NNNN}. Vi
-  // söker max-suffix per (year, month) och räknar uppåt från den. Detta
-  // tål gaps och historik från tidigare format (t.ex. AVI-XXXXXX) — det
-  // som spelar roll är att vi får ett ledigt nummer i AVI-{y}-{m}-XXXX.
+  // Avinumret allokeras av `allocateRentNoticeNumber` (rent-notice-number.ts) —
+  // en atomär increment-UPSERT mot RentNoticeNumberSequence, samma mönster som
+  // verifikationsnumren. Den ersatte en max+1-läsning som två överlappande
+  // genereringar kunde läsa samtidigt och få samma nummer ur.
   //
-  // Race-säkerhet: två parallella requests kan teoretiskt hämta samma max
-  // och skapa duplicat — vi förlitar oss på @@unique([organizationId,
-  // noticeNumber]) och en backoff-retry. För månadscronen körs dock allt
-  // sekventiellt.
-  private async nextNoticeNumber(
-    organizationId: string,
-    year: number,
-    month: number,
-    offset = 0,
-    // T1.4: valfri transaktionsklient så backfillen kan allokera avinumret INUTI
-    // samma tx som avin + verifikatet skapas (atomiskt). Default: prisma.
-    db?: Prisma.TransactionClient,
-  ): Promise<string> {
-    const client = db ?? this.prisma
-    const prefix = `AVI-${year}-${pad2(month)}-`
-    // SECURITY/korrekthet (H1): scopa sekvensen till organisationen. Utan
-    // organizationId-filtret räknades max-sekvensen över ALLA orgars avier,
-    // så en ny kunds serie kunde börja på t.ex. AVI-2026-06-0047. Träffar nu
-    // @@index([organizationId, noticeNumber]) i stället för full table scan.
-    const existing = await client.rentNotice.findMany({
-      where: { organizationId, noticeNumber: { startsWith: prefix } },
-      select: { noticeNumber: true },
-    })
-    let maxSeq = 0
-    for (const e of existing) {
-      const tail = e.noticeNumber.slice(prefix.length)
-      const n = parseInt(tail, 10)
-      if (!Number.isNaN(n) && n > maxSeq) maxSeq = n
-    }
-    const seq = maxSeq + offset + 1
-    return `${prefix}${String(seq).padStart(4, '0')}`
-  }
+  // Anropet ligger med flit INUTI avi-transaktionen: radlåset på scope-raden är
+  // det som serialiserar samtidig generering inom (org, år, månad). Se
+  // kommentaren i rent-notice-number.ts innan du flyttar det.
 
   async generateMonthlyNotices(orgId: string, month: number, year: number) {
     const genMonthStart = new Date(year, month - 1, 1)
@@ -336,10 +304,14 @@ export class AviseringService {
 
         // T5 A1 (BFL 5:6): avi + intäktsverifikat i EN transaktion — antingen båda
         // eller ingendera. Kastar bokföringen (stängd period/DB-fel) rullas avin
-        // tillbaka (ingen orphan). Avinumret allokeras INUTI tx:en (backfill-
-        // mönstret). offset=created bevarar exakt befintlig numrering.
+        // tillbaka (ingen orphan).
+        //
+        // Avinumret allokeras INUTI tx:en — inte av bekvämlighet utan för att
+        // sekvensradens lås ska serialisera samtidiga genereringar. En rollback
+        // rullar tillbaka även ökningen, så inga nummer läcker (mätt mot riktig
+        // Postgres — se rent-notice-number.ts).
         notice = await this.prisma.$transaction(async (tx) => {
-          const noticeNumber = await this.nextNoticeNumber(orgId, year, month, created, tx)
+          const noticeNumber = await allocateRentNoticeNumber(tx, orgId, year, month)
           const n = (await tx.rentNotice.create({
             data: {
               organizationId: orgId,
@@ -520,7 +492,7 @@ export class AviseringService {
     const { proration, vatAmount, totalAmount } = this.computeRentNoticeAmounts(lease, year, month)
     if (proration.daysCharged <= 0) return null
 
-    const noticeNumber = await this.nextNoticeNumber(lease.organizationId, year, month, 0, tx)
+    const noticeNumber = await allocateRentNoticeNumber(tx, lease.organizationId, year, month)
 
     const notice = (await tx.rentNotice.create({
       data: {
@@ -741,7 +713,7 @@ export class AviseringService {
     const depositAmount = Number(lease.depositAmount ?? 0)
     if (depositAmount > 0 && !opts.skipDeposit) {
       try {
-        const noticeNumber = await this.nextNoticeNumber(orgId, year, month)
+        const noticeNumber = await allocateRentNoticeNumber(this.prisma, orgId, year, month)
         depositNotice = (await this.prisma.rentNotice.create({
           data: {
             organizationId: orgId,
@@ -814,13 +786,7 @@ export class AviseringService {
         // Kastar bokföringen (stängd period/DB-fel) rullas avin tillbaka → ingen
         // orphan (tidigare bokfördes den utanför tx och sväljdes/loggades).
         firstRentNotice = await this.prisma.$transaction(async (tx) => {
-          const noticeNumber = await this.nextNoticeNumber(
-            orgId,
-            year,
-            month,
-            depositNotice ? 1 : 0,
-            tx,
-          )
+          const noticeNumber = await allocateRentNoticeNumber(tx, orgId, year, month)
           // Moms enligt upplåtelsetyp (ML 10 kap. 35 § / 9 kap). Bostad → 0.
           const { vatAmount, totalAmount } = this.rentVat(
             proration.amount,
