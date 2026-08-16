@@ -24,6 +24,14 @@ function makeService(opts: {
   allocationNoticeId?: string
   reverseThrows?: boolean
   remainingAllocations?: Array<{ amount: number }>
+  /** H3 PR A: allokeringarna avmatchningen ska plocka bort. Flera = vattenfall. */
+  removedAllocations?: Array<{
+    id: string
+    rentNoticeId: string
+    amount: Decimal
+    paidAt: Date
+    source: string
+  }>
   noticeRow?: Record<string, unknown> | null
 }) {
   const tx = {
@@ -52,16 +60,26 @@ function makeService(opts: {
     // Bankavstämnings-härdning PR 1/3b — allokeringen städas i samma transaktion;
     // findMany läser KVARVARANDE allokeringar för paidAmount-omräkningen.
     rentNoticePayment: {
-      // #326 D — allokeringens id läses FÖRE raderingen (verifikatets nyckel).
-      findFirst: jest.fn().mockResolvedValue({
-        id: 'rnp-1',
-        rentNoticeId: opts.allocationNoticeId ?? 'rn-1',
-        amount: new Decimal(5000),
-        paidAt: new Date('2026-07-20T00:00:00.000Z'),
-        source: 'BANK_RECONCILIATION',
-      }),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
-      findMany: jest.fn().mockResolvedValue(opts.remainingAllocations ?? []),
+      // H3 PR A: #326 D:s läsning FÖRE raderingen är nu findMany (flera möjliga
+      // allokeringar). Samma metod läser de kvarvarande — riggen skiljer dem åt
+      // på where-satsen.
+      findMany: jest.fn((args: { where?: Record<string, unknown> }) => {
+        if (args?.where && 'bankTransactionId' in args.where) {
+          return Promise.resolve(
+            opts.removedAllocations ?? [
+              {
+                id: 'rnp-1',
+                rentNoticeId: opts.allocationNoticeId ?? 'rn-1',
+                amount: new Decimal(5000),
+                paidAt: new Date('2026-07-20T00:00:00.000Z'),
+                source: 'BANK_RECONCILIATION',
+              },
+            ],
+          )
+        }
+        return Promise.resolve(opts.remainingAllocations ?? [])
+      }),
     },
   }
   const prisma = {
@@ -244,5 +262,91 @@ describe('ReconciliationService.unmatchTransaction — partiell unmatch (PR 3b)'
     // ocrOutstanding = 8 000 − 3 000 = 5 000 > 0 → PAID flippas tillbaka till SENT.
     expect(upd.data).toMatchObject({ status: 'SENT', paidAt: null })
     expect(Number(upd.data.paidAmount)).toBe(3_000)
+  })
+})
+
+// ── H3 PR A: avmatchningen är N-MEDVETEN ─────────────────────────────────────
+//
+// Var `findFirst` — `RentNoticePayment.bankTransactionId` var @unique, så det
+// kunde bara finnas 0 eller 1 allokering per banktransaktion. Vattenfallet
+// (PR B) låter EN klumpbetalning fördelas över FLERA avier.
+//
+// Defekten som stängs här är osynlig så länge N är 1: `deleteMany` raderade
+// redan ALLA allokeringar, medan bara den FÖRSTA reverserades. Med N > 1 hade
+// avmatchningen lämnat N−1 motverifikat oskrivna — 1510 krediterad för
+// betalningar vars allokeringar var borta.
+//
+// Testerna körs mot syntetisk data, eftersom N > 1 ännu inte kan uppstå.
+describe('H3 PR A — avmatchning av flera allokeringar', () => {
+  const flera = [
+    {
+      id: 'rnp-1',
+      rentNoticeId: 'rn-1',
+      amount: new Decimal(10_000),
+      paidAt: new Date('2026-07-20T00:00:00.000Z'),
+      source: 'BANK_RECONCILIATION',
+    },
+    {
+      id: 'rnp-2',
+      rentNoticeId: 'rn-2',
+      amount: new Decimal(10_000),
+      paidAt: new Date('2026-07-20T00:00:00.000Z'),
+      source: 'BANK_RECONCILIATION',
+    },
+    {
+      id: 'rnp-3',
+      rentNoticeId: 'rn-3',
+      amount: new Decimal(5_000),
+      paidAt: new Date('2026-07-20T00:00:00.000Z'),
+      source: 'BANK_RECONCILIATION',
+    },
+  ]
+
+  it('KÄRNAN: ETT motverifikat per allokering — inte bara för den första', async () => {
+    const { service, reverseJournalEntryForPayment } = makeService({
+      transaction: MATCHED_RENT_TX,
+      removedAllocations: flera,
+    })
+    await service.unmatchTransaction('tx-1', 'org-1', 'user-1')
+
+    expect(reverseJournalEntryForPayment).toHaveBeenCalledTimes(3)
+    const nycklar = (reverseJournalEntryForPayment.mock.calls as unknown[][]).map((c) => c[4])
+    expect(nycklar).toEqual([
+      'rent-notice-bank-payment:rnp-1',
+      'rent-notice-bank-payment:rnp-2',
+      'rent-notice-bank-payment:rnp-3',
+    ])
+  })
+
+  it('paidAmount räknas om på VARJE berörd avi, inte bara spegelfältets', async () => {
+    const { service, tx } = makeService({ transaction: MATCHED_RENT_TX, removedAllocations: flera })
+    await service.unmatchTransaction('tx-1', 'org-1', 'user-1')
+
+    const uppdaterade = tx.rentNotice.updateMany.mock.calls
+      .map((c) => (c[0] as { where: { id?: string } }).where.id)
+      .filter((id): id is string => typeof id === 'string')
+    for (const id of ['rn-1', 'rn-2', 'rn-3']) expect(uppdaterade).toContain(id)
+  })
+
+  it('N=1 är OFÖRÄNDRAT — en allokering, en reversering, en händelse', async () => {
+    // Regressionsskyddet: dagens enda verkliga fall får inte bete sig annorlunda.
+    const { service, reverseJournalEntryForPayment } = makeService({ transaction: MATCHED_RENT_TX })
+    await service.unmatchTransaction('tx-1', 'org-1', 'user-1')
+
+    // Spåret ägs av unmatch-notice-event.spec.ts — här bevakas reverseringen.
+    expect(reverseJournalEntryForPayment).toHaveBeenCalledTimes(1)
+  })
+
+  it('noll allokeringar → EN reversering utan nyckel (legacy-fallbacken bevaras)', async () => {
+    // Poster skrivna före #326 D saknar allokeringsnyckel och reverseras på
+    // transaktions-id. Den vägen får inte falla bort när listan är tom.
+    const { service, reverseJournalEntryForPayment } = makeService({
+      transaction: MATCHED_RENT_TX,
+      removedAllocations: [],
+    })
+    await service.unmatchTransaction('tx-1', 'org-1', 'user-1')
+
+    expect(reverseJournalEntryForPayment).toHaveBeenCalledTimes(1)
+    expect((reverseJournalEntryForPayment.mock.calls as unknown[][])[0]![4]).toBeUndefined()
   })
 })

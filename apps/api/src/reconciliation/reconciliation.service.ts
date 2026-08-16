@@ -1948,7 +1948,10 @@ export class ReconciliationService {
     // inne i transaktionen av den gren (faktura eller avi) som faktiskt hittar
     // en allokering; lämnas tom för poster skrivna före D, som då hittas via
     // reverseringens legacy-fallback på transaktions-id.
-    let reversalSourceId: string | undefined
+    // En lista, inte ett värde: ett vattenfall ger flera allokeringar och därmed
+    // flera verifikat att reversera. Fakturagrenen fyller den med exakt ett
+    // element (dess bankTransactionId är fortsatt @unique).
+    let reversalSourceIds: string[] = []
 
     await this.prisma.$transaction(async (tx) => {
       // ── #326 A: OMPRÖVNINGEN INNANFÖR RADLÅSET ÄR DEN LASTBÄRANDE ─────────
@@ -2026,7 +2029,7 @@ export class ReconciliationService {
         // #326 D — verifikatet är nycklat på allokeringen; reverseringen måste
         // få samma nyckel eller den hittar ingenting och blir en tyst no-op.
         if (removedAllocation) {
-          reversalSourceId = bankPaymentSourceId('invoice', removedAllocation.id)
+          reversalSourceIds = [bankPaymentSourceId('invoice', removedAllocation.id)]
         }
 
         if (removedAllocation) {
@@ -2154,11 +2157,22 @@ export class ReconciliationService {
       // idempotensnyckel, och raden finns inte kvar efteråt.
       // #326 C — belopp, betalningsdatum och källa läses här av samma skäl som
       // id:t: raden finns inte kvar när händelsen ska skrivas.
-      const removedNoticeAllocation = await tx.rentNoticePayment.findFirst({
+      // N-MEDVETEN (H3, PR A). Var `findFirst` — `bankTransactionId` var @unique,
+      // så det kunde bara finnas 0 eller 1. Vattenfallet (PR B) låter EN
+      // banktransaktion allokeras över FLERA avier, och då måste avmatchningen ta
+      // med sig ALLA: `deleteMany` nedan raderade redan alla, medan bara den
+      // första reverserades. Med N > 1 hade det lämnat N−1 verifikat i huvudboken
+      // vars allokeringar var borta — 1510 krediterad för betalningar som inte
+      // längre finns.
+      //
+      // Ordningen är stabil (allokeringens id) så att reverseringarna sker
+      // deterministiskt och loggen går att läsa i efterhand.
+      const removedNoticeAllocations = await tx.rentNoticePayment.findMany({
         where: { bankTransactionId: transactionId },
         select: { id: true, rentNoticeId: true, amount: true, paidAt: true, source: true },
+        orderBy: { id: 'asc' },
       })
-      if (removedNoticeAllocation) {
+      if (removedNoticeAllocations.length > 0) {
         // FAIL-CLOSED PÅ XOR-INVARIANTEN. En banktransaktion är antingen
         // faktura- eller avi-matchad, aldrig båda — men det är app-lagrets
         // disciplin, inte en DB-constraint. Hittas allokeringar i BÅDA
@@ -2171,13 +2185,15 @@ export class ReconciliationService {
         // (`removedAllocation.invoiceId !== transaction.invoice.id`) — samma
         // princip: stanna hellre än att rätta i blindo. (Säkerhetsgranskning
         // av #326 D.)
-        if (reversalSourceId) {
+        if (reversalSourceIds.length > 0) {
           throw new InternalServerErrorException(
             `Banktransaktion ${transactionId} har betalningsallokeringar i BÅDA tabellerna ` +
               '(faktura och hyresavi). Avmatchningen avbryts — kontakta supporten.',
           )
         }
-        reversalSourceId = bankPaymentSourceId('rent-notice', removedNoticeAllocation.id)
+        reversalSourceIds = removedNoticeAllocations.map((a) =>
+          bankPaymentSourceId('rent-notice', a.id),
+        )
       }
 
       await tx.rentNoticePayment.deleteMany({
@@ -2189,15 +2205,28 @@ export class ReconciliationService {
       // OCR-skuld (en delbetalning kvar → avin förblir delbetald SENT med rätt cache;
       // en avmatchad slutbetalning → tillbaka till SENT). outstanding() läser ändå
       // allokeringarna direkt, men paidAmount-cachen får inte ljuga (stale).
-      if (matchedNoticeId) {
+      // N-MEDVETEN: räkna om VARJE avi som en borttagen allokering rörde, inte bara
+      // banktransaktionens spegelfält. Med ett vattenfall pekar spegeln på EN avi
+      // medan pengarna låg på flera — att bara räkna om spegelns hade lämnat de
+      // övriga med en paidAmount som ljuger och en PAID-status utan täckning.
+      //
+      // Unionen med `matchedNoticeId` bevarar det gamla beteendet för en
+      // transaktion vars allokering redan hunnit raderas (spegeln kvar, rad borta).
+      const berördaAvier = [
+        ...new Set([
+          ...removedNoticeAllocations.map((a) => a.rentNoticeId),
+          ...(matchedNoticeId ? [matchedNoticeId] : []),
+        ]),
+      ]
+      for (const avaktuellId of berördaAvier) {
         const remainingAllocs = await tx.rentNoticePayment.findMany({
-          where: { rentNoticeId: matchedNoticeId },
+          where: { rentNoticeId: avaktuellId },
           select: { amount: true },
         })
         const paidSum = remainingAllocs.reduce<Decimal>((s, a) => s.plus(a.amount), new Decimal(0))
 
         const noticeRow = await tx.rentNotice.findFirst({
-          where: { id: matchedNoticeId, organizationId },
+          where: { id: avaktuellId, organizationId },
           select: {
             type: true,
             status: true,
@@ -2228,7 +2257,7 @@ export class ReconciliationService {
           const reopen = noticeRow.status === 'PAID' && ocrLeft > 0
           // organizationId i WHERE som defense-in-depth (FIX 2-mönstret).
           await tx.rentNotice.updateMany({
-            where: { id: matchedNoticeId, organizationId },
+            where: { id: avaktuellId, organizationId },
             data: {
               paidAmount: paidSum.gt(0) ? paidSum : null,
               ...(reopen ? { status: 'SENT', paidAt: null } : {}),
@@ -2254,14 +2283,24 @@ export class ReconciliationService {
       //
       // SAMMA TRANSAKTION som raderingen — posten får varken skrivas utan att
       // raderingen skedde eller utebli efter den.
-      if (removedNoticeAllocation) {
+      // EN POST PER BORTTAGEN ALLOKERING. Med ett vattenfall raderas flera, och
+      // varje raderad allokering är sin egen behandlingshändelse — en samlad post
+      // hade dolt vilka avier som faktiskt rördes och med vilka belopp.
+      for (const allok of removedNoticeAllocations) {
         // FAIL-CLOSED PÅ SPEGELN. `matchedRentNoticeId` på banktransaktionen är
-        // ett härlett fält; allokeringen bär sitt eget `rentNoticeId`. Går de
-        // isär skulle spåret hamna på EN avi medan paidAmount/status räknas om
-        // på en ANNAN — en tyst inkonsekvens mellan logg och tillstånd. Samma
-        // kontroll som fakturagrenen redan har (`removedAllocation.invoiceId
-        // !== transaction.invoice.id`). (Kodgranskning av #326 C.)
-        if (matchedNoticeId && removedNoticeAllocation.rentNoticeId !== matchedNoticeId) {
+        // ett härlett fält; allokeringen bär sitt eget `rentNoticeId`. Går de isär
+        // skulle spåret hamna på EN avi medan paidAmount/status räknas om på en
+        // ANNAN — en tyst inkonsekvens mellan logg och tillstånd.
+        //
+        // N-MEDVETEN: med flera allokeringar kan spegeln omöjligt peka på alla.
+        // Kontrollen gäller därför bara när det finns EXAKT en — då är den
+        // oförändrad. Med flera kräver vi i stället att spegeln finns BLAND de
+        // berörda avierna, vilket fångar samma drift utan att fälla det
+        // legitima N > 1-fallet.
+        const speglenÄrEnAvDem =
+          !matchedNoticeId ||
+          removedNoticeAllocations.some((a) => a.rentNoticeId === matchedNoticeId)
+        if (!speglenÄrEnAvDem) {
           throw new InternalServerErrorException(
             `Betalningsallokeringen för transaktion ${transactionId} pekar på en annan hyresavi ` +
               'än banktransaktionens spegelfält. Avmatchningen avbryts — kontakta supporten.',
@@ -2271,15 +2310,15 @@ export class ReconciliationService {
         // NYCKLAS PÅ ALLOKERINGENS EGET `rentNoticeId`: spåret ska följa raden
         // som faktiskt togs bort, inte spegeln.
         await this.rentNoticeEvents.record(
-          removedNoticeAllocation.rentNoticeId,
+          allok.rentNoticeId,
           'PAYMENT_REVERSED',
           userId ? 'USER' : 'SYSTEM',
           userId,
           {
             transactionId,
-            amount: removedNoticeAllocation.amount.toNumber(),
-            paidAt: removedNoticeAllocation.paidAt.toISOString(),
-            allocationSource: removedNoticeAllocation.source,
+            amount: allok.amount.toNumber(),
+            paidAt: allok.paidAt.toISOString(),
+            allocationSource: allok.source,
             source: 'bank_reconciliation_unmatch',
             ...(reason ? { reason } : {}),
           },
@@ -2308,13 +2347,32 @@ export class ReconciliationService {
       // strategi för Invoice- och RentNotice-betalningar. Reverseringen är
       // idempotent (sourceId `reversal:<sourceId>`) — en retry efter ett
       // tidigare lyckat anrop dubbelbokför aldrig.
-      await this.accounting.reverseJournalEntryForPayment(
-        transactionId,
-        organizationId,
-        userId,
-        tx,
-        reversalSourceId,
-      )
+      // ETT MOTVERIFIKAT PER ALLOKERING. `reverseJournalEntryForPayment` slår på
+      // allokeringens nyckel (#326 D), så N allokeringar kräver N reverseringar —
+      // annars står N−1 verifikat kvar i huvudboken utan sin allokering.
+      //
+      // Är listan tom (inget att reversera, eller en post skriven före #326 D)
+      // anropas den ändå EN gång utan nyckel, så legacy-fallbacken på
+      // transaktions-id bevaras oförändrad.
+      if (reversalSourceIds.length === 0) {
+        await this.accounting.reverseJournalEntryForPayment(
+          transactionId,
+          organizationId,
+          userId,
+          tx,
+          undefined,
+        )
+      } else {
+        for (const sourceId of reversalSourceIds) {
+          await this.accounting.reverseJournalEntryForPayment(
+            transactionId,
+            organizationId,
+            userId,
+            tx,
+            sourceId,
+          )
+        }
+      }
     })
 
     this.logger.log(
