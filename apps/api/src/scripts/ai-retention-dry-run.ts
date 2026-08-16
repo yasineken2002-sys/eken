@@ -100,6 +100,67 @@ async function main(): Promise<void> {
   }
   console.warn(line('AiToolExecution TOTALT', toolTotal, toolDoomed, 0).replace(' frist 0 d', ''))
 
+  // ── Per organisation ──────────────────────────────────────────────────────
+  //
+  // Totalsummor döljer fördelningen. En gallring som tar 400 rader kan vara 400
+  // från en enda organisation eller 4 från hundra, och det är olika saker att
+  // svara för i efterhand.
+  const perOrg = new Map<string, Record<string, number>>()
+  const bump = (orgId: string, table: string, n = 1): void => {
+    const row = perOrg.get(orgId) ?? {}
+    row[table] = (row[table] ?? 0) + n
+    perOrg.set(orgId, row)
+  }
+
+  for (const c of await prisma.aiConversation.groupBy({
+    by: ['organizationId'],
+    where: { updatedAt: { lt: cutoff(CONVERSATION_RETENTION_DAYS) } },
+    _count: { _all: true },
+  })) {
+    bump(c.organizationId, 'AiConversation', c._count._all)
+  }
+  for (const m of await prisma.aiMemory.groupBy({
+    by: ['organizationId'],
+    where: { updatedAt: { lt: cutoff(MEMORY_RETENTION_DAYS) } },
+    _count: { _all: true },
+  })) {
+    bump(m.organizationId, 'AiMemory', m._count._all)
+  }
+  for (const u of await prisma.aiUsageLog.groupBy({
+    by: ['organizationId'],
+    where: { createdAt: { lt: cutoff(USAGE_LOG_RETENTION_DAYS) } },
+    _count: { _all: true },
+  })) {
+    bump(u.organizationId, 'AiUsageLog', u._count._all)
+  }
+  for (const [bucket, days] of [
+    ['accounting', ACCOUNTING_TOOL_RETENTION_DAYS],
+    ['action', ACTION_TOOL_RETENTION_DAYS],
+    ['read', READ_TOOL_RETENTION_DAYS],
+  ] as const) {
+    const names = allToolNames().filter((n) => bucketForTool(n) === bucket)
+    for (const t of await prisma.aiToolExecution.groupBy({
+      by: ['organizationId'],
+      where: {
+        toolName: bucket === 'read' ? { notIn: nonReadToolNames() } : { in: names },
+        createdAt: { lt: cutoff(days) },
+      },
+      _count: { _all: true },
+    })) {
+      bump(t.organizationId, `AiToolExecution/${bucket}`, t._count._all)
+    }
+  }
+
+  if (perOrg.size > 0) {
+    console.warn('\nPer organisation:')
+    for (const [orgId, tables] of [...perOrg.entries()].sort()) {
+      const detalj = Object.entries(tables)
+        .map(([t, n]) => `${t}=${n}`)
+        .join('  ')
+      console.warn(`  ${orgId}  ${detalj}`)
+    }
+  }
+
   const total = convDoomed + memDoomed + useDoomed + toolDoomed
   console.warn(`\nTOTALT ${total} rader skulle gallras (+ ${msgDoomed} meddelanden via kaskad).`)
   if (total === 0) {
