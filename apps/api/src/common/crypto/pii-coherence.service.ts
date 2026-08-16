@@ -37,13 +37,12 @@ import { SigningCryptoService } from '../../signing/signing-crypto.service'
  * │ bundet till KÖRNINGSLÄGET (flaggan) — aldrig till en egen av/på-variabel,  │
  * │ eftersom en sådan är en väg att stänga av kontrollen utan att något blir   │
  * │ rött.                                                                      │
+ * │                                                                            │
+ * │ VILKA UTFALL SOM SKA FÄLLA — läs detta innan du skriver befordran:         │
+ * │  • MISSMATCHNING och KAN_EJ_VERIFIERAS SKA fälla starten.                  │
+ * │  • ROTATION_PAGAR ska INTE. Det är rotationens normaltillstånd, och att    │
+ * │    fälla på det tar bort det nedtidsfria fönster #469 byggdes för.         │
  * └────────────────────────────────────────────────────────────────────────────┘
- *
- * NÄR DEN BEFORDRAS: `ROTATION_PAGAR` ska INTE ingå i det som fäller starten.
- * Att vägra boota mitt i en nyckelrotation vore att ta bort själva det
- * nedtidsfria fönster #469 byggdes för — appen ska starta, läsningen fungerar
- * via `_OLD`, och signalen är en varning tills rotationen är klar. Det är
- * `MISSMATCHNING` och `KAN_EJ_VERIFIERAS` som ska fälla.
  *
  * KOSTNAD: EN dekryptering per boot i normalfallet. Kontrollen läser EN rad —
  * den första källan som har en, sedan slutar den leta. Inte en rad per tabell,

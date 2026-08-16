@@ -24,6 +24,11 @@ import { StubSigningProvider } from './providers/stub-signing.provider'
  * säkerhetsfunktion — identitetsbindningen mot BankID-personnumret går genom
  * blind-indexet — och kontrollen ska då BEFORDRAS TILL FAIL-FAST, i samma
  * grind som nycklarna redan kontrolleras i. Skälet står utskrivet i den filen.
+ *
+ * VILKA UTFALL SOM SKA FÄLLA när den befordras:
+ *  • `MISSMATCHNING` och `KAN_EJ_VERIFIERAS` SKA fälla starten.
+ *  • `ROTATION_PAGAR` ska INTE — det är rotationens normaltillstånd, och att
+ *    fälla på det tar bort det nedtidsfria fönster #469 byggdes för (#472).
  */
 @Module({
   controllers: [SigningController],
