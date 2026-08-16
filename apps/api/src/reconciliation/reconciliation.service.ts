@@ -862,6 +862,25 @@ export class ReconciliationService {
           true,
         )
         if (matched) return true
+
+        // H3 PR B — VATTENFALL. Enskildvägen ovan avvisade (`false`), och det
+        // vanligaste skälet är att beloppet överstiger den ÄLDSTA avins restskuld:
+        // en klumpbetalning som täcker flera månader. Fram till nu blev den
+        // UNMATCHED och hyresgästens pengar registrerades inte alls.
+        //
+        // Vattenfallet försöker fördela beloppet över hyresgästens öppna avier i
+        // samma åldersordning. Det tar ALDRIG över ett fall enskildvägen klarar —
+        // den koden är hårdare prövad — och avvisar självt om beloppet överstiger
+        // hela skulden (#482).
+        const vattenfall = await this.applyWaterfallToRentNotices(
+          transaction.id,
+          transaction.rawOcr,
+          organizationId,
+          transaction.amount,
+          transaction.date,
+          null,
+        )
+        if (vattenfall) return true
       }
     }
 
@@ -1739,6 +1758,251 @@ export class ReconciliationService {
     // `unmatched` är resten EFTER att felen räknats bort — den får inte längre
     // svälja dem. matched + unmatched + failed === candidates.length, alltid.
     return { matched, unmatched: candidates.length - matched - failed, failed }
+  }
+
+  /**
+   * VATTENFALL (H3 PR B) — en klumpbetalning fördelas över flera avier.
+   *
+   * ── VAD DEN ERSÄTTER, OCH VARFÖR D4 REVS ────────────────────────────────────
+   *
+   * En hyresgäst med tre obetalda avier à 10 000 kr som betalar 30 000 kr fick
+   * INGENTING registrerat: `applyMatchToRentNotice` klassade beloppet mot ENDA
+   * den äldsta avins restskuld, såg en överbetalning och returnerade false. Hela
+   * matchningen avvisades och transaktionen blev UNMATCHED — hyresgästens pengar
+   * fanns på kontot men inte i systemet.
+   *
+   * Det beteendet hette D4 och stod i #109 under "De fyra låsta besluten (hålls)".
+   * **Skälet fanns aldrig nedskrivet** — varken i #105, #106, #107, i koden eller i
+   * docs. Det enda närliggande argumentet gäller de MANUELLA vägarna:
+   *
+   *   "Att tyst acceptera mer än restskulden skulle skapa en kundkredit som
+   *    systemet inte har någon modell för; att klampa beloppet skulle bokföra
+   *    mindre än vad som faktiskt kommit in."
+   *
+   * Det motiverar inte ett vattenfall: ett vattenfall accepterar inte tyst och
+   * klampar inte — det allokerar HELA beloppet över flera avier. Låset revs
+   * alltså med öppna ögon, inte för att det var glömt.
+   *
+   * ── VARFÖR SCOPET KORSAR AVTAL ──────────────────────────────────────────────
+   *
+   * Hyresgästen betalar sin SKULD, inte sitt avtal. OCR:t är hyresgästens
+   * betalningsidentitet (`assignOcrToTenant`), och en inbetalning med den
+   * strängen är avsedd för hens förfallna skuld i åldersordning — oavsett vilket
+   * avtal den uppstod under. Uppslaget har därför aldrig haft något leaseId-filter.
+   *
+   * Att korsa avtal är bokföringsmässigt neutralt, VERIFIERAT: betalningen bokförs
+   * `1930 D / 1510 K`, och `JournalEntryLine` bär bara `accountId`, `debit`,
+   * `credit` och `description` — ingen `unitId`, `leaseId` eller `propertyId`.
+   * Ingen intäkt och inget objekt flyttas. (Intäkten bokfördes när avin skapades.)
+   *
+   * ── TRE FORMER, INGEN FJÄRDE ────────────────────────────────────────────────
+   *
+   *   täcker N avier exakt          → N × PAID
+   *   täcker N-1 helt + del av N     → (N-1) × PAID + 1 × PARTIAL
+   *   överstiger allt                → UNMATCHED, INGENTING allokeras (#482)
+   *
+   * Den sista är medveten och speglar de andra vägarna: `assertPaymentWithinDebt`
+   * (#483) avvisar på båda manuella vägarna, enskild avi avvisar. EN regel, tre
+   * vägar, samma utfall. Att låta ett svar falla ut här vore att fatta #482:s
+   * beslut utan att någon märkte det.
+   *
+   * ── TOLERANSEN GÄLLER SUMMAN ────────────────────────────────────────────────
+   *
+   * Enskild avi absorberar ±1 kr. Samma regel på totalen här — annars vore
+   * 30 000,50 mot tre avier avvisad medan 10 000,50 mot en avi absorberas, en ny
+   * asymmetri av precis den sort vi rensat bort. De överskjutande örena läggs på
+   * SISTA avin, precis som enskildvägen lägger dem på sin enda.
+   *
+   * ── SAME-TENANT-INVARIANTEN ─────────────────────────────────────────────────
+   *
+   * Kandidaterna väljs på OCR-STRÄNGEN, inte på hyresgäst. I det riktiga flödet
+   * kan de inte divergera (`Tenant.ocrNumber` skrivs en gång, `RentNotice.ocrNumber`
+   * bara vid create, `RentNotice.tenantId` aldrig) — men att gå från EN avi till
+   * FLERA förstärker konsekvensen om antagandet någon gång bryts: en betalning
+   * skulle kunna svepa över avier hos olika hyresgäster.
+   *
+   * Därför en hård invariant: skiljer sig `tenantId` åt STANNAR vi och allokerar
+   * ingenting. Det kostar inget i normalfallet och gör skaderisken omöjlig.
+   */
+  private async applyWaterfallToRentNotices(
+    transactionId: string,
+    ocrNumber: string,
+    organizationId: string,
+    transactionAmount: Decimal,
+    transactionDate: Date,
+    userId: string | null,
+  ): Promise<boolean> {
+    const tolerance = new Decimal('1.00')
+
+    return this.prisma.$transaction(async (tx) => {
+      // ORDNINGEN ÄR ALLOKERINGSREGELN, inte en presentationsdetalj: den avgör
+      // vilka avier som blir betalda när pengarna tar slut. Identisk med
+      // enskildvägens `orderBy` — dueDate först, createdAt som tie-break — så att
+      // två avier med samma förfallodag hanteras deterministiskt i stället för
+      // efter databasens infall.
+      const kandidater = await tx.rentNotice.findMany({
+        where: {
+          organizationId,
+          ocrNumber,
+          status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+          // DEPOSIT har sitt eget 1510/2890-flöde (#41) och ingår aldrig i
+          // kravtrappan — den lämnas orörd av vattenfallet, precis som av
+          // enskildvägens carve-out.
+          type: RentNoticeType.RENT,
+        },
+        orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          id: true,
+          tenantId: true,
+          noticeNumber: true,
+          status: true,
+          collectionStage: true,
+          type: true,
+          totalAmount: true,
+          consumptionAmount: true,
+          miscChargeAmount: true,
+          reminderFeeAmount: true,
+          interestAccruedAmount: true,
+        },
+      })
+      if (kandidater.length < 2) return false
+
+      // SAME-TENANT-INVARIANTEN. Fail-closed: stanna hellre än att sprida en
+      // betalning över främmande avier.
+      const tenantIds = [...new Set(kandidater.map((k) => k.tenantId))]
+      if (tenantIds.length > 1) {
+        throw new InternalServerErrorException(
+          `Banktransaktion ${transactionId}: OCR ${ocrNumber} pekar på avier hos FLERA ` +
+            `hyresgäster (${tenantIds.join(', ')}). Vattenfallet avbryts — ingen allokering ` +
+            'gjord. Kontakta supporten.',
+        )
+      }
+
+      // Radlås i samma ordning som allokeringen sker — samma riktning varje gång,
+      // så två samtidiga vattenfall inte kan sluta cirkeln mot varandra.
+      for (const k of kandidater) {
+        await tx.$queryRaw`SELECT id FROM "RentNotice" WHERE id = ${k.id} AND "organizationId" = ${organizationId} FOR UPDATE`
+      }
+
+      // Restskuld per avi, läst EFTER låset.
+      const rester: Array<{
+        notice: (typeof kandidater)[number]
+        kvar: Decimal
+        debtInput: Parameters<typeof computeRentDebt>[0]
+      }> = []
+      for (const k of kandidater) {
+        const priorAllocs = await tx.rentNoticePayment.findMany({
+          where: { rentNoticeId: k.id },
+          select: { amount: true },
+        })
+        const debtInput = {
+          type: k.type,
+          totalAmount: k.totalAmount,
+          consumptionAmount: k.consumptionAmount,
+          miscChargeAmount: k.miscChargeAmount,
+          reminderFeeAmount: k.reminderFeeAmount,
+          interestAccruedAmount: k.interestAccruedAmount,
+          allocations: priorAllocs.map((a) => a.amount),
+        }
+        const kvar = new Decimal(computeRentDebt(debtInput).ocrOutstanding)
+        if (kvar.gt(0)) rester.push({ notice: k, kvar, debtInput })
+      }
+      if (rester.length < 2) return false
+
+      const total = rester.reduce((s, r) => s.plus(r.kvar), new Decimal(0))
+
+      // ÖVERBETALNING: > total + tolerans → ingenting allokeras (#482).
+      if (transactionAmount.gt(total.plus(tolerance))) return false
+      // Ryms beloppet i den ÄLDSTA avin ensam är detta inget vattenfall —
+      // enskildvägen äger det fallet och är den hårdare prövade koden.
+      if (transactionAmount.lte(rester[0]!.kvar.plus(tolerance))) return false
+
+      // FULL mot summan (inom toleransen) → varje avi får sin restskuld, och
+      // öresdifferensen absorberas på den sista.
+      const täckerAllt = total.minus(transactionAmount).abs().lte(tolerance)
+
+      let kvarAttFördela = täckerAllt ? total : transactionAmount
+      let allokerade = 0
+
+      for (const r of rester) {
+        if (kvarAttFördela.lte(0)) break
+        const belopp = Decimal.min(r.kvar, kvarAttFördela)
+        const reglerar = belopp.gte(r.kvar)
+
+        const allokering = await tx.rentNoticePayment.create({
+          data: {
+            rentNoticeId: r.notice.id,
+            bankTransactionId: transactionId,
+            amount: belopp,
+            paidAt: transactionDate,
+            source: 'BANK_RECONCILIATION',
+          },
+          select: { id: true },
+        })
+
+        const paidSum = computeRentDebt({
+          ...r.debtInput,
+          allocations: [...r.debtInput.allocations, belopp],
+        }).paid
+
+        await tx.rentNotice.updateMany({
+          where: reglerar
+            ? { id: r.notice.id, organizationId, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } }
+            : { id: r.notice.id, organizationId },
+          data: reglerar
+            ? {
+                status: 'PAID',
+                paidAt: transactionDate,
+                paidAmount: paidSum,
+                collectionStage: 'NONE',
+              }
+            : { paidAmount: paidSum },
+        })
+
+        // Verifikatet per allokering — samma idempotensnyckel som enskildvägen
+        // (#326 D). Kastar bokföringen rullas HELA vattenfallet tillbaka.
+        const entry = await this.accounting.createJournalEntryForRentNoticePayment(
+          { id: r.notice.id, noticeNumber: r.notice.noticeNumber, type: r.notice.type },
+          // Beloppet som bokförs är DENNA avis del, inte hela inbetalningen.
+          { id: transactionId, date: transactionDate, amount: belopp },
+          organizationId,
+          userId,
+          tx,
+          allokering.id,
+        )
+        if (entry === null) {
+          throw new InternalServerErrorException(
+            `Betalningsverifikat kunde inte skapas för hyresavi ${r.notice.noticeNumber} — ` +
+              'kontrollera att kontoplanen innehåller konto 1930 och 1510.',
+          )
+        }
+
+        kvarAttFördela = kvarAttFördela.minus(belopp)
+        allokerade++
+      }
+
+      if (allokerade < 2) return false
+
+      await tx.bankTransaction.update({
+        where: { id: transactionId },
+        data: {
+          status: 'MATCHED',
+          invoiceId: null,
+          // Spegeln pekar på den ÄLDSTA avin — den som betalningen började på.
+          // Avmatchningen (PR A) läser allokeringarna, inte spegeln, så den bär
+          // hela kedjan även när spegeln bara kan peka på en.
+          matchedRentNoticeId: rester[0]!.notice.id,
+          matchedAt: new Date(),
+          ...(userId ? { matchedBy: userId } : {}),
+        },
+      })
+
+      this.logger.log(
+        `[reconciliation] vattenfall: transaktion ${transactionId} fördelad över ${allokerade} avier ` +
+          `(org ${organizationId}, OCR ${ocrNumber}).`,
+      )
+      return true
+    })
   }
 
   // ── Manual match ─────────────────────────────────────────────────────────────

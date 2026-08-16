@@ -37,6 +37,10 @@ function makeService(opts: { linkedDeposit?: Record<string, unknown> | null }) {
   const txMock = {
     $queryRaw: jest.fn().mockResolvedValue([]),
     rentNotice: {
+      // H3 PR B: vattenfallet läser kandidater med findMany. Tom lista = inga
+      // fler öppna avier, alltså inget vattenfall — riggens fall ägs av
+      // enskildvägen och beteendet är oförändrat.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(txNotice),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
