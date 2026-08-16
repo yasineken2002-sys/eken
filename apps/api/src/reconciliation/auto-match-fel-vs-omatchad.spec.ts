@@ -116,9 +116,15 @@ describe('autoMatchAll — FEL är inte samma sak som ingen match', () => {
     expect(fel.mock.calls.some(([m]) => String(m).includes('1 FEL'))).toBe(true)
   })
 
-  it('INVARIANT: matched + unmatched + failed är alltid antalet kandidater', async () => {
-    // Håller de tre räknarna ihop kan ingen transaktion försvinna tyst ur
-    // redovisningen — vilket är precis vad den gamla grenen lät hända.
+  it('INVARIANT: räknarna summerar OCH failed speglar antalet injicerade fel', async () => {
+    // Summan ensam är en BLIND kontroll — mätt, inte antaget: med den gamla
+    // nakna grenen (failed stannar på 0, unmatched = allt som inte matchade)
+    // summerar den ändå till antalet kandidater, och testet passerade grönt mot
+    // exakt den defekt det skulle fånga.
+    //
+    // Därför pinnas BÅDA leden: att ingen transaktion försvinner ur
+    // redovisningen, och att felen faktiskt hamnar i `failed` och ingen
+    // annanstans. Det andra ledet är det som diskriminerar.
     for (const utfall of [
       [true, false, new Error('a')],
       [new Error('a'), new Error('b')],
@@ -127,7 +133,13 @@ describe('autoMatchAll — FEL är inte samma sak som ingen match', () => {
     ]) {
       const { service } = rigg(utfall)
       const r = await service.autoMatchAll('org-1')
+      const injiceradeFel = utfall.filter((u) => u instanceof Error).length
+
       expect(r.matched + r.unmatched + r.failed).toBe(utfall.length)
+      expect(r.failed).toBe(injiceradeFel)
+      expect(r.matched).toBe(utfall.filter((u) => u === true).length)
+      expect(r.unmatched).toBe(utfall.filter((u) => u === false).length)
+
       jest.restoreAllMocks()
       fel = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined)
     }
