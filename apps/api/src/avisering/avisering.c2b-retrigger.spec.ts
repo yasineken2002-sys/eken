@@ -27,6 +27,8 @@ import { Prisma, UserRole } from '@prisma/client'
 import * as Sentry from '@sentry/nestjs'
 import { AviseringService } from './avisering.service'
 
+let __seq = 0
+
 const captureException = Sentry.captureException as jest.MockedFunction<
   typeof Sentry.captureException
 >
@@ -132,6 +134,11 @@ function makeRig(seed: LeaseSeed, opts: { withDeposit?: boolean; enqueueFails?: 
       findFirst: jest.fn(({ where }: { where: { leaseId: string } }) =>
         Promise.resolve(deposits.find((d) => d.leaseId === where.leaseId) ?? null),
       ),
+    },
+    // M3: avinumret allokeras ur RentNoticeNumberSequence. Räknaren gör att
+    // riggen ger löpande nummer i stället för samma varje gång.
+    rentNoticeNumberSequence: {
+      upsert: jest.fn().mockImplementation(() => Promise.resolve({ lastNumber: ++__seq })),
     },
     rentNotice: {
       create: jest.fn(createNotice),

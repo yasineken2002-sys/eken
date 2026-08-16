@@ -13,6 +13,8 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { AviseringService } from './avisering.service'
 
+let __seq = 0
+
 function makeLease(id: string, tenantId: string) {
   return {
     id,
@@ -32,6 +34,11 @@ function makeRig(leases: unknown[]) {
   let seq = 0
   const prisma = {
     lease: { findMany: jest.fn().mockResolvedValue(leases) },
+    // M3: avinumret allokeras ur RentNoticeNumberSequence. Räknaren gör att
+    // riggen ger löpande nummer i stället för samma varje gång.
+    rentNoticeNumberSequence: {
+      upsert: jest.fn().mockImplementation(() => Promise.resolve({ lastNumber: ++__seq })),
+    },
     rentNotice: {
       findMany: jest.fn().mockResolvedValue([]), // existing-koll + nextNoticeNumber
       create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>

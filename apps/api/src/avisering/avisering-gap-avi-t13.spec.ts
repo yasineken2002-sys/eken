@@ -19,6 +19,8 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 import { rentDueDateForPeriodStart, calculateFirstPaymentDueDate } from '@eken/shared'
 import { AviseringService } from './avisering.service'
 
+let __seq = 0
+
 // Startdatum ~2 månader fram, den 1:a i månaden — framtida så att "aldrig i
 // förflutet"-klampningen inte utjämnar skillnaden mellan de två förfallodags-
 // vägarna (JB 12:20 vs inflyttningsoffset) och testet förblir stabilt över tid.
@@ -52,6 +54,11 @@ function makeInitialNoticesRig(startDate: Date) {
     lease: { findUnique: jest.fn().mockResolvedValue(lease) },
     organization: {
       findUnique: jest.fn().mockResolvedValue({ daysBeforeMoveInForFirstPayment: 7 }),
+    },
+    // M3: avinumret allokeras ur RentNoticeNumberSequence. Räknaren gör att
+    // riggen ger löpande nummer i stället för samma varje gång.
+    rentNoticeNumberSequence: {
+      upsert: jest.fn().mockImplementation(() => Promise.resolve({ lastNumber: ++__seq })),
     },
     rentNotice: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -131,6 +138,11 @@ describe('T1.3 · C: EXPIRED avtal med dagar kvar i månaden aviseras', () => {
   function makeMonthlyRig(leases: unknown[]) {
     const prisma = {
       lease: { findMany: jest.fn().mockResolvedValue(leases) },
+      // M3: avinumret allokeras ur RentNoticeNumberSequence. Räknaren gör att
+      // riggen ger löpande nummer i stället för samma varje gång.
+      rentNoticeNumberSequence: {
+        upsert: jest.fn().mockImplementation(() => Promise.resolve({ lastNumber: ++__seq })),
+      },
       rentNotice: {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>

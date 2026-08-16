@@ -22,6 +22,8 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 import { Prisma } from '@prisma/client'
 import { AviseringService } from './avisering.service'
 
+let __seq = 0
+
 function p2002(target: unknown): Prisma.PrismaClientKnownRequestError {
   return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
     code: 'P2002',
@@ -63,6 +65,11 @@ function rigg(opts: { createRejects?: unknown; befintlig?: unknown } = {}) {
     lease: { findUnique: jest.fn().mockResolvedValue(lease) },
     organization: {
       findUnique: jest.fn().mockResolvedValue({ daysBeforeMoveInForFirstPayment: 7 }),
+    },
+    // M3: avinumret allokeras ur RentNoticeNumberSequence. Räknaren gör att
+    // riggen ger löpande nummer i stället för samma varje gång.
+    rentNoticeNumberSequence: {
+      upsert: jest.fn().mockImplementation(() => Promise.resolve({ lastNumber: ++__seq })),
     },
     rentNotice: { findMany: jest.fn().mockResolvedValue([]), findFirst, create },
     $transaction: (cb: (t: unknown) => unknown) => cb(prisma),
