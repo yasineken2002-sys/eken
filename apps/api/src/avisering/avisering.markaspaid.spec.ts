@@ -389,6 +389,66 @@ describe('PR3b · D5 — markAsPaid med delbelopp', () => {
   })
 })
 
+describe('H4 — överbetalning avvisas, samma regel som fakturans manuella väg', () => {
+  it('KÄRNAN: 20 000 på en 10 000-avi avvisas — ingen allokering, ingen bokning', async () => {
+    // Före fixen: hela 20 000 allokerades, avin flippade PAID, och verifikatet
+    // krediterade 1510 med 20 000 mot en fordran på 10 000 → kundfordran MINUS
+    // 10 000. Bokföringen går inte att rätta med en kodfix i efterhand.
+    const { service, prisma, accounting } = makeService()
+
+    await expect(service.markAsPaid('rn-1', 'org-1', 20_000, 'BANK')).rejects.toThrow(
+      /överstiger restskulden/,
+    )
+
+    expect(prisma.rentNoticePayment.create).not.toHaveBeenCalled()
+    expect(accounting.createJournalEntryForRentNoticeManualPayment).not.toHaveBeenCalled()
+    expect(prisma.rentNotice.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('meddelandet namnger båda talen', async () => {
+    const { service } = makeService()
+    await expect(service.markAsPaid('rn-1', 'org-1', 12_500, 'BANK')).rejects.toThrow(
+      /12500\.00.*10000\.00/,
+    )
+  })
+
+  it('ETT ÖRE över avvisas — ingen tolerans, till skillnad från bankvägen', async () => {
+    // Bankvägen absorberar en krona åt vardera hållet eftersom beloppet är ett
+    // mätt faktum ur en bankfil. Här är det inskrivet av en människa som kan
+    // rätta det, och en tyst absorption hade dolt skrivfelet.
+    const { service, prisma } = makeService()
+    await expect(service.markAsPaid('rn-1', 'org-1', 10_000.01, 'BANK')).rejects.toThrow(
+      /överstiger restskulden/,
+    )
+    expect(prisma.rentNoticePayment.create).not.toHaveBeenCalled()
+  })
+
+  it('prövas mot RESTSKULDEN, inte mot totalen', async () => {
+    // 6 000 redan betalt → restskuld 4 000. 5 000 är för mycket trots att det är
+    // mindre än avins total. Samma fall som fakturaspecens motsvarighet.
+    const { service } = makeService({ priorAllocations: [{ amount: 6_000 }] })
+    await expect(service.markAsPaid('rn-1', 'org-1', 5_000, 'BANK')).rejects.toThrow(
+      /överstiger restskulden/,
+    )
+  })
+
+  it('exakt restskuld går fortfarande igenom — spärren rör inte normalfallet', async () => {
+    const { service, prisma } = makeService({ priorAllocations: [{ amount: 6_000 }] })
+    await service.markAsPaid('rn-1', 'org-1', 4_000, 'BANK')
+    expect(prisma.rentNoticePayment.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('spärren ligger INNANFÖR radlåset — restskulden läses efter FOR UPDATE', async () => {
+    // Låg läsningen utanför kunde en samtidig bankmatchning skriva en allokering
+    // emellan och göra kontrollen beräknad på inaktuell grund (#288-klassen).
+    // Belägget: allokeringarna läses (findMany) efter att låset tagits.
+    const { service, prisma } = makeService()
+    await expect(service.markAsPaid('rn-1', 'org-1', 99_000, 'BANK')).rejects.toThrow()
+    expect(prisma.rentNoticePayment.findMany).toHaveBeenCalled()
+    expect(prisma.$queryRaw).toHaveBeenCalled()
+  })
+})
+
 describe('PR2 — cancelNotice nollställer collectionStage (anti-zombie)', () => {
   it('avbruten INKASSO_READY-avi → CANCELLED + collectionStage NONE, org-scopad, trail', async () => {
     const { service, prisma, eventCreate } = makeService({

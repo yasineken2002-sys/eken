@@ -260,7 +260,7 @@ describe('C5 — gränsfall', () => {
       service.markAsPaidManually('inv-1', 'org-1', 'BANK', 'user-1', 'USER', {
         enteredAmount: 10_001,
       }),
-    ).rejects.toThrow(/överstiger fakturans restskuld/)
+    ).rejects.toThrow(/överstiger restskulden/)
 
     expect(createJournalEntryForInvoiceManualPayment).not.toHaveBeenCalled()
     expect(invoicePaymentCreate).not.toHaveBeenCalled()
@@ -274,7 +274,7 @@ describe('C5 — gränsfall', () => {
       service.markAsPaidManually('inv-1', 'org-1', 'BANK', 'user-1', 'USER', {
         enteredAmount: 2_500,
       }),
-    ).rejects.toThrow(/överstiger fakturans restskuld/)
+    ).rejects.toThrow(/överstiger restskulden/)
   })
 
   it('noll eller negativt belopp avvisas', async () => {

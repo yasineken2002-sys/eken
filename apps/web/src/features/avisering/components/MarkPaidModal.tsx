@@ -13,6 +13,19 @@ interface Props {
   onSuccess: () => void
 }
 
+/**
+ * Serverns felmeddelande ur API-svarets `{ success: false, error: { message } }`.
+ * Egen text bara som sista utväg — backend vet varför beloppet nekades, det gör
+ * inte den här komponenten.
+ *
+ * Samma uppackning står ordagrant på sex andra ställen (auth, import, legal, ai).
+ * Den bör brytas ut till `lib/`, men inte i den här PR:en.
+ */
+function felText(err: unknown): string {
+  const body = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data
+  return body?.error?.message ?? 'Betalningen kunde inte registreras. Försök igen.'
+}
+
 const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: 'BANK', label: 'Bank' },
   { value: 'SWISH', label: 'Swish' },
@@ -60,10 +73,18 @@ export function MarkPaidModal({ notice, onClose, onSuccess }: Props) {
           <span className="font-mono font-medium">{notice.ocrNumber}</span>
         </p>
 
+        {/*
+          Serverns meddelande, inte en hårdkodad text. Efter H4 avvisas ett belopp
+          som överstiger restskulden med ett 400 som NAMNGER både beloppet och
+          restskulden — "Misslyckades. Försök igen." hade gjort det beskedet
+          osynligt och lämnat operatören utan att veta vad som var fel.
+          Samma idiom som AI-bilagornas felkort: visa serverns text, ha en egen
+          bara som sista utväg.
+        */}
         {markPaid.isError && (
-          <div className="mb-4 flex items-center gap-2 rounded-xl bg-red-50 px-3.5 py-3 text-[13px] text-red-700">
-            <AlertCircle size={14} strokeWidth={1.8} />
-            Misslyckades. Försök igen.
+          <div className="mb-4 flex items-start gap-2 break-words rounded-xl bg-red-50 px-3.5 py-3 text-[13px] text-red-700">
+            <AlertCircle size={14} strokeWidth={1.8} className="mt-0.5 shrink-0" />
+            <span>{felText(markPaid.error)}</span>
           </div>
         )}
 
