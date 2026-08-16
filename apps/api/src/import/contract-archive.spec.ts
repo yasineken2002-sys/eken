@@ -11,7 +11,12 @@ import type { StorageService } from '../storage/storage.service'
 
 const BYTES = Buffer.from('%PDF-1.7 ett kontrakt')
 
-function rigg(overrides?: { uploadFail?: boolean; deleteFail?: boolean; updateFail?: boolean }) {
+function rigg(overrides?: {
+  uploadFail?: boolean
+  deleteFail?: boolean
+  updateFail?: boolean
+  unconfigured?: boolean
+}) {
   const created: Array<Record<string, unknown>> = []
   const prisma = {
     document: {
@@ -30,6 +35,7 @@ function rigg(overrides?: { uploadFail?: boolean; deleteFail?: boolean; updateFa
     },
   }
   const storage = {
+    configured: overrides?.unconfigured !== true,
     uploadFile: overrides?.uploadFail
       ? jest.fn().mockRejectedValue(new Error('R2 nere'))
       : jest.fn().mockResolvedValue('https://r2/x'),
@@ -142,6 +148,36 @@ describe('ContractArchiveService.archive', () => {
       organizationId: 'org-1',
     })
     expect(created[0]).not.toHaveProperty('uploadedById')
+  })
+
+  it('avvisar DIREKT när lagringen inte är konfigurerad', async () => {
+    // Utan arkiv har granskningen ingen källa — att låta uppladdningen "lyckas"
+    // återinför defekten #473 handlar om. Och felet ska komma nu, inte efter
+    // AWS-SDK:ns ~40-sekunderstimeout mot en tom endpoint.
+    const { service, storage, prisma } = rigg({ unconfigured: true })
+    await expect(
+      service.archive({
+        buffer: BYTES,
+        fileName: 'a.pdf',
+        mimeType: 'application/pdf',
+        organizationId: 'org-1',
+      }),
+    ).rejects.toThrow(/inte konfigurerad/)
+    // Ingen nätverksrunda alls — det är hela poängen med att kolla först.
+    expect(storage.uploadFile).not.toHaveBeenCalled()
+    expect(prisma.document.create).not.toHaveBeenCalled()
+  })
+
+  it('felet namnger KONSEKVENSEN, inte bara variabeln', async () => {
+    const { service } = rigg({ unconfigured: true })
+    await expect(
+      service.archive({
+        buffer: BYTES,
+        fileName: 'a.pdf',
+        mimeType: 'application/pdf',
+        organizationId: 'org-1',
+      }),
+    ).rejects.toThrow(/granska mot källan/)
   })
 
   it('kastar om R2 failar — ingen Document-rad utan fil bakom sig', async () => {

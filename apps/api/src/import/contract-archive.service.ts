@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import * as crypto from 'crypto'
 import { randomUUID } from 'crypto'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -66,6 +66,18 @@ export class ContractArchiveService {
     uploadedById?: string | undefined
   }): Promise<{ documentId: string; contentHash: string }> {
     const { buffer, fileName, mimeType, organizationId, uploadedById } = input
+
+    // Avvisa DIREKT om lagringen saknas. Utan arkiv har granskningssteget ingen
+    // källa att jämföra AI:ns avläsning mot, och avtalet får inget underlag — att
+    // låta uppladdningen "lyckas" utan arkiv återinför precis den defekt #473
+    // handlar om. Felet namnger konsekvensen, inte bara variabeln: den som får
+    // veta VARFÖR åtgärdar rätt sak (jfr #454).
+    if (!this.storage.configured) {
+      throw new ServiceUnavailableException(
+        'Fillagringen (R2) är inte konfigurerad. Kontraktet kan inte arkiveras, och utan ' +
+          'arkiverat original går skanningen inte att granska mot källan. Kontakta administratören.',
+      )
+    }
 
     const contentHash = crypto.createHash('sha256').update(buffer).digest('hex')
     const storageKey = `documents/${organizationId}/${randomUUID()}${extensionFor(mimeType)}`

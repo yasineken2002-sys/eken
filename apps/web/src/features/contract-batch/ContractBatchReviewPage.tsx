@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { FileText, ShieldCheck } from 'lucide-react'
+import { downloadDocument } from '@/features/documents/api/documents.api'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
@@ -196,24 +197,29 @@ function RowItem({
   return (
     <tr className="border-line border-b last:border-0 hover:bg-gray-50/80">
       {/*
-        #473: filnamnet är en LÄNK till originalet, inte bara text. Ett filnamn
+        #473: filnamnet är en VÄG till originalet, inte bara text. Ett filnamn
         utan väg till filen är ett påstående om att dokumentet finns — och
         granskningen går ut på att jämföra AI:ns avläsning mot källan.
-        Rader importerade innan arkiveringen fanns saknar original och visas
-        som text med en förklaring, inte som en trasig länk.
+
+        `downloadDocument` och INTE en <a href>: endpointen kräver
+        Authorization-header och returnerar { url } till en presignerad R2-URL,
+        inte filen. En vanlig länk får 401 — se kommentaren i documents.api.ts,
+        som beskriver precis det felet.
+
+        Rader importerade innan arkiveringen fanns saknar original och visas som
+        text med förklaring, inte som en knapp som inte kan leverera.
       */}
       <Td className="max-w-[160px] truncate">
         {row.documentId ? (
-          <a
-            href={`/api/v1/documents/${row.documentId}/download`}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+          <button
+            type="button"
+            onClick={() => void downloadDocument(row.documentId!, row.fileName)}
+            className="inline-flex max-w-full items-center gap-1 text-blue-600 hover:underline"
             title="Öppna det uppladdade originalet"
           >
-            <FileText size={13} strokeWidth={1.8} />
+            <FileText size={13} strokeWidth={1.8} className="shrink-0" />
             <span className="truncate">{row.fileName}</span>
-          </a>
+          </button>
         ) : (
           <span className="text-gray-500" title="Originalet sparades inte vid importen">
             {row.fileName}
