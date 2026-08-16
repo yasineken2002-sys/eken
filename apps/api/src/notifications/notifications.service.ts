@@ -78,10 +78,31 @@ function isoWeek(ymd: string): { key: string; week: number } {
  * kvar tills TTL löper ut, men tar TTL slut MEDAN jobbet kör kan en andra replik
  * ta låset och då skyddar det ingenting.
  *
- * De tre rapportjobben itererar organisationer och gör ett AI-anrop per
- * organisation. 30 minuter är satt med marginal för det. Kostnaden för ett för
- * långt TTL är att nästa schemalagda körning hoppas över efter en krasch — och
- * jobben är dagliga, vecko- respektive månadsvisa, så det är oproblematiskt.
+ * ── INVARIANTEN: jobbets körtid  <  TTL  <  cron-intervallet ────────────────
+ *
+ * Båda olikheterna måste hålla, och de fäller åt olika håll:
+ *
+ *   TTL för KORT  → låset löper ut medan jobbet kör. En andra replik tar det,
+ *                   och låset skyddar ingenting. Det felet byggde vi bort.
+ *
+ *   TTL för LÅNGT → ett lås som blir kvar efter en krasch överlever till NÄSTA
+ *                   schemalagda körning, som då hoppas över. Är TTL längre än
+ *                   intervallet blir jobbet permanent avstängt, tyst.
+ *
+ * Den andra halvan är ny med `runIfUnlocked`. `runWithLock` väntade och körde
+ * ändå — den kunde inte tystna, bara dubbelköra. Fail-closed betyder att
+ * felmoden bytt riktning, och den nya är svårare att upptäcka: ett jobb som
+ * slutat köra ser exakt ut som ett jobb utan något att göra.
+ *
+ * Uppmätta värden — BEVAKADE av `cron-lock-interval.spec.ts`, inte bara skrivna:
+ *
+ *   morning-insights   `0 7 * * 1-5`    intervall ≥ 24 h     TTL 30 min
+ *   weekly-summary     `0 18 * * 0`     intervall  7 dygn    TTL 30 min
+ *   monthly-report     `0 8 1 * *`      intervall ≥ 28 dygn  TTL 30 min
+ *
+ * 30 minuter är satt efter den ÖVRE halvan: jobben itererar organisationer med
+ * ett AI-anrop per organisation. Marginalen nedåt är enorm — närmaste intervall
+ * är 24 timmar, alltså 48 gånger TTL:n.
  */
 const CRON_LOCK_TTL_SEC = 30 * 60
 
@@ -361,9 +382,12 @@ export class NotificationsService implements OnModuleInit {
       { ttlSec: CRON_LOCK_TTL_SEC },
     )
     if (!result.ran) {
-      // Ett tyst överhopp är oskiljbart från "cronen kördes aldrig". Säg det.
+      // Ett tyst överhopp är oskiljbart från "cronen kördes aldrig". Säg det —
+      // och säg hur gammalt låset var, så ett normalt överhopp går att skilja
+      // från ett hängt lås som stängt av jobbet.
       this.logger.log(
-        `[cron:morning-insights] Morgonrapporten kördes redan av en annan replik — hoppar över.`,
+        `[cron:morning-insights] Morgonrapporten kördes redan av en annan replik — hoppar över. ` +
+          `Låset hållet i ${result.heldForSec ?? '?'} s av ${CRON_LOCK_TTL_SEC} s.`,
       )
     }
   }
@@ -484,9 +508,12 @@ export class NotificationsService implements OnModuleInit {
       { ttlSec: CRON_LOCK_TTL_SEC },
     )
     if (!result.ran) {
-      // Ett tyst överhopp är oskiljbart från "cronen kördes aldrig". Säg det.
+      // Ett tyst överhopp är oskiljbart från "cronen kördes aldrig". Säg det —
+      // och säg hur gammalt låset var, så ett normalt överhopp går att skilja
+      // från ett hängt lås som stängt av jobbet.
       this.logger.log(
-        `[cron:weekly-summary] Veckosammanfattningen kördes redan av en annan replik — hoppar över.`,
+        `[cron:weekly-summary] Veckosammanfattningen kördes redan av en annan replik — hoppar över. ` +
+          `Låset hållet i ${result.heldForSec ?? '?'} s av ${CRON_LOCK_TTL_SEC} s.`,
       )
     }
   }
@@ -595,9 +622,12 @@ export class NotificationsService implements OnModuleInit {
       { ttlSec: CRON_LOCK_TTL_SEC },
     )
     if (!result.ran) {
-      // Ett tyst överhopp är oskiljbart från "cronen kördes aldrig". Säg det.
+      // Ett tyst överhopp är oskiljbart från "cronen kördes aldrig". Säg det —
+      // och säg hur gammalt låset var, så ett normalt överhopp går att skilja
+      // från ett hängt lås som stängt av jobbet.
       this.logger.log(
-        `[cron:monthly-report] Månadsrapporten kördes redan av en annan replik — hoppar över.`,
+        `[cron:monthly-report] Månadsrapporten kördes redan av en annan replik — hoppar över. ` +
+          `Låset hållet i ${result.heldForSec ?? '?'} s av ${CRON_LOCK_TTL_SEC} s.`,
       )
     }
   }

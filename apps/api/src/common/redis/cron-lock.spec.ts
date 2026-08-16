@@ -24,19 +24,45 @@
 
 import { LockService } from './lock.service'
 
-/** Minimal Redis-fejk med RIKTIG SET NX-semantik. */
+/**
+ * Minimal Redis-fejk med RIKTIG SET NX-semantik OCH riktig TTL-utgång.
+ *
+ * TTL:n är inte pynt i den här fejken: hela poängen med testet längst ned är
+ * att ett lås som ingen släpper ska försvinna av sig självt. En fejk utan
+ * utgång hade gjort det testet omöjligt att skriva — och just det testet är det
+ * som bevisar att fail-closed inte betyder fail-forever.
+ */
 function fakeRedis() {
-  const store = new Map<string, string>()
+  const store = new Map<string, { value: string; expiresAt: number }>()
+  let now = 0
+  const alive = (key: string): boolean => {
+    const e = store.get(key)
+    if (!e) return false
+    if (e.expiresAt <= now) {
+      store.delete(key)
+      return false
+    }
+    return true
+  }
   return {
     store,
+    /** Flyttar den simulerade klockan framåt. */
+    advanceSec: (sec: number) => {
+      now += sec * 1000
+    },
+    has: (key: string) => alive(key),
     client: {
-      set: jest.fn(async (key: string, value: string, _ex: string, _ttl: number, nx: string) => {
-        if (nx === 'NX' && store.has(key)) return null
-        store.set(key, value)
+      set: jest.fn(async (key: string, value: string, _ex: string, ttl: number, nx: string) => {
+        if (nx === 'NX' && alive(key)) return null
+        store.set(key, { value, expiresAt: now + ttl * 1000 })
         return 'OK'
       }),
+      pttl: jest.fn(async (key: string) => {
+        if (!alive(key)) return -2
+        return store.get(key)!.expiresAt - now
+      }),
       eval: jest.fn(async (_lua: string, _n: number, key: string, token: string) => {
-        if (store.get(key) === token) store.delete(key)
+        if (alive(key) && store.get(key)!.value === token) store.delete(key)
         return 1
       }),
     },
@@ -71,7 +97,9 @@ describe('runIfUnlocked — hoppar över, väntar inte', () => {
       { ttlSec: 60 },
     )
 
-    expect(b).toEqual({ ran: false })
+    // heldForSec tillkom när överhoppet började rapportera låsets ålder. Talen
+    // är oförändrade: låset togs i samma ögonblick, alltså 0 sekunder hållet.
+    expect(b).toEqual({ ran: false, heldForSec: 0 })
     expect(körningar).toEqual(['A'])
 
     släpp()
@@ -94,7 +122,7 @@ describe('runIfUnlocked — hoppar över, väntar inte', () => {
     const locks = new LockService(redis as never)
 
     await locks.runIfUnlocked('cron:test', async () => 1, { ttlSec: 60 })
-    expect(redis.store.has('lock:cron:test')).toBe(false)
+    expect(redis.has('lock:cron:test')).toBe(false)
 
     const andra = await locks.runIfUnlocked('cron:test', async () => 2, { ttlSec: 60 })
     expect(andra).toEqual({ ran: true, value: 2 })
@@ -115,7 +143,7 @@ describe('runIfUnlocked — hoppar över, väntar inte', () => {
     ).rejects.toThrow('jobbet failade')
 
     // Ett kvarliggande lås efter ett fel hade tystat jobbet till TTL löpt ut.
-    expect(redis.store.has('lock:cron:test')).toBe(false)
+    expect(redis.has('lock:cron:test')).toBe(false)
   })
 
   it('olika jobb har olika nycklar och blockerar inte varandra', async () => {
@@ -161,5 +189,85 @@ describe('runIfUnlocked — hoppar över, väntar inte', () => {
       1800,
       'NX',
     )
+  })
+})
+
+describe('FAIL-CLOSED FÅR INTE BLI FAIL-FOREVER', () => {
+  it('ett lås som ALDRIG släpps löses upp av TTL:t — jobbet kommer tillbaka', async () => {
+    const redis = fakeRedis()
+    const locks = new LockService(redis as never)
+    const kört: string[] = []
+
+    // Simulera en replik som dog mitt i jobbet: låset togs, releasen kom aldrig.
+    await redis.client.set('lock:cron:morning-insights', 'död-replik', 'EX', 1800, 'NX')
+
+    // Nästa schemalagda körning hoppas över — det är meningen.
+    const under = await locks.runIfUnlocked(
+      'cron:morning-insights',
+      async () => {
+        kört.push('kördes')
+      },
+      { ttlSec: 1800 },
+    )
+    expect(under.ran).toBe(false)
+    expect(kört).toEqual([])
+
+    // … men bara tills TTL:n löpt ut. Det är hela skillnaden mellan "hoppar
+    // över den här gången" och "jobbet är permanent avstängt", och det är den
+    // egenskapen som gör TTL < cron-intervall till en invariant och inte en
+    // trivia. Se cron-lock-interval.spec.ts.
+    redis.advanceSec(1801)
+
+    const efter = await locks.runIfUnlocked(
+      'cron:morning-insights',
+      async () => {
+        kört.push('kördes')
+      },
+      { ttlSec: 1800 },
+    )
+    expect(efter).toEqual({ ran: true, value: undefined })
+    expect(kört).toEqual(['kördes'])
+  })
+
+  it('överhoppet rapporterar hur länge låset hållits', async () => {
+    const redis = fakeRedis()
+    const locks = new LockService(redis as never)
+
+    await redis.client.set('lock:cron:test', 'annan', 'EX', 1800, 'NX')
+    redis.advanceSec(600)
+
+    const result = await locks.runIfUnlocked('cron:test', async () => 1, { ttlSec: 1800 })
+
+    // Utan det här talet är ett normalt överhopp (hållaren startade nyss)
+    // oskiljbart från ett hängt lås som är på väg att stänga av jobbet.
+    expect(result).toEqual({ ran: false, heldForSec: 600 })
+  })
+
+  it('åldern är null när Redis inte kan svara — inte 0, som hade sett normalt ut', async () => {
+    const redis = fakeRedis()
+    const locks = new LockService(redis as never)
+    // SET misslyckas men nyckeln är borta när vi frågar PTTL (race).
+    redis.client.set = jest.fn(
+      async (_k: string, _v: string, _ex: string, _t: number, _nx: string) => null,
+    )
+    redis.client.pttl = jest.fn(async (_k: string) => -2)
+
+    const result = await locks.runIfUnlocked('cron:test', async () => 1, { ttlSec: 1800 })
+
+    expect(result).toEqual({ ran: false, heldForSec: null })
+  })
+
+  it('ett PTTL som kastar gör inte överhoppet till ett undantag', async () => {
+    const redis = fakeRedis()
+    const locks = new LockService(redis as never)
+    await redis.client.set('lock:cron:test', 'annan', 'EX', 1800, 'NX')
+    redis.client.pttl = jest.fn(async (_k: string) => {
+      throw new Error('redis nere')
+    })
+
+    // Diagnostiken får aldrig bli kontrollflöde.
+    await expect(
+      locks.runIfUnlocked('cron:test', async () => 1, { ttlSec: 1800 }),
+    ).resolves.toEqual({ ran: false, heldForSec: null })
   })
 })

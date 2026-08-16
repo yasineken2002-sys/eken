@@ -89,9 +89,18 @@ interface SessionResult {
 /**
  * TTL för aktiveringspåminnelsernas cron-lås.
  *
+ * INVARIANT: jobbets körtid < TTL < cron-intervallet. Se den utförliga
+ * motiveringen i `notifications.service.ts` — båda olikheterna måste hålla, och
+ * den övre är den `runIfUnlocked` införde: ett lås som överlever till nästa
+ * schemalagda körning stänger av jobbet tyst.
+ *
+ * Uppmätt, och bevakat av `cron-lock-interval.spec.ts`:
+ *
+ *   tenant-activation-reminders  `0 9 * * *`  intervall 24 h  TTL 15 min
+ *
  * Jobbet itererar hyresgäster med utestående aktiveringstoken och gör ett
- * mejlutskick per hyresgäst. 15 minuter med marginal; jobbet är dagligt, så ett
- * kvarliggande lås efter en krasch kostar en överhoppad körning.
+ * mejlutskick per hyresgäst; 15 minuter är marginal för det. Marginalen uppåt är
+ * 96 gånger.
  */
 const ACTIVATION_REMINDER_LOCK_TTL_SEC = 15 * 60
 
@@ -615,9 +624,13 @@ export class TenantAuthService {
       { ttlSec: ACTIVATION_REMINDER_LOCK_TTL_SEC },
     )
     if (!result.ran) {
+      // Ett tyst överhopp är oskiljbart från "cronen kördes aldrig". Säg det —
+      // och säg hur gammalt låset var, så ett normalt överhopp går att skilja
+      // från ett hängt lås som stängt av jobbet.
       this.logger.log(
         '[cron:tenant-activation-reminders] Aktiveringspåminnelserna kördes redan av en ' +
-          'annan replik — hoppar över.',
+          `annan replik — hoppar över. Låset hållet i ${result.heldForSec ?? '?'} s av ` +
+          `${ACTIVATION_REMINDER_LOCK_TTL_SEC} s.`,
       )
     }
   }
