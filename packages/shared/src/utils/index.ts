@@ -37,7 +37,12 @@ export function calculateTotal(subtotal: number, vatTotal: number): number {
 
 const MIN_OCR_BASE_LENGTH = 7
 
-function luhnChecksum(digits: string): number {
+/**
+ * Luhn mod-10-kontrollsiffra. EXPORTERAD därför att OcrService byggde en egen
+ * kopia — samma algoritm, två implementationer, och den sortens dubblett driver
+ * isär förr eller senare. En regel, ett ställe.
+ */
+export function luhnChecksum(digits: string): number {
   let sum = 0
   let alternate = false
   for (let i = digits.length - 1; i >= 0; i--) {
