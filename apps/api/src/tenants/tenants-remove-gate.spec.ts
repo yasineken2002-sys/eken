@@ -26,8 +26,24 @@ const ORG = 'org-1'
 function setup(opts: { anonymizedAt?: Date | null; counts?: Record<string, number> } = {}) {
   const del = jest.fn().mockResolvedValue({ id: TENANT })
   const counts = opts.counts ?? {}
+  /**
+   * Attrappen RESPEKTERAR where-klausulen, och det är hela poängen.
+   *
+   * En attrapp som svarar likadant oavsett filter kan inte skilja "räknar på
+   * status" från "räknar på existens" — uppmätt: negativkontrollen som återförde
+   * den gamla statusgrinden lämnade testet "ett AVSLUTAT avtal blockerar" GRÖNT
+   * innan den här raden fanns. Testet mätte då inte det dess namn påstod.
+   *
+   * Modellen: hyresgästens historik består av AVSLUTADE poster. En fråga som
+   * filtrerar på `status` hittar därför noll — precis som mot riktig Postgres,
+   * där grinden gav 0 och FK-villkoret ändå fällde raderingen.
+   */
   const delegate = (name: string) => ({
-    count: jest.fn().mockResolvedValue(counts[name] ?? 0),
+    count: jest.fn(async (args?: { where?: Record<string, unknown> }) => {
+      const where = args?.where ?? {}
+      if ('status' in where) return 0
+      return counts[name] ?? 0
+    }),
   })
   const prisma = {
     tenant: {
