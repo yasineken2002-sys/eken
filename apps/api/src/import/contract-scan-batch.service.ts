@@ -557,6 +557,9 @@ export class ContractScanBatchService {
         matchedUnitId: true,
         documentId: true,
         reviewedData: true,
+        // #471: AI:ns orörda avläsning, enda gången den läses — för att kunna
+        // bygga fältnivå-spåret innan den gallras i samma commit.
+        originalScanData: true,
         createdLeaseId: true,
       },
     })
@@ -627,14 +630,49 @@ export class ContractScanBatchService {
       throw err
     }
 
+    // #471: GALLRING VID COMMIT — symmetriskt med purge-mönstret i samma fil.
+    //
+    // `fileData` nollas redan vid varje terminalt radtillstånd (och redan vid
+    // SCANNED, i recordScanResult), men Json-kolumnerna nollades bara i
+    // `cancelBatch`. Efter commit ligger personnumret krypterat på `Tenant`, och
+    // `createdLeaseId` pekar till den levande sanningen — stagingkopian har
+    // inget operationellt syfte kvar.
+    //
+    // OBS: `SKIPPED` har SAMMA lucka och stängs INTE här (`skipRow` sätter bara
+    // `fileData: null`). Redovisningssvaret i #471 antog att COMMITTED var den
+    // enda terminala status som bar kvar Json-datan; mätningen visar att det är
+    // fel. Medvetet utanför den här ändringens omfång — se ärendet.
+    //
+    // Redovisningsgenomgången (#471) svarade att ingen av de tre kolumnerna är
+    // räkenskapsinformation — ingen verifikation hänvisar till dem. Gallringen är
+    // därför tillåten; se `buildCommitAuditTrail` för vad som bevaras i stället
+    // och under vilket villkor svaret skulle ändras.
+    //
+    // MÄTT före ändringen: `originalScanData` och `confirmedData` har NOLL läsare
+    // i hela repot. `reviewedData` läses av `matchRow` och `confirmRow` (båda
+    // grindade till SCANNED) samt av granskningsvyn — men `inTab()` i
+    // ContractBatchReviewPage returnerar false för varje rad vars status inte är
+    // SCANNED, så en COMMITTED rad renderas aldrig där. Gallringen tar alltså
+    // inte bort någon vy som fanns.
     await this.prisma.contractImportRow.update({
       where: { id: rowId },
       data: {
         rowStatus: 'COMMITTED',
         createdLeaseId: lease.id,
         matchedUnitId: unitId,
-        confirmedData: dto as unknown as Prisma.InputJsonValue,
-        reviewedData: effective as unknown as Prisma.InputJsonValue,
+        // Klartext-PII ut. Kvar blir ett spår som bär VAD som ändrades, inte
+        // vilka personuppgifter som stod där.
+        originalScanData: Prisma.JsonNull,
+        reviewedData: Prisma.JsonNull,
+        confirmedData: buildCommitAuditTrail(
+          row.originalScanData as ScannedContract | null,
+          effective,
+          {
+            committedByUserId: userId,
+            unitId,
+            committedAt: new Date().toISOString(),
+          },
+        ) as unknown as Prisma.InputJsonValue,
         fileData: null,
         errorMessage: null,
       },
@@ -805,10 +843,100 @@ export class ContractScanBatchService {
 
 // Ta bort rawText ur den data som exponeras via API:t. rawText är ett rått
 // utdrag ur kontraktstexten (kan innehålla ostrukturerad PII) och behövs bara
-// server-side; det bevaras i originalScanData för audit.
+// server-side, fram till commit då hela skanningsdatan gallras.
 function stripRawText(data: ScannedContract | null): Omit<ScannedContract, 'rawText'> | null {
   if (!data) return null
   const rest: Partial<ScannedContract> = { ...data }
   delete rest.rawText
   return rest as Omit<ScannedContract, 'rawText'>
+}
+
+/**
+ * Fält som ALDRIG får stå i klartext i spåret.
+ *
+ * `personalNumber` är hela skälet till #471: det är systemets sista klartext-PII
+ * i vila, medan varje annat personnummer ligger AES-256-GCM-krypterat. Att
+ * gallra `originalScanData`/`reviewedData` och sedan skriva tillbaka numret i
+ * spåret vore att flytta problemet, inte lösa det.
+ *
+ * `rawText` (de första 500 tecknen av kontraktstexten) utelämnas HELT — inte
+ * redigerat utan bortlämnat. Det är ostrukturerad text som med stor sannolikhet
+ * bär personnumret i löptext, och ett "ändrades från … till …" på 500 tecken
+ * fritext har inget styrningsvärde.
+ */
+const REDIGERADE_FALT: ReadonlySet<keyof ScannedContract> = new Set(['personalNumber'])
+const UTELAMNADE_FALT: ReadonlySet<keyof ScannedContract> = new Set(['rawText'])
+
+/** Markör i stället för värdet. Att fältet ÄNDRADES är signalen, inte till vad. */
+const REDIGERAT = '[redigerat]'
+
+export interface CommitAuditTrail {
+  version: 1
+  committedAt: string
+  committedByUserId: string | null
+  unitId: string
+  /** Bara de fält operatören faktiskt ändrade. Tom lista = AI:ns avläsning gick igenom orörd. */
+  changedFields: Array<{ field: string; from: unknown; to: unknown }>
+}
+
+/**
+ * Fältnivå-spår över vad AI:n läste av kontra vad operatören committade.
+ *
+ * ── VARFÖR DET HÄR FINNS, OCH VAD DET INTE ÄR ────────────────────────────────
+ *
+ * Redovisningsgenomgången i #471 svarade NEJ på om `originalScanData`,
+ * `reviewedData` och `confirmedData` är räkenskapsinformation: ingen
+ * verifikation och ingen bokföringspost hänvisar till dem. Skiljelinjen mot
+ * `BankStatementImport.confirmedData` är inte mönstret utan vad nästa steg gör
+ * med datan — där blir det en `BankTransaction` som journalförs, här ett
+ * `Lease` som är ett avtal, inte en affärshändelse.
+ *
+ * Spåret av vad AI:n föreslog kontra vad en människa ändrade bedömdes som ett
+ * verkligt KVALITETS- OCH STYRNINGSINTRESSE, men INTE en lagstadgad
+ * bevarandeplikt. Det här är alltså **rekommenderad praxis, inte lagföljd** —
+ * och det är därför spåret får kosta så lite som det gör, och varför
+ * personnumret kan redigeras bort utan att något krav bryts.
+ *
+ * Jämfört mot `originalScanData` (AI:ns orörda avläsning), inte mot
+ * `reviewedData`: det är AI-mot-människa som är frågan, och `reviewedData`
+ * skrivs om vid commit.
+ *
+ * VILLKOR SOM ÄNDRAR SVARET (#471): skulle en `JournalEntry` någon gång hänvisa
+ * till en `ContractImportRow` ärver just den raden bevarandeplikt, och
+ * gallringen nedan blir fel. Det bevakas av vakten i
+ * `contract-commit-gallring.spec.ts` — den fäller om en verifikationsskrivare
+ * någonsin refererar hit, i stället för att lita på att ingen råkar göra det.
+ */
+export function buildCommitAuditTrail(
+  original: ScannedContract | null,
+  effective: ScannedContract,
+  meta: { committedByUserId: string | null; unitId: string; committedAt: string },
+): CommitAuditTrail {
+  const changedFields: CommitAuditTrail['changedFields'] = []
+
+  // Unionen av nycklarna, inte bara originalets — ett fält operatören LADE TILL
+  // (AI:n läste null) är precis en sådan ändring spåret finns för.
+  const nycklar = new Set<string>([...Object.keys(original ?? {}), ...Object.keys(effective)])
+
+  for (const field of nycklar) {
+    if (UTELAMNADE_FALT.has(field as keyof ScannedContract)) continue
+
+    const from = original ? (original as unknown as Record<string, unknown>)[field] : undefined
+    const to = (effective as unknown as Record<string, unknown>)[field]
+    if (Object.is(from, to)) continue
+
+    changedFields.push(
+      REDIGERADE_FALT.has(field as keyof ScannedContract)
+        ? { field, from: REDIGERAT, to: REDIGERAT }
+        : { field, from: from ?? null, to: to ?? null },
+    )
+  }
+
+  return {
+    version: 1,
+    committedAt: meta.committedAt,
+    committedByUserId: meta.committedByUserId,
+    unitId: meta.unitId,
+    changedFields,
+  }
 }
