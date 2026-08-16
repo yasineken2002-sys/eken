@@ -29,6 +29,7 @@ const REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH = 10
 /** Öresavrundning, samma form som rent-debt.service.ts använder. */
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
+import { assertPaymentWithinDebt } from '../common/payments/payment-within-debt'
 import {
   PaymentMethod,
   Prisma,
@@ -1669,13 +1670,45 @@ export class AviseringService {
           where: { rentNoticeId: noticeId },
           select: { amount: true },
         })
-        const debtAfter = computeRentDebt({
+        const debtGrund = {
           type: låst.type,
           totalAmount: låst.totalAmount,
           consumptionAmount: låst.consumptionAmount,
           miscChargeAmount: låst.miscChargeAmount,
           reminderFeeAmount: låst.reminderFeeAmount,
           interestAccruedAmount: låst.interestAccruedAmount,
+        }
+
+        // ── H4: ÖVERBETALNING AVVISAS ───────────────────────────────────────
+        //
+        // Saknades här. En operatör kunde registrera 20 000 kr på en
+        // 10 000-kronorsavi: hela beloppet allokerades, avin flippade PAID, och
+        // verifikatet krediterade 1510 med 20 000 mot en fordran på 10 000 →
+        // kundfordran MINUS 10 000. Fakturans manuella väg har haft spärren hela
+        // tiden; den här vägen fick den aldrig.
+        //
+        // Samma assertion som fakturan anropar — inte en kopia. Regeln får finnas
+        // på ETT ställe, annars divergerar de två formuleringarna med tiden.
+        //
+        // Prövas mot restskulden FÖRE den här betalningen, och INNANFÖR radlåset:
+        // låg läsningen utanför kunde en samtidig bankmatchning skriva en
+        // allokering emellan och göra kontrollen beräknad på inaktuell grund
+        // (samma skäl som #288 på fakturasidan).
+        //
+        // `ocrOutstanding` (EXKL. ränta) är rätt nämnare: det är den skuld ett
+        // OCR-betalningsflöde faktiskt reglerar, samma grind som bankvägen och
+        // kravtrappan använder.
+        const debtBefore = computeRentDebt({
+          ...debtGrund,
+          allocations: priorAllocs.map((a) => a.amount),
+        })
+        assertPaymentWithinDebt(
+          new Prisma.Decimal(paidAmount),
+          new Prisma.Decimal(debtBefore.ocrOutstanding),
+        )
+
+        const debtAfter = computeRentDebt({
+          ...debtGrund,
           allocations: [...priorAllocs.map((a) => a.amount), paidAmount],
         })
         const completesNotice = debtAfter.ocrOutstanding <= 0

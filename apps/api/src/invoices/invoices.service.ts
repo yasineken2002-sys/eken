@@ -32,6 +32,7 @@ import { UpdateInvoiceDto } from './dto/update-invoice.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
+import { assertPaymentWithinDebt } from '../common/payments/payment-within-debt'
 
 // Mappar InvoiceStatus → Prisma InvoiceEventType enum-värde
 const STATUS_TO_EVENT_TYPE: Partial<Record<InvoiceStatus, InvoiceEventType>> = {
@@ -1047,28 +1048,20 @@ export class InvoicesService {
           total: invoice.total,
           allocations: priorAllocations.map((a) => a.amount),
         })
-        if (debtBefore.outstanding.lte(0)) {
-          throw new BadRequestException('Fakturan är redan fullt reglerad')
-        }
-
         const settlement =
           opts.enteredAmount != null
             ? new Prisma.Decimal(opts.enteredAmount)
             : debtBefore.outstanding
 
-        if (settlement.lte(0)) {
-          throw new BadRequestException('Betalningsbeloppet måste vara större än noll')
-        }
-        // ÖVERBETALNING AVVISAS (se PR-beskrivningen — affärsregel att bekräfta).
-        // Att tyst acceptera mer än restskulden skulle skapa en kundkredit som
-        // systemet inte har någon modell för; att klampa beloppet skulle bokföra
-        // mindre än vad som faktiskt kommit in. Båda är sämre än att säga ifrån.
-        if (settlement.gt(debtBefore.outstanding)) {
-          throw new BadRequestException(
-            `Beloppet ${settlement.toFixed(2)} kr överstiger fakturans restskuld ` +
-              `${debtBefore.outstanding.toFixed(2)} kr — överbetalning hanteras inte`,
-          )
-        }
+        // De tre kontrollerna låg tidigare inline här. De bor nu i
+        // `assertPaymentWithinDebt` och DELAS med avins manuella väg, som saknade
+        // dem helt (H4: överbetalning där gav negativ kundfordran). Två kopior av
+        // samma regel divergerar — se kommentaren i hjälparen.
+        //
+        // Meddelandena är därmed subjektsneutrala: "restskulden", inte "fakturans
+        // restskuld". Talen står kvar i texten, vilket är det som hjälper den som
+        // skrev fel belopp.
+        assertPaymentWithinDebt(settlement, debtBefore.outstanding)
 
         const debtAfter = computeInvoiceDebt({
           total: invoice.total,
