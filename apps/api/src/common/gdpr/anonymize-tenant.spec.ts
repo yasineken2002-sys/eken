@@ -20,6 +20,8 @@ interface FakeState {
   keyHandovers: { tenantId: string; issuedToName: string | null }[]
   sentMessages: { tenantId: string; subject: string; content: string }[]
   logs: Record<string, unknown>[]
+  /** Varje `data`-objekt som skickats till tenant.update, i ordning. */
+  updates: Record<string, unknown>[]
 }
 
 function freshState(): FakeState {
@@ -61,6 +63,7 @@ function freshState(): FakeState {
       },
     ],
     logs: [],
+    updates: [],
   }
 }
 
@@ -70,6 +73,7 @@ function fakeTx(state: FakeState) {
     tenant: {
       findUniqueOrThrow: async () => ({ anonymizedAt: state.tenant.anonymizedAt }),
       update: async ({ data }: { data: Record<string, unknown> }) => {
+        state.updates.push(data)
         Object.assign(state.tenant, data)
         return state.tenant
       },
@@ -207,6 +211,16 @@ describe('KANARIEFÅGEL — avidentifieringen är idempotent', () => {
     expect(state.logs).toHaveLength(1)
 
     // anonymizedAt behåller sin FÖRSTA tidpunkt.
+    //
+    // Att jämföra värdena räcker INTE. Båda körningarna ligger inom samma
+    // millisekund, så `new Date()` ger samma tal och jämförelsen är grön även om
+    // fältet skrivs om varje gång — uppmätt: negativkontrollen som alltid satte
+    // `anonymizedAt` gav 11/11 gröna innan den här raden fanns.
+    //
+    // Vi mäter i stället att den andra skrivningen inte ens NÄMNER fältet.
+    expect(state.updates).toHaveLength(2)
+    expect(state.updates[0]).toHaveProperty('anonymizedAt')
+    expect(Object.keys(state.updates[1]!)).not.toContain('anonymizedAt')
     expect(second.anonymizedAt).toEqual(first.anonymizedAt)
 
     // Och returvärdet skiljer fallen åt, så anroparen slipper gissa.
