@@ -37,19 +37,29 @@ import { SigningCryptoService } from '../../signing/signing-crypto.service'
  * │ bundet till KÖRNINGSLÄGET (flaggan) — aldrig till en egen av/på-variabel,  │
  * │ eftersom en sådan är en väg att stänga av kontrollen utan att något blir   │
  * │ rött.                                                                      │
+ * │                                                                            │
+ * │ VILKA UTFALL SOM SKA FÄLLA — läs detta innan du skriver befordran:         │
+ * │  • MISSMATCHNING och KAN_EJ_VERIFIERAS SKA fälla starten.                  │
+ * │  • ROTATION_PAGAR ska INTE. Det är rotationens normaltillstånd, och att    │
+ * │    fälla på det tar bort det nedtidsfria fönster #469 byggdes för.         │
  * └────────────────────────────────────────────────────────────────────────────┘
  *
- * KOSTNAD: EN dekryptering per boot. Kontrollen läser EN rad — den första
- * källan som har en, sedan slutar den leta. Inte en rad per tabell, inte en
- * dekryptering per rad.
+ * KOSTNAD: EN dekryptering per boot i normalfallet. Kontrollen läser EN rad —
+ * den första källan som har en, sedan slutar den leta. Inte en rad per tabell,
+ * inte en dekryptering per rad.
+ *
+ * Bara när den aktuella nyckeln INTE läser raden görs fler försök (som mest tre
+ * AES-operationer totalt), för att skilja en pågående rotation från en felaktig
+ * nyckel. Det är ett undantagsläge vid uppstart, inte normalfallet.
  */
 
-export type PiiCoherenceStatus = 'OK' | 'MISSMATCHNING' | 'KAN_EJ_VERIFIERAS'
+export type PiiCoherenceStatus = 'OK' | 'ROTATION_PAGAR' | 'MISSMATCHNING' | 'KAN_EJ_VERIFIERAS'
 
 export type PiiCoherenceReason =
   | 'HASH_MATCHAR_PEPPER'
   | 'HASH_MATCHAR_INTE_PEPPER'
   | 'CHIFFERTEXT_LASES_INTE_MED_NYCKELN'
+  | 'CHIFFERTEXT_LASES_VIA_GAMLA_NYCKELN'
   | 'NYCKLAR_SAKNAS'
   | 'INGA_KONTROLLERBARA_RADER'
   | 'KONTROLLEN_KUNDE_INTE_KORAS'
@@ -76,6 +86,12 @@ export interface PiiProbeSource {
 /** Den lilla del av SigningCryptoService kontrollen faktiskt använder. */
 export interface PiiCoherenceCrypto {
   readonly configured: boolean
+  /**
+   * Dekryptering med ENBART den aktuella nyckeln. Kontrollens huvudfråga —
+   * `decrypt` duger inte, eftersom den kan lyckas via `SIGNING_PII_KEY_OLD`.
+   */
+  decryptWithCurrentKey(enc: string): string
+  /** Läsning med fallback. Används bara för att SKILJA rotation från fel nyckel. */
   decrypt(enc: string): string
   blindIndex(personalNumber: string): string
 }
@@ -88,6 +104,10 @@ const MANSKLIG_TEXT: Record<PiiCoherenceReason, string> = {
   CHIFFERTEXT_LASES_INTE_MED_NYCKELN:
     'chiffertexten går inte att dekryptera med SIGNING_PII_KEY — nyckeln har bytts utan omkryptering. ' +
     'Återställ den gamla nyckeln; utan den är datan inte återvinningsbar.',
+  CHIFFERTEXT_LASES_VIA_GAMLA_NYCKELN:
+    'raden läses med SIGNING_PII_KEY_OLD, inte med den aktuella nyckeln — en nyckelrotation är ' +
+    'påbörjad men inte slutförd. Kör scripts/rotate-pii-secrets.ts --mode=key tills en torrkörning ' +
+    'ger 0 ATT_ROTERA, och ta INTE bort _OLD innan dess.',
   NYCKLAR_SAKNAS: 'SIGNING_PII_KEY/SIGNING_PII_PEPPER saknas eller har fel form',
   INGA_KONTROLLERBARA_RADER:
     'ingen rad bär både chiffertext och blind-index, så ingenting kunde prövas',
@@ -127,14 +147,20 @@ export function buildProbeSources(prisma: PrismaService): PiiProbeSource[] {
 /**
  * Läser EN kontrollerbar rad och avgör om nyckel + pepper hör ihop med den.
  *
- * Tre utfall, ingen fallback till "anta att det är bra":
+ * Fyra utfall, ingen fallback till "anta att det är bra":
  *
- * | Läge                                        | Utfall              |
- * |---------------------------------------------|---------------------|
- * | HMAC(pepper, dekrypterad klartext) == hash  | `OK`                |
- * | hashen matchar inte                          | `MISSMATCHNING`     |
- * | dekrypteringen kastar (fel nyckel)           | `MISSMATCHNING`     |
- * | nycklar saknas / ingen rad / läsfel          | `KAN_EJ_VERIFIERAS` |
+ * | Läge                                                      | Utfall              |
+ * |-----------------------------------------------------------|---------------------|
+ * | aktuell nyckel läser raden OCH hashen matchar peppern     | `OK`                |
+ * | aktuell nyckel läser INTE raden, men `_OLD` gör det       | `ROTATION_PAGAR`    |
+ * | hashen matchar inte peppern (oavsett vilken nyckel)       | `MISSMATCHNING`     |
+ * | ingen nyckel läser raden                                   | `MISSMATCHNING`     |
+ * | nycklar saknas / ingen rad / läsfel                        | `KAN_EJ_VERIFIERAS` |
+ *
+ * `ROTATION_PAGAR` är det enda icke-OK-utfall som inte är ett fel: det är det
+ * mellanläge #469 medvetet gjorde möjligt, och det ska synas utan att larma som
+ * en defekt. Det är INTE ett `OK` — den aktuella nyckeln är oprövad mot datan,
+ * och försvinner `_OLD` innan rotationen är klar slutar läsningen fungera.
  *
  * `KAN_EJ_VERIFIERAS` är INTE ett mildare `OK`. Det är frånvaron av ett besked,
  * och larmas lika högt (se `report`) — annars blir kontrollen tyst verkningslös
@@ -152,26 +178,52 @@ export async function classifyPiiCoherence(
     const row = await source.findFirst()
     if (!row?.personalNumberEnc || !row.personalNumberHash) continue
 
+    // DEKRYPTERINGSRUNDTUREN (#472). Med `crypto.decrypt` här hade den AKTUELLA
+    // nyckeln aldrig prövats: sedan #469 faller den tillbaka på
+    // SIGNING_PII_KEY_OLD, så ett `OK` kunde lika gärna komma därifrån. Exakt
+    // det läget mättes 2026-08-15 — kontrollen svarade OK medan varningen från
+    // [signing-crypto] visade att läsningen gick via _OLD.
     let plaintext: string
+    let viaGammalNyckel = false
     try {
-      plaintext = crypto.decrypt(row.personalNumberEnc)
+      plaintext = crypto.decryptWithCurrentKey(row.personalNumberEnc)
     } catch {
       // SMAL, KLASSIFICERANDE catch — inte en svald signal. AES-256-GCM med fel
       // nyckel KASTAR på authTag (den returnerar aldrig skräp), så kastet ÄR
-      // svaret: nyckeln hör inte ihop med datan. Det rapporteras som en
-      // missmatchning, inte som tystnad.
-      return {
-        status: 'MISSMATCHNING',
-        reason: 'CHIFFERTEXT_LASES_INTE_MED_NYCKELN',
-        source: source.table,
+      // svaret: den aktuella nyckeln hör inte ihop med raden.
+      //
+      // Men två helt olika lägen döljer sig bakom det kastet, och de får inte
+      // rapporteras likadant: en pågående rotation (legitim, _OLD bär raden) och
+      // en felaktig nyckel utan väg tillbaka (dataförlust). Fallbacken frågas
+      // därför EN gång till — inte för att läsa datan, utan för att skilja dem åt.
+      try {
+        plaintext = crypto.decrypt(row.personalNumberEnc)
+        viaGammalNyckel = true
+      } catch {
+        return {
+          status: 'MISSMATCHNING',
+          reason: 'CHIFFERTEXT_LASES_INTE_MED_NYCKELN',
+          source: source.table,
+        }
       }
     }
 
-    // EN rad räcker, och EN dekryptering är hela kostnaden. Vi returnerar här
-    // oavsett utfall — vi letar inte vidare efter en rad som råkar matcha.
-    return crypto.blindIndex(plaintext) === row.personalNumberHash
-      ? { status: 'OK', reason: 'HASH_MATCHAR_PEPPER', source: source.table }
-      : { status: 'MISSMATCHNING', reason: 'HASH_MATCHAR_INTE_PEPPER', source: source.table }
+    // Pepper-kontrollen gäller OAVSETT vilken nyckel som bar raden. En trasig
+    // pepper är ett verkligt fel även mitt i en rotation, och ska inte kunna
+    // gömma sig bakom det mildare rotationsutfallet — därför prövas den först.
+    if (crypto.blindIndex(plaintext) !== row.personalNumberHash) {
+      return { status: 'MISSMATCHNING', reason: 'HASH_MATCHAR_INTE_PEPPER', source: source.table }
+    }
+
+    // EN rad räcker. Vi returnerar här oavsett utfall — vi letar inte vidare
+    // efter en rad som råkar matcha.
+    return viaGammalNyckel
+      ? {
+          status: 'ROTATION_PAGAR',
+          reason: 'CHIFFERTEXT_LASES_VIA_GAMLA_NYCKELN',
+          source: source.table,
+        }
+      : { status: 'OK', reason: 'HASH_MATCHAR_PEPPER', source: source.table }
   }
 
   return { status: 'KAN_EJ_VERIFIERAS', reason: 'INGA_KONTROLLERBARA_RADER', source: null }
@@ -214,11 +266,16 @@ export class PiiCoherenceService implements OnApplicationBootstrap {
   }
 
   /**
-   * Larmar. BARA `OK` är tyst — allt annat går samma väg, på samma nivå.
+   * Larmar. BARA `OK` är tyst — allt annat rapporteras, alltid.
    *
-   * Att `MISSMATCHNING` och `KAN_EJ_VERIFIERAS` delar kodväg är med flit: det
-   * är strukturen som gör kravet sant, inte en kommentar om att de ska vara
-   * lika högljudda.
+   * Att `MISSMATCHNING` och `KAN_EJ_VERIFIERAS` delar kodväg OCH nivå är med
+   * flit: det är strukturen som gör kravet sant, inte en kommentar om att de ska
+   * vara lika högljudda. Ingen av dem får bli ett mildare besked.
+   *
+   * `ROTATION_PAGAR` är det enda undantaget, och det är ett medvetet sådant: en
+   * påbörjad nyckelrotation är ett läge #469 gjorde möjligt med avsikt, inte en
+   * defekt. Den rapporteras därför på `warning` i stället för `error` — men den
+   * går samma väg och kan inte bli tyst. Nivån är det enda som skiljer.
    *
    * Sentry, inte bara loggen: en `console.error` i Railway läses av ingen, och
    * en varning som ingen läser är inte en kontroll. Mönstret speglar
@@ -232,13 +289,15 @@ export class PiiCoherenceService implements OnApplicationBootstrap {
     }
 
     const text = `[pii-coherence] ${outcome.status}: ${MANSKLIG_TEXT[outcome.reason]}`
+    const nivå = outcome.status === 'ROTATION_PAGAR' ? 'warning' : 'error'
     // Lokal kanal FÖRST, så larmet finns även om Sentry inte är konfigurerat
     // eller själv fallerar.
-    this.logger.error(text)
+    if (nivå === 'warning') this.logger.warn(text)
+    else this.logger.error(text)
 
     try {
       Sentry.captureException(new Error(text), {
-        level: 'error',
+        level: nivå,
         tags: {
           check: 'pii-coherence',
           status: outcome.status,

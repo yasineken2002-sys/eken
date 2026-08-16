@@ -104,6 +104,44 @@ describe('SigningCryptoService — läsning med två nycklar (rotationsbarhet)',
     expect(varningar).toHaveLength(0)
   })
 
+  // ── decryptWithCurrentKey (#472) ──────────────────────────────────────────
+  //
+  // Metoden finns för att en KONTROLL ska kunna binda sitt utfall till EN
+  // bestämd nyckel. Går den någonsin via fallbacken är den värdelös för det.
+
+  it('decryptWithCurrentKey läser en rad skriven med den aktuella nyckeln', () => {
+    const { s, varningar } = medLyssnare({
+      SIGNING_PII_KEY: NY,
+      SIGNING_PII_KEY_OLD: GAMMAL,
+      SIGNING_PII_PEPPER: PEPPER,
+    })
+    expect(s.decryptWithCurrentKey(radMed(NY))).toBe(PN)
+    expect(varningar).toHaveLength(0)
+  })
+
+  it('KANARIEFÅGEL: decryptWithCurrentKey KASTAR på en _OLD-rad som decrypt klarar', () => {
+    // Det är hela skillnaden mellan de två metoderna. Slutar den kasta här är
+    // den bara ett alias för `decrypt`, och samhörighetskontrollen i #472 är
+    // tillbaka i sitt falska OK — utan att något annat test märker det.
+    const { s, varningar } = medLyssnare({
+      SIGNING_PII_KEY: NY,
+      SIGNING_PII_KEY_OLD: GAMMAL,
+      SIGNING_PII_PEPPER: PEPPER,
+    })
+    const rad = radMed(GAMMAL)
+
+    expect(() => s.decryptWithCurrentKey(rad)).toThrow()
+    // Samma rad, samma tjänst: den vanliga läsvägen lyckas. Fallbacken finns
+    // och fungerar — det är förbigåendet som prövas, inte att nyckeln är trasig.
+    expect(s.decrypt(rad)).toBe(PN)
+    expect(varningar).toHaveLength(1)
+  })
+
+  it('decryptWithCurrentKey kastar när kryptot inte är konfigurerat', () => {
+    const s = svc({ SIGNING_PII_KEY: NY })
+    expect(() => s.decryptWithCurrentKey(radMed(NY))).toThrow(/ej konfigurerat/i)
+  })
+
   it('en rad från en TREDJE nyckel kastar även med båda satta', () => {
     const { s } = medLyssnare({
       SIGNING_PII_KEY: NY,
