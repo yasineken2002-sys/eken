@@ -1061,6 +1061,7 @@ export class ReconciliationService {
         transaction.date,
         null,
         false,
+        'fuzzy',
       )
     }
 
@@ -1354,6 +1355,12 @@ export class ReconciliationService {
     transactionDate: Date,
     userId: string | null,
     allowPartial: boolean,
+    // M2 PR 1: speglar fakturagrenens `matchType` — samma namn, samma värde.
+    // 'fuzzy' betyder att regleringen vilar på en GISSNING (belopp inom 1 kr,
+    // datum inom 90 dagar) i stället för på en deterministisk nyckel. Avi-grenen
+    // saknade märkningen helt, så en gissning var oskiljbar från en OCR-träff i
+    // historiken — och därmed omätbar.
+    matchType?: 'fuzzy',
   ): Promise<boolean> {
     const tolerance = new Decimal('1.00')
 
@@ -1571,6 +1578,18 @@ export class ReconciliationService {
           data: { paidAmount: paidSum },
         })
       }
+
+      // M2 PR 1: mottagningshändelsen — se recordRentNoticePaymentReceived.
+      await this.recordRentNoticePaymentReceived(tx, {
+        rentNoticeId: noticeId,
+        allocationId: noticeAllocation.id,
+        transactionId,
+        amount: allocationAmount,
+        outstandingAfter: remaining.minus(allocationAmount),
+        paidAt: transactionDate,
+        userId,
+        ...(matchType ? { matchType } : {}),
+      })
 
       await tx.bankTransaction.update({
         where: { id: transactionId },
@@ -1977,6 +1996,18 @@ export class ReconciliationService {
           )
         }
 
+        // M2 PR 1: EN mottagningspost per allokering — samma granularitet som
+        // #489 gav reverseringen.
+        await this.recordRentNoticePaymentReceived(tx, {
+          rentNoticeId: r.notice.id,
+          allocationId: allokering.id,
+          transactionId,
+          amount: belopp,
+          outstandingAfter: r.kvar.minus(belopp),
+          paidAt: transactionDate,
+          userId,
+        })
+
         kvarAttFördela = kvarAttFördela.minus(belopp)
         allokerade++
       }
@@ -2003,6 +2034,79 @@ export class ReconciliationService {
       )
       return true
     })
+  }
+
+  /**
+   * MOTTAGNINGSHÄNDELSEN — spegelbild av #326 C:s `PAYMENT_REVERSED`.
+   *
+   * ── GAPET SOM STÄNGS (upptäckt under M2) ────────────────────────────────────
+   *
+   * #326 speglade REVERSERINGEN till båda sidorna: B gav fakturan sin
+   * `PAYMENT_REVERSED`, C gav avin sin. Men MOTTAGANDET speglades aldrig.
+   * Fakturagrenen skriver `PAYMENT_RECEIVED`/`PAYMENT_PARTIAL` för varje
+   * betalning; avi-grenen skrev ingenting alls. Avins historik kunde alltså visa
+   * att en betalning återtogs — utan att någonsin ha visat att den togs emot.
+   *
+   * Mätt i dev innan ändringen: noll `PAYMENT_RECEIVED` på `RentNoticeEvent`,
+   * medan `NOTE_ADDED` (kravstegs-nollställningen) fanns i 104 exemplar.
+   *
+   * ── PARBARHET ───────────────────────────────────────────────────────────────
+   *
+   * Fälten är avsiktligt desamma som reverseringens, så att någon som läser
+   * spåret kan para ihop dem: samma `transactionId`, samma `amount`, samma
+   * `allocationId`. Det sista är NYTT PÅ BÅDA — utan det går ett vattenfalls N
+   * mottaganden inte att para mot dess N reverseringar när beloppen är lika.
+   *
+   * ── GRANULARITET ────────────────────────────────────────────────────────────
+   *
+   * EN post per ALLOKERING, inte per transaktion — samma granularitet som
+   * #489 gav reverseringen. Ett vattenfall över tre avier ger tre mottaganden
+   * och, vid avmatchning, tre reverseringar.
+   *
+   * ── INGET NYTT ENUM-VÄRDE ───────────────────────────────────────────────────
+   *
+   * `RentNoticeEventType` saknar `PAYMENT_PARTIAL` (fakturans enum har det).
+   * Delbetalning uttrycks i stället med `PAYMENT_RECEIVED` + `outstandingAfter`
+   * i payloaden: noll betyder full reglering, positivt betyder delbetalning.
+   * Det är härledbart och kräver ingen migration.
+   *
+   * ── SPÅRET BÖRJAR MITT I HISTORIEN ──────────────────────────────────────────
+   *
+   * Betalningar registrerade FÖRE den här ändringen får ingen retroaktiv post.
+   * Frånvaro av `PAYMENT_RECEIVED` före 2026-08-16 betyder att LOGGNINGEN inte
+   * fanns — inte att betalningen uteblev. Ingen backfill görs: prod hade noll
+   * allokeringar när ändringen skrevs, så det finns ingen historik att fylla i.
+   */
+  private async recordRentNoticePaymentReceived(
+    tx: Prisma.TransactionClient,
+    input: {
+      rentNoticeId: string
+      allocationId: string
+      transactionId: string
+      amount: Decimal
+      outstandingAfter: Decimal
+      paidAt: Date
+      userId: string | null
+      matchType?: 'fuzzy'
+    },
+  ): Promise<void> {
+    await this.rentNoticeEvents.record(
+      input.rentNoticeId,
+      'PAYMENT_RECEIVED',
+      input.userId ? 'USER' : 'SYSTEM',
+      input.userId,
+      {
+        transactionId: input.transactionId,
+        allocationId: input.allocationId,
+        amount: input.amount.toNumber(),
+        outstandingAfter: input.outstandingAfter.toNumber(),
+        paidAt: input.paidAt.toISOString(),
+        allocationSource: 'BANK_RECONCILIATION',
+        source: 'bank_reconciliation',
+        ...(input.matchType ? { matchType: input.matchType } : {}),
+      },
+      { tx },
+    )
   }
 
   // ── Manual match ─────────────────────────────────────────────────────────────
@@ -2580,6 +2684,10 @@ export class ReconciliationService {
           userId,
           {
             transactionId,
+            // M2 PR 1: NYTT — utan allokeringens id går ett vattenfalls N
+            // reverseringar inte att para mot dess N mottaganden när beloppen
+            // är lika. Additivt: äldre poster saknar fältet.
+            allocationId: allok.id,
             amount: allok.amount.toNumber(),
             paidAt: allok.paidAt.toISOString(),
             allocationSource: allok.source,
