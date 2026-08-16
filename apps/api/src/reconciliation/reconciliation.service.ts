@@ -48,7 +48,20 @@ export type BankFormat = 'GENERIC' | 'HANDELSBANKEN' | 'SEB' | 'SWEDBANK'
 
 export interface AutoMatchResult {
   matched: number
+  /**
+   * Transaktioner som kördes utan fel men inte kunde matchas. FÖRVÄNTAT utfall —
+   * de väntar på manuell matchning.
+   */
   unmatched: number
+  /**
+   * Transaktioner där matchningen KASTADE. Inte "ingen match" utan ett FEL:
+   * bokföringen sa nej, en transaktion timade ut, databasen svarade inte.
+   *
+   * Egen räknare med flit. Slås de ihop med `unmatched` blir ett driftfel
+   * oskiljbart från ett normalt utfall — och en operatör som ser "3 väntar"
+   * har ingen anledning att titta i loggen.
+   */
+  failed: number
 }
 
 /**
@@ -1683,16 +1696,49 @@ export class ReconciliationService {
     })
 
     let matched = 0
+    let failed = 0
     for (const tx of candidates) {
       try {
         const ok = await this.matchTransaction(tx, organizationId)
         if (ok) matched++
-      } catch {
-        // Hoppa över transaktioner som inte kan matchas — fortsätt med resten.
+      } catch (err) {
+        // ── FÖRVÄNTAT vs FEL ──────────────────────────────────────────────
+        //
+        // `matchTransaction` returnerar `false` när ingenting matchar — det är
+        // ett normalt utfall och räknas som `unmatched`. Att den KASTAR är något
+        // annat: bokföringen kunde inte skapa verifikatet
+        // (InternalServerErrorException, se applyMatchTo*), avin försvann under
+        // körningen, transaktionen timade ut (Prisma P2028, default 5 s), eller
+        // databasen svarade inte.
+        //
+        // Förut delade de två fallen samma tysta gren. Ett driftfel såg då exakt
+        // ut som "ingen match hittades" — i utfallet OCH i loggen, eftersom det
+        // inte fanns någon logg. Den som körde bulkmatchningen fick "12 väntar"
+        // och ingen anledning att misstänka något.
+        //
+        // Körningen avbryts INTE: en trasig transaktion ska inte hindra de
+        // övriga från att matchas. Men den räknas separat och skrivs ut.
+        failed++
+        this.logger.error(
+          `[reconciliation] auto-match kastade för banktransaktion ${tx.id} (org ${organizationId}): ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+          err instanceof Error ? err.stack : undefined,
+        )
       }
     }
 
-    return { matched, unmatched: candidates.length - matched }
+    // Sammanfattningsrad bara när något faktiskt gick fel — annars är den brus.
+    // Speglar cron-jobbens summeringsrader (`Inkasso-redo: … 0 fel`).
+    if (failed > 0) {
+      this.logger.error(
+        `[reconciliation] auto-match för org ${organizationId}: ${matched} matchade, ` +
+          `${candidates.length - matched - failed} väntar, ${failed} FEL (se raderna ovan).`,
+      )
+    }
+
+    // `unmatched` är resten EFTER att felen räknats bort — den får inte längre
+    // svälja dem. matched + unmatched + failed === candidates.length, alltid.
+    return { matched, unmatched: candidates.length - matched - failed, failed }
   }
 
   // ── Manual match ─────────────────────────────────────────────────────────────

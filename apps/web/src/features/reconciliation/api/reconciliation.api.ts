@@ -5,7 +5,11 @@ export type BankFormat = 'GENERIC' | 'HANDELSBANKEN' | 'SEB' | 'SWEDBANK'
 
 export interface AutoMatchResult {
   matched: number
+  /** Kördes utan fel men matchade inte — väntar på manuell matchning. */
   unmatched: number
+  /** Matchningen KASTADE (bokföringsfel, timeout, DB-fel). Inte samma sak som att
+   *  ingen match hittades — se kommentaren i reconciliation.service.ts. */
+  failed: number
 }
 
 // ─── PDF-import (AI-tolkat kontoutdrag) ──────────────────────────────────────
