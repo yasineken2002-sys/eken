@@ -10,7 +10,10 @@
  *     (felet propageras, inte längre fire-and-forget).
  *   • TVÅ DELBETALNINGAR → PAID vid den andra (outstanding-medveten flip).
  *   • PENGA-INVARIANT: allokeringens belopp == partialverifikatets belopp.
- *   • ÖVERBETALNING (D4): ingen match (dagens beteende, UNMATCHED).
+ *   • ÖVERBETALNING mot EN avi: ingen match (UNMATCHED). Gäller fortfarande —
+ *     men bara när det är den ENDA öppna avin. Täcker beloppet flera avier tar
+ *     vattenfallet över (H3 PR B, waterfall-allocation.spec.ts); överstiger det
+ *     HELA den öppna skulden avvisas det där också (#482).
  */
 
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
@@ -54,6 +57,10 @@ function makeService(opts: {
     // PR 3b — rad-lås (FOR UPDATE) serialiserar samtidiga delbetalningar.
     $queryRaw: jest.fn().mockResolvedValue([]),
     rentNotice: {
+      // H3 PR B: vattenfallet läser kandidater med findMany. Tom lista = inga
+      // fler öppna avier, alltså inget vattenfall — riggens fall ägs av
+      // enskildvägen och beteendet är oförändrat.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(txNotice),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       update: jest.fn().mockResolvedValue({}),
@@ -258,8 +265,19 @@ describe('PR3b · ackumulerade delbetalningar', () => {
   })
 })
 
-// ── 5. ÖVERBETALNING (D4): ingen match, faller till UNMATCHED ───────────────────
-describe('PR3b · överbetalning (D4) hanteras ej här', () => {
+// ── 5. ÖVERBETALNING mot EN ENDA avi → UNMATCHED ───────────────────────────────
+//
+// ERSÄTTER ett tidigare medvetet lås. Testet hette "överbetalning (D4) hanteras
+// ej här" och låste beteendet att en klumpbetalning ALDRIG fördelas. D4 revs i
+// H3 PR B — skälet fanns aldrig nedskrivet, och det närliggande argumentet om
+// kundkredit/klampning motiverar inte ett vattenfall, som varken accepterar
+// tyst eller klampar. Se #109 och `applyWaterfallToRentNotices`.
+//
+// Det som återstår av låset — och som fortfarande gäller — är detta: när det
+// finns EN öppen avi och beloppet överstiger dess restskuld sker ingen match.
+// Riggens `findMany` returnerar tom lista, alltså inga fler kandidater, så
+// vattenfallet avstår och enskildvägens regel är den som prövas.
+describe('PR3b/H3 · överbetalning mot en ENDA avi hanteras inte här', () => {
   it('amount > restskuld + tolerans → ingen allokering, ingen bokföring, matched false', async () => {
     const { service, txMock, createJournalEntryForRentNoticePayment } = makeService({
       transaction: OCR_TX(9000),
@@ -409,7 +427,11 @@ describe('PR3b · manualMatch respekterar faktiskt belopp', () => {
     expect(txMock.rentNotice.updateMany.mock.calls[0]![0].data.status).toBeUndefined()
   })
 
-  it('manuell matchning av en överbetalning → BadRequest (D4)', async () => {
+  // OFÖRÄNDRAD av H3 PR B, med flit: manuell matchning pekar ut EN bestämd avi
+  // som operatören valt. Ett vattenfall där hade gått emot det valet. Vattenfallet
+  // körs bara i den AUTOMATISKA OCR-grenen, där identifieraren är hyresgästens
+  // betalningsidentitet och inte ett utpekat objekt.
+  it('manuell matchning av en överbetalning → BadRequest (oförändrad efter H3)', async () => {
     const { service } = makeService({
       transaction: { id: 'tx-m2', date: new Date('2026-06-15'), amount: dec('9000') },
       ocrCandidate: { id: 'rn-1' },

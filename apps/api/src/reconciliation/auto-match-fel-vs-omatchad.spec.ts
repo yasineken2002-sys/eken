@@ -145,3 +145,42 @@ describe('autoMatchAll — FEL är inte samma sak som ingen match', () => {
     }
   })
 })
+
+// ── H3 PR B: same-tenant-invarianten i bulkkörningen ─────────────────────────
+//
+// Invarianten kastar mitt i en körning över många transaktioner. Den får INTE
+// fälla hela körningen — men den får inte heller försvinna i `unmatched`, för då
+// vore en avbruten allokering oskiljbar från "matchade inget".
+//
+// Den landar i `failed`-kategorin som #480 införde: räknad för sig, loggad med
+// transaktions-id och orsak, och synlig i frontendens röda räknare.
+describe('autoMatchAll — vattenfallets invariant räknas som FEL', () => {
+  it('en bruten same-tenant-invariant stoppar inte körningen och göms inte i unmatched', async () => {
+    const invariantfel = new Error(
+      'Banktransaktion tx-2: OCR 00000000019 pekar på avier hos FLERA hyresgäster (tenant-A, tenant-B).',
+    )
+    const { service, anrop } = rigg([true, invariantfel, true])
+
+    const resultat = await service.autoMatchAll('org-1')
+
+    // Körningen fortsatte till sista transaktionen.
+    expect(anrop).toEqual(['tx-1', 'tx-2', 'tx-3'])
+    // Och felet ligger i failed, inte i unmatched.
+    expect(resultat).toEqual({ matched: 2, unmatched: 0, failed: 1 })
+  })
+
+  it('loggen bär transaktions-id OCH de motstridiga hyresgästerna', async () => {
+    const invariantfel = new Error(
+      'Banktransaktion tx-1: OCR 00000000019 pekar på avier hos FLERA hyresgäster (tenant-A, tenant-B).',
+    )
+    const { service } = rigg([invariantfel])
+
+    await service.autoMatchAll('org-9')
+
+    const raden = fel.mock.calls.map(([m]) => String(m)).find((r) => r.includes('tx-1'))
+    expect(raden).toBeDefined()
+    expect(raden).toContain('tenant-A')
+    expect(raden).toContain('tenant-B')
+    expect(raden).toContain('org-9')
+  })
+})
