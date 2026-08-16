@@ -41,6 +41,7 @@ describe('#352 · steg 6 — manuell org-trigger exkluderar DEPOSIT', () => {
       { sendOverdueReminder: jest.fn() } as never,
       {} as never, // moduleRef
       {} as never, // monthlyReport
+      {} as never, // locks — cron-låset, används inte av de testade metoderna
     )
     return { service, findMany }
   }
@@ -157,6 +158,7 @@ describe('#352 · vad som medvetet INTE ändrades', () => {
       {} as never, // mail
       {} as never, // moduleRef
       {} as never, // monthlyReport
+      {} as never, // locks — cron-låset, används inte av de testade metoderna
     )
 
     await service.markOverdueInvoices()

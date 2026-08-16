@@ -26,7 +26,13 @@ function makeService() {
       updateMany: jest.fn().mockResolvedValue({ count: 2 }),
     },
   }
-  const service = new NotificationsService(prisma as never, {} as never, {} as never, {} as never)
+  const service = new NotificationsService(
+    prisma as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never, // locks — cron-låset, används inte av de testade metoderna
+  )
   return { service, prisma }
 }
 

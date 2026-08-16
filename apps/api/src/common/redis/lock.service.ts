@@ -73,7 +73,87 @@ export class LockService {
       }
     }
   }
+
+  /**
+   * Kör `fn` BARA om låset är ledigt. Är det taget hoppar vi över — vi väntar
+   * inte.
+   *
+   * ── VARFÖR EN EGEN METOD OCH INTE `runWithLock` MED KORT VÄNTETID ─────────
+   *
+   * `runWithLock` väntar och kör SEDAN. För en schemalagd cron är det precis
+   * fel: håller replik A jobbet, väntar replik B ut A och kör sedan jobbet en
+   * andra gång. Väntandet gör dubbelkörningen långsammare, inte omöjlig.
+   *
+   * Det en cron behöver är motsatsen: "körs det redan någon annanstans — gör
+   * ingenting." Semantiken skiljer sig så mycket att den förtjänar ett eget
+   * namn i stället för en flagga som är lätt att sätta fel.
+   *
+   * ── TTL ÄR INTE EN DETALJ ────────────────────────────────────────────────
+   *
+   * Låset släpps av `finally`, men om processen DÖR mitt i jobbet ligger det
+   * kvar tills TTL löper ut. `ttlSec` måste därför vara längre än jobbets
+   * värsta körtid — annars kan en andra replik ta låset medan den första
+   * fortfarande arbetar, och då skyddar låset ingenting.
+   *
+   * Ett för långt TTL kostar bara att nästa schemalagda körning hoppas över
+   * efter en krasch. För ett dagligt jobb är det oproblematiskt; för ett jobb
+   * som ska köra varje minut vore det inte det.
+   */
+  async runIfUnlocked<T>(
+    key: string,
+    fn: () => Promise<T>,
+    options: { ttlSec: number },
+  ): Promise<TryRunResult<T>> {
+    const token = crypto.randomBytes(16).toString('hex')
+    const lockKey = `lock:${key}`
+
+    const acquired = await this.redis.client.set(lockKey, token, 'EX', options.ttlSec, 'NX')
+    if (acquired !== 'OK') {
+      // Hur gammalt är låset vi krockade med? PTTL ger återstående livstid i ms;
+      // resten av TTL:n är hur länge hållaren haft det. Utan det talet är ett
+      // överhopp oskiljbart från ett hängt lås.
+      let heldForSec: number | null = null
+      try {
+        const remainingMs = await this.redis.client.pttl(lockKey)
+        if (remainingMs > 0) {
+          heldForSec = Math.max(0, Math.round(options.ttlSec - remainingMs / 1000))
+        }
+      } catch {
+        // PTTL är diagnostik, inte kontrollflöde — ett fel här får inte göra
+        // överhoppet till ett undantag.
+      }
+      return { ran: false, heldForSec }
+    }
+
+    try {
+      return { ran: true, value: await fn() }
+    } finally {
+      try {
+        await this.redis.client.eval(RELEASE_LUA, 1, lockKey, token)
+      } catch (err) {
+        this.logger.warn(`Failed to release lock ${lockKey}: ${String(err)}`)
+      }
+    }
+  }
 }
+
+export type TryRunResult<T> =
+  | { ran: true; value: T }
+  | {
+      ran: false
+      /**
+       * Hur länge den andra hållaren haft låset, i sekunder.
+       *
+       * `null` betyder att Redis inte kunde svara på frågan — låset släpptes
+       * mellan vårt misslyckade SET och vår PTTL, eller saknar utgång.
+       *
+       * Fältet finns för att ett överhopp ska gå att skilja från ett HÄNGT lås.
+       * Ett överhopp där hållaren startade för tio sekunder sedan är normalt;
+       * ett där låset legat nästan hela sin TTL betyder att jobbet tar för lång
+       * tid eller att en release tappats.
+       */
+      heldForSec: number | null
+    }
 
 export class LockAcquisitionTimeoutError extends Error {
   constructor(key: string, waitMs: number) {

@@ -55,7 +55,13 @@ function makeService(opts: {
     },
   }
   const mail = { sendOverdueReminder: jest.fn().mockResolvedValue(undefined) }
-  const service = new NotificationsService(prisma as never, mail as never, {} as never, {} as never)
+  const service = new NotificationsService(
+    prisma as never,
+    mail as never,
+    {} as never,
+    {} as never,
+    {} as never, // locks — cron-låset, används inte av de testade metoderna
+  )
   return { service, prisma, mail }
 }
 
