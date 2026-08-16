@@ -65,6 +65,7 @@ describe('autoMatchAll — FEL är inte samma sak som ingen match', () => {
     await expect(service.autoMatchAll('org-1')).resolves.toEqual({
       matched: 2,
       unmatched: 1,
+      skippedUnresolvedOcr: 0,
       failed: 0,
     })
     expect(fel).not.toHaveBeenCalled()
@@ -77,7 +78,7 @@ describe('autoMatchAll — FEL är inte samma sak som ingen match', () => {
 
     const resultat = await service.autoMatchAll('org-1')
 
-    expect(resultat).toEqual({ matched: 1, unmatched: 1, failed: 1 })
+    expect(resultat).toEqual({ matched: 1, unmatched: 1, skippedUnresolvedOcr: 0, failed: 1 })
     expect(resultat.unmatched).not.toBe(2)
   })
 
@@ -102,7 +103,7 @@ describe('autoMatchAll — FEL är inte samma sak som ingen match', () => {
     const resultat = await service.autoMatchAll('org-1')
 
     expect(anrop).toEqual(['tx-1', 'tx-2', 'tx-3'])
-    expect(resultat).toEqual({ matched: 2, unmatched: 0, failed: 1 })
+    expect(resultat).toEqual({ matched: 2, unmatched: 0, skippedUnresolvedOcr: 0, failed: 1 })
   })
 
   it('en sammanfattningsrad skrivs när något gick fel — och bara då', async () => {
@@ -166,7 +167,7 @@ describe('autoMatchAll — vattenfallets invariant räknas som FEL', () => {
     // Körningen fortsatte till sista transaktionen.
     expect(anrop).toEqual(['tx-1', 'tx-2', 'tx-3'])
     // Och felet ligger i failed, inte i unmatched.
-    expect(resultat).toEqual({ matched: 2, unmatched: 0, failed: 1 })
+    expect(resultat).toEqual({ matched: 2, unmatched: 0, skippedUnresolvedOcr: 0, failed: 1 })
   })
 
   it('loggen bär transaktions-id OCH de motstridiga hyresgästerna', async () => {

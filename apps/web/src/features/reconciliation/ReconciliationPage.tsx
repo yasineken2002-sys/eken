@@ -703,7 +703,15 @@ export function ReconciliationPage() {
           data.matched > 0
             ? `${data.matched} matchade · ${data.unmatched} väntar fortfarande`
             : 'Inga nya matchningar hittades'
-        setAutoMatchFlash(data.failed > 0 ? `${bas} · ${data.failed} FEL` : bas)
+        // En OCR som inte löste ut är inte ett fel — men den är heller inte
+        // "ingen match hittades". Operatören ska veta att det fanns en ledtråd
+        // som inte stämde, för det pekar på ett annat åtgärdssteg.
+        const delar = [bas]
+        if (data.skippedUnresolvedOcr > 0) {
+          delar.push(`${data.skippedUnresolvedOcr} med OCR som inte stämde`)
+        }
+        if (data.failed > 0) delar.push(`${data.failed} FEL`)
+        setAutoMatchFlash(delar.join(' · '))
         setAutoMatchFailed(data.failed > 0)
         setTimeout(() => {
           setAutoMatchFlash(null)
