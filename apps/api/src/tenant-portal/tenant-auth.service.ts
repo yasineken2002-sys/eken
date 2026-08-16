@@ -24,6 +24,7 @@ import {
   findTenantWithCredentials,
   readManyTenantsWithCredentials,
 } from './tenant-credential-read'
+import { LockService } from '../common/redis/lock.service'
 
 /**
  * SELECT för en hyresgäst som autentiserats via portal-session och returneras
@@ -85,6 +86,15 @@ interface SessionResult {
   tenant: Tenant & { organization: { id: string; name: string } }
 }
 
+/**
+ * TTL för aktiveringspåminnelsernas cron-lås.
+ *
+ * Jobbet itererar hyresgäster med utestående aktiveringstoken och gör ett
+ * mejlutskick per hyresgäst. 15 minuter med marginal; jobbet är dagligt, så ett
+ * kvarliggande lås efter en krasch kostar en överhoppad körning.
+ */
+const ACTIVATION_REMINDER_LOCK_TTL_SEC = 15 * 60
+
 @Injectable()
 export class TenantAuthService {
   private readonly logger = new Logger(TenantAuthService.name)
@@ -95,6 +105,7 @@ export class TenantAuthService {
     private readonly config: ConfigService,
     @Inject(forwardRef(() => ContractTemplateService))
     private readonly contracts: ContractTemplateService,
+    private readonly locks: LockService,
   ) {}
 
   // ── Aktiveringstoken ─────────────────────────────────────────────────────────
@@ -598,6 +609,39 @@ export class TenantAuthService {
    */
   @Cron('0 9 * * *')
   async sendActivationReminders(): Promise<void> {
+    const result = await this.locks.runIfUnlocked(
+      'cron:tenant-activation-reminders',
+      () => this.sendActivationRemindersUnsafe(),
+      { ttlSec: ACTIVATION_REMINDER_LOCK_TTL_SEC },
+    )
+    if (!result.ran) {
+      this.logger.log(
+        '[cron:tenant-activation-reminders] Aktiveringspåminnelserna kördes redan av en ' +
+          'annan replik — hoppar över.',
+      )
+    }
+  }
+
+  /**
+   * ── VARFÖR JUST DET HÄR JOBBET INTE TÅL ATT KÖRAS TVÅ GÅNGER ──────────────
+   *
+   * De tre rapportjobben skickar samma mejl med samma `idempotencyKey`, så
+   * Resend deduplicerar dem — en dubbelkörning där kostar dubbla AI-anrop men
+   * ger ett mejl.
+   *
+   * Här är det inte så, och skillnaden ligger i EN rad: `issueActivationToken`
+   * roterar token vid varje körning. Två repliker ger därför
+   *
+   *   - två OLIKA tokens
+   *   - två OLIKA idempotensnycklar (nyckeln innehåller tokenprefixet)
+   *   - alltså TVÅ levererade mejl
+   *   - och den andra rotationen gör länken i det FÖRSTA mejlet ogiltig
+   *
+   * Hyresgästen får två påminnelser och den ena leder till en död länk.
+   * Markören `activationReminderSentAt` hjälper inte: båda replikerna läser
+   * kandidaterna innan någon hinner skriva.
+   */
+  private async sendActivationRemindersUnsafe(): Promise<void> {
     const now = Date.now()
     const reminderCutoff = new Date(now - REMINDER_AFTER_MS)
 

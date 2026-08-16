@@ -73,7 +73,56 @@ export class LockService {
       }
     }
   }
+
+  /**
+   * Kör `fn` BARA om låset är ledigt. Är det taget hoppar vi över — vi väntar
+   * inte.
+   *
+   * ── VARFÖR EN EGEN METOD OCH INTE `runWithLock` MED KORT VÄNTETID ─────────
+   *
+   * `runWithLock` väntar och kör SEDAN. För en schemalagd cron är det precis
+   * fel: håller replik A jobbet, väntar replik B ut A och kör sedan jobbet en
+   * andra gång. Väntandet gör dubbelkörningen långsammare, inte omöjlig.
+   *
+   * Det en cron behöver är motsatsen: "körs det redan någon annanstans — gör
+   * ingenting." Semantiken skiljer sig så mycket att den förtjänar ett eget
+   * namn i stället för en flagga som är lätt att sätta fel.
+   *
+   * ── TTL ÄR INTE EN DETALJ ────────────────────────────────────────────────
+   *
+   * Låset släpps av `finally`, men om processen DÖR mitt i jobbet ligger det
+   * kvar tills TTL löper ut. `ttlSec` måste därför vara längre än jobbets
+   * värsta körtid — annars kan en andra replik ta låset medan den första
+   * fortfarande arbetar, och då skyddar låset ingenting.
+   *
+   * Ett för långt TTL kostar bara att nästa schemalagda körning hoppas över
+   * efter en krasch. För ett dagligt jobb är det oproblematiskt; för ett jobb
+   * som ska köra varje minut vore det inte det.
+   */
+  async runIfUnlocked<T>(
+    key: string,
+    fn: () => Promise<T>,
+    options: { ttlSec: number },
+  ): Promise<TryRunResult<T>> {
+    const token = crypto.randomBytes(16).toString('hex')
+    const lockKey = `lock:${key}`
+
+    const acquired = await this.redis.client.set(lockKey, token, 'EX', options.ttlSec, 'NX')
+    if (acquired !== 'OK') return { ran: false }
+
+    try {
+      return { ran: true, value: await fn() }
+    } finally {
+      try {
+        await this.redis.client.eval(RELEASE_LUA, 1, lockKey, token)
+      } catch (err) {
+        this.logger.warn(`Failed to release lock ${lockKey}: ${String(err)}`)
+      }
+    }
+  }
 }
+
+export type TryRunResult<T> = { ran: true; value: T } | { ran: false }
 
 export class LockAcquisitionTimeoutError extends Error {
   constructor(key: string, waitMs: number) {

@@ -32,7 +32,13 @@ const CREDENTIAL_KEYS = [
 function makeService(sessionRow: unknown) {
   const findUnique = jest.fn().mockResolvedValue(sessionRow)
   const prisma = { tenantSession: { findUnique } }
-  const service = new TenantAuthService(prisma as never, {} as never, {} as never, {} as never)
+  const service = new TenantAuthService(
+    prisma as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never, // locks — cron-låset, används inte av de testade metoderna
+  )
   return { service, findUnique }
 }
 
@@ -96,7 +102,13 @@ describe('TenantAuthService.createSession — credential-strip (B1 defense-in-de
       tenant: { findFirst },
       tenantSession: { create },
     }
-    const service = new TenantAuthService(prisma as never, {} as never, {} as never, {} as never)
+    const service = new TenantAuthService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never, // locks — cron-låset, används inte av de testade metoderna
+    )
 
     const result = await service.login('a@b.se', 'Secret123!')
 

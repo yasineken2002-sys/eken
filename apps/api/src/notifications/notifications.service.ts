@@ -12,6 +12,7 @@ import { AiAssistantService } from '../ai/ai-assistant.service'
 import { MonthlyReportService } from './monthly-report.service'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+import { LockService } from '../common/redis/lock.service'
 
 type InvoiceWithRelations = Prisma.InvoiceGetPayload<{
   include: {
@@ -70,6 +71,20 @@ function isoWeek(ymd: string): { key: string; week: number } {
   return { key: `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`, week }
 }
 
+/**
+ * TTL för cron-låsen.
+ *
+ * Måste vara längre än jobbets värsta körtid: dör processen mitt i ligger låset
+ * kvar tills TTL löper ut, men tar TTL slut MEDAN jobbet kör kan en andra replik
+ * ta låset och då skyddar det ingenting.
+ *
+ * De tre rapportjobben itererar organisationer och gör ett AI-anrop per
+ * organisation. 30 minuter är satt med marginal för det. Kostnaden för ett för
+ * långt TTL är att nästa schemalagda körning hoppas över efter en krasch — och
+ * jobben är dagliga, vecko- respektive månadsvisa, så det är oproblematiskt.
+ */
+const CRON_LOCK_TTL_SEC = 30 * 60
+
 @Injectable()
 export class NotificationsService implements OnModuleInit {
   private readonly logger = new Logger(NotificationsService.name)
@@ -80,6 +95,7 @@ export class NotificationsService implements OnModuleInit {
     private mail: MailService,
     private moduleRef: ModuleRef,
     private monthlyReport: MonthlyReportService,
+    private locks: LockService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -339,6 +355,20 @@ export class NotificationsService implements OnModuleInit {
     name: 'morning-insights',
   })
   async sendMorningInsights(): Promise<void> {
+    const result = await this.locks.runIfUnlocked(
+      'cron:morning-insights',
+      () => this.sendMorningInsightsUnsafe(),
+      { ttlSec: CRON_LOCK_TTL_SEC },
+    )
+    if (!result.ran) {
+      // Ett tyst överhopp är oskiljbart från "cronen kördes aldrig". Säg det.
+      this.logger.log(
+        `[cron:morning-insights] Morgonrapporten kördes redan av en annan replik — hoppar över.`,
+      )
+    }
+  }
+
+  private async sendMorningInsightsUnsafe(): Promise<void> {
     const organizations = await this.prisma.organization.findMany({
       include: {
         users: {
@@ -448,6 +478,20 @@ export class NotificationsService implements OnModuleInit {
     name: 'weekly-summary',
   })
   async sendWeeklySummary(): Promise<void> {
+    const result = await this.locks.runIfUnlocked(
+      'cron:weekly-summary',
+      () => this.sendWeeklySummaryUnsafe(),
+      { ttlSec: CRON_LOCK_TTL_SEC },
+    )
+    if (!result.ran) {
+      // Ett tyst överhopp är oskiljbart från "cronen kördes aldrig". Säg det.
+      this.logger.log(
+        `[cron:weekly-summary] Veckosammanfattningen kördes redan av en annan replik — hoppar över.`,
+      )
+    }
+  }
+
+  private async sendWeeklySummaryUnsafe(): Promise<void> {
     const organizations = await this.prisma.organization.findMany({
       include: {
         users: {
@@ -545,6 +589,20 @@ export class NotificationsService implements OnModuleInit {
     name: 'monthly-report',
   })
   async sendMonthlyReport(): Promise<void> {
+    const result = await this.locks.runIfUnlocked(
+      'cron:monthly-report',
+      () => this.sendMonthlyReportUnsafe(),
+      { ttlSec: CRON_LOCK_TTL_SEC },
+    )
+    if (!result.ran) {
+      // Ett tyst överhopp är oskiljbart från "cronen kördes aldrig". Säg det.
+      this.logger.log(
+        `[cron:monthly-report] Månadsrapporten kördes redan av en annan replik — hoppar över.`,
+      )
+    }
+  }
+
+  private async sendMonthlyReportUnsafe(): Promise<void> {
     const organizations = await this.prisma.organization.findMany({
       include: {
         users: {
