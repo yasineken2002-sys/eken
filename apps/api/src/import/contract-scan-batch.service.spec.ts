@@ -9,6 +9,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
  */
 
 import { BadRequestException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { ContractScanBatchService } from './contract-scan-batch.service'
 import type { ScannedContract } from './contract-scanner.service'
 
@@ -522,7 +523,10 @@ describe('ContractScanBatchService — PR3 commit (avtal skapas via /leases/with
     )
   })
 
-  it('skipRow: SCANNED → SKIPPED + purgar PDF; redan committad kan inte hoppas över', async () => {
+  // #471: gallringen av Json-kolumnerna hör hit också — SKIPPED är terminalt.
+  // Gallringens EGET beteende ägs av contract-commit-gallring.spec.ts; här
+  // hålls bara den exakta formen på skrivningen fast.
+  it('skipRow: SCANNED → SKIPPED + purgar PDF och skanningsdata; redan committad kan inte hoppas över', async () => {
     const { service, mocks } = make()
     mocks.prisma.contractImportRow.findFirst.mockResolvedValueOnce({
       rowStatus: 'SCANNED',
@@ -532,7 +536,12 @@ describe('ContractScanBatchService — PR3 commit (avtal skapas via /leases/with
     await service.skipRow('batch-1', 'row-1', 'org-1')
     expect(mocks.prisma.contractImportRow.update).toHaveBeenCalledWith({
       where: { id: 'row-1' },
-      data: { rowStatus: 'SKIPPED', fileData: null },
+      data: {
+        rowStatus: 'SKIPPED',
+        fileData: null,
+        originalScanData: Prisma.JsonNull,
+        reviewedData: Prisma.JsonNull,
+      },
     })
 
     mocks.prisma.contractImportRow.findFirst.mockResolvedValueOnce({
