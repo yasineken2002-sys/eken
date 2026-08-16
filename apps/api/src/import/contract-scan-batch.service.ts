@@ -638,10 +638,15 @@ export class ContractScanBatchService {
     // `createdLeaseId` pekar till den levande sanningen — stagingkopian har
     // inget operationellt syfte kvar.
     //
-    // OBS: `SKIPPED` har SAMMA lucka och stängs INTE här (`skipRow` sätter bara
-    // `fileData: null`). Redovisningssvaret i #471 antog att COMMITTED var den
-    // enda terminala status som bar kvar Json-datan; mätningen visar att det är
-    // fel. Medvetet utanför den här ändringens omfång — se ärendet.
+    // Redovisningssvaret i #471 antog att COMMITTED var den enda terminala status
+    // som bar kvar Json-datan. Mätningen visade att `SKIPPED` hade samma lucka —
+    // den stängs i `skipRow`.
+    //
+    // `FAILED` behöver ingen gallring: skanningsdatan skrivs bara av
+    // `recordScanResult` vid LYCKAD skanning, så en rad som failat har aldrig
+    // burit den. Det vilar dock på anroparen — `recordScanFailure` har ingen
+    // statusgrind. Skulle den någon gång anropas på en SCANNED rad blir det en
+    // ny lucka av samma sort.
     //
     // Redovisningsgenomgången (#471) svarade att ingen av de tre kolumnerna är
     // räkenskapsinformation — ingen verifikation hänvisar till dem. Gallringen är
@@ -756,9 +761,23 @@ export class ContractScanBatchService {
       )
     }
 
+    // #471: gallra klartext-PII även här. SKIPPED är terminalt precis som
+    // COMMITTED, och en överhoppad rad är en operatören uttryckligen beslutat att
+    // INTE göra ett avtal av — den har ännu mindre operationellt syfte kvar än en
+    // committad. `cancelBatch`s eget argument gäller ordagrant: "en avbruten
+    // batch har inget operationellt syfte för PII:n".
+    //
+    // Inget spår skrivs, till skillnad från commit-vägen: här blev det aldrig
+    // något avtal, så det finns ingen AI-mot-människa-beslutskedja att bevara.
+    // `confirmedData` skrivs bara vid commit och är redan null på en sådan rad.
     await this.prisma.contractImportRow.update({
       where: { id: rowId },
-      data: { rowStatus: 'SKIPPED', fileData: null },
+      data: {
+        rowStatus: 'SKIPPED',
+        fileData: null,
+        originalScanData: Prisma.JsonNull,
+        reviewedData: Prisma.JsonNull,
+      },
     })
     await this.recomputeBatchCompletion(batchId, organizationId)
 

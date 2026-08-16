@@ -207,7 +207,62 @@ describe('confirmRow — gallrar klartext-PII vid commit', () => {
   })
 })
 
-// ── 3. Villkoret som skulle ändra redovisningssvaret ────────────────────────
+// ── 3. SKIPPED är också terminalt ───────────────────────────────────────────
+
+describe('skipRow — gallrar klartext-PII vid överhoppning', () => {
+  function make() {
+    const prisma = {
+      contractImportRow: {
+        findFirst: jest.fn().mockResolvedValue({ rowStatus: 'SCANNED', createdLeaseId: null }),
+        update: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+      contractImportBatch: {
+        findFirst: jest.fn().mockResolvedValue({ status: 'SCANNED' }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      $transaction: jest.fn().mockResolvedValue([0, { status: 'SCANNED' }]),
+    }
+    const service = new ContractScanBatchService(
+      prisma as never,
+      { checkOrgDailyCostCap: jest.fn() } as never,
+      { enqueueRow: jest.fn() } as never,
+      { createWithTenant: jest.fn() } as never,
+      { linkToLease: jest.fn(), purge: jest.fn(), archive: jest.fn() } as never,
+    )
+    return { service, prisma }
+  }
+
+  it('nollar originalScanData OCH reviewedData', async () => {
+    // Redovisningssvaret i #471 antog att COMMITTED var den enda terminala
+    // statusen med kvarliggande Json-data. Mätningen visade att SKIPPED hade
+    // samma lucka — och en överhoppad rad är en operatören uttryckligen beslutat
+    // att INTE göra ett avtal av, alltså ännu mindre skäl att spara.
+    const { service, prisma } = make()
+    await service.skipRow('batch-1', 'row-1', 'org-1')
+
+    const { data } = prisma.contractImportRow.update.mock.calls[0][0] as {
+      data: Record<string, unknown>
+    }
+    expect(data.rowStatus).toBe('SKIPPED')
+    expect(data.originalScanData).toBe(Prisma.JsonNull)
+    expect(data.reviewedData).toBe(Prisma.JsonNull)
+    expect(data.fileData).toBeNull()
+  })
+
+  it('skriver INGET spår — det blev aldrig något avtal att spåra', async () => {
+    const { service, prisma } = make()
+    await service.skipRow('batch-1', 'row-1', 'org-1')
+
+    const { data } = prisma.contractImportRow.update.mock.calls[0][0] as {
+      data: Record<string, unknown>
+    }
+    expect(data).not.toHaveProperty('confirmedData')
+  })
+})
+
+// ── 4. Villkoret som skulle ändra redovisningssvaret ────────────────────────
 
 describe('VAKT: gallringen förutsätter att ingen verifikation hänvisar hit', () => {
   const SRC = join(__dirname, '..')
