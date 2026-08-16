@@ -247,7 +247,8 @@ describe('#326 D — XOR-invarianten mellan faktura- och avi-allokering', () => 
     // reverseras aldrig medan allokeringen raderas och statusen återställs.
     // (Säkerhetsgranskning av #326 D.)
     const { service, tx } = makeService()
-    tx.rentNoticePayment.findFirst.mockResolvedValue({ id: 'rnp-drift' })
+    // H3 PR A: läsningen är findMany (flera allokeringar möjliga).
+    tx.rentNoticePayment.findMany.mockResolvedValue([{ id: 'rnp-drift' }])
 
     await expect(service.unmatchTransaction(TX_ID, 'org-1', 'user-1')).rejects.toThrow(
       /allokeringar i BÅDA tabellerna/,
@@ -256,13 +257,21 @@ describe('#326 D — XOR-invarianten mellan faktura- och avi-allokering', () => 
 
   it('bara avi-allokering → ingen konflikt, avmatchningen går igenom', async () => {
     const { service, tx } = makeService({ allocation: null })
-    tx.rentNoticePayment.findFirst.mockResolvedValue({
-      id: 'rnp-1',
-      rentNoticeId: 'rn-1',
-      amount: new Decimal(5000),
-      paidAt: new Date('2026-07-20T00:00:00.000Z'),
-      source: 'BANK_RECONCILIATION',
-    })
+    tx.rentNoticePayment.findMany.mockImplementation((args: { where?: Record<string, unknown> }) =>
+      Promise.resolve(
+        args?.where && 'bankTransactionId' in args.where
+          ? [
+              {
+                id: 'rnp-1',
+                rentNoticeId: 'rn-1',
+                amount: new Decimal(5000),
+                paidAt: new Date('2026-07-20T00:00:00.000Z'),
+                source: 'BANK_RECONCILIATION',
+              },
+            ]
+          : [],
+      ),
+    )
 
     await expect(service.unmatchTransaction(TX_ID, 'org-1', 'user-1')).resolves.not.toThrow()
   })

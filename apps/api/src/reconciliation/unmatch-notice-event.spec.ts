@@ -36,14 +36,22 @@ function makeService(
   const order: string[] = []
   const tx = {
     rentNoticePayment: {
-      findFirst: jest
-        .fn()
-        .mockResolvedValue(opts.allocation === undefined ? NOTICE_ALLOCATION : opts.allocation),
       deleteMany: jest.fn(() => {
         order.push('delete:rentNoticePayment')
         return Promise.resolve({ count: 1 })
       }),
-      findMany: jest.fn().mockResolvedValue([]),
+      // H3 PR A: avmatchningen läser de BORTTAGNA allokeringarna med findMany
+      // (var findFirst — bankTransactionId var @unique). Samma metod används för
+      // de KVARVARANDE i paidAmount-omräkningen, så riggen måste skilja på
+      // frågorna via where-satsen.
+      findMany: jest.fn((args: { where?: Record<string, unknown> }) => {
+        if (args?.where && 'bankTransactionId' in args.where) {
+          const a = opts.allocation === undefined ? NOTICE_ALLOCATION : opts.allocation
+          // Accepterar både EN allokering (dagens fall) och FLERA (vattenfallet).
+          return Promise.resolve(Array.isArray(a) ? a : a ? [a] : [])
+        }
+        return Promise.resolve([])
+      }),
     },
     rentNoticeEvent: {
       create: jest.fn((args: unknown) => {
@@ -265,5 +273,49 @@ describe('#326 C — avgränsning', () => {
     await service.unmatchTransaction(TX_ID, 'org-1', 'user-1')
 
     expect(eventData(tx).rentNoticeId).toBe('rn-fran-allokeringen')
+  })
+})
+
+// ── H3 PR A: EN händelse per borttagen allokering ────────────────────────────
+//
+// Avmatchningen läste tidigare EN allokering (`findFirst`, bankTransactionId var
+// @unique) och skrev EN händelse — men `deleteMany` raderade alla. Med
+// vattenfallet (PR B) kan flera allokeringar höra till samma banktransaktion, och
+// då måste varje raderad allokering få sin egen post: en samlad hade dolt VILKA
+// avier som rördes och med vilka belopp, vilket är precis det BFL 5 kap 11 §
+// kräver att man kan följa.
+describe('H3 PR A — behandlingshistorik för flera allokeringar', () => {
+  const flera = [
+    {
+      id: 'rnp-1',
+      rentNoticeId: 'rn-1',
+      amount: new Decimal(10_000),
+      paidAt: new Date('2026-07-20T00:00:00.000Z'),
+      source: 'BANK_RECONCILIATION',
+    },
+    {
+      id: 'rnp-2',
+      rentNoticeId: 'rn-2',
+      amount: new Decimal(4_000),
+      paidAt: new Date('2026-07-20T00:00:00.000Z'),
+      source: 'BANK_RECONCILIATION',
+    },
+  ]
+
+  it('en post per allokering, på RÄTT avi och med RÄTT belopp', async () => {
+    const { service, tx } = makeService({ allocation: flera })
+    await service.unmatchTransaction('tx-1', 'org-1', 'user-1')
+
+    const poster = tx.rentNoticeEvent.create.mock.calls.map(
+      (c) => (c[0] as { data: { rentNoticeId: string; payload: { amount: number } } }).data,
+    )
+    expect(poster.map((p) => p.rentNoticeId)).toEqual(['rn-1', 'rn-2'])
+    expect(poster.map((p) => p.payload.amount)).toEqual([10_000, 4_000])
+  })
+
+  it('N=1 är OFÖRÄNDRAT — exakt en post', async () => {
+    const { service, tx } = makeService()
+    await service.unmatchTransaction('tx-1', 'org-1', 'user-1')
+    expect(tx.rentNoticeEvent.create).toHaveBeenCalledTimes(1)
   })
 })

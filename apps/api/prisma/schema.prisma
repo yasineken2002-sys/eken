@@ -1694,9 +1694,12 @@ model BankTransaction {
   organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   invoice           Invoice?     @relation(fields: [invoiceId], references: [id])
   matchedRentNotice RentNotice?  @relation(fields: [matchedRentNoticeId], references: [id])
-  // Härledd betalningsallokering (PR 1). Optional 1:1 — bankTransactionId @unique
-  // på RentNoticePayment-sidan ger en allokering per transaktion.
-  rentNoticePayment RentNoticePayment?
+  // Härledda betalningsallokeringar. Var 1:1 (`bankTransactionId @unique`), men
+  // H3 PR A bytte den spärren mot @@unique([bankTransactionId, rentNoticeId]) så
+  // att ett vattenfall kan fördela EN klumpbetalning över FLERA avier. Listan är
+  // därför en lista. I dag innehåller den alltid noll eller ett element — PR B
+  // är det som börjar producera fler.
+  rentNoticePayments RentNoticePayment[]
   // Motsvarande för fakturasidan (C4/C5). @unique på InvoicePayment-sidan ger
   // en allokering per transaktion — en bank-transaktion kan inte allokeras till
   // både en avi och en faktura, och inte till två fakturor.
@@ -2945,7 +2948,15 @@ model RentNoticePayment {
   // (ersätter BankTransaction.matchedRentNoticeId @unique). Postgres behandlar
   // NULL som distinkt i unika index → flera manuella allokeringar (NULL) kan
   // samexistera på samma eller olika avier utan kollision.
-  bankTransactionId String? @unique
+  // H3 PR A: @unique BYTT mot @@unique([bankTransactionId, rentNoticeId]).
+  //
+  // @unique tillät EN allokering per banktransaktion. Vattenfallet (PR B) låter
+  // en klumpbetalning fördelas över FLERA avier, vilket krävde att 1:1 lossades.
+  // Spärrens AVSIKT — samma banktransaktion får inte allokeras dubbelt — bevaras
+  // av det sammansatta indexet: en (transaktion, avi)-kombination kan bara
+  // förekomma en gång. Postgres räknar NULL som distinkt, så manuella
+  // betalningar (bankTransactionId = NULL) är oberörda, precis som förut.
+  bankTransactionId String?
 
   // Allokerat belopp. Decimal(10,2) speglar avins penningfält. För
   // bankavstämning = den reglerade (betalbara) totalen; för markAsPaid = det
@@ -2968,6 +2979,7 @@ model RentNoticePayment {
   // stället för att blockera eller kaskadradera betalningsdata.
   bankTransaction BankTransaction? @relation(fields: [bankTransactionId], references: [id], onDelete: SetNull)
 
+  @@unique([bankTransactionId, rentNoticeId])
   @@index([rentNoticeId])
 }
 
