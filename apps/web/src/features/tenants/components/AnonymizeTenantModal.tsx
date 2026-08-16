@@ -98,7 +98,7 @@ export function AnonymizeTenantModal({
           </p>
         )}
 
-        <div className="mt-5 flex justify-end gap-2 border-t border-[#EAEDF0] pt-5">
+        <div className="border-line mt-5 flex justify-end gap-2 border-t pt-5">
           <Button variant="secondary" onClick={handleClose} disabled={mutation.isPending}>
             Avbryt
           </Button>

@@ -426,7 +426,7 @@ function DetailPanel({ selected, selectedTenant }: DetailPanelProps) {
           persons uppgifter ur ett underlag som måste bevaras, och går inte att
           ångra. Se TenantsController.anonymize. */}
       {role === 'OWNER' && (
-        <div className="border-t border-[#EAEDF0] pt-5">
+        <div className="border-line border-t pt-5">
           <p className="mb-3 text-[13px] font-semibold text-gray-700">Personuppgifter</p>
           {alreadyAnonymized ? (
             <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
