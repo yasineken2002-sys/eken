@@ -373,7 +373,13 @@ describe('PR3b · full betalning nollställer kravsteget (PR2 oförändrat)', ()
     })
     // #340: skrivningen går via record() — inte en rå create — så aktörsetiketten
     // denormaliseras och överlever att användaren raderas.
-    const [noticeId, type, actorType, actorId, payload] = rentNoticeEvents.record.mock.calls[0]!
+    // M2 PR 1: avi-grenen skriver numera OCKSÅ en PAYMENT_RECEIVED-post, före
+    // den här. Assertionen letar därför upp kravstegs-noteringen i stället för
+    // att anta att den är först — testets AVSIKT är noteringens innehåll, inte
+    // dess plats i anropsordningen. Noteringen själv är oförändrad.
+    const [noticeId, type, actorType, actorId, payload] = rentNoticeEvents.record.mock.calls.find(
+      (c) => c[1] === 'NOTE_ADDED',
+    )!
     expect(noticeId).toBe('rn-1')
     expect(type).toBe('NOTE_ADDED')
     expect(actorType).toBe('SYSTEM')
