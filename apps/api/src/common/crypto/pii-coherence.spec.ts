@@ -29,10 +29,20 @@ const PERSONNUMMER = '19850101-1234'
  * bevisat att stubben gör det den fick veta, inte att AES-GCM faktiskt kastar
  * på authTag. Hela nyckel-grenen vilar på den egenskapen.
  */
-function kryptoMed(keyHex: string | undefined, pepper: string | undefined): SigningCryptoService {
+function kryptoMed(
+  keyHex: string | undefined,
+  pepper: string | undefined,
+  gammalNyckelHex?: string,
+): SigningCryptoService {
   const config = {
     get: (k: string) =>
-      k === 'SIGNING_PII_KEY' ? keyHex : k === 'SIGNING_PII_PEPPER' ? pepper : undefined,
+      k === 'SIGNING_PII_KEY'
+        ? keyHex
+        : k === 'SIGNING_PII_PEPPER'
+          ? pepper
+          : k === 'SIGNING_PII_KEY_OLD'
+            ? gammalNyckelHex
+            : undefined,
   } as unknown as ConfigService
   return new SigningCryptoService(config)
 }
@@ -104,6 +114,84 @@ describe('classifyPiiCoherence — klassificeringen', () => {
     })
   })
 
+  // ── #472: dekrypteringsrundturen ────────────────────────────────────────────
+
+  it('REGRESSION #472: raden bärs av _OLD, inte av den aktuella nyckeln → ALDRIG OK', async () => {
+    // Precis det läge som mättes i prod 2026-08-15 kl. 13:11:20: kontrollen
+    // svarade OK medan [signing-crypto] visade att läsningen gick via _OLD.
+    // Före rundturen gav den här raden `OK` — det är hela ärendets bugg.
+    const utfall = await classifyPiiCoherence(
+      [källa('Tenant', radSkrivenMed(NYCKEL_A, PEPPER_A))],
+      kryptoMed(NYCKEL_B, PEPPER_A, NYCKEL_A), // aktuell = B, gammal = A, raden skriven med A
+    )
+    expect(utfall.status).not.toBe('OK')
+    expect(utfall).toEqual({
+      status: 'ROTATION_PAGAR',
+      reason: 'CHIFFERTEXT_LASES_VIA_GAMLA_NYCKELN',
+      source: 'Tenant',
+    })
+  })
+
+  it('KANARIEFÅGEL: rundturen MÅSTE fälla en rad krypterad med en annan nyckel, utan fallback', async () => {
+    // Matar in det som med säkerhet ska ge utslag: fel nyckel, fallbacken
+    // avstängd. Slutar rundturen diskriminera — någon riktar om den till
+    // `decrypt`, eller gör den till en no-op som aldrig kastar — blir det här
+    // rött, i stället för att varje korrekt rad fortsätter lysa grönt.
+    const utfall = await classifyPiiCoherence(
+      [källa('Tenant', radSkrivenMed(NYCKEL_A, PEPPER_A))],
+      kryptoMed(NYCKEL_B, PEPPER_A), // ingen _OLD
+    )
+    expect(utfall).toEqual({
+      status: 'MISSMATCHNING',
+      reason: 'CHIFFERTEXT_LASES_INTE_MED_NYCKELN',
+      source: 'Tenant',
+    })
+  })
+
+  it('KANARIEFÅGEL: ett OK får aldrig vila på fallbacken — den aktuella nyckeln måste bära raden', async () => {
+    // Skarpaste formen: fallbacken skulle lyckas, rundturen kastar. Om
+    // klassificeraren läser via `decrypt` i stället för `decryptWithCurrentKey`
+    // blir det här ett OK — och testet rött.
+    const äkta = kryptoMed(NYCKEL_A, PEPPER_A)
+    const rundturenTrasig: PiiCoherenceCrypto = {
+      configured: true,
+      decryptWithCurrentKey: () => {
+        throw new Error('aktuell nyckel läser inte raden')
+      },
+      decrypt: (enc) => äkta.decrypt(enc),
+      blindIndex: (pn) => äkta.blindIndex(pn),
+    }
+
+    const utfall = await classifyPiiCoherence(
+      [källa('Tenant', radSkrivenMed(NYCKEL_A, PEPPER_A))],
+      rundturenTrasig,
+    )
+    expect(utfall.status).not.toBe('OK')
+  })
+
+  it('en trasig pepper göms INTE bakom rotationsutfallet', async () => {
+    // Mitt i en rotation är en pepper-missmatchning fortfarande ett riktigt fel.
+    // Vinner ROTATION_PAGAR här blir en död pepper tyst nedgraderad till varning.
+    const utfall = await classifyPiiCoherence(
+      [källa('Tenant', radSkrivenMed(NYCKEL_A, PEPPER_A))],
+      kryptoMed(NYCKEL_B, PEPPER_B, NYCKEL_A), // rotation pågår OCH fel pepper
+    )
+    expect(utfall).toEqual({
+      status: 'MISSMATCHNING',
+      reason: 'HASH_MATCHAR_INTE_PEPPER',
+      source: 'Tenant',
+    })
+  })
+
+  it('_OLD satt men raden redan omkrypterad → vanligt OK, ingen rotationssignal', async () => {
+    // Slutfasen av en rotation: fallbacken finns kvar men behövs inte längre.
+    const utfall = await classifyPiiCoherence(
+      [källa('Tenant', radSkrivenMed(NYCKEL_A, PEPPER_A))],
+      kryptoMed(NYCKEL_A, PEPPER_A, NYCKEL_B),
+    )
+    expect(utfall).toEqual({ status: 'OK', reason: 'HASH_MATCHAR_PEPPER', source: 'Tenant' })
+  })
+
   it('KRAV: noll kontrollerbara rader ger KAN_EJ_VERIFIERAS, aldrig OK', async () => {
     const utfall = await classifyPiiCoherence(
       [källa('Tenant', null), källa('Customer', null), källa('SignatureEvidence', null)],
@@ -151,8 +239,14 @@ describe('classifyPiiCoherence — klassificeringen', () => {
   it('KOSTNAD: läser EN rad och dekrypterar EN gång, även när flera källor har rader', async () => {
     const äkta = kryptoMed(NYCKEL_A, PEPPER_A)
     let dekrypteringar = 0
+    // Räknar BÅDA vägarna in i krypton — annars flyttar en rundtur som råkar
+    // gå via fallbacken kostnaden utan att mätningen märker det.
     const räknande: PiiCoherenceCrypto = {
       configured: äkta.configured,
+      decryptWithCurrentKey: (enc) => {
+        dekrypteringar++
+        return äkta.decryptWithCurrentKey(enc)
+      },
       decrypt: (enc) => {
         dekrypteringar++
         return äkta.decrypt(enc)
@@ -299,6 +393,11 @@ describe('PiiCoherenceService — larmet', () => {
     const t = tjänst(prismaMed({}), kryptoMed(NYCKEL_A, PEPPER_A))
     const utfall: PiiCoherenceOutcome[] = [
       { status: 'OK', reason: 'HASH_MATCHAR_PEPPER', source: 'Tenant' },
+      {
+        status: 'ROTATION_PAGAR',
+        reason: 'CHIFFERTEXT_LASES_VIA_GAMLA_NYCKELN',
+        source: 'Tenant',
+      },
       { status: 'MISSMATCHNING', reason: 'HASH_MATCHAR_INTE_PEPPER', source: 'Tenant' },
       { status: 'MISSMATCHNING', reason: 'CHIFFERTEXT_LASES_INTE_MED_NYCKELN', source: 'Customer' },
       { status: 'KAN_EJ_VERIFIERAS', reason: 'NYCKLAR_SAKNAS', source: null },
@@ -306,7 +405,47 @@ describe('PiiCoherenceService — larmet', () => {
       { status: 'KAN_EJ_VERIFIERAS', reason: 'KONTROLLEN_KUNDE_INTE_KORAS', source: null },
     ]
     for (const u of utfall) expect(() => t.report(u)).not.toThrow()
-    // Fem av sex larmar; bara OK är tyst.
-    expect(captureException).toHaveBeenCalledTimes(5)
+    // Sex av sju rapporteras; bara OK är tyst. ROTATION_PAGAR ingår — den är
+    // mildare i NIVÅ, aldrig tystare.
+    expect(captureException).toHaveBeenCalledTimes(6)
+  })
+
+  it('ROTATION_PAGAR rapporteras på warning — synlig, men inte som en defekt', async () => {
+    const varna = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+
+    await tjänst(
+      prismaMed({ tenant: radSkrivenMed(NYCKEL_A, PEPPER_A) }),
+      kryptoMed(NYCKEL_B, PEPPER_A, NYCKEL_A),
+    ).onApplicationBootstrap()
+
+    expect(captureException).toHaveBeenCalledTimes(1)
+    const [, ctx] = captureException.mock.calls[0]
+    expect(ctx.level).toBe('warning')
+    expect(ctx.tags).toMatchObject({
+      status: 'ROTATION_PAGAR',
+      reason: 'CHIFFERTEXT_LASES_VIA_GAMLA_NYCKELN',
+    })
+    // Och den nådde den lokala loggen — Sentry är inte enda kanalen.
+    expect(varna.mock.calls.some(([m]) => String(m).includes('ROTATION_PAGAR'))).toBe(true)
+  })
+
+  it('KRAV: rotationsutfallet sväljer inte signalen om Sentry fallerar', () => {
+    captureException.mockImplementation(() => {
+      throw new Error('sentry nere')
+    })
+    const fel = jest.spyOn(Logger.prototype, 'error')
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+
+    expect(() =>
+      tjänst(prismaMed({}), kryptoMed(NYCKEL_A, PEPPER_A)).report({
+        status: 'ROTATION_PAGAR',
+        reason: 'CHIFFERTEXT_LASES_VIA_GAMLA_NYCKELN',
+        source: 'Tenant',
+      }),
+    ).not.toThrow()
+
+    expect(
+      fel.mock.calls.some(([m]) => String(m).includes('Sentry-rapporteringen misslyckades')),
+    ).toBe(true)
   })
 })

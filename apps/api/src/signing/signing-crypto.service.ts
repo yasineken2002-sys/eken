@@ -132,6 +132,28 @@ export class SigningCryptoService {
     }
   }
 
+  /**
+   * Klartext ur envelopen med ENBART den aktuella nyckeln — förbi fallbacken.
+   *
+   * `decrypt` ovan är rätt för produktionsläsning: den ska lyckas så länge NÅGON
+   * av nycklarna bär raden, för det är hela poängen med rotation utan nedtid.
+   * Men den egenskapen gör den obrukbar för en KONTROLL av om den aktuella
+   * nyckeln hör ihop med datan — ett `OK` därifrån kan lika gärna komma från
+   * `_OLD` (#472: exakt det läget mättes under rotationen 2026-08-15).
+   *
+   * Den här metoden finns bara för den frågan, och ska inte användas för att
+   * läsa data: under en pågående rotation kastar den på varje ännu inte
+   * omkrypterad rad, vilket är korrekt här och fel överallt annars.
+   *
+   * Speglar skälet till att `scripts/rotate-pii-secrets.ts` har egen kryptering
+   * utan fallback — en klassificerare måste kunna binda utfallet till EN bestämd
+   * nyckel.
+   */
+  decryptWithCurrentKey(enc: string): string {
+    this.assertConfigured()
+    return this.decryptWith(this.aesKey!, enc)
+  }
+
   private decryptWith(key: Buffer, enc: string): string {
     const raw = Buffer.from(enc, 'base64')
     const iv = raw.subarray(0, 12)
