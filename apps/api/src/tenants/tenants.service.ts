@@ -7,6 +7,8 @@ import { normalizeEmail } from '../common/utils/normalize-email'
 import { CreateTenantDto } from './dto/create-tenant.dto'
 import { UpdateTenantDto } from './dto/update-tenant.dto'
 import { TENANT_CREDENTIAL_KEYS, type TenantCredentialKey } from './tenant-credential-keys'
+import { anonymizeTenantWithin, type AnonymizeActor } from '../common/gdpr/anonymize-tenant'
+import { findTenantHistory } from '../common/gdpr/tenant-history'
 
 /**
  * Safe Prisma SELECT for tenant data exposed via API.
@@ -50,6 +52,10 @@ export const SAFE_TENANT_SELECT = {
   // Tidsstämplar
   createdAt: true,
   updatedAt: true,
+
+  // GDPR-tillstånd. Icke-känsligt i sig, och operatörens UI behöver kunna visa
+  // att raden redan är avidentifierad i stället för att erbjuda åtgärden igen.
+  anonymizedAt: true,
 
   // EXPLICIT EXKLUDERADE (LÄGG ALDRIG TILL — se TENANT_CREDENTIAL_KEYS):
   // - passwordHash
@@ -286,28 +292,91 @@ export class TenantsService {
     return mapTenant(tenant, this.pn.reveal(tenant.personalNumberEnc))
   }
 
+  /**
+   * Hårdradering — går bara för en hyresgäst UTAN historik.
+   *
+   * ── GRINDEN MÄTTE FEL EGENSKAP ────────────────────────────────────────────
+   *
+   * Tidigare räknade den här metoden avtal med `status IN ('ACTIVE','DRAFT')`
+   * och fakturor med `status NOT IN ('VOID','DRAFT')`. Båda mätte STATUS. FK-
+   * villkoret i Postgres mäter EXISTENS, och det är därför grinden släppte
+   * igenom fall den inte kunde hantera:
+   *
+   *     grind1_avtal = 0, grind2_fakturor = 0     ← båda släpper igenom
+   *     ERROR: violates foreign key constraint "Lease_tenantId_fkey"
+   *
+   * Uppmätt i dev: en hyresgäst med avslutat avtal och betalda avier passerade
+   * båda grindarna och föll på ett rått FK-fel. Eftersom `P2003` inte hanteras
+   * någonstans blev svaret **500** i stället för ett meddelande som säger vad
+   * man ska göra i stället. 527 av 532 hyresgäster (99,1 %) låg i det läget.
+   *
+   * Notera att det föll på `Lease` — grindens EGEN sak. Den som någonsin haft
+   * ett avtal kan aldrig hårdraderas, oavsett avtalets status.
+   *
+   * ── VAD DEN HÄR ÄNDRINGEN GÖR, OCH INTE GÖR ───────────────────────────────
+   *
+   * Den gör felet ÄRLIGT. Ingen kaskad byggs och ingen endpoint tas bort:
+   * historiken ska bevaras, och det är hela poängen. Svaret pekar i stället på
+   * avidentifieringen, som är den operation som faktiskt kan verkställa en
+   * raderingsbegäran mot en hyresgäst med historik. Vägen blir därmed upptäckt
+   * i exakt det ögonblick någon behöver den.
+   */
   async remove(id: string, organizationId: string): Promise<void> {
-    const existing = await this.prisma.tenant.findFirst({ where: { id, organizationId } })
+    const existing = await this.prisma.tenant.findFirst({
+      where: { id, organizationId },
+      select: { id: true, anonymizedAt: true },
+    })
     if (!existing) throw new NotFoundException('Hyresgästen hittades inte')
 
-    // Blockera om hyresgästen har aktiva eller pågående kontrakt – dessa måste
-    // avslutas via /v1/leases först.
-    const blockingLeaseCount = await this.prisma.lease.count({
-      where: { tenantId: id, status: { in: ['ACTIVE', 'DRAFT'] } },
-    })
-    if (blockingLeaseCount > 0) {
+    // En avidentifierad hyresgäst raderas inte. Raden bär ett revisionsspår som
+    // ska överleva, och personuppgifterna är redan borta — radering vinner
+    // ingenting och förstör beviset för att begäran verkställdes.
+    if (existing.anonymizedAt) {
       throw new BadRequestException(
-        'Hyresgästen har aktiva eller pågående kontrakt och kan inte tas bort.',
+        'Hyresgästen är redan avidentifierad. Personuppgifterna är borttagna och raden ' +
+          'bevaras som underlag — den ska inte raderas.',
       )
     }
 
-    const activeInvoiceCount = await this.prisma.invoice.count({
-      where: { tenantId: id, status: { notIn: ['VOID', 'DRAFT'] } },
-    })
-    if (activeInvoiceCount > 0) {
-      throw new BadRequestException('Hyresgästen har aktiva fakturor och kan inte tas bort.')
+    const history = await findTenantHistory(this.prisma, id)
+    if (history.length > 0) {
+      throw new BadRequestException(
+        `Hyresgästen har historik som inte får raderas (${history.join(', ')}). ` +
+          'Underlaget måste bevaras enligt bokföringslagen. Använd avidentifiering i ' +
+          'stället — den tar bort personuppgifterna men behåller historiken.',
+      )
     }
 
     await this.prisma.tenant.delete({ where: { id } })
+  }
+
+  /**
+   * Avidentifiering utförd av en OPERATÖR (hyresvärden), till skillnad från
+   * hyresgästens egen väg i portalen.
+   *
+   * Hålet den stänger: en hyresvärd som fick en raderingsbegäran hade ingen väg
+   * att verkställa den. Anonymiseringen fanns bara bakom en portalsession, och
+   * krävde alltså att hyresgästen loggade in själv — vilket en person som begärt
+   * att bli glömd sällan vill eller kan.
+   *
+   * Själva skrubben ligger i `anonymizeTenantWithin`, delad med portalvägen, så
+   * att de två vägarna inte kan divergera.
+   */
+  async anonymize(
+    id: string,
+    organizationId: string,
+    actor: AnonymizeActor,
+  ): Promise<{ performed: boolean; anonymizedAt: Date }> {
+    return this.prisma.$transaction(async (tx) => {
+      // Org-scopad läsning INNE i transaktionen: grinden och skrivningen ska se
+      // samma rad.
+      const existing = await tx.tenant.findFirst({
+        where: { id, organizationId },
+        select: { id: true },
+      })
+      if (!existing) throw new NotFoundException('Hyresgästen hittades inte')
+
+      return anonymizeTenantWithin(tx, id, organizationId, actor)
+    })
   }
 }
