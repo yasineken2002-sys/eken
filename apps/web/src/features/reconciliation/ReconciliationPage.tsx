@@ -680,6 +680,7 @@ export function ReconciliationPage() {
   const [pdfDraft, setPdfDraft] = useState<PdfImportDraft | null>(null)
   const [matchingTx, setMatchingTx] = useState<BankTransaction | null>(null)
   const [autoMatchFlash, setAutoMatchFlash] = useState<string | null>(null)
+  const [autoMatchFailed, setAutoMatchFailed] = useState(false)
 
   const filters = tab === 'ALL' ? undefined : { status: tab }
   const { data: transactions = [], isLoading, isError: nekad } = useTransactions(filters)
@@ -694,12 +695,20 @@ export function ReconciliationPage() {
   const handleAutoMatch = () => {
     autoMatchMutation.mutate(undefined, {
       onSuccess: (data) => {
-        setAutoMatchFlash(
+        // Fel får inte gömmas i "väntar". En transaktion vars matchning kastade
+        // är inte omatchad — den är trasig, och kräver att någon tittar i
+        // loggen. Att bara visa `unmatched` hade återinfört tystnaden en nivå
+        // upp, i den enda vy som visar utfallet.
+        const bas =
           data.matched > 0
             ? `${data.matched} matchade · ${data.unmatched} väntar fortfarande`
-            : 'Inga nya matchningar hittades',
-        )
-        setTimeout(() => setAutoMatchFlash(null), 4000)
+            : 'Inga nya matchningar hittades'
+        setAutoMatchFlash(data.failed > 0 ? `${bas} · ${data.failed} FEL` : bas)
+        setAutoMatchFailed(data.failed > 0)
+        setTimeout(() => {
+          setAutoMatchFlash(null)
+          setAutoMatchFailed(false)
+        }, 8000)
       },
     })
   }
@@ -716,7 +725,14 @@ export function ReconciliationPage() {
         action={
           <div className="flex items-center gap-2">
             {autoMatchFlash && (
-              <span className="text-[12px] font-medium text-emerald-600">{autoMatchFlash}</span>
+              <span
+                className={cn(
+                  'text-[12px] font-medium',
+                  autoMatchFailed ? 'text-red-600' : 'text-emerald-600',
+                )}
+              >
+                {autoMatchFlash}
+              </span>
             )}
             {/* Avstämningens skrivningar är MANAGER+ (auto-match, import). En
                 knapp som en roll inte kan använda är ett falskt löfte — samma
