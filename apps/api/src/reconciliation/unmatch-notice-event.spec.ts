@@ -319,3 +319,40 @@ describe('H3 PR A — behandlingshistorik för flera allokeringar', () => {
     expect(tx.rentNoticeEvent.create).toHaveBeenCalledTimes(1)
   })
 })
+
+// ── M2 PR 1: paret mottagande ↔ reversering ──────────────────────────────────
+//
+// `allocationId` lades till på BÅDA posterna för att de ska gå att para ihop.
+// Med ett vattenfall har N reverseringar samma transactionId, samma paidAt och
+// ofta samma belopp — utan allokeringens id går de inte att matcha mot sina
+// mottaganden.
+//
+// Det här testet saknades när fältet infördes; negativkontrollen hittade det.
+describe('M2 PR 1 — reverseringen bär allokeringens id', () => {
+  it('KANARIEFÅGEL: payloaden innehåller allocationId, annars är paret oslutbart', async () => {
+    const flera = [
+      {
+        id: 'rnp-1',
+        rentNoticeId: 'rn-1',
+        amount: new Decimal(10_000),
+        paidAt: new Date('2026-07-20T00:00:00.000Z'),
+        source: 'BANK_RECONCILIATION',
+      },
+      {
+        id: 'rnp-2',
+        rentNoticeId: 'rn-2',
+        amount: new Decimal(10_000),
+        paidAt: new Date('2026-07-20T00:00:00.000Z'),
+        source: 'BANK_RECONCILIATION',
+      },
+    ]
+    const { service, tx } = makeService({ allocation: flera })
+    await service.unmatchTransaction('tx-1', 'org-1', 'user-1')
+
+    const ids = tx.rentNoticeEvent.create.mock.calls.map(
+      (c) => (c[0] as { data: { payload: { allocationId?: string } } }).data.payload.allocationId,
+    )
+    // Samma belopp och samma paidAt — id:t är det ENDA som skiljer dem åt.
+    expect(ids).toEqual(['rnp-1', 'rnp-2'])
+  })
+})
