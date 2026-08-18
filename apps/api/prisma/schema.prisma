@@ -635,6 +635,24 @@ model Organization {
   // subscriptionPlan styr maxObjects + AI-anropstak; status styr åtkomst.
   // PLAN_LIMITS i @eken/shared mappar plan → siffror.
   subscriptionPlan   SubscriptionPlan @default(TRIAL)
+  // INGET @@index([status]) — borttaget 2026-08-18, återinför det inte av vana.
+  //
+  // Indexet deklarerades här från 2026-05-12 men fanns ALDRIG i någon databas:
+  // migrationen som skapade det (20260424000000) följdes av ett kolumnbyte
+  // (20260512200000) där `DROP COLUMN "status"` tog med sig indexet, och bara
+  // `plan`-motsvarigheten återskapades. Prod, dev och en shadow-DB byggd ur
+  // migrationerna saknade det alla tre.
+  //
+  // Det behövs inte heller. Uppmätt (#512): ingen väg filtrerar på status per
+  // request eller per inloggning — tätast är fyra cron-körningar per dygn, resten
+  // är superadmin-sidor. Och `status = 'ACTIVE'`, som merparten av frågorna
+  // filtrerar på, är för VANLIGT för att ett index ska användas: planeraren
+  // väljer seq scan när värdet dominerar (mätt i dev — 99,6 % av raderna gav
+  // Seq Scan trots att indexet fanns).
+  //
+  // Behövs ett index någon gång är rätt svar ett SAMMANSATT index på det
+  // faktureringsfrågorna faktiskt filtrerar på —
+  // (status, planMonthlyFee, excludeFromBilling) — inte det här enkolumns.
   status             OrgStatus        @default(TRIAL)
   planStartedAt      DateTime         @default(now())
   trialEndsAt        DateTime?
@@ -721,7 +739,6 @@ model Organization {
 
   @@index([orgNumber])
   @@index([customerNumber])
-  @@index([status])
   @@index([subscriptionPlan])
 }
 
