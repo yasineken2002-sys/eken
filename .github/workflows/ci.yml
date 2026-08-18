@@ -290,9 +290,10 @@ jobs:
   # ── Paraply: EN check att pinna en required-regel mot (#405) ────────────────
   #
   # VARFÖR: en branch protection-regel pinnas mot ett CHECKNAMN, inte mot ett
-  # jobb. Nio namn i en regel är nio strängar som kan glida — jobbnamn i den här
-  # filen har redan bytts två gånger (`Build` → `Lint`, och
-  # `Reminder fee contractual-basis guard` → `Reminder fee amount guard` i #404),
+  # jobb. Ett namn per jobb i regeln är lika många strängar som kan glida, och
+  # jobbnamn i den här filen har redan bytts tre gånger (`Build` → `Lint`,
+  # `Reminder fee contractual-basis guard` → `Reminder fee amount guard` i #404,
+  # och `E2E (icke-blockerande)` → `E2E` i den här PR:en),
   # och en regel som pekar på ett namn som inte längre rapporteras blir tyst
   # verkningslös: PR:en blir grön för att checken aldrig dyker upp. Med ett
   # paraply finns EN sträng att pinna, och den strängen ändras inte när ett
@@ -305,23 +306,29 @@ jobs:
   # felklass som paraplyet finns för att stänga, en nivå upp. Se PR-texten till
   # #405 för varför en uppräkning ändå valdes framför alternativen.
   e2e:
-    name: E2E (icke-blockerande)
+    name: E2E
     runs-on: ubuntu-latest
     # Riggen är ~1 min (postgres 2 s, migrate 8 s, API-boot 43 s, web 3 s) och
     # varje spec ~13 s varm. Åtta specar ≈ 2,5 min; taket täcker install + cache-miss.
     timeout-minutes: 25
 
-    # ── ICKE-BLOCKERANDE, MED UTGÅNGSDATUM ────────────────────────────────────
+    # ── BLOCKERANDE SEDAN 2026-08-18 ──────────────────────────────────────────
     #
-    # Jobbet står MEDVETET utanför `needs` i `ci-passed`, så en flakig E2E inte
-    # kan blockera merge på main. Men ett permanent icke-blockerande jobb är per
-    # definition en vakt som aldrig kan vara röd på ett sätt någon reagerar på —
-    # alltså ingen vakt.
+    # Jobbet infördes 2026-08-14 som icke-blockerande med ett utgångsdatum:
+    # senast 2026-08-21 skulle det befordras eller tas bort, ingen tredje väg.
+    # BESLUTET ÄR FATTAT 2026-08-18 — befordrat. Jobbet står nu i `ci-passed`:s
+    # `needs` och kan blockera merge.
     #
-    # DÄRFÖR ETT DATUM: infört 2026-08-14. Senast 2026-08-21 ska jobbet antingen
-    # befordras till `ci-passed`:s `needs` (om flakdata visar det stabilt) eller
-    # tas bort. Ingen tredje väg. Den som läser det här efter 2026-08-21 utan att
-    # beslutet är fattat ska ta upp frågan, inte förlänga tystnaden.
+    # UNDERLAGET, mätt över samtliga körningar sedan införandet:
+    #   • 52/52 gröna på mainline — 24 push på `main`, 28 pull_request.
+    #   • De enda tre röda låg på införande-grenen `e2e-ci-jobb` samma kväll
+    #     (05af5b5, fca4db3, 396728a): ett riggfel och två selektorfel under
+    #     uppsättningen. Ingen av dem var en flake — varje omförsök föll likadant.
+    #   • Noll flaky-rader i de 56 körningar som nådde Playwright.
+    #   • Körtid median 2,4 min, max 4,5 min mot ett tak på 25 min.
+    #
+    # Jobbet är den enda vakten i filen som provar systemet genom hela kedjan
+    # webbläsare → Vite-proxy → API → Postgres. Faller det, ska ingenting mergas.
 
     services:
       postgres:
@@ -377,6 +384,23 @@ jobs:
       # faktiskt NÅDDE API-processen innan en enda spec körs. Utan den kontrollen
       # hade ett 429-fel sett ut som en flakig spec.
       E2E_RELAX_AUTH_THROTTLE: 'true'
+
+      # ── KANARIEFÅGELNS TAL ──────────────────────────────────────────────────
+      #
+      # Antalet tester CI ska köra. Talet hör ihop med `testIgnore` i
+      # apps/web/playwright.config.ts — det ENDA stället en spec utesluts: de tre
+      # 50x-bevisriggarna och ai-attachment-composer (#477). Ändras
+      # uteslutningarna, eller läggs en spec till, ska talet ändras i SAMMA PR.
+      # Annars faller steget "Kanariefågel" nedan, vilket är meningen.
+      #
+      # VARFÖR ETT TAL OCH INTE EN FILNAMNSLISTA: listan VAR tidigare argumenten
+      # till `playwright test`, och ett argument som inte matchar någon fil
+      # ignoreras tyst så länge något annat matchar. Uppmätt 2026-08-18:
+      #   npx playwright test --list <påhittad>            → exit 1
+      #   npx playwright test --list <riktig> <påhittad>   → exit 0, 1 test
+      # En bortdöpt spec försvann alltså ur CI utan att något blev rött. Ett
+      # förväntat antal kan inte krympa tyst.
+      E2E_EXPECTED_TESTS: '7'
 
     steps:
       - uses: actions/checkout@v4
@@ -455,25 +479,61 @@ jobs:
           fi
           echo "Uppmjukningen aktiv — auth-strypningen stryper inte under körningen."
 
-      # De 50x-riggarna körs INTE här, och det är ett beslut och inte en
-      # glömska: avi-pdf-50x, bank-reconciliation-50x och tenant-creation-50x
-      # bevisar en invariant EN gång genom att upprepa ett flöde femtio gånger.
-      # De är bevistester, inte regressionstester — de tar minuter, säger samma
-      # sak varje körning, och lägga till dem här vore att betala den tiden per
-      # push för information vi redan har. LÄGG INTE TILL DEM utan att först
-      # skriva varför invarianten behöver bevisas om vid varje ändring.
-      - name: Run E2E (billiga specar)
+      # Vilka specar som INTE körs står i apps/web/playwright.config.ts
+      # (`testIgnore`, aktiv bara när CI är satt), med motiveringen bredvid varje
+      # uteslutning. Här körs hela katalogen — inga filnamn räknas upp.
+      - name: Kanariefågel — Playwright ska hitta exakt förväntat antal tester
         working-directory: apps/web
         run: |
-          npx playwright test --reporter=line \
-            e2e/viewer-403-honest-view.spec.ts \
-            e2e/avi-paid-flow.spec.ts \
-            e2e/create-base-data.spec.ts \
-            e2e/consumption-charge-confirm.spec.ts \
-            e2e/consumption-reading-warning.spec.ts \
-            e2e/portal-tenant-flow.spec.ts \
-            e2e/portal-consumption.spec.ts \
-            e2e/ai-attachment-composer.spec.ts
+          # `--list` startar inga servrar; den löser bara ut testfilerna.
+          if ! npx playwright test --list > /tmp/e2e-list.txt 2>&1; then
+            echo "::error::Playwright kunde inte lista E2E-testerna."
+            cat /tmp/e2e-list.txt
+            exit 1
+          fi
+          cat /tmp/e2e-list.txt
+          found=$(sed -n 's/^Total: \([0-9][0-9]*\) test.*/\1/p' /tmp/e2e-list.txt)
+          # Tom `found` (formatet har ändrats) faller också — fail-closed.
+          if [ "$found" != "$E2E_EXPECTED_TESTS" ]; then
+            echo "::error::E2E-sviten har bytt storlek: Playwright hittar '${found:-inget tal}', workflowen väntar sig $E2E_EXPECTED_TESTS."
+            echo "Antingen har en spec lagts till, döpts om eller tagits bort, eller så har"
+            echo "testIgnore i apps/web/playwright.config.ts ändrats."
+            echo "Var ändringen avsiktlig? Rätta då E2E_EXPECTED_TESTS i .github/workflows/ci.yml."
+            exit 1
+          fi
+          echo "Kanariefågeln: $found tester, precis som väntat."
+
+      - name: Run E2E
+        working-directory: apps/web
+        run: |
+          # pipefail: utan den blir stegets exitkod `tee`:s, och ett fallet test
+          # skulle passera som grönt. Loggen behövs av flaky-steget nedan.
+          set -o pipefail
+          npx playwright test --reporter=line 2>&1 | tee /tmp/e2e-run.log
+
+      # `retries: 2` gör att ett instabilt test kan passera på andra försöket och
+      # rapporteras som grönt. Det är rätt för merge-flödet men fel för vad vi
+      # VET: en flake som ingen ser blir ett rött jobb senare, på någon annans PR.
+      # Antalet lyfts därför upp i jobbsammanfattningen, där det syns utan att
+      # någon behöver öppna loggen.
+      - name: Rapportera flaky-omförsök
+        if: always()
+        run: |
+          [ -f /tmp/e2e-run.log ] || exit 0
+          flaky=$(sed -n 's/^ *\([0-9][0-9]*\) flaky.*/\1/p' /tmp/e2e-run.log | head -1)
+          {
+            echo "### E2E"
+            if [ -z "$flaky" ]; then
+              echo "Inga flaky tester — varje spec passerade på första försöket."
+            else
+              echo "⚠️ **$flaky flaky test(er)** — passerade först efter omförsök (\`retries: 2\`)."
+              echo ""
+              echo "Jobbet är grönt, men specen är instabil och ska åtgärdas, inte ignoreras:"
+              echo '```'
+              grep -a -A4 '[0-9] flaky' /tmp/e2e-run.log | head -20
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload traces on failure
         if: failure()
@@ -503,12 +563,16 @@ jobs:
       - period-lookup-guard
       - design-token-guard
       - generated-knowledge-sync-guard
+      - e2e
     steps:
       # `always()` får jobbet att KÖRA, men säger ingenting om utfallet — utan
       # den här kontrollen skulle det köra och lyckas oavsett vad som hänt.
       # Kravet är `success` för VARJE jobb: `failure`, `cancelled` och `skipped`
-      # fäller alla. Inget jobb i den här filen har ett `if:`, så inget skippas
+      # fäller alla. Inget jobb i `needs` har ett `if:`, så inget av dem skippas
       # legitimt; skulle det ändras är ett fall bättre än ett tyst godkännande.
+      # (Filen HAR ett villkorat jobb — migrations-annoteringen är `pull_request`-
+      # bara och rapporterar `skipped` på push — men det står utanför `needs`
+      # just därför.)
       - name: Verify every CI job succeeded
         env:
           NEEDS: ${{ toJSON(needs) }}
