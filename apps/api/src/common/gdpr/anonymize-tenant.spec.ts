@@ -8,8 +8,17 @@
  * den skulle vara grön oavsett.
  */
 
-import { anonymizeTenantWithin, maskedTenantEmail } from './anonymize-tenant'
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import {
+  anonymizeTenantWithin,
+  maskedTenantEmail,
+  AI_TENANT_LINK_STEPS,
+  aiClientKey,
+} from './anonymize-tenant'
 import type { Prisma } from '@prisma/client'
+
+const SCHEMA = join(__dirname, '..', '..', '..', 'prisma', 'schema.prisma')
 
 const TENANT = 'aaaaaaaa-1111-2222-3333-444444444444'
 const ORG = 'org-1'
@@ -22,6 +31,10 @@ interface FakeState {
   logs: Record<string, unknown>[]
   /** Varje `data`-objekt som skickats till tenant.update, i ordning. */
   updates: Record<string, unknown>[]
+  aiTenantConversations: { id: string; tenantId: string }[]
+  aiTenantMessages: { conversationId: string }[]
+  aiToolExecutions: { tenantId: string | null }[]
+  aiUsageLogs: { tenantId: string | null }[]
 }
 
 function freshState(): FakeState {
@@ -64,6 +77,19 @@ function freshState(): FakeState {
     ],
     logs: [],
     updates: [],
+    aiTenantConversations: [
+      { id: 'conv-1', tenantId: TENANT },
+      { id: 'conv-2', tenantId: TENANT },
+      { id: 'conv-annan', tenantId: 'annan-hyresgast' },
+    ],
+    aiTenantMessages: [
+      { conversationId: 'conv-1' },
+      { conversationId: 'conv-1' },
+      { conversationId: 'conv-2' },
+      { conversationId: 'conv-annan' },
+    ],
+    aiToolExecutions: [{ tenantId: TENANT }, { tenantId: 'annan-hyresgast' }, { tenantId: null }],
+    aiUsageLogs: [{ tenantId: TENANT }, { tenantId: TENANT }, { tenantId: 'annan-hyresgast' }],
   }
 }
 
@@ -103,6 +129,45 @@ function fakeTx(state: FakeState) {
           'sentMessage.updateMany anropades — SentMessage är ett uttryckligt undantag ' +
             'som väntar på juridisk bedömning.',
         )
+      },
+    },
+    aiTenantConversation: {
+      deleteMany: async ({ where }: { where: { tenantId: string } }) => {
+        const doomed = state.aiTenantConversations.filter((c) => c.tenantId === where.tenantId)
+        state.aiTenantConversations = state.aiTenantConversations.filter(
+          (c) => c.tenantId !== where.tenantId,
+        )
+        // Emulerar databasens kaskad AiTenantMessage → AiTenantConversation.
+        // OBS: att den här fejken kaskaderar bevisar inte att Postgres gör det —
+        // det bevisas av att FK:n är onDelete: Cascade (vakten nedan kollar det
+        // mekaniskt ur schemat) och av körningen mot riktig dev-DB.
+        const ids = new Set(doomed.map((c) => c.id))
+        state.aiTenantMessages = state.aiTenantMessages.filter((m) => !ids.has(m.conversationId))
+        return { count: doomed.length }
+      },
+    },
+    aiToolExecution: {
+      updateMany: async ({ where }: { where: { tenantId: string } }) => {
+        let n = 0
+        for (const r of state.aiToolExecutions) {
+          if (r.tenantId === where.tenantId) {
+            r.tenantId = null
+            n++
+          }
+        }
+        return { count: n }
+      },
+    },
+    aiUsageLog: {
+      updateMany: async ({ where }: { where: { tenantId: string } }) => {
+        let n = 0
+        for (const r of state.aiUsageLogs) {
+          if (r.tenantId === where.tenantId) {
+            r.tenantId = null
+            n++
+          }
+        }
+        return { count: n }
       },
     },
     tenantAnonymizationLog: {
@@ -244,6 +309,57 @@ describe('KANARIEFÅGEL — avidentifieringen är idempotent', () => {
   })
 })
 
+describe('AI-lagret — riktad skrubbning där tenantId finns', () => {
+  it('raderar hyresgästens EGNA konversationer, och bara dennes', async () => {
+    const state = freshState()
+    await anonymizeTenantWithin(fakeTx(state), TENANT, ORG, ACTOR)
+    expect(state.aiTenantConversations.map((c) => c.id)).toEqual(['conv-annan'])
+  })
+
+  it('meddelandena följer med konversationen — och en annan hyresgästs blir kvar', async () => {
+    const state = freshState()
+    expect(state.aiTenantMessages).toHaveLength(4)
+    await anonymizeTenantWithin(fakeTx(state), TENANT, ORG, ACTOR)
+    expect(state.aiTenantMessages).toEqual([{ conversationId: 'conv-annan' }])
+  })
+
+  it('nollar kopplingen i AiToolExecution utan att radera revisionsraden', async () => {
+    const state = freshState()
+    await anonymizeTenantWithin(fakeTx(state), TENANT, ORG, ACTOR)
+    // Radantalet är OFÖRÄNDRAT — #505 väntar på revisor, underlaget rörs inte.
+    expect(state.aiToolExecutions).toHaveLength(3)
+    expect(state.aiToolExecutions.filter((r) => r.tenantId === TENANT)).toEqual([])
+    expect(state.aiToolExecutions.filter((r) => r.tenantId === 'annan-hyresgast')).toHaveLength(1)
+  })
+
+  it('nollar kopplingen i AiUsageLog utan att radera kvot-/faktureringsunderlaget', async () => {
+    const state = freshState()
+    await anonymizeTenantWithin(fakeTx(state), TENANT, ORG, ACTOR)
+    expect(state.aiUsageLogs).toHaveLength(3)
+    expect(state.aiUsageLogs.filter((r) => r.tenantId === TENANT)).toEqual([])
+    expect(state.aiUsageLogs.filter((r) => r.tenantId === 'annan-hyresgast')).toHaveLength(1)
+  })
+
+  it('KANARIEFÅGEL: skrubbningen körs även vid en ANDRA körning', async () => {
+    // Idempotensen får inte bli "hoppa över AI-lagret när alreadyDone är true" —
+    // då hade data som tillkommit efter första körningen blivit kvar för alltid.
+    const state = freshState()
+    await anonymizeTenantWithin(fakeTx(state), TENANT, ORG, ACTOR)
+    state.aiTenantConversations.push({ id: 'conv-ny', tenantId: TENANT })
+    state.aiUsageLogs.push({ tenantId: TENANT })
+    await anonymizeTenantWithin(fakeTx(state), TENANT, ORG, ACTOR)
+    expect(state.aiTenantConversations.map((c) => c.id)).toEqual(['conv-annan'])
+    expect(state.aiUsageLogs.filter((r) => r.tenantId === TENANT)).toEqual([])
+  })
+
+  it('rör INTE AiMessage/AiMemory/AiConversation — de saknar tenantId (beslut D)', async () => {
+    // Fejken saknar de delegaterna helt. Skulle någon lägga till ett steg för
+    // dem kastar aiDelegate "Okänd modell" och det här faller.
+    const state = freshState()
+    await expect(anonymizeTenantWithin(fakeTx(state), TENANT, ORG, ACTOR)).resolves.toBeDefined()
+  })
+})
+
 describe('revisionsspåret', () => {
   it('skriver aktör, org, mål och härkomst', async () => {
     const state = freshState()
@@ -266,5 +382,169 @@ describe('revisionsspåret', () => {
     // operatörsvägen ger fel svar på "har den här personen begärt radering?".
     expect(state.logs).toHaveLength(1)
     expect(state.logs[0]!.performedById).toBeNull()
+  })
+})
+
+/**
+ * ── VAKT: VARJE AI-TABELL MED `tenantId` MÅSTE HANTERAS EXPLICIT ────────────
+ *
+ * Härleder mängden ur `schema.prisma` i stället för att lita på en handskriven
+ * lista. Lägger någon till en ny `Ai*`-modell med `tenantId` i morgon faller
+ * vakten tills modellen fått ett steg i `AI_TENANT_LINK_STEPS`.
+ *
+ * SKILLNADEN MOT `delete-organization.spec.ts` ÄR AVSIKTLIG OCH ÄR HELA POÄNGEN:
+ * där räknas en `onDelete: Cascade` som täckning, eftersom org-raden FAKTISKT
+ * raderas och kaskaden därmed fyrar. Här raderas hyresgästraden ALDRIG — det är
+ * en avidentifiering, `tenant.update()` — så en kaskad fyrar aldrig och täcker
+ * ingenting. `coversNothing` nedan är den regeln uttryckt mekaniskt, och den
+ * andra kanariefågeln bevisar att den faktiskt gäller.
+ */
+interface AiModel {
+  name: string
+  hasTenantId: boolean
+  /** Vad FK:n mot Tenant säger. Registreras för att kunna BORTSE från den. */
+  onDeleteFromTenant: string | null
+}
+
+export function parseAiModels(schema: string): AiModel[] {
+  return [...schema.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm)]
+    .map((m) => {
+      const name = m[1] ?? ''
+      const body = m[2] ?? ''
+      const rel = body.split('\n').find((l) => /\s(Tenant)(\?|\[\])?\s/.test(l))
+      return {
+        name,
+        hasTenantId: /^\s*tenantId\s+\S/m.test(body),
+        onDeleteFromTenant: rel ? (/onDelete:\s*(\w+)/.exec(rel)?.[1] ?? null) : null,
+      }
+    })
+    .filter((m) => m.name.startsWith('Ai'))
+}
+
+/**
+ * AI-modeller som bär `tenantId` men inte hanteras av ett steg.
+ *
+ * `onDeleteFromTenant` läses ALDRIG här. Det är inte ett förbiseende — det är
+ * kravet: en kaskad eller SetNull som aldrig fyrar får inte kunna räknas som
+ * täckning. Se kanariefågel 2.
+ */
+export function uncoveredAiModels(models: AiModel[], handled: ReadonlySet<string>): string[] {
+  return models
+    .filter((m) => m.hasTenantId && !handled.has(m.name))
+    .map((m) => m.name)
+    .sort()
+}
+
+describe('VAKT: AI-tabeller med tenantId hanteras explicit vid avidentifiering', () => {
+  const schema = readFileSync(SCHEMA, 'utf8')
+  const models = parseAiModels(schema)
+  const handled = new Set(AI_TENANT_LINK_STEPS.map((s) => s.model))
+
+  it('parsern ser faktiskt schemat — utan detta kan allt nedan vara tomt och grönt', () => {
+    expect(models.length).toBeGreaterThanOrEqual(8)
+    expect(models.some((m) => m.name === 'AiMessage')).toBe(true)
+    expect(models.filter((m) => m.hasTenantId).length).toBeGreaterThanOrEqual(3)
+    // Minst en av dem deklarerar Cascade — annars mäter kanariefågel 2 ingenting.
+    expect(models.some((m) => m.hasTenantId && m.onDeleteFromTenant === 'Cascade')).toBe(true)
+  })
+
+  it('varje AI-tabell med tenantId står i AI_TENANT_LINK_STEPS', () => {
+    expect(uncoveredAiModels(models, handled)).toEqual([])
+  })
+
+  it('urvalet är exakt det förväntade — en tabell som TAPPAR tenantId ska märkas', () => {
+    expect(
+      models
+        .filter((m) => m.hasTenantId)
+        .map((m) => m.name)
+        .sort(),
+    ).toEqual(['AiTenantConversation', 'AiToolExecution', 'AiUsageLog'])
+  })
+
+  it('varje steg motsvarar en modell som finns i schemat', () => {
+    const names = new Set(models.map((m) => m.name))
+    expect(AI_TENANT_LINK_STEPS.map((s) => s.model).filter((m) => !names.has(m))).toEqual([])
+  })
+
+  it('inget steg står två gånger', () => {
+    expect(AI_TENANT_LINK_STEPS.length).toBe(handled.size)
+  })
+
+  it('varje steg har en motivering — beslutet radera/nolla ska vara skrivet', () => {
+    for (const step of AI_TENANT_LINK_STEPS) {
+      expect(step.reason.length).toBeGreaterThan(80)
+    }
+  })
+
+  it('AiMessage/AiMemory/AiConversation kräver INGET steg — de saknar tenantId', () => {
+    // Motsatt riktning: vakten får inte börja kräva textsökningstabeller (D).
+    for (const n of ['AiMessage', 'AiMemory', 'AiConversation']) {
+      expect(models.find((m) => m.name === n)?.hasTenantId).toBe(false)
+    }
+    expect(AI_TENANT_LINK_STEPS.some((s) => ['AiMessage', 'AiMemory'].includes(s.model))).toBe(
+      false,
+    )
+  })
+
+  it('AiTenantMessage faller via sin kaskad mot konversationen — den kaskaden FYRAR', () => {
+    // Den saknar tenantId och kräver därför inget eget steg, men den är i sin
+    // helhet hyresgästens data. Att den försvinner beror på att vi RADERAR
+    // konversationsraden. Byter någon den FK:n till SetNull/Restrict blir
+    // meddelandena kvar föräldralösa — då ska det här falla.
+    const m = /^model\s+AiTenantMessage\s*\{([\s\S]*?)^\}/m.exec(schema)?.[1] ?? ''
+    const rel = m.split('\n').find((l) => /\sAiTenantConversation(\?|\[\])?\s/.test(l)) ?? ''
+    expect(/onDelete:\s*Cascade/.test(rel)).toBe(true)
+    expect(AI_TENANT_LINK_STEPS.some((s) => s.model === 'AiTenantConversation')).toBe(true)
+  })
+
+  it('clientKey mappar modellnamn till Prisma-klientens egenskap', () => {
+    expect(aiClientKey('AiUsageLog')).toBe('aiUsageLog')
+    expect(aiClientKey('AiTenantConversation')).toBe('aiTenantConversation')
+  })
+
+  // ── KANARIEFÅGLARNA ────────────────────────────────────────────────────────
+  // Mäter SKILLNADEN injektionen gör, så en annans otäckta tabell inte dränker
+  // signalen. Sonderna heter Kanariefagel* — verifierat att de namnen inte
+  // finns i schemat (en sond som råkar heta något befintligt gör mätningen
+  // tvetydig).
+  const baseline = uncoveredAiModels(models, handled)
+  const injected = (fejk: string): string[] =>
+    uncoveredAiModels(parseAiModels(schema + '\n' + fejk), handled).filter(
+      (n) => !baseline.includes(n),
+    )
+
+  it('sondnamnen finns inte redan i schemat', () => {
+    expect(schema).not.toContain('AiKanariefagel')
+  })
+
+  it('KANARIEFÅGEL 1: en ny AI-tabell med tenantId rapporteras som otäckt', () => {
+    const fejk = `model AiKanariefagelNy {\n  id String @id\n  tenantId String\n}\n`
+    expect(parseAiModels(schema + '\n' + fejk).some((m) => m.name === 'AiKanariefagelNy')).toBe(
+      true,
+    )
+    expect(injected(fejk)).toEqual(['AiKanariefagelNy'])
+  })
+
+  it('KANARIEFÅGEL 2: en Cascade mot Tenant räknas INTE som täckning', () => {
+    // Exakt defekten vi hittade, uttryckt mekaniskt. AiTenantConversation SÅG
+    // täckt ut i månader eftersom den kaskaderar — men avidentifiering raderar
+    // aldrig hyresgästraden, så kaskaden fyrade aldrig. En vakt som accepterade
+    // Cascade som täckning hade varit grön hela tiden.
+    const fejk =
+      `model AiKanariefagelKaskad {\n  id String @id\n  tenantId String\n` +
+      `  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)\n}\n`
+    const parsed = parseAiModels(schema + '\n' + fejk).find(
+      (m) => m.name === 'AiKanariefagelKaskad',
+    )
+    // Parsern SER kaskaden...
+    expect(parsed?.onDeleteFromTenant).toBe('Cascade')
+    // ...och rapporterar modellen som otäckt ändå.
+    expect(injected(fejk)).toEqual(['AiKanariefagelKaskad'])
+  })
+
+  it('KANARIEFÅGEL 3: en AI-tabell UTAN tenantId rapporteras INTE', () => {
+    // Andra halvan: vakten får inte vara röd för allt nytt.
+    const fejk = `model AiKanariefagelUtan {\n  id String @id\n  organizationId String\n}\n`
+    expect(injected(fejk)).toEqual([])
   })
 })

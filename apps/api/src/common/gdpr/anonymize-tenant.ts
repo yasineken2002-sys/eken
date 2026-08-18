@@ -60,6 +60,120 @@ export function maskedTenantEmail(tenantId: string): string {
 }
 
 /**
+ * ── AI-LAGRET: RIKTAD SKRUBBNING DÄR `tenantId` FINNS ───────────────────────
+ *
+ * KASKADEN ÄR INTE SVARET, OCH DET ÄR HELA POÄNGEN MED DEN HÄR LISTAN.
+ *
+ * Tre AI-tabeller bär `tenantId` och deklarerar en FK mot `Tenant`:
+ * `AiTenantConversation` (Cascade), `AiToolExecution` och `AiUsageLog`
+ * (båda SetNull). Det SER ut som att databasen sköter städningen åt oss.
+ *
+ * Den gör den inte. `onDelete` fyrar bara när en `Tenant`-RAD RADERAS, och
+ * avidentifiering raderar aldrig — den gör `tenant.update()` och maskerar
+ * fälten i stället (se skälen överst i filen: elva Restrict-FK gör radering
+ * omöjlig för en hyresgäst med historik). Raden finns kvar efteråt, alltså
+ * fyrar varken kaskaden eller SetNull, alltså låg hyresgästens egen
+ * AI-chatthistorik kvar i klartext efter en verkställd raderingsbegäran.
+ *
+ * Därför agerar den här funktionen EXPLICIT. Vakten i specen bredvid härleder
+ * ur `schema.prisma` vilka `Ai*`-modeller som bär `tenantId` och kräver att var
+ * och en står nedan — och den räknar UTTRYCKLIGEN INTE en kaskad som täckning,
+ * just för att den defekten inte ska kunna återuppstå.
+ *
+ * Listan driver också körningen (samma mönster som `DELETION_STEPS` i
+ * `delete-organization.ts`), så vad vakten kontrollerar och vad koden gör kan
+ * inte glida isär.
+ */
+export type AiTenantLinkAction = 'delete' | 'unlink'
+
+export interface AiTenantLinkStep {
+  /** Prisma-modellnamn, exakt som i schema.prisma. */
+  model: string
+  action: AiTenantLinkAction
+  /** Varför just den här åtgärden. Läses av människor, inte av kod. */
+  reason: string
+}
+
+export const AI_TENANT_LINK_STEPS: readonly AiTenantLinkStep[] = [
+  {
+    model: 'AiTenantConversation',
+    action: 'delete',
+    reason:
+      'Hyresgästens EGEN chatt med AI:n. Hela raden är den hyresgästens data — ' +
+      'det finns inget granularitetsproblem här, till skillnad från operatörens ' +
+      '`AiMessage` där ett svar kan handla om flera hyresgäster samtidigt. Inget ' +
+      'bevarandeskäl: det är varken räkenskapsmaterial eller revisionsspår över ' +
+      'hyresvärdens handlingar. `AiTenantMessage` faller med via sin egen ' +
+      'Cascade mot konversationen — den kaskaden FYRAR, eftersom vi faktiskt ' +
+      'raderar konversationsraden.',
+  },
+  {
+    model: 'AiToolExecution',
+    action: 'unlink',
+    reason:
+      'Raden är ett revisionsspår och rörs INTE. Om den är räkenskapsinformation ' +
+      'är en öppen fråga för verksam revisor (#505), och att förstöra underlaget ' +
+      'medan frågan är obesvarad är inte vårt beslut att fatta. Kopplingen nollas ' +
+      'däremot: `tenantId` är AKTÖREN (hyresgästen som chattade via portalen), ' +
+      'inte ämnet, och det är just den kopplingen mellan person och logg som en ' +
+      'raderingsbegäran träffar. Fritexten i `toolInput`/`toolResult` är en egen ' +
+      'fråga (#508) och rörs inte här. `SetNull` i schemat säger redan att detta ' +
+      'är rätt sluttillstånd — vi ser till att det faktiskt inträffar.',
+  },
+  {
+    model: 'AiUsageLog',
+    action: 'unlink',
+    reason:
+      'Raden bär INGEN fritext alls — bara tokens, kostnad och tidpunkt — så det ' +
+      'finns ingenting att skrubba i innehållet. Den måste dessutom bevaras: ' +
+      'org-kvot och månadsfakturering läser den, och FK:n mot Organization är ' +
+      'Restrict. Kopplingen nollas. Uppmätt att det är ofarligt: all ' +
+      'org-aggregering nycklar på `organizationId` (ai-usage.service.ts), aldrig ' +
+      'på `tenantId`. Det enda som slutar fungera är `getTenantUsage(tenantId)` ' +
+      'för just den hyresgästen — vilket är önskat utfall, inte en regression.',
+  },
+]
+
+type AiDelegate = {
+  deleteMany: (a: unknown) => Promise<{ count: number }>
+  updateMany: (a: unknown) => Promise<{ count: number }>
+}
+
+/** Modellnamn → Prisma-klientens egenskap (`AiUsageLog` → `aiUsageLog`). */
+export const aiClientKey = (model: string): string => model.charAt(0).toLowerCase() + model.slice(1)
+
+const aiDelegate = (tx: Prisma.TransactionClient, model: string): AiDelegate => {
+  const d = (tx as unknown as Record<string, AiDelegate | undefined>)[aiClientKey(model)]
+  // Ett stegnamn utan motsvarande modell ska smälla här, inte tyst hoppas över.
+  // Vakten fångar det i test; det här fångar det i körning.
+  if (!d) throw new Error(`Okänd modell i AI-skrubbningen: ${model}`)
+  return d
+}
+
+/**
+ * Kör AI-lagrets riktade skrubbning. Exporterad för att kunna köras och
+ * verifieras separat; anropas av `anonymizeTenantWithin`.
+ *
+ * Idempotent: `deleteMany` på en redan tömd mängd och `updateMany` som sätter
+ * `tenantId = null` där `tenantId` redan är null matchar båda noll rader.
+ */
+export async function scrubAiTenantLinks(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+): Promise<Record<string, number>> {
+  const touched: Record<string, number> = {}
+  for (const step of AI_TENANT_LINK_STEPS) {
+    const d = aiDelegate(tx, step.model)
+    const { count } =
+      step.action === 'delete'
+        ? await d.deleteMany({ where: { tenantId } })
+        : await d.updateMany({ where: { tenantId }, data: { tenantId: null } })
+    touched[step.model] = count
+  }
+  return touched
+}
+
+/**
  * Kör avidentifieringen inuti en befintlig transaktion.
  *
  * Anroparen äger transaktionen, eftersom operatörsvägen behöver läsa grindar i
@@ -139,6 +253,27 @@ export async function anonymizeTenantWithin(
   //
   // Lägg alltså inte till en `sentMessage.updateMany` här utan att först läsa
   // det svaret.
+
+  // ── AI-LAGRET ─────────────────────────────────────────────────────────────
+  //
+  // ORDNINGEN SPELAR INGEN ROLL HÄR — OCH DET ÄR INGEN SLUMP.
+  //
+  // Blocket står EFTER `tenant.update()` ovan, som just har maskerat namn,
+  // e-post och adress. Det går bra därför att varje steg nedan matchar på
+  // `tenantId` — en primärnyckelreferens som `update` aldrig rör. Nålen finns
+  // alltså kvar oförändrad hela vägen igenom funktionen.
+  //
+  // FLYTTA INTE HIT NÅGOT SOM MATCHAR PÅ TEXT. En framtida skrubbning som söker
+  // efter namn/adress/e-post i fritext (`AiMessage`, `AiMemory` — beslut D i
+  // GDPR-ärendet, inte byggd) har INTE den egenskapen: efter `update` är fälten
+  // nollade och det finns ingenting kvar att söka med. En sådan skrubbning måste
+  // läsa identifierarna FÖRE `update` och köras före det. Att den här listan
+  // ligger efter är alltså ett bevis på att den är id-baserad, inte ett
+  // godtyckligt val som nästa steg kan ärva.
+  //
+  // Körs även när `alreadyDone` är true: funktionen är idempotent och ska fånga
+  // AI-data som tillkommit efter den första körningen.
+  await scrubAiTenantLinks(tx, tenantId)
 
   if (!alreadyDone) {
     await tx.tenantAnonymizationLog.create({
