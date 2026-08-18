@@ -887,6 +887,54 @@ faktiskt kör.
 Kontrollera `deploy.yml`-körningen för squash-commiten innan du påstår att en
 frontend-ändring är ute.
 
+### Railways byggkonfiguration kan glida ifrån `railway.toml`
+
+Den TREDJE varianten av samma tema. De två ovan handlar om att `CI passed` säger
+för mycket (Railway deployar utan att bry sig om checkar) eller för lite (Vercel
+strypt). Den här handlar om att bygget kan köra **fel sak, eller ingenting alls**,
+utan att vare sig CI eller repot märker något.
+
+Hände 2026-08-18: tjänstens builder hade bytts från Dockerfile till **RAILPACK**,
+och `healthcheckPath` försvunnit. `railway.toml` sa fortfarande `builder =
+"DOCKERFILE"` — men `railwayConfigFile` stod på `None`, så filen lästes inte.
+Tre deployer i rad föll, utan att en enda rad kod var inblandad.
+
+**Två fällor som kostade en timme:**
+
+1. **`railway redeploy` läser INTE om konfigurationen.** Den spelar om en sparad
+   byggplan. Manifestet får `reason: redeploy` och behåller den gamla byggaren,
+   oavsett vad man just ändrat. En konfigurationsändring kräver en KÄLLBASERAD
+   deploy — konsolens _Deploy latest commit_, eller:
+
+   ```bash
+   railway api 'mutation { serviceInstanceDeployV2(serviceId: "…", environmentId: "…", commitSha: "…") }'
+   ```
+
+   Manifestet ska då säga `reason: deploy`.
+
+2. **`Builder`-enumen har inget `DOCKERFILE`-värde.** Den är
+   `['HEROKU','NIXPACKS','PAKETO','RAILPACK']`, och `builder: DOCKERFILE` avvisas.
+   Railway modellerar Dockerfile via **`dockerfilePath`**, inte via byggaren. Efter
+   en lyckad återställning läser tjänstens `builder` alltså fortfarande `RAILPACK`
+   medan deployens manifest säger `DOCKERFILE`. Det ser fel ut och är rätt.
+
+Läs byggkonfigurationen så här (inga variabelvärden — jfr `railway variables`):
+
+```bash
+railway api 'query { service(id: "<id>") { serviceInstances { edges { node {
+  builder dockerfilePath healthcheckPath railwayConfigFile buildCommand startCommand
+} } } } }'
+```
+
+**En misslyckad deploy river inte den körande versionen.** Prod fortsatte serva
+föregående revision och svara `ok` under hela incidenten. Det är ett stopp, inte
+ett avbrott — men main och prod glider isär, och varje efterföljande merge hade
+också fallit.
+
+**Kontrollen är densamma som alltid:** `/v1/health`-fältet `revision`. Det är
+enda beviset för vad som faktiskt kör, oavsett vilken av de tre varianterna som
+slagit till.
+
 ### Committa före VARJE negativkontroll — inte bara den första
 
 En negativkontroll innebär att man med flit bryter något och sedan återställer med
