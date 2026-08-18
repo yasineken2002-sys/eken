@@ -84,7 +84,7 @@ export function maskedTenantEmail(tenantId: string): string {
  * `delete-organization.ts`), så vad vakten kontrollerar och vad koden gör kan
  * inte glida isär.
  */
-export type AiTenantLinkAction = 'delete' | 'unlink'
+export type AiTenantLinkAction = 'delete' | 'unlink' | 'keep'
 
 export interface AiTenantLinkStep {
   /** Prisma-modellnamn, exakt som i schema.prisma. */
@@ -132,6 +132,28 @@ export const AI_TENANT_LINK_STEPS: readonly AiTenantLinkStep[] = [
       'på `tenantId`. Det enda som slutar fungera är `getTenantUsage(tenantId)` ' +
       'för just den hyresgästen — vilket är önskat utfall, inte en regression.',
   },
+  {
+    model: 'AiMessageTenant',
+    action: 'keep',
+    reason:
+      'ÄMNESKOPPLINGEN (#510) RÖRS INTE — och det är ett aktivt beslut, inte ett ' +
+      'förbiseende. Att radera kopplingen vid avidentifiering hade gjort läget ' +
+      'SÄMRE, inte bättre: innehållet i `AiMessage` ligger kvar oavsett (det är ' +
+      'den öppna frågan i #494), medan förmågan att HITTA raderna hade försvunnit ' +
+      'i exakt det ögonblick den behövs. Kopplingen bär dessutom inga ' +
+      'identifierande uppgifter i sig — den är ett par av två UUID:n, och raden ' +
+      'den pekar på är just avidentifierad. Den som senare bygger verkställandet ' +
+      'behöver den här kopplingen; den ska finnas kvar då.',
+  },
+  {
+    model: 'AiMemoryTenant',
+    action: 'keep',
+    reason:
+      'Samma skäl som `AiMessageTenant` ovan. Här väger det tyngre: ett minne ' +
+      'handlar nästan alltid om EN hyresgäst, så det är den kopplingen som gör en ' +
+      'riktad radering av `AiMemory` möjlig över huvud taget. Raderas den finns ' +
+      'bara textsökning kvar — vägen som avfärdades i #494.',
+  },
 ]
 
 type AiDelegate = {
@@ -163,6 +185,14 @@ export async function scrubAiTenantLinks(
 ): Promise<Record<string, number>> {
   const touched: Record<string, number> = {}
   for (const step of AI_TENANT_LINK_STEPS) {
+    // `keep` rör medvetet ingenting. Steget finns för att beslutet ska vara
+    // SKRIVET och kontrollerbart av vakten — inte för att raden råkar bli kvar
+    // om ingen tänkte på den. Det var precis den skillnaden som gjorde att
+    // hyresgästens egen chatt låg orörd i månader.
+    if (step.action === 'keep') {
+      touched[step.model] = 0
+      continue
+    }
     const d = aiDelegate(tx, step.model)
     const { count } =
       step.action === 'delete'

@@ -43,6 +43,8 @@ import {
 import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { createAiMessageWithSubjects } from '../common/ai-subjects/ai-subject-writer'
+import { runWithSubjectCollector } from '../common/ai-subjects/ai-subjects.context'
 import { formatSourceSuffix } from './knowledge/grounding/legal-grounding'
 import { ChatDto, CHAT_MESSAGE_MAX_LENGTH, CHAT_MAX_ATTACHMENTS } from './dto/chat.dto'
 import { ConfirmActionDto } from './dto/confirm-action.dto'
@@ -83,6 +85,11 @@ export class AiAssistantController {
     private readonly attachmentsService: AiAttachmentsService,
   ) {}
 
+  /**
+   * TURGRÄNSEN för ämneskopplingen (#510) på SSE-vägen. Samma sak som
+   * `AiAssistantService.chat` gör för den icke-streamande vägen — de två får
+   * aldrig skilja sig, eftersom SSE-vägen har egna `AiMessage`-skrivningar.
+   */
   @Get('chat/stream')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async streamChat(
@@ -95,6 +102,22 @@ export class AiAssistantController {
     @OrgId() organizationId: string,
     @CurrentUser() user: JwtPayload,
     @Res() reply: FastifyReply,
+  ): Promise<void> {
+    return runWithSubjectCollector(organizationId, () =>
+      this.streamChatInner(message, conversationId, attachmentIdsRaw, organizationId, user, reply),
+    )
+  }
+
+  private async streamChatInner(
+    message: string,
+    conversationId: string | undefined,
+    // B2: BARA id:n på URL:en, aldrig bytes — det var hela poängen med B1:s
+    // separata uppladdning. Kommaseparerad lista, eller upprepad parameter
+    // (Fastify ger då en array); båda formerna normaliseras nedan.
+    attachmentIdsRaw: string | string[] | undefined,
+    organizationId: string,
+    user: JwtPayload,
+    reply: FastifyReply,
   ): Promise<void> {
     // SECURITY (H4): SSE-endpointen tar `message` som rå query-param och går
     // därmed förbi ChatDto:s ValidationPipe. Validera längden manuellt med
@@ -448,13 +471,11 @@ export class AiAssistantController {
 
       // 6. Spara — actions sparar bara user-meddelandet (svaret kommer vid bekräftelse)
       if (pendingAction) {
-        await this.prisma.aiMessage.create({
-          data: {
-            conversationId: conversation.id,
-            role: 'user',
-            content: message,
-            ...(userBlocks ? { blocks: userBlocks } : {}),
-          },
+        await createAiMessageWithSubjects(this.prisma, {
+          conversationId: conversation.id,
+          role: 'user',
+          content: message,
+          ...(userBlocks ? { blocks: userBlocks } : {}),
         })
         await this.prisma.aiConversation.update({
           where: { id: conversation.id },
@@ -477,27 +498,23 @@ export class AiAssistantController {
         // Spara user + assistant separat så assistant-raden kan få `blocks`
         // (final-turnens Anthropic ContentBlock[]). User-raden får ingen
         // blocks-kolumn satt — backwards-compatible.
-        await this.prisma.aiMessage.create({
-          data: {
-            conversationId: conversation.id,
-            role: 'user',
-            content: message,
-            ...(userBlocks ? { blocks: userBlocks } : {}),
-          },
+        await createAiMessageWithSubjects(this.prisma, {
+          conversationId: conversation.id,
+          role: 'user',
+          content: message,
+          ...(userBlocks ? { blocks: userBlocks } : {}),
         })
         // Aldrig ett halvt par i historiken — se sanitizeBlocksForPersistence.
         // Träffas när tool-loopen tog slut på iterationer med stop_reason
         // fortfarande 'tool_use': den turen bar då tool_use utan resultat.
         const persistedBlocks = sanitizeBlocksForPersistence(assistantContent)
-        await this.prisma.aiMessage.create({
-          data: {
-            conversationId: conversation.id,
-            role: 'assistant',
-            content: assistantText || 'Inget svar.',
-            ...(persistedBlocks
-              ? { blocks: persistedBlocks as unknown as Prisma.InputJsonValue }
-              : {}),
-          },
+        await createAiMessageWithSubjects(this.prisma, {
+          conversationId: conversation.id,
+          role: 'assistant',
+          content: assistantText || 'Inget svar.',
+          ...(persistedBlocks
+            ? { blocks: persistedBlocks as unknown as Prisma.InputJsonValue }
+            : {}),
         })
         await this.prisma.aiConversation.update({
           where: { id: conversation.id },

@@ -1041,6 +1041,9 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  aiMessageSubjects AiMessageTenant[]
+  aiMemorySubjects  AiMemoryTenant[]
+
   @@unique([organizationId, email])
   @@unique([organizationId, ocrNumber])
   @@index([organizationId])
@@ -2413,7 +2416,8 @@ model AiMessage {
   blocks         Json?
   createdAt      DateTime @default(now())
 
-  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation   AiConversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tenantSubjects AiMessageTenant[]
 
   @@index([conversationId, createdAt])
 }
@@ -2477,11 +2481,57 @@ model AiMemory {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantSubjects AiMemoryTenant[]
 
   @@unique([organizationId, userId, key])
   @@index([organizationId, userId])
+}
+
+// ── ÄMNESKOPPLING: VILKEN HYRESGÄST HANDLAR RADEN OM? (#510) ────────────────
+//
+// Skrivs NÄR kopplingen uppstår, inte rekonstruerad efteråt. Syftet är att en
+// framtida raderingsbegäran ska kunna RIKTAS utan textsökning — AiMessage och
+// AiMemory bär inget tenantId och kan annars bara hittas genom att söka på namn
+// i fritext, vilket är avfärdat (#494: en enda AiMessage-rad namngav FEM olika
+// hyresgäster, så raden är fel enhet för en gissning).
+//
+// VARFÖR KOPPLINGSTABELL OCH INTE ETT FÄLT PÅ RADEN: en rad kan handla om FLERA
+// hyresgäster. Ett tenantId-fält hade tvingat fram en lögn (välj en av fem), och
+// en `tenantIds String[]` hade saknat främmande nyckel — en koppling som tyst
+// ruttnar är värre än ingen, eftersom den ser ut att fungera.
+//
+// Tabellerna är REN METADATA: de bär inget innehåll och ingen text.
+model AiMessageTenant {
+  id        String   @id @default(uuid())
+  messageId String
+  tenantId  String
+  // Var kopplingen kom ifrån. "tool" = ett verktyg i samma tur slog upp
+  // hyresgästen — dagens enda källa. Fältet finns för att en framtida källa
+  // (t.ex. en explicit markering i UI:t) ska gå att skilja åt vid granskning.
+  source    String   @default("tool")
+  createdAt DateTime @default(now())
+
+  message AiMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  tenant  Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, tenantId])
+  @@index([tenantId])
+}
+
+model AiMemoryTenant {
+  id        String   @id @default(uuid())
+  memoryId  String
+  tenantId  String
+  source    String   @default("tool")
+  createdAt DateTime @default(now())
+
+  memory AiMemory @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([memoryId, tenantId])
+  @@index([tenantId])
 }
 
 // Spårar varje Anthropic-anrop med token-användning och uppskattad kostnad.

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import Anthropic from '@anthropic-ai/sdk'
 import { AiMemoryType } from '@prisma/client'
+import { upsertAiMemoryWithSubjects } from '../common/ai-subjects/ai-subject-writer'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AiUsageService } from './usage/ai-usage.service'
 import { AI_MODELS } from './ai.config'
@@ -155,16 +156,20 @@ AI: ${reply}`,
     }
 
     for (const fact of facts) {
-      await this.prisma.aiMemory.upsert({
-        where: { organizationId_userId_key: { organizationId, userId, key: fact.key } },
-        update: { value: fact.value, type: fact.type },
-        create: {
-          organizationId,
-          userId,
-          key: fact.key,
-          value: fact.value,
-          type: fact.type,
-        },
+      // Ämneskopplingen (#510) skrivs av skrivaren, inte här. AiMemory är den
+      // stora vinsten: ett minne handlar nästan alltid om EN hyresgäst, och där
+      // blir en riktad radering faktiskt meningsfull.
+      //
+      // Extraktionen är fire-and-forget (`extractMemoriesInBackground`), men
+      // promisen startas INNE i turens kontext och AsyncLocalStorage följer med
+      // i promise-kedjan — kollektorn är alltså synlig här trots att raden
+      // skrivs efter att svaret gått ut. Ett test låser fast det.
+      await upsertAiMemoryWithSubjects(this.prisma, {
+        organizationId,
+        userId,
+        key: fact.key,
+        value: fact.value,
+        type: fact.type,
       })
     }
   }

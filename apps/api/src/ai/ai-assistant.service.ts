@@ -10,6 +10,8 @@ import * as crypto from 'crypto'
 import Anthropic from '@anthropic-ai/sdk'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { createAiMessageWithSubjects } from '../common/ai-subjects/ai-subject-writer'
+import { runWithSubjectCollector } from '../common/ai-subjects/ai-subjects.context'
 import { DataContextService } from './data-context.service'
 import { ToolExecutorService } from './tools/tool-executor.service'
 import { MemoryService } from './memory.service'
@@ -592,7 +594,29 @@ export class AiAssistantService {
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
+  /**
+   * TURGRÄNSEN för ämneskopplingen (#510). Kollektorn öppnas här och är synlig
+   * för allt som körs innanför: tool-loopen som samlar kandidater, skrivaren som
+   * persisterar meddelandena, och den fire-and-forget-startade minnesextraktionen
+   * (promisen startas inne i kontexten, så AsyncLocalStorage följer med).
+   *
+   * Utanför en tur finns ingen kollektor och skrivaren skriver helt enkelt inga
+   * kopplingar — ingen krasch, ingen tyst felkoppling.
+   */
   async chat(
+    organizationId: string,
+    userId: string,
+    userRole: string,
+    message: string,
+    conversationId?: string,
+    attachmentIds?: string[],
+  ): Promise<ChatResponse> {
+    return runWithSubjectCollector(organizationId, () =>
+      this.chatInner(organizationId, userId, userRole, message, conversationId, attachmentIds),
+    )
+  }
+
+  private async chatInner(
     organizationId: string,
     userId: string,
     userRole: string,
@@ -718,13 +742,11 @@ export class AiAssistantService {
       if (actionBlock) {
         const toolName = actionBlock.name
         const toolInput = actionBlock.input as Record<string, unknown>
-        await this.prisma.aiMessage.create({
-          data: {
-            conversationId: conversation.id,
-            role: 'user',
-            content: message,
-            ...(userBlocks ? { blocks: userBlocks } : {}),
-          },
+        await createAiMessageWithSubjects(this.prisma, {
+          conversationId: conversation.id,
+          role: 'user',
+          content: message,
+          ...(userBlocks ? { blocks: userBlocks } : {}),
         })
         await this.prisma.aiConversation.update({
           where: { id: conversation.id },
@@ -816,7 +838,30 @@ export class AiAssistantService {
     )
   }
 
+  /** Turgräns, se `chat` ovan. Bekräftelsevägen kör verktyget och sparar svaret. */
   async confirmAction(
+    toolName: string,
+    toolInput: Record<string, unknown>,
+    conversationId: string,
+    confirmed: boolean,
+    organizationId: string,
+    userId: string,
+    userRole: string,
+  ): Promise<ChatResponse> {
+    return runWithSubjectCollector(organizationId, () =>
+      this.confirmActionInner(
+        toolName,
+        toolInput,
+        conversationId,
+        confirmed,
+        organizationId,
+        userId,
+        userRole,
+      ),
+    )
+  }
+
+  private async confirmActionInner(
     toolName: string,
     toolInput: Record<string, unknown>,
     conversationId: string,
@@ -839,8 +884,10 @@ export class AiAssistantService {
       // återanvändas, men kräv inte att den finns (avbryt ska alltid funka).
       await this.consumePendingAction(conversationId, organizationId, userId, toolName, toolInput)
       const cancelMsg = 'Okej, åtgärden avbröts. Kan jag hjälpa dig med något annat?'
-      await this.prisma.aiMessage.create({
-        data: { conversationId, role: 'assistant', content: cancelMsg },
+      await createAiMessageWithSubjects(this.prisma, {
+        conversationId,
+        role: 'assistant',
+        content: cancelMsg,
       })
       await this.prisma.aiConversation.update({
         where: { id: conversationId },
@@ -905,16 +952,20 @@ export class AiAssistantService {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Okänt fel'
       const failMsg = `Åtgärden misslyckades: ${errMsg}`
-      await this.prisma.aiMessage.create({
-        data: { conversationId, role: 'assistant', content: failMsg },
+      await createAiMessageWithSubjects(this.prisma, {
+        conversationId,
+        role: 'assistant',
+        content: failMsg,
       })
       return { reply: failMsg, conversationId }
     }
 
     // If create_invoice couldn't find tenant, return suggestion message so Claude can follow up
     if (!result.success && result.suggestCreateTenant) {
-      await this.prisma.aiMessage.create({
-        data: { conversationId, role: 'assistant', content: result.message },
+      await createAiMessageWithSubjects(this.prisma, {
+        conversationId,
+        role: 'assistant',
+        content: result.message,
       })
       await this.prisma.aiConversation.update({
         where: { id: conversationId },
@@ -925,8 +976,10 @@ export class AiAssistantService {
 
     const reply = result.success ? result.message : `Åtgärden misslyckades: ${result.message}`
 
-    await this.prisma.aiMessage.create({
-      data: { conversationId, role: 'assistant', content: reply },
+    await createAiMessageWithSubjects(this.prisma, {
+      conversationId,
+      role: 'assistant',
+      content: reply,
     })
     await this.prisma.aiConversation.update({
       where: { id: conversationId },
@@ -1451,16 +1504,14 @@ export class AiAssistantService {
     // Spara user + assistant separat så assistant-raden kan få `blocks`
     // (Anthropic ContentBlock[] från final-turn). Backwards-compatible:
     // user-raden får ingen blocks-kolumn satt, gamla rader får NULL.
-    await this.prisma.aiMessage.create({
-      data: {
-        conversationId,
-        role: 'user',
-        content: userMessage,
-        // B2: user-raden får blocks BARA när meddelandet bar bilagor —
-        // referenser + textblocket, i den ordning modellen såg dem. Utan
-        // bilagor är kolumnen NULL som förut.
-        ...(attachments.blocks ? { blocks: attachments.blocks } : {}),
-      },
+    await createAiMessageWithSubjects(this.prisma, {
+      conversationId,
+      role: 'user',
+      content: userMessage,
+      // B2: user-raden får blocks BARA när meddelandet bar bilagor —
+      // referenser + textblocket, i den ordning modellen såg dem. Utan
+      // bilagor är kolumnen NULL som förut.
+      ...(attachments.blocks ? { blocks: attachments.blocks } : {}),
     })
     // Aldrig ett halvt par i historiken. `sanitizeBlocksForPersistence` strippar
     // tool_use, för tool_result-blocken persisteras aldrig — ett sparat
@@ -1468,15 +1519,13 @@ export class AiAssistantService {
     // meddelande i konversationen. Det inträffade när tool-loopen tog slut på
     // iterationer med stop_reason fortfarande 'tool_use'.
     const assistantBlocks = sanitizeBlocksForPersistence(response.content)
-    await this.prisma.aiMessage.create({
-      data: {
-        conversationId,
-        role: 'assistant',
-        content: reply,
-        // null → ingen blocks-kolumn; rehydreringen faller tillbaka på
-        // `content`, precis som för rader skrivna innan kolumnen fanns.
-        ...(assistantBlocks ? { blocks: assistantBlocks as unknown as Prisma.InputJsonValue } : {}),
-      },
+    await createAiMessageWithSubjects(this.prisma, {
+      conversationId,
+      role: 'assistant',
+      content: reply,
+      // null → ingen blocks-kolumn; rehydreringen faller tillbaka på
+      // `content`, precis som för rader skrivna innan kolumnen fanns.
+      ...(assistantBlocks ? { blocks: assistantBlocks as unknown as Prisma.InputJsonValue } : {}),
     })
     await this.prisma.aiConversation.update({
       where: { id: conversationId },
