@@ -25,22 +25,42 @@
  * här omsluter HELA TUREN. Kopplingen uppstår i ett verktyg men ska skrivas på
  * meddelandet, som persisteras efter att tool-loopen tagit slut.
  *
- * ── VAD DEN INTE FÅNGAR — LUCKAN, UTTALAD ──────────────────────────────────
+ * ── HUR PRECIS KOPPLINGEN ÄR — LÄS DET HÄR INNAN DU BYGGER PÅ DEN ──────────
  *
- * Kopplingen kommer UTESLUTANDE från verktygskörningar. Nämner modellen en
- * hyresgäst som inget verktyg rörde — för att den läste namnet ur
- * konversationshistoriken, ur portföljsammanfattningen i systemprompten, eller
- * för att operatören skrev det själv i klartext — blir raden OKOPPLAD.
+ * Kopplingen är BÅDE över- och underinkluderande. Ingen av delarna är en bugg
+ * som ska fixas; båda följer av att källan är verktygskörningar.
  *
- * Det är en känd och avsiktlig lucka, inte ett förbiseende:
+ * ÖVERINKLUDERANDE — rader kopplas till hyresgäster svaret inte handlar om.
+ * Insamlingen är typblind och läser varje UUID ur `toolInput` och `result.data`.
+ * Ett läsverktyg som returnerar många rader med hyresgäst — `get_overdue_invoices`
+ * inkluderar `tenant: { id }` på VARJE förfallen faktura i organisationen,
+ * `get_tenants` returnerar hela listan — kopplar då samtliga till svaret. Frågan
+ * "hur mycket är obetalt totalt?" handlar inte om någon enskild hyresgäst, men
+ * blir kopplad till alla som råkade ingå i underlaget. Uppmätt i dev: EN
+ * `get_tenants`-körning bar 7 distinkta hyresgäst-id.
  *
- *   • Alternativet vore textmatchning på namn, vilket är precis det som
- *     avfärdades. En koppling som ibland pekar på fel person är sämre än ingen,
- *     eftersom den inbjuder till en riktad radering som träffar en oskyldig.
- *   • Kopplingen är därför HÖGPRECIS men OFULLSTÄNDIG. Den får användas för att
- *     HITTA rader, aldrig för att påstå att alla rader om en person är hittade.
+ * Valideringsfrågan fäller INTE det här. Den fäller fastighets- och avtals-id,
+ * men de här är riktiga hyresgäster i rätt organisation — den kan inte veta att
+ * svaret inte handlade om dem.
  *
- * Den som senare bygger verkställandet måste utgå från det. Se #510.
+ * UNDERINKLUDERANDE — rader som handlar om någon kopplas inte. Nämner modellen
+ * en hyresgäst som inget verktyg rörde (namnet lästes ur konversationshistoriken,
+ * ur portföljdatan i systemprompten, eller skrevs av operatören själv) blir raden
+ * okopplad. Alternativet vore textmatchning på namn, vilket avfärdades i #494 —
+ * en koppling som ibland pekar på fel person inbjuder till en riktad radering som
+ * träffar en oskyldig.
+ *
+ * ── VAD DEN DÄRFÖR FÅR ANVÄNDAS TILL ───────────────────────────────────────
+ *
+ * Kopplingen får användas för att HITTA rader. Den får ALDRIG användas för att
+ * påstå att en rad handlar om just den hyresgästen — och särskilt aldrig som
+ * ENSAM GRUND FÖR RADERING.
+ *
+ * Så länge ingenting raderas är överinkluderingen harmlös: en extra koppling
+ * kostar en rad metadata. Byggs radering ovanpå den är den det inte längre —
+ * då raderas rader som handlade om någon annan. Den som bygger verkställandet
+ * måste hantera båda riktningarna, och kan inte behandla den här kopplingen som
+ * ett facit. Se #510.
  */
 
 import { AsyncLocalStorage } from 'async_hooks'

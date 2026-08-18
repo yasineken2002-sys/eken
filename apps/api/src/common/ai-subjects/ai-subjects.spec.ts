@@ -248,16 +248,42 @@ describe('C. beteendevakten: kopplingen blir rätt', () => {
     expect(state.messageLinks).toHaveLength(1)
   })
 
-  it('LUCKAN, UTTALAD: nämns någon som inget verktyg rörde blir raden OKOPPLAD', async () => {
+  it('UNDERINKLUDERANDE: nämns någon som inget verktyg rörde blir raden OKOPPLAD', () => {
     // Modellen kan namnge en hyresgäst den läst ur historiken eller ur
-    // portföljdatan. Den kopplas inte — kopplingen är högprecis men OFULLSTÄNDIG,
-    // och får aldrig användas för att påstå att alla rader är hittade.
+    // portföljdatan. Den kopplas inte. Alternativet — textmatchning på namn —
+    // avfärdades i #494.
+    return runWithSubjectCollector(ORG, async () => {
+      const { db, state } = fakeDb()
+      await createAiMessageWithSubjects(db, MSG)
+      expect(state.messages).toHaveLength(1)
+      expect(state.messageLinks).toEqual([])
+    })
+  })
+
+  it('ÖVERINKLUDERANDE: ett listverktyg kopplar ALLA i underlaget, inte bara ämnet', async () => {
+    // Det här är den andra riktningen, och den är lika viktig att veta om.
+    // `get_overdue_invoices` inkluderar `tenant: { id }` på VARJE förfallen
+    // faktura i organisationen. Frågan "hur mycket är obetalt totalt?" handlar
+    // inte om någon enskild hyresgäst, men blir kopplad till alla i underlaget.
+    // Uppmätt i dev: en get_tenants-körning bar 7 distinkta hyresgäst-id.
+    //
+    // Valideringsfrågan fäller INTE det — de ÄR riktiga hyresgäster i rätt org.
+    // Testet finns för att låsa fast att beteendet är KÄNT, inte för att det är
+    // önskat: kopplingen får användas för att HITTA rader, aldrig som ensam
+    // grund för radering. Byggs radering ovanpå den är överinkluderingen inte
+    // längre harmlös.
     const { db, state } = fakeDb()
     await runWithSubjectCollector(ORG, async () => {
-      await createAiMessageWithSubjects(db, MSG)
+      // Ett svar om fakturor i allmänhet — underlaget bar fem hyresgäster.
+      noteSubjectCandidates({
+        invoices: [T(1), T(2), T(3), T(4), T(5)].map((id) => ({ tenant: { id } })),
+      })
+      await createAiMessageWithSubjects(db, {
+        ...(MSG as object),
+        content: 'Totalt 42 000 kr obetalt.',
+      } as never)
     })
-    expect(state.messages).toHaveLength(1)
-    expect(state.messageLinks).toEqual([])
+    expect(state.messageLinks).toHaveLength(5)
   })
 
   it('utan tur skrivs raden ändå — ingen krasch, inga kopplingar', async () => {
