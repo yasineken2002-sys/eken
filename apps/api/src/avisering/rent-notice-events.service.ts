@@ -47,6 +47,12 @@ export class RentNoticeEventsService {
       actorLabel = 'System'
     } else if (actorType === 'WEBHOOK') {
       actorLabel = 'E-postleverantör'
+    } else if (actorType === 'AI') {
+      // Den här grenen är inte kosmetik. Kedjan är if/else utan default, så ett
+      // nytt EventActorType-värde utan egen gren ger `actorLabel = undefined` —
+      // raden skrivs, tidslinjen visar en tom rad, och typecheck säger
+      // ingenting eftersom det inte är en uttömmande switch. Se #494 beslut 4.
+      actorLabel = 'AI-assistenten'
     }
 
     const data: Prisma.RentNoticeEventUncheckedCreateInput = {

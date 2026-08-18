@@ -328,7 +328,9 @@ export type InvoiceEventType =
   | 'invoice.note_added'
   | 'invoice.viewed_by_user'
 
-export type EventActorType = 'USER' | 'SYSTEM' | 'WEBHOOK'
+// 'AI' = AI-assistenten handlade på uppdrag av en användare. `actorId` bär
+// fortfarande den användaren — AI:n agerar aldrig av sig själv. Se #494 beslut 4.
+export type EventActorType = 'USER' | 'SYSTEM' | 'WEBHOOK' | 'AI'
 
 export interface InvoiceEvent {
   id: string

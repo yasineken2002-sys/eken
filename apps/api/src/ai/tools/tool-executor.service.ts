@@ -1,4 +1,5 @@
 import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common'
+import { randomUUID } from 'crypto'
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
@@ -506,12 +507,26 @@ export class ToolExecutorService {
     let result: ToolResult
     let thrownError: Error | null = null
 
+    // Verktygsloggens id allokeras FÖRE körningen. Skälet är ordningen: ett
+    // verifikat som skapas inne i verktyget måste kunna peka på loggraden, men
+    // raden skrivs först efteråt (och fire-and-forget). Utan ett förhandsallokerat
+    // id finns inget att peka på vid skrivtillfället. Se #494 beslut 4.
+    const executionId = randomUUID()
+
     try {
-      result = await this.executeToolUnsafe(toolName, toolInput, organizationId, userId, userRole)
+      result = await this.executeToolUnsafe(
+        toolName,
+        toolInput,
+        organizationId,
+        userId,
+        userRole,
+        executionId,
+      )
     } catch (err) {
       thrownError = err instanceof Error ? err : new Error(String(err))
       // Logga miss-exekveringen innan vi kastar vidare
       void this.audit.logToolExecution({
+        id: executionId,
         organizationId,
         userId,
         conversationId: auditContext?.conversationId ?? null,
@@ -558,6 +573,7 @@ export class ToolExecutorService {
     // Audit-logg — fire-and-forget. Misslyckad loggning ska aldrig blockera
     // det faktiska tool-svaret.
     void this.audit.logToolExecution({
+      id: executionId,
       organizationId,
       userId,
       conversationId: auditContext?.conversationId ?? null,
@@ -580,6 +596,15 @@ export class ToolExecutorService {
     organizationId: string,
     userId: string,
     userRole: string,
+    /**
+     * Id:t på den `AiToolExecution`-rad som kommer att skrivas efter körningen.
+     * VALFRI, och det är avsiktligt: nio specar anropar den här metoden direkt
+     * med fem argument, och en obligatorisk parameter hade brutit dem utan att
+     * säga något om produktionsvägen. Saknas den skrivs verifikatet ändå med
+     * `source = AI` — faktumet är det som ska bevaras, referensen är en
+     * bekvämlighet.
+     */
+    aiToolExecutionId?: string,
   ): Promise<ToolResult> {
     // ── Role guards (propagate as HTTP exceptions) ────────────────────────────
 
@@ -3345,7 +3370,12 @@ export class ToolExecutorService {
                 organizationId,
                 date,
                 description,
-                source: 'MANUAL',
+                // #494 beslut 4: AI-skapade verifikat skrevs som MANUAL och gick
+                // därför inte att skilja från handskrivna. `createdById` står
+                // kvar — den bär användaren som BAD om posten, vilket fortfarande
+                // är den ansvariga människan.
+                source: 'AI',
+                aiToolExecutionId: aiToolExecutionId ?? null,
                 createdById: userId,
                 series: v.series,
                 verNumber: v.verNumber,
@@ -3453,7 +3483,9 @@ export class ToolExecutorService {
                 organizationId,
                 date,
                 description: `Utgift: ${description}`,
-                source: 'MANUAL',
+                // Samma sak som i create_journal_entry — se noten där.
+                source: 'AI',
+                aiToolExecutionId: aiToolExecutionId ?? null,
                 createdById: userId,
                 series: v.series,
                 verNumber: v.verNumber,

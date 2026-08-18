@@ -78,6 +78,17 @@ export class AiAuditService {
    * audit-logg-bugg ska blockera AI:n.
    */
   async logToolExecution(args: {
+    /**
+     * Radens id, förhandsallokerat av anroparen. Finns för att ett verifikat
+     * som skapas INNE i verktyget ska kunna peka på den här raden — loggen
+     * skrivs först efteråt, så id:t måste vara känt i förväg.
+     *
+     * Att skrivningen kan misslyckas tyst (se catch:en nedan) är exakt skälet
+     * till att `JournalEntry.aiToolExecutionId` inte har någon främmande
+     * nyckel: referensen får peka i tomma intet, faktumet bärs av
+     * `source = AI`.
+     */
+    id?: string
     organizationId: string
     userId?: string | null
     tenantId?: string | null
@@ -98,6 +109,7 @@ export class AiAuditService {
 
       await this.prisma.aiToolExecution.create({
         data: {
+          ...(args.id !== undefined ? { id: args.id } : {}),
           organizationId: args.organizationId,
           userId: args.userId ?? null,
           tenantId: args.tenantId ?? null,
