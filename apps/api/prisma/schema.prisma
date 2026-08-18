@@ -141,6 +141,11 @@ enum AccountType {
 
 enum JournalEntrySource {
   MANUAL
+  // Verifikat skapat via AI-assistentens verktyg (`create_journal_entry`,
+  // `record_expense`). Skrevs tidigare som MANUAL, vilket gjorde ett AI-skapat
+  // verifikat omöjligt att skilja från ett handskrivet. `createdById` bär
+  // fortfarande den användare som bad om posten.
+  AI
   INVOICE
   PAYMENT
   LEASE
@@ -195,6 +200,11 @@ enum EventActorType {
   USER
   SYSTEM
   WEBHOOK
+  // AI-assistenten handlade på uppdrag av en användare. `actorId` bär
+  // FORTFARANDE den användare som bad om det — AI:n agerar aldrig av sig själv —
+  // men utan den här varianten går en AI-utförd handling inte att skilja från en
+  // handpåskriven. Se #494 beslut 4.
+  AI
 }
 
 enum BankTransactionStatus {
@@ -1329,6 +1339,16 @@ model InvoiceEvent {
   actorId    String? // userId eller null för system/webhook
   actorLabel String? // Denormaliserat: "Anna Svensson" / "System" / "Postmark"
 
+  // Mjuk referens till `AiToolExecution.id`, utan främmande nyckel — samma skäl
+  // som på JournalEntry (ordning + gallring), se noten där.
+  //
+  // SKRIVS INTE ÄNNU. Kolumnen finns för att AI-vägen till fakturahändelser går
+  // via `InvoicesService`, som tar `actorType: 'USER' | 'SYSTEM'` och inte
+  // känner till någon AI-kontext. Att träda igenom den kontexten är ett eget
+  // arbete (se PR-texten); kolumnen läggs här så att det blir en ren
+  // kodändring utan en andra migration.
+  aiToolExecutionId String?
+
   // Händelsespecifik data – flexibel JSON per händelsetyp
   // t.ex. { email, provider, messageId } för e-postleverans
   // t.ex. { amount, paymentMethod, reference } för betalning
@@ -1466,6 +1486,22 @@ model JournalEntry {
   reference      String?
   source         JournalEntrySource @default(MANUAL)
   sourceId       String?
+
+  // ── AI-ursprung (#494 beslut 4) ───────────────────────────────────────────
+  // Mjuk referens till `AiToolExecution.id` — MEDVETET utan främmande nyckel.
+  //
+  // Två skäl, båda mätta:
+  //  1. ORDNINGEN. `AiToolExecution` skrivs EFTER att verktyget kört
+  //     (tool-executor.service.ts:560) och dessutom fire-and-forget, så raden
+  //     finns inte när verifikatet skapas. En äkta FK hade fällt insert:en.
+  //  2. GALLRINGEN. Verktygsloggen gallras efter 730/365/90 dagar
+  //     (ai-retention), verifikatet bevaras i sju år. En FK hade antingen
+  //     blockerat gallringen eller nollat kolumnen — och poängen med den här
+  //     ändringen är just att FAKTUMET ska överleva loggen.
+  //
+  // Det är därför `source = AI` som bär beständigheten. Referensen är en
+  // bekvämlighet som får peka i tomma intet när loggen gallrats.
+  aiToolExecutionId String?
   // Nullable för automatiska poster (t.ex. auto-match från bank-import) där
   // ingen användare är inloggad. Manuella poster har alltid en createdBy.
   createdById    String?

@@ -41,6 +41,9 @@ const sourceLabel: Record<string, string> = {
   PAYMENT: 'Betalning',
   MANUAL: 'Manuell',
   LEASE: 'Kontrakt',
+  // Verifikat skapat via AI-assistentens verktyg (#494 beslut 4). Utan den här
+  // raden faller uppslaget tillbaka på den råa enum-strängen "AI".
+  AI: 'AI-assistent',
 }
 
 const sourceVariant: Record<string, 'info' | 'success' | 'default' | 'warning'> = {
@@ -48,6 +51,7 @@ const sourceVariant: Record<string, 'info' | 'success' | 'default' | 'warning'> 
   PAYMENT: 'success',
   MANUAL: 'default',
   LEASE: 'warning',
+  AI: 'info',
 }
 
 function AccountRow({ account, delay }: { account: Account; delay: number }) {

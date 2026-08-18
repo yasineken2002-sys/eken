@@ -10,25 +10,31 @@ import { ACCOUNTING_ONLY_ACTIONS, ACTION_TOOLS, TOOLS } from '../tools/ai-tools.
  *
  * ── DEN AVGÖRANDE MÄTNINGEN ─────────────────────────────────────────────────
  *
- * Bokförings-verktygen får LÄNGRE frist än övriga, och skälet är inte ett
- * lagkrav — det är ett hål i datamodellen. Uppmätt i koden:
+ * Bokförings-verktygen får LÄNGRE frist än övriga, och skälet var inte ett
+ * lagkrav — det var ett hål i datamodellen. Så här såg det ut när fristen sattes
+ * (2026-08-16):
  *
  *   EventActorType     = USER | SYSTEM | WEBHOOK        ← ingen AI-variant
  *   JournalEntrySource = MANUAL | INVOICE | PAYMENT | …  ← ingen AI-variant
  *   create_journal_entry skriver  source: 'MANUAL', createdById: userId
  *
- * Ett verifikat som AI:n skapade är alltså i dagens data OMÖJLIGT att skilja
- * från ett som en människa skrev direkt i gränssnittet. Det finns ingen FK från
- * `JournalEntry`/`InvoiceEvent` till `AiToolExecution`.
+ * Ett AI-skapat verifikat var alltså omöjligt att skilja från ett som en
+ * människa skrev direkt i gränssnittet, och `AiToolExecution` var den ENDA
+ * platsen där faktumet existerade. Gallrades den tidigt försvann distinktionen
+ * permanent för äldre poster.
  *
- * `AiToolExecution` är därmed den ENDA platsen där faktumet "detta gjordes av
- * AI, bekräftat av användare X vid tidpunkt Y" existerar. Gallras den tidigt
- * försvinner den distinktionen permanent för äldre poster.
+ * ── DET HÅLET ÄR STÄNGT (2026-08-18, #494 beslut 4) ─────────────────────────
  *
- * Den rätta långsiktiga åtgärden är att flytta faktumet dit det hör hemma — en
- * `AI`-variant i `EventActorType` och en nullbar referens på verifikatet — och
- * DÅ blir en kortare frist här oproblematisk. Så länge det inte är gjort är två
- * år en riskavvägning, inte en juridisk frist.
+ * `EventActorType` och `JournalEntrySource` har nu var sin `AI`-variant, och
+ * `JournalEntry`/`InvoiceEvent` bär en nullbar `aiToolExecutionId`. De två
+ * AI-vägarna skriver `source: 'AI'`. Faktumet ligger därmed på verifikatet, som
+ * bevaras i sju år, och överlever gallringen av den här tabellen.
+ *
+ * FRISTEN NEDAN ÄR ÄNDÅ INTE SÄNKT, och det är ett medvetet val: det som
+ * flyttade till verifikatet är ATT posten kom från AI — inte VAD som skickades
+ * in. Om `AiToolExecution` visar sig vara underlag i bokföringslagens mening
+ * (frågan nedan, fortfarande obesvarad av människa) är det indata som behöver
+ * bevaras, och den frågan avgör fristen. Sänk den inte förrän svaret finns.
  *
  * ── VAD SOM ÄR AVGJORT OCH VAD SOM INTE ÄR DET ──────────────────────────────
  *
