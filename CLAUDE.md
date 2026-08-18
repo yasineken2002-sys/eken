@@ -962,11 +962,14 @@ schemat var återställt gav då en träff som inte var min.
 ### CI-skyddet slutar vid merge-punkten — inte vid deploy
 
 `main` skyddas av rulesetet **`main`** (active, tom bypass-lista) med **`CI passed`**
-som required check — och bara den; klassisk branch protection är av. Alla **tio**
-CI-jobb i `ci-passed`:s `needs` måste ge `success` innan en PR kan mergas; GitHub
+som required check — och bara den; klassisk branch protection är av. **Varje**
+jobb i `ci-passed`:s `needs` måste ge `success` innan en PR kan mergas; GitHub
 blockerar merge-knappen annars (`mergeStateStatus: BLOCKED`). Uppmätt i #405.
+Antalet står med flit inte här — `ci-passed` härleder det ur `toJSON(needs)`, och
+ett tal i prosan hade blivit fel första gången någon lade till ett jobb (senast
+`schema-drift-guard`, #512).
 
-`E2E` är det tionde jobbet. Det infördes 2026-08-14 som icke-blockerande med ett
+`E2E` är ett av dem. Det infördes 2026-08-14 som icke-blockerande med ett
 utgångsdatum och **befordrades 2026-08-18** på 52/52 gröna mainline-körningar,
 noll flakes och en körtid på 2,4 min i median. Beslutsprotokollet står i `ci.yml`.
 Jobbet kör hela `apps/web/e2e/` utom det som `testIgnore` i

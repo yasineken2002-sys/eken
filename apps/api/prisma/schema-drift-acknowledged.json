@@ -1,0 +1,6 @@
+[
+  {
+    "sql": "DROP INDEX \"LegalChunkEmbedding_embedding_hnsw_idx\"",
+    "reason": "HNSW-indexet skapas som rå SQL i 20260610000000_etapp3_pr31_pgvector_legal_chunk_embedding eftersom kolumnen är Unsupported(\"vector(1024)\") och Prisma inte kan uttrycka @@index på en Unsupported-kolumn. Schemat känner därför inte till indexet och drar slutsatsen att det inte ska finnas. Driften går inte att lösa så länge Prisma saknar stöd; indexet MÅSTE finnas kvar i prod, annars faller juridik-RAG:en till sekventiell skanning. Se #512."
+  }
+]

@@ -28,7 +28,8 @@
     "db:studio": "prisma studio",
     "authz:golden": "UPDATE_AUTHZ_GOLDEN=1 jest src/common/authz/authz-surface.spec.ts --runInBand",
     "authz:objects": "UPDATE_OBJECT_SCOPE=1 jest src/common/authz/object-scope.spec.ts --runInBand",
-    "org:delete": "node --env-file-if-exists=.env -r ts-node/register src/scripts/delete-organization.ts"
+    "org:delete": "node --env-file-if-exists=.env -r ts-node/register src/scripts/delete-organization.ts",
+    "schema:drift": "node -r ts-node/register/transpile-only src/scripts/check-schema-drift-main.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.89.0",

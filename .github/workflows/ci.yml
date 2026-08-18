@@ -248,6 +248,54 @@ jobs:
       - name: Verify generated/ matches .claude/knowledge/lagar/
         run: node apps/api/scripts/check-generated-knowledge-sync.mjs
 
+  schema-drift-guard:
+    name: Schema drift guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # EGET JOBB, inte infällt i `test`. Skälet är att `migrate diff
+    # --from-migrations` behöver en TOM shadow-databas att spela upp historiken i,
+    # och `test`-jobbet har ingen Postgres alls. Att lägga till en där hade kopplat
+    # hela enhetstestsviten till en DB-tjänst den annars inte rör, och gjort varje
+    # testkörning långsammare för en kontroll som inte har med testerna att göra.
+    # Filen har redan sex små dedikerade vaktjobb — det här är samma form.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: eken_shadow
+          POSTGRES_USER: eken
+          POSTGRES_PASSWORD: eken
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U eken"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      # Shadow-databasen skrivs bara av Prisma, innehåller ingen data och slängs
+      # med jobbet. pgvector-imagen krävs eftersom historiken innehåller
+      # `CREATE EXTENSION "vector"`.
+      SHADOW_DATABASE_URL: postgresql://eken:eken@localhost:5432/eken_shadow
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Fäller på DESTRUKTIV drift mellan migrationshistoriken och schema.prisma
+      # som inte är kvitterad, OCH på kvitteringar som inte längre motsvarar
+      # någon drift. Icke-destruktiv drift loggas men fäller inte. Se #512.
+      - name: Check for destructive schema drift
+        run: pnpm --filter @eken/api schema:drift
+
   migration-annotation:
     name: Migrationer i denna PR (annotering)
     runs-on: ubuntu-latest
@@ -563,6 +611,7 @@ jobs:
       - period-lookup-guard
       - design-token-guard
       - generated-knowledge-sync-guard
+      - schema-drift-guard
       - e2e
     steps:
       # `always()` får jobbet att KÖRA, men säger ingenting om utfallet — utan
