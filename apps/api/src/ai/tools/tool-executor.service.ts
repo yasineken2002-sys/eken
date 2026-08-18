@@ -1,6 +1,7 @@
 import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common'
 import { randomUUID } from 'crypto'
 import { runAsAi } from '../../common/ai-origin/ai-origin.context'
+import { noteSubjectCandidates } from '../../common/ai-subjects/ai-subjects.context'
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
@@ -522,6 +523,20 @@ export class ToolExecutorService {
       result = await runAsAi(executionId, () =>
         this.executeToolUnsafe(toolName, toolInput, organizationId, userId, userRole, executionId),
       )
+
+      // ÄMNESKOPPLINGENS KÄLLA (#510). Verktyget vet vilka hyresgäster det rörde;
+      // före det här kastades den kunskapen bort när det returnerade.
+      //
+      // Läses FÖRE redactSensitive/neutralizeUntrusted nedan — inte för att de
+      // rör UUID:n (det gör de inte), utan för att den ordningen inte ska bli
+      // ett tyst beroende om de lagren ändras.
+      //
+      // BÅDE input och resultat: input bär ofta ett explicit `tenantId` som
+      // operatören pekade ut, resultatet bär de id:n verktyget slog upp.
+      // Kandidaterna är ovaliderade här — skrivaren org-scopar och validerar
+      // dem mot Tenant innan något skrivs.
+      noteSubjectCandidates(toolInput)
+      noteSubjectCandidates(result.data)
     } catch (err) {
       thrownError = err instanceof Error ? err : new Error(String(err))
       // Logga miss-exekveringen innan vi kastar vidare
