@@ -22,6 +22,7 @@ import { NotificationsService } from './notifications.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+import { resolveActorType, aiOriginColumns } from '../common/ai-origin/ai-origin.context'
 
 interface ProcessSummary {
   friendlySent: number
@@ -342,7 +343,8 @@ export class PaymentReminderService {
       data: {
         invoiceId: invoice.id,
         type: 'REMINDER_SENT',
-        actorType: 'SYSTEM',
+        actorType: resolveActorType('SYSTEM'),
+        ...aiOriginColumns(),
         actorLabel: 'Vänlig påminnelse',
         payload: { reminderType: 'REMINDER_FRIENDLY', daysOverdue, fee: 0 },
       },
@@ -569,7 +571,8 @@ export class PaymentReminderService {
         data: {
           invoiceId: invoice.id,
           type: 'REMINDER_SENT',
-          actorType: 'SYSTEM',
+          actorType: resolveActorType('SYSTEM'),
+          ...aiOriginColumns(),
           actorLabel: 'Formell påminnelse',
           payload: { reminderType: 'REMINDER_FORMAL', daysOverdue, fee: safeFee },
         },
@@ -679,7 +682,8 @@ export class PaymentReminderService {
         data: {
           invoiceId: invoice.id,
           type: 'SEND_FAILED',
-          actorType: 'SYSTEM',
+          actorType: resolveActorType('SYSTEM'),
+          ...aiOriginColumns(),
           actorLabel: 'Formell påminnelse',
           payload: {
             reminderType: 'REMINDER_FORMAL',
@@ -710,7 +714,8 @@ export class PaymentReminderService {
       data: {
         invoiceId,
         type: 'DEBT_COLLECTION',
-        actorType: 'SYSTEM',
+        actorType: resolveActorType('SYSTEM'),
+        ...aiOriginColumns(),
         actorLabel: 'Markerad redo för inkasso',
         payload: { daysOverdue },
       },

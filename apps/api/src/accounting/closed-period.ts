@@ -2,6 +2,7 @@ import { ConflictException } from '@nestjs/common'
 import { AccountingPeriodEventType, EventActorType } from '@prisma/client'
 import type { AccountingPeriodEventReasonCategory, Prisma } from '@prisma/client'
 import { stockholmCivilDate } from '../common/time/stockholm-period'
+import { resolveActorType } from '../common/ai-origin/ai-origin.context'
 
 /**
  * Stängda bokföringsperioder — EN sanningskälla för frågan "är perioden öppen?".
@@ -249,7 +250,7 @@ export async function appendPeriodClosedEvent(
       type: AccountingPeriodEventType.CLOSED,
       // Ingen känd aktör (AI-vägen utan användare, interna anropare) → SYSTEM.
       // Vi fabricerar aldrig en användare som inte fanns.
-      actorType: actorUserId ? EventActorType.USER : EventActorType.SYSTEM,
+      actorType: resolveActorType(actorUserId ? EventActorType.USER : EventActorType.SYSTEM),
       ...(actorUserId ? { actorUserId } : {}),
       ...(actorLabel ? { actorLabel } : {}),
       summary,
@@ -391,7 +392,7 @@ export async function appendPeriodReopenedEvent(
       month,
       seq,
       type: AccountingPeriodEventType.REOPENED,
-      actorType: actorUserId ? EventActorType.USER : EventActorType.SYSTEM,
+      actorType: resolveActorType(actorUserId ? EventActorType.USER : EventActorType.SYSTEM),
       ...(actorUserId ? { actorUserId } : {}),
       ...(actorLabel ? { actorLabel } : {}),
       reason,
