@@ -84,18 +84,26 @@ test('AI-kompositören: bilagor via filväljare, inklistring och släpp', async 
   const token = ((await login.json()) as { data: { accessToken: string } }).data.accessToken
 
   // Fungerar lagringen alls i den här miljön? Utan R2/S3-konfiguration är
-  // uppladdningen omöjlig, och det är en miljöfråga — inte en regression.
+  // uppladdningen omöjlig.
+  //
+  // SONDEN HOPPADE TIDIGARE ÖVER TESTET vid 500-svar (`test.skip`). Det togs
+  // bort 2026-08-18. Skälet: specen är utlyft ur CI via `testIgnore` (#477), så
+  // det enda stället den numera körs är för hand — och där är ett tyst överhopp
+  // det sämsta av alla utfall. Ett överhopp gör specen grön både när
+  // bilageflödet fungerar och när det aldrig prövades, och de två går inte att
+  // skilja åt i efterhand. Den som kör den här specen har valt att köra den;
+  // saknas lagringen ska hen få veta det, inte få ett grönt kryss.
   const probe = await request.post(`${API}/ai/attachments`, {
     headers: { Authorization: `Bearer ${token}` },
     multipart: {
       file: { name: 'probe.pdf', mimeType: 'application/pdf', buffer: pdf(1) },
     },
   })
-  test.skip(
-    probe.status() === 500,
-    'Fillagring (R2/S3) är inte konfigurerad i denna miljö — bilagor kan inte laddas upp',
-  )
-  expect(probe.ok()).toBeTruthy()
+  expect(
+    probe.ok(),
+    `Uppladdningen svarade ${probe.status()}. Fillagring (R2/S3) är sannolikt inte ` +
+      `konfigurerad i den här miljön — specen kräver fungerande lagring. Se #477.`,
+  ).toBeTruthy()
 
   // ── Logga in i webbläsaren ─────────────────────────────────────────────────
   await page.goto('/login')
