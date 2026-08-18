@@ -74,12 +74,22 @@ describe('raderingsordningen för en organisation', () => {
     expect(DELETION_STEPS.length).toBe(handled.size)
   })
 
+  // Kanariefåglarna mäter SKILLNADEN injektionen gör, inte hela schemats
+  // renhet. Skrivna som `toEqual([...])` mot hela mängden hade de blivit röda
+  // av någon ANNANS otäckta tabell — alltså av rätt fel men fel orsak, och
+  // signalen "mekanismen fungerar" hade druknat i den. Uppmätt: en injicerad
+  // otäckt modell i schemat gjorde tre tester röda i stället för ett.
+  const baseline = uncovered(models, handled)
+  const injected = (fejk: string): string[] =>
+    uncovered(parseModels(schema + '\n' + fejk), handled).filter((n) => !baseline.includes(n))
+
   it('KANARIEFÅGEL: en ny otäckt tabell rapporteras som otäckt', () => {
     // Matas in i parsern, inte i schemat — kravet är att mekanismen ger utslag.
     const fejk = `model KanariefagelOtackt {\n  id String @id\n  organizationId String\n}\n`
-    const withFake = parseModels(schema + '\n' + fejk)
-    expect(withFake.some((m) => m.name === 'KanariefagelOtackt')).toBe(true)
-    expect(uncovered(withFake, handled)).toEqual(['KanariefagelOtackt'])
+    expect(parseModels(schema + '\n' + fejk).some((m) => m.name === 'KanariefagelOtackt')).toBe(
+      true,
+    )
+    expect(injected(fejk)).toEqual(['KanariefagelOtackt'])
   })
 
   it('KANARIEFÅGEL: en ny tabell som kaskaderar rapporteras INTE som otäckt', () => {
@@ -87,7 +97,7 @@ describe('raderingsordningen för en organisation', () => {
     const fejk =
       `model KanariefagelKaskad {\n  id String @id\n  organizationId String\n` +
       `  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)\n}\n`
-    expect(uncovered(parseModels(schema + '\n' + fejk), handled)).toEqual([])
+    expect(injected(fejk)).toEqual([])
   })
 })
 
