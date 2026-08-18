@@ -20,6 +20,7 @@ import { UserRole } from '@prisma/client'
 import { assertMayActOnCollections } from '../common/authz/collections-authz'
 import { csvCell } from '../common/csv/csv-cell'
 import { computeInvoiceDebt, type InvoiceDebt } from '../invoices/invoice-debt'
+import { resolveActorType, aiOriginColumns } from '../common/ai-origin/ai-origin.context'
 
 /**
  * Inkassoexporten är ett av få ställen där personnumret verkligen behövs i
@@ -489,7 +490,8 @@ export class CollectionExportService {
         data: {
           invoiceId,
           type: 'DEBT_COLLECTION',
-          actorType: 'USER',
+          actorType: resolveActorType('USER'),
+          ...aiOriginColumns(),
           ...(actorId ? { actorId } : {}),
           actorLabel: 'Manuell markering',
           payload: note ? { note } : {},
@@ -725,7 +727,8 @@ export class CollectionExportService {
         data: {
           invoiceId,
           type: 'DEBT_COLLECTION',
-          actorType: 'SYSTEM',
+          actorType: resolveActorType('SYSTEM'),
+          ...aiOriginColumns(),
           actorLabel: 'Inkassounderlag genererat',
           payload: { reason },
         },

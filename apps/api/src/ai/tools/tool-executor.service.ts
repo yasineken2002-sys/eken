@@ -1,5 +1,6 @@
 import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common'
 import { randomUUID } from 'crypto'
+import { runAsAi } from '../../common/ai-origin/ai-origin.context'
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
@@ -514,13 +515,12 @@ export class ToolExecutorService {
     const executionId = randomUUID()
 
     try {
-      result = await this.executeToolUnsafe(
-        toolName,
-        toolInput,
-        organizationId,
-        userId,
-        userRole,
-        executionId,
+      // AI-GRÄNSEN (#504). Allt som körs här inne är per definition AI-initierat,
+      // hur djupt ned i anropskedjan det än ligger. Tjänster som skriver
+      // händelser läser ursprunget via `resolveActorType` i stället för att få
+      // det nedträtt — en framtida anropare kan därmed inte glömma det.
+      result = await runAsAi(executionId, () =>
+        this.executeToolUnsafe(toolName, toolInput, organizationId, userId, userRole, executionId),
       )
     } catch (err) {
       thrownError = err instanceof Error ? err : new Error(String(err))

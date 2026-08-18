@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import type { RentNoticeEvent, RentNoticeEventType, EventActorType, Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { resolveActorType } from '../common/ai-origin/ai-origin.context'
 
 /**
  * Append-only krav-/leveranslogg för hyresavier (inkasso-serien). Speglar
@@ -23,12 +24,16 @@ export class RentNoticeEventsService {
   async record(
     rentNoticeId: string,
     type: RentNoticeEventType,
-    actorType: EventActorType,
+    requestedActorType: EventActorType,
     actorId: string | null,
     payload: Record<string, unknown> = {},
     opts: { tx?: Prisma.TransactionClient } = {},
   ): Promise<RentNoticeEvent> {
     const db = opts.tx ?? this.prisma
+
+    // #504: se noten i InvoiceEventsService. `RentNoticeEvent` saknar
+    // aiToolExecutionId-kolumn, så här bärs ursprunget enbart av aktörstypen.
+    const actorType = resolveActorType(requestedActorType)
 
     // Denormalisera aktörsetiketten vid skrivtillfället — finns kvar i
     // historiken även om användaren senare tas bort.

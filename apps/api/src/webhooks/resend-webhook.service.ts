@@ -9,6 +9,7 @@ import type { Prisma } from '@prisma/client'
 import { Webhook, WebhookVerificationError } from 'svix'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { ResendEventSchema, type ResendEvent } from './resend-event.schema'
+import { resolveActorType } from '../common/ai-origin/ai-origin.context'
 
 /**
  * Hanterar Resends leverans-/bounce-webhook.
@@ -210,7 +211,7 @@ export class ResendWebhookService {
         data: {
           rentNoticeId: notice.id,
           type,
-          actorType: 'WEBHOOK',
+          actorType: resolveActorType('WEBHOOK'),
           actorLabel: 'E-postleverantör',
           payload,
         },

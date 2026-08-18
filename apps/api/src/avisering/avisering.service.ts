@@ -55,6 +55,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 // Vi re-exporterar den här så att rent-reminder.service.ts (som importerar
 // från denna modul) fortsätter fungera oförändrat, beteende-identiskt.
 import { getLogoDataUrl } from '../common/branding/logo.util'
+import { resolveActorType } from '../common/ai-origin/ai-origin.context'
 export { getLogoDataUrl }
 
 type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
@@ -2247,7 +2248,7 @@ export class AviseringService {
           data: {
             rentNoticeId: noticeId,
             type: 'NOTE_ADDED',
-            actorType: 'SYSTEM',
+            actorType: resolveActorType('SYSTEM'),
             actorLabel: 'System',
             payload: {
               action: 'collection-stage-reset',

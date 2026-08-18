@@ -13,6 +13,7 @@ import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/brand
 import { DEFAULT_BRAND_COLOR, REMINDER_FEE_MAX_SEK } from '@eken/shared'
 import { UserRole } from '@prisma/client'
 import { assertMayActOnCollections } from '../common/authz/collections-authz'
+import { resolveActorType } from '../common/ai-origin/ai-origin.context'
 
 // Inkasso PR 4b — steg 3. Read-only export av INKASSO_READY-hyresavier till ett
 // externt inkassobolag. SPEGLAR collections/CollectionExportService (faktura-
@@ -206,7 +207,7 @@ export class RentCollectionExportService {
       data: {
         rentNoticeId: notice.id,
         type: 'NOTE_ADDED',
-        actorType: 'SYSTEM',
+        actorType: resolveActorType('SYSTEM'),
         actorLabel: 'System',
         payload: { action: 'inkasso-export', pdfKey, csvKey },
       },
@@ -285,7 +286,7 @@ export class RentCollectionExportService {
           data: {
             rentNoticeId: n.id,
             type: 'NOTE_ADDED',
-            actorType: 'SYSTEM',
+            actorType: resolveActorType('SYSTEM'),
             actorLabel: 'System',
             payload: { action: 'inkasso-export-bulk', zipKey },
           },

@@ -13,6 +13,7 @@ import { MonthlyReportService } from './monthly-report.service'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { LockService } from '../common/redis/lock.service'
+import { resolveActorType, aiOriginColumns } from '../common/ai-origin/ai-origin.context'
 
 type InvoiceWithRelations = Prisma.InvoiceGetPayload<{
   include: {
@@ -354,7 +355,8 @@ export class NotificationsService implements OnModuleInit {
           data: {
             invoiceId: invoice.id,
             type: 'REMINDER_SENT',
-            actorType: 'SYSTEM',
+            actorType: resolveActorType('SYSTEM'),
+            ...aiOriginColumns(),
             actorLabel: 'Automatisk påminnelse',
             payload: {},
           },

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import type { InvoiceEvent, InvoiceEventType, EventActorType, Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { resolveActorType, aiOriginColumns } from '../common/ai-origin/ai-origin.context'
 
 @Injectable()
 export class InvoiceEventsService {
@@ -14,12 +15,16 @@ export class InvoiceEventsService {
   async record(
     invoiceId: string,
     type: InvoiceEventType,
-    actorType: EventActorType,
+    requestedActorType: EventActorType,
     actorId: string | null,
     payload: Record<string, unknown> = {},
     opts: { ip?: string; userAgent?: string; tx?: Prisma.TransactionClient } = {},
   ): Promise<InvoiceEvent> {
     const db = opts.tx ?? this.prisma
+
+    // #504: kom anropet från AI-vägen skrivs `AI` oavsett vad anroparen angav.
+    // Anroparen behöver inte veta om det — se ai-origin.context.ts.
+    const actorType = resolveActorType(requestedActorType)
 
     // Denormalisera aktörsetikett vid skrivtillfället.
     // Om användaren senare tas bort finns etiketten kvar i historiken.
@@ -60,6 +65,9 @@ export class InvoiceEventsService {
       ...(actorLabel != null ? { actorLabel } : {}),
       ...(opts.ip != null ? { ipAddress: opts.ip } : {}),
       ...(opts.userAgent != null ? { userAgent: opts.userAgent } : {}),
+      // Tomt objekt utanför AI-vägen — inte `undefined`, som
+      // exactOptionalPropertyTypes skiljer från "fältet saknas".
+      ...aiOriginColumns(),
     }
     return db.invoiceEvent.create({ data })
   }
