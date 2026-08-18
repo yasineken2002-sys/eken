@@ -164,6 +164,9 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
   InspectionItem: { scope: 'parent-scoped', parent: 'Inspection' },
   InspectionImage: { scope: 'parent-scoped', parent: 'Inspection' },
   AiTenantConversation: { scope: 'parent-scoped', parent: 'Tenant' },
+  // Ämneskoppling (#510): ren metadata, adresserbar bara via sin AI-rad.
+  AiMessageTenant: { scope: 'parent-scoped', parent: 'AiMessage' },
+  AiMemoryTenant: { scope: 'parent-scoped', parent: 'AiMemory' },
 
   // ── Utanför: kan inte bära en objektnivå-IDOR ────────────────────────────
   Organization: { scope: 'out', reason: 'toppnivån själv — inget att scopa mot' },

@@ -61,10 +61,11 @@ Unit                    updateMany  units/unit-status.sync.ts                   
 Unit                    delete      units/units.service.ts                                  A kedje-query
 Unit                    update      units/units.service.ts                                  A kedje-query
 
-## Form 2 — create (33 rader)
+## Form 2 — create (34 rader)
 
-AiMessage               create      ai/ai-assistant.controller.ts                       ×3  A kedje-query + C scopat anrop
-AiMessage               create      ai/ai-assistant.service.ts                          ×7  A kedje-query + C scopat anrop
+AiMemoryTenant          createMany  common/ai-subjects/ai-subject-writer.ts                 INGEN UPPTÄCKT
+AiMessage               create      common/ai-subjects/ai-subject-writer.ts                 A kedje-query
+AiMessageTenant         createMany  common/ai-subjects/ai-subject-writer.ts                 INGEN UPPTÄCKT
 AiTenantConversation    create      ai/tenant-ai.service.ts                                 D annan nyckel
 InspectionImage         create      inspections/inspections.controller.ts                   C scopat anrop
 InspectionItem          create      inspections/inspections.controller.ts                   C scopat anrop
@@ -135,7 +136,9 @@ Unit.updateMany  —  units/unit-status.sync.ts  (2 st)
 Varje sådan modell måste vara klassificerad. Tillkommer en oklassificerad
 failar testet — en ny förälder-scopad modell ska inte glida in obemärkt.
 
+AiMemoryTenant                  förälder-scopad via AiMemory
 AiMessage                       förälder-scopad via AiConversation
+AiMessageTenant                 förälder-scopad via AiMessage
 AiTenantConversation            förälder-scopad via Tenant
 AiTenantMessage                 utanför: når bara via AiTenantConversation, som är klassificerad ovan
 CustomerNumberSequence          utanför: global singleton-sekvens

@@ -62,6 +62,15 @@ export async function createAiMessageWithSubjects(
 
   const tenantIds = await resolveTenantSubjects(db)
   if (tenantIds.length > 0) {
+    // SCOPAD, men inte på ett sätt det statiska verktyget känner igen:
+    // `tenantIds` kommer från `resolveTenantSubjects`, vars enda fråga är
+    // `tenant.findMany({ where: { organizationId: <turens org>, id: { in: … } } })`.
+    // Bara id:n som FAKTISKT är hyresgäster i turens organisation överlever den —
+    // org-scopningen ligger alltså i valideringen, ett anrop bort, och heuristiken
+    // ser den inte. `messageId` är raden vi själva just skapade i samma funktion.
+    // Ingen av kolumnerna kan därför adressera en annan organisations data.
+    // (object-scope-heuristiken rapporterar "INGEN UPPTÄCKT" för den här formen;
+    // se golden-filen och #308 för samma mönster i collection-export.)
     await db.aiMessageTenant.createMany({
       data: tenantIds.map((tenantId) => ({ messageId: message.id, tenantId })),
       skipDuplicates: true,
@@ -104,6 +113,15 @@ export async function upsertAiMemoryWithSubjects(
 
   const tenantIds = await resolveTenantSubjects(db)
   if (tenantIds.length > 0) {
+    // SCOPAD, men inte på ett sätt det statiska verktyget känner igen:
+    // `tenantIds` kommer från `resolveTenantSubjects`, vars enda fråga är
+    // `tenant.findMany({ where: { organizationId: <turens org>, id: { in: … } } })`.
+    // Bara id:n som FAKTISKT är hyresgäster i turens organisation överlever den —
+    // org-scopningen ligger alltså i valideringen, ett anrop bort, och heuristiken
+    // ser den inte. `memoryId` är raden vi själva just skapade i samma funktion.
+    // Ingen av kolumnerna kan därför adressera en annan organisations data.
+    // (object-scope-heuristiken rapporterar "INGEN UPPTÄCKT" för den här formen;
+    // se golden-filen och #308 för samma mönster i collection-export.)
     await db.aiMemoryTenant.createMany({
       data: tenantIds.map((tenantId) => ({ memoryId: memory.id, tenantId })),
       skipDuplicates: true,

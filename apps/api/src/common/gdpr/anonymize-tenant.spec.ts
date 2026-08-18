@@ -340,6 +340,17 @@ describe('AI-lagret — riktad skrubbning där tenantId finns', () => {
     expect(state.aiUsageLogs.filter((r) => r.tenantId === 'annan-hyresgast')).toHaveLength(1)
   })
 
+  it('ämneskopplingen (#510) rörs INTE — keep är ett beslut, inte en glömska', async () => {
+    // Att radera kopplingen hade gjort läget sämre: innehållet ligger kvar
+    // oavsett, medan förmågan att HITTA raderna hade försvunnit. Fejken saknar
+    // delegater för de två tabellerna — försöker koden röra dem kastar
+    // aiDelegate "Okänd modell" och det här faller.
+    const state = freshState()
+    await expect(anonymizeTenantWithin(fakeTx(state), TENANT, ORG, ACTOR)).resolves.toBeDefined()
+    const keeps = AI_TENANT_LINK_STEPS.filter((s) => s.action === 'keep').map((s) => s.model)
+    expect(keeps.sort()).toEqual(['AiMemoryTenant', 'AiMessageTenant'])
+  })
+
   it('KANARIEFÅGEL: skrubbningen körs även vid en ANDRA körning', async () => {
     // Idempotensen får inte bli "hoppa över AI-lagret när alreadyDone är true" —
     // då hade data som tillkommit efter första körningen blivit kvar för alltid.
@@ -458,7 +469,13 @@ describe('VAKT: AI-tabeller med tenantId hanteras explicit vid avidentifiering',
         .filter((m) => m.hasTenantId)
         .map((m) => m.name)
         .sort(),
-    ).toEqual(['AiTenantConversation', 'AiToolExecution', 'AiUsageLog'])
+    ).toEqual([
+      'AiMemoryTenant',
+      'AiMessageTenant',
+      'AiTenantConversation',
+      'AiToolExecution',
+      'AiUsageLog',
+    ])
   })
 
   it('varje steg motsvarar en modell som finns i schemat', () => {
