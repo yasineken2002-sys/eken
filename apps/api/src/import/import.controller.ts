@@ -113,14 +113,18 @@ export class ImportController {
     // som operatören sedan skapar ett avtal ur; utan arkivet förvaltar Eveno
     // ett avtal vars underlag det inte kan visa.
     //
-    // scanContract validerar magiska byten själv och kastar på fel innehåll.
-    // Arkiveringen sker ändå först: en fil som avvisas av skannern är fortfarande
-    // något hyresvärden laddade upp, och ett dokument utan skanningsresultat är
-    // ett mindre problem än ett avtal utan underlag.
+    // Arkiveringen sker före skanningen: en fil som avvisas av SKANNERN är
+    // fortfarande något hyresvärden laddade upp, och ett dokument utan
+    // skanningsresultat är ett mindre problem än ett avtal utan underlag.
+    //
+    // #476: `archive()` prövar numera bytena SJÄLV och kastar innan den skriver,
+    // så ordningen ovan gäller bara för skannerns bedömning — inte för frågan om
+    // filen alls är ett kontrakt. Allowlisten på `mimeType` ovan står kvar som
+    // ett tidigt, begripligt fel mot fel filväljare; den är inte längre det enda
+    // som står mellan en godtycklig fil och arkivet.
     const { documentId } = await this.archive.archive({
       buffer: fileBuffer,
       fileName,
-      mimeType,
       organizationId,
       uploadedById: user.sub,
     })

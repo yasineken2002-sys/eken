@@ -7,14 +7,61 @@ import { PrismaService } from '../../common/prisma/prisma.service'
 const SWEDISH_PNR = /\b(?:\d{2})?\d{6}[-+]?\d{4}\b/g
 const SWEDISH_ORGNR = /\b\d{6}-\d{4}\b/g
 
+/**
+ * E-postadresser (#508). Maskeras som MÖNSTER och inte bara som fältnamn,
+ * eftersom de förekommer på båda sätten: prod-mätningen 2026-08-19 fann sex
+ * adresser fördelade på `toolResult[].tenant.email` (ett fält) och
+ * `toolResult[].sentTo` (ett annat fältnamn för samma sorts värde). En
+ * fältlista hade missat den andra halvan tills någon kom ihåg att lägga till
+ * `sentTo`.
+ */
+const EMAIL = /\b[\w.+-]+@[\w-]+\.[\w.-]{2,}\b/g
+
+/**
+ * Svenska mobilnummer, MEDVETET SMALT.
+ *
+ * Dagens PNR-mönster fångar redan ett naket tiosiffrigt tal — `0701234567`
+ * maskeras alltså i dag. Det som INTE fångas är de skrivsätt människor faktiskt
+ * använder; uppmätt empiriskt, inte antaget:
+ *
+ *   "0701234567"       → maskeras redan (PNR-mönstret)
+ *   "070-123 45 67"    → maskerades INTE
+ *   "070-1234567"      → maskerades INTE
+ *   "+46701234567"     → maskerades INTE
+ *
+ * FASTA TELEFONNUMMER INGÅR INTE, och det är ett val. Ett generellt
+ * `0\d{1,3}[\s-]?\d{5,8}`-mönster hade träffat OCR-nummer och avtalsnummer
+ * som ligger i samma loggar och som är själva spårbarheten. Prod-mätningen fann
+ * NOLL telefonnummer av något slag, så breddningen är förebyggande — och då är
+ * priset för ett falskt positivt högre än vinsten.
+ */
+const SWEDISH_MOBILE = /(?:\+46[\s-]?7\d|\b07\d)(?:[\s-]?\d){7}\b/g
+
 const REPLACEMENT = '***MASKERAT***'
 
 /**
- * Maskera personnummer- och organisationsnummer-mönster i text.
+ * Maskera känsliga MÖNSTER i text: personnummer, organisationsnummer,
+ * e-postadresser och mobilnummer.
+ *
  * Anropas på alla strängar innan persistens i AiToolExecution.
+ *
+ * ── VARFÖR DEN HÄR VÄGEN FÅR SKÄRPAS NÄR ANDRA INTE FICK ────────────────────
+ *
+ * `AiMessage` och `AiMemory` matas tillbaka in i modellen — historiken replayas
+ * och minnet går in i systemprompten — så maskering vid SKRIVNING där är ett
+ * irreversibelt arbetsminnesbortfall, inte en rördragning. Det var skälet till
+ * att #494 beslut 3a och 3b avslogs, och det står fast.
+ *
+ * `AiToolExecution` har ingen sådan väg: tabellen skrivs och gallras, och
+ * ingenting läser tillbaka den till modellen eller till en vy i produkten.
+ * Breddningen här kostar därför ingen funktion alls.
  */
 export function maskSensitivePatterns(value: string): string {
-  return value.replace(SWEDISH_PNR, REPLACEMENT).replace(SWEDISH_ORGNR, REPLACEMENT)
+  return value
+    .replace(SWEDISH_PNR, REPLACEMENT)
+    .replace(SWEDISH_ORGNR, REPLACEMENT)
+    .replace(EMAIL, REPLACEMENT)
+    .replace(SWEDISH_MOBILE, REPLACEMENT)
 }
 
 /**
@@ -39,6 +86,48 @@ const PERSONAL_NUMBER_FIELDS: ReadonlySet<string> = new Set([
   'personalNumberHash',
 ])
 
+/**
+ * Fält som ALLTID maskeras oavsett innehåll (#508).
+ *
+ * Här ligger det som inte går att känna igen på formen. Ett personnummer har en
+ * form; ett efternamn har det inte. Prod-mätningen 2026-08-19 fann namn i
+ * `toolResult[].tenant.firstName` och `.lastName` — värden som inget
+ * rimligt mönster kan träffa utan att också träffa allt annat.
+ *
+ * ── VAD SOM MEDVETET INTE STÅR HÄR ──────────────────────────────────────────
+ *
+ * `name` finns INTE med, och det är mätningens viktigaste enskilda utfall.
+ * Samma mätning hittade `name` på två ställen — `toolResult[].lease.unit.name`
+ * och `.lease.unit.property.name` — och inget av dem är en personuppgift. Det
+ * är en lägenhetsbeteckning och ett fastighetsnamn, alltså precis det som gör
+ * revisionsspåret läsbart: "AI:n skickade en påminnelse om lägenhet 1201 i
+ * Ekhagen 3". Maskeras de blir loggen en rad maskeringar utan innehåll.
+ *
+ * Att `firstName`/`lastName` kan maskeras utan förlust beror på att raden bär
+ * `tenantId` som egen kolumn. Identiteten finns kvar och är sökbar; det är
+ * personuppgiften i fritexten som försvinner.
+ *
+ * Adressfälten ingår trots att prod-mätningen fann noll gatuadresser: en
+ * hyresgästs adress är dennes bostad, och fälten är namngivna och därmed
+ * träffsäkra att maska. Kostnaden för ett falskt positivt är noll här, till
+ * skillnad från vid mönstermatchning.
+ */
+const PERSONAL_DATA_FIELDS: ReadonlySet<string> = new Set([
+  'firstName',
+  'lastName',
+  'fullName',
+  'contactName',
+  'email',
+  'emailAddress',
+  'phone',
+  'phoneNumber',
+  'mobile',
+  'mobilePhone',
+  'address',
+  'streetAddress',
+  'careOf',
+])
+
 export function sanitizeForAudit<T>(value: T, depth = 0): T {
   if (depth > 12) return value
   if (value === null || value === undefined) return value
@@ -58,6 +147,16 @@ export function sanitizeForAudit<T>(value: T, depth = 0): T {
       // för en fysisk person, även om det inte går att vända till ett personnr.
       if (PERSONAL_NUMBER_FIELDS.has(k)) {
         out[k] = REPLACEMENT
+        continue
+      }
+      // #508: namn, e-post, telefon och adress maskeras på FÄLTNAMN. Ett
+      // efternamn har ingen form att matcha på; identiteten bärs ändå av
+      // radens egen `tenantId`-kolumn. Endast icke-tomma strängvärden ersätts,
+      // så `null` fortsätter betyda "fanns inte" i stället för "fanns men är
+      // dolt" — skillnaden är hela poängen med ett revisionsspår.
+      if (PERSONAL_DATA_FIELDS.has(k)) {
+        out[k] =
+          typeof v === 'string' && v.length > 0 ? REPLACEMENT : sanitizeForAudit(v, depth + 1)
         continue
       }
       out[k] = sanitizeForAudit(v, depth + 1)

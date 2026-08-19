@@ -204,6 +204,15 @@ export function InvoicesPage() {
   const totalDraft = allInvoices
     .filter((i) => i.status === 'DRAFT')
     .reduce((s, i) => s + Number(i.total), 0)
+  // #378 — ÖVERBETALT. Beloppet klampades tidigare bort av `max(0, claim)` och
+  // fanns bara kvar som ett tecken som en enda grind i hela kodbasen läste;
+  // pengarna var alltså osynliga för operatören. `overpaid` räknas av API:et
+  // med samma uttryck som `outstanding` — summera aldrig `payments` här.
+  //
+  // Beloppet är INTE bokfört. Kontot för kundtillgodohavande är en öppen
+  // revisorsfråga (#505); kortet säger att pengarna finns, inte hur de konteras.
+  const overpaidInvoices = allInvoices.filter((i) => Number(i.overpaid) > 0)
+  const totalOverpaid = overpaidInvoices.reduce((s, i) => s + Number(i.overpaid), 0)
 
   function handleSelectInvoice(invoice: Invoice) {
     setSelected(invoice)
@@ -324,7 +333,7 @@ export function InvoicesPage() {
       />
 
       {/* Statistikkort */}
-      <div className="mt-6 grid grid-cols-3 gap-4">
+      <div className={`mt-6 grid gap-4 ${totalOverpaid > 0 ? 'grid-cols-4' : 'grid-cols-3'}`}>
         {[
           {
             label: 'Betalt denna period',
@@ -348,6 +357,23 @@ export function InvoicesPage() {
             color: 'slate',
             tag: `${allInvoices.filter((i) => i.status === 'DRAFT').length} fakturor`,
           },
+          // #378 — visas BARA när det finns något att visa. Ett permanent
+          // "0 kr överbetalt" hade lärt operatören att ignorera kortet, och då
+          // syns inte heller de gånger det faktiskt står ett belopp där.
+          //
+          // Beloppet OCH antalet härleds ur samma lista (`overpaidInvoices`),
+          // av samma skäl som står vid "Försenat belopp": två tal som mäter
+          // olika mängder ovanför varandra är värre än ett tal.
+          ...(totalOverpaid > 0
+            ? [
+                {
+                  label: 'Överbetalt',
+                  value: formatCurrency(totalOverpaid),
+                  color: 'amber',
+                  tag: `${overpaidInvoices.length} fakturor · ej bokfört`,
+                },
+              ]
+            : []),
         ].map((s, i) => (
           <motion.div
             key={s.label}

@@ -173,10 +173,12 @@ export class ContractScanBatchService {
     const arkiverade: Array<{ documentId: string }> = []
     for (const f of files) {
       arkiverade.push(
+        // #476: ingen `mimeType` skickas längre. Den kom ur klientens
+        // multipart-header och blev objektets Content-Type i R2 — och den här
+        // vägen hade INGEN allowlist på den deklarerade typen alls.
         await this.archive.archive({
           buffer: f.buffer,
           fileName: f.fileName,
-          mimeType: f.mimeType,
           organizationId,
           uploadedById: userId ?? undefined,
         }),

@@ -17,7 +17,13 @@ import type { RegisterPaymentInput } from '../api/invoices.api'
  * alltså bruttot tillbaka i ett beloppspåstående — precis det #325 stängde.
  * Samma typ används därför för båda svaren.
  */
-export type InvoiceWithOutstanding = Invoice & { outstanding: number }
+/**
+ * #378 — `overpaid` följer med båda svaren. TYPEN ÄR SPÄRREN här också: genom
+ * att kräva fältet kan en ny yta inte råka visa bara `outstanding` och därmed
+ * påstå att en överbetald faktura är reglerad utan mer att säga. Exakt ett av
+ * de två kan vara skilt från noll.
+ */
+export type InvoiceWithOutstanding = Invoice & { outstanding: number; overpaid: number }
 
 /** Bakåtkompatibelt namn — listan och detaljen har samma form sedan #349. */
 export type InvoiceListItem = InvoiceWithOutstanding

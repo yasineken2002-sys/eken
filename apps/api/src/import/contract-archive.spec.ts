@@ -5,11 +5,13 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { Logger } from '@nestjs/common'
 import * as crypto from 'crypto'
-import { ContractArchiveService, extensionFor } from './contract-archive.service'
+import { ContractArchiveService } from './contract-archive.service'
 import type { PrismaService } from '../common/prisma/prisma.service'
 import type { StorageService } from '../storage/storage.service'
 
 const BYTES = Buffer.from('%PDF-1.7 ett kontrakt')
+/** Äkta JPEG-signatur (FF D8 FF) — typen ska komma HÄRIFRÅN, inte från anroparen. */
+const JPEG_BYTES = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(64, 0x20)])
 
 function rigg(overrides?: {
   uploadFail?: boolean
@@ -61,7 +63,6 @@ describe('ContractArchiveService.archive', () => {
     const res = await service.archive({
       buffer: BYTES,
       fileName: 'anna.pdf',
-      mimeType: 'application/pdf',
       organizationId: 'org-1',
       uploadedById: 'user-1',
     })
@@ -75,7 +76,6 @@ describe('ContractArchiveService.archive', () => {
     const res = await service.archive({
       buffer: BYTES,
       fileName: 'a.pdf',
-      mimeType: 'application/pdf',
       organizationId: 'org-1',
     })
     const väntad = crypto.createHash('sha256').update(BYTES).digest('hex')
@@ -94,7 +94,6 @@ describe('ContractArchiveService.archive', () => {
     await service.archive({
       buffer: BYTES,
       fileName: 'a.pdf',
-      mimeType: 'application/pdf',
       organizationId: 'org-1',
     })
     for (const fält of [
@@ -111,18 +110,41 @@ describe('ContractArchiveService.archive', () => {
     }
   })
 
-  it('kategoriseras som CONTRACT och bär det faktiska formatet', async () => {
+  it('kategoriseras som CONTRACT och bär den DETEKTERADE typen', async () => {
     const { service, created } = rigg()
     await service.archive({
-      buffer: BYTES,
+      buffer: JPEG_BYTES,
       fileName: 'foto.jpg',
-      mimeType: 'image/jpeg',
       organizationId: 'org-1',
     })
     expect(created[0]!['category']).toBe('CONTRACT')
     // Uppladdningen tillåter bild — arkivet får inte påstå att allt är PDF.
     expect(created[0]!['mimeType']).toBe('image/jpeg')
-    expect(created[0]!['fileSize']).toBe(BYTES.length)
+    expect(created[0]!['fileSize']).toBe(JPEG_BYTES.length)
+  })
+
+  // ── #476: TYPEN KOMMER UR BYTENA, INTE UR ANROPAREN ──────────────────────
+  it('avvisar byte som inte är ett kontrakt — INGEN skrivning sker', async () => {
+    const { service, storage, prisma } = rigg()
+    await expect(
+      service.archive({
+        buffer: Buffer.from('<html><script>alert(1)</script></html>'),
+        fileName: 'kontrakt.pdf',
+        organizationId: 'org-1',
+      }),
+    ).rejects.toThrow()
+    // Defekt 1 var att arkiveringen skedde FÖRE innehållskontrollen.
+    expect(storage.uploadFile).not.toHaveBeenCalled()
+    expect(prisma.document.create).not.toHaveBeenCalled()
+  })
+
+  it('en PDF vars byten är äkta arkiveras som PDF — lagringsnyckel och Content-Type följer bytena', async () => {
+    const { service, storage, created } = rigg()
+    await service.archive({ buffer: BYTES, fileName: 'x.webp', organizationId: 'org-1' })
+    expect(created[0]!['mimeType']).toBe('application/pdf')
+    expect(String(created[0]!['storageKey'])).toMatch(/\.pdf$/)
+    // Tredje argumentet till uploadFile är R2:s Content-Type.
+    expect(storage.uploadFile.mock.calls[0]![2]).toBe('application/pdf')
   })
 
   it('lagringsnyckeln är org-scopad och slumpad (filnamnet återanvänds inte)', async () => {
@@ -130,7 +152,6 @@ describe('ContractArchiveService.archive', () => {
     await service.archive({
       buffer: BYTES,
       fileName: '../../etc/passwd',
-      mimeType: 'application/pdf',
       organizationId: 'org-1',
     })
     const key = String(created[0]!['storageKey'])
@@ -144,7 +165,6 @@ describe('ContractArchiveService.archive', () => {
     await service.archive({
       buffer: BYTES,
       fileName: 'a.pdf',
-      mimeType: 'application/pdf',
       organizationId: 'org-1',
     })
     expect(created[0]).not.toHaveProperty('uploadedById')
@@ -159,7 +179,6 @@ describe('ContractArchiveService.archive', () => {
       service.archive({
         buffer: BYTES,
         fileName: 'a.pdf',
-        mimeType: 'application/pdf',
         organizationId: 'org-1',
       }),
     ).rejects.toThrow(/inte konfigurerad/)
@@ -174,7 +193,6 @@ describe('ContractArchiveService.archive', () => {
       service.archive({
         buffer: BYTES,
         fileName: 'a.pdf',
-        mimeType: 'application/pdf',
         organizationId: 'org-1',
       }),
     ).rejects.toThrow(/granska mot källan/)
@@ -186,7 +204,6 @@ describe('ContractArchiveService.archive', () => {
       service.archive({
         buffer: BYTES,
         fileName: 'a.pdf',
-        mimeType: 'application/pdf',
         organizationId: 'org-1',
       }),
     ).rejects.toThrow()
@@ -230,19 +247,5 @@ describe('ContractArchiveService.purge', () => {
     await service.purge([])
     expect(storage.deleteFile).not.toHaveBeenCalled()
     expect(prisma.document.findMany).not.toHaveBeenCalled()
-  })
-})
-
-describe('extensionFor', () => {
-  it('mappar de tillåtna formaten', () => {
-    expect(extensionFor('application/pdf')).toBe('.pdf')
-    expect(extensionFor('image/jpeg')).toBe('.jpg')
-    expect(extensionFor('image/png')).toBe('.png')
-    expect(extensionFor('image/webp')).toBe('.webp')
-  })
-
-  it('okänd typ får INGEN påhittad ändelse', () => {
-    expect(extensionFor('application/x-msdownload')).toBe('')
-    expect(extensionFor('')).toBe('')
   })
 })
