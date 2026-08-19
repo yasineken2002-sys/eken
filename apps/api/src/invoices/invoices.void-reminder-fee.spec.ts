@@ -48,7 +48,11 @@ function makeService(opts: { feeLines?: Array<{ id: string; total: number }> } =
 
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([]),
-    invoice: { findFirst: jest.fn().mockResolvedValue(invoiceRow), update: invoiceUpdate },
+    invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue(invoiceRow),
+      update: invoiceUpdate,
+    },
     invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
     invoiceLine: { findMany: lineFindMany, deleteMany: lineDeleteMany },
     // E: förbrukningsdebiteringar lossas vid VOID. Ingen charge här.

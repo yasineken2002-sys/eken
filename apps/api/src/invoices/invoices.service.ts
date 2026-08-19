@@ -651,6 +651,41 @@ export class InvoicesService {
               'mottagna betalningen först (avmatcha/återbetala).',
           )
         }
+
+        // ── #517: EN KREDITERAD FAKTURA FÅR INTE MAKULERAS ────────────────────
+        //
+        // Samma resonemang som betalningsspärren ovan, och samma fysiska orsak
+        // som gör att en kreditnota inte kan makuleras: de två verifikaten
+        // känner inte till varandra.
+        //
+        // `reverseJournalEntryForInvoice` nedan letar på `sourceId =
+        // <invoiceId>` och vänder HELA originalverifikatet. Kreditnotans
+        // verifikat ligger under `credit-note:<id>` och är osynligt för den. En
+        // makulering ovanpå en delkreditering reverserar därför det redan
+        // krediterade beloppet EN ANDRA GÅNG.
+        //
+        // Faktura 10 000, delkrediterad 3 000, sedan makulerad:
+        //
+        //   1510:  D 10 000 − K 3 000 − K 10 000 = −3 000
+        //   39xx:  K 10 000 − D 3 000 − D 10 000 = −3 000
+        //
+        // En negativ kundfordran och en negativ intäkt som inte motsvarar någon
+        // affärshändelse — och ingenting i systemet hade visat det.
+        //
+        // SYMMETRIN ÄR POÄNGEN. CreditNoteService spärrar att kreditera en
+        // makulerad faktura. Utan den här raden var bara den ena riktningen
+        // stängd, vilket är samma hål sett från andra hållet.
+        const creditNotes = await tx.invoice.findMany({
+          where: { creditedInvoiceId: id },
+          select: { id: true },
+        })
+        if (creditNotes.length > 0) {
+          throw new BadRequestException(
+            'Kan inte makulera en faktura som redan har en kreditnota. ' +
+              'Makuleringen skulle reversera hela originalbeloppet ovanpå ' +
+              'krediteringen och göra kundfordran och intäkten fel i bokföringen.',
+          )
+        }
       }
 
       const updated = await tx.invoice.update({

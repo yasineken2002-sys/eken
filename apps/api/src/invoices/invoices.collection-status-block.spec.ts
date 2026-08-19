@@ -42,6 +42,7 @@ import type { InvoiceStatus } from '@eken/shared'
 function makeService(invoiceStatus: string, allocations: Array<{ id: string }> = []) {
   const prisma = {
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest
         .fn()
         .mockResolvedValue({ id: 'inv-1', status: invoiceStatus, invoiceNumber: 'F-2026-0001' }),

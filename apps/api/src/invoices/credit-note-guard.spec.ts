@@ -22,11 +22,13 @@
  */
 
 jest.mock('./pdf.service', () => ({ PdfService: class {} }))
+jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { Prisma } from '@prisma/client'
 import { CreditNoteService } from './credit-note.service'
+import { InvoicesService } from './invoices.service'
 
 const SRC = join(__dirname, '..')
 
@@ -263,5 +265,88 @@ describe('#517 — vakt: kopplingen mellan VOID-spärren och skuldberäkningen',
   it('en kreditnota går inte att betala in på — den manuella vägen spärrar', () => {
     const källa = readFileSync(join(SRC, 'invoices/invoices.service.ts'), 'utf8')
     expect(källa).toMatch(/if \(invoice\.isCreditNote\) \{[\s\S]{0,200}kan inte betalas/)
+  })
+})
+
+/**
+ * #517 — SYMMETRIN: BÅDA RIKTNINGARNA MÅSTE VARA SPÄRRADE.
+ *
+ * Den första versionen av den här ändringen spärrade att kreditera en MAKULERAD
+ * faktura, men inte att MAKULERA en krediterad. Det hålet hittades i den
+ * maskinella bokföringsgranskningen, och det är ett verkligt penningfel:
+ *
+ *   `reverseJournalEntryForInvoice` letar på `sourceId = <invoiceId>` och vänder
+ *   HELA originalverifikatet. Den vet ingenting om kreditnotan, som ligger under
+ *   `credit-note:<id>`. En VOID ovanpå en delkreditering reverserar därför det
+ *   redan krediterade beloppet en andra gång.
+ *
+ * Faktura 10 000, delkrediterad 3 000, därefter makulerad:
+ *
+ *   1510:  D 10 000 − K 3 000 − K 10 000 = −3 000
+ *   3911:  K 10 000 − D 3 000 − D 10 000 = −3 000
+ *
+ * En negativ kundfordran och en negativ intäkt som inte motsvarar någon
+ * affärshändelse. Båda riktningarna vilar på samma fysiska begränsning — två
+ * verifikat som inte känner till varandra — så båda måste stängas.
+ */
+describe('#517 — makulering av en KREDITERAD faktura är spärrad', () => {
+  function riggVoid(creditNotes: Array<{ id: string }>) {
+    const invoiceRow = {
+      id: 'inv-1',
+      status: 'SENT',
+      invoiceNumber: 'F-2026-0001',
+      isCreditNote: false,
+    }
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      invoice: {
+        findFirst: jest.fn().mockResolvedValue(invoiceRow),
+        findMany: jest.fn().mockResolvedValue(creditNotes),
+        update: jest.fn().mockResolvedValue({ ...invoiceRow, status: 'VOID' }),
+      },
+      invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
+      invoiceLine: {
+        findMany: jest.fn().mockResolvedValue([]),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      consumptionCharge: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      deposit: { findFirst: jest.fn().mockResolvedValue(null) },
+    }
+    const reverseJournalEntryForInvoice = jest.fn().mockResolvedValue(undefined)
+    const service = new InvoicesService(
+      { $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)) } as never,
+      { record: jest.fn().mockResolvedValue(undefined) } as never,
+      {} as never,
+      {} as never,
+      {
+        reverseJournalEntryForInvoice,
+        reverseJournalEntryForReminderFee: jest.fn().mockResolvedValue(undefined),
+        reverseJournalEntryForDepositAccrual: jest.fn().mockResolvedValue(undefined),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    )
+    return { service, reverseJournalEntryForInvoice, tx }
+  }
+
+  it('VOID på en faktura med kreditnota nekas — annars dubbelreverseras huvudboken', async () => {
+    const { service, reverseJournalEntryForInvoice } = riggVoid([{ id: 'credit-1' }])
+
+    await expect(
+      service.transitionStatus('inv-1', 'org-1', 'VOID', 'user-1', 'USER'),
+    ).rejects.toThrow(/kreditnota/i)
+
+    // Det avgörande: reverseringen får ALDRIG ha körts.
+    expect(reverseJournalEntryForInvoice).not.toHaveBeenCalled()
+  })
+
+  it('DISKRIMINERANDE: utan kreditnota går makuleringen igenom som förut', async () => {
+    // Kontrollfallet. Faller båda samtidigt mäter testerna ingenting — då är det
+    // inte kreditnotan som gör skillnaden.
+    const { service, reverseJournalEntryForInvoice } = riggVoid([])
+
+    await service.transitionStatus('inv-1', 'org-1', 'VOID', 'user-1', 'USER')
+    expect(reverseJournalEntryForInvoice).toHaveBeenCalledTimes(1)
   })
 })

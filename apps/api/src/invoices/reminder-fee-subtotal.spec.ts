@@ -145,7 +145,11 @@ function makeInvoicesService() {
   const invoiceUpdate = jest.fn().mockResolvedValue(invoiceRow)
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([]),
-    invoice: { findFirst: jest.fn().mockResolvedValue(invoiceRow), update: invoiceUpdate },
+    invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue(invoiceRow),
+      update: invoiceUpdate,
+    },
     invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
     invoiceLine: {
       findMany: jest.fn((args: { where: { description?: string } }) =>
@@ -166,6 +170,7 @@ function makeInvoicesService() {
   // Fakturan bär två rader: hyran (9 000 brutto) och avgiften (60, momsfri).
   const prisma = {
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
         ...invoiceRow,
         lines: [

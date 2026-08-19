@@ -25,6 +25,7 @@ function makeService(invoiceStatus: string | null, allocations: Array<{ id: stri
 
   const prisma = {
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(found),
       update: jest
         .fn()
