@@ -111,6 +111,7 @@ const inv = (tenantId: string, name: string, status: string, total: number, allo
   total,
   status,
   payments: allocated ? [{ amount: allocated }] : [],
+  creditNotes: [],
   tenant: tenant(tenantId, name),
 })
 

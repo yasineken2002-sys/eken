@@ -1191,18 +1191,33 @@ export class AccountingService {
     }
   }
 
-  async createJournalEntryForInvoice(
+  /**
+   * Fakturans konteringsrader i NORMALRIKTNING: 1510 D / 39xx K / 26xx K.
+   *
+   * BRUTEN UT UR `createJournalEntryForInvoice` (#517) för att kreditnotan ska
+   * spegla EXAKT samma kontering — samma intäktskonto härlett ur samma
+   * unit-typ, samma moms per sats, samma balanskontroll. En andra uppsättning
+   * regler för kreditsidan hade kunnat glida ifrån fakturasidan, och då hade
+   * krediteringen bokat bort intäkt från ett annat konto än den bokades på.
+   *
+   * Kreditnotan vänder raderna efteråt via `buildReversalLines` — samma
+   * spegling som VOID redan använder.
+   *
+   * Returnerar null när kontoplanen saknar 1510/intäktskonto och anroparen
+   * INTE är atomisk; i atomiskt läge kastas i stället, så att den yttre
+   * transaktionen rullas tillbaka i stället för att committa utan verifikat.
+   */
+  private async buildInvoiceJournalLines(
     invoice: Invoice & { lines: InvoiceLine[] },
     organizationId: string,
-    createdById: string,
-    // T5 A1: valfri yttre transaktion så fakturan + intäktsverifikatet kan skapas
-    // ATOMISKT (BFL 5:6). Trädd genom till createNumberedEntry. Kastar den (stängd
-    // period/DB-fel) rullar den yttre tx:en tillbaka fakturan → ingen orphan.
-    // Returnerar null (org saknar 1510/intäktskonto) = ingen bokföring, ingen
-    // rollback (orgen bokför inte alls — utanför A1/audit-scope).
-    tx?: Prisma.TransactionClient,
-  ) {
-    const db = tx ?? this.prisma
+    db: Prisma.TransactionClient | PrismaService,
+    atomic: boolean,
+  ): Promise<Array<{
+    accountId: string
+    debit?: number
+    credit?: number
+    description: string
+  }> | null> {
     // Look up account numbers
     const accounts = await db.account.findMany({
       where: { organizationId },
@@ -1250,7 +1265,7 @@ export class AccountingService {
         `[Accounting] Konto ${missing} saknas i kontoplanen (org ${organizationId}) — ` +
           `intäktsverifikat för faktura ${invoice.invoiceNumber} skapas ej.`,
       )
-      if (tx) {
+      if (atomic) {
         throw new UnprocessableEntityException(
           `Kontoplanen saknar konto ${missing} — fakturan kan inte bokföras atomiskt`,
         )
@@ -1362,6 +1377,24 @@ export class AccountingService {
       )
     }
 
+    return lines
+  }
+
+  async createJournalEntryForInvoice(
+    invoice: Invoice & { lines: InvoiceLine[] },
+    organizationId: string,
+    createdById: string,
+    // T5 A1: valfri yttre transaktion så fakturan + intäktsverifikatet kan skapas
+    // ATOMISKT (BFL 5:6). Trädd genom till createNumberedEntry. Kastar den (stängd
+    // period/DB-fel) rullar den yttre tx:en tillbaka fakturan → ingen orphan.
+    // Returnerar null (org saknar 1510/intäktskonto) = ingen bokföring, ingen
+    // rollback (orgen bokför inte alls — utanför A1/audit-scope).
+    tx?: Prisma.TransactionClient,
+  ) {
+    const db = tx ?? this.prisma
+    const lines = await this.buildInvoiceJournalLines(invoice, organizationId, db, !!tx)
+    if (!lines) return null
+
     return this.createNumberedEntry({
       organizationId,
       date: invoice.issueDate,
@@ -1373,6 +1406,79 @@ export class AccountingService {
       idempotencyWhere: { organizationId, sourceId: invoice.id },
       include: { lines: { include: { account: true } } },
       ...(tx ? { tx } : {}),
+    })
+  }
+
+  /**
+   * KREDITNOTANS VERIFIKAT (#517, den obetalda halvan).
+   *
+   * Konteringen är fakturans, speglad:
+   *
+   *     D  39xx Hyresintäkt        krediterat netto
+   *     D  26xx Utgående moms      momsandel
+   *     K  1510 Kundfordringar     krediterat brutto
+   *
+   * Raderna byggs av `buildInvoiceJournalLines` ur KREDITNOTANS egna belopp och
+   * vänds sedan av `buildReversalLines` — samma spegling som VOID gör. Att gå
+   * via kreditnotans egna rader i stället för att skala originalverifikatet är
+   * det som gör DELKREDITERING möjlig utan att balansen kan spricka: en
+   * proportionerlig skalning av ett befintligt verifikat avrundar momsen på
+   * nytt och behöver inte gå ihop.
+   *
+   * VARFÖR 1510 OCH INTE ETT SKULDKONTO: den här vägen körs bara för fakturor
+   * UTAN mottagen betalning, så kundfordran är fortfarande öppen och
+   * krediteringen går rakt mot den. En BETALD faktura har redan reglerat 1510
+   * till noll; att kreditera den skulle skapa ett tillgodohavande — en skuld
+   * till hyresgästen på ett 2xxx-konto som ännu inte är fastställt. Den vägen
+   * är därför spärrad i CreditNoteService, inte halvbyggd här.
+   *
+   * EGEN NAMNRYMD: `sourceId = credit-note:<id>`. Det unika indexet
+   * (organizationId, source, sourceId) gör bokföringen idempotent — ett
+   * dubbelklick eller ett omförsök ger samma verifikat, inte två. Samma mönster
+   * som `invoice-reversal:<id>` och `reminder-fee-reversal:<id>`.
+   */
+  async createJournalEntryForCreditNote(
+    creditNote: Invoice & { lines: InvoiceLine[] },
+    organizationId: string,
+    createdById: string,
+    // Alltid atomisk: kreditnotan och dess verifikat skapas i samma transaktion.
+    // Faller bokföringen ska dokumentet inte finnas.
+    tx: Prisma.TransactionClient,
+  ) {
+    const normal = await this.buildInvoiceJournalLines(creditNote, organizationId, tx, true)
+    // `atomic: true` ovan gör att en saknad kontoplan kastar i stället för att
+    // returnera null. Kontrollen står kvar för typens skull.
+    if (!normal) {
+      throw new UnprocessableEntityException(
+        `Kontoplanen saknar konton för kreditnota ${creditNote.invoiceNumber}`,
+      )
+    }
+
+    const mirrored = this.buildReversalLines(
+      normal.map((l) => ({
+        accountId: l.accountId,
+        debit: l.debit != null ? new Prisma.Decimal(l.debit) : null,
+        credit: l.credit != null ? new Prisma.Decimal(l.credit) : null,
+        description: l.description ?? null,
+      })),
+      'Kreditering',
+    )
+
+    return this.createNumberedEntry({
+      organizationId,
+      date: creditNote.issueDate,
+      description: `Kreditnota ${creditNote.invoiceNumber}`,
+      source: 'INVOICE',
+      sourceId: `credit-note:${creditNote.id}`,
+      createdById,
+      lines: mirrored,
+      idempotencyWhere: {
+        organizationId,
+        source: 'INVOICE',
+        sourceId: `credit-note:${creditNote.id}`,
+      },
+      include: { lines: { include: { account: true } } },
+      tx,
     })
   }
 

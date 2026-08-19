@@ -696,6 +696,7 @@ export class ToolExecutorService {
               },
               // #325 — allokeringarna behövs för `outstanding` nedan.
               payments: { select: { amount: true } },
+              creditNotes: { select: { total: true } },
             },
             orderBy: { dueDate: 'asc' },
           })
@@ -1038,6 +1039,7 @@ export class ToolExecutorService {
               // #329 — restskulden går inte att räkna utan allokeringarna.
               // `where` orört: samma fakturor påminns.
               payments: { select: { amount: true } },
+              creditNotes: { select: { total: true } },
             },
           })
 
@@ -1434,6 +1436,7 @@ export class ToolExecutorService {
               // #325 — fältet nedan heter "utestående" och måste därför bära
               // restskulden. `where` orört: samma fakturor analyseras.
               payments: { select: { amount: true } },
+              creditNotes: { select: { total: true } },
               tenant: {
                 select: {
                   id: true,
@@ -1815,6 +1818,7 @@ export class ToolExecutorService {
                 total: true,
                 // #325 — restskulden kräver allokeringarna. `where` orört.
                 payments: { select: { amount: true } },
+                creditNotes: { select: { total: true } },
                 // #348 — DEPOSITIONER STANNAR I LISTAN, men märks ut.
                 //
                 // En obetald deposition är en verklig fordran: `deposits.service.ts`

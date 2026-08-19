@@ -29,6 +29,7 @@ function makeInvoice(
     invoiceNumber: `F-${id}`,
     total: 1000,
     payments,
+    creditNotes: [],
     dueDate: new Date('2026-05-01'),
     tenant: email
       ? { type: 'COMPANY', companyName: 'Hyresgäst AB', email }

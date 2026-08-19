@@ -91,6 +91,7 @@ export class PaymentReminderService {
             // samma fakturor påminns som förut — det enda som ändras är vilket
             // belopp brevet bär.
             payments: { select: { amount: true } },
+            creditNotes: { select: { total: true } },
           },
         })
 
@@ -229,6 +230,7 @@ export class PaymentReminderService {
         // #307A: vyn ska visa RESTSKULDEN, inte ursprungsbeloppet — därför
         // behövs allokeringarna. Selecten är avsiktligt smal: bara beloppet.
         payments: { select: { amount: true } },
+        creditNotes: { select: { total: true } },
       },
       orderBy: { dueDate: 'asc' },
     })
@@ -267,6 +269,7 @@ export class PaymentReminderService {
         total: computeInvoiceDebt({
           total: inv.total,
           allocations: inv.payments.map((p) => p.amount),
+          credits: inv.creditNotes.map((c) => c.total),
         }).outstanding.toNumber(),
         dueDate: inv.dueDate,
         daysOverdue,
@@ -304,6 +307,7 @@ export class PaymentReminderService {
         organization: true
         paymentReminders: true
         payments: { select: { amount: true } }
+        creditNotes: { select: { total: true } }
         lease: { select: { reminderFeeTermsFrom: true } }
       }
     }>,
@@ -359,6 +363,7 @@ export class PaymentReminderService {
         organization: true
         paymentReminders: true
         payments: { select: { amount: true } }
+        creditNotes: { select: { total: true } }
         lease: { select: { reminderFeeTermsFrom: true } }
       }
     }>,

@@ -112,6 +112,7 @@ const inv = (type: string, status: string, total: number, allocated = 0, daysOld
   status,
   type,
   payments: allocated ? [{ amount: allocated }] : [],
+  creditNotes: [],
   tenant: TENANT,
   customer: null,
 })

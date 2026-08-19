@@ -1311,6 +1311,35 @@ model Invoice {
   // Genereras vid skapande, används aldrig om – en faktura, ett token.
   trackingToken String @unique @default(uuid())
 
+  // ── KREDITNOTA (#517, den obetalda halvan) ───────────────────────────────
+  //
+  // Kreditnotan är en egen Invoice-rad, inte ett fält på originalet. Skälet är
+  // detsamma som på verifikatsidan: originalet får aldrig ändras. Krediteringen
+  // är ett NYTT dokument med eget nummer ur samma InvoiceNumberSequence, som
+  // pekar tillbaka.
+  //
+  // `creditedInvoiceId` är en RIKTIG relation, speglad på `reversalOfEntryId`
+  // på JournalEntry — inte en sourceId-sträng att tolka. Då går kedjan att
+  // fråga på i båda riktningarna, vilket `computeInvoiceDebt` behöver: en
+  // faktura måste kunna se sina egna kreditnotor för att restskulden ska sluta
+  // vara en skuld.
+  //
+  // `onDelete: Restrict` av samma skäl som organization-relationen ovan:
+  // krediteringen är räkenskapsinformation och originalet får inte kunna
+  // försvinna under den.
+  //
+  // EN DB-CHECK, INTE BARA APPLIKATIONSLOGIK: migrationen lägger
+  // `Invoice_credit_note_requires_original_chk`, som vägrar en rad med
+  // `isCreditNote = true` utan `creditedInvoiceId`. Prisma modellerar inte
+  // CHECK-constraints, så den syns inte här — den finns i migrations-SQL:en och
+  // gäller även för ett framtida skript som skriver förbi tjänstelagret.
+  //
+  // AVGRÄNSNING: kreditering av en BETALD faktura är INTE byggd. Den kräver ett
+  // konto för kundtillgodohavande som väntar på revisorsbeslut (#505), och
+  // skulle annars låsa kontovalet vid första bokförda krediteringen.
+  isCreditNote      Boolean @default(false)
+  creditedInvoiceId String?
+
   // Påminnelse- och inkassoflöde
   remindersPaused      Boolean   @default(false)
   remindersPausedAt    DateTime?
@@ -1332,6 +1361,10 @@ model Invoice {
   paymentReminders PaymentReminder[]
   consumptionCharges ConsumptionCharge[]
 
+  // Självrelation: kreditnotan → originalet, och originalet → sina kreditnotor.
+  creditedInvoice Invoice?  @relation("InvoiceCreditNotes", fields: [creditedInvoiceId], references: [id], onDelete: Restrict)
+  creditNotes     Invoice[] @relation("InvoiceCreditNotes")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1343,6 +1376,9 @@ model Invoice {
   @@index([dueDate])
   @@index([trackingToken])
   @@index([ocrNumber])
+  // Uppslagning original → kreditnotor. Den vägen går computeInvoiceDebt varje
+  // gång en fakturas restskuld beräknas.
+  @@index([creditedInvoiceId])
 }
 
 // ─── Invoice Event Log ────────────────────────────────────────────────────────

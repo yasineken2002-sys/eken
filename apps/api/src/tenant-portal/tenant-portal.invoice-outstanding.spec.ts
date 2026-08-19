@@ -31,6 +31,7 @@ function invoiceRow(payments: number[] = []) {
     status: payments.length ? 'PARTIAL' : 'OVERDUE',
     total: D(10000),
     payments: payments.map((a) => ({ amount: D(a) })),
+    creditNotes: [],
     dueDate: new Date('2026-07-31'),
     issueDate: new Date('2026-07-01'),
     paidAt: null,
@@ -173,6 +174,7 @@ describe('#342 — ingenting utöver beloppet läcker', () => {
           paidAt: new Date('2026-07-20'),
         },
       ],
+      creditNotes: [],
     }
 
     const [inv] = (await makeService([row as never]).getInvoices('t-1')) as unknown as Array<

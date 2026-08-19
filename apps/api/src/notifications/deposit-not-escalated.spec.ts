@@ -154,7 +154,10 @@ describe('#352 · vad som medvetet INTE ändrades', () => {
     // "sluta eskalera" med "sluta visa".
     const updateMany = jest.fn().mockResolvedValue({ count: 3 })
     const service = new NotificationsService(
-      { invoice: { updateMany }, rentNotice: { updateMany: jest.fn() } } as never,
+      {
+        invoice: { findMany: jest.fn().mockResolvedValue([]), updateMany },
+        rentNotice: { updateMany: jest.fn() },
+      } as never,
       {} as never, // mail
       {} as never, // moduleRef
       {} as never, // monthlyReport
@@ -164,7 +167,14 @@ describe('#352 · vad som medvetet INTE ändrades', () => {
     await service.markOverdueInvoices()
 
     const where = updateMany.mock.calls[0]?.[0]?.where
-    expect(where).toEqual({ status: 'SENT', dueDate: { lt: expect.any(Date) } })
+    // #517 lade `isCreditNote: false`. Det rör INTE det här testets påstående:
+    // en DEPOSIT-faktura flippas fortfarande, eftersom `type` alltjämt saknas i
+    // villkoret — vilket raden nedanför fortsätter att fastnagla.
+    expect(where).toEqual({
+      status: 'SENT',
+      dueDate: { lt: expect.any(Date) },
+      isCreditNote: false,
+    })
     expect(where).not.toHaveProperty('type')
   })
 })

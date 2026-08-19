@@ -18,11 +18,13 @@ import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { InvoicesService, toPaymentMethod } from './invoices.service'
+import { CreditNoteService } from './credit-note.service'
 import { PdfService } from './pdf.service'
 import { CreateInvoiceDto } from './dto/create-invoice.dto'
 import { UpdateInvoiceDto } from './dto/update-invoice.dto'
 import { TransitionStatusDto } from './dto/transition-status.dto'
 import { RegisterPaymentDto } from './dto/register-payment.dto'
+import { CreateCreditNoteDto } from './dto/create-credit-note.dto'
 import { ReverseReminderFeeDto } from '../avisering/dto/reverse-reminder-fee.dto'
 import { impersonatorOf } from '../common/auth/impersonation'
 import { BadRequestException } from '@nestjs/common'
@@ -34,6 +36,7 @@ export class InvoicesController {
   constructor(
     private readonly invoicesService: InvoicesService,
     private readonly pdfService: PdfService,
+    private readonly creditNoteService: CreditNoteService,
   ) {}
 
   @Get()
@@ -170,6 +173,27 @@ export class InvoicesController {
       user.sub,
       impersonatorOf(user),
     )
+  }
+
+  // ── KREDITNOTA (#517, den obetalda halvan) ────────────────────────────────
+  //
+  // Rollistan är densamma som för verifikaträttelsen ovan och INTE densamma som
+  // för `POST /invoices` (MANAGER, ADMIN, OWNER + ACCOUNTANT här). Att kreditera
+  // bort en bokförd intäkt är en redovisningshandling, inte förvaltning —
+  // därför står ACCOUNTANT med, av samma skäl som vid reverseReminderFee.
+  //
+  // Kreditering av en BETALD faktura går inte via den här vägen heller. Den
+  // spärren ligger i tjänsten, inte i controllern, så att den gäller varje
+  // anropare — inklusive AI-lagret.
+  @Post(':id/credit-note')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
+  async createCreditNote(
+    @Param('id') id: string,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateCreditNoteDto,
+  ) {
+    return this.creditNoteService.createCreditNote(id, organizationId, user.sub, dto)
   }
 
   // Manuell betalningsregistrering med bokföring (likvidkonto D / 1510 K).

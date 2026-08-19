@@ -48,6 +48,7 @@ function makeInvoiceService() {
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([{ id: 'inv-1' }]),
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
         id: 'inv-1',
         invoiceNumber: 'F-2026-0001',
@@ -63,7 +64,7 @@ function makeInvoiceService() {
     invoiceEvent: { create: jest.fn() },
   }
   const prisma = {
-    invoice: { findFirst: jest.fn(), update: jest.fn() },
+    invoice: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn(), update: jest.fn() },
     invoiceEvent: { create: jest.fn() },
     $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)),
   }

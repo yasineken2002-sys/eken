@@ -21,6 +21,7 @@ type InvoiceWithRelations = Prisma.InvoiceGetPayload<{
     customer: { select: typeof SAFE_CUSTOMER_SELECT }
     organization: true
     payments: { select: { amount: true } }
+    creditNotes: { select: { total: true } }
   }
 }>
 
@@ -242,7 +243,12 @@ export class NotificationsService implements OnModuleInit {
       async () => {
         const now = new Date()
         const result = await this.prisma.invoice.updateMany({
-          where: { status: 'SENT', dueDate: { lt: now } },
+          // #517 — kreditnotor undantas. De skapas som DRAFT och kan därför
+          // inte träffas av `status: 'SENT'` i dag, men villkoret står här
+          // ändå: skickas en kreditnota någon gång ut som dokument hade den
+          // annars flippats till OVERDUE av sitt eget utfärdandedatum och
+          // därmed hamnat i kravtrappan, som grindar på just OVERDUE.
+          where: { status: 'SENT', dueDate: { lt: now }, isCreditNote: false },
           data: { status: 'OVERDUE' },
         })
         this.logger.log(`Marked ${result.count} invoices as OVERDUE`)
@@ -299,6 +305,7 @@ export class NotificationsService implements OnModuleInit {
         // #329 — utan allokeringarna går restskulden inte att räkna. `where`
         // orört: exakt samma fakturor påminns.
         payments: { select: { amount: true } },
+        creditNotes: { select: { total: true } },
       },
     })
 

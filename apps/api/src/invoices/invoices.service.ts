@@ -11,6 +11,7 @@ import {
 import { Prisma } from '@prisma/client'
 import type { Invoice, InvoiceStatus, InvoiceEventType, PaymentMethod } from '@prisma/client'
 import { computeInvoiceDebt, invoiceOutstanding, invoiceOverpaid } from './invoice-debt'
+import { computeInvoiceAmounts } from './invoice-amounts'
 import { paymentTargetStatus, isPaymentTransitionAllowed } from './invoice-payment-status'
 import { REMINDER_FEE_LINE_DESCRIPTION } from './reminder-fee-line'
 
@@ -67,54 +68,6 @@ export function toPaymentMethod(raw: unknown): PaymentMethod {
   }
 }
 
-// Öresavrundning i beräkningslagret. Belopp lagras till ören (2 decimaler) och
-// totalerna HÄRLEDS ur de avrundade radvärdena, så att invarianten
-// "Σ rader = total" och "subtotal + moms = total" alltid håller exakt — inte
-// bara matematiskt vid full float-precision, utan även efter avrundning på
-// utskriften. Tidigare lagrades full precision och visningen rundade varje
-// belopp för sig, vilket kunde göra att raderna inte summerade till totalen.
-function round2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100
-}
-
-interface InvoiceLineInput {
-  description: string
-  quantity: number
-  unitPrice: number
-  vatRate: number
-}
-
-interface ComputedInvoiceAmounts {
-  subtotal: number
-  vatTotal: number
-  total: number
-  lines: Array<InvoiceLineInput & { total: number }>
-}
-
-// Per rad: netto och bruttobelopp (inkl. moms) öresavrundas. Radens moms tas som
-// (brutto − netto) så ingen separat avrundningsdrift uppstår. subtotal/vatTotal
-// summeras ur de avrundade radvärdena och total = subtotal + moms. Då gäller
-// alltid total = Σ radbelopp (eftersom netto + moms = brutto per rad).
-function computeInvoiceAmounts(lines: InvoiceLineInput[]): ComputedInvoiceAmounts {
-  let subtotal = 0
-  let vatTotal = 0
-  const computed = lines.map((l) => {
-    const net = round2(l.quantity * l.unitPrice)
-    const gross = round2(l.quantity * l.unitPrice * (1 + l.vatRate / 100))
-    const vat = round2(gross - net)
-    subtotal = round2(subtotal + net)
-    vatTotal = round2(vatTotal + vat)
-    return {
-      description: l.description,
-      quantity: l.quantity,
-      unitPrice: l.unitPrice,
-      vatRate: l.vatRate,
-      total: gross,
-    }
-  })
-  return { subtotal, vatTotal, total: round2(subtotal + vatTotal), lines: computed }
-}
-
 @Injectable()
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name)
@@ -160,6 +113,7 @@ export class InvoicesService {
         },
         // #325 — allokeringarna, för `outstanding` nedan.
         payments: { select: { amount: true } },
+        creditNotes: { select: { total: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -183,10 +137,20 @@ export class InvoicesService {
     // vara skilt från noll. Innan detta klampades överbetalningen bort av
     // `max(0, claim)` och fanns kvar bara som ett tecken på `claim`, som lästes
     // av EN grind i hela kodbasen — pengarna var alltså osynliga för varje yta.
-    return invoices.map(({ payments: _payments, ...inv }) => ({
+    // #517: `creditNotes` plockas bort av samma skäl som `payments` — den
+    // hämtas för att kunna räkna `outstanding`, inte för att skickas vidare.
+    return invoices.map(({ payments: _payments, creditNotes: _creditNotes, ...inv }) => ({
       ...inv,
-      outstanding: invoiceOutstanding({ total: inv.total, payments: _payments }),
-      overpaid: invoiceOverpaid({ total: inv.total, payments: _payments }),
+      outstanding: invoiceOutstanding({
+        total: inv.total,
+        payments: _payments,
+        creditNotes: _creditNotes,
+      }),
+      overpaid: invoiceOverpaid({
+        total: inv.total,
+        payments: _payments,
+        creditNotes: _creditNotes,
+      }),
     }))
   }
 
@@ -214,6 +178,7 @@ export class InvoicesService {
         // #349 — allokeringarna, för `outstanding` nedan. Samma skäl som i
         // findAll: restskulden räknas HÄR, inte i klienten.
         payments: { select: { amount: true } },
+        creditNotes: { select: { total: true } },
       },
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
@@ -228,13 +193,21 @@ export class InvoicesService {
     // `payments` plockas BORT ur svaret, av samma skäl som i findAll: att skicka
     // med den hade bjudit in nästa yta att summera allokeringarna själv i
     // stället för att läsa `outstanding`.
-    const { payments: _payments, ...inv } = invoice
+    const { payments: _payments, creditNotes: _creditNotes, ...inv } = invoice
     return {
       ...inv,
-      outstanding: invoiceOutstanding({ total: inv.total, payments: _payments }),
+      outstanding: invoiceOutstanding({
+        total: inv.total,
+        payments: _payments,
+        creditNotes: _creditNotes,
+      }),
       // #378 — samma skäl som i findAll: detaljvyn ska kunna visa en
       // överbetalning utan att räkna ut den själv.
-      overpaid: invoiceOverpaid({ total: inv.total, payments: _payments }),
+      overpaid: invoiceOverpaid({
+        total: inv.total,
+        payments: _payments,
+        creditNotes: _creditNotes,
+      }),
     }
   }
 
@@ -627,9 +600,29 @@ export class InvoicesService {
 
       const invoice = await tx.invoice.findFirst({
         where: { id, organizationId },
-        select: { id: true, status: true, invoiceNumber: true },
+        select: { id: true, status: true, invoiceNumber: true, isCreditNote: true },
       })
       if (!invoice) throw new NotFoundException('Faktura hittades inte')
+
+      // ── EN KREDITNOTA KAN INTE MAKULERAS (#517) ─────────────────────────────
+      //
+      // Inte en smaksak, utan en följd av var verifikaten ligger.
+      // `reverseJournalEntryForInvoice` nedan letar på `sourceId = <invoiceId>`
+      // och skulle aldrig hitta kreditnotans verifikat, som bokförts under
+      // `credit-note:<id>`. En makulering hade alltså tagit bort dokumentet ur
+      // skuldberäkningen — fordran hade STIGIT igen — medan verifikatet stod
+      // kvar och sa motsatsen.
+      //
+      // KOPPLAD TILL `CreditNoteAmount` i invoice-debt.ts, som saknar
+      // statusfält just för att en kreditnota inte kan ha status VOID. Tas den
+      // här spärren bort måste skuldberäkningen börja filtrera på status i
+      // samma ändring. `credit-note-guard.spec.ts` faller annars.
+      if (invoice.isCreditNote && newStatus === 'VOID') {
+        throw new BadRequestException(
+          'En kreditnota kan inte makuleras. Är krediteringen fel bokförs en ny ' +
+            'faktura på beloppet — kreditnotans verifikat står kvar oavsett.',
+        )
+      }
 
       if (!isValidTransition(invoice.status as InvoiceStatus, newStatus)) {
         throw new BadRequestException(`Ogiltig statusövergång: ${invoice.status} → ${newStatus}`)
@@ -884,7 +877,11 @@ export class InvoicesService {
 
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, organizationId },
-      include: { lines: true, payments: { select: { amount: true } } },
+      include: {
+        lines: true,
+        payments: { select: { amount: true } },
+        creditNotes: { select: { total: true } },
+      },
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
 
@@ -1020,9 +1017,24 @@ export class InvoicesService {
 
         const invoice = await tx.invoice.findFirst({
           where: { id, organizationId },
-          select: { id: true, status: true, invoiceNumber: true, total: true },
+          select: {
+            id: true,
+            status: true,
+            invoiceNumber: true,
+            total: true,
+            isCreditNote: true,
+          },
         })
         if (!invoice) throw new NotFoundException('Faktura hittades inte')
+        // #517 — en kreditnota är inget betalbart dokument. Den saknar OCR, så
+        // bankvägen kan aldrig hitta hit; den här spärren stänger den MANUELLA
+        // vägen, som bara nyckar på status och annars hade tagit emot en
+        // betalning mot ett dokument som inte utgör någon fordran.
+        if (invoice.isCreditNote) {
+          throw new BadRequestException(
+            'En kreditnota kan inte betalas — den minskar en fordran, den skapar ingen.',
+          )
+        }
         if (invoice.status === 'PAID') throw new BadRequestException('Fakturan är redan betald')
 
         const previousStatus = invoice.status as InvoiceStatus
@@ -1055,9 +1067,17 @@ export class InvoicesService {
           where: { invoiceId: id },
           select: { amount: true },
         })
+        const priorCreditNotes = await tx.invoice.findMany({
+          where: { creditedInvoiceId: id },
+          select: { total: true },
+        })
         const debtBefore = computeInvoiceDebt({
           total: invoice.total,
           allocations: priorAllocations.map((a) => a.amount),
+          // #517 — läses innanför låset av exakt samma skäl som allokeringarna
+          // ovan. Krediteringen sänker restskulden, och både
+          // överbetalningskontrollen och `completesInvoice` måste se den.
+          credits: priorCreditNotes.map((c) => c.total),
         })
         const settlement =
           opts.enteredAmount != null
@@ -1077,6 +1097,7 @@ export class InvoicesService {
         const debtAfter = computeInvoiceDebt({
           total: invoice.total,
           allocations: [...priorAllocations.map((a) => a.amount), settlement],
+          credits: priorCreditNotes.map((c) => c.total),
         })
         const completesInvoice = debtAfter.isSettled
         // EN uträkning av målstatusen — samma värde valideras, skrivs och loggas.

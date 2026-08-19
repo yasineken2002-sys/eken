@@ -1196,9 +1196,18 @@ export class ReconciliationService {
         where: { invoiceId },
         select: { amount: true },
       })
+      const priorCreditNotes = await tx.invoice.findMany({
+        where: { creditedInvoiceId: invoiceId },
+        select: { total: true },
+      })
       const debtBefore = computeInvoiceDebt({
         total: invoiceTotal,
         allocations: priorAllocations.map((a) => a.amount),
+        // #517 — en inbetalning mot en krediterad faktura ska klassificeras
+        // mot den KREDITERADE restskulden. Utan detta hade en betalning som
+        // täcker den nedskrivna fordran sett ut som en delbetalning, och
+        // fakturan blivit kvar som PARTIAL med en skuld som inte finns.
+        credits: priorCreditNotes.map((c) => c.total),
       })
       const remaining = debtBefore.outstanding
       if (remaining.lte(0)) return null // redan fullt reglerad

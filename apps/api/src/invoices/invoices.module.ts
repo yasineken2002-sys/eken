@@ -7,11 +7,12 @@ import { InvoicesService } from './invoices.service'
 import { InvoiceEventsService } from './invoice-events.service'
 import { TrackingController } from './tracking.controller'
 import { PdfService } from './pdf.service'
+import { CreditNoteService } from './credit-note.service'
 
 @Module({
   imports: [PrismaModule, AccountingModule, NotificationsModule],
   controllers: [InvoicesController, TrackingController],
-  providers: [InvoicesService, InvoiceEventsService, PdfService],
-  exports: [InvoicesService, InvoiceEventsService, PdfService],
+  providers: [InvoicesService, InvoiceEventsService, PdfService, CreditNoteService],
+  exports: [InvoicesService, InvoiceEventsService, PdfService, CreditNoteService],
 })
 export class InvoicesModule {}

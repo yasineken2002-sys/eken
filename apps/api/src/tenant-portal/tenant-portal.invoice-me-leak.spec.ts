@@ -59,6 +59,7 @@ function dirtyInvoice() {
     // #342 — allokeringar. Selecten hämtar bara `amount`; en fixtur med fler
     // fält bevisar att mappern inte släpper vidare dem.
     payments: [],
+    creditNotes: [],
   }
 }
 

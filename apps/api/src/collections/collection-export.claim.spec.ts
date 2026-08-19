@@ -45,6 +45,7 @@ function makeService(
 
   const tx = {
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       updateMany: jest.fn((..._a: unknown[]) => {
         ordning.push('claim')
         return Promise.resolve({ count: opts.claimCount ?? 1 })
@@ -61,6 +62,7 @@ function makeService(
 
   const prisma = {
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       // loadInvoice — matar ut raderna i tur och ordning.
       findFirst: jest.fn(() => {
         const rad = rows.shift()
@@ -81,6 +83,7 @@ function makeService(
           lines: [],
           paymentReminders: [],
           payments: (opts.payments?.[rad?.id ?? ''] ?? []).map((a) => ({ amount: a })),
+          creditNotes: [],
           tenant: null,
           customer: null,
           lease: null,

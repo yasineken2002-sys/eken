@@ -469,9 +469,16 @@ export class DepositsService implements OnApplicationBootstrap {
             where: { invoiceId: inv.id },
             select: { amount: true },
           })
+          const priorCreditNotes = await tx.invoice.findMany({
+            where: { creditedInvoiceId: inv.id },
+            select: { total: true },
+          })
           const debt = computeInvoiceDebt({
             total: inv.total,
             allocations: priorAllocations.map((a) => a.amount),
+            // #517 — depositionens kvittning får inte ta i anspråk en fordran
+            // som redan krediterats bort.
+            credits: priorCreditNotes.map((c) => c.total),
           })
 
           // Restskuld ≤ 0: fordran är redan reglerad i sin helhet (kan inträffa

@@ -61,7 +61,7 @@ Unit                    updateMany  units/unit-status.sync.ts                   
 Unit                    delete      units/units.service.ts                                  A kedje-query
 Unit                    update      units/units.service.ts                                  A kedje-query
 
-## Form 2 — create (34 rader)
+## Form 2 — create (35 rader)
 
 AiMemoryTenant          createMany  common/ai-subjects/ai-subject-writer.ts                 INGEN UPPTÄCKT
 AiMessage               create      common/ai-subjects/ai-subject-writer.ts                 A kedje-query
@@ -76,6 +76,7 @@ InvoiceEvent            create      notifications/notifications.service.ts      
 InvoiceEvent            create      notifications/payment-reminder.service.ts           ×3  INGEN UPPTÄCKT
 InvoiceLine             create      consumption/consumption.service.ts                      P förälder org-bunden  ← nästlad via Invoice.lines
 InvoiceLine             create      deposits/deposits.service.ts                            P förälder org-bunden  ← nästlad via Invoice.lines
+InvoiceLine             createMany  invoices/credit-note.service.ts                         P förälder org-bunden  ← nästlad via Invoice.lines
 InvoiceLine             createMany  invoices/invoices.service.ts                        ×2  A kedje-query + P förälder org-bunden  ← nästlad via Invoice.lines
 InvoiceLine             create      notifications/payment-reminder.service.ts               INGEN UPPTÄCKT
 InvoicePayment          create      deposits/deposits.service.ts                            A kedje-query

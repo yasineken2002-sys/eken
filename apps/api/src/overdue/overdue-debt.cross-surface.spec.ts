@@ -42,6 +42,7 @@ function realOverdueService() {
           total: FAKTURERAT,
           dueDate: new Date(Date.now() - 5 * 86_400_000),
           payments: [{ amount: ALLOKERAT }],
+          creditNotes: [],
         },
       ]),
     },

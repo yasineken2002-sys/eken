@@ -51,6 +51,7 @@ function makeService(
       create: jest.fn().mockResolvedValue({ id: 'ip-1' }),
     },
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       // Statusen läses ur den låsta raden (#307 C). Dessa tester kör FULL
       // reglering via claimPaidWithinTx, men läsningen sker före grenvalet.
       findFirst: jest.fn().mockResolvedValue({

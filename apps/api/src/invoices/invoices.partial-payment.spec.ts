@@ -66,7 +66,11 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
   // buggen uppstod under bygget av #288. Den här filen testar samma funktion och
   // måste ha samma skydd — annars är halva testytan blind för regressionen.
   const tx = {
-    invoice: { findFirst: jest.fn().mockResolvedValue(invoiceRow), updateMany },
+    invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue(invoiceRow),
+      updateMany,
+    },
     invoicePayment: {
       findMany: jest.fn(() => Promise.resolve(allocations.map((a) => ({ ...a })))),
       create: invoicePaymentCreate,
@@ -83,6 +87,7 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
   }
   const prisma = {
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: utanförTx.findFirst,
       findFirstOrThrow: jest.fn().mockResolvedValue(invoiceRow),
       updateMany: utanförTx.updateMany,
@@ -148,7 +153,7 @@ describe('C5 — /pay bokför det MOTTAGNA beloppet, inte fakturans total', () =
     expect(alloc.source).toBe('MANUAL')
 
     // Restskuld = 10 000 − 500.
-    const debt = computeInvoiceDebt({ total: TOTAL, allocations: [500] })
+    const debt = computeInvoiceDebt({ total: TOTAL, allocations: [500], credits: [] })
     expect(debt.outstanding.toNumber()).toBe(9_500)
     expect(debt.isSettled).toBe(false)
   })
@@ -169,7 +174,7 @@ describe('C5 — /pay bokför det MOTTAGNA beloppet, inte fakturans total', () =
 
     // Summan av båda bokningarna = fakturans total. Ingen krona bokförd två gånger.
     expect(500 + 9_500).toBe(TOTAL)
-    const debt = computeInvoiceDebt({ total: TOTAL, allocations: [500, 9_500] })
+    const debt = computeInvoiceDebt({ total: TOTAL, allocations: [500, 9_500], credits: [] })
     expect(debt.outstanding.toNumber()).toBe(0)
     expect(debt.isSettled).toBe(true)
   })
@@ -295,13 +300,13 @@ describe('C5 — gränsfall', () => {
 describe('computeInvoiceDebt — restskuld som beräknat tillstånd', () => {
   it('summerar allokeringar i Decimal (ingen float-drift)', () => {
     // 0.1 + 0.2 !== 0.3 i float.
-    const debt = computeInvoiceDebt({ total: '0.30', allocations: ['0.10', '0.20'] })
+    const debt = computeInvoiceDebt({ total: '0.30', allocations: ['0.10', '0.20'], credits: [] })
     expect(debt.outstanding.toNumber()).toBe(0)
     expect(debt.isSettled).toBe(true)
   })
 
   it('klampar aldrig till negativ restskuld men behåller rå claim', () => {
-    const debt = computeInvoiceDebt({ total: 100, allocations: [150] })
+    const debt = computeInvoiceDebt({ total: 100, allocations: [150], credits: [] })
     expect(debt.outstanding.toNumber()).toBe(0)
     expect(debt.claim.toNumber()).toBe(-50) // signalen som gör överbetalning upptäckbar
   })
@@ -310,6 +315,7 @@ describe('computeInvoiceDebt — restskuld som beräknat tillstånd', () => {
     const debt = computeInvoiceDebt({
       total: '99.99',
       allocations: ['33.33', '33.33', '33.33'],
+      credits: [],
     })
     expect(debt.outstanding.toNumber()).toBe(0)
   })
@@ -332,6 +338,7 @@ describe('C4/C5 — VOID-guarden nyckar på ALLOKERINGAR, inte status', () => {
     }
     const tx = {
       invoice: {
+        findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(invoiceRow),
         update: jest.fn().mockResolvedValue(invoiceRow),
       },
@@ -351,7 +358,10 @@ describe('C4/C5 — VOID-guarden nyckar på ALLOKERINGAR, inte status', () => {
       consumptionCharge: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     }
     const prisma = {
-      invoice: { findFirst: jest.fn().mockResolvedValue(invoiceRow) },
+      invoice: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(invoiceRow),
+      },
       $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)),
     }
     const service = new InvoicesService(

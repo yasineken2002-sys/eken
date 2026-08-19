@@ -63,7 +63,7 @@ function makeService(
   // Transaktionsklienten — egna mockar, se docblocken överst. Attrappen kör bara
   // callbacken; att rollbacken FAKTISKT sker bevisas mot riktig Postgres.
   const tx = {
-    invoice: { findFirst, updateMany },
+    invoice: { findMany: jest.fn().mockResolvedValue([]), findFirst, updateMany },
     invoicePayment: {
       findMany: jest.fn().mockResolvedValue(opts.priorAllocations ?? []),
       create: invoicePaymentCreate,
@@ -84,6 +84,7 @@ function makeService(
   }
   const prisma = {
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: utanförTx.findFirst,
       findFirstOrThrow,
       updateMany: utanförTx.updateMany,

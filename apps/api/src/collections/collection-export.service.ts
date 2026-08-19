@@ -42,6 +42,7 @@ type InvoiceWithCollectionData = Prisma.InvoiceGetPayload<{
     lines: true
     lease: { include: { unit: { include: { property: true } } } }
     payments: { orderBy: { paidAt: 'asc' } }
+    creditNotes: { select: { total: true } }
   }
 }>
 
@@ -437,9 +438,18 @@ export class CollectionExportService {
         where: { invoiceId },
         select: { amount: true },
       })
+      const creditNotes = await tx.invoice.findMany({
+        where: { creditedInvoiceId: invoiceId },
+        select: { total: true },
+      })
       const debt = computeInvoiceDebt({
         total: invoice.total,
         allocations: payments.map((p) => p.amount),
+        // #517 — GRINDEN. En krediterad faktura får inte lämnas till inkasso
+        // för ett belopp hyresgästen inte längre är skyldig. Läsningen sker
+        // inne i samma transaktion som radlåset, av samma skäl som
+        // allokeringarna ovan: beslutet ska inte fattas på inaktuell grund.
+        credits: creditNotes.map((c) => c.total),
       })
       const debtBlocked = this.debtBlockReason(invoice.invoiceNumber, debt)
       if (debtBlocked) throw new BadRequestException(debtBlocked)
@@ -517,6 +527,7 @@ export class CollectionExportService {
     return computeInvoiceDebt({
       total: invoice.total,
       allocations: invoice.payments.map((p) => p.amount),
+      credits: invoice.creditNotes.map((c) => c.total),
     })
   }
 
@@ -756,6 +767,7 @@ export class CollectionExportService {
         // och det var precis det som gjorde att ett inkassokrav mot en delbetald
         // faktura begärde hela `invoice.total`.
         payments: { orderBy: { paidAt: 'asc' } },
+        creditNotes: { select: { total: true } },
       },
     })
     if (!invoice) throw new NotFoundException(`Faktura ${invoiceId} hittades inte`)
@@ -810,6 +822,7 @@ export class CollectionExportService {
         computeInvoiceDebt({
           total: inv.total,
           allocations: inv.payments.map((p) => p.amount),
+          credits: inv.creditNotes.map((c) => c.total),
         })
           .outstanding.toNumber()
           .toFixed(2),
