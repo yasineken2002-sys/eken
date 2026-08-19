@@ -206,6 +206,7 @@ ${expiringLeases.map((l) => `- ${l.unit.name} (${l.tenant.companyName ?? `${l.te
           total: true,
           // #307A: allokeringarna behövs för att kunna visa restskulden.
           payments: { select: { amount: true } },
+          creditNotes: { select: { total: true } },
           dueDate: true,
           tenant: { select: { firstName: true, lastName: true, companyName: true, email: true } },
           customer: { select: { firstName: true, lastName: true, companyName: true, email: true } },
@@ -253,6 +254,9 @@ ${overdueInvoices
     const outstanding = computeInvoiceDebt({
       total: i.total,
       allocations: i.payments.map((p) => p.amount),
+      // #517 — samma skäl som rubriksiffran ovan: två ytor får inte påstå
+      // olika saker om samma faktura.
+      credits: i.creditNotes.map((c) => c.total),
     }).outstanding
     return `- Faktura ${i.invoiceNumber}: ${outstanding.toNumber().toFixed(2)} SEK, förfallen ${i.dueDate.toISOString().substring(0, 10)}, mottagare: ${partyName}`
   })

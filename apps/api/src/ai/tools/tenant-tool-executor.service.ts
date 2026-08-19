@@ -199,14 +199,18 @@ export class TenantToolExecutorService {
               // Bara `amount`: allokeringens id, datum, källa och bank-koppling
               // stannar internt (samma disciplin som portalens mappers).
               payments: { select: { amount: true } },
+              creditNotes: { select: { total: true } },
             },
           })
           return {
             success: true,
-            data: invoices.map(({ payments, ...i }) => {
+            data: invoices.map(({ payments, creditNotes, ...i }) => {
               const debt = computeInvoiceDebt({
                 total: i.total,
                 allocations: payments.map((p) => p.amount),
+                // #517 — hyresgästen ska aldrig få se en krediterad post som
+                // obetald skuld i portalens AI-svar.
+                credits: creditNotes.map((c) => c.total),
               })
               return {
                 ...i,

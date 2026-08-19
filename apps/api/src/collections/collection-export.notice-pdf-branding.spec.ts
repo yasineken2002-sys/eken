@@ -80,6 +80,7 @@ const INVOICE = {
   // restskulden = invoice.total och alla belopp nedan är oförändrade — vilket
   // är precis vad (b) ska fortsätta bevaka. Delbetalningsfallet testas separat.
   payments: [],
+  creditNotes: [],
   lease: {
     unit: { name: 'Lgh 1001', unitNumber: '1001', property: { name: 'Storgatan 1' } },
   },
@@ -142,6 +143,7 @@ describe('CollectionExportService.buildPdfHtml — brandad shell + juridisk/ekon
         { amount: 5000, paidAt: new Date('2026-06-10T00:00:00Z') },
         { amount: 1120, paidAt: new Date('2026-06-25T00:00:00Z') },
       ],
+      creditNotes: [],
     })
     // 8 120 − 6 120 = 2 000.
     expect(html).toContain(`${formatSek(2000)}`)

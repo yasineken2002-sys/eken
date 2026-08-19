@@ -41,6 +41,7 @@ function makeService(
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([{ id: 'inv-1' }]),
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
         id: 'inv-1',
         invoiceNumber: 'F-2026-0001',
@@ -59,7 +60,7 @@ function makeService(
     // Skulle metoden läsa betalningarna UTANFÖR transaktionen skulle den träffa
     // den här — som kastar. Det är så testet "skuldberäkningen ligger innanför
     // transaktionen" kan hävda något alls.
-    invoice: { findFirst: jest.fn(), update: jest.fn() },
+    invoice: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn(), update: jest.fn() },
     invoicePayment: {
       findMany: jest.fn(() => {
         throw new Error('betalningarna lästes UTANFÖR transaktionen')

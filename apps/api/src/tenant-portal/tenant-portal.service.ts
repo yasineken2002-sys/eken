@@ -400,6 +400,7 @@ export const SAFE_PORTAL_INVOICE_SELECT = {
   // portal-läcktätningen #156–#160). `mapInvoice` bygger dessutom DTO:n fält
   // för fält, så raden kan inte följa med ut även om selecten skulle drifta.
   payments: { select: { amount: true } },
+  creditNotes: { select: { total: true } },
   dueDate: true,
   issueDate: true,
   paidAt: true,
@@ -895,6 +896,9 @@ export class TenantPortalService {
     const debt = computeInvoiceDebt({
       total: inv.total,
       allocations: inv.payments.map((p) => p.amount),
+      // #517 — hyresgästen ser sin egen skuld här. En krediterad faktura som
+      // fortsatte visa fullt belopp vore ett krav mot fel person.
+      credits: inv.creditNotes.map((c) => c.total),
     })
     return {
       id: inv.id,

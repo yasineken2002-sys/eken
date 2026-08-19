@@ -32,6 +32,7 @@ function makeInvoice(opts: { total?: number; payments?: number[]; daysOverdue?: 
     status: 'OVERDUE',
     total: D(opts.total ?? 10000),
     payments: (opts.payments ?? []).map((a) => ({ amount: D(a) })),
+    creditNotes: [],
     dueDate,
     ocrNumber: '1234567897',
     remindersPaused: false,
@@ -71,7 +72,11 @@ function makeService(invoice: ReturnType<typeof makeInvoice>) {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     invoiceLine: { create: jest.fn().mockResolvedValue({}) },
-    invoice: { update: invoiceUpdate, updateMany: invoiceBump },
+    invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
+      update: invoiceUpdate,
+      updateMany: invoiceBump,
+    },
     invoiceEvent: { create: jest.fn().mockResolvedValue({}) },
   }
   const prisma = {

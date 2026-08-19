@@ -29,6 +29,7 @@ function makeService(
       return Promise.resolve([])
     }),
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(invoiceRow),
       update: jest.fn().mockResolvedValue(invoiceRow),
     },

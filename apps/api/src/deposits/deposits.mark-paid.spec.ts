@@ -60,6 +60,7 @@ function makeService(
         amount: DEPOSITION,
         invoiceId: 'inv-1',
         invoice: {
+          findMany: jest.fn().mockResolvedValue([]),
           id: 'inv-1',
           invoiceNumber: 'F-2026-0001',
           status: opts.invoiceStatus ?? 'DRAFT',
@@ -84,6 +85,7 @@ function makeService(
       findFirstOrThrow: jest.fn().mockResolvedValue({ ...deposit, status: 'PAID' }),
     },
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(
         opts.invoiceMissing
           ? null

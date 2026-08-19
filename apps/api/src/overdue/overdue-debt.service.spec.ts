@@ -43,6 +43,7 @@ const RENT = (totalAmount: number, allocations: number[] = [], daysOverdue = 5) 
   interestAccruedAmount: 0,
   dueDate: new Date(Date.now() - daysOverdue * DAY),
   payments: allocations.map((amount) => ({ amount })),
+  creditNotes: [],
 })
 // #325 — `allocations` speglar RENT():s signatur med flit. Fakturan och avin
 // bär samma sorts allokeringar och ska räknas med samma regel; att hjälparna ser
@@ -51,6 +52,7 @@ const INV = (total: number, allocations: number[] = [], daysOverdue = 5) => ({
   total,
   dueDate: new Date(Date.now() - daysOverdue * DAY),
   payments: allocations.map((amount) => ({ amount })),
+  creditNotes: [],
 })
 
 describe('OverdueDebtService.getOverdueSnapshot', () => {

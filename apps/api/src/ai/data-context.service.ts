@@ -76,6 +76,7 @@ export class DataContextService {
           total: true,
           // #307A: allokeringarna behövs för att kunna visa restskulden.
           payments: { select: { amount: true } },
+          creditNotes: { select: { total: true } },
           dueDate: true,
           tenant: { select: { firstName: true, lastName: true, companyName: true } },
           customer: { select: { firstName: true, lastName: true, companyName: true } },
@@ -317,6 +318,9 @@ export class DataContextService {
             computeInvoiceDebt({
               total: inv.total,
               allocations: inv.payments.map((p) => p.amount),
+              // #517 — en krediterad faktura ska inte beskrivas för AI:n som en
+              // öppen fordran. Assistenten svarar på siffran.
+              credits: inv.creditNotes.map((c) => c.total),
             }).outstanding.toNumber(),
           )}, förföll ${formatDate(inv.dueDate)}`,
         )

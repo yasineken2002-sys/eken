@@ -46,7 +46,7 @@ export function svarsytorUtanOverpaid(källa: string): number[] {
 
 describe('#378 — beräkningen exponerar BÅDA talen', () => {
   it('överbetalning: outstanding klampas till 0, overpaid bär beloppet', () => {
-    const d = computeInvoiceDebt({ total: D(10_000), allocations: [D(10_000.5)] })
+    const d = computeInvoiceDebt({ total: D(10_000), allocations: [D(10_000.5)], credits: [] })
     expect(d.outstanding.toNumber()).toBe(0)
     expect(d.overpaid.toNumber()).toBe(0.5)
     expect(d.claim.toNumber()).toBe(-0.5)
@@ -54,7 +54,7 @@ describe('#378 — beräkningen exponerar BÅDA talen', () => {
   })
 
   it('underbetalning: overpaid är 0, outstanding bär restskulden', () => {
-    const d = computeInvoiceDebt({ total: D(10_000), allocations: [D(4_000)] })
+    const d = computeInvoiceDebt({ total: D(10_000), allocations: [D(4_000)], credits: [] })
     expect(d.outstanding.toNumber()).toBe(6_000)
     expect(d.overpaid.toNumber()).toBe(0)
   })
@@ -66,23 +66,23 @@ describe('#378 — beräkningen exponerar BÅDA talen', () => {
       [100, 100],
       [100, 140],
     ] as const) {
-      const d = computeInvoiceDebt({ total: D(total), allocations: [D(betalt)] })
+      const d = computeInvoiceDebt({ total: D(total), allocations: [D(betalt)], credits: [] })
       const båda = d.outstanding.isZero() === false && d.overpaid.isZero() === false
       expect(båda).toBe(false)
     }
   })
 
   it('hjälparna speglar varandra och kräver payments (typspärren)', () => {
-    const rad = { total: D(500), payments: [{ amount: D(800) }] }
+    const rad = { total: D(500), payments: [{ amount: D(800) }], creditNotes: [] }
     expect(invoiceOutstanding(rad)).toBe(0)
     expect(invoiceOverpaid(rad)).toBe(300)
   })
 
   it('KANARIEFÅGEL: en beräkning utan overpaid skulle inte klara det här', () => {
     // Fastnaglar formen. Tas fältet bort faller detta, inte bara en vy.
-    const d = computeInvoiceDebt({ total: D(1), allocations: [D(2)] })
+    const d = computeInvoiceDebt({ total: D(1), allocations: [D(2)], credits: [] })
     expect(Object.keys(d).sort()).toEqual(
-      ['claim', 'isSettled', 'outstanding', 'overpaid', 'paid', 'total'].sort(),
+      ['claim', 'credited', 'isSettled', 'outstanding', 'overpaid', 'paid', 'total'].sort(),
     )
   })
 })

@@ -48,6 +48,7 @@ function makeService(opts: {
     dueDate: new Date('2026-05-01'),
     ocrNumber: '1234567',
     payments: [],
+    creditNotes: [],
     paymentReminders: [],
     // G2: avtalsgrunden. Villkoret trädde i kraft långt före fakturans
     // utställande, så de befintliga fallen beskriver oförändrat beteende.

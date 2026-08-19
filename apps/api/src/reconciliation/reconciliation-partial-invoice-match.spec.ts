@@ -37,6 +37,7 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
       create: jest.fn().mockResolvedValue({}),
     },
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({ status, invoiceNumber: INVOICE.invoiceNumber }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
@@ -50,7 +51,10 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
 
   const prisma = {
     bankTransaction: { findFirst: jest.fn().mockResolvedValue(null) },
-    invoice: { findFirst: jest.fn().mockResolvedValue(INVOICE) },
+    invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue(INVOICE),
+    },
     $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(txMock)),
   }
 

@@ -53,7 +53,11 @@ function makeInvoicesService(opts: { status: InvoiceStatus; priorAllocations?: n
   }))
   const updateMany = jest.fn().mockResolvedValue({ count: 1 })
   const tx = {
-    invoice: { findFirst: jest.fn().mockResolvedValue(invoiceRow), updateMany },
+    invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue(invoiceRow),
+      updateMany,
+    },
     invoicePayment: {
       findMany: jest.fn(() => Promise.resolve(allocations.map((a) => ({ ...a })))),
       create: jest.fn((arg: { data: { amount: Prisma.Decimal } }) => {
@@ -65,7 +69,10 @@ function makeInvoicesService(opts: { status: InvoiceStatus; priorAllocations?: n
     $queryRaw: jest.fn().mockResolvedValue([]),
   }
   const prisma = {
-    invoice: { findFirstOrThrow: jest.fn().mockResolvedValue(invoiceRow) },
+    invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirstOrThrow: jest.fn().mockResolvedValue(invoiceRow),
+    },
     $transaction: undefined as unknown as jest.Mock,
   }
   prisma.$transaction = jest.fn((cb: (t: unknown) => unknown) => cb(tx))
@@ -100,6 +107,7 @@ function makeReconciliation(opts: { status: InvoiceStatus; priorAllocations?: nu
       create: jest.fn().mockResolvedValue({}),
     },
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({ status: opts.status, invoiceNumber: 'F-2026-0001' }),
       updateMany,
     },

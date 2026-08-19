@@ -67,7 +67,14 @@ export class OverdueDebtService {
         where: { organizationId, status: 'OVERDUE', type: { not: 'DEPOSIT' } },
         // #325 — allokeringarna går inte att räkna restskuld utan. Typen på
         // `invoiceOutstanding` är spärren: utan `payments` typcheckar det inte.
-        select: { total: true, dueDate: true, payments: { select: { amount: true } } },
+        select: {
+          total: true,
+          dueDate: true,
+          payments: { select: { amount: true } },
+          // #517 — utan kreditnotorna hade en krediterad faktura fortsatt
+          // räknas som öppen fordran här, och eskalerat i kravtrappan.
+          creditNotes: { select: { total: true } },
+        },
       }),
     ])
 

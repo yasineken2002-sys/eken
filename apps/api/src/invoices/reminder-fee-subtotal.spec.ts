@@ -71,6 +71,7 @@ function makeReminderService() {
     dueDate: new Date('2026-05-01'),
     ocrNumber: '1234567',
     payments: [],
+    creditNotes: [],
     paymentReminders: [],
     issueDate: new Date('2026-05-01'),
     lease: { reminderFeeTermsFrom: new Date('2020-01-01') },
@@ -144,7 +145,11 @@ function makeInvoicesService() {
   const invoiceUpdate = jest.fn().mockResolvedValue(invoiceRow)
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([]),
-    invoice: { findFirst: jest.fn().mockResolvedValue(invoiceRow), update: invoiceUpdate },
+    invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue(invoiceRow),
+      update: invoiceUpdate,
+    },
     invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
     invoiceLine: {
       findMany: jest.fn((args: { where: { description?: string } }) =>
@@ -165,6 +170,7 @@ function makeInvoicesService() {
   // Fakturan bär två rader: hyran (9 000 brutto) och avgiften (60, momsfri).
   const prisma = {
     invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
         ...invoiceRow,
         lines: [
@@ -176,6 +182,7 @@ function makeInvoicesService() {
           },
         ],
         payments: [],
+        creditNotes: [],
       }),
     },
     $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)),
