@@ -19,7 +19,44 @@
  *
  * Före den här cronen fanns ingen gallring alls: enda `deleteMany` i hela
  * AI-lagret var den användarinitierade `clearMemories`. Prod nollställdes
- * 2026-07-13 och äldsta raden i varje tabell var från just det datumet.
+ * 2026-07-13.
+ *
+ * ── ÄLDSTA RADEN PER TABELL (uppmätt i prod 2026-08-19) ─────────────────────
+ *
+ * En tidigare version av den här filen skrev att äldsta raden i VARJE tabell
+ * var från nollställningen. Det stämmer för fyra tabeller av fem — och inte för
+ * den enda som avgör något:
+ *
+ *   AiConversation   updatedAt   2026-07-13 17:47:43Z
+ *   AiMemory         updatedAt   2026-07-13 18:20:16Z
+ *   AiUsageLog       createdAt   2026-07-13 18:20:14Z
+ *   AiMessage        createdAt   2026-07-13 18:20:14Z
+ *   AiToolExecution  createdAt   2026-07-27 00:00:11Z   ← fjorton dagar senare
+ *
+ * Verktygsloggen togs i bruk efter nollställningen, och den bär den KORTASTE
+ * fristen (90 dagar, läs-hinken). Den sätter därmed datumet för gallringens
+ * första radering, ensam — de andra fyra tabellerna är nio månader bort.
+ *
+ * LÄXAN, generellt: ett nollställningsdatum är en UNDRE GRÄNS för dataålder,
+ * inte äldsta raden. Räkna mot `min()` i den tabell och den hink som har
+ * kortaste fristen, inte mot datumet då databasen tömdes. Och cron-klockslaget
+ * hör till räkningen: kalenderaritmetiken "datum + 90" ger fel dag så snart
+ * raden ligger senare på dygnet än cronen, eftersom `cutoff = now - N*86400s`
+ * jämförs mot radens TIDPUNKT och inte mot dess datum.
+ *
+ * ── VAD RÄKNINGEN GAV ───────────────────────────────────────────────────────
+ *
+ * Första gången gallringen faktiskt raderar något: **2026-10-25 05:00 UTC**, då
+ * 3 rader ur `AiToolExecution`s läs-hink faller.
+ *
+ * Randkontrollen, som är det som avgör dagen: cronen 2026-10-25 ger cutoff
+ * 2026-07-27 05:00, vilket passerar raden 00:00:11 — dagen före ger cutoff
+ * 2026-07-26 05:00 och tar INGENTING. Resten av tabellens elva rader faller
+ * 2026-10-26 (4 st) och 2026-11-05 (4 st).
+ *
+ * Talen ovan är en mätning med ett datum, inte en invariant. Rör datan sig ska
+ * de räknas om ur prod — inte citeras härifrån. Kalendern i #500 bär samma
+ * datum och samma förbehåll.
  *
  * ── DEN HÄR CRONEN ÄR EN MITIGERING, INTE FIXEN ─────────────────────────────
  *
