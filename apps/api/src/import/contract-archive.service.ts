@@ -3,6 +3,12 @@ import * as crypto from 'crypto'
 import { randomUUID } from 'crypto'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
+import {
+  DETECTED_CONTRACT_TYPES,
+  MAX_CONTRACT_BYTES,
+  extensionForDetectedMime,
+  validateUploadedFile,
+} from '../common/utils/file-validation'
 
 /**
  * ARKIVERING AV DET UPPLADDADE KONTRAKTET (#473).
@@ -37,9 +43,28 @@ import { StorageService } from '../storage/storage.service'
  * någonsin ifrågasätts.
  *
  * ── FILEN ÄR INTE ALLTID EN PDF ──────────────────────────────────────────────
- * Uppladdningen tillåter PDF, JPG, PNG och WEBP (`ALLOWED_CONTRACT_MIMES`) — en
- * hyresvärd fotograferar ofta ett papperskontrakt. `mimeType` bär det faktiska
- * formatet; filändelsen i lagringsnyckeln likaså.
+ * Uppladdningen tillåter PDF, JPG, PNG och WEBP — en hyresvärd fotograferar ofta
+ * ett papperskontrakt.
+ *
+ * ── TYPEN HÄRLEDS HÄR, UR BYTENA — INTE AV ANROPAREN (#476) ──────────────────
+ *
+ * Metoden tog tidigare emot en `mimeType` från anroparen. Båda anroparna skickade
+ * klientens `part.mimetype` ur multipart-headern, alltså ett fält uppladdaren
+ * själv sätter. Det blev `Document.mimeType`, lagringsnyckelns filändelse OCH
+ * objektets `Content-Type` i R2.
+ *
+ * Två defekter föll ur det. Enkelvägen arkiverade innan någon kontrollerat vad
+ * bytena var, så godtyckligt innehåll kunde hamna i arkivet som `CONTRACT`.
+ * Batch-vägen validerade visserligen bytena, men hade INGEN allowlist på den
+ * DEKLARERADE typen — en äkta PDF kunde deklareras som `text/html` och lagras
+ * med den `Content-Type`:n. Presignerade URL:er saknar `Content-Disposition`, så
+ * ett sådant objekt hade serverats för rendering.
+ *
+ * Fixen ligger HÄR och inte hos anroparna, med flit: så länge typen är ett
+ * argument kan nästa anropare skicka en lögn igen. Nu finns inget argument att
+ * skicka — `archive()` läser bytena, avvisar det som inte är ett kontrakt, och
+ * använder den DETEKTERADE typen till alla tre ställena. Samma grepp som
+ * `inspections` och AI-bilagorna redan använder.
  */
 @Injectable()
 export class ContractArchiveService {
@@ -61,11 +86,22 @@ export class ContractArchiveService {
   async archive(input: {
     buffer: Buffer
     fileName: string
-    mimeType: string
     organizationId: string
     uploadedById?: string | undefined
   }): Promise<{ documentId: string; contentHash: string }> {
-    const { buffer, fileName, mimeType, organizationId, uploadedById } = input
+    const { buffer, fileName, organizationId, uploadedById } = input
+
+    // Innehållet avgör typen. Kastar på tomt, för stort och på binärsignaturer
+    // utanför DETECTED_CONTRACT_TYPES — alltså FÖRE någon skrivning till R2
+    // eller Document, vilket är det enkelvägen saknade.
+    const detected = validateUploadedFile(buffer, {
+      allowedDetectedMimes: DETECTED_CONTRACT_TYPES,
+      maxBytes: MAX_CONTRACT_BYTES,
+    })
+    // `validateUploadedFile` returnerar `string | null`, men null kan inte nå
+    // hit: en allowlist utan `allowTextWithoutSignature` kastar på okänd
+    // signatur. Fallbacken finns för typen, inte för verkligheten.
+    const mimeType = detected ?? 'application/pdf'
 
     // Avvisa DIREKT om lagringen saknas. Utan arkiv har granskningssteget ingen
     // källa att jämföra AI:ns avläsning mot, och avtalet får inget underlag — att
@@ -80,7 +116,7 @@ export class ContractArchiveService {
     }
 
     const contentHash = crypto.createHash('sha256').update(buffer).digest('hex')
-    const storageKey = `documents/${organizationId}/${randomUUID()}${extensionFor(mimeType)}`
+    const storageKey = `documents/${organizationId}/${randomUUID()}.${extensionForDetectedMime(mimeType)}`
     const storageUrl = await this.storage.uploadFile(buffer, storageKey, mimeType)
 
     const doc = await this.prisma.document.create({
@@ -169,17 +205,3 @@ export class ContractArchiveService {
 }
 
 /** Filändelse ur mimetype. Okänd typ får ingen ändelse hellre än en påhittad. */
-export function extensionFor(mimeType: string): string {
-  switch (mimeType) {
-    case 'application/pdf':
-      return '.pdf'
-    case 'image/jpeg':
-      return '.jpg'
-    case 'image/png':
-      return '.png'
-    case 'image/webp':
-      return '.webp'
-    default:
-      return ''
-  }
-}
