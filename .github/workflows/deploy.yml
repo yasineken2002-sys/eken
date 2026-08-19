@@ -1,25 +1,93 @@
 name: Deploy
 
+# ── VARFÖR workflow_run OCH INTE workflow_call ────────────────────────────────
+#
+# Tidigare stod här `push: [main]` + ett `ci`-jobb som anropade ci.yml som
+# återanvändbart workflow. Eftersom ci.yml ÄVEN kör på `push: [main]` betydde
+# det att hela sviten — E2E inkluderad — kördes TVÅ gånger per sha.
+#
+# Det var inte bara dubbel kostnad. Uppmätt på `a5d9954` 2026-08-19: den
+# fristående körningen blev grön, den nästlade hängde och avbröts på jobbets
+# tak, och commiten bar därför BÅDA utfallen samtidigt —
+#   `CI passed`      success
+#   `ci / CI passed` failure
+# — medan `deploy-web/admin/portal` tyst blev `skipped` och frontend-bygget
+# aldrig kördes. Två sanningar om samma sha, och den som stoppade deployen var
+# den som ingen tittade på.
+#
+# Nu kör CI en gång per sha, och Deploy startar EFTERÅT på resultatet.
+#
+# TRE MEKANISKA FAKTA som styr utformningen nedan (docs.github.com, verifierade
+# 2026-08-19 — ändra inget här utan att läsa dem igen):
+#
+#  1. "This event will only trigger a workflow run if the workflow file exists
+#     on the default branch." Ändringar i den här filen får alltså INGEN effekt
+#     förrän de ligger på `main`, och triggern går inte att prova från en gren.
+#  2. Utcheckningen blir default branchens HEAD, inte den granskade commiten.
+#     Därför står `ref: ${{ github.event.workflow_run.head_sha }}` explicit i
+#     varje jobb. Utan den hade deployen byggt något annat än CI granskade.
+#  3. Conclusion går INTE att filtrera på i `on:` — "A workflow run is triggered
+#     regardless of the conclusion of the previous workflow." Grinden måste
+#     alltså vara ett villkor i jobbet, vilket är exakt vad `gate` nedan är.
 on:
-  push:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    # Matchar den UTLÖSANDE körningens gren. PR-körningar av ci.yml har
+    # `head_branch` = PR-grenen och triggar därför ingen deploy.
     branches: [main]
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml
+  # ── GRINDEN ───────────────────────────────────────────────────────────────
+  #
+  # Ett enda ställe avgör om något får deployas. De tre deploy-jobben har
+  # `needs: gate` — LÄGGER DU TILL ETT FJÄRDE, ge det samma `needs`, annars
+  # deployar det oavsett vad CI sa.
+  #
+  # Jobbet FÄLLER (exit 1) i stället för att hoppas över. Det är avsiktligt: ett
+  # skippat jobb är osynligt, och osynligheten var halva felet i a5d9954 — ingen
+  # såg att frontend-bygget uteblev. Ett rött `CI-grind` syns.
+  #
+  # Fail-closed: villkoret är `!= "success"`, inte `== "failure"`. Saknas fältet
+  # (tom sträng), eller är körningen `cancelled`, `timed_out`, `startup_failure`
+  # eller `action_required`, faller grinden. Bara ordagrant "success" släpper
+  # igenom.
+  gate:
+    name: CI-grind
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: CI måste vara grön för exakt den här commiten
+        env:
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          echo "CI-körning för ${SHA}: ${CONCLUSION:-<inget värde>}"
+          echo "$RUN_URL"
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::CI slutade '${CONCLUSION:-<inget värde>}' för ${SHA} — ingen deploy."
+            exit 1
+          fi
+          echo "CI grön — deployen släpps fram för ${SHA}."
 
   deploy-web:
     name: Deploy Web
     runs-on: ubuntu-latest
-    needs: ci
+    needs: gate
     timeout-minutes: 15
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
     steps:
+      # `ref` är BÄRANDE, inte kosmetik: en workflow_run-utlösning checkar annars
+      # ut default branchens HEAD, som kan ha hunnit förbi den commit CI
+      # granskade. `fetch-depth: 2` behålls för turbo-ignore, som jämför mot
+      # föregående commit.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 2
 
       - uses: pnpm/action-setup@v4
@@ -62,15 +130,20 @@ jobs:
   deploy-admin:
     name: Deploy Admin
     runs-on: ubuntu-latest
-    needs: ci
+    needs: gate
     timeout-minutes: 15
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_ADMIN }}
     steps:
+      # `ref` är BÄRANDE, inte kosmetik: en workflow_run-utlösning checkar annars
+      # ut default branchens HEAD, som kan ha hunnit förbi den commit CI
+      # granskade. `fetch-depth: 2` behålls för turbo-ignore, som jämför mot
+      # föregående commit.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 2
 
       - uses: pnpm/action-setup@v4
@@ -110,15 +183,20 @@ jobs:
   deploy-portal:
     name: Deploy Portal
     runs-on: ubuntu-latest
-    needs: ci
+    needs: gate
     timeout-minutes: 15
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_PORTAL }}
     steps:
+      # `ref` är BÄRANDE, inte kosmetik: en workflow_run-utlösning checkar annars
+      # ut default branchens HEAD, som kan ha hunnit förbi den commit CI
+      # granskade. `fetch-depth: 2` behålls för turbo-ignore, som jämför mot
+      # föregående commit.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 2
 
       - uses: pnpm/action-setup@v4
