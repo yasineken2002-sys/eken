@@ -2295,12 +2295,32 @@ export class ReconciliationService {
       throw new ForbiddenException('Transaktionen är inte matchad')
     }
 
-    // PAID är terminal i state machine — kan inte återställas via en vanlig
-    // statusövergång. För att häva en bokförd betalning måste användaren
-    // skapa en kreditnota (samma flöde som Fortnox/Visma).
+    // #519 — MEDDELANDET FÅR INTE PEKA PÅ EN VÄG SOM INTE FINNS.
+    //
+    // Spärren är riktig: `PAID` är terminal i statusmaskinen
+    // (`INVOICE_TRANSITIONS`, `packages/shared/src/constants/index.ts:206`) och
+    // kan inte återställas via en vanlig statusövergång. Allokeringen i
+    // `InvoicePayment` ligger dessutom kvar och räknas av `computeInvoiceDebt`.
+    //
+    // Texten var däremot fel. Den sa "Skapa en kreditnota för att häva
+    // betalningen" — och kreditnotan FINNS INTE. `'invoice.credit_note_created'`
+    // är deklarerad (`packages/shared/src/constants/index.ts:168`,
+    // `types/index.ts:326`) men skrivs av ingenting; det finns ingen endpoint och
+    // ingen modell. Underlaget ligger i #517, byggt är det inte.
+    //
+    // Att hänvisa till en obefintlig funktion är värre än att inte ge något råd:
+    // operatören letar efter en knapp som inte finns och tror att felet är
+    // hens. Meddelandet säger därför rakt ut att vägen saknas — och pekar
+    // MEDVETET inte vidare på `reverseJournalEntry`, som rättar huvudboken utan
+    // att röra allokeringen eller statusen och alltså skulle lämna reskontran
+    // och huvudboken divergerande.
     if (transaction.invoice && transaction.invoice.status === 'PAID') {
       throw new BadRequestException(
-        'Fakturan är markerad som betald och kan inte avmatchas. Skapa en kreditnota för att häva betalningen.',
+        'Fakturan är markerad som betald och kan inte avmatchas. Betald är ett slutläge i ' +
+          'fakturans statusmaskin: statusen går inte att återställa, och den bokförda ' +
+          'betalningen ligger kvar som allokering på fakturan. Det finns i dag ingen väg ' +
+          'att häva en betald faktura. Kreditfaktura är den avsedda lösningen, men den är ' +
+          'ännu inte byggd.',
       )
     }
 
