@@ -35,6 +35,19 @@ export interface RentDebtBreakdown {
    * för att upptäcka över-/underbetalning; `outstanding` är den klampade varianten.
    */
   claim: number
+  /**
+   * ÖVERBETALT BELOPP = max(0, −claim). Aldrig negativ. (#378)
+   *
+   * Spegelbilden av `outstanding`; exakt ett av de två kan vara skilt från noll.
+   * Finns för att den negativa signalen på `claim` annars bara går att läsa av
+   * den som kommer ihåg att titta på tecknet — och över hela kodbasen gjorde
+   * exakt EN konsument det.
+   *
+   * Klampningen på `outstanding`/`ocrOutstanding` står kvar oförändrad: den är
+   * det som gör att kravtrappans grindar inte kan eskalera mot någon som
+   * betalat för mycket.
+   */
+  overpaid: number
   /** Σ av betalningsallokeringarna (RentNoticePayment.amount). */
   paid: number
   /** Klampad utestående skuld = max(0, claim). Aldrig negativ. */
@@ -83,6 +96,7 @@ const ZERO_DEBT: RentDebtBreakdown = {
   reminderFee: 0,
   interest: 0,
   claim: 0,
+  overpaid: 0,
   paid: 0,
   outstanding: 0,
   ocrOutstanding: 0,
@@ -132,6 +146,7 @@ export function computeRentDebt(input: RentDebtInput): RentDebtBreakdown {
     reminderFee: reminderFee.toNumber(),
     interest: interest.toNumber(),
     claim,
+    overpaid: Math.max(0, round2(-claim)),
     paid: paid.toNumber(),
     outstanding: Math.max(0, claim),
     ocrOutstanding,

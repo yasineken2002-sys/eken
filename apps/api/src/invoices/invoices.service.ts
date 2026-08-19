@@ -10,7 +10,7 @@ import {
 // (belopp får aldrig passera float på väg till ett bokföringsbeslut).
 import { Prisma } from '@prisma/client'
 import type { Invoice, InvoiceStatus, InvoiceEventType, PaymentMethod } from '@prisma/client'
-import { computeInvoiceDebt, invoiceOutstanding } from './invoice-debt'
+import { computeInvoiceDebt, invoiceOutstanding, invoiceOverpaid } from './invoice-debt'
 import { paymentTargetStatus, isPaymentTransitionAllowed } from './invoice-payment-status'
 import { REMINDER_FEE_LINE_DESCRIPTION } from './reminder-fee-line'
 
@@ -179,9 +179,14 @@ export class InvoicesService {
     // `outstanding` här; att skicka med den hade lagt ett fält på tråden som
     // `Invoice`-typen inte deklarerar, och bjudit in nästa yta att summera
     // allokeringarna själv i stället för att läsa `outstanding`.
+    // #378: `overpaid` följer med bredvid `outstanding`. Exakt ett av dem kan
+    // vara skilt från noll. Innan detta klampades överbetalningen bort av
+    // `max(0, claim)` och fanns kvar bara som ett tecken på `claim`, som lästes
+    // av EN grind i hela kodbasen — pengarna var alltså osynliga för varje yta.
     return invoices.map(({ payments: _payments, ...inv }) => ({
       ...inv,
       outstanding: invoiceOutstanding({ total: inv.total, payments: _payments }),
+      overpaid: invoiceOverpaid({ total: inv.total, payments: _payments }),
     }))
   }
 
@@ -227,6 +232,9 @@ export class InvoicesService {
     return {
       ...inv,
       outstanding: invoiceOutstanding({ total: inv.total, payments: _payments }),
+      // #378 — samma skäl som i findAll: detaljvyn ska kunna visa en
+      // överbetalning utan att räkna ut den själv.
+      overpaid: invoiceOverpaid({ total: inv.total, payments: _payments }),
     }
   }
 

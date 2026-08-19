@@ -283,6 +283,18 @@ export interface Invoice {
   // bara listsvaret (GET /invoices) fyller den. Läs ALDRIG `total` som skuld —
   // på en delbetald faktura är de två olika tal.
   outstanding?: number
+  // #378 — ÖVERBETALT BELOPP (max(0, Σ allokeringar − total)). Spegelbilden av
+  // `outstanding`: exakt ett av de två kan vara skilt från noll. Fylls av samma
+  // svar som `outstanding`.
+  //
+  // Finns för att `outstanding` klampas till ≥0 och därmed DÖLJER en
+  // överbetalning. Klampningen är rätt för sin fråga ("hur mycket är obetalt")
+  // och är kvar; det här fältet svarar på den andra frågan.
+  //
+  // Beloppet är INTE bokfört. Kontot för kundtillgodohavande är en öppen
+  // revisorsfråga (#505) som delas av #482, #517 och #518 — fältet visar att
+  // pengarna finns, det påstår ingenting om hur de är konterade.
+  overpaid?: number
   // Matchade banktransaktioner — fylls bara av invoice-detail/list-svar.
   bankTransactions?: Array<{
     id: string
