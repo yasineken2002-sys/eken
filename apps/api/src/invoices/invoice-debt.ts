@@ -28,6 +28,22 @@ export interface InvoiceDebt {
   claim: Prisma.Decimal
   /** Klampad utestående skuld = max(0, claim). Aldrig negativ. */
   outstanding: Prisma.Decimal
+  /**
+   * ÖVERBETALT BELOPP = max(0, −claim). Aldrig negativ. (#378/#482)
+   *
+   * Spegelbilden av `outstanding`. Exakt ett av de två kan vara skilt från noll.
+   *
+   * VARFÖR ETT EGET, ICKE-NEGATIVT FÄLT och inte råa `claim` på tråden: en
+   * konsument som får ett negativt "restbelopp" frestas att räkna med det som
+   * om det vore en skuld — summera det i en KPI, skicka det i ett krav. Två
+   * icke-negativa tal med varsin entydig betydelse går inte att blanda ihop.
+   * Samma form som avi-sidan redan valt i `rentNoticeOutstanding`, som
+   * returnerar `payable` och `overpaid` sida vid sida.
+   *
+   * `claim` finns kvar oförändrad för den som behöver tecknet — i dag
+   * inkassogrinden (`collection-export.service.ts:531`).
+   */
+  overpaid: Prisma.Decimal
   /** true när fakturan är helt reglerad (outstanding = 0). */
   isSettled: boolean
 }
@@ -42,13 +58,19 @@ export function computeInvoiceDebt(input: {
     new Prisma.Decimal(0),
   )
   const claim = total.minus(paid)
+  // Klampningen STÅR KVAR. Den är inte defekten — den är det som gör att
+  // kravtrappans grindar (`ocrOutstanding <= 0`, `outstanding > 0`) inte kan
+  // eskalera mot någon som betalat för mycket. Defekten var att signalen
+  // FÖRSVANN; nu ligger den bredvid i stället.
   const outstanding = claim.isNegative() ? new Prisma.Decimal(0) : claim
+  const overpaid = claim.isNegative() ? claim.negated() : new Prisma.Decimal(0)
 
   return {
     total,
     paid,
     claim,
     outstanding,
+    overpaid,
     isSettled: outstanding.isZero(),
   }
 }
@@ -76,4 +98,25 @@ export function invoiceOutstanding(invoice: {
     total: invoice.total,
     allocations: invoice.payments.map((p) => p.amount),
   }).outstanding.toNumber()
+}
+
+/**
+ * #378 — överbetalt belopp för en faktura vars allokeringar laddats.
+ *
+ * Syskon till `invoiceOutstanding`, med samma typspärr: `payments` är
+ * obligatorisk, så en `findMany` utan `include` typcheckar inte.
+ *
+ * Finns för att svarsytorna ska kunna visa överbetalningen utan att någon av
+ * dem räknar ut den själv. En andra kopia av uttrycket är precis det spretande
+ * #329 tog bort — och här vore det värre, eftersom en kopia som glömmer
+ * klampningen kan visa ett negativt tal som om det vore en skuld.
+ */
+export function invoiceOverpaid(invoice: {
+  total: Prisma.Decimal
+  payments: Array<{ amount: Prisma.Decimal }>
+}): number {
+  return computeInvoiceDebt({
+    total: invoice.total,
+    allocations: invoice.payments.map((p) => p.amount),
+  }).overpaid.toNumber()
 }
