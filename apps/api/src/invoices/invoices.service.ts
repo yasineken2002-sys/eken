@@ -892,6 +892,9 @@ export class InvoicesService {
     // Aritmetiska gränsen — samma som avi-sidan: strykningen får inte kunna
     // skapa en överbetalning, eftersom `invoiceOutstanding` klampar den till 0
     // och pengarna blir osynliga (#378).
+    //
+    // Meddelandet nedan förklarar SAKEN och nämner inte ärendenumret: #378 är
+    // vår arbetslista, inte hyresvärdens. Spåret ligger i den här kommentaren.
     const paid = invoice.payments.reduce(
       (sum, p) => sum.plus(new Prisma.Decimal(p.amount)),
       new Prisma.Decimal(0),
@@ -902,8 +905,8 @@ export class InvoicesService {
         `Avgiften kan inte strykas: betalt belopp (${paid.toFixed(2)} kr) överstiger ` +
           `fakturans belopp utan avgiften (${takWithoutFee.toFixed(2)} kr), så strykningen ` +
           `skulle skapa en överbetalning på ${paid.minus(takWithoutFee).toFixed(2)} kr. ` +
-          'Överbetalning kan i dag inte visas (se ärende #378) — avmatcha eller ' +
-          'återbetala betalningen först.',
+          'Ett överskjutande belopp kan inte bokföras i dag och skulle bli osynligt ' +
+          'i fakturans saldo. Avmatcha eller återbetala betalningen först.',
       )
     }
 

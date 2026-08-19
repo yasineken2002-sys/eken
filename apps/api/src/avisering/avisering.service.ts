@@ -2363,6 +2363,10 @@ export class AviseringService {
     }
 
     // ── DEN ARITMETISKA GRÄNSEN, räknad ur allokeringarna ────────────────
+    //
+    // Överskottet kan inte bokföras (#378 — klampningen gör det osynligt).
+    // Meddelandet förklarar det för hyresvärden utan att nämna ärendenumret;
+    // spåret hör hemma här, inte i produkten.
     const ocrGross =
       Number(notice.totalAmount) +
       Number(notice.consumptionAmount) +
@@ -2374,8 +2378,9 @@ export class AviseringService {
       throw new BadRequestException(
         `Avgiften kan inte strykas: betalt belopp (${paid} kr) överstiger kravet utan ` +
           `avgiften (${takWithoutFee} kr), så strykningen skulle skapa en överbetalning ` +
-          `på ${round2(paid - takWithoutFee)} kr. Överbetalning kan i dag inte visas ` +
-          '(se ärende #378) — avmatcha eller återbetala betalningen först.',
+          `på ${round2(paid - takWithoutFee)} kr. Ett överskjutande belopp kan inte ` +
+          'bokföras i dag och skulle bli osynligt i avins saldo. Avmatcha eller ' +
+          'återbetala betalningen först.',
       )
     }
 
