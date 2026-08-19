@@ -6,12 +6,12 @@ import {
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { DocumentCategory } from '@prisma/client'
-import * as path from 'path'
 import { v4 as uuid } from 'uuid'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
 import {
   validateUploadedFile,
+  extensionForDetectedMime,
   DETECTED_DOCUMENT_TYPES,
   MAX_DOCUMENT_BYTES,
 } from '../common/utils/file-validation'
@@ -179,10 +179,26 @@ export class DocumentsService {
     // SECURITY (H3): verifiera filens FAKTISKA innehåll (magiska byten) — den
     // deklarerade mimetype:n ovan kan vara förfalskad. Avvisar t.ex. en
     // omdöpt .exe/.html som påstår sig vara en PDF/bild.
-    validateUploadedFile(file.buffer, {
+    // #476: returvärdet är den DETEKTERADE typen, och det är den som används
+    // nedan — inte `file.mimetype`. Klientens påstående grindas fortfarande av
+    // ALLOWED_MIME_TYPES (ett tidigt, begripligt fel), men det når varken
+    // lagringsnyckeln, R2:s Content-Type eller `Document.mimeType`.
+    //
+    // Utan det här kunde en äkta PDF laddas upp deklarerad som `image/webp`:
+    // magic-byte-kontrollen passerade — filen ÄR en tillåten typ — och arkivet
+    // fick en rad som sa emot sina egna byte. Ett felaktigt fält är sämre än ett
+    // saknat: det saknade vet man att man måste ta reda på.
+    const detected = validateUploadedFile(file.buffer, {
       allowedDetectedMimes: DETECTED_DOCUMENT_TYPES,
       maxBytes: MAX_FILE_SIZE,
     })
+    // Null kan inte nå hit: allowlisten kastar på okänd signatur. Men en TYST
+    // fallback till `file.mimetype` vore precis den defekt vi stänger, så det
+    // onåbara fallet kastar i stället för att gissa.
+    if (!detected) {
+      throw new BadRequestException('Filtypen kunde inte fastställas ur filens innehåll')
+    }
+    const mimeType = detected
 
     // Org-scopa relations-id INNAN vi lägger något i R2 (fail fast + ingen läcka).
     await this.assertRelationsInOrg(organizationId, {
@@ -192,11 +208,12 @@ export class DocumentsService {
       tenantId: dto.tenantId,
     })
 
-    const ext = path.extname(file.filename)
-    const safeName = `${uuid()}${ext}`
+    // Filändelsen togs tidigare ur KLIENTENS filnamn. Samma felklass som typen:
+    // ett fält uppladdaren styr, använt som om det vore verifierat.
+    const safeName = `${uuid()}.${extensionForDetectedMime(mimeType)}`
     const storageKey = `documents/${organizationId}/${safeName}`
 
-    const storageUrl = await this.storage.uploadFile(file.buffer, storageKey, file.mimetype)
+    const storageUrl = await this.storage.uploadFile(file.buffer, storageKey, mimeType)
 
     const document = await this.prisma.document.create({
       data: {
@@ -206,7 +223,7 @@ export class DocumentsService {
         storageKey,
         storageUrl,
         fileSize: file.size,
-        mimeType: file.mimetype,
+        mimeType,
         category: dto.category ?? DocumentCategory.OTHER,
         propertyId: dto.propertyId ?? null,
         unitId: dto.unitId ?? null,

@@ -9,8 +9,14 @@
  */
 
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
+// #476: `validateUploadedFile` returnerar den DETEKTERADE typen, och upload()
+// använder den till lagringsnyckel, Content-Type och Document.mimeType. En
+// stubb som ger `undefined` beskriver därför inte längre verkligheten — den
+// hade fått vägen att falla på typkontrollen i stället för på org-scopningen
+// det här testet handlar om.
 jest.mock('../common/utils/file-validation', () => ({
-  validateUploadedFile: jest.fn(),
+  validateUploadedFile: jest.fn(() => 'application/pdf'),
+  extensionForDetectedMime: jest.fn(() => 'pdf'),
   DETECTED_DOCUMENT_TYPES: [],
   MAX_DOCUMENT_BYTES: 20_000_000,
 }))
