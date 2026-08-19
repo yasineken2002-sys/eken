@@ -214,7 +214,7 @@ export class CreditNoteService {
       })
 
       // Verifikatet i SAMMA transaktion. Faller bokföringen ska dokumentet inte
-      // finnas — samma regel som för vanliga fakturor (BFL 5:6).
+      // finnas — samma regel som för vanliga fakturor.
       await this.accountingService.createJournalEntryForCreditNote(
         creditNote,
         organizationId,

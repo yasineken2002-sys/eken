@@ -21,8 +21,8 @@ ALTER TABLE "Invoice" ADD COLUMN "creditedInvoiceId" TEXT;
 CREATE INDEX "Invoice_creditedInvoiceId_idx" ON "Invoice"("creditedInvoiceId");
 
 -- Självrelation. RESTRICT av samma skäl som Invoice→Organization: krediteringen
--- är räkenskapsinformation (BFL 7 år) och originalet får inte kunna raderas
--- under den.
+-- är räkenskapsinformation med lagstadgad bevarandetid och originalet får inte
+-- kunna raderas under den.
 ALTER TABLE "Invoice"
   ADD CONSTRAINT "Invoice_creditedInvoiceId_fkey"
   FOREIGN KEY ("creditedInvoiceId") REFERENCES "Invoice"("id")
