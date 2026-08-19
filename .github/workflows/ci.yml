@@ -470,7 +470,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # psql används av tre specar för att sätta/läsa kända tokens och rader.
+      # Egen timeout: steget hämtar över nätet från Ubuntu-arkivet, och den
+      # spegeln kan gå från 10 sekunder till obegränsat utan förvarning — se
+      # noten vid "Install Chromium" nedan. Faller hellre på 5 min än bränner
+      # jobbets 25.
       - name: Install postgresql-client
+        timeout-minutes: 5
         run: sudo apt-get install -y --no-install-recommends postgresql-client
 
       # Chromium är ~130 MB. Utan cache betalar varje körning nedladdningen och
@@ -487,15 +492,45 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
 
+      # ── VARFÖR DET INTE STÅR `--with-deps` HÄR ────────────────────────────
+      #
+      # Och varför steget "Install browser OS deps (cache hit)" är BORTTAGET.
+      # Återinför ingetdera "för säkerhets skull" — det var precis den reflexen
+      # som lade en okontrollerad extern nedladdning i den blockerande vägen.
+      #
+      # `playwright install-deps chromium` kördes vid VARJE körning: cachen ovan
+      # täcker bara webbläsarbinären (`~/.cache/ms-playwright`), inte OS-paket.
+      # Men på `ubuntu-latest` installerade den ingenting som behövdes. Uppmätt i
+      # jobbloggarna 2026-08-19 (t.ex. job 96189990702):
+      #
+      #   0 upgraded, 9 newly installed, 0 to remove
+      #   libnss3 / libgbm1 / libcairo2 / libatk… : already the newest version
+      #
+      # Alla Chromium-bibliotek fanns alltså redan i runner-imagen. De nio nya
+      # paketen var UTESLUTANDE typsnitt — fonts-ipafont-gothic (japanska),
+      # fonts-wqy-zenhei (kinesiska), fonts-tlwg-loma-otf (thailändska),
+      # fonts-unifont, fonts-freefont-ttf och xfonts-*. 21,1 MB över nätet per
+      # körning, för skriftsystem som inte förekommer i ett svenskt gränssnitt.
+      #
+      # Priset var inte bara tid. Steget hänger på Ubuntu-arkivets dagsform, och
+      # när spegeln fallerade brände det hela jobbets tak:
+      #   • normalfall, tolv main-körningar 08-18→08-19: 9–16 s
+      #   • 2026-08-19 15:52: azure.archive.ubuntu.com svarade inte (4× `Ign:`),
+      #     fallback till archive.ubuntu.com, sedan TYST i 22m53s → cancelled
+      #   • 2026-08-19 19:07: index på 9 s (1256 kB/s), men paketen på ~8 kB/s —
+      #     12 av 21,1 MB på 24 minuter → cancelled
+      # Båda dog på jobbets `timeout-minutes: 25` utan att nå en enda spec. Den
+      # andra låg i deploy-vägen (`deploy.yml` → `ci.yml`) och tog frontend-
+      # bygget för a5d9954 med sig: `deploy-web/admin/portal` blev `skipped`.
+      #
+      # MÄTT FÖRE BORTTAGNINGEN, inte antaget: hela sviten kördes utan de nio
+      # paketen — se PR:en för siffrorna. Skulle en framtida runner-image sakna
+      # ett bibliotek Chromium behöver, misslyckas jobbet SYNLIGT vid browser
+      # launch; det blir inte tyst grönt.
       - name: Install Chromium
         if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: pnpm --filter @eken/web exec playwright install --with-deps chromium
-
-      # Cache-träff hoppar över nedladdningen men OS-beroendena finns inte i
-      # cachen — de måste installeras ändå.
-      - name: Install browser OS deps (cache hit)
-        if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: pnpm --filter @eken/web exec playwright install-deps chromium
+        timeout-minutes: 10
+        run: pnpm --filter @eken/web exec playwright install chromium
 
       # `dev` = `nest start --watch` och går UTANFÖR turbo, så den ärver ingen
       # `dependsOn: ["^build"]`. Utan det här steget hittar API:t inte @eken/shared
