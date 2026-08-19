@@ -185,6 +185,7 @@ describe('#517 — vakt: kreditnotan får aldrig sakna original eller verifikat'
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       invoice: { findFirst: jest.fn().mockResolvedValue(original), create: invoiceCreate },
+      invoiceLine: { findMany: jest.fn().mockResolvedValue([]) },
       invoiceNumberSequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 7 }) },
     }
     const createJournalEntryForCreditNote = opts.bokförMisslyckas
@@ -348,5 +349,115 @@ describe('#517 — makulering av en KREDITERAD faktura är spärrad', () => {
 
     await service.transitionStatus('inv-1', 'org-1', 'VOID', 'user-1', 'USER')
     expect(reverseJournalEntryForInvoice).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * #517 — VAKT: RADTAKET OCH INKASSOSPÄRREN.
+ *
+ * Båda är regler som är lätta att ta bort i tron att de är onödigt stränga.
+ * Radtaket avvisar krediteringar som gick igenom före det infördes, och
+ * inkassospärren står i vägen för en operatör som vill "bara rätta en siffra".
+ * Vakten finns för att det ska bli rött, inte tyst, den dagen någon gör det.
+ */
+describe('#517 — vakt: radtaket och inkassospärren fälls mekaniskt', () => {
+  function riggKredit(opts: { status?: string; redanKrediteratPåRaden?: number } = {}) {
+    const originalRad = {
+      id: 'line-1',
+      description: 'Hyra januari',
+      quantity: new Prisma.Decimal(1),
+      unitPrice: new Prisma.Decimal(10_000),
+      vatRate: 0,
+      total: new Prisma.Decimal(10_000),
+    }
+    const redan = opts.redanKrediteratPåRaden ?? 0
+    const original = {
+      id: 'inv-1',
+      organizationId: 'org-1',
+      invoiceNumber: 'F-2026-0001',
+      type: 'RENT',
+      status: opts.status ?? 'OVERDUE',
+      isCreditNote: false,
+      tenantId: 't1',
+      customerId: null,
+      leaseId: null,
+      total: new Prisma.Decimal(10_000),
+      lines: [originalRad],
+      payments: [],
+      creditNotes: redan ? [{ total: new Prisma.Decimal(redan) }] : [],
+    }
+    const invoiceCreate = jest.fn((arg: { data: Record<string, unknown> }) =>
+      Promise.resolve({ id: 'credit-1', ...arg.data, total: new Prisma.Decimal(1), lines: [] }),
+    )
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      invoice: { findFirst: jest.fn().mockResolvedValue(original), create: invoiceCreate },
+      invoiceLine: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue(
+            redan ? [{ creditedInvoiceLineId: 'line-1', total: new Prisma.Decimal(redan) }] : [],
+          ),
+      },
+      invoiceNumberSequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 9 }) },
+    }
+    const service = new CreditNoteService(
+      { $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)) } as never,
+      { record: jest.fn().mockResolvedValue(undefined) } as never,
+      { createJournalEntryForCreditNote: jest.fn().mockResolvedValue({ id: 'je' }) } as never,
+    )
+    return { service, invoiceCreate }
+  }
+
+  const rad = (unitPrice: number) => ({
+    lines: [{ invoiceLineId: 'line-1', quantity: 1, unitPrice }],
+    reason: 'vaktens testfall',
+  })
+
+  it('RADTAKET: en kreditering över radens belopp fälls', async () => {
+    const { service, invoiceCreate } = riggKredit()
+    await expect(service.createCreditNote('inv-1', 'org-1', 'u1', rad(12_000))).rejects.toThrow(
+      /för mycket/,
+    )
+    expect(invoiceCreate).not.toHaveBeenCalled()
+  })
+
+  it('RADTAKET kumulativt: rest 7 000 av 10 000 → 8 000 fälls', async () => {
+    const { service } = riggKredit({ redanKrediteratPåRaden: 3_000 })
+    await expect(service.createCreditNote('inv-1', 'org-1', 'u1', rad(8_000))).rejects.toThrow(
+      /redan krediterat/,
+    )
+  })
+
+  it('KANARIEFÅGEL för radtaket: kontrollfallet går igenom', async () => {
+    // Utan den här raden vore de två ovan gröna även om tjänsten avvisade ALLT.
+    // Då mätte de att en spärr finns, inte att den är rätt kalibrerad.
+    const { service, invoiceCreate } = riggKredit({ redanKrediteratPåRaden: 3_000 })
+    await service.createCreditNote('inv-1', 'org-1', 'u1', rad(7_000))
+    expect(invoiceCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('INKASSOSPÄRREN: en överlämnad fordran kan inte krediteras', async () => {
+    const { service, invoiceCreate } = riggKredit({ status: 'SENT_TO_COLLECTION' })
+    await expect(service.createCreditNote('inv-1', 'org-1', 'u1', rad(1_000))).rejects.toThrow(
+      /inkasso/i,
+    )
+    expect(invoiceCreate).not.toHaveBeenCalled()
+  })
+
+  it('KANARIEFÅGEL för inkassospärren: samma belopp på en OVERDUE-faktura går igenom', async () => {
+    // Kontrollfallet. Skiljer "spärrad för att den är hos inkasso" från
+    // "spärrad av något annat" — utan det kan testet ovan vara grönt av fel skäl.
+    const { service, invoiceCreate } = riggKredit({ status: 'OVERDUE' })
+    await service.createCreditNote('inv-1', 'org-1', 'u1', rad(1_000))
+    expect(invoiceCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('inkassospärren lovar ingen återkallningsväg, eftersom ingen finns i produkten', () => {
+    // Mätt: CollectionsModule har export, mark-sent och paus/återupptag —
+    // ingenting som drar tillbaka ett överlämnat krav, och `sentToCollectionAt`
+    // nollställs aldrig. Texten får därför inte antyda en knapp som saknas.
+    const källa = readFileSync(join(SRC, 'invoices/credit-note.service.ts'), 'utf8')
+    expect(källa).toMatch(/ingen väg att återkalla ett överlämnat krav/)
   })
 })

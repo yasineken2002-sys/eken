@@ -38,6 +38,7 @@ function makeService(
     payments?: number[]
     creditNotes?: number[]
     lines?: Array<Record<string, unknown>>
+    tidigareRadkrediteringar?: Array<[string, number]>
   } = {},
 ) {
   const original = {
@@ -68,6 +69,15 @@ function makeService(
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([]),
     invoice: { findFirst: jest.fn().mockResolvedValue(original), create: invoiceCreate },
+    // Tidigare kreditnotors rader, som radtaket summerar kumulativt.
+    invoiceLine: {
+      findMany: jest.fn().mockResolvedValue(
+        (overrides.tidigareRadkrediteringar ?? []).map(([lineId, total]) => ({
+          creditedInvoiceLineId: lineId,
+          total: D(total),
+        })),
+      ),
+    },
     invoiceNumberSequence: {
       upsert: jest.fn().mockResolvedValue({ lastNumber: 42 }),
     },
@@ -264,5 +274,114 @@ describe('#517 — radlåset tas före beslutet', () => {
     const låsOrdning = tx.$queryRaw.mock.invocationCallOrder[0]!
     const läsOrdning = tx.invoice.findFirst.mock.invocationCallOrder[0]!
     expect(låsOrdning).toBeLessThan(läsOrdning)
+  })
+})
+
+describe('#517 — radnivå-taket', () => {
+  it('kreditering över radens belopp nekas, med radens namn och överskottet i texten', async () => {
+    // Fakturan har EN rad på 10 000. Ett försök att kreditera 12 000 på den
+    // ryms inte i raden, oavsett vad fakturans total säger.
+    const { service, invoiceCreate } = makeService({
+      lines: [{ ...ORIGINAL_LINE, unitPrice: D(10_000), total: D(10_000) }],
+      creditNotes: [],
+    })
+
+    await expect(
+      service.createCreditNote('inv-1', 'org-1', 'user-1', {
+        lines: [line(1, 12_000)],
+        reason: 'Mer än raden',
+      }),
+    ).rejects.toThrow(/Hyra januari/)
+    expect(invoiceCreate).not.toHaveBeenCalled()
+  })
+
+  it('meddelandet namnger raden OCH hur mycket för mycket det är', async () => {
+    const { service } = makeService()
+    await expect(
+      service.createCreditNote('inv-1', 'org-1', 'user-1', {
+        lines: [line(1, 12_000)],
+        reason: 'Mer än raden',
+      }),
+    ).rejects.toThrow(/"Hyra januari".*12000\.00 kr.*10000\.00 kr.*2000\.00 kr för mycket/s)
+  })
+
+  it('KUMULATIVT: en andra kreditering av SAMMA rad räknas mot vad som redan krediterats', async () => {
+    // 3 000 av radens 10 000 är redan krediterat. Ytterligare 8 000 ryms inte,
+    // trots att 8 000 < 10 000 sett för sig.
+    const { service } = makeService({
+      creditNotes: [3_000],
+      tidigareRadkrediteringar: [['line-1', 3_000]],
+    })
+
+    await expect(
+      service.createCreditNote('inv-1', 'org-1', 'user-1', {
+        lines: [line(1, 8_000)],
+        reason: 'Andra krediteringen',
+      }),
+    ).rejects.toThrow(/redan krediterat.*1000\.00 kr för mycket/s)
+  })
+
+  it('DISKRIMINERANDE: exakt det som återstår på raden går igenom', async () => {
+    // Kontrollfallet till testet ovan. Faller båda samtidigt mäter de ingenting.
+    const { service, invoiceCreate } = makeService({
+      creditNotes: [3_000],
+      tidigareRadkrediteringar: [['line-1', 3_000]],
+    })
+
+    await service.createCreditNote('inv-1', 'org-1', 'user-1', {
+      lines: [line(1, 7_000)],
+      reason: 'Resten av raden',
+    })
+    expect(invoiceCreate.mock.calls[0]![0].data.total).toBe(7_000)
+  })
+
+  it('kreditnotans rader bär kopplingen till originalraden', async () => {
+    const { service, invoiceCreate } = makeService()
+    await service.createCreditNote('inv-1', 'org-1', 'user-1', {
+      lines: [line(1, 1_000)],
+      reason: 'Delkreditering',
+    })
+
+    const rader = (
+      invoiceCreate.mock.calls[0]![0].data as {
+        lines: { createMany: { data: Array<{ creditedInvoiceLineId: string }> } }
+      }
+    ).lines.createMany.data
+    // Utan kopplingen kan radtaket inte räkna kumulativt.
+    expect(rader[0]!.creditedInvoiceLineId).toBe('line-1')
+  })
+})
+
+describe('#517 — överlämnad till inkasso', () => {
+  it('nekas, och meddelandet säger var kravet måste hanteras', async () => {
+    const { service, invoiceCreate, createJournalEntryForCreditNote } = makeService({
+      status: 'SENT_TO_COLLECTION',
+    })
+
+    await expect(
+      service.createCreditNote('inv-1', 'org-1', 'user-1', {
+        lines: [line(1, 1_000)],
+        reason: 'Försök kreditera inkassofordran',
+      }),
+    ).rejects.toThrow(/inkasso/i)
+    await expect(
+      service.createCreditNote('inv-1', 'org-1', 'user-1', {
+        lines: [line(1, 1_000)],
+        reason: 'Försök kreditera inkassofordran',
+      }),
+    ).rejects.toThrow(/hanteras hos inkassobolaget/i)
+
+    expect(invoiceCreate).not.toHaveBeenCalled()
+    expect(createJournalEntryForCreditNote).not.toHaveBeenCalled()
+  })
+
+  it('meddelandet lovar ingen återkallningsväg — för det finns ingen', async () => {
+    const { service } = makeService({ status: 'SENT_TO_COLLECTION' })
+    await expect(
+      service.createCreditNote('inv-1', 'org-1', 'user-1', {
+        lines: [line(1, 1)],
+        reason: 'Försök',
+      }),
+    ).rejects.toThrow(/ingen väg att återkalla/i)
   })
 })

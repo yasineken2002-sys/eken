@@ -93,6 +93,34 @@ export class CreditNoteService {
         )
       }
 
+      // ── ÖVERLÄMNAD TILL INKASSO: SPÄRRAD ───────────────────────────────────
+      //
+      // Inkassobolaget har fått ett krav på hela beloppet. Krediterar vi här
+      // sjunker skulden i vårt system medan kravet utanför står kvar oförändrat
+      // — någon jagas då för pengar de inte längre är skyldiga, och vi ser det
+      // inte, eftersom vår egen siffra ser rätt ut.
+      //
+      // VARFÖR SPÄRR OCH INTE ÅTERKALLNING: det finns ingen återkallningsväg
+      // att anropa. Uppmätt i kodbasen — `CollectionsModule` har export,
+      // mark-sent och paus/återupptag av påminnelser, ingenting som drar
+      // tillbaka ett överlämnat krav. `sentToCollectionAt` sätts på två ställen
+      // och nollställs på inget. Statusmaskinen ger SENT_TO_COLLECTION exakt
+      // två utgångar, PAID och VOID, och VOID är spärrad av allokeringsgrinden
+      // så snart en betalning finns. Samma slutsats som redan står i
+      // `reconciliation.service.ts` vid avmatchningsspärren.
+      //
+      // Att bygga återkallningen här vore att uppfinna ett flöde mot en extern
+      // motpart utan att veta hur den motparten tar emot det. Meddelandet lovar
+      // därför ingen väg som inte finns: det säger var kravet måste hanteras.
+      if (original.status === 'SENT_TO_COLLECTION') {
+        throw new BadRequestException(
+          `Faktura ${original.invoiceNumber} är överlämnad till inkasso och kan inte ` +
+            'krediteras här. Kravet måste först hanteras hos inkassobolaget — ' +
+            'annars fortsätter de driva in ett belopp som hyresgästen inte är ' +
+            'skyldig. Systemet har ingen väg att återkalla ett överlämnat krav.',
+        )
+      }
+
       // ── BETALD ELLER DELBETALD: SPÄRRAD ────────────────────────────────────
       //
       // Grinden nyckas på FAKTISKA allokeringar, inte på status. Samma
@@ -122,6 +150,28 @@ export class CreditNoteService {
         )
       }
 
+      // ── VAD SOM REDAN KREDITERATS PER RAD ──────────────────────────────────
+      //
+      // Summeras ur tidigare kreditnotors rader via `creditedInvoiceLineId`.
+      // Utan den här summan skulle radtaket nedan gälla per kreditnota i
+      // stället för kumulativt, och samma 1 000-kronorsrad kunde krediteras med
+      // 1 000 kr två gånger — var för sig inom taket.
+      const tidigareKreditrader = await tx.invoiceLine.findMany({
+        where: {
+          invoice: { creditedInvoiceId: original.id },
+          creditedInvoiceLineId: { not: null },
+        },
+        select: { creditedInvoiceLineId: true, total: true },
+      })
+      const kredteratPerRad = new Map<string, Prisma.Decimal>()
+      for (const rad of tidigareKreditrader) {
+        const nyckel = rad.creditedInvoiceLineId!
+        kredteratPerRad.set(
+          nyckel,
+          (kredteratPerRad.get(nyckel) ?? new Prisma.Decimal(0)).plus(rad.total),
+        )
+      }
+
       // ── RADERNA ÄRVER MOMSSATSEN FRÅN ORIGINALET ───────────────────────────
       const lineById = new Map(original.lines.map((l) => [l.id, l]))
       const creditLines = dto.lines.map((l) => {
@@ -137,10 +187,49 @@ export class CreditNoteService {
           unitPrice: l.unitPrice,
           // Ärvd, aldrig klientstyrd — se noten i CreditNoteLineDto.
           vatRate: source.vatRate,
+          creditedInvoiceLineId: source.id,
         }
       })
 
       const amounts = computeInvoiceAmounts(creditLines)
+
+      // ── RADNIVÅ-TAKET ──────────────────────────────────────────────────────
+      //
+      // Skälet är SPÅRBARHET, inte moms. 8 000 kr krediterade på en
+      // 1 000-kronorsrad ger rätt momssats (den ärvs) och kan rymmas under
+      // fakturans totala obetalda belopp — men verifikationskedjan går då inte
+      // att följa tillbaka till vad som faktiskt fakturerades på just den
+      // raden, vilket är vad en granskare förväntar sig kunna göra.
+      //
+      // Taket räknas KUMULATIVT mot tidigare krediteringar av samma rad, och
+      // jämförs mot radens BRUTTObelopp (`total`), samma storhet som
+      // kreditradens beräknade `total` — netto mot brutto hade gett ett tak som
+      // var fel med momsen.
+      //
+      // OBS: detta AVVISAR krediteringar som gick igenom före den här
+      // ändringen. Det är avsikten; en kreditering som överskrider raden var
+      // aldrig spårbar, den var bara tillåten.
+      for (let i = 0; i < creditLines.length; i++) {
+        const rad = creditLines[i]!
+        const belopp = amounts.lines[i]!
+        const source = lineById.get(rad.creditedInvoiceLineId)!
+        const redan = kredteratPerRad.get(source.id) ?? new Prisma.Decimal(0)
+        const kvar = new Prisma.Decimal(source.total).minus(redan)
+        const begärt = new Prisma.Decimal(belopp.total)
+
+        if (begärt.greaterThan(kvar)) {
+          const överskott = begärt.minus(kvar)
+          const redanText = redan.isZero()
+            ? ''
+            : ` (${redan.toFixed(2)} kr av raden är redan krediterat)`
+          throw new BadRequestException(
+            `Raden "${source.description}" krediteras med ${begärt.toFixed(2)} kr men ` +
+              `högst ${kvar.toFixed(2)} kr återstår att kreditera på den raden${redanText} — ` +
+              `${överskott.toFixed(2)} kr för mycket. En kreditering får inte överstiga ` +
+              'raden den avser; annars går den inte att följa tillbaka till det som fakturerades.',
+          )
+        }
+      }
 
       // ── TAKET ──────────────────────────────────────────────────────────────
       //
@@ -200,12 +289,17 @@ export class CreditNoteService {
           notes: dto.reason,
           lines: {
             createMany: {
-              data: amounts.lines.map((l) => ({
+              // Index-parning mot `creditLines`: `computeInvoiceAmounts` bär
+              // bara beloppsfälten vidare, så kopplingen hämtas från indatan.
+              // Ordningen är garanterad — hjälparen mappar 1:1.
+              data: amounts.lines.map((l, i) => ({
                 description: l.description,
                 quantity: l.quantity,
                 unitPrice: l.unitPrice,
                 vatRate: l.vatRate,
                 total: l.total,
+                // Kopplingen radnivå-taket räknar kumulativt på.
+                creditedInvoiceLineId: creditLines[i]!.creditedInvoiceLineId,
               })),
             },
           },

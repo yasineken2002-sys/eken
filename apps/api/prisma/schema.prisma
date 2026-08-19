@@ -1490,9 +1490,28 @@ model InvoiceLine {
   vatRate     Int
   total       Decimal @db.Decimal(10, 2)
 
+  // ── VILKEN RAD SOM KREDITERAS (#517) ──────────────────────────────────────
+  //
+  // Sätts bara på kreditnotors rader och pekar på motsvarande rad på
+  // ursprungsfakturan. Null på varje vanlig fakturarad.
+  //
+  // VARFÖR EN KOLUMN OCH INTE BARA EN KONTROLL I TJÄNSTEN: radtaket ska hålla
+  // KUMULATIVT. Utan den här kopplingen kan en 1 000-kronorsrad krediteras med
+  // 1 000 kr i två separata kreditnotor — var för sig inom taket, tillsammans
+  // dubbelt så mycket som raden var på. Kontrollen behöver kunna summera vad
+  // som redan krediterats mot just den raden, och då måste kopplingen finnas.
+  //
+  // `onDelete: Restrict` — originalraden får inte försvinna under en
+  // kreditering som hänvisar till den.
+  creditedInvoiceLineId String?
+
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
+  creditedInvoiceLine InvoiceLine?  @relation("InvoiceLineCredits", fields: [creditedInvoiceLineId], references: [id], onDelete: Restrict)
+  creditLines         InvoiceLine[] @relation("InvoiceLineCredits")
+
   @@index([invoiceId])
+  @@index([creditedInvoiceLineId])
 }
 
 // Idempotency-spärr för påminnelseflödet. UNIQUE (invoiceId, type) garanterar
