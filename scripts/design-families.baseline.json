@@ -1,0 +1,69 @@
+{
+  "$comment": "GENERERAD BASLINJE — omappade Tailwind-familjer (#532). Varje post är en färgfamilj som ANVÄNDS i klassnamn men inte är mappad mot en @eken/ui-skala i appens tailwind.config.ts, och som därför renderar Tailwinds stock-kulör i stället för den varma paletten. Mängden mappade familjer HÄRLEDS ur configen — det finns ingen lista i guarden att glömma uppdatera.",
+  "$howto": "Denna baslinje fäller åt BÅDA hållen: fler träffar OCH färre. Har du mappat eller städat en familj, kör `node scripts/check-design-tokens.mjs --update-baseline` så att listan fortsätter beskriva verkligheten. Lägg ALDRIG till en post för hand för att tysta ett nytt fynd — mappa familjen.",
+  "total": 56,
+  "entries": {
+    "web/green": {
+      "count": 5,
+      "reason": "AI:ets ConfirmationCard bekräftelseknapp och vänsterkant. Stock-grön VID SIDAN AV varumärkesgrönt #1a6b3c — samma kulör-idé, fel källa. Bör peka på brand- eller success-skalan; trivialaste posten att åtgärda men rör en bekräftelseknapp och ska ses över med #531.",
+      "examples": [
+        "apps/web/src/features/ai/components/ConfirmationCard.tsx:38 border-l-green-600",
+        "apps/web/src/features/ai/components/ConfirmationCard.tsx:105 bg-green-600",
+        "apps/web/src/features/ai/components/ConfirmationCard.tsx:105 bg-green-700"
+      ]
+    },
+    "web/indigo": {
+      "count": 5,
+      "reason": "Fakturans tidslinje och en notistyp. Ligger nära brand-blue-kategorin i flipp-skulden — indigo användes som en svalare variant av legacy-blått och blev därför inte omdirigerad när blue pekades på varumärkesskalan i F5.",
+      "examples": [
+        "apps/web/src/features/invoices/components/InvoiceTimeline.tsx:96 text-indigo-600",
+        "apps/web/src/features/invoices/components/InvoiceTimeline.tsx:97 bg-indigo-50",
+        "apps/web/src/features/notifications/NotificationsPage.tsx:39 text-indigo-600"
+      ]
+    },
+    "web/orange": {
+      "count": 3,
+      "reason": "Notissidan och notisklockan, samma två filer som slate. Ligger mellan amber (mappad) och red (mappad) och kan sannolikt kollapsa in i warning-skalan — men det är ett semantiskt val om notistypen ska signalera varning.",
+      "examples": [
+        "apps/web/src/features/notifications/NotificationsPage.tsx:36 text-orange-600",
+        "apps/web/src/features/notifications/NotificationsPage.tsx:36 bg-orange-50",
+        "apps/web/src/features/notifications/components/NotificationBell.tsx:49 text-orange-600"
+      ]
+    },
+    "web/purple": {
+      "count": 25,
+      "reason": "Kreditnota-badgen, AI/analys-ytorna, bildfilsikonen och skanning/schemalagd. Bär minst FYRA olika betydelser och kräver därför ett designbeslut om lila ska vara en femte kulör i paletten eller kollapsa in i befintliga steg. Spåras i #531 — mappa eller kollapsa där, inte här.",
+      "examples": [
+        "apps/web/src/components/ui/Badge.tsx:12 bg-purple-50",
+        "apps/web/src/components/ui/Badge.tsx:12 text-purple-700",
+        "apps/web/src/components/ui/Badge.tsx:22 bg-purple-500"
+      ]
+    },
+    "web/slate": {
+      "count": 3,
+      "reason": "Notissidan och notisklockan. En KALL gråskala parallellt med den varma neutralskalan — precis den divergens F1/F2 skulle ha eliminerat. Ska mappas mot evenoScales.neutral, men görs i samma svep som de övriga notis-kulörerna.",
+      "examples": [
+        "apps/web/src/features/notifications/NotificationsPage.tsx:40 text-slate-600",
+        "apps/web/src/features/notifications/NotificationsPage.tsx:40 bg-slate-50",
+        "apps/web/src/features/notifications/components/NotificationBell.tsx:53 text-slate-600"
+      ]
+    },
+    "web/teal": {
+      "count": 2,
+      "reason": "Portalinbjudningsmodalens informationsruta (bg-teal-50/text-teal-700). Ensam användning av familjen; ytan är neutralt informerande och bör följa beslutet i #234 om att info-nivån är neutral, inte en egen kulör.",
+      "examples": [
+        "apps/web/src/features/tenants/components/InvitePortalModal.tsx:33 bg-teal-50",
+        "apps/web/src/features/tenants/components/InvitePortalModal.tsx:33 text-teal-700"
+      ]
+    },
+    "web/violet": {
+      "count": 13,
+      "reason": "Gradient-par (from-violet-500/to-violet-700) i AppLayouts AI-panel. En gradient kan inte uttryckas med en enda färg-token; @eken/ui saknar ännu gradient-tokens. Samma familj som green-legacy i flipp-skulden. Hör ihop med #531:s beslut om AI-ytornas kulör.",
+      "examples": [
+        "apps/web/src/components/layout/AppLayout.tsx:358 from-violet-500",
+        "apps/web/src/components/layout/AppLayout.tsx:358 to-violet-700",
+        "apps/web/src/components/layout/AppLayout.tsx:416 from-violet-500"
+      ]
+    }
+  }
+}

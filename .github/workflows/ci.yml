@@ -200,7 +200,7 @@ jobs:
       # Rent statisk kontroll (fs-only, inga beroenden) — spärr mot att nya rå
       # färgvärden smyger in utanför @eken/ui och blir ytor som färgflippen inte
       # når. Täcker hex, Tailwind-arbitrary (`bg-[#…]`) och rgb()/hsl(), i både
-      # CSS/CSS Modules och TS/TSX. Tre lager:
+      # CSS/CSS Modules och TS/TSX. Fyra lager:
       #   • hårt      — @eken/ui:s låsta målvärden och HELT NYA färger faller
       #                 alltid; varumärkesfärgen ska komma ur en token eller
       #                 DEFAULT_BRAND_COLOR.
@@ -209,15 +209,26 @@ jobs:
       #                 träffar fäller, färre snävar åt. Ska nå noll vid flippen.
       #   • inline    — `design-tokens-allow: <varför>` för färger som ALDRIG ska
       #                 tokeniseras (kunddata, falska positiver).
+      #   • familjer  — omappade Tailwind-familjer (#532). De tre lagren ovan
+      #                 fäller FÄRGLITERALER och kan inte se `bg-purple-50`:
+      #                 kulören sitter i Tailwinds palett, inte i strängen.
+      #                 Mappade familjer HÄRLEDS ur varje apps tailwind.config.
+      #                 Baslinjen design-families.baseline.json fäller åt BÅDA
+      #                 hållen — en post utan motsvarande användning är också fel.
+      #
+      # MEDVETET INGET NYTT JOBB: familjeregeln är samma fråga en nivå upp och
+      # ligger i samma skript, så den körs av stegen nedan utan att `ci-passed`:s
+      # needs-lista ändras. Antalet jobb härleds ur toJSON(needs) och står med
+      # flit inte i klartext någonstans.
       # Kör även i `pnpm lint`; detta är den blockerande grinden. Se ADR:n (PR7).
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Self-test the guard (detection, comment stripping, allowlist)
+      - name: Self-test the guard (detection, comment stripping, allowlist, families)
         run: node scripts/check-design-tokens.mjs --self-test
 
-      - name: Verify no new raw colour values outside @eken/ui
+      - name: Verify no new raw colours or unmapped Tailwind families
         run: node scripts/check-design-tokens.mjs
 
   generated-knowledge-sync-guard:
