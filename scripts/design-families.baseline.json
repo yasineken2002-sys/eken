@@ -1,7 +1,7 @@
 {
   "$comment": "GENERERAD BASLINJE — omappade Tailwind-familjer (#532). Varje post är en färgfamilj som ANVÄNDS i klassnamn men inte är mappad mot en @eken/ui-skala i appens tailwind.config.ts, och som därför renderar Tailwinds stock-kulör i stället för den varma paletten. Mängden mappade familjer HÄRLEDS ur configen — det finns ingen lista i guarden att glömma uppdatera.",
   "$howto": "Denna baslinje fäller åt BÅDA hållen: fler träffar OCH färre. Har du mappat eller städat en familj, kör `node scripts/check-design-tokens.mjs --update-baseline` så att listan fortsätter beskriva verkligheten. Lägg ALDRIG till en post för hand för att tysta ett nytt fynd — mappa familjen.",
-  "total": 56,
+  "total": 39,
   "entries": {
     "web/green": {
       "count": 5,
@@ -31,12 +31,12 @@
       ]
     },
     "web/purple": {
-      "count": 25,
-      "reason": "Kreditnota-badgen, AI/analys-ytorna, bildfilsikonen och skanning/schemalagd. Bär minst FYRA olika betydelser och kräver därför ett designbeslut om lila ska vara en femte kulör i paletten eller kollapsa in i befintliga steg. Spåras i #531 — mappa eller kollapsa där, inte här.",
+      "count": 8,
+      "reason": "AVVECKLAD I #534 — 25 klasser ned till 8. Kvar står TVÅ fall som saknar befintlig semantik. (1) MaintenanceStatusBadge.SCHEDULED: `info` är redan NEW och `default` redan CLOSED i samma uppsättning, så båda vägarna gör två distinkta tillstånd pixelidentiska. (2) AnalysisModal ANALYSIS_TYPES['full']: kategoripalett med fyra platser, men varma paletten har tre särskiljbara kulörer — brand-grön blev pixelidentisk med success-gröna 'Uthyrningsgrad' (brand === statusSuccess). Båda kräver produktbeslut — spåras i #531.",
       "examples": [
-        "apps/web/src/components/ui/Badge.tsx:12 bg-purple-50",
-        "apps/web/src/components/ui/Badge.tsx:12 text-purple-700",
-        "apps/web/src/components/ui/Badge.tsx:22 bg-purple-500"
+        "apps/web/src/components/ui/Badge.tsx:27 bg-purple-50",
+        "apps/web/src/components/ui/Badge.tsx:27 text-purple-700",
+        "apps/web/src/components/ui/Badge.tsx:37 bg-purple-500"
       ]
     },
     "web/slate": {

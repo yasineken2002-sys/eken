@@ -1,5 +1,20 @@
 import { cn } from '@/lib/cn'
 
+/**
+ * `purple` ÄR PÅ VÄG BORT (#531) — använd den inte i ny kod.
+ *
+ * Lila bar fyra olika betydelser och avvecklades i #534: kreditnota och filtyp
+ * blev neutrala, Evenos egna AI-ytor blev brand. Kvar står EN användning —
+ * `MaintenanceStatusBadge.SCHEDULED` ("Schemalagd") — och den har ingen
+ * befintlig semantik att flytta till: `info` är redan NEW ("Ny") och `default`
+ * är redan CLOSED ("Stängd") i samma uppsättning, så båda vägarna gör två
+ * distinkta tillstånd pixelidentiska.
+ *
+ * Det är ett produktbeslut om underhållets statuspalett, inte ett städjobb.
+ * Tills det är fattat renderar varianten Tailwinds KALLA stock-lila i en varm
+ * palett — och `purple-*` är därför fortfarande kvar i
+ * scripts/design-families.baseline.json (#532).
+ */
 type Variant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'ghost' | 'purple'
 
 const variants: Record<Variant, string> = {

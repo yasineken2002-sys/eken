@@ -127,7 +127,7 @@ export function ConversationSidebar({
           onClick={onOpenAnalysis}
           className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-gray-600 transition-colors hover:bg-gray-50"
         >
-          <BarChart2 size={14} strokeWidth={1.8} className="text-purple-500" />
+          <BarChart2 size={14} strokeWidth={1.8} className="text-blue-600" />
           Analysera portfölj
         </button>
       </div>

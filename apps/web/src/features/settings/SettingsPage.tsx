@@ -950,8 +950,8 @@ export function SettingsPage() {
             {/* ── Section 5: AI-inställningar ─────────────────────────────────── */}
             <section className="rounded-2xl border border-gray-100 bg-white p-5">
               <div className="mb-4 flex items-center gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-purple-50">
-                  <Brain size={13} strokeWidth={1.8} className="text-purple-600" />
+                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-50">
+                  <Brain size={13} strokeWidth={1.8} className="text-blue-600" />
                 </div>
                 <h2 className="text-[14px] font-semibold text-gray-800">AI-assistent</h2>
               </div>
