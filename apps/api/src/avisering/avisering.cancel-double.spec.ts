@@ -77,6 +77,8 @@ function makeService(
         probableLossAt: opts.rowEfterClaim?.probableLossAt ?? null,
         writtenOffAt: opts.rowEfterClaim?.writtenOffAt ?? null,
         noticeNumber: notice.noticeNumber,
+        // #518 — omläsningen efter claimen selekterar även krediteringarna.
+        credits: [],
       }),
     },
     deposit: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -91,6 +93,8 @@ function makeService(
   const prisma = {
     rentNotice: { findFirst: jest.fn().mockResolvedValue(notice) },
     rentNoticeEvent: { create: jest.fn().mockResolvedValue({}) },
+    // #518 — cancelNotice läser krediteringarna före annulleringen.
+    rentNoticeCredit: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)),
   }
 

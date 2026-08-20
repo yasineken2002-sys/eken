@@ -271,6 +271,10 @@ export const PORTAL_RENT_NOTICE_VIEW_SELECT = {
   type: true,
   interestAccruedAmount: true,
   payments: { select: { amount: true } },
+  // #518 — samma skäl som `payments`: utan krediteringarna visar portalen
+  // bruttot för en avi som satts ned, alltså ett krav hyresgästen inte har.
+  // Ligger i VYNS select och inte i den delade — exporten är orörd (#344).
+  credits: { select: { amount: true } },
 } as const satisfies Prisma.RentNoticeSelect
 
 type PortalRentNoticeRow = Prisma.RentNoticeGetPayload<{
@@ -283,7 +287,7 @@ type PortalRentNoticeRow = Prisma.RentNoticeGetPayload<{
  * skulle driva.
  */
 export function mapRentNotice(notice: PortalRentNoticeRow) {
-  const { payable, nominalTotal, paid } = rentNoticeOutstanding(notice)
+  const { payable, nominalTotal, paid, credited } = rentNoticeOutstanding(notice)
   return {
     id: notice.id,
     noticeNumber: notice.noticeNumber,
@@ -318,6 +322,12 @@ export function mapRentNotice(notice: PortalRentNoticeRow) {
     // `paid` LÄSES UR ALLOKERINGARNA, aldrig som brutto − restskuld: den
     // härledningen gömmer en överbetalning (#342:s must-fix).
     paid,
+    // #518 — nedsatt belopp, som EGET fält bredvid `paid`. Utan det sjunker
+    // `payableTotal` under `nominalTotal` utan att hyresgästen kan se varför:
+    // "Kvar av X" hade inte gått ihop, och en oförklarad differens i ett
+    // betalningsunderlag är precis vad som genererar ett supportärende. Samma
+    // skäl som gör `credited` till en egen avdragsrad i påminnelsebrevet.
+    credited,
     dueDate: notice.dueDate.toISOString(),
     paidAt: notice.paidAt?.toISOString() ?? null,
     status: notice.status,

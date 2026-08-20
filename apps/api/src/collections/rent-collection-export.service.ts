@@ -39,6 +39,9 @@ const RENT_COLLECTION_INCLUDE = {
   organization: true,
   lease: { include: { unit: { include: { property: true } } } },
   events: { orderBy: { createdAt: 'asc' } },
+  // #518 — kravets kapital är NETTO efter kreditering. Typen är spärren:
+  // `figures()` typcheckar inte utan dem.
+  credits: { select: { amount: true } },
 } satisfies Prisma.RentNoticeInclude
 
 type RentNoticeWithCollectionData = Prisma.RentNoticeGetPayload<{
@@ -351,6 +354,28 @@ export class RentCollectionExportService {
       return `Avi ${notice.noticeNumber} har ingen utestående skuld (reglerad) — kan inte exporteras som inkassokrav`
     }
 
+    // ── KAPITALET BORTKREDITERAT, BARA RÄNTA KVAR (#518) ──────────────────
+    //
+    // `outstanding` mäter HELA 1510-fordran, dröjsmålsräntan inkluderad. En avi
+    // vars kapital krediterats till noll har därför fortfarande `outstanding > 0`
+    // så länge ränta hunnit löpa — och hade utan den här grinden exporterats som
+    // inkassokrav på ett belopp vars GRUND just krediterats bort.
+    //
+    // VARFÖR SPÄRR OCH INTE AUTOMATISK NOLLSTÄLLNING AV RÄNTAN: om en kreditering
+    // av kapitalet utsläcker den upplupna räntan är en juridisk fråga som ligger
+    // öppen hos revisor och hyresjurist. Att nolla räntan här vore att besvara
+    // den i tysthet, i en riktning som gynnar hyresgästen; att låta kravet gå
+    // vidare vore att besvara den i den andra. Det säkra är att maskinen slutar
+    // agera och lämnar beslutet till en människa — samma hållning som gäller
+    // varje annat bindande steg i kravtrappan.
+    if (debt.interestOnlyAfterCredit) {
+      return (
+        `Avi ${notice.noticeNumber} har krediterats och det enda som återstår är dröjsmålsränta ` +
+        `(${debt.interest.toFixed(2)} kr). Om räntan ska stå kvar när debiteringen den löpt på ` +
+        'har satts ned är inte avgjort — ta ställning till räntan innan kravet lämnas över.'
+      )
+    }
+
     if (notice.collectionReadyAt) {
       const newerPayment = await this.prisma.rentNoticePayment.findFirst({
         where: { rentNoticeId: notice.id, createdAt: { gt: notice.collectionReadyAt } },
@@ -378,10 +403,23 @@ export class RentCollectionExportService {
    * bokförda totalen även om en öresrest skulle skilja mot Σ segment.
    */
   private figures(notice: RentNoticeWithCollectionData): CollectionFigures {
-    const capital =
-      Number(notice.totalAmount) +
-      Number(notice.consumptionAmount) +
-      Number(notice.miscChargeAmount)
+    // ── KAPITALET ÄR NETTO EFTER KREDITERING (#518) ────────────────────────
+    //
+    // Det här talet trycks i inkassounderlaget och är vad bolaget driver in. En
+    // DELVIS krediterad avi är exporterbar (det finns en verklig fordran kvar),
+    // och utan avdraget hade underlaget krävt BRUTTObeloppet av en hyresgäst
+    // vars debitering redan satts ned — det värsta utfallet i hela ärendet,
+    // eftersom kravet då drivs av en extern part vi inte styr över.
+    const credited = notice.credits.reduce((sum, c) => sum + Number(c.amount), 0)
+    const capital = Math.max(
+      0,
+      round2(
+        Number(notice.totalAmount) +
+          Number(notice.consumptionAmount) +
+          Number(notice.miscChargeAmount) -
+          credited,
+      ),
+    )
     const reminderFee = Number(notice.reminderFeeAmount)
     const interest = Number(notice.interestAccruedAmount)
     const totalClaim = round2(capital + reminderFee + interest)

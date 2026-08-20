@@ -72,6 +72,8 @@ function makeService(
       }),
     },
     rentNoticeEvent: { create: jest.fn().mockResolvedValue({}) },
+    // #518 — cancelNotice läser krediteringarna före annulleringen.
+    rentNoticeCredit: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)),
   }
 

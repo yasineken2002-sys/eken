@@ -148,6 +148,7 @@ describe('#326 F1 — fuzzy-filtrets egna regler är oförändrade', () => {
           consumptionAmount: new Decimal(0),
           miscChargeAmount: new Decimal(0),
           reminderFeeAmount: new Decimal(0),
+          credits: [],
         },
       ],
     })
@@ -188,6 +189,7 @@ describe('#326 F1 — avi-grenen är orörd', () => {
           consumptionAmount: new Decimal(0),
           miscChargeAmount: new Decimal(0),
           reminderFeeAmount: new Decimal(0),
+          credits: [],
         },
       ],
     })

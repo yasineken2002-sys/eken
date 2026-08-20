@@ -37,6 +37,7 @@ function completeNotice(over: Record<string, unknown> = {}) {
     miscChargeAmount: new Decimal(0),
     reminderFeeAmount: new Decimal(60),
     interestAccruedAmount: new Decimal(123.45),
+    credits: [],
     interestAccruedThrough: new Date('2026-06-22'),
     reminderPdfStorageKey: 'reminders/org-1/rn-1.pdf',
     tenant: {

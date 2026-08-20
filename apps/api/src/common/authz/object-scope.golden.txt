@@ -61,7 +61,7 @@ Unit                    updateMany  units/unit-status.sync.ts                   
 Unit                    delete      units/units.service.ts                                  A kedje-query
 Unit                    update      units/units.service.ts                                  A kedje-query
 
-## Form 2 — create (35 rader)
+## Form 2 — create (36 rader)
 
 AiMemoryTenant          createMany  common/ai-subjects/ai-subject-writer.ts                 INGEN UPPTÄCKT
 AiMessage               create      common/ai-subjects/ai-subject-writer.ts                 A kedje-query
@@ -89,6 +89,7 @@ MaintenanceComment      create      tenant-portal/tenant-portal.service.ts      
 MaintenanceImage        create      maintenance/maintenance.service.ts                      INGEN UPPTÄCKT
 PaymentReminder         create      notifications/payment-reminder.service.ts           ×2  INGEN UPPTÄCKT
 PaymentReminder         createMany  notifications/payment-reminder.service.ts               INGEN UPPTÄCKT
+RentNoticeCreditLine    createMany  avisering/rent-notice-credit.service.ts                 P förälder org-bunden  ← nästlad via RentNoticeCredit.lines
 RentNoticeEvent         create      avisering/rent-notice-events.service.ts                 INGEN UPPTÄCKT
 RentNoticeEvent         create      collections/rent-collection-export.service.ts       ×2  C scopat anrop
 RentNoticeEvent         create      webhooks/resend-webhook.service.ts                      INGEN UPPTÄCKT
@@ -162,6 +163,7 @@ PlatformRefreshToken            utanför: egen realm, scopas av tokenvärdet
 PlatformUser                    utanför: egen realm (PlatformGuard), ingen org-koppling
 ReferenceInterestRate           utanför: global referensdata (Riksbanken)
 RefreshToken                    utanför: auth-realm: scopas av tokenvärdet, inte av ett id
+RentNoticeCreditLine            förälder-scopad via RentNoticeCredit
 RentNoticeEvent                 förälder-scopad via RentNotice
 RentNoticeLine                  förälder-scopad via RentNotice
 RentNoticePayment               förälder-scopad via RentNotice

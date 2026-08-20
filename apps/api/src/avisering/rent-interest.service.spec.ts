@@ -23,6 +23,7 @@ const baseNotice = {
   consumptionAmount: new Decimal(0),
   reminderFeeAmount: new Decimal(60),
   interestAccruedAmount: new Decimal(0),
+  credits: [],
 }
 
 function makeService(
@@ -355,6 +356,7 @@ describe('crystallizeInterest', () => {
         ...baseNotice,
         dueDate: new Date('2026-06-15T00:00:00.000Z'),
         interestAccruedAmount: new Decimal(50),
+        credits: [],
       },
       rateFor: rateH1H2,
     })

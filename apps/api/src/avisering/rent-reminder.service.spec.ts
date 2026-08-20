@@ -286,6 +286,7 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
       reminderFeeAmount: new Decimal(60),
       // #344 — fälten restskulden räknas ur.
       interestAccruedAmount: new Decimal(0),
+      credits: [],
       type: 'RENT',
       payments: (opts.payments ?? []).map((a) => ({ amount: new Decimal(a) })),
       tenant: { type: 'INDIVIDUAL', email: 'g@x.se', firstName: 'Anna', lastName: 'A' },
@@ -492,6 +493,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
       miscChargeAmount: new Decimal(0),
       reminderFeeAmount: new Decimal(60),
       interestAccruedAmount: new Decimal(123.45),
+      credits: [],
       interestAccruedThrough: new Date('2026-06-22'),
       reminderPdfStorageKey: 'reminders/org-1/rn-1.pdf',
     }
@@ -786,6 +788,7 @@ describe('buildReminderPdfHtml — innehåll (lag 1981:739 5 §)', () => {
     reminderFeeAmount: new Decimal(60),
     // #344 — fälten restskulden räknas ur.
     interestAccruedAmount: new Decimal(0),
+    credits: [],
     type: 'RENT',
     payments: [],
     tenant: { type: 'INDIVIDUAL', firstName: 'Anna', lastName: 'Andersson' },

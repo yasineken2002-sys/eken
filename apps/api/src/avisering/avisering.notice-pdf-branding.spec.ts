@@ -37,6 +37,7 @@ function buildNotice(overrides: Record<string, unknown> = {}) {
     vatAmount: 0,
     consumptionAmount: 0,
     reminderFeeAmount: 0,
+    credits: [],
     totalDays: null,
     daysCharged: null,
     periodStart: null,

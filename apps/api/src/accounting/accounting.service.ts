@@ -2396,6 +2396,124 @@ export class AccountingService {
   // under `deposit-invoice:<depositId>`. Den posten reverseras av
   // reverseJournalEntryForDepositAccrual ovan, som cancelNotice anropar separat.
   // No-op:en här är alltså korrekt — men bara för att någon annan tar den posten.
+  /**
+   * #518 — VERIFIKATET FÖR EN KREDITERING AV EN HYRESAVI.
+   *
+   *   39xx D  krediterat belopp        (intäkten sätts ned)
+   *   1510 K  krediterat belopp        (kundfordran krymper)
+   *
+   * ── KONTONA LÄSES UR ORIGINALVERIFIKATET, DE HÄRLEDS ALDRIG PÅ NYTT ────────
+   *
+   * Det här är metodens viktigaste egenskap. `createJournalEntryForRentNotice`
+   * väljer intäktskonto via `revenueAccountForUnitType(lease.unit.type)`, och
+   * förbruknings- respektive övriga debiteringar bokförs av HELT andra vägar
+   * (3920/3970 resp. 3990). Skulle krediteringen härleda kontot en andra gång
+   * behöver bara en av dessa vägar ändra sig — eller lägenhetens typ hinna
+   * ändras mellan avisering och kreditering — för att intäkten ska sättas ned på
+   * ett konto den aldrig bokfördes på. Saldot per konto blir då fel åt två håll
+   * samtidigt, medan verifikatet balanserar och alltså inte fälls av någon
+   * kontroll.
+   *
+   * Genom att spegla originalet kan krediteringen per konstruktion inte träffa
+   * ett konto originalet inte använde.
+   *
+   * ── FAIL-CLOSED PÅ ALLT SOM INTE ÄR EN REN TVÅRADIG POST ──────────────────
+   *
+   * Saknas originalverifikatet kastar vi (samma hållning som T5 A2b:s
+   * `MissingAccrualError` i nedskrivningen: en fordran som aldrig bokförts kan
+   * inte sättas ned). Har originalet fler än en intäktsrad bär posten moms eller
+   * en uppdelning vi inte kan fördela utan att fatta ett momsbeslut — och det
+   * beslutet ligger hos revisor/jurist (#370, #535 fråga 2). Skrivvägen spärrar
+   * redan momsbärande poster; kontrollen här är andra lagret, för det fall en
+   * framtida anropare når hit utan att ha gått genom spärren.
+   */
+  async createJournalEntryForRentNoticeCredit(
+    credit: {
+      id: string
+      amount: Decimal | number
+      creditedAt: Date
+      lines: Array<{ amount: Decimal | number; sourceId: string; description: string }>
+    },
+    notice: { id: string; noticeNumber: string },
+    organizationId: string,
+    createdById: string | null,
+    // ALLTID atomisk: krediteringen och dess verifikat skapas i samma
+    // transaktion. Faller bokföringen ska nedsättningen inte finnas.
+    tx: Prisma.TransactionClient,
+  ) {
+    const receivable = await tx.account.findFirst({
+      where: { organizationId, number: 1510 },
+      select: { id: true },
+    })
+    if (!receivable) {
+      throw new UnprocessableEntityException(
+        `Kontoplanen saknar konto 1510 — kreditering av avi ${notice.noticeNumber} kan inte bokföras`,
+      )
+    }
+
+    const lines: JournalLineInput[] = []
+    for (const rad of credit.lines) {
+      const original = await tx.journalEntry.findFirst({
+        where: { organizationId, sourceId: rad.sourceId },
+        include: { lines: true },
+      })
+      if (!original) {
+        throw new UnprocessableEntityException(
+          `Posten som ska krediteras på avi ${notice.noticeNumber} saknar bokfört underlag ` +
+            `(${rad.sourceId}). En fordran som aldrig bokförts kan inte sättas ned — ` +
+            'bokföringen måste repareras först.',
+        )
+      }
+
+      // Intäktssidan = allt som INTE är kundfordringskontot. Exakt en rad
+      // förväntas; fler betyder moms eller en uppdelning vi inte får fördela.
+      const intäktsrader = original.lines.filter((l) => l.accountId !== receivable.id)
+      if (intäktsrader.length !== 1 || !intäktsrader[0]) {
+        throw new UnprocessableEntityException(
+          `Posten som ska krediteras på avi ${notice.noticeNumber} har ${intäktsrader.length} ` +
+            'intäktsrader i sitt verifikat. En kreditering av en momsbärande eller uppdelad ' +
+            'post kräver ett momsbeslut som inte är fattat — hantera den manuellt.',
+        )
+      }
+
+      lines.push({
+        accountId: intäktsrader[0].accountId,
+        debit: Number(rad.amount),
+        description: `Kreditering: ${rad.description}`,
+      })
+      lines.push({
+        accountId: receivable.id,
+        credit: Number(rad.amount),
+        description: `Kreditering avi ${notice.noticeNumber}`,
+      })
+    }
+
+    return this.createNumberedEntry({
+      organizationId,
+      // Dagens datum, aldrig avins period. En rättelse är en bokföring och ska
+      // träffa periodspärren som vilken annan post som helst — samma regel som
+      // `createReversalEntry` följer, och av samma skäl.
+      date: credit.creditedAt,
+      description: `Kreditering av hyresavi ${notice.noticeNumber}`,
+      source: 'INVOICE',
+      // EGEN NAMNRYMD. `rent-notice:<id>` bär avins accrual och
+      // `rent-notice-reversal:<id>` dess annullering; krediteringen får en tredje
+      // så att ingen av de befintliga reverseringsvägarna kan råka träffa den.
+      // Nyckeln är per KREDITERING, inte per avi — en avi kan krediteras flera
+      // gånger, och varje gång är en egen affärshändelse.
+      sourceId: `rent-notice-credit:${credit.id}`,
+      createdById,
+      lines,
+      idempotencyWhere: {
+        organizationId,
+        source: 'INVOICE',
+        sourceId: `rent-notice-credit:${credit.id}`,
+      },
+      include: { lines: { include: { account: true } } },
+      tx,
+    })
+  }
+
   async reverseJournalEntryForRentNotice(
     noticeId: string,
     organizationId: string,

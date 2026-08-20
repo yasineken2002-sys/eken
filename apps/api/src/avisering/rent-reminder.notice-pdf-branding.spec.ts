@@ -38,6 +38,7 @@ const NOTICE = {
   reminderFeeAmount: 60,
   // #344 — fälten restskulden räknas ur.
   interestAccruedAmount: 0,
+  credits: [],
   type: 'RENT',
   payments: [],
   tenant: { type: 'INDIVIDUAL', firstName: 'Anna', lastName: '& Co <x>', companyName: null },

@@ -327,6 +327,13 @@ enum RentNoticeEventType {
   // dokumentets status ändras, så utan en sökbar händelse är åtgärden osynlig
   // i historiken. Eftergift (G4b) får en egen typ när kontot är avgjort.
   REMINDER_FEE_REVERSED
+  // #518 — kreditering (nedsättning) av avin. EGEN TYP, inte NOTE_ADDED med en
+  // action-flagga, av exakt samma skäl som PAYMENT_REVERSED och
+  // REMINDER_FEE_REVERSED ovan: `@@index([rentNoticeId, type])` gör en
+  // förstklassig typ sökbar, medan en payload-diskriminerad NOTE_ADDED bara går
+  // att hitta genom att läsa JSON i varje rad. En nedsättning som inte går att
+  // fråga efter är svår att granska (BFL 5 kap 11 §).
+  CREDITED
   NOTE_ADDED
 }
 
@@ -717,6 +724,7 @@ model Organization {
   maintenanceTicketSequence MaintenanceTicketSequence?
   journalEntrySequences JournalEntrySequence[]
   rentNoticeNumberSequences RentNoticeNumberSequence[]
+  rentNoticeCredits         RentNoticeCredit[]
   tenantOcrSequence  TenantOcrSequence?
   invoiceNumberSequence InvoiceNumberSequence?
   deposits           Deposit[]
@@ -3003,6 +3011,13 @@ model RentNotice {
   // allokering är härledd data, inte verifikat — själva verifikatet (JournalEntry)
   // är räkenskapsinformationen och rörs aldrig av den här tabellen.
   payments         RentNoticePayment[]
+  // #518 — krediteringar (nedsättningar) av avin. SYSKON TILL `payments`, av
+  // samma skäl som `credited` hålls skilt från `paid` i `computeRentDebt`: en
+  // kreditering är inte en betalning. Inga pengar har kommit in, och
+  // bankavstämningen ska aldrig kunna hitta en allokering som ingen
+  // banktransaktion motsvarar. Båda drar ned samma fordran, av olika skäl, och
+  // den skillnaden måste synas i varje yta som visar varför skulden krympt.
+  credits          RentNoticeCredit[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3060,6 +3075,10 @@ model RentNoticeLine {
   rentNotice        RentNotice         @relation(fields: [rentNoticeId], references: [id], onDelete: Cascade)
   consumptionCharge ConsumptionCharge? @relation(fields: [consumptionChargeId], references: [id])
   miscCharge        MiscCharge?        @relation(fields: [miscChargeId], references: [id], onDelete: Restrict)
+  // #518 — kreditrader som avser just den här avi-raden. Kopplingen är det som
+  // gör radnivå-taket KUMULATIVT: utan den kan samma 1 000-kronorsrad krediteras
+  // med 1 000 kr i två separata krediteringar, var för sig inom taket.
+  creditLines       RentNoticeCreditLine[]
 
   @@index([rentNoticeId])
 }
@@ -3158,6 +3177,107 @@ model RentNoticePayment {
 
   @@unique([bankTransactionId, rentNoticeId])
   @@index([rentNoticeId])
+}
+
+/// #518 — KREDITERING AV EN HYRESAVI (nedsättning).
+///
+/// EGEN TABELL, INTE EN RentNotice-RAD. Fakturasidan modellerar kreditnotan som
+/// en `Invoice` med `isCreditNote = true` (#517), men den formen går inte att
+/// kopiera hit utan att luckra upp tre lås som bär andra garantier:
+///
+///   • `@@unique([leaseId, year, month, type])` är idempotensvakten mot
+///     dubbel-avisering — det sämsta stället i schemat att öppna.
+///   • `RentNotice.ocrNumber` är NOT NULL, så fakturasidans "kreditnotan får
+///     inget betal-OCR" kräver en migration av ett fält varje avi bär.
+///   • `RentNoticeStatus` saknar `DRAFT`, som är det fakturasidan använder för
+///     att hålla kreditnotan utanför `markOverdueInvoices` och därmed hela
+///     kravtrappan.
+///
+/// AVI-SIDAN MODELLERAR REDAN PENGAR-IN SOM EN BARNTABELL (`RentNoticePayment`).
+/// Att modellera pengar-ut likadant är följdriktigt: `computeRentDebt` får en
+/// `credits`-array precis som den redan har `allocations`.
+///
+/// EN KOLUMN `creditedAmount` PÅ AVIN VORE FEL FORM. Det upprepar
+/// `paidAmount`-cachens misstag som bankavstämnings-härdningen arbetat bort — ett
+/// lagrat gissningsvärde i stället för ett beräknat tillstånd — och ger varken
+/// radnivå, flerkreditering eller ett skäl per kreditering.
+///
+/// APPEND-ONLY: ingen `updatedAt`. En kreditering är en bokförd affärshändelse
+/// och rättas genom en ny händelse, aldrig genom att skriva om den gamla —
+/// samma hållning som `RentNoticeEvent` och `RentNoticePayment`.
+///
+/// AVGRÄNSNING: kreditering av en BETALD eller DELBETALD avi ingår INTE. Den ger
+/// ett tillgodohavande till hyresgästen — en skuld på ett 2xxx-konto som inte är
+/// fastställt och som i praktiken låses av den första kreditering som bokförs.
+/// Frågan ligger hos revisor (#535). Spärren finns i tjänstelagret.
+model RentNoticeCredit {
+  id             String @id @default(uuid())
+  organizationId String
+  rentNoticeId   String
+
+  /// Krediterat BRUTTObelopp = Σ av kreditradernas belopp. Speglar
+  /// `Invoice.total` på fakturasidans kreditnota: dokumentets egen summa.
+  /// Invarianten (Σ rader == amount) tvingas i tjänstelagret och vaktas av
+  /// rent-notice-credit-guard.spec.ts — Prisma kan inte uttrycka den.
+  amount Decimal @db.Decimal(10, 2)
+
+  /// Skälet till nedsättningen, skrivet av operatören. OBLIGATORISKT: en
+  /// kreditering utan skäl går inte att granska i efterhand, och det är hela
+  /// poängen med att skilja den från en annullering (`CANCELLED`).
+  reason String
+
+  /// Krediteringens datum — verifikatets datum. Skilt från `createdAt`, som är
+  /// när raden skrevs.
+  creditedAt DateTime
+
+  /// Vem som krediterade. STRÄNG UTAN FRÄMMANDE NYCKEL, samma form som
+  /// `InvoiceEvent.actorId` och `RentNoticeEvent.actorId`: en raderad användare
+  /// får inte kunna blockera eller kaskadradera räkenskapsinformation.
+  createdById String?
+
+  createdAt DateTime @default(now())
+
+  /// Bokföringslagen (1999:1078): en kreditering är räkenskapsinformation och
+  /// bevaras 7 år. Restrict på båda relationerna — varken organisationen eller
+  /// avin får försvinna under en kreditering som hänvisar till dem. Samma
+  /// hållning som `creditedInvoiceId` på fakturasidan.
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  rentNotice   RentNotice   @relation(fields: [rentNoticeId], references: [id], onDelete: Restrict)
+
+  lines RentNoticeCreditLine[]
+
+  @@index([organizationId])
+  /// Uppslagning avi → krediteringar. Den vägen går varje skuldberäkning.
+  @@index([rentNoticeId])
+}
+
+/// #518 — en enskild post i en kreditering.
+///
+/// `rentNoticeLineId` är NULLBART, och nullvärdet betyder HYRESKAPITALET.
+/// Skälet är att avins kapital inte är en `RentNoticeLine`: `RentNoticeLine`
+/// finns bara för förbruknings- (IMD) och övriga debiteringsposter, medan hyran
+/// själv bor i `RentNotice.totalAmount`. En kreditering måste kunna avse båda,
+/// och en påhittad "kapitalrad" hade ändrat betydelsen av en tabell som andra
+/// vägar redan läser.
+model RentNoticeCreditLine {
+  id                 String  @id @default(uuid())
+  rentNoticeCreditId String
+  /// null = hyreskapitalet (`RentNotice.totalAmount`), annars den avi-rad som
+  /// krediteras. Restrict: originalraden får inte försvinna under en kreditering
+  /// som hänvisar till den.
+  rentNoticeLineId   String?
+
+  description String
+  amount      Decimal @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+
+  credit         RentNoticeCredit @relation(fields: [rentNoticeCreditId], references: [id], onDelete: Cascade)
+  rentNoticeLine RentNoticeLine?  @relation(fields: [rentNoticeLineId], references: [id], onDelete: Restrict)
+
+  @@index([rentNoticeCreditId])
+  /// Radnivå-takets kumulativa summering går den här vägen.
+  @@index([rentNoticeLineId])
 }
 
 // Ursprunget för en betalningsallokering. BANK_RECONCILIATION = matchad mot en

@@ -60,6 +60,8 @@ function makeService(transaction: unknown, statusInsideTx?: string) {
       findFirst: jest.fn().mockResolvedValue(null),
     },
     bankTransaction: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    // #518 — krediteringarna läses på samma vägar som allokeringarna.
+    rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       // #326 D — allokeringens id läses FÖRE raderingen (verifikatets nyckel).
       // XOR: en fakturamatchad transaktion har ingen avi-allokering, och tvärtom.

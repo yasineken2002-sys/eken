@@ -55,6 +55,14 @@ const byOrg = (ids: string[]) => ({ organizationId: { in: ids } })
  * den raderas sist av `deleteOrganizations` och tar kaskad-tabellerna med sig.
  */
 export const DELETION_STEPS: readonly Step[] = [
+  // #518 — MÅSTE ligga före både RentNoticeLine och RentNotice.
+  //
+  // `RentNoticeCredit` är Restrict mot Organization OCH mot RentNotice, och dess
+  // barn `RentNoticeCreditLine` är Restrict mot RentNoticeLine. Barnet raderas av
+  // kaskaden härifrån (Cascade mot föräldern), och det är den kaskaden som
+  // släpper låset på avi-raden — därför räcker ETT steg, men bara på rätt plats.
+  // Läggs det efter RentNoticeLine faller raderingen på en främmande nyckel.
+  { model: 'RentNoticeCredit', restrictAgainst: 'Organization, RentNotice', where: byOrg },
   // Fyra tabeller saknar organizationId och nås via sin förälder.
   {
     model: 'RentNoticeLine',

@@ -63,6 +63,9 @@ type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
     tenant: { select: typeof SAFE_TENANT_SELECT }
     lease: { include: { unit: { include: { property: true } } } }
     lines: true
+    // #518 — typen är spärren: utan `credits` i queryn typcheckar inte
+    // `rentNoticePayableTotal`, som dokumentet och mejlet båda läser.
+    credits: { select: { amount: true } }
   }
 }>
 
@@ -914,6 +917,10 @@ export class AviseringService {
         tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
         lines: true,
+        // #518 — avi-dokumentet och dess mejl ska visa det NEDSATTA beloppet.
+        // En avi som krediterats och sedan skickas om (FAILED-omsändning) hade
+        // annars burit ett OCR-belopp som är högre än fordran.
+        credits: { select: { amount: true } },
       },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
@@ -987,6 +994,10 @@ export class AviseringService {
         tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
         lines: true,
+        // #518 — avi-dokumentet och dess mejl ska visa det NEDSATTA beloppet.
+        // En avi som krediterats och sedan skickas om (FAILED-omsändning) hade
+        // annars burit ett OCR-belopp som är högre än fordran.
+        credits: { select: { amount: true } },
       },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
@@ -1695,6 +1706,15 @@ export class AviseringService {
           where: { rentNoticeId: noticeId },
           select: { amount: true },
         })
+        // #518 — krediteringarna läses INNANFÖR radlåset, av exakt samma skäl
+        // som allokeringarna: annars kan en kreditering skrivas mellan läsningen
+        // och beslutet, och överbetalningsspärren nedan prövas mot en skuld som
+        // just krympt. Utan dem hade dessutom en delbetalning av en krediterad
+        // avi aldrig kunnat reglera den (ocrOutstanding hade räknats på brutto).
+        const priorCredits = await tx.rentNoticeCredit.findMany({
+          where: { rentNoticeId: noticeId },
+          select: { amount: true },
+        })
         const debtGrund = {
           type: låst.type,
           totalAmount: låst.totalAmount,
@@ -1702,6 +1722,7 @@ export class AviseringService {
           miscChargeAmount: låst.miscChargeAmount,
           reminderFeeAmount: låst.reminderFeeAmount,
           interestAccruedAmount: låst.interestAccruedAmount,
+          credits: priorCredits.map((c) => c.amount),
         }
 
         // ── H4: ÖVERBETALNING AVVISAS ───────────────────────────────────────
@@ -1975,6 +1996,41 @@ export class AviseringService {
       )
     }
 
+    // ── EN KREDITERAD AVI KAN INTE ANNULLERAS UNDER SIG SJÄLV (#518) ─────────
+    //
+    // SAMMA PENNINGFEL SOM OVAN, ANDRA NAMNRYMDEN — och exakt den omvända
+    // riktning som #517 fick rättad på fakturasidan efter en maskinell
+    // bokföringsgranskning. `assessRentNoticeCreditability` spärrar att
+    // KREDITERA en annullerad avi; utan raden här var bara den ena riktningen
+    // stängd.
+    //
+    // `reverseJournalEntryForRentNotice` speglar originalverifikatet
+    // (`rent-notice:<id>`) OVILLKORLIGT och vet ingenting om krediteringens
+    // verifikat, som ligger under `rent-notice-credit:<id>`. En annullering
+    // ovanpå en delkreditering reverserar därför det redan krediterade beloppet
+    // en ANDRA gång:
+    //
+    //   avisering        1510 D 10 000  /  39xx K 10 000
+    //   kreditering 3 000  39xx D  3 000  /  1510 K  3 000
+    //   annullering        39xx D 10 000  /  1510 K 10 000
+    //   → 1510 = −3 000 och 39xx = −3 000
+    //
+    // En negativ kundfordran som inte går att stämma av mot reskontran, och en
+    // intäkt med fel tecken utan motsvarande affärshändelse. Varje enskilt
+    // verifikat balanserar — felet uppstår först i SEKVENSEN, vilket är precis
+    // därför ingen verifikat-kontroll fångar det.
+    const redanKrediterad = await this.prisma.rentNoticeCredit.findFirst({
+      where: { rentNoticeId: noticeId },
+      select: { id: true },
+    })
+    if (redanKrediterad) {
+      throw new BadRequestException(
+        `Avi ${notice.noticeNumber} kan inte annulleras — den har redan krediterats. ` +
+          'En annullering reverserar hela ursprungsbeloppet ovanpå krediteringen och gör ' +
+          'både kundfordran och intäkten fel. Kreditera återstoden i stället.',
+      )
+    }
+
     // Statusflip + motverifikat körs ATOMISKT. Intäkten bokades vid avi-genereringen
     // (1510 D / 39xx K / ev. 26xx K); en annullering MÅSTE reversera den, annars
     // kvarstår fantomintäkt + utgående moms (BFL 5 kap 5 §/9 §). Faller reverseringen
@@ -2046,6 +2102,16 @@ export class AviseringService {
           // fönstret verkningslöst: hann nedskrivningen före oss matchar inga rader.
           probableLossAt: null,
           writtenOffAt: null,
+          // #518 — krediteringsgrinden behöver samma TOCTOU-lager som
+          // nedskrivningen ovan, och av samma skäl: förläsningen sker utanför
+          // transaktionen, och en kreditering kan hinna skrivas emellan.
+          //
+          //   T1 (cancelNotice) läser avin — inga krediteringar, släpps igenom
+          //   T2 (createCredit) låser, bokför 39xx D / 1510 K, commit
+          //   T1 annullerar ändå → 1510 krediteras en andra gång
+          //
+          // `none: {}` matchar raden bara om den saknar krediteringar helt.
+          credits: { none: {} },
         },
         data: { status: RentNoticeStatus.CANCELLED, collectionStage: RentCollectionStage.NONE },
       })
@@ -2064,8 +2130,17 @@ export class AviseringService {
             // från "reglerad". Utan den föll båda ihop i ett besked som var fel
             // i det ena fallet.
             status: true,
+            // #518 — fjärde skälet: en kreditering vann kapplöpningen.
+            credits: { select: { id: true }, take: 1 },
           },
         })
+        if (aktuell && aktuell.credits.length > 0) {
+          throw new BadRequestException(
+            `Avi ${aktuell.noticeNumber} kan inte annulleras — den har redan krediterats. ` +
+              'En annullering reverserar hela ursprungsbeloppet ovanpå krediteringen och gör ' +
+              'både kundfordran och intäkten fel. Kreditera återstoden i stället.',
+          )
+        }
         if (aktuell && (aktuell.probableLossAt != null || aktuell.writtenOffAt != null)) {
           throw new ConflictException(
             `Avi ${aktuell.noticeNumber} skrevs ned som kundförlust under annulleringen — ` +
@@ -2342,7 +2417,11 @@ export class AviseringService {
 
     const notice = await this.prisma.rentNotice.findFirst({
       where: { id: noticeId, organizationId: orgId },
-      include: { payments: { select: { amount: true } } },
+      include: {
+        payments: { select: { amount: true } },
+        // #518 — se den aritmetiska gränsen nedan.
+        credits: { select: { amount: true } },
+      },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
 
@@ -2367,11 +2446,17 @@ export class AviseringService {
     // Överskottet kan inte bokföras (#378 — klampningen gör det osynligt).
     // Meddelandet förklarar det för hyresvärden utan att nämna ärendenumret;
     // spåret hör hemma här, inte i produkten.
+    // #518 — krediteringen dras av. Utan avdraget blir taket för HÖGT och
+    // grinden alltså för TILLÅTANDE: en avgiftsstrykning på en krediterad avi
+    // hade kunnat släppas igenom trots att den skapar just den överbetalning
+    // kontrollen finns för att förhindra.
+    const credited = notice.credits.reduce((sum, c) => sum + Number(c.amount), 0)
     const ocrGross =
       Number(notice.totalAmount) +
       Number(notice.consumptionAmount) +
       Number(notice.miscChargeAmount) +
-      fee
+      fee -
+      credited
     const paid = notice.payments.reduce((sum, p) => sum + Number(p.amount), 0)
     const takWithoutFee = round2(ocrGross - fee)
     if (paid > takWithoutFee) {

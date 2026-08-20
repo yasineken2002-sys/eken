@@ -36,6 +36,7 @@ function makeService(opts: { ocrTräff?: boolean; fuzzyKandidat?: boolean } = {}
     consumptionAmount: dec(0),
     miscChargeAmount: dec(0),
     reminderFeeAmount: dec(0),
+    credits: [],
   }
   const txMock = {
     $queryRaw: jest.fn().mockResolvedValue([]),
@@ -52,9 +53,12 @@ function makeService(opts: { ocrTräff?: boolean; fuzzyKandidat?: boolean } = {}
         miscChargeAmount: dec(0),
         reminderFeeAmount: dec(0),
         interestAccruedAmount: dec(0),
+        credits: [],
       }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
+    // #518 — krediteringarna läses på samma vägar som allokeringarna.
+    rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({ id: 'rnp-1' }),

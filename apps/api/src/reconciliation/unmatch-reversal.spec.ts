@@ -52,6 +52,7 @@ function makeService(opts: {
               miscChargeAmount: 0,
               reminderFeeAmount: 0,
               interestAccruedAmount: 0,
+              credits: [],
             }
           : opts.noticeRow,
       ),
@@ -59,6 +60,8 @@ function makeService(opts: {
     bankTransaction: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     // Bankavstämnings-härdning PR 1/3b — allokeringen städas i samma transaktion;
     // findMany läser KVARVARANDE allokeringar för paidAmount-omräkningen.
+    // #518 — krediteringarna läses på samma vägar som allokeringarna.
+    rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       // H3 PR A: #326 D:s läsning FÖRE raderingen är nu findMany (flera möjliga
@@ -211,6 +214,7 @@ describe('ReconciliationService.unmatchTransaction — partiell unmatch (PR 3b)'
         miscChargeAmount: 0,
         reminderFeeAmount: 0,
         interestAccruedAmount: 0,
+        credits: [],
       },
     })
 
@@ -253,6 +257,7 @@ describe('ReconciliationService.unmatchTransaction — partiell unmatch (PR 3b)'
         miscChargeAmount: 0,
         reminderFeeAmount: 0,
         interestAccruedAmount: 0,
+        credits: [],
       },
     })
 

@@ -64,15 +64,19 @@ function makeService(
         claimWhere.push(args.where)
         return Promise.resolve({ count: opts.claimCount ?? 1 })
       }),
-      findFirst: jest
-        .fn()
-        .mockResolvedValue(
-          opts.rowEfterClaim === undefined
-            ? { probableLossAt: null, writtenOffAt: null, noticeNumber: notice.noticeNumber }
-            : opts.rowEfterClaim === null
-              ? null
-              : { ...opts.rowEfterClaim, noticeNumber: notice.noticeNumber },
-        ),
+      findFirst: jest.fn().mockResolvedValue(
+        // #518 — omläsningen efter claimen selekterar även krediteringarna.
+        opts.rowEfterClaim === undefined
+          ? {
+              probableLossAt: null,
+              writtenOffAt: null,
+              noticeNumber: notice.noticeNumber,
+              credits: [],
+            }
+          : opts.rowEfterClaim === null
+            ? null
+            : { ...opts.rowEfterClaim, noticeNumber: notice.noticeNumber, credits: [] },
+      ),
     },
     deposit: { findFirst: jest.fn().mockResolvedValue(null) },
     // F+E: charges lossas vid annullering. Ingen charge i de här fallen.
@@ -87,6 +91,8 @@ function makeService(
   const prisma = {
     rentNotice: { findFirst: jest.fn().mockResolvedValue(notice) },
     rentNoticeEvent: { create: jest.fn().mockResolvedValue({}) },
+    // #518 — cancelNotice läser krediteringarna före annulleringen.
+    rentNoticeCredit: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)),
   }
 

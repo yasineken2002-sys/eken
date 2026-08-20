@@ -35,6 +35,8 @@ function makeService(
 ) {
   const order: string[] = []
   const tx = {
+    // #518 — krediteringarna läses på samma vägar som allokeringarna.
+    rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       deleteMany: jest.fn(() => {
         order.push('delete:rentNoticePayment')
@@ -69,6 +71,7 @@ function makeService(
         miscChargeAmount: new Decimal(0),
         reminderFeeAmount: new Decimal(0),
         interestAccruedAmount: new Decimal(0),
+        credits: [],
       }),
     },
     bankTransaction: {

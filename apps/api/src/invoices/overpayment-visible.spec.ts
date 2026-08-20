@@ -116,10 +116,11 @@ describe('#378 — KRAVTRAPPAN ÄNDRAR INTE BETEENDE', () => {
     miscChargeAmount: 0,
     reminderFeeAmount: 0,
     interestAccruedAmount: 0,
+    credits: [],
   }
 
   it('ÖVERBETALD avi kan inte eskalera: ocrOutstanding = 0 (grindens fält)', () => {
-    const d = computeRentDebt({ ...bas, allocations: [10_500] })
+    const d = computeRentDebt({ ...bas, allocations: [10_500], credits: [] })
     expect(d.ocrOutstanding).toBe(0)
     expect(d.outstanding).toBe(0)
     // ... och signalen finns kvar, bredvid.
@@ -127,14 +128,14 @@ describe('#378 — KRAVTRAPPAN ÄNDRAR INTE BETEENDE', () => {
   })
 
   it('OBETALD avi eskalerar precis som förut: ocrOutstanding > 0', () => {
-    const d = computeRentDebt({ ...bas, allocations: [] })
+    const d = computeRentDebt({ ...bas, allocations: [], credits: [] })
     expect(d.ocrOutstanding).toBe(10_000)
     expect(d.outstanding).toBe(10_000)
     expect(d.overpaid).toBe(0)
   })
 
   it('DELBETALD avi eskalerar på restskulden, inte på bruttot', () => {
-    const d = computeRentDebt({ ...bas, allocations: [4_000] })
+    const d = computeRentDebt({ ...bas, allocations: [4_000], credits: [] })
     expect(d.ocrOutstanding).toBe(6_000)
     expect(d.overpaid).toBe(0)
   })

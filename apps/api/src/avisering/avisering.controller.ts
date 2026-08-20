@@ -17,6 +17,7 @@ import { AviseringService } from './avisering.service'
 import { AviseringScheduler } from './avisering.scheduler'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentBadDebtService } from './rent-bad-debt.service'
+import { RentNoticeCreditService } from './rent-notice-credit.service'
 import { ReverseReminderFeeDto } from './dto/reverse-reminder-fee.dto'
 import { impersonatorOf } from '../common/auth/impersonation'
 import { RentBackfillService } from './rent-backfill.service'
@@ -24,6 +25,7 @@ import { GenerateNoticesDto } from './dto/generate-notices.dto'
 import { SendNoticesDto } from './dto/send-notices.dto'
 import { MarkPaidDto } from './dto/mark-paid.dto'
 import { ConfirmBackfillDto } from './dto/confirm-backfill.dto'
+import { CreateRentNoticeCreditDto } from './dto/create-rent-notice-credit.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
@@ -39,6 +41,7 @@ export class AviseringController {
     private readonly rentNoticeEvents: RentNoticeEventsService,
     private readonly badDebt: RentBadDebtService,
     private readonly backfill: RentBackfillService,
+    private readonly credits: RentNoticeCreditService,
   ) {}
 
   // ── T1.4 / #44 — efterdebitering (bakdaterad debitering) ───────────────────
@@ -239,6 +242,31 @@ export class AviseringController {
       user.sub,
       impersonatorOf(user),
     )
+  }
+
+  // ── #518 — KREDITERING AV HYRESAVI (nedsättning) ─────────────────────────
+  //
+  // Underlaget krediteringsvyn förfyller sig från: vad som återstår att
+  // kreditera per post, och om kreditering alls är möjlig. Läsning — SAMMA
+  // rollnivå som själva krediteringen, så att knappen inte visas för någon som
+  // ändå inte får utföra den.
+  @Get(':id/credit/preview')
+  @Roles(UserRole.ACCOUNTANT, UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
+  async creditPreview(@Param('id') id: string, @OrgId() orgId: string) {
+    return this.credits.getPreview(id, orgId)
+  }
+
+  // Nedsättning av en OBETALD avi. Kreditering av en betald avi är spärrad i
+  // tjänsten och kräver ett kontobeslut som inte är fattat.
+  @Post(':id/credit')
+  @Roles(UserRole.ACCOUNTANT, UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
+  async createCredit(
+    @Param('id') id: string,
+    @OrgId() orgId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateRentNoticeCreditDto,
+  ) {
+    return this.credits.createCredit(id, orgId, user.sub, dto)
   }
 
   @Post(':id/bad-debt/probable')

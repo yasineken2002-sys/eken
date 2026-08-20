@@ -70,6 +70,13 @@ const REMINDER_NOTICE_INCLUDE = {
   // `ocrOutstanding` några rader tidigare, just för att avgöra om påminnelsen
   // ska skickas alls — och skickade sedan bruttot ändå.
   payments: { select: { amount: true } },
+  // ── #518: OCH INTE HELLER UTAN KREDITERINGARNA ───────────────────────────
+  //
+  // Exakt samma defekt en nivå till: krediterades 3 000 av 9 000 hade brevet
+  // krävt 9 000 för en fordran hyresgästen bevisligen inte har. Krediteringen
+  // redovisas som en EGEN avdragsrad i brevet, skild från betalningen — en
+  // nedsättning och en inbetalning säger olika saker till mottagaren.
+  credits: { select: { amount: true } },
 } satisfies Prisma.RentNoticeInclude
 
 type ReminderNotice = Prisma.RentNoticeGetPayload<{ include: typeof REMINDER_NOTICE_INCLUDE }>
@@ -571,10 +578,23 @@ export class RentReminderService {
           interestAccruedAmount: true,
           interestAccruedThrough: true,
           reminderPdfStorageKey: true,
+          // #518 — kravsteget dokumenterar vad som drivs in, och det är netto
+          // efter kreditering. Payloaden är räkenskapsspår (BFL 5 kap 11 §):
+          // står bruttot där blir historiken oense med det underlag som faktiskt
+          // exporteras.
+          credits: { select: { amount: true } },
         },
       })
-      const capital =
-        Number(fresh.totalAmount) + Number(fresh.consumptionAmount) + Number(fresh.miscChargeAmount)
+      const credited = fresh.credits.reduce((sum, c) => sum + Number(c.amount), 0)
+      const capital = Math.max(
+        0,
+        round2(
+          Number(fresh.totalAmount) +
+            Number(fresh.consumptionAmount) +
+            Number(fresh.miscChargeAmount) -
+            credited,
+        ),
+      )
       const totalClaim = round2(
         capital + Number(fresh.reminderFeeAmount) + Number(fresh.interestAccruedAmount),
       )

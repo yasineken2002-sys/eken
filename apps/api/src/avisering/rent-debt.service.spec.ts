@@ -27,6 +27,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
+      credits: [],
       allocations: [],
     })
     expect(d).toEqual({
@@ -35,6 +36,8 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       miscCharge: 0,
       reminderFee: 0,
       interest: 0,
+      credited: 0,
+      interestOnlyAfterCredit: false,
       claim: 10_000,
       overpaid: 0,
       paid: 0,
@@ -51,6 +54,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 60,
       interestAccruedAmount: 32.5,
+      credits: [],
       allocations: [],
     })
     expect(d.capital).toBe(7_000)
@@ -71,6 +75,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       miscChargeAmount: 1_500, // skada/nyckel
       reminderFeeAmount: 60,
       interestAccruedAmount: 32.5,
+      credits: [],
       allocations: [],
     })
     expect(d.miscCharge).toBe(1_500)
@@ -92,6 +97,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       miscChargeAmount: 1_500,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
+      credits: [],
       allocations: [8_740], // 7000 + 240 + 1500
     })
     expect(d.ocrOutstanding).toBe(0)
@@ -106,6 +112,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
+      credits: [],
       allocations: [4_000, 1_500],
     })
     expect(d.paid).toBe(5_500)
@@ -121,6 +128,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
+      credits: [],
       allocations: [7_300],
     })
     expect(d.claim).toBe(0)
@@ -135,6 +143,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
+      credits: [],
       allocations: [5_500],
     })
     expect(d.paid).toBe(5_500)
@@ -152,6 +161,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
+      credits: [],
       allocations: [new Decimal('0.01')],
     })
     expect(d.claim).toBe(0.29)
@@ -166,6 +176,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
+      credits: [],
       allocations: [],
     })
     expect(d).toEqual({
@@ -174,6 +185,8 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       miscCharge: 0,
       reminderFee: 0,
       interest: 0,
+      credited: 0,
+      interestOnlyAfterCredit: false,
       claim: 0,
       overpaid: 0,
       paid: 0,
@@ -190,6 +203,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 60,
       interestAccruedAmount: '0',
+      credits: [],
       allocations: [new Decimal('310.50'), '0', 1_001],
     })
     // gross = 1000 + 250,50 + 60 = 1310,50 ; paid = 310,50 + 0 + 1001 = 1311,50
@@ -208,6 +222,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 60,
       interestAccruedAmount: 140,
+      credits: [],
       allocations: [],
     })
     expect(d.ocrOutstanding).toBe(7_300) // ränta (140) ingår INTE
@@ -222,6 +237,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 60,
       interestAccruedAmount: 140,
+      credits: [],
       allocations: [5_000],
     })
     expect(d.ocrOutstanding).toBe(2_060) // 7060 OCR − 5000
@@ -236,6 +252,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 60,
       interestAccruedAmount: 140,
+      credits: [],
       allocations: [7_060], // hela OCR-delen betald, räntan kvar
     })
     expect(d.ocrOutstanding).toBe(0) // ingen framdrift av kravtrappan
@@ -250,6 +267,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
+      credits: [],
       allocations: [7_500],
     })
     expect(d.ocrOutstanding).toBe(0)
@@ -263,6 +281,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
+      credits: [],
       allocations: [],
     })
     expect(d.ocrOutstanding).toBe(0)
@@ -278,6 +297,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 0,
       interestAccruedAmount: new Decimal('100.005'),
+      credits: [],
       allocations: [new Decimal('3000.005')],
     })
     // ocrGross 6999,995 − 3000,005 = 3999,99 (round2)
@@ -305,6 +325,7 @@ describe('PR1 · A — RentDebtService.outstanding (scopad läsare)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: new Decimal('0'),
       interestAccruedAmount: new Decimal('0'),
+      credits: [],
       payments: [{ amount: new Decimal('3000') }, { amount: new Decimal('2000') }],
     })
 
