@@ -139,7 +139,11 @@ describe('A — påminnelseavgiftens motverifikat', () => {
       'user-1',
     )
 
-    expect(findFirst).toHaveBeenCalledTimes(1)
+    // TVÅ uppslag sedan reverseringssymmetrin infördes: först avgiftens post,
+    // därefter createReversalEntrys förkontroll av om originalet REDAN är
+    // reverserat (av någon väg). Det som prövas här är det FÖRSTA — att nyckeln
+    // är (RENT_NOTICE, reminder-fee:<noticeId>) och inte fakturasidans.
+    expect(findFirst).toHaveBeenCalledTimes(2)
     const fråga = findFirst.mock.calls[0]![0] as { where: Record<string, unknown> }
     expect(fråga.where).toMatchObject({
       source: 'RENT_NOTICE',

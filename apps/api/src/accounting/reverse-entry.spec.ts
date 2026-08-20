@@ -21,8 +21,15 @@ import { AccountingService } from './accounting.service'
 interface RigOpts {
   /** Originalets rader. Decimal speglar hur Prisma faktiskt returnerar dem. */
   lines?: Array<{ accountId: string; debit?: number; credit?: number; description?: string }>
-  /** Redan rättat? Sätt till rättelsens nummer. */
-  reversedBy?: { series: string; verNumber: number } | null
+  /**
+   * Redan rättat? Sätt till rättelsens nummer.
+   *
+   * `sourceId` avgör VILKEN väg som reverserade posten, och därmed vilket
+   * besked operatören får. Default är den manuella namnrymden — det är den de
+   * befintliga fallen modellerar. En AUTOMATISK reversering (annullering,
+   * makulering) sätts genom att ange en annan namnrymd.
+   */
+  reversedBy?: { series: string; verNumber: number; sourceId?: string } | null
   /** Saknas originalet helt. */
   missing?: boolean
   /** allocate kastar (t.ex. stängd period). */
@@ -49,7 +56,7 @@ function makeRig(opts: RigOpts = {}) {
       credit: l.credit != null ? new Prisma.Decimal(l.credit) : null,
       description: l.description ?? null,
     })),
-    reversedBy: opts.reversedBy ?? null,
+    reversedBy: opts.reversedBy ? { sourceId: `entry-reversal:je-1`, ...opts.reversedBy } : null,
   }
 
   const $transaction = jest.fn(
@@ -260,7 +267,12 @@ describe('T5 PR1c2 · rättelse av verifikat', () => {
       prisma.journalEntry.findFirst = jest.fn((args: { where: Record<string, unknown> }) => {
         if (args.where.id != null) return Promise.resolve(original)
         if (args.where.reversalOfEntryId != null)
-          return Promise.resolve({ series: 'A', verNumber: 9 })
+          // Manuell mot manuell: vinnaren skriver SAMMA sourceId som förloraren
+          // skulle ha gjort. Förkontrollen i createReversalEntry ska därför inte
+          // fälla — det är P2002-vägen nedan som ska pröva sig fram och ge
+          // beskedet. Bär raden en ANNAN namnrymd är det en automatisk
+          // reversering, och då fälls den tidigare (eget test).
+          return Promise.resolve({ series: 'A', verNumber: 9, sourceId: 'entry-reversal:je-1' })
         return Promise.resolve(null)
       }) as never
 
@@ -288,6 +300,8 @@ describe('T5 PR1c2 · rättelse av verifikat', () => {
           id: 'je-rev-a',
           series: 'A',
           verNumber: 9,
+          // Samma namnrymd — se noten i SAMTIDIGHET-fallet ovan.
+          sourceId: 'entry-reversal:je-1',
           description: 'Rättelse av verifikat A7 (bokfört 2026-03-15): Nagon annans skal',
         })
       }) as never
@@ -307,7 +321,14 @@ describe('T5 PR1c2 · rättelse av verifikat', () => {
       const sameDescription = `Rättelse av verifikat A7 (bokfört 2026-03-15): ${REASON}`
       prisma.journalEntry.findFirst = jest.fn((args: { where: Record<string, unknown> }) => {
         if (args.where.id != null) return Promise.resolve(original)
-        return Promise.resolve({ id: 'x', series: 'A', verNumber: 9, description: sameDescription })
+        // Samma namnrymd — manuell mot manuell, se noten längre upp.
+        return Promise.resolve({
+          id: 'x',
+          series: 'A',
+          verNumber: 9,
+          sourceId: 'entry-reversal:je-1',
+          description: sameDescription,
+        })
       }) as never
 
       await expect(
