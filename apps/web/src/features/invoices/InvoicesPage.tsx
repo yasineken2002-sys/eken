@@ -524,7 +524,7 @@ export function InvoicesPage() {
                   // positivt belopp och betydelsen kommer från `isCreditNote`.
                   // Att lagra negativa belopp hade gjort varje summering till
                   // en fälla.
-                  <span className="font-semibold text-purple-700">
+                  <span className="font-semibold text-gray-800">
                     −{formatCurrency(Number(i.total))}
                   </span>
                 ) : (
@@ -543,7 +543,7 @@ export function InvoicesPage() {
                       vore ett direkt felaktigt påstående om ett bokfört
                       dokument. Dokumenttypen står här i stället. */}
                   {i.isCreditNote ? (
-                    <Badge variant="purple">Kreditnota</Badge>
+                    <Badge variant="default">Kreditnota</Badge>
                   ) : (
                     <InvoiceStatusBadge status={i.status} />
                   )}
@@ -687,12 +687,12 @@ export function InvoicesPage() {
               {/* #517 — ÄR DETTA EN KREDITNOTA? Visa vilken faktura den avser.
                   Utan den här rutan är dokumentet ett belopp utan sammanhang. */}
               {selectedFull?.creditedInvoice && (
-                <div className="rounded-xl border border-purple-100 bg-purple-50 p-3">
-                  <p className="flex items-center gap-1.5 text-[12px] font-semibold text-purple-700">
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                  <p className="flex items-center gap-1.5 text-[12px] font-semibold text-gray-700">
                     <CornerDownRight size={13} strokeWidth={1.8} />
                     Kreditnota
                   </p>
-                  <p className="mt-1 text-[12.5px] text-purple-800/90">
+                  <p className="mt-1 text-[12.5px] text-gray-600">
                     Avser faktura{' '}
                     <span className="font-mono font-medium">
                       {selectedFull.creditedInvoice.invoiceNumber}
@@ -732,7 +732,7 @@ export function InvoicesPage() {
                             {cn.reason ? ` · ${cn.reason}` : ''}
                           </p>
                         </div>
-                        <p className="ml-3 flex-shrink-0 text-[13.5px] font-medium text-purple-700">
+                        <p className="ml-3 flex-shrink-0 text-[13.5px] font-medium text-gray-800">
                           −{formatCurrency(Number(cn.total))}
                         </p>
                       </motion.button>

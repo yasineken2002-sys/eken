@@ -870,7 +870,7 @@ export function ImportPage() {
           <motion.div variants={item} className="lg:col-span-2">
             <div className="rounded-2xl border border-gray-100 bg-white p-5">
               <div className="mb-4 flex items-center gap-2">
-                <Scan size={16} className="text-purple-600" strokeWidth={1.8} />
+                <Scan size={16} className="text-blue-600" strokeWidth={1.8} />
                 <h2 className="text-[15px] font-semibold text-gray-900">Skanna kontrakt med AI</h2>
               </div>
               <ContractScannerPanel />

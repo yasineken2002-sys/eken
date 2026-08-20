@@ -49,7 +49,7 @@ function FileIcon({ mimeType }: { mimeType: string }) {
     return <FileText size={18} strokeWidth={1.8} className="text-green-600" />
   }
   if (mimeType.startsWith('image/')) {
-    return <Image size={18} strokeWidth={1.8} className="text-purple-500" />
+    return <Image size={18} strokeWidth={1.8} className="text-gray-400" />
   }
   return <File size={18} strokeWidth={1.8} className="text-gray-400" />
 }

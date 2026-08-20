@@ -46,6 +46,15 @@ const ANALYSIS_TYPES = [
     key: 'full',
     label: 'Full analys',
     icon: BarChart2,
+    // KVAR SOM LILA (#531). De fyra analystyperna är en KATEGORIPALETT där
+    // färgen är den primära skillnaden — och den varma paletten har bara tre
+    // särskiljbara kulörer att ge dem: neutral (revenue), grön (occupancy),
+    // gul (risks). Att göra den här brand-grön gjorde den PIXELIDENTISK med
+    // "Uthyrningsgrad", eftersom brand === statusSuccess (#1a6b3c). Upptäckt
+    // på skärmbild, inte av typecheck. Röd vore fel semantik för "Full analys".
+    // Kategoripaletter är ett eget designbeslut — se `chart-colors` i
+    // scripts/check-design-tokens.mjs. Modalens EGET krom (rubrikikon,
+    // vald-tillstånd, spinner) är däremot brand, som sig bör.
     color: 'text-purple-600',
     bg: 'bg-purple-50',
   },
@@ -129,8 +138,8 @@ export function AnalysisModal({ open, onClose }: AnalysisModalProps) {
             {/* Header */}
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-50">
-                  <BarChart2 size={14} strokeWidth={1.8} className="text-purple-600" />
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50">
+                  <BarChart2 size={14} strokeWidth={1.8} className="text-blue-600" />
                 </div>
                 <span className="text-[17px] font-semibold text-gray-900">Analysera portfölj</span>
               </div>
@@ -155,7 +164,7 @@ export function AnalysisModal({ open, onClose }: AnalysisModalProps) {
                     className={cn(
                       'flex flex-col items-center gap-2 rounded-xl border p-3 text-center transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50',
                       selectedType === t.key
-                        ? 'border-2 border-purple-300 bg-purple-50 shadow-sm'
+                        ? 'border-2 border-blue-300 bg-blue-50 shadow-sm'
                         : 'border-gray-100 hover:border-gray-300 hover:shadow-sm',
                     )}
                   >
@@ -176,7 +185,7 @@ export function AnalysisModal({ open, onClose }: AnalysisModalProps) {
                   animate={{ opacity: 1, y: 0 }}
                   className="mt-6 flex flex-col items-center justify-center gap-3 py-8"
                 >
-                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-purple-600 border-t-transparent" />
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
                   <p className="text-[13.5px] text-gray-500">AI:n analyserar din portfölj...</p>
                 </motion.div>
               )}
