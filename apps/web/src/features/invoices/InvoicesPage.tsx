@@ -12,6 +12,8 @@ import {
   Download,
   Mail,
   MailX,
+  Receipt,
+  CornerDownRight,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -19,9 +21,10 @@ import { Button } from '@/components/ui/Button'
 import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { Input, Select } from '@/components/ui/Input'
 import { DataTable } from '@/components/ui/DataTable'
-import { InvoiceStatusBadge } from '@/components/ui/Badge'
+import { InvoiceStatusBadge, Badge } from '@/components/ui/Badge'
 import { InvoiceTimeline } from './components/InvoiceTimeline'
 import { InvoiceForm } from './components/InvoiceForm'
+import { CreditNoteModal } from './components/CreditNoteModal'
 import {
   useInvoices,
   useInvoice,
@@ -32,6 +35,7 @@ import {
   useTransitionStatus,
   useRegisterPayment,
   useSendInvoiceEmail,
+  useCreditNotePreview,
 } from './hooks/useInvoiceQueries'
 import type { InvoiceWithOutstanding } from './hooks/useInvoiceQueries'
 import { formatCurrency, formatDate } from '@eken/shared'
@@ -41,6 +45,13 @@ import { useTenants } from '@/features/tenants/hooks/useTenants'
 import { useFocusStore } from '@/stores/focus.store'
 import { useCanWrite } from '@/hooks/useCanWrite'
 import { cn } from '@/lib/cn'
+
+// Stagger på listor — designsystemets standard.
+const listContainer = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } }
+const listItem = {
+  hidden: { opacity: 0, y: 8 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.2 } },
+}
 
 type DetailTab = 'detaljer' | 'historik'
 
@@ -156,6 +167,8 @@ export function InvoicesPage() {
   const [showPayment, setShowPayment] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [emailSentTo, setEmailSentTo] = useState<string | null>(null)
+  const [showCreditNote, setShowCreditNote] = useState(false)
+  const [creditNoteFlash, setCreditNoteFlash] = useState<string | null>(null)
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const { data: invoices = [], isLoading } = useInvoices(
@@ -170,6 +183,17 @@ export function InvoicesPage() {
   // detaljsvaret (och listsvaret). Hämtas när modalen är öppen — `useInvoice`
   // är `enabled: !!id`, så tom sträng betyder ingen förfrågan.
   const { data: paymentInvoice } = useInvoice(showPayment && selected ? selected.id : '')
+  // #517 — detaljsvaret bär kopplingen åt båda håll: originalets kreditnotor,
+  // och kreditnotans original. Listsvaret gör det inte, så det hämtas här.
+  const { data: selectedFull } = useInvoice(selected?.id ?? '')
+  // Bedömningen av om kreditering är möjlig kommer från SERVERN, samma
+  // `assessCreditability` som spärrar skrivningen. Gränssnittet härleder inga
+  // egna villkor — då hade knappen förr eller senare erbjudit något API:et
+  // nekar, eller gömt något som faktiskt går.
+  const { data: creditPreview } = useCreditNotePreview(
+    selected?.id,
+    !!selected && detailTab === 'detaljer' && !selected.isCreditNote,
+  )
   const { data: tenants = [] } = useTenants()
 
   // ── Mutations ─────────────────────────────────────────────────────────────
@@ -201,9 +225,13 @@ export function InvoicesPage() {
   // exakt den här listan, inte ur ett eget filter.
   const overdueOpen = allInvoices.filter((i) => i.status === 'OVERDUE' && Number(i.outstanding) > 0)
   const totalOverdue = overdueOpen.reduce((s, i) => s + Number(i.outstanding), 0)
-  const totalDraft = allInvoices
-    .filter((i) => i.status === 'DRAFT')
-    .reduce((s, i) => s + Number(i.total), 0)
+  // #517 — KREDITNOTOR RÄKNAS INTE SOM UTKAST. De skapas med status DRAFT
+  // eftersom de aldrig ska förfalla, men de är färdiga, bokförda dokument som
+  // MINSKAR en fordran. Låg de kvar här summerades ett krediterat belopp in i
+  // "obesvarade utkast" — ett belopp någon skulle tro var utestående, alltså
+  // exakt den sortens siffra hela #517 handlar om att inte visa.
+  const draftInvoices = allInvoices.filter((i) => i.status === 'DRAFT' && !i.isCreditNote)
+  const totalDraft = draftInvoices.reduce((s, i) => s + Number(i.total), 0)
   // #378 — ÖVERBETALT. Beloppet klampades tidigare bort av `max(0, claim)` och
   // fanns bara kvar som ett tecken som en enda grind i hela kodbasen läste;
   // pengarna var alltså osynliga för operatören. `overpaid` räknas av API:et
@@ -289,6 +317,13 @@ export function InvoicesPage() {
     )
   }
 
+  // Flashen hör till den faktura den skapades på. Utan den här nollställningen
+  // följde den med när operatören öppnade en ANNAN faktura, och påstod där att
+  // något hänt som inte hänt.
+  useEffect(() => {
+    setCreditNoteFlash(null)
+  }, [selected?.id])
+
   function handleVoid() {
     if (!selected) return
     statusMutation.mutate(
@@ -303,7 +338,9 @@ export function InvoicesPage() {
     SENT: allInvoices.filter((i) => i.status === 'SENT').length,
     PAID: allInvoices.filter((i) => i.status === 'PAID').length,
     OVERDUE: allInvoices.filter((i) => i.status === 'OVERDUE').length,
-    DRAFT: allInvoices.filter((i) => i.status === 'DRAFT').length,
+    // Samma mängd som beloppet ovan — en flik som räknar fler poster än
+    // KPI:n summerar är två påståenden om samma sak.
+    DRAFT: draftInvoices.length,
     VOID: allInvoices.filter((i) => i.status === 'VOID').length,
   }
 
@@ -355,7 +392,7 @@ export function InvoicesPage() {
             label: 'Obesvarade utkast',
             value: formatCurrency(totalDraft),
             color: 'slate',
-            tag: `${allInvoices.filter((i) => i.status === 'DRAFT').length} fakturor`,
+            tag: `${draftInvoices.length} fakturor`,
           },
           // #378 — visas BARA när det finns något att visa. Ett permanent
           // "0 kr överbetalt" hade lärt operatören att ignorera kortet, och då
@@ -481,18 +518,35 @@ export function InvoicesPage() {
               key: 'total',
               header: 'Belopp',
               align: 'right',
-              cell: (i) => (
-                <span className="font-semibold text-gray-800">
-                  {formatCurrency(Number(i.total))}
-                </span>
-              ),
+              cell: (i) =>
+                i.isCreditNote ? (
+                  // Minustecknet är PRESENTATION, inte data: raden lagras med
+                  // positivt belopp och betydelsen kommer från `isCreditNote`.
+                  // Att lagra negativa belopp hade gjort varje summering till
+                  // en fälla.
+                  <span className="font-semibold text-purple-700">
+                    −{formatCurrency(Number(i.total))}
+                  </span>
+                ) : (
+                  <span className="font-semibold text-gray-800">
+                    {formatCurrency(Number(i.total))}
+                  </span>
+                ),
             },
             {
               key: 'status',
               header: 'Status',
               cell: (i) => (
                 <div className="flex items-center gap-1.5">
-                  <InvoiceStatusBadge status={i.status} />
+                  {/* #517 — en kreditnota har ingen meningsfull fakturastatus.
+                      Den lagras som DRAFT för att aldrig förfalla, men "Utkast"
+                      vore ett direkt felaktigt påstående om ett bokfört
+                      dokument. Dokumenttypen står här i stället. */}
+                  {i.isCreditNote ? (
+                    <Badge variant="purple">Kreditnota</Badge>
+                  ) : (
+                    <InvoiceStatusBadge status={i.status} />
+                  )}
                   {i.sendError && (
                     <span
                       title={`Utskick misslyckades: ${i.sendError}`}
@@ -630,6 +684,91 @@ export function InvoicesPage() {
                 </div>
               )}
 
+              {/* #517 — ÄR DETTA EN KREDITNOTA? Visa vilken faktura den avser.
+                  Utan den här rutan är dokumentet ett belopp utan sammanhang. */}
+              {selectedFull?.creditedInvoice && (
+                <div className="rounded-xl border border-purple-100 bg-purple-50 p-3">
+                  <p className="flex items-center gap-1.5 text-[12px] font-semibold text-purple-700">
+                    <CornerDownRight size={13} strokeWidth={1.8} />
+                    Kreditnota
+                  </p>
+                  <p className="mt-1 text-[12.5px] text-purple-800/90">
+                    Avser faktura{' '}
+                    <span className="font-mono font-medium">
+                      {selectedFull.creditedInvoice.invoiceNumber}
+                    </span>{' '}
+                    på {formatCurrency(Number(selectedFull.creditedInvoice.total))}.
+                  </p>
+                </div>
+              )}
+
+              {/* #517 — ANDRA RIKTNINGEN: originalets kreditnotor. Det är här
+                  någon letar efter varför fordran krympte. */}
+              {selectedFull?.creditNotes && selectedFull.creditNotes.length > 0 && (
+                <div className="overflow-hidden rounded-xl border border-gray-100">
+                  <div className="border-b border-gray-100 bg-gray-50 px-4 py-2.5">
+                    <p className="text-[12px] font-semibold text-gray-500">
+                      Kreditnotor ({selectedFull.creditNotes.length})
+                    </p>
+                  </div>
+                  <motion.div variants={listContainer} initial="hidden" animate="show">
+                    {selectedFull.creditNotes.map((cn) => (
+                      <motion.button
+                        key={cn.id}
+                        variants={listItem}
+                        type="button"
+                        onClick={() => {
+                          const rad = invoices.find((i) => i.id === cn.id)
+                          if (rad) handleSelectInvoice(rad)
+                        }}
+                        className="flex w-full items-center justify-between border-b border-gray-100 px-4 py-3 text-left last:border-0 hover:bg-[var(--ev-row-hover)]"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-mono text-[13px] font-medium text-gray-800">
+                            {cn.invoiceNumber}
+                          </p>
+                          <p className="truncate text-[12px] text-gray-400">
+                            {formatDate(cn.issueDate)}
+                            {cn.reason ? ` · ${cn.reason}` : ''}
+                          </p>
+                        </div>
+                        <p className="ml-3 flex-shrink-0 text-[13.5px] font-medium text-purple-700">
+                          −{formatCurrency(Number(cn.total))}
+                        </p>
+                      </motion.button>
+                    ))}
+                  </motion.div>
+                  <div className="flex justify-between bg-gray-50 px-4 py-3">
+                    <p className="text-[13px] font-semibold text-gray-700">Kvar att betala</p>
+                    <p className="text-[14px] font-bold text-gray-900">
+                      {formatCurrency(Number(selectedFull.outstanding))}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* #517 — VARFÖR knappen är stängd, i stället för att gömma den.
+                  En operatör som inte hittar funktionen ska förstå att den finns
+                  och varför den inte går just här. Texten kommer från servern,
+                  samma bedömning som spärrar skrivningen. */}
+              {creditPreview && !creditPreview.allowed && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                  <p className="flex items-center gap-1.5 text-[12px] font-semibold text-gray-600">
+                    <Receipt size={13} strokeWidth={1.8} />
+                    Kreditering inte möjlig
+                  </p>
+                  <p className="mt-1 text-[12.5px] leading-relaxed text-gray-500">
+                    {creditPreview.blockedReason}
+                  </p>
+                </div>
+              )}
+
+              {creditNoteFlash && (
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+                  <p className="text-[12.5px] font-medium text-emerald-700">{creditNoteFlash}</p>
+                </div>
+              )}
+
               {/* Åtgärdsknappar baserade på status */}
               <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
                 {/* DRAFT: redigera, skicka, ta bort */}
@@ -684,6 +823,16 @@ export function InvoicesPage() {
                   </>
                 )}
 
+                {/* #517 — Kreditera. Möjlig BARA när servern säger att den är
+                    det; är den inte det står skälet i rutan ovanför, så
+                    funktionen aldrig försvinner tyst. */}
+                {canWrite && creditPreview?.allowed && (
+                  <Button size="sm" onClick={() => setShowCreditNote(true)}>
+                    <Receipt size={13} strokeWidth={1.8} />
+                    Kreditera
+                  </Button>
+                )}
+
                 {/* PDF download — available for all statuses */}
                 <Button size="sm" onClick={() => downloadInvoicePdf(selected.id)}>
                   <Download size={13} strokeWidth={1.8} />
@@ -734,6 +883,22 @@ export function InvoicesPage() {
               <InvoiceTimeline events={selectedEvents} />
             ))}
         </Modal>
+      )}
+
+      {/* #517 — kreditnota */}
+      {selected && (
+        <CreditNoteModal
+          invoiceId={selected.id}
+          invoiceNumber={selected.invoiceNumber}
+          open={showCreditNote}
+          onClose={() => setShowCreditNote(false)}
+          onCreated={(nummer, belopp) => {
+            setCreditNoteFlash(
+              `Kreditnota ${nummer} skapad på ${formatCurrency(belopp)}. Fordran har minskat.`,
+            )
+            setTimeout(() => setCreditNoteFlash(null), 8000)
+          }}
+        />
       )}
 
       {/* Skapa faktura */}

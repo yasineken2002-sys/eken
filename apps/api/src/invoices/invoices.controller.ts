@@ -185,6 +185,16 @@ export class InvoicesController {
   // Kreditering av en BETALD faktura går inte via den här vägen heller. Den
   // spärren ligger i tjänsten, inte i controllern, så att den gäller varje
   // anropare — inklusive AI-lagret.
+  // Underlaget kreditnotamodalen förfyller sig från: vad som återstår att
+  // kreditera per rad, och om kreditering alls är möjlig. Läsning — samma
+  // rollnivå som själva krediteringen, så att knappen inte visas för någon som
+  // ändå inte får utföra den.
+  @Get(':id/credit-note/preview')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
+  async creditNotePreview(@Param('id') id: string, @OrgId() organizationId: string) {
+    return this.creditNoteService.getPreview(id, organizationId)
+  }
+
   @Post(':id/credit-note')
   @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
   async createCreditNote(

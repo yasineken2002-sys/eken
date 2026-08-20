@@ -14,7 +14,7 @@ Filen säger inget om huruvida en gräns är RÄTT. Den gör bara omöjligt att
 flytta en gräns utan att någon ser det. Se authz-surface.ts.
 
 
-## 1. HTTP-endpoints med rollgrind (174 st)
+## 1. HTTP-endpoints med rollgrind (175 st)
 
 Endpoints utan @Roles står i avsnitt 1b — de saknades helt fram till #434.
 
@@ -65,6 +65,7 @@ GET /contracts/download/:leaseId                                ADMIN, MANAGER, 
 GET /contracts/status/:leaseId                                  ADMIN, MANAGER, OWNER
 GET /import/contract-batches/:id                                ADMIN, MANAGER, OWNER
 GET /import/jobs                                                ADMIN, OWNER
+GET /invoices/:id/credit-note/preview                           ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /invoices/:id/events                                        ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /misc-charges/:id                                           ADMIN, MANAGER, OWNER
 GET /misc-charges                                               ADMIN, MANAGER, OWNER
