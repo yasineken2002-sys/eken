@@ -137,11 +137,17 @@ pnpm format      # Prettier
 ### Testsviten – kör HELA den, inte modulgrupper
 
 ```bash
-cd apps/api && npx jest          # 255 sviter, 2547 tester, ~70 s
+cd apps/api && npx jest          # 300 sviter, 3070 tester, 1,5–2 min
 ```
 
-Mätt 2026-08-14 i codespace (8 GB): sviten går på ~70 s **både** seriellt
-(`--runInBand`, 69,5 s) och parallellt (default, 67,7 s). Ingen OOM i något läge.
+Mätt 2026-08-20 i codespace (8 GB), 300/300 sviter gröna i båda lägena och ingen
+OOM: seriellt (`--runInBand`) **85,5 s**, parallellt (default) **117,9 s**.
+
+Seriellt är alltså numera SNABBARE än parallellt på den här maskinen — omvänt mot
+mätningen 2026-08-14 (69,5 s resp. 67,7 s), då lägena låg jämnt. Sviten har vuxit
+med 45 sviter och 523 tester sedan dess; workerstarten betalar inte längre av sig
+i ett codespace med få kärnor. Kör det läge du vill — båda är gröna, och skillnaden
+är en halv minut, inte en täckningsskillnad.
 
 `pnpm test:ci` (= `jest --ci --runInBand`) är seriellt av ett **CI-runner**-skäl —
 runnern har färre kärnor och mindre RAM, och dess OOM-hanterare dödar parallella
@@ -152,7 +158,7 @@ täckningsgräns, inte en prestandainställning: den som kör per modul vet inte
 hen inte kört. Uppmätt kostnad (#449): en rolländring i `ai-usage/` verifierades
 mot fem modulgrupper, alla gröna — assertionen som föll låg i `common/guards/` och
 fastnaglade beslutet ändringen upphävde. Bara CI såg den. Hela sviten hade tagit
-70 sekunder.
+ett par minuter.
 
 ---
 
@@ -245,7 +251,7 @@ Hämta med `@OrgId()`-dekoratorn i controllers: `@OrgId() orgId: string`.
 
 ### NestJS-moduler
 
-~40 moduler i `apps/api/src/`. Kärndomänerna (en rad var):
+46 modulkataloger i `apps/api/src/`. Kärndomänerna (en rad var):
 
 | Modul                                                               | Ansvar                                                                                                                                                                                  |
 | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -460,7 +466,7 @@ import { VAT_RATES, DEFAULT_PAGE_SIZE, INVOICE_TRANSITIONS } from '@eken/shared'
 
 ### Prisma-schema (`apps/api/prisma/schema.prisma`)
 
-Schemat har ~70 modeller. Kärnan (alla scopade på `organizationId`):
+Schemat har 84 modeller. Kärnan (alla scopade på `organizationId`):
 
 ```
 Organization 1──* User
@@ -559,31 +565,100 @@ import type { Property } from '@eken/shared'
 
 Varje sida och komponent **måste** följa detta. Fråga alltid: **"Hade Fortnox godkänt detta?"**
 
-### Färgpalett
+### Färgpalett – tokens, aldrig hex
+
+Paletten ägs av `packages/ui/src/tokens.ts` (`EVENO_PALETTE`, 9 semantiska tokens).
+Därifrån genereras `tokens.css` (`pnpm --filter @eken/ui gen:tokens`) och Tailwind-
+preseten (`tailwind-preset.ts`) mappar samma CSS-variabler till utility-namn.
+`@eken/shared/branding.ts` läser `DEFAULT_BRAND_COLOR` ur samma fil, så UI, PDF och
+mejl inte kan glida isär.
+
+**Skriv aldrig en färg i kod.** `scripts/check-design-tokens.mjs` är en BLOCKERANDE
+CI-check (`design-token-guard` står i `ci-passed`:s `needs`) och ingår dessutom i
+`pnpm lint`. Den fäller rå hex, `rgb()`/`rgba()`/`hsl()` och Tailwind-arbitraries
+(`text-[#2563EB]`) i `apps/{web,admin,portal}/src`, `apps/api/src` och
+`packages/shared/src`. En färg som inte finns i dess klassificering faller som
+**NY FÄRG** och kan inte ens allowlistas.
+
+| Roll               | Tailwind (web/admin)      | CSS-variabel (portal + alla) |
+| ------------------ | ------------------------- | ---------------------------- |
+| App-bakgrund       | `bg-canvas`               | `var(--ev-bg)`               |
+| Yta (kort/panel)   | `bg-surface`              | `var(--ev-surface)`          |
+| Kant               | `border-line`             | `var(--ev-border)`           |
+| Fältkant           | `border-input`            | `var(--ev-input-border)`     |
+| Text primär        | `text-ink`                | `var(--ev-text)`             |
+| Text dämpad        | `text-ink-muted`          | `var(--ev-text-muted)`       |
+| Varumärke / primär | `bg-brand` / `text-brand` | `var(--ev-brand)`            |
+| Success            | `bg-success`              | `var(--ev-status-success)`   |
+| Warning            | `bg-warning`              | `var(--ev-status-warning)`   |
+| Danger             | `bg-danger`               | `var(--ev-status-danger)`    |
+
+**De gamla Tailwind-familjerna är omdirigerade, inte förbjudna.** Web och admin
+pekar i sin `tailwind.config.ts` hela familjer på @eken/ui:s härledda skalor, så
+befintliga klasser fortsätter fungera och blir varma av sig själva:
 
 ```
-Bakgrund (app):    #F7F8FA
-Yta (kort/panel):  #FFFFFF
-Border:            #EAEDF0
-Border (input):    #DDDFE4
-
-Text primär:       #111827
-Text sekundär:     #6B7280
-Text tertiär:      #9CA3AF
-
-Primary:           #2563EB  (blue-600)
-Primary hover:     #1D4ED8  (blue-700)
-
-Success:  emerald-600 / bg emerald-50
-Warning:  amber-600   / bg amber-50
-Danger:   red-600     / bg red-50
-Info:     blue-600    / bg blue-50
+gray-*     → var(--ev-neutral-*)     blue-*   → varumärkesskalan (GRÖN sedan F5)
+emerald-*  → success-skalan          amber-*  → warning-skalan     red-* → danger-skalan
 ```
 
-### Typografi (Inter var)
+> ⚠️ **`blue-*` är inte blått.** Efter färgflippen (F5) slår `bg-blue-600` upp
+> varumärkesgrönt. Skriv hellre `bg-brand`. En yta som ska vara neutral ska INTE
+> använda `blue-*` — se info-nivån under Badges.
+
+**Skalsteg med regler** (härledda i `tokens.ts`, ingen egen hex):
 
 ```
-Sidtitel (PageHeader):   text-[22px] font-semibold tracking-tight
+neutral-300  avdelare och dekor — INTE text
+neutral-400  tertiär text (tidsstämplar, metadata, hjälptext). Framräknat till
+             WCAG AA: 4.65:1 mot kanvas. Svagaste LÄSBARA nivån.
+neutral-500  dämpad text        neutral-900  primär text
+status 50–400  YT-steg (tinter) — bär text, är inte text
+status 500/600 förgrund när statusfärgen ska vara text eller ikon
+```
+
+**Komponent-variabler** (utanför den låsta 9-token-paletten, men alltid med
+palett-härledd default — aldrig egen hex): `--ev-row-hover`, `--ev-row-border`,
+`--ev-input-border`.
+
+**Mörka ytor** (sidomeny, marknadspanel): `--ev-dark`, `--ev-dark-elevated`,
+`--ev-dark-text`, `--ev-dark-text-muted`. Varm kolsvart, inte kall blåsvart.
+
+**Behöver alfa?** En hex bakom `var()` går inte att dela upp. Använd kanalformen:
+`rgb(var(--ev-brand-500-ch) / 0.12)`. Grinden känner igen den.
+
+<details>
+<summary>Målvärdena som referens – <b>får aldrig skrivas i kod</b></summary>
+
+Enbart för att känna igen paletten i en skärmdump eller ett designverktyg. Varje
+värde nedan är hårdkodat exakt det som `palette-hex`-regeln fäller utanför
+`packages/ui` — den regeln har ingen tolerans och kan inte tystas.
+
+```
+brand / status-success  #1a6b3c     bg (kanvas)   #f6f4f0
+surface                 #ffffff     text (bläck)  #241f1a
+text-muted              #5a5248     border        #ece7e0
+status-warning          #b8791a     status-danger #c6402f
+mörk bas                #1f1a16
+```
+
+Den GAMLA paletten (`#F7F8FA`, `#EAEDF0`, `#DDDFE4`, `#111827`, `#6B7280`,
+`#9CA3AF`, `#2563EB`, `#1D4ED8`) stod här fram till 2026-08-20. Den är inte bara
+otidsenlig utan aktivt röd i CI. `#F7F8FA` är dessutom så avlagt att det inte ens
+finns i grindens klassificering — det faller som NY FÄRG.
+
+</details>
+
+### Typografi (Poppins, self-hostad)
+
+Poppins 400/500/600/700, woff2 i `packages/ui/src/fonts/`, laddad via
+`@eken/ui/fonts.css` som också definierar `--ev-font-sans`. Inga CDN-anrop.
+**Inter är borttaget** ur samtliga `index.html` (F4) — nämn det inte ens som
+fallback, kedjan går till systemtypsnitt.
+
+```
+Sidtitel (PageHeader):   text-[26px] font-bold tracking-tight leading-tight
+Sidbeskrivning:          text-[14px] text-gray-500
 Sektionsrubrik:          text-[14px] font-semibold
 Kortinnehåll primärt:    text-[13.5px] font-medium
 Brödtext:                text-[13px]
@@ -597,7 +672,7 @@ KPI-värde:               text-[26px] font-semibold tracking-tight
 **Kort**
 
 ```
-bg-white rounded-2xl border border-[#EAEDF0]
+bg-surface rounded-2xl border border-line
 hover: shadow-sm transition-shadow
 whileHover={{ y: -2, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
 padding: p-4 (kompakt) | p-5 (standard)
@@ -621,47 +696,77 @@ Cellhöjd:      py-3.5 (default) | py-3 (density="compact")
 Klickbar rad:  tabIndex 0 + Enter/Blanksteg + focus-visible:outline (INTE ring)
 ```
 
-**Knappar**
+**Knappar** (`components/ui/Button.tsx` – `variant` × `size`)
 
 ```
-Primary:   bg-blue-600 text-white rounded-lg h-9 px-4 text-[13.5px] shadow-sm hover:bg-blue-700
-Secondary: bg-white border border-[#DDDFE4] text-gray-700 rounded-lg h-9 px-4 hover:bg-gray-50
-Small:     h-8 px-3 text-[13px]
-Active:    active:scale-[0.97]  ← CSS transform, INTE Framer Motion på knappar
+Bas:       rounded-[10px] font-medium transition-all duration-150
+           focus-visible:ring-2 focus-visible:ring-blue-500/40 ring-offset-1
+           active:scale-[0.97]   ← CSS transform, INTE Framer Motion på knappar
+Primary:   bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800
+           + skugga i kanalform: rgb(var(--ev-brand-500-ch)/0.3)
+Secondary: bg-white text-gray-700 border border-gray-200 hover:bg-gray-50
+Outline:   bg-transparent text-blue-600 border border-blue-200 hover:bg-blue-50
+Ghost:     text-gray-600 hover:bg-gray-100 hover:text-gray-900
+Danger:    bg-red-500 text-white hover:bg-red-600 active:bg-red-700
+
+Storlekar: xs h-7 px-2.5 text-[12px] | sm h-8 px-3.5 text-[13px]
+           md h-9 px-4 text-[13.5px]  ← default
 ```
 
-**Input / Select**
+> `variant` defaultar till `secondary`, inte `primary`.
+
+**Input / Select** (`components/ui/Input.tsx`)
 
 ```
-h-9 rounded-lg border border-[#DDDFE4] text-[13.5px]
-focus: ring-2 ring-blue-500 border-blue-500
-Label: text-[13px] font-medium text-gray-700
+h-10 w-full rounded-xl border bg-white px-3.5 text-[13.5px] text-gray-900
+placeholder:text-gray-400
+Normal:  border-gray-200 hover:border-gray-300
+Fokus:   focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15
+Fel:     border-red-300 focus:border-red-400 focus:ring-red-500/15
+Disabled: border-line bg-gray-100/70 text-gray-500
+Label:   text-[13px] font-medium text-gray-700
+Fel/hint: text-[12px] text-red-500 / text-gray-400
 ```
 
-**Modals**
+**Modals** – delad `<Modal>` från `@eken/ui/react`
 
 ```
 Backdrop:   bg-black/25 backdrop-blur-[2px]
-Panel:      bg-white rounded-2xl shadow-xl border border-[#EAEDF0]
+Panel:      bg-white rounded-2xl border border-line shadow-xl
+            max-h-[calc(100vh-80px)] overflow-hidden
 Animation:  scale 0.96→1 + y 8→0, spring { stiffness: 400, damping: 30 }
-Rubrik:     text-[17px] font-semibold
-Stängknapp: h-7 w-7 rounded-lg, top-right
-Footer:     border-t border-[#EAEDF0] pt-5 mt-5 flex justify-end gap-2
+Rubrik:     text-[17px] font-semibold text-gray-900
+Beskrivning: text-[13px] text-gray-500
+Stängknapp: h-8 w-8 rounded-lg text-gray-400 hover:bg-gray-100
+Header/footer i panelen: border-line px-5, pt-4 pb-4 / py-4
+<ModalFooter> (i innehållet): mt-5 border-t border-line pt-4 justify-end gap-2
 ```
 
 **Badges**
 
 ```
-Base:     rounded-full px-2.5 py-0.5 text-[12px] font-medium
-Dot:      h-1.5 w-1.5 rounded-full inline-block mr-1.5
+Base:     inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5
+          text-[12px] font-medium
+Dot:      h-1.5 w-1.5 rounded-full (prop `dot`)
 
 Success:  bg-emerald-50 text-emerald-700
 Warning:  bg-amber-50   text-amber-700
 Danger:   bg-red-50     text-red-600
-Info:     bg-blue-50    text-blue-700
-Default:  bg-gray-100   text-gray-700
-Ghost:    border border-gray-200 text-gray-500
+Info:     bg-gray-200   text-gray-500   ← NEUTRALT, inte blått (6.24:1)
+Default:  bg-gray-100   text-gray-600
+Ghost:    border border-gray-200 text-gray-500 bg-transparent
+Purple:   bg-purple-50  text-purple-700  ⚠️ se nedan
 ```
+
+> **Info är neutralt.** Ett neutralt tillstånd ("Skickad", "Pågår", "Bokförd")
+> påstår ingenting om utfallet och får därför neutralskalans grå. Signalfärgerna
+> — grön, gul, röd — är reserverade för faktiska signaler. Skriv aldrig
+> `bg-blue-50` för info: det är dels fel semantik, dels grönt sedan F5.
+>
+> **`purple` är designskuld.** `purple-*` är INTE mappad till någon @eken/ui-skala
+> i vare sig webs eller admins config, så varianten renderar Tailwinds kalla
+> stock-lila i en varm palett. Den är osynlig för färggrinden (ingen rå hex).
+> Använd den inte i ny kod.
 
 **Filterflikar**
 
