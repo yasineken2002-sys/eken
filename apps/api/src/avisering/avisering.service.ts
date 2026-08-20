@@ -1996,6 +1996,41 @@ export class AviseringService {
       )
     }
 
+    // ── EN KREDITERAD AVI KAN INTE ANNULLERAS UNDER SIG SJÄLV (#518) ─────────
+    //
+    // SAMMA PENNINGFEL SOM OVAN, ANDRA NAMNRYMDEN — och exakt den omvända
+    // riktning som #517 fick rättad på fakturasidan efter en maskinell
+    // bokföringsgranskning. `assessRentNoticeCreditability` spärrar att
+    // KREDITERA en annullerad avi; utan raden här var bara den ena riktningen
+    // stängd.
+    //
+    // `reverseJournalEntryForRentNotice` speglar originalverifikatet
+    // (`rent-notice:<id>`) OVILLKORLIGT och vet ingenting om krediteringens
+    // verifikat, som ligger under `rent-notice-credit:<id>`. En annullering
+    // ovanpå en delkreditering reverserar därför det redan krediterade beloppet
+    // en ANDRA gång:
+    //
+    //   avisering        1510 D 10 000  /  39xx K 10 000
+    //   kreditering 3 000  39xx D  3 000  /  1510 K  3 000
+    //   annullering        39xx D 10 000  /  1510 K 10 000
+    //   → 1510 = −3 000 och 39xx = −3 000
+    //
+    // En negativ kundfordran som inte går att stämma av mot reskontran, och en
+    // intäkt med fel tecken utan motsvarande affärshändelse. Varje enskilt
+    // verifikat balanserar — felet uppstår först i SEKVENSEN, vilket är precis
+    // därför ingen verifikat-kontroll fångar det.
+    const redanKrediterad = await this.prisma.rentNoticeCredit.findFirst({
+      where: { rentNoticeId: noticeId },
+      select: { id: true },
+    })
+    if (redanKrediterad) {
+      throw new BadRequestException(
+        `Avi ${notice.noticeNumber} kan inte annulleras — den har redan krediterats. ` +
+          'En annullering reverserar hela ursprungsbeloppet ovanpå krediteringen och gör ' +
+          'både kundfordran och intäkten fel. Kreditera återstoden i stället.',
+      )
+    }
+
     // Statusflip + motverifikat körs ATOMISKT. Intäkten bokades vid avi-genereringen
     // (1510 D / 39xx K / ev. 26xx K); en annullering MÅSTE reversera den, annars
     // kvarstår fantomintäkt + utgående moms (BFL 5 kap 5 §/9 §). Faller reverseringen
@@ -2067,6 +2102,16 @@ export class AviseringService {
           // fönstret verkningslöst: hann nedskrivningen före oss matchar inga rader.
           probableLossAt: null,
           writtenOffAt: null,
+          // #518 — krediteringsgrinden behöver samma TOCTOU-lager som
+          // nedskrivningen ovan, och av samma skäl: förläsningen sker utanför
+          // transaktionen, och en kreditering kan hinna skrivas emellan.
+          //
+          //   T1 (cancelNotice) läser avin — inga krediteringar, släpps igenom
+          //   T2 (createCredit) låser, bokför 39xx D / 1510 K, commit
+          //   T1 annullerar ändå → 1510 krediteras en andra gång
+          //
+          // `none: {}` matchar raden bara om den saknar krediteringar helt.
+          credits: { none: {} },
         },
         data: { status: RentNoticeStatus.CANCELLED, collectionStage: RentCollectionStage.NONE },
       })
@@ -2085,8 +2130,17 @@ export class AviseringService {
             // från "reglerad". Utan den föll båda ihop i ett besked som var fel
             // i det ena fallet.
             status: true,
+            // #518 — fjärde skälet: en kreditering vann kapplöpningen.
+            credits: { select: { id: true }, take: 1 },
           },
         })
+        if (aktuell && aktuell.credits.length > 0) {
+          throw new BadRequestException(
+            `Avi ${aktuell.noticeNumber} kan inte annulleras — den har redan krediterats. ` +
+              'En annullering reverserar hela ursprungsbeloppet ovanpå krediteringen och gör ' +
+              'både kundfordran och intäkten fel. Kreditera återstoden i stället.',
+          )
+        }
         if (aktuell && (aktuell.probableLossAt != null || aktuell.writtenOffAt != null)) {
           throw new ConflictException(
             `Avi ${aktuell.noticeNumber} skrevs ned som kundförlust under annulleringen — ` +

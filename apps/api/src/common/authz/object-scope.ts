@@ -161,6 +161,9 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
   RentNoticeLine: { scope: 'parent-scoped', parent: 'RentNotice' },
   RentNoticeEvent: { scope: 'parent-scoped', parent: 'RentNotice' },
   RentNoticePayment: { scope: 'parent-scoped', parent: 'RentNotice' },
+  // #518 — kreditradens enda väg in är sin förälder `RentNoticeCredit`, som i
+  // sin tur är org-scopad. Syskon till RentNoticeLine, samma klassificering.
+  RentNoticeCreditLine: { scope: 'parent-scoped', parent: 'RentNoticeCredit' },
   InspectionItem: { scope: 'parent-scoped', parent: 'Inspection' },
   InspectionImage: { scope: 'parent-scoped', parent: 'Inspection' },
   AiTenantConversation: { scope: 'parent-scoped', parent: 'Tenant' },

@@ -63,6 +63,11 @@ const FORBIDDEN_IN_OUTPUT = [
 const EXPECTED_OUTPUT_KEYS = [
   'amount',
   'consumptionAmount',
+  // #518 — nedsatt belopp. TILLÅTET i utflödet, till skillnad från
+  // `interestAccruedAmount` intill: krediteringen är hyresgästens EGET
+  // avdrag och förklarar varför `payableTotal` understiger `nominalTotal`.
+  // Utan det syns en oförklarad differens i ett betalningsunderlag.
+  'credited',
   'dueDate',
   'id',
   'miscChargeAmount',
