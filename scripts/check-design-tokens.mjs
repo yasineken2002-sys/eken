@@ -7,7 +7,7 @@
  * `text-[#2563EB]` eller `background: #1a6b3c` igen — och varje sådan rad är en
  * yta som färgflippen INTE når. Den här guarden är spärren.
  *
- * ── Tre lager ───────────────────────────────────────────────────────────────
+ * ── Fyra lager ──────────────────────────────────────────────────────────────
  *
  * 1. HÅRDA REGLER (ingen tolerans, kan aldrig tystas)
  *    palette-hex   @eken/ui:s LÅSTA målvärden hårdkodade utanför packages/ui.
@@ -29,6 +29,14 @@
  *    tokeniseras (kunddata, falska positiver). De räknas och skrivs ut i varje
  *    CI-körning så att de förblir synliga, och de biter inte på palette-hex.
  *
+ * 4. OMAPPADE TAILWIND-FAMILJER (#532) — lagren ovan fäller FÄRGLITERALER och
+ *    kan därför inte se `bg-purple-50`: kulören sitter i Tailwinds palett, inte
+ *    i strängen. Regeln HÄRLEDER mappade familjer ur varje apps tailwind.config
+ *    och fäller varje familj som används men inte är mappad mot en @eken/ui-skala.
+ *    Baslinjen (scripts/design-families.baseline.json) fäller åt BÅDA hållen —
+ *    se motiveringen vid FAMILY_MIN_REASON. Portalen kör ingen Tailwind och är
+ *    undantagen, men undantaget är BEVAKAT: dyker en config upp faller guarden.
+ *
  * Falsklarm undviks:
  *   • Kommentarer strippas (block, rad) — annars flaggas `/* mål #f6f4f0 *​/`
  *     i apparnas egna token-block, som ju är dokumentation av flippen.
@@ -49,6 +57,7 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..')
 const BASELINE_PATH = join(HERE, 'design-tokens.baseline.json')
+const FAMILY_BASELINE_PATH = join(HERE, 'design-families.baseline.json')
 
 /**
  * Kataloger som skannas (relativt repo-roten). packages/ui är KÄLLAN → aldrig.
@@ -231,6 +240,174 @@ assign('chart-colors', [
 ])
 
 assign('alpha-concat', ['#ffffff18'])
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LAGER 4 — OMAPPADE TAILWIND-FAMILJER (#532). Samma fråga, en nivå upp.
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Reglerna ovan fäller FÄRGLITERALER. De kan inte fälla `bg-purple-50`, för det
+// finns ingen färg i strängen att matcha — kulören sitter i Tailwinds egen
+// palett. Följden är att en färg kan vara FEL utan att någon vakt märker det.
+//
+// F1/F2 löste det för de familjer man då kom ihåg: appens tailwind.config pekar
+// `gray`/`blue`/`emerald`/`amber`/`red` på @eken/ui:s härledda skalor, så
+// `text-gray-500` slår upp var(--ev-neutral-500) och blir varm av sig själv.
+// Men INGENTING bevakade att listan var komplett. `tokens.ts` beskrev
+// mekanismen redan då — "osynliga för färggrinden (ingen rå hex) men lika kalla
+// som de hex-värden grinden fångar" — och ändå glred sju familjer igenom.
+//
+// Regeln spärrar FORMEN, inte uppräkningen: mängden mappade familjer HÄRLEDS ur
+// varje apps tailwind.config.ts. Det finns med flit ingen lista här att glömma
+// uppdatera. Mappar någon en ny familj krymper spärren av sig själv; inför någon
+// en ny OMAPPAD familj faller den, även om ingen tänkt på just den kulören.
+
+/** Tailwinds stock-palett. Namnrymden vi letar i — inte en policy, en definition. */
+const TAILWIND_STOCK_FAMILIES = [
+  'slate',
+  'gray',
+  'zinc',
+  'neutral',
+  'stone',
+  'red',
+  'orange',
+  'amber',
+  'yellow',
+  'lime',
+  'green',
+  'emerald',
+  'teal',
+  'cyan',
+  'sky',
+  'blue',
+  'indigo',
+  'violet',
+  'purple',
+  'fuchsia',
+  'pink',
+  'rose',
+]
+
+/**
+ * Utility-prefix som tar en färg. Härledd EMPIRISKT ur kodbasen (bg/text/border/
+ * ring/divide/placeholder/from/to + border-l), och sedan breddad med de övriga
+ * färgtagande prefixen så att en ny användning inte hamnar utanför mätningen.
+ *
+ * `border-[trblxy]` måste stå FÖRE `border` i alternationen — annars matchar
+ * `border` först i `border-l-amber-500` och `l-amber-500` blir aldrig ett prefix.
+ */
+const COLOR_UTILITY_PREFIXES =
+  'bg|text|border-[trblxy]|border|ring-offset|ring|divide|placeholder|from|via|to|' +
+  'outline|decoration|accent|caret|shadow|fill|stroke'
+
+/**
+ * `bg-purple-50`, `hover:text-violet-600`, `border-l-amber-500`, `bg-gray-50/60`.
+ *
+ * `(?<![\w-])` före prefixet är inte kosmetika: den skiljer en utility från en
+ * CSS-variabel. `--ev-neutral-500` innehåller bokstavligen en stock-familj
+ * (`neutral`) och hade annars räknats som omappad användning — en falsk positiv
+ * på precis det tokensystem regeln finns för att skydda.
+ */
+const FAMILY_CLASS_RE = new RegExp(
+  `(?<![\\w-])(?:${COLOR_UTILITY_PREFIXES})-(${TAILWIND_STOCK_FAMILIES.join('|')})-\\d{2,3}(?![\\w-])`,
+  'g',
+)
+
+/**
+ * Appar som KÖR Tailwind → familjeregeln gäller. `config` läses för att härleda
+ * de mappade familjerna.
+ */
+const FAMILY_SCAN_APPS = [
+  { app: 'web', dir: 'apps/web/src', config: 'apps/web/tailwind.config.ts' },
+  { app: 'admin', dir: 'apps/admin/src', config: 'apps/admin/tailwind.config.ts' },
+]
+
+/**
+ * Appar som INTE kör Tailwind. Portalen konsumerar de råa CSS-variablerna
+ * (`color: var(--ev-neutral-500)`) och har varken tailwind.config, postcss.config
+ * eller tailwind-beroende — det finns alltså ingen familjemappning att sakna, och
+ * `bg-purple-50` i portalen skulle inte generera någon CSS över huvud taget.
+ *
+ * Men "gäller inte" får inte betyda "faller ut tyst". Får portalen Tailwind
+ * någon gång är den oskyddad utan att något blir rött — samma blinda vakt som
+ * hela det här ärendet handlar om. Därför BEVAKAS undantaget: dyker en config
+ * upp faller guarden och säger åt dig att flytta appen till FAMILY_SCAN_APPS.
+ */
+const NO_TAILWIND_APPS = [
+  {
+    app: 'portal',
+    why: 'kör ingen Tailwind — läser var(--ev-*) direkt ur tokens.css',
+    configCandidates: [
+      'apps/portal/tailwind.config.ts',
+      'apps/portal/tailwind.config.js',
+      'apps/portal/tailwind.config.cjs',
+      'apps/portal/tailwind.config.mjs',
+    ],
+  },
+]
+
+/**
+ * Mappade familjer HÄRLEDS ur configtexten: `gray: evenoScales.neutral`.
+ * Exporterad så självtestet kör exakt samma härledning som CI.
+ */
+export function mappedFamiliesFrom(configText) {
+  const stripped = stripComments(configText, '.ts')
+  const found = new Set()
+  for (const m of stripped.matchAll(/([A-Za-z_$][\w$]*)\s*:\s*evenoScales\s*\.\s*([\w$]+)/g)) {
+    found.add(m[1])
+  }
+  return found
+}
+
+/** Familjeträffar i EN fil. Kommentarer strippas, precis som för färgliteraler. */
+export function scanFamilies(rawText, relPath) {
+  const ext = relPath.slice(relPath.lastIndexOf('.'))
+  const stripped = stripComments(rawText, ext)
+  const hits = []
+  for (const m of stripped.matchAll(FAMILY_CLASS_RE)) {
+    hits.push({ line: lineOf(stripped, m.index), family: m[1], value: m[0] })
+  }
+  return hits
+}
+
+/**
+ * Hela familjemätningen → { entries: { "<app>/<familj>": {count, examples} }, mapped }.
+ * `entries`-nyckeln är app-scopad: samma familj kan vara mappad i web och omappad
+ * i admin, och då är det bara admin som är fel.
+ */
+export function collectFamilies() {
+  const entries = {}
+  const mapped = {}
+  const missingConfigs = []
+  for (const { app, dir, config } of FAMILY_SCAN_APPS) {
+    const configPath = join(ROOT, config)
+    if (!existsSync(configPath)) {
+      missingConfigs.push(config)
+      continue
+    }
+    const families = mappedFamiliesFrom(readFileSync(configPath, 'utf8'))
+    mapped[app] = [...families].sort()
+    for (const file of walk(join(ROOT, dir))) {
+      const rel = toPosix(relative(ROOT, file))
+      if (TEST_FILE_RE.test(rel)) continue
+      for (const hit of scanFamilies(readFileSync(file, 'utf8'), rel)) {
+        if (families.has(hit.family)) continue
+        const key = `${app}/${hit.family}`
+        entries[key] ??= { count: 0, examples: [] }
+        entries[key].count++
+        if (entries[key].examples.length < 3)
+          entries[key].examples.push(`${rel}:${hit.line} ${hit.value}`)
+      }
+    }
+  }
+  // Appar utan Tailwind: undantaget ska vara bevakat, inte underförstått.
+  const unexpectedTailwind = []
+  for (const { app, configCandidates } of NO_TAILWIND_APPS) {
+    for (const c of configCandidates) {
+      if (existsSync(join(ROOT, c))) unexpectedTailwind.push({ app, config: c })
+    }
+  }
+  return { entries, mapped, missingConfigs, unexpectedTailwind }
+}
 
 /**
  * Klassificera en träff. Sökvägs-/radkontext vinner över värdetabellen, för
@@ -508,7 +685,184 @@ function validateBaselineShape(baseline) {
   return problems
 }
 
+/**
+ * ── FAMILJEBASLINJEN FÄLLER ÅT BÅDA HÅLLEN ──────────────────────────────────
+ *
+ * Flipp-skuldens allowlist ovan fäller bara UPPÅT: fler träffar är en regression,
+ * färre är framsteg. Det är rätt för den, eftersom den listan är arbete som
+ * pågår och ska krympa mot noll.
+ *
+ * Den HÄR baslinjen är något annat: den är ett PÅSTÅENDE om vad som finns. Ett
+ * påstående som bara kan bli fel åt ena hållet slutar vara ett påstående. Städar
+ * någon bort tio purple-klasser och posten står kvar på 25, då beskriver
+ * baslinjen en kodbas som inte längre existerar — och nästa läsare tror att
+ * skulden är större än den är. Värre: en post vars familj städats bort HELT blir
+ * en evigt grön rad om ingen kollar nedåt.
+ *
+ * Därför krävs EXAKT LIKHET. Samma form som kvitteringsfilen i #513: den ska
+ * fälla på okvitterat problem OCH på kvittering utan problem, annars överlever
+ * listan sin egen sanning.
+ *
+ * Priset är att #531 måste köra `--update-baseline` när purple mappas. Det är
+ * poängen, inte en olägenhet.
+ */
+const FAMILY_MIN_REASON = 30
+
+function loadFamilyBaseline() {
+  if (!existsSync(FAMILY_BASELINE_PATH)) return { entries: {} }
+  return JSON.parse(readFileSync(FAMILY_BASELINE_PATH, 'utf8'))
+}
+
+function writeFamilyBaseline({ entries }) {
+  const previous = loadFamilyBaseline().entries ?? {}
+  const out = {}
+  for (const key of Object.keys(entries).sort()) {
+    out[key] = {
+      count: entries[key].count,
+      // Skälet är MÄNNISKANS text och ska överleva en omräkning. En ny post får
+      // en tydlig platshållare som guarden sedan avvisar tills den fyllts i —
+      // annars hade --update-baseline kunnat tysta ett nytt fynd automatiskt.
+      reason:
+        previous[key]?.reason ??
+        'SKÄL SAKNAS — beskriv varför familjen är omappad och vad som ska hända med den',
+      examples: entries[key].examples,
+    }
+  }
+  const payload = {
+    $comment:
+      'GENERERAD BASLINJE — omappade Tailwind-familjer (#532). Varje post är en ' +
+      'färgfamilj som ANVÄNDS i klassnamn men inte är mappad mot en @eken/ui-skala ' +
+      'i appens tailwind.config.ts, och som därför renderar Tailwinds stock-kulör ' +
+      'i stället för den varma paletten. Mängden mappade familjer HÄRLEDS ur ' +
+      'configen — det finns ingen lista i guarden att glömma uppdatera.',
+    $howto:
+      'Denna baslinje fäller åt BÅDA hållen: fler träffar OCH färre. Har du mappat ' +
+      'eller städat en familj, kör `node scripts/check-design-tokens.mjs ' +
+      '--update-baseline` så att listan fortsätter beskriva verkligheten. Lägg ' +
+      'ALDRIG till en post för hand för att tysta ett nytt fynd — mappa familjen.',
+    total: Object.values(entries).reduce((a, e) => a + e.count, 0),
+    entries: out,
+  }
+  writeFileSync(FAMILY_BASELINE_PATH, JSON.stringify(payload, null, 2) + '\n', 'utf8')
+  return payload.total
+}
+
+/**
+ * Jämför mätning mot baslinje. Returnerar problem i tre former:
+ *   nya      — familj som används men saknas i baslinjen (eller fler träffar)
+ *   stale    — baslinjepost utan motsvarande användning (eller färre träffar)
+ *   utan skäl— post som saknar en riktig motivering
+ * Exporterad så självtestet kör exakt samma jämförelse som CI.
+ */
+export function diffFamilies(measured, baseline) {
+  const base = baseline.entries ?? {}
+  const nya = []
+  const stale = []
+  const utanSkal = []
+  for (const [key, entry] of Object.entries(measured)) {
+    const b = base[key]
+    if (!b) {
+      nya.push({ key, count: entry.count, budget: 0, examples: entry.examples })
+    } else if (entry.count > b.count) {
+      nya.push({ key, count: entry.count, budget: b.count, examples: entry.examples })
+    } else if (entry.count < b.count) {
+      stale.push({ key, count: entry.count, budget: b.count })
+    }
+  }
+  for (const [key, b] of Object.entries(base)) {
+    if (!measured[key]) stale.push({ key, count: 0, budget: b.count })
+    if (
+      !b.reason?.trim() ||
+      b.reason.trim().length < FAMILY_MIN_REASON ||
+      /SKÄL SAKNAS/.test(b.reason)
+    )
+      utanSkal.push(key)
+  }
+  return { nya, stale, utanSkal }
+}
+
+/** Familjelagret. Returnerar true om allt är grönt. */
+function runFamilies() {
+  const { entries, mapped, missingConfigs, unexpectedTailwind } = collectFamilies()
+  const baseline = loadFamilyBaseline()
+
+  if (missingConfigs.length) {
+    console.error('\n❌ Designsystem: tailwind.config saknas för en app som skulle skannas\n')
+    for (const c of missingConfigs) console.error(`  ${c}`)
+    console.error(
+      '\nUtan configen går mappade familjer inte att härleda, och regeln\nhade tyst slutat mäta appen. Rätta sökvägen i FAMILY_SCAN_APPS.\n',
+    )
+    return false
+  }
+
+  if (unexpectedTailwind.length) {
+    console.error('\n❌ Designsystem: en app utan Tailwind har fått en tailwind.config\n')
+    for (const u of unexpectedTailwind) console.error(`  ${u.app}: ${u.config}`)
+    console.error(
+      '\nAppen stod i NO_TAILWIND_APPS och undantogs därför från familjeregeln.\n' +
+        'Nu kör den Tailwind och är alltså OSKYDDAD. Flytta den till FAMILY_SCAN_APPS.\n',
+    )
+    return false
+  }
+
+  const { nya, stale, utanSkal } = diffFamilies(entries, baseline)
+
+  if (utanSkal.length) {
+    console.error('\n❌ Designsystem: familjebaslinjen har poster utan riktigt skäl\n')
+    for (const k of utanSkal) console.error(`  ${k}`)
+    console.error(
+      `\nVarje post kräver minst ${FAMILY_MIN_REASON} tecken som säger varför familjen är\n` +
+        'omappad och vad som ska hända med den (mappas, kollapsas, tas bort).\n',
+    )
+    return false
+  }
+
+  if (nya.length || stale.length) {
+    if (nya.length) {
+      console.error('\n❌ Designsystem: omappad Tailwind-färgfamilj\n')
+      for (const n of nya) {
+        console.error(`  ${n.key}: ${n.count} klasser (baslinje ${n.budget})`)
+        for (const ex of n.examples) console.error(`      ${ex}`)
+      }
+      console.error(
+        '\nFamiljen används i klassnamn men är inte mappad mot en @eken/ui-skala i\n' +
+          'appens tailwind.config.ts. Den renderar alltså Tailwinds stock-kulör — kall,\n' +
+          'mitt i den varma paletten — och INGEN annan regel kan se det: det finns\n' +
+          'ingen färgliteral i `bg-purple-50` att matcha.\n\n' +
+          'Rätt åtgärd är att mappa familjen:\n' +
+          '  colors: { purple: evenoScales.<skala> }   i apps/<app>/tailwind.config.ts\n' +
+          'eller att använda en redan mappad familj. Att lägga till en baslinjepost för\n' +
+          'hand är INTE en åtgärd.\n',
+      )
+    }
+    if (stale.length) {
+      console.error('\n❌ Designsystem: familjebaslinjen beskriver kod som inte finns\n')
+      for (const st of stale)
+        console.error(`  ${st.key}: baslinje ${st.budget}, faktisk användning ${st.count}`)
+      console.error(
+        '\nPosten påstår mer än vad kodbasen innehåller. En baslinje som bara kan bli\n' +
+          'fel åt ena hållet slutar vara ett påstående — därför fäller den här åt BÅDA.\n' +
+          'Har du mappat eller städat familjen: node scripts/check-design-tokens.mjs --update-baseline\n',
+      )
+    }
+    return false
+  }
+
+  const total = Object.values(entries).reduce((a, e) => a + e.count, 0)
+  const mappedText = Object.entries(mapped)
+    .map(([app, fams]) => `${app}: ${fams.join('/')}`)
+    .join(' · ')
+  console.warn(
+    `✅ Designsystem: inga nya omappade färgfamiljer (${total} klasser i ${Object.keys(entries).length} poster)`,
+  )
+  console.warn(`   mappade familjer (härledda ur tailwind.config): ${mappedText}`)
+  for (const { app, why } of NO_TAILWIND_APPS)
+    console.warn(`   ${app} undantagen och BEVAKAD — ${why}`)
+  return true
+}
+
 function run() {
+  let familiesOk = true
   const { files: current, inline, badInline } = collect()
   const baseline = loadBaseline()
   const allowed = baseline.files ?? {}
@@ -581,6 +935,9 @@ function run() {
       )
       for (const ex of r.examples) console.error(`      rad ${ex.line}: ${ex.value}`)
     }
+    // Kör familjelagret ändå: en PR ska se BÅDA problemen i en körning, inte
+    // laga färgen, pusha, och först då få veta att familjen också är fel.
+    runFamilies()
     console.error(
       '\nAnvänd en token i stället:\n' +
         '  Tailwind (web/admin):  bg-canvas | text-ink | text-ink-muted | border-line |\n' +
@@ -605,6 +962,8 @@ function run() {
     0,
   )
   console.warn(`✅ Designsystem: inga nya rå färgvärden (${total} kvar i flipp-skulden)`)
+  // Familjelagret körs ALLTID, även när färglagret är grönt — det är en egen fråga.
+  familiesOk = runFamilies()
   if (inline.length) {
     console.warn(`   ${inline.length} inline-undantag (färger som aldrig ska tokeniseras):`)
     for (const x of inline) console.warn(`     ${x.rel}:${x.line}  ${x.value} — ${x.reason}`)
@@ -613,6 +972,7 @@ function run() {
     console.warn(`   ${improvements.length} post(er) ligger UNDER allowlisten — snäva åt med:`)
     console.warn('   node scripts/check-design-tokens.mjs --update-baseline')
   }
+  if (!familiesOk) process.exit(1)
 }
 
 // ── självtest ───────────────────────────────────────────────────────────────
@@ -740,6 +1100,138 @@ const other = '#6b7280'
   t('palette-hex finns inte i allowlisten', !hardBaselined)
   t('varje kategori har why + flip', Object.values(CATEGORIES).every((c) => c.why && c.flip))
 
+
+  // ── FAMILJELAGRET (#532) ──────────────────────────────────────────────────
+  const cfg = `
+    colors: {
+      gray: evenoScales.neutral,
+      blue: evenoScales.brand,
+      emerald: evenoScales.success,
+      // amber: evenoScales.warning,   ← bortkommenterad, ska INTE räknas som mappad
+      input: 'var(--ev-input-border)',
+    }
+  `
+  const fam = mappedFamiliesFrom(cfg)
+  t(
+    'härleder mappade familjer ur configen',
+    fam.has('gray') && fam.has('blue') && fam.has('emerald'),
+    [...fam].join(','),
+  )
+  t('bortkommenterad mappning räknas INTE som mappad', !fam.has('amber'))
+  t('icke-skal-mappning (var()) räknas inte som familj', !fam.has('input'))
+
+  const famTsx = `
+const a = <div className="bg-purple-50 hover:text-violet-600 border-l-amber-500" />
+const b = <div className="bg-gray-50/60 focus-visible:ring-blue-500/40" />
+// bg-fuchsia-500 i en kommentar ska INTE räknas
+const css = 'color: var(--ev-neutral-500)'
+`
+  const fh = scanFamilies(famTsx, 'apps/web/src/f.tsx')
+  const fams = fh.map((h) => h.family)
+  t('fångar bg-purple-50', fams.includes('purple'), fams.join(','))
+  t('fångar prefix med variant (hover:text-violet-600)', fams.includes('violet'))
+  t('fångar border-l-<familj> (prefixordningen)', fams.includes('amber'))
+  t(
+    'fångar familj med alfa-modifierare (bg-gray-50/60)',
+    fams.filter((x) => x === 'gray').length === 1,
+  )
+  t('familj i kommentar räknas inte', !fams.includes('fuchsia'))
+  // Den falska positiven som hade träffat själva tokensystemet:
+  t('--ev-neutral-500 är INTE en familjeträff', !fams.includes('neutral'), fams.join(','))
+  const evOnly = scanFamilies(
+    `.a { color: var(--ev-neutral-500); border-color: var(--ev-neutral-200); }`,
+    'apps/web/src/e.css',
+  )
+  t('CSS med bara --ev-* ger noll familjeträffar', evOnly.length === 0, JSON.stringify(evOnly))
+
+  // diffFamilies — BÅDA hållen
+  const base = { entries: { 'web/purple': { count: 2, reason: 'x'.repeat(FAMILY_MIN_REASON) } } }
+  t(
+    'ny omappad familj fälls',
+    diffFamilies({ 'web/teal': { count: 1, examples: [] } }, base).nya.length === 1,
+  )
+  t(
+    'fler träffar än baslinjen fälls',
+    diffFamilies({ 'web/purple': { count: 3, examples: [] } }, base).nya.length === 1,
+  )
+  t(
+    'FÄRRE träffar än baslinjen fälls också (stale)',
+    diffFamilies({ 'web/purple': { count: 1, examples: [] } }, base).stale.length === 1,
+  )
+  t(
+    'baslinjepost utan någon användning alls fälls (stale)',
+    diffFamilies({}, base).stale.length === 1,
+  )
+  t(
+    'exakt likhet är grönt',
+    (() => {
+      const d = diffFamilies({ 'web/purple': { count: 2, examples: [] } }, base)
+      return d.nya.length === 0 && d.stale.length === 0
+    })(),
+  )
+  t(
+    'post utan riktigt skäl fälls',
+    diffFamilies({}, { entries: { 'web/purple': { count: 0, reason: 'kort' } } }).utanSkal
+      .length === 1,
+  )
+  t(
+    'platshållarskäl fälls',
+    diffFamilies(
+      {},
+      {
+        entries: {
+          'web/x': {
+            count: 0,
+            reason:
+              'SKÄL SAKNAS — beskriv varför familjen är omappad och vad som ska hända med den',
+          },
+        },
+      },
+    ).utanSkal.length === 1,
+  )
+
+  // Undantaget för appar utan Tailwind ska vara BEVAKAT, inte underförstått.
+  const famState = collectFamilies()
+  t(
+    'portal står som app utan Tailwind',
+    NO_TAILWIND_APPS.some((a) => a.app === 'portal'),
+  )
+  t(
+    'portal har faktiskt ingen tailwind.config',
+    famState.unexpectedTailwind.length === 0,
+    JSON.stringify(famState.unexpectedTailwind),
+  )
+  t(
+    'båda Tailwind-apparna har en config som gick att läsa',
+    famState.missingConfigs.length === 0,
+    famState.missingConfigs.join(','),
+  )
+  t(
+    'familjeregeln täcker web OCH admin',
+    FAMILY_SCAN_APPS.map((a) => a.app).join(',') === 'web,admin',
+  )
+
+  // Baslinjen på disk måste vara internt konsistent.
+  const famBase = loadFamilyBaseline()
+  t(
+    'familjebaslinjen matchar verkligheten exakt',
+    (() => {
+      const d = diffFamilies(famState.entries, famBase)
+      return d.nya.length === 0 && d.stale.length === 0 && d.utanSkal.length === 0
+    })(),
+    JSON.stringify(diffFamilies(famState.entries, famBase)).slice(0, 200),
+  )
+  t(
+    'varje familjepost har ett riktigt skäl',
+    Object.values(famBase.entries ?? {}).every(
+      (e) => e.reason && e.reason.trim().length >= FAMILY_MIN_REASON,
+    ),
+  )
+  t(
+    'purple-posten pekar på sitt ärende',
+    /#531/.test(famBase.entries?.['web/purple']?.reason ?? ''),
+  )
+
   console.warn(failed === 0 ? '\nSjälvtest: ALLA GRÖNA' : `\nSjälvtest: ${failed} FALLERADE`)
   process.exit(failed === 0 ? 0 : 1)
 }
@@ -749,4 +1241,6 @@ if (arg === '--self-test') selfTest()
 else if (arg === '--update-baseline') {
   const total = writeBaseline(collect())
   console.warn(`Allowlist uppdaterad: ${total} kvarvarande träffar (flipp-skuld).`)
+  const famTotal = writeFamilyBaseline(collectFamilies())
+  console.warn(`Familjebaslinje uppdaterad: ${famTotal} klasser i omappade familjer.`)
 } else run()
