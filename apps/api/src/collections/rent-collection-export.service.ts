@@ -351,6 +351,28 @@ export class RentCollectionExportService {
       return `Avi ${notice.noticeNumber} har ingen utestående skuld (reglerad) — kan inte exporteras som inkassokrav`
     }
 
+    // ── KAPITALET BORTKREDITERAT, BARA RÄNTA KVAR (#518) ──────────────────
+    //
+    // `outstanding` mäter HELA 1510-fordran, dröjsmålsräntan inkluderad. En avi
+    // vars kapital krediterats till noll har därför fortfarande `outstanding > 0`
+    // så länge ränta hunnit löpa — och hade utan den här grinden exporterats som
+    // inkassokrav på ett belopp vars GRUND just krediterats bort.
+    //
+    // VARFÖR SPÄRR OCH INTE AUTOMATISK NOLLSTÄLLNING AV RÄNTAN: om en kreditering
+    // av kapitalet utsläcker den upplupna räntan är en juridisk fråga som ligger
+    // öppen hos revisor och hyresjurist. Att nolla räntan här vore att besvara
+    // den i tysthet, i en riktning som gynnar hyresgästen; att låta kravet gå
+    // vidare vore att besvara den i den andra. Det säkra är att maskinen slutar
+    // agera och lämnar beslutet till en människa — samma hållning som gäller
+    // varje annat bindande steg i kravtrappan.
+    if (debt.interestOnlyAfterCredit) {
+      return (
+        `Avi ${notice.noticeNumber} har krediterats och det enda som återstår är dröjsmålsränta ` +
+        `(${debt.interest.toFixed(2)} kr). Om räntan ska stå kvar när debiteringen den löpt på ` +
+        'har satts ned är inte avgjort — ta ställning till räntan innan kravet lämnas över.'
+      )
+    }
+
     if (notice.collectionReadyAt) {
       const newerPayment = await this.prisma.rentNoticePayment.findFirst({
         where: { rentNoticeId: notice.id, createdAt: { gt: notice.collectionReadyAt } },

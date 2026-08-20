@@ -24,6 +24,14 @@ interface BadDebtSummary {
   pausedStale: number
   /** T5 A2b — avier vars nedskrivning NEKATS (fail-closed): saknar bokförd fordran (orphan). */
   blockedNoAccrual: number
+  /**
+   * #518 — avier vars kapital krediterats till noll medan dröjsmålsränta står
+   * kvar. Cronen skriver ALDRIG ned dem: om krediteringen utsläcker räntan är en
+   * öppen juridisk fråga, och en automatisk nedskrivning hade besvarat den i
+   * tysthet. Den mänskliga vägen (`reclassifyToProbableLoss` via endpointen)
+   * står kvar — det är den bekräftelse som saknas, inte förmågan.
+   */
+  creditedInterestOnly: number
 }
 
 // Fälten kundförlust-flödet behöver för att avgöra moms-status och belopp.
@@ -109,6 +117,7 @@ export class RentBadDebtService {
       errors: 0,
       pausedStale: 0,
       blockedNoAccrual: 0,
+      creditedInterestOnly: 0,
     }
     // T5 A2b — orgar (→ antal) vars nedskrivning nekats fail-closed; larmas efter loopen.
     const blockedByOrg = new Map<string, number>()
@@ -151,6 +160,26 @@ export class RentBadDebtService {
               this.logger.warn(
                 `Befarad kundförlust hoppas över för momspliktig avi ${notice.id} ` +
                   `(lokalhyra) — kräver manuell hantering, momsåterkrav väntar revisorbeslut`,
+              )
+              continue
+            }
+            // ── KAPITALET BORTKREDITERAT, BARA RÄNTA KVAR (#518) ────────
+            //
+            // Nedskrivningsbeloppet är `debt.outstanding`, alltså HELA
+            // 1510-fordran inklusive dröjsmålsränta. Har kapitalet krediterats
+            // till noll är det enda som återstår ränta som löpt på en debitering
+            // som visat sig felaktig — och en automatisk nedskrivning av just
+            // den räntan avgör en juridisk fråga som ligger öppen, i tysthet och
+            // med resultatpåverkan. Cronen stannar; människan får avgöra.
+            //
+            // Samma form som momsgrenen ovan: hoppa över, räkna, logga.
+            const debtNow = await this.rentDebt.outstanding(notice.id, notice.organizationId)
+            if (debtNow.interestOnlyAfterCredit) {
+              summary.creditedInterestOnly++
+              this.logger.warn(
+                `Befarad kundförlust hoppas över för avi ${notice.id} — kapitalet är krediterat ` +
+                  `och endast dröjsmålsränta (${debtNow.interest.toFixed(2)} kr) återstår. ` +
+                  'Kräver manuellt ställningstagande till räntan.',
               )
               continue
             }

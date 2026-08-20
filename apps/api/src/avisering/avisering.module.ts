@@ -19,6 +19,7 @@ import { RentInterestService } from './rent-interest.service'
 import { RentBadDebtService } from './rent-bad-debt.service'
 import { RentDebtService } from './rent-debt.service'
 import { RentBackfillService } from './rent-backfill.service'
+import { RentNoticeCreditService } from './rent-notice-credit.service'
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { RentBackfillService } from './rent-backfill.service'
     RentBadDebtService,
     RentDebtService,
     RentBackfillService,
+    RentNoticeCreditService,
   ],
   // RentReminderService exporteras så PdfWorker (kind 'avisering-reminder') kan
   // resolva den via ModuleRef. RentInterestService exporteras för PR 4
