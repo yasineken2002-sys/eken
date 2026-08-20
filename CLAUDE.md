@@ -911,6 +911,34 @@ har jag sett den falla?**
 
 ---
 
+## Spärrar är riktade: fråga alltid efter den omvända riktningen
+
+**Bygger du en spärr mot att göra X på något som redan är Y — fråga om spärren
+mot att göra Y på något som redan är X också behövs.** Den frågan är billig att
+ställa och dyr att hoppa över.
+
+Belägget är två fall samma vecka, båda funna av granskning och inte av tester:
+
+| Ärende | Spärren som byggdes            | Spärren som glömdes            |
+| ------ | ------------------------------ | ------------------------------ |
+| #517   | kreditera en makulerad faktura | makulera en krediterad faktura |
+| #518   | kreditera en annullerad avi    | annullera en krediterad avi    |
+
+Samma orsak i båda: **två verifikat i olika `sourceId`-namnrymder rör samma
+fordran.** Reverseringen slår upp sin egen namnrymd, hittar originalet orört och
+speglar HELA beloppet en andra gång. Utfallet är en negativ kundfordran och en
+negativ intäkt på det dubbelräknade beloppet.
+
+Varje enskilt verifikat balanserar. Felet uppstår först i **sekvensen** — och
+därför fångar ingen verifikat-kontroll det, inte heller den globala balansgrinden.
+
+**Den skarpa formen av frågan:** kan de två operationerna reversera in i SAMMA
+namnrymd är de ofarliga — `createNumberedEntry` är idempotent per
+`(org, source, sourceId)`, så den andra körningen hittar den befintliga posten
+och bokför ingenting. (Så är det för påminnelseavgiften: både `cancelNotice` och
+den manuella strykningen skriver `reminder-fee-reversal:<id>`.) Skiljer sig
+namnrymderna åt finns inget skydd alls, och då MÅSTE båda riktningarna spärras.
+
 ## Kvalitetschecklist
 
 Kör detta mentalt innan varje feature anses klar:
@@ -1050,6 +1078,22 @@ försvinner de tyst.
 Hände tre gånger på en dag. Commita, bryt, mät, återställ — i den ordningen, varje
 gång.
 
+### `${VAR:?}` i varje destruktivt kommando
+
+Skriv `"${SP:?}"`, aldrig `$SP`:
+
+```bash
+rm -f "${SP:?}"/*.out        # avbryter om SP är tom eller osatt
+rm -f $SP/*.out              # expanderar till /*.out om SP är tom
+```
+
+`:?` gör skalet självt till spärren — en osatt variabel ger ett fel i stället för
+att radera fel saker. Gäller `rm`, `shred`, `mv` och omdirigering. Citera
+dessutom alltid, så ett mellanslag i sökvägen inte splittar argumentet.
+
+Skyddet ligger då i kommandot i stället för i att någon läste det noga, vilket
+gör felet omöjligt i stället för osannolikt.
+
 ### En grön check efter en edit betyder inget om diffen är tom
 
 `cd` som faller i en kommandokedja, en `python3 -c` som körs från fel katalog, en
@@ -1101,6 +1145,25 @@ inte tre.
 Samma fälla som `gh`: **`railway` kräver den länkade katalogen som cwd.** Körs den
 från `/tmp` blir svaret `No linked project found` — och i en `$(...)` blir
 resultatet tom sträng i stället för ett synligt fel.
+
+### Återställ ALLTID från repo-roten
+
+`git checkout -- apps/api/src/...` kört **från `apps/api`** misslyckas TYST:
+sökvägen är rot-relativ, matchar ingenting, och kommandot returnerar utan att
+återställa något.
+
+```bash
+cd /workspaces/eken                 # ALLTID roten först
+git checkout -- apps/api/src/...    # sökvägen är rot-relativ
+git status --short                  # och verifiera att trädet faktiskt är rent
+```
+
+Det farliga är var det används: mellan negativkontroller. Misslyckas
+återställningen ligger injektionen kvar, nästa injektion läggs ovanpå, och
+utfallet blir obegripligt — eller värre, ser rimligt ut.
+
+Samma familj: **branch FÖRST, commit sedan.** Committat PR-arbete direkt på
+`main` upptäcktes bara för att `git pull --ff-only` vägrade.
 
 ### En negativkontrolls sond ska ha ett namn som bevisligen inte finns
 
