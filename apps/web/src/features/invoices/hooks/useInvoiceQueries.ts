@@ -1,8 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { get, post, patch, del } from '@/lib/api'
 import type { Invoice, InvoiceEvent, InvoiceStatus, CreateInvoiceInput } from '@eken/shared'
-import { sendInvoiceEmail, registerInvoicePayment } from '../api/invoices.api'
-import type { RegisterPaymentInput } from '../api/invoices.api'
+import {
+  sendInvoiceEmail,
+  registerInvoicePayment,
+  getCreditNotePreview,
+  createCreditNote,
+} from '../api/invoices.api'
+import type { RegisterPaymentInput, CreateCreditNoteInput } from '../api/invoices.api'
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
@@ -125,6 +130,41 @@ export function useRegisterPayment() {
       void qc.invalidateQueries({ queryKey: ['invoices'] })
       void qc.invalidateQueries({ queryKey: ['invoice', id] })
       void qc.invalidateQueries({ queryKey: ['invoice-events', id] })
+    },
+  })
+}
+
+// ─── Kreditnota (#517) ────────────────────────────────────────────────────────
+
+/**
+ * Förhandsgranskningen modalen förfyller sig från, och det som avgör om
+ * kredit-knappen är möjlig.
+ *
+ * `enabled` styrs av anroparen: anropet görs först när detaljvyn är öppen, så
+ * listan inte hämtar en preview per rad.
+ */
+export function useCreditNotePreview(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['credit-note-preview', id],
+    queryFn: () => getCreditNotePreview(id!),
+    enabled: !!id && enabled,
+  })
+}
+
+export function useCreateCreditNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...dto }: { id: string } & CreateCreditNoteInput) =>
+      createCreditNote(id, dto),
+    onSuccess: (_, { id }) => {
+      // Krediteringen ändrar restskulden på originalet, skapar ett nytt
+      // dokument i listan och lägger en händelse på tidslinjen. Alla tre
+      // nycklarna måste bort — och previewen med dem, annars föreslår modalen
+      // nästa gång ett belopp som redan är krediterat.
+      void qc.invalidateQueries({ queryKey: ['invoices'] })
+      void qc.invalidateQueries({ queryKey: ['invoice', id] })
+      void qc.invalidateQueries({ queryKey: ['invoice-events', id] })
+      void qc.invalidateQueries({ queryKey: ['credit-note-preview', id] })
     },
   })
 }

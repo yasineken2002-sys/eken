@@ -10,6 +10,99 @@ import { computeInvoiceDebt } from './invoice-debt'
 import { CreateCreditNoteDto } from './dto/create-credit-note.dto'
 
 /**
+ * KAN DEN HÄR FAKTURAN KREDITERAS, OCH OM INTE — VARFÖR?
+ *
+ * EN källa för både spärren och gränssnittet. `createCreditNote` kastar på
+ * `reason`; `getPreview` visar samma sträng i UI:t, som därmed kan förklara
+ * varför knappen är stängd i stället för att gömma den.
+ *
+ * VARFÖR DET MÅSTE VARA SAMMA FUNKTION: skulle gränssnittet härleda sina egna
+ * villkor glider de isär vid första regeländringen, och resultatet är antingen
+ * en knapp som erbjuder något API:et nekar, eller en gömd knapp för något som
+ * faktiskt går. Båda får operatören att tro fel saker om systemet.
+ *
+ * Skälen är skrivna för en människa som ska förstå vad hen ska göra i stället,
+ * inte för en utvecklare. Inga ärendenummer.
+ */
+export function assessCreditability(
+  invoice: {
+    invoiceNumber: string
+    status: string
+    isCreditNote: boolean
+    payments: Array<unknown>
+  },
+  debt: { outstanding: Prisma.Decimal },
+): { allowed: boolean; reason: string | null } {
+  if (invoice.isCreditNote) {
+    return {
+      allowed: false,
+      reason:
+        'Dokumentet är redan en kreditnota och kan inte krediteras. ' +
+        'Kreditera ursprungsfakturan i stället.',
+    }
+  }
+
+  if (invoice.status === 'VOID') {
+    return {
+      allowed: false,
+      reason:
+        'Fakturan är makulerad — intäkten är redan reverserad. ' +
+        'En kreditnota ovanpå det skulle bokföra bort samma intäkt två gånger.',
+    }
+  }
+
+  // ── ÖVERLÄMNAD TILL INKASSO ─────────────────────────────────────────────────
+  //
+  // Inkassobolaget har fått ett krav på hela beloppet. Krediterar vi här sjunker
+  // skulden i vårt system medan kravet utanför står kvar oförändrat — någon
+  // jagas då för pengar de inte längre är skyldiga, och vi ser det inte,
+  // eftersom vår egen siffra ser rätt ut.
+  //
+  // VARFÖR SPÄRR OCH INTE ÅTERKALLNING: det finns ingen återkallningsväg att
+  // anropa. Uppmätt i kodbasen — `CollectionsModule` har export, mark-sent och
+  // paus/återupptag av påminnelser, ingenting som drar tillbaka ett överlämnat
+  // krav. `sentToCollectionAt` sätts på två ställen och nollställs på inget.
+  // Statusmaskinen ger SENT_TO_COLLECTION exakt två utgångar, PAID och VOID,
+  // och VOID är spärrad av allokeringsgrinden så snart en betalning finns.
+  // Samma slutsats som redan står i `reconciliation.service.ts` vid
+  // avmatchningsspärren.
+  if (invoice.status === 'SENT_TO_COLLECTION') {
+    return {
+      allowed: false,
+      reason:
+        `Faktura ${invoice.invoiceNumber} är överlämnad till inkasso och kan inte ` +
+        'krediteras här. Kravet måste först hanteras hos inkassobolaget — ' +
+        'annars fortsätter de driva in ett belopp som hyresgästen inte är ' +
+        'skyldig. Systemet har ingen väg att återkalla ett överlämnat krav.',
+    }
+  }
+
+  // ── BETALD ELLER DELBETALD ──────────────────────────────────────────────────
+  //
+  // Grinden nyckas på FAKTISKA allokeringar, inte på status. Samma kalibrering
+  // som VOID-spärren, och av samma skäl: statusen kan släpa efter pengarna.
+  if (invoice.payments.length > 0) {
+    return {
+      allowed: false,
+      reason:
+        'Fakturan har en registrerad betalning och kan inte krediteras. ' +
+        'En kreditering av en betald faktura ger ett tillgodohavande till ' +
+        'hyresgästen — en skuld som måste bokföras och sedan regleras eller ' +
+        'betalas tillbaka. Den hanteringen är inte byggd.',
+    }
+  }
+
+  if (debt.outstanding.lte(0)) {
+    return {
+      allowed: false,
+      reason: `Faktura ${invoice.invoiceNumber} är redan fullt krediterad — det finns ingenting kvar att kreditera.`,
+    }
+  }
+
+  return { allowed: true, reason: null }
+}
+
+/**
  * KREDITNOTA PÅ FAKTURA — den OBETALDA halvan (#517).
  *
  * ENDA VÄGEN IN. Kreditnotan är en Invoice-rad med `isCreditNote = true`, och
@@ -50,6 +143,84 @@ export class CreditNoteService {
     private readonly accountingService: AccountingService,
   ) {}
 
+  /**
+   * UNDERLAGET GRÄNSSNITTET FÖRFYLLER SIG FRÅN.
+   *
+   * Returnerar vad som ÅTERSTÅR att kreditera per rad, plus bedömningen av om
+   * kreditering alls är möjlig och i så fall inte — varför.
+   *
+   * VARFÖR SERVERN RÄKNAR DET HÄR OCH INTE KLIENTEN: radtaket är kumulativt
+   * över alla tidigare kreditnotor, och den summan finns bara i databasen. En
+   * klient som gissade "återstår = radens belopp" hade föreslagit belopp som
+   * API:et sedan avvisar — operatören hade fått ett felmeddelande för något
+   * gränssnittet självt föreslog.
+   *
+   * Ren läsning. Ingen transaktion, inget radlås: siffrorna är ett förslag att
+   * visa, och det bindande beslutet tas av `createCreditNote`, som läser om allt
+   * under lås. Skulle något ändras däremellan är det skrivningen som gäller.
+   */
+  async getPreview(invoiceId: string, organizationId: string) {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      include: {
+        lines: { orderBy: { id: 'asc' } },
+        payments: { select: { amount: true } },
+        creditNotes: { select: { total: true } },
+      },
+    })
+    if (!invoice) throw new NotFoundException('Faktura hittades inte')
+
+    const debt = computeInvoiceDebt({
+      total: invoice.total,
+      allocations: invoice.payments.map((p) => p.amount),
+      credits: invoice.creditNotes.map((c) => c.total),
+    })
+    const bedömning = assessCreditability(invoice, debt)
+
+    const tidigareKreditrader = await this.prisma.invoiceLine.findMany({
+      where: {
+        invoice: { creditedInvoiceId: invoice.id },
+        creditedInvoiceLineId: { not: null },
+      },
+      select: { creditedInvoiceLineId: true, total: true },
+    })
+    const krediteratPerRad = new Map<string, Prisma.Decimal>()
+    for (const rad of tidigareKreditrader) {
+      const nyckel = rad.creditedInvoiceLineId!
+      krediteratPerRad.set(
+        nyckel,
+        (krediteratPerRad.get(nyckel) ?? new Prisma.Decimal(0)).plus(rad.total),
+      )
+    }
+
+    return {
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      total: Number(invoice.total),
+      outstanding: debt.outstanding.toNumber(),
+      credited: debt.credited.toNumber(),
+      allowed: bedömning.allowed,
+      blockedReason: bedömning.reason,
+      lines: invoice.lines.map((l) => {
+        const krediterat = krediteratPerRad.get(l.id) ?? new Prisma.Decimal(0)
+        const kvar = new Prisma.Decimal(l.total).minus(krediterat)
+        return {
+          invoiceLineId: l.id,
+          description: l.description,
+          quantity: Number(l.quantity),
+          unitPrice: Number(l.unitPrice),
+          vatRate: l.vatRate,
+          /** Radens bruttobelopp på ursprungsfakturan. */
+          invoiced: Number(l.total),
+          /** Vad som redan krediterats av just den här raden. */
+          credited: krediterat.toNumber(),
+          /** Taket för en ny kreditering av raden. Aldrig negativt. */
+          remaining: kvar.isNegative() ? 0 : kvar.toNumber(),
+        }
+      }),
+    }
+  }
+
   async createCreditNote(
     invoiceId: string,
     organizationId: string,
@@ -79,76 +250,18 @@ export class CreditNoteService {
       })
       if (!original) throw new NotFoundException('Faktura hittades inte')
 
-      if (original.isCreditNote) {
-        throw new BadRequestException(
-          'Dokumentet är redan en kreditnota och kan inte krediteras. ' +
-            'Kreditera ursprungsfakturan i stället.',
-        )
-      }
-
-      if (original.status === 'VOID') {
-        throw new BadRequestException(
-          'Fakturan är makulerad — intäkten är redan reverserad. ' +
-            'En kreditnota ovanpå det skulle bokföra bort samma intäkt två gånger.',
-        )
-      }
-
-      // ── ÖVERLÄMNAD TILL INKASSO: SPÄRRAD ───────────────────────────────────
-      //
-      // Inkassobolaget har fått ett krav på hela beloppet. Krediterar vi här
-      // sjunker skulden i vårt system medan kravet utanför står kvar oförändrat
-      // — någon jagas då för pengar de inte längre är skyldiga, och vi ser det
-      // inte, eftersom vår egen siffra ser rätt ut.
-      //
-      // VARFÖR SPÄRR OCH INTE ÅTERKALLNING: det finns ingen återkallningsväg
-      // att anropa. Uppmätt i kodbasen — `CollectionsModule` har export,
-      // mark-sent och paus/återupptag av påminnelser, ingenting som drar
-      // tillbaka ett överlämnat krav. `sentToCollectionAt` sätts på två ställen
-      // och nollställs på inget. Statusmaskinen ger SENT_TO_COLLECTION exakt
-      // två utgångar, PAID och VOID, och VOID är spärrad av allokeringsgrinden
-      // så snart en betalning finns. Samma slutsats som redan står i
-      // `reconciliation.service.ts` vid avmatchningsspärren.
-      //
-      // Att bygga återkallningen här vore att uppfinna ett flöde mot en extern
-      // motpart utan att veta hur den motparten tar emot det. Meddelandet lovar
-      // därför ingen väg som inte finns: det säger var kravet måste hanteras.
-      if (original.status === 'SENT_TO_COLLECTION') {
-        throw new BadRequestException(
-          `Faktura ${original.invoiceNumber} är överlämnad till inkasso och kan inte ` +
-            'krediteras här. Kravet måste först hanteras hos inkassobolaget — ' +
-            'annars fortsätter de driva in ett belopp som hyresgästen inte är ' +
-            'skyldig. Systemet har ingen väg att återkalla ett överlämnat krav.',
-        )
-      }
-
-      // ── BETALD ELLER DELBETALD: SPÄRRAD ────────────────────────────────────
-      //
-      // Grinden nyckas på FAKTISKA allokeringar, inte på status. Samma
-      // kalibrering som VOID-spärren, och av samma skäl: statusen kan släpa
-      // efter pengarna.
-      if (original.payments.length > 0) {
-        throw new BadRequestException(
-          'Fakturan har en registrerad betalning och kan inte krediteras. ' +
-            'En kreditering av en betald faktura ger ett tillgodohavande till ' +
-            'hyresgästen — en skuld som måste bokföras och sedan regleras eller ' +
-            'betalas tillbaka. Den hanteringen är inte byggd.',
-        )
-      }
-
-      // Obetald rest enligt den GEMENSAMMA sanningskällan, inte ett eget
-      // uttryck. `paid` är noll här (spärren ovan), så resten är fakturans
-      // belopp minus det som redan krediterats.
+      // Spärrarna och deras skäl ligger i `assessCreditability` — SAMMA
+      // bedömning som `getPreview` visar för gränssnittet. Två uppsättningar
+      // regler hade oundvikligen glidit isär, och då hade knappen i UI:t
+      // erbjudit en åtgärd som API:et sedan nekar (eller tvärtom, gömt en
+      // åtgärd som faktiskt går).
       const debtBefore = computeInvoiceDebt({
         total: original.total,
         allocations: original.payments.map((p) => p.amount),
         credits: original.creditNotes.map((c) => c.total),
       })
-
-      if (debtBefore.outstanding.lte(0)) {
-        throw new BadRequestException(
-          `Faktura ${original.invoiceNumber} är redan fullt krediterad — det finns ingenting kvar att kreditera.`,
-        )
-      }
+      const bedömning = assessCreditability(original, debtBefore)
+      if (!bedömning.allowed) throw new BadRequestException(bedömning.reason)
 
       // ── VAD SOM REDAN KREDITERATS PER RAD ──────────────────────────────────
       //

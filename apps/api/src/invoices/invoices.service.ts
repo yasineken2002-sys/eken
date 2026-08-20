@@ -178,7 +178,16 @@ export class InvoicesService {
         // #349 — allokeringarna, för `outstanding` nedan. Samma skäl som i
         // findAll: restskulden räknas HÄR, inte i klienten.
         payments: { select: { amount: true } },
-        creditNotes: { select: { total: true } },
+        // #517 — KOPPLINGEN ÅT BÅDA HÅLL. Samma include tjänar två syften:
+        // `total` är allt skuldberäkningen behöver, och resten är vad
+        // detaljvyn visar. Utan dokumenten kan en operatör se att fordran
+        // krympt men inte vilket dokument som gjorde det.
+        creditNotes: {
+          select: { id: true, invoiceNumber: true, total: true, issueDate: true, notes: true },
+          orderBy: { issueDate: 'asc' },
+        },
+        // Andra riktningen: är DETTA en kreditnota, vilken faktura avser den?
+        creditedInvoice: { select: { id: true, invoiceNumber: true, total: true } },
       },
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
@@ -196,6 +205,15 @@ export class InvoicesService {
     const { payments: _payments, creditNotes: _creditNotes, ...inv } = invoice
     return {
       ...inv,
+      // #517 — kreditnotorna som DOKUMENT på tråden. Beloppen används dessutom
+      // som ingång till skuldberäkningen nedan; samma rader, två användningar.
+      creditNotes: _creditNotes.map((c) => ({
+        id: c.id,
+        invoiceNumber: c.invoiceNumber,
+        total: Number(c.total),
+        issueDate: c.issueDate,
+        reason: c.notes,
+      })),
       outstanding: invoiceOutstanding({
         total: inv.total,
         payments: _payments,

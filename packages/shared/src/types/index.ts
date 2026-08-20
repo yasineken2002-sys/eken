@@ -295,6 +295,26 @@ export interface Invoice {
   // revisorsfråga (#505) som delas av #482, #517 och #518 — fältet visar att
   // pengarna finns, det påstår ingenting om hur de är konterade.
   overpaid?: number
+  // ── KREDITNOTA (#517) ──────────────────────────────────────────────────
+  //
+  // `isCreditNote` skiljer dokumentet från en vanlig faktura. En kreditnota
+  // ska ALDRIG visas som en faktura med negativa belopp: beloppen är positiva
+  // och betydelsen ligger i flaggan. Ytor som listar fakturor måste läsa den,
+  // annars ser en kreditering ut som ett krav.
+  isCreditNote?: boolean
+  // Satt på kreditnotan och pekar på ursprungsfakturan. Null på vanliga
+  // fakturor.
+  creditedInvoiceId?: string | null
+  // Kopplingen åt båda håll, fylls bara av detaljsvaret (GET /invoices/:id).
+  // På ursprungsfakturan: dess kreditnotor. På en kreditnota: dess original.
+  creditNotes?: Array<{
+    id: string
+    invoiceNumber: string
+    total: number
+    issueDate: string
+    reason?: string | null
+  }>
+  creditedInvoice?: { id: string; invoiceNumber: string; total: number } | null
   // Matchade banktransaktioner — fylls bara av invoice-detail/list-svar.
   bankTransactions?: Array<{
     id: string

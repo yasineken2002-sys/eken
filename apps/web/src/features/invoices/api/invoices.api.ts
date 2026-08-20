@@ -1,4 +1,4 @@
-import { post } from '@/lib/api'
+import { get, post } from '@/lib/api'
 import type { Invoice } from '@eken/shared'
 
 export function downloadInvoicePdf(id: string): void {
@@ -20,4 +20,60 @@ export function registerInvoicePayment(id: string, dto: RegisterPaymentInput): P
 
 export function sendInvoiceEmail(id: string): Promise<{ message: string }> {
   return post<{ message: string }>(`/invoices/${id}/send-email`)
+}
+
+// ── KREDITNOTA (#517) ────────────────────────────────────────────────────────
+
+export interface CreditNotePreviewLine {
+  invoiceLineId: string
+  description: string
+  quantity: number
+  unitPrice: number
+  vatRate: number
+  /** Radens bruttobelopp på ursprungsfakturan. */
+  invoiced: number
+  /** Vad som redan krediterats av just den raden, av tidigare kreditnotor. */
+  credited: number
+  /** Taket för en ny kreditering av raden. Aldrig negativt. */
+  remaining: number
+}
+
+/**
+ * Underlaget modalen förfyller sig från.
+ *
+ * `allowed`/`blockedReason` kommer från SAMMA bedömning som API:et spärrar på
+ * (`assessCreditability`). Gränssnittet härleder alltså inga egna villkor —
+ * hade det gjort det skulle knappen förr eller senare erbjuda något servern
+ * nekar, eller gömma något som faktiskt går.
+ */
+export interface CreditNotePreview {
+  invoiceId: string
+  invoiceNumber: string
+  total: number
+  outstanding: number
+  credited: number
+  allowed: boolean
+  blockedReason: string | null
+  lines: CreditNotePreviewLine[]
+}
+
+export interface CreateCreditNoteInput {
+  lines: Array<{ invoiceLineId: string; description?: string; quantity: number; unitPrice: number }>
+  reason: string
+}
+
+export interface CreateCreditNoteResult {
+  creditNote: Invoice
+  creditedInvoice: { id: string; invoiceNumber: string; outstanding: number }
+}
+
+export function getCreditNotePreview(id: string): Promise<CreditNotePreview> {
+  return get<CreditNotePreview>(`/invoices/${id}/credit-note/preview`)
+}
+
+export function createCreditNote(
+  id: string,
+  dto: CreateCreditNoteInput,
+): Promise<CreateCreditNoteResult> {
+  return post<CreateCreditNoteResult>(`/invoices/${id}/credit-note`, dto)
 }
