@@ -24,7 +24,9 @@ const D = (n: number) => new Prisma.Decimal(n)
  * avgift 60 = 8 810 brutto. Betalt 4 000 → 4 810 kvar. Ränta 120 ska ALDRIG
  * ingå i det OCR-reglerbara beloppet. Sex tal, inga sammanfaller.
  */
-function notice(opts: { payments?: number[]; fee?: number; interest?: number } = {}) {
+function notice(
+  opts: { payments?: number[]; fee?: number; interest?: number; credits?: number[] } = {},
+) {
   return {
     type: RentNoticeType.RENT,
     totalAmount: D(8000),
@@ -33,6 +35,7 @@ function notice(opts: { payments?: number[]; fee?: number; interest?: number } =
     reminderFeeAmount: D(opts.fee ?? 60),
     interestAccruedAmount: D(opts.interest ?? 120),
     payments: (opts.payments ?? []).map((a) => ({ amount: D(a) })),
+    credits: (opts.credits ?? []).map((a) => ({ amount: D(a) })),
   }
 }
 
@@ -131,6 +134,7 @@ describe('#344 — rentNoticeOutstanding', () => {
       reminderFeeAmount: n.reminderFeeAmount,
       interestAccruedAmount: n.interestAccruedAmount,
       allocations: n.payments.map((p) => p.amount),
+      credits: [],
     })
     expect(rentNoticeOutstanding(n).payable).toBe(debt.ocrOutstanding)
     expect(rentNoticeOutstanding(n).paid).toBe(debt.paid)
@@ -176,6 +180,7 @@ describe('#344 — rentNoticeOutstanding', () => {
         reminderFeeAmount: dep.reminderFeeAmount,
         interestAccruedAmount: dep.interestAccruedAmount,
         allocations: dep.payments.map((p) => p.amount),
+        credits: [],
       }).ocrOutstanding,
     ).toBe(0)
   })

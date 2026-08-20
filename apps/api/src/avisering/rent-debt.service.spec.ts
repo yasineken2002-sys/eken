@@ -28,6 +28,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [],
+      credits: [],
     })
     expect(d).toEqual({
       capital: 10_000,
@@ -52,6 +53,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       reminderFeeAmount: 60,
       interestAccruedAmount: 32.5,
       allocations: [],
+      credits: [],
     })
     expect(d.capital).toBe(7_000)
     expect(d.consumption).toBe(240)
@@ -72,6 +74,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       reminderFeeAmount: 60,
       interestAccruedAmount: 32.5,
       allocations: [],
+      credits: [],
     })
     expect(d.miscCharge).toBe(1_500)
     // 7000 + 240 + 1500 + 60 + 32,5 = 8832,5
@@ -92,7 +95,8 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       miscChargeAmount: 1_500,
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
-      allocations: [8_740], // 7000 + 240 + 1500
+      allocations: [8_740],
+      credits: [], // 7000 + 240 + 1500
     })
     expect(d.ocrOutstanding).toBe(0)
     expect(d.outstanding).toBe(0)
@@ -107,6 +111,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [4_000, 1_500],
+      credits: [],
     })
     expect(d.paid).toBe(5_500)
     expect(d.claim).toBe(4_500)
@@ -122,6 +127,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [7_300],
+      credits: [],
     })
     expect(d.claim).toBe(0)
     expect(d.outstanding).toBe(0)
@@ -136,6 +142,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [5_500],
+      credits: [],
     })
     expect(d.paid).toBe(5_500)
     expect(d.claim).toBe(-500) // råvärdet exponeras
@@ -153,6 +160,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [new Decimal('0.01')],
+      credits: [],
     })
     expect(d.claim).toBe(0.29)
     expect(d.outstanding).toBe(0.29)
@@ -167,6 +175,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [],
+      credits: [],
     })
     expect(d).toEqual({
       capital: 0,
@@ -191,6 +200,7 @@ describe('PR1 · A — computeRentDebt (ren beräkning)', () => {
       reminderFeeAmount: 60,
       interestAccruedAmount: '0',
       allocations: [new Decimal('310.50'), '0', 1_001],
+      credits: [],
     })
     // gross = 1000 + 250,50 + 60 = 1310,50 ; paid = 310,50 + 0 + 1001 = 1311,50
     expect(d.paid).toBe(1_311.5)
@@ -209,6 +219,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       reminderFeeAmount: 60,
       interestAccruedAmount: 140,
       allocations: [],
+      credits: [],
     })
     expect(d.ocrOutstanding).toBe(7_300) // ränta (140) ingår INTE
     expect(d.outstanding).toBe(7_440) // total inkl. ränta
@@ -223,6 +234,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       reminderFeeAmount: 60,
       interestAccruedAmount: 140,
       allocations: [5_000],
+      credits: [],
     })
     expect(d.ocrOutstanding).toBe(2_060) // 7060 OCR − 5000
     expect(d.outstanding).toBe(2_200) // 7200 total − 5000
@@ -236,7 +248,8 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       miscChargeAmount: 0,
       reminderFeeAmount: 60,
       interestAccruedAmount: 140,
-      allocations: [7_060], // hela OCR-delen betald, räntan kvar
+      allocations: [7_060],
+      credits: [], // hela OCR-delen betald, räntan kvar
     })
     expect(d.ocrOutstanding).toBe(0) // ingen framdrift av kravtrappan
     expect(d.outstanding).toBe(140) // men 140 kr ränta ingår i nedskrivning
@@ -251,6 +264,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [7_500],
+      credits: [],
     })
     expect(d.ocrOutstanding).toBe(0)
   })
@@ -264,6 +278,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       reminderFeeAmount: 0,
       interestAccruedAmount: 0,
       allocations: [],
+      credits: [],
     })
     expect(d.ocrOutstanding).toBe(0)
   })
@@ -279,6 +294,7 @@ describe('PR3a · ocrOutstanding — waterfall (OCR före ränta)', () => {
       reminderFeeAmount: 0,
       interestAccruedAmount: new Decimal('100.005'),
       allocations: [new Decimal('3000.005')],
+      credits: [],
     })
     // ocrGross 6999,995 − 3000,005 = 3999,99 (round2)
     expect(d.ocrOutstanding).toBe(3999.99)
@@ -306,6 +322,7 @@ describe('PR1 · A — RentDebtService.outstanding (scopad läsare)', () => {
       reminderFeeAmount: new Decimal('0'),
       interestAccruedAmount: new Decimal('0'),
       payments: [{ amount: new Decimal('3000') }, { amount: new Decimal('2000') }],
+      credits: [],
     })
 
     const d = await service.outstanding('rn-1', 'org-1')
