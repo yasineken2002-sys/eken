@@ -339,14 +339,46 @@ export class RentNoticeCreditService {
    * Ren läsning. Ingen transaktion, inget radlås: siffrorna är ett förslag att
    * visa, och det bindande beslutet tas av `createCredit`, som läser om allt
    * under lås. Skulle något ändras däremellan är det skrivningen som gäller.
+   *
+   * ── `proposedAmount`: RÄNTEFALLET AVGÖRS HÄR, INTE I KLIENTEN ──────────────
+   *
+   * Gränssnittet måste kunna säga, INNAN operatören bekräftar, att den här
+   * krediteringen tömmer kapitalet men lämnar dröjsmålsränta kvar — och att
+   * avin då stannar och väntar på hennes beslut i stället för att gå vidare i
+   * kravtrappan.
+   *
+   * Att räkna ut det i React hade betytt att regeln fanns på två ställen. Den
+   * skulle glida isär vid första ändringen, och glidningen syns inte: båda
+   * sidor visar ett tal, bara olika. Klienten skickar därför sin tänkta SUMMA
+   * och får tillbaka utfallet ur `computeRentDebt` — samma funktion som
+   * kravtrappan, inkassoexporten och nedskrivningen läser.
+   *
+   * Beloppet KLAMPAS mot vad som faktiskt går att kreditera. Utan det kan en
+   * godtycklig summa i frågesträngen rendera en projektion som inte motsvarar
+   * någon kreditering `createCredit` skulle acceptera.
    */
-  async getPreview(noticeId: string, organizationId: string) {
+  async getPreview(noticeId: string, organizationId: string, proposedAmount?: number) {
     const notice = await this.prisma.rentNotice.findFirst({
       where: { id: noticeId, organizationId },
       include: {
         lines: { orderBy: { id: 'asc' } },
         payments: { select: { amount: true } },
-        credits: { select: { amount: true } },
+        // Krediteringarna läses HELA — inte bara beloppen. Avi-detaljen ska
+        // visa vad som krediterats, varför och när; ett skäl som bara finns i
+        // händelseloggen är i praktiken osynligt för operatören.
+        credits: {
+          orderBy: { creditedAt: 'desc' },
+          select: {
+            id: true,
+            amount: true,
+            reason: true,
+            creditedAt: true,
+            lines: {
+              orderBy: { id: 'asc' },
+              select: { id: true, rentNoticeLineId: true, description: true, amount: true },
+            },
+          },
+        },
       },
     })
     if (!notice) throw new NotFoundException('Hyresavi hittades inte')
@@ -367,6 +399,12 @@ export class RentNoticeCreditService {
       debt,
     )
 
+    const buckets = this.buckets(notice, await this.krediteratPerPost(noticeId))
+
+    // Taket för hela avin: summan av vad varje post har kvar. Klampningen nedan
+    // vilar på det, och gränssnittet visar det som "går att kreditera nu".
+    const creditableNow = round2(buckets.reduce((s, b) => s + b.remaining, 0))
+
     return {
       rentNoticeId: notice.id,
       noticeNumber: notice.noticeNumber,
@@ -375,7 +413,97 @@ export class RentNoticeCreditService {
       credited: debt.credited,
       allowed: bedömning.allowed,
       blockedReason: bedömning.reason,
-      buckets: this.buckets(notice, await this.krediteratPerPost(noticeId)),
+      buckets,
+      creditableNow,
+      /**
+       * NULÄGET, ur samma helper som kravtrappan läser. Avi-detaljen ska kunna
+       * visa den BERÄKNADE skulden — inte `totalAmount`, som är bruttot och
+       * blir fel i samma sekund något krediteras.
+       */
+      debt: {
+        capital: debt.capital,
+        consumption: debt.consumption,
+        miscCharge: debt.miscCharge,
+        reminderFee: debt.reminderFee,
+        interest: debt.interest,
+        paid: debt.paid,
+        credited: debt.credited,
+        outstanding: debt.outstanding,
+        ocrOutstanding: debt.ocrOutstanding,
+        interestOnlyAfterCredit: debt.interestOnlyAfterCredit,
+      },
+      /** Kravtrappans läge. Nödvändigt för att kunna säga VAD som stannat. */
+      collectionStage: notice.collectionStage,
+      credits: notice.credits.map((c) => ({
+        id: c.id,
+        amount: c.amount.toNumber(),
+        reason: c.reason,
+        creditedAt: c.creditedAt,
+        lines: c.lines.map((r) => ({
+          id: r.id,
+          rentNoticeLineId: r.rentNoticeLineId,
+          description: r.description,
+          amount: r.amount.toNumber(),
+        })),
+      })),
+      /**
+       * UTFALLET AV DEN TÄNKTA KREDITERINGEN. `null` när klienten inte frågat.
+       *
+       * Räknas med `computeRentDebt` och inte med subtraktion i klienten, av
+       * skälet i docblocket ovan: `interestOnlyAfterCredit` är en regel, inte
+       * en differens, och den regeln ska bara finnas på ett ställe.
+       */
+      projection:
+        proposedAmount === undefined
+          ? null
+          : this.projicera(notice, debt, creditableNow, proposedAmount),
+    }
+  }
+
+  /**
+   * Vad blir skuldläget om `önskat` krediteras?
+   *
+   * `applied` är det klampade beloppet och skickas MED i svaret: bad klienten om
+   * mer än som går att kreditera ska projektionen inte tyst gälla ett annat tal
+   * än det som visas.
+   */
+  private projicera(
+    notice: {
+      type: RentNoticeType
+      totalAmount: Prisma.Decimal
+      consumptionAmount: Prisma.Decimal
+      miscChargeAmount: Prisma.Decimal
+      reminderFeeAmount: Prisma.Decimal
+      interestAccruedAmount: Prisma.Decimal
+      payments: Array<{ amount: Prisma.Decimal }>
+      credits: Array<{ amount: Prisma.Decimal }>
+    },
+    debtNow: { outstanding: number; ocrOutstanding: number },
+    creditableNow: number,
+    önskat: number,
+  ) {
+    const applied = round2(Math.min(Math.max(önskat, 0), creditableNow))
+    const efter = computeRentDebt({
+      type: notice.type,
+      totalAmount: notice.totalAmount,
+      consumptionAmount: notice.consumptionAmount,
+      miscChargeAmount: notice.miscChargeAmount,
+      reminderFeeAmount: notice.reminderFeeAmount,
+      interestAccruedAmount: notice.interestAccruedAmount,
+      allocations: notice.payments.map((p) => p.amount),
+      credits: [...notice.credits.map((c) => c.amount), applied],
+    })
+    return {
+      requested: round2(önskat),
+      applied,
+      outstandingBefore: debtNow.outstanding,
+      ocrOutstandingBefore: debtNow.ocrOutstanding,
+      outstanding: efter.outstanding,
+      ocrOutstanding: efter.ocrOutstanding,
+      interest: efter.interest,
+      credited: efter.credited,
+      /** Kapitalet bortkrediterat, ränta kvar → kravtrappan stannar. */
+      interestOnlyAfterCredit: efter.interestOnlyAfterCredit,
     }
   }
 
@@ -625,6 +753,15 @@ export class RentNoticeCreditService {
       }
     })
   }
+}
+
+/**
+ * Öresavrundning. Samma form som beräkningslagret i `rent-debt.service.ts` —
+ * summorna här är redan avrundade tal ur `computeRentDebt`, men en summering av
+ * dem kan ändå bära ett flyttalsspår, och det talet visas för en operatör.
+ */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
 }
 
 /**
