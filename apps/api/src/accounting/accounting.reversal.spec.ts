@@ -34,11 +34,16 @@ function makeService(opts: { existing?: unknown } = {}) {
   let created: Created | null = null
   // Originalposten finns; reversalens egen idempotens-uppslagning (…-reversal:…)
   // ska returnera null så createNumberedEntry faktiskt skapar motverifikatet.
-  const findFirst = jest.fn().mockImplementation((arg: { where?: { sourceId?: string } }) => {
-    const sid = arg?.where?.sourceId ?? ''
-    if (sid.includes('reversal')) return Promise.resolve(null)
-    return Promise.resolve(opts.existing ?? null)
-  })
+  const findFirst = jest
+    .fn()
+    .mockImplementation((arg: { where?: { sourceId?: string; reversalOfEntryId?: string } }) => {
+      // #537-uppföljningen: createReversalEntry frågar först om originalet REDAN
+      // är reverserat (av någon väg). I de här fallen är det inte det.
+      if (arg?.where?.reversalOfEntryId) return Promise.resolve(null)
+      const sid = arg?.where?.sourceId ?? ''
+      if (sid.includes('reversal')) return Promise.resolve(null)
+      return Promise.resolve(opts.existing ?? null)
+    })
   const prisma = {
     journalEntry: {
       findFirst,

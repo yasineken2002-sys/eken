@@ -2205,7 +2205,7 @@ export class AccountingService {
   }
 
   /**
-   * Skriver motverifikatet. Delad kropp för samtliga fem vägar.
+   * Skriver motverifikatet. Delad kropp för samtliga reverseringsvägar.
    *
    * Datumet är ALLTID dagens — aldrig originalets. Posten går därför genom
    * `allocate` som vilken bokföring som helst och träffar periodspärren om
@@ -2214,10 +2214,31 @@ export class AccountingService {
    *
    * Idempotent via det unika indexet (org, source, sourceId) — en redan skapad
    * reversering returneras i stället för att bokföras en gång till.
+   *
+   * ── ETT VERIFIKAT REVERSERAS EN GÅNG, OAVSETT VÄG ───────────────────────────
+   *
+   * `reversalOfEntryId` sätts HÄR, centralt, för samtliga vägar — inte av
+   * anroparna. Fram till dess satte exakt EN av åtta vägar den (den manuella
+   * operatörsrättelsen); de sju automatiska lämnade den tom. Följden var att
+   * `@unique` på kolumnen bara skyddade manuell-mot-manuell, och att ett
+   * verifikat kunde reverseras två gånger så snart de två vägarna korsades:
+   *
+   *   manuell först:     rättelsen nollar posten → annullering speglar den IGEN
+   *   automatisk först:  `reversedBy` förblev NULL → operatörens guard passerade
+   *
+   * Båda ger negativ kundfordran och negativ intäkt på det dubbelräknade
+   * beloppet. Varje enskilt verifikat balanserar; felet uppstår först i
+   * sekvensen. Se CLAUDE.md, "Spärrar är riktade".
+   *
+   * ATT SÄTTA DEN CENTRALT ÄR STARKARE ÄN ATT KRÄVA DET AV ANROPARNA. En ny
+   * reverseringsväg får skyddet automatiskt; ingen kan glömma ett argument. Det
+   * som återstår att bevaka är i stället att någon skriver ett motverifikat
+   * FÖRBI den här metoden — det fälls av `reversal-symmetry-guard.spec.ts`.
    */
   private async createReversalEntry(params: {
     organizationId: string
     original: {
+      id: string
       description: string
       lines: Array<{
         accountId: string
@@ -2231,10 +2252,32 @@ export class AccountingService {
     description: string
     createdById: string | null
     linePrefix?: string
-    reversalOfEntryId?: string
     include?: Prisma.JournalEntryInclude
     tx?: Prisma.TransactionClient
   }) {
+    // ── LÄSBART FEL, INTE ETT RÅTT CONSTRAINT-FEL ─────────────────────────────
+    //
+    // `@unique` på `reversalOfEntryId` är sistahandsskyddet och skulle annars
+    // slå till som P2002 → 500 hos operatören. Ett databasfel som når en
+    // användare är en försämring, inte en förbättring: det säger inte vad som
+    // hänt och pekar inte på rättelsen som redan finns.
+    //
+    // UNDANTAGET ÄR VÅR EGEN POST. Träffar vi en reversering med SAMMA
+    // `sourceId` är det vår egen, tidigare körning — då ska idempotensen nedan
+    // få göra sitt jobb och returnera den, precis som förut. Utan det här
+    // undantaget hade varje retry blivit ett fel.
+    const befintlig = await (params.tx ?? this.prisma).journalEntry.findFirst({
+      where: { reversalOfEntryId: params.original.id, organizationId: params.organizationId },
+      select: { series: true, verNumber: true, sourceId: true },
+    })
+    if (befintlig && befintlig.sourceId !== params.reversalSourceId) {
+      throw new ConflictException(
+        `Verifikatet är redan reverserat, med verifikat ${befintlig.series}${befintlig.verNumber}. ` +
+          'Ett verifikat reverseras en gång — annars bokas samma belopp bort två gånger. ' +
+          'Behöver du ändra igen, rätta reverseringen i stället.',
+      )
+    }
+
     return this.createNumberedEntry({
       organizationId: params.organizationId,
       // Rättelseverifikatet dateras till dagen det skapas, inte originalets datum.
@@ -2249,7 +2292,8 @@ export class AccountingService {
         source: params.source,
         sourceId: params.reversalSourceId,
       },
-      ...(params.reversalOfEntryId ? { reversalOfEntryId: params.reversalOfEntryId } : {}),
+      // Centralt, för ALLA vägar. Se docblocket ovan.
+      reversalOfEntryId: params.original.id,
       ...(params.include ? { include: params.include } : {}),
       ...(params.tx ? { tx: params.tx } : {}),
     })
@@ -2592,15 +2636,37 @@ export class AccountingService {
 
     const original = await this.prisma.journalEntry.findFirst({
       where: { id: params.entryId, organizationId: params.organizationId },
-      include: { lines: true, reversedBy: { select: { series: true, verNumber: true } } },
+      include: {
+        lines: true,
+        // `sourceId` behövs för att beskedet ska kunna säga VILKEN väg som
+        // reverserade posten — se kontrollen nedan.
+        reversedBy: { select: { series: true, verNumber: true, sourceId: true } },
+      },
     })
     if (!original) throw new NotFoundException('Verifikation hittades inte')
 
+    // ── REDAN REVERSERAT — OAVSETT AV VILKEN VÄG ────────────────────────────
+    //
+    // Kontrollen fanns, men täckte bara manuell-mot-manuell: de sju AUTOMATISKA
+    // reverseringarna satte inte `reversalOfEntryId`, så `reversedBy` var NULL
+    // för dem och operatören släpptes igenom till en andra reversering av en
+    // post som annulleringen redan vänt. Sedan kolumnen sätts centralt i
+    // `createReversalEntry` täcker den här raden båda vägarna.
+    //
+    // BESKEDET SKILJER PÅ VÄGARNA. "Redan rättat" är fel ord om posten vändes av
+    // en annullering eller makulering — operatören letar då efter en rättelse
+    // som inte finns, i stället för att förstå att dokumentet är annullerat.
+    // `sourceId` bär vilken väg det var.
     if (original.reversedBy) {
-      const { series, verNumber } = original.reversedBy
+      const { series, verNumber, sourceId } = original.reversedBy
+      const manuell = sourceId?.startsWith('entry-reversal:') ?? false
       throw new ConflictException(
-        `Verifikatet är redan rättat, med verifikat ${series}${verNumber}. ` +
-          'Ett verifikat rättas en gång — behöver du ändra igen, rätta rättelsen.',
+        manuell
+          ? `Verifikatet är redan rättat, med verifikat ${series}${verNumber}. ` +
+              'Ett verifikat rättas en gång — behöver du ändra igen, rätta rättelsen.'
+          : `Verifikatet är redan reverserat av verifikat ${series}${verNumber}, som skapades ` +
+              'när dokumentet annullerades eller makulerades. Beloppet är alltså redan bokat ' +
+              'bort — en rättelse här skulle bokföra bort det en andra gång.',
       )
     }
 
@@ -2619,7 +2685,7 @@ export class AccountingService {
         description: intendedDescription,
         createdById: params.actorUserId,
         linePrefix: 'Rättelse',
-        reversalOfEntryId: params.entryId,
+        // reversalOfEntryId sätts centralt i createReversalEntry, för alla vägar.
         include: { lines: { include: { account: true } } },
       })
 
