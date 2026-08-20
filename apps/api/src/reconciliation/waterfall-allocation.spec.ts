@@ -44,6 +44,7 @@ function avi(a: AviSpec) {
     miscChargeAmount: dec(0),
     reminderFeeAmount: dec(0),
     interestAccruedAmount: dec(0),
+    credits: [],
   }
 }
 
@@ -65,6 +66,8 @@ function makeService(
         return Promise.resolve({ count: 1 })
       }),
     },
+    // #518 — krediteringarna läses på samma vägar som allokeringarna.
+    rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       findMany: jest.fn((args: { where: { rentNoticeId: string } }) =>
         Promise.resolve(

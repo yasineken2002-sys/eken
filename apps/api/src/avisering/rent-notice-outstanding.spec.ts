@@ -133,8 +133,8 @@ describe('#344 — rentNoticeOutstanding', () => {
       miscChargeAmount: n.miscChargeAmount,
       reminderFeeAmount: n.reminderFeeAmount,
       interestAccruedAmount: n.interestAccruedAmount,
-      allocations: n.payments.map((p) => p.amount),
       credits: [],
+      allocations: n.payments.map((p) => p.amount),
     })
     expect(rentNoticeOutstanding(n).payable).toBe(debt.ocrOutstanding)
     expect(rentNoticeOutstanding(n).paid).toBe(debt.paid)
@@ -179,8 +179,8 @@ describe('#344 — rentNoticeOutstanding', () => {
         miscChargeAmount: dep.miscChargeAmount,
         reminderFeeAmount: dep.reminderFeeAmount,
         interestAccruedAmount: dep.interestAccruedAmount,
-        allocations: dep.payments.map((p) => p.amount),
         credits: [],
+        allocations: dep.payments.map((p) => p.amount),
       }).ocrOutstanding,
     ).toBe(0)
   })

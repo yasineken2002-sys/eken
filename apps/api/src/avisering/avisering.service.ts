@@ -2363,7 +2363,11 @@ export class AviseringService {
 
     const notice = await this.prisma.rentNotice.findFirst({
       where: { id: noticeId, organizationId: orgId },
-      include: { payments: { select: { amount: true } } },
+      include: {
+        payments: { select: { amount: true } },
+        // #518 — se den aritmetiska gränsen nedan.
+        credits: { select: { amount: true } },
+      },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
 
@@ -2388,11 +2392,17 @@ export class AviseringService {
     // Överskottet kan inte bokföras (#378 — klampningen gör det osynligt).
     // Meddelandet förklarar det för hyresvärden utan att nämna ärendenumret;
     // spåret hör hemma här, inte i produkten.
+    // #518 — krediteringen dras av. Utan avdraget blir taket för HÖGT och
+    // grinden alltså för TILLÅTANDE: en avgiftsstrykning på en krediterad avi
+    // hade kunnat släppas igenom trots att den skapar just den överbetalning
+    // kontrollen finns för att förhindra.
+    const credited = notice.credits.reduce((sum, c) => sum + Number(c.amount), 0)
     const ocrGross =
       Number(notice.totalAmount) +
       Number(notice.consumptionAmount) +
       Number(notice.miscChargeAmount) +
-      fee
+      fee -
+      credited
     const paid = notice.payments.reduce((sum, p) => sum + Number(p.amount), 0)
     const takWithoutFee = round2(ocrGross - fee)
     if (paid > takWithoutFee) {

@@ -95,6 +95,7 @@ export class RentInterestService {
     return this.prisma.$transaction(async (tx) => {
       const notice = await tx.rentNotice.findFirst({
         where: { id: noticeId, organizationId },
+        include: { credits: { select: { amount: true } } },
       })
       if (!notice) return null
       // Dröjsmålsränta löper bara på obetald hyra. Deposition har eget flöde.
@@ -112,7 +113,29 @@ export class RentInterestService {
       // bokförings-/juridikbeslut som bokförings-experten avgör SEPARAT. Lämnas
       // MEDVETET utanför basen i 4b tills beslut tagits — skadedelen undercountar
       // då räntan, vilket är säkrare än ränta på en oavgjord grund.
-      const base = Number(notice.totalAmount) + Number(notice.consumptionAmount)
+      // ── KREDITERINGEN SÄNKER RÄNTEBASEN (#518) ──────────────────────────
+      //
+      // Utan avdraget fortsätter räntan löpa på ett kapital som satts ned —
+      // alltså ränta på en fordran hyresgästen bevisligen inte har. Det är fel
+      // oavsett hur den öppna frågan om REDAN upplupen ränta besvaras, eftersom
+      // det här gäller framtida upplupning.
+      //
+      // DEN ÖPPNA FRÅGAN BESVARAS INTE HÄR, och det är avsiktligt. Delta-regeln
+      // nedan (`if (delta <= 0) return null`) gör att redan bokförd ränta
+      // ALDRIG reverseras: sjunker basen under det som redan bokförts stannar
+      // räntan bara, den rullas inte tillbaka. Om krediteringen ska utsläcka den
+      // upplupna räntan kräver ett juridiskt ställningstagande som inte är
+      // fattat — och tills det är det stannar avin i stället för att drivas
+      // vidare (se `interestOnlyAfterCredit`).
+      //
+      // Klampad vid noll: en bas kan aldrig bli negativ, och en negativ bas hade
+      // gett NEGATIV ränta, alltså en kredit till hyresgästen ur räntekontot.
+      const credited = notice.credits.reduce((sum, c) => sum + Number(c.amount), 0)
+      const base = Math.max(
+        0,
+        round2(Number(notice.totalAmount) + Number(notice.consumptionAmount) - credited),
+      )
+      if (base <= 0) return null
 
       // Segmentera dröjsmålet [förfallodag+1, förfallodag+days] vid halvårs-
       // gränserna. Varje segment ligger helt inom ETT halvår och slås upp mot

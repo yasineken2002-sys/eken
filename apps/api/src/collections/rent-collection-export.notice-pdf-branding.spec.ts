@@ -91,6 +91,7 @@ function makeNotice(over: Record<string, unknown> = {}) {
     miscChargeAmount: new Decimal(0),
     reminderFeeAmount: new Decimal(60),
     interestAccruedAmount: new Decimal(123.45),
+    credits: [],
     interestAccruedThrough: new Date('2026-07-20T00:00:00Z'),
     reminderPdfStorageKey: 'reminders/org-1/rn-1.pdf',
     tenant: {
@@ -184,6 +185,7 @@ describe('RentCollectionExportService.buildPdfHtml — brandad shell + juridisk/
     // Dröjsmålsränteraden och totalen MÅSTE följa den bokförda totalen.
     const oresrest = makeNotice({
       interestAccruedAmount: new Decimal(123.45),
+      credits: [],
       events: [
         {
           type: 'INTEREST_ACCRUED',

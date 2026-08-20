@@ -51,6 +51,7 @@ function makeService(opts: {
     miscChargeAmount: dec('0'),
     reminderFeeAmount: dec('0'),
     interestAccruedAmount: dec('0'),
+    credits: [],
   }
 
   const txMock = {
@@ -65,6 +66,8 @@ function makeService(opts: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       update: jest.fn().mockResolvedValue({}),
     },
+    // #518 — krediteringarna läses på samma vägar som allokeringarna.
+    rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       findMany: jest.fn().mockResolvedValue(opts.priorAllocations ?? []),
       create: jest.fn().mockResolvedValue({ id: 'rnp-x' }),
@@ -310,6 +313,7 @@ describe('PR3b · D3 — fuzzy är allt-eller-inget', () => {
           consumptionAmount: dec('0'),
           miscChargeAmount: dec('0'),
           reminderFeeAmount: dec('0'),
+          credits: [],
         },
       ],
     })
@@ -337,6 +341,7 @@ describe('PR3b · D3 — fuzzy är allt-eller-inget', () => {
           consumptionAmount: dec('0'),
           miscChargeAmount: dec('0'),
           reminderFeeAmount: dec('0'),
+          credits: [],
         },
       ],
     })
@@ -363,6 +368,7 @@ describe('PR3b · full betalning nollställer kravsteget (PR2 oförändrat)', ()
         miscChargeAmount: dec('0'),
         reminderFeeAmount: dec('0'),
         interestAccruedAmount: dec('0'),
+        credits: [],
       },
     })
     await service.matchTransaction(OCR_TX(8000) as never, 'org-1')
@@ -408,6 +414,7 @@ describe('PR3b · full betalning nollställer kravsteget (PR2 oförändrat)', ()
         miscChargeAmount: dec('0'),
         reminderFeeAmount: dec('0'),
         interestAccruedAmount: dec('0'),
+        credits: [],
       },
     })
     await service.matchTransaction(OCR_TX(3000) as never, 'org-1')

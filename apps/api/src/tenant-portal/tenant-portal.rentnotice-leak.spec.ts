@@ -138,6 +138,7 @@ function dirtyRentNotice() {
     writtenOffAt: null,
     probableLossAt: new Date('2026-08-01T00:00:00.000Z'),
     interestAccruedAmount: 12,
+    credits: [],
     interestAccruedThrough: new Date('2026-07-31T00:00:00.000Z'),
     type: 'RENT',
     periodStart: null,

@@ -42,6 +42,7 @@ function makeService(opts?: {
     miscChargeAmount: 0,
     reminderFeeAmount: 0,
     interestAccruedAmount: 0,
+    credits: [],
     paymentMethod: null,
     ...opts?.notice,
   }
@@ -61,6 +62,8 @@ function makeService(opts?: {
     },
     // Bankavstämnings-härdning PR 1 — MANUAL-allokering skrivs bredvid betalningen.
     // PR 3b — findMany läser tidigare allokeringar (D5-skuldberäkning). Default = [].
+    // #518 — krediteringarna läses på samma vägar som allokeringarna.
+    rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       findMany: jest.fn().mockResolvedValue(opts?.priorAllocations ?? []),
       create: jest.fn().mockResolvedValue({ id: 'rnp-1' }),

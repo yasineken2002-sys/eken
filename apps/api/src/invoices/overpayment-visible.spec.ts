@@ -116,6 +116,7 @@ describe('#378 — KRAVTRAPPAN ÄNDRAR INTE BETEENDE', () => {
     miscChargeAmount: 0,
     reminderFeeAmount: 0,
     interestAccruedAmount: 0,
+    credits: [],
   }
 
   it('ÖVERBETALD avi kan inte eskalera: ocrOutstanding = 0 (grindens fält)', () => {

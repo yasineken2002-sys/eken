@@ -32,6 +32,7 @@ function makeService(opts: { linkedDeposit?: Record<string, unknown> | null }) {
     miscChargeAmount: dec('0'),
     reminderFeeAmount: dec('0'),
     interestAccruedAmount: dec('0'),
+    credits: [],
   }
 
   const txMock = {
@@ -44,6 +45,8 @@ function makeService(opts: { linkedDeposit?: Record<string, unknown> | null }) {
       findFirst: jest.fn().mockResolvedValue(txNotice),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
+    // #518 — krediteringarna läses på samma vägar som allokeringarna.
+    rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({ id: 'rnp-x' }),

@@ -44,6 +44,8 @@ function makeService(transaction: unknown) {
       findFirst: jest.fn().mockResolvedValue(null),
     },
     bankTransaction: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    // #518 — krediteringarna läses på samma vägar som allokeringarna.
+    rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       findFirst: jest.fn().mockResolvedValue(null),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),

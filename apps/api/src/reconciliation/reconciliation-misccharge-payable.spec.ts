@@ -25,7 +25,8 @@ function candidate(over: Record<string, unknown> = {}) {
     dueDate: new Date('2026-07-01'),
     totalAmount: new Decimal(8000), // hyra
     consumptionAmount: new Decimal(240), // förbrukning (IMD)
-    miscChargeAmount: new Decimal(1500), // skada/nyckel (teknisk förvaltning)
+    miscChargeAmount: new Decimal(1500),
+    credits: [], // skada/nyckel (teknisk förvaltning)
     reminderFeeAmount: new Decimal(0),
     ...over,
   }

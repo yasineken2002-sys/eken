@@ -39,6 +39,9 @@ const RENT_COLLECTION_INCLUDE = {
   organization: true,
   lease: { include: { unit: { include: { property: true } } } },
   events: { orderBy: { createdAt: 'asc' } },
+  // #518 — kravets kapital är NETTO efter kreditering. Typen är spärren:
+  // `figures()` typcheckar inte utan dem.
+  credits: { select: { amount: true } },
 } satisfies Prisma.RentNoticeInclude
 
 type RentNoticeWithCollectionData = Prisma.RentNoticeGetPayload<{
@@ -400,10 +403,23 @@ export class RentCollectionExportService {
    * bokförda totalen även om en öresrest skulle skilja mot Σ segment.
    */
   private figures(notice: RentNoticeWithCollectionData): CollectionFigures {
-    const capital =
-      Number(notice.totalAmount) +
-      Number(notice.consumptionAmount) +
-      Number(notice.miscChargeAmount)
+    // ── KAPITALET ÄR NETTO EFTER KREDITERING (#518) ────────────────────────
+    //
+    // Det här talet trycks i inkassounderlaget och är vad bolaget driver in. En
+    // DELVIS krediterad avi är exporterbar (det finns en verklig fordran kvar),
+    // och utan avdraget hade underlaget krävt BRUTTObeloppet av en hyresgäst
+    // vars debitering redan satts ned — det värsta utfallet i hela ärendet,
+    // eftersom kravet då drivs av en extern part vi inte styr över.
+    const credited = notice.credits.reduce((sum, c) => sum + Number(c.amount), 0)
+    const capital = Math.max(
+      0,
+      round2(
+        Number(notice.totalAmount) +
+          Number(notice.consumptionAmount) +
+          Number(notice.miscChargeAmount) -
+          credited,
+      ),
+    )
     const reminderFee = Number(notice.reminderFeeAmount)
     const interest = Number(notice.interestAccruedAmount)
     const totalClaim = round2(capital + reminderFee + interest)

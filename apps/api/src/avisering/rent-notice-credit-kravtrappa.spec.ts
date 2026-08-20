@@ -71,13 +71,13 @@ function avi(over: Partial<FakeNotice> = {}): FakeNotice {
     miscChargeAmount: D(0),
     reminderFeeAmount: D(0),
     interestAccruedAmount: D(0),
+    credits: [],
     interestAccruedThrough: null,
     vatAmount: D(0),
     probableLossAt: null,
     writtenOffAt: null,
     collectionReadyAt: null,
     payments: [],
-    credits: [],
     ...over,
   }
 }

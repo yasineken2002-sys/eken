@@ -33,6 +33,7 @@ function notice(over: Record<string, unknown> = {}) {
     consumptionAmount: new Decimal(300),
     reminderFeeAmount: new Decimal(60),
     interestAccruedAmount: new Decimal(140),
+    credits: [],
     paidAmount: null,
     lines: [{ vatRate: 0 }], // momsfri förbrukningsrad
     ...over,

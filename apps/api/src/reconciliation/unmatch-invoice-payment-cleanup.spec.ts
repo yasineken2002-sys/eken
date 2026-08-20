@@ -81,6 +81,8 @@ function makeService(
         return Promise.resolve(args)
       }),
     },
+    // #518 — krediteringarna läses på samma vägar som allokeringarna.
+    rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       // #326 D — allokeringens id läses FÖRE raderingen (verifikatets nyckel).
       // NULL som default: den här filen testar FAKTURA-matchade transaktioner,

@@ -578,10 +578,23 @@ export class RentReminderService {
           interestAccruedAmount: true,
           interestAccruedThrough: true,
           reminderPdfStorageKey: true,
+          // #518 — kravsteget dokumenterar vad som drivs in, och det är netto
+          // efter kreditering. Payloaden är räkenskapsspår (BFL 5 kap 11 §):
+          // står bruttot där blir historiken oense med det underlag som faktiskt
+          // exporteras.
+          credits: { select: { amount: true } },
         },
       })
-      const capital =
-        Number(fresh.totalAmount) + Number(fresh.consumptionAmount) + Number(fresh.miscChargeAmount)
+      const credited = fresh.credits.reduce((sum, c) => sum + Number(c.amount), 0)
+      const capital = Math.max(
+        0,
+        round2(
+          Number(fresh.totalAmount) +
+            Number(fresh.consumptionAmount) +
+            Number(fresh.miscChargeAmount) -
+            credited,
+        ),
+      )
       const totalClaim = round2(
         capital + Number(fresh.reminderFeeAmount) + Number(fresh.interestAccruedAmount),
       )

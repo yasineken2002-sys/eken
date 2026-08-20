@@ -41,6 +41,7 @@ const RENT = (totalAmount: number, allocations: number[] = [], daysOverdue = 5) 
   miscChargeAmount: 0,
   reminderFeeAmount: 0,
   interestAccruedAmount: 0,
+  credits: [],
   dueDate: new Date(Date.now() - daysOverdue * DAY),
   payments: allocations.map((amount) => ({ amount })),
   creditNotes: [],
@@ -52,6 +53,7 @@ const INV = (total: number, allocations: number[] = [], daysOverdue = 5) => ({
   total,
   dueDate: new Date(Date.now() - daysOverdue * DAY),
   payments: allocations.map((amount) => ({ amount })),
+  credits: [],
   creditNotes: [],
 })
 
