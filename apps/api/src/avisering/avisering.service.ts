@@ -63,6 +63,9 @@ type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
     tenant: { select: typeof SAFE_TENANT_SELECT }
     lease: { include: { unit: { include: { property: true } } } }
     lines: true
+    // #518 — typen är spärren: utan `credits` i queryn typcheckar inte
+    // `rentNoticePayableTotal`, som dokumentet och mejlet båda läser.
+    credits: { select: { amount: true } }
   }
 }>
 
@@ -914,6 +917,10 @@ export class AviseringService {
         tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
         lines: true,
+        // #518 — avi-dokumentet och dess mejl ska visa det NEDSATTA beloppet.
+        // En avi som krediterats och sedan skickas om (FAILED-omsändning) hade
+        // annars burit ett OCR-belopp som är högre än fordran.
+        credits: { select: { amount: true } },
       },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
@@ -987,6 +994,10 @@ export class AviseringService {
         tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
         lines: true,
+        // #518 — avi-dokumentet och dess mejl ska visa det NEDSATTA beloppet.
+        // En avi som krediterats och sedan skickas om (FAILED-omsändning) hade
+        // annars burit ett OCR-belopp som är högre än fordran.
+        credits: { select: { amount: true } },
       },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
@@ -1695,6 +1706,15 @@ export class AviseringService {
           where: { rentNoticeId: noticeId },
           select: { amount: true },
         })
+        // #518 — krediteringarna läses INNANFÖR radlåset, av exakt samma skäl
+        // som allokeringarna: annars kan en kreditering skrivas mellan läsningen
+        // och beslutet, och överbetalningsspärren nedan prövas mot en skuld som
+        // just krympt. Utan dem hade dessutom en delbetalning av en krediterad
+        // avi aldrig kunnat reglera den (ocrOutstanding hade räknats på brutto).
+        const priorCredits = await tx.rentNoticeCredit.findMany({
+          where: { rentNoticeId: noticeId },
+          select: { amount: true },
+        })
         const debtGrund = {
           type: låst.type,
           totalAmount: låst.totalAmount,
@@ -1702,6 +1722,7 @@ export class AviseringService {
           miscChargeAmount: låst.miscChargeAmount,
           reminderFeeAmount: låst.reminderFeeAmount,
           interestAccruedAmount: låst.interestAccruedAmount,
+          credits: priorCredits.map((c) => c.amount),
         }
 
         // ── H4: ÖVERBETALNING AVVISAS ───────────────────────────────────────

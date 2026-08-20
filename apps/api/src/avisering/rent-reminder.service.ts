@@ -70,6 +70,13 @@ const REMINDER_NOTICE_INCLUDE = {
   // `ocrOutstanding` några rader tidigare, just för att avgöra om påminnelsen
   // ska skickas alls — och skickade sedan bruttot ändå.
   payments: { select: { amount: true } },
+  // ── #518: OCH INTE HELLER UTAN KREDITERINGARNA ───────────────────────────
+  //
+  // Exakt samma defekt en nivå till: krediterades 3 000 av 9 000 hade brevet
+  // krävt 9 000 för en fordran hyresgästen bevisligen inte har. Krediteringen
+  // redovisas som en EGEN avdragsrad i brevet, skild från betalningen — en
+  // nedsättning och en inbetalning säger olika saker till mottagaren.
+  credits: { select: { amount: true } },
 } satisfies Prisma.RentNoticeInclude
 
 type ReminderNotice = Prisma.RentNoticeGetPayload<{ include: typeof REMINDER_NOTICE_INCLUDE }>

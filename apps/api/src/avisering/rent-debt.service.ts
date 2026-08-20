@@ -30,7 +30,43 @@ export interface RentDebtBreakdown {
   /** Ackumulerad dröjsmålsränta (interestAccruedAmount, inkasso PR 3). */
   interest: number
   /**
-   * RÅ netto-fordran = (kapital + förbrukning + avgift + ränta) − Σ allokeringar.
+   * Σ av krediteringarna (#518) — `RentNoticeCredit.amount`.
+   *
+   * SEPARAT FRÅN `paid` MED FLIT, samma val som `computeInvoiceDebt` gjorde i
+   * #528. En kreditering är inte en betalning: inga pengar har kommit in, och
+   * bankavstämningen ska aldrig kunna hitta en allokering som ingen
+   * banktransaktion motsvarar. Att skriva krediteringen som en
+   * `RentNoticePayment` hade varit den enkla vägen och hade förgiftat både
+   * betalningshistoriken och avstämningen.
+   *
+   * Båda drar ned samma `claim`, men av olika skäl, och den skillnaden ska synas
+   * i varje yta som visar varför en fordran krympt.
+   */
+  credited: number
+  /**
+   * DET SOM ÅTERSTÅR ÄR REN RÄNTA, OCH KAPITALET ÄR BORTKREDITERAT (#518, #535 fråga 3).
+   *
+   * Sant när en kreditering finns, den OCR-reglerbara delen är nere på noll, och
+   * `outstanding` ändå är positiv — alltså när det enda som står kvar av kravet
+   * är dröjsmålsränta som löpt på ett kapital som sedan visade sig felaktigt.
+   *
+   * VARFÖR FLAGGAN FINNS I STÄLLET FÖR ATT RÄNTAN BARA NOLLAS: om en kreditering
+   * av kapitalet utsläcker den upplupna räntan är en JURIDISK fråga som ligger
+   * öppen hos revisor och hyresjurist (#535 fråga 3). Att nolla räntan här vore
+   * att besvara den i tysthet, och att låta den stå kvar utan markering vore
+   * värre: kravtrappans två sista steg (inkasso-export och kundförlust) mäter
+   * `outstanding` INKLUSIVE ränta, så avin hade exporterats till inkasso och
+   * skrivits ned på ett belopp vars grund just krediterats bort.
+   *
+   * Flaggan är alltså det säkra mellanläget: maskinen slutar agera automatiskt
+   * och lämnar beslutet till en människa. Konsumenterna är
+   * `RentCollectionExportService.exportBlockReason` (spärrar exporten) och
+   * `RentBadDebtService.reclassifyProbableLosses` (hoppar över avin).
+   */
+  interestOnlyAfterCredit: boolean
+  /**
+   * RÅ netto-fordran = (kapital + förbrukning + avgift + ränta) − Σ allokeringar
+   * − Σ krediteringar.
    * SIGNERAD: kan bli NEGATIV vid överbetalning. Det är råvärdet A/D kan inspektera
    * för att upptäcka över-/underbetalning; `outstanding` är den klampade varianten.
    */
@@ -83,6 +119,21 @@ export interface RentDebtInput {
   interestAccruedAmount: Decimal | number | string
   /** Beloppen från RentNoticePayment-allokeringarna. */
   allocations: Array<Decimal | number | string>
+  /**
+   * Krediteringarnas belopp (#518) — `RentNoticeCredit.amount`.
+   *
+   * OBLIGATORISK, SAMMA SPÄRR SOM `allocations`. En valfri parameter med default
+   * `[]` hade gjort varje befintlig anropare tyst blind för krediteringar:
+   * kravtrappan, inkassoexporten och hyresgästportalen hade fortsatt räkna full
+   * skuld på en krediterad avi, och ingenting hade blivit rött. Att göra fältet
+   * obligatoriskt tvingar TypeScript att peka ut varje ställe som fattar ett
+   * skuldbeslut, en gång, vid införandet.
+   *
+   * Tom array är ett giltigt och vanligt värde — de allra flesta avier har inga
+   * krediteringar. Skillnaden mot en default är att den som skriver `[]` har
+   * SETT frågan.
+   */
+  credits: Array<Decimal | number | string>
 }
 
 function round2(n: number): number {
@@ -95,11 +146,55 @@ const ZERO_DEBT: RentDebtBreakdown = {
   miscCharge: 0,
   reminderFee: 0,
   interest: 0,
+  credited: 0,
+  interestOnlyAfterCredit: false,
   claim: 0,
   overpaid: 0,
   paid: 0,
   outstanding: 0,
   ocrOutstanding: 0,
+}
+
+/**
+ * ── AVINS OCR-BÄRANDE POSTER. EN (1) DEFINITION I HELA KODBASEN. ────────────
+ *
+ * Det här uttrycket fanns på TRE ställen innan #518, och den tredje var en
+ * inline-dubblett i bankavstämningens fuzzy-matchning
+ * (`reconciliation.service.ts`). Det är inte en stilfråga: missar en av dem
+ * krediteringen matchar en KORREKT inbetalning inte längre mot avin, och
+ * pengarna blir liggande omatchade medan avin ser reglerad ut. Samma klass av
+ * divergens som #329/#342/#344 arbetade bort på skuldsidan.
+ *
+ * `rentNoticePayableTotal` och `computeRentDebt` anropar båda den här; en fjärde
+ * summeringsplats fälls av `rent-notice-credit-guard.spec.ts`.
+ *
+ * VAD SOM INGÅR: hyra + förbrukning (IMD) + övrig debitering (skada/nyckel) +
+ * påminnelseavgift. Alltså precis de poster hyresgästen reglerar via avins OCR.
+ * Dröjsmålsräntan står UTANFÖR — den är inte OCR-reglerbar utan en separat
+ * fordran som regleras vid slutuppgörelse.
+ *
+ * `net` ÄR SIGNERAD OCH KLAMPAS INTE HÄR. Klampningen hör hemma där talet
+ * tolkas: ett negativt netto betyder överkreditering, och den signalen ska inte
+ * försvinna på vägen. Skrivvägen spärrar överkreditering, så i praktiken är
+ * `net` aldrig negativ — men en beräkning som förlitar sig på att en spärr
+ * någon annanstans håller är exakt den sortens antagande som brukar sluta gälla.
+ */
+export function rentNoticeOcrComponents(input: {
+  totalAmount: Decimal | number | string
+  consumptionAmount: Decimal | number | string
+  miscChargeAmount?: Decimal | number | string
+  reminderFeeAmount?: Decimal | number | string
+  credits: Array<Decimal | number | string>
+}): { gross: Decimal; credited: Decimal; net: Decimal } {
+  const gross = new Decimal(input.totalAmount)
+    .plus(new Decimal(input.consumptionAmount))
+    .plus(new Decimal(input.miscChargeAmount ?? 0))
+    .plus(new Decimal(input.reminderFeeAmount ?? 0))
+  const credited = input.credits.reduce<Decimal>(
+    (sum, c) => sum.plus(new Decimal(c)),
+    new Decimal(0),
+  )
+  return { gross, credited, net: gross.minus(credited) }
 }
 
 /**
@@ -127,17 +222,29 @@ export function computeRentDebt(input: RentDebtInput): RentDebtBreakdown {
     new Decimal(0),
   )
 
-  const grossClaim = capital.plus(consumption).plus(miscCharge).plus(reminderFee).plus(interest)
+  // OCR-reglerbar del (exkl. ränta) ur den ENDA summeringen. Krediteringen dras
+  // av här och inte någon annanstans: en krediterad avi ÄR en mindre fordran.
+  // Låg avdraget utanför skulle avin fortsätta bära en skuld hyresgästen inte
+  // har, och eskalera in i kravtrappan — precis det #518 finns för att stoppa.
+  const ocr = rentNoticeOcrComponents({
+    totalAmount: capital,
+    consumptionAmount: consumption,
+    miscChargeAmount: miscCharge,
+    reminderFeeAmount: reminderFee,
+    credits: input.credits,
+  })
+
+  const grossClaim = ocr.net.plus(interest)
   // EN round2 per härlett netto-belopp. Subtraktionen är det enda stället där
   // avrundning kan behövas; komponenterna är redan exakt tvådecimaliga.
   const claim = round2(grossClaim.minus(paid).toNumber())
 
-  // OCR-reglerbar restskuld (exkl. ränta) — waterfall: betalt fyller OCR-delen
-  // (kapital+förbrukning+övrig debitering+avgift) före räntan. Övriga debiterbara
-  // poster (skada/nyckel) är kapitalfordran som hyresgästen reglerar via avins OCR,
+  // Waterfall: betalt fyller OCR-delen (kapital+förbrukning+övrig debitering+
+  // avgift, minus kreditering) före räntan. Övriga debiterbara poster
+  // (skada/nyckel) är kapitalfordran som hyresgästen reglerar via avins OCR,
   // precis som förbrukning. Se RentDebtBreakdown.ocrOutstanding.
-  const ocrGross = capital.plus(consumption).plus(miscCharge).plus(reminderFee)
-  const ocrOutstanding = Math.max(0, round2(ocrGross.minus(paid).toNumber()))
+  const ocrOutstanding = Math.max(0, round2(ocr.net.minus(paid).toNumber()))
+  const outstanding = Math.max(0, claim)
 
   return {
     capital: capital.toNumber(),
@@ -145,10 +252,15 @@ export function computeRentDebt(input: RentDebtInput): RentDebtBreakdown {
     miscCharge: miscCharge.toNumber(),
     reminderFee: reminderFee.toNumber(),
     interest: interest.toNumber(),
+    credited: ocr.credited.toNumber(),
+    // Se fältets docblock: kapitalet bortkrediterat, bara ränta kvar → ingen
+    // automatisk eskalering. Kräver att en kreditering FAKTISKT finns — en avi
+    // som betalats ned till ren restränta är ett annat fall och rörs inte.
+    interestOnlyAfterCredit: ocr.credited.greaterThan(0) && ocrOutstanding <= 0 && outstanding > 0,
     claim,
     overpaid: Math.max(0, round2(-claim)),
     paid: paid.toNumber(),
-    outstanding: Math.max(0, claim),
+    outstanding,
     ocrOutstanding,
   }
 }
@@ -172,6 +284,10 @@ export class RentDebtService {
         reminderFeeAmount: true,
         interestAccruedAmount: true,
         payments: { select: { amount: true } },
+        // #518 — utan krediteringarna räknar varje grind som läser den här
+        // metoden (påminnelse, inkasso-redo, export, kundförlust, dashboard)
+        // full skuld på en krediterad avi.
+        credits: { select: { amount: true } },
       },
     })
     if (!notice) throw new NotFoundException('Hyresavi hittades inte')
@@ -184,6 +300,7 @@ export class RentDebtService {
       reminderFeeAmount: notice.reminderFeeAmount,
       interestAccruedAmount: notice.interestAccruedAmount,
       allocations: notice.payments.map((p) => p.amount),
+      credits: notice.credits.map((c) => c.amount),
     })
   }
 }
@@ -213,7 +330,10 @@ export class RentDebtService {
  * RADERNA MÅSTE SUMMERA (FAR, granskning av #344). Kravbrevet specificerar sina
  * poster (lag 1981:739 5 §), så det som visas måste gå ihop:
  *
- *     nominalBeforeFee + fee − paid + overpaid === payable
+ *     nominalBeforeFee + fee − credited − paid + overpaid === payable
+ *
+ * `credited` (#518) är en EGEN avdragsrad i den kedjan, inte hopslagen med
+ * `paid`: en nedsättning och en betalning säger olika saker till mottagaren.
  *
  * Därför returneras posterna NOMINELLT (som de bokfördes) med betalningen som en
  * egen avdragsrad, i stället för ett per-post klampat restvärde. Första versionen
@@ -232,15 +352,31 @@ export function rentNoticeOutstanding(notice: {
   reminderFeeAmount: Decimal | number
   interestAccruedAmount: Decimal | number
   payments: Array<{ amount: Decimal | number }>
+  /**
+   * #518 — krediteringarna. OBLIGATORISK av samma skäl som `payments`: en
+   * `findMany` utan `include: { credits: … }` typcheckar inte, och en tom array
+   * hade gett det OKREDITERADE beloppet i ett formellt krav till en hyresgäst,
+   * tyst. Det är exakt den defekt #329/#342 fick rättad för betalningar.
+   */
+  credits: Array<{ amount: Decimal | number }>
 }): {
   /** Att betala nu — OCR-reglerbar restskuld, klampad vid 0. */
   payable: number
-  /** Avins nominella OCR-belopp inkl. påminnelseavgift. Aldrig klampat. */
+  /** Avins OCR-belopp inkl. påminnelseavgift, efter kreditering. Aldrig klampat. */
   nominalTotal: number
-  /** Avins nominella belopp utan påminnelseavgiften (som avin utfärdades). */
+  /** Avins belopp utan påminnelseavgiften (som avin utfärdades). */
   nominalBeforeFee: number
   /** Påminnelseavgiften, nominellt bokförd. */
   fee: number
+  /**
+   * Σ krediteringar (#518) — EGEN AVDRAGSRAD, inte hopslagen med `paid`.
+   *
+   * Kravbrevet specificerar sina poster (lag 1981:739 5 §), och en nedsättning
+   * och en betalning är olika saker för mottagaren: den ena säger "du var aldrig
+   * skyldig detta", den andra "du har redan betalat detta". Att summera ihop dem
+   * hade gjort brevet formellt rätt men sakligt missvisande.
+   */
+  credited: number
   /** Σ allokeringar. Läses ur allokeringarna, aldrig `brutto − restskuld`. */
   paid: number
   /** Betalt utöver den nominella fordran. 0 i normalfallet. */
@@ -263,19 +399,25 @@ export function rentNoticeOutstanding(notice: {
   // Ingen kravyta påverkas: kravtrappans cron filtrerar på `type: RENT`, så en
   // depositionsavi kan aldrig nå påminnelsebrevet.
   if (notice.type === RentNoticeType.DEPOSIT) {
-    const nominalBeforeFee = round2(
-      Number(notice.totalAmount) +
-        Number(notice.consumptionAmount) +
-        Number(notice.miscChargeAmount),
-    )
+    // Genom den ENDA summeringen, inte en fjärde kopia av de fyra kolumnerna.
+    // Depositioner kan inte krediteras (spärrat i RentNoticeCreditService), så
+    // `credited` är i praktiken alltid 0 här — men uttrycket ska ändå vara det
+    // gemensamma, annars är det en summeringsplats till som kan glida.
+    const ocr = rentNoticeOcrComponents({
+      ...notice,
+      credits: notice.credits.map((c) => c.amount),
+    })
     const fee = round2(Number(notice.reminderFeeAmount))
-    const nominalTotal = round2(nominalBeforeFee + fee)
+    const nominalTotal = round2(ocr.net.toNumber())
+    const nominalBeforeFee = round2(nominalTotal - fee)
+    const credited = round2(ocr.credited.toNumber())
     const paid = round2(notice.payments.reduce((sum, p) => sum + Number(p.amount), 0))
     return {
       payable: Math.max(0, round2(nominalTotal - paid)),
       nominalTotal,
       nominalBeforeFee,
       fee,
+      credited,
       paid,
       overpaid: Math.max(0, round2(paid - nominalTotal)),
     }
@@ -289,16 +431,36 @@ export function rentNoticeOutstanding(notice: {
     reminderFeeAmount: notice.reminderFeeAmount,
     interestAccruedAmount: notice.interestAccruedAmount,
     allocations: notice.payments.map((p) => p.amount),
+    credits: notice.credits.map((c) => c.amount),
   })
-  const nominalBeforeFee = round2(debt.capital + debt.consumption + debt.miscCharge)
-  const nominalTotal = round2(nominalBeforeFee + debt.reminderFee)
+  // Ur den ENDA summeringen — inte genom att addera ihop komponenterna en gång
+  // till. `net` är brutto minus kreditering, alltså vad avin kräver EFTER
+  // nedsättningen; posterna nedan redovisas nominellt med krediteringen som en
+  // egen avdragsrad, så att raderna summerar (FAR, #344).
+  const ocr = rentNoticeOcrComponents({
+    totalAmount: notice.totalAmount,
+    consumptionAmount: notice.consumptionAmount,
+    miscChargeAmount: notice.miscChargeAmount,
+    reminderFeeAmount: notice.reminderFeeAmount,
+    credits: [],
+  })
+  const nominalTotal = round2(ocr.gross.toNumber())
+  const nominalBeforeFee = round2(nominalTotal - debt.reminderFee)
   const paid = round2(debt.paid)
   return {
     payable: debt.ocrOutstanding,
     nominalTotal,
     nominalBeforeFee,
     fee: debt.reminderFee,
+    credited: debt.credited,
     paid,
-    overpaid: Math.max(0, round2(paid - nominalTotal)),
+    // ── INTE `debt.overpaid`, OCH SKILLNADEN ÄR RÄNTAN ────────────────────
+    //
+    // `debt.overpaid` mäter mot HELA kravet (inkl. dröjsmålsränta), medan det
+    // här brevet redovisar den OCR-reglerbara delen. Betalar hyresgästen mer än
+    // OCR-beloppet men mindre än kravet inklusive ränta är `debt.overpaid` noll
+    // medan brevets rader ändå inte går ihop. Måttet här måste därför vara
+    // överskottet mot samma nämnare som brevet visar: nettot efter kreditering.
+    overpaid: Math.max(0, round2(paid - (nominalTotal - debt.credited))),
   }
 }

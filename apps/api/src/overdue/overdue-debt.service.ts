@@ -59,6 +59,10 @@ export class OverdueDebtService {
           interestAccruedAmount: true,
           dueDate: true,
           payments: { select: { amount: true } },
+          // #518 — utan krediteringarna hade en krediterad AVI fortsatt räknas
+          // som öppen fordran här, precis som en krediterad faktura gjorde före
+          // #517. Samma defekt, andra modellen.
+          credits: { select: { amount: true } },
         },
       }),
       this.prisma.invoice.findMany({
@@ -94,6 +98,7 @@ export class OverdueDebtService {
         reminderFeeAmount: n.reminderFeeAmount,
         interestAccruedAmount: n.interestAccruedAmount,
         allocations: n.payments.map((p) => p.amount),
+        credits: n.credits.map((c) => c.amount),
       }).outstanding
       if (outstanding <= 0) continue
       total += outstanding

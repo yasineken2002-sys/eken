@@ -24,6 +24,7 @@ import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { AccountingService, bankPaymentSourceId } from '../accounting/accounting.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { computeRentDebt } from '../avisering/rent-debt.service'
+import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import {
   validateUploadedFile,
@@ -1014,24 +1015,29 @@ export class ReconciliationService {
         status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
         dueDate: { gte: dateFrom, lte: dateTo },
       },
+      // #518 — fuzzy-matchningen jämför mot den betalbara totalen, och den är
+      // nedsatt av krediteringar. Utan dem matchar en KORREKT inbetalning på det
+      // krediterade beloppet inte, och pengarna blir liggande omatchade medan
+      // avin ser reglerad ut.
+      include: { credits: { select: { amount: true } } },
     })
 
     const invMatches = invCandidates.filter((inv) =>
       inv.total.minus(transaction.amount).abs().lte(tolerance),
     )
-    // Betalbar total = hyra + förbrukning (IMD) + övrig debitering (teknisk
-    // förvaltning, Spår A) + påminnelseavgift (PR 2). Hyresgästen betalar EN summa
-    // — denna måste matcha rentNoticePayableTotal/computeRentDebt.ocrOutstanding
-    // exakt, annars auto-matchar inte en klumpbetalning och en betald avi
-    // felaktigt eskaleras mot inkasso. Ränta exkluderas (ej OCR-reglerbar).
+    // ── DEN TREDJE SUMMERINGSPLATSEN — BORTA SEDAN #518 ─────────────────
+    //
+    // Här stod de fyra kolumnerna adderade INLINE. Kravet stod till och med i
+    // kommentaren ("denna måste matcha rentNoticePayableTotal/
+    // computeRentDebt.ocrOutstanding exakt") — men kravet var formulerat, inte
+    // mekaniskt, och en kommentar kan inte hålla tre uttryck i synk. Vid
+    // införandet av krediteringen hade dubbletten tyst fortsatt matcha mot
+    // BRUTTOT: en korrekt inbetalning på det nedsatta beloppet hade inte
+    // matchat, och pengarna blivit liggande omatchade medan avin ser reglerad
+    // ut. Nu delar alla tre samma funktion, och en fjärde plats fälls av
+    // rent-notice-credit-guard.spec.ts. Ränta exkluderas (ej OCR-reglerbar).
     const noticeMatches = noticeCandidates.filter((n) =>
-      n.totalAmount
-        .plus(n.consumptionAmount)
-        .plus(n.miscChargeAmount)
-        .plus(n.reminderFeeAmount)
-        .minus(transaction.amount)
-        .abs()
-        .lte(tolerance),
+      new Decimal(rentNoticePayableTotal(n)).minus(transaction.amount).abs().lte(tolerance),
     )
 
     if (invMatches.length + noticeMatches.length !== 1) return false
@@ -1557,6 +1563,14 @@ export class ReconciliationService {
         where: { rentNoticeId: noticeId },
         select: { amount: true },
       })
+      // #518 — under samma radlås som allokeringarna. Utan krediteringarna
+      // räknas restskulden på bruttot, och en inbetalning på det KREDITERADE
+      // beloppet klassas som delbetalning (eller avvisas som överbetalning) i
+      // stället för att reglera avin.
+      const priorCredits = await tx.rentNoticeCredit.findMany({
+        where: { rentNoticeId: noticeId },
+        select: { amount: true },
+      })
 
       const debtInput = {
         type: notice.type,
@@ -1566,6 +1580,7 @@ export class ReconciliationService {
         reminderFeeAmount: notice.reminderFeeAmount,
         interestAccruedAmount: notice.interestAccruedAmount,
         allocations: priorAllocs.map((a) => a.amount),
+        credits: priorCredits.map((c) => c.amount),
       }
       const remaining = new Decimal(computeRentDebt(debtInput).ocrOutstanding)
       if (remaining.lte(0)) return false
@@ -1987,6 +2002,13 @@ export class ReconciliationService {
           where: { rentNoticeId: k.id },
           select: { amount: true },
         })
+        // #518 — per avi, under samma lås. En krediterad avi i vattenfallet ska
+        // dra sin NEDSATTA restskuld, annars äter den upp pengar som hör till
+        // nästa avi i kedjan.
+        const priorCredits = await tx.rentNoticeCredit.findMany({
+          where: { rentNoticeId: k.id },
+          select: { amount: true },
+        })
         const debtInput = {
           type: k.type,
           totalAmount: k.totalAmount,
@@ -1995,6 +2017,7 @@ export class ReconciliationService {
           reminderFeeAmount: k.reminderFeeAmount,
           interestAccruedAmount: k.interestAccruedAmount,
           allocations: priorAllocs.map((a) => a.amount),
+          credits: priorCredits.map((c) => c.amount),
         }
         const kvar = new Decimal(computeRentDebt(debtInput).ocrOutstanding)
         if (kvar.gt(0)) rester.push({ notice: k, kvar, debtInput })
@@ -2696,6 +2719,9 @@ export class ReconciliationService {
             miscChargeAmount: true,
             reminderFeeAmount: true,
             interestAccruedAmount: true,
+            // #518 — annars räknas ocrLeft på bruttot och en fullt krediterad
+            // avi flippas tillbaka till SENT med en skuld som inte finns.
+            credits: { select: { amount: true } },
           },
         })
         if (noticeRow) {
@@ -2707,10 +2733,36 @@ export class ReconciliationService {
             reminderFeeAmount: noticeRow.reminderFeeAmount,
             interestAccruedAmount: noticeRow.interestAccruedAmount,
             allocations: remainingAllocs.map((a) => a.amount),
+            credits: noticeRow.credits.map((c) => c.amount),
           }).ocrOutstanding
 
-          // En PAID avi som efter avmatchningen åter har OCR-skuld flippas tillbaka
-          // till SENT (det finns ingen kreditnota-mekanism för avier). Kravsteget
+          // ── FLIPPEN OCH KREDITERINGEN SÄGER MOTSATTA SAKER (#518) ─────────
+          //
+          // Här stod att flippen finns "eftersom det inte finns någon
+          // kreditnota-mekanism för avier". Det skälet är inte längre sant —
+          // krediteringen finns sedan #518 — men det VAR heller aldrig det
+          // riktiga skälet, och det är den viktigare rättelsen:
+          //
+          //   flippen      säger att skulden ÅTERUPPSTÅR (betalningen hörde
+          //                inte hit — ett avstämningsfel)
+          //   krediteringen säger att skulden UPPHÖR (debiteringen var fel —
+          //                ett faktureringsfel)
+          //
+          // De löser alltså olika problem och ersätter inte varandra. Tas
+          // flippen bort har avmatchningen ingen väg tillbaka till obetalt
+          // tillstånd, och en PAID-rad blir kvar ovanpå en öppen fordran.
+          //
+          // #518 föreslog dessutom en spärr: "en krediterad avi får aldrig
+          // flippas tillbaka till SENT". Den är INTE byggd, och skälet är
+          // räknat, inte tyckt. En DELVIS krediterad avi (10 000 − 4 000
+          // krediterat) som betalats med 6 000 och sedan avmatchas har
+          // `ocrLeft = 6 000`: en verklig, obetald fordran. En blankettspärr
+          // hade lämnat den som PAID med 6 000 utestående — exakt den zombie
+          // bankavstämnings-härdningen finns för att förhindra. Grinden nedan
+          // läser i stället `ocrLeft`, som numera är NETTO efter kreditering,
+          // och en FULLT krediterad avi flippas därför aldrig: `ocrLeft` är 0.
+          //
+          // Kravsteget
           // lämnas MEDVETET på NONE (juristnotering: re-eskalering kräver en NY
           // inkasso-ready-granskning, INV-B, som kristalliserar om dröjsmålsräntan
           // per faktisk löptid, RL 9 §). En redan obetald (delbetald) avi rör vi inte
