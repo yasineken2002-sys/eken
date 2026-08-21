@@ -9,6 +9,7 @@ import { UpdateTenantDto } from './dto/update-tenant.dto'
 import { TENANT_CREDENTIAL_KEYS, type TenantCredentialKey } from './tenant-credential-keys'
 import { anonymizeTenantWithin, type AnonymizeActor } from '../common/gdpr/anonymize-tenant'
 import { findTenantHistory } from '../common/gdpr/tenant-history'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 /**
  * Safe Prisma SELECT for tenant data exposed via API.
@@ -248,7 +249,7 @@ export class TenantsService {
         })
 
         return { tenant, lease }
-      })
+      }, PRISMA_DEFAULT_TX_LIMITS)
     } catch (err) {
       // P2002 = unique constraint violation. Race-skydd för dubblett-check
       // ovan om två förfrågningar skapar samma e-post samtidigt.
@@ -377,6 +378,6 @@ export class TenantsService {
       if (!existing) throw new NotFoundException('Hyresgästen hittades inte')
 
       return anonymizeTenantWithin(tx, id, organizationId, actor)
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 }

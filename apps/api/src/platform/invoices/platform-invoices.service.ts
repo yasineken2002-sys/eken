@@ -21,6 +21,7 @@ import {
   generatePlatformInvoiceHtml,
   type PlatformInvoicePdfData,
 } from './templates/platform-invoice-pdf.template'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../../common/prisma/transaction-limits'
 
 type PlatformInvoiceStatus = 'DRAFT' | 'SENT' | 'PENDING' | 'PAID' | 'OVERDUE' | 'VOID'
 type PlatformInvoiceType = 'PLAN_FEE' | 'AI_CREDITS' | 'OTHER'
@@ -271,7 +272,7 @@ export class PlatformInvoicesService {
           organization: { select: { id: true, name: true, email: true, billingEmail: true } },
         },
       })
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
     return this.map(row)
   }
 
@@ -492,7 +493,7 @@ export class PlatformInvoicesService {
       }
 
       return inv
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     return this.map(updated)
   }

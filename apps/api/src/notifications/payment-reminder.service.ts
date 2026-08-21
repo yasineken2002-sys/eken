@@ -23,6 +23,7 @@ import { AccountingService } from '../accounting/accounting.service'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { resolveActorType, aiOriginColumns } from '../common/ai-origin/ai-origin.context'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 interface ProcessSummary {
   friendlySent: number
@@ -583,7 +584,7 @@ export class PaymentReminderService {
         },
       })
       return true
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     // Anspråket togs av någon annan (dubbel cron-fire, retry efter lyckad
     // körning). Ingen andra avgift, inget andra utskick — och ingen räknas som

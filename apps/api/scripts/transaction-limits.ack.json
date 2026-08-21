@@ -1,0 +1,15 @@
+{
+  "$comment": "KVITTERINGAR — $transaction utan medveten gräns. Varje post säger varför just den transaktionen ärver Prismas defaults i stället för att välja en gräns ur common/prisma/transaction-limits.ts.",
+  "$howto": "Listan fäller ÅT BÅDA HÅLLEN: en okvitterad förekomst är röd, och en kvittering som inte längre motsvarar något i koden är också röd. Gav du transaktionen en gräns? Sänk antalet. Lägg ALDRIG till en post för hand för att tysta ett nytt fynd — välj en gräns i stället.",
+  "total": 3,
+  "files": {
+    "auth/auth.service.ts": {
+      "count": 2,
+      "reason": "ARRAY-FORMEN tar inga tidsgränser. Prisma 5.22 typar $transaction(arg: PrismaPromise[], options?: { isolationLevel }) — timeout och maxWait finns bara på den interaktiva callback-formen (index.d.ts:1757 mot :1759). Båda anropen är dessutom korta, oberoende skrivningar utan bokföring: villkorsgodkännande respektive lösenordsåterställning. Skrivs någon av dem om till callback-form ska den ta en gräns."
+    },
+    "import/contract-scan-batch.service.ts": {
+      "count": 1,
+      "reason": "ARRAY-FORMEN tar inga tidsgränser — se auth/auth.service.ts för lagrummet i Prismas typer. Anropet är två updateMany som markerar en batch och dess rader, ingen bokföring och inga pengar. Byggs det om till callback-form ska det ta en gräns."
+    }
+  }
+}

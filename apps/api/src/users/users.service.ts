@@ -16,6 +16,7 @@ import { normalizeEmail } from '../common/utils/normalize-email'
 import type { AssignableRole } from './dto/update-user-role.dto'
 import type { UserRole } from '@eken/shared'
 import { SAFE_USER_SELECT } from './user-select'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 function sha256(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex')
@@ -105,7 +106,7 @@ export class UsersService {
       })
 
       return user
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
@@ -197,7 +198,7 @@ export class UsersService {
         data: { revokedAt: new Date() },
       })
       return updated
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   async reactivate(targetUserId: string, organizationId: string) {

@@ -42,6 +42,7 @@
  */
 
 import { PrismaClient, Prisma } from '@prisma/client'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 /** Ett verifikats rader, i den form spegelkontrollen behöver dem. */
 export interface Rader {
@@ -307,7 +308,7 @@ async function main() {
         n += res.count
       }
       return n
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
     console.warn(`[backfill] skrev ${skrivna} länkar (av ${godkanda.length} godkända).`)
   } finally {
     await prisma.$disconnect()

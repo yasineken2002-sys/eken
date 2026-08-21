@@ -38,6 +38,7 @@
  */
 
 import { PrismaClient } from '@prisma/client'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 type Step = {
   /** Modellnamnet som i schema.prisma. Vakten matchar mot det här. */
@@ -183,7 +184,7 @@ export async function deleteOrganizations(
     const org = await tx.organization.deleteMany({ where: { id: { in: ids } } })
     deleted.push({ model: 'Organization', rows: org.count })
     return deleted
-  })
+  }, PRISMA_DEFAULT_TX_LIMITS)
 }
 
 /** localhost/eken_dev, eller uttryckligt medgivande. Skriver aldrig ut lösenordet. */

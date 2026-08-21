@@ -6,6 +6,7 @@ import { NotificationsService } from '../notifications/notifications.service'
 import { CreateRentIncreaseDto } from './dto/create-rent-increase.dto'
 import { RejectRentIncreaseDto } from './dto/reject-rent-increase.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 const INCLUDE = {
   lease: {
@@ -368,7 +369,7 @@ export class RentIncreasesService {
             data: { status: 'APPLIED' },
           })
           return true
-        })
+        }, PRISMA_DEFAULT_TX_LIMITS)
         if (didApply) {
           this.logger.log(`[RentIncrease] Applied rent increase for lease ${ri.leaseId}`)
           applied++

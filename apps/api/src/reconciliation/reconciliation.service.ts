@@ -35,6 +35,7 @@ import {
   projectReconciliationTransaction,
   type ReconciliationTransactionView,
 } from './bank-transaction-views'
+import { PAYMENT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 export interface ImportResult {
   imported: number
@@ -1370,7 +1371,7 @@ export class ReconciliationService {
       }
 
       return completesInvoice ? invoiceNumber : ''
-    })
+    }, PAYMENT_TX_LIMITS)
 
     if (claimedNumber === null) return false
 
@@ -1718,7 +1719,7 @@ export class ReconciliationService {
       }
 
       return true
-    })
+    }, PAYMENT_TX_LIMITS)
   }
 
   // ── Get transactions ─────────────────────────────────────────────────────────
@@ -2129,7 +2130,7 @@ export class ReconciliationService {
           `(org ${organizationId}, OCR ${ocrNumber}).`,
       )
       return true
-    })
+    }, PAYMENT_TX_LIMITS)
   }
 
   /**
@@ -2890,7 +2891,7 @@ export class ReconciliationService {
           )
         }
       }
-    })
+    }, PAYMENT_TX_LIMITS)
 
     this.logger.log(
       `[BFL] Avmatchade banktransaktion ${transactionId} (org ${organizationId}) — ` +

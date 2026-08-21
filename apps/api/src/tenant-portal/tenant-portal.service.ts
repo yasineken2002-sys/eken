@@ -15,6 +15,7 @@ import { rentNoticeOutstanding } from '../avisering/rent-debt.service'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { readTenantWithCredentials } from './tenant-credential-read'
 import { anonymizeTenantWithin } from '../common/gdpr/anonymize-tenant'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 /**
  * Safe Prisma SELECT för MaintenanceTicket som exponeras mot hyresgästportalen.
@@ -1084,12 +1085,14 @@ export class TenantPortalService {
       where: { id: tenantId },
       select: { organizationId: true },
     })
-    return this.prisma.$transaction(async (tx) =>
-      anonymizeTenantWithin(tx, tenantId, tenant.organizationId, {
-        performedById: null,
-        ...(meta?.ipAddress ? { ipAddress: meta.ipAddress } : {}),
-        ...(meta?.userAgent ? { userAgent: meta.userAgent } : {}),
-      }),
+    return this.prisma.$transaction(
+      async (tx) =>
+        anonymizeTenantWithin(tx, tenantId, tenant.organizationId, {
+          performedById: null,
+          ...(meta?.ipAddress ? { ipAddress: meta.ipAddress } : {}),
+          ...(meta?.userAgent ? { userAgent: meta.userAgent } : {}),
+        }),
+      PRISMA_DEFAULT_TX_LIMITS,
     )
   }
 }

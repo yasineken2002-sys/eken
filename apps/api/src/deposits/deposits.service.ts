@@ -18,6 +18,7 @@ import { NotificationsService } from '../notifications/notifications.service'
 import { CreateDepositDto } from './dto/create-deposit.dto'
 import { RefundDepositDto } from './dto/refund-deposit.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 const INCLUDE = {
   lease: { include: { unit: { include: { property: true } } } },
@@ -213,7 +214,7 @@ export class DepositsService implements OnApplicationBootstrap {
       }
 
       return { deposit, invoice }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     return result.deposit
   }
@@ -274,7 +275,7 @@ export class DepositsService implements OnApplicationBootstrap {
               `${params.noticeNumber} — kontoplanen saknar konto 1510 eller 2890.`,
           )
         }
-      })
+      }, PRISMA_DEFAULT_TX_LIMITS)
       return { created: true }
     } catch (err) {
       // Race: en samtidig aktivering/backfill hann skapa Deposit (leaseId @unique).
@@ -639,7 +640,7 @@ export class DepositsService implements OnApplicationBootstrap {
       }
 
       return tx.deposit.findFirstOrThrow({ where: { id, organizationId }, include: INCLUDE })
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // ── Återbetalning ───────────────────────────────────────────────────────────
@@ -722,7 +723,7 @@ export class DepositsService implements OnApplicationBootstrap {
       }
 
       return tx.deposit.findFirstOrThrow({ where: { id, organizationId }, include: INCLUDE })
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // ── Lease-uppsägning sätter REFUND_PENDING ──────────────────────────────────

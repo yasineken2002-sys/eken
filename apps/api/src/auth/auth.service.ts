@@ -20,6 +20,7 @@ import { normalizeEmail } from '../common/utils/normalize-email'
 import type { JwtPayload, TokenPair } from '@eken/shared'
 import type { LoginInput } from '@eken/shared'
 import { TRIAL_DAYS, CURRENT_TERMS_VERSION } from '@eken/shared'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 const MAX_LOGIN_ATTEMPTS = 10
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000 // 15 minuter
@@ -559,7 +560,7 @@ export class AuthService {
         },
         select: { email: true },
       })
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     return { email: updated.email }
   }

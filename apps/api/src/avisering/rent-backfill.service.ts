@@ -14,6 +14,7 @@ import { OcrService } from '../common/ocr/ocr.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { AviseringService } from './avisering.service'
 import { vatPeriodLabelsForMonths } from './vat-period.util'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 /**
  * T1.4 / #44 — motor för bakdaterad debitering (efterdebitering av bebodda men
@@ -325,23 +326,25 @@ export class RentBackfillService {
       // hunnit ske mellan detektion och skapande fångas av allocate() → tx
       // rullas tillbaka (ingen orphan-avi), och vi klassar månaden som stängd.
       try {
-        const notice = await this.prisma.$transaction((tx) =>
-          this.avisering.createBackfillRentNoticeInTx(tx, lease, {
-            year: m.year,
-            month: m.month,
-            ocrNumber,
-            dueDate,
-            // Audit-spår per skapad avi (hyresjurist MÅSTE) — vem godkände, hur
-            // gammal månaden var och om det var ett uttryckligt >12-mån-godkännande.
-            audit: {
-              actorUserId: opts.actorUserId ?? null,
-              ageMonths: m.ageMonths,
-              beyondWarning: m.status === 'BEYOND_WARNING',
-              allowBeyondWarning: opts.allowBeyondWarning === true,
-              hasVoluntaryTaxLiability: lease.unit.voluntaryTaxLiability === true,
-              vatDeclarationAcknowledged: opts.vatDeclarationAcknowledged === true,
-            },
-          }),
+        const notice = await this.prisma.$transaction(
+          (tx) =>
+            this.avisering.createBackfillRentNoticeInTx(tx, lease, {
+              year: m.year,
+              month: m.month,
+              ocrNumber,
+              dueDate,
+              // Audit-spår per skapad avi (hyresjurist MÅSTE) — vem godkände, hur
+              // gammal månaden var och om det var ett uttryckligt >12-mån-godkännande.
+              audit: {
+                actorUserId: opts.actorUserId ?? null,
+                ageMonths: m.ageMonths,
+                beyondWarning: m.status === 'BEYOND_WARNING',
+                allowBeyondWarning: opts.allowBeyondWarning === true,
+                hasVoluntaryTaxLiability: lease.unit.voluntaryTaxLiability === true,
+                vatDeclarationAcknowledged: opts.vatDeclarationAcknowledged === true,
+              },
+            }),
+          PRISMA_DEFAULT_TX_LIMITS,
         )
         if (notice) result.created.push(notice)
       } catch (err) {

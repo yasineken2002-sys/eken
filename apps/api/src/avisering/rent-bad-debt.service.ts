@@ -14,6 +14,7 @@ import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentDebtService } from './rent-debt.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { NotificationsService } from '../notifications/notifications.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 interface BadDebtSummary {
   reclassified: number
@@ -355,7 +356,7 @@ export class RentBadDebtService {
         { tx },
       )
       return { booked: true }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   /**
@@ -450,7 +451,7 @@ export class RentBadDebtService {
         { tx },
       )
       return { booked: true }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // ── Privata hjälpare ─────────────────────────────────────────────────────

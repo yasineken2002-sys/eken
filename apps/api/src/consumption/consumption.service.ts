@@ -20,6 +20,7 @@ import { CreateMeterDto } from './dto/create-meter.dto'
 import { UpdateMeterDto } from './dto/update-meter.dto'
 import { CreateTariffDto } from './dto/create-tariff.dto'
 import { RecordReadingDto } from './dto/record-reading.dto'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 // Avrundning till ören (2 decimaler) — samma stil som övriga belopp i koden
 // (Number-baserad; charge-beloppen är aldrig större än en månads förbrukning).
@@ -175,7 +176,7 @@ export class ConsumptionService {
           ...(dto.calculationBasis ? { calculationBasis: dto.calculationBasis } : {}),
         },
       })
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   async findTariffs(
@@ -383,7 +384,7 @@ export class ConsumptionService {
       }
 
       return { reading, charge, idempotent: false }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // CUMULATIVE: differens mot föregående avläsning på SAMMA mätare. Första
@@ -595,7 +596,7 @@ export class ConsumptionService {
       if (updated.count === 0) {
         throw new NotFoundException('Hyresavin hittades inte för organisationen')
       }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     return round2(consumptionTotal)
   }
@@ -689,7 +690,7 @@ export class ConsumptionService {
       )
 
       return invoice
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // ══ Bokslut: upplupen förbrukningsintäkt (1790, PR 5) ═══════════════════════

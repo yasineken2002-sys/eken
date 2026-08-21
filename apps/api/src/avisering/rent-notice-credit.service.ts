@@ -6,6 +6,7 @@ import { AccountingService } from '../accounting/accounting.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { computeRentDebt } from './rent-debt.service'
 import { CreateRentNoticeCreditDto } from './dto/create-rent-notice-credit.dto'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 /**
  * En post på avin som går att kreditera, med sitt kumulativa tak.
@@ -751,7 +752,7 @@ export class RentNoticeCreditService {
           interestOnlyAfterCredit: debtAfter.interestOnlyAfterCredit,
         },
       }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 }
 
