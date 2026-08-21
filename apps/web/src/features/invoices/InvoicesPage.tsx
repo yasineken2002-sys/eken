@@ -45,6 +45,7 @@ import { useTenants } from '@/features/tenants/hooks/useTenants'
 import { useFocusStore } from '@/stores/focus.store'
 import { useCanWrite } from '@/hooks/useCanWrite'
 import { cn } from '@/lib/cn'
+import { isForbidden } from '@/lib/api'
 
 // Stagger på listor — designsystemets standard.
 const listContainer = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } }
@@ -178,7 +179,14 @@ export function InvoicesPage() {
   // "Makulerade". Ett makulerat utkast känns därmed "borttaget" men bevaras
   // som räkenskapsinformation (soft-delete, BFL 1999:1078).
   const displayedInvoices = tab === 'ALL' ? invoices.filter((i) => i.status !== 'VOID') : invoices
-  const { data: selectedEvents = [], isError: historikNekad } = useInvoiceEvents(selected?.id ?? '')
+  const {
+    data: selectedEvents = [],
+    isError: historikFelade,
+    error: historikFel,
+  } = useInvoiceEvents(selected?.id ?? '')
+  // Se CollectionsPage: isError är inte samma sak som nekad. (#442)
+  const historikNekad = isForbidden(historikFel)
+  const historikHaveri = historikFelade && !historikNekad
   // #349: betalningsmodalens belopp ska vara RESTSKULDEN, och den finns bara på
   // detaljsvaret (och listsvaret). Hämtas när modalen är öppen — `useInvoice`
   // är `enabled: !!id`, så tom sträng betyder ingen förfrågan.
@@ -877,6 +885,12 @@ export function InvoicesPage() {
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
                 <p className="text-[13px] text-gray-400">
                   Din roll får inte se fakturans historik.
+                </p>
+              </div>
+            ) : historikHaveri ? (
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+                <p className="text-[13px] text-amber-800">
+                  Historiken kunde inte hämtas — det beror inte på din behörighet.
                 </p>
               </div>
             ) : (

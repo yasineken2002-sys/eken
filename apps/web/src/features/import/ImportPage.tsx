@@ -35,6 +35,7 @@ import { Select } from '@/components/ui/Input'
 import { useUnits } from '@/features/units/hooks/useUnits'
 import { formatDate } from '@eken/shared'
 import type { PreviewResult, ImportJob, ScannedContract } from './api/import.api'
+import { isForbidden } from '@/lib/api'
 
 // ─── Import Types ─────────────────────────────────────────────────────────────
 
@@ -733,7 +734,15 @@ function ScanField({
 
 // ─── History Table ────────────────────────────────────────────────────────────
 
-function ImportHistory({ jobs, nekad }: { jobs: ImportJob[]; nekad?: boolean }) {
+function ImportHistory({
+  jobs,
+  nekad,
+  haveri,
+}: {
+  jobs: ImportJob[]
+  nekad?: boolean
+  haveri?: boolean
+}) {
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
       <table className="w-full text-[13px]">
@@ -756,7 +765,11 @@ function ImportHistory({ jobs, nekad }: { jobs: ImportJob[]; nekad?: boolean }) 
                 {/* Ett 403 gav tidigare "Inga importer än" — ett falskt påstående
                     om organisationens historik. GET /import/jobs är ADMIN/OWNER
                     sedan #81. (#442) */}
-                {nekad ? 'Din roll får inte se importhistoriken.' : 'Inga importer än'}
+                {nekad
+                  ? 'Din roll får inte se importhistoriken.'
+                  : haveri
+                    ? 'Importhistoriken kunde inte hämtas — det beror inte på din behörighet.'
+                    : 'Inga importer än'}
               </td>
             </tr>
           )}
@@ -804,7 +817,10 @@ const item = {
 
 export function ImportPage() {
   const [activeTab, setActiveTab] = useState<string>('PROPERTIES')
-  const { data: jobs = [], isError: jobbNekade } = useImportJobs()
+  const { data: jobs = [], isError: jobbFelade, error: jobbFel } = useImportJobs()
+  // Se CollectionsPage: isError är inte samma sak som nekad. (#442)
+  const jobbNekade = isForbidden(jobbFel)
+  const jobbHaveri = jobbFelade && !jobbNekade
 
   return (
     <PageWrapper id="import">
@@ -886,7 +902,7 @@ export function ImportPage() {
           className="mt-6"
         >
           <h2 className="mb-3 text-[14px] font-semibold text-gray-900">Importhistorik</h2>
-          <ImportHistory jobs={jobs} nekad={jobbNekade} />
+          <ImportHistory jobs={jobs} nekad={jobbNekade} haveri={jobbHaveri} />
         </motion.div>
       </div>
     </PageWrapper>
