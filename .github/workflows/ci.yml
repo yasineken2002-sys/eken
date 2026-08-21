@@ -137,6 +137,30 @@ jobs:
       - name: Verify invoice-number is only sourced from the shared sequence
         run: node apps/api/scripts/check-platform-invoice-number-source.mjs
 
+  sequence-allocation-guard:
+    name: Sequence allocation atomicity guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — bevakar att
+      # VARJE nummerserie allokeras med en atomär increment-UPSERT på sin
+      # sekvensrad, från exakt en plats. Samma defekt har återuppstått fyra gånger
+      # i olika dräkt (count()+1 för OCR #487, max+1 för avinummer #484, deposits
+      # egen numrering, buyCredits egen numrering) och utfallet är alltid att två
+      # samtidiga anrop får samma nummer. Guarden bevakar MEKANISMEN och härleder
+      # serierna ur schema.prisma — en uppräkning hade krympt tyst vid nästa serie.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (canary on the derivation, both directions of R2)
+        run: node apps/api/scripts/check-sequence-allocation.mjs --self-test
+
+      - name: Verify every number sequence is allocated atomically
+        run: node apps/api/scripts/check-sequence-allocation.mjs
+
   reminder-fee-guard:
     name: Reminder fee amount guard
     runs-on: ubuntu-latest
@@ -722,6 +746,7 @@ jobs:
       - test
       - index-guard
       - invoice-number-guard
+      - sequence-allocation-guard
       - reminder-fee-guard
       - period-lookup-guard
       - design-token-guard
