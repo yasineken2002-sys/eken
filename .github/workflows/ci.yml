@@ -272,6 +272,26 @@ jobs:
       - name: Verify redaction logic exists in exactly one place
         run: node apps/api/scripts/check-redact-copies.mjs
 
+  ai-display-masking-guard:
+    name: AI display masking guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # fs-only. Kräver att varje läsning av en AI-samtalstabell antingen
+      # maskerar (visning för människa) eller är kvitterad med skälet att den
+      # matar modellen / inte läser något innehåll. Kvitteringen fäller åt båda
+      # hållen — en post utan motsvarighet i koden är också röd.
+      - name: Self-test the guard (detection, both directions, canary)
+        run: node apps/api/scripts/check-ai-display-masking.mjs --self-test
+
+      - name: Verify every AI read path masks or is acknowledged
+        run: node apps/api/scripts/check-ai-display-masking.mjs
+
   generated-knowledge-sync-guard:
     name: Generated legal knowledge sync guard
     runs-on: ubuntu-latest
@@ -707,6 +727,7 @@ jobs:
       - design-token-guard
       - transaction-limits-guard
       - redact-copies-guard
+      - ai-display-masking-guard
       - generated-knowledge-sync-guard
       - schema-drift-guard
       - e2e

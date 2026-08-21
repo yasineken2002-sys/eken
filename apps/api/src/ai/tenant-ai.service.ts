@@ -13,6 +13,7 @@ import { TenantToolExecutorService } from './tools/tenant-tool-executor.service'
 import { TENANT_TOOLS, TENANT_ACTION_TOOLS } from './tools/tenant-ai-tools.definition'
 import { hashPendingAction, PENDING_ACTION_TTL_MS } from './ai-assistant.service'
 import { AI_MODELS } from './ai.config'
+import { maskAiContentForDisplay } from '../common/redaction/mask-display'
 
 // Portalen har sin EGEN modellnyckel sedan operatörschatten gick till Opus 5.
 // Delad nyckel hade betytt att ett byte i operatörschatten tyst ändrat
@@ -326,7 +327,10 @@ export class TenantAiService {
   // ── Conversation management ────────────────────────────────────────────
 
   async getConversations(tenantId: string) {
-    return this.prisma.aiTenantConversation.findMany({
+    // #507 — MASKERING VID VISNING. Raden i databasen är orörd, och
+    // getOrCreateConversation läser samma tabell OMASKERAT för modellen. Det
+    // här är läsvägen mot en människa, och bara den.
+    const conversations = await this.prisma.aiTenantConversation.findMany({
       where: { tenantId },
       include: {
         messages: { orderBy: { createdAt: 'desc' }, take: 1 },
@@ -335,6 +339,7 @@ export class TenantAiService {
       orderBy: { updatedAt: 'desc' },
       take: 30,
     })
+    return maskAiContentForDisplay(conversations)
   }
 
   async getConversation(tenantId: string, conversationId: string) {
@@ -343,7 +348,10 @@ export class TenantAiService {
       include: { messages: { orderBy: { createdAt: 'asc' } } },
     })
     if (!conv) throw new NotFoundException('Konversation hittades inte')
-    return conv
+    // #507 — MASKERING VID VISNING. Raden i databasen är orörd, och
+    // getOrCreateConversation läser samma tabell OMASKERAT för modellen. Det
+    // här är läsvägen mot en människa, och bara den.
+    return maskAiContentForDisplay(conv)
   }
 
   async deleteConversation(tenantId: string, conversationId: string) {

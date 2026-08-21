@@ -4,12 +4,11 @@
 // listorna överlappar därför med redact-sensitive utan att vara samma sak.
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { applyPatterns, AUDIT_PATTERNS, REPLACEMENT } from '../../common/redaction/patterns'
 
 // Mönster för svenska personnummer (10 eller 12 siffror, valfri separator).
 // Vi maskerar dessa innan de sparas i AiToolExecution.toolInput/toolResult
 // så GDPR-loggen inte själv blir en personuppgiftsläcka.
-const SWEDISH_PNR = /\b(?:\d{2})?\d{6}[-+]?\d{4}\b/g
-const SWEDISH_ORGNR = /\b\d{6}-\d{4}\b/g
 
 /**
  * E-postadresser (#508). Maskeras som MÖNSTER och inte bara som fältnamn,
@@ -19,7 +18,6 @@ const SWEDISH_ORGNR = /\b\d{6}-\d{4}\b/g
  * fältlista hade missat den andra halvan tills någon kom ihåg att lägga till
  * `sentTo`.
  */
-const EMAIL = /\b[\w.+-]+@[\w-]+\.[\w.-]{2,}\b/g
 
 /**
  * Svenska mobilnummer, MEDVETET SMALT.
@@ -39,9 +37,6 @@ const EMAIL = /\b[\w.+-]+@[\w-]+\.[\w.-]{2,}\b/g
  * NOLL telefonnummer av något slag, så breddningen är förebyggande — och då är
  * priset för ett falskt positivt högre än vinsten.
  */
-const SWEDISH_MOBILE = /(?:\+46[\s-]?7\d|\b07\d)(?:[\s-]?\d){7}\b/g
-
-const REPLACEMENT = '***MASKERAT***'
 
 /**
  * Maskera känsliga MÖNSTER i text: personnummer, organisationsnummer,
@@ -61,11 +56,10 @@ const REPLACEMENT = '***MASKERAT***'
  * Breddningen här kostar därför ingen funktion alls.
  */
 export function maskSensitivePatterns(value: string): string {
-  return value
-    .replace(SWEDISH_PNR, REPLACEMENT)
-    .replace(SWEDISH_ORGNR, REPLACEMENT)
-    .replace(EMAIL, REPLACEMENT)
-    .replace(SWEDISH_MOBILE, REPLACEMENT)
+  // Mönstren delas med visningsmaskeringen (#507) — se common/redaction/patterns.ts.
+  // KOMPOSITIONEN är oförändrad: AUDIT_PATTERNS är exakt de fyra som stod här,
+  // och breddas inte som sidoeffekt av ett annat ärende.
+  return applyPatterns(value, AUDIT_PATTERNS)
 }
 
 /**
