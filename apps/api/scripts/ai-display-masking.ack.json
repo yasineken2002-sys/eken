@@ -1,0 +1,19 @@
+{
+  "$comment": "KVITTERINGAR — läsningar av AI-samtalstabeller som INTE ska maskeras. Varje post säger varför: antingen matar läsningen modellen (maskering vore en funktionsförsämring), eller så läser den inget innehåll alls.",
+  "$howto": "Listan fäller ÅT BÅDA HÅLLEN: en okvitterad läsväg är röd, och en kvittering som inte längre motsvarar något i koden är också röd. Lade du till en läsning som visar innehåll för en människa? Maskera den i stället för att höja antalet.",
+  "total": 3,
+  "files": {
+    "ai/ai-assistant.controller.ts": {
+      "count": 1,
+      "reason": "STRÖMMANDE CHATT — läsningen hämtar konversationens historik för att ge MODELLEN sitt sammanhang, inte för att visa något för en människa. Maskering här vore en funktionsförsämring: assistenten skulle tappa minnet av vad som just sagts, eftersom AiMessage replayas som historik. Lagrad rad orörd, modellen får den orörd — det är principen, inte ett undantag från den."
+    },
+    "ai/attachments/ai-attachments.service.ts": {
+      "count": 1,
+      "reason": "ORG-SCOPING, INGET INNEHÅLL. Läsningen har select: { id: true } och hämtar alltså varken titel eller meddelanden — den finns bara för att kontrollera att konversationen tillhör organisationen innan en bilaga knyts till den. Det finns ingen text att maskera."
+    },
+    "ai/retention/ai-retention.service.ts": {
+      "count": 1,
+      "reason": "GALLRING, INGET INNEHÅLL. Läsningen selectar id, organizationId och ett _count för att kunna radera gamla samtal och rapportera antal. Ingen titel, inga meddelanden, ingen text som når en människa — utskriften är siffror."
+    }
+  }
+}

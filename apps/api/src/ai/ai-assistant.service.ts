@@ -47,6 +47,7 @@ import {
   stripThinkingBlocks,
 } from './history-integrity'
 import { REMINDER_FEE_MAX_SEK } from '@eken/shared'
+import { maskAiContentForDisplay } from '../common/redaction/mask-display'
 
 // Tokentaket är INTE längre en konstant här — det hör till modellprofilen
 // (CHAT_PROFILE_TEXT / CHAT_PROFILE_VISION i ai.config.ts). Sonnet klarar sig på
@@ -1145,7 +1146,10 @@ export class AiAssistantService {
   // ── Conversation management ────────────────────────────────────────────────
 
   async getConversations(organizationId: string, userId: string) {
-    return this.prisma.aiConversation.findMany({
+    // #507 — MASKERING VID VISNING. Raden i databasen är orörd, och
+    // getOrCreateConversation läser samma tabell OMASKERAT för modellen. Det
+    // här är läsvägen mot en människa, och bara den.
+    const conversations = await this.prisma.aiConversation.findMany({
       where: { organizationId, userId },
       include: {
         messages: {
@@ -1156,6 +1160,7 @@ export class AiAssistantService {
       },
       orderBy: { updatedAt: 'desc' },
     })
+    return maskAiContentForDisplay(conversations)
   }
 
   async getConversation(organizationId: string, userId: string, conversationId: string) {
@@ -1164,7 +1169,10 @@ export class AiAssistantService {
       include: { messages: { orderBy: { createdAt: 'asc' } } },
     })
     if (!conversation) throw new NotFoundException('Konversation hittades inte')
-    return conversation
+    // #507 — MASKERING VID VISNING. Raden i databasen är orörd, och
+    // getOrCreateConversation läser samma tabell OMASKERAT för modellen. Det
+    // här är läsvägen mot en människa, och bara den.
+    return maskAiContentForDisplay(conversation)
   }
 
   async deleteConversation(organizationId: string, userId: string, conversationId: string) {
