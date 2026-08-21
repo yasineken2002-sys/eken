@@ -1,9 +1,9 @@
 {
-  "$comment": "GENERERAD ALLOWLIST — FLIPP-SKULD, inte en regel-lucka. Varje post är rå färg som PR2–6 medvetet lämnade otokeniserad, knuten till en kategori i CATEGORIES (scripts/check-design-tokens.mjs) som säger VARFÖR den står kvar och HUR färgflippen tar bort den. CI faller på fler träffar — aldrig på färre. Listan ska krympa till noll när flippen är gjord.",
-  "$howto": "Städat en fil? Kör `node scripts/check-design-tokens.mjs --update-baseline` så snävas spärren åt. Lägg ALDRIG till rader här för hand för att tysta ett nytt fynd — en ny färg ska tokeniseras, inte allowlistas.",
-  "total": 267,
+  "$comment": "GENERERAD ALLOWLIST — FLIPP-SKULD, inte en regel-lucka. Varje post är rå färg som PR2–6 medvetet lämnade otokeniserad, knuten till en kategori i CATEGORIES (scripts/check-design-tokens.mjs) som säger VARFÖR den står kvar och HUR färgflippen tar bort den. CI faller åt BÅDA hållen: fler träffar än posten tillåter, OCH en post som inte längre motsvarar något i koden. Listan ska krympa till noll när flippen är gjord.",
+  "$howto": "Städat en fil? Kör `node scripts/check-design-tokens.mjs --update-baseline` så snävas spärren åt — annars faller CI på att posten beskriver kod som inte finns. Lägg ALDRIG till rader här för hand för att tysta ett nytt fynd — en ny färg ska tokeniseras, inte allowlistas.",
+  "total": 265,
   "perCategory": {
-    "chart-colors": 86,
+    "chart-colors": 84,
     "neutral-scale": 63,
     "green-legacy": 38,
     "shadow-alpha": 23,
@@ -241,11 +241,6 @@
     "apps/web/src/features/ai/components/MessageBubble.tsx": {
       "green-legacy": {
         "tw-arbitrary": 1
-      }
-    },
-    "apps/web/src/features/ai/components/WelcomeState.tsx": {
-      "chart-colors": {
-        "raw-hex": 2
       }
     },
     "apps/web/src/features/auth/LoginPage.tsx": {
