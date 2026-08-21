@@ -41,6 +41,9 @@ import { sieSignedAmount } from './accounting.service'
 //                   3911 K  6 000
 //   V6  2026-05-01  1930 D  3 000        (ny deposition)
 //                   2890 K  3 000
+//   V7  2026-06-01  1930 D  5 000        (ägartillskott)
+//                   2081 K  5 000        ← EGET KAPITAL, den kontogrupp en
+//                                          revisor granskar hårdast
 //
 // V5 och V6 finns för INVARIANTENS skull: de ger ett intäktskonto och ett
 // skuldkonto RÖRELSE inuti exportfönstret. Utan rörelse överlever en konsekvent
@@ -49,7 +52,7 @@ import { sieSignedAmount } from './accounting.service'
 //
 // UTANFÖR exportfönstret (2026-09-01) — ska INTE påverka något, eftersom
 // cutoff = `to`:
-//   V7  2026-09-01  5020 D  9 999
+//   V8  2026-09-01  5020 D  9 999
 //                   1930 K  9 999
 //
 // ── HANDRÄKNINGEN, år 0 (2026), cutoff 2026-06-30 ──────────────────────────
@@ -62,9 +65,10 @@ import { sieSignedAmount } from './accounting.service'
 //     3911  —                  resultatkonto, ingen ingående balans
 //
 //   #UB 0  (allt med datum <= 2026-06-30)
-//     1930  50 000 + 12 000 − 4 000 + 3 000 = +61 000
-//     2890  −50 000 − 3 000                  = −53 000
-//     1510  12 000 − 12 000 + 6 000          = +6 000
+//     1930  50 000 + 12 000 − 4 000 + 3 000 + 5 000 = +66 000
+//     2890  −50 000 − 3 000                          = −53 000
+//     1510  12 000 − 12 000 + 6 000                  = +6 000
+//     2081  −5 000                                   (V7 kredit)
 //     5020  resultatkonto, ingen utgående balans
 //
 //   #RES 0  (2026-01-01 <= datum <= 2026-06-30)
@@ -82,6 +86,7 @@ import { sieSignedAmount } from './accounting.service'
 const KONTON = [
   { id: 'a-1510', number: 1510, name: 'Kundfordringar', type: 'ASSET' },
   { id: 'a-1930', number: 1930, name: 'Företagskonto', type: 'ASSET' },
+  { id: 'a-2081', number: 2081, name: 'Aktiekapital', type: 'EQUITY' },
   { id: 'a-2890', number: 2890, name: 'Övriga kortfristiga skulder', type: 'LIABILITY' },
   { id: 'a-3911', number: 3911, name: 'Hyresintäkter bostäder', type: 'REVENUE' },
   { id: 'a-5020', number: 5020, name: 'El', type: 'EXPENSE' },
@@ -137,9 +142,16 @@ const VERIFIKAT: Ver[] = [
     lines: [D('a-1930', 3000), K('a-2890', 3000)],
   },
   {
-    date: '2026-09-01',
+    date: '2026-06-01',
     series: 'A',
     verNumber: 7,
+    description: 'Ägartillskott',
+    lines: [D('a-1930', 5000), K('a-2081', 5000)],
+  },
+  {
+    date: '2026-09-01',
+    series: 'A',
+    verNumber: 8,
     description: 'EFTER exportfönstret — ska inte synas',
     lines: [D('a-5020', 9999), K('a-1930', 9999)],
   },
@@ -248,7 +260,8 @@ describe('SIE4 — #IB, #UB och #RES', () => {
     // #UB 0 — 1510 är 0 och utelämnas.
     expect(poster(fil, '#UB').filter(([år]) => år === 0)).toEqual([
       [0, 1510, 6000],
-      [0, 1930, 61000],
+      [0, 1930, 66000],
+      [0, 2081, -5000],
       [0, 2890, -53000],
     ])
 
@@ -289,9 +302,12 @@ describe('SIE4 — #IB, #UB och #RES', () => {
     const fil = await exportera(true, '2025-01-01', '2026-06-30')
     const ub = (år: number, konto: number) =>
       poster(fil, '#UB').find(([a, k]) => a === år && k === konto)?.[2]
-    // 1930: 50 000 vid 2025 års slut, 61 000 vid exportens slut.
+    // 1930: 50 000 vid 2025 års slut, 66 000 vid exportens slut.
     expect(ub(-1, 1930)).toBe(50000)
-    expect(ub(0, 1930)).toBe(61000)
+    expect(ub(0, 1930)).toBe(66000)
+    // Eget kapital tillkom först 2026 → ingen -1-rad, men en 0-rad.
+    expect(ub(-1, 2081)).toBeUndefined()
+    expect(ub(0, 2081)).toBe(-5000)
   })
 
   it('ett kreditsaldo är NEGATIVT även på ett skuldkonto', async () => {

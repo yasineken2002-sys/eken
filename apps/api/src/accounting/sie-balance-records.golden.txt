@@ -9,6 +9,7 @@
 
 #KONTO 1510 "Kundfordringar"
 #KONTO 1930 "F”retagskonto"
+#KONTO 2081 "Aktiekapital"
 #KONTO 2890 "™vriga kortfristiga skulder"
 #KONTO 3911 "Hyresint„kter bost„der"
 #KONTO 5020 "El"
@@ -17,7 +18,8 @@
 #IB 0 1930 50000.00
 #IB 0 2890 -50000.00
 #UB 0 1510 6000.00
-#UB 0 1930 61000.00
+#UB 0 1930 66000.00
+#UB 0 2081 -5000.00
 #UB 0 2890 -53000.00
 #RES 0 3911 -6000.00
 #RES 0 5020 4000.00
@@ -44,4 +46,10 @@
 {
   #TRANS 1930 {} 3000.00
   #TRANS 2890 {} -3000.00
+}
+
+#VER "A" 7 20260601 "Žgartillskott"
+{
+  #TRANS 1930 {} 5000.00
+  #TRANS 2081 {} -5000.00
 }
