@@ -49,6 +49,14 @@ function makeService(opts: { fiscalYearStartMonth?: number; accountName?: string
         .fn()
         .mockResolvedValue([{ number: 3911, name: opts.accountName ?? 'Hyresintäkter, bostäder' }]),
     },
+    // Saldoposterna (#IB/#UB/#RES) aggregerar per konto. Den här sviten prövar
+    // KODNING och #RAR, inte saldon — tom lista räcker, och gör dessutom att
+    // inga saldorader skrivs (nollsaldo utelämnas), så filen förblir den lilla
+    // fil testerna nedan resonerar om. Saldona har egna tester i
+    // sie-balance-records.spec.ts.
+    journalEntryLine: {
+      groupBy: jest.fn().mockResolvedValue([]),
+    },
   }
   return new AccountingService(prisma as never, {} as never)
 }

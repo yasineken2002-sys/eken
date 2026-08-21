@@ -419,6 +419,15 @@ export function ReportsPage() {
               title="SIE4-export"
               description="Exportera periodens verifikationer och kontoplan som SIE4-fil — importeras i Fortnox, Visma och de flesta bokslutsprogram. Välj period ovan och ladda ner."
             />
+            {/* Standardperioden är innevarande år t.o.m. idag, alltså nästan
+                alltid en delperiod. Då avser de utgående saldona det valda
+                slutdatumet — inte räkenskapsårets slut. Det är rätt: saldona
+                ska stämma mot de verifikationer filen faktiskt innehåller. Men
+                den som väntar sig ett årsbokslut ska inte behöva gissa. */}
+            <p className="mx-auto mt-3 max-w-md text-center text-[12.5px] leading-relaxed text-gray-400">
+              Utgående saldon i filen avser det slutdatum du valt ovan, inte räkenskapsårets slut.
+              Vill du ha hela året — sätt till-datum till årets sista dag.
+            </p>
             {sieError && <p className="mt-3 text-center text-[13px] text-red-500">{sieError}</p>}
           </div>
         )}

@@ -224,6 +224,36 @@ export class MissingAccrualError extends UnprocessableEntityException {}
  * `fiscalYearStartMonth` är 1–12. Med startmånad 1 sammanfaller räkenskapsåret
  * med kalenderåret; med t.ex. 5 löper det maj–april.
  */
+/**
+ * SIE-BELOPPETS TECKEN: Σdebet − Σkredit. ALLTID. Oavsett kontoslag.
+ *
+ * ── LÄS DET HÄR INNAN DU ÅTERANVÄNDER getBalanceSheet ELLER getProfitLossReport ──
+ *
+ * De två ligger längre ned i samma fil och ser ut som självklara
+ * återanvändningskandidater — de summerar ju redan per konto. Det vore fel, och
+ * felet är tyst.
+ *
+ * De rapporterna VÄNDER tecknet efter kontots normalsaldo, så att en skuld och
+ * en intäkt visas som positiva tal för en människa som läser en balans- eller
+ * resultaträkning. SIE gör inte det: där är ett kreditsaldo NEGATIVT även på ett
+ * konto vars normalsaldo är kredit.
+ *
+ * VAD SOM GÅR SÖNDER om rapportvändningen används här: filens `#IB`/`#UB`/`#RES`
+ * skulle sluta stämma mot filens EGNA `#TRANS`-rader, som är tecknade med den
+ * råa formeln. Sambandet `IB + rörelse = UB` bryts för varje skuld-, eget
+ * kapital- och intäktskonto, och ett mottagande bokslutsprogram flaggar
+ * avstämningsfel — eller värre, importerar en balansräkning med fel tecken.
+ *
+ * Invarianten i sie-balance-records.spec.ts räknar om saldona ur filens egna
+ * `#TRANS`-rader och kan därför inte vara grön med fel teckenkonvention.
+ */
+export function sieSignedAmount(
+  debit: Prisma.Decimal | number | null,
+  credit: Prisma.Decimal | number | null,
+): number {
+  return Number(debit ?? 0) - Number(credit ?? 0)
+}
+
 export function fiscalYearsCovering(
   from: string,
   to: string,
@@ -920,6 +950,92 @@ export class AccountingService {
     }
     lines.push('')
 
+    // ── SALDOPOSTERNA: #IB, #UB, #RES ───────────────────────────────────────
+    //
+    // Utan dem kan ett mottagande bokslutsprogram varken bygga en balansräkning
+    // eller en resultaträkning ur filen — den blir en verifikationslista, inte
+    // en bokföringsexport.
+    //
+    // TECKEN: `sieSignedAmount`, samma råa Σdebet − Σkredit som `#TRANS` ovan.
+    // Läs docblocket där innan du frestas att återanvända getBalanceSheet.
+    //
+    // INGET `{}`-fält på de här posterna. Bara `#TRANS` har objektfältet; skriver
+    // man det här avvisas raden av strikta läsare.
+    //
+    // HÄMTNINGEN GÅR INTE VIA `entries`. Den arrayen är avgränsad till
+    // from/to, och `#IB` behöver allt som hänt FÖRE räkenskapsårets start —
+    // ofta långt utanför exportintervallet. En deposition mottagen 2024 ska
+    // fortfarande synas som skuld i ingående balans 2026.
+    const balanceAccounts = accounts.filter(
+      (a) => a.type === 'ASSET' || a.type === 'LIABILITY' || a.type === 'EQUITY',
+    )
+    const resultAccounts = accounts.filter((a) => a.type === 'REVENUE' || a.type === 'EXPENSE')
+
+    /** Saldo per konto-id för ett datumfönster. Summerar hela historiken som ryms i where. */
+    const balancesFor = async (where: Prisma.JournalEntryLineWhereInput) => {
+      const rows = await this.prisma.journalEntryLine.groupBy({
+        by: ['accountId'],
+        where,
+        _sum: { debit: true, credit: true },
+      })
+      const per = new Map<string, number>()
+      for (const r of rows) per.set(r.accountId, sieSignedAmount(r._sum.debit, r._sum.credit))
+      return per
+    }
+
+    /** YYYYMMDD → Date (UTC-midnatt). fiscalYearsCovering ger kompakt form. */
+    const fromCompact = (c: string): Date =>
+      new Date(`${c.slice(0, 4)}-${c.slice(4, 6)}-${c.slice(6, 8)}T00:00:00Z`)
+
+    // CUTOFF = `to`, inte räkenskapsårets slut. Vid en PARTIELL export (och
+    // SIE4-fliken föreslår "innevarande år t.o.m. idag", alltså nästan alltid)
+    // måste utgående saldo stämma mot de verifikationer filen FAKTISKT
+    // innehåller. Räknades det mot årets slut skulle IB + filens transaktioner
+    // ≠ UB, och mottagaren får ett avstämningsfel den inte kan lösa.
+    const cutoff = new Date(to)
+
+    for (const fy of fiscalYears) {
+      const yearStart = fromCompact(fy.start)
+      const yearEnd = fromCompact(fy.end)
+
+      // CUTOFF PER ÅR = min(räkenskapsårets slut, exportens `to`).
+      //
+      // För ett AVSLUTAT år (index -1 och nedåt) är utgående saldo årets slut —
+      // annars skulle `#UB -1` innehålla rörelser som hör till år 0, och två
+      // årsindex skulle rapportera exakt samma tal. För det SENASTE året är
+      // cutoff `to`, så att saldot stämmer mot de verifikationer filen bär.
+      const yearCutoff = yearEnd < cutoff ? yearEnd : cutoff
+
+      const ib = await balancesFor({ journalEntry: { organizationId, date: { lt: yearStart } } })
+      const ub = await balancesFor({ journalEntry: { organizationId, date: { lte: yearCutoff } } })
+      const res = await balancesFor({
+        journalEntry: { organizationId, date: { gte: yearStart, lte: yearCutoff } },
+      })
+
+      // NOLLSALDON UTELÄMNAS — skriv inte 0.00-rader "för tydlighets skull".
+      //
+      // En utelämnad rad läses av mottagaren som noll, och regeln har en andra
+      // effekt som är lätt att missa: den är precis det som gör att ett
+      // räkenskapsår UTAN data (nystartad organisation, eller tiden före
+      // nollställningen) faller ut rätt helt utan specialkod. Alla konton får
+      // saldo 0, inga rader skrivs, och `#RAR -1` står kvar utan saldoposter —
+      // vilket är en giltig fil som säger "inga siffror registrerade det året".
+      //
+      // Lägger någon till en 0.00-rad "för fullständighet" försvinner den
+      // egenskapen, och nystartade organisationer får en fil full av nollor.
+      const push = (tag: string, per: Map<string, number>, urval: typeof accounts) => {
+        for (const acc of urval) {
+          const saldo = per.get(acc.id) ?? 0
+          if (saldo === 0) continue
+          lines.push(`${tag} ${fy.number} ${acc.number} ${saldo.toFixed(2)}`)
+        }
+      }
+      push('#IB', ib, balanceAccounts)
+      push('#UB', ub, balanceAccounts)
+      push('#RES', res, resultAccounts)
+    }
+    lines.push('')
+
     // Verifikationsnummer (serie + nummer) skrivs ut deterministiskt så att
     // samma verifikation identifieras lika i varje export (BFL 5 kap 6 §).
     for (const entry of entries) {
@@ -930,7 +1046,8 @@ export class AccountingService {
       )
       lines.push('{')
       for (const l of entry.lines) {
-        const amount = l.debit != null ? Number(l.debit) : -Number(l.credit ?? 0)
+        // Samma formel som saldoposterna nedan — se sieSignedAmount.
+        const amount = sieSignedAmount(l.debit, l.credit)
         lines.push(`  #TRANS ${l.account.number} {} ${amount.toFixed(2)}`)
       }
       lines.push('}')
