@@ -294,7 +294,12 @@ export function AviseringPage() {
                       key={notice.id}
                       variants={item}
                       tabIndex={0}
-                      role="button"
+                      // MEDVETET INGEN role="button": ARIA tillåter bara rollen
+                      // `row` för ett <tr> i en tabell, och skriver man över den
+                      // blir <td>-barnen (roll `cell`) föräldralösa. Samma regel
+                      // som <DataTable> redan bär. Här kostade överträdelsen
+                      // dessutom en röd E2E: getByRole('row') slutade hitta
+                      // avi-raderna i avi-paid-flow, eftersom rollen var utbytt.
                       aria-label={`Öppna avi ${notice.noticeNumber}`}
                       onClick={() => setDetailNotice(notice)}
                       onKeyDown={(e) => {
