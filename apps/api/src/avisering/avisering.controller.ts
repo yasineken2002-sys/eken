@@ -11,6 +11,7 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common'
 import type { FastifyReply } from 'fastify'
 import { AviseringService } from './avisering.service'
@@ -30,6 +31,23 @@ import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { UserRole } from '@prisma/client'
+
+/**
+ * `?amount=` → tal, eller `undefined` när klienten inte frågat.
+ *
+ * FÖRKASTAR SKRÄP I STÄLLET FÖR ATT TOLKA DET. `Number('')` är 0 och
+ * `Number('abc')` är NaN; båda hade tyst blivit en projektion — en nolla ser ut
+ * som ett svar, och NaN hade renderats som "NaN kr" för en operatör som står i
+ * begrepp att fatta ett bindande beslut. Ett felaktigt värde ska säga ifrån.
+ */
+function parseProposedAmount(raw?: string): number | undefined {
+  if (raw === undefined) return undefined
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 0) {
+    throw new BadRequestException('amount måste vara ett positivt tal')
+  }
+  return n
+}
 import type { RentNoticeStatus } from '@prisma/client'
 import type { JwtPayload } from '@eken/shared'
 
@@ -250,10 +268,19 @@ export class AviseringController {
   // kreditera per post, och om kreditering alls är möjlig. Läsning — SAMMA
   // rollnivå som själva krediteringen, så att knappen inte visas för någon som
   // ändå inte får utföra den.
+  //
+  // `amount` (valfri) är den summa gränssnittet tänker kreditera. Med den
+  // returneras en PROJEKTION ur samma `computeRentDebt` som kravtrappan läser:
+  // vad som blir kvar, och om avin då stannar för att bara ränta återstår.
+  // Regeln får inte räknas om i klienten — se `getPreview`:s docblock.
   @Get(':id/credit/preview')
   @Roles(UserRole.ACCOUNTANT, UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
-  async creditPreview(@Param('id') id: string, @OrgId() orgId: string) {
-    return this.credits.getPreview(id, orgId)
+  async creditPreview(
+    @Param('id') id: string,
+    @OrgId() orgId: string,
+    @Query('amount') amount?: string,
+  ) {
+    return this.credits.getPreview(id, orgId, parseProposedAmount(amount))
   }
 
   // Nedsättning av en OBETALD avi. Kreditering av en betald avi är spärrad i

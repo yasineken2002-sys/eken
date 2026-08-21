@@ -138,3 +138,118 @@ export async function downloadNoticePdf(id: string, noticeNumber: string) {
   a.click()
   window.URL.revokeObjectURL(url)
 }
+
+// ─── #518 — kreditering (nedsättning) av hyresavi ────────────────────────────
+
+export type RentCollectionStage = 'NONE' | 'REMINDED' | 'INKASSO_READY' | 'WRITTEN_OFF'
+
+/**
+ * En post på avin som går att kreditera, med sitt KUMULATIVA tak.
+ *
+ * `remaining` räknas av servern över ALLA tidigare krediteringar. Klienten får
+ * aldrig gissa fram det ur `invoiced` — taket ligger i databasen, och en gissning
+ * hade föreslagit belopp som API:et sedan avvisar.
+ */
+export interface RentNoticeCreditBucket {
+  /** null = hyreskapitalet (avins totalAmount), annars avi-radens id. */
+  rentNoticeLineId: string | null
+  description: string
+  invoiced: number
+  credited: number
+  remaining: number
+  vatBearing: boolean
+}
+
+export interface RentNoticeCreditRecord {
+  id: string
+  amount: number
+  reason: string
+  creditedAt: string
+  lines: Array<{
+    id: string
+    rentNoticeLineId: string | null
+    description: string
+    amount: number
+  }>
+}
+
+/** Skuldläget ur API:ets `computeRentDebt` — aldrig omräknat i klienten. */
+export interface RentNoticeDebt {
+  capital: number
+  consumption: number
+  miscCharge: number
+  reminderFee: number
+  interest: number
+  paid: number
+  credited: number
+  outstanding: number
+  ocrOutstanding: number
+  interestOnlyAfterCredit: boolean
+}
+
+/**
+ * Utfallet av en TÄNKT kreditering, räknat av servern.
+ *
+ * `interestOnlyAfterCredit` är en REGEL, inte en subtraktion: den avgör om avin
+ * stannar för människobeslut i stället för att gå vidare i kravtrappan. Därför
+ * frågar vi servern i stället för att räkna ut den här.
+ */
+export interface RentNoticeCreditProjection {
+  requested: number
+  /** Det klampade beloppet — det som projektionen faktiskt gäller. */
+  applied: number
+  outstandingBefore: number
+  ocrOutstandingBefore: number
+  outstanding: number
+  ocrOutstanding: number
+  interest: number
+  credited: number
+  interestOnlyAfterCredit: boolean
+}
+
+export interface RentNoticeCreditPreview {
+  rentNoticeId: string
+  noticeNumber: string
+  payableTotal: number
+  outstanding: number
+  credited: number
+  /** Servern avgör OM det går. UI:t härleder aldrig villkoret själv. */
+  allowed: boolean
+  /** Skrivet för en människa. Visas ordagrant när `allowed` är falskt. */
+  blockedReason: string | null
+  buckets: RentNoticeCreditBucket[]
+  creditableNow: number
+  debt: RentNoticeDebt
+  collectionStage: RentCollectionStage
+  credits: RentNoticeCreditRecord[]
+  projection: RentNoticeCreditProjection | null
+}
+
+export interface CreateRentNoticeCreditInput {
+  reason: string
+  lines: Array<{ rentNoticeLineId?: string; amount: number }>
+}
+
+export interface CreateRentNoticeCreditResult {
+  credit: { id: string; amount: number; reason: string; creditedAt: string }
+  rentNotice: {
+    id: string
+    noticeNumber: string
+    outstanding: number
+    interestOnlyAfterCredit: boolean
+  }
+}
+
+/**
+ * `amount` skickas med när gränssnittet vill veta vad krediteringen LEDER TILL.
+ * Utan den utelämnas projektionen — en tom sträng eller ett NaN avvisas av
+ * API:et i stället för att tolkas som noll.
+ */
+export function getRentNoticeCreditPreview(id: string, amount?: number) {
+  const q = amount !== undefined ? `?amount=${encodeURIComponent(amount)}` : ''
+  return get<RentNoticeCreditPreview>(`/avisering/${id}/credit/preview${q}`)
+}
+
+export function createRentNoticeCredit(id: string, dto: CreateRentNoticeCreditInput) {
+  return post<CreateRentNoticeCreditResult>(`/avisering/${id}/credit`, dto)
+}

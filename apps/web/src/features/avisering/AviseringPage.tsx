@@ -21,6 +21,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { RentNoticeBadge } from './components/RentNoticeBadge'
 import { GenerateModal } from './components/GenerateModal'
 import { MarkPaidModal } from './components/MarkPaidModal'
+import { RentNoticeDetailModal } from './components/RentNoticeDetailModal'
 import {
   useNotices,
   useNoticeStats,
@@ -79,6 +80,9 @@ export function AviseringPage() {
   const [statusTab, setStatusTab] = useState<RentNoticeStatus | 'ALL'>('ALL')
   const [generateOpen, setGenerateOpen] = useState(false)
   const [markPaidNotice, setMarkPaidNotice] = useState<RentNotice | null>(null)
+  // #518 — avi-detaljen. Ingången till nedsättning, och den enda ytan som
+  // visar avins BERÄKNADE skuld i stället för bruttot på raden.
+  const [detailNotice, setDetailNotice] = useState<RentNotice | null>(null)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
@@ -289,7 +293,22 @@ export function AviseringPage() {
                     <motion.tr
                       key={notice.id}
                       variants={item}
-                      className="border-line border-b transition-colors last:border-0 hover:bg-gray-50/80"
+                      tabIndex={0}
+                      // MEDVETET INGEN role="button": ARIA tillåter bara rollen
+                      // `row` för ett <tr> i en tabell, och skriver man över den
+                      // blir <td>-barnen (roll `cell`) föräldralösa. Samma regel
+                      // som <DataTable> redan bär. Här kostade överträdelsen
+                      // dessutom en röd E2E: getByRole('row') slutade hitta
+                      // avi-raderna i avi-paid-flow, eftersom rollen var utbytt.
+                      aria-label={`Öppna avi ${notice.noticeNumber}`}
+                      onClick={() => setDetailNotice(notice)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setDetailNotice(notice)
+                        }
+                      }}
+                      className="border-line cursor-pointer border-b transition-colors last:border-0 hover:bg-gray-50/80 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2"
                     >
                       <td className="px-4 py-3">
                         <span className="rounded-md bg-gray-200 px-2 py-0.5 font-mono text-[12px] font-semibold text-gray-500">
@@ -327,7 +346,9 @@ export function AviseringPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
+                      {/* Åtgärdsknapparna är egna beslut — klicket får inte
+                          bubbla upp och samtidigt öppna detaljvyn. */}
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-1.5">
                           {(notice.status === 'PENDING' || notice.status === 'FAILED') && (
                             <button
@@ -387,6 +408,12 @@ export function AviseringPage() {
             onClose={() => setGenerateOpen(false)}
             onSuccess={() => {}}
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {detailNotice && (
+          <RentNoticeDetailModal notice={detailNotice} onClose={() => setDetailNotice(null)} />
         )}
       </AnimatePresence>
 
