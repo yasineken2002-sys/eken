@@ -4,11 +4,12 @@
  * Reguljära uttryck som känner igen värden på FORM. De används av två syskon som
  * gör olika saker med samma träffar:
  *
- *   `maskAuditPatterns`   (#508) maskerar vid SKRIVNING till `AiToolExecution`.
- *                         Den tabellen replayas aldrig till modellen och läses
- *                         aldrig i produkten, så breddning kostar ingen funktion.
- *   `maskDisplayPatterns` (#507) maskerar vid VISNING av lagrade AI-samtal.
- *                         Raden i databasen är orörd; modellen får den orörd.
+ *   `AUDIT_PATTERNS`   (#508) via `maskSensitivePatterns` — maskerar vid
+ *                      SKRIVNING till `AiToolExecution`. Den tabellen replayas
+ *                      aldrig till modellen och läses aldrig i produkten.
+ *   `DISPLAY_PATTERNS` (#507) via `maskForDisplay` — maskerar vid VISNING av
+ *                      lagrade AI-samtal. Raden i databasen är orörd; modellen
+ *                      får den orörd.
  *
  * Att mönstren bor här och inte i respektive fil är hela poängen: en förbättrad
  * regex ska gälla båda, och en ny betalidentifierare ska inte behöva läggas till
