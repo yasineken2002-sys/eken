@@ -27,6 +27,9 @@ import { DiscoveryModule } from '@nestjs/core'
 import {
   BackupService,
   BackupPreflightError,
+  R2_ISOLATION_FIELDS,
+  findR2IsolationOverlaps,
+  isolationBlockMessage,
   backupKey,
   isBackupExpired,
   parsePgDumpMajor,
@@ -302,5 +305,194 @@ describe('BackupScheduler — ett fällt förkontroll-larm sväljs inte tyst', (
     // runBackup ska ha anropats — larmet sker där.
     await expect(scheduler.dailyBackup()).resolves.toBeUndefined()
     expect(runBackup).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ── Isoleringsgrinden: backupen får inte dela NÅGOT med fillagringen ──────────
+//
+// Värdet i en backup ligger i att den inte kan nås med samma nyckel som når
+// originalet. Ett överlapp räcker för att det värdet ska vara borta, och det är
+// därför grinden fäller på ELLER och inte på OCH.
+
+const ISOLERAT = {
+  BACKUP_ENABLED: 'true',
+  NODE_ENV: 'production',
+  R2_ACCOUNT_ID: 'acc',
+  R2_ACCESS_KEY_ID: 'app-ak',
+  R2_SECRET_ACCESS_KEY: 'app-sk',
+  R2_BUCKET_NAME: 'eken-files',
+  R2_BACKUP_BUCKET: 'eken-db-backups',
+  R2_BACKUP_ACCESS_KEY_ID: 'backup-ak',
+  R2_BACKUP_SECRET_ACCESS_KEY: 'backup-sk',
+  DATABASE_URL: 'postgresql://u:p@h:5432/db',
+}
+
+describe('findR2IsolationOverlaps', () => {
+  const isolerad = {
+    backup: { bucket: 'b-bucket', accessKeyId: 'b-ak', secretAccessKey: 'b-sk' },
+    main: { bucket: 'm-bucket', accessKeyId: 'm-ak', secretAccessKey: 'm-sk' },
+    dedicatedSet: { bucket: true, accessKeyId: true, secretAccessKey: true },
+  }
+
+  it('tom lista när ingenting delas', () => {
+    expect(findR2IsolationOverlaps(isolerad)).toEqual([])
+  })
+
+  it.each(R2_ISOLATION_FIELDS)('fäller på ENBART %s-överlapp', (field) => {
+    const input = {
+      ...isolerad,
+      backup: { ...isolerad.backup, [field]: isolerad.main[field] },
+    }
+    expect(findR2IsolationOverlaps(input).map((o) => o.field)).toEqual([field])
+  })
+
+  it('rapporterar ALLA överlapp, inte bara det första', () => {
+    const allt = {
+      ...isolerad,
+      backup: { ...isolerad.main },
+    }
+    expect(findR2IsolationOverlaps(allt).map((o) => o.field)).toEqual([...R2_ISOLATION_FIELDS])
+  })
+
+  it('tomma värden är inte ett överlapp — en osatt huvudnyckel kan inte delas', () => {
+    const tomma = {
+      backup: { bucket: '', accessKeyId: undefined, secretAccessKey: '' },
+      main: { bucket: '', accessKeyId: undefined, secretAccessKey: '' },
+      dedicatedSet: { bucket: false, accessKeyId: false, secretAccessKey: false },
+    }
+    expect(findR2IsolationOverlaps(tomma)).toEqual([])
+  })
+
+  it('skiljer på "osatt → faller tillbaka" och "satt till samma värde"', () => {
+    const fallback = findR2IsolationOverlaps({
+      backup: { ...isolerad.backup, bucket: 'm-bucket' },
+      main: isolerad.main,
+      dedicatedSet: { ...isolerad.dedicatedSet, bucket: false },
+    })
+    expect(fallback[0]).toEqual({ field: 'bucket', dedicatedSet: false })
+
+    const explicit = findR2IsolationOverlaps({
+      backup: { ...isolerad.backup, bucket: 'm-bucket' },
+      main: isolerad.main,
+      dedicatedSet: { ...isolerad.dedicatedSet, bucket: true },
+    })
+    expect(explicit[0]).toEqual({ field: 'bucket', dedicatedSet: true })
+  })
+})
+
+// ── KANARIEFÅGEL ─────────────────────────────────────────────────────────────
+//
+// De namngivna testerna ovan skyddar mot SPECIFIKA återfall ("just den här
+// kollisionen fälls"). De upptäcker inte att mekanismen gått blind — en
+// jämförelse som alltid returnerar tom lista gör dem röda en och en, men en
+// jämförelse som tappat ETT fält märks bara om någon råkar ha skrivit ett test
+// för just det fältet.
+//
+// Kanariefågeln matar därför in en konfiguration som MÅSTE ge utslag på VARJE
+// fält i R2_ISOLATION_FIELDS, och kräver att antalet stämmer. Läggs ett fält
+// till i listan utan att jämförelsen implementerar det blir den här röd — inte
+// tyst grön.
+describe('KANARIEFÅGEL — isoleringsjämförelsen mäter fortfarande', () => {
+  it('en helt delad konfiguration ger utslag på EXAKT alla kända fält', () => {
+    const delat = 'identiskt-varde'
+    const allaDelade = {
+      backup: Object.fromEntries(R2_ISOLATION_FIELDS.map((f) => [f, delat])),
+      main: Object.fromEntries(R2_ISOLATION_FIELDS.map((f) => [f, delat])),
+      dedicatedSet: Object.fromEntries(R2_ISOLATION_FIELDS.map((f) => [f, true])),
+    } as Parameters<typeof findR2IsolationOverlaps>[0]
+
+    const träffar = findR2IsolationOverlaps(allaDelade)
+
+    // Antalet är poängen: en jämförelse som tappat ett fält ger färre.
+    expect(träffar).toHaveLength(R2_ISOLATION_FIELDS.length)
+    expect(träffar.map((o) => o.field).sort()).toEqual([...R2_ISOLATION_FIELDS].sort())
+    // Och varje fält måste ha ett eget besked — annars kan operatören inte se
+    // VILKET överlapp som fälldes.
+    const besked = isolationBlockMessage(träffar)
+    for (const field of R2_ISOLATION_FIELDS) {
+      expect(besked).toContain(
+        field === 'bucket'
+          ? 'R2_BACKUP_BUCKET'
+          : `R2_BACKUP_${field === 'accessKeyId' ? 'ACCESS_KEY_ID' : 'SECRET_ACCESS_KEY'}`,
+      )
+    }
+  })
+
+  it('och en helt isolerad konfiguration ger INGET utslag (fäller inte allt)', () => {
+    const isolerad = {
+      backup: Object.fromEntries(R2_ISOLATION_FIELDS.map((f) => [f, `backup-${f}`])),
+      main: Object.fromEntries(R2_ISOLATION_FIELDS.map((f) => [f, `app-${f}`])),
+      dedicatedSet: Object.fromEntries(R2_ISOLATION_FIELDS.map((f) => [f, true])),
+    } as Parameters<typeof findR2IsolationOverlaps>[0]
+
+    expect(findR2IsolationOverlaps(isolerad)).toEqual([])
+  })
+})
+
+describe('isolationBlockMessage — namnger felet utan att läcka värden', () => {
+  // Sentinelvärden med hög entropi. Poängen är att de INTE ska kunna matcha
+  // vanliga ord i beskedet: ett trubbigt prefixtest (t.ex. 'back' ur
+  // 'backup-ak') träffar ordet "backup" och mäter då stavning, inte läckage.
+  const HEMLIGA_VÄRDEN = [
+    'Zq7Kx-app-access-key',
+    'Vn4Rm-app-secret',
+    'Ht2Ws-backup-access-key',
+    'Jd8Pl-backup-secret',
+    'Bg5Cy-bucket-name',
+  ]
+
+  it('namnger variabeln och åtgärden', () => {
+    const msg = isolationBlockMessage([{ field: 'accessKeyId', dedicatedSet: true }])
+    expect(msg).toContain('R2_BACKUP_ACCESS_KEY_ID är satt till samma värde som R2_ACCESS_KEY_ID')
+    expect(msg).toContain('minimalt scopad API-token')
+    expect(msg).toContain('samma credential som raderar')
+  })
+
+  it('säger när den dedikerade variabeln är OSATT och faller tillbaka', () => {
+    const msg = isolationBlockMessage([{ field: 'bucket', dedicatedSet: false }])
+    expect(msg).toContain('R2_BACKUP_BUCKET är osatt, så värdet faller tillbaka på R2_BUCKET_NAME')
+  })
+
+  it('läcker ALDRIG ett värde — inte ens ett prefix', () => {
+    const msg = isolationBlockMessage(
+      R2_ISOLATION_FIELDS.map((field) => ({ field, dedicatedSet: true })),
+    )
+    for (const värde of HEMLIGA_VÄRDEN) {
+      expect(msg).not.toContain(värde)
+      expect(msg).not.toContain(värde.slice(0, 5))
+    }
+  })
+})
+
+describe('BackupService.enabled — ETT överlapp räcker för att blockera i prod', () => {
+  it('tillåts när backupen är helt isolerad', () => {
+    expect(serviceWith(ISOLERAT).enabled).toBe(true)
+  })
+
+  it.each([
+    ['bucket', 'R2_BACKUP_BUCKET', 'R2_BUCKET_NAME'],
+    ['access key id', 'R2_BACKUP_ACCESS_KEY_ID', 'R2_ACCESS_KEY_ID'],
+    ['secret access key', 'R2_BACKUP_SECRET_ACCESS_KEY', 'R2_SECRET_ACCESS_KEY'],
+  ])('BLOCKERAR när bara %s delas', (_namn, backupVar, mainVar) => {
+    const env = { ...ISOLERAT, [backupVar]: ISOLERAT[mainVar as keyof typeof ISOLERAT] }
+    expect(serviceWith(env).enabled).toBe(false)
+  })
+
+  it.each([['R2_BACKUP_BUCKET'], ['R2_BACKUP_ACCESS_KEY_ID'], ['R2_BACKUP_SECRET_ACCESS_KEY']])(
+    'BLOCKERAR när %s är osatt (faller tillbaka på huvudvärdet)',
+    (backupVar) => {
+      const env: Record<string, string> = { ...ISOLERAT }
+      delete env[backupVar]
+      expect(serviceWith(env).enabled).toBe(false)
+    },
+  )
+
+  it('dev är fortfarande tillåtet med huvudnycklarna (fallback)', () => {
+    const env: Record<string, string> = { ...ISOLERAT }
+    delete env.NODE_ENV
+    delete env.R2_BACKUP_BUCKET
+    delete env.R2_BACKUP_ACCESS_KEY_ID
+    delete env.R2_BACKUP_SECRET_ACCESS_KEY
+    expect(serviceWith(env).enabled).toBe(true)
   })
 })

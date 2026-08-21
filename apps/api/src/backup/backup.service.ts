@@ -33,6 +33,111 @@ const R2_BACKUP_SOCKET_TIMEOUT_MS = 60_000 // idle-stall (generöst; upload-akti
 // ── Rena hjälpare (testbara utan DB/R2) ─────────────────────────────────────────
 
 /**
+ * ISOLERINGEN MELLAN BACKUPEN OCH APPLIKATIONENS FILLAGRING.
+ *
+ * Varför grinden finns: en dump innehåller ALL PII för alla organisationer, och
+ * hela värdet i den ligger i att den inte kan nås med samma nyckel som når
+ * originalet. **En backup som går att radera med samma nyckel som raderade
+ * originalet är ingen backup.** En komprometterad — eller bara felanvänd —
+ * app-credential ska ta med sig produktionsdatan, inte kopian av den också.
+ *
+ * ETT ÖVERLAPP RÄCKER. Fram till #541 var villkoret ett AND (`!dedikerad nyckel
+ * && !dedikerad bucket`), vilket betydde att en HALVKONFIGURATION passerade:
+ * samma nyckel men annan bucket, eller samma bucket men annan nyckel. Båda
+ * bryter isoleringen — delad nyckel ger åtkomst till backup-bucketen ändå, och
+ * delad bucket gör att app-nyckeln kan lista och radera dumparna. Dessutom
+ * ingick `R2_BACKUP_SECRET_ACCESS_KEY` inte alls i jämförelsen.
+ *
+ * Jämförelsen sker på EFFEKTIVA värden, inte på "är variabeln satt". Det fångar
+ * två fall med samma kod: den dedikerade variabeln saknas (och faller tillbaka
+ * på huvudvärdet), och den dedikerade variabeln är satt till samma värde som
+ * huvudvärdet. Det andra fallet var osynligt för den gamla formen.
+ */
+export const R2_ISOLATION_FIELDS = ['bucket', 'accessKeyId', 'secretAccessKey'] as const
+export type R2IsolationField = (typeof R2_ISOLATION_FIELDS)[number]
+
+/** Variabelnamnen per fält. ALDRIG värden — namnet räcker för att åtgärda felet. */
+const R2_ISOLATION_VARS: Record<R2IsolationField, { backup: string; main: string; vad: string }> = {
+  bucket: {
+    backup: 'R2_BACKUP_BUCKET',
+    main: 'R2_BUCKET_NAME',
+    vad: 'samma bucket som applikationens fillagring',
+  },
+  accessKeyId: {
+    backup: 'R2_BACKUP_ACCESS_KEY_ID',
+    main: 'R2_ACCESS_KEY_ID',
+    vad: 'samma access key id som applikationens fillagring',
+  },
+  secretAccessKey: {
+    backup: 'R2_BACKUP_SECRET_ACCESS_KEY',
+    main: 'R2_SECRET_ACCESS_KEY',
+    vad: 'samma secret access key som applikationens fillagring',
+  },
+}
+
+export interface R2IsolationOverlap {
+  field: R2IsolationField
+  /** Var den dedikerade variabeln satt alls, eller föll värdet tillbaka på huvudvärdet? */
+  dedicatedSet: boolean
+}
+
+/**
+ * Effektiva värden på båda sidor. Tomma värden jämförs ALDRIG: en osatt
+ * huvudnyckel kan inte "delas", och `enabled` kräver ändå att backupens egna
+ * värden finns. Utan den regeln hade två tomma strängar rapporterats som ett
+ * överlapp — ett larm om ingenting.
+ */
+export interface R2IsolationInput {
+  backup: Record<R2IsolationField, string | undefined>
+  main: Record<R2IsolationField, string | undefined>
+  /** Vilka dedikerade R2_BACKUP_*-variabler som faktiskt var satta. */
+  dedicatedSet: Record<R2IsolationField, boolean>
+}
+
+/** Varje fält där backupen och fillagringen delar värde. Tom lista = isolerat. */
+export function findR2IsolationOverlaps(input: R2IsolationInput): R2IsolationOverlap[] {
+  return R2_ISOLATION_FIELDS.filter((field) => {
+    const b = input.backup[field]
+    const m = input.main[field]
+    if (!b || !m) return false
+    return b === m
+  }).map((field) => ({ field, dedicatedSet: input.dedicatedSet[field] }))
+}
+
+/**
+ * Beskedet operatören läser. Namnger VILKET överlapp som hittades och vad man
+ * gör åt det.
+ *
+ * INGA VÄRDEN, inte ens ett prefix. Ett bucketnamn är i sig harmlöst, men ett
+ * prefix av en hemlighet är det inte, och en regel som gäller "bara ibland" blir
+ * fel den dagen någon kopierar raden. Variabelnamnet räcker för att åtgärda
+ * felet — den som ska rätta det har ändå tillgång till konfigurationen.
+ */
+export function isolationBlockMessage(overlaps: R2IsolationOverlap[]): string {
+  const punkter = overlaps
+    .map(({ field, dedicatedSet }) => {
+      const { backup, main, vad } = R2_ISOLATION_VARS[field]
+      const hur = dedicatedSet
+        ? `${backup} är satt till samma värde som ${main}`
+        : `${backup} är osatt, så värdet faller tillbaka på ${main}`
+      return `${vad} (${hur})`
+    })
+    .join('; ')
+
+  return (
+    '[backup] BLOCKERAD i produktion: backupen delar konfiguration med ' +
+    `applikationens fillagring — ${punkter}. En nyckel som når både originalet ` +
+    'och kopian gör backupen verkningslös: samma credential som raderar ' +
+    'produktionsdatan raderar då även säkerhetskopian. ÅTGÄRD: skapa en egen ' +
+    'R2-bucket för backuper och en egen, minimalt scopad API-token (List/Get/' +
+    'Put/Delete enbart på den bucketen), och sätt R2_BACKUP_BUCKET, ' +
+    'R2_BACKUP_ACCESS_KEY_ID och R2_BACKUP_SECRET_ACCESS_KEY till dessa — ' +
+    'inga av dem får dela värde med R2_BUCKET_NAME, R2_ACCESS_KEY_ID eller ' +
+    'R2_SECRET_ACCESS_KEY.'
+  )
+}
+
+/**
  * Förkontrollen fällde — klienten kan inte dumpa servern.
  *
  * Egen typ av ETT skäl: felmeddelandet innehåller bara versionsnummer, inga
@@ -146,11 +251,28 @@ export class BackupService {
       config.get<string>('BACKUP_RETENTION_DAYS') ?? DEFAULT_RETENTION_DAYS,
     )
 
-    // Delar backupen BÅDE kredential OCH bucket med dokumentlagringen? Då är
+    // Delar backupen NÅGON del av sin konfiguration med dokumentlagringen? Då är
     // isoleringen inte på plats — förbjud i produktion (fail-closed) tills en
-    // dedikerad backup-token + bucket konfigurerats.
+    // dedikerad backup-token + bucket konfigurerats. ETT överlapp räcker; se
+    // docblocket vid findR2IsolationOverlaps för varför AND var fel.
     const isProd = config.get<string>('NODE_ENV') === 'production'
-    const sharesMainCredsAndBucket = !config.get<string>('R2_BACKUP_ACCESS_KEY_ID') && !backupBucket
+    const overlaps = findR2IsolationOverlaps({
+      backup: {
+        bucket: this.bucket,
+        accessKeyId,
+        secretAccessKey,
+      },
+      main: {
+        bucket: config.get<string>('R2_BUCKET_NAME'),
+        accessKeyId: config.get<string>('R2_ACCESS_KEY_ID'),
+        secretAccessKey: config.get<string>('R2_SECRET_ACCESS_KEY'),
+      },
+      dedicatedSet: {
+        bucket: !!backupBucket,
+        accessKeyId: !!config.get<string>('R2_BACKUP_ACCESS_KEY_ID'),
+        secretAccessKey: !!config.get<string>('R2_BACKUP_SECRET_ACCESS_KEY'),
+      },
+    })
 
     // Kör bara om explicit aktiverat OCH all config finns — annars no-op (dev/test).
     this.enabled =
@@ -160,14 +282,10 @@ export class BackupService {
       !!secretAccessKey &&
       !!this.bucket &&
       !!this.databaseUrl &&
-      !(isProd && sharesMainCredsAndBucket)
+      !(isProd && overlaps.length > 0)
 
-    if (config.get<string>('BACKUP_ENABLED') === 'true' && isProd && sharesMainCredsAndBucket) {
-      this.logger.error(
-        '[backup] BLOCKERAD i produktion: backupen delar R2-kredential och bucket med ' +
-          'dokumentlagringen. Sätt R2_BACKUP_BUCKET + R2_BACKUP_ACCESS_KEY_ID/' +
-          'R2_BACKUP_SECRET_ACCESS_KEY (dedikerad, minimalt scopad token) innan aktivering.',
-      )
+    if (config.get<string>('BACKUP_ENABLED') === 'true' && isProd && overlaps.length > 0) {
+      this.logger.error(isolationBlockMessage(overlaps))
     }
 
     this.s3 = new S3Client({
