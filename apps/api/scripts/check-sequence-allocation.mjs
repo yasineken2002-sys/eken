@@ -245,7 +245,7 @@ export function checkOneCallSitePerModel(models, callSites) {
     } else if (sites.length > 1) {
       violations.push({
         file: sites.map((s) => `${s.file}:${s.line}`).join(', '),
-        line: sites[0].line,
+        line: 0,
         rule: `${model} rörs från ${sites.length} platser`,
         detail:
           'Allokeringslogiken har kopierats. Anropa den delade allokerarfunktionen ' +
@@ -451,7 +451,12 @@ function main() {
 
   if (failures.length > 0) {
     console.error('\n=== NUMMERSERIENS ATOMICITET KRINGGÅNGEN (CI-guard, H1) ===\n')
-    for (const f of failures) console.error(`❌ ${f.file}:${f.line}\n   ${f.rule}\n   ${f.detail}`)
+    for (const f of failures) {
+      // line === 0 betyder att platserna redan står uppräknade i `file` (R2, som
+      // är en egenskap hos hela trädet och inte hos en enskild rad).
+      const var_ = f.line === 0 ? f.file : `${f.file}:${f.line}`
+      console.error(`❌ ${var_}\n   ${f.rule}\n   ${f.detail}`)
+    }
     console.error(
       '\nÅtgärd: allokera via en increment-UPSERT på sekvensraden, i SAMMA\n' +
         '$transaction som raden skapas — se apps/api/src/invoices/invoice-number.ts\n' +
