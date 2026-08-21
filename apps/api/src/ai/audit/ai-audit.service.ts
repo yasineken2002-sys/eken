@@ -1,3 +1,7 @@
+// redact-copy-allow: #508:s maskering av AiToolExecution är en EGEN regel, inte en
+// kopia. Den maskerar vid SKRIVNING och bredare (namn, e-post, mönster i fritext)
+// eftersom audit-raden aldrig replayas till modellen — se docblocket nedan. Fält-
+// listorna överlappar därför med redact-sensitive utan att vara samma sak.
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../../common/prisma/prisma.service'
 

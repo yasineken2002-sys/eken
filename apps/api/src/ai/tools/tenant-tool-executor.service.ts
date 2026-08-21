@@ -8,42 +8,13 @@ import { AiAuditService } from '../audit/ai-audit.service'
 import { TerminationsService } from '../../terminations/terminations.service'
 import { TENANT_ACTION_TOOLS } from './tenant-ai-tools.definition'
 import { SAFE_TENANT_SELECT } from '../../tenants/tenants.service'
+import { redactSensitive } from '../../common/redaction/redact-sensitive'
 
 /**
  * Whitelista vilka fält som är säkra att returnera till hyresgäst-AI:n.
  * Personnummer, lösenordshashar och tokens får ALDRIG hamna i tool-svaret.
  * Defense-in-depth: tool-executor kör även en redact-funktion på all output.
  */
-const SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set([
-  'personalNumber',
-  'personalNumberEnc',
-  'personalNumberHash',
-  'passwordHash',
-  'activationToken',
-  'activationTokenExpiresAt',
-  'sessionToken',
-  'refreshToken',
-  'magicLinkToken',
-  'token',
-  'apiKey',
-])
-
-function redactSensitive<T>(value: T, depth = 0): T {
-  if (depth > 12) return value
-  if (value === null || value === undefined) return value
-  if (Array.isArray(value)) {
-    return value.map((v) => redactSensitive(v, depth + 1)) as unknown as T
-  }
-  if (typeof value === 'object' && !(value instanceof Date) && !(value instanceof Buffer)) {
-    const out: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (SENSITIVE_FIELD_NAMES.has(k)) continue
-      out[k] = redactSensitive(v, depth + 1)
-    }
-    return out as unknown as T
-  }
-  return value
-}
 
 export interface TenantToolResult {
   success: boolean

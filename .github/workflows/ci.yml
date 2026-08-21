@@ -253,6 +253,25 @@ jobs:
       - name: Verify every $transaction has deliberate limits
         run: node apps/api/scripts/check-transaction-limits.mjs
 
+  redact-copies-guard:
+    name: Redaction single-source guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # fs-only, inga beroenden. Fäller om maskeringslogiken (funktionen ELLER
+      # fältlistan) dyker upp i ett andra exemplar. Undantag kräver markören
+      # `redact-copy-allow:` med ett skäl, och räknas upp i den gröna utskriften.
+      - name: Self-test the guard (both detections, canary)
+        run: node apps/api/scripts/check-redact-copies.mjs --self-test
+
+      - name: Verify redaction logic exists in exactly one place
+        run: node apps/api/scripts/check-redact-copies.mjs
+
   generated-knowledge-sync-guard:
     name: Generated legal knowledge sync guard
     runs-on: ubuntu-latest
@@ -687,6 +706,7 @@ jobs:
       - period-lookup-guard
       - design-token-guard
       - transaction-limits-guard
+      - redact-copies-guard
       - generated-knowledge-sync-guard
       - schema-drift-guard
       - e2e
