@@ -8,6 +8,7 @@ import {
 } from '@aws-sdk/client-s3'
 import * as Sentry from '@sentry/nestjs'
 import { spawn } from 'node:child_process'
+import { PrismaService } from '../common/prisma/prisma.service'
 import { readFile, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -30,6 +31,67 @@ const R2_BACKUP_CONNECTION_TIMEOUT_MS = 5_000 // TCP+TLS-handshake
 const R2_BACKUP_SOCKET_TIMEOUT_MS = 60_000 // idle-stall (generöst; upload-aktivitet återstartar)
 
 // ── Rena hjälpare (testbara utan DB/R2) ─────────────────────────────────────────
+
+/**
+ * Förkontrollen fällde — klienten kan inte dumpa servern.
+ *
+ * Egen typ av ETT skäl: felmeddelandet innehåller bara versionsnummer, inga
+ * hemligheter, och ska därför gå OSKRUBBAT till Sentry. `pg_dump`-stderr kan
+ * bära host/user/db och skrubbas fortsatt (se `runBackup`:s catch).
+ */
+export class BackupPreflightError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'BackupPreflightError'
+  }
+}
+
+/**
+ * Major-versionen ur `pg_dump --version`.
+ *
+ * Formatet är "pg_dump (PostgreSQL) 18.6 (Debian 18.6-1.pgdg12+2)", men även
+ * "19devel" och "18rc1" förekommer i PGDG:s förhandsversioner — därför matchas
+ * siffran efter "(PostgreSQL)" och inte "första talet i strängen".
+ *
+ * `null` = formatet känns inte igen. Det är AVSIKTLIGT inte ett fel: se
+ * `assertClientCanDumpServer` för varför en oläsbar version varnar i stället för
+ * att stoppa backupen.
+ */
+export function parsePgDumpMajor(output: string): number | null {
+  const m = output.match(/\(PostgreSQL\)\s+(\d+)/)
+  if (!m) return null
+  const major = Number(m[1])
+  return Number.isInteger(major) && major > 0 ? major : null
+}
+
+/**
+ * Major-versionen ur `server_version_num` (180004 → 18, 160015 → 16).
+ * Postgres egen kodning: major * 10000 + minor.
+ */
+export function serverMajorFromVersionNum(versionNum: string | number): number | null {
+  const n = Number(versionNum)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return Math.floor(n / 10000)
+}
+
+/**
+ * Meddelandet operatören läser klockan tre på natten.
+ *
+ * `pg_dump`:s eget besked är "aborting because of server version mismatch" plus
+ * två versionsnummer. Det säger VAD som hände men varken varför riktningen
+ * spelar roll eller vad man gör åt det — och den som läser det gör det i ett
+ * Sentry-mejl, utan koden framför sig.
+ */
+export function preflightMismatchMessage(clientMajor: number, serverMajor: number): string {
+  return (
+    `Backupen avbröts FÖRE dumpen: pg_dump-klienten (${clientMajor}) är äldre än ` +
+    `databasservern (${serverMajor}). pg_dump vägrar dumpa en nyare server — regeln är ` +
+    'enkelriktad: en NYARE klient mot en äldre server fungerar, tvärtom aldrig. ' +
+    'Ingen backup togs, och ingen befintlig backup gallrades. ' +
+    `ÅTGÄRD: höj postgresql-client-N i apps/api/Dockerfile till minst ${serverMajor} ` +
+    'och deploya om — versionen är ett golv, inte en exakt matchning.'
+  )
+}
 
 // Sorterbar UTC-nyckel: db-backups/eken-20260707T030512Z.dump
 export function backupKey(date: Date): string {
@@ -62,7 +124,10 @@ export class BackupService {
   readonly retentionDays: number
   readonly enabled: boolean
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     // Dedikerade backup-kredentialer (fallback till huvudnycklarna i dev). En
     // dump innehåller ALL PII för alla organisationer — den ska ligga bakom en
     // separat, minimalt scopad R2-token så att en läckt dokumentlagrings-nyckel
@@ -128,6 +193,12 @@ export class BackupService {
     const tmpPath = join(tmpdir(), `eken-backup-${Date.now()}.dump`)
 
     try {
+      // FÖRST av allt: kan klienten över huvud taget dumpa den här servern?
+      // Kastar BackupPreflightError med ett läsbart besked om inte — se
+      // assertClientCanDumpServer. Ligger före temp-filen så att ingenting
+      // skapas, skrivs eller gallras när svaret är nej.
+      await this.assertClientCanDumpServer()
+
       // Förskapa temp-filen med 0600 (bara ägaren) innan pg_dump skriver PII till
       // den — POSIX bevarar behörigheten vid trunkering.
       await writeFile(tmpPath, '', { mode: 0o600 })
@@ -156,7 +227,16 @@ export class BackupService {
       this.logger.error(
         `[backup] MISSLYCKADES: ${err instanceof Error ? err.message : String(err)}`,
       )
-      Sentry.captureException(new Error('Databasbackup misslyckades (se serverlogg för detalj)'))
+      // Förkontrollens besked innehåller BARA versionsnummer och en åtgärd —
+      // inga host/user/db — och går därför oskrubbat vidare. Det är hela
+      // poängen med kontrollen: den som får larmet ska kunna åtgärda utan att
+      // först skaffa serveraccess. Övriga fel skrubbas som förut, eftersom
+      // pg_dump-stderr kan bära anslutningsdetaljer.
+      Sentry.captureException(
+        err instanceof BackupPreflightError
+          ? err
+          : new Error('Databasbackup misslyckades (se serverlogg för detalj)'),
+      )
       throw err
     } finally {
       await unlink(tmpPath).catch(() => undefined)
@@ -190,6 +270,70 @@ export class BackupService {
       await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }))
     }
     return expired.length
+  }
+
+  /**
+   * VÄGRAR TA BACKUP OM KLIENTEN ÄR ÄLDRE ÄN SERVERN.
+   *
+   * `pg_dump` har redan en egen spärr — men dess besked är
+   * "aborting because of server version mismatch" plus två versionsnummer, och
+   * det dyker upp i ett Sentry-larm klockan tre på natten hos någon som inte har
+   * koden framför sig. Den här kontrollen finns för att felet ska säga vad som är
+   * fel OCH vad man gör åt det, före dumpen i stället för mitt i den.
+   *
+   * VARFÖR EN OLÄSBAR VERSION VARNAR I STÄLLET FÖR ATT STOPPA: kontrollen är ett
+   * bättre FELMEDDELANDE, inte en ny säkerhetsspärr. Kan versionen inte läsas
+   * (formatändring i pg_dump, DB tillfälligt onåbar) vore det fel att stoppa en
+   * backup som mycket väl kan fungera — pg_dump:s egen spärr står kvar som
+   * sistahandsskydd och fäller högljutt om kombinationen ändå är omöjlig. Att
+   * stoppa här hade bytt ett tydligt fel mot ett självförvållat backup-bortfall.
+   * (Jfr regeln om varning kontra fail-fast: fail-fast bara när appen KÖR osäkert.)
+   */
+  async assertClientCanDumpServer(): Promise<void> {
+    const clientMajor = await this.pgDumpMajor()
+    const serverMajor = await this.serverMajor()
+
+    if (clientMajor === null || serverMajor === null) {
+      this.logger.warn(
+        '[backup] Kunde inte jämföra pg_dump-klientens version med serverns ' +
+          `(klient: ${clientMajor ?? 'okänd'}, server: ${serverMajor ?? 'okänd'}). ` +
+          'Fortsätter — pg_dump fäller själv om kombinationen är omöjlig.',
+      )
+      return
+    }
+
+    if (clientMajor < serverMajor) {
+      throw new BackupPreflightError(preflightMismatchMessage(clientMajor, serverMajor))
+    }
+  }
+
+  /** `pg_dump --version` → major, eller null om utdatan inte går att tolka. */
+  private pgDumpMajor(): Promise<number | null> {
+    return new Promise((resolve) => {
+      let stdout = ''
+      const proc = spawn('pg_dump', ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] })
+      proc.stdout.on('data', (d: Buffer) => {
+        stdout += d.toString()
+      })
+      // Saknad binär eller nollskild kod → null (okänd), aldrig ett kast: se
+      // docblocket ovan om varför den här kontrollen inte får fälla backupen
+      // på egen hand.
+      proc.on('error', () => resolve(null))
+      proc.on('close', (code) => resolve(code === 0 ? parsePgDumpMajor(stdout) : null))
+    })
+  }
+
+  /** Serverns major ur `server_version_num`, eller null om frågan inte går fram. */
+  private async serverMajor(): Promise<number | null> {
+    try {
+      const rows = await this.prisma.$queryRaw<
+        Array<{ v: string }>
+      >`SELECT current_setting('server_version_num') AS v`
+      const v = rows[0]?.v
+      return v === undefined ? null : serverMajorFromVersionNum(v)
+    } catch {
+      return null
+    }
   }
 
   // pg_dump via spawn (aldrig shell → ingen kommandoinjektion). Lösenordet flyttas
