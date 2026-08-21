@@ -322,6 +322,7 @@ export class PaymentReminderService {
 
     const messageId = await this.mail.sendReminderFriendly({
       to: email,
+      organizationId: invoice.organizationId,
       tenantName,
       invoiceNumber: invoice.invoiceNumber,
       // #329 — RESTSKULDEN, inte ursprungsbeloppet. Brevet ber hyresgästen
@@ -603,6 +604,7 @@ export class PaymentReminderService {
       () =>
         this.mail.sendReminderFormal({
           to: email,
+          organizationId: invoice.organizationId,
           tenantName,
           invoiceNumber: invoice.invoiceNumber,
           // #329 — brevets siffror är RESTSKULDEN, inte fakturans nominella total.

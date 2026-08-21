@@ -11,7 +11,17 @@ import type {
 
 // ── Public option-types — bevaras för bakåtkompabilitet med befintliga callers ─
 
-export interface SendInvoiceOptions {
+/**
+ * Varje utgående mejl måste kunna knytas till en organisation — grinden i
+ * `MailQueue.enqueue` slår upp `transactionalEmailsDisabled` på det id:t.
+ * Fältet ligger i ett eget basinterface i stället för att upprepas tjugo
+ * gånger, så att regeln har EN plats att läsa och EN plats att ändra.
+ */
+export interface OrgScopedMailOptions {
+  organizationId: string
+}
+
+export interface SendInvoiceOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   invoiceNumber: string
@@ -23,7 +33,7 @@ export interface SendInvoiceOptions {
   idempotencyKey?: string
 }
 
-export interface SendOverdueReminderOptions {
+export interface SendOverdueReminderOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   invoiceNumber: string
@@ -34,7 +44,7 @@ export interface SendOverdueReminderOptions {
   idempotencyKey?: string
 }
 
-export interface SendRentIncreaseNoticeOptions {
+export interface SendRentIncreaseNoticeOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   currentRent: number
@@ -56,7 +66,7 @@ export interface SendRentIncreaseNoticeOptions {
   idempotencyKey?: string
 }
 
-export interface SendMorningInsightsOptions {
+export interface SendMorningInsightsOptions extends OrgScopedMailOptions {
   to: string
   firstName: string
   insights: string
@@ -66,7 +76,7 @@ export interface SendMorningInsightsOptions {
   idempotencyKey?: string
 }
 
-export interface SendWeeklySummaryOptions {
+export interface SendWeeklySummaryOptions extends OrgScopedMailOptions {
   to: string
   firstName: string
   summary: string
@@ -76,7 +86,7 @@ export interface SendWeeklySummaryOptions {
   idempotencyKey?: string
 }
 
-export interface SendMonthlyReportOptions {
+export interface SendMonthlyReportOptions extends OrgScopedMailOptions {
   to: string
   firstName: string
   monthLabel: string
@@ -86,7 +96,7 @@ export interface SendMonthlyReportOptions {
   idempotencyKey?: string
 }
 
-export interface SendCustomEmailOptions {
+export interface SendCustomEmailOptions extends OrgScopedMailOptions {
   to: string
   subject: string
   bodyHtml: string
@@ -96,7 +106,7 @@ export interface SendCustomEmailOptions {
   idempotencyKey?: string
 }
 
-export interface SendMagicLinkOptions {
+export interface SendMagicLinkOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   magicUrl: string
@@ -105,7 +115,7 @@ export interface SendMagicLinkOptions {
   idempotencyKey?: string
 }
 
-export interface SendTenantInviteOptions {
+export interface SendTenantInviteOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   magicUrl: string
@@ -113,7 +123,7 @@ export interface SendTenantInviteOptions {
   idempotencyKey?: string
 }
 
-export interface SendPasswordResetOptions {
+export interface SendPasswordResetOptions extends OrgScopedMailOptions {
   to: string
   recipientName: string
   resetUrl: string
@@ -122,7 +132,7 @@ export interface SendPasswordResetOptions {
   idempotencyKey?: string
 }
 
-export interface SendUserInviteOptions {
+export interface SendUserInviteOptions extends OrgScopedMailOptions {
   to: string
   recipientName: string
   roleLabel: string
@@ -133,7 +143,7 @@ export interface SendUserInviteOptions {
   idempotencyKey?: string
 }
 
-export interface SendTenantWelcomeOptions {
+export interface SendTenantWelcomeOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   organizationName: string
@@ -142,7 +152,7 @@ export interface SendTenantWelcomeOptions {
   idempotencyKey?: string
 }
 
-export interface SendTenantWelcomeWithContractOptions {
+export interface SendTenantWelcomeWithContractOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   organizationName: string
@@ -151,7 +161,7 @@ export interface SendTenantWelcomeWithContractOptions {
   idempotencyKey?: string
 }
 
-export interface SendTenantPortalInviteOptions {
+export interface SendTenantPortalInviteOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   organizationName: string
@@ -162,7 +172,7 @@ export interface SendTenantPortalInviteOptions {
   correlation?: MailCorrelation
 }
 
-export interface SendTenantSignatureConfirmationOptions {
+export interface SendTenantSignatureConfirmationOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   organizationName: string
@@ -171,7 +181,7 @@ export interface SendTenantSignatureConfirmationOptions {
   idempotencyKey?: string
 }
 
-export interface SendTenantActivationReminderOptions {
+export interface SendTenantActivationReminderOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   organizationName: string
@@ -180,7 +190,7 @@ export interface SendTenantActivationReminderOptions {
   idempotencyKey?: string
 }
 
-export interface SendInvoiceReminderOptions {
+export interface SendInvoiceReminderOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   invoiceNumber: string
@@ -190,7 +200,7 @@ export interface SendInvoiceReminderOptions {
   idempotencyKey?: string
 }
 
-export interface SendMaintenanceUpdateOptions {
+export interface SendMaintenanceUpdateOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   organizationName: string
@@ -202,7 +212,7 @@ export interface SendMaintenanceUpdateOptions {
   idempotencyKey?: string
 }
 
-export interface SendRentNoticeOptions {
+export interface SendRentNoticeOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   ocrNumber: string
@@ -215,7 +225,7 @@ export interface SendRentNoticeOptions {
   idempotencyKey?: string
 }
 
-export interface SendRentNoticeReminderOptions {
+export interface SendRentNoticeReminderOptions extends OrgScopedMailOptions {
   to: string
   tenantName: string
   noticeNumber: string
@@ -288,6 +298,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Din inloggningslänk till ${opts.organizationName}`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -305,6 +316,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Du är inbjuden till hyresgästportalen — ${opts.organizationName}`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -323,6 +335,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Välkommen som hyresgäst hos ${opts.organizationName}`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -341,6 +354,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Välkommen till ${opts.organizationName} — signera ditt kontrakt`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -364,6 +378,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `${opts.organizationName} — aktivera ditt portalkonto`,
         idempotencyKey: opts.idempotencyKey,
         ...(opts.correlation ? { correlation: opts.correlation } : {}),
@@ -385,6 +400,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Kvittens — ditt hyreskontrakt hos ${opts.organizationName} är signerat`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -403,6 +419,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Påminnelse: aktivera ditt hyreskonto hos ${opts.organizationName}`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -423,6 +440,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Återställ ditt lösenord — ${opts.organizationName}`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -443,6 +461,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Du är inbjuden till ${opts.organizationName}`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -464,6 +483,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Faktura ${opts.invoiceNumber} från ${opts.organizationName}`,
         attachments: [{ filename: `faktura-${opts.invoiceNumber}.pdf`, content: opts.pdfBuffer }],
         idempotencyKey: opts.idempotencyKey,
@@ -484,6 +504,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Påminnelse: Faktura ${opts.invoiceNumber} förfaller snart`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -503,6 +524,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Förfallen faktura ${opts.invoiceNumber}`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -511,6 +533,7 @@ export class MailService {
 
   async sendReminderFriendly(opts: {
     to: string
+    organizationId: string
     tenantName: string
     invoiceNumber: string
     total: number
@@ -536,6 +559,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Påminnelse — faktura ${opts.invoiceNumber}`,
         ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
       },
@@ -544,6 +568,7 @@ export class MailService {
 
   async sendReminderFormal(opts: {
     to: string
+    organizationId: string
     tenantName: string
     invoiceNumber: string
     /** #329 — obetalt belopp FÖRE avgiften, inte fakturans ursprungliga total. */
@@ -576,6 +601,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Påminnelse — faktura ${opts.invoiceNumber} (avgift tillkommer)`,
         ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
       },
@@ -636,6 +662,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Betalningspåminnelse — hyresavi ${opts.noticeNumber}`,
         attachments: [{ filename: `paminnelse-${opts.noticeNumber}.pdf`, content: opts.pdfBuffer }],
         ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
@@ -673,6 +700,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Hyresavi ${opts.noticeNumber} — förfaller ${formatDateSv(opts.dueDate)}`,
         attachments: [{ filename: `hyresavi-${opts.noticeNumber}.pdf`, content: opts.pdfBuffer }],
         idempotencyKey: opts.idempotencyKey,
@@ -701,6 +729,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Meddelande om hyreshöjning från ${opts.effectiveDate} — ${opts.organizationName}`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -724,6 +753,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Uppdatering på ärende ${opts.ticketNumber}`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -742,6 +772,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: opts.subject,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -778,6 +809,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Eveno — Din morgonrapport ${opts.today}`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -814,6 +846,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Eveno — Din veckosammanfattning ${opts.weekLabel}`,
         idempotencyKey: opts.idempotencyKey,
       },
@@ -844,6 +877,7 @@ export class MailService {
       },
       {
         to: opts.to,
+        organizationId: opts.organizationId,
         subject: `Eveno — Månadsrapport för ${opts.monthLabel}`,
         attachments: [{ filename: opts.filename, content: opts.pdf }],
         idempotencyKey: opts.idempotencyKey,
@@ -859,6 +893,7 @@ export class MailService {
     props: TemplatePropsMap[T],
     extras: {
       to: string
+      organizationId: string
       subject: string
       attachments?: { filename: string; content: Buffer }[]
       idempotencyKey?: string | undefined
@@ -869,6 +904,7 @@ export class MailService {
       template,
       props,
       to: extras.to,
+      organizationId: extras.organizationId,
       subject: extras.subject,
       priority,
     }

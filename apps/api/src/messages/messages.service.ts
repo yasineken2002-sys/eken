@@ -129,6 +129,7 @@ export class MessagesService {
     try {
       await this.mailService.sendCustomEmail({
         to: tenant.email,
+        organizationId,
         subject,
         bodyHtml,
         tenantName,
@@ -191,6 +192,7 @@ export class MessagesService {
           try {
             await this.mailService.sendCustomEmail({
               to: tenant.email,
+              organizationId,
               subject,
               bodyHtml,
               tenantName,
@@ -276,6 +278,7 @@ export class MessagesService {
         try {
           await this.mailService.sendCustomEmail({
             to: tenant.email,
+            organizationId,
             subject: original.subject,
             bodyHtml,
             tenantName,

@@ -83,6 +83,15 @@ export interface EnqueueMailOptions<T extends TemplateName = TemplateName> {
   props: TemplatePropsMap[T]
   to: string
   subject: string
+  /**
+   * Organisationen mejlet tillhör. OBLIGATORISK, och det är hela poängen:
+   * `MailQueue.enqueue` slår upp `Organization.transactionalEmailsDisabled` på
+   * det här id:t och vägrar köa om ventilen är stängd. Ett optionellt fält med
+   * default hade tyst släppt igenom varje anropsställe man glömmer — nu är det
+   * kompilatorn som är vakten, och en framtida mailväg kan inte skrivas förbi
+   * grinden utan att någon aktivt hittar på ett org-id.
+   */
+  organizationId: string
   priority?: MailPriority
   scheduledAt?: Date
   attachments?: MailAttachment[]
@@ -105,6 +114,13 @@ export interface MailJobPayload {
   props: unknown
   to: string
   subject: string
+  /**
+   * Följer med in i Bull-jobbet så att workern kan kontrollera ventilen EN
+   * gång till precis före Resend. Producenten är den primära grinden; det här
+   * är sistahandsskyddet för jobb som redan låg i kön när flaggan sattes (och
+   * för schemalagda jobb med `scheduledAt` långt fram).
+   */
+  organizationId: string
   attachments?: Array<{ filename: string; contentBase64: string }>
   idempotencyKey?: string
   correlation?: MailCorrelation

@@ -111,6 +111,7 @@ export class AiUsageNotifierService {
                 template: 'custom',
                 priority: 'high',
                 to: user.email,
+                organizationId: org.id,
                 subject: this.warningSubject(threshold),
                 props: {
                   preview: this.warningTitle(threshold),
@@ -250,6 +251,7 @@ export class AiUsageNotifierService {
           template: 'custom',
           priority: 'high',
           to: user.email,
+          organizationId: org.id,
           subject: subjects[stage],
           props: {
             preview: subjects[stage],

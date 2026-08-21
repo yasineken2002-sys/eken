@@ -954,6 +954,7 @@ export class AviseringService {
       // nedan misslyckas efter att mejlet redan köats) inte ger dubbelmejl.
       await this.mailService.sendRentNotice({
         to: notice.tenant.email,
+        organizationId: orgId,
         tenantName,
         ocrNumber: notice.ocrNumber,
         // Betalbar total = hyra + förbrukning (IMD) + övriga debiterbara poster

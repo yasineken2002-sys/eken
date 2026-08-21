@@ -225,6 +225,7 @@ export class RentIncreasesService {
     try {
       await this.mail.sendRentIncreaseNotice({
         to: ri.lease.tenant.email,
+        organizationId,
         tenantName,
         currentRent: Number(ri.currentRent),
         newRent: Number(ri.newRent),

@@ -187,6 +187,7 @@ export class AuthService {
         template: 'custom',
         priority: 'high',
         to: email,
+        organizationId: org.id,
         subject: 'Välkommen till Eveno — din 30-dagars trial är aktiv',
         props: {
           preview: 'Din Eveno-trial är aktiv i 30 dagar',
@@ -475,6 +476,7 @@ export class AuthService {
     await this.mail
       .sendPasswordReset({
         to: user.email,
+        organizationId: user.organizationId,
         recipientName,
         resetUrl,
         organizationName: user.organization.name,

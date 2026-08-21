@@ -121,6 +121,7 @@ export class UsersService {
     await this.mail
       .sendUserInvite({
         to: created.email,
+        organizationId,
         recipientName: `${created.firstName} ${created.lastName}`.trim(),
         roleLabel: ROLE_LABELS[created.role],
         invitedBy: inviterName,

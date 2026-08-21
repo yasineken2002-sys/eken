@@ -345,6 +345,7 @@ export class NotificationsService implements OnModuleInit {
         const tenantName = this.resolveTenantName(invoice)
         await this.mail.sendOverdueReminder({
           to: party.email,
+          organizationId,
           tenantName,
           invoiceNumber: invoice.invoiceNumber,
           // #329 — RESTSKULDEN. Den här manuella vägen (POST från
@@ -482,6 +483,7 @@ export class NotificationsService implements OnModuleInit {
           try {
             await this.mail.sendMorningInsights({
               to: user.email,
+              organizationId: org.id,
               firstName: user.firstName,
               insights,
               today,
@@ -598,6 +600,7 @@ export class NotificationsService implements OnModuleInit {
           try {
             await this.mail.sendWeeklySummary({
               to: user.email,
+              organizationId: org.id,
               firstName: user.firstName,
               summary,
               weekLabel,
@@ -716,6 +719,7 @@ export class NotificationsService implements OnModuleInit {
           try {
             await this.mail.sendMonthlyReport({
               to: user.email,
+              organizationId: org.id,
               firstName: user.firstName,
               monthLabel: data.header.monthLabel,
               organizationName: org.name,

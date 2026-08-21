@@ -1020,6 +1020,7 @@ export class ToolExecutorService {
             try {
               await this.mailService.sendOverdueReminder({
                 to: inv.tenant.email,
+                organizationId,
                 tenantName,
                 invoiceNumber: inv.invoiceNumber,
                 // #329 — RESTSKULDEN, inte ursprungsbeloppet. AI-verktyget
@@ -1342,6 +1343,7 @@ export class ToolExecutorService {
             try {
               await this.mailService.sendCustomEmail({
                 to: tenant.email,
+                organizationId,
                 subject,
                 bodyHtml,
                 tenantName,

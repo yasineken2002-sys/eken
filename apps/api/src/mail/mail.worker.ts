@@ -55,6 +55,21 @@ abstract class MailWorkerBase {
     const { template, props, to, subject, attachments, idempotencyKey, correlation } = job.data
     const attempt = job.attemptsMade + 1
 
+    // Strypventilens SISTAHANDSSKYDD. Den primära grinden sitter hos producenten
+    // (MailQueue.enqueue) och hindrar jobbet från att skapas alls — den här
+    // fångar de två fall producenten omöjligt kan fånga: jobb som redan låg i
+    // kön när flaggan sattes, och jobb som köats med `scheduledAt` långt fram.
+    // Vi returnerar utan att kasta: ett kast hade gett fem Bull-retries och en
+    // FailedEmail-rad för något som är en konfiguration, inte ett fel.
+    if (await this.isSuppressed(job.data.organizationId)) {
+      this.logger.warn(
+        `[${job.queue.name}] SUPPRESSERAT jobId=${job.id} template=${template} to=${to} ` +
+          `org=${job.data.organizationId}: transactionalEmailsDisabled var satt när jobbet plockades. ` +
+          'Jobbet kastas, inget skickas.',
+      )
+      return
+    }
+
     this.logger.log(
       `[${job.queue.name}] attempt=${attempt} jobId=${job.id} template=${template} to=${to}`,
     )
@@ -105,6 +120,19 @@ abstract class MailWorkerBase {
     if (correlation && resendId) {
       await this.persistResendId(correlation, resendId)
     }
+  }
+
+  /**
+   * Läser strypventilen igen, vid konsumtion. Okänd org fäller — samma
+   * fail-closed-riktning som producenten (MailQueue.isSuppressed): kan vi inte
+   * bevisa att ventilen är öppen skickar vi inte.
+   */
+  private async isSuppressed(organizationId: string): Promise<boolean> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { transactionalEmailsDisabled: true },
+    })
+    return !org || org.transactionalEmailsDisabled
   }
 
   private async persistResendId(correlation: MailCorrelation, resendId: string): Promise<void> {

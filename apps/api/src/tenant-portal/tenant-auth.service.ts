@@ -392,6 +392,7 @@ export class TenantAuthService {
     await this.mail
       .sendPasswordReset({
         to: tenant.email,
+        organizationId: tenant.organizationId,
         recipientName: tenantName,
         resetUrl,
         organizationName: tenant.organization.name,
@@ -514,6 +515,7 @@ export class TenantAuthService {
     await this.mail
       .sendTenantWelcomeWithContract({
         to: tenant.email,
+        organizationId: tenant.organizationId,
         tenantName,
         organizationName: tenant.organization.name,
         activationUrl,
@@ -550,6 +552,7 @@ export class TenantAuthService {
 
     await this.mail.sendTenantSignatureConfirmation({
       to: tenant.email,
+      organizationId: tenant.organizationId,
       tenantName,
       organizationName: tenant.organization.name,
       documentsUrl,
@@ -692,6 +695,7 @@ export class TenantAuthService {
       try {
         await this.mail.sendTenantActivationReminder({
           to: tenant.email,
+          organizationId: tenant.organizationId,
           tenantName,
           organizationName: tenant.organization.name,
           activationUrl,

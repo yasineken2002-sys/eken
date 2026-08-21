@@ -384,6 +384,7 @@ export class PlatformInvoicesService {
         template: 'custom',
         priority: 'high',
         to: recipient,
+        organizationId: row.organizationId,
         subject: `Faktura ${row.invoiceNumber} från ${PLATFORM_COMPANY.brandName}`,
         props: {
           preview: `Faktura ${row.invoiceNumber} – ${amountGross.toFixed(2)} kr`,
@@ -833,6 +834,7 @@ export class PlatformInvoicesService {
                   template: 'custom',
                   priority: 'high',
                   to: recipient,
+                  organizationId: inv.organizationId,
                   subject: `Påminnelse: faktura ${inv.invoiceNumber} förfallen`,
                   props: {
                     preview: `Faktura ${inv.invoiceNumber} är förfallen sedan ${inv.dueDate.toISOString().slice(0, 10)}`,
@@ -1011,6 +1013,7 @@ export class PlatformInvoicesService {
           })
           const nextMonth = MONTHS_SV[new Date(now.getFullYear(), now.getMonth() + 1, 1).getMonth()]
           await this.enqueueTrialMail(
+            org.id,
             recipient,
             org.name,
             'Välkommen som betalande kund hos Eveno',
@@ -1035,6 +1038,7 @@ export class PlatformInvoicesService {
             data: { status: 'SUSPENDED', suspendedAt: now },
           })
           await this.enqueueTrialMail(
+            org.id,
             recipient,
             org.name,
             'Din provperiod har gått ut',
@@ -1119,6 +1123,7 @@ export class PlatformInvoicesService {
 
       try {
         await this.enqueueTrialMail(
+          org.id,
           recipient,
           org.name,
           subject,
@@ -1154,6 +1159,7 @@ export class PlatformInvoicesService {
   /** Gemensam wrapper för trial-mejl via 'custom'-templaten (samma
    *  mönster som send() och påminnelse-cron). */
   private async enqueueTrialMail(
+    organizationId: string,
     to: string,
     orgName: string,
     subject: string,
@@ -1165,6 +1171,7 @@ export class PlatformInvoicesService {
         template: 'custom',
         priority: 'high',
         to,
+        organizationId,
         subject,
         props: {
           preview: subject,
