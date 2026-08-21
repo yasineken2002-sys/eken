@@ -20,7 +20,10 @@
  * 2. ALLOWLIST (scripts/design-tokens.baseline.json) — FLIPP-SKULD.
  *    Varje post är knuten till en KATEGORI som har en `why`- och en `flip`-rad:
  *    varför den lämnades otokeniserad i PR2–6 och hur färgflippen löser den.
- *    CI faller när en fil får FLER träffar än sin post — aldrig på det gamla.
+ *    CI faller åt BÅDA HÅLLEN (#543), precis som familjebaslinjen i lager 4:
+ *    på FLER träffar än posten tillåter, och på en post som inte längre
+ *    motsvarar något i koden. En baslinje som bara kan bli fel åt ena hållet
+ *    slutar vara ett påstående — den överlever sin egen sanning.
  *    Listan ska KRYMPA TILL NOLL i och med flippen. Städar man en fil sjunker
  *    antalet och listan snävas åt med --update-baseline.
  *
@@ -654,12 +657,14 @@ function writeBaseline({ files }) {
       'GENERERAD ALLOWLIST — FLIPP-SKULD, inte en regel-lucka. Varje post är rå ' +
       'färg som PR2–6 medvetet lämnade otokeniserad, knuten till en kategori i ' +
       'CATEGORIES (scripts/check-design-tokens.mjs) som säger VARFÖR den står kvar ' +
-      'och HUR färgflippen tar bort den. CI faller på fler träffar — aldrig på ' +
-      'färre. Listan ska krympa till noll när flippen är gjord.',
+      'och HUR färgflippen tar bort den. CI faller åt BÅDA hållen: fler träffar ' +
+      'än posten tillåter, OCH en post som inte längre motsvarar något i koden. ' +
+      'Listan ska krympa till noll när flippen är gjord.',
     $howto:
       'Städat en fil? Kör `node scripts/check-design-tokens.mjs --update-baseline` ' +
-      'så snävas spärren åt. Lägg ALDRIG till rader här för hand för att tysta ett ' +
-      'nytt fynd — en ny färg ska tokeniseras, inte allowlistas.',
+      'så snävas spärren åt — annars faller CI på att posten beskriver kod som inte ' +
+      'finns. Lägg ALDRIG till rader här för hand för att tysta ett nytt fynd — en ' +
+      'ny färg ska tokeniseras, inte allowlistas.',
     total,
     perCategory: Object.fromEntries(Object.entries(perCategory).sort((a, b) => b[1] - a[1])),
     files: out,
@@ -861,6 +866,70 @@ function runFamilies() {
   return true
 }
 
+/**
+ * Jämför mätning mot allowlist. Returnerar problem i tre former — SAMMA form som
+ * `diffFamilies`, med flit:
+ *   unknowns    — färg som inte finns i klassificeringen (hård regel, budget 0)
+ *   regressions — FLER träffar än posten tillåter
+ *   stale       — post som beskriver kod som inte längre finns (FÄRRE träffar)
+ *
+ * ── VARFÖR `stale` NUMERA FÄLLER (#543) ────────────────────────────────────
+ *
+ * Fram till nu VARNADE färglagret bara på färre träffar ("N post(er) ligger
+ * UNDER allowlisten"), medan familjelagret fällde åt båda håll. Samma sorts
+ * vakt, två stränghetsnivåer — och den svagare bar flest poster.
+ *
+ * En baslinje som bara kan bli fel åt ena hållet slutar vara ett påstående. En
+ * post som inte längre motsvarar något i koden ligger kvar för alltid, ser ut
+ * som ett medvetet undantag, och ingen får veta att den slutat betyda något.
+ *
+ * Beviset är daterat, inte resonerat: posten för
+ * `apps/web/src/features/ai/components/WelcomeState.tsx` (chart-colors/raw-hex: 2)
+ * skrevs i #236 kl 20:56 och blev osann i #237 kl 21:33 SAMMA KVÄLL, när
+ * snippet-listan med sina två lila hexvärden togs bort. Den överlevde 26 dagar
+ * utan att en enda körning blev röd.
+ *
+ * Exporterad så att självtestet kör exakt samma jämförelse som CI.
+ */
+export function diffAllowlist(current, allowed) {
+  const regressions = []
+  const unknowns = []
+  const stale = []
+
+  for (const [rel, { byCategory, hits }] of Object.entries(current)) {
+    for (const [cat, rules] of Object.entries(byCategory)) {
+      for (const [rule, count] of Object.entries(rules)) {
+        // Hårda regler: palette-hex och okända värden har alltid budget 0.
+        const isHard = rule === 'palette-hex' || cat === '__okänd__'
+        const budget = isHard ? 0 : (allowed[rel]?.[cat]?.[rule] ?? 0)
+        if (count <= budget) continue
+        const examples = (hits?.[rule] ?? [])
+          .filter((h) => (h.category ?? '__okänd__') === cat)
+          .slice(-(count - budget))
+        ;(cat === '__okänd__' ? unknowns : regressions).push({
+          rel,
+          rule,
+          cat,
+          count,
+          budget,
+          examples,
+        })
+      }
+    }
+  }
+
+  for (const [rel, cats] of Object.entries(allowed)) {
+    for (const [cat, rules] of Object.entries(cats)) {
+      for (const [rule, budget] of Object.entries(rules)) {
+        const count = current[rel]?.byCategory?.[cat]?.[rule] ?? 0
+        if (count < budget) stale.push({ rel, cat, rule, count, budget })
+      }
+    }
+  }
+
+  return { regressions, unknowns, stale }
+}
+
 function run() {
   let familiesOk = true
   const { files: current, inline, badInline } = collect()
@@ -887,39 +956,7 @@ function run() {
     process.exit(1)
   }
 
-  const regressions = []
-  const unknowns = []
-  const improvements = []
-
-  for (const [rel, { byCategory, hits }] of Object.entries(current)) {
-    for (const [cat, rules] of Object.entries(byCategory)) {
-      for (const [rule, count] of Object.entries(rules)) {
-        // Hårda regler: palette-hex och okända värden har alltid budget 0.
-        const isHard = rule === 'palette-hex' || cat === '__okänd__'
-        const budget = isHard ? 0 : (allowed[rel]?.[cat]?.[rule] ?? 0)
-        if (count <= budget) continue
-        const examples = hits[rule]
-          .filter((h) => (h.category ?? '__okänd__') === cat)
-          .slice(-(count - budget))
-        ;(cat === '__okänd__' ? unknowns : regressions).push({
-          rel,
-          rule,
-          cat,
-          count,
-          budget,
-          examples,
-        })
-      }
-    }
-  }
-  for (const [rel, cats] of Object.entries(allowed)) {
-    for (const [cat, rules] of Object.entries(cats)) {
-      for (const [rule, budget] of Object.entries(rules)) {
-        const count = current[rel]?.byCategory?.[cat]?.[rule] ?? 0
-        if (count < budget) improvements.push({ rel, cat, rule, count, budget })
-      }
-    }
-  }
+  const { regressions, unknowns, stale } = diffAllowlist(current, allowed)
 
   if (unknowns.length || regressions.length) {
     console.error('\n❌ Designsystem: nya rå färgvärden utanför @eken/ui\n')
@@ -952,6 +989,24 @@ function run() {
     process.exit(1)
   }
 
+  if (stale.length) {
+    console.error('\n❌ Designsystem: allowlisten beskriver kod som inte finns\n')
+    for (const st of stale)
+      console.error(
+        `  ${st.rel}\n    ${st.rule} / ${st.cat}: allowlist ${st.budget}, faktisk användning ${st.count}`,
+      )
+    // Familjelagret körs ändå — en PR ska se BÅDA problemen i en körning.
+    runFamilies()
+    console.error(
+      '\nPosten påstår mer än vad kodbasen innehåller. En baslinje som bara kan bli\n' +
+        'fel åt ena hållet slutar vara ett påstående: posten ligger kvar för alltid, ser\n' +
+        'ut som ett medvetet undantag, och ingen får veta att den slutat betyda något.\n' +
+        'Därför fäller den här åt BÅDA hållen — samma regel som familjebaslinjen.\n\n' +
+        'Städat en fil? Kör: node scripts/check-design-tokens.mjs --update-baseline\n',
+    )
+    process.exit(1)
+  }
+
   const total = Object.values(allowed).reduce(
     (acc, cats) =>
       acc +
@@ -967,10 +1022,6 @@ function run() {
   if (inline.length) {
     console.warn(`   ${inline.length} inline-undantag (färger som aldrig ska tokeniseras):`)
     for (const x of inline) console.warn(`     ${x.rel}:${x.line}  ${x.value} — ${x.reason}`)
-  }
-  if (improvements.length) {
-    console.warn(`   ${improvements.length} post(er) ligger UNDER allowlisten — snäva åt med:`)
-    console.warn('   node scripts/check-design-tokens.mjs --update-baseline')
   }
   if (!familiesOk) process.exit(1)
 }
@@ -1230,6 +1281,83 @@ const css = 'color: var(--ev-neutral-500)'
   t(
     'purple-posten pekar på sitt ärende',
     /#531/.test(famBase.entries?.['web/purple']?.reason ?? ''),
+  )
+
+  // ── diffAllowlist — BÅDA hållen (#543) ────────────────────────────────────
+  //
+  // Samma uppsättning som familjelagret redan har, för färglagret. En mätning
+  // byggs för hand så att jämförelsen provas utan att kodbasen behöver ändras.
+  const mät = (rel, cat, rule, count) => ({
+    [rel]: { byCategory: { [cat]: { [rule]: count } }, hits: { [rule]: [] } },
+  })
+  const bas = (rel, cat, rule, budget) => ({ [rel]: { [cat]: { [rule]: budget } } })
+
+  t(
+    'diffAllowlist: FLER träffar än posten → regression',
+    diffAllowlist(mät('a.tsx', 'chart-colors', 'raw-hex', 3), bas('a.tsx', 'chart-colors', 'raw-hex', 2))
+      .regressions.length === 1,
+  )
+  t(
+    'diffAllowlist: FÄRRE träffar än posten → stale',
+    diffAllowlist(mät('a.tsx', 'chart-colors', 'raw-hex', 1), bas('a.tsx', 'chart-colors', 'raw-hex', 2))
+      .stale.length === 1,
+  )
+  t(
+    'diffAllowlist: posten kvar men filen borta → stale',
+    diffAllowlist({}, bas('a.tsx', 'chart-colors', 'raw-hex', 2)).stale.length === 1,
+  )
+  t(
+    'diffAllowlist: en okänd färg kan aldrig allowlistas',
+    diffAllowlist(mät('a.tsx', '__okänd__', 'raw-hex', 1), bas('a.tsx', '__okänd__', 'raw-hex', 5))
+      .unknowns.length === 1,
+  )
+  t(
+    'diffAllowlist: EXAKT paritet → tyst i alla tre formerna',
+    (() => {
+      const d = diffAllowlist(
+        mät('a.tsx', 'chart-colors', 'raw-hex', 2),
+        bas('a.tsx', 'chart-colors', 'raw-hex', 2),
+      )
+      return d.regressions.length === 0 && d.stale.length === 0 && d.unknowns.length === 0
+    })(),
+  )
+
+  // ── KANARIEFÅGEL ──────────────────────────────────────────────────────────
+  //
+  // Kontrollerna ovan är namngivna negativkontroller: de skyddar mot specifika
+  // återfall. De upptäcker INTE att jämförelsen gått blind på ett håll — och
+  // det är precis vad som hände i 26 dagar, när färglagret bara varnade på
+  // färre träffar medan familjelagret fällde.
+  //
+  // Kanariefågeln matar in ett läge som MÅSTE ge utslag åt VARJE håll och
+  // kräver att alla tre riktningarna svarar. Tystnar en av dem blir den här
+  // röd i stället för att listan tyst slutar betyda något.
+  t(
+    'KANARIEFÅGEL: alla tre riktningarna ger utslag (regression, stale, okänd)',
+    (() => {
+      const utslag = {
+        regression: diffAllowlist(
+          mät('k.tsx', 'chart-colors', 'raw-hex', 9),
+          bas('k.tsx', 'chart-colors', 'raw-hex', 1),
+        ).regressions.length,
+        stale: diffAllowlist({}, bas('k.tsx', 'chart-colors', 'raw-hex', 7)).stale.length,
+        okänd: diffAllowlist(mät('k.tsx', '__okänd__', 'raw-hex', 1), {}).unknowns.length,
+      }
+      return utslag.regression === 1 && utslag.stale === 1 && utslag.okänd === 1
+    })(),
+  )
+
+  // Baslinjen på disk måste vara i EXAKT paritet med kodbasen — samma krav som
+  // familjebaslinjen redan bär. Driftar den igen blir självtestet rött.
+  const tokenState = collect()
+  const tokenBase = loadBaseline()
+  t(
+    'allowlisten matchar verkligheten exakt (fäller åt båda håll)',
+    (() => {
+      const d = diffAllowlist(tokenState.files, tokenBase.files ?? {})
+      return d.regressions.length === 0 && d.stale.length === 0 && d.unknowns.length === 0
+    })(),
+    JSON.stringify(diffAllowlist(tokenState.files, tokenBase.files ?? {})).slice(0, 200),
   )
 
   console.warn(failed === 0 ? '\nSjälvtest: ALLA GRÖNA' : `\nSjälvtest: ${failed} FALLERADE`)
