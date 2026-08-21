@@ -1473,6 +1473,7 @@ export class InvoicesService {
 
       await this.mailService.sendInvoice({
         to: recipient.email,
+        organizationId,
         tenantName: recipientName,
         invoiceNumber: invoice.invoiceNumber,
         total: Number(invoice.total),

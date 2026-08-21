@@ -306,6 +306,7 @@ export class TenantInvitationsService {
 
     const messageId = await this.mail.sendTenantPortalInvite({
       to: t.email,
+      organizationId: org.id,
       tenantName: displayName(t),
       organizationName: org.name,
       activationUrl,

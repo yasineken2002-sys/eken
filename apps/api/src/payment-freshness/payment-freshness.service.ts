@@ -263,6 +263,7 @@ export class PaymentFreshnessService {
     for (const user of org.users) {
       await this.mail.sendCustomEmail({
         to: user.email,
+        organizationId: org.id,
         subject: `Eveno — Kravtrappan pausad: betalningsdatan behöver uppdateras`,
         bodyHtml,
         organizationName: org.name,

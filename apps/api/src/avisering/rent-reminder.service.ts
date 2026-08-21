@@ -746,6 +746,7 @@ export class RentReminderService {
 
       const messageId = await this.mailService.sendRentNoticeReminder({
         to: notice.tenant.email,
+        organizationId: orgId,
         tenantName,
         noticeNumber: notice.noticeNumber,
         ocrNumber: notice.ocrNumber,

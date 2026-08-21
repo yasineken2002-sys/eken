@@ -45,9 +45,18 @@ function utanKommentarer(src: string): string {
  * Kolumner som MEDVETET utelämnas, med skälet. Ett utelämnande ska vara ett
  * skrivet påstående någon kan ifrågasätta, inte en tyst frånvaro.
  *
- * Alla elva är samma sak: organisationens KOMMERSIELLA förhållande till Eveno.
- * De hör hemma bakom ACCOUNTANT/ADMIN/OWNER, och nås där via
+ * De elva första är samma sak: organisationens KOMMERSIELLA förhållande till
+ * Eveno. De hör hemma bakom ACCOUNTANT/ADMIN/OWNER, och nås där via
  * `GET /ai-usage/current` respektive `GET /ai/usage`.
+ *
+ * Den tolfte är av en ANNAN sort och får därför inte glida in under samma
+ * mening: `transactionalEmailsDisabled` är ingen kommersiell uppgift utan en
+ * intern DRIFTFLAGGA — en strypventil för utgående post som sätts på demo-,
+ * test- och internkonton. Den utelämnas för att den inte är en
+ * kundinställning: att en organisation själv kunde stänga av sin egen post via
+ * inställningssidan vore ett fotskott med tyst utfall (avierna skulle stå som
+ * SENT utan att någon fått dem). Sätts i dag direkt i databasen; ska den bli
+ * ställbar hör den hemma i plattformsadmin, inte i `GET /organizations/me`.
  */
 const MEDVETET_UTELÄMNADE: Record<string, string> = {
   subscriptionPlan: 'Vilken plan organisationen betalar för.',
@@ -61,6 +70,8 @@ const MEDVETET_UTELÄMNADE: Record<string, string> = {
   cancellationReason: 'Uppsägningsskäl — fritext om kundförhållandet.',
   lastTrialReminderDays: 'Intern påminnelsemarkör för trial-utskicken.',
   excludeFromBilling: 'Intern flagga: undantas från plattformsfaktureringen.',
+  transactionalEmailsDisabled:
+    'Intern driftflagga: strypventil för utgående post. Inte en kundinställning.',
 }
 
 describe('SAFE_ORGANIZATION_SELECT', () => {

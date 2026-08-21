@@ -165,6 +165,7 @@ export class DocumentDeliveryService {
     const safeDocName = escapeHtml(documentName)
     await this.mail.sendCustomEmail({
       to: tenant.email,
+      organizationId,
       subject: 'Nytt dokument i din hyresgästportal',
       tenantName,
       organizationName: org?.name ?? '',

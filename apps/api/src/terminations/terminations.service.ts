@@ -277,6 +277,7 @@ export class TerminationsService {
 
     await this.mail.sendCustomEmail({
       to: req.tenant.email,
+      organizationId: req.organizationId,
       subject,
       bodyHtml,
       tenantName,

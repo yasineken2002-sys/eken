@@ -638,6 +638,25 @@ model Organization {
   // period — inte per cron-körning.
   paymentDataStaleAlertedAt DateTime?
 
+  // ── Strypventil för utgående e-post ───────────────────────────────────────
+  // true = INGET transaktionsmejl lämnar systemet för den här organisationen.
+  // Grinden sitter i MailQueue.enqueue (inget hamnar i Bull) med en andra
+  // kontroll i mail.worker precis före Resend, så att jobb som redan låg i kön
+  // när flaggan sattes också stoppas.
+  //
+  // VARFÖR DEN BEHÖVS: tre cron-jobb i NotificationsService (morgonrapport,
+  // veckosammanfattning, månadsrapport) väljer organisationer med en findMany
+  // HELT UTAN where och mejlar varje aktiv OWNER/ADMIN/MANAGER/ACCOUNTANT. De
+  // gick alltså inte att stänga av per organisation, vilket gjorde varje demo-,
+  // test- och internkonto till en mejlkälla mot påhittade adresser — studsar som
+  // kostar avsändarrykte. Fältet är avsiktligt en ORG-flagga och inte en
+  // rapport-flagga: en ny mailcron ärver skyddet utan att någon minns regeln.
+  //
+  // Den är INTE en ersättning för remindersEnabled. Den flaggan styr om
+  // kravtrappan ska ESKALERA (avgifter, inkasso) — den här styr bara om posten
+  // lämnar huset.
+  transactionalEmailsDisabled Boolean @default(false)
+
   // Platform / SaaS-fält
   // subscriptionPlan styr maxObjects + AI-anropstak; status styr åtkomst.
   // PLAN_LIMITS i @eken/shared mappar plan → siffror.
