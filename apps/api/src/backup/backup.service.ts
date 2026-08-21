@@ -207,6 +207,21 @@ export function backupKey(date: Date): string {
   return `${BACKUP_PREFIX}eken-${stamp}.dump`
 }
 
+/**
+ * Tidsstämpeln ur en backup-nyckel (`db-backups/eken-20260707T030512Z.dump`).
+ * `null` för okänt format — samma försiktighetsregel som `isBackupExpired`:
+ * en fil vi inte känner igen tolkas aldrig.
+ */
+export function parseBackupKeyDate(key: string): Date | null {
+  const m = key.match(/eken-(\d{8})T(\d{6})Z\.dump$/)
+  if (!m) return null
+  const d = m[1]!
+  const t = m[2]!
+  const iso = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T${t.slice(0, 2)}:${t.slice(2, 4)}:${t.slice(4, 6)}Z`
+  const parsed = new Date(iso)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 // Härleder backupens tidsstämpel ur nyckeln och avgör om den passerat retention.
 // Okänt nyckelformat → false (rör ALDRIG en fil vi inte känner igen).
 export function isBackupExpired(key: string, now: Date, retentionDays: number): boolean {
@@ -228,6 +243,17 @@ export class BackupService {
   private readonly databaseUrl: string
   readonly retentionDays: number
   readonly enabled: boolean
+  /** Kör vi skarpt? Färskhetslarmet larmar bara i produktion. */
+  readonly isProduction: boolean
+  /**
+   * VARFÖR backupen inte kommer att köra i produktion — `null` när den kör.
+   *
+   * Grinden visste redan detta men behöll det för sig själv: `enabled = false`
+   * är ett tyst tillstånd, och det var precis det som lät backupen vara
+   * avstängd i 45 dagar utan signal. Färskhetslarmet läser fältet, så att en
+   * AVSTÄNGD backup larmar lika högt som en trasig.
+   */
+  readonly productionBlockReason: string | null
 
   constructor(
     private readonly config: ConfigService,
@@ -287,6 +313,21 @@ export class BackupService {
     if (config.get<string>('BACKUP_ENABLED') === 'true' && isProd && overlaps.length > 0) {
       this.logger.error(isolationBlockMessage(overlaps))
     }
+
+    // Skälet formuleras EN gång, här, där all konfiguration finns läst.
+    // Färskhetslarmet ska inte behöva gissa sig till varför jobbet står stilla.
+    this.isProduction = isProd
+    this.productionBlockReason = !isProd
+      ? null
+      : config.get<string>('BACKUP_ENABLED') !== 'true'
+        ? 'BACKUP_ENABLED är inte satt till "true" — nattjobbet är avstängt'
+        : overlaps.length > 0
+          ? 'isoleringsgrinden blockerar: backupen delar konfiguration med applikationens fillagring'
+          : !accountId || !accessKeyId || !secretAccessKey || !this.bucket
+            ? 'R2-konfigurationen är ofullständig (konto, nyckel, hemlighet eller bucket saknas)'
+            : !this.databaseUrl
+              ? 'DATABASE_URL saknas'
+              : null
 
     this.s3 = new S3Client({
       region: 'auto',

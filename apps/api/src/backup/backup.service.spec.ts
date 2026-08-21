@@ -38,6 +38,7 @@ import {
 } from './backup.service'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { BackupScheduler } from './backup.scheduler'
+import { BackupFreshnessService } from './backup-freshness.service'
 
 describe('BackupModule — initierar utan att krascha (boot-säkerhet)', () => {
   it('BackupService + BackupScheduler resolvar (även utan R2/DB-config → disabled)', async () => {
@@ -48,6 +49,7 @@ describe('BackupModule — initierar utan att krascha (boot-säkerhet)', () => {
         BackupScheduler,
         { provide: ConfigService, useValue: { get: () => undefined } },
         { provide: PrismaService, useValue: { $queryRaw: jest.fn() } },
+        BackupFreshnessService,
       ],
     }).compile()
 
@@ -299,7 +301,7 @@ describe('BackupScheduler — ett fällt förkontroll-larm sväljs inte tyst', (
     Object.defineProperty(service, 'enabled', { value: true })
 
     const { BackupScheduler: Scheduler } = await import('./backup.scheduler')
-    const scheduler = new Scheduler(service)
+    const scheduler = new Scheduler(service, { check: jest.fn() } as never)
 
     // Schemaläggaren får INTE kasta vidare (cron-loopen ska överleva), men
     // runBackup ska ha anropats — larmet sker där.
