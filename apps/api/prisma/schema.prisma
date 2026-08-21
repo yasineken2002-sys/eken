@@ -1402,7 +1402,35 @@ model Invoice {
   @@index([status])
   @@index([dueDate])
   @@index([trackingToken])
-  @@index([ocrNumber])
+
+  // H1: OCR:et är unikt PER ORGANISATION — inte globalt, och inte bara "i
+  // praktiken". Fram till den här ändringen var unikheten en HÄRLEDNING:
+  // `Invoice.ocrNumber = pad7(sekvens) + Luhn` där sekvensen kommer från den
+  // atomära `InvoiceNumberSequence` (invoice-number.ts). Den härledningen är
+  // injektiv och därför korrekt — men den lever i applikationen. Ett unikt
+  // index är en invariant; en härledning är en vana. Faller vanan (någon ändrar
+  // paddningen, någon skriver ett OCR från ett annat håll) fanns ingenting
+  // under som fångade det, och utfallet är att en betalning matchas mot fel
+  // faktura utan att något larmar.
+  //
+  // PER ORG och inte globalt av samma skäl som Tenant.ocrNumber (se dess
+  // kommentar): varje OCR-uppslag i matchningen bär organizationId
+  // (reconciliation.service.ts:806-812, :815-821), eftersom betalningen landar
+  // på organisationens eget bankgiro. Global unikhet vore ett hårdare krav än
+  // funktionen behöver och skulle begränsa tillväxt utan att skydda något.
+  //
+  // NULL är distinkt i Postgres unika index, så kreditnotor (credit-note.service
+  // .ts:384 sätter ocrNumber: null) och depositionsfakturor (deposits.service.ts,
+  // sätter aldrig något OCR) är opåverkade — flera NULL inom samma org är
+  // fortsatt tillåtet.
+  //
+  // Det gamla `@@index([ocrNumber])` är BORTTAGET, inte behållet vid sidan av:
+  // det betjänade ett org-löst uppslag som inte finns. Mätt före borttagningen —
+  // noll `where`-block i apps/api/src filtrerar på ocrNumber utan organizationId,
+  // och det finns ingen rå SQL mot fältet. Ett index som inte betjänar någon
+  // fråga kostar skrivningar och får nästa läsare att tro att org-lösa uppslag
+  // förekommer.
+  @@unique([organizationId, ocrNumber])
   // Uppslagning original → kreditnotor. Den vägen går computeInvoiceDebt varje
   // gång en fakturas restskuld beräknas.
   @@index([creditedInvoiceId])
