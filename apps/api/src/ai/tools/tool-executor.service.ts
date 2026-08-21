@@ -40,6 +40,7 @@ import { decideAiToolAccess } from '../../common/authz/ai-tool-authz'
 import { neutralizeUntrusted } from './untrusted-content'
 import { SAFE_TENANT_SELECT } from '../../tenants/tenants.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../../common/prisma/transaction-limits'
+import { redactSensitive } from '../../common/redaction/redact-sensitive'
 
 // ─── Mass-mejl säkerhetsgränser ──────────────────────────────────────────────
 // Skyddar mot oavsiktliga eller AI-hallucinerade massutskick. Tre lager:
@@ -65,42 +66,6 @@ const EMAIL_BULK_COOLDOWN_SECONDS = 15 * 60
 //
 // Om en framtida tool råkar inkludera ett känsligt fält fångas det av
 // redact-lagret även om författaren glömt whitelista.
-
-const SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set([
-  'personalNumber',
-  'personalNumberEnc',
-  'personalNumberHash',
-  'passwordHash',
-  'activationToken',
-  'activationTokenExpiresAt',
-  'sessionToken',
-  'refreshToken',
-  'magicLinkToken',
-  'token', // PasswordResetToken / TenantSession / etc.
-  'apiKey',
-])
-
-export function redactSensitive<T>(value: T, depth = 0): T {
-  if (depth > 12) return value
-  if (value === null || value === undefined) return value
-  // Prisma Decimal är ett objekt — utan denna vakt rekurserar vi in i dess interna
-  // {s,e,d}-representation och matar AI:n decimal.js-internaler i stället för belopp
-  // (tyst hallucinationskälla för ett bokförings-AI). Konvertera till number, samma
-  // som get_bank_transactions redan gör med Number(t.amount).
-  if (value instanceof Prisma.Decimal) return value.toNumber() as unknown as T
-  if (Array.isArray(value)) {
-    return value.map((v) => redactSensitive(v, depth + 1)) as unknown as T
-  }
-  if (typeof value === 'object' && !(value instanceof Date) && !(value instanceof Buffer)) {
-    const out: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (SENSITIVE_FIELD_NAMES.has(k)) continue
-      out[k] = redactSensitive(v, depth + 1)
-    }
-    return out as unknown as T
-  }
-  return value
-}
 
 interface UnsafeTenant {
   id: string

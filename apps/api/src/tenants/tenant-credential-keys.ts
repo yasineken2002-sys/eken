@@ -1,3 +1,7 @@
+// redact-copy-allow: TENANT_CREDENTIAL_KEYS är portalens autentiseringskolumner
+// (activationTokenHash, passwordResetTokenHash m.fl.) med en egen fullständighets-
+// spec mot schema.prisma. Överlappar redact-sensitive på fyra namn, men är en annan
+// lista för ett annat ändamål — och redan enda källan för sitt.
 /**
  * TENANT-KOLUMNER SOM ALDRIG FÅR SERIALISERAS — EN LISTA, INTE TVÅ.
  *

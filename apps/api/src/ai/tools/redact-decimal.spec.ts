@@ -4,11 +4,8 @@
  * stället för belopp (tyst hallucinationskälla). Belopp ska komma ut som number.
  */
 
-jest.mock('../../storage/storage.service', () => ({ StorageService: class {} }))
-jest.mock('../../invoices/pdf.service', () => ({ PdfService: class {} }))
-
 import { Prisma } from '@prisma/client'
-import { redactSensitive } from './tool-executor.service'
+import { redactSensitive } from '../../common/redaction/redact-sensitive'
 
 describe('redactSensitive — Prisma Decimal', () => {
   it('konverterar en Decimal till number i stället för att platta ut den', () => {
