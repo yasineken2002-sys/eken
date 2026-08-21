@@ -3,6 +3,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { allocatePlatformInvoiceNumber } from '../platform/invoices/platform-invoice-number'
 import { PLAN_LIMITS, getMonthStart, getNextResetAt, CREDIT_PACKAGES } from '@eken/shared'
 import type { SubscriptionPlan } from '@eken/shared'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 /**
  * Service för admin-frontend (Plan & AI-användning-sidan).
@@ -152,7 +153,7 @@ export class AiUsagePageService {
           sentAt: new Date(),
         },
       })
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     return {
       invoiceId: invoice.id,

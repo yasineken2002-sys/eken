@@ -5,6 +5,7 @@ import {
   isValidOcrNumber,
 } from '@eken/shared'
 import { PrismaService } from '../prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../../common/prisma/transaction-limits'
 
 /**
  * Antal siffror i löpnumret före kontrollsiffran.
@@ -114,6 +115,6 @@ export class OcrService {
 
       await tx.tenant.update({ where: { id: tenantId }, data: { ocrNumber: ocr } })
       return ocr
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 }

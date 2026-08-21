@@ -43,6 +43,7 @@ import { stockholmCivilDate } from '../common/time/stockholm-period'
 import { encodeCp437 } from './cp437'
 import { VerifikationsnummerService } from './verifikationsnummer.service'
 import { basChartFor } from './bas-chart'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 // Konteringsrad i internt format innan den mappas till Prisma create-input.
 interface JournalLineInput {
@@ -410,7 +411,7 @@ export class AccountingService {
         ...(params.include ? { include: params.include } : {}),
       })
     }
-    return params.tx ? run(params.tx) : this.prisma.$transaction(run)
+    return params.tx ? run(params.tx) : this.prisma.$transaction(run, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   /**
@@ -2154,7 +2155,7 @@ export class AccountingService {
       })
 
       return entry
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // ── Teknisk förvaltning · Spår A PR 3 — annullering av MiscCharge-verifikat ──
@@ -2988,7 +2989,7 @@ export class AccountingService {
       })
 
       return { accrual, reversal }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // Bokföring av hyresinbetalning (RentNotice). Använder samma BAS-konton som

@@ -8,6 +8,7 @@ import { allocateInvoiceNumber } from './invoice-number'
 import { computeInvoiceAmounts } from './invoice-amounts'
 import { computeInvoiceDebt } from './invoice-debt'
 import { CreateCreditNoteDto } from './dto/create-credit-note.dto'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 /**
  * KAN DEN HÄR FAKTURAN KREDITERAS, OCH OM INTE — VARFÖR?
@@ -472,6 +473,6 @@ export class CreditNoteService {
           outstanding: debtAfter.outstanding.toNumber(),
         },
       }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 }

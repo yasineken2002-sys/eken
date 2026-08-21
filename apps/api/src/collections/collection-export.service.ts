@@ -21,6 +21,7 @@ import { assertMayActOnCollections } from '../common/authz/collections-authz'
 import { csvCell } from '../common/csv/csv-cell'
 import { computeInvoiceDebt, type InvoiceDebt } from '../invoices/invoice-debt'
 import { resolveActorType, aiOriginColumns } from '../common/ai-origin/ai-origin.context'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 /**
  * Inkassoexporten är ett av få ställen där personnumret verkligen behövs i
@@ -332,7 +333,7 @@ export class CollectionExportService {
           data: { collectionExportKey: zipKey },
         })
       }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     return { zipKey, zipUrl, count: invoices.length, skipped }
   }
@@ -507,7 +508,7 @@ export class CollectionExportService {
           payload: note ? { note } : {},
         },
       })
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     // SKRIVER INGEN `collectionExportKey`. Den manuella markeringen betyder att
     // överlämningen skett i ett EXTERNT system (Vismas portal e.d.) — det finns
@@ -744,7 +745,7 @@ export class CollectionExportService {
           payload: { reason },
         },
       })
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     return { alreadyClaimed: false }
   }

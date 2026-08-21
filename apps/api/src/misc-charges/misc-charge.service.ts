@@ -11,6 +11,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { CreateMiscChargeDto } from './dto/create-misc-charge.dto'
 import { assertRentNoticeLineChargeXor } from './misc-charge.xor'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 // Öresavrundning — speglar consumption (ingen float-aritmetik på snapshots).
 function round2(n: number): number {
@@ -101,7 +102,7 @@ export class MiscChargeService {
       }
 
       return charge
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // ── CONFIRMED: bokför (delegerar helt till PR 2) ───────────────────────────
@@ -168,7 +169,7 @@ export class MiscChargeService {
         if (result.count === 0) return false
         await this.clearTicketClaim(tx, charge, organizationId)
         return true
-      })
+      }, PRISMA_DEFAULT_TX_LIMITS)
       if (!cancelled) {
         const current = await this.findMiscCharge(id, organizationId)
         throw new ConflictException(
@@ -193,7 +194,7 @@ export class MiscChargeService {
       if (result.count > 0) {
         await this.clearTicketClaim(tx, charge, organizationId)
       }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
     return this.findMiscCharge(id, organizationId)
   }
 
@@ -320,7 +321,7 @@ export class MiscChargeService {
       if (updated.count === 0) {
         throw new NotFoundException('Hyresavin hittades inte för organisationen')
       }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     return round2(miscTotal)
   }

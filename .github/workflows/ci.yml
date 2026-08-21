@@ -231,6 +231,28 @@ jobs:
       - name: Verify no new raw colours or unmapped Tailwind families
         run: node scripts/check-design-tokens.mjs
 
+  transaction-limits-guard:
+    name: Transaction limits guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Vakten är fs-only (inga beroenden) — ingen pnpm install behövs.
+      #
+      # Kräver att varje $transaction under apps/api/src bär en gräns ur
+      # common/prisma/transaction-limits.ts, eller är kvitterad med ett skäl.
+      # Kvitteringen fäller åt BÅDA hållen: en okvitterad förekomst är röd, och
+      # en kvittering som inte längre motsvarar något i koden är också röd.
+      - name: Self-test the guard (scanning, both directions, canary)
+        run: node apps/api/scripts/check-transaction-limits.mjs --self-test
+
+      - name: Verify every $transaction has deliberate limits
+        run: node apps/api/scripts/check-transaction-limits.mjs
+
   generated-knowledge-sync-guard:
     name: Generated legal knowledge sync guard
     runs-on: ubuntu-latest
@@ -664,6 +686,7 @@ jobs:
       - reminder-fee-guard
       - period-lookup-guard
       - design-token-guard
+      - transaction-limits-guard
       - generated-knowledge-sync-guard
       - schema-drift-guard
       - e2e

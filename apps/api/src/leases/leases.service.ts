@@ -43,6 +43,7 @@ import {
   defaultTenancyRegime,
   type TerminationInitiator,
 } from './leases.compliance'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 const INCLUDE = {
   unit: { include: { property: true } },
@@ -914,7 +915,7 @@ export class LeasesService {
         await this.applyActivationEffects(tx, lease.unitId)
 
         return result
-      })
+      }, PRISMA_DEFAULT_TX_LIMITS)
     } catch (err) {
       if (isActiveUnitConflict(err)) {
         // Race: en annan request hann slå mot lease_unit_active_unique mellan
@@ -1094,7 +1095,7 @@ export class LeasesService {
           },
           include: INCLUDE,
         })
-      })
+      }, PRISMA_DEFAULT_TX_LIMITS)
     } catch (err) {
       if (isActiveUnitConflict(err)) {
         // Race: en annan request hann slå mot lease_unit_active_unique mellan
@@ -1321,7 +1322,7 @@ export class LeasesService {
       await this.applyActivationEffects(tx, lease.unitId)
 
       return { created, voidedIncreases }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     if (voidedIncreases > 0) {
       this.notifyVoidedIncreases(organizationId, created.id, lease.unit.name, voidedIncreases)
@@ -1521,7 +1522,7 @@ export class LeasesService {
           // in-tx-efterled, T1.2-seam).
           await this.applyActivationEffects(tx, lease.unitId)
           return { created: newLease, voidedIncreases }
-        })
+        }, PRISMA_DEFAULT_TX_LIMITS)
 
         if (voidedIncreases > 0) {
           this.notifyVoidedIncreases(
@@ -1606,7 +1607,7 @@ export class LeasesService {
 
           // Frigör enheten om inget annat ACTIVE-kontrakt finns (synk-punkt).
           await syncUnitStatusFromLeases(tx, lease.unitId)
-        })
+        }, PRISMA_DEFAULT_TX_LIMITS)
 
         // #73: NU (hyresgästen har flyttat ut, endDate passerat) flyttas en
         // betald deposition till REFUND_PENDING — inte vid uppsägningsdatum.

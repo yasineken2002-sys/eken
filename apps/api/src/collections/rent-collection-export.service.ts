@@ -14,6 +14,7 @@ import { DEFAULT_BRAND_COLOR, REMINDER_FEE_MAX_SEK } from '@eken/shared'
 import { UserRole } from '@prisma/client'
 import { assertMayActOnCollections } from '../common/authz/collections-authz'
 import { resolveActorType } from '../common/ai-origin/ai-origin.context'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 // Inkasso PR 4b — steg 3. Read-only export av INKASSO_READY-hyresavier till ett
 // externt inkassobolag. SPEGLAR collections/CollectionExportService (faktura-
@@ -295,7 +296,7 @@ export class RentCollectionExportService {
           },
         })
       }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     return { zipKey, zipUrl, count: notices.length }
   }

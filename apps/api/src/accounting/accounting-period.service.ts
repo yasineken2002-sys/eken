@@ -22,6 +22,7 @@ import {
   type PeriodKey,
 } from './closed-period'
 import { DEFAULT_VER_SERIES, VerifikationsnummerService } from './verifikationsnummer.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 /**
  * Bokföringsperioder — stängning, förhandskontroll och översikt.
@@ -464,15 +465,17 @@ export class AccountingPeriodService {
     // Transaktionen omsluter både händelsen och speglingen till den gamla
     // tabellen: de två får aldrig kunna hamna i otakt.
     try {
-      await this.prisma.$transaction(async (tx) =>
-        appendPeriodClosedEvent(tx, {
-          organizationId,
-          year,
-          month,
-          actorUserId: opts.actorUserId ?? null,
-          actorLabel,
-          summary: summary as unknown as Prisma.InputJsonValue,
-        }),
+      await this.prisma.$transaction(
+        async (tx) =>
+          appendPeriodClosedEvent(tx, {
+            organizationId,
+            year,
+            month,
+            actorUserId: opts.actorUserId ?? null,
+            actorLabel,
+            summary: summary as unknown as Prisma.InputJsonValue,
+          }),
+        PRISMA_DEFAULT_TX_LIMITS,
       )
     } catch (err) {
       // Två samtidiga stängningar av samma period. Vilket av de två unika indexen
@@ -645,16 +648,18 @@ export class AccountingPeriodService {
     const actorLabel = await this.actorLabelFor(opts.actorUserId ?? null)
 
     try {
-      await this.prisma.$transaction(async (tx) =>
-        appendPeriodReopenedEvent(tx, {
-          organizationId,
-          year,
-          month,
-          reason,
-          reasonCategory: opts.reasonCategory,
-          actorUserId: opts.actorUserId ?? null,
-          actorLabel,
-        }),
+      await this.prisma.$transaction(
+        async (tx) =>
+          appendPeriodReopenedEvent(tx, {
+            organizationId,
+            year,
+            month,
+            reason,
+            reasonCategory: opts.reasonCategory,
+            actorUserId: opts.actorUserId ?? null,
+            actorLabel,
+          }),
+        PRISMA_DEFAULT_TX_LIMITS,
       )
     } catch (err) {
       // Äkta samtidighet: två återöppningar som läser samma max(seq) och båda

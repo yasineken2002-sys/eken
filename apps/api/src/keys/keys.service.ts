@@ -5,6 +5,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { IssueKeysDto } from './dto/issue-keys.dto'
 import { ReturnKeyDto } from './dto/return-key.dto'
 import { UpdateKeyDto } from './dto/update-key.dto'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 const INCLUDE = {
   tenant: { select: SAFE_TENANT_SELECT },
@@ -81,12 +82,14 @@ export class KeysService {
     // En rad per fysisk nyckel. Individuella creates inom EN transaktion ger
     // tillbaka de exakta raderna med id (createMany returnerar inga rader) och
     // håller bulk-utlämningen atomär — allt eller inget.
-    const created = await this.prisma.$transaction((tx) =>
-      Promise.all(
-        Array.from({ length: dto.quantity }, () =>
-          tx.keyHandover.create({ data, include: INCLUDE }),
+    const created = await this.prisma.$transaction(
+      (tx) =>
+        Promise.all(
+          Array.from({ length: dto.quantity }, () =>
+            tx.keyHandover.create({ data, include: INCLUDE }),
+          ),
         ),
-      ),
+      PRISMA_DEFAULT_TX_LIMITS,
     )
 
     this.logger.log(

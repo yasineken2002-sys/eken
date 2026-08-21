@@ -56,6 +56,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 // från denna modul) fortsätter fungera oförändrat, beteende-identiskt.
 import { getLogoDataUrl } from '../common/branding/logo.util'
 import { resolveActorType } from '../common/ai-origin/ai-origin.context'
+import { PAYMENT_TX_LIMITS, PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 export { getLogoDataUrl }
 
 type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
@@ -347,7 +348,7 @@ export class AviseringService {
           // rollback (orgen bokför inte alls — utanför A1/audit-scope).
           await this.bookRentNoticeRevenue(orgId, n, tx)
           return n
-        })
+        }, PRISMA_DEFAULT_TX_LIMITS)
       } catch (err) {
         // Per-lease-isolering: logga + räkna + fortsätt. Ingen orphan (avin +
         // verifikat rullades tillbaka atomiskt). Avin fångas nästa körning
@@ -824,7 +825,7 @@ export class AviseringService {
           // den går via deposits-modulen ovan). Kastar → rullar tillbaka avin.
           await this.bookRentNoticeRevenue(orgId, n, tx)
           return n
-        })
+        }, PRISMA_DEFAULT_TX_LIMITS)
       } catch (err) {
         // Idempotens: en samtidig aktivering/retry hann skapa avin (P2002 på
         // @@unique(leaseId, year, month, type)). Den befintliga avin är redan
@@ -1865,10 +1866,10 @@ export class AviseringService {
         //   maxWait 3 s — tid att få en anslutning ur poolen. Är poolen slut så
         //     länge är det ett systemfel som ska synas, inte köas.
         //
-        // Höjs de här: höj för att en MÄTNING säger det, inte för att något
-        // tajmade ut. Ett timeout som växer varje gång det slår är inget skydd.
-        timeout: 8_000,
-        maxWait: 3_000,
+        // Talen bor i PAYMENT_TX_LIMITS — härledningen (band, inte multiplikator)
+        // och regeln för att ändra dem står i dess docblock. Mätningen ovan är
+        // kvar här för att den gäller just DEN HÄR vägen.
+        ...PAYMENT_TX_LIMITS,
       },
     )
 
@@ -2313,7 +2314,7 @@ export class AviseringService {
           )
         }
       }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     // Append-only trail för kravstegs-nollställningen (endast om avin var i trappan).
     // Efter commit — best effort, påverkar inte den bokförda annulleringen.
@@ -2514,7 +2515,7 @@ export class AviseringService {
         },
         { tx },
       )
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     return this.prisma.rentNotice.findFirst({ where: { id: noticeId, organizationId: orgId } })
   }

@@ -27,6 +27,7 @@ import { RentDebtService } from './rent-debt.service'
 import { resolveNoticeDebtOrigin } from '../accounting/debt-origin'
 import { resolveReminderFee, reminderFeeCapMessage } from '../accounting/reminder-fee'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 interface ReminderSummary {
   reminded: number
@@ -375,7 +376,7 @@ export class RentReminderService {
         { tx },
       )
       return true
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   /**
@@ -621,7 +622,7 @@ export class RentReminderService {
         { tx },
       )
       return { flipped: true }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   /**

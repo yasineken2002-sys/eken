@@ -3,6 +3,7 @@ import { Prisma, RentNoticeType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 // Dröjsmålsränta = referensränta + 8 procentenheter (räntelagen 1975:635 6 §).
 // 8 är en LAGKONSTANT; referensräntan läses dynamiskt ur ReferenceInterestRate.
@@ -263,7 +264,7 @@ export class RentInterestService {
       )
 
       return { delta, total: totalInterest, effectiveRatePercent, days, segments }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   /**

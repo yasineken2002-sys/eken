@@ -34,6 +34,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 import { assertPaymentWithinDebt } from '../common/payments/payment-within-debt'
+import { PAYMENT_TX_LIMITS, PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 // Mappar InvoiceStatus → Prisma InvoiceEventType enum-värde
 const STATUS_TO_EVENT_TYPE: Partial<Record<InvoiceStatus, InvoiceEventType>> = {
@@ -422,7 +423,7 @@ export class InvoicesService {
       )
 
       return created
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     return invoice
   }
@@ -494,7 +495,7 @@ export class InvoicesService {
       await this.eventsService.record(id, 'UPDATED', 'USER', actorId, {}, { tx })
 
       return updated
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // Soft-delete (LAGBROTT 1, BFL 1999:1078): en faktura och dess append-only
@@ -874,7 +875,7 @@ export class InvoicesService {
       }
 
       return updated
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     if (newStatus === 'PAID') {
       void this.notificationsService
@@ -1013,7 +1014,7 @@ export class InvoicesService {
         },
         { tx },
       )
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     return this.findOne(invoiceId, organizationId)
   }
@@ -1285,10 +1286,10 @@ export class InvoicesService {
         //   maxWait 3 s — tid att få en anslutning ur poolen. Är poolen slut så
         //     länge är det ett systemfel som ska synas, inte köas.
         //
-        // Höjs de här: höj för att en MÄTNING säger det, inte för att något
-        // tajmade ut.
-        timeout: 8_000,
-        maxWait: 3_000,
+        // Talen bor i PAYMENT_TX_LIMITS — härledningen (band, inte multiplikator)
+        // och regeln för att ändra dem står i dess docblock. Mätningen ovan är
+        // kvar här för att den gäller just DEN HÄR vägen.
+        ...PAYMENT_TX_LIMITS,
       },
     )
 

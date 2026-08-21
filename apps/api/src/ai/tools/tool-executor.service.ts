@@ -39,6 +39,7 @@ import { ACTION_TOOLS } from './ai-tools.definition'
 import { decideAiToolAccess } from '../../common/authz/ai-tool-authz'
 import { neutralizeUntrusted } from './untrusted-content'
 import { SAFE_TENANT_SELECT } from '../../tenants/tenants.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../../common/prisma/transaction-limits'
 
 // ─── Mass-mejl säkerhetsgränser ──────────────────────────────────────────────
 // Skyddar mot oavsiktliga eller AI-hallucinerade massutskick. Tre lager:
@@ -3403,7 +3404,7 @@ export class ToolExecutorService {
               },
               include: { lines: { include: { account: true } } },
             })
-          })
+          }, PRISMA_DEFAULT_TX_LIMITS)
           return {
             success: true,
             data: { id: entry.id, total: totalDebit },
@@ -3512,7 +3513,7 @@ export class ToolExecutorService {
                 lines: { create: lines },
               },
             })
-          })
+          }, PRISMA_DEFAULT_TX_LIMITS)
           const propertyTag = typeof toolInput.propertyId === 'string' ? toolInput.propertyId : null
           return {
             success: true,
