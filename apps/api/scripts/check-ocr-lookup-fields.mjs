@@ -80,8 +80,31 @@ function sliceBlock(text, openIdx) {
  * — det är den enda platsen modellnamnet står, och en `where` utan ett sådant
  * anrop framför sig är inte ett Prisma-uppslag.
  */
+/** Variabelnamnen som bär grindens RESULTAT: `const <v> = await GATE(...)`. */
+export function gateResultVars(text) {
+  return [...text.matchAll(new RegExp(`(?:const|let|var)\\s+(\\w+)\\s*=\\s*await\\s+${GATE}\\s*\\(`, 'g'))].map(
+    (m) => m[1],
+  )
+}
+
+/**
+ * Styrs uppslaget vid `idx` av grinden?
+ *
+ * Fönstret är avsiktligt KORT (400 tecken): villkoret som avgör ett uppslag står
+ * omedelbart före det. Ett längre fönster börjar plocka upp villkor som hör till
+ * ett helt annat uppslag — vilket är samma fel som den första versionen gjorde,
+ * bara mindre uppenbart.
+ */
+export function isGovernedByGate(text, idx, gateVars) {
+  const fönster = text.slice(Math.max(0, idx - 400), idx)
+  return gateVars.some((v) =>
+    new RegExp(`(?:!\\s*${v}\\b|\\b${v}\\s*(?:\\?|&&|\\|\\|))`).test(fönster),
+  )
+}
+
 export function findOcrLookups(text) {
   const träffar = []
+  const gateVars = gateResultVars(text)
   const whereRe = /\bwhere\s*:\s*\{/g
   let m
   while ((m = whereRe.exec(text))) {
@@ -115,13 +138,18 @@ export function findOcrLookups(text) {
         fält: f,
         nyckel: modell ? `${modell[0].toUpperCase()}${modell.slice(1)}.${f}` : `?.${f}`,
         line: lineOf(text, m.index),
-        // Grinden ska stå i det omslutande uttrycket. Fönstret bakåt räcker till
-        // hela `??`-kedjan i matchTransaction; framåt fångar en grind som
-        // placerats efter uppslaget i samma uttryck.
-        gated:
-          text.slice(Math.max(0, m.index - 1500), m.index).includes(GATE) ||
-          block.includes(GATE) ||
-          text.slice(m.index, m.index + 200).includes(GATE),
+        // GRINDEN MÅSTE STYRA UPPSLAGET — inte bara finnas i närheten.
+        //
+        // Första versionen frågade om `harSystemtilldelatOcr` nämndes inom 1500
+        // tecken bakåt. Negativkontrollen fällde den: när regeln togs bort ur
+        // `??`-kedjan stod anropet kvar en rad ovanför, guarden såg det och
+        // rapporterade GRÖNT om exakt den kapning den byggts för att fånga.
+        //
+        // Kriteriet är därför VILLKORSANVÄNDNING av grindens resultatvariabel —
+        // `v ?`, `!v`, `v &&`, `v ||` — inom det uttryck som omsluter uppslaget.
+        // En tilldelning (`const v = await grind(...)`) räknas INTE: den bevisar
+        // att grinden anropades, inte att den avgjorde något.
+        gated: isGovernedByGate(text, m.index, gateVars),
       })
     }
   }
@@ -270,6 +298,38 @@ const invoice = await db.invoice.findFirst({ where: { organizationId, reference:
 `,
     }),
     'UTAN identitetsgrind',
+  )
+
+  // DEN MISS NEGATIVKONTROLLEN HITTADE. Grinden anropas — resultatet används bara
+  // inte. Första versionen av guarden rapporterade GRÖNT här, alltså om exakt den
+  // kapning den byggts för att fånga. Fallet står kvar som självtest för att en
+  // framtida uppmjukning av `gated` ska falla på det.
+  röd(
+    'grinden anropas men styr INTE fritextuppslaget',
+    evaluate({
+      identityText: IDENTITY_OK,
+      matchText: `
+const identitet = await ${GATE}(db, organizationId, transaction.rawOcr)
+const invoice =
+  (await db.invoice.findFirst({ where: { organizationId, ocrNumber: transaction.rawOcr } })) ??
+  (await db.invoice.findFirst({ where: { organizationId, reference: transaction.rawOcr } }))
+`,
+    }),
+    'UTAN identitetsgrind',
+  )
+
+  // Motsatt riktning: `!v` är lika giltig styrning som `v ?`.
+  grön(
+    'negerad grindvariabel styr uppslaget',
+    evaluate({
+      identityText: IDENTITY_OK,
+      matchText: `
+const identitet = await ${GATE}(db, organizationId, transaction.rawOcr)
+const invoice = !identitet
+  ? await db.invoice.findFirst({ where: { organizationId, reference: transaction.rawOcr } })
+  : null
+`,
+    }),
   )
 
   // R1 — NYTT, oklassat fält. Det här är guardens hela existensberättigande.
