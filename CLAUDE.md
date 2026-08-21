@@ -1020,6 +1020,39 @@ faktiskt kör.
 Kontrollera `deploy.yml`-körningen för squash-commiten innan du påstår att en
 frontend-ändring är ute.
 
+### `gh pr checks <nummer>` kan svara om en ÄLDRE körning
+
+Den fjärde varianten av samma tema. De tre andra handlar om att `CI passed` säger
+för mycket eller för lite om vad som DEPLOYAS. Den här handlar om att
+checklistan kan beskriva en **annan commit än den du tror** — och då är det inte
+deployen som är fel, utan din bild av vad som ens testats.
+
+`gh pr checks <nummer>` frågar på PR:en, inte på ett sha. Precis efter en push
+— och särskilt efter `git merge origin/main` in i grenen — hinner GitHub svara
+med den föregående körningen. Utfallet är en helgrön lista som saknar det jobb
+du just lade till, vilket ser ut som "jobbet kördes inte" i stället för "du
+frågade om fel commit".
+
+Uppmätt 2026-08-21 på #546, som mergade in main (med ett nytt vaktjobb i
+`ci-passed`:s `needs`) och pushades:
+
+```
+gh pr checks 546                 → 14 gröna, UTAN "Redaction single-source guard"
+körningen för merge-commitens sha → 15 gröna, MED den
+```
+
+**Fråga på SHAN efter varje push och varje merge från main:**
+
+```bash
+SHA=$(git rev-parse HEAD)
+RUN=$(gh run list --workflow ci.yml --json databaseId,headSha \
+  --jq "[.[] | select(.headSha==\"$SHA\")][0].databaseId")
+gh run view "$RUN" --json jobs --jq '.jobs[] | "\(.conclusion // .status)\t\(.name)"'
+```
+
+Samma regel gäller när du läser antalet jobb: härled det ur körningen eller ur
+`toJSON(needs)`, aldrig ur en lista du råkade titta på vid fel tidpunkt.
+
 ### Railways byggkonfiguration kan glida ifrån `railway.toml`
 
 Den TREDJE varianten av samma tema. De två ovan handlar om att `CI passed` säger
