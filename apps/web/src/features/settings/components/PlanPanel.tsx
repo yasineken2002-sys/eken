@@ -18,9 +18,14 @@ import { Modal } from '@/components/ui/Modal'
 import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import { useAiUsageCurrent, useAiUsageHistory, useBuyAiCredits } from '../hooks/usePlan'
 import { cn } from '@/lib/cn'
+import { LoadErrorState } from '@/components/ui/LoadErrorState'
+import { isForbidden } from '@/lib/api'
 
 export function PlanPanel() {
-  const { data: current, isLoading, isError: nekad } = useAiUsageCurrent()
+  const { data: current, isLoading, isError: felade, error, refetch } = useAiUsageCurrent()
+  // Se CollectionsPage: isError är inte samma sak som nekad. (#442)
+  const nekad = isForbidden(error)
+  const haveri = felade && !nekad
   const { data: history } = useAiUsageHistory(30)
   const [creditsModalOpen, setCreditsModalOpen] = useState(false)
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
@@ -43,6 +48,10 @@ export function PlanPanel() {
   // här den enda som fastnade i ett laddningsläge i stället för ett tomt.
   if (nekad) {
     return <PermissionDeniedState vad="planen och AI-förbrukningen" />
+  }
+
+  if (haveri) {
+    return <LoadErrorState vad="Planen och AI-förbrukningen" onRetry={() => void refetch()} />
   }
 
   if (isLoading || !current) {

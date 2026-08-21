@@ -39,6 +39,8 @@ import { formatCurrency, formatDate } from '@eken/shared'
 import type { BankTransaction, ImportResult, Invoice } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import { useCanWrite } from '@/hooks/useCanWrite'
+import { LoadErrorState } from '@/components/ui/LoadErrorState'
+import { isForbidden } from '@/lib/api'
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -683,7 +685,16 @@ export function ReconciliationPage() {
   const [autoMatchFailed, setAutoMatchFailed] = useState(false)
 
   const filters = tab === 'ALL' ? undefined : { status: tab }
-  const { data: transactions = [], isLoading, isError: nekad } = useTransactions(filters)
+  const {
+    data: transactions = [],
+    isLoading,
+    isError: felade,
+    error,
+    refetch,
+  } = useTransactions(filters)
+  // Se CollectionsPage: isError är inte samma sak som nekad. (#442)
+  const nekad = isForbidden(error)
+  const haveri = felade && !nekad
   const kanSkriva = useCanWrite()
   const { data: stats } = useReconciliationStats()
   const ignoreMutation = useIgnoreTransaction()
@@ -842,6 +853,8 @@ export function ReconciliationPage() {
           // med en primärknapp som själv 403:ar. Ett falskt påstående om
           // organisationens data plus en återvändsgränd (#442).
           <PermissionDeniedState vad="bankavstämningen" />
+        ) : haveri ? (
+          <LoadErrorState vad="Bankavstämningen" onRetry={() => void refetch()} />
         ) : transactions.length === 0 ? (
           <EmptyState
             icon={ArrowLeftRight}

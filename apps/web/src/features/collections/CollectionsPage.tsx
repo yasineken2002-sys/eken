@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/Button'
 import { InvoiceStatusBadge } from '@/components/ui/Badge'
 import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import { formatCurrency, formatDate } from '@eken/shared'
+import { LoadErrorState } from '@/components/ui/LoadErrorState'
+import { isForbidden } from '@/lib/api'
 import {
   fetchOverdueStatus,
   exportSingleCollection,
@@ -50,12 +52,18 @@ export function CollectionsPage() {
   const {
     data: invoices = [],
     isLoading,
-    isError: nekad,
+    isError: felade,
+    error,
+    refetch,
   } = useQuery({
     queryKey: ['collections', 'overdue', bucket],
     queryFn: () => fetchOverdueStatus(bucket),
     staleTime: 30_000,
   })
+  // isError betyder "något gick fel", inte "du får inte". Skiljelinjen dras av
+  // isForbidden — annars påstår ett 500 att rollen saknar behörighet. (#442)
+  const nekad = isForbidden(error)
+  const haveri = felade && !nekad
 
   const exportSingle = useMutation({
     mutationFn: (invoiceId: string) => exportSingleCollection(invoiceId),
@@ -187,6 +195,8 @@ export function CollectionsPage() {
           // GET /collections/overdue-status är ACCOUNTANT+. Utan grenen påstod
           // sidan "Inga fakturor i denna kategori just nu" (#442).
           <PermissionDeniedState vad="inkassoöversikten" />
+        ) : haveri ? (
+          <LoadErrorState vad="Inkassoöversikten" onRetry={() => void refetch()} />
         ) : invoices.length === 0 ? (
           <div className="p-12 text-center">
             <Gavel size={28} className="mx-auto mb-3 text-gray-300" />

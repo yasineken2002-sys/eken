@@ -12,6 +12,8 @@ import type { OrgUser, AssignableRole } from './api/users.api'
 import { formatDate } from '@eken/shared'
 import type { UserRole } from '@eken/shared'
 import { ASSIGNABLE_ROLES } from '@eken/shared'
+import { LoadErrorState } from '@/components/ui/LoadErrorState'
+import { isForbidden } from '@/lib/api'
 
 const ROLE_LABELS: Record<UserRole, string> = {
   OWNER: 'Ägare',
@@ -35,7 +37,10 @@ const item = {
 }
 
 export function UsersPanel() {
-  const { data: users = [], isLoading, isError: nekad } = useUsers()
+  const { data: users = [], isLoading, isError: felade, error, refetch } = useUsers()
+  // Se CollectionsPage: isError är inte samma sak som nekad. (#442)
+  const nekad = isForbidden(error)
+  const haveri = felade && !nekad
   const [inviteOpen, setInviteOpen] = useState(false)
   const currentUser = useAuthStore((s) => s.user)
   const isOwner = currentUser?.role === 'OWNER'
@@ -66,6 +71,8 @@ export function UsersPanel() {
         </div>
       ) : nekad ? (
         <PermissionDeniedState vad="användarlistan" />
+      ) : haveri ? (
+        <LoadErrorState vad="Användarlistan" onRetry={() => void refetch()} />
       ) : users.length === 0 ? (
         <EmptyState
           icon={ShieldCheck}
