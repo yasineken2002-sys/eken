@@ -37,10 +37,19 @@ import { sieSignedAmount } from './accounting.service'
 //                   1510 K 12 000
 //   V4  2026-03-01  5020 D  4 000        (el)
 //                   1930 K  4 000
+//   V5  2026-04-01  1510 D  6 000        (hyra april, obetald)
+//                   3911 K  6 000
+//   V6  2026-05-01  1930 D  3 000        (ny deposition)
+//                   2890 K  3 000
+//
+// V5 och V6 finns för INVARIANTENS skull: de ger ett intäktskonto och ett
+// skuldkonto RÖRELSE inuti exportfönstret. Utan rörelse överlever en konsekvent
+// teckenvändning identiteten IB + rörelse = UB (båda leden vänds, rörelsen är
+// noll) — och då mäter kanariefågeln ingenting.
 //
 // UTANFÖR exportfönstret (2026-09-01) — ska INTE påverka något, eftersom
 // cutoff = `to`:
-//   V5  2026-09-01  5020 D  9 999
+//   V7  2026-09-01  5020 D  9 999
 //                   1930 K  9 999
 //
 // ── HANDRÄKNINGEN, år 0 (2026), cutoff 2026-06-30 ──────────────────────────
@@ -53,14 +62,14 @@ import { sieSignedAmount } from './accounting.service'
 //     3911  —                  resultatkonto, ingen ingående balans
 //
 //   #UB 0  (allt med datum <= 2026-06-30)
-//     1930  50 000 + 12 000 − 4 000 = +58 000
-//     2890  −50 000
-//     1510  12 000 − 12 000   = 0  → RADEN UTELÄMNAS
+//     1930  50 000 + 12 000 − 4 000 + 3 000 = +61 000
+//     2890  −50 000 − 3 000                  = −53 000
+//     1510  12 000 − 12 000 + 6 000          = +6 000
 //     5020  resultatkonto, ingen utgående balans
 //
 //   #RES 0  (2026-01-01 <= datum <= 2026-06-30)
 //     5020  +4 000            (V4 debet)
-//     3911  0 i år 0          → RADEN UTELÄMNAS (intäkten låg 2025)
+//     3911  −6 000            (V5 kredit → NEGATIVT)
 //
 // ── Om år -1 ────────────────────────────────────────────────────────────────
 //
@@ -114,9 +123,23 @@ const VERIFIKAT: Ver[] = [
     lines: [D('a-5020', 4000), K('a-1930', 4000)],
   },
   {
-    date: '2026-09-01',
+    date: '2026-04-01',
     series: 'A',
     verNumber: 5,
+    description: 'Hyra april',
+    lines: [D('a-1510', 6000), K('a-3911', 6000)],
+  },
+  {
+    date: '2026-05-01',
+    series: 'A',
+    verNumber: 6,
+    description: 'Ny deposition',
+    lines: [D('a-1930', 3000), K('a-2890', 3000)],
+  },
+  {
+    date: '2026-09-01',
+    series: 'A',
+    verNumber: 7,
     description: 'EFTER exportfönstret — ska inte synas',
     lines: [D('a-5020', 9999), K('a-1930', 9999)],
   },
@@ -224,12 +247,16 @@ describe('SIE4 — #IB, #UB och #RES', () => {
 
     // #UB 0 — 1510 är 0 och utelämnas.
     expect(poster(fil, '#UB').filter(([år]) => år === 0)).toEqual([
-      [0, 1930, 58000],
-      [0, 2890, -50000],
+      [0, 1510, 6000],
+      [0, 1930, 61000],
+      [0, 2890, -53000],
     ])
 
-    // #RES 0 — intäkten låg 2025, alltså bara elkostnaden här.
-    expect(poster(fil, '#RES').filter(([år]) => år === 0)).toEqual([[0, 5020, 4000]])
+    // #RES 0 — elkostnaden positiv, hyresintäkten negativ (kredit).
+    expect(poster(fil, '#RES').filter(([år]) => år === 0)).toEqual([
+      [0, 3911, -6000],
+      [0, 5020, 4000],
+    ])
   })
 
   it('en export som SPÄNNER två räkenskapsår ger både index 0 och -1', async () => {
@@ -262,17 +289,17 @@ describe('SIE4 — #IB, #UB och #RES', () => {
     const fil = await exportera(true, '2025-01-01', '2026-06-30')
     const ub = (år: number, konto: number) =>
       poster(fil, '#UB').find(([a, k]) => a === år && k === konto)?.[2]
-    // 1930: 50 000 vid 2025 års slut, 58 000 vid exportens slut.
+    // 1930: 50 000 vid 2025 års slut, 61 000 vid exportens slut.
     expect(ub(-1, 1930)).toBe(50000)
-    expect(ub(0, 1930)).toBe(58000)
+    expect(ub(0, 1930)).toBe(61000)
   })
 
   it('ett kreditsaldo är NEGATIVT även på ett skuldkonto', async () => {
     // Teckenfällan, som ett eget påstående: 2890 har kreditsaldo och ska ha
     // minustecken. En rapportvänd konvention hade gett +50000 här.
     const fil = await exportera()
-    expect(poster(fil, '#UB')).toContainEqual([0, 2890, -50000])
-    expect(poster(fil, '#UB')).not.toContainEqual([0, 2890, 50000])
+    expect(poster(fil, '#UB')).toContainEqual([0, 2890, -53000])
+    expect(poster(fil, '#UB')).not.toContainEqual([0, 2890, 53000])
   })
 
   it('cutoff är `to` — verifikat efter exportfönstret påverkar inte saldona', async () => {
@@ -286,8 +313,8 @@ describe('SIE4 — #IB, #UB och #RES', () => {
   it('saldon på noll utelämnas helt — ingen 0.00-rad', async () => {
     const fil = await exportera()
     expect(fil).not.toMatch(/^#(IB|UB|RES) -?\d+ \d+ 0\.00$/m)
-    // 1510 går till noll i år 0 och ska därför saknas i #UB 0.
-    expect(poster(fil, '#UB').find(([år, konto]) => år === 0 && konto === 1510)).toBeUndefined()
+    // 3911 har ingen ingående balans (resultatkonto) och saknas i #IB.
+    expect(poster(fil, '#IB').find(([år, konto]) => år === 0 && konto === 3911)).toBeUndefined()
   })
 
   it('posterna har INGET {}-fält, till skillnad från #TRANS', async () => {
