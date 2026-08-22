@@ -524,6 +524,13 @@ export class PlatformInvoicesService {
    * Per-org-isoleringen + idempotensen sitter i generateInvoicesForPeriod och
    * delas därför av båda vägarna.
    */
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // PlatformInvoice partiellt unikt index platform_invoice_unique_period på
+  // (organizationId, type, planPeriodStart) WHERE planPeriodStart IS NOT
+  // NULL — verifierat i databasen; findFirst + P2002-fångst ger skipped.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 8 1 * *')
   async createMonthlyInvoicesCron(): Promise<void> {
     await runCronSafely('platform-invoices-monthly', () => this.createMonthlyInvoices(), {
@@ -792,6 +799,13 @@ export class PlatformInvoicesService {
    *  - 14 dagar förfallen: sätt org.status = PAST_DUE
    *  - 30 dagar förfallen: sätt org.status = SUSPENDED
    */
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // Mail-kön dedupar på idempotencyKey
+  // platform-invoice-reminder-<invoiceId>-<dagar> (Bull jobId), och
+  // PlatformInvoice.status-övergången är villkorad i sin updateMany.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 9 * * *')
   async sendRemindersAndEscalate(): Promise<void> {
     // T5 B1c — cron-only (ingen manuell controller-väg). Linda hela kroppen i
@@ -920,6 +934,13 @@ export class PlatformInvoicesService {
    * (admin "kör nu" via controllern) lämnas ORÖRD så UI:t ser felet. Per-org-
    * isoleringen sitter i convertExpiredTrials och delas av båda vägarna.
    */
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // Organization-uppdateringen gör kandidatvillkoret
+  // (subscriptionStatus=TRIALING och utgången trialEndsAt) falskt, så nästa
+  // körning inte längre ser raden — dokumenterat i metoden.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 7 * * *')
   async convertExpiredTrialsCron(): Promise<void> {
     await runCronSafely('platform-invoices-convert-trials', () => this.convertExpiredTrials(), {
@@ -1072,6 +1093,13 @@ export class PlatformInvoicesService {
    * dagar kvar. lastTrialReminderDays används som idempotensnyckel så att
    * samma (eller ett mindre brådskande) steg aldrig mailas dubbelt.
    */
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // Mail-kön dedupar på idempotencyKey
+  // platform-trial-reminder-<orgId>-step<steg> (Bull jobId) — samma steg kan
+  // bara ge ett mejl oavsett antal körningar.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 9 * * *')
   async sendTrialEndingReminders(): Promise<{ sent: number }> {
     const now = new Date()

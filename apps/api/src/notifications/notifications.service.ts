@@ -13,6 +13,7 @@ import { MonthlyReportService } from './monthly-report.service'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { LockService } from '../common/redis/lock.service'
+import { CRON_LOCK_TTL_SEC } from '../common/redis/cron-lock'
 import { resolveActorType, aiOriginColumns } from '../common/ai-origin/ai-origin.context'
 
 type InvoiceWithRelations = Prisma.InvoiceGetPayload<{
@@ -106,7 +107,7 @@ function isoWeek(ymd: string): { key: string; week: number } {
  * ett AI-anrop per organisation. Marginalen nedåt är enorm — närmaste intervall
  * är 24 timmar, alltså 48 gånger TTL:n.
  */
-const CRON_LOCK_TTL_SEC = 30 * 60
+// Flyttad till common/redis/cron-lock.ts — delas nu av sju låsta jobb.
 
 @Injectable()
 export class NotificationsService implements OnModuleInit {
@@ -215,6 +216,13 @@ export class NotificationsService implements OnModuleInit {
     })
   }
 
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // Notification deleteMany på ett tidsfönster (createdAt < gräns) — att
+  // radera redan raderade rader är per definition en no-op, count blir bara
+  // 0.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 2 * * *')
   async deleteOld(): Promise<void> {
     const cutoff = new Date()
@@ -234,6 +242,13 @@ export class NotificationsService implements OnModuleInit {
   // processOverdueReminders (tiered) + sendOverdueRemindersForOrg (manuellt,
   // org-scopat) nedan.
 
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // Invoice updateMany sätter status=OVERDUE på rader som ännu inte är det;
+  // en andra körning skriver samma värde på samma mängd, alltså en no-op
+  // utan sidoeffekt.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async markOverdueInvoices(): Promise<void> {
     // T5 B1b — atomär bulk (en updateMany = commit-eller-rollback), ingen per-item;
@@ -267,6 +282,13 @@ export class NotificationsService implements OnModuleInit {
   // Bulk-updateMany utan org-loop är tenant-säkert: varje rad flippas enbart på
   // sin EGEN dueDate, ingen organisations data läses eller korsas. PAID/CANCELLED
   // rörs aldrig (filtret kräver status = SENT).
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // RentNotice updateMany sätter status=OVERDUE på rader som ännu inte är
+  // det; en andra körning skriver samma värde på samma mängd, alltså en
+  // no-op utan sidoeffekt.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async markOverdueRentNotices(): Promise<void> {
     // T5 B1b — atomär bulk (samma som markOverdueInvoices); bara runCronSafely.

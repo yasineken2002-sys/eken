@@ -43,6 +43,19 @@ async function medEffekter<T>(
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const beskriv = HAR_DB ? describe : describe.skip
 
+describe('förutsättningar', () => {
+  it('KANARIEFÅGEL: sviten körs mot en RIKTIG databas', () => {
+    // ── FLYTTAD UT UR DET SKIPPADE BLOCKET ────────────────────────────────
+    //
+    // Den låg inuti `beskriv`, som är `describe.skip` när DATABASE_URL saknas —
+    // alltså hoppades kanariefågeln över precis när den behövdes. Mätt: hela den
+    // här filen kördes ALDRIG i CI, eftersom test-jobbet saknade databas. Sviten
+    // var grön av att den inte kördes, vilket är exakt vad kanariefågeln skulle
+    // hindra. Här kan den falla.
+    expect(HAR_DB).toBe(true)
+  })
+})
+
 beskriv('AiToolEffect — kopplingen produceras av skrivvägen', () => {
   let prisma: PrismaService
   let orgId: string
@@ -73,13 +86,6 @@ beskriv('AiToolEffect — kopplingen produceras av skrivvägen', () => {
     await prisma.property.deleteMany({ where: { organizationId: orgId } })
     await prisma.organization.deleteMany({ where: { id: orgId } })
     await prisma.$disconnect()
-  })
-
-  it('KANARIEFÅGEL: sviten körs mot en RIKTIG databas', () => {
-    // Utan den här raden är hela filen grön när DATABASE_URL saknas — alltså
-    // grön av att den inte kördes. Se CLAUDE.md: en kontroll som inte kan falla
-    // mäter ingenting.
-    expect(HAR_DB).toBe(true)
   })
 
   it('en skrivning INNE i AI-kontext bokförs, och pekar på RÄTT rad', async () => {

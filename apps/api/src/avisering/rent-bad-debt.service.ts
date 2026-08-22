@@ -109,6 +109,13 @@ export class RentBadDebtService {
    * resultatpåverkan. KONSTATERAD bortskrivning (6352, resultatpåverkan) är en
    * mänsklig bedömning och görs ALDRIG av cron — bara via confirmLoss-endpointen.
    */
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // RentNotice updateMany-claim på probableLossAt=null, plus idempotent
+  // verifikat-sourceId i AccountingService — dubbelkörning ger varken andra
+  // nedskrivning eller andra verifikat.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 12 * * *')
   async reclassifyProbableLosses(): Promise<BadDebtSummary> {
     const summary: BadDebtSummary = {

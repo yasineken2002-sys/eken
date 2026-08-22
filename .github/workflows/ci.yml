@@ -62,6 +62,35 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    # ── RIKTIG DATABAS OCH RIKTIG REDIS I ENHETSSVITEN ──────────────────────
+    #
+    # Lades till här, inte bara i e2e. Skälet är mätt: `ai-effect-extension.spec.ts`
+    # (#562) prövar en Prisma-extension mot en RIKTIG databas — och hoppades över
+    # i CI, eftersom `DATABASE_URL` saknades. Sviten var alltså grön av att den
+    # inte kördes, vilket är precis den sortens kontroll CLAUDE.md varnar för.
+    # Samma sak gäller cron-låset: att `SET NX` ger exakt en vinnare är en
+    # egenskap hos Redis, inte hos koden, och kan bara mätas mot Redis.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: eken_dev
+          POSTGRES_USER: eken
+          POSTGRES_PASSWORD: eken
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U eken"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://eken:eken@localhost:5432/eken_dev
+      REDIS_URL: redis://localhost:6379
     # Sviten går på ~1 min; taket täcker install + build av @eken/shared.
     timeout-minutes: 20
     steps:
@@ -94,6 +123,11 @@ jobs:
       # kompilering per worker dominerade tiden.
       #
       # turbo-tasken har dependsOn ["^build"] → @eken/shared byggs först.
+      # Schemat måste finnas innan sviten kör: de specar som prövar mekanismer
+      # mot en riktig databas skapar och läser riktiga rader.
+      - name: Apply migrations
+        run: pnpm --filter @eken/api exec prisma migrate deploy
+
       - name: Run test suite
         run: pnpm exec turbo test:ci
 
@@ -323,6 +357,34 @@ jobs:
 
       - name: Verify binding tools cannot execute without a consumed confirmation
         run: node apps/api/scripts/check-action-tool-authorization.mjs
+
+  cron-classification-guard:
+    name: Cron concurrency classification guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — varje @Cron
+      # måste vara klassificerat som LÅST (A) eller SKYDDAT AV EN NAMNGIVEN
+      # INVARIANT (B).
+      #
+      # Bilden före kontrollen var att fyra jobb var låsta och att övriga
+      # "skyddas av DB-invarianter". Mätningen gav 25 jobb (inte 21), det
+      # åberopade indexet skyddade ETT av dem, och TRE var oskyddade. Ett jobb
+      # som klassas B på magkänsla är värre än ett som klassas C — det SER
+      # skyddat ut. Guarden kräver därför att skälet namnger modell och villkor,
+      # och den fäller åt båda håll: oklassificerat jobb rött, klassificering
+      # utan jobb rött.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (each rule proven by its own assertion)
+        run: node apps/api/scripts/check-cron-classification.mjs --self-test
+
+      - name: Verify every cron job is classified and every invariant is named
+        run: node apps/api/scripts/check-cron-classification.mjs
 
   reminder-fee-guard:
     name: Reminder fee amount guard
@@ -916,6 +978,7 @@ jobs:
       - tool-iteration-cap-guard
       - ai-tool-effects-guard
       - action-tool-authorization-guard
+      - cron-classification-guard
       - reminder-fee-guard
       - period-lookup-guard
       - design-token-guard

@@ -5,6 +5,7 @@ import { NotificationsModule } from '../notifications/notifications.module'
 import { AiUsageController } from './ai-usage.controller'
 import { AiUsagePageService } from './ai-usage.service'
 import { AiUsageNotifierService } from './ai-usage-notifier.service'
+import { RedisModule } from '../common/redis/redis.module'
 
 /**
  * Endpoints + cron för admin-frontendens "Plan & AI-användning"-sida.
@@ -12,7 +13,7 @@ import { AiUsageNotifierService } from './ai-usage-notifier.service'
  * den interna loggningen frikopplad från användarvänd API-yta.
  */
 @Module({
-  imports: [PrismaModule, MailModule, NotificationsModule],
+  imports: [RedisModule, PrismaModule, MailModule, NotificationsModule],
   controllers: [AiUsageController],
   providers: [AiUsagePageService, AiUsageNotifierService],
   exports: [AiUsagePageService],

@@ -30,6 +30,7 @@ import { Decimal } from '@prisma/client/runtime/library'
 import { LEASE_ACTIVE_LOCKED_FIELDS, LEASE_LOCK_FIELD_ROUTE } from '@eken/shared'
 import { LeasesService, TIER1_LOCKED_ON_ACTIVE } from './leases.service'
 import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
+import { alltidLedigtLås } from '../common/redis/lock.test-double'
 
 function baseLease(overrides: Record<string, unknown> = {}) {
   return {
@@ -97,6 +98,7 @@ function makeService(overrides: Record<string, unknown> = {}) {
     noop, // contracts
     noop, // contractNumbers
     noop, // activationQueue
+    alltidLedigtLås,
   )
   return { service, prisma }
 }

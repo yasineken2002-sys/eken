@@ -85,6 +85,14 @@ export class AiRetentionService {
     private readonly attachments: AiAttachmentsService,
   ) {}
 
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // deleteMany på AiToolExecution, AiConversation, AiMemory och AiUsageLog,
+  // var och en filtrerad på createdAt äldre än sin frist — raderade rader
+  // kan inte raderas igen, så en andra körning träffar noll rader i samtliga
+  // fyra tabeller.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 5 * * *')
   async scheduledRetention(): Promise<void> {
     const outcome = await this.runRetention(retentionModeFromEnv())

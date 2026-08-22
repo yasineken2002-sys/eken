@@ -35,6 +35,7 @@ import { Prisma } from '@prisma/client'
 import { LEASE_SUCCESSION_CARRY_FIELDS, LEASE_SUCCESSION_EXCLUDED_FIELDS } from '@eken/shared'
 import { LeasesService } from './leases.service'
 import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
+import { alltidLedigtLås } from '../common/redis/lock.test-double'
 
 // ── A: DMMF-exhaustiveness (fail-closed) ────────────────────────────────────
 
@@ -163,6 +164,9 @@ function oldLease(overrides: Record<string, unknown> = {}) {
 function makeTx(opts: { deposit?: { id: string } | null; voidedCount?: number } = {}) {
   return {
     lease: {
+      // Anspråket (villkorad updateMany) måste modelleras: produktionsvägen
+      // anspråkar kandidaten innan förnyelseavtalet skapas.
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       update: jest.fn().mockResolvedValue({}),
       create: jest
         .fn()
@@ -210,6 +214,7 @@ function makeService(args: {
     noop, // contracts
     contractNumbers as never,
     activationQueue as never,
+    alltidLedigtLås,
   )
   return { service, prisma, notifications, activationQueue }
 }
@@ -454,6 +459,7 @@ describe('T1.3 · H: transitionStatus(ACTIVE→EXPIRED) kräver passerat slutdat
       noop,
       noop,
       activationQueue as never,
+      alltidLedigtLås,
     )
     return { service, prisma, tx }
   }
@@ -517,6 +523,7 @@ describe('T1.3 · G: autoRenew körs HELT före applyDueIncreases', () => {
       noop,
       noop,
       noop,
+      alltidLedigtLås,
     )
     jest
       .spyOn(

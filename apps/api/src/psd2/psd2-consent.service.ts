@@ -178,6 +178,12 @@ export class Psd2ConsentService {
   // annars tabellen i evighet och lämnar orphan-orgId efter org-radering. Rader
   // skapas bara vid beginConsent (strukturellt inert när flaggan är av), så cronen
   // är ofarlig att köra oavsett flagg-läge.
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // BankConsentState deleteMany på utgångna state-rader — idempotent
+  // radering, en andra körning träffar noll rader.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 3 * * *')
   async cleanupExpiredConsentStates(): Promise<void> {
     const res = await this.prisma.psd2ConsentState.deleteMany({

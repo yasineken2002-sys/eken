@@ -24,6 +24,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { isValidLeaseTransition } from '@eken/shared'
 import { LeasesService } from './leases.service'
 import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
+import { alltidLedigtLås } from '../common/redis/lock.test-double'
 
 function makeQueue() {
   return {
@@ -36,6 +37,9 @@ function makeQueue() {
 function txClient(created: Record<string, unknown> = {}) {
   return {
     lease: {
+      // Anspråket (villkorad updateMany) måste modelleras: produktionsvägen
+      // anspråkar kandidaten innan förnyelseavtalet skapas.
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       update: jest.fn().mockResolvedValue({}),
       create: jest.fn().mockResolvedValue(created),
       count: jest.fn().mockResolvedValue(1),
@@ -94,6 +98,7 @@ function makeForTransition(leaseStatus: string) {
     noop, // contracts
     contractNumbers as never,
     activationQueue as never,
+    alltidLedigtLås,
   )
   return { service, activationQueue }
 }
@@ -180,6 +185,7 @@ describe('T1.2 · renew() dispatchar origin:succession', () => {
       noop,
       contractNumbers as never,
       activationQueue as never,
+      alltidLedigtLås,
     )
 
     const result = await service.renew('lease-1', {} as never, 'org-1')
@@ -242,6 +248,7 @@ describe('T1.2 · autoRenewExpiredFixedTerm() dispatchar origin:succession', () 
       noop,
       contractNumbers as never,
       activationQueue as never,
+      alltidLedigtLås,
     )
 
     const n = await (

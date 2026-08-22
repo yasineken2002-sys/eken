@@ -44,6 +44,8 @@ import {
   type TerminationInitiator,
 } from './leases.compliance'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import { CRON_LOCK_TTL_SEC } from '../common/redis/cron-lock'
+import { LockService } from '../common/redis/lock.service'
 
 const INCLUDE = {
   unit: { include: { property: true } },
@@ -424,6 +426,9 @@ export class LeasesService {
     private readonly contracts: ContractTemplateService,
     private readonly contractNumbers: ContractNumberService,
     private readonly activationQueue: LeaseActivationQueue,
+    // Cron-lås (klass A). Sist i listan: nya beroenden läggs till på slutet
+    // så befintliga positionsanrop inte tyst byter betydelse.
+    private readonly locks: LockService,
   ) {}
 
   async findAll(organizationId: string) {
@@ -1343,6 +1348,33 @@ export class LeasesService {
   //   c) avsluta uppsagda avtal som nått slutdatum
   @Cron('0 6 * * *')
   async processLifecycle(): Promise<void> {
+    // ── LÅST (klass A) ────────────────────────────────────────────────────
+    //
+    // Auto-förnyelsen skapar ett NYTT avtal. Två samtidiga körningar läser samma
+    // kandidatlista och skulle skapa två förnyelseavtal — och ett dubbelt avtal
+    // blir dubbla avier, alltså en dubbel fordran mot en hyresgäst.
+    //
+    // Låset skyddar mot SAMTIDIGHET — två repliker som kör jobbet samtidigt.
+    // Prod kör i dag en instans (`numReplicas: null`), så det är FÖREBYGGANDE:
+    // skyddet är en deployinställning, inte en kodinvariant, och aktiveras den
+    // dag tjänsten skalas upp utan att någon rör koden.
+    const result = await this.locks.runIfUnlocked(
+      'cron:leases-lifecycle',
+      () => this.processLifecycleUnsafe(),
+      { ttlSec: CRON_LOCK_TTL_SEC },
+    )
+    if (!result.ran) {
+      // Ett tyst överhopp är oskiljbart från "cronen kördes aldrig". Säg det —
+      // och säg hur gammalt låset var, så ett normalt överhopp går att skilja
+      // från ett hängt lås som stängt av jobbet.
+      this.logger.log(
+        `[cron:leases-lifecycle] Kördes redan av en annan replik — hoppar över. ` +
+          `Låset hållet i ${result.heldForSec ?? '?'} s av ${CRON_LOCK_TTL_SEC} s.`,
+      )
+    }
+  }
+
+  private async processLifecycleUnsafe(): Promise<void> {
     // T5 B1c — linda hela kroppen: en transient DB-blipp på autoRenewens första
     // findMany larmar nu via Sentry i stället för att dö tyst. Cron-only (ingen
     // manuell controller-väg), så kroppen kan lindas direkt.
@@ -1484,11 +1516,43 @@ export class LeasesService {
       try {
         // Gamla avtalet ACTIVE→EXPIRED (statusmaskin, #60).
         this.assertLeaseTransition(lease.status, 'EXPIRED')
-        const { created, voidedIncreases } = await this.prisma.$transaction(async (tx) => {
-          await tx.lease.update({
-            where: { id: lease.id },
+        const utfall = await this.prisma.$transaction(async (tx) => {
+          // ── ANSPRÅKET: VILLKORAD updateMany, INTE ETT OVILLKORLIGT update ──
+          //
+          // Här stod `tx.lease.update({ where: { id } })`. Den skriver ALLTID,
+          // oavsett vad raden hade för status när den lästes. Kandidatlistan
+          // hämtas före loopen, så två körningar som överlappar läser samma
+          // avtal, båda lyckas med sitt update, och båda skapar ett
+          // förnyelseavtal. Ett dubbelt avtal blir dubbla avier — alltså en
+          // dubbel fordran mot en hyresgäst.
+          //
+          // LÅSET OCH ANSPRÅKET SKYDDAR OLIKA SAKER, och det är därför båda
+          // finns:
+          //
+          //   LÅSET (runIfUnlocked) skyddar mot SAMTIDIGHET — två instanser
+          //   som kör jobbet samtidigt. Det är en deployinställning bort:
+          //   prod kör i dag en instans, och då gör låset ingenting.
+          //
+          //   ANSPRÅKET skyddar mot OMTAG — en omstart mitt i loopen, ett
+          //   manuellt återkörande, en framtida retry. Det gäller redan i EN
+          //   instans, alltså i dag. Ett lås ovanpå den ovillkorliga
+          //   skrivningen hade sett ut som ett löst problem.
+          //
+          // Formen är densamma som `escalateNoticeToReminded` redan använder:
+          // villkoret upprepar det kandidatfrågan filtrerade på, så raden bara
+          // kan anspråkas av den körning som ser den OFÖRÄNDRAD.
+          const claim = await tx.lease.updateMany({
+            where: {
+              id: lease.id,
+              status: 'ACTIVE',
+              leaseType: 'FIXED_TERM',
+              terminatedAt: null,
+            },
             data: { status: 'EXPIRED' },
           })
+          // count === 0: någon annan hann före (eller avtalet ändrades under
+          // körningen). Ingen förnyelse, inget kontraktsnummer förbrukat.
+          if (claim.count === 0) return null
 
           // Auto-förnyat kontrakt skapas direkt ACTIVE → allokera eget
           // kontraktsnummer i samma transaktion (annars NULL contractNumber).
@@ -1523,6 +1587,17 @@ export class LeasesService {
           await this.applyActivationEffects(tx, lease.unitId)
           return { created: newLease, voidedIncreases }
         }, PRISMA_DEFAULT_TX_LIMITS)
+
+        // Anspråket förlorades — en annan körning (eller ett tidigare omtag)
+        // har redan förnyat avtalet. Inget fel, inget att räkna.
+        if (utfall === null) {
+          this.logger.log(
+            `[Leases] Auto-renew hoppade över ${lease.id}: anspråket förlorades ` +
+              '(redan förnyat av en annan körning).',
+          )
+          continue
+        }
+        const { created, voidedIncreases } = utfall
 
         if (voidedIncreases > 0) {
           this.notifyVoidedIncreases(

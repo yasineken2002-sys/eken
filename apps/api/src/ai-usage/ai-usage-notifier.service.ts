@@ -6,6 +6,8 @@ import { MailService } from '../mail/mail.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { PLAN_LIMITS, USAGE_WARNING_THRESHOLDS, getMonthStart } from '@eken/shared'
 import type { SubscriptionPlan } from '@eken/shared'
+import { CRON_LOCK_TTL_SEC } from '../common/redis/cron-lock'
+import { LockService } from '../common/redis/lock.service'
 
 /**
  * Daglig påminnelse-cron som kollar varje organisations AI-användning
@@ -28,10 +30,40 @@ export class AiUsageNotifierService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
+    // Cron-lås (klass A). Sist i listan: nya beroenden läggs till på slutet
+    // så befintliga positionsanrop inte tyst byter betydelse.
+    private readonly locks: LockService,
   ) {}
 
   @Cron('0 9 * * *')
   async dailyCheck(): Promise<void> {
+    // ── LÅST (klass A) ────────────────────────────────────────────────────
+    //
+    // Mejlet är skyddat av sin idempotensnyckel (Bull dedupar på jobId), men
+    // `notifications.create` är en oskyddad insert: två körningar ger TVÅ
+    // notisrader till samma admin om samma tröskel.
+    //
+    // Låset skyddar mot SAMTIDIGHET — två repliker som kör jobbet samtidigt.
+    // Prod kör i dag en instans (`numReplicas: null`), så det är FÖREBYGGANDE:
+    // skyddet är en deployinställning, inte en kodinvariant, och aktiveras den
+    // dag tjänsten skalas upp utan att någon rör koden.
+    const result = await this.locks.runIfUnlocked(
+      'cron:ai-usage-warnings',
+      () => this.dailyCheckUnsafe(),
+      { ttlSec: CRON_LOCK_TTL_SEC },
+    )
+    if (!result.ran) {
+      // Ett tyst överhopp är oskiljbart från "cronen kördes aldrig". Säg det —
+      // och säg hur gammalt låset var, så ett normalt överhopp går att skilja
+      // från ett hängt lås som stängt av jobbet.
+      this.logger.log(
+        `[cron:ai-usage-warnings] Kördes redan av en annan replik — hoppar över. ` +
+          `Låset hållet i ${result.heldForSec ?? '?'} s av ${CRON_LOCK_TTL_SEC} s.`,
+      )
+    }
+  }
+
+  private async dailyCheckUnsafe(): Promise<void> {
     this.logger.log('Kör daglig AI-användnings + trial-kontroll')
     // T5 B1c — runCronSafely ersätter det tysta try/catch: ett fel på
     // outer-findMany (org-listan) i endera delkontrollen larmar nu via Sentry

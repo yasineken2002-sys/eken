@@ -27,6 +27,13 @@ export class AviseringScheduler {
   // 1:a varje månad kl 07:00. För maj-avi ⇒ kör 1 maj. Förfallodag
   // beräknas av AviseringService till sista vardagen i april (= månad
   // FÖRE den hyran avser, enligt 12 kap. 20 § JB).
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // RentNotice @@unique([leaseId, year, month, type]) — andra körningen får
+  // P2002, som fångas som benign idempotens (avisering.service.ts:426).
+  // Ingen dubbel avi kan skapas.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 7 1 * *')
   async generateForCurrentMonth(): Promise<void> {
     const now = new Date()
