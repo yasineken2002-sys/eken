@@ -5,6 +5,7 @@ import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
 import { generateInvoiceHtml } from './templates/invoice-pdf.template'
+import { PDF_WAIT_UNTIL } from './pdf-wait-until'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
@@ -73,7 +74,7 @@ export class PdfService implements OnModuleDestroy {
 
   async generateFromHtml(html: string): Promise<Buffer> {
     return this.withPage(async (page) => {
-      await page.setContent(html, { waitUntil: 'networkidle0' })
+      await page.setContent(html, { waitUntil: PDF_WAIT_UNTIL })
       const pdf = await page.pdf({
         format: 'A4',
         printBackground: true,
@@ -102,7 +103,7 @@ export class PdfService implements OnModuleDestroy {
     meta: { contractNumber: string; organizationName: string },
   ): Promise<Buffer> {
     return this.withPage(async (page) => {
-      await page.setContent(html, { waitUntil: 'networkidle0' })
+      await page.setContent(html, { waitUntil: PDF_WAIT_UNTIL })
 
       const headerHtml = `
         <div style="font-size:8pt;color:#6b7280;width:100%;padding:0 18mm;
@@ -200,7 +201,7 @@ export class PdfService implements OnModuleDestroy {
     })
 
     return this.withPage(async (page) => {
-      await page.setContent(html, { waitUntil: 'networkidle0' })
+      await page.setContent(html, { waitUntil: PDF_WAIT_UNTIL })
       const pdf = await page.pdf({
         format: 'A4',
         printBackground: true,

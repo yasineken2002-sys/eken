@@ -413,6 +413,39 @@ jobs:
       - name: Verify every cron job is classified and every invariant is named
         run: node apps/api/scripts/check-cron-classification.mjs
 
+  pdf-selfcontained-guard:
+    name: PDF template self-contained guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # PdfService väntar `load` i stället för `networkidle0`. Mätningen bakom
+      # det står i apps/api/src/invoices/pdf-wait-until.ts: väntan var ~1970 ms
+      # och OBEROENDE av innehållet, för att sidan gör noll nätverksanrop —
+      # logotypen bäddas in som data:-URL i Node innan HTML:en når webbläsaren.
+      #
+      # Hela grunden för att `load` räcker är alltså att ingen mall hämtar
+      # något utifrån. Den dagen någon lägger in ett typsnitt från Google Fonts
+      # är antagandet brutet, och det ska synas HÄR — inte som en PDF utan
+      # logotyp hos en kund.
+      #
+      # Mallmängden härleds ur koden (renderingsställen → producent →
+      # anropskedja genom funktionskroppar, in i lokala importer), inte ur en
+      # handlista. Det är hur besiktningsprotokollet hittades: det saknades i
+      # den manuella uppräkningen.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (5 canaries, each must fire)
+        run: node apps/api/scripts/check-pdf-templates-selfcontained.mjs --self-test
+
+      - name: Verify every PDF template is self-contained
+        run: node apps/api/scripts/check-pdf-templates-selfcontained.mjs
+
   skip-precondition-guard:
     name: Skip precondition guard
     runs-on: ubuntu-latest
@@ -1032,6 +1065,7 @@ jobs:
       - ai-tool-effects-guard
       - action-tool-authorization-guard
       - cron-classification-guard
+      - pdf-selfcontained-guard
       - skip-precondition-guard
       - reminder-fee-guard
       - period-lookup-guard
