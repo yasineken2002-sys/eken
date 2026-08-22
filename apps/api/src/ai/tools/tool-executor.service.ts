@@ -1,6 +1,7 @@
 import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common'
 import { randomUUID } from 'crypto'
 import { runAsAi } from '../../common/ai-origin/ai-origin.context'
+import { drainEffects, runWithEffectCollector } from '../../common/ai-effects/ai-effects.context'
 import { noteSubjectCandidates } from '../../common/ai-subjects/ai-subjects.context'
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
@@ -471,6 +472,34 @@ export class ToolExecutorService {
     userRole: string,
     auditContext?: { conversationId?: string | null; confirmedAt?: Date | null },
   ): Promise<ToolResult> {
+    // KOLLEKTORN OMSLUTER HELA KROPPEN, inte bara verktygskörningen.
+    //
+    // Först låg `runWithEffectCollector` runt enbart `executeToolUnsafe`, och
+    // `drainEffects()` anropades EFTER att den returnerat — alltså utanför
+    // AsyncLocalStorage-scopet, där store är undefined och tömningen alltid ger
+    // en tom lista. Koden kompilerade, körde och bokförde noll effekter. Bara
+    // testet mot en RIKTIG databas kunde se det; en Prisma-attrapp har ingen
+    // extension och hade varit grön oavsett.
+    return runWithEffectCollector(() =>
+      this.executeToolWithAudit(
+        toolName,
+        toolInput,
+        organizationId,
+        userId,
+        userRole,
+        auditContext,
+      ),
+    )
+  }
+
+  private async executeToolWithAudit(
+    toolName: string,
+    toolInput: Record<string, unknown>,
+    organizationId: string,
+    userId: string,
+    userRole: string,
+    auditContext?: { conversationId?: string | null; confirmedAt?: Date | null },
+  ): Promise<ToolResult> {
     const startedAt = Date.now()
     let result: ToolResult
     let thrownError: Error | null = null
@@ -486,6 +515,8 @@ export class ToolExecutorService {
       // hur djupt ned i anropskedjan det än ligger. Tjänster som skriver
       // händelser läser ursprunget via `resolveActorType` i stället för att få
       // det nedträtt — en framtida anropare kan därmed inte glömma det.
+      // Prisma-extensionen noterar varje skrivning som sker här inne, in i den
+      // kollektor `executeTool` öppnade. Verktygen vet ingenting om det.
       result = await runAsAi(executionId, () =>
         this.executeToolUnsafe(toolName, toolInput, organizationId, userId, userRole, executionId),
       )
@@ -518,6 +549,10 @@ export class ToolExecutorService {
         durationMs: Date.now() - startedAt,
         requiredConfirmation: ACTION_TOOLS.has(toolName),
         confirmedAt: auditContext?.confirmedAt ?? null,
+        // ÄVEN VID FEL. Ett verktyg som hann skapa två rader innan det kastade
+        // har orsakat två rader — att bara spåra lyckade körningar hade lämnat
+        // just de fall som är svårast att städa utan spår.
+        effects: drainEffects(),
       })
       throw thrownError
     }
@@ -566,6 +601,8 @@ export class ToolExecutorService {
       durationMs: Date.now() - startedAt,
       requiredConfirmation: ACTION_TOOLS.has(toolName),
       confirmedAt: auditContext?.confirmedAt ?? null,
+      // VAD KÖRNINGEN ORSAKADE. Samlat av Prisma-extensionen, inte av verktyget.
+      effects: drainEffects(),
     })
 
     return result

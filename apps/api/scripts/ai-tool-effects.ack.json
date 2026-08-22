@@ -1,0 +1,6 @@
+{
+  "$comment": "KVITTERINGAR — ACTION_TOOLS som med flit INTE producerar någon utfallskoppling. Varje post säger VARFÖR verktyget inte skapar eller ändrar någon entitet. Minst 30 tecken; en kvittering som bara säger 'behövs inte' är ingen kvittering.",
+  "$howto": "Listan fäller ÅT BÅDA HÅLLEN: ett ACTION_TOOL som varken står i EFFECT_PRODUCING_TOOLS eller här är rött, OCH en kvittering vars verktyg inte längre finns i ACTION_TOOLS är rött. Lägg ALDRIG till en post för hand för att tysta ett nytt fynd — verktyget SKA producera en koppling, och mekanismen ger den automatiskt.",
+  "$measured": "Mätt 2026-08-22: INGEN av de 29 ACTION_TOOLS visade sig vara effektfri. Även 'skicka'-verktygen skriver — send_invoice_email gör transitionStatus, skriver en InvoiceEvent och nollar sendError; pause_reminders/resume_reminders växlar en flagga via invoice.update. Listan är därför TOM, och det är ett resultat, inte en lucka.",
+  "effectFree": {}
+}

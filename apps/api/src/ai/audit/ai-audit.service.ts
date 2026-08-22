@@ -5,6 +5,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { applyPatterns, AUDIT_PATTERNS, REPLACEMENT } from '../../common/redaction/patterns'
+import type { AiToolEffect } from '../../common/ai-effects/ai-effects.context'
 
 // Mönster för svenska personnummer (10 eller 12 siffror, valfri separator).
 // Vi maskerar dessa innan de sparas i AiToolExecution.toolInput/toolResult
@@ -198,6 +199,13 @@ export class AiAuditService {
     durationMs: number
     requiredConfirmation?: boolean
     confirmedAt?: Date | null
+    /**
+     * Vad körningen ORSAKADE. Samlas av Prisma-extensionen
+     * (`common/prisma/ai-effect-extension.ts`) medan verktyget kör, aldrig av
+     * verktyget självt — se ai-effects.context.ts för varför en konvention inte
+     * hade hållit.
+     */
+    effects?: AiToolEffect[]
   }): Promise<void> {
     try {
       const sanitizedInput = sanitizeForAudit(args.toolInput)
@@ -219,6 +227,23 @@ export class AiAuditService {
           durationMs: args.durationMs,
           requiredConfirmation: args.requiredConfirmation ?? false,
           confirmedAt: args.confirmedAt ?? null,
+          // NÄSTLAD SKRIVNING, inte en andra `create`. Effekterna hör till
+          // auditraden och ska dela dess öde: blir raden inte skriven ska
+          // effekterna inte heller finnas, för de pekar då på ett
+          // `aiToolExecutionId` som ingen kan slå upp.
+          ...(args.effects && args.effects.length > 0
+            ? {
+                effects: {
+                  create: args.effects.map((e) => ({
+                    organizationId: args.organizationId,
+                    entityType: e.entityType,
+                    entityId: e.entityId,
+                    operation: e.operation,
+                    rowCount: e.rowCount,
+                  })),
+                },
+              }
+            : {}),
         },
       })
     } catch (err) {

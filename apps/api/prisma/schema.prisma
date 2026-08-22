@@ -728,6 +728,7 @@ model Organization {
   aiMemories         AiMemory[]
   aiUsageLogs        AiUsageLog[]
   aiToolExecutions   AiToolExecution[]
+  aiToolEffects      AiToolEffect[]
   maintenanceTickets MaintenanceTicket[]
   rentNotices        RentNotice[]
   inspections        Inspection[]
@@ -2747,11 +2748,71 @@ model AiToolExecution {
   user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
+  /// Vad körningen orsakade. Ingen FK åt andra hållet — se AiToolEffect.
+  effects AiToolEffect[] @relation("AiToolExecutionEffects")
+
   @@index([organizationId, createdAt])
   @@index([userId, createdAt])
   @@index([tenantId, createdAt])
   @@index([toolName])
 }
+/// VAD EN AI-VERKTYGSKÖRNING FAKTISKT ORSAKADE.
+///
+/// `AiToolExecution` bär vad AI:n FÖRSÖKTE. Den här tabellen bär vad som
+/// SKAPADES eller ÄNDRADES — utan den går en åtgärd inte att granska, verifiera
+/// eller backa, och för ett agentiskt bygge är det diskvalificerande.
+///
+/// EN BARNTABELL, INTE TVÅ KOLUMNER. Mätt: av de nio ACTION_TOOLS vars
+/// skrivningar gick att lösa upp statiskt rör FYRA redan flera modeller, och
+/// flera verktyg rör ett OBEGRÄNSAT antal rader (`generate_rent_notices`,
+/// `import_bgmax_file`, `send_overdue_reminders`). Två nullbara kolumner kan
+/// inte representera det.
+///
+/// FRÄMMANDE NYCKEL, TILL SKILLNAD FRÅN `JournalEntry.aiToolExecutionId`.
+///
+/// Den kolumnen saknar FK därför att verifikatet skrivs INNE i verktygets
+/// transaktion medan auditraden kommer efteråt och fire-and-forget — referensen
+/// måste få peka i tomma intet.
+///
+/// Här är ordningen den omvända: effekterna skrivs som en NÄSTLAD skrivning
+/// tillsammans med auditraden, i samma operation. En effekt kan därför aldrig
+/// finnas utan sin körning, och FK:n uttrycker den invarianten i stället för att
+/// lita på den. `onDelete: Cascade` är nödvändigt, inte bekvämt:
+/// `AiRetentionService` gallrar `AiToolExecution` med `deleteMany`, och en
+/// Restrict hade fått gallringen att fallera på första körningen.
+model AiToolEffect {
+  id                String   @id @default(uuid())
+  /// Körningen som orsakade effekten. FK med Cascade — se modellens huvud.
+  aiToolExecutionId String
+  organizationId    String
+
+  /// Prisma-modellens namn, t.ex. `Invoice`. Produceras av skrivvägen, aldrig
+  /// av verktyget — se common/prisma/ai-effect-extension.ts.
+  entityType        String
+  /// Radens id. NULL för updateMany/deleteMany, där Prisma bara ger ett antal.
+  entityId          String?
+  operation         AiEffectOperation
+  /// Antal rader som rördes. 1 för enkeloperationer, N för *Many.
+  rowCount          Int      @default(1)
+
+  createdAt         DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  execution    AiToolExecution @relation("AiToolExecutionEffects", fields: [aiToolExecutionId], references: [id], onDelete: Cascade)
+
+  /// Den bärande frågan: "vad orsakade den här körningen?"
+  @@index([aiToolExecutionId])
+  /// Och den omvända: "vad har AI:n gjort med den här raden?"
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, createdAt])
+}
+
+enum AiEffectOperation {
+  CREATE
+  UPDATE
+  DELETE
+}
+
 
 // Hyresgäst-AI: separata tabeller från AiConversation/AiMessage för att hålla
 // fastighetsägar- och hyresgäst-konversationer isolerade. Hyresgästen får

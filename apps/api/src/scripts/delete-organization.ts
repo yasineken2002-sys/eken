@@ -123,6 +123,11 @@ export const DELETION_STEPS: readonly Step[] = [
   { model: 'BankStatementImport', restrictAgainst: 'Organization', where: byOrg },
   { model: 'BankConsent', restrictAgainst: 'Organization', where: byOrg },
   { model: 'AiUsageLog', restrictAgainst: 'Organization', where: byOrg },
+  // FÖRE AiToolExecution: effekterna har en Cascade-FK dit, så de skulle följa
+  // med ändå — men deras EGEN Organization-FK är Restrict (samma hållning som
+  // körningarna: ett revisionsspår raderas inte av misstag). Steget står därför
+  // uttryckligen, och ordningen gör det till en no-op i stället för ett fel.
+  { model: 'AiToolEffect', restrictAgainst: 'Organization', where: byOrg },
   { model: 'AiToolExecution', restrictAgainst: 'Organization', where: byOrg },
   { model: 'AiPendingAction', restrictAgainst: '— (ingen FK mot Organization)', where: byOrg },
   { model: 'AccountingPeriodEvent', restrictAgainst: 'Organization', where: byOrg },
