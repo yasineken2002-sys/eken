@@ -913,6 +913,75 @@ har jag sett den falla?**
 
 ---
 
+## En förbehandlad indata är bara de filer kontrollen klarade att läsa
+
+Direkt syskon till kanariefågeln ovan. En kontroll som **förbehandlar** sin
+indata — strippar kommentarer, blankar stränginnehåll, normaliserar escapade
+tecken — mäter inte källan. Den mäter sin egen tolkning av källan. Tolkar den
+fel blir utfallet inte ett fel, utan **tystnad**.
+
+Uppmätt i PDF-mallvakten (#567). Skannern blankar stränginnehåll för att en `//`
+inne i en mall ska kunna vara `https://` och inte en kommentar. Den kände inte
+regex-literaler, och läste därför `"` i
+
+```js
+.replace(/"/g, '&quot;')
+```
+
+som en strängstart — och blankade allt fram till nästa `"`:
+
+```
+11 629 tecken av platform-invoices.service.ts maskerade
+  → renderingsanropet försvann ur mängden
+  → vakten var GRÖN om HELA den filen
+```
+
+Ingen befintlig regel föll. Vakten hade inte fel om något; den hade slutat läsa.
+
+**Regeln:** en kontroll som förbehandlar sin indata måste ha en kanariefågel som
+matar in **exakt det mönster som kan lura förbehandlingen** — inte bara ett
+positivt fall. Den i #567 matar in en regex-literal följd av en mall med extern
+referens och kräver att mallen fortfarande hittas. Utan den mäter kontrollen
+bara de filer den råkar klara av att läsa, och man vet inte vilka de är.
+
+---
+
+## En uppräkning krymper tyst — av ett tak ELLER av ett filter
+
+Samma familj: mängden ser fullständig ut därför att det som föll bort inte
+lämnade något spår.
+
+**Taket** är det uppenbara: `head`, `tail`, `-m`, en `LIMIT`. En uppräkning som
+ska vara uttömmande får aldrig passera ett tak. Räkna först, jämför antalet mot
+källan, och **skriv ut antalet** — en trunkering syns bara om talet står där.
+
+**Filtret är det farliga**, för det ser omsorgsfullt ut. Uppmätt i #567:
+uppräkningen av PDF-flöden filtrerades med `grep -v spec` för att utesluta
+testfiler. Den uteslöt också **hela `apps/api/src/inspections/`** — katalognamnet
+bär delsträngen `spec`:
+
+```
+in[spec]tions
+
+grep -rn "generateFromHtml" … | grep -c inspections            → 7
+grep -rn "generateFromHtml" … | grep -v spec | grep -c inspec…  → 0
+```
+
+Bland de sju låg `inspections.service.ts:434` — ett riktigt PDF-flöde
+(besiktningsprotokollet), som föll ur mängden tillsammans med sex spec-rader.
+Det saknades i BÅDA uppräkningarna och kom tillbaka först när mallmängden
+härleddes ur koden i stället för att listas.
+
+**Ett `-v`-mönster är en delsträngsmatchning mot hela sökvägen, inte mot
+filtypen.** Ska testfiler uteslutas: matcha formen (`\.spec\.ts$`), inte ordet.
+
+En efterräkning till. Jag rapporterade först `| head -12` som orsaken. Listan var
+åtta rader — taket klippte ingenting. **Orsaken var gissad, inte mätt**, och en
+gissad orsak leder nästa person till fel åtgärd. Belägg den, eller skriv
+"oklart".
+
+---
+
 ## En rad i en statuslista är ett spår, inte ett faktum
 
 **Mät premissen mot aktuell `main` innan du bygger på en revisions- eller
