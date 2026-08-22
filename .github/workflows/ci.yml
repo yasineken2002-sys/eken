@@ -242,6 +242,34 @@ jobs:
       - name: Verify partial matching requires an unambiguous identity
         run: node apps/api/scripts/check-partial-match-identity.mjs
 
+  tool-iteration-cap-guard:
+    name: AI tool iteration cap guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — turtaket ska
+      # vara ETT värde, och det ska aldrig kunna nås utan att användaren får veta
+      # att svaret är ofullständigt.
+      #
+      # Taket låg som `= 3` på tre ställen. När det nåddes föll loopen ur, sista
+      # textblocket skrevs ut, inget fel kastades och ingen markering gjordes —
+      # AI:n kunde alltså SE UT att ha utfört en uppgift när den stannade halvvägs.
+      # I ett system som rör pengar är det den värsta felmoden som finns, för den
+      # ser ut som framgång. Guarden fäller om detektion och markering skiljs åt,
+      # om en fjärde konstant införs, eller om predikatet mjukas upp så att det
+      # larmar på ett fullständigt svar.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (each rule proven by its own assertion)
+        run: node apps/api/scripts/check-tool-iteration-cap.mjs --self-test
+
+      - name: Verify the tool iteration cap is single-sourced and never silent
+        run: node apps/api/scripts/check-tool-iteration-cap.mjs
+
   reminder-fee-guard:
     name: Reminder fee amount guard
     runs-on: ubuntu-latest
@@ -831,6 +859,7 @@ jobs:
       - ocr-lookup-fields-guard
       - ocr-provenance-guard
       - partial-match-identity-guard
+      - tool-iteration-cap-guard
       - reminder-fee-guard
       - period-lookup-guard
       - design-token-guard

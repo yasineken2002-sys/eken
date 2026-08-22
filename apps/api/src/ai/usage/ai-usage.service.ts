@@ -51,6 +51,10 @@ export class AiUsageService {
     /** Subtyp för observabilitet: 'manual_chat', 'morning_insights',
      *  'ocr_invoice', 'contract_scan', 'tenant_chat', 'bank_match'. */
     source?: string
+    /** Verktygsomgångar turen förbrukade. Utelämnas för anrop utan verktygsloop. */
+    toolRounds?: number
+    /** Nåddes turtaket? Då är svaret OFULLSTÄNDIGT — se tool-iteration-cap.ts. */
+    capReached?: boolean
   }): Promise<void> {
     if (!args.usage) {
       this.logger.warn(
@@ -93,6 +97,11 @@ export class AiUsageService {
           costSek: cost.costSek,
           isAutomated: args.isAutomated ?? false,
           source: args.source ?? null,
+          // `?? null` och inte `?? 0`: NOLL omgångar och "ingen verktygsloop
+          // alls" är olika saker, och en frekvensfråga som blandar ihop dem
+          // svarar fel. Kontraktsskanningen har ingen loop — den ska vara NULL.
+          toolRounds: args.toolRounds ?? null,
+          capReached: args.capReached ?? false,
         },
       })
     } catch (err) {

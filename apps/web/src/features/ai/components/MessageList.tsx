@@ -23,6 +23,13 @@ interface MessageListProps {
    * egen etikettlista — se ai.api.ts.
    */
   toolLabels: Record<string, string>
+  /**
+   * Satt när turtaket nåddes: svaret är OFULLSTÄNDIGT.
+   *
+   * Markeringen står redan i `streamingText` (backend skickar den som en delta),
+   * men den ska inte gå att läsa förbi som brödtext — därför en egen varningsyta.
+   */
+  iterationCapped: { toolRounds: number; maxToolRounds: number } | null
   /** Ankare längst ned som sidan scrollar till när något nytt kommer in. */
   endRef: React.RefObject<HTMLDivElement>
 }
@@ -38,6 +45,7 @@ export function MessageList({
   streamingText,
   toolEvents,
   toolLabels,
+  iterationCapped,
   endRef,
 }: MessageListProps) {
   const describe = (name: string) => toolLabels[name] ?? name.replace(/_/g, ' ')
@@ -111,6 +119,21 @@ export function MessageList({
                 <span className="text-[12px] text-gray-400">Tänker...</span>
               </div>
             ) : null}
+            {iterationCapped && (
+              <div
+                role="alert"
+                className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3"
+              >
+                <p className="text-[13px] font-semibold text-amber-700">
+                  Uppgiften slutfördes inte
+                </p>
+                <p className="mt-1 text-[12px] leading-relaxed text-amber-700">
+                  Assistenten nådde gränsen på {iterationCapped.maxToolRounds} verktygsomgångar och
+                  avbröts mitt i arbetet. Svaret ovan är ofullständigt — utgå inte från att något
+                  som nämns är utfört. Dela upp frågan i mindre steg och fråga igen.
+                </p>
+              </div>
+            )}
           </div>
         </motion.div>
       )}
