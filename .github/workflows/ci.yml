@@ -446,6 +446,42 @@ jobs:
       - name: Verify every PDF template is self-contained
         run: node apps/api/scripts/check-pdf-templates-selfcontained.mjs
 
+  graceful-shutdown-guard:
+    name: Graceful shutdown wiring guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # `app.enableShutdownHooks()` är EN rad i main.ts, och en rad utan
+      # anropare kan tas bort utan att något blir rött. Utgångsläget den ersätter
+      # är uppmätt: NOLL SIGTERM-lyssnare, processen död på 26 ms, och en döende
+      # container som plockar NYA jobb ur Redis ända fram till SIGKILL.
+      #
+      # Guarden kräver också att `maxStalledCount` är uttryckligen satt. Utan den
+      # gäller bulls default 1, och ett jobb dör då permanent vid sitt ANDRA
+      # stall NÅGONSIN — förbi attempts och backoff, med en stalledCounter som
+      # aldrig nollställs. Frånvaron ser ut som ett val; den är det inte.
+      #
+      # Talet härleds UR KODEN (minsta `attempts:` över alla *.queue.ts), inte
+      # ur en lista här — och R4 fäller om härledningen slutar hitta något, så
+      # den inte kan bli grön av tomhet.
+      #
+      # Att raden GÖR något är mätt separat i
+      # apps/api/src/common/shutdown/shutdown-hooks.spec.ts (0 lyssnare utan
+      # hooken, 1 med). Vakten äger påkopplingen, specen äger mekaniken.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (8 canaries, each must fire)
+        run: node apps/api/scripts/check-graceful-shutdown.mjs --self-test
+
+      - name: Verify shutdown hooks and the stall budget are wired
+        run: node apps/api/scripts/check-graceful-shutdown.mjs
+
   guard-preprocessor-guard:
     name: Guard preprocessor single-source guard
     runs-on: ubuntu-latest
@@ -1098,6 +1134,7 @@ jobs:
       - cron-classification-guard
       - pdf-selfcontained-guard
       - guard-preprocessor-guard
+      - graceful-shutdown-guard
       - skip-precondition-guard
       - reminder-fee-guard
       - period-lookup-guard

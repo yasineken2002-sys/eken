@@ -102,6 +102,56 @@ import { Psd2Module } from './psd2/psd2.module'
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         redis: config.get<string>('REDIS_URL', 'redis://localhost:6379'),
+        // ── STALL-BUDGETEN ────────────────────────────────────────────────
+        //
+        // `maxStalledCount` stod tidigare inte här alls, vilket betydde bulls
+        // default 1 — och det talet är inte en oskyldig default.
+        //
+        // Ett jobb "stallar" när workern som höll det försvinner utan att
+        // släppa låset: en deploy, en OOM, en krasch. Bull upptäcker det via
+        // lockDuration 30 s + stalledInterval 30 s (alltså upp till ~60 s),
+        // räknar upp jobbets `stalledCounter` och kör om det FRÅN BÖRJAN.
+        //
+        // Överstiger räknaren det här talet gör bull något annat: jobbet
+        // flyttas rakt till `failed` med "job stalled more than allowable
+        // limit" (moveStalledJobsToWait-7.lua:79-114). Den vägen FÖRBIGÅR
+        // `attempts` och `backoff` helt — ingen retry, ingen backoff. Vår
+        // `attempts: 5` på PDF-kön skyddar alltså inte mot ett avbrott.
+        //
+        // OCH — det som gör default 1 farlig — `stalledCounter` NOLLSTÄLLS
+        // ALDRIG. `HINCRBY` är dess enda förekomst i hela biblioteket. Talet
+        // är en LIVSTIDSBUDGET PER JOBB, inte per körning: ett jobb som en
+        // deploy avbröt i mars bär räknaren kvar i juni, och nästa avbrott —
+        // hur långt senare som helst — dödar det permanent.
+        //
+        // ── AVVÄGNINGEN, SOM MÅSTE STÅ HÄR OCH INTE BARA I EN PR-TEXT ─────
+        //
+        // `maxStalledCount` finns för att skydda mot ett jobb som DÖDAR SIN
+        // WORKER — en payload som får processen att gå OOM och som annars
+        // kraschloopar hela kön. Höjer vi talet får ett sådant jobb fler
+        // chanser att göra det. Det är en verklig kostnad, inte en formalitet.
+        //
+        // Vi accepterar den av två belagda skäl:
+        //
+        //  1. Jobben är idempotenta. `claimRowForScan` returnerar null för en
+        //     rad som redan är terminal, `RentNotice` har @@unique på
+        //     (leaseId, year, month, type), och mejlen bär Resends
+        //     Idempotency-Key. En omkörning gör inte om arbetet en andra gång.
+        //  2. Den vanligaste stall-orsaken hos oss är bevisligen DEPLOY, inte
+        //     krasch: 7–19 deployer per aktiv dag, och fram tills den här
+        //     commiten dog processen på 26 ms utan att pausa köhämtningen.
+        //
+        // Slutar något av de två gälla är avvägningen fel och talet ska ned.
+        //
+        // ── VARFÖR 3 ──────────────────────────────────────────────────────
+        //
+        // `settings` här är global för alla sju köer, men producenterna har
+        // olika `attempts` (3 för contract-scan och psd2-sync, 5 för mail,
+        // pdf och lease-activation). Talet är därför MINIMUM av dem: då kan
+        // ingen kös stall-budget överstiga dess felbudget.
+        // check-graceful-shutdown.mjs härleder minimum UR KODEN och fäller om
+        // de glider isär — sänks ett `attempts` till 2 blir CI röd här.
+        settings: { maxStalledCount: 3 },
       }),
     }),
 
