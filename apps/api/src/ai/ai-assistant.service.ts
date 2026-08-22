@@ -19,6 +19,11 @@ import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { AiAuditService } from './audit/ai-audit.service'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
+import {
+  MAX_TOOL_ROUNDS,
+  reachedToolIterationCap,
+  TOOL_ITERATION_CAP_NOTICE,
+} from './tool-iteration-cap'
 import { AI_MODELS, chatRequestOptions, pickChatProfile } from './ai.config'
 import type { ChatModelProfile } from './ai.config'
 import { detectLegalDocumentWarning } from './legal-document-warning'
@@ -707,8 +712,9 @@ export class AiAssistantService {
       { role: 'user' as const, content: userContent },
     ]
 
-    // 4. Call Claude — tool loop with iteration cap
-    const MAX_TOOL_ITERATIONS = 3
+    // 4. Call Claude — tool loop with iteration cap.
+    // Taket bor i tool-iteration-cap.ts. Se den filen för semantiken:
+    // N = verktygsomgångar modellen får ANVÄNDA (N+1 modellanrop, N körningar).
     let iterations = 0
     let currentMessages = messages
     let response = await this.callClaude(
@@ -721,7 +727,7 @@ export class AiAssistantService {
       grounding,
     )
 
-    while (response.stop_reason === 'tool_use' && iterations < MAX_TOOL_ITERATIONS) {
+    while (response.stop_reason === 'tool_use' && iterations < MAX_TOOL_ROUNDS) {
       // ALLA tool_use i turen, inte bara den första.
       //
       // Det här var produktionsbuggen: Claude kan begära flera verktyg i SAMMA
@@ -826,7 +832,31 @@ export class AiAssistantService {
       iterations++
     }
 
-    // end_turn or max iterations reached — extract text reply
+    // ── TURTAKET SYNLIGGÖRS ────────────────────────────────────────────────
+    //
+    // Här stod `// end_turn or max iterations reached` — och de två fallen
+    // behandlades likadant. Ett `end_turn` är ett FÄRDIGT svar; ett `tool_use`
+    // här betyder att modellen ville ha ännu en omgång och inte fick den, alltså
+    // ett AVBRUTET arbete. Att returnera dem likadant lät ett halvfärdigt svar se
+    // ut som ett fullständigt — den värsta felmoden i ett system som rör pengar,
+    // för den ser ut som framgång och ingen letar efter den.
+    const capReached = reachedToolIterationCap(response.stop_reason, iterations)
+    if (capReached) {
+      // MÄTBARHETENS GRÄNS, UTSKRIVEN. SSE-vägen stämplar `AiUsageLog.capReached`
+      // därför att den skriver EN rad per tur. Den här vägen loggar kostnad inne
+      // i `callClaude`, alltså en rad per MODELLANROP — det finns ingen rad som
+      // motsvarar turen att stämpla, och att stämpla alla N+1 hade gjort varje
+      // frekvensfråga till en COUNT(DISTINCT) med en tyst felkälla.
+      //
+      // Att bygga om kostnadsloggningen här till en rad per tur är rätt fix, men
+      // det ändrar hur ALLA historiska kostnadsfrågor läser den här endpointen
+      // och hör inte hemma i samma ändring som markeringen. Tills dess: en
+      // strukturerad loggrad, så att avbrottet syns i drift även på den här vägen.
+      this.logger.warn(
+        `[ai] turtaket nått (${MAX_TOOL_ROUNDS} omgångar) i chat för org ${organizationId}, ` +
+          `konversation ${conversation.id} — svaret är OFULLSTÄNDIGT och markeras för användaren.`,
+      )
+    }
     return this.handleTextResponse(
       response,
       currentMessages,
@@ -836,6 +866,7 @@ export class AiAssistantService {
       userId,
       grounding,
       { blocks: userBlocks, ids: attached.ids },
+      { capReached, toolRounds: iterations },
     )
   }
 
@@ -1499,6 +1530,8 @@ export class AiAssistantService {
       blocks: null,
       ids: [],
     },
+    /** Turtaket: nåddes det, och hur många omgångar förbrukades? */
+    cap: { capReached: boolean; toolRounds: number } = { capReached: false, toolRounds: 0 },
   ): Promise<ChatResponse> {
     // CITAT-INTEGRITET (gap A): på ett grundat svar appendar KODEN den
     // auktoritativa källhänvisningen, byggd ur de hämtade chunkarnas metadata
@@ -1506,8 +1539,13 @@ export class AiAssistantService {
     // hallucinerat lagrum i prosan blir aldrig en källa. Vid MISS (gap B)
     // sätts INGEN källrad — det fanns inget att grunda i.
     const aiText = this.extractText(response)
-    const reply =
+    const grundadText =
       grounding?.outcome === 'grounded' ? appendCodeBoundSource(aiText, grounding) : aiText
+    // Markeringen läggs SIST, efter källraden: modellens egen text är vid ett
+    // avbrott ofta en inledning ("Jag ska bara kolla ..."), och den låter i sig
+    // som att arbete pågår. Markeringen måste stå efter den för att kunna läsas
+    // som en rättelse av allt ovanför.
+    const reply = cap.capReached ? grundadText + TOOL_ITERATION_CAP_NOTICE : grundadText
 
     // Spara user + assistant separat så assistant-raden kan få `blocks`
     // (Anthropic ContentBlock[] från final-turn). Backwards-compatible:

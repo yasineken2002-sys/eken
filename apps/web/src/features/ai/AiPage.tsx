@@ -48,6 +48,11 @@ export function AiPage() {
   const [streamingText, setStreamingText] = useState<string>('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([])
+  /** Turtaket nåddes — svaret är ofullständigt. Nollställs vid varje ny tur. */
+  const [iterationCapped, setIterationCapped] = useState<{
+    toolRounds: number
+    maxToolRounds: number
+  } | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [analysisOpen, setAnalysisOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -167,6 +172,7 @@ export function AiPage() {
       setIsStreaming(true)
       setStreamingText('')
       setToolEvents([])
+      setIterationCapped(null)
 
       streamCleanupRef.current = streamChat(
         msg,
@@ -184,6 +190,16 @@ export function AiPage() {
           },
           onToolResult: ({ id }) => {
             setToolEvents((prev) => prev.map((e) => (e.id === id ? { ...e, status: 'done' } : e)))
+          },
+          onIterationCap: ({ toolRounds, maxToolRounds }) => {
+            // Markeringen står redan i den strömmade texten (kommer som en
+            // `delta`). Den här flaggan gör att den ÄVEN syns som en varning i
+            // gränssnittet — ett avbrutet arbete ska inte gå att läsa förbi som
+            // brödtext. Loggas dessutom så det syns i en supportsession.
+            setIterationCapped({ toolRounds, maxToolRounds })
+            console.warn(
+              `[ai] turtaket nåddes: ${toolRounds}/${maxToolRounds} verktygsomgångar — svaret är ofullständigt`,
+            )
           },
           onPendingAction: (action) => {
             setIsStreaming(false)
@@ -391,6 +407,7 @@ export function AiPage() {
                 streamingText={streamingText}
                 toolEvents={toolEvents}
                 toolLabels={toolLabels}
+                iterationCapped={iterationCapped}
                 endRef={messagesEndRef}
               />
             </div>

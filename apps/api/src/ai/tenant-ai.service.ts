@@ -14,6 +14,11 @@ import { TENANT_TOOLS, TENANT_ACTION_TOOLS } from './tools/tenant-ai-tools.defin
 import { hashPendingAction, PENDING_ACTION_TTL_MS } from './ai-assistant.service'
 import { AI_MODELS } from './ai.config'
 import { maskAiContentForDisplay } from '../common/redaction/mask-display'
+import {
+  MAX_TOOL_ROUNDS,
+  reachedToolIterationCap,
+  TOOL_ITERATION_CAP_NOTICE,
+} from './tool-iteration-cap'
 
 // Portalen har sin EGEN modellnyckel sedan operatörschatten gick till Opus 5.
 // Delad nyckel hade betytt att ett byte i operatörschatten tyst ändrat
@@ -21,7 +26,7 @@ import { maskAiContentForDisplay } from '../common/redaction/mask-display'
 // Opus 5-resonemang (uppmätt: vid 2048 blev svaret tomt).
 const TENANT_MODEL = AI_MODELS.TENANT_CHAT
 const TENANT_MAX_TOKENS = 1024
-const TENANT_MAX_TOOL_ITERATIONS = 3
+// Taket bor i tool-iteration-cap.ts — ETT värde för alla tre looparna.
 
 // Per-tenant kostnadsskydd. Översätter från spec:
 // - 50 anrop/dag per hyresgäst
@@ -174,7 +179,7 @@ export class TenantAiService {
     let currentMessages = messages
     let response = await this.callClaude(currentMessages, tenantContext, organizationId, tenantId)
 
-    while (response.stop_reason === 'tool_use' && iterations < TENANT_MAX_TOOL_ITERATIONS) {
+    while (response.stop_reason === 'tool_use' && iterations < MAX_TOOL_ROUNDS) {
       // ALLA tool_use i turen — se history-integrity.ts. Samma bugg som fanns i
       // operatörschatten: `.find()` besvarade bara det första av flera
       // parallella anrop, och Anthropic avvisade nästa request med 400.
@@ -250,7 +255,14 @@ export class TenantAiService {
       iterations++
     }
 
-    return this.handleTextResponse(response, conversation.id, message)
+    // Samma markering som operatörsvägen. En hyresgäst har ännu mindre
+    // möjlighet att märka att svaret är avkapat — hen ser inga verktygsanrop.
+    return this.handleTextResponse(
+      response,
+      conversation.id,
+      message,
+      reachedToolIterationCap(response.stop_reason, iterations),
+    )
   }
 
   async confirmAction(
@@ -497,8 +509,13 @@ export class TenantAiService {
     response: Anthropic.Message,
     conversationId: string,
     userMessage: string,
+    capReached = false,
   ): Promise<TenantChatResponse> {
-    const reply = this.sanitizeReply(this.extractText(response), conversationId)
+    // Markeringen läggs EFTER saneringen, inte före: `sanitizeReply` maskerar
+    // och putsar modellens text, och markeringen är kodens eget påstående — den
+    // ska inte kunna redigeras bort av en regel som är till för AI-innehåll.
+    const sanerad = this.sanitizeReply(this.extractText(response), conversationId)
+    const reply = capReached ? sanerad + TOOL_ITERATION_CAP_NOTICE : sanerad
     await this.prisma.aiTenantMessage.createMany({
       data: [
         { conversationId, role: 'user', content: userMessage },

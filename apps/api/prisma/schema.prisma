@@ -2688,6 +2688,21 @@ model AiUsageLog {
   // Subtyp för observabilitet: 'manual_chat', 'morning_insights',
   // 'ocr_invoice', 'contract_scan', 'tenant_chat', 'bank_match'…
   source           String?
+
+  /// Verktygsomgångar turen faktiskt förbrukade. Null för anrop utan verktygsloop
+  /// (kontraktsskanning, portföljanalys, juridikdomaren).
+  toolRounds       Int?
+
+  /// Nåddes turtaket (MAX_TOOL_ROUNDS)? Då är svaret OFULLSTÄNDIGT — modellen
+  /// ville ha ännu en omgång och fick den inte.
+  ///
+  /// Kolumnen finns för att frågan "hur ofta händer det?" inte gick att besvara i
+  /// efterhand. Varken AiToolExecution eller AiUsageLog bar iterationsantal eller
+  /// stop_reason, och AiToolExecution-rader går inte att gruppera till turer:
+  /// parallella verktygsanrop i EN omgång är oskiljbara från sekventiella över
+  /// flera. Frekvensen var alltså inte mätbar — bara gissningsbar. Nu är den en
+  /// GROUP BY.
+  capReached       Boolean  @default(false)
   createdAt        DateTime @default(now())
 
   // Revisionsspår: AI-användningsloggen måste bevaras vid org-borttagning (Restrict).
@@ -2696,6 +2711,8 @@ model AiUsageLog {
   tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, createdAt])
+  // Frekvensfrågan ska inte bli en seq scan över hela användningsloggen.
+  @@index([capReached, createdAt])
   @@index([organizationId, isAutomated, createdAt])
   @@index([userId, createdAt])
   @@index([tenantId, createdAt])

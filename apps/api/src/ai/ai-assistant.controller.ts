@@ -53,8 +53,17 @@ import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { chatRequestOptions, pickChatProfile } from './ai.config'
+import {
+  MAX_TOOL_ROUNDS,
+  reachedToolIterationCap,
+  wantsAnotherToolRound,
+  TOOL_ITERATION_CAP_NOTICE,
+} from './tool-iteration-cap'
 
-const STREAM_MAX_TOOL_ITERATIONS = 3
+// Taket bor i tool-iteration-cap.ts. Det stod här som en egen `= 3` och hade
+// redan glidit isär från tjänstevägen — inte i värde, utan i BETYDELSE: den här
+// loopen anropade modellen FÖRST i varvet, så den tredje omgångens resultat
+// skickades aldrig till modellen. Se tool-iteration-cap.ts.
 
 // Samma format som ChatDto:s @IsUUID('4') grindar på POST-vägen. SSE-vägen har
 // ingen ValidationPipe och måste därför göra kontrollen själv.
@@ -309,7 +318,14 @@ export class AiAssistantController {
       let stopReason: string | null = null
       let assistantContent: Anthropic.ContentBlock[] = []
 
-      while (iterations < STREAM_MAX_TOOL_ITERATIONS) {
+      // `true`, inte `iterations < N` — se den explicita grinden nedan.
+      // Villkoret här styrde tidigare BÅDE modellanropet och verktygskörningen,
+      // och eftersom modellanropet ligger först i varvet innebar det att den
+      // sista omgångens verktyg kördes utan att modellen någonsin fick se
+      // resultatet. Arbete utfördes och kastades bort, och användaren fick
+      // modellens inledningstext som "svar".
+      let capReached = false
+      while (true) {
         // B3 — sista grinden före anropet. Pre-flight-kollen i
         // buildContentBlocks såg bara de NYA bilagorna; först här är hela
         // requesten känd (bilagor + rehydrerad historik + system + verktyg).
@@ -374,7 +390,18 @@ export class AiAssistantController {
           cacheWriteTokens += finalMessage.usage.cache_creation_input_tokens ?? 0
         }
 
-        if (stopReason !== 'tool_use') break
+        if (!wantsAnotherToolRound(stopReason)) break
+
+        // ── TURTAKET: modellen ville ha en omgång till och får den inte ──────
+        //
+        // Grinden ligger EFTER modellanropet och FÖRE verktygskörningen. Därmed
+        // gäller samma semantik som tjänstevägen: N verktygsomgångar, N+1
+        // modellanrop, och det sista anropets text är svaret. Ingen omgång körs
+        // vars resultat ändå kastas.
+        if (reachedToolIterationCap(stopReason, iterations)) {
+          capReached = true
+          break
+        }
 
         const toolUses = assistantContent.filter(
           (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
@@ -449,6 +476,27 @@ export class AiAssistantController {
         send('delta', { text: sourceSuffix })
       }
 
+      // ── TURTAKET SYNS HELA VÄGEN UT ────────────────────────────────────────
+      //
+      // TVÅ kanaler, med flit:
+      //
+      //   `delta`          markeringen hamnar i den SYNLIGA texten och i det
+      //                    sparade svaret. Den är den bärande kanalen: en klient
+      //                    som inte känner till den nya händelsen ignorerar den
+      //                    TYST (SSE-läsaren i ai.api.ts har en if-kedja utan
+      //                    else), och då hade markeringen försvunnit på exakt de
+      //                    klienter som inte uppdaterats.
+      //   `iteration_cap`  strukturerad signal så gränssnittet kan rendera det
+      //                    som en varning i stället för som brödtext.
+      //
+      // Aldrig vid `pendingAction`: den turen är inte avbruten, den väntar på en
+      // bekräftelse — att påstå att den misslyckades vore ett falskt larm.
+      if (!pendingAction && capReached) {
+        assistantText += TOOL_ITERATION_CAP_NOTICE
+        send('delta', { text: TOOL_ITERATION_CAP_NOTICE })
+        send('iteration_cap', { toolRounds: iterations, maxToolRounds: MAX_TOOL_ROUNDS })
+      }
+
       // 5. Logga kostnad
       void this.usageService
         .logUsage({
@@ -466,6 +514,10 @@ export class AiAssistantController {
           },
           isAutomated: false,
           source: 'manual_chat',
+          // Gör turtaket MÄTBART. Frågan "hur ofta nås det?" gick inte att
+          // besvara i efterhand — se AiUsageLog.capReached i schema.prisma.
+          toolRounds: iterations,
+          capReached,
         })
         .catch(() => undefined)
 

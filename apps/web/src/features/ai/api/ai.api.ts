@@ -155,6 +155,16 @@ export interface StreamChatHandlers {
   onToolUseExecuting?: (event: { id: string; name: string; input: Record<string, unknown> }) => void
   onToolResult?: (event: { id: string; name: string; result: unknown }) => void
   onPendingAction?: (action: PendingAction & { conversationId: string }) => void
+  /**
+   * Turtaket nåddes — svaret är OFULLSTÄNDIGT.
+   *
+   * Markeringen kommer ÄVEN som en `delta`, alltså i den synliga texten. Den här
+   * händelsen är den strukturerade signalen ovanpå, så gränssnittet kan rendera
+   * varningen som en varning. Att bara ha händelsen hade varit skört: if-kedjan
+   * nedan har ingen `else`, så en okänd händelse ignoreras TYST — och då hade
+   * markeringen försvunnit på varje klient som inte uppdaterats.
+   */
+  onIterationCap?: (event: { toolRounds: number; maxToolRounds: number }) => void
 }
 
 export function streamChat(
@@ -237,6 +247,15 @@ export function streamChat(
                 handlers.onPendingAction?.(
                   data as unknown as PendingAction & { conversationId: string },
                 )
+              } else if (
+                currentEvent === 'iteration_cap' &&
+                typeof data['toolRounds'] === 'number' &&
+                typeof data['maxToolRounds'] === 'number'
+              ) {
+                handlers.onIterationCap?.({
+                  toolRounds: data['toolRounds'],
+                  maxToolRounds: data['maxToolRounds'],
+                })
               } else if (currentEvent === 'done' && typeof data['conversationId'] === 'string') {
                 handlers.onDone(data['conversationId'])
               } else if (currentEvent === 'error' && typeof data['message'] === 'string') {
