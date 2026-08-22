@@ -171,6 +171,62 @@ async function bootstrap() {
     })
   }
 
+  // ── GRACEFUL SHUTDOWN ────────────────────────────────────────────────────
+  //
+  // Den här raden är verkningslös utan tjänstvariabeln
+  // RAILWAY_DEPLOYMENT_DRAINING_SECONDS, och det är hela poängen med att skriva
+  // ned varför den finns.
+  //
+  // Railways dokumentation, ordagrant: "Once the new deployment is online, the
+  // old deployment is sent a SIGTERM signal" och "By default, it is given 0
+  // seconds to gracefully shutdown before being forcefully stopped with a
+  // SIGKILL." Noll. Och: "We do not send any other signals under any
+  // circumstances." Fönstret är alltså inte en egenskap hos plattformen som vi
+  // måste anpassa oss till — det är en tjänstvariabel, och den stod på sitt
+  // default tills den sattes till 60 tillsammans med den här commiten.
+  //
+  // MÄTT på den riktiga appen (sond som räknar process.listenerCount('SIGTERM')
+  // efter bootstrap, dev-läge, tomma köer):
+  //
+  //     utan enableShutdownHooks   0 lyssnare    SIGTERM → exit      26 ms
+  //     med  enableShutdownHooks   1 lyssnare    SIGTERM → exit   2 564 ms
+  //
+  // 26 ms är inte en snabb nedstängning, det är ingen nedstängning: utan
+  // lyssnare gör Node sin default-åtgärd och dör. 2 564 ms är golvet för en ren
+  // stängning med TOMMA köer — sju Bull-köer à två Redis-klienter, Prisma,
+  // Redis och Chromium. Talet 60 är därför ett TAK och inte en väntetid: exitar
+  // processen tidigare fortsätter deployen direkt, så ett generöst tak kostar
+  // ingenting i det vanliga fallet.
+  //
+  // ── VAD RADEN FAKTISKT VINNER ────────────────────────────────────────────
+  //
+  // Inte i första hand att aktiva jobb hinner klart. Det viktigaste är att
+  // @nestjs/bull redan sätter `queue.onApplicationShutdown = () => this.close()`
+  // på varje kö den bygger (bull.providers.js:36-38), och att bulls `close()`
+  // börjar med `pause(true)` — som slutar hämta NYA jobb i samma ögonblick.
+  //
+  // I dag gör den döende containern motsatsen: den plockar nya jobb ur Redis
+  // ända fram till SIGKILL, och varje sådant jobb blir ett stall som ingen bad
+  // om. Att sluta hämta är den vinst som inte beror på hur lång tiden är.
+  //
+  // Hooken aktiverar dessutom tre onModuleDestroy som är skrivna men aldrig har
+  // körts: PdfService (stänger Chromium), PrismaService ($disconnect) och
+  // RedisService (quit). Nest stänger HTTP-servern före shutdown-hookarna, så
+  // requests som redan accepterats får också sin chans.
+  //
+  // VARNING inför nästa läsare: bulls `close()` väntar OBEGRÄNSAT på aktiva
+  // jobb (`whenCurrentJobsFinished` → `Promise.all(this.processing)`, ingen
+  // tidsgräns — bull/lib/queue.js:615, :887, :1374). Lita inte på att den
+  // avslutar. Taket är RAILWAY_DEPLOYMENT_DRAINING_SECONDS, och det som inte
+  // hinner blir SIGKILL:at precis som förut — men då som ett stall med en
+  // konfigurerad budget (se maxStalledCount i app.module.ts), inte som ett jobb
+  // som dör tyst.
+  //
+  // Raden bevakas av apps/api/scripts/check-graceful-shutdown.mjs (att den finns
+  // och står FÖRE app.listen) och av common/shutdown/shutdown-hooks.spec.ts
+  // (att den faktiskt ger en SIGTERM-lyssnare). Tas den bort blir båda röda.
+  app.enableShutdownHooks()
+
   await app.listen(port, '0.0.0.0')
   console.warn(`API running on http://0.0.0.0:${port}`)
   console.warn(`Swagger: http://localhost:${port}/api/docs`)
