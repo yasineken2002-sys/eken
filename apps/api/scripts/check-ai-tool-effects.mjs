@@ -69,9 +69,8 @@ const MIN_SKAL = 30
  * Samma familj som när en annan guard räknade ett namn i en IMPORT som
  * användning: ett omnämnande är inte en anrop. Kod ska prövas mot kod.
  */
-export function withoutComments(text) {
-  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
-}
+import { withoutComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
+export { withoutComments }
 
 /**
  * `executeTool`s kropp — fram till nästa metod på samma indentnivå.
@@ -385,6 +384,15 @@ function selfTest() {
     }),
     'auditskrivningar bär effekterna',
   )
+
+
+  // Den DELADE skannerns kanariefåglar. Går scripts/lib/source-scan.mjs sönder
+  // blir DEN HÄR vakten röd — inte bara skannerns egen körning. Det är hela
+  // poängen med en delad mekanism: bryts den blir varje konsument röd (#463).
+  for (const f of kanariefåglar()) {
+    ok = false
+    console.error(`❌ delad källskanner: ${f}`)
+  }
 
   console.log(ok ? '\n✅ Självtest OK.' : '\n❌ Självtest misslyckades.')
   process.exit(ok ? 0 : 1)

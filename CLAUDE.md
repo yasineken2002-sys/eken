@@ -946,6 +946,26 @@ bara de filer den råkar klara av att läsa, och man vet inte vilka de är.
 
 ---
 
+## Ett för svagt prov ser ut precis som blindhet
+
+När en negativkontroll INTE fäller finns två förklaringar, och de ser likadana
+ut: vakten är blind, eller sonden var för svag. Antar man det första bygger man
+om något som fungerar.
+
+Uppmätt: `check-redact-copies` skulle prövas mot en fil under
+`apps/api/src/inspections/`. Sonden räknade upp `personalNumber`, `passwordHash`
+och tre påhittade fältnamn — **två** kanoniska mot vaktens tröskel
+`MIN_FIELD_OVERLAP = 3`. Vakten var grön, och det såg ut som exakt den blindhet
+jag letade efter. Med fem kanoniska namn föll den direkt.
+
+**Regeln: läs tröskeln UR KODEN innan du bygger sonden, och visa att sonden
+överskrider den.** Tröskeln kan vara ett antal (`MIN_FIELD_OVERLAP`), en längd
+(`MIN_REASON`), ett beloppsspann eller en tidsgräns. Skriv ut både tröskeln och
+sondens värde i mätningen — annars kan ingen skilja "vakten såg inget" från
+"det fanns inget att se".
+
+---
+
 ## En uppräkning krymper tyst — av ett tak ELLER av ett filter
 
 Samma familj: mängden ser fullständig ut därför att det som föll bort inte

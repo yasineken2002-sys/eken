@@ -21,6 +21,7 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { withoutComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const MIGRATIONS_DIR = join(HERE, '..', 'prisma', 'migrations')
@@ -74,10 +75,11 @@ function buildFinalIndexState() {
     const sqlPath = join(MIGRATIONS_DIR, dir, 'migration.sql')
     if (!existsSync(sqlPath)) continue
 
-    // Ta bort rad-kommentarer, dela på ';', normalisera whitespace per statement.
+    // Ta bort rad-kommentarer via den DELADE SQL-skannern, dela på ';',
+    // normalisera whitespace per statement. Den nakna `--`-regexen kunde inte
+    // strängar: ett `--` inuti en literal hade ätit resten av raden.
     // (Index-DDL har aldrig ';' i sina literaler, så ;-split är säker för dessa.)
-    const statements = readFileSync(sqlPath, 'utf8')
-      .replace(/--[^\n]*/g, ' ')
+    const statements = withoutComments(readFileSync(sqlPath, 'utf8'), { dialect: 'sql' })
       .split(';')
       .map((s) => s.replace(/\s+/g, ' ').trim())
       .filter(Boolean)

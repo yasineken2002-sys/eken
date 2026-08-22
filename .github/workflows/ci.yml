@@ -446,6 +446,37 @@ jobs:
       - name: Verify every PDF template is self-contained
         run: node apps/api/scripts/check-pdf-templates-selfcontained.mjs
 
+  guard-preprocessor-guard:
+    name: Guard preprocessor single-source guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # Tre varianter av SAMMA defekt mättes på en dag, av tre olika händer:
+      # en skanner som läste `"` i en regex-literal som strängstart och blankade
+      # 11 629 tecken av en fil (vakten var grön om HELA filen); fyra vakter som
+      # strippade kommentarer utan strängkännedom; en mätsond som desynkade och
+      # rapporterade 36 filer i stället för 30.
+      #
+      # Tre gånger är inte slarv — det är att var och en skriver sin egen
+      # förbehandlare. Den här vakten gör scripts/lib/source-scan.mjs till den
+      # enda, och härleder mängden UR KODEN: varje skript som bär en
+      # förbehandlingsform fälls, oavsett om någon kom ihåg att lista det.
+      # Så hittades den sjunde (check-critical-indexes.mjs), som den manuella
+      # uppräkningen missade.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (5 forms + 7 scanner canaries)
+        run: node apps/api/scripts/check-guard-preprocessors.mjs --self-test
+
+      - name: Verify no guard rolls its own source preprocessor
+        run: node apps/api/scripts/check-guard-preprocessors.mjs
+
   skip-precondition-guard:
     name: Skip precondition guard
     runs-on: ubuntu-latest
@@ -1066,6 +1097,7 @@ jobs:
       - action-tool-authorization-guard
       - cron-classification-guard
       - pdf-selfcontained-guard
+      - guard-preprocessor-guard
       - skip-precondition-guard
       - reminder-fee-guard
       - period-lookup-guard

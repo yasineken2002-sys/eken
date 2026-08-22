@@ -44,6 +44,7 @@
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { removeImports, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const AI_DIR = join(HERE, '..', 'src', 'ai')
@@ -91,11 +92,7 @@ export function findOwnCapConstants(text) {
  * parentes, och en import har ingen. Skillnaden var slumpmässig, inte medveten —
  * därför strippas importerna för BÅDA.)
  */
-export function withoutImports(text) {
-  return text
-    .replace(/^import\s+[\s\S]*?from\s+'[^']*'\s*$/gm, '')
-    .replace(/^import\s*\{[\s\S]*?\}\s*from\s+'[^']*'/gm, '')
-}
+export const withoutImports = (text) => removeImports(text)
 
 /** Kärnan. Exporterad så självtestet kör exakt samma kod som CI. */
 export function evaluate({ capText, loopTexts }) {
@@ -352,6 +349,15 @@ function selfTest() {
     evaluate({ capText: CAP_OK.replace(`export const ${NOTICE}`, 'const annat'), loopTexts: LOOP_OK }),
     `${NOTICE} saknas`,
   )
+
+
+  // Den DELADE skannerns kanariefåglar. Går scripts/lib/source-scan.mjs sönder
+  // blir DEN HÄR vakten röd — inte bara skannerns egen körning. Det är hela
+  // poängen med en delad mekanism: bryts den blir varje konsument röd (#463).
+  for (const f of kanariefåglar()) {
+    ok = false
+    console.error(`❌ delad källskanner: ${f}`)
+  }
 
   console.log(ok ? '\n✅ Självtest OK.' : '\n❌ Självtest misslyckades.')
   process.exit(ok ? 0 : 1)

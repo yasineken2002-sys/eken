@@ -56,6 +56,7 @@
 import { readdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs'
 import { join, dirname, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { blankComments, kanariefåglar } from './lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..')
@@ -437,56 +438,16 @@ export function classify({ value, relPath, lineText, declText, rule }) {
 }
 
 /**
- * Ersätter kommentarer med lika många blanksteg (positioner bevaras) så att
- * radnummer och offsets stämmer i rapporten.
+ * Ersätter kommentarer med lika många blanksteg (positioner bevaras så att
+ * radnummer och offsets stämmer i rapporten).
+ *
+ * Låg tidigare som en egen implementation här. Den kunde strängar — men INTE
+ * regex-literaler, så `.replace(/"/g, …)` läste `"` som en strängstart och
+ * allt fram till nästa `"` behandlades som sträng. Samma defekt som fällde
+ * PDF-vakten (#567). Nu ur den delade skannern.
  */
 export function stripComments(text, ext) {
-  const blank = (s) => s.replace(/[^\n]/g, ' ')
-  if (ext === '.css') {
-    return text.replace(/\/\*[\s\S]*?\*\//g, blank)
-  }
-  // ts/tsx: blockkommentar, radkommentar — men inte inuti strängar.
-  let out = ''
-  let i = 0
-  let quote = null
-  while (i < text.length) {
-    const ch = text[i]
-    const next = text[i + 1]
-    if (quote) {
-      if (ch === '\\') {
-        out += text.slice(i, i + 2)
-        i += 2
-        continue
-      }
-      if (ch === quote) quote = null
-      out += ch
-      i++
-      continue
-    }
-    if (ch === '"' || ch === "'" || ch === '`') {
-      quote = ch
-      out += ch
-      i++
-      continue
-    }
-    if (ch === '/' && next === '*') {
-      const end = text.indexOf('*/', i + 2)
-      const stop = end === -1 ? text.length : end + 2
-      out += blank(text.slice(i, stop))
-      i = stop
-      continue
-    }
-    if (ch === '/' && next === '/') {
-      let end = text.indexOf('\n', i)
-      if (end === -1) end = text.length
-      out += blank(text.slice(i, end))
-      i = end
-      continue
-    }
-    out += ch
-    i++
-  }
-  return out
+  return blankComments(text, ext === '.css' ? { dialect: 'css' } : undefined)
 }
 
 const lineOf = (text, idx) => text.slice(0, idx).split('\n').length
@@ -1359,6 +1320,13 @@ const css = 'color: var(--ev-neutral-500)'
     })(),
     JSON.stringify(diffAllowlist(tokenState.files, tokenBase.files ?? {})).slice(0, 200),
   )
+
+  // Den DELADE skannerns kanariefåglar. Bryts scripts/lib/source-scan.mjs blir
+  // DEN HÄR vakten röd — inte bara skannerns egen körning.
+  for (const f of kanariefåglar()) {
+    failed++
+    console.error(`❌ delad källskanner: ${f}`)
+  }
 
   console.warn(failed === 0 ? '\nSjälvtest: ALLA GRÖNA' : `\nSjälvtest: ${failed} FALLERADE`)
   process.exit(failed === 0 ? 0 : 1)
