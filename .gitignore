@@ -50,3 +50,6 @@ prisma/migrations/dev*
 .proof-*/
 /scratchpad/
 scratchpad-*.md
+
+# Jest-rapporten som noll-kontrollen läser (check-no-skipped-tests.mjs)
+jest-report.json

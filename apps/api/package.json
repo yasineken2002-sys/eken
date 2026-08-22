@@ -10,7 +10,7 @@
     "lint": "eslint src scripts prisma jest.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "jest",
-    "test:ci": "jest --ci --runInBand",
+    "test:ci": "jest --ci --runInBand --json --outputFile=jest-report.json",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config jest-e2e.json",
