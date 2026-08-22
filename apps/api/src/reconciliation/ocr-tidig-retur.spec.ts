@@ -40,6 +40,11 @@ function makeService(opts: { ocrTräff?: boolean; fuzzyKandidat?: boolean } = {}
   }
   const txMock = {
     $queryRaw: jest.fn().mockResolvedValue([]),
+    // H2 identitetsgrind (ocr-identity.ts): matchTransaction frågar numera om
+    // rawOcr gör anspråk på att vara ett SYSTEMTILLDELAT OCR innan fritextgrenen
+    // (Invoice.reference) får konsulteras. Grinden läser Invoice, RentNotice OCH
+    // Tenant — utan tenant i attrappen kraschar den på findFirst av undefined.
+    tenant: { findFirst: jest.fn().mockResolvedValue(null) },
     rentNotice: {
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
@@ -72,6 +77,11 @@ function makeService(opts: { ocrTräff?: boolean; fuzzyKandidat?: boolean } = {}
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
     },
+    // H2 identitetsgrind (ocr-identity.ts): matchTransaction frågar numera om
+    // rawOcr gör anspråk på att vara ett SYSTEMTILLDELAT OCR innan fritextgrenen
+    // (Invoice.reference) får konsulteras. Grinden läser Invoice, RentNotice OCH
+    // Tenant — utan tenant i attrappen kraschar den på findFirst av undefined.
+    tenant: { findFirst: jest.fn().mockResolvedValue(null) },
     rentNotice: {
       // OCR-uppslaget: träff bara om ocrTräff är satt.
       findFirst: jest.fn().mockResolvedValue(opts.ocrTräff ? { id: 'rn-ocr' } : null),

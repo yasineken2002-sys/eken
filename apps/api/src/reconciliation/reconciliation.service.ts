@@ -26,6 +26,7 @@ import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.
 import { computeRentDebt } from '../avisering/rent-debt.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
+import { harSystemtilldelatOcr } from './ocr-identity'
 import {
   validateUploadedFile,
   DETECTED_SPREADSHEET_TYPES,
@@ -803,6 +804,24 @@ export class ReconciliationService {
     // här grenen landar alla BgMax-betalningar för bostadshyror som
     // UNMATCHED, vilket var Bug 3 i bankavstämnings-flödet.
     if (transaction.rawOcr) {
+      // IDENTITETSGRINDEN. `Invoice.reference` är fritext från klienten och låg
+      // tidigare i samma `??`-kedja som `Invoice.ocrNumber` — alltså FÖRE avin.
+      // En hyresavis OCR inskriven som fakturareferens vann då över avin, och
+      // hyresbetalningen bokfördes mot fel dokument utan att något larmade:
+      // avins ocrOutstanding rörs inte, så kravtrappan går vidare mot någon som
+      // faktiskt betalat.
+      //
+      // Regeln, med skälet och inte bara mekaniken: ett systemtilldelat nummer
+      // är en IDENTITET, en fritextsträng är en FÖRHOPPNING, och en förhoppning
+      // får aldrig vinna över en identitet. Gör numret anspråk på att vara en
+      // identitet någonstans i organisationen stängs fritextgrenen helt.
+      //
+      // Funktionen är kvar: ett OCR från ett GAMMALT system (Vitec/Momentum)
+      // som ligger i reference för att befintliga autogiron ska matcha är per
+      // definition inget Evenos sekvenser delat ut — grinden släpper igenom det.
+      // Se ocr-identity.ts för hela resonemanget.
+      const identitet = await harSystemtilldelatOcr(db, organizationId, transaction.rawOcr)
+
       const invoice =
         (await db.invoice.findFirst({
           where: {
@@ -811,13 +830,15 @@ export class ReconciliationService {
             status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
           },
         })) ??
-        (await db.invoice.findFirst({
-          where: {
-            organizationId,
-            reference: transaction.rawOcr,
-            status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
-          },
-        }))
+        (identitet
+          ? null
+          : await db.invoice.findFirst({
+              where: {
+                organizationId,
+                reference: transaction.rawOcr,
+                status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
+              },
+            }))
 
       if (invoice && invoice.total.minus(transaction.amount).abs().lte(tolerance)) {
         if (

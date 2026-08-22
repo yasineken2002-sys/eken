@@ -161,6 +161,29 @@ jobs:
       - name: Verify every number sequence is allocated atomically
         run: node apps/api/scripts/check-sequence-allocation.mjs
 
+  ocr-lookup-fields-guard:
+    name: OCR lookup field classification guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — varje fält som
+      # slås upp mot en banktransaktions råa OCR måste vara KLASSAT i
+      # ocr-identity.ts, och fritextfält måste ligga bakom identitetsgrinden.
+      # Invoice.reference låg ogrindat i uppslaget FÖRE avin i fyra månader utan
+      # att någon tagit ställning till det; utfallet hade varit att en hyresavis
+      # OCR inskriven som fakturareferens tyst kapar hyresbetalningen.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (each rule proven by its own assertion)
+        run: node apps/api/scripts/check-ocr-lookup-fields.mjs --self-test
+
+      - name: Verify every OCR lookup field is classified and free text is gated
+        run: node apps/api/scripts/check-ocr-lookup-fields.mjs
+
   reminder-fee-guard:
     name: Reminder fee amount guard
     runs-on: ubuntu-latest
@@ -747,6 +770,7 @@ jobs:
       - index-guard
       - invoice-number-guard
       - sequence-allocation-guard
+      - ocr-lookup-fields-guard
       - reminder-fee-guard
       - period-lookup-guard
       - design-token-guard
