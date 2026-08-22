@@ -10,6 +10,8 @@ _Eveno_ — fastighetsförvaltnings-SaaS för svenska privata hyresvärdar och m
 
 **Återstår före lansering (gatas av bolagsregistrering):** DB-backup, BankID-inloggning, automatisk bankkoppling (PSD2 — ersätter manuell filuppladdning, en nyckel för att avstämningen ska vara självgående), juridisk slutgenomgång.
 
+> **Mätt status per post: [`docs/revision-status.md`](./docs/revision-status.md).** Varje rad bär den commit-sha den mättes mot. Läs regeln överst i filen innan du bygger på en rad — den är ett spår, inte ett faktum.
+
 **Bärande principer:** automatisera det repetitiva, men maskinen _föreslår_ och människan _bekräftar_ det bindande (avtal, hyreshöjning, inkasso-export, avskrivning). Skuld är ett beräknat tillstånd, aldrig en flagga. AI skriver aldrig SFS-nummer/lagrum i produktionskod — verifieras av människa.
 
 > **"Fortnox för fastigheter"** – Enterprise-grade fastighetssystem. Varje beslut ska hålla Fortnox-standard.
@@ -910,6 +912,36 @@ en kommentar. **Fråga alltid: vad skulle få den här kontrollen att falla — 
 har jag sett den falla?**
 
 ---
+
+## En rad i en statuslista är ett spår, inte ett faktum
+
+**Mät premissen mot aktuell `main` innan du bygger på en revisions- eller
+backlograd.** Raden säger var någon en gång hittade något — inte att det finns
+kvar.
+
+Kostnaden är uppmätt, inte befarad. Revisionslistan skrevs före 2026-08-16 och
+uppdaterades aldrig efter en batch om SEXTON PR:er samma dag, som löste sju av
+dess poster. Fyra halva sessioner gick åt till att upptäcka en post i taget att
+arbetet redan var gjort — med en stående risk att någon "lagar" fungerande kod.
+Listan var dessutom delvis historik redan när den skrevs: H2:s radlåsning (#109)
+landade två månader tidigare.
+
+Därför bär varje rad i [`docs/revision-status.md`](./docs/revision-status.md) en
+**commit-sha**, inte bara ett datum. Ett datum säger när någon skrev raden; en
+sha säger vilket tillstånd raden beskriver:
+
+```bash
+git merge-base --is-ancestor <sha-i-raden> HEAD   # mätt mot en förfader?
+git log --oneline <sha-i-raden>..HEAD -- <filerna raden pekar på>
+```
+
+Har något landat i de filerna sedan dess — mät om posten från KODEN. Visar
+mätningen att den redan är löst: skriv det, uppdatera raden, bygg inte om den.
+
+**Och referera till sakfrågan, aldrig till bokstaven.** Minst tre H1–H5-serier är
+i omlopp samtidigt (SIE4-auditen i `docs/accounting-fix-status.md`, OCR-serien i
+#553/#554, och revisionslistan). Samma bokstav betyder olika saker i olika
+omgångar, och har redan lett fel.
 
 ## Spärrar är riktade: fråga alltid efter den omvända riktningen
 
