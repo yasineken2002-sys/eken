@@ -311,7 +311,13 @@ export function evaluate(filer) {
   for (const m of svc.mask.matchAll(/setContent\([^)]*waitUntil:\s*([^,}\s]+)/g)) {
     if (m[1] !== 'PDF_WAIT_UNTIL') {
       const rad = svc.kalla.slice(0, m.index).split('\n').length
-      fel.push(`R2 ${PDF_SERVICE}:${rad} — waitUntil är "${m[1]}", inte den delade PDF_WAIT_UNTIL. Mätningen och motiveringen bor i ${WAIT_KONST}; en egen literal här kringgår båda.`)
+      // Läs det SKRIVNA värdet ur källan, inte ur masken — där är stränginnehåll
+      // blankat, och meddelandet hade sagt `waitUntil är "'"` i stället för att
+      // namnge värdet. Ett felmeddelande som inte säger vad som står är en
+      // ledtråd mindre för den som ska rätta det.
+      const radtext = svc.kalla.split('\n')[rad - 1] ?? ''
+      const skrivet = (radtext.match(/waitUntil:\s*([^,}\s]+)/)?.[1] ?? m[1]).trim()
+      fel.push(`R2 ${PDF_SERVICE}:${rad} — waitUntil är ${skrivet}, inte den delade PDF_WAIT_UNTIL. Mätningen och motiveringen bor i ${WAIT_KONST}; en egen literal här kringgår båda.`)
     }
   }
   const värde = existsSync(join(ROT, WAIT_KONST))
