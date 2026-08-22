@@ -29,6 +29,10 @@ import { RentNoticeEventsService } from '../avisering/rent-notice-events.service
 import { harSystemtilldelatOcr } from './ocr-identity'
 import { extractOcr, extractOcrFromProse } from './ocr-proveniens'
 import {
+  PARTIAL_ALDRIG_VID_GISSNING,
+  PARTIAL_VID_ENTYDIG_IDENTITET,
+} from './partial-match-identity'
+import {
   validateUploadedFile,
   DETECTED_SPREADSHEET_TYPES,
   MAX_CSV_BYTES,
@@ -826,15 +830,21 @@ export class ReconciliationService {
       // Se ocr-identity.ts för hela resonemanget.
       const identitet = await harSystemtilldelatOcr(db, organizationId, transaction.rawOcr)
 
-      const invoice =
-        (await db.invoice.findFirst({
-          where: {
-            organizationId,
-            ocrNumber: transaction.rawOcr,
-            status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
-          },
-        })) ??
-        (identitet
+      // Uppslaget står i TVÅ NAMNGIVNA variabler i stället för en `??`-kedja,
+      // därför att delbetalningsbeslutet nedan behöver veta VILKEN av dem som
+      // träffade. En kedja svarar bara "en faktura hittades" — och just den
+      // skillnaden är hela säkerhetsregeln (se partial-match-identity.ts).
+      // Frågeordningen och antalet frågor är OFÖRÄNDRADE: fritextuppslaget görs
+      // fortfarande bara när identitetsuppslaget missade OCH grinden är öppen.
+      const fakturaViaIdentitet = await db.invoice.findFirst({
+        where: {
+          organizationId,
+          ocrNumber: transaction.rawOcr,
+          status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
+        },
+      })
+      const fakturaViaFritext =
+        fakturaViaIdentitet !== null || identitet
           ? null
           : await db.invoice.findFirst({
               where: {
@@ -842,9 +852,34 @@ export class ReconciliationService {
                 reference: transaction.rawOcr,
                 status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
               },
-            }))
+            })
+      const invoice = fakturaViaIdentitet ?? fakturaViaFritext
 
-      if (invoice && invoice.total.minus(transaction.amount).abs().lte(tolerance)) {
+      // ── M1: FÖRKONTROLLEN PÅ `invoice.total` ÄR BORTA ───────────────────
+      //
+      // Här stod `invoice.total.minus(amount).abs().lte(tolerance)`. Den mätte
+      // mot fakturans TOTAL, inte mot restskulden, och släppte därför bara
+      // igenom fall som redan var fulla betalningar. Två följder:
+      //
+      //   • En DELBETALNING nådde aldrig klassificeraren — pengarna blev
+      //     liggande omatchade och kravtrappan räknade på hela fakturan.
+      //   • En SLUTBETALNING nådde den inte heller: uppslaget hämtar status
+      //     PARTIAL, men 10 000 − 6 000 = 4 000 > 1 kr föll på förkontrollen.
+      //     Grenen kunde alltså hämta en delbetald faktura och aldrig reglera den.
+      //
+      // Klassificeraren i `applyMatchToInvoice` gör redan rätt bedömning mot
+      // `remaining` (krediteringar inräknade, #517) INNANFÖR radlåset, och
+      // returnerar utan att allokera vid överbetalning. Förkontrollen tillförde
+      // ingen säkerhet — den tog bara bort fall innan den fick se dem.
+      //
+      // IDENTITETEN, INTE BELOPPET, AVGÖR OM PARTIAL FÅR SKE. `fakturaViaIdentitet`
+      // är en träff på det systemtilldelade `ocrNumber` (unikt per organisation,
+      // #553) och pekar ut dokumentet entydigt. `fakturaViaFritext` är en träff på
+      // `Invoice.reference` — fritext, en FÖRHOPPNING (#554). Ett belopp som är
+      // mindre än fakturan är inget svagare bevis för SAMMA faktura; det kan lika
+      // gärna vara full betalning av en annan, mindre. Fritextgrenen får därför
+      // reglera fullt, som förr, men aldrig skapa en delbetalning.
+      if (invoice) {
         if (
           await this.applyMatchToInvoice(
             transaction.id,
@@ -855,10 +890,7 @@ export class ReconciliationService {
             transaction.date,
             null,
             null,
-            // Automatmatchning: ALDRIG partiell. Grenen nås bara när beloppet
-            // redan ligger inom toleransen för fakturans total, och en maskinell
-            // gissning ska inte kunna skapa en delbetalning.
-            false,
+            fakturaViaIdentitet ? PARTIAL_VID_ENTYDIG_IDENTITET : PARTIAL_ALDRIG_VID_GISSNING,
           )
         ) {
           return true
@@ -893,7 +925,7 @@ export class ReconciliationService {
           transaction.amount,
           transaction.date,
           null,
-          true,
+          PARTIAL_VID_ENTYDIG_IDENTITET,
         )
         if (matched) return true
 
@@ -934,7 +966,12 @@ export class ReconciliationService {
           status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] },
         },
       })
-      if (invoice && invoice.total.minus(transaction.amount).abs().lte(tolerance)) {
+      // M1 — samma ändring som OCR-grenen ovan, och SYMMETRISK med avins
+      // motsvarighet nedan: `invoiceNumber` är ett systemtilldelat dokumentnummer,
+      // unikt per organisation, precis som avins `noticeNumber` — som redan
+      // tillåter delbetalning. Identiteten är fastställd innan beloppet vägs in,
+      // så partial är tillåten här.
+      if (invoice) {
         if (
           await this.applyMatchToInvoice(
             transaction.id,
@@ -945,10 +982,7 @@ export class ReconciliationService {
             transaction.date,
             null,
             null,
-            // Automatmatchning: ALDRIG partiell. Grenen nås bara när beloppet
-            // redan ligger inom toleransen för fakturans total, och en maskinell
-            // gissning ska inte kunna skapa en delbetalning.
-            false,
+            PARTIAL_VID_ENTYDIG_IDENTITET,
           )
         ) {
           return true
@@ -974,7 +1008,7 @@ export class ReconciliationService {
           transaction.amount,
           transaction.date,
           null,
-          true,
+          PARTIAL_VID_ENTYDIG_IDENTITET,
         )
         if (matched) return true
       }
@@ -1123,7 +1157,7 @@ export class ReconciliationService {
         transaction.date,
         null,
         null,
-        false,
+        PARTIAL_ALDRIG_VID_GISSNING,
         'fuzzy',
       )
     }
@@ -1143,7 +1177,7 @@ export class ReconciliationService {
         transaction.amount,
         transaction.date,
         null,
-        false,
+        PARTIAL_ALDRIG_VID_GISSNING,
         'fuzzy',
       )
     }
@@ -2276,7 +2310,7 @@ export class ReconciliationService {
         transaction.date,
         userId,
         null,
-        true,
+        PARTIAL_VID_ENTYDIG_IDENTITET,
       )
       if (!matched) {
         throw new BadRequestException(
@@ -2301,7 +2335,7 @@ export class ReconciliationService {
         transaction.amount,
         transaction.date,
         userId,
-        true,
+        PARTIAL_VID_ENTYDIG_IDENTITET,
       )
       if (!matched) {
         throw new BadRequestException(

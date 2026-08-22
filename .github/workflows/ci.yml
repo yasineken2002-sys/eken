@@ -213,6 +213,35 @@ jobs:
       - name: Verify every OCR extractor input is classified and prose requires Luhn
         run: node apps/api/scripts/check-ocr-provenance.mjs
 
+  partial-match-identity-guard:
+    name: Partial match identity guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — en DELBETALNING
+      # får bara auto-matchas när identiteten pekar ut dokumentet entydigt, och
+      # varje dörr in till betalningsallokeringen måste vara registrerad.
+      #
+      # Ett belopp som är MINDRE än fakturan är inget svagare bevis för samma
+      # faktura — det kan lika gärna vara full betalning av en annan, mindre.
+      # `allowPartial` är en boolean, så en bar `true` på fuzzy-grenen är en
+      # enteckensändring som öppnar gissningsmaskinen utan att synas i någon grep.
+      # Guarden kräver därför NAMNGIVNA konstanter och ett register över de grenar
+      # som får skicka identitetskonstanten. R5 fäller dessutom en NY
+      # allokeringsväg — H4 (#483) uppstod för att en sådan dörr saknade den spärr
+      # som syskonvägen hade.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (each rule proven by its own assertion)
+        run: node apps/api/scripts/check-partial-match-identity.mjs --self-test
+
+      - name: Verify partial matching requires an unambiguous identity
+        run: node apps/api/scripts/check-partial-match-identity.mjs
+
   reminder-fee-guard:
     name: Reminder fee amount guard
     runs-on: ubuntu-latest
@@ -801,6 +830,7 @@ jobs:
       - sequence-allocation-guard
       - ocr-lookup-fields-guard
       - ocr-provenance-guard
+      - partial-match-identity-guard
       - reminder-fee-guard
       - period-lookup-guard
       - design-token-guard
