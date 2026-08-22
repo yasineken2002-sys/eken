@@ -7,6 +7,8 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { AiAuditService } from '../audit/ai-audit.service'
 import { TerminationsService } from '../../terminations/terminations.service'
 import { TENANT_ACTION_TOOLS } from './tenant-ai-tools.definition'
+import { assertActionToolAuthorized } from './action-authorization'
+import type { ActionProof } from './action-authorization'
 import { SAFE_TENANT_SELECT } from '../../tenants/tenants.service'
 import { redactSensitive } from '../../common/redaction/redact-sensitive'
 
@@ -42,8 +44,21 @@ export class TenantToolExecutorService {
     toolInput: Record<string, unknown>,
     tenantId: string,
     organizationId: string,
-    auditContext?: { conversationId?: string | null; confirmedAt?: Date | null },
+    auditContext?: {
+      conversationId?: string | null
+      confirmedAt?: Date | null
+      /** Beviset för ett bindande verktyg. Se action-authorization.ts. */
+      actionProof?: ActionProof
+    },
   ): Promise<TenantToolResult> {
+    // SAMMA INVARIANT SOM ÄGARVÄGEN, på samma plats: först av allt.
+    //
+    // Hyresgästens exekverare är en EGEN klass, och det är precis därför
+    // grinden måste bo i en delad modul i stället för i en loop. Två exekverare
+    // som var för sig kommer ihåg att kolla `actionBlock` är två chanser att
+    // glömma; ett anrop till samma assertion är en.
+    assertActionToolAuthorized(toolName, auditContext?.actionProof)
+
     const startedAt = Date.now()
     let result: TenantToolResult
     let thrownError: Error | null = null

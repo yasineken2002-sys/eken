@@ -323,6 +323,9 @@ describe('#326 A — AI-verktyget unmatch_transaction nekas av SAMMA spärr', ()
       'org-1',
       'user-1',
       'ACCOUNTANT',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
 
     expect(result.success).toBe(false)
@@ -343,6 +346,9 @@ describe('#326 A — AI-verktyget unmatch_transaction nekas av SAMMA spärr', ()
       'org-1',
       'user-1',
       'ACCOUNTANT',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
 
     expect(result.success).toBe(true)

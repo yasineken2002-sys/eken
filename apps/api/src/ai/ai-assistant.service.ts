@@ -1,8 +1,9 @@
 import {
+  BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
-  BadRequestException,
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -19,6 +20,7 @@ import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { AiAuditService } from './audit/ai-audit.service'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
+import type { ActionProof } from './tools/action-authorization'
 import {
   MAX_TOOL_ROUNDS,
   reachedToolIterationCap,
@@ -576,6 +578,16 @@ export function requiresDoubleConfirmation(
   return false
 }
 
+/**
+ * Utfallet av ett bekräftelseanspråk. Tre skilda fall — se
+ * `consumePendingAction` för varför de inte får slås ihop.
+ */
+type ConsumeOutcome =
+  | { status: 'claimed'; proof: ActionProof }
+  | { status: 'already-consumed'; pendingActionId: string }
+  | { status: 'expired' }
+  | { status: 'unknown' }
+
 @Injectable()
 export class AiAssistantService {
   private readonly logger = new Logger(AiAssistantService.name)
@@ -940,11 +952,33 @@ export class AiAssistantService {
       toolName,
       toolInput,
     )
-    if (!consumed) {
-      throw new BadRequestException(
-        'Bekräftelsen är ogiltig eller har gått ut. Be assistenten föreslå åtgärden igen.',
+    if (consumed.status === 'already-consumed') {
+      // ── UPPSPELNING: SÄG SANNINGEN, SPELA INTE UPP SVARET ────────────────
+      //
+      // Åtgärden ÄR utförd. Att köra om den vore en andra faktura; att spela upp
+      // det gamla svaret vore en lögn av annat slag — `AiToolExecution.toolResult`
+      // har gått genom `sanitizeForAudit` och är MASKERAT. Det är inte det
+      // verkliga svaret och får inte låtsas vara det, och att lagra ett omaskerat
+      // resultat för uppspelningens skull vore att bygga en ny lagringsplats för
+      // känsliga data.
+      //
+      // I stället: vad som faktiskt hände, hämtat ur utfallskopplingen (#562).
+      // Det är sant, spårbart, och kräver ingen ny persistering av innehåll.
+      throw new ConflictException(
+        `Åtgärden är redan utförd. ${await this.describeEffects(conversationId, toolName)}`,
       )
     }
+    if (consumed.status === 'expired') {
+      throw new BadRequestException(
+        'Bekräftelsen har gått ut och åtgärden utfördes ALDRIG. Be assistenten föreslå den igen.',
+      )
+    }
+    if (consumed.status === 'unknown') {
+      throw new BadRequestException(
+        'Ingen sådan åtgärd har föreslagits i den här konversationen. Be assistenten föreslå den igen.',
+      )
+    }
+    const actionProof = consumed.proof
 
     // Double confirmation: re-prompt with high-risk warning if not yet warned
     if (requiresDoubleConfirmation(toolName, toolInput) && !toolInput.alreadyWarned) {
@@ -979,7 +1013,7 @@ export class AiAssistantService {
         organizationId,
         userId,
         userRole,
-        { conversationId, confirmedAt: new Date() },
+        { conversationId, confirmedAt: new Date(), actionProof },
       )
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Okänt fel'
@@ -1152,26 +1186,72 @@ export class AiAssistantService {
     userId: string,
     toolName: string,
     toolInput: Record<string, unknown>,
-  ): Promise<boolean> {
+  ): Promise<ConsumeOutcome> {
     const hash = hashPendingAction(toolName, toolInput)
-    const match = await this.prisma.aiPendingAction.findFirst({
-      where: {
-        conversationId,
-        organizationId,
-        userId,
-        toolName,
-        toolInputHash: hash,
-        consumedAt: null,
-        expiresAt: { gt: new Date() },
-      },
-      select: { id: true },
+
+    // ── TRE UTFALL, INTE ETT ──────────────────────────────────────────────
+    //
+    // Funktionen svarade tidigare `false` på alla tre, och anroparen sa
+    // "ogiltig eller har gått ut". Det är tre olika saker för den som läser:
+    //
+    //   REDAN UTFÖRD  åtgärden ÄR gjord — svaret ska säga det, och peka på vad
+    //                 som hände. Att kalla den "ogiltig" är direkt vilseledande.
+    //   UTGÅNGEN      inget hände, och tidsfönstret är skälet.
+    //   OKÄND         åtgärden föreslogs aldrig (eller av någon annan).
+    //
+    // Uppslaget sker utan `consumedAt`/`expiresAt` i villkoret, så raden hittas
+    // ÄVEN när den redan är konsumerad — annars går de två första fallen inte
+    // att skilja åt.
+    const rad = await this.prisma.aiPendingAction.findFirst({
+      where: { conversationId, organizationId, userId, toolName, toolInputHash: hash },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, consumedAt: true, expiresAt: true },
     })
-    if (!match) return false
+    if (!rad) return { status: 'unknown' }
+    if (rad.consumedAt) return { status: 'already-consumed', pendingActionId: rad.id }
+    if (rad.expiresAt <= new Date()) return { status: 'expired' }
+
+    // Anspråket är oförändrat ATOMISKT: `consumedAt: null` i WHERE gör att exakt
+    // en samtidig bekräftelse kan vinna. Förslaget ovan är bara diagnostik.
     const claim = await this.prisma.aiPendingAction.updateMany({
-      where: { id: match.id, consumedAt: null },
+      where: { id: rad.id, consumedAt: null },
       data: { consumedAt: new Date() },
     })
-    return claim.count === 1
+    if (claim.count !== 1) return { status: 'already-consumed', pendingActionId: rad.id }
+    return { status: 'claimed', proof: { claimed: true, pendingActionId: rad.id } }
+  }
+
+  /**
+   * Vad den redan utförda åtgärden ORSAKADE, i en mening.
+   *
+   * Läser `AiToolEffect` (#562) — alltså vad skrivvägen faktiskt bokförde, inte
+   * vad verktyget påstod. Ingen maskerad nyttolast spelas upp; bara typ, antal
+   * och tidpunkt, som alla är metadata.
+   *
+   * Faller tillbaka på en ärlig icke-uppgift om kopplingen saknas: auditraden
+   * skrivs fire-and-forget och kan ha uteblivit. Att då hitta på en uppräkning
+   * vore precis den sortens påstående utan belägg som resten av kodbasen rensats
+   * från.
+   */
+  private async describeEffects(conversationId: string, toolName: string): Promise<string> {
+    const körning = await this.prisma.aiToolExecution.findFirst({
+      where: { conversationId, toolName, confirmedAt: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true, effects: { select: { entityType: true, rowCount: true } } },
+    })
+    if (!körning) {
+      return 'Vad den orsakade går inte att visa här — se AI-loggen för konversationen.'
+    }
+    const när = körning.createdAt.toLocaleString('sv-SE')
+    if (körning.effects.length === 0) {
+      return `Den utfördes ${när} och registrerade inga dataändringar.`
+    }
+    const per = new Map<string, number>()
+    for (const e of körning.effects) {
+      per.set(e.entityType, (per.get(e.entityType) ?? 0) + e.rowCount)
+    }
+    const delar = [...per.entries()].map(([typ, antal]) => `${antal} ${typ}`).join(', ')
+    return `Den utfördes ${när} och rörde: ${delar}.`
   }
 
   // ── Conversation management ────────────────────────────────────────────────

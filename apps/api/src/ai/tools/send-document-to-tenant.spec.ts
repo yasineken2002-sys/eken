@@ -110,6 +110,9 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'org-1',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(res.success).toBe(true)
     expect(deliverToTenant).toHaveBeenCalledTimes(1)
@@ -128,6 +131,9 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'org-1',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(res.success).toBe(false)
     expect(deliverToTenant).not.toHaveBeenCalled()
@@ -146,6 +152,9 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'org-1',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(res.success).toBe(false)
     expect(res.suggestCreateTenant).toBeUndefined()
@@ -160,6 +169,9 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'org-1',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(res.success).toBe(false)
     expect(deliverToTenant).not.toHaveBeenCalled()
@@ -173,6 +185,9 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'org-1',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(res.success).toBe(true)
     expect(deliverToTenant.mock.calls[0][0].tenantId).toBe('tenant-tim2')
@@ -186,6 +201,9 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'org-1',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(deliverToTenant.mock.calls[0][0].category).toBe('OTHER')
   })
@@ -198,6 +216,9 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'org-1',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(deliverToTenant.mock.calls[0][0].notify).toBe(false)
   })
@@ -213,6 +234,9 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'org-1',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(res.success).toBe(true)
     expect(deliverToTenant).toHaveBeenCalledTimes(1)
@@ -226,6 +250,9 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'org-1',
       'user-1',
       'MANAGER',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(resManager.success).toBe(true)
 

@@ -83,6 +83,9 @@ describe('AI-seam: prepare_contract_signing (prepare-only)', () => {
       'org-1',
       'user-1',
       'OWNER',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
 
     expect(createSigningRequest).toHaveBeenCalledWith('org-1', 'user-1', 'doc-1')

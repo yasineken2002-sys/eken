@@ -2,6 +2,8 @@ import { Injectable, ForbiddenException, BadRequestException, Logger } from '@ne
 import { randomUUID } from 'crypto'
 import { runAsAi } from '../../common/ai-origin/ai-origin.context'
 import { drainEffects, runWithEffectCollector } from '../../common/ai-effects/ai-effects.context'
+import { assertActionToolAuthorized } from './action-authorization'
+import type { ActionProof } from './action-authorization'
 import { noteSubjectCandidates } from '../../common/ai-subjects/ai-subjects.context'
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
@@ -470,8 +472,25 @@ export class ToolExecutorService {
     organizationId: string,
     userId: string,
     userRole: string,
-    auditContext?: { conversationId?: string | null; confirmedAt?: Date | null },
+    auditContext?: {
+      conversationId?: string | null
+      confirmedAt?: Date | null
+      /** Beviset för ett bindande verktyg. Se action-authorization.ts. */
+      actionProof?: ActionProof
+    },
   ): Promise<ToolResult> {
+    // ── BINDANDE VERKTYG KRÄVER BEVIS ─────────────────────────────────────
+    //
+    // FÖRST av allt, före kollektorn och före körningen: ett ACTION_TOOL får
+    // inte utföras utan ett konsumerat bekräftelseanspråk. Kontrollen låg
+    // tidigare som tre kopior av `actionBlock`-testet i de tre looparna — en
+    // vana, inte en invariant. En fjärde anropsväg (och det agentiska bygget är
+    // precis en sådan) hade nått hit direkt, och då stod ingenting mellan
+    // modellen och en verifikationspost.
+    //
+    // Loopar­nas kontroller är kvar som djupförsvar. Den här är den bärande.
+    assertActionToolAuthorized(toolName, auditContext?.actionProof)
+
     // KOLLEKTORN OMSLUTER HELA KROPPEN, inte bara verktygskörningen.
     //
     // Först låg `runWithEffectCollector` runt enbart `executeToolUnsafe`, och
@@ -498,7 +517,12 @@ export class ToolExecutorService {
     organizationId: string,
     userId: string,
     userRole: string,
-    auditContext?: { conversationId?: string | null; confirmedAt?: Date | null },
+    auditContext?: {
+      conversationId?: string | null
+      confirmedAt?: Date | null
+      /** Beviset för ett bindande verktyg. Se action-authorization.ts. */
+      actionProof?: ActionProof
+    },
   ): Promise<ToolResult> {
     const startedAt = Date.now()
     let result: ToolResult

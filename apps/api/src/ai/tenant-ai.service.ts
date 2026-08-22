@@ -315,6 +315,11 @@ export class TenantAiService {
       result = await this.toolExecutor.executeTool(toolName, toolInput, tenantId, organizationId, {
         conversationId,
         confirmedAt: new Date(),
+        // Beviset. Anspråket ovan är atomiskt (`count !== 1` kastar), så vi är
+        // här bara efter ett lyckat engångsanspråk. Hyresgästvägen bär det som
+        // en nollställd hash-kolumn i stället för en egen rad — därav inget
+        // `pendingActionId`. Se action-authorization.ts.
+        actionProof: { claimed: true },
       })
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Okänt fel'
