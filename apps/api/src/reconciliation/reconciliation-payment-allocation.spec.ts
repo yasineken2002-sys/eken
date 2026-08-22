@@ -57,6 +57,11 @@ function makeService(opts: {
   const txMock = {
     // PR 3b — rad-lås (FOR UPDATE) serialiserar samtidiga delbetalningar.
     $queryRaw: jest.fn().mockResolvedValue([]),
+    // H2 identitetsgrind (ocr-identity.ts): matchTransaction frågar numera om
+    // rawOcr gör anspråk på att vara ett SYSTEMTILLDELAT OCR innan fritextgrenen
+    // (Invoice.reference) får konsulteras. Grinden läser Invoice, RentNotice OCH
+    // Tenant — utan tenant i attrappen kraschar den på findFirst av undefined.
+    tenant: { findFirst: jest.fn().mockResolvedValue(null) },
     rentNotice: {
       // H3 PR B: vattenfallet läser kandidater med findMany. Tom lista = inga
       // fler öppna avier, alltså inget vattenfall — riggens fall ägs av
@@ -90,6 +95,11 @@ function makeService(opts: {
       findFirst: jest.fn().mockResolvedValue(opts.transaction ?? null),
       update: jest.fn().mockResolvedValue({}),
     },
+    // H2 identitetsgrind (ocr-identity.ts): matchTransaction frågar numera om
+    // rawOcr gör anspråk på att vara ett SYSTEMTILLDELAT OCR innan fritextgrenen
+    // (Invoice.reference) får konsulteras. Grinden läser Invoice, RentNotice OCH
+    // Tenant — utan tenant i attrappen kraschar den på findFirst av undefined.
+    tenant: { findFirst: jest.fn().mockResolvedValue(null) },
     rentNotice: {
       findFirst: jest.fn().mockResolvedValue(opts.ocrCandidate ?? null),
       findMany: jest.fn().mockResolvedValue(opts.fuzzyNotices ?? []),
@@ -169,8 +179,15 @@ describe('PR3b · OCR delbetalning — rätt avi, rätt belopp', () => {
       ocrCandidate: { id: 'rn-1' },
     })
     await service.matchTransaction(OCR_TX(5000) as never, 'org-1')
-    const findArgs = prisma.rentNotice.findFirst.mock.calls[0]![0]
-    expect(findArgs.orderBy).toEqual([{ dueDate: 'asc' }, { createdAt: 'asc' }])
+    // SEMANTISKT, inte positionellt: identitetsgrinden (H2, ocr-identity.ts) gör
+    // ett eget rentNotice.findFirst FÖRE kandidatsökningen, så calls[0] är inte
+    // längre den vi menar. Att peka ut anropet via `orderBy` binder assertionen
+    // till det den faktiskt handlar om och överlever nästa uppslag som läggs till.
+    const kandidatAnrop = prisma.rentNotice.findFirst.mock.calls
+      .map((c: unknown[]) => c[0] as { orderBy?: unknown })
+      .filter((a) => a.orderBy !== undefined)
+    expect(kandidatAnrop).toHaveLength(1)
+    expect(kandidatAnrop[0]!.orderBy).toEqual([{ dueDate: 'asc' }, { createdAt: 'asc' }])
   })
 })
 

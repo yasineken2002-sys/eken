@@ -38,6 +38,11 @@ function makeService(noticeRow: Record<string, unknown> | null) {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
     },
+    // H2 identitetsgrind (ocr-identity.ts): matchTransaction frågar numera om
+    // rawOcr gör anspråk på att vara ett SYSTEMTILLDELAT OCR innan fritextgrenen
+    // (Invoice.reference) får konsulteras. Grinden läser Invoice, RentNotice OCH
+    // Tenant — utan tenant i attrappen kraschar den på findFirst av undefined.
+    tenant: { findFirst: jest.fn().mockResolvedValue(null) },
     rentNotice: {
       findFirst: jest.fn().mockResolvedValue(noticeRow),
       findMany: jest.fn().mockResolvedValue([]),
