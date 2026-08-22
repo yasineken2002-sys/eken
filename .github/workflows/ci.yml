@@ -297,6 +297,33 @@ jobs:
       - name: Verify every AI tool execution can be traced to its effects
         run: node apps/api/scripts/check-ai-tool-effects.mjs
 
+  action-tool-authorization-guard:
+    name: AI action tool authorization guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — ett BINDANDE
+      # verktyg får aldrig utföras utan bevis på en konsumerad bekräftelse.
+      #
+      # create_invoice, create_journal_entry och mark_invoice_paid rör pengar.
+      # Att de inte kan utföras utan en människas bekräftelse vilade tidigare på
+      # att TRE loopar var för sig kom ihåg att kolla `actionBlock`. En fjärde
+      # anropsväg — och ett agentiskt bygge är precis en sådan — hade nått
+      # executeTool direkt. Invarianten bor nu i assertActionToolAuthorized, och
+      # guarden håller den där: båda exekverarna måste anropa den FÖRST av allt,
+      # den måste pröva beviset, och den måste släppa igenom läsverktyg.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (each rule proven by its own assertion)
+        run: node apps/api/scripts/check-action-tool-authorization.mjs --self-test
+
+      - name: Verify binding tools cannot execute without a consumed confirmation
+        run: node apps/api/scripts/check-action-tool-authorization.mjs
+
   reminder-fee-guard:
     name: Reminder fee amount guard
     runs-on: ubuntu-latest
@@ -888,6 +915,7 @@ jobs:
       - partial-match-identity-guard
       - tool-iteration-cap-guard
       - ai-tool-effects-guard
+      - action-tool-authorization-guard
       - reminder-fee-guard
       - period-lookup-guard
       - design-token-guard

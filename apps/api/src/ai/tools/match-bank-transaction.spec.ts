@@ -88,6 +88,9 @@ describe('match_bank_transaction — RentNotice-matchning går genom manualMatch
       'org-1',
       'user-1',
       'ACCOUNTANT',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(manualMatch).toHaveBeenCalledTimes(1)
     const [txId, target, orgId, userId] = manualMatch.mock.calls[0]
@@ -109,6 +112,9 @@ describe('match_bank_transaction — RentNotice-matchning går genom manualMatch
       'org-1',
       'user-1',
       'ACCOUNTANT',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(manualMatch.mock.calls[0][1]).toEqual({ invoiceId: 'inv-9' })
     expect(result.success).toBe(true)
@@ -126,6 +132,9 @@ describe('match_bank_transaction — RentNotice-matchning går genom manualMatch
       'org-1',
       'user-1',
       'ACCOUNTANT',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(manualMatch).toHaveBeenCalledTimes(1)
   })
@@ -140,6 +149,9 @@ describe('match_bank_transaction — validering', () => {
       'org-1',
       'user-1',
       'ACCOUNTANT',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(result.success).toBe(false)
     expect(manualMatch).not.toHaveBeenCalled()
@@ -153,6 +165,9 @@ describe('match_bank_transaction — validering', () => {
       'org-1',
       'user-1',
       'ACCOUNTANT',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(result.success).toBe(false)
     expect(manualMatch).not.toHaveBeenCalled()

@@ -118,6 +118,9 @@ describe('generate_lease_contract — tenantId härleds från lease (portal-synl
       'org-1',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(result.success).toBe(true)
     expect(documentCreate).toHaveBeenCalledTimes(1)
@@ -137,6 +140,9 @@ describe('generate_lease_contract — tenantId härleds från lease (portal-synl
       'org-1',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     const data = documentCreate.mock.calls[0][0].data
     // Input-tenantId ignoreras helt — dokumentet får leasens tenant.
@@ -152,6 +158,9 @@ describe('generate_lease_contract — tenantId härleds från lease (portal-synl
       'org-1',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     const where = leaseFindFirst.mock.calls[0][0].where
     expect(where.id).toBe('lease-1')
@@ -166,6 +175,9 @@ describe('generate_lease_contract — tenantId härleds från lease (portal-synl
       'org-2',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
     expect(result.success).toBe(false)
     expect(documentCreate).not.toHaveBeenCalled()

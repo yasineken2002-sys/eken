@@ -74,6 +74,8 @@ describe('apply_rent_increase — JB 54 a §-säker (H4)', () => {
       'org-1',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse.
+      { actionProof: { claimed: true } },
     )
 
     expect(create).toHaveBeenCalledTimes(1)
@@ -100,6 +102,9 @@ describe('apply_rent_increase — JB 54 a §-säker (H4)', () => {
       'org-1',
       'user-1',
       'ADMIN',
+      // Bindande verktyg kräver bevis på en konsumerad bekräftelse
+      // (action-authorization.ts). Testet efterliknar confirm-vägen.
+      { actionProof: { claimed: true } },
     )
 
     expect(result.success).toBe(false)
