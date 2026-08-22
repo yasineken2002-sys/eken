@@ -184,6 +184,35 @@ jobs:
       - name: Verify every OCR lookup field is classified and free text is gated
         run: node apps/api/scripts/check-ocr-lookup-fields.mjs
 
+  ocr-provenance-guard:
+    name: OCR provenance guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — varje fält som
+      # matas genom en OCR-extraktor måste vara KLASSAT i ocr-proveniens.ts, och
+      # bankens fritext måste gå genom den Luhn-krävande extraktorn.
+      #
+      # M2:s grind stänger av beloppsgissningen när transaktionen bär en OCR som
+      # inte löser ut. Villkoret läser "betalaren angav ett OCR" — men extractOcr
+      # prövar ingen kontrollsiffra, så ett datum, ett mobilnummer eller ett
+      # kontonummer i beskrivningen blev också en rawOcr. Mätt: tre av fyra
+      # realistiska bankbeskrivningar stängde av matchningen, och betalningen låg
+      # kvar omatchad. Guarden fäller BÅDA riktningarna — prosa utan Luhn, och
+      # Luhn påtvingat ett avsiktsfält (som kastar bort ett OCR ur ett gammalt
+      # system och får systemet att gissa ovanpå ett angivet OCR).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (each rule proven by its own assertion)
+        run: node apps/api/scripts/check-ocr-provenance.mjs --self-test
+
+      - name: Verify every OCR extractor input is classified and prose requires Luhn
+        run: node apps/api/scripts/check-ocr-provenance.mjs
+
   reminder-fee-guard:
     name: Reminder fee amount guard
     runs-on: ubuntu-latest
@@ -771,6 +800,7 @@ jobs:
       - invoice-number-guard
       - sequence-allocation-guard
       - ocr-lookup-fields-guard
+      - ocr-provenance-guard
       - reminder-fee-guard
       - period-lookup-guard
       - design-token-guard

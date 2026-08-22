@@ -27,6 +27,7 @@ import { computeRentDebt } from '../avisering/rent-debt.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { harSystemtilldelatOcr } from './ocr-identity'
+import { extractOcr, extractOcrFromProse } from './ocr-proveniens'
 import {
   validateUploadedFile,
   DETECTED_SPREADSHEET_TYPES,
@@ -232,14 +233,11 @@ function parseAmount(raw: string | number | undefined): number {
 }
 
 // ── OCR extraction ────────────────────────────────────────────────────────────
-
-function extractOcr(text: string | undefined): string | null {
-  if (!text) return null
-  const matches = text.match(/\b(\d{4,20})\b/g)
-  if (!matches || matches.length === 0) return null
-  // Take the longest numeric sequence (most likely to be OCR)
-  return matches.reduce((a, b) => (b.length > a.length ? b : a))
-}
+//
+// Båda extraktorerna bor i ocr-proveniens.ts. `extractOcr` läser ett AVSIKTSFÄLT
+// (fältet bär betalningsreferensen), `extractOcrFromProse` läser bankens fritext
+// och kräver då en giltig Luhn-kontrollsiffra. Vilket fält som är vilket står i
+// INTENT_OCR_FIELDS / PROSE_OCR_FIELDS och bevakas av check-ocr-provenance.mjs.
 
 // ── PSD2 P1: Stockholm-dag + cross-source dedupKey ────────────────────────────
 
@@ -408,7 +406,8 @@ export class ReconciliationService {
 
     const date = normalizeToStockholmDay(raw.bookingDate)
     const amount = new Decimal(raw.amount.toFixed(2))
-    const rawOcr = raw.ocr ?? extractOcr(raw.reference) ?? extractOcr(raw.description) ?? undefined
+    const rawOcr =
+      raw.ocr ?? extractOcr(raw.reference) ?? extractOcrFromProse(raw.description) ?? undefined
     const dedupKey = rawOcr ? computeBankDedupKey(date, amount, rawOcr) : null
 
     // Steg 1 (cross-source): en betalning som redan ingestats via FIL fångas här,
@@ -629,8 +628,13 @@ export class ReconciliationService {
 
         const amountDecimal = new Decimal(row.amount.toFixed(2))
 
-        // Extract OCR from reference or description
-        const rawOcr = extractOcr(row.reference) ?? extractOcr(row.description)
+        // Referenskolumnen är ett AVSIKTSFÄLT — den bär betalningsreferensen, och
+        // en sträng därifrån räknas som angiven OCR även utan giltig Luhn (ett
+        // OCR ur ett gammalt system har en annan kontrollsiffra). Beskrivningen
+        // är bankens PROSA: där blir en siffersekvens bara en OCR om den bär
+        // giltig kontrollsiffra. Utan den skillnaden gjorde ett datum eller ett
+        // mobilnummer i beskrivningen transaktionen omatchbar (se ocr-proveniens.ts).
+        const rawOcr = extractOcr(row.reference) ?? extractOcrFromProse(row.description)
 
         // Delad ingest-kärna: fält-dedup (org, date, description, amount) → create → match.
         const outcome = await this.ingestFromFile(organizationId, {
@@ -984,19 +988,25 @@ export class ReconciliationService {
     // chansning: fuzzy matchar på BELOPP (unik kandidat inom 1 kr, 90 dagar) och
     // kan därför kreditera en TREDJE PARTS avi.
     //
-    // ── VARFÖR JUST DEN HÄR GRENEN INTE SKA GISSA (mätt) ───────────────────
+    // ── VARFÖR JUST DEN HÄR GRENEN INTE SKA GISSA ─────────────────────────
     //
-    // Luhn-kontrollsiffran avgör vilka fel som ens blir en `rawOcr`:
+    // Populationen som når hit är OCR ur ett AVSIKTSFÄLT som inte löste ut:
+    // felskrivningar som klarade Luhn, OCR från en ANNAN organisation, gamla OCR
+    // för redan reglerade avier, och OCR ur ett system hyresvärden migrerat
+    // från. I inget av de fallen är en beloppsgissning rätt svar.
     //
-    //     enkelsiffrig felskrivning   0 av 396 passerar   (0,0 %)
-    //     transponerade grannar       4 av 12  passerar   (33,3 %)
-    //     två samtidiga fel          23 av 220 passerar   (10,5 %)
+    // VILLKORET NEDAN LÄSER "betalaren angav ett OCR", och det är sant först
+    // sedan proveniensen avgör vad som blir en `rawOcr`. `extractOcr` prövar
+    // INGEN kontrollsiffra — den tar längsta siffersekvensen om 4–20 tecken. Kör
+    // man den på bankens fritext blir ett datum, ett mobilnummer och ett
+    // kontonummer alla till `rawOcr`, och grinden här stängde då av
+    // beloppsmatchningen för tre av fyra realistiska beskrivningar (mätt; se
+    // ocr-proveniens.ts). Prosafälten går därför genom `extractOcrFromProse`,
+    // som kräver giltig Luhn-kontrollsiffra; avsiktsfälten går rakt igenom.
     //
-    // En enkel felskrivning fångas alltså till HUNDRA procent — den blir aldrig
-    // en `rawOcr` utan `rawOcr = null`, och går redan i dag till fuzzy helt
-    // legitimt. Populationen som når hit består i stället av transpositioner som
-    // klarade Luhn, OCR från en ANNAN organisation, och gamla OCR för redan
-    // reglerade avier. I inget av de fallen är en beloppsgissning rätt svar.
+    // En tidigare version av den här kommentaren påstod att Luhn redan filtrerade
+    // enkla felskrivningar innan de blev en `rawOcr`. Det gällde `isValidOcrNumber`,
+    // som `extractOcr` aldrig anropade. Påståendet var obelagt — nu är det byggt.
     //
     // ── ORSAKEN, INTE BARA UTFALLET ───────────────────────────────────────
     //

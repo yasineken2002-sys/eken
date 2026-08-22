@@ -8,15 +8,20 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
  * En betalning med en giltig men felaktig OCR kunde därför krediteras en TREDJE
  * PARTS avi.
  *
- * Varför just den grenen inte ska gissa — mätt mot `isValidOcrNumber`:
+ * Det som når den tidiga returen är OCR ur ett AVSIKTSFÄLT som inte löste ut:
+ * felskrivningar som klarade Luhn, OCR från en annan organisation, och gamla OCR
+ * för redan reglerade avier.
  *
- *     enkelsiffrig felskrivning   0 av 396 passerar Luhn   (0,0 %)
- *     transponerade grannar       4 av 12  passerar        (33,3 %)
- *     två samtidiga fel          23 av 220 passerar        (10,5 %)
+ * RÄTTELSE. Den här texten påstod att en enkelsiffrig felskrivning "fångas till
+ * hundra procent och blir aldrig en `rawOcr`". Det gällde `isValidOcrNumber` —
+ * som `extractOcr` aldrig anropade. Vad som BLIR en `rawOcr` avgörs numera av
+ * PROVENIENS, inte av formen: avsiktsfält rakt igenom, prosa bara med giltig
+ * kontrollsiffra. Se ocr-proveniens.ts och ocr-proveniens.spec.ts, där den
+ * gränsen mäts i stället för att påstås.
  *
- * Enkla felskrivningar fångas till hundra procent och blir aldrig en `rawOcr`.
- * Det som når hit är transpositioner som klarade Luhn, OCR från en annan
- * organisation, och gamla OCR för redan reglerade avier.
+ * Specarna nedan matar `matchTransaction` DIREKT och prövar därför bara grinden,
+ * aldrig vad som gjorde `rawOcr` satt. Just den blindheten lät den falska
+ * premissen stå: ingen av grenarna nedan hade blivit röd av den.
  *
  * TVÅ AV TRE GRENAR ÄR KANARIEFÅGLAR. Den mest sannolika felskrivningen av
  * fixen är en tidig retur som fires även när `rawOcr` är null — då försvinner
