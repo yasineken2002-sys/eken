@@ -34,6 +34,7 @@
  */
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname, resolve, relative } from 'node:path'
+import { codeMask, templateLiterals, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 
 const ROT = resolve(new URL('..', import.meta.url).pathname)
 const SRC = join(ROT, 'src')
@@ -66,12 +67,6 @@ const DATAINTERPOLATIONER = [
   ['src/contracts/contract-template.shared.ts', 'logoDataUrl', 'getLogoDataUrl → data: eller null'],
 ]
 
-/**
- * Tecken efter vilka ett `/` inleder en REGEX och inte en division. Efter en
- * identifierare, ett tal eller `)`/`]` är `/` division.
- */
-const REGEX_LÄGE = /^$|[(,=:[!&|?{};+\-*%~^<>]|`/
-
 const FÖRBJUDNA = [
   [/https?:\/\//, 'http(s)://'],
   [/(?:^|[\s"'(=])\/\/[a-zA-Z0-9]/, 'protokollrelativ //'],
@@ -85,71 +80,20 @@ const FÖRBJUDNA = [
 // ── källskanner ─────────────────────────────────────────────────────────────
 
 /**
- * Ett svep som ger BÅDE en maskerad källa (kommentarer och stränginnehåll
- * utbytta mot mellanslag, längden bevarad så index håller) OCH varje
- * markup-bärande template-literal med radnummer.
+ * Maskerad källa + varje markup-bärande mallsträng, ur den DELADE skannern
+ * (scripts/lib/source-scan.mjs).
  *
- * Varför inte två regexar: `//` inne i en template-literal är `https://`, inte
- * en kommentar. En kommentarstrippare som inte känner strängar hade tystat
- * precis det mönster vakten finns för att hitta.
+ * Den här filen hade sin EGEN skanner. Den kände inte regex-literaler och läste
+ * `"` i `.replace(/"/g, …)` som en strängstart — 11 629 tecken av
+ * platform-invoices.service.ts maskerades och vakten var GRÖN om hela filen.
+ * Rättad i #567, delad här: samma defekt fanns i fyra andra vakter, och var och
+ * en som skriver sin egen skanner skriver förr eller senare samma bugg.
  */
 function skanna(kalla) {
-  const mask = kalla.split('')
-  const literaler = []
-  let i = 0
-  let förra = ''
-  const blank = (a, b) => { for (let k = a; k < b && k < mask.length; k++) if (mask[k] !== '\n') mask[k] = ' ' }
-  while (i < kalla.length) {
-    const c = kalla[i]
-    // REGEX-LITERAL. Måste hanteras FÖRE strängar, annars läses `"` i
-    // `.replace(/"/g, '&quot;')` som en strängstart — och skannern blankar då
-    // allt fram till nästa `"`. Uppmätt i platform-invoices.service.ts: 11 629
-    // tecken maskerades, renderingsanropet försvann, och vakten var GRÖN om den
-    // filen. En vakt som går blind utan att sluta vara grön är värre än ingen.
-    if (c === '/' && kalla[i + 1] !== '/' && kalla[i + 1] !== '*' && REGEX_LÄGE.test(förra)) {
-      let j = i + 1
-      let klass = false
-      while (j < kalla.length && kalla[j] !== '\n') {
-        if (kalla[j] === '\\') { j += 2; continue }
-        if (kalla[j] === '[') klass = true
-        else if (kalla[j] === ']') klass = false
-        else if (kalla[j] === '/' && !klass) break
-        j++
-      }
-      if (kalla[j] === '/') { blank(i + 1, j); förra = '/'; i = j + 1; continue }
-    }
-    if (c === '/' && kalla[i + 1] === '/') {
-      const slut = kalla.indexOf('\n', i); const e = slut === -1 ? kalla.length : slut
-      blank(i, e); i = e; continue
-    }
-    if (c === '/' && kalla[i + 1] === '*') {
-      const slut = kalla.indexOf('*/', i + 2); const e = slut === -1 ? kalla.length : slut + 2
-      blank(i, e); i = e; continue
-    }
-    if (c === "'" || c === '"') {
-      let j = i + 1
-      while (j < kalla.length && kalla[j] !== c) { if (kalla[j] === '\\') j++; j++ }
-      blank(i + 1, j); förra = c; i = j + 1; continue
-    }
-    if (c === '`') {
-      let j = i + 1, djup = 0
-      while (j < kalla.length) {
-        if (kalla[j] === '\\') { j += 2; continue }
-        if (kalla[j] === '$' && kalla[j + 1] === '{') { djup++; j += 2; continue }
-        if (kalla[j] === '}' && djup > 0) { djup--; j++; continue }
-        if (kalla[j] === '`' && djup === 0) break
-        j++
-      }
-      const text = kalla.slice(i + 1, j)
-      if (/<[a-zA-Z!]/.test(text)) {
-        literaler.push({ text, start: i, rad: kalla.slice(0, i).split('\n').length })
-      }
-      blank(i + 1, j); förra = '`'; i = j + 1; continue
-    }
-    if (!/\s/.test(c)) förra = c
-    i++
+  return {
+    mask: codeMask(kalla),
+    literaler: templateLiterals(kalla).filter((l) => /<[a-zA-Z!]/.test(l.text)),
   }
-  return { mask: mask.join(''), literaler }
 }
 
 const rel = (p) => relative(ROT, p).replaceAll('\\', '/')
@@ -411,16 +355,10 @@ function självtest() {
   if (kommentarProv.literaler.length !== 1 || !kommentarProv.literaler[0].text.includes('https://x'))
     fel.push('KANARIE 2: kommentarsmaskeringen äter template-literaler — ett "https://" i en mall skulle bli osynligt.')
 
-  // KANARIE 5 — skannern förväxlar inte en REGEX-LITERAL med en sträng. Den
-  // här defekten fanns på riktigt: `.replace(/"/g, '&quot;')` läste `"` som
-  // strängstart och blankade 11 629 tecken av
-  // platform-invoices.service.ts — renderingsanropet försvann och vakten var
-  // GRÖN om hela den filen. Ingen befintlig regel föll; bara den här faller.
-  const desync = skanna('a.replace(/"/g, \'x\')\nconst h = `<p><link href="https://x"></p>`\n')
-  if (desync.literaler.length !== 1)
-    fel.push(`KANARIE 5: efter en regex-literal hittar skannern ${desync.literaler.length} mall-literaler i stället för 1 — den har desynkat och går blind.`)
-  else if (!FÖRBJUDNA.some(([re]) => re.test(desync.literaler[0].text)))
-    fel.push('KANARIE 5: literalen efter regex-literalen bär en <link> som inte fälls.')
+  // KANARIE 5 — den DELADE skannerns egna kanariefåglar körs här. Bryts
+  // scripts/lib/source-scan.mjs blir VARJE vakt som använder den röd, inte bara
+  // dess egen spec. Det är hela poängen med att den är delad.
+  for (const f of kanariefåglar()) fel.push(`KANARIE 5 (delad skanner): ${f}`)
 
   // KANARIE 3 — kedjan når den delade shellen TRANSITIVT. Bryts den granskas
   // bara producenternas egna kroppar, och shellen blir osynlig.

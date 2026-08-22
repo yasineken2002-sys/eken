@@ -27,6 +27,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { readFileSync, existsSync, appendFileSync } from 'node:fs'
+import { withoutComments } from '../../../scripts/lib/source-scan.mjs'
 
 const MIGRATIONS_PREFIX = 'apps/api/prisma/migrations/'
 
@@ -58,7 +59,9 @@ export function filterMigrationFiles(files) {
 export function destructiveStatements(sql) {
   // Blockkommentarer och radkommentarer bort först — en migration som FÖRKLARAR
   // varför den inte droppar något ska inte flaggas för ordet.
-  const utanKommentarer = sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ')
+  // Delad SQL-skanner: den nakna regexen kunde inte strängar, så ett `--` inuti
+  // en literal hade ätit resten av raden och dolt en destruktiv sats efter den.
+  const utanKommentarer = withoutComments(sql, { dialect: 'sql' })
   return DESTRUKTIV.filter((d) => d.mönster.test(utanKommentarer)).map((d) => d.vad)
 }
 

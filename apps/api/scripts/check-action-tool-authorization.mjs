@@ -54,9 +54,8 @@ const PROOF = 'claimed'
 export const EXECUTORS = ['tool-executor.service.ts', 'tenant-tool-executor.service.ts']
 
 /** Källtext utan kommentarer. Ett omnämnande i prosa är inte ett anrop. */
-export function withoutComments(text) {
-  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
-}
+import { withoutComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
+export { withoutComments }
 
 /** Kroppen för `async executeTool(` fram till nästa metod på samma nivå. */
 export function executeToolBody(text) {
@@ -302,6 +301,15 @@ function selfTest() {
   )
 
   röd('inga exekverare alls (blind skanning)', evaluate({ ...bas, executors: [] }), 'NOLL exekverare')
+
+
+  // Den DELADE skannerns kanariefåglar. Går scripts/lib/source-scan.mjs sönder
+  // blir DEN HÄR vakten röd — inte bara skannerns egen körning. Det är hela
+  // poängen med en delad mekanism: bryts den blir varje konsument röd (#463).
+  for (const f of kanariefåglar()) {
+    ok = false
+    console.error(`❌ delad källskanner: ${f}`)
+  }
 
   console.log(ok ? '\n✅ Självtest OK.' : '\n❌ Självtest misslyckades.')
   process.exit(ok ? 0 : 1)

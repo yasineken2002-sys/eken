@@ -46,6 +46,7 @@
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { withoutComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const API_SRC = join(HERE, '..', 'src')
@@ -71,7 +72,9 @@ export function splitTopLevelArgs(args) {
   let djup = 0
   let sträng = null
   let buf = ''
-  const rensad = args.replace(/\/\/[^\n]*/g, '')
+  // Kommentarerna bort via den DELADE skannern: den nakna regexen åt resten av
+  // raden efter ett `//` inuti en sträng (t.ex. en URL i ett argument).
+  const rensad = withoutComments(args)
   for (let i = 0; i < rensad.length; i++) {
     const c = rensad[i]
     if (sträng) {
@@ -511,6 +514,15 @@ function selfTest() {
     }),
     'NOLL apply*-anrop',
   )
+
+
+  // Den DELADE skannerns kanariefåglar. Går scripts/lib/source-scan.mjs sönder
+  // blir DEN HÄR vakten röd — inte bara skannerns egen körning. Det är hela
+  // poängen med en delad mekanism: bryts den blir varje konsument röd (#463).
+  for (const f of kanariefåglar()) {
+    ok = false
+    console.error(`❌ delad källskanner: ${f}`)
+  }
 
   console.log(ok ? '\n✅ Självtest OK.' : '\n❌ Självtest misslyckades.')
   process.exit(ok ? 0 : 1)
