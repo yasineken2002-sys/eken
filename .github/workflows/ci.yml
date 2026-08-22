@@ -131,6 +131,33 @@ jobs:
       - name: Run test suite
         run: pnpm exec turbo test:ci
 
+      # ── INGA HOPPADE TESTER. NOLL, INTE ETT UNDERHÅLLET TAL. ────────────
+      #
+      # En hoppad svit är GRÖN, och en kanariefågel inuti en hoppad svit kan
+      # inte falla. Det är inte en farhåga utan uppmätt: körningen på main före
+      # #564 skrev
+      #
+      #     Test Suites: 1 skipped, 319 passed, 319 of 320 total
+      #     Tests:       13 skipped, 3311 passed, 3324 total
+      #
+      # och var grön. `ai-effect-extension.spec.ts` — en spec som prövar en
+      # Prisma-extension mot en RIKTIG databas — kördes aldrig, eftersom det här
+      # jobbet saknade DATABASE_URL. Siffran STOD i loggen. Ingen läste den.
+      #
+      # VARFÖR NOLL OCH INTE ETT TAL: `E2E_EXPECTED_TESTS` är ett tal därför att
+      # dess rätta värde legitimt är skilt från noll (tre bevisriggar plus en
+      # R2-beroende spec är medvetet uteslutna). Här är rätt värde noll, mätt.
+      # Ett underhållet tal driftar uppåt EN RAD I TAGET — någon hoppar över ett
+      # test, CI blir röd, talet höjs — och kontrollen slutar mäta det den skulle
+      # mäta. En nolla kostar ingenting att underhålla så länge svaret är noll,
+      # och den dag någon VILL hoppa över ett test ska det kräva ett aktivt
+      # beslut här, inte en höjd siffra i förbifarten.
+      #
+      # FAIL-CLOSED: saknas rapporten, går den inte att tolka, eller har Jest
+      # bytt fältnamn — RÖD, inte grön. Ett saknat fält är inte noll.
+      - name: Verify no tests were skipped
+        run: node apps/api/scripts/check-no-skipped-tests.mjs apps/api/jest-report.json
+
   index-guard:
     name: Critical index guard
     runs-on: ubuntu-latest
@@ -385,6 +412,32 @@ jobs:
 
       - name: Verify every cron job is classified and every invariant is named
         run: node apps/api/scripts/check-cron-classification.mjs
+
+  skip-precondition-guard:
+    name: Skip precondition guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — en spec som
+      # villkorar på en förutsättning måste PRÖVA den i ett block som alltid körs.
+      #
+      # Noll-kontrollen i `test`-jobbet fångar ATT något hoppades över. Den här
+      # gör felet BEGRIPLIGT: man ska få veta VILKEN förutsättning som saknades,
+      # inte bara ett antal. En förutsättningskontroll som ligger INUTI det block
+      # den skyddar hoppas dessutom över precis när den behövs — det var defekten
+      # i ai-effect-extension.spec.ts (#562), och den upprepades i
+      # action-idempotency.spec.ts.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (each rule proven by its own assertion)
+        run: node apps/api/scripts/check-skip-preconditions.mjs --self-test
+
+      - name: Verify every conditional skip asserts its precondition
+        run: node apps/api/scripts/check-skip-preconditions.mjs
 
   reminder-fee-guard:
     name: Reminder fee amount guard
@@ -979,6 +1032,7 @@ jobs:
       - ai-tool-effects-guard
       - action-tool-authorization-guard
       - cron-classification-guard
+      - skip-precondition-guard
       - reminder-fee-guard
       - period-lookup-guard
       - design-token-guard

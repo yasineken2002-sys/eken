@@ -37,6 +37,22 @@ import { ToolExecutorService } from './tool-executor.service'
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const beskriv = HAR_DB ? describe : describe.skip
 
+describe('förutsättningar', () => {
+  it('KANARIEFÅGEL: sviten körs mot en RIKTIG databas', () => {
+    // ── DEN HÄR SAKNADES ──────────────────────────────────────────────────
+    //
+    // Filen villkorar sitt DB-block på DATABASE_URL, men prövade aldrig att
+    // förutsättningen fanns. Utan den här raden hoppades blocket över TYST — och
+    // en hoppad svit är grön. Uppmätt på main före #564: CI skrev
+    // `Tests: 13 skipped, 3311 passed` och var grön; ingen läste siffran.
+    //
+    // Kanariefågeln ligger i ett block som ALLTID körs. Låg den inuti `beskriv`
+    // hade den hoppats över precis när den behövdes — vilket var exakt defekten
+    // i ai-effect-extension.spec.ts, införd av samma hand och missad här.
+    expect(HAR_DB).toBe(true)
+  })
+})
+
 describe('grinden — bindande verktyg kräver bevis', () => {
   it('KANARIEFÅGEL: grinden skiljer bindande från läsande', () => {
     // Behandlar den alla verktyg lika är den antingen en spärr mot allt arbete
