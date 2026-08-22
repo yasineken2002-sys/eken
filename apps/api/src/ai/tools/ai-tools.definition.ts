@@ -1042,6 +1042,61 @@ export const ACTION_TOOLS = new Set([
   'mark_sent_to_collection',
 ])
 
+/**
+ * ACTION_TOOLS som PRODUCERAR en utfallskoppling — alltså skapar eller ändrar
+ * minst en entitet.
+ *
+ * ── VARFÖR LISTAN FINNS NÄR MEKANISMEN ÄR AUTOMATISK ─────────────────────────
+ *
+ * Kopplingen produceras av Prisma-extensionen
+ * (`common/prisma/ai-effect-extension.ts`), inte av verktyget — ett nytt verktyg
+ * ärver spårbarheten utan att någon tänker på det. Listan är därför INTE
+ * mekanismen. Den är den TVINGANDE FRÅGAN: varje ACTION_TOOL måste stå antingen
+ * här eller i `ai-tool-effects.ack.json`, och `check-ai-tool-effects.mjs` fäller
+ * om något står i ingendera eller i båda.
+ *
+ * Följden är att ett trettionde verktyg inte kan läggas till utan att någon tar
+ * ställning till om det rör data. Utan den frågan hade ett verktyg som
+ * FÖRVÄNTADES skriva men inte gör det sett likadant ut som ett som med flit
+ * inte skriver — och den skillnaden är hela revisionsspårets värde.
+ *
+ * MÄTT 2026-08-22: alla 29 producerar effekter. Även "skicka"-verktygen skriver
+ * (`send_invoice_email` gör transitionStatus + InvoiceEvent + nollar sendError;
+ * `pause_reminders`/`resume_reminders` växlar en flagga via `invoice.update`).
+ * Kvitteringsfilen är därför tom, och det är ett resultat — inte en lucka.
+ */
+export const EFFECT_PRODUCING_TOOLS = new Set([
+  'create_maintenance_ticket',
+  'update_maintenance_status',
+  'create_invoice',
+  'update_tenant',
+  'send_invoice_email',
+  'send_overdue_reminders',
+  'mark_invoice_paid',
+  'create_lease',
+  'transition_lease_status',
+  'create_property',
+  'create_unit',
+  'compose_and_send_email',
+  'apply_rent_increase',
+  'generate_lease_contract',
+  'prepare_contract_signing',
+  'send_document_to_tenant',
+  'create_tenant_and_lease',
+  'generate_rent_notices',
+  'create_inspection',
+  'match_bank_transaction',
+  'import_bgmax_file',
+  'unmatch_transaction',
+  'create_journal_entry',
+  'record_expense',
+  'close_period',
+  'pause_reminders',
+  'resume_reminders',
+  'export_for_collection',
+  'mark_sent_to_collection',
+])
+
 // Bokförings-tools — endast ACCOUNTANT, ADMIN, OWNER. MANAGER blockeras.
 export const ACCOUNTING_ONLY_ACTIONS = new Set([
   'create_journal_entry',
