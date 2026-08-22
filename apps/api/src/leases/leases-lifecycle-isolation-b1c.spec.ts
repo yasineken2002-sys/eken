@@ -10,6 +10,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { captureException } from '@sentry/nestjs'
 import { LeasesService } from './leases.service'
 import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
+import { alltidLedigtLås } from '../common/redis/lock.test-double'
 
 const mockedCapture = captureException as jest.Mock
 
@@ -30,6 +31,7 @@ function makeService() {
     {} as never,
     {} as never,
     {} as never,
+    alltidLedigtLås,
   )
   // Tysta loggern (svc.logger är privat) för rent testutdata.
   ;(svc as unknown as { logger: unknown }).logger = {

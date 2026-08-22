@@ -13,6 +13,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { LeasesService } from './leases.service'
 import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
+import { alltidLedigtLås } from '../common/redis/lock.test-double'
 
 describe('#73 · terminateExpiredNoticeLeases triggar refund-pending vid utflytt', () => {
   it('lease vars endDate passerat → TERMINATED + markRefundPendingForLease körs', async () => {
@@ -39,6 +40,7 @@ describe('#73 · terminateExpiredNoticeLeases triggar refund-pending vid utflytt
       noop,
       noop,
       noop,
+      alltidLedigtLås,
     )
 
     // Privat cron-hjälpare — anropa direkt.

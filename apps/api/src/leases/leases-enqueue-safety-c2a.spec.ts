@@ -27,6 +27,7 @@ import * as Sentry from '@sentry/nestjs'
 import { LeasesService } from './leases.service'
 import { INITIAL_NOTICES_FAILED_TITLE } from './lease-activation.queue'
 import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
+import { alltidLedigtLås } from '../common/redis/lock.test-double'
 
 const captureException = Sentry.captureException as jest.MockedFunction<
   typeof Sentry.captureException
@@ -91,6 +92,7 @@ function makeService(overrides: QueueOverrides = {}) {
     noop, // contracts
     contractNumbers as never,
     activationQueue as never,
+    alltidLedigtLås,
   )
   return { service, activationQueue, notifications }
 }

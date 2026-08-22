@@ -11,9 +11,11 @@ import { LeasesController } from './leases.controller'
 import { LeasesService } from './leases.service'
 import { LeaseActivationQueue, LEASE_ACTIVATION_QUEUE } from './lease-activation.queue'
 import { LeaseActivationWorker } from './lease-activation.worker'
+import { RedisModule } from '../common/redis/redis.module'
 
 @Module({
   imports: [
+    RedisModule,
     PrismaModule,
     NotificationsModule,
     DepositsModule,

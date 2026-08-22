@@ -10,6 +10,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { captureException } from '@sentry/nestjs'
 import { AiUsageNotifierService } from './ai-usage-notifier.service'
+import { alltidLedigtLås } from '../common/redis/lock.test-double'
 
 const mockedCapture = captureException as jest.Mock
 
@@ -20,7 +21,12 @@ function makeService() {
   }
   const mail = { enqueue: jest.fn().mockResolvedValue(undefined) }
   const notifications = { create: jest.fn().mockResolvedValue(undefined) }
-  const svc = new AiUsageNotifierService(prisma as never, mail as never, notifications as never)
+  const svc = new AiUsageNotifierService(
+    prisma as never,
+    mail as never,
+    notifications as never,
+    alltidLedigtLås,
+  )
   ;(svc as unknown as { logger: unknown }).logger = {
     log: jest.fn(),
     warn: jest.fn(),

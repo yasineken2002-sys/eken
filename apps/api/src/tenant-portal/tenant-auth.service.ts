@@ -576,6 +576,12 @@ export class TenantAuthService {
    *   användning. Tenant-raden i sig får aldrig raderas — kvarvarande hyresavtal
    *   och fakturor är räkenskapsmaterial enligt Bokföringslagen 7 kap. 2 §.
    */
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // TenantSession deleteMany på utgångna sessioner — idempotent radering, en
+  // andra körning träffar noll rader.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 3 * * *')
   async cleanupStaleSessions(): Promise<void> {
     const sessions = await this.prisma.tenantSession.deleteMany({

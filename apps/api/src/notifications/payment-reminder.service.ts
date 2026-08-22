@@ -53,6 +53,13 @@ export class PaymentReminderService {
    * påminnelsetyp kan aldrig skickas två gånger för samma faktura. En
    * cron-restart eller dubbel cron-fire blir därmed harmlös.
    */
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // Mail-kön dedupar: statisk idempotencyKey
+  // (reminder-friendly-/reminder-formal-<invoiceId>) sätts som Bull jobId i
+  // mail.queue.ts:96, så två köade jobb blir ett.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 9 * * *')
   async processOverdueReminders(): Promise<ProcessSummary> {
     const summary: ProcessSummary = {

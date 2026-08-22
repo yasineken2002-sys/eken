@@ -31,6 +31,8 @@ interface Guarded {
   file: string
   method: string
   ttlConstant: string
+  /** Filen där TTL-konstanten BOR. Utelämnad = samma fil som jobbet. */
+  ttlFile?: string
   /** Minsta antal sekunder mellan två körningar, ur cron-uttrycket. */
   minIntervalSec: number
   cron: string
@@ -44,6 +46,7 @@ const GUARDED: Guarded[] = [
     file: 'notifications/notifications.service.ts',
     method: 'sendMorningInsights',
     ttlConstant: 'CRON_LOCK_TTL_SEC',
+    ttlFile: 'common/redis/cron-lock.ts',
     cron: '0 7 * * 1-5',
     // Vardagar 07:00 → kortaste avstånd mån→tis = 1 dygn.
     minIntervalSec: DAY,
@@ -52,6 +55,7 @@ const GUARDED: Guarded[] = [
     file: 'notifications/notifications.service.ts',
     method: 'sendWeeklySummary',
     ttlConstant: 'CRON_LOCK_TTL_SEC',
+    ttlFile: 'common/redis/cron-lock.ts',
     cron: '0 18 * * 0',
     minIntervalSec: 7 * DAY,
   },
@@ -59,6 +63,7 @@ const GUARDED: Guarded[] = [
     file: 'notifications/notifications.service.ts',
     method: 'sendMonthlyReport',
     ttlConstant: 'CRON_LOCK_TTL_SEC',
+    ttlFile: 'common/redis/cron-lock.ts',
     cron: '0 8 1 * *',
     // Kortaste månaden: februari, 28 dygn.
     minIntervalSec: 28 * DAY,
@@ -90,15 +95,21 @@ describe('TTL < cron-intervall', () => {
   it('läsaren hittar faktiskt konstanterna (rimlighetsgolv)', () => {
     // Utan detta kan en felstavad konstant ge NaN, och varje jämförelse nedan
     // bli grön genom att inte mäta något.
-    const source = readFileSync(join(SRC, 'notifications/notifications.service.ts'), 'utf8')
+    // Konstanten flyttade till common/redis/cron-lock.ts när tre jobb till
+    // låstes — tre kopior av ett tidsvärde är tre chanser att de glider isär.
+    const source = readFileSync(join(SRC, 'common/redis/cron-lock.ts'), 'utf8')
     expect(readTtlSec(source, 'CRON_LOCK_TTL_SEC')).toBe(1800)
   })
 
   it.each(GUARDED)(
     '$method: TTL är kortare än intervallet ($cron)',
-    ({ file, ttlConstant, minIntervalSec, cron }) => {
+    ({ file, ttlFile, ttlConstant, minIntervalSec, cron }) => {
       const source = readFileSync(join(SRC, file), 'utf8')
-      const ttl = readTtlSec(source, ttlConstant)
+      // TTL:n läses ur den fil där konstanten BOR — inte ur jobbets fil.
+      // `CRON_LOCK_TTL_SEC` flyttade till common/redis/cron-lock.ts när tre jobb
+      // till låstes; `ACTIVATION_REMINDER_LOCK_TTL_SEC` är en EGEN konstant med
+      // eget hem. En blanket-omdirigering hade tystat den ena av dem.
+      const ttl = readTtlSec(readFileSync(join(SRC, ttlFile ?? file), 'utf8'), ttlConstant)
 
       // Cron-uttrycket ska stå kvar oförändrat — ändras det utan att raden här
       // uppdateras mäter vi mot fel intervall.
@@ -112,8 +123,8 @@ describe('TTL < cron-intervall', () => {
 
   it.each(GUARDED)(
     '$method: TTL har rejäl marginal, inte bara knapp',
-    ({ file, ttlConstant, minIntervalSec }) => {
-      const source = readFileSync(join(SRC, file), 'utf8')
+    ({ file, ttlFile, ttlConstant, minIntervalSec }) => {
+      const source = readFileSync(join(SRC, ttlFile ?? file), 'utf8')
       const ttl = readTtlSec(source, ttlConstant)
 
       // En TTL på 23 h mot ett dygnsintervall uppfyller olikheten men lämnar en

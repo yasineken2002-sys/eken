@@ -20,6 +20,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { NotFoundException } from '@nestjs/common'
 import { LeasesService } from './leases.service'
 import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
+import { alltidLedigtLås } from '../common/redis/lock.test-double'
 
 const EXISTING = {
   id: 'lease-A',
@@ -53,6 +54,7 @@ function makeService() {
     noop, // contracts
     noop, // contractNumbers
     noop, // activationQueue
+    alltidLedigtLås,
   )
   return { service, prisma }
 }

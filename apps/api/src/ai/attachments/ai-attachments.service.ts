@@ -536,6 +536,13 @@ export class AiAttachmentsService {
    *    "bifogades tidigare men är inte tillgänglig", vilket är sannare än att
    *    låtsas att bilagan aldrig funnits.
    */
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // AiAttachment deleteMany på expiresAt/consumedAt-fönster plus R2-radering
+  // som är idempotent (NoSuchKey ignoreras) — dubbelkörning raderar noll
+  // rader andra gången.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 4 * * *')
   async cleanupExpiredAttachments(): Promise<void> {
     const removedUnused = await this.cleanupUnusedAttachments()

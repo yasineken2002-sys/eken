@@ -1,0 +1,107 @@
+{
+  "$comment": "KLASSIFICERING av varje @Cron-jobb. A = LÅST (LockService). B = SKYDDAT AV INVARIANT — invarianten måste NAMNGE modellen och indexet/villkoret, minst 30 tecken. C = OSKYDDAT och därför otillåtet: klass C ska låsas, inte kvitteras.",
+  "$howto": "Listan fäller ÅT BÅDA HÅLLEN: ett @Cron som inte står här är rött, OCH en post här som inte motsvarar något @Cron är rött. 'Skyddas av statusmaskinen' är INTE ett giltigt skäl — namnge modellen och villkoret.",
+  "$measured": "Mätt 2026-08-22 mot main f7823b9: 25 @Cron-jobb. Före den här PR:en var 4 låsta och 3 OSKYDDADE (processLifecycle skapade dubbla förnyelseavtal, dailyCheck dubbla notisrader, dailyBackup dubbla pg_dump). Prod kör numReplicas: null (en instans), så arbetet är FÖREBYGGANDE — men skyddet är en deployinställning, inte en kodinvariant.",
+  "jobs": {
+    "notifications/notifications.service.ts::sendMorningInsights": {
+      "class": "A",
+      "lockKey": "cron:morning-insights"
+    },
+    "notifications/notifications.service.ts::sendWeeklySummary": {
+      "class": "A",
+      "lockKey": "cron:weekly-summary"
+    },
+    "notifications/notifications.service.ts::sendMonthlyReport": {
+      "class": "A",
+      "lockKey": "cron:monthly-report"
+    },
+    "tenant-portal/tenant-auth.service.ts::sendActivationReminders": {
+      "class": "A",
+      "lockKey": "cron:tenant-activation-reminders"
+    },
+    "leases/leases.service.ts::processLifecycle": {
+      "class": "A",
+      "lockKey": "cron:leases-lifecycle"
+    },
+    "ai-usage/ai-usage-notifier.service.ts::dailyCheck": {
+      "class": "A",
+      "lockKey": "cron:ai-usage-warnings"
+    },
+    "backup/backup.scheduler.ts::dailyBackup": {
+      "class": "A",
+      "lockKey": "cron:daily-backup"
+    },
+    "avisering/avisering.scheduler.ts::generateForCurrentMonth": {
+      "class": "B",
+      "invariant": "RentNotice @@unique([leaseId, year, month, type]) — andra körningen får P2002, som fångas som benign idempotens (avisering.service.ts:426). Ingen dubbel avi kan skapas."
+    },
+    "avisering/rent-reminder.service.ts::escalateOverdueRentNotices": {
+      "class": "B",
+      "invariant": "RentNotice updateMany-claim på (status=OVERDUE, collectionStage=NONE); count=0 → escalateNoticeToReminded returnerar false utan att boka påminnelseavgift eller skicka."
+    },
+    "avisering/rent-reminder.service.ts::escalateRemindedToInkassoReady": {
+      "class": "B",
+      "invariant": "RentNotice updateMany-claim på collectionStage=REMINDED → INKASSO_READY; count=0 betyder att en annan körning redan eskalerat och grenen blir en no-op."
+    },
+    "avisering/rent-bad-debt.service.ts::reclassifyProbableLosses": {
+      "class": "B",
+      "invariant": "RentNotice updateMany-claim på probableLossAt=null, plus idempotent verifikat-sourceId i AccountingService — dubbelkörning ger varken andra nedskrivning eller andra verifikat."
+    },
+    "notifications/payment-reminder.service.ts::processOverdueReminders": {
+      "class": "B",
+      "invariant": "Mail-kön dedupar: statisk idempotencyKey (reminder-friendly-/reminder-formal-<invoiceId>) sätts som Bull jobId i mail.queue.ts:96, så två köade jobb blir ett."
+    },
+    "platform/invoices/platform-invoices.service.ts::createMonthlyInvoicesCron": {
+      "class": "B",
+      "invariant": "PlatformInvoice partiellt unikt index platform_invoice_unique_period på (organizationId, type, planPeriodStart) WHERE planPeriodStart IS NOT NULL — verifierat i databasen; findFirst + P2002-fångst ger skipped."
+    },
+    "platform/invoices/platform-invoices.service.ts::sendRemindersAndEscalate": {
+      "class": "B",
+      "invariant": "Mail-kön dedupar på idempotencyKey platform-invoice-reminder-<invoiceId>-<dagar> (Bull jobId), och PlatformInvoice.status-övergången är villkorad i sin updateMany."
+    },
+    "platform/invoices/platform-invoices.service.ts::sendTrialEndingReminders": {
+      "class": "B",
+      "invariant": "Mail-kön dedupar på idempotencyKey platform-trial-reminder-<orgId>-step<steg> (Bull jobId) — samma steg kan bara ge ett mejl oavsett antal körningar."
+    },
+    "platform/invoices/platform-invoices.service.ts::convertExpiredTrialsCron": {
+      "class": "B",
+      "invariant": "Organization-uppdateringen gör kandidatvillkoret (subscriptionStatus=TRIALING och utgången trialEndsAt) falskt, så nästa körning inte längre ser raden — dokumenterat i metoden."
+    },
+    "notifications/notifications.service.ts::markOverdueInvoices": {
+      "class": "B",
+      "invariant": "Invoice updateMany sätter status=OVERDUE på rader som ännu inte är det; en andra körning skriver samma värde på samma mängd, alltså en no-op utan sidoeffekt."
+    },
+    "notifications/notifications.service.ts::markOverdueRentNotices": {
+      "class": "B",
+      "invariant": "RentNotice updateMany sätter status=OVERDUE på rader som ännu inte är det; en andra körning skriver samma värde på samma mängd, alltså en no-op utan sidoeffekt."
+    },
+    "notifications/notifications.service.ts::deleteOld": {
+      "class": "B",
+      "invariant": "Notification deleteMany på ett tidsfönster (createdAt < gräns) — att radera redan raderade rader är per definition en no-op, count blir bara 0."
+    },
+    "platform/auth/platform-token-cleanup.service.ts::purgeExpired": {
+      "class": "B",
+      "invariant": "PlatformRefreshToken deleteMany på expiresAt < now — raderade rader kan inte raderas igen, så en andra körning påverkar noll rader."
+    },
+    "tenant-portal/tenant-auth.service.ts::cleanupStaleSessions": {
+      "class": "B",
+      "invariant": "TenantSession deleteMany på utgångna sessioner — idempotent radering, en andra körning träffar noll rader."
+    },
+    "ai/attachments/ai-attachments.service.ts::cleanupExpiredAttachments": {
+      "class": "B",
+      "invariant": "AiAttachment deleteMany på expiresAt/consumedAt-fönster plus R2-radering som är idempotent (NoSuchKey ignoreras) — dubbelkörning raderar noll rader andra gången."
+    },
+    "ai/retention/ai-retention.service.ts::scheduledRetention": {
+      "class": "B",
+      "invariant": "deleteMany på AiToolExecution, AiConversation, AiMemory och AiUsageLog, var och en filtrerad på createdAt äldre än sin frist — raderade rader kan inte raderas igen, så en andra körning träffar noll rader i samtliga fyra tabeller."
+    },
+    "psd2/psd2-consent.service.ts::cleanupExpiredConsentStates": {
+      "class": "B",
+      "invariant": "BankConsentState deleteMany på utgångna state-rader — idempotent radering, en andra körning träffar noll rader."
+    },
+    "backup/backup.scheduler.ts::dailyFreshnessCheck": {
+      "class": "B",
+      "invariant": "BackupFreshnessService har INGEN prisma-injektion alls (verifierat: noll träffar i filen) — check() listar R2 och larmar via Sentry/logger. Ren läsning kan inte ge dubbelt utfall."
+    }
+  }
+}

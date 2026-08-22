@@ -39,6 +39,8 @@ import {
 import { PrismaService } from '../common/prisma/prisma.service'
 import { BackupScheduler } from './backup.scheduler'
 import { BackupFreshnessService } from './backup-freshness.service'
+import { alltidLedigtLås } from '../common/redis/lock.test-double'
+import { LockService } from '../common/redis/lock.service'
 
 describe('BackupModule — initierar utan att krascha (boot-säkerhet)', () => {
   it('BackupService + BackupScheduler resolvar (även utan R2/DB-config → disabled)', async () => {
@@ -50,6 +52,10 @@ describe('BackupModule — initierar utan att krascha (boot-säkerhet)', () => {
         { provide: ConfigService, useValue: { get: () => undefined } },
         { provide: PrismaService, useValue: { $queryRaw: jest.fn() } },
         BackupFreshnessService,
+        // Cron-låset (klass A). Boot-testet ska bevisa att modulen RESOLVAR —
+        // att den nya beroendekanten faktiskt går att tillfredsställa är en del
+        // av det, och en attrapp räcker: låsets beteende prövas i cron-lock.spec.
+        { provide: LockService, useValue: alltidLedigtLås },
       ],
     }).compile()
 
@@ -301,7 +307,7 @@ describe('BackupScheduler — ett fällt förkontroll-larm sväljs inte tyst', (
     Object.defineProperty(service, 'enabled', { value: true })
 
     const { BackupScheduler: Scheduler } = await import('./backup.scheduler')
-    const scheduler = new Scheduler(service, { check: jest.fn() } as never)
+    const scheduler = new Scheduler(service, { check: jest.fn() } as never, alltidLedigtLås)
 
     // Schemaläggaren får INTE kasta vidare (cron-loopen ska överleva), men
     // runBackup ska ha anropats — larmet sker där.

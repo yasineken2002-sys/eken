@@ -120,6 +120,13 @@ export class RentReminderService {
    * eskaleringen är race-säker (se escalateNoticeToReminded). En betalning före
    * dag 7 gör avin PAID (inte OVERDUE) → faller ur urvalet, ärendet dör.
    */
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // RentNotice updateMany-claim på (status=OVERDUE, collectionStage=NONE);
+  // count=0 → escalateNoticeToReminded returnerar false utan att boka
+  // påminnelseavgift eller skicka.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 10 * * *')
   async escalateOverdueRentNotices(): Promise<ReminderSummary> {
     const summary: ReminderSummary = { reminded: 0, skipped: 0, errors: 0, pausedStale: 0 }
@@ -391,6 +398,13 @@ export class RentReminderService {
    * (när t.ex. en sen leveranskvittens hunnit komma). En betalning gör avin PAID
    * → faller ur urvalet, ärendet dör.
    */
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // RentNotice updateMany-claim på collectionStage=REMINDED → INKASSO_READY;
+  // count=0 betyder att en annan körning redan eskalerat och grenen blir en
+  // no-op.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 11 * * *')
   async escalateRemindedToInkassoReady(): Promise<InkassoReadySummary> {
     const summary: InkassoReadySummary = {

@@ -11,6 +11,12 @@ export class PlatformTokenCleanupService {
   // Kör nattetid 03:00. Raderar tokens som a) löpt ut, eller b) revokerats
   // för mer än 7 dagar sedan — tillräckligt långt fönster för forensik
   // utan att tabellen växer obegränsat.
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // PlatformRefreshToken deleteMany på expiresAt < now — raderade rader kan
+  // inte raderas igen, så en andra körning påverkar noll rader.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async purgeExpired(): Promise<void> {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
