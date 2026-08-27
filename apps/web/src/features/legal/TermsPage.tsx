@@ -120,7 +120,19 @@ export function TermsPage({ onBack }: Props) {
       <ul>
         <li>Tillhandahålla Tjänsten i enlighet med dessa Villkor</li>
         <li>Upptid på minst 99,5% per kalendermånad, exklusive planerat underhåll</li>
-        <li>Daglig säkerhetskopiering av Kunddata</li>
+        {/*
+          VARIANT A — punkten "Daglig säkerhetskopiering av Kunddata" ÄR BORTTAGEN.
+          Läses av människa före merge (#575): det här är en MINSKNING av ett
+          avtalsåtagande, inte en formulering. Att stå kvar hade varit ett
+          åtagande vi inte uppfyller — jobbet är avstängt.
+
+          Alternativ om ni hellre behåller en krok än stryker: "Säkerhetskopiering
+          av Kunddata enligt vid var tid gällande beskrivning i Integritetspolicyn".
+          Svagare och vagare, men bryter inte kedjan i avtalet.
+
+          VARIANT B, när backupen är i drift och en återställning verifierad:
+            <li>Daglig säkerhetskopiering av Kunddata</li>
+        */}
         <li>Underrätta Kunden om personuppgiftsincidenter inom 72 timmar (GDPR)</li>
         <li>Branschstandard för kryptering (TLS i transit, AES-256 i vila)</li>
         <li>

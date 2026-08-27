@@ -107,8 +107,19 @@ för:
 
 - tillhandahålla Tjänsten i enlighet med dessa Villkor
 - leverera en upptid på minst 99,5% per kalendermånad, exklusive
-  planerat underhåll
-- genomföra säkerhetskopiering av Kunddata minst varje dygn
+planerat underhåll
+<!-- VARIANT A — punkten "genomföra säkerhetskopiering av Kunddata minst varje
+     dygn" ÄR BORTTAGEN. Läses av människa före merge (#575): det är en MINSKNING
+     av ett avtalsåtagande, inte en omformulering. Formuleringen var dessutom
+     starkare än appens ("minst varje dygn"), och jobbet är avstängt.
+
+     Alternativ om en krok ska behållas i stället för att strykas:
+       - säkerhetskopiera Kunddata enligt vid var tid gällande beskrivning i
+         Integritetspolicyn
+
+     VARIANT B, när backupen är i drift och en återställning verifierad:
+       - genomföra säkerhetskopiering av Kunddata minst varje dygn -->
+
 - underrätta Kunden om personuppgiftsincidenter inom 72 timmar enligt GDPR
 - skydda Kunddata med branschstandard för kryptering (TLS i transit,
   AES-256 i vila)

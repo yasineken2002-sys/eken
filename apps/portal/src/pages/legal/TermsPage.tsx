@@ -89,7 +89,12 @@ export function TermsPage() {
       <ul>
         <li>Tillhandahålla Tjänsten enligt Villkoren</li>
         <li>Upptid minst 99,5% per månad, exkl. planerat underhåll</li>
-        <li>Daglig säkerhetskopiering av Kunddata</li>
+        {/*
+          VARIANT A — punkten är BORTTAGEN. Se #575 och den längre noten i
+          apps/web/src/features/legal/TermsPage.tsx. Minskning av ett
+          avtalsåtagande — måste läsas av människa före merge.
+          VARIANT B: <li>Daglig säkerhetskopiering av Kunddata</li>
+        */}
         <li>Underrättelse om incidenter inom 72 timmar (GDPR)</li>
         <li>Branschstandard för kryptering (TLS, AES-256)</li>
         <li>
