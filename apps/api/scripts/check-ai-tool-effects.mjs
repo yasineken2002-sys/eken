@@ -34,6 +34,14 @@
  *       längre finns i ACTION_TOOLS är rött, och varje skäl måste vara minst
  *       30 tecken. Ett verktyg får inte stå i BÅDA listorna.
  *
+ * LÄSNINGEN (R7) — kontrollen av att rostret ens BLEV läst.
+ *
+ *   R7  `parseSet` måste läsa LIKA MÅNGA poster som `countSetEntries` räknar
+ *       charset-fritt i samma kropp. Det är R5:s förutsättning: R5 jämför två
+ *       mängder, och en post som föll ur BÅDA jämförs aldrig. `export_sie4`
+ *       matchade inte `[a-z_]+`, försvann ur båda listorna, och R5 var grön på
+ *       29 mot 29 medan källan hade 30. (Uppmätt defekt.)
+ *
  * ⚠️ GUARDENS GRÄNS, UTSKRIVEN. Den mäter att mekanismen är intakt och att
  * rostret är fullständigt — inte att varje enskilt verktyg empiriskt skriver
  * något. Att mekanismen faktiskt bokför rätt rad mäts mot en RIKTIG databas i
@@ -85,11 +93,73 @@ export function executeToolBody(text) {
   return nästa === -1 ? efter : efter.slice(0, nästa)
 }
 
-/** Läs `export const X = new Set([...])`. */
-export function parseSet(text, name) {
+/**
+ * Kroppen mellan `new Set([` och `])` för en namngiven export. Rå — kommentarer
+ * kvar. Delad av `parseSet` och `countSetEntries` så de bevisligen läser SAMMA
+ * textstycke; skilde de sig åt vore antalsjämförelsen mellan dem meningslös.
+ */
+function setBody(text, name) {
   const m = new RegExp(`export const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\)`).exec(text)
-  if (!m) return null
-  return [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1])
+  return m ? m[1] : null
+}
+
+/**
+ * Läs `export const X = new Set([...])`.
+ *
+ * ── SIFFRORNA I TECKENKLASSEN ────────────────────────────────────────────────
+ *
+ * Klassen var `[a-z_]+`. `export_sie4` slutar på en siffra, matchade därför inte,
+ * och FÖLL TYST UR BÅDA LISTORNA. Utfallet var inte ett fel utan en tystnad:
+ * R5 jämförde 29 mot 29 och var grön, medan källan hade 30 ACTION_TOOLS varav
+ * ett saknade ställningstagande. Vakten hade inte fel om något — den hade slutat
+ * läsa en post, och rapporterade dessutom sitt eget felaktiga antal som resultat.
+ *
+ * Teckenklassen är därför inte ensam skyddsvärd. Den bevakas av
+ * `countSetEntries`, som räknar samma kropp UTAN att anta något om vilka tecken
+ * ett namn får innehålla — se R7.
+ */
+export function parseSet(text, name) {
+  const kropp = setBody(text, name)
+  if (kropp === null) return null
+  return [...kropp.matchAll(/'([a-z0-9_]+)'/g)].map((x) => x[1])
+}
+
+/**
+ * ANTALET POSTER I ETT SET — härlett UTAN teckenklass.
+ *
+ * Det här är kanariefågeln mot `parseSet`. Den får därför inte dela dess
+ * antagande: hade den också matchat på namnets FORM skulle den ha gått blind på
+ * exakt samma post och bekräftat fel tal. Den räknar i stället två storheter som
+ * är oberoende av vilka tecken ett namn består av:
+ *
+ *   1. ANTALET APOSTROFER / 2 — varje post är exakt en citerad literal.
+ *   2. ANTALET KOMMASEPARERADE, ICKE-TOMMA SEGMENT.
+ *
+ * Kommentarer strippas först med den delade källskannern, så en apostrof i
+ * prosa (`don't`) inte räknas som en literalgräns.
+ *
+ * Är de två oense — udda antal apostrofer, en post utan citattecken, ett
+ * kommatecken inuti ett namn — returneras `null`. Det betyder "jag kan inte
+ * läsa det här", och R7 gör det RÖTT. En kontroll som inte kan läsa sin källa
+ * ska säga det, inte gissa ett tal.
+ *
+ * @returns {number|null}
+ */
+export function countSetEntries(text, name) {
+  const rå = setBody(text, name)
+  if (rå === null) return null
+  const kropp = withoutComments(rå)
+
+  const apostrofer = (kropp.match(/'/g) ?? []).length
+  if (apostrofer % 2 !== 0) return null
+  const viaLiteraler = apostrofer / 2
+
+  const viaKomman = kropp
+    .split(',')
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0).length
+
+  return viaLiteraler === viaKomman ? viaLiteraler : null
 }
 
 /** Kärnan. Exporterad så självtestet kör exakt samma kod som CI. */
@@ -176,6 +246,39 @@ export function evaluate({ defText, execText, prismaText, extText, ack }) {
         'rader innan det kastade har orsakat två rader, och just de fallen är svårast ' +
         'att städa utan spår.',
     })
+  }
+
+  // ── R7 — LÄSTES ROSTRET ÖVER HUVUD TAGET? ────────────────────────────────
+  //
+  // Måste ligga FÖRE R5. R5 jämför två mängder mot varandra; en post som föll
+  // ur BÅDA är osynlig för den jämförelsen och gör den grön på fel underlag.
+  // Kontrollen är alltså inte en dubblett av R5 utan dess FÖRUTSÄTTNING.
+  //
+  // Jämförelsen är meningsfull bara för att `countSetEntries` härleder antalet
+  // på ett annat sätt än `parseSet` — utan att anta något om namnets tecken. En
+  // kanariefågel som delar mätobjektets antagande bekräftar buggen i stället för
+  // att fånga den (#463).
+  for (const namn of ['ACTION_TOOLS', 'EFFECT_PRODUCING_TOOLS']) {
+    const lästa = parseSet(defText, namn)
+    if (lästa === null) continue // R5 rapporterar den saknade listan med bättre text.
+    const faktiska = countSetEntries(defText, namn)
+    if (faktiska === null) {
+      problem.push({
+        rule: `antalet poster i ${namn} går inte att härleda`,
+        detail:
+          'Apostroferna går inte ihop parvis, eller ett kommaseparerat segment saknar ' +
+          'literal. Skanningen kan inte läsa källan — och en kontroll som inte kan ' +
+          'läsa sin källa ska säga det, inte gissa ett tal.',
+      })
+    } else if (lästa.length !== faktiska) {
+      problem.push({
+        rule: `parsern läser ${lästa.length} av ${faktiska} poster i ${namn}`,
+        detail:
+          'Teckenklassen i parseSet har gått blind på minst ett namn. Posten faller ur ' +
+          'BÅDA listorna, R5 jämför då lika mot lika och är grön på fel underlag — ' +
+          'precis som när `export_sie4` inte matchade `[a-z_]+`.',
+      })
+    }
   }
 
   // ── R5 + R6 — rostret och kvitteringarna ─────────────────────────────────
@@ -287,13 +390,97 @@ function selfTest() {
     fail(`kanariefågel: set-läsningen gav ${JSON.stringify(a)} / ${JSON.stringify(p)}, väntade två + två`)
   } else console.log('✅ kanariefågel: set-läsningen hittar båda listorna i fixturen')
 
-  // ── KANARIEFÅGEL 2: mot den RIKTIGA källan ───────────────────────────────
+  // ── KANARIEFÅGEL 2: mot den RIKTIGA källan — ANTALET, inte "fler än noll" ──
+  //
+  // DEN GAMLA FORMEN VAR DEFEKTEN, inte regexen. Den krävde bara `length > 0`
+  // i den riktiga källan. Med `[a-z_]+` läste parsern 29 av 30 ACTION_TOOLS:
+  // villkoret "fler än noll" var uppfyllt, självtestet grönt, CI grönt, och
+  // guardens egen utskrift rapporterade 29 som om det vore källans antal. En
+  // kanariefågel som accepterar vilket tal som helst mäter inte ett tal.
+  //
+  // Kravet är därför EXAKT LIKHET mot ett antal som härleds charset-fritt. Båda
+  // talen skrivs ut: kan ingen se dem går det inte att skilja "stämmer" från
+  // "kontrollen tittade inte".
   const riktigDef = readFileSync(DEF_FILE, 'utf8')
-  const rAction = parseSet(riktigDef, 'ACTION_TOOLS')
-  const rProd = parseSet(riktigDef, 'EFFECT_PRODUCING_TOOLS')
-  if (!rAction || rAction.length === 0) fail('kanariefågel: NOLL ACTION_TOOLS i den riktiga källan')
-  else if (!rProd || rProd.length === 0) fail('kanariefågel: NOLL EFFECT_PRODUCING_TOOLS i den riktiga källan')
-  else console.log(`✅ kanariefågel: ${rAction.length} ACTION_TOOLS och ${rProd.length} i rostret, riktig källa`)
+  for (const namn of ['ACTION_TOOLS', 'EFFECT_PRODUCING_TOOLS']) {
+    const lästa = parseSet(riktigDef, namn)
+    const faktiska = countSetEntries(riktigDef, namn)
+    if (!lästa || lästa.length === 0) {
+      fail(`kanariefågel: NOLL ${namn} i den riktiga källan`)
+    } else if (faktiska === null) {
+      fail(`kanariefågel: antalet ${namn} går inte att härleda ur den riktiga källan`)
+    } else if (lästa.length !== faktiska) {
+      fail(
+        `kanariefågel: parseSet läser ${lästa.length} av ${faktiska} ${namn} i den riktiga ` +
+          'källan — teckenklassen har gått blind på minst ett namn',
+      )
+    } else {
+      console.log(`✅ kanariefågel: parseSet läser ${lästa.length} av ${faktiska} ${namn}, riktig källa`)
+    }
+  }
+
+  // ── KANARIEFÅGEL 2b: den charset-fria räknaren MÅSTE ge utslag ────────────
+  //
+  // Kanariefågel 2 är bara värd något om `countSetEntries` faktiskt reagerar när
+  // parsern tappar en post. Mata därför in exakt det mönster som lurade den
+  // gamla klassen — ett namn med siffra — och kräv att talen går isär när
+  // parsern kör med den GAMLA teckenklassen. Utan det här kan 2:an vara grön för
+  // att båda sidor gick blinda samtidigt.
+  const medSiffra = "export const ACTION_TOOLS = new Set(['a_tool', 'export_sie4'])"
+  const gammalKlass = [...medSiffra.matchAll(/'([a-z_]+)'/g)].length
+  const nyKlass = parseSet(medSiffra, 'ACTION_TOOLS')?.length
+  const charsetFritt = countSetEntries(medSiffra, 'ACTION_TOOLS')
+  if (charsetFritt !== 2 || nyKlass !== 2) {
+    fail(`kanariefågel 2b: väntade 2/2, fick parseSet=${nyKlass} countSetEntries=${charsetFritt}`)
+  } else if (gammalKlass !== 1) {
+    fail(`kanariefågel 2b: den gamla klassen [a-z_]+ läste ${gammalKlass}, väntade 1 — sonden biter inte`)
+  } else {
+    console.log(
+      `✅ kanariefågel 2b: 'export_sie4' — gammal klass läser ${gammalKlass}, ny ${nyKlass}, ` +
+        `charset-fritt ${charsetFritt}. Räknaren skiljer dem åt.`,
+    )
+  }
+
+  // ── R7 — PARSERN BLIND MOT EN POST ───────────────────────────────────────
+  //
+  // Sonden måste vara ett namn som den NUVARANDE klassen inte läser, annars
+  // fångas fallet av R5 och R7 förblir oprövad. `[a-z0-9_]+` läser inte
+  // versaler: kroppen har tre poster, parsern ser två. Det är exakt formen på
+  // den uppmätta defekten — bara med ett annat tecken, eftersom siffran numera
+  // är läsbar.
+  //
+  // Att sonden BITER kontrolleras explicit nedan; en sond som råkar vara läsbar
+  // hade gett en grön rad som såg ut som ett bevis.
+  const DEF_OLASBART = `
+export const ACTION_TOOLS = new Set(['a_tool', 'b_tool', 'exportSIE4'])
+export const EFFECT_PRODUCING_TOOLS = new Set(['a_tool', 'b_tool'])
+`
+  const sondLästa = parseSet(DEF_OLASBART, 'ACTION_TOOLS')?.length
+  const sondFaktiska = countSetEntries(DEF_OLASBART, 'ACTION_TOOLS')
+  if (sondLästa !== 2 || sondFaktiska !== 3) {
+    fail(`R7-sonden biter inte: parseSet=${sondLästa}, countSetEntries=${sondFaktiska}, väntade 2/3`)
+  }
+  röd(
+    'parsern läser 2 av 3 poster (blind mot ett namn — R5 skulle bli grön på fel underlag)',
+    evaluate({ ...bas, defText: DEF_OLASBART }),
+    'parsern läser 2 av 3 poster',
+  )
+
+  // ── R5 med ett SIFFERNAMN — regressionen som stod i main i en vecka ───────
+  //
+  // Med den gamla klassen `[a-z_]+` föll `export_sie4` ur båda listorna och det
+  // här fallet var GRÖNT. Nu ska det fällas av R5, som avsett.
+  röd(
+    'ACTION_TOOL med siffra i namnet utan ställningstagande',
+    evaluate({
+      ...bas,
+      defText: `
+export const ACTION_TOOLS = new Set(['a_tool', 'b_tool', 'export_sie4'])
+export const EFFECT_PRODUCING_TOOLS = new Set(['a_tool', 'b_tool'])
+`,
+    }),
+    '`export_sie4` saknar ställningstagande',
+  )
 
   grön('paritet', evaluate(bas))
 
