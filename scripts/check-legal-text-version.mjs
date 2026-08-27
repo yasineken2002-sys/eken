@@ -130,14 +130,37 @@ export function parseVersions(text) {
   return Object.fromEntries([...m[1].matchAll(/(\w+):\s*'([^']+)'/g)].map((x) => [x[1], x[2]]))
 }
 
+/**
+ * Manifestet. Tolerant mot radbrytning — Prettier bryter om posterna så fort en
+ * sha256 gör raden lång, och en parser som kräver en rad är då blind i exakt det
+ * läge filen normalt befinner sig i.
+ *
+ * UPPMÄTT: första versionen krävde `{ version: '…', sha256: '…' }` på EN rad.
+ * lint-staged körde Prettier vid commiten, posterna bröts över fyra rader, och
+ * vakten rapporterade "terms saknas i LEGAL_DOCUMENT_HASHES" — alltså ett
+ * SAKNAT dokument, när sanningen var en parser som slutat läsa. Den skillnaden
+ * skickar läsaren åt fel håll, och därför skiljer `parseHashes` numera på
+ * "blocket finns inte" (null) och "blocket finns men gav noll poster"
+ * (tom lista → egen regel nedan).
+ *
+ * @returns {{entries: Record<string, {version: string, sha256: string}>, förväntat: number}|null}
+ */
 export function parseHashes(text) {
   const m = /export const LEGAL_DOCUMENT_HASHES = \{([\s\S]*?)\n\} as const/.exec(text)
   if (!m) return null
-  return Object.fromEntries(
-    [...m[1].matchAll(/(\w+):\s*\{\s*version:\s*'([^']+)',\s*sha256:\s*'([a-f0-9]{64})'\s*\}/g)].map(
-      (x) => [x[1], { version: x[2], sha256: x[3] }],
-    ),
+  const entries = Object.fromEntries(
+    [
+      ...m[1].matchAll(
+        /(\w+):\s*\{\s*version:\s*'([^']+)',\s*sha256:\s*'([a-f0-9]{64})',?\s*\}/g,
+      ),
+    ].map((x) => [x[1], { version: x[2], sha256: x[3] }]),
   )
+  // OBEROENDE RÄKNING av hur många poster blocket BORDE ge — en ren
+  // delsträngsräkning som inte delar postregexens antaganden. Går de isär har
+  // parsern gått blind, och det ska sägas rakt ut i stället för att se ut som
+  // att dokument saknas.
+  const förväntat = (m[1].match(/sha256:/g) ?? []).length
+  return { entries, förväntat }
 }
 
 export function parseHistory(text) {
@@ -153,15 +176,28 @@ export function parseHistory(text) {
 export function evaluate({ platformText, dokument, läs, finns = (f) => existsSync(join(ROOT, f)) }) {
   const problem = []
   const versions = parseVersions(platformText)
-  const hashes = parseHashes(platformText)
+  const manifest = parseHashes(platformText)
   const history = parseHistory(platformText)
 
   if (!versions) {
     problem.push({ rule: 'LEGAL_DOCUMENT_VERSIONS går inte att läsa', detail: 'Skanningen har gått blind.' })
     return problem
   }
-  if (!hashes) {
+  if (!manifest) {
     problem.push({ rule: 'LEGAL_DOCUMENT_HASHES saknas', detail: 'Utan manifest finns ingen koppling mellan text och version.' })
+    return problem
+  }
+  const hashes = manifest.entries
+  // KANARIEFÅGEL PÅ PARSERN SJÄLV: antalet lästa poster mot ett oberoende
+  // härlett antal. Skiljer "dokumentet saknas" från "parsern kan inte läsa".
+  if (Object.keys(hashes).length !== manifest.förväntat) {
+    problem.push({
+      rule: `LEGAL_DOCUMENT_HASHES: ${Object.keys(hashes).length} av ${manifest.förväntat} poster gick att läsa`,
+      detail:
+        'Parsern har gått blind — formen i filen matchar inte den form parsern väntar sig ' +
+        '(t.ex. efter en Prettier-omformatering). Det är INTE samma sak som att ett ' +
+        'dokument saknas, och ska inte läsas som det.',
+    })
     return problem
   }
 
