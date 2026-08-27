@@ -173,8 +173,24 @@ export function PrivacyPage({ onBack }: Props) {
         <li>
           <strong>Sentry, Inc.</strong> — felspårning (EU-region, Frankfurt)
         </li>
+        {/*
+          FÖRSLAG — MÅSTE LÄSAS AV MÄNNISKA INNAN MERGE.
+
+          Raden angav tidigare "Google Cloud Storage — säkerhetskopiering (EU)".
+          Den tjänsten används inte: fillagring och backup går till Cloudflare R2
+          (storage.service.ts, backup.service.ts). Cloudflare saknades dessutom
+          HELT i underbiträdeslistan, trots att hyresgästdokument ligger där.
+
+          Två förbehåll som avgör om meningen är sann:
+          1. "EU-jurisdiktion" gäller BACKUPEN och bara om bucketen faktiskt
+             skapas i EU (R2_BACKUP_JURISDICTION=eu). Bucketen finns ännu inte.
+          2. DOKUMENT-bucketen ligger i R2:s DEFAULT-jurisdiktion (uppmätt
+             2026-08-27), alltså inte EU-garanterad. Därför står ingen
+             jurisdiktion på dokumentdelen — att påstå EU där vore fel.
+        */}
         <li>
-          <strong>Google Cloud Storage</strong> — säkerhetskopiering (EU)
+          <strong>Cloudflare, Inc.</strong> — objektlagring av dokument och databasbackuper
+          (Cloudflare R2; backuper i EU-jurisdiktion)
         </li>
       </ul>
       <p>

@@ -5,6 +5,7 @@ import {
   PutObjectCommand,
   ListObjectsV2Command,
   DeleteObjectCommand,
+  HeadBucketCommand,
 } from '@aws-sdk/client-s3'
 import * as Sentry from '@sentry/nestjs'
 import { spawn } from 'node:child_process'
@@ -16,6 +17,90 @@ import { join } from 'node:path'
 // R2-nyckel-prefix för databasbackuper. Isoleras från användarfiler.
 const BACKUP_PREFIX = 'db-backups/'
 const DEFAULT_RETENTION_DAYS = 30
+
+// ── R2-JURISDIKTION ─────────────────────────────────────────────────────────
+//
+// I R2 väljs jurisdiktionen av VÄRDNAMNET, inte av ett fält i anropet:
+//
+//   default   <konto>.r2.cloudflarestorage.com
+//   eu        <konto>.eu.r2.cloudflarestorage.com
+//
+// En bucket tillhör EXAKT EN jurisdiktion. Frågar man efter den på fel endpoint
+// svarar R2 `404 NoSuchBucket` — alltså samma svar som när bucketen inte finns
+// alls. Uppmätt 2026-08-27 mot prod: appens bucket ger `200` på default-
+// endpointen och `404 NoSuchBucket` på EU-endpointen med SAMMA nycklar.
+//
+// VARFÖR ETT ENUM OCH INTE EN RÅ ENDPOINT-URL. En felstavad värdnamnssträng är
+// syntaktiskt giltig och upptäcks först som ett 404 klockan 03:00 — alltså som
+// ett larm som ser ut att handla om en saknad bucket. Ett litet enum kan bara
+// stavas fel på ett sätt som går att fånga, och fångas vid uppstart.
+//
+// `fedramp` finns också hos Cloudflare men är amerikansk myndighetsjurisdiktion
+// och medvetet utelämnad: varje värde här är en väg som måste kunna testas.
+export const R2_JURISDICTIONS = ['default', 'eu'] as const
+export type R2Jurisdiction = (typeof R2_JURISDICTIONS)[number]
+
+/** Variabelnamnet på ETT ställe — meddelanden och grind ska inte kunna glida isär. */
+export const R2_BACKUP_JURISDICTION_VAR = 'R2_BACKUP_JURISDICTION'
+
+/**
+ * Läser konfigurationsvärdet. `undefined`/tom sträng → `'default'` (bakåt-
+ * kompatibelt: så betedde sig koden innan variabeln fanns). Okänt värde → `null`,
+ * vilket anroparen MÅSTE behandla som ett fel — aldrig som `'default'`.
+ *
+ * Att tolka ett oläsbart värde som default vore den tystnad hela ändringen
+ * finns för att ta bort: konfigurationen säger `eu`, koden pratar med default,
+ * och skillnaden syns först som ett 404 mitt i natten.
+ */
+export function parseR2Jurisdiction(raw: string | undefined): R2Jurisdiction | null {
+  const v = (raw ?? '').trim().toLowerCase()
+  if (v === '') return 'default'
+  return (R2_JURISDICTIONS as readonly string[]).includes(v) ? (v as R2Jurisdiction) : null
+}
+
+/**
+ * Värdnamnet för en jurisdiktion. ENDA stället i backupvägen där R2:s värdnamn
+ * skrivs — bevakat av `scripts/check-backup-endpoint.mjs`, som fäller om det
+ * hårdkodas någon annanstans i `src/backup/`.
+ */
+export function r2EndpointFor(accountId: string, jurisdiction: R2Jurisdiction): string {
+  const prefix = jurisdiction === 'default' ? '' : `${jurisdiction}.`
+  return `https://${accountId}.${prefix}r2.cloudflarestorage.com`
+}
+
+/**
+ * Beskedet operatören läser när bucketen inte finns på den endpoint
+ * konfigurationen pekar på.
+ *
+ * Samma form som `preflightMismatchMessage` (#540): säg vad som är fel OCH vad
+ * man gör åt det, före dumpen i stället för mitt i den. Utan den här texten är
+ * larmet ett rått `NoSuchBucket`, och de två möjliga orsakerna — fel
+ * jurisdiktion, eller ingen bucket alls — är omöjliga att skilja åt klockan tre
+ * på natten.
+ */
+export function preflightBucketMissingMessage(
+  bucket: string,
+  jurisdiction: R2Jurisdiction,
+): string {
+  return (
+    `Backupen avbröts FÖRE dumpen: backupbucketen ${bucket} hittades inte på ` +
+    `${jurisdiction}-endpointen. En bucket tillhör exakt en jurisdiktion — kontrollera ` +
+    `att ${R2_BACKUP_JURISDICTION_VAR} matchar den jurisdiktion bucketen skapades i ` +
+    `(giltiga värden: ${R2_JURISDICTIONS.join(', ')}). Ingen backup togs, och ingen ` +
+    'befintlig backup gallrades.'
+  )
+}
+
+/** Beskedet vid ett oläsbart konfigurationsvärde. Läses vid UPPSTART, inte 03:00. */
+export function invalidJurisdictionMessage(): string {
+  return (
+    `[backup] ${R2_BACKUP_JURISDICTION_VAR} har ett värde som inte känns igen. ` +
+    `Giltiga värden: ${R2_JURISDICTIONS.join(', ')}. Backupen är AVSTÄNGD tills det ` +
+    'rättas — ett oläsbart värde får aldrig tolkas som "default", eftersom en bucket ' +
+    'i EU då skulle sökas på default-endpointen och svara 404 NoSuchBucket, alltså ' +
+    'samma svar som en bucket som inte finns.'
+  )
+}
 
 // T5 Fas C — timeout-golv på backupens EGNA R2-klient (samma Tier 1-fynd som
 // storage.service, men denna väg laddar upp en HEL pg_dump som kan vara stor).
@@ -240,6 +325,8 @@ export class BackupService {
   private readonly logger = new Logger(BackupService.name)
   private readonly s3: S3Client
   private readonly bucket: string
+  /** Jurisdiktionen klienten faktiskt pratar med. Läses av förkontrollens besked. */
+  readonly jurisdiction: R2Jurisdiction
   private readonly databaseUrl: string
   readonly retentionDays: number
   readonly enabled: boolean
@@ -272,6 +359,22 @@ export class BackupService {
       config.get<string>('R2_SECRET_ACCESS_KEY')
     const backupBucket = config.get<string>('R2_BACKUP_BUCKET')
     this.bucket = backupBucket ?? config.get<string>('R2_BUCKET_NAME') ?? ''
+
+    // ── JURISDIKTIONEN ───────────────────────────────────────────────────────
+    //
+    // `null` = värdet känns inte igen. Det behandlas som ett KONFIGURATIONSFEL
+    // och stänger av backupen — aldrig som `'default'`. Se
+    // invalidJurisdictionMessage för varför tystnaden är det farliga.
+    //
+    // Att det stänger av i stället för att kasta följer den här filens egen
+    // linje: isoleringsgrinden gör likadant. Ett fel i en backupvariabel ska
+    // inte hindra API:t från att starta och servera hyresgäster — det ska
+    // synas HÖGT vid uppstart och blockera nattjobbet, vilket det gör via
+    // logger.error + productionBlockReason + färskhetslarmet.
+    const jurisdictionRaw = config.get<string>(R2_BACKUP_JURISDICTION_VAR)
+    const jurisdiction = parseR2Jurisdiction(jurisdictionRaw)
+    this.jurisdiction = jurisdiction ?? 'default'
+    if (jurisdiction === null) this.logger.error(invalidJurisdictionMessage())
     this.databaseUrl = config.get<string>('DATABASE_URL') ?? ''
     this.retentionDays = Number(
       config.get<string>('BACKUP_RETENTION_DAYS') ?? DEFAULT_RETENTION_DAYS,
@@ -308,6 +411,7 @@ export class BackupService {
       !!secretAccessKey &&
       !!this.bucket &&
       !!this.databaseUrl &&
+      jurisdiction !== null &&
       !(isProd && overlaps.length > 0)
 
     if (config.get<string>('BACKUP_ENABLED') === 'true' && isProd && overlaps.length > 0) {
@@ -321,17 +425,21 @@ export class BackupService {
       ? null
       : config.get<string>('BACKUP_ENABLED') !== 'true'
         ? 'BACKUP_ENABLED är inte satt till "true" — nattjobbet är avstängt'
-        : overlaps.length > 0
-          ? 'isoleringsgrinden blockerar: backupen delar konfiguration med applikationens fillagring'
-          : !accountId || !accessKeyId || !secretAccessKey || !this.bucket
-            ? 'R2-konfigurationen är ofullständig (konto, nyckel, hemlighet eller bucket saknas)'
-            : !this.databaseUrl
-              ? 'DATABASE_URL saknas'
-              : null
+        : jurisdiction === null
+          ? `${R2_BACKUP_JURISDICTION_VAR} har ett okänt värde (giltiga: ${R2_JURISDICTIONS.join(', ')})`
+          : overlaps.length > 0
+            ? 'isoleringsgrinden blockerar: backupen delar konfiguration med applikationens fillagring'
+            : !accountId || !accessKeyId || !secretAccessKey || !this.bucket
+              ? 'R2-konfigurationen är ofullständig (konto, nyckel, hemlighet eller bucket saknas)'
+              : !this.databaseUrl
+                ? 'DATABASE_URL saknas'
+                : null
 
     this.s3 = new S3Client({
       region: 'auto',
-      endpoint: `https://${accountId ?? ''}.r2.cloudflarestorage.com`,
+      // ENDA endpoint-härledningen i backupvägen. Värdnamnet får inte skrivas
+      // här — se r2EndpointFor och scripts/check-backup-endpoint.mjs.
+      endpoint: r2EndpointFor(accountId ?? '', this.jurisdiction),
       credentials: { accessKeyId: accessKeyId ?? '', secretAccessKey: secretAccessKey ?? '' },
       // Timeout-golv (se konstanterna ovan). ENDAST connection + socket (idle) —
       // INGET requestTimeout, för att inte kapa en stor backup-uppladdning.
@@ -357,6 +465,13 @@ export class BackupService {
       // assertClientCanDumpServer. Ligger före temp-filen så att ingenting
       // skapas, skrivs eller gallras när svaret är nej.
       await this.assertClientCanDumpServer()
+
+      // SEDAN: finns bucketen på den endpoint konfigurationen pekar på? Fel
+      // jurisdiktion ger `404 NoSuchBucket` — exakt samma svar som "bucketen
+      // finns inte". Utan den här kontrollen är de två omöjliga att skilja åt i
+      // ett nattligt larm. Ligger också före temp-filen: ingenting skapas,
+      // skrivs eller gallras när svaret är nej.
+      await this.assertBackupBucketReachable()
 
       // Förskapa temp-filen med 0600 (bara ägaren) innan pg_dump skriver PII till
       // den — POSIX bevarar behörigheten vid trunkering.
@@ -429,6 +544,43 @@ export class BackupService {
       await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }))
     }
     return expired.length
+  }
+
+  /**
+   * VÄGRAR TA BACKUP OM BUCKETEN INTE FINNS PÅ DEN KONFIGURERADE ENDPOINTEN.
+   *
+   * Samma form som versionskontrollen nedan (#540): ett läsbart besked FÖRE
+   * dumpen i stället för ett rått fel mitt i den.
+   *
+   * ── VARFÖR DEN BEHÖVS ────────────────────────────────────────────────────
+   *
+   * En bucket tillhör exakt en jurisdiktion, och R2 svarar `404 NoSuchBucket`
+   * när man frågar efter den på fel endpoint. Det är samma svarskod som när
+   * bucketen inte finns alls. De två orsakerna — fel `R2_BACKUP_JURISDICTION`,
+   * eller ingen bucket — kräver helt olika åtgärder, och ingen av dem går att
+   * läsa ut ur svaret. Uppmätt 2026-08-27: appens egen bucket svarade `200` på
+   * default-endpointen och `404 NoSuchBucket` på EU-endpointen, med samma
+   * nycklar.
+   *
+   * ── VAD DEN INTE GÖR ─────────────────────────────────────────────────────
+   *
+   * Bara 404 översätts. Ett `403` (nekad behörighet) eller ett nätverksfel
+   * propagerar OFÖRÄNDRAT — de är redan entydiga, och att svepa in dem i en
+   * text om jurisdiktion skulle peka operatören åt fel håll. En förkontroll som
+   * gissar orsak är sämre än ingen.
+   */
+  async assertBackupBucketReachable(): Promise<void> {
+    try {
+      await this.s3.send(new HeadBucketCommand({ Bucket: this.bucket }))
+    } catch (err) {
+      const status = (err as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode
+      if (status === 404) {
+        throw new BackupPreflightError(
+          preflightBucketMissingMessage(this.bucket, this.jurisdiction),
+        )
+      }
+      throw err
+    }
   }
 
   /**
