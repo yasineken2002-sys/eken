@@ -358,6 +358,33 @@ jobs:
       - name: Verify every AI tool execution can be traced to its effects
         run: node apps/api/scripts/check-ai-tool-effects.mjs
 
+  legal-text-version-guard:
+    name: Legal text version sync guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, ingen DB) — en juridisk text får inte
+      # ändras utan att versionen följer med.
+      #
+      # platform.ts SA att versionen skulle höjas vid materiell ändring. Det var
+      # en konvention, inte en mekanism: #574 tog bort ett avtalsåtagande ur
+      # Evenos skyldigheter och bumpade ingenting. Följden stod skarp i prod —
+      # 1.0 betecknade två olika texter, sidorna visade fel datum, och ingen
+      # re-acceptance triggades. Guarden hashar den renderade prosan och fäller
+      # om hashen inte matchar manifestet, samt om ett förbrukat versionsnummer
+      # återanvänds.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (each rule proven by its own assertion)
+        run: node scripts/check-legal-text-version.mjs --self-test
+
+      - name: Verify legal text and version have not drifted apart
+        run: node scripts/check-legal-text-version.mjs
+
   backup-endpoint-guard:
     name: Backup endpoint jurisdiction guard
     runs-on: ubuntu-latest
@@ -1157,6 +1184,7 @@ jobs:
       - ai-tool-effects-guard
       - action-tool-authorization-guard
       - backup-endpoint-guard
+      - legal-text-version-guard
       - cron-classification-guard
       - pdf-selfcontained-guard
       - guard-preprocessor-guard

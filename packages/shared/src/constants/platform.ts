@@ -64,25 +64,116 @@ export function generatePlatformOcr(invoiceNumber: string): string {
   return `${digits}${check}`
 }
 
-// Versionsmärkning på juridiska dokument. När innehållet i en av
-// markdown-filerna i docs/legal/ ändras materiellt ska motsvarande version
-// här ökas — det triggar re-acceptance-modalen för alla aktiva kunder.
+// ─── VERSIONSMÄRKNING PÅ JURIDISKA DOKUMENT ─────────────────────────────────
+//
+// KÄLLAN ÄR APPENS RENDERADE TEXT. Beslutat i #576: det kunden faktiskt läser
+// och godkänner i `TermsReacceptanceModal` är det som binder — inte en fil i
+// repot. Den här kommentaren sa tidigare att versionen skulle höjas när
+// `docs/legal/*.md` ändrades materiellt; det pekade ut fel dokument som källa
+// och är rättat här.
+//
+// Sidorna som utgör varje dokument räknas upp i `LEGAL_DOCUMENTS` i
+// scripts/check-legal-text-version.mjs — en per app, samma version.
+//
+// ─── VAD SOM ÄR EN MATERIELL ÄNDRING ────────────────────────────────────────
+//
+// Regeln saknades, och det är därför konventionen kunde brista utan att någon
+// märkte det (#574 tog bort ett avtalsåtagande och bumpade ingenting).
+//
+// MATERIELL — versionen MÅSTE bumpas, och alla aktiva kunder tvingas godkänna om:
+//   • ett åtagande från Eveno läggs till, ändras eller TAS BORT
+//   • en rättighet eller skyldighet för kunden ändras
+//   • ett underbiträde, en mottagare eller en överföring till tredjeland ändras
+//   • en lagringstid, en frist eller ett belopp ändras
+//   • rättslig grund, ändamål eller kategorier av personuppgifter ändras
+//
+// REDAKTIONELL — versionen står kvar:
+//   • stavning, interpunktion, ordföljd som inte ändrar innebörden
+//   • rubriknumrering, ankarlänkar, styckeindelning
+//   • formatering och radbrytning
+//
+// GRÄNSFALL GÅR TILL MATERIELL. En bump kostar en extra klick för kunden; en
+// utebliven bump gör att ett versionsnummer betecknar två olika texter, och då
+// går frågan "vad accepterade kunden" inte längre att besvara.
+//
+// Kontrolleras av scripts/check-legal-text-version.mjs: texten hashas, och
+// hashen ligger i LEGAL_DOCUMENT_HASHES nedan. Ändras texten utan att manifestet
+// följer med blir CI röd — konventionen är alltså inte längre frivillig.
 export const LEGAL_DOCUMENT_VERSIONS = {
-  terms: '1.0',
-  privacy: '1.0',
+  // 1.0 → 1.1 (#574, mergad som c4b7b2f): backup-utfästelserna gick till
+  // variant A. Punkten "Daglig säkerhetskopiering av Kunddata" TOGS BORT ur
+  // Evenos skyldigheter — ett borttaget åtagande, alltså materiellt.
+  terms: '1.1',
+  // 1.0 → 1.1 (samma ändring): säkerhetsavsnittets backup-punkt skrevs om och
+  // "säkerhetskopior" ströks ur kryptering-i-vila-punkten.
+  privacy: '1.1',
+  // Orörd av #574 — cookie-texten ändrades inte.
   cookies: '1.0',
 } as const
 
-// Aktuella versioner som används av register-flödet och re-acceptance-flödet.
-// Det är dessa två som styr om en kund behöver godkänna nytt vid inloggning.
+// ─── FÖRBRUKADE VERSIONSNUMMER (append-only) ────────────────────────────────
+//
+// Ett versionsnummer som en gång bundits till en text får aldrig betyda en
+// annan text. Vakten fäller om ett nummer här återanvänds — och DET är vad som
+// gör bumpen obligatorisk i stället för frivillig: vill man ändra texten måste
+// den gamla posten pensioneras, och då är numret förbrukat.
+//
+// Lägg till, ta aldrig bort.
+export const LEGAL_DOCUMENT_VERSION_HISTORY = [
+  { doc: 'terms', version: '1.0', retiredAt: '2026-08-28' },
+  { doc: 'privacy', version: '1.0', retiredAt: '2026-08-28' },
+] as const
+
+// ─── INNEHÅLLSHASH PER DOKUMENT ─────────────────────────────────────────────
+//
+// sha256 över den normaliserade prosan i dokumentets sidor (web + portal).
+// Genereras med `node scripts/check-legal-text-version.mjs --print`.
+//
+// Hashen täcker PROSAN, inte interpolationer som {PLATFORM_COMPANY.brandName}
+// — se guardens docblock för varför gränsen ligger där.
+export const LEGAL_DOCUMENT_HASHES = {
+  terms: {
+    version: '1.1',
+    sha256: '2777746208020045cba385120cb2a8cb02d274c4319ba6861558470173d02c6a',
+  },
+  privacy: {
+    version: '1.1',
+    sha256: '1289189776e0132df0e96692ac720d5bb78b82b918044be16883fe907ca3d0c0',
+  },
+  cookies: {
+    version: '1.0',
+    sha256: '10fd4171f2ae65f41e707711a45b5c382cd0725cf24c1a24d92699cef24972f4',
+  },
+} as const
+
+// Villkorsversionen är den som STYR. Den snapshot:as till Organization.termsVersion
+// och User.termsVersion, och re-acceptance-modalen jämför mot den.
 export const CURRENT_TERMS_VERSION = LEGAL_DOCUMENT_VERSIONS.terms
+
+// ⚠️ CURRENT_PRIVACY_VERSION UTLÖSER INGENTING. Den visar bara ett nummer på
+// de publika sidorna (PrivacyPage i web och portal). Den skrivs ALDRIG till
+// databasen och ingår INTE i re-acceptance-jämförelsen — trots att
+// registreringsrutan säger att kunden accepterar "Användarvillkor OCH
+// Integritetspolicy". För policyn finns alltså varken version eller hash
+// lagrad per kund, bara ett datum via acceptedTermsAt.
+//
+// Att bumpa den här är alltså kosmetiskt: det ändrar vad sidan visar, inte vad
+// någon måste godkänna. Låt den inte se ut som en fungerande mekanism.
+// Luckan är #577:s fråga och löses inte här.
 export const CURRENT_PRIVACY_VERSION = LEGAL_DOCUMENT_VERSIONS.privacy
 
 // Datum när dokumenten senast ändrades — visas i "Senast uppdaterad"-fält
 // på publika sidor. Uppdatera samtidigt som versionsfältet.
+//
+// HÄRLETT UR ÄNDRINGEN, inte ur "vilken dag är det idag":
+//   git show -s --format=%ci c4b7b2f  →  2026-08-28 00:42:35 +0200
+// Offseten är Stockholm, och texterna är svenska och riktade till svenska
+// kunder — alltså 2026-08-28. (I UTC var det fortfarande den 27:e; svensk
+// lokaltid är rätt nämnare för ett svenskt avtalsdokument.)
 export const LEGAL_DOCUMENT_UPDATED_AT = {
-  terms: '2026-05-12',
-  privacy: '2026-05-12',
+  terms: '2026-08-28',
+  privacy: '2026-08-28',
+  // Cookie-texten rördes inte av #574.
   cookies: '2026-05-12',
 } as const
 
