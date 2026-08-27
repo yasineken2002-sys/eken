@@ -1,9 +1,15 @@
 # Runbook: Databasbackup & återställning
 
-Eveno tar **daglig full databasbackup** (`pg_dump` custom-format) och laddar upp den
-till Cloudflare R2 (geografiskt separerat från Railway-databasen). Detta uppfyller
-löftet i integritetspolicyn: _daglig säkerhetskopiering, 30 dagars retention,
-geografiskt separerade kopior_.
+> ⚠️ **INTE I DRIFT ÄN (per 2026-08-27).** Mekanismen nedan är byggd och testad,
+> men jobbet är avstängt i produktion: `BACKUP_ENABLED` saknas, och de tre
+> `R2_BACKUP_*`-variablerna likaså — så isoleringsgrinden skulle blockera även
+> med flaggan satt. Noll dumpar har tagits av jobbet. Runbooken beskriver alltså
+> hur det ska fungera, inte vad som pågår. Se #575.
+
+Eveno är byggt för **daglig full databasbackup** (`pg_dump` custom-format) som laddas
+upp till Cloudflare R2 — en annan leverantör än Railway-databasen. Integritetspolicyn
+utlovar i dag ingen säkerhetskopiering (variant A); utfästelsen skrivs in när jobbet
+körts skarpt och en återställning verifierats.
 
 ## Hur det fungerar
 

@@ -152,7 +152,15 @@ export function PrivacyPage() {
         <li>Lösenord lagras hashade med bcrypt (12 salt rounds)</li>
         <li>Sessionstokens lagras som SHA-256-hashar</li>
         <li>Konton låses i 15 min efter 10 misslyckade inloggningsförsök</li>
-        <li>Daglig säkerhetskopiering med 30 dagars retention</li>
+        {/*
+          VARIANT A — sant i dag. Läses av människa före merge (#575).
+          VARIANT B, när backupen är i drift och en återställning verifierad:
+            <li>
+              Daglig säkerhetskopiering med 30 dagars lagringstid — krypterad och
+              lagrad hos en annan leverantör än databasen (Cloudflare R2, EU)
+            </li>
+        */}
+        <li>Automatisk säkerhetskopiering är förberedd men ännu inte i drift</li>
       </ul>
 
       <h2 id="sec-10">10. Cookies</h2>

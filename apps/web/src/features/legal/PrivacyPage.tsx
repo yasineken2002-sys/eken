@@ -173,8 +173,24 @@ export function PrivacyPage({ onBack }: Props) {
         <li>
           <strong>Sentry, Inc.</strong> — felspårning (EU-region, Frankfurt)
         </li>
+        {/*
+          FÖRSLAG — MÅSTE LÄSAS AV MÄNNISKA INNAN MERGE.
+
+          Raden angav tidigare "Google Cloud Storage — säkerhetskopiering (EU)".
+          Den tjänsten används inte: fillagring och backup går till Cloudflare R2
+          (storage.service.ts, backup.service.ts). Cloudflare saknades dessutom
+          HELT i underbiträdeslistan, trots att hyresgästdokument ligger där.
+
+          Två förbehåll som avgör om meningen är sann:
+          1. "EU-jurisdiktion" gäller BACKUPEN och bara om bucketen faktiskt
+             skapas i EU (R2_BACKUP_JURISDICTION=eu). Bucketen finns ännu inte.
+          2. DOKUMENT-bucketen ligger i R2:s DEFAULT-jurisdiktion (uppmätt
+             2026-08-27), alltså inte EU-garanterad. Därför står ingen
+             jurisdiktion på dokumentdelen — att påstå EU där vore fel.
+        */}
         <li>
-          <strong>Google Cloud Storage</strong> — säkerhetskopiering (EU)
+          <strong>Cloudflare, Inc.</strong> — objektlagring av dokument och databasbackuper
+          (Cloudflare R2; backuper i EU-jurisdiktion)
         </li>
       </ul>
       <p>
@@ -276,7 +292,8 @@ export function PrivacyPage({ onBack }: Props) {
           <strong>Kryptering i transit:</strong> All trafik krypteras med TLS 1.3
         </li>
         <li>
-          <strong>Kryptering i vila:</strong> Databaser och säkerhetskopior med AES-256
+          {/* VARIANT A (#575): "säkerhetskopior" struket — det finns inga. B återinför det. */}
+          <strong>Kryptering i vila:</strong> Databaser och lagrade filer med AES-256
         </li>
         <li>
           <strong>Lösenord:</strong> bcrypt, 12 salt rounds
@@ -290,9 +307,29 @@ export function PrivacyPage({ onBack }: Props) {
         <li>
           <strong>Loggning:</strong> Säkerhetshändelser och åtkomst loggas
         </li>
+        {/*
+          VARIANT A — vad som är sant I DAG. Läses av människa före merge (#575).
+
+          Stod tidigare: "Daglig säkerhetskopiering, 30 dagars retention,
+          geografiskt separerade kopior". Inget av de tre var sant: jobbet är
+          avstängd (BACKUP_ENABLED saknas i prod), gallringen har aldrig kört,
+          och det finns EN bucket — som dessutom inte är skapad än.
+
+          VARIANT B, skrivs in FÖRST när backupen är i drift OCH en återställning
+          är verifierad (#575):
+            <strong>Backup:</strong> Daglig säkerhetskopiering av databasen med
+            30 dagars lagringstid. Kopiorna krypteras i vila och lagras hos en
+            annan leverantör än databasen (Cloudflare R2, EU-jurisdiktion).
+
+          B säger AVSIKTLIGT inte "geografiskt separerade kopior". En enda bucket
+          är inte geografisk separation, oavsett hur leverantören replikerar
+          internt. Det vi kan belägga är att kopian ligger hos en ANNAN
+          leverantör än databasen, i EU-jurisdiktion, krypterad.
+        */}
         <li>
-          <strong>Backup:</strong> Daglig säkerhetskopiering, 30 dagars retention, geografiskt
-          separerade kopior
+          <strong>Backup:</strong> Automatisk säkerhetskopiering av databasen är förberedd men ännu
+          inte i drift. Vi lämnar därför i dag ingen utfästelse om kopieringsfrekvens eller
+          lagringstid för säkerhetskopior.
         </li>
         <li>
           <strong>Incidenthantering:</strong> Rutin för rapportering till IMY inom 72 h

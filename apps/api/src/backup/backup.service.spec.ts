@@ -10,13 +10,23 @@ jest.mock('@aws-sdk/client-s3', () => {
       this.input = input
     }
   }
+  // Konfigurationen sparas så att testerna kan LÄSA vilken endpoint klienten
+  // faktiskt fick. Utan det går det bara att testa härledningsfunktionen, inte
+  // att tjänsten använder den — och det var precis den skillnaden som gjorde
+  // det möjligt att hårdkoda värdnamnet igen utan att något blev rött.
+  const skapade: Array<Record<string, unknown>> = []
   return {
+    __skapadeKlienter: skapade,
     S3Client: class {
       send = jest.fn()
+      constructor(config: Record<string, unknown>) {
+        skapade.push(config)
+      }
     },
     PutObjectCommand: class extends Cmd {},
     ListObjectsV2Command: class extends Cmd {},
     DeleteObjectCommand: class extends Cmd {},
+    HeadBucketCommand: class extends Cmd {},
   }
 })
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }))
@@ -35,6 +45,11 @@ import {
   parsePgDumpMajor,
   preflightMismatchMessage,
   serverMajorFromVersionNum,
+  R2_JURISDICTIONS,
+  R2_BACKUP_JURISDICTION_VAR,
+  parseR2Jurisdiction,
+  r2EndpointFor,
+  preflightBucketMissingMessage,
 } from './backup.service'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { BackupScheduler } from './backup.scheduler'
@@ -502,5 +517,232 @@ describe('BackupService.enabled — ETT överlapp räcker för att blockera i pr
     delete env.R2_BACKUP_ACCESS_KEY_ID
     delete env.R2_BACKUP_SECRET_ACCESS_KEY
     expect(serviceWith(env).enabled).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R2-JURISDIKTIONEN
+//
+// En bucket tillhör exakt en jurisdiktion, och fel jurisdiktion ger
+// `404 NoSuchBucket` — samma svar som "bucketen finns inte". Hela poängen med
+// de här testerna är att den skillnaden ska gå att LÄSA, inte gissa.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('parseR2Jurisdiction', () => {
+  it('osatt och tom sträng ger default (bakåtkompatibelt med tiden före variabeln)', () => {
+    expect(parseR2Jurisdiction(undefined)).toBe('default')
+    expect(parseR2Jurisdiction('')).toBe('default')
+    expect(parseR2Jurisdiction('   ')).toBe('default')
+  })
+
+  it('läser varje känt värde, oavsett skiftläge och omgivande blanktecken', () => {
+    for (const j of R2_JURISDICTIONS) {
+      expect(parseR2Jurisdiction(j)).toBe(j)
+      expect(parseR2Jurisdiction(` ${j.toUpperCase()} `)).toBe(j)
+    }
+  })
+
+  it('OKÄNT värde ger null — aldrig default', () => {
+    // Det här är hela skälet till att funktionen returnerar null i stället för
+    // att falla tillbaka: en tyst fallback hade skickat en EU-bucket till
+    // default-endpointen och gett 404 klockan 03:00.
+    for (const trasigt of ['EU-west', 'europe', 'eu1', 'us', 'defualt', 'null']) {
+      expect(parseR2Jurisdiction(trasigt)).toBeNull()
+    }
+  })
+})
+
+describe('r2EndpointFor', () => {
+  it('default utan prefix, eu med prefix', () => {
+    expect(r2EndpointFor('acc', 'default')).toBe('https://acc.r2.cloudflarestorage.com')
+    expect(r2EndpointFor('acc', 'eu')).toBe('https://acc.eu.r2.cloudflarestorage.com')
+  })
+
+  // KANARIEFÅGEL: antalet härleds ur R2_JURISDICTIONS, inte ur en handskriven
+  // lista. Läggs en jurisdiktion till utan att härledningen hanterar den blir
+  // den här röd — i stället för att ett nytt värde tyst ger fel värdnamn.
+  it('varje känd jurisdiktion ger ett UNIKT och välformat värdnamn', () => {
+    const värdnamn = R2_JURISDICTIONS.map((j) => r2EndpointFor('acc', j))
+    expect(new Set(värdnamn).size).toBe(R2_JURISDICTIONS.length)
+    for (const v of värdnamn) {
+      expect(v).toMatch(/^https:\/\/acc\.([a-z]+\.)?r2\.cloudflarestorage\.com$/)
+    }
+  })
+})
+
+describe('BackupService — endpointen följer konfigurationen', () => {
+  const bas = {
+    BACKUP_ENABLED: 'true',
+    R2_ACCOUNT_ID: 'acc',
+    R2_ACCESS_KEY_ID: 'ak',
+    R2_SECRET_ACCESS_KEY: 'sk',
+    R2_BUCKET_NAME: 'eken-files',
+    DATABASE_URL: 'postgresql://u:p@h:5432/db',
+  }
+  const senasteEndpoint = () => {
+    const m = jest.requireMock('@aws-sdk/client-s3') as {
+      __skapadeKlienter: Array<Record<string, unknown>>
+    }
+    return m.__skapadeKlienter[m.__skapadeKlienter.length - 1]!['endpoint']
+  }
+
+  it('osatt variabel ⇒ default-endpoint (oförändrat beteende)', () => {
+    serviceWith(bas)
+    expect(senasteEndpoint()).toBe('https://acc.r2.cloudflarestorage.com')
+  })
+
+  it('eu ⇒ EU-endpoint', () => {
+    const svc = serviceWith({ ...bas, [R2_BACKUP_JURISDICTION_VAR]: 'eu' })
+    expect(senasteEndpoint()).toBe('https://acc.eu.r2.cloudflarestorage.com')
+    expect(svc.jurisdiction).toBe('eu')
+  })
+})
+
+describe('BackupService — ogiltig jurisdiktion fälls VID UPPSTART, inte 03:00', () => {
+  const prod = {
+    BACKUP_ENABLED: 'true',
+    NODE_ENV: 'production',
+    R2_ACCOUNT_ID: 'acc',
+    R2_ACCESS_KEY_ID: 'ak',
+    R2_SECRET_ACCESS_KEY: 'sk',
+    R2_BUCKET_NAME: 'eken-files',
+    R2_BACKUP_BUCKET: 'eken-db-backups',
+    R2_BACKUP_ACCESS_KEY_ID: 'bak',
+    R2_BACKUP_SECRET_ACCESS_KEY: 'bsk',
+    DATABASE_URL: 'postgresql://u:p@h:5432/db',
+  }
+
+  it('en i övrigt KORREKT produktionskonfiguration är enabled (kontrollgrupp)', () => {
+    // Utan den här raden kan `enabled === false` nedan bero på vad som helst.
+    expect(serviceWith(prod).enabled).toBe(true)
+  })
+
+  it('okänt värde ⇒ enabled=false och ett blockReason som NAMNGER variabeln', () => {
+    const svc = serviceWith({ ...prod, [R2_BACKUP_JURISDICTION_VAR]: 'europe' })
+    expect(svc.enabled).toBe(false)
+    expect(svc.productionBlockReason).toContain(R2_BACKUP_JURISDICTION_VAR)
+    // Skälet måste bära de giltiga värdena — annars vet den som läser larmet
+    // att något är fel men inte vad som är rätt.
+    for (const j of R2_JURISDICTIONS) expect(svc.productionBlockReason).toContain(j)
+  })
+
+  it('och jurisdiktionen faller ALDRIG tillbaka på default i tysthet', () => {
+    // Fältet säger 'default' (klienten måste peka någonstans), men enabled är
+    // false — så ingen körning kan nå fel endpoint. Det är skillnaden mot en
+    // tyst fallback, som hade kört vidare mot default och gett 404.
+    const svc = serviceWith({ ...prod, [R2_BACKUP_JURISDICTION_VAR]: 'europe' })
+    expect(svc.enabled).toBe(false)
+  })
+})
+
+describe('preflightBucketMissingMessage', () => {
+  it('namnger bucketen, jurisdiktionen, variabeln OCH åtgärden', () => {
+    const m = preflightBucketMissingMessage('eken-db-backups', 'eu')
+    expect(m).toContain('eken-db-backups')
+    expect(m).toContain('eu-endpointen')
+    expect(m).toContain(R2_BACKUP_JURISDICTION_VAR)
+    expect(m).toContain('exakt en jurisdiktion')
+    // Och att ingenting hände — annars vet inte läsaren om en halv backup ligger kvar.
+    expect(m).toContain('Ingen backup togs')
+  })
+})
+
+describe('BackupService.assertBackupBucketReachable', () => {
+  const med404 = () =>
+    Object.assign(new Error('NoSuchBucket'), { $metadata: { httpStatusCode: 404 } })
+  const med403 = () =>
+    Object.assign(new Error('AccessDenied'), { $metadata: { httpStatusCode: 403 } })
+
+  it('404 ⇒ BackupPreflightError med den LÄSBARA texten, inte ett rått fel', async () => {
+    const service = makeService()
+    ;(service as unknown as { bucket: string }).bucket = 'eken-db-backups'
+    ;(service as unknown as { s3: { send: jest.Mock } }).s3 = {
+      send: jest.fn().mockRejectedValue(med404()),
+    }
+    await expect(service.assertBackupBucketReachable()).rejects.toBeInstanceOf(BackupPreflightError)
+    await expect(service.assertBackupBucketReachable()).rejects.toThrow('exakt en jurisdiktion')
+  })
+
+  it('403 propagerar OFÖRÄNDRAT — förkontrollen gissar inte orsak', async () => {
+    const service = makeService()
+    ;(service as unknown as { s3: { send: jest.Mock } }).s3 = {
+      send: jest.fn().mockRejectedValue(med403()),
+    }
+    // Ett nekat anrop är redan entydigt. Att svepa in det i en text om
+    // jurisdiktion hade pekat operatören åt fel håll.
+    await expect(service.assertBackupBucketReachable()).rejects.not.toBeInstanceOf(
+      BackupPreflightError,
+    )
+  })
+
+  it('bucketen finns ⇒ inget kastas', async () => {
+    const service = makeService()
+    ;(service as unknown as { s3: { send: jest.Mock } }).s3 = {
+      send: jest.fn().mockResolvedValue({ $metadata: { httpStatusCode: 200 } }),
+    }
+    await expect(service.assertBackupBucketReachable()).resolves.toBeUndefined()
+  })
+})
+
+describe('runBackup — bucketkontrollen kommer FÖRE dumpen', () => {
+  it('fel jurisdiktion ⇒ ingen dump, ingen uppladdning, ingen gallring', async () => {
+    const service = makeService()
+    ;(service as unknown as { bucket: string }).bucket = 'eken-db-backups'
+    const priv = service as unknown as {
+      pgDumpMajor: () => Promise<number | null>
+      serverMajor: () => Promise<number | null>
+      pgDump: () => Promise<void>
+    }
+    priv.pgDumpMajor = () => Promise.resolve(18)
+    priv.serverMajor = () => Promise.resolve(18)
+    priv.pgDump = () => Promise.reject(new Error('pg_dump kördes trots förkontrollen'))
+
+    // HeadBucket faller; INGET annat anrop får ske.
+    const send = jest
+      .fn()
+      .mockRejectedValue(
+        Object.assign(new Error('NoSuchBucket'), { $metadata: { httpStatusCode: 404 } }),
+      )
+    ;(service as unknown as { s3: { send: jest.Mock } }).s3 = { send }
+
+    await expect(service.runBackup()).rejects.toThrow('exakt en jurisdiktion')
+    // Exakt ETT anrop: HeadBucket. Ingen Put, ingen List, ingen Delete.
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MÄTT: BEHÖVER ISOLERINGSGRINDEN VETA OM JURISDIKTIONEN?
+//
+// Svaret är NEJ — och starkare än så: att lära den om jurisdiktionen skulle
+// göra den MINDRE säker. Grinden jämför värden på bucket + nycklar.
+//
+//   • Skiljer sig bucketNAMNEN är det två olika buckets i varje jurisdiktion.
+//     Jurisdiktionen kan inte skapa ett överlapp som namnjämförelsen missar.
+//   • Är namnen LIKA men jurisdiktionerna olika är det tekniskt två buckets —
+//     men grinden rapporterar ändå ett överlapp. Det är ett falskt positivt som
+//     BLOCKERAR, alltså fail-closed, och det är rätt håll att fela på.
+//   • Skulle grinden lära sig jurisdiktionen vore den enda effekten att det
+//     falska positivet försvinner — dvs. att grinden blir MER SLÄPPANDE. Det
+//     är precis den riktning #541 stängde när AND blev OR.
+//
+// Nycklarna är oberoende av jurisdiktion: samma credential används mot båda
+// endpointerna, så värdejämförelsen är rätt test oavsett.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Isoleringsgrinden och jurisdiktionen — mätt, inte antaget', () => {
+  it('samma bucketnamn i olika jurisdiktioner rapporteras ÄNDÅ som överlapp (fail-closed)', () => {
+    const träffar = findR2IsolationOverlaps({
+      backup: { bucket: 'delat-namn', accessKeyId: 'bak', secretAccessKey: 'bsk' },
+      main: { bucket: 'delat-namn', accessKeyId: 'ak', secretAccessKey: 'sk' },
+      dedicatedSet: { bucket: true, accessKeyId: true, secretAccessKey: true },
+    })
+    expect(träffar.map((o) => o.field)).toEqual(['bucket'])
+  })
+
+  it('och grinden är oförändrad av jurisdiktionen — den läser inga endpoint-fält', () => {
+    // Signaturen bär bucket + nycklar och ingenting annat. Skulle någon lägga
+    // till ett endpoint-/jurisdiktionsfält blir den här röd, och då ska
+    // resonemanget ovan läsas om innan det görs.
+    expect([...R2_ISOLATION_FIELDS]).toEqual(['bucket', 'accessKeyId', 'secretAccessKey'])
   })
 })

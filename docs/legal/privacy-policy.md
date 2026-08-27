@@ -252,7 +252,8 @@ Eveno tillämpar branschstandard för informationssäkerhet enligt
 artikel 32 GDPR och NIS2:
 
 - **Kryptering i transit:** All trafik krypteras med TLS 1.3
-- **Kryptering i vila:** Databaser och säkerhetskopior krypteras med AES-256
+- **Kryptering i vila:** Databaser och lagrade filer krypteras med AES-256
+  <!-- VARIANT A (#575): "säkerhetskopior" struket — det finns inga. B återinför. -->
 - **Lösenord:** bcrypt med 12 salt rounds — vi ser aldrig klartextlösenord
 - **Brute-force-skydd:** Konton låses i 15 minuter efter 10 misslyckade försök
 - **Åtkomstkontroll:** Rollbaserad åtkomst (RBAC) och multi-tenant-isolation
@@ -261,8 +262,23 @@ artikel 32 GDPR och NIS2:
 - **Incidenthantering:** Rutin för att rapportera incidenter till IMY inom 72 h
 - **Personalutbildning:** Alla med åtkomst till kunddata genomgår årlig
   säkerhetsutbildning
-- **Backup:** Daglig säkerhetskopiering med 30 dagars retention och
-  geografiskt separerade kopior
+- **Backup:** Automatisk säkerhetskopiering av databasen är förberedd men ännu
+  inte i drift. Vi lämnar därför i dag ingen utfästelse om kopieringsfrekvens
+  eller lagringstid för säkerhetskopior.
+
+<!-- VARIANT A — sant i dag. Läses av människa före merge. Se #575.
+     Stod tidigare: "Daglig säkerhetskopiering med 30 dagars retention och
+     geografiskt separerade kopior". Inget av de tre var sant.
+
+     VARIANT B, skrivs in FÖRST när backupen är i drift OCH en återställning är
+     verifierad:
+       - **Backup:** Daglig säkerhetskopiering av databasen med 30 dagars
+         lagringstid. Kopiorna krypteras i vila och lagras hos en annan
+         leverantör än databasen (Cloudflare R2, EU-jurisdiktion).
+
+     B säger avsiktligt INTE "geografiskt separerade kopior": en enda bucket är
+     inte geografisk separation. Det vi kan belägga är annan leverantör än
+     databasen, EU-jurisdiktion och kryptering. -->
 
 ---
 

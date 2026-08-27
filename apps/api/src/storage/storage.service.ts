@@ -44,6 +44,19 @@ export class StorageService {
     this.hasCredentials = Boolean(accountId && accessKeyId && secretAccessKey)
     this.s3 = new S3Client({
       region: 'auto',
+      // ── HÅRDKODAD DEFAULT-JURISDIKTION — ETT VAL, INTE ETT FÖRBISEENDE ────
+      //
+      // Backupvägen fick en konfigurerbar jurisdiktion (R2_BACKUP_JURISDICTION
+      // → r2EndpointFor i backup.service.ts). DEN HÄR vägen lämnades med flit
+      // orörd: huvudbucketen FINNS redan i default-jurisdiktionen — uppmätt
+      // 2026-08-27, den svarar 200 på default-endpointen och 404 NoSuchBucket
+      // på EU-endpointen — och en bucket kan inte flytta mellan jurisdiktioner.
+      // Att göra värdnamnet konfigurerbart här hade alltså bara lagt till ett
+      // sätt att peka fel, utan att erbjuda något nytt läge.
+      //
+      // Ska huvudlagringen till EU är det en MIGRERING (ny bucket, kopiera
+      // objekt, byt namn), inte en variabel — och då hör den här raden till det
+      // arbetet, inte till backupens.
       endpoint: `https://${accountId ?? ''}.r2.cloudflarestorage.com`,
       credentials: {
         accessKeyId: accessKeyId ?? '',

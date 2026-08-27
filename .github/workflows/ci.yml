@@ -358,6 +358,31 @@ jobs:
       - name: Verify every AI tool execution can be traced to its effects
         run: node apps/api/scripts/check-ai-tool-effects.mjs
 
+  backup-endpoint-guard:
+    name: Backup endpoint jurisdiction guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — backupens
+      # R2-endpoint ska HÄRLEDAS ur jurisdiktionen, aldrig skrivas.
+      #
+      # En R2-bucket tillhör exakt en jurisdiktion, och jurisdiktionen väljs av
+      # värdnamnet. Frågar man på fel endpoint svarar R2 404 NoSuchBucket —
+      # samma svar som när bucketen inte finns alls. Hårdkodas värdnamnet igen
+      # försvinner R2_BACKUP_JURISDICTION tyst, och skillnaden syns först som
+      # ett larm klockan 03:00 som ser ut att handla om en saknad bucket.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (each rule proven by its own assertion)
+        run: node apps/api/scripts/check-backup-endpoint.mjs --self-test
+
+      - name: Verify the backup endpoint is derived, not hardcoded
+        run: node apps/api/scripts/check-backup-endpoint.mjs
+
   action-tool-authorization-guard:
     name: AI action tool authorization guard
     runs-on: ubuntu-latest
@@ -1131,6 +1156,7 @@ jobs:
       - tool-iteration-cap-guard
       - ai-tool-effects-guard
       - action-tool-authorization-guard
+      - backup-endpoint-guard
       - cron-classification-guard
       - pdf-selfcontained-guard
       - guard-preprocessor-guard
