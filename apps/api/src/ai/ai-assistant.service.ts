@@ -7,7 +7,6 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import * as crypto from 'crypto'
 import Anthropic from '@anthropic-ai/sdk'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -19,6 +18,7 @@ import { MemoryService } from './memory.service'
 import { AiUsageService } from './usage/ai-usage.service'
 import { AiQuotaService } from './usage/ai-quota.service'
 import { AiAuditService } from './audit/ai-audit.service'
+import { hashPendingAction } from './pending-action-hash'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
 import type { ActionProof } from './tools/action-authorization'
 import {
@@ -491,26 +491,15 @@ export interface ChatResponse {
 // anslutning till att AI:n föreslog åtgärden.
 export const PENDING_ACTION_TTL_MS = 5 * 60 * 1000
 
-// Kanonisk (nyckel-sorterad) JSON så att hashen blir deterministisk oavsett
-// fältordning. Används för att binda en confirm till exakt den åtgärd AI:n
-// föreslog (SECURITY RISK 1).
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize)
-  if (value && typeof value === 'object') {
-    return Object.keys(value as Record<string, unknown>)
-      .sort()
-      .reduce<Record<string, unknown>>((acc, k) => {
-        acc[k] = canonicalize((value as Record<string, unknown>)[k])
-        return acc
-      }, {})
-  }
-  return value
-}
-
-export function hashPendingAction(toolName: string, toolInput: Record<string, unknown>): string {
-  const payload = JSON.stringify({ toolName, toolInput: canonicalize(toolInput) })
-  return crypto.createHash('sha256').update(payload).digest('hex')
-}
+// Kanoniseringen och hashen bor i `pending-action-hash.ts` sedan de fick en
+// ANDRA konsument: idempotensnyckeln för AI-skapade verifikat. Exekveraren kan
+// inte importera härifrån (den här filen injicerar den — importcykel), och en
+// andra kanonisering där hade kunnat sortera annorlunda och tyst ge en annan
+// nyckel för samma åtgärd. Re-exporten håller befintliga anropare oförändrade.
+// Re-export för befintliga anropare (tenant-ai.service.ts, ai-pending-action.spec.ts).
+// `export … from` binder INTE namnet lokalt — därför importeras det separat överst,
+// eftersom den här filen också använder det själv (recordPendingAction/consumePendingAction).
+export { hashPendingAction }
 
 export function requiresDoubleConfirmation(
   toolName: string,
@@ -955,15 +944,59 @@ export class AiAssistantService {
     if (consumed.status === 'already-consumed') {
       // ── UPPSPELNING: SÄG SANNINGEN, SPELA INTE UPP SVARET ────────────────
       //
-      // Åtgärden ÄR utförd. Att köra om den vore en andra faktura; att spela upp
-      // det gamla svaret vore en lögn av annat slag — `AiToolExecution.toolResult`
-      // har gått genom `sanitizeForAudit` och är MASKERAT. Det är inte det
-      // verkliga svaret och får inte låtsas vara det, och att lagra ett omaskerat
-      // resultat för uppspelningens skull vore att bygga en ny lagringsplats för
-      // känsliga data.
+      // Att köra om åtgärden vore en andra faktura; att spela upp det gamla
+      // svaret vore en lögn av annat slag — `AiToolExecution.toolResult` har gått
+      // genom `sanitizeForAudit` och är MASKERAT. Det är inte det verkliga svaret
+      // och får inte låtsas vara det, och att lagra ett omaskerat resultat för
+      // uppspelningens skull vore att bygga en ny lagringsplats för känsliga data.
       //
       // I stället: vad som faktiskt hände, hämtat ur utfallskopplingen (#562).
-      // Det är sant, spårbart, och kräver ingen ny persistering av innehåll.
+      //
+      // ── MEN "KONSUMERAT" BETYDER INTE "UTFÖRT" ──────────────────────────
+      //
+      // Anspråket committas här (`consumePendingAction`), och `executeTool`
+      // anropas som ett SEPARAT steg efteråt. Dör processen mellan de två är
+      // anspråket förbrukat utan att något utfördes. Mätt mot riktig PG 18.6:
+      //
+      //   anspråk committat → krasch → nytt försök
+      //     → status 'already-consumed'
+      //     → AiToolExecution: 0 rader   JournalEntry: 0 rader
+      //
+      // Svaret sa ändå "Åtgärden är redan utförd" om något som aldrig skedde.
+      // Det är den värsta formen av fel i ett bokföringssystem: användaren
+      // slutar leta efter ett arbete som aldrig blev gjort.
+      //
+      // VARFÖR FRÅGAN STÄLLS MOT AiToolExecution OCH INTE MOT EFFEKTERNA:
+      // `AiToolEffect` skrivs bara av skrivande verktyg — ett verktyg som
+      // lyckades utan att röra en rad har noll effekter men en körning. Raden
+      // är alltså det som skiljer "utfördes" från "kan inte bekräftas";
+      // effekterna svarar på VAD den gjorde.
+      const körning = await this.prisma.aiToolExecution.findFirst({
+        where: { conversationId, toolName, confirmedAt: { not: null } },
+        select: { id: true },
+      })
+      if (!körning) {
+        // ── DEN ÄRLIGA FORMULERINGEN ────────────────────────────────────────
+        //
+        // Inte "utfördes inte" — det vore lika obelagt åt andra hållet.
+        // Auditraden skrivs fire-and-forget EFTER verktygskroppen, så dess
+        // frånvaro utesluter inte att arbetet gjordes. Det enda vi vet är att
+        // det inte GÅR ATT BEKRÄFTA, och det är precis vad meningen säger.
+        //
+        // ANSPRÅKET ÅTERSTÄLLS INTE. Ett anspråk som kan återuppstå är inte ett
+        // engångsanspråk, och det är engångsanspråket som gör att 24 samtidiga
+        // bekräftelser ger exakt en körning (mätt). Vägen framåt är att be
+        // assistenten föreslå åtgärden igen — vilket ger en NY pending action.
+        // För de två verktyg som skriver verifikat är det omtaget idempotent:
+        // `sourceId` härleds ur åtgärdens innehåll, inte ur bekräftelsens id
+        // (ai-journal-source.ts), så samma åtgärd ger samma verifikat.
+        throw new ConflictException(
+          'Bekräftelsen är förbrukad, men det går INTE att bekräfta att åtgärden utfördes — ' +
+            'ingen körning finns registrerad för den. Den kan ha avbrutits mitt i. ' +
+            'Kontrollera i AI-loggen för konversationen innan du gör om något, och be ' +
+            'sedan assistenten föreslå åtgärden igen om den behöver göras.',
+        )
+      }
       throw new ConflictException(
         `Åtgärden är redan utförd. ${await this.describeEffects(conversationId, toolName)}`,
       )

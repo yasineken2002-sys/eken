@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { runAsAi } from '../../common/ai-origin/ai-origin.context'
 import { drainEffects, runWithEffectCollector } from '../../common/ai-effects/ai-effects.context'
 import { assertActionToolAuthorized } from './action-authorization'
+import { aiJournalSourceId } from './ai-journal-source'
 import type { ActionProof } from './action-authorization'
 import { noteSubjectCandidates } from '../../common/ai-subjects/ai-subjects.context'
 import { Prisma } from '@prisma/client'
@@ -3411,9 +3412,24 @@ export class ToolExecutorService {
               message: `Verifikatet balanserar inte: debet ${formatAmount(totalDebit)} kr, kredit ${formatAmount(totalCredit)} kr.`,
             }
           }
-          const entry = await this.prisma.$transaction(async (tx) => {
+          // IDEMPOTENSNYCKELN (se ai-journal-source.ts). Härledd ur ÅTGÄRDENS
+          // INNEHÅLL, inte ur bekräftelsens id — den måste överleva ett omtag
+          // efter en krasch, och ett omtag har ett nytt pendingActionId.
+          const sourceId = aiJournalSourceId('create_journal_entry', toolInput)
+          const { entry, redanFanns } = await this.prisma.$transaction(async (tx) => {
+            // Uppslaget körs INUTI transaktionen och matchar exakt det unika
+            // DB-indexet (organizationId, source, sourceId) — samma konstruktion
+            // som createNumberedEntry, så app-kontroll och constraint är i synk
+            // (TOCTOU-säkert). Utan den här raden blir en dubblett ett P2002 i
+            // stället för ett idempotent svar.
+            const befintligt = await tx.journalEntry.findFirst({
+              where: { organizationId, source: 'AI', sourceId },
+              include: { lines: { include: { account: true } } },
+            })
+            if (befintligt) return { entry: befintligt, redanFanns: true }
+
             const v = await this.verifikationsnummer.allocate(tx, organizationId, date)
-            return tx.journalEntry.create({
+            const skapat = await tx.journalEntry.create({
               data: {
                 organizationId,
                 date,
@@ -3423,6 +3439,7 @@ export class ToolExecutorService {
                 // kvar — den bär användaren som BAD om posten, vilket fortfarande
                 // är den ansvariga människan.
                 source: 'AI',
+                sourceId,
                 aiToolExecutionId: aiToolExecutionId ?? null,
                 createdById: userId,
                 series: v.series,
@@ -3432,11 +3449,18 @@ export class ToolExecutorService {
               },
               include: { lines: { include: { account: true } } },
             })
+            return { entry: skapat, redanFanns: false }
           }, PRISMA_DEFAULT_TX_LIMITS)
           return {
             success: true,
-            data: { id: entry.id, total: totalDebit },
-            message: `Verifikat skapat: ${description} (${formatAmount(totalDebit)} kr balanserat).`,
+            data: { id: entry.id, total: totalDebit, alreadyExisted: redanFanns },
+            // SÄG ATT DET INTE SKAPADES. Ett "Verifikat skapat" om en post som
+            // fanns sedan tidigare är samma sorts osanning som krasch-svaret på
+            // confirm-vägen — och den som läser behöver veta vilket verifikat
+            // som gäller.
+            message: redanFanns
+              ? `Ett identiskt verifikat finns redan (${entry.series}${entry.verNumber}, ${entry.description}). Inget nytt skapades. Vill du bokföra en SEPARAT post med samma belopp: ändra beskrivningen så att de går att skilja åt.`
+              : `Verifikat skapat: ${description} (${formatAmount(totalDebit)} kr balanserat).`,
           }
         }
 
@@ -3524,15 +3548,26 @@ export class ToolExecutorService {
               description: 'Ingående moms',
             })
           }
-          const entry = await this.prisma.$transaction(async (tx) => {
+          // Samma idempotensnyckel som create_journal_entry — se
+          // ai-journal-source.ts. Härledd ur innehållet, inte ur bekräftelsen.
+          const sourceId = aiJournalSourceId('record_expense', toolInput)
+          const { entry, redanFanns } = await this.prisma.$transaction(async (tx) => {
+            // Uppslaget inuti transaktionen, mot samma (org, source, sourceId)
+            // som det unika indexet — se noten i create_journal_entry.
+            const befintligt = await tx.journalEntry.findFirst({
+              where: { organizationId, source: 'AI', sourceId },
+            })
+            if (befintligt) return { entry: befintligt, redanFanns: true }
+
             const v = await this.verifikationsnummer.allocate(tx, organizationId, date)
-            return tx.journalEntry.create({
+            const skapat = await tx.journalEntry.create({
               data: {
                 organizationId,
                 date,
                 description: `Utgift: ${description}`,
                 // Samma sak som i create_journal_entry — se noten där.
                 source: 'AI',
+                sourceId,
                 aiToolExecutionId: aiToolExecutionId ?? null,
                 createdById: userId,
                 series: v.series,
@@ -3541,12 +3576,22 @@ export class ToolExecutorService {
                 lines: { create: lines },
               },
             })
+            return { entry: skapat, redanFanns: false }
           }, PRISMA_DEFAULT_TX_LIMITS)
           const propertyTag = typeof toolInput.propertyId === 'string' ? toolInput.propertyId : null
           return {
             success: true,
-            data: { id: entry.id, amount, vat, netExpense, propertyId: propertyTag },
-            message: `Utgift bokförd: ${formatAmount(amount)} kr på ${accountNumber}${vat > 0 ? ` (varav ${formatAmount(vat)} kr moms på 2641)` : ''}, betalt från 1930.`,
+            data: {
+              id: entry.id,
+              amount,
+              vat,
+              netExpense,
+              propertyId: propertyTag,
+              alreadyExisted: redanFanns,
+            },
+            message: redanFanns
+              ? `En identisk utgift är redan bokförd (${entry.series}${entry.verNumber}). Inget nytt verifikat skapades. Gäller det en SEPARAT utgift med samma belopp: ändra beskrivningen så att de går att skilja åt.`
+              : `Utgift bokförd: ${formatAmount(amount)} kr på ${accountNumber}${vat > 0 ? ` (varav ${formatAmount(vat)} kr moms på 2641)` : ''}, betalt från 1930.`,
           }
         }
 

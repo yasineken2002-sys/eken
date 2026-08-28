@@ -1160,6 +1160,40 @@ jobs:
           path: apps/web/test-results/
           retention-days: 7
 
+  ai-journal-source-guard:
+    name: AI journal source guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # TVÅ EGENSKAPER, SAMMA YTA: en bekräftad handling som utförs.
+      #
+      # R1/R2 — JournalEntry bär @@unique([organizationId, source, sourceId]),
+      # men Postgres räknar NULL som distinkt. AI-vägen skrev sourceId=NULL och
+      # föll därför utanför en spärr som fanns och fungerade (mätt: 3 identiska
+      # verifikat tillåtna med NULL, andra insert avvisad med ett ifyllt värde).
+      # Vakten kräver att VARJE journalEntry-skrivare sätter nyckeln, och att
+      # AI-vägen hämtar den ur aiJournalSourceId() i stället för att rulla en
+      # egen — två definitioner av "samma åtgärd" glider isär tyst.
+      #
+      # R3 — anspråket committas före executeTool. Kraschar processen emellan är
+      # anspråket förbrukat utan att något utfördes, och svaret sa ändå "Åtgärden
+      # är redan utförd" (mätt: 0 AiToolExecution, 0 JournalEntry). Vakten kräver
+      # att grenen FRÅGAR efter en körning innan den påstår något, och att det
+      # finns en egen utgång för fallet där ingen körning finns.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (canaries compare against a count derived from source)
+        run: node apps/api/scripts/check-ai-journal-source.mjs --self-test
+
+      - name: AI journal source guard
+        run: node apps/api/scripts/check-ai-journal-source.mjs
+
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
@@ -1182,6 +1216,7 @@ jobs:
       - partial-match-identity-guard
       - tool-iteration-cap-guard
       - ai-tool-effects-guard
+      - ai-journal-source-guard
       - action-tool-authorization-guard
       - backup-endpoint-guard
       - legal-text-version-guard
