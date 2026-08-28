@@ -35,6 +35,10 @@ function makePrisma(created: Created[]) {
   ]
   const tx = {
     journalEntry: {
+      // Idempotensuppslaget som ligger FÖRE create i skrivvägen: finns redan ett
+      // verifikat med samma (org, source, sourceId) skapas inget nytt. Här ska
+      // det alltid skapas, så uppslaget svarar null.
+      findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn(async (args: { data: Created }) => {
         created.push(args.data)
         return { id: 'je-1', ...args.data, lines: [] }

@@ -15,7 +15,9 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 import { BadRequestException, ConflictException } from '@nestjs/common'
 import { AiAssistantService, hashPendingAction } from './ai-assistant.service'
 
-function makeService(opts: { pendingFound?: boolean; consumeCount?: number } = {}) {
+function makeService(
+  opts: { pendingFound?: boolean; consumeCount?: number; körningFinns?: boolean } = {},
+) {
   const executeTool = jest.fn().mockResolvedValue({ success: true, message: 'ok' })
   const prisma = {
     aiConversation: {
@@ -39,7 +41,22 @@ function makeService(opts: { pendingFound?: boolean; consumeCount?: number } = {
     },
     // Uppspelningssvaret läser utfallskopplingen (#562) för att kunna säga VAD
     // som hände i stället för att bara säga "ogiltig".
-    aiToolExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+    //
+    // OCH DEN LÄSER NUMERA OM DET FINNS EN KÖRNING ÖVER HUVUD TAGET. Ett
+    // förbrukat anspråk UTAN körning betyder inte att åtgärden utfördes — det
+    // kan lika gärna vara en krasch mellan anspråket och exekveringen (mätt:
+    // 0 AiToolExecution, 0 JournalEntry). Attrappen måste därför kunna svara
+    // både "det finns en körning" och "det gör det inte"; ett fast `null` hade
+    // låst varje test i det ena läget.
+    aiToolExecution: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue(
+          opts.körningFinns === false
+            ? null
+            : { id: 'ex1', createdAt: new Date('2026-08-28T10:00:00Z'), effects: [] },
+        ),
+    },
   }
   const configService = { get: jest.fn().mockReturnValue('') }
   const service = new AiAssistantService(
@@ -98,7 +115,17 @@ describe('AiAssistantService.confirmAction — pending action-bindning (RISK 1)'
     // Svaret säger numera det, och skiljer sig därmed från en UTGÅNGEN eller
     // OKÄND bekräftelse, där ingenting hände. Att kalla alla tre "ogiltig" var
     // vilseledande i precis det fall där någon behöver veta mest.
-    const { service, executeTool } = makeService({ pendingFound: true, consumeCount: 0 })
+    //
+    // ATTRAPPEN BÄR EN KÖRNING MED FLIT. I ett äkta race vann den andra
+    // bekräftelsen anspråket OCH utförde åtgärden — då finns en
+    // AiToolExecution. Utan den raden beskriver testet inte ett race utan en
+    // KRASCH mellan anspråk och exekvering, och där är "redan utförd" fel svar
+    // (se ai-confirm-crash-honesty.spec.ts).
+    const { service, executeTool } = makeService({
+      pendingFound: true,
+      consumeCount: 0,
+      körningFinns: true,
+    })
     const fel = await service.confirmAction(...ARGS()).catch((e: unknown) => e)
     expect(fel).toBeInstanceOf(ConflictException)
     expect((fel as Error).message).toContain('redan utförd')
