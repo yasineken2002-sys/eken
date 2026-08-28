@@ -1194,6 +1194,32 @@ jobs:
       - name: AI journal source guard
         run: node apps/api/scripts/check-ai-journal-source.mjs
 
+  append-only-guard:
+    name: Append-only trigger guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, ingen DB).
+      #
+      # Håller TVÅ HÄRLEDDA MÄNGDER lika, åt båda hållen: modeller vars docblock
+      # i schema.prisma SÄGER append-only, och tabeller som HAR en
+      # append_only_*-trigger i migrationerna. Ingen lista att underhålla.
+      #
+      # Att spärren FAKTISKT GÄLLER i en levande databas ägs av
+      # append-only.db.spec.ts i Tests-jobbet — en filsökning kan inte se en
+      # migration som aldrig kördes eller en trigger någon inaktiverat.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (canaries compare against a count derived from source)
+        run: node apps/api/scripts/check-append-only.mjs --self-test
+
+      - name: Append-only trigger guard
+        run: node apps/api/scripts/check-append-only.mjs
+
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
@@ -1217,6 +1243,7 @@ jobs:
       - tool-iteration-cap-guard
       - ai-tool-effects-guard
       - ai-journal-source-guard
+      - append-only-guard
       - action-tool-authorization-guard
       - backup-endpoint-guard
       - legal-text-version-guard
