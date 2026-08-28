@@ -39,9 +39,15 @@
  *
  * Frågan ställs ofta om ACTION_TOOLS, och det är fel mängd att titta på:
  *
- *   ACTION_TOOLS   29 st — BINDANDE. De stoppar loopen omedelbart (turen går
+ *   ACTION_TOOLS   30 st — BINDANDE. De stoppar loopen omedelbart (turen går
  *                  till bekräftelse) och förbrukar därför NOLL turer.
  *   Läsverktyg     26 st — det är DE som förbrukar turbudgeten.
+ *
+ * (Talet stod som 29 fram till 2026-08-28. Det var EFFECT_PRODUCING_TOOLS-
+ * antalet, alltså ACTION_TOOLS minus `export_sie4` som inte rör data. Härlett ur
+ * koden: TOOLS 56, ACTION_TOOLS 30, EFFECT_PRODUCING_TOOLS 29, läsverktyg 26.
+ * Samma tal som #573 mätte när effektvakten läste 29 av 30 verktyg — en siffra i
+ * en kommentar som motsäger vakten bredvid får nästa läsare att tro fel.)
  *
  * Av de 26 läsverktygen tar **17** ett id (`tenantId`, `invoiceId`, `propertyId`,
  * `leaseId`, `unitId`, `noticeId`, `transactionId`) som bara ett ANNAT verktyg
