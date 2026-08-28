@@ -946,6 +946,53 @@ bara de filer den råkar klara av att läsa, och man vet inte vilka de är.
 
 ---
 
+## En regel som frågar prosa i stället för kod är alltid uppfylld
+
+Två varianter av samma defekt, båda mätta, båda funna genom att någon **bröt
+regeln med flit** — ingen av dem hittades genom läsning. Det är poängen: de ser
+riktiga ut i koden.
+
+**Variant 1 — villkoret läser en kommentar.** `check-transaction-limits`
+frågade `kropp.includes('PAYMENT_TX_LIMITS')` på RÅTEXTEN, medan dess
+parentesmatchning med flit hoppade över kommentarer. Halva funktionen visste att
+prosa inte är kod; den andra halvan gjorde det inte. Isolerat till en variabel:
+
+```
+gränsen borttagen, kommentaren kvar  →  vakten GRÖN   (blind)
+gränsen borttagen, kommentaren också →  vakten RÖD
+```
+
+Mönstret fanns redan på riktigt: raden ovanför spridningen i
+`markAsPaidManually` är en kommentar som förklarar var talen bor och därför
+NÄMNER identifieraren, inne i samma parentes. En refaktorering som tar bort
+spridningen men behåller förklaringen — det troliga — hade släppts igenom.
+
+**Variant 2 — sökfönstret avgränsas av något som ligger INUTI det man letar
+efter.** En regel skulle kräva att en fråga ställs före ett påstående, och att
+det finns en utgång emellan. Den mätte fönstret fram till strängen
+`'redan utförd'` — som står i `throw new ConflictException('…redan utförd…')`.
+Fönstret innehöll därför alltid det `throw` regeln krävde, oavsett vad koden
+gjorde. Regeln var grön av sin egen avgränsare.
+
+**Regeln, i två delar:**
+
+1. **Ställ frågan mot KOD.** Gå via `codeMask(...)` i
+   `scripts/lib/source-scan.mjs` — kommentarer och stränginnehåll blankade,
+   avgränsare och radbrytningar kvar, så radnumren fortfarande pekar på råfilen.
+   Skriv aldrig en egen förbehandlare; `check-guard-preprocessors` finns för
+   det, och kräver dessutom att du kör den delade skannerns kanariefåglar.
+2. **En fönsteravgränsare får aldrig vara en delsträng av villkoret.** Välj en
+   avgränsare som är STRUKTURELL — blockslut, funktionsslut, satsens början —
+   aldrig innehållslig. Frågar du "finns ett `throw` före X", får fönstret inte
+   sluta inuti det `throw` som skriver X.
+
+**Kanariefågeln som krävs:** mata in samma anrop två gånger, där den enda
+skillnaden är att identifieraren står i en kommentar respektive i kod, och kräv
+motsatt utfall. Ett prov som bara visar det positiva fallet skiljer inte en
+läsande regel från en blind.
+
+---
+
 ## Ett för svagt prov ser ut precis som blindhet
 
 När en negativkontroll INTE fäller finns två förklaringar, och de ser likadana
