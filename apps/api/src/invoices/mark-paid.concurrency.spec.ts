@@ -19,6 +19,22 @@
  * "1 betalning av 16" betyder ingenting utan beviset att riggen KAN producera
  * 16. Utan lås och utan grind blir summan 16 × fakturabeloppet — en mätning,
  * inte ett resonemang.
+ *
+ * ── VAD SPECEN INTE KAN SKILJA PÅ (mätt, inte antaget) ──────────────────────
+ *
+ * Låset och skuldgrinden är TVÅ lager kring SAMMA invariant: fakturan får inte
+ * bli överbetald. Specen prövar invarianten, inte vilket lager som bär den.
+ *
+ * Uppmätt: tas BARA `FOR UPDATE` bort passerade "16 samtidiga → EN betalning"
+ * ändå, medan "aldrig överbetald" föll. Utan låset serialiseras körningarna
+ * delvis av anslutningspoolen, och grinden hinner då oftast se restskuld 0. Det
+ * gör upptäckten tidsberoende — alltså svag.
+ *
+ * Det är avsiktligt att specen inte försöker skilja lagren åt. Att grinden är
+ * PÅKOPPLAD ägs av `avisering.markaspaid.spec.ts` (H4, mätt: fem tester blir
+ * röda när den kopplas bort), och att transaktionen bär medvetna gränser ägs av
+ * `check-transaction-limits`. En spec som försöker äga allt tre mäter inget av
+ * dem skarpt.
  */
 import { randomUUID } from 'node:crypto'
 import { PrismaClient, Prisma } from '@prisma/client'
