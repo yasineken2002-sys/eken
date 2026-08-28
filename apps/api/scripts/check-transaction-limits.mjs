@@ -41,6 +41,7 @@
  * Självtest:  node apps/api/scripts/check-transaction-limits.mjs --self-test
  */
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
+import { codeMask, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 import { join, dirname, relative, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -81,15 +82,25 @@ function tsFiles(dir) {
  * en felsträng flytta slutet på anropet.
  */
 export function scanTransactions(text) {
+  // ── HELA FRÅGAN STÄLLS MOT KOD, ALDRIG MOT PROSA ───────────────────────────
+  //
+  // `codeMask` blankar kommentarer OCH stränginnehåll men behåller varje
+  // avgränsare och varje radbrytning. Positionerna är alltså oförändrade, så
+  // radnumren nedan pekar fortfarande på råfilen.
+  //
+  // Att masken läggs på HÄR och inte bara runt parentesmatchningen är hela
+  // rättelsen. `hasLimit` frågade tidigare råtexten, och en kommentar inne i
+  // anropet som NÄMNDE identifieraren räckte för att göra regeln uppfylld.
+  const kod = codeMask(text)
   const träffar = []
   const NEEDLE = '$transaction('
   let i = 0
-  while ((i = text.indexOf(NEEDLE, i)) !== -1) {
+  while ((i = kod.indexOf(NEEDLE, i)) !== -1) {
     const öppen = i + NEEDLE.length - 1
-    const slut = matchParen(text, öppen)
-    const kropp = slut === -1 ? text.slice(öppen) : text.slice(öppen, slut + 1)
+    const slut = matchParen(kod, öppen)
+    const kropp = slut === -1 ? kod.slice(öppen) : kod.slice(öppen, slut + 1)
     träffar.push({
-      line: text.slice(0, i).split('\n').length,
+      line: kod.slice(0, i).split('\n').length,
       hasLimit: LIMIT_IDENTIFIERS.some((id) => kropp.includes(id)),
     })
     i = öppen + 1
@@ -97,56 +108,38 @@ export function scanTransactions(text) {
   return träffar
 }
 
-/** Index för den parentes som stänger den på `start`, eller -1. */
+/**
+ * Index för den parentes som stänger den på `start`, eller -1.
+ *
+ * INGEN EGEN FÖRBEHANDLING. Funktionen tog tidigare hand om kommentarer och
+ * strängar själv — en handrullad skanner vid sidan av `scripts/lib/source-scan.mjs`.
+ * Den var osynlig för `check-guard-preprocessors`, vars förbjudna former är en
+ * uppräkning av `.replace(/…/)`-mönster och inte kände igen en teckenvandrare.
+ *
+ * Indata är nu alltid `codeMask(...)`: kommentarer och stränginnehåll är
+ * blankade, avgränsarna kvar. Då räcker en ren djupräknare, och det finns inget
+ * andra ställe där reglerna för "vad är en sträng" kan glida isär.
+ */
 function matchParen(text, start) {
   let djup = 0
-  let i = start
-  while (i < text.length) {
-    const c = text[i]
-    if (c === '/' && text[i + 1] === '/') {
-      i = text.indexOf('\n', i)
-      if (i === -1) return -1
-      continue
-    }
-    if (c === '/' && text[i + 1] === '*') {
-      i = text.indexOf('*/', i)
-      if (i === -1) return -1
-      i += 2
-      continue
-    }
-    if (c === "'" || c === '"' || c === '`') {
-      i = hoppaSträng(text, i)
-      continue
-    }
-    if (c === '(') djup++
-    else if (c === ')') {
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '(') djup++
+    else if (text[i] === ')') {
       djup--
       if (djup === 0) return i
     }
-    i++
   }
   return -1
-}
-
-function hoppaSträng(text, start) {
-  const q = text[start]
-  let i = start + 1
-  while (i < text.length) {
-    if (text[i] === '\\') {
-      i += 2
-      continue
-    }
-    if (text[i] === q) return i + 1
-    i++
-  }
-  return text.length
 }
 
 /** Mät kodbasen: fil → antal `$transaction` utan gräns. */
 export function measure(root = SRC) {
   const ut = {}
   for (const full of tsFiles(root)) {
-    const rel = relative(API_ROOT, full).split(sep).join('/').replace(/^src\//, '')
+    const rel = relative(API_ROOT, full)
+      .split(sep)
+      .join('/')
+      .replace(/^src\//, '')
     if (SKIP_FILES.includes(rel)) continue
     const träffar = scanTransactions(readFileSync(full, 'utf8'))
     const utan = träffar.filter((t) => !t.hasLimit)
@@ -284,14 +277,68 @@ function selfTest() {
     })(),
   )
 
+  // ── KANARIEFÅGEL: EN KOMMENTAR FÅR INTE UPPFYLLA REGELN ───────────────────
+  //
+  // DEFEKTEN SOM MÄTTES. `hasLimit` frågade råtexten, och en kommentar INNE i
+  // anropet som nämnde identifieraren gjorde regeln uppfylld. Isolerat till en
+  // enda variabel mot invoices.service.ts:
+  //
+  //   gränsen borttagen, kommentaren kvar  → vakten GRÖN   (blind)
+  //   gränsen borttagen, kommentaren också → vakten RÖD
+  //
+  // Skillnaden mellan de två körningarna var kommentaren. Och mönstret finns
+  // redan på riktigt: raden ovanför spridningen i markAsPaidManually är en
+  // kommentar som förklarar var talen bor och därför NÄMNER PAYMENT_TX_LIMITS.
+  // En refaktorering som tar bort spridningen men behåller förklaringen — det
+  // troliga — hade släppts igenom.
+  //
+  // De tre proven nedan skiljer sig i EXAKT en sak var. Faller något av dem har
+  // masken slutat läggas på, och vakten är blind igen.
+  t(
+    'KANARIE: kommentar som nämner gränsen uppfyller INTE regeln',
+    (() => {
+      const s = scanTransactions(
+        'await this.prisma.$transaction(async (tx) => {\n  // Talen bor i PAYMENT_TX_LIMITS — se docblocket.\n  await tx.a()\n})',
+      )
+      return s.length === 1 && s[0].hasLimit === false
+    })(),
+    'en kommentar gjorde vakten grön — masken läggs inte på',
+  )
+  t(
+    'KANARIE: samma anrop MED gränsen är fortfarande grönt',
+    (() => {
+      const s = scanTransactions(
+        'await this.prisma.$transaction(async (tx) => {\n  // Talen bor i PAYMENT_TX_LIMITS — se docblocket.\n  await tx.a()\n}, PAYMENT_TX_LIMITS)',
+      )
+      return s.length === 1 && s[0].hasLimit === true
+    })(),
+    'masken åt även koden — vakten fäller nu allt',
+  )
+  t(
+    'KANARIE: en STRÄNG som nämner gränsen uppfyller inte heller regeln',
+    (() => {
+      const s = scanTransactions(
+        "await this.prisma.$transaction(async (tx) => {\n  throw new Error('sätt PAYMENT_TX_LIMITS')\n})",
+      )
+      return s.length === 1 && s[0].hasLimit === false
+    })(),
+    'ett felmeddelande räckte för att uppfylla regeln',
+  )
+
   // diffAcks — båda hållen
   const m = (rel, count) => ({ [rel]: { count, lines: [1] } })
   const a = (rel, count, reason = 'ett skäl som är långt nog för att räknas som ett skäl') => ({
     files: { [rel]: { count, reason } },
   })
 
-  t('diffAcks: okvitterad förekomst → röd', diffAcks(m('x.ts', 1), { files: {} }).okvitterade.length === 1)
-  t('diffAcks: FLER än kvitterat → röd', diffAcks(m('x.ts', 3), a('x.ts', 2)).okvitterade.length === 1)
+  t(
+    'diffAcks: okvitterad förekomst → röd',
+    diffAcks(m('x.ts', 1), { files: {} }).okvitterade.length === 1,
+  )
+  t(
+    'diffAcks: FLER än kvitterat → röd',
+    diffAcks(m('x.ts', 3), a('x.ts', 2)).okvitterade.length === 1,
+  )
   t('diffAcks: FÄRRE än kvitterat → stale', diffAcks(m('x.ts', 1), a('x.ts', 2)).stale.length === 1)
   t('diffAcks: kvittering utan kod alls → stale', diffAcks({}, a('x.ts', 2)).stale.length === 1)
   t('diffAcks: för kort skäl → utanSkäl', diffAcks({}, a('x.ts', 0, 'kort')).utanSkäl.length === 1)
@@ -344,11 +391,21 @@ function selfTest() {
     'pengavägarna är INTE kvitterade — de bär en riktig gräns',
     (() => {
       const ack = loadAck().files ?? {}
-      return !['invoices/invoices.service.ts', 'avisering/avisering.service.ts',
-        'reconciliation/reconciliation.service.ts'].some((f) => (ack[f]?.count ?? 0) > 0 &&
-          measure()[f] === undefined)
+      return ![
+        'invoices/invoices.service.ts',
+        'avisering/avisering.service.ts',
+        'reconciliation/reconciliation.service.ts',
+      ].some((f) => (ack[f]?.count ?? 0) > 0 && measure()[f] === undefined)
     })(),
   )
+
+  // Den DELADE skannerns egna kanariefåglar. Vakten vilar nu HELT på
+  // scripts/lib/source-scan.mjs — går den sönder ska den här vakten bli röd i
+  // stället för att tyst fortsätta mäta fel. Kravet upprätthålls av
+  // check-guard-preprocessors (R2), som fällde den här filen när raden saknades.
+  for (const f of kanariefåglar()) {
+    t(`delad skanner: ${f}`, false)
+  }
 
   console.warn(failed === 0 ? '\nSjälvtest: ALLA GRÖNA' : `\nSjälvtest: ${failed} FALLERADE`)
   process.exit(failed === 0 ? 0 : 1)
@@ -389,5 +446,7 @@ else if (arg === '--update-ack') {
   }
   const { writeFileSync } = await import('node:fs')
   writeFileSync(ACK_PATH, JSON.stringify(payload, null, 2) + '\n', 'utf8')
-  console.warn(`Kvitteringsfil uppdaterad: ${payload.total} förekomster i ${Object.keys(files).length} filer.`)
+  console.warn(
+    `Kvitteringsfil uppdaterad: ${payload.total} förekomster i ${Object.keys(files).length} filer.`,
+  )
 } else run()
