@@ -117,6 +117,32 @@ export const HISTORY_EXPECTATIONS: readonly ExpectationDefinition[] = [
     },
   },
   {
+    key: 'equipment-lifespan',
+    label: 'Utrustning inom sin förväntade livslängd',
+    source: {
+      kind: 'KONFIGURERAD',
+      field: 'UnitEquipment.expectedLifespanYears + UnitEquipment.installedAt',
+      description:
+        'Andra konfigurerade återkommande förväntan i systemet, och den första på ' +
+        'OBJEKTNIVÅ. Fältet är nullbart utan default: ett tal måste komma från en ' +
+        'människa, annars vore förväntan påhittad av koden. Är fältet null för ett ' +
+        'objekt kan ingen lucka beräknas för DET objektet, och utfallet blir ' +
+        'ODEFINIERAD — aldrig "ingen lucka".',
+    },
+  },
+  {
+    key: 'equipment-service-interval',
+    label: 'Utrustning servad inom sitt intervall',
+    source: {
+      kind: 'KONFIGURERAD',
+      field: 'UnitEquipment.serviceIntervalMonths + senaste SERVICED-händelse',
+      description:
+        'Räknas från senaste `UnitEquipmentEvent` med typ SERVICED, eller från ' +
+        '`installedAt` om objektet aldrig servats — en nyinstallerad sak är inte ' +
+        'försenad för att den ännu inte servats. Samma nullregel som livslängden.',
+    },
+  },
+  {
     key: 'inspection-interval',
     label: 'Återkommande besiktning med visst intervall',
     source: {

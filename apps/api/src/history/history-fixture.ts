@@ -517,6 +517,11 @@ async function skapa(
       kind: 'REFRIGERATOR',
       label: 'Kök',
       installedAt: new Date('2025-04-10T00:00:00Z'),
+      // KONTROLL 3: satt livslängd + nyligen installerad → INGEN lucka.
+      // 2025 + 10 = 2035. En regel som larmar på allt är lika värdelös som en
+      // som aldrig larmar.
+      expectedLifespanYears: 10,
+      serviceIntervalMonths: 24,
     },
   })
   await prisma.unitEquipment.create({
@@ -530,6 +535,12 @@ async function skapa(
       installedAt: new Date('2018-06-01T00:00:00Z'),
       removedAt: new Date('2025-04-10T00:00:00Z'),
       replacedById: ids.newFridgeId,
+      // KONTROLL 4: livslängden VORE passerad (2018 + 5 = 2023), men saken är
+      // utbytt. Ett utbytt kylskåp är inte försenat — och den gamla raden
+      // finns kvar för alltid tack vare 1b:s bytesföljd, så en naiv beräkning
+      // hade larmat på den varje dag i all framtid.
+      expectedLifespanYears: 5,
+      serviceIntervalMonths: 24,
     },
   })
 
@@ -543,6 +554,13 @@ async function skapa(
       propertyId: ids.propertyId,
       kind: 'ELEVATOR',
       installedAt: new Date('2015-09-01T00:00:00Z'),
+      // KONTROLL 1: satt livslängd + gammal installation → LUCKA.
+      // 2015 + 8 = 2023, och hissen sitter kvar.
+      expectedLifespanYears: 8,
+      // KONTROLL 2: serviceintervallet lämnas NULL med flit. Det ska ge
+      // ODEFINIERAD för serviceförväntan — aldrig "ingen lucka" — trots att
+      // hissen har en SERVICED-händelse att räkna från.
+      // serviceIntervalMonths: (avsiktligt osatt)
     },
   })
 

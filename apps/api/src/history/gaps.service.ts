@@ -79,6 +79,10 @@ export class GapsService {
         ut.push(await this.planeradBesiktning(e, organizationId, subject, nu))
       if (e.key === 'maintenance-plan-interval')
         ut.push(await this.underhållsplan(e, organizationId, subject, nu))
+      if (e.key === 'equipment-lifespan')
+        ut.push(await this.utrustningLivslängd(e, organizationId, subject, nu))
+      if (e.key === 'equipment-service-interval')
+        ut.push(await this.utrustningService(e, organizationId, subject, nu))
     }
     return ut
   }
@@ -332,5 +336,228 @@ export class GapsService {
         .join('; '),
       missingCount: försenade.length,
     }
+  }
+
+  /**
+   * Utrustningen förväntan prövas mot, per dimension.
+   *
+   * REDAN BORTTAGEN UTRUSTNING UTELÄMNAS, och det är den lätta missen: 1b:s
+   * bytesföljd gör att den gamla raden finns kvar för alltid med sitt gamla
+   * `installedAt`. En naiv beräkning hade larmat på ett kylskåp som byttes för
+   * två år sedan, varje dag, i all framtid. Ett utbytt kylskåp är inte försenat.
+   *
+   * Villkoret är `removedAt: null` och inte `replacedById: null` — en sak som
+   * tagits bort UTAN efterträdare är lika lite försenad som en som byttes.
+   */
+  private utrustningsVillkor(
+    organizationId: string,
+    subject: HistorySubjectRef,
+  ): Record<string, unknown> | null {
+    const bas = { removedAt: null }
+    if (subject.kind === 'PROPERTY') return { ...bas, organizationId, propertyId: subject.id }
+    if (subject.kind === 'UNIT') return { ...bas, organizationId, unitId: subject.id }
+    // Hyresgästdimensionen: utrustning hör till objektet, inte till personen.
+    // Att lista lägenhetens vitvaror under en hyresgäst vore att blanda ihop
+    // vem som bor någonstans med vad som står där.
+    return null
+  }
+
+  /**
+   * DEN AVGÖRANDE REGELN, gemensam för båda utrustningsförväntningarna.
+   *
+   * Ett objekt utan värde är INTE ett objekt utan lucka — det är ett objekt vi
+   * inte vet något om. Därför:
+   *
+   *   ≥1 försenad          → LUCKA        (ett fynd väger tyngre än en okänd)
+   *   annars ≥1 utan värde → ODEFINIERAD  (vi kan inte säga "allt är bra")
+   *   annars               → UPPFYLLD
+   *
+   * `UPPFYLLD` kan alltså aldrig nås så länge något objekt saknar värde. Och
+   * antalet omätbara skrivs ALLTID ut, även när status är LUCKA — annars hade
+   * ett fynd kunnat dölja fem okända.
+   *
+   * `source` i svaret speglar vad som FAKTISKT gällde: definitionen säger
+   * KONFIGURERAD (bäraren finns i schemat), men för ett subjekt där objekt
+   * saknar värde är den ärliga källan ODEFINIERAD med skälet utskrivet.
+   */
+  private utrustningsUtfall(
+    e: ExpectationDefinition,
+    försenade: string[],
+    omätbara: number,
+    mätbara: number,
+    varförOmätbart: string,
+  ): GapResult {
+    const omätbartSuffix =
+      omätbara > 0 ? ` ${omätbara} objekt saknar värde och kan inte bedömas.` : ''
+
+    if (försenade.length > 0) {
+      return {
+        key: e.key,
+        label: e.label,
+        status: 'LUCKA',
+        source: e.source,
+        detail: `${försenade.length} av ${mätbara} bedömbara objekt är försenade: ${försenade.join('; ')}.${omätbartSuffix}`,
+        missingCount: försenade.length,
+      }
+    }
+    if (omätbara > 0) {
+      return {
+        key: e.key,
+        label: e.label,
+        status: 'ODEFINIERAD',
+        // INTE definitionens KONFIGURERAD: för det här subjektet finns ingen
+        // uttalad förväntan, och svaret ska säga det — aldrig "ingen lucka".
+        source: { kind: 'ODEFINIERAD', why: varförOmätbart },
+        detail:
+          `Ingen förväntan är definierad för ${omätbara} objekt — ingen lucka kan beräknas för dem. ` +
+          varförOmätbart +
+          (mätbara > 0 ? ` (${mätbara} objekt med värde ligger inom sin gräns.)` : ''),
+      }
+    }
+    return {
+      key: e.key,
+      label: e.label,
+      status: 'UPPFYLLD',
+      source: e.source,
+      detail: `Alla ${mätbara} objekt ligger inom sin gräns.`,
+    }
+  }
+
+  /** Utrustning äldre än sin förväntade livslängd. */
+  private async utrustningLivslängd(
+    e: ExpectationDefinition,
+    organizationId: string,
+    subject: HistorySubjectRef,
+    nu: Date,
+  ): Promise<GapResult> {
+    const villkor = this.utrustningsVillkor(organizationId, subject)
+    if (!villkor) {
+      return {
+        key: e.key,
+        label: e.label,
+        status: 'GÄLLER_EJ',
+        source: e.source,
+        detail: 'Utrustning hör till lägenheten eller fastigheten, inte till hyresgästen.',
+      }
+    }
+    const rader = await this.prisma.unitEquipment.findMany({
+      where: villkor,
+      select: { id: true, kind: true, label: true, installedAt: true, expectedLifespanYears: true },
+    })
+    if (rader.length === 0) {
+      return {
+        key: e.key,
+        label: e.label,
+        status: 'GÄLLER_EJ',
+        source: e.source,
+        detail: 'Ingen utrustning är registrerad här.',
+      }
+    }
+
+    const försenade: string[] = []
+    let mätbara = 0
+    let omätbara = 0
+    for (const r of rader) {
+      if (r.expectedLifespanYears == null) {
+        omätbara++
+        continue
+      }
+      mätbara++
+      const utgång = new Date(r.installedAt)
+      utgång.setUTCFullYear(utgång.getUTCFullYear() + r.expectedLifespanYears)
+      if (utgång < nu) {
+        const namn = r.label ? `${r.kind} (${r.label})` : String(r.kind)
+        försenade.push(
+          `${namn}: installerad ${r.installedAt.toISOString().slice(0, 10)}, livslängd ${r.expectedLifespanYears} år`,
+        )
+      }
+    }
+
+    return this.utrustningsUtfall(
+      e,
+      försenade,
+      omätbara,
+      mätbara,
+      'Fältet `UnitEquipment.expectedLifespanYears` är null. Ett tal måste sättas av en ' +
+        'människa — koden får inte hitta på en livslängd, för då börjar systemet larma ' +
+        'utifrån en siffra ingen bestämt.',
+    )
+  }
+
+  /** Utrustning vars serviceintervall löpt ut sedan senaste service. */
+  private async utrustningService(
+    e: ExpectationDefinition,
+    organizationId: string,
+    subject: HistorySubjectRef,
+    nu: Date,
+  ): Promise<GapResult> {
+    const villkor = this.utrustningsVillkor(organizationId, subject)
+    if (!villkor) {
+      return {
+        key: e.key,
+        label: e.label,
+        status: 'GÄLLER_EJ',
+        source: e.source,
+        detail: 'Utrustning hör till lägenheten eller fastigheten, inte till hyresgästen.',
+      }
+    }
+    const rader = await this.prisma.unitEquipment.findMany({
+      where: villkor,
+      select: {
+        id: true,
+        kind: true,
+        label: true,
+        installedAt: true,
+        serviceIntervalMonths: true,
+        // Senaste SERVICED — inte REPAIRED. En reparation är inte en service,
+        // och att räkna den som en hade nollställt klockan av fel skäl.
+        events: {
+          where: { type: 'SERVICED' },
+          orderBy: { occurredAt: 'desc' },
+          take: 1,
+          select: { occurredAt: true },
+        },
+      },
+    })
+    if (rader.length === 0) {
+      return {
+        key: e.key,
+        label: e.label,
+        status: 'GÄLLER_EJ',
+        source: e.source,
+        detail: 'Ingen utrustning är registrerad här.',
+      }
+    }
+
+    const försenade: string[] = []
+    let mätbara = 0
+    let omätbara = 0
+    for (const r of rader) {
+      if (r.serviceIntervalMonths == null) {
+        omätbara++
+        continue
+      }
+      mätbara++
+      // Aldrig servad → räkna från installationen. En nyinstallerad sak är
+      // inte försenad för att den ännu inte servats.
+      const sedan = r.events[0]?.occurredAt ?? r.installedAt
+      const förfaller = new Date(sedan)
+      förfaller.setUTCMonth(förfaller.getUTCMonth() + r.serviceIntervalMonths)
+      if (förfaller < nu) {
+        const namn = r.label ? `${r.kind} (${r.label})` : String(r.kind)
+        försenade.push(
+          `${namn}: senast ${sedan.toISOString().slice(0, 10)}, intervall ${r.serviceIntervalMonths} mån`,
+        )
+      }
+    }
+
+    return this.utrustningsUtfall(
+      e,
+      försenade,
+      omätbara,
+      mätbara,
+      'Fältet `UnitEquipment.serviceIntervalMonths` är null. Samma regel som ' +
+        'livslängden: ett intervall ska komma från en människa, inte från koden.',
+    )
   }
 }
