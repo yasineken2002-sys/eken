@@ -18,6 +18,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:seed": "ts-node prisma/seed.ts",
+    "db:seed:history": "ts-node prisma/seed-history.ts",
     "pii:rotate": "node --env-file-if-exists=.env -r ts-node/register src/scripts/rotate-pii-secrets.ts",
     "ai:retention:dry-run": "node --env-file-if-exists=.env -r ts-node/register src/scripts/ai-retention-dry-run.ts",
     "db:seed:platform": "ts-node prisma/seed-platform.ts",

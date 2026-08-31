@@ -505,6 +505,14 @@ const TOOL_COL = 32
  */
 const GRANSKAD_HINK_A: ReadonlyMap<string, string> = new Map([
   [
+    'GET /history/tenants/:tenantId/gaps',
+    'Beräknade luckor för samma hyresgäst. Läser INGEN ny domändata utöver vad\n' +
+      'historiken redan aggregerar, och de två källor som har snävare grind\n' +
+      '(AI-körningar, GDPR-radering) ingår inte i luckberäkningen alls — den rör\n' +
+      'avier, besiktningar och underhållsplan, som alla ligger i den här hinken.\n' +
+      'Svaret bär förväntningarnas KÄLLA, inte persondata.',
+  ],
+  [
     'GET /history/tenants/:tenantId',
     'Sammanställer hyresgästens historik ur femton domänkällor. Öppen för varje\n' +
       'roll av samma skäl som källorna är det: GET /invoices, /leases, /tenants,\n' +
