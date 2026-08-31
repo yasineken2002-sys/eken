@@ -536,9 +536,53 @@ man vet är tom.
 **när · vad · aktör · vad det gällde · beskrivning · belopp · allvar · källa**
 
 Källan ska vara klickbar till den riktiga domänposten. Aktören ska uttryckligen kunna
-vara **människa**, **agent** eller **system** — det är det som gör att hyresvärden ser
-agentens arbete i samma flöde som allt annat. Bygg agentens spår (G4) och historiken som
-**en sak**, inte två.
+vara **människa**, **agent**, **system** eller **okänd** — det är det som gör att
+hyresvärden ser agentens arbete i samma flöde som allt annat. Bygg agentens spår (G4)
+och historiken som **en sak**, inte två.
+
+#### Aktören har FYRA nivåer, inte tre
+
+*Rättelse, uppmätt i #589.* `UNKNOWN` betyder exakt en sak: **källan saknar
+aktörskolumn.** Det är en mätbar egenskap hos schemat, inte en osäkerhet i koden.
+
+`Lease`, `Deposit`, `TerminationRequest` och `MiscCharge` bär varken `createdById`
+eller `actorType`. Att skriva `SYSTEM` för dem vore ett **påstående om vem som
+handlade** — att maskinen gjorde något en människa sannolikt gjorde — i ett spår vars
+hela syfte är att gå att revidera. Ett fält som inte vet ska säga att det inte vet.
+
+Det är samma familj som *"konsumerat är inte utfört"* (Del 4): den ärliga
+formuleringen är inte den som låter mest bestämd, utan den som bara påstår det som
+går att belägga. Den dagen en aktörskolumn läggs till kan raden byta värde utan att
+formen ändras.
+
+#### En aggregerande läsyta tar den SNÄVASTE grinden bland sina källor
+
+*Rättelse, uppmätt i #589 och fångad av `authz-surface`-golden — inte av läsning.*
+
+Historiken samlar femton källor bakom **en** endpoint. Källorna har olika behörighet
+på annat håll:
+
+```
+/ai-usage · /ai/usage         ACCOUNTANT, ADMIN, OWNER
+POST /tenants/:id/anonymize   OWNER
+de tretton övriga             varje org-inloggad roll
+```
+
+Endpointen är öppen för varje roll, som de tretton. Utan motåtgärd hade en **VIEWER
+nått AI-körningar och GDPR-raderingar** som hen inte når någon annanstans — en
+behörighetsgräns flyttad av misstag, av ett aggregat som var korrekt byggt i övrigt.
+
+**Regeln:** en läsyta som slår ihop flera källor ärver den **snävaste** grinden bland
+dem, aldrig den vidaste. Begränsningen ska **deklareras på källan** (`restrictedToRoles`
+i `history-sources.registry.ts`), inte ligga som ett villkor inne i sammanställningen —
+en `if` i en läsväg skyddar bara den läsvägen, och nästa läsväg ärver ingenting.
+
+**Regeln gäller lika mycket lägenhets- och fastighetshistoriken**, som aggregerar över
+FLER hyresgäster och därför har större spridning i sina källors behörighet. Bygg dem
+inte utan att ställa samma fråga.
+
+Det här är också vad golden-filens eget huvud varnar för, och som gäller ordagrant här:
+anropsytan kan vara HELT korrekt medan **svarsytan** bär mer än den prövats för.
 
 ### Kända hål — verifiera i kod först
 

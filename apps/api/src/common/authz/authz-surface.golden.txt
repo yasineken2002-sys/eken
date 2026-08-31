@@ -197,7 +197,7 @@ POST /users/:id/reactivate                                      OWNER
 POST /users/invite                                              ADMIN, OWNER
 
 
-## 1b. HTTP-endpoints UTAN rollgrind (155 st)
+## 1b. HTTP-endpoints UTAN rollgrind (156 st)
 
 RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som
 granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli
@@ -211,7 +211,7 @@ konstruktion osynlig för driftbevakningen. #81 visade vad det kostade —
 GET /import/jobs var varken självscopad eller avsedd att vara öppen, låg
 öppen för VIEWER, och fanns inte i den här filen medan hålet var öppet.
 
-### a) Org-inloggad, öppen för VARJE roll (62 st)
+### a) Org-inloggad, öppen för VARJE roll (63 st)
 
 Enbart globala guards — antingen ingen @UseGuards alls, eller en som bara
 räknar upp JwtAuthGuard/RolesGuard och därmed inte ändrar något (#441).
@@ -225,7 +225,7 @@ det är precis vad VIEWER ska betyda. Frågan är: läser VIEWER DOMÄNDATA,
 eller det OPERATIVA SPÅRET av en handling som kräver högre roll? Spåren
 grindas och flyttar därmed till avsnitt 1.
 
-GRANSKADE — avsiktligt öppna, med skälet (62 st)
+GRANSKADE — avsiktligt öppna, med skälet (63 st)
 
 RÄCKVIDD: granskad som ANROPSYTA — vem som får anropa. INTE som SVARSYTA:
 vad svaret bär är inte prövat här. Se #445.
@@ -335,6 +335,13 @@ GET /documents                                                  documents.contro
     här kolumnen. common/authz/documents-authz.ts filtrerar bort CONTRACT-rader
     för roller utan kontraktsbehörighet (listan delar annars ut dokument-id:t,
     som är allt nedladdningen behöver).
+
+GET /history/tenants/:tenantId/gaps                             history.controller.ts
+    Beräknade luckor för samma hyresgäst. Läser INGEN ny domändata utöver vad
+    historiken redan aggregerar, och de två källor som har snävare grind
+    (AI-körningar, GDPR-radering) ingår inte i luckberäkningen alls — den rör
+    avier, besiktningar och underhållsplan, som alla ligger i den här hinken.
+    Svaret bär förväntningarnas KÄLLA, inte persondata.
 
 GET /history/tenants/:tenantId                                  history.controller.ts
     Sammanställer hyresgästens historik ur femton domänkällor. Öppen för varje
