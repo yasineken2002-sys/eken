@@ -969,6 +969,152 @@ const newsPosts: HistorySourceDefinition = {
   },
 }
 
+const equipment: HistorySourceDefinition = {
+  key: 'equipment',
+  table: 'UnitEquipment',
+  relations: { unit: 'equipment', property: 'equipment' },
+  // ── UTRUSTNINGEN OCH DESS BYTEN (etapp 1b) ─────────────────────────────────
+  //
+  // Svarar på "vad byttes och när". Saken själv ger INSTALLED/REMOVED; kedjan
+  // `replacedById` ger EQUIPMENT_REPLACED — det påstående om SAMBAND som två
+  // lösa rader med sammanfallande datum inte kan göra.
+  //
+  // Dimensionerna skiljer sig: lägenheten visar det som sitter i den,
+  // fastigheten visar ALLT som hör till huset — inklusive det som sitter i en
+  // lägenhet. En hiss (unitId = null) syns bara på fastigheten; ett kylskåp
+  // syns på båda. Det är avsiktligt: fastighetsägaren som frågar "vad har vi
+  // bytt i huset" vill ha med lägenheternas vitvaror.
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      {
+        unit: { organizationId, unitId: q.subject.id },
+        property: { organizationId, propertyId: q.subject.id },
+      },
+      'equipment',
+    )
+    const rows = await prisma.unitEquipment.findMany({
+      where,
+      select: {
+        id: true,
+        kind: true,
+        label: true,
+        installedAt: true,
+        removedAt: true,
+        unitId: true,
+        replacedById: true,
+        replacedBy: { select: { id: true, kind: true, label: true, installedAt: true } },
+      },
+    })
+    const out: HistoryEvent[] = []
+    for (const r of rows) {
+      const subject = {
+        kind: (r.unitId ? 'UNIT' : 'PROPERTY') as 'UNIT' | 'PROPERTY',
+        id: r.unitId ?? q.subject.id,
+        label: r.label,
+      }
+      const namn = r.label ? `${r.kind} (${r.label})` : String(r.kind)
+      out.push({
+        at: r.installedAt,
+        type: 'EQUIPMENT_INSTALLED',
+        actor: ACTOR_UNKNOWN,
+        subject,
+        description: `Utrustning installerad: ${namn}`,
+        amount: null,
+        severity: 'INFO',
+        source: { table: 'UnitEquipment', id: r.id },
+      })
+      if (r.removedAt) {
+        // BYTE eller ren BORTTAGNING — skillnaden är om en efterträdare finns.
+        // Att alltid säga "borttagen" hade dolt bytet; att alltid säga "bytt"
+        // hade påstått ett samband som inte finns.
+        if (r.replacedBy) {
+          const efterNamn = r.replacedBy.label
+            ? `${r.replacedBy.kind} (${r.replacedBy.label})`
+            : String(r.replacedBy.kind)
+          out.push({
+            at: r.removedAt,
+            type: 'EQUIPMENT_REPLACED',
+            actor: ACTOR_UNKNOWN,
+            subject,
+            description: `Utrustning byttes: ${namn} → ${efterNamn}`,
+            amount: null,
+            severity: 'NOTICE',
+            source: { table: 'UnitEquipment', id: r.id },
+          })
+        } else {
+          out.push({
+            at: r.removedAt,
+            type: 'EQUIPMENT_REMOVED',
+            actor: ACTOR_UNKNOWN,
+            subject,
+            description: `Utrustning borttagen: ${namn}`,
+            amount: null,
+            severity: 'NOTICE',
+            source: { table: 'UnitEquipment', id: r.id },
+          })
+        }
+      }
+    }
+    return out
+  },
+}
+
+const equipmentEvents: HistorySourceDefinition = {
+  key: 'equipment-event',
+  table: 'UnitEquipmentEvent',
+  // TÄCKER INGEN EGEN RELATION: `UnitEquipmentEvent` hänger på UnitEquipment,
+  // inte på Unit/Property. `relations` speglar därför utrustningens egna —
+  // vakten prövar relationer på Unit/Property, och den här källan deltar i
+  // samma två dimensioner som sin förälder.
+  relations: { unit: 'equipment', property: 'equipment' },
+  // Service och reparation finns INGEN ANNANSTANS i systemet. Till skillnad
+  // från avier och fakturor, som har sina domänrader kvar att jämföra mot, är
+  // den här tabellen enda källan — därför är den append-only med databastrigger.
+  async load(q) {
+    const { prisma, organizationId } = q
+    const equipmentWhere = villkorFör(
+      q,
+      {
+        unit: { organizationId, unitId: q.subject.id },
+        property: { organizationId, propertyId: q.subject.id },
+      },
+      'equipment-event',
+    )
+    const rows = await prisma.unitEquipmentEvent.findMany({
+      where: { equipment: equipmentWhere },
+      select: {
+        id: true,
+        type: true,
+        occurredAt: true,
+        note: true,
+        maintenanceTicketId: true,
+        equipment: { select: { id: true, kind: true, label: true, unitId: true } },
+      },
+    })
+    return rows.map((r) => {
+      const namn = r.equipment.label
+        ? `${r.equipment.kind} (${r.equipment.label})`
+        : String(r.equipment.kind)
+      return {
+        at: r.occurredAt,
+        type: `EQUIPMENT_${r.type}`,
+        actor: ACTOR_UNKNOWN,
+        subject: {
+          kind: (r.equipment.unitId ? 'UNIT' : 'PROPERTY') as 'UNIT' | 'PROPERTY',
+          id: r.equipment.unitId ?? q.subject.id,
+          label: r.equipment.label,
+        },
+        description: r.note ? `${namn}: ${r.note}` : `${namn}: ${r.type}`,
+        amount: null,
+        severity: r.type === 'REPAIRED' ? ('WARNING' as const) : ('INFO' as const),
+        source: { table: 'UnitEquipmentEvent', id: r.id },
+      }
+    })
+  },
+}
+
 /**
  * REGISTRET. Vakten läser `relations` ur varje post och jämför mot
  * `model Tenant`, `model Unit` och `model Property` i `schema.prisma`.
@@ -992,4 +1138,6 @@ export const HISTORY_SOURCES: readonly HistorySourceDefinition[] = [
   meters,
   maintenancePlans,
   newsPosts,
+  equipment,
+  equipmentEvents,
 ]

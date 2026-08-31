@@ -63,6 +63,12 @@ export interface HistoryFixtureIds {
    */
   formerTenantId: string
   formerLeaseId: string
+  /** Kylskåpet som SATT DÄR FÖRST och byttes 2025. */
+  oldFridgeId: string
+  /** Efterträdaren — den som sitter där nu. */
+  newFridgeId: string
+  /** Fastighetens hiss (unitId = null) — prövar att objektet kan sakna enhet. */
+  elevatorId: string
 }
 
 export interface HistoryFixtureCounts {
@@ -71,6 +77,8 @@ export interface HistoryFixtureCounts {
   inspections: number
   readings: number
   plans: number
+  equipment: number
+  equipmentEvents: number
 }
 
 /**
@@ -132,6 +140,9 @@ export async function createHistoryFixture(
     planId: ids.planId ?? randomUUID(),
     formerTenantId: ids.formerTenantId ?? randomUUID(),
     formerLeaseId: ids.formerLeaseId ?? randomUUID(),
+    oldFridgeId: ids.oldFridgeId ?? randomUUID(),
+    newFridgeId: ids.newFridgeId ?? randomUUID(),
+    elevatorId: ids.elevatorId ?? randomUUID(),
   }
   return skapa(prisma, full)
 }
@@ -489,6 +500,71 @@ async function skapa(
     },
   })
 
+  // ── UTRUSTNING: EN RIKTIG BYTESKEDJA ─────────────────────────────────────
+  //
+  // Gamla kylskåpet satt 2018–2025 och BYTTES; det nya sitter kvar. Kedjan är
+  // riktad med `replacedById` — det är den som gör att historiken kan säga
+  // EQUIPMENT_REPLACED i stället för att gissa ur sammanfallande datum.
+  //
+  // Efterträdaren skapas FÖRST: `replacedById` är en FK, så raden den pekar på
+  // måste finnas.
+  await prisma.unitEquipment.create({
+    data: {
+      id: ids.newFridgeId,
+      organizationId: ids.organizationId,
+      propertyId: ids.propertyId,
+      unitId: ids.unitId,
+      kind: 'REFRIGERATOR',
+      label: 'Kök',
+      installedAt: new Date('2025-04-10T00:00:00Z'),
+    },
+  })
+  await prisma.unitEquipment.create({
+    data: {
+      id: ids.oldFridgeId,
+      organizationId: ids.organizationId,
+      propertyId: ids.propertyId,
+      unitId: ids.unitId,
+      kind: 'REFRIGERATOR',
+      label: 'Kök',
+      installedAt: new Date('2018-06-01T00:00:00Z'),
+      removedAt: new Date('2025-04-10T00:00:00Z'),
+      replacedById: ids.newFridgeId,
+    },
+  })
+
+  // FASTIGHETENS hiss: unitId = null. Sitter kvar, aldrig bytt — prövar att
+  // ett objekt utan enhet fungerar och att en sak utan removedAt bara ger en
+  // händelse.
+  await prisma.unitEquipment.create({
+    data: {
+      id: ids.elevatorId,
+      organizationId: ids.organizationId,
+      propertyId: ids.propertyId,
+      kind: 'ELEVATOR',
+      installedAt: new Date('2015-09-01T00:00:00Z'),
+    },
+  })
+
+  // Händelser: en service på hissen, en reparation av det GAMLA kylskåpet
+  // kopplad till felanmälan. Append-only — de skrivs en gång och ändras aldrig.
+  await prisma.unitEquipmentEvent.create({
+    data: {
+      equipmentId: ids.elevatorId,
+      type: 'SERVICED',
+      occurredAt: new Date('2024-09-15T00:00:00Z'),
+      note: 'Årlig service',
+    },
+  })
+  await prisma.unitEquipmentEvent.create({
+    data: {
+      equipmentId: ids.oldFridgeId,
+      type: 'REPAIRED',
+      occurredAt: new Date('2024-11-02T00:00:00Z'),
+      note: 'Termostat bytt',
+    },
+  })
+
   const counts: HistoryFixtureCounts = {
     rentNotices: await prisma.rentNotice.count({ where: { organizationId: ids.organizationId } }),
     tickets: await prisma.maintenanceTicket.count({
@@ -497,6 +573,10 @@ async function skapa(
     inspections: await prisma.inspection.count({ where: { organizationId: ids.organizationId } }),
     readings: await prisma.meterReading.count({ where: { organizationId: ids.organizationId } }),
     plans: await prisma.maintenancePlan.count({ where: { organizationId: ids.organizationId } }),
+    equipment: await prisma.unitEquipment.count({ where: { organizationId: ids.organizationId } }),
+    equipmentEvents: await prisma.unitEquipmentEvent.count({
+      where: { equipment: { organizationId: ids.organizationId } },
+    }),
   }
   return { ids, counts }
 }

@@ -165,6 +165,9 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
   // sin tur är org-scopad. Syskon till RentNoticeLine, samma klassificering.
   RentNoticeCreditLine: { scope: 'parent-scoped', parent: 'RentNoticeCredit' },
   InspectionItem: { scope: 'parent-scoped', parent: 'Inspection' },
+  // Etapp 1b: utrustningens händelser når man bara via sin UnitEquipment, som
+  // i sin tur bär organizationId. Samma form som InspectionItem → Inspection.
+  UnitEquipmentEvent: { scope: 'parent-scoped', parent: 'UnitEquipment' },
   InspectionImage: { scope: 'parent-scoped', parent: 'Inspection' },
   AiTenantConversation: { scope: 'parent-scoped', parent: 'Tenant' },
   // Ämneskoppling (#510): ren metadata, adresserbar bara via sin AI-rad.

@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   // omitApi: tillåter `omit: { … }` i queries för att utelämna känsliga skalärfält
   // från svaret (t.ex. interna R2-nycklar/message-id som aldrig ska nå klienten).
   // GA i Prisma 6.2; preview på 5.22. Additiv — påverkar inga befintliga queries.
@@ -10,8 +10,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
   // pgvector — lagring av Voyage-embeddings för juridik-RAG:ens semantiska
   // sökning (Etapp 3). Extensionen tillhandahålls av pgvector/pgvector:pg16.
   extensions = [vector]
@@ -452,31 +452,31 @@ enum NotificationType {
 // insights, OCR, hyresgäst-AI, kontraktsskanning) räknas EJ mot taket
 // utan ingår i baspriset. PLAN_LIMITS i packages/shared definierar siffrorna.
 enum SubscriptionPlan {
-  TRIAL      // 30 dagar, 100 AI-anrop
-  STARTER    // 390 kr/mån, 1-5 obj, 200 anrop
-  MINI       // 990 kr/mån, 6-15 obj, 500 anrop
-  STANDARD   // 2 490 kr/mån, 16-50 obj, 2 000 anrop
-  PLUS       // 4 990 kr/mån, 51-150 obj, 5 000 anrop
-  PRO        // 9 990 kr/mån, 151-300 obj, 20 000 anrop
+  TRIAL // 30 dagar, 100 AI-anrop
+  STARTER // 390 kr/mån, 1-5 obj, 200 anrop
+  MINI // 990 kr/mån, 6-15 obj, 500 anrop
+  STANDARD // 2 490 kr/mån, 16-50 obj, 2 000 anrop
+  PLUS // 4 990 kr/mån, 51-150 obj, 5 000 anrop
+  PRO // 9 990 kr/mån, 151-300 obj, 20 000 anrop
 }
 
 // Faktureringsstatus för organisationen. Driver tillgång till plattformen:
 // SUSPENDED och CANCELLED blockerar alla autentiserade endpoints.
 enum OrgStatus {
-  TRIAL      // Trial-period aktiv (default vid signup)
-  ACTIVE     // Betalande kund
-  PAST_DUE   // Försenad betalning — varning men ej blockerad
-  SUSPENDED  // Pausad pga utebliven betalning — data finns kvar 60 dagar
-  CANCELLED  // Avslutad — markerad för radering
+  TRIAL // Trial-period aktiv (default vid signup)
+  ACTIVE // Betalande kund
+  PAST_DUE // Försenad betalning — varning men ej blockerad
+  SUSPENDED // Pausad pga utebliven betalning — data finns kvar 60 dagar
+  CANCELLED // Avslutad — markerad för radering
 }
 
 enum PlatformInvoiceStatus {
-  DRAFT     // Skapad men inte skickad (Yasin redigerar)
-  SENT      // Mailad till kunden, väntar på betalning
-  PENDING   // Legacy-alias för SENT — behålls för bakåtkompatibilitet
-  PAID      // Betald (paidAt satt)
-  OVERDUE   // Förfallen och påminnelse skickad
-  VOID      // Makulerad
+  DRAFT // Skapad men inte skickad (Yasin redigerar)
+  SENT // Mailad till kunden, väntar på betalning
+  PENDING // Legacy-alias för SENT — behålls för bakåtkompatibilitet
+  PAID // Betald (paidAt satt)
+  OVERDUE // Förfallen och påminnelse skickad
+  VOID // Makulerad
 }
 
 // Typ av plattformsfaktura. PLAN_FEE skapas av månadscron, AI_CREDITS
@@ -504,20 +504,20 @@ enum ErrorSource {
 // (eget kapital-serie), kontraktsformuleringar (firmatecknare vs ägare)
 // och vilka skatteregister som visas på faktura.
 enum CompanyForm {
-  AB             // Aktiebolag — eget kapital 2080-serien
-  ENSKILD_FIRMA  // Enskild näringsidkare — eget kapital 2010-serien
-  HB             // Handelsbolag
-  KB             // Kommanditbolag
-  FORENING       // Ideell eller ekonomisk förening
-  STIFTELSE      // Stiftelse
+  AB // Aktiebolag — eget kapital 2080-serien
+  ENSKILD_FIRMA // Enskild näringsidkare — eget kapital 2010-serien
+  HB // Handelsbolag
+  KB // Kommanditbolag
+  FORENING // Ideell eller ekonomisk förening
+  STIFTELSE // Stiftelse
 }
 
 // ─── Organization (Tenant in multi-tenant context) ────────────────────────────
 
 model Organization {
-  id                   String  @id @default(uuid())
+  id                   String             @id @default(uuid())
   name                 String
-  orgNumber            String? @unique
+  orgNumber            String?            @unique
   // Kort, läsbart och plattformsglobalt kundnummer (K-100001, K-100002 …) —
   // en stabil, permanent identifierare att söka/slå upp på i admin-portalen,
   // till skillnad från det interna UUID:t och det optionella orgNumber (som
@@ -525,17 +525,17 @@ model Organization {
   // rader inte bryter migrationen; backfill:as i createdAt-ordning i samma
   // migration och allokeras vid org-skapande via CustomerNumberService.
   // Görs NOT NULL i en separat PR efter prod-verifierad backfill.
-  customerNumber       String? @unique
-  accountType          String  @default("COMPANY")
+  customerNumber       String?            @unique
+  accountType          String             @default("COMPANY")
   // Juridisk företagsform. Sätts vid registrering och kan inte ändras
   // av användaren själv (kräver supportkontakt) — det skulle invalidera
   // hela kontoplanen och skattetexten på fakturor.
-  companyForm          CompanyForm @default(AB)
+  companyForm          CompanyForm        @default(AB)
   // Räkenskapsårets startmånad (1–12). 1 = kalenderår (BFL 3 kap 1 §, default
   // och tvingande för enskild firma/HB). AB får ha brutet räkenskapsår — t.ex.
   // 5 = maj–april. Styr vilket räkenskapsår en verifikation hör till, och
   // därmed verifikationsnummerserien (se VerifikationsnummerService).
-  fiscalYearStartMonth Int @default(1)
+  fiscalYearStartMonth Int                @default(1)
   vatNumber            String?
   // Momsredovisningsperiod (SFL 26 kap): månad/kvartal/år. Styr INTE bokföringen
   // — används bara för att namnge vilka momsperioder en bakdaterad debitering
@@ -547,18 +547,18 @@ model Organization {
   // förfarandelagen (2011:1244) 10 kap. 11–13 §§ och den gäller ersättning för
   // ARBETE — inte hyra. hasFSkatt = true ⇒ "Godkänd för F-skatt" tryckt på
   // faktura-PDF, aldrig på hyresavi. Kanonisk not: invoice-pdf.template.ts (#392).
-  hasFSkatt            Boolean   @default(false)
+  hasFSkatt            Boolean            @default(false)
   fSkattApprovedDate   DateTime?
   email                String
   phone                String?
   street               String
   city                 String
   postalCode           String
-  country              String  @default("SE")
+  country              String             @default("SE")
   logoStorageKey       String?
   logoStorageUrl       String?
   bankgiro             String?
-  paymentTermsDays     Int     @default(30)
+  paymentTermsDays     Int                @default(30)
   invoiceColor         String?
   invoiceTemplate      InvoiceTemplate?
 
@@ -568,8 +568,8 @@ model Organization {
   // nuvarande hårdkodade typsnitt → befintliga orgs renderar oförändrat.
   // brandSecondaryColor: sekundär/accentfärg (hex #RRGGBB), nullable. NULL →
   // härleds från invoiceColor (primär) / DEFAULT_BRAND_COLOR vid inkoppling.
-  brandFont            BrandFont @default(SYSTEM_SANS)
-  brandSecondaryColor  String?
+  brandFont           BrandFont @default(SYSTEM_SANS)
+  brandSecondaryColor String?
 
   morningReportEnabled Boolean @default(false)
 
@@ -578,7 +578,7 @@ model Organization {
   // hårt stopp av importen). Default 5 MSEK — en enskild hyresinbetalning
   // överstiger praktiskt taget aldrig detta. Höjs per org vid legitima stora
   // kommersiella transaktioner. Absolut tak är MAX_TX_AMOUNT (50 MSEK) i koden.
-  maxBankTxAmount      Decimal @default(5000000) @db.Decimal(14, 2)
+  maxBankTxAmount Decimal @default(5000000) @db.Decimal(14, 2)
 
   // Kostnadstak för batch-kontraktsskanning (skydd mot oförutsedd AI-kostnad).
   // Speglar maxBankTxAmount-precedensen: per-org konfigurerbar, med ett absolut
@@ -599,16 +599,16 @@ model Organization {
   // Lagstöd: Lag (1981:739) om ersättning för inkassokostnader — max 60 kr
   // för skriftlig påminnelse, 180 kr för inkassokrav. Vi tar bara ut
   // påminnelseavgiften — själva inkassoärendet hanteras externt.
-  remindersEnabled       Boolean @default(true)
+  remindersEnabled      Boolean @default(true)
   // Default = det lagstadgade taket (4 § lagen 1981:739). Literalen står kvar
   // för att Prisma-schemat inte är TypeScript och inte kan importera —
   // sanningskällan är REMINDER_FEE_MAX_SEK i @eken/shared, och taket klampas
   // dessutom vid debiteringstillfället (bookReminderFee). Ändras taket i lag
   // måste den här raden ändras separat.
-  reminderFeeSek         Decimal @default(60) @db.Decimal(10, 2)
-  reminderFormalDay      Int     @default(14) // dagar efter förfall för formell påminnelse
-  reminderCollectionDay  Int     @default(30) // dagar efter förfall innan markering "redo för inkasso"
-  collectionAgencyName   String? // fritext: namn på fastighetsägarens valda inkassobolag
+  reminderFeeSek        Decimal @default(60) @db.Decimal(10, 2)
+  reminderFormalDay     Int     @default(14) // dagar efter förfall för formell påminnelse
+  reminderCollectionDay Int     @default(30) // dagar efter förfall innan markering "redo för inkasso"
+  collectionAgencyName  String? // fritext: namn på fastighetsägarens valda inkassobolag
 
   // ── Hyres-specifik kravtrappa (inkasso-serien) ────────────────────────────
   // SKILD från reminderFormalDay/reminderCollectionDay ovan, som styr det äldre
@@ -660,7 +660,7 @@ model Organization {
   // Platform / SaaS-fält
   // subscriptionPlan styr maxObjects + AI-anropstak; status styr åtkomst.
   // PLAN_LIMITS i @eken/shared mappar plan → siffror.
-  subscriptionPlan   SubscriptionPlan @default(TRIAL)
+  subscriptionPlan      SubscriptionPlan @default(TRIAL)
   // INGET @@index([status]) — borttaget 2026-08-18, återinför det inte av vana.
   //
   // Indexet deklarerades här från 2026-05-12 men fanns ALDRIG i någon databas:
@@ -679,19 +679,19 @@ model Organization {
   // Behövs ett index någon gång är rätt svar ett SAMMANSATT index på det
   // faktureringsfrågorna faktiskt filtrerar på —
   // (status, planMonthlyFee, excludeFromBilling) — inte det här enkolumns.
-  status             OrgStatus        @default(TRIAL)
-  planStartedAt      DateTime         @default(now())
-  trialEndsAt        DateTime?
-  billingEmail       String?
+  status                OrgStatus        @default(TRIAL)
+  planStartedAt         DateTime         @default(now())
+  trialEndsAt           DateTime?
+  billingEmail          String?
   // Månadsavgift exkl moms, snapshotat när plan väljs. Vi behåller en kopia
   // på Organization istället för att enbart lita på PLAN_LIMITS så att
   // historiska planbyten kan reproduceras (om vi någonsin justerar prislistan).
-  planMonthlyFee     Decimal          @default(0) @db.Decimal(10, 2)
+  planMonthlyFee        Decimal          @default(0) @db.Decimal(10, 2)
   // Köpta extra AI-credits (1 kr/anrop exkl moms). Dras automatiskt
   // när organisationen passerar plan-taket på manuella anrop.
-  aiCreditsBalance   Int              @default(0)
-  suspendedAt        DateTime?
-  cancellationReason String?
+  aiCreditsBalance      Int              @default(0)
+  suspendedAt           DateTime?
+  cancellationReason    String?
   // Sista trial-påminnelsen som skickats, i kvarvarande dagar (7/3/1).
   // Idempotensnyckel för sendTrialEndingReminders så att samma steg inte
   // mailas två gånger.
@@ -699,7 +699,7 @@ model Organization {
   // Hård spärr mot plattformsfakturering. Sätts manuellt på test-,
   // intern- och friends&family-konton. Respekteras i ALLA
   // genereringsvägar (månadscron, backfill, manuell trigger).
-  excludeFromBilling Boolean @default(false)
+  excludeFromBilling    Boolean          @default(false)
 
   // ─── Acceptans av plattformens juridiska dokument ─────────────────────
   // Org-nivå-acceptans används av re-acceptance-modalen: när
@@ -708,59 +708,60 @@ model Organization {
   // koll är separat från User.acceptedTermsAt — användarens egen
   // acceptans gäller vid signup, medan org-acceptansen rör senare
   // versionsbyten som binder hela bolaget.
-  termsAcceptedAt    DateTime?
-  termsVersion       String?
+  termsAcceptedAt DateTime?
+  termsVersion    String?
 
-  users              User[]
-  properties         Property[]
-  tenants            Tenant[]
-  invoices           Invoice[]
-  accounts           Account[]
-  journalEntries     JournalEntry[]
-  bankTransactions   BankTransaction[]
-  bankStatementImports BankStatementImport[]
-  bankConsents       BankConsent[]
-  contractImportBatches ContractImportBatch[]
-  documents          Document[]
-  importJobs         ImportJob[]
-  aiConversations    AiConversation[]
-  aiAttachments      AiAttachment[]
-  aiMemories         AiMemory[]
-  aiUsageLogs        AiUsageLog[]
-  aiToolExecutions   AiToolExecution[]
-  aiToolEffects      AiToolEffect[]
-  maintenanceTickets MaintenanceTicket[]
-  rentNotices        RentNotice[]
-  inspections        Inspection[]
-  maintenancePlans   MaintenancePlan[]
-  notifications      Notification[]
-  newsPosts          NewsPost[]
-  sentMessages       SentMessage[]
-  platformInvoices   PlatformInvoice[]
-  impersonationLogs  ImpersonationLog[]
-  tenantAnonymizationLogs TenantAnonymizationLog[]
-  errorLogs          ErrorLog[]
-  contractNumberSequences ContractNumberSequence[]
+  users                     User[]
+  properties                Property[]
+  tenants                   Tenant[]
+  invoices                  Invoice[]
+  accounts                  Account[]
+  journalEntries            JournalEntry[]
+  bankTransactions          BankTransaction[]
+  bankStatementImports      BankStatementImport[]
+  bankConsents              BankConsent[]
+  contractImportBatches     ContractImportBatch[]
+  documents                 Document[]
+  importJobs                ImportJob[]
+  aiConversations           AiConversation[]
+  aiAttachments             AiAttachment[]
+  aiMemories                AiMemory[]
+  aiUsageLogs               AiUsageLog[]
+  aiToolExecutions          AiToolExecution[]
+  aiToolEffects             AiToolEffect[]
+  maintenanceTickets        MaintenanceTicket[]
+  rentNotices               RentNotice[]
+  inspections               Inspection[]
+  maintenancePlans          MaintenancePlan[]
+  notifications             Notification[]
+  newsPosts                 NewsPost[]
+  sentMessages              SentMessage[]
+  platformInvoices          PlatformInvoice[]
+  impersonationLogs         ImpersonationLog[]
+  tenantAnonymizationLogs   TenantAnonymizationLog[]
+  errorLogs                 ErrorLog[]
+  contractNumberSequences   ContractNumberSequence[]
   maintenanceTicketSequence MaintenanceTicketSequence?
-  journalEntrySequences JournalEntrySequence[]
+  journalEntrySequences     JournalEntrySequence[]
   rentNoticeNumberSequences RentNoticeNumberSequence[]
   rentNoticeCredits         RentNoticeCredit[]
-  tenantOcrSequence  TenantOcrSequence?
-  invoiceNumberSequence InvoiceNumberSequence?
-  deposits           Deposit[]
-  rentIncreases      RentIncrease[]
-  customers          Customer[]
-  closedPeriods      ClosedAccountingPeriod[]
-  periodEvents       AccountingPeriodEvent[]
-  terminationRequests TerminationRequest[]
-  keyHandovers       KeyHandover[]
-  meters             Meter[]
-  meterReadings      MeterReading[]
-  consumptionTariffs ConsumptionTariff[]
-  consumptionCharges ConsumptionCharge[]
-  miscCharges        MiscCharge[]
-  signingRequests    SigningRequest[]
-  signatureEvidence  SignatureEvidence[]
+  tenantOcrSequence         TenantOcrSequence?
+  invoiceNumberSequence     InvoiceNumberSequence?
+  deposits                  Deposit[]
+  rentIncreases             RentIncrease[]
+  customers                 Customer[]
+  closedPeriods             ClosedAccountingPeriod[]
+  periodEvents              AccountingPeriodEvent[]
+  terminationRequests       TerminationRequest[]
+  keyHandovers              KeyHandover[]
+  meters                    Meter[]
+  unitEquipment             UnitEquipment[]
+  meterReadings             MeterReading[]
+  consumptionTariffs        ConsumptionTariff[]
+  consumptionCharges        ConsumptionCharge[]
+  miscCharges               MiscCharge[]
+  signingRequests           SigningRequest[]
+  signatureEvidence         SignatureEvidence[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -773,26 +774,26 @@ model Organization {
 // ─── User ─────────────────────────────────────────────────────────────────────
 
 model User {
-  id                  String    @id @default(uuid())
-  organizationId      String
-  email               String    @unique
+  id                 String    @id @default(uuid())
+  organizationId     String
+  email              String    @unique
   // Nullable: vid invite skapas User utan lösenord. Lösenord sätts först
   // när inbjudan accepteras via /v1/auth/accept-invite. login() avvisar
   // användare där passwordHash är null (samma "Felaktiga inloggningsuppgifter"
   // som ett felaktigt lösenord — ingen enumeration).
-  passwordHash        String?
-  firstName           String
-  lastName            String
-  role                UserRole  @default(VIEWER)
-  avatarUrl           String?
-  isActive            Boolean   @default(true)
-  mustChangePassword  Boolean   @default(false)
-  lastLoginAt         DateTime?
+  passwordHash       String?
+  firstName          String
+  lastName           String
+  role               UserRole  @default(VIEWER)
+  avatarUrl          String?
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(false)
+  lastLoginAt        DateTime?
   // Brute-force-skydd: räknar upp vid felaktigt lösenord, nollställs vid
   // lyckad inloggning. När loginAttempts ≥ 10 sätts lockedUntil 15 min
   // framåt och inga försök släpps förrän klockan passerat.
-  loginAttempts       Int       @default(0)
-  lockedUntil         DateTime?
+  loginAttempts      Int       @default(0)
+  lockedUntil        DateTime?
 
   // ─── Acceptans av juridiska dokument ───────────────────────────────────
   // Sätts när användaren bockat i "Jag accepterar Användarvillkor och
@@ -801,28 +802,28 @@ model User {
   // version användaren godkänt. Båda fälten är nullable för befintliga
   // konton — vid nästa inloggning visas re-acceptance-modalen om
   // versionen är lägre än CURRENT_TERMS_VERSION.
-  acceptedTermsAt     DateTime?
-  termsVersion        String?
+  acceptedTermsAt DateTime?
+  termsVersion    String?
 
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  refreshTokens       RefreshToken[]
-  passwordResetTokens PasswordResetToken[]
-  invitations         UserInvitation[]
-  journalEntries      JournalEntry[]
-  closedPeriods       ClosedAccountingPeriod[]
-  periodEvents        AccountingPeriodEvent[]
-  documents           Document[]
-  importJobs          ImportJob[]
-  aiConversations     AiConversation[]
-  aiAttachments       AiAttachment[]
-  aiMemories          AiMemory[]
-  aiUsageLogs         AiUsageLog[]
-  aiToolExecutions    AiToolExecution[]
-  notifications       Notification[]
-  newsPosts           NewsPost[]
-  sentMessages        SentMessage[]
+  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  refreshTokens           RefreshToken[]
+  passwordResetTokens     PasswordResetToken[]
+  invitations             UserInvitation[]
+  journalEntries          JournalEntry[]
+  closedPeriods           ClosedAccountingPeriod[]
+  periodEvents            AccountingPeriodEvent[]
+  documents               Document[]
+  importJobs              ImportJob[]
+  aiConversations         AiConversation[]
+  aiAttachments           AiAttachment[]
+  aiMemories              AiMemory[]
+  aiUsageLogs             AiUsageLog[]
+  aiToolExecutions        AiToolExecution[]
+  notifications           Notification[]
+  newsPosts               NewsPost[]
+  sentMessages            SentMessage[]
   tenantAnonymizationLogs TenantAnonymizationLog[] @relation("TenantAnonymizationPerformedBy")
-  impersonationLogs   ImpersonationLog[]   @relation("ImpersonationTargetUser")
+  impersonationLogs       ImpersonationLog[]       @relation("ImpersonationTargetUser")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -913,6 +914,7 @@ model Property {
   maintenanceTickets MaintenanceTicket[]
   inspections        Inspection[]
   maintenancePlans   MaintenancePlan[]
+  equipment          UnitEquipment[]
   newsPosts          NewsPost[]
 
   createdAt DateTime @default(now())
@@ -955,6 +957,7 @@ model Unit {
   inspections        Inspection[]
   keyHandovers       KeyHandover[]
   meters             Meter[]
+  equipment          UnitEquipment[]
   contractImportRows ContractImportRow[]
 
   createdAt DateTime @default(now())
@@ -988,14 +991,14 @@ model Tenant {
   // Klartextkolumnen "personalNumber" är BORTTAGEN (contract-fasen, migration
   // 20260728000000). Den krypterades av backfillen och droppades först när
   // produktions-backfillen var bekräftad körd och verifierad.
-  personalNumberEnc    String?
-  personalNumberHash   String?
-  email          String
-  phone          String?
-  street         String?
-  city           String?
-  postalCode     String?
-  country        String?    @default("SE")
+  personalNumberEnc  String?
+  personalNumberHash String?
+  email              String
+  phone              String?
+  street             String?
+  city               String?
+  postalCode         String?
+  country            String? @default("SE")
 
   // H1: unikt PER ORGANISATION, inte globalt. Globalt unikt var inte ett
   // funktionellt krav — varje OCR-uppslag i matchningen bär organizationId
@@ -1013,14 +1016,14 @@ model Tenant {
   // som har ett pågående reset får inte sitt aktiveringstoken överskrivet (och
   // tvärtom). Båda kolumnerna lagrar SHA-256-hash av råtoken, aldrig klartext;
   // råtoken skickas bara i mejlet och kan inte återskapas från DB om den läcker.
-  portalActivated              Boolean   @default(false)
-  portalActivatedAt            DateTime?
-  passwordHash                 String?
-  activationTokenHash          String?   @unique
-  activationTokenExpiresAt     DateTime?
-  activationReminderSentAt     DateTime?
-  passwordResetTokenHash       String?   @unique
-  passwordResetTokenExpiresAt  DateTime?
+  portalActivated             Boolean   @default(false)
+  portalActivatedAt           DateTime?
+  passwordHash                String?
+  activationTokenHash         String?   @unique
+  activationTokenExpiresAt    DateTime?
+  activationReminderSentAt    DateTime?
+  passwordResetTokenHash      String?   @unique
+  passwordResetTokenExpiresAt DateTime?
 
   // ─── Portal-inbjudan (massutskick) ───────────────────────────────────────
   // Spårar massinbjudan till portalen separat från aktiveringstoken ovan.
@@ -1062,26 +1065,26 @@ model Tenant {
   // verkställa en raderingsbegäran här.
   anonymizedAt DateTime?
 
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  leases             Lease[]
-  invoices           Invoice[]
-  documents          Document[]
-  signedDocuments    Document[]          @relation("DocumentSignedByTenant")
-  maintenanceTickets MaintenanceTicket[]
-  rentNotices        RentNotice[]
-  inspections        Inspection[]
-  magicLinks         TenantMagicLink[]
-  sessions           TenantSession[]
-  sentMessages       SentMessage[]
-  deposits           Deposit[]
-  aiConversations    AiTenantConversation[]
-  aiUsageLogs        AiUsageLog[]
-  aiToolExecutions   AiToolExecution[]
+  organization        Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leases              Lease[]
+  invoices            Invoice[]
+  documents           Document[]
+  signedDocuments     Document[]               @relation("DocumentSignedByTenant")
+  maintenanceTickets  MaintenanceTicket[]
+  rentNotices         RentNotice[]
+  inspections         Inspection[]
+  magicLinks          TenantMagicLink[]
+  sessions            TenantSession[]
+  sentMessages        SentMessage[]
+  deposits            Deposit[]
+  aiConversations     AiTenantConversation[]
+  aiUsageLogs         AiUsageLog[]
+  aiToolExecutions    AiToolExecution[]
   terminationRequests TerminationRequest[]
-  keyHandovers       KeyHandover[]
-  consumptionCharges ConsumptionCharge[]
-  miscCharges        MiscCharge[]
-  anonymizationLogs  TenantAnonymizationLog[]
+  keyHandovers        KeyHandover[]
+  consumptionCharges  ConsumptionCharge[]
+  miscCharges         MiscCharge[]
+  anonymizationLogs   TenantAnonymizationLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1104,29 +1107,29 @@ model Customer {
   organizationId String
   type           CustomerType
 
-  firstName      String?
-  lastName       String?
-  companyName    String?
-  orgNumber      String?
-  contactPerson  String?
+  firstName     String?
+  lastName      String?
+  companyName   String?
+  orgNumber     String?
+  contactPerson String?
 
-  email          String?
-  phone          String?
+  email String?
+  phone String?
 
-  street         String?
-  city           String?
-  postalCode     String?
-  country        String?      @default("SE")
+  street     String?
+  city       String?
+  postalCode String?
+  country    String? @default("SE")
 
-  reference      String?
-  notes          String?
-  isActive       Boolean      @default(true)
+  reference String?
+  notes     String?
+  isActive  Boolean @default(true)
 
   // Personnummer krypterat i vila — se kommentaren på Tenant för schemat.
   // Samma nyckel och pepper, så en fysisk person kan matchas mellan Tenant och
   // Customer på blind-indexet utan att någon rad dekrypteras.
-  personalNumberEnc    String?
-  personalNumberHash   String?
+  personalNumberEnc  String?
+  personalNumberHash String?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoices     Invoice[]
@@ -1147,14 +1150,14 @@ enum CustomerType {
 // ─── Lease (Hyresavtal) ───────────────────────────────────────────────────────
 
 model Lease {
-  id                   String      @id @default(uuid())
-  organizationId       String
-  unitId               String
-  tenantId             String
-  status               LeaseStatus @default(DRAFT)
-  leaseType            LeaseType   @default(INDEFINITE)
-  renewalPeriodMonths  Int? // Bara meningsfullt för FIXED_TERM
-  startDate            DateTime    @db.Date
+  id                      String        @id @default(uuid())
+  organizationId          String
+  unitId                  String
+  tenantId                String
+  status                  LeaseStatus   @default(DRAFT)
+  leaseType               LeaseType     @default(INDEFINITE)
+  renewalPeriodMonths     Int? // Bara meningsfullt för FIXED_TERM
+  startDate               DateTime      @db.Date
   // ── Kontinuitetsmarkör: hyresförhållandets faktiska början (T1.3b) ─────────
   // ÄRVS oförändrat genom varje förnyelse (LEASE_SUCCESSION_CARRY_FIELDS) —
   // medan `startDate` nollställs till oldEnd+1 vid varje nytt avtal. Flera
@@ -1168,44 +1171,44 @@ model Lease {
   // vid FÖRSTA avtalet (create + migration-backfill); en successor ärver
   // föregångarens värde via carry-projektionen. tenancyStartDate <= startDate
   // alltid → osäkerhet ger MER varaktighet/skydd, aldrig mindre.
-  tenancyStartDate     DateTime    @db.Date
-  endDate              DateTime?   @db.Date
-  monthlyRent          Decimal     @db.Decimal(10, 2)
+  tenancyStartDate        DateTime      @db.Date
+  endDate                 DateTime?     @db.Date
+  monthlyRent             Decimal       @db.Decimal(10, 2)
   // Anger att monthlyRent är avtalad EXKLUSIVE moms (netto). Moms läggs på
   // hyresavin endast när detta är true OCH enheten är momspliktig
   // (voluntaryTaxLiability/parkering). Default false skyddar mot oavtalad
   // hyreshöjning (JB 12 kap 19 § 3 st) — moms läggs aldrig ovanpå en hyra som
   // kan ha avtalats inkl. moms. Sätts vid kontraktsregistrering för lokaler.
-  monthlyRentExcludingVat Boolean  @default(false)
-  depositAmount        Decimal     @db.Decimal(10, 2)
-  noticePeriodMonths   Int         @default(3)
+  monthlyRentExcludingVat Boolean       @default(false)
+  depositAmount           Decimal       @db.Decimal(10, 2)
+  noticePeriodMonths      Int           @default(3)
   // Regelverk för uppsägningstider (#69). Kolumn-default TENANCY_ACT (säker
   // fallback); create() sätter PRIVATE_RENTAL för bostad. Migration bakåtfyller
   // befintliga APARTMENT-kontrakt till PRIVATE_RENTAL.
-  tenancyRegime        TenancyRegime @default(TENANCY_ACT)
+  tenancyRegime           TenancyRegime @default(TENANCY_ACT)
   // Behålls för bakåtkompatibilitet (gamla rader). Nya kontrakt sätter
   // indexClauseType — `indexClause` speglar då (type !== NONE).
-  indexClause          Boolean     @default(false)
+  indexClause             Boolean       @default(false)
   // Tidpunkt då avtalet AKTIVERADES (status → ACTIVE). Hette tidigare `signedAt`,
   // men fältet sätts vid admin-aktivering UTAN någon signatur — namnet "signerat"
   // var missvisande och bevisade inget om en underskrift. Döpt om till activatedAt
   // (S2). En faktisk BankID-signatur bevisas separat av SignatureEvidence (S1).
-  activatedAt          DateTime?
-  terminatedAt         DateTime?
-  terminationReason    String?
+  activatedAt             DateTime?
+  terminatedAt            DateTime?
+  terminationReason       String?
 
   // ── Vad ingår i hyran ────────────────────────────────────────────────────
   // Branschpraxis: bostäder har normalt värme, vatten, varmvatten och
   // tvättstuga inkluderade; hushållsel och internet betalar hyresgästen.
-  includesHeating       Boolean @default(true)
-  includesWater         Boolean @default(true)
-  includesHotWater      Boolean @default(true)
-  includesElectricity   Boolean @default(false)
-  includesInternet      Boolean @default(false)
-  includesCleaning      Boolean @default(false)
-  includesParking       Boolean @default(false)
-  includesStorage       Boolean @default(false)
-  includesLaundry       Boolean @default(true)
+  includesHeating     Boolean @default(true)
+  includesWater       Boolean @default(true)
+  includesHotWater    Boolean @default(true)
+  includesElectricity Boolean @default(false)
+  includesInternet    Boolean @default(false)
+  includesCleaning    Boolean @default(false)
+  includesParking     Boolean @default(false)
+  includesStorage     Boolean @default(false)
+  includesLaundry     Boolean @default(true)
 
   // ── Tilläggshyror utöver grundhyran ──────────────────────────────────────
   parkingFee Decimal? @db.Decimal(10, 2)
@@ -1228,8 +1231,8 @@ model Lease {
   indexClauseType     IndexClauseType @default(NONE)
   indexBaseYear       Int?
   indexAdjustmentDate String? // "01-01" eller "anniversary"
-  indexMaxIncrease    Decimal? @db.Decimal(5, 2)
-  indexMinIncrease    Decimal? @db.Decimal(5, 2)
+  indexMaxIncrease    Decimal?        @db.Decimal(5, 2)
+  indexMinIncrease    Decimal?        @db.Decimal(5, 2)
   indexNotes          String?
 
   // ── Avtalsgrund för påminnelseavgift (G1) ───────────────────────────────
@@ -1333,7 +1336,7 @@ model Invoice {
   // aldrig); det här fältet + ett SEND_FAILED-event gör felet synligt i UI så
   // att hyresvärden kan skicka om. InvoiceStatus är en finansiell statusmaskin
   // (DRAFT→SENT→PAID …) utan FAILED — därför ett separat fält, inte en status.
-  sendError      String?
+  sendError String?
 
   // Tracking-token för e-postspårning (pixel + PDF-länk)
   // Genereras vid skapande, används aldrig om – en faktura, ett token.
@@ -1369,24 +1372,24 @@ model Invoice {
   creditedInvoiceId String?
 
   // Påminnelse- och inkassoflöde
-  remindersPaused      Boolean   @default(false)
-  remindersPausedAt    DateTime?
+  remindersPaused       Boolean   @default(false)
+  remindersPausedAt     DateTime?
   remindersPausedReason String?
-  sentToCollectionAt   DateTime?
-  collectionExportKey  String? // R2-nyckel till senaste inkassounderlag
+  sentToCollectionAt    DateTime?
+  collectionExportKey   String? // R2-nyckel till senaste inkassounderlag
 
   // Bokföringslagen (1999:1078): räkenskapsinformation måste bevaras 7 år.
   // Restrict hindrar att en org med fakturor raderas och förstör underlaget.
-  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  tenant           Tenant?            @relation(fields: [tenantId], references: [id])
-  customer         Customer?          @relation(fields: [customerId], references: [id])
-  lease            Lease?             @relation(fields: [leaseId], references: [id])
-  lines            InvoiceLine[]
-  events           InvoiceEvent[]
-  payments         InvoicePayment[]
-  bankTransactions BankTransaction[]
-  deposit          Deposit?
-  paymentReminders PaymentReminder[]
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  tenant             Tenant?             @relation(fields: [tenantId], references: [id])
+  customer           Customer?           @relation(fields: [customerId], references: [id])
+  lease              Lease?              @relation(fields: [leaseId], references: [id])
+  lines              InvoiceLine[]
+  events             InvoiceEvent[]
+  payments           InvoicePayment[]
+  bankTransactions   BankTransaction[]
+  deposit            Deposit?
+  paymentReminders   PaymentReminder[]
   consumptionCharges ConsumptionCharge[]
 
   // Självrelation: kreditnotan → originalet, och originalet → sina kreditnotor.
@@ -1397,13 +1400,6 @@ model Invoice {
   updatedAt DateTime @updatedAt
 
   @@unique([organizationId, invoiceNumber])
-  @@index([organizationId])
-  @@index([tenantId])
-  @@index([customerId])
-  @@index([status])
-  @@index([dueDate])
-  @@index([trackingToken])
-
   // H1: OCR:et är unikt PER ORGANISATION — inte globalt, och inte bara "i
   // praktiken". Fram till den här ändringen var unikheten en HÄRLEDNING:
   // `Invoice.ocrNumber = pad7(sekvens) + Luhn` där sekvensen kommer från den
@@ -1432,6 +1428,12 @@ model Invoice {
   // fråga kostar skrivningar och får nästa läsare att tro att org-lösa uppslag
   // förekommer.
   @@unique([organizationId, ocrNumber])
+  @@index([organizationId])
+  @@index([tenantId])
+  @@index([customerId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([trackingToken])
   // Uppslagning original → kreditnotor. Den vägen går computeInvoiceDebt varje
   // gång en fakturas restskuld beräknas.
   @@index([creditedInvoiceId])
@@ -1635,7 +1637,7 @@ model JournalEntry {
   aiToolExecutionId String?
   // Nullable för automatiska poster (t.ex. auto-match från bank-import) där
   // ingen användare är inloggad. Manuella poster har alltid en createdBy.
-  createdById    String?
+  createdById       String?
 
   // ── Verifikationsnummer (BFL 5 kap 6 §) ───────────────────────────────────
   // Varje verifikation ska ha ett verifikationsnummer i en obruten nummerföljd
@@ -1645,9 +1647,9 @@ model JournalEntry {
   // (organizationId, series, fiscalYear), tilldelat atomiskt via
   // JournalEntrySequence inuti samma transaktion som posten skapas — en
   // rollback bränner därför aldrig ett nummer (gap-free).
-  fiscalYear     Int
-  series         String             @default("A")
-  verNumber      Int
+  fiscalYear Int
+  series     String @default("A")
+  verNumber  Int
 
   // ── Rättelsekedja (T5 PR1c2) ──────────────────────────────────────────────
   // Pekar från ett RÄTTELSEVERIFIKAT till det verifikat det rättar. Null på allt
@@ -1840,15 +1842,15 @@ model AccountingPeriodEvent {
 // ─── Bank Reconciliation (Bankavstämning) ─────────────────────────────────────
 
 model BankTransaction {
-  id             String                @id @default(uuid())
-  organizationId String
-  date           DateTime
-  description    String
-  amount         Decimal               @db.Decimal(12, 2)
-  balance        Decimal?              @db.Decimal(12, 2)
-  reference      String?
-  rawOcr         String?
-  status         BankTransactionStatus @default(UNMATCHED)
+  id                  String                @id @default(uuid())
+  organizationId      String
+  date                DateTime
+  description         String
+  amount              Decimal               @db.Decimal(12, 2)
+  balance             Decimal?              @db.Decimal(12, 2)
+  reference           String?
+  rawOcr              String?
+  status              BankTransactionStatus @default(UNMATCHED)
   // PSD2 P1 — källidentitet & dedup. Bägge NULLABLE: befintliga fil-rader (och
   // all filimport) saknar externalId → oförändrade. `externalId` = bankens/
   // aggregatorns transaktions-id, unikt per org (API-vs-API-idempotens via
@@ -1856,13 +1858,13 @@ model BankTransaction {
   // nyckel (Stockholm-dag + belopp + OCR) som fil OCH API stämplar likadant, så en
   // betalning som ingestas via BÅDA källorna vid migrationsöverlapp fångas som
   // dubblett istället för att dubbel-allokeras (#162-klassen). Rör EJ matchning.
-  externalId     String?
-  dedupKey       String?
+  externalId          String?
+  dedupKey            String?
   // Match-länkar — XOR. En transaktion kan matchas mot antingen en
   // kommersiell faktura (Invoice) eller en hyresavi (RentNotice), aldrig
   // båda. CHECK-constraint i migration garanterar invarianten på DB-nivå
   // så vi inte kan hamna i ett inkonsekvent state om en bug skriver båda.
-  invoiceId            String?
+  invoiceId           String?
   // Bankavstämnings-härdning PR 1 — @unique LYFT. Dubbel-allokeringsskyddet flyttas
   // till RentNoticePayment.bankTransactionId @unique (en bank-transaktion får
   // allokeras till exakt EN avi). matchedRentNoticeId blir en härledd spegel av
@@ -1871,15 +1873,15 @@ model BankTransaction {
   // gamla race-garantin (en avi → en transaktion) bärs redan av den status-guardade
   // updateMany:en i applyMatchToRentNotice (claim.count), så ingen skyddslucka
   // uppstår. Index behålls för relation/uppslag.
-  matchedRentNoticeId  String?
-  matchedAt            DateTime?
-  matchedBy            String?
-  createdAt            DateTime              @default(now())
+  matchedRentNoticeId String?
+  matchedAt           DateTime?
+  matchedBy           String?
+  createdAt           DateTime              @default(now())
 
   // Bokföringslagen (1999:1078): banktransaktioner är räkenskapsinformation, bevaras 7 år.
-  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  invoice           Invoice?     @relation(fields: [invoiceId], references: [id])
-  matchedRentNotice RentNotice?  @relation(fields: [matchedRentNoticeId], references: [id])
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  invoice            Invoice?            @relation(fields: [invoiceId], references: [id])
+  matchedRentNotice  RentNotice?         @relation(fields: [matchedRentNoticeId], references: [id])
   // Härledda betalningsallokeringar. Var 1:1 (`bankTransactionId @unique`), men
   // H3 PR A bytte den spärren mot @@unique([bankTransactionId, rentNoticeId]) så
   // att ett vattenfall kan fördela EN klumpbetalning över FLERA avier. Listan är
@@ -1889,7 +1891,7 @@ model BankTransaction {
   // Motsvarande för fakturasidan (C4/C5). @unique på InvoicePayment-sidan ger
   // en allokering per transaktion — en bank-transaktion kan inte allokeras till
   // både en avi och en faktura, och inte till två fakturor.
-  invoicePayment    InvoicePayment?
+  invoicePayment     InvoicePayment?
 
   @@unique([organizationId, externalId])
   @@index([organizationId])
@@ -1906,21 +1908,21 @@ model BankTransaction {
 // match-skydd som CSV/BgMax-flödena (Fix 6).
 
 model BankStatementImport {
-  id              String                     @id @default(uuid())
-  organizationId  String
-  fileName        String
-  fileType        String // 'pdf' idag; reserverat för framtida 'csv','xlsx','bgmax'
-  fileSize        Int
-  status          BankStatementImportStatus  @default(PARSING)
+  id             String                    @id @default(uuid())
+  organizationId String
+  fileName       String
+  fileType       String // 'pdf' idag; reserverat för framtida 'csv','xlsx','bgmax'
+  fileSize       Int
+  status         BankStatementImportStatus @default(PARSING)
   // uploadedBy / confirmedBy lagras som plain user-IDs (mirrors BankTransaction.matchedBy)
-  uploadedById    String?
-  uploadedAt      DateTime                   @default(now())
+  uploadedById   String?
+  uploadedAt     DateTime                  @default(now())
 
   // AI-extraherade metadata
-  bank            String? // 'Swedbank' | 'SEB' | 'Nordea' | 'Handelsbanken' | 'Annan'
-  accountNumber   String?
-  periodStart     DateTime? @db.Date
-  periodEnd       DateTime? @db.Date
+  bank               String? // 'Swedbank' | 'SEB' | 'Nordea' | 'Handelsbanken' | 'Annan'
+  accountNumber      String?
+  periodStart        DateTime? @db.Date
+  periodEnd          DateTime? @db.Date
   // BFL 5 kap 11 § (behandlingshistorik) + 7 kap 2 § (räkenskapsinformation, 7 år).
   // AI:ns RÅTOLKNING — sätts EN gång när status blir PARSED, ändras ALDRIG.
   // Gör att en granskare i efterhand kan se exakt vad Claude returnerade kontra
@@ -1931,23 +1933,23 @@ model BankStatementImport {
   originalParsedData Json?
   // Sparas som JSON: { transactions: [{ date, description, ocr, amount, isIncoming }, ...] }
   // Granskat/redigerat preview-tillstånd som UI:t läser under PARSED-fasen.
-  parsedData      Json?
+  parsedData         Json?
   // Den lista som FAKTISKT commitades till BankTransaction-rader — sätts EN gång
   // när status blir CONFIRMED, ändras ALDRIG. Räkenskapsinformation (BFL 1 kap 2 § 9c).
-  confirmedData   Json?
-  transactionCount Int                       @default(0)
+  confirmedData      Json?
+  transactionCount   Int       @default(0)
 
   // Audit
-  errorMessage    String?
-  confirmedAt     DateTime?
-  confirmedById   String?
+  errorMessage   String?
+  confirmedAt    DateTime?
+  confirmedById  String?
   // Snapshot av matchningsresultatet vid bekräftelse
-  matchedCount    Int?
-  unmatchedCount  Int?
+  matchedCount   Int?
+  unmatchedCount Int?
 
   // Bokföringslagen (1999:1078): underlag för räkenskapsinformation, bevaras 7 år.
   // Restrict matchar BankTransaction-mönstret — vi får inte tappa underlaget.
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1957,20 +1959,20 @@ model BankStatementImport {
 }
 
 enum BankStatementImportStatus {
-  PARSING   // Skickad till AI, väntar (transient — sync-flödet hoppar normalt över denna)
-  PARSED    // AI gav giltig JSON, väntar på användarens granskning
+  PARSING // Skickad till AI, väntar (transient — sync-flödet hoppar normalt över denna)
+  PARSED // AI gav giltig JSON, väntar på användarens granskning
   CONFIRMED // Användaren har bekräftat — BankTransaction-rader skapade
-  FAILED    // Tolkning misslyckades (AI-fel / ogiltig JSON)
+  FAILED // Tolkning misslyckades (AI-fel / ogiltig JSON)
   CANCELLED // Användaren avbröt granskningen
 }
 
 // ── PSD2 P2: bankkoppling (samtycke + sync). ALLT inert bakom PSD2_ENABLED. ──────
 
 enum BankConsentStatus {
-  ACTIVE  // Giltigt samtycke — sync tillåten
+  ACTIVE // Giltigt samtycke — sync tillåten
   EXPIRED // SCA-omcertifiering krävs (~90 dagar)
   REVOKED // Återkallat (av användaren eller banken)
-  ERROR   // Providern rapporterade fel — sync pausad
+  ERROR // Providern rapporterade fel — sync pausad
 }
 
 // Ett PSD2-samtycke per bankkoppling. access/refresh-tokens är app-layer-
@@ -1981,16 +1983,16 @@ enum BankConsentStatus {
 model BankConsent {
   id              String            @id @default(uuid())
   organizationId  String
-  provider        String            // 'STUB' | 'MOCK' | skarp adapter (P3)
-  consentId       String            // aggregatorns samtyckes-id
+  provider        String // 'STUB' | 'MOCK' | skarp adapter (P3)
+  consentId       String // aggregatorns samtyckes-id
   status          BankConsentStatus @default(ACTIVE)
-  accessTokenEnc  String            // AES-256-GCM (base64 iv+tag+ct)
-  refreshTokenEnc String?           // AES-256-GCM
+  accessTokenEnc  String // AES-256-GCM (base64 iv+tag+ct)
+  refreshTokenEnc String? // AES-256-GCM
   scope           String?
   expiresAt       DateTime?
   revokedAt       DateTime?
   lastSyncedAt    DateTime?
-  syncCursor      String?           // inkrementell fetch (since) per konto/consent
+  syncCursor      String? // inkrementell fetch (since) per konto/consent
   createdByUserId String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -2060,7 +2062,7 @@ model ContractImportBatch {
 }
 
 model ContractImportRow {
-  id             String  @id @default(uuid())
+  id             String @id @default(uuid())
   batchId        String
   // Denormaliserat så workern kan org-scopa skanningen utan att joina batchen.
   organizationId String
@@ -2126,28 +2128,28 @@ model ContractImportRow {
 
 enum ContractRowMatchStatus {
   AUTO_MATCHED // Exakt EN kandidat-Unit matchade (adress + lägenhetsnummer)
-  AMBIGUOUS    // Flera kandidater matchade — lämnas orörd (ingen gissning)
-  NO_MATCH     // Noll kandidater matchade
+  AMBIGUOUS // Flera kandidater matchade — lämnas orörd (ingen gissning)
+  NO_MATCH // Noll kandidater matchade
   NEEDS_REVIEW // Saknat adress-/lägenhetsfält eller låg skanningskonfidens
 }
 
 enum ContractImportBatchStatus {
-  PENDING   // Skapad, rader köade men ännu inte klara
-  SCANNING  // Minst en rad skannas
-  SCANNED   // Alla rader klara (lyckade eller failade) — väntar på granskning
+  PENDING // Skapad, rader köade men ännu inte klara
+  SCANNING // Minst en rad skannas
+  SCANNED // Alla rader klara (lyckade eller failade) — väntar på granskning
   COMPLETED // Alla rader committade/hoppade/failade — granskningen avslutad (PR3)
-  FAILED    // Batch-nivå-fel (t.ex. kostnadsbroms slog till under körning)
+  FAILED // Batch-nivå-fel (t.ex. kostnadsbroms slog till under körning)
   CANCELLED // Operatören avbröt
 }
 
 enum ContractImportRowStatus {
-  PENDING    // Köad, ännu inte skannad
-  SCANNING   // Hämtad av workern
-  SCANNED    // ScannedContract lagrad i originalScanData/reviewedData
+  PENDING // Köad, ännu inte skannad
+  SCANNING // Hämtad av workern
+  SCANNED // ScannedContract lagrad i originalScanData/reviewedData
   COMMITTING // Transient lås under commit — hindrar dubbel-create vid samtidiga godkännanden (PR3)
-  COMMITTED  // Operatören godkände → avtal skapat via /leases/with-tenant (PR3)
-  SKIPPED    // Operatören valde att inte skapa avtal för raden (PR3)
-  FAILED     // Skanning misslyckades (alla retries slut / ogiltig fil / kostnadsbroms)
+  COMMITTED // Operatören godkände → avtal skapat via /leases/with-tenant (PR3)
+  SKIPPED // Operatören valde att inte skapa avtal för raden (PR3)
+  FAILED // Skanning misslyckades (alla retries slut / ogiltig fil / kostnadsbroms)
 }
 
 // ─── Document (Dokumentarkiv) ─────────────────────────────────────────────────
@@ -2199,16 +2201,16 @@ model Document {
   attachedToLeaseAsAppendix Boolean @default(false)
   appendixOrder             Int?
 
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  property         Property?    @relation(fields: [propertyId], references: [id])
-  unit             Unit?        @relation(fields: [unitId], references: [id])
-  lease            Lease?       @relation(fields: [leaseId], references: [id])
-  tenant           Tenant?      @relation(fields: [tenantId], references: [id])
-  uploadedBy       User?        @relation(fields: [uploadedById], references: [id])
-  signedByTenant   Tenant?      @relation("DocumentSignedByTenant", fields: [signedByTenantId], references: [id])
-  previousVersion  Document?    @relation("DocumentVersionChain", fields: [previousVersionId], references: [id])
-  newerVersions    Document[]   @relation("DocumentVersionChain")
-  signingRequests  SigningRequest[] @relation("DocumentSigningRequests")
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property        Property?        @relation(fields: [propertyId], references: [id])
+  unit            Unit?            @relation(fields: [unitId], references: [id])
+  lease           Lease?           @relation(fields: [leaseId], references: [id])
+  tenant          Tenant?          @relation(fields: [tenantId], references: [id])
+  uploadedBy      User?            @relation(fields: [uploadedById], references: [id])
+  signedByTenant  Tenant?          @relation("DocumentSignedByTenant", fields: [signedByTenantId], references: [id])
+  previousVersion Document?        @relation("DocumentVersionChain", fields: [previousVersionId], references: [id])
+  newerVersions   Document[]       @relation("DocumentVersionChain")
+  signingRequests SigningRequest[] @relation("DocumentSigningRequests")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2478,10 +2480,10 @@ model ReferenceInterestRate {
 // ─── AI Assistant ─────────────────────────────────────────────────────────────
 
 model AiConversation {
-  id             String   @id @default(uuid())
-  organizationId String
-  userId         String
-  title          String   @default("Ny konversation")
+  id                      String   @id @default(uuid())
+  organizationId          String
+  userId                  String
+  title                   String   @default("Ny konversation")
   // Sliding-window-cache för långa konversationer (>30 meddelanden).
   // `summary` är en Haiku-genererad svensk sammanfattning av meddelandena
   // FÖRE de senaste 20. `summarizedUpToMessageId` pekar på det sista
@@ -2493,9 +2495,9 @@ model AiConversation {
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages     AiMessage[]
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages       AiMessage[]
   pendingActions AiPendingAction[]
   attachments    AiAttachment[]
 
@@ -2668,31 +2670,31 @@ model AiMemoryTenant {
 //
 // Endera userId (fastighetsägar-AI) eller tenantId (hyresgäst-AI) är satt.
 model AiUsageLog {
-  id               String   @id @default(uuid())
+  id               String  @id @default(uuid())
   organizationId   String
   userId           String?
   tenantId         String?
   // 'chat' | 'stream' | 'analysis' | 'memory' | 'contract-scan' | 'inspection-analyze' | 'daily-insights' | 'tenant-chat'
   endpoint         String
   model            String
-  inputTokens      Int      @default(0)
-  cacheReadTokens  Int      @default(0)
-  cacheWriteTokens Int      @default(0)
-  outputTokens     Int      @default(0)
-  costUsd          Decimal  @db.Decimal(10, 6)
-  costSek          Decimal  @db.Decimal(10, 4)
+  inputTokens      Int     @default(0)
+  cacheReadTokens  Int     @default(0)
+  cacheWriteTokens Int     @default(0)
+  outputTokens     Int     @default(0)
+  costUsd          Decimal @db.Decimal(10, 6)
+  costSek          Decimal @db.Decimal(10, 4)
   // isAutomated=true: anropet utlöstes av schemalagd automation (morning
   // insights, OCR, kontraktsskanning, tenant-AI, bankavstämning). Räknas
   // EJ mot månadens manuella anropstak — kostnaden ingår i baspriset.
   // isAutomated=false: anropet kommer från admin via AiPage / chat.
-  isAutomated      Boolean  @default(false)
+  isAutomated      Boolean @default(false)
   // Subtyp för observabilitet: 'manual_chat', 'morning_insights',
   // 'ocr_invoice', 'contract_scan', 'tenant_chat', 'bank_match'…
   source           String?
 
   /// Verktygsomgångar turen faktiskt förbrukade. Null för anrop utan verktygsloop
   /// (kontraktsskanning, portföljanalys, juridikdomaren).
-  toolRounds       Int?
+  toolRounds Int?
 
   /// Nåddes turtaket (MAX_TOOL_ROUNDS)? Då är svaret OFULLSTÄNDIGT — modellen
   /// ville ha ännu en omgång och fick den inte.
@@ -2703,8 +2705,8 @@ model AiUsageLog {
   /// parallella verktygsanrop i EN omgång är oskiljbara från sekventiella över
   /// flera. Frekvensen var alltså inte mätbar — bara gissningsbar. Nu är den en
   /// GROUP BY.
-  capReached       Boolean  @default(false)
-  createdAt        DateTime @default(now())
+  capReached Boolean  @default(false)
+  createdAt  DateTime @default(now())
 
   // Revisionsspår: AI-användningsloggen måste bevaras vid org-borttagning (Restrict).
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
@@ -2727,7 +2729,7 @@ model AiUsageLog {
 //
 // Endera userId (fastighetsägare) eller tenantId (hyresgäst) är satt.
 model AiToolExecution {
-  id                   String   @id @default(uuid())
+  id                   String    @id @default(uuid())
   organizationId       String
   userId               String?
   tenantId             String?
@@ -2738,9 +2740,9 @@ model AiToolExecution {
   success              Boolean
   errorMessage         String?
   durationMs           Int
-  requiredConfirmation Boolean  @default(false)
+  requiredConfirmation Boolean   @default(false)
   confirmedAt          DateTime?
-  createdAt            DateTime @default(now())
+  createdAt            DateTime  @default(now())
 
   // Revisionsspår: AI-verktygskörningar måste bevaras vid org-borttagning (Restrict).
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
@@ -2756,6 +2758,7 @@ model AiToolExecution {
   @@index([tenantId, createdAt])
   @@index([toolName])
 }
+
 /// VAD EN AI-VERKTYGSKÖRNING FAKTISKT ORSAKADE.
 ///
 /// `AiToolExecution` bär vad AI:n FÖRSÖKTE. Den här tabellen bär vad som
@@ -2781,23 +2784,23 @@ model AiToolExecution {
 /// `AiRetentionService` gallrar `AiToolExecution` med `deleteMany`, och en
 /// Restrict hade fått gallringen att fallera på första körningen.
 model AiToolEffect {
-  id                String   @id @default(uuid())
+  id                String @id @default(uuid())
   /// Körningen som orsakade effekten. FK med Cascade — se modellens huvud.
   aiToolExecutionId String
   organizationId    String
 
   /// Prisma-modellens namn, t.ex. `Invoice`. Produceras av skrivvägen, aldrig
   /// av verktyget — se common/prisma/ai-effect-extension.ts.
-  entityType        String
+  entityType String
   /// Radens id. NULL för updateMany/deleteMany, där Prisma bara ger ett antal.
-  entityId          String?
-  operation         AiEffectOperation
+  entityId   String?
+  operation  AiEffectOperation
   /// Antal rader som rördes. 1 för enkeloperationer, N för *Many.
-  rowCount          Int      @default(1)
+  rowCount   Int               @default(1)
 
-  createdAt         DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   execution    AiToolExecution @relation("AiToolExecutionEffects", fields: [aiToolExecutionId], references: [id], onDelete: Cascade)
 
   /// Den bärande frågan: "vad orsakade den här körningen?"
@@ -2813,25 +2816,24 @@ enum AiEffectOperation {
   DELETE
 }
 
-
 // Hyresgäst-AI: separata tabeller från AiConversation/AiMessage för att hålla
 // fastighetsägar- och hyresgäst-konversationer isolerade. Hyresgästen får
 // ALDRIG se en konversation från en annan hyresgäst (cascade på Tenant.id
 // säkerställer också att raderade hyresgäster städar sin chathistorik).
 model AiTenantConversation {
-  id        String   @id @default(uuid())
-  tenantId  String
-  title     String   @default("Ny konversation")
+  id                     String    @id @default(uuid())
+  tenantId               String
+  title                  String    @default("Ny konversation")
   // SECURITY (RISK 1, tenant): pending-action-bindning. Sätts när AI:n föreslår
   // en action-tool; confirm-endpointen kräver att hashen matchar och inte gått
   // ut (5 min). Annars kan en hyresgäst POST:a confirm med request_termination
   // utan att ha chattat. En aktiv pending action i taget per konversation.
   pendingActionHash      String?
   pendingActionExpiresAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
-  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   messages AiTenantMessage[]
 
   @@index([tenantId, updatedAt])
@@ -2882,18 +2884,18 @@ model TerminationRequest {
 // ─── Notification ─────────────────────────────────────────────────────────────
 
 model Notification {
-  id                 String           @id @default(uuid())
-  organizationId     String
-  userId             String
-  type               NotificationType
-  title              String
-  message            String
-  link               String?
-  relatedEntityType  String?
-  relatedEntityId    String?
-  read               Boolean          @default(false)
-  readAt             DateTime?
-  createdAt          DateTime         @default(now())
+  id                String           @id @default(uuid())
+  organizationId    String
+  userId            String
+  type              NotificationType
+  title             String
+  message           String
+  link              String?
+  relatedEntityType String?
+  relatedEntityId   String?
+  read              Boolean          @default(false)
+  readAt            DateTime?
+  createdAt         DateTime         @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2964,8 +2966,9 @@ model MaintenanceTicket {
   // FK uppåt. De pekar medvetet mot varandra för maintenance-fallet.
   chargeId String? @unique
 
-  images   MaintenanceImage[]
-  comments MaintenanceComment[]
+  images          MaintenanceImage[]
+  comments        MaintenanceComment[]
+  equipmentEvents UnitEquipmentEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3049,7 +3052,7 @@ model RentNotice {
   // (RentReminderService gejtar på isBackfill=false) — en hyresgäst får aldrig
   // påminnelse/ränta/inkasso automatiskt för hyresvärdens sena registrering
   // (JB 12 kap 42 §, oskälighet). Default false → befintliga avier oberörda.
-  isBackfill  Boolean        @default(false)
+  isBackfill Boolean @default(false)
 
   // ── Förbrukningsdebitering (IMD, rad-på-avi) ────────────────────────────
   // amount/vatAmount/totalAmount avser HYRAN (bokförs av hyresverifikatet,
@@ -3122,9 +3125,9 @@ model RentNotice {
   reminderMessageId     String? @unique
 
   // Bokföringslagen (1999:1078): hyresavier är räkenskapsinformation, bevaras 7 år.
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  tenant           Tenant            @relation(fields: [tenantId], references: [id])
-  lease            Lease             @relation(fields: [leaseId], references: [id])
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  tenant           Tenant              @relation(fields: [tenantId], references: [id])
+  lease            Lease               @relation(fields: [leaseId], references: [id])
   deposit          Deposit?
   bankTransactions BankTransaction[]
   lines            RentNoticeLine[]
@@ -3193,13 +3196,13 @@ model RentNoticeLine {
   // på en charge-rad (en rad är antingen en förbruknings- eller en övrig post,
   // aldrig båda). Detta tvingas i service-lagret (PR 3), inte i schemat —
   // Prisma kan inte uttrycka ett villkorligt XOR-constraint.
-  miscChargeId String? @unique
+  miscChargeId        String? @unique
 
   createdAt DateTime @default(now())
 
-  rentNotice        RentNotice         @relation(fields: [rentNoticeId], references: [id], onDelete: Cascade)
-  consumptionCharge ConsumptionCharge? @relation(fields: [consumptionChargeId], references: [id])
-  miscCharge        MiscCharge?        @relation(fields: [miscChargeId], references: [id], onDelete: Restrict)
+  rentNotice        RentNotice             @relation(fields: [rentNoticeId], references: [id], onDelete: Cascade)
+  consumptionCharge ConsumptionCharge?     @relation(fields: [consumptionChargeId], references: [id])
+  miscCharge        MiscCharge?            @relation(fields: [miscChargeId], references: [id], onDelete: Restrict)
   // #518 — kreditrader som avser just den här avi-raden. Kopplingen är det som
   // gör radnivå-taket KUMULATIVT: utan den kan samma 1 000-kronorsrad krediteras
   // med 1 000 kr i två separata krediteringar, var för sig inom taket.
@@ -3235,15 +3238,15 @@ model RentNoticeEvent {
   createdAt DateTime @default(now())
 
   rentNotice RentNotice @relation(fields: [rentNoticeId], references: [id], onDelete: Restrict)
-
-  @@index([rentNoticeId, createdAt])
-  @@index([rentNoticeId, type])
-  @@index([createdAt])
   // OBS: Ett PARTIELLT unikt index på (rentNoticeId, type) WHERE type IN
   // ('EMAIL_DELIVERED','EMAIL_BOUNCED') finns i migrationen 20260607000000 men kan
   // INTE uttryckas i Prisma-schemat (partiella unika index saknar schema-syntax).
   // Det DB-enforce:ar idempotent leveranskorrelation (Resend at-least-once) utan
   // att hindra repeterbara event-typer (INTEREST_ACCRUED, REMINDER_SENT m.fl.).
+
+  @@index([rentNoticeId, createdAt])
+  @@index([rentNoticeId, type])
+  @@index([createdAt])
 }
 
 // Bankavstämnings-härdning PR 1 — granulär betalningsallokering på en hyresavi.
@@ -3609,11 +3612,11 @@ model PlatformUser {
 // som RefreshToken för tenants). Logout sätter revokedAt — token kan inte
 // återanvändas. Cleanup-cron raderar utgångna rader.
 model PlatformRefreshToken {
-  id              String    @id @default(uuid())
-  platformUserId  String
-  token           String    @unique
-  expiresAt       DateTime
-  revokedAt       DateTime?
+  id             String    @id @default(uuid())
+  platformUserId String
+  token          String    @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
 
   platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
 
@@ -3625,27 +3628,27 @@ model PlatformRefreshToken {
 }
 
 model PlatformInvoice {
-  id             String                @id @default(uuid())
-  organizationId String
-  invoiceNumber  String                @unique
+  id               String                @id @default(uuid())
+  organizationId   String
+  invoiceNumber    String                @unique
   // Belopp INKL moms (Decimal måste matcha vad UI/PDF visar som totalt).
   // amountNetSek räknas baklänges som amount / 1.25.
-  amount         Decimal               @db.Decimal(10, 2)
-  status         PlatformInvoiceStatus @default(DRAFT)
-  type           PlatformInvoiceType   @default(OTHER)
-  description    String?
-  dueDate        DateTime
+  amount           Decimal               @db.Decimal(10, 2)
+  status           PlatformInvoiceStatus @default(DRAFT)
+  type             PlatformInvoiceType   @default(OTHER)
+  description      String?
+  dueDate          DateTime
   // För PLAN_FEE: vilken månad fakturan gäller (1:a → sista). Används i PDF.
-  planPeriodStart DateTime?
-  planPeriodEnd   DateTime?
+  planPeriodStart  DateTime?
+  planPeriodEnd    DateTime?
   // Audit-tidsstämplar
-  sentAt          DateTime?
-  paidAt          DateTime?
+  sentAt           DateTime?
+  paidAt           DateTime?
   // Makulering (soft-delete, BFL 5 kap 11 § behandlingshistorik): en
   // plattformsfaktura raderas aldrig hårt utan makuleras (status VOID).
   // voidedAt/voidedReason gör makuleringen spårbar — vem/när/varför.
-  voidedAt        DateTime?
-  voidedReason    String?
+  voidedAt         DateTime?
+  voidedReason     String?
   // Betalningsdetaljer (anges av Yasin när han markerar fakturan betald)
   // BANKGIRO | SWISH | MANUAL
   paymentMethod    String?
@@ -3653,7 +3656,7 @@ model PlatformInvoice {
   // Interna anteckningar — visas inte i PDF
   notes            String?
   // Antal påminnelser som skickats. Cron-jobb sätter; UI visar.
-  reminderCount    Int @default(0)
+  reminderCount    Int                   @default(0)
   lastReminderAt   DateTime?
   // Senaste felmeddelandet från send() — sätts när auto-send (eller manuell
   // send) misslyckas, nollställs vid lyckat utskick. Gör att en faktura som
@@ -3777,12 +3780,12 @@ model FailedEmail {
 // ─── Deposit (Deposition) ─────────────────────────────────────────────────────
 
 enum DepositStatus {
-  PENDING            // Fakturerad, ej betald
-  PAID               // Betald, förvaras
-  REFUND_PENDING     // Kontrakt avslutat, väntar återbetalning
-  REFUNDED           // Återbetald fullt
+  PENDING // Fakturerad, ej betald
+  PAID // Betald, förvaras
+  REFUND_PENDING // Kontrakt avslutat, väntar återbetalning
+  REFUNDED // Återbetald fullt
   PARTIALLY_REFUNDED // Återbetald med avdrag
-  FORFEITED          // Förverkad (skador översteg deposition)
+  FORFEITED // Förverkad (skador översteg deposition)
 }
 
 model Deposit {
@@ -3822,14 +3825,14 @@ model Deposit {
 // ─── RentIncrease (Hyreshöjning) ──────────────────────────────────────────────
 
 enum RentIncreaseStatus {
-  DRAFT       // Skapad men avisering ej skickad
+  DRAFT // Skapad men avisering ej skickad
   NOTICE_SENT // Avisering skickad till hyresgäst
-  ACCEPTED    // Hyresgäst godkänt
-  REJECTED    // Hyresgäst nekat
-  WITHDRAWN   // Återkallad av hyresvärd
-  APPLIED     // Den nya hyran har tillämpats på avtalet
-  VOIDED      // Annullerad av systemet vid avtalsförnyelse (T1.3) — höjningen
-              // pekade på det ersatta avtalet; registreras om på det nya
+  ACCEPTED // Hyresgäst godkänt
+  REJECTED // Hyresgäst nekat
+  WITHDRAWN // Återkallad av hyresvärd
+  APPLIED // Den nya hyran har tillämpats på avtalet
+  VOIDED // Annullerad av systemet vid avtalsförnyelse (T1.3) — höjningen
+  // pekade på det ersatta avtalet; registreras om på det nya
 }
 
 model RentIncrease {
@@ -3837,8 +3840,8 @@ model RentIncrease {
   organizationId  String
   leaseId         String
   currentRent     Decimal            @db.Decimal(10, 2)
-  newRent         Decimal             @db.Decimal(10, 2)
-  increasePercent Decimal             @db.Decimal(6, 2)
+  newRent         Decimal            @db.Decimal(10, 2)
+  increasePercent Decimal            @db.Decimal(6, 2)
   reason          String
   noticeDate      DateTime?
   effectiveDate   DateTime           @db.Date
@@ -4072,17 +4075,17 @@ model MeterReading {
 }
 
 model ConsumptionTariff {
-  id             String      @id @default(uuid())
-  organizationId String
-  scope          TariffScope @default(ORGANIZATION)
+  id              String      @id @default(uuid())
+  organizationId  String
+  scope           TariffScope @default(ORGANIZATION)
   // Scope-mål (polymorft): PROPERTY → propertyId satt; UNIT → unitId satt;
   // ORGANIZATION → båda null. Plain strings (ingen FK) eftersom en tariff kan
   // peka på ettdera och upplösningen sker i intake-tjänsten (PR 2).
-  propertyId     String?
-  unitId         String?
-  meterType      MeterType
-  pricePerUnit   Decimal     @db.Decimal(10, 4)
-  fixedMonthlyFee Decimal?   @db.Decimal(10, 2)
+  propertyId      String?
+  unitId          String?
+  meterType       MeterType
+  pricePerUnit    Decimal     @db.Decimal(10, 4)
+  fixedMonthlyFee Decimal?    @db.Decimal(10, 2)
 
   // Beräkningsgrund (JB 12:19): fri dokumentationstext om hur vidaredebiteringen
   // beräknas — underlag som hyresnämnden kan begära. ENBART dokumentation, ingår
@@ -4106,7 +4109,7 @@ model ConsumptionTariff {
 }
 
 model ConsumptionCharge {
-  id             String @id @default(uuid())
+  id             String    @id @default(uuid())
   organizationId String
   leaseId        String
   // Denormaliserat (speglar Deposit som bär leaseId+tenantId): självständigt underlag.
@@ -4185,7 +4188,7 @@ model MiscCharge {
   sourceType  MiscChargeSource
   sourceRefId String
 
-  description String
+  description  String
   // Bokföringsdatum (PR 2): när skadan/förlusten konstaterades — INTE createdAt
   // (fel räkenskapsår). Speglar ConsumptionCharge.periodEnd som verifikatets datum.
   incidentDate DateTime @db.Date
@@ -4325,4 +4328,156 @@ model PiiSecretRotation {
   createdAt          DateTime @default(now())
 
   @@index([startedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UTRUSTNING I EN LÄGENHET ELLER FASTIGHET (etapp 1b)
+//
+// FRÅGAN MODELLEN FINNS FÖR: "vad byttes och när".
+//
+// ── VARFÖR InspectionItem INTE RÄCKTE (mätt) ────────────────────────────────
+//
+// `InspectionItem` bär redan rum, sak, skick och reparationskostnad — men
+// `room` och `item` är FRI TEXT utan identitet, och det finns ingen mall någon
+// väljer ur (0 träffar på en standardlista i repot; AI-analysatorn föreslår fri
+// svensk text). Följden är att "Kylskåp" i besiktningen 2023 och "kylskåp" 2026
+// är två orelaterade strängar: ingenting säger om det är samma sak eller en ny.
+// `onDelete: Cascade` mot besiktningen bekräftar avsikten — det är en
+// ÖGONBLICKSBILD per tillfälle, inte ett objekt med livstid.
+//
+// Den här modellen tillför just det som saknades: identitet över tid.
+// `Meter` är förlagan — en sak i en lägenhet med installedAt/removedAt.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Medvetet GROV. Att lägga till ett värde är gratis; att DELA UPP ett
+/// (REFRIGERATOR → KYL/FRYS) är en datamigrering över rader som redan
+/// klassificerats. Fri text vore värre: det är precis det som gör
+/// `InspectionItem.item` obrukbar för aggregering.
+enum UnitEquipmentKind {
+  REFRIGERATOR
+  FREEZER
+  STOVE
+  DISHWASHER
+  WASHING_MACHINE
+  DRYER
+  BOILER // värmepanna
+  HEAT_PUMP
+  VENTILATION // inkl. OVK-pliktiga aggregat
+  ELEVATOR
+  BATHROOM_FIXTURE
+  KITCHEN_FIXTURE
+  FLOORING
+  WINDOW
+  DOOR
+  LOCK
+  OTHER
+}
+
+enum UnitEquipmentEventType {
+  INSTALLED
+  SERVICED
+  REPAIRED
+  REPLACED
+  REMOVED
+}
+
+model UnitEquipment {
+  id             String @id @default(uuid())
+  organizationId String
+
+  // ── VARFÖR propertyId ÄR NOT NULL OCH unitId ÄR NULLBAR ───────────────────
+  //
+  // Fastigheten är ALLTID känd och alltid meningsfull; lägenheten är det bara
+  // för utrustning som sitter i en. `unitId = null` betyder "tillhör
+  // fastigheten" — hiss, panna, tvättstugemaskin.
+  //
+  // MEDVETET INGEN "exakt en av två"-constraint: båda är inte alternativ, den
+  // ena är en förfining av den andra. Sambandet som DÄREMOT måste hålla är att
+  // en satt `unitId` pekar på en enhet i SAMMA fastighet som `propertyId` —
+  // det prövas i unit-equipment.db.spec.ts med negativ kontroll, eftersom en
+  // FK inte kan uttrycka det.
+  propertyId String
+  unitId     String?
+
+  kind  UnitEquipmentKind
+  /// Särskiljer när `kind` inte räcker ("Kyl i köket" vs "Kyl i källaren").
+  /// Nullbar: de flesta objekt har ett exemplar av varje sort.
+  label String?
+
+  /// NÄR-halvan av frågan. NOT NULL med flit: en sak utan installationsdatum
+  /// kan inte besvara "vad byttes och när" och ska inte kunna skapas.
+  installedAt DateTime
+  /// Sitter den kvar? Null = ja.
+  removedAt   DateTime?
+
+  /// VAD-halvan av frågan: efterträdaren.
+  ///
+  /// Utan den är två rader bara två saker — ett `removedAt` som sammanfaller
+  /// med nästa rads `installedAt` kan lika gärna vara "en sak togs bort och en
+  /// annan tillkom". Med den kan historiken säga EQUIPMENT_REPLACED i stället
+  /// för att gissa.
+  ///
+  /// `@unique` gör att två föregångare inte kan peka på samma efterträdare —
+  /// en förgrenad kedja är inte en bytesföljd. Cykler kan en unik-constraint
+  /// inte hindra; det gör `check-equipment-chain.mjs`.
+  replacedById String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property     Property     @relation(fields: [propertyId], references: [id])
+  unit         Unit?        @relation(fields: [unitId], references: [id])
+
+  replacedBy UnitEquipment? @relation("EquipmentReplacement", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces   UnitEquipment? @relation("EquipmentReplacement")
+
+  events UnitEquipmentEvent[]
+
+  @@index([organizationId])
+  @@index([propertyId])
+  @@index([unitId])
+}
+
+/// APPEND-ONLY — samma form som `InvoiceEvent`. Ingen `updatedAt`, aldrig
+/// UPDATE. Spärren är en databastrigger (#585), inte en vana.
+///
+/// ── VARFÖR DEN BÄR TRIGGERN ───────────────────────────────────────────────
+///
+/// Utrustningens händelser är den ENDA källan till att ett byte skett — det
+/// finns ingen annan tabell att jämföra mot, till skillnad från avier och
+/// fakturor som har sina domänrader kvar. En ändrad rad här är därför inte en
+/// felaktig kopia utan en felaktig historia, och den skulle inte gå att
+/// upptäcka.
+///
+/// ── OCH VARFÖR maintenanceTicketId ÄR Restrict, INTE SetNull ──────────────
+///
+/// `ON DELETE SET NULL` är en kaskad-UPDATE som databasen gör utan att koden
+/// vet om det — och en satsnivåtrigger avvisar den. Det var precis den
+/// interaktionen som bröt organisationsraderingen i #585 och tvingade fram
+/// radnivåtriggrar med undantag för två tabeller. `Restrict` undviker hela
+/// klassen: raden bevaras, och `UnitEquipmentEvent` raderas uttryckligen FÖRE
+/// `MaintenanceTicket` i delete-organization.ts.
+model UnitEquipmentEvent {
+  id          String                 @id @default(uuid())
+  equipmentId String
+  type        UnitEquipmentEventType
+  /// När det HÄNDE — skilt från `createdAt`, som är när någon hann registrera
+  /// det. Samma skäl som `MiscCharge.incidentDate`.
+  occurredAt  DateTime
+  /// Fri text för det som inte har ett fält.
+  note        String?
+
+  /// Vilket ärende som ledde hit. Förbereder etapp 10 utan att bygga för den:
+  /// när ärendet får en riktig hantverkare finns kedjan utrustning → händelse
+  /// → ärende → hantverkare redan. Inget fält här nämner leverantör.
+  maintenanceTicketId String?
+
+  createdAt DateTime @default(now())
+
+  equipment         UnitEquipment      @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  maintenanceTicket MaintenanceTicket? @relation(fields: [maintenanceTicketId], references: [id], onDelete: Restrict)
+
+  @@index([equipmentId, occurredAt])
+  @@index([maintenanceTicketId])
 }

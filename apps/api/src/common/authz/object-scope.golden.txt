@@ -61,7 +61,7 @@ Unit                    updateMany  units/unit-status.sync.ts                   
 Unit                    delete      units/units.service.ts                                  A kedje-query
 Unit                    update      units/units.service.ts                                  A kedje-query
 
-## Form 2 — create (37 rader)
+## Form 2 — create (38 rader)
 
 AiMemoryTenant          createMany  common/ai-subjects/ai-subject-writer.ts                 INGEN UPPTÄCKT
 AiMessage               create      common/ai-subjects/ai-subject-writer.ts                 A kedje-query
@@ -100,6 +100,7 @@ RentNoticePayment       create      reconciliation/reconciliation.service.ts    
 Unit                    create      history/history-fixture.ts                              INGEN UPPTÄCKT
 Unit                    create      import/import.service.ts                                A kedje-query
 Unit                    create      units/units.service.ts                                  A kedje-query
+UnitEquipmentEvent      create      history/history-fixture.ts                          ×2  INGEN UPPTÄCKT
 
 
 ## Undantag: scopningen ligger hos anroparen (3 st)
@@ -171,4 +172,5 @@ RentNoticePayment               förälder-scopad via RentNotice
 TenantMagicLink                 utanför: auth-realm: scopas av tokenvärdet
 TenantSession                   utanför: auth-realm: scopas av sessionstoken
 Unit                            förälder-scopad via Property
+UnitEquipmentEvent              förälder-scopad via UnitEquipment
 UserInvitation                  utanför: auth-realm: scopas av tokenvärdet

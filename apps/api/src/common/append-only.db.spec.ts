@@ -51,6 +51,12 @@ const SKYDDADE = [
   'RentNoticeEvent',
   'SignatureEvidence',
   'TenantAnonymizationLog',
+  // Etapp 1b. Enda källan till att ett utrustningsbyte skett — det finns ingen
+  // domänrad att jämföra mot, till skillnad från avier och fakturor. En ändrad
+  // rad här är därför inte en felaktig kopia utan en felaktig historia.
+  // Satsnivå räcker: dess enda nullbara FK (maintenanceTicketId) är RESTRICT
+  // just för att ingen kaskad-UPDATE ska kunna nå hit.
+  'UnitEquipmentEvent',
 ] as const
 
 /**

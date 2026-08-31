@@ -106,6 +106,10 @@ medDb('objekthistoriken', () => {
 
   afterAll(async () => {
     const w = { organizationId: ids.organizationId }
+    // Utrustningens händelser FÖRE ärendena (Restrict på maintenanceTicketId),
+    // och utrustningen före fastigheten (FK på propertyId).
+    await prisma.unitEquipmentEvent.deleteMany({ where: { equipment: w } })
+    await prisma.unitEquipment.deleteMany({ where: w })
     await prisma.tenantAnonymizationLog.deleteMany({ where: w })
     await prisma.newsPost.deleteMany({ where: w })
     await prisma.rentNotice.deleteMany({ where: w })
@@ -165,6 +169,16 @@ medDb('objekthistoriken', () => {
         where: { organizationId: org, unitId, removedAt: { not: null } },
       })) +
       (await prisma.meterReading.count({ where: { organizationId: org, unitId } }))
+    // Utrustning (1b): 1 INSTALLED per rad + 1 per removedAt (REPLACED eller
+    // REMOVED — samma antal, olika typ beroende på om efterträdare finns).
+    per.equipment =
+      (await prisma.unitEquipment.count({ where: { organizationId: org, unitId } })) +
+      (await prisma.unitEquipment.count({
+        where: { organizationId: org, unitId, removedAt: { not: null } },
+      }))
+    per['equipment-event'] = await prisma.unitEquipmentEvent.count({
+      where: { equipment: { organizationId: org, unitId } },
+    })
 
     return { total: Object.values(per).reduce((a, b) => a + b, 0), per }
   }
@@ -194,6 +208,16 @@ medDb('objekthistoriken', () => {
     per['news-post'] = await prisma.newsPost.count({
       where: { organizationId: org, propertyId, publishedAt: { not: null } },
     })
+    // Fastigheten ser ALL utrustning, inklusive den som sitter i en lägenhet
+    // och den som saknar enhet (hiss). Se källans docblock.
+    per.equipment =
+      (await prisma.unitEquipment.count({ where: { organizationId: org, propertyId } })) +
+      (await prisma.unitEquipment.count({
+        where: { organizationId: org, propertyId, removedAt: { not: null } },
+      }))
+    per['equipment-event'] = await prisma.unitEquipmentEvent.count({
+      where: { equipment: { organizationId: org, propertyId } },
+    })
 
     return { total: Object.values(per).reduce((a, b) => a + b, 0), per }
   }
@@ -219,7 +243,10 @@ medDb('objekthistoriken', () => {
     expect(facit.per.inspection).toBe(5)
     expect(facit.per.meter).toBe(2)
     expect(facit.per['maintenance-ticket']).toBe(3)
-    expect(facit.total).toBe(18)
+    // + utrustning: 2 kylskåp → 2 INSTALLED + 1 REPLACED = 3, och 1 reparation.
+    expect(facit.per.equipment).toBe(3)
+    expect(facit.per['equipment-event']).toBe(1)
+    expect(facit.total).toBe(22)
   })
 
   it('ACCEPTANS fastighet: antalet händelser är exakt det källtabellerna säger', async () => {
@@ -232,7 +259,11 @@ medDb('objekthistoriken', () => {
     // Härledning: ärenden 3 + besiktningar 5 + dokument 1 + plan (upprättad,
     // ej utförd) 1 + publicerad nyhet 1 = 11. Utkastet räknas INTE.
     expect(facit.per['news-post']).toBe(1)
-    expect(facit.total).toBe(11)
+    // + utrustning: 3 objekt (2 kylskåp + hiss) → 3 INSTALLED + 1 REPLACED = 4,
+    // och 2 händelser (hissens service + kylskåpets reparation).
+    expect(facit.per.equipment).toBe(4)
+    expect(facit.per['equipment-event']).toBe(2)
+    expect(facit.total).toBe(17)
   })
 
   it('utkast till nyhet syns INTE — källans deklarerade filter håller', async () => {
