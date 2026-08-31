@@ -27,12 +27,19 @@ import type { UnitStatus } from '@eken/shared'
 import type { UnitWithProperty, UnitDetail, CreateUnitInput } from './api/units.api'
 import { cn } from '@/lib/cn'
 import { DocumentList } from '@/features/documents/components/DocumentList'
+import { HistoryTab } from '@/features/history/HistoryTab'
 import { useCanWrite } from '@/hooks/useCanWrite'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type FilterTab = 'ALL' | UnitStatus
-type DetailTab = 'detaljer' | 'redigera'
+type DetailTab = 'detaljer' | 'historik' | 'redigera'
+
+const DETAIL_TAB_LABELS: Record<DetailTab, string> = {
+  detaljer: 'Detaljer',
+  historik: 'Historik',
+  redigera: 'Redigera',
+}
 
 const FILTER_TABS: { id: FilterTab; label: string }[] = [
   { id: 'ALL', label: 'Alla' },
@@ -410,7 +417,7 @@ function UnitDetailPanel({
     <div>
       {/* Tab strip */}
       <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
-        {(['detaljer', 'redigera'] as const).map((t) => (
+        {(['detaljer', 'historik', 'redigera'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setDetailTab(t)}
@@ -421,12 +428,16 @@ function UnitDetailPanel({
                 : 'text-gray-500 hover:text-gray-700',
             )}
           >
-            {t === 'detaljer' ? 'Detaljer' : 'Redigera'}
+            {DETAIL_TAB_LABELS[t]}
           </button>
         ))}
       </div>
 
-      {detailTab === 'detaljer' ? (
+      {detailTab === 'historik' && (
+        <HistoryTab dimension="units" id={selected.id} vad="objektets historik" />
+      )}
+
+      {detailTab === 'detaljer' && (
         <div>
           {/* Info grid */}
           <div className="grid grid-cols-2 gap-3">
@@ -535,7 +546,9 @@ function UnitDetailPanel({
             </Button>
           </ModalFooter>
         </div>
-      ) : (
+      )}
+
+      {detailTab === 'redigera' && (
         <UnitForm
           {...(selectedUnit ? { defaultValues: unitToInput(selectedUnit) } : {})}
           onSubmit={onUpdate}

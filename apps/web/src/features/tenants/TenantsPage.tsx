@@ -34,6 +34,7 @@ import { formatCurrency, formatDate } from '@eken/shared'
 import type { Tenant } from '@eken/shared'
 import { InvitePortalModal } from './components/InvitePortalModal'
 import { AnonymizeTenantModal } from './components/AnonymizeTenantModal'
+import { HistoryTab } from '@/features/history/HistoryTab'
 import type { TenantWithCount, TenantDetail, LeaseWithUnit } from './api/tenants.api'
 import { cn } from '@/lib/cn'
 
@@ -308,6 +309,13 @@ export function TenantsPage() {
   )
 }
 
+type DetailTab = 'detaljer' | 'historik'
+
+const DETAIL_TAB_LABELS: Record<DetailTab, string> = {
+  detaljer: 'Detaljer',
+  historik: 'Historik',
+}
+
 // ─── Detail panel ─────────────────────────────────────────────────────────────
 
 interface DetailPanelProps {
@@ -318,138 +326,167 @@ interface DetailPanelProps {
 function DetailPanel({ selected, selectedTenant }: DetailPanelProps) {
   const role = useAuthStore((s) => s.user?.role)
   const [anonymizeOpen, setAnonymizeOpen] = useState(false)
+  const [detailTab, setDetailTab] = useState<DetailTab>('detaljer')
   const alreadyAnonymized = !!selected.anonymizedAt
 
   return (
-    <div className="space-y-5">
-      {/* Portal-aktivering */}
-      <PortalActivationCard tenantId={selected.id} />
-
-      {/* Kontaktinfo */}
-      <div>
-        <p className="mb-3 text-[13px] font-semibold text-gray-700">Kontaktuppgifter</p>
-        <div className="grid grid-cols-2 gap-4 rounded-xl border border-gray-100 p-4">
-          <InfoRow icon={Mail} label="E-post" value={selected.email} />
-          <InfoRow icon={Phone} label="Telefon" value={selected.phone ?? '–'} />
-          <InfoRow
-            icon={Hash}
-            label={selected.type === 'INDIVIDUAL' ? 'Personnummer' : 'Org.nummer'}
-            // Personnumret kommer från DETALJSVARET (`selectedTenant`), inte ur
-            // listan: listan bär det inte längre (dataminimering, se
-            // tenants.service.ts findAll). Panelen hämtade redan detaljen — den
-            // råkade bara rendera list-objektet.
-            value={
-              selected.type === 'INDIVIDUAL'
-                ? (selectedTenant?.personalNumber ?? '–')
-                : (selected.orgNumber ?? '–')
-            }
-          />
-          <InfoRow
-            icon={MapPin}
-            label="Adress"
-            value={
-              selected.address
-                ? `${selected.address.street}, ${selected.address.postalCode} ${selected.address.city}`
-                : '–'
-            }
-          />
-          <InfoRow icon={Calendar} label="Skapad" value={formatDate(selected.createdAt)} />
-        </div>
+    <div>
+      {/* Tab strip */}
+      <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
+        {(['detaljer', 'historik'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setDetailTab(t)}
+            className={cn(
+              'h-8 rounded-lg px-3 text-[13px] font-medium transition-all',
+              detailTab === t
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700',
+            )}
+          >
+            {DETAIL_TAB_LABELS[t]}
+          </button>
+        ))}
       </div>
 
-      {/* Kontrakts-historik */}
-      <div>
-        <p className="mb-3 text-[13px] font-semibold text-gray-700">Kontrakt</p>
-        {selectedTenant?.leases && selectedTenant.leases.length > 0 ? (
-          <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
-            {selectedTenant.leases.map((l) => (
-              <div
-                key={l.id}
-                className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/80"
-              >
-                <div className="flex items-center gap-2.5">
-                  <Home size={13} strokeWidth={1.8} className="text-gray-400" />
-                  <div>
-                    <p className="text-[13px] font-medium text-gray-800">
-                      {l.unit.property.name} · {l.unit.name}
-                    </p>
-                    <p className="mt-0.5 text-[11.5px] text-gray-400">
-                      {formatDate(l.startDate)}
-                      {l.endDate ? ` – ${formatDate(l.endDate)}` : ' – tills vidare'}
-                    </p>
+      {detailTab === 'historik' && (
+        <HistoryTab dimension="tenants" id={selected.id} vad="hyresgästens historik" />
+      )}
+
+      {detailTab === 'detaljer' && (
+        <div className="space-y-5">
+          {/* Portal-aktivering */}
+          <PortalActivationCard tenantId={selected.id} />
+
+          {/* Kontaktinfo */}
+          <div>
+            <p className="mb-3 text-[13px] font-semibold text-gray-700">Kontaktuppgifter</p>
+            <div className="grid grid-cols-2 gap-4 rounded-xl border border-gray-100 p-4">
+              <InfoRow icon={Mail} label="E-post" value={selected.email} />
+              <InfoRow icon={Phone} label="Telefon" value={selected.phone ?? '–'} />
+              <InfoRow
+                icon={Hash}
+                label={selected.type === 'INDIVIDUAL' ? 'Personnummer' : 'Org.nummer'}
+                // Personnumret kommer från DETALJSVARET (`selectedTenant`), inte ur
+                // listan: listan bär det inte längre (dataminimering, se
+                // tenants.service.ts findAll). Panelen hämtade redan detaljen — den
+                // råkade bara rendera list-objektet.
+                value={
+                  selected.type === 'INDIVIDUAL'
+                    ? (selectedTenant?.personalNumber ?? '–')
+                    : (selected.orgNumber ?? '–')
+                }
+              />
+              <InfoRow
+                icon={MapPin}
+                label="Adress"
+                value={
+                  selected.address
+                    ? `${selected.address.street}, ${selected.address.postalCode} ${selected.address.city}`
+                    : '–'
+                }
+              />
+              <InfoRow icon={Calendar} label="Skapad" value={formatDate(selected.createdAt)} />
+            </div>
+          </div>
+
+          {/* Kontrakts-historik */}
+          <div>
+            <p className="mb-3 text-[13px] font-semibold text-gray-700">Kontrakt</p>
+            {selectedTenant?.leases && selectedTenant.leases.length > 0 ? (
+              <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
+                {selectedTenant.leases.map((l) => (
+                  <div
+                    key={l.id}
+                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/80"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Home size={13} strokeWidth={1.8} className="text-gray-400" />
+                      <div>
+                        <p className="text-[13px] font-medium text-gray-800">
+                          {l.unit.property.name} · {l.unit.name}
+                        </p>
+                        <p className="mt-0.5 text-[11.5px] text-gray-400">
+                          {formatDate(l.startDate)}
+                          {l.endDate ? ` – ${formatDate(l.endDate)}` : ' – tills vidare'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 text-[13px] text-gray-600">
+                      <span>{formatCurrency(Number(l.monthlyRent))}/mån</span>
+                      <LeaseStatusBadge status={l.status} />
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-3 text-[13px] text-gray-600">
-                  <span>{formatCurrency(Number(l.monthlyRent))}/mån</span>
-                  <LeaseStatusBadge status={l.status} />
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-xl border border-gray-100 py-8 text-center text-[13px] text-gray-400">
-            Inga kontrakt registrerade
-          </div>
-        )}
-      </div>
-
-      {/* Senaste fakturor */}
-      <div>
-        <p className="mb-3 text-[13px] font-semibold text-gray-700">Senaste fakturor</p>
-        {selectedTenant?.invoices && selectedTenant.invoices.length > 0 ? (
-          <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
-            {selectedTenant.invoices.map((inv) => (
-              <div
-                key={inv.id}
-                className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/80"
-              >
-                <div className="flex items-center gap-2">
-                  <FileText size={13} strokeWidth={1.8} className="text-gray-400" />
-                  <span className="text-[13px] font-medium text-gray-800">{inv.invoiceNumber}</span>
-                  <InvoiceStatusBadge status={inv.status} />
-                </div>
-                <div className="flex items-center gap-4 text-[13px] text-gray-500">
-                  <span>{formatCurrency(Number(inv.total))}</span>
-                  <span>{formatDate(inv.dueDate)}</span>
-                </div>
+            ) : (
+              <div className="rounded-xl border border-gray-100 py-8 text-center text-[13px] text-gray-400">
+                Inga kontrakt registrerade
               </div>
-            ))}
+            )}
           </div>
-        ) : (
-          <div className="rounded-xl border border-gray-100 py-8 text-center text-[13px] text-gray-400">
-            Inga fakturor ännu
-          </div>
-        )}
-      </div>
 
-      {/* GDPR — bara OWNER, av samma skäl som endpointet: åtgärden tar bort en
+          {/* Senaste fakturor */}
+          <div>
+            <p className="mb-3 text-[13px] font-semibold text-gray-700">Senaste fakturor</p>
+            {selectedTenant?.invoices && selectedTenant.invoices.length > 0 ? (
+              <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
+                {selectedTenant.invoices.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/80"
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileText size={13} strokeWidth={1.8} className="text-gray-400" />
+                      <span className="text-[13px] font-medium text-gray-800">
+                        {inv.invoiceNumber}
+                      </span>
+                      <InvoiceStatusBadge status={inv.status} />
+                    </div>
+                    <div className="flex items-center gap-4 text-[13px] text-gray-500">
+                      <span>{formatCurrency(Number(inv.total))}</span>
+                      <span>{formatDate(inv.dueDate)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-gray-100 py-8 text-center text-[13px] text-gray-400">
+                Inga fakturor ännu
+              </div>
+            )}
+          </div>
+
+          {/* GDPR — bara OWNER, av samma skäl som endpointet: åtgärden tar bort en
           persons uppgifter ur ett underlag som måste bevaras, och går inte att
           ångra. Se TenantsController.anonymize. */}
-      {role === 'OWNER' && (
-        <div className="border-line border-t pt-5">
-          <p className="mb-3 text-[13px] font-semibold text-gray-700">Personuppgifter</p>
-          {alreadyAnonymized ? (
-            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-              <p className="text-[13px] font-medium text-gray-700">Redan avidentifierad</p>
-              <p className="mt-1 text-[12px] text-gray-500">
-                Personuppgifterna togs bort {formatDate(selected.anonymizedAt!)}. Historiken bevaras
-                som underlag.
-              </p>
-            </div>
-          ) : (
-            <div className="flex items-start justify-between gap-4 rounded-xl border border-gray-100 p-4">
-              <p className="text-[12px] text-gray-500">
-                Verkställ en raderingsbegäran enligt GDPR. Personuppgifterna tas bort permanent,
-                medan avtal, avier och verifikat bevaras.
-              </p>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setAnonymizeOpen(true)}
-                className="shrink-0"
-              >
-                Avidentifiera
-              </Button>
+          {role === 'OWNER' && (
+            <div className="border-line border-t pt-5">
+              <p className="mb-3 text-[13px] font-semibold text-gray-700">Personuppgifter</p>
+              {alreadyAnonymized ? (
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                  <p className="text-[13px] font-medium text-gray-700">Redan avidentifierad</p>
+                  <p className="mt-1 text-[12px] text-gray-500">
+                    Personuppgifterna togs bort {formatDate(selected.anonymizedAt!)}. Historiken
+                    bevaras som underlag.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between gap-4 rounded-xl border border-gray-100 p-4">
+                  <p className="text-[12px] text-gray-500">
+                    Verkställ en raderingsbegäran enligt GDPR. Personuppgifterna tas bort permanent,
+                    medan avtal, avier och verifikat bevaras.
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setAnonymizeOpen(true)}
+                    className="shrink-0"
+                  >
+                    Avidentifiera
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
