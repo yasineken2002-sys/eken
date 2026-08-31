@@ -10,6 +10,7 @@ import { Badge, UnitStatusBadge, PropertyTypeBadge } from '@/components/ui/Badge
 import { StatCard } from '@/components/ui/StatCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PropertyForm } from './components/PropertyForm'
+import { HistoryTab } from '@/features/history/HistoryTab'
 import {
   useProperties,
   useProperty,
@@ -27,7 +28,13 @@ import { useCanWrite } from '@/hooks/useCanWrite'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type PropertyTab = 'ALL' | 'RESIDENTIAL' | 'COMMERCIAL' | 'INDUSTRIAL' | 'LAND'
-type DetailTab = 'detaljer' | 'redigera'
+type DetailTab = 'detaljer' | 'historik' | 'redigera'
+
+const DETAIL_TAB_LABELS: Record<DetailTab, string> = {
+  detaljer: 'Detaljer',
+  historik: 'Historik',
+  redigera: 'Redigera',
+}
 
 const TABS: { id: PropertyTab; label: string }[] = [
   { id: 'ALL', label: 'Alla' },
@@ -312,6 +319,7 @@ export function PropertiesPage() {
       >
         {selectedId && (
           <DetailPanel
+            propertyId={selectedId}
             detailTab={detailTab}
             setDetailTab={setDetailTab}
             selectedProperty={selectedProperty ?? null}
@@ -360,6 +368,8 @@ export function PropertiesPage() {
 // ─── Detail Panel ─────────────────────────────────────────────────────────────
 
 interface DetailPanelProps {
+  /** Historiken hämtas på id:t, inte på detaljsvaret — den startar direkt. */
+  propertyId: string
   detailTab: DetailTab
   setDetailTab: (t: DetailTab) => void
   selectedProperty: PropertyDetail | null
@@ -369,6 +379,7 @@ interface DetailPanelProps {
 }
 
 function DetailPanel({
+  propertyId,
   detailTab,
   setDetailTab,
   selectedProperty,
@@ -380,24 +391,28 @@ function DetailPanel({
     <div>
       {/* Tabs */}
       <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
-        {(['detaljer', 'redigera'] as const).map((t) => (
+        {(['detaljer', 'historik', 'redigera'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setDetailTab(t)}
             className={cn(
-              'h-8 rounded-lg px-3 text-[13px] font-medium capitalize transition-all',
+              'h-8 rounded-lg px-3 text-[13px] font-medium transition-all',
               detailTab === t
                 ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-500 hover:text-gray-700',
             )}
           >
-            {t.charAt(0).toUpperCase() + t.slice(1)}
+            {DETAIL_TAB_LABELS[t]}
           </button>
         ))}
       </div>
 
       {detailTab === 'detaljer' && (
         <DetaljerTab property={selectedProperty} onDeleteRequest={onDeleteRequest} />
+      )}
+
+      {detailTab === 'historik' && (
+        <HistoryTab dimension="properties" id={propertyId} vad="fastighetens historik" />
       )}
 
       {detailTab === 'redigera' && selectedProperty && (
