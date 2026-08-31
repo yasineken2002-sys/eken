@@ -1,11 +1,26 @@
+-- UTRUSTNING OCH BYTEN I EN LÄGENHET ELLER FASTIGHET (etapp 1b).
+--
+-- ── EN RAD BORTTAGEN UR DEN GENERERADE SQL:EN, MED FLIT ─────────────────────
+--
+-- `prisma migrate dev` la in:
+--
+--     DROP INDEX "LegalChunkEmbedding_embedding_hnsw_idx";
+--
+-- HNSW-indexet går inte att uttrycka i schema.prisma, så diffen vill ta bort
+-- det VARJE gång en migration genereras. Hade raden följt med hade juridik-
+-- RAG:ens vektorindex försvunnit i prod — en tyst prestandakollaps utan
+-- samband med utrustning. Samma sak dokumenterad i 20260820120000 och
+-- 20260822113144; den här är tredje gången fällan gillrats.
+--
+-- Upptäckt av `schema:drift`-vakten, inte av läsning: när min migration tog
+-- bort indexet blev den befintliga kvitteringen för DROP INDEX STALE, och
+-- vakten fällde på det.
+
 -- CreateEnum
 CREATE TYPE "UnitEquipmentKind" AS ENUM ('REFRIGERATOR', 'FREEZER', 'STOVE', 'DISHWASHER', 'WASHING_MACHINE', 'DRYER', 'BOILER', 'HEAT_PUMP', 'VENTILATION', 'ELEVATOR', 'BATHROOM_FIXTURE', 'KITCHEN_FIXTURE', 'FLOORING', 'WINDOW', 'DOOR', 'LOCK', 'OTHER');
 
 -- CreateEnum
 CREATE TYPE "UnitEquipmentEventType" AS ENUM ('INSTALLED', 'SERVICED', 'REPAIRED', 'REPLACED', 'REMOVED');
-
--- DropIndex
-DROP INDEX "LegalChunkEmbedding_embedding_hnsw_idx";
 
 -- CreateTable
 CREATE TABLE "UnitEquipment" (
