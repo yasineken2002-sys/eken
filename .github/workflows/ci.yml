@@ -1287,6 +1287,39 @@ jobs:
           fi
           echo "OK: apps/api/dist/main.js finns, och dist/src/main.js gör det inte."
 
+  equipment-chain-guard:
+    name: Equipment chain guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # `UnitEquipment.replacedById` är en självreferens, och två fel är
+      # möjliga: FÖRGRENING (två föregångare mot samma efterträdare) och CYKEL
+      # (A → B → A). @unique spärrar den första i databasen; den andra kan en
+      # unik-constraint inte hindra, eftersom varje rad i en cykel också har
+      # exakt en föregångare och en efterträdare.
+      #
+      # En cykel går heller inte sönder högljutt: historiken svarar
+      # EQUIPMENT_REPLACED för varje länk och ser rimlig ut, medan den som
+      # följer kedjan bakåt aldrig slutar.
+      #
+      # Vakten prövar att SPÄRRARNA STÅR I SCHEMAT (@unique + båda sidorna av
+      # självrelationen). Att kedjan FAKTISKT är acyklisk ägs av
+      # unit-equipment.db.spec.ts, som bygger en cykel mot riktig Postgres och
+      # kräver att assertNoEquipmentCycle fäller.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (rule and scope canaries)
+        run: node apps/api/scripts/check-equipment-chain.mjs --self-test
+
+      - name: Equipment chain guard
+        run: node apps/api/scripts/check-equipment-chain.mjs
+
   append-only-guard:
     name: Append-only trigger guard
     runs-on: ubuntu-latest
@@ -1337,6 +1370,7 @@ jobs:
       - ai-tool-effects-guard
       - ai-journal-source-guard
       - history-registry-guard
+      - equipment-chain-guard
       - api-build-artifact-guard
       - append-only-guard
       - action-tool-authorization-guard

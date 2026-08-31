@@ -68,6 +68,10 @@ medDb('luckberäkningen', () => {
   afterAll(async () => {
     // Fixturen raderar inget — städningen är provets eget ansvar.
     const w = { organizationId: SEED_ORG }
+    // Utrustningens händelser FÖRE ärendena (Restrict på maintenanceTicketId),
+    // och utrustningen före fastigheten (FK på propertyId).
+    await prisma.unitEquipmentEvent.deleteMany({ where: { equipment: w } })
+    await prisma.unitEquipment.deleteMany({ where: w })
     await prisma.rentNotice.deleteMany({ where: w })
     await prisma.meterReading.deleteMany({ where: w })
     await prisma.meter.deleteMany({ where: w })

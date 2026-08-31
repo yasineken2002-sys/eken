@@ -52,6 +52,9 @@ export const SEED_IDS: HistoryFixtureIds = {
   planId: '5eed0000-0000-4000-8000-000000000008',
   formerTenantId: '5eed0000-0000-4000-8000-000000000009',
   formerLeaseId: '5eed0000-0000-4000-8000-00000000000a',
+  oldFridgeId: '5eed0000-0000-4000-8000-00000000000b',
+  newFridgeId: '5eed0000-0000-4000-8000-00000000000c',
+  elevatorId: '5eed0000-0000-4000-8000-00000000000d',
 }
 
 const MEDGIVANDE = 'ja-radera-och-skapa-om'
@@ -99,6 +102,10 @@ async function rensa(prisma: PrismaClient): Promise<void> {
   const org = await prisma.organization.findUnique({ where: { id: SEED_IDS.organizationId } })
   if (!org) return
   const w = { organizationId: SEED_IDS.organizationId }
+  // Utrustningens händelser FÖRE ärendena (Restrict på maintenanceTicketId),
+  // och före utrustningen själv.
+  await prisma.unitEquipmentEvent.deleteMany({ where: { equipment: w } })
+  await prisma.unitEquipment.deleteMany({ where: w })
   await prisma.rentNoticeEvent.deleteMany({ where: { rentNotice: w } })
   await prisma.rentNoticeLine.deleteMany({ where: { rentNotice: w } })
   await prisma.rentNotice.deleteMany({ where: w })

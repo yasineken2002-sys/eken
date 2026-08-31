@@ -76,6 +76,18 @@ export const DELETION_STEPS: readonly Step[] = [
     where: (ids) => ({ rentNotice: byOrg(ids) }),
   },
   {
+    // FÖRE MaintenanceTicket, och det är inte en smaksak: händelsens FK mot
+    // ärendet är `onDelete: Restrict`. Valet gjordes för att undvika #585:s
+    // fälla — `SET NULL` är en kaskad-UPDATE som append-only-triggern avvisar,
+    // vilket hade brutit den här raderingen på ett sätt som upptäckts först
+    // vid en GDPR-begäran. Priset är den här ordningen.
+    //
+    // UnitEquipment själv står INTE i listan: den kaskaderar från Organization.
+    model: 'UnitEquipmentEvent',
+    restrictAgainst: 'MaintenanceTicket, UnitEquipment',
+    where: (ids) => ({ equipment: byOrg(ids) }),
+  },
+  {
     model: 'MaintenanceTicket',
     restrictAgainst: 'MiscCharge, Organization, Property',
     where: byOrg,
