@@ -1230,6 +1230,63 @@ jobs:
       - name: History registry guard
         run: node apps/api/scripts/check-history-registry.mjs
 
+  api-build-artifact-guard:
+    name: API build artifact guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── VARFÖR JOBBET FINNS ────────────────────────────────────────────────
+      #
+      # `nest build` kan lyckas med exit 0 och ändå lägga utdatan på fel plats.
+      # `apps/api/tsconfig.json` hade `include: ["src"]` men ingen `rootDir`, så
+      # TypeScript härledde roten ur den gemensamma katalogen för ALLA
+      # indatafiler. En enda import från src/ ut till prisma/ flyttade roten
+      # från src/ till apps/api/ och sköt hela utdatan ett steg ner:
+      #
+      #     nest build       → exit 0    (grönt)
+      #     dist/main.js     → SAKNAS
+      #     dist/src/main.js → FINNS
+      #
+      # migrate-and-start.sh kör `node /app/apps/api/dist/main.js` och dog med
+      # MODULE_NOT_FOUND. Prod startade aldrig — med grön CI (33/33) och grönt
+      # bygge. Ingen av de dåvarande jobben byggde API:t eller såg efter
+      # artefakten. Det här jobbet gör båda.
+      #
+      # `rootDir: "./src"` är nu satt explicit, så ett återfall blir TS6059 i
+      # stället för en tyst förskjutning. Den här kontrollen är hängslena: den
+      # fäller även om någon tar bort rootDir igen.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @eken/shared build
+      - run: pnpm --filter @eken/api exec prisma generate
+
+      - name: Build the API
+        run: pnpm --filter @eken/api build
+
+      - name: Artefakten ska ligga där migrate-and-start.sh letar
+        run: |
+          set -eu
+          if [ ! -f apps/api/dist/main.js ]; then
+            echo "::error::apps/api/dist/main.js SAKNAS efter ett lyckat bygge."
+            echo "Byggutdatan har förskjutits — troligen har rootDir flyttats av en"
+            echo "import från src/ ut ur src/. migrate-and-start.sh kör exakt den"
+            echo "sökvägen och prod skulle inte starta. Hittade i stället:"
+            find apps/api/dist -maxdepth 2 -name 'main.js' -print || echo "  (ingen main.js alls)"
+            exit 1
+          fi
+          if [ -f apps/api/dist/src/main.js ]; then
+            echo "::error::apps/api/dist/src/main.js finns — utdatan ligger ett steg för djupt."
+            exit 1
+          fi
+          echo "OK: apps/api/dist/main.js finns, och dist/src/main.js gör det inte."
+
   append-only-guard:
     name: Append-only trigger guard
     runs-on: ubuntu-latest
@@ -1280,6 +1337,7 @@ jobs:
       - ai-tool-effects-guard
       - ai-journal-source-guard
       - history-registry-guard
+      - api-build-artifact-guard
       - append-only-guard
       - action-tool-authorization-guard
       - backup-endpoint-guard

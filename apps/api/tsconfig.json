@@ -6,6 +6,11 @@
     "moduleResolution": "Node",
     "lib": ["ES2022"],
     "outDir": "./dist",
+    // EXPLICIT. Utan den härleder TypeScript roten ur den gemensamma katalogen
+    // för alla indatafiler — en enda import från src/ ut till prisma/ flyttade
+    // roten till apps/api/, sköt all output till dist/src/ och gjorde att prod
+    // inte startade, med grönt bygge. Nu blir ett återfall TS6059 i stället.
+    "rootDir": "./src",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "strictNullChecks": true,
