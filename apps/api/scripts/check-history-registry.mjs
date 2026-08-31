@@ -45,7 +45,7 @@
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { codeMask } from '../../../scripts/lib/source-scan.mjs'
+import { codeMask, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SCHEMA = join(HERE, '..', 'prisma', 'schema.prisma')
@@ -243,11 +243,29 @@ function selfTest() {
   const r6 = evaluate({ schemaText: SCHEMA_OK, registryText: REGISTRY_OK, ackObjekt: { ...ACK_OK, finnsInte: 'skäl' } })
   t('R3: kvittering av fält som inte finns → RÖTT', r6.some((p) => p.regel === 'R3'), JSON.stringify(r6))
 
+  // ── DEN DELADE SKANNERNS EGNA KANARIEFÅGLAR ──────────────────────────────
+  //
+  // Vakten läser registret genom `codeMask` ur scripts/lib/source-scan.mjs.
+  // Går den skannern sönder skulle den här vakten fortsätta rapportera grönt
+  // på en felaktig mätning — den skulle inte veta om det. Genom att köra
+  // skannerns egna kanariefåglar här blir VARJE konsument röd när den delade
+  // mekanismen bryts, inte bara skannerns egen körning (#463).
+  //
+  // Kravet är dessutom mekaniskt: check-guard-preprocessors.mjs R2 fäller en
+  // vakt som använder skannern utan att pröva den.
+  for (const f of kanariefåglar()) {
+    fel++
+    console.error(`  ❌ delad källskanner: ${f}`)
+  }
+
   if (fel > 0) {
     console.error(`\nSJÄLVTEST: ${fel} kontroll(er) FÖLL.\n`)
     process.exit(1)
   }
-  console.warn('\n✅ Självtest grönt — regel-, omfångs- och kommentarkanariefåglarna fäller alla.\n')
+  console.warn(
+    '\n✅ Självtest grönt — regel-, omfångs- och kommentarkanariefåglarna fäller alla,\n' +
+      '   och den delade källskannerns egna kanariefåglar är gröna.\n',
+  )
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
