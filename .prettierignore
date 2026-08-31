@@ -15,3 +15,7 @@ prisma/migrations
 # utan undantag. Hela katalogen ignoreras så att nästa inlagda lag ärver
 # skyddet utan att någon behöver komma ihåg det.
 .claude/knowledge/lagar/
+
+# Handsatt radbrytning och tabelluppställning; prettier fyller ut celler
+# och byter emfasmarkör utan att ändra radantal — en radräkning missar det.
+docs/eveno-agentplan.md
