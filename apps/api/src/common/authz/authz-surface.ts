@@ -504,6 +504,22 @@ const TOOL_COL = 32
  * påstår filen granskning som inte skett, vilket är värre än att sakna den.
  */
 const GRANSKAD_HINK_A: ReadonlyMap<string, string> = new Map([
+  [
+    'GET /history/tenants/:tenantId',
+    'Sammanställer hyresgästens historik ur femton domänkällor. Öppen för varje\n' +
+      'roll av samma skäl som källorna är det: GET /invoices, /leases, /tenants,\n' +
+      '/maintenance och /deposits ligger alla i den här hinken redan, och\n' +
+      'aggregatet ger ingen åtkomst som inte fanns.\n' +
+      '\n' +
+      'MED ETT UNDANTAG SOM ÄR MEKANISKT HANTERAT. Två källor har snävare grind\n' +
+      'på annat håll — AI-körningar (/ai-usage: ACCOUNTANT, ADMIN, OWNER) och\n' +
+      'GDPR-radering (POST /tenants/:id/anonymize: OWNER). De filtreras per roll\n' +
+      'i sammanställningen via `restrictedToRoles` i history-sources.registry.ts,\n' +
+      'så en VIEWER får dem inte. Utan den filtreringen hade den här endpointen\n' +
+      'vidgat två behörighetsgränser — vilket är exakt vad golden-filens huvud\n' +
+      'varnar för: anropsytan kan vara korrekt medan svarsytan bär för mycket.\n' +
+      'Prövat i tenant-history.db.spec.ts (OWNER vs ACCOUNTANT vs VIEWER).',
+  ],
   ['GET /auth/me', 'Självscopad på JWT:ns `sub` — läser inte organisationen, utan den inloggade.'],
   [
     'GET /users/me/export',

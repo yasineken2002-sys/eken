@@ -21,6 +21,7 @@ import { LeasesModule } from './leases/leases.module'
 import { InvoicesModule } from './invoices/invoices.module'
 import { AccountingModule } from './accounting/accounting.module'
 import { DepositsModule } from './deposits/deposits.module'
+import { HistoryModule } from './history/history.module'
 import { KeysModule } from './keys/keys.module'
 import { ConsumptionModule } from './consumption/consumption.module'
 import { MiscChargeModule } from './misc-charges/misc-charge.module'
@@ -177,6 +178,7 @@ import { Psd2Module } from './psd2/psd2.module'
     InvoicesModule,
     AccountingModule,
     DepositsModule,
+    HistoryModule,
     KeysModule,
     ConsumptionModule,
     MiscChargeModule,
