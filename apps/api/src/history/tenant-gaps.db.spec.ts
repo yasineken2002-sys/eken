@@ -31,14 +31,17 @@
 import { PrismaClient } from '@prisma/client'
 import { TenantGapsService } from './tenant-gaps.service'
 import { HISTORY_EXPECTATIONS } from './history-expectations'
-import { seedHistory } from '../../prisma/seed-history'
+import { createHistoryFixture } from './history-fixture'
 import type { PrismaService } from '../common/prisma/prisma.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
 
-const SEED_ORG = '5eed0000-0000-4000-8000-000000000001'
-const SEED_TENANT = '5eed0000-0000-4000-8000-000000000005'
+// Specen importerar ALDRIG något ur prisma/ — den importen sänkte prod (#591).
+// Fixturen slumpar sina id:n, så provet inte rör CLI-seedens organisation och
+// inte kan krocka med en parallell körning.
+let SEED_ORG = ''
+let SEED_TENANT = ''
 
 describe('förutsättningar', () => {
   it('KANARIEFÅGEL: sviten körs mot en RIKTIG databas', () => {
@@ -55,14 +58,32 @@ medDb('luckberäkningen', () => {
   beforeAll(async () => {
     prisma = new PrismaClient()
     // Provet skapar sitt EGET utgångsläge. CI kör ingen seed, och ett prov som
-    // tyst hoppas över när underlaget saknas är grönt av fel skäl — samma
-    // defekt som #565. Seeden är idempotent och scopad till SEED_ORG.
-    await seedHistory(prisma)
+    // tyst hoppas över när underlaget saknas är grönt av fel skäl (#565).
+    // Fixturen SKAPAR bara — det destruktiva bor i CLI-skalet, utanför bundlen.
+    const { ids } = await createHistoryFixture(prisma)
+    SEED_ORG = ids.organizationId
+    SEED_TENANT = ids.tenantId
     service = new TenantGapsService(prisma as unknown as PrismaService)
   }, 60_000)
   afterAll(async () => {
+    // Fixturen raderar inget — städningen är provets eget ansvar.
+    const w = { organizationId: SEED_ORG }
+    await prisma.rentNotice.deleteMany({ where: w })
+    await prisma.meterReading.deleteMany({ where: w })
+    await prisma.meter.deleteMany({ where: w })
+    await prisma.inspection.deleteMany({ where: w })
+    await prisma.maintenanceTicket.deleteMany({ where: w })
+    await prisma.maintenancePlan.deleteMany({ where: w })
+    await prisma.keyHandover.deleteMany({ where: w })
+    await prisma.deposit.deleteMany({ where: w })
+    await prisma.lease.deleteMany({ where: w })
+    await prisma.tenant.deleteMany({ where: w })
+    await prisma.unit.deleteMany({ where: { property: { organizationId: SEED_ORG } } })
+    await prisma.property.deleteMany({ where: w })
+    await prisma.user.deleteMany({ where: w })
+    await prisma.organization.deleteMany({ where: { id: SEED_ORG } })
     await prisma.$disconnect()
-  })
+  }, 60_000)
 
   it('KANARIEFÅGEL: seeden gav underlag (annars mäts luckor mot en tom databas)', async () => {
     // Härlett tal, inte "fler än noll": seeden skapar 23 avier och 2 besiktningar.

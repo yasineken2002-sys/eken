@@ -8,6 +8,15 @@
   // för `dist/main.js` — vilket bryter containerns start
   // (`node dist/main.js`, se scripts/migrate-and-start.sh).
   //
+  // Sedan #591 står `rootDir: "./src"` UTTRYCKLIGT i tsconfig.json — förut var
+  // den bara härledd, och en enda import från src/ ut till prisma/ flyttade den
+  // tyst. Nu blir ett återfall TS6059 i stället, och ett CI-jobb kräver dessutom
+  // att apps/api/dist/main.js finns efter bygget.
+  //
+  // Den här filen måste därför ÅTERSTÄLLA rootDir till paketroten: den täcker
+  // med flit filer utanför src/, och skulle annars ärva byggets rootDir och
+  // falla på just de filerna. Med `noEmit` betyder rootDir ingenting här.
+  //
   // Därför en egen fil med `noEmit`, där rootDir saknar betydelse. Den täcker
   // src PLUS allt körbart som stod utanför: mätskripten, kunskaps-pipelinen,
   // preflight-kontrollen och prisma-seedarna. De importerar produktionsmoduler
@@ -18,7 +27,9 @@
   // någon annan ska kunna lita på.
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    // Se blocket ovan: återställer byggets rootDir, som inte gäller här.
+    "rootDir": "."
   },
   "include": ["src", "scripts/**/*.ts", "prisma/*.ts", "jest.config.ts"],
   "exclude": ["node_modules", "dist"]
