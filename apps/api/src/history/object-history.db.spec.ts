@@ -362,7 +362,15 @@ medDb('objekthistoriken', () => {
     // PERIODIC 2025-03 planerad, aldrig utförd → 1. MOVE_IN/MOVE_OUT är utförda.
     expect(r.find((x) => x.key === 'scheduled-inspection-completed')?.missingCount).toBe(1)
     expect(r.find((x) => x.key === 'maintenance-plan-interval')?.status).toBe('LUCKA')
-    expect(r.filter((x) => x.status === 'ODEFINIERAD')).toHaveLength(3)
+    // TRE här: lägenheten har bara kylskåpen, och båda bär serviceintervall —
+    // därför är servicen mätbar på lägenheten men odefinierad på fastigheten,
+    // som också ser hissen. Nycklar och inte antal.
+    expect(
+      r
+        .filter((x) => x.status === 'ODEFINIERAD')
+        .map((x) => x.key)
+        .sort(),
+    ).toEqual(['inspection-interval', 'maintenance-ticket-response', 'meter-reading-interval'])
     console.warn(`[objekt] UNIT-luckor: avier saknade=${avier?.missingCount} av 36 förväntade`)
   })
 
@@ -373,7 +381,23 @@ medDb('objekthistoriken', () => {
     expect(avier?.status).toBe('LUCKA')
     expect(avier?.missingCount).toBe(1)
     expect(r.find((x) => x.key === 'maintenance-plan-interval')?.status).toBe('LUCKA')
-    expect(r.filter((x) => x.status === 'ODEFINIERAD')).toHaveLength(3)
+    // FYRA odefinierade på fastigheten, inte tre: utöver de tre strukturella
+    // (besiktnings-/avläsningsintervall och svarstid, som saknar bärare i
+    // schemat) är serviceintervallet odefinierat HÄR därför att hissen saknar
+    // värde — 1c:s regel, fältet null ger ODEFINIERAD och aldrig "ingen lucka".
+    // Nycklar och inte antal: ett tal hade fortsatt stämma om en förväntan
+    // bytts mot en annan.
+    expect(
+      r
+        .filter((x) => x.status === 'ODEFINIERAD')
+        .map((x) => x.key)
+        .sort(),
+    ).toEqual([
+      'equipment-service-interval',
+      'inspection-interval',
+      'maintenance-ticket-response',
+      'meter-reading-interval',
+    ])
   })
 
   it('MULTI-TENANT: en annan organisation ser ingenting', async () => {

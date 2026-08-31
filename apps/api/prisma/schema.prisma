@@ -4410,6 +4410,34 @@ model UnitEquipment {
   /// Sitter den kvar? Null = ja.
   removedAt   DateTime?
 
+  // ── FÖRVÄNTNINGAR (etapp 1c) ─────────────────────────────────────────────
+  //
+  // Första stället i systemet där en deklarerad förväntan kan bo på OBJEKTNIVÅ.
+  // Fram till nu fanns exakt en konfigurerad återkommande förväntan —
+  // `MaintenancePlan.interval` — och den är fastighetsbunden. Därför var
+  // "OVK förfaller" beräkningsbart medan "kylskåpet är 18 år" inte var det.
+  //
+  // BÅDA ÄR NULLBARA UTAN DEFAULT, OCH DET ÄR HELA POÄNGEN. Ett default vore
+  // en förväntan som koden hittat på: är ett kylskåps livslängd 15 år eller
+  // 20? Sätter systemet ett tal börjar det larma på hela beståndet utifrån en
+  // siffra ingen bestämt. Ett värde ska komma från en människa.
+  //
+  // Följden för luckberäkningen är den avgörande regeln:
+  //   satt → KONFIGURERAD, lucka beräknas
+  //   null → ODEFINIERAD med skälet utskrivet, ALDRIG "ingen lucka"
+  //
+  // ÄRVS INTE VID BYTE. En efterträdare får sina egna värden eller inga alls —
+  // att kopiera föregångarens vore att låta koden gissa åt människan igen, och
+  // ett nytt kylskåp av annat fabrikat har inte samma livslängd som det gamla.
+
+  /// Förväntad livslängd i år, räknat från `installedAt`. Null = ingen
+  /// förväntan är uttalad för det här objektet.
+  expectedLifespanYears Int?
+
+  /// Förväntat serviceintervall i månader, räknat från senaste SERVICED-
+  /// händelse eller `installedAt` om ingen finns. Null = ingen förväntan.
+  serviceIntervalMonths Int?
+
   /// VAD-halvan av frågan: efterträdaren.
   ///
   /// Utan den är två rader bara två saker — ett `removedAt` som sammanfaller
