@@ -505,6 +505,41 @@ const TOOL_COL = 32
  */
 const GRANSKAD_HINK_A: ReadonlyMap<string, string> = new Map([
   [
+    'GET /history/units/:unitId',
+    'Lägenhetens historik över ALLA hyresgäster, även tidigare. Öppen för varje\n' +
+      'roll därför att varje källa i unit-dimensionen redan är det: leases,\n' +
+      'maintenance, inspections, keys, documents och consumption/meters ligger\n' +
+      'alla i den här hinken (uppmätt mot golden 2026-08-31). De två snäva\n' +
+      'källorna — AI-körningar (ACCOUNTANT+) och GDPR-radering (OWNER) — finns\n' +
+      'BARA i hyresgästdimensionen och nås inte härifrån.\n' +
+      '\n' +
+      'PERSONDATA: ingen källa läser personfält ur Tenant; identiteter bärs som\n' +
+      'id-referenser. Anonymisering slår igenom automatiskt (sammanställning vid\n' +
+      'läsning, ingen andra kopia) — prövat mot den RIKTIGA\n' +
+      'anonymizeTenantWithin i object-history.db.spec.ts.',
+  ],
+  [
+    'GET /history/units/:unitId/gaps',
+    'Beräknade luckor för lägenheten. Läser avier, besiktningar och\n' +
+      'underhållsplan — samma öppna källor som historiken; inga personfält.\n' +
+      'Svaret bär förväntningarnas KÄLLA, inte persondata.',
+  ],
+  [
+    'GET /history/properties/:propertyId',
+    'Fastighetens direkt knutna historik: ärenden, besiktningar, dokument,\n' +
+      'underhållsplaner, publicerade nyheter. Samtliga källors läs-GET:ar ligger\n' +
+      'i den här hinken (uppmätt mot golden 2026-08-31); ingen källa bär\n' +
+      'restrictedToRoles i property-dimensionen. Lägenheternas händelser\n' +
+      'aggregeras MEDVETET inte hit ännu — se history-sources.ack.json\n' +
+      '(Property.units) för beslutet och dess skäl.',
+  ],
+  [
+    'GET /history/properties/:propertyId/gaps',
+    'Beräknade luckor för fastigheten: avier över fastighetens alla avtal,\n' +
+      'besiktningar, underhållsplanens konfigurerade intervall. Samma öppna\n' +
+      'källor som ovan; inga personfält.',
+  ],
+  [
     'GET /history/tenants/:tenantId/gaps',
     'Beräknade luckor för samma hyresgäst. Läser INGEN ny domändata utöver vad\n' +
       'historiken redan aggregerar, och de två källor som har snävare grind\n' +

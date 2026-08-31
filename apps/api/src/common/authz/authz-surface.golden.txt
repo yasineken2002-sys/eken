@@ -197,7 +197,7 @@ POST /users/:id/reactivate                                      OWNER
 POST /users/invite                                              ADMIN, OWNER
 
 
-## 1b. HTTP-endpoints UTAN rollgrind (156 st)
+## 1b. HTTP-endpoints UTAN rollgrind (160 st)
 
 RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som
 granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli
@@ -211,7 +211,7 @@ konstruktion osynlig för driftbevakningen. #81 visade vad det kostade —
 GET /import/jobs var varken självscopad eller avsedd att vara öppen, låg
 öppen för VIEWER, och fanns inte i den här filen medan hålet var öppet.
 
-### a) Org-inloggad, öppen för VARJE roll (63 st)
+### a) Org-inloggad, öppen för VARJE roll (67 st)
 
 Enbart globala guards — antingen ingen @UseGuards alls, eller en som bara
 räknar upp JwtAuthGuard/RolesGuard och därmed inte ändrar något (#441).
@@ -225,7 +225,7 @@ det är precis vad VIEWER ska betyda. Frågan är: läser VIEWER DOMÄNDATA,
 eller det OPERATIVA SPÅRET av en handling som kräver högre roll? Spåren
 grindas och flyttar därmed till avsnitt 1.
 
-GRANSKADE — avsiktligt öppna, med skälet (63 st)
+GRANSKADE — avsiktligt öppna, med skälet (67 st)
 
 RÄCKVIDD: granskad som ANROPSYTA — vem som får anropa. INTE som SVARSYTA:
 vad svaret bär är inte prövat här. Se #445.
@@ -336,6 +336,19 @@ GET /documents                                                  documents.contro
     för roller utan kontraktsbehörighet (listan delar annars ut dokument-id:t,
     som är allt nedladdningen behöver).
 
+GET /history/properties/:propertyId/gaps                        history.controller.ts
+    Beräknade luckor för fastigheten: avier över fastighetens alla avtal,
+    besiktningar, underhållsplanens konfigurerade intervall. Samma öppna
+    källor som ovan; inga personfält.
+
+GET /history/properties/:propertyId                             history.controller.ts
+    Fastighetens direkt knutna historik: ärenden, besiktningar, dokument,
+    underhållsplaner, publicerade nyheter. Samtliga källors läs-GET:ar ligger
+    i den här hinken (uppmätt mot golden 2026-08-31); ingen källa bär
+    restrictedToRoles i property-dimensionen. Lägenheternas händelser
+    aggregeras MEDVETET inte hit ännu — se history-sources.ack.json
+    (Property.units) för beslutet och dess skäl.
+
 GET /history/tenants/:tenantId/gaps                             history.controller.ts
     Beräknade luckor för samma hyresgäst. Läser INGEN ny domändata utöver vad
     historiken redan aggregerar, och de två källor som har snävare grind
@@ -357,6 +370,24 @@ GET /history/tenants/:tenantId                                  history.controll
     vidgat två behörighetsgränser — vilket är exakt vad golden-filens huvud
     varnar för: anropsytan kan vara korrekt medan svarsytan bär för mycket.
     Prövat i tenant-history.db.spec.ts (OWNER vs ACCOUNTANT vs VIEWER).
+
+GET /history/units/:unitId/gaps                                 history.controller.ts
+    Beräknade luckor för lägenheten. Läser avier, besiktningar och
+    underhållsplan — samma öppna källor som historiken; inga personfält.
+    Svaret bär förväntningarnas KÄLLA, inte persondata.
+
+GET /history/units/:unitId                                      history.controller.ts
+    Lägenhetens historik över ALLA hyresgäster, även tidigare. Öppen för varje
+    roll därför att varje källa i unit-dimensionen redan är det: leases,
+    maintenance, inspections, keys, documents och consumption/meters ligger
+    alla i den här hinken (uppmätt mot golden 2026-08-31). De två snäva
+    källorna — AI-körningar (ACCOUNTANT+) och GDPR-radering (OWNER) — finns
+    BARA i hyresgästdimensionen och nås inte härifrån.
+
+    PERSONDATA: ingen källa läser personfält ur Tenant; identiteter bärs som
+    id-referenser. Anonymisering slår igenom automatiskt (sammanställning vid
+    läsning, ingen andra kopia) — prövat mot den RIKTIGA
+    anonymizeTenantWithin i object-history.db.spec.ts.
 
 GET /inspections/:id/pdf                                        inspections.controller.ts
     Renderar samma domändata som detaljvyn.

@@ -50,6 +50,8 @@ export const SEED_IDS: HistoryFixtureIds = {
   leaseId: '5eed0000-0000-4000-8000-000000000006',
   meterId: '5eed0000-0000-4000-8000-000000000007',
   planId: '5eed0000-0000-4000-8000-000000000008',
+  formerTenantId: '5eed0000-0000-4000-8000-000000000009',
+  formerLeaseId: '5eed0000-0000-4000-8000-00000000000a',
 }
 
 const MEDGIVANDE = 'ja-radera-och-skapa-om'

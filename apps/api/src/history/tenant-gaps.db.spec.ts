@@ -29,7 +29,7 @@
  * INGEN PERSONDATA i utdata — bara antal och nycklar.
  */
 import { PrismaClient } from '@prisma/client'
-import { TenantGapsService } from './tenant-gaps.service'
+import { GapsService } from './gaps.service'
 import { HISTORY_EXPECTATIONS } from './history-expectations'
 import { createHistoryFixture } from './history-fixture'
 import type { PrismaService } from '../common/prisma/prisma.service'
@@ -51,7 +51,7 @@ describe('förutsättningar', () => {
 
 medDb('luckberäkningen', () => {
   let prisma: PrismaClient
-  let service: TenantGapsService
+  let service: GapsService
   /** Fast mätpunkt — annars mäts luckorna mot när provet råkade köras. */
   const NU = new Date('2026-01-15T00:00:00Z')
 
@@ -63,7 +63,7 @@ medDb('luckberäkningen', () => {
     const { ids } = await createHistoryFixture(prisma)
     SEED_ORG = ids.organizationId
     SEED_TENANT = ids.tenantId
-    service = new TenantGapsService(prisma as unknown as PrismaService)
+    service = new GapsService(prisma as unknown as PrismaService)
   }, 60_000)
   afterAll(async () => {
     // Fixturen raderar inget — städningen är provets eget ansvar.
@@ -86,10 +86,13 @@ medDb('luckberäkningen', () => {
   }, 60_000)
 
   it('KANARIEFÅGEL: seeden gav underlag (annars mäts luckor mot en tom databas)', async () => {
-    // Härlett tal, inte "fler än noll": seeden skapar 23 avier och 2 besiktningar.
+    // Härledda tal, inte "fler än noll". Nuvarande hyresgäst: 24 månader
+    // (2024-01…2025-12) minus den avsiktliga luckan 2024-06 = 23 avier.
+    // Tidigare hyresgäst (tillagd för objektdimensionen): 12/12 avier 2023.
+    // Besiktningar: MOVE_IN + PERIODIC (nuvarande) + MOVE_OUT (tidigare) = 3.
     expect(await prisma.tenant.count({ where: { id: SEED_TENANT } })).toBe(1)
-    expect(await prisma.rentNotice.count({ where: { organizationId: SEED_ORG } })).toBe(23)
-    expect(await prisma.inspection.count({ where: { organizationId: SEED_ORG } })).toBe(2)
+    expect(await prisma.rentNotice.count({ where: { organizationId: SEED_ORG } })).toBe(35)
+    expect(await prisma.inspection.count({ where: { organizationId: SEED_ORG } })).toBe(3)
   })
 
   it('VARJE deklarerad förväntan får ett utfall — inga tysta bortfall', async () => {
