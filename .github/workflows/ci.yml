@@ -1194,6 +1194,42 @@ jobs:
       - name: AI journal source guard
         run: node apps/api/scripts/check-ai-journal-source.mjs
 
+  history-registry-guard:
+    name: History registry guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # Historiken SAMMANSTÄLLS vid läsning ur domäntabellerna — ingen egen
+      # händelsetabell, ingen dubbelskrivning. Det valet tar bort risken att en
+      # logg glider isär från domänen, men lämnar en kvar: en domän som
+      # producerar historik och som ingen kopplade in. Den luckan syns inte i
+      # utdata; historiken ser komplett ut, bara kortare.
+      #
+      # Vakten kräver att VARJE relation på `model Tenant` står antingen i
+      # HISTORY_SOURCES eller i history-sources.ack.json med ett skäl. Regeln är
+      # på formen, inte en uppräkning: en ny relation i schemat fäller bygget
+      # tills någon tagit ställning.
+      #
+      # TVÅ SORTERS KANARIEFÅGLAR, och den andra är lärdomen av R5 i
+      # check-action-tool-authorization: regeln där fungerade, men mängden den
+      # prövade defaultade till [] och den var därför grön för alltid.
+      #   regel   — oregistrerad relation faller, registrerad tiger
+      #   omfång  — noll lästa relationer faller (skanningen har gått blind)
+      #   kommentar — ett namn som bara står i prosa räknas inte som registrerat
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (rule, scope and comment canaries)
+        run: node apps/api/scripts/check-history-registry.mjs --self-test
+
+      - name: History registry guard
+        run: node apps/api/scripts/check-history-registry.mjs
+
   append-only-guard:
     name: Append-only trigger guard
     runs-on: ubuntu-latest
@@ -1243,6 +1279,7 @@ jobs:
       - tool-iteration-cap-guard
       - ai-tool-effects-guard
       - ai-journal-source-guard
+      - history-registry-guard
       - append-only-guard
       - action-tool-authorization-guard
       - backup-endpoint-guard

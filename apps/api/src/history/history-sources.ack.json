@@ -1,0 +1,16 @@
+{
+  "__doc__": [
+    "Relationer på `model Tenant` som medvetet INTE producerar historik.",
+    "Vakten check-history-registry.mjs kräver att varje relation står antingen",
+    "i HISTORY_SOURCES eller här. Att kvittera är alltså ett AKTIVT beslut med",
+    "ett skäl — inte en tystnad. Samma form som ai-tool-effects.ack.json.",
+    "Står en relation i BÅDA fäller vakten: mängderna ska vara disjunkta."
+  ],
+  "organization": "Föräldrarelation, inte en händelse. Organisationen är historikens scope, inte dess innehåll.",
+  "magicLinks": "Inloggningsmekanik. En utfärdad magic link är infrastruktur, inte något som hände hyresgästen i förvaltningen.",
+  "sessions": "Inloggningsmekanik, samma skäl som magicLinks. Sessioner gallras dessutom löpande.",
+  "aiConversations": "Chattens meddelandeflöde. Det AI:n GJORDE står i aiToolExecutions och är registrerat; det den SA är inte en domänhändelse.",
+  "aiUsageLogs": "Kostnadstelemetri per anrop. Bär inga domänfakta och skulle dränka historiken i rader.",
+  "aiMessageSubjects": "Kopplingstabell (AiMessageTenant) för ämneskoppling. Bär ingen egen händelse.",
+  "aiMemorySubjects": "Kopplingstabell (AiMemoryTenant) för riktad radering av minnen. Bär ingen egen händelse."
+}
