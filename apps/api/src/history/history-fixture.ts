@@ -54,6 +54,15 @@ export interface HistoryFixtureIds {
   leaseId: string
   meterId: string
   planId: string
+  /**
+   * TIDIGARE hyresgäst på samma lägenhet (avtal 2023, avslutat). Finns för att
+   * lägenhetens historik ska spänna över FLERA hyresgäster — det är den
+   * egenskapen objektdimensionen finns för, och den som gör anonymiserings-
+   * provet meningsfullt: en anonymiserad tidigare hyresgäst får inte dyka upp
+   * igen via objektet.
+   */
+  formerTenantId: string
+  formerLeaseId: string
 }
 
 export interface HistoryFixtureCounts {
@@ -121,6 +130,8 @@ export async function createHistoryFixture(
     leaseId: ids.leaseId ?? randomUUID(),
     meterId: ids.meterId ?? randomUUID(),
     planId: ids.planId ?? randomUUID(),
+    formerTenantId: ids.formerTenantId ?? randomUUID(),
+    formerLeaseId: ids.formerLeaseId ?? randomUUID(),
   }
   return skapa(prisma, full)
 }
@@ -138,6 +149,7 @@ async function skapa(
     orgEmail: `seed-org-${kort}@example.se`,
     userEmail: `seed-user-${kort}@example.se`,
     tenantEmail: `seed-tenant-${kort}@example.se`,
+    formerEmail: `seed-former-${kort}@example.se`,
   }
 
   await prisma.organization.create({
@@ -382,6 +394,98 @@ async function skapa(
       estimatedCost: 25000,
       interval: 3,
       lastDoneYear: 2017,
+    },
+  })
+
+  // ── TIDIGARE HYRESGÄST: avtal 2023, komplett och avslutat ────────────────
+  //
+  // Namnet är syntetiskt men DISTINKT ('Seedgästen') med flit: anonymiserings-
+  // provet i object-history.db.spec.ts kör den riktiga anonymiseringen och
+  // kräver sedan att strängen inte förekommer någonstans i lägenhetens
+  // historik. Ett vanligt ord hade kunnat matcha av en slump åt båda hållen.
+  //
+  // Perioden är KOMPLETT (12 av 12 avier, utflyttsbesiktning utförd, nyckel
+  // återlämnad) så att den inte tillför några nya luckor — de avsiktliga
+  // luckorna ska förbli den nuvarande hyresgästens, annars går de inte att
+  // räkna för hand.
+  await prisma.tenant.create({
+    data: {
+      id: ids.formerTenantId,
+      organizationId: ids.organizationId,
+      type: 'INDIVIDUAL',
+      firstName: 'Tidigare',
+      lastName: 'Seedgästen',
+      email: unik.formerEmail,
+    },
+  })
+  await prisma.lease.create({
+    data: {
+      id: ids.formerLeaseId,
+      organizationId: ids.organizationId,
+      unitId: ids.unitId,
+      tenantId: ids.formerTenantId,
+      status: 'TERMINATED',
+      startDate: new Date('2023-01-01T00:00:00Z'),
+      tenancyStartDate: new Date('2023-01-01T00:00:00Z'),
+      activatedAt: new Date('2023-01-01T09:00:00Z'),
+      terminatedAt: new Date('2023-12-20T00:00:00Z'),
+      endDate: new Date('2023-12-31T00:00:00Z'),
+      // Fritext utan namn: fältet skrubbas INTE av anonymiseringen, så ett
+      // namn här hade läckt förbi provet — och förbi anonymiseringen själv.
+      terminationReason: 'Avflyttad',
+      monthlyRent: 9200,
+      depositAmount: 9200,
+    },
+  })
+  for (let månad = 1; månad <= 12; månad++) {
+    const mm = String(månad).padStart(2, '0')
+    await prisma.rentNotice.create({
+      data: {
+        organizationId: ids.organizationId,
+        tenantId: ids.formerTenantId,
+        leaseId: ids.formerLeaseId,
+        noticeNumber: `AVI-2023-${mm}-9${String(månad).padStart(3, '0')}`,
+        ocrNumber: `9${String(200000 + månad)}`,
+        month: månad,
+        year: 2023,
+        type: 'RENT',
+        amount: 9200,
+        vatAmount: 0,
+        totalAmount: 9200,
+        dueDate: new Date(Date.UTC(2023, månad - 1, 1)),
+        status: 'PAID',
+        paidAt: new Date(Date.UTC(2023, månad - 1, 3)),
+        paidAmount: 9200,
+      },
+    })
+  }
+  await prisma.inspection.create({
+    data: {
+      organizationId: ids.organizationId,
+      propertyId: ids.propertyId,
+      unitId: ids.unitId,
+      leaseId: ids.formerLeaseId,
+      tenantId: ids.formerTenantId,
+      inspectedById: ids.userId,
+      type: 'MOVE_OUT',
+      status: 'COMPLETED',
+      scheduledDate: new Date('2023-12-27T09:00:00Z'),
+      completedAt: new Date('2023-12-28T10:00:00Z'),
+      overallCondition: 'Normalt slitage',
+    },
+  })
+  await prisma.keyHandover.create({
+    data: {
+      organizationId: ids.organizationId,
+      leaseId: ids.formerLeaseId,
+      unitId: ids.unitId,
+      tenantId: ids.formerTenantId,
+      type: 'APARTMENT',
+      status: 'RETURNED',
+      issuedAt: new Date('2023-01-01T10:00:00Z'),
+      issuedById: ids.userId,
+      returnedAt: new Date('2023-12-28T10:30:00Z'),
+      receivedById: ids.userId,
     },
   })
 

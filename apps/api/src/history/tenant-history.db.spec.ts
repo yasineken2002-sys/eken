@@ -27,7 +27,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
-import { TenantHistoryService } from './tenant-history.service'
+import { HistoryService } from './history.service'
 import { HISTORY_SOURCES } from './history-sources.registry'
 import type { PrismaService } from '../common/prisma/prisma.service'
 
@@ -43,7 +43,7 @@ describe('förutsättningar', () => {
 
 medDb('hyresgästens historik — antalet härleds ur källtabellerna', () => {
   let prisma: PrismaClient
-  let service: TenantHistoryService
+  let service: HistoryService
   let orgId: string
   let tenantId: string
   let unitId: string
@@ -289,7 +289,7 @@ medDb('hyresgästens historik — antalet härleds ur källtabellerna', () => {
     })
 
     const prismaSomService = prisma as unknown as PrismaService
-    service = new TenantHistoryService(prismaSomService)
+    service = new HistoryService(prismaSomService)
   })
 
   afterAll(async () => {
@@ -429,7 +429,14 @@ medDb('hyresgästens historik — antalet härleds ur källtabellerna', () => {
     // på ett facit som tyst blivit ofullständigt — samma defekt som vakten
     // finns för, fast i mätningen i stället för i koden.
     const facit = await förväntatAntal()
-    expect(Object.keys(facit.per).sort()).toEqual(HISTORY_SOURCES.map((s) => s.key).sort())
+    // Sedan objektdimensionerna (#592) deklarerar en källa VILKA dimensioner
+    // den täcker — facit ska räkna exakt de källor som deklarerar tenant, inte
+    // alla. meter/maintenance-plan/news-post är objektkällor och hör inte hit.
+    expect(Object.keys(facit.per).sort()).toEqual(
+      HISTORY_SOURCES.filter((s) => s.relations.tenant)
+        .map((s) => s.key)
+        .sort(),
+    )
   })
 
   it('sorterad nyast först', async () => {

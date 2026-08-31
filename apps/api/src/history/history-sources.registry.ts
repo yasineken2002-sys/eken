@@ -1,5 +1,5 @@
 /**
- * HISTORIKREGISTRET — den DEKLARERADE mängden domänkällor.
+ * HISTORIKREGISTRET — den DEKLARERADE mängden domänkällor, i TRE dimensioner.
  *
  * ── VARFÖR ETT REGISTER OCH INTE EN SÖKNING ─────────────────────────────────
  *
@@ -9,20 +9,39 @@
  * Den luckan syns inte i utdata — historiken ser komplett ut, bara kortare.
  *
  * Registret är den primära mekanismen mot det. Vakten
- * `check-history-registry.mjs` kräver att VARJE relation på `model Tenant` står
- * antingen här eller i `history-sources.ack.json` med ett skäl. En ny relation
- * i schemat kan alltså inte glida förbi: den fäller bygget tills någon tar
- * ställning till om den bär historik.
+ * `check-history-registry.mjs` kräver att VARJE relation på `model Tenant`,
+ * `model Unit` och `model Property` står antingen här eller i
+ * `history-sources.ack.json` med ett skäl. En ny relation i schemat kan alltså
+ * inte glida förbi: den fäller bygget tills någon tar ställning.
  *
- * Regeln är på FORMEN — "varje relation på Tenant" — inte en uppräkning av
- * kända källor. Det är skillnaden mot en lista någon underhåller, och skälet
- * står i planens Del 10: en namnlista kan bara fälla det någon redan tänkt på.
+ * ── EN KÄLLA, TRE DIMENSIONER — INTE TRE REGISTER ───────────────────────────
  *
- * ── `relation` ÄR VAKTENS NYCKEL ────────────────────────────────────────────
+ * Samma domänkälla (t.ex. felanmälan) är historik för hyresgästen, lägenheten
+ * OCH fastigheten. Hade var dimension haft sitt eget register hade en rättelse
+ * i en mappning behövt göras tre gånger, och glömts minst en. Varje post bär i
+ * stället `relations` — fältnamnet på respektive modell som posten täcker —
+ * och `load` väljer villkor efter subjektets dimension. Saknas dimensionen i
+ * `relations` deltar källan inte där, och ett anrop ändå är ett FEL, inte en
+ * tom lista.
  *
- * Varje post bär fältnamnet PÅ `model Tenant` som den täcker. Det är det enda
- * fältet vakten läser, och det måste stavas exakt som i `schema.prisma` —
- * annars matchar inte mängderna och vakten fäller, vilket är rätt utfall.
+ * ── PERSONDATA I OBJEKTDIMENSIONERNA ────────────────────────────────────────
+ *
+ * En lägenhets historik spänner över alla hyresgäster som bott där, även
+ * tidigare. Två regler bär det:
+ *
+ *   1. INGEN mappning läser personfält ur `Tenant` (namn, e-post, telefon,
+ *      personnummer). Identiteten bärs som id-referenser (lease-id, tenant-id i
+ *      source-pekare) — samma åtkomst som redan finns via GET /leases.
+ *   2. Sammanställning vid läsning har INGEN andra kopia. Det anonymiseringen
+ *      nollar (`anonymize-tenant.ts`) är borta ur svaret i samma ögonblick —
+ *      det finns ingen historiktabell att glömma att skrubba. Prövas i
+ *      object-history.db.spec.ts mot den RIKTIGA anonymiseringsfunktionen.
+ *
+ * Kvarstående, ÄRVD yta (inte introducerad här): fritextfält som
+ * anonymiseringen medvetet inte rör — `Lease.terminationReason`, ärendetexter,
+ * dokumentnamn. De syns redan i /leases, /maintenance och /documents för samma
+ * roller, och deras skrubbning är anonymiseringsvägens öppna fråga, inte
+ * historikens.
  */
 import type { PrismaClient, UserRole } from '@prisma/client'
 import {
@@ -32,58 +51,79 @@ import {
   toAmount,
   type HistoryEvent,
 } from './history-event'
+import type { HistorySubjectRef } from './history-subject'
 
 /** Vad varje laddare får veta. Scopat på organisationen som allt annat. */
 export interface HistoryQuery {
   prisma: PrismaClient
   organizationId: string
-  tenantId: string
+  subject: HistorySubjectRef
 }
+
+type DimensionKey = 'tenant' | 'unit' | 'property'
 
 export interface HistorySourceDefinition {
   /** Stabil nyckel för källan. Används i felmeddelanden och i tester. */
   key: string
-  /** Fältnamnet på `model Tenant` som posten täcker. Vaktens nyckel. */
-  relation: string
   /** Prisma-modellen som raderna kommer ur (kan skilja sig från relationens typ). */
   table: string
   /**
+   * Fältnamnet på respektive modell som posten täcker. VAKTENS nycklar: varje
+   * relation på Tenant/Unit/Property måste täckas av någon posts `relations`
+   * eller kvitteras i ack-filen. En dimension som saknas här betyder att källan
+   * inte deltar i den dimensionens historik — ett deklarerat beslut, inte en
+   * tystnad.
+   */
+  relations: Partial<Record<DimensionKey, string>>
+  /**
    * Roller som får se källan. `undefined` = alla org-inloggade roller.
    *
-   * ── VARFÖR DEN HÄR RADEN FINNS ─────────────────────────────────────────────
-   *
-   * ETT AGGREGAT FÅR INTE VIDGA ÅTKOMST. Historiken samlar femton källor, och
-   * två av dem har en SNÄVARE grind än de övriga någon annanstans i API:t:
-   *
-   *   /ai-usage · /ai/usage        ACCOUNTANT, ADMIN, OWNER
-   *   POST /tenants/:id/anonymize  OWNER
-   *
-   * Utan den här begränsningen hade en VIEWER kunnat läsa AI-körningar och
-   * GDPR-raderingar via historiken som hen inte kommer åt någon annanstans —
-   * en behörighetsgräns som flyttats av misstag, upptäckt av att
-   * `authz-surface`-golden fällde. Det är precis den defekten som beskrivs i
-   * golden-filens eget huvud: två läckor 2026-08-14 på endpoints vars rollgräns
-   * var HELT KORREKT, men vars SVARSYTA bar mer än anropsytan prövade.
-   *
-   * Begränsningen står DEKLARERAD på källan i stället för som ett villkor inne
-   * i sammanställningen, av samma skäl som registret är deklarerat: en `if` i
-   * en läsväg skyddar bara den läsvägen, och nästa läsväg ärver ingenting.
+   * ETT AGGREGAT FÅR INTE VIDGA ÅTKOMST (planens Del 8, uppmätt i #589): en
+   * källa med snävare grind någon annanstans i API:t behåller den grinden här.
+   * Uppmätt 2026-08-31 för objektdimensionerna: samtliga käll-GET:ar
+   * (maintenance-plans, news, consumption/meters/readings, keys, documents,
+   * inspections) ligger i authz-surface-goldens hink "öppen för VARJE roll",
+   * så unit-/property-historiken bär inga begränsade källor. De två snäva
+   * (AI-körningar, GDPR-radering) finns bara i hyresgästdimensionen.
    */
   restrictedToRoles?: readonly UserRole[]
   load: (q: HistoryQuery) => Promise<HistoryEvent[]>
+}
+
+/**
+ * Villkor per dimension. Att anropa en källa i en dimension den inte deklarerat
+ * är ett programmeringsfel och ska smälla — en tyst tom lista hade sett ut som
+ * "inget hände", vilket är exakt den förväxling registret finns för att hindra.
+ */
+function villkorFör<T>(q: HistoryQuery, per: Partial<Record<DimensionKey, T>>, källa: string): T {
+  const nyckel = q.subject.kind.toLowerCase() as DimensionKey
+  const v = per[nyckel]
+  if (v === undefined) {
+    throw new Error(`historikkällan ${källa} stödjer inte dimensionen ${q.subject.kind}`)
+  }
+  return v
 }
 
 // ── Källorna ────────────────────────────────────────────────────────────────
 
 const leases: HistorySourceDefinition = {
   key: 'lease',
-  relation: 'leases',
   table: 'Lease',
+  relations: { tenant: 'leases', unit: 'leases' },
   // Ett avtal producerar FLERA händelser: det skapades, det aktiverades, det
   // sades upp. Att bara visa `createdAt` hade dolt hela livscykeln.
-  async load({ prisma, organizationId, tenantId }) {
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      {
+        tenant: { organizationId, tenantId: q.subject.id },
+        unit: { organizationId, unitId: q.subject.id },
+      },
+      'lease',
+    )
     const rows = await prisma.lease.findMany({
-      where: { organizationId, tenantId },
+      where,
       select: {
         id: true,
         createdAt: true,
@@ -141,14 +181,20 @@ const leases: HistorySourceDefinition = {
 
 const invoices: HistorySourceDefinition = {
   key: 'invoice-event',
-  relation: 'invoices',
   table: 'InvoiceEvent',
+  relations: { tenant: 'invoices' },
   // Fakturans historik läses ur den APPEND-ONLY händelseloggen, inte ur
   // fakturans nuvarande status. Statusen säger var den är NU; loggen säger vad
   // som hände — och den bär dessutom `actorType`, alltså en riktig aktör.
-  async load({ prisma, organizationId, tenantId }) {
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      { tenant: { invoice: { organizationId, tenantId: q.subject.id } } },
+      'invoice-event',
+    )
     const rows = await prisma.invoiceEvent.findMany({
-      where: { invoice: { organizationId, tenantId } },
+      where,
       select: {
         id: true,
         createdAt: true,
@@ -175,12 +221,18 @@ const invoices: HistorySourceDefinition = {
 
 const rentNotices: HistorySourceDefinition = {
   key: 'rent-notice-event',
-  relation: 'rentNotices',
   table: 'RentNoticeEvent',
+  relations: { tenant: 'rentNotices' },
   // Samma skäl som fakturan: händelseloggen, inte nuvarande status.
-  async load({ prisma, organizationId, tenantId }) {
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      { tenant: { rentNotice: { organizationId, tenantId: q.subject.id } } },
+      'rent-notice-event',
+    )
     const rows = await prisma.rentNoticeEvent.findMany({
-      where: { rentNotice: { organizationId, tenantId } },
+      where,
       select: {
         id: true,
         createdAt: true,
@@ -220,11 +272,25 @@ function severityForRentNoticeEvent(type: string): HistoryEvent['severity'] {
 
 const maintenanceTickets: HistorySourceDefinition = {
   key: 'maintenance-ticket',
-  relation: 'maintenanceTickets',
   table: 'MaintenanceTicket',
-  async load({ prisma, organizationId, tenantId }) {
+  relations: {
+    tenant: 'maintenanceTickets',
+    unit: 'maintenanceTickets',
+    property: 'maintenanceTickets',
+  },
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      {
+        tenant: { organizationId, tenantId: q.subject.id },
+        unit: { organizationId, unitId: q.subject.id },
+        property: { organizationId, propertyId: q.subject.id },
+      },
+      'maintenance-ticket',
+    )
     const rows = await prisma.maintenanceTicket.findMany({
-      where: { organizationId, tenantId },
+      where,
       select: {
         id: true,
         createdAt: true,
@@ -269,11 +335,21 @@ const maintenanceTickets: HistorySourceDefinition = {
 
 const inspections: HistorySourceDefinition = {
   key: 'inspection',
-  relation: 'inspections',
   table: 'Inspection',
-  async load({ prisma, organizationId, tenantId }) {
+  relations: { tenant: 'inspections', unit: 'inspections', property: 'inspections' },
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      {
+        tenant: { organizationId, tenantId: q.subject.id },
+        unit: { organizationId, unitId: q.subject.id },
+        property: { organizationId, propertyId: q.subject.id },
+      },
+      'inspection',
+    )
     const rows = await prisma.inspection.findMany({
-      where: { organizationId, tenantId },
+      where,
       select: {
         id: true,
         createdAt: true,
@@ -318,11 +394,20 @@ const inspections: HistorySourceDefinition = {
 
 const keyHandovers: HistorySourceDefinition = {
   key: 'key-handover',
-  relation: 'keyHandovers',
   table: 'KeyHandover',
-  async load({ prisma, organizationId, tenantId }) {
+  relations: { tenant: 'keyHandovers', unit: 'keyHandovers' },
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      {
+        tenant: { organizationId, tenantId: q.subject.id },
+        unit: { organizationId, unitId: q.subject.id },
+      },
+      'key-handover',
+    )
     const rows = await prisma.keyHandover.findMany({
-      where: { organizationId, tenantId },
+      where,
       select: {
         id: true,
         issuedAt: true,
@@ -366,11 +451,13 @@ const keyHandovers: HistorySourceDefinition = {
 
 const deposits: HistorySourceDefinition = {
   key: 'deposit',
-  relation: 'deposits',
   table: 'Deposit',
-  async load({ prisma, organizationId, tenantId }) {
+  relations: { tenant: 'deposits' },
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(q, { tenant: { organizationId, tenantId: q.subject.id } }, 'deposit')
     const rows = await prisma.deposit.findMany({
-      where: { organizationId, tenantId },
+      where,
       select: {
         id: true,
         createdAt: true,
@@ -425,11 +512,17 @@ const deposits: HistorySourceDefinition = {
 
 const terminationRequests: HistorySourceDefinition = {
   key: 'termination-request',
-  relation: 'terminationRequests',
   table: 'TerminationRequest',
-  async load({ prisma, organizationId, tenantId }) {
+  relations: { tenant: 'terminationRequests' },
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      { tenant: { organizationId, tenantId: q.subject.id } },
+      'termination-request',
+    )
     const rows = await prisma.terminationRequest.findMany({
-      where: { organizationId, tenantId },
+      where,
       select: {
         id: true,
         createdAt: true,
@@ -472,11 +565,21 @@ const terminationRequests: HistorySourceDefinition = {
 
 const documents: HistorySourceDefinition = {
   key: 'document',
-  relation: 'documents',
   table: 'Document',
-  async load({ prisma, organizationId, tenantId }) {
+  relations: { tenant: 'documents', unit: 'documents', property: 'documents' },
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      {
+        tenant: { organizationId, tenantId: q.subject.id },
+        unit: { organizationId, unitId: q.subject.id },
+        property: { organizationId, propertyId: q.subject.id },
+      },
+      'document',
+    )
     const rows = await prisma.document.findMany({
-      where: { organizationId, tenantId },
+      where,
       select: { id: true, createdAt: true, name: true, category: true, uploadedById: true },
     })
     return rows.map((r) => ({
@@ -494,14 +597,20 @@ const documents: HistorySourceDefinition = {
 
 const signedDocuments: HistorySourceDefinition = {
   key: 'document-signed',
-  relation: 'signedDocuments',
   table: 'Document',
+  relations: { tenant: 'signedDocuments' },
   // EGEN post, inte en gren i `document`: `signedByTenantId` är en ANNAN
   // relation på Tenant än `tenantId`. En hyresgäst kan signera ett dokument som
   // hör till någon annan, och den signeringen är hens historik.
-  async load({ prisma, organizationId, tenantId }) {
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      { tenant: { organizationId, signedByTenantId: q.subject.id, signedAt: { not: null } } },
+      'document-signed',
+    )
     const rows = await prisma.document.findMany({
-      where: { organizationId, signedByTenantId: tenantId, signedAt: { not: null } },
+      where,
       select: { id: true, signedAt: true, name: true },
     })
     return rows.map((r) => ({
@@ -509,7 +618,7 @@ const signedDocuments: HistorySourceDefinition = {
       // en avläsning av filtret, inte ett antagande.
       at: r.signedAt as Date,
       type: 'DOCUMENT_SIGNED',
-      actor: { kind: 'HUMAN' as const, id: tenantId, label: null },
+      actor: { kind: 'HUMAN' as const, id: q.subject.id, label: null },
       subject: { kind: 'DOCUMENT' as const, id: r.id, label: r.name },
       description: `Dokument signerat: ${r.name}`,
       amount: null,
@@ -521,18 +630,29 @@ const signedDocuments: HistorySourceDefinition = {
 
 const sentMessages: HistorySourceDefinition = {
   key: 'sent-message',
-  relation: 'sentMessages',
   table: 'SentMessage',
-  async load({ prisma, organizationId, tenantId }) {
+  relations: { tenant: 'sentMessages' },
+  // ENDAST hyresgästdimensionen, med flit: `SentMessage.subject/.content` är
+  // anonymiseringens uttryckliga undantag (bevisfunktion, anonymize-tenant.ts).
+  // Att lyfta ämnesraden till objektnivå vore att sprida just det fält vars
+  // skrubbning är en öppen juridisk fråga. Unit/Property har heller ingen
+  // relation till SentMessage i schemat.
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      { tenant: { organizationId, tenantId: q.subject.id } },
+      'sent-message',
+    )
     const rows = await prisma.sentMessage.findMany({
-      where: { organizationId, tenantId },
+      where,
       select: { id: true, createdAt: true, subject: true, status: true, sentById: true },
     })
     return rows.map((r) => ({
       at: r.createdAt,
       type: 'MESSAGE_SENT',
       actor: humanOrUnknown(r.sentById),
-      subject: { kind: 'TENANT' as const, id: tenantId, label: null },
+      subject: { kind: 'TENANT' as const, id: q.subject.id, label: null },
       description: `Meddelande skickat: ${r.subject}`,
       amount: null,
       severity: r.status === 'FAILED' ? ('WARNING' as const) : ('INFO' as const),
@@ -543,13 +663,19 @@ const sentMessages: HistorySourceDefinition = {
 
 const consumptionCharges: HistorySourceDefinition = {
   key: 'consumption-charge',
-  relation: 'consumptionCharges',
   table: 'ConsumptionCharge',
+  relations: { tenant: 'consumptionCharges' },
   // IMD-motorn skapar dessa maskinellt ur mätaravläsningar — därför SYSTEM,
   // och det är ett påstående som stämmer: ingen människa knappar in dem.
-  async load({ prisma, organizationId, tenantId }) {
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      { tenant: { organizationId, tenantId: q.subject.id } },
+      'consumption-charge',
+    )
     const rows = await prisma.consumptionCharge.findMany({
-      where: { organizationId, tenantId },
+      where,
       select: {
         id: true,
         createdAt: true,
@@ -575,11 +701,17 @@ const consumptionCharges: HistorySourceDefinition = {
 
 const miscCharges: HistorySourceDefinition = {
   key: 'misc-charge',
-  relation: 'miscCharges',
   table: 'MiscCharge',
-  async load({ prisma, organizationId, tenantId }) {
+  relations: { tenant: 'miscCharges' },
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      { tenant: { organizationId, tenantId: q.subject.id } },
+      'misc-charge',
+    )
     const rows = await prisma.miscCharge.findMany({
-      where: { organizationId, tenantId },
+      where,
       select: {
         id: true,
         incidentDate: true,
@@ -606,20 +738,26 @@ const miscCharges: HistorySourceDefinition = {
 
 const anonymizationLogs: HistorySourceDefinition = {
   key: 'anonymization',
-  relation: 'anonymizationLogs',
   table: 'TenantAnonymizationLog',
+  relations: { tenant: 'anonymizationLogs' },
   // Speglar `POST /tenants/:id/anonymize`, som är OWNER-only.
   restrictedToRoles: ['OWNER'],
-  async load({ prisma, organizationId, tenantId }) {
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      { tenant: { organizationId, tenantId: q.subject.id } },
+      'anonymization',
+    )
     const rows = await prisma.tenantAnonymizationLog.findMany({
-      where: { organizationId, tenantId },
+      where,
       select: { id: true, performedAt: true, performedById: true, reason: true },
     })
     return rows.map((r) => ({
       at: r.performedAt,
       type: 'TENANT_ANONYMIZED',
       actor: humanOrUnknown(r.performedById),
-      subject: { kind: 'TENANT' as const, id: tenantId, label: null },
+      subject: { kind: 'TENANT' as const, id: q.subject.id, label: null },
       description: r.reason
         ? `Personuppgifter anonymiserade: ${r.reason}`
         : 'Personuppgifter anonymiserade',
@@ -632,17 +770,22 @@ const anonymizationLogs: HistorySourceDefinition = {
 
 const aiToolExecutions: HistorySourceDefinition = {
   key: 'ai-tool-execution',
-  relation: 'aiToolExecutions',
   table: 'AiToolExecution',
+  relations: { tenant: 'aiToolExecutions' },
+  // AGENTSPÅRET. Planens Del 8: agentens arbete ska synas i SAMMA flöde som
+  // allt annat. Bara hyresgästdimensionen: AiToolExecution bär tenantId men
+  // varken unitId eller propertyId — det finns ingen relation att täcka där.
   // Speglar `/ai-usage` och `/ai/usage`, som är ACCOUNTANT, ADMIN, OWNER.
   restrictedToRoles: ['ACCOUNTANT', 'ADMIN', 'OWNER'],
-  // AGENTSPÅRET. Planens Del 8: agentens arbete ska synas i SAMMA flöde som
-  // allt annat, inte i en separat vy. Fältet och källan finns därför från dag
-  // ett, även innan någon agent existerar — byggs det in i efterhand blir det
-  // fel, och en historik som saknar maskinens handlingar är inte ett spår.
-  async load({ prisma, organizationId, tenantId }) {
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      { tenant: { organizationId, tenantId: q.subject.id } },
+      'ai-tool-execution',
+    )
     const rows = await prisma.aiToolExecution.findMany({
-      where: { organizationId, tenantId },
+      where,
       select: {
         id: true,
         createdAt: true,
@@ -657,7 +800,7 @@ const aiToolExecutions: HistorySourceDefinition = {
       type: `AI_TOOL_${r.success ? 'EXECUTED' : 'FAILED'}`,
       // `userId` bär människan som bad om det — AI:n agerar aldrig av sig själv.
       actor: { kind: 'AGENT' as const, id: r.userId, label: r.toolName },
-      subject: { kind: 'TENANT' as const, id: tenantId, label: null },
+      subject: { kind: 'TENANT' as const, id: q.subject.id, label: null },
       description: r.success
         ? `AI utförde ${r.toolName}${r.confirmedAt ? ' (bekräftad)' : ''}`
         : `AI misslyckades med ${r.toolName}`,
@@ -668,9 +811,167 @@ const aiToolExecutions: HistorySourceDefinition = {
   },
 }
 
+const meters: HistorySourceDefinition = {
+  key: 'meter',
+  table: 'Meter',
+  relations: { unit: 'meters' },
+  // NY i objektdimensionen: mätare hör till lägenheten, inte hyresgästen.
+  // En mätare producerar installations-/borttagningshändelser OCH sina
+  // avläsningar — avläsningen är planens eget exempel på lägenhetens historik.
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(q, { unit: { organizationId, unitId: q.subject.id } }, 'meter')
+    const rows = await prisma.meter.findMany({
+      where,
+      select: {
+        id: true,
+        createdAt: true,
+        installedAt: true,
+        removedAt: true,
+        type: true,
+        unitOfMeasure: true,
+        readings: {
+          select: { id: true, readingDate: true, value: true, source: true, registeredById: true },
+        },
+      },
+    })
+    const out: HistoryEvent[] = []
+    for (const r of rows) {
+      const subject = { kind: 'UNIT' as const, id: q.subject.id, label: null }
+      out.push({
+        // `installedAt` när den finns — det är då mätaren kom på plats.
+        // `createdAt` är bara när någon hann registrera den.
+        at: r.installedAt ?? r.createdAt,
+        type: 'METER_INSTALLED',
+        actor: ACTOR_UNKNOWN,
+        subject,
+        description: `Mätare installerad (${r.type})`,
+        amount: null,
+        severity: 'INFO',
+        source: { table: 'Meter', id: r.id },
+      })
+      if (r.removedAt) {
+        out.push({
+          at: r.removedAt,
+          type: 'METER_REMOVED',
+          actor: ACTOR_UNKNOWN,
+          subject,
+          description: `Mätare borttagen (${r.type})`,
+          amount: null,
+          severity: 'NOTICE',
+          source: { table: 'Meter', id: r.id },
+        })
+      }
+      for (const läsning of r.readings) {
+        out.push({
+          at: läsning.readingDate,
+          type: 'METER_READING',
+          // MANUAL bär den som knappade in; IMPORT/API är maskinens väg.
+          actor:
+            läsning.source === 'MANUAL'
+              ? humanOrUnknown(läsning.registeredById)
+              : { kind: 'SYSTEM' as const, id: null, label: null },
+          subject,
+          description: `Avläsning (${r.type}): ${läsning.value} ${r.unitOfMeasure}`,
+          amount: null,
+          severity: 'INFO',
+          source: { table: 'MeterReading', id: läsning.id },
+        })
+      }
+    }
+    return out
+  },
+}
+
+const maintenancePlans: HistorySourceDefinition = {
+  key: 'maintenance-plan',
+  table: 'MaintenancePlan',
+  relations: { property: 'maintenancePlans' },
+  // NY i fastighetsdimensionen. Planens intervall är dessutom den enda
+  // konfigurerade återkommande förväntan i systemet — luckberäkningen läser
+  // samma rader.
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      { property: { organizationId, propertyId: q.subject.id } },
+      'maintenance-plan',
+    )
+    const rows = await prisma.maintenancePlan.findMany({
+      where,
+      select: {
+        id: true,
+        createdAt: true,
+        completedAt: true,
+        title: true,
+        estimatedCost: true,
+        actualCost: true,
+      },
+    })
+    const out: HistoryEvent[] = []
+    for (const r of rows) {
+      const subject = { kind: 'PROPERTY' as const, id: q.subject.id, label: r.title }
+      out.push({
+        at: r.createdAt,
+        type: 'MAINTENANCE_PLAN_CREATED',
+        actor: ACTOR_UNKNOWN,
+        subject,
+        description: `Underhållsplan upprättad: ${r.title}`,
+        amount: toAmount(r.estimatedCost),
+        severity: 'INFO',
+        source: { table: 'MaintenancePlan', id: r.id },
+      })
+      if (r.completedAt) {
+        out.push({
+          at: r.completedAt,
+          type: 'MAINTENANCE_PLAN_COMPLETED',
+          actor: ACTOR_UNKNOWN,
+          subject,
+          description: `Underhållsplan utförd: ${r.title}`,
+          amount: toAmount(r.actualCost),
+          severity: 'NOTICE',
+          source: { table: 'MaintenancePlan', id: r.id },
+        })
+      }
+    }
+    return out
+  },
+}
+
+const newsPosts: HistorySourceDefinition = {
+  key: 'news-post',
+  table: 'NewsPost',
+  relations: { property: 'newsPosts' },
+  // Bara PUBLICERADE nyheter: ett utkast har inte hänt fastigheten ännu.
+  // Filtret är deklarerat här och speglas i acceptanstestets facit — en
+  // uppräkning som krymper av ett filter måste bära filtret synligt.
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      { property: { organizationId, propertyId: q.subject.id, publishedAt: { not: null } } },
+      'news-post',
+    )
+    const rows = await prisma.newsPost.findMany({
+      where,
+      select: { id: true, publishedAt: true, title: true, createdById: true },
+    })
+    return rows.map((r) => ({
+      at: r.publishedAt as Date,
+      type: 'NEWS_PUBLISHED',
+      actor: humanOrUnknown(r.createdById),
+      subject: { kind: 'PROPERTY' as const, id: q.subject.id, label: null },
+      description: `Nyhet publicerad: ${r.title}`,
+      amount: null,
+      severity: 'INFO' as const,
+      source: { table: 'NewsPost', id: r.id },
+    }))
+  },
+}
+
 /**
- * REGISTRET. Vakten läser `relation` ur varje post och jämför mot
- * `model Tenant` i `schema.prisma`.
+ * REGISTRET. Vakten läser `relations` ur varje post och jämför mot
+ * `model Tenant`, `model Unit` och `model Property` i `schema.prisma`.
  */
 export const HISTORY_SOURCES: readonly HistorySourceDefinition[] = [
   leases,
@@ -688,4 +989,7 @@ export const HISTORY_SOURCES: readonly HistorySourceDefinition[] = [
   miscCharges,
   anonymizationLogs,
   aiToolExecutions,
+  meters,
+  maintenancePlans,
+  newsPosts,
 ]

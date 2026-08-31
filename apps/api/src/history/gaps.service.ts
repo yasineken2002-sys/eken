@@ -1,13 +1,19 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { HISTORY_EXPECTATIONS, type ExpectationDefinition } from './history-expectations'
+import { assertSubjectInOrg, type HistorySubjectRef } from './history-subject'
 
 /**
- * LUCKBERÄKNINGEN — beräknat tillstånd, aldrig en lagrad flagga.
+ * LUCKBERÄKNINGEN — beräknat tillstånd, aldrig en lagrad flagga. Nu för alla
+ * tre dimensionerna, mot SAMMA deklarerade förväntningar.
  *
  * Varje utfall bär den förväntan det mättes mot, inklusive dess källa. En
  * lucka utan förväntan är en gissning, och en tom lista utan förklaring är den
  * tystnad som gör att man slutar leta.
+ *
+ * Dimensionen ändrar bara VILKA rader förväntan prövas mot — aldrig VAD som
+ * förväntas. "En avi per månad avtalet löpt" är samma regel för hyresgästens
+ * avtal, lägenhetens avtal och fastighetens alla avtal.
  */
 
 /** Tre utfall — och det tredje är det som annars försvinner. */
@@ -34,29 +40,25 @@ export interface GapResult {
 }
 
 @Injectable()
-export class TenantGapsService {
+export class GapsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Alla förväntningar prövade mot en hyresgäst.
+   * Alla förväntningar prövade mot ett subjekt.
    *
    * Returnerar en post per förväntan — även de odefinierade och de som inte
-   * gäller. Att filtrera bort dem hade gjort svaret kortare och sämre: en
-   * hyresvärd som ser en tom lista ska kunna veta VARFÖR den är tom.
+   * gäller. Att filtrera bort dem hade gjort svaret kortare och sämre: den som
+   * ser en tom lista ska kunna veta VARFÖR den är tom.
    *
    * `nu` är en parameter och inte `new Date()` inuti, så ett test kan mäta mot
    * en bestämd tidpunkt i stället för mot när det råkade köras.
    */
-  async forTenant(
+  async forSubject(
     organizationId: string,
-    tenantId: string,
+    subject: HistorySubjectRef,
     nu: Date = new Date(),
   ): Promise<GapResult[]> {
-    const tenant = await this.prisma.tenant.findFirst({
-      where: { id: tenantId, organizationId },
-      select: { id: true },
-    })
-    if (!tenant) throw new NotFoundException('Hyresgäst hittades inte')
+    await assertSubjectInOrg(this.prisma, organizationId, subject)
 
     const ut: GapResult[] = []
     for (const e of HISTORY_EXPECTATIONS) {
@@ -72,13 +74,57 @@ export class TenantGapsService {
         continue
       }
       if (e.key === 'rent-notice-per-month')
-        ut.push(await this.avierPerMånad(e, organizationId, tenantId, nu))
+        ut.push(await this.avierPerMånad(e, organizationId, subject, nu))
       if (e.key === 'scheduled-inspection-completed')
-        ut.push(await this.planeradBesiktning(e, organizationId, tenantId, nu))
+        ut.push(await this.planeradBesiktning(e, organizationId, subject, nu))
       if (e.key === 'maintenance-plan-interval')
-        ut.push(await this.underhållsplan(e, organizationId, tenantId, nu))
+        ut.push(await this.underhållsplan(e, organizationId, subject, nu))
     }
     return ut
+  }
+
+  async forTenant(
+    organizationId: string,
+    tenantId: string,
+    nu: Date = new Date(),
+  ): Promise<GapResult[]> {
+    return this.forSubject(organizationId, { kind: 'TENANT', id: tenantId }, nu)
+  }
+
+  async forUnit(
+    organizationId: string,
+    unitId: string,
+    nu: Date = new Date(),
+  ): Promise<GapResult[]> {
+    return this.forSubject(organizationId, { kind: 'UNIT', id: unitId }, nu)
+  }
+
+  async forProperty(
+    organizationId: string,
+    propertyId: string,
+    nu: Date = new Date(),
+  ): Promise<GapResult[]> {
+    return this.forSubject(organizationId, { kind: 'PROPERTY', id: propertyId }, nu)
+  }
+
+  /** Avtalen förväntan prövas mot, per dimension. */
+  private leaseVillkor(
+    organizationId: string,
+    subject: HistorySubjectRef,
+  ): Record<string, unknown> {
+    if (subject.kind === 'TENANT') return { organizationId, tenantId: subject.id }
+    if (subject.kind === 'UNIT') return { organizationId, unitId: subject.id }
+    return { organizationId, unit: { propertyId: subject.id } }
+  }
+
+  /** Besiktningarna förväntan prövas mot, per dimension. */
+  private inspektionsVillkor(
+    organizationId: string,
+    subject: HistorySubjectRef,
+  ): Record<string, unknown> {
+    if (subject.kind === 'TENANT') return { organizationId, tenantId: subject.id }
+    if (subject.kind === 'UNIT') return { organizationId, unitId: subject.id }
+    return { organizationId, propertyId: subject.id }
   }
 
   /**
@@ -95,11 +141,14 @@ export class TenantGapsService {
   private async avierPerMånad(
     e: ExpectationDefinition,
     organizationId: string,
-    tenantId: string,
+    subject: HistorySubjectRef,
     nu: Date,
   ): Promise<GapResult> {
     const leases = await this.prisma.lease.findMany({
-      where: { organizationId, tenantId, status: { in: ['ACTIVE', 'EXPIRED', 'TERMINATED'] } },
+      where: {
+        ...this.leaseVillkor(organizationId, subject),
+        status: { in: ['ACTIVE', 'EXPIRED', 'TERMINATED'] },
+      },
       select: { id: true, tenancyStartDate: true, endDate: true, terminatedAt: true },
     })
     if (leases.length === 0) {
@@ -108,12 +157,12 @@ export class TenantGapsService {
         label: e.label,
         status: 'GÄLLER_EJ',
         source: e.source,
-        detail: 'Hyresgästen har inget avtal som löpt — ingen avi kan förväntas.',
+        detail: 'Inget avtal har löpt här — ingen avi kan förväntas.',
       }
     }
 
     const notices = await this.prisma.rentNotice.findMany({
-      where: { organizationId, tenantId, type: 'RENT' },
+      where: { organizationId, type: 'RENT', leaseId: { in: leases.map((l) => l.id) } },
       select: { leaseId: true, year: true, month: true },
     })
     const finns = new Set(notices.map((n) => `${n.leaseId}:${n.year}-${n.month}`))
@@ -147,7 +196,7 @@ export class TenantGapsService {
         label: e.label,
         status: 'GÄLLER_EJ',
         source: e.source,
-        detail: 'Avtalet har inte löpt en hel månad ännu — ingen avi är förfallen.',
+        detail: 'Inget avtal har löpt en hel månad ännu — ingen avi är förfallen.',
       }
     }
     if (saknade.length === 0) {
@@ -164,7 +213,7 @@ export class TenantGapsService {
       label: e.label,
       status: 'LUCKA',
       source: e.source,
-      detail: `${saknade.length} av ${förväntade} förväntade avier saknas: ${saknade.join(', ')}.`,
+      detail: `${saknade.length} av ${förväntade} förväntade avier saknas: ${saknade.sort().join(', ')}.`,
       missingCount: saknade.length,
     }
   }
@@ -173,10 +222,11 @@ export class TenantGapsService {
   private async planeradBesiktning(
     e: ExpectationDefinition,
     organizationId: string,
-    tenantId: string,
+    subject: HistorySubjectRef,
     nu: Date,
   ): Promise<GapResult> {
-    const alla = await this.prisma.inspection.count({ where: { organizationId, tenantId } })
+    const villkor = this.inspektionsVillkor(organizationId, subject)
+    const alla = await this.prisma.inspection.count({ where: villkor })
     if (alla === 0) {
       return {
         key: e.key,
@@ -187,7 +237,7 @@ export class TenantGapsService {
       }
     }
     const försenade = await this.prisma.inspection.count({
-      where: { organizationId, tenantId, scheduledDate: { lt: nu }, completedAt: null },
+      where: { ...villkor, scheduledDate: { lt: nu }, completedAt: null },
     })
     if (försenade === 0) {
       return {
@@ -208,25 +258,36 @@ export class TenantGapsService {
     }
   }
 
-  /** Underhållsplan vars intervall löpt ut, på fastigheten hyresgästen bor i. */
+  /** Underhållsplan vars intervall löpt ut, på de fastigheter subjektet rör. */
   private async underhållsplan(
     e: ExpectationDefinition,
     organizationId: string,
-    tenantId: string,
+    subject: HistorySubjectRef,
     nu: Date,
   ): Promise<GapResult> {
-    const leases = await this.prisma.lease.findMany({
-      where: { organizationId, tenantId },
-      select: { unit: { select: { propertyId: true } } },
-    })
-    const propertyIds = [...new Set(leases.map((l) => l.unit.propertyId))]
+    let propertyIds: string[]
+    if (subject.kind === 'PROPERTY') {
+      propertyIds = [subject.id]
+    } else if (subject.kind === 'UNIT') {
+      const unit = await this.prisma.unit.findFirst({
+        where: { id: subject.id, property: { organizationId } },
+        select: { propertyId: true },
+      })
+      propertyIds = unit ? [unit.propertyId] : []
+    } else {
+      const leases = await this.prisma.lease.findMany({
+        where: { organizationId, tenantId: subject.id },
+        select: { unit: { select: { propertyId: true } } },
+      })
+      propertyIds = [...new Set(leases.map((l) => l.unit.propertyId))]
+    }
     if (propertyIds.length === 0) {
       return {
         key: e.key,
         label: e.label,
         status: 'GÄLLER_EJ',
         source: e.source,
-        detail: 'Hyresgästen är inte kopplad till någon fastighet.',
+        detail: 'Subjektet är inte kopplat till någon fastighet.',
       }
     }
     // `interval` och `lastDoneYear` är båda nullbara: en plan utan dem bär
