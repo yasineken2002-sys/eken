@@ -34,7 +34,7 @@ och mekaniska skydd som går att få att falla.
 
 | Ursprung | Status |
 | --- | --- |
-| `docs/agent-hyresgastagenten.md` (665 rader, mätt mot `050c085`) | mätt i kod, med filreferenser |
+| `docs/agent-hyresgastagenten.md` — 693 rader (varav 28 raders not, tillagd 2026-08-30), mätt mot `050c085` | mätt i kod, med filreferenser |
 | Rapporter från sessionen 2026-08-29 | mätta, andrahand |
 | Allt märkt FÖRSLAG | design, inte mätning |
 
