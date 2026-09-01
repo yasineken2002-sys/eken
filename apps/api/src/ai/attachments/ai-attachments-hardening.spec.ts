@@ -72,7 +72,15 @@ function makeService(rows: Record<string, unknown>[] = []) {
     getFileBuffer: jest.fn().mockResolvedValue(Buffer.from('data')),
     deleteFile: jest.fn().mockResolvedValue(undefined),
   }
-  return { service: new AiAttachmentsService(prisma as never, storage as never), prisma, storage }
+  return {
+    service: new AiAttachmentsService(
+      prisma as never,
+      storage as never,
+      { report: jest.fn() } as never,
+    ),
+    prisma,
+    storage,
+  }
 }
 
 describe('1. totala byte mot 32 MB', () => {

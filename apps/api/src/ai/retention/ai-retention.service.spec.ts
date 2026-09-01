@@ -101,7 +101,11 @@ function setup(seed: {
       deletedFiles.push(id)
     }),
   }
-  const service = new AiRetentionService(prisma as never, attachments as never)
+  const service = new AiRetentionService(
+    prisma as never,
+    attachments as never,
+    { report: jest.fn() } as never,
+  )
   return { service, prisma, state, attachments, deletedFiles }
 }
 

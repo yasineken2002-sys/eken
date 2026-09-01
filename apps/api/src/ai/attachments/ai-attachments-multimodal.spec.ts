@@ -57,7 +57,15 @@ function makeService(rows: Record<string, unknown>[]) {
     uploadFile: jest.fn(),
     deleteFile: jest.fn(),
   }
-  return { service: new AiAttachmentsService(prisma as never, storage as never), prisma, storage }
+  return {
+    service: new AiAttachmentsService(
+      prisma as never,
+      storage as never,
+      { report: jest.fn() } as never,
+    ),
+    prisma,
+    storage,
+  }
 }
 
 describe('buildContentBlocks', () => {

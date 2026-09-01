@@ -68,7 +68,11 @@ function makeService(
     uploadFile: jest.fn().mockResolvedValue('https://r2/obj'),
     deleteFile: jest.fn().mockResolvedValue(undefined),
   }
-  const service = new AiAttachmentsService(prisma as never, storage as never)
+  const service = new AiAttachmentsService(
+    prisma as never,
+    storage as never,
+    { report: jest.fn() } as never,
+  )
   return { service, prisma, storage, count, create }
 }
 
@@ -189,7 +193,15 @@ describe('AiAttachmentsService.remove', () => {
       aiConversation: { findFirst: jest.fn() },
     }
     const storage = { deleteFile: jest.fn().mockResolvedValue(undefined), uploadFile: jest.fn() }
-    return { service: new AiAttachmentsService(prisma as never, storage as never), prisma, storage }
+    return {
+      service: new AiAttachmentsService(
+        prisma as never,
+        storage as never,
+        { report: jest.fn() } as never,
+      ),
+      prisma,
+      storage,
+    }
   }
 
   it('tar bort en oanvänd bilaga ur både R2 och databasen', async () => {
@@ -239,7 +251,15 @@ describe('AiAttachmentsService.cleanupExpiredAttachments', () => {
           key === failOn ? Promise.reject(new Error('R2 nere')) : Promise.resolve(undefined),
         ),
     }
-    return { service: new AiAttachmentsService(prisma as never, storage as never), prisma, storage }
+    return {
+      service: new AiAttachmentsService(
+        prisma as never,
+        storage as never,
+        { report: jest.fn() } as never,
+      ),
+      prisma,
+      storage,
+    }
   }
 
   it('städar bara OKONSUMERADE och utgångna bilagor', async () => {

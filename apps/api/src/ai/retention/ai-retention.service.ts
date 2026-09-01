@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
+import { runCronSafely } from '../../common/cron/cron-safety'
+import { CronErrorSink } from '../../common/cron/cron-error-sink'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { AiAttachmentsService } from '../attachments/ai-attachments.service'
 import {
@@ -83,6 +85,7 @@ export class AiRetentionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly attachments: AiAttachmentsService,
+    private readonly cronErrors: CronErrorSink,
   ) {}
 
   // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
@@ -95,8 +98,23 @@ export class AiRetentionService {
   // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 5 * * *')
   async scheduledRetention(): Promise<void> {
-    const outcome = await this.runRetention(retentionModeFromEnv())
-    this.report(outcome)
+    // #605 — VARAKTIG FELSÄNKA. Samma defekt som bilagestädningen: inget
+    // app-nivå try/catch, så ett fel på någon av de fyra `collect*`-frågorna
+    // svaldes av @nestjs/schedule i en tyst logger.error och försvann med
+    // containern.
+    //
+    // Gallringen är dessutom den vars tystnad kostar mest att upptäcka sent:
+    // faller den upprepade gånger växer AiToolExecution, AiConversation,
+    // AiMemory och AiUsageLog förbi sina frister utan att någon vet — en
+    // dataskyddsfråga, inte bara en driftfråga.
+    await runCronSafely(
+      'ai-retention',
+      async () => {
+        const outcome = await this.runRetention(retentionModeFromEnv())
+        this.report(outcome)
+      },
+      { logger: this.logger, sink: this.cronErrors },
+    )
   }
 
   /**
