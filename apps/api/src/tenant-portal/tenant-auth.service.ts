@@ -13,6 +13,8 @@ import * as crypto from 'crypto'
 import { Prisma } from '@prisma/client'
 import type { Tenant } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { CronErrorSink } from '../common/cron/cron-error-sink'
+import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
 import { normalizeEmail } from '../common/utils/normalize-email'
@@ -115,6 +117,18 @@ export class TenantAuthService {
     @Inject(forwardRef(() => ContractTemplateService))
     private readonly contracts: ContractTemplateService,
     private readonly locks: LockService,
+    /**
+     * #605 batch 2 — VARAKTIG FELSÄNKA. Två jobb i den här filen, med OLIKA form:
+     *
+     *   sendActivationReminders  per-tenant-loop som fångar, loggar och fortsätter
+     *                            (batch 1:s form) → sänkan läggs BREDVID loggen
+     *   cleanupStaleSessions     ingen felhantering alls → felhanteringen LÄGGS TILL
+     *
+     * Skillnaden är värd att skriva ut: den första ändrar ingenting utom att felet
+     * blir varaktigt, den andra ändrar var felet tar vägen. Ingen av dem gör något
+     * tystare.
+     */
+    private readonly cronErrors: CronErrorSink,
   ) {}
 
   // ── Aktiveringstoken ─────────────────────────────────────────────────────────
@@ -584,6 +598,13 @@ export class TenantAuthService {
   // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 3 * * *')
   async cleanupStaleSessions(): Promise<void> {
+    await runCronSafely('tenant-portal-session-cleanup', () => this.cleanupStaleSessionsUnsafe(), {
+      logger: this.logger,
+      sink: this.cronErrors,
+    })
+  }
+
+  private async cleanupStaleSessionsUnsafe(): Promise<void> {
     const sessions = await this.prisma.tenantSession.deleteMany({
       where: { expiresAt: { lt: new Date() } },
     })
@@ -715,6 +736,10 @@ export class TenantAuthService {
         sent++
       } catch (err) {
         this.logger.error(`Aktiveringspåminnelse för ${tenant.email} failade: ${String(err)}`)
+        await this.cronErrors.report('tenant-activation-reminders', err, {
+          organizationId: tenant.organizationId,
+          detail: { steg: 'påminnelseutskick', tenantId: tenant.id },
+        })
       }
     }
 

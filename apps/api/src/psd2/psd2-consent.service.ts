@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config'
 import { Cron } from '@nestjs/schedule'
 import * as crypto from 'crypto'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { CronErrorSink } from '../common/cron/cron-error-sink'
+import { runCronSafely } from '../common/cron/cron-safety'
 import { BankConsentCryptoService } from './bank-consent-crypto.service'
 import { PSD2_PROVIDER, type BankDataProvider } from './psd2.types'
 
@@ -33,6 +35,15 @@ export class Psd2ConsentService {
     private readonly crypto: BankConsentCryptoService,
     private readonly config: ConfigService,
     @Inject(PSD2_PROVIDER) private readonly provider: BankDataProvider,
+    /**
+     * #605 batch 2 — VARAKTIG FELSÄNKA.
+     *
+     * Jobbet hade INGEN felhantering: ett kast lämnade @Cron-metoden till
+     * @nestjs/schedule, som loggar i containern och inget mer. Till skillnad
+     * från batch 1 fanns här ingen logg att lägga sänkan BREDVID — felhanteringen
+     * har lagts till, och utfallet är strikt mer rapportering.
+     */
+    private readonly cronErrors: CronErrorSink,
   ) {}
 
   private callbackUrl(): string {
@@ -186,6 +197,17 @@ export class Psd2ConsentService {
   // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 3 * * *')
   async cleanupExpiredConsentStates(): Promise<void> {
+    await runCronSafely(
+      'psd2-consent-state-cleanup',
+      () => this.cleanupExpiredConsentStatesUnsafe(),
+      {
+        logger: this.logger,
+        sink: this.cronErrors,
+      },
+    )
+  }
+
+  private async cleanupExpiredConsentStatesUnsafe(): Promise<void> {
     const res = await this.prisma.psd2ConsentState.deleteMany({
       where: { expiresAt: { lt: new Date() } },
     })

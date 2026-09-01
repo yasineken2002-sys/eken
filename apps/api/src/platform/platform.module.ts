@@ -11,6 +11,7 @@ import { PlatformAuthController } from './auth/platform-auth.controller'
 import { PlatformJwtStrategy } from './auth/platform-jwt.strategy'
 import { PlatformGuard } from './auth/platform.guard'
 import { PlatformTokenCleanupService } from './auth/platform-token-cleanup.service'
+import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
 import { PlatformOrganizationsService } from './organizations/platform-organizations.service'
 import { PlatformOrganizationsController } from './organizations/platform-organizations.controller'
 import { ImpersonationService } from './impersonation/impersonation.service'
@@ -28,6 +29,9 @@ import { PlatformAiUsageController } from './ai-usage/platform-ai-usage.controll
 
 @Module({
   imports: [
+    // CronErrorSinkModule (#605 batch 2): purgeExpired rapporterar sina fel
+    // varaktigt. Modulen importerar bara PrismaModule — ingen cykel.
+    CronErrorSinkModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

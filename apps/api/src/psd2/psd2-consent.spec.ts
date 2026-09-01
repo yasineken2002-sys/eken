@@ -117,7 +117,19 @@ function makeService(provider = new MockBankDataProvider()) {
   const fake = makeFake()
   const crypto = new BankConsentCryptoService({ get: () => KEY } as never)
   const config = { get: (_k: string) => undefined }
-  const service = new Psd2ConsentService(fake.prisma as never, crypto, config as never, provider)
+  const service = new Psd2ConsentService(
+    fake.prisma as never,
+    crypto,
+    config as never,
+    provider,
+    // #605: attrappen KASTAR om den anropas, så ett test som råkar gå in i
+    // en felväg inte tyst passerar förbi rapporteringen.
+    {
+      report: () => {
+        throw new Error('#605: cronErrors.report anropades oväntat i test')
+      },
+    } as never,
+  )
   return { service, provider, crypto, ...fake }
 }
 

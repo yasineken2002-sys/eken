@@ -38,6 +38,12 @@ function makeService(sessionRow: unknown) {
     {} as never,
     {} as never,
     {} as never, // locks — cron-låset, används inte av de testade metoderna
+    // #605: attrappen KASTAR om den anropas — se psd2-consent.spec.
+    {
+      report: () => {
+        throw new Error('#605: cronErrors.report anropades oväntat i test')
+      },
+    } as never,
   )
   return { service, findUnique }
 }
@@ -108,6 +114,12 @@ describe('TenantAuthService.createSession — credential-strip (B1 defense-in-de
       {} as never,
       {} as never,
       {} as never, // locks — cron-låset, används inte av de testade metoderna
+      // #605: attrappen KASTAR om den anropas — se psd2-consent.spec.
+      {
+        report: () => {
+          throw new Error('#605: cronErrors.report anropades oväntat i test')
+        },
+      } as never,
     )
 
     const result = await service.login('a@b.se', 'Secret123!')
