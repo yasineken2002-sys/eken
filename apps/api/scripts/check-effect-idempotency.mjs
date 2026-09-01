@@ -347,7 +347,14 @@ export function buildEffectCatalog() { throw new Error('x') }`
     'en sträng som nämner symbolen skulle ha gjort vakten grön')
 
   // KANARIE R2 — fail-closed bortkopplad fäller.
-  const utanKast = ÄKTA_DEK.replace(/throw new Error\(\s*`Verktyget/, 'return null as never; (`Verktyget')
+  //
+  // ⚠️ `replaceAll`, inte `replace`. `buildEffectCatalog` har numera TVÅ
+  // fail-closed-grenar (saknad deklaration, och traceIntegrity: 'OKÄND'), och
+  // med bara den första borttagen uppfyllde den andra fortfarande R2 — den här
+  // kanariefågeln blev då grön och påstod att en bortkopplad spärr fälls. Att
+  // VARJE gren fälls var för sig ägs av effect-idempotency.spec.ts, som har ett
+  // test per gren; R2 äger att fail-closed över huvud taget är påkopplad.
+  const utanKast = ÄKTA_DEK.replaceAll(/throw new Error\(\s*`Verktyget/g, 'return null as never; (`Verktyget')
   t('KANARIE R2 (buildEffectCatalog utan kast → fäller)',
     granska({ ...bas, deklarationSrc: utanKast }).fel.some((f) => f.startsWith('R2')),
     'en bortkopplad fail-closed gjorde vakten grön')
