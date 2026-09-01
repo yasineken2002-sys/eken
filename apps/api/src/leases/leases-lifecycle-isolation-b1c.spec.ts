@@ -74,6 +74,7 @@ describe('LeasesService.processLifecycle — B1c delsystems-isolering', () => {
 
     // Det felande delsystemet larmade — INTE tyst — med egen subsystem-tagg:
     expect(mockedCapture).toHaveBeenCalledTimes(1)
+    expect(cronErrorsSpy.report).toHaveBeenCalledTimes(1)
     const [sentryErr, ctx] = mockedCapture.mock.calls[0]
     expect((sentryErr as Error).message).not.toContain('DB-blipp') // skrubbat
     expect((ctx as { tags: Record<string, string> }).tags).toEqual(
