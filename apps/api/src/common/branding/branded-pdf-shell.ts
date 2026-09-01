@@ -66,8 +66,16 @@ export interface BrandedPdfShellInput {
   hideFooter?: boolean
 }
 
-/** Validerar en hex-färg (#RGB/#RRGGBB); ogiltigt → fallback. Skyddar style-attr. */
-function safeColor(value: string | null | undefined, fallback: string): string {
+/**
+ * Validerar en hex-färg (#RGB/#RRGGBB); ogiltigt → fallback. Skyddar style-attr.
+ *
+ * EXPORTERAD sedan 2026-09-01. Färgen når `style`-attribut i både PDF och mejl,
+ * och en ovaliderad sträng där är en injektionspunkt. Regeln fanns i två
+ * exemplar med identisk regex — här och i `messages.service.ts` — och en tredje
+ * höll på att uppstå på AI-vägen. En regex i tre exemplar är en regex som
+ * kommer att divergera; det här är den enda.
+ */
+export function safeColor(value: string | null | undefined, fallback: string): string {
   return value && /^#[0-9A-Fa-f]{3,8}$/.test(value) ? value : fallback
 }
 
