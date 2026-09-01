@@ -215,6 +215,14 @@ function makeService(args: {
     contractNumbers as never,
     activationQueue as never,
     alltidLedigtLås,
+    // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
+    // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
+    // förbi rapporteringen.
+    {
+      report: () => {
+        throw new Error('#605: cronErrors.report anropades oväntat i test')
+      },
+    } as never,
   )
   return { service, prisma, notifications, activationQueue }
 }
@@ -460,6 +468,14 @@ describe('T1.3 · H: transitionStatus(ACTIVE→EXPIRED) kräver passerat slutdat
       noop,
       activationQueue as never,
       alltidLedigtLås,
+      // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
+      // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
+      // förbi rapporteringen.
+      {
+        report: () => {
+          throw new Error('#605: cronErrors.report anropades oväntat i test')
+        },
+      } as never,
     )
     return { service, prisma, tx }
   }
@@ -524,6 +540,14 @@ describe('T1.3 · G: autoRenew körs HELT före applyDueIncreases', () => {
       noop,
       noop,
       alltidLedigtLås,
+      // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
+      // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
+      // förbi rapporteringen.
+      {
+        report: () => {
+          throw new Error('#605: cronErrors.report anropades oväntat i test')
+        },
+      } as never,
     )
     jest
       .spyOn(

@@ -41,6 +41,14 @@ describe('#73 · terminateExpiredNoticeLeases triggar refund-pending vid utflytt
       noop,
       noop,
       alltidLedigtLås,
+      // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
+      // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
+      // förbi rapporteringen.
+      {
+        report: () => {
+          throw new Error('#605: cronErrors.report anropades oväntat i test')
+        },
+      } as never,
     )
 
     // Privat cron-hjälpare — anropa direkt.

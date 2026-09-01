@@ -20,6 +20,7 @@ import { RentBadDebtService } from './rent-bad-debt.service'
 import { RentDebtService } from './rent-debt.service'
 import { RentBackfillService } from './rent-backfill.service'
 import { RentNoticeCreditService } from './rent-notice-credit.service'
+import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { RentNoticeCreditService } from './rent-notice-credit.service'
     PaymentFreshnessModule,
     DepositsModule,
     NotificationsModule,
+    CronErrorSinkModule,
   ],
   controllers: [AviseringController],
   providers: [

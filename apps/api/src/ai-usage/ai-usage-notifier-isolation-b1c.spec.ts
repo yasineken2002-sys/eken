@@ -12,6 +12,11 @@ import { captureException } from '@sentry/nestjs'
 import { AiUsageNotifierService } from './ai-usage-notifier.service'
 import { alltidLedigtLås } from '../common/redis/lock.test-double'
 
+const cronErrorsSpy = {
+  report: jest.fn(async (_cron: string, _err: unknown, _ctx?: unknown) => undefined),
+}
+beforeEach(() => cronErrorsSpy.report.mockClear())
+
 const mockedCapture = captureException as jest.Mock
 
 function makeService() {
@@ -26,6 +31,11 @@ function makeService() {
     mail as never,
     notifications as never,
     alltidLedigtLås,
+    // #605: cronErrors — den varaktiga felsänkan. INSPELANDE attrapp, inte
+    // kastande: de här testerna driver felvägen MED FLIT och asserterar att
+    // jobbet larmar. En kastande attrapp hade fällt just de test som bevisar
+    // att sänkan nås.
+    cronErrorsSpy as never,
   )
   ;(svc as unknown as { logger: unknown }).logger = {
     log: jest.fn(),
@@ -74,6 +84,7 @@ describe('AiUsageNotifierService — B1c per-org-isolering', () => {
 
     // A larmade — INTE tyst — med org-tagg:
     expect(mockedCapture).toHaveBeenCalledTimes(1)
+    expect(cronErrorsSpy.report).toHaveBeenCalledTimes(1)
     const [sentryErr, ctx] = mockedCapture.mock.calls[0]
     expect((sentryErr as Error).message).not.toContain('update-fel A') // skrubbat
     expect((ctx as { tags: Record<string, string> }).tags).toEqual(

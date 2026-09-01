@@ -8,6 +8,7 @@ import { PLAN_LIMITS, USAGE_WARNING_THRESHOLDS, getMonthStart } from '@eken/shar
 import type { SubscriptionPlan } from '@eken/shared'
 import { CRON_LOCK_TTL_SEC } from '../common/redis/cron-lock'
 import { LockService } from '../common/redis/lock.service'
+import { CronErrorSink } from '../common/cron/cron-error-sink'
 
 /**
  * Daglig påminnelse-cron som kollar varje organisations AI-användning
@@ -33,6 +34,9 @@ export class AiUsageNotifierService {
     // Cron-lås (klass A). Sist i listan: nya beroenden läggs till på slutet
     // så befintliga positionsanrop inte tyst byter betydelse.
     private readonly locks: LockService,
+    // #605 — varaktig felsänka. SIST i listan: nya beroenden läggs till på
+    // slutet så befintliga positionsanrop inte tyst byter betydelse.
+    private readonly cronErrors: CronErrorSink,
   ) {}
 
   @Cron('0 9 * * *')
@@ -76,7 +80,7 @@ export class AiUsageNotifierService {
       async () => {
         await Promise.all([this.checkAiUsage(), this.checkTrialStatus()])
       },
-      { logger: this.logger },
+      { logger: this.logger, sink: this.cronErrors },
     )
   }
 
@@ -169,7 +173,7 @@ export class AiUsageNotifierService {
           }
         }
       },
-      { logger: this.logger, orgIdOf: (o) => o.id },
+      { logger: this.logger, orgIdOf: (o) => o.id, sink: this.cronErrors },
     )
   }
 
@@ -233,7 +237,7 @@ export class AiUsageNotifierService {
           // process — vi vill inte radera kunddata utan bekräftelse.
         }
       },
-      { logger: this.logger, orgIdOf: (o) => o.id },
+      { logger: this.logger, orgIdOf: (o) => o.id, sink: this.cronErrors },
     )
   }
 

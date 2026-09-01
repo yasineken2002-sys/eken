@@ -68,7 +68,15 @@ function makeService(): RentReminderService {
     noop as never, // pdfService
     noop as never, // storage
     noop as never, // rentDebt
-    noop as never, // freshness
+    noop as never, // freshness,
+    // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
+    // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
+    // förbi rapporteringen.
+    {
+      report: () => {
+        throw new Error('#605: cronErrors.report anropades oväntat i test')
+      },
+    } as never,
   )
 }
 

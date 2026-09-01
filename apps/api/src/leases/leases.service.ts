@@ -46,6 +46,7 @@ import {
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { CRON_LOCK_TTL_SEC } from '../common/redis/cron-lock'
 import { LockService } from '../common/redis/lock.service'
+import { CronErrorSink } from '../common/cron/cron-error-sink'
 
 const INCLUDE = {
   unit: { include: { property: true } },
@@ -429,6 +430,9 @@ export class LeasesService {
     // Cron-lås (klass A). Sist i listan: nya beroenden läggs till på slutet
     // så befintliga positionsanrop inte tyst byter betydelse.
     private readonly locks: LockService,
+    // #605 — varaktig felsänka. SIST i listan: nya beroenden läggs till på
+    // slutet så befintliga positionsanrop inte tyst byter betydelse.
+    private readonly cronErrors: CronErrorSink,
   ) {}
 
   async findAll(organizationId: string) {
@@ -1410,9 +1414,16 @@ export class LeasesService {
           { tag: 'rent-increases-apply', run: () => this.rentIncreases.applyDueIncreases(today) },
         ]
         const settled = await Promise.allSettled(subsystems.map((s) => s.run()))
-        const [reminders, terminated, depositReminders, rentApplied] = settled.map((r, i) =>
-          // i indexerar alltid en giltig post (samma längd som subsystems).
-          this.reportLifecycleSubsystem(subsystems[i]!.tag, r),
+        // #605 — rapportören är AWAITAD (Promise.all över en async mappare) i
+        // stället för ett synkront .map. Sänkskrivningen får inte bli flytande:
+        // ett cron-jobb kan mycket väl vara mitt i en körning när containern får
+        // SIGTERM, och då är en oinväntad skrivning borta (samma defekt som #586).
+        // Promise.all bevarar ordningen, så destruktureringen står kvar.
+        const [reminders, terminated, depositReminders, rentApplied] = await Promise.all(
+          settled.map((r, i) =>
+            // i indexerar alltid en giltig post (samma längd som subsystems).
+            this.reportLifecycleSubsystem(subsystems[i]!.tag, r),
+          ),
         )
 
         // #73 catch-up (EFTER termineringssvepet ovan): läk PAID-depositioner på
@@ -1431,7 +1442,7 @@ export class LeasesService {
           `[Leases] Lifecycle done: ${renewed} renewed, ${reminders ?? '—'} reminders, ${terminated ?? '—'} terminated, ${depositReminders ?? '—'} deposit reminders, ${refundSwept} refund-sweep, ${rentApplied ?? '—'} rent increases applied`,
         )
       },
-      { logger: this.logger },
+      { logger: this.logger, sink: this.cronErrors },
     )
   }
 
@@ -1439,10 +1450,10 @@ export class LeasesService {
   // och isolerar det: full detalj ENBART i lokal logg, ett SKRUBBAT syntetiskt
   // fel + egen subsystem-tagg till Sentry (speglar cron-safety-mönstret). En
   // rejected returnerar null → loggraden visar '—' för det delsystemet.
-  private reportLifecycleSubsystem(
+  private async reportLifecycleSubsystem(
     tag: string,
     result: PromiseSettledResult<number>,
-  ): number | null {
+  ): Promise<number | null> {
     if (result.status === 'fulfilled') return result.value
     const err = result.reason
     this.logger.error(
@@ -1451,10 +1462,17 @@ export class LeasesService {
       }`,
       err instanceof Error ? err.stack : undefined,
     )
-    Sentry.captureException(
-      new Error(`Cron leases-process-lifecycle/${tag} misslyckades (se serverlogg för detalj)`),
-      { tags: { cron: 'leases-process-lifecycle', subsystem: tag } },
+    // Sänkan får SAMMA skrubbade fel som Sentry — en andra väg till samma
+    // händelse, inte en ersättning. Sentry-anropet står kvar och FÖRE sänkan.
+    const skrubbat = new Error(
+      `Cron leases-process-lifecycle/${tag} misslyckades (se serverlogg för detalj)`,
     )
+    Sentry.captureException(skrubbat, {
+      tags: { cron: 'leases-process-lifecycle', subsystem: tag },
+    })
+    await this.cronErrors.report('leases-process-lifecycle', skrubbat, {
+      detail: { subsystem: tag },
+    })
     return null
   }
 

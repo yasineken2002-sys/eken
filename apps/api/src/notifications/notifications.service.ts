@@ -294,7 +294,7 @@ export class NotificationsService implements OnModuleInit {
         })
         this.logger.log(`Marked ${result.count} invoices as OVERDUE`)
       },
-      { logger: this.logger },
+      { logger: this.logger, sink: this.cronErrors },
     )
   }
 
@@ -328,7 +328,7 @@ export class NotificationsService implements OnModuleInit {
         })
         this.logger.log(`Marked ${result.count} rent notices as OVERDUE`)
       },
-      { logger: this.logger },
+      { logger: this.logger, sink: this.cronErrors },
     )
   }
 
