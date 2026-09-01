@@ -80,7 +80,12 @@ export const REVERSAL_ROLES: UserRole[] = [UserRole.ACCOUNTANT, UserRole.ADMIN, 
 const REVERSAL_REASON_MIN_LENGTH = 10
 
 /**
- * Betyder den här P2002:an "någon hann före med rättelsen"?
+ * Betyder den här P2002:an "någon hann före med samma affärshändelse"?
+ *
+ * Hette `isReversalRaceConflict` fram till Etapp 2 (G0). Namnet var för snävt:
+ * igenkänningen satt bara inkopplad i `reverseJournalEntry`, men frågan den
+ * ställer — är det här ett ofarligt idempotensrace? — gäller ALLA verifikatvägar
+ * och används nu också av `createNumberedEntry`.
  *
  * JournalEntry har tre unika index och de betyder olika saker:
  *   • reversalOfEntryId               → en rättelse finns redan (ofarligt race)
@@ -92,7 +97,7 @@ const REVERSAL_REASON_MIN_LENGTH = 10
  * #214 — inte sträng-formen som äldre kod antar). Sträng-fallbacken finns för
  * säkerhets skull; okänd form klassas som "inte ett race" och kastas vidare.
  */
-function isReversalRaceConflict(err: unknown): boolean {
+function isIdempotencyRaceConflict(err: unknown): boolean {
   if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false
   const target = (err.meta as { target?: unknown } | undefined)?.target
   const fields = Array.isArray(target)
@@ -319,13 +324,62 @@ export class AccountingService {
   ) {}
 
   /**
-   * Skapar en JournalEntry med ett gap-free, race-säkert verifikationsnummer.
+   * Skapar en JournalEntry med ett gap-free verifikationsnummer, idempotent på
+   * (org, source, sourceId).
    *
-   * Allt sker i EN transaktion: idempotenskontrollen körs om inuti transaktionen
-   * (TOCTOU-säkert tillsammans med det unika indexet på (org, source, sourceId)),
-   * verifikationsnumret allokeras atomiskt, och posten skapas. Misslyckas något
+   * ── VAD SOM FAKTISKT SKYDDAR MOT DUBBLETTEN ──────────────────────────────
+   *
+   * INDEXET. Inte kontrollen i transaktionen. Fram till 2026-08-30 stod här att
+   * `findFirst` inuti transaktionen var "TOCTOU-säkert" — det är falskt, och en
+   * kommentar som påstår en garanti som inte finns är värre än ingen kommentar:
+   * nästa person bygger på den.
+   *
+   * `findFirst` är en ögonblicksläsning under READ COMMITTED. **En läsning som
+   * inte hittar någon rad låser ingenting** — det finns inget att låsa. Två
+   * samtidiga transaktioner med samma nyckel ser därför båda noll rader och går
+   * båda vidare till insert:en. Mätt mot riktig Postgres (bevisad i
+   * `numbered-entry-race.concurrency.spec.ts`):
+   *
+   *     T1 ser 0 rader · T2 ser 0 rader
+   *     T2: ERROR: duplicate key value violates unique constraint
+   *     slutligt antal rader: 1
+   *
+   * Antalet är rätt, men det är `@@unique([organizationId, source, sourceId])`
+   * som gör det. Sekvensallokeringen serialiserar visserligen de två
+   * transaktionerna (`journalEntrySequence.upsert` tar ett radlås), men det sker
+   * EFTER läsningen och räddar därför ingenting.
+   *
+   * `findFirst` är alltså en SNABBVÄG, inte en spärr: den låter ett omförsök som
+   * kommer efter att den första posten committats returnera den befintliga utan
+   * att gå via ett databasfel. Den är kvar av det skälet, inte som skydd.
+   *
+   * ── SAMTIDIGT OMFÖRSÖK FÅR TILLBAKA DET FÖRSTA VERIFIKATET ───────────────
+   *
+   * Det är skillnaden mellan "idempotent" och "råkar bli rätt antal rader". En
+   * agent som gör automatiskt omförsök träffar exakt den här vägen: förloraren
+   * krockade på indexet och fick förr ett kastat P2002 i stället för vinnarens
+   * verifikat. Nu fångas kollisionen (`isIdempotencyRaceConflict`), den
+   * befintliga posten slås upp och returneras — samma svar som en sekventiell
+   * retry hade fått.
+   *
+   * VARFÖR UPPSLAGET LIGGER UTANFÖR TRANSAKTIONEN: en P2002 poison:ar den. Mätt
+   * mot riktig Postgres — en läsning i samma transaktion efter kollisionen ger
+   * `25P02 current transaction is aborted, commands ignored until end of
+   * transaction block`. Uppslaget måste därför ske efter rollbacken, på
+   * `this.prisma`.
+   *
+   * DÄRFÖR GÄLLER ÅTERHÄMTNINGEN INTE EN INSKICKAD `tx`. Kollisionen aborterar
+   * hela ANROPARENS transaktion, och den ska den göra: `tx` skickas in just när
+   * verifikatet måste skapas atomiskt med andra writes (INV-A). Att svälja felet
+   * där hade lämnat anroparen med en död transaktion och ett returvärde som såg
+   * ut som framgång. Felet fortsätter upp, oförändrat.
+   *
+   * ── GAP-FREE ─────────────────────────────────────────────────────────────
+   *
+   * Verifikationsnumret allokeras atomiskt inuti transaktionen. Misslyckas något
    * rullas hela transaktionen — inklusive sekvensökningen — tillbaka, så serien
-   * förblir obruten (BFL 5 kap 6 §).
+   * förblir obruten (BFL 5 kap 6 §). Det gäller också förloraren i racet ovan:
+   * hens nummer bränns aldrig.
    */
   private async createNumberedEntry(params: {
     organizationId: string
@@ -400,9 +454,10 @@ export class AccountingService {
     }
 
     const run = async (tx: Prisma.TransactionClient) => {
-      // Idempotenskontrollen körs inuti transaktionen och matchar samma
-      // (org, source, sourceId) som det unika DB-indexet — så app-kontroll och
-      // DB-constraint är i synk (TOCTOU-säkert).
+      // SNABBVÄG, INTE SPÄRR. Kontrollen matchar samma (org, source, sourceId)
+      // som det unika DB-indexet, så app-kontroll och DB-constraint säger samma
+      // sak — men den LÅSER ingenting när den inte hittar någon rad, och stoppar
+      // därför inte en samtidig skrivning. Det gör indexet. Se docblocket ovan.
       const existing = await tx.journalEntry.findFirst({
         where: { ...params.idempotencyWhere, source: params.source },
         ...(params.include ? { include: params.include } : {}),
@@ -441,7 +496,46 @@ export class AccountingService {
         ...(params.include ? { include: params.include } : {}),
       })
     }
-    return params.tx ? run(params.tx) : this.prisma.$transaction(run, PRISMA_DEFAULT_TX_LIMITS)
+    // Inskickad transaktion: anroparen äger rollbacken, och en kollision ska
+    // rulla tillbaka HELA hens transaktion. Ingen återhämtning här — se
+    // docblocket ovan (25P02).
+    if (params.tx) return run(params.tx)
+
+    try {
+      return await this.prisma.$transaction(run, PRISMA_DEFAULT_TX_LIMITS)
+    } catch (err) {
+      // SAMTIDIGT OMFÖRSÖK: förloraren krockade på idempotensindexet. Vinnarens
+      // verifikat ÄR svaret på förlorarens fråga — samma affärshändelse, samma
+      // nyckel — så det ska returneras, inte kastas som ett fel.
+      //
+      // Disambiguering på err.meta.target, aldrig en blind P2002-fångst:
+      // JournalEntry har tre unika index och (org, series, fiscalYear,
+      // verNumber) betyder DUBBLETT I VERIFIKATIONSSERIEN. Det får aldrig
+      // maskeras som en ofarlig krock.
+      if (!isIdempotencyRaceConflict(err)) throw err
+
+      // UTAN NYCKEL FINNS INGEN VINNARE ATT PEKA UT. `idempotencyWhere` med
+      // `sourceId: null` matchar VARJE nyckellös post i samma källa — uppslaget
+      // hade returnerat en godtycklig främmande rad som om den vore svaret.
+      //
+      // Grenen är onåbar i dag (Postgres räknar NULL som distinkt, så vår egen
+      // rad kan inte krocka på idempotensindexet, och den enda vägen som sätter
+      // `reversalOfEntryId` skickar alltid en nyckel). Den står här ändå: utan
+      // den vilar säkerheten på ett resonemang tvärs över två funktioner, och
+      // första nyckellösa reverseringsvägen någon lägger till bryter det tyst.
+      if (params.sourceId == null) throw err
+
+      const winner = await this.prisma.journalEntry.findFirst({
+        where: { ...params.idempotencyWhere, source: params.source },
+        ...(params.include ? { include: params.include } : {}),
+      })
+      // Ingen post på VÅR nyckel betyder att kollisionen var någon annans —
+      // `reversalOfEntryId`, dvs. någon reverserade samma original via en annan
+      // sourceId. Att returnera den posten hade varit att svara på fel fråga.
+      // Felet fortsätter upp och hanteras där reverseringen startade.
+      if (!winner) throw err
+      return winner
+    }
   }
 
   /**
@@ -2941,7 +3035,7 @@ export class AccountingService {
       // Skrev de exakt samma skäl är utfallet detsamma som avsett och vi säger
       // inget — då hände faktiskt det användaren bad om.
       if (created.description !== intendedDescription) {
-        // Fångas INTE av catch-blocket nedan: isReversalRaceConflict kräver en
+        // Fångas INTE av catch-blocket nedan: isIdempotencyRaceConflict kräver en
         // PrismaClientKnownRequestError, så en ConflictException faller igenom
         // till `throw err` oförändrad.
         throw new ConflictException(
@@ -2963,7 +3057,7 @@ export class AccountingService {
       // fortsätta upp som ett fel, inte maskeras som en ofarlig krock. Därför
       // disambiguering på err.meta.target (lärdomen från plattforms-
       // fakturanumret, #214), inte en blind P2002-fångst.
-      if (isReversalRaceConflict(err)) {
+      if (isIdempotencyRaceConflict(err)) {
         const winner = await this.prisma.journalEntry.findFirst({
           where: { reversalOfEntryId: params.entryId },
           select: { series: true, verNumber: true },

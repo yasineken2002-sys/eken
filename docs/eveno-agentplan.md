@@ -160,8 +160,12 @@ Parallellt och oberoende: backup-token, BankID, PSD2, juridisk slutgenomgång.
 återupptagning finns inte och är avsiktligt bortvald — agenten behöver antingen en egen
 anspråksmodell eller innehållsidempotens; (b) den egenskapen har idag **2 av 30** verktyg;
 (c) `createNumberedEntry` är inte TOCTOU-säker som kommentaren påstår, och ett samtidigt
-omförsök ger ett kastat `P2002` i stället för det första verifikatet. `isReversalRaceConflict`
+omförsök ger ett kastat `P2002` i stället för det första verifikatet. `isIdempotencyRaceConflict`
 finns redan och gör rätt sak — den är bara inte inkopplad i den generella vägen.
+
+> **ÅTGÄRDAT i Etapp 2 (G0).** (c) är löst: kommentaren rättad, igenkänningen inkopplad i
+> `createNumberedEntry`, bevisad mot riktig Postgres i
+> `numbered-entry-race.concurrency.spec.ts`. (a) och (b) står kvar — de hör till gaffeln.
 
 **Etapp 5 blev större.** Den räknade med R5 som en befintlig spärr. Se 2b.
 
@@ -274,9 +278,15 @@ slutligt antal rader: 1
 Utfallet är rätt — men det är **indexet** som räddar det, inte att kontrollen ligger i
 transaktionen. En läsning som inte hittar någon rad låser ingenting. Följden: den andra
 anroparen får ett kastat `P2002` i stället för det första verifikatet tillbaka. En agent
-som gör automatiskt omförsök träffar det. `isReversalRaceConflict`
+som gör automatiskt omförsök träffar det. `isIdempotencyRaceConflict`
 (`accounting.service.ts:95`) fångar exakt det felet men är bara inkopplad i
 `reverseJournalEntry` (`:2851`), inte i den generella vägen.
+
+> **ÅTGÄRDAT i Etapp 2 (G0).** Mätningen ovan beskriver läget 2026-08-30. Kommentaren är
+> rättad till vad koden gör, och igenkänningen är inkopplad i den generella vägen.
+> Uppslaget ligger UTANFÖR transaktionen — en `P2002` poison:ar den (`25P02`) — och en
+> inskickad `tx` återhämtas medvetet INTE: kollisionen ska rulla tillbaka anroparens hela
+> transaktion.
 
 **Unikt index — finns i både schema och drift.** `schema.prisma:1685`
 (`@@unique([organizationId, source, sourceId])`); live som
