@@ -1,0 +1,83 @@
+{
+  "$comment": "KVITTERINGAR — @Cron-jobb som ännu inte når den varaktiga felsänkan (common/cron/cron-error-sink.ts). Ärendet är #605.",
+  "$howto": "Listan fäller ÅT BÅDA HÅLLEN: ett okvitterat jobb utan sänka är RÖTT, och en kvittering för ett jobb som REDAN når sänkan är också RÖTT. Konverterade du ett jobb? Ta bort posten. Lägg ALDRIG till en post utan att skriva VARFÖR och VEM som äger konverteringen — en kvitteringslista utan skäl är en lista över saker ingen minns varför de står där.",
+  "$note": "MÄTT mot befee7b: 25 @Cron-jobb, 0 når ErrorLog-sänkan. 12 har en PARTIELL täckning (Sentry via cron-hjälparna), 13 har ENDAST den lokala loggen. 7 av de 25 har dessutom den farliga per-org-formen: felet räknas, loopen fortsätter, och körningen ser lyckad ut. Talet ska bara gå NEDÅT.",
+  "total": 25,
+  "jobs": {
+    "ai/attachments/ai-attachments.service.ts::cleanupExpiredAttachments": {
+      "reason": "OTÄCKT — VÄRSTA NIVÅN: felet når ENDAST containerns lokala logg, som inte överlever nästa deploy. 204 merges till main på 30 dagar betyder minst lika många containerbyten; ett fel från förra veckan finns ingenstans att fråga efter. ström A äger apps/api/src/ai/ — konverteringen är deras."
+    },
+    "ai/retention/ai-retention.service.ts::scheduledRetention": {
+      "reason": "OTÄCKT — VÄRSTA NIVÅN: felet når ENDAST containerns lokala logg, som inte överlever nästa deploy. 204 merges till main på 30 dagar betyder minst lika många containerbyten; ett fel från förra veckan finns ingenstans att fråga efter. ström A äger apps/api/src/ai/ — konverteringen är deras."
+    },
+    "ai-usage/ai-usage-notifier.service.ts::dailyCheck": {
+      "reason": "PARTIELLT TÄCKT: felet når Sentry via runCronSafely, men inte ErrorLog. Alltså synligt för den med Sentry-access, men inte i produktens egen felvy och inte sökbart mot organisation. ligger i ai-usage/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "avisering/avisering.scheduler.ts::generateForCurrentMonth": {
+      "reason": "PARTIELLT TÄCKT: felet når Sentry via runCronSafely, men inte ErrorLog. Alltså synligt för den med Sentry-access, men inte i produktens egen felvy och inte sökbart mot organisation. ligger i avisering/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "avisering/rent-bad-debt.service.ts::reclassifyProbableLosses": {
+      "reason": "PARTIELLT TÄCKT: felet når Sentry via runCronSafely, men inte ErrorLog. Alltså synligt för den med Sentry-access, men inte i produktens egen felvy och inte sökbart mot organisation. PER-ORG-TYST: fångar fel inuti loopen, räknar upp en räknare och fortsätter — körningen rapporterar \"n lyckade, m misslyckade\" och SER LYCKAD UT. ligger i avisering/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "avisering/rent-reminder.service.ts::escalateOverdueRentNotices": {
+      "reason": "PARTIELLT TÄCKT: felet når Sentry via runCronSafely, men inte ErrorLog. Alltså synligt för den med Sentry-access, men inte i produktens egen felvy och inte sökbart mot organisation. PER-ORG-TYST: fångar fel inuti loopen, räknar upp en räknare och fortsätter — körningen rapporterar \"n lyckade, m misslyckade\" och SER LYCKAD UT. ligger i avisering/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "avisering/rent-reminder.service.ts::escalateRemindedToInkassoReady": {
+      "reason": "PARTIELLT TÄCKT: felet når Sentry via runCronSafely, men inte ErrorLog. Alltså synligt för den med Sentry-access, men inte i produktens egen felvy och inte sökbart mot organisation. PER-ORG-TYST: fångar fel inuti loopen, räknar upp en räknare och fortsätter — körningen rapporterar \"n lyckade, m misslyckade\" och SER LYCKAD UT. ligger i avisering/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "backup/backup.scheduler.ts::dailyBackup": {
+      "reason": "OTÄCKT — VÄRSTA NIVÅN: felet når ENDAST containerns lokala logg, som inte överlever nästa deploy. 204 merges till main på 30 dagar betyder minst lika många containerbyten; ett fel från förra veckan finns ingenstans att fråga efter. ligger i backup/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "backup/backup.scheduler.ts::dailyFreshnessCheck": {
+      "reason": "OTÄCKT — VÄRSTA NIVÅN: felet når ENDAST containerns lokala logg, som inte överlever nästa deploy. 204 merges till main på 30 dagar betyder minst lika många containerbyten; ett fel från förra veckan finns ingenstans att fråga efter. ligger i backup/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "leases/leases.service.ts::processLifecycle": {
+      "reason": "PARTIELLT TÄCKT: felet når Sentry via runCronSafely, men inte ErrorLog. Alltså synligt för den med Sentry-access, men inte i produktens egen felvy och inte sökbart mot organisation. ligger i leases/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "notifications/notifications.service.ts::deleteOld": {
+      "reason": "OTÄCKT — VÄRSTA NIVÅN: felet når ENDAST containerns lokala logg, som inte överlever nästa deploy. 204 merges till main på 30 dagar betyder minst lika många containerbyten; ett fel från förra veckan finns ingenstans att fråga efter. ligger i notifications/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "notifications/notifications.service.ts::markOverdueInvoices": {
+      "reason": "PARTIELLT TÄCKT: felet når Sentry via runCronSafely, men inte ErrorLog. Alltså synligt för den med Sentry-access, men inte i produktens egen felvy och inte sökbart mot organisation. ligger i notifications/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "notifications/notifications.service.ts::markOverdueRentNotices": {
+      "reason": "PARTIELLT TÄCKT: felet når Sentry via runCronSafely, men inte ErrorLog. Alltså synligt för den med Sentry-access, men inte i produktens egen felvy och inte sökbart mot organisation. ligger i notifications/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "notifications/notifications.service.ts::sendMorningInsights": {
+      "reason": "OTÄCKT — VÄRSTA NIVÅN: felet når ENDAST containerns lokala logg, som inte överlever nästa deploy. 204 merges till main på 30 dagar betyder minst lika många containerbyten; ett fel från förra veckan finns ingenstans att fråga efter. PER-ORG-TYST: fångar fel inuti loopen, räknar upp en räknare och fortsätter — körningen rapporterar \"n lyckade, m misslyckade\" och SER LYCKAD UT. ligger i notifications/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "notifications/notifications.service.ts::sendWeeklySummary": {
+      "reason": "OTÄCKT — VÄRSTA NIVÅN: felet når ENDAST containerns lokala logg, som inte överlever nästa deploy. 204 merges till main på 30 dagar betyder minst lika många containerbyten; ett fel från förra veckan finns ingenstans att fråga efter. PER-ORG-TYST: fångar fel inuti loopen, räknar upp en räknare och fortsätter — körningen rapporterar \"n lyckade, m misslyckade\" och SER LYCKAD UT. ligger i notifications/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "notifications/notifications.service.ts::sendMonthlyReport": {
+      "reason": "OTÄCKT — VÄRSTA NIVÅN: felet når ENDAST containerns lokala logg, som inte överlever nästa deploy. 204 merges till main på 30 dagar betyder minst lika många containerbyten; ett fel från förra veckan finns ingenstans att fråga efter. PER-ORG-TYST: fångar fel inuti loopen, räknar upp en räknare och fortsätter — körningen rapporterar \"n lyckade, m misslyckade\" och SER LYCKAD UT. ligger i notifications/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "notifications/payment-reminder.service.ts::processOverdueReminders": {
+      "reason": "PARTIELLT TÄCKT: felet når Sentry via runCronSafely, men inte ErrorLog. Alltså synligt för den med Sentry-access, men inte i produktens egen felvy och inte sökbart mot organisation. PER-ORG-TYST: fångar fel inuti loopen, räknar upp en räknare och fortsätter — körningen rapporterar \"n lyckade, m misslyckade\" och SER LYCKAD UT. ligger i notifications/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "platform/auth/platform-token-cleanup.service.ts::purgeExpired": {
+      "reason": "OTÄCKT — VÄRSTA NIVÅN: felet når ENDAST containerns lokala logg, som inte överlever nästa deploy. 204 merges till main på 30 dagar betyder minst lika många containerbyten; ett fel från förra veckan finns ingenstans att fråga efter. ligger i platform/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "platform/invoices/platform-invoices.service.ts::createMonthlyInvoicesCron": {
+      "reason": "PARTIELLT TÄCKT: felet når Sentry via runCronSafely, men inte ErrorLog. Alltså synligt för den med Sentry-access, men inte i produktens egen felvy och inte sökbart mot organisation. ligger i platform/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "platform/invoices/platform-invoices.service.ts::sendRemindersAndEscalate": {
+      "reason": "PARTIELLT TÄCKT: felet når Sentry via runCronSafely + forEachOrgSafely, men inte ErrorLog. Alltså synligt för den med Sentry-access, men inte i produktens egen felvy och inte sökbart mot organisation. ligger i platform/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "platform/invoices/platform-invoices.service.ts::convertExpiredTrialsCron": {
+      "reason": "PARTIELLT TÄCKT: felet når Sentry via runCronSafely, men inte ErrorLog. Alltså synligt för den med Sentry-access, men inte i produktens egen felvy och inte sökbart mot organisation. ligger i platform/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "platform/invoices/platform-invoices.service.ts::sendTrialEndingReminders": {
+      "reason": "OTÄCKT — VÄRSTA NIVÅN: felet når ENDAST containerns lokala logg, som inte överlever nästa deploy. 204 merges till main på 30 dagar betyder minst lika många containerbyten; ett fel från förra veckan finns ingenstans att fråga efter. ligger i platform/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "psd2/psd2-consent.service.ts::cleanupExpiredConsentStates": {
+      "reason": "OTÄCKT — VÄRSTA NIVÅN: felet når ENDAST containerns lokala logg, som inte överlever nästa deploy. 204 merges till main på 30 dagar betyder minst lika många containerbyten; ett fel från förra veckan finns ingenstans att fråga efter. ligger i psd2/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "tenant-portal/tenant-auth.service.ts::cleanupStaleSessions": {
+      "reason": "OTÄCKT — VÄRSTA NIVÅN: felet når ENDAST containerns lokala logg, som inte överlever nästa deploy. 204 merges till main på 30 dagar betyder minst lika många containerbyten; ett fel från förra veckan finns ingenstans att fråga efter. ligger i tenant-portal/, utanför common/ — konverteringen kräver ett eget PR."
+    },
+    "tenant-portal/tenant-auth.service.ts::sendActivationReminders": {
+      "reason": "OTÄCKT — VÄRSTA NIVÅN: felet når ENDAST containerns lokala logg, som inte överlever nästa deploy. 204 merges till main på 30 dagar betyder minst lika många containerbyten; ett fel från förra veckan finns ingenstans att fråga efter. ligger i tenant-portal/, utanför common/ — konverteringen kräver ett eget PR."
+    }
+  }
+}

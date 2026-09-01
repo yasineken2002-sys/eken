@@ -534,6 +534,44 @@ jobs:
       - name: Verify shutdown hooks and the stall budget are wired
         run: node apps/api/scripts/check-graceful-shutdown.mjs
 
+  cron-error-sink-guard:
+    name: Cron error sink guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # #605 — ett cron-fel ska gå att hitta i morgon.
+      #
+      # Mätt mot befee7b, per METODKROPP och med *Unsafe-delegaten följd:
+      #
+      #   25 @Cron-jobb
+      #    0  skriver till ErrorLog
+      #   12  har någon varaktig rapportväg (Sentry via cron-hjälparna)
+      #   13  har ENDAST containerns lokala logg
+      #
+      # Loggen överlever inte nästa deploy: 204 merges till main på 30 dagar
+      # betyder minst lika många containerbyten. Och 7 av de 25 har den farliga
+      # per-org-formen — felet räknas, loopen fortsätter, körningen ser lyckad
+      # ut, och en kund som slutat få sin rapport syns som ett tal i en logg som
+      # roteras bort.
+      #
+      # Regeln frågar inte "finns det felhantering" — det gör det, och den är
+      # problemet. Den frågar om jobbet NÅR den varaktiga sänkan. Både mängden
+      # cron-jobb och sänkans rapportmetod HÄRLEDS ur koden; ingen av dem listas.
+      #
+      # Kvitteringen fäller åt BÅDA hållen: ett okvitterat jobb utan sänka är
+      # rött, och ett kvitterat jobb som REDAN når sänkan är också rött.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (rule + scope + ack both ways)
+        run: node apps/api/scripts/check-cron-error-sink.mjs --self-test
+
+      - name: Verify every @Cron reaches a durable failure sink
+        run: node apps/api/scripts/check-cron-error-sink.mjs
+
   source-scan-canary-guard:
     name: Source scanner canary guard
     runs-on: ubuntu-latest
@@ -1462,6 +1500,7 @@ jobs:
       - pdf-selfcontained-guard
       - guard-preprocessor-guard
       - source-scan-canary-guard
+      - cron-error-sink-guard
       - graceful-shutdown-guard
       - skip-precondition-guard
       - reminder-fee-guard

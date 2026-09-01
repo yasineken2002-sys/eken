@@ -65,7 +65,7 @@
  */
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { codeMask, blankComments, tokenize, kanariefåglar, KANARIEFÅGEL_LÄGEN } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -654,4 +654,11 @@ function main() {
   )
 }
 
-main()
+/**
+ * CLI-skyddet är inte kosmetik: filen EXPORTERAR `findCronJobs`, och utan det
+ * här körde hela vakten som en bieffekt av att någon importerade härledningen.
+ * Uppmätt när `check-cron-error-sink.mjs` importerade den — den andra vaktens
+ * utskrift dök upp mitt i den förstas självtest.
+ */
+const körsDirekt = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+if (körsDirekt) main()
