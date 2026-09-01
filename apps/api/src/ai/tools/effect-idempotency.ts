@@ -49,6 +49,16 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  *
  * Nollan sist är den viktiga: problemet är mekaniskt lösbart. Men den gäller
  * bara inom spårets livslängd — se `KÖ_FÖNSTER` nedan.
+ *
+ * ── POLICYN, SATT 2026-09-01 ────────────────────────────────────────────────
+ *
+ *     KRÄVER_MÄNNISKA  15      AUTOMATISK  15
+ *     policybeslutade  27      obeslutade   3  (skälen står vid posterna)
+ *     faktiskt återupptagbara i dag: 10
+ *
+ * Skillnaden mellan 15 AUTOMATISK och 10 återupptagbara är inte en policyfråga:
+ * fem poster faller på att spåret är `INGET`. De behöver en innehållsnyckel,
+ * inte ett beslut — och det är nästa steg, inte det här.
  */
 
 /**
@@ -69,10 +79,43 @@ export type EffectIdempotency = 'IDEMPOTENT' | 'DEDUPLICERBAR' | 'OKÄND'
 export type IdempotencyUnit = 'ANROP' | 'EFFEKT'
 
 /**
- * POLICY, inte mekanik. `mark_sent_to_collection` är mekaniskt `IDEMPOTENT` och
- * står ändå `KRÄVER_MÄNNISKA`: den skriver en permanent DEBT_COLLECTION-post mot
- * en enskild person. Att något är säkert att köra om betyder inte att en maskin
- * bör göra det.
+ * POLICY, inte mekanik.
+ *
+ * ── PRINCIPEN SOM AVGÖR VÄRDET ──────────────────────────────────────────────
+ *
+ * Frågan är INTE "är det säkert att köra om" — den besvaras redan av
+ * `effectIdempotency` och `traceDurability`, och den är mekanisk.
+ *
+ *     Frågan är: SKULLE EN DUBBLETT SYNAS FÖR EN MÄNNISKA UTANFÖR SYSTEMET?
+ *
+ * Syns den — ett brev, en signeringsinbjudan, ett krav, en post i
+ * hyresgästportalen, en förändrad hyra — är svaret `KRÄVER_MÄNNISKA`, oavsett
+ * hur säker mekaniken är. Stannar dubbletten inne i systemet, där en operatör
+ * kan se och rätta den, får den vara `AUTOMATISK`.
+ *
+ * `mark_sent_to_collection` är provet på att principen inte är samma sak som
+ * mekaniken: den är `IDEMPOTENT` och står ändå `KRÄVER_MÄNNISKA`, eftersom den
+ * skriver en permanent DEBT_COLLECTION-post mot en enskild person.
+ *
+ * ── PRINCIPEN TILLÄMPAS PÅ ARTEFAKTEN, INTE PÅ NAMNET ───────────────────────
+ *
+ * Tre poster såg utåtriktade ut och är det inte. Mätt 2026-09-01:
+ *
+ *   • `create_invoice` skapar `status: 'DRAFT'`, och portalen döljer utkast
+ *     (`getInvoices`: `status: { not: 'DRAFT' }`). Dubbletten syns bara för
+ *     operatören.
+ *   • `create_maintenance_ticket` sätter `propertyId` men INGEN `tenantId`, och
+ *     `getMaintenanceTickets` filtrerar på `tenantId`. Ärendet hamnar aldrig i
+ *     någons portal.
+ *   • `update_maintenance_status` skriver sin kommentar med `isInternal: true`.
+ *
+ * Och en som såg intern ut och inte är det: `generate_lease_contract` sätter
+ * `tenantId: lease.tenantId` på dokumentet, och `getDocuments` filtrerar bara
+ * bort kategorin INVOICE — en andra kontrakts-PDF hamnar alltså i hyresgästens
+ * dokumentlista.
+ *
+ * Slå upp vad verktyget FAKTISKT skriver och vem som kan läsa det. Namnet
+ * räcker inte, och gissningen faller åt båda hållen.
  */
 export type ResumptionPolicy = 'AUTOMATISK' | 'KRÄVER_MÄNNISKA'
 
@@ -128,6 +171,11 @@ export interface EffectDeclaration {
    * Har policyn FATTATS, eller står värdet där konservativt i väntan på ett
    * beslut? `false` tvingar `KRÄVER_MÄNNISKA` — annars hade "ingen har tänkt på
    * det här än" sett ut som "en människa behövs", och de två är olika saker.
+   *
+   * Sätt `true` bara när principen ovan faktiskt prövats mot vad verktyget
+   * skriver. Tre poster står kvar på `false` 2026-09-01, och skälen står vid
+   * respektive post — två därför att koden sa emot premissen, en därför att den
+   * aldrig togs upp.
    */
   policyBeslutad: boolean
   /** Tom lista är tillåten BARA när effectIdempotency inte är IDEMPOTENT. */
@@ -158,8 +206,8 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [
       { typ: 'UNIKT_INDEX', modell: 'RentNotice', falt: ['leaseId', 'year', 'month', 'type'] },
     ],
@@ -172,8 +220,8 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [
       {
         typ: 'STATUSGRIND',
@@ -190,13 +238,26 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [{ typ: 'UNIKT_INDEX', modell: 'InvoicePayment', falt: ['bankTransactionId'] }],
   },
 
   // `if (transaction.status !== 'MATCHED') throw` — en omkörning mot en redan
   // hävd matchning avvisas.
+  //
+  // ⚠️ OBESLUTAD MED FLIT. Den föreslogs som AUTOMATISK på premissen att den är
+  // en intern bankflagga. Koden säger emot: `unmatchTransaction` reverserar
+  // betalningens verifikat (`reverseJournalEntryForPayment`, atomiskt), RADERAR
+  // allokeringarna (`invoicePayment.deleteMany`, `rentNoticePayment.deleteMany`),
+  // återställer fakturans och avins status, och skriver InvoiceEvent. Skulden
+  // hyresgästen ser i portalen kommer alltså tillbaka, och kravtrappan kan
+  // starta om.
+  //
+  // Strikt enligt principen ovan vore AUTOMATISK ändå rätt: statusgrinden gör en
+  // DUBBLETT omöjlig, och det är dubbletten principen frågar om. Men premissen
+  // som beslutet vilade på höll inte, och ett beslut fattat på fel premiss är
+  // värre än ett obeslutat. Bekräfta med vetskapen om vad den rör.
   unmatch_transaction: {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
@@ -218,8 +279,8 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [{ typ: 'UNIKT_INDEX', modell: 'Unit', falt: ['propertyId', 'unitNumber'] }],
   },
 
@@ -230,8 +291,8 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_HASH', livslangd: DB_RAD },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [
       {
         typ: 'INNEHÅLLSHASH',
@@ -251,8 +312,8 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_HASH', livslangd: DB_RAD },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [
       {
         typ: 'INNEHÅLLSHASH',
@@ -276,7 +337,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_HASH', livslangd: DB_RAD },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [
       {
         typ: 'INNEHÅLLSHASH',
@@ -297,8 +358,8 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [
       { typ: 'REN_UPPDATERING', fil: 'apps/api/src/tenants/tenants.service.ts', symbol: 'update' },
     ],
@@ -311,8 +372,8 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [
       {
         typ: 'REN_UPPDATERING',
@@ -326,8 +387,8 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [
       {
         typ: 'REN_UPPDATERING',
@@ -344,7 +405,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [
       {
         typ: 'STATUSGRIND',
@@ -361,7 +422,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [
       {
         typ: 'STATUSGRIND',
@@ -399,7 +460,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [
       {
         typ: 'STATUSGRIND',
@@ -423,7 +484,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'KÖ_FÖNSTER', livslangd: KO_FONSTER },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [],
   },
 
@@ -438,12 +499,21 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
       livslangd: 'nyckeln finns men är unik per körning — dedupar inget omförsök',
     },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [],
   },
 
   // LOOP över förfallna fakturor, try/catch per mottagare, sent++. Ingen nyckel
   // alls skickas till mailService. Enheten MÅSTE bli EFFEKT.
+  //
+  // ⚠️ OBESLUTAD — den togs aldrig upp. Verktyget saknades i BÅDA listorna när
+  // policyn sattes 2026-09-01 (12 + 17 = 29 av 30), så värdet här är ingens
+  // beslut. Det står kvar konservativt, vilket är hela poängen med fältet:
+  // en lucka i en uppräkning ska bli en obeslutad post, inte en tyst AUTOMATISK.
+  //
+  // Enligt principen ovan pekar allt mot KRÄVER_MÄNNISKA — den skickar brev
+  // till människor, i en loop, utan nyckel — men det är ett beslut, inte en
+  // härledning, och därför inte mitt att fatta.
   send_overdue_reminders: {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'EFFEKT',
@@ -461,12 +531,22 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [],
   },
 
   // PDF → R2 → Document.create. Document saknar unikt index; en omkörning ger
   // ett andra dokument. Document.contentHash finns redan och vore nyckeln.
+  //
+  // ⚠️ OBESLUTAD MED FLIT. Den föreslogs som AUTOMATISK, rimligen på premissen
+  // att en genererad PDF stannar internt. Koden säger emot: verktyget sätter
+  // `tenantId: lease.tenantId` och `category: 'CONTRACT'`, och portalens
+  // `getDocuments` filtrerar bara bort kategorin INVOICE. En andra
+  // kontrakts-PDF hamnar alltså i HYRESGÄSTENS dokumentlista — och till skillnad
+  // från unmatch är dubbletten här fullt möjlig, eftersom spåret är INGET.
+  //
+  // Enligt principen ovan är det då KRÄVER_MÄNNISKA. Den står som obeslutad och
+  // inte som beslutad, eftersom kallelsen är din.
   generate_lease_contract: {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
@@ -482,8 +562,8 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [],
   },
 
@@ -493,7 +573,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [],
   },
 
@@ -504,7 +584,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [],
   },
 
@@ -513,8 +593,8 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [],
   },
 
@@ -525,8 +605,8 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [],
   },
 
@@ -535,8 +615,8 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [],
   },
 
@@ -548,7 +628,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [],
   },
 
@@ -559,8 +639,8 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår för kommentaren' },
-    resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    resumptionPolicy: 'AUTOMATISK',
+    policyBeslutad: true,
     mekanismer: [],
   },
 
@@ -576,7 +656,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
       livslangd: 'fullbetalning spärras av status; delbetalning har inget spår',
     },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [],
   },
 }

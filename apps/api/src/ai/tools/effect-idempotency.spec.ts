@@ -116,14 +116,57 @@ describe('effektklassificeringen', () => {
       }).toEqual({ idempotent: 16, deduplicerbar: 14, okand: 0 })
     })
 
-    it('INGENTING är återupptagbart i dag utom det som saknar effekt', () => {
-      // Deklarationen bygger inte motorn. Att bara `export_sie4` — en ren
-      // läsning — passerar är hela poängen med att bygga klassificeringen
-      // först: den öppnar ingenting, den gör bara frågan besvarbar.
+    it('27 av 30 poster är policybeslutade — 3 står kvar med skäl', () => {
+      // Fältets syfte är att en LUCKA ska synas. Ändras något av de tre måste
+      // den här raden ändras i samma PR, och skälet vid posten med den.
+      const obeslutade = buildEffectCatalog()
+        .filter((e) => !e.policyBeslutad)
+        .map((e) => e.name)
+        .sort()
+      expect(obeslutade).toEqual([
+        'generate_lease_contract',
+        'send_overdue_reminders',
+        'unmatch_transaction',
+      ])
+    })
+
+    it('exakt 10 verktyg är återupptagbara — alla med ett spår som finns', () => {
+      // Efter policybesluten 2026-09-01. Listan är HÄRLEDD, inte vald: den är
+      // snittet av AUTOMATISK och "spåret finns". Fem AUTOMATISK-poster faller
+      // ur på det andra villkoret, och det är avsiktligt — att en effekt får
+      // återupptas hjälper ingen förrän något kan svara på om den redan skedde.
       const resumable = buildEffectCatalog()
         .filter((e) => e.autoResumable)
         .map((e) => e.name)
-      expect(resumable).toEqual(['export_sie4'])
+        .sort()
+      expect(resumable).toEqual([
+        'create_journal_entry',
+        'create_unit',
+        'export_sie4',
+        'generate_rent_notices',
+        'import_bgmax_file',
+        'match_bank_transaction',
+        'pause_reminders',
+        'record_expense',
+        'resume_reminders',
+        'update_tenant',
+      ])
+    })
+
+    it('varje AUTOMATISK som ändå inte är återupptagbar blockeras av ett SAKNAT SPÅR', () => {
+      // Inte av policyn. Skillnaden avgör vad nästa steg är: de här fem behöver
+      // en innehållsnyckel, inte ett beslut.
+      const blockerade = buildEffectCatalog().filter(
+        (e) => e.resumptionPolicy === 'AUTOMATISK' && !e.autoResumable,
+      )
+      for (const e of blockerade) expect(e.traceDurability.plats).toBe('INGET')
+      expect(blockerade.map((e) => e.name).sort()).toEqual([
+        'create_inspection',
+        'create_invoice',
+        'create_maintenance_ticket',
+        'create_property',
+        'update_maintenance_status',
+      ])
     })
   })
 })
