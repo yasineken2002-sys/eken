@@ -82,6 +82,83 @@ const TOMMA_SKAL = [
   'no-op',
 ]
 
+/**
+ * Låstjänstens källa. Metodnamnen HÄRLEDS ur den — de listas aldrig här.
+ *
+ * Skälet är #600: en regel som räknar upp kända namn blir tyst grön den dag
+ * någon döper om `runIfUnlocked` eller lägger till en tredje låsmetod. Samma
+ * läxa som formregeln i check-guard-preprocessors: fråga efter FORMEN, inte
+ * efter en uppräkning.
+ */
+const LOCK_SERVICE = join(SRC, 'common', 'redis', 'lock.service.ts')
+
+/**
+ * Låsmetodernas namn, härledda ur LockService.
+ *
+ * Formen är "en metod vars FÖRSTA parameter är `key: string`" — det är exakt
+ * det som gör en metod till en låsmetod, och det är inte något man kan råka
+ * uppfylla. Uppmätt mot 084363b: `runWithLock` och `runIfUnlocked`.
+ */
+export function härledLåsmetoder(lockServiceText) {
+  const kod = codeMask(lockServiceText)
+  return [...kod.matchAll(/\basync\s+(\w+)\s*(?:<[^>]*>)?\s*\(\s*key\s*:\s*string\s*,/g)].map(
+    (m) => m[1],
+  )
+}
+
+/** Regex-säker version av en godtycklig sträng. */
+const rx = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * ── #600: FRÅGAN ÄR OM LÅSET ANROPAS, INTE OM NYCKELN NÄMNS ────────────────
+ *
+ * R3 frågade tidigare `vyer(j.text).strängar.includes(post.lockKey)`. Det var
+ * strikt bättre än råtext — en KOMMENTAR som påstod att låset fanns dög inte
+ * längre — men det räckte inte, och det gick inte att laga med en mask:
+ * låsnyckeln ÄR en stränglitteral också i det äkta anropet, så ingen vy skiljer
+ * de två förekomsterna åt.
+ *
+ * Uppmätt mot 084363b: VARJE klass-A-nyckel förekommer exakt TVÅ gånger i sin
+ * fil — en gång som låsargument, en gång i en loggsträng:
+ *
+ *     leases.service.ts:1362   'cron:leases-lifecycle',                    ← låset
+ *     leases.service.ts:1371   `[cron:leases-lifecycle] Kördes redan …`    ← loggen
+ *
+ * Loggraden ensam uppfyllde alltså den gamla regeln. Tas låsanropet bort men
+ * loggen står kvar — den troliga refaktoreringen — blev vakten grön om ett jobb
+ * som klassats "låst" och inte längre är det.
+ *
+ * Regeln frågar därför efter ANROPSFORMEN: nyckeln måste stå som FÖRSTA
+ * ARGUMENT till en av låsmetoderna. En loggsträng har inget `.runIfUnlocked(`
+ * framför sig.
+ *
+ * Nyckeln får vara en literal, eller en KONSTANT som binds till nyckeln i samma
+ * fil. Det andra fallet finns inte i koden i dag, men en regel som fäller det
+ * hade varit ett falsklarm som väntade på att hända — och en cron-vakt som
+ * larmar på legitim kod blir avstängd, varefter ALLA jobb är oskyddade.
+ */
+export function harLåsanrop(text, lockKey, låsmetoder) {
+  if (låsmetoder.length === 0) return false // ingen härledd form → inget att pröva
+  const { strängar } = vyer(text)
+
+  // Nyckeln som literal, direkt i anropet.
+  const literal = `['"\`]${rx(lockKey)}['"\`]`
+  for (const m of låsmetoder) {
+    if (new RegExp(`\\.\\s*${rx(m)}\\s*(?:<[^>]*>)?\\s*\\(\\s*${literal}\\s*,`).test(strängar)) return true
+  }
+
+  // …eller via en konstant som binds till nyckeln i SAMMA fil.
+  const bindningar = [
+    ...strängar.matchAll(new RegExp(`(?:const|let|var)\\s+(\\w+)[^=\\n]*=\\s*${literal}`, 'g')),
+  ].map((m) => m[1])
+  for (const namn of bindningar) {
+    for (const m of låsmetoder) {
+      if (new RegExp(`\\.\\s*${rx(m)}\\s*(?:<[^>]*>)?\\s*\\(\\s*${rx(namn)}\\s*,`).test(strängar)) return true
+    }
+  }
+  return false
+}
+
 /** Alla .ts-filer under src, utom specar. */
 function källfiler(dir = SRC, ut = []) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -137,9 +214,22 @@ export function vyer(text) {
 }
 
 /** Kärnan. Exporterad så självtestet kör exakt samma kod som CI. */
-export function evaluate({ jobb, ack }) {
+export function evaluate({ jobb, ack, låsmetoder = [] }) {
   const problem = []
   const poster = ack.jobs ?? {}
+
+  // Utan härledda låsmetoder kan R3 inte pröva någonting — och en regel som
+  // inte kan pröva något ska vara RÖD, inte tyst grön.
+  if (jobb.length > 0 && låsmetoder.length === 0) {
+    problem.push({
+      rule: 'inga låsmetoder kunde härledas ur lock.service.ts',
+      detail:
+        'R3 frågar efter anropsformen och har då ingen form att fråga efter. ' +
+        'Har LockService bytt filnamn, eller signaturen `key: string` som första ' +
+        'parameter? Rätta härledningen — kvittera den inte.',
+    })
+    return problem
+  }
 
   if (jobb.length === 0) {
     problem.push({
@@ -171,13 +261,15 @@ export function evaluate({ jobb, ack }) {
     if (post.class === 'A') {
       if (!post.lockKey) {
         problem.push({ rule: `\`${j.nyckel}\` är klass A utan lockKey`, detail: 'Namnge låsnyckeln.' })
-      } else if (!vyer(j.text).strängar.includes(post.lockKey)) {
+      } else if (!harLåsanrop(j.text, post.lockKey, låsmetoder)) {
         problem.push({
-          rule: `\`${j.nyckel}\` är klass A men låsnyckeln "${post.lockKey}" finns inte i filens KOD`,
+          rule: `\`${j.nyckel}\` är klass A men låset ANROPAS aldrig med "${post.lockKey}"`,
           detail:
             'Ett "låst" jobb utan lås är den värsta klassificeringen av alla — den ser ' +
-            'säkrast ut och skyddar ingenting. Nyckeln söks i koden och strängarna, ' +
-            'INTE i kommentarerna: en rad som PÅSTÅR att låset finns är inget lås.',
+            'säkrast ut och skyddar ingenting. Regeln frågar efter ANROPSFORMEN: nyckeln ' +
+            `ska stå som FÖRSTA ARGUMENT till en av låsmetoderna (${låsmetoder.join(', ')}), ` +
+            'eller till en konstant som binds till den i samma fil. Att nyckeln NÄMNS i ' +
+            'filen räcker inte — en loggrad med nyckeln i är inget lås (#600).',
         })
       }
       continue
@@ -283,7 +375,8 @@ function selfTest() {
     console.log(`✅ fångad: ${label} (${r[0].rule})`)
   }
   const jobb = findCronJobs([FIL_A, FIL_B])
-  const bas = { jobb, ack: ACK_OK }
+  const LÅSMETODER = härledLåsmetoder(readFileSync(LOCK_SERVICE, 'utf8'))
+  const bas = { jobb, ack: ACK_OK, låsmetoder: LÅSMETODER }
 
   // ── DEN DELADE SKANNERNS KANARIEFÅGLAR (metavaktens R2) ──────────────────
   const skanner = kanariefåglar()
@@ -307,8 +400,8 @@ function selfTest() {
     }
     röd(
       'VY: låsnyckeln nämnd bara i en KOMMENTAR är inget lås',
-      evaluate({ jobb: findCronJobs([påstårLås]), ack: ACK_OK }),
-      'finns inte i filens KOD',
+      evaluate({ jobb: findCronJobs([påstårLås]), ack: ACK_OK, låsmetoder: LÅSMETODER }),
+      'låset ANROPAS aldrig',
     )
 
     // R1: en utkommenterad dekorator är inget jobb — annars kräver vakten en
@@ -321,7 +414,7 @@ function selfTest() {
           { fil: 'x/d.service.ts', text: "  // @Cron('0 3 * * *')\n  // async jobbD(): Promise<void> {}" },
         ])
         if (j.length !== 2) fail(`VY: härledningen gav ${j.length} jobb, väntade 2`)
-        return evaluate({ jobb: j, ack: ACK_OK })
+        return evaluate({ jobb: j, ack: ACK_OK, låsmetoder: LÅSMETODER })
       })(),
     )
 
@@ -352,6 +445,91 @@ function selfTest() {
   const riktiga = findCronJobs(
     källfiler().map((p) => ({ fil: relative(SRC, p), text: readFileSync(p, 'utf8') })),
   )
+  // ── #600: DE TRE NEGATIVA KONTROLLERNA ──────────────────────────────────
+  //
+  // Den FÖRSTA är hela ärendet. Faller den inte är ingenting byggt: det var
+  // exakt det fallet som passerade tyst före den här ändringen.
+  {
+    const metoder = härledLåsmetoder(readFileSync(LOCK_SERVICE, 'utf8'))
+    const NYCKEL = 'cron:qqlock-prov'
+    const äkta =
+      `  @Cron('0 9 * * *')\n` +
+      `  async jobb(): Promise<void> {\n` +
+      `    const result = await this.locks.runIfUnlocked(\n` +
+      `      '${NYCKEL}',\n` +
+      `      () => this.jobbUnsafe(),\n` +
+      `      { ttlSec: 3600 },\n` +
+      `    )\n` +
+      `    if (!result.ran) this.logger.warn('[${NYCKEL}] Kördes redan av en annan replik.')\n` +
+      `  }`
+    // 1. Låsanropet borta — men loggraden med nyckeln står kvar. DEN TROLIGA
+    //    refaktoreringen, och den som slapp igenom före #600.
+    const baraLogg = äkta.replace(`      '${NYCKEL}',\n`, `      'cron:nagot-annat',\n`)
+    // 2. Nyckeln helt borta.
+    const heltBorta = äkta.replaceAll(NYCKEL, 'cron:nagot-annat')
+
+    const prov = [
+      ['#600 (1) låsanropet borta, nyckeln kvar i en LOGGSTRÄNG → ska fälla', baraLogg, false],
+      ['#600 (2) låsanropet borta, nyckeln helt borta → ska fälla', heltBorta, false],
+      ['#600 (3) äkta låsanrop → ska vara tyst', äkta, true],
+    ]
+    for (const [namn, text, väntat] of prov) {
+      const har = harLåsanrop(text, NYCKEL, metoder)
+      if (har !== väntat) fail(`${namn} — fick ${har ? 'TYST' : 'FÄLLER'}`)
+      else console.log(`✅ ${namn}`)
+    }
+    // Och att prov 1 verkligen BÄR nyckeln — annars mäter det inget.
+    const kvar = baraLogg.split(NYCKEL).length - 1
+    if (kvar !== 1) fail(`#600 (1): sonden bär ${kvar} förekomster av nyckeln, väntade 1 (loggraden)`)
+    else console.log(`✅ #600 (1): sonden bär nyckeln ${kvar} gång — i loggraden, inte i anropet`)
+
+    // Konstantformen ska också godtas: en regel som fäller den vore ett
+    // falsklarm som väntar på att hända.
+    const viaKonstant =
+      `const QQ_LAS = '${NYCKEL}'\n` +
+      `  async jobb() { await this.locks.runIfUnlocked(QQ_LAS, () => this.x(), { ttlSec: 60 }) }`
+    if (!harLåsanrop(viaKonstant, NYCKEL, metoder)) fail('#600: nyckeln via en KONSTANT fälls — falsklarm')
+    else console.log('✅ #600: nyckeln via en konstant i samma fil godtas')
+  }
+
+  // ── #600: FALSKLARM ÄR VÄRRE ÄN VANLIGT HÄR ─────────────────────────────
+  //
+  // En cron-vakt som larmar på legitim kod blir avstängd, och då är ALLA jobb
+  // oskyddade. Talet skrivs ut: noll falsklarm är ett påstående som ska gå att
+  // läsa av, inte något man litar på.
+  {
+    const metoder = härledLåsmetoder(readFileSync(LOCK_SERVICE, 'utf8'))
+    const ack = JSON.parse(readFileSync(ACK_FILE, 'utf8'))
+    const aJobb = Object.entries(ack.jobs ?? {}).filter(([, v]) => v.class === 'A')
+    let godkända = 0
+    const falsklarm = []
+    for (const [nyckel, v] of aJobb) {
+      const fil = join(SRC, ...nyckel.split('::')[0].split('/'))
+      if (harLåsanrop(readFileSync(fil, 'utf8'), v.lockKey, metoder)) godkända++
+      else falsklarm.push(`${v.lockKey} (${nyckel.split('::')[0]})`)
+    }
+    // Alla låsanrop i trädet, inte bara cron-jobbens — regeln får inte heller
+    // ändra betydelse för dem.
+    const anropsRe = new RegExp(`\\.\\s*(${metoder.join('|')})\\s*\\(`, 'g')
+    let alla = 0
+    for (const f of källfiler()) alla += (codeMask(readFileSync(f, 'utf8')).match(anropsRe) ?? []).length
+
+    if (falsklarm.length) fail(`#600 FALSKLARM på legitim kod: ${falsklarm.join(', ')}`)
+    else
+      console.log(
+        `✅ #600 falsklarm: 0 av ${aJobb.length} legitima klass-A-lås fälls ` +
+          `(${alla} låsanrop totalt i koden, ${metoder.length} härledda låsmetoder: ${metoder.join(', ')})`,
+      )
+    // Omfång: mängderna får inte krympa tyst. MÄTT mot 084363b: 2 låsmetoder,
+    // 7 klass-A-jobb, 8 låsanrop i icke-spec-kod (27 om specar räknas med).
+    if (metoder.length < 2) fail(`omfång: ${metoder.length} härledda låsmetoder, golv 2`)
+    if (aJobb.length < 4) fail(`omfång: ${aJobb.length} klass-A-jobb, golv 4`)
+    // MÄTT mot samma mängd som räknas: källfiler() UTESLUTER specar, så talet är
+    // 8 — inte de 27 man får om man räknar alla .ts. Ett golv mätt mot en annan
+    // mängd än den man asserterar på är ett golv som fäller av fel skäl.
+    if (alla < 5) fail(`omfång: ${alla} låsanrop i icke-spec-kod, golv 5`)
+  }
+
   // OMFÅNGSGOLV, inte "fler än noll". En härledning som krympt från 25 till 2
   // mäter nästan ingenting men klarar ett nollgolv — och de 25 är just talet
   // som en gång visade att den handskrivna listan om 21 var fel.
@@ -396,7 +574,7 @@ function selfTest() {
   röd(
     'klass A vars låsnyckel inte finns i filen',
     evaluate({ ...bas, ack: { jobs: { ...ACK_OK.jobs, 'x/a.service.ts::jobbA': { class: 'A', lockKey: 'cron:finns-inte' } } } }),
-    'finns inte i filen',
+    'låset ANROPAS aldrig',
   )
   röd(
     'klass A utan lockKey',
@@ -456,7 +634,8 @@ function main() {
     källfiler().map((p) => ({ fil: relative(SRC, p), text: readFileSync(p, 'utf8') })),
   )
   const ack = JSON.parse(readFileSync(ACK_FILE, 'utf8'))
-  const problem = evaluate({ jobb, ack })
+  const låsmetoder = härledLåsmetoder(readFileSync(LOCK_SERVICE, 'utf8'))
+  const problem = evaluate({ jobb, ack, låsmetoder })
 
   if (problem.length > 0) {
     console.error('\n=== OKLASSIFICERAT CRONJOBB ELLER OBELAGD INVARIANT (CI-guard) ===\n')
