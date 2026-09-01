@@ -1,6 +1,7 @@
 import { LOCALE, CURRENCY } from '../constants'
 
 export * from './swedish-org-number'
+export * from './group-sent-messages'
 
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat(LOCALE, {

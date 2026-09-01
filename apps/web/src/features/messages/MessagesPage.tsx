@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   MessageSquare,
@@ -23,6 +23,8 @@ import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { useMessages, useMessageStats, useSendMessage, useRetryMessage } from './hooks/useMessages'
 import { useTenants } from '@/features/tenants/hooks/useTenants'
 import { cn } from '@/lib/cn'
+import { groupSentMessages } from '@eken/shared'
+import type { SentMessageGroup } from '@eken/shared'
 import type { SentMessage } from './api/messages.api'
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } }
@@ -194,6 +196,89 @@ function MessageCard({
   )
 }
 
+/**
+ * Ett massutskick som EN rad, med sina mottagare en klick bort.
+ *
+ * Raderna under är riktiga `MessageCard` — samma komponent som ett enskilt
+ * utskick renderas med, med samma utfällning och samma försök-igen-knapp. Det
+ * är avsiktligt: grupperingen är en VY över raderna, inte en ersättning för
+ * dem, och en misslyckad mottagare ska gå att göra om en och en.
+ */
+function MessageGroupCard({
+  grupp,
+  onRetry,
+  retryingId,
+  retryPending,
+}: {
+  grupp: SentMessageGroup<SentMessage>
+  onRetry: (id: string) => void
+  retryingId: string | null
+  retryPending: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <motion.div
+      variants={itemAnim}
+      className="border-line rounded-2xl border bg-white transition-shadow hover:shadow-sm"
+    >
+      <button className="w-full p-4 text-left" onClick={() => setExpanded((v) => !v)}>
+        <div className="flex items-start justify-between gap-3">
+          <p className="flex-1 truncate text-[13.5px] font-semibold text-gray-900">
+            {grupp.subject}
+          </p>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <StatusBadge status={grupp.status} />
+            {expanded ? (
+              <ChevronUp size={14} className="text-gray-400" />
+            ) : (
+              <ChevronDown size={14} className="text-gray-400" />
+            )}
+          </div>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span className="flex items-center gap-1 text-[13px] text-gray-500">
+            <Users size={12} strokeWidth={1.8} />
+            {grupp.recipientCount} mottagare
+          </span>
+          <span className="flex items-center gap-1 text-[13px] text-gray-500">
+            <Clock size={12} strokeWidth={1.8} />
+            {relativeTime(grupp.createdAt as string)}
+          </span>
+        </div>
+
+        <p className="mt-1.5 text-[12px] text-gray-400">
+          {grupp.successCount} av {grupp.recipientCount} levererade
+          {!expanded && ' · visa mottagare'}
+        </p>
+      </button>
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="border-line overflow-hidden border-t"
+          >
+            <div className="space-y-2 bg-gray-50/60 p-3">
+              {grupp.messages.map((msg) => (
+                <MessageCard
+                  key={msg.id}
+                  msg={msg}
+                  onRetry={onRetry}
+                  retrying={retryingId === msg.id && retryPending}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
 interface SendResult {
   type: 'success' | 'partial' | 'failed'
   successCount: number
@@ -272,8 +357,15 @@ export function MessagesPage() {
     })
   }
 
-  const filtered =
-    historyFilter === 'all' ? messages : messages.filter((m) => m.status === historyFilter)
+  // GRUPPERA FÖRST, FILTRERA SEDAN. Omvänd ordning hade delat sönder ett
+  // massutskick där någon mottagare har en annan status än de andra: filtret
+  // hade plockat ut delmängden och grupperingen visat en grupp som ser komplett
+  // ut men saknar rader. Filtret gäller alltså gruppens SAMMANVÄGDA status.
+  const grupper = useMemo(() => groupSentMessages(messages), [messages])
+  const filtered = useMemo(
+    () => (historyFilter === 'all' ? grupper : grupper.filter((g) => g.status === historyFilter)),
+    [grupper, historyFilter],
+  )
 
   return (
     <PageWrapper id="messages">
@@ -583,14 +675,24 @@ export function MessagesPage() {
             />
           ) : (
             <motion.div variants={container} initial="hidden" animate="show" className="space-y-3">
-              {filtered.map((msg) => (
-                <MessageCard
-                  key={msg.id}
-                  msg={msg}
-                  onRetry={handleRetry}
-                  retrying={retryingId === msg.id && retryMutation.isPending}
-                />
-              ))}
+              {filtered.map((grupp) =>
+                grupp.isBatch ? (
+                  <MessageGroupCard
+                    key={grupp.key}
+                    grupp={grupp}
+                    onRetry={handleRetry}
+                    retryingId={retryingId}
+                    retryPending={retryMutation.isPending}
+                  />
+                ) : (
+                  <MessageCard
+                    key={grupp.key}
+                    msg={grupp.messages[0]!}
+                    onRetry={handleRetry}
+                    retrying={retryingId === grupp.messages[0]!.id && retryMutation.isPending}
+                  />
+                ),
+              )}
             </motion.div>
           )}
         </div>
