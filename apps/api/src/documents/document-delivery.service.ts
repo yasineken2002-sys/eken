@@ -174,6 +174,27 @@ export class DocumentDeliveryService {
         `<p>Ett nytt dokument har lagts till i din hyresgästportal:</p>` +
         `<p><strong>${safeDocName}</strong></p>` +
         `<p>Logga in på din portal för att läsa dokumentet.</p>`,
+      // ⚠️ DEN HÄR NYCKELN DEDUPAR MINDRE ÄN DEN SER UT ATT GÖRA.
+      //
+      // Vad den GÖR: `documentId` blir Bulls `jobId` och Resends
+      // `Idempotency-Key`. En Bull-retry av samma jobb, eller två anrop för ett
+      // REDAN BEFINTLIGT dokument, skickar alltså ett mejl — inte två.
+      //
+      // Vad den INTE gör: skydda mot ett AGENTOMFÖRSÖK. `documentId` MYNTAS i
+      // samma körning som mejlet — AI-vägen `send_document_to_tenant` renderar
+      // en ny PDF och skapar en ny `Document`-rad innan den kallar hit. Ett
+      // omtag får därför ett NYTT documentId, en NY nyckel, och hyresgästen får
+      // brevet en andra gång. Nyckeln kan per konstruktion aldrig kollidera med
+      // sig själv över ett omförsök.
+      //
+      // Det är därför `send_document_to_tenant` står som DEDUPLICERBAR med
+      // `traceDurability.plats: 'INGET'` i `ai/tools/effect-idempotency.ts` —
+      // inte som IDEMPOTENT. En spärr man TROR finns kostar lika mycket som en
+      // som saknas, men ger aldrig ett felmeddelande.
+      //
+      // Rätt nyckel vore innehållsderiverad (dokumentets `contentHash` +
+      // mottagare), så att samma brev om samma innehåll bär samma nyckel oavsett
+      // hur många gånger PDF:en renderas om. Det är nästa steg, inte det här.
       idempotencyKey: `doc-portal-notify-${documentId}`,
     })
   }

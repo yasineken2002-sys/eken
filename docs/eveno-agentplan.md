@@ -159,6 +159,7 @@ Parallellt och oberoende: backup-token, BankID, PSD2, juridisk slutgenomgång.
 **Etapp 2 blev större**, av tre skäl. Invariant 1 finns redan, men (a) automatisk
 återupptagning finns inte och är avsiktligt bortvald — agenten behöver antingen en egen
 anspråksmodell eller innehållsidempotens; (b) den egenskapen har idag **2 av 30** verktyg;
+<!-- (b) RÄTTAT 2026-09-01, se mätningen längre ner: 16 av 30 tål en omkörning redan. -->
 (c) `createNumberedEntry` är inte TOCTOU-säker som kommentaren påstår, och ett samtidigt
 omförsök ger ett kastat `P2002` i stället för det första verifikatet. `isIdempotencyRaceConflict`
 finns redan och gör rätt sak — den är bara inte inkopplad i den generella vägen.
@@ -258,11 +259,36 @@ en väg. **Klockan 03:00 finns ingen som ber om ett nytt förslag.** Automatisk
 återupptagning finns inte och är avsiktligt bortvald. Antingen behöver agenten en egen
 anspråksmodell, eller så måste det som återupptas vara idempotent på innehåll.
 
-**Identiteten stämmer — men täcker 2 av 30 verktyg.** `ai-journal-source.ts` ger
-`ai:<sha256 av kanonisk JSON av {toolName, toolInput}>`. Modulens egen avgränsning: *"de
-andra 27 effektproducerande verktygen (e-post, inkassoexport, PDF) har fortfarande ingen
-idempotensnyckel; deras skydd är bekräftelseanspråket"* (#580). Krav 1–3 är uppfyllda och
+**Identiteten stämmer.** `ai-journal-source.ts` ger
+`ai:<sha256 av kanonisk JSON av {toolName, toolInput}>`. Krav 1–3 är uppfyllda och
 testade (`ai-journal-idempotens.db.spec.ts` A1/A2).
+
+> **RÄTTAT 2026-09-01 — "2 av 30" var fel, och för pessimistiskt.**
+>
+> Här stod att egenskapen *"täcker 2 av 30 verktyg"*, med modulens egen avgränsning som
+> källa: *"de andra 27 effektproducerande verktygen har fortfarande ingen
+> idempotensnyckel"*. Den meningen skrevs om verifikatnyckeln och lästes som ett
+> påstående om alla verktyg. En mätning verktyg för verktyg mot koden ger:
+>
+> | | |
+> |---|---|
+> | tål en omkörning redan i dag | **16 av 30** |
+> | — via `aiJournalSourceId` | 2 (`create_journal_entry`, `record_expense`) |
+> | — via en EGEN innehållshash | 1 (`prepare_contract_signing`: `sha256(documentId + contentHash)`, atomär dedup mot `SigningRequest @@unique([organizationId, idempotencyKey])`) |
+> | — via unika index och statusmaskiner | 13 |
+> | deduplicerbara men utan spår | **14** (varav `send_invoice_email` har en nyckel som dedupar inom köns fönster) |
+> | oåterkalleliga OCH omöjliga att avduplicera | **0** |
+>
+> Egenskapen var alltså **utbredd men odeklarerad** — och det var den verkliga bristen:
+> ingenting i koden sa vilken klass ett verktyg tillhör, så en återupptagningsmotor hade
+> ingen att fråga. Klassificeringen finns nu i `apps/api/src/ai/tools/effect-idempotency.ts`,
+> härledd och prövad av `check-effect-idempotency.mjs`. Talen ovan är HÄRLEDDA i
+> `effect-idempotency.spec.ts` — ändras klassningen blir den raden röd, inte den här tabellen.
+>
+> Nollan sist gäller bara inom spårets livslängd: mejlens dedup bor i Bulls `jobId` med
+> `removeOnComplete: { age: 7 dygn, count: 1000 }`, och **`count`-taket biter före
+> ålderstaket**. Sker återupptagningen efter fönstret degraderar mejlverktygen i praktiken
+> till oåterkalleliga.
 
 **Krav 4 håller inte, och kommentaren i koden är fel.** `createNumberedEntry`
 (`accounting.service.ts:402–443`) gör `findFirst` följt av `create` inuti transaktionen,

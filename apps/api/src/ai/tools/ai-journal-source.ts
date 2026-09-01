@@ -62,9 +62,27 @@ import { hashPendingAction } from '../pending-action-hash'
  *
  * ── AVGRÄNSNING ────────────────────────────────────────────────────────────
  *
- * Nyckeln gäller verifikat. De andra 27 effektproducerande verktygen (e-post,
- * inkassoexport, PDF) har fortfarande ingen idempotensnyckel; deras skydd är
- * bekräftelseanspråket. Det är ett eget arbete och står i #580.
+ * Nyckeln gäller verifikat. Det som stod här om de övriga verktygen var för
+ * pessimistiskt och är RÄTTAT 2026-09-01 efter en mätning verktyg för verktyg:
+ *
+ *   "De andra 27 effektproducerande verktygen har fortfarande ingen
+ *    idempotensnyckel; deras skydd är bekräftelseanspråket."
+ *
+ * Det stämmer inte. Mätt mot koden samma dag (`EFFECT_DECLARATIONS` i
+ * `effect-idempotency.ts`, som härleder talen och prövas av en vakt):
+ *
+ *     av 30 bindande verktyg tål 16 en omkörning redan i dag
+ *       2  via den här nyckeln (create_journal_entry, record_expense)
+ *       1  via en EGEN innehållshash (prepare_contract_signing härleder
+ *          sha256(documentId + contentHash) inne i signing.service.ts)
+ *      13  via unika index och statusmaskiner
+ *     14 är deduplicerbara men saknar spår — 1 av dem (send_invoice_email)
+ *        har en nyckel som faktiskt dedupar, inom köns fönster
+ *
+ * Egenskapen var alltså UTBREDD men ODEKLARERAD, och det var den verkliga
+ * bristen: ingenting sa vilken klass ett verktyg tillhör, så en
+ * återupptagningsmotor hade ingen att fråga. Klassificeringen finns nu; de 13
+ * innehållsnycklar som saknas är nästa steg.
  */
 
 /** Prefixet som skiljer AI-nycklar från övriga namnrymder i `sourceId`. */
