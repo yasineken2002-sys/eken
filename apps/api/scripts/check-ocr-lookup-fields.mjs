@@ -32,6 +32,7 @@
  * Självtest:   node apps/api/scripts/check-ocr-lookup-fields.mjs --self-test
  */
 import { readFileSync } from 'node:fs'
+import { codeMask, blankComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -52,14 +53,30 @@ const RAW_OCR_BINDINGS = ['transaction.rawOcr', 'rawOcr', 'ocrNumber']
 
 const lineOf = (text, idx) => text.slice(0, idx).split('\n').length
 
-/** Läs ett `export const X = [...] as const`-register ur källtexten. */
+/**
+ * Läs ett `export const X = [...] as const`-register ur källtexten.
+ *
+ * `blankComments` och INTE `codeMask`: fältnamnen ÄR stränginnehåll. Med
+ * codeMask hade regexen fortsatt matcha rätt ANTAL poster — men blanktecken,
+ * och `system.includes(l.nyckel)` hade aldrig mer blivit sant. Vakten hade
+ * fällt varje uppslag som oklassat, eller, om någon tystat det, ingenting alls.
+ */
 export function parseRegistry(text, name) {
-  const m = new RegExp(`export const ${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as const`).exec(text)
+  const m = new RegExp(`export const ${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as const`).exec(
+    blankComments(text),
+  )
   if (!m) return null // saknas helt — skiljs från "finns men tom"
   return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1])
 }
 
-/** Blocket `{ … }` som börjar vid `openIdx`, parentesbalanserat. */
+/**
+ * Blocket `{ … }` som börjar vid `openIdx`, klammerbalanserat.
+ *
+ * Körs ENBART mot codeMask-utdata. Ett `'}'` i en stränglitteral stängde annars
+ * `where`-blocket för tidigt, och de fältbindningar som stod efter den punkten
+ * försvann ur mängden — samma tystnad som kortformsfelet i kommentaren nedan,
+ * men utan att någon räknat träffarna.
+ */
 function sliceBlock(text, openIdx) {
   let depth = 0
   for (let i = openIdx; i < text.length; i++) {
@@ -82,9 +99,12 @@ function sliceBlock(text, openIdx) {
  */
 /** Variabelnamnen som bär grindens RESULTAT: `const <v> = await GATE(...)`. */
 export function gateResultVars(text) {
-  return [...text.matchAll(new RegExp(`(?:const|let|var)\\s+(\\w+)\\s*=\\s*await\\s+${GATE}\\s*\\(`, 'g'))].map(
-    (m) => m[1],
-  )
+  // KOD: en tilldelning som bara står i en kommentar binder ingen variabel.
+  return [
+    ...codeMask(text).matchAll(
+      new RegExp(`(?:const|let|var)\\s+(\\w+)\\s*=\\s*await\\s+${GATE}\\s*\\(`, 'g'),
+    ),
+  ].map((m) => m[1])
 }
 
 /**
@@ -96,7 +116,9 @@ export function gateResultVars(text) {
  * bara mindre uppenbart.
  */
 export function isGovernedByGate(text, idx, gateVars) {
-  const fönster = text.slice(Math.max(0, idx - 400), idx)
+  // Fönstret läses ur KOD. En kommentar som säger "grinden avgör det här" är
+  // inget villkor, och fick aldrig kunna intyga att uppslaget är grindat.
+  const fönster = codeMask(text).slice(Math.max(0, idx - 400), idx)
   return gateVars.some((v) =>
     new RegExp(`(?:!\\s*${v}\\b|\\b${v}\\s*(?:\\?|&&|\\|\\|))`).test(fönster),
   )
@@ -104,11 +126,15 @@ export function isGovernedByGate(text, idx, gateVars) {
 
 export function findOcrLookups(text) {
   const träffar = []
+  // HELA skanningen går på kodvyn: `where`-blocken, klammerbalanseringen,
+  // fältbindningarna, modellhärledningen och grindfönstret. Masken bevarar
+  // längd och radbrytningar, så `line` pekar fortfarande på råfilen.
+  const kod = codeMask(text)
   const gateVars = gateResultVars(text)
   const whereRe = /\bwhere\s*:\s*\{/g
   let m
-  while ((m = whereRe.exec(text))) {
-    const block = sliceBlock(text, text.indexOf('{', m.index))
+  while ((m = whereRe.exec(kod))) {
+    const block = sliceBlock(kod, kod.indexOf('{', m.index))
 
     // Vilka fält i blocket binds till den råa OCR-strängen?
     const fält = []
@@ -128,7 +154,7 @@ export function findOcrLookups(text) {
     if (fält.length === 0) continue
 
     // Modellen: närmaste `.<modell>.find…(` bakåt.
-    const före = text.slice(Math.max(0, m.index - 400), m.index)
+    const före = kod.slice(Math.max(0, m.index - 400), m.index)
     const modellMatch = [...före.matchAll(/\.\s*(\w+)\s*\.\s*find\w*\s*\(/g)].pop()
     const modell = modellMatch ? modellMatch[1] : null
 
@@ -137,7 +163,7 @@ export function findOcrLookups(text) {
         modell,
         fält: f,
         nyckel: modell ? `${modell[0].toUpperCase()}${modell.slice(1)}.${f}` : `?.${f}`,
-        line: lineOf(text, m.index),
+        line: lineOf(kod, m.index),
         // GRINDEN MÅSTE STYRA UPPSLAGET — inte bara finnas i närheten.
         //
         // Första versionen frågade om `harSystemtilldelatOcr` nämndes inom 1500
@@ -175,13 +201,13 @@ export function evaluate({ identityText, matchText }) {
       detail: 'Fritextfälten måste vara uppräknade för att kunna krävas bakom grinden.',
     })
   }
-  if (!identityText.includes(`export async function ${GATE}`)) {
+  if (!codeMask(identityText).includes(`export async function ${GATE}`)) {
     problem.push({
       rule: `grindfunktionen ${GATE} saknas i ocr-identity.ts`,
       detail: 'Regeln kan inte upprätthållas av en grind som inte finns.',
     })
   }
-  if (!matchText.includes(`${GATE}(`)) {
+  if (!codeMask(matchText).includes(`${GATE}(`)) {
     problem.push({
       rule: `${GATE}() anropas aldrig i reconciliation.service.ts`,
       detail:
@@ -267,6 +293,56 @@ function selfTest() {
     console.log(`✅ fångad: ${label} (${r[0].rule})`)
   }
 
+  // ── DEN DELADE SKANNERNS KANARIEFÅGLAR (metavaktens R2) ───────────────────
+  const skanner = kanariefåglar()
+  if (skanner.length) fail(`DEN DELADE SKANNERN ÄR TRASIG: ${skanner.join(' | ')}`)
+  else console.log('✅ delad skanner: 7 kanariefåglar gröna')
+
+  // ── VYERNAS SEMANTIK ──────────────────────────────────────────────────────
+  {
+    // Registren läses ur strängvyn. Hade någon bytt parseRegistry till codeMask
+    // hade den fortsatt ge rätt ANTAL poster — men blanktecken, och
+    // `system.includes(nyckel)` hade aldrig mer blivit sant.
+    const r = parseRegistry(IDENTITY_OK, 'SYSTEM_ASSIGNED_OCR_FIELDS') ?? []
+    if (r.length === 0 || r.some((f) => !/[A-Za-z]/.test(f))) {
+      fail(`registret gav ${JSON.stringify(r)} — masken har blankat stränginnehållet`)
+    } else console.log(`✅ registret bär riktiga fältnamn: ${r.join(', ')}`)
+  }
+  {
+    // Ett `}` i en stränglitteral fick inte stänga where-blocket för tidigt.
+    // Utan masken försvann bindningen efter strängen ur mängden, och vakten
+    // rapporterade grönt om precis det uppslag den inte kunde se.
+    const medKlammerISträng =
+      `const identitet = await ${GATE}(db, organizationId, transaction.rawOcr)\n` +
+      `const inv = await db.invoice.findFirst({ where: { note: 'slut }', reference: transaction.rawOcr } })`
+    const f = findOcrLookups(medKlammerISträng)
+    if (!f.some((x) => x.nyckel === 'Invoice.reference')) {
+      fail(`ett '}' i en sträng dolde uppslaget: ${JSON.stringify(f.map((x) => x.nyckel))}`)
+    } else console.log("✅ ett '}' i en sträng stänger inte where-blocket")
+  }
+
+  // Grinden får inte kunna intygas av prosa — åt båda hållen.
+  röd(
+    'VY: grinden bara PÅSTÅDD i en kommentar i matchningsfilen',
+    evaluate({
+      identityText: IDENTITY_OK,
+      matchText: `// uppslaget ligger bakom ${GATE}( i anroparen\nconst x = 1`,
+    }),
+    'anropas aldrig',
+  )
+  röd(
+    'VY: grindvillkoret bara i en KOMMENTAR före fritextuppslaget',
+    evaluate({
+      identityText: IDENTITY_OK,
+      matchText:
+        `const identitet = await ${GATE}(db, organizationId, transaction.rawOcr)\n` +
+        `const inv = await db.invoice.findFirst({ where: { organizationId, ocrNumber: transaction.rawOcr } })\n` +
+        `// identitet ? null : — grinden avgör det här uppslaget\n` +
+        `const ref = await db.invoice.findFirst({ where: { organizationId, reference: transaction.rawOcr } })`,
+    }),
+    'UTAN identitetsgrind',
+  )
+
   // ── KANARIEFÅGEL: skanningen måste ge utslag på känd indata ────────────────
   // Utan den kan findOcrLookups() returnera [] och R1/R2 loopa över tomhet.
   const funna = findOcrLookups(MATCH_OK)
@@ -276,10 +352,32 @@ function selfTest() {
   } else console.log('✅ kanariefågel: skanningen hittar alla tre fälten i fixturen')
 
   // ── KANARIEFÅGEL 2: mot den RIKTIGA källan ────────────────────────────────
+  // OMFÅNGSGOLV, inte "fler än noll": en skanning som krympt från 4 uppslag
+  // till 1 mäter nästan ingenting men klarar ett nollgolv. Talen är MÄTTA mot
+  // e9aea18: 4 uppslag i den riktiga källan, register om 3 resp. 1 fält.
+  const MIN_UPPSLAG = 3
+  const MIN_SYSTEMFÄLT = 2
   const riktiga = findOcrLookups(readFileSync(MATCH_FILE, 'utf8'))
-  if (riktiga.length === 0) {
-    fail('kanariefågel: NOLL uppslag hittades i reconciliation.service.ts — skanningen har gått blind')
-  } else console.log(`✅ kanariefågel: ${riktiga.length} OCR-uppslag hittade i den riktiga källan`)
+  const riktigtRegister = parseRegistry(
+    readFileSync(IDENTITY_FILE, 'utf8'),
+    'SYSTEM_ASSIGNED_OCR_FIELDS',
+  ) ?? []
+  if (riktiga.length < MIN_UPPSLAG) {
+    fail(
+      `omfång: ${riktiga.length} OCR-uppslag i reconciliation.service.ts, golv ${MIN_UPPSLAG} ` +
+        '— skanningen har gått blind eller uppslagen har flyttat',
+    )
+  } else if (riktigtRegister.length < MIN_SYSTEMFÄLT) {
+    fail(
+      `omfång: SYSTEM_ASSIGNED_OCR_FIELDS har ${riktigtRegister.length} fält, golv ` +
+        `${MIN_SYSTEMFÄLT} — klassificeringen har nästan inget att klassa`,
+    )
+  } else {
+    console.log(
+      `✅ omfång: ${riktiga.length} OCR-uppslag i den riktiga källan (golv ${MIN_UPPSLAG}), ` +
+        `${riktigtRegister.length} identitetsfält i registret (golv ${MIN_SYSTEMFÄLT})`,
+    )
+  }
 
   grön('paritet', evaluate({ identityText: IDENTITY_OK, matchText: MATCH_OK }))
 
