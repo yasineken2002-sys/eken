@@ -184,6 +184,36 @@ efterfrågan när något annat redan tagit minnet. Kör du shardat: skriv ut att
 var shardat, och att en summa på rätt tal är en bekräftelse — inte samma bevis
 som en körning i en process.
 
+### En tung körning i taget på den här maskinen
+
+Mekanik, inte artighet. Codespacet har **två kärnor och ~2,5 GB ledigt** när
+inget annat kör. Sviten behöver mer än så tillsammans med något annat, och
+utfallet är inte långsamhet utan **SIGTERM mitt i körningen** — vilket ser ut som
+ett svitfel och inte som ett resursfel.
+
+Uppmätt under en dag med två parallella sessioner: **sex SIGTERM-dödade
+körningar.** Jämförelsetalen som visar hur snävt det är:
+
+```
+CI, ensam runner        78–85 s   fullbordar alltid
+lokalt, ensam           101 s     fullbordar
+lokalt, samtidigt med typecheck / en annan sessions svit   SIGTERM
+```
+
+Skillnaden mellan att fungera och att dö är alltså inte marginell i tid men
+absolut i utfall. Att starta om en dödad körning utan att först ta bort
+konkurrensen är att upprepa något som inte kan lyckas.
+
+**Kontrollen före start är att TITTA, inte att hoppas:**
+
+```bash
+free -m | head -2                       # 'available' — under ~2,5 GB: vänta
+pgrep -af "jest|tsc" | head             # kör något redan? starta inte till
+```
+
+Kör aldrig `pnpm typecheck` och sviten samtidigt. De är båda tunga, och den som
+startas sist dödar oftast den andra i stället för sig själv.
+
 **Och när maskinen inte räcker alls: låt CI köra sviten.** `Tests`-jobbet kör
 hela sviten på en ren runner och är required check. Att öppna PR:en för att få
 den körningen är rätt åtgärd — det är inte att kringgå kravet, det är att flytta
@@ -1081,6 +1111,33 @@ sondens värde i mätningen — annars kan ingen skilja "vakten såg inget" frå
 
 ---
 
+## En första beskrivning är ett STICKPROV, inte en uppräkning
+
+Det man först ser är det fall man råkade snubbla på. Det är nästan alltid sant
+och nästan aldrig hela mängden — och skillnaden mellan de två är inte en
+noggrannhetsfråga, den är en arbetssättsfråga: **beskriv inte fyndet, bygg
+instrumentet och låt det räkna upp mängden.**
+
+Tre instanser från en och samma dag, alla mätta:
+
+| första beskrivningen                                       | vad instrumentet gav                                                                                             |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| "ett hål i regex-läget, **14 854** tecken slutar maskeras" | **sju** hål, **704 188** tecken — blockkommentar-läget ensamt var 650 563                                        |
+| "tio vakter gör rå textmatchning"                          | rätt antal, men **tre av dem** hade blivit STUMMA av den uppenbara fixen (codeMask blankar de strängar de mäter) |
+| "låsnyckeln **kan** stå kvar i en loggsträng"              | **varje** klass-A-nyckel står så — alla sju jobben, alltid exakt två förekomster                                 |
+
+Skillnaden mellan 14 854 och 704 188 är hela skillnaden mellan de två
+arbetssätten. Ingen av de tre första beskrivningarna var fel; alla tre var för
+snäva, och alla tre hade lett till en fix som täckte det man sett.
+
+**Regeln:** när du hittar ett fall — skriv den kod som räknar upp ALLA fall av
+samma form, och redovisa talet. En mutationsrigg, ett svep över trädet, en
+uppräkning ur schemat. Först då vet du om du har ett fynd eller ett mönster.
+
+Och notera vilket håll osäkerheten lutar åt: en första beskrivning är för snäv,
+inte för bred. Det gör den farlig, eftersom en fix som täcker det beskrivna
+fallet ser färdig ut.
+
 ## En uppräkning krymper tyst — av ett tak ELLER av ett filter
 
 Samma familj: mängden ser fullständig ut därför att det som föll bort inte
@@ -1603,10 +1660,23 @@ MIN?"** — alltså: avgränsa till de sökvägar du äger.
 # FEL med parallella strömmar — svaret bär den ANDRA strömmens arbete
 git diff main..min-gren
 
-# RÄTT — bara mitt omfång; tom ⇒ mitt arbete är inne ⇒ grenen kan raderas
-git diff main..min-gren -- apps/api/scripts CLAUDE.md
-git log --oneline main..min-gren -- apps/api/scripts CLAUDE.md
+# RÄTT — bara MINA FILER; tom ⇒ mitt arbete är inne ⇒ grenen kan raderas
+git diff main..min-gren -- $(git diff --name-only main...min-gren | tr '\n' ' ')
 ```
+
+**Och avgränsa till FILERNA, inte till katalogen du tror är din.** Den regeln
+skrevs först med katalognamn (`-- apps/api/scripts CLAUDE.md`) och fallerade
+samma dag: den andra strömmen lade en ny vakt i `apps/api/scripts`, och ur min
+grens perspektiv såg den ut som en borttagning.
+
+```
+git diff main..min-gren -- apps/api/scripts                  → 403 rader  (allt den ANDRAS)
+git diff main..min-gren -- apps/api/scripts/check-cron-…mjs  →   0 rader  (svaret)
+```
+
+Ägarskapsgränser flyttar sig under arbetet; filerna din gren faktiskt rörde gör
+det inte. Härled listan ur grenen (`git diff --name-only main...min-gren`) i
+stället för att skriva den.
 
 Sökvägsavgränsningen är också det enda kriteriet som överlever en
 **squash-merge**: efter en squash är din grens commits inte förfäder till
