@@ -25,6 +25,11 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { PaymentReminderService } from './payment-reminder.service'
 
+const cronErrorsSpy = {
+  report: jest.fn(async (_cron: string, _err: unknown, _ctx?: unknown) => undefined),
+}
+beforeEach(() => cronErrorsSpy.report.mockClear())
+
 interface Recorder {
   ordning: string[]
 }
@@ -157,14 +162,11 @@ function makeService(opts: {
     mail as never,
     { createForAllOrgUsers: jest.fn(), create: jest.fn() } as never,
     accounting as never,
-    // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
-    // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
-    // förbi rapporteringen.
-    {
-      report: () => {
-        throw new Error('#605: cronErrors.report anropades oväntat i test')
-      },
-    } as never,
+    // #605: cronErrors — den varaktiga felsänkan. INSPELANDE attrapp, inte
+    // kastande: de här testerna driver KÖ-FELVÄGEN med flit, och sedan
+    // enqueueSafely fått sin cron-kontext rapporteras felet där. En kastande
+    // attrapp hade fällt just de test som bevisar att sänkan nås.
+    cronErrorsSpy as never,
   )
   return { service, prisma, mail, accounting, rec, invoice, txClient }
 }
@@ -316,6 +318,18 @@ describe('#357 — sendFormalReminder tar avgiften atomiskt', () => {
       [{ data: { type: string } }]
     >
     expect(events.map((c) => c[0].data.type)).toContain('SEND_FAILED')
+
+    // #605 — och det får inte bara loggas. `enqueueSafely` kastar aldrig, så
+    // det yttre runCronSafely ser aldrig det här felet: raden måste skrivas
+    // här, av kontexten anroparen lämnade. Exakt EN gång.
+    expect(cronErrorsSpy.report).toHaveBeenCalledTimes(1)
+    expect(cronErrorsSpy.report.mock.calls[0]![0]).toBe('payment-reminder-process-overdue')
+
+    // Skrubbat, inte rått: den lokala loggen bär detaljen, sänkan bär
+    // händelsen. Läcker detaljen hit har delningen upphört att gälla.
+    const rapporterat = cronErrorsSpy.report.mock.calls[0]![1] as Error
+    expect(rapporterat.message).toContain('Enqueue')
+    expect(rapporterat.message).toContain('se serverlogg för detalj')
   })
 
   it('kö-fel → returnerar false så cronen räknar det som fel, inte som skickat', async () => {
@@ -326,12 +340,17 @@ describe('#357 — sendFormalReminder tar avgiften atomiskt', () => {
     await expect(priv.sendFormalReminder(h.invoice, 'hg@example.se', 20)).resolves.toBe(false)
   })
 
-  it('lyckat utskick → returnerar true', async () => {
+  it('lyckat utskick → returnerar true, och sänkan rörs INTE', async () => {
     const h = makeService({})
     const priv = h.service as unknown as {
       sendFormalReminder: (inv: unknown, e: string, d: number) => Promise<boolean>
     }
     await expect(priv.sendFormalReminder(h.invoice, 'hg@example.se', 20)).resolves.toBe(true)
+
+    // #605 — motparet till kö-felstestet. Utan den här raden kunde sänkan
+    // anropas på VARJE utskick utan att något blev rött, och ErrorLog fyllas
+    // med lyckade körningar.
+    expect(cronErrorsSpy.report).not.toHaveBeenCalled()
   })
 
   it('lyckat utskick → leveranskorrelationen skrivs efter commit, inte i transaktionen', async () => {
