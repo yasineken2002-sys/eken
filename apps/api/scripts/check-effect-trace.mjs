@@ -126,13 +126,20 @@ export function granska({ filer, auditSrc, ack, specFinns, specSrc }) {
       fel.push(`R2 kvitteringen för ${a.rel} har ett skäl kortare än ${MIN_SKAL} tecken`)
     }
   }
-  const filerMedAnrop = new Set(anropare.map((a) => a.rel))
+  // R3 — en kvittering ska falla både när filen försvinner OCH när den inte
+  // längre BEHÖVS. Det andra är det lömska: efter att hyresgästvägen kopplades
+  // på skickade alla anropare `effects`, och en kvittering som mätte på "filen
+  // finns" hade stått kvar som ett sant påstående om ett problem som var löst.
+  // Villkoret är därför "filen har ett anropsställe SOM SAKNAR effects".
+  const filerSomBehöverKvittering = new Set(
+    anropare.filter((a) => !a.skickarEffects).map((a) => a.rel),
+  )
   for (const fil of kvitterade.keys()) {
-    if (!filerMedAnrop.has(fil)) {
+    if (!filerSomBehöverKvittering.has(fil)) {
       fel.push(
-        `R3 död kvittering: ${fil} står i effect-trace.ack.json men innehåller inget ` +
-          'anropsställe längre. Ta bort den — annars är ack-filen ett arkiv av ' +
-          'påståenden ingen prövar.',
+        `R3 onödig kvittering: ${fil} står i effect-trace.ack.json men alla dess ` +
+          'anropsställen skickar numera effects (eller finns inte kvar). Ta bort ' +
+          'den — annars är ack-filen ett arkiv av påståenden ingen prövar.',
       )
     }
   }
@@ -219,8 +226,18 @@ function självtest() {
       .length === 0,
     'en kommentar som citerar anropet räknades som ett anropsställe')
   t('KANARIE 0 (antalet är inte noll)', sedda > 0, 'inga anropare alls hittades')
-  // De fyra void-anroparna ska ligga i mängden — talet står med flit.
+  // De fyra void-anroparna ska ligga i mängden — talet står med flit, och det
+  // täcker BÅDA exekverarna: två i tool-executor.service.ts (ägarvägen, fel-
+  // och lyckadgrenen) och två i tenant-tool-executor.service.ts (hyresgästvägen,
+  // samma två grenar). Räknade omfånget bara den ena vägen skulle den andra
+  // kunna tappa sin påkoppling utan att något blev rött.
+  const perFil = {}
+  for (const a of hittaAnropare(FILER)) perFil[a.rel] = (perFil[a.rel] ?? 0) + 1
   t('KANARIE 0 (alla fyra void-anroparna är med)', sedda === 4, `hittade ${sedda}, väntade 4`)
+  t('KANARIE 0 (BÅDA exekverarna är med i omfånget)',
+    Object.keys(perFil).some((f) => /\/tool-executor\.service\.ts$/.test(f)) &&
+      Object.keys(perFil).some((f) => /\/tenant-tool-executor\.service\.ts$/.test(f)),
+    `filer i omfånget: ${JSON.stringify(perFil)}`)
 
   // KANARIE OMFÅNG — tom mängd FÄLLER.
   t('KANARIE omfång (tom filmängd → fäller)',
@@ -235,11 +252,21 @@ function självtest() {
   t('KANARIE regel (anropare MED effects → 0 brott)',
     granska({ ...bas, filer: med, ack: { kvitterade: [] } }).fel.filter((f) => f.startsWith('R2')).length === 0)
 
-  // KANARIE R3 — död kvittering fäller.
+  // KANARIE R3 — kvittering utan anropsställe fäller …
   t('KANARIE R3 (kvittering utan anropsställe → fäller)',
     granska({ ...bas, ack: { kvitterade: [{ fil: 'finns/inte.ts', skal: 'x'.repeat(40) }] } }).fel.some((f) =>
       f.startsWith('R3')),
     'en död kvittering gjorde vakten grön')
+  // … och en kvittering för en fil vars anropare NUMERA skickar effects fäller
+  // också. Utan den här står kvitteringen kvar som ett påstående om ett löst
+  // problem, och nästa läsare tror att luckan finns.
+  t('KANARIE R3 (kvittering som inte längre behövs → fäller)',
+    granska({
+      ...bas,
+      filer: [{ rel: 'x/y.ts', text: 'void this.audit.logToolExecution({\n  effects: drainEffects(),\n    })' }],
+      ack: { kvitterade: [{ fil: 'x/y.ts', skal: 'x'.repeat(40) }] },
+    }).fel.some((f) => f.startsWith('R3')),
+    'en onödig kvittering gjorde vakten grön')
 
   // KANARIE R4 — DEN VIKTIGA. Persisteringen bortkopplad fäller.
   const utanCreate = AUDIT_SRC.replace(/effects:\s*\{\s*create:/, 'effekter_borta: { skapa:')

@@ -39,6 +39,13 @@
  * `check-effect-trace.mjs` äger PÅKOPPLINGEN: att alla anropare av
  * `logToolExecution` finns i en HÄRLEDD mängd och skickar med sina effekter, och
  * att persisteringsstället har kvar sin nästlade skrivning.
+ *
+ * ── BÅDA EXEKVERARNA (steg 3a) ──────────────────────────────────────────────
+ *
+ * Det finns TVÅ exekverare, och hyresgästens är en egen klass. Täckte specen
+ * bara ägarvägen hade hyresgästvägen ärvt precis den blindhet ägarvägen just
+ * fick bort — vakten hade räknat dess anropare, men ingenting hade prövat att
+ * de faktiskt skriver något. Filen kör därför båda.
  */
 import { randomUUID } from 'node:crypto'
 
@@ -52,6 +59,8 @@ jest.mock('../../invoices/pdf.service', () => ({ PdfService: class {} }))
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { AiAuditService } from './ai-audit.service'
 import { ToolExecutorService } from '../tools/tool-executor.service'
+import { TenantToolExecutorService } from '../tools/tenant-tool-executor.service'
+import { MaintenanceService } from '../../maintenance/maintenance.service'
 import { VerifikationsnummerService } from '../../accounting/verifikationsnummer.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -72,6 +81,7 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
   let executor: ToolExecutorService
   let orgId: string
   let userId: string
+  let tenantId: string
 
   beforeAll(async () => {
     prisma = new PrismaService()
@@ -111,6 +121,54 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
         { organizationId: orgId, number: 3911, name: 'Hyresintäkt', type: 'REVENUE' },
       ],
     })
+
+    // Hyresgästvägens felanmälan kräver ett AKTIVT avtal — den slår upp
+    // lease → unit → property för att veta var felet finns.
+    const prop = await prisma.property.create({
+      data: {
+        organizationId: orgId,
+        name: 'P',
+        propertyDesignation: 'X 1:1',
+        type: 'RESIDENTIAL',
+        street: 'a',
+        city: 'b',
+        postalCode: '11111',
+        totalArea: 100,
+      },
+    })
+    const unit = await prisma.unit.create({
+      data: {
+        propertyId: prop.id,
+        name: 'U',
+        unitNumber: '1',
+        type: 'APARTMENT',
+        area: 50,
+        monthlyRent: 8000,
+      },
+    })
+    const tenant = await prisma.tenant.create({
+      data: {
+        organizationId: orgId,
+        type: 'INDIVIDUAL',
+        firstName: 'Hyres',
+        lastName: 'Gäst',
+        email: `spar-t-${sfx}@example.se`,
+      },
+    })
+    tenantId = tenant.id
+    await prisma.lease.create({
+      data: {
+        organizationId: orgId,
+        unitId: unit.id,
+        tenantId: tenant.id,
+        status: 'ACTIVE',
+        startDate: new Date('2026-01-01T00:00:00Z'),
+        tenancyStartDate: new Date('2026-01-01T00:00:00Z'),
+        activatedAt: new Date('2026-01-01T00:00:00Z'),
+        monthlyRent: 8000,
+        depositAmount: 8000,
+      },
+    })
   })
 
   afterAll(async () => {
@@ -120,6 +178,14 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
     await prisma.journalEntry.deleteMany({ where: { organizationId: orgId } })
     await prisma.journalEntrySequence.deleteMany({ where: { organizationId: orgId } })
     await prisma.account.deleteMany({ where: { organizationId: orgId } })
+    await prisma.maintenanceComment.deleteMany({
+      where: { ticket: { organizationId: orgId } },
+    })
+    await prisma.maintenanceTicket.deleteMany({ where: { organizationId: orgId } })
+    await prisma.lease.deleteMany({ where: { organizationId: orgId } })
+    await prisma.tenant.deleteMany({ where: { organizationId: orgId } })
+    await prisma.unit.deleteMany({ where: { property: { organizationId: orgId } } })
+    await prisma.property.deleteMany({ where: { organizationId: orgId } })
     await prisma.user.deleteMany({ where: { organizationId: orgId } })
 
     // STÄDNINGEN MÅSTE TÅLA EN SEN SKRIVNING — och det är egenskapen specen
@@ -204,5 +270,49 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
     const träffar = spår!.effects.filter((e) => e.entityType === 'JournalEntry')
     expect(träffar.length).toBeGreaterThan(0)
     expect(träffar.map((e) => e.entityId)).toContain(verifikat!.id)
+  })
+
+  it('HYRESGÄSTVÄGEN skriver också spåret — en egen exekverare, samma krav', async () => {
+    // Före steg 3a fanns inget spår alls här: ingen kollektor, inget AI-ursprung,
+    // ingen `effects` till auditraden. Två skrivande hyresgästverktyg var helt
+    // ospårade — och det är den vägen en hyresgästagent kommer att köra på.
+    const maintenance = Object.create(MaintenanceService.prototype) as MaintenanceService
+    Object.assign(maintenance, {
+      prisma,
+      // createForAllOrgUsers anropas fire-and-forget och rör inte spåret.
+      notificationsService: { createForAllOrgUsers: async () => undefined },
+      logger: { log: () => undefined, warn: () => undefined, error: () => undefined },
+    })
+    const tenantExecutor = Object.create(
+      TenantToolExecutorService.prototype,
+    ) as TenantToolExecutorService
+    Object.assign(tenantExecutor, {
+      prisma,
+      audit: new AiAuditService(prisma),
+      maintenanceService: maintenance,
+      notificationsService: { createForAllOrgUsers: async () => undefined },
+    })
+
+    const titel = `felanmälan ${randomUUID().slice(0, 8)}`
+    const resultat = await tenantExecutor.executeTool(
+      'create_maintenance_ticket',
+      { title: titel, description: 'Kranen droppar.' },
+      tenantId,
+      orgId,
+      { actionProof: { claimed: true } },
+    )
+    expect(resultat.success).toBe(true)
+
+    const ärende = await prisma.maintenanceTicket.findFirst({
+      where: { organizationId: orgId, title: titel },
+      select: { id: true },
+    })
+    expect(ärende).not.toBeNull()
+
+    const spår = await väntaPåSpår('create_maintenance_ticket')
+    expect(spår).not.toBeNull()
+    const träffar = spår!.effects.filter((e) => e.entityType === 'MaintenanceTicket')
+    expect(träffar.length).toBeGreaterThan(0)
+    expect(träffar.map((e) => e.entityId)).toContain(ärende!.id)
   })
 })
