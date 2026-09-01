@@ -1558,6 +1558,44 @@ körningen. `:?` gör det till ett fel; här går det rakt in i ett villkor. Och
 felmeddelandet finns — det går bara till stderr, i en loop där tjugo andra rader
 skrivs, och exitkoden 127 tillhör en tilldelning ingen kontrollerar.
 
+### `&` binder till HELA kedjan — inte till ledet före det
+
+`cd X && kommando &` bakgrundar `cd X && kommando`. Skalet SJÄLVT står kvar i sin
+ursprungliga katalog, så allt som kommer EFTER `&` — nästa led i kedjan, en
+heredoc, ett `python3 -` — körs där, inte i `X`. Uppmätt:
+
+```bash
+cd /workspaces/eken-strom-c && echo "bakgrundsledet: $PWD" &
+wait
+python3 - <<'PY'
+import os; print("heredoc-python:", os.getcwd())
+PY
+# bakgrundsledet: /workspaces/eken-strom-c
+# heredoc-python: /tmp/…/scratchpad/a      ← skalets gamla katalog
+```
+
+Redigeringen LYCKAS och skriver "klart" — i fel katalog. Kostnaden i mätningen
+raden kommer ur: en ändring rapporterad som "landade aldrig", en andra
+omskrivning av samma fil, och en ocommittad fil som låg kvar i den delade
+worktreen i sex timmar.
+
+**Gör något av tre — inte "var försiktig":**
+
+```bash
+# 1. Låt kommandot självt intyga sin katalog (`pwd` som FÖRSTA led).
+pwd -P && sed -i 's/x/y/' fil.ts
+
+# 2. Absolut sökväg — då spelar skalets katalog ingen roll.
+sed -i 's/x/y/' /workspaces/eken-strom-c/apps/api/src/fil.ts
+
+# 3. Gruppera, så `&` binder till gruppen i stället för till kedjan.
+( cd /workspaces/eken-strom-c && npm run dev ) &
+```
+
+Samma familj som `${VAR:?}` och å/ä/ö ovan: ett kommando som gör NÅGOT ANNAT än
+du menade i stället för att stanna. Skillnaden är att här finns inget
+felmeddelande att missa — utfallet är ett LYCKAT kommando i fel katalog.
+
 ### En grön check efter en edit betyder inget om diffen är tom
 
 `cd` som faller i en kommandokedja, en `python3 -c` som körs från fel katalog, en
