@@ -35,6 +35,25 @@
  * UNDANTAG: *.spec.ts (tester bygger medvetet attrapper och simulerar kringgång)
  * och migrations-SQL (som per definition rör tabellerna).
  *
+ * ── TVÅ MASKER: DEN HÄR VAKTEN FÄLLDE PÅ PROSA ─────────────────────────────
+ *
+ * Guarden gick på råtexten, och red team-revisionen MÄTTE utfallet:
+ *
+ *   brottet i KOD        → RÖD   (rätt)
+ *   samma brott i PROSA  → RÖD   (falskt larm)
+ *
+ * Ett kodexempel i en kommentar — precis den sorten som står i huvudkommentaren
+ * ovan för att FÖRKLARA den tysta tillåtaren — räknades som en fjärde kopia.
+ * En vakt som fäller på sin egen dokumentation lär folk att kringgå den.
+ *
+ * Två masker ur scripts/lib/source-scan.mjs:
+ *
+ *   kod            = codeMask(text)       regel (1) och (2). Ett Prisma-anrop är
+ *                                          kod; ett exempel i prosa är det inte.
+ *   utanKommentarer = blankComments(text) regel (3), rå SQL. Satsen BOR i en
+ *                                          sträng eller mallsträng — codeMask
+ *                                          hade blankat bort hela regeln.
+ *
  * Rent statiskt (fs-only, inga beroenden, ingen DB) → eget CI-steg utan databas.
  * Lokalt:     node apps/api/scripts/check-period-lookup-source.mjs
  * Självtest:  node apps/api/scripts/check-period-lookup-source.mjs --self-test
@@ -42,6 +61,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, dirname, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { codeMask, blankComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC_DIR = join(HERE, '..', 'src')
@@ -70,15 +90,19 @@ export function scanSource(text, relPath) {
   const violations = []
   const inLookupFile = isLookupFile(relPath)
 
+  // Se huvudkommentaren: två masker, båda positionsbevarande.
+  const kod = codeMask(text)
+  const utanKommentarer = blankComments(text)
+
   // (2) Append-only-brott — gäller ÄVEN i closed-period.ts, därför först.
   const mutatorRe = new RegExp(
     `\\baccountingPeriodEvent\\s*\\.\\s*(${MUTATORS.join('|')})\\s*\\(`,
     'g',
   )
   let m
-  while ((m = mutatorRe.exec(text))) {
+  while ((m = mutatorRe.exec(kod))) {
     violations.push({
-      line: lineOf(text, m.index),
+      line: lineOf(kod, m.index),
       rule: `accountingPeriodEvent.${m[1]}() — bryter append-only`,
       detail:
         'En periodhändelse skrivs en gång och ändras aldrig. Rättelse sker genom att ' +
@@ -91,9 +115,9 @@ export function scanSource(text, relPath) {
     for (const model of MODELS) {
       const accessRe = new RegExp(`\\b${model}\\s*\\.\\s*[a-zA-Z]`, 'g')
       let a
-      while ((a = accessRe.exec(text))) {
+      while ((a = accessRe.exec(kod))) {
         violations.push({
-          line: lineOf(text, a.index),
+          line: lineOf(kod, a.index),
           rule: `direkt Prisma-åtkomst till ${model}`,
           detail:
             'Periodtillståndet får bara slås upp via accounting/closed-period.ts ' +
@@ -103,7 +127,8 @@ export function scanSource(text, relPath) {
     }
 
     // Rå SQL mot tabellerna kringgår Prisma och därmed hela hjälparen.
-    text.split('\n').forEach((ln, i) => {
+    // blankComments och inte codeMask — satsen står i en sträng.
+    utanKommentarer.split('\n').forEach((ln, i) => {
       if (/["'`]?(AccountingPeriodEvent|ClosedAccountingPeriod)["'`]?/i.test(ln) === false) return
       if (/\$(executeRaw|executeRawUnsafe|queryRaw|queryRawUnsafe)/.test(ln)) {
         violations.push({
@@ -167,6 +192,26 @@ const GOOD = [
     `await this.prisma.journalEntry.create({ data })\nconst p = await this.prisma.accountingPeriodSummary.findMany()`,
   ],
 ]
+// Prov som isolerar MASKEN. Vart och ett var fel i råtextversionen.
+const MASK_GOOD = [
+  [
+    'huvudkommentarens EGET kodexempel (det uppmätta falsklarmet)',
+    'src/consumption/consumption.service.ts',
+    `// findFirst({ where: { type: 'REOPENED' } }) på accountingPeriodEvent.findFirst(\n` +
+      `// läser som "perioden är öppen" för all framtid — därför förbjudet.\n` +
+      `const x = 1`,
+  ],
+  [
+    'ett tabellnamn i en LOGGSTRÄNG är ingen rå SQL',
+    'src/accounting/accounting.service.ts',
+    `this.logger.warn('kunde inte läsa AccountingPeriodEvent för perioden')`,
+  ],
+  [
+    'en utkommenterad append-only-överträdelse',
+    'src/accounting/accounting-period.service.ts',
+    `// await this.prisma.accountingPeriodEvent.update({ where: { id }, data })  — ALDRIG`,
+  ],
+]
 const BAD = [
   [
     'fjärde kopia av uppslagningen',
@@ -203,11 +248,65 @@ const BAD = [
     'src/accounting/accounting.service.ts',
     `await this.prisma.$executeRawUnsafe('DELETE FROM "AccountingPeriodEvent" WHERE id = $1', id)`,
   ],
+  [
+    'MASK: en riktig kopia EFTER en regex-literal med citattecken',
+    'src/consumption/consumption.service.ts',
+    `const e = s.replace(/"/g, '&quot;')\n` +
+      `const c = await this.prisma.closedAccountingPeriod.findFirst({ where: { organizationId } })`,
+  ],
+  [
+    'MASK: rå SQL kvar i en MALLSTRÄNG — skärpan får inte försvinna',
+    'src/accounting/accounting.service.ts',
+    'await this.prisma.$executeRawUnsafe(`DELETE FROM "AccountingPeriodEvent" WHERE id = $1`, id)',
+  ],
 ]
+
+// ── OMFÅNGSKANARIEFÅGEL ─────────────────────────────────────────────────────
+//
+// Lärdomen av R5. `main()` letar efter BROTT, och brottmängden är tom i friskt
+// läge — den duger inte som bevis på att vakten mäter något. Två andra mängder
+// kan krympa tyst och lämnar vakten grön:
+//
+//   • filerna `walk` hittar,
+//   • de LEGITIMA modellåtkomsterna i closed-period.ts. Försvinner de har
+//     sanningskällan slutat vara en sanningskälla, och vakten vaktar en tom
+//     invariant utan att säga något.
+//
+// Golv MÄTTA mot e9aea18: 447 filer, 8 åtkomster i uppslagningsfilen.
+const MIN_FILER = 300
+const MIN_ÅTKOMSTER_I_KÄLLAN = 4
+
+function omfångskanariefågel() {
+  let filer = 0
+  let iKällan = 0
+  for (const f of walk(SRC_DIR)) {
+    filer++
+    if (!isLookupFile(f)) continue
+    const kod = codeMask(readFileSync(f, 'utf8'))
+    for (const model of MODELS) {
+      iKällan += (kod.match(new RegExp(`\\b${model}\\s*\\.\\s*[a-zA-Z]`, 'g')) ?? []).length
+    }
+  }
+  const fel = []
+  if (filer < MIN_FILER) fel.push(`omfång: ${filer} filer skannade, golv ${MIN_FILER}`)
+  if (iKällan < MIN_ÅTKOMSTER_I_KÄLLAN)
+    fel.push(
+      `omfång: ${iKällan} modellåtkomster i closed-period.ts, golv ${MIN_ÅTKOMSTER_I_KÄLLAN}`,
+    )
+  return { fel, mätt: { filer, iKällan } }
+}
 
 function selfTest() {
   let ok = true
-  for (const [label, path, code] of GOOD) {
+
+  // (0) Den delade skannerns kanariefåglar — metavaktens R2.
+  const skanner = kanariefåglar()
+  if (skanner.length) {
+    ok = false
+    console.error(`❌ DEN DELADE SKANNERN ÄR TRASIG:\n   ${skanner.join('\n   ')}`)
+  } else console.log('✅ delad skanner: 7 kanariefåglar gröna')
+
+  for (const [label, path, code] of [...GOOD, ...MASK_GOOD]) {
     const v = scanSource(code, path)
     if (v.length !== 0) {
       ok = false
@@ -221,6 +320,17 @@ function selfTest() {
       console.error(`❌ MISSADE kringgång: "${label}" flaggades inte`)
     } else console.log(`✅ fångad kringgång: ${label} (${v[0].rule})`)
   }
+  const omf = omfångskanariefågel()
+  if (omf.fel.length) {
+    ok = false
+    console.error(`❌ OMFÅNGET HAR KRYMPT:\n   ${omf.fel.join('\n   ')}`)
+  } else {
+    console.log(
+      `✅ omfång: ${omf.mätt.filer} filer (golv ${MIN_FILER}), ` +
+        `${omf.mätt.iKällan} modellåtkomster i closed-period.ts (golv ${MIN_ÅTKOMSTER_I_KÄLLAN})`,
+    )
+  }
+
   console.log(ok ? '\n✅ Självtest OK.' : '\n❌ Självtest misslyckades.')
   process.exit(ok ? 0 : 1)
 }

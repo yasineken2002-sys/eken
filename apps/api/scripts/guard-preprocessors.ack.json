@@ -1,8 +1,8 @@
 {
   "$comment": "KVITTERINGAR — vaktskript som rör filsystemet UTAN scripts/lib/source-scan.mjs. Regeln frågar OM du läser filer själv, inte HUR: en handskriven teckenvandrare, en regexfamilj vi inte tänkt på och en variant ingen uppfunnit än fälls alla av samma villkor.",
   "$howto": "Listan fäller ÅT BÅDA HÅLLEN: en okvitterad fil är röd, och en kvittering utan motsvarighet i koden är också röd. Migrerade du filen till den delade skannern? Ta bort posten. Lägg ALDRIG till en post för att tysta ett nytt fynd utan att skriva VAD filen läser och varför skannern inte duger.",
-  "$note": "Två poster är LEGITIMA (läser inte källkod). 7 är SKULD: de läser .ts med rå textmatchning, alltså exakt formen som gjorde check-transaction-limits blind i #582. Talet ska bara gå NEDÅT.",
-  "total": 9,
+  "$note": "Två poster är LEGITIMA (läser inte källkod). 6 är SKULD: de läser .ts med rå textmatchning, alltså exakt formen som gjorde check-transaction-limits blind i #582. Talet ska bara gå NEDÅT.",
+  "total": 8,
   "files": {
     "apps/api/scripts/check-generated-knowledge-sync.mjs": {
       "reason": "LEGITIMT — tolkar aldrig innehållet. Den kör den RIKTIGA generatorn och jämför filinnehåll byte för byte (`!==`); ingen regex, ingen tokenisering. En skanner hade inte haft något att göra."
@@ -18,9 +18,6 @@
     },
     "apps/api/scripts/check-ocr-provenance.mjs": {
       "reason": "SKULD — läser ocr-proveniens.ts och reconciliation.service.ts med rå textmatchning. Migrera till den delade skannern."
-    },
-    "apps/api/scripts/check-period-lookup-source.mjs": {
-      "reason": "SKULD, OCH MÄTT: den FÄLLER på ett kodexempel som står i en kommentar (falskt larm, uppmätt i red team-revisionen). Migrera till den delade skannern."
     },
     "apps/api/scripts/check-reminder-fee-source.mjs": {
       "reason": "SKULD — läser .ts under src med rå textmatchning och ett teckenfönster (PRECEDING_WINDOW). Migrera till den delade skannern."
