@@ -6,6 +6,8 @@ import {
   PayloadTooLargeException,
 } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
+import { runCronSafely } from '../../common/cron/cron-safety'
+import { CronErrorSink } from '../../common/cron/cron-error-sink'
 import { v4 as uuid } from 'uuid'
 import * as path from 'path'
 import type Anthropic from '@anthropic-ai/sdk'
@@ -160,6 +162,7 @@ export class AiAttachmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly cronErrors: CronErrorSink,
   ) {}
 
   async upload(
@@ -545,13 +548,28 @@ export class AiAttachmentsService {
   // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 4 * * *')
   async cleanupExpiredAttachments(): Promise<void> {
-    const removedUnused = await this.cleanupUnusedAttachments()
-    const removedConsumed = await this.cleanupConsumedAttachments()
-    if (removedUnused + removedConsumed > 0) {
-      this.logger.log(
-        `Städade ${removedUnused} oanvända och ${removedConsumed} konsumerade AI-bilagor`,
-      )
-    }
+    // #605 — VARAKTIG FELSÄNKA. Kroppen hade inget app-nivå try/catch alls: ett
+    // fel på den FÖRSTA `findMany` (org-lösa listan av utgångna bilagor) fångades
+    // av @nestjs/schedule i en tyst logger.error. Den loggen lever bara så länge
+    // containern gör det, och en deploy tar den med sig.
+    //
+    // Per-bilage-felen INNE i hjälparna är oförändrade och ska vara det: de är
+    // isolerade med flit (en R2-miss får inte stoppa resten, raden plockas upp
+    // nästa körning). Det här lagret äger felet på HELA körningen — det som
+    // annars betyder att dagens städning uteblev för alla.
+    await runCronSafely(
+      'ai-attachments-cleanup',
+      async () => {
+        const removedUnused = await this.cleanupUnusedAttachments()
+        const removedConsumed = await this.cleanupConsumedAttachments()
+        if (removedUnused + removedConsumed > 0) {
+          this.logger.log(
+            `Städade ${removedUnused} oanvända och ${removedConsumed} konsumerade AI-bilagor`,
+          )
+        }
+      },
+      { logger: this.logger, sink: this.cronErrors },
+    )
   }
 
   /** Bilagor som laddades upp men aldrig skickades — rad och fil tas bort. */

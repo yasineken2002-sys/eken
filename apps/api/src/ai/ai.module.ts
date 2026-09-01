@@ -36,9 +36,13 @@ import { DocumentsModule } from '../documents/documents.module'
 import { SigningModule } from '../signing/signing.module'
 import { LegalEmbeddingService } from './knowledge/embedding/legal-embedding.service'
 import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.service'
+import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
 
 @Module({
   imports: [
+    // #605 — varaktig felsänka för ai/:s två cron-jobb (bilagestädning,
+    // gallring). Importerar bara PrismaModule, så ingen modulcykel.
+    CronErrorSinkModule,
     PrismaModule,
     AiUsageModule,
     InvoicesModule,

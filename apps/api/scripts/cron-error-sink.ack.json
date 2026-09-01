@@ -1,15 +1,9 @@
 {
   "$comment": "KVITTERINGAR — @Cron-jobb som ännu inte når den varaktiga felsänkan (common/cron/cron-error-sink.ts). Ärendet är #605.",
   "$howto": "Listan fäller ÅT BÅDA HÅLLEN: ett okvitterat jobb utan sänka är RÖTT, och en kvittering för ett jobb som REDAN når sänkan är också RÖTT. Konverterade du ett jobb? Ta bort posten. Lägg ALDRIG till en post utan att skriva VARFÖR och VEM som äger konverteringen — en kvitteringslista utan skäl är en lista över saker ingen minns varför de står där.",
-  "$note": "MÄTT mot 5b61976: 25 @Cron-jobb. 21 når ErrorLog-sänkan SYNLIGT för vakten, 2 är konverterade men osynliga för den (sänkan ligger en nivå ner i den inre tjänsten — se #619), och 2 är verklig SKULD: båda med endast lokal logg, båda i ai/ (ström A:s). Skulden ska bara gå NEDÅT; de konverterade-men-osynliga är inte skuld och ska inte räknas som det.",
-  "total": 4,
+  "$note": "MÄTT mot 955eb71: 25 @Cron-jobb. 23 når ErrorLog-sänkan SYNLIGT för vakten, och 2 är konverterade men osynliga för den (sänkan ligger en nivå ner i den inre tjänsten — se #619). VERKLIG SKULD: 0. De två sista med enbart lokal logg låg i ai/ (ström A:s) och konverterades 2026-09-01 — ai-attachments-cleanup och ai-retention. Skulden ska bara gå NEDÅT; de konverterade-men-osynliga är inte skuld och ska inte räknas som sådan.",
+  "total": 2,
   "jobs": {
-    "ai/attachments/ai-attachments.service.ts::cleanupExpiredAttachments": {
-      "reason": "INGEN LÄSBAR SÄNKA — ENBART LOKAL LOGG. Läsbar bara medan containern lever, och borta efter nästa deploy (204 merges till main på 30 dagar = minst lika många containerbyten). Alltså läsbart en kort stund och sedan OÅTERKALLELIGT borta. ström A äger apps/api/src/ai/ — konverteringen är deras."
-    },
-    "ai/retention/ai-retention.service.ts::scheduledRetention": {
-      "reason": "INGEN LÄSBAR SÄNKA — ENBART LOKAL LOGG. Läsbar bara medan containern lever, och borta efter nästa deploy (204 merges till main på 30 dagar = minst lika många containerbyten). Alltså läsbart en kort stund och sedan OÅTERKALLELIGT borta. ström A äger apps/api/src/ai/ — konverteringen är deras."
-    },
     "backup/backup.scheduler.ts::dailyBackup": {
       "reason": "KONVERTERAD, MEN OSYNLIG FÖR VAKTEN. Sänkan ligger i den INRE tjänsten — backup.service.ts runBackup() respektive backup-freshness.service.ts check() — inte i cron-metoden. Det är med flit: cron-metodens nakna catch sväljer just därför att rapporteringen sker en nivå ner, och ett sänkanrop där uppe hade gett TVÅ rader för ett fel. Vakten läser cron-metoden plus dess *Unsafe-delegat och kan alltså inte se det. Posten står kvar som en KVITTERING och inte som en skuld: talet i $note skiljer på de två. Färskhetslarmet rapporterar dessutom innanför sin dygnsdämpning — samma larm en gång per dygn, inte en gång per körning."
     },
