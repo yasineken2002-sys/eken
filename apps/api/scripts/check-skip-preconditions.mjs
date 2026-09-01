@@ -38,6 +38,24 @@
  *     den behövs — det var defekten i ai-effect-extension.spec.ts (#562), och
  *     den upprepades i action-idempotency.spec.ts.
  *
+ * ── ALLA TRE FRÅGORNA STÄLLS MOT KOD ────────────────────────────────────────
+ *
+ * Vakten läste råtexten, och gjorde det på det värsta stället: den räknade
+ * `(` och `)` per rad för att hitta blockslutet. Ett `')'` i en stränglitteral
+ * — `it("stänger )", …)` — flyttade blockgränsen, och R2:s fråga "ligger
+ * assertionen utanför blocket" besvarades mot ett felaktigt intervall.
+ *
+ * Värre ändå för R1: `expect(HAR_DB).toBe(true)` söktes i råtext, så en
+ * UTKOMMENTERAD assertion uppfyllde kravet. Det är formen "en regel som frågar
+ * prosa i stället för kod är alltid uppfylld" — och en fil vars enda
+ * förutsättningskontroll är bortkommenterad är precis den defekt regeln finns
+ * för.
+ *
+ * Alla tre — villkorsläsningen, parentesmatchningen och assertionen — går nu på
+ * `codeMask(text)` ur scripts/lib/source-scan.mjs. Masken bevarar längd och
+ * radbrytningar, så radnumren pekar fortfarande på råfilen, och den behåller
+ * avgränsarna så parentesmatchningen fortfarande har något att räkna.
+ *
  * Rent statiskt (fs-only, inga beroenden, ingen DB) → eget CI-steg.
  * Lokalt:      node apps/api/scripts/check-skip-preconditions.mjs
  * Självtest:   node apps/api/scripts/check-skip-preconditions.mjs --self-test
@@ -45,6 +63,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { codeMask, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = join(HERE, '..', 'src')
@@ -68,12 +87,19 @@ export function specfiler(dir = SRC, ut = []) {
 export function findConditionalSkips(text) {
   const re =
     /(?:const|let)\s+(\w+)\s*=\s*([\w.]+)\s*\?\s*(?:describe|it|test)\s*:\s*(?:describe|it|test)\.skip/g
-  return [...text.matchAll(re)].map((m) => ({ alias: m[1], villkor: m[2] }))
+  return [...codeMask(text).matchAll(re)].map((m) => ({ alias: m[1], villkor: m[2] }))
 }
 
-/** Radintervall som ligger inuti ett villkorligt block (`alias(` … matchande `)`). */
+/**
+ * Radintervall som ligger inuti ett villkorligt block (`alias(` … matchande `)`).
+ *
+ * Räknar parenteser i `codeMask` — där är stränginnehåll blankat men
+ * avgränsarna kvar, så ett `')'` i en testtitel inte längre kan stänga blocket
+ * för tidigt. Att räkna parenteser i en MASKERAD källa är vad codeMask finns
+ * till för; att göra det i råtext är att skriva sin egen förbehandlare.
+ */
 export function conditionalRanges(text, alias) {
-  const rader = text.split('\n')
+  const rader = codeMask(text).split('\n')
   const intervall = []
   for (let i = 0; i < rader.length; i++) {
     if (!new RegExp(`(^|[^\\w.])${alias}\\s*\\(`).test(rader[i])) continue
@@ -100,7 +126,8 @@ export function evaluate(filer) {
     if (villkor.length === 0) continue
     granskade += 1
 
-    const rader = text.split('\n')
+    // R1/R2 läser KOD: en utkommenterad assertion uppfyller ingenting.
+    const rader = codeMask(text).split('\n')
     const intervall = villkor.flatMap((v) => conditionalRanges(text, v.alias))
     const inuti = (radnr) => intervall.some(([a, b]) => radnr >= a && radnr <= b)
 
@@ -154,6 +181,15 @@ beskriv('mot databasen', () => {
 })`,
 }
 
+// ── OMFÅNGETS GOLV ──────────────────────────────────────────────────────────
+//
+// Kanariefågeln nedan krävde tidigare bara "fler än noll". Ett golv på noll
+// säger att skanningen inte är HELT död — inte att den mäter det den ska. Talen
+// är MÄTTA mot e9aea18: 336 spec-filer, 14 med villkorlig överhoppning, 15
+// villkor totalt.
+const MIN_SPECFILER = 200
+const MIN_VILLKORLIGA = 6
+
 function selfTest() {
   let ok = true
   const fail = (m) => {
@@ -172,6 +208,67 @@ function selfTest() {
     console.log(`✅ fångad: ${label} (${r.problem[0].rule})`)
   }
 
+  // ── DEN DELADE SKANNERNS KANARIEFÅGLAR (metavaktens R2) ──────────────────
+  const skanner = kanariefåglar()
+  if (skanner.length) fail(`DEN DELADE SKANNERN ÄR TRASIG: ${skanner.join(' | ')}`)
+  else console.log('✅ delad skanner: 7 kanariefåglar gröna')
+
+  // ── MASKENS SEMANTIK ─────────────────────────────────────────────────────
+  //
+  // Tre prov som alla var fel i råtextversionen.
+  {
+    // R1 fick INTE uppfyllas av en bortkommenterad assertion. Det var den
+    // farliga riktningen: filen ser prövad ut och är det inte.
+    const kommenteradAssertion = {
+      fil: 'f.spec.ts',
+      text: `const HAR_DB = Boolean(process.env.DATABASE_URL)
+const beskriv = HAR_DB ? describe : describe.skip
+
+describe('förutsättningar', () => {
+  it('kanariefågel', () => {
+    // expect(HAR_DB).toBe(true)
+  })
+})
+
+beskriv('mot databasen', () => {})`,
+    }
+    röd(
+      'MASK: en UTKOMMENTERAD assertion uppfyller inte R1',
+      evaluate([kommenteradAssertion]),
+      'prövar den aldrig',
+    )
+
+    // Parentesmatchningen får inte luras av ett `)` i en testtitel. Utan masken
+    // stängs blocket på fel rad och R2 svarar mot ett felaktigt intervall.
+    const parentesITitel = {
+      fil: 'g.spec.ts',
+      text: `const HAR_DB = Boolean(process.env.DATABASE_URL)
+const beskriv = HAR_DB ? describe : describe.skip
+
+beskriv('stänger ) i titeln', () => {
+  it('kanariefågel', () => {
+    expect(HAR_DB).toBe(true)
+  })
+})`,
+    }
+    röd(
+      'MASK: `)` i en testtitel flyttar inte blockgränsen',
+      evaluate([parentesITitel]),
+      'bara INUTI ett villkorligt block',
+    )
+
+    // Och åt andra hållet: ett villkor som bara står i prosa är inget villkor.
+    grön(
+      'MASK: ett villkorsuttryck i en KOMMENTAR är ingen villkorlig överhoppning',
+      evaluate([
+        {
+          fil: 'h.spec.ts',
+          text: "// const beskriv = HAR_DB ? describe : describe.skip\ndescribe('x', () => {})",
+        },
+      ]),
+    )
+  }
+
   // ── KANARIEFÅGEL 1: mönsterläsningen måste ge utslag ─────────────────────
   const v = findConditionalSkips(RÄTT.text)
   if (v.length !== 1 || v[0].alias !== 'beskriv' || v[0].villkor !== 'HAR_DB') {
@@ -181,12 +278,19 @@ function selfTest() {
   // ── KANARIEFÅGEL 2: mot den RIKTIGA källan ──────────────────────────────
   const riktiga = specfiler().map((p) => ({ fil: relative(SRC, p), text: readFileSync(p, 'utf8') }))
   const medVillkor = riktiga.filter((f) => findConditionalSkips(f.text).length > 0)
-  if (medVillkor.length === 0) {
-    fail('kanariefågel: NOLL villkorliga specar i den riktiga källan — skanningen har gått blind')
+  // Golv, inte "fler än noll": en mängd som krympt från 14 till 1 mäter nästan
+  // ingenting men klarar ett nollgolv. Se MIN_* ovan.
+  if (riktiga.length < MIN_SPECFILER) {
+    fail(`omfång: ${riktiga.length} spec-filer hittade, golv ${MIN_SPECFILER}`)
+  } else if (medVillkor.length < MIN_VILLKORLIGA) {
+    fail(
+      `omfång: ${medVillkor.length} villkorliga specar i den riktiga källan, golv ` +
+        `${MIN_VILLKORLIGA} — skanningen har gått blind eller mängden har krympt`,
+    )
   } else {
     console.log(
-      `✅ kanariefågel: ${medVillkor.length} villkorliga specar i den riktiga källan ` +
-        `(${medVillkor.map((f) => f.fil.split('/').pop()).join(', ')})`,
+      `✅ omfång: ${riktiga.length} spec-filer (golv ${MIN_SPECFILER}), ` +
+        `${medVillkor.length} med villkorlig överhoppning (golv ${MIN_VILLKORLIGA})`,
     )
   }
 
