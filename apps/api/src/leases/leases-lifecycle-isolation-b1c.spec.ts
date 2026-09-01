@@ -12,6 +12,11 @@ import { LeasesService } from './leases.service'
 import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 import { alltidLedigtLås } from '../common/redis/lock.test-double'
 
+const cronErrorsSpy = {
+  report: jest.fn(async (_cron: string, _err: unknown, _ctx?: unknown) => undefined),
+}
+beforeEach(() => cronErrorsSpy.report.mockClear())
+
 const mockedCapture = captureException as jest.Mock
 
 function makeService() {
@@ -32,6 +37,11 @@ function makeService() {
     {} as never,
     {} as never,
     alltidLedigtLås,
+    // #605: cronErrors — den varaktiga felsänkan. INSPELANDE attrapp, inte
+    // kastande: de här testerna driver felvägen MED FLIT och asserterar att
+    // jobbet larmar. En kastande attrapp hade fällt just de test som bevisar
+    // att sänkan nås.
+    cronErrorsSpy as never,
   )
   // Tysta loggern (svc.logger är privat) för rent testutdata.
   ;(svc as unknown as { logger: unknown }).logger = {
@@ -79,6 +89,7 @@ describe('LeasesService.processLifecycle — B1c delsystems-isolering', () => {
 
     await svc.processLifecycle()
     expect(mockedCapture).not.toHaveBeenCalled()
+    expect(cronErrorsSpy.report).not.toHaveBeenCalled()
   })
 
   it('autoRenew (hård förutsättning) kastar → cronet larmar via runCronSafely, delsystemen körs INTE', async () => {
@@ -98,6 +109,7 @@ describe('LeasesService.processLifecycle — B1c delsystems-isolering', () => {
 
     // runCronSafely larmade (cron-tagg, INGEN subsystem-tagg):
     expect(mockedCapture).toHaveBeenCalledTimes(1)
+    expect(cronErrorsSpy.report).toHaveBeenCalledTimes(1)
     const [, ctx] = mockedCapture.mock.calls[0]
     expect((ctx as { tags: Record<string, string> }).tags).toEqual(
       expect.objectContaining({ cron: 'leases-process-lifecycle' }),

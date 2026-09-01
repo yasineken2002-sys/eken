@@ -28,6 +28,7 @@ import { resolveNoticeDebtOrigin } from '../accounting/debt-origin'
 import { resolveReminderFee, reminderFeeCapMessage } from '../accounting/reminder-fee'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import { CronErrorSink } from '../common/cron/cron-error-sink'
 
 interface ReminderSummary {
   reminded: number
@@ -109,6 +110,9 @@ export class RentReminderService {
     // Bankavstämnings-härdning PR 4 (B) — pausa pengamodifierande/inkasso-
     // framflyttande eskalering + larma när orgens betalningsdata är inaktuell.
     private readonly freshness: PaymentFreshnessService,
+    // #605 — varaktig felsänka. SIST i listan: nya beroenden läggs till på
+    // slutet så befintliga positionsanrop inte tyst byter betydelse.
+    private readonly cronErrors: CronErrorSink,
   ) {}
 
   /**
@@ -266,7 +270,7 @@ export class RentReminderService {
             `${summary.pausedStale} pausade (inaktuell betalningsdata), ${summary.errors} fel`,
         )
       },
-      { logger: this.logger },
+      { logger: this.logger, sink: this.cronErrors },
     )
     return summary
   }
@@ -479,7 +483,7 @@ export class RentReminderService {
             `${summary.pausedStale} pausade (inaktuell betalningsdata), ${summary.errors} fel`,
         )
       },
-      { logger: this.logger },
+      { logger: this.logger, sink: this.cronErrors },
     )
     return summary
   }

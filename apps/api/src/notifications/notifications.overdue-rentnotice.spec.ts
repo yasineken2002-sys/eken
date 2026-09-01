@@ -20,6 +20,11 @@ jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }))
 import { captureException } from '@sentry/nestjs'
 import { NotificationsService } from './notifications.service'
 
+const cronErrorsSpy = {
+  report: jest.fn(async (_cron: string, _err: unknown, _ctx?: unknown) => undefined),
+}
+beforeEach(() => cronErrorsSpy.report.mockClear())
+
 function makeService() {
   const prisma = {
     rentNotice: {
@@ -32,14 +37,11 @@ function makeService() {
     {} as never,
     {} as never,
     {} as never, // locks — cron-låset, används inte av de testade metoderna
-    // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
-    // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
-    // förbi rapporteringen. De testade metoderna ska aldrig nå hit.
-    {
-      report: () => {
-        throw new Error('#605: cronErrors.report anropades oväntat i test')
-      },
-    } as never,
+    // #605: cronErrors — den varaktiga felsänkan. INSPELANDE attrapp, inte
+    // kastande: de här testerna driver felvägen MED FLIT och asserterar att
+    // jobbet larmar. En kastande attrapp hade fällt just de test som bevisar
+    // att sänkan nås.
+    cronErrorsSpy as never,
   )
   return { service, prisma }
 }

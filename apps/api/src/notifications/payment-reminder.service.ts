@@ -24,6 +24,7 @@ import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { resolveActorType, aiOriginColumns } from '../common/ai-origin/ai-origin.context'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import { CronErrorSink } from '../common/cron/cron-error-sink'
 
 interface ProcessSummary {
   friendlySent: number
@@ -42,6 +43,9 @@ export class PaymentReminderService {
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
     private readonly accounting: AccountingService,
+    // #605 — varaktig felsänka. SIST i listan: nya beroenden läggs till på
+    // slutet så befintliga positionsanrop inte tyst byter betydelse.
+    private readonly cronErrors: CronErrorSink,
   ) {}
 
   /**
@@ -185,7 +189,7 @@ export class PaymentReminderService {
           `Påminnelser: ${summary.friendlySent} vänliga, ${summary.formalSent} formella, ${summary.readyForCollection} markerade redo för inkasso, ${summary.errors} fel, ${summary.skipped} hoppades över`,
         )
       },
-      { logger: this.logger },
+      { logger: this.logger, sink: this.cronErrors },
     )
     return summary
   }

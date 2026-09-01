@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { AviseringService } from './avisering.service'
+import { CronErrorSink } from '../common/cron/cron-error-sink'
 
 /**
  * Schemalagd generering av månatliga hyresavier. Körs 1:a varje månad
@@ -22,6 +23,9 @@ export class AviseringScheduler {
   constructor(
     private readonly prisma: PrismaService,
     private readonly avisering: AviseringService,
+    // #605 — varaktig felsänka. SIST i listan: nya beroenden läggs till på
+    // slutet så befintliga positionsanrop inte tyst byter betydelse.
+    private readonly cronErrors: CronErrorSink,
   ) {}
 
   // 1:a varje månad kl 07:00. För maj-avi ⇒ kör 1 maj. Förfallodag
@@ -51,6 +55,7 @@ export class AviseringScheduler {
     await runCronSafely('avisering-generate-monthly', () => this.runForMonth(year, month), {
       logger: this.logger,
       level: 'fatal',
+      sink: this.cronErrors,
     })
   }
 

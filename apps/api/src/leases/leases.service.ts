@@ -46,6 +46,7 @@ import {
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { CRON_LOCK_TTL_SEC } from '../common/redis/cron-lock'
 import { LockService } from '../common/redis/lock.service'
+import { CronErrorSink } from '../common/cron/cron-error-sink'
 
 const INCLUDE = {
   unit: { include: { property: true } },
@@ -429,6 +430,9 @@ export class LeasesService {
     // Cron-lås (klass A). Sist i listan: nya beroenden läggs till på slutet
     // så befintliga positionsanrop inte tyst byter betydelse.
     private readonly locks: LockService,
+    // #605 — varaktig felsänka. SIST i listan: nya beroenden läggs till på
+    // slutet så befintliga positionsanrop inte tyst byter betydelse.
+    private readonly cronErrors: CronErrorSink,
   ) {}
 
   async findAll(organizationId: string) {
@@ -1431,7 +1435,7 @@ export class LeasesService {
           `[Leases] Lifecycle done: ${renewed} renewed, ${reminders ?? '—'} reminders, ${terminated ?? '—'} terminated, ${depositReminders ?? '—'} deposit reminders, ${refundSwept} refund-sweep, ${rentApplied ?? '—'} rent increases applied`,
         )
       },
-      { logger: this.logger },
+      { logger: this.logger, sink: this.cronErrors },
     )
   }
 

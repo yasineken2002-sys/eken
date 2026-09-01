@@ -13,6 +13,11 @@ import { captureException } from '@sentry/nestjs'
 import { Prisma } from '@prisma/client'
 import { PlatformInvoicesService } from './platform-invoices.service'
 
+const cronErrorsSpy = {
+  report: jest.fn(async (_cron: string, _err: unknown, _ctx?: unknown) => undefined),
+}
+beforeEach(() => cronErrorsSpy.report.mockClear())
+
 const mockedCapture = captureException as jest.Mock
 
 type OrgRow = { id: string; name: string; planMonthlyFee: number }
@@ -36,13 +41,11 @@ function makeService(orgs: OrgRow[]) {
     {} as never,
     config as never,
     {} as never,
-    // #605: cronErrors — attrappen KASTAR om den anropas, så ett test som
-    // råkar gå in i en felväg inte tyst passerar förbi rapporteringen.
-    {
-      report: () => {
-        throw new Error('#605: cronErrors.report anropades oväntat i test')
-      },
-    } as never,
+    // #605: cronErrors — den varaktiga felsänkan. INSPELANDE attrapp, inte
+    // kastande: de här testerna driver felvägen MED FLIT och asserterar att
+    // jobbet larmar. En kastande attrapp hade fällt just de test som bevisar
+    // att sänkan nås.
+    cronErrorsSpy as never,
   )
   ;(svc as unknown as { logger: unknown }).logger = {
     log: jest.fn(),
@@ -86,6 +89,7 @@ describe('PlatformInvoicesService — B1c idempotens + isolering (pengar)', () =
     // dubbelfaktura trots två körningar.
     expect(createSpy).toHaveBeenCalledTimes(2)
     expect(mockedCapture).not.toHaveBeenCalled()
+    expect(cronErrorsSpy.report).not.toHaveBeenCalled()
   })
 
   it('ett org-fel avbryter INTE andra orgars fakturering + larmar (org-tagg)', async () => {
@@ -112,6 +116,7 @@ describe('PlatformInvoicesService — B1c idempotens + isolering (pengar)', () =
 
     // B larmade — INTE tyst — med org-tagg:
     expect(mockedCapture).toHaveBeenCalledTimes(1)
+    expect(cronErrorsSpy.report).toHaveBeenCalledTimes(1)
     const [sentryErr, ctx] = mockedCapture.mock.calls[0]
     expect((sentryErr as Error).message).not.toContain('DB-fel för B') // skrubbat
     expect((ctx as { tags: Record<string, string> }).tags).toEqual(
@@ -153,6 +158,7 @@ describe('PlatformInvoicesService — B1c idempotens + isolering (pengar)', () =
     expect(createSpy).not.toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-B' }))
     // B larmade med org-tagg:
     expect(mockedCapture).toHaveBeenCalledTimes(1)
+    expect(cronErrorsSpy.report).toHaveBeenCalledTimes(1)
     const [, ctx] = mockedCapture.mock.calls[0]
     expect((ctx as { tags: Record<string, string> }).tags).toEqual(
       expect.objectContaining({ cron: 'platform-invoices-monthly', org: 'org-B' }),
@@ -178,5 +184,6 @@ describe('PlatformInvoicesService — B1c idempotens + isolering (pengar)', () =
     expect(r.failed).toBe(0)
     expect(r.created).toBe(0)
     expect(mockedCapture).not.toHaveBeenCalled()
+    expect(cronErrorsSpy.report).not.toHaveBeenCalled()
   })
 })

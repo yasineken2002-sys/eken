@@ -15,6 +15,7 @@ import { RentDebtService } from './rent-debt.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import { CronErrorSink } from '../common/cron/cron-error-sink'
 
 interface BadDebtSummary {
   reclassified: number
@@ -98,6 +99,9 @@ export class RentBadDebtService {
     // T5 A2b — SYSTEM-notis till org-admin när en nedskrivning nekas fail-closed
     // (avin saknar bokförd fordran). Cronen är tyst, så en persistent notis behövs.
     private readonly notifications: NotificationsService,
+    // #605 — varaktig felsänka. SIST i listan: nya beroenden läggs till på
+    // slutet så befintliga positionsanrop inte tyst byter betydelse.
+    private readonly cronErrors: CronErrorSink,
   ) {}
 
   /**
@@ -238,7 +242,7 @@ export class RentBadDebtService {
             `${summary.blockedNoAccrual} nekade (saknar bokförd fordran), ${summary.errors} fel`,
         )
       },
-      { logger: this.logger },
+      { logger: this.logger, sink: this.cronErrors },
     )
     return summary
   }

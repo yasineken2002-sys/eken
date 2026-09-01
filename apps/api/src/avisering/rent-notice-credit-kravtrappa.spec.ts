@@ -159,6 +159,14 @@ function reminderRigg(notices: FakeNotice[]) {
     {} as never,
     rentDebt,
     { evaluateAndAlert: jest.fn().mockResolvedValue(new Set<string>()) } as never,
+    // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
+    // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
+    // förbi rapporteringen.
+    {
+      report: () => {
+        throw new Error('#605: cronErrors.report anropades oväntat i test')
+      },
+    } as never,
   )
   // Eskaleringens SIDOEFFEKT (avgift, verifikat, PDF-kö) är inte det som prövas
   // här — det som prövas är OM den anropas, och med vilken avi. Att spionera på
@@ -255,6 +263,14 @@ describe('#518 — steg 6 (kundförlust): cronen skriver aldrig ned ren resträn
       rentDebt,
       { evaluateAndAlert: jest.fn().mockResolvedValue(new Set<string>()) } as never,
       { createForOrg: jest.fn() } as never,
+      // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
+      // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
+      // förbi rapporteringen.
+      {
+        report: () => {
+          throw new Error('#605: cronErrors.report anropades oväntat i test')
+        },
+      } as never,
     )
     ;(service as unknown as Record<string, unknown>)['reclassifyToProbableLoss'] = reclassify
     return { service, reclassify }

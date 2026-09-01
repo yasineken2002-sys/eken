@@ -12,6 +12,7 @@ import { LeasesService } from './leases.service'
 import { LeaseActivationQueue, LEASE_ACTIVATION_QUEUE } from './lease-activation.queue'
 import { LeaseActivationWorker } from './lease-activation.worker'
 import { RedisModule } from '../common/redis/redis.module'
+import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { RedisModule } from '../common/redis/redis.module'
     ContractsModule,
     AviseringModule,
     BullModule.registerQueue({ name: LEASE_ACTIVATION_QUEUE }),
+    CronErrorSinkModule,
   ],
   controllers: [LeasesController],
   providers: [LeasesService, LeaseActivationQueue, LeaseActivationWorker],

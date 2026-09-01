@@ -99,6 +99,14 @@ function makeForTransition(leaseStatus: string) {
     contractNumbers as never,
     activationQueue as never,
     alltidLedigtLås,
+    // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
+    // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
+    // förbi rapporteringen.
+    {
+      report: () => {
+        throw new Error('#605: cronErrors.report anropades oväntat i test')
+      },
+    } as never,
   )
   return { service, activationQueue }
 }
@@ -186,6 +194,14 @@ describe('T1.2 · renew() dispatchar origin:succession', () => {
       contractNumbers as never,
       activationQueue as never,
       alltidLedigtLås,
+      // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
+      // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
+      // förbi rapporteringen.
+      {
+        report: () => {
+          throw new Error('#605: cronErrors.report anropades oväntat i test')
+        },
+      } as never,
     )
 
     const result = await service.renew('lease-1', {} as never, 'org-1')
@@ -249,6 +265,14 @@ describe('T1.2 · autoRenewExpiredFixedTerm() dispatchar origin:succession', () 
       contractNumbers as never,
       activationQueue as never,
       alltidLedigtLås,
+      // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
+      // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
+      // förbi rapporteringen.
+      {
+        report: () => {
+          throw new Error('#605: cronErrors.report anropades oväntat i test')
+        },
+      } as never,
     )
 
     const n = await (

@@ -545,6 +545,7 @@ export class PlatformInvoicesService {
     await runCronSafely('platform-invoices-monthly', () => this.createMonthlyInvoices(), {
       logger: this.logger,
       level: 'fatal',
+      sink: this.cronErrors,
     })
   }
 
@@ -753,7 +754,7 @@ export class PlatformInvoicesService {
           this.logger.warn(`${invoiceNumber}: skapad men send misslyckades: ${msg}`)
         }
       },
-      { logger: this.logger, orgIdOf: (o) => o.id },
+      { logger: this.logger, orgIdOf: (o) => o.id, sink: this.cronErrors },
     )
 
     return summary
@@ -890,7 +891,7 @@ export class PlatformInvoicesService {
               },
             })
           },
-          { logger: this.logger, orgIdOf: (inv) => inv.organizationId },
+          { logger: this.logger, orgIdOf: (inv) => inv.organizationId, sink: this.cronErrors },
         )
 
         // 2) 14 dagar förfallen → PAST_DUE (atomär bulk)
@@ -929,7 +930,7 @@ export class PlatformInvoicesService {
           `Påminnelse-cron: ${reminderCandidates.length} påminnelser, ${fourteenOverdue.length} PAST_DUE, ${thirtyOverdue.length} SUSPENDED`,
         )
       },
-      { logger: this.logger },
+      { logger: this.logger, sink: this.cronErrors },
     )
   }
 
@@ -954,6 +955,7 @@ export class PlatformInvoicesService {
   async convertExpiredTrialsCron(): Promise<void> {
     await runCronSafely('platform-invoices-convert-trials', () => this.convertExpiredTrials(), {
       logger: this.logger,
+      sink: this.cronErrors,
     })
   }
 
@@ -1087,7 +1089,7 @@ export class PlatformInvoicesService {
           this.logger.log(`Suspenderade ${org.name} — trial slut utan planval`)
         }
       },
-      { logger: this.logger, orgIdOf: (o) => o.id },
+      { logger: this.logger, orgIdOf: (o) => o.id, sink: this.cronErrors },
     )
     summary.failed = failures.length
 

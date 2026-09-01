@@ -13,6 +13,11 @@ import { captureException } from '@sentry/nestjs'
 import { Prisma } from '@prisma/client'
 import { PlatformInvoicesService } from './platform-invoices.service'
 
+const cronErrorsSpy = {
+  report: jest.fn(async (_cron: string, _err: unknown, _ctx?: unknown) => undefined),
+}
+beforeEach(() => cronErrorsSpy.report.mockClear())
+
 const mockedCapture = captureException as jest.Mock
 
 function p2002(target: string | string[]) {
@@ -41,13 +46,11 @@ function makeService() {
     {} as never,
     config as never,
     {} as never,
-    // #605: cronErrors — attrappen KASTAR om den anropas, så ett test som
-    // råkar gå in i en felväg inte tyst passerar förbi rapporteringen.
-    {
-      report: () => {
-        throw new Error('#605: cronErrors.report anropades oväntat i test')
-      },
-    } as never,
+    // #605: cronErrors — den varaktiga felsänkan. INSPELANDE attrapp, inte
+    // kastande: de här testerna driver felvägen MED FLIT och asserterar att
+    // jobbet larmar. En kastande attrapp hade fällt just de test som bevisar
+    // att sänkan nås.
+    cronErrorsSpy as never,
   )
   ;(svc as unknown as { logger: unknown }).logger = {
     log: jest.fn(),
@@ -73,6 +76,7 @@ describe('generateInvoicesForPeriod — P2002-disambiguering (pengar)', () => {
     expect(r.failed).toBe(0)
     expect(r.created).toBe(0)
     expect(mockedCapture).not.toHaveBeenCalled()
+    expect(cronErrorsSpy.report).not.toHaveBeenCalled()
   })
 
   it('PERIOD-index (sträng-fallback, indexnamn) → skipped, INGET larm', async () => {
@@ -84,6 +88,7 @@ describe('generateInvoicesForPeriod — P2002-disambiguering (pengar)', () => {
     expect(r.skipped).toBe(1)
     expect(r.failed).toBe(0)
     expect(mockedCapture).not.toHaveBeenCalled()
+    expect(cronErrorsSpy.report).not.toHaveBeenCalled()
   })
 
   it('invoiceNumber-@unique (kolumn-array) → INTE benign: failed + larm, ej tyst skip', async () => {
@@ -98,6 +103,7 @@ describe('generateInvoicesForPeriod — P2002-disambiguering (pengar)', () => {
     expect(r.failures).toHaveLength(1)
     // Larmar (forEachOrgSafely) med org-tagg:
     expect(mockedCapture).toHaveBeenCalledTimes(1)
+    expect(cronErrorsSpy.report).toHaveBeenCalledTimes(1)
     const [, ctx] = mockedCapture.mock.calls[0]
     expect((ctx as { tags: Record<string, string> }).tags).toEqual(
       expect.objectContaining({ cron: 'platform-invoices-monthly', org: 'org-A' }),
@@ -113,6 +119,7 @@ describe('generateInvoicesForPeriod — P2002-disambiguering (pengar)', () => {
     expect(r.skipped).toBe(0)
     expect(r.failed).toBe(1)
     expect(mockedCapture).toHaveBeenCalledTimes(1)
+    expect(cronErrorsSpy.report).toHaveBeenCalledTimes(1)
   })
 
   it('okänd/saknad target → fail-safe: INTE benign (hellre larm än tyst försvunnen faktura)', async () => {
@@ -129,5 +136,6 @@ describe('generateInvoicesForPeriod — P2002-disambiguering (pengar)', () => {
     expect(r.skipped).toBe(0)
     expect(r.failed).toBe(1)
     expect(mockedCapture).toHaveBeenCalledTimes(1)
+    expect(cronErrorsSpy.report).toHaveBeenCalledTimes(1)
   })
 })
