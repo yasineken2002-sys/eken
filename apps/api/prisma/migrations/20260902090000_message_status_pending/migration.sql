@@ -1,0 +1,21 @@
+-- AI-loopens effektspår, PR 2b — "påbörjad" som eget tillstånd på SentMessage.
+--
+-- `compose_and_send_email` ska skriva sin SentMessage-rad FÖRE utskicket, en per
+-- mottagare. En rad skriven EFTER saknas exakt i det fall den behövs: när
+-- körningen dör mellan utskick och skrivning.
+--
+-- Men "skriv före" kräver ett tillstånd som skiljer PÅBÖRJAD från UTFÖRD. Utan
+-- det måste raden ljuga i samma ögonblick den skapas — antingen SENT (och
+-- påstår ett brev som kanske aldrig gick) eller FAILED (och påstår ett
+-- misslyckande som inte skett).
+--
+-- Tvetydigheten försvinner inte med det här värdet; den blir SYNLIG. En
+-- PENDING-rad betyder antingen "brevet gick aldrig i väg" eller "brevet gick i
+-- väg men vi hann aldrig skriva ned det", och det är därför den stannar för en
+-- människa i stället för att tolkas av en omkörning.
+--
+-- ADDITIV. `ALTER TYPE ... ADD VALUE` skriver inte om några rader och gör inga
+-- befintliga värden ogiltiga. Inga befintliga rader får PENDING — värdet sätts
+-- bara av ny kod. Värdet ANVÄNDS inte i den här migrationen; Postgres tillåter
+-- inte att ett nytillagt enum-värde används i samma transaktion som det skapades.
+ALTER TYPE "MessageStatus" ADD VALUE 'PENDING';

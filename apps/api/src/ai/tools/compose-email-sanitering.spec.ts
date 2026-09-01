@@ -52,6 +52,16 @@ function byggExecutor(invoiceColor: string | null, firstName = 'Eva') {
     organization: {
       findUnique: jest.fn().mockResolvedValue({ name: 'Hyresvärd AB', invoiceColor }),
     },
+    // PR 2b: vägen skriver numera en SentMessage-rad FÖRE utskicket och slår
+    // upp en befintlig rad före det. Stubbarna rör inte det som mäts här —
+    // `findFirst: null` betyder "inget tidigare utskick", så loopen går vidare
+    // och saneringen prövas. Spårets egen mekanik har eget prov i
+    // compose-email-effect-unit.db.spec.ts.
+    sentMessage: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: 'sent-1' }),
+      update: jest.fn().mockResolvedValue({ id: 'sent-1' }),
+    },
   }
   const mailService = {
     sendCustomEmail: jest.fn(async (opts: Utskick) => {

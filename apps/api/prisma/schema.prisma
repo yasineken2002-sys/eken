@@ -276,6 +276,19 @@ enum MessageStatus {
   SENT
   FAILED
   PARTIAL
+  // Raden är skriven men utfallet är ännu inte känt — utskicket är PÅBÖRJAT.
+  //
+  // Finns för att spåret ska kunna skrivas FÖRE effekten. En rad som skrivs
+  // efter utskicket saknas exakt i det fall den behövs: när körningen dör mellan
+  // utskick och skrivning. Men "skriv före" kräver ett tillstånd som skiljer
+  // *påbörjad* från *utförd* — annars måste raden ljuga åt ena hållet i samma
+  // ögonblick den skapas.
+  //
+  // TILLSTÅNDET ÄR TVETYDIGT MED FLIT, och det går inte att konstruera bort:
+  // en PENDING-rad betyder antingen "brevet gick aldrig i väg" eller "brevet
+  // gick i väg men vi hann aldrig skriva ned det". Just därför stannar den för
+  // en människa i stället för att tolkas av en omkörning.
+  PENDING
 }
 
 enum RentNoticeStatus {

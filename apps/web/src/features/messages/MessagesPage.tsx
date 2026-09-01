@@ -32,7 +32,7 @@ const itemAnim = {
 }
 
 type RecipientMode = 'all' | 'specific'
-type HistoryFilter = 'all' | 'SENT' | 'FAILED' | 'PARTIAL'
+type HistoryFilter = 'all' | 'SENT' | 'FAILED' | 'PARTIAL' | 'PENDING'
 
 function relativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -68,6 +68,9 @@ function StatusBadge({ status }: { status: SentMessage['status'] }) {
       text: 'text-amber-700',
       dot: 'bg-amber-500',
     },
+    // Neutralt, inte en signalfärg: "påbörjad" påstår ingenting om utfallet.
+    // Signalfärgerna är reserverade för faktiska signaler — se Badges i CLAUDE.md.
+    PENDING: { label: 'Påbörjat', bg: 'bg-gray-200', text: 'text-gray-500', dot: 'bg-gray-400' },
   }[status]
   return (
     <span
@@ -554,6 +557,7 @@ export function MessagesPage() {
                 ['SENT', 'Lyckade'],
                 ['FAILED', 'Misslyckade'],
                 ['PARTIAL', 'Delvis'],
+                ['PENDING', 'Påbörjade'],
               ] as const
             ).map(([val, label]) => (
               <button
