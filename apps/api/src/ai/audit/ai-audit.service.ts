@@ -212,6 +212,8 @@ export class AiAuditService {
     effects?: AiToolEffect[]
     /** Sätts av TRANSAKTIONELL-vägen, som skriver raden inne i verktygets tx. */
     completedAt?: Date
+    /** Köns job-id, providerns request-id — se AiToolExecution.externalHandle. */
+    externalHandle?: string
   }): Promise<void> {
     try {
       const sanitizedInput = sanitizeForAudit(args.toolInput)
@@ -238,6 +240,7 @@ export class AiAuditService {
           // varit omöjliga att skilja från en påbörjad, och då hade det nya
           // tillståndet betytt två saker igen.
           completedAt: args.completedAt ?? new Date(),
+          externalHandle: args.externalHandle ?? null,
           // NÄSTLAD SKRIVNING, inte en andra `create`. Effekterna hör till
           // auditraden och ska dela dess öde: blir raden inte skriven ska
           // effekterna inte heller finnas, för de pekar då på ett
@@ -328,6 +331,8 @@ export class AiAuditService {
     durationMs: number
     effects?: AiToolEffect[]
     organizationId: string
+    /** Köns job-id, providerns request-id — se AiToolExecution.externalHandle. */
+    externalHandle?: string
   }): Promise<void> {
     try {
       const sanitizedResult =
@@ -340,6 +345,7 @@ export class AiAuditService {
           errorMessage: args.errorMessage ?? null,
           durationMs: args.durationMs,
           completedAt: new Date(),
+          ...(args.externalHandle ? { externalHandle: args.externalHandle } : {}),
           ...(args.effects && args.effects.length > 0
             ? {
                 effects: {

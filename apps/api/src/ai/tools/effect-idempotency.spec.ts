@@ -192,6 +192,49 @@ describe('effektklassificeringen', () => {
       }).toEqual({ transaktionell: 2, foreEffekten: 21, bastMojliga: 7, okand: 0 })
     })
 
+    it('externalHandle: 2 FÖRE_DISPATCH, 2 I_SVARET, 3 INGET, 23 EJ_TILLÄMPLIG', () => {
+      // Mätt på metodnivå. Talen står här så att en ändring blir ett medvetet
+      // beslut och inte en glidning.
+      const c = buildEffectCatalog()
+      const antal = (k: string) => c.filter((e) => e.externalHandle === k).length
+      expect({
+        föreDispatch: antal('FÖRE_DISPATCH'),
+        iSvaret: antal('I_SVARET'),
+        inget: antal('INGET'),
+        ejTillämplig: antal('EJ_TILLÄMPLIG'),
+      }).toEqual({ föreDispatch: 2, iSvaret: 2, inget: 3, ejTillämplig: 23 })
+    })
+
+    it('varje verktyg UTAN handtag står KRÄVER_MÄNNISKA', () => {
+      // KRAVET som gör märkningen bärande. Ett verktyg där ingen kan svara på
+      // "skedde detta?" får aldrig återupptas av en maskin — och `INGET` ska
+      // inte kunna läsas som "handtag finns men vi tittade inte".
+      //
+      // De tre är send_overdue_reminders, compose_and_send_email och
+      // send_document_to_tenant. De stod redan så; raden BEKRÄFTAR det och
+      // hindrar att någon ändrar det utan att märka.
+      const utanHandtag = buildEffectCatalog().filter((e) => e.externalHandle === 'INGET')
+      expect(utanHandtag.map((e) => e.name).sort()).toEqual([
+        'compose_and_send_email',
+        'send_document_to_tenant',
+        'send_overdue_reminders',
+      ])
+      for (const e of utanHandtag) {
+        expect(e.resumptionPolicy).toBe('KRÄVER_MÄNNISKA')
+        expect(e.autoResumable).toBe(false)
+      }
+    })
+
+    it('EJ_TILLÄMPLIG betyder exakt "ingen extern effekt" — inte "vi vet inte"', () => {
+      // Bindningen mellan de två fälten: bara klass A (BÄST_MÖJLIGA saknas där)
+      // får sakna handtag av det skälet. Glider de isär betyder EJ_TILLÄMPLIG
+      // två saker, och då är märkningen värdelös.
+      for (const e of buildEffectCatalog()) {
+        const klassB = e.traceIntegrity === 'BÄST_MÖJLIGA'
+        expect(e.externalHandle === 'EJ_TILLÄMPLIG').toBe(!klassB)
+      }
+    })
+
     it('exakt de två vägar som äger sin egen transaktion är TRANSAKTIONELL', () => {
       // Namnen står här, inte bara talet: TRANSAKTIONELL kräver att spåret
       // skrivs inne i verktygets tx, och det gör bara de här två

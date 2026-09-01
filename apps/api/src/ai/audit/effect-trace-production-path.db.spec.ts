@@ -82,6 +82,7 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
   let orgId: string
   let userId: string
   let tenantId: string
+  let leaseId: string
 
   beforeAll(async () => {
     prisma = new PrismaService()
@@ -156,7 +157,7 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
       },
     })
     tenantId = tenant.id
-    await prisma.lease.create({
+    const lease = await prisma.lease.create({
       data: {
         organizationId: orgId,
         unitId: unit.id,
@@ -169,6 +170,7 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
         depositAmount: 8000,
       },
     })
+    leaseId = lease.id
   })
 
   afterAll(async () => {
@@ -278,6 +280,71 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
     const träffar = spår!.effects.filter((e) => e.entityType === 'JournalEntry')
     expect(träffar.length).toBeGreaterThan(0)
     expect(träffar.map((e) => e.entityId)).toContain(verifikat!.id)
+  })
+
+  it('generate_lease_contract: TVÅ körningar ger EN lokal rad och ETT objekt', async () => {
+    // KLASS B, DE NÄSTAN LÖSTA. R2-nyckeln är härledd ur (org, hyresgästnamn,
+    // datum) och en PUT skriver över — den externa effekten var alltså redan
+    // idempotent. Den LOKALA raden var det inte: varje omkörning gav ett nytt
+    // `Document` mot samma objekt, och den äldre pekade på innehåll som inte
+    // längre fanns.
+    //
+    // Provet kör verktyget TVÅ gånger med samma indata och kräver att paret
+    // (extern effekt, lokal rad) är ETT. Det är den enda av de sju klass
+    // B-verktygen där återupptagningsbarhet går att BEVISA i dag.
+    const uppladdade: string[] = []
+    const kontraktExecutor = Object.create(ToolExecutorService.prototype) as ToolExecutorService
+    Object.assign(kontraktExecutor, {
+      prisma,
+      audit: new AiAuditService(prisma),
+      // Stubbar för det som lämnar processen. De mäts inte här — poängen är
+      // att RÄKNA uppladdningarna och se att nyckeln är densamma båda gångerna.
+      pdfService: { generateFromHtml: async () => Buffer.from('%PDF-1.4 prov') },
+      storage: {
+        uploadFile: async (_b: Buffer, key: string) => {
+          uppladdade.push(key)
+          return `https://r2.example/${key}`
+        },
+      },
+      logger: { log: () => undefined, warn: () => undefined, error: () => undefined },
+    })
+
+    const indata = { leaseId, contractType: 'RESIDENTIAL' }
+    const första = await kontraktExecutor.executeTool(
+      'generate_lease_contract',
+      { ...indata },
+      orgId,
+      userId,
+      'OWNER',
+      { actionProof: { claimed: true } },
+    )
+    const andra = await kontraktExecutor.executeTool(
+      'generate_lease_contract',
+      { ...indata },
+      orgId,
+      userId,
+      'OWNER',
+      { actionProof: { claimed: true } },
+    )
+    expect(första.success).toBe(true)
+    expect(andra.success).toBe(true)
+
+    // EN lokal rad — det som saknades.
+    const dokument = await prisma.document.findMany({
+      where: { organizationId: orgId, category: 'CONTRACT' },
+      select: { id: true, storageKey: true },
+    })
+    expect(dokument).toHaveLength(1)
+
+    // ETT objekt: båda körningarna skrev till SAMMA nyckel, så den andra
+    // uppladdningen var en överskrivning och inte ett nytt objekt.
+    expect(uppladdade).toHaveLength(2)
+    expect(new Set(uppladdade).size).toBe(1)
+    expect(uppladdade[0]).toBe(dokument[0]!.storageKey)
+
+    // Och svaret SÄGER att inget nytt skapades — annars ser en omkörning ut som
+    // ett nytt kontrakt för den som läser.
+    expect(andra.message).toMatch(/fanns redan/)
   })
 
   it('HYRESGÄSTVÄGEN skriver också spåret — en egen exekverare, samma krav', async () => {

@@ -2225,6 +2225,18 @@ model Document {
   // Snabb lookup för dedup-fönstret i ContractTemplateService — vi söker
   // (leaseId, category=CONTRACT, templateInputHash=X) för att hitta
   // återanvändbar PDF utan att scanna alla dokument på leasen.
+  // ── EN LOKAL RAD PER OBJEKT (klass B, steg 1) ─────────────────────────────
+  //
+  // `storageKey` pekar ut ETT objekt i R2, och en PUT på samma nyckel skriver
+  // över. Två rader mot samma nyckel betydde därför att den ena pekade på
+  // innehåll som inte längre fanns — och `generate_lease_contract` skapade
+  // precis det vid varje omkörning: R2-effekten var idempotent, den lokala
+  // raden inte.
+  //
+  // Indexet gör paret (extern effekt, lokal rad) till ETT, vilket är det som
+  // gör verktyget äkta återupptagningsbart. Verifierat före migrationen: noll
+  // grupper med samma (organizationId, storageKey) i både dev och prod.
+  @@unique([organizationId, storageKey])
   @@index([leaseId, category, templateInputHash])
 }
 
@@ -2764,6 +2776,21 @@ model AiToolExecution {
   // med `success: false`. En "påbörjad" som egentligen betyder "misslyckades"
   // vore samma tvetydighet i ny förklädnad.
   completedAt          DateTime?
+
+  // ── DET EXTERNA HANDTAGET (klass B, steg 1) ───────────────────────────────
+  //
+  // Det som gör frågan "skedde detta?" besvarbar EFTERÅT: köns job-id,
+  // providerns request-id, en objektnyckel. NULL betyder att körningen inte
+  // lämnade något att fråga med.
+  //
+  // ASYMMETRIN SOM AVGÖR ATT DEN SPARAS NU: ett handtag som inte sparas är
+  // förlorat för alltid, medan en frågeväg som inte finns går att bygga när som
+  // helst. Därför lagras det innan någon frågekod finns — en frågeväg utan
+  // anropare vore en vakt med tom mängd.
+  //
+  // Skiljer också "påbörjad, handtag finns" från "påbörjad, inget handtag".
+  // Utan kolumnen betyder PÅBÖRJAD två saker igen, och den ena går att följa upp.
+  externalHandle       String?
 
   createdAt            DateTime  @default(now())
 
