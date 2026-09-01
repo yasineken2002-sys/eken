@@ -1366,6 +1366,80 @@ utfallet blir obegripligt — eller värre, ser rimligt ut.
 Samma familj: **branch FÖRST, commit sedan.** Committat PR-arbete direkt på
 `main` upptäcktes bara för att `git pull --ff-only` vägrade.
 
+### Worktrees delar `.git` — `reset --soft origin/main` drar in den andra strömmens arbete som BORTTAGNINGAR
+
+Två worktrees är två arbetskataloger på **ett** `.git`. Refs och objekt är
+gemensamma, alltså är `origin/main` gemensam. Mergar den andra strömmen sin PR
+och någon fetchar, **flyttar sig `origin/main` under dig** — mitt i din session,
+utan att något i din katalog ändras.
+
+Det gör `git reset --soft origin/main` farligt. Kommandot flyttar HEAD men
+lämnar index och arbetsträd orörda, alltså vid DITT träd:
+
+```
+HEAD  → nya origin/main   (innehåller ström A:s filer)
+index → ditt träd          (innehåller dem INTE — du grenade före A:s merge)
+```
+
+`git diff --cached` blir då skillnaden från A:s arbete till ditt träd — och A:s
+filer står som **raderade**. Committar du det ser commiten ut som ditt arbete
+plus en tyst revert av någon annans.
+
+Uppmätt: det fångades bara för att någon körde `git diff --name-only` före push
+och såg filer hen aldrig rört.
+
+**Reglerna:**
+
+```bash
+# FEL när basen kan ha flyttat sig
+git reset --soft origin/main
+
+# RÄTT — grenpunkten är stabil även när origin/main flyttar sig
+git reset --soft "$(git merge-base HEAD origin/main)"
+
+# Och ALLTID före push, oavsett metod: står det filer du inte äger — stanna
+git diff --name-only "$(git merge-base HEAD origin/main)"..HEAD
+```
+
+`merge-base` är rätt referens därför att den inte påverkas av att den andra
+strömmen mergar: A:s merge-commit är ingen förfader till din gren, så
+grenpunkten ligger kvar där den låg.
+
+Vill du ta in A:s arbete är verktyget `git merge origin/main` eller en rebase —
+aldrig ett `reset` mot en referens som rört sig.
+
+### "Tom diff mot main" håller bara för den gren som mergades SIST
+
+Samma orsak, annan konsekvens. Kriteriet före en grenradering brukar vara att
+`git diff main..min-gren` är tom: är trädena identiska ligger allt inne.
+
+Det mäter **trädlikhet**, inte att ditt arbete är inne. Med parallella strömmar
+är svaret förorenat av den andra strömmens commits: mergar A efter dig blir
+diffen icke-tom trots att varenda rad du skrev ligger i `main` — skillnaden är
+A:s filer, som ur din grens perspektiv ser ut att saknas. Kriteriet håller alltså
+bara i det enda fall där ingen annan hunnit merga efter dig.
+
+Läser man den icke-tomma diffen som "mitt arbete kom aldrig in" och pushar om
+grenen, är utfallet exakt defekten i avsnittet ovan.
+
+**Rätt fråga är inte "skiljer sig grenarna" utan "finns någon skillnad som är
+MIN?"** — alltså: avgränsa till de sökvägar du äger.
+
+```bash
+# FEL med parallella strömmar — svaret bär den ANDRA strömmens arbete
+git diff main..min-gren
+
+# RÄTT — bara mitt omfång; tom ⇒ mitt arbete är inne ⇒ grenen kan raderas
+git diff main..min-gren -- apps/api/scripts CLAUDE.md
+git log --oneline main..min-gren -- apps/api/scripts CLAUDE.md
+```
+
+Sökvägsavgränsningen är också det enda kriteriet som överlever en
+**squash-merge**: efter en squash är din grens commits inte förfäder till
+`main`, så `git log main..min-gren` och `git diff main...min-gren` (tre punkter,
+mot grenpunkten) visar ditt arbete som omergat trots att innehållet ligger inne.
+Innehållsjämförelsen på dina egna sökvägar gör det inte.
+
 ### En negativkontrolls sond ska ha ett namn som bevisligen inte finns
 
 Injicerar du en påhittad kolumn, fil eller flagga för att se att vakten fäller
