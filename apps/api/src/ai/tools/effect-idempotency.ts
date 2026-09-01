@@ -208,12 +208,44 @@ export type Mekanism =
  */
 export type TraceIntegrity = 'TRANSAKTIONELL' | 'FÖRE_EFFEKTEN' | 'BÄST_MÖJLIGA' | 'OKÄND'
 
+/**
+ * FINNS DET ETT EXTERNT HANDTAG, OCH NÄR BLIR DET KÄNT?
+ *
+ * Handtaget är det som gör "skedde detta?" besvarbar EFTERÅT: köns job-id,
+ * providerns request-id, en objektnyckel. Utan det kan varken en människa eller
+ * en motor svara efter en krasch — att köra om är dubbel effekt, att låta bli är
+ * utebliven. Det är därför de sju klass B-verktygen är den svåra sjundedelen.
+ *
+ *  • `FÖRE_DISPATCH`  — handtaget är HÄRLETT och känt innan något skickas. Bäst:
+ *    det överlever en krasch som sker mitt i.
+ *  • `I_SVARET`       — känt först när mottagaren svarat. Kraschar processen
+ *    emellan finns effekten men inget sätt att peka på den (#607).
+ *  • `INGET`          — ingenting att fråga med. Får INTE läsas som "handtag
+ *    finns men vi tittade inte".
+ *  • `EJ_TILLÄMPLIG`  — verktyget har ingen extern mottagare (klass A).
+ *
+ * ── MÄTT 2026-09-01, metodnivå ─────────────────────────────────────────────
+ *
+ *     FÖRE_DISPATCH  2   härledda R2-nycklar
+ *     I_SVARET       2   Bulls job-id, providerns request-id
+ *     INGET          3
+ *     EJ_TILLÄMPLIG 23   klass A
+ *
+ * Ingen av de sju har en MÄTT idempotensgaranti hos mottagaren. Två har en som
+ * är strukturellt sund (PUT på samma nyckel skriver över), två har en som
+ * SKICKAS men aldrig prövats, en har en som är strukturellt omöjlig, och två har
+ * ingen alls.
+ */
+export type ExternalHandle = 'FÖRE_DISPATCH' | 'I_SVARET' | 'INGET' | 'EJ_TILLÄMPLIG'
+
 export interface EffectDeclaration {
   effectIdempotency: EffectIdempotency
   idempotencyUnit: IdempotencyUnit
   traceDurability: TraceDurability
   /** Hur pålitligt `AiToolEffect` skrivs för det här verktyget. Se TraceIntegrity. */
   traceIntegrity: TraceIntegrity
+  /** Finns ett externt handtag, och när blir det känt? Se ExternalHandle. */
+  externalHandle: ExternalHandle
   resumptionPolicy: ResumptionPolicy
   /**
    * Har policyn FATTATS, eller står värdet där konservativt i väntan på ett
@@ -243,6 +275,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'EJ_TILLÄMPLIG', livslangd: 'ingen effekt att spåra' },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -256,6 +289,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -271,6 +305,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -290,6 +325,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -309,6 +345,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -327,6 +364,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -340,6 +378,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_HASH', livslangd: DB_RAD },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'TRANSAKTIONELL',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -362,6 +401,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_HASH', livslangd: DB_RAD },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'TRANSAKTIONELL',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -396,6 +436,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_HASH', livslangd: DB_RAD },
+    externalHandle: 'I_SVARET',
     traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -419,6 +460,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -434,6 +476,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -450,6 +493,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -468,6 +512,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -486,6 +531,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    externalHandle: 'FÖRE_DISPATCH',
     traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -506,6 +552,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -526,6 +573,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -551,6 +599,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'KÖ_FÖNSTER', livslangd: KO_FONSTER },
+    externalHandle: 'I_SVARET',
     traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -567,6 +616,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
       plats: 'INGET',
       livslangd: 'nyckeln finns men är unik per körning — dedupar inget omförsök',
     },
+    externalHandle: 'INGET',
     traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -583,6 +633,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    externalHandle: 'INGET',
     traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -596,6 +647,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    externalHandle: 'INGET',
     traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -614,6 +666,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    externalHandle: 'FÖRE_DISPATCH',
     traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -626,6 +679,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -637,6 +691,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -649,6 +704,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -660,6 +716,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -673,6 +730,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -684,6 +742,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -697,6 +756,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -710,6 +770,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår för kommentaren' },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
@@ -727,6 +788,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
       plats: 'INGET',
       livslangd: 'fullbetalning spärras av status; delbetalning har inget spår',
     },
+    externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
