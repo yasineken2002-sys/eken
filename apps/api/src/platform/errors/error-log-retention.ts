@@ -51,6 +51,27 @@
  * VID SKRIVNINGEN. En 100 dagar gammal rad som markeras löst i dag blir
  * omedelbart gallringsbar. Det är avsiktligt och är hela poängen med att
  * differentiera: den som stänger raden säger just att den inte behövs mer.
+ *
+ * ── HINKEN ÄR NÅBAR — MEN BARA MANUELLT, OCH HAR ALDRIG ANVÄNTS ─────────────
+ *
+ * Två tal där det ena aldrig gäller vore en gallring som ser strängare ut än den
+ * är. Härlett ur koden, så att talet inte står oemotsagt:
+ *
+ *   PlatformErrorsService.resolve()            enda skrivningen av resolved:true
+ *   POST /platform/errors/:id/resolve          rutten (PlatformGuard)
+ *   admin ErrorsPage.tsx — "Markera löst"      knappen, i detaljpanelen
+ *
+ * Kedjan är hel; hinken är alltså ingen tom mängd per konstruktion. MEN:
+ *
+ *   • Det finns INGEN automatisk väg. Ingen cron, ingen tjänst och ingen regel
+ *     stänger en rad — bara en människa som klickar.
+ *   • Prod hade 2026-09-01 noll lösta rader av fjorton, sedan nollställningen
+ *     2026-07-13. Hinken har alltså aldrig använts i praktiken.
+ *
+ * FÖLJDEN, UTSKRIVEN: klickar ingen är den EFFEKTIVA fristen 180 dagar för allt.
+ * Trettio-dagarshinken är en möjlighet, inte en verkan. Den som vill att talet
+ * ska betyda något måste antingen använda knappen eller bygga en väg som stänger
+ * rader automatiskt — och det senare är ett eget beslut som inte är taget.
  */
 export const RESOLVED_RETENTION_DAYS = 30
 
