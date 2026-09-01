@@ -14,7 +14,9 @@ import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
   // (och re-exporterar VerifikationsnummerModule). Ingen cykel: AccountingModule
   // importerar inte NotificationsModule.
   // CronErrorSinkModule (#605): de tre rapportjobben skriver sina per-org-fel
-  // till ErrorLog, inte bara till containerns logg.
+  // till ErrorLog, inte bara till containerns logg. Modulen importerar INTE
+  // PlatformModule — det hade slutit en cykel via InvoicesModule (se dess
+  // huvudkommentar).
   imports: [PrismaModule, MailModule, AccountingModule, OverdueModule, CronErrorSinkModule],
   controllers: [NotificationsController],
   providers: [NotificationsService, PaymentReminderService, MonthlyReportService],
