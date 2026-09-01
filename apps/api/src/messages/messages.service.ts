@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { randomUUID } from 'node:crypto'
 import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
 import type { SentMessage } from '@prisma/client'
@@ -144,6 +145,10 @@ export class MessagesService {
     const tenants = await this.prisma.tenant.findMany({ where: { organizationId } })
     const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: organizationId } })
 
+    // ETT id för hela utskicket. Raderna är per mottagare — det är enheten i
+    // datan — men de hör ihop, och vyn ska kunna visa dem som ETT utskick.
+    const batchId = randomUUID()
+
     let successCount = 0
     let failedCount = 0
     const errors: Array<{ email: string; error: string }> = []
@@ -187,6 +192,7 @@ export class MessagesService {
               successCount: 0,
               failedCount: 0,
               status: 'PENDING',
+              batchId,
             },
             select: { id: true },
           })
@@ -359,7 +365,17 @@ export class MessagesService {
         sentBy: { select: { firstName: true, lastName: true } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      // TAKET ÄR PÅ RADER, OCH RADER ÄR NUMERA PER MOTTAGARE.
+      //
+      // 100 räckte när ett massutskick var EN rad. Efter #633 äter ett utskick
+      // till 40 hyresgäster 40 av dem, så samma tak visar plötsligt en bråkdel
+      // så många UTSKICK — historiken blev grundare utan att någon bad om det.
+      // Höjt så att den grupperade vyn visar ungefär lika långt bakåt som förut.
+      //
+      // Fortfarande ett tak, med flit: en obegränsad lista är en långsam sida
+      // som blir långsammare, och paginering är en egen sak att bygga när
+      // volymen kräver det.
+      take: 500,
     })
   }
 

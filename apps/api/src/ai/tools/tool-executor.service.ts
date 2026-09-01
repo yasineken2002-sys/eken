@@ -1633,6 +1633,11 @@ export class ToolExecutorService {
           let redanSkickat = 0
           const sendErrors: string[] = []
 
+          // ETT id för hela verktygsanropet. Raderna skrivs per mottagare —
+          // enheten i datan — men de hör ihop, och operatörens meddelandelista
+          // ska kunna visa dem som ETT utskick i stället för som N rader.
+          const batchId = randomUUID()
+
           for (const tenant of emailTenants) {
             const tenantName =
               tenant.type === 'INDIVIDUAL'
@@ -1710,6 +1715,7 @@ export class ToolExecutorService {
                 successCount: 0,
                 failedCount: 0,
                 status: 'PENDING',
+                batchId,
               },
               select: { id: true },
             })

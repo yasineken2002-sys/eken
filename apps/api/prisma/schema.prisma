@@ -3658,11 +3658,29 @@ model SentMessage {
   errorLog       Json?
   createdAt      DateTime      @default(now())
 
+  /// Grupperar de rader som skrevs av ETT utskick.
+  ///
+  /// TVÅ ENHETER, INTE EN. Enheten i DATAN är mottagaren — det är enda sättet
+  /// att kunna svara på "fick den här hyresgästen sitt brev?" efter en krasch
+  /// mitt i en loop. Enheten i OPERATÖRENS VY är utskicket: fyrtio rader där det
+  /// stod en är en försämring av en vy som fungerade.
+  ///
+  /// Fältet ger båda utan att välja. Vyn grupperar på det när det finns och
+  /// visar enskilda rader när det inte gör det. Detaljraderna finns kvar och går
+  /// att fälla ut — enheten döljs inte, den grupperas.
+  ///
+  /// NULLBART UTAN BACKFILL. Rader skrivna före det här fältet får NULL, och det
+  /// är det ärliga läget: de VET inte vilket utskick de tillhörde, och en
+  /// gissad gruppering hade varit sämre än ingen. De renderas som enskilda rader,
+  /// vilket är precis vad de är.
+  batchId String?
+
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   tenant       Tenant?      @relation(fields: [tenantId], references: [id])
   sentBy       User         @relation(fields: [sentById], references: [id])
 
   @@index([organizationId])
+  @@index([organizationId, batchId])
 }
 
 // ─── Platform (Super-admin SaaS) ──────────────────────────────────────────────
