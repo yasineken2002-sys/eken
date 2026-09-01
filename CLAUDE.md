@@ -1111,6 +1111,37 @@ sondens värde i mätningen — annars kan ingen skilja "vakten såg inget" frå
 
 ---
 
+## En rigg som lånar omgivningens data mäter omgivningen, inte koden
+
+Syskon till avsnittet ovan: där var provet för svagt, här är det förutsättningen
+som inte är riggens egen. Utfallet ser likadant ut — grönt — och betyder mindre.
+
+Uppmätt (#612): två nya `.db.spec.ts` gjorde `organization.findFirst()` i sin
+`beforeAll` och kastade när svaret var tomt. Lokalt fanns en organisation i
+`eken_dev`, så båda var gröna. CI:s databas är tom, och åtta tester föll.
+
+**Riggen ska skapa sina egna förutsättningar, och prövas mot en TOM databas.**
+
+```bash
+# Skapa CI:s villkor lokalt — det är där riggen ska bevisas, inte i eken_dev.
+psql "$PGURL/postgres" -c 'CREATE DATABASE eken_tom'
+DATABASE_URL=".../eken_tom" npx prisma migrate deploy
+DATABASE_URL=".../eken_tom" npx jest <riggen> --runInBand
+```
+
+Kör den **två gånger mot samma databas** och räkna raderna efteråt: en rigg som
+inte städar efter sig bygger andra gången på sitt eget skräp, och det är samma
+defekt en gång till — förutsättningen är inte riggens egen.
+
+Städa i FK-riktning. `ErrorLog` och `TenantAnonymizationLog` pekar på
+`Organization` med `Restrict`, inte `Cascade`, så barnen måste bort först.
+
+**Följdsatsen är det som gör regeln vass.** En grön lokal körning på lånad data
+bevisar mindre än den ser ut att göra. Rapporterar man den som bevis är felet
+inte riggens längre utan **sitt eget**: nästa person läser ett tal som aldrig
+mätte det man påstod. Skriv därför ut vilken databas riggen kördes mot — en
+uppmätt grönska utan känt underlag är en åsikt med siffror i.
+
 ## En första beskrivning är ett STICKPROV, inte en uppräkning
 
 Det man först ser är det fall man råkade snubbla på. Det är nästan alltid sant
