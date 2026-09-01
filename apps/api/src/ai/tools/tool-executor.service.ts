@@ -106,6 +106,18 @@ export interface ToolResult {
   success: boolean
   data?: unknown
   message: string
+  /**
+   * DET EXTERNA HANDTAGET — köns job-id, providerns request-id, en objektnyckel.
+   *
+   * Typat fält i stället för ett magiskt fält i `data`: exekveraren ska inte
+   * behöva känna till varje verktygs svarsform för att hitta det.
+   *
+   * Sätts av de verktyg som HAR ett handtag, och skrivs av exekveraren till
+   * `AiToolExecution.externalHandle`. Skälet att spara det innan någon frågekod
+   * finns: ett handtag som inte sparas är förlorat för alltid, medan en frågeväg
+   * går att bygga när som helst.
+   */
+  externalHandle?: string
   downloadUrl?: string
   nextSteps?: string[]
   suggestCreateTenant?: boolean
@@ -670,6 +682,7 @@ export class ToolExecutorService {
         errorMessage: result.success ? null : result.message,
         durationMs: Date.now() - startedAt,
         effects: drainEffects(),
+        ...(result.externalHandle ? { externalHandle: result.externalHandle } : {}),
       })
       return result
     }
@@ -702,6 +715,9 @@ export class ToolExecutorService {
       conversationId: auditContext?.conversationId ?? null,
       toolName,
       toolInput,
+      // BÄST_MÖJLIGA-vägen bär också handtaget när verktyget har ett —
+      // send_invoice_email står här, och det är just den som har ett.
+      ...(result.externalHandle ? { externalHandle: result.externalHandle } : {}),
       toolResult: result.data,
       success: result.success,
       errorMessage: result.success ? null : result.message,
@@ -1147,10 +1163,19 @@ export class ToolExecutorService {
             }
           }
 
-          await this.invoicesService.sendInvoiceEmail(sendInvoiceId, organizationId, userId)
+          // HANDTAGET SPARAS. `sendInvoiceEmail` köar jobbet och returnerar
+          // Bulls job-id — det enda som gör "gick mejlet?" besvarbar efteråt.
+          // Det kastades bort här, och efter en krasch är det oåterkalleligt
+          // borta. Ingen frågekod byggs nu; handtaget bara slutar förstöras.
+          const { jobId } = await this.invoicesService.sendInvoiceEmail(
+            sendInvoiceId,
+            organizationId,
+            userId,
+          )
           return {
             success: true,
             message: `Faktura ${toolInput.invoiceNumber as string} skickad till ${toolInput.tenantEmail as string}`,
+            externalHandle: jobId,
           }
         }
 
@@ -2659,29 +2684,55 @@ export class ToolExecutorService {
           const storageKey = `documents/${organizationId}/${safeFilename}`
           const storageUrl = await this.storage.uploadFile(pdfBuffer, storageKey, 'application/pdf')
 
-          await this.prisma.document.create({
-            data: {
-              organizationId,
-              uploadedById: userId,
-              leaseId: lease.id,
-              // Härled tenantId från den org-scopade leasen (server-side),
-              // aldrig från AI/klient-input. Utan detta blev AI-genererade
-              // kontrakt osynliga i hyresgästportalen (getDocuments filtrerar
-              // strikt på tenantId). Admin-kontraktsvägen sätter redan detta.
-              tenantId: lease.tenantId,
-              name: `Hyreskontrakt – ${tenantDisplayName}`,
-              storageKey,
-              storageUrl,
-              fileSize: pdfBuffer.length,
-              mimeType: 'application/pdf',
-              category: 'CONTRACT',
-            },
-          })
+          // ── EN LOKAL RAD PER OBJEKT (klass B, steg 1) ────────────────────
+          //
+          // R2-uppladdningen ovan ÄR idempotent: nyckeln är härledd ur
+          // (org, hyresgästnamn, datum) och en PUT skriver över. Den lokala
+          // raden var det inte — varje omkörning gav ett nytt `Document` mot
+          // samma objekt, och den äldre pekade då på innehåll som inte längre
+          // fanns.
+          //
+          // Spärren är `@@unique([organizationId, storageKey])`, inte en
+          // findFirst före: en läsning som inte hittar någon rad låser
+          // ingenting (samma lärdom som createNumberedEntry, #597). Kollisionen
+          // fångas och den BEFINTLIGA raden returneras — det är vad en
+          // omkörning ska ge.
+          let dokumentRedanFanns = false
+          try {
+            await this.prisma.document.create({
+              data: {
+                organizationId,
+                uploadedById: userId,
+                leaseId: lease.id,
+                // Härled tenantId från den org-scopade leasen (server-side),
+                // aldrig från AI/klient-input. Utan detta blev AI-genererade
+                // kontrakt osynliga i hyresgästportalen (getDocuments filtrerar
+                // strikt på tenantId). Admin-kontraktsvägen sätter redan detta.
+                tenantId: lease.tenantId,
+                name: `Hyreskontrakt – ${tenantDisplayName}`,
+                storageKey,
+                storageUrl,
+                fileSize: pdfBuffer.length,
+                mimeType: 'application/pdf',
+                category: 'CONTRACT',
+              },
+            })
+          } catch (err) {
+            // Bara den HÄR kollisionen. Andra unika index på Document betyder
+            // något annat och ska fortsätta upp — samma disambiguering som
+            // isIdempotencyRaceConflict gör för verifikaten.
+            const target = err as { code?: string; meta?: { target?: unknown } }
+            const fält = Array.isArray(target.meta?.target) ? target.meta.target.map(String) : []
+            if (target.code !== 'P2002' || !fält.includes('storageKey')) throw err
+            dokumentRedanFanns = true
+          }
 
           return {
             success: true,
             message: [
-              `Hyreskontrakt genererat för ${tenantDisplayName}!`,
+              dokumentRedanFanns
+                ? `Hyreskontraktet för ${tenantDisplayName} fanns redan (samma namn och datum) — ingen dubblett skapades.`
+                : `Hyreskontrakt genererat för ${tenantDisplayName}!`,
               `Kontraktet är sparat under Dokument.`,
               `Fastighet: ${lease.unit.property.name}`,
               `Enhet: ${lease.unit.name}`,
