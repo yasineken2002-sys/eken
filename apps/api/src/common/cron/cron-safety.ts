@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common'
 import * as Sentry from '@sentry/nestjs'
+import type { CronErrorSink } from './cron-error-sink'
 
 /**
  * T5 Fas B1a — delade cron-säkerhetshjälpare (resiliens/observability).
@@ -37,11 +38,23 @@ export interface RunCronSafelyOptions {
   logger?: Logger
   /** Sentry-larmnivå (default: Sentrys standard). Höj till 'fatal' för månads-cron. */
   level?: CronAlarmLevel
+  /**
+   * VARAKTIG SÄNKA (#605). Utan den lever felet bara i Sentry och i den lokala
+   * loggen — och loggen överlever inte containern.
+   *
+   * Den är valfri i TYPEN men inte i praktiken: `check-cron-error-sink.mjs`
+   * kräver att varje @Cron-jobb når sänkan, eller står kvitterat med ett skäl.
+   * Att den är valfri här är enbart för att de tretton okonverterade jobben ska
+   * fortsätta kompilera medan skulden betas av.
+   */
+  sink?: CronErrorSink
 }
 
 export interface ForEachOrgSafelyOptions<T> {
   /** Cronets egen logger (bevarar klasskontext); default: intern CronSafety-logger. */
   logger?: Logger
+  /** Varaktig sänka (#605) — se RunCronSafelyOptions.sink. */
+  sink?: CronErrorSink
   /**
    * Härleder org-id för Sentry-korrelation + lokal logg. UUID är en säker
    * korrelationsnyckel (ej PII). Utelämnad → felet taggas utan org.
@@ -80,6 +93,10 @@ export async function runCronSafely<T>(
       tags: { cron: cronName },
       ...(options.level ? { level: options.level } : {}),
     })
+    // VARAKTIG SÄNKA (#605). Inväntas — ett cron-jobb kan mycket väl vara mitt i
+    // en körning när containern får SIGTERM, och en flytande skrivning är då
+    // borta. `report` kastar aldrig.
+    await options.sink?.report(cronName, err)
     return undefined
   }
 }
@@ -123,6 +140,12 @@ export async function forEachOrgSafely<T>(
         ),
         { tags: { cron: cronName, org: orgId } },
       )
+      // Per-org-felet är den FARLIGA formen: loopen fortsätter, cronet
+      // rapporterar "n lyckade, m misslyckade" och körningen ser lyckad ut.
+      // Utan en varaktig sänka finns det m:et ingenstans i morgon.
+      await options.sink?.report(cronName, error, {
+        ...(orgId ? { organizationId: orgId } : {}),
+      })
     }
   }
 
