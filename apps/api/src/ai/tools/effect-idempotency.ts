@@ -167,10 +167,53 @@ export type Mekanism =
   | { typ: 'STATUSGRIND'; fil: string; symbol: string }
   | { typ: 'REN_UPPDATERING'; fil: string; symbol: string }
 
+/**
+ * HUR PÅLITLIGT EFFEKTSPÅRET SKRIVS — `AiToolEffect`, inte idempotensnyckeln.
+ *
+ * ⚠️ TVÅ OLIKA SPÅR, OCH DE BLANDAS LÄTT IHOP. `traceDurability` ovan beskriver
+ * var IDEMPOTENSENS spår bor (unikt index, statusmaskin, kö). Det här fältet
+ * beskriver revisionsspåret `AiToolEffect` — svaret på "vad orsakade den här
+ * körningen". De besvarar olika frågor och kan ha olika värden för samma
+ * verktyg.
+ *
+ *  • `TRANSAKTIONELL` — spåret skrivs i SAMMA transaktion som effekten. Rullas
+ *    effekten tillbaka försvinner spåret med den, och tvärtom. Får INTE sättas
+ *    utan att `effect-trace-transactional.db.spec.ts` kan säga emot: den kör en
+ *    transaktion som rullas tillbaka och kräver att spåret försvann.
+ *  • `FÖRE_EFFEKTEN` — spåret skrivs och committas FÖRE effekten, och bär ett
+ *    tillstånd som skiljer "påbörjad" från "utförd". Inte atomiskt, men aldrig
+ *    tyst borta. (Formen #607 efterlyser för signeringen.)
+ *  • `BÄST_MÖJLIGA` — spåret skrivs EFTER effekten, i en egen transaktion, utan
+ *    att inväntas, och ett fel sväljs. Tre oberoende sätt att tappa det, inget
+ *    av dem ger ett felmeddelande. Ett sådant spår kan inte besvara "blev det
+ *    gjort?" — det kan bara bekräfta, aldrig dementera.
+ *  • `OKÄND` — inte klassificerat. KASTAR vid bygget.
+ *
+ * ── MÄTT 2026-09-01: ALLA 30 STÅR BÄST_MÖJLIGA ──────────────────────────────
+ *
+ * Det är ingen försiktighet utan en mätning. `AiToolEffect` har EXAKT ETT
+ * persisteringsställe (`ai/audit/ai-audit.service.ts`, nästlad `effects: {
+ * create }` i `aiToolExecution.create`), och det nås av fyra anropare som alla
+ * skriver `void this.audit.logToolExecution(...)`:
+ *
+ *     void                    processen kan dö innan löftet landar
+ *     try/catch → logger.warn skrivningen kan falla och sväljas
+ *     $extends ser inte tx    extensionen KAN inte gå med i anroparens
+ *                             transaktion — dokumenterat i ai-effect-extension.ts
+ *
+ * Uppmätt negativkontroll samma dag: med persisteringen bortkopplad var HELA
+ * sviten grön (338/338 sviter). Spåret var obevakat. Det är vad
+ * `check-effect-trace.mjs` och `effect-trace-production-path.db.spec.ts` finns
+ * för.
+ */
+export type TraceIntegrity = 'TRANSAKTIONELL' | 'FÖRE_EFFEKTEN' | 'BÄST_MÖJLIGA' | 'OKÄND'
+
 export interface EffectDeclaration {
   effectIdempotency: EffectIdempotency
   idempotencyUnit: IdempotencyUnit
   traceDurability: TraceDurability
+  /** Hur pålitligt `AiToolEffect` skrivs för det här verktyget. Se TraceIntegrity. */
+  traceIntegrity: TraceIntegrity
   resumptionPolicy: ResumptionPolicy
   /**
    * Har policyn FATTATS, eller står värdet där konservativt i väntan på ett
@@ -200,6 +243,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'EJ_TILLÄMPLIG', livslangd: 'ingen effekt att spåra' },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [{ typ: 'INGEN_EFFEKT' }],
@@ -212,6 +256,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [
@@ -226,6 +271,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [
@@ -244,6 +290,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [{ typ: 'UNIKT_INDEX', modell: 'InvoicePayment', falt: ['bankTransactionId'] }],
@@ -262,6 +309,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [
@@ -279,6 +327,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [{ typ: 'UNIKT_INDEX', modell: 'Unit', falt: ['propertyId', 'unitNumber'] }],
@@ -291,6 +340,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_HASH', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [
@@ -312,6 +362,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_HASH', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [
@@ -345,6 +396,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_HASH', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [
@@ -367,6 +419,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [
@@ -381,6 +434,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [
@@ -396,6 +450,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [
@@ -413,6 +468,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [
@@ -430,6 +486,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [
@@ -449,6 +506,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [
@@ -468,6 +526,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [
@@ -492,6 +551,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'KÖ_FÖNSTER', livslangd: KO_FONSTER },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [],
@@ -507,6 +567,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
       plats: 'INGET',
       livslangd: 'nyckeln finns men är unik per körning — dedupar inget omförsök',
     },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [],
@@ -522,6 +583,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [],
@@ -534,6 +596,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [],
@@ -551,6 +614,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [],
@@ -562,6 +626,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [],
@@ -572,6 +637,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [],
@@ -583,6 +649,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [],
@@ -593,6 +660,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [],
@@ -605,6 +673,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [],
@@ -615,6 +684,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [],
@@ -627,6 +697,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [],
@@ -639,6 +710,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår för kommentaren' },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [],
@@ -655,6 +727,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
       plats: 'INGET',
       livslangd: 'fullbetalning spärras av status; delbetalning har inget spår',
     },
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [],
@@ -695,6 +768,18 @@ export function buildEffectCatalog(): EffectCatalogEntry[] {
           `tyst fallback att luta sig mot.`,
       )
     }
+    // FAIL-CLOSED PÅ SPÅRETS INTEGRITET, av samma skäl som på klassificeringen.
+    // `OKÄND` är inte ett tillstånd systemet får leva i: den som lägger till ett
+    // verktyg ska ta ställning till hur dess spår skrivs, inte ärva en tyst
+    // förmodan. Ett obesvarat fält blir annars ett påstående ingen gjort.
+    if (d.traceIntegrity === 'OKÄND') {
+      throw new Error(
+        `Verktyget "${name}" har traceIntegrity: 'OKÄND'. Ta ställning till hur ` +
+          `AiToolEffect skrivs för det — TRANSAKTIONELL, FÖRE_EFFEKTEN eller ` +
+          `BÄST_MÖJLIGA. OKÄND betyder "ingen har svarat", och det får inte se ut ` +
+          `som ett svar.`,
+      )
+    }
     return { name, ...d, autoResumable: autoResumable(d) }
   })
 }
@@ -713,6 +798,36 @@ export function isAutoResumable(toolName: string): boolean {
     )
   }
   return autoResumable(d)
+}
+
+/**
+ * Hur pålitligt effektspåret skrivs för ett verktyg.
+ *
+ * ⚠️ DEN HÄR KASTAR INTE på okänt namn, till skillnad från `isAutoResumable`.
+ * Skillnaden är avsiktlig och beror på anroparen: det här är en VISNINGSVÄG
+ * (`describeEffects` berättar för en människa vad en åtgärd orsakade). Ett kast
+ * där hade bytt ut en ärlig icke-uppgift mot ett 500-fel — sämre för användaren
+ * och sämre för sanningen.
+ *
+ * Den faller ändå stängt, fast i svarsledet: ett okänt verktyg ger `OKÄND`, och
+ * `OKÄND` betyder "vi kan inte påstå något". Den svagaste utsagan, inte den
+ * starkaste.
+ */
+export function effectTraceIntegrity(toolName: string): TraceIntegrity {
+  return EFFECT_DECLARATIONS[toolName]?.traceIntegrity ?? 'OKÄND'
+}
+
+/**
+ * Går det att lita på att en TOM effektlista betyder "verktyget skrev inget"?
+ *
+ * Bara om spåret skrivs så att det INTE kan tappas tyst. Med `BÄST_MÖJLIGA`
+ * betyder en tom lista två saker — inget skrevs, eller spåret tappades — och
+ * det är precis det en tom logg aldrig får göra (#586: en tom ErrorLog ska inte
+ * kunna betyda två saker).
+ */
+export function tomEffektlistaÄrTrovärdig(toolName: string): boolean {
+  const i = effectTraceIntegrity(toolName)
+  return i === 'TRANSAKTIONELL' || i === 'FÖRE_EFFEKTEN'
 }
 
 /** Exponeras för vakten och specen som prövar att katalogen inte glider isär. */
