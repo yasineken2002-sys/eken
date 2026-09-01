@@ -32,12 +32,38 @@
  * och en kopia som drivit isär är den farliga varianten — det var ju precis så
  * de två divergerade. Fältöverlappet fäller på det som gör kopian till en kopia.
  *
+ * ── TRE VYER, OCH codeMask HADE VARIT FEL FÖR TVÅ AV DEM ────────────────────
+ *
+ * Vakten gick tidigare på råtexten. Att bara byta till `codeMask` överallt hade
+ * sett modernt ut och tagit BORT vaktens skärpa — fältnamnen är strängar, och
+ * codeMask blankar stränginnehåll. Mätt på den kanoniska modulen:
+ *
+ *   fältnamn ur SENSITIVE_FIELD_NAMES   råtext 11 · blankComments 11 · codeMask 11
+ *
+ * Elva även i codeMask — men alla ELVA är blanksteg. Regexen `/'([^']+)'/`
+ * matchar `'              '` lika gärna som `'personalNumber'`. Vakten hade
+ * fortsatt räkna, jämfört mot en lista av blanktecken och aldrig sett ett
+ * överlapp igen. Exakt den tystnad den här migreringen finns för att undvika.
+ *
+ * Därför tre vyer, en per fråga:
+ *
+ *   codeMask       → DEFINITIONEN `function redactSensitive`. Ett kodexempel i
+ *                    prosa är ingen definition. Mätt i trädet: råtext ser 2,
+ *                    kod ser 1 — den andra är en kommentar plus en regex-literal
+ *                    i tenant-redact-parity.spec.ts, alltså beviset, inte kopian.
+ *   blankComments  → FÄLTLISTORNA. Strängar KVAR (namnen bor där), kommentarer
+ *                    bort (en utkommenterad gammal lista är ingen kopia).
+ *   kommentarerna  → markören `redact-copy-allow:`. Den står med flit i en
+ *                    KOMMENTAR, så den måste läsas ur kommentarerna — inte ur
+ *                    kod, och inte ur en sträng som råkar innehålla ordet.
+ *
  * Kör:        node apps/api/scripts/check-redact-copies.mjs
  * Självtest:  node apps/api/scripts/check-redact-copies.mjs --self-test
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, dirname, relative, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { codeMask, blankComments, tokenize, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const API_ROOT = join(HERE, '..')
@@ -61,11 +87,36 @@ export const MIN_FIELD_OVERLAP = 3
  */
 export const MIN_REASON = 25
 
-/** Fältnamnen som HÄRLEDS ur den kanoniska modulen — ingen andra lista här. */
+/**
+ * Fältnamnen som HÄRLEDS ur den kanoniska modulen — ingen andra lista här.
+ *
+ * `blankComments`, INTE `codeMask`: namnen ÄR stränginnehåll. Se huvudkommentaren.
+ */
 export function canonicalFields(text) {
-  const m = text.match(/SENSITIVE_FIELD_NAMES[^=]*=\s*new Set\(\[([\s\S]*?)\]\)/)
+  const m = blankComments(text).match(/SENSITIVE_FIELD_NAMES[^=]*=\s*new Set\(\[([\s\S]*?)\]\)/)
   if (!m) return []
   return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1])
+}
+
+/**
+ * Kommentarernas text, sammanslagen. Markören `redact-copy-allow:` är en
+ * medveten kommentar, så den ska läsas där och ingen annanstans: en sträng som
+ * innehåller ordet ska inte kunna tysta vakten.
+ *
+ * Komponerad ur den delade skannerns `tokenize` — ingen egen förbehandling.
+ */
+export function kommentarsText(text) {
+  return tokenize(text)
+    .filter((t) => t.kind === 'line-comment' || t.kind === 'block-comment')
+    .map((t) => text.slice(t.bodyStart, t.bodyEnd))
+    .join('\n')
+}
+
+/** Motiveringen bakom markören, eller null. */
+export function tillåtelseSkäl(text) {
+  const m = kommentarsText(text).match(/redact-copy-allow:\s*(.+)/)
+  const skäl = m?.[1]?.trim() ?? ''
+  return skäl.length >= MIN_REASON ? skäl : null
 }
 
 function tsFiles(dir) {
@@ -89,15 +140,18 @@ function tsFiles(dir) {
 export function findCopies(text, fields, { rel } = {}) {
   const problem = []
   if (rel === CANONICAL) return problem
-  const markör = text.match(/redact-copy-allow:\s*(.+)/)
-  if (markör && markör[1].trim().length >= MIN_REASON) return problem
+  if (tillåtelseSkäl(text)) return problem
 
-  if (/function\s+redactSensitive\b/.test(text)) {
+  // Definitionen frågas mot KOD. Före migreringen såg regeln 2 träffar i trädet;
+  // den andra var en kommentar plus `/function redactSensitive/` i en
+  // regex-literal — ett bevis, inte en kopia.
+  if (/function\s+redactSensitive\b/.test(codeMask(text))) {
     problem.push({ kind: 'definition', detalj: 'function redactSensitive' })
   }
 
   // Literal-samlingar: new Set([...]) eller [...] med citerade strängar.
-  for (const m of text.matchAll(/(?:new Set\(\[|\[)([\s\S]{0,600}?)\]/g)) {
+  // blankComments — fältnamnen ÄR strängar och måste stå kvar.
+  for (const m of blankComments(text).matchAll(/(?:new Set\(\[|\[)([\s\S]{0,600}?)\]/g)) {
     const literaler = [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1])
     const överlapp = literaler.filter((l) => fields.includes(l))
     if (överlapp.length >= MIN_FIELD_OVERLAP) {
@@ -105,6 +159,43 @@ export function findCopies(text, fields, { rel } = {}) {
     }
   }
   return problem
+}
+
+// ── OMFÅNGSKANARIEFÅGEL ─────────────────────────────────────────────────────
+//
+// Lärdomen av R5: regeln kan fungera medan mängden är tom. Här kan TRE mängder
+// krympa tyst, och alla tre lämnar vakten grön:
+//
+//   • filerna `tsFiles` hittar,
+//   • de literal-samlingar fältlisteregeln alls granskar (blir mönstret fel
+//     matchar det ingenting och regeln uttalar sig aldrig),
+//   • de kanoniska fältnamnen — jämförelsemängden. Noll fält kastar redan i
+//     `scanTree`, men en KRYMPT lista gör bara vakten trubbig, inte röd.
+//
+// Golven är MÄTTA mot e9aea18: 782 filer, 8096 samlingar, 11 fältnamn.
+const MIN_FILER = 500
+const MIN_SAMLINGAR = 3000
+
+export function mätOmfång(root = SRC) {
+  const fields = canonicalFields(readFileSync(join(root, CANONICAL), 'utf8'))
+  let filer = 0
+  let samlingar = 0
+  for (const full of tsFiles(root)) {
+    filer++
+    samlingar += [
+      ...blankComments(readFileSync(full, 'utf8')).matchAll(/(?:new Set\(\[|\[)([\s\S]{0,600}?)\]/g),
+    ].length
+  }
+  const fel = []
+  if (filer < MIN_FILER) fel.push(`omfång: ${filer} filer skannade, golv ${MIN_FILER}`)
+  if (samlingar < MIN_SAMLINGAR)
+    fel.push(`omfång: ${samlingar} literal-samlingar granskade, golv ${MIN_SAMLINGAR}`)
+  // Jämförelsemängden måste dessutom vara RIKTIGA namn. Hade någon bytt till
+  // codeMask blir de blanktecken, och överlappet kan aldrig mer bli sant.
+  if (fields.length < 10) fel.push(`omfång: ${fields.length} kanoniska fältnamn, golv 10`)
+  if (fields.some((f) => !/[A-Za-z]/.test(f)))
+    fel.push(`omfång: fältnamn utan bokstäver — masken har blankat stränginnehållet`)
+  return { fel, mätt: { filer, samlingar, fält: fields.length } }
 }
 
 export function scanTree(root = SRC) {
@@ -118,10 +209,8 @@ export function scanTree(root = SRC) {
   for (const full of tsFiles(root)) {
     const rel = relative(root, full).split(sep).join('/')
     const text = readFileSync(full, 'utf8')
-    const markör = text.match(/redact-copy-allow:\s*(.+)/)
-    if (rel !== CANONICAL && markör && markör[1].trim().length >= MIN_REASON) {
-      undantagna.push({ rel, skäl: markör[1].trim() })
-    }
+    const skäl = tillåtelseSkäl(text)
+    if (rel !== CANONICAL && skäl) undantagna.push({ rel, skäl })
     for (const p of findCopies(text, fields, { rel })) fynd.push({ rel, ...p })
   }
   return { fields, fynd, undantagna }
@@ -197,6 +286,55 @@ function selfTest() {
       .length === 0,
   )
 
+  // ── DEN DELADE SKANNERNS KANARIEFÅGLAR (metavaktens R2) ───────────────────
+  const skanner = kanariefåglar()
+  t('delad skanner: 7 kanariefåglar gröna', skanner.length === 0, skanner.join(' | '))
+
+  // ── VYERNAS SEMANTIK ──────────────────────────────────────────────────────
+  //
+  // Sonderna nedan överskrider MED FLIT tröskeln MIN_FIELD_OVERLAP: en sond som
+  // ligger UNDER tröskeln ger grönt av rätt skäl och bevisar ingenting om
+  // masken. Tröskeln och sondens värde skrivs ut i utfallet.
+  const SOND_FÄLT = ['personalNumber', 'passwordHash', 'sessionToken'] // 3 = tröskeln
+  t(
+    `SOND-STYRKA: ${SOND_FÄLT.length} kanoniska namn mot tröskel ${MIN_FIELD_OVERLAP}`,
+    SOND_FÄLT.length >= MIN_FIELD_OVERLAP,
+  )
+  t(
+    'VY: en definition i en KOMMENTAR är ingen kopia',
+    findCopies('// se function redactSensitive i den kanoniska modulen\nconst x = 1', FÄLT).length === 0,
+  )
+  t(
+    'VY: en definition i en REGEX-LITERAL är ingen kopia (det är ett bevis)',
+    findCopies('expect(k).not.toMatch(/function redactSensitive/)', FÄLT).length === 0,
+  )
+  t(
+    'VY: en utkommenterad fältlista är ingen kopia',
+    findCopies(`// const S = new Set([${SOND_FÄLT.map((f) => `'${f}'`).join(', ')}])`, FÄLT).length === 0,
+  )
+  t(
+    'VY: men en RIKTIG fältlista fälls fortfarande — skärpan är kvar',
+    findCopies(`const S = new Set([${SOND_FÄLT.map((f) => `'${f}'`).join(', ')}])`, FÄLT).some(
+      (p) => p.kind === 'fältlista',
+    ),
+  )
+  t(
+    'VY: markören i en STRÄNG tystar INTE vakten',
+    findCopies(
+      `const hint = 'redact-copy-allow: det här är bara en text som nämner markören'\nfunction redactSensitive() {}`,
+      FÄLT,
+    ).length === 1,
+  )
+  t(
+    'VY: markören i en KOMMENTAR tystar den fortfarande',
+    tillåtelseSkäl('// redact-copy-allow: jämförelsepunkt mot den gamla formen i ett test') !== null,
+  )
+  t(
+    'VY: fältnamnen kommer ur strängarna, inte som blanktecken',
+    canonicalFields("const SENSITIVE_FIELD_NAMES = new Set(['personalNumber', 'passwordHash'])").join(',') ===
+      'personalNumber,passwordHash',
+  )
+
   // ── KANARIEFÅGEL ──────────────────────────────────────────────────────────
   //
   // Kontrollerna ovan är namngivna negativkontroller. De upptäcker inte att
@@ -230,6 +368,16 @@ function selfTest() {
   const { fields, fynd } = scanTree()
   t('kodbasen har exakt en kopia', fynd.length === 0, JSON.stringify(fynd).slice(0, 200))
   t('fältlistan gick att läsa ur den kanoniska modulen', fields.length >= 10, `${fields.length} fält`)
+
+  const omf = mätOmfång()
+  t(
+    'OMFÅNGSKANARIEFÅGEL: mängderna vakten prövar är inte tomma',
+    omf.fel.length === 0,
+    omf.fel.length
+      ? omf.fel.join(' | ')
+      : `${omf.mätt.filer} filer (golv ${MIN_FILER}), ${omf.mätt.samlingar} literal-samlingar ` +
+        `(golv ${MIN_SAMLINGAR}), ${omf.mätt.fält} fältnamn (golv 10)`,
+  )
 
   console.warn(failed === 0 ? '\nSjälvtest: ALLA GRÖNA' : `\nSjälvtest: ${failed} FALLERADE`)
   process.exit(failed === 0 ? 0 : 1)
