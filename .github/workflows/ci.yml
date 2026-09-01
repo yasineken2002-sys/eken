@@ -534,6 +534,39 @@ jobs:
       - name: Verify shutdown hooks and the stall budget are wired
         run: node apps/api/scripts/check-graceful-shutdown.mjs
 
+  module-cycle-guard:
+    name: Module cycle guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # #605 batch 1 slöt en ring i modulgrafen:
+      #
+      #   NotificationsModule -> CronErrorSinkModule -> PlatformModule
+      #                       -> InvoicesModule -> NotificationsModule
+      #
+      # Utfallet var att API:t inte startade alls. Samtidigt var `Tests` GRÖNT
+      # på 340 sviter och 3486 tester — varje spec konstruerar sina tjänster för
+      # hand och rör aldrig DI-grafen. Det gällde även db-riggen mot riktig
+      # Postgres, som byggdes som det starkaste beviset.
+      #
+      # Det var E2E som fångade det, och bara som en SIDOEFFEKT av att jobbet
+      # startar API:t. Fyra minuters CI och en jobblogg är fel instrument för
+      # något som går att mäta statiskt på en sekund.
+      #
+      # Grafen härleds ur *.module.ts. En cykel fälls bara om INGEN kant i den
+      # är en forwardRef — Nest stöder deklarerade cykler, och kodbasen har tre.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (injected cycle + empty graph must fail)
+        run: node apps/api/scripts/check-module-cycles.mjs --self-test
+
+      - name: Verify no undeclared module cycle
+        run: node apps/api/scripts/check-module-cycles.mjs
+
   cron-error-sink-guard:
     name: Cron error sink guard
     runs-on: ubuntu-latest
@@ -1546,6 +1579,7 @@ jobs:
       - guard-preprocessor-guard
       - source-scan-canary-guard
       - cron-error-sink-guard
+      - module-cycle-guard
       - graceful-shutdown-guard
       - skip-precondition-guard
       - reminder-fee-guard
