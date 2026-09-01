@@ -65,6 +65,29 @@
  * raden. Skrivs total upp UTAN en avgiftsrad är det ett annat fel (total ≠ Σ
  * rader) och hör inte hemma här.
  *
+ * ── TVÅ MASKER, OCH VARFÖR NOLLSTÄLLNINGEN KRÄVER DEN ANDRA ────────────────
+ *
+ * Guarden gick på råtexten, och närhetskontrollen var den känsligaste punkten:
+ * `before.includes('resolveReminderFee(')` uppfylldes av en KOMMENTAR. Just den
+ * här filen är full av kommentarblock som nämner resolvern — huvudkommentaren
+ * ovan gör det ett dussin gånger — så en skrivning som glömt resolvern men
+ * ligger efter ett stycke prosa OM den hade passerat tyst. Det är precis
+ * förbiseendet vakten finns för.
+ *
+ * Men codeMask ensam hade gjort en LEGITIM skrivning röd. `isZeroing` känner
+ * igen nollställningen även i strängform (`feeAmount: '0'`), och codeMask
+ * blankar stränginnehåll — `'0'` blir `' '`, nollställningen försvinner och
+ * refuseringsvägen hade börjat falla.
+ *
+ * Därför två masker, båda POSITIONSBEVARANDE, så samma index kan användas i
+ * bägge:
+ *
+ *   kod            = codeMask       mutatoranropen, parentesmatchningen,
+ *                                    fältnamnen, `REMINDER_FEE_LINE_DESCRIPTION`
+ *                                    och närhetsfönstret.
+ *   utanKommentarer = blankComments nollställningen (`'0'` är en sträng) och
+ *                                    regel (3), rå SQL.
+ *
  * Rent statiskt (fs-only, inga beroenden, ingen DB) → eget CI-steg utan databas.
  * Lokalt:      node apps/api/scripts/check-reminder-fee-source.mjs
  * Självtest:   node apps/api/scripts/check-reminder-fee-source.mjs --self-test
@@ -72,6 +95,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { codeMask, blankComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC_DIR = join(HERE, '..', 'src')
@@ -110,17 +134,25 @@ const FEE_LINE_CONST = 'REMINDER_FEE_LINE_DESCRIPTION'
 // varandra. Höj inte fönstret för att slippa göra det.
 const PRECEDING_WINDOW = 6000 // tecken
 
-function sliceCall(text, openParenIdx) {
+/**
+ * Slutindex (exklusivt) för anropet som börjar vid `openParenIdx`.
+ *
+ * Körs ENBART mot codeMask-utdata, där ett `')'` i en literal är blankat och
+ * inte längre kan stänga anropet. Att returnera ett INTERVALL i stället för en
+ * delsträng är avsiktligt: samma index gäller i `blankComments`-masken, som är
+ * lika lång, så nollställningen kan läsas ur strängvyn av exakt samma anrop.
+ */
+function callEnd(kod, openParenIdx) {
   let depth = 0
-  for (let i = openParenIdx; i < text.length; i++) {
-    const ch = text[i]
+  for (let i = openParenIdx; i < kod.length; i++) {
+    const ch = kod[i]
     if (ch === '(') depth++
     else if (ch === ')') {
       depth--
-      if (depth === 0) return text.slice(openParenIdx, i + 1)
+      if (depth === 0) return i + 1
     }
   }
-  return text.slice(openParenIdx)
+  return kod.length
 }
 
 const lineOf = (text, idx) => text.slice(0, idx).split('\n').length
@@ -169,20 +201,28 @@ export function scanSource(text, relPath) {
   const violations = []
   let m
 
+  // Två masker, samma längd och samma index. Se huvudkommentaren.
+  const kod = codeMask(text)
+  const utanKommentarer = blankComments(text)
+
   // (1) reskontramarkeringarna på avin och på påminnelsen.
   for (const { model, field, detail } of LEDGER_WRITES) {
     const re = new RegExp(`\\b${model}\\s*\\.\\s*(create|createMany|update|updateMany|upsert)\\s*\\(`, 'g')
-    while ((m = re.exec(text))) {
+    while ((m = re.exec(kod))) {
       const method = m[1]
-      const openParen = text.indexOf('(', m.index + m[0].length - 1)
-      const call = sliceCall(text, openParen)
+      const openParen = kod.indexOf('(', m.index + m[0].length - 1)
+      const slut = callEnd(kod, openParen)
+      const call = kod.slice(openParen, slut)
       if (!new RegExp(`\\b${field}\\s*:`).test(call)) continue
-      if (isZeroing(call, field)) continue
+      // Nollställningen läses ur STRÄNGVYN: `feeAmount: '0'` är en sträng, och
+      // i codeMask är den blankad. Samma index — maskerna är lika långa.
+      if (isZeroing(utanKommentarer.slice(openParen, slut), field)) continue
 
-      const before = text.slice(Math.max(0, m.index - PRECEDING_WINDOW), m.index)
+      // Närhetsfönstret i KOD: en kommentar som nämner resolvern är inget anrop.
+      const before = kod.slice(Math.max(0, m.index - PRECEDING_WINDOW), m.index)
       if (!before.includes(`${RESOLVER}(`)) {
         violations.push({
-          line: lineOf(text, m.index),
+          line: lineOf(kod, m.index),
           rule: `${model}.${method}() sätter ${field} utan ${RESOLVER}(...)`,
           detail,
         })
@@ -192,16 +232,16 @@ export function scanSource(text, relPath) {
 
   // (2) avgiftsraden på fakturan.
   const lineRe = /\binvoiceLine\s*\.\s*(create|createMany)\s*\(/g
-  while ((m = lineRe.exec(text))) {
+  while ((m = lineRe.exec(kod))) {
     const method = m[1]
-    const openParen = text.indexOf('(', m.index + m[0].length - 1)
-    const call = sliceCall(text, openParen)
+    const openParen = kod.indexOf('(', m.index + m[0].length - 1)
+    const call = kod.slice(openParen, callEnd(kod, openParen))
     if (!call.includes(FEE_LINE_CONST)) continue
 
-    const before = text.slice(Math.max(0, m.index - PRECEDING_WINDOW), m.index)
+    const before = kod.slice(Math.max(0, m.index - PRECEDING_WINDOW), m.index)
     if (!before.includes(`${RESOLVER}(`)) {
       violations.push({
-        line: lineOf(text, m.index),
+        line: lineOf(kod, m.index),
         rule: `invoiceLine.${method}() skriver avgiftsraden utan ${RESOLVER}(...)`,
         detail:
           'Fakturan får inte kräva en påminnelseavgift utan avtalsgrund, och aldrig ' +
@@ -211,8 +251,9 @@ export function scanSource(text, relPath) {
   }
 
   // (3) rå SQL som rör något av avgiftsfälten.
+  // Kolumnnamnen står i en SQL-sträng — därför strängvyn, inte codeMask.
   const rawFields = LEDGER_WRITES.map((w) => w.field.toLowerCase())
-  text.split('\n').forEach((ln, i) => {
+  utanKommentarer.split('\n').forEach((ln, i) => {
     const lower = ln.toLowerCase()
     if (
       /\$(executeRaw|executeRawUnsafe|queryRaw|queryRawUnsafe)/.test(ln) &&
@@ -316,11 +357,97 @@ const BAD = [
     `const safeFee = isReminderFeeContractuallyAllowed(debtOrigin, termsFrom) ? begärd : 0\n` +
       `await tx.rentNotice.updateMany({ where: { id }, data: { reminderFeeAmount: new Prisma.Decimal(safeFee) } })`,
   ],
+  // ── MASKEN: fyra fall som RÅTEXTVERSIONEN klassade fel ────────────────────
+  [
+    'MASK: resolvern nämns bara i en KOMMENTAR före skrivningen',
+    `// beloppet är redan klampat av resolveReminderFee( ovan i anroparen\n` +
+      `await tx.rentNotice.updateMany({ where: { id }, data: { reminderFeeAmount: new Prisma.Decimal(60) } })`,
+  ],
+  [
+    'MASK: skrivningen efter en sträng som innehåller `)`',
+    `await tx.paymentReminder.create({ data: { note: 'avgift (lagstadgad)', feeAmount: new Prisma.Decimal(60) } })`,
+  ],
+  [
+    'MASK: rå SQL i en MALLSTRÄNG — skärpan får inte försvinna',
+    'await this.prisma.$executeRawUnsafe(`UPDATE "RentNotice" SET "reminderFeeAmount" = 60`)',
+  ],
+  [
+    'MASK: skrivning efter en regex-literal med citattecken',
+    `const e = s.replace(/"/g, '&quot;')\n` +
+      `await tx.rentNotice.create({ data: { reminderFeeAmount: fee } })`,
+  ],
 ]
+
+// Fall som ska förbli GRÖNA och som isolerar den andra riktningen: en mask för
+// mycket gör en LEGITIM skrivning röd.
+const MASK_GOOD = [
+  [
+    'MASK: nollställning i STRÄNGFORM (codeMask ensam hade fällt den)',
+    `await tx.rentNotice.updateMany({ where: { id }, data: { reminderFeeAmount: '0' } })`,
+  ],
+  [
+    'MASK: nollställning i strängform med decimaler',
+    `await tx.paymentReminder.create({ data: { invoiceId, feeAmount: '0.00' } })`,
+  ],
+  [
+    'MASK: en UTKOMMENTERAD överträdelse är ingen överträdelse',
+    `// await tx.rentNotice.create({ data: { reminderFeeAmount: fee } })  — ALDRIG utan resolvern`,
+  ],
+  [
+    'MASK: ett fältnamn i en loggsträng är ingen skrivning',
+    `this.logger.warn('kunde inte sätta reminderFeeAmount: saknar avtalsgrund')`,
+  ],
+]
+
+// ── OMFÅNGSKANARIEFÅGEL ─────────────────────────────────────────────────────
+//
+// Lärdomen av R5. Brottmängden är tom i friskt läge och duger inte som bevis.
+// Tre mängder kan krympa tyst och lämnar vakten grön:
+//
+//   • filerna `walk` hittar,
+//   • reskontramutatorerna regeln alls granskar,
+//   • resolveranropen. Noll av dem betyder att sanningskällan försvunnit —
+//     och då vaktar regeln en invariant ingen längre håller.
+//
+// Golv MÄTTA mot e9aea18: 447 filer, 35 mutatorer, 3 resolveranrop.
+const MIN_FILER = 300
+const MIN_MUTATORER = 15
+const MIN_RESOLVERANROP = 2
+
+function omfångskanariefågel() {
+  let filer = 0
+  let mutatorer = 0
+  let resolveranrop = 0
+  const mutRe = new RegExp(
+    `\\b(${LEDGER_WRITES.map((w) => w.model).join('|')})\\s*\\.\\s*(create|createMany|update|updateMany|upsert)\\s*\\(`,
+    'g',
+  )
+  for (const f of walk(SRC_DIR)) {
+    filer++
+    const kod = codeMask(readFileSync(f, 'utf8'))
+    mutatorer += (kod.match(mutRe) ?? []).length
+    resolveranrop += (kod.match(new RegExp(`\\b${RESOLVER}\\(`, 'g')) ?? []).length
+  }
+  const fel = []
+  if (filer < MIN_FILER) fel.push(`omfång: ${filer} filer skannade, golv ${MIN_FILER}`)
+  if (mutatorer < MIN_MUTATORER)
+    fel.push(`omfång: ${mutatorer} reskontramutatorer i KOD, golv ${MIN_MUTATORER}`)
+  if (resolveranrop < MIN_RESOLVERANROP)
+    fel.push(`omfång: ${resolveranrop} ${RESOLVER}-anrop i KOD, golv ${MIN_RESOLVERANROP}`)
+  return { fel, mätt: { filer, mutatorer, resolveranrop } }
+}
 
 function selfTest() {
   let ok = true
-  for (const [label, code] of GOOD) {
+
+  // (0) Den delade skannerns kanariefåglar — metavaktens R2.
+  const skanner = kanariefåglar()
+  if (skanner.length) {
+    ok = false
+    console.error(`✗ DEN DELADE SKANNERN ÄR TRASIG: ${skanner.join(' | ')}`)
+  }
+
+  for (const [label, code] of [...GOOD, ...MASK_GOOD]) {
     const v = scanSource(code, `good:${label}`)
     if (v.length !== 0) {
       ok = false
@@ -334,8 +461,21 @@ function selfTest() {
       console.error(`✗ BAD "${label}" fångades INTE — guarden har inga tänder där`)
     }
   }
+  const omf = omfångskanariefågel()
+  if (omf.fel.length) {
+    ok = false
+    console.error(`✗ OMFÅNGET HAR KRYMPT: ${omf.fel.join(' | ')}`)
+  }
+
   if (!ok) process.exit(1)
-  console.log(`✓ självtest: ${GOOD.length} tillåtna, ${BAD.length} otillåtna — alla klassade rätt`)
+  console.log(
+    `✓ självtest: ${GOOD.length + MASK_GOOD.length} tillåtna, ${BAD.length} otillåtna — alla klassade rätt; ` +
+      'skannerns 7 kanariefåglar gröna',
+  )
+  console.log(
+    `✓ omfång: ${omf.mätt.filer} filer (golv ${MIN_FILER}), ${omf.mätt.mutatorer} reskontramutatorer ` +
+      `(golv ${MIN_MUTATORER}), ${omf.mätt.resolveranrop} resolveranrop (golv ${MIN_RESOLVERANROP})`,
+  )
 }
 
 if (process.argv.includes('--self-test')) {
