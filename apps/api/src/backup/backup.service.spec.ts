@@ -140,7 +140,9 @@ function makeService(retentionDays = 30) {
 }
 
 /** #605: registrerar sänkanropen så de går att assertera på. */
-const cronErrorsSpy = { report: jest.fn(async () => undefined) }
+const cronErrorsSpy = {
+  report: jest.fn(async (_cron: string, _err: unknown, _ctx?: unknown) => undefined),
+}
 
 function serviceWith(env: Record<string, string>) {
   return new BackupService(
@@ -338,6 +340,18 @@ describe('BackupService.runBackup — förkontrollen kommer FÖRE allt annat', (
     // Larmet ska bära versionsbeskedet OSKRUBBAT — det innehåller inga
     // hemligheter, och den som läser Sentry ska kunna åtgärda direkt.
     expect(Sentry.captureException).toHaveBeenCalledTimes(1)
+
+    // #605 — OCH EN VARAKTIG RAD. Sentry går inte att läsa från den här driften
+    // (mätt: bara SENTRY_DSN finns, inget auth-token — #587), så larmet ovan är
+    // en kanal ingen kan öppna. ErrorLog-raden är den som går att hitta i morgon.
+    //
+    // EXAKT EN: cron-metodens nakna catch rapporterar INTE, just för att
+    // rapporteringen sker här. Två anrop hade betytt två rader för ett fel.
+    expect(cronErrorsSpy.report).toHaveBeenCalledTimes(1)
+    expect(cronErrorsSpy.report.mock.calls[0]![0]).toBe('daily-backup')
+    // …och med det SKRUBBADE felet, inte det råa: pg_dump-stderr kan bära
+    // host/user/db, och ErrorLogs retention är obeslutad (#612).
+    expect(cronErrorsSpy.report.mock.calls[0]![1]).toBe(Sentry.captureException.mock.calls[0]![0])
     const rapporterat = Sentry.captureException.mock.calls[0]![0] as Error
     expect(rapporterat).toBeInstanceOf(BackupPreflightError)
     expect(rapporterat.message).toContain('postgresql-client-N')
