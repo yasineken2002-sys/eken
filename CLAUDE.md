@@ -162,6 +162,34 @@ mot fem modulgrupper, alla gröna — assertionen som föll låg i `common/guard
 fastnaglade beslutet ändringen upphävde. Bara CI såg den. Hela sviten hade tagit
 ett par minuter.
 
+**Och vad en SHARDAD körning inte bevisar.** `--shard=1/4` … `4/4` kör hela
+mängden och bryter alltså inte mot regeln ovan — täckningen är fullständig, det
+är inte en modulavgränsning. Men det är **fyra processer, inte en**: en svit som
+passerar isolerat men fallerar i sällskap av en annan syns inte. För den här
+kodbasen är skillnaden liten — enhetstester med egna mockar — men den är verklig,
+och den får inte döljas av att talen summerar rätt.
+
+**Shardning är en minnesåtgärd, inte ett likvärdigt körsätt** — och den räcker
+inte alltid. Uppmätt i en session där en främmande process tog 1,9 GB på en
+8 GB-maskin:
+
+```
+--runInBand, hela sviten      SIGTERM efter  32 sviter
+--shard=1/4                   SIGTERM efter  11 sviter
+--shard=2/4                   SIGTERM efter  34 sviter      ← 130 MB fritt
+```
+
+Att dela upp körningen sänker toppen per process, men inte den totala
+efterfrågan när något annat redan tagit minnet. Kör du shardat: skriv ut att det
+var shardat, och att en summa på rätt tal är en bekräftelse — inte samma bevis
+som en körning i en process.
+
+**Och när maskinen inte räcker alls: låt CI köra sviten.** `Tests`-jobbet kör
+hela sviten på en ren runner och är required check. Att öppna PR:en för att få
+den körningen är rätt åtgärd — det är inte att kringgå kravet, det är att flytta
+mätningen till en maskin som kan utföra den. Det som ALDRIG är rätt är att
+redovisa ett tal man inte mätt, eller att kalla en avbruten körning grön.
+
 ---
 
 ## Arkitektur
