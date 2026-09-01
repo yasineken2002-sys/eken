@@ -368,43 +368,219 @@ export function templateLiterals(text, opts) {
 // ── kanariefåglarna ─────────────────────────────────────────────────────────
 
 /**
- * De TRE mönster som bevisligen har lurat oss, plus kravet att en riktig
- * överträdelse efter dem fortfarande syns. Exporterad så varje vakt kan köra
- * den i sitt eget självtest — bryts skannern blir ALLA röda, inte bara en.
+ * ── REGELN FÖR DEN HÄR FUNKTIONEN ───────────────────────────────────────────
+ *
+ * Varje prov här måste FÄLLA när det läge det bevakar neutraliseras. Ett prov
+ * som är grönt även med sitt läge avstängt är pynt, och pyntet är farligare än
+ * inget prov alls: varje vakt i kodbasen kör den här funktionen och tror att
+ * grönt betyder att skannern fungerar.
+ *
+ * ── VARFÖR REGELN SKREVS ────────────────────────────────────────────────────
+ *
+ * Den togs inte fram genom läsning. `apps/api/scripts/check-source-scan-canaries.mjs`
+ * neutraliserar ett läge i taget och kräver rött. Första mätningen mot den här
+ * filen, på main `4dfefbc`:
+ *
+ *     lägen som slapp igenom oupptäckt:  7 av 12
+ *
+ * Bland dem REGEX-läget. `REGEX_LÄGE = /QQ_ALDRIG/` — alltså regex-igenkänningen
+ * helt avstängd, exakt defekt 1 ovan återinförd — lämnade alla sju
+ * kanariefåglarna GRÖNA, medan 14 854 tecken i apps/api/src slutade maskeras och
+ * stod kvar som om de vore kod.
+ *
+ * Provet som skulle fånga det var:
+ *
+ *     const src = `a.replace(/"/g, '&quot;')\nconst ZZTRÄFF = 1\n`
+ *     kräv(…, codeMask(src).includes('ZZTRÄFF'))
+ *
+ * `ZZTRÄFF` stod på NÄSTA RAD. Med regex-läget avstängt blir `"` en oterminerad
+ * sträng som bryts vid radslutet — så nästa rad överlevde, och provet var grönt
+ * av sin egen FORMATERING i stället för av det det mätte. Andra halvan,
+ * `!m.includes('/"/')`, var grön av samma skäl: tecknet den letade efter råkade
+ * hamna i den oterminerade strängens kropp.
+ *
+ * Därför står sonderna nedan på SAMMA RAD som det som ska överleva.
+ *
+ * ── HUR DU LÄGGER TILL ETT PROV ─────────────────────────────────────────────
+ *
+ * Lägg till läget i mutationslistan i check-source-scan-canaries.mjs SAMTIDIGT.
+ * Den vakten kräver att varje läge den känner blir rött — ett prov utan mutation
+ * är obevisat, och en mutation utan prov är rött tills någon skriver provet.
  */
+
+const LÄGESPROV = [
+  {
+    läge: 'radkommentar',
+    prova: (kräv) => {
+      const r = withoutComments('// ZZIRAD\nconst ZZEFTER1 = 1')
+      kräv('LÄGE radkommentar (kommentaren bort)', !r.includes('ZZIRAD'), JSON.stringify(r))
+      kräv('LÄGE radkommentar (koden kvar)', r.includes('ZZEFTER1'), JSON.stringify(r))
+    },
+  },
+  {
+    läge: 'blockkommentar',
+    prova: (kräv) => {
+      const r = withoutComments('/* ZZIBLOCK */ const ZZEFTER2 = 2')
+      kräv('LÄGE blockkommentar (kommentaren bort)', !r.includes('ZZIBLOCK'), JSON.stringify(r))
+      kräv('LÄGE blockkommentar (koden kvar)', r.includes('ZZEFTER2'), JSON.stringify(r))
+    },
+  },
+  {
+    läge: 'sträng',
+    prova: (kräv) => {
+      const m = codeMask(`const s = 'ZZISTRÄNG'; const ZZEFTER3 = 3`)
+      kräv('LÄGE sträng (innehållet maskeras)', !m.includes('ZZISTRÄNG'), JSON.stringify(m))
+      kräv('LÄGE sträng (koden efter kvar)', m.includes('ZZEFTER3'), JSON.stringify(m))
+    },
+  },
+  {
+    // DET HÄR VAR PROVET SOM VAR PYNT — se huvudkommentaren. `ZZEFTER4` står nu
+    // på SAMMA rad som regexen. Stängs regex-läget av läses `"` som en
+    // strängstart och äter resten av raden, och provet faller.
+    läge: 'regex',
+    prova: (kräv) => {
+      const m = codeMask(`a.replace(/"/g, '&quot;'); const ZZEFTER4 = 4`)
+      kräv('LÄGE regex (koden EFTER på SAMMA rad)', m.includes('ZZEFTER4'),
+        `regexen åt resten av raden: ${JSON.stringify(m)}`)
+      const b = codeMask('const re = /ZZIREGEX/')
+      kräv('LÄGE regex (kroppen maskeras)', !b.includes('ZZIREGEX'),
+        `regexkroppen lästes som kod: ${JSON.stringify(b)}`)
+    },
+  },
+  {
+    läge: 'mallsträng',
+    prova: (kräv) => {
+      const m = codeMask('const t = `ZZIMALL`; const ZZEFTER5 = 5')
+      kräv('LÄGE mallsträng (innehållet maskeras)', !m.includes('ZZIMALL'), JSON.stringify(m))
+      kräv('LÄGE mallsträng (koden efter kvar)', m.includes('ZZEFTER5'), JSON.stringify(m))
+    },
+  },
+  {
+    // Utan `\`-hoppet slutar strängen vid det ESCAPADE citattecknet, och nästa
+    // `'` öppnar en ny sträng som äter resten av raden.
+    läge: 'escape i sträng',
+    prova: (kräv) => {
+      const m = codeMask("const s = 'a\\'b'; const ZZEFTER6 = 6")
+      kräv('LÄGE escape i sträng', m.includes('ZZEFTER6'),
+        `den escapade avgränsaren stängde strängen: ${JSON.stringify(m)}`)
+    },
+  },
+  {
+    läge: 'escape i mallsträng',
+    prova: (kräv) => {
+      const m = codeMask("const t = `a\\`b`; const ZZEFTER7 = 7")
+      kräv('LÄGE escape i mallsträng', m.includes('ZZEFTER7'),
+        `den escapade backticken stängde mallen: ${JSON.stringify(m)}`)
+    },
+  },
+  {
+    // SONDEN ÄR MÄTT FRAM, INTE GISSAD. Det uppenbara provet
+    //
+    //     const t = `${ a ? "}" : b }`; const ZZEFTER = 8
+    //
+    // DISKRIMINERAR INTE: med naiv klammerräkning slutar uttrycket vid det `}`
+    // som står i strängen, men mallSlut letar därefter bara efter nästa
+    // backtick — och den ligger på rätt ställe ändå. Masken blir IDENTISK.
+    // Det måste alltså stå något EFTER det falska `}` som bara en riktig
+    // tokenisering klarar: en backtick inne i en sträng.
+    läge: '${}-tokenisering',
+    prova: (kräv) => {
+      const src = 'const t = `${ a["}"] + \'x`y\' }`; const ZZEFTER8 = 8'
+      kräv('LÄGE ${} (ett } i en sträng stänger inte uttrycket)', codeMask(src).includes('ZZEFTER8'),
+        `uttrycket slutade vid ett } i en sträng: ${JSON.stringify(codeMask(src))}`)
+      // Samma fel sett på ANTALET mallar: en backtick inne i uttrycket som den
+      // naiva räkningen tappar blir en ANDRA mall.
+      const src2 = 'const t = `${ a["}"] + `inre` }`; const ZZEFTER8B = 8'
+      kräv('LÄGE ${} (mallen räknas som EN)', templateLiterals(src2).length === 1,
+        `${templateLiterals(src2).length} mallar hittades, väntade 1`)
+    },
+  },
+  {
+    läge: 'SQL-radkommentar',
+    prova: (kräv) => {
+      const r = withoutComments('SELECT 1; -- ZZISQL\nSELECT ZZEFTER9', { dialect: 'sql' })
+      kräv('LÄGE SQL-radkommentar (kommentaren bort)', !r.includes('ZZISQL'), JSON.stringify(r))
+      kräv('LÄGE SQL-radkommentar (koden kvar)', r.includes('ZZEFTER9'), JSON.stringify(r))
+    },
+  },
+  {
+    // CSS har INGEN radkommentar. Mappas den till SQL läses varje custom
+    // property — `--ev-brand: …` — som en kommentar och resten av raden blankas.
+    // Uppmätt: den mappningen gjorde design-token-vaktens allowlist-post för
+    // TenantAiChat.module.css stale (8 träffar → 0) och fällde självtestet.
+    läge: 'CSS-dialekt',
+    prova: (kräv) => {
+      const src = ':root { --ev-brand: #1a6b3c; }'
+      kräv('LÄGE CSS (-- är inte en kommentar)',
+        blankComments(src, { dialect: 'css' }).includes('#1a6b3c'),
+        `custom property blankades: ${JSON.stringify(blankComments(src, { dialect: 'css' }))}`)
+    },
+  },
+  {
+    läge: 'removeImports',
+    prova: (kräv) => {
+      const src = "const p = `\nimport x from 'y'\n`\nimport a from 'b'\nconst ZZEFTER10 = 10\n"
+      const r = removeImports(src)
+      kräv('LÄGE removeImports (import i mallsträng bevaras)', r.includes("import x from 'y'"))
+      kräv('LÄGE removeImports (riktig import tas bort)', !r.includes("import a from 'b'"))
+      kräv('LÄGE removeImports (koden efter finns kvar)', r.includes('ZZEFTER10'))
+    },
+  },
+]
+
+/**
+ * Lägena som har ett prov. HÄRLEDD ur listan, aldrig skriven som ett tal i
+ * prosan — ett tal i en kommentar blir fel första gången någon lägger till ett
+ * läge. `check-source-scan-canaries.mjs` kräver paritet mot sin mutationslista.
+ */
+export const KANARIEFÅGEL_LÄGEN = LÄGESPROV.map((p) => p.läge)
+
 export function kanariefåglar() {
   const fel = []
   const kräv = (namn, villkor, detalj) => { if (!villkor) fel.push(`${namn}${detalj ? ` — ${detalj}` : ''}`) }
 
-  // 1. Regex-literal med citattecken. Defekten som blankade 11 629 tecken.
+  for (const p of LÄGESPROV) p.prova(kräv)
+
+  // ── DEL 2: DE TRE INCIDENTERNA ──────────────────────────────────────────
+  //
+  // Lägesproven ovan är uttömmande per MEKANISM. De här tre är uttömmande per
+  // HISTORIA: de exakta formerna som en gång lurade oss, bevarade så att en
+  // omskrivning av tokeniseraren inte kan återinföra dem i ny dräkt.
+
+  // 1. PDF-vaktens skanner läste `"` i `.replace(/"/g, …)` som en strängstart
+  //    och blankade 11 629 tecken av platform-invoices.service.ts.
   {
-    const src = `a.replace(/"/g, '&quot;')\nconst ZZTRÄFF = 1\n`
-    const m = codeMask(src)
-    kräv('KANARIE 1 (regex med citattecken)', m.includes('ZZTRÄFF'),
-      `koden efter regex-literalen försvann: ${JSON.stringify(m.slice(0, 60))}`)
-    kräv('KANARIE 1 (regexinnehållet maskeras)', !m.includes('/"/'), 'regexkroppen står kvar omaskerad')
+    const src = `const esc = s.replace(/"/g, '&quot;'); await prisma.$transaction(async () => { ZZINCIDENT1 })`
+    kräv('INCIDENT 1 (regex med citattecken dolde koden efter)',
+      codeMask(src).includes('ZZINCIDENT1'), JSON.stringify(codeMask(src)))
   }
 
-  // 2. `//` inuti en sträng. Får INTE äta resten av raden.
+  // 2. Fyra vakter strippade radkommentarer med en naken regex: ett `'https://x'`
+  //    i en literal åt resten av raden.
   {
-    const src = `const u = 'https://x'; const ZZTRÄFF = 2\n`
-    kräv('KANARIE 2 (// i sträng)', withoutComments(src).includes('ZZTRÄFF'),
-      `resten av raden åts: ${JSON.stringify(withoutComments(src))}`)
-    kräv('KANARIE 2 (strängen är intakt)', withoutComments(src).includes("'https://x'"))
+    const src = `const u = 'https://x'; const ZZINCIDENT2 = 2`
+    kräv('INCIDENT 2 (// i sträng åt resten av raden)',
+      withoutComments(src).includes('ZZINCIDENT2'), JSON.stringify(withoutComments(src)))
+    kräv('INCIDENT 2 (strängen är intakt)', withoutComments(src).includes("'https://x'"))
   }
 
-  // 3. Mallsträng med nästlade citat i ett `${}`-uttryck.
+  // 3. En mätsond utan regex-hantering desynkade på accounting.service.ts och
+  //    rapporterade 36 filer i stället för 30. Mallar med nästlade citat.
   {
-    const src = 'const t = `text ${a ? "b" : \'c\'} mer`; const ZZTRÄFF = 3\n'
+    const src = 'const t = `text ${a ? "b" : \'c\'} mer`; const ZZINCIDENT3 = 3'
     const lits = templateLiterals(src)
-    kräv('KANARIE 3 (mall med nästlade citat)', lits.length === 1, `${lits.length} mallar hittades, väntade 1`)
-    kräv('KANARIE 3 (mallen sluter rätt)', lits[0]?.text === 'text ${a ? "b" : \'c\'} mer',
+    kräv('INCIDENT 3 (mall med nästlade citat räknas som EN)', lits.length === 1,
+      `${lits.length} mallar hittades, väntade 1`)
+    kräv('INCIDENT 3 (mallen sluter rätt)', lits[0]?.text === 'text ${a ? "b" : \'c\'} mer',
       JSON.stringify(lits[0]?.text))
-    kräv('KANARIE 3 (koden efter mallen finns kvar)', codeMask(src).includes('ZZTRÄFF'))
+    kräv('INCIDENT 3 (koden efter mallen finns kvar)', codeMask(src).includes('ZZINCIDENT3'))
   }
 
-  // 4. En fil som SKA ge utslag måste ge utslag EFTER förbehandlingen. Utan
-  //    det här mäter vi bara att skannern inte kraschar.
+  // ── DEL 3: HELHETEN ─────────────────────────────────────────────────────
+  //
+  // Att varje läge fungerar var för sig räcker inte: en riktig överträdelse
+  // måste fortfarande synas EFTER att alla lurmönster passerat, och
+  // förbehandlingen måste faktiskt göra något.
   {
     const src = [
       `a.replace(/"/g, '&quot;')`,
@@ -412,39 +588,12 @@ export function kanariefåglar() {
       'const t = `${a ? "b" : \'c\'}`',
       `await prisma.$transaction(async () => { ZZÖVERTRÄDELSE })`,
     ].join('\n')
-    kräv('KANARIE 4 (överträdelse efter alla tre lurmönstren)',
+    kräv('HELHET (överträdelsen syns efter alla lurmönster)',
       codeMask(src).includes('ZZÖVERTRÄDELSE') && withoutComments(src).includes('ZZÖVERTRÄDELSE'),
       'överträdelsen blev osynlig efter förbehandlingen')
-    // …och att förbehandlingen faktiskt GÖR något: en kommentar ska bort.
-    kräv('KANARIE 4 (förbehandlingen är inte en no-op)',
+    kräv('HELHET (förbehandlingen är inte en no-op)',
       !withoutComments(`${src}\n// ZZKOMMENTAR`).includes('ZZKOMMENTAR'),
       'kommentaren överlevde — skannern gör ingenting')
-  }
-
-  // 6. CSS-dialekten har INGEN radkommentar. Mappas den till SQL läses varje
-  //    custom property `--ev-…` som en kommentar och resten av raden blankas.
-  //    Uppmätt: den mappningen gjorde design-token-vaktens allowlist stale
-  //    (8 träffar → 0) och fällde dess självtest.
-  {
-    const src = ':root { --ev-brand: #1a6b3c; }'
-    kräv('KANARIE 6 (CSS: -- är inte en kommentar)',
-      blankComments(src, { dialect: 'css' }).includes('#1a6b3c'),
-      `custom property blankades: ${JSON.stringify(blankComments(src, { dialect: 'css' }))}`)
-  }
-
-  // 7. removeImports rör inte en import-liknande rad inuti en mallsträng.
-  {
-    const src = "const p = `\nimport x from 'y'\n`\nimport a from 'b'\nconst ZZTRÄFF = 7\n"
-    const r = removeImports(src)
-    kräv('KANARIE 7 (import i mallsträng bevaras)', r.includes("import x from 'y'"))
-    kräv('KANARIE 7 (riktig import tas bort)', !r.includes("import a from 'b'"))
-    kräv('KANARIE 7 (koden efter finns kvar)', r.includes('ZZTRÄFF'))
-  }
-
-  // 5. SQL-dialekten: `--` i en sträng är inte en kommentar.
-  {
-    const src = `INSERT INTO t VALUES ('a--b'); DROP TABLE zz;`
-    kräv('KANARIE 5 (SQL: -- i sträng)', withoutComments(src, { dialect: 'sql' }).includes('DROP TABLE zz'))
   }
 
   return fel
@@ -453,5 +602,7 @@ export function kanariefåglar() {
 if (process.argv[1]?.endsWith('source-scan.mjs')) {
   const fel = kanariefåglar()
   if (fel.length) { console.error('KÄLLSKANNERN ÄR TRASIG:\n  ' + fel.join('\n  ')); process.exit(1) }
-  console.warn('Källskannern: 7 kanariefåglar gröna.')
+  // Talet HÄRLEDS, aldrig skrivet i prosan: en siffra i en utskrift glider ifrån
+  // koden första gången någon lägger till ett prov.
+  console.warn(`Källskannern: alla kanariefåglar gröna (${KANARIEFÅGEL_LÄGEN.length} lägen bevakade).`)
 }

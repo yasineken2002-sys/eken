@@ -534,6 +534,44 @@ jobs:
       - name: Verify shutdown hooks and the stall budget are wired
         run: node apps/api/scripts/check-graceful-shutdown.mjs
 
+  source-scan-canary-guard:
+    name: Source scanner canary guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # ROT-NIVÅ. 28 vaktskript förbehandlar sin indata med
+      # scripts/lib/source-scan.mjs, och var och en kör dess `kanariefåglar()`
+      # i sitt självtest. Hela den kedjan vilar på att kanariefåglarna KAN bli
+      # röda.
+      #
+      # Det kunde de inte. Uppmätt mot main 4dfefbc, genom att neutralisera ett
+      # läge i taget och räkna vad som slutade maskeras i apps/api/src:
+      #
+      #   lägen som slapp igenom oupptäckt:  7 av 12
+      #   tyst skada:                        704 188 tecken
+      #
+      # Bland dem regex-läget (14 854 tecken) och blockkommentar-läget
+      # (650 563). Provet som skulle fånga regex-fallet hade sonden på NÄSTA
+      # RAD, och en oterminerad sträng bryts vid radslut — provet var alltså
+      # grönt av sin egen formatering i stället för av det det mätte.
+      #
+      # Den här vakten frågar inte "finns det kanariefåglar" utan "kan de
+      # fälla": den skriver en muterad kopia per läge, importerar den, och
+      # kräver att kopians EGNA kanariefåglar rapporterar minst ett fel.
+      # Pariteten går åt båda hållen — ett läge utan mutation är obevisat, en
+      # mutation utan läge är rött.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (meta-canary + parity both ways)
+        run: node apps/api/scripts/check-source-scan-canaries.mjs --self-test
+
+      - name: Verify every scanner mode has a canary that can fail
+        run: node apps/api/scripts/check-source-scan-canaries.mjs
+
   guard-preprocessor-guard:
     name: Guard preprocessor single-source guard
     runs-on: ubuntu-latest
@@ -559,7 +597,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Self-test the guard (5 forms + 7 scanner canaries)
+      - name: Self-test the guard (5 forms + the scanner's per-mode canaries)
         run: node apps/api/scripts/check-guard-preprocessors.mjs --self-test
 
       - name: Verify no guard rolls its own source preprocessor
@@ -1379,6 +1417,7 @@ jobs:
       - cron-classification-guard
       - pdf-selfcontained-guard
       - guard-preprocessor-guard
+      - source-scan-canary-guard
       - graceful-shutdown-guard
       - skip-precondition-guard
       - reminder-fee-guard

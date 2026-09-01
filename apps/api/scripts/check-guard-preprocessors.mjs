@@ -53,7 +53,12 @@
  */
 import { readdirSync, statSync, readFileSync } from 'node:fs'
 import { join, resolve, relative } from 'node:path'
-import { blankRegions, withoutComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
+import {
+  blankRegions,
+  withoutComments,
+  kanariefåglar,
+  KANARIEFÅGEL_LÄGEN,
+} from '../../../scripts/lib/source-scan.mjs'
 
 const ROT = resolve(new URL('../../..', import.meta.url).pathname)
 const KATALOGER = ['apps/api/scripts', 'scripts']
@@ -371,7 +376,7 @@ function självtest() {
   console.warn(
     `SJÄLVTEST GRÖNT — ${bas.mätt.skript} skript, ${bas.mätt.konsumenter} via skannern, ` +
       `${bas.mätt.kvitterade} kvitterade; formregeln prövad mot fyra ICKE-.replace-varianter ` +
-      'plus 5 kända former och 7 skanner-kanariefåglar.',
+      `plus 5 kända former och skannerns kanariefåglar över ${KANARIEFÅGEL_LÄGEN.length} lägen.`,
   )
 }
 
