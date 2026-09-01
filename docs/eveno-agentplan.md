@@ -660,24 +660,61 @@ ska inte förekomma i en verktygslista utan att det står vilken av de två den 
 
 ### Klassificeringen deklareras, den söks inte fram
 
-*Mätt 2026-08-30, härlett genom att mappa varje anrop mot sin case-etikett (56 etiketter):*
-**fem** utåtriktade verktyg, inte sex.
+> ### ⚠️ RÄTTAT 2026-09-01 (mot `02603ed`) — TALET STÄMDE, MEDLEMMARNA INTE
+>
+> Mätningen nedan gav **fem**, och fem är rätt. Men **två av namnen var fel, och de
+> tog ut varandra i summan** — vilket är sämre än ett fel tal, eftersom siffran såg
+> bekräftad ut.
+>
+> | | Gamla mätningen | Rättad |
+> |---|---|---|
+> | `export_for_collection` (`:3711`) | utåtriktad | **NEJ** — `exportForInvoice` gör `pdf.generateFromHtml` (lokal rendering) + `storage.uploadFile` (R2). Ingen mottagare; en människa skickar filen |
+> | `prepare_contract_signing` (`:2388`) | friad, *"noll mailanrop"* | **JA** — `createSigningRequest` dispatchar till signeringsprovidern, som skickar en signeringsinbjudan till hyresgästen |
+>
+> **Felet var i frågan, inte i räkningen.** En `mailService`-sökning mäter KANALEN,
+> inte MOTTAGAREN. Att signeringen inte går via mejl gör den inte intern — den är
+> en tredje part, och det som når hyresgästen är bindande.
+>
+> Åt andra hållet: R2 och PDF-rendering ligger utanför transaktionen men **riktar
+> sig inte mot någon**. Att vara extern och att ha en mottagare är olika frågor.
 
-| Verktyg | Når utåt via |
+*Mätt 2026-08-30, rättat 2026-09-01 (`02603ed`), härlett på METODNIVÅ: vilken metod
+anropskedjan faktiskt når, inte vilken klass tjänsten råkar injicera.*
+
+**Fem verktyg utför en handling mot en TREDJE PART:**
+
+| Verktyg | Mottagaren nås via |
 | --- | --- |
-| (`:1083`) | `mailService` direkt |
-| (`:1406`) | `mailService` direkt |
-| `send_document_to_tenant` (`:2723`) | `documentDelivery.deliverToTenant` |
-| (`:1029`) | `invoicesService.sendInvoiceEmail` |
-| (`:3711`) | `collectionExport.exportForInvoice` |
+| `send_overdue_reminders` (`:1083`) | `mailService.sendOverdueReminder` |
+| `compose_and_send_email` (`:1406`) | `mailService.sendCustomEmail` |
+| `send_document_to_tenant` (`:2723`) | `documentDelivery.deliverToTenant` → `mail.sendCustomEmail` |
+| `send_invoice_email` (`:1029`) | `pdfQueue.enqueue` → `pdf.worker.ts:71` → `processInvoiceSendJob` → `mailService.sendInvoice` (**uppskjuten**, men mottagaren är densamma) |
+| `prepare_contract_signing` (`:2388`) | `signingService.createSigningRequest` → signeringsprovidern |
 
-**Två av fem nås med en `mailService`-sökning. Vakten är grön om de tre andra.**
+**SJU verktyg har en extern EFFEKT** (utanför transaktionen) — de fem ovan plus
+`generate_lease_contract` och `export_for_collection`, som båda laddar upp till R2.
+Talen 5 och 7 är alltså inte en motsägelse utan två olika frågor:
+
+```
+extern effekt (7)   kan spåret spännas av samma transaktion?   → nej
+tredje part   (5)   riktas handlingen mot någon utanför org?   → ja
+```
+
+Skillnaden är exakt `generate_lease_contract` och `export_for_collection`: de lämnar
+transaktionen men har ingen mottagare.
 
 Prövade och **inte** utåtriktade: `mark_sent_to_collection` (`:3734`) skriver bara status
 (`collection-export.service.ts:400`); `generate_rent_notices` → `generateMonthlyNotices`
 (`avisering.service.ts:218–412`) har noll träffar på `sendNotices`/`mailService`/`pdfQueue`
-— sändningen ligger i en separat metod (`:873`); `prepare_contract_signing` har noll
-mailanrop.
+— sändningen ligger i en separat metod (`:873`).
+
+**Två fällor i den ursprungliga metoden, båda värda att komma ihåg:**
+
+1. **En kanalsökning friar fel verktyg.** `prepare_contract_signing` har noll
+   mailanrop och är ändå utåtriktad.
+2. **Anrop inom samma klass måste följas.** `deliverToTenant` delegerar mejlet till
+   en privat metod, så en sökning som bara följer `this.tjänst.metod()` ser bara
+   R2-uppladdningen. En analys som missar `this.hjälpare()` mäter för lågt.
 
 **Och detta är själva argumentet för att deklarationen måste vara tvingande.**
 Utåtriktning är inte en egenskap hos verktyget utan hos **anropskedjan**.
