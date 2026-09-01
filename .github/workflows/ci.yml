@@ -1384,6 +1384,49 @@ jobs:
       - name: Append-only trigger guard
         run: node apps/api/scripts/check-append-only.mjs
 
+  effect-idempotency-guard:
+    name: Effect idempotency declaration guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # `EFFECT_DECLARATIONS` säger vad varje bindande verktygs effekt TÅL vid en
+      # omkörning — underlaget en återupptagningsmotor måste kunna fråga innan
+      # den kör om något efter en krasch. Felriktningen är asymmetrisk: ett
+      # ODEDUPLICERBART verktyg som ser ut som klass (i) skickar dubbla brev,
+      # medan motsatt fel bara ger en människa onödigt arbete.
+      #
+      # R1 omfång   — varje ACTION_TOOL har en deklaration, och varje deklaration
+      #               pekar på ett verktyg som finns. Ett nytt verktyg utan
+      #               klassificering fäller bygget; det får aldrig tyst bli
+      #               återupptagbart.
+      # R2 påkoppling — buildEffectCatalog KASTAR vid oklassad post. Specen
+      #               prövar att kastet sker; vakten att koden har kvar det.
+      # R3 mekanism — DEN VIKTIGA. En deklaration som säger IDEMPOTENT medan
+      #               koden saknar det som bär det fälls. UNIKT_INDEX prövas
+      #               SEMANTISKT mot schema.prisma (indexet finns över exakt de
+      #               fälten); övriga som driftdetektering (symbolen står kvar i
+      #               KOD, inte i prosa eller i en sträng).
+      # R4/R5 policy — policyBeslutad: false tvingar KRÄVER_MÄNNISKA, och OKÄND
+      #               får aldrig vara AUTOMATISK. OKÄND betyder "får inte
+      #               återupptas", aldrig "antagligen okej".
+      #
+      # Kanariefåglarna täcker båda riktningarna OCH det tysta felet: tom mängd
+      # fäller (vakten har gått blind), ett nytt oklassat verktyg fäller exakt en
+      # gång, och ett @@unique som bara står i en KOMMENTAR räknas inte.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (rule, scope, mechanism and comment canaries)
+        run: node apps/api/scripts/check-effect-idempotency.mjs --self-test
+
+      - name: Effect idempotency declaration guard
+        run: node apps/api/scripts/check-effect-idempotency.mjs
+
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
@@ -1411,6 +1454,7 @@ jobs:
       - equipment-chain-guard
       - api-build-artifact-guard
       - append-only-guard
+      - effect-idempotency-guard
       - action-tool-authorization-guard
       - backup-endpoint-guard
       - legal-text-version-guard
