@@ -125,14 +125,14 @@ describe('effektklassificeringen', () => {
     // Talen HÄRLEDS här och står inte som prosa någon annanstans. Ändras
     // klassificeringen ska den här raden ändras i samma PR — annars beskriver
     // docblocket ett läge som inte finns.
-    it('16 IDEMPOTENT, 14 DEDUPLICERBAR, 0 OKÄND', () => {
+    it('17 IDEMPOTENT, 13 DEDUPLICERBAR, 0 OKÄND', () => {
       const c = buildEffectCatalog()
       const antal = (k: string) => c.filter((e) => e.effectIdempotency === k).length
       expect({
         idempotent: antal('IDEMPOTENT'),
         deduplicerbar: antal('DEDUPLICERBAR'),
         okand: antal('OKÄND'),
-      }).toEqual({ idempotent: 16, deduplicerbar: 14, okand: 0 })
+      }).toEqual({ idempotent: 17, deduplicerbar: 13, okand: 0 })
     })
 
     it('30 av 30 poster är policybeslutade — inga luckor kvar', () => {
@@ -192,7 +192,7 @@ describe('effektklassificeringen', () => {
       }).toEqual({ transaktionell: 2, foreEffekten: 21, bastMojliga: 7, okand: 0 })
     })
 
-    it('externalHandle: 2 FÖRE_DISPATCH, 2 I_SVARET, 3 INGET, 23 EJ_TILLÄMPLIG', () => {
+    it('externalHandle: 3 FÖRE_DISPATCH, 2 I_SVARET, 2 INGET, 23 EJ_TILLÄMPLIG', () => {
       // Mätt på metodnivå. Talen står här så att en ändring blir ett medvetet
       // beslut och inte en glidning.
       const c = buildEffectCatalog()
@@ -202,7 +202,7 @@ describe('effektklassificeringen', () => {
         iSvaret: antal('I_SVARET'),
         inget: antal('INGET'),
         ejTillämplig: antal('EJ_TILLÄMPLIG'),
-      }).toEqual({ föreDispatch: 2, iSvaret: 2, inget: 3, ejTillämplig: 23 })
+      }).toEqual({ föreDispatch: 3, iSvaret: 2, inget: 2, ejTillämplig: 23 })
     })
 
     it('varje verktyg UTAN handtag står KRÄVER_MÄNNISKA', () => {
@@ -214,10 +214,13 @@ describe('effektklassificeringen', () => {
       // send_document_to_tenant. De stod redan så; raden BEKRÄFTAR det och
       // hindrar att någon ändrar det utan att märka.
       const utanHandtag = buildEffectCatalog().filter((e) => e.externalHandle === 'INGET')
+      // `send_overdue_reminders` STOD HÄR fram till 2026-09-01. Den skickar nu
+      // `ai-overdue-${invoice.id}` — ett handtag som är härlett ur fakturans id
+      // och alltså känt före dispatch. Att listan krympte är hela poängen med
+      // att den står som namn och inte som ett antal.
       expect(utanHandtag.map((e) => e.name).sort()).toEqual([
         'compose_and_send_email',
         'send_document_to_tenant',
-        'send_overdue_reminders',
       ])
       for (const e of utanHandtag) {
         expect(e.resumptionPolicy).toBe('KRÄVER_MÄNNISKA')

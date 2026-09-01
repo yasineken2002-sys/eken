@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common'
-import type { Prisma } from '@prisma/client'
+import type { Prisma, PaymentReminderType } from '@prisma/client'
 import JSZip from 'jszip'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PersonalNumberService } from '../common/crypto/personal-number.service'
@@ -22,6 +22,29 @@ import { csvCell } from '../common/csv/csv-cell'
 import { computeInvoiceDebt, type InvoiceDebt } from '../invoices/invoice-debt'
 import { resolveActorType, aiOriginColumns } from '../common/ai-origin/ai-origin.context'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+
+/**
+ * Påminnelsetypernas etiketter i INKASSOUNDERLAGET — dokumentet som går till ett
+ * externt inkassobolag.
+ *
+ * EXHAUSTIV RECORD, INTE EN TERNÄR-KEDJA. Här stod
+ * `FRIENDLY ? … : FORMAL ? … : 'Markerad redo för inkasso'`. Else-grenen var
+ * inte ett val utan en RESTPOST: varje framtida enum-värde hamnade där och
+ * påstod, i ett dokument som går externt, att fakturan markerats redo för
+ * inkasso. Det upptäcktes när `REMINDER_AI_MANUAL` lades till — värdet hade
+ * fått den etiketten utan att någon kontroll blivit röd.
+ *
+ * `Record<PaymentReminderType, string>` gör nästa tillägg till ett TYPFEL i
+ * stället för en tyst felmärkning. Det är hela skälet att den ser omständlig ut.
+ */
+const REMINDER_LABEL: Record<PaymentReminderType, string> = {
+  REMINDER_FRIENDLY: 'Vänlig påminnelse',
+  REMINDER_FORMAL: 'Formell påminnelse',
+  READY_FOR_COLLECTION: 'Markerad redo för inkasso',
+  // Sanningsenlig etikett: det ÄR en påminnelse som gått till hyresgästen, men
+  // den är inget steg i den automatiska trappan och får inte se ut som ett.
+  REMINDER_AI_MANUAL: 'Påminnelse om förfallen faktura (manuellt utskick)',
+}
 
 /**
  * Inkassoexporten är ett av få ställen där personnumret verkligen behövs i
@@ -893,12 +916,7 @@ export class CollectionExportService {
 
     const reminderRows = reminders
       .map((r) => {
-        const label =
-          r.type === 'REMINDER_FRIENDLY'
-            ? 'Vänlig påminnelse'
-            : r.type === 'REMINDER_FORMAL'
-              ? 'Formell påminnelse'
-              : 'Markerad redo för inkasso'
+        const label = REMINDER_LABEL[r.type]
         return `<tr>
           <td>${r.sentAt.toLocaleDateString('sv-SE')}</td>
           <td>${label}</td>

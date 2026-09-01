@@ -42,9 +42,13 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  *
  * Talen, mätta samma dag mot `ACTION_TOOLS` (30 verktyg):
  *
- *     IDEMPOTENT      16   (varav 1 utan effekt alls: export_sie4)
- *     DEDUPLICERBAR   14   (varav 1 har en nyckel som faktiskt dedupar)
+ *     IDEMPOTENT      17   (varav 1 utan effekt alls: export_sie4)
+ *     DEDUPLICERBAR   13   (varav 1 har en nyckel som faktiskt dedupar)
  *     OKÄND            0
+ *
+ * Talen ändrades samma dag de sattes: `send_overdue_reminders` gick från
+ * DEDUPLICERBAR till IDEMPOTENT när dess PaymentReminder-rad byggdes. Det är
+ * meningen — klassificeringen beskriver koden, inte tvärtom.
  *     oåterkalleliga och omöjliga att avduplicera:  0
  *
  * Nollan sist är den viktiga: problemet är mekaniskt lösbart. Men den gäller
@@ -226,9 +230,9 @@ export type TraceIntegrity = 'TRANSAKTIONELL' | 'FÖRE_EFFEKTEN' | 'BÄST_MÖJLI
  *
  * ── MÄTT 2026-09-01, metodnivå ─────────────────────────────────────────────
  *
- *     FÖRE_DISPATCH  2   härledda R2-nycklar
+ *     FÖRE_DISPATCH  3   härledda R2-nycklar, och en härledd Bull-nyckel
  *     I_SVARET       2   Bulls job-id, providerns request-id
- *     INGET          3
+ *     INGET          2
  *     EJ_TILLÄMPLIG 23   klass A
  *
  * Ingen av de sju har en MÄTT idempotensgaranti hos mottagaren. Två har en som
@@ -623,21 +627,44 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [],
   },
 
-  // LOOP över förfallna fakturor, try/catch per mottagare, sent++. Ingen nyckel
-  // alls skickas till mailService. Enheten MÅSTE bli EFFEKT.
+  // LOOP över förfallna fakturor, try/catch per mottagare. Enheten MÅSTE vara
+  // EFFEKT: en nyckel på anropet säger efter en krasch antingen "gjort" (och de
+  // återstående får aldrig sitt brev) eller "inte gjort" (och de redan skickade
+  // får det två gånger).
   //
-  // BESLUTAD KRÄVER_MÄNNISKA: den saknades i uppräkningen när policyn först
-  // sattes (12 + 17 = 29 av 30) och stod därför en runda som obeslutad. Brev
-  // till människor, i en loop, utan nyckel.
+  // ── OMKLASSAD 2026-09-01, EFTER ATT SPÅRET BYGGDES ──────────────────────
+  //
+  // Stod DEDUPLICERBAR / plats INGET / handtag INGET. Alla tre var sanna då och
+  // är det inte längre — verktyget skriver nu en `PaymentReminder`-rad FÖRE
+  // utskicket, en per faktura:
+  //
+  //   spåret      `@@unique([invoiceId, type])` — DB-enforcerat, inte en
+  //               konvention. En omkörning får P2002 och hoppar över mottagaren.
+  //   handtaget   `ai-overdue-${inv.id}` är HÄRLETT ur fakturans id och känt
+  //               innan något skickas. Uppmätt att Bull returnerar exakt den
+  //               strängen som `job.id`, och att ett andra `add` med samma id
+  //               inte skapar något andra jobb (1 väntande, inte 2).
+  //
+  // POLICYN ÄR OFÖRÄNDRAD. IDEMPOTENT + KRÄVER_MÄNNISKA är inte en motsägelse
+  // utan samma form som `mark_sent_to_collection`: principen frågar om en
+  // dubblett skulle SYNAS FÖR EN MÄNNISKA UTANFÖR SYSTEMET, och ett brev gör
+  // det oavsett hur säker mekaniken är.
+  //
+  // traceIntegrity står kvar på BÄST_MÖJLIGA: `AiToolEffect` skrivs fortfarande
+  // `void` efter effekten. Det är en annan fråga än den här posten löste, och
+  // ägs av check-effect-trace.mjs.
   send_overdue_reminders: {
-    effectIdempotency: 'DEDUPLICERBAR',
+    effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'EFFEKT',
-    traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
-    externalHandle: 'INGET',
+    traceDurability: {
+      plats: 'DATABAS_INDEX',
+      livslangd: 'så länge fakturan finns (PaymentReminder kaskaderar med Invoice)',
+    },
+    externalHandle: 'FÖRE_DISPATCH',
     traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
-    mekanismer: [],
+    mekanismer: [{ typ: 'UNIKT_INDEX', modell: 'PaymentReminder', falt: ['invoiceId', 'type'] }],
   },
 
   // LOOP över hyresgäster. 15-min bulk-cooldown i Redis vid >5 mottagare är ett

@@ -100,6 +100,21 @@ enum PaymentReminderType {
   REMINDER_FRIENDLY
   REMINDER_FORMAL
   READY_FOR_COLLECTION
+  // AI-verktyget `send_overdue_reminders` skickar mallen `invoice-overdue` — ett
+  // ANNAT brev än cronens `reminder-friendly`/`reminder-formal`. Det får därför
+  // ett eget värde i stället för att låna ett av cronens.
+  //
+  // SKÄLET ÄR KRAVTRAPPAN. `PaymentReminderService` grindar på mängden redan
+  // skickade typer (`sentTypes`, payment-reminder.service.ts). Hade AI:ns
+  // utskick skrivit REMINDER_FRIENDLY hade det SLÄCKT cronens vänliga
+  // påminnelse — ett tyst bortfall i en trappa som ska vara stegvis och
+  // bevisbar, orsakat av just den grind som gör mekanismen bra.
+  //
+  // Värdet är avsiktligt INERT åt andra hållet: cronens grind läser inte det
+  // här värdet, så AI-utskicket undertrycker inget steg. Raden gör ett utskick
+  // som redan sker SYNLIGT; en regel som drar slutsatser av den är ett eget
+  // beslut som inte är taget.
+  REMINDER_AI_MANUAL
 }
 
 enum InvoiceType {

@@ -3,7 +3,11 @@ import { get, post, patch } from '@/lib/api'
 export type CollectionBucket = 'in-progress' | 'ready' | 'sent'
 
 export interface ReminderEntry {
-  type: 'REMINDER_FRIENDLY' | 'REMINDER_FORMAL' | 'READY_FOR_COLLECTION'
+  // REMINDER_AI_MANUAL = AI-verktyget `send_overdue_reminders` (mallen
+  // `invoice-overdue`). Eget värde eftersom det är ett ANNAT brev än cronens
+  // vänliga/formella påminnelse, och för att det inte ska räknas som ett steg i
+  // kravtrappan — se PaymentReminderType i schema.prisma.
+  type: 'REMINDER_FRIENDLY' | 'REMINDER_FORMAL' | 'READY_FOR_COLLECTION' | 'REMINDER_AI_MANUAL'
   sentAt: string
   feeAmount: number
 }
