@@ -288,4 +288,58 @@ describe('enqueueSafely (T5 C2a / #58)', () => {
     expect(ctx.tags.queue).toBe('pdf')
     expect(ctx.tags.org).toBeUndefined()
   })
+
+  // ── #605: den varaktiga sänkan ─────────────────────────────────────────────
+  //
+  // Kontexten är VALFRI därför att hjälparen bär två felkontrakt och inte kan
+  // veta vilket den är i. De två testerna nedan prövar just den valfriheten:
+  // utan kontext ska INGET nytt hända (HTTP-vägen oförändrad), med kontext ska
+  // sänkan få SAMMA skrubbade fel som Sentry — inte ett eget, och inte det råa.
+  describe('#605 — varaktig felsänka', () => {
+    const sink = { report: jest.fn(async (_n: string, _e: unknown, _c?: unknown) => undefined) }
+    beforeEach(() => sink.report.mockClear())
+
+    it('UTAN cron-kontext: Sentry larmar, sänkan rörs inte', async () => {
+      const outcome = await enqueueSafely(
+        async () => {
+          throw new Error('redis nere')
+        },
+        { ...OPTS, logger },
+      )
+
+      expect(outcome.status).toBe('failed')
+      expect(captureException).toHaveBeenCalledTimes(1)
+      expect(sink.report).not.toHaveBeenCalled()
+    })
+
+    it('MED cron-kontext: sänkan får SAMMA skrubbade fel som Sentry, exakt en gång', async () => {
+      const outcome = await enqueueSafely(
+        async () => {
+          throw new Error('redis nere')
+        },
+        { ...OPTS, logger, cron: { name: 'test-cron', sink: sink as never } },
+      )
+
+      expect(outcome.status).toBe('failed')
+      expect(captureException).toHaveBeenCalledTimes(1)
+      expect(sink.report).toHaveBeenCalledTimes(1)
+
+      // Namnet är jobbets, inte köns.
+      expect(sink.report.mock.calls[0]![0]).toBe('test-cron')
+
+      // SAMMA objekt som Sentry fick — alltså det skrubbade felet. Fick sänkan
+      // ett eget fel kunde de två sluta beskriva samma händelse utan att något
+      // test märkte det.
+      expect(sink.report.mock.calls[0]![1]).toBe(captureException.mock.calls[0]![0])
+
+      // Det RÅA felets text får inte läcka till sänkan.
+      expect(String((sink.report.mock.calls[0]![1] as Error).message)).not.toContain('redis nere')
+
+      // Org-korrelationen följer med, och utfallet står i kontexten.
+      expect(sink.report.mock.calls[0]![2]).toMatchObject({
+        organizationId: OPTS.organizationId,
+        detail: { queue: OPTS.queue, jobType: OPTS.jobType, utfall: 'failed' },
+      })
+    })
+  })
 })
