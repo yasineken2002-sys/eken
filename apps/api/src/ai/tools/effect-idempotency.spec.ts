@@ -4,6 +4,7 @@ import {
   EFFECT_DECLARATION_NAMES,
   buildEffectCatalog,
   isAutoResumable,
+  tomEffektlistaÄrTrovärdig,
 } from './effect-idempotency'
 
 /**
@@ -48,6 +49,24 @@ describe('effektklassificeringen', () => {
       }
       // Och riggen är städad: utan städningen hade varje senare test i filen
       // ärvt ett trasigt ACTION_TOOLS och blivit rött av fel skäl.
+      expect(() => buildEffectCatalog()).not.toThrow()
+    })
+
+    it('KASTAR när ett verktyg har traceIntegrity: OKÄND', () => {
+      // Samma hållning som på klassificeringen: OKÄND betyder "ingen har svarat",
+      // och det får inte se ut som ett svar. Provet muterar deklarationen
+      // tillfälligt — det är enda sättet att pröva ett värde som inte får finnas
+      // i filen.
+      const post = EFFECT_DECLARATIONS['export_sie4']!
+      const original = post.traceIntegrity
+      post.traceIntegrity = 'OKÄND'
+      try {
+        expect(() => buildEffectCatalog()).toThrow(/traceIntegrity/)
+        expect(() => buildEffectCatalog()).toThrow(/export_sie4/)
+      } finally {
+        post.traceIntegrity = original
+      }
+      // Riggen städad — annars ärver varje senare test en trasig deklaration.
       expect(() => buildEffectCatalog()).not.toThrow()
     })
 
@@ -152,6 +171,38 @@ describe('effektklassificeringen', () => {
         'resume_reminders',
         'update_tenant',
       ])
+    })
+
+    it('ALLA 30 står traceIntegrity: BÄST_MÖJLIGA — talet är mätt, inte antaget', () => {
+      // Poängen med fältet är att det här talet blir SYNLIGT. Effektspåret
+      // (AiToolEffect) skrivs efter effekten, med `void`, och ett fel sväljs —
+      // tre oberoende sätt att tappa det, inget av dem ger ett felmeddelande.
+      // Ingen post kan därför ännu påstå något starkare.
+      //
+      // Skriven som en fördelning och inte som "alla är X": den dag ett verktyg
+      // blir TRANSAKTIONELL ska den här raden ändras medvetet, och rollback-
+      // provet i effect-trace-transactional.db.spec.ts ska då säga emot om
+      // påståendet är falskt.
+      const c = buildEffectCatalog()
+      const antal = (k: string) => c.filter((e) => e.traceIntegrity === k).length
+      expect({
+        transaktionell: antal('TRANSAKTIONELL'),
+        foreEffekten: antal('FÖRE_EFFEKTEN'),
+        bastMojliga: antal('BÄST_MÖJLIGA'),
+        okand: antal('OKÄND'),
+      }).toEqual({ transaktionell: 0, foreEffekten: 0, bastMojliga: 30, okand: 0 })
+    })
+
+    it('en tom effektlista är INTE trovärdig så länge spåret är BÄST_MÖJLIGA', () => {
+      // Kopplingen som gör fältet bärande i stället för dekorativt:
+      // describeEffects läser det här och säger ODEFINIERAT i stället för
+      // "inga dataändringar". Blir spåret transaktionellt börjar den säga
+      // "inga dataändringar" igen, utan att någon rör den raden.
+      for (const e of buildEffectCatalog()) {
+        expect(tomEffektlistaÄrTrovärdig(e.name)).toBe(false)
+      }
+      // Okänt verktyg faller stängt i svarsledet, inte med ett kast.
+      expect(tomEffektlistaÄrTrovärdig('finns_inte')).toBe(false)
     })
 
     it('varje AUTOMATISK som ändå inte är återupptagbar blockeras av ett SAKNAT SPÅR', () => {

@@ -1465,6 +1465,50 @@ jobs:
       - name: Effect idempotency declaration guard
         run: node apps/api/scripts/check-effect-idempotency.mjs
 
+  effect-trace-guard:
+    name: Effect trace wiring guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # ── DEFEKTEN SOM MÄTTES ────────────────────────────────────────────────
+      #
+      # `AiToolEffect` har EXAKT ETT persisteringsställe: en nästlad
+      # `effects: { create: … }` i `AiAuditService.logToolExecution`. Med den
+      # bortkopplad 2026-09-01 var check-ai-tool-effects GRÖN och HELA sviten
+      # grön — 338/338 sviter, 3478/3478 tester. Spåret var obevakat.
+      #
+      # `ai-effect-extension.spec.ts` heter "effekterna PERSISTERAS som rader",
+      # men anropar `prisma.aiToolExecution.create(...)` DIREKT i testet. Den
+      # prövar Prismas nästlade skrivning, inte att produktionsvägen använder
+      # den. Fel fråga, inte svag vakt.
+      #
+      # ── ANSVARSDELNING ─────────────────────────────────────────────────────
+      #
+      # Mekaniken (att vägen faktiskt skriver raden) ägs av
+      # `effect-trace-production-path.db.spec.ts` i Tests-jobbet, som kör
+      # `ToolExecutorService.executeTool` skarpt mot riktig Postgres och FALLER
+      # på injektionen ovan (uppmätt). Den här vakten äger PÅKOPPLINGEN — en
+      # filsökning kan se en anropare som aldrig körs i test.
+      #
+      # R1 omfång    — mängden anropare HÄRLEDS; tom mängd fäller. R5-lärdomen.
+      # R2/R3 effects — varje anropare skickar med sina effekter, eller står
+      #                 kvitterad med skäl; en död kvittering fäller åt andra hållet.
+      # R4 persistering — den nästlade `effects: { create` finns kvar (injektionen).
+      # R5 mekanikspecen finns OCH kör executeTool.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (scope, rule, ack, persistence and prose canaries)
+        run: node apps/api/scripts/check-effect-trace.mjs --self-test
+
+      - name: Effect trace wiring guard
+        run: node apps/api/scripts/check-effect-trace.mjs
+
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
@@ -1493,6 +1537,7 @@ jobs:
       - api-build-artifact-guard
       - append-only-guard
       - effect-idempotency-guard
+      - effect-trace-guard
       - action-tool-authorization-guard
       - backup-endpoint-guard
       - legal-text-version-guard

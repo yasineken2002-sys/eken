@@ -1,0 +1,14 @@
+{
+  "_": [
+    "Anropare av AiAuditService.logToolExecution som INTE skickar med `effects`.",
+    "En kvittering är inte ett undantag från regeln — den är regelns lucka, räknad",
+    "och motiverad i stället för tyst. Skälet måste vara minst 30 tecken, och en",
+    "kvittering vars anropsställe inte längre finns fäller vakten åt andra hållet."
+  ],
+  "kvitterade": [
+    {
+      "fil": "apps/api/src/ai/tools/tenant-tool-executor.service.ts",
+      "skal": "Hyresgästvägen öppnar överhuvudtaget ingen effektkollektor: den saknar runWithEffectCollector, runAsAi och drainEffects, som operatörsvägen har. Att skicka med effects här hade gett en tom lista som såg ut som ett spår. Att koppla på kollektorn är en beteendeändring i drift och hör till samma steg som klass A — inte hit. Mätt 2026-09-01: två skrivande hyresgästverktyg saknar därmed effektspår helt."
+    }
+  ]
+}

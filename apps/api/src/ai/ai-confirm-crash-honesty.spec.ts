@@ -128,6 +128,21 @@ describe('förbrukat anspråk MED körning — oförändrat beteende', () => {
     // AiToolEffect — annars hade varje effektlös körning sett ut som en krasch.
     const { service } = makeService({ körningFinns: true, effekter: [] })
     await expect(service.confirmAction(...ARGS)).rejects.toThrow(/är redan utförd/)
-    await expect(service.confirmAction(...ARGS)).rejects.toThrow(/inga dataändringar/)
+  })
+
+  it('EN TOM EFFEKTLISTA SÄGS VARA ODEFINIERAD, inte "inga dataändringar"', async () => {
+    // ÄNDRAT BETEENDE, och raden här bar det gamla: tidigare krävde det här
+    // provet texten "inga dataändringar" så snart effektlistan var tom.
+    //
+    // Det påståendet håller bara om spåret inte kan tappas. `update_tenant` står
+    // `traceIntegrity: 'BÄST_MÖJLIGA'` (som alla 30) — spåret skrivs efter
+    // effekten, med `void`, och ett fel sväljs. En tom lista betyder då TVÅ
+    // saker: verktyget skrev inget, eller kollektorn tömdes utanför sitt scope
+    // (R2-defekten, som gav tom lista på riktiga skrivningar).
+    //
+    // Samma form som #586: en tom logg får inte kunna betyda två saker.
+    const { service } = makeService({ körningFinns: true, effekter: [] })
+    await expect(service.confirmAction(...ARGS)).rejects.toThrow(/ODEFINIERAT/)
+    await expect(service.confirmAction(...ARGS)).rejects.not.toThrow(/inga dataändringar/)
   })
 })
