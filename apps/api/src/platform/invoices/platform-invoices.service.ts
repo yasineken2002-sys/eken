@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule'
 import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { CronErrorSink } from '../../common/cron/cron-error-sink'
 import { isP2002From } from '../../common/prisma/p2002-constraint'
 import { runCronSafely, forEachOrgSafely } from '../../common/cron/cron-safety'
 import { allocatePlatformInvoiceNumber } from './platform-invoice-number'
@@ -118,6 +119,14 @@ export class PlatformInvoicesService {
     private readonly pdf: PdfService,
     private readonly config: ConfigService,
     private readonly pdfQueue: PdfQueue,
+    /**
+     * #605 — VARAKTIG FELSÄNKA, ANVÄND ENBART AV CRON-OMSLAGET.
+     *
+     * HTTP-vägen rapporterar inte via den här: ett kast därifrån når
+     * GlobalExceptionFilter, som skriver sin egen ErrorLog-rad. Två anrop hade
+     * gett två rader för ett fel.
+     */
+    private readonly cronErrors: CronErrorSink,
   ) {}
 
   /**
@@ -1100,7 +1109,26 @@ export class PlatformInvoicesService {
   //
   // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
   // fäller CI, och ett B utan namngiven invariant likaså.
-  @Cron('0 9 * * *')
+  /**
+   * ── #605: FELPOLICYN ÄR SKILD FRÅN ARBETET ────────────────────────────────
+   *
+   * Metoden nedan är BÅDA en @Cron och en HTTP-endpoint
+   * (platform-invoices.controller.ts: POST cron/trials/reminders). De två har
+   * motsatta felkontrakt:
+   *
+   *   cron  ett fel får INTE döda schemat  → svälj, men lämna ett spår
+   *   HTTP  ett fel MÅSTE nå klienten      → kasta vidare
+   *
+   * En metod kan inte bära båda. Därför gör den HÄR bara arbetet och kastar;
+   * felpolicyn ligger hos anroparna. HTTP-vägen är oförändrad — den anropar
+   * den här metoden rakt av — och cron-vägen har fått ett eget omslag nedan.
+   *
+   * INVARIANT: EXAKT EN SÄNKRAD PER FEL. Omslaget rapporterar, den här metoden
+   * gör det inte. HTTP-vägen rapporterar inte heller här: ett kast därifrån når
+   * GlobalExceptionFilter, som sedan #586 väntar in sin egen ErrorLog-skrivning.
+   * Ett sänkanrop i HTTP-vägen hade gett TVÅ rader för ett fel — och en felkanal
+   * som räknar fel är en ny sorts osanning.
+   */
   async sendTrialEndingReminders(): Promise<{ sent: number }> {
     const now = new Date()
     const day = 24 * 60 * 60 * 1000
@@ -1182,6 +1210,27 @@ export class PlatformInvoicesService {
 
     this.logger.log(`Trial-påminnelser: ${sent} skickade`)
     return { sent }
+  }
+
+  /**
+   * CRON-OMSLAGET. Rapporterar och SVÄLJER — schemat ska överleva ett fel.
+   *
+   * Klassificeringen och låsresonemanget för jobbet bor här, eftersom det är
+   * den här metoden `@Cron` binder på.
+   */
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
+  // Organization updateMany sätter lastTrialReminderDays på rader som ännu
+  // inte har värdet; en andra körning skriver samma värde på samma mängd,
+  // alltså en no-op utan sidoeffekt.
+  //
+  // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
+  // fäller CI, och ett B utan namngiven invariant likaså.
+  @Cron('0 9 * * *')
+  async sendTrialEndingRemindersCron(): Promise<void> {
+    await runCronSafely('platform-trial-reminders', () => this.sendTrialEndingReminders(), {
+      logger: this.logger,
+      sink: this.cronErrors,
+    })
   }
 
   /** Gemensam wrapper för trial-mejl via 'custom'-templaten (samma

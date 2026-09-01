@@ -36,6 +36,13 @@ function makeService(orgs: OrgRow[]) {
     {} as never,
     config as never,
     {} as never,
+    // #605: cronErrors — attrappen KASTAR om den anropas, så ett test som
+    // råkar gå in i en felväg inte tyst passerar förbi rapporteringen.
+    {
+      report: () => {
+        throw new Error('#605: cronErrors.report anropades oväntat i test')
+      },
+    } as never,
   )
   ;(svc as unknown as { logger: unknown }).logger = {
     log: jest.fn(),
