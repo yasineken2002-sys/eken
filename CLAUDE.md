@@ -1467,6 +1467,51 @@ utfallet blir obegripligt — eller värre, ser rimligt ut.
 Samma familj: **branch FÖRST, commit sedan.** Committat PR-arbete direkt på
 `main` upptäcktes bara för att `git pull --ff-only` vägrade.
 
+### `git checkout <ref> -- <fil>` är INTE ett sätt att läsa en annan version
+
+Avsnittet ovan handlar om att en återställning ska LYCKAS. Det här handlar om
+att den inte ska ske alls.
+
+`git checkout <ref> -- <fil>` **skriver över arbetskopian OCH stagar den**. Det
+är inte en biverkning utan hela kommandots uppgift — men det är sällan det man
+är ute efter när man skriver det. Det vanliga ärendet är "jag vill se hur den
+här filen såg ut i `main`", och då är kommandot fel verktyg med ett namn som
+inte antyder det.
+
+Uppmätt:
+
+```bash
+git checkout HEAD~1 -- f.txt
+git status --short
+# M  f.txt        ← M i FÖRSTA kolumnen = INDEX. Ändringen är redan stagad.
+
+git show HEAD~1:f.txt
+# skriver innehållet till stdout; arbetskopian orörd, git status 0 rader
+```
+
+**Tecknet att titta efter är kolumnen.** ` M` (mellanslag först) är en
+arbetskopieändring du gjort. `M ` (M först) betyder att något redan lagt den i
+indexet åt dig — och nästa `git commit` tar med den utan att fråga.
+
+Kostnaden är mätt, inte befarad: en läsning av `main`s version av
+`check-cron-classification.mjs` för att belägga ett ärende tog samtidigt bort en
+nyss committad ändring i samma fil och stagade återställningen. Det fångades
+bara av ett `git status` direkt efteråt.
+
+**De två ärendena, och kommandot för vart och ett:**
+
+```bash
+git show <ref>:<fil>            # LÄSA en annan version — skriver inget, stagar inget
+git show <ref>:<fil> > /tmp/x   # …och spara den vid sidan av, utan att röra trädet
+git checkout <ref> -- <fil>     # ÄNDRA arbetskopian till den versionen (stagas)
+git restore --source=<ref> -- <fil>          # samma sak, men utan att staga
+git restore --staged --worktree --source=HEAD -- <fil>   # ångra det du just gjorde
+```
+
+Behöver du köra en gammal version av ett skript — inte bara läsa den — skriv ut
+den till scratchpad-katalogen och kör den därifrån. Trädet ska aldrig behöva
+byta version för att du ska kunna jämföra två.
+
 ### Worktrees delar `.git` — `reset --soft origin/main` drar in den andra strömmens arbete som BORTTAGNINGAR
 
 Två worktrees är två arbetskataloger på **ett** `.git`. Refs och objekt är
