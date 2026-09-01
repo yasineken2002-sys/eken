@@ -58,6 +58,48 @@ const SINK_FILE = join(SRC, 'common', 'cron', 'cron-error-sink.ts')
 const ACK_FILE = join(HERE, 'cron-error-sink.ack.json')
 const MIN_SKÄL = 40
 
+/**
+ * HUR MAN UPPFYLLER REGELN — RÄTT.
+ *
+ * Det här är med flit den FÖRSTA texten en fällning visar, och kvitteringen
+ * står sist. En vakt som bara dokumenterar hur man tystar den kommer att tystas:
+ * nästa person läser under tidspress, och den enda vägen som står skriven är
+ * den hen tar.
+ *
+ * Exemplet är den riktiga konverteringen av morgonrapporten (#605 batch 1).
+ */
+const RÄTT_VÄG = [
+  'Ett fel här lever bara i containerns logg, som inte överlever nästa deploy.',
+  '',
+  'SÅ HÄR GÖR DU RÄTT — två vägar, båda beprövade i batch 1:',
+  '',
+  '  (1) Går jobbet redan via cron-hjälparna? Skicka sänkan som option:',
+  '        await runCronSafely(namn, () => this.gör(), { logger, sink: this.cronErrors })',
+  '        await forEachOrgSafely(namn, orgar, fn, { orgIdOf: o => o.id, sink: this.cronErrors })',
+  '',
+  '  (2) Fångar jobbet per organisation i en egen loop? Lägg rapporten BREDVID',
+  '      den befintliga logger.error — aldrig i stället för:',
+  '        } catch (err) {',
+  '          this.logger.error(`… ${org.id}: ${String(err)}`)   // ← står kvar',
+  '          await this.cronErrors.report(namn, err, {',
+  '            organizationId: org.id,',
+  '            detail: { steg: "generering" },',
+  '          })',
+  '          failed++',
+  '        }',
+  '',
+  '  Injicera CronErrorSink i konstruktorn och importera CronErrorSinkModule i',
+  '  modulen. Vakten härleder bindningen ur typen, så namnet spelar ingen roll.',
+  '',
+  'INGET FÅR BLI TYSTARE. Sänkan läggs TILL; den ersätter aldrig en logg. Byter',
+  'du en synlig utskrift mot en rad ingen läser har du gjort saken värre.',
+  '',
+  'Går det verkligen inte nu: kvittera i cron-error-sink.ack.json med ett skäl',
+  'som säger VARFÖR och VEM som äger konverteringen. Kvitteringen är den SÄMRE',
+  'utvägen och listan fäller åt båda hållen — den dag jobbet når sänkan blir en',
+  'kvarglömd post röd.',
+].join('\n   ')
+
 /** Alla .ts under src, utom specar. */
 export function källfiler(dir = SRC, ut = []) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -198,11 +240,7 @@ export function evaluate({ jobb, sänkmetoder, sänkklass = 'CronErrorSink', ack
     if (!post) {
       problem.push({
         rule: `\`${j.nyckel}\` når ingen varaktig felsänka`,
-        detail:
-          'Ett fel här lever bara i containerns logg, som inte överlever nästa ' +
-          'deploy. Skicka `sink` till runCronSafely/forEachOrgSafely, eller anropa ' +
-          'sänkans rapportmetod. Går det inte än: kvittera i ' +
-          'cron-error-sink.ack.json med ett skäl som säger VARFÖR och VEM som äger det.',
+        detail: RÄTT_VÄG,
       })
     } else if ((post.reason ?? '').trim().length < MIN_SKÄL) {
       problem.push({

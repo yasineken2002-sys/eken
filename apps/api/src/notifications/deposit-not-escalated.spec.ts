@@ -42,6 +42,14 @@ describe('#352 · steg 6 — manuell org-trigger exkluderar DEPOSIT', () => {
       {} as never, // moduleRef
       {} as never, // monthlyReport
       {} as never, // locks — cron-låset, används inte av de testade metoderna
+      // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
+      // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
+      // förbi rapporteringen. De testade metoderna ska aldrig nå hit.
+      {
+        report: () => {
+          throw new Error('#605: cronErrors.report anropades oväntat i test')
+        },
+      } as never,
     )
     return { service, findMany }
   }
@@ -162,6 +170,14 @@ describe('#352 · vad som medvetet INTE ändrades', () => {
       {} as never, // moduleRef
       {} as never, // monthlyReport
       {} as never, // locks — cron-låset, används inte av de testade metoderna
+      // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
+      // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
+      // förbi rapporteringen. De testade metoderna ska aldrig nå hit.
+      {
+        report: () => {
+          throw new Error('#605: cronErrors.report anropades oväntat i test')
+        },
+      } as never,
     )
 
     await service.markOverdueInvoices()
