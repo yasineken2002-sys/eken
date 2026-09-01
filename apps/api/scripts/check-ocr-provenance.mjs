@@ -44,6 +44,7 @@
  * Självtest:   node apps/api/scripts/check-ocr-provenance.mjs --self-test
  */
 import { readFileSync } from 'node:fs'
+import { codeMask, blankComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -58,9 +59,18 @@ const LUHN = 'isValidOcrNumber'
 
 const lineOf = (text, idx) => text.slice(0, idx).split('\n').length
 
-/** Läs ett `export const X = [...] as const`-register ur källtexten. */
+/**
+ * Läs ett `export const X = [...] as const`-register ur källtexten.
+ *
+ * `blankComments` och INTE `codeMask`: fältnamnen ÄR stränginnehåll. Med
+ * codeMask hade regexen fortsatt matcha — men på `'          '`, och varje
+ * klassificering nedan hade jämförts mot blanktecken och aldrig mer stämt.
+ * Kommentarerna bort, så ett utkommenterat gammalt register inte läses.
+ */
 export function parseRegistry(text, name) {
-  const m = new RegExp(`export const ${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as const`).exec(text)
+  const m = new RegExp(`export const ${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as const`).exec(
+    blankComments(text),
+  )
   if (!m) return null // saknas helt — skiljs från "finns men tom"
   return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1])
 }
@@ -76,12 +86,15 @@ export function parseRegistry(text, name) {
 export function findExtractorCalls(text) {
   const träffar = []
   const re = new RegExp(`\\b(${PROSE}|${RAW})\\s*\\(\\s*([\\w.?![\\]]+)\\s*\\)`, 'g')
+  // KOD, inte råtext: ett anropsexempel i en kommentar är inget anrop, och
+  // hade räknats som ett oklassat fält.
+  const kod = codeMask(text)
   let m
-  while ((m = re.exec(text))) {
+  while ((m = re.exec(kod))) {
     träffar.push({
       extraktor: m[1],
       fält: m[2],
-      line: lineOf(text, m.index),
+      line: lineOf(kod, m.index),
     })
   }
   return träffar
@@ -90,6 +103,11 @@ export function findExtractorCalls(text) {
 /** Kärnan. Exporterad så självtestet kör exakt samma kod som CI. */
 export function evaluate({ provenanceText, ingestText }) {
   const problem = []
+  // R3/R4 och kopplingskontrollen frågar EFTER KOD: en kommentar som nämner
+  // extraktorn eller Luhn-kontrollen får inte uppfylla kravet. Registren läses
+  // däremot ur strängvyn — se parseRegistry.
+  const provenansKod = codeMask(provenanceText)
+  const ingestKod = codeMask(ingestText)
   const avsikt = parseRegistry(provenanceText, 'INTENT_OCR_FIELDS')
   const prosa = parseRegistry(provenanceText, 'PROSE_OCR_FIELDS')
 
@@ -106,14 +124,17 @@ export function evaluate({ provenanceText, ingestText }) {
       detail: 'Prosafälten måste vara uppräknade för att kunna krävas bakom Luhn-kontrollen.',
     })
   }
-  if (!provenanceText.includes(`export function ${PROSE}`)) {
+  if (!provenansKod.includes(`export function ${PROSE}`)) {
     problem.push({
       rule: `${PROSE} saknas i ocr-proveniens.ts`,
       detail: 'Regeln kan inte upprätthållas av en extraktor som inte finns.',
     })
   } else {
     // R4 — extraktorn måste FAKTISKT pröva kontrollsiffran.
-    const kropp = provenanceText.slice(provenanceText.indexOf(`export function ${PROSE}`))
+    // Kroppen tas ur KODVYN. Annars räckte det att en kommentar inne i
+    // funktionen NÄMNDE isValidOcrNumber för att kravet skulle vara uppfyllt —
+    // och en genomsläppande prosaextraktor är hela defekten regeln finns för.
+    const kropp = provenansKod.slice(provenansKod.indexOf(`export function ${PROSE}`))
     if (!kropp.slice(0, kropp.indexOf('\n}')).includes(LUHN)) {
       problem.push({
         rule: `${PROSE} anropar inte ${LUHN}`,
@@ -123,7 +144,7 @@ export function evaluate({ provenanceText, ingestText }) {
       })
     }
   }
-  if (!ingestText.includes(`${PROSE}(`)) {
+  if (!ingestKod.includes(`${PROSE}(`)) {
     problem.push({
       rule: `${PROSE}() anropas aldrig i reconciliation.service.ts`,
       detail:
@@ -229,6 +250,30 @@ function selfTest() {
     console.log(`✅ fångad: ${label} (${r[0].rule})`)
   }
 
+  // ── DEN DELADE SKANNERNS KANARIEFÅGLAR (metavaktens R2) ──────────────────
+  const skanner = kanariefåglar()
+  if (skanner.length) fail(`DEN DELADE SKANNERN ÄR TRASIG: ${skanner.join(' | ')}`)
+  else console.log('✅ delad skanner: 7 kanariefåglar gröna')
+
+  // Registren läses ur STRÄNGVYN. Hade någon "moderniserat" parseRegistry till
+  // codeMask hade den fortsatt returnera rätt ANTAL fält — men blanktecken, och
+  // varje klassificering nedan hade blivit vakuös.
+  {
+    const r = parseRegistry(PROVENANCE_OK, 'INTENT_OCR_FIELDS') ?? []
+    if (r.length === 0 || r.some((f) => !/[A-Za-z]/.test(f))) {
+      fail(`registret gav ${JSON.stringify(r)} — masken har blankat stränginnehållet`)
+    } else console.log(`✅ registret bär riktiga fältnamn: ${r.join(', ')}`)
+  }
+  // Och ett utkommenterat register ska inte läsas.
+  {
+    const r = parseRegistry(
+      `// export const INTENT_OCR_FIELDS = ['gammalt.falt'] as const\nexport const INTENT_OCR_FIELDS = ['raw.ocr'] as const`,
+      'INTENT_OCR_FIELDS',
+    )
+    if (r?.join(',') !== 'raw.ocr') fail(`utkommenterat register lästes: ${JSON.stringify(r)}`)
+    else console.log('✅ ett utkommenterat register läses inte')
+  }
+
   // ── KANARIEFÅGEL 1: skanningen måste ge utslag på känd indata ─────────────
   // Utan den kan findExtractorCalls() returnera [] och R1/R2 loopa över tomhet.
   const funna = findExtractorCalls(INGEST_OK)
@@ -239,14 +284,34 @@ function selfTest() {
   } else console.log('✅ kanariefågel: skanningen skiljer de två extraktorerna åt i fixturen')
 
   // ── KANARIEFÅGEL 2: mot den RIKTIGA källan ───────────────────────────────
+  // OMFÅNGSGOLV, inte "fler än noll". En skanning som krympt från 4 anrop till
+  // 1 mäter nästan ingenting men klarar ett nollgolv. Talen är MÄTTA mot
+  // e9aea18: 4 extraktoranrop, varav 2 genom prosaextraktorn; registren har
+  // 2 respektive 2 fält.
+  const MIN_ANROP = 3
+  const MIN_PROSAANROP = 1
+  const MIN_REGISTERFÄLT = 2
   const riktiga = findExtractorCalls(readFileSync(INGEST_FILE, 'utf8'))
-  if (riktiga.length === 0) {
-    fail('kanariefågel: NOLL extraktoranrop i reconciliation.service.ts — skanningen har gått blind')
-  } else if (!riktiga.some((r) => r.extraktor === PROSE)) {
-    fail('kanariefågel: INGET prosaanrop i den riktiga källan — prosaextraktorn är bortkopplad')
+  const riktigtProvenans = readFileSync(PROVENANCE_FILE, 'utf8')
+  const registerStorlek = ['INTENT_OCR_FIELDS', 'PROSE_OCR_FIELDS'].map(
+    (n) => (parseRegistry(riktigtProvenans, n) ?? []).length,
+  )
+  if (riktiga.length < MIN_ANROP) {
+    fail(
+      `omfång: ${riktiga.length} extraktoranrop i reconciliation.service.ts, golv ${MIN_ANROP} ` +
+        '— skanningen har gått blind eller ingesten har flyttat',
+    )
+  } else if (riktiga.filter((r) => r.extraktor === PROSE).length < MIN_PROSAANROP) {
+    fail('omfång: INGET prosaanrop i den riktiga källan — prosaextraktorn är bortkopplad')
+  } else if (registerStorlek.some((n) => n < MIN_REGISTERFÄLT)) {
+    fail(
+      `omfång: registren har ${registerStorlek.join(' resp. ')} fält, golv ${MIN_REGISTERFÄLT} ` +
+        '— klassificeringen har nästan inget att klassa',
+    )
   } else {
     console.log(
-      `✅ kanariefågel: ${riktiga.length} extraktoranrop i den riktiga källan, ` +
+      `✅ omfång (golv ${MIN_ANROP}/${MIN_PROSAANROP}/${MIN_REGISTERFÄLT}, register ` +
+        `${registerStorlek.join('+')}): ${riktiga.length} extraktoranrop i den riktiga källan, ` +
         `varav ${riktiga.filter((r) => r.extraktor === PROSE).length} genom ${PROSE}`,
     )
   }
@@ -342,10 +407,49 @@ function selfTest() {
   röd(
     'inga extraktoranrop alls (blind skanning)',
     evaluate({
+      // Kopplingen finns i KOD, men i en form skanningen inte känner igen
+      // (argumentet är en indexering med sträng, inte en identifierarkedja).
+      // Då ska R-noll falla, inte kopplingskontrollen.
+      //
+      // Fixturen såg tidigare ut så här:  `const y = "${PROSE}("`
+      // — alltså en STRÄNG som uppfyllde `ingestText.includes(...)`. Den
+      // fungerade bara därför att vakten läste råtext, och dokumenterade i
+      // praktiken defekten: prosa kunde intyga att extraktorn var inkopplad.
+      // Efter migreringen till codeMask är strängen blankad, och fixturen
+      // behövde bli en riktig kodkoppling.
       provenanceText: PROVENANCE_OK,
-      ingestText: `const x = ${PROSE}\nconst y = "${PROSE}("`,
+      ingestText: `const y = ${PROSE}(row['description'])`,
     }),
     'NOLL extraktoranrop',
+  )
+
+  // Och den omvända riktningen, som är den migreringen faktiskt vann: en
+  // koppling som bara PÅSTÅS — i en sträng eller en kommentar — räknas inte.
+  röd(
+    'kopplingen bara PÅSTÅDD i en sträng',
+    evaluate({ provenanceText: PROVENANCE_OK, ingestText: `const y = "${PROSE}("` }),
+    'anropas aldrig',
+  )
+  röd(
+    'kopplingen bara PÅSTÅDD i en kommentar',
+    evaluate({ provenanceText: PROVENANCE_OK, ingestText: `// vi anropar ${PROSE}( någon annanstans` }),
+    'anropas aldrig',
+  )
+  röd(
+    `${LUHN} nämnd bara i en KOMMENTAR inuti ${PROSE}`,
+    evaluate({
+      provenanceText: `
+export const INTENT_OCR_FIELDS = ['raw.ocr'] as const
+export const PROSE_OCR_FIELDS = ['row.description'] as const
+export function ${RAW}(text) { return null }
+export function ${PROSE}(text) {
+  // beloppet prövas mot ${LUHN} i anroparen
+  return ${RAW}(text)
+}
+`,
+      ingestText: INGEST_OK,
+    }),
+    `anropar inte ${LUHN}`,
   )
 
   console.log(ok ? '\n✅ Självtest OK.' : '\n❌ Självtest misslyckades.')
