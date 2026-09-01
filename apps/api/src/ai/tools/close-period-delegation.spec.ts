@@ -18,7 +18,12 @@ import { ToolExecutorService } from './tool-executor.service'
 
 function makeExecutor(periods: Record<string, unknown>) {
   const noop = {} as never
-  const audit = { logToolExecution: jest.fn().mockResolvedValue(undefined) }
+  const audit = {
+    logToolExecution: jest.fn().mockResolvedValue(undefined),
+    // Steg 3b: produktionsvägen öppnar och stänger spåret för FÖRE_EFFEKTEN-verktyg.
+    beginToolExecution: jest.fn().mockResolvedValue(undefined),
+    completeToolExecution: jest.fn().mockResolvedValue(undefined),
+  }
   // 24 positionsargument — accountingPeriods är den 24:e (sist).
   return new ToolExecutorService(
     noop, // 1 prisma

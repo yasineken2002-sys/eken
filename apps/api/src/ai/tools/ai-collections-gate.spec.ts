@@ -38,7 +38,12 @@ const gate = assertMayActOnCollections as jest.MockedFunction<typeof assertMayAc
 
 function makeExecutor(collectionExport: Record<string, unknown>) {
   const noop = {} as never
-  const audit = { logToolExecution: jest.fn().mockResolvedValue(undefined) }
+  const audit = {
+    logToolExecution: jest.fn().mockResolvedValue(undefined),
+    // Steg 3b: produktionsvägen öppnar och stänger spåret för FÖRE_EFFEKTEN-verktyg.
+    beginToolExecution: jest.fn().mockResolvedValue(undefined),
+    completeToolExecution: jest.fn().mockResolvedValue(undefined),
+  }
   return new ToolExecutorService(
     noop,
     noop,

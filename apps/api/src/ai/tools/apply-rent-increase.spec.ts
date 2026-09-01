@@ -23,7 +23,12 @@ function makeExecutor() {
   const leaseUpdate = jest.fn()
   const prisma = { lease: { update: leaseUpdate, findFirst: jest.fn() } }
   const rentIncreasesService = { create }
-  const audit = { logToolExecution: jest.fn().mockResolvedValue(undefined) }
+  const audit = {
+    logToolExecution: jest.fn().mockResolvedValue(undefined),
+    // Steg 3b: produktionsvägen öppnar och stänger spåret för FÖRE_EFFEKTEN-verktyg.
+    beginToolExecution: jest.fn().mockResolvedValue(undefined),
+    completeToolExecution: jest.fn().mockResolvedValue(undefined),
+  }
 
   // Konstruktorns positionsordning (24 deps). Endast prisma(1),
   // rentIncreasesService(6) och audit(21) behöver vara riktiga mocks.

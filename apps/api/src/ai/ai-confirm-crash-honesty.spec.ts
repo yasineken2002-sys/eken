@@ -24,10 +24,18 @@ import { AiAssistantService } from './ai-assistant.service'
 function makeService(opts: {
   körningFinns: boolean
   effekter?: Array<{ entityType: string; rowCount: number }>
+  /** null = PÅBÖRJAD (raden skrevs före körningen och stängdes aldrig). */
+  completedAt?: Date | null
 }) {
   const executeTool = jest.fn().mockResolvedValue({ success: true, message: 'ok' })
   const körning = opts.körningFinns
-    ? { id: 'ex1', createdAt: new Date('2026-08-28T10:00:00Z'), effects: opts.effekter ?? [] }
+    ? {
+        id: 'ex1',
+        createdAt: new Date('2026-08-28T10:00:00Z'),
+        completedAt:
+          opts.completedAt === undefined ? new Date('2026-08-28T10:00:01Z') : opts.completedAt,
+        effects: opts.effekter ?? [],
+      }
     : null
   const prisma = {
     aiConversation: {
@@ -130,19 +138,49 @@ describe('förbrukat anspråk MED körning — oförändrat beteende', () => {
     await expect(service.confirmAction(...ARGS)).rejects.toThrow(/är redan utförd/)
   })
 
-  it('EN TOM EFFEKTLISTA SÄGS VARA ODEFINIERAD, inte "inga dataändringar"', async () => {
-    // ÄNDRAT BETEENDE, och raden här bar det gamla: tidigare krävde det här
-    // provet texten "inga dataändringar" så snart effektlistan var tom.
+  it('PÅBÖRJAD läses som PÅBÖRJAD — aldrig som "inga dataändringar"', async () => {
+    // KRASCHEN MELLAN FÖRRADEN OCH EFFEKTEN (steg 3b). Raden skrevs och
+    // committades före körningen; processen dog innan den stängdes. Tillståndet
+    // är läsbart och betyder EN sak: vi kom aldrig tillbaka.
     //
-    // Det påståendet håller bara om spåret inte kan tappas. `update_tenant` står
-    // `traceIntegrity: 'BÄST_MÖJLIGA'` (som alla 30) — spåret skrivs efter
-    // effekten, med `void`, och ett fel sväljs. En tom lista betyder då TVÅ
-    // saker: verktyget skrev inget, eller kollektorn tömdes utanför sitt scope
-    // (R2-defekten, som gav tom lista på riktiga skrivningar).
-    //
-    // Samma form som #586: en tom logg får inte kunna betyda två saker.
-    const { service } = makeService({ körningFinns: true, effekter: [] })
+    // Före steg 3b fanns det här läget inte alls — en sådan körning hade
+    // antingen saknat rad helt, eller (med rad och tom effektlista) sett ut som
+    // "registrerade inga dataändringar". Det är #586:s form, och den utgången är
+    // den enda som inte accepteras här.
+    const { service } = makeService({ körningFinns: true, effekter: [], completedAt: null })
+    await expect(service.confirmAction(...ARGS)).rejects.toThrow(/PÅBÖRJADES/)
     await expect(service.confirmAction(...ARGS)).rejects.toThrow(/ODEFINIERAT/)
     await expect(service.confirmAction(...ARGS)).rejects.not.toThrow(/inga dataändringar/)
+  })
+
+  it('en tom effektlista är en UTSAGA när spåret inte kan tappas tyst', async () => {
+    // `update_tenant` står `traceIntegrity: 'FÖRE_EFFEKTEN'` sedan steg 3b:
+    // raden committas före effekten och stängs efteråt, så en stängd rad med
+    // noll effekter betyder verkligen att inget skrevs.
+    //
+    // Raden bar tidigare motsatsen — den krävde ODEFINIERAT, eftersom ALLA 30
+    // då var BÄST_MÖJLIGA. Att den ändras här är själva vinsten: 23 verktyg gick
+    // från "kan inte påstås" till "kan påstås", utan att någon rörde
+    // describeEffects.
+    const { service } = makeService({ körningFinns: true, effekter: [] })
+    await expect(service.confirmAction(...ARGS)).rejects.toThrow(/inga dataändringar/)
+  })
+
+  it('… men förblir ODEFINIERAD för ett verktyg vars spår ÄR best-effort', async () => {
+    // `compose_and_send_email` är klass B och står kvar på BÄST_MÖJLIGA — den
+    // får #607-mönstret i en egen PR. Tills dess betyder en tom lista fortfarande
+    // två saker, och svaret säger det.
+    const { service } = makeService({ körningFinns: true, effekter: [] })
+    const bästMöjliga = [
+      'compose_and_send_email',
+      { tenantIds: ['t-1'] },
+      'c1',
+      true,
+      'o1',
+      'u1',
+      'ADMIN',
+    ] as const
+    await expect(service.confirmAction(...bästMöjliga)).rejects.toThrow(/ODEFINIERAT/)
+    await expect(service.confirmAction(...bästMöjliga)).rejects.not.toThrow(/inga dataändringar/)
   })
 })

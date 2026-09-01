@@ -10,6 +10,7 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { AiAuditService } from '../audit/ai-audit.service'
 import { TerminationsService } from '../../terminations/terminations.service'
 import { TENANT_ACTION_TOOLS } from './tenant-ai-tools.definition'
+import { effectTraceIntegrity } from './effect-idempotency'
 import { assertActionToolAuthorized } from './action-authorization'
 import type { ActionProof } from './action-authorization'
 import { SAFE_TENANT_SELECT } from '../../tenants/tenants.service'
@@ -108,12 +109,51 @@ export class TenantToolExecutorService {
     // raden skrivs först efteråt.
     const executionId = randomUUID()
 
+    // Samma tre tillstånd som ägarvägen (steg 3b). DEKLARATIONEN styr, inte
+    // exekveraren.
+    //
+    // MÄNGDERNA ÖVERLAPPAR DELVIS, mätt 2026-09-01: TENANT_ACTION_TOOLS är två
+    // verktyg, och `create_maintenance_ticket` står i BÅDA. Det ärver därmed
+    // ägarvägens deklaration — vilket är rätt, för det är samma effektform
+    // (en rad i MaintenanceTicket) oavsett vem som ber om den.
+    //
+    // `request_termination` finns bara här och står alltså inte i
+    // EFFECT_DECLARATIONS. `effectTraceIntegrity` faller stängt till 'OKÄND' för
+    // namn den inte känner, och OKÄND öppnar ingenting: den behåller
+    // BÄST_MÖJLIGA tills någon klassificerar den. Att låta den ärva ett
+    // "före"-spår den inte deklarerat vore ett påstående ingen mätt.
+    const spårform = effectTraceIntegrity(toolName)
+    if (spårform === 'FÖRE_EFFEKTEN') {
+      await this.audit.beginToolExecution({
+        id: executionId,
+        organizationId,
+        tenantId,
+        conversationId: auditContext?.conversationId ?? null,
+        toolName,
+        toolInput,
+        requiredConfirmation: TENANT_ACTION_TOOLS.has(toolName),
+        confirmedAt: auditContext?.confirmedAt ?? null,
+      })
+    }
+
     try {
       result = await runAsAi(executionId, () =>
         this.executeToolUnsafe(toolName, toolInput, tenantId, organizationId),
       )
     } catch (err) {
       thrownError = err instanceof Error ? err : new Error(String(err))
+      if (spårform === 'FÖRE_EFFEKTEN') {
+        await this.audit.completeToolExecution({
+          id: executionId,
+          organizationId,
+          toolName,
+          success: false,
+          errorMessage: thrownError.message,
+          durationMs: Date.now() - startedAt,
+          effects: drainEffects(),
+        })
+        throw thrownError
+      }
       void this.audit.logToolExecution({
         id: executionId,
         organizationId,
@@ -135,6 +175,20 @@ export class TenantToolExecutorService {
 
     if (result.data !== undefined && result.data !== null) {
       result.data = redactSensitive(result.data)
+    }
+
+    if (spårform === 'FÖRE_EFFEKTEN') {
+      void this.audit.completeToolExecution({
+        id: executionId,
+        organizationId,
+        toolName,
+        toolResult: result.data,
+        success: result.success,
+        errorMessage: result.success ? null : result.message,
+        durationMs: Date.now() - startedAt,
+        effects: drainEffects(),
+      })
+      return result
     }
 
     void this.audit.logToolExecution({

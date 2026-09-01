@@ -283,7 +283,12 @@ describe('#326 A — AI-verktyget unmatch_transaction nekas av SAMMA spärr', ()
    */
   function makeExecutor(transaction: unknown) {
     const rig = makeService(transaction)
-    const audit = { logToolExecution: jest.fn().mockResolvedValue(undefined) }
+    const audit = {
+      logToolExecution: jest.fn().mockResolvedValue(undefined),
+      // Steg 3b: produktionsvägen öppnar och stänger spåret för FÖRE_EFFEKTEN-verktyg.
+      beginToolExecution: jest.fn().mockResolvedValue(undefined),
+      completeToolExecution: jest.fn().mockResolvedValue(undefined),
+    }
     const noop = {} as never
     const executor = new ToolExecutorService(
       noop, // 1 prisma

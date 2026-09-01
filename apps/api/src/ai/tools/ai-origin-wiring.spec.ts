@@ -18,7 +18,12 @@ import { currentAiOrigin } from '../../common/ai-origin/ai-origin.context'
 describe('AI-gränsen kopplar in ursprungskontexten', () => {
   it('executeTool kör verktyget i kontext, med samma id som loggraden får', async () => {
     const noop = {} as never
-    const audit = { logToolExecution: jest.fn().mockResolvedValue(undefined) }
+    const audit = {
+      logToolExecution: jest.fn().mockResolvedValue(undefined),
+      // Steg 3b: produktionsvägen öppnar och stänger spåret för FÖRE_EFFEKTEN-verktyg.
+      beginToolExecution: jest.fn().mockResolvedValue(undefined),
+      completeToolExecution: jest.fn().mockResolvedValue(undefined),
+    }
     const svc = new ToolExecutorService(
       {} as never,
       noop,

@@ -40,6 +40,7 @@ import { DocumentDeliveryService } from '../../documents/document-delivery.servi
 import { SigningService } from '../../signing/signing.service'
 import type { PortalDocumentCategory } from '../../documents/document-delivery.service'
 import { ACTION_TOOLS } from './ai-tools.definition'
+import { effectTraceIntegrity } from './effect-idempotency'
 import { decideAiToolAccess } from '../../common/authz/ai-tool-authz'
 import { neutralizeUntrusted } from './untrusted-content'
 import { SAFE_TENANT_SELECT } from '../../tenants/tenants.service'
@@ -535,6 +536,33 @@ export class ToolExecutorService {
     // id finns inget att peka på vid skrivtillfället. Se #494 beslut 4.
     const executionId = randomUUID()
 
+    // ── SPÅRET ÖPPNAS FÖRE EFFEKTEN (steg 3b) ────────────────────────────────
+    //
+    // För verktyg som deklarerar `FÖRE_EFFEKTEN` skrivs och COMMITTAS raden
+    // innan verktyget kör, och stängs efteråt. Kraschar processen emellan står
+    // den kvar som PÅBÖRJAD — ett läsbart tillstånd, i stället för ingenting.
+    //
+    // INVÄNTAT, och felet kastas: går raden inte att skriva ska verktyget inte
+    // köra, för då finns inget att stänga. Ett `void` här hade gjort "före" till
+    // en förhoppning.
+    //
+    // De två TRANSAKTIONELLA verktygen skriver sin rad inne i sin EGEN
+    // transaktion (se `create_journal_entry`/`record_expense`) och öppnar därför
+    // ingenting här — deras spår ska dela effektens öde, inte överleva den.
+    const spårform = effectTraceIntegrity(toolName)
+    if (spårform === 'FÖRE_EFFEKTEN') {
+      await this.audit.beginToolExecution({
+        id: executionId,
+        organizationId,
+        userId,
+        conversationId: auditContext?.conversationId ?? null,
+        toolName,
+        toolInput,
+        requiredConfirmation: ACTION_TOOLS.has(toolName),
+        confirmedAt: auditContext?.confirmedAt ?? null,
+      })
+    }
+
     try {
       // AI-GRÄNSEN (#504). Allt som körs här inne är per definition AI-initierat,
       // hur djupt ned i anropskedjan det än ligger. Tjänster som skriver
@@ -561,6 +589,23 @@ export class ToolExecutorService {
       noteSubjectCandidates(result.data)
     } catch (err) {
       thrownError = err instanceof Error ? err : new Error(String(err))
+      // FELVÄGEN STÄNGER OCKSÅ SIN RAD. En "påbörjad" som egentligen betyder
+      // "misslyckades" vore samma tvetydighet i ny förklädnad — påbörjad ska
+      // betyda EN sak: vi kom aldrig tillbaka.
+      if (spårform === 'FÖRE_EFFEKTEN') {
+        await this.audit.completeToolExecution({
+          id: executionId,
+          organizationId,
+          toolName,
+          success: false,
+          errorMessage: thrownError.message,
+          durationMs: Date.now() - startedAt,
+          // ÄVEN VID FEL: ett verktyg som hann skriva en rad innan det kastade
+          // har orsakat en rad.
+          effects: drainEffects(),
+        })
+        throw thrownError
+      }
       // Logga miss-exekveringen innan vi kastar vidare
       void this.audit.logToolExecution({
         id: executionId,
@@ -611,6 +656,43 @@ export class ToolExecutorService {
       )
     }
 
+    if (spårform === 'FÖRE_EFFEKTEN') {
+      // STÄNGER den redan öppnade raden. Fortfarande inte inväntad: raden FINNS,
+      // och att blockera svaret på en uppdatering hade inte gjort spåret sannare
+      // — går stängningen förlorad står raden kvar som påbörjad, vilket är ett
+      // ärligt läge och inte en tyst tomhet.
+      void this.audit.completeToolExecution({
+        id: executionId,
+        organizationId,
+        toolName,
+        toolResult: result.data,
+        success: result.success,
+        errorMessage: result.success ? null : result.message,
+        durationMs: Date.now() - startedAt,
+        effects: drainEffects(),
+      })
+      return result
+    }
+
+    if (spårform === 'TRANSAKTIONELL') {
+      // Raden skrevs INNE i verktygets transaktion och är redan komplett. Här
+      // fylls bara varaktighet och resultat i — och `update` på ett id som inte
+      // finns kastar P2025, vilket är exakt rätt utfall om transaktionen rullades
+      // tillbaka: då ska ingen rad återuppstå.
+      void this.audit
+        .completeToolExecution({
+          id: executionId,
+          organizationId,
+          toolName,
+          toolResult: result.data,
+          success: result.success,
+          errorMessage: result.success ? null : result.message,
+          durationMs: Date.now() - startedAt,
+        })
+        .catch(() => undefined)
+      return result
+    }
+
     // Audit-logg — fire-and-forget. Misslyckad loggning ska aldrig blockera
     // det faktiska tool-svaret.
     void this.audit.logToolExecution({
@@ -631,6 +713,45 @@ export class ToolExecutorService {
     })
 
     return result
+  }
+
+  /**
+   * TRANSAKTIONELLT SPÅR — skrivs INNE i verktygets egen transaktion.
+   *
+   * Bara för `create_journal_entry` och `record_expense`, de två vägar där HELA
+   * effekten redan ryms i EN transaktion som verktyget självt öppnar. Rullas den
+   * tillbaka försvinner spåret MED effekten; det är skillnaden mot allt annat.
+   *
+   * ⚠️ INGEN try/catch. Ett fel här ska rulla tillbaka verktygets transaktion —
+   * poängen är att raden och effekten delar öde. Att svälja felet hade gett
+   * effekten utan spår, precis det tillstånd deklarationen påstår är omöjligt.
+   *
+   * Tyst no-op utan `executionId`: nio specar anropar `executeToolUnsafe` direkt
+   * med fem argument, och de mäter verktygets logik, inte spåret. Produktions-
+   * vägen skickar alltid id:t — att det gör det ägs av
+   * `effect-trace-production-path.db.spec.ts`.
+   */
+  private async skrivTransaktionelltSpar(
+    tx: Prisma.TransactionClient,
+    executionId: string | undefined,
+    toolName: string,
+    toolInput: Record<string, unknown>,
+    organizationId: string,
+    userId: string,
+  ): Promise<void> {
+    if (!executionId) return
+    await this.audit.writeInTransaction(tx, {
+      id: executionId,
+      organizationId,
+      userId,
+      toolName,
+      toolInput,
+      requiredConfirmation: ACTION_TOOLS.has(toolName),
+      // Effekterna som noterats HITTILLS i den här transaktionen. Töms här med
+      // flit: rullas transaktionen tillbaka ska de inte kunna skrivas en andra
+      // gång av den yttre vägen, för då hade de överlevt sin egen effekt.
+      effects: drainEffects(),
+    })
   }
 
   private async executeToolUnsafe(
@@ -3426,7 +3547,20 @@ export class ToolExecutorService {
               where: { organizationId, source: 'AI', sourceId },
               include: { lines: { include: { account: true } } },
             })
-            if (befintligt) return { entry: befintligt, redanFanns: true }
+            if (befintligt) {
+              // ÄVEN IDEMPOTENSTRÄFFEN får ett spår. Verktyget KÖRDE; att det
+              // inte skapade något är en effektlista med noll poster, inte en
+              // körning som aldrig hände.
+              await this.skrivTransaktionelltSpar(
+                tx,
+                aiToolExecutionId,
+                toolName,
+                toolInput,
+                organizationId,
+                userId,
+              )
+              return { entry: befintligt, redanFanns: true }
+            }
 
             const v = await this.verifikationsnummer.allocate(tx, organizationId, date)
             const skapat = await tx.journalEntry.create({
@@ -3449,6 +3583,14 @@ export class ToolExecutorService {
               },
               include: { lines: { include: { account: true } } },
             })
+            await this.skrivTransaktionelltSpar(
+              tx,
+              aiToolExecutionId,
+              toolName,
+              toolInput,
+              organizationId,
+              userId,
+            )
             return { entry: skapat, redanFanns: false }
           }, PRISMA_DEFAULT_TX_LIMITS)
           return {
@@ -3557,7 +3699,20 @@ export class ToolExecutorService {
             const befintligt = await tx.journalEntry.findFirst({
               where: { organizationId, source: 'AI', sourceId },
             })
-            if (befintligt) return { entry: befintligt, redanFanns: true }
+            if (befintligt) {
+              // ÄVEN IDEMPOTENSTRÄFFEN får ett spår. Verktyget KÖRDE; att det
+              // inte skapade något är en effektlista med noll poster, inte en
+              // körning som aldrig hände.
+              await this.skrivTransaktionelltSpar(
+                tx,
+                aiToolExecutionId,
+                toolName,
+                toolInput,
+                organizationId,
+                userId,
+              )
+              return { entry: befintligt, redanFanns: true }
+            }
 
             const v = await this.verifikationsnummer.allocate(tx, organizationId, date)
             const skapat = await tx.journalEntry.create({
@@ -3576,6 +3731,14 @@ export class ToolExecutorService {
                 lines: { create: lines },
               },
             })
+            await this.skrivTransaktionelltSpar(
+              tx,
+              aiToolExecutionId,
+              toolName,
+              toolInput,
+              organizationId,
+              userId,
+            )
             return { entry: skapat, redanFanns: false }
           }, PRISMA_DEFAULT_TX_LIMITS)
           const propertyTag = typeof toolInput.propertyId === 'string' ? toolInput.propertyId : null

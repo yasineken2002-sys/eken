@@ -106,7 +106,12 @@ describe('#352 · steg 7 — AI-verktyget exkluderar DEPOSIT', () => {
       noop,
       noop,
       noop,
-      { logToolExecution: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        logToolExecution: jest.fn().mockResolvedValue(undefined),
+        // Steg 3b: produktionsvägen öppnar och stänger spåret för FÖRE_EFFEKTEN-verktyg.
+        beginToolExecution: jest.fn().mockResolvedValue(undefined),
+        completeToolExecution: jest.fn().mockResolvedValue(undefined),
+      } as never,
       noop,
       noop,
       noop,

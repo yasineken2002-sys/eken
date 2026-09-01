@@ -173,16 +173,15 @@ describe('effektklassificeringen', () => {
       ])
     })
 
-    it('ALLA 30 står traceIntegrity: BÄST_MÖJLIGA — talet är mätt, inte antaget', () => {
-      // Poängen med fältet är att det här talet blir SYNLIGT. Effektspåret
-      // (AiToolEffect) skrivs efter effekten, med `void`, och ett fel sväljs —
-      // tre oberoende sätt att tappa det, inget av dem ger ett felmeddelande.
-      // Ingen post kan därför ännu påstå något starkare.
-      //
-      // Skriven som en fördelning och inte som "alla är X": den dag ett verktyg
-      // blir TRANSAKTIONELL ska den här raden ändras medvetet, och rollback-
-      // provet i effect-trace-transactional.db.spec.ts ska då säga emot om
-      // påståendet är falskt.
+    it('traceIntegrity: 2 TRANSAKTIONELL, 21 FÖRE_EFFEKTEN, 7 BÄST_MÖJLIGA', () => {
+      // Efter steg 3b. Talen är MÄTTA, inte valda:
+      //   • 7 BÄST_MÖJLIGA = klass B, verktygen med en extern effekt utanför
+      //     transaktionen. De får #607-mönstret i en egen PR.
+      //   • 2 TRANSAKTIONELL = de vägar där HELA effekten redan ryms i EN
+      //     transaktion verktyget självt öppnar, och där spåret skrivs inne i
+      //     den. Två genuina slår 23 påstådda.
+      //   • 21 FÖRE_EFFEKTEN = resten av klass A. Spåret committas före
+      //     effekten och stängs efteråt, så det kan aldrig försvinna tyst.
       const c = buildEffectCatalog()
       const antal = (k: string) => c.filter((e) => e.traceIntegrity === k).length
       expect({
@@ -190,17 +189,33 @@ describe('effektklassificeringen', () => {
         foreEffekten: antal('FÖRE_EFFEKTEN'),
         bastMojliga: antal('BÄST_MÖJLIGA'),
         okand: antal('OKÄND'),
-      }).toEqual({ transaktionell: 0, foreEffekten: 0, bastMojliga: 30, okand: 0 })
+      }).toEqual({ transaktionell: 2, foreEffekten: 21, bastMojliga: 7, okand: 0 })
     })
 
-    it('en tom effektlista är INTE trovärdig så länge spåret är BÄST_MÖJLIGA', () => {
+    it('exakt de två vägar som äger sin egen transaktion är TRANSAKTIONELL', () => {
+      // Namnen står här, inte bara talet: TRANSAKTIONELL kräver att spåret
+      // skrivs inne i verktygets tx, och det gör bara de här två
+      // (`skrivTransaktionelltSpar` i tool-executor.service.ts). Läggs ett
+      // tredje till utan den skrivvägen faller rollback-provet i
+      // effect-trace-transactional.db.spec.ts.
+      const namn = buildEffectCatalog()
+        .filter((e) => e.traceIntegrity === 'TRANSAKTIONELL')
+        .map((e) => e.name)
+        .sort()
+      expect(namn).toEqual(['create_journal_entry', 'record_expense'])
+    })
+
+    it('en tom effektlista är trovärdig ENDAST där spåret inte kan tappas tyst', () => {
       // Kopplingen som gör fältet bärande i stället för dekorativt:
-      // describeEffects läser det här och säger ODEFINIERAT i stället för
-      // "inga dataändringar". Blir spåret transaktionellt börjar den säga
-      // "inga dataändringar" igen, utan att någon rör den raden.
+      // describeEffects läser det här och säger ODEFINIERAT i stället för "inga
+      // dataändringar" — men bara för BÄST_MÖJLIGA. Efter steg 3b är 23 av 30
+      // trovärdiga, och den ändringen skedde utan att någon rörde
+      // describeEffects.
       for (const e of buildEffectCatalog()) {
-        expect(tomEffektlistaÄrTrovärdig(e.name)).toBe(false)
+        expect(tomEffektlistaÄrTrovärdig(e.name)).toBe(e.traceIntegrity !== 'BÄST_MÖJLIGA')
       }
+      const trovärdiga = buildEffectCatalog().filter((e) => tomEffektlistaÄrTrovärdig(e.name))
+      expect(trovärdiga).toHaveLength(23)
       // Okänt verktyg faller stängt i svarsledet, inte med ett kast.
       expect(tomEffektlistaÄrTrovärdig('finns_inte')).toBe(false)
     })

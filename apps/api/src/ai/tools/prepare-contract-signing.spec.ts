@@ -41,7 +41,12 @@ describe('AI-seam: prepare_contract_signing (prepare-only)', () => {
   function makeExecutor(createSigningRequest: jest.Mock) {
     const noop = {} as never
     const signing = { createSigningRequest } as never
-    const audit = { logToolExecution: jest.fn().mockResolvedValue(undefined) } as never
+    const audit = {
+      logToolExecution: jest.fn().mockResolvedValue(undefined),
+      // Steg 3b: produktionsvägen öppnar och stänger spåret för FÖRE_EFFEKTEN-verktyg.
+      beginToolExecution: jest.fn().mockResolvedValue(undefined),
+      completeToolExecution: jest.fn().mockResolvedValue(undefined),
+    } as never
     // 24 positionsargument — accountingPeriods är den 24:e (sist, T5 PR1a).
     return new ToolExecutorService(
       noop,

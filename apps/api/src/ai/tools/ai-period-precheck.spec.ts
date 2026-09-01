@@ -35,7 +35,12 @@ function makePrisma(latest: { type: string } | null) {
 
 function makeExecutor(prisma: unknown) {
   const noop = {} as never
-  const audit = { logToolExecution: jest.fn().mockResolvedValue(undefined) }
+  const audit = {
+    logToolExecution: jest.fn().mockResolvedValue(undefined),
+    // Steg 3b: produktionsvägen öppnar och stänger spåret för FÖRE_EFFEKTEN-verktyg.
+    beginToolExecution: jest.fn().mockResolvedValue(undefined),
+    completeToolExecution: jest.fn().mockResolvedValue(undefined),
+  }
   return new ToolExecutorService(
     prisma as never, // 1 prisma
     noop,
