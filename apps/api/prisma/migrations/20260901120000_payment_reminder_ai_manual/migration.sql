@@ -1,0 +1,22 @@
+-- AI-loopens effektspår, PR 1 — eget påminnelsevärde för `send_overdue_reminders`.
+--
+-- AI-verktyget skickar mallen `invoice-overdue`. Det är ett ANNAT brev än
+-- cronens `reminder-friendly`/`reminder-formal`, och behöver därför ett eget
+-- värde i `PaymentReminderType`.
+--
+-- VARFÖR INTE ÅTERANVÄNDA ETT BEFINTLIGT VÄRDE. `PaymentReminderService` grindar
+-- på mängden redan skickade typer (`sentTypes`). Skrev AI:ns utskick
+-- REMINDER_FRIENDLY skulle det SLÄCKA cronens vänliga påminnelse — ett tyst
+-- bortfall i en kravtrappa som ska vara stegvis och bevisbar, orsakat av exakt
+-- den grind som gör mekanismen bra.
+--
+-- VARFÖR INTE LÅTA AI ANROPA CRONENS TJÄNST I STÄLLET. Det tar bort migrationen
+-- men ÄNDRAR VAD HYRESGÄSTEN FÅR I BREVLÅDAN. Det nya värdet ändrar ingenting
+-- för någon mottagare: samma brev som i dag, men nu synligt i databasen.
+--
+-- ADDITIV. `ALTER TYPE ... ADD VALUE` skriver inte om några rader och gör inga
+-- befintliga värden ogiltiga. Samma form som tidigare enum-utökningar i repot
+-- (DocumentCategory, JournalEntrySource, RentNoticeEventType). Värdet ANVÄNDS
+-- inte i den här migrationen — Postgres tillåter inte att ett nytillagt
+-- enum-värde används i samma transaktion som det skapades.
+ALTER TYPE "PaymentReminderType" ADD VALUE 'REMINDER_AI_MANUAL';

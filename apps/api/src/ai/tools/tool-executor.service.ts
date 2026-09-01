@@ -1218,6 +1218,8 @@ export class ToolExecutorService {
           })
 
           let sent = 0
+          let redanSkickat = 0
+          let misslyckade = 0
           for (const inv of overdueInvoices) {
             if (!inv.tenant?.email) continue
             const tenantName =
@@ -1225,8 +1227,45 @@ export class ToolExecutorService {
                 ? `${inv.tenant.firstName ?? ''} ${inv.tenant.lastName ?? ''}`.trim()
                 : (inv.tenant.companyName ?? '')
 
+            // ── SPÅRET SKRIVS FÖRE UTSKICKET, EN RAD PER FAKTURA ─────────────
+            //
+            // IDEMPOTENSENS ENHET ÄR EFFEKTEN, INTE ANROPET. Det här är en loop
+            // med try/catch per mottagare. Kraschar den efter 25 av 40 säger en
+            // nyckel på ANROPET antingen "gjort" — och 15 personer får aldrig
+            // sitt brev — eller "inte gjort" — och 25 får det två gånger. Båda
+            // är fel, och ingen utökning av anropsnyckeln löser det.
+            //
+            // `PaymentReminder` BÄR REDAN ENHETEN. `@@unique([invoiceId, type])`
+            // är DB-enforcerad, och cronens `PaymentReminderService` skriver och
+            // läser samma tabell. Ingen ny modell behövdes; verktyget stod
+            // bredvid mekanismen och använde den inte.
+            //
+            // FÖRE, INTE EFTER. En rad skriven efter utskicket saknas exakt i
+            // det fall den behövs: när körningen dör mellan utskick och
+            // skrivning. Priset är den omvända risken — en rad kan finnas för
+            // ett brev som aldrig gick i väg — och det priset betalas nedan,
+            // genom att raden tas bort när utskicket kastar.
+            let reminderId: string
             try {
-              await this.mailService.sendOverdueReminder({
+              const reminder = await this.prisma.paymentReminder.create({
+                data: { invoiceId: inv.id, type: 'REMINDER_AI_MANUAL', feeAmount: 0 },
+                select: { id: true },
+              })
+              reminderId = reminder.id
+            } catch (err) {
+              if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+                // Raden fanns redan → brevet gick i väg i en tidigare körning.
+                // Det här är hela poängen: en omkörning efter en krasch mitt i
+                // loopen hoppar över dem som redan fått sitt brev.
+                redanSkickat++
+                continue
+              }
+              throw err
+            }
+
+            let jobId: string
+            try {
+              jobId = await this.mailService.sendOverdueReminder({
                 to: inv.tenant.email,
                 organizationId,
                 tenantName,
@@ -1236,16 +1275,57 @@ export class ToolExecutorService {
                 total: invoiceOutstanding(inv),
                 dueDate: inv.dueDate,
                 organizationName: inv.organization.name,
+                // ── KÖ-FÖNSTER, INTE HÅLLBARHET ────────────────────────────
+                //
+                // Nyckeln blir Bulls `jobId` (mail.queue.ts) och dedupliserar
+                // bara så länge jobbet finns kvar i Redis: 7 dygn ELLER 1000
+                // jobb, det som infaller först. Den är därför en BILLIG
+                // KOMPLETTERING ovanpå PaymentReminder-raden — ALDRIG ett
+                // alternativ till den. Raden är det som består.
+                //
+                // Det nyckeln täcker som raden inte gör är ett enda smalt
+                // fönster: utskicket kastade, vi tog bort raden nedan, men
+                // jobbet hann ändå läggas på kön. Då hindrar nyckeln det andra
+                // brevet. Utanför det fönstret gör den ingenting som raden inte
+                // redan gör bättre.
+                idempotencyKey: `ai-overdue-${inv.id}`,
               })
-              sent++
             } catch {
+              // Utskicket gick inte i väg. Raden skulle då PÅSTÅ att ett brev
+              // finns som inte finns — ett spår som ljuger är värre än inget —
+              // och den skulle dessutom blockera ett legitimt omförsök.
+              await this.prisma.paymentReminder
+                .delete({ where: { id: reminderId } })
+                .catch(() =>
+                  console.error(
+                    `Kunde inte städa PaymentReminder ${reminderId} efter misslyckat utskick ` +
+                      `för faktura ${inv.invoiceNumber}. Raden blockerar nu omförsök.`,
+                  ),
+                )
+              misslyckade++
               console.warn(`Kunde inte skicka påminnelse för faktura ${inv.invoiceNumber}`)
+              continue
             }
+
+            // EGEN SATS, INTE INNE I try:et ovan. Ett fel här får inte tas för
+            // ett misslyckat utskick — brevet ligger redan på kön, och att
+            // radera raden då hade öppnat för ett andra brev.
+            await this.prisma.paymentReminder
+              .update({ where: { id: reminderId }, data: { emailMessageId: jobId } })
+              .catch(() =>
+                console.error(
+                  `Kunde inte spara köhandtaget ${jobId} på PaymentReminder ${reminderId}.`,
+                ),
+              )
+            sent++
           }
 
           return {
             success: true,
-            message: `Betalningspåminnelser skickade till ${sent} av ${overdueInvoices.length} hyresgäster`,
+            message:
+              `Betalningspåminnelser skickade till ${sent} av ${overdueInvoices.length} hyresgäster` +
+              (redanSkickat > 0 ? `. ${redanSkickat} hade redan fått sin påminnelse` : '') +
+              (misslyckade > 0 ? `. ${misslyckade} misslyckades` : ''),
           }
         }
 

@@ -18,6 +18,7 @@ import {
   resumeReminders,
   type CollectionBucket,
   type OverdueInvoice,
+  type ReminderEntry,
 } from './api/collections.api'
 
 const TABS: Array<{ id: CollectionBucket; label: string; description: string }> = [
@@ -38,10 +39,11 @@ const TABS: Array<{ id: CollectionBucket; label: string; description: string }> 
   },
 ]
 
-const REMINDER_LABEL: Record<string, string> = {
+const REMINDER_LABEL: Record<ReminderEntry['type'], string> = {
   REMINDER_FRIENDLY: 'Vänlig påminnelse',
   REMINDER_FORMAL: 'Formell påminnelse',
   READY_FOR_COLLECTION: 'Markerad redo för inkasso',
+  REMINDER_AI_MANUAL: 'Påminnelse (manuellt utskick)',
 }
 
 export function CollectionsPage() {

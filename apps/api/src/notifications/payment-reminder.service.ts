@@ -251,7 +251,23 @@ export class PaymentReminderService {
       const party = inv.tenant ?? inv.customer
       const daysOverdue = this.daysSince(inv.dueDate)
       const reminders = inv.paymentReminders
-      const lastReminder = reminders[0] ?? null
+      // ── `lastReminderType` BETYDER "SENASTE STEGET I KRAVTRAPPAN" ─────────
+      //
+      // Fältet grindar inkassovyns hinkar: `collections.controller.ts` delar
+      // upp på `lastReminderType === 'READY_FOR_COLLECTION'`, och AI-verktyget
+      // `get_overdue_status` gör samma sak. Listan är sorterad `sentAt desc`,
+      // så [0] är helt enkelt den senast skrivna raden.
+      //
+      // REMINDER_AI_MANUAL ÄR INGET TRAPPSTEG. Det är ett manuellt utskick som
+      // AI-verktyget gjorde efter operatörens bekräftelse. Räknades det som
+      // "senaste steget" skulle en faktura som redan MARKERATS REDO FÖR INKASSO
+      // tyst lämna "redo"-hinken och dyka upp som pågående igen, bara för att
+      // någon skickat en påminnelse till. Raden ska GÖRA utskicket synligt, inte
+      // flytta ärendet i trappan.
+      //
+      // Den syns fortfarande: den ligger kvar i `reminders` och räknas i
+      // `reminderCount` nedan. Det är bara trapp-frågan den hålls utanför.
+      const lastReminder = reminders.find((r) => r.type !== 'REMINDER_AI_MANUAL') ?? null
       return {
         id: inv.id,
         invoiceNumber: inv.invoiceNumber,
