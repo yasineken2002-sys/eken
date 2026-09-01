@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto'
 import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common'
 import { MaintenanceCategory, MaintenancePriority } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { runAsAi } from '../../common/ai-origin/ai-origin.context'
+import { drainEffects, runWithEffectCollector } from '../../common/ai-effects/ai-effects.context'
 import { computeInvoiceDebt } from '../../invoices/invoice-debt'
 import { MaintenanceService } from '../../maintenance/maintenance.service'
 import { NotificationsService } from '../../notifications/notifications.service'
@@ -59,15 +62,60 @@ export class TenantToolExecutorService {
     // glömma; ett anrop till samma assertion är en.
     assertActionToolAuthorized(toolName, auditContext?.actionProof)
 
+    // ── UTFALLSKOPPLINGEN, NU OCKSÅ HÄR (steg 3a) ────────────────────────────
+    //
+    // Hyresgästvägen hade INGET effektspår alls: ingen kollektor, inget
+    // AI-ursprung, ingen `effects` till auditraden. Två skrivande verktyg
+    // (`create_maintenance_ticket`, `request_termination`) var därmed helt
+    // ospårade — en sämre sorts lucka än ägarvägens bäst-möjliga spår, och det
+    // är den här vägen en hyresgästagent kommer att köra på.
+    //
+    // Mekaniken är densamma som ägarvägens, inte en ny: `runWithEffectCollector`
+    // + `runAsAi` + `drainEffects`. Prisma-extensionen ser varje skrivning som
+    // sker inne i `runAsAi` och noterar den i kollektorn.
+    //
+    // KOLLEKTORN OMSLUTER HELA KROPPEN, inte bara verktygskörningen. Det är
+    // R2-defekten från ägarvägen, ordagrant: låg den bara runt körningen
+    // anropades `drainEffects()` utanför AsyncLocalStorage-scopet, där store är
+    // undefined och tömningen ALLTID ger en tom lista. Koden kompilerar, kör och
+    // bokför noll effekter.
+    //
+    // Spåret förblir `BÄST_MÖJLIGA` — auditraden skrivs fortfarande efteråt och
+    // med `void`. Ett bäst-möjligt spår slår inget spår; att göra det
+    // transaktionellt är klass A och ett eget steg.
+    return runWithEffectCollector(() =>
+      this.executeToolWithAudit(toolName, toolInput, tenantId, organizationId, auditContext),
+    )
+  }
+
+  private async executeToolWithAudit(
+    toolName: string,
+    toolInput: Record<string, unknown>,
+    tenantId: string,
+    organizationId: string,
+    auditContext?: {
+      conversationId?: string | null
+      confirmedAt?: Date | null
+      actionProof?: ActionProof
+    },
+  ): Promise<TenantToolResult> {
     const startedAt = Date.now()
     let result: TenantToolResult
     let thrownError: Error | null = null
 
+    // Loggradens id allokeras FÖRE körningen, av samma skäl som i ägarvägen:
+    // något som skapas inne i verktyget måste kunna peka på loggraden, men
+    // raden skrivs först efteråt.
+    const executionId = randomUUID()
+
     try {
-      result = await this.executeToolUnsafe(toolName, toolInput, tenantId, organizationId)
+      result = await runAsAi(executionId, () =>
+        this.executeToolUnsafe(toolName, toolInput, tenantId, organizationId),
+      )
     } catch (err) {
       thrownError = err instanceof Error ? err : new Error(String(err))
       void this.audit.logToolExecution({
+        id: executionId,
         organizationId,
         tenantId,
         conversationId: auditContext?.conversationId ?? null,
@@ -78,6 +126,9 @@ export class TenantToolExecutorService {
         durationMs: Date.now() - startedAt,
         requiredConfirmation: TENANT_ACTION_TOOLS.has(toolName),
         confirmedAt: auditContext?.confirmedAt ?? null,
+        // ÄVEN VID FEL. Ett verktyg som hann skapa en rad innan det kastade har
+        // orsakat en rad — samma regel som ägarvägens R3.
+        effects: drainEffects(),
       })
       throw thrownError
     }
@@ -87,6 +138,7 @@ export class TenantToolExecutorService {
     }
 
     void this.audit.logToolExecution({
+      id: executionId,
       organizationId,
       tenantId,
       conversationId: auditContext?.conversationId ?? null,
@@ -98,6 +150,7 @@ export class TenantToolExecutorService {
       durationMs: Date.now() - startedAt,
       requiredConfirmation: TENANT_ACTION_TOOLS.has(toolName),
       confirmedAt: auditContext?.confirmedAt ?? null,
+      effects: drainEffects(),
     })
 
     return result
