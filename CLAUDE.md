@@ -1174,6 +1174,83 @@ gissad orsak leder nästa person till fel åtgärd. Belägg den, eller skriv
 
 ---
 
+## Ett bekräftat TAL kan ändå styra fel lista — jämför medlemmarna
+
+Planen sa "fem utåtriktade verktyg". En omräkning gav fem. Talet var ändå fel:
+`export_for_collection` stod med och skulle inte (den laddar upp till R2 — ingen
+mottagare), och `prepare_contract_signing` saknades och skulle stå med (den
+dispatchar till signeringsprovidern). **En falsk positiv och en falsk negativ tog
+ut varandra i summan**, så siffran såg bekräftad ut medan medlemslistan var fel —
+och det var listan som styrde vad som aldrig får delegeras.
+
+**Byter en mängd härledningsmetod: diffa MEDLEMMARNA, aldrig bara antalet.**
+Skriv ut båda listorna och jämför namn mot namn. Ett oförändrat antal är inget
+belägg för en oförändrad mängd.
+
+Samma dag gav en tjänstenivå-analys 23 "externa" verktyg och en metodnivå-analys 7. Skillnaden var inte brus utan fråga: en tjänst som _injicerar_ `MailService` är
+inte extern om metoden bara skriver i databasen.
+
+---
+
+## Skriv i varje vakt vad den INTE kan se
+
+En kopplingskontroll är inte en beteendekontroll, och båda ser likadana ut i CI.
+Två mätningar samma dag:
+
+```
+persisteringen av AiToolEffect helt bortkopplad
+  → check-ai-tool-effects GRÖN · hela sviten GRÖN (338/338)
+
+sänkans skrivning gjord till no-op
+  → check-cron-error-sink GRÖN · cron-error-sink.spec GRÖN (5/5)
+  → bara db-riggarna föll
+```
+
+Ingen av vakterna hade fel. De läser källtext och mäter att mekanismen är
+PÅKOPPLAD — de kan per konstruktion inte se en runtime-no-op.
+
+**Skriv gränsen i vaktens egen fil, som ett eget stycke.** Inte i PR-texten: den
+läses en gång. Formen som fungerar är två meningar — "den här mäter X" och "den
+kan inte se Y; det ägs av Z". Utan den läser nästa person grönt som mer än det är,
+och bygger ovanpå.
+
+---
+
+## När två luckor är lika otäckta: laga den vars data FÖRSVINNER
+
+Prioriteringsordningen är återvinningsbart mot förlorat, inte allvarligt mot
+lindrigt.
+
+Mätt två gånger samma dag. Ett cron-fel i Sentry finns kvar och blir läsbart den
+dag ett token finns; samma fel i den lokala loggen är borta vid nästa deploy — och
+det blev ordningen att laga sänkan först. Och `sendInvoiceEmail` returnerade ett
+`jobId` som kastades bort: det sparas nu, trots att ingen frågekod finns, eftersom
+**ett handtag som inte sparas är förlorat för alltid medan en frågeväg går att
+bygga när som helst**.
+
+Följdregeln åt andra hållet: bygg INTE frågevägen samtidigt. En frågeväg utan
+anropare är en vakt med tom mängd.
+
+---
+
+## Två strömmar i ett träd: återställ aldrig brett
+
+Kör två sessioner i samma arbetskatalog delar de HEAD och index. Uppmätt: ett
+`git add -A` från den ena svepte med den andras ocommittade fil, och ett
+`git checkout -b` skapade en gren mitt i den andras commit-kedja.
+
+```bash
+pwd -P && git status --short          # FÖRE varje återställning
+git checkout -- <namngivna filer>     # aldrig `.`, aldrig en katalog
+```
+
+Namnge filerna. `git status --short` före OCH efter, så en tom diff inte
+förväxlas med en lyckad återställning. Arbeta helst i en egen worktree
+(`git worktree add`) — den har eget HEAD och eget index, och delar bara
+objektdatabasen.
+
+---
+
 ## En rad i en statuslista är ett spår, inte ett faktum
 
 **Mät premissen mot aktuell `main` innan du bygger på en revisions- eller
