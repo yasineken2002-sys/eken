@@ -58,6 +58,7 @@
  * Självtest:   node apps/api/scripts/check-sequence-allocation.mjs --self-test
  */
 import { readdirSync, readFileSync } from 'node:fs'
+import { codeMask, blankComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -97,6 +98,12 @@ function sliceCall(text, openParenIdx) {
  * säkra riktningen: hellre en bredare kontroll än ingen.
  */
 export function enclosingFunction(text, idx) {
+  // Klammervandringen körs mot codeMask. Ett `'{'` eller `'}'` i en
+  // stränglitteral flyttade annars funktionsgränsen, och R3:s fråga "innehåller
+  // ALLOKERARFUNKTIONEN en count()" besvarades mot fel kropp — åt båda hållen:
+  // för stor kropp ger falsklarm på en grannmetod, för liten döljer defekten.
+  // Masken bevarar längd och radbrytningar, så `start` och radnumren stämmer.
+  text = codeMask(text)
   let i = idx
   let depth = 0
   while (i > 0) {
@@ -141,6 +148,12 @@ export function enclosingFunction(text, idx) {
  * Exporterad så självtestet kör exakt samma parser som CI.
  */
 export function deriveSequenceModels(schemaText) {
+  // Kommentarerna bort — en UTKOMMENTERAD modell är ingen modell, och skulle
+  // annars kräva en anropsplats som inte finns. `blankComments` och inte
+  // `codeMask`: schemat är inte TypeScript, och den enda region vi vill bli av
+  // med är kommentaren. Mätt: rå, blankComments och codeMask ger i dag samma
+  // åtta modeller — bytet ändrar inget utfall, bara vad som KAN hända.
+  schemaText = blankComments(schemaText)
   const models = []
   const re = /^model\s+(\w*Sequence)\s*\{/gm
   let m
@@ -163,6 +176,13 @@ export function scanSource(text, relPath, models) {
   const callSites = []
   const seqCallIdx = []
 
+  // ALLA tre reglerna frågar KOD. Före migreringen läste R1 råtext (en
+  // utkommenterad `.upsert(` räknades som en anropsplats och kunde uppfylla
+  // R2:s krav på exakt en), sliceCall räknade parenteser utan strängkännedom,
+  // och R3 filtrerade bort kommentarer med en egen radregex — som bara kände
+  // rader som BÖRJAR med `*` eller `//`, alltså inte en efterhängd kommentar.
+  const kod = codeMask(text)
+
   for (const model of models) {
     const accessor = accessorOf(model)
     // \b…\. binder till accessorn: `tx.invoiceNumberSequence.upsert(` matchar,
@@ -171,9 +191,9 @@ export function scanSource(text, relPath, models) {
     // förväxlad.
     const re = new RegExp(`\\b${accessor}\\s*\\.\\s*(\\w+)\\s*\\(`, 'g')
     let m
-    while ((m = re.exec(text))) {
+    while ((m = re.exec(kod))) {
       const method = m[1]
-      const line = lineOf(text, m.index)
+      const line = lineOf(kod, m.index)
       callSites.push({ model, file: relPath, line, method })
       seqCallIdx.push(m.index)
 
@@ -189,7 +209,7 @@ export function scanSource(text, relPath, models) {
         continue
       }
 
-      const call = sliceCall(text, text.indexOf('(', m.index + m[0].length - 1))
+      const call = sliceCall(kod, kod.indexOf('(', m.index + m[0].length - 1))
       // Formen, inte en exakt sträng: `increment` ska stå i upsertens update-gren.
       // En upsert som SÄTTER lastNumber (`update: { lastNumber: n }`) är samma
       // race i ny dräkt — värdet räknades fram utanför låset.
@@ -211,10 +231,12 @@ export function scanSource(text, relPath, models) {
   for (const site of seqCallIdx) {
     const { body, start } = enclosingFunction(text, site)
     body.split('\n').forEach((ln, i) => {
-      if (/^\s*(\*|\/\/)/.test(ln)) return // kommentarer beskriver ofta det gamla mönstret
+      // Ingen egen kommentarfiltrering längre. `enclosingFunction` returnerar
+      // en kropp ur codeMask, så kommentarerna är redan blanka — inklusive de
+      // efterhängda, som den gamla radregexen (`^\s*(\*|\/\/)`) inte kunde se.
       if (!/\.count\s*\(|\.aggregate\s*\(|\b_max\b/.test(ln)) return
       violations.push({
-        line: lineOf(text, start) + i,
+        line: lineOf(kod, start) + i,
         file: relPath,
         rule: 'allokerarfunktionen innehåller count()/aggregate()/_max',
         detail:
@@ -365,6 +387,50 @@ function selfTest() {
     console.error(`❌ ${msg}`)
   }
 
+  // ── DEN DELADE SKANNERNS KANARIEFÅGLAR (metavaktens R2) ───────────────────
+  const skanner = kanariefåglar()
+  if (skanner.length) fail(`DEN DELADE SKANNERN ÄR TRASIG: ${skanner.join(' | ')}`)
+  else console.log('✅ delad skanner: 7 kanariefåglar gröna')
+
+  // ── MASKENS SEMANTIK ──────────────────────────────────────────────────────
+  //
+  // Fyra prov, alla fel i råtextversionen.
+  {
+    const p = (namn, kod, väntadRöd, regel) => {
+      const { violations } = scanSource(kod, 'mask.ts', MODELS)
+      const röd = violations.length > 0
+      if (röd !== väntadRöd) {
+        fail(`MASK: ${namn} → ${röd ? 'RÖD' : 'GRÖN'}, väntade ${väntadRöd ? 'RÖD' : 'GRÖN'}`)
+      } else if (röd && regel && !violations.some((v) => v.rule.includes(regel))) {
+        fail(`MASK: ${namn} fälldes av FEL regel: ${violations[0].rule}`)
+      } else console.log(`✅ MASK: ${namn}`)
+    }
+
+    // R1: en utkommenterad anropsplats är ingen anropsplats. Den räknades förr
+    // in i callSites och kunde uppfylla R2:s krav på exakt en — alltså dölja
+    // att den RIKTIGA allokeraren saknades.
+    p('en UTKOMMENTERAD sekvensskrivning är ingen anropsplats',
+      '// await tx.tenantOcrSequence.upsert({ where: { organizationId }, update: { lastNumber: { increment: 1 } } })',
+      false)
+
+    // R1: `increment:` fick inte kunna intygas av en kommentar inne i anropet.
+    p('`increment` bara i en KOMMENTAR inne i upsert:en',
+      `await tx.tenantOcrSequence.upsert({\n  where: { organizationId },\n  // update: { lastNumber: { increment: 1 } }\n  update: { lastNumber: nästa },\n  create: { organizationId },\n})`,
+      true, 'utan { lastNumber: { increment: N } }')
+
+    // sliceCall: ett `)` i en stränglitteral stängde anropet för tidigt, så
+    // `increment:` efter den punkten blev osynligt — falsklarm på legitim kod.
+    p("ett `)` i en sträng stänger inte upsert-anropet",
+      `await tx.tenantOcrSequence.upsert({ where: { organizationId, label: 'serie (ocr)' }, update: { lastNumber: { increment: 1 } }, create: { organizationId } })`,
+      false)
+
+    // R3: den gamla radregexen kände bara rader som BÖRJAR med * eller //.
+    // En efterhängd kommentar som nämner count() gav därför falsklarm.
+    p('en EFTERHÄNGD kommentar som nämner count() är inget anrop',
+      `async function alloc(tx) {\n  const n = await tx.tenantOcrSequence.upsert({ where: { organizationId }, update: { lastNumber: { increment: 1 } }, create: { organizationId } }) // förr: .count()\n  return n\n}`,
+      false)
+  }
+
   // ── KANARIEFÅGEL 1: härledningen måste ge utslag på känd indata ────────────
   // Utan den kan parsern gå blind och returnera [] — och då blir R1 och R3
   // vakuöst gröna för evigt, eftersom de loopar över en tom modellista.
@@ -381,10 +447,35 @@ function selfTest() {
   // Fixturen ovan bevisar att parsern fungerar; den här bevisar att den pekar
   // på verkligheten. Går schemat inte att läsa, eller byter det form, ska
   // guarden falla i stället för att tyst mäta noll modeller.
+  // OMFÅNGSGOLV, inte "fler än noll": en härledning som krympt från 8 modeller
+  // till 1 mäter nästan ingenting men klarar ett nollgolv. Talen är MÄTTA mot
+  // e9aea18: 447 källfiler, 8 sekvensmodeller, 8 anropsplatser.
+  const MIN_KÄLLFILER = 300
+  const MIN_MODELLER = 5
+  const MIN_ANROPSPLATSER = 5
   const real = deriveSequenceModels(readFileSync(SCHEMA, 'utf8'))
-  if (real.length === 0) {
-    fail('härledning mot schema.prisma gav NOLL sekvensmodeller — parsern har gått blind')
-  } else console.log(`✅ kanariefågel: ${real.length} sekvensmodeller härledda ur schema.prisma`)
+  const alla = [...walk(SRC_DIR)]
+  const riktigaAnrop = alla.flatMap(
+    (f) => scanSource(readFileSync(f, 'utf8'), relative(REPO_ROOT, f), real).callSites,
+  )
+  if (alla.length < MIN_KÄLLFILER) {
+    fail(`omfång: ${alla.length} källfiler skannade, golv ${MIN_KÄLLFILER}`)
+  } else if (real.length < MIN_MODELLER) {
+    fail(
+      `omfång: ${real.length} sekvensmodeller härledda ur schema.prisma, golv ${MIN_MODELLER} ` +
+        '— parsern har gått blind eller schemat bytt form',
+    )
+  } else if (riktigaAnrop.length < MIN_ANROPSPLATSER) {
+    fail(
+      `omfång: ${riktigaAnrop.length} anropsplatser i KOD, golv ${MIN_ANROPSPLATSER} ` +
+        '— R1 och R3 loopar över nästan tomhet',
+    )
+  } else {
+    console.log(
+      `✅ omfång: ${alla.length} källfiler (golv ${MIN_KÄLLFILER}), ${real.length} sekvensmodeller ` +
+        `(golv ${MIN_MODELLER}), ${riktigaAnrop.length} anropsplatser (golv ${MIN_ANROPSPLATSER})`,
+    )
+  }
 
   // ── R1/R3: inga falsklarm på legitim kod ──────────────────────────────────
   for (const [label, code] of GOOD) {
