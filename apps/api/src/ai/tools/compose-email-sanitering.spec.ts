@@ -161,13 +161,23 @@ describe('compose_and_send_email — brödtexten saneras', () => {
   })
 
   it('{namn} substitueras FÖRE saneringen — namnets markup saneras också', async () => {
-    const { executor, utskick } = byggExecutor('#123456')
+    // MARKUP-NAMNET MÅSTE SKICKAS IN HÄR. En tidigare version använde default-
+    // namnet 'Eva' och var därför TOM: den förblev grön även med saneringen
+    // helt borttagen, eftersom det inte fanns någon markup att sanera. Ett för
+    // svagt prov ser ut precis som ett fungerande.
+    const { executor, utskick } = byggExecutor('#123456', '<img src=x onerror=alert(1)>Eva')
     await skicka(executor, 'Hej {namn}, välkommen.')
 
-    const html = utskick[0]!.bodyHtml
-    // Namnet gick in i bodyn via {namn} och passerade sedan saneraren.
-    expect(html).not.toContain('<img src=x')
-    expect(html).toContain('välkommen')
+    // Brödtexten, inte hälsningen — hälsningen escapas och har ett eget prov.
+    const brödtext = utskick[0]!.bodyHtml.split('\n').slice(1).join('\n')
+    expect(brödtext).toContain('välkommen')
+    // Namnet gick in i bodyn via {namn} och passerade DÄRFÖR saneraren:
+    // <img> står inte på allowlistan, så taggen ska vara borta helt — varken
+    // levande (`<img`) eller escapad (`&lt;img`), eftersom saneraren kastar
+    // taggen i stället för att escapa den.
+    expect(brödtext).not.toContain('<img')
+    expect(brödtext).not.toContain('&lt;img')
+    expect(brödtext).toContain('Eva')
   })
 })
 
