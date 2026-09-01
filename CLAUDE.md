@@ -162,6 +162,34 @@ mot fem modulgrupper, alla gröna — assertionen som föll låg i `common/guard
 fastnaglade beslutet ändringen upphävde. Bara CI såg den. Hela sviten hade tagit
 ett par minuter.
 
+**Och vad en SHARDAD körning inte bevisar.** `--shard=1/4` … `4/4` kör hela
+mängden och bryter alltså inte mot regeln ovan — täckningen är fullständig, det
+är inte en modulavgränsning. Men det är **fyra processer, inte en**: en svit som
+passerar isolerat men fallerar i sällskap av en annan syns inte. För den här
+kodbasen är skillnaden liten — enhetstester med egna mockar — men den är verklig,
+och den får inte döljas av att talen summerar rätt.
+
+**Shardning är en minnesåtgärd, inte ett likvärdigt körsätt** — och den räcker
+inte alltid. Uppmätt i en session där en främmande process tog 1,9 GB på en
+8 GB-maskin:
+
+```
+--runInBand, hela sviten      SIGTERM efter  32 sviter
+--shard=1/4                   SIGTERM efter  11 sviter
+--shard=2/4                   SIGTERM efter  34 sviter      ← 130 MB fritt
+```
+
+Att dela upp körningen sänker toppen per process, men inte den totala
+efterfrågan när något annat redan tagit minnet. Kör du shardat: skriv ut att det
+var shardat, och att en summa på rätt tal är en bekräftelse — inte samma bevis
+som en körning i en process.
+
+**Och när maskinen inte räcker alls: låt CI köra sviten.** `Tests`-jobbet kör
+hela sviten på en ren runner och är required check. Att öppna PR:en för att få
+den körningen är rätt åtgärd — det är inte att kringgå kravet, det är att flytta
+mätningen till en maskin som kan utföra den. Det som ALDRIG är rätt är att
+redovisa ett tal man inte mätt, eller att kalla en avbruten körning grön.
+
 ---
 
 ## Arkitektur
@@ -991,6 +1019,46 @@ skillnaden är att identifieraren står i en kommentar respektive i kod, och kr�
 motsatt utfall. Ett prov som bara visar det positiva fallet skiljer inte en
 läsande regel från en blind.
 
+### Men EN VY PER FRÅGA — `codeMask` överallt gör vakten stum
+
+Punkt 1 ovan är rätt och farlig på samma gång. Läst som "byt allt till
+`codeMask`" tar den bort skärpan i stället för att lägga till den, och resultatet
+ser MODERNT ut: vakten går via den delade skannern, kör dess kanariefåglar och
+är grön. Den mäter bara ingenting längre.
+
+Uppmätt i tre av tio migrerade vakter. Skarpast i `check-redact-copies`, där
+fältnamnen ÄR strängar:
+
+```
+fältnamn ur SENSITIVE_FIELD_NAMES   råtext 11 · blankComments 11 · codeMask 11
+```
+
+Elva även med `codeMask` — men **alla elva är blanksteg**. `/'([^']+)'/` matchar
+`'              '` lika gärna som `'personalNumber'`. Med den ändringen inlagd
+förblev den skarpa körningen grön och skrev fortfarande "11 fältnamn", medan
+fältöverlappet aldrig mer kunde bli sant.
+
+**Välj vy efter vad frågan handlar om:**
+
+| vy                         | svarar på                                         | exempel                                                                                         |
+| -------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `codeMask`                 | är det här ett ANROP, en definition, ett villkor? | `platformInvoice.create(`, `function redactSensitive`, parentes- och klammermatchning           |
+| `blankComments`            | det som BOR i en sträng                           | rå SQL (`INSERT INTO "…"`), fältnamn, låsnycklar, nollställning i strängform (`feeAmount: '0'`) |
+| `tokenize` → kommentarerna | markörer som med FLIT är kommentarer              | `redact-copy-allow:`, `KLASSIFICERING: B`                                                       |
+
+Alla tre bevarar längd och radbrytningar, så radnumren pekar på råfilen och
+samma index kan användas i flera vyer av samma fil.
+
+**Frågan att ställa innan du byter mask:** var bor det jag letar efter — i kod,
+i en sträng, eller i en kommentar? Svarar du "i en sträng" är `codeMask` fel
+verktyg, och felet är tyst.
+
+**Och en mask räcker sällan.** `check-reminder-fee-source` behöver båda samtidigt:
+närhetsfönstret måste läsa KOD (annars uppfyller en kommentar som nämner
+resolvern kravet), medan nollställningen måste läsa STRÄNGAR (annars blir
+`feeAmount: '0'` ett falskt larm). Lösningen är två positionsbevarande masker och
+ett INTERVALL i stället för en delsträng, så samma index gäller i båda.
+
 ---
 
 ## Ett för svagt prov ser ut precis som blindhet
@@ -1295,6 +1363,67 @@ dessutom alltid, så ett mellanslag i sökvägen inte splittar argumentet.
 Skyddet ligger då i kommandot i stället för i att någon läste det noga, vilket
 gör felet omöjligt i stället för osannolikt.
 
+### Ett variabelnamn med å/ä/ö är inte ett variabelnamn
+
+Mekanik, inte stilfråga. Ett skalvariabelnamn får bara innehålla `[A-Za-z_]`
+följt av `[A-Za-z0-9_]`. `MÅL=abc` är alltså ingen tilldelning — skalet läser det
+som ett KOMMANDO:
+
+```bash
+MÅL=4dfefbc
+# bash: MÅL=4dfefbc: command not found     ← går till stderr, exitkod 127
+```
+
+Det farliga är vad som händer sedan — och det är INTE det man gissar. Jag skrev
+först "expanderar till tom sträng" här. Mätningen sa annat:
+
+```bash
+MÅL=4dfefbc                      # bash: MÅL=4dfefbc: command not found  (exit 127)
+rev=4dfefbc
+[ "$rev" = "$MÅL" ] && echo MATCH || echo "jamfor mot: \"$MÅL\""
+# → jamfor mot: "ÅL"
+```
+
+**Namnet slutar vid första tecknet som inte är `[A-Za-z0-9_]`.** `$MÅL` läses
+alltså som `${M}` följt av literalen `ÅL` — `M` är osatt, så kvar blir `ÅL`.
+Jämförelsen sker mot en skräpsträng, inte mot ingenting. Utfallet är detsamma
+(alltid falskt) men spåret är ett annat, och den som letar efter en tom sträng
+letar fel.
+
+Samma sak syns i utskrifter: `printf '%s' "$LÄGE"` skriver `ÄGE` på varje rad,
+vilket ser ut som ett trunkeringsfel i formatsträngen och inte som ett
+variabelnamn som aldrig fanns.
+
+I aritmetik faller det högt i stället för tyst — men räknaren står ändå stilla:
+
+```bash
+RÖDA=$((RÖDA+1))
+# bash: RÖDA+1: syntax error: invalid arithmetic operator (error token is "ÖDA+1")
+```
+
+Det bet mig **tre gånger på en dag** — i en resultattabell (`LÄGE` blev `ÄGE` i
+varje rad), i en räknare (`RÖDA` räknade aldrig), och i en prod-bevakning som
+pollade `/v1/health` i tjugo minuter utan att någonsin kunna matcha. Tre gånger
+på en dag i en kodbas som skriver allt annat på svenska är inte otur; det är ett
+mönster.
+
+**Regeln: ASCII i skalvariabler, svenska i strängarna.** `MAL`, `LAGE`, `RODA` —
+utskriften får gärna heta "läge", variabeln får inte.
+
+```bash
+# FEL — tyst alltid-falskt
+MÅL=$(git rev-parse HEAD); [ "$rev" = "$MÅL" ] && echo klart
+
+# RÄTT
+MAL=$(git rev-parse HEAD); [ "$rev" = "$MAL" ] && echo klart
+```
+
+Samma familj som `${VAR:?}` ovan: båda handlar om att en variabel som inte kan
+sättas expanderar till NÅGOT ANNAT än det du menade i stället för att stoppa
+körningen. `:?` gör det till ett fel; här går det rakt in i ett villkor. Och
+felmeddelandet finns — det går bara till stderr, i en loop där tjugo andra rader
+skrivs, och exitkoden 127 tillhör en tilldelning ingen kontrollerar.
+
 ### En grön check efter en edit betyder inget om diffen är tom
 
 `cd` som faller i en kommandokedja, en `python3 -c` som körs från fel katalog, en
@@ -1365,6 +1494,51 @@ utfallet blir obegripligt — eller värre, ser rimligt ut.
 
 Samma familj: **branch FÖRST, commit sedan.** Committat PR-arbete direkt på
 `main` upptäcktes bara för att `git pull --ff-only` vägrade.
+
+### `git checkout <ref> -- <fil>` är INTE ett sätt att läsa en annan version
+
+Avsnittet ovan handlar om att en återställning ska LYCKAS. Det här handlar om
+att den inte ska ske alls.
+
+`git checkout <ref> -- <fil>` **skriver över arbetskopian OCH stagar den**. Det
+är inte en biverkning utan hela kommandots uppgift — men det är sällan det man
+är ute efter när man skriver det. Det vanliga ärendet är "jag vill se hur den
+här filen såg ut i `main`", och då är kommandot fel verktyg med ett namn som
+inte antyder det.
+
+Uppmätt:
+
+```bash
+git checkout HEAD~1 -- f.txt
+git status --short
+# M  f.txt        ← M i FÖRSTA kolumnen = INDEX. Ändringen är redan stagad.
+
+git show HEAD~1:f.txt
+# skriver innehållet till stdout; arbetskopian orörd, git status 0 rader
+```
+
+**Tecknet att titta efter är kolumnen.** ` M` (mellanslag först) är en
+arbetskopieändring du gjort. `M ` (M först) betyder att något redan lagt den i
+indexet åt dig — och nästa `git commit` tar med den utan att fråga.
+
+Kostnaden är mätt, inte befarad: en läsning av `main`s version av
+`check-cron-classification.mjs` för att belägga ett ärende tog samtidigt bort en
+nyss committad ändring i samma fil och stagade återställningen. Det fångades
+bara av ett `git status` direkt efteråt.
+
+**De två ärendena, och kommandot för vart och ett:**
+
+```bash
+git show <ref>:<fil>            # LÄSA en annan version — skriver inget, stagar inget
+git show <ref>:<fil> > /tmp/x   # …och spara den vid sidan av, utan att röra trädet
+git checkout <ref> -- <fil>     # ÄNDRA arbetskopian till den versionen (stagas)
+git restore --source=<ref> -- <fil>          # samma sak, men utan att staga
+git restore --staged --worktree --source=HEAD -- <fil>   # ångra det du just gjorde
+```
+
+Behöver du köra en gammal version av ett skript — inte bara läsa den — skriv ut
+den till scratchpad-katalogen och kör den därifrån. Trädet ska aldrig behöva
+byta version för att du ska kunna jämföra två.
 
 ### Worktrees delar `.git` — `reset --soft origin/main` drar in den andra strömmens arbete som BORTTAGNINGAR
 
