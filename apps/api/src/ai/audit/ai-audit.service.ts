@@ -5,7 +5,11 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { applyPatterns, AUDIT_PATTERNS, REPLACEMENT } from '../../common/redaction/patterns'
+import type { Prisma } from '@prisma/client'
 import type { AiToolEffect } from '../../common/ai-effects/ai-effects.context'
+
+/** Prismas transaktionsklient — den enda ytan writeInTransaction behöver. */
+type TransactionClient = Prisma.TransactionClient
 
 // Mönster för svenska personnummer (10 eller 12 siffror, valfri separator).
 // Vi maskerar dessa innan de sparas i AiToolExecution.toolInput/toolResult
@@ -206,6 +210,8 @@ export class AiAuditService {
      * hade hållit.
      */
     effects?: AiToolEffect[]
+    /** Sätts av TRANSAKTIONELL-vägen, som skriver raden inne i verktygets tx. */
+    completedAt?: Date
   }): Promise<void> {
     try {
       const sanitizedInput = sanitizeForAudit(args.toolInput)
@@ -227,6 +233,11 @@ export class AiAuditService {
           durationMs: args.durationMs,
           requiredConfirmation: args.requiredConfirmation ?? false,
           confirmedAt: args.confirmedAt ?? null,
+          // En rad som skrivs HÄR är per definition fullbordad — vägen skriver
+          // efter körningen. Utan den här raden hade BÄST_MÖJLIGA-vägens rader
+          // varit omöjliga att skilja från en påbörjad, och då hade det nya
+          // tillståndet betytt två saker igen.
+          completedAt: args.completedAt ?? new Date(),
           // NÄSTLAD SKRIVNING, inte en andra `create`. Effekterna hör till
           // auditraden och ska dela dess öde: blir raden inte skriven ska
           // effekterna inte heller finnas, för de pekar då på ett
@@ -251,5 +262,159 @@ export class AiAuditService {
         `Kunde inte spara AiToolExecution för ${args.toolName}: ${err instanceof Error ? err.message : String(err)}`,
       )
     }
+  }
+
+  /**
+   * ÖPPNAR spåret — FÖRE effekten, och INVÄNTAT.
+   *
+   * Raden committas innan verktyget kör. Kraschar processen mitt i står den kvar
+   * med `completedAt = null`, och det tillståndet är läsbart: *påbörjad, utfallet
+   * odefinierat*. Det är hela poängen — ett spår som skrivs efteråt kan försvinna
+   * tyst, och en tom effektlista betyder då två saker.
+   *
+   * ⚠️ DEN HÄR FÅR INTE VARA `void` OCH FÅR INTE SVÄLJA SITT FEL. Bägge hade
+   * gjort "före" till en förhoppning: går skrivningen inte igenom ska verktyget
+   * inte köra, för då finns ingen rad att stänga. Kastet är avsiktligt och är
+   * skillnaden mot `logToolExecution` ovan.
+   */
+  async beginToolExecution(args: {
+    id: string
+    organizationId: string
+    userId?: string | null
+    tenantId?: string | null
+    conversationId?: string | null
+    toolName: string
+    toolInput: Record<string, unknown>
+    requiredConfirmation?: boolean
+    confirmedAt?: Date | null
+  }): Promise<void> {
+    await this.prisma.aiToolExecution.create({
+      data: {
+        id: args.id,
+        organizationId: args.organizationId,
+        userId: args.userId ?? null,
+        tenantId: args.tenantId ?? null,
+        conversationId: args.conversationId ?? null,
+        toolName: args.toolName,
+        toolInput: sanitizeForAudit(args.toolInput) as object,
+        // PÅBÖRJAD: success/durationMs är platshållare tills raden stängs.
+        // `completedAt = null` är det som bär tillståndet — inte de här.
+        success: false,
+        durationMs: 0,
+        requiredConfirmation: args.requiredConfirmation ?? false,
+        confirmedAt: args.confirmedAt ?? null,
+        completedAt: null,
+      },
+    })
+  }
+
+  /**
+   * STÄNGER spåret — på BÅDA vägarna, även när verktyget kastade.
+   *
+   * En "påbörjad" som egentligen betyder "misslyckades" vore samma tvetydighet i
+   * ny förklädnad: `completedAt` sätts därför också på felvägen, med
+   * `success: false`. Påbörjad ska betyda EN sak — vi kom aldrig tillbaka.
+   *
+   * Misslyckas stängningen sväljs den (WARN), som förut: raden finns redan och
+   * står kvar som påbörjad, vilket är ett ärligt läge. Att kasta här hade
+   * däremot dolt verktygets eget utfall bakom ett auditfel.
+   */
+  async completeToolExecution(args: {
+    id: string
+    toolName: string
+    toolResult?: unknown
+    success: boolean
+    errorMessage?: string | null
+    durationMs: number
+    effects?: AiToolEffect[]
+    organizationId: string
+  }): Promise<void> {
+    try {
+      const sanitizedResult =
+        args.toolResult !== undefined ? sanitizeForAudit(args.toolResult) : undefined
+      await this.prisma.aiToolExecution.update({
+        where: { id: args.id },
+        data: {
+          ...(sanitizedResult !== undefined ? { toolResult: sanitizedResult as object } : {}),
+          success: args.success,
+          errorMessage: args.errorMessage ?? null,
+          durationMs: args.durationMs,
+          completedAt: new Date(),
+          ...(args.effects && args.effects.length > 0
+            ? {
+                effects: {
+                  create: args.effects.map((e) => ({
+                    organizationId: args.organizationId,
+                    entityType: e.entityType,
+                    entityId: e.entityId,
+                    operation: e.operation,
+                    rowCount: e.rowCount,
+                  })),
+                },
+              }
+            : {}),
+        },
+      })
+    } catch (err) {
+      this.logger.warn(
+        `Kunde inte stänga AiToolExecution för ${args.toolName}: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  }
+
+  /**
+   * TRANSAKTIONELL: skriver spåret INNE i anroparens transaktion.
+   *
+   * Bara för de vägar där HELA effekten redan ryms i en transaktion som
+   * verktyget självt öppnar — `create_journal_entry` och `record_expense`. Rullas
+   * den tillbaka försvinner spåret MED effekten, vilket är skillnaden mot allt
+   * annat i den här filen.
+   *
+   * ⚠️ INGEN try/catch. Ett fel här SKA rulla tillbaka verktygets transaktion:
+   * poängen är att raden och effekten delar öde. Att svälja felet hade gett
+   * effekten utan spår — precis det tillstånd deklarationen påstår är omöjligt.
+   */
+  async writeInTransaction(
+    tx: TransactionClient,
+    args: {
+      id: string
+      organizationId: string
+      userId?: string | null
+      conversationId?: string | null
+      toolName: string
+      toolInput: Record<string, unknown>
+      requiredConfirmation?: boolean
+      confirmedAt?: Date | null
+      effects: AiToolEffect[]
+    },
+  ): Promise<void> {
+    await tx.aiToolExecution.create({
+      data: {
+        id: args.id,
+        organizationId: args.organizationId,
+        userId: args.userId ?? null,
+        conversationId: args.conversationId ?? null,
+        toolName: args.toolName,
+        toolInput: sanitizeForAudit(args.toolInput) as object,
+        success: true,
+        durationMs: 0,
+        requiredConfirmation: args.requiredConfirmation ?? false,
+        confirmedAt: args.confirmedAt ?? null,
+        completedAt: new Date(),
+        ...(args.effects.length > 0
+          ? {
+              effects: {
+                create: args.effects.map((e) => ({
+                  organizationId: args.organizationId,
+                  entityType: e.entityType,
+                  entityId: e.entityId,
+                  operation: e.operation,
+                  rowCount: e.rowCount,
+                })),
+              },
+            }
+          : {}),
+      },
+    })
   }
 }

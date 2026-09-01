@@ -57,7 +57,12 @@ function makeExecutor(prisma: unknown) {
   const verifikationsnummer = {
     allocate: jest.fn().mockResolvedValue({ series: 'A', verNumber: 43, fiscalYear: 2026 }),
   }
-  const audit = { logToolExecution: jest.fn().mockResolvedValue(undefined) }
+  const audit = {
+    logToolExecution: jest.fn().mockResolvedValue(undefined),
+    // Steg 3b: produktionsvägen öppnar och stänger spåret för FÖRE_EFFEKTEN-verktyg.
+    beginToolExecution: jest.fn().mockResolvedValue(undefined),
+    completeToolExecution: jest.fn().mockResolvedValue(undefined),
+  }
   const args: unknown[] = Array.from({ length: 32 }, () => noop)
   args[0] = prisma
   args[9] = verifikationsnummer

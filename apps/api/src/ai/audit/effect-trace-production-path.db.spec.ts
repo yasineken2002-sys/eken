@@ -222,9 +222,17 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
     for (;;) {
       const rad = await prisma.aiToolExecution.findFirst({
         where: { organizationId: orgId, toolName },
-        select: { id: true, effects: { select: { entityType: true, entityId: true } } },
+        select: {
+          id: true,
+          completedAt: true,
+          effects: { select: { entityType: true, entityId: true } },
+        },
       })
-      if (rad) return rad
+      // ⚠️ VÄNTA PÅ ATT RADEN STÄNGS, inte på att den finns. Sedan steg 3b
+      // skrivs raden FÖRE körningen för FÖRE_EFFEKTEN-verktyg, så "raden finns"
+      // betyder inte längre "spåret är komplett" — effekterna kommer med
+      // stängningen. Att bara vänta på raden gav 0 effekter och en röd spec.
+      if (rad?.completedAt) return rad
       if (Date.now() > deadline) return null
       await new Promise((r) => setTimeout(r, 100))
     }

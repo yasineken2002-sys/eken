@@ -153,24 +153,53 @@ medDb('traceIntegrity: TRANSAKTIONELL är falsifierbar', () => {
     const påstår = Object.entries(EFFECT_DECLARATIONS)
       .filter(([, d]) => d.traceIntegrity === 'TRANSAKTIONELL')
       .map(([namn]) => namn)
+      .sort()
 
-    // Talet står här med flit. Blir det > 0 utan att någon skrivit ett prov för
-    // vägen faller raden nedan, och det är avsikten: ingen får sätta
-    // TRANSAKTIONELL utan att något kan säga emot.
-    expect(påstår).toEqual([])
+    // LOOPEN ÄR INTE LÄNGRE TOM (steg 3b). Två verktyg skriver sitt spår inne i
+    // sin EGEN transaktion via `AiAuditService.writeInTransaction`, och bara de.
+    // Talet står här med flit: läggs ett tredje till utan att dess skrivväg
+    // faktiskt är transaktionell faller provet nedan.
+    expect(påstår).toEqual(['create_journal_entry', 'record_expense'])
 
     for (const namn of påstår) {
       const utfall = await provaRollback(async (tx, entityId, executionId) => {
-        void tx
-        void entityId
-        void executionId
-        throw new Error(
-          `Verktyget "${namn}" påstår traceIntegrity: TRANSAKTIONELL, men ingen ` +
-            'transaktionell skrivväg är kopplad in i det här provet. Koppla in den ' +
-            'eller ändra deklarationen.',
-        )
+        // EXAKT den väg verktyget använder — `writeInTransaction` på anroparens
+        // tx, inte en kopia av dess innehåll.
+        await audit.writeInTransaction(tx as Parameters<typeof audit.writeInTransaction>[0], {
+          id: executionId,
+          organizationId: orgId,
+          toolName: namn,
+          toolInput: {},
+          effects: [{ entityType: 'JournalEntry', entityId, operation: 'CREATE', rowCount: 1 }],
+        })
       })
-      expect(utfall).toEqual({ effektKvar: false, spårKvar: false })
+      // BÅDA försvann. Att spåret står kvar och pekar på en rad som aldrig blev
+      // till är värre än inget spår — det är ett revisionsspår som ljuger.
+      expect({ verktyg: namn, ...utfall }).toEqual({
+        verktyg: namn,
+        effektKvar: false,
+        spårKvar: false,
+      })
     }
+  })
+
+  it('KANARIEFÅGEL: predikatet är fortfarande skarpt — det underkänner BÄST_MÖJLIGA', async () => {
+    // Loopen ovan fylldes med två verktyg. Den får INTE tysta beviset att
+    // predikatet kan säga emot: om `provaRollback` av något skäl slutade mäta
+    // skulle båda testerna bli gröna, och den tomma loopens fälla vore tillbaka i
+    // ny form. Den här raden binder samma predikat till ett utfall som MÅSTE
+    // underkännas.
+    const utfall = await provaRollback(async (_tx, entityId, executionId) => {
+      await audit.logToolExecution({
+        id: executionId,
+        organizationId: orgId,
+        toolName: 'compose_and_send_email',
+        toolInput: {},
+        success: true,
+        durationMs: 1,
+        effects: [{ entityType: 'JournalEntry', entityId, operation: 'CREATE', rowCount: 1 }],
+      })
+    })
+    expect(utfall).toEqual({ effektKvar: false, spårKvar: true })
   })
 })

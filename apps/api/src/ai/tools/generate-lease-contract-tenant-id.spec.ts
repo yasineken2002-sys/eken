@@ -73,7 +73,12 @@ function makeExecutor(leaseRow: typeof LEASE | null = LEASE) {
   }
   const pdfService = { generateFromHtml: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4 test')) }
   const storage = { uploadFile: jest.fn().mockResolvedValue('https://r2.example/doc.pdf') }
-  const audit = { logToolExecution: jest.fn().mockResolvedValue(undefined) }
+  const audit = {
+    logToolExecution: jest.fn().mockResolvedValue(undefined),
+    // Steg 3b: produktionsvägen öppnar och stänger spåret för FÖRE_EFFEKTEN-verktyg.
+    beginToolExecution: jest.fn().mockResolvedValue(undefined),
+    completeToolExecution: jest.fn().mockResolvedValue(undefined),
+  }
   const noop = {} as never
 
   const executor = new ToolExecutorService(

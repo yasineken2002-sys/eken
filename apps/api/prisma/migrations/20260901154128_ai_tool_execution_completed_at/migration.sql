@@ -1,0 +1,14 @@
+-- Tre tillstånd i stället för två (steg 3b).
+--
+-- `completedAt = NULL` betyder PÅBÖRJAD: raden skrevs före körningen och vi kom
+-- aldrig tillbaka. `completedAt` satt betyder FULLBORDAD, och då — och först då
+-- — går det att lita på vad `AiToolEffect` säger.
+--
+-- Ingen befintlig kolumn kunde bära det: `success = false` betyder i dag BÅDE
+-- "verktyget kastade" och "raden skrevs aldrig färdigt".
+--
+-- BAKÅTKOMPATIBEL. Nullbar utan default, ingen backfill: alla BEFINTLIGA rader
+-- får NULL. Det är avsiktligt och det ärliga läget — de skrevs av den gamla
+-- vägen, som skrev raden EFTER körningen, så deras completedAt är okänd. En
+-- backfill till createdAt hade påstått något ingen mätt.
+ALTER TABLE "AiToolExecution" ADD COLUMN "completedAt" TIMESTAMP(3);

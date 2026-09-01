@@ -2742,6 +2742,29 @@ model AiToolExecution {
   durationMs           Int
   requiredConfirmation Boolean   @default(false)
   confirmedAt          DateTime?
+
+  // ── TRE TILLSTÅND, INTE TVÅ (steg 3b) ─────────────────────────────────────
+  //
+  // Raden skrivs numera FÖRE körningen för de verktyg som deklarerar
+  // `traceIntegrity: 'FÖRE_EFFEKTEN'`, och stängs efteråt. `completedAt` är det
+  // som skiljer lägena åt:
+  //
+  //   completedAt = NULL   PÅBÖRJAD — vi kom aldrig tillbaka. Kraschen ligger
+  //                        mellan raden och svaret, och vad den hann orsaka är
+  //                        ODEFINIERAT.
+  //   completedAt satt     FULLBORDAD. `effects` avgör då om den rörde något,
+  //                        och den uppgiften går att lita på.
+  //
+  // INGEN BEFINTLIG KOLUMN KAN BÄRA DET. `success: false` betyder i dag BÅDE
+  // "verktyget kastade" och "raden skrevs aldrig färdigt", och `durationMs` är
+  // 0 i båda fallen. Utan den här kolumnen är de tre tillstånden inte
+  // representerbara — det är hela skälet till migrationen.
+  //
+  // FELVÄGEN STÄNGER OCKSÅ SIN RAD. Ett verktyg som kastar sätter `completedAt`
+  // med `success: false`. En "påbörjad" som egentligen betyder "misslyckades"
+  // vore samma tvetydighet i ny förklädnad.
+  completedAt          DateTime?
+
   createdAt            DateTime  @default(now())
 
   // Revisionsspår: AI-verktygskörningar måste bevaras vid org-borttagning (Restrict).

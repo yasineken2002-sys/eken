@@ -1287,12 +1287,37 @@ export class AiAssistantService {
     const körning = await this.prisma.aiToolExecution.findFirst({
       where: { conversationId, toolName, confirmedAt: { not: null } },
       orderBy: { createdAt: 'desc' },
-      select: { createdAt: true, effects: { select: { entityType: true, rowCount: true } } },
+      select: {
+        createdAt: true,
+        completedAt: true,
+        effects: { select: { entityType: true, rowCount: true } },
+      },
     })
     if (!körning) {
       return 'Vad den orsakade går inte att visa här — se AI-loggen för konversationen.'
     }
     const när = körning.createdAt.toLocaleString('sv-SE')
+
+    // ── TILLSTÅND 1: PÅBÖRJAD ────────────────────────────────────────────────
+    //
+    // Raden skrevs och committades FÖRE körningen och stängdes aldrig: kraschen
+    // ligger mellan raden och svaret. Vad den hann orsaka är ODEFINIERAT.
+    //
+    // Det här läget fanns inte förut. En sådan körning såg ut som "registrerade
+    // inga dataändringar" — #586:s form, en tom logg som betyder två saker.
+    //
+    // Felvägen syns INTE här: ett verktyg som kastade stänger sin egen rad med
+    // `success: false`, så PÅBÖRJAD betyder exakt en sak.
+    if (körning.completedAt === null) {
+      return (
+        `Den PÅBÖRJADES ${när} men avslutades aldrig — körningen avbröts innan ` +
+        `utfallet kunde skrivas. Vad den hann orsaka är ODEFINIERAT: det kan vara ` +
+        `ingenting, eller något som inte hann bokföras här. Kontrollera i ` +
+        `AI-loggen innan du gör om åtgärden.`
+      )
+    }
+
+    // ── TILLSTÅND 2/3: FULLBORDAD, med eller utan effekter ───────────────────
     if (körning.effects.length === 0) {
       // Se docblocket: tom lista är ODEFINIERAD, inte "inget hände", så länge
       // spåret skrivs best-effort. Skälet står i svaret — en icke-uppgift utan
