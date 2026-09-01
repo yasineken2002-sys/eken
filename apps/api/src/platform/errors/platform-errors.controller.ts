@@ -66,6 +66,25 @@ export class PlatformErrorsController {
     return null
   }
 
+  /**
+   * ── ÖPPEN PUNKT: LÄSNINGEN ÄR INTE GRADERAD (#612) ─────────────────────────
+   *
+   * `PlatformGuard` skiljer inloggad från inte inloggad. Den skiljer INTE en
+   * plattformsanvändare från en annan, eftersom `PlatformUser` inte har något
+   * rollfält alls (`schema.prisma`). Varje inloggad plattformsadmin ser därför
+   * varje rad för varje organisation, med `message`, `stack` och `context` i
+   * klartext — och ingen läsning loggas (`ImpersonationLog` täcker
+   * impersonering, inte den här vyn).
+   *
+   * DET ÄR MEDVETET INTE LÖST HÄR. I dag finns två plattformsanvändare, båda
+   * grundare; en rollmodell nu vore arbete mot ett problem som ännu inte finns.
+   *
+   * VILLKORET, UTSKRIVET: detta ska lösas INNAN någon utanför de två grundarna
+   * får admin-inlogg. Den som skapar den tredje plattformsanvändaren äger
+   * frågan. Fram till dess är exponeringen begränsad av fristen
+   * (`error-log-retention.ts`) och av att skrivvägen är stängd — inte av vem som
+   * läser.
+   */
   @Get()
   @Public()
   @UseGuards(PlatformGuard)

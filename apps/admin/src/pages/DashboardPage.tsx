@@ -43,8 +43,10 @@ type ActivityEvent =
       type: 'CRITICAL_ERROR'
       timestamp: string
       data: {
+        // #612: ingen `message`. Aktivitetsflödet visar ATT ett kritiskt fel
+        // inträffade — feltexten är fritext som kan bära persondata och bor i
+        // fel-loggen, inte här.
         id: string
-        message: string
         source: string
         organization: { id: string; name: string } | null
       }
@@ -215,7 +217,7 @@ export function DashboardPage() {
                     ) : (
                       <>
                         <div className="truncate text-[13px] text-gray-900">
-                          Kritiskt fel: {e.data.message}
+                          Kritiskt fel i {e.data.source}
                         </div>
                         <div className="mt-0.5 flex items-center gap-2">
                           <SeverityBadge severity="CRITICAL" />

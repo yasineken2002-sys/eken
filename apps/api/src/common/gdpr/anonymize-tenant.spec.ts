@@ -35,6 +35,15 @@ interface FakeState {
   aiTenantMessages: { conversationId: string }[]
   aiToolExecutions: { tenantId: string | null }[]
   aiUsageLogs: { tenantId: string | null }[]
+  /**
+   * #612: varje `$executeRaw`-anrop, med de bundna värdena.
+   *
+   * Attrappen kan inte köra SQL — att FRÅGAN matchar rätt rader prövas mot
+   * riktig Postgres i `anonymize-errorlog.db.spec.ts`. Det som mäts här är att
+   * steget är PÅKOPPLAT och får rätt nål, vilket är den halvan som historiskt
+   * går sönder tyst.
+   */
+  rawCalls: { sql: string; values: unknown[] }[]
 }
 
 function freshState(): FakeState {
@@ -90,6 +99,7 @@ function freshState(): FakeState {
     ],
     aiToolExecutions: [{ tenantId: TENANT }, { tenantId: 'annan-hyresgast' }, { tenantId: null }],
     aiUsageLogs: [{ tenantId: TENANT }, { tenantId: TENANT }, { tenantId: 'annan-hyresgast' }],
+    rawCalls: [],
   }
 }
 
@@ -169,6 +179,12 @@ function fakeTx(state: FakeState) {
         }
         return { count: n }
       },
+    },
+    // #612: `purgeTenantErrorLogRows` går via rå SQL. Attrappen spelar in
+    // anropet i stället för att köra det — se `rawCalls` ovan.
+    $executeRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      state.rawCalls.push({ sql: strings.join('?'), values })
+      return 0
     },
     tenantAnonymizationLog: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
@@ -368,6 +384,48 @@ describe('AI-lagret — riktad skrubbning där tenantId finns', () => {
     // dem kastar aiDelegate "Okänd modell" och det här faller.
     const state = freshState()
     await expect(anonymizeTenantWithin(fakeTx(state), TENANT, ORG, ACTOR)).resolves.toBeDefined()
+  })
+})
+
+describe('felloggen (#612)', () => {
+  /**
+   * PÅKOPPLINGEN, PÅ ENHETSNIVÅ.
+   *
+   * Att FRÅGAN matchar rätt rader prövas mot riktig Postgres i
+   * `anonymize-errorlog.db.spec.ts` — en attrapp kan inte köra `::text` och
+   * `position()`. Det som mäts här är att steget körs alls och får hyresgästens
+   * id som bundet värde, så att en bortkopplad rad fäller ETT test till även när
+   * db-riggarna hoppas över (t.ex. i en miljö utan DATABASE_URL).
+   */
+  it('kör ErrorLog-raderingen med hyresgästens id som bundet värde', async () => {
+    const state = freshState()
+    await anonymizeTenantWithin(fakeTx(state), TENANT, ORG, ACTOR)
+
+    const errorLogAnrop = state.rawCalls.filter((c) => c.sql.includes('"ErrorLog"'))
+    expect(errorLogAnrop).toHaveLength(1)
+    expect(errorLogAnrop[0]?.values).toEqual([TENANT, TENANT, TENANT])
+  })
+
+  it('id:t BINDS, det interpoleras inte in i SQL-texten', () => {
+    const state = freshState()
+    return anonymizeTenantWithin(fakeTx(state), TENANT, ORG, ACTOR).then(() => {
+      const sql = state.rawCalls.find((c) => c.sql.includes('"ErrorLog"'))?.sql ?? ''
+      // Nålen är en UUID från en raderingsbegäran; hamnar den i SQL-TEXTEN i
+      // stället för bland parametrarna är det både en injektionsyta och ett
+      // tecken på att någon bytt `$executeRaw` mot `$executeRawUnsafe`.
+      expect(sql).not.toContain(TENANT)
+    })
+  })
+
+  it('körs ÄVEN på en redan avidentifierad hyresgäst — nya felrader ska också falla', async () => {
+    const state = freshState()
+    await anonymizeTenantWithin(fakeTx(state), TENANT, ORG, ACTOR)
+
+    const efterFörsta = freshState()
+    efterFörsta.tenant['anonymizedAt'] = new Date('2026-01-01')
+    await anonymizeTenantWithin(fakeTx(efterFörsta), TENANT, ORG, ACTOR)
+
+    expect(efterFörsta.rawCalls.filter((c) => c.sql.includes('"ErrorLog"'))).toHaveLength(1)
   })
 })
 

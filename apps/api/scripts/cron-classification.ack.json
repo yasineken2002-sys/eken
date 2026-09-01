@@ -102,6 +102,10 @@
     "platform/invoices/platform-invoices.service.ts::sendTrialEndingRemindersCron": {
       "class": "B",
       "invariant": "Mail-kön dedupar på idempotencyKey platform-trial-reminder-<orgId>-step<steg> (Bull jobId) — samma steg kan bara ge ett mejl oavsett antal körningar."
+    },
+    "platform/errors/error-log-retention.service.ts::scheduledRetention": {
+      "class": "B",
+      "invariant": "deleteMany på ErrorLog med id: { in: [...] } där listan kommer ur en findMany på createdAt < hinkens gräns — raderade rader kan inte raderas igen, så en samtidig andra körning träffar noll rader. Inga räknare och inga sidoeffekter utanför tabellen."
     }
   }
 }

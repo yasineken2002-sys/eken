@@ -72,11 +72,26 @@ export class PlatformStatsService {
         take: limit,
         include: { organization: { select: { id: true, name: true } } },
       }),
+      // #612: `message` LÄSES INTE HIT. Fritexten kan bära e-post, personnummer,
+      // belopp och motpart (mätt i #612), och aktivitetsflödet behöver den inte
+      // för att göra sitt jobb — det ska säga ATT ett kritiskt fel inträffade,
+      // för vilken org och när. Den som ska utreda klickar vidare till
+      // fel-loggen, där texten hör hemma och där åtkomsten är samma sak som
+      // rutten redan kräver.
+      //
+      // `select` i stället för `include`: fältet plockas inte upp i minnet
+      // heller, så en framtida `...e` i mappningen nedan kan inte råka
+      // återinföra det.
       this.prisma.errorLog.findMany({
         where: { severity: 'CRITICAL' },
         orderBy: { createdAt: 'desc' },
         take: limit,
-        include: { organization: { select: { id: true, name: true } } },
+        select: {
+          id: true,
+          source: true,
+          createdAt: true,
+          organization: { select: { id: true, name: true } },
+        },
       }),
     ])
 
@@ -101,7 +116,6 @@ export class PlatformStatsService {
         timestamp: e.createdAt.toISOString(),
         data: {
           id: e.id,
-          message: e.message,
           source: e.source,
           organization: e.organization,
         },

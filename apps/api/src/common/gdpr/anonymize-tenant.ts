@@ -204,6 +204,73 @@ export async function scrubAiTenantLinks(
 }
 
 /**
+ * ── ErrorLog: RADERA, INTE MASKERA (#612) ───────────────────────────────────
+ *
+ * `ErrorLog.message` och `.stack` är OSTRUKTURERAD fritext från kastade fel.
+ * Mätt i #612 mot dev-databasen: ett `PrismaClientValidationError` skriver ut
+ * hela argumentobjektet — `email`, `personalNumber`, `phone`, `street`
+ * ordagrant — och ett Postgres-constraintfel bär `Failing row contains (…)`
+ * med varje kolumnvärde i raden.
+ *
+ * EN FRITEXTKOLUMN GÅR INTE ATT ANONYMISERA, BARA ATT RADERA. Det är hela
+ * skälet till att det här steget tar bort rader i stället för att nolla fält,
+ * och det är en annan avvägning än resten av filen gör:
+ *
+ *   • Att maskera kända fält (som `tenant.update()` ovan gör) förutsätter att
+ *     man VET vilka fält som bär personuppgiften. I fritext vet man det inte.
+ *   • Att söka-och-ersätta namn/e-post i texten hade blivit en heuristik som
+ *     ibland missar (avstavning, escaping, en Prisma-dump med citattecken) och
+ *     ibland träffar fel rad. En avidentifiering som "ibland" fungerar är inte
+ *     en avidentifiering.
+ *   • Raden har inget bevarandeskäl som väger emot. Den är ett DRIFTVERKTYG
+ *     (beslutat i #612, se `schema.prisma` och `error-log-retention.ts`), inte
+ *     räkenskapsmaterial och inte ett revisionsspår över hyresvärdens
+ *     handlingar. Jämför `SentMessage` nedan, som INTE skrubbas just för att
+ *     den kan ha en bevisfunktion.
+ *
+ * ── VARFÖR MATCHNINGEN ÄR PÅ FORMEN, INTE PÅ EN NYCKELLISTA ─────────────────
+ *
+ * Frågan matchar hyresgästens UUID var som helst i `message`, `stack` eller den
+ * serialiserade `context`. Alternativet — att räkna upp de kontextnycklar som
+ * i dag bär ett tenant-id (`context.tenantId` skrivs från
+ * `tenant-auth.service.ts`, och id:t kan stå i `context.path` för en 500 på
+ * `/v1/tenants/<id>`) — är en UPPRÄKNING som slutar stämma första gången någon
+ * lägger till en ny `detail: { … }`. Den nya nyckeln hade då inte fällt något
+ * test; raden hade bara tyst blivit kvar. Matcha formen, inte listan.
+ *
+ * Falska träffar är i praktiken uteslutna: nålen är en full UUID.
+ *
+ * ── VAD STEGET INTE KAN NÅ, UTSKRIVET ───────────────────────────────────────
+ *
+ * En rad som nämner hyresgästen ENBART med namn, e-post eller personnummer och
+ * aldrig med sitt UUID träffas inte. Att fånga den hade krävt textmatchning på
+ * identifierarna, som måste läsas FÖRE `tenant.update()` (se kommentaren vid
+ * AI-blocket nedan) och som bär just de träffsäkerhetsproblem som avfärdas
+ * ovan. För den resten är svaret FRISTEN i `error-log-retention.ts` — 30 dagar
+ * löst, 180 olöst — inte den här funktionen. De två mekanismerna täcker olika
+ * saker: den här är personen, fristen är tiden.
+ *
+ * ── INGEN ORG-AVGRÄNSNING, MED FLIT ─────────────────────────────────────────
+ *
+ * Frågan filtrerar inte på `organizationId`. En ErrorLog-rad kan ha
+ * `organizationId = null` (HTTP-fel före inloggning, frontend-rapporter) och
+ * ändå bära hyresgästens id. Hade vi avgränsat på org hade just de raderna
+ * överlevt raderingsbegäran. UUID:t ÄR avgränsningen.
+ */
+export async function purgeTenantErrorLogRows(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+): Promise<number> {
+  // Parametriserad — `tenantId` binds, den interpoleras inte in i SQL:en.
+  return tx.$executeRaw`
+    DELETE FROM "ErrorLog"
+    WHERE position(${tenantId} in "message") > 0
+       OR position(${tenantId} in coalesce("stack", '')) > 0
+       OR position(${tenantId} in "context"::text) > 0
+  `
+}
+
+/**
  * Kör avidentifieringen inuti en befintlig transaktion.
  *
  * Anroparen äger transaktionen, eftersom operatörsvägen behöver läsa grindar i
@@ -304,6 +371,18 @@ export async function anonymizeTenantWithin(
   // Körs även när `alreadyDone` är true: funktionen är idempotent och ska fånga
   // AI-data som tillkommit efter den första körningen.
   await scrubAiTenantLinks(tx, tenantId)
+
+  // ── FELLOGGEN ─────────────────────────────────────────────────────────────
+  //
+  // Ligger här av samma skäl som AI-blocket ovan: steget är ID-BASERAT och
+  // matchar på hyresgästens UUID, som `tenant.update()` aldrig rör. Nålen finns
+  // alltså kvar oförändrad. Se docblocket vid `purgeTenantErrorLogRows` för
+  // varför raderna raderas i stället för att maskeras.
+  //
+  // Körs även när `alreadyDone` är true: en ny felrad kan ha skrivits efter den
+  // första körningen, och funktionen ska vara idempotent i sluttillstånd — inte
+  // bara i sin första körning.
+  await purgeTenantErrorLogRows(tx, tenantId)
 
   if (!alreadyDone) {
     await tx.tenantAnonymizationLog.create({
