@@ -1,8 +1,8 @@
 {
   "$comment": "KVITTERINGAR — @Cron-jobb som ännu inte når den varaktiga felsänkan (common/cron/cron-error-sink.ts). Ärendet är #605.",
   "$howto": "Listan fäller ÅT BÅDA HÅLLEN: ett okvitterat jobb utan sänka är RÖTT, och en kvittering för ett jobb som REDAN når sänkan är också RÖTT. Konverterade du ett jobb? Ta bort posten. Lägg ALDRIG till en post utan att skriva VARFÖR och VEM som äger konverteringen — en kvitteringslista utan skäl är en lista över saker ingen minns varför de står där.",
-  "$note": "MÄTT mot 640ffad: 25 @Cron-jobb, 3 når ErrorLog-sänkan, 22 kvitterade. Av de kvitterade har 10 ENDAST den lokala loggen och 12 skriver till Sentry — men INGET av dem har en sänka någon kan läsa (se $vad_tackt_betyder). Skillnaden mellan grupperna är inte täckning utan ÅTERVINNINGSBARHET: Sentry behåller eventet, den lokala loggen gör det inte. 4 har den farliga per-org-formen. 2 ligger i ai/ (ström A). Talet ska bara gå NEDÅT.",
-  "total": 22,
+  "$note": "MÄTT mot e22135f: 25 @Cron-jobb, 8 når ErrorLog-sänkan, 17 kvitterade.\nAv de kvitterade: 3 med ENDAST lokal logg (varav 2 i ai/, ström A:s), 12 som skriver till Sentry, och 2 vars klassificering RÄTTATS (rapporteringen ligger ett lager ner i den inre tjänsten, inte i cron-metoden). INGET av dem har en sänka någon kan läsa — se $vad_tackt_betyder. Skillnaden mellan grupperna är inte täckning utan ÅTERVINNINGSBARHET. Talet ska bara gå NEDÅT.",
+  "total": 17,
   "jobs": {
     "ai/attachments/ai-attachments.service.ts::cleanupExpiredAttachments": {
       "reason": "INGEN LÄSBAR SÄNKA — ENBART LOKAL LOGG. Läsbar bara medan containern lever, och borta efter nästa deploy (204 merges till main på 30 dagar = minst lika många containerbyten). Alltså läsbart en kort stund och sedan OÅTERKALLELIGT borta. ström A äger apps/api/src/ai/ — konverteringen är deras."
@@ -26,16 +26,13 @@
       "reason": "INGEN LÄSBAR SÄNKA — SKRIVER TILL SENTRY. Felet lämnar processen, men ingen kan hämta det i dag. Skillnaden mot enbart lokal logg är att Sentry BEHÅLLER eventet: skaffas ett läs-token blir historiken läsbar i efterhand. Alltså oläsbart men ÅTERVINNINGSBART. PER-ORG-TYST: fångar fel inuti loopen, räknar upp en räknare och fortsätter — körningen rapporterar \"n lyckade, m misslyckade\" och SER LYCKAD UT. ligger i avisering/, utanför common/ — konverteringen kräver ett eget PR."
     },
     "backup/backup.scheduler.ts::dailyBackup": {
-      "reason": "INGEN LÄSBAR SÄNKA — ENBART LOKAL LOGG. Läsbar bara medan containern lever, och borta efter nästa deploy (204 merges till main på 30 dagar = minst lika många containerbyten). Alltså läsbart en kort stund och sedan OÅTERKALLELIGT borta. ligger i backup/, utanför common/ — konverteringen kräver ett eget PR."
+      "reason": "FELKLASSAT AV MIG, RÄTTAT 2026-09-01: stod som \"ENBART LOKAL LOGG\". Osant. Cron-metoden har en naken catch som sväljer MED FLIT, därför att den inre tjänsten redan larmar: backup.service.ts:509 anropar Sentry.captureException och backup-freshness.service.ts:237,255 anropar Sentry.captureMessage. Min mätning tittade bara på cron-metoden plus dess *Unsafe-delegat och såg därför inte ett lager ner. Nivån är alltså PARTIELLT TÄCKT (Sentry, oläsbart i dag men återvinningsbart), inte otäckt. KONVERTERINGEN HÖR HEMMA I DEN INRE TJÄNSTEN, inte i cron-metoden — ett sänkanrop i den nakna catchen hade rapporterat ett fel som redan är rapporterat, och gjort cron-metoden till en andra sanning om samma händelse. Eget steg."
     },
     "backup/backup.scheduler.ts::dailyFreshnessCheck": {
-      "reason": "INGEN LÄSBAR SÄNKA — ENBART LOKAL LOGG. Läsbar bara medan containern lever, och borta efter nästa deploy (204 merges till main på 30 dagar = minst lika många containerbyten). Alltså läsbart en kort stund och sedan OÅTERKALLELIGT borta. ligger i backup/, utanför common/ — konverteringen kräver ett eget PR."
+      "reason": "FELKLASSAT AV MIG, RÄTTAT 2026-09-01: stod som \"ENBART LOKAL LOGG\". Osant. Cron-metoden har en naken catch som sväljer MED FLIT, därför att den inre tjänsten redan larmar: backup.service.ts:509 anropar Sentry.captureException och backup-freshness.service.ts:237,255 anropar Sentry.captureMessage. Min mätning tittade bara på cron-metoden plus dess *Unsafe-delegat och såg därför inte ett lager ner. Nivån är alltså PARTIELLT TÄCKT (Sentry, oläsbart i dag men återvinningsbart), inte otäckt. KONVERTERINGEN HÖR HEMMA I DEN INRE TJÄNSTEN, inte i cron-metoden — ett sänkanrop i den nakna catchen hade rapporterat ett fel som redan är rapporterat, och gjort cron-metoden till en andra sanning om samma händelse. Eget steg."
     },
     "leases/leases.service.ts::processLifecycle": {
       "reason": "INGEN LÄSBAR SÄNKA — SKRIVER TILL SENTRY. Felet lämnar processen, men ingen kan hämta det i dag. Skillnaden mot enbart lokal logg är att Sentry BEHÅLLER eventet: skaffas ett läs-token blir historiken läsbar i efterhand. Alltså oläsbart men ÅTERVINNINGSBART. ligger i leases/, utanför common/ — konverteringen kräver ett eget PR."
-    },
-    "notifications/notifications.service.ts::deleteOld": {
-      "reason": "INGEN LÄSBAR SÄNKA — ENBART LOKAL LOGG. Läsbar bara medan containern lever, och borta efter nästa deploy (204 merges till main på 30 dagar = minst lika många containerbyten). Alltså läsbart en kort stund och sedan OÅTERKALLELIGT borta. ligger i notifications/, utanför common/ — konverteringen kräver ett eget PR."
     },
     "notifications/notifications.service.ts::markOverdueInvoices": {
       "reason": "INGEN LÄSBAR SÄNKA — SKRIVER TILL SENTRY. Felet lämnar processen, men ingen kan hämta det i dag. Skillnaden mot enbart lokal logg är att Sentry BEHÅLLER eventet: skaffas ett läs-token blir historiken läsbar i efterhand. Alltså oläsbart men ÅTERVINNINGSBART. ligger i notifications/, utanför common/ — konverteringen kräver ett eget PR."
@@ -45,9 +42,6 @@
     },
     "notifications/payment-reminder.service.ts::processOverdueReminders": {
       "reason": "INGEN LÄSBAR SÄNKA — SKRIVER TILL SENTRY. Felet lämnar processen, men ingen kan hämta det i dag. Skillnaden mot enbart lokal logg är att Sentry BEHÅLLER eventet: skaffas ett läs-token blir historiken läsbar i efterhand. Alltså oläsbart men ÅTERVINNINGSBART. PER-ORG-TYST: fångar fel inuti loopen, räknar upp en räknare och fortsätter — körningen rapporterar \"n lyckade, m misslyckade\" och SER LYCKAD UT. ligger i notifications/, utanför common/ — konverteringen kräver ett eget PR."
-    },
-    "platform/auth/platform-token-cleanup.service.ts::purgeExpired": {
-      "reason": "INGEN LÄSBAR SÄNKA — ENBART LOKAL LOGG. Läsbar bara medan containern lever, och borta efter nästa deploy (204 merges till main på 30 dagar = minst lika många containerbyten). Alltså läsbart en kort stund och sedan OÅTERKALLELIGT borta. ligger i platform/, utanför common/ — konverteringen kräver ett eget PR."
     },
     "platform/invoices/platform-invoices.service.ts::createMonthlyInvoicesCron": {
       "reason": "INGEN LÄSBAR SÄNKA — SKRIVER TILL SENTRY. Felet lämnar processen, men ingen kan hämta det i dag. Skillnaden mot enbart lokal logg är att Sentry BEHÅLLER eventet: skaffas ett läs-token blir historiken läsbar i efterhand. Alltså oläsbart men ÅTERVINNINGSBART. ligger i platform/, utanför common/ — konverteringen kräver ett eget PR."
@@ -60,17 +54,8 @@
     },
     "platform/invoices/platform-invoices.service.ts::sendTrialEndingReminders": {
       "reason": "INGEN LÄSBAR SÄNKA — ENBART LOKAL LOGG. Läsbar bara medan containern lever, och borta efter nästa deploy (204 merges till main på 30 dagar = minst lika många containerbyten). Alltså läsbart en kort stund och sedan OÅTERKALLELIGT borta. ligger i platform/, utanför common/ — konverteringen kräver ett eget PR."
-    },
-    "psd2/psd2-consent.service.ts::cleanupExpiredConsentStates": {
-      "reason": "INGEN LÄSBAR SÄNKA — ENBART LOKAL LOGG. Läsbar bara medan containern lever, och borta efter nästa deploy (204 merges till main på 30 dagar = minst lika många containerbyten). Alltså läsbart en kort stund och sedan OÅTERKALLELIGT borta. ligger i psd2/, utanför common/ — konverteringen kräver ett eget PR."
-    },
-    "tenant-portal/tenant-auth.service.ts::cleanupStaleSessions": {
-      "reason": "INGEN LÄSBAR SÄNKA — ENBART LOKAL LOGG. Läsbar bara medan containern lever, och borta efter nästa deploy (204 merges till main på 30 dagar = minst lika många containerbyten). Alltså läsbart en kort stund och sedan OÅTERKALLELIGT borta. ligger i tenant-portal/, utanför common/ — konverteringen kräver ett eget PR."
-    },
-    "tenant-portal/tenant-auth.service.ts::sendActivationReminders": {
-      "reason": "INGEN LÄSBAR SÄNKA — ENBART LOKAL LOGG. Läsbar bara medan containern lever, och borta efter nästa deploy (204 merges till main på 30 dagar = minst lika många containerbyten). Alltså läsbart en kort stund och sedan OÅTERKALLELIGT borta. ligger i tenant-portal/, utanför common/ — konverteringen kräver ett eget PR."
     }
   },
   "$vad_tackt_betyder": "TÄCKT betyder att en MÄNNISKA kan få reda på felet — inte att en skrivning skedde någonstans. En skrivning ingen kan läsa är inte täckning; den är samma tystnad som en lokal logg, bara dyrare. Därför står inget av de 25 jobben som täckt i dag. MÄTT 2026-09-01 mot 32cafba: Sentry går inte att LÄSA från den här driften. Railway-tjänsten `eken` har exakt två Sentry-variabler av 37 — SENTRY_DSN och SENTRY_RELEASE. En DSN auktoriserar att SKICKA events, inte att hämta dem. Inget auth-token finns, sentry-cli är inte installerad (varken i PATH eller node_modules/.bin), installerade paket är @sentry/nestjs och @sentry/profiling-node (båda skrivsidan), och ingen CI-workflow rör Sentry. Enda omnämnandet av SENTRY_AUTH_TOKEN i repot är docs/SENTRY_SETUP.md, som säger att det inte behövs. Ursprung: #587.",
-  "$batcher": "ORDNINGEN FÖLJER ÅTERVINNINGSBARHET, INTE ANTAL. Lokal-logg-jobben först: deras historik försvinner med containern och kommer aldrig tillbaka, medan Sentry-jobbens ligger kvar och blir läsbar den dag ett läs-token skaffas (#587). BATCH 1 (klar, #605): de 3 lokal-logg-jobben utanför ai/ som dessutom har per-org-formen — sendMorningInsights, sendWeeklySummary, sendMonthlyReport. Snittet härleddes: 13 lokal-logg → 11 utanför ai/ → 3 med per-org-form."
+  "$batcher": "ORDNINGEN FÖLJER ÅTERVINNINGSBARHET, INTE ANTAL. BATCH 1 (klar): de 3 rapportjobben med per-org-form. BATCH 2 (klar): 5 jobb — deleteOld, purgeExpired, cleanupExpiredConsentStates, cleanupStaleSessions, sendActivationReminders. Fyra av dem hade INGEN felhantering alls, så den lades till (C-formen); ett hade batch 1:s per-org-form. HÅLLET: de två backup-jobben (rapporteringen ligger ett lager ner) och sendTrialEndingReminders, som ÄVEN är en HTTP-endpoint (platform-invoices.controller.ts:154) — ett naivt runCronSafely hade svalt felet för HTTP-anroparen och gjort den vägen TYSTARE. Kräver eget beslut."
 }

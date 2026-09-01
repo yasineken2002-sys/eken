@@ -1,4 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common'
+import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
 import { MaintenanceModule } from '../maintenance/maintenance.module'
 import { NotificationsModule } from '../notifications/notifications.module'
 import { PrismaModule } from '../common/prisma/prisma.module'
@@ -18,6 +19,8 @@ import {
 
 @Module({
   imports: [
+    // CronErrorSinkModule (#605 batch 2) — importerar bara PrismaModule, ingen cykel.
+    CronErrorSinkModule,
     MaintenanceModule,
     NotificationsModule,
     PrismaModule,

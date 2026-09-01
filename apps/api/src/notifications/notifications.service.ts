@@ -240,6 +240,17 @@ export class NotificationsService implements OnModuleInit {
   // fäller CI, och ett B utan namngiven invariant likaså.
   @Cron('0 2 * * *')
   async deleteOld(): Promise<void> {
+    // #605 batch 2 — C-FORMEN. Jobbet hade ingen felhantering alls: ett kast
+    // lämnade @Cron-metoden till @nestjs/schedule, som loggar i containern och
+    // inget mer. Här fanns alltså ingen logg att lägga sänkan BREDVID (till
+    // skillnad från rapportjobben i samma fil) — felhanteringen läggs till.
+    await runCronSafely('notifications-delete-old', () => this.deleteOldUnsafe(), {
+      logger: this.logger,
+      sink: this.cronErrors,
+    })
+  }
+
+  private async deleteOldUnsafe(): Promise<void> {
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - 90)
     const result = await this.prisma.notification.deleteMany({

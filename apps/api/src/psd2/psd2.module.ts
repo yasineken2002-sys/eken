@@ -1,4 +1,5 @@
 import { BullModule } from '@nestjs/bull'
+import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
 import { Module, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { PrismaModule } from '../common/prisma/prisma.module'
@@ -28,6 +29,8 @@ import { StubBankDataProvider } from './providers/stub-bank-data.provider'
  */
 @Module({
   imports: [
+    // CronErrorSinkModule (#605 batch 2) — importerar bara PrismaModule, ingen cykel.
+    CronErrorSinkModule,
     PrismaModule,
     ReconciliationModule,
     BullModule.registerQueue({ name: PSD2_SYNC_QUEUE }),
