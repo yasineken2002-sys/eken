@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import * as Sentry from '@sentry/nestjs'
 import { BackupService, parseBackupKeyDate } from './backup.service'
+import { CronErrorSink } from '../common/cron/cron-error-sink'
 
 /**
  * BACKUPENS FÄRSKHET — larmar på ÅLDER, inte på fel.
@@ -191,7 +192,14 @@ export class BackupFreshnessService {
    */
   private senastLarmadSignatur: string | null = null
 
-  constructor(private readonly backup: BackupService) {}
+  constructor(
+    private readonly backup: BackupService,
+    /**
+     * #605 — VARAKTIG FELSÄNKA. `BackupScheduler.dailyFreshnessCheck` sväljer
+     * med flit; rapporteringen sker här, och bara här.
+     */
+    private readonly cronErrors: CronErrorSink,
+  ) {}
 
   /** Läser lagringen och utvärderar. Kastar aldrig — se `check()`. */
   async evaluate(now: Date = new Date()): Promise<BackupFreshnessVerdict> {
@@ -235,6 +243,9 @@ export class BackupFreshnessService {
         'som ett friskt läge.'
       this.logger.error(`${meddelande} (${err instanceof Error ? err.message : String(err)})`)
       Sentry.captureMessage(meddelande, 'error')
+      await this.cronErrors.report('backup-freshness', new Error(meddelande), {
+        detail: { steg: 'läsa-lagringen' },
+      })
       throw err
     }
 
@@ -253,6 +264,11 @@ export class BackupFreshnessService {
     if (this.senastLarmadSignatur !== signatur) {
       this.senastLarmadSignatur = signatur
       Sentry.captureMessage(text, 'error')
+      // Innanför dämpningen med flit: samma larm en gång per dygn, inte en gång
+      // per körning. En felkanal som upprepar sig slutar läsas.
+      await this.cronErrors.report('backup-freshness', new Error(text), {
+        detail: { steg: 'färskhetslarm', art: verdict.kind },
+      })
     }
 
     return verdict

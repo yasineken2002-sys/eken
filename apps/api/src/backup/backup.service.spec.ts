@@ -54,6 +54,7 @@ import {
 import { PrismaService } from '../common/prisma/prisma.service'
 import { BackupScheduler } from './backup.scheduler'
 import { BackupFreshnessService } from './backup-freshness.service'
+import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { alltidLedigtLås } from '../common/redis/lock.test-double'
 import { LockService } from '../common/redis/lock.service'
 
@@ -71,6 +72,13 @@ describe('BackupModule — initierar utan att krascha (boot-säkerhet)', () => {
         // att den nya beroendekanten faktiskt går att tillfredsställa är en del
         // av det, och en attrapp räcker: låsets beteende prövas i cron-lock.spec.
         { provide: LockService, useValue: alltidLedigtLås },
+        // #605 — den varaktiga felsänkan. Samma skäl som låset ovan: den nya
+        // beroendekanten ska gå att tillfredsställa.
+        //
+        // DET HÄR TESTET FÅNGADE ATT DEN SAKNADES. Enhetsspecar som konstruerar
+        // tjänsten för hand gör det inte — de rör aldrig DI-grafen — och det var
+        // precis den blindheten som lät en modulcykel nå CI i #605 batch 1.
+        { provide: CronErrorSink, useValue: { report: jest.fn(async () => undefined) } },
       ],
     }).compile()
 
@@ -117,11 +125,33 @@ function makeService(retentionDays = 30) {
     get: (k: string) =>
       (({ BACKUP_RETENTION_DAYS: String(retentionDays) }) as Record<string, string>)[k],
   }
-  return new BackupService(config as never, prismaStub() as never)
+  return new BackupService(
+    config as never,
+    prismaStub() as never,
+    // #605: en REGISTRERANDE attrapp, inte en kastande.
+    //
+    // De flesta specar i kodbasen får en attrapp som kastar om den anropas — så
+    // att ett test som råkar gå in i en felväg inte tyst passerar förbi
+    // rapporteringen. HÄR är det tvärtom: sviten driver felvägen MED FLIT
+    // (runBackup ska kasta och larma), så ett anrop är väntat och ska gå att
+    // assertera på.
+    cronErrorsSpy as never,
+  )
 }
 
+/** #605: registrerar sänkanropen så de går att assertera på. */
+const cronErrorsSpy = { report: jest.fn(async () => undefined) }
+
 function serviceWith(env: Record<string, string>) {
-  return new BackupService({ get: (k: string) => env[k] } as never, prismaStub() as never)
+  return new BackupService(
+    { get: (k: string) => env[k] } as never,
+    prismaStub() as never,
+    {
+      report: () => {
+        throw new Error('#605: cronErrors.report anropades oväntat i test')
+      },
+    } as never,
+  )
 }
 
 /** Prisma-dubbel: `server_version_num` som servern hade svarat. */
@@ -284,6 +314,7 @@ describe('BackupService.runBackup — förkontrollen kommer FÖRE allt annat', (
   it('kastar, larmar till Sentry med versionsbeskedet, och rör varken R2 eller filsystem', async () => {
     const Sentry = jest.requireMock('@sentry/nestjs') as { captureException: jest.Mock }
     Sentry.captureException.mockClear()
+    cronErrorsSpy.report.mockClear()
 
     const service = makeService()
     const priv = service as unknown as {
