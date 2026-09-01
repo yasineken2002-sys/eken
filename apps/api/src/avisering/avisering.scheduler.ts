@@ -93,9 +93,13 @@ export class AviseringScheduler {
         let sendFailed = 0
         if (result.notices.length > 0) {
           // Köa utskicket direkt så hyresgästerna har max tid på sig.
+          // #605 — CRON-ingången lämnar kontexten. Samma namn som jobbets
+          // runCronSafely ('avisering-generate-monthly'), så raderna korrelerar.
+          // Controller-vägarna skickar inget och är därmed oförändrade.
           const sendRes = await this.avisering.sendNotices(
             org.id,
             result.notices.map((n) => n.id),
+            { name: 'avisering-generate-monthly', sink: this.cronErrors },
           )
           queued += sendRes.queued
           // T5 C2b: sendNotices kastar inte längre vid kö-fel (enqueueSafely

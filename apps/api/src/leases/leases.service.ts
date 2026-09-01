@@ -677,12 +677,22 @@ export class LeasesService {
   // (committat ovan) och ska inte rullas tillbaka av ett kö-fel.
   private async dispatchActivationJobs(
     lease: { id: string; organizationId: string; tenantId: string },
-    opts: { origin: 'manual' | 'succession'; actorUserId: string | null },
+    // #605 — `cron` är VALFRI och lämnas av anroparen. Metoden nås både från
+    // HTTP (transitionStatus, renew) och från cronet (autoRenewExpiredFixedTerm),
+    // och kan inte veta vilket. Den gissar därför inte: utan kontext beter den
+    // sig exakt som förut, alltså är HTTP-vägen oförändrad per konstruktion.
+    opts: {
+      origin: 'manual' | 'succession'
+      actorUserId: string | null
+      cron?: { name: string; sink: CronErrorSink } | undefined
+    },
   ): Promise<void> {
     const base = {
       queue: LEASE_ACTIVATION_QUEUE,
       organizationId: lease.organizationId,
       logger: this.logger,
+      // Spridd till ALLA tre enqueue-anropen — ett av dem får inte kunna glömmas.
+      ...(opts.cron ? { cron: opts.cron } : {}),
     }
 
     // De tre jobben är oberoende av varandra. Sekventiella await:ar skulle vid
@@ -1628,7 +1638,13 @@ export class LeasesService {
 
         // Succession-aktivering (post-commit): PDF + gap-avi (skipDeposit),
         // ingen välkomstmejl. Fixar #48 + #43 för auto-förnyelse-vägen.
-        await this.dispatchActivationJobs(created, { origin: 'succession', actorUserId: null })
+        // #605 — CRON-vägen lämnar kontexten. Samma namn som jobbets
+        // runCronSafely ('leases-process-lifecycle'), så raderna korrelerar.
+        await this.dispatchActivationJobs(created, {
+          origin: 'succession',
+          actorUserId: null,
+          cron: { name: 'leases-process-lifecycle', sink: this.cronErrors },
+        })
 
         this.logger.log(`[Leases] Auto-renewed lease ${lease.id} for unit ${lease.unitId}`)
         renewed++

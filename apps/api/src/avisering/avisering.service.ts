@@ -57,6 +57,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { getLogoDataUrl } from '../common/branding/logo.util'
 import { resolveActorType } from '../common/ai-origin/ai-origin.context'
 import { PAYMENT_TX_LIMITS, PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import type { CronErrorSink } from '../common/cron/cron-error-sink'
 export { getLogoDataUrl }
 
 type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
@@ -873,6 +874,11 @@ export class AviseringService {
   async sendNotices(
     orgId: string,
     noticeIds: string[],
+    // #605 — VALFRI cron-kontext, lämnad av anroparen. Metoden nås från
+    // schemaläggaren (cron), från två controller-endpoints (HTTP) och från
+    // createInitialNoticesForLease. Den kan inte veta vilken vägen är, och
+    // gissar därför inte: utan kontext beter den sig exakt som förut.
+    cron?: { name: string; sink: CronErrorSink } | undefined,
   ): Promise<{ queued: number; failed: number; jobIds: string[] }> {
     const jobIds: string[] = []
     let failed = 0
@@ -894,6 +900,7 @@ export class AviseringService {
           jobType: 'avisering-send',
           organizationId: orgId,
           logger: this.logger,
+          ...(cron ? { cron } : {}),
         },
       )
       if (outcome.status === 'ok') jobIds.push(outcome.jobId)

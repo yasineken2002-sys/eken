@@ -652,6 +652,10 @@ export class PaymentReminderService {
             })
             .catch(() => undefined)
         },
+        // #605 — CRON-ONLY väg: kontexten lämnas av anroparen, hjälparen
+        // gissar aldrig. enqueueSafely kastar inte, så det yttre
+        // runCronSafely ser aldrig felet — raden skrivs här, exakt en.
+        cron: { name: 'payment-reminder-process-overdue', sink: this.cronErrors },
       },
     )
 
