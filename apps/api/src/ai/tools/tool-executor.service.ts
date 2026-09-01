@@ -1294,14 +1294,20 @@ export class ToolExecutorService {
               // Utskicket gick inte i väg. Raden skulle då PÅSTÅ att ett brev
               // finns som inte finns — ett spår som ljuger är värre än inget —
               // och den skulle dessutom blockera ett legitimt omförsök.
-              await this.prisma.paymentReminder
-                .delete({ where: { id: reminderId } })
-                .catch(() =>
-                  console.error(
-                    `Kunde inte städa PaymentReminder ${reminderId} efter misslyckat utskick ` +
-                      `för faktura ${inv.invoiceNumber}. Raden blockerar nu omförsök.`,
-                  ),
+              // try/catch och inte `.catch()`: accessorn och operationen måste stå
+              // på SAMMA RAD. `object-scope.ts` letar efter skrivningar mot
+              // förälder-scopade modeller med `pattern.exec(lines[i])` — rad för
+              // rad — så en fluent-kedja brytt över två rader blir OSYNLIG för
+              // behörighetsinventariet. Uppmätt: sex sådana skrivningar i trädet,
+              // varav två helt saknar rad i golden-filen.
+              try {
+                await this.prisma.paymentReminder.delete({ where: { id: reminderId } })
+              } catch {
+                console.error(
+                  `Kunde inte städa PaymentReminder ${reminderId} efter misslyckat utskick ` +
+                    `för faktura ${inv.invoiceNumber}. Raden blockerar nu omförsök.`,
                 )
+              }
               misslyckade++
               console.warn(`Kunde inte skicka påminnelse för faktura ${inv.invoiceNumber}`)
               continue
@@ -1310,13 +1316,16 @@ export class ToolExecutorService {
             // EGEN SATS, INTE INNE I try:et ovan. Ett fel här får inte tas för
             // ett misslyckat utskick — brevet ligger redan på kön, och att
             // radera raden då hade öppnat för ett andra brev.
-            await this.prisma.paymentReminder
-              .update({ where: { id: reminderId }, data: { emailMessageId: jobId } })
-              .catch(() =>
-                console.error(
-                  `Kunde inte spara köhandtaget ${jobId} på PaymentReminder ${reminderId}.`,
-                ),
+            try {
+              await this.prisma.paymentReminder.update({
+                where: { id: reminderId },
+                data: { emailMessageId: jobId },
+              })
+            } catch {
+              console.error(
+                `Kunde inte spara köhandtaget ${jobId} på PaymentReminder ${reminderId}.`,
               )
+            }
             sent++
           }
 
