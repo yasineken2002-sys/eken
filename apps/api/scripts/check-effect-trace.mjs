@@ -102,6 +102,39 @@ export function hittaAnropare(filer) {
   return träffar
 }
 
+/**
+ * Metoder i auditservicen som TAR EMOT effekter — härledda, inte uppräknade.
+ *
+ * Radvis på Prettier-normaliserad indentering: klassmedlemmar står på två stegs
+ * indrag och avslutas av `  }`. Den gränsen är strukturell och kan inte
+ * förväxlas med något inuti kroppen.
+ */
+export function metoderMedEffects(src) {
+  const rader = codeMask(src).split('\n')
+  const ut = []
+  for (let i = 0; i < rader.length; i++) {
+    const m = /^  (?:private |public |protected )?(?:async )?(\w+)\s*\(/.exec(rader[i])
+    if (!m) continue
+    // `constructor(...) {}` stänger på SIN EGEN rad, så sökningen efter nästa
+    // `  }` svalde hela klassen och matchade `effects` någonstans långt ner.
+    // Uppmätt: den härledda mängden blev 4 i stället för 3.
+    if (m[1] === 'constructor') continue
+    if (/\{\s*\}\s*$/.test(rader[i])) continue
+    let slut = rader.length
+    for (let j = i + 1; j < rader.length; j++) {
+      // `^  \}` ensamt räcker INTE: ett parameterobjekt stängs också på två
+      // stegs indrag (`  }): Promise<void> {`), och kroppen klipptes då vid
+      // SIGNATUREN i stället för vid metodslutet. Uppmätt: R4 blev röd för två
+      // skrivare som faktiskt hade sin nästlade create. Metodens slut är den
+      // klammer som står ENSAM på sin rad.
+      if (/^  \}\s*$/.test(rader[j])) { slut = j; break }
+    }
+    const kropp = rader.slice(i, slut).join('\n')
+    if (/\beffects\??\s*:/.test(kropp)) ut.push({ namn: m[1], kropp, från: i, till: slut })
+  }
+  return ut
+}
+
 export function granska({ filer, auditSrc, ack, specFinns, specSrc }) {
   const fel = []
   const anropare = hittaAnropare(filer)
@@ -144,13 +177,29 @@ export function granska({ filer, auditSrc, ack, specFinns, specSrc }) {
     }
   }
 
-  // R4 — persisteringen finns kvar.
-  const auditKod = codeMask(auditSrc)
-  if (!/effects\s*:\s*\{\s*create\s*:/.test(auditKod)) {
-    fel.push(
-      'R4 logToolExecution har ingen nästlad `effects: { create: … }` — effektspåret ' +
-        'persisteras inte. Uppmätt: med den bortkopplad var HELA sviten grön.',
-    )
+  // R4 — persisteringen finns kvar, i VARJE skrivare som tar emot effekter.
+  //
+  // Regeln är på FORM, inte en uppräkning av metodnamn: varje metod i
+  // auditservicen som tar en `effects`-parameter måste också föra den vidare in
+  // i en nästlad `effects: { create: … }`. `beginToolExecution` utesluts därmed
+  // av sig själv — den öppnar raden och tar inga effekter.
+  //
+  // ⚠️ VARFÖR PER SKRIVARE. Först räckte det att formen fanns NÅGONSTANS i
+  // filen. Det höll så länge det bara fanns en skrivare; med tre (steg 3b) kunde
+  // två bära den och den tredje tappa den utan att något blev rött — och
+  // kanariefågeln, som tog bort EN förekomst, slutade fälla. Exakt samma defekt
+  // som R2 i check-effect-idempotency hade veckan innan.
+  for (const m of metoderMedEffects(auditSrc)) {
+    if (!/effects\s*:\s*\{\s*create\s*:/.test(m.kropp)) {
+      fel.push(
+        `R4 ${m.namn} tar emot effects men skriver ingen nästlad ` +
+          '`effects: { create: … }` — effektspåret persisteras inte den vägen. ' +
+          'Uppmätt: med den bortkopplad var HELA sviten grön.',
+      )
+    }
+  }
+  if (metoderMedEffects(auditSrc).length === 0) {
+    fel.push('R4 ingen skrivare med effects-parameter hittades — vakten mäter ingenting')
   }
 
   // R5 — mekanikspecen finns och kör den riktiga vägen.
@@ -268,17 +317,48 @@ function självtest() {
     }).fel.some((f) => f.startsWith('R3')),
     'en onödig kvittering gjorde vakten grön')
 
-  // KANARIE R4 — DEN VIKTIGA. Persisteringen bortkopplad fäller.
-  const utanCreate = AUDIT_SRC.replace(/effects:\s*\{\s*create:/, 'effekter_borta: { skapa:')
-  t('KANARIE R4 (persisteringen bortkopplad → fäller)',
-    granska({ ...bas, auditSrc: utanCreate }).fel.some((f) => f.startsWith('R4')),
+  // KANARIE R4 — DEN VIKTIGA, och nu PER SKRIVARE.
+  //
+  // Att ta bort ALLA förekomster fäller förstås. Det avgörande är att det räcker
+  // att ta bort EN: med tre skrivare kunde två bära formen och den tredje tappa
+  // den, och en kanariefågel som bara prövade "finns någonstans" hade tigit.
+  const utanAlla = AUDIT_SRC.replaceAll(/effects:\s*\{\s*create:/g, 'effekter_borta: { skapa:')
+  t('KANARIE R4 (all persistering bortkopplad → fäller)',
+    granska({ ...bas, auditSrc: utanAlla }).fel.some((f) => f.startsWith('R4')),
     'den injektion som gjorde HELA sviten grön gick igenom vakten också')
 
-  // KANARIE R4 — en KOMMENTAR som nämner formen uppfyller den inte.
-  t('KANARIE R4 (formen i en kommentar räknas inte)',
-    granska({ ...bas, auditSrc: '// effects: { create: [] } står bara i prosa här\nconst x = 1' }).fel.some(
-      (f) => f.startsWith('R4')),
-    'en kommentar uppfyllde R4 — samma defekt som check-transaction-limits')
+  const skrivare = metoderMedEffects(AUDIT_SRC)
+  t('KANARIE R4 (alla tre skrivarna härleds)', skrivare.length === 3,
+    `hittade ${skrivare.length}: ${skrivare.map((m) => m.namn).join(', ')}`)
+
+  // EN SKRIVARE I TAGET. Radintervallet kommer från den maskerade texten, men
+  // codeMask bevarar radbrytningar — så samma index pekar på råfilens rader, och
+  // injektionen kan göras där utan att röra de andra skrivarna.
+  let prövade = 0
+  const råRader = AUDIT_SRC.split('\n')
+  for (const m of skrivare) {
+    // FORMEN SPÄNNER FLERA RADER. Prettier bryter den som
+    //     effects: {
+    //       create: args.effects.map(…)
+    // så en RADVIS regex träffar aldrig. Första försöket prövade därför noll av
+    // tre skrivare och var ändå grönt — fångat först av räkningen nedan.
+    const kropp = råRader.slice(m.från, m.till).join('\n')
+    if (!/effects:\s*\{\s*create:/.test(kropp)) continue
+    const kopia = [...råRader]
+    kopia.splice(
+      m.från,
+      m.till - m.från,
+      ...kropp.replace(/effects:\s*\{\s*create:/, 'x: { y:').split('\n'),
+    )
+    prövade++
+    t(`KANARIE R4 (${m.namn} ensam bortkopplad → fäller)`,
+      granska({ ...bas, auditSrc: kopia.join('\n') }).fel.some((f) => f.includes(m.namn)),
+      `att koppla bort ${m.namn} ensam gjorde inte vakten röd`)
+  }
+  // Utan den här raden kunde loopen ovan ha prövat NOLL skrivare och ändå varit
+  // grön — samma tomma-mängd-fälla som R5 i check-action-tool-authorization.
+  t('KANARIE R4 (varje skrivare prövades var för sig)', prövade === 3,
+    `prövade ${prövade} av ${skrivare.length}`)
 
   // KANARIE R5 — specen borta, och spec som inte kör den riktiga vägen.
   t('KANARIE R5 (specen saknas → fäller)',
