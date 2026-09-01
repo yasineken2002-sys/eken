@@ -40,6 +40,11 @@ export class PlatformErrorsService {
     }
   }
 
+  /**
+   * #612: ingen `organizationId` längre — se DTO:ns docblock. Raden får därmed
+   * NULL i org-kolumnen, vilket är sant (rapporten kommer från plattformens
+   * eget gränssnitt) i stället för klientens påstående.
+   */
   async logFrontendError(dto: CreateFrontendErrorDto) {
     return this.logInternalError({
       severity: dto.severity,
@@ -47,7 +52,6 @@ export class PlatformErrorsService {
       message: dto.message,
       ...(dto.stack ? { stack: dto.stack } : {}),
       ...(dto.context ? { context: dto.context } : {}),
-      ...(dto.organizationId ? { organizationId: dto.organizationId } : {}),
     })
   }
 

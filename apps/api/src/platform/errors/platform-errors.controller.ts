@@ -21,12 +21,46 @@ import { CreateFrontendErrorDto } from './dto/error-log.dto'
 export class PlatformErrorsController {
   constructor(private readonly svc: PlatformErrorsService) {}
 
-  // Publik endpoint för frontend-fel — ingen auth krävs (annars kan en
-  // krashat app aldrig rapportera). Throttlas globalt.
+  /**
+   * Frontend-felrapportering — NUMERA BAKOM PLATTFORMS-JWT (#612).
+   *
+   * ── VARFÖR DEN ÖPPNA FORMEN INTE GICK ATT BEHÅLLA ──────────────────────────
+   *
+   * Rutten bar tidigare `@Public()` UTAN `PlatformGuard`, alltså helt
+   * oautentiserad. Den skrev fri text (`message`, `stack`, `context`) med ett
+   * KLIENTVALT `organizationId` in i `ErrorLog` — en tabell som varje
+   * plattformsadmin läser i klartext och som (i skrivande stund) inte gallras.
+   * Strypningen är 100 req/60 s per IP, vilket ger en enskild avsändare
+   * storleksordningen 10^5 rader per dygn.
+   *
+   * Syftet — att ett kraschat gränssnitt ska kunna rapportera — är rimligt.
+   * Det är FORMEN som inte var det.
+   *
+   * ── VAD MÄTNINGEN SA ───────────────────────────────────────────────────────
+   *
+   * Ett enda anropsställe i hela trädet: `apps/admin/src/components/
+   * ErrorBoundary.tsx`. `web` och `portal` har egna ErrorBoundary-komponenter
+   * som rapporterar till Sentry och ALDRIG hit. Admin är i sin helhet bakom
+   * plattformsinloggning, så `PlatformGuard` kostar den ingenting.
+   *
+   * ── `@Public()` BETYDER INTE "OSKYDDAD" HÄR ────────────────────────────────
+   *
+   * `JwtAuthGuard` är global och `@Public()` stänger av just den — ORG-JWT:n.
+   * Plattformsrutter använder en ANNAN token, så mönstret i den här filen är
+   * `@Public()` + `@UseGuards(PlatformGuard)`: hoppa över org-vakten, kräv
+   * plattformsvakten. Defekten var att `report` bara hade den första halvan.
+   * Ett `@Public()` utan `PlatformGuard` på en `platform/`-rutt är alltså
+   * alltid ett fynd — det ser ut som resten av filen men gör motsatsen.
+   *
+   * Rutten står som oskyddad i `authz-surface.golden.txt`; den raden flyttar
+   * sig till PlatformGuard-gruppen i samma commit, och det är beviset.
+   */
   @Post('report')
   @Public()
+  @UseGuards(PlatformGuard)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.ACCEPTED)
-  @ApiOperation({ summary: 'Rapportera fel från frontend (WEB/PORTAL/ADMIN)' })
+  @ApiOperation({ summary: 'Rapportera fel från admin-gränssnittet' })
   async report(@Body() dto: CreateFrontendErrorDto) {
     await this.svc.logFrontendError(dto)
     return null

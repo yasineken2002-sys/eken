@@ -550,7 +550,7 @@ Ingen har intygat att de ska vara öppna. En NY rad hamnar här tills någon
 läst servicemetoden och skrivit skälet i GRANSKAD_HINK_A i authz-surface.ts.
 
 
-### b) Styrda av en ANNAN mekanism (67 st)
+### b) Styrda av en ANNAN mekanism (68 st)
 
 @UseGuards(...) med en guard som faktiskt BYTER mekanism. Frånvaro av
 @Roles betyder inte ostyrd: plattformsadmin går via PlatformGuard,
@@ -613,6 +613,7 @@ POST /platform/auth/2fa/enable                                  PlatformGuard   
 POST /platform/auth/2fa/setup                                   PlatformGuard                 platform-auth.controller.ts
 POST /platform/auth/change-password                             PlatformGuard                 platform-auth.controller.ts
 POST /platform/errors/:id/resolve                               PlatformGuard                 platform-errors.controller.ts
+POST /platform/errors/report                                    PlatformGuard                 platform-errors.controller.ts
 POST /platform/impersonate                                      PlatformGuard                 impersonation.controller.ts
 POST /platform/invoices/:id/mark-paid                           PlatformGuard                 platform-invoices.controller.ts
 POST /platform/invoices/:id/send                                PlatformGuard                 platform-invoices.controller.ts
@@ -632,7 +633,7 @@ POST /tenant-portal/maintenance/:id/comment                     TenantAuthGuard 
 POST /tenant-portal/maintenance/:id/images                      TenantAuthGuard               tenant-portal.controller.ts
 POST /tenant-portal/maintenance                                 TenantAuthGuard               tenant-portal.controller.ts
 
-### c) VERKLIGT ÖPPNA — ingen autentisering alls (26 st)
+### c) VERKLIGT ÖPPNA — ingen autentisering alls (25 st)
 
 @Public() utan någon egen guard. Ingen inloggning krävs. En NY rad här är
 den mest säkerhetskänsliga ändring den här filen kan visa.
@@ -654,7 +655,6 @@ POST /auth/reset-password                                       auth.controller.
 POST /platform/auth/login                                       platform-auth.controller.ts
 POST /platform/auth/logout                                      platform-auth.controller.ts
 POST /platform/auth/refresh                                     platform-auth.controller.ts
-POST /platform/errors/report                                    platform-errors.controller.ts
 POST /platform/impersonate/end                                  impersonation.controller.ts
 POST /signing/callback                                          signing.controller.ts
 POST /tenant-portal/activate                                    tenant-portal.controller.ts

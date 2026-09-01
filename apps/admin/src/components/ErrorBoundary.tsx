@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from 'react'
 import * as Sentry from '@sentry/react'
 import axios from 'axios'
+import { useAuthStore } from '@/stores/auth.store'
 
 interface State {
   hasError: boolean
@@ -18,14 +19,34 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
     Sentry.captureException(error, {
       contexts: { react: { componentStack: info.componentStack } },
     })
+
+    // #612: rutten kräver numera plattforms-JWT. Token läses ur storen och
+    // sätts explicit — vi går MEDVETET inte via `api` från '@/lib/api':
+    //
+    //   • dess svars-interceptor loggar ut och navigerar till /login vid 401.
+    //     Ett misslyckat felutskick skulle då kasta ut administratören mitt i
+    //     en krasch — felrapporteringen får aldrig bli en andra defekt.
+    //   • dess 401-retry försöker refresha, vilket är ännu mer arbete i ett
+    //     läge där gränssnittet redan gått sönder.
+    //
+    // Utan token skickas ingenting. Det är inte en förlust: `captureException`
+    // ovan har redan skickat samma fel med samma componentStack till Sentry.
+    // ErrorLog-raden är den andra vägen till samma händelse, inte den enda.
+    const token = useAuthStore.getState().accessToken
+    if (!token) return
+
     void axios
-      .post('/api/v1/platform/errors/report', {
-        severity: 'ERROR',
-        source: 'ADMIN',
-        message: error.message,
-        stack: error.stack,
-        context: { componentStack: info.componentStack, path: window.location.pathname },
-      })
+      .post(
+        '/api/v1/platform/errors/report',
+        {
+          severity: 'ERROR',
+          source: 'ADMIN',
+          message: error.message,
+          stack: error.stack,
+          context: { componentStack: info.componentStack, path: window.location.pathname },
+        },
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
       .catch(() => undefined)
   }
 
