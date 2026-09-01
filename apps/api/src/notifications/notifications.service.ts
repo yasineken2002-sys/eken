@@ -8,6 +8,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { invoiceOutstanding } from '../invoices/invoice-debt'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
+import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { AiAssistantService } from '../ai/ai-assistant.service'
 import { MonthlyReportService } from './monthly-report.service'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
@@ -120,6 +121,20 @@ export class NotificationsService implements OnModuleInit {
     private moduleRef: ModuleRef,
     private monthlyReport: MonthlyReportService,
     private locks: LockService,
+    /**
+     * #605 — VARAKTIG FELSÄNKA.
+     *
+     * De tre rapportjobben nedan har den farligaste formen: de fångar per org,
+     * räknar upp `failed`, fortsätter, och loggar sedan en summering på
+     * log-nivå. Körningen rapporterar "3 skickade, 2 misslyckade" och SER
+     * LYCKAD UT — medan två hyresvärdar inte fått sin rapport och ingen får
+     * veta det. Den lokala loggen försvinner med containern.
+     *
+     * Sänkan läggs BREDVID varje `logger.error`, aldrig i stället för. Full
+     * detalj stannar lokalt; ErrorLog får felet plus organisationen, så en
+     * utebliven rapport går att hitta i efterhand och kopplas till rätt kund.
+     */
+    private cronErrors: CronErrorSink,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -481,6 +496,10 @@ export class NotificationsService implements OnModuleInit {
           continue
         }
         this.logger.error(`Sentinel-lås misslyckades för org ${org.id}: ${String(err)}`)
+        await this.cronErrors.report('morning-insights', err, {
+          organizationId: org.id,
+          detail: { steg: 'sentinel-lås' },
+        })
         failed++
         continue
       }
@@ -518,11 +537,19 @@ export class NotificationsService implements OnModuleInit {
             sent++
           } catch (err) {
             this.logger.error(`Morning insights email failed for ${user.email}: ${String(err)}`)
+            await this.cronErrors.report('morning-insights', err, {
+              organizationId: org.id,
+              detail: { steg: 'mejlutskick', userId: user.id },
+            })
             failed++
           }
         }
       } catch (err) {
         this.logger.error(`Morning insights generation failed for org ${org.id}: ${String(err)}`)
+        await this.cronErrors.report('morning-insights', err, {
+          organizationId: org.id,
+          detail: { steg: 'generering' },
+        })
         failed++
       }
     }
@@ -600,6 +627,10 @@ export class NotificationsService implements OnModuleInit {
           continue
         }
         this.logger.error(`Sentinel-lås (vecka) misslyckades för org ${org.id}: ${String(err)}`)
+        await this.cronErrors.report('weekly-summary', err, {
+          organizationId: org.id,
+          detail: { steg: 'sentinel-lås' },
+        })
         failed++
         continue
       }
@@ -633,11 +664,19 @@ export class NotificationsService implements OnModuleInit {
             sent++
           } catch (err) {
             this.logger.error(`Weekly summary email failed for ${user.email}: ${String(err)}`)
+            await this.cronErrors.report('weekly-summary', err, {
+              organizationId: org.id,
+              detail: { steg: 'mejlutskick', userId: user.id },
+            })
             failed++
           }
         }
       } catch (err) {
         this.logger.error(`Weekly summary generation failed for org ${org.id}: ${String(err)}`)
+        await this.cronErrors.report('weekly-summary', err, {
+          organizationId: org.id,
+          detail: { steg: 'generering' },
+        })
         failed++
       }
     }
@@ -714,6 +753,10 @@ export class NotificationsService implements OnModuleInit {
           continue
         }
         this.logger.error(`Sentinel-lås (månad) misslyckades för org ${org.id}: ${String(err)}`)
+        await this.cronErrors.report('monthly-report', err, {
+          organizationId: org.id,
+          detail: { steg: 'sentinel-lås' },
+        })
         failed++
         continue
       }
@@ -752,11 +795,19 @@ export class NotificationsService implements OnModuleInit {
             sent++
           } catch (err) {
             this.logger.error(`Monthly report email failed for ${user.email}: ${String(err)}`)
+            await this.cronErrors.report('monthly-report', err, {
+              organizationId: org.id,
+              detail: { steg: 'mejlutskick', userId: user.id },
+            })
             failed++
           }
         }
       } catch (err) {
         this.logger.error(`Monthly report generation failed for org ${org.id}: ${String(err)}`)
+        await this.cronErrors.report('monthly-report', err, {
+          organizationId: org.id,
+          detail: { steg: 'generering' },
+        })
         failed++
       }
     }
