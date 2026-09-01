@@ -53,8 +53,13 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  * ── POLICYN, SATT 2026-09-01 ────────────────────────────────────────────────
  *
  *     KRÄVER_MÄNNISKA  15      AUTOMATISK  15
- *     policybeslutade  27      obeslutade   3  (skälen står vid posterna)
+ *     policybeslutade  30      obeslutade   0
  *     faktiskt återupptagbara i dag: 10
+ *
+ * Tre poster stod obeslutade en runda och avgjordes efter mätning:
+ * `unmatch_transaction` (premissen höll inte), `generate_lease_contract`
+ * (mätningen gav ett annat svar än beslutet) och `send_overdue_reminders`
+ * (saknades i uppräkningen). Alla tre blev KRÄVER_MÄNNISKA.
  *
  * Skillnaden mellan 15 AUTOMATISK och 10 återupptagbara är inte en policyfråga:
  * fem poster faller på att spåret är `INGET`. De behöver en innehållsnyckel,
@@ -173,9 +178,10 @@ export interface EffectDeclaration {
    * det här än" sett ut som "en människa behövs", och de två är olika saker.
    *
    * Sätt `true` bara när principen ovan faktiskt prövats mot vad verktyget
-   * skriver. Tre poster står kvar på `false` 2026-09-01, och skälen står vid
-   * respektive post — två därför att koden sa emot premissen, en därför att den
-   * aldrig togs upp.
+   * skriver. Alla 30 poster är beslutade 2026-09-01; tre av dem stod på `false`
+   * en runda — två därför att koden sa emot premissen, en därför att den aldrig
+   * togs upp — och det är precis vad fältet är till för. Ett nytt verktyg börjar
+   * på `false`.
    */
   policyBeslutad: boolean
   /** Tom lista är tillåten BARA när effectIdempotency inte är IDEMPOTENT. */
@@ -246,24 +252,18 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
   // `if (transaction.status !== 'MATCHED') throw` — en omkörning mot en redan
   // hävd matchning avvisas.
   //
-  // ⚠️ OBESLUTAD MED FLIT. Den föreslogs som AUTOMATISK på premissen att den är
-  // en intern bankflagga. Koden säger emot: `unmatchTransaction` reverserar
-  // betalningens verifikat (`reverseJournalEntryForPayment`, atomiskt), RADERAR
-  // allokeringarna (`invoicePayment.deleteMany`, `rentNoticePayment.deleteMany`),
-  // återställer fakturans och avins status, och skriver InvoiceEvent. Skulden
-  // hyresgästen ser i portalen kommer alltså tillbaka, och kravtrappan kan
-  // starta om.
-  //
-  // Strikt enligt principen ovan vore AUTOMATISK ändå rätt: statusgrinden gör en
-  // DUBBLETT omöjlig, och det är dubbletten principen frågar om. Men premissen
-  // som beslutet vilade på höll inte, och ett beslut fattat på fel premiss är
-  // värre än ett obeslutat. Bekräfta med vetskapen om vad den rör.
+  // BESLUTAD KRÄVER_MÄNNISKA: premissen beslutet först vilade på höll inte. Den
+  // är ingen intern bankflagga — `unmatchTransaction` reverserar betalningens
+  // verifikat (`reverseJournalEntryForPayment`, atomiskt), RADERAR allokeringarna
+  // (`invoicePayment.deleteMany`, `rentNoticePayment.deleteMany`), återställer
+  // fakturans och avins status och skriver InvoiceEvent. Hyresgästens skuld
+  // kommer tillbaka och kravtrappan kan starta om.
   unmatch_transaction: {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [
       {
         typ: 'STATUSGRIND',
@@ -332,6 +332,15 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
   // atomärt mot SigningRequest @@unique([organizationId, idempotencyKey]).
   // Verktyget skickar ingen nyckel — tjänsten härleder den själv, vilket är
   // varför den här redan är löst utan att någon räknade den.
+  //
+  // ⚠️ KLASSNINGEN ÄR RIKTIG, MEN DÖLJER ETT FEL (#607). Dedup-raden skrivs FÖRE
+  // providern anropas. Kraschar processen emellan får omförsöket P2002,
+  // returnerar den befintliga raden och dispatchar ALDRIG — begäran blir
+  // stående i PENDING medan anroparen får ett lyckat svar. En dubblett är
+  // fortfarande omöjlig, så IDEMPOTENT stämmer; det är radens TILLSTÅND som är
+  // tvetydigt mellan "påbörjad" och "utförd". Mätt i prod 2026-09-01: 0 sådana
+  // rader av 0 SigningRequest totalt — latent, och nollan säger bara att vägen
+  // aldrig körts skarpt. Fixen hör till G0, inte hit.
   prepare_contract_signing: {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
@@ -506,20 +515,15 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
   // LOOP över förfallna fakturor, try/catch per mottagare, sent++. Ingen nyckel
   // alls skickas till mailService. Enheten MÅSTE bli EFFEKT.
   //
-  // ⚠️ OBESLUTAD — den togs aldrig upp. Verktyget saknades i BÅDA listorna när
-  // policyn sattes 2026-09-01 (12 + 17 = 29 av 30), så värdet här är ingens
-  // beslut. Det står kvar konservativt, vilket är hela poängen med fältet:
-  // en lucka i en uppräkning ska bli en obeslutad post, inte en tyst AUTOMATISK.
-  //
-  // Enligt principen ovan pekar allt mot KRÄVER_MÄNNISKA — den skickar brev
-  // till människor, i en loop, utan nyckel — men det är ett beslut, inte en
-  // härledning, och därför inte mitt att fatta.
+  // BESLUTAD KRÄVER_MÄNNISKA: den saknades i uppräkningen när policyn först
+  // sattes (12 + 17 = 29 av 30) och stod därför en runda som obeslutad. Brev
+  // till människor, i en loop, utan nyckel.
   send_overdue_reminders: {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'EFFEKT',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [],
   },
 
@@ -538,21 +542,17 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
   // PDF → R2 → Document.create. Document saknar unikt index; en omkörning ger
   // ett andra dokument. Document.contentHash finns redan och vore nyckeln.
   //
-  // ⚠️ OBESLUTAD MED FLIT. Den föreslogs som AUTOMATISK, rimligen på premissen
-  // att en genererad PDF stannar internt. Koden säger emot: verktyget sätter
-  // `tenantId: lease.tenantId` och `category: 'CONTRACT'`, och portalens
-  // `getDocuments` filtrerar bara bort kategorin INVOICE. En andra
-  // kontrakts-PDF hamnar alltså i HYRESGÄSTENS dokumentlista — och till skillnad
-  // från unmatch är dubbletten här fullt möjlig, eftersom spåret är INGET.
-  //
-  // Enligt principen ovan är det då KRÄVER_MÄNNISKA. Den står som obeslutad och
-  // inte som beslutad, eftersom kallelsen är din.
+  // BESLUTAD KRÄVER_MÄNNISKA: mätningen gav ett annat svar än det första
+  // beslutet, och mätningen vann. Verktyget sätter `tenantId: lease.tenantId`
+  // och `category: 'CONTRACT'`, och portalens `getDocuments` filtrerar bara bort
+  // kategorin INVOICE — en andra kontrakts-PDF hamnar i HYRESGÄSTENS
+  // dokumentlista. Dubbletten är dessutom fullt möjlig, eftersom spåret är INGET.
   generate_lease_contract: {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [],
   },
 

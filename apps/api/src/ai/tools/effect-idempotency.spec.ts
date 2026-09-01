@@ -116,18 +116,19 @@ describe('effektklassificeringen', () => {
       }).toEqual({ idempotent: 16, deduplicerbar: 14, okand: 0 })
     })
 
-    it('27 av 30 poster är policybeslutade — 3 står kvar med skäl', () => {
-      // Fältets syfte är att en LUCKA ska synas. Ändras något av de tre måste
-      // den här raden ändras i samma PR, och skälet vid posten med den.
+    it('30 av 30 poster är policybeslutade — inga luckor kvar', () => {
+      // Fältets syfte är att en LUCKA ska synas. Tre poster stod obeslutade en
+      // runda (unmatch_transaction, generate_lease_contract och
+      // send_overdue_reminders) och är nu avgjorda; skälen står vid posterna.
+      //
+      // Raden är skriven som en TOM MÄNGD och inte som talet 30 med flit: ett
+      // nytt verktyg med policyBeslutad: false fäller den här, medan en
+      // längdjämförelse hade blivit grön så fort någon lade till ännu ett.
       const obeslutade = buildEffectCatalog()
         .filter((e) => !e.policyBeslutad)
         .map((e) => e.name)
-        .sort()
-      expect(obeslutade).toEqual([
-        'generate_lease_contract',
-        'send_overdue_reminders',
-        'unmatch_transaction',
-      ])
+      expect(obeslutade).toEqual([])
+      expect(buildEffectCatalog()).toHaveLength(30)
     })
 
     it('exakt 10 verktyg är återupptagbara — alla med ett spår som finns', () => {
