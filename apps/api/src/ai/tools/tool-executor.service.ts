@@ -1571,6 +1571,14 @@ export class ToolExecutorService {
           }
 
           // ─── Layer 3: cooldown — max 1 bulk-utskick per 15 min per användare
+          //
+          // ⚠️ TAKTHÅLLNING, INTE IDEMPOTENS. Nyckeln är (organisation, användare)
+          // — inte mottagare — så den säger ingenting om vem som fått vad. Den
+          // blockerar ett LEGITIMT omförsök under 15 minuter och SLÄPPER IGENOM
+          // ett dubblettutskick efter 15 minuter och en sekund. Skyddet mot att
+          // en mottagare får två brev ligger i SentMessage-uppslaget nedan;
+          // den här grinden rör bara hur ofta någon får trycka på knappen.
+          // Lämnad orörd med flit.
           // Atomic SET NX EX: bara första anropet får sätta nyckeln, alla
           // efterföljande inom TTL får null tillbaka och blockas. Tröskel
           // för "bulk" = > 5 mottagare. Enskilda mejl och små grupper
@@ -1622,6 +1630,7 @@ export class ToolExecutorService {
           })
 
           let sentCount = 0
+          let redanSkickat = 0
           const sendErrors: string[] = []
 
           for (const tenant of emailTenants) {
@@ -1650,6 +1659,61 @@ export class ToolExecutorService {
             const bodyHtml =
               `<p>Hej ${escapeHtml(tenantName)},</p>\n` + renderUserParagraphs(personalizedBody)
 
+            // ── SPÅRET KONSULTERAS FÖRE UTSKICKET ────────────────────────
+            //
+            // Enheten är MOTTAGAREN. Kraschar loopen efter 25 av 40 ska en
+            // omkörning skicka till de 15 som återstår och inte till de 25 som
+            // redan fått sitt brev.
+            //
+            // ⚠️ APPLIKATIONSNIVÅ, INTE DATABASNIVÅ. Det här är en läsning före
+            // en skrivning, inte ett unikt index. Två SAMTIDIGA körningar kan
+            // därför båda passera kontrollen och båda skicka. Den DB-enforcerade
+            // spärren är ett eget, senare steg — spår först, spärr sedan — och
+            // tills den finns är det här ett skydd mot omkörning, inte mot
+            // kapplöpning. Se PaymentReminder i send_overdue_reminders för hur
+            // formen ser ut när indexet finns.
+            //
+            // PENDING RÄKNAS SOM "RÖR INTE". En påbörjad rad betyder antingen
+            // "brevet gick aldrig i väg" eller "brevet gick i väg men vi hann
+            // aldrig skriva ned det", och tillståndet kan inte skilja dem åt.
+            // Den säkra riktningen är att inte skicka: en dubblett syns för en
+            // människa utanför systemet, ett uteblivet brev syns för en operatör
+            // som ser PENDING-raden i listan och kan agera på den.
+            const befintlig = await this.prisma.sentMessage.findFirst({
+              where: {
+                organizationId,
+                tenantId: tenant.id,
+                subject,
+                content: body,
+                status: { in: ['SENT', 'PENDING'] },
+              },
+              select: { id: true },
+            })
+            if (befintlig) {
+              redanSkickat++
+              continue
+            }
+
+            // Raden skrivs FÖRE utskicket. `content` är den OSUBSTITUERADE
+            // bodyn — samma sträng för alla mottagare, vilket är det som gör
+            // uppslaget ovan möjligt. Det personaliserade utfallet är en
+            // renderingsdetalj, inte meddelandets identitet.
+            const rad = await this.prisma.sentMessage.create({
+              data: {
+                organizationId,
+                tenantId: tenant.id,
+                sentById: userId,
+                subject,
+                content: body,
+                sentToAll: false,
+                recipientCount: 1,
+                successCount: 0,
+                failedCount: 0,
+                status: 'PENDING',
+              },
+              select: { id: true },
+            })
+
             try {
               await this.mailService.sendCustomEmail({
                 to: tenant.email,
@@ -1664,10 +1728,28 @@ export class ToolExecutorService {
                 accentColor: safeColor(emailOrg?.invoiceColor, DEFAULT_BRAND_COLOR),
               })
               sentCount++
+              await this.prisma.sentMessage.update({
+                where: { id: rad.id },
+                data: { status: 'SENT', successCount: 1 },
+              })
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err)
               sendErrors.push(`${tenantName}: ${msg}`)
               console.warn(`Kunde inte skicka e-post till ${tenant.email}: ${msg}`)
+              // RADEN RADERAS INTE — till skillnad från PaymentReminder i
+              // send_overdue_reminders, där radens EXISTENS var hela påståendet
+              // och en kvarlämnad rad hade ljugit om ett brev. SentMessage bär
+              // ett explicit UTFALL, och FAILED är sant och dessutom
+              // handlingsbart: operatören ser raden i listan med sin egen
+              // försök-igen-knapp.
+              await this.prisma.sentMessage.update({
+                where: { id: rad.id },
+                data: {
+                  status: 'FAILED',
+                  failedCount: 1,
+                  errorLog: { email: tenant.email, error: msg },
+                },
+              })
             }
           }
 
@@ -1679,16 +1761,31 @@ export class ToolExecutorService {
             )
             .join(', ')
 
-          if (sentCount === 0) {
+          if (sentCount === 0 && redanSkickat === 0) {
             return {
               success: false,
               message: `Kunde inte skicka e-post. Fel: ${sendErrors.join('; ')}`,
             }
           }
 
+          // Överhoppade mottagare REDOVISAS. Ett tyst hopp hade sett ut som ett
+          // lyckat utskick till alla, vilket är den defekt spåret finns för att
+          // göra omöjlig.
+          const hoppadeText =
+            redanSkickat > 0
+              ? `\n${redanSkickat} hoppades över — de har redan ett skickat eller påbörjat meddelande med samma ämne och innehåll.`
+              : ''
+
+          if (sentCount === 0) {
+            return {
+              success: true,
+              message: `Inget nytt skickades.${hoppadeText}`,
+            }
+          }
+
           return {
             success: true,
-            message: `E-post skickad till ${sentCount} hyresgäst${sentCount > 1 ? 'er' : ''}!\nÄmne: "${subject}"\nMottagare: ${recipientNames}`,
+            message: `E-post skickad till ${sentCount} hyresgäst${sentCount > 1 ? 'er' : ''}!\nÄmne: "${subject}"\nMottagare: ${recipientNames}${hoppadeText}`,
             nextSteps: ['Kontrollera att e-posten kom fram', 'Arkivera kommunikationen'],
           }
         }

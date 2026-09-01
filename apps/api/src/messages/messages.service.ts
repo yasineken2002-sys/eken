@@ -166,6 +166,31 @@ export class MessagesService {
             tenantName,
           )
 
+          // ── EN RAD PER MOTTAGARE, SKRIVEN FÖRE UTSKICKET ─────────────────
+          //
+          // PENDING = påbörjad, utfall okänt. Skrivs före så att en krasch mitt
+          // i loopen lämnar ett spår för den mottagare där den dog — en rad
+          // skriven efter hade saknats exakt då.
+          const rad = await this.prisma.sentMessage.create({
+            data: {
+              organizationId,
+              tenantId: tenant.id,
+              sentById: userId,
+              subject,
+              content,
+              // FALSE trots att utskicket är ett massutskick: fältet styr
+              // `retryFailed`:s gren, och den gamla grenen läser en errorLog med
+              // FLERA mottagare. En per-mottagarrad hör hemma i enkelgrenen, som
+              // gör om utskicket till just den hyresgästen.
+              sentToAll: false,
+              recipientCount: 1,
+              successCount: 0,
+              failedCount: 0,
+              status: 'PENDING',
+            },
+            select: { id: true },
+          })
+
           try {
             await this.mailService.sendCustomEmail({
               to: tenant.email,
@@ -177,9 +202,21 @@ export class MessagesService {
               accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
             })
             successCount++
+            await this.prisma.sentMessage.update({
+              where: { id: rad.id },
+              data: { status: 'SENT', successCount: 1 },
+            })
           } catch (err) {
             failedCount++
             errors.push({ email: tenant.email, error: (err as Error).message })
+            await this.prisma.sentMessage.update({
+              where: { id: rad.id },
+              data: {
+                status: 'FAILED',
+                failedCount: 1,
+                errorLog: { email: tenant.email, error: (err as Error).message },
+              },
+            })
           }
         }),
       )
@@ -190,20 +227,36 @@ export class MessagesService {
 
     const status = failedCount === 0 ? 'SENT' : successCount === 0 ? 'FAILED' : 'PARTIAL'
 
-    return this.prisma.sentMessage.create({
-      data: {
-        organizationId,
-        sentById: userId,
-        subject,
-        content,
-        sentToAll: true,
-        recipientCount: tenants.length,
-        successCount,
-        failedCount,
-        status,
-        errorLog: errors.length > 0 ? (errors as Prisma.InputJsonValue) : Prisma.JsonNull,
-      },
-    })
+    // ── SAMMANFATTNINGEN PERSISTERAS INTE LÄNGRE ─────────────────────────────
+    //
+    // Här skrevs tidigare EN rad för N mottagare (`sentToAll: true`,
+    // `recipientCount: N`). Enheten var alltså ANROPET, och det är precis felet:
+    // raden kunde inte svara på "fick DEN HÄR hyresgästen sitt brev?" — bara på
+    // "hur många av dem fick det?". Kraschade loopen fanns ingen rad alls.
+    //
+    // Raderna skrivs nu per mottagare i loopen ovan. Det här returvärdet är en
+    // ren SAMMANFATTNING för anroparen och rör inte databasen.
+    //
+    // `id: ''` är avsiktligt: ingen ENSKILD rad representerar utskicket längre.
+    // Webben grindar redan sin "försök igen"-knapp på ett sanningsenligt id
+    // (`{sendResult.messageId && …}`), så knappen uteblir för massutskick — och
+    // varje misslyckad mottagare har i stället sin egen rad med sin egen
+    // retry-knapp i listan, vilket är mer träffsäkert än att göra om alltihop.
+    return {
+      id: '',
+      organizationId,
+      tenantId: null,
+      sentById: userId,
+      subject,
+      content,
+      sentToAll: true,
+      recipientCount: tenants.length,
+      successCount,
+      failedCount,
+      status,
+      errorLog: errors.length > 0 ? (errors as Prisma.InputJsonValue) : null,
+      createdAt: new Date(),
+    } as SentMessage
   }
 
   async retryFailed(
@@ -315,6 +368,7 @@ export class MessagesService {
     sent: number
     failed: number
     partial: number
+    pending: number
     totalRecipients: number
   }> {
     const [messages, agg] = await Promise.all([
@@ -330,7 +384,10 @@ export class MessagesService {
       }),
     ])
 
-    const counts = { SENT: 0, FAILED: 0, PARTIAL: 0 }
+    // PENDING står med. Utan den hade påbörjade-men-obekräftade utskick
+    // försvunnit ur statistiken samtidigt som de räknas i `total` — och en
+    // summa som inte går ihop är svårare att förstå än ett tal som är noll.
+    const counts = { SENT: 0, FAILED: 0, PARTIAL: 0, PENDING: 0 }
     for (const row of messages) {
       counts[row.status] = row._count.status
     }
@@ -340,6 +397,7 @@ export class MessagesService {
       sent: counts.SENT,
       failed: counts.FAILED,
       partial: counts.PARTIAL,
+      pending: counts.PENDING,
       totalRecipients: agg._sum.successCount ?? 0,
     }
   }

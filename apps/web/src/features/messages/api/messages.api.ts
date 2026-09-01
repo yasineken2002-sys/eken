@@ -11,7 +11,10 @@ export interface SentMessage {
   recipientCount: number
   successCount: number
   failedCount: number
-  status: 'SENT' | 'FAILED' | 'PARTIAL'
+  // PENDING = raden skrevs FÖRE utskicket och utfallet är ännu inte känt.
+  // Tvetydig med flit: antingen gick brevet aldrig, eller så gick det men
+  // skrivningen hann inte. Se MessageStatus i schema.prisma.
+  status: 'SENT' | 'FAILED' | 'PARTIAL' | 'PENDING'
   errorLog: Array<{ email: string; error: string }> | null
   createdAt: string
   tenant: {
@@ -28,6 +31,7 @@ export interface MessageStats {
   sent: number
   failed: number
   partial: number
+  pending: number
   totalRecipients: number
 }
 
