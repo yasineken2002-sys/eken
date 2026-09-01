@@ -36,6 +36,29 @@
  * R6  Klass B måste ha invarianten inskriven VID JOBBET i koden, inte bara i
  *     filen — annars är nästa läsare tillbaka i samma gissning.
  *
+ * ── TRE VYER, EN PER FRÅGA ──────────────────────────────────────────────────
+ *
+ * Vakten läste råtexten, och R3 blev då den värsta sortens blind — den som
+ * bekräftar sin egen sämsta klassificering. `j.text.includes(post.lockKey)`
+ * uppfylldes av en KOMMENTAR som nämner låsnyckeln. Filens egen huvudkommentar
+ * säger att "ett 'låst' jobb utan lås är den värsta klassificeringen av alla,
+ * den ser säkrast ut" — och regeln som skulle hindra det kunde uppfyllas av
+ * prosa som PÅSTOD att låset fanns.
+ *
+ * Att bara byta till codeMask hade brutit två av tre regler, så varje fråga får
+ * sin vy:
+ *
+ *   kod           = codeMask       R1: härledningen av @Cron. En utkommenterad
+ *                                  dekorator är inget jobb.
+ *   strängar      = blankComments  R3: låsnyckeln ÄR en stränglitteral
+ *                                  (`'cron:a'`). codeMask hade blankat den och
+ *                                  gjort regeln omöjlig att uppfylla; råtext lät
+ *                                  en kommentar uppfylla den.
+ *   kommentarer   = tokenize       R6: markören `KLASSIFICERING: B` står MED
+ *                                  FLIT i en kommentar vid jobbet. Den ska läsas
+ *                                  där — inte i kod, och inte i en sträng som
+ *                                  råkar innehålla texten.
+ *
  * Rent statiskt (fs-only, inga beroenden, ingen DB) → eget CI-steg utan databas.
  * Lokalt:      node apps/api/scripts/check-cron-classification.mjs
  * Självtest:   node apps/api/scripts/check-cron-classification.mjs --self-test
@@ -43,6 +66,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { codeMask, blankComments, tokenize, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = join(HERE, '..', 'src')
@@ -79,11 +103,37 @@ export function findCronJobs(filer) {
   for (const { fil, text } of filer) {
     const re = /@Cron\(([^)]*)\)[\s\S]{0,500}?\n\s*(?:private |public )?(?:async )?(\w+)\s*\(/g
     let m
-    while ((m = re.exec(text))) {
+    // Härleds ur KOD: en utkommenterad @Cron-dekorator är inget jobb, och ett
+    // `@Cron` i ett kodexempel i prosa ska inte kräva en klassificering.
+    while ((m = re.exec(codeMask(text)))) {
       jobb.push({ nyckel: `${fil}::${m[2]}`, fil, metod: m[2], text })
     }
   }
   return jobb
+}
+
+/**
+ * De tre vyerna av en filtext, memoiserade per text.
+ *
+ * Varför inte en enda mask: se huvudkommentaren. R3 letar efter en STRÄNG och
+ * R6 efter en KOMMENTAR — en gemensam vy hade gjort minst en av dem omöjlig att
+ * uppfylla, vilket är samma tystnad som att göra den alltid uppfylld.
+ */
+const vyCache = new Map()
+export function vyer(text) {
+  let v = vyCache.get(text)
+  if (!v) {
+    v = {
+      kod: codeMask(text),
+      strängar: blankComments(text),
+      kommentarer: tokenize(text)
+        .filter((t) => t.kind === 'line-comment' || t.kind === 'block-comment')
+        .map((t) => text.slice(t.bodyStart, t.bodyEnd))
+        .join('\n'),
+    }
+    vyCache.set(text, v)
+  }
+  return v
 }
 
 /** Kärnan. Exporterad så självtestet kör exakt samma kod som CI. */
@@ -121,12 +171,13 @@ export function evaluate({ jobb, ack }) {
     if (post.class === 'A') {
       if (!post.lockKey) {
         problem.push({ rule: `\`${j.nyckel}\` är klass A utan lockKey`, detail: 'Namnge låsnyckeln.' })
-      } else if (!j.text.includes(post.lockKey)) {
+      } else if (!vyer(j.text).strängar.includes(post.lockKey)) {
         problem.push({
-          rule: `\`${j.nyckel}\` är klass A men låsnyckeln "${post.lockKey}" finns inte i filen`,
+          rule: `\`${j.nyckel}\` är klass A men låsnyckeln "${post.lockKey}" finns inte i filens KOD`,
           detail:
             'Ett "låst" jobb utan lås är den värsta klassificeringen av alla — den ser ' +
-            'säkrast ut och skyddar ingenting.',
+            'säkrast ut och skyddar ingenting. Nyckeln söks i koden och strängarna, ' +
+            'INTE i kommentarerna: en rad som PÅSTÅR att låset finns är inget lås.',
         })
       }
       continue
@@ -157,7 +208,7 @@ export function evaluate({ jobb, ack }) {
         continue
       }
       // R6 — invarianten ska stå VID jobbet i koden.
-      if (!j.text.includes('KLASSIFICERING: B')) {
+      if (!vyer(j.text).kommentarer.includes('KLASSIFICERING: B')) {
         problem.push({
           rule: `\`${j.nyckel}\` saknar invarianten i KODEN`,
           detail:
@@ -234,6 +285,64 @@ function selfTest() {
   const jobb = findCronJobs([FIL_A, FIL_B])
   const bas = { jobb, ack: ACK_OK }
 
+  // ── DEN DELADE SKANNERNS KANARIEFÅGLAR (metavaktens R2) ──────────────────
+  const skanner = kanariefåglar()
+  if (skanner.length) fail(`DEN DELADE SKANNERN ÄR TRASIG: ${skanner.join(' | ')}`)
+  else console.log('✅ delad skanner: 7 kanariefåglar gröna')
+
+  // ── VYERNAS SEMANTIK ─────────────────────────────────────────────────────
+  //
+  // Tre prov, ett per vy. Alla tre var fel i råtextversionen.
+  {
+    // R3, den farliga: låsnyckeln nämnd bara i en KOMMENTAR. Ett "låst" jobb
+    // vars enda lås är ett PÅSTÅENDE om ett lås.
+    const påstårLås = {
+      fil: 'x/a.service.ts',
+      text: `
+  // körs under låset 'cron:a' — se LockService
+  @Cron('0 1 * * *')
+  async jobbA(): Promise<void> {
+    await this.jobbAUnsafe()
+  }`,
+    }
+    röd(
+      'VY: låsnyckeln nämnd bara i en KOMMENTAR är inget lås',
+      evaluate({ jobb: findCronJobs([påstårLås]), ack: ACK_OK }),
+      'finns inte i filens KOD',
+    )
+
+    // R1: en utkommenterad dekorator är inget jobb — annars kräver vakten en
+    // klassificering av kod som inte körs.
+    grön(
+      'VY: en UTKOMMENTERAD @Cron är inget jobb',
+      (() => {
+        const j = findCronJobs([
+          ...[FIL_A, FIL_B],
+          { fil: 'x/d.service.ts', text: "  // @Cron('0 3 * * *')\n  // async jobbD(): Promise<void> {}" },
+        ])
+        if (j.length !== 2) fail(`VY: härledningen gav ${j.length} jobb, väntade 2`)
+        return evaluate({ jobb: j, ack: ACK_OK })
+      })(),
+    )
+
+    // R6: markören i en STRÄNG är inte markören. Den ska stå som kommentar
+    // VID jobbet, vilket är hela poängen med regeln.
+    röd(
+      'VY: `KLASSIFICERING: B` i en STRÄNG uppfyller inte R6',
+      evaluate({
+        ...bas,
+        jobb: [
+          jobb[0],
+          {
+            ...jobb[1],
+            text: `const d = 'KLASSIFICERING: B'\n  @Cron('0 2 * * *')\n  async jobbB() {}`,
+          },
+        ],
+      }),
+      'saknar invarianten i KODEN',
+    )
+  }
+
   // ── KANARIEFÅGEL 1: härledningen måste ge utslag på känd indata ──────────
   if (jobb.length !== 2 || jobb[0].metod !== 'jobbA' || jobb[1].metod !== 'jobbB') {
     fail(`kanariefågel: härledningen gav ${JSON.stringify(jobb.map((j) => j.metod))}, väntade jobbA + jobbB`)
@@ -243,8 +352,26 @@ function selfTest() {
   const riktiga = findCronJobs(
     källfiler().map((p) => ({ fil: relative(SRC, p), text: readFileSync(p, 'utf8') })),
   )
-  if (riktiga.length === 0) fail('kanariefågel: NOLL @Cron i den riktiga källan — skanningen har gått blind')
-  else console.log(`✅ kanariefågel: ${riktiga.length} @Cron-jobb härledda ur den riktiga källan`)
+  // OMFÅNGSGOLV, inte "fler än noll". En härledning som krympt från 25 till 2
+  // mäter nästan ingenting men klarar ett nollgolv — och de 25 är just talet
+  // som en gång visade att den handskrivna listan om 21 var fel.
+  // MÄTT mot e9aea18: 447 källfiler, 25 @Cron-jobb.
+  const MIN_KÄLLFILER = 300
+  const MIN_CRONJOBB = 15
+  const antalKällfiler = källfiler().length
+  if (antalKällfiler < MIN_KÄLLFILER) {
+    fail(`omfång: ${antalKällfiler} källfiler skannade, golv ${MIN_KÄLLFILER}`)
+  } else if (riktiga.length < MIN_CRONJOBB) {
+    fail(
+      `omfång: ${riktiga.length} @Cron-jobb härledda ur den riktiga källan, golv ` +
+        `${MIN_CRONJOBB} — skanningen har gått blind eller mängden har krympt`,
+    )
+  } else {
+    console.log(
+      `✅ omfång: ${antalKällfiler} källfiler (golv ${MIN_KÄLLFILER}), ` +
+        `${riktiga.length} @Cron-jobb härledda (golv ${MIN_CRONJOBB})`,
+    )
+  }
 
   grön('paritet', evaluate(bas))
 
