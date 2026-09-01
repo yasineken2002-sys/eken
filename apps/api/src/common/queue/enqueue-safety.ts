@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common'
 import * as Sentry from '@sentry/nestjs'
+import type { CronErrorSink } from '../cron/cron-error-sink'
 
 /**
  * T5 Fas C2a — delad enqueue-säkerhet (resiliens/observability).
@@ -110,6 +111,21 @@ export interface EnqueueSafelyOptions {
   onLateOutcome?: (landed: boolean) => void | Promise<void>
   /** Hur länge onLateOutcome väntar på besked (default ENQUEUE_LATE_GRACE_MS). */
   lateGraceMs?: number
+  /**
+   * #605 — VALFRI cron-kontext. Hjälparen bär två felkontrakt: samma anrop sker
+   * på cron-vägen och på HTTP-vägen, och den kan inte veta vilken den är i.
+   * Alltså GISSAR den inte — anroparen lämnar kontexten.
+   *
+   * Finns den skrivs felet till den varaktiga sänkan efter Sentry-larmet.
+   * Saknas den beter sig hjälparen EXAKT som förut; HTTP-vägen är därmed
+   * oförändrad per konstruktion, inte per försiktighet.
+   *
+   * Invarianten "exakt en sänkrad per fel" håller av sig själv:
+   * `enqueueSafely` kastar aldrig, så ett yttre `runCronSafely` ser aldrig
+   * felet och kan inte rapportera det en andra gång. Raden skrivs där
+   * kontexten finns.
+   */
+  cron?: { name: string; sink: CronErrorSink } | undefined
 }
 
 const defaultLogger = new Logger('EnqueueSafety')
@@ -151,7 +167,10 @@ export async function enqueueSafely(
   try {
     inflight = enqueue()
   } catch (error) {
-    return reportProblem({ status: 'failed', error }, { logger, queue, jobType, organizationId })
+    return await reportProblem(
+      { status: 'failed', error },
+      { logger, queue, jobType, organizationId, cron: options.cron },
+    )
   }
 
   // KRITISKT: Promise.race lämnar förlorarens utfall obevakat. Vinner vår
@@ -237,7 +256,13 @@ export async function enqueueSafely(
       )
   }
 
-  return reportProblem(outcome, { logger, queue, jobType, organizationId })
+  return await reportProblem(outcome, {
+    logger,
+    queue,
+    jobType,
+    organizationId,
+    cron: options.cron,
+  })
 }
 
 /**
@@ -267,12 +292,22 @@ async function settleLate(inflight: Promise<string>, graceMs: number): Promise<b
   }
 }
 
-/** Loggar fullt lokalt + larmar skrubbat till Sentry. Returnerar utfallet. */
-function reportProblem(
+/**
+ * Loggar fullt lokalt + larmar skrubbat till Sentry, och — när anroparen lämnat
+ * en cron-kontext — skriver samma skrubbade fel till den varaktiga sänkan.
+ * Returnerar utfallet.
+ */
+async function reportProblem(
   outcome: Extract<EnqueueOutcome, { status: 'failed' | 'timeout' }>,
-  ctx: { logger: Logger; queue: string; jobType: string; organizationId?: string | undefined },
-): EnqueueOutcome {
-  const { logger, queue, jobType, organizationId } = ctx
+  ctx: {
+    logger: Logger
+    queue: string
+    jobType: string
+    organizationId?: string | undefined
+    cron?: { name: string; sink: CronErrorSink } | undefined
+  },
+): Promise<EnqueueOutcome> {
+  const { logger, queue, jobType, organizationId, cron } = ctx
   const orgSuffix = organizationId ? ` (org ${organizationId})` : ''
   const verb = outcome.status === 'timeout' ? 'BEKRÄFTADES INTE' : 'MISSLYCKADES'
   logger.error(
@@ -281,14 +316,21 @@ function reportProblem(
     }`,
     outcome.error instanceof Error ? outcome.error.stack : undefined,
   )
-  Sentry.captureException(
-    new Error(
-      `Enqueue ${queue}/${jobType} ${
-        outcome.status === 'timeout' ? 'bekräftades inte inom tidsgränsen' : 'misslyckades'
-      } (se serverlogg för detalj)`,
-    ),
-    { tags: { queue, jobType, org: organizationId } },
+  const skrubbat = new Error(
+    `Enqueue ${queue}/${jobType} ${
+      outcome.status === 'timeout' ? 'bekräftades inte inom tidsgränsen' : 'misslyckades'
+    } (se serverlogg för detalj)`,
   )
+  Sentry.captureException(skrubbat, { tags: { queue, jobType, org: organizationId } })
+
+  // Sänkan får SAMMA skrubbade fel som Sentry — en andra väg till samma
+  // händelse, inte en ersättning. `report` kastar aldrig.
+  if (cron) {
+    await cron.sink.report(cron.name, skrubbat, {
+      ...(organizationId ? { organizationId } : {}),
+      detail: { queue, jobType, utfall: outcome.status },
+    })
+  }
 
   return outcome
 }

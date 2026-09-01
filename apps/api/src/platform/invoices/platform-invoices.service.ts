@@ -879,6 +879,10 @@ export class PlatformInvoicesService {
                 jobType: 'platform-invoice-reminder',
                 organizationId: inv.organizationId,
                 logger: this.logger,
+                // #605 — CRON-ONLY väg: kontexten lämnas av anroparen, hjälparen
+                // gissar aldrig. enqueueSafely kastar inte, så det yttre
+                // runCronSafely ser aldrig felet — raden skrivs här, exakt en.
+                cron: { name: 'platform-invoices-reminders-escalate', sink: this.cronErrors },
               },
             )
 

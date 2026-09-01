@@ -567,6 +567,45 @@ jobs:
       - name: Verify no undeclared module cycle
         run: node apps/api/scripts/check-module-cycles.mjs
 
+  enqueue-cron-context-guard:
+    name: Enqueue cron context guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # #605 — enqueueSafely KASTAR ALDRIG.
+      #
+      # Den loggar lokalt, larmar skrubbat till Sentry och returnerar ett utfall.
+      # Ett misslyckat köande på cron-vägen passerar därför FÖRBI det yttre
+      # runCronSafely: jobbet fortsätter, körningen ser lyckad ut, och felet finns
+      # ingenstans att fråga efter i morgon.
+      #
+      # Hjälparen kan inte lösa det själv — den bär två felkontrakt (cron och
+      # HTTP) och kan inte veta vilket den är i. Alltså gissar den inte:
+      # ANROPAREN lämnar kontexten. Utan kontext beter den sig exakt som förut,
+      # så HTTP-vägen är oförändrad per konstruktion.
+      #
+      # Regeln är en FORMREGEL, inte en nåbarhetsanalys: i en fil som innehåller
+      # @Cron måste varje enqueueSafely-anrop lämna sin kontext. Den fångar det
+      # som återfaller — ett nytt anrop i en cron-fil utan kontext.
+      #
+      # Spridningen (`...base`) löses upp ETT steg, och kanariefågeln matar in
+      # samma form med och utan kontext i base och kräver MOTSATT utfall. Ett prov
+      # som bara visar det positiva hade inte skilt analysen från en blind regel.
+      #
+      # MÄTT mot d0920af: 4 filer med både @Cron och enqueueSafely, 6 anrop.
+      # Golv 3 respektive 5; en tom mängd fäller.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (rule + spread + scope)
+        run: node apps/api/scripts/check-enqueue-cron-context.mjs --self-test
+
+      - name: Verify every enqueueSafely in a cron file passes its context
+        run: node apps/api/scripts/check-enqueue-cron-context.mjs
+
   cron-error-sink-guard:
     name: Cron error sink guard
     runs-on: ubuntu-latest
@@ -1579,6 +1618,7 @@ jobs:
       - guard-preprocessor-guard
       - source-scan-canary-guard
       - cron-error-sink-guard
+      - enqueue-cron-context-guard
       - module-cycle-guard
       - graceful-shutdown-guard
       - skip-precondition-guard
