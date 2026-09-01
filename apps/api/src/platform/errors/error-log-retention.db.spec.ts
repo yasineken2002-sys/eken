@@ -131,14 +131,30 @@ medDb('ErrorLog-gallring (#612)', () => {
 
   const service = () => new ErrorLogRetentionService(prisma as never, null as never)
 
+  // RIGGEN SKAPAR SIN EGEN ORGANISATION.
+  //
+  // Första lydelsen lånade `organization.findFirst()` — den råkade vara grön
+  // lokalt, där dev-databasen har data, och föll i CI där den är tom. En rigg
+  // som lånar omgivningens data mäter omgivningen, inte koden: den kan bli grön
+  // av fel skäl och röd av fel skäl, och lokal grönska bevisar då mindre än den
+  // ser ut att göra. Samma mönster som `cron-error-sink-e2e.db.spec.ts` följer.
   beforeAll(async () => {
-    const org = await prisma.organization.findFirst({ select: { id: true } })
-    if (!org) throw new Error('QQ612: dev-databasen saknar organisation — riggen behöver en')
+    const org = await prisma.organization.create({
+      data: {
+        name: `${märke}-org`,
+        email: `${märke}@example.invalid`,
+        street: 'Testgatan 1',
+        city: 'Stockholm',
+        postalCode: '11122',
+      },
+    })
     orgId = org.id
   })
 
   afterAll(async () => {
+    // ErrorLog FÖRE Organization: FK:n är Restrict, inte Cascade.
     await prisma.errorLog.deleteMany({ where: { message: { contains: märke } } })
+    await prisma.organization.deleteMany({ where: { id: orgId } })
     await prisma.$disconnect()
   })
 

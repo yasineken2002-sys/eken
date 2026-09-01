@@ -46,18 +46,33 @@ medDb('avidentifiering når ErrorLog (#612)', () => {
   let tenantId: string
   let annanTenantId: string
 
+  // RIGGEN SKAPAR SIN EGEN ORGANISATION — se motiveringen i
+  // `error-log-retention.db.spec.ts`. En rigg som lånar omgivningens data mäter
+  // omgivningen: den här lydelsen ersatte en `organization.findFirst()` som var
+  // grön lokalt och röd i CI, där databasen är tom.
   beforeAll(async () => {
-    const org = await prisma.organization.findFirst({ select: { id: true } })
-    if (!org) throw new Error('QQ612A: dev-databasen saknar organisation')
+    const org = await prisma.organization.create({
+      data: {
+        name: `${märke}-org`,
+        email: `${märke}@example.invalid`,
+        street: 'Testgatan 1',
+        city: 'Stockholm',
+        postalCode: '11122',
+      },
+    })
     orgId = org.id
   })
 
+  // Städordningen följer FK-riktningen: loggposten pekar på både hyresgäst och
+  // organisation, felraderna på organisationen. Restrict, inte Cascade.
   afterEach(async () => {
     await prisma.errorLog.deleteMany({ where: { message: { contains: märke } } })
+    await prisma.tenantAnonymizationLog.deleteMany({ where: { organizationId: orgId } })
     await prisma.tenant.deleteMany({ where: { email: { startsWith: märke.toLowerCase() } } })
   })
 
   afterAll(async () => {
+    await prisma.organization.deleteMany({ where: { id: orgId } })
     await prisma.$disconnect()
   })
 
