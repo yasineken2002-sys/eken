@@ -20,6 +20,7 @@ import { AiQuotaService } from './usage/ai-quota.service'
 import { AiAuditService } from './audit/ai-audit.service'
 import { hashPendingAction } from './pending-action-hash'
 import { TOOLS, ACTION_TOOLS } from './tools/ai-tools.definition'
+import { tomEffektlistaÄrTrovärdig } from './tools/effect-idempotency'
 import type { ActionProof } from './tools/action-authorization'
 import {
   MAX_TOOL_ROUNDS,
@@ -1265,6 +1266,22 @@ export class AiAssistantService {
    * skrivs fire-and-forget och kan ha uteblivit. Att då hitta på en uppräkning
    * vore precis den sortens påstående utan belägg som resten av kodbasen rensats
    * från.
+   *
+   * ── EN TOM LISTA FÅR INTE BETYDA TVÅ SAKER ──────────────────────────────
+   *
+   * Den saknade RADEN hanterades redan. Den tomma LISTAN gjorde det inte: här
+   * stod tidigare "registrerade inga dataändringar" så snart `effects` var tom.
+   * Det påståendet håller bara om spåret inte kan tappas — och med
+   * `BÄST_MÖJLIGA` kan det. En tom lista betyder då antingen att verktyget inte
+   * skrev något, ELLER att kollektorn tömdes utanför sitt scope (exakt R2-
+   * defekten i `check-ai-tool-effects`, som gav tom lista på riktiga skrivningar
+   * och inte syntes någonstans).
+   *
+   * Samma form som #586: en tom ErrorLog fick inte kunna betyda två saker.
+   * Svaret är därför ODEFINIERAT så länge `traceIntegrity` är `BÄST_MÖJLIGA`,
+   * och blir en utsaga först när spåret bär sin egen sanning. Den dagen ett
+   * verktyg blir `TRANSAKTIONELL` eller `FÖRE_EFFEKTEN` börjar den här raden
+   * säga "inga dataändringar" igen — utan att någon rör den.
    */
   private async describeEffects(conversationId: string, toolName: string): Promise<string> {
     const körning = await this.prisma.aiToolExecution.findFirst({
@@ -1277,6 +1294,17 @@ export class AiAssistantService {
     }
     const när = körning.createdAt.toLocaleString('sv-SE')
     if (körning.effects.length === 0) {
+      // Se docblocket: tom lista är ODEFINIERAD, inte "inget hände", så länge
+      // spåret skrivs best-effort. Skälet står i svaret — en icke-uppgift utan
+      // skäl är bara en ursäkt.
+      if (!tomEffektlistaÄrTrovärdig(toolName)) {
+        return (
+          `Den utfördes ${när}. Vad den orsakade är ODEFINIERAT: effektspåret för ` +
+          `"${toolName}" skrivs best-effort och kan ha uteblivit, så en tom lista ` +
+          `kan betyda antingen att inget skrevs eller att spåret tappades. Se ` +
+          `AI-loggen för konversationen.`
+        )
+      }
       return `Den utfördes ${när} och registrerade inga dataändringar.`
     }
     const per = new Map<string, number>()
