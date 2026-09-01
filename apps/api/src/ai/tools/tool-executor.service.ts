@@ -18,6 +18,9 @@ import { LeasesService } from '../../leases/leases.service'
 import { RentIncreasesService } from '../../rent-increases/rent-increases.service'
 import { CreateLeaseWithTenantDto } from '../../leases/dto/create-lease-with-tenant.dto'
 import { normalizeEmail } from '../../common/utils/normalize-email'
+import { escapeHtml, safeColor } from '../../common/branding'
+import { renderUserParagraphs } from '../../mail/user-html'
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { PropertiesService } from '../../properties/properties.service'
 import { UnitsService } from '../../units/units.service'
 import { AccountingService } from '../../accounting/accounting.service'
@@ -1629,13 +1632,23 @@ export class ToolExecutorService {
 
             const personalizedBody = body.replace(/\{namn\}/gi, tenantName)
 
+            // ── SANERING: SAMMA MEKANISM SOM MessagesService, INTE EN ANDRA ──
+            //
+            // `base/Custom.tsx` renderar bodyHtml med `dangerouslySetInnerHTML`
+            // och säger i sin egen docblock att den INTE sanitiserar — ansvaret
+            // ligger hos anroparen. `MessagesService` tog det ansvaret; den här
+            // vägen gjorde det inte, trots att den matar in MODELLFÖRFATTAD text
+            // i samma mall.
+            //
+            // Verktygsschemat lovar dessutom "ren text, radbrytningar bevaras",
+            // så allowlistan kan bara ta bort sådant som kontraktet aldrig
+            // utlovade.
+            //
+            // ORDNINGEN ÄR AVSIKTLIG: {namn} substitueras FÖRE saneringen, så
+            // att ett hyresgästnamn som innehåller markup saneras det också.
+            // Sanerar man först och substituerar sedan går namnet in orört.
             const bodyHtml =
-              `<p>Hej ${tenantName},</p>` +
-              personalizedBody
-                .split('\n')
-                .filter((line) => line.trim())
-                .map((line) => `<p>${line}</p>`)
-                .join('')
+              `<p>Hej ${escapeHtml(tenantName)},</p>\n` + renderUserParagraphs(personalizedBody)
 
             try {
               await this.mailService.sendCustomEmail({
@@ -1645,7 +1658,10 @@ export class ToolExecutorService {
                 bodyHtml,
                 tenantName,
                 organizationName: emailOrg?.name ?? '',
-                ...(emailOrg?.invoiceColor ? { accentColor: emailOrg.invoiceColor } : {}),
+                // Färgen når ett `style`-attribut i mallen. Validerad med
+                // common/branding:s `safeColor` — SAMMA funktion som PDF-shellen
+                // och MessagesService, inte en egen kopia av regexen.
+                accentColor: safeColor(emailOrg?.invoiceColor, DEFAULT_BRAND_COLOR),
               })
               sentCount++
             } catch (err) {

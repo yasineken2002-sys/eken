@@ -2,10 +2,11 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
 import type { SentMessage } from '@prisma/client'
-import sanitizeHtml from 'sanitize-html'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { safeColor } from '../common/branding'
 import { MailService } from '../mail/mail.service'
+import { renderUserParagraphs } from '../mail/user-html'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -23,28 +24,6 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;')
 }
 
-const USER_HTML_OPTS: sanitizeHtml.IOptions = {
-  allowedTags: [
-    'p',
-    'h1',
-    'h2',
-    'h3',
-    'h4',
-    'h5',
-    'h6',
-    'strong',
-    'em',
-    'a',
-    'br',
-    'ul',
-    'ol',
-    'li',
-  ],
-  allowedAttributes: { a: ['href', 'title', 'target', 'rel'] },
-  allowedSchemes: ['http', 'https', 'mailto'],
-  disallowedTagsMode: 'discard',
-}
-
 function buildEmailHtml(
   subject: string,
   content: string,
@@ -54,14 +33,12 @@ function buildEmailHtml(
 ): string {
   const safeSubject = escapeHtml(subject)
   const safeOrgName = escapeHtml(orgName)
-  const safeAccent = /^#[0-9A-Fa-f]{3,8}$/.test(accentColor) ? accentColor : DEFAULT_BRAND_COLOR
+  const safeAccent = safeColor(accentColor, DEFAULT_BRAND_COLOR)
   const safeTenantName = tenantName ? escapeHtml(tenantName) : ''
   const greeting = safeTenantName ? `<p>Hej ${safeTenantName},</p>` : ''
-  const paragraphs = content
-    .split('\n')
-    .filter((l) => l.trim())
-    .map((l) => `<p>${sanitizeHtml(l, USER_HTML_OPTS)}</p>`)
-    .join('\n')
+  // Saneringen bor i mail/user-html.ts och delas med AI-vägen. Samma allowlist,
+  // samma renderare — se filens docblock för varför det inte får bli två.
+  const paragraphs = renderUserParagraphs(content)
 
   return `<!DOCTYPE html>
 <html lang="sv">
