@@ -48,7 +48,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, dirname, relative, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { codeMask, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
+import { codeMask, kanariefåglar, KANARIEFÅGEL_LÄGEN } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const API_ROOT = join(HERE, '..')
@@ -264,7 +264,7 @@ function selfTest() {
   // Kravet metavakten (R2) ställer på varje konsument: går source-scan.mjs
   // sönder ska DEN HÄR vakten bli röd, inte tyst fortsätta mäta fel.
   const skanner = kanariefåglar()
-  t('delad skanner: 7 kanariefåglar gröna', skanner.length === 0, skanner.join(' | '))
+  t(`delad skanner: kanariefåglarna gröna över ${KANARIEFÅGEL_LÄGEN.length} lägen`, skanner.length === 0, skanner.join(' | '))
 
   // ── MASKENS SEMANTIK ──────────────────────────────────────────────────────
   //

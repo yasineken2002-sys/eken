@@ -95,7 +95,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { codeMask, blankComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
+import { codeMask, blankComments, kanariefåglar, KANARIEFÅGEL_LÄGEN } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC_DIR = join(HERE, '..', 'src')
@@ -470,7 +470,7 @@ function selfTest() {
   if (!ok) process.exit(1)
   console.log(
     `✓ självtest: ${GOOD.length + MASK_GOOD.length} tillåtna, ${BAD.length} otillåtna — alla klassade rätt; ` +
-      'skannerns 7 kanariefåglar gröna',
+      `skannerns kanariefåglar gröna över ${KANARIEFÅGEL_LÄGEN.length} lägen`,
   )
   console.log(
     `✓ omfång: ${omf.mätt.filer} filer (golv ${MIN_FILER}), ${omf.mätt.mutatorer} reskontramutatorer ` +

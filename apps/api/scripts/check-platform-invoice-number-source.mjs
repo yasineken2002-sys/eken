@@ -57,7 +57,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { codeMask, blankComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
+import { codeMask, blankComments, kanariefåglar, KANARIEFÅGEL_LÄGEN } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC_DIR = join(HERE, '..', 'src')
@@ -260,7 +260,7 @@ function selfTest() {
   if (skanner.length) {
     ok = false
     console.error(`❌ DEN DELADE SKANNERN ÄR TRASIG:\n   ${skanner.join('\n   ')}`)
-  } else console.log('✅ delad skanner: 7 kanariefåglar gröna')
+  } else console.log(`✅ delad skanner: kanariefåglarna gröna över ${KANARIEFÅGEL_LÄGEN.length} lägen`)
 
   for (const [label, code] of [...GOOD, ...MASK_GOOD]) {
     const v = scanSource(code, `good:${label}`)

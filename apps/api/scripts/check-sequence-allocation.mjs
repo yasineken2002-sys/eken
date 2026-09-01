@@ -58,7 +58,7 @@
  * Självtest:   node apps/api/scripts/check-sequence-allocation.mjs --self-test
  */
 import { readdirSync, readFileSync } from 'node:fs'
-import { codeMask, blankComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
+import { codeMask, blankComments, kanariefåglar, KANARIEFÅGEL_LÄGEN } from '../../../scripts/lib/source-scan.mjs'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -390,7 +390,7 @@ function selfTest() {
   // ── DEN DELADE SKANNERNS KANARIEFÅGLAR (metavaktens R2) ───────────────────
   const skanner = kanariefåglar()
   if (skanner.length) fail(`DEN DELADE SKANNERN ÄR TRASIG: ${skanner.join(' | ')}`)
-  else console.log('✅ delad skanner: 7 kanariefåglar gröna')
+  else console.log(`✅ delad skanner: kanariefåglarna gröna över ${KANARIEFÅGEL_LÄGEN.length} lägen`)
 
   // ── MASKENS SEMANTIK ──────────────────────────────────────────────────────
   //
