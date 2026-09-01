@@ -10,6 +10,7 @@ import {
 import * as Sentry from '@sentry/nestjs'
 import { spawn } from 'node:child_process'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { readFile, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -345,6 +346,15 @@ export class BackupService {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    /**
+     * #605 — VARAKTIG FELSÄNKA, HÄR OCH INTE I CRON-METODEN.
+     *
+     * `BackupScheduler.dailyBackup` har en naken catch som sväljer MED FLIT,
+     * därför att rapporteringen sker HÄR. Ett sänkanrop där uppe hade
+     * rapporterat ett fel som redan är rapporterat — två rader för ett fel, och
+     * en felkanal som räknar fel är en ny sorts osanning.
+     */
+    private readonly cronErrors: CronErrorSink,
   ) {
     // Dedikerade backup-kredentialer (fallback till huvudnycklarna i dev). En
     // dump innehåller ALL PII för alla organisationer — den ska ligga bakom en
@@ -506,11 +516,21 @@ export class BackupService {
       // poängen med kontrollen: den som får larmet ska kunna åtgärda utan att
       // först skaffa serveraccess. Övriga fel skrubbas som förut, eftersom
       // pg_dump-stderr kan bära anslutningsdetaljer.
-      Sentry.captureException(
+      const skrubbat =
         err instanceof BackupPreflightError
           ? err
-          : new Error('Databasbackup misslyckades (se serverlogg för detalj)'),
-      )
+          : new Error('Databasbackup misslyckades (se serverlogg för detalj)')
+      Sentry.captureException(skrubbat)
+      // #605 — SAMMA SKRUBBADE FEL som Sentry får, inte det råa.
+      //
+      // Raden ovan skrubbar därför att pg_dump-stderr kan bära host/user/db.
+      // ErrorLog har en egen läsarkrets och en retention som ingen ännu beslutat
+      // (#612), så att skicka det råa felet dit vore att ta ett beslut i
+      // förbifarten. Skrubbningen är inte en ny policy här — den är den som
+      // raden ovanför redan tillämpar.
+      await this.cronErrors.report('daily-backup', skrubbat, {
+        detail: { steg: 'runBackup' },
+      })
       throw err
     } finally {
       await unlink(tmpPath).catch(() => undefined)

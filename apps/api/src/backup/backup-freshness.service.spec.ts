@@ -241,12 +241,17 @@ describe('BackupFreshnessService.check — larmar och loggar', () => {
       listBackups: () => Promise<Array<{ key: string }>>
     }>,
   ) {
-    return new BackupFreshnessService({
-      isProduction: true,
-      productionBlockReason: null,
-      listBackups: async () => [],
-      ...backup,
-    } as never)
+    return new BackupFreshnessService(
+      {
+        isProduction: true,
+        productionBlockReason: null,
+        listBackups: async () => [],
+        ...backup,
+      } as never,
+      // #605: REGISTRERANDE attrapp — sviten driver larmvägen med flit, så ett
+      // anrop är väntat. Jfr de specar som får en kastande attrapp.
+      { report: jest.fn(async () => undefined) } as never,
+    )
   }
 
   beforeEach(() => Sentry.captureMessage.mockClear())

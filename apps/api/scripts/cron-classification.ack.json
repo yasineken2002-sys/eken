@@ -59,10 +59,6 @@
       "class": "B",
       "invariant": "Mail-kön dedupar på idempotencyKey platform-invoice-reminder-<invoiceId>-<dagar> (Bull jobId), och PlatformInvoice.status-övergången är villkorad i sin updateMany."
     },
-    "platform/invoices/platform-invoices.service.ts::sendTrialEndingReminders": {
-      "class": "B",
-      "invariant": "Mail-kön dedupar på idempotencyKey platform-trial-reminder-<orgId>-step<steg> (Bull jobId) — samma steg kan bara ge ett mejl oavsett antal körningar."
-    },
     "platform/invoices/platform-invoices.service.ts::convertExpiredTrialsCron": {
       "class": "B",
       "invariant": "Organization-uppdateringen gör kandidatvillkoret (subscriptionStatus=TRIALING och utgången trialEndsAt) falskt, så nästa körning inte längre ser raden — dokumenterat i metoden."
@@ -102,6 +98,10 @@
     "backup/backup.scheduler.ts::dailyFreshnessCheck": {
       "class": "B",
       "invariant": "BackupFreshnessService har INGEN prisma-injektion alls (verifierat: noll träffar i filen) — check() listar R2 och larmar via Sentry/logger. Ren läsning kan inte ge dubbelt utfall."
+    },
+    "platform/invoices/platform-invoices.service.ts::sendTrialEndingRemindersCron": {
+      "class": "B",
+      "invariant": "Mail-kön dedupar på idempotencyKey platform-trial-reminder-<orgId>-step<steg> (Bull jobId) — samma steg kan bara ge ett mejl oavsett antal körningar."
     }
   }
 }
