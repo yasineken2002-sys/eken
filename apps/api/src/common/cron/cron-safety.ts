@@ -15,9 +15,40 @@ import type { CronErrorSink } from './cron-error-sink'
  * tystare än idag, tvärtom. De äger BARA felisolering + rapportering; de bygger
  * ingen utfallssummary och skickar ingen org-notis (det äger varje cron själv).
  *
- * Sentry-mönstret speglar backup.service.ts: FULL detalj till den lokala loggen
- * (kan innehålla infra/PII), ett SKRUBBAT syntetiskt fel till Sentry (bredare
- * läsarkrets). Org-id (UUID, säker korrelationsnyckel) taggas för filtrering.
+ * Sentry-mönstret speglar backup.service.ts: ett SKRUBBAT syntetiskt fel till
+ * Sentry (bredare läsarkrets). Org-id (UUID, säker korrelationsnyckel) taggas
+ * för filtrering.
+ *
+ * ── TRE MOTTAGARE, INTE TVÅ — OCH DEN TREDJE FÅR DET RÅA FELET (#612) ───────
+ *
+ * Den här texten sa tidigare att full detalj gick till den LOKALA LOGGEN ENBART.
+ * Det stämde när den skrevs och slutade stämma med #605, utan att någon ändrade
+ * meningen. Så här ser delningen faktiskt ut:
+ *
+ *   lokal logg   RÅA `err.message` + `err.stack`   försvinner med containern
+ *   Sentry       skrubbat syntetiskt fel + taggar  bred läsarkrets
+ *   ErrorLog     RÅA `err`  ← via options.sink     VARAKTIG, läses av admin
+ *
+ * DET ÄR ETT MEDVETET BESLUT, taget i #612. Skrubba INTE sänkvägen för att få
+ * texten att stämma med sin gamla lydelse: förlusten av detalj var hela
+ * defekten i #605. En rad som bara säger "Prisma-fel i morning-insights" är
+ * nästan lika tvetydig som den tystnad #605 byggde bort, och då hade båda
+ * ärendena varit förgäves.
+ *
+ * Priset — att den varaktiga tabellen bär den fritext som avsiktligt hölls
+ * utanför Sentry — betalas på andra sätt, och de ligger utanför den här filen:
+ *
+ *   • FRIST. `ErrorLog` är ett driftverktyg, inte ett revisionsspår, och gallras
+ *     (30 dagar löst / 180 olöst). Se `platform/errors/error-log-retention.ts`.
+ *   • RADERING PÅ BEGÄRAN. `anonymize-tenant.ts` tar bort rader som bär en
+ *     hyresgästs UUID — en fritextkolumn går inte att maskera, bara radera.
+ *   • ÅTKOMST. Skrivvägen är stängd (#612 PR A). LÄSNINGEN är ännu inte
+ *     graderad: varje plattformsanvändare ser varje rad, eftersom `PlatformUser`
+ *     inte har något rollfält. Öppen punkt, med villkoret utskrivet i ärendet —
+ *     ska lösas innan någon utanför de två grundarna får admin-inlogg.
+ *
+ * Den som läser den här filen ska alltså veta att `options.sink` skriver mer än
+ * Sentry gör, och varför det är rätt.
  */
 
 /** Ett per-item-fel som forEachOrgSafely isolerade och rapporterade. */
@@ -81,7 +112,9 @@ export async function runCronSafely<T>(
   try {
     return await fn()
   } catch (err) {
-    // Full detalj (kan innehålla query/infra) ENBART i den lokala loggen.
+    // Full detalj (kan innehålla query/infra/PII) till den lokala loggen — och,
+    // via `options.sink` längre ned, till ErrorLog. INTE till Sentry. Se
+    // docblocket överst för varför sänkan medvetet får det råa felet.
     logger.error(
       `[cron:${cronName}] MISSLYCKADES: ${err instanceof Error ? err.message : String(err)}`,
       err instanceof Error ? err.stack : undefined,

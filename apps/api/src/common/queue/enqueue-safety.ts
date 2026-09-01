@@ -144,7 +144,16 @@ class EnqueueTimeoutError extends Error {
  *
  * Vid problem: full detalj (kan innehålla infra-adresser) ENBART i den lokala
  * loggen; ett SKRUBBAT syntetiskt fel till Sentry med taggar {queue, jobType,
- * org} — samma delning som cron-safety.ts gör.
+ * org}.
+ *
+ * DEN HÄR VÄGEN SKILJER SIG FRÅN `cron-safety.ts`, och texten sa tidigare att
+ * den var densamma (#612). Den varaktiga sänkan får här SAMMA SKRUBBADE fel som
+ * Sentry — se `reportProblem` — medan `runCronSafely`/`forEachOrgSafely` med
+ * flit skickar det RÅA felet dit. Skillnaden är inte en inkonsekvens att städa
+ * bort: ett enqueue-fel är en infrastrukturhändelse vars detalj är
+ * Redis-adresser och köstatus, alltså inget som blir mer utredbart av att
+ * bevaras — medan ett cron-fel bär domänfelet självt, och det var förlusten av
+ * just den detaljen som var defekten i #605.
  */
 export async function enqueueSafely(
   enqueue: () => Promise<string>,

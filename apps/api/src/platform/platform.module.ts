@@ -21,6 +21,7 @@ import { PlatformPropertiesController } from './properties/platform-properties.c
 import { PlatformInvoicesService } from './invoices/platform-invoices.service'
 import { PlatformInvoicesController } from './invoices/platform-invoices.controller'
 import { PlatformErrorsService } from './errors/platform-errors.service'
+import { ErrorLogRetentionService } from './errors/error-log-retention.service'
 import { PlatformErrorsController } from './errors/platform-errors.controller'
 import { PlatformStatsService } from './stats/platform-stats.service'
 import { PlatformStatsController } from './stats/platform-stats.controller'
@@ -66,6 +67,7 @@ import { PlatformAiUsageController } from './ai-usage/platform-ai-usage.controll
     PlatformPropertiesService,
     PlatformInvoicesService,
     PlatformErrorsService,
+    ErrorLogRetentionService,
     PlatformStatsService,
     PlatformAiUsageService,
   ],

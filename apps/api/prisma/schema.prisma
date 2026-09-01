@@ -3803,6 +3803,30 @@ model TenantAnonymizationLog {
   @@index([performedAt])
 }
 
+// ─── ErrorLog — DRIFTVERKTYG, INTE REVISIONSSPÅR ──────────────────────────────
+//
+// Beslutat i #612. Tabellen stod tidigare beskriven som ett revisionsspår, och
+// den beskrivningen bar en följd ingen hade valt: ett revisionsspår sparas för
+// alltid. `message` och `stack` är OSTRUKTURERAD fritext från kastade fel — de
+// kan innehålla en e-postadress, ett personnummer, ett belopp eller en motpart
+// (mätt i #612) — så "för alltid" betyder obegränsad persondataexponering.
+//
+// Revisionsspåret är `InvoiceEvent`, `AiToolExecution` och de tabeller som bär
+// en databastrigger mot UPDATE och DELETE. Den etablerade frasen för dem står
+// MED FLIT inte i det här blocket: vakten i apps/api/scripts läser docblocket
+// ovanför en modell och letar efter frasen, och kan inte skilja "ErrorLog ÄR
+// sådan" från "ErrorLog är INTE sådan". Den fällde den första lydelsen av det
+// här stycket, korrekt — se PR-texten för #612.
+// Felloggen är alltså ett driftverktyg: den finns för att en
+// människa ska kunna utreda ett fel som inträffade, och det värdet förfaller
+// snabbt. Därför gallras den — fristerna och skälen står i
+// `src/platform/errors/error-log-retention.ts`.
+//
+// `onDelete: Restrict` NEDAN ÄR OFÖRÄNDRAT och ska så förbli i den här
+// ändringen. Att tabellen är ett driftverktyg motiverar en FRIST, inte en
+// ändrad främmande nyckel. Att byta den till Cascade är ett eget beslut med en
+// egen migration, och det beslutet är inte taget. Org-radering går i dag via
+// `src/scripts/delete-organization.ts`, som tar ErrorLog-raderna explicit.
 model ErrorLog {
   id             String        @id @default(uuid())
   organizationId String?
@@ -3814,7 +3838,8 @@ model ErrorLog {
   resolved       Boolean       @default(false)
   resolvedAt     DateTime?
 
-  // Revisionsspår: felloggen måste bevaras vid org-borttagning (Restrict).
+  // Restrict: org-raderingen ska gå via det ordnade skriptet, som tar de här
+  // raderna i rätt ordning — inte via en tyst kaskad. Se blocket ovan.
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
