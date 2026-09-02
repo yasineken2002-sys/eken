@@ -24,11 +24,16 @@ function makeController(
 ) {
   const health = { check }
   const prismaHealth = { isHealthy: jest.fn() }
-  const prisma = { legalChunkEmbedding: { count } }
+  // `findFirst` returnerar null som default: motorn har inte skrivit något.
+  // Det är det MAGRASTE svaret, så ett prov som passerar med det passerar också
+  // med en riktig rad — och riggen påstår inget den inte blivit tillsagd.
+  const findFirst: jest.Mock = jest.fn().mockResolvedValue(null)
+  const prisma = { legalChunkEmbedding: { count }, aiResumptionRun: { findFirst } }
   return {
     controller: new HealthController(health as never, prismaHealth as never, prisma as never),
     check,
     count,
+    findFirst,
   }
 }
 
@@ -121,12 +126,47 @@ describe('HealthController.check', () => {
       'error',
       'info',
       'legalKnowledge',
+      'resumption',
       'revision',
       'status',
     ])
     // Paritetsfältet bär EXAKT tre nycklar. En publik endpoint ska inte råka
     // få med sig något mer när fältet byggs ut.
     expect(Object.keys(result.legalKnowledge).sort()).toEqual(['chunks', 'model', 'vectors'])
+    // Detsamma för motorns puls (#678). Fältet bär TIDSSTÄMPLAR OCH TAL —
+    // ingen organisation, inget verktygsnamn, ingen dom. Att räkna nycklarna
+    // här är spärren mot att någon senare lägger till "senaste verktyg" eller
+    // "org med flest avstådda", vilket vore kunddata på en publik endpoint.
+    expect(Object.keys(result.resumption).sort()).toEqual(['ageSec', 'lastRunAt', 'thresholdSec'])
+  })
+
+  it('motorns puls bär ÅLDERN och TRÖSKELN, inte ett omdöme', async () => {
+    const { controller, findFirst } = makeController()
+    const nu = Date.now()
+    findFirst.mockResolvedValue({ startedAt: new Date(nu - 90_000) })
+
+    const result = await controller.check()
+
+    expect(result.resumption.lastRunAt).toBe(new Date(nu - 90_000).toISOString())
+    expect(result.resumption.ageSec).toBeGreaterThanOrEqual(89)
+    expect(result.resumption.ageSec).toBeLessThanOrEqual(92)
+    expect(result.resumption.thresholdSec).toBeGreaterThan(0)
+    // INGEN flagga. Den som läser jämför själv — samma skäl som legalKnowledge.
+    expect(result.resumption).not.toHaveProperty('silent')
+    expect(result.resumption).not.toHaveProperty('status')
+  })
+
+  it('en oläsbar pulsrad tar ALDRIG ned endpointen — Railway skulle starta om tjänsten', async () => {
+    const { controller, findFirst } = makeController()
+    findFirst.mockRejectedValue(new Error('databasen nere'))
+
+    const result = await controller.check()
+
+    expect(result.status).toBe('ok')
+    expect(result.resumption.lastRunAt).toBeNull()
+    expect(result.resumption.ageSec).toBeNull()
+    // Tröskeln står kvar: den är en konstant och kräver ingen databas.
+    expect(result.resumption.thresholdSec).toBeGreaterThan(0)
   })
 
   it('läcker inga andra RAILWAY_-variabler', async () => {

@@ -1430,6 +1430,57 @@ och bokför ingenting. (Så är det för påminnelseavgiften: både `cancelNotic
 den manuella strykningen skriver `reminder-fee-reversal:<id>`.) Skiljer sig
 namnrymderna åt finns inget skydd alls, och då MÅSTE båda riktningarna spärras.
 
+## Återanvänd inte ett fält som svarar på en ANNAN fråga
+
+"Återanvänd, duplicera inte" är husets regel och den är rätt. Men **två fält som
+besvarar två frågor är inte en duplicering**, och att slå ihop dem är ingen
+förenkling — det är en tyst betydelseglidning. Fältet fortsätter heta samma sak,
+fortsätter ha rätt värden, och börjar användas till att svara på något det aldrig
+mätte.
+
+Formen är svår att se därför att återanvändningen ser ut som disciplin. Den som
+lägger till ett fält får förklara sig; den som lånar ett befintligt får beröm.
+
+**Belägget är uppmätt (#680).** Uppdragskön behövde veta vilka verktyg som får bli
+ett uppdrag. `EFFECT_DECLARATIONS` hade redan ett policyfält, `resumptionPolicy`,
+med exakt rätt form — en enum, redan beslutad för alla 30 verktygen. Att låna det
+hade varit en rad kod.
+
+De två fälten svarar på olika frågor:
+
+```
+resumptionPolicy   får en MASKIN köra om detta obevakat efter en krasch?
+uppdragsduglighet  kan en ANDRAEFFEKT uppstå om det utförs senare?
+```
+
+`KRÄVER_MÄNNISKA` betyder att en dubblett skulle synas för någon utanför systemet
+— **inte** att en människa saknas. Ett uppdrag HAR en människas ja. Lånet hade
+alltså tyst stängt ute **elva verktyg som hyresvärden uttryckligen godkänt**, och
+utfallet hade varit en kö som bara accepterade en tredjedel av det den skulle,
+utan att något blev rött.
+
+Talen, mätta samma dag:
+
+```
+uppdragsdugliga (IDEMPOTENT + bärande spår)     23 av 30
+återupptagbara (AUTOMATISK + beslutad + spår)   12
+skillnaden                                      11, alla KRÄVER_MÄNNISKA
+```
+
+Notera att delmängdsrelationen HÖLL — de 12 låg helt inuti de 23. Ett prov på att
+"de överlappar" hade alltså varit grönt, och lånet hade sett bekräftat ut. Det som
+avslöjade det var inte ett tal utan **frågan fälten ställer**.
+
+**Regeln:** innan du lånar ett fält, skriv ut de två frågorna bredvid varandra i
+klartext. Är de olika meningar är det två fält, oavsett hur lika värdemängderna
+ser ut just nu. Och skriv in skillnaden i koden på båda ställena — annars gör
+nästa person lånet du avstod från.
+
+Syskonet åt andra hållet är delade KONSTANTER: `ATERUPPTAGNING_TAK_MS =
+PENDING_ACTION_TTL_MS` är samma defekt i talform, och den upptäcktes först när ett
+tredje ärende var på väg att låna samma tal. Två gränser som ska kunna ändras var
+för sig är inte en gräns.
+
 ## En disambiguering av ett DB-fel åldras — räkna om den vid VARJE nytt villkor
 
 En P2002 måste alltid disambigueras: kodbasen säger på flera ställen att en blind
@@ -1470,6 +1521,59 @@ igenkänning svarar sant på var och en. Det kan inte skrivas som ett db-prov om
 de två villkoren träffas från olika kodvägar — då hör det hemma på predikaten,
 som rena funktioner. Så gjordes det i `lease-conflict-disambiguation.spec.ts`,
 och skälet står i filen.
+
+## Ett unikt villkor över en NULLBAR kolumn skyddar inte raderna utan värde
+
+Två NULL är DISTINKTA i ett unikt index. `UNIQUE(a, b, c)` med `c` nullbar
+hindrar alltså inte två rader som har samma `a` och `b` och saknar `c` — de
+kolliderar inte, de är olika. Det står i SQL-standarden och är inte en
+Postgres-egenhet, men det är svårt att se i en diff: kolumnen ser ut att ingå i
+villkoret.
+
+Mätt direkt, inte härlett:
+
+```sql
+CREATE TEMP TABLE zz (a text, b text, c text);          -- c NULLBAR
+CREATE UNIQUE INDEX ON zz (a, b, c);
+INSERT INTO zz VALUES ('x','y',NULL);
+INSERT INTO zz VALUES ('x','y',NULL);                   -- går igenom → 2 rader
+
+CREATE TEMP TABLE zz2 (a text, b text, c text NOT NULL DEFAULT '');
+CREATE UNIQUE INDEX ON zz2 (a, b, c);
+INSERT INTO zz2 (a,b) VALUES ('x','y');
+INSERT INTO zz2 (a,b) VALUES ('x','y');
+-- ERROR: duplicate key ... Key (a, b, c)=(x, y, ) already exists.
+```
+
+Det farliga är att man oftast lägger till kolumnen för att SKÄRPA något. Utfallet
+blir motsatsen för de rader som fanns innan.
+
+**Uppmätt (#656).** Det unika villkoret på leveranshändelser skulle gå från
+`(rentNoticeId, type)` till `(rentNoticeId, type, sendId)`, för att ett utfall
+hör till ett UTSKICK och inte till avin. Med `sendId` nullbar hade varje rad som
+skrevs före kolumnen fått NULL — och därmed tappat skyddet helt:
+
+```
+före  UNIQUE(rentNoticeId, type)                  en EMAIL_BOUNCED per avi
+efter UNIQUE(rentNoticeId, type, sendId) nullbar  obegränsat många, alla med NULL
+efter UNIQUE(rentNoticeId, type, sendId) NOT NULL en per (avi, utskick) — och de
+      med tom default                             gamla raderna delar '' och
+                                                  behåller exakt en per avi
+```
+
+**Regeln: en kolumn som läggs till i ett unikt villkor ska vara NOT NULL med en
+sentinel-default.** Sentinelvärdet kolliderar med sig självt och bevarar den
+gamla semantiken för de gamla raderna, medan nya rader får den nya, finare
+enheten. Ingen backfill behövs — och på en append-only-tabell finns ingen att
+göra: en UPDATE avvisas av skrivspärren.
+
+Priset är att sentinelen inte kan ha en främmande nyckel: `''` betyder "fanns
+före enheten" och pekar per definition inte på någon rad. Skriv ut det vid
+kolumnen, annars ser avsaknaden av FK ut som ett förbiseende.
+
+**Samma familj som "NULL betyder okänt, inte människa".** En kolumn som föds
+nullbar bär ett tyst undantag, och undantaget gäller exakt de rader ingen tänkte
+på när villkoret skrevs.
 
 ## Kvalitetschecklist
 
