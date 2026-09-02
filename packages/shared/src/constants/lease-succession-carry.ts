@@ -108,6 +108,12 @@ export const LEASE_SUCCESSION_EXCLUDED_FIELDS = [
   'terminatedAt', // nytt avtal är inte uppsagt
   'terminationReason', // —"—
   'contractNumber', // ny allokering ur ContractNumberSequence
+  // Aktörsslaget bärs ALDRIG över (G1 steg 3). En förnyelse är en egen
+  // handling, utförd av den som förnyar — kopierades slaget hade ett avtal
+  // förnyat av en cron burit HUMAN därför att originalet gjorde det, i sju år,
+  // utan att något föll. Den nya raden får sin stämpel ur kontexten som allt
+  // annat.
+  'actorKind',
   'createdAt', // Prisma-default
   'updatedAt', // Prisma-default
   // 🔴 Påminnelseavgiftens avtalsgrund (G1/G2) — MEDVETET EXKLUDERAD.

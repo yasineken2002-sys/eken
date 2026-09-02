@@ -40,6 +40,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import * as Sentry from '@sentry/nestjs'
 
+import { CronErrorSink } from '../cron/cron-error-sink'
 import { PrismaService } from '../prisma/prisma.service'
 import { STÄMPLADE_MODELLER } from '../prisma/actor-stamp-extension'
 import { runCronSafely } from '../cron/cron-safety'
@@ -54,7 +55,10 @@ export interface OstämpladTabell {
 export class ActorNullSweepService {
   private readonly logger = new Logger(ActorNullSweepService.name)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cronErrors: CronErrorSink,
+  ) {}
 
   /**
    * Räknar rader skapade efter brytpunkten som saknar aktör, per tabell.
@@ -78,26 +82,37 @@ export class ActorNullSweepService {
 
   @Cron(CronExpression.EVERY_DAY_AT_6AM)
   async sveep(): Promise<void> {
-    await runCronSafely('actor-null-sweep', async () => {
-      const träffar = await this.mät()
-      if (träffar.length === 0) {
-        this.logger.log(
-          `[actor-null-sweep] 0 ostämplade rader i ${STÄMPLADE_MODELLER.size} tabeller`,
+    // KLASSIFICERING: B — jobbet SKRIVER ingenting. `mät()` gör bara
+    // `SELECT count(*)`, och två samtidiga körningar kan därför inte kollidera:
+    // det finns ingen rad att tävla om. Larmet kan dubbleras, vilket är en
+    // dubblett i Sentry och inte ett datafel.
+    //
+    // Sänkan är inkopplad: ett fel HÄR är ett fel i det instrument som ska
+    // upptäcka andra fel, och det är den sortens tystnad som varar längst.
+    await runCronSafely(
+      'actor-null-sweep',
+      async () => {
+        const träffar = await this.mät()
+        if (träffar.length === 0) {
+          this.logger.log(
+            `[actor-null-sweep] 0 ostämplade rader i ${STÄMPLADE_MODELLER.size} tabeller`,
+          )
+          return
+        }
+        const summa = träffar.reduce((s, t) => s + t.antal, 0)
+        // Sentry, inte bara loggen: den lokala loggen försvinner med containern,
+        // och det här är precis den sortens fel som inte märks förrän någon
+        // frågar historiken om ett år.
+        this.logger.error(
+          `[actor-null-sweep] ${summa} rader utan aktör efter brytpunkten: ` +
+            träffar.map((t) => `${t.tabell}=${t.antal}`).join(' '),
         )
-        return
-      }
-      const summa = träffar.reduce((s, t) => s + t.antal, 0)
-      // Sentry, inte bara loggen: den lokala loggen försvinner med containern,
-      // och det här är precis den sortens fel som inte märks förrän någon
-      // frågar historiken om ett år.
-      this.logger.error(
-        `[actor-null-sweep] ${summa} rader utan aktör efter brytpunkten: ` +
-          träffar.map((t) => `${t.tabell}=${t.antal}`).join(' '),
-      )
-      Sentry.captureException(
-        new Error(`Aktörsstämplingen missade ${summa} rader (se serverlogg för tabeller)`),
-        { tags: { sweep: 'actor-null' }, level: 'warning' },
-      )
-    })
+        Sentry.captureException(
+          new Error(`Aktörsstämplingen missade ${summa} rader (se serverlogg för tabeller)`),
+          { tags: { sweep: 'actor-null' }, level: 'warning' },
+        )
+      },
+      { logger: this.logger, sink: this.cronErrors },
+    )
   }
 }

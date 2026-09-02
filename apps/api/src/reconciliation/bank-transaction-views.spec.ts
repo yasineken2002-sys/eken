@@ -68,6 +68,12 @@ function utanKommentarer(src: string): string {
 const BANKKONTOTS_FÄLT: string[] = ['balance', 'matchedBy', 'externalId', 'dedupKey']
 
 const MEDVETET_UTELÄMNADE: Record<string, string> = {
+  actorKind:
+    'Intern proveniens (G1 steg 3): vem som SKAPADE raden — människa, agent ' +
+    'eller system. Den frågan besvaras i historiken, inte i en fakturarad och ' +
+    'inte i avstämningsvyn. Att skicka med den hade dessutom exponerat vilka ' +
+    'poster AI:n rört för varje läsare av fakturasvaret, vilket är en annan ' +
+    'grind än den här filens.',
   balance:
     'Kontosaldot vid transaktionen — organisationens likviditet. Har ingenting ' +
     'med vare sig en enskild faktura eller avstämningsarbetet att göra.',

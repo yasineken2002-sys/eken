@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 
+import { CronErrorSinkModule } from '../cron/cron-error-sink.module'
 import { PrismaModule } from '../prisma/prisma.module'
 import { ActorNullSweepService } from './actor-null-sweep.service'
 
@@ -9,7 +10,7 @@ import { ActorNullSweepService } from './actor-null-sweep.service'
  * globalt i `main.ts` eftersom den måste ligga ytterst.
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, CronErrorSinkModule],
   providers: [ActorNullSweepService],
   exports: [ActorNullSweepService],
 })
