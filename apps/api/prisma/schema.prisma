@@ -2220,6 +2220,22 @@ model Document {
   // återanvänder vi den befintliga raden istället för att skapa nya versioner.
   // Skiljer sig från contentHash som hashar PDF-bytena (dessa varierar p.g.a.
   // Puppeteer-timestamps även för identisk input).
+  //
+  // ⚠️ EN PRODUCENT. Värdet får bara skrivas av `ContractTemplateService`, och
+  // bara som `fingerprintTemplateInput(input)` över dess egen
+  // `ContractTemplateInput`. Kolumnen är inte "någon hash över indata" — den är
+  // den hashen.
+  //
+  // Skälet är mätt (#641). AI-verktyget `generate_lease_contract` bygger sin
+  // HTML inline ur andra fält och har inte tjänsten injicerad, så det kan inte
+  // beräkna samma värde. Skrev det ett eget skulle kolumnen bära två
+  // oförenliga betydelser, och effekten vore inte en kollision utan TYSTNAD:
+  // dedup-frågan `where: { templateInputHash: inputHash }` matchar då aldrig
+  // verktygets rader, och tjänsten regenererar i tron att inget fanns.
+  //
+  // Verktyget dedupar därför på sin lagringsnyckel (leaseId + dag) i stället.
+  // Behöver en andra väg äkta input-dedup är svaret att anropa
+  // ContractTemplateService, inte att fylla den här kolumnen.
   templateInputHash String?
 
   // ── Kontraktsbilaga (Kontraktsmall 2.0) ────────────────────────────────
