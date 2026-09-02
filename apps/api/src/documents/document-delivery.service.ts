@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto'
+
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { DocumentCategory } from '@prisma/client'
-import { v4 as uuid } from 'uuid'
+import { extensionForDetectedMime } from '../common/utils/file-validation'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
 import { MailService } from '../mail/mail.service'
@@ -103,27 +105,103 @@ export class DocumentDeliveryService {
         : input.category
 
     const mimeType = input.mimeType ?? 'application/pdf'
-    const storageKey = `documents/${organizationId}/${uuid()}_${input.fileName}`
-    const storageUrl = await this.storage.uploadFile(content, storageKey, mimeType)
 
-    const doc = await this.prisma.document.create({
-      data: {
-        organizationId,
-        // tenantId härleds från den verifierade tenanten (server-side),
-        // aldrig från rå input. Detta gör dokumentet portal-synligt för
-        // EXAKT denna hyresgäst.
-        tenantId: tenant.id,
-        name: input.name,
-        ...(input.description ? { description: input.description } : {}),
-        storageKey,
-        storageUrl,
-        fileSize: content.length,
-        mimeType,
-        category,
-      },
-    })
+    // ── NYCKELN HÄRLEDS UR MOTTAGAREN OCH INNEHÅLLET ────────────────────────
+    //
+    // Nyckeln var `documents/<org>/<uuid()>_<filnamn>`. `Document` bär
+    // `@@unique([organizationId, storageKey])`, men en färsk uuid per anrop gör
+    // att det villkoret aldrig kan slå till: spärren var inte frånvarande, den
+    // var BESEGRAD av nyckelvalet. Varje omkörning gav ett nytt dokument i
+    // hyresgästens portal.
+    //
+    // MOTTAGAREN MÅSTE IN, och det är inte en detalj. En ren innehållshash
+    // kolliderar när SAMMA fil skickas till TVÅ hyresgäster — ett
+    // informationsbrev till alla i huset är normalfallet, inte undantaget — och
+    // hyresgäst nummer två hade då aldrig fått sitt dokument. Det är exakt den
+    // "för grova nämnare" som är värre än ingen nämnare alls: ett legitimt
+    // dokument som tyst försvinner.
+    //
+    // FILNAMNET STÅR HELT UTANFÖR NYCKELN, och det är kodbasens redan fattade
+    // beslut och inte mitt: `documents.service.ts` slutade använda klientens
+    // filnamn med motiveringen "ett fält uppladdaren styr, använt som om det
+    // vore verifierat". Ändelsen härleds därför ur mimetypen via den delade
+    // `extensionForDetectedMime`. `Document.name` bär det användarsynliga
+    // namnet ändå, så ingenting går förlorat.
+    //
+    // Samma felklass som den nyss borttagna kontraktsnyckeln, där ett
+    // företagsnamn med snedstreck skrev ett extra katalogsteg in i sökvägen.
+    const innehållsfingeravtryck = createHash('sha256').update(content).digest('hex').slice(0, 16)
+    const storageKey =
+      `documents/${organizationId}/${tenant.id}/` +
+      `${innehållsfingeravtryck}.${extensionForDetectedMime(mimeType)}`
 
-    if (input.notify) {
+    // ── RADEN FÖRST, BYTESEN SEDAN (samma ordning som #641) ─────────────────
+    //
+    // Ordningen var ofarlig så länge nyckeln var slumpad: två anrop kunde per
+    // konstruktion aldrig träffa samma objekt. Att göra nyckeln härledd INFÖR
+    // kollisionen som möjlighet, och därmed också behovet av att ta anspråket
+    // före bytesen. Utan den här ändringen hade nyckelfixen byggt in #641:s
+    // överskrivning i den här vägen i stället för att hålla den borta.
+    //
+    // `getPresignedUrl` signerar en sökväg och kräver inte att objektet finns,
+    // så raden kan bära sin `storageUrl` innan uppladdningen.
+    const storageUrl = await this.storage.getPresignedUrl(storageKey)
+
+    let doc: { id: string }
+    let redanLevererat = false
+    try {
+      doc = await this.prisma.document.create({
+        data: {
+          organizationId,
+          // tenantId härleds från den verifierade tenanten (server-side),
+          // aldrig från rå input. Detta gör dokumentet portal-synligt för
+          // EXAKT denna hyresgäst.
+          tenantId: tenant.id,
+          name: input.name,
+          ...(input.description ? { description: input.description } : {}),
+          storageKey,
+          storageUrl,
+          fileSize: content.length,
+          mimeType,
+          category,
+        },
+        select: { id: true },
+      })
+    } catch (err) {
+      // Bara DEN HÄR kollisionen. Andra unika index på Document betyder något
+      // annat och ska fortsätta upp — aldrig en blind P2002-fångst.
+      const p2002 = err as { code?: string; meta?: { target?: unknown } }
+      const fält = Array.isArray(p2002.meta?.target) ? p2002.meta.target.map(String) : []
+      if (p2002.code !== 'P2002' || !fält.includes('storageKey')) throw err
+
+      // Samma mottagare, samma byten: dokumentet finns redan. Vi laddade inte
+      // upp något, så ingenting kan ha skrivits över.
+      const befintlig = await this.prisma.document.findFirstOrThrow({
+        where: { organizationId, storageKey },
+        select: { id: true },
+      })
+      doc = befintlig
+      redanLevererat = true
+    }
+
+    if (!redanLevererat) {
+      // Anspråket är vårt. Nu, och först nu, får bytesen skrivas.
+      try {
+        await this.storage.uploadFile(content, storageKey, mimeType)
+      } catch (err) {
+        // Raden tas bort igen — en rad mot ett objekt som aldrig laddades upp
+        // visar ett dokument som inte går att öppna, och blockerar nästa försök
+        // med sitt eget spöke.
+        await this.prisma.document.delete({ where: { id: doc.id } }).catch(() => undefined)
+        throw err
+      }
+    }
+
+    // NOTISEN FÖLJER DOKUMENTET. Skapades inget nytt dokument finns det
+    // ingenting att meddela — och ett andra mejl om samma dokument är precis
+    // den dubblett en människa utanför systemet ser. Nyckeln hade dedupat
+    // raden men lämnat utskicket odedupat, vilket är halva jobbet.
+    if (input.notify && !redanLevererat) {
       // Best-effort: en misslyckad notis får aldrig blockera leveransen —
       // dokumentet ligger redan i portalen.
       await this.notifyTenant(organizationId, tenant, input.name, doc.id).catch((err) => {

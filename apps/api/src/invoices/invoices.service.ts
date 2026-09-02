@@ -34,6 +34,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 import { assertPaymentWithinDebt } from '../common/payments/payment-within-debt'
+import { assertNoRecentIdenticalManualPayment } from '../common/payments/duplicate-payment-window'
 import { PAYMENT_TX_LIMITS, PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 // Mappar InvoiceStatus → Prisma InvoiceEventType enum-värde
@@ -312,33 +313,7 @@ export class InvoicesService {
         }
       }
 
-      // Dubbelbokförings-spärr (BFL 4 kap 2 §): avisering (RentNotice) är den
-      // kanoniska hyresmotorn. En manuell RENT-faktura för ett avtal+period som
-      // redan aviserats skulle intäktsbokföra samma hyra en andra gång (1510 D /
-      // 39xx K två gånger). Blockera — hyra ska faktureras via avisering.
-      if (dto.type === 'RENT') {
-        const period = new Date(dto.issueDate)
-        const existingNotice = await this.prisma.rentNotice.findFirst({
-          where: {
-            leaseId: lease.id,
-            // Bara HYRES-avin riskerar dubbelbokas — en DEPOSIT-avi för samma
-            // period (som avisering skapar vid tillträde) ska inte falskblockera.
-            type: 'RENT',
-            // Svensk civil tid — annars kunde en avi daterad 1 januari matchas
-            // mot december och dubblettspärren missa (eller falskblockera).
-            month: stockholmCivilDate(period).month,
-            year: stockholmCivilDate(period).year,
-            status: { not: 'CANCELLED' },
-          },
-          select: { id: true },
-        })
-        if (existingNotice) {
-          throw new ConflictException(
-            'Hyresavtalet har redan en hyresavi för denna period — fakturera hyra via ' +
-              'avisering (Generera avier), inte som manuell faktura.',
-          )
-        }
-      }
+      await this.assertNoDuplicateInvoice(dto, lease.id)
 
       leaseId = lease.id
       leaseTenantId = lease.tenantId
@@ -1020,6 +995,98 @@ export class InvoicesService {
   }
 
   /**
+   * EN SPÄRR, TVÅ NAMNGIVNA GRENAR — hyra och allt annat är olika frågor.
+   *
+   * Två parallella vägar hade glidit isär; två grenar med skälet vid var och en
+   * gör det inte. Skillnaden mellan dem är inte teknisk utan domänens: den ena
+   * halvan HAR en nyckel, den andra har ingen.
+   */
+  private async assertNoDuplicateInvoice(
+    dto: { type?: string; issueDate: string | Date },
+    leaseId: string,
+  ): Promise<void> {
+    // ── GREN 1: HYRA HAR EN DOMÄNNYCKEL — (avtal, period) ────────────────────
+    //
+    // Hyra faktureras en gång per avtal och period. Det är inte vår konvention
+    // utan hur ett hyresförhållande fungerar, och därför en nyckel som inte kan
+    // bli för grov: två hyreskrav för samma avtal och samma månad är aldrig två
+    // affärshändelser.
+    if (dto.type === 'RENT') {
+      const period = new Date(dto.issueDate)
+      const { month, year } = stockholmCivilDate(period)
+
+      // ⚠️ POPULATIONEN VAR HALV. Spärren frågade bara `RentNotice`, alltså
+      // "har avisering redan tagit den här perioden?". Den kunde INTE se en
+      // andra MANUELL faktura: två `create_invoice` med samma avtal och period
+      // passerade båda så länge ingen avi fanns, och bokförde hyran två gånger.
+      //
+      // Nyckeln fanns alltså redan och var rätt — den ställdes bara mot fel
+      // mängd rader. Båda tabellerna kan bära perioden, så båda måste frågas.
+      const [existingNotice, existingInvoice] = await Promise.all([
+        this.prisma.rentNotice.findFirst({
+          where: {
+            leaseId,
+            // Bara HYRES-avin riskerar dubbelbokas — en DEPOSIT-avi för samma
+            // period (som avisering skapar vid tillträde) ska inte falskblockera.
+            type: 'RENT',
+            // Svensk civil tid — annars kunde en avi daterad 1 januari matchas
+            // mot december och dubblettspärren missa (eller falskblockera).
+            month,
+            year,
+            status: { not: 'CANCELLED' },
+          },
+          select: { id: true },
+        }),
+        this.prisma.invoice.findFirst({
+          where: {
+            leaseId,
+            type: 'RENT',
+            // Samma civila månad, uttryckt som ett intervall: `issueDate` är en
+            // DATE-kolumn och bär ingen månad att jämföra direkt mot.
+            issueDate: {
+              gte: new Date(Date.UTC(year, month - 1, 1)),
+              lt: new Date(Date.UTC(year, month, 1)),
+            },
+            // En makulerad faktura gör inte längre anspråk på perioden, och en
+            // ny för samma månad är då en legitim andra handling. Samma
+            // resonemang som CANCELLED ovan.
+            status: { not: 'VOID' },
+          },
+          select: { id: true },
+        }),
+      ])
+
+      if (existingNotice) {
+        throw new ConflictException(
+          'Hyresavtalet har redan en hyresavi för denna period — fakturera hyra via ' +
+            'avisering (Generera avier), inte som manuell faktura.',
+        )
+      }
+      if (existingInvoice) {
+        throw new ConflictException(
+          'Hyresavtalet har redan en hyresfaktura för denna period. Ingen ny faktura ' +
+            'har skapats. Ska hyran ändras: kreditera den befintliga fakturan i stället ' +
+            'för att skapa en till.',
+        )
+      }
+      return
+    }
+
+    // ── GREN 2: ALLT ANNAT SAKNAR NYCKEL — OCH SKA INTE FÅ EN PÅHITTAD ───────
+    //
+    // Två identiska serviceavgifter på samma avtal med samma förfallodatum och
+    // belopp är i domänen två legitima krav: ingenting i datan skiljer dem åt.
+    // En innehållsnyckel här hade fabricerat en skillnad som inte finns, och
+    // tyst kastat den andra fakturan — hyresgästen underdebiteras och felet syns
+    // först vid en avstämning.
+    //
+    // Grenen står här TOM MED FLIT, inte av glömska. Det som hör hemma är ett
+    // kort TIDSFÖNSTER mot oavsiktliga dubbletter, av samma form som
+    // `common/payments/duplicate-payment-window.ts` — och dess tal måste mätas
+    // för den här vägen, inte kopieras från betalvägens 120 s.
+  }
+
+  /**
    * Registrera en manuell betalning på en faktura (utan bankavstämning).
    *
    * Denna väg måste GARANTERA att inbetalningen bokförs. Annars markeras fakturan
@@ -1147,6 +1214,24 @@ export class InvoicesService {
         // restskuld". Talen står kvar i texten, vilket är det som hjälper den som
         // skrev fel belopp.
         assertPaymentWithinDebt(settlement, debtBefore.outstanding)
+
+        // ── OAVSIKTLIG DUBBLETT: ETT KORT FÖNSTER, INTE EN NYCKEL ───────────
+        //
+        // Innehållet kan inte identifiera en manuell betalning — två lika
+        // delposter på samma faktura ÄR identiska i domänen, och att införa en
+        // kolumn som skiljer dem hade fabricerat en skillnad som inte finns.
+        // Hela resonemanget, med talen bakom fönstret, står i hjälparen.
+        //
+        // Ligger HÄR och inte hos anroparen: innanför transaktionen och efter
+        // `FOR UPDATE` ovan, så att två samtidiga registreringar serialiseras
+        // i stället för att båda passera en läsning. Och den gäller båda
+        // manuella anroparna — AI-verktyget och `POST /:id/pay` — eftersom en
+        // dubbelsubmit är lika fel oavsett vem som gjorde den.
+        await assertNoRecentIdenticalManualPayment(tx, {
+          invoiceId: id,
+          amount: settlement,
+          nu: new Date(),
+        })
 
         const debtAfter = computeInvoiceDebt({
           total: invoice.total,

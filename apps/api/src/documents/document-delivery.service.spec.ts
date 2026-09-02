@@ -32,7 +32,12 @@ function makeService(tenantRow: typeof TENANT | null = TENANT) {
     document: { create: documentCreate },
     organization: { findUnique: orgFindUnique },
   }
-  const storage = { uploadFile: jest.fn().mockResolvedValue('https://r2.example/doc.pdf') }
+  // `getPresignedUrl` behövs sedan anspråket (document.create) tas FÖRE
+  // uppladdningen: raden signerar sin URL ur nyckeln innan några bytes finns.
+  const storage = {
+    uploadFile: jest.fn().mockResolvedValue('https://r2.example/doc.pdf'),
+    getPresignedUrl: jest.fn().mockResolvedValue('https://r2.example/doc.pdf'),
+  }
   const mail = { sendCustomEmail: jest.fn().mockResolvedValue('msg-1') }
   const service = new DocumentDeliveryService(prisma as never, storage as never, mail as never)
   return { service, tenantFindFirst, documentCreate, storage, mail }

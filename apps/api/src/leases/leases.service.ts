@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import type { LeaseStatus, LeaseType, TenancyRegime, UnitType } from '@prisma/client'
 import { Cron } from '@nestjs/schedule'
@@ -387,14 +393,53 @@ function pickSuccessionCarryData(lease: Record<string, unknown>): SuccessionCarr
 // Översätt Postgres unique-konflikt på partial index lease_unit_active_unique
 // till svensk BadRequest. Detta är skyddet mot race när två förfrågningar
 // samtidigt försöker skapa/aktivera ACTIVE-kontrakt på samma enhet.
-function isActiveUnitConflict(err: unknown): boolean {
+//
+// ⚠️ EXAKT MATCHNING PÅ KOLUMNMÄNGDEN, inte `includes('unitId')`.
+//
+// Den lösa formen dög så länge `unitId` bara förekom i ETT unikt villkor. När
+// `Lease_unitId_tenantId_startDate_key` tillkom slutade den göra det: en
+// dubblettkonflikt rapporterar `['unitId','tenantId','startDate']`, och den
+// gamla regeln hade svarat "Lägenheten har redan ett aktivt kontrakt" om ett
+// avtal som inte ens är aktivt. En felaktig men trovärdig text är värre än ett
+// råtts fel — operatören letar på fel ställe.
+//
+// Det är samma familj som en blind P2002-fångst, och den uppstod inte av att
+// någon skrev fel utan av att ett NYTT villkor gjorde en tidigare entydig
+// avgränsning tvetydig. En disambiguering måste alltså räknas om varje gång
+// modellen får ett unikt villkor till.
+export function isActiveUnitConflict(err: unknown): boolean {
   if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false
   if (err.code !== 'P2002') return false
   const target = (err.meta as { target?: unknown } | undefined)?.target
   if (typeof target === 'string') return target.includes('lease_unit_active_unique')
-  if (Array.isArray(target)) return target.includes('unitId')
+  if (Array.isArray(target)) {
+    const fält = target.map(String)
+    return fält.length === 1 && fält[0] === 'unitId'
+  }
   return false
 }
+
+/**
+ * Betyder den här P2002:an "avtalet finns redan"?
+ *
+ * `@@unique([unitId, tenantId, startDate])`: samma part, samma lägenhet, samma
+ * tillträdesdag två gånger är inte två hyresförhållanden utan ett registrerat
+ * två gånger. Kräver ALLA TRE fälten — `unitId` ensamt tillhör
+ * `lease_unit_active_unique` och betyder något helt annat.
+ */
+export function ärDubblettavtalskonflikt(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false
+  const target = (err.meta as { target?: unknown } | undefined)?.target
+  if (!Array.isArray(target)) return false
+  const fält = target.map(String)
+  return fält.includes('unitId') && fält.includes('tenantId') && fält.includes('startDate')
+}
+
+/** EN text, oavsett vilken av de två skapandevägarna som träffade villkoret. */
+const DUBBLETTAVTAL_TEXT =
+  'Det finns redan ett hyresavtal för den här hyresgästen i den här lägenheten ' +
+  'med samma tillträdesdag. Inget nytt avtal har skapats. Är det en förlängning ' +
+  'eller en ny hyresperiod: ange ett annat tillträdesdatum.'
 
 // Bygg ett visningsbart hyresgästnamn till felmeddelanden. INDIVIDUAL faller
 // tillbaka till email om både för- och efternamn saknas; COMPANY på email om
@@ -509,29 +554,37 @@ export class LeasesService {
       throw new BadRequestException(depositErrorMessage(cap))
     }
 
-    return this.prisma.lease.create({
-      data: {
-        organizationId,
-        unitId: dto.unitId,
-        tenantId: dto.tenantId,
-        startDate: new Date(dto.startDate),
-        // T1.3b: första avtalet → kontinuitetsmarkören = startDate. Ärvs sedan
-        // oförändrat genom förnyelser via carry-projektionen.
-        tenancyStartDate: new Date(dto.startDate),
-        ...(dto.endDate != null ? { endDate: new Date(dto.endDate) } : {}),
-        monthlyRent: dto.monthlyRent,
-        depositAmount: dto.depositAmount ?? 0,
-        status: 'DRAFT',
-        leaseType,
-        ...(dto.renewalPeriodMonths != null
-          ? { renewalPeriodMonths: dto.renewalPeriodMonths }
-          : {}),
-        noticePeriodMonths: requestedNotice,
-        tenancyRegime: resolveTenancyRegime(dto.tenancyRegime, unit.type),
-        ...pickContractTerms(dto),
-      },
-      include: INCLUDE,
-    })
+    // KONFLIKT, INTE LÄSNING FÖRE. Det partiella `lease_unit_active_unique`
+    // gäller bara ACTIVE, och den här vägen skapar DRAFT — en omkörning gav
+    // därför två utkast på samma enhet utan att något villkor kunde se det.
+    try {
+      return await this.prisma.lease.create({
+        data: {
+          organizationId,
+          unitId: dto.unitId,
+          tenantId: dto.tenantId,
+          startDate: new Date(dto.startDate),
+          // T1.3b: första avtalet → kontinuitetsmarkören = startDate. Ärvs sedan
+          // oförändrat genom förnyelser via carry-projektionen.
+          tenancyStartDate: new Date(dto.startDate),
+          ...(dto.endDate != null ? { endDate: new Date(dto.endDate) } : {}),
+          monthlyRent: dto.monthlyRent,
+          depositAmount: dto.depositAmount ?? 0,
+          status: 'DRAFT',
+          leaseType,
+          ...(dto.renewalPeriodMonths != null
+            ? { renewalPeriodMonths: dto.renewalPeriodMonths }
+            : {}),
+          noticePeriodMonths: requestedNotice,
+          tenancyRegime: resolveTenancyRegime(dto.tenancyRegime, unit.type),
+          ...pickContractTerms(dto),
+        },
+        include: INCLUDE,
+      })
+    } catch (err) {
+      if (!ärDubblettavtalskonflikt(err)) throw err
+      throw new ConflictException(DUBBLETTAVTAL_TEXT)
+    }
   }
 
   async update(id: string, dto: UpdateLeaseDto, organizationId: string) {
@@ -1116,6 +1169,9 @@ export class LeasesService {
         })
       }, PRISMA_DEFAULT_TX_LIMITS)
     } catch (err) {
+      // FÖRE isActiveUnitConflict: de två villkoren delar `unitId`, och ett
+      // dubblettavtal är inte ett aktivt-kontrakt-race.
+      if (ärDubblettavtalskonflikt(err)) throw new ConflictException(DUBBLETTAVTAL_TEXT)
       if (isActiveUnitConflict(err)) {
         // Race: en annan request hann slå mot lease_unit_active_unique mellan
         // vår describeActiveBlocker-check och DB-skrivningen. Bygg om felet

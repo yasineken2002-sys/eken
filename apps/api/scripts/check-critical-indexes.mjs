@@ -41,6 +41,20 @@ const CRITICAL_INDEXES = [
     columns: ['unitId'],
     where: "status='ACTIVE'",
   },
+  {
+    label: 'en LEVANDE hyreshöjning per avtal och ikraftträdande',
+    expectedName: 'rent_increase_lease_effective_live_unique',
+    migrationRef: '20260902150000_rent_increase_live_unique',
+    unique: true,
+    table: 'RentIncrease',
+    columns: ['leaseId', 'effectiveDate'],
+    // PARTIELLT med flit: en återkallad, nekad eller annullerad höjning gör
+    // inte längre anspråk på datumet, och en ny för samma datum är då en
+    // legitim andra handling. Faller predikatet bort blir villkoret för grovt
+    // och blockerar den — därför står statuslistan i invarianten och inte bara
+    // i migrationen.
+    where: "statusIN('DRAFT','NOTICE_SENT','ACCEPTED','APPLIED')",
+  },
 ]
 
 // ── normalisering ──────────────────────────────────────────────────────────

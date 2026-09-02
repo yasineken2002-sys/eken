@@ -305,6 +305,10 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
           uppladdade.push(key)
           return `https://r2.example/${key}`
         },
+        // Anspråket tas före uppladdningen, så raden signerar sin URL ur
+        // nyckeln innan några bytes finns. Det som räknas här är fortfarande
+        // `uppladdade` — och den andra körningen ska inte lägga något där.
+        getPresignedUrl: async (key: string) => `https://r2.example/${key}`,
       },
       logger: { log: () => undefined, warn: () => undefined, error: () => undefined },
     })
@@ -336,15 +340,26 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
     })
     expect(dokument).toHaveLength(1)
 
-    // ETT objekt: båda körningarna skrev till SAMMA nyckel, så den andra
-    // uppladdningen var en överskrivning och inte ett nytt objekt.
-    expect(uppladdade).toHaveLength(2)
-    expect(new Set(uppladdade).size).toBe(1)
+    // ── DEN HÄR ASSERTIONEN HADE SKRIVIT IN BUGGEN SOM FÖRVÄNTAT BETEENDE ──
+    //
+    // Den krävde tidigare TVÅ uppladdningar till samma nyckel och kallade det
+    // "en överskrivning och inte ett nytt objekt". Överskrivningen var inte en
+    // ofarlig biverkning av dedupen — den VAR skadan: uppladdningen låg före
+    // `document.create`, så en andra körning skrev bytes innan den upptäckte
+    // att nyckeln var upptagen. Med två avtal för samma hyresgäst samma dag
+    // hamnade avtal B:s PDF under avtal A:s rad.
+    //
+    // Nu tas anspråket först, och bara den som vunnit rör lagringen. En
+    // omkörning laddar därför upp INGENTING. Kravet är alltså skarpare än
+    // förut, inte lösare: exakt en uppladdning, och den hör till den enda rad
+    // som finns.
+    expect(uppladdade).toHaveLength(1)
     expect(uppladdade[0]).toBe(dokument[0]!.storageKey)
 
     // Och svaret SÄGER att inget nytt skapades — annars ser en omkörning ut som
-    // ett nytt kontrakt för den som läser.
-    expect(andra.message).toMatch(/fanns redan/)
+    // ett nytt kontrakt för den som läser. Texten namnger numera avtalet, så
+    // att ett påstående om FEL avtal går att se.
+    expect(andra.message).toMatch(/genererades redan i dag/)
   })
 
   it('HYRESGÄSTVÄGEN skriver också spåret — en egen exekverare, samma krav', async () => {

@@ -1,4 +1,11 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import type { RentIncreaseStatus } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
@@ -66,6 +73,27 @@ function buildHyresnamndContact(): string {
     '3. Skicka ansökan till hyresnämnden i den region där lägenheten är belägen.',
     '4. Du måste skicka in ansökan innan invändningsfristen ovan löper ut.',
   ].join('\n')
+}
+
+/**
+ * Betyder den här P2002:an "det finns redan en levande höjning för avtalet och
+ * datumet"?
+ *
+ * Indexet `rent_increase_lease_effective_live_unique` är PARTIELLT och skapat i
+ * rå SQL, så Prisma känner inte till det: `meta.target` blir INDEXNAMNET som en
+ * sträng, inte en kolumnlista. Samma form som `isActiveUnitConflict` hanterar
+ * för `lease_unit_active_unique`, och kolumnlistan står med som reserv ifall
+ * Prisma byter form.
+ *
+ * ALDRIG EN BLIND FÅNGST: ett P2002 som betyder något annat ska fortsätta upp.
+ */
+function ärLevandeHöjningskonflikt(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false
+  const target = (err.meta as { target?: unknown } | undefined)?.target
+  if (typeof target === 'string')
+    return target.includes('rent_increase_lease_effective_live_unique')
+  if (Array.isArray(target)) return target.map(String).includes('effectiveDate')
+  return false
 }
 
 @Injectable()
@@ -139,19 +167,44 @@ export class RentIncreasesService {
 
     const increasePercent = ((dto.newRent - currentRent) / currentRent) * 100
 
-    return this.prisma.rentIncrease.create({
-      data: {
-        organizationId,
-        leaseId: lease.id,
-        currentRent,
-        newRent: dto.newRent,
-        increasePercent: Number(increasePercent.toFixed(2)),
-        reason: dto.reason,
-        effectiveDate: effective,
-        status: 'DRAFT',
-      },
-      include: INCLUDE,
-    })
+    // ── EN LEVANDE HÖJNING PER AVTAL OCH IKRAFTTRÄDANDE ──────────────────
+    //
+    // Kontrollerna ovan kan inte se en omkörning: avtalets hyra skrivs inte om
+    // vid schemaläggningen, så både fristkontrollen och "ny hyra > nuvarande"
+    // passerar en andra gång med samma indata. Två schemalagda höjningar för
+    // samma avtal och datum var alltså fullt möjliga — och det är inte två
+    // affärshändelser: hyran kan bara ändras en gång på ett givet datum, och
+    // hyresgästen ska bara få ett meddelande om höjningen per ikraftträdande.
+    //
+    // KONFLIKT, INTE LÄSNING FÖRE. En `findFirst` här hade lämnat ett fönster
+    // där två samtidiga anrop båda ser "ingen rad" och båda skriver.
+    //
+    // Villkoret är PARTIELLT: en återkallad, nekad eller annullerad höjning gör
+    // inte längre anspråk på datumet, så en ny för samma datum är då en legitim
+    // andra handling och ska gå igenom.
+    try {
+      return await this.prisma.rentIncrease.create({
+        data: {
+          organizationId,
+          leaseId: lease.id,
+          currentRent,
+          newRent: dto.newRent,
+          increasePercent: Number(increasePercent.toFixed(2)),
+          reason: dto.reason,
+          effectiveDate: effective,
+          status: 'DRAFT',
+        },
+        include: INCLUDE,
+      })
+    } catch (err) {
+      if (!ärLevandeHöjningskonflikt(err)) throw err
+      throw new ConflictException(
+        `Det finns redan en hyreshöjning registrerad för det här avtalet med samma ` +
+          `startdatum (${dto.effectiveDate}). Ingen ny höjning har registrerats.\n\n` +
+          'Hyran kan bara ändras en gång på ett givet datum. Öppna den befintliga ' +
+          'höjningen, eller återkalla den om den ska ersättas.',
+      )
+    }
   }
 
   // ── Skicka avisering ──────────────────────────────────────────────────────

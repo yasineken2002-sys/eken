@@ -197,7 +197,24 @@ medDb('(4+5) ANSPRÅKET — villkorad updateMany mot riktig Postgres', () => {
     await prisma.$disconnect()
   })
 
+  // Varje fixturavtal får en EGEN tillträdesdag.
+  //
+  // Skälet är `@@unique([unitId, tenantId, startDate])`: samma part, samma
+  // lägenhet, samma tillträdesdag två gånger är inte två hyresförhållanden utan
+  // ett registrerat två gånger. Fixturen skapade tidigare flera avtal på exakt
+  // samma tripel, vilket inte motsvarar något verkligt läge — en förnyelse ger
+  // efterföljaren `endDate + 1 dag` som start (se autoRenewExpiredFixedTerm),
+  // alltså aldrig samma datum.
+  //
+  // Dagarna räknas BAKÅT från basdatumet så att `endDate` förblir passerat,
+  // vilket är hela premissen för att avtalet ska vara en förnyelsekandidat.
+  let fixturNr = 0
+
   async function nyttUtgångetAvtal(): Promise<string> {
+    const dag = 86_400_000
+    const start = new Date(new Date('2025-06-01').getTime() - fixturNr * dag)
+    const slut = new Date(new Date('2026-05-31').getTime() - fixturNr * dag)
+    fixturNr++
     const l = await prisma.lease.create({
       data: {
         organizationId: orgId,
@@ -205,10 +222,10 @@ medDb('(4+5) ANSPRÅKET — villkorad updateMany mot riktig Postgres', () => {
         tenantId,
         leaseType: 'FIXED_TERM',
         status: 'ACTIVE',
-        startDate: new Date('2025-06-01'),
+        startDate: start,
         // Kontinuitetsmarkören (T1-serien): obligatorisk på Lease.
-        tenancyStartDate: new Date('2025-06-01'),
-        endDate: new Date('2026-05-31'),
+        tenancyStartDate: start,
+        endDate: slut,
         monthlyRent: 10000,
         depositAmount: 0,
         noticePeriodMonths: 3,
