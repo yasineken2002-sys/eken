@@ -8,6 +8,11 @@ import { syncUnitStatusFromLeases } from '../units/unit-status.sync'
 import { normalizeEmail } from '../common/utils/normalize-email'
 import type { Prisma } from '@prisma/client'
 import { ImportJobStatus, ImportJobType } from '@prisma/client'
+import {
+  normaliseraBeteckning,
+  ärBeteckningskonflikt,
+  beteckningUpptagenText,
+} from '../properties/property-designation'
 
 type InputJsonValue = Prisma.InputJsonValue
 
@@ -324,18 +329,22 @@ export class ImportService {
           continue
         }
 
-        // Duplicate check
+        // Beteckningen normaliseras med den DELADE regeln. Villkoret
+        // `@@unique([organizationId, propertyDesignation])` jämför den lagrade
+        // strängen — normaliserar den här vägen annorlunda än PropertiesService
+        // gäller villkoret olika saker beroende på vem som skrev.
+        const beteckning = normaliseraBeteckning(data['propertyDesignation'] ?? '')
+
+        // Uppslaget står kvar för MEDDELANDETS skull: en rad i en importfil ska
+        // få veta vilken beteckning som krockade, inte ett databasfel. Men det
+        // är en läsning före en skrivning och skyddar inte mot två samtidiga
+        // importer — det gör det unika indexet, och `catch` nedan översätter
+        // dess konflikt till samma text.
         const existing = await this.prisma.property.findFirst({
-          where: {
-            organizationId,
-            propertyDesignation: data['propertyDesignation'] ?? '',
-          },
+          where: { organizationId, propertyDesignation: beteckning },
         })
         if (existing) {
-          errors.push({
-            row: rowNumber,
-            message: `Fastighet med beteckning "${data['propertyDesignation']}" finns redan`,
-          })
+          errors.push({ row: rowNumber, message: beteckningUpptagenText(beteckning) })
           errorRows++
           continue
         }
@@ -344,7 +353,7 @@ export class ImportService {
           data: {
             organizationId,
             name: data['name'] ?? '',
-            propertyDesignation: data['propertyDesignation'] ?? '',
+            propertyDesignation: beteckning,
             type: (this.parsePropertyType(data['type'] ?? '') ?? 'RESIDENTIAL') as
               | 'RESIDENTIAL'
               | 'COMMERCIAL'
@@ -362,7 +371,13 @@ export class ImportService {
 
         successRows++
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Okänt fel'
+        // Beteckningskrocken får samma text som uppslaget ovan ger — annars
+        // beror felmeddelandet på vilken av de två vägarna som råkade träffa.
+        const msg = ärBeteckningskonflikt(err)
+          ? beteckningUpptagenText(normaliseraBeteckning(data['propertyDesignation'] ?? ''))
+          : err instanceof Error
+            ? err.message
+            : 'Okänt fel'
         errors.push({ row: rowNumber, message: `Databasfel: ${msg}` })
         errorRows++
       }
