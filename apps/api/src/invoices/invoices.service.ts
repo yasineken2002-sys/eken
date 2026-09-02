@@ -19,6 +19,7 @@ import { REMINDER_FEE_LINE_DESCRIPTION } from './reminder-fee-line'
 const REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH = 10
 import { PrismaService } from '../common/prisma/prisma.service'
 import { stockholmCivilDate } from '../common/time/stockholm-period'
+import { rentPeriodFalt, ärHyresperiodskonflikt, DUBBEL_HYRESFAKTURA_TEXT } from './rent-period'
 import { OcrService } from '../common/ocr/ocr.service'
 import { InvoiceEventsService } from './invoice-events.service'
 import { PdfService } from './pdf.service'
@@ -329,76 +330,94 @@ export class InvoicesService {
       customerId = customer.id
     }
 
-    const invoice = await this.prisma.$transaction(async (tx) => {
-      const { invoiceNumber, sequence } = await this.generateInvoiceNumber(organizationId, tx)
+    // ── KONFLIKTEN ÄR DEN SKARPA HALVAN AV SPÄRREN ──────────────────────
+    //
+    // `assertNoDuplicateInvoice` ovan är en LÄSNING FÖRE en skrivning och kan
+    // därför inte hindra två samtidiga anrop. Det partiella unika indexet
+    // `invoice_rent_period_unique` kan, för faktura-mot-faktura. Konflikten
+    // översätts till samma text som uppslaget ger, så svaret inte beror på
+    // vilken av de två som råkade träffa först.
+    let invoice: Invoice
+    try {
+      invoice = await this.prisma.$transaction(async (tx) => {
+        const { invoiceNumber, sequence } = await this.generateInvoiceNumber(organizationId, tx)
 
-      // Auto-generera Luhn-validerat OCR från fakturasekvensen.
-      // Lagras alltid på Invoice.ocrNumber. Reference defaultar till OCR
-      // om klienten inte angett egen referens.
-      const ocrNumber = this.ocrService.generateForInvoiceSequence(sequence)
-      const reference = dto.reference != null ? dto.reference : ocrNumber
+        // Auto-generera Luhn-validerat OCR från fakturasekvensen.
+        // Lagras alltid på Invoice.ocrNumber. Reference defaultar till OCR
+        // om klienten inte angett egen referens.
+        const ocrNumber = this.ocrService.generateForInvoiceSequence(sequence)
+        const reference = dto.reference != null ? dto.reference : ocrNumber
 
-      // Beräkna belopp server-side (lita aldrig på klienten). Öresavrundat så
-      // att Σ rader = total och subtotal + moms = total exakt (se round2 ovan).
-      const { subtotal, vatTotal, total, lines: computedLines } = computeInvoiceAmounts(dto.lines)
+        // Beräkna belopp server-side (lita aldrig på klienten). Öresavrundat så
+        // att Σ rader = total och subtotal + moms = total exakt (se round2 ovan).
+        const { subtotal, vatTotal, total, lines: computedLines } = computeInvoiceAmounts(dto.lines)
 
-      const created = await tx.invoice.create({
-        data: {
-          organizationId,
-          invoiceNumber,
-          ocrNumber,
-          reference,
-          type: dto.type,
-          status: 'DRAFT',
-          tenantId: leaseTenantId,
-          leaseId,
-          customerId,
-          subtotal,
-          vatTotal,
-          total,
-          dueDate: new Date(dto.dueDate),
-          issueDate: new Date(dto.issueDate),
-          ...(dto.notes != null ? { notes: dto.notes } : {}),
-          lines: {
-            createMany: {
-              data: computedLines.map((l) => ({
-                description: l.description,
-                quantity: l.quantity,
-                unitPrice: l.unitPrice,
-                vatRate: l.vatRate,
-                total: l.total,
-              })),
+        const created = await tx.invoice.create({
+          data: {
+            organizationId,
+            invoiceNumber,
+            ocrNumber,
+            reference,
+            type: dto.type,
+            status: 'DRAFT',
+            tenantId: leaseTenantId,
+            leaseId,
+            customerId,
+            subtotal,
+            vatTotal,
+            total,
+            dueDate: new Date(dto.dueDate),
+            issueDate: new Date(dto.issueDate),
+            // Perioden LAGRAS, inte härleds vid läsning. Samma
+            // `stockholmCivilDate` som uppslaget använder — se
+            // assertNoDuplicateInvoice och kolumnens docblock i schema.prisma för
+            // varför en genererad kolumn hade gett två sanningar i stället för en.
+            ...rentPeriodFalt(dto.type, dto.issueDate),
+            ...(dto.notes != null ? { notes: dto.notes } : {}),
+            lines: {
+              createMany: {
+                data: computedLines.map((l) => ({
+                  description: l.description,
+                  quantity: l.quantity,
+                  unitPrice: l.unitPrice,
+                  vatRate: l.vatRate,
+                  total: l.total,
+                })),
+              },
             },
           },
-        },
-        // H3: hämta med rader direkt i transaktionen — bokföringen behöver dem,
-        // och vi slipper den extra findUnique-rundturen som fanns tidigare.
-        include: { lines: true },
-      })
+          // H3: hämta med rader direkt i transaktionen — bokföringen behöver dem,
+          // och vi slipper den extra findUnique-rundturen som fanns tidigare.
+          include: { lines: true },
+        })
 
-      await this.eventsService.record(
-        created.id,
-        'CREATED',
-        'USER',
-        actorId,
-        { invoiceNumber: created.invoiceNumber },
-        { tx },
-      )
+        await this.eventsService.record(
+          created.id,
+          'CREATED',
+          'USER',
+          actorId,
+          { invoiceNumber: created.invoiceNumber },
+          { tx },
+        )
 
-      // T5 A1 (BFL 5:6): bokför intäktsverifikatet i SAMMA transaktion som
-      // fakturan. Kastar bokföringen (stängd period, DB-fel ELLER saknad kontoplan
-      // — createJournalEntryForInvoice loggar + kastar i tx-läge, symmetriskt med
-      // avi-vägen) rullas HELA fakturan tillbaka → ingen orphan. Tidigare låg detta
-      // utanför tx och sväljdes/loggades, så fakturan kunde bli kvar UTAN verifikat.
-      await this.accountingService.createJournalEntryForInvoice(
-        created,
-        organizationId,
-        actorId,
-        tx,
-      )
+        // T5 A1 (BFL 5:6): bokför intäktsverifikatet i SAMMA transaktion som
+        // fakturan. Kastar bokföringen (stängd period, DB-fel ELLER saknad kontoplan
+        // — createJournalEntryForInvoice loggar + kastar i tx-läge, symmetriskt med
+        // avi-vägen) rullas HELA fakturan tillbaka → ingen orphan. Tidigare låg detta
+        // utanför tx och sväljdes/loggades, så fakturan kunde bli kvar UTAN verifikat.
+        await this.accountingService.createJournalEntryForInvoice(
+          created,
+          organizationId,
+          actorId,
+          tx,
+        )
 
-      return created
-    }, PRISMA_DEFAULT_TX_LIMITS)
+        return created
+      }, PRISMA_DEFAULT_TX_LIMITS)
+    } catch (err) {
+      if (!ärHyresperiodskonflikt(err)) throw err
+      throw new ConflictException(DUBBEL_HYRESFAKTURA_TEXT)
+    }
 
     return invoice
   }
@@ -436,6 +455,24 @@ export class InvoicesService {
       }
       if (dto.dueDate != null) updateData.dueDate = new Date(dto.dueDate)
       if (dto.issueDate != null) updateData.issueDate = new Date(dto.issueDate)
+
+      // ── PERIODEN MÅSTE FÖLJA MED ────────────────────────────────────────
+      //
+      // Utan det här blocket upprätthåller det partiella unika indexet en
+      // INAKTUELL period utan att något blir rött — spärren skulle gälla den
+      // månad fakturan en gång hade. Ett prov faller om blocket försvinner:
+      // `invoice-rent-period.db.spec.ts`, "uppdateringsvägen räknar om".
+      //
+      // Härleds ur den EFFEKTIVA typen OCH det effektiva datumet. Båda kan
+      // ändras i samma anrop, och en ändring av bara den ena räcker: byter en
+      // faktura typ från SERVICE till RENT ska den plötsligt göra anspråk på en
+      // period, och tvärtom ska anspråket släppas.
+      if (dto.issueDate != null || dto.type != null) {
+        Object.assign(
+          updateData,
+          rentPeriodFalt(dto.type ?? invoice.type, dto.issueDate ?? invoice.issueDate),
+        )
+      }
       if (dto.reference != null) updateData.reference = dto.reference
       if (dto.notes != null) updateData.notes = dto.notes
 
@@ -1056,6 +1093,30 @@ export class InvoicesService {
         }),
       ])
 
+      // ── KÄND GRÄNS: AVI-HALVAN ÄR OCH FÖRBLIR EN LÄSNING ────────────────
+      //
+      // Faktura-mot-faktura är sedan #b2 DB-enforcerat: `invoice_rent_period_unique`
+      // gör två samtidiga `create_invoice` för samma avtal och period omöjliga.
+      //
+      // Faktura-mot-AVI kan inte bli det. Perioden bärs av TVÅ tabeller —
+      // `RentNotice.month/year` och `Invoice.rentPeriodYear/Month` — och ett
+      // unikt villkor kan bara spänna en tabell. Uppslaget nedan är därför en
+      // läsning före en skrivning, och två samtidiga körningar kan båda passera.
+      //
+      // NÄR BLIR DET VERKLIGT: en operatör triggar `generateMonthlyNotices` från
+      // controllern i samma sekund som AI:n skapar en manuell hyresfaktura för
+      // samma avtal och månad. Avigenereringen kör både från cron (månadsvis)
+      // och från ett HTTP-anrop, så det kräver ingen olycklig cron-timing —
+      // bara två personer, eller en person och en modell, samtidigt.
+      //
+      // DEN RIKTIGA LÖSNINGEN vore en gemensam ANSPRÅKSTABELL som båda vägarna
+      // skriver i (avtal + period + typ, unikt), så att avi och faktura tar
+      // samma rad. Det är en strukturell ändring, inte en spärr, och den är
+      // därför ett eget ärende — se #658.
+      //
+      // Ett rådgivande Redis-lås övervägdes och valdes bort: det hade smalnat
+      // fönstret utan att upprätthålla invarianten, och en läsare som ser ett
+      // lås slutar leta efter den riktiga fixen.
       if (existingNotice) {
         throw new ConflictException(
           'Hyresavtalet har redan en hyresavi för denna period — fakturera hyra via ' +
@@ -1063,11 +1124,7 @@ export class InvoicesService {
         )
       }
       if (existingInvoice) {
-        throw new ConflictException(
-          'Hyresavtalet har redan en hyresfaktura för denna period. Ingen ny faktura ' +
-            'har skapats. Ska hyran ändras: kreditera den befintliga fakturan i stället ' +
-            'för att skapa en till.',
-        )
+        throw new ConflictException(DUBBEL_HYRESFAKTURA_TEXT)
       }
       return
     }
