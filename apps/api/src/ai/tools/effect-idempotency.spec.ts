@@ -149,17 +149,21 @@ describe('effektklassificeringen', () => {
     // `rent_increase_lease_effective_live_unique`, ett PARTIELLT index. Den är
     // KRÄVER_MÄNNISKA och flyttar därför inte raden om återupptagbara.
     //
+    // 20/10 → 22/8: `create_lease` och `create_tenant_and_lease` fick
+    // `@@unique([unitId, tenantId, startDate])` — en nyckel, två poster. Båda är
+    // KRÄVER_MÄNNISKA och flyttar därför inte raden om återupptagbara.
+    //
     // Talen rör sig i takt med att nycklar byggs, och det är meningen. Raden
     // finns för att varje steg ska vara ett beslut — inte för att talet ska
     // vara stilla.
-    it('20 IDEMPOTENT, 10 DEDUPLICERBAR, 0 OKÄND', () => {
+    it('22 IDEMPOTENT, 8 DEDUPLICERBAR, 0 OKÄND', () => {
       const c = buildEffectCatalog()
       const antal = (k: string) => c.filter((e) => e.effectIdempotency === k).length
       expect({
         idempotent: antal('IDEMPOTENT'),
         deduplicerbar: antal('DEDUPLICERBAR'),
         okand: antal('OKÄND'),
-      }).toEqual({ idempotent: 20, deduplicerbar: 10, okand: 0 })
+      }).toEqual({ idempotent: 22, deduplicerbar: 8, okand: 0 })
     })
 
     it('30 av 30 poster är policybeslutade — inga luckor kvar', () => {
