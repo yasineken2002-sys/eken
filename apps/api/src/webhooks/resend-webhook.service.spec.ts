@@ -43,21 +43,9 @@ function makeService(
     rentNoticeEvent: { findFirst: eventFindFirst, create: eventCreate },
   }
   const config = { get: jest.fn().mockReturnValue(secret) }
-  // #654: studsad påminnelse → avgiftsåterföring. Stubben låter proven mäta ATT
-  // den anropas (och att den INTE anropas för avins studs) utan att dra in hela
-  // aviseringsstacken.
-  const handleBouncedReminder = jest.fn().mockResolvedValue('reversed')
-  const reminderBounce = { handleBouncedReminder }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const service = new ResendWebhookService(prisma as any, config as any, reminderBounce as any)
-  return {
-    service,
-    updateMany,
-    rentNoticeFindFirst,
-    eventFindFirst,
-    eventCreate,
-    handleBouncedReminder,
-  }
+  const service = new ResendWebhookService(prisma as any, config as any)
+  return { service, updateMany, rentNoticeFindFirst, eventFindFirst, eventCreate }
 }
 
 function signedRequest(payloadObj: unknown, signingSecret = SECRET) {
@@ -434,103 +422,6 @@ describe('ResendWebhookService', () => {
 
       const data = eventCreate.mock.calls[0][0].data as { type: string }
       expect(data.type).toBe('EMAIL_DELIVERED')
-    })
-
-    it('STUDS PÅ PÅMINNELSEN → avgiftsåterföringen anropas EN gång, med händelsens id', async () => {
-      const { service, eventCreate, handleBouncedReminder } = makeService(SECRET, {
-        tenantCount: 0,
-        notice: { id: 'rn-654', reminderMessageId: 'paminnelse-msg-654' },
-      })
-      const { raw, headers } = signedRequest({
-        type: 'email.bounced',
-        created_at: '2026-09-02T14:33:07.000Z',
-        data: {
-          email_id: 'paminnelse-msg-654',
-          bounce: { message: 'Mailbox does not exist', type: 'Permanent', subType: 'General' },
-        },
-      })
-
-      await service.handle(raw, headers)
-
-      expect(eventCreate).toHaveBeenCalledTimes(1)
-      expect(handleBouncedReminder).toHaveBeenCalledTimes(1)
-      const [noticeId, eventId, at] = handleBouncedReminder.mock.calls[0] as [string, string, Date]
-      expect(noticeId).toBe('rn-654')
-      // Händelsens id, inte eventets email_id: motverifikatet ska peka på RADEN
-      // i RentNoticeEvent, som är beviset.
-      expect(eventId).toBe('ev-new')
-      expect(at.toISOString()).toBe('2026-09-02T14:33:07.000Z')
-    })
-
-    it('STUDS PÅ AVIN → INGEN avgiftsåterföring', async () => {
-      // Hela skälet till att NOTICE_EMAIL_* finns. En studsad avi är en fråga om
-      // huruvida avin hör hemma i kravtrappan, inte om påminnelseavgiften.
-      const { service, eventCreate, handleBouncedReminder } = makeService(SECRET, {
-        tenantCount: 0,
-        notice: { id: 'rn-654', reminderMessageId: 'nagon-annan-paminnelse' },
-      })
-      const { raw, headers } = signedRequest({
-        type: 'email.bounced',
-        created_at: '2026-09-02T14:33:07.000Z',
-        data: { email_id: 'avi-msg-654', bounce: { type: 'Permanent', subType: 'General' } },
-      })
-
-      await service.handle(raw, headers)
-
-      expect((eventCreate.mock.calls[0][0].data as { type: string }).type).toBe(
-        'NOTICE_EMAIL_BOUNCED',
-      )
-      expect(handleBouncedReminder).not.toHaveBeenCalled()
-    })
-
-    it('LEVERANS (inte studs) → INGEN avgiftsåterföring', async () => {
-      const { service, handleBouncedReminder } = makeService(SECRET, {
-        tenantCount: 0,
-        notice: { id: 'rn-654', reminderMessageId: 'paminnelse-msg-654' },
-      })
-      const { raw, headers } = signedRequest(deliveredEvent('paminnelse-msg-654'))
-      await service.handle(raw, headers)
-      expect(handleBouncedReminder).not.toHaveBeenCalled()
-    })
-
-    it('IDEMPOTENS: en ANDRA leverans av samma studs återför INTE en gång till', async () => {
-      // Resend levererar at-least-once. Snabbvägen ("utfallet redan loggat")
-      // returnerar innan create — och därmed innan återföringen. Det är den
-      // FÖRSTA spärren; `reminder-fee-reversal:<id>` är den andra.
-      const { service, eventCreate, handleBouncedReminder } = makeService(SECRET, {
-        tenantCount: 0,
-        notice: { id: 'rn-654', reminderMessageId: 'paminnelse-msg-654' },
-        existingEvent: true,
-      })
-      const { raw, headers } = signedRequest({
-        type: 'email.bounced',
-        created_at: '2026-09-02T14:33:07.000Z',
-        data: { email_id: 'paminnelse-msg-654', bounce: { type: 'Permanent' } },
-      })
-
-      await service.handle(raw, headers)
-
-      expect(eventCreate).not.toHaveBeenCalled()
-      expect(handleBouncedReminder).not.toHaveBeenCalled()
-    })
-
-    it('IDEMPOTENS: en SAMTIDIG dubblett (P2002) återför inte heller', async () => {
-      // Den som förlorar kapplöpningen om det partiella unika indexet ska inte
-      // återföra — vinnaren har redan gjort det.
-      const { service, eventCreate, handleBouncedReminder } = makeService(SECRET, {
-        tenantCount: 0,
-        notice: { id: 'rn-654', reminderMessageId: 'paminnelse-msg-654' },
-      })
-      eventCreate.mockRejectedValueOnce(Object.assign(new Error('dubblett'), { code: 'P2002' }))
-      const { raw, headers } = signedRequest({
-        type: 'email.bounced',
-        created_at: '2026-09-02T14:33:07.000Z',
-        data: { email_id: 'paminnelse-msg-654', bounce: { type: 'Permanent' } },
-      })
-
-      await service.handle(raw, headers)
-
-      expect(handleBouncedReminder).not.toHaveBeenCalled()
     })
 
     it('ingen avi matchar → ingen händelse skrivs (ingen gissning)', async () => {

@@ -55,6 +55,20 @@ const CRITICAL_INDEXES = [
     // i migrationen.
     where: "statusIN('DRAFT','NOTICE_SENT','ACCEPTED','APPLIED')",
   },
+  {
+    label: 'en hyresfaktura per avtal och period',
+    expectedName: 'invoice_rent_period_unique',
+    migrationRef: '20260902170000_invoice_rent_period',
+    unique: true,
+    table: 'Invoice',
+    columns: ['leaseId', 'rentPeriodYear', 'rentPeriodMonth'],
+    // PREDIKATET ÄR KONSTRUKTIONEN och står därför i invarianten, inte bara i
+    // migrationen. `creditedInvoiceId IS NULL` är det led en läsare frestas att
+    // "förenkla" bort: credit-note.service skriver `type: original.type`, så en
+    // kreditnota på en hyresfaktura är SJÄLV type='RENT' med samma leaseId och
+    // period — och att kreditera i samma månad är normalfallet.
+    where: "type='RENT'ANDcreditedInvoiceIdISNULLANDstatus<>'VOID'",
+  },
 ]
 
 // ── normalisering ──────────────────────────────────────────────────────────

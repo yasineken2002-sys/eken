@@ -1462,6 +1462,40 @@ model Invoice {
   isCreditNote      Boolean @default(false)
   creditedInvoiceId String?
 
+  /// DEN HYRESPERIOD FAKTURAN GÖR ANSPRÅK PÅ. Sätts bara för `type = RENT`.
+  ///
+  /// ⛔ GÖR INTE OM DEN HÄR TILL `GENERATED ALWAYS AS`. Kolumnen är härledd och
+  /// skrivs för hand, vilket ser ut som något att förenkla — det är det inte.
+  /// Skälet står nedan, med det uppmätta fallet där de två härledningarna blir
+  /// oense. Ändringen hade inte gett drift utan TVÅ DEFINITIONER av period.
+  ///
+  /// ── VARFÖR EN LAGRAD KOLUMN OCH INTE EN GENERERAD ──────────────────────
+  ///
+  /// En `GENERATED ALWAYS AS (EXTRACT(... FROM "issueDate")) STORED` fungerar
+  /// i Postgres — prövat — och hade tagit bort risken att någon glömmer räkna
+  /// om värdet. Den valdes ändå bort, och skälet är inte immutabilitet.
+  ///
+  /// En genererad kolumn kan bara härleda ur det som är LAGRAT, och `issueDate`
+  /// är en `DATE`: tidszonen är redan borta när kolumnen skulle räkna. Uppslaget
+  /// mot `RentNotice` använder med flit SVENSK CIVIL TID, eftersom avins
+  /// `month`/`year` är en civil månad som skickas explicit till
+  /// `generateMonthlyNotices`. För en tidsstämpel mellan 22:00 UTC och midnatt
+  /// (00:00–02:00 svensk tid) ger de två härledningarna OLIKA månad — uppmätt:
+  ///
+  ///     in 2026-05-31T23:30:00Z → svensk civil månad 06, lagrad DATE-månad 05
+  ///
+  /// Och AI-vägen skickar just en tidsstämpel (`new Date().toISOString()`).
+  ///
+  /// En genererad kolumn hade alltså infört en ANDRA definition av "period"
+  /// vid sidan av den uppslaget använder, och de två hade varit oense ett par
+  /// timmar om dygnet. Det är ett värre fel än det den skulle ta bort: inte
+  /// drift, utan två sanningar.
+  ///
+  /// Kolumnen skrivs därför ur SAMMA `stockholmCivilDate` som uppslaget. Att
+  /// uppdateringsvägen räknar om den har ett eget prov — inte en kommentar.
+  rentPeriodYear  Int?
+  rentPeriodMonth Int?
+
   // Påminnelse- och inkassoflöde
   remindersPaused       Boolean   @default(false)
   remindersPausedAt     DateTime?
