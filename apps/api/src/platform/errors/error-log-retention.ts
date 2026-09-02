@@ -68,32 +68,46 @@
  *   • Prod hade 2026-09-01 noll lösta rader av fjorton, sedan nollställningen
  *     2026-07-13. Hinken har alltså aldrig använts i praktiken.
  *
- * FÖLJDEN, UTSKRIVEN: klickar ingen är den EFFEKTIVA fristen 180 dagar för allt.
- * Trettio-dagarshinken är en möjlighet, inte en verkan. Den som vill att talet
- * ska betyda något måste antingen använda knappen eller bygga en väg som stänger
- * rader automatiskt — och det senare är ett eget beslut som inte är taget.
+ * FÖLJDEN, UTSKRIVEN: klickar ingen är den EFFEKTIVA fristen den OLÖSTA — och
+ * det är därför den sänktes från 180 till 90 (2026-09-02). Talen är nu valda så
+ * att BÅDA är sanna även om knappen aldrig trycks: 90 dagar är en frist jag är
+ * beredd att försvara som enda verksamma frist, vilket 180 inte var. Trettio-
+ * dagarshinken förblir en möjlighet, inte en verkan — men den är inte längre det
+ * som avgör om gallringen betyder något.
+ *
+ * INGEN AUTOMATISK STÄNGNING ÄR BYGGD, och det är ett beslut och inte en lucka.
+ * En cron som markerar gamla rader lösta hade gett samma effekt som en kortare
+ * olöst-frist, till priset av ännu en mekanism att underhålla och ännu ett
+ * tillstånd att förstå. Sänk talet i stället för att bygga maskineriet.
  */
 export const RESOLVED_RETENTION_DAYS = 30
 
 /**
- * OLÖSTA rader: **180 dagar**.
+ * OLÖSTA rader: **90 dagar**. (Sänkt från 180 den 2026-09-02.)
  *
  * En olöst rad kan fortfarande vara det enda spåret av ett fel som ingen hunnit
- * titta på. Ett halvår täcker en säsongsbunden bugg — hyresåret har toppar vid
- * månadsskiften, kvartal och årsskifte — så ett fel som återkommer varje
- * kvartal hinner ses två gånger innan det första exemplaret gallras.
+ * titta på, och den fristen ska därför vara längre än den lösta. Men bara
+ * längre — inte obestämt lång.
  *
- * Längre än så tillför inte utredningsvärde: en sex månader gammal stack trace
- * pekar på kod som sannolikt inte finns kvar (204 merges till main under 30
- * dagar, mätt i #605).
+ * SKÄLET TILL 90, RAKT UT: en olöst felrad som ingen tittat på i tre månader
+ * utreds inte. Den samlar persondata. `message` och `stack` är ostrukturerad
+ * fritext som mätt i #612 kan bära e-post, personnummer, belopp och motpart —
+ * så varje extra dag är exponering utan motsvarande utredningsvärde. Ett kvartal
+ * räcker för att en månadsskiftes- eller kvartalsbugg ska hinna ses; det som
+ * inte setts på ett kvartal kommer inte att ses.
  *
- * Fristen är LÄNGRE än den lösta av ett skäl som går åt fel håll för
- * dataminimering, och det är medvetet: alternativet — att gallra olösta fel
- * först — hade raderat just det som ingen ännu utrett. Motviljan mot att förlora
- * ett outrett fel väger tyngre än de extra 150 dagarnas exponering, förutsatt
- * att någon faktiskt löser rader. Gör ingen det är det inte fristen som är fel.
+ * Att 180 var för långt är inte en åsikt om halvår, utan en följd av hur talen
+ * samverkar. Den lösta hinken har ingen automatisk väg (se blocket ovanför
+ * `RESOLVED_RETENTION_DAYS`), så klickar ingen är den olösta fristen den ENDA
+ * verksamma — och då måste den ensam vara försvarbar. Det gjorde 180 inte, och
+ * därför var 30-dagarshinken i praktiken dekoration. Med 30/90 är båda talen
+ * sanna även i det fall ingen någonsin markerar en rad löst.
+ *
+ * Att gallra olösta SNABBARE än lösta vore fortfarande fel — det hade raderat
+ * just det som ingen ännu utrett. Ordningen står kvar; det är avståndet som
+ * krympt.
  */
-export const UNRESOLVED_RETENTION_DAYS = 180
+export const UNRESOLVED_RETENTION_DAYS = 90
 
 /**
  * Rader UTAN organisation gallras på samma villkor som alla andra.

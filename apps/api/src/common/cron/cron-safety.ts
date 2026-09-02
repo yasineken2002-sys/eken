@@ -39,7 +39,7 @@ import type { CronErrorSink } from './cron-error-sink'
  * utanför Sentry — betalas på andra sätt, och de ligger utanför den här filen:
  *
  *   • FRIST. `ErrorLog` är ett driftverktyg, inte ett revisionsspår, och gallras
- *     (30 dagar löst / 180 olöst). Se `platform/errors/error-log-retention.ts`.
+ *     (30 dagar löst / 90 olöst). Se `platform/errors/error-log-retention.ts`.
  *   • RADERING PÅ BEGÄRAN. `anonymize-tenant.ts` tar bort rader som bär en
  *     hyresgästs UUID — en fritextkolumn går inte att maskera, bara radera.
  *   • ÅTKOMST. Skrivvägen är stängd (#612 PR A). LÄSNINGEN är ännu inte
