@@ -146,6 +146,7 @@ failar testet — en ny förälder-scopad modell ska inte glida in obemärkt.
 AiMemoryTenant                  förälder-scopad via AiMemory
 AiMessage                       förälder-scopad via AiConversation
 AiMessageTenant                 förälder-scopad via AiMessage
+AiResumptionRun                 utanför: plattformens körningslogg — ingen klientväg, inget adresserbart id
 AiTenantConversation            förälder-scopad via Tenant
 AiTenantMessage                 utanför: når bara via AiTenantConversation, som är klassificerad ovan
 CustomerNumberSequence          utanför: global singleton-sekvens

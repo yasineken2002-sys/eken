@@ -106,6 +106,10 @@
     "platform/errors/error-log-retention.service.ts::scheduledRetention": {
       "class": "B",
       "invariant": "deleteMany på ErrorLog med id: { in: [...] } där listan kommer ur en findMany på createdAt < hinkens gräns — raderade rader kan inte raderas igen, så en samtidig andra körning träffar noll rader. Inga räknare och inga sidoeffekter utanför tabellen."
+    },
+    "ai/resumption/resumption.service.ts::passera": {
+      "class": "A",
+      "lockKey": "cron:ai-resumption-shadow"
     }
   }
 }
