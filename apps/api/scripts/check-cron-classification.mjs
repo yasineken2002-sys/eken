@@ -433,9 +433,21 @@ function selfTest() {
     )
   }
   // …och det ska KRÄVA en klassificering som alla andra, inte bara synas.
+  //
+  // ⚠️ ACKEN ÄR ICKE-TOM, OCH REGELN NAMNGES. Första lydelsen skickade
+  // `{ jobs: {} }` och lät `röd()` acceptera vilken regel som helst. Den var grön
+  // — men i negativkontrollen (IDENT tillbaka till `\w`) blev den grön av FEL
+  // regel: med noll härledda jobb fällde "NOLL @Cron-jobb härleddes" i stället,
+  // och provet såg ut att hålla medan det mätte något annat. Ett prov som kan bli
+  // grönt av en annan orsak än sin egen mäter inte det dess namn påstår.
   röd(
-    'ett svensknamngivet @Cron utan kvittering fälls',
-    evaluate({ jobb: svenska, ack: { jobs: {} }, låsmetoder: LÅSMETODER }),
+    'ett svensknamngivet @Cron utan klassificering fälls',
+    evaluate({
+      jobb: svenska,
+      ack: { jobs: { 'x/annan.service.ts::annat': { class: 'B', invariant: 'x' } } },
+      låsmetoder: LÅSMETODER,
+    }),
+    'saknar klassificering',
   )
   const bas = { jobb, ack: ACK_OK, låsmetoder: LÅSMETODER }
 
