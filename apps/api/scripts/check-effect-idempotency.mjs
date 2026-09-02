@@ -206,13 +206,23 @@ export function granska({ deklarationSrc, definitionSrc, schemaSrc, filFinns }) 
     if (p.effectIdempotency === 'IDEMPOTENT' && p.mekanismer.length === 0) {
       fel.push(`R3 "${p.namn}" påstår IDEMPOTENT utan att namnge någon mekanism`)
     }
+    // ⚠️ MEDDELANDET FÅR INTE PÅSTÅ MER ÄN REGELN PRÖVAR. Loopen nedan körs för
+    // ALLA klasser, inte bara IDEMPOTENT: en DEDUPLICERBAR post får namnge
+    // mekanismer, och gör det (compose_and_send_email namnger sitt unika index
+    // utan att påstå idempotens). Texten sa tidigare "påstår IDEMPOTENT" om
+    // varje sådan post — den som läste felet gick då och letade efter ett
+    // idempotensanspråk som inte fanns. Samma familj som en kommentar som
+    // ljuger: den kostar en läsning i fel riktning, varje gång.
+    //
+    // Klassen skrivs därför UT i stället för att antas. Regeln prövar att den
+    // namngivna mekanismen finns — inte vad posten påstår om den.
     for (const m of p.mekanismer) {
       if (m.typ === 'INGEN_EFFEKT') continue
       if (m.typ === 'UNIKT_INDEX') {
         if (!harUniktIndex(schemaSrc, m.modell, m.falt)) {
           fel.push(
-            `R3 "${p.namn}" påstår IDEMPOTENT via unikt index ${m.modell}(${m.falt.join(', ')}) ` +
-              '— något sådant index finns inte i schema.prisma',
+            `R3 "${p.namn}" (${p.effectIdempotency}) namnger unikt index ` +
+              `${m.modell}(${m.falt.join(', ')}) — något sådant index finns inte i schema.prisma`,
           )
         }
         continue
@@ -223,7 +233,7 @@ export function granska({ deklarationSrc, definitionSrc, schemaSrc, filFinns }) 
       }
       if (!filFinns(m.fil, m.symbol)) {
         fel.push(
-          `R3 "${p.namn}" påstår IDEMPOTENT via ${m.typ} "${m.symbol}" i ${m.fil} — ` +
+          `R3 "${p.namn}" (${p.effectIdempotency}) namnger ${m.typ} "${m.symbol}" i ${m.fil} — ` +
             'symbolen finns inte i kod där (raderad, omdöpt, eller bara i prosa)',
         )
       }

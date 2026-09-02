@@ -1,0 +1,23 @@
+-- EN RAD PER MOTTAGARE PER UTSKICK, enforcerat av databasen.
+--
+-- #633 gjorde enheten i datan till mottagaren; #635 gav utskicket ett `batchId`
+-- så att operatörens vy kan gruppera raderna igen. Grupperingen BÄR ett
+-- antagande som ingenting hittills upprätthållit: att en grupp innehåller varje
+-- mottagare högst en gång. Bryts det räknar vyn fel om hur många som fick
+-- brevet, och den enda kod som kunde märka det är den som just skrev dubbletten.
+--
+-- Spärren ersätter också en LÄSNING FÖRE EN SKRIVNING i verktygsloopen med en
+-- konflikt. Samma skäl som #597: två samtidiga körningar kan båda passera en
+-- `findFirst`, men bara en kan vinna ett unikt index.
+--
+-- NULL DELTAR INTE. Postgres räknar NULL som skilt från NULL i ett unikt index,
+-- så varken rader utan `batchId` (allt skrivet före #635) eller utan `tenantId`
+-- (organisationsbrev) kan krocka. Villkoret gäller exakt de rader som gör
+-- anspråk på att tillhöra ett utskick till en hyresgäst.
+--
+-- DÄRFÖR BEHÖVS INGEN BACKFILL OCH INGEN STÄDNING FÖRE. Skulle det ändå finnas
+-- en dubblett i produktion FALLER den här migrationen, och det är rätt utfall:
+-- två rader som påstår att samma hyresgäst fick samma brev i samma utskick är
+-- ett faktum någon måste titta på, inte något en migration ska välja bort.
+CREATE UNIQUE INDEX "SentMessage_organizationId_tenantId_batchId_key"
+  ON "SentMessage"("organizationId", "tenantId", "batchId");

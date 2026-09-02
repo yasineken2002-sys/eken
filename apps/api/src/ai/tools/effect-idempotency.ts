@@ -43,8 +43,18 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  * Talen, mätta samma dag mot `ACTION_TOOLS` (30 verktyg):
  *
  *     IDEMPOTENT      17   (varav 1 utan effekt alls: export_sie4)
- *     DEDUPLICERBAR   13   (varav 1 har en nyckel som faktiskt dedupar)
+ *     DEDUPLICERBAR   13   (varav 2 har ett spår som faktiskt konsulteras)
  *     OKÄND            0
+ *
+ * Tvåan var en etta fram till 2026-09-02. `compose_and_send_email` fick sin
+ * `SentMessage`-rad i #633 men stod kvar på `plats: 'INGET'` — deklarationen
+ * släpade efter koden, vilket är exakt vad den här filen inte får göra. Talet
+ * är OMRÄKNAT ur posterna, inte justerat för hand: DEDUPLICERBAR med
+ * `plats ≠ INGET` är i dag `send_invoice_email` (KÖ_FÖNSTER) och
+ * `compose_and_send_email` (DATABAS_TILLSTÅND).
+ *
+ * Femman längre ned står KVAR: `compose_and_send_email` är KRÄVER_MÄNNISKA, så
+ * den räknades aldrig bland de AUTOMATISK-poster vars spår är INGET.
  *
  * Talen ändrades samma dag de sattes: `send_overdue_reminders` gick från
  * DEDUPLICERBAR till IDEMPOTENT när dess PaymentReminder-rad byggdes. Det är
@@ -670,15 +680,41 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
   // LOOP över hyresgäster. 15-min bulk-cooldown i Redis vid >5 mottagare är ett
   // trubbigt takt-skydd, inte idempotens: den blockerar ett LEGITIMT omförsök
   // och släpper igenom ett efter 15 minuter.
+  //
+  // SPÅRET ÄR INTE LÄNGRE `INGET`. #633 gav verktyget en `SentMessage`-rad per
+  // mottagare, skriven FÖRE utskicket och konsulterad före nästa. Posten stod
+  // kvar på INGET en runda efter att raden byggts — deklarationen beskriver
+  // koden, inte tvärtom, och det här är rättelsen.
+  //
+  // ⚠️ MEKANISMEN NEDAN BÄR INTE OMKÖRNINGEN, OCH DET ÄR AVSIKTLIGT UTSKRIVET.
+  // Det unika indexet gäller (organizationId, tenantId, batchId) och gör "en rad
+  // per mottagare per utskick" DB-enforcerat — det stänger kapplöpningen mellan
+  // två samtidiga körningar av SAMMA batch, som en `findFirst` inte kan.
+  //
+  // Men `batchId` genereras per verktygsanrop, så en omkörning efter en krasch
+  // får ett NYTT batchId och kan per konstruktion inte krocka med den avbrutna
+  // körningens rader. Det som bär omkörningen är fortfarande uppslaget på
+  // (subject, content) i loopen — applikationsnivå, alltså TOCTOU-öppet.
+  //
+  // Därför står klassen kvar på DEDUPLICERBAR och inte på IDEMPOTENT. Jämför
+  // `send_overdue_reminders`, som ser likadan ut men vars nyckel `(invoiceId,
+  // type)` är HÄRLEDD UR INNEHÅLLET och därför överlever omkörningen. Det som
+  // saknas här är en innehållsburen nyckel, inte ett index till.
   compose_and_send_email: {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'EFFEKT',
-    traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
     externalHandle: 'INGET',
     traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
-    mekanismer: [],
+    mekanismer: [
+      {
+        typ: 'UNIKT_INDEX',
+        modell: 'SentMessage',
+        falt: ['organizationId', 'tenantId', 'batchId'],
+      },
+    ],
   },
 
   // PDF → R2 → Document.create. Document saknar unikt index; en omkörning ger
