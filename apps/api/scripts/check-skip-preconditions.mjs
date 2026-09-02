@@ -282,6 +282,14 @@ körsMotDb('mot databasen', () => {})`,
 
     // …och den ska MÄTAS av regeln, inte bara härledas. Med en prövad
     // förutsättning ska den vara TYST.
+    //
+    // ⚠️ DEN HÄR RADEN BÄR INTE KANARIEFÅGELN, och det ska stå. `grön()` prövar
+    // FRÅNVARO av fynd, och kan därför inte skilja "korrekt tyst" från "såg
+    // ingenting alls". I negativkontrollen (IDENT tillbaka på `\w`) förblev just
+    // den här GRÖN — härledningen gav noll, så det fanns inget att fälla.
+    //
+    // Lasten bärs av de två raderna omkring: härledningen ovan, som kräver ett
+    // TAL, och den röda nedan, som kräver en NAMNGIVEN regel. Båda föll.
     grön('IDENTIFIERARFORM: en svensknamngiven, PRÖVAD förutsättning är tyst', evaluate([svenskaNamn]))
 
     // ⚠️ REGELN NAMNGES. Läxan från #640/#667: ett prov som bara kräver "något
