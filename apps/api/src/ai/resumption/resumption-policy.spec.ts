@@ -27,6 +27,7 @@ import {
   SKAL_TEXT,
   bedöm,
   skallSkrivaKörning,
+  ärUtåldrad,
 } from './resumption-policy'
 
 import type { PåbörjadKörning } from './resumption-policy'
@@ -249,5 +250,52 @@ describe('motorn får inte själv bli ett tyst stopp', () => {
     expect(
       skallSkrivaKörning({ antalBedömda: 0, nu: NU, senasteHjärtslag: 0, hjärtslagMs: TIMME }),
     ).toBe(true)
+  })
+})
+
+describe('att åldras ut är ett EGET utfall', () => {
+  const GAMMAL = ATERUPPTAGNING_TAK_MS + 60_000
+
+  it('en ÅTERUPPTAGBAR rad som blev för gammal räknas som utåldrad', () => {
+    // Det enda avslaget som beskriver ett fel hos MOTORN och inte hos raden.
+    const r = rad({ toolName: 'create_property', ålder: GAMMAL })
+    expect(bedöm(r, NU).skäl).toBe('TOO_OLD')
+    expect(ärUtåldrad(r, NU)).toBe(true)
+  })
+
+  it('en KRÄVER_MÄNNISKA-rad som är lika gammal räknas INTE som utåldrad', () => {
+    // Den hade aldrig återupptagits, hur snabbt motorn än tittat. Att räkna den
+    // som utåldrad hade fått taket att se för snävt ut av fel skäl.
+    const r = rad({ toolName: 'send_overdue_reminders', ålder: GAMMAL })
+    expect(bedöm(r, NU).skäl).toBe('REQUIRES_HUMAN')
+    expect(ärUtåldrad(r, NU)).toBe(false)
+  })
+
+  it('en ENFASRAD som är lika gammal räknas INTE som utåldrad', () => {
+    // Produktionens elva rader hade annars sett ut som elva missade fönster.
+    const r = rad({ ålder: GAMMAL, success: true, durationMs: 51, harToolResult: true })
+    expect(ärUtåldrad(r, NU)).toBe(false)
+  })
+
+  it('en rad INNE i fönstret är inte utåldrad', () => {
+    expect(ärUtåldrad(rad({ ålder: 120_000 }), NU)).toBe(false)
+  })
+
+  it('INVARIANT: TOO_OLD och utåldrad är samma mängd — och det beror på stegordningen', () => {
+    // Taket prövas SIST, så varje TOO_OLD har passerat form, klass, policy,
+    // spår och golv. Den egenskapen är implicit i ordningen. Provet gör den
+    // falsifierbar: kastas stegen om så att taket prövas före policyn blir
+    // KRÄVER_MÄNNISKA-verktygen TOO_OLD utan att vara utåldrade, och den här
+    // ekvivalensen faller.
+    const namn = Object.keys(EFFECT_DECLARATIONS)
+    let antalTooOld = 0
+    for (const toolName of namn) {
+      const r = rad({ toolName, ålder: GAMMAL })
+      const ärTooOld = bedöm(r, NU).skäl === 'TOO_OLD'
+      if (ärTooOld) antalTooOld++
+      expect({ toolName, ärTooOld }).toEqual({ toolName, ärTooOld: ärUtåldrad(r, NU) })
+    }
+    // SONDENS STYRKA: mängden får inte vara tom, annars mäter provet ingenting.
+    expect(antalTooOld).toBeGreaterThanOrEqual(10)
   })
 })
