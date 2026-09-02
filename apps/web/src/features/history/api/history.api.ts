@@ -25,7 +25,9 @@ import type { ActorKind, EventActor } from '@/components/ui/ActorTag'
  */
 
 /**
- * Vem utförde. `UNKNOWN` = källan saknar aktörskolumn — inte "osäkert".
+ * Vem utförde. `UNKNOWN` = INTE BELAGT — ett av två: källan saknar
+ * aktörskolumn, eller så skiljer kolumnen inte människa från AI-assistent
+ * (G1 steg 1). Se `ActorTag`, som bär hela förklaringen.
  *
  * FORMEN BOR HOS `ActorTag`, som renderar den för både historiken och avins
  * händelselogg (#648). Alias och inte en egen definition: två strukturellt
