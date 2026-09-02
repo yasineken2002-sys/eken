@@ -357,6 +357,25 @@ En agent har ingen klient och ingen konversation. Uppdraget behöver full input 
 servern, ingen kort TTL, ingen konversationsbindning, och en tidsgräns som är ett
 *beslut* — inte en teknisk artefakt.
 
+**BYGGT 2026-09-02** (etapp 4), mätt mot `b0d72f6`. Ett fjärde skäl tillkom vid
+mätningen och är det starkaste: `AiPendingAction.conversationId` är en FK mot
+`AiConversation` med `onDelete: Cascade` — en agent utan konversation kan inte ens
+INFOGA en rad. Bristen är strukturell, inte semantisk. Och förslaget lever dessutom
+bara i React-state (`AiPage.tsx:46`), så det överlever inte ens en sidladdning.
+
+`AiAssignment` vänder på alla fyra: full input på servern, ingen
+konversationsbindning, ingen delad TTL, och **en `deadline` per uppdrag**.
+
+Tidsgränsen är **data, inte en konstant**, och det är inte en smaksak. Att låna
+`PENDING_ACTION_TTL_MS` hade gjort den TREdubbelt använd —
+`ATERUPPTAGNING_TAK_MS = PENDING_ACTION_TTL_MS` finns redan — så en justering av
+uppdragens gräns hade flyttat återupptagningsmotorns tak utan att något blev rött.
+`check-assignment-deadline.mjs` fäller den härledningen i fyra former.
+
+Vad som finns: kön, grinden vid skapandet (se Del 12), det synliga förfallet vid
+tidsgräns, kallelsen via `Notification` och läsytan `/uppdrag`.
+Vad som **inte** finns: en producent och en utförare. Båda är etapp 8–9.
+
 ### G4 — Spår och ångra
 
 Varje åtgärd loggas med vad den gjorde, vad den byggde det på, hur säker den var, och hur
@@ -872,23 +891,89 @@ Om agenten ska presentera sig som AI är ett öppet beslut (Del 15).
 
 ## Del 12 — Kapplöpningen mellan människa och agent
 
+> **RÄTTAD 2026-09-02, mätt mot `b0d72f6`.** Den ursprungliga lydelsen krävde att
+> omprövningen sker *"atomärt i samma transaktion som effekten"*. Mätningen visade
+> att kravet inte är en mekanism utan 28 refaktoreringar, och att det dessutom
+> skyddar mot fel kapplöpning. Ersättningsregeln nedan är starkare och byggbar.
+> Den gamla lydelsen står kvar längst ned, eftersom en plan som tyst skriver om
+> sig själv inte går att lita på.
+
 Regel 5 kräver en mekanism, inte en förhoppning.
 
 Ett uppdrag som väntat sedan i natt beskriver en värld som kanske inte finns längre —
 hyresvärden kan ha bokat rörmokaren själv, betalningen kan ha kommit in, ärendet kan vara
 stängt.
 
-**Mekanismen:** ett uppdrag prövar sina förutsättningar **på nytt i utförandeögonblicket,
-atomärt i samma transaktion som effekten**. Håller de inte längre utförs ingenting, och
-uppdraget förfaller **synligt** med en rad i inkorgen: *"Skulle bokat rörmokare — du hade
-redan gjort det 08:14."*
+### Mekanismen: FÖRE_EFFEKTEN, aldrig "atomärt"
 
-Två saker faller ut ur det:
+Ett uppdrag prövar sina förutsättningar på nytt **före effekten**. Skyddet mot en
+dubblett kommer från **verktygets egen nyckel** — inte från en transaktionsgräns.
+
+Och därför får bara verktyg vars effektklassificering **utesluter en andraeffekt**
+alls bli ett uppdrag. Grinden sitter vid **skapandet**, inte vid utförandet:
+`apps/api/src/ai/assignments/assignment-eligibility.ts`.
+
+| krav | vad som gäller |
+| --- | --- |
+| klassificering | `effectIdempotency: IDEMPOTENT` — ett `DEDUPLICERBAR` duger inte, för "en post *kan* konsulteras" är ingen garanti |
+| spår | `traceDurability.plats` ≠ `INGET`, ≠ `KÖ_FÖNSTER` |
+| dugliga i dag | **23 av 30** `ACTION_TOOLS`; de 7 avvisade är alla `DEDUPLICERBAR` |
+
+### Varför den gamla lydelsen inte höll
+
+Mätt i koden 2026-09-02:
+
+```
+tool-executor.service.ts        4 407 rader · 56 case-etiketter
+$transaction i den filen        2      (create_journal_entry, record_expense)
+traceIntegrity=TRANSAKTIONELL   2 av 30
+```
+
+De övriga 28 delegerar till domäntjänster som **äger sin egen transaktion**.
+Exekveraren kan inte gå med i den, så en förutsättningskontroll skriven i
+uppdragslagret hamnar per konstruktion i en annan transaktion än effekten.
+
+Även det bästa befintliga prejudikatet visar gapet: kontraktsradens anspråk
+`SCANNED → COMMITTING` är atomiskt, men effekten (`createWithTenant`) körs utanför
+det (`contract-scan-batch.service.ts:625`).
+
+### Och varför ersättningsregeln är starkare
+
+En transaktion skyddar bara mot en kapplöpning **inom processen**. Verktygets nyckel
+skyddar även när effekten redan skedde **i går, av en människa, i en annan session**
+— vilket är den kapplöpning den här delen faktiskt handlar om.
+
+Priset är ett tidsfönster mellan omprövningen och effekten. I det fönstret kan
+världen flytta sig, och utfallet blir då **ingenting** — nyckeln känner igen sig.
+Det är önskat.
+
+### Det som står kvar oförändrat
+
+Håller förutsättningarna inte längre utförs ingenting, och uppdraget förfaller
+**synligt** med en rad i inkorgen: *"Skulle bokat rörmokare — du hade redan gjort det
+08:14."*
 
 - Godkännandet är ett *tillstånd att utföra om världen fortfarande ser likadan ut*, inte
   ett löfte att effekten inträffar.
 - Ett tyst förfall är förbjudet. Hyresvärden måste kunna se att uppdraget inte gick
   igenom och varför.
+
+### Vad som ännu inte finns
+
+Omprövningen har ingen hemvist förrän **utföraren** byggs (etapp 8–9). Etapp 4 byggde
+kön, grinden, det synliga förfallet vid tidsgräns, kallelsen och läsytan — men
+ingenting utför ett uppdrag, och ingenting producerar ett. `AiAssignmentStatus` har
+därför bara fyra värden; `LAPSED`, `EXECUTED` och `FAILED` läggs till av den PR som
+bygger det som skriver dem.
+
+<details>
+<summary>Den ursprungliga lydelsen (ersatt 2026-09-02)</summary>
+
+> **Mekanismen:** ett uppdrag prövar sina förutsättningar **på nytt i utförandeögonblicket,
+> atomärt i samma transaktion som effekten**. Håller de inte längre utförs ingenting, och
+> uppdraget förfaller **synligt** med en rad i inkorgen.
+
+</details>
 
 ---
 

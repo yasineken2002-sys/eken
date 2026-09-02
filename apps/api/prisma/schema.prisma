@@ -492,6 +492,20 @@ enum NotificationType {
   WEEKLY_SUMMARY
   MONTHLY_REPORT
   SYSTEM
+
+  // ── G3: KALLELSEN OCH DET SYNLIGA FÖRFALLET ───────────────────────────────
+  //
+  // Uppdragsraden är sanningen; notisen är KALLELSEN till den. Två värden och
+  // inte ett, därför att de två sakerna kräver olika av mottagaren:
+  //
+  //   AI_ASSIGNMENT_AWAITING  något väntar på ditt beslut
+  //   AI_ASSIGNMENT_EXPIRED   tidsgränsen gick ut och INGENTING hände
+  //
+  // Det andra värdet är hela skälet till att förfallet inte får vara tyst. Utan
+  // det är "uppdraget utfördes aldrig" och "uppdraget fanns aldrig" samma
+  // upplevelse för hyresvärden.
+  AI_ASSIGNMENT_AWAITING
+  AI_ASSIGNMENT_EXPIRED
 }
 
 // ─── Platform / SaaS enums ────────────────────────────────────────────────────
@@ -778,6 +792,7 @@ model Organization {
   aiUsageLogs               AiUsageLog[]
   aiToolExecutions          AiToolExecution[]
   aiResumptionVerdicts      AiResumptionVerdict[]
+  aiAssignments             AiAssignment[]
   aiToolEffects             AiToolEffect[]
   maintenanceTickets        MaintenanceTicket[]
   rentNotices               RentNotice[]
@@ -874,6 +889,8 @@ model User {
   sentMessages            SentMessage[]
   tenantAnonymizationLogs TenantAnonymizationLog[] @relation("TenantAnonymizationPerformedBy")
   impersonationLogs       ImpersonationLog[]       @relation("ImpersonationTargetUser")
+  aiAssignmentsAssigned   AiAssignment[]           @relation("AiAssignmentAssignee")
+  aiAssignmentsDecided    AiAssignment[]           @relation("AiAssignmentDecider")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2984,6 +3001,13 @@ model AiToolExecution {
 ///                         död motor omöjliga att skilja åt.
 ///   AiResumptionVerdict   "vad blev domen om DEN HÄR raden, och varför?"
 ///
+/// ⚠️ INGEN LÄSER DEM ÄNNU. Mätt 2026-09-02 mot `b0d72f6`: de enda tre
+/// referenserna i kodbasen är skrivningarna i `resumption.service.ts`. Ingen
+/// controller, ingen vy, ingen larmväg. För skuggläget är det försvarat —
+/// domarna är diagnostik, inte ett godkännande någon väntar på — men försvarad
+/// är inte samma sak som räknad, och en död motor ser i dag ut precis som en
+/// tyst. Räknat i #678.
+///
 /// ENUMVÄRDENA ÄR ENGELSKA AV MEKANIK, INTE AV STIL. En Prisma-identifierare
 /// måste matcha [A-Za-z][A-Za-z0-9_]* — `ÅTERUPPTA` går inte att skriva. Samma
 /// familj som skalvariabelregeln i CLAUDE.md. Den svenska texten bor i
@@ -3091,6 +3115,152 @@ model AiResumptionVerdict {
   @@index([runId])
   @@index([reason])
   @@index([organizationId])
+}
+
+/// UPPDRAGET SOM ÖVERLEVER NATTEN (G3, etapp 4).
+///
+/// Något förberett kl 03:00 ska finnas kl 09:00. `AiPendingAction` kan inte bära
+/// det, och skälen är MÄTTA mot `b0d72f6` — inte antagna:
+///
+///   TTL 5 minuter            `pending-action-ttl.ts:13`
+///   bunden till konversation `ai-assistant.service.ts:1240`
+///   FK mot AiConversation    `schema.prisma` (AiPendingAction.conversation)
+///                            → en agent utan konversation kan inte ens INFOGA
+///                            en rad. Bristen är strukturell, inte semantisk.
+///   bara hashen lagras       inputen skickas av KLIENTEN, och lever dessutom
+///                            bara i React-state (`AiPage.tsx:46`) — förslaget
+///                            överlever inte ens en sidladdning.
+///
+/// Den här tabellen vänder på alla fyra: full input på servern, ingen
+/// konversationsbindning, ingen delad TTL, och en tidsgräns som är DATA.
+///
+/// ── VAD DEN HÄR TABELLEN INTE KAN SE ────────────────────────────────────────
+///
+/// Den bär ett uppdrag och dess beslut. Den vet ingenting om vad som HÄNDE i
+/// världen — det ägs av `AiToolExecution` (`aiToolExecutionId`) och av
+/// verktygets egen idempotensnyckel. Två sanningar om samma sak är precis hur
+/// execution truth går förlorad, så spåret återanvänds och dupliceras inte.
+///
+/// INGEN PRODUCENT OCH INGEN UTFÖRARE FINNS ÄNNU. Kön är tom med flit:
+/// producenten är etapp 8–9. En tom kö med en läsare är ärlig; en full kö utan
+/// läsare är det tysta stoppet.
+model AiAssignment {
+  id             String @id @default(uuid())
+  organizationId String
+
+  /// VERKTYGET OCH HELA DESS INPUT — på servern, inte hos en klient.
+  ///
+  /// `toolName` grindas vid SKAPANDET av `assignment-eligibility.ts`: bara
+  /// verktyg vars effektklassificering utesluter en ANDRAEFFEKT får bli ett
+  /// uppdrag. Grinden sitter i skapandet och inte i utförandet, därför att ett
+  /// uppdrag som inte får finnas inte ska kunna ligga och se giltigt ut i en
+  /// lista tills någon säger ja till det.
+  toolName  String
+  toolInput Json
+
+  /// ── GODKÄNNANDEKORTETS INNEHÅLL (planens Del 11) ──────────────────────────
+  ///
+  /// Ett godkännande som kräver att man kontrollerar agentens arbete är ingen
+  /// besparing — det är granskning, som är tröttare. Fälten nedan är kortet, och
+  /// de är obligatoriska av det skälet.
+  ///
+  /// `undoHint` är NOT NULL med flit. Nullbar hade gjort "vi vet inte" och "går
+  /// inte att ångra" till samma värde, och den som skapar uppdraget måste ta
+  /// ställning. Går det inte att ångra skrivs det ut i klartext.
+  title       String
+  reasoning   String
+  consequence String
+  undoHint    String
+
+  /// Klickbar data bakom motiveringen: [{ entityType, entityId, label }].
+  /// Tom lista är tillåten och betyder "ingen post att öppna" — inte "vi kollade
+  /// inte". Formen är display-data och tolkas aldrig av servern.
+  evidence Json @default("[]")
+
+  status       AiAssignmentStatus @default(AWAITING_APPROVAL)
+  /// Svensk mening vid REJECTED och EXPIRED. Vid REJECTED är den människans
+  /// skäl — planens Del 11: skälet är minnesmat.
+  statusReason String?
+
+  /// ── TIDSGRÄNSEN ÄR DATA, INTE EN KONSTANT (Beslut 3) ──────────────────────
+  ///
+  /// Varje uppdrag bär sin EGEN gräns, satt när det skapas. En rörmokarbokning
+  /// och ett hyreshöjningsbesked har olika brådska; ett tal för båda blir fel för
+  /// minst en.
+  ///
+  /// Och den får INTE härledas ur `PENDING_ACTION_TTL_MS`. Den konstanten är
+  /// redan dubbelanvänd — `ATERUPPTAGNING_TAK_MS = PENDING_ACTION_TTL_MS` i
+  /// `resumption-policy.ts` — så en tredje användning hade flyttat
+  /// återupptagningsmotorns tak varje gång någon justerade uppdragens gräns,
+  /// utan att något blev rött. `check-assignment-deadline.mjs` fäller den
+  /// härledningen.
+  deadline DateTime
+
+  /// MOTTAGAREN. Sätts vid skapandet — ett uppdrag som väntar på "någon" väntar
+  /// på ingen.
+  ///
+  /// `SetNull` och inte `Cascade`, till skillnad från `Notification.user`: en
+  /// notis är en puff som får dö med sin mottagare, men ett uppdrag är ARBETE
+  /// som inte ska försvinna för att en anställd slutat. Raden blir då
+  /// oadresserad och faller tillbaka på rollbehörigheten i läsytan.
+  assignedToUserId String?
+  assignedToUser   User?   @relation("AiAssignmentAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  decidedAt       DateTime?
+  decidedByUserId String?
+  decidedByUser   User?     @relation("AiAssignmentDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+
+  /// Spåret av utförandet, när en utförare finns (etapp 8–9). Ingen FK: raden
+  /// skrivs av auditvägen och referensen måste få peka i tomma intet, samma skäl
+  /// som `JournalEntry.aiToolExecutionId`.
+  aiToolExecutionId String?
+
+  /// ── UPPDRAGSGIVAREN (G1, #676) — FÖRBEREDD, OTILLSATT ─────────────────────
+  ///
+  /// `AiPrincipal` är `{ kind: 'USER' | 'TENANT', id }`. Kolumnerna ligger här
+  /// därför att uppdraget SKA bära vem det sker på uppdrag av, men #676 är inte
+  /// i main än och ingenting skriver dem i den här PR:en.
+  ///
+  /// De är avsiktligt otypade strängar och inte en enum: att gissa enumvärdena
+  /// ur en gren som kan ändras före merge hade varit att naglafast en form vi
+  /// inte äger. Typbindningen görs när #676 landat — och det är ett eget steg,
+  /// inte en biverkning.
+  principalKind String?
+  principalId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Läsytans fråga: organisationens väntande uppdrag, äldst först.
+  @@index([organizationId, status, deadline])
+  /// Utgångscronens fråga: väntande uppdrag vars gräns passerat.
+  @@index([status, deadline])
+  @@index([assignedToUserId])
+}
+
+/// ── VARFÖR BARA FYRA VÄRDEN ────────────────────────────────────────────────
+///
+/// `LAPSED` (förutsättningarna höll inte i utförandeögonblicket), `EXECUTED` och
+/// `FAILED` hör till UTFÖRAREN, som inte finns i den här PR:en. De står därför
+/// inte här.
+///
+/// Ett enumvärde som ingenting kan skriva är en vokabulär som ser ut som en
+/// mekanism: läsytan hade fått en filterflik som aldrig kan ha innehåll, och
+/// nästa person hade läst det som att utförandet finns. Värdena läggs till av
+/// den PR som bygger utföraren, tillsammans med det som skriver dem.
+enum AiAssignmentStatus {
+  /// Väntar på en människa.
+  AWAITING_APPROVAL
+  /// En människa har sagt ja. Utförandet sker senare, av en utförare som ännu
+  /// inte finns — se noten ovan.
+  APPROVED
+  /// En människa har sagt nej. `statusReason` bär skälet.
+  REJECTED
+  /// Tidsgränsen passerade utan beslut. SYNLIGT: cronen notifierar mottagaren.
+  /// Ett tyst förfall är förbjudet (planens Del 12).
+  EXPIRED
 }
 
 /// VAD EN AI-VERKTYGSKÖRNING FAKTISKT ORSAKADE.
