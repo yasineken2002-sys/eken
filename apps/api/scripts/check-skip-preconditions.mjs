@@ -79,14 +79,38 @@ export function specfiler(dir = SRC, ut = []) {
 }
 
 /**
+ * IDENTIFIERARE ÄR UNICODE, INTE `\w` (#668, samma form som #640).
+ *
+ * `\w` är ASCII. En villkorsvariabel som heter `körsMedDb` eller ett villkor som
+ * heter `HÄR_FINNS_DB` hade inte härletts alls — och utfallet är TYSTNAD: filen
+ * hade sett ut att sakna villkorlig överhoppning, och vakten förblivit grön om en
+ * spec vars förutsättning aldrig prövas.
+ *
+ * ── MÄTT FÖRE FIXEN, OCH SVARET VAR NOLL ────────────────────────────────────
+ *
+ * Alla villkorliga skips i `apps/api/src` räknades med både ASCII- och
+ * unicode-formen: 35 mot 35, noll missade. Aliasen är `medDb` (32), `beskriv` (2)
+ * och `medRedis` (1); villkoren `HAR_DB` (34) och `HAR_REDIS` (1).
+ *
+ * Vakten var alltså SÅRBAR men inte BLIND — och den skillnaden ska stå, eftersom
+ * rangordningen i #668 gissade motsatsen. Konventionen ÄR svensk (`beskriv`,
+ * `medDb`), orden råkar bara sakna å/ä/ö. Den här ändringen är en härdning, inte
+ * en lagning av något som läckte.
+ */
+const IDENT = '[\\p{L}\\p{N}_$]+'
+const IDENT_PUNKT = '[\\p{L}\\p{N}_$.]+'
+
+/**
  * Villkorsvariablerna i en fil: `const X = <villkor> ? describe : describe.skip`.
  *
  * Returnerar både aliaset (`beskriv`) och villkoret (`HAR_DB`) — aliaset för att
  * hitta de villkorliga blocken, villkoret för att veta vad som ska prövas.
  */
 export function findConditionalSkips(text) {
-  const re =
-    /(?:const|let)\s+(\w+)\s*=\s*([\w.]+)\s*\?\s*(?:describe|it|test)\s*:\s*(?:describe|it|test)\.skip/g
+  const re = new RegExp(
+    `(?:const|let)\\s+(${IDENT})\\s*=\\s*(${IDENT_PUNKT})\\s*\\?\\s*(?:describe|it|test)\\s*:\\s*(?:describe|it|test)\\.skip`,
+    'gu',
+  )
   return [...codeMask(text).matchAll(re)].map((m) => ({ alias: m[1], villkor: m[2] }))
 }
 
@@ -102,7 +126,11 @@ export function conditionalRanges(text, alias) {
   const rader = codeMask(text).split('\n')
   const intervall = []
   for (let i = 0; i < rader.length; i++) {
-    if (!new RegExp(`(^|[^\\w.])${alias}\\s*\\(`).test(rader[i])) continue
+    // GRÄNSEN ÄR OCKSÅ UNICODE (#668). `[^\w.]` räknar å, ä och ö som
+    // ICKE-ordtecken, så ett alias kunde matcha INUTI en längre identifierare så
+    // fort tecknet före var svenskt — `ömedDb(` hade sett ut som `medDb(`. Det är
+    // falsklarmsriktningen, till skillnad från härledningen ovan.
+    if (!new RegExp(`(^|[^\\p{L}\\p{N}_.$])${alias}\\s*\\(`, 'u').test(rader[i])) continue
     let djup = 0
     for (let j = i; j < rader.length; j++) {
       djup += (rader[j].match(/\(/g) ?? []).length - (rader[j].match(/\)/g) ?? []).length
@@ -212,6 +240,66 @@ function selfTest() {
   const skanner = kanariefåglar()
   if (skanner.length) fail(`DEN DELADE SKANNERN ÄR TRASIG: ${skanner.join(' | ')}`)
   else console.log(`✅ delad skanner: kanariefåglarna gröna över ${KANARIEFÅGEL_LÄGEN.length} lägen`)
+
+  // ── IDENTIFIERARFORMEN (#668) ────────────────────────────────────────────
+  //
+  // `\w` är ASCII. Ett alias eller villkor med å/ä/ö härleddes inte alls, och
+  // utfallet var TYSTNAD: filen såg ut att sakna villkorlig överhoppning, och
+  // vakten förblev grön om en spec vars förutsättning aldrig prövas.
+  //
+  // MÄTT FÖRE FIXEN: 35 mot 35, noll missade. Vakten var SÅRBAR men inte BLIND —
+  // aliasen råkar sakna å/ä/ö (`medDb`, `beskriv`, `medRedis`). Kanariefågeln
+  // finns för att det inte ska förbli en slump.
+  {
+    const svenskaNamn = {
+      fil: 'svensk.spec.ts',
+      text: `const HÄR_FINNS_DB = Boolean(process.env.DATABASE_URL)
+const körsMotDb = HÄR_FINNS_DB ? describe : describe.skip
+
+describe('förutsättningar', () => {
+  it('kanariefågel', () => {
+    expect(HÄR_FINNS_DB).toBe(true)
+  })
+})
+
+körsMotDb('mot databasen', () => {})`,
+    }
+
+    const härledda = findConditionalSkips(svenskaNamn.text)
+    if (
+      härledda.length === 1 &&
+      härledda[0].alias === 'körsMotDb' &&
+      härledda[0].villkor === 'HÄR_FINNS_DB'
+    ) {
+      console.log('✅ IDENTIFIERARFORM: alias och villkor med å/ä/ö härleds')
+    } else {
+      fail(
+        `IDENTIFIERARFORM: ett svenskt alias/villkor härleddes inte — fick ` +
+          `${härledda.length} (${härledda.map((h) => `${h.alias}/${h.villkor}`).join(',') || 'inga'}). ` +
+          `Är regexen tillbaka på \\w (ASCII)?`,
+      )
+    }
+
+    // …och den ska MÄTAS av regeln, inte bara härledas. Med en prövad
+    // förutsättning ska den vara TYST.
+    grön('IDENTIFIERARFORM: en svensknamngiven, PRÖVAD förutsättning är tyst', evaluate([svenskaNamn]))
+
+    // ⚠️ REGELN NAMNGES. Läxan från #640/#667: ett prov som bara kräver "något
+    // fälls" kan bli grönt av omfångsregeln i stället för av sin egen — och då
+    // mäter det inte det dess namn påstår.
+    const svenskUtanProv = {
+      fil: 'svensk-oprovad.spec.ts',
+      text: `const HÄR_FINNS_DB = Boolean(process.env.DATABASE_URL)
+const körsMotDb = HÄR_FINNS_DB ? describe : describe.skip
+
+körsMotDb('mot databasen', () => {})`,
+    }
+    röd(
+      'IDENTIFIERARFORM: en svensknamngiven OPRÖVAD förutsättning fälls',
+      evaluate([svenskUtanProv]),
+      'prövar den aldrig',
+    )
+  }
 
   // ── MASKENS SEMANTIK ─────────────────────────────────────────────────────
   //
