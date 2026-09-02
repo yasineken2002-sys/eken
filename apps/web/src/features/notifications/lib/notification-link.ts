@@ -16,6 +16,7 @@ const ENTITY_PATH = {
   DEPOSIT: '/deposits',
   RENT_INCREASE: '/rent-increases',
   TERMINATION_REQUEST: '/terminations',
+  AI_ASSIGNMENT: '/uppdrag',
 } as const
 
 export function entityTypeToPath(type: RelatedEntityType) {
@@ -39,6 +40,8 @@ export function notificationLinkToPath(link: string) {
       return '/deposits'
     case 'rent-increases':
       return '/rent-increases'
+    case 'uppdrag':
+      return '/uppdrag'
     case 'collections':
       return '/collections'
     default:
