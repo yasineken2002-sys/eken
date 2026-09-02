@@ -253,10 +253,17 @@ medDb('serviceavgiftsfönstret (#665)', () => {
   it('KREDITNOTA räknas inte som dubblett (`creditedInvoiceId: null` bär sin del)', async () => {
     // Kreditnotan ärver typ, avtal, belopp och förfallodag från originalet. Utan
     // villkoret hade en kreditering i samma minut blockerat nästa riktiga avgift.
-    // Originalet skiljer sig i FÖRFALLODAG, så det blockerar inte av egen kraft
-    // — annars hade provet inte kunnat isolera `creditedInvoiceId`. Kreditnotan
-    // matchar DTO:n exakt och får ändå inte blockera.
-    const original = await seedaFaktura({ dueDate: '2026-08-31' })
+    // ORIGINALET LIGGER PÅ ETT ANNAT AVTAL, och det är ett medvetet val.
+    //
+    // FK:n kräver en riktig faktura att peka på, men originalet får inte kunna
+    // blockera av egen kraft — då mäter provet två saker. Första lydelsen lät det
+    // skilja sig i FÖRFALLODAG, och provet föll då i negativkontrollen som tog
+    // bort `dueDate` ur signaturen: rätt utfall, fel orsak.
+    //
+    // `leaseId` är fönstrets grundavgränsning: en faktura på ett annat avtal kan
+    // aldrig blockera, oavsett vilka ÖVRIGA fält som skulle tas bort. Provet
+    // isolerar därmed `creditedInvoiceId` ensamt.
+    const original = await seedaFaktura({ leaseId: leaseB })
     await seedaFaktura({ creditedInvoiceId: original.id })
     await expect(pröva()).resolves.toBeUndefined()
   })
