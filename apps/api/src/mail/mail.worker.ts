@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type { Job } from 'bull'
 import { Resend } from 'resend'
+import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailRenderer } from './mail.renderer'
 import {
@@ -28,6 +29,9 @@ abstract class MailWorkerBase {
     private readonly renderer: MailRenderer,
     private readonly prisma: PrismaService,
     config: ConfigService,
+    // #648-följd. SIST i listan: nya beroenden läggs till på slutet så
+    // befintliga positionsanrop inte tyst byter betydelse.
+    private readonly rentNoticeEvents: RentNoticeEventsService,
   ) {
     const apiKey = config.get<string>('RESEND_API_KEY')
     if (!apiKey) {
@@ -220,14 +224,77 @@ abstract class MailWorkerBase {
         `Failed to write FailedEmail row for jobId=${job.id}: ${(dbErr as Error).message}`,
       )
     }
+
+    // ── OCH SAMMA FEL I AVINS EGEN LOGG ─────────────────────────────────────
+    //
+    // `FailedEmail` fick sin koppling till avin i #651 och den fylls — men INGEN
+    // läser tabellen (mätt: noll läsare i src/, noll rader i prod). Det är den
+    // operativa raden: jobId, payload, antal försök, för den som felsöker kön.
+    //
+    // Domänraden saknades. `SEND_FAILED` skrivs bara vid SYNKRONA fel — när
+    // hyresgästen saknar e-post, eller när köandet självt kastar. Ett Bull-jobb
+    // som gör slut på sina försök lämnade därför inget spår alls på avin, och
+    // ett ärende som stod stilla i REMINDED gick inte att förklara i den vy som
+    // finns för just det (#648).
+    //
+    // Ingen grind ändras: INV-B läser SENT, EMAIL_DELIVERED och EMAIL_BOUNCED —
+    // inte SEND_FAILED. Raden är upplysning, inte beslut.
+    if (rentNoticeId) await this.recordSendFailed(rentNoticeId, String(job.id), err.message)
+  }
+
+  /**
+   * Skriver `SEND_FAILED` på avin — EN GÅNG per jobb.
+   *
+   * `RentNoticeEvent` är append-only: en dubblett går inte att städa bort. Bulls
+   * `failed`-händelse för sista försöket avfyras normalt en gång, men "normalt"
+   * är inte "alltid", så uppslaget på jobId står här.
+   *
+   * KONTROLLEN ÄR INTE ATOMISK, och det är ett medvetet val. Två samtidiga
+   * skrivningar för SAMMA jobId kan båda passera. Alternativet vore ett unikt
+   * index till på en append-only-tabell för en rad som ingen grind läser —
+   * kostnaden är en dubblerad upplysning, inte ett felaktigt beslut.
+   */
+  private async recordSendFailed(
+    rentNoticeId: string,
+    jobId: string,
+    reason: string,
+  ): Promise<void> {
+    try {
+      const redan = await this.prisma.rentNoticeEvent.findFirst({
+        where: {
+          rentNoticeId,
+          type: 'SEND_FAILED',
+          payload: { path: ['jobId'], equals: jobId },
+        },
+        select: { id: true },
+      })
+      if (redan) return
+      await this.rentNoticeEvents.record(rentNoticeId, 'SEND_FAILED', 'SYSTEM', null, {
+        jobId,
+        reason,
+        // Skiljer den här raden från de synkrona SEND_FAILED-raderna, som
+        // skrivs innan brevet ens nått kön.
+        steg: 'utskicket gav upp efter alla försök',
+      })
+    } catch (err) {
+      // Loggens skrivning får aldrig bli anledningen till att kön fallerar.
+      this.logger.error(
+        `Kunde inte skriva SEND_FAILED på avi ${rentNoticeId} (jobId=${jobId}): ${(err as Error).message}`,
+      )
+    }
   }
 }
 
 @Injectable()
 @Processor(QUEUE_HIGH)
 export class MailWorkerHigh extends MailWorkerBase {
-  constructor(renderer: MailRenderer, prisma: PrismaService, config: ConfigService) {
-    super(renderer, prisma, config)
+  constructor(
+    renderer: MailRenderer,
+    prisma: PrismaService,
+    config: ConfigService,
+    rentNoticeEvents: RentNoticeEventsService,
+  ) {
+    super(renderer, prisma, config, rentNoticeEvents)
   }
 
   @Process({ concurrency: CONCURRENCY })
@@ -244,8 +311,13 @@ export class MailWorkerHigh extends MailWorkerBase {
 @Injectable()
 @Processor(QUEUE_NORMAL)
 export class MailWorkerNormal extends MailWorkerBase {
-  constructor(renderer: MailRenderer, prisma: PrismaService, config: ConfigService) {
-    super(renderer, prisma, config)
+  constructor(
+    renderer: MailRenderer,
+    prisma: PrismaService,
+    config: ConfigService,
+    rentNoticeEvents: RentNoticeEventsService,
+  ) {
+    super(renderer, prisma, config, rentNoticeEvents)
   }
 
   @Process({ concurrency: CONCURRENCY })
@@ -262,8 +334,13 @@ export class MailWorkerNormal extends MailWorkerBase {
 @Injectable()
 @Processor(QUEUE_LOW)
 export class MailWorkerLow extends MailWorkerBase {
-  constructor(renderer: MailRenderer, prisma: PrismaService, config: ConfigService) {
-    super(renderer, prisma, config)
+  constructor(
+    renderer: MailRenderer,
+    prisma: PrismaService,
+    config: ConfigService,
+    rentNoticeEvents: RentNoticeEventsService,
+  ) {
+    super(renderer, prisma, config, rentNoticeEvents)
   }
 
   @Process({ concurrency: CONCURRENCY })

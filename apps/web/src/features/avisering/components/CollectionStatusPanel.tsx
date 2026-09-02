@@ -207,6 +207,22 @@ export function CollectionStatusPanel({ status }: Props) {
         />
       </div>
 
+      {/* UTSKICKET GAV UPP — egen rad, inte infogad i någon av de två ovan.
+          Händelsen säger inte VILKET brev som gav upp, och att placera den vid
+          avin eller påminnelsen hade varit en gissning som ser ut som ett svar. */}
+      {status.delivery.sendFailedAt && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-100 bg-white p-3">
+          <MailX size={14} strokeWidth={1.8} className="mt-0.5 flex-shrink-0 text-red-600" />
+          <div className="min-w-0">
+            <p className="text-[12.5px] font-medium text-gray-700">Ett utskick gav upp</p>
+            <p className="text-[12px] text-red-600">
+              {formatDate(status.delivery.sendFailedAt)} — brevet nådde aldrig e-postleverantören.
+              Skälet står i händelselistan nedan.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* GRÄNSEN, och den måste stå i gränssnittet och inte bara i ett ärende. */}
       <p className="mt-3 border-t border-gray-200/70 pt-2.5 text-[11.5px] leading-relaxed text-gray-500">
         “Togs emot” betyder att mottagarens e-postserver accepterade meddelandet — inte att någon

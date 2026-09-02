@@ -333,4 +333,20 @@ medDb('collectionStatus', () => {
     await prisma.rentNotice.update({ where: { id }, data: { collectionStage: 'NONE' } })
     expect((await status(id)).state).toBe('NOT_APPLICABLE')
   })
+
+  it('SEND_FAILED hindrar INTE inkassogrinden — den är upplysning, inte beslut', async () => {
+    // Kön skriver numera SEND_FAILED på avin när ett utskick ger upp (#648-följd).
+    // INV-B läser SENT, EMAIL_DELIVERED och EMAIL_BOUNCED. Skulle grinden börja
+    // läsa SEND_FAILED vore det ett nytt hinder ingen beslutat om — och den
+    // upplysning som skulle förklara ett stopp hade blivit stoppet.
+    const id = await avi({
+      dagarSedanFörfall: 40,
+      händelser: ['SENT', 'REMINDER_SENT', 'EMAIL_DELIVERED', 'SEND_FAILED'],
+    })
+    const s = await status(id)
+    expect(s.missing).toEqual([])
+    expect(s.state).toBe('READY')
+    // …och raden finns, så provet mäter inte en tom mängd.
+    expect(s.delivery.sendFailedAt).not.toBeNull()
+  })
 })
