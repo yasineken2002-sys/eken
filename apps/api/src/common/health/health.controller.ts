@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { PrismaHealthIndicator } from './prisma.health'
 import { buildLegalChunks } from '../../ai/knowledge/retrieval/legal-chunk'
 import { VOYAGE_EMBEDDINGS } from '../../ai/ai.config'
+import { ATERUPPTAGNING_TYSTNAD_MAX_MS } from '../../ai/resumption/resumption-freshness.service'
 
 /**
  * Byggd commit-SHA, ur Railways egen variabel — ingen egen mekanism.
@@ -46,6 +47,40 @@ interface LegalKnowledgeParity {
   vectors: number | null
   /** Aktiv embedding-modell. Rader för andra modeller räknas inte. */
   model: string
+}
+
+/**
+ * ÅTERUPPTAGNINGSMOTORNS PULS — den EXTERNT DRIVNA benet av #678.
+ *
+ * ── VARFÖR FÄLTET FINNS NÄR DET REDAN FINNS ETT LARM ────────────────────────
+ *
+ * Larmet (`ResumptionFreshnessService`) är ett @Cron. Slutar schemaläggaren
+ * fungera slutar BÅDE motorn och larmet — och då har vi flyttat tystnaden ett
+ * steg i stället för att ta bort den. Det som ska upptäcka tystnad får inte
+ * vara beroende av samma sak som tystnar.
+ *
+ * Den här endpointen pollas av Railway, alltså UTIFRÅN processen. Kedjan
+ * terminerar därför utanför oss:
+ *
+ *   larm-cronen        ser: motorns jobb har slutat skriva medan processen lever
+ *                      ser INTE: att schemaläggaren själv dog (då dör den med)
+ *   det här fältet     ser: schemaläggaren dog, processen lever
+ *                      ser INTE: att processen är död
+ *   Railways poll      ser: processen är död
+ *
+ * ── BÄR TALEN, INTE ETT OMDÖME ──────────────────────────────────────────────
+ *
+ * Samma skäl som `legalKnowledge` ovan: "3 900 s av tröskeln 8 100 s" går att
+ * kontrollera, "ok" går inte. Ingen `silent: true`-flagga — då måste den som
+ * läser lita på vår jämförelse i stället för att göra den själv.
+ */
+interface ResumptionPulse {
+  /** Senaste körningsradens starttid, ISO. `null` = motorn har aldrig skrivit. */
+  lastRunAt: string | null
+  /** Ålder i sekunder, eller `null` när ingen rad finns eller talet inte kunde läsas. */
+  ageSec: number | null
+  /** Tröskeln larmet använder, i sekunder. Står här så talen kan jämföras. */
+  thresholdSec: number
 }
 
 @Controller('health')
@@ -105,6 +140,32 @@ export class HealthController {
   }
 
   /**
+   * Motorns puls. Kastar aldrig — samma avvägning som `countVectors`: Railway
+   * pollar endpointen och skulle starta om tjänsten. Att veta om motorn lever
+   * får aldrig kunna ta ned den.
+   */
+  private async readResumptionPulse(): Promise<ResumptionPulse> {
+    const thresholdSec = Math.round(ATERUPPTAGNING_TYSTNAD_MAX_MS / 1000)
+    try {
+      const rad = await this.prisma.aiResumptionRun.findFirst({
+        orderBy: { startedAt: 'desc' },
+        select: { startedAt: true },
+      })
+      if (!rad) return { lastRunAt: null, ageSec: null, thresholdSec }
+      return {
+        lastRunAt: rad.startedAt.toISOString(),
+        ageSec: Math.round((Date.now() - rad.startedAt.getTime()) / 1000),
+        thresholdSec,
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Kunde inte läsa AiResumptionRun: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return { lastRunAt: null, ageSec: null, thresholdSec }
+    }
+  }
+
+  /**
    * Deploy-workflowen bygger bara de tre SPA:erna; API:t deployas av Railways
    * git-integration utanför GitHub Actions. Ett grönt Deploy-jobb bevisar
    * därför inte att en API-ändring nått produktion, och endpointen visade bara
@@ -144,6 +205,18 @@ export class HealthController {
             model: { type: 'string', example: 'voyage-4' },
           },
         },
+        resumption: {
+          type: 'object',
+          description:
+            'Återupptagningsmotorns puls (#678). Bär ÅLDERN och TRÖSKELN, inte ett ' +
+            'omdöme: en ageSec som passerat thresholdSec betyder att motorn tystnat. ' +
+            'lastRunAt = null betyder att den aldrig skrivit något.',
+          properties: {
+            lastRunAt: { type: 'string', nullable: true, example: '2026-09-02T21:40:00.000Z' },
+            ageSec: { type: 'number', nullable: true, example: 43 },
+            thresholdSec: { type: 'number', example: 8100 },
+          },
+        },
       },
     },
   })
@@ -179,6 +252,11 @@ export class HealthController {
       model: VOYAGE_EMBEDDINGS.MODEL,
     }
 
-    return { ...result, revision: buildRevision(), legalKnowledge }
+    // PÅVERKAR INTE `status`, av samma skäl som legalKnowledge: en tystnad i
+    // motorn är ett observerbarhetsproblem, inte skäl att markera tjänsten som
+    // nere och få Railway att starta om den. Motorn utför dessutom ingenting.
+    const resumption = await this.readResumptionPulse()
+
+    return { ...result, revision: buildRevision(), legalKnowledge, resumption }
   }
 }
