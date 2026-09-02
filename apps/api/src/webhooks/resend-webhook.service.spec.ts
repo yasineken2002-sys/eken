@@ -27,6 +27,12 @@ function makeService(
     // varje träff som AVINS leverans, och provet mäter något annat än det tror.
     notice?: { id: string; reminderMessageId?: string | null } | null
     existingEvent?: boolean
+    /**
+     * #656: utskicksraden webhooken korrelerar på. `undefined` = ingen träff,
+     * alltså reservvägen via avins `reminderMessageId`. MÅSTE ingå i stubben —
+     * saknas delegaten kastar tjänsten innan den hunnit mäta något.
+     */
+    send?: { id: string; rentNoticeId: string; kind: 'REMINDER' | 'NOTICE' } | null
   } = {},
 ) {
   const updateMany = jest.fn().mockResolvedValue({ count: opts.tenantCount ?? 1 })
@@ -37,15 +43,17 @@ function makeService(
     .fn()
     .mockResolvedValue(opts.existingEvent ? { id: 'ev-existing' } : null)
   const eventCreate = jest.fn().mockResolvedValue({ id: 'ev-new' })
+  const sendFindUnique = jest.fn().mockResolvedValue(opts.send ?? null)
   const prisma = {
     tenant: { updateMany },
     rentNotice: { findFirst: rentNoticeFindFirst },
+    rentNoticeSend: { findUnique: sendFindUnique },
     rentNoticeEvent: { findFirst: eventFindFirst, create: eventCreate },
   }
   const config = { get: jest.fn().mockReturnValue(secret) }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const service = new ResendWebhookService(prisma as any, config as any)
-  return { service, updateMany, rentNoticeFindFirst, eventFindFirst, eventCreate }
+  return { service, updateMany, rentNoticeFindFirst, sendFindUnique, eventFindFirst, eventCreate }
 }
 
 function signedRequest(payloadObj: unknown, signingSecret = SECRET) {
@@ -227,6 +235,10 @@ describe('ResendWebhookService', () => {
         data: {
           rentNoticeId: 'rn-1',
           type: 'EMAIL_DELIVERED',
+          // #656: reservvägen ger sentinelen `''` — "utan känt utskick". Samma
+          // värde som raderna från före kolumnen, alltså exakt den gamla
+          // semantiken: en av varje typ per avi.
+          sendId: '',
           actorType: 'WEBHOOK',
           actorLabel: 'E-postleverantör',
           payload: { deliveredAt: '2026-06-02T10:00:00.000Z' },
@@ -282,7 +294,7 @@ describe('ResendWebhookService', () => {
       await service.handle(raw, headers)
 
       expect(eventFindFirst).toHaveBeenCalledWith({
-        where: { rentNoticeId: 'rn-1', type: 'EMAIL_DELIVERED' },
+        where: { rentNoticeId: 'rn-1', type: 'EMAIL_DELIVERED', sendId: '' },
         select: { id: true },
       })
       expect(eventCreate).not.toHaveBeenCalled()
@@ -431,6 +443,52 @@ describe('ResendWebhookService', () => {
       await service.handle(raw, headers)
 
       expect(eventCreate).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('utskicket bär utfallet (#656)', () => {
+    it('träffar utskicksraden → utfallet landar på DET utskicket', async () => {
+      // Rätt enhet: ett message-id pekar ut ETT utskick. Avins
+      // `reminderMessageId` behöver då inte konsulteras alls.
+      const { service, eventCreate, rentNoticeFindFirst } = makeService(SECRET, {
+        // tenantCount 0: inbjudan-vägen får inte matcha först, annars returnerar
+        // hanteraren innan avi-korrelationen ens prövas.
+        tenantCount: 0,
+        send: { id: 'send-2', rentNoticeId: 'rn-9', kind: 'REMINDER' },
+      })
+      const { raw, headers } = signedRequest(deliveredEvent('msg-andra-utskicket'))
+
+      await service.handle(raw, headers)
+
+      expect(eventCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            rentNoticeId: 'rn-9',
+            type: 'EMAIL_DELIVERED',
+            sendId: 'send-2',
+          }),
+        }),
+      )
+      // Reservvägen rörs inte när den riktiga enheten träffade.
+      expect(rentNoticeFindFirst).not.toHaveBeenCalled()
+    })
+
+    it('utskickets KIND avgör typen — inte vilket avi-fält som råkade matcha', async () => {
+      // En avileverans får aldrig skriva EMAIL_DELIVERED: den typen betyder
+      // "påminnelsen kom fram" och är INV-B:s bevis (#651).
+      const { service, eventCreate } = makeService(SECRET, {
+        tenantCount: 0,
+        send: { id: 'send-3', rentNoticeId: 'rn-9', kind: 'NOTICE' },
+      })
+      const { raw, headers } = signedRequest(deliveredEvent('msg-avin'))
+
+      await service.handle(raw, headers)
+
+      expect(eventCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ type: 'NOTICE_EMAIL_DELIVERED', sendId: 'send-3' }),
+        }),
+      )
     })
   })
 })

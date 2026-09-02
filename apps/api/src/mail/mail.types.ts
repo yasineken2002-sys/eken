@@ -79,7 +79,12 @@ export interface MailAttachment {
 export type MailCorrelation =
   | { kind: 'tenant-invite'; tenantId: string }
   | { kind: 'rent-notice'; rentNoticeId: string }
-  | { kind: 'rent-notice-reminder'; rentNoticeId: string }
+  /**
+   * `sendId` pekar ut DET HÄR UTSKICKET (#656). Optionell därför att jobb som
+   * redan låg i kön när fältet infördes saknar det — webhooken faller då
+   * tillbaka på avins `reminderMessageId`, precis som förut.
+   */
+  | { kind: 'rent-notice-reminder'; rentNoticeId: string; sendId?: string }
 
 export interface EnqueueMailOptions<T extends TemplateName = TemplateName> {
   template: T

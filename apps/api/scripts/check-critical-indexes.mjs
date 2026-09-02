@@ -93,6 +93,25 @@ const CRITICAL_INDEXES = [
     // varje anrop för en läsare som bara bryr sig om de påbörjade.
     where: 'completedAtISNULL',
   },
+  {
+    label: 'ETT leveransutfall per UTSKICK — inte per avi (#656)',
+    expectedName: 'RentNoticeEvent_delivery_idempotency_key',
+    migrationRef: '20260902200000_leverans_per_utskick',
+    unique: true,
+    table: 'RentNoticeEvent',
+    // ENHETEN ÄR INVARIANTEN. Utan `sendId` påstår villkoret "en avi kan studsa
+    // en gång", och en omsändning som studsar igen går inte att registrera —
+    // webhooken fångar P2002 som no-op och utfallet försvinner tyst.
+    //
+    // Faller kolumnen bort blir INV-B dessutom omöjlig att svara rätt på: den
+    // läser det SENASTE utskickets utfall, och utan enhet finns inget senaste.
+    columns: ['rentNoticeId', 'type', 'sendId'],
+    // De fyra typerna står i invarianten och inte bara i migrationen: tas en av
+    // dem bort tappar just den sin idempotens under Resends at-least-once, i en
+    // append-only-tabell där dubbletten inte går att städa bort.
+    where:
+      "typeIN('EMAIL_DELIVERED','EMAIL_BOUNCED','NOTICE_EMAIL_DELIVERED','NOTICE_EMAIL_BOUNCED')",
+  },
 ]
 
 // ── normalisering ──────────────────────────────────────────────────────────

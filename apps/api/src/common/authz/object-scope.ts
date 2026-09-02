@@ -174,6 +174,9 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
   AiMessageTenant: { scope: 'parent-scoped', parent: 'AiMessage' },
   AiMemoryTenant: { scope: 'parent-scoped', parent: 'AiMemory' },
 
+  // Ett UTSKICK når man bara via sin avi, som bär organizationId (#656).
+  RentNoticeSend: { scope: 'parent-scoped', parent: 'RentNotice' },
+
   // ── Utanför: kan inte bära en objektnivå-IDOR ────────────────────────────
   Organization: { scope: 'out', reason: 'toppnivån själv — inget att scopa mot' },
   RefreshToken: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet, inte av ett id' },
