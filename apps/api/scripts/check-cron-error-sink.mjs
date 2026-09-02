@@ -84,6 +84,9 @@ const SINK_FILE = join(SRC, 'common', 'cron', 'cron-error-sink.ts')
 const ACK_FILE = join(HERE, 'cron-error-sink.ack.json')
 const MIN_SKÄL = 40
 
+/** Identifierare är UNICODE, inte `\w` (#640). Samma form som i klassificeringsvakten. */
+const IDENT = '[\\p{L}\\p{N}_$]+'
+
 /**
  * HUR MAN UPPFYLLER REGELN — RÄTT.
  *
@@ -145,9 +148,9 @@ export function källfiler(dir = SRC, ut = []) {
  */
 export function härledSänkmetoder(sinkText) {
   const kod = codeMask(sinkText)
-  return [
-    ...kod.matchAll(/\basync\s+(\w+)\s*\(\s*cronName\s*:\s*string\s*,/g),
-  ].map((m) => m[1])
+  // Unicode, inte `\w` (#640) — se IDENT-docblocket i check-cron-classification.mjs.
+  const re = new RegExp(`\\basync\\s+(${IDENT})\\s*\\(\\s*cronName\\s*:\\s*string\\s*,`, 'gu')
+  return [...kod.matchAll(re)].map((m) => m[1])
 }
 
 /**
@@ -284,7 +287,7 @@ export function härledSänkbindningar(text, klassnamn) {
 
 /** Klassnamnet på sänkan, härlett ur dess fil. */
 export function härledSänkklass(sinkText) {
-  const m = /export\s+class\s+(\w+)/.exec(codeMask(sinkText))
+  const m = new RegExp(`export\\s+class\\s+(${IDENT})`, 'u').exec(codeMask(sinkText))
   return m ? m[1] : null
 }
 
@@ -537,11 +540,17 @@ export class CronErrorSink {
   async report(cronName: string, err: unknown): Promise<void> {}
 }
 `
-// FIXTURNAMNEN ÄR ASCII MED FLIT. `findCronJobs` matchar metodnamnet med `\w`,
-// som är ASCII-only — ett jobb som hette `medSänka` deriveras inte alls. Mätt
-// mot befee7b: ingen riktig @Cron-metod har icke-ASCII i namnet (25 jobb med
-// båda teckenklasserna), så begränsningen är latent. Men en fixtur som råkar
-// utlösa den mäter sin egen stavning i stället för regeln.
+// FIXTURNAMNEN VAR ASCII AV TVÅNG — DET GÄLLER INTE LÄNGRE (#640).
+//
+// `findCronJobs` matchade metodnamnet med `\w`, som är ASCII: ett jobb som hette
+// `medSänka` deriverades inte alls, och en fixtur som råkade utlösa det hade mätt
+// sin egen stavning i stället för regeln. Härledningen använder nu
+// `[\p{L}\p{N}_$]+` med `u`-flagga.
+//
+// Fixturen `JOBB_SVENSKT_NAMN` nedan bär med FLIT ett svenskt namn och är
+// kanariefågeln för just det: går den sönder är formen tillbaka på ASCII, och då
+// blir varje svensknamngivet @Cron osynligt för BÅDA cron-vakterna — inte
+// ofullständigt mätt utan INTE MÄTT.
 const JOBB_MED = {
   fil: 'x/med.service.ts',
   text: `
@@ -757,6 +766,22 @@ const JOBB_SINKIN_KOMMENTERAD = {
   }`,
 }
 
+/** KANARIEFÅGEL (#640): svenskt metodnamn, i övrigt ett helt vanligt jobb. */
+const JOBB_SVENSKT_NAMN = {
+  fil: 'x/svensk.service.ts',
+  text: `
+  constructor(private readonly sink: CronErrorSink) {}
+
+  @Cron('0 3 * * *')
+  async städaGammaltUnderlag(): Promise<void> {
+    try {
+      await this.gör()
+    } catch (err) {
+      await this.sink.report('stada', err)
+    }
+  }`,
+}
+
 const JOBB_EGEN_REPORT = {
   fil: 'x/egen.service.ts',
   text: `
@@ -812,6 +837,17 @@ function självtest() {
   t('REGEL: en EGEN metod som heter report räknas INTE som sänkan',
     egenFynd.some((p) => p.rule.includes('når ingen varaktig felsänka')),
     egenFynd.map((p) => p.rule).join(' | '))
+
+  // (2a2) IDENTIFIERARFORMEN (#640) — ett svenskt metodnamn ska härledas OCH
+  //       mätas av regeln. Med `\w` (ASCII) fanns jobbet inte i mängden alls,
+  //       och vakten var grön om ett jobb den aldrig sett.
+  const svenska = findCronJobs([JOBB_SVENSKT_NAMN])
+  t('IDENTIFIERARFORM: ett @Cron med svenskt metodnamn härleds',
+    svenska.length === 1 && svenska[0].metod === 'städaGammaltUnderlag',
+    `${svenska.length} jobb: ${svenska.map((j) => j.metod).join(',') || 'inga'}`)
+  t('IDENTIFIERARFORM: …och regeln mäter det som vilket jobb som helst',
+    svenska.length === 1 &&
+      evaluate({ jobb: svenska, sänkmetoder: riktigaMetoder, ack: { jobs: {} } }).length === 0)
 
   // (2b) KANARIEFÅGELN FÖR KROPPSUTTAGET (#619).
   //
