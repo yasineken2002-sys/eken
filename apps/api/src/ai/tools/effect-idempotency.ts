@@ -42,8 +42,8 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  *
  * Talen, mätta samma dag mot `ACTION_TOOLS` (30 verktyg):
  *
- *     IDEMPOTENT      19   (varav 1 utan effekt alls: export_sie4)
- *     DEDUPLICERBAR   11   (varav 4 har ett spår som faktiskt konsulteras)
+ *     IDEMPOTENT      20   (varav 1 utan effekt alls: export_sie4)
+ *     DEDUPLICERBAR   10   (varav 4 har ett spår som faktiskt konsulteras)
  *     OKÄND            0
  *
  * ── OMRÄKNAT 2026-09-02, EFTER ATT TRE POSTER SLÄPAT EFTER KODEN ────────────
@@ -64,6 +64,9 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  * `plats ≠ INGET` är i dag `send_invoice_email` (KÖ_FÖNSTER),
  * `compose_and_send_email` (DATABAS_TILLSTÅND), `generate_lease_contract`
  * (DATABAS_INDEX) och `mark_invoice_paid` (DATABAS_TILLSTÅND).
+ *
+ * Och 19/11 → 20/10 med `apply_rent_increase`, som fick ett PARTIELLT unikt
+ * index. Den är KRÄVER_MÄNNISKA och flyttar därför inte raden om återupptagbara.
  *
  * Femman längre ned är däremot INTE kvar. `create_property` fick sitt unika
  * index samma dag, och den posten ÄR AUTOMATISK — den föll bara på att spåret
@@ -885,18 +888,45 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [],
   },
 
-  // RentIncrease saknar unikt index. create() validerar bara 3-månadersbufferten
-  // och att ny hyra > nuvarande — BÅDA passerar vid en omkörning, eftersom
-  // lease-hyran inte skrivs om vid schemaläggningen. Två schemalagda höjningar.
+  // NYCKELN FINNS I DOMÄNEN: hyran kan bara ändras en gång på ett givet datum,
+  // och hyresgästen ska bara få ett meddelande om höjningen per ikraftträdande.
+  // `rent_increase_lease_effective_live_unique` bär det.
+  //
+  // create() kunde inte se en omkörning: den validerar 3-månadersbufferten och
+  // att ny hyra > nuvarande, och BÅDA passerar en andra gång eftersom
+  // lease-hyran inte skrivs om vid schemaläggningen.
+  //
+  // ── VILLKORET ÄR PARTIELLT, OCH DÄRFÖR ÄR MEKANISMEN INTE 'UNIKT_INDEX' ───
+  //
+  // En återkallad, nekad eller annullerad höjning gör inte längre anspråk på
+  // datumet — en ny för samma datum är då en legitim andra handling. Villkoret
+  // gäller alltså bara DRAFT/NOTICE_SENT/ACCEPTED/APPLIED, och ett partiellt
+  // index går inte att uttrycka i schema.prisma.
+  //
+  // R3:s starka semantiska kontroll läser just schema.prisma och kan därför inte
+  // pröva det här indexet. Mekanismen nedan pekar på DISAMBIGUERINGEN och är
+  // alltså bara driftdetektering. Det riktiga skyddet för själva indexet är
+  // `check-critical-indexes.mjs`, som läser migrationernas sluttillstånd och
+  // fäller om predikatet eller kolumnerna ändras — det är dit en läsare ska gå,
+  // inte hit.
   apply_rent_increase: {
-    effectIdempotency: 'DEDUPLICERBAR',
+    effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
-    traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceDurability: {
+      plats: 'DATABAS_INDEX',
+      livslangd: 'raden består; villkoret gäller så länge höjningen är levande',
+    },
     externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
-    mekanismer: [],
+    mekanismer: [
+      {
+        typ: 'STATUSGRIND',
+        fil: 'apps/api/src/rent-increases/rent-increases.service.ts',
+        symbol: 'ärLevandeHöjningskonflikt',
+      },
+    ],
   },
 
   // BLANDAD. Statusdelen är en ren update och idempotent; men addComment
