@@ -3001,6 +3001,13 @@ model AiToolExecution {
 ///                         död motor omöjliga att skilja åt.
 ///   AiResumptionVerdict   "vad blev domen om DEN HÄR raden, och varför?"
 ///
+/// ⚠️ INGEN LÄSER DEM ÄNNU. Mätt 2026-09-02 mot `b0d72f6`: de enda tre
+/// referenserna i kodbasen är skrivningarna i `resumption.service.ts`. Ingen
+/// controller, ingen vy, ingen larmväg. För skuggläget är det försvarat —
+/// domarna är diagnostik, inte ett godkännande någon väntar på — men försvarad
+/// är inte samma sak som räknad, och en död motor ser i dag ut precis som en
+/// tyst. Räknat i #678.
+///
 /// ENUMVÄRDENA ÄR ENGELSKA AV MEKANIK, INTE AV STIL. En Prisma-identifierare
 /// måste matcha [A-Za-z][A-Za-z0-9_]* — `ÅTERUPPTA` går inte att skriva. Samma
 /// familj som skalvariabelregeln i CLAUDE.md. Den svenska texten bor i

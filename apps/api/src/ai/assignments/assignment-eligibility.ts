@@ -9,7 +9,7 @@ import type { EffectDeclaration } from '../tools/effect-idempotency'
  * tjänsten av samma skäl som återupptagningsmotorns omdöme: den går att pröva
  * ensam mot påhittade deklarationer, utan en halv Nest-graf.
  *
- * ── ORDET "ATOMÄRT" FÖREKOMMER INTE I DEN HÄR KODEN ─────────────────────────
+ * ── UPPDRAGETS SKYDD BESKRIVS ALDRIG SOM "ATOMÄRT" ─────────────────────────
  *
  * Masterplanens Del 12 krävde att ett uppdrag prövar sina förutsättningar
  * "atomärt i samma transaktion som effekten". Mätningen 2026-09-02 mot `b0d72f6`

@@ -146,9 +146,17 @@ export class AiAssignmentsService {
   }
 
   /**
-   * Godkänn eller avslå. ATOMISKT: `status: 'AWAITING_APPROVAL'` i WHERE gör
-   * att exakt ett av två samtidiga beslut vinner — samma updateMany+count-
-   * mönster som resten av kodbasen.
+   * Godkänn eller avslå.
+   *
+   * ANSPRÅKET är atomiskt: `status: 'AWAITING_APPROVAL'` i WHERE gör att exakt
+   * ett av två samtidiga beslut vinner — samma updateMany+count-mönster som
+   * resten av kodbasen.
+   *
+   * ⚠️ Det är BESLUTET som är atomiskt, inte förhållandet mellan omprövningen
+   * och effekten. Den senare beskrivs aldrig så: uppdragets skydd mot en
+   * dubblett är verktygets egen nyckel, och omprövningen sker FÖRE effekten.
+   * Se `assignment-eligibility.ts`. De två sakerna blandas lätt ihop just
+   * därför att samma ord passar på båda.
    *
    * `statusReason` vid avslag är inte pynt: planens Del 11 säger att skälet är
    * minnesmat. Det är därför obligatoriskt just för avslag.
