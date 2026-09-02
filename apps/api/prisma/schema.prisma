@@ -2970,6 +2970,111 @@ model AiToolExecution {
   @@index([tenantId, createdAt])
   @@index([toolName])
 }
+/// ── ÅTERUPPTAGNINGSMOTORNS SKUGGLÄGE ────────────────────────────────────────
+///
+/// Motorn är den första komponenten som agerar utan att en människa bett om det
+/// i samma stund. Den byggs därför i SKUGGLÄGE: den läser, avgör, och SKRIVER
+/// NER vad den skulle ha gjort — men rör ingenting.
+///
+/// De två tabellerna svarar på olika frågor, och båda behövs:
+///
+///   AiResumptionRun       "körde motorn, och vad SÅG den?"  — även när svaret
+///                         är noll rader. Utan den är en tyst motor och en
+///                         död motor omöjliga att skilja åt.
+///   AiResumptionVerdict   "vad blev domen om DEN HÄR raden, och varför?"
+///
+/// ENUMVÄRDENA ÄR ENGELSKA AV MEKANIK, INTE AV STIL. En Prisma-identifierare
+/// måste matcha [A-Za-z][A-Za-z0-9_]* — `ÅTERUPPTA` går inte att skriva. Samma
+/// familj som skalvariabelregeln i CLAUDE.md. Den svenska texten bor i
+/// `resumption-policy.ts` (`SKAL_TEXT`) och används i utskrifter.
+enum ResumptionMode {
+  /// Läser och avgör. Utför ALDRIG något.
+  SHADOW
+  /// Utför. Sätts av ett eget beslut, inte av att skuggläget sett bra ut.
+  LIVE
+}
+
+enum ResumptionDecision {
+  RESUME
+  ABSTAIN
+}
+
+/// Varför domen blev som den blev. Fail-closed: allt utom RESUMABLE är ett nej,
+/// och en oigenkänd rad hamnar aldrig utanför den här uppräkningen.
+enum ResumptionReason {
+  /// Raden skrevs av den GAMLA enfasvägen (success/durationMs/toolResult ifyllda
+  /// trots completedAt = NULL). Tillståndet är okänt, inte "påbörjat".
+  PRE_TWO_PHASE
+  /// Verktyget har ingen post i EFFECT_DECLARATIONS. Okänd klassificering.
+  UNKNOWN_CLASSIFICATION
+  /// resumptionPolicy = KRÄVER_MÄNNISKA. Sista ordet, oavsett övriga flaggor.
+  REQUIRES_HUMAN
+  /// Ingen varaktig spårplats — en omkörning kan inte veta om effekten finns.
+  NO_TRACE
+  /// Yngre än golvet: kan fortfarande vara i luften.
+  TOO_FRESH
+  /// Äldre än taket: världen har flyttat sig.
+  TOO_OLD
+  /// Organisationens dagliga AI-budget är slut. Ett SYNLIGT stopp.
+  QUOTA_BLOCKED
+  /// Enda vägen till RESUME.
+  RESUMABLE
+}
+
+model AiResumptionRun {
+  id   String         @id @default(uuid())
+  mode ResumptionMode
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  /// Antal påbörjade rader motorn tittade på.
+  candidates Int @default(0)
+  /// Antal som BEDÖMDES återupptagbara. I skuggläge utfördes de ändå aldrig.
+  resumed Int @default(0)
+  /// Antal som avstods.
+  abstained Int @default(0)
+
+  /// { "TOO_OLD": 11, ... } — hela fördelningen, så en körning kan läsas ensam.
+  reasonCounts Json @default("{}")
+
+  /// Satt om själva körningen kastade. Felet går ALLTID också till cron-sänkan.
+  failure String?
+
+  verdicts AiResumptionVerdict[]
+
+  @@index([startedAt])
+}
+
+model AiResumptionVerdict {
+  id             String @id @default(uuid())
+  runId          String
+  executionId    String
+  organizationId String
+  toolName       String
+
+  decision ResumptionDecision
+  reason   ResumptionReason
+
+  /// Radens ålder vid bedömningen. Talet som taket och golvet mättes mot.
+  ageMs Int
+
+  /// EN RAD PER KÖRNING, inte per bedömning: `runId` är den SENASTE körning som
+  /// bedömde raden, och `assessments` räknar hur många gånger det skett. Utan
+  /// den formen växer tabellen med (påbörjade × körningar) — de 11 rader som
+  /// aldrig kommer att stängas hade gett en ny rad var i varje körning, för
+  /// alltid, utan att någon av dem bar ny information.
+  assessments Int      @default(1)
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @updatedAt
+
+  run AiResumptionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([executionId])
+  @@index([runId])
+  @@index([reason])
+  @@index([organizationId])
+}
 
 /// VAD EN AI-VERKTYGSKÖRNING FAKTISKT ORSAKADE.
 ///

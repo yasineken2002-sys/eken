@@ -69,6 +69,30 @@ const CRITICAL_INDEXES = [
     // period — och att kreditera i samma månad är normalfallet.
     where: "type='RENT'ANDcreditedInvoiceIdISNULLANDstatus<>'VOID'",
   },
+  {
+    label: 'återupptagningsmotorns läsning av PÅBÖRJADE verktygskörningar',
+    expectedName: 'ai_tool_execution_started_idx',
+    migrationRef: '20260902180000_ai_resumption_shadow',
+    // ── DEN HÄR ÄR EN PRESTANDAINVARIANT, INTE EN KORREKTHETSINVARIANT ──────
+    //
+    // De tre ovan gör en felaktig SKRIVNING omöjlig. Den här gör inte det:
+    // försvinner den blir ingenting fel, bara långsamt. Den står här ändå,
+    // eftersom den delar exakt den sårbarhet guarden finns för — partiell,
+    // odeklarerbar i schema.prisma, och därmed något en `migrate dev` kan se
+    // som drift och tyst DROP:a.
+    //
+    // Kostnaden om den faller bort: motorn kör en full scan av AiToolExecution
+    // varje varv. Tabellen är liten i dag (11 rader i prod) och det märks inte
+    // — vilket är själva skälet att skydda den nu i stället för den dag den
+    // inte är liten.
+    unique: false,
+    table: 'AiToolExecution',
+    columns: ['createdAt'],
+    // PREDIKATET ÄR HELA POÄNGEN. Utan det är indexet ett fullt index över
+    // varje AI-verktygsanrop som någonsin skett, och skrivkostnaden bärs av
+    // varje anrop för en läsare som bara bryr sig om de påbörjade.
+    where: 'completedAtISNULL',
+  },
 ]
 
 // ── normalisering ──────────────────────────────────────────────────────────
@@ -153,7 +177,10 @@ function main() {
     if (semanticMatch) {
       const [foundName] = semanticMatch
       if (foundName === inv.expectedName) {
-        console.log(`✅ ${inv.label}\n   "${inv.expectedName}" intakt (UNIQUE ON ${inv.table}(${inv.columns.join(',')}) WHERE ${inv.where}).`)
+        console.log(
+          `✅ ${inv.label}\n   "${inv.expectedName}" intakt (${inv.unique ? 'UNIQUE ' : ''}ON ${inv.table}(${inv.columns.join(',')})` +
+            `${inv.where ? ` WHERE ${inv.where}` : ''}).`,
+        )
       } else {
         console.log(
           `ℹ️  ${inv.label}\n   Hittad under namnet "${foundName}" (förväntat "${inv.expectedName}") — semantiken bevarad → OK (omdöpning).`,
