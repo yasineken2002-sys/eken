@@ -12,13 +12,30 @@
  *   B. BETEENDEVAKTEN kör de riktiga chokepoint-tjänsterna i och utanför
  *      AI-kontext och kräver AI respektive USER. Formvakten ensam skulle vara
  *      grön även om `resolveActorType` returnerade fel sak.
+ *
+ *   C. UPPDRAGSGIVARGRINDEN (G1 steg 2) kräver att en AI-körning inte kan
+ *      STARTA utan deklarerad uppdragsgivare. Två mekanismer med olika
+ *      räckvidd — typen och kontrollen i körtid — och de prövas var för sig,
+ *      eftersom ett prov som bara visar att det FUNGERAR inte skiljer två
+ *      mekanismer från en.
  */
 
 import { readFileSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
-import { runAsAi, resolveActorType, currentAiOrigin, aiOriginColumns } from './ai-origin.context'
+import {
+  runAsAi,
+  resolveActorType,
+  currentAiOrigin,
+  currentAiPrincipal,
+  aiOriginColumns,
+  assertUppdragsgivare,
+} from './ai-origin.context'
+import type { AiPrincipal } from './ai-origin.context'
 import { InvoiceEventsService } from '../../invoices/invoice-events.service'
 import { RentNoticeEventsService } from '../../avisering/rent-notice-events.service'
+
+/** Uppdragsgivaren de mekaniska proven kör som. Formkraven prövas separat. */
+const UPPDRAGSGIVARE: AiPrincipal = { kind: 'USER', id: 'user-1' }
 
 const SRC = join(__dirname, '..', '..')
 
@@ -90,7 +107,7 @@ describe('B. beteendevakten: kontexten avgör aktörstypen', () => {
   })
 
   it('resolveActorType ger AI inne i kontexten, oavsett vad anroparen bad om', () => {
-    runAsAi('exec-1', () => {
+    runAsAi('exec-1', UPPDRAGSGIVARE, () => {
       expect(resolveActorType('USER')).toBe('AI')
       expect(resolveActorType('SYSTEM')).toBe('AI')
       expect(aiOriginColumns()).toEqual({ aiToolExecutionId: 'exec-1' })
@@ -98,13 +115,13 @@ describe('B. beteendevakten: kontexten avgör aktörstypen', () => {
   })
 
   it('kontexten läcker inte ut ur runAsAi', () => {
-    runAsAi('exec-2', () => undefined)
+    runAsAi('exec-2', UPPDRAGSGIVARE, () => undefined)
     expect(currentAiOrigin()).toBeUndefined()
     expect(resolveActorType('USER')).toBe('USER')
   })
 
   it('kontexten överlever await-gränser', async () => {
-    await runAsAi('exec-3', async () => {
+    await runAsAi('exec-3', UPPDRAGSGIVARE, async () => {
       await new Promise((r) => setTimeout(r, 1))
       expect(resolveActorType('USER')).toBe('AI')
     })
@@ -124,7 +141,7 @@ describe('B. beteendevakten: kontexten avgör aktörstypen', () => {
     expect(human[0]!['aiToolExecutionId']).toBeUndefined()
 
     const ai: Record<string, unknown>[] = []
-    await runAsAi('exec-4', () =>
+    await runAsAi('exec-4', UPPDRAGSGIVARE, () =>
       new InvoiceEventsService(makePrisma(ai) as never).record(
         'inv-1',
         'CREATED' as never,
@@ -148,7 +165,7 @@ describe('B. beteendevakten: kontexten avgör aktörstypen', () => {
     expect(human[0]!['actorType']).toBe('USER')
 
     const ai: Record<string, unknown>[] = []
-    await runAsAi('exec-5', () =>
+    await runAsAi('exec-5', UPPDRAGSGIVARE, () =>
       new RentNoticeEventsService(makePrisma(ai) as never).record(
         'rn-1',
         'CREATED' as never,
@@ -159,5 +176,92 @@ describe('B. beteendevakten: kontexten avgör aktörstypen', () => {
     expect(ai[0]!['actorType']).toBe('AI')
     // Tabellen saknar kolumnen — den ska INTE dyka upp bara för att kontexten finns.
     expect(ai[0]!['aiToolExecutionId']).toBeUndefined()
+  })
+})
+
+describe('C. uppdragsgivargrinden: en AI-körning utan uppdragsgivare startar inte', () => {
+  // ── VARFÖR TYPEN OCH KONTROLLEN PRÖVAS VAR FÖR SIG ────────────────────────
+  //
+  // De har olika räckvidd, och ett prov som bara visar att `runAsAi` fungerar
+  // kan inte skilja dem åt. Typen fäller vid BYGGET — den kan därför inte
+  // prövas med en assertion, bara med en negativ kontroll som visar att
+  // `pnpm typecheck` faller (den står i PR-texten, med utfallet). Kontrollen i
+  // körtid fäller det typen inte kan se: ett `as never`, en attrapp, en
+  // anropare som kommer utifrån TypeScript.
+  //
+  // Vad C INTE kan se: att `runAsAi` faktiskt anropas vid AI-gränsen. Det ägs
+  // av `check-ai-tool-effects` (vakten läser källtexten) och av
+  // beteendevakten B ovan, som kör de riktiga tjänsterna genom kontexten.
+
+  it('KONTROLLEN I KÖRTID: ett kringgånget typkrav fäller ändå', () => {
+    // `as never` är exakt vägen förbi typen — och den finns redan på flera
+    // ställen i kodbasen där attrapper trängs in i riktiga signaturer.
+    expect(() => runAsAi('exec-x', undefined as never, () => 1)).toThrow(/utan uppdragsgivare/)
+    expect(() => runAsAi('exec-x', null as never, () => 1)).toThrow(/utan uppdragsgivare/)
+  })
+
+  it('ett OKÄNT slag fäller — en etikett är inte samma sak som ett subjekt', () => {
+    expect(() => runAsAi('exec-x', { kind: 'SYSTEM', id: 'a' } as never, () => 1)).toThrow(
+      /okänt uppdragsgivarslag/,
+    )
+    expect(() => runAsAi('exec-x', { id: 'a' } as never, () => 1)).toThrow(
+      /okänt uppdragsgivarslag/,
+    )
+  })
+
+  it('ett TOMT id fäller — ett fält som finns men är blankt är inte ifyllt', () => {
+    // Den här grenen är skälet till att kontrollen inte bara är en null-check.
+    // `{ kind: 'USER', id: '' }` passerar typen utan invändning.
+    expect(() => runAsAi('exec-x', { kind: 'USER', id: '' }, () => 1)).toThrow(
+      /utan uppdragsgivar-id/,
+    )
+    expect(() => runAsAi('exec-x', { kind: 'TENANT', id: '   ' }, () => 1)).toThrow(
+      /utan uppdragsgivar-id/,
+    )
+  })
+
+  it('MOTPROV: kontrollen SLÄPPER IGENOM en giltig uppdragsgivare', () => {
+    // Utan den här raden är proven ovan lika gröna om `assertUppdragsgivare`
+    // kastade på allting — en sond som bara ger utslag mäter lika lite som en
+    // som aldrig gör det.
+    expect(runAsAi('exec-ok', { kind: 'USER', id: 'user-1' }, () => 'kördes')).toBe('kördes')
+    expect(runAsAi('exec-ok', { kind: 'TENANT', id: 'tenant-1' }, () => 'kördes')).toBe('kördes')
+    expect(() => assertUppdragsgivare({ kind: 'USER', id: 'user-1' })).not.toThrow()
+  })
+
+  it('DEN KASTAR, DEN VARNAR INTE — och fn körs aldrig', () => {
+    // Skillnaden mellan en grind och en anteckning. Kördes callbacken ändå
+    // vore kontrollen en logg, och skrivningarna hade skett utan känd aktör.
+    const kördes = jest.fn()
+    expect(() => runAsAi('exec-x', undefined as never, kördes)).toThrow()
+    expect(kördes).not.toHaveBeenCalled()
+  })
+
+  it('uppdragsgivaren går att LÄSA inne i kontexten, och läcker inte ut', () => {
+    // `currentAiPrincipal` är det G1 steg 3 läser när det varaktiga
+    // aktörsslaget ska skrivas på domänraden.
+    expect(currentAiPrincipal()).toBeUndefined()
+    runAsAi('exec-1', { kind: 'TENANT', id: 'tenant-7' }, () => {
+      expect(currentAiPrincipal()).toEqual({ kind: 'TENANT', id: 'tenant-7' })
+      expect(currentAiOrigin()?.aiToolExecutionId).toBe('exec-1')
+    })
+    expect(currentAiPrincipal()).toBeUndefined()
+  })
+
+  it('DE TVÅ AI-GRÄNSERNA DEKLARERAR OLIKA SLAG — härlett ur källkoden', () => {
+    // Ett prov som bara läste ägarvägen hade varit grönt även om
+    // hyresgästvägen skrev USER med ett Tenant.id. Formen härleds därför ur
+    // källan, inte ur en lista jag skrivit.
+    const gränser = allSourceFiles()
+      .map((f) => [f, readFileSync(f, 'utf8')] as const)
+      .filter(([, kod]) => /\brunAsAi\(/.test(kod))
+
+    // Kanariefågel: hittar svepet ingenting är provet grönt av tomhet.
+    expect(gränser.length).toBeGreaterThanOrEqual(2)
+
+    const slag = gränser.flatMap(([, kod]) =>
+      [...kod.matchAll(/runAsAi\([^,]+,\s*\{\s*kind:\s*'(\w+)'/g)].map((m) => m[1]),
+    )
+    expect(new Set(slag)).toEqual(new Set(['USER', 'TENANT']))
   })
 })

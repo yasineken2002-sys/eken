@@ -137,7 +137,7 @@ export class TenantToolExecutorService {
     }
 
     try {
-      result = await runAsAi(executionId, () =>
+      result = await runAsAi(executionId, { kind: 'TENANT', id: tenantId }, () =>
         this.executeToolUnsafe(toolName, toolInput, tenantId, organizationId),
       )
     } catch (err) {

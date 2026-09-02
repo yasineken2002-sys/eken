@@ -613,7 +613,7 @@ export class ToolExecutorService {
       // det nedträtt — en framtida anropare kan därmed inte glömma det.
       // Prisma-extensionen noterar varje skrivning som sker här inne, in i den
       // kollektor `executeTool` öppnade. Verktygen vet ingenting om det.
-      result = await runAsAi(executionId, () =>
+      result = await runAsAi(executionId, { kind: 'USER', id: userId }, () =>
         this.executeToolUnsafe(toolName, toolInput, organizationId, userId, userRole, executionId),
       )
 

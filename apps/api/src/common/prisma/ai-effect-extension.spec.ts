@@ -24,6 +24,14 @@ import { drainEffects, runWithEffectCollector } from '../ai-effects/ai-effects.c
 import type { AiToolEffect } from '../ai-effects/ai-effects.context'
 
 /**
+ * Uppdragsgivaren testerna kör som. Ett fast värde med flit: proven mäter
+ * kontextens MEKANIK, och en varierande uppdragsgivare hade gjort ett fall
+ * svårare att läsa utan att pröva något mer. Att den obligatoriska formen
+ * FÄLLER prövas separat i `ai-origin.spec.ts`.
+ */
+const UPPDRAGSGIVARE = { kind: 'USER', id: 'user-1' } as const
+
+/**
  * Kör `fn` i en kollektor och returnerar BÅDE resultatet och effekterna.
  *
  * Tömningen måste ske INNE i scopet: utanför är AsyncLocalStorage-store
@@ -96,7 +104,7 @@ beskriv('AiToolEffect — kopplingen produceras av skrivvägen', () => {
     // Fallet är subtilt och grönt-utseende: koden kompilerar och skriver raden,
     // bara spårningen försvinner.
     const { värde: skapad, effekter } = await medEffekter(() =>
-      runAsAi(randomUUID(), async () =>
+      runAsAi(randomUUID(), UPPDRAGSGIVARE, async () =>
         prisma.property.create({
           data: {
             organizationId: orgId,
@@ -166,7 +174,7 @@ beskriv('AiToolEffect — kopplingen produceras av skrivvägen', () => {
     })
 
     const { effekter } = await medEffekter(() =>
-      runAsAi(randomUUID(), async () =>
+      runAsAi(randomUUID(), UPPDRAGSGIVARE, async () =>
         prisma.property.update({ where: { id: p.id }, data: { name: 'zz-uppdaterad' } }),
       ),
     )
@@ -177,7 +185,7 @@ beskriv('AiToolEffect — kopplingen produceras av skrivvägen', () => {
 
   it('LÄSNINGAR bokförs inte — annars drunknar utfallet i brus', async () => {
     const { effekter } = await medEffekter(() =>
-      runAsAi(randomUUID(), async () => {
+      runAsAi(randomUUID(), UPPDRAGSGIVARE, async () => {
         await prisma.property.findMany({ where: { organizationId: orgId } })
         await prisma.property.count({ where: { organizationId: orgId } })
       }),
@@ -187,7 +195,7 @@ beskriv('AiToolEffect — kopplingen produceras av skrivvägen', () => {
 
   it('flera skrivningar i EN körning ger flera effekter — därav barntabellen', async () => {
     const { effekter } = await medEffekter(() =>
-      runAsAi(randomUUID(), async () => {
+      runAsAi(randomUUID(), UPPDRAGSGIVARE, async () => {
         for (const n of ['zz-a', 'zz-b', 'zz-c']) {
           await prisma.property.create({
             data: {
@@ -214,7 +222,7 @@ beskriv('AiToolEffect — kopplingen produceras av skrivvägen', () => {
     // tisdags" är en SELECT, inte ett resonemang.
     const execId = randomUUID()
     const { värde: p, effekter } = await medEffekter(() =>
-      runAsAi(execId, async () =>
+      runAsAi(execId, UPPDRAGSGIVARE, async () =>
         prisma.property.create({
           data: {
             organizationId: orgId,
@@ -301,7 +309,7 @@ beskriv('AiToolEffect — kopplingen produceras av skrivvägen', () => {
   it('revisionsspåret självt bokförs inte (cirkularitet)', async () => {
     const execId = randomUUID()
     const { effekter } = await medEffekter(() =>
-      runAsAi(execId, async () =>
+      runAsAi(execId, UPPDRAGSGIVARE, async () =>
         prisma.aiToolExecution.create({
           data: {
             id: execId,
