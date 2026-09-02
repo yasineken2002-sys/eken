@@ -6,7 +6,7 @@ import { cn } from '@/lib/cn'
 import type { HistoryEvent, HistorySeverity } from '../api/history.api'
 import { eventLabel } from '../lib/categories'
 import { shortId, sourceTarget } from '../lib/source-links'
-import { ActorTag } from './ActorTag'
+import { ActorTag } from '@/components/ui/ActorTag'
 
 /**
  * EN HÄNDELSE SOM RAD — när · vad · aktör · beskrivning · belopp · källa.

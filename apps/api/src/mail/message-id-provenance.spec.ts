@@ -37,6 +37,7 @@
  * eller att ett riktigt Resend-anrop returnerar det id vi tror (det kan bara
  * driften visa).
  */
+import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { MailWorkerNormal } from './mail.worker'
 import type { MailJobPayload } from './mail.types'
 import type { PrismaService } from '../common/prisma/prisma.service'
@@ -80,7 +81,12 @@ function fejkPrisma(): {
 function fejkWorker(prisma: PrismaService): MailWorkerNormal {
   const renderer = { render: jest.fn().mockResolvedValue({ html: '<p>x</p>', text: 'x' }) }
   const config = { get: jest.fn().mockReturnValue(undefined) }
-  const worker = new MailWorkerNormal(renderer as never, prisma, config as never)
+  const worker = new MailWorkerNormal(
+    renderer as never,
+    prisma,
+    config as never,
+    new RentNoticeEventsService(prisma),
+  )
   ;(worker as unknown as { resend: Resend }).resend = {
     emails: {
       send: jest.fn().mockResolvedValue({ data: { id: RESEND_GAV_TILLBAKA }, error: null }),
