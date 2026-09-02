@@ -17,6 +17,7 @@ import type { FastifyReply } from 'fastify'
 import { AviseringService } from './avisering.service'
 import { AviseringScheduler } from './avisering.scheduler'
 import { RentNoticeEventsService } from './rent-notice-events.service'
+import { RentReminderService } from './rent-reminder.service'
 import { RentBadDebtService } from './rent-bad-debt.service'
 import { RentNoticeCreditService } from './rent-notice-credit.service'
 import { ReverseReminderFeeDto } from './dto/reverse-reminder-fee.dto'
@@ -60,6 +61,10 @@ export class AviseringController {
     private readonly badDebt: RentBadDebtService,
     private readonly backfill: RentBackfillService,
     private readonly credits: RentNoticeCreditService,
+    // #648 — läsande INV-B-status till avins detaljvy. SIST i listan: nya
+    // beroenden läggs till på slutet så befintliga positionsanrop inte tyst
+    // byter betydelse.
+    private readonly rentReminder: RentReminderService,
   ) {}
 
   // ── T1.4 / #44 — efterdebitering (bakdaterad debitering) ───────────────────
@@ -201,6 +206,23 @@ export class AviseringController {
   @Roles(UserRole.ACCOUNTANT, UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
   async events(@OrgId() orgId: string, @Param('id') id: string) {
     return this.rentNoticeEvents.getTimeline(id, orgId)
+  }
+
+  /**
+   * VARFÖR STÅR DEN HÄR AVIN STILL?
+   *
+   * Samma rollgrind som `:id/events` — den här svarar på exakt samma fråga med
+   * ett annat underlag, och två olika grindar för samma fråga hade betytt att
+   * en roll kan se hindret men inte händelserna som förklarar det.
+   *
+   * Läsande. Beräknar INV-B-grinden nu i stället för att lita på den senaste
+   * blockeringsanteckningen i loggen, som kan vara dygn gammal eller aldrig ha
+   * skrivits (två av cronets tre vägar vidare lämnar inget spår).
+   */
+  @Get(':id/collection-status')
+  @Roles(UserRole.ACCOUNTANT, UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
+  async collectionStatus(@OrgId() orgId: string, @Param('id') id: string) {
+    return this.rentReminder.collectionStatus(id, orgId)
   }
 
   @Get(':id')

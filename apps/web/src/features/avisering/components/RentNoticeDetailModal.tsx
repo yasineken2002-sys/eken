@@ -7,7 +7,13 @@ import { Modal } from '@/components/ui/Modal'
 import { formatCurrency, formatDate } from '@eken/shared'
 import { RentNoticeBadge } from './RentNoticeBadge'
 import { CreditRentNoticeModal } from './CreditRentNoticeModal'
-import { useRentNoticeCreditPreview } from '../hooks/useAvisering'
+import {
+  useRentNoticeCollectionStatus,
+  useRentNoticeCreditPreview,
+  useRentNoticeEvents,
+} from '../hooks/useAvisering'
+import { CollectionStatusPanel } from './CollectionStatusPanel'
+import { RentNoticeEventsPanel } from './RentNoticeEventsPanel'
 import type {
   RentCollectionStage,
   RentNotice,
@@ -54,6 +60,11 @@ export function RentNoticeDetailModal({ notice, onClose }: Props) {
   const [flash, setFlash] = useState<string | null>(null)
 
   const { data: preview, isLoading, error } = useRentNoticeCreditPreview(notice.id, true)
+  // #648 — samma rollgrind som krediteringsunderlaget, så ETT 403-svar täcker
+  // alla tre. Skulle grindarna glida isär blir det synligt som en tom panel och
+  // inte som ett tyst bortfall: panelerna renderas bara på faktisk data.
+  const { data: status } = useRentNoticeCollectionStatus(notice.id, true)
+  const { data: events } = useRentNoticeEvents(notice.id, true)
   const nekad = (error as { response?: { status?: number } })?.response?.status === 403
 
   const tenantName =
@@ -95,7 +106,7 @@ export function RentNoticeDetailModal({ notice, onClose }: Props) {
           {nekad && (
             <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
               <p className="text-[13px] text-gray-400">
-                Din roll får inte se avins skuldunderlag eller kreditera den.
+                Din roll får inte se avins skuldunderlag, händelselogg eller kreditera den.
               </p>
             </div>
           )}
@@ -105,6 +116,11 @@ export function RentNoticeDetailModal({ notice, onClose }: Props) {
               {/* Kravtrappan har stannat — det är det viktigaste på hela sidan
                   när det gäller, och står därför överst. */}
               {preview.debt.interestOnlyAfterCredit && <StannadPaRanta preview={preview} />}
+
+              {/* #648 — VARFÖR STÅR AVIN STILL. Överst av samma skäl som raden
+                  ovan: när det gäller är det det viktigaste på hela sidan, och
+                  två av kravtrappans tre vägar vidare syns ingen annanstans. */}
+              {status && <CollectionStatusPanel status={status} />}
 
               <SkuldPanel preview={preview} />
 
@@ -121,6 +137,8 @@ export function RentNoticeDetailModal({ notice, onClose }: Props) {
                   </p>
                 </div>
               )}
+
+              {events && <RentNoticeEventsPanel events={events} />}
 
               <div className="border-line flex items-center justify-end gap-2 border-t pt-4">
                 <Button onClick={onClose}>Stäng</Button>

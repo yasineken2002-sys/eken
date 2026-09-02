@@ -261,8 +261,31 @@ const rentNotices: HistorySourceDefinition = {
   },
 }
 
-/** Kravtrappans steg är olika allvarliga — det är hela poängen med trappan. */
-function severityForRentNoticeEvent(type: string): HistoryEvent['severity'] {
+/**
+ * Kravtrappans steg är olika allvarliga — det är hela poängen med trappan.
+ *
+ * ── MISSLYCKANDENA SAKNADES, OCH DET VAR TYST ───────────────────────────────
+ *
+ * Regeln matchade bara på `WRITTEN_OFF`, `COLLECTION`, `REMIND`, `OVERDUE` och
+ * `INTEREST`. Uppmätt genom att köra ALLA 17 typerna genom funktionen (#648):
+ *
+ *     SEND_FAILED            INFO
+ *     EMAIL_BOUNCED          INFO   ← hårdstoppar hela kravtrappan (INV-B)
+ *     NOTICE_EMAIL_BOUNCED   INFO
+ *
+ * En studsad påminnelse ritades alltså med grå prick i den enda vy som visade
+ * den. Det är samma tystnad som #648 finns för att ta bort, en vy bort.
+ *
+ * ── FEL-TYPERNA RÄKNAS UPP, DE MATCHAS INTE PÅ DELSTRÄNG ────────────────────
+ *
+ * En delsträngsregel för misslyckanden hade fångat `FAIL` och `BOUNCE` i dag och
+ * tyst missat nästa typ som heter något annat. En uppräkning som fattas syns i
+ * en diff; en delsträng som inte matchar syns inte alls.
+ */
+const MISSLYCKANDEN = new Set(['SEND_FAILED', 'EMAIL_BOUNCED', 'NOTICE_EMAIL_BOUNCED'])
+
+export function severityForRentNoticeEvent(type: string): HistoryEvent['severity'] {
+  if (MISSLYCKANDEN.has(type)) return 'CRITICAL'
   if (type.includes('WRITTEN_OFF') || type.includes('COLLECTION')) return 'CRITICAL'
   if (type.includes('REMIND') || type.includes('OVERDUE') || type.includes('INTEREST')) {
     return 'WARNING'

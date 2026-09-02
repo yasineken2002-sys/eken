@@ -1,6 +1,25 @@
 import { Bot, CircleHelp, Cog, User } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import type { HistoryActor } from '../api/history.api'
+
+/**
+ * VEM SOM UTFÖRDE — delad mellan historikvyn och avins händelselogg.
+ *
+ * Komponenten flyttades hit från `features/history/components/` när avins
+ * händelsevy (#648) behövde exakt samma sak. Att kopiera den hade garanterat
+ * att de två glider isär — och `UNKNOWN`-fallets betydelse, som är det enda
+ * svåra här, hade behövt bli rätt två gånger.
+ *
+ * TYPEN BOR HÄR NU, inte i historikens API-fil. Den beskriver komponentens
+ * indata, inte ett svar från en viss endpoint; två anropare med olika
+ * endpoints delar den utan att den ena måste importera den andras API-lager.
+ */
+export type ActorKind = 'HUMAN' | 'AGENT' | 'SYSTEM' | 'UNKNOWN'
+
+export interface EventActor {
+  kind: ActorKind
+  id: string | null
+  label: string | null
+}
 
 /**
  * AKTÖREN SYNS ALLTID — även när den inte är känd.
@@ -43,7 +62,7 @@ const KINDS = {
   },
 } as const
 
-export function ActorTag({ actor }: { actor: HistoryActor }) {
+export function ActorTag({ actor }: { actor: EventActor }) {
   const spec = KINDS[actor.kind] ?? KINDS.UNKNOWN
   const Icon = spec.icon
   return (
