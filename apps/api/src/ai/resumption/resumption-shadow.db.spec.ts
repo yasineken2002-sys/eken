@@ -288,7 +288,13 @@ medDb('återupptagningsmotorn i skuggläge', () => {
   })
 
   it('en gammal rad som ALDRIG var återupptagbar rapporteras INTE som utåldrad', async () => {
-    // Prods elva rader hade annars sett ut som elva missade fönster.
+    // TVÅ former, och den andra är den skarpa:
+    //   • en ENFASRAD — prods elva hade annars sett ut som elva missade fönster.
+    //   • en KRÄVER_MÄNNISKA-rad med ÄKTA tvåfasform, alltså en rad som passerar
+    //     steg 1 och 2 och stoppas först av policyn. Kastas stegen om så att
+    //     taket prövas före policyn får den skäl TOO_OLD, och en naken
+    //     `skäl === 'TOO_OLD'`-läsning hade då larmat om en missad
+    //     återupptagning som aldrig kunde ha skett. `ärUtåldrad` svarar nej.
     await påbörjad({
       toolName: 'get_invoices',
       success: true,
@@ -296,9 +302,16 @@ medDb('återupptagningsmotorn i skuggläge', () => {
       toolResult: { ok: true },
       ålder: 30 * 24 * 60 * 60 * 1000,
     })
+    await påbörjad({ toolName: 'send_overdue_reminders', ålder: 30 * 24 * 60 * 60 * 1000 })
+
     await motor.körEttPass(NU)
     expect(
       sinkAnrop.filter((a) => String((a.fel as Error).message).includes('åldrades ut')),
     ).toHaveLength(0)
   })
+
+  // VAD PROVEN OVAN INTE KAN SE: med dagens stegordning är `skäl === 'TOO_OLD'`
+  // och `ärUtåldrad` samma mängd, så INGET data-drivet prov kan skilja dem åt.
+  // Skillnaden uppstår först om stegen kastas om, och det fångas av
+  // ekvivalensprovet i `resumption-policy.spec.ts` — inte här.
 })
