@@ -26,6 +26,7 @@ import {
   ATERUPPTAGNING_TAK_MS,
   SKAL_TEXT,
   bedöm,
+  skallSkrivaKörning,
 } from './resumption-policy'
 
 import type { PåbörjadKörning } from './resumption-policy'
@@ -213,5 +214,40 @@ describe('bedöm', () => {
     } finally {
       auto[1].traceIntegrity = original
     }
+  })
+})
+
+describe('motorn får inte själv bli ett tyst stopp', () => {
+  const TIMME = 60 * 60 * 1000
+  const skriv = (antalBedömda: number, sedanSenast: number) =>
+    skallSkrivaKörning({
+      antalBedömda,
+      nu: NU,
+      senasteHjärtslag: NU.getTime() - sedanSenast,
+      hjärtslagMs: TIMME,
+    })
+
+  it('ett pass som SÅG något lämnar alltid ett spår', () => {
+    expect(skriv(1, 0)).toBe(true)
+  })
+
+  it('ett TOMT pass tystas — annars 1 440 rader per dygn som säger ingenting', () => {
+    expect(skriv(0, 60_000)).toBe(false)
+  })
+
+  it('men en TOM TIMME lämnar ett kvitto ändå', () => {
+    // Det här provet är hela svaret på "var syns det att motorn inte gjorde
+    // något?". Faller det blir "avstod från allt" och "kördes aldrig" samma
+    // tystnad, och den farligare av de två ser normal ut.
+    expect(skriv(0, TIMME)).toBe(true)
+    expect(skriv(0, TIMME + 1)).toBe(true)
+  })
+
+  it('EFTER EN OMSTART skrivs ett hjärtslag direkt', () => {
+    // `senasteHjärtslag` börjar på 0 i minnet. Just efter en deploy är det
+    // önskvärt att se att motorn kom igång igen.
+    expect(
+      skallSkrivaKörning({ antalBedömda: 0, nu: NU, senasteHjärtslag: 0, hjärtslagMs: TIMME }),
+    ).toBe(true)
   })
 })

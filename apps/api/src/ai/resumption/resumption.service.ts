@@ -6,7 +6,7 @@ import { CronErrorSink } from '../../common/cron/cron-error-sink'
 import { runCronSafely } from '../../common/cron/cron-safety'
 import { LockService } from '../../common/redis/lock.service'
 import { AiQuotaService } from '../usage/ai-quota.service'
-import { bedöm, SKAL_TEXT } from './resumption-policy'
+import { bedöm, skallSkrivaKörning, SKAL_TEXT } from './resumption-policy'
 
 import type { Dom, PåbörjadKörning } from './resumption-policy'
 import type { ResumptionReason } from '@prisma/client'
@@ -109,7 +109,7 @@ export class ResumptionService {
   async passera(): Promise<void> {
     const utfall = await this.locks.runIfUnlocked(
       'cron:ai-resumption-shadow',
-      () => this.passUnsafe(),
+      () => this.passeraUnsafe(),
       {
         ttlSec: LAS_TTL_SEC,
       },
@@ -123,7 +123,7 @@ export class ResumptionService {
     }
   }
 
-  private async passUnsafe(): Promise<void> {
+  private async passeraUnsafe(): Promise<void> {
     await runCronSafely('ai-resumption-shadow', () => this.körEttPass(), {
       logger: this.logger,
       sink: this.cronErrors,
@@ -212,7 +212,12 @@ export class ResumptionService {
 
     const utfall: PassUtfall = { runId: null, kandidater, återuppta, avstå, skälFördelning }
 
-    const skallSkriva = domar.length > 0 || nu.getTime() - this.senasteHjärtslag >= HJARTSLAG_MS
+    const skallSkriva = skallSkrivaKörning({
+      antalBedömda: domar.length,
+      nu,
+      senasteHjärtslag: this.senasteHjärtslag,
+      hjärtslagMs: HJARTSLAG_MS,
+    })
     if (!skallSkriva) return utfall
 
     const run = await this.prisma.aiResumptionRun.create({

@@ -216,3 +216,36 @@ export function bedöm(rad: PåbörjadKörning, nu: Date): Dom {
   // ENDA VÄGEN TILL RESUME.
   return { beslut: 'RESUME', skäl: 'RESUMABLE', ageMs }
 }
+
+/**
+ * SKA DET HÄR PASSET LÄMNA ETT SPÅR?
+ *
+ * Ren funktion, och det är hela poängen: den avgör om motorn syns, och den
+ * frågan får inte bo där bara en databas kan svara på den.
+ *
+ * ── VARFÖR INTE "ALLTID" ────────────────────────────────────────────────────
+ *
+ * Motorn tittar varje minut. Skrev den en körningsrad varje gång blev det
+ * 1 440 rader per dygn, i all evighet, för att bära budskapet "ingenting hände".
+ * En logg som ingen orkar läsa är en annan sorts tystnad.
+ *
+ * ── OCH VARFÖR INTE "BARA NÄR NÅGOT HÄNDE" ──────────────────────────────────
+ *
+ * Därför att det är precis den tystnad vi rensat bort. "Motorn avstod från
+ * allt" och "motorn kördes aldrig" hade blivit omöjliga att skilja åt, och det
+ * är den farligare av de två som hade sett normal ut.
+ *
+ * Alltså: skriv när det fanns något att säga, OCH minst en gång i timmen ändå.
+ * En tom timme lämnar då ett kvitto, och en motor som slutat köra syns genom
+ * att kvittona upphör.
+ */
+export function skallSkrivaKörning(args: {
+  antalBedömda: number
+  nu: Date
+  /** Millisekunder sedan epoch för senast skrivna körningsrad; 0 = aldrig. */
+  senasteHjärtslag: number
+  hjärtslagMs: number
+}): boolean {
+  if (args.antalBedömda > 0) return true
+  return args.nu.getTime() - args.senasteHjärtslag >= args.hjärtslagMs
+}
