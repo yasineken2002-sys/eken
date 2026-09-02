@@ -644,6 +644,39 @@ jobs:
       - name: Verify every @Cron reaches a durable failure sink
         run: node apps/api/scripts/check-cron-error-sink.mjs
 
+  mail-id-provenance-guard:
+    name: Mail correlation id provenance guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # #653 — ett korrelations-id skrivs från persistResendId, aldrig från
+      # MailQueue.enqueue.
+      #
+      # enqueue returnerar Bulls jobId (= idempotensnyckeln). Resends email_id
+      # finns först efter resend.emails.send(). Två skilda namnrymder.
+      #
+      # I #651 skrevs RentNotice.reminderMessageId med enqueue:s returvärde
+      # medan webhooken frågade på email_id. De kunde aldrig matcha,
+      # EMAIL_DELIVERED skrevs ALDRIG, och kravtrappan var död vid steg 3→4 —
+      # fail-closed, alltså osynligt. Det tog en produktionsmätning att se.
+      #
+      # Regeln fäller åt båda hållen, och R3 är den som gör den framtidssäker:
+      # ett fält som WEBHOOKEN slår upp på får inte kvitteras. De fyra latenta
+      # fallen på PaymentReminder.emailMessageId är kvitterade i dag därför att
+      # ingen läser fältet — den dag någon kopplar webhooken dit blir
+      # kvitteringarna automatiskt röda.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (rule + scope + ack both ways)
+        run: node apps/api/scripts/check-mail-id-provenance.mjs --self-test
+
+      - name: Verify every mail correlation id is written from persistResendId
+        run: node apps/api/scripts/check-mail-id-provenance.mjs
+
   source-scan-canary-guard:
     name: Source scanner canary guard
     runs-on: ubuntu-latest
@@ -1643,6 +1676,7 @@ jobs:
       - guard-preprocessor-guard
       - source-scan-canary-guard
       - cron-error-sink-guard
+      - mail-id-provenance-guard
       - enqueue-cron-context-guard
       - module-cycle-guard
       - graceful-shutdown-guard

@@ -1,0 +1,19 @@
+{
+  "$comment": "KVITTERINGAR — skrivningar av ett korrelations-id UTANFÖR persistResendId. Ärendet är #653.",
+  "$howto": "Listan fäller ÅT BÅDA HÅLLEN: en okvitterad skrivning är RÖD, och en kvittering för något som lagats är också RÖD. `count` räknar de enskilda skrivningarna, så en DELVIS fix inte blir tyst. OCH: ett fält som WEBHOOKEN slår upp på får ALDRIG kvitteras (R3) — där är fel namnrymd inte latent utan omedelbart dödlig, vilket var #651.",
+  "$note": "MÄTT mot f6a8990: 5 kvitterade skrivningar i 3 filer. En är ett FALSKT POSITIVT av namnkonventionen (summarizedUpToMessageId är inget mejl-id). Fyra är LATENTA: PaymentReminder.emailMessageId skrivs med Bulls jobId, men ingen läser fältet — de lagas i följd-PR till #653, och då ska posterna bort.",
+  "fields": {
+    "ai/ai-assistant.service.ts::summarizedUpToMessageId": {
+      "count": 1,
+      "reason": "FALSKT POSITIVT AV NAMNKONVENTIONEN, inte en skuld. Fältet pekar på ett AiMessage.id (var sammanfattningen slutade i en AI-konversation) och har ingenting med e-post att göra — ingen webhook kan slå upp på det, och det finns ingen leverantör som returnerar ett id. Regeln matchar på namnformen `*MessageId`, och det är avsiktligt trubbigt: en snävare form hade missat nästa fält som råkar heta något annat. Posten står här för att skilja 'mätt och avfärdad' från 'inte mätt'."
+    },
+    "ai/tools/tool-executor.service.ts::emailMessageId": {
+      "count": 1,
+      "reason": "LATENT (#653). PaymentReminder.emailMessageId skrivs med Bulls jobId i stället för Resends email_id — exakt samma förväxling som dödade kravtrappan i #651. Skillnaden är att INGEN läser fältet i dag: enda omnämnandet utanför skrivningarna är en prosarad i common/authz/object-scope.ts, och PaymentReminder har 0 rader i prod. Blir ett verkligt fel den dag någon kopplar webhooken hit — då fäller R3 automatiskt. Lagas i följd-PR till #653."
+    },
+    "notifications/payment-reminder.service.ts::emailMessageId": {
+      "count": 3,
+      "reason": "LATENT (#653), tre skrivningar i samma fil: returvärdet från sendReminderFriendly (rad 371), literalen `reminder-formal-<invoiceId>` (rad 667) och outcome.jobId (rad 694). Alla tre bär Bulls namnrymd. Ingen läser fältet i dag — se posten för tool-executor ovan. `count: 3` gör att en DELVIS fix inte kan bli tyst. Lagas i följd-PR till #653."
+    }
+  }
+}
