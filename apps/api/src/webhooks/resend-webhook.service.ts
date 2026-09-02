@@ -199,16 +199,38 @@ export class ResendWebhookService {
     utfall: 'DELIVERED' | 'BOUNCED',
     payload: Prisma.InputJsonObject,
   ): Promise<boolean> {
-    const notice = await this.prisma.rentNotice.findFirst({
-      where: { OR: [{ reminderMessageId: emailId }, { noticeMessageId: emailId }] },
-      select: { id: true, reminderMessageId: true },
+    // ── UTSKICKET FÖRST (#656) ──────────────────────────────────────────────
+    //
+    // `RentNoticeSend.messageId` bär rätt enhet: ETT utskick, ETT message-id.
+    // Träffar den vet vi både vilken avi och VILKET UTSKICK utfallet gäller, och
+    // ett sent svar för ett tidigare utskick landar på sitt eget utskick i
+    // stället för att tappas.
+    const utskick = await this.prisma.rentNoticeSend.findUnique({
+      where: { messageId: emailId },
+      select: { id: true, rentNoticeId: true, kind: true },
     })
+
+    // RESERVVÄGEN är den gamla frågan, och den behövs: jobb som köades innan
+    // `sendId` fanns bär ingen utskicksrad. De får `sendId = ''`, samma sentinel
+    // som raderna från före kolumnen — alltså exakt den gamla semantiken, en av
+    // varje typ per avi.
+    const notice = utskick
+      ? { id: utskick.rentNoticeId, reminderMessageId: null as string | null }
+      : await this.prisma.rentNotice.findFirst({
+          where: { OR: [{ reminderMessageId: emailId }, { noticeMessageId: emailId }] },
+          select: { id: true, reminderMessageId: true },
+        })
     if (!notice) return false
+
+    const sendId = utskick?.id ?? ''
 
     // VILKET fält som träffade avgör typen. `reminderMessageId` först: träffar
     // den är det påminnelsen, annars avin. Båda är @unique, så det finns ingen
-    // tvetydighet att lösa upp.
-    const gällerPåminnelsen = notice.reminderMessageId === emailId
+    // tvetydighet att lösa upp. Kom vi via utskicksraden säger dess `kind` samma
+    // sak, direkt.
+    const gällerPåminnelsen = utskick
+      ? utskick.kind === 'REMINDER'
+      : notice.reminderMessageId === emailId
     const type: RentNoticeEventType = gällerPåminnelsen
       ? utfall === 'DELIVERED'
         ? 'EMAIL_DELIVERED'
@@ -217,9 +239,12 @@ export class ResendWebhookService {
         ? 'NOTICE_EMAIL_DELIVERED'
         : 'NOTICE_EMAIL_BOUNCED'
 
-    // Snabbväg + rena loggar: hoppa över om utfallet redan loggats.
+    // Snabbväg + rena loggar: hoppa över om utfallet redan loggats FÖR DET HÄR
+    // UTSKICKET. Utan `sendId` i frågan hade en omsändnings utfall setts som
+    // "redan loggat" av det förra utskickets rad — vilket är precis det
+    // enhetsfel indexet nu spärrar (#656).
     const existing = await this.prisma.rentNoticeEvent.findFirst({
-      where: { rentNoticeId: notice.id, type },
+      where: { rentNoticeId: notice.id, type, sendId },
       select: { id: true },
     })
     if (existing) {
@@ -232,6 +257,7 @@ export class ResendWebhookService {
         data: {
           rentNoticeId: notice.id,
           type,
+          sendId,
           actorType: resolveActorType('WEBHOOK'),
           actorLabel: 'E-postleverantör',
           payload,
