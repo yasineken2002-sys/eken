@@ -30,6 +30,7 @@ import {
   BarChart3,
   Gauge,
   History,
+  Inbox,
 } from 'lucide-react'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
@@ -43,6 +44,7 @@ import { ViewerBanner } from '@/components/ViewerBanner'
 type AppPath =
   | '/'
   | '/ai'
+  | '/uppdrag'
   | '/properties'
   | '/units'
   | '/tenants'
@@ -80,6 +82,7 @@ interface NavItem {
 const NAV_PRIMARY: NavItem[] = [
   { to: '/', label: 'Översikt', icon: LayoutDashboard },
   { to: '/ai', label: 'AI-assistent', icon: Sparkles },
+  { to: '/uppdrag', label: 'Uppdrag', icon: Inbox },
 ]
 
 const NAV_PORTFOLIO: NavItem[] = [

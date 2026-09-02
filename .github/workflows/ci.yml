@@ -1615,6 +1615,49 @@ jobs:
       - name: Effect idempotency declaration guard
         run: node apps/api/scripts/check-effect-idempotency.mjs
 
+  assignment-deadline-guard:
+    name: Assignment deadline independence guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # G3:s uppdragskö får inte låna `PENDING_ACTION_TTL_MS`. Konstanten är
+      # redan DUBBELanvänd — bekräftelsefönstret i ai-assistant.service.ts och
+      # `ATERUPPTAGNING_TAK_MS` i resumption-policy.ts — så en tredje användning
+      # hade flyttat återupptagningsmotorns tak varje gång någon justerade
+      # uppdragens tidsgräns. Inget test blir rött av det: båda talen är
+      # fortfarande "rätt" var för sig, och motorn börjar bara tyst avstå.
+      #
+      # R1 identifierare — ingen referens till konstanten i KOD. En kommentar som
+      #                    förklarar varför den INTE används är tillåten, och
+      #                    finns med flit i både schemat och tjänsten.
+      # R2 modulsökväg   — ingen import av modulen. Sökvägen är en STRÄNG, alltså
+      #                    en annan vy än R1: codeMask hade blankat den och gjort
+      #                    regeln omöjlig att bryta mot, alltså omöjlig att mäta.
+      # R3 default       — ingen produktionsfil räknar fram en deadline
+      #                    (Date.now() + …). En framräknad gräns är en default,
+      #                    och en default är ett globalt tal i förklädnad.
+      # R4 obligatorisk  — SkapaUppdrag.deadline får inte bli valfri. Blir den
+      #                    det måste något fylla i den.
+      #
+      # Kanariefågeln går åt BÅDA hållen på R1 (samma identifierare i kommentar
+      # respektive i kod ska ge motsatt utfall), och en delsträng får inte
+      # matcha. R3 prövas både som träff i produktionskod och som icke-träff i
+      # ett prov — provfiler känns igen på FORMEN (\.spec\.ts$), inte på ordet
+      # "spec", som hade svept med hela apps/api/src/inspections/.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (canary both directions on R1, R2-R4 each proven)
+        run: node apps/api/scripts/check-assignment-deadline.mjs --self-test
+
+      - name: Verify the assignment deadline is data, not a shared constant
+        run: node apps/api/scripts/check-assignment-deadline.mjs
+
   effect-trace-guard:
     name: Effect trace wiring guard
     runs-on: ubuntu-latest
@@ -1715,6 +1758,7 @@ jobs:
       - append-only-guard
       - effect-idempotency-guard
       - effect-trace-guard
+      - assignment-deadline-guard
       - action-tool-authorization-guard
       - backup-endpoint-guard
       - legal-text-version-guard

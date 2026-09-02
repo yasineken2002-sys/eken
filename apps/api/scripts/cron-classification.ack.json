@@ -111,6 +111,10 @@
       "class": "A",
       "lockKey": "cron:ai-resumption-shadow"
     },
+    "ai/assignments/ai-assignments.service.ts::utgångspass": {
+      "class": "A",
+      "lockKey": "cron:ai-assignment-expiry"
+    },
     "common/actor/actor-null-sweep.service.ts::sveep": {
       "class": "B",
       "invariant": "Jobbet SKRIVER ingenting: mät() kör enbart SELECT count(*) mot de 23 stämplade tabellerna (actorKind IS NULL AND createdAt > brytpunkten). Två samtidiga körningar har ingen rad att tävla om; utfallet är på sin höjd ett dubblerat Sentry-larm."

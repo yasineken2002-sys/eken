@@ -38,6 +38,10 @@ export type RelatedEntityType =
   | 'DEPOSIT'
   | 'RENT_INCREASE'
   | 'TERMINATION_REQUEST'
+  // G3: kallelsen till ett uppdrag som väntar på beslut, och kvittot när ett
+  // uppdrag förfallit. Länkmålet är läsytan `/uppdrag` — se
+  // apps/web/src/features/assignments.
+  | 'AI_ASSIGNMENT'
 
 export interface NotificationTarget {
   link?: string
