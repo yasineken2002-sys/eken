@@ -30,7 +30,10 @@ import { randomUUID } from 'node:crypto'
 
 import { Prisma, PrismaClient } from '@prisma/client'
 
+import { Logger } from '@nestjs/common'
+
 import { RentReminderService } from './rent-reminder.service'
+import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentDebtService } from './rent-debt.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 
@@ -54,6 +57,7 @@ medDb('leveransutfall per utskick', () => {
   let leaseId: string
   let propertyId: string
   let räknare = 0
+  let mailSkickat: Array<string | null> = []
 
   /** En avi i REMINDED med fullständigt INV-B-underlag utom leveransen. */
   const avi = async () => {
@@ -126,6 +130,19 @@ medDb('leveransutfall per utskick', () => {
           send: async () => undefined,
         } as never,
       ),
+      rentNoticeEvents: new RentNoticeEventsService(prisma as never),
+      logger: new Logger('spec'),
+      // Attrapper BARA för sidoeffekterna utanför databasen. Utskicksraden,
+      // händelserna och grinden är äkta — det är dem provet mäter.
+      mailService: {
+        sendRentNoticeReminder: async (o: { sendId?: string }) => {
+          mailSkickat.push(o.sendId ?? null)
+          return 'mailjob-1'
+        },
+      },
+      pdfService: { generateFromHtml: async () => Buffer.from('%PDF-1.4') },
+      storage: { uploadFile: async () => undefined },
+      pdfQueue: { enqueue: async () => 'pdfjob-1' },
     })
 
     const sfx = randomUUID().slice(0, 8)
@@ -203,6 +220,7 @@ medDb('leveransutfall per utskick', () => {
   }, 30_000)
 
   beforeEach(async () => {
+    mailSkickat = []
     await prisma.rentNoticeEvent.deleteMany({ where: { rentNotice: { organizationId: orgId } } })
     await prisma.rentNoticeSend.deleteMany({ where: { rentNotice: { organizationId: orgId } } })
     await prisma.rentNotice.deleteMany({ where: { organizationId: orgId } })
@@ -310,5 +328,55 @@ medDb('leveransutfall per utskick', () => {
         data: { rentNoticeId: id, type: 'EMAIL_BOUNCED', actorType: 'WEBHOOK' },
       }),
     ).rejects.toBeInstanceOf(Prisma.PrismaClientKnownRequestError)
+  })
+
+  // ── UTLÖSAREN: ETT NYTT UTSKICK, INTE ETT ÖVERSKRIVET ────────────────────
+
+  describe('omsändningen ger ett NYTT utskick', () => {
+    it('efter en STUDS skapar utskicksvägen en ANDRA rad — den första står kvar', async () => {
+      // Enheten vi just rättade får inte tappas i utlösaren. Skrev vägen över
+      // det förra utskicket hade studsen och leveransen hamnat på samma rad,
+      // och hela poängen med per-utskick vore borta.
+      const id = await avi()
+      const första = await utskick(id, 'BOUNCED', 120)
+
+      await service.processReminderSendJob(orgId, id)
+
+      const rader = await prisma.rentNoticeSend.findMany({
+        where: { rentNoticeId: id, kind: 'REMINDER' },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, toHash: true },
+      })
+      expect(rader).toHaveLength(2)
+      expect(rader[0]!.id).toBe(första)
+      expect(rader[1]!.id).not.toBe(första)
+      // …och brevet gick med DET NYA utskickets id, inte det gamlas.
+      expect(mailSkickat).toEqual([rader[1]!.id])
+      // Fingeravtrycket sätts på det nya utskicket, så nästa studs går att
+      // jämföra mot rätt adress.
+      expect(rader[1]!.toHash).not.toBeNull()
+    })
+
+    it('GRIND 1: ett utskick UTAN utfall är i luften — en retry skickar inte om', async () => {
+      // Bull-retryn. Samma jobb en gång till får aldrig ge dubbelmejl.
+      const id = await avi()
+      await utskick(id, 'INGET', 10)
+
+      await service.processReminderSendJob(orgId, id)
+
+      const rader = await prisma.rentNoticeSend.count({ where: { rentNoticeId: id } })
+      expect(rader).toBe(1)
+      expect(mailSkickat).toEqual([])
+    })
+
+    it('GRIND 1: en LEVERERAD påminnelse skickas inte om heller', async () => {
+      const id = await avi()
+      await utskick(id, 'DELIVERED', 10)
+
+      await service.processReminderSendJob(orgId, id)
+
+      expect(await prisma.rentNoticeSend.count({ where: { rentNoticeId: id } })).toBe(1)
+      expect(mailSkickat).toEqual([])
+    })
   })
 })

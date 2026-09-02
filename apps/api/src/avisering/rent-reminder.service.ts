@@ -28,6 +28,7 @@ import { resolveNoticeDebtOrigin } from '../accounting/debt-origin'
 import { resolveReminderFee, reminderFeeCapMessage } from '../accounting/reminder-fee'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import { bedömOmsändning, hashaAdress } from './resend-verdict'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
 
 interface ReminderSummary {
@@ -97,6 +98,25 @@ export interface RentCollectionStatus {
   }
   lastBlockedAt: Date | null
   blockedDays: number | null
+  /**
+   * Omsändningen av påminnelsen (#656). Beräknad HÄR och inte i gränssnittet:
+   * grindarna bär pengar och får inte finnas i två uppsättningar.
+   */
+  resend: {
+    allowed: boolean
+    /** Varför inte. Null när den är tillåten. Visas som knappens förklaring. */
+    blockedReason: string | null
+    senasteUtskickId: string | null
+    /**
+     * Har adressen ändrats sedan utskicket studsade?
+     *
+     * `null` = VET EJ, och det är ett eget svar: utskicket skrevs innan
+     * fingeravtrycket fanns, eller hyresgästen saknar adress. Gränssnittet
+     * säger "vet ej" i stället för att gissa — ett falskt lugn här skickar ett
+     * brev till samma trasiga adress.
+     */
+    addressChangedSinceBounce: boolean | null
+  }
 }
 
 const INKASSO_READY_INCLUDE = {
@@ -837,15 +857,22 @@ export class RentReminderService {
       select: { id: true },
     })
     if (senasteUtskick) {
-      const utfall = await this.prisma.rentNoticeEvent.findFirst({
-        where: {
-          rentNoticeId: noticeId,
-          sendId: senasteUtskick.id,
-          type: { in: ['EMAIL_DELIVERED', 'EMAIL_BOUNCED'] },
-        },
+      // ENDAST EN STUDS ÖPPNAR. Första versionen frågade bara om det FANNS ett
+      // utfall, och släppte då igenom ett LEVERERAT utskick — funnet av
+      // db-provet, inte av läsning. Ett andra brev efter en lyckad leverans är
+      // en dubblett till en hyresgäst som redan fått kravet.
+      //
+      // Samma villkor som knappens (`bedömOmsändning`), och det är avsiktligt:
+      // grinden är försvaret om någon når hit på en annan väg än knappen.
+      const studs = await this.prisma.rentNoticeEvent.findFirst({
+        where: { rentNoticeId: noticeId, sendId: senasteUtskick.id, type: 'EMAIL_BOUNCED' },
         select: { id: true },
       })
-      if (!utfall) return
+      // KÄND GRÄNS: ett utskick som aldrig nådde e-postleverantören (SEND_FAILED,
+      // inget EMAIL_*) räknas som i luften och öppnar alltså inte heller. Det är
+      // fail-closed åt rätt håll, men det betyder att just det fallet inte har
+      // någon väg ut ännu.
+      if (!studs) return
     } else {
       // Inget utskick registrerat. Före #656 fanns bara SENT-händelsen, så en
       // avi som påmindes DÅ har inget utskick — och ska inte påminnas om nu av
@@ -888,7 +915,14 @@ export class RentReminderService {
       // UTSKICKET ÄR EN EGEN SAK, och det skapas FÖRE köandet: köns svar
       // (message-id) måste kunna skrivas på en rad som redan finns.
       const utskick = await this.prisma.rentNoticeSend.create({
-        data: { rentNoticeId: noticeId, kind: 'REMINDER' },
+        data: {
+          rentNoticeId: noticeId,
+          kind: 'REMINDER',
+          // Adressens fingeravtryck hör till UTSKICKET, inte till avin: det är
+          // just "vart gick DET HÄR brevet" som avgör om ett omförsök är
+          // meningsfullt eller bara ger samma studs igen.
+          toHash: hashaAdress(notice.tenant.email),
+        },
         select: { id: true },
       })
 
@@ -1204,11 +1238,12 @@ export class RentReminderService {
       select: { type: true, createdAt: true, payload: true, sendId: true },
       orderBy: { createdAt: 'asc' },
     })
-    const senasteUtskick = await this.prisma.rentNoticeSend.findFirst({
+    const senasteUtskickFullt = await this.prisma.rentNoticeSend.findFirst({
       where: { rentNoticeId: noticeId, kind: 'REMINDER' },
       orderBy: { createdAt: 'desc' },
-      select: { id: true },
+      select: { id: true, toHash: true },
     })
+    const senasteUtskick = senasteUtskickFullt
     const debt = await this.rentDebt.outstanding(noticeId, organizationId)
 
     // SAMMA funktion som grinden kastar på. Inget andra regelverk.
@@ -1281,7 +1316,100 @@ export class RentReminderService {
       },
       lastBlockedAt: senastBlockerad,
       blockedDays: senastBlockerad ? this.daysSince(senastBlockerad) : null,
+      resend: bedömOmsändning({
+        collectionStage: notice.collectionStage,
+        senasteUtskick: senasteUtskickFullt,
+        utfall: senasteUtskickFullt
+          ? events
+              .filter(
+                (e) =>
+                  e.sendId === senasteUtskickFullt.id &&
+                  (e.type === 'EMAIL_DELIVERED' || e.type === 'EMAIL_BOUNCED'),
+              )
+              .map((e) => e.type)
+          : [],
+        tenantEmail: notice.tenant?.email ?? null,
+      }),
     }
+  }
+
+  /**
+   * SKICKA OM PÅMINNELSEN — samma påminnelse, inte ett nytt trappsteg.
+   *
+   * ── VAD DEN INTE GÖR, OCH VARFÖR DET ÄR HELA POÄNGEN ────────────────────
+   *
+   * Ingen ny avgift. Ingen omräknad ränta. Ingen förflyttning i kravtrappan.
+   * `collectionStage` står kvar på `REMINDED`, och därför rörs aldrig
+   * eskaleringens anspråk — den grindar på `collectionStage: 'NONE'`, och en
+   * omsändning går en annan väg av konstruktion.
+   *
+   * Skälet är inte teknik utan pengar: en studs betyder att ADRESSEN var fel.
+   * #654 återför redan avgiften när påminnelsen studsar — vi tar inte betalt för
+   * ett brev som inte kom fram. Att ta en NY avgift för att skicka om det vore
+   * att låta hyresgästen betala för hyresvärdens felaktiga adressdata.
+   *
+   * ── GRINDARNA, OCH VARFÖR VAR OCH EN ────────────────────────────────────
+   *
+   * Alla fyra är fail-closed: kan vi inte visa att omsändningen betyder något,
+   * skickar vi inte.
+   *
+   *   1. Avin måste vara i REMINDED. Utanför kravsteget finns ingen påminnelse
+   *      att skicka om.
+   *   2. Det måste finnas ett tidigare utskick. Annars är det inte en OMsändning.
+   *   3. Det senaste utskicket måste ha STUDSAT. Levererades det finns inget
+   *      problem att laga, och ett andra brev vore en dubblett till en
+   *      hyresgäst som redan fått kravet. Saknas utfallet är sändningen
+   *      fortfarande i luften.
+   *   4. Hyresgästen måste ha en adress att skicka till.
+   *
+   * ── VAD DEN HÄR METODEN INTE KAN SE ─────────────────────────────────────
+   *
+   * Om den NYA adressen är riktig. Den kan bara se att den är en annan än den
+   * som studsade — `bedömOmsändning` räknar ut det, och gränssnittet varnar när
+   * den är densamma. Ett omförsök till samma trasiga adress ger samma studs.
+   */
+  async resendReminder(
+    noticeId: string,
+    organizationId: string,
+    userId: string,
+  ): Promise<{ enqueued: true }> {
+    const status = await this.collectionStatus(noticeId, organizationId)
+    if (!status.resend.allowed) {
+      throw new ConflictException(status.resend.blockedReason ?? 'Påminnelsen kan inte skickas om.')
+    }
+
+    // ANTECKNAS FÖRE UTSKICKET. Kraschar köandet ska det ändå synas att en
+    // människa bad om det — ett spårlöst försök är samma tystnad som vyn i #648
+    // finns för att ta bort.
+    await this.rentNoticeEvents
+      .record(noticeId, 'NOTE_ADDED', 'USER', userId, {
+        action: 'reminder-resend-requested',
+        förraUtskicket: status.resend.senasteUtskickId,
+      })
+      .catch(() => undefined)
+
+    // ── DIREKT ENQUEUE, INTE enqueueSafely ─────────────────────────────────
+    //
+    // `enqueueSafely` finns för vägar som INTE får kasta: en cron ska inte dö
+    // för att kön blinkade, och därför sväljer hjälparen felet och rapporterar
+    // det på sidan om. Den här vägen är motsatsen. En människa står och tittar
+    // på knappen, och ett misslyckat köande MÅSTE nå tillbaka som ett fel —
+    // annars ser omsändningen ut att ha skett.
+    //
+    // Att köa via hjälparen och sedan kasta ändå hade gett två rapporteringar
+    // av samma fel och ett svar som ändå blev ett kast.
+    try {
+      await this.pdfQueue.enqueue({ kind: 'avisering-reminder', organizationId, noticeId })
+    } catch (err) {
+      this.logger.error(
+        `Omsändning av påminnelse kunde inte köas för avi ${noticeId}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      )
+      throw new ConflictException(
+        'Påminnelsen kunde inte köas för utskick. Försök igen om en stund.',
+      )
+    }
+    return { enqueued: true }
   }
 }
 

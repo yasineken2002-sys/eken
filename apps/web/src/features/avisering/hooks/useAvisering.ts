@@ -12,6 +12,7 @@ import {
   createRentNoticeCredit,
   getRentNoticeEvents,
   getRentNoticeCollectionStatus,
+  resendRentNoticeReminder,
 } from '../api/avisering.api'
 import type { NoticeFilter, PaymentMethod, CreateRentNoticeCreditInput } from '../api/avisering.api'
 
@@ -160,5 +161,25 @@ export function useRentNoticeCollectionStatus(id: string | undefined, enabled: b
     queryFn: () => getRentNoticeCollectionStatus(id!),
     enabled: !!id && enabled,
     staleTime: 0,
+  })
+}
+
+/**
+ * SKICKA OM PÅMINNELSEN (#656).
+ *
+ * Invaliderar BÅDE statusen och händelseloggen. Statusen därför att grinden
+ * ändras i samma ögonblick — knappen ska inte gå att trycka två gånger på
+ * samma studs — och loggen därför att omsändningen skriver en anteckning som
+ * ska synas direkt. Utan den andra hade operatören tryckt och inte sett något
+ * hända, vilket är den tystnad hela vyn finns för att ta bort.
+ */
+export function useResendReminder(id: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => resendRentNoticeReminder(id!),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['rent-notice-collection-status', id] })
+      void qc.invalidateQueries({ queryKey: ['rent-notice-events', id] })
+    },
   })
 }

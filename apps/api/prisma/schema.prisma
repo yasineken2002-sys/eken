@@ -3773,6 +3773,22 @@ model RentNoticeSend {
   /// Köns jobId. Skiljer en Bull-retry (samma jobb) från ett omförsök.
   jobId String?
 
+  /// SHA-256 av adressen utskicket gick till, gemener och trimmad.
+  ///
+  /// EN ÄNDRINGSDETEKTOR, INTE ETT SKYDD. En e-postadress har för litet
+  /// sökrum för att en hash ska skydda den, och det påstås inte här. Syftet är
+  /// att kunna svara på EN fråga: har adressen ändrats sedan utskicket
+  /// studsade? Ett omförsök till samma trasiga adress ger samma studs, och det
+  /// är hela skälet till att omsändningen inte är automatisk.
+  ///
+  /// Hash och inte adressen själv, därför att svaret bara kräver LIKHET. En
+  /// andra kopia av adressen hade varit ett nytt ställe där persondata bor,
+  /// utan att svara bättre på frågan.
+  ///
+  /// Null för utskick som skrevs innan kolumnen fanns — då är svaret "vet ej",
+  /// och gränssnittet säger det i stället för att gissa.
+  toHash String?
+
   createdAt DateTime @default(now())
 
   rentNotice RentNotice @relation(fields: [rentNoticeId], references: [id], onDelete: Cascade)

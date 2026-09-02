@@ -120,7 +120,7 @@ export function RentNoticeDetailModal({ notice, onClose }: Props) {
               {/* #648 — VARFÖR STÅR AVIN STILL. Överst av samma skäl som raden
                   ovan: när det gäller är det det viktigaste på hela sidan, och
                   två av kravtrappans tre vägar vidare syns ingen annanstans. */}
-              {status && <CollectionStatusPanel status={status} />}
+              {status && <CollectionStatusPanel status={status} noticeId={notice.id} />}
 
               <SkuldPanel preview={preview} />
 

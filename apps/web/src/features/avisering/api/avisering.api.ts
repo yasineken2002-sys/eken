@@ -314,6 +314,17 @@ export interface RentCollectionStatus {
   }
   lastBlockedAt: string | null
   blockedDays: number | null
+  /**
+   * Omsändningen av påminnelsen (#656). Beräknad i API:et — grindarna bär
+   * pengar och får inte finnas i två uppsättningar.
+   */
+  resend: {
+    allowed: boolean
+    blockedReason: string | null
+    senasteUtskickId: string | null
+    /** `null` = VET EJ. Ett eget svar, inte ett ja. */
+    addressChangedSinceBounce: boolean | null
+  }
 }
 
 export function getRentNoticeEvents(id: string) {
@@ -322,4 +333,8 @@ export function getRentNoticeEvents(id: string) {
 
 export function getRentNoticeCollectionStatus(id: string) {
   return get<RentCollectionStatus>(`/avisering/${id}/collection-status`)
+}
+
+export function resendRentNoticeReminder(id: string) {
+  return post<{ enqueued: true }>(`/avisering/${id}/reminder/resend`, {})
 }
