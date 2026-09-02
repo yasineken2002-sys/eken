@@ -910,6 +910,24 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
   // ticketNumber ur sekvens. ⚠️ Nämnaren är svår här: två identiska felanmälningar
   // på samma lägenhet samma dag KAN vara två verkliga fel. En innehållshash med
   // för grov nämnare gör tyst bortfall av det andra.
+  //
+  // ── DÄRFÖR ETT FÖNSTER, OCH DÄRFÖR STÅR SPÅRET KVAR PÅ INGET ─────────────
+  //
+  // `maintenance/duplicate-ticket-window.ts` fångar ett omtag inom 60 s på samma
+  // objekt och rubrik, och SVARAR med det befintliga ärendenumret i stället för
+  // att hoppa tyst. Talet är RESONERAT och inte mätt: produktionen har noll
+  // felanmälningar, så det finns ingen historik att härleda ur. Det står i
+  // modulen, tillsammans med vad som ska mätas den dag data finns.
+  //
+  // Spåret är ändå `INGET`, med flit. Ett fönster är inte en identitet: en
+  // återupptagning som körs om efter någon minut skapar en dubblett precis som
+  // förut. Posten är AUTOMATISK, och hade `plats` satts till något annat blivit
+  // återupptagbar på ett skydd som inte bär den bördan.
+  //
+  // Fönstret sitter dessutom BARA i AI-vägen. `MaintenanceService.create`
+  // används också av hyresgästportalen, och det är just en hyresgästs andra
+  // anmälan som absolut inte får ätas — risken för ett oavsiktligt omtag bor i
+  // modellens loop, inte i en människas formulär.
   create_maintenance_ticket: {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
