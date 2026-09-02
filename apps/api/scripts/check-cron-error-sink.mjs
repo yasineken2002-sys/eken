@@ -124,23 +124,112 @@ export function härledSänkmetoder(sinkText) {
   ].map((m) => m[1])
 }
 
-/** Metodkroppen för `metod`, klammerbalanserad, ur en KOD-mask. */
+/**
+ * Metodkroppen för `metod`, klammerbalanserad, ur en KOD-mask.
+ *
+ * ── VARFÖR DEN INTE FÅR LETA EFTER "FÖRSTA { EFTER NAMNET" (#619) ───────────
+ *
+ * Första lydelsen ankrade med `\\([^)]*\\)\\s*:[^{]*\\{` och tog sedan
+ * `indexOf('{')`. Båda halvorna stannar för tidigt, och BÅDA gör det TYST —
+ * utfallet är inte ett fel utan en för kort kropp, som en regel läser som
+ * "mönstret finns inte här".
+ *
+ *   1. `[^{]*` stannar på en klammer i RETURTYPEN:
+ *
+ *        async runBackup(): Promise<{ key: string; bytes: number }> {
+ *
+ *      Kroppen blev de 46 tecknen `{ key: string; bytes: number }` — själva
+ *      typen. Sänkanropet på rad 531 i backup.service.ts låg utanför, och
+ *      vakten svarade "når inte sänkan" om ett jobb som når den.
+ *
+ *   2. `[^)]*` stannar på en parentes i en PARAMETERTYP, varpå reservankaret
+ *      tar `indexOf('{')` — som då kan landa i en parameters objekttyp:
+ *
+ *        closePeriod(orgId: string, opts: { actorRole?: UserRole }): Promise<void> {
+ *
+ * UPPMÄTT över `apps/api/src` med den gamla lydelsen, där varje träff bevisats
+ * genom att KÖRA funktionen och se att kroppen saknar radbrytning:
+ *
+ *     75 metoder i 46 filer  fick en TYP i stället för en kropp
+ *      0 av vaktens dåvarande mätyta (26 cron-metoder + *Unsafe) drabbade
+ *
+ * Defekten var alltså latent: den hade aktiverats i samma stund vakten börjat
+ * följa anrop ut ur cron-metoden. Se #619.
+ *
+ * ── VAD DEN HÄR LYDELSEN GÖR ────────────────────────────────────────────────
+ *
+ * Hoppar över parameterlistan BALANSERAT, och därefter över returtypen genom
+ * att pröva varje `{`: bär den en typ följs dess matchande `}` av fortsatt
+ * typsyntax (`>`, `|`, `&`, `[`, eller nästa `{`), och då är det inte kroppen.
+ *
+ * ── VAD DEN INTE KAN SE ─────────────────────────────────────────────────────
+ *
+ * Den mäter TEXT, inte typer. En returtyp som slutar på ett tecken utanför
+ * mängden ovan skulle läsas som kroppens början. Den känner inte heller
+ * överlagrade signaturer — första träffen på namnet vinner. Båda är kända och
+ * otäckta; kanariefågeln i självtestet prövar den form som faktiskt fällde.
+ */
 export function metodkropp(kod, metod) {
-  const start =
-    new RegExp(`\\b${metod}\\s*\\([^)]*\\)\\s*:[^{]*\\{`).exec(kod) ??
-    new RegExp(`\\b${metod}\\s*\\(`).exec(kod)
-  if (!start) return ''
-  const i = kod.indexOf('{', start.index)
-  if (i < 0) return ''
-  let djup = 0
-  for (let j = i; j < kod.length; j++) {
-    if (kod[j] === '{') djup++
-    else if (kod[j] === '}') {
-      djup--
-      if (djup === 0) return kod.slice(i, j + 1)
+  const TYPEN_FORTSÄTTER = new Set(['>', '|', '&', '[', '{'])
+
+  /** Index efter den balanserade `(…)` som börjar på `från`, annars -1. */
+  const efterParameterlistan = (från) => {
+    let djup = 0
+    for (let j = från; j < kod.length; j++) {
+      if (kod[j] === '(') djup++
+      else if (kod[j] === ')') {
+        djup--
+        if (djup === 0) return j + 1
+      }
+    }
+    return -1
+  }
+
+  /** Index efter den balanserade `{…}` som börjar på `från`, annars -1. */
+  const efterBlock = (från) => {
+    let djup = 0
+    for (let j = från; j < kod.length; j++) {
+      if (kod[j] === '{') djup++
+      else if (kod[j] === '}') {
+        djup--
+        if (djup === 0) return j + 1
+      }
+    }
+    return -1
+  }
+
+  // VARJE förekomst av namnet prövas, och den FÖRSTA som ser ut som en
+  // DEKLARATION vinner. Ett bart `\\b${metod}\\s*\\(`-ankare räcker inte:
+  // `await this.runBackup()` står ofta före deklarationen i filen, och då
+  // mäts fel kropp. Uppmätt under #619 — den lydelsen sänkte täckningen från
+  // 24 till 18 jobb, alltså ett fel åt SAMMA håll som defekten den skulle laga.
+  const träffar = [...kod.matchAll(new RegExp(`\\b${metod}\\s*\\(`, 'g'))]
+  for (const träff of träffar) {
+    // Ett anrop: `this.metod(`, `x.metod(`. Aldrig en deklaration.
+    if (/[.?]\s*$/.test(kod.slice(Math.max(0, träff.index - 2), träff.index))) continue
+
+    let i = efterParameterlistan(kod.indexOf('(', träff.index))
+    if (i < 0) continue
+
+    // En DEKLARATION följs av `:` (returtyp) eller direkt av kroppens `{`.
+    const efterParen = /\S/.exec(kod.slice(i))
+    if (!efterParen || (efterParen[0] !== ':' && efterParen[0] !== '{')) continue
+
+    // RETURTYPEN. Kroppens `{` är den vars matchande `}` INTE följs av
+    // fortsatt typsyntax — det är den halvan som fällde `runBackup`.
+    for (; i < kod.length; i++) {
+      if (kod[i] !== '{') continue
+      const slut = efterBlock(i)
+      if (slut < 0) return kod.slice(i)
+      const efter = /\S/.exec(kod.slice(slut))
+      if (efter && TYPEN_FORTSÄTTER.has(efter[0])) {
+        i = slut - 1
+        continue
+      }
+      return kod.slice(i, slut)
     }
   }
-  return kod.slice(i)
+  return ''
 }
 
 /**
@@ -332,6 +421,54 @@ const JOBB_DIREKT = {
  * vakten "täckt" om ett jobb som inte var det — ett falskt positivt åt det
  * farligaste hållet, eftersom det STÄNGER frågan.
  */
+/**
+ * KANARIEFÅGELN FÖR `metodkropp` (#619).
+ *
+ * Returtypen bär en klammer OCH kroppen anropar sänkan. Med den gamla
+ * lydelsen blev kroppen strängen `{ key: string; bytes: number }` och
+ * sänkanropet försvann — vakten sa "når inte" om ett jobb som når.
+ *
+ * Formen är inte påhittad: den är kopierad från `backup.service.ts::runBackup`,
+ * som är precis det fall som gjorde vakten blind.
+ */
+const JOBB_KLAMMER_I_RETURTYP = {
+  fil: 'x/klammer.service.ts',
+  text: `
+  constructor(private readonly sink: CronErrorSink) {}
+
+  @Cron('0 3 * * *')
+  async klammer(): Promise<{ key: string; bytes: number }> {
+    try {
+      return await this.gör()
+    } catch (err) {
+      await this.sink.report('klammer', err)
+      throw err
+    }
+  }`,
+}
+
+/**
+ * ANDRA HALVAN AV SAMMA KANARIEFÅGEL: en klammer i en PARAMETERTYP.
+ *
+ * Den gamla lydelsens `\\([^)]*\\)` stannade på parentesen inne i
+ * parametertypen, varpå reservankaret tog `indexOf('{')` och landade i
+ * parameterns objekttyp. Utan den här prövas bara returtypshalvan.
+ */
+const JOBB_KLAMMER_I_PARAMETER = {
+  fil: 'x/param.service.ts',
+  text: `
+  constructor(private readonly sink: CronErrorSink) {}
+
+  @Cron('0 4 * * *')
+  async param(opts: { torrkörning: boolean } = { torrkörning: false }): Promise<void> {
+    try {
+      await this.gör(opts)
+    } catch (err) {
+      await this.sink.report('param', err)
+    }
+  }`,
+}
+
 const JOBB_EGEN_REPORT = {
   fil: 'x/egen.service.ts',
   text: `
@@ -387,6 +524,36 @@ function självtest() {
   t('REGEL: en EGEN metod som heter report räknas INTE som sänkan',
     egenFynd.some((p) => p.rule.includes('når ingen varaktig felsänka')),
     egenFynd.map((p) => p.rule).join(' | '))
+
+  // (2b) KANARIEFÅGELN FÖR KROPPSUTTAGET (#619).
+  //
+  // Utan den här är hela vakten tyst blind för varje metod vars signatur bär
+  // en klammer: kroppen blir en TYP, mönstret hittas inte, och utfallet är
+  // "når ingen varaktig felsänka" om ett jobb som når den. Prövas åt BÅDA
+  // hållen — en kanariefågel som bara visar det positiva fallet skiljer inte
+  // ett fungerande kroppsuttag från ett som råkar hitta rätt.
+  for (const [namn, fixtur] of [
+    ['returtypen', JOBB_KLAMMER_I_RETURTYP],
+    ['parametertypen', JOBB_KLAMMER_I_PARAMETER],
+  ]) {
+    const j = findCronJobs([fixtur])
+    t(`fixturen med klammer i ${namn} ger ett jobb`, j.length === 1, String(j.length))
+    if (j.length !== 1) continue
+
+    // (a) Kroppen är KROPPEN, inte signaturens typ. Mäts direkt, så ett fel
+    //     pekar på kroppsuttaget och inte på regeln ovanpå det.
+    const kropp = metodkropp(codeMask(fixtur.text), j[0].metod)
+    t(
+      `KROPPSUTTAG: klammer i ${namn} ger kroppen, inte typen`,
+      kropp.includes('sink.report('),
+      `${kropp.length} tecken: ${JSON.stringify(kropp.slice(0, 48))}`,
+    )
+
+    // (b) Och att regeln ovanpå den faktiskt blir tyst.
+    const fynd = evaluate({ jobb: j, sänkmetoder: riktigaMetoder, ack: { jobs: {} } })
+    t(`REGEL: jobbet med klammer i ${namn} är tyst`, fynd.length === 0,
+      fynd.map((p) => p.rule).join(' | '))
+  }
 
   // (3) KVITTERINGEN FÄLLER ÅT BÅDA HÅLLEN.
   const kvitterat = evaluate({
