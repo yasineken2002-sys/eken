@@ -26,8 +26,13 @@ function makeService(unit: { type: UnitType; voluntaryTaxLiability: boolean }) {
         unit,
       }),
     },
-    invoice: { findUnique: jest.fn().mockResolvedValue(null) },
-    // Dubbelbokförings-spärren slår upp befintlig hyresavi — ingen för testet.
+    // Dubbelfaktureringsspärrens population är BÅDA tabellerna: en manuell
+    // RENT-faktura för samma avtal och period är lika mycket en dubbelbokföring
+    // som en avi är. `null` = ingen befintlig, så spärren släpper igenom här.
+    invoice: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     rentNotice: { findFirst: jest.fn().mockResolvedValue(null) },
     // Validering sker före $transaction; för OK-fallet räcker en fejkad faktura.
     $transaction: jest.fn().mockResolvedValue({ id: 'inv-1', invoiceNumber: 'F-2026-0001' }),
