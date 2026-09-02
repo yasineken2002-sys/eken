@@ -22,10 +22,16 @@ const DTO = {
   lines: [{ description: 'Hyra', quantity: 1, unitPrice: 10000, vatRate: 0 }],
 }
 
-function makeService(opts: { existingNotice?: boolean } = {}) {
+function makeService(opts: { existingNotice?: boolean; existingInvoice?: boolean } = {}) {
   const rentNoticeFindFirst = jest
     .fn()
     .mockResolvedValue(opts.existingNotice ? { id: 'rn-1' } : null)
+
+  // Spärrens population är BÅDA tabellerna: en manuell RENT-faktura för samma
+  // avtal och period är lika mycket en dubbelbokföring som en avi är.
+  const invoiceFindFirst = jest
+    .fn()
+    .mockResolvedValue(opts.existingInvoice ? { id: 'inv-tidigare' } : null)
 
   const tx = {
     invoice: {
@@ -46,6 +52,7 @@ function makeService(opts: { existingNotice?: boolean } = {}) {
       }),
     },
     rentNotice: { findFirst: rentNoticeFindFirst },
+    invoice: { findFirst: invoiceFindFirst },
     $transaction: (cb: (t: unknown) => unknown) => cb(tx),
   }
   const eventsService = { record: jest.fn().mockResolvedValue(undefined) }
@@ -70,10 +77,10 @@ function makeService(opts: { existingNotice?: boolean } = {}) {
     }
   ).generateInvoiceNumber = () => Promise.resolve({ invoiceNumber: 'F-2026-0001', sequence: 1 })
 
-  return { service, rentNoticeFindFirst, txCreate: tx.invoice.create }
+  return { service, rentNoticeFindFirst, invoiceFindFirst, txCreate: tx.invoice.create }
 }
 
-describe('InvoicesService.create — dubbelfaktureringsspärr mot RentNotice', () => {
+describe('InvoicesService.create — dubbelfaktureringsspärren, båda tabellerna', () => {
   it('blockerar en RENT-faktura när en icke-annullerad hyresavi finns för perioden', async () => {
     const { service, rentNoticeFindFirst, txCreate } = makeService({ existingNotice: true })
 
@@ -99,6 +106,54 @@ describe('InvoicesService.create — dubbelfaktureringsspärr mot RentNotice', (
 
     const result = await service.create('org-1', 'user-1', DTO as never)
     expect(result).toMatchObject({ id: 'inv-1' })
+    expect(txCreate).toHaveBeenCalledTimes(1)
+  })
+
+  // ── POPULATIONEN VAR HALV ────────────────────────────────────────────────
+  //
+  // Spärren frågade bara `RentNotice`. Två MANUELLA RENT-fakturor för samma
+  // avtal och period passerade alltså båda så länge ingen avi fanns, och hyran
+  // bokfördes två gånger. Nyckeln (avtal, period) var rätt hela tiden — den
+  // ställdes mot fel mängd rader.
+
+  it('SAMMA anrop två gånger: en befintlig RENT-FAKTURA för perioden blockerar', async () => {
+    const { service, txCreate } = makeService({ existingInvoice: true })
+
+    await expect(service.create('org-1', 'user-1', DTO as never)).rejects.toBeInstanceOf(
+      ConflictException,
+    )
+    expect(txCreate).not.toHaveBeenCalled()
+  })
+
+  it('frågan avgränsas till avtalet, RENT och den civila MÅNADEN som intervall', async () => {
+    // `issueDate` är en DATE-kolumn och bär ingen månad att jämföra direkt mot.
+    // Blir intervallet fel blockerar spärren fel period — eller ingen alls.
+    const { service, invoiceFindFirst } = makeService({ existingInvoice: false })
+    await service.create('org-1', 'user-1', DTO as never)
+
+    const where = invoiceFindFirst.mock.calls[0]?.[0].where
+    expect(where).toMatchObject({ leaseId: 'lease-1', type: 'RENT', status: { not: 'VOID' } })
+    expect(where.issueDate.gte.toISOString()).toBe('2026-06-01T00:00:00.000Z')
+    expect(where.issueDate.lt.toISOString()).toBe('2026-07-01T00:00:00.000Z')
+  })
+
+  it('MOTPROV: en makulerad faktura gör inte längre anspråk på perioden', async () => {
+    // Uttryckt i frågan (`status: { not: 'VOID' }`), inte i ett efterfilter —
+    // annars hade en makulerad faktura blockerat en legitim ersättare.
+    const { service, invoiceFindFirst } = makeService({ existingInvoice: false })
+    await service.create('org-1', 'user-1', DTO as never)
+    expect(invoiceFindFirst.mock.calls[0]?.[0].where.status).toEqual({ not: 'VOID' })
+  })
+
+  it('MOTPROV: en ICKE-RENT-faktura frågar ingen av tabellerna', async () => {
+    // Gren 2. Två identiska serviceavgifter är i domänen två legitima krav —
+    // ingenting i datan skiljer dem åt, så det finns ingen nyckel att ställa.
+    // En innehållsnyckel här hade fabricerat en skillnad som inte finns.
+    const { service, rentNoticeFindFirst, invoiceFindFirst, txCreate } = makeService()
+
+    await service.create('org-1', 'user-1', { ...DTO, type: 'SERVICE' } as never)
+    expect(rentNoticeFindFirst).not.toHaveBeenCalled()
+    expect(invoiceFindFirst).not.toHaveBeenCalled()
     expect(txCreate).toHaveBeenCalledTimes(1)
   })
 })
