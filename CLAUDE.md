@@ -1142,6 +1142,34 @@ inte riggens längre utan **sitt eget**: nästa person läser ett tal som aldrig
 mätte det man påstod. Skriv därför ut vilken databas riggen kördes mot — en
 uppmätt grönska utan känt underlag är en åsikt med siffror i.
 
+## En ATTRAPP kan inte pröva den FÖR GROVA riktningen
+
+Varje spärr behöver två kontroller: att samma anrop två gånger ger EN effekt,
+och att två LEGITIMA anrop ger TVÅ. Den andra är den som fångar en för grov
+nämnare — och den **går inte att köra mot en attrapp**.
+
+Skälet är mekaniskt. En attrapp returnerar det den blev tillsagd att returnera,
+oavsett `where`. Tappar avgränsningen ett fält ser attrappen ingen skillnad, och
+provet förblir grönt. Uppmätt 2026-09-02 på fakturafönstret: med `total` och
+`dueDate` borttagna ur frågan förblev "två legitima anrop ger två effekter"
+GRÖN, medan bara ett separat prov på själva `where`-satsen föll.
+
+Det gör den mockade varianten till en kontroll som mäter **halva frågan** utan
+att säga det — samma form som en vakt med tom mängd: den kan inte falla för det
+den påstår sig skydda mot.
+
+**Gör ett av två:**
+
+1. **Kör kontrollen mot riktig Postgres.** Då utvärderas `where` på riktigt, och
+   de två riktningarna faller ihop i ett prov: två rader som skiljer sig i ett
+   fält ska ge två effekter, och gör det bara om fältet finns i avgränsningen.
+2. **Eller skriv i provet att det bara mäter den ena riktningen**, och peka ut
+   vad som bär den andra. En separat assertion på `where`-satsens innehåll
+   duger — men bara om någon vet att det är den som gör jobbet.
+
+Det som ALDRIG duger är att låta det stå som "de två obligatoriska
+kontrollerna" när bara den ena kan falla.
+
 ## En första beskrivning är ett STICKPROV, inte en uppräkning
 
 Det man först ser är det fall man råkade snubbla på. Det är nästan alltid sant
