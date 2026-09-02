@@ -3560,13 +3560,6 @@ model RentNoticeLine {
   @@index([rentNoticeId])
 }
 
-// Append-only krav-/leveranslogg för en hyresavi. Speglar InvoiceEvent: ingen
-// updatedAt, Restrict mot avin → revisionsspåret kan aldrig raderas (BFL
-// 1999:1078, append-only-principen 5 kap 5 §). Detta är dokumentationsstommen
-// för "inkasso-ready": varje utskick, leveranskvittens, betalning, påminnelse,
-// ränteackumulering och kravbeslut loggas här. PR 1 skapar tabellen; PR 2–5
-// skriver händelser. Org-scopas via rentNotice.organizationId (ingen egen
-// organizationId-kolumn behövs — avin äger relationen).
 /// VILKEN SORTS UTSKICK. Avgör vilken händelsetyp utfallet får — och den
 /// skillnaden är inte kosmetisk: INV-B läser påminnelsens leverans som beviset
 /// att det lagstadgade kravet nått gäldenären (#651).
@@ -3589,15 +3582,15 @@ enum RentNoticeSendKind {
 /// det SENASTE utskicket kan ha ett utfall, vilket är precis det påstående som
 /// visade sig osant.
 ///
-/// ── VARFÖR DEN INTE ÄR APPEND-ONLY ──────────────────────────────────────────
+/// ── DEN HÄR TABELLEN UPPDATERAS, OCH DET ÄR HELA SKÄLET TILL ATT DEN FINNS ──
 ///
 /// `messageId` är okänt när raden skapas — det är leverantörens svar, och det
-/// kommer efter köandet. Raden MÅSTE därför kunna uppdateras en gång, och det
-/// är hela skälet till att den inte bor i `RentNoticeEvent`, som har
-/// append-only-triggern från #585.
+/// kommer efter köandet. Raden MÅSTE därför kunna uppdateras en gång. Just
+/// därför kan den inte bo i `RentNoticeEvent`, som bär skrivspärren
+/// `append_only_rent_notice_event` från #585 och avvisar varje UPDATE.
 ///
-/// UTFALLET bor däremot kvar i händelseloggen, append-only som förut. Den här
-/// tabellen bär identiteten, inte historien.
+/// UTFALLET bor däremot kvar i händelseloggen, oförändrat och oföränderligt.
+/// Den här tabellen bär IDENTITETEN, inte historien — och därför ingen spärr.
 model RentNoticeSend {
   id           String             @id @default(uuid())
   rentNoticeId String
@@ -3617,6 +3610,13 @@ model RentNoticeSend {
   @@index([rentNoticeId, createdAt])
 }
 
+// Append-only krav-/leveranslogg för en hyresavi. Speglar InvoiceEvent: ingen
+// updatedAt, Restrict mot avin → revisionsspåret kan aldrig raderas (BFL
+// 1999:1078, append-only-principen 5 kap 5 §). Detta är dokumentationsstommen
+// för "inkasso-ready": varje utskick, leveranskvittens, betalning, påminnelse,
+// ränteackumulering och kravbeslut loggas här. PR 1 skapar tabellen; PR 2–5
+// skriver händelser. Org-scopas via rentNotice.organizationId (ingen egen
+// organizationId-kolumn behövs — avin äger relationen).
 model RentNoticeEvent {
   id           String              @id @default(uuid())
   rentNoticeId String

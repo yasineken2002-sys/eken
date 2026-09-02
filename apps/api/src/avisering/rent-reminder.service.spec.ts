@@ -306,8 +306,15 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
     const prisma = {
       organization: { findUnique: jest.fn().mockResolvedValue(org) },
       rentNotice: { findFirst: jest.fn().mockResolvedValue(notice), update },
-      // alreadySent-kontrollen (type SENT) → ingen tidigare → fortsätt.
+      // alreadySent-kontrollen → ingen tidigare händelse → fortsätt.
       rentNoticeEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+      // #656: utskicket är en egen rad. `findFirst` null = inget tidigare
+      // utskick, alltså inget i luften och ingenting att avstå för.
+      rentNoticeSend: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'send-1' }),
+        update: jest.fn().mockResolvedValue({}),
+      },
     }
     const rentNoticeEvents = { record: jest.fn().mockResolvedValue({ id: 'ev-1' }) }
     const pdfService = { generateFromHtml: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4')) }
@@ -519,14 +526,23 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
   function makeInkassoService(
     opts: {
       notice?: Record<string, unknown>
-      events?: { type: string }[]
+      /**
+       * #656: `sendId` speglar kolumnen, som är NOT NULL med tom default. Utan
+       * fältet i attrappen jämför grinden mot `undefined` och svarar "ingen
+       * verifierad leverans" oavsett vad provet ville mäta — en attrapp som inte
+       * liknar tabellen mäter attrappen.
+       */
+      events?: { type: string; sendId?: string }[]
       claimCount?: number
       crystallizeThrows?: boolean
       ocrOutstanding?: number
     } = {},
   ) {
     const notice = opts.notice ?? completeNotice()
-    const events = opts.events ?? [{ type: 'SENT' }, { type: 'EMAIL_DELIVERED' }]
+    const events = (opts.events ?? [{ type: 'SENT' }, { type: 'EMAIL_DELIVERED' }]).map((e) => ({
+      sendId: '',
+      ...e,
+    }))
     const fresh = {
       dueDate: new Date('2026-06-01'),
       totalAmount: new Decimal(8000),
@@ -548,6 +564,9 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
       $transaction: jest.fn().mockImplementation((cb: (t: typeof tx) => unknown) => cb(tx)),
       rentNotice: { findFirst: jest.fn().mockResolvedValue(notice) },
       rentNoticeEvent: { findMany: jest.fn().mockResolvedValue(events) },
+      // #656: INV-B läser det SENASTE utskickets utfall. null = inget utskick
+      // registrerat, alltså den gamla semantiken via sentinelen `''`.
+      rentNoticeSend: { findFirst: jest.fn().mockResolvedValue(null) },
     }
     const rentNoticeEvents = { record: jest.fn().mockResolvedValue({ id: 'ev-1' }) }
     const crystallizeInterest = opts.crystallizeThrows
