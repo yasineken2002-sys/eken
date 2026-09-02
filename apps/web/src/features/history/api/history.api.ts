@@ -1,5 +1,7 @@
 import { get } from '@/lib/api'
 
+import type { ActorKind, EventActor } from '@/components/ui/ActorTag'
+
 /**
  * HISTORIKENS FORM — speglad, inte importerad.
  *
@@ -22,17 +24,21 @@ import { get } from '@/lib/api'
  * från API:t syns i flödet samma dag den finns, utan att någon rör den här filen.
  */
 
-/** Vem utförde. `UNKNOWN` = inte belagt: källan saknar aktörskolumn, ELLER så
- * skiljer kolumnen inte människa från AI-assistent. Se ActorTag. */
-export type HistoryActorKind = 'HUMAN' | 'AGENT' | 'SYSTEM' | 'UNKNOWN'
+/**
+ * Vem utförde. `UNKNOWN` = INTE BELAGT — ett av två: källan saknar
+ * aktörskolumn, eller så skiljer kolumnen inte människa från AI-assistent
+ * (G1 steg 1). Se `ActorTag`, som bär hela förklaringen.
+ *
+ * FORMEN BOR HOS `ActorTag`, som renderar den för både historiken och avins
+ * händelselogg (#648). Alias och inte en egen definition: två strukturellt
+ * identiska typer som ska följas åt men kan ändras var för sig är två sanningar
+ * som råkar stämma överens just nu.
+ */
+export type HistoryActorKind = ActorKind
 
 export type HistorySeverity = 'INFO' | 'NOTICE' | 'WARNING' | 'CRITICAL'
 
-export interface HistoryActor {
-  kind: HistoryActorKind
-  id: string | null
-  label: string | null
-}
+export type HistoryActor = EventActor
 
 export interface HistorySubject {
   kind: 'LEASE' | 'UNIT' | 'PROPERTY' | 'TENANT' | 'INVOICE' | 'RENT_NOTICE' | 'DOCUMENT' | 'NONE'

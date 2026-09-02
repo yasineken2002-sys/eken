@@ -253,3 +253,73 @@ export function getRentNoticeCreditPreview(id: string, amount?: number) {
 export function createRentNoticeCredit(id: string, dto: CreateRentNoticeCreditInput) {
   return post<CreateRentNoticeCreditResult>(`/avisering/${id}/credit`, dto)
 }
+
+// ── #648: AVINS HÄNDELSELOGG OCH VARFÖR DEN STÅR STILL ─────────────────────
+//
+// Typerna nedan är API:ets `RentNoticeEvent` och `RentCollectionStatus`
+// uttryckta över nätet: `Date` blir ISO-sträng, resten är oförändrat. Samma
+// form och samma skäl som `features/history/api/history.api.ts` — historiken
+// har ännu ingen delad kontraktsyta, och en spegling här är ärligare än en
+// halvdelad typ i `@eken/shared`.
+
+/** Alla 17 typerna. `string` och inte en union — se resonemanget i historiken. */
+export type RentNoticeEventType = string
+
+export interface RentNoticeEvent {
+  id: string
+  rentNoticeId: string
+  type: RentNoticeEventType
+  actorType: 'USER' | 'SYSTEM' | 'WEBHOOK' | 'AI'
+  actorId: string | null
+  actorLabel: string | null
+  payload: Record<string, unknown>
+  /** ISO-8601. */
+  createdAt: string
+}
+
+/**
+ * Varför avin står still. `state` säger vad kravtrappans cron kommer att göra;
+ * `missing` säger vad som är fel — och fylls ALLTID, oavsett `state`.
+ */
+export type RentCollectionState =
+  | 'NOT_APPLICABLE'
+  | 'REMINDERS_OFF'
+  | 'PAUSED_STALE'
+  | 'WAITING'
+  | 'BLOCKED'
+  | 'READY'
+
+export interface RentCollectionStatus {
+  state: RentCollectionState
+  collectionStage: RentCollectionStage
+  missing: string[]
+  daysOverdue: number
+  thresholdDays: number
+  daysUntilEvaluation: number
+  freshness: {
+    stale: boolean
+    through: string | null
+    ageDays: number | null
+    thresholdDays: number
+  }
+  /** AVINS och PÅMINNELSENS leverans är SKILDA fält. Se #651. */
+  delivery: {
+    noticeSentAt: string | null
+    noticeDeliveredAt: string | null
+    noticeBouncedAt: string | null
+    reminderSentAt: string | null
+    reminderDeliveredAt: string | null
+    reminderBouncedAt: string | null
+    sendFailedAt: string | null
+  }
+  lastBlockedAt: string | null
+  blockedDays: number | null
+}
+
+export function getRentNoticeEvents(id: string) {
+  return get<RentNoticeEvent[]>(`/avisering/${id}/events`)
+}
+
+export function getRentNoticeCollectionStatus(id: string) {
+  return get<RentCollectionStatus>(`/avisering/${id}/collection-status`)
+}

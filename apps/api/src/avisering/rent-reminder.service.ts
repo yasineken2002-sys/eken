@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
-import { Prisma, RentNoticeType, type RentNoticeEventType } from '@prisma/client'
+import { Prisma, RentNoticeType, type RentNotice, type RentNoticeEventType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
@@ -49,6 +49,56 @@ interface InkassoReadySummary {
 // Avin med precis de relationer INV-B-grinden behöver för att avgöra om
 // dokumentationen är komplett (gäldenär + fordringsägare). Org redan verifierad
 // av anroparen (findFirst på organizationId) innan grinden körs.
+/**
+ * VARFÖR EN AVI STÅR STILL — cronets tre vägar vidare, som ETT värde.
+ *
+ * `escalateOverdueToInkassoReady` går vidare på tre sätt och bara ett av dem
+ * lämnar ett spår i avins logg. Utan den här uppräkningen är "väntar",
+ * "pausad" och "fastnat" samma tystnad för den som tittar.
+ */
+export type RentCollectionState =
+  /** Kravtrappan är inte i det steg där eskaleringen prövas. */
+  | 'NOT_APPLICABLE'
+  /** Organisationen har stängt av påminnelser helt. */
+  | 'REMINDERS_OFF'
+  /** Betalningsdatan är inaktuell — kravtrappan är PAUSAD (INV-B). */
+  | 'PAUSED_STALE'
+  /** Under tröskeln. Väntar legitimt, och det finns ett datum. */
+  | 'WAITING'
+  /** Tröskeln passerad, men INV-B saknar något. Står stilla. */
+  | 'BLOCKED'
+  /** Inget saknas — nästa körning flyttar fram den. */
+  | 'READY'
+
+export interface RentCollectionStatus {
+  state: RentCollectionState
+  collectionStage: RentNotice['collectionStage']
+  /** INV-B:s saknade krav. FYLLS ALLTID, oavsett `state`. */
+  missing: string[]
+  daysOverdue: number
+  thresholdDays: number
+  daysUntilEvaluation: number
+  freshness: {
+    stale: boolean
+    through: Date | null
+    /** null när organisationen aldrig matat in betalningsdata. */
+    ageDays: number | null
+    thresholdDays: number
+  }
+  /** AVINS och PÅMINNELSENS leverans är SKILDA fält. Se #651. */
+  delivery: {
+    noticeSentAt: Date | null
+    noticeDeliveredAt: Date | null
+    noticeBouncedAt: Date | null
+    reminderSentAt: Date | null
+    reminderDeliveredAt: Date | null
+    reminderBouncedAt: Date | null
+    sendFailedAt: Date | null
+  }
+  lastBlockedAt: Date | null
+  blockedDays: number | null
+}
+
 const INKASSO_READY_INCLUDE = {
   // personalNumberHash, inte personnumret: grinden ska bara veta OM gäldenären
   // har ett registrerat personnummer. Blind-indexet svarar på det utan att en
@@ -1001,6 +1051,131 @@ export class RentReminderService {
       contentHtml,
       hideFooter: true,
     })
+  }
+
+  /**
+   * VARFÖR STÅR DEN HÄR AVIN STILL? — läsande, och samma källa som grinden.
+   *
+   * ── DEN FRÅGA VYN FAKTISKT STÄLLER ──────────────────────────────────────
+   *
+   * En avi i `REMINDED` som ligger kvar ser likadan ut oavsett orsak. Cronet
+   * (`escalateOverdueToInkassoReady`) går vidare på TRE olika sätt, och bara
+   * ETT av dem lämnar ett spår i avins logg:
+   *
+   *     daysOverdue < tröskeln     → `skipped`      INGET event   = väntar
+   *     INV-B saknar något         → NOTE_ADDED     event varje dygn = fastnat
+   *     orgens betalningsdata gammal → `pausedStale` INGET event   = pausad
+   *
+   * Två av tre tillstånd är alltså osynliga i händelseloggen, och det tredje
+   * går bara att skilja från de andra om man vet vad man letar efter. Frånvaro
+   * syns bara om den beräknas mot en förväntan — samma sak som luckorna i
+   * historikvyn.
+   *
+   * ── VARFÖR EN ENDPOINT OCH INTE EN UTRÄKNING I WEBBEN ───────────────────
+   *
+   * INV-B har tio krav. Räknades de om i frontend fanns två uppsättningar som
+   * ska vara lika men kan ändras var för sig, och den som visas för operatören
+   * hade varit den som INTE grindar. `checkInkassoReadiness` är privat och
+   * förblir det; den här metoden är dess enda läsande väg ut.
+   *
+   * ── `missing` FYLLS ALLTID, OAVSETT `state` ─────────────────────────────
+   *
+   * `state` säger vad cronet kommer att göra. `missing` säger vad som är fel.
+   * De är olika frågor: en avi som väntar OCH har en studsad påminnelse ska
+   * visa studsen nu, inte om nio dagar när tröskeln passeras — hela poängen är
+   * att adressen ska hinna rättas innan kravet stannar.
+   *
+   * ── VAD DEN HÄR METODEN INTE KAN SE ─────────────────────────────────────
+   *
+   * Om cronet faktiskt KÖRDE. Den räknar ut vad som skulle hända om det körde
+   * nu. Står jobbet still av något skäl utanför de tre ovan — en kö som inte
+   * dras, en container som inte startar — svarar den ändå `WAITING`. Den
+   * frågan ägs av cron-felsänkan och av `/v1/health`.
+   */
+  async collectionStatus(
+    noticeId: string,
+    organizationId: string,
+    now: Date = new Date(),
+  ): Promise<RentCollectionStatus> {
+    const notice = await this.prisma.rentNotice.findFirst({
+      where: { id: noticeId, organizationId },
+      include: INKASSO_READY_INCLUDE,
+    })
+    if (!notice) throw new NotFoundException('Avi hittades inte')
+
+    const events = await this.prisma.rentNoticeEvent.findMany({
+      where: { rentNoticeId: noticeId },
+      select: { type: true, createdAt: true, payload: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    const debt = await this.rentDebt.outstanding(noticeId, organizationId)
+
+    // SAMMA funktion som grinden kastar på. Inget andra regelverk.
+    const missing = this.checkInkassoReadiness(notice, events, debt.ocrOutstanding)
+
+    const org = notice.organization
+    const freshness = this.freshness.evaluate(org, now)
+    const thresholdDays = org.rentReminderDay + org.rentInkassoDaysAfterReminder
+    const daysOverdue = this.daysSince(notice.dueDate)
+
+    const senaste = (t: RentNoticeEventType): Date | null => {
+      let träff: Date | null = null
+      for (const e of events) if (e.type === t) träff = e.createdAt
+      return träff
+    }
+
+    // Den senaste gången grinden faktiskt vägrade. Cronet skriver en sådan rad
+    // per dygn, så avståndet till i dag är hur länge ärendet stått still.
+    let senastBlockerad: Date | null = null
+    for (const e of events) {
+      if (e.type !== 'NOTE_ADDED') continue
+      const p = e.payload as { action?: unknown }
+      if (p?.action === 'inkasso-ready-blocked') senastBlockerad = e.createdAt
+    }
+
+    const state: RentCollectionState =
+      notice.collectionStage !== 'REMINDED'
+        ? 'NOT_APPLICABLE'
+        : !org.remindersEnabled
+          ? 'REMINDERS_OFF'
+          : freshness.stale
+            ? 'PAUSED_STALE'
+            : daysOverdue < thresholdDays
+              ? 'WAITING'
+              : missing.length > 0
+                ? 'BLOCKED'
+                : 'READY'
+
+    return {
+      state,
+      collectionStage: notice.collectionStage,
+      missing,
+      daysOverdue,
+      thresholdDays,
+      /** Dygn kvar tills cronet prövar avin. 0 när den redan prövas. */
+      daysUntilEvaluation: Math.max(0, thresholdDays - daysOverdue),
+      freshness: {
+        stale: freshness.stale,
+        through: freshness.through,
+        ageDays: Number.isFinite(freshness.ageDays) ? freshness.ageDays : null,
+        thresholdDays: freshness.thresholdDays,
+      },
+      // AVINS leverans och PÅMINNELSENS är SKILDA fält, och det är inte
+      // kosmetik: INV-B läser bara påminnelsens. #651 gav dem egna
+      // händelsetyper just för att en avileverans aldrig ska kunna uppfylla en
+      // grind som betyder "påminnelsen kom fram".
+      delivery: {
+        noticeSentAt: notice.sentAt,
+        noticeDeliveredAt: senaste('NOTICE_EMAIL_DELIVERED'),
+        noticeBouncedAt: senaste('NOTICE_EMAIL_BOUNCED'),
+        reminderSentAt: senaste('REMINDER_SENT'),
+        reminderDeliveredAt: senaste('EMAIL_DELIVERED'),
+        reminderBouncedAt: senaste('EMAIL_BOUNCED'),
+        sendFailedAt: senaste('SEND_FAILED'),
+      },
+      lastBlockedAt: senastBlockerad,
+      blockedDays: senastBlockerad ? this.daysSince(senastBlockerad) : null,
+    }
   }
 }
 
