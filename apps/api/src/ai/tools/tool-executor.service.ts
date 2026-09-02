@@ -2967,26 +2967,58 @@ export class ToolExecutorService {
 
           const pdfBuffer = await this.pdfService.generateFromHtml(html)
 
-          const safeFilename = `kontrakt_${tenantDisplayName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`
-          const storageKey = `documents/${organizationId}/${safeFilename}`
-          const storageUrl = await this.storage.uploadFile(pdfBuffer, storageKey, 'application/pdf')
+          // ── LAGRINGSNYCKELN IDENTIFIERAR AVTALET, INTE HYRESGÄSTEN ──────
+          //
+          // Nyckeln var `kontrakt_<hyresgästnamn>_<datum>.pdf`. Den bar inte
+          // `leaseId`, och en hyresgäst kan ha flera avtal samtidigt — en
+          // lägenhet och en p-plats är vardagsmat i onboarding. Genererades
+          // båda kontrakten samma dag fick de SAMMA nyckel, och utfallet var
+          // inte en dubblett utan en förväxling:
+          //
+          //   avtal A → PUT nyckel K            → Document(leaseId = A)
+          //   avtal B → PUT SAMMA nyckel K      → A:s bytes överskrivna
+          //           → create ger P2002        → ingen rad för B
+          //   kvar:     Document(leaseId = A) serverar B:s PDF. B har inget.
+          //
+          // Fel bindande handling under fel avtal, i hyresgästportalen, utan
+          // felmeddelande till någon. `leaseId` är primärnyckeln för just den
+          // sak kontraktet handlar om, så två avtal kan aldrig dela nyckel.
+          //
+          // Namnet är samtidigt BORTA ur nyckeln, och det är ingen förlust:
+          // `Document.name` bär det redan för människor. Interpolationen var
+          // dessutom osäker — `.replace(/\s+/g, '_')` rör bara blanksteg, så
+          // ett företagsnamn med snedstreck ("Ek/Ström AB") skrev ett extra
+          // katalogsteg in i R2-sökvägen.
+          //
+          // DATUMET STÅR KVAR, men som något annat än förut. Det är inte
+          // längre identiteten — det är ett REGENERERINGSFÖNSTER: en omkörning
+          // samma dag är ett omtag och ska återanvända, en avsiktlig
+          // omgenerering en annan dag är ett nytt dokument. Det är en
+          // avsevärt svagare egenskap än identiteten och står här som det.
+          const storageKey = `documents/${organizationId}/kontrakt_${lease.id}_${new Date()
+            .toISOString()
+            .slice(0, 10)}.pdf`
 
-          // ── EN LOKAL RAD PER OBJEKT (klass B, steg 1) ────────────────────
+          // ── RADEN FÖRST, BYTESEN SEDAN ──────────────────────────────────
           //
-          // R2-uppladdningen ovan ÄR idempotent: nyckeln är härledd ur
-          // (org, hyresgästnamn, datum) och en PUT skriver över. Den lokala
-          // raden var det inte — varje omkörning gav ett nytt `Document` mot
-          // samma objekt, och den äldre pekade då på innehåll som inte längre
-          // fanns.
+          // Ordningen var en del av buggen och inte en detalj. Uppladdningen
+          // låg FÖRE `create`, så bytesen var redan överskrivna när
+          // kollisionen upptäcktes — koden kunde svara "fanns redan" om en
+          // fil den just hade förstört.
           //
-          // Spärren är `@@unique([organizationId, storageKey])`, inte en
-          // findFirst före: en läsning som inte hittar någon rad låser
-          // ingenting (samma lärdom som createNumberedEntry, #597). Kollisionen
-          // fångas och den BEFINTLIGA raden returneras — det är vad en
-          // omkörning ska ge.
+          // Nu tas ANSPRÅKET först. `@@unique([organizationId, storageKey])`
+          // avgör vem som äger nyckeln, och först den som vunnit anspråket
+          // rör R2. En P2002 här betyder därför att INGENTING skrevs — vilket
+          // är vad som gör svaret längre ned sant i stället för hoppfullt.
+          //
+          // `getPresignedUrl` kräver inte att objektet finns; den signerar en
+          // sökväg. Raden kan alltså bära sin `storageUrl` innan uppladdningen.
+          const storageUrl = await this.storage.getPresignedUrl(storageKey)
+
           let dokumentRedanFanns = false
+          let dokumentId: string | null = null
           try {
-            await this.prisma.document.create({
+            const skapat = await this.prisma.document.create({
               data: {
                 organizationId,
                 uploadedById: userId,
@@ -3003,7 +3035,9 @@ export class ToolExecutorService {
                 mimeType: 'application/pdf',
                 category: 'CONTRACT',
               },
+              select: { id: true },
             })
+            dokumentId = skapat.id
           } catch (err) {
             // Bara den HÄR kollisionen. Andra unika index på Document betyder
             // något annat och ska fortsätta upp — samma disambiguering som
@@ -3014,11 +3048,43 @@ export class ToolExecutorService {
             dokumentRedanFanns = true
           }
 
+          if (dokumentId) {
+            // Anspråket är vårt. Nu, och först nu, får bytesen skrivas.
+            try {
+              await this.storage.uploadFile(pdfBuffer, storageKey, 'application/pdf')
+            } catch (err) {
+              // Raden tas bort igen — samma form som PaymentReminder i
+              // send_overdue_reminders. En rad som pekar på ett objekt som
+              // aldrig laddades upp är värre än ingen rad: portalen visar ett
+              // kontrakt som inte går att öppna, och nästa försök blockeras av
+              // sitt eget spöke.
+              await this.prisma.document
+                .delete({ where: { id: dokumentId } })
+                .catch(() => undefined)
+              const msg = err instanceof Error ? err.message : String(err)
+              return {
+                success: false,
+                message:
+                  `Kontraktet genererades men kunde inte sparas i molnlagringen: ${msg}\n` +
+                  'Inget dokument skapades — försök igen.',
+              }
+            }
+          }
+
           return {
             success: true,
             message: [
+              // SVARET FÅR BARA PÅSTÅ DET SOM FAKTISKT HÄNDE. Den gamla
+              // texten sa "fanns redan — ingen dubblett skapades" även i det
+              // fall där en annan fil just hade skrivits över. Ett osant svar
+              // är värre än ett fel: operatören slutar leta.
+              //
+              // Med anspråket före uppladdningen kan grenen bara nås när
+              // ingenting skrevs, och texten säger exakt det — plus VILKET
+              // avtal raden gäller, så att en förväxling går att se.
               dokumentRedanFanns
-                ? `Hyreskontraktet för ${tenantDisplayName} fanns redan (samma namn och datum) — ingen dubblett skapades.`
+                ? `Ett kontrakt för det här avtalet (${lease.contractNumber}) genererades redan i dag. ` +
+                  'Den befintliga filen är orörd och ingen ny skapades.'
                 : `Hyreskontrakt genererat för ${tenantDisplayName}!`,
               `Kontraktet är sparat under Dokument.`,
               `Fastighet: ${lease.unit.property.name}`,

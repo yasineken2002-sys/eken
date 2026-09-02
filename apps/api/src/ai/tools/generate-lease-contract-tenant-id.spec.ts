@@ -72,7 +72,12 @@ function makeExecutor(leaseRow: typeof LEASE | null = LEASE) {
     document: { create: documentCreate },
   }
   const pdfService = { generateFromHtml: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4 test')) }
-  const storage = { uploadFile: jest.fn().mockResolvedValue('https://r2.example/doc.pdf') }
+  // `getPresignedUrl` behövs sedan anspråket tas FÖRE uppladdningen: raden måste
+  // bära sin storageUrl innan några bytes skrivits, och den signeras ur nyckeln.
+  const storage = {
+    uploadFile: jest.fn().mockResolvedValue('https://r2.example/doc.pdf'),
+    getPresignedUrl: jest.fn().mockResolvedValue('https://r2.example/doc.pdf'),
+  }
   const audit = {
     logToolExecution: jest.fn().mockResolvedValue(undefined),
     // Steg 3b: produktionsvägen öppnar och stänger spåret för FÖRE_EFFEKTEN-verktyg.
