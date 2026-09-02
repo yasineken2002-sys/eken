@@ -1430,6 +1430,57 @@ och bokför ingenting. (Så är det för påminnelseavgiften: både `cancelNotic
 den manuella strykningen skriver `reminder-fee-reversal:<id>`.) Skiljer sig
 namnrymderna åt finns inget skydd alls, och då MÅSTE båda riktningarna spärras.
 
+## Återanvänd inte ett fält som svarar på en ANNAN fråga
+
+"Återanvänd, duplicera inte" är husets regel och den är rätt. Men **två fält som
+besvarar två frågor är inte en duplicering**, och att slå ihop dem är ingen
+förenkling — det är en tyst betydelseglidning. Fältet fortsätter heta samma sak,
+fortsätter ha rätt värden, och börjar användas till att svara på något det aldrig
+mätte.
+
+Formen är svår att se därför att återanvändningen ser ut som disciplin. Den som
+lägger till ett fält får förklara sig; den som lånar ett befintligt får beröm.
+
+**Belägget är uppmätt (#680).** Uppdragskön behövde veta vilka verktyg som får bli
+ett uppdrag. `EFFECT_DECLARATIONS` hade redan ett policyfält, `resumptionPolicy`,
+med exakt rätt form — en enum, redan beslutad för alla 30 verktygen. Att låna det
+hade varit en rad kod.
+
+De två fälten svarar på olika frågor:
+
+```
+resumptionPolicy   får en MASKIN köra om detta obevakat efter en krasch?
+uppdragsduglighet  kan en ANDRAEFFEKT uppstå om det utförs senare?
+```
+
+`KRÄVER_MÄNNISKA` betyder att en dubblett skulle synas för någon utanför systemet
+— **inte** att en människa saknas. Ett uppdrag HAR en människas ja. Lånet hade
+alltså tyst stängt ute **elva verktyg som hyresvärden uttryckligen godkänt**, och
+utfallet hade varit en kö som bara accepterade en tredjedel av det den skulle,
+utan att något blev rött.
+
+Talen, mätta samma dag:
+
+```
+uppdragsdugliga (IDEMPOTENT + bärande spår)     23 av 30
+återupptagbara (AUTOMATISK + beslutad + spår)   12
+skillnaden                                      11, alla KRÄVER_MÄNNISKA
+```
+
+Notera att delmängdsrelationen HÖLL — de 12 låg helt inuti de 23. Ett prov på att
+"de överlappar" hade alltså varit grönt, och lånet hade sett bekräftat ut. Det som
+avslöjade det var inte ett tal utan **frågan fälten ställer**.
+
+**Regeln:** innan du lånar ett fält, skriv ut de två frågorna bredvid varandra i
+klartext. Är de olika meningar är det två fält, oavsett hur lika värdemängderna
+ser ut just nu. Och skriv in skillnaden i koden på båda ställena — annars gör
+nästa person lånet du avstod från.
+
+Syskonet åt andra hållet är delade KONSTANTER: `ATERUPPTAGNING_TAK_MS =
+PENDING_ACTION_TTL_MS` är samma defekt i talform, och den upptäcktes först när ett
+tredje ärende var på väg att låna samma tal. Två gränser som ska kunna ändras var
+för sig är inte en gräns.
+
 ## En disambiguering av ett DB-fel åldras — räkna om den vid VARJE nytt villkor
 
 En P2002 måste alltid disambigueras: kodbasen säger på flera ställen att en blind
