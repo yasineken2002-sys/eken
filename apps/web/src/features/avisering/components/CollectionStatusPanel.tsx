@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
+  Send,
   CheckCircle2,
   Clock,
   Info,
@@ -12,7 +13,9 @@ import {
 } from 'lucide-react'
 
 import { formatDate } from '@eken/shared'
+import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
+import { useResendReminder } from '../hooks/useAvisering'
 
 import type { RentCollectionState, RentCollectionStatus } from '../api/avisering.api'
 
@@ -41,6 +44,98 @@ import type { RentCollectionState, RentCollectionStatus } from '../api/avisering
 
 interface Props {
   status: RentCollectionStatus
+  noticeId: string
+}
+
+/**
+ * OMSÄNDNINGEN — och de tre sakerna som måste stå UTSKRIVNA.
+ *
+ * ── 1. DET ÄR SAMMA PÅMINNELSE ──────────────────────────────────────────────
+ *
+ * Ingen ny avgift, ingen omräknad ränta, ingen förflyttning i kravtrappan.
+ * Operatören ska inte behöva gissa det: den som tror att knappen tar en ny
+ * avgift trycker inte, och ärendet står kvar av fel skäl.
+ *
+ * ── 2. VAD SOM HÄNDER OM DEN STUDSAR IGEN ───────────────────────────────────
+ *
+ * Sedan #656 går en andra studs att registrera — före det svaldes den tyst av
+ * ett unikt villkor med fel enhet. Att skriva ut det är skillnaden mellan "jag
+ * vågar prova" och "jag vet inte vad som händer".
+ *
+ * ── 3. ADRESSEN ─────────────────────────────────────────────────────────────
+ *
+ * Ett omförsök till samma trasiga adress ger samma studs. Det var hela skälet
+ * till att omsändningen inte är automatisk, och därför är varningen inte pynt
+ * utan knappens motivering. `null` betyder VET EJ och sägs som det.
+ */
+function Omsandning({ status, noticeId }: Props) {
+  const resend = useResendReminder(noticeId)
+  const { allowed, blockedReason, addressChangedSinceBounce } = status.resend
+
+  if (!allowed) {
+    // Ett tyst borttaget alternativ går inte att skilja från ett som aldrig
+    // fanns. Skälet står, även när knappen inte visas.
+    return blockedReason ? (
+      <p className="mt-3 border-t border-gray-200/70 pt-2.5 text-[12px] text-gray-500">
+        Påminnelsen kan inte skickas om: {blockedReason.toLowerCase()}
+      </p>
+    ) : null
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3">
+      <p className="text-[12.5px] font-semibold text-gray-900">Skicka om påminnelsen</p>
+      <p className="mt-1 text-[12px] leading-relaxed text-gray-600">
+        Det är <strong className="font-semibold">samma påminnelse</strong> som skickas igen — ingen
+        ny påminnelseavgift, ingen ändrad dröjsmålsränta och inget nytt steg i kravtrappan. Avin
+        står kvar som påmind.
+      </p>
+      <p className="mt-1.5 text-[12px] leading-relaxed text-gray-500">
+        Studsar den igen registreras det som ett eget utfall på det nya utskicket, och avin står
+        kvar här tills en leverans är bekräftad.
+      </p>
+
+      {addressChangedSinceBounce === false && (
+        <p className="mt-2.5 flex items-start gap-1.5 rounded-lg bg-amber-50 p-2.5 text-[12px] leading-relaxed text-amber-800">
+          <AlertTriangle size={13} strokeWidth={1.8} className="mt-0.5 flex-shrink-0" />
+          <span>
+            <strong className="font-semibold">Adressen är oförändrad sedan studsen.</strong> Ett
+            omförsök till samma adress ger med stor sannolikhet samma studs. Rätta hyresgästens
+            e-postadress först.
+          </span>
+        </p>
+      )}
+      {addressChangedSinceBounce === null && (
+        <p className="mt-2.5 rounded-lg bg-gray-100 p-2.5 text-[12px] leading-relaxed text-gray-600">
+          Det går inte att avgöra om adressen ändrats sedan studsen — utskicket saknar uppgift om
+          vilken adress brevet gick till. Kontrollera adressen innan du skickar.
+        </p>
+      )}
+
+      {resend.isError && (
+        <p className="mt-2.5 text-[12px] text-red-600">
+          Påminnelsen kunde inte skickas om. Försök igen om en stund.
+        </p>
+      )}
+      {resend.isSuccess && (
+        <p className="mt-2.5 text-[12px] text-emerald-700">
+          Påminnelsen är köad för utskick. Leveransbeskedet dyker upp i händelselistan.
+        </p>
+      )}
+
+      <div className="mt-3 flex justify-end">
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={resend.isPending || resend.isSuccess}
+          onClick={() => resend.mutate()}
+        >
+          <Send size={13} strokeWidth={1.8} />
+          {resend.isPending ? 'Skickar …' : 'Skicka om påminnelsen'}
+        </Button>
+      </div>
+    </div>
+  )
 }
 
 const LAGE: Record<
@@ -150,7 +245,7 @@ function Leverans({
   )
 }
 
-export function CollectionStatusPanel({ status }: Props) {
+export function CollectionStatusPanel({ status, noticeId }: Props) {
   const spec = LAGE[status.state]
   const Ikon = spec.ikon
 
@@ -222,6 +317,10 @@ export function CollectionStatusPanel({ status }: Props) {
           </div>
         </div>
       )}
+
+      {/* VÄGEN UT (#656). Under bristerna: först vad som är fel, sedan vad man
+          kan göra åt det. */}
+      <Omsandning status={status} noticeId={noticeId} />
 
       {/* GRÄNSEN, och den måste stå i gränssnittet och inte bara i ett ärende. */}
       <p className="mt-3 border-t border-gray-200/70 pt-2.5 text-[11.5px] leading-relaxed text-gray-500">

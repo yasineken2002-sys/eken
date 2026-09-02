@@ -1388,21 +1388,23 @@ export class RentReminderService {
       })
       .catch(() => undefined)
 
-    const outcome = await enqueueSafely(
-      () =>
-        this.pdfQueue.enqueue({
-          kind: 'avisering-reminder',
-          organizationId,
-          noticeId,
-        }),
-      {
-        queue: QUEUE_PDF,
-        jobType: 'avisering-reminder',
-        organizationId,
-        logger: this.logger,
-      },
-    )
-    if (isEnqueueProblem(outcome)) {
+    // ── DIREKT ENQUEUE, INTE enqueueSafely ─────────────────────────────────
+    //
+    // `enqueueSafely` finns för vägar som INTE får kasta: en cron ska inte dö
+    // för att kön blinkade, och därför sväljer hjälparen felet och rapporterar
+    // det på sidan om. Den här vägen är motsatsen. En människa står och tittar
+    // på knappen, och ett misslyckat köande MÅSTE nå tillbaka som ett fel —
+    // annars ser omsändningen ut att ha skett.
+    //
+    // Att köa via hjälparen och sedan kasta ändå hade gett två rapporteringar
+    // av samma fel och ett svar som ändå blev ett kast.
+    try {
+      await this.pdfQueue.enqueue({ kind: 'avisering-reminder', organizationId, noticeId })
+    } catch (err) {
+      this.logger.error(
+        `Omsändning av påminnelse kunde inte köas för avi ${noticeId}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      )
       throw new ConflictException(
         'Påminnelsen kunde inte köas för utskick. Försök igen om en stund.',
       )
