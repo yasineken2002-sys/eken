@@ -1,0 +1,16 @@
+-- ADRESSENS FINGERAVTRYCK PÅ UTSKICKET (#656, utlösaren).
+--
+-- Frågan gränssnittet måste kunna svara på: har adressen ändrats sedan
+-- utskicket studsade? Ett omförsök till samma trasiga adress ger samma studs,
+-- och det är hela skälet till att omsändningen kräver en människa.
+--
+-- HASH OCH INTE ADRESSEN. Svaret kräver bara LIKHET, och en andra kopia av
+-- adressen hade blivit ett nytt ställe där persondata bor utan att svara bättre.
+-- Det är en ÄNDRINGSDETEKTOR, inte ett skydd: en e-postadress har för litet
+-- sökrum för att en hash ska skydda den, och det påstås inte.
+--
+-- NULLBAR, till skillnad från `sendId` på RentNoticeEvent. Skillnaden är att den
+-- här kolumnen inte ingår i något unikt villkor, så NULL kan inte tyst ta bort
+-- ett skydd — den betyder "vet ej", och gränssnittet säger det i stället för att
+-- gissa.
+ALTER TABLE "RentNoticeSend" ADD COLUMN "toHash" TEXT;

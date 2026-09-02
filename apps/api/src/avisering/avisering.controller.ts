@@ -225,6 +225,28 @@ export class AviseringController {
     return this.rentReminder.collectionStatus(id, orgId)
   }
 
+  /**
+   * SKICKA OM PÅMINNELSEN (#656).
+   *
+   * SAMMA påminnelse, inte ett nytt trappsteg: ingen ny avgift, ingen omräknad
+   * ränta, ingen förflyttning i kravtrappan. Grindarna bor i tjänsten, inte
+   * här — knappens villkor och skrivvägens villkor får inte vara två
+   * uppsättningar.
+   *
+   * ROLLERNA ÄR SKRIVROLLERNA, inte läsrollerna. Att skicka ett formellt krav
+   * till en hyresgäst är en handling; ACCOUNTANT får se underlaget (`:id/events`,
+   * `:id/collection-status`) men inte utföra den. Samma gräns som `:id/paid`.
+   */
+  @Post(':id/reminder/resend')
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
+  async resendReminder(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: { sub: string },
+  ) {
+    return this.rentReminder.resendReminder(id, orgId, user.sub)
+  }
+
   @Get(':id')
   async findOne(@OrgId() orgId: string, @Param('id') id: string) {
     return this.aviseringService.findOne(id, orgId)
