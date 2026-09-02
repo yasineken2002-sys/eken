@@ -10,6 +10,8 @@ import {
   downloadNoticePdf,
   getRentNoticeCreditPreview,
   createRentNoticeCredit,
+  getRentNoticeEvents,
+  getRentNoticeCollectionStatus,
 } from '../api/avisering.api'
 import type { NoticeFilter, PaymentMethod, CreateRentNoticeCreditInput } from '../api/avisering.api'
 
@@ -126,5 +128,37 @@ export function useCreateRentNoticeCredit() {
       void qc.invalidateQueries({ queryKey: ['avisering'] })
       void qc.invalidateQueries({ queryKey: ['rent-notice-credit-preview'] })
     },
+  })
+}
+
+/**
+ * AVINS HÄNDELSELOGG (#648).
+ *
+ * Egen nyckelrot, inte `['avisering', id, ...]`: en gemensam prefix hade gjort
+ * att `invalidateQueries(['avisering'])` slog ut loggen vid varje listuppdatering
+ * — och loggen ändras bara när något faktiskt händer med avin.
+ */
+export function useRentNoticeEvents(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['rent-notice-events', id],
+    queryFn: () => getRentNoticeEvents(id!),
+    enabled: !!id && enabled,
+  })
+}
+
+/**
+ * VARFÖR STÅR AVIN STILL (#648).
+ *
+ * `staleTime: 0` av samma skäl som krediteringsunderlaget: svaret bär ett
+ * BERÄKNAT tillstånd som kravtrappans cron kan ha flyttat sedan sidan laddades,
+ * och ett gammalt "väntar" om något som numera är blockerat är precis den
+ * tystnad vyn finns för att ta bort.
+ */
+export function useRentNoticeCollectionStatus(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['rent-notice-collection-status', id],
+    queryFn: () => getRentNoticeCollectionStatus(id!),
+    enabled: !!id && enabled,
+    staleTime: 0,
   })
 }
