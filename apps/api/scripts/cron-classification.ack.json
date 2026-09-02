@@ -114,6 +114,10 @@
     "ai/assignments/ai-assignments.service.ts::utgångspass": {
       "class": "A",
       "lockKey": "cron:ai-assignment-expiry"
+    },
+    "ai/resumption/resumption-freshness.service.ts::passera": {
+      "class": "A",
+      "lockKey": "cron:ai-resumption-freshness"
     }
   }
 }
