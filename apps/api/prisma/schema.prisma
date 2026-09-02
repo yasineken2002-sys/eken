@@ -3681,6 +3681,26 @@ model SentMessage {
 
   @@index([organizationId])
   @@index([organizationId, batchId])
+  /// EN RAD PER MOTTAGARE PER UTSKICK — DB-enforcerat, inte en konvention.
+  ///
+  /// Enheten i datan är mottagaren och enheten i vyn är utskicket (se `batchId`
+  /// ovan). Det förhållandet BÄR ett antagande: att en grupp innehåller varje
+  /// mottagare högst en gång. Bryts det räknar vyn fel om något så konkret som
+  /// hur många som fick brevet, och den enda kod som kunde upptäcka det är den
+  /// som just skrev dubbletten.
+  ///
+  /// NULL DELTAR INTE, och det är avsiktligt. Postgres räknar NULL som skilt
+  /// från NULL i ett unikt index, så rader utan `batchId` (allt före #635) och
+  /// utan `tenantId` (organisationsbreven) kan aldrig krocka. Villkoret gäller
+  /// exakt de rader som gör anspråk på att tillhöra ett utskick till en
+  /// hyresgäst — inga andra.
+  ///
+  /// VAD DEN HÄR SPÄRREN INTE ÄR: ett skydd mot att samma BREV skickas två
+  /// gånger. `batchId` genereras per verktygsanrop, så ett nytt anrop är ett
+  /// nytt utskick — vilket är precis vad en operatör som medvetet skickar om
+  /// vill. Frågan "har den här hyresgästen redan fått det här brevet?" är en
+  /// INNEHÅLLSFRÅGA och besvaras inte här.
+  @@unique([organizationId, tenantId, batchId])
 }
 
 // ─── Platform (Super-admin SaaS) ──────────────────────────────────────────────

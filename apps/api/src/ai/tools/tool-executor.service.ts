@@ -62,6 +62,33 @@ const EMAIL_MAX_RECIPIENTS_HARD_LIMIT = 50
 const EMAIL_BULK_THRESHOLD = 5
 const EMAIL_BULK_COOLDOWN_SECONDS = 15 * 60
 
+/**
+ * Betyder den här P2002:an "någon skrev redan raden för den här mottagaren i
+ * det här utskicket"?
+ *
+ * ALDRIG EN BLIND P2002-FÅNGST. `SentMessage` har mer än ett unikt villkor
+ * (primärnyckeln finns alltid), och ett fel som säger något ANNAT än
+ * "mottagaren fanns redan i den här batchen" ska fortsätta upp — en maskerad
+ * krock på fel index blir ett tyst uteblivet brev, alltså precis den defekt
+ * spåret finns för att göra omöjlig. Samma disambiguering som
+ * `isIdempotencyRaceConflict` i accounting.service.ts, av samma skäl.
+ *
+ * Prisma rapporterar `meta.target` som en kolumn-ARRAY (empiriskt verifierat i
+ * #214 — inte den sträng-form äldre kod antar). Sträng-fallbacken finns för
+ * säkerhets skull; en okänd form klassas som "inte vår konflikt" och kastas
+ * vidare, vilket är den fail-closed-riktningen.
+ */
+function ärBatchMottagarkonflikt(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false
+  const target = (err.meta as { target?: unknown } | undefined)?.target
+  const fält = Array.isArray(target)
+    ? target.map(String)
+    : typeof target === 'string'
+      ? [target]
+      : []
+  return fält.includes('batchId') && fält.includes('tenantId')
+}
+
 // ─── Säker fält-whitelisting för AI-svar ─────────────────────────────────────
 // AI:n får ALDRIG se personnummer, lösenordshashar, aktiveringstokens eller
 // andra känsliga fält. Vi använder två lager:
@@ -1664,19 +1691,29 @@ export class ToolExecutorService {
             const bodyHtml =
               `<p>Hej ${escapeHtml(tenantName)},</p>\n` + renderUserParagraphs(personalizedBody)
 
-            // ── SPÅRET KONSULTERAS FÖRE UTSKICKET ────────────────────────
+            // ── TVÅ FRÅGOR, TVÅ MEKANISMER — LÄS BÅDA INNAN DU RÖR NÅGON ─
             //
-            // Enheten är MOTTAGAREN. Kraschar loopen efter 25 av 40 ska en
-            // omkörning skicka till de 15 som återstår och inte till de 25 som
-            // redan fått sitt brev.
+            // Uppslaget här nedan svarar på INNEHÅLLSFRÅGAN: har den här
+            // hyresgästen redan fått DET HÄR BREVET? Det unika indexet
+            // (organizationId, tenantId, batchId), vars konflikt fångas vid
+            // `create` längre ned, svarar på UTSKICKSFRÅGAN: har hyresgästen
+            // redan en rad i DEN HÄR körningen?
             //
-            // ⚠️ APPLIKATIONSNIVÅ, INTE DATABASNIVÅ. Det här är en läsning före
-            // en skrivning, inte ett unikt index. Två SAMTIDIGA körningar kan
-            // därför båda passera kontrollen och båda skicka. Den DB-enforcerade
-            // spärren är ett eget, senare steg — spår först, spärr sedan — och
-            // tills den finns är det här ett skydd mot omkörning, inte mot
-            // kapplöpning. Se PaymentReminder i send_overdue_reminders för hur
-            // formen ser ut när indexet finns.
+            // De är inte utbytbara, och skälet är mätt och inte resonerat:
+            // `batchId` genereras med `randomUUID()` en gång per verktygsanrop
+            // (raden ovanför loopen). En omkörning efter en krasch är ett NYTT
+            // anrop och får därmed ett NYTT batchId — den kan alltså inte
+            // krocka med den avbrutna körningens rader. Indexet är TOCTOU-säkert
+            // men blint för omkörningen; uppslaget ser omkörningen men är en
+            // läsning före en skrivning.
+            //
+            // Det är också skillnaden mot PaymentReminder i
+            // `send_overdue_reminders`, som ser likadan ut men inte är det:
+            // DESS nyckel är `(invoiceId, type)` — härledd ur innehållet och
+            // därför oförändrad över en omkörning. `batchId` är härlett ur
+            // KÖRNINGEN. Ett innehållsburet unikt index även här skulle göra
+            // uppslaget överflödigt; det är ett eget beslut om vad nämnaren
+            // ska vara, inte något den här raden ska avgöra i förbifarten.
             //
             // PENDING RÄKNAS SOM "RÖR INTE". En påbörjad rad betyder antingen
             // "brevet gick aldrig i väg" eller "brevet gick i väg men vi hann
@@ -1703,22 +1740,48 @@ export class ToolExecutorService {
             // bodyn — samma sträng för alla mottagare, vilket är det som gör
             // uppslaget ovan möjligt. Det personaliserade utfallet är en
             // renderingsdetalj, inte meddelandets identitet.
-            const rad = await this.prisma.sentMessage.create({
-              data: {
-                organizationId,
-                tenantId: tenant.id,
-                sentById: userId,
-                subject,
-                content: body,
-                sentToAll: false,
-                recipientCount: 1,
-                successCount: 0,
-                failedCount: 0,
-                status: 'PENDING',
-                batchId,
-              },
-              select: { id: true },
-            })
+            //
+            // KROCKEN FÅNGAS SOM KONFLIKT, INTE FRÅGAS OM FÖRE. Samma skäl som
+            // #597: mellan en `findFirst` och en `create` finns ett fönster där
+            // en andra körning hinner emellan, och båda skriver. Ett unikt index
+            // har inget sådant fönster — exakt en av två samtidiga skrivningar
+            // vinner, och förloraren får P2002 i stället för en dubblettrad.
+            let rad: { id: string }
+            try {
+              rad = await this.prisma.sentMessage.create({
+                data: {
+                  organizationId,
+                  tenantId: tenant.id,
+                  sentById: userId,
+                  subject,
+                  content: body,
+                  sentToAll: false,
+                  recipientCount: 1,
+                  successCount: 0,
+                  failedCount: 0,
+                  status: 'PENDING',
+                  batchId,
+                },
+                select: { id: true },
+              })
+            } catch (err) {
+              if (!ärBatchMottagarkonflikt(err)) throw err
+              // Någon annan skrev raden för samma mottagare i samma utskick.
+              // Den som vann skickar brevet; den som förlorade ska INTE skicka
+              // ett andra. Räknas som överhoppad och redovisas för operatören,
+              // aldrig tyst.
+              //
+              // ⚠️ INGEN NUVARANDE ANROPARE KAN NÅ HIT. `batchId` är färskt per
+              // anrop, så två körningar delar aldrig batch, och loopen besöker
+              // varje hyresgäst en gång. Grenen är alltså inte död kod utan
+              // FÖRUTSÄTTNINGEN för att en återupptagning ska få bära med sig
+              // den avbrutna körningens batchId — den dagen blir det här den
+              // väg som gör omkörningen säker, och den behöver finnas innan,
+              // inte efter. Invarianten prövas mot databasen i
+              // `messages/sent-message-batch-unique.db.spec.ts`.
+              redanSkickat++
+              continue
+            }
 
             try {
               await this.mailService.sendCustomEmail({
