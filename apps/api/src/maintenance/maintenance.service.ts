@@ -259,14 +259,46 @@ export class MaintenanceService {
     return ticket
   }
 
-  async update(id: string, dto: UpdateMaintenanceTicketDto, organizationId: string) {
-    await this.findOne(id, organizationId)
+  /**
+   * `statusNote` skrivs I SAMMA sats som statusändringen, och bara när statusen
+   * FAKTISKT ändras.
+   *
+   * ── VARFÖR DET ERSÄTTER EN SPÄRR ────────────────────────────────────────
+   *
+   * Statusdelen är en ren `update` och därmed idempotent; kommentaren var ett
+   * APPEND, så en omkörning lade den en andra gång. Den blandade posten var
+   * alltså odedupliserbar av sin svagaste halva.
+   *
+   * Alternativet var ett tidsfönster på (ticket, författare, innehåll). Att ta
+   * bort BEHOVET av en spärr slår att bygga den: kommentaren beskriver en
+   * ÖVERGÅNG, och att skriva den när ingen övergång skedde var alltid fel — inte
+   * bara vid en omkörning.
+   *
+   * Nu är den nästlad i samma `update`, alltså atomisk med statusändringen: det
+   * finns inget mellanläge där statusen bytts men noteringen saknas.
+   *
+   * ── VAD DEN INTE STÄNGER ────────────────────────────────────────────────
+   *
+   * Jämförelsen sker mot den status `findOne` läste, inte i satsens `WHERE`.
+   * Två HELT SAMTIDIGA anrop kan därför båda se den gamla statusen och båda
+   * skriva sin notering. Kostnaden är en dubblerad INTERN rad — hyresgästen ser
+   * dem aldrig, portalen filtrerar `isInternal: false` — och den är för liten
+   * för ett lås. Omkörningsfallet, som var det verkliga, är borta.
+   */
+  async update(
+    id: string,
+    dto: UpdateMaintenanceTicketDto,
+    organizationId: string,
+    statusNote?: { content: string; userId?: string | undefined },
+  ) {
+    const befintlig = await this.findOne(id, organizationId)
     await this.assertRelationsInOrg(organizationId, {
       unitId: dto.unitId,
       tenantId: dto.tenantId,
     })
 
     const completedAt = dto.status === 'COMPLETED' ? new Date() : undefined
+    const statusÄndras = dto.status != null && dto.status !== befintlig.status
 
     const result = await this.prisma.maintenanceTicket.update({
       where: { id },
@@ -283,6 +315,19 @@ export class MaintenanceService {
         ...(dto.estimatedCost != null ? { estimatedCost: dto.estimatedCost } : {}),
         ...(dto.actualCost != null ? { actualCost: dto.actualCost } : {}),
         ...(dto.tenantNotified != null ? { tenantNotified: dto.tenantNotified } : {}),
+        // Bara vid en FAKTISK övergång. En omkörning ändrar ingen status och
+        // lägger därför ingen andra notering — det är hela poängen.
+        ...(statusNote && statusÄndras
+          ? {
+              comments: {
+                create: {
+                  content: statusNote.content,
+                  isInternal: true,
+                  ...(statusNote.userId ? { userId: statusNote.userId } : {}),
+                },
+              },
+            }
+          : {}),
       },
       include: {
         property: { select: { id: true, name: true, city: true } },

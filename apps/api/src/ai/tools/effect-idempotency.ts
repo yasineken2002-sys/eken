@@ -42,8 +42,8 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  *
  * Talen, mätta samma dag mot `ACTION_TOOLS` (30 verktyg):
  *
- *     IDEMPOTENT      22   (varav 1 utan effekt alls: export_sie4)
- *     DEDUPLICERBAR    8   (varav 4 har ett spår som faktiskt konsulteras)
+ *     IDEMPOTENT      23   (varav 1 utan effekt alls: export_sie4)
+ *     DEDUPLICERBAR    7   (varav 4 har ett spår som faktiskt konsulteras)
  *     OKÄND            0
  *
  * ── OMRÄKNAT 2026-09-02, EFTER ATT TRE POSTER SLÄPAT EFTER KODEN ────────────
@@ -71,6 +71,14 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  * Och 20/10 → 22/8 med `create_lease` + `create_tenant_and_lease`, som delar
  * `@@unique([unitId, tenantId, startDate])`. En nyckel, två poster — båda
  * KRÄVER_MÄNNISKA, så raden om återupptagbara står still på 11.
+ *
+ * Och 22/8 → 23/7 med `update_maintenance_status`, som blev idempotent UTAN en
+ * spärr: noteringen flyttades in i uppdateringen och villkorades på en faktisk
+ * statusändring. Posten är AUTOMATISK, så återupptagbara går 11 → 12.
+ *
+ * Det är värt att notera vilken sorts lösning som gav mest: att TA BORT behovet
+ * av en spärr kostade ingen migration, inget tal att motivera och ingen gräns
+ * som kan bli för grov.
  *
  * Femman längre ned är däremot INTE kvar. `create_property` fick sitt unika
  * index samma dag, och den posten ÄR AUTOMATISK — den föll bara på att spåret
@@ -992,18 +1000,44 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     ],
   },
 
-  // BLANDAD. Statusdelen är en ren update och idempotent; men addComment
-  // APPENDAR, så en omkörning lägger kommentaren en andra gång. Den svagaste
-  // halvan bestämmer klassen.
+  // VAR BLANDAD, ÄR DET INTE LÄNGRE. Statusdelen var en ren update och därmed
+  // idempotent, men `addComment` APPENDADE — en omkörning lade kommentaren en
+  // andra gång, och den svagaste halvan bestämde klassen.
+  //
+  // ── LÖST GENOM ATT TA BORT BEHOVET, INTE GENOM EN SPÄRR ──────────────────
+  //
+  // Noteringen är nu nästlad i SAMMA `update` och villkorad på att statusen
+  // faktiskt ändras. Kommentaren beskriver en ÖVERGÅNG, så att skriva den när
+  // ingen övergång skedde var alltid fel — inte bara vid en omkörning.
+  //
+  // Alternativet var ett tidsfönster på (ticket, författare, innehåll). Att ta
+  // bort behovet av en spärr slår att bygga den: det finns inget tal att sätta,
+  // ingen gräns att motivera och ingenting som kan bli för grovt.
+  //
+  // ⚠️ VAD MEKANISMEN INTE STÄNGER: jämförelsen sker mot den status `findOne`
+  // läste, inte i satsens WHERE. Två HELT samtidiga anrop kan båda se den gamla
+  // statusen och båda skriva sin notering. Kostnaden är en dubblerad INTERN rad
+  // — portalen läser `isInternal: false`, så hyresgästen ser dem aldrig — och
+  // den är för liten för ett lås. Omkörningsfallet, som var det verkliga, är
+  // borta.
   update_maintenance_status: {
-    effectIdempotency: 'DEDUPLICERBAR',
+    effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'EFFEKT',
-    traceDurability: { plats: 'INGET', livslangd: 'inget spår för kommentaren' },
+    traceDurability: {
+      plats: 'DATABAS_TILLSTÅND',
+      livslangd: 'ärendets egen status — så länge ärendet finns',
+    },
     externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
-    mekanismer: [],
+    mekanismer: [
+      {
+        typ: 'STATUSGRIND',
+        fil: 'apps/api/src/maintenance/maintenance.service.ts',
+        symbol: 'statusÄndras',
+      },
+    ],
   },
 
   // FULL betalning spärras ('Fakturan är redan betald'). Men verktyget tar ett
