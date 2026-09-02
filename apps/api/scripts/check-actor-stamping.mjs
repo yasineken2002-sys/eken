@@ -67,13 +67,25 @@ export function evaluate({ extText, prismaText, kontextText, svepText, schemaTex
   if (!extText.includes('export const actorStampExtension')) {
     säg('actorStampExtension saknas', 'Mekanismen finns inte.')
   }
-  if (!prismaText.includes('actorStampExtension')) {
+  // ── VARFÖR DET INTE RÄCKER ATT NAMNET FÖREKOMMER ──────────────────────────
+  //
+  // Första versionen frågade `prismaText.includes('actorStampExtension')`.
+  // Uppmätt negativ kontroll: med `.$extends(actorStampExtension)` BORTTAGET —
+  // men importraden kvar — var vakten GRÖN. Den mätte att filen NÄMNER
+  // mekanismen, inte att den kopplar på den, och importen ensam räckte.
+  //
+  // Det är precis den defekt CLAUDE.md beskriver: ett villkor som frågar efter
+  // en förekomst i stället för efter en HANDLING. Regeln kräver därför anropet,
+  // på KOD-vyn så att en kommentar som nämner det inte duger.
+  const prismaKod = codeMask(prismaText)
+  if (!/\$extends\(\s*actorStampExtension\s*\)/.test(prismaKod)) {
     säg(
       'PrismaService kopplar inte på actorStampExtension',
       'Utan påkoppling stämplas ingenting — och NULL är ett GILTIGT värde, så ' +
-        'ett totalt haveri ser ut som gammalt data. Det är hela skälet till vakten.',
+        'ett totalt haveri ser ut som gammalt data. Det är hela skälet till vakten. ' +
+        '(En importrad räcker inte: villkoret kräver anropet.)',
     )
-  } else if (!/return\s+this\.\$extends\(|=\s*this\.\$extends\(/.test(prismaText)) {
+  } else if (!/return\s+this\.\$extends\(|=\s*this\.\$extends\(/.test(prismaKod)) {
     säg(
       '$extends-resultatet tas inte till vara',
       '`$extends` returnerar en NY klient. Ett anrop vars returvärde kastas ' +
@@ -234,6 +246,29 @@ function selfTest() {
 
   // R1 — DEN FARLIGASTE: bortkopplad mekanism
   röd('extensionen inte påkopplad', evaluate({ ...BAS, prismaText: 'class PrismaService {}' }), 'kopplar inte på')
+  // DEN UPPMÄTTA BLINDHETEN: anropet borta, importen kvar. Vakten var GRÖN här
+  // innan villkoret bytte från "nämner" till "anropar".
+  röd(
+    'anropet borttaget men IMPORTEN kvar',
+    evaluate({
+      ...BAS,
+      prismaText:
+        "import { actorStampExtension } from './actor-stamp-extension'\n" +
+        'return this.$extends(aiEffectExtension) as unknown as this',
+    }),
+    'kopplar inte på',
+  )
+  // …och motprovet: ett anrop som bara står i en KOMMENTAR duger inte heller.
+  röd(
+    'påkopplingen står bara i en kommentar',
+    evaluate({
+      ...BAS,
+      prismaText:
+        '// return this.$extends(aiEffectExtension).$extends(actorStampExtension)\n' +
+        'return this.$extends(aiEffectExtension) as unknown as this',
+    }),
+    'kopplar inte på',
+  )
   röd('$extends-resultatet kastas', evaluate({ ...BAS, prismaText: 'this.$extends(actorStampExtension)' }), 'tas inte till vara')
   röd('mekanismen saknas helt', evaluate({ ...BAS, extText: 'const annat = {}' }), 'actorStampExtension saknas')
 
