@@ -1715,6 +1715,22 @@ export class ToolExecutorService {
             // uppslaget överflödigt; det är ett eget beslut om vad nämnaren
             // ska vara, inte något den här raden ska avgöra i förbifarten.
             //
+            // ── TAR DU BORT DET HÄR UPPSLAGET FALLER FÖLJANDE PROV ──────────
+            //
+            // Ett unikt index och en `findFirst` bredvid varandra ser ut som en
+            // dubblering, och nästa läsning kommer att vilja ta bort den ena.
+            // Kostnaden är därför MÄTT och skriven här, inte argumenterad — så
+            // att den går att pröva i stället för att tros:
+            //
+            //   ai/tools/compose-email-effect-unit.db.spec.ts
+            //   "KRASCH efter N av M ... omkörningen skickar bara till resten"
+            //     med uppslaget borttaget:  förväntat 3 mottagare, fick 5
+            //
+            // Fem av fem, alltså två hyresgäster som fick brevet en andra gång.
+            // Indexet fångade ingenting, eftersom omkörningen bar ett annat
+            // batchId. Faller det provet när du plockat bort något här, är det
+            // inte provet som är för strikt.
+            //
             // PENDING RÄKNAS SOM "RÖR INTE". En påbörjad rad betyder antingen
             // "brevet gick aldrig i väg" eller "brevet gick i väg men vi hann
             // aldrig skriva ned det", och tillståndet kan inte skilja dem åt.
