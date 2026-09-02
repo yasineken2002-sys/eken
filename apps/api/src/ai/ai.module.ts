@@ -39,6 +39,8 @@ import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.ser
 import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
 import { RedisModule } from '../common/redis/redis.module'
 import { ResumptionService } from './resumption/resumption.service'
+import { AiAssignmentsController } from './assignments/ai-assignments.controller'
+import { AiAssignmentsService } from './assignments/ai-assignments.service'
 
 @Module({
   imports: [
@@ -74,7 +76,12 @@ import { ResumptionService } from './resumption/resumption.service'
     TerminationsModule,
     DocumentsModule,
   ],
-  controllers: [AiAssistantController, AiAttachmentsController, TenantAiController],
+  controllers: [
+    AiAssistantController,
+    AiAttachmentsController,
+    TenantAiController,
+    AiAssignmentsController,
+  ],
   providers: [
     AiAssistantService,
     DataContextService,
@@ -90,6 +97,9 @@ import { ResumptionService } from './resumption/resumption.service'
     LegalRetrievalService,
     // Skuggläge: läser och avgör, utför ingenting. Se resumption.service.ts.
     ResumptionService,
+    // G3: uppdragskön. Skapar, visar, beslutar och låter förfalla — utför
+    // ingenting. Ingen väg härifrån till ToolExecutorService.
+    AiAssignmentsService,
   ],
   exports: [AiAssistantService, AiAuditService, LegalEmbeddingService],
 })

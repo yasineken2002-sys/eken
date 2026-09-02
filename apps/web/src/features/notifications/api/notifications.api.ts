@@ -23,6 +23,7 @@ export type RelatedEntityType =
   | 'DEPOSIT'
   | 'RENT_INCREASE'
   | 'TERMINATION_REQUEST'
+  | 'AI_ASSIGNMENT'
 
 export interface Notification {
   id: string
