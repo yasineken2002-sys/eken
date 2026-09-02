@@ -42,8 +42,8 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  *
  * Talen, mätta samma dag mot `ACTION_TOOLS` (30 verktyg):
  *
- *     IDEMPOTENT      20   (varav 1 utan effekt alls: export_sie4)
- *     DEDUPLICERBAR   10   (varav 4 har ett spår som faktiskt konsulteras)
+ *     IDEMPOTENT      22   (varav 1 utan effekt alls: export_sie4)
+ *     DEDUPLICERBAR    8   (varav 4 har ett spår som faktiskt konsulteras)
  *     OKÄND            0
  *
  * ── OMRÄKNAT 2026-09-02, EFTER ATT TRE POSTER SLÄPAT EFTER KODEN ────────────
@@ -67,6 +67,10 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  *
  * Och 19/11 → 20/10 med `apply_rent_increase`, som fick ett PARTIELLT unikt
  * index. Den är KRÄVER_MÄNNISKA och flyttar därför inte raden om återupptagbara.
+ *
+ * Och 20/10 → 22/8 med `create_lease` + `create_tenant_and_lease`, som delar
+ * `@@unique([unitId, tenantId, startDate])`. En nyckel, två poster — båda
+ * KRÄVER_MÄNNISKA, så raden om återupptagbara står still på 11.
  *
  * Femman längre ned är däremot INTE kvar. `create_property` fick sitt unika
  * index samma dag, och den posten ÄR AUTOMATISK — den föll bara på att spåret
@@ -809,29 +813,53 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [],
   },
 
-  // contractNumber ur sekvens — samma sak som create_invoice.
+  // NYCKELN FINNS I DOMÄNEN: `@@unique([unitId, tenantId, startDate])`. Samma
+  // part, samma lägenhet, samma tillträdesdag två gånger är inte två
+  // hyresförhållanden utan ett registrerat två gånger. `contractNumber` kommer
+  // ur en sekvens och är motsatsen till en idempotensnyckel.
+  //
+  // FYLLER LUCKAN EFTER `lease_unit_active_unique`, som bara gäller ACTIVE —
+  // den här vägen skapar DRAFT, så en omkörning gav två utkast på samma enhet
+  // utan att något villkor kunde se det.
+  //
+  // Nämnaren blir inte för grov: en hyresgäst som flyttar ut och tillbaka in i
+  // samma lägenhet får ett annat startdatum, och en förnyelse ger efterföljaren
+  // `endDate + 1 dag` (autoRenewExpiredFixedTerm).
   create_lease: {
-    effectIdempotency: 'DEDUPLICERBAR',
+    effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
-    traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
     externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
-    mekanismer: [],
+    mekanismer: [
+      { typ: 'UNIKT_INDEX', modell: 'Lease', falt: ['unitId', 'tenantId', 'startDate'] },
+    ],
   },
 
-  // Skapar BÅDE hyresgäst och avtal. Sekvensnumret gäller avtalet; hyresgästen
-  // har ingen unik nyckel på namn/e-post.
+  // Skapar BÅDE hyresgäst och avtal, och BÅDA halvorna är nu nycklade.
+  //
+  // Hyresgästhalvan var redan täckt och det stod fel här: `Tenant` HAR
+  // `@@unique([organizationId, email])`, och verktyget återanvänder en befintlig
+  // hyresgäst i stället för att skapa en andra. Den gamla kommentaren ("ingen
+  // unik nyckel på namn/e-post") beskrev inte koden.
+  //
+  // Avtalshalvan bär nu `@@unique([unitId, tenantId, startDate])`, samma nyckel
+  // som create_lease. Konfliktgrenen ligger FÖRE `isActiveUnitConflict` i
+  // catch:en, eftersom de två villkoren delar `unitId` och ett dubblettavtal
+  // inte är ett aktivt-kontrakt-race.
   create_tenant_and_lease: {
-    effectIdempotency: 'DEDUPLICERBAR',
+    effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
-    traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
     externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
-    mekanismer: [],
+    mekanismer: [
+      { typ: 'UNIKT_INDEX', modell: 'Lease', falt: ['unitId', 'tenantId', 'startDate'] },
+    ],
   },
 
   // NYCKELN FINNS I DOMÄNEN, och den är nu byggd:

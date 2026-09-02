@@ -1356,6 +1356,27 @@ model Lease {
   @@index([unitId])
   @@index([tenantId])
   @@index([status])
+  /// ETT AVTAL PER ENHET, HYRESGÄST OCH TILLTRÄDESDAG.
+  ///
+  /// Samma part, samma lägenhet, samma startdatum två gånger är inte två
+  /// hyresförhållanden — det är ett registrerat två gånger. En hyresgäst som
+  /// flyttar ut och tillbaka in i samma lägenhet får ett annat `startDate`, så
+  /// nämnaren blockerar inte det.
+  ///
+  /// FYLLER LUCKAN EFTER `lease_unit_active_unique`. Det partiella indexet
+  /// gäller bara `status = 'ACTIVE'`, och båda AI-verktygen skapar avtalet som
+  /// DRAFT — `create_lease` stannar där, `create_tenant_and_lease` övergår
+  /// sedan till ACTIVE. En omkörning gav alltså två utkast på samma enhet utan
+  /// att något villkor kunde se det.
+  ///
+  /// INTE PARTIELLT, till skillnad från det. Ett avslutat avtal gör fortfarande
+  /// anspråk på sin tillträdesdag: det ligger i historiken och ska inte kunna
+  /// dubbleras i efterhand.
+  ///
+  /// `organizationId` behövs inte i nyckeln — `unitId` är en UUID och bär
+  /// organisationen genom fastigheten. Samma skäl som `lease_unit_active_unique`
+  /// bara har `unitId`.
+  @@unique([unitId, tenantId, startDate])
 }
 
 // ─── Invoice (Faktura) ────────────────────────────────────────────────────────
