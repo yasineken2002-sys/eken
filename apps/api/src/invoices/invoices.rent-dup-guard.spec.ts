@@ -212,14 +212,14 @@ describe('InvoicesService.create — dubbelfaktureringsspärren, båda tabellern
     // Den obligatoriska andra kontrollen. En verklig andra avgift — annat
     // belopp, annan förfallodag, eller bara senare än fönstret — ska gå fram.
     //
-    // ⚠️ MEN DEN BÄR INTE FÖR-GROV-KONTROLLEN HÄR, och det ska stå utskrivet.
-    // Attrappen returnerar `null` oavsett `where`, så den kan inte se om
-    // avgränsningen tappat ett fält. Uppmätt: med `total` och `dueDate`
-    // borttagna ur signaturen förblir DET HÄR provet grönt — det är
-    // signaturprovet ovan som faller.
+    // FÖR-GROV-RIKTNINGEN MÄTS I `invoice-service-fee-window.db.spec.ts` (#665),
+    // mot riktig Postgres. Där utvärderas `where` av databasen, så två fakturor
+    // som skiljer sig i ETT fält ger två effekter bara om fältet finns i
+    // avgränsningen — ett prov per fält. Det HÄR provet kör tjänstens väg med
+    // attrapp och mäter att en icke-blockerad avgift faktiskt skrivs.
     //
-    // I ett db-prov hade de två fallit ihop. Här bärs för-grov-riktningen av
-    // signaturen, och det är en gräns hos attrappen, inte hos regeln.
+    // De två filerna delar alltså inte ansvar: de mäter olika saker om samma
+    // spärr, och båda behövs.
     const { service, txCreate } = makeService({ existingInvoice: false })
 
     await service.create('org-1', 'user-1', { ...DTO, type: 'SERVICE' } as never)
