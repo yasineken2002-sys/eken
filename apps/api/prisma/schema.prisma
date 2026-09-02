@@ -27,6 +27,18 @@ enum UserRole {
   VIEWER
 }
 
+/// VEM UTFÖRDE en skrivning. NULL (kolumnen saknar värde) betyder OKÄNT —
+/// aldrig människa. Se `common/actor/actor.context.ts`.
+enum ActorKind {
+  /// En inloggad användare eller hyresgäst, som utförde handlingen själv.
+  HUMAN
+  /// AI-assistenten, på en uppdragsgivares uppdrag. Uppdragsgivaren står i
+  /// `AiToolExecution.userId`/`tenantId`; effektposten kopplar rad till körning.
+  AGENT
+  /// Systemet självt: ett schemalagt jobb, en kö, en inkommande webhook.
+  SYSTEM
+}
+
 // Momsredovisningsperiod (SFL 26 kap). Kalenderbaserad. Används enbart för att
 // namnge berörda momsperioder vid bakdaterad debitering (T1.4) — påverkar aldrig
 // bokföring eller verifikat.
@@ -990,6 +1002,18 @@ model Property {
   /// det LAGRADE värdet (och då ändras det operatören skrev) eller en separat
   /// härledd kolumn. Ingetdera behövs för det här problemet: en omkörning
   /// skickar samma sträng, inte en variant av den.
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
+
   @@unique([organizationId, propertyDesignation])
   @@index([organizationId])
 }
@@ -1033,6 +1057,17 @@ model Unit {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
 
   @@unique([propertyId, unitNumber])
   @@index([propertyId])
@@ -1162,6 +1197,17 @@ model Tenant {
 
   aiMessageSubjects AiMessageTenant[]
   aiMemorySubjects  AiMemoryTenant[]
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
 
   @@unique([organizationId, email])
   @@unique([organizationId, ocrNumber])
@@ -1373,6 +1419,18 @@ model Lease {
   // per-org-sekvens). Tidigare globalt @unique gav P2002-kollision mellan
   // organisationer som nådde samma löpnummer. NULL (DRAFT) räknas inte som
   // dubblett i Postgres.
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
+
   @@unique([organizationId, contractNumber])
   /// ETT AVTAL PER ENHET, HYRESGÄST OCH TILLTRÄDESDAG.
   ///
@@ -1524,6 +1582,17 @@ model Invoice {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
 
   @@unique([organizationId, invoiceNumber])
   // H1: OCR:et är unikt PER ORGANISATION — inte globalt, och inte bara "i
@@ -1753,6 +1822,28 @@ model Account {
   parent       Account?           @relation("AccountHierarchy", fields: [parentId], references: [id])
   children     Account[]          @relation("AccountHierarchy")
   journalLines JournalEntryLine[]
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
+
+  // `createdAt` finns för att NULL-mätningen ska fungera på den här tabellen.
+  // Instrumentet som gör "skrivning utanför de tre gränserna" synlig är
+  // `actorKind IS NULL AND createdAt > <migrationens brytpunkt>` — rader före
+  // brytpunkten är legitimt NULL. Utan kolumnen kan Account inte skiljas åt,
+  // och tabellen hade fallit ur mängden av ett skäl som inte har med aktören
+  // att göra. Befintliga rader får migrationens tidpunkt; det gör dem
+  // konservativt till "efter brytpunkten", vilket bara kan ge FALSKA LARM —
+  // aldrig tystnad. Larm som beror på seedade rader är läsbara; tystnad är det
+  // inte.
+  createdAt DateTime @default(now())
 
   @@unique([organizationId, number])
   @@index([organizationId])
@@ -2039,6 +2130,17 @@ model BankTransaction {
   // en allokering per transaktion — en bank-transaktion kan inte allokeras till
   // både en avi och en faktura, och inte till två fakturor.
   invoicePayment     InvoicePayment?
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
 
   @@unique([organizationId, externalId])
   @@index([organizationId])
@@ -2392,6 +2494,18 @@ model Document {
   // Indexet gör paret (extern effekt, lokal rad) till ETT, vilket är det som
   // gör verktyget äkta återupptagningsbart. Verifierat före migrationen: noll
   // grupper med samma (organizationId, storageKey) i både dev och prod.
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
+
   @@unique([organizationId, storageKey])
   @@index([organizationId])
   @@index([propertyId])
@@ -2452,6 +2566,17 @@ model SigningRequest {
   document     Document            @relation("DocumentSigningRequests", fields: [documentId], references: [id], onDelete: Restrict)
   evidence     SignatureEvidence[]
 
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
+
   @@unique([organizationId, idempotencyKey])
   @@index([organizationId])
   @@index([documentId])
@@ -2485,6 +2610,18 @@ model SignatureEvidence {
   signingRequest SigningRequest @relation(fields: [signingRequestId], references: [id], onDelete: Restrict)
 
   // Idempotens: samma leverantörs-transaktion kan aldrig ge två bevisrader.
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
+
   @@unique([organizationId, provider, orderRef])
   @@index([organizationId])
   @@index([signingRequestId])
@@ -2971,6 +3108,7 @@ model AiToolExecution {
   @@index([tenantId, createdAt])
   @@index([toolName])
 }
+
 /// ── ÅTERUPPTAGNINGSMOTORNS SKUGGLÄGE ────────────────────────────────────────
 ///
 /// Motorn är den första komponenten som agerar utan att en människa bett om det
@@ -3032,9 +3170,9 @@ model AiResumptionRun {
   /// Antal påbörjade rader motorn tittade på.
   candidates Int @default(0)
   /// Antal som BEDÖMDES återupptagbara. I skuggläge utfördes de ändå aldrig.
-  resumed Int @default(0)
+  resumed    Int @default(0)
   /// Antal som avstods.
-  abstained Int @default(0)
+  abstained  Int @default(0)
 
   /// { "TOO_OLD": 11, ... } — hela fördelningen, så en körning kan läsas ensam.
   reasonCounts Json @default("{}")
@@ -3210,6 +3348,17 @@ model TerminationRequest {
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   lease        Lease        @relation(fields: [leaseId], references: [id], onDelete: Cascade)
 
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
+
   @@index([organizationId, status])
   @@index([tenantId])
   @@index([leaseId])
@@ -3312,6 +3461,17 @@ model MaintenanceTicket {
   unit         Unit?        @relation(fields: [unitId], references: [id])
   tenant       Tenant?      @relation(fields: [tenantId], references: [id])
   charge       MiscCharge?  @relation(fields: [chargeId], references: [id], onDelete: Restrict)
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
 
   @@unique([organizationId, ticketNumber])
   @@index([organizationId])
@@ -3502,6 +3662,18 @@ model RentNotice {
   // RENT-avier eller två DEPOSIT-avier. Det gamla unique på (org,tenant,month,
   // year) räcker inte när tenant har flera kontrakt eller när vi även lagrar
   // DEPOSIT i samma tabell.
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
+
   @@unique([leaseId, year, month, type])
   // H1: avinummer är unikt PER ORGANISATION, inte globalt. Det gamla globala
   // @unique på noticeNumber gjorde att två orgar inte kunde dela samma
@@ -3799,6 +3971,17 @@ model Inspection {
   lease        Lease?       @relation(fields: [leaseId], references: [id])
   tenant       Tenant?      @relation(fields: [tenantId], references: [id])
 
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
+
   @@index([organizationId])
   @@index([unitId])
   @@index([status])
@@ -3844,6 +4027,17 @@ model MaintenancePlan {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   property     Property     @relation(fields: [propertyId], references: [id])
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
 
   @@index([organizationId])
   @@index([propertyId])
@@ -3968,6 +4162,18 @@ model SentMessage {
   /// nytt utskick — vilket är precis vad en operatör som medvetet skickar om
   /// vill. Frågan "har den här hyresgästen redan fått det här brevet?" är en
   /// INNEHÅLLSFRÅGA och besvaras inte här.
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
+
   @@unique([organizationId, tenantId, batchId])
   @@index([organizationId])
   @@index([organizationId, batchId])
@@ -4250,6 +4456,17 @@ model Deposit {
   invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
   rentNotice   RentNotice?  @relation(fields: [rentNoticeId], references: [id])
 
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
+
   @@index([organizationId])
   @@index([status])
   @@index([tenantId])
@@ -4291,6 +4508,17 @@ model RentIncrease {
   // Bokföringslagen (1999:1078): hyreshöjningar är räkenskapsinformation, bevaras 7 år.
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   lease        Lease        @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
 
   @@index([organizationId])
   @@index([leaseId])
@@ -4467,6 +4695,17 @@ model Meter {
   unit         Unit           @relation(fields: [unitId], references: [id], onDelete: Restrict)
   readings     MeterReading[]
 
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
+
   @@index([organizationId])
   @@index([unitId])
   @@index([status])
@@ -4501,6 +4740,18 @@ model MeterReading {
 
   // Idempotens för API-/import-ingest: samma (mätare, externt avläsnings-id) får
   // inte skapa två rader. MANUAL har null externalId → ej begränsad.
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
+
   @@unique([meterId, externalId])
   @@index([organizationId])
   @@index([meterId])
@@ -4535,6 +4786,17 @@ model ConsumptionTariff {
   updatedAt DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
 
   @@index([organizationId])
   @@index([meterType])
@@ -4584,6 +4846,17 @@ model ConsumptionCharge {
   meterReading   MeterReading    @relation(fields: [meterReadingId], references: [id], onDelete: Restrict)
   invoice        Invoice?        @relation(fields: [invoiceId], references: [id])
   rentNoticeLine RentNoticeLine?
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
 
   @@index([organizationId])
   @@index([leaseId])
@@ -4653,6 +4926,17 @@ model MiscCharge {
   // motpartssidan (MaintenanceTicket.chargeId, RentNoticeLine.miscChargeId).
   maintenanceTicket MaintenanceTicket?
   rentNoticeLine    RentNoticeLine?
+
+  // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Befintliga rader fick NULL i
+  // migrationen och backfillades avsiktligt inte: att stämpla dem HUMAN hade
+  // varit exakt det obelagda påstående hela G1 finns för att ta bort.
+  //
+  // Sätts av `actorStampExtension`, inte av anropsstället. Se
+  // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
+  // efter migrationens brytpunkt görs synligt.
+  actorKind ActorKind?
 
   @@index([organizationId])
   @@index([leaseId])

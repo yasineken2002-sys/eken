@@ -2,6 +2,7 @@ import type { OnModuleInit, OnModuleDestroy } from '@nestjs/common'
 import { Injectable } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
 import { aiEffectExtension } from './ai-effect-extension'
+import { actorStampExtension } from './actor-stamp-extension'
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
@@ -19,7 +20,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      * `as this` behövs för att den utökade klientens typ är strukturellt
      * bredare; ytan vi använder är oförändrad.
      */
-    return this.$extends(aiEffectExtension) as unknown as this
+    // TVÅ EXTENSIONS PÅ $allModels. Ordningen är mätt och står i
+    // `actor-stamp-extension.ts`: den FÖRST tillämpade är ytterst, och de två
+    // delar ingen yta (effekten läser bara resultatet, stämplingen skriver bara
+    // args.data). Den som lägger till en TREDJE ska mäta om samma sak gäller då.
+    return this.$extends(aiEffectExtension).$extends(actorStampExtension) as unknown as this
   }
 
   async onModuleInit() {

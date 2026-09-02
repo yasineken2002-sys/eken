@@ -1659,6 +1659,32 @@ jobs:
       - name: Effect trace wiring guard
         run: node apps/api/scripts/check-effect-trace.mjs
 
+  actor-stamping-guard:
+    name: Actor stamping guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # `actorKind` är NULLBAR och NULL betyder OKÄNT. Det gör ett TOTALT
+      # HAVERI omöjligt att skilja från gammalt data: kopplas stämplingen bort
+      # får varje ny rad NULL, sviten är grön och ingenting kastar. Vakten
+      # fäller om extensionen kopplas bort, om $extends-resultatet kastas, om
+      # modellmängden listas i stället för härleds ur schemat, om gränserna blir
+      # fler eller färre än tre, om någon sätter kolumnen för hand, eller om
+      # NULL-svepet tappar sin brytpunkt.
+      #
+      # Vad den INTE kan se: att stämpeln hamnar i databasen. Det ägs av
+      # `actor-stamp.db.spec.ts`, som kör de tre gränserna mot riktig Postgres.
+      - name: Actor stamping wiring is intact
+        run: node apps/api/scripts/check-actor-stamping.mjs
+
+      # Kanariefåglarna. En vakt som aldrig setts falla är en kommentar.
+      - name: Guard self-test (canaries must fail the guard)
+        run: node apps/api/scripts/check-actor-stamping.mjs --self-test
+
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
@@ -1711,6 +1737,7 @@ jobs:
       - ai-display-masking-guard
       - generated-knowledge-sync-guard
       - schema-drift-guard
+      - actor-stamping-guard
       - e2e
     steps:
       # `always()` får jobbet att KÖRA, men säger ingenting om utfallet — utan

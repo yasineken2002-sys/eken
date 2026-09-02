@@ -10,6 +10,7 @@ import { ScheduleModule } from '@nestjs/schedule'
 import { BullModule } from '@nestjs/bull'
 import { TerminusModule } from '@nestjs/terminus'
 import { PrismaModule } from './common/prisma/prisma.module'
+import { ActorModule } from './common/actor/actor.module'
 import { AuthModule } from './auth/auth.module'
 import { UsersModule } from './users/users.module'
 import { OrganizationsModule } from './organizations/organizations.module'
@@ -161,6 +162,7 @@ import { Psd2Module } from './psd2/psd2.module'
 
     // Core
     PrismaModule,
+    ActorModule,
     StorageModule,
     OcrModule,
     RedisModule,
