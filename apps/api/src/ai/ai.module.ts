@@ -39,6 +39,7 @@ import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.ser
 import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
 import { RedisModule } from '../common/redis/redis.module'
 import { ResumptionService } from './resumption/resumption.service'
+import { ResumptionFreshnessService } from './resumption/resumption-freshness.service'
 import { AiAssignmentsController } from './assignments/ai-assignments.controller'
 import { AiAssignmentsService } from './assignments/ai-assignments.service'
 
@@ -97,6 +98,9 @@ import { AiAssignmentsService } from './assignments/ai-assignments.service'
     LegalRetrievalService,
     // Skuggläge: läser och avgör, utför ingenting. Se resumption.service.ts.
     ResumptionService,
+    // #678: larmar när motorn ovan TYSTNAR. Utan den är "avstod från allt"
+    // och "kördes aldrig" samma utdata.
+    ResumptionFreshnessService,
     // G3: uppdragskön. Skapar, visar, beslutar och låter förfalla — utför
     // ingenting. Ingen väg härifrån till ToolExecutorService.
     AiAssignmentsService,
