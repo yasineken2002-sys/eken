@@ -1340,6 +1340,47 @@ och bokför ingenting. (Så är det för påminnelseavgiften: både `cancelNotic
 den manuella strykningen skriver `reminder-fee-reversal:<id>`.) Skiljer sig
 namnrymderna åt finns inget skydd alls, och då MÅSTE båda riktningarna spärras.
 
+## En disambiguering av ett DB-fel åldras — räkna om den vid VARJE nytt villkor
+
+En P2002 måste alltid disambigueras: kodbasen säger på flera ställen att en blind
+fångst är förbjuden, eftersom den maskerar en krock som betyder något annat.
+Det är rätt, och otillräckligt. **En disambiguering som var entydig när den
+skrevs slutar vara det i samma stund som modellen får ett unikt villkor till.**
+
+Uppmätt (#649). `Lease` hade ETT unikt villkor med `unitId` i sig — det partiella
+`lease_unit_active_unique`. Igenkänningen var därför skriven som:
+
+```ts
+if (Array.isArray(target)) return target.includes('unitId')
+```
+
+Entydigt, så länge det stämde. Med `@@unique([unitId, tenantId, startDate])`
+tillagt rapporterar en dubblettkonflikt `['unitId','tenantId','startDate']` — och
+den gamla raden svarade då **"Lägenheten har redan ett aktivt kontrakt"** om ett
+avtal som inte ens är aktivt.
+
+Notera felets form: inte ett kast, inte ett tyst hopp, utan **en felaktig men
+trovärdig text**. Den är värre än ett rått databasfel, för operatören slutar leta
+— hen tror sig veta vad som hände. Ingen befintlig kontroll kunde se det: felet
+uppstod inte av att någon skrev fel, utan av att en NY rad någon annanstans
+gjorde en gammal avgränsning tvetydig.
+
+**Regeln, i två delar:**
+
+1. **Matcha kolumnMÄNGDEN, inte en delmängd.** `includes('x')` är en delsträngs-
+   matchning i förklädnad. Kräv exakt de fält villkoret består av — `fält.length
+=== 1 && fält[0] === 'unitId'` respektive alla tre för det andra.
+2. **Lägger du ett unikt villkor på en modell: räkna upp de befintliga
+   disambigueringarna för samma modell och pröva dem mot den nya kolumnmängden.**
+   Frågan är inte "fungerar min nya gren" utan "betyder de gamla fortfarande vad
+   de sa igår".
+
+Provet som håller det: mata in ett P2002 per villkor och kräv att exakt EN
+igenkänning svarar sant på var och en. Det kan inte skrivas som ett db-prov om
+de två villkoren träffas från olika kodvägar — då hör det hemma på predikaten,
+som rena funktioner. Så gjordes det i `lease-conflict-disambiguation.spec.ts`,
+och skälet står i filen.
+
 ## Kvalitetschecklist
 
 Kör detta mentalt innan varje feature anses klar:
@@ -1588,6 +1629,43 @@ sättas expanderar till NÅGOT ANNAT än det du menade i stället för att stopp
 körningen. `:?` gör det till ett fel; här går det rakt in i ett villkor. Och
 felmeddelandet finns — det går bara till stderr, i en loop där tjugo andra rader
 skrivs, och exitkoden 127 tillhör en tilldelning ingen kontrollerar.
+
+### Och samma sak i REGEX: `\b` är ASCII-definierat
+
+Syskonet en nivå upp. Skalet kan inte å/ä/ö i variabelnamn; JavaScripts `\b` kan
+det inte i ordgränser. Ordtecken är `[A-Za-z0-9_]`, så mellan ett blanksteg och
+ett `ä` finns INGEN ordgräns — och `\bärNågot\b` matchar därför aldrig, hur väl
+symbolen än står i filen. Uppmätt (#647):
+
+```
+ärLevandeHöjningskonflikt   \b = false   \p{L}-lookaround = true
+levandeHöjningskonflikt     \b = true    \p{L}-lookaround = true
+isActiveUnitConflict        \b = true    \p{L}-lookaround = true
+```
+
+**Bara det INLEDANDE tecknet spelar roll** — ett `ö` mitt i namnet är
+oproblematiskt, vilket gör att felet inte syns förrän någon råkar namnge något
+`är…` eller `över…`. I en kodbas som namnger allt på svenska är det en
+tidsfråga.
+
+Felriktningen är den ofarliga: vakten FÄLLER i stället för att tiga. Men
+utfallet är ett falskt larm som säger "symbolen finns inte" om en symbol som
+finns, och det leder nästa person att leta efter en raderad funktion.
+
+**Regeln: en vakt som slår upp en IDENTIFIERARE ska avgränsa med `\p{L}`, inte
+med `\b`.**
+
+```js
+// FEL — kan aldrig matcha ett namn som börjar på å/ä/ö
+new RegExp(`\\b${esc}\\b`).test(kod)
+
+// RÄTT — täcker allt \b täckte, plus svenska initialer
+new RegExp(`(?<![\\p{L}\\p{N}_$])${esc}(?![\\p{L}\\p{N}_$])`, 'u').test(kod)
+```
+
+Och motprovet får inte tappas bort: en DELSTRÄNG ska fortfarande inte matcha.
+Kanariefåglarna i `check-effect-idempotency.mjs` kräver båda hållen — svensk
+initial hittas, `xärLevandeY` hittas inte.
 
 ### `&` binder till HELA kedjan — inte till ledet före det
 
