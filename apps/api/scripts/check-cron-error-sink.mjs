@@ -43,13 +43,39 @@
  * listas — samma läxa som #600: en uppräkning blir tyst grön den dag något
  * döps om eller läggs till.
  *
+ * ── ANDRA VÄGEN: `@SinkIn`-DEKLARATIONEN (#619) ─────────────────────────────
+ *
+ * Ligger sänkan i den INRE tjänsten ser avgränsningen ovan den inte. Jobbet
+ * pekar då ut målet med `@SinkIn(Tjänst, 'metod')`, och vakten SLÅR UPP det:
+ * pekar deklarationen på en metod som inte når sänkan är den RÖD. En
+ * deklaration som bara lästes hade flyttat kvitteringslistans defekt in i
+ * syntaxen.
+ *
+ * Anropsföljning valdes bort, och det var en MÄTNING och inte en smak — talen
+ * står i `src/common/cron/sink-in.decorator.ts`. Kort: den hade fångat 1 av 2
+ * fall och gjort vaktens svar beroende av redigeringar i andra filer
+ * (`MailService` anropas ur 5 cron-jobb, `LockService` ur 7).
+ *
+ * ── VAD DEN HÄR VAKTEN INTE KAN SE ──────────────────────────────────────────
+ *
+ * Den läser KÄLLTEXT och mäter att mekanismen är PÅKOPPLAD. Den kan inte se att
+ * sänkan gör något i runtime: görs `CronErrorSink.report` till en no-op är den
+ * här vakten fortfarande grön. Det ägs av `cron-error-sink.db.spec.ts` och de
+ * riggar som skriver mot en riktig databas — uppmätt i #605.
+ *
+ * Deklarationsvägen har två egna gränser. Den följer EXAKT ett steg: når målet
+ * sänkan via ännu en nivå syns det inte, och då krävs en `@SinkIn` som pekar
+ * hela vägen. Och den matchar på KLASSNAMN, inte på injektionen — två
+ * exporterade klasser med samma namn i olika filer ger den sista, vilket i dag
+ * inte förekommer men inte är hindrat.
+ *
  * Kör:        node apps/api/scripts/check-cron-error-sink.mjs
  * Självtest:  node apps/api/scripts/check-cron-error-sink.mjs --self-test
  */
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { codeMask, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
+import { blankComments, codeMask, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 import { findCronJobs } from './check-cron-classification.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -286,8 +312,85 @@ export function nårSänkan(text, metod, sänkmetoder, bindningar) {
   return false
 }
 
+/**
+ * `@SinkIn(Klass, 'metod')` för ett givet jobb — HÄRLEDD UR KODEN.
+ *
+ * Formen är densamma som `findCronJobs` använder: dekoratorn måste sitta
+ * INTILL metoden, inte någonstans i filen. En deklaration som får sväva fritt
+ * är en kommentar med parenteser.
+ *
+ * ── TVÅ VYER, FÖR DEN HÄR FRÅGAN BEHÖVER BÅDA ──────────────────────────────
+ *
+ * Deklarationens två halvor bor på olika ställen, och en enda vy gör den ena
+ * oläsbar:
+ *
+ *   KLASSNAMNET  är en identifierare  → bor i KOD      → `codeMask`
+ *   METODNAMNET  är en strängliteral  → bor i STRÄNG   → `blankComments`
+ *
+ * Första lydelsen ställde båda frågorna mot `codeMask`, som blankar
+ * stränginnehåll. Resultatet var inte ett fel utan ett TOMT metodnamn:
+ *
+ *     @SinkIn pekar på `BackupService::         `, som INTE når sänkan
+ *
+ * Vakten hade då fällt varje giltig deklaration — och åt det farligare hållet:
+ * hade uppslaget i stället råkat lyckas på en tom sträng vore den grön om allt.
+ * Fångad av vaktens egen paritetskontroll, inte av läsning.
+ *
+ * KOD-vyn är fortfarande rätt fråga för HITTANDET: en utkommenterad `@SinkIn`
+ * ska inte räknas som en deklaration. Båda vyerna bevarar längd och
+ * radbrytningar, så samma index gäller i båda — därför läses strängen ur
+ * sträng-vyn på kod-vyns träffposition.
+ */
+export function härledSinkIn(text, metod) {
+  const kod = codeMask(text)
+  const strängar = blankComments(text)
+  // IDENT ÄR UNICODE, INTE `\w`. `\w` är ASCII: `InreTjänst` och `Förvaltning`
+  // matchas INTE, och utfallet är inte ett fel utan en deklaration som aldrig
+  // hittas — alltså ett jobb som läses som osänkat. I en kodbas som skriver
+  // svenska är det inte ett hörnfall. Fångat av kanariefågeln nedan, vars
+  // fixturklasser heter `InreTjänst`/`TystTjänst` just därför.
+  const IDENT = '[\\p{L}\\p{N}_$]+'
+  const re = new RegExp(
+    `@SinkIn\\(\\s*(${IDENT})\\s*,\\s*'([^']*)'\\s*\\)[\\s\\S]{0,200}?\\n\\s*(?:private |public )?(?:async )?(${IDENT})\\s*\\(`,
+    'gu',
+  )
+  for (const m of kod.matchAll(re)) {
+    if (m[3] !== metod) continue
+    const iSträng = new RegExp(`@SinkIn\\(\\s*${IDENT}\\s*,\\s*'([^']*)'`, 'u').exec(
+      strängar.slice(m.index, m.index + m[0].length),
+    )
+    // Tom sträng är INTE ett giltigt metodnamn. Utan det här faller vi tillbaka
+    // på ett uppslag mot '' — som antingen fäller allt eller släpper igenom
+    // allt, beroende på hur `metodkropp` råkar bete sig på tomma namn.
+    const metodnamn = iSträng?.[1] ?? ''
+    if (metodnamn.trim() === '') return { tjänst: m[1], metod: '', tomt: true }
+    return { tjänst: m[1], metod: metodnamn }
+  }
+  return null
+}
+
+/**
+ * Klassnamn → filtext, för att kunna SLÅ UPP en deklarations mål.
+ *
+ * Kollisioner: två klasser med samma namn i olika filer ger den sista. Det är
+ * en känd gräns — men en `@SinkIn` som pekar på ett tvetydigt klassnamn är ett
+ * problem i koden innan det är ett problem i vakten, och `tsc` fäller redan en
+ * import som inte går ihop.
+ */
+export function klassindex(filer) {
+  const index = new Map()
+  for (const { text } of filer) {
+    // Samma skäl som i `härledSinkIn`: `\w` är ASCII och hade tappat varje
+    // klass med å/ä/ö — tyst, som en klass som "inte gick att slå upp".
+    for (const m of codeMask(text).matchAll(/export\s+class\s+([\p{L}\p{N}_$]+)/gu)) {
+      index.set(m[1], text)
+    }
+  }
+  return index
+}
+
 /** Kärnan. Exporterad så självtestet kör exakt samma kod som CI. */
-export function evaluate({ jobb, sänkmetoder, sänkklass = 'CronErrorSink', ack }) {
+export function evaluate({ jobb, sänkmetoder, sänkklass = 'CronErrorSink', ack, index = new Map() }) {
   const problem = []
   const poster = ack?.jobs ?? {}
 
@@ -311,7 +414,60 @@ export function evaluate({ jobb, sänkmetoder, sänkklass = 'CronErrorSink', ack
 
   const utan = []
   for (const j of jobb) {
-    if (nårSänkan(j.text, j.metod, sänkmetoder, härledSänkbindningar(j.text, sänkklass))) {
+    const direkt = nårSänkan(j.text, j.metod, sänkmetoder, härledSänkbindningar(j.text, sänkklass))
+
+    // ── DEKLARATIONEN VERIFIERAS, DEN TROS ALDRIG PÅ (#619) ─────────────────
+    //
+    // Hela poängen med att välja deklaration framför anropsföljning faller om
+    // vakten bara läser att den finns. Då har vi flyttat kvitteringslistans
+    // defekt in i syntaxen: ett påstående som gör sig självt sant.
+    const dek = härledSinkIn(j.text, j.metod)
+    let viaDeklaration = false
+    if (dek) {
+      const mål = index.get(dek.tjänst)
+      if (direkt) {
+        problem.push({
+          rule: `\`${j.nyckel}\` har en @SinkIn men når sänkan DIREKT`,
+          detail:
+            'Deklarationen behövs inte och blir en påstådd koppling ingen läser om. ' +
+            'Ta bort @SinkIn — eller, om sänkanropet i cron-metoden är det som ska ' +
+            'bort, ta bort det i stället. Båda kan inte vara rätt: två sänkanrop för ' +
+            'ETT fel ger två rader, och det var skälet till att sänkan lades en nivå ' +
+            'ner från början.',
+        })
+      } else if (dek.tomt) {
+        problem.push({
+          rule: `\`${j.nyckel}\`: @SinkIn har ett TOMT metodnamn`,
+          detail:
+            'Andra argumentet är en tom sträng. Det är nästan alltid en trasig ' +
+            'härledning i vakten och inte i koden — kontrollera att metodnamnet läses ' +
+            'ur STRÄNG-vyn och inte ur kod-vyn, som blankar stränginnehåll.',
+        })
+      } else if (!mål) {
+        problem.push({
+          rule: `\`${j.nyckel}\`: @SinkIn pekar på \`${dek.tjänst}\`, som inte gick att slå upp`,
+          detail:
+            'Ingen `export class ' + dek.tjänst + '` finns i källträdet. Klassen är ' +
+            'omdöpt, borttagen, eller namnet felstavat. En deklaration som pekar i ' +
+            'tomma intet ser ut som en täckning och är ingen.',
+        })
+      } else if (
+        !nårSänkan(mål, dek.metod, sänkmetoder, härledSänkbindningar(mål, sänkklass))
+      ) {
+        problem.push({
+          rule: `\`${j.nyckel}\`: @SinkIn pekar på \`${dek.tjänst}::${dek.metod}\`, som INTE når sänkan`,
+          detail:
+            'Deklarationen är en PEKARE som vakten slår upp — inte ett påstående den ' +
+            'litar på. Målet binder ingen CronErrorSink, eller anropar den inte i just ' +
+            'den metoden.\n   Antingen pekar deklarationen fel, eller så är målet inte ' +
+            'konverterat. Laga det som är fel — kvittera inte.',
+        })
+      } else {
+        viaDeklaration = true
+      }
+    }
+
+    if (direkt || viaDeklaration) {
       // ÅT ANDRA HÅLLET: en kvittering för ett jobb som REDAN nått sänkan är
       // inaktuell. Utan den halvan blir listan en tejpbit ingen tar bort.
       if (poster[j.nyckel]) {
@@ -325,6 +481,9 @@ export function evaluate({ jobb, sänkmetoder, sänkklass = 'CronErrorSink', ack
       continue
     }
     utan.push(j.nyckel)
+    // En TRASIG deklaration har redan gett ett precist fel ovan. Det generiska
+    // "når ingen varaktig felsänka" ovanpå det pekar bort från orsaken.
+    if (dek) continue
     const post = poster[j.nyckel]
     if (!post) {
       problem.push({
@@ -357,12 +516,18 @@ export function evaluate({ jobb, sänkmetoder, sänkklass = 'CronErrorSink', ack
   return problem.map((p) => ({ ...p, utan }))
 }
 
-function allaJobb() {
-  const filer = källfiler().map((p) => ({
+/**
+ * Källträdet som `{ fil, text }`.
+ *
+ * Jobben OCH klassindexet härleds ur SAMMA mängd — annars kan en deklaration
+ * peka på en klass som finns i trädet men inte i indexet, och felet hade blivit
+ * "gick inte att slå upp" om något som finns.
+ */
+function allaFiler() {
+  return källfiler().map((p) => ({
     fil: relative(SRC, p).split('\\').join('/'),
     text: readFileSync(p, 'utf8'),
   }))
-  return findCronJobs(filer)
 }
 
 // ── självtest ────────────────────────────────────────────────────────────────
@@ -469,6 +634,129 @@ const JOBB_KLAMMER_I_PARAMETER = {
   }`,
 }
 
+// ── FIXTURER FÖR @SinkIn-DEKLARATIONEN (#619) ──────────────────────────────
+//
+// Målklasserna först. De är vad `klassindex` slår upp, och skillnaden mellan
+// dem är HELA frågan: den ena når sänkan, den andra gör det inte.
+
+/** Når sänkan. Returtypen bär EN KLAMMER med flit — se #639. */
+const TJÄNST_MED_SÄNKA = {
+  fil: 'x/inre.service.ts',
+  text: `
+export class InreTjänst {
+  constructor(private readonly sink: CronErrorSink) {}
+
+  async gör(): Promise<{ nyckel: string; byte: number }> {
+    try {
+      return await this.arbeta()
+    } catch (err) {
+      await this.sink.report('inre', err)
+      throw err
+    }
+  }
+}`,
+}
+
+/** Når INTE sänkan. Binder ingen CronErrorSink alls. */
+const TJÄNST_UTAN_SÄNKA = {
+  fil: 'x/tyst.service.ts',
+  text: `
+export class TystTjänst {
+  private readonly logger = new Logger(TystTjänst.name)
+
+  async gör(): Promise<void> {
+    try {
+      await this.arbeta()
+    } catch (err) {
+      this.logger.error(String(err))
+    }
+  }
+}`,
+}
+
+/** Deklarationen pekar rätt: målet når sänkan. Ska vara TYST. */
+const JOBB_SINKIN_GILTIG = {
+  fil: 'x/dekl-giltig.service.ts',
+  text: `
+  constructor(private readonly inre: InreTjänst) {}
+
+  @Cron('0 3 * * *')
+  @SinkIn(InreTjänst, 'gör')
+  async deklGiltig(): Promise<void> {
+    try {
+      await this.inre.gör()
+    } catch {
+      // Redan rapporterat en nivå ner.
+    }
+  }`,
+}
+
+/** DEN AVGÖRANDE: deklarationen pekar på en metod UTAN sänka. Ska vara RÖD. */
+const JOBB_SINKIN_UTAN_SÄNKA = {
+  fil: 'x/dekl-tom.service.ts',
+  text: `
+  constructor(private readonly tyst: TystTjänst) {}
+
+  @Cron('0 3 * * *')
+  @SinkIn(TystTjänst, 'gör')
+  async deklTom(): Promise<void> {
+    try {
+      await this.tyst.gör()
+    } catch {
+      // Ingenting rapporteras någonstans.
+    }
+  }`,
+}
+
+/** Deklarationen pekar på en klass som inte finns. Ska vara RÖD. */
+const JOBB_SINKIN_OKÄND = {
+  fil: 'x/dekl-okand.service.ts',
+  text: `
+  @Cron('0 3 * * *')
+  @SinkIn(FinnsInteTjänst, 'gör')
+  async deklOkand(): Promise<void> {
+    try {
+      await this.gör()
+    } catch {
+      // …
+    }
+  }`,
+}
+
+/** Jobbet når sänkan DIREKT och har ändå en deklaration. Ska vara RÖD. */
+const JOBB_SINKIN_REDUNDANT = {
+  fil: 'x/dekl-redundant.service.ts',
+  text: `
+  constructor(private readonly sink: CronErrorSink, private readonly inre: InreTjänst) {}
+
+  @Cron('0 3 * * *')
+  @SinkIn(InreTjänst, 'gör')
+  async deklRedundant(): Promise<void> {
+    try {
+      await this.inre.gör()
+    } catch (err) {
+      await this.sink.report('redundant', err)
+    }
+  }`,
+}
+
+/** En UTKOMMENTERAD @SinkIn är ingen deklaration. Ska vara RÖD som ett jobb utan sänka. */
+const JOBB_SINKIN_KOMMENTERAD = {
+  fil: 'x/dekl-kommenterad.service.ts',
+  text: `
+  constructor(private readonly tyst: TystTjänst) {}
+
+  @Cron('0 3 * * *')
+  // @SinkIn(InreTjänst, 'gör')
+  async deklKommenterad(): Promise<void> {
+    try {
+      await this.tyst.gör()
+    } catch {
+      // …
+    }
+  }`,
+}
+
 const JOBB_EGEN_REPORT = {
   fil: 'x/egen.service.ts',
   text: `
@@ -555,6 +843,69 @@ function självtest() {
       fynd.map((p) => p.rule).join(' | '))
   }
 
+  // (2c) DEKLARATIONEN — @SinkIn (#619).
+  //
+  // Utan den RÖDA halvan här är deklarationen SJÄLVCERTIFIERANDE: den som
+  // skriver @SinkIn får sitt jobb godkänt genom att påstå något, vilket är exakt
+  // den defekt kvitteringslistan hade — fast med finare syntax och utan kravet
+  // på ett skäl. Den positiva halvan ensam skiljer inte en vakt som VERIFIERAR
+  // målet från en som bara ser att dekoratorn finns.
+  const dekIndex = klassindex([TJÄNST_MED_SÄNKA, TJÄNST_UTAN_SÄNKA])
+  const dekEval = (fixtur) =>
+    evaluate({
+      jobb: findCronJobs([fixtur]),
+      sänkmetoder: riktigaMetoder,
+      ack: { jobs: {} },
+      index: dekIndex,
+    })
+
+  // (a) Metodnamnet läses ur STRÄNG-vyn, inte ur kod-vyn.
+  //
+  // Uppmätt när den här vakten byggdes: med `codeMask` för båda halvorna blev
+  // metodnamnet BLANKAT till mellanslag, och varje giltig deklaration fälldes
+  // med `InreTjänst::      `. Kontrollen finns för att det felet är osynligt i
+  // regelutfallet — det ser ut som ett mål som inte når sänkan.
+  const dekLäst = härledSinkIn(JOBB_SINKIN_GILTIG.text, 'deklGiltig')
+  t('DEKLARATION: metodnamnet läses ur strängvyn, inte blankat',
+    dekLäst?.tjänst === 'InreTjänst' && dekLäst?.metod === 'gör',
+    JSON.stringify(dekLäst))
+
+  // (b) Pekar rätt → tyst.
+  t('DEKLARATION: en @SinkIn som pekar på en metod som NÅR sänkan är tyst',
+    dekEval(JOBB_SINKIN_GILTIG).length === 0,
+    dekEval(JOBB_SINKIN_GILTIG).map((p) => p.rule).join(' | '))
+
+  // (c) DEN AVGÖRANDE: pekar på en metod utan sänka → RÖD.
+  t('DEKLARATION: en @SinkIn som pekar på en metod UTAN sänka är RÖD',
+    dekEval(JOBB_SINKIN_UTAN_SÄNKA).some((p) => p.rule.includes('som INTE når sänkan')),
+    dekEval(JOBB_SINKIN_UTAN_SÄNKA).map((p) => p.rule).join(' | '))
+
+  // (d) Pekar på en klass som inte finns → RÖD. En felstavning ska inte se ut
+  //     som en täckning.
+  t('DEKLARATION: en @SinkIn mot en okänd klass är RÖD',
+    dekEval(JOBB_SINKIN_OKÄND).some((p) => p.rule.includes('inte gick att slå upp')),
+    dekEval(JOBB_SINKIN_OKÄND).map((p) => p.rule).join(' | '))
+
+  // (e) Redundant deklaration → RÖD. Samma skäl som en inaktuell kvittering:
+  //     en lista som bara kan växa slutar betyda något.
+  t('DEKLARATION: en @SinkIn på ett jobb som når sänkan DIREKT är RÖD',
+    dekEval(JOBB_SINKIN_REDUNDANT).some((p) => p.rule.includes('når sänkan DIREKT')),
+    dekEval(JOBB_SINKIN_REDUNDANT).map((p) => p.rule).join(' | '))
+
+  // (f) KOD-halvan: en utkommenterad @SinkIn är ingen deklaration.
+  t('DEKLARATION: en UTKOMMENTERAD @SinkIn räknas inte',
+    härledSinkIn(JOBB_SINKIN_KOMMENTERAD.text, 'deklKommenterad') === null &&
+      dekEval(JOBB_SINKIN_KOMMENTERAD).some((p) => p.rule.includes('når ingen varaktig felsänka')),
+    dekEval(JOBB_SINKIN_KOMMENTERAD).map((p) => p.rule).join(' | '))
+
+  // (g) INTEGRATIONEN MED #639: målets returtyp bär en klammer.
+  //     `TJÄNST_MED_SÄNKA.gör()` returnerar `Promise<{ nyckel; byte }>` — exakt
+  //     formen som gjorde `metodkropp` blind. Går (b) grön är kroppsuttaget
+  //     lagat hela vägen genom deklarationsuppslaget, inte bara i sin egen spec.
+  t('DEKLARATION: målet med KLAMMER I RETURTYPEN slås upp korrekt',
+    nårSänkan(TJÄNST_MED_SÄNKA.text, 'gör', riktigaMetoder,
+      härledSänkbindningar(TJÄNST_MED_SÄNKA.text, 'CronErrorSink')))
+
   // (3) KVITTERINGEN FÄLLER ÅT BÅDA HÅLLEN.
   const kvitterat = evaluate({
     jobb: jobbUtan,
@@ -597,9 +948,14 @@ function självtest() {
   const tom = evaluate({ jobb: [], sänkmetoder: riktigaMetoder, ack: { jobs: {} } })
   t('OMFÅNG: en tom jobbmängd fälls', tom.some((p) => p.rule.includes('NOLL @Cron-jobb')))
 
-  const riktiga = allaJobb()
-  const utanSink = riktiga.filter(
-    (j) => !nårSänkan(j.text, j.metod, riktigaMetoder, härledSänkbindningar(j.text, 'CronErrorSink')),
+  const riktigaFiler = allaFiler()
+  const riktiga = findCronJobs(riktigaFiler)
+  const riktigtIndex = klassindex(riktigaFiler)
+  const direkta = riktiga.filter((j) =>
+    nårSänkan(j.text, j.metod, riktigaMetoder, härledSänkbindningar(j.text, 'CronErrorSink')),
+  )
+  const deklarerade = riktiga.filter(
+    (j) => !direkta.includes(j) && härledSinkIn(j.text, j.metod) !== null,
   )
   // MÄTT mot befee7b: 25 jobb i 14 filer, 13 utan varaktig sänka.
   const MIN_JOBB = 15
@@ -607,9 +963,22 @@ function självtest() {
   const antalFiler = källfiler().length
   t(`OMFÅNG: ${riktiga.length} @Cron-jobb härledda (golv ${MIN_JOBB})`, riktiga.length >= MIN_JOBB)
   t(`OMFÅNG: ${antalFiler} källfiler skannade (golv ${MIN_FILER})`, antalFiler >= MIN_FILER)
+
+  // KANARIEFÅGEL FÖR DEKLARATIONSVÄGEN I DEN RIKTIGA KODBASEN.
+  //
+  // Deklarationsgrenen kan gå blind på precis det sätt som gjorde #619 till ett
+  // ärende: den slutar hitta något och vakten förblir grön, eftersom en
+  // deklaration som inte hittas bara betyder "ingen deklaration". Kräv därför
+  // att mängden inte är TOM — samma form som omfångsgolven ovan.
+  t(
+    `DEKLARATION: ${deklarerade.length} jobb når sänkan via @SinkIn (golv 1)`,
+    deklarerade.length >= 1,
+    deklarerade.map((j) => j.nyckel).join(', '),
+  )
   console.warn(
-    `   mätt nu: ${riktiga.length} jobb, ${riktiga.length - utanSink.length} når sänkan, ` +
-      `${utanSink.length} kvitterade`,
+    `   mätt nu: ${riktiga.length} jobb, ${direkta.length} direkt, ` +
+      `${deklarerade.length} via @SinkIn, ` +
+      `${riktiga.length - direkta.length - deklarerade.length} utan`,
   )
 
   // (6) Kodbasen i paritet med kvitteringen.
@@ -617,6 +986,7 @@ function självtest() {
     jobb: riktiga,
     sänkmetoder: riktigaMetoder,
     ack: JSON.parse(readFileSync(ACK_FILE, 'utf8')),
+    index: riktigtIndex,
   })
   t('kodbasen är i paritet med kvitteringen', bas.length === 0,
     bas.map((p) => p.rule).slice(0, 3).join(' | '))
@@ -626,12 +996,13 @@ function självtest() {
 }
 
 function kör() {
-  const jobb = allaJobb()
+  const filer = allaFiler()
+  const jobb = findCronJobs(filer)
   const sinkText = readFileSync(SINK_FILE, 'utf8')
   const sänkmetoder = härledSänkmetoder(sinkText)
   const sänkklass = härledSänkklass(sinkText)
   const ack = JSON.parse(readFileSync(ACK_FILE, 'utf8'))
-  const problem = evaluate({ jobb, sänkmetoder, sänkklass, ack })
+  const problem = evaluate({ jobb, sänkmetoder, sänkklass, ack, index: klassindex(filer) })
 
   if (problem.length > 0) {
     console.error('\n=== CRON-FEL UTAN VARAKTIG SÄNKA (CI-guard) ===\n')
