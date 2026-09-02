@@ -176,6 +176,26 @@ jobs:
       - name: Verify critical partial DB indexes survive migrations
         run: node apps/api/scripts/check-critical-indexes.mjs
 
+  resumption-shadow-guard:
+    name: Resumption engine shadow-mode guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Återupptagningsmotorn är den första komponenten som agerar utan att en
+      # människa bett om det i samma stund, och den byggdes i SKUGGLÄGE. Det
+      # läget vilar inte på en flagga utan på att koden som utför något inte går
+      # att nå från motorns tjänst — en garanti som är värd noll utan en
+      # kontroll. Vakten frågar KOD (codeMask), inte råtext: en första version
+      # som läste råtext var röd av tjänstens eget docblock.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify the resumption engine has no path to execution
+        run: node apps/api/scripts/check-resumption-shadow.mjs
+
   invoice-number-guard:
     name: Platform invoice-number source guard
     runs-on: ubuntu-latest
@@ -1654,6 +1674,7 @@ jobs:
       - lint
       - test
       - index-guard
+      - resumption-shadow-guard
       - invoice-number-guard
       - sequence-allocation-guard
       - ocr-lookup-fields-guard

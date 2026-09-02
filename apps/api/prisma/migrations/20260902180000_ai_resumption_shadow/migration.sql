@@ -63,7 +63,7 @@ CREATE TABLE "AiResumptionVerdict" (
     "toolName" TEXT NOT NULL,
     "decision" "ResumptionDecision" NOT NULL,
     "reason" "ResumptionReason" NOT NULL,
-    "ageMs" INTEGER NOT NULL,
+    "ageSec" INTEGER NOT NULL,
     "assessments" INTEGER NOT NULL DEFAULT 1,
     "firstSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "lastSeenAt" TIMESTAMP(3) NOT NULL,

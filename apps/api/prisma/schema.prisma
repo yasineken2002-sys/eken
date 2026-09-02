@@ -3056,8 +3056,15 @@ model AiResumptionVerdict {
   decision ResumptionDecision
   reason   ResumptionReason
 
-  /// Radens ålder vid bedömningen. Talet som taket och golvet mättes mot.
-  ageMs Int
+  /// Radens ålder vid bedömningen, i SEKUNDER. Talet som taket och golvet
+  /// mättes mot — omdömet räknar i millisekunder, kolumnen lagrar sekunder.
+  ///
+  /// SEKUNDER AV MEKANIK, INTE AV SMAK. En INT4 rymmer 2 147 483 647, alltså
+  /// 24,9 dygn uttryckt i millisekunder. Produktionens påbörjade rader var
+  /// 37,7 dygn gamla när motorn skrevs, och en ålder i ms hade spillt över och
+  /// fällt hela passet på den allra första raden. Fångat av riggens injicerade
+  /// prod-formsfall, inte av läsning.
+  ageSec Int
 
   /// EN RAD PER KÖRNING, inte per bedömning: `runId` är den SENASTE körning som
   /// bedömde raden, och `assessments` räknar hur många gånger det skett. Utan

@@ -242,13 +242,13 @@ export class ResumptionService {
           toolName: rad.toolName,
           decision: dom.beslut,
           reason: dom.skäl,
-          ageMs: dom.ageMs,
+          ageSec: Math.floor(dom.ageMs / 1000),
         },
         update: {
           runId: run.id,
           decision: dom.beslut,
           reason: dom.skäl,
-          ageMs: dom.ageMs,
+          ageSec: Math.floor(dom.ageMs / 1000),
           assessments: { increment: 1 },
         },
       })
