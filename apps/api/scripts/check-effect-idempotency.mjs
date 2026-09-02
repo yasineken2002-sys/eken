@@ -158,10 +158,36 @@ export function harUniktIndex(schemaSrc, modell, falt) {
 }
 
 /** Står symbolen kvar i filen, i KOD (inte i prosa, inte i en sträng)? */
+/**
+ * Identifierargräns som klarar SVENSKA namn.
+ *
+ * ⚠️ `\b` ÄR ASCII-DEFINIERAT. Ordtecken är `[A-Za-z0-9_]`, så mellan ett
+ * blanksteg och ett `ä` finns ingen ordgräns — `\bärNågot\b` matchar ALDRIG,
+ * hur väl symbolen än står i filen. Uppmätt 2026-09-02:
+ *
+ *     ärLevandeHöjningskonflikt   \b = false   lookaround = true
+ *     levandeHöjningskonflikt     \b = true    lookaround = true
+ *     isActiveUnitConflict        \b = true    lookaround = true
+ *
+ * Bara det INLEDANDE tecknet spelar roll; ett `ö` mitt i namnet är oproblematiskt.
+ * Felriktningen är den ofarliga — vakten FÄLLER i stället för att tiga — men
+ * utfallet är ett falskt larm som ser ut som en raderad symbol, i en kodbas som
+ * namnger saker på svenska. Samma familj som skalvariabler med å/ä/ö.
+ *
+ * Att fixen BÄR är prövat, inte antaget: med rätt sökväg och `\b` återinförd
+ * blir vakten röd på en symbol som finns.
+ *
+ * Lookaround-formen med `\p{L}` täcker allt `\b` täckte och dessutom detta.
+ * Motprovet står i självtestet: en DELSTRÄNG får fortfarande inte matcha.
+ */
+function identifierareFinns(kod, symbol) {
+  const esc = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?<![\\p{L}\\p{N}_$])${esc}(?![\\p{L}\\p{N}_$])`, 'u').test(kod)
+}
+
 function symbolFinns(absFil, symbol) {
   if (!existsSync(absFil)) return false
-  const kod = codeMask(readFileSync(absFil, 'utf8'))
-  return new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(kod)
+  return identifierareFinns(codeMask(readFileSync(absFil, 'utf8')), symbol)
 }
 
 /**
@@ -345,6 +371,17 @@ export function buildEffectCatalog() { throw new Error('x') }`
   const r3ok = granska({ deklarationSrc: dekSann, definitionSrc: falsktIndex, schemaSrc: ÄKTA_SCHEMA, filFinns: allaFinns })
   t('KANARIE R3 (IDEMPOTENT via index som FINNS → fäller inte)',
     !r3ok.fel.some((f) => f.includes('R3')), JSON.stringify(r3ok.fel))
+
+  // KANARIE — IDENTIFIERARGRÄNSEN klarar svenska namn, och bara hela namn.
+  //
+  // Utan den här skulle en symbol som BÖRJAR på å/ä/ö aldrig kunna hittas, och
+  // felet hade sett ut som en raderad symbol. Motproven håller kvar skärpan:
+  // en delsträng och ett annat namn får fortfarande inte matcha.
+  t('KANARIE (svensk initial hittas)', identifierareFinns('function ärLevande(e) {}', 'ärLevande'))
+  t('KANARIE (ASCII-initial hittas fortfarande)', identifierareFinns('function aFoo(e) {}', 'aFoo'))
+  t('KANARIE (svenskt tecken MITT i namnet hittas)', identifierareFinns('const hörn = 1', 'hörn'))
+  t('MOTPROV (delsträng matchar INTE)', !identifierareFinns('const xärLevandeY = 1', 'ärLevande'))
+  t('MOTPROV (annat namn matchar INTE)', !identifierareFinns('const ärDöd = 1', 'ärLevande'))
 
   // KANARIE R3 — symbolen som bara står i PROSA får inte uppfylla regeln.
   const baraKommentar = codeMask('// aiJournalSourceId nämns bara i en kommentar här\nconst x = 1')

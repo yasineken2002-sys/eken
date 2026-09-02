@@ -144,14 +144,22 @@ describe('effektklassificeringen', () => {
     // `@@unique([organizationId, propertyDesignation])`. Den posten är
     // AUTOMATISK och var en av de fem vars spår var INGET — se raden om
     // återupptagbara nedan, som ändras med den.
-    it('19 IDEMPOTENT, 11 DEDUPLICERBAR, 0 OKÄND', () => {
+    //
+    // 19/11 → 20/10: `apply_rent_increase` fick
+    // `rent_increase_lease_effective_live_unique`, ett PARTIELLT index. Den är
+    // KRÄVER_MÄNNISKA och flyttar därför inte raden om återupptagbara.
+    //
+    // Talen rör sig i takt med att nycklar byggs, och det är meningen. Raden
+    // finns för att varje steg ska vara ett beslut — inte för att talet ska
+    // vara stilla.
+    it('20 IDEMPOTENT, 10 DEDUPLICERBAR, 0 OKÄND', () => {
       const c = buildEffectCatalog()
       const antal = (k: string) => c.filter((e) => e.effectIdempotency === k).length
       expect({
         idempotent: antal('IDEMPOTENT'),
         deduplicerbar: antal('DEDUPLICERBAR'),
         okand: antal('OKÄND'),
-      }).toEqual({ idempotent: 19, deduplicerbar: 11, okand: 0 })
+      }).toEqual({ idempotent: 20, deduplicerbar: 10, okand: 0 })
     })
 
     it('30 av 30 poster är policybeslutade — inga luckor kvar', () => {
