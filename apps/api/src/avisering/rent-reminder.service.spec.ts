@@ -343,7 +343,7 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
     return { service, prisma, update, uploadFile, mailService, rentNoticeEvents, notice, org }
   }
 
-  it('laddar upp påminnelse-PDF org-scopat och persisterar nyckel + message-id', async () => {
+  it('laddar upp påminnelse-PDF org-scopat och LÄMNAR korrelationsnyckeln till workern', async () => {
     const { service, update, uploadFile, mailService } = makeSendService()
     await service.processReminderSendJob('org-1', 'rn-1')
 
@@ -355,10 +355,22 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
     )
     expect(mailService.sendRentNoticeReminder).toHaveBeenCalledTimes(1)
 
-    // Två update-anrop: nyckeln (storeReminderPdf) + message-id (efter send).
+    // #651: TJÄNSTEN SKRIVER INTE reminderMessageId. Den skrev tidigare
+    // returvärdet från `sendRentNoticeReminder` dit — och det är Bulls jobId,
+    // inte Resends email_id. Webhooken frågar på email_id, så korrelationen
+    // kunde aldrig träffa och INV-B-grinden kunde aldrig släppa fram en avi.
+    // Nyckeln ägs nu av `persistResendId` i mail.worker.ts, som har det id
+    // Resend gav TILLBAKA. Härkomsten bevakas av message-id-provenance.spec.ts.
     const datas = update.mock.calls.map((c) => c[0].data)
     expect(datas).toContainEqual({ reminderPdfStorageKey: 'reminders/org-1/rn-1.pdf' })
-    expect(datas).toContainEqual({ reminderMessageId: 'resend-msg-1' })
+    expect(datas).not.toContainEqual(
+      expect.objectContaining({ reminderMessageId: expect.anything() }),
+    )
+
+    // …och det ENDA som gör workerns skrivning möjlig: avin skickas med som
+    // korrelation. Utan den vet workern inte vilket objekt id:t hör till.
+    const opts = mailService.sendRentNoticeReminder.mock.calls[0]?.[0] as { rentNoticeId?: string }
+    expect(opts.rentNoticeId).toBe('rn-1')
   })
 
   it('best-effort: R2-fel blockerar INTE utskicket (ingen throw, ingen PDF-nyckel)', async () => {
@@ -367,12 +379,14 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
 
     // Påminnelsen skickas ändå.
     expect(mailService.sendRentNoticeReminder).toHaveBeenCalledTimes(1)
-    // PDF-nyckeln persisteras inte (uppladdningen föll), men message-id gör det.
+    // PDF-nyckeln persisteras inte (uppladdningen föll). Korrelationen skickas
+    // ändå med — ett R2-fel får inte tysta leveransspårningen (#651).
     const datas = update.mock.calls.map((c) => c[0].data)
     expect(datas).not.toContainEqual(
       expect.objectContaining({ reminderPdfStorageKey: expect.any(String) }),
     )
-    expect(datas).toContainEqual({ reminderMessageId: 'resend-msg-1' })
+    const opts = mailService.sendRentNoticeReminder.mock.calls[0]?.[0] as { rentNoticeId?: string }
+    expect(opts.rentNoticeId).toBe('rn-1')
   })
 
   // ── #344: KOPPLINGEN, inte bara hjälparen ───────────────────────────────────
@@ -437,14 +451,25 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
     expect(html).toContain('0,00 kr')
   })
 
-  it('saknat message-id från Resend → ingen reminderMessageId-skrivning', async () => {
-    const { service, update } = makeSendService({ messageId: null })
+  it('SENT-händelsen bär jobId — inte ett fält som kallar sig messageId', async () => {
+    // #651: payload-fältet hette `messageId` och innehöll Bulls jobId. Ett namn
+    // som ljuger om sitt innehåll var halva orsaken till att förväxlingen låg
+    // kvar i produktion under hela funktionens livstid — den som läste
+    // händelseloggen såg ett "messageId" och antog att det var Resends.
+    //
+    // Det HÄR provet kan falla: byter någon tillbaka namnet, eller lägger dit
+    // Resends id på en plats som inte har det, blir det rött. Det gamla provet
+    // ("ingen reminderMessageId-skrivning") är numera tomt sant, eftersom
+    // tjänsten aldrig skriver fältet — en assertion som inte kan falla mäter
+    // ingenting.
+    const { service, rentNoticeEvents } = makeSendService()
     await service.processReminderSendJob('org-1', 'rn-1')
-    const datas = update.mock.calls.map((c) => c[0].data)
-    expect(datas).toContainEqual({ reminderPdfStorageKey: 'reminders/org-1/rn-1.pdf' })
-    expect(datas).not.toContainEqual(
-      expect.objectContaining({ reminderMessageId: expect.any(String) }),
-    )
+
+    const sent = rentNoticeEvents.record.mock.calls.find((c) => c[1] === 'SENT')
+    expect(sent).toBeDefined()
+    const payload = sent?.[4] as Record<string, unknown>
+    expect(payload).toHaveProperty('jobId')
+    expect(payload).not.toHaveProperty('messageId')
   })
 })
 

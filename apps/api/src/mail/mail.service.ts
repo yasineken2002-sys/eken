@@ -213,6 +213,14 @@ export interface SendMaintenanceUpdateOptions extends OrgScopedMailOptions {
 }
 
 export interface SendRentNoticeOptions extends OrgScopedMailOptions {
+  /**
+   * Avin mejlet gäller. OBLIGATORISK, av samma skäl som `organizationId` är
+   * det: fältet blir `correlation`, och `correlation` är det enda som gör att
+   * webhooken kan koppla ett leverans-/bounce-event tillbaka hit. Ett
+   * optionellt fält hade tyst tappat spårningen på varje anropsställe någon
+   * glömmer — och det var precis så #651 kunde ligga i produktion.
+   */
+  rentNoticeId: string
   to: string
   tenantName: string
   ocrNumber: string
@@ -226,6 +234,8 @@ export interface SendRentNoticeOptions extends OrgScopedMailOptions {
 }
 
 export interface SendRentNoticeReminderOptions extends OrgScopedMailOptions {
+  /** Avin påminnelsen gäller — blir `correlation`. Obligatorisk, se #651. */
+  rentNoticeId: string
   to: string
   tenantName: string
   noticeNumber: string
@@ -666,6 +676,7 @@ export class MailService {
         subject: `Betalningspåminnelse — hyresavi ${opts.noticeNumber}`,
         attachments: [{ filename: `paminnelse-${opts.noticeNumber}.pdf`, content: opts.pdfBuffer }],
         ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
+        correlation: { kind: 'rent-notice-reminder', rentNoticeId: opts.rentNoticeId },
       },
     )
   }
@@ -704,6 +715,7 @@ export class MailService {
         subject: `Hyresavi ${opts.noticeNumber} — förfaller ${formatDateSv(opts.dueDate)}`,
         attachments: [{ filename: `hyresavi-${opts.noticeNumber}.pdf`, content: opts.pdfBuffer }],
         idempotencyKey: opts.idempotencyKey,
+        correlation: { kind: 'rent-notice', rentNoticeId: opts.rentNoticeId },
       },
     )
   }

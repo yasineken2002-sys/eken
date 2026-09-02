@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import type { Prisma } from '@prisma/client'
+import type { Prisma, RentNoticeEventType } from '@prisma/client'
 import { Webhook, WebhookVerificationError } from 'svix'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { ResendEventSchema, type ResendEvent } from './resend-event.schema'
@@ -134,7 +134,7 @@ export class ResendWebhookService {
       return
     }
     // Ingen inbjudan matchade — kan vara en hyresavi-påminnelse (inkasso PR 4b₀).
-    const matched = await this.recordReminderDeliveryEvent(emailId, 'EMAIL_DELIVERED', {
+    const matched = await this.recordNoticeDeliveryEvent(emailId, 'DELIVERED', {
       deliveredAt: at.toISOString(),
     })
     if (!matched) this.logCorrelation('delivered', emailId, 0)
@@ -157,7 +157,7 @@ export class ResendWebhookService {
     // ALDRIG den fria bounce-texten. Fritexten kan innehålla mottagarens e-post
     // (PII) och hamnar annars i en append-only logg som inte kan rensas
     // (security-auditor LOW / GDPR lagringsminimering).
-    const matched = await this.recordReminderDeliveryEvent(emailId, 'EMAIL_BOUNCED', {
+    const matched = await this.recordNoticeDeliveryEvent(emailId, 'BOUNCED', {
       bouncedAt: at.toISOString(),
       ...(bounce?.type ? { bounceType: bounce.type } : {}),
       ...(bounce?.subType ? { bounceSubType: bounce.subType } : {}),
@@ -174,27 +174,48 @@ export class ResendWebhookService {
   }
 
   /**
-   * Korrelerar ett Resend-event mot en hyresavi-påminnelse via
-   * RentNotice.reminderMessageId (@unique) och loggar leveransutfallet
+   * Korrelerar ett Resend-event mot en hyresavi och loggar leveransutfallet
    * APPEND-ONLY i RentNoticeEvent. Returnerar true om en avi matchade.
    *
-   * Org-säkert: @unique gör att email_id pekar ut HÖGST en avi, som bär sin egen
-   * organizationId — vi läser aldrig org ur payloaden och kan aldrig skriva till
-   * fel organisations logg.
+   * ── TVÅ NYCKLAR, TVÅ BETYDELSER (#651) ─────────────────────────────────────
+   *
+   * `reminderMessageId` pekar ut PÅMINNELSEN, `noticeMessageId` AVIN. Vilket av
+   * fälten som träffade avgör händelsetypen, och den skillnaden är inte
+   * kosmetisk: INV-B-grinden läser EMAIL_DELIVERED som beviset att det
+   * lagstadgade KRAVET nått gäldenären. Skrev avins leverans samma typ hade den
+   * tyst uppfyllt grinden med fel bevis.
+   *
+   * Org-säkert: båda fälten är @unique, så ett email_id pekar ut HÖGST en avi,
+   * som bär sin egen organizationId — vi läser aldrig org ur payloaden och kan
+   * aldrig skriva till fel organisations logg.
    *
    * Idempotent under Resends at-least-once-leverans: om utfallet redan loggats
-   * skapas ingen dubblett (append-only-loggen får aldrig skrivas över).
+   * skapas ingen dubblett (append-only-loggen får aldrig skrivas över). Det
+   * DB-enforce:as dessutom av det partiella unika indexet
+   * `RentNoticeEvent_delivery_idempotency_key`, som omfattar alla fyra typerna.
    */
-  private async recordReminderDeliveryEvent(
+  private async recordNoticeDeliveryEvent(
     emailId: string,
-    type: 'EMAIL_DELIVERED' | 'EMAIL_BOUNCED',
+    utfall: 'DELIVERED' | 'BOUNCED',
     payload: Prisma.InputJsonObject,
   ): Promise<boolean> {
     const notice = await this.prisma.rentNotice.findFirst({
-      where: { reminderMessageId: emailId },
-      select: { id: true },
+      where: { OR: [{ reminderMessageId: emailId }, { noticeMessageId: emailId }] },
+      select: { id: true, reminderMessageId: true },
     })
     if (!notice) return false
+
+    // VILKET fält som träffade avgör typen. `reminderMessageId` först: träffar
+    // den är det påminnelsen, annars avin. Båda är @unique, så det finns ingen
+    // tvetydighet att lösa upp.
+    const gällerPåminnelsen = notice.reminderMessageId === emailId
+    const type: RentNoticeEventType = gällerPåminnelsen
+      ? utfall === 'DELIVERED'
+        ? 'EMAIL_DELIVERED'
+        : 'EMAIL_BOUNCED'
+      : utfall === 'DELIVERED'
+        ? 'NOTICE_EMAIL_DELIVERED'
+        : 'NOTICE_EMAIL_BOUNCED'
 
     // Snabbväg + rena loggar: hoppa över om utfallet redan loggats.
     const existing = await this.prisma.rentNoticeEvent.findFirst({
