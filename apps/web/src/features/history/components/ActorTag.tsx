@@ -10,11 +10,23 @@ import type { HistoryActor } from '../api/history.api'
  * som människans och systemets, inte i en egen vy som byggs senare. Fältet är
  * platsen som redan står redo.
  *
- * `UNKNOWN` betyder en bestämd sak — KÄLLTABELLEN SAKNAR AKTÖRSKOLUMN — och
- * inte "kanske vem som helst". `Lease`, `Deposit`, `TerminationRequest` och
- * `MiscCharge` bär ingen `createdById`, så API:t vägrar påstå `SYSTEM` om det
- * en människa sannolikt gjorde. Etiketten och dess förklaring speglar det
- * exakt; att rendera tomt i stället hade återinfört gissningen i gränssnittet.
+ * `UNKNOWN` betyder ETT AV TVÅ, och båda är samma påstående: VI VET INTE.
+ *
+ *   1. Källtabellen saknar aktörskolumn. `Lease`, `Deposit`,
+ *      `TerminationRequest` och `MiscCharge` bär ingen `createdById`, så API:t
+ *      vägrar påstå `SYSTEM` om det en människa sannolikt gjorde.
+ *   2. Kolumnen finns, men bevisar inte att en människa skrev raden.
+ *      AI-assistenten skriver UPPDRAGSGIVARENS userId i samma kolumn, så ett
+ *      ifyllt `reportedById` skiljer inte en handskriven felanmälan från en
+ *      AI-skapad. Se `humanOrUnknown` i API:t (G1 steg 1).
+ *
+ * Följden är synlig i gränssnittet: `Människa` visas numera BARA där källan
+ * faktiskt registrerar aktörstypen — fakturans och avins händelseloggar. Rader
+ * som förut sa `Människa` på ett ifyllt id säger nu `Okänd`. Det är en
+ * försämring i utseende och en förbättring i sanningshalt; det varaktiga
+ * aktörsslaget (G1 steg 3) tar tillbaka `Människa` på ett belägg.
+ *
+ * Att rendera tomt i stället hade återinfört gissningen i gränssnittet.
  */
 const KINDS = {
   HUMAN: {
@@ -39,7 +51,8 @@ const KINDS = {
     label: 'Okänd',
     icon: CircleHelp,
     className: 'border border-gray-200 bg-transparent text-gray-400',
-    title: 'Källtabellen saknar aktörskolumn — vem som utförde detta finns inte registrerat.',
+    title:
+      'Vem som utförde detta är inte belagt — källan saknar aktörskolumn, eller så skiljer den inte en användares egen åtgärd från AI-assistentens.',
   },
 } as const
 

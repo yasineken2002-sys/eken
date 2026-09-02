@@ -22,7 +22,8 @@ import { get } from '@/lib/api'
  * från API:t syns i flödet samma dag den finns, utan att någon rör den här filen.
  */
 
-/** Vem utförde. `UNKNOWN` = källan saknar aktörskolumn — inte "osäkert". */
+/** Vem utförde. `UNKNOWN` = inte belagt: källan saknar aktörskolumn, ELLER så
+ * skiljer kolumnen inte människa från AI-assistent. Se ActorTag. */
 export type HistoryActorKind = 'HUMAN' | 'AGENT' | 'SYSTEM' | 'UNKNOWN'
 
 export type HistorySeverity = 'INFO' | 'NOTICE' | 'WARNING' | 'CRITICAL'

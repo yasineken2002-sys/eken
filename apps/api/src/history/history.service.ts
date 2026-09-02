@@ -56,7 +56,74 @@ export class HistoryService {
     // används `all` och inte `allSettled`.
     const perSource = await Promise.all(synliga.map((s) => s.load(q)))
 
-    return perSource.flat().sort((a, b) => b.at.getTime() - a.at.getTime())
+    const händelser = await this.märkAgentskrivna(organizationId, perSource.flat())
+    return händelser.sort((a, b) => b.at.getTime() - a.at.getTime())
+  }
+
+  /**
+   * Uppgraderar `UNKNOWN` till `AGENT` för de rader en AI-körning skrev.
+   *
+   * ── VARFÖR HÄR OCH INTE I KÄLLORNA ──────────────────────────────────────
+   *
+   * Varje `HistoryEvent` bär redan `source: { table, id }` — exakt paret
+   * `AiToolEffect` indexerar på (`@@index([organizationId, entityType,
+   * entityId])`). Uppslaget kan därför göras EN gång för hela svaret i stället
+   * för elva gånger i registret, och en ny källa ärver det utan att någon
+   * kopplar in den.
+   *
+   * ── RIKTNINGEN ÄR ENVÄGS, OCH DET ÄR HELA POÄNGEN ───────────────────────
+   *
+   * En träff BEKRÄFTAR agent. En utebliven träff bekräftar ingenting — se
+   * docblocket vid `humanOrUnknown`: `entityId` är NULL för `updateMany`, och
+   * revisionsskrivningen sväljer tyst. Därför uppgraderar den här funktionen
+   * bara; den nedgraderar aldrig, och den kan aldrig producera `HUMAN`.
+   *
+   * ── VAD DEN INTE SER ────────────────────────────────────────────────────
+   *
+   * Effektposterna gallras MED sin `AiToolExecution` (365 dagar för
+   * action-verktyg, 90 för läsande) medan domänraden lever kvar. En AI-skriven
+   * rad äldre än fristen faller alltså tillbaka till `UNKNOWN` — inte till
+   * `HUMAN`, vilket är skälet att riktningen är enkelriktad. Det varaktiga
+   * faktumet kommer i G1 steg 3.
+   */
+  private async märkAgentskrivna(
+    organizationId: string,
+    händelser: HistoryEvent[],
+  ): Promise<HistoryEvent[]> {
+    // Gruppera per tabell: indexet är (organizationId, entityType, entityId),
+    // så en fråga per tabell använder det medan ett stort OR inte gör det.
+    const perTabell = new Map<string, Set<string>>()
+    for (const h of händelser) {
+      if (h.actor.kind !== 'UNKNOWN') continue
+      if (!h.source?.id) continue
+      const s = perTabell.get(h.source.table) ?? new Set<string>()
+      s.add(h.source.id)
+      perTabell.set(h.source.table, s)
+    }
+    if (perTabell.size === 0) return händelser
+
+    const körningPer = new Map<string, string>()
+    await Promise.all(
+      [...perTabell].map(async ([entityType, ids]) => {
+        const rader = await this.prisma.aiToolEffect.findMany({
+          where: { organizationId, entityType, entityId: { in: [...ids] } },
+          select: { entityId: true, aiToolExecutionId: true },
+        })
+        for (const r of rader) {
+          if (r.entityId) körningPer.set(`${entityType}\u0000${r.entityId}`, r.aiToolExecutionId)
+        }
+      }),
+    )
+    if (körningPer.size === 0) return händelser
+
+    return händelser.map((h) => {
+      if (h.actor.kind !== 'UNKNOWN' || !h.source?.id) return h
+      const exec = körningPer.get(`${h.source.table}\u0000${h.source.id}`)
+      if (!exec) return h
+      // `id` byter betydelse med `kind`: för AGENT är det körningen som
+      // utförde, inte uppdragsgivaren. Typen dokumenterar båda formerna.
+      return { ...h, actor: { kind: 'AGENT' as const, id: exec, label: h.actor.label } }
+    })
   }
 
   async forTenant(
