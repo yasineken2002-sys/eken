@@ -99,11 +99,29 @@ const LOCK_SERVICE = join(SRC, 'common', 'redis', 'lock.service.ts')
  * det som gör en metod till en låsmetod, och det är inte något man kan råka
  * uppfylla. Uppmätt mot 084363b: `runWithLock` och `runIfUnlocked`.
  */
+/**
+ * IDENTIFIERARE ÄR UNICODE, INTE `\\w` (#640).
+ *
+ * `\\w` är ASCII i JavaScript: `[A-Za-z0-9_]`. Ett metodnamn med å, ä eller ö
+ * matchar inte — och utfallet är inte ett fel utan TYSTNAD. Ett `@Cron` som heter
+ * `städaGammalt` härleds då inte alls, vilket betyder att jobbet inte är
+ * OFULLSTÄNDIGT mätt utan INTE MÄTT: både klassificeringsvakten och
+ * felsänkevakten förblir gröna, eftersom mängden de mäter aldrig innehöll det.
+ *
+ * Omfångsgolvet fångar det inte — det fäller bara om mängden nästan försvinner,
+ * inte om den tappar ETT jobb.
+ *
+ * Kodbasen namnger redan metoder på svenska (mätt 2026-09-02: `hämtaBefintligAvi`,
+ * `avierPerMånad`, `underhållsplan`, `utrustningLivslängd`), och CLAUDE.md
+ * föreskriver svenska i allt utom skalvariabler. Det är alltså inte ett hörnfall
+ * utan en fråga om när.
+ */
+const IDENT = '[\\p{L}\\p{N}_$]+'
+
 export function härledLåsmetoder(lockServiceText) {
   const kod = codeMask(lockServiceText)
-  return [...kod.matchAll(/\basync\s+(\w+)\s*(?:<[^>]*>)?\s*\(\s*key\s*:\s*string\s*,/g)].map(
-    (m) => m[1],
-  )
+  const re = new RegExp(`\\basync\\s+(${IDENT})\\s*(?:<[^>]*>)?\\s*\\(\\s*key\\s*:\\s*string\\s*,`, 'gu')
+  return [...kod.matchAll(re)].map((m) => m[1])
 }
 
 /** Regex-säker version av en godtycklig sträng. */
@@ -178,7 +196,10 @@ function källfiler(dir = SRC, ut = []) {
 export function findCronJobs(filer) {
   const jobb = []
   for (const { fil, text } of filer) {
-    const re = /@Cron\(([^)]*)\)[\s\S]{0,500}?\n\s*(?:private |public )?(?:async )?(\w+)\s*\(/g
+    const re = new RegExp(
+      `@Cron\\(([^)]*)\\)[\\s\\S]{0,500}?\\n\\s*(?:private |public )?(?:async )?(${IDENT})\\s*\\(`,
+      'gu',
+    )
     let m
     // Härleds ur KOD: en utkommenterad @Cron-dekorator är inget jobb, och ett
     // `@Cron` i ett kodexempel i prosa ska inte kräva en klassificering.
@@ -349,6 +370,25 @@ const FIL_B = {
   @Cron('0 2 * * *')
   async jobbB(): Promise<void> {}`,
 }
+/**
+ * KANARIEFÅGELN FÖR IDENTIFIERARFORMEN (#640).
+ *
+ * Ett `@Cron` vars metodnamn bär å, ä eller ö. Med `\w` — ASCII — härleddes det
+ * INTE ALLS, och utfallet var tystnad: jobbet fanns inte i mängden, båda
+ * cron-vakterna förblev gröna, och ingen klassificering krävdes för ett jobb som
+ * kör i produktion.
+ *
+ * Namnet är med FLIT svenskt. Kodbasen namnger redan metoder så (mätt: fyra
+ * stycken), och CLAUDE.md föreskriver svenska i allt utom skalvariabler.
+ */
+const FIL_SVENSKT_NAMN = {
+  fil: 'x/svensk.service.ts',
+  text: `
+  // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ──
+  @Cron('0 3 * * *')
+  async städaGammaltUnderlag(): Promise<void> {}`,
+}
+
 const ACK_OK = {
   jobs: {
     'x/a.service.ts::jobbA': { class: 'A', lockKey: 'cron:a' },
@@ -376,6 +416,39 @@ function selfTest() {
   }
   const jobb = findCronJobs([FIL_A, FIL_B])
   const LÅSMETODER = härledLåsmetoder(readFileSync(LOCK_SERVICE, 'utf8'))
+
+  // ── KANARIEFÅGEL: IDENTIFIERARFORMEN (#640) ────────────────────────────────
+  //
+  // Utan den här slinker ett @Cron med svenskt metodnamn igenom OSYNLIGT — inte
+  // ofullständigt mätt utan INTE MÄTT. Omfångsgolvet fångar det inte; det fäller
+  // bara om mängden nästan försvinner, inte om den tappar ETT jobb.
+  const svenska = findCronJobs([FIL_SVENSKT_NAMN])
+  if (svenska.length === 1 && svenska[0].metod === 'städaGammaltUnderlag') {
+    console.log('✅ härleder ett @Cron med svenskt metodnamn (städaGammaltUnderlag)')
+  } else {
+    fail(
+      `IDENTIFIERARFORM: ett @Cron med å/ä/ö härleddes inte — ` +
+        `fick ${svenska.length} jobb (${svenska.map((j) => j.metod).join(',') || 'inga'}). ` +
+        `Är regexen tillbaka på \\w (ASCII)?`,
+    )
+  }
+  // …och det ska KRÄVA en klassificering som alla andra, inte bara synas.
+  //
+  // ⚠️ ACKEN ÄR ICKE-TOM, OCH REGELN NAMNGES. Första lydelsen skickade
+  // `{ jobs: {} }` och lät `röd()` acceptera vilken regel som helst. Den var grön
+  // — men i negativkontrollen (IDENT tillbaka till `\w`) blev den grön av FEL
+  // regel: med noll härledda jobb fällde "NOLL @Cron-jobb härleddes" i stället,
+  // och provet såg ut att hålla medan det mätte något annat. Ett prov som kan bli
+  // grönt av en annan orsak än sin egen mäter inte det dess namn påstår.
+  röd(
+    'ett svensknamngivet @Cron utan klassificering fälls',
+    evaluate({
+      jobb: svenska,
+      ack: { jobs: { 'x/annan.service.ts::annat': { class: 'B', invariant: 'x' } } },
+      låsmetoder: LÅSMETODER,
+    }),
+    'saknar klassificering',
+  )
   const bas = { jobb, ack: ACK_OK, låsmetoder: LÅSMETODER }
 
   // ── DEN DELADE SKANNERNS KANARIEFÅGLAR (metavaktens R2) ──────────────────
