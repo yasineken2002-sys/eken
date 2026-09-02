@@ -122,7 +122,7 @@ abstract class MailWorkerBase {
     // kastar inte (det skulle trigga en onödig Bull-retry). Resultatet blir
     // bara att statusen fastnar på "skickad" tills nästa utskick.
     if (correlation && resendId) {
-      await this.persistResendId(correlation, resendId)
+      await this.persistResendId(correlation, resendId, job.data.organizationId)
     }
   }
 
@@ -139,7 +139,11 @@ abstract class MailWorkerBase {
     return !org || org.transactionalEmailsDisabled
   }
 
-  private async persistResendId(correlation: MailCorrelation, resendId: string): Promise<void> {
+  private async persistResendId(
+    correlation: MailCorrelation,
+    resendId: string,
+    organizationId: string,
+  ): Promise<void> {
     try {
       switch (correlation.kind) {
         case 'tenant-invite':
@@ -153,8 +157,11 @@ abstract class MailWorkerBase {
         // `MailQueue.enqueue` — som är Bulls jobId, inte Resends email_id.
         // Webhooken frågar på email_id, så korrelationen kunde aldrig träffa.
         case 'rent-notice':
-          await this.prisma.rentNotice.update({
-            where: { id: correlation.rentNoticeId },
+          // ORG-SCOPAD som påminnelsevägen nedan. Två former för samma sak blir
+          // en glidning: den ena skulle förr eller senare "förenklas" till den
+          // andra, och då är det den oscopade som blir mönstret.
+          await this.prisma.rentNotice.updateMany({
+            where: { id: correlation.rentNoticeId, organizationId },
             data: { noticeMessageId: resendId },
           })
           break
@@ -170,13 +177,19 @@ abstract class MailWorkerBase {
           // Ordningen spelar roll: utskicksraden först. Faller den andra
           // skrivningen har korrelationen ändå landat där utfallet ska hamna.
           if (correlation.sendId) {
-            await this.prisma.rentNoticeSend.update({
-              where: { id: correlation.sendId },
+            // ORG-SCOPAD, och det syns på plats. `sendId` kommer ur jobbets egen
+            // payload och är inte klientindata — men en skrivning på ett id vars
+            // ägarskap inte prövas i samma funktion går inte att granska där den
+            // står. `updateMany` i stället för `update`: en icke-träff blir noll
+            // rader i stället för ett kast, och ett kast här hade utlöst en
+            // onödig Bull-retry på ett mejl som redan är skickat.
+            await this.prisma.rentNoticeSend.updateMany({
+              where: { id: correlation.sendId, rentNotice: { organizationId } },
               data: { messageId: resendId },
             })
           }
-          await this.prisma.rentNotice.update({
-            where: { id: correlation.rentNoticeId },
+          await this.prisma.rentNotice.updateMany({
+            where: { id: correlation.rentNoticeId, organizationId },
             data: { reminderMessageId: resendId },
           })
           break

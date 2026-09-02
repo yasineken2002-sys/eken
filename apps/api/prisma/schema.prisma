@@ -3670,6 +3670,10 @@ model RentNoticeEvent {
   @@index([rentNoticeId, createdAt])
   @@index([rentNoticeId, type])
   @@index([createdAt])
+  /// Webhooken slår upp händelser för ETT utskick (#656). Deklarerad här och
+  /// inte bara i migrationen: ett index som Prisma inte känner till genererar
+  /// en DROP i nästa diff, vilket schema-drift-vakten fäller — med rätta.
+  @@index([sendId])
 }
 
 // Bankavstämnings-härdning PR 1 — granulär betalningsallokering på en hyresavi.

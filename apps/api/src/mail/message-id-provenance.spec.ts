@@ -71,7 +71,11 @@ function fejkPrisma(): {
       organization: {
         findUnique: jest.fn().mockResolvedValue({ transactionalEmailsDisabled: false }),
       },
-      rentNotice: { update: rentNoticeUpdate },
+      // #656: skrivningen är org-scopad, alltså `updateMany` — en icke-träff
+      // blir noll rader i stället för ett kast som hade utlöst en Bull-retry på
+      // ett mejl som redan är skickat.
+      rentNotice: { updateMany: rentNoticeUpdate },
+      rentNoticeSend: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       tenant: { update: tenantUpdate },
       failedEmail: { create: failedEmailCreate },
     } as unknown as PrismaService,
@@ -128,10 +132,12 @@ describe('korrelationsnycklarnas HÄRKOMST (#651)', () => {
 
     expect(rentNoticeUpdate).toHaveBeenCalledTimes(1)
     const anrop = rentNoticeUpdate.mock.calls[0]?.[0] as {
-      where: { id: string }
+      where: { id: string; organizationId?: string }
       data: { reminderMessageId?: string }
     }
     expect(anrop.where.id).toBe(NOTICE)
+    // Org-scopningen är inte pynt: den ska synas i anropet, inte antas.
+    expect(anrop.where.organizationId).toBeDefined()
     expect(anrop.data.reminderMessageId).toBe(RESEND_GAV_TILLBAKA)
 
     // ASSERTIONEN SOM FÄLLER ÅTERFALLET. Skriver någon tillbaka enqueue:s
@@ -144,10 +150,11 @@ describe('korrelationsnycklarnas HÄRKOMST (#651)', () => {
     await kör(fejkWorker(prisma), fejkJobb({ kind: 'rent-notice', rentNoticeId: NOTICE }))
 
     const anrop = rentNoticeUpdate.mock.calls[0]?.[0] as {
-      where: { id: string }
+      where: { id: string; organizationId?: string }
       data: { noticeMessageId?: string }
     }
     expect(anrop.where.id).toBe(NOTICE)
+    expect(anrop.where.organizationId).toBeDefined()
     expect(anrop.data.noticeMessageId).toBe(RESEND_GAV_TILLBAKA)
     expect(anrop.data.noticeMessageId).not.toBe(KÖN_GAV_VID_ENQUEUE)
   })
