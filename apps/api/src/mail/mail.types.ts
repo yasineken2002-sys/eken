@@ -76,7 +76,10 @@ export interface MailAttachment {
  * Diskriminerad union — lägg till fler `kind` när andra mejltyper behöver
  * leveransspårning (t.ex. faktura-utskick).
  */
-export type MailCorrelation = { kind: 'tenant-invite'; tenantId: string }
+export type MailCorrelation =
+  | { kind: 'tenant-invite'; tenantId: string }
+  | { kind: 'rent-notice'; rentNoticeId: string }
+  | { kind: 'rent-notice-reminder'; rentNoticeId: string }
 
 export interface EnqueueMailOptions<T extends TemplateName = TemplateName> {
   template: T

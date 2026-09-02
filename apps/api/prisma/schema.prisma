@@ -335,8 +335,29 @@ enum RentNoticeEventType {
   CREATED
   SENT
   SEND_FAILED
+  // EMAIL_DELIVERED / EMAIL_BOUNCED betyder PÅMINNELSENS leverans, och bara den.
+  // INV-B-grinden (checkInkassoReadiness) läser dem som beviset att det
+  // lagstadgade kravet nått gäldenären.
   EMAIL_DELIVERED
   EMAIL_BOUNCED
+  // #651 — AVINS egen leverans. EGNA TYPER, och det är inte kosmetik: hade avins
+  // leverans skrivit EMAIL_DELIVERED hade den TYST uppfyllt en grind som betyder
+  // "påminnelsen levererades". Ett krav hade då kunnat gå till inkasso på beviset
+  // att den URSPRUNGLIGA avin kom fram — inte påminnelsen. Spärrar är riktade;
+  // en andra källa till samma händelsetyp öppnar grinden åt ett håll ingen
+  // beslutat.
+  //
+  // Egen typ och inte en payload-flagga, av samma skäl som PAYMENT_REVERSED och
+  // CREDITED nedan: `@@index([rentNoticeId, type])` gör en förstklassig typ
+  // sökbar, medan en payload-diskriminerad typ bara går att hitta genom att läsa
+  // JSON i varje rad.
+  //
+  // OBS: det PARTIELLA unika indexet RentNoticeEvent_delivery_idempotency_key
+  // (migration 20260607000000) måste omfatta dem också — annars saknar de nya
+  // typerna den idempotens Resends at-least-once kräver, i en append-only-tabell
+  // där en dubblett inte går att städa bort. Utvidgas i den här migrationen.
+  NOTICE_EMAIL_DELIVERED
+  NOTICE_EMAIL_BOUNCED
   PAYMENT_RECEIVED
   OVERDUE
   REMINDER_SENT
@@ -2259,13 +2280,6 @@ model Document {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([organizationId])
-  @@index([propertyId])
-  @@index([unitId])
-  @@index([leaseId])
-  @@index([tenantId])
-  @@index([previousVersionId])
-  @@index([leaseId, attachedToLeaseAsAppendix])
   // Snabb lookup för dedup-fönstret i ContractTemplateService — vi söker
   // (leaseId, category=CONTRACT, templateInputHash=X) för att hitta
   // återanvändbar PDF utan att scanna alla dokument på leasen.
@@ -2281,6 +2295,13 @@ model Document {
   // gör verktyget äkta återupptagningsbart. Verifierat före migrationen: noll
   // grupper med samma (organizationId, storageKey) i både dev och prod.
   @@unique([organizationId, storageKey])
+  @@index([organizationId])
+  @@index([propertyId])
+  @@index([unitId])
+  @@index([leaseId])
+  @@index([tenantId])
+  @@index([previousVersionId])
+  @@index([leaseId, attachedToLeaseAsAppendix])
   @@index([leaseId, category, templateInputHash])
 }
 
@@ -2819,7 +2840,7 @@ model AiToolExecution {
   // FELVÄGEN STÄNGER OCKSÅ SIN RAD. Ett verktyg som kastar sätter `completedAt`
   // med `success: false`. En "påbörjad" som egentligen betyder "misslyckades"
   // vore samma tvetydighet i ny förklädnad.
-  completedAt          DateTime?
+  completedAt DateTime?
 
   // ── DET EXTERNA HANDTAGET (klass B, steg 1) ───────────────────────────────
   //
@@ -2834,9 +2855,9 @@ model AiToolExecution {
   //
   // Skiljer också "påbörjad, handtag finns" från "påbörjad, inget handtag".
   // Utan kolumnen betyder PÅBÖRJAD två saker igen, och den ena går att följa upp.
-  externalHandle       String?
+  externalHandle String?
 
-  createdAt            DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   // Revisionsspår: AI-verktygskörningar måste bevaras vid org-borttagning (Restrict).
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
@@ -3215,8 +3236,21 @@ model RentNotice {
   // (ingen cross-tenant-skrivning). Sätts av PdfWorker EFTER lyckad Resend-send.
   // Leveransutfallet loggas append-only i RentNoticeEvent (EMAIL_DELIVERED/
   // EMAIL_BOUNCED), inte som muterbara kolumner här.
+  //
+  // noticeMessageId: samma sak för SJÄLVA AVIN (#651). Utan den kunde webhooken
+  // bara korrelera påminnelsen, så avins egen leverans/studs var osynlig — vi
+  // visste att Resend TOG EMOT den, ingenting om att den kom fram.
+  //
+  // BÅDA sätts av `persistResendId` i mail.worker.ts, EFTER lyckat utskick, med
+  // det id Resend gav TILLBAKA. Aldrig från `MailQueue.enqueue`:s returvärde:
+  // det är Bulls jobId (= idempotensnyckeln, t.ex. `rent-reminder-<id>`) och
+  // ligger i en HELT ANNAN NAMNRYMD än webhookens `email_id`. Att just den
+  // förväxlingen låg i produktion under hela funktionens livstid — och tyst
+  // dödade kravtrappan vid steg 3→4 — är hela skälet till att den här
+  // kommentaren finns. Se #651.
   reminderPdfStorageKey String?
   reminderMessageId     String? @unique
+  noticeMessageId       String? @unique
 
   // Bokföringslagen (1999:1078): hyresavier är räkenskapsinformation, bevaras 7 år.
   organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
@@ -3240,6 +3274,7 @@ model RentNotice {
   // banktransaktion motsvarar. Båda drar ned samma fordran, av olika skäl, och
   // den skillnaden måste synas i varje yta som visar varför skulden krympt.
   credits          RentNoticeCredit[]
+  failedEmails     FailedEmail[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3695,8 +3730,6 @@ model SentMessage {
   tenant       Tenant?      @relation(fields: [tenantId], references: [id])
   sentBy       User         @relation(fields: [sentById], references: [id])
 
-  @@index([organizationId])
-  @@index([organizationId, batchId])
   /// EN RAD PER MOTTAGARE PER UTSKICK — DB-enforcerat, inte en konvention.
   ///
   /// Enheten i datan är mottagaren och enheten i vyn är utskicket (se `batchId`
@@ -3717,6 +3750,8 @@ model SentMessage {
   /// vill. Frågan "har den här hyresgästen redan fått det här brevet?" är en
   /// INNEHÅLLSFRÅGA och besvaras inte här.
   @@unique([organizationId, tenantId, batchId])
+  @@index([organizationId])
+  @@index([organizationId, batchId])
 }
 
 // ─── Platform (Super-admin SaaS) ──────────────────────────────────────────────
@@ -3930,8 +3965,30 @@ model FailedEmail {
   attempts  Int
   createdAt DateTime @default(now())
 
+  // Kopplingen till avin (#651). Utan den lämnade ett slutgiltigt misslyckat
+  // påminnelseutskick en rad som inte gick att joina mot NÅGOT: kolumnerna är
+  // jobId/template/to/subject/payload/error, och ingen av dem är en främmande
+  // nyckel. Ett ärende som stod stilla i REMINDED gick därför inte att förklara.
+  //
+  // Sätts ur jobbets `correlation` när sista försöket faller — samma källa som
+  // `persistResendId` läser vid framgång, så framgångs- och felvägen pekar ut
+  // samma objekt.
+  //
+  // ── VARFÖR Cascade OCH INTE SetNull ────────────────────────────────────────
+  //
+  // Tabellen bär en APPEND-ONLY-trigger på SATSNIVÅ (`append_only_failed_email`,
+  // #585 — verifierat i prod, inte antaget). `ON DELETE SET NULL` är en
+  // kaskad-UPDATE som databasen utför utan att koden vet om det, och en
+  // satsspärr fäller den. En SetNull här hade alltså inte gett en nullad kolumn
+  // utan ett BRUTET avi-borttagande — exakt den defekten som #585 fick laga i
+  // organisationsraderingen. DELETE spärras inte, så Cascade är den form som
+  // fungerar med spärren i stället för mot den.
+  rentNoticeId String?
+  rentNotice   RentNotice? @relation(fields: [rentNoticeId], references: [id], onDelete: Cascade)
+
   @@index([createdAt])
   @@index([template])
+  @@index([rentNoticeId])
 }
 
 // ─── Deposit (Deposition) ─────────────────────────────────────────────────────

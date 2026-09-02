@@ -20,7 +20,14 @@ const OTHER_SECRET = 'whsec_C2FVsBQIhrscChlQIMV+b5sSYspob7oD'
 
 function makeService(
   secret: string | null = SECRET,
-  opts: { tenantCount?: number; notice?: { id: string } | null; existingEvent?: boolean } = {},
+  opts: {
+    tenantCount?: number
+    // #651: `reminderMessageId` MÅSTE ingå. Tjänsten avgör händelsetypen genom
+    // att jämföra det mot eventets email_id — saknas fältet i stubben läses
+    // varje träff som AVINS leverans, och provet mäter något annat än det tror.
+    notice?: { id: string; reminderMessageId?: string | null } | null
+    existingEvent?: boolean
+  } = {},
 ) {
   const updateMany = jest.fn().mockResolvedValue({ count: opts.tenantCount ?? 1 })
   const rentNoticeFindFirst = jest
@@ -203,16 +210,18 @@ describe('ResendWebhookService', () => {
     it('email.delivered utan inbjudan-träff → loggar EMAIL_DELIVERED på rätt avi (append-only)', async () => {
       const { service, rentNoticeFindFirst, eventCreate } = makeService(SECRET, {
         tenantCount: 0,
-        notice: { id: 'rn-1' },
+        notice: { id: 'rn-1', reminderMessageId: 'reminder-msg-1' },
       })
       const { raw, headers } = signedRequest(deliveredEvent('reminder-msg-1'))
 
       await service.handle(raw, headers)
 
-      // Uppslaget sker BARA via @unique reminderMessageId (org kommer från avin).
+      // Uppslaget sker via de TVÅ @unique-nycklarna (org kommer från avin).
       expect(rentNoticeFindFirst).toHaveBeenCalledWith({
-        where: { reminderMessageId: 'reminder-msg-1' },
-        select: { id: true },
+        where: {
+          OR: [{ reminderMessageId: 'reminder-msg-1' }, { noticeMessageId: 'reminder-msg-1' }],
+        },
+        select: { id: true, reminderMessageId: true },
       })
       expect(eventCreate).toHaveBeenCalledWith({
         data: {
@@ -228,7 +237,7 @@ describe('ResendWebhookService', () => {
     it('email.bounced → loggar EMAIL_BOUNCED med STRUKTURERAD kategori, ALDRIG fri PII-text', async () => {
       const { service, eventCreate } = makeService(SECRET, {
         tenantCount: 0,
-        notice: { id: 'rn-9' },
+        notice: { id: 'rn-9', reminderMessageId: 'reminder-msg-9' },
       })
       const { raw, headers } = signedRequest({
         type: 'email.bounced',
@@ -265,7 +274,7 @@ describe('ResendWebhookService', () => {
     it('idempotent: redan loggat utfall → ingen dubblett (append-only skrivs aldrig över)', async () => {
       const { service, eventFindFirst, eventCreate } = makeService(SECRET, {
         tenantCount: 0,
-        notice: { id: 'rn-1' },
+        notice: { id: 'rn-1', reminderMessageId: 'reminder-msg-1' },
         existingEvent: true,
       })
       const { raw, headers } = signedRequest(deliveredEvent('reminder-msg-1'))
@@ -284,7 +293,7 @@ describe('ResendWebhookService', () => {
       // körs men DB-indexet avvisar med P2002. Det ska sväljas som no-op.
       const { service, eventCreate } = makeService(SECRET, {
         tenantCount: 0,
-        notice: { id: 'rn-1' },
+        notice: { id: 'rn-1', reminderMessageId: 'reminder-msg-1' },
       })
       eventCreate.mockRejectedValueOnce(
         Object.assign(new Error('unique violation'), { code: 'P2002' }),
@@ -306,7 +315,7 @@ describe('ResendWebhookService', () => {
     it('inbjudan matchar (tenant count>0) → rör ALDRIG avi-loggen', async () => {
       const { service, rentNoticeFindFirst, eventCreate } = makeService(SECRET, {
         tenantCount: 1,
-        notice: { id: 'rn-1' },
+        notice: { id: 'rn-1', reminderMessageId: 'reminder-msg-1' },
       })
       const { raw, headers } = signedRequest(deliveredEvent('invite-msg'))
 
@@ -319,7 +328,7 @@ describe('ResendWebhookService', () => {
     it('cross-org omöjligt: payload-org ignoreras, avin slås upp bara via message-id', async () => {
       const { service, rentNoticeFindFirst, eventCreate } = makeService(SECRET, {
         tenantCount: 0,
-        notice: { id: 'rn-1' },
+        notice: { id: 'rn-1', reminderMessageId: 'reminder-msg-1' },
       })
       const { raw, headers } = signedRequest({
         type: 'email.delivered',
@@ -330,10 +339,98 @@ describe('ResendWebhookService', () => {
       await service.handle(raw, headers)
 
       expect(rentNoticeFindFirst.mock.calls[0][0].where).toEqual({
-        reminderMessageId: 'reminder-msg-1',
+        OR: [{ reminderMessageId: 'reminder-msg-1' }, { noticeMessageId: 'reminder-msg-1' }],
       })
       const createArg = eventCreate.mock.calls[0][0]
       expect(JSON.stringify(createArg)).not.toContain('attacker-org')
+    })
+  })
+
+  /**
+   * AVINS EGEN LEVERANS (#651) — och varför den får EGNA händelsetyper.
+   *
+   * INV-B-grinden (checkInkassoReadiness) läser EMAIL_DELIVERED som beviset att
+   * PÅMINNELSEN nått gäldenären. Skrev avins leverans samma typ hade den TYST
+   * uppfyllt grinden med fel bevis: ett krav hade kunnat gå till inkasso på att
+   * den ursprungliga avin kom fram, inte påminnelsen.
+   *
+   * Proven nedan mäter separationen åt BÅDA hållen — att avin ger NOTICE_*, och
+   * att påminnelsen fortsatt ger de omärkta typerna. Bara det ena hade inte
+   * skilt en korrekt separation från en som råkar falla åt rätt håll.
+   */
+  describe('avins egen leverans-korrelation (RentNotice.noticeMessageId, #651)', () => {
+    it('email.bounced på AVIN → NOTICE_EMAIL_BOUNCED på rätt avi', async () => {
+      const { service, rentNoticeFindFirst, eventCreate } = makeService(SECRET, {
+        tenantCount: 0,
+        // Avin matchar på noticeMessageId; reminderMessageId är en ANNAN nyckel.
+        notice: { id: 'rn-651', reminderMessageId: 'nagon-annan-paminnelse' },
+      })
+      const { raw, headers } = signedRequest({
+        type: 'email.bounced',
+        created_at: '2026-09-02T12:00:00.000Z',
+        data: {
+          email_id: 'avi-msg-651',
+          bounce: {
+            message: 'Mailbox does not exist: hyresgast@example.com',
+            type: 'Permanent',
+            subType: 'General',
+          },
+        },
+      })
+
+      await service.handle(raw, headers)
+
+      expect(rentNoticeFindFirst).toHaveBeenCalledWith({
+        where: { OR: [{ reminderMessageId: 'avi-msg-651' }, { noticeMessageId: 'avi-msg-651' }] },
+        select: { id: true, reminderMessageId: true },
+      })
+      const data = eventCreate.mock.calls[0][0].data as { rentNoticeId: string; type: string }
+      expect(data.rentNoticeId).toBe('rn-651')
+      expect(data.type).toBe('NOTICE_EMAIL_BOUNCED')
+
+      // SEPARATIONEN: avins studs får ALDRIG skriva påminnelsens typ, eftersom
+      // INV-B läser just den som bevis.
+      expect(data.type).not.toBe('EMAIL_BOUNCED')
+
+      // Och den fria bounce-texten (PII) lagras aldrig — samma regel som för
+      // påminnelsen.
+      expect(JSON.stringify(eventCreate.mock.calls[0][0])).not.toContain('hyresgast@example.com')
+    })
+
+    it('email.delivered på AVIN → NOTICE_EMAIL_DELIVERED, inte EMAIL_DELIVERED', async () => {
+      const { service, eventCreate } = makeService(SECRET, {
+        tenantCount: 0,
+        notice: { id: 'rn-651', reminderMessageId: null },
+      })
+      const { raw, headers } = signedRequest(deliveredEvent('avi-msg-651'))
+
+      await service.handle(raw, headers)
+
+      const data = eventCreate.mock.calls[0][0].data as { type: string }
+      expect(data.type).toBe('NOTICE_EMAIL_DELIVERED')
+      expect(data.type).not.toBe('EMAIL_DELIVERED')
+    })
+
+    it('ANDRA HÅLLET: träffar PÅMINNELSENS nyckel ges de omärkta typerna', async () => {
+      const { service, eventCreate } = makeService(SECRET, {
+        tenantCount: 0,
+        notice: { id: 'rn-651', reminderMessageId: 'paminnelse-msg-651' },
+      })
+      const { raw, headers } = signedRequest(deliveredEvent('paminnelse-msg-651'))
+
+      await service.handle(raw, headers)
+
+      const data = eventCreate.mock.calls[0][0].data as { type: string }
+      expect(data.type).toBe('EMAIL_DELIVERED')
+    })
+
+    it('ingen avi matchar → ingen händelse skrivs (ingen gissning)', async () => {
+      const { service, eventCreate } = makeService(SECRET, { tenantCount: 0, notice: null })
+      const { raw, headers } = signedRequest(deliveredEvent('okand-msg'))
+
+      await service.handle(raw, headers)
+
+      expect(eventCreate).not.toHaveBeenCalled()
     })
   })
 })

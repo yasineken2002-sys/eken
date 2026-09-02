@@ -960,6 +960,9 @@ export class AviseringService {
       // Mejlet köas med idempotencyKey så att en Bull-retry (om DB-uppdateringen
       // nedan misslyckas efter att mejlet redan köats) inte ger dubbelmejl.
       await this.mailService.sendRentNotice({
+        // #651: gör avins egen leverans korrelerbar. Utan den här visste vi bara
+        // att Resend TOG EMOT avin, ingenting om att den kom fram.
+        rentNoticeId: notice.id,
         to: notice.tenant.email,
         organizationId: orgId,
         tenantName,
