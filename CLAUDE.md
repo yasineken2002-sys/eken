@@ -1249,6 +1249,56 @@ belägg för en oförändrad mängd.
 Samma dag gav en tjänstenivå-analys 23 "externa" verktyg och en metodnivå-analys 7. Skillnaden var inte brus utan fråga: en tjänst som _injicerar_ `MailService` är
 inte extern om metoden bara skriver i databasen.
 
+**Regeln fällde sitt eget instrument dagen efter den skrevs.** Ett svep skulle
+avgöra om tio vakter var blinda för svenska namn, och jämförde ANTAL. Tio nollor.
+Men `\w+` är i flera fall inte ankrad, så den matchar ASCII-SVANSEN av ett
+svenskt namn:
+
+```
+förvaltningsvillkor: '1.2'
+  ascii-regexen ger   rvaltningsvillkor    ← posten HITTAS, namnet är FEL
+  antalet             oförändrat
+```
+
+Två skilda felformer, och bara den ena syns i ett tal: **MISSAD** sänker antalet,
+**KAPAD** gör det inte. Mätningen gjordes om på medlemmar. Utfallet blev
+detsamma — men det första resultatet hade varit ett tal utan täckning.
+
+---
+
+## En sond som ger NOLL måste bevisas kunna ge något ANNAT
+
+Den generella formen av tomhetsreglerna ovan, och den som fångar dem alla: en
+kontroll med tom mängd, ett golv som kortsluter sin egen regel, en uppräkning
+som krympt av ett filter. **Utan det här steget är "inga träffar" och
+"instrumentet tittade på fel sak" samma utdata.**
+
+Belägget är uppmätt samma dag som regeln skrevs. En sond skulle avgöra om en
+vakts nyckeluppräkning missade svenska namn och gav `0 mot 0` — vilket såg ut som
+ett resultat, men var att sonden GISSAT konstantnamnet (`LEGAL_DOCUMENT_SHA256`)
+medan parsern läser `LEGAL_DOCUMENT_HASHES`, och därför aldrig hittat korpusen.
+Efter rättelsen: `3 mot 3`.
+
+Skillnaden mellan de två utfallen är noll tecken i utdatan och allt i betydelse.
+
+**VAD MAN GÖR: mata in ett fall som MÅSTE ge utslag, innan du litar på nollan.**
+Det är samma form som en kanariefågel — fast riktad mot INSTRUMENTET i stället
+för mot regeln. Sonden i exemplet ovan fick två fixturer och kravet att båda
+felformerna syns:
+
+```
+✅ MISSAD  ascii=1 unicode=2 · avvikande=Förvaltning
+✅ KAPAD   ascii=2 unicode=2 · avvikande=förvaltningsvillkor · kapade=förvaltningsvillkor
+```
+
+Först därefter fick de tio nollorna redovisas — och först därefter betydde de
+"sårbar men inte blind" i stället för "vi vet inte".
+
+**Och nollan är ett SVAR, inte ett misslyckande.** Elva av elva mätta ställen gav
+noll, och slutsatsen blev att ärendet är en härdning som kan vänta i stället för
+en risklista. Det är ett användbart besked — men bara när sonden bevisligen kunde
+ha sagt något annat.
+
 ---
 
 ## Skriv i varje vakt vad den INTE kan se
