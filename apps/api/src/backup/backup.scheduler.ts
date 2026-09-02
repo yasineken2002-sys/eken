@@ -4,6 +4,7 @@ import { BackupService } from './backup.service'
 import { BackupFreshnessService } from './backup-freshness.service'
 import { CRON_LOCK_TTL_SEC } from '../common/redis/cron-lock'
 import { LockService } from '../common/redis/lock.service'
+import { SinkIn } from '../common/cron/sink-in.decorator'
 
 @Injectable()
 export class BackupScheduler {
@@ -20,7 +21,15 @@ export class BackupScheduler {
   // Daglig databasbackup 03:00. Kör bara om BACKUP_ENABLED=true + R2/DB-config finns
   // (annars no-op i dev/test). pg_dump → R2 (geografiskt separerat från Railway) →
   // gallra >retention. Fel larmas via Sentry i BackupService.runBackup.
+  // SÄNKAN LIGGER EN NIVÅ NER, OCH DET ÄR AVSIKTLIGT (#619).
+  //
+  // `runBackup()` rapporterar till CronErrorSink. Cron-metodens `catch` nedan
+  // sväljer JUST DÄRFÖR — ett andra sänkanrop här hade gett två rader för ett
+  // fel. Deklarationen gör den kopplingen mätbar i stället för kvitterad:
+  // vakten slår upp `BackupService::runBackup` och kräver att den faktiskt når
+  // sänkan. Pekar den fel blir CI röd.
   @Cron('0 3 * * *')
+  @SinkIn(BackupService, 'runBackup')
   async dailyBackup(): Promise<void> {
     // ── LÅST (klass A) ────────────────────────────────────────────────────
     //
@@ -76,7 +85,9 @@ export class BackupScheduler {
   //
   // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
   // fäller CI, och ett B utan namngiven invariant likaså.
+  // Samma form som dailyBackup: sänkan bor i `check()`, inte här. Se #619.
   @Cron('0 9 * * *')
+  @SinkIn(BackupFreshnessService, 'check')
   async dailyFreshnessCheck(): Promise<void> {
     try {
       await this.freshness.check()

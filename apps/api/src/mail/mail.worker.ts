@@ -144,6 +144,22 @@ abstract class MailWorkerBase {
             data: { lastInviteMessageId: resendId },
           })
           break
+        // #651: BÅDA avi-fälten skrivs HÄR, och bara här. Anropsställena hade
+        // tidigare skrivit `reminderMessageId` själva, med returvärdet från
+        // `MailQueue.enqueue` — som är Bulls jobId, inte Resends email_id.
+        // Webhooken frågar på email_id, så korrelationen kunde aldrig träffa.
+        case 'rent-notice':
+          await this.prisma.rentNotice.update({
+            where: { id: correlation.rentNoticeId },
+            data: { noticeMessageId: resendId },
+          })
+          break
+        case 'rent-notice-reminder':
+          await this.prisma.rentNotice.update({
+            where: { id: correlation.rentNoticeId },
+            data: { reminderMessageId: resendId },
+          })
+          break
       }
     } catch (err) {
       this.logger.error(
@@ -171,6 +187,21 @@ abstract class MailWorkerBase {
 
     if (!isPermanent) return
 
+    // #651: KOPPLA FELET TILL AVIN. Utan den här lämnade ett slutgiltigt
+    // misslyckat påminnelseutskick en rad vars enda spår var jobId, template,
+    // to, subject, payload och error — ingen av dem en främmande nyckel. Ett
+    // ärende som stod stilla i REMINDED gick alltså inte att förklara.
+    //
+    // Källan är jobbets egen `correlation`, alltså SAMMA fält som
+    // `persistResendId` läser vid framgång: framgångs- och felvägen pekar ut
+    // samma objekt, och kan inte glida isär.
+    const korrelation = job.data.correlation
+    const rentNoticeId =
+      korrelation &&
+      (korrelation.kind === 'rent-notice' || korrelation.kind === 'rent-notice-reminder')
+        ? korrelation.rentNoticeId
+        : null
+
     try {
       await this.prisma.failedEmail.create({
         data: {
@@ -181,6 +212,7 @@ abstract class MailWorkerBase {
           payload: job.data as object,
           error: err.message,
           attempts: attempt,
+          ...(rentNoticeId ? { rentNoticeId } : {}),
         },
       })
     } catch (dbErr) {

@@ -766,7 +766,8 @@ export class RentReminderService {
 
       const { payable, nominalBeforeFee, fee, paid, overpaid } = rentNoticeOutstanding(notice)
 
-      const messageId = await this.mailService.sendRentNoticeReminder({
+      const jobId = await this.mailService.sendRentNoticeReminder({
+        rentNoticeId: noticeId,
         to: notice.tenant.email,
         organizationId: orgId,
         tenantName,
@@ -793,20 +794,26 @@ export class RentReminderService {
         idempotencyKey: `rent-reminder-${notice.id}`,
       })
 
+      // FÄLTET HETER `jobId` DÄRFÖR ATT DET ÄR ETT JOBID (#651).
+      //
+      // Det hette `messageId` och lagrades dessutom i `reminderMessageId` som
+      // webhookens korrelationsnyckel. Men `MailQueue.enqueue` returnerar Bulls
+      // jobId (= idempotensnyckeln, här `rent-reminder-<id>`), inte Resends
+      // email_id — två skilda namnrymder. Webhooken frågade på email_id och kunde
+      // aldrig träffa, så EMAIL_DELIVERED skrevs ALDRIG och INV-B-grinden kunde
+      // aldrig släppa fram en avi till inkasso. Ett namn som ljuger om sitt
+      // innehåll var halva orsaken till att ingen såg det.
       await this.rentNoticeEvents.record(noticeId, 'SENT', 'SYSTEM', null, {
         channel: 'EMAIL',
-        ...(messageId ? { messageId } : {}),
+        ...(jobId ? { jobId } : {}),
       })
 
-      // Spara Resends message-id som webhookens korrelationsnyckel mot rätt avi
-      // (@unique). Leveransutfallet (EMAIL_DELIVERED/EMAIL_BOUNCED) skrivs sedan
-      // append-only till RentNoticeEvent av ResendWebhookService.
-      if (messageId) {
-        await this.prisma.rentNotice.update({
-          where: { id: noticeId },
-          data: { reminderMessageId: messageId },
-        })
-      }
+      // KORRELATIONSNYCKELN SKRIVS INTE HÄR. `reminderMessageId` sätts av
+      // `persistResendId` i mail.worker.ts, efter lyckat utskick, med det id
+      // Resend gav TILLBAKA — det enda värde webhooken kan matcha på. Vi skickar
+      // `rentNoticeId` som `correlation` och låter workern äga skrivningen.
+      // Leveransutfallet (EMAIL_DELIVERED/EMAIL_BOUNCED) loggas därefter
+      // append-only i RentNoticeEvent av ResendWebhookService.
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       await this.rentNoticeEvents
