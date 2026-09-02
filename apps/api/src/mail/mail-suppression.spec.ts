@@ -31,6 +31,7 @@
  *    glömmer det, inte bara för de metoder som fanns när ventilen byggdes.
  */
 
+import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { Resend } from 'resend'
 import { MailQueue } from './mail.queue'
 import { MailService } from './mail.service'
@@ -159,7 +160,12 @@ describe('MailWorker — sistahandsskyddet hos konsumenten', () => {
       render: jest.fn().mockResolvedValue({ html: '<p>x</p>', text: 'x' }),
     }
     const config = { get: jest.fn().mockReturnValue(undefined) }
-    const worker = new MailWorkerNormal(renderer as never, prisma, config as never)
+    const worker = new MailWorkerNormal(
+      renderer as never,
+      prisma,
+      config as never,
+      new RentNoticeEventsService(prisma),
+    )
     const send = jest.fn().mockResolvedValue({ data: { id: 'resend-1' }, error: null })
     ;(worker as unknown as { resend: Resend }).resend = {
       emails: { send },

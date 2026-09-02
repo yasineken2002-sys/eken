@@ -384,16 +384,28 @@ curl -fsS http://localhost:3000/v1/health | jq .
 
 # Registrera konto. --fail-with-body i stället för -f: vi vill BÅDE ha nollskild
 # exitkod på 4xx OCH se API:ets felsvar ({ success: false, error: { … } }).
+#
+# TVÅ KRAV SOM EXEMPLET SAKNADE och som kostar en felsökning av fel sak, eftersom
+# felet ser ut som ett API-fel och inte som ett föråldrat kommando (mätt
+# 2026-09-02 mot register.dto.ts):
+#
+#   password      10–128 tecken, med versal, gemen, siffra OCH specialtecken
+#                 (`IsStrongPassword`, PASSWORD_MIN_LENGTH). `Test123!` är åtta
+#                 och avvisas.
+#   acceptTerms   MÅSTE vara true — `@Equals(true)`, inte bara `@IsBoolean()`.
+#                 Utelämnas fältet blir felet "acceptTerms must be a boolean
+#                 value", vilket läses som ett typfel och inte som ett saknat
+#                 samtycke.
 curl -sS --fail-with-body -X POST http://localhost:3000/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@test.se","password":"Test123!","firstName":"Test","lastName":"User","organizationName":"Test AB","orgNumber":"556000-0001"}' | jq .
+  -d '{"email":"test@test.se","password":"TestLosen123!","firstName":"Test","lastName":"User","organizationName":"Test AB","orgNumber":"556000-0001","acceptTerms":true}' | jq .
 
 # Logga in och hämta token. Kontrollen är inte pynt: misslyckas inloggningen blir
 # TOKEN tom eller "null", och nästa anrop svarar 401 — ett fel som ser ut att
 # handla om behörighet i stället för om inloggningen.
 TOKEN=$(curl -sS --fail-with-body -X POST http://localhost:3000/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@test.se","password":"Test123!"}' | jq -r '.data.accessToken')
+  -d '{"email":"test@test.se","password":"TestLosen123!"}' | jq -r '.data.accessToken')
 [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || echo "INLOGGNING MISSLYCKADES — TOKEN är '$TOKEN'" >&2
 
 # Autentiserad request
