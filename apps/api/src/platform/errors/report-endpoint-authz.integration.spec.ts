@@ -53,6 +53,11 @@ const loggaFel = jest.fn()
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      // `ignoreEnvFile` stoppar FILEN apps/api/.env. Den stoppar INTE en
+      // variabel som redan står i process.env — där vinner process.env över
+      // `load:`. Nollställningen i beforeAll nedan är det som gör `load:`
+      // bindande; utan den verifierar guarden med utvecklarens egen hemlighet
+      // medan testet signerar med HEMLIGHET, och två fall faller med 401.
       ignoreEnvFile: true,
       load: [() => ({ PLATFORM_JWT_SECRET: HEMLIGHET })],
     }),
@@ -92,7 +97,13 @@ function plattformsToken(): string {
 describe('POST /platform/errors/report · behörighet (#612)', () => {
   let app: NestFastifyApplication
 
+  // Samma nollställ-och-återställ som env.validation.integration.spec.ts gör i
+  // sin boot()/afterEach. Sparas FÖRE nollställningen och läggs tillbaka exakt
+  // — inklusive fallet "var inte satt", som ska förbli osatt.
+  const sparadHemlighet = process.env.PLATFORM_JWT_SECRET
+
   beforeAll(async () => {
+    delete process.env.PLATFORM_JWT_SECRET
     const modul = await Test.createTestingModule({ imports: [ProvModul] }).compile()
     app = modul.createNestApplication<NestFastifyApplication>(new FastifyAdapter())
     // SAMMA pipe som main.ts:150 — inte en förenklad variant. `whitelist` +
@@ -113,6 +124,8 @@ describe('POST /platform/errors/report · behörighet (#612)', () => {
 
   afterAll(async () => {
     await app.close()
+    if (sparadHemlighet === undefined) delete process.env.PLATFORM_JWT_SECRET
+    else process.env.PLATFORM_JWT_SECRET = sparadHemlighet
   })
 
   beforeEach(() => loggaFel.mockClear())
