@@ -27,7 +27,15 @@ export class RentNoticeEventsService {
     requestedActorType: EventActorType,
     actorId: string | null,
     payload: Record<string, unknown> = {},
-    opts: { tx?: Prisma.TransactionClient } = {},
+    opts: {
+      tx?: Prisma.TransactionClient
+      /**
+       * VILKET UTSKICK raden hör till (#656). Utelämnas för händelser som inte
+       * hör till ett utskick — de får `''`, som betyder "ingen sändning", och
+       * det är exakt vad kolumnens default säger.
+       */
+      sendId?: string
+    } = {},
   ): Promise<RentNoticeEvent> {
     const db = opts.tx ?? this.prisma
 
@@ -67,6 +75,7 @@ export class RentNoticeEventsService {
       payload: payload as Prisma.InputJsonValue,
       ...(actorId != null ? { actorId } : {}),
       ...(actorLabel != null ? { actorLabel } : {}),
+      ...(opts.sendId ? { sendId: opts.sendId } : {}),
     }
     return db.rentNoticeEvent.create({ data })
   }

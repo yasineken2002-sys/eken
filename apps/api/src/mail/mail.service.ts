@@ -236,6 +236,12 @@ export interface SendRentNoticeOptions extends OrgScopedMailOptions {
 export interface SendRentNoticeReminderOptions extends OrgScopedMailOptions {
   /** Avin påminnelsen gäller — blir `correlation`. Obligatorisk, se #651. */
   rentNoticeId: string
+  /**
+   * DET HÄR UTSKICKET (#656). Bärs vidare i `correlation` så att workern kan
+   * skriva message-id:t på rätt utskicksrad, och webhooken kan lägga utfallet
+   * på rätt utskick. Optionell bara för jobb som redan låg i kön.
+   */
+  sendId?: string
   to: string
   tenantName: string
   noticeNumber: string
@@ -676,7 +682,11 @@ export class MailService {
         subject: `Betalningspåminnelse — hyresavi ${opts.noticeNumber}`,
         attachments: [{ filename: `paminnelse-${opts.noticeNumber}.pdf`, content: opts.pdfBuffer }],
         ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
-        correlation: { kind: 'rent-notice-reminder', rentNoticeId: opts.rentNoticeId },
+        correlation: {
+          kind: 'rent-notice-reminder',
+          rentNoticeId: opts.rentNoticeId,
+          ...(opts.sendId ? { sendId: opts.sendId } : {}),
+        },
       },
     )
   }

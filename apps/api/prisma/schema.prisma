@@ -3479,6 +3479,7 @@ model RentNotice {
   bankTransactions BankTransaction[]
   lines            RentNoticeLine[]
   events           RentNoticeEvent[]
+  sends            RentNoticeSend[]
   // Bankavstämnings-härdning PR 1 — granulära betalningsallokeringar. Källa till
   // sanning för "hur mycket är betalt" (RentDebtService.outstanding läser dessa);
   // paidAmount/matchedRentNoticeId blir härledda speglar. En avi kan på sikt bära
@@ -3566,6 +3567,56 @@ model RentNoticeLine {
 // ränteackumulering och kravbeslut loggas här. PR 1 skapar tabellen; PR 2–5
 // skriver händelser. Org-scopas via rentNotice.organizationId (ingen egen
 // organizationId-kolumn behövs — avin äger relationen).
+/// VILKEN SORTS UTSKICK. Avgör vilken händelsetyp utfallet får — och den
+/// skillnaden är inte kosmetisk: INV-B läser påminnelsens leverans som beviset
+/// att det lagstadgade kravet nått gäldenären (#651).
+enum RentNoticeSendKind {
+  REMINDER
+  NOTICE
+}
+
+/// ETT UTSKICK — enheten som saknades (#656).
+///
+/// ── VARFÖR EN EGEN TABELL OCH INTE ETT FÄLT TILL ────────────────────────────
+///
+/// Korrelationen bodde i `RentNotice.reminderMessageId`: ETT fält per avi, som
+/// skrivs över vid varje utskick. Ett sent webhook-svar för ett TIDIGARE utskick
+/// matchade då ingenting och utfallet tappades — samma enhetsfel som det
+/// unika leveransindexet, en nivå upp.
+///
+/// Ett utskick är en egen sak med egen livslängd: det köas, får ett message-id,
+/// och får sedan ett utfall. Att uttrycka det med fält på avin betyder att bara
+/// det SENASTE utskicket kan ha ett utfall, vilket är precis det påstående som
+/// visade sig osant.
+///
+/// ── VARFÖR DEN INTE ÄR APPEND-ONLY ──────────────────────────────────────────
+///
+/// `messageId` är okänt när raden skapas — det är leverantörens svar, och det
+/// kommer efter köandet. Raden MÅSTE därför kunna uppdateras en gång, och det
+/// är hela skälet till att den inte bor i `RentNoticeEvent`, som har
+/// append-only-triggern från #585.
+///
+/// UTFALLET bor däremot kvar i händelseloggen, append-only som förut. Den här
+/// tabellen bär identiteten, inte historien.
+model RentNoticeSend {
+  id           String             @id @default(uuid())
+  rentNoticeId String
+  kind         RentNoticeSendKind
+
+  /// Leverantörens message-id. Null tills utskicket lyckats — webhooken
+  /// korrelerar på det, och @unique gör att ett id pekar ut HÖGST ett utskick.
+  messageId String? @unique
+
+  /// Köns jobId. Skiljer en Bull-retry (samma jobb) från ett omförsök.
+  jobId String?
+
+  createdAt DateTime @default(now())
+
+  rentNotice RentNotice @relation(fields: [rentNoticeId], references: [id], onDelete: Cascade)
+
+  @@index([rentNoticeId, createdAt])
+}
+
 model RentNoticeEvent {
   id           String              @id @default(uuid())
   rentNoticeId String
@@ -3581,6 +3632,30 @@ model RentNoticeEvent {
   //   { throughDate, ratePercent, interestOre, journalEntryId } för INTEREST_ACCRUED
   //   { provider, messageId } för EMAIL_DELIVERED/BOUNCED
   payload Json @default("{}")
+
+  /// VILKET UTSKICK raden hör till — enheten som saknades (#656).
+  ///
+  /// `UNIQUE(rentNoticeId, type)` påstod "en avi kan studsa en gång". Det är
+  /// osant: en avi kan skickas många gånger, och varje UTSKICK har sitt eget
+  /// utfall. Med enheten rättad finns ingen tidsstämpel att jämföra — varje
+  /// utskick bär sitt eget svar.
+  ///
+  /// NOT NULL med tom default, inte nullbar. Två NULL är DISTINKTA i ett unikt
+  /// index, så nullbarhet hade tyst tagit bort skyddet för de rader som fanns
+  /// före kolumnen. Tom sträng kolliderar med sig själv och bevarar exakt den
+  /// gamla semantiken för dem: en av varje typ.
+  ///
+  /// EN BACKFILL VORE OMÖJLIG ÄNDÅ. Tabellen bär append-only-triggern från #585,
+  /// och en UPDATE avvisas — uppmätt 2026-09-02 mot eken_dev:
+  ///   ALTER TABLE ADD COLUMN NOT NULL DEFAULT ''   → OK
+  ///   DROP + CREATE av det unika indexet           → OK
+  ///   UPDATE ... SET "sendId" = 'x'                → AVVISAD av triggern
+  ///
+  /// INGEN FRÄMMANDE NYCKEL, och det är sentinelns pris. `''` betyder "skrevs
+  /// innan utskicket var en egen enhet" och pekar per definition inte på någon
+  /// rad. En FK hade avvisat exakt de rader som måste få finnas kvar. Kopplingen
+  /// upprätthålls därför av koden: varje NY rad får ett `sendId` som finns.
+  sendId String @default("")
 
   // Immutabilitetsgaranti: ingen updatedAt.
   createdAt DateTime @default(now())

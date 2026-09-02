@@ -159,6 +159,22 @@ abstract class MailWorkerBase {
           })
           break
         case 'rent-notice-reminder':
+          // ── TVÅ SKRIVNINGAR, TVÅ ENHETER ────────────────────────────────
+          //
+          // `RentNoticeSend.messageId` är den som webhooken korrelerar på, och
+          // den bär rätt enhet: ETT utskick, ETT message-id. Avins
+          // `reminderMessageId` skrivs kvar därför att den visar SENASTE
+          // utskickets id i gränssnittet och är webhookens reservväg för jobb
+          // som köades innan `sendId` fanns.
+          //
+          // Ordningen spelar roll: utskicksraden först. Faller den andra
+          // skrivningen har korrelationen ändå landat där utfallet ska hamna.
+          if (correlation.sendId) {
+            await this.prisma.rentNoticeSend.update({
+              where: { id: correlation.sendId },
+              data: { messageId: resendId },
+            })
+          }
           await this.prisma.rentNotice.update({
             where: { id: correlation.rentNoticeId },
             data: { reminderMessageId: resendId },

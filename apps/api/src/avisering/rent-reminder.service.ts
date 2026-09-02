@@ -601,13 +601,24 @@ export class RentReminderService {
     // INV-B-grind. Avins egen logg (org redan verifierad ovan).
     const events = await this.prisma.rentNoticeEvent.findMany({
       where: { rentNoticeId: noticeId },
-      select: { type: true },
+      select: { type: true, sendId: true },
+    })
+    // Leveransen gäller det SENASTE utskicket (#656), inte avin.
+    const senasteUtskick = await this.prisma.rentNoticeSend.findFirst({
+      where: { rentNoticeId: noticeId, kind: 'REMINDER' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
     })
     // PR 3a — steg 10 (utestående skuld) läses från den allokeringsderiverade
     // sanningskällan i stället för paidAmount-cachen. ocrOutstanding EXKLUDERAR
     // ränta (bevarar dagens explicita val: vi mäter den OCR-reglerbara delen).
     const debt = await this.rentDebt.outstanding(noticeId, organizationId)
-    const missing = this.checkInkassoReadiness(notice, events, debt.ocrOutstanding)
+    const missing = this.checkInkassoReadiness(
+      notice,
+      events,
+      debt.ocrOutstanding,
+      senasteUtskick?.id ?? null,
+    )
     if (missing.length > 0) {
       await this.rentNoticeEvents
         .record(noticeId, 'NOTE_ADDED', 'SYSTEM', null, {
@@ -709,8 +720,14 @@ export class RentReminderService {
    */
   private checkInkassoReadiness(
     notice: InkassoReadyNotice,
-    events: { type: RentNoticeEventType }[],
+    events: { type: RentNoticeEventType; sendId: string }[],
     ocrOutstanding: number,
+    /**
+     * Det SENASTE påminnelseutskicket, eller null för en avi som påmindes innan
+     * utskicket blev en egen enhet (#656). `null` blir `''` nedan — samma
+     * sentinel som de gamla leveransraderna bär, så EN kodväg räcker för båda.
+     */
+    senasteUtskickId: string | null,
   ): string[] {
     const missing: string[] = []
     const has = (t: RentNoticeEventType): boolean => events.some((e) => e.type === t)
@@ -724,10 +741,27 @@ export class RentReminderService {
     if (!notice.reminderPdfStorageKey) missing.push('lagrad påminnelse-PDF saknas')
 
     // 3. Verifierad leverans av påminnelsen (Resend-webhook → EMAIL_DELIVERED).
-    if (!has('EMAIL_DELIVERED')) missing.push('påminnelsens leverans är inte verifierad')
+    //
+    // ── LEVERANSEN GÄLLER ETT UTSKICK, INTE AVIN (#656) ────────────────────
+    //
+    // Frågan var `has('EMAIL_BOUNCED')` — "har den här avin någonsin studsat".
+    // Eftersom loggen är append-only blockerade den för ALLTID, även efter en
+    // lyckad omsändning: en avi vars adress rättats och vars påminnelse kommit
+    // fram kunde aldrig gå vidare.
+    //
+    // Rätt fråga gäller det SENASTE utskicket. Då finns ingen tidsstämpel att
+    // jämföra och ingen ordning att resonera om — varje utskick bär sitt eget
+    // svar, och vi läser det som gäller nu.
+    const utskickId = senasteUtskickId ?? ''
+    const utfall = (t: RentNoticeEventType): boolean =>
+      events.some((e) => e.type === t && e.sendId === utskickId)
 
-    // 4. …och påminnelsen får inte ha studsat (utebliven/felaktig adress).
-    if (has('EMAIL_BOUNCED')) missing.push('påminnelsen studsade (leverans misslyckades)')
+    if (!utfall('EMAIL_DELIVERED')) {
+      missing.push('påminnelsens leverans är inte verifierad')
+    }
+
+    // 4. …och det senaste utskicket får inte ha studsat (felaktig adress).
+    if (utfall('EMAIL_BOUNCED')) missing.push('påminnelsen studsade (leverans misslyckades)')
 
     // 5. Utskickslogg — minst en SENT-händelse i avins historik.
     if (!has('SENT')) missing.push('utskickslogg (SENT) saknas')
@@ -782,11 +816,46 @@ export class RentReminderService {
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
 
-    const alreadySent = await this.prisma.rentNoticeEvent.findFirst({
-      where: { rentNoticeId: noticeId, type: 'SENT' },
+    // ── GRIND 1: EN BULL-RETRY, INTE ETT OMFÖRSÖK ──────────────────────────
+    //
+    // Grinden ska finnas — en retry får aldrig ge dubbelmejl. Men "har någonsin
+    // skickats" var fel FRÅGA: den låste också ute ett legitimt omförsök efter
+    // en studs, och avin kunde varken gå framåt eller påminnas igen (#656).
+    //
+    // Rätt fråga är om det finns ett utskick I LUFTEN. Ett utskick vars utfall
+    // ännu inte kommit är en pågående sändning; en retry av samma jobb ser det
+    // och avstår. Har det SENASTE utskicket däremot fått sitt utfall — levererat
+    // eller studsat — är sändningen avslutad och ett nytt utskick är en ny
+    // handling, inte en dubblett.
+    //
+    // FAIL-CLOSED ÅT RÄTT HÅLL: saknas utfall avstår vi. Hellre ett uteblivet
+    // omförsök som en människa kan trycka fram än ett dubbelmejl till en
+    // hyresgäst som redan fått kravet.
+    const senasteUtskick = await this.prisma.rentNoticeSend.findFirst({
+      where: { rentNoticeId: noticeId, kind: 'REMINDER' },
+      orderBy: { createdAt: 'desc' },
       select: { id: true },
     })
-    if (alreadySent) return
+    if (senasteUtskick) {
+      const utfall = await this.prisma.rentNoticeEvent.findFirst({
+        where: {
+          rentNoticeId: noticeId,
+          sendId: senasteUtskick.id,
+          type: { in: ['EMAIL_DELIVERED', 'EMAIL_BOUNCED'] },
+        },
+        select: { id: true },
+      })
+      if (!utfall) return
+    } else {
+      // Inget utskick registrerat. Före #656 fanns bara SENT-händelsen, så en
+      // avi som påmindes DÅ har inget utskick — och ska inte påminnas om nu av
+      // den anledningen. Den gamla frågan gäller alltså fortfarande för dem.
+      const gammaltUtskick = await this.prisma.rentNoticeEvent.findFirst({
+        where: { rentNoticeId: noticeId, type: 'SENT' },
+        select: { id: true },
+      })
+      if (gammaltUtskick) return
+    }
 
     if (!notice.tenant.email) {
       await this.rentNoticeEvents
@@ -816,8 +885,16 @@ export class RentReminderService {
 
       const { payable, nominalBeforeFee, fee, paid, overpaid } = rentNoticeOutstanding(notice)
 
+      // UTSKICKET ÄR EN EGEN SAK, och det skapas FÖRE köandet: köns svar
+      // (message-id) måste kunna skrivas på en rad som redan finns.
+      const utskick = await this.prisma.rentNoticeSend.create({
+        data: { rentNoticeId: noticeId, kind: 'REMINDER' },
+        select: { id: true },
+      })
+
       const jobId = await this.mailService.sendRentNoticeReminder({
         rentNoticeId: noticeId,
+        sendId: utskick.id,
         to: notice.tenant.email,
         organizationId: orgId,
         tenantName,
@@ -841,7 +918,17 @@ export class RentReminderService {
         organizationName: org.name,
         accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
         pdfBuffer,
-        idempotencyKey: `rent-reminder-${notice.id}`,
+        // ── GRIND 4: NYCKELN ÄR PER UTSKICK (#656) ──────────────────────
+        //
+        // `rent-reminder-${notice.id}` var EN nyckel per avi, för all framtid,
+        // mot Bulls minne (7 dygn eller 1000 jobb). En omsändning inom det
+        // fönstret dedupades och brevet skickades ALDRIG — utan felmeddelande —
+        // medan samma omsändning utanför fönstret gick igenom. "Fungerar
+        // ibland" är sämre än att inte fungera.
+        //
+        // Kön ska hindra dubbelutskick INOM ett jobb. Utfallet bor i databasen,
+        // inte i kö-fönstret — det var #651:s lärdom.
+        idempotencyKey: `rent-reminder-${utskick.id}`,
       })
 
       // FÄLTET HETER `jobId` DÄRFÖR ATT DET ÄR ETT JOBID (#651).
@@ -853,10 +940,19 @@ export class RentReminderService {
       // aldrig träffa, så EMAIL_DELIVERED skrevs ALDRIG och INV-B-grinden kunde
       // aldrig släppa fram en avi till inkasso. Ett namn som ljuger om sitt
       // innehåll var halva orsaken till att ingen såg det.
-      await this.rentNoticeEvents.record(noticeId, 'SENT', 'SYSTEM', null, {
-        channel: 'EMAIL',
-        ...(jobId ? { jobId } : {}),
-      })
+      await this.rentNoticeEvents.record(
+        noticeId,
+        'SENT',
+        'SYSTEM',
+        null,
+        { channel: 'EMAIL', ...(jobId ? { jobId } : {}) },
+        { sendId: utskick.id },
+      )
+      if (jobId) {
+        await this.prisma.rentNoticeSend
+          .update({ where: { id: utskick.id }, data: { jobId } })
+          .catch(() => undefined)
+      }
 
       // KORRELATIONSNYCKELN SKRIVS INTE HÄR. `reminderMessageId` sätts av
       // `persistResendId` i mail.worker.ts, efter lyckat utskick, med det id
@@ -1105,13 +1201,23 @@ export class RentReminderService {
 
     const events = await this.prisma.rentNoticeEvent.findMany({
       where: { rentNoticeId: noticeId },
-      select: { type: true, createdAt: true, payload: true },
+      select: { type: true, createdAt: true, payload: true, sendId: true },
       orderBy: { createdAt: 'asc' },
+    })
+    const senasteUtskick = await this.prisma.rentNoticeSend.findFirst({
+      where: { rentNoticeId: noticeId, kind: 'REMINDER' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
     })
     const debt = await this.rentDebt.outstanding(noticeId, organizationId)
 
     // SAMMA funktion som grinden kastar på. Inget andra regelverk.
-    const missing = this.checkInkassoReadiness(notice, events, debt.ocrOutstanding)
+    const missing = this.checkInkassoReadiness(
+      notice,
+      events,
+      debt.ocrOutstanding,
+      senasteUtskick?.id ?? null,
+    )
 
     const org = notice.organization
     const freshness = this.freshness.evaluate(org, now)
