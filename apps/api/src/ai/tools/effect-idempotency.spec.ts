@@ -138,15 +138,32 @@ describe('effektklassificeringen', () => {
     //   send_document_to_tenant   samma index, men besegrat av en uuid-nyckel;
     //                             nyckeln härleds nu ur mottagare + innehåll,
     //                             vilket är det som flyttar posten till
-    //                             IDEMPOTENT och gör 17 till 18
-    it('18 IDEMPOTENT, 12 DEDUPLICERBAR, 0 OKÄND', () => {
+    //                             IDEMPOTENT och gjorde 17 till 18
+    //
+    // 18/12 → 19/11 samma dag: `create_property` fick
+    // `@@unique([organizationId, propertyDesignation])`. Den posten är
+    // AUTOMATISK och var en av de fem vars spår var INGET — se raden om
+    // återupptagbara nedan, som ändras med den.
+    //
+    // 19/11 → 20/10: `apply_rent_increase` fick
+    // `rent_increase_lease_effective_live_unique`, ett PARTIELLT index. Den är
+    // KRÄVER_MÄNNISKA och flyttar därför inte raden om återupptagbara.
+    //
+    // 20/10 → 22/8: `create_lease` och `create_tenant_and_lease` fick
+    // `@@unique([unitId, tenantId, startDate])` — en nyckel, två poster. Båda är
+    // KRÄVER_MÄNNISKA och flyttar därför inte raden om återupptagbara.
+    //
+    // Talen rör sig i takt med att nycklar byggs, och det är meningen. Raden
+    // finns för att varje steg ska vara ett beslut — inte för att talet ska
+    // vara stilla.
+    it('22 IDEMPOTENT, 8 DEDUPLICERBAR, 0 OKÄND', () => {
       const c = buildEffectCatalog()
       const antal = (k: string) => c.filter((e) => e.effectIdempotency === k).length
       expect({
         idempotent: antal('IDEMPOTENT'),
         deduplicerbar: antal('DEDUPLICERBAR'),
         okand: antal('OKÄND'),
-      }).toEqual({ idempotent: 18, deduplicerbar: 12, okand: 0 })
+      }).toEqual({ idempotent: 22, deduplicerbar: 8, okand: 0 })
     })
 
     it('30 av 30 poster är policybeslutade — inga luckor kvar', () => {
@@ -164,17 +181,23 @@ describe('effektklassificeringen', () => {
       expect(buildEffectCatalog()).toHaveLength(30)
     })
 
-    it('exakt 10 verktyg är återupptagbara — alla med ett spår som finns', () => {
-      // Efter policybesluten 2026-09-01. Listan är HÄRLEDD, inte vald: den är
-      // snittet av AUTOMATISK och "spåret finns". Fem AUTOMATISK-poster faller
-      // ur på det andra villkoret, och det är avsiktligt — att en effekt får
-      // återupptas hjälper ingen förrän något kan svara på om den redan skedde.
+    it('exakt 11 verktyg är återupptagbara — alla med ett spår som finns', () => {
+      // Listan är HÄRLEDD, inte vald: den är snittet av AUTOMATISK och "spåret
+      // finns". De AUTOMATISK-poster som faller ur gör det på det andra
+      // villkoret, och det är avsiktligt — att en effekt får återupptas hjälper
+      // ingen förrän något kan svara på om den redan skedde.
+      //
+      // 10 → 11 den 2026-09-02: `create_property` fick sitt unika index på
+      // (organizationId, propertyDesignation). Den var AUTOMATISK hela tiden och
+      // föll bara på att spåret var INGET. Det är precis den skillnaden
+      // nyckelarbetet finns för — talet 15 AUTOMATISK var aldrig problemet.
       const resumable = buildEffectCatalog()
         .filter((e) => e.autoResumable)
         .map((e) => e.name)
         .sort()
       expect(resumable).toEqual([
         'create_journal_entry',
+        'create_property',
         'create_unit',
         'export_sie4',
         'generate_rent_notices',
@@ -281,8 +304,16 @@ describe('effektklassificeringen', () => {
     })
 
     it('varje AUTOMATISK som ändå inte är återupptagbar blockeras av ett SAKNAT SPÅR', () => {
-      // Inte av policyn. Skillnaden avgör vad nästa steg är: de här fem behöver
-      // en innehållsnyckel, inte ett beslut.
+      // Inte av policyn. Skillnaden avgör vad nästa steg är: de här behöver en
+      // nyckel, inte ett beslut.
+      //
+      // ⚠️ LÄS LISTAN. `create_property` föll ur den 2026-09-02 när
+      // beteckningen blev nyckel. De FYRA som är kvar är exakt de poster där
+      // domänen INTE har någon nyckel — två identiska felanmälningar, två
+      // identiska serviceavgifter, två likadana besiktningar samma dag, en
+      // upprepad kommentar. Sammanfallandet är ingen tillfällighet: en post
+      // lämnar den här listan i samma stund som domänen visar sig ha en nyckel,
+      // och de som blir kvar är de som behöver något annat än en nyckel.
       const blockerade = buildEffectCatalog().filter(
         (e) => e.resumptionPolicy === 'AUTOMATISK' && !e.autoResumable,
       )
@@ -291,7 +322,6 @@ describe('effektklassificeringen', () => {
         'create_inspection',
         'create_invoice',
         'create_maintenance_ticket',
-        'create_property',
         'update_maintenance_status',
       ])
     })

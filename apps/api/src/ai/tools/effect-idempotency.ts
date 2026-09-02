@@ -42,8 +42,8 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  *
  * Talen, mätta samma dag mot `ACTION_TOOLS` (30 verktyg):
  *
- *     IDEMPOTENT      18   (varav 1 utan effekt alls: export_sie4)
- *     DEDUPLICERBAR   12   (varav 4 har ett spår som faktiskt konsulteras)
+ *     IDEMPOTENT      22   (varav 1 utan effekt alls: export_sie4)
+ *     DEDUPLICERBAR    8   (varav 4 har ett spår som faktiskt konsulteras)
  *     OKÄND            0
  *
  * ── OMRÄKNAT 2026-09-02, EFTER ATT TRE POSTER SLÄPAT EFTER KODEN ────────────
@@ -65,9 +65,21 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  * `compose_and_send_email` (DATABAS_TILLSTÅND), `generate_lease_contract`
  * (DATABAS_INDEX) och `mark_invoice_paid` (DATABAS_TILLSTÅND).
  *
- * Femman längre ned står KVAR — omräknad, inte antagen: alla fyra ovan är
- * KRÄVER_MÄNNISKA och räknades aldrig bland de AUTOMATISK-poster vars spår är
- * INGET (15 AUTOMATISK, varav 5 med INGET → 10 återupptagbara).
+ * Och 19/11 → 20/10 med `apply_rent_increase`, som fick ett PARTIELLT unikt
+ * index. Den är KRÄVER_MÄNNISKA och flyttar därför inte raden om återupptagbara.
+ *
+ * Och 20/10 → 22/8 med `create_lease` + `create_tenant_and_lease`, som delar
+ * `@@unique([unitId, tenantId, startDate])`. En nyckel, två poster — båda
+ * KRÄVER_MÄNNISKA, så raden om återupptagbara står still på 11.
+ *
+ * Femman längre ned är däremot INTE kvar. `create_property` fick sitt unika
+ * index samma dag, och den posten ÄR AUTOMATISK — den föll bara på att spåret
+ * var INGET. Omräknat: 15 AUTOMATISK, varav 4 med INGET → 11 återupptagbara.
+ *
+ * Det är hela poängen med nyckelarbetet, och värt att säga rakt ut: skillnaden
+ * mellan "får återupptas" och "går att återuppta" var aldrig en policyfråga.
+ * Varje nyckel som byggs flyttar en post över den gränsen utan att någon
+ * behöver ompröva ett beslut.
  *
  * Talen ändrades samma dag de sattes: `send_overdue_reminders` gick från
  * DEDUPLICERBAR till IDEMPOTENT när dess PaymentReminder-rad byggdes. Det är
@@ -790,6 +802,23 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
 
   // invoiceNumber allokeras ur en sekvens → varje omkörning får ett NYTT nummer
   // och blir en ny faktura. Sekvensnumret är motsatsen till en idempotensnyckel.
+  //
+  // ── POSTEN HAR TVÅ HALVOR, OCH DEN SVAGASTE BESTÄMMER KLASSEN ────────────
+  //
+  // RENT-halvan HAR en domännyckel — (avtal, period) — och den är nu komplett:
+  // spärren frågade tidigare bara `RentNotice`, så två manuella RENT-fakturor
+  // för samma avtal och period passerade båda. Populationen omfattar nu båda
+  // tabellerna som kan bära perioden.
+  //
+  // Icke-RENT-halvan har INGEN nyckel. Två identiska serviceavgifter är i
+  // domänen två legitima krav; ingenting i datan skiljer dem åt, och en
+  // innehållsnyckel hade fabricerat en skillnad som inte finns. Det som hör
+  // hemma där är ett kort tidsfönster — hög (b), obyggt.
+  //
+  // Klassen och spåret står därför KVAR som de var. Att sätta `plats` till något
+  // annat än INGET hade gjort posten återupptagbar (den är AUTOMATISK), och en
+  // omkörning av en icke-RENT-faktura ger fortfarande en dubblett. Samma
+  // resonemang som update_maintenance_status: den svagaste halvan bestämmer.
   create_invoice: {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
@@ -801,41 +830,81 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [],
   },
 
-  // contractNumber ur sekvens — samma sak som create_invoice.
+  // NYCKELN FINNS I DOMÄNEN: `@@unique([unitId, tenantId, startDate])`. Samma
+  // part, samma lägenhet, samma tillträdesdag två gånger är inte två
+  // hyresförhållanden utan ett registrerat två gånger. `contractNumber` kommer
+  // ur en sekvens och är motsatsen till en idempotensnyckel.
+  //
+  // FYLLER LUCKAN EFTER `lease_unit_active_unique`, som bara gäller ACTIVE —
+  // den här vägen skapar DRAFT, så en omkörning gav två utkast på samma enhet
+  // utan att något villkor kunde se det.
+  //
+  // Nämnaren blir inte för grov: en hyresgäst som flyttar ut och tillbaka in i
+  // samma lägenhet får ett annat startdatum, och en förnyelse ger efterföljaren
+  // `endDate + 1 dag` (autoRenewExpiredFixedTerm).
   create_lease: {
-    effectIdempotency: 'DEDUPLICERBAR',
+    effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
-    traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
     externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
-    mekanismer: [],
+    mekanismer: [
+      { typ: 'UNIKT_INDEX', modell: 'Lease', falt: ['unitId', 'tenantId', 'startDate'] },
+    ],
   },
 
-  // Skapar BÅDE hyresgäst och avtal. Sekvensnumret gäller avtalet; hyresgästen
-  // har ingen unik nyckel på namn/e-post.
+  // Skapar BÅDE hyresgäst och avtal, och BÅDA halvorna är nu nycklade.
+  //
+  // Hyresgästhalvan var redan täckt och det stod fel här: `Tenant` HAR
+  // `@@unique([organizationId, email])`, och verktyget återanvänder en befintlig
+  // hyresgäst i stället för att skapa en andra. Den gamla kommentaren ("ingen
+  // unik nyckel på namn/e-post") beskrev inte koden.
+  //
+  // Avtalshalvan bär nu `@@unique([unitId, tenantId, startDate])`, samma nyckel
+  // som create_lease. Konfliktgrenen ligger FÖRE `isActiveUnitConflict` i
+  // catch:en, eftersom de två villkoren delar `unitId` och ett dubblettavtal
+  // inte är ett aktivt-kontrakt-race.
   create_tenant_and_lease: {
-    effectIdempotency: 'DEDUPLICERBAR',
+    effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
-    traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
     externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
-    mekanismer: [],
+    mekanismer: [
+      { typ: 'UNIKT_INDEX', modell: 'Lease', falt: ['unitId', 'tenantId', 'startDate'] },
+    ],
   },
 
-  // Property saknar unikt index helt — inte ens namn eller beteckning.
+  // NYCKELN FINNS I DOMÄNEN, och den är nu byggd:
+  // `@@unique([organizationId, propertyDesignation])`. Beteckningen identifierar
+  // fastigheten i det offentliga registret, så det finns per definition inte två
+  // legitima rader att skilja åt — nämnaren kan alltså inte bli för grov. Det är
+  // skillnaden mot `name`, som är ett vardagsnamn ("Gården", "Hus B") och hade
+  // varit precis den för grova nämnaren.
+  //
+  // Före det här hade Property INGA unika villkor alls och `create` skrev rakt
+  // igenom utan en enda kontroll.
+  //
+  // ⚠️ POSTEN FLYTTAR "FEMMAN". Den är AUTOMATISK, och var en av de fem
+  // AUTOMATISK-poster vars spår var INGET — alltså en av dem som INTE gick att
+  // återuppta trots sin policy. Med spåret på plats blir den återupptagbar, och
+  // talen längst upp ändras därefter. Det är hela poängen med arbetet: skillnaden
+  // mellan 15 AUTOMATISK och 10 återupptagbara var aldrig en policyfråga.
   create_property: {
-    effectIdempotency: 'DEDUPLICERBAR',
+    effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
-    traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
     externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
-    mekanismer: [],
+    mekanismer: [
+      { typ: 'UNIKT_INDEX', modell: 'Property', falt: ['organizationId', 'propertyDesignation'] },
+    ],
   },
 
   // ticketNumber ur sekvens. ⚠️ Nämnaren är svår här: två identiska felanmälningar
@@ -864,18 +933,45 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [],
   },
 
-  // RentIncrease saknar unikt index. create() validerar bara 3-månadersbufferten
-  // och att ny hyra > nuvarande — BÅDA passerar vid en omkörning, eftersom
-  // lease-hyran inte skrivs om vid schemaläggningen. Två schemalagda höjningar.
+  // NYCKELN FINNS I DOMÄNEN: hyran kan bara ändras en gång på ett givet datum,
+  // och hyresgästen ska bara få ett meddelande om höjningen per ikraftträdande.
+  // `rent_increase_lease_effective_live_unique` bär det.
+  //
+  // create() kunde inte se en omkörning: den validerar 3-månadersbufferten och
+  // att ny hyra > nuvarande, och BÅDA passerar en andra gång eftersom
+  // lease-hyran inte skrivs om vid schemaläggningen.
+  //
+  // ── VILLKORET ÄR PARTIELLT, OCH DÄRFÖR ÄR MEKANISMEN INTE 'UNIKT_INDEX' ───
+  //
+  // En återkallad, nekad eller annullerad höjning gör inte längre anspråk på
+  // datumet — en ny för samma datum är då en legitim andra handling. Villkoret
+  // gäller alltså bara DRAFT/NOTICE_SENT/ACCEPTED/APPLIED, och ett partiellt
+  // index går inte att uttrycka i schema.prisma.
+  //
+  // R3:s starka semantiska kontroll läser just schema.prisma och kan därför inte
+  // pröva det här indexet. Mekanismen nedan pekar på DISAMBIGUERINGEN och är
+  // alltså bara driftdetektering. Det riktiga skyddet för själva indexet är
+  // `check-critical-indexes.mjs`, som läser migrationernas sluttillstånd och
+  // fäller om predikatet eller kolumnerna ändras — det är dit en läsare ska gå,
+  // inte hit.
   apply_rent_increase: {
-    effectIdempotency: 'DEDUPLICERBAR',
+    effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
-    traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceDurability: {
+      plats: 'DATABAS_INDEX',
+      livslangd: 'raden består; villkoret gäller så länge höjningen är levande',
+    },
     externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
-    mekanismer: [],
+    mekanismer: [
+      {
+        typ: 'STATUSGRIND',
+        fil: 'apps/api/src/rent-increases/rent-increases.service.ts',
+        symbol: 'ärLevandeHöjningskonflikt',
+      },
+    ],
   },
 
   // BLANDAD. Statusdelen är en ren update och idempotent; men addComment

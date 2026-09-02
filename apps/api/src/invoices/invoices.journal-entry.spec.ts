@@ -47,6 +47,10 @@ function makeService(opts: { journalThrows?: boolean } = {}) {
     },
     // Dubbelbokförings-spärren slår upp befintlig hyresavi — ingen för testet.
     rentNotice: { findFirst: jest.fn().mockResolvedValue(null) },
+    // Dubbelfaktureringsspärrens population är BÅDA tabellerna: en manuell
+    // RENT-faktura för samma avtal och period är lika mycket en dubbelbokföring
+    // som en avi är. `null` = ingen befintlig, så spärren släpper igenom här.
+    invoice: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: (cb: (t: unknown) => unknown) => cb(tx),
   }
   const captured: { invoice?: { lines?: unknown } } = {}

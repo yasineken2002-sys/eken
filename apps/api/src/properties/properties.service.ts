@@ -1,5 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import {
+  normaliseraBeteckning,
+  ärBeteckningskonflikt,
+  beteckningUpptagenText,
+} from './property-designation'
 import type { CreatePropertyInput, UpdatePropertyInput } from '@eken/shared'
 
 type PrismaPropertyWithCount = {
@@ -62,41 +72,69 @@ export class PropertiesService {
   }
 
   async create(orgId: string, dto: CreatePropertyInput) {
-    const row = await this.prisma.property.create({
-      data: {
-        organizationId: orgId,
-        name: dto.name,
-        propertyDesignation: dto.propertyDesignation,
-        type: dto.type,
-        street: dto.address.street,
-        city: dto.address.city,
-        postalCode: dto.address.postalCode,
-        country: dto.address.country,
-        totalArea: dto.totalArea,
-        yearBuilt: dto.yearBuilt ?? null,
-      },
-      include: { _count: { select: { units: true } } },
-    })
+    const beteckning = normaliseraBeteckning(dto.propertyDesignation)
+    // KONFLIKT, INTE LÄSNING FÖRE. En `findFirst` före `create` lämnar ett
+    // fönster där två samtidiga anrop båda ser "ingen rad" och båda skriver —
+    // ett unikt index har inget sådant fönster.
+    const row = await this.skrivMedBeteckningsgrind(beteckning, () =>
+      this.prisma.property.create({
+        data: {
+          organizationId: orgId,
+          name: dto.name,
+          propertyDesignation: beteckning,
+          type: dto.type,
+          street: dto.address.street,
+          city: dto.address.city,
+          postalCode: dto.address.postalCode,
+          country: dto.address.country,
+          totalArea: dto.totalArea,
+          yearBuilt: dto.yearBuilt ?? null,
+        },
+        include: { _count: { select: { units: true } } },
+      }),
+    )
     return this.mapProperty(row as PrismaPropertyWithCount)
+  }
+
+  /**
+   * Kör skrivningen och översätter beteckningskonflikten till ett svar en
+   * människa kan agera på. Ligger här, inte hos anroparna, så att create och
+   * update inte kan glida isär i vad de säger om samma villkor.
+   */
+  private async skrivMedBeteckningsgrind<T>(
+    beteckning: string,
+    skriv: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await skriv()
+    } catch (err) {
+      if (!ärBeteckningskonflikt(err)) throw err
+      throw new ConflictException(beteckningUpptagenText(beteckning))
+    }
   }
 
   async update(id: string, orgId: string, dto: UpdatePropertyInput) {
     await this.ensureOwnership(id, orgId)
-    const row = await this.prisma.property.update({
-      where: { id },
-      data: {
-        ...(dto.name ? { name: dto.name } : {}),
-        ...(dto.propertyDesignation ? { propertyDesignation: dto.propertyDesignation } : {}),
-        ...(dto.type ? { type: dto.type } : {}),
-        ...(dto.address?.street ? { street: dto.address.street } : {}),
-        ...(dto.address?.city ? { city: dto.address.city } : {}),
-        ...(dto.address?.postalCode ? { postalCode: dto.address.postalCode } : {}),
-        ...(dto.address?.country ? { country: dto.address.country } : {}),
-        ...(dto.totalArea ? { totalArea: dto.totalArea } : {}),
-        ...(dto.yearBuilt ? { yearBuilt: dto.yearBuilt } : {}),
-      },
-      include: { _count: { select: { units: true } } },
-    })
+    const beteckning = dto.propertyDesignation
+      ? normaliseraBeteckning(dto.propertyDesignation)
+      : undefined
+    const row = await this.skrivMedBeteckningsgrind(beteckning ?? '', () =>
+      this.prisma.property.update({
+        where: { id },
+        data: {
+          ...(dto.name ? { name: dto.name } : {}),
+          ...(beteckning ? { propertyDesignation: beteckning } : {}),
+          ...(dto.type ? { type: dto.type } : {}),
+          ...(dto.address?.street ? { street: dto.address.street } : {}),
+          ...(dto.address?.city ? { city: dto.address.city } : {}),
+          ...(dto.address?.postalCode ? { postalCode: dto.address.postalCode } : {}),
+          ...(dto.address?.country ? { country: dto.address.country } : {}),
+          ...(dto.totalArea ? { totalArea: dto.totalArea } : {}),
+          ...(dto.yearBuilt ? { yearBuilt: dto.yearBuilt } : {}),
+        },
+        include: { _count: { select: { units: true } } },
+      }),
+    )
     return this.mapProperty(row as PrismaPropertyWithCount)
   }
 
