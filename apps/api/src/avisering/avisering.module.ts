@@ -12,6 +12,12 @@ import { DepositsModule } from '../deposits/deposits.module'
 import { NotificationsModule } from '../notifications/notifications.module'
 import { AviseringController } from './avisering.controller'
 import { AviseringService } from './avisering.service'
+import { NotificationsService } from '../notifications/notifications.service'
+import {
+  NOTIFICATION_FANOUT,
+  REMINDER_FEE_REVERSAL,
+  ReminderBounceService,
+} from './reminder-bounce.service'
 import { AviseringScheduler } from './avisering.scheduler'
 import { RentReminderService } from './rent-reminder.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
@@ -39,6 +45,10 @@ import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
   ],
   controllers: [AviseringController],
   providers: [
+    ReminderBounceService,
+    // Porten binds till den riktiga tjänsten — en implementation, smal yta.
+    { provide: NOTIFICATION_FANOUT, useExisting: NotificationsService },
+    { provide: REMINDER_FEE_REVERSAL, useExisting: AviseringService },
     AviseringService,
     AviseringScheduler,
     RentReminderService,
@@ -57,6 +67,7 @@ import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
   // Tillåtna outstanding()-läsare vaktas statiskt av rent-debt-money-neutrality.spec.ts.
   exports: [
     AviseringService,
+    ReminderBounceService,
     RentNoticeEventsService,
     RentReminderService,
     RentInterestService,

@@ -10,6 +10,7 @@ import { Webhook, WebhookVerificationError } from 'svix'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { ResendEventSchema, type ResendEvent } from './resend-event.schema'
 import { resolveActorType } from '../common/ai-origin/ai-origin.context'
+import { ReminderBounceService } from '../avisering/reminder-bounce.service'
 
 /**
  * Hanterar Resends leverans-/bounce-webhook.
@@ -35,6 +36,9 @@ export class ResendWebhookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    // #654: en studsad PÅMINNELSE återför avgiften. Policyn bor i
+    // ReminderBounceService, inte här — webhooken avgör inte affärsregler.
+    private readonly reminderBounce: ReminderBounceService,
   ) {}
 
   /**
@@ -134,9 +138,12 @@ export class ResendWebhookService {
       return
     }
     // Ingen inbjudan matchade — kan vara en hyresavi-påminnelse (inkasso PR 4b₀).
-    const matched = await this.recordNoticeDeliveryEvent(emailId, 'DELIVERED', {
-      deliveredAt: at.toISOString(),
-    })
+    const matched = await this.recordNoticeDeliveryEvent(
+      emailId,
+      'DELIVERED',
+      { deliveredAt: at.toISOString() },
+      at,
+    )
     if (!matched) this.logCorrelation('delivered', emailId, 0)
   }
 
@@ -157,11 +164,16 @@ export class ResendWebhookService {
     // ALDRIG den fria bounce-texten. Fritexten kan innehålla mottagarens e-post
     // (PII) och hamnar annars i en append-only logg som inte kan rensas
     // (security-auditor LOW / GDPR lagringsminimering).
-    const matched = await this.recordNoticeDeliveryEvent(emailId, 'BOUNCED', {
-      bouncedAt: at.toISOString(),
-      ...(bounce?.type ? { bounceType: bounce.type } : {}),
-      ...(bounce?.subType ? { bounceSubType: bounce.subType } : {}),
-    })
+    const matched = await this.recordNoticeDeliveryEvent(
+      emailId,
+      'BOUNCED',
+      {
+        bouncedAt: at.toISOString(),
+        ...(bounce?.type ? { bounceType: bounce.type } : {}),
+        ...(bounce?.subType ? { bounceSubType: bounce.subType } : {}),
+      },
+      at,
+    )
     if (!matched) this.logCorrelation('bounced', emailId, 0)
   }
 
@@ -198,6 +210,7 @@ export class ResendWebhookService {
     emailId: string,
     utfall: 'DELIVERED' | 'BOUNCED',
     payload: Prisma.InputJsonObject,
+    at: Date,
   ): Promise<boolean> {
     const notice = await this.prisma.rentNotice.findFirst({
       where: { OR: [{ reminderMessageId: emailId }, { noticeMessageId: emailId }] },
@@ -228,7 +241,7 @@ export class ResendWebhookService {
     }
 
     try {
-      await this.prisma.rentNoticeEvent.create({
+      const skapad = await this.prisma.rentNoticeEvent.create({
         data: {
           rentNoticeId: notice.id,
           type,
@@ -238,6 +251,24 @@ export class ResendWebhookService {
         },
       })
       this.logger.log(`Resend ${type}: loggade leverans-event för hyresavi ${notice.id}`)
+
+      // ── ÅTERFÖRINGEN HÄNGER PÅ SKRIVNINGEN, INTE PÅ EVENTET (#654) ─────────
+      //
+      // Anropet ligger EFTER en lyckad `create` och utanför både snabbvägen
+      // ("redan loggat") och P2002-grenen. Det ger idempotensen gratis: Resend
+      // levererar at-least-once, men bara EN skrivning kan vinna det partiella
+      // unika indexet, och bara vinnaren återför. `reminder-fee-reversal:<id>`
+      // är dessutom idempotent per (org, source, sourceId) — två spärrar, och
+      // den första är den som räknas.
+      //
+      // BARA EMAIL_BOUNCED. En studs på AVIN (NOTICE_EMAIL_BOUNCED) är en helt
+      // annan fråga — den handlar om huruvida avin över huvud taget hör hemma i
+      // kravtrappan, inte om påminnelseavgiften. Att slå ihop dem vore precis
+      // det misstag de egna händelsetyperna skapades för att förhindra (#651).
+      if (type === 'EMAIL_BOUNCED') {
+        const utfall = await this.reminderBounce.handleBouncedReminder(notice.id, skapad.id, at)
+        this.logger.log(`Studsad påminnelse för avi ${notice.id}: ${utfall}`)
+      }
     } catch (err) {
       // Det partiella unika indexet (rentNoticeId, type) på leveranstyperna
       // DB-enforce:ar idempotensen: en samtidig dubblett som passerade findFirst-
