@@ -13,6 +13,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { ConflictException } from '@nestjs/common'
 import { InvoicesService } from './invoices.service'
+import { DUBBLETT_FAKTURA_FONSTER_MS } from './duplicate-invoice-window'
 
 const DTO = {
   type: 'RENT' as const,
@@ -145,15 +146,83 @@ describe('InvoicesService.create — dubbelfaktureringsspärren, båda tabellern
     expect(invoiceFindFirst.mock.calls[0]?.[0].where.status).toEqual({ not: 'VOID' })
   })
 
-  it('MOTPROV: en ICKE-RENT-faktura frågar ingen av tabellerna', async () => {
-    // Gren 2. Två identiska serviceavgifter är i domänen två legitima krav —
-    // ingenting i datan skiljer dem åt, så det finns ingen nyckel att ställa.
-    // En innehållsnyckel här hade fabricerat en skillnad som inte finns.
+  // ── GREN 2: ICKE-RENT ────────────────────────────────────────────────────
+  //
+  // Provet krävde tidigare att grenen frågade INGENTING. Det var sant och är
+  // det inte längre, och ändringen är ett beslut: `create()` bokför
+  // intäktsverifikatet i SAMMA transaktion som fakturan — även för ett utkast
+  // (T5 A1) — så en oavsiktlig dubblett dubbelbokför intäkten. Grenen kunde
+  // alltså inte stå tom.
+  //
+  // Den frågar fortfarande INGEN avi: en serviceavgift har ingen period.
+
+  it('en ICKE-RENT-faktura frågar ingen AVI — bara sitt eget fönster', async () => {
     const { service, rentNoticeFindFirst, invoiceFindFirst, txCreate } = makeService()
 
     await service.create('org-1', 'user-1', { ...DTO, type: 'SERVICE' } as never)
     expect(rentNoticeFindFirst).not.toHaveBeenCalled()
-    expect(invoiceFindFirst).not.toHaveBeenCalled()
+    expect(invoiceFindFirst).toHaveBeenCalledTimes(1)
+    expect(txCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('fönstrets signatur är avtal + typ + belopp + förfallodag, inom en tidsgräns', async () => {
+    // RADBESKRIVNINGARNA STÅR UTANFÖR med flit: modellen formulerar om dem vid
+    // ett omtag, och en nämnare som innehåller dem hade blivit för fin och
+    // dedupat ingenting.
+    const { service, invoiceFindFirst } = makeService()
+    await service.create('org-1', 'user-1', { ...DTO, type: 'SERVICE' } as never)
+
+    const where = invoiceFindFirst.mock.calls[0]?.[0].where
+    expect(where).toMatchObject({
+      leaseId: 'lease-1',
+      type: 'SERVICE',
+      total: 10000,
+      status: { not: 'VOID' },
+      creditedInvoiceId: null,
+    })
+    expect(where.dueDate).toBeInstanceOf(Date)
+    expect(where.createdAt.gt).toBeInstanceOf(Date)
+    expect(where.description).toBeUndefined()
+
+    // ⚠️ ETT INTERVALL, INTE ETT TAK. Första versionen skrev
+    // `expect(ålder).toBeLessThanOrEqual(60_000)` och var därmed grön bara om
+    // NOLL tid förflutit mellan att `where` byggdes och att provet läste den —
+    // alltså rött så fort en millisekund passerade. Den föll i en gruppkörning
+    // och såg ut som en flake tills provet kördes igen och visade orsaken.
+    //
+    // Gränsen jämförs dessutom mot KONSTANTEN, inte mot 60000 skrivet en andra
+    // gång: ett prov som upprepar talet slutar mäta att koden använder det.
+    const ålder = Date.now() - where.createdAt.gt.getTime()
+    expect(ålder).toBeGreaterThanOrEqual(DUBBLETT_FAKTURA_FONSTER_MS)
+    expect(ålder).toBeLessThan(DUBBLETT_FAKTURA_FONSTER_MS + 5_000)
+  })
+
+  it('SAMMA anrop två gånger: en färsk identisk avgift blockerar, och ingen faktura skapas', async () => {
+    const { service, txCreate } = makeService({ existingInvoice: true })
+
+    await expect(
+      service.create('org-1', 'user-1', { ...DTO, type: 'SERVICE' } as never),
+    ).rejects.toBeInstanceOf(ConflictException)
+    // Det som gör det här värt en spärr: utan den hade intäkten bokförts två
+    // gånger i samma transaktion som den andra fakturan.
+    expect(txCreate).not.toHaveBeenCalled()
+  })
+
+  it('TVÅ LEGITIMA anrop: utan färsk träff går den andra igenom', async () => {
+    // Den obligatoriska andra kontrollen. En verklig andra avgift — annat
+    // belopp, annan förfallodag, eller bara senare än fönstret — ska gå fram.
+    //
+    // ⚠️ MEN DEN BÄR INTE FÖR-GROV-KONTROLLEN HÄR, och det ska stå utskrivet.
+    // Attrappen returnerar `null` oavsett `where`, så den kan inte se om
+    // avgränsningen tappat ett fält. Uppmätt: med `total` och `dueDate`
+    // borttagna ur signaturen förblir DET HÄR provet grönt — det är
+    // signaturprovet ovan som faller.
+    //
+    // I ett db-prov hade de två fallit ihop. Här bärs för-grov-riktningen av
+    // signaturen, och det är en gräns hos attrappen, inte hos regeln.
+    const { service, txCreate } = makeService({ existingInvoice: false })
+
+    await service.create('org-1', 'user-1', { ...DTO, type: 'SERVICE' } as never)
     expect(txCreate).toHaveBeenCalledTimes(1)
   })
 })
