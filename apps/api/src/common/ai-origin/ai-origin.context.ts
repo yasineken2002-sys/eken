@@ -36,6 +36,8 @@
 import { AsyncLocalStorage } from 'async_hooks'
 import type { EventActorType } from '@prisma/client'
 
+import { runWithActor } from '../actor/actor.context'
+
 /**
  * UPPDRAGSGIVAREN — vem körningen sker PÅ UPPDRAG AV.
  *
@@ -109,7 +111,11 @@ export function assertUppdragsgivare(u: AiPrincipal): asserts u is AiPrincipal {
  */
 export function runAsAi<T>(aiToolExecutionId: string, uppdragsgivare: AiPrincipal, fn: () => T): T {
   assertUppdragsgivare(uppdragsgivare)
-  return storage.run({ aiToolExecutionId, uppdragsgivare }, fn)
+  // AGENTGRÄNSEN (G1 steg 3). Den ligger INNANFÖR requestens `HUMAN`, och den
+  // innersta kontexten vinner — en AI-skriven rad bär därför AGENT även när
+  // requesten kom från en inloggad människa. Det är hela poängen: kolumnen ska
+  // säga vem som UTFÖRDE, inte vem som var inloggad.
+  return runWithActor('AGENT', () => storage.run({ aiToolExecutionId, uppdragsgivare }, fn))
 }
 
 /**

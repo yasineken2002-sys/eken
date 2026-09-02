@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common'
 import * as Sentry from '@sentry/nestjs'
+import { runWithActor } from '../actor/actor.context'
 import type { CronErrorSink } from './cron-error-sink'
 
 /**
@@ -110,7 +111,16 @@ export async function runCronSafely<T>(
 ): Promise<T | undefined> {
   const logger = options.logger ?? defaultLogger
   try {
-    return await fn()
+    // SYSTEMGRÄNSEN (G1 steg 3). Ett schemalagt jobb utförs av systemet, och
+    // varje rad det skapar ska bära det. Kontexten öppnas HÄR och inte i varje
+    // cron, av samma skäl som resten av den här filen finns: 27 @Cron-metoder i
+    // 16 filer, och en regel som varje författare måste minnas är ingen regel.
+    //
+    // 15 av de 16 filerna går genom den här hjälparen. Den sextonde är
+    // `backup.scheduler.ts`, som har egen Sentry-hantering sedan tidigare — den
+    // skriver ingen av de stämplade modellerna, så den lämnas utanför med flit
+    // i stället för att dras in för symmetrins skull.
+    return await runWithActor('SYSTEM', fn)
   } catch (err) {
     // Full detalj (kan innehålla query/infra/PII) till den lokala loggen — och,
     // via `options.sink` längre ned, till ErrorLog. INTE till Sentry. Se

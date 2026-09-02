@@ -12,6 +12,7 @@ import helmet from '@fastify/helmet'
 import multipart from '@fastify/multipart'
 import { AppModule } from './app.module'
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
+import { ActorInterceptor } from './common/actor/actor.interceptor'
 import { TransformInterceptor } from './common/interceptors/transform.interceptor'
 
 async function bootstrap() {
@@ -155,7 +156,10 @@ async function bootstrap() {
     }),
   )
   app.useGlobalFilters(app.get(GlobalExceptionFilter))
-  app.useGlobalInterceptors(new TransformInterceptor())
+  // ORDNINGEN SPELAR ROLL: ActorInterceptor måste ligga YTTERST av de två, så
+  // att aktörskontexten är öppen medan hanteraren kör. Nest kör interceptors i
+  // registreringsordning, ytterst först.
+  app.useGlobalInterceptors(new ActorInterceptor(), new TransformInterceptor())
 
   // Swagger
   if (config.get('NODE_ENV') !== 'production') {
