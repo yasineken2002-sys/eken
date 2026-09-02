@@ -820,13 +820,20 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
   //
   // Icke-RENT-halvan har INGEN nyckel. Två identiska serviceavgifter är i
   // domänen två legitima krav; ingenting i datan skiljer dem åt, och en
-  // innehållsnyckel hade fabricerat en skillnad som inte finns. Det som hör
-  // hemma där är ett kort tidsfönster — hög (b), obyggt.
+  // innehållsnyckel hade fabricerat en skillnad som inte finns.
   //
-  // Klassen och spåret står därför KVAR som de var. Att sätta `plats` till något
-  // annat än INGET hade gjort posten återupptagbar (den är AUTOMATISK), och en
-  // omkörning av en icke-RENT-faktura ger fortfarande en dubblett. Samma
-  // resonemang som update_maintenance_status: den svagaste halvan bestämmer.
+  // Den halvan har nu ett KORT FÖNSTER i stället (60 s på avtal + typ + belopp
+  // + förfallodag, `duplicate-invoice-window.ts`). Skälet till att den inte
+  // kunde stå tom är mätt: `create()` bokför intäktsverifikatet i SAMMA
+  // transaktion som fakturan, även för ett utkast — en oavsiktlig dubblett
+  // dubbelbokför alltså intäkten. Asymmetrin går åt båda håll här, till
+  // skillnad från felanmälan: för grovt underdebiterar, för fint dubbelbokför.
+  //
+  // Klassen och spåret står ändå KVAR som de var. Ett fönster är inte en
+  // identitet: en omkörning EFTER fönstret ger fortfarande en dubblett, och att
+  // sätta `plats` till något annat än INGET hade gjort posten återupptagbar (den
+  // är AUTOMATISK) på ett skydd som inte bär den bördan. Den svagaste halvan
+  // bestämmer — samma form som mark_invoice_paid.
   create_invoice: {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
@@ -947,7 +954,19 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [],
   },
 
-  // Inspection saknar unikt index.
+  // Inspection saknar unikt index, och ska inte få ett: två besiktningar av
+  // samma typ på samma enhet samma dag är ovanligt men inte förbjudet — en
+  // schemaläggningskonvention, inte en regel.
+  //
+  // ⚠️ OCH ETT TIDSFÖNSTER ÄR OCKSÅ BORTVALT, som ett svar och inte en lucka.
+  // Mätt 2026-09-02: `inspectionsService.create` har INGEN utåtriktad effekt
+  // (ingen notis, inget mejl, ingen kö), och produktionen har noll besiktningar
+  // att dimensionera ett fönster ur. Hela kostnaden för en dubblett är en synlig
+  // rad i operatörens egen lista. Skälet i sin helhet står vid anropet i
+  // tool-executor.service.ts, tillsammans med vad som skulle ändra beslutet.
+  //
+  // Posten står därför kvar som DEDUPLICERBAR med spåret INGET — en omkörning
+  // ger fortfarande en dubblett, och det ska synas i talen.
   create_inspection: {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',

@@ -3468,6 +3468,35 @@ export class ToolExecutorService {
             return { success: false, message: inspectionUnitResolved.error }
           }
 
+          // ── MEDVETET INGEN SPÄRR HÄR — LÄS INNAN DU LÄGGER TILL EN ───────
+          //
+          // Posten hör till hög (b): domänen har ingen nyckel. Två besiktningar
+          // av samma typ på samma enhet samma dag är ovanligt men inte förbjudet
+          // — det är en schemaläggningskonvention, inte en regel. Ett unikt
+          // index hade därför varit precis den för grova nämnaren.
+          //
+          // Men ett TIDSFÖNSTER valdes också bort, och det är ett svar och inte
+          // en lucka. Mätt 2026-09-02:
+          //
+          //   • `inspectionsService.create` har INGEN utåtriktad effekt — ingen
+          //     notis, inget mejl, ingen kö. Den skriver raden och (för
+          //     MOVE_IN/MOVE_OUT) sina förinladdade checkpunkter.
+          //   • produktionen har NOLL besiktningar, alltså inget underlag att
+          //     dimensionera ett fönster ur.
+          //
+          // Hela kostnaden för en dubblett är alltså EN SYNLIG RAD i operatörens
+          // egen lista, som hen tar bort. Det skiljer posten från felanmälan
+          // (där en tappad rad kan vara enda spåret av ett fel) och från
+          // betalningen (där felet hamnar i huvudboken).
+          //
+          // Ett fönster hade kostat: ett tal utan mätning bakom sig, en gräns
+          // som måste förklaras för alltid, och en risk att äta en legitim andra
+          // schemaläggning. Det priset är högre än dubbletten.
+          //
+          // VAD SOM SKULLE ÄNDRA BESLUTET: att skapandet får en utåtriktad
+          // effekt (en notis till hyresgästen), eller uppmätta dubbletter i
+          // produktion. Mät då tiden mellan par med samma (enhet, typ, datum)
+          // innan ett tal väljs.
           const inspection = await this.inspectionsService.create(
             {
               type: toolInput.type as never,

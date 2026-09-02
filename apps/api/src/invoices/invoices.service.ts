@@ -20,6 +20,7 @@ const REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH = 10
 import { PrismaService } from '../common/prisma/prisma.service'
 import { stockholmCivilDate } from '../common/time/stockholm-period'
 import { rentPeriodFalt, ärHyresperiodskonflikt, DUBBEL_HYRESFAKTURA_TEXT } from './rent-period'
+import { DUBBLETT_FAKTURA_FONSTER_MS } from './duplicate-invoice-window'
 import { OcrService } from '../common/ocr/ocr.service'
 import { InvoiceEventsService } from './invoice-events.service'
 import { PdfService } from './pdf.service'
@@ -1039,7 +1040,12 @@ export class InvoicesService {
    * halvan HAR en nyckel, den andra har ingen.
    */
   private async assertNoDuplicateInvoice(
-    dto: { type?: string; issueDate: string | Date },
+    dto: {
+      type?: string
+      issueDate: string | Date
+      dueDate: string | Date
+      lines: Array<{ description: string; quantity: number; unitPrice: number; vatRate: number }>
+    },
     leaseId: string,
   ): Promise<void> {
     // ── GREN 1: HYRA HAR EN DOMÄNNYCKEL — (avtal, period) ────────────────────
@@ -1129,18 +1135,56 @@ export class InvoicesService {
       return
     }
 
-    // ── GREN 2: ALLT ANNAT SAKNAR NYCKEL — OCH SKA INTE FÅ EN PÅHITTAD ───────
+    // ── GREN 2: INGEN NYCKEL — MEN ETT KORT FÖNSTER, OCH SKÄLET ÄR MÄTT ─────
     //
-    // Två identiska serviceavgifter på samma avtal med samma förfallodatum och
-    // belopp är i domänen två legitima krav: ingenting i datan skiljer dem åt.
-    // En innehållsnyckel här hade fabricerat en skillnad som inte finns, och
-    // tyst kastat den andra fakturan — hyresgästen underdebiteras och felet syns
-    // först vid en avstämning.
+    // Två identiska serviceavgifter på samma avtal är i domänen två legitima
+    // krav: ingenting i datan skiljer dem åt. En NYCKEL här hade fabricerat en
+    // skillnad som inte finns och tyst kastat den andra fakturan.
     //
-    // Grenen står här TOM MED FLIT, inte av glömska. Det som hör hemma är ett
-    // kort TIDSFÖNSTER mot oavsiktliga dubbletter, av samma form som
-    // `common/payments/duplicate-payment-window.ts` — och dess tal måste mätas
-    // för den här vägen, inte kopieras från betalvägens 120 s.
+    // ⚠️ MEN GRENEN KAN INTE STÅ TOM, och det visste jag inte förrän jag mätte:
+    // `create()` bokför intäktsverifikatet i SAMMA transaktion som fakturan —
+    // även för ett utkast (se createJournalEntryForInvoice nedan, T5 A1). En
+    // oavsiktlig dubblett dubbelbokför alltså intäkten och kundfordran; den är
+    // inte en extra rad i en lista utan ett fel i huvudboken.
+    //
+    // ASYMMETRIN GÅR ÅT BÅDA HÅLL HÄR, till skillnad från felanmälan. För grovt
+    // = en verklig andra avgift försvinner, hyresgästen underdebiteras och
+    // intäkten uteblir. För fint = dubbelbokföring. Båda är bokföringsfel.
+    //
+    // Därför: ett KORT fönster på det som är ett omtags signatur — samma avtal,
+    // typ, belopp och förfallodag — och ett svar i stället för ett tyst hopp, så
+    // att en verklig andra avgift kan skrivas om.
+    //
+    // TALET ÄR RESONERAT, INTE MÄTT: produktionen har noll fakturor. Ett omtag
+    // är ett modellvarv (ensiffriga sekunder); två skilda avgifter med exakt
+    // samma belopp och förfallodag skrivs inte av en människa på en minut.
+    // Samma tal som felanmälningsfönstret, av samma skäl — men mätt om den dag
+    // det finns fakturor att mäta på.
+    //
+    // RADBESKRIVNINGARNA STÅR UTANFÖR signaturen med flit: modellen formulerar
+    // om dem vid ett omtag, och en nämnare som innehåller dem hade blivit för
+    // fin och dedupat ingenting.
+    const sedan = new Date(Date.now() - DUBBLETT_FAKTURA_FONSTER_MS)
+    const färsk = await this.prisma.invoice.findFirst({
+      where: {
+        leaseId,
+        type: dto.type as never,
+        total: computeInvoiceAmounts(dto.lines).total,
+        dueDate: new Date(dto.dueDate),
+        status: { not: 'VOID' },
+        creditedInvoiceId: null,
+        createdAt: { gt: sedan },
+      },
+      select: { invoiceNumber: true },
+    })
+    if (färsk) {
+      throw new ConflictException(
+        `En faktura på samma belopp och förfallodag skapades för det här avtalet ` +
+          `för mindre än en minut sedan (${färsk.invoiceNumber}). Ingen ny faktura har ` +
+          `skapats.\n\nÄr det en VERKLIG andra avgift: vänta en minut, eller skriv ` +
+          `ett belopp eller förfallodatum som skiljer dem åt.`,
+      )
+    }
   }
 
   /**
