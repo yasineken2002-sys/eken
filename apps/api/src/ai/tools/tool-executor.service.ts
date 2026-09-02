@@ -3368,20 +3368,39 @@ export class ToolExecutorService {
             }
           }
 
+          // ── KOMMENTAREN LIGGER I UPPDATERINGEN, INTE BREDVID DEN ─────────
+          //
+          // Tidigare: `update` (idempotent) följt av `addComment` (APPEND). En
+          // omkörning ändrade ingen status men lade kommentaren en andra gång —
+          // posten var odedupliserbar av sin svagaste halva.
+          //
+          // Nu skrivs noteringen i SAMMA sats, och bara när statusen faktiskt
+          // ändras. Det tar bort BEHOVET av ett tidsfönster i stället för att
+          // bygga ett: kommentaren beskriver en ÖVERGÅNG, och att skriva den när
+          // ingen övergång skedde var alltid fel — inte bara vid en omkörning.
+          const föreStatus = ticketCheck.status
           await this.maintenanceService.update(
             toolInput.ticketId as string,
             { status: toolInput.newStatus as never },
             organizationId,
+            toolInput.comment ? { content: toolInput.comment as string, userId } : undefined,
           )
 
-          if (toolInput.comment) {
-            await this.maintenanceService.addComment(
-              toolInput.ticketId as string,
-              toolInput.comment as string,
-              true,
-              organizationId,
-              userId,
-            )
+          // SVARET SÄGER VAD SOM FAKTISKT HÄNDE. Var statusen redan den begärda
+          // skrevs ingen notering, och det ska operatören få veta — annars ser
+          // ett omtag ut som en genomförd ändring, och en notering som var tänkt
+          // att fastna har tyst fallit bort.
+          if (föreStatus === (toolInput.newStatus as string)) {
+            return {
+              success: true,
+              message:
+                `Ärende ${toolInput.ticketNumber as string} hade redan status ` +
+                `${translateMaintenanceStatus(toolInput.newStatus as string)}. Inget ändrades` +
+                (toolInput.comment
+                  ? ', och ingen notering lades till — noteringar skrivs bara vid en faktisk ' +
+                    'statusändring. Lägg den på ärendet i stället om den ska sparas.'
+                  : '.'),
+            }
           }
 
           return {

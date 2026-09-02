@@ -153,17 +153,22 @@ describe('effektklassificeringen', () => {
     // `@@unique([unitId, tenantId, startDate])` — en nyckel, två poster. Båda är
     // KRÄVER_MÄNNISKA och flyttar därför inte raden om återupptagbara.
     //
+    // 22/8 → 23/7: `update_maintenance_status` blev IDEMPOTENT — inte genom en
+    // spärr utan genom att noteringen flyttades in i uppdateringen och
+    // villkorades på en faktisk statusändring. Posten är AUTOMATISK och flyttar
+    // därför raden om återupptagbara, 11 → 12.
+    //
     // Talen rör sig i takt med att nycklar byggs, och det är meningen. Raden
     // finns för att varje steg ska vara ett beslut — inte för att talet ska
     // vara stilla.
-    it('22 IDEMPOTENT, 8 DEDUPLICERBAR, 0 OKÄND', () => {
+    it('23 IDEMPOTENT, 7 DEDUPLICERBAR, 0 OKÄND', () => {
       const c = buildEffectCatalog()
       const antal = (k: string) => c.filter((e) => e.effectIdempotency === k).length
       expect({
         idempotent: antal('IDEMPOTENT'),
         deduplicerbar: antal('DEDUPLICERBAR'),
         okand: antal('OKÄND'),
-      }).toEqual({ idempotent: 22, deduplicerbar: 8, okand: 0 })
+      }).toEqual({ idempotent: 23, deduplicerbar: 7, okand: 0 })
     })
 
     it('30 av 30 poster är policybeslutade — inga luckor kvar', () => {
@@ -181,11 +186,15 @@ describe('effektklassificeringen', () => {
       expect(buildEffectCatalog()).toHaveLength(30)
     })
 
-    it('exakt 11 verktyg är återupptagbara — alla med ett spår som finns', () => {
+    it('exakt 12 verktyg är återupptagbara — alla med ett spår som finns', () => {
       // Listan är HÄRLEDD, inte vald: den är snittet av AUTOMATISK och "spåret
       // finns". De AUTOMATISK-poster som faller ur gör det på det andra
       // villkoret, och det är avsiktligt — att en effekt får återupptas hjälper
       // ingen förrän något kan svara på om den redan skedde.
+      //
+      // 11 → 12: `update_maintenance_status` blev idempotent genom att
+      // noteringen flyttades in i uppdateringen — inget index, ingen spärr, bara
+      // ett villkor som gör en omkörning till en no-op.
       //
       // 10 → 11 den 2026-09-02: `create_property` fick sitt unika index på
       // (organizationId, propertyDesignation). Den var AUTOMATISK hela tiden och
@@ -206,6 +215,7 @@ describe('effektklassificeringen', () => {
         'pause_reminders',
         'record_expense',
         'resume_reminders',
+        'update_maintenance_status',
         'update_tenant',
       ])
     })
@@ -322,7 +332,6 @@ describe('effektklassificeringen', () => {
         'create_inspection',
         'create_invoice',
         'create_maintenance_ticket',
-        'update_maintenance_status',
       ])
     })
   })
