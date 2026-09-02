@@ -14,11 +14,19 @@
  *
  * ── DEN SKARPA RADEN ────────────────────────────────────────────────────────
  *
- * `olöst-100d` är hela poängen. Den är äldre än den LÖSTA fristen (30 d) och
- * yngre än den OLÖSTA (180 d). Den enda buggen som är verkligt sannolik här —
- * att en frist används för båda hinkarna, eller att `resolved`-villkoret faller
- * bort — raderar just den raden och inga andra. Ett prov utan den hade varit
- * grönt för den buggen.
+ * `olöst-mitt-emellan` är hela poängen: en OLÖST rad som är äldre än den LÖSTA
+ * fristen men yngre än den olösta. Den enda buggen som är verkligt sannolik här
+ * — att en frist används för båda hinkarna, eller att `resolved`-villkoret
+ * faller bort — raderar just den raden och inga andra. Ett prov utan den hade
+ * varit grönt för den buggen.
+ *
+ * ÅLDERN OCH NAMNEN ÄR HÄRLEDDA, INTE SKRIVNA. Raden hette tidigare
+ * `olöst-100d` med åldern 100 hårdkodad — sant så länge den olösta fristen var
+ * 180, falskt i samma sekund den sänktes till 90 (2026-09-02): en 100 dagar
+ * gammal rad ligger då PÅ FEL SIDA om gränsen, och den skarpa raden hade tyst
+ * slutat vara skarp. Åldern räknas därför mitt emellan fristerna, och
+ * kanariefågeln nedan kräver att den ligger strikt mellan dem — annars mäter
+ * riggen ingenting och säger det.
  *
  * ── VAD RIGGEN INTE SER ─────────────────────────────────────────────────────
  *
@@ -42,9 +50,26 @@ describe('förutsättningar', () => {
   it('KANARIEFÅGEL: fristerna är olika — annars mäter riggen ingen differentiering', () => {
     expect(RESOLVED_RETENTION_DAYS).toBeLessThan(UNRESOLVED_RETENTION_DAYS)
   })
+
+  it('KANARIEFÅGEL: den skarpa radens ålder ligger STRIKT mellan fristerna', () => {
+    // Utan den här faller riggens skärpa tyst om fristerna kryper ihop: en
+    // mittpunkt som sammanfaller med en gräns prövar inte längre att hinkarna
+    // hålls isär, och alla övriga påståenden förblir gröna.
+    expect(MITT_EMELLAN_DAGAR).toBeGreaterThan(RESOLVED_RETENTION_DAYS)
+    expect(MITT_EMELLAN_DAGAR).toBeLessThan(UNRESOLVED_RETENTION_DAYS)
+  })
 })
 
 const DYGN = 24 * 60 * 60 * 1000
+
+/**
+ * Den skarpa radens ålder: mitt emellan fristerna, aldrig ett skrivet tal.
+ *
+ * Samma skäl som `cutoffFor` exporteras för produktionskoden — ett prov som
+ * räknar sin egen gräns bevisar bara att två uträkningar råkar stämma överens
+ * i dag.
+ */
+const MITT_EMELLAN_DAGAR = Math.round((RESOLVED_RETENTION_DAYS + UNRESOLVED_RETENTION_DAYS) / 2)
 
 medDb('ErrorLog-gallring (#612)', () => {
   const prisma = new PrismaClient()
@@ -53,47 +78,57 @@ medDb('ErrorLog-gallring (#612)', () => {
 
   /** Rader satta ut på båda sidor om båda gränserna. */
   const RADER = [
+    // NAMNEN BÄR INGA TAL. De hette tidigare 'löst-31d', 'olöst-179d' och så
+    // vidare — sant mot 30/180, falskt mot 30/90, och ett namn som ljuger om
+    // sitt eget värde är värre än inget namn: felutskriften pekar då ut en rad
+    // som inte finns. Åldern härleds ur konstanten, namnet säger bara sidan.
     {
-      namn: 'löst-31d',
+      namn: 'löst-över-frist',
       resolved: true,
       ålderDagar: RESOLVED_RETENTION_DAYS + 1,
       orgLös: false,
       skaBort: true,
     },
     {
-      namn: 'löst-29d',
+      namn: 'löst-under-frist',
       resolved: true,
       ålderDagar: RESOLVED_RETENTION_DAYS - 1,
       orgLös: false,
       skaBort: false,
     },
     {
-      namn: 'olöst-181d',
+      namn: 'olöst-över-frist',
       resolved: false,
       ålderDagar: UNRESOLVED_RETENTION_DAYS + 1,
       orgLös: false,
       skaBort: true,
     },
     {
-      namn: 'olöst-179d',
+      namn: 'olöst-under-frist',
       resolved: false,
       ålderDagar: UNRESOLVED_RETENTION_DAYS - 1,
       orgLös: false,
       skaBort: false,
     },
     // DEN SKARPA: äldre än lösta fristen, yngre än olösta. Ska STANNA.
-    { namn: 'olöst-100d', resolved: false, ålderDagar: 100, orgLös: false, skaBort: false },
+    {
+      namn: 'olöst-mitt-emellan',
+      resolved: false,
+      ålderDagar: MITT_EMELLAN_DAGAR,
+      orgLös: false,
+      skaBort: false,
+    },
     // Utan organisation — dessa var odödliga före #612 (enda raderingsvägen
     // matchade på organizationId).
     {
-      namn: 'löst-31d-utan-org',
+      namn: 'löst-över-frist-utan-org',
       resolved: true,
       ålderDagar: RESOLVED_RETENTION_DAYS + 1,
       orgLös: true,
       skaBort: true,
     },
     {
-      namn: 'olöst-179d-utan-org',
+      namn: 'olöst-under-frist-utan-org',
       resolved: false,
       ålderDagar: UNRESOLVED_RETENTION_DAYS - 1,
       orgLös: true,
@@ -169,22 +204,22 @@ medDb('ErrorLog-gallring (#612)', () => {
     expect(await kvarvarande()).toEqual(skaFinnasKvar)
   })
 
-  it('LÄMNAR KVAR raderna som inte passerat sin frist — inklusive den olösta 100-dagarsraden', async () => {
+  it('LÄMNAR KVAR raderna som inte passerat sin frist — inklusive den olösta mitt-emellan-raden', async () => {
     await service().runRetention('enforce', nu)
     const kvar = await kvarvarande()
 
     // Riktningen som gör "för mycket" synlig. Skrivs som enskilda påståenden
     // och inte bara som en mängdjämförelse, så att ett fel pekar ut VILKEN rad.
-    expect(kvar).toContain('olöst-100d')
-    expect(kvar).toContain('löst-29d')
-    expect(kvar).toContain('olöst-179d')
-    expect(kvar).toContain('olöst-179d-utan-org')
+    expect(kvar).toContain('olöst-mitt-emellan')
+    expect(kvar).toContain('löst-under-frist')
+    expect(kvar).toContain('olöst-under-frist')
+    expect(kvar).toContain('olöst-under-frist-utan-org')
   })
 
   it('tar rader UTAN organisation — de föll tidigare utanför allt', async () => {
     const utfall = await service().runRetention('enforce', nu)
 
-    expect(await kvarvarande()).not.toContain('löst-31d-utan-org')
+    expect(await kvarvarande()).not.toContain('löst-över-frist-utan-org')
     // Och att de RÄKNAS som sådana i rapporten, inte bara råkar försvinna.
     const löst = utfall.buckets.find((b) => b.bucket === 'resolved')
     expect(löst?.utanOrganisation).toBeGreaterThanOrEqual(1)
