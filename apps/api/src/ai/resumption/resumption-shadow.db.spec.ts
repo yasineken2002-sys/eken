@@ -266,4 +266,39 @@ medDb('återupptagningsmotorn i skuggläge', () => {
     await motor.körEttPass(NU)
     expect((await dom(id))?.ageSec).toBe(905 * 60 * 60)
   })
+
+  it('EN UTÅLDRAD RAD rapporteras — men EN GÅNG, inte varje pass', async () => {
+    // Det enda avslaget som beskriver ett fel hos motorn och inte hos raden.
+    // Ett tyst överhopp här hade dolt att taket är för snävt eller kadensen
+    // för gles — och en rapport per minut hade gjort sänkan oläsbar, vilket är
+    // samma tystnad i en annan förklädnad.
+    const id = await påbörjad({ toolName: 'create_property', ålder: 10 * 60 * 1000 })
+
+    await motor.körEttPass(NU)
+    expect((await dom(id))?.reason).toBe('TOO_OLD')
+    const första = sinkAnrop.filter((a) => String((a.fel as Error).message).includes('åldrades ut'))
+    expect(första).toHaveLength(1)
+
+    sinkAnrop = []
+    await motor.körEttPass(new Date(NU.getTime() + 60_000))
+    expect(
+      sinkAnrop.filter((a) => String((a.fel as Error).message).includes('åldrades ut')),
+    ).toHaveLength(0)
+    expect((await dom(id))?.assessments).toBe(2)
+  })
+
+  it('en gammal rad som ALDRIG var återupptagbar rapporteras INTE som utåldrad', async () => {
+    // Prods elva rader hade annars sett ut som elva missade fönster.
+    await påbörjad({
+      toolName: 'get_invoices',
+      success: true,
+      durationMs: 9,
+      toolResult: { ok: true },
+      ålder: 30 * 24 * 60 * 60 * 1000,
+    })
+    await motor.körEttPass(NU)
+    expect(
+      sinkAnrop.filter((a) => String((a.fel as Error).message).includes('åldrades ut')),
+    ).toHaveLength(0)
+  })
 })

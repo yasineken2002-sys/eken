@@ -6,7 +6,13 @@ import { CronErrorSink } from '../../common/cron/cron-error-sink'
 import { runCronSafely } from '../../common/cron/cron-safety'
 import { LockService } from '../../common/redis/lock.service'
 import { AiQuotaService } from '../usage/ai-quota.service'
-import { bedöm, skallSkrivaKörning, SKAL_TEXT } from './resumption-policy'
+import {
+  ATERUPPTAGNING_TAK_MS,
+  bedöm,
+  skallSkrivaKörning,
+  ärUtåldrad,
+  SKAL_TEXT,
+} from './resumption-policy'
 
 import type { Dom, PåbörjadKörning } from './resumption-policy'
 import type { ResumptionReason } from '@prisma/client'
@@ -238,7 +244,7 @@ export class ResumptionService {
       // EN RAD PER KÖRNING, inte per bedömning: `assessments` räknar upp i
       // stället för att en ny rad skrivs. De påbörjade raderna kan stå kvar för
       // alltid, och en rad per pass hade vuxit obegränsat utan ny information.
-      await this.prisma.aiResumptionVerdict.upsert({
+      const skriven = await this.prisma.aiResumptionVerdict.upsert({
         where: { executionId: rad.id },
         create: {
           runId: run.id,
@@ -256,7 +262,39 @@ export class ResumptionService {
           ageSec: Math.floor(dom.ageMs / 1000),
           assessments: { increment: 1 },
         },
+        select: { assessments: true },
       })
+
+      // ── ETT UTÅLDRAT FALL ÄR INGET TYST ÖVERHOPP ──────────────────────────
+      //
+      // Det är det enda avslaget som beskriver ett fel hos MOTORN och inte hos
+      // raden: den var återupptagbar, och motorn hann inte titta. Blir det
+      // vanligt är taket för snävt eller kadensen för gles, och den frågan ska
+      // gå att svara på ur data.
+      //
+      // EN GÅNG PER RAD, inte per pass. `assessments === 1` betyder att upserten
+      // nyss SKAPADE raden — de påbörjade raderna kan stå kvar för alltid, och
+      // en rapport per minut hade gjort sänkan oläsbar och därmed tyst igen.
+      if (skriven.assessments === 1 && ärUtåldrad(rad, nu)) {
+        await this.cronErrors.report(
+          'ai-resumption-shadow',
+          new Error(
+            `Återupptagbar körning åldrades ut osedd: ${rad.toolName}, ` +
+              `${Math.floor(dom.ageMs / 1000)} s gammal (tak ${ATERUPPTAGNING_TAK_MS / 1000} s). ` +
+              `Motorn hann aldrig titta inom fönstret.`,
+          ),
+          {
+            organizationId: rad.organizationId,
+            detail: {
+              steg: 'utåldrad',
+              executionId: rad.id,
+              toolName: rad.toolName,
+              ageSec: Math.floor(dom.ageMs / 1000),
+              takSec: ATERUPPTAGNING_TAK_MS / 1000,
+            },
+          },
+        )
+      }
     }
 
     await this.prisma.aiResumptionRun.update({

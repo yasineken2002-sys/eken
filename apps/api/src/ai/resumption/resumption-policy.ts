@@ -211,10 +211,46 @@ export function bedöm(rad: PåbörjadKörning, nu: Date): Dom {
   if (ageMs < ATERUPPTAGNING_GOLV_MS) return avstå('TOO_FRESH')
 
   // 6. TAKET. `>` och inte `>=`: exakt taket är innanför.
+  //
+  // TOO_OLD ÄR INTE ETT AVSLAG BLAND ANDRA. En rad som når hit har passerat
+  // steg 1–5 — den VAR återupptagbar, och det enda som stoppar den är att
+  // motorn inte hann titta i tid. Se `ärUtåldrad` nedan.
   if (ageMs > ATERUPPTAGNING_TAK_MS) return avstå('TOO_OLD')
 
   // ENDA VÄGEN TILL RESUME.
   return { beslut: 'RESUME', skäl: 'RESUMABLE', ageMs }
+}
+
+/**
+ * ÅLDRADES DEN HÄR RADEN UT UTAN ATT HA ÅTERUPPTAGITS?
+ *
+ * ── VARFÖR DET INTE RÄCKER ATT LÄSA `skäl === 'TOO_OLD'` ────────────────────
+ *
+ * Det gör det i dag, men bara på grund av STEGORDNINGEN: taket prövas sist, så
+ * en rad som får TOO_OLD har redan passerat form, klass, policy, spår och golv.
+ * Den egenskapen är implicit, och en omkastning av stegen skulle tyst göra
+ * TOO_OLD till en hink som också rymmer rader som aldrig var återupptagbara.
+ *
+ * Funktionen gör egenskapen EXPLICIT genom att fråga rakt ut: hade den här
+ * raden återupptagits om den varit yngre? Den frågan är sann eller falsk oavsett
+ * i vilken ordning stegen står, och `resumption-policy.spec.ts` fastnaglar
+ * ekvivalensen åt båda hållen.
+ *
+ * ── VARFÖR UTFALLET MÅSTE VARA URSKILJBART ──────────────────────────────────
+ *
+ * "Åldrades ut" är det enda avslaget som beskriver ett fel hos MOTORN och inte
+ * hos raden. Blir det vanligt i drift är taket för snävt eller kadensen för
+ * gles, och det ska gå att läsa ur data i stället för att gissas. Ett
+ * Railway-omstartsvarv mättes till 90–165 s 2026-09-02; ett långsammare varv
+ * äter en märkbar del av det fyra minuter breda fönstret.
+ */
+export function ärUtåldrad(rad: PåbörjadKörning, nu: Date): boolean {
+  if (bedöm(rad, nu).skäl !== 'TOO_OLD') return false
+  // Samma rad, förflyttad till mitten av fönstret. Blir domen RESUME var det
+  // ÅLDERN och ingenting annat som stoppade den.
+  const mitten = ATERUPPTAGNING_GOLV_MS + (ATERUPPTAGNING_TAK_MS - ATERUPPTAGNING_GOLV_MS) / 2
+  const förflyttad: PåbörjadKörning = { ...rad, createdAt: new Date(nu.getTime() - mitten) }
+  return bedöm(förflyttad, nu).beslut === 'RESUME'
 }
 
 /**

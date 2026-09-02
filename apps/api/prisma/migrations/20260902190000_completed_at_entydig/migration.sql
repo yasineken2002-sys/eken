@@ -1,0 +1,59 @@
+-- ETT FÄLT, EN BETYDELSE — backfill av `AiToolExecution.completedAt`.
+--
+-- ── VAD SOM VAR TVETYDIGT ───────────────────────────────────────────────────
+--
+-- `completedAt = NULL` skulle betyda EN sak: raden skrevs före körningen och vi
+-- kom aldrig tillbaka. Sedan 20260901154128 betyder den i praktiken två:
+--
+--   (a) PÅBÖRJAD — tvåfasvägen skrev raden och stängde den aldrig.
+--   (b) OKÄND    — raden skrevs av den GAMLA enfasvägen, som skrev EFTER
+--                  körningen. Kolumnen fanns inte då, och migrationen avstod
+--                  medvetet från en backfill som hade påstått något ingen mätt.
+--
+-- Det var rätt då. Nu är det mätt, och då är det inte längre rätt: så länge NULL
+-- betyder två saker är återupptagningsmotorns steg 1 den enda som vet
+-- skillnaden, och den kunskapen bor inuti motorn. Nästa läsare av kolumnen — en
+-- vy, en rapport, ett prov — ärver tvetydigheten utan att veta om det.
+--
+-- ── MÄTT I PRODUKTION 2026-09-02, FÖRE ÅTGÄRDEN ─────────────────────────────
+--
+--     AiToolExecution totalt                                   11
+--     completedAt IS NULL                                      11
+--     …varav med enfasvägens form (backfillas här)             11
+--     …varav med tvåfasvägens PÅBÖRJADE form (rörs INTE)        0
+--     durationMs bland de berörda                          4–51 ms
+--
+-- Noll tvetydiga rader. Varje rad som ändras är alltså bevisligen en FÄRDIG
+-- körning, inte en gissning.
+--
+-- ── VILKA RADER SOM RÖRS, OCH VARFÖR AVGRÄNSNINGEN ÄR FORMEN ────────────────
+--
+-- `beginToolExecution` skriver ALLTID success=false, durationMs=0 och inget
+-- toolResult. En rad med completedAt=NULL som bryter mot något av dem KAN inte
+-- ha skrivits av tvåfasvägen. Avgränsningen är alltså radens EGEN form och inte
+-- ett datum — ett datum hade krävt att man vet exakt när koden gick ut, och hade
+-- tyst gjort fel på en rad som skrevs under själva deployen.
+--
+-- En rad som varken har tvåfasvägens form eller bryter mot den finns inte: de
+-- två villkoren är varandras komplement. En ÄKTA påbörjad rad (success=false,
+-- durationMs=0, toolResult NULL) matchar därför aldrig, oavsett ålder — den
+-- lämnas orörd, vilket är hela poängen.
+--
+-- ── VÄRDET ÄR HÄRLETT, OCH DESS OSÄKERHET ÄR MÄTT ───────────────────────────
+--
+-- `completedAt = createdAt + durationMs`.
+--
+-- Var noga med vad `createdAt` är på de här raderna. Den gamla vägen mätte
+-- `durationMs: Date.now() - startedAt` och anropade SEDAN `logToolExecution`
+-- (`void`, alltså en flytande promise). Raden skapades därför EFTER körningen:
+-- `createdAt` är ungefär SLUTTIDEN, inte starten.
+--
+-- Uttrycket ovan behandlar `createdAt` som starten och ligger därmed
+-- `durationMs` för högt — högst 51 ms för de här elva raderna. Det är en
+-- ÖVRE GRÄNS: värdet påstår aldrig att en körning blev klar tidigare än den
+-- gjorde. Kolumnen är alltså sann på ±51 ms, och det står här så att ingen
+-- senare läser den som millisekundexakt.
+UPDATE "AiToolExecution"
+SET "completedAt" = "createdAt" + ("durationMs" || ' milliseconds')::interval
+WHERE "completedAt" IS NULL
+  AND ("success" = true OR "durationMs" <> 0 OR "toolResult" IS NOT NULL);
