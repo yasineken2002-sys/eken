@@ -1350,7 +1350,7 @@ export class ToolExecutorService {
             try {
               await this.prisma.paymentReminder.update({
                 where: { id: reminderId },
-                data: { emailMessageId: jobId },
+                data: { mailJobId: jobId },
               })
             } catch {
               console.error(
