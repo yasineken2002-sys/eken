@@ -120,7 +120,7 @@ AiTenantConversation.update  —  ai/tenant-ai.service.ts  (1 st)
     har alltså redan passerat portalens scopning innan det når hit.
 
 PaymentReminder.updateMany  —  notifications/payment-reminder.service.ts  (1 st)
-    sendFormalReminder skriver emailMessageId på markören efter commit (#357).
+    sendFormalReminder skriver mailJobId på markören efter commit (#357).
     Skrivningen ÄR org-bunden — `where` innehåller `invoice: { organizationId:
     invoice.organizationId }` — men heuristikens form A känner bara igen
     bindningen på find*, inte i en skrivnings where, så den syns inte.
