@@ -874,6 +874,31 @@ jobs:
       - name: Verify redaction logic exists in exactly one place
         run: node apps/api/scripts/check-redact-copies.mjs
 
+  user-html-sanitizer-guard:
+    name: User-HTML sanitizer single-source guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # fs-only, inga beroenden. Fäller en ANDRA sanerare, allowlist eller
+      # renderare av användar-/modellförfattad HTML — i fyra former, varav en
+      # (uppräkningen av taggnamn) inte kräver att kopian ens använder
+      # sanitize-html. Undantag kräver markören `user-html-allow:` med ett skäl.
+      #
+      # Vakten har TVÅ kanariefåglar, och den andra är den som gör den durabel:
+      # mängden filer som renderar rå HTML HÄRLEDS ur koden i stället för att
+      # listas, och en TOM mängd fäller. En vakt vars skyddade yta försvunnit
+      # ska bli röd, inte grön — annars är den grön just när den slutat mäta.
+      - name: Self-test the guard (4 detections + rule canary + scope canary)
+        run: node apps/api/scripts/check-user-html-sanitizer.mjs --self-test
+
+      - name: Verify user-authored HTML is sanitized in exactly one place
+        run: node apps/api/scripts/check-user-html-sanitizer.mjs
+
   ai-display-masking-guard:
     name: AI display masking guard
     runs-on: ubuntu-latest
@@ -1627,6 +1652,7 @@ jobs:
       - design-token-guard
       - transaction-limits-guard
       - redact-copies-guard
+      - user-html-sanitizer-guard
       - ai-display-masking-guard
       - generated-knowledge-sync-guard
       - schema-drift-guard

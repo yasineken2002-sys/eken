@@ -19,6 +19,12 @@ export interface CustomProps {
  * Wrapper-template för historiskt fri-HTML-anrop (sendCustomEmail).
  * Service-lagret bygger sin HTML och skickar in den hit; vi wrappar den
  * i Eveno-layouten så att headern och footern blir konsekventa.
+ *
+ * user-html-sink-allow: den enda avsiktliga raw-HTML-sänkan i API:t. `bodyHtml`
+ * byggs av anroparen och måste passera `renderUserParagraphs` i mail/user-html.ts,
+ * som är kodbasens enda sanerare; check-user-html-sanitizer.mjs fäller en andra.
+ * Att sänkan ligger här och inte i anroparen är medvetet — mallen ska rendera,
+ * inte sanera — men det gör kvitteringen till en del av mallens kontrakt.
  */
 export function Custom({
   preview,
