@@ -802,6 +802,23 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
 
   // invoiceNumber allokeras ur en sekvens → varje omkörning får ett NYTT nummer
   // och blir en ny faktura. Sekvensnumret är motsatsen till en idempotensnyckel.
+  //
+  // ── POSTEN HAR TVÅ HALVOR, OCH DEN SVAGASTE BESTÄMMER KLASSEN ────────────
+  //
+  // RENT-halvan HAR en domännyckel — (avtal, period) — och den är nu komplett:
+  // spärren frågade tidigare bara `RentNotice`, så två manuella RENT-fakturor
+  // för samma avtal och period passerade båda. Populationen omfattar nu båda
+  // tabellerna som kan bära perioden.
+  //
+  // Icke-RENT-halvan har INGEN nyckel. Två identiska serviceavgifter är i
+  // domänen två legitima krav; ingenting i datan skiljer dem åt, och en
+  // innehållsnyckel hade fabricerat en skillnad som inte finns. Det som hör
+  // hemma där är ett kort tidsfönster — hög (b), obyggt.
+  //
+  // Klassen och spåret står därför KVAR som de var. Att sätta `plats` till något
+  // annat än INGET hade gjort posten återupptagbar (den är AUTOMATISK), och en
+  // omkörning av en icke-RENT-faktura ger fortfarande en dubblett. Samma
+  // resonemang som update_maintenance_status: den svagaste halvan bestämmer.
   create_invoice: {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
