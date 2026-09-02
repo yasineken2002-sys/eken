@@ -1471,6 +1471,59 @@ de två villkoren träffas från olika kodvägar — då hör det hemma på pred
 som rena funktioner. Så gjordes det i `lease-conflict-disambiguation.spec.ts`,
 och skälet står i filen.
 
+## Ett unikt villkor över en NULLBAR kolumn skyddar inte raderna utan värde
+
+Två NULL är DISTINKTA i ett unikt index. `UNIQUE(a, b, c)` med `c` nullbar
+hindrar alltså inte två rader som har samma `a` och `b` och saknar `c` — de
+kolliderar inte, de är olika. Det står i SQL-standarden och är inte en
+Postgres-egenhet, men det är svårt att se i en diff: kolumnen ser ut att ingå i
+villkoret.
+
+Mätt direkt, inte härlett:
+
+```sql
+CREATE TEMP TABLE zz (a text, b text, c text);          -- c NULLBAR
+CREATE UNIQUE INDEX ON zz (a, b, c);
+INSERT INTO zz VALUES ('x','y',NULL);
+INSERT INTO zz VALUES ('x','y',NULL);                   -- går igenom → 2 rader
+
+CREATE TEMP TABLE zz2 (a text, b text, c text NOT NULL DEFAULT '');
+CREATE UNIQUE INDEX ON zz2 (a, b, c);
+INSERT INTO zz2 (a,b) VALUES ('x','y');
+INSERT INTO zz2 (a,b) VALUES ('x','y');
+-- ERROR: duplicate key ... Key (a, b, c)=(x, y, ) already exists.
+```
+
+Det farliga är att man oftast lägger till kolumnen för att SKÄRPA något. Utfallet
+blir motsatsen för de rader som fanns innan.
+
+**Uppmätt (#656).** Det unika villkoret på leveranshändelser skulle gå från
+`(rentNoticeId, type)` till `(rentNoticeId, type, sendId)`, för att ett utfall
+hör till ett UTSKICK och inte till avin. Med `sendId` nullbar hade varje rad som
+skrevs före kolumnen fått NULL — och därmed tappat skyddet helt:
+
+```
+före  UNIQUE(rentNoticeId, type)                  en EMAIL_BOUNCED per avi
+efter UNIQUE(rentNoticeId, type, sendId) nullbar  obegränsat många, alla med NULL
+efter UNIQUE(rentNoticeId, type, sendId) NOT NULL en per (avi, utskick) — och de
+      med tom default                             gamla raderna delar '' och
+                                                  behåller exakt en per avi
+```
+
+**Regeln: en kolumn som läggs till i ett unikt villkor ska vara NOT NULL med en
+sentinel-default.** Sentinelvärdet kolliderar med sig självt och bevarar den
+gamla semantiken för de gamla raderna, medan nya rader får den nya, finare
+enheten. Ingen backfill behövs — och på en append-only-tabell finns ingen att
+göra: en UPDATE avvisas av skrivspärren.
+
+Priset är att sentinelen inte kan ha en främmande nyckel: `''` betyder "fanns
+före enheten" och pekar per definition inte på någon rad. Skriv ut det vid
+kolumnen, annars ser avsaknaden av FK ut som ett förbiseende.
+
+**Samma familj som "NULL betyder okänt, inte människa".** En kolumn som föds
+nullbar bär ett tyst undantag, och undantaget gäller exakt de rader ingen tänkte
+på när villkoret skrevs.
+
 ## Kvalitetschecklist
 
 Kör detta mentalt innan varje feature anses klar:
