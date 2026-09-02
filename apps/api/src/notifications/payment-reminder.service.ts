@@ -347,7 +347,10 @@ export class PaymentReminderService {
       ? (party.companyName ?? `${party.firstName ?? ''} ${party.lastName ?? ''}`.trim())
       : 'Hyresgäst'
 
-    const messageId = await this.mail.sendReminderFriendly({
+    // NAMNET SÄGER VAD DET ÄR (#653): `enqueue` returnerar Bulls jobId, inte
+    // Resends email_id. Hette `messageId`, vilket är precis den etikett som lät
+    // #651 överleva i månader.
+    const jobId = await this.mail.sendReminderFriendly({
       to: email,
       organizationId: invoice.organizationId,
       tenantName,
@@ -368,7 +371,7 @@ export class PaymentReminderService {
         invoiceId: invoice.id,
         type: 'REMINDER_FRIENDLY',
         feeAmount: 0,
-        emailMessageId: messageId,
+        mailJobId: jobId,
       },
     })
 
@@ -664,7 +667,7 @@ export class PaymentReminderService {
                 type: 'REMINDER_FORMAL',
                 invoice: { organizationId: invoice.organizationId },
               },
-              data: { emailMessageId: `reminder-formal-${invoice.id}` },
+              data: { mailJobId: `reminder-formal-${invoice.id}` },
             })
             .catch(() => undefined)
         },
@@ -675,7 +678,7 @@ export class PaymentReminderService {
       },
     )
 
-    // Leveranskorrelationen skrivs i efterhand. Den är en NOTERING, inte en
+    // Jobbhandtaget skrivs i efterhand. Det är en NOTERING, inte en
     // spärr: markören som styr idempotensen är redan committad ovan, och ett
     // misslyckat köande får inte göra avgiften ogjord.
     if (outcome.status === 'ok') {
@@ -691,7 +694,7 @@ export class PaymentReminderService {
           type: 'REMINDER_FORMAL',
           invoice: { organizationId: invoice.organizationId },
         },
-        data: { emailMessageId: outcome.jobId },
+        data: { mailJobId: outcome.jobId },
       })
       return true
     }

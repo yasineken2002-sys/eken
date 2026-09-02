@@ -1148,7 +1148,7 @@ export const CALLER_SCOPED: readonly CallerScopedException[] = [
     op: 'updateMany',
     sites: 1,
     reason:
-      'sendFormalReminder skriver emailMessageId på markören efter commit (#357). ' +
+      'sendFormalReminder skriver mailJobId på markören efter commit (#357). ' +
       'Skrivningen ÄR org-bunden — `where` innehåller `invoice: { organizationId: ' +
       'invoice.organizationId }` — men heuristikens form A känner bara igen bindningen ' +
       'på find*, inte i en skrivnings where, så den syns inte. Invoice-objektet kommer ' +

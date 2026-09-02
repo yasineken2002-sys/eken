@@ -969,7 +969,6 @@ model Property {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([organizationId])
   /// FASTIGHETSBETECKNINGEN ÄR NYCKELN, OCH DEN ÄR DOMÄNENS — INTE VÅR.
   ///
   /// Beteckningen identifierar fastigheten i det offentliga registret. Två
@@ -991,6 +990,7 @@ model Property {
   /// härledd kolumn. Ingetdera behövs för det här problemet: en omkörning
   /// skickar samma sträng, inte en variant av den.
   @@unique([organizationId, propertyDesignation])
+  @@index([organizationId])
 }
 
 // ─── Unit (Lägenhet/Lokal) ────────────────────────────────────────────────────
@@ -1373,10 +1373,6 @@ model Lease {
   // organisationer som nådde samma löpnummer. NULL (DRAFT) räknas inte som
   // dubblett i Postgres.
   @@unique([organizationId, contractNumber])
-  @@index([organizationId])
-  @@index([unitId])
-  @@index([tenantId])
-  @@index([status])
   /// ETT AVTAL PER ENHET, HYRESGÄST OCH TILLTRÄDESDAG.
   ///
   /// Samma part, samma lägenhet, samma startdatum två gånger är inte två
@@ -1398,6 +1394,10 @@ model Lease {
   /// organisationen genom fastigheten. Samma skäl som `lease_unit_active_unique`
   /// bara har `unitId`.
   @@unique([unitId, tenantId, startDate])
+  @@index([organizationId])
+  @@index([unitId])
+  @@index([tenantId])
+  @@index([status])
 }
 
 // ─── Invoice (Faktura) ────────────────────────────────────────────────────────
@@ -1701,12 +1701,33 @@ model InvoiceLine {
 // att samma typ av påminnelse aldrig skickas två gånger för en faktura, även
 // vid cron-restart eller race conditions.
 model PaymentReminder {
-  id             String              @id @default(uuid())
-  invoiceId      String
-  type           PaymentReminderType
-  sentAt         DateTime            @default(now())
-  feeAmount      Decimal             @default(0) @db.Decimal(10, 2)
-  emailMessageId String?
+  id        String              @id @default(uuid())
+  invoiceId String
+  type      PaymentReminderType
+  sentAt    DateTime            @default(now())
+  feeAmount Decimal             @default(0) @db.Decimal(10, 2)
+
+  // ── ETT JOBBHANDTAG, OCH NAMNET SÄGER DET (#653) ──────────────────────────
+  //
+  // Hette `emailMessageId` och innehöll Bulls jobId — alltså kön:s handtag, inte
+  // e-postleverantörens `email_id`. Värdet var RÄTT för sitt syfte (koden säger
+  // själv: "Jobb-id:t är deterministiskt (jobId = idempotencyKey), så
+  // korrelationen kan skrivas i efterhand"); det var NAMNET som lovade något
+  // annat.
+  //
+  // Just den tvetydigheten är vad som lät #651 överleva i månader:
+  // `RentNotice.reminderMessageId` hette som en leveransnyckel, bar ett jobId,
+  // och webhooken slog upp på ett `email_id` som aldrig kunde matcha. Utfallet
+  // var inte ett fel utan TYSTNAD — kravtrappan stod död vid steg 3→4.
+  //
+  // ⚠️ BEHÖVER NÅGON LEVERANSKORRELATION FÖR FAKTURAPÅMINNELSER — och det är
+  // rimligt, det är samma sorts brev till samma sorts mottagare — är vägen ett
+  // NYTT, korrekt namngivet fält som skrivs av `persistResendId` i
+  // mail.worker.ts. ÅTERANVÄND ALDRIG DEN HÄR KOLUMNEN för det. Att stoppa ett
+  // Resend-id i ett fält som heter `mailJobId` är exakt samma misstag spegelvänt,
+  // och `check-mail-id-provenance.mjs` skyddar det nya fältet från dag ett
+  // (regel R3) medan den inte kan skydda det här.
+  mailJobId String?
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
