@@ -89,6 +89,9 @@ CREATE UNIQUE INDEX "AiResumptionVerdict_executionId_key" ON "AiResumptionVerdic
 -- AddForeignKey
 ALTER TABLE "AiResumptionVerdict" ADD CONSTRAINT "AiResumptionVerdict_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AiResumptionRun"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+-- AddForeignKey
+ALTER TABLE "AiResumptionVerdict" ADD CONSTRAINT "AiResumptionVerdict_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
 
 -- ── LÄSARENS INDEX ─────────────────────────────────────────────────────────
 --

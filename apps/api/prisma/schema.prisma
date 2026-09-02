@@ -777,6 +777,7 @@ model Organization {
   aiMemories                AiMemory[]
   aiUsageLogs               AiUsageLog[]
   aiToolExecutions          AiToolExecution[]
+  aiResumptionVerdicts      AiResumptionVerdict[]
   aiToolEffects             AiToolEffect[]
   maintenanceTickets        MaintenanceTicket[]
   rentNotices               RentNotice[]
@@ -3076,6 +3077,15 @@ model AiResumptionVerdict {
   lastSeenAt  DateTime @updatedAt
 
   run AiResumptionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  /// CASCADE, till skillnad från AiToolExecution som är Restrict.
+  ///
+  /// Skillnaden är avsiktlig och värd att skriva ut: körningsraden är
+  /// revisionsspår och skyddas därför mot att tyst försvinna. Domen är en
+  /// HÄRLEDD observation OM den raden — den bär ingen egen information som inte
+  /// går att räkna fram igen, och en kvarlämnad dom om en raderad organisation
+  /// vore bara en föräldralös rad som namnger en kund som inte finns.
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([executionId])
   @@index([runId])

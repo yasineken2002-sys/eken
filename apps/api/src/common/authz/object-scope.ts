@@ -181,6 +181,12 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
   UserInvitation: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet' },
   TenantMagicLink: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet' },
   TenantSession: { scope: 'out', reason: 'auth-realm: scopas av sessionstoken' },
+  // Återupptagningsmotorns körningslogg: plattformsbred, ingen klientväg alls
+  // (ingen controller läser den) och inget id från en klient når den.
+  AiResumptionRun: {
+    scope: 'out',
+    reason: 'plattformens körningslogg — ingen klientväg, inget adresserbart id',
+  },
   PlatformUser: { scope: 'out', reason: 'egen realm (PlatformGuard), ingen org-koppling' },
   PlatformRefreshToken: { scope: 'out', reason: 'egen realm, scopas av tokenvärdet' },
   AiTenantMessage: {
