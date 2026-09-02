@@ -20,6 +20,7 @@ import { CreateLeaseWithTenantDto } from '../../leases/dto/create-lease-with-ten
 import { normalizeEmail } from '../../common/utils/normalize-email'
 import { escapeHtml, safeColor } from '../../common/branding'
 import { renderUserParagraphs } from '../../mail/user-html'
+import { hittaFärskDubblett } from '../../maintenance/duplicate-ticket-window'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { PropertiesService } from '../../properties/properties.service'
 import { UnitsService } from '../../units/units.service'
@@ -3299,6 +3300,37 @@ export class ToolExecutorService {
             return {
               success: false,
               message: `Fastighet hittades inte. Anropa get_properties för att hitta rätt propertyId.`,
+            }
+          }
+
+          // ── OAVSIKTLIG DUBBLETT: ETT KORT FÖNSTER, INGEN NYCKEL ──────────
+          //
+          // Två felanmälningar med samma rubrik på samma objekt KAN vara två
+          // verkliga fel — samma sträng, två åtgärder. Innehållet kan alltså
+          // inte identifiera handlingen, och ett unikt index hade tyst kastat
+          // den andra anmälan.
+          //
+          // Fönstret är kort och SVARAR i stället för att hoppa tyst: en spärr
+          // som äter en verklig felanmälan gör att felet aldrig blir åtgärdat,
+          // medan en dubblett bara betyder att någon läser samma sak två
+          // gånger. Talet och varför det är resonerat i stället för mätt står i
+          // `maintenance/duplicate-ticket-window.ts`.
+          const färsk = await hittaFärskDubblett(this.prisma, {
+            organizationId,
+            propertyId: toolInput.propertyId as string,
+            unitId: toolInput.unitId as string | undefined,
+            title: toolInput.title as string,
+          })
+          if (färsk) {
+            return {
+              success: true,
+              data: { ticketId: färsk.id, ticketNumber: färsk.ticketNumber, duplicate: true },
+              message:
+                `Ärende ${färsk.ticketNumber} med samma rubrik skapades på det här objektet ` +
+                `för mindre än en minut sedan. Inget nytt ärende skapades.\n\n` +
+                'Är det ett ANNAT fel med samma rubrik: skriv en rubrik som skiljer dem åt, ' +
+                'eller lägg till det som en kommentar på det befintliga ärendet.',
+              nextSteps: [`Öppna ärende ${färsk.ticketNumber}`],
             }
           }
 
