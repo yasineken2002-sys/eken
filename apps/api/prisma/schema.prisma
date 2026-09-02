@@ -949,6 +949,27 @@ model Property {
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
+  /// FASTIGHETSBETECKNINGEN ÄR NYCKELN, OCH DEN ÄR DOMÄNENS — INTE VÅR.
+  ///
+  /// Beteckningen identifierar fastigheten i det offentliga registret. Två
+  /// olika fastigheter kan därför aldrig legitimt dela den, till skillnad från
+  /// `name` som är ett vardagsnamn ("Gården", "Hus B") och mycket väl kan
+  /// återkomma. Det är skillnaden mellan en nyckel som finns i verkligheten och
+  /// en vi hittat på: den här kan inte bli för grov, eftersom det inte finns
+  /// två legitima rader att skilja åt.
+  ///
+  /// Innan villkoret fanns hade `Property` INGA unika villkor alls, och
+  /// `PropertiesService.create` skrev rakt igenom utan en enda kontroll — en
+  /// omkörning av AI-verktyget gav en andra fastighet.
+  ///
+  /// ⚠️ VAD DEN INTE FÅNGAR: typografiska varianter. Värdet trimmas vid
+  /// skrivning, så osynliga blanksteg i kanterna kan inte längre dela på en
+  /// beteckning — men "Eken 1:2" och "eken 1:2" är fortfarande två rader.
+  /// Att göra villkoret skiftlägesokänsligt kräver antingen att vi normaliserar
+  /// det LAGRADE värdet (och då ändras det operatören skrev) eller en separat
+  /// härledd kolumn. Ingetdera behövs för det här problemet: en omkörning
+  /// skickar samma sträng, inte en variant av den.
+  @@unique([organizationId, propertyDesignation])
 }
 
 // ─── Unit (Lägenhet/Lokal) ────────────────────────────────────────────────────

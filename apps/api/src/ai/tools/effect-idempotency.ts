@@ -42,8 +42,8 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  *
  * Talen, mätta samma dag mot `ACTION_TOOLS` (30 verktyg):
  *
- *     IDEMPOTENT      18   (varav 1 utan effekt alls: export_sie4)
- *     DEDUPLICERBAR   12   (varav 4 har ett spår som faktiskt konsulteras)
+ *     IDEMPOTENT      19   (varav 1 utan effekt alls: export_sie4)
+ *     DEDUPLICERBAR   11   (varav 4 har ett spår som faktiskt konsulteras)
  *     OKÄND            0
  *
  * ── OMRÄKNAT 2026-09-02, EFTER ATT TRE POSTER SLÄPAT EFTER KODEN ────────────
@@ -65,9 +65,14 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  * `compose_and_send_email` (DATABAS_TILLSTÅND), `generate_lease_contract`
  * (DATABAS_INDEX) och `mark_invoice_paid` (DATABAS_TILLSTÅND).
  *
- * Femman längre ned står KVAR — omräknad, inte antagen: alla fyra ovan är
- * KRÄVER_MÄNNISKA och räknades aldrig bland de AUTOMATISK-poster vars spår är
- * INGET (15 AUTOMATISK, varav 5 med INGET → 10 återupptagbara).
+ * Femman längre ned är däremot INTE kvar. `create_property` fick sitt unika
+ * index samma dag, och den posten ÄR AUTOMATISK — den föll bara på att spåret
+ * var INGET. Omräknat: 15 AUTOMATISK, varav 4 med INGET → 11 återupptagbara.
+ *
+ * Det är hela poängen med nyckelarbetet, och värt att säga rakt ut: skillnaden
+ * mellan "får återupptas" och "går att återuppta" var aldrig en policyfråga.
+ * Varje nyckel som byggs flyttar en post över den gränsen utan att någon
+ * behöver ompröva ett beslut.
  *
  * Talen ändrades samma dag de sattes: `send_overdue_reminders` gick från
  * DEDUPLICERBAR till IDEMPOTENT när dess PaymentReminder-rad byggdes. Det är
@@ -826,16 +831,32 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [],
   },
 
-  // Property saknar unikt index helt — inte ens namn eller beteckning.
+  // NYCKELN FINNS I DOMÄNEN, och den är nu byggd:
+  // `@@unique([organizationId, propertyDesignation])`. Beteckningen identifierar
+  // fastigheten i det offentliga registret, så det finns per definition inte två
+  // legitima rader att skilja åt — nämnaren kan alltså inte bli för grov. Det är
+  // skillnaden mot `name`, som är ett vardagsnamn ("Gården", "Hus B") och hade
+  // varit precis den för grova nämnaren.
+  //
+  // Före det här hade Property INGA unika villkor alls och `create` skrev rakt
+  // igenom utan en enda kontroll.
+  //
+  // ⚠️ POSTEN FLYTTAR "FEMMAN". Den är AUTOMATISK, och var en av de fem
+  // AUTOMATISK-poster vars spår var INGET — alltså en av dem som INTE gick att
+  // återuppta trots sin policy. Med spåret på plats blir den återupptagbar, och
+  // talen längst upp ändras därefter. Det är hela poängen med arbetet: skillnaden
+  // mellan 15 AUTOMATISK och 10 återupptagbara var aldrig en policyfråga.
   create_property: {
-    effectIdempotency: 'DEDUPLICERBAR',
+    effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
-    traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
     externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
-    mekanismer: [],
+    mekanismer: [
+      { typ: 'UNIKT_INDEX', modell: 'Property', falt: ['organizationId', 'propertyDesignation'] },
+    ],
   },
 
   // ticketNumber ur sekvens. ⚠️ Nämnaren är svår här: två identiska felanmälningar
