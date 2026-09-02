@@ -56,6 +56,7 @@ import {
 } from './history-integrity'
 import { REMINDER_FEE_MAX_SEK } from '@eken/shared'
 import { maskAiContentForDisplay } from '../common/redaction/mask-display'
+import { PENDING_ACTION_TTL_MS } from './pending-action-ttl'
 
 // Tokentaket är INTE längre en konstant här — det hör till modellprofilen
 // (CHAT_PROFILE_TEXT / CHAT_PROFILE_VISION i ai.config.ts). Sonnet klarar sig på
@@ -488,9 +489,9 @@ export interface ChatResponse {
   downloadUrl?: string
 }
 
-// Pending actions går ut efter 5 min — en bekräftelse måste ske i rimlig
-// anslutning till att AI:n föreslog åtgärden.
-export const PENDING_ACTION_TTL_MS = 5 * 60 * 1000
+// Bor i `pending-action-ttl.ts` sedan återupptagningsmotorn behövde samma
+// gräns. Re-exporteras här så befintliga importvägar är oförändrade.
+export { PENDING_ACTION_TTL_MS }
 
 // Kanoniseringen och hashen bor i `pending-action-hash.ts` sedan de fick en
 // ANDRA konsument: idempotensnyckeln för AI-skapade verifikat. Exekveraren kan

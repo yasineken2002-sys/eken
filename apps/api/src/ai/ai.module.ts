@@ -37,6 +37,8 @@ import { SigningModule } from '../signing/signing.module'
 import { LegalEmbeddingService } from './knowledge/embedding/legal-embedding.service'
 import { LegalRetrievalService } from './knowledge/retrieval/legal-retrieval.service'
 import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
+import { RedisModule } from '../common/redis/redis.module'
+import { ResumptionService } from './resumption/resumption.service'
 
 @Module({
   imports: [
@@ -45,6 +47,8 @@ import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
     CronErrorSinkModule,
     PrismaModule,
     AiUsageModule,
+    // Återupptagningsmotorns cron-lås. RedisModule har inga domänberoenden.
+    RedisModule,
     InvoicesModule,
     TenantsModule,
     LeasesModule,
@@ -84,6 +88,8 @@ import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
     TenantToolExecutorService,
     LegalEmbeddingService,
     LegalRetrievalService,
+    // Skuggläge: läser och avgör, utför ingenting. Se resumption.service.ts.
+    ResumptionService,
   ],
   exports: [AiAssistantService, AiAuditService, LegalEmbeddingService],
 })
