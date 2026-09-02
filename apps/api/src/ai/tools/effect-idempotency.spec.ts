@@ -121,18 +121,32 @@ describe('effektklassificeringen', () => {
     })
   })
 
-  describe('det mätta läget 2026-09-01', () => {
+  describe('det mätta läget 2026-09-02', () => {
     // Talen HÄRLEDS här och står inte som prosa någon annanstans. Ändras
     // klassificeringen ska den här raden ändras i samma PR — annars beskriver
     // docblocket ett läge som inte finns.
-    it('17 IDEMPOTENT, 13 DEDUPLICERBAR, 0 OKÄND', () => {
+    //
+    // 2026-09-02: 17/13 → 18/12. Raden gjorde exakt sitt jobb — den föll i CI
+    // och tvingade fram ett medvetet beslut i stället för en tyst glidning.
+    // Ändringen kommer av att TRE deklarationer beskrev koden fel, alla åt
+    // samma håll (de påstod mindre skydd än som fanns):
+    //
+    //   compose_and_send_email    SentMessage-raden från #633, stod på INGET
+    //   generate_lease_contract   påstod "Document saknar unikt index" — det
+    //                             fanns, och posten styrde en MÄTNING av vad
+    //                             som saknade nyckel
+    //   send_document_to_tenant   samma index, men besegrat av en uuid-nyckel;
+    //                             nyckeln härleds nu ur mottagare + innehåll,
+    //                             vilket är det som flyttar posten till
+    //                             IDEMPOTENT och gör 17 till 18
+    it('18 IDEMPOTENT, 12 DEDUPLICERBAR, 0 OKÄND', () => {
       const c = buildEffectCatalog()
       const antal = (k: string) => c.filter((e) => e.effectIdempotency === k).length
       expect({
         idempotent: antal('IDEMPOTENT'),
         deduplicerbar: antal('DEDUPLICERBAR'),
         okand: antal('OKÄND'),
-      }).toEqual({ idempotent: 17, deduplicerbar: 13, okand: 0 })
+      }).toEqual({ idempotent: 18, deduplicerbar: 12, okand: 0 })
     })
 
     it('30 av 30 poster är policybeslutade — inga luckor kvar', () => {

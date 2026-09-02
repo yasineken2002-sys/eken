@@ -65,6 +65,12 @@ function makeService(
   const tx = {
     invoice: { findMany: jest.fn().mockResolvedValue([]), findFirst, updateMany },
     invoicePayment: {
+      // Dubblettfönstret (duplicate-payment-window.ts) frågar här. `null` =
+      // "ingen nyligen registrerad identisk betalning", så fönstret aldrig
+      // slår till — den här specen mäter skuld- och statuslogiken, och
+      // fönstret har sitt eget prov mot riktig Postgres
+      // (invoices.duplicate-window.db.spec.ts). En spec, en mekanism.
+      findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue(opts.priorAllocations ?? []),
       create: invoicePaymentCreate,
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -90,6 +96,12 @@ function makeService(
       updateMany: utanförTx.updateMany,
     },
     invoicePayment: {
+      // Dubblettfönstret (duplicate-payment-window.ts) frågar här. `null` =
+      // "ingen nyligen registrerad identisk betalning", så fönstret aldrig
+      // slår till — den här specen mäter skuld- och statuslogiken, och
+      // fönstret har sitt eget prov mot riktig Postgres
+      // (invoices.duplicate-window.db.spec.ts). En spec, en mekanism.
+      findFirst: jest.fn().mockResolvedValue(null),
       findMany: utanförTx.findMany,
       create: utanförTx.create,
       deleteMany: utanförTx.deleteMany,
