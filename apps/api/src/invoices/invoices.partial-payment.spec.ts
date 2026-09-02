@@ -72,6 +72,12 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
       updateMany,
     },
     invoicePayment: {
+      // Dubblettfönstret (duplicate-payment-window.ts) frågar här. `null` =
+      // "ingen nyligen registrerad identisk betalning", så fönstret aldrig
+      // slår till — den här specen mäter skuld- och statuslogiken, och
+      // fönstret har sitt eget prov mot riktig Postgres
+      // (invoices.duplicate-window.db.spec.ts). En spec, en mekanism.
+      findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn(() => Promise.resolve(allocations.map((a) => ({ ...a })))),
       create: invoicePaymentCreate,
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -93,6 +99,12 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
       updateMany: utanförTx.updateMany,
     },
     invoicePayment: {
+      // Dubblettfönstret (duplicate-payment-window.ts) frågar här. `null` =
+      // "ingen nyligen registrerad identisk betalning", så fönstret aldrig
+      // slår till — den här specen mäter skuld- och statuslogiken, och
+      // fönstret har sitt eget prov mot riktig Postgres
+      // (invoices.duplicate-window.db.spec.ts). En spec, en mekanism.
+      findFirst: jest.fn().mockResolvedValue(null),
       findMany: utanförTx.findMany,
       create: utanförTx.create,
       deleteMany: utanförTx.deleteMany,
@@ -343,6 +355,12 @@ describe('C4/C5 — VOID-guarden nyckar på ALLOKERINGAR, inte status', () => {
         update: jest.fn().mockResolvedValue(invoiceRow),
       },
       invoicePayment: {
+        // Dubblettfönstret (duplicate-payment-window.ts) frågar här. `null` =
+        // "ingen nyligen registrerad identisk betalning", så fönstret aldrig
+        // slår till — den här specen mäter skuld- och statuslogiken, och
+        // fönstret har sitt eget prov mot riktig Postgres
+        // (invoices.duplicate-window.db.spec.ts). En spec, en mekanism.
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue(opts.allocations.map((id) => ({ id: String(id) }))),
       },
       // #301: radlåset (låsordning Invoice → Deposit) + namnrymdsuppslaget för

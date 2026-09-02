@@ -42,19 +42,32 @@ import { ACTION_TOOLS } from './ai-tools.definition'
  *
  * Talen, mätta samma dag mot `ACTION_TOOLS` (30 verktyg):
  *
- *     IDEMPOTENT      17   (varav 1 utan effekt alls: export_sie4)
- *     DEDUPLICERBAR   13   (varav 2 har ett spår som faktiskt konsulteras)
+ *     IDEMPOTENT      18   (varav 1 utan effekt alls: export_sie4)
+ *     DEDUPLICERBAR   12   (varav 4 har ett spår som faktiskt konsulteras)
  *     OKÄND            0
  *
- * Tvåan var en etta fram till 2026-09-02. `compose_and_send_email` fick sin
- * `SentMessage`-rad i #633 men stod kvar på `plats: 'INGET'` — deklarationen
- * släpade efter koden, vilket är exakt vad den här filen inte får göra. Talet
- * är OMRÄKNAT ur posterna, inte justerat för hand: DEDUPLICERBAR med
- * `plats ≠ INGET` är i dag `send_invoice_email` (KÖ_FÖNSTER) och
- * `compose_and_send_email` (DATABAS_TILLSTÅND).
+ * ── OMRÄKNAT 2026-09-02, EFTER ATT TRE POSTER SLÄPAT EFTER KODEN ────────────
  *
- * Femman längre ned står KVAR: `compose_and_send_email` är KRÄVER_MÄNNISKA, så
- * den räknades aldrig bland de AUTOMATISK-poster vars spår är INGET.
+ * Talen var 17/13 och stämde inte. TRE deklarationer beskrev inte längre koden,
+ * och alla tre åt samma håll — de påstod mindre skydd än som fanns:
+ *
+ *   compose_and_send_email     fick sin SentMessage-rad i #633, stod på INGET
+ *   generate_lease_contract    hade `@@unique(org, storageKey)` hela tiden och
+ *                              påstod "Document saknar unikt index"
+ *   send_document_to_tenant    hade samma index, men besegrat av en uuid-nyckel
+ *                              — nu härledd ur mottagare + innehåll
+ *
+ * Den mellersta är den dyraste sortens fel: posten styrde en MÄTNING av vad som
+ * saknade nyckel, och svarade fel på den frågan.
+ *
+ * Talen är OMRÄKNADE ur posterna, inte justerade för hand. DEDUPLICERBAR med
+ * `plats ≠ INGET` är i dag `send_invoice_email` (KÖ_FÖNSTER),
+ * `compose_and_send_email` (DATABAS_TILLSTÅND), `generate_lease_contract`
+ * (DATABAS_INDEX) och `mark_invoice_paid` (DATABAS_TILLSTÅND).
+ *
+ * Femman längre ned står KVAR — omräknad, inte antagen: alla fyra ovan är
+ * KRÄVER_MÄNNISKA och räknades aldrig bland de AUTOMATISK-poster vars spår är
+ * INGET (15 AUTOMATISK, varav 5 med INGET → 10 återupptagbara).
  *
  * Talen ändrades samma dag de sattes: `send_overdue_reminders` gick från
  * DEDUPLICERBAR till IDEMPOTENT när dess PaymentReminder-rad byggdes. Det är
@@ -620,21 +633,39 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [],
   },
 
-  // ⚠️ FALSK SPÄRR. Nyckeln `doc-portal-notify-${documentId}` finns, men
-  // documentId MYNTAS i samma körning som mejlet — se document-delivery.service.ts.
-  // Den dedupar Bull-retries, aldrig ett agentomförsök. Spåret är INGET.
+  // NYCKELN FINNS NU, OCH DEN BITER. `storageKey` var
+  // `documents/<org>/<uuid()>_<filnamn>`: `@@unique([organizationId, storageKey])`
+  // fanns hela tiden, men en färsk uuid per anrop gjorde att villkoret aldrig
+  // kunde slå till — spärren var BESEGRAD av nyckelvalet, inte frånvarande.
+  //
+  // Nyckeln härleds nu ur MOTTAGAREN och INNEHÅLLET
+  // (`documents/<org>/<tenantId>/<sha256(byten)[0:16]>.<ändelse>`). Mottagaren
+  // måste vara med: en ren innehållshash kolliderar när samma fil skickas till
+  // TVÅ hyresgäster — ett informationsbrev till alla i huset — och den andra
+  // hade då tyst blivit utan sitt dokument.
+  //
+  // Anspråket tas dessutom före uppladdningen, och notisen skickas bara när ett
+  // nytt dokument faktiskt skapades. Utan det sista hade raden dedupats medan
+  // mejlet inte gjorde det — halva jobbet, och den synliga halvan kvar.
+  //
+  // ⚠️ DEN FALSKA SPÄRREN STÅR KVAR som den var: `doc-portal-notify-${documentId}`
+  // myntas i samma körning som mejlet och dedupar bara Bull-retries. Den är inte
+  // det som bär posten — det är det unika indexet.
+  //
+  // POLICYN OFÖRÄNDRAD. IDEMPOTENT + KRÄVER_MÄNNISKA är ingen motsägelse: ett
+  // dokument i en hyresgästs portal syns för en människa utanför systemet,
+  // oavsett hur säker mekaniken är. Samma form som send_overdue_reminders.
   send_document_to_tenant: {
-    effectIdempotency: 'DEDUPLICERBAR',
+    effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
-    traceDurability: {
-      plats: 'INGET',
-      livslangd: 'nyckeln finns men är unik per körning — dedupar inget omförsök',
-    },
+    traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
     externalHandle: 'INGET',
     traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
-    mekanismer: [],
+    mekanismer: [
+      { typ: 'UNIKT_INDEX', modell: 'Document', falt: ['organizationId', 'storageKey'] },
+    ],
   },
 
   // LOOP över förfallna fakturor, try/catch per mottagare. Enheten MÅSTE vara
@@ -717,23 +748,44 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     ],
   },
 
-  // PDF → R2 → Document.create. Document saknar unikt index; en omkörning ger
-  // ett andra dokument. Document.contentHash finns redan och vore nyckeln.
+  // PDF → R2 → Document.create. Posten sa "Document saknar unikt index" fram
+  // till 2026-09-02; det var fel. `@@unique([organizationId, storageKey])` fanns,
+  // och verktyget fångade redan sin P2002 — deklarationen hade släpat efter
+  // koden. Att den påstod avsaknad av något som fanns är värre än en tom rad:
+  // den styrde mätningen av vad som saknade nyckel.
   //
-  // BESLUTAD KRÄVER_MÄNNISKA: mätningen gav ett annat svar än det första
-  // beslutet, och mätningen vann. Verktyget sätter `tenantId: lease.tenantId`
-  // och `category: 'CONTRACT'`, och portalens `getDocuments` filtrerar bara bort
-  // kategorin INVOICE — en andra kontrakts-PDF hamnar i HYRESGÄSTENS
-  // dokumentlista. Dubbletten är dessutom fullt möjlig, eftersom spåret är INGET.
+  // #641 rättade dessutom nyckelns KORNIGHET. Den var
+  // `kontrakt_<hyresgästnamn>_<datum>.pdf` och bar inte `leaseId`, så två avtal
+  // för samma hyresgäst samma dag delade nyckel — och eftersom uppladdningen
+  // låg före `create` skrevs det ena avtalets PDF över det andras. Nu bär
+  // nyckeln `leaseId`, och anspråket tas före bytesen.
+  //
+  // ⚠️ VARFÖR DEDUPLICERBAR OCH INTE IDEMPOTENT. Nyckeln innehåller DAGEN. En
+  // omkörning samma dag ger samma tillstånd; en omkörning i morgon ger ett
+  // andra dokument. Datumet är ett regenereringsfönster, inte identiteten, och
+  // "samma tillstånd vid en omkörning" gäller därför bara inom dygnet. Ett
+  // innehållsburet alternativ finns (`templateInputHash`) men ägs av
+  // ContractTemplateService och får bara skrivas av den — se kolumnens egen
+  // kommentar i schema.prisma.
+  //
+  // BESLUTAD KRÄVER_MÄNNISKA, oförändrat: verktyget sätter
+  // `tenantId: lease.tenantId` och `category: 'CONTRACT'`, och portalens
+  // `getDocuments` filtrerar bara bort kategorin INVOICE — en andra
+  // kontrakts-PDF hamnar i HYRESGÄSTENS dokumentlista.
   generate_lease_contract: {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
-    traceDurability: { plats: 'INGET', livslangd: 'inget spår finns' },
+    traceDurability: {
+      plats: 'DATABAS_INDEX',
+      livslangd: 'raden består, men nyckeln bär dagen — dedupar bara inom dygnet',
+    },
     externalHandle: 'FÖRE_DISPATCH',
     traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
-    mekanismer: [],
+    mekanismer: [
+      { typ: 'UNIKT_INDEX', modell: 'Document', falt: ['organizationId', 'storageKey'] },
+    ],
   },
 
   // invoiceNumber allokeras ur en sekvens → varje omkörning får ett NYTT nummer
@@ -844,12 +896,29 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
   // `amount`, och en DELBETALNING kan köras om: manuella InvoicePayment har
   // bankTransactionId = NULL, och NULL är distinkt i det unika indexet.
   // Restskulden finns kvar, så assertPaymentWithinDebt släpper igenom den.
+  //
+  // ── OCH DET FINNS INGEN INNEHÅLLSNYCKEL ATT BYGGA (beslutat 2026-09-02) ────
+  //
+  // En nämnare måste kunna skilja två LEGITIMA upprepningar åt. Två manuella
+  // delbetalningar på samma faktura med samma belopp är i domänen IDENTISKA —
+  // ingenting i datan skiljer dem. Att införa en kolumn som gör det (extern
+  // referens, idempotensnyckel) vore att FABRICERA en skillnad som inte finns,
+  // och kolumnen blir ett påstående ingen kan belägga. Bankraden kan heller
+  // inte bära nyckeln: den här vägen finns just för betalningar UTAN bankrad.
+  //
+  // I stället ett kort TIDSFÖNSTER mot oavsiktliga dubbletter (120 s) i
+  // `common/payments/duplicate-payment-window.ts` — innanför transaktionen och
+  // efter radlåset, så det är en spärr och inte en läsning före en skrivning.
+  // Det påstår ingenting om identitet och gör därför INTE posten IDEMPOTENT.
+  //
+  // `InvoicePayment`-raderna KONSULTERAS numera, vilket är skillnaden mot
+  // `INGET` — men bara inom fönstret. Livslängden nedan säger båda delarna.
   mark_invoice_paid: {
     effectIdempotency: 'DEDUPLICERBAR',
     idempotencyUnit: 'ANROP',
     traceDurability: {
-      plats: 'INGET',
-      livslangd: 'fullbetalning spärras av status; delbetalning har inget spår',
+      plats: 'DATABAS_TILLSTÅND',
+      livslangd: 'raden består (7 år), men konsulteras bara inom 120 s-fönstret',
     },
     externalHandle: 'EJ_TILLÄMPLIG',
     traceIntegrity: 'FÖRE_EFFEKTEN',

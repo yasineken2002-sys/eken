@@ -34,6 +34,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 import { assertPaymentWithinDebt } from '../common/payments/payment-within-debt'
+import { assertNoRecentIdenticalManualPayment } from '../common/payments/duplicate-payment-window'
 import { PAYMENT_TX_LIMITS, PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 // Mappar InvoiceStatus → Prisma InvoiceEventType enum-värde
@@ -1147,6 +1148,24 @@ export class InvoicesService {
         // restskuld". Talen står kvar i texten, vilket är det som hjälper den som
         // skrev fel belopp.
         assertPaymentWithinDebt(settlement, debtBefore.outstanding)
+
+        // ── OAVSIKTLIG DUBBLETT: ETT KORT FÖNSTER, INTE EN NYCKEL ───────────
+        //
+        // Innehållet kan inte identifiera en manuell betalning — två lika
+        // delposter på samma faktura ÄR identiska i domänen, och att införa en
+        // kolumn som skiljer dem hade fabricerat en skillnad som inte finns.
+        // Hela resonemanget, med talen bakom fönstret, står i hjälparen.
+        //
+        // Ligger HÄR och inte hos anroparen: innanför transaktionen och efter
+        // `FOR UPDATE` ovan, så att två samtidiga registreringar serialiseras
+        // i stället för att båda passera en läsning. Och den gäller båda
+        // manuella anroparna — AI-verktyget och `POST /:id/pay` — eftersom en
+        // dubbelsubmit är lika fel oavsett vem som gjorde den.
+        await assertNoRecentIdenticalManualPayment(tx, {
+          invoiceId: id,
+          amount: settlement,
+          nu: new Date(),
+        })
 
         const debtAfter = computeInvoiceDebt({
           total: invoice.total,
