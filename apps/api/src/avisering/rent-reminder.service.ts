@@ -526,15 +526,19 @@ export class RentReminderService {
               summary.pausedStale++
               continue
             }
-            const daysOverdue = this.daysSince(notice.dueDate, new Date())
-            const threshold =
-              notice.organization.rentReminderDay + notice.organization.rentInkassoDaysAfterReminder
-            if (daysOverdue < threshold) {
-              summary.skipped++
-              continue
-            }
-
-            const res = await this.escalateNoticeToInkassoReady(notice.id, notice.organizationId)
+            // NU EN GÅNG PER KÖRNING, SYNLIGT NEDÅT. Cronen läser klockan; metoden
+            // får den. Samma form som #694 drev igenom för `daysSince`: en halvdragen
+            // injektion, där ett `now` skickas in men något i kedjan ändå läser
+            // `Date.now()`, är svårare att se än ingen injektion alls.
+            //
+            // DAGSGRINDEN LIGGER INTE LÄNGRE HÄR. Loopen äger URVALET (findMany
+            // ovan) och sammanräkningen; åldern prövas av metoden. Se docblocket
+            // där för varför.
+            const res = await this.escalateNoticeToInkassoReady(
+              notice.id,
+              notice.organizationId,
+              new Date(),
+            )
             if (res.flipped) summary.ready++
             else summary.skipped++
           } catch (err) {
@@ -604,7 +608,13 @@ export class RentReminderService {
   async escalateNoticeToInkassoReady(
     noticeId: string,
     organizationId: string,
-  ): Promise<{ flipped: boolean; missing?: string[] }> {
+    /**
+     * KLOCKAN, OBLIGATORISKT. Inget default — ett `= new Date()` hade gjort
+     * det möjligt att glömma bort den utan att något blir rött, och det är
+     * precis den halvdragna injektion #694 stängde på `daysSince`.
+     */
+    now: Date,
+  ): Promise<{ flipped: boolean; missing?: string[]; tooEarly?: true }> {
     // Org-verifierad läsning INNAN avins logg/relationer läses (tenant-isolation:
     // ett läckt noticeId får aldrig exponera en annan organisations underlag).
     const notice = await this.prisma.rentNotice.findFirst({
@@ -616,6 +626,32 @@ export class RentReminderService {
     // Redan inkasso-redo (eller avskriven) → idempotent no-op.
     if (notice.collectionStage === 'INKASSO_READY' || notice.collectionStage === 'WRITTEN_OFF') {
       return { flipped: false }
+    }
+
+    // ── DAGSGRINDEN BOR HÄR, INTE HOS ANROPAREN ────────────────────────────
+    //
+    // Kontrollen låg tidigare i cron-loopen. Uppmätt (#648): metoden anropad
+    // DIREKT på en avi som var 8 dygn förfallen mot en tröskel på 19 gav
+    // `flipped=true` och `stage=INKASSO_READY` — alltså en avi överlämnad
+    // till inkasso elva dygn för tidigt.
+    //
+    // I dag fanns bara EN anropare, så det var latent och inte trasigt. Men
+    // det är exakt samma form som DEPOSIT-noten ovan varnar för: en grind
+    // som ligger hos anroparen är säker bara så länge ingen skriver en andra
+    // anropare. Ett manuellt "eskalera nu" i en controller hade tyst
+    // förbigått fristen — och för tidig inkasso är inte ett kosmetiskt fel,
+    // det är ett formellt krav mot en gäldenär som ännu har tid på sig.
+    //
+    // Loopen behåller sitt URVAL (`findMany` på OVERDUE/RENT/REMINDED). Den
+    // avgränsningen är en prestandafråga; den här är en rättighetsfråga.
+    const daysOverdue = this.daysSince(notice.dueDate, now)
+    const threshold =
+      notice.organization.rentReminderDay + notice.organization.rentInkassoDaysAfterReminder
+    if (daysOverdue < threshold) {
+      // Inte ett fel och inte ett ofullständigt underlag: fristen har bara
+      // inte löpt ut. Eget fält i stället för ett kast, så anroparen kan
+      // skilja "för tidigt" från "underlaget saknar något".
+      return { flipped: false, tooEarly: true }
     }
 
     // INV-B-grind. Avins egen logg (org redan verifierad ovan).
@@ -655,9 +691,12 @@ export class RentReminderService {
     // En räntefri dag (delta 0) ger null. Ett bokföringsfel (saknat 1510/8131)
     // kastar och fäller eskaleringen — INV-A: ingen inkasso-flip om sluträntans
     // verifikat inte kunde skapas. Avin omprövas nästa dygn.
-    await this.rentInterest.crystallizeInterest(noticeId, organizationId, new Date())
+    await this.rentInterest.crystallizeInterest(noticeId, organizationId, now)
 
-    const now = new Date()
+    // (Tidigare stod här `const now = new Date()`. Klockan är numera en
+    // parameter, och en lokal omläsning hade gjort injektionen halvdragen:
+    // grinden ovan hade prövats mot ett `now` och skrivningarna nedan mot
+    // ett annat.)
     return this.prisma.$transaction(async (tx) => {
       const claim = await tx.rentNotice.updateMany({
         where: {
@@ -709,7 +748,7 @@ export class RentReminderService {
         'SYSTEM',
         null,
         {
-          daysOverdue: this.daysSince(fresh.dueDate, new Date()),
+          daysOverdue: this.daysSince(fresh.dueDate, now),
           capital,
           reminderFeeAmount: Number(fresh.reminderFeeAmount),
           interestAccruedAmount: Number(fresh.interestAccruedAmount),

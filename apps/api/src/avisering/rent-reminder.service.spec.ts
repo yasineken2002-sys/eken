@@ -481,6 +481,14 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
 })
 
 describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR 4b steg 2)', () => {
+  /**
+   * FAST KLOCKA, 30 dygn efter förfallodagen 2026-06-01 — alltså förbi
+   * tröskeln 19. Måste skickas in: metodens `now` har inget default, just
+   * för att en glömd klocka ska bli ett kompileringsfel och inte en tyst
+   * `Date.now()`. Fristen i sig prövas av `inkasso-ready-day-gate.spec.ts`.
+   */
+  const NU = new Date('2026-07-01T12:00:00.000Z')
+
   // En avi med KOMPLETT underlag — grinden ska godkänna. Override-bara delar för
   // att testa varje vägransfall.
   function completeNotice(over: Record<string, unknown> = {}) {
@@ -518,6 +526,12 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
         street: 'Värdgatan 2',
         postalCode: '222 33',
         city: 'Stockholm',
+        // Dagsgrinden bor numera i metoden och läser de här två. Utan dem blir
+        // summan NaN och `daysOverdue < NaN` är falskt — grinden hade passerat
+        // av en slump i stället för av ett värde, vilket är samma sorts tysta
+        // grönska som den här filen finns för att stänga.
+        rentReminderDay: 5,
+        rentInkassoDaysAfterReminder: 14, // tröskel 19 dygn efter förfall
       },
       ...over,
     }
@@ -611,7 +625,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
 
   it('komplett underlag: slutkristalliserar, flippar REMINDED→INKASSO_READY, loggar COLLECTION_READY', async () => {
     const { service, tx, rentNoticeEvents, rentInterest } = makeInkassoService()
-    const res = await service.escalateNoticeToInkassoReady('rn-1', 'org-1')
+    const res = await service.escalateNoticeToInkassoReady('rn-1', 'org-1', NU)
     expect(res).toEqual({ flipped: true })
 
     // Slutkristallisering t.o.m. idag (INV-A internt i crystallizeInterest).
@@ -641,7 +655,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
 
   it('PR3a: INV-B steg 10 läser ocrOutstanding — fullt reglerad OCR (=0) blockerar inkasso-redo', async () => {
     const { service, tx, rentNoticeEvents, outstanding } = makeInkassoService({ ocrOutstanding: 0 })
-    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow(
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1', NU)).rejects.toThrow(
       /ingen utestående skuld/,
     )
     // Skuld läses org-scopat från RentDebtService, inte paidAmount-cachen.
@@ -659,7 +673,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
     const { service, tx, rentNoticeEvents } = makeInkassoService({
       notice: completeNotice({ reminderPdfStorageKey: null }),
     })
-    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow(
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1', NU)).rejects.toThrow(
       /lagrad påminnelse-PDF saknas/,
     )
     expect(tx.rentNotice.updateMany).not.toHaveBeenCalled()
@@ -674,7 +688,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
 
   it('INV-B vägrar när påminnelsens leverans inte är verifierad (ingen EMAIL_DELIVERED)', async () => {
     const { service, tx } = makeInkassoService({ events: [{ type: 'SENT' }] })
-    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow(
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1', NU)).rejects.toThrow(
       /leverans är inte verifierad/,
     )
     expect(tx.rentNotice.updateMany).not.toHaveBeenCalled()
@@ -684,7 +698,9 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
     const { service } = makeInkassoService({
       events: [{ type: 'SENT' }, { type: 'EMAIL_DELIVERED' }, { type: 'EMAIL_BOUNCED' }],
     })
-    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow(/studsade/)
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1', NU)).rejects.toThrow(
+      /studsade/,
+    )
   })
 
   it('INV-B vägrar vid ofullständig gäldenär (saknar person-/orgnr OCH adress)', async () => {
@@ -702,7 +718,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
         },
       }),
     })
-    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow(
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1', NU)).rejects.toThrow(
       /gäldenärens person-\/organisationsnummer saknas/,
     )
   })
@@ -719,7 +735,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
         },
       }),
     })
-    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow(
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1', NU)).rejects.toThrow(
       /fordringsägarens organisationsnummer saknas/,
     )
   })
@@ -728,7 +744,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
     const { service, prisma, tx, rentInterest } = makeInkassoService({
       notice: completeNotice({ collectionStage: 'INKASSO_READY' }),
     })
-    const res = await service.escalateNoticeToInkassoReady('rn-1', 'org-1')
+    const res = await service.escalateNoticeToInkassoReady('rn-1', 'org-1', NU)
     expect(res).toEqual({ flipped: false })
     expect(prisma.rentNoticeEvent.findMany).not.toHaveBeenCalled()
     expect(rentInterest.crystallizeInterest).not.toHaveBeenCalled()
@@ -737,14 +753,14 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
 
   it('race: claim count=0 (annan körning hann före) → flipped:false, inget COLLECTION_READY', async () => {
     const { service, rentNoticeEvents } = makeInkassoService({ claimCount: 0 })
-    const res = await service.escalateNoticeToInkassoReady('rn-1', 'org-1')
+    const res = await service.escalateNoticeToInkassoReady('rn-1', 'org-1', NU)
     expect(res).toEqual({ flipped: false })
     expect(rentNoticeEvents.record.mock.calls.some((c) => c[1] === 'COLLECTION_READY')).toBe(false)
   })
 
   it('INV-A: slutkristalliseringens bokföring faller (saknat 1510/8131) → kastar, ingen flip', async () => {
     const { service, tx } = makeInkassoService({ crystallizeThrows: true })
-    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1')).rejects.toThrow()
+    await expect(service.escalateNoticeToInkassoReady('rn-1', 'org-1', NU)).rejects.toThrow()
     expect(tx.rentNotice.updateMany).not.toHaveBeenCalled()
   })
 })
@@ -801,19 +817,44 @@ describe('escalateRemindedToInkassoReady (cron)', () => {
       .spyOn(service, 'escalateNoticeToInkassoReady')
       .mockResolvedValue({ flipped: true })
     const summary = await service.escalateRemindedToInkassoReady()
-    expect(spy).toHaveBeenCalledWith('rn-1', 'org-1')
+    expect(spy).toHaveBeenCalledWith('rn-1', 'org-1', expect.any(Date))
     expect(summary.ready).toBe(1)
   })
 
-  it('hoppar över avi under tröskeln (ingen eskalering)', async () => {
+  // ── ANSVARET FLYTTADES, INTE BORT ──────────────────────────────────────
+  //
+  // Tidigare kontrollerade LOOPEN åldern och hoppade över avin utan att
+  // anropa metoden. Det gjorde grinden till en egenskap hos anroparen, och en
+  // andra anropare hade förbigått fristen (uppmätt i #648: flipped=true på en
+  // avi med elva dygn kvar). Nu anropas metoden alltid, och den vägrar.
+  //
+  // Provet mäter därför två saker som förut var ett: att loopen SLÄPPER FRAM
+  // avin, och att den räknar `tooEarly` som `skipped`.
+  it('under tröskeln: loopen anropar metoden, som vägrar — räknas som skipped', async () => {
     const { service, prisma } = makeCronService()
     prisma.rentNotice.findMany.mockResolvedValueOnce([candidate(15)])
     const spy = jest
       .spyOn(service, 'escalateNoticeToInkassoReady')
+      .mockResolvedValue({ flipped: false, tooEarly: true })
+    const summary = await service.escalateRemindedToInkassoReady()
+    expect(spy).toHaveBeenCalledWith('rn-1', 'org-1', expect.any(Date))
+    expect(summary.skipped).toBe(1)
+    expect(summary.ready).toBe(0)
+  })
+
+  // Att den RIKTIGA metoden vägrar — och att randen ligger rätt — mäts mot
+  // Postgres i `inkasso-ready-day-gate.db.spec.ts`. Attrappen ovan kan bara
+  // visa att loopen räknar rätt på svaret, inte att svaret är rätt.
+  it('DEN OMVÄNDA RIKTNINGEN: en avi FÖRBI tröskeln stoppas inte av loopen', async () => {
+    const { service, prisma } = makeCronService()
+    prisma.rentNotice.findMany.mockResolvedValueOnce([candidate(25)])
+    const spy = jest
+      .spyOn(service, 'escalateNoticeToInkassoReady')
       .mockResolvedValue({ flipped: true })
     const summary = await service.escalateRemindedToInkassoReady()
-    expect(spy).not.toHaveBeenCalled()
-    expect(summary.skipped).toBe(1)
+    expect(spy).toHaveBeenCalledWith('rn-1', 'org-1', expect.any(Date))
+    expect(summary.ready).toBe(1)
+    expect(summary.skipped).toBe(0)
   })
 
   it('grind-blockerad avi (ConflictException) räknas som blocked, inte error', async () => {
@@ -847,7 +888,7 @@ describe('escalateRemindedToInkassoReady (cron)', () => {
       .spyOn(service, 'escalateNoticeToInkassoReady')
       .mockResolvedValue({ flipped: true })
     const summary = await service.escalateRemindedToInkassoReady()
-    expect(spy).toHaveBeenCalledWith('rn-1', 'org-1')
+    expect(spy).toHaveBeenCalledWith('rn-1', 'org-1', expect.any(Date))
     expect(summary.ready).toBe(1)
     expect(summary.pausedStale).toBe(0)
   })
