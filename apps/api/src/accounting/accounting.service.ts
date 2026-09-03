@@ -3000,6 +3000,83 @@ export class AccountingService {
       )
     }
 
+    // ── FAKTURAN HAR EN KREDITNOTA — RIKTNING 1 AV ETT PAR ──────────────────
+    //
+    // PARET: "rätta ett fakturaverifikat som redan krediterats" (här) och
+    // "kreditera en faktura vars verifikat redan rättats" (assessCreditability
+    // i credit-note.service.ts). Båda behövs, och skälet är att de två
+    // verifikaten ligger i SKILDA `sourceId`-namnrymder:
+    //
+    //     fakturan      INVOICE  <invoiceId>
+    //     kreditnotan   INVOICE  credit-note:<creditNoteId>
+    //     rättelsen     MANUAL   entry-reversal:<entryId>
+    //
+    // Ingen av dem slår upp någon annans. `createNumberedEntry` är idempotent
+    // per (org, source, sourceId), så hade de delat namnrymd hade den andra
+    // körningen hittat den första posten och bokfört ingenting — det är exakt
+    // det som gör påminnelseavgiftens två vägar ofarliga. Här skiljer sig
+    // nycklarna åt, och då finns inget skydd alls.
+    //
+    // FELET LIGGER I SEKVENSEN, INTE I VERIFIKATET. Var och en av de tre
+    // posterna balanserar. Uppmätt på en faktura om 10 000 kr som först
+    // helkrediterades och därefter fick sitt originalverifikat rättat:
+    //
+    //     1510:  D 10 000 − K 10 000 − K 10 000 = −10 000
+    //     39xx:  K  8 000 − D  8 000 − D  8 000 = + 8 000
+    //
+    // En negativ kundfordran och en reverserad intäkt som inte motsvarar någon
+    // affärshändelse. Varken den globala balansgrinden eller någon
+    // verifikatkontroll kan se det, eftersom varje post för sig går ihop.
+    //
+    // VARFÖR EN EGEN FRÅGA OCH INTE ETT LÅN AV `reversedBy`: fälten svarar på
+    // olika saker. `reversedBy` betyder "det HÄR verifikatet är vänt av ett
+    // motverifikat" och bär ett unikt index — ETT motverifikat per post. En
+    // faktura kan ha MÅNGA kreditnotor (delkreditering, upprepad). Att låta
+    // kreditnotan sätta `reversalOfEntryId` hade därför fällt den andra
+    // delkrediteringen på ett unikt index, och samtidigt fått
+    // verifikationslistan att påstå "rättad" om en faktura som bara krympt.
+    // Två frågor, två uppslag.
+    //
+    // VAD DEN HÄR GRINDEN INTE KAN SE. Den är en FÖRKONTROLL, precis som
+    // `reversedBy`-grinden ovan: `reverseJournalEntry` tar inget radlås på
+    // fakturan, och skrivningen sker först längre ned i `createReversalEntry`,
+    // som öppnar sin egen transaktion. En kreditnota som skapas EFTER den här
+    // läsningen men före rättelsens commit passerar alltså. Fönstret är smalt
+    // och asymmetriskt: `createCreditNote` kör innanför `FOR UPDATE` på
+    // fakturan och ser därför en rättelse som redan committats. Att stänga det
+    // helt kräver att rättelsen tar samma radlås i samma transaktion som sin
+    // skrivning — ett eget ärende, inte en rad här. Det ägs INTE av den här
+    // filen, och den som läser grönt ska veta det.
+    if (original.source === 'INVOICE' && original.sourceId && !original.sourceId.includes(':')) {
+      const kreditnotor = await this.prisma.invoice.findMany({
+        where: {
+          organizationId: params.organizationId,
+          creditedInvoiceId: original.sourceId,
+          // En kreditnota KAN i dag inte makuleras (invoices.service.ts spärrar
+          // VOID på isCreditNote). Filtret står här ändå: skulle den spärren
+          // öppnas ska en makulerad kreditnota inte längre blockera, eftersom
+          // dess belopp då inte påverkar fordran.
+          status: { not: 'VOID' },
+        },
+        select: { invoiceNumber: true, total: true },
+        orderBy: { invoiceNumber: 'asc' },
+      })
+      if (kreditnotor.length > 0) {
+        const namn = kreditnotor.map((k) => k.invoiceNumber).join(', ')
+        const summa = kreditnotor
+          .reduce((s, k) => s.plus(k.total), new Prisma.Decimal(0))
+          .toFixed(2)
+        throw new ConflictException(
+          `Fakturan är redan krediterad med ${
+            kreditnotor.length === 1 ? 'kreditnota' : 'kreditnotorna'
+          } ${namn} (${summa} kr). En rättelse här skulle bokföra bort samma ` +
+            'belopp en andra gång och ge en negativ kundfordran. Ska mer skrivas ' +
+            'ned: kreditera det som återstår. Blev krediteringen fel: bokför en ny ' +
+            'faktura på beloppet — en kreditnota kan inte makuleras.',
+        )
+      }
+    }
+
     const bookedOn = original.date.toISOString().slice(0, 10)
     const intendedDescription = `Rättelse av verifikat ${original.series}${original.verNumber} (bokfört ${bookedOn}): ${reason}`
 

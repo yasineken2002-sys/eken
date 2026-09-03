@@ -33,6 +33,13 @@ export function assessCreditability(
     payments: Array<unknown>
   },
   debt: { outstanding: Prisma.Decimal },
+  /**
+   * Har fakturans EGET verifikat rättats av en operatör? Obligatoriskt, inte
+   * valfritt: ett fält med default hade tyst svarat "nej" för varje anropare
+   * som glömde det, och grinden nedan hade då aldrig kunnat fälla. Samma
+   * typspärr som `credits` i computeInvoiceDebt.
+   */
+  rattelse: { finns: boolean; verifikat: string | null },
 ): { allowed: boolean; reason: string | null } {
   if (invoice.isCreditNote) {
     return {
@@ -49,6 +56,34 @@ export function assessCreditability(
       reason:
         'Fakturan är makulerad — intäkten är redan reverserad. ' +
         'En kreditnota ovanpå det skulle bokföra bort samma intäkt två gånger.',
+    }
+  }
+
+  // ── FAKTURANS VERIFIKAT ÄR REDAN RÄTTAT — RIKTNING 2 AV ETT PAR ────────────
+  //
+  // Spegelbilden av grinden i `AccountingService.reverseJournalEntry`, som
+  // nekar en rättelse av ett fakturaverifikat som redan har en kreditnota.
+  // BÅDA behövs, och det är inte en dubblering: de två operationerna reverserar
+  // in i SKILDA `sourceId`-namnrymder — `entry-reversal:<entryId>` respektive
+  // `credit-note:<creditNoteId>` — och ingen av dem slår upp den andra. Hade de
+  // delat namnrymd vore paret ofarligt: `createNumberedEntry` är idempotent per
+  // (org, source, sourceId) och den andra körningen hade bokfört ingenting.
+  //
+  // FELET UPPSTÅR I SEKVENSEN. Varje verifikat balanserar för sig; det är först
+  // det andra bortbokandet av samma belopp som ger en negativ kundfordran och
+  // en negativ intäkt. Ingen verifikatkontroll och ingen balansgrind ser det.
+  //
+  // Att bara bygga den ena riktningen är samma hål sett från andra hållet —
+  // exakt det som #517/#518 kostade två gånger tidigare.
+  if (rattelse.finns) {
+    return {
+      allowed: false,
+      reason:
+        `Fakturans verifikat är redan rättat${
+          rattelse.verifikat ? ` (verifikat ${rattelse.verifikat})` : ''
+        } — beloppet är alltså redan bokat bort. ` +
+        'En kreditnota ovanpå det skulle bokföra bort samma belopp en andra ' +
+        'gång och ge en negativ kundfordran. Är rättelsen fel: rätta rättelsen.',
     }
   }
 
@@ -101,6 +136,34 @@ export function assessCreditability(
   }
 
   return { allowed: true, reason: null }
+}
+
+/**
+ * HAR FAKTURANS EGET VERIFIKAT RÄTTATS AV EN OPERATÖR?
+ *
+ * EN källa för båda anroparna. `getPreview` och `createCreditNote` måste ställa
+ * exakt samma fråga — glider de isär erbjuder knappen i UI:t en kreditering som
+ * API:et sedan nekar, vilket är samma defekt som `assessCreditability` finns
+ * för att undvika.
+ *
+ * Slår upp fakturans EGET verifikat (`source = INVOICE`, `sourceId = <id>`,
+ * utan prefix) och läser dess `reversedBy`. Saknas verifikatet — organisationen
+ * bokför inte, eller fakturan skapades före bokföringen — är svaret "ingen
+ * rättelse", vilket är rätt: finns ingen post kan den inte ha vänts.
+ */
+async function hamtaRattelse(
+  db: Prisma.TransactionClient | PrismaService,
+  invoiceId: string,
+  organizationId: string,
+): Promise<{ finns: boolean; verifikat: string | null }> {
+  const post = await db.journalEntry.findFirst({
+    where: { organizationId, source: 'INVOICE', sourceId: invoiceId },
+    select: { reversedBy: { select: { series: true, verNumber: true } } },
+  })
+  const rev = post?.reversedBy
+  return rev
+    ? { finns: true, verifikat: `${rev.series}${rev.verNumber}` }
+    : { finns: false, verifikat: null }
 }
 
 /**
@@ -176,7 +239,8 @@ export class CreditNoteService {
       allocations: invoice.payments.map((p) => p.amount),
       credits: invoice.creditNotes.map((c) => c.total),
     })
-    const bedömning = assessCreditability(invoice, debt)
+    const rattelse = await hamtaRattelse(this.prisma, invoice.id, organizationId)
+    const bedömning = assessCreditability(invoice, debt, rattelse)
 
     const tidigareKreditrader = await this.prisma.invoiceLine.findMany({
       where: {
@@ -261,7 +325,10 @@ export class CreditNoteService {
         allocations: original.payments.map((p) => p.amount),
         credits: original.creditNotes.map((c) => c.total),
       })
-      const bedömning = assessCreditability(original, debtBefore)
+      // Läses INNANFÖR radlåset, av samma skäl som allokeringarna: en rättelse
+      // som committats före det här beslutet måste synas här.
+      const rattelse = await hamtaRattelse(tx, original.id, organizationId)
+      const bedömning = assessCreditability(original, debtBefore, rattelse)
       if (!bedömning.allowed) throw new BadRequestException(bedömning.reason)
 
       // ── VAD SOM REDAN KREDITERATS PER RAD ──────────────────────────────────
