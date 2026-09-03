@@ -125,12 +125,25 @@ describe('C0 — kanariefågeln: spärren får inte fälla en LEGITIM väg', () 
 })
 
 describe('C0 — mekaniken som gör hålet farligt, belagd', () => {
-  it('spridning av undefined ger ett where UTAN organizationId', () => {
-    // Typad som den ÄR i anroparen — valfri i praktiken, inte literalt
-    // `undefined`. Skriven som bara `undefined` smalnar TS av den till typen
-    // `undefined`, och då är spridningen ett kompileringsfel i stället för det
-    // körningsbeteende provet handlar om.
-    const idempotencyWhere: Record<string, unknown> | undefined = undefined
-    expect({ ...idempotencyWhere, source: 'MANUAL' }).toEqual({ source: 'MANUAL' })
+  it('spridning av en BORTFALLEN nyckel ger ett where UTAN organizationId', () => {
+    // Formen speglar anroparens params-objekt. Skrivet som en naken
+    // `const x = undefined` smalnar TS av variabeln till typen `undefined`
+    // (kontrollflödesanalys, oavsett annotering), och spridningen blir då ett
+    // KOMPILERINGSFEL i stället för det körningsbeteende provet handlar om —
+    // vilket är precis vad som gör hålet svårt att se: i den riktiga
+    // anroparen är fältet valfritt, inte literalt undefined.
+    const params: { idempotencyWhere?: Record<string, unknown>; source: string } = {
+      source: 'MANUAL',
+    }
+
+    expect({ ...params.idempotencyWhere, source: params.source }).toEqual({ source: 'MANUAL' })
+
+    // Med nyckeln på plats bär frågan sin organisation.
+    params.idempotencyWhere = { organizationId: 'org-1', sourceId: 'src-1' }
+    expect({ ...params.idempotencyWhere, source: params.source }).toEqual({
+      organizationId: 'org-1',
+      sourceId: 'src-1',
+      source: 'MANUAL',
+    })
   })
 })
