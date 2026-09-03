@@ -24,6 +24,14 @@ function make() {
       update: jest.fn().mockResolvedValue({ id: 't1' }),
     },
   }
+  // create() skriver numret och ticket-raden i EN $transaction (R4 i
+  // check-sequence-allocation.mjs). Attrappen kör återanropet mot sig själv, så
+  // proven nedan mäter samma sak som förr — att skriv-metoden inte nås alls när
+  // org-valideringen fäller. Att transaktionen verkligen OMSLUTER inserten
+  // bärs av db-specarna, inte av en attrapp.
+  ;(prisma as unknown as { $transaction: unknown }).$transaction = (
+    fn: (tx: typeof prisma) => unknown,
+  ) => fn(prisma)
   const notifications = { createForAllOrgUsers: jest.fn().mockResolvedValue(undefined) }
   const service = new MaintenanceService(prisma as never, notifications as never, {} as never)
   return { service, prisma }

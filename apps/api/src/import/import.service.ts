@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import * as XLSX from 'xlsx'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { PersonalNumberService } from '../common/crypto/personal-number.service'
 import { ContractNumberService } from '../contracts/contract-number.service'
 import { syncUnitStatusFromLeases } from '../units/unit-status.sync'
@@ -643,34 +644,41 @@ export class ImportService {
         // och ska ha ett kontraktsnummer — annars hamnar ACTIVE/EXPIRED-kontrakt
         // permanent utan KONT-nummer (samma lucka som renew/autoRenew hade).
         // DRAFT får numret först vid aktivering (transitionStatus).
-        const contractNumber =
-          status === 'DRAFT' ? null : await this.contractNumbers.allocate(organizationId)
+        //
+        // Numret allokeras i SAMMA transaktion som avtalsraden. Det låg
+        // tidigare på poolen (enda av fyra anropsplatser utan `tx`) med
+        // lease.create som separat sats: föll skrivningen — och den kan, den
+        // ligger i en try/catch som räknar felrader — var numret förbrukat.
+        await this.prisma.$transaction(async (tx) => {
+          const contractNumber =
+            status === 'DRAFT' ? null : await this.contractNumbers.allocate(organizationId, tx)
 
-        await this.prisma.lease.create({
-          data: {
-            organizationId,
-            unitId: unit.id,
-            tenantId: tenant.id,
-            status,
-            ...(contractNumber ? { contractNumber } : {}),
-            startDate,
-            // T1.3b: CSV-import skapar varje rad oberoende och sätter
-            // kontinuitetsmarkören = radens eget startDate. v1-begränsning: om
-            // två importerade rader i själva verket är en redan skedd
-            // förnyelsekedja hos den gamla leverantören får den nyare raden ett
-            // för kort tenancyStartDate. Backlog (hyresjurist [INFO] 2026-07-10):
-            // kedjedetektion i importen ELLER ett manuellt "ursprungligt
-            // inflyttningsdatum"-fält. Migrationens backfill är däremot
-            // kedje-medveten (den har hela DB:n att följa adjacensen i).
-            tenancyStartDate: startDate,
-            endDate: endDate ?? null,
-            monthlyRent: this.parseAmount(data['monthlyRent'] ?? '') ?? 0,
-            depositAmount: this.parseAmount(data['depositAmount'] ?? '') ?? 0,
-            noticePeriodMonths: data['noticePeriodMonths']
-              ? parseInt(data['noticePeriodMonths'], 10) || 3
-              : 3,
-          },
-        })
+          await tx.lease.create({
+            data: {
+              organizationId,
+              unitId: unit.id,
+              tenantId: tenant.id,
+              status,
+              ...(contractNumber ? { contractNumber } : {}),
+              startDate,
+              // T1.3b: CSV-import skapar varje rad oberoende och sätter
+              // kontinuitetsmarkören = radens eget startDate. v1-begränsning: om
+              // två importerade rader i själva verket är en redan skedd
+              // förnyelsekedja hos den gamla leverantören får den nyare raden ett
+              // för kort tenancyStartDate. Backlog (hyresjurist [INFO] 2026-07-10):
+              // kedjedetektion i importen ELLER ett manuellt "ursprungligt
+              // inflyttningsdatum"-fält. Migrationens backfill är däremot
+              // kedje-medveten (den har hela DB:n att följa adjacensen i).
+              tenancyStartDate: startDate,
+              endDate: endDate ?? null,
+              monthlyRent: this.parseAmount(data['monthlyRent'] ?? '') ?? 0,
+              depositAmount: this.parseAmount(data['depositAmount'] ?? '') ?? 0,
+              noticePeriodMonths: data['noticePeriodMonths']
+                ? parseInt(data['noticePeriodMonths'], 10) || 3
+                : 3,
+            },
+          })
+        }, PRISMA_DEFAULT_TX_LIMITS)
 
         // I1/#62: ett importerat ACTIVE-kontrakt måste flippa enheten till
         // OCCUPIED. Tidigare skapades leasen direkt via prisma.lease.create()

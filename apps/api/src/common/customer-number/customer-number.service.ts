@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
-import { PrismaService } from '../prisma/prisma.service'
 
 /**
  * Allokerar plattformsglobala, läsbara kundnummer i formatet `K-100001`,
@@ -12,9 +11,21 @@ import { PrismaService } from '../prisma/prisma.service'
  * GLOBAL — en enda rad i `CustomerNumberSequence`, vaktad av ett konstant id
  * ("GLOBAL"). Samma race-säkra UPSERT + atomär increment-mönster: Postgres
  * tar row-lock på raden så att två samtidiga org-skapanden köas i stället för
- * att dela ut samma nummer. Ett hål i serien (t.ex. om org-skapandet failar
- * efter allokering) är ofarligt — kundnumret är ingen BFL-reglerad serie — så
- * vi behöver ingen omslutande transaktion.
+ * att dela ut samma nummer.
+ *
+ * ── VARFÖR `tx` ÄR OBLIGATORISKT ────────────────────────────────────────────
+ *
+ * Argumentet var tidigare `tx?` med `?? this.prisma` som reserv. Båda
+ * anroparna utelämnade det, så BÅDA allokerade på poolen och skrev
+ * `Organization` som en separat sats: föll skrivningen var numret ändå
+ * förbrukat. Unikheten höll — upserten är atomär i sig — men numret och raden
+ * det hör till kunde inte längre rulla tillbaka tillsammans.
+ *
+ * Ett hål i just den här serien är ofarligt; kundnumret är ingen räkenskaps-
+ * serie. Skälet att ändå kräva `tx` är att en valfri transaktion är den TYSTA
+ * varianten av felet: signaturen ser säker ut, och bara den som läser
+ * anropsplatsen ser att reserven används. Regel R4 i
+ * `check-sequence-allocation.mjs` gör formen omöjlig att återinföra.
  *
  * Service:n är avsiktligt liten och självständig så den kan användas från både
  * AuthService.register (självregistrering) och PlatformOrganizationsService
@@ -22,16 +33,13 @@ import { PrismaService } from '../prisma/prisma.service'
  */
 @Injectable()
 export class CustomerNumberService {
-  constructor(private readonly prisma: PrismaService) {}
-
   /**
-   * Tilldela nästa kundnummer. Kan köras med eller utan pågående transaktion.
+   * Tilldela nästa kundnummer. MÅSTE anropas med transaktionsklienten från den
+   * `$transaction` som skriver organisationsraden numret hör till.
    * Returnerar det formaterade numret, t.ex. `K-100042`.
    */
-  async allocate(tx?: Prisma.TransactionClient): Promise<string> {
-    const client = tx ?? this.prisma
-
-    const row = await client.customerNumberSequence.upsert({
+  async allocate(tx: Prisma.TransactionClient): Promise<string> {
+    const row = await tx.customerNumberSequence.upsert({
       where: { id: 'GLOBAL' },
       create: { id: 'GLOBAL', lastNumber: 1 },
       update: { lastNumber: { increment: 1 } },

@@ -719,24 +719,32 @@ export class AviseringService {
     const depositAmount = Number(lease.depositAmount ?? 0)
     if (depositAmount > 0 && !opts.skipDeposit) {
       try {
-        const noticeNumber = await allocateRentNoticeNumber(this.prisma, orgId, year, month)
-        depositNotice = (await this.prisma.rentNotice.create({
-          data: {
-            organizationId: orgId,
-            tenantId: lease.tenantId,
-            leaseId: lease.id,
-            noticeNumber,
-            ocrNumber,
-            month,
-            year,
-            amount: depositAmount,
-            vatAmount: 0,
-            totalAmount: depositAmount,
-            dueDate,
-            status: RentNoticeStatus.PENDING,
-            type: RentNoticeType.DEPOSIT,
-          },
-        })) as unknown as RentNotice
+        // Allokering och insert i SAMMA transaktion — de tre andra
+        // anropsplatserna (:320, :501, :795) gör redan så. Den här gjorde det
+        // inte: numret togs på poolen och create:t var en separat sats, så ett
+        // fel i inserten brände numret. Med transaktionen rullar sekvens-
+        // ökningen tillbaka med den, och en cron-omkörning som fastnar på
+        // periodnyckeln nedan kostar inte längre ett nummer per försök.
+        depositNotice = (await this.prisma.$transaction(async (tx) => {
+          const noticeNumber = await allocateRentNoticeNumber(tx, orgId, year, month)
+          return tx.rentNotice.create({
+            data: {
+              organizationId: orgId,
+              tenantId: lease.tenantId,
+              leaseId: lease.id,
+              noticeNumber,
+              ocrNumber,
+              month,
+              year,
+              amount: depositAmount,
+              vatAmount: 0,
+              totalAmount: depositAmount,
+              dueDate,
+              status: RentNoticeStatus.PENDING,
+              type: RentNoticeType.DEPOSIT,
+            },
+          })
+        }, PRISMA_DEFAULT_TX_LIMITS)) as unknown as RentNotice
       } catch (err) {
         // Bara periodnyckeln är benign — se RENT_NOTICE_PERIOD_UNIQUE.
         if (isP2002From(err, RENT_NOTICE_PERIOD_UNIQUE)) {
