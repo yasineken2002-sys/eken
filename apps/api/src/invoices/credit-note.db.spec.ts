@@ -50,6 +50,12 @@
  * runnerns kärnantal gör en eventuell `P2028` omöjlig att tolka. Klienten får
  * därför en egen URL med `connection_limit`, och `beforeAll` assertar den.
  */
+// `InvoicesService` drar in StorageService → AWS SDK, som publicerar ESM och
+// inte transformeras av jest. Samma två mockar som de andra db-specarna i
+// katalogen. De rör inte det som mäts här.
+jest.mock('./pdf.service', () => ({ PdfService: class {} }))
+jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
+
 import { randomUUID } from 'node:crypto'
 
 import { ConflictException } from '@nestjs/common'
