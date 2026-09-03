@@ -1728,6 +1728,37 @@ jobs:
       - name: Guard self-test (canaries must fail the guard)
         run: node apps/api/scripts/check-actor-stamping.mjs --self-test
 
+  spread-where-guard:
+    name: Spread where tenant scope guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # `{ ...undefined }` är laglig JS och ger `{}`. En where-sats byggd som
+      # `{ ...X, ... }` tappar därför sin `organizationId` om X blir undefined,
+      # och uppslaget returnerar första raden i HELA tabellen — tvärs över
+      # organisationsgränsen, och anroparen ser ett lyckat svar.
+      #
+      # TYPSYSTEMET FÅNGAR INTE DET. I #703 var fältet REDAN obligatoriskt i
+      # typen; hålet låg på vägarna förbi typen (`as any`, spridningsbyggda
+      # params, `JSON.parse`). Mätt: `kanVaraUndefined` var false för det ställe
+      # som bar felet. Vakten är det enda instrument som ser klassen.
+      #
+      # Vad den INTE kan se: tidiga `return`-spärrar (bara `throw`), om nyckeln
+      # är TILLRÄCKLIGT unik (det ägs av det unika DB-indexet), och vad en
+      # anropare faktiskt levererar in i ett typat objekt (det ägs av C0-spärren
+      # i createNumberedEntry). Se skriptets docblock.
+      - name: No where-clause can silently lose its organizationId
+        run: node apps/api/scripts/check-spread-where.mjs
+
+      # Kanariefåglarna. En vakt som aldrig setts falla är en kommentar.
+      # Fixturerna är #703 före fixen (ska fällas) och efter (ska passera).
+      - name: Guard self-test (canaries must fail the guard)
+        run: node apps/api/scripts/check-spread-where.mjs --self-test
+
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
@@ -1782,6 +1813,7 @@ jobs:
       - generated-knowledge-sync-guard
       - schema-drift-guard
       - actor-stamping-guard
+      - spread-where-guard
       - e2e
     steps:
       # `always()` får jobbet att KÖRA, men säger ingenting om utfallet — utan
