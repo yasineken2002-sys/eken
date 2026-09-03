@@ -9,7 +9,12 @@
 import { ConfigModule } from '@nestjs/config'
 import { Test } from '@nestjs/testing'
 import { validateEnv } from './env.validation'
-import { PLACEHOLDER_CHECKED_VARS, SECRET_FORM_VARS } from './env-placeholders'
+import {
+  PLACEHOLDER_CHECKED_VARS,
+  PLACEHOLDER_WORD_THRESHOLD,
+  SECRET_FORM_VARS,
+  placeholderWordHits,
+} from './env-placeholders'
 
 const CRITICAL_KEYS = [
   'DATABASE_URL',
@@ -108,5 +113,78 @@ describe('ConfigModule ↔ validateEnv (boot-integration, #1)', () => {
   it('dev + inget satt → bootar (varnar, blockerar ej)', async () => {
     await expect(boot({ NODE_ENV: 'development' })).resolves.toBeUndefined()
     expect(warnSpy).toHaveBeenCalled()
+  })
+})
+
+/**
+ * ── KANARIEFÅGEL: mäter rensningen fortfarande något? ────────────────────────
+ *
+ * `RENSADE_KEYS` ovan HÄRLEDS ur `PLACEHOLDER_CHECKED_VARS ∪ SECRET_FORM_VARS`
+ * i stället för att räknas upp för hand (#685). Härledningen är rätt — och
+ * osynlig. Slutar den betyda något blir de tre proven ovan gröna av fel skäl:
+ * de säger då bara att `validateEnv` accepterar FULL_PROD i en miljö där
+ * ingenting kunde läcka in, vilket är sant oavsett om nollställningen sker.
+ *
+ * VAD DEN HÄR PRÖVAR: att läckvägen är LEVANDE. En nyckel som `validateEnv`
+ * granskar men som `RENSADE_KEYS` inte täcker ska nå steg 3 med utvecklarens
+ * värde och FÄLLA boot. Går den igenom är det inte rensningen som gör de tre
+ * proven gröna, och de mäter ingenting.
+ *
+ * Fallet konstrueras genom att sonden skjuts in i `SECRET_FORM_VARS` EFTER
+ * modulinladdning: `RENSADE_KEYS` är ett ögonblicksvärde taget vid import,
+ * medan `validateEnv` bygger sin `checked`-mängd vid varje anrop. Divergensen
+ * blir därmed exakt den form regeln handlar om — granskad, men inte rensad.
+ *
+ * VAD DEN INTE SER, och det är avsiktligt utskrivet:
+ *
+ *   • Den bevisar INTE att en nyckel som läggs till i KÄLLKODEN skulle missas.
+ *     Härledningen är levande, så en ny post i endera arrayen städas
+ *     automatiskt. Den formen kan inte återuppstå så länge härledningen står
+ *     kvar — och det är just härledningens fortlevnad kanariefågeln vaktar.
+ *   • Den ser inte de nycklar `validateEnv` läser UTANFÖR de två arrayerna.
+ *     Uppräknat mot `1f52369`: 37 nycklar läses, 27 rensas, **10 står
+ *     utanför** — `ALLOWED_ORIGINS`, `BACKUP_RETENTION_DAYS`,
+ *     `E2E_RELAX_AUTH_THROTTLE`, `MAIL_FROM`, `PORT`, `PSD2_APP_RETURN_URL`,
+ *     `PSD2_CALLBACK_URL`, `SIGNING_PII_KEY_OLD`, `THROTTLE_LIMIT`,
+ *     `THROTTLE_TTL`. Åtta av dem ligger i `OPTIONAL_FORMAT` och kan bara ge
+ *     VARNINGAR. Två kan ge FEL, och fäller alltså specen hos den som råkar ha
+ *     dem satta: `SIGNING_PII_KEY_OLD` (satt men inte 64 hex → fel i alla
+ *     miljöer) och `E2E_RELAX_AUTH_THROTTLE` (`'true'` + `NODE_ENV=production`,
+ *     vilket FULL_PROD sätter → fel). Det är samma felform som #685 löste, på
+ *     nycklar utanför de två arrayerna, och det är ett EGET beslut — inte
+ *     något den här filen tyst utvidgar sig till.
+ */
+
+const KANARIENYCKEL = 'KANARIE_ORENSAD_HEMLIGHET'
+/** Tre ord ur PLACEHOLDER_WORDS ("change", "secret", "placeholder") — tröskeln är två. */
+const KANARIEVARDE = 'change-me-secret-placeholder'
+
+describe('kanariefågel: en granskad nyckel utanför rensningsmängden fäller boot', () => {
+  const sparat = process.env[KANARIENYCKEL]
+
+  afterEach(() => {
+    const i = (SECRET_FORM_VARS as string[]).indexOf(KANARIENYCKEL)
+    if (i >= 0) (SECRET_FORM_VARS as string[]).splice(i, 1)
+    if (sparat === undefined) delete process.env[KANARIENYCKEL]
+    else process.env[KANARIENYCKEL] = sparat
+  })
+
+  // Tröskeln läses UR KODEN och sonden ställs mot den, så "vakten såg inget"
+  // inte kan förväxlas med "det fanns inget att se".
+  it('sonden är entydig och överskrider tröskeln den ska fällas av', () => {
+    expect(RENSADE_KEYS).not.toContain(KANARIENYCKEL)
+    expect(PLACEHOLDER_CHECKED_VARS).not.toContain(KANARIENYCKEL)
+    expect(SECRET_FORM_VARS).not.toContain(KANARIENYCKEL)
+    expect(placeholderWordHits(KANARIEVARDE).length).toBeGreaterThanOrEqual(
+      PLACEHOLDER_WORD_THRESHOLD,
+    )
+  })
+
+  it('läckvägen är levande: värdet i process.env når steg 3 och avbryter uppstarten', async () => {
+    ;(SECRET_FORM_VARS as string[]).push(KANARIENYCKEL)
+    process.env[KANARIENYCKEL] = KANARIEVARDE
+    // FULL_PROD levererar INTE den här nyckeln. Rensningen är därför det enda
+    // som skulle kunna ta bort utvecklarens värde — och den täcker den inte.
+    await expect(boot({ ...FULL_PROD })).rejects.toThrow(new RegExp(KANARIENYCKEL))
   })
 })
