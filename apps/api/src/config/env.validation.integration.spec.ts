@@ -8,7 +8,7 @@
 
 import { ConfigModule } from '@nestjs/config'
 import { Test } from '@nestjs/testing'
-import { validateEnv } from './env.validation'
+import { VALIDATED_ENV_VARS, validateEnv } from './env.validation'
 import {
   PLACEHOLDER_CHECKED_VARS,
   PLACEHOLDER_WORD_THRESHOLD,
@@ -16,6 +16,10 @@ import {
   placeholderWordHits,
 } from './env-placeholders'
 
+/**
+ * Nycklarna som MÅSTE finnas i produktion — speglar `CRITICAL` i
+ * env.validation.ts och används bara för att läsa fixturen nedan.
+ */
 const CRITICAL_KEYS = [
   'DATABASE_URL',
   'REDIS_URL',
@@ -58,24 +62,20 @@ const FULL_PROD: Record<string, string> = {
   SIGNING_PII_PEPPER: 'p'.repeat(16),
 }
 
-// Mängden som måste nollställas är INTE bara CRITICAL_KEYS. validateEnv steg 3
-// granskar dessutom PLACEHOLDER_CHECKED_VARS ∪ SECRET_FORM_VARS, och en variabel
-// som bara står i den mängden läcker in från utvecklarens egen miljö —
-// process.env vinner över det testet sätter. Uppmätt: sju nycklar låg utanför
-// listan (bl.a. PLATFORM_JWT_REFRESH_SECRET), och den som råkade vara satt
-// fällde "prod + allt satt" med ett platshållarfel om ett värde testet aldrig
-// valt. Härledd ur koden, inte listad, så en ny nyckel i endera arrayen städas
-// automatiskt i stället för att tyst öppna hålet igen.
-const RENSADE_KEYS: readonly string[] = [
-  ...new Set<string>([
-    ...CRITICAL_KEYS,
-    ...PLACEHOLDER_CHECKED_VARS,
-    ...SECRET_FORM_VARS,
-    'NODE_ENV',
-    'PSD2_ENABLED',
-    'SIGNING_ENABLED',
-  ]),
-]
+// Mängden som måste nollställas är varje variabel `validateEnv` LÄSER —
+// `process.env` vinner över `ConfigModule.forRoot({ load })`, så en variabel i
+// utvecklarens egen miljö avgör annars utfallet (#685).
+//
+// Den här listan räknades tidigare upp här, härledd ur `PLACEHOLDER_CHECKED_VARS
+// ∪ SECRET_FORM_VARS`. Det är en DELMÄNGD av vad validateEnv läser: 27 av 37.
+// Tio nycklar stod utanför, och två av dem kan ge FEL — `SIGNING_PII_KEY_OLD`
+// och `E2E_RELAX_AUTH_THROTTLE` — alltså fälla den här filen hos den som råkar
+// ha dem satta lokalt, med ett felmeddelande om ett värde testet aldrig valt.
+//
+// Mängden läses nu ur `VALIDATED_ENV_VARS`, som härleds på andra sidan ur samma
+// strukturer loopen går igenom. En uppräkning på det här stället skulle vara en
+// andra sanning, och två uppräkningar som ska vara lika glider isär.
+const RENSADE_KEYS: readonly string[] = VALIDATED_ENV_VARS
 
 async function boot(env: Record<string, string>) {
   for (const k of RENSADE_KEYS) delete process.env[k]
@@ -113,6 +113,51 @@ describe('ConfigModule ↔ validateEnv (boot-integration, #1)', () => {
   it('dev + inget satt → bootar (varnar, blockerar ej)', async () => {
     await expect(boot({ NODE_ENV: 'development' })).resolves.toBeUndefined()
     expect(warnSpy).toHaveBeenCalled()
+  })
+})
+
+/**
+ * De tio nycklar som stod UTANFÖR den gamla rensningsmängden.
+ *
+ * Uppräknade ur koden mot `1f52369`: `validateEnv` läste 37 nycklar, specen
+ * rensade 27. Åtta av de tio ligger i `OPTIONAL_FORMAT` och kan bara ge
+ * varningar; två kan ge FEL och fällde alltså den här filen hos den som råkar
+ * ha dem satta lokalt. De står med namn därför att ett TAL inte fångar ett
+ * återfall — en nyckel som faller ur mängden och en som tillkommer tar ut
+ * varandra i en summa.
+ */
+const TIDIGARE_ORENSADE = [
+  // OPTIONAL_FORMAT — bara varningar
+  'ALLOWED_ORIGINS',
+  'BACKUP_RETENTION_DAYS',
+  'MAIL_FROM',
+  'PORT',
+  'PSD2_APP_RETURN_URL',
+  'PSD2_CALLBACK_URL',
+  'THROTTLE_LIMIT',
+  'THROTTLE_TTL',
+  // Kan ge FEL, och fällde alltså specen av utvecklarens egen miljö
+  'E2E_RELAX_AUTH_THROTTLE',
+  'SIGNING_PII_KEY_OLD',
+]
+
+describe('rensningsmängden härleds ur det validateEnv faktiskt läser', () => {
+  it('täcker de tio nycklar som stod utanför de två platshållar-arrayerna', () => {
+    for (const nyckel of TIDIGARE_ORENSADE) {
+      expect(RENSADE_KEYS).toContain(nyckel)
+      // Var utanför den GAMLA härledningen — annars mäter provet ingenting.
+      expect([...PLACEHOLDER_CHECKED_VARS, ...SECRET_FORM_VARS]).not.toContain(nyckel)
+    }
+  })
+
+  it('täcker fortfarande allt den gamla härledningen täckte', () => {
+    for (const nyckel of [...CRITICAL_KEYS, ...PLACEHOLDER_CHECKED_VARS, ...SECRET_FORM_VARS]) {
+      expect(RENSADE_KEYS).toContain(nyckel)
+    }
+  })
+
+  it('prod-fixturen levererar varje alltid-kritisk nyckel', () => {
+    for (const nyckel of CRITICAL_KEYS) expect(Object.keys(FULL_PROD)).toContain(nyckel)
   })
 })
 

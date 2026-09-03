@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { authThrottleRelaxed } from '../common/throttler/auth-throttle-mode'
+import { E2E_AUTH_THROTTLE_FLAG, authThrottleRelaxed } from '../common/throttler/auth-throttle-mode'
 import {
   PLACEHOLDER_CHECKED_VARS,
   SECRET_FORM_VARS,
@@ -100,11 +100,66 @@ const OPTIONAL_FORMAT: Record<string, z.ZodTypeAny> = {
  * error-logg (appen ska fortsätta köra utan backup) — ett boot-krasch här skulle
  * MOTSÄGA den logiken.
  */
+/**
+ * De flagg-villkorade nycklarna, som en egen konstant därför att
+ * `collectFeatureFlagErrors` läser dem med namn i stället för i en loop — de
+ * finns alltså inte i någon `Record` att räkna upp. Funktionen nedan läser
+ * GENOM den här konstanten, så den inte kan bli en parallell lista som glider
+ * ifrån vad koden faktiskt gör.
+ */
+export const FLAG_CONDITIONAL_VARS = {
+  PSD2_ENABLED: 'PSD2_ENABLED',
+  PSD2_TOKEN_KEY: 'PSD2_TOKEN_KEY',
+  SIGNING_ENABLED: 'SIGNING_ENABLED',
+  SIGNING_PII_KEY: 'SIGNING_PII_KEY',
+  SIGNING_PII_PEPPER: 'SIGNING_PII_PEPPER',
+  SIGNING_PII_KEY_OLD: 'SIGNING_PII_KEY_OLD',
+} as const
+
+/**
+ * VARJE miljövariabel `validateEnv` läser — den enda källan för "vad påverkar
+ * utfallet av en boot-validering".
+ *
+ * Varför den finns: `env.validation.integration.spec.ts` måste nollställa
+ * process.env innan den bootar, därför att `process.env` vinner över
+ * `ConfigModule.forRoot({ load })` och utvecklarens egen miljö annars avgör
+ * utfallet (#685). Den nollställningen härleddes ur `PLACEHOLDER_CHECKED_VARS ∪
+ * SECRET_FORM_VARS`, alltså ur en DELMÄNGD av vad den här filen läser — 27 av
+ * 37 nycklar. Tio stod utanför, och två av dem kan ge FEL och alltså fälla
+ * specen hos den som råkar ha dem satta: `SIGNING_PII_KEY_OLD` (satt men inte
+ * 64 hex → fel i alla miljöer) och `E2E_RELAX_AUTH_THROTTLE` (`'true'` +
+ * `NODE_ENV=production`, vilket specens prod-fixtur sätter).
+ *
+ * Mängden HÄRLEDS därför här, ur samma strukturer loopen faktiskt går igenom,
+ * och specen läser den i stället för att räkna upp en egen. Två uppräkningar
+ * som ska vara lika är inte en uppräkning — de glider isär, och det syns inte
+ * förrän någon har rätt variabel satt lokalt.
+ *
+ * VAD DEN INTE KAN SE: att någon läser en variabel ur `config` utan att gå via
+ * `CRITICAL`, `OPTIONAL_FORMAT`, `FLAG_CONDITIONAL_VARS`, de två
+ * platshållar-arrayerna eller `E2E_AUTH_THROTTLE_FLAG`. Just de fem är
+ * uttömmande i dag därför att loopar och namngivna läsningar går genom dem —
+ * lägger du till en sjätte läsväg hör den hemma här också, annars öppnas hålet
+ * ovan igen. Felriktningen är den milda: en nyckel för MYCKET i mängden gör
+ * bara att specen nollställer något ofarligt.
+ */
+export const VALIDATED_ENV_VARS: readonly string[] = [
+  ...new Set<string>([
+    'NODE_ENV',
+    ...Object.keys(CRITICAL),
+    ...Object.keys(OPTIONAL_FORMAT),
+    ...Object.values(FLAG_CONDITIONAL_VARS),
+    ...PLACEHOLDER_CHECKED_VARS,
+    ...SECRET_FORM_VARS,
+    E2E_AUTH_THROTTLE_FLAG,
+  ]),
+]
+
 function collectFeatureFlagErrors(config: EnvRecord): string[] {
   const errs: string[] = []
 
-  if (String(config.PSD2_ENABLED) === 'true') {
-    const key = config.PSD2_TOKEN_KEY
+  if (String(config[FLAG_CONDITIONAL_VARS.PSD2_ENABLED]) === 'true') {
+    const key = config[FLAG_CONDITIONAL_VARS.PSD2_TOKEN_KEY]
     if (typeof key !== 'string' || !hex64.test(key)) {
       errs.push('  • PSD2_ENABLED=true men PSD2_TOKEN_KEY saknas/ogiltig (kräver 64 hex-tecken)')
     }
@@ -114,14 +169,14 @@ function collectFeatureFlagErrors(config: EnvRecord): string[] {
   // CRITICAL (de behövs för Tenant/Customer oavsett signeringsflaggan). Den här
   // grenen behålls ändå: CRITICAL felar bara i produktion, medan en påslagen
   // SIGNING_ENABLED ska fail-fasta i ALLA miljöer — precis som modul-factoryn.
-  if (String(config.SIGNING_ENABLED) === 'true') {
-    const key = config.SIGNING_PII_KEY
+  if (String(config[FLAG_CONDITIONAL_VARS.SIGNING_ENABLED]) === 'true') {
+    const key = config[FLAG_CONDITIONAL_VARS.SIGNING_PII_KEY]
     if (typeof key !== 'string' || !hex64.test(key)) {
       errs.push(
         '  • SIGNING_ENABLED=true men SIGNING_PII_KEY saknas/ogiltig (kräver 64 hex-tecken)',
       )
     }
-    const pepper = config.SIGNING_PII_PEPPER
+    const pepper = config[FLAG_CONDITIONAL_VARS.SIGNING_PII_PEPPER]
     if (typeof pepper !== 'string' || pepper.length < 16) {
       errs.push('  • SIGNING_ENABLED=true men SIGNING_PII_PEPPER saknas/för kort (≥16 tecken)')
     }
@@ -142,7 +197,7 @@ function collectFeatureFlagErrors(config: EnvRecord): string[] {
   // Att kasta flyttar felet till den enda tidpunkt där det är gratis — deploy av
   // steg 1, innan en enda rad skrivits om. Samma kriterium som #466: appen skulle
   // annars KÖRA i ett tillstånd operatören tror är säkert men inte är det.
-  const previousKey = config.SIGNING_PII_KEY_OLD
+  const previousKey = config[FLAG_CONDITIONAL_VARS.SIGNING_PII_KEY_OLD]
   if (typeof previousKey === 'string' && previousKey !== '' && !hex64.test(previousKey)) {
     errs.push(
       '  • SIGNING_PII_KEY_OLD är satt men ogiltig (kräver 64 hex-tecken). ' +
