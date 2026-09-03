@@ -45,7 +45,27 @@ cd /workspaces/eken/apps/web && npm run dev > /tmp/web-dev.log 2>&1 &
 ### Stäng ned och starta om
 
 ```bash
-kill $(lsof -ti:3000) 2>/dev/null; kill $(lsof -ti:5173) 2>/dev/null
+pkill -f '[a]pps/api/dist/main'; pkill -f '[n]estjs/cli/bin/nest.js'; pkill -f '[v]ite/bin/vite.js'
+```
+
+Det gamla kommandot (`kill $(lsof -ti:3000); kill $(lsof -ti:5173)`) dödade bara
+processen som HÖLL porten — API:ts tsc-watch är dess FÖRÄLDER och överlevde med
+**1,6 GB RSS**, varefter den startade ett nytt barn på port 3000 elva sekunder
+efter nästa filsparning. Raderna ovan tar i stället watchen och vite-processen
+själva, så deras `npm`- och `sh`-omslag faller av sig själva och portarna
+förblir lediga.
+
+Klammern är inte dekoration: `pkill -f 'vite'` matchar sitt EGET skal, vars
+kommandorad innehåller mönstret, och dödar då sessionen mitt i kedjan (uppmätt
+exitkod 144). `[v]ite` matchar `vite` men inte literalen `[v]ite`. Sökvägarna
+är dessutom smala nog att inte kunna träffa en annan ströms `jest` — verifierat
+mot en attrapp med `jest.js --runInBand` i kommandoraden, som överlevde.
+
+Verifiera efteråt — självfritt mönster, annars räknar du in ditt eget skal:
+
+```bash
+pgrep -af "[j]est|[n]est|[v]ite"   # tomt = noll servrar kvar
+lsof -ti:3000 -ti:5173             # tomt = portarna lediga
 ```
 
 ### Verifiera att allt körs
