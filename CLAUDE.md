@@ -2337,6 +2337,22 @@ Praktiskt betyder det två saker:
    Matchar det inte squash-commiten är antingen deployen inte klar, eller så kör prod
    något annat än du tror.
 
+   **Med parallella strömmar kan prod hoppa FÖRBI din squash-sha.** Mergar någon
+   annan innan Railway hunnit deploya dig, går prod direkt till deras commit och
+   din sha syns aldrig i fältet. Likhet är då fel fråga — den ger falskt negativt
+   utan att något är fel. Fråga i stället om INNEHÅLLET är ute:
+
+   ```bash
+   PROD=$(curl -fsS https://eken-production.up.railway.app/v1/health \
+     | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["revision"])')
+   git merge-base --is-ancestor <din-squash-sha> "$PROD" \
+     && echo "din sha är INNE i prod" || echo "INTE inne — deployen är inte klar"
+   ```
+
+   Uppmätt 2026-09-03: `da9e95e` (#700) syntes **aldrig** i `revision` — en
+   pollning på likhet gick ut i tid — medan prod körde `b7f1e61` (#701) med
+   `da9e95e` som förfader. Innehållet var ute hela tiden.
+
 ### Docker Compose (lokal fullstack)
 
 ```bash
