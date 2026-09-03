@@ -112,8 +112,27 @@ export const MUTATIONER = [
   {
     läge: '${}-tokenisering',
     vad: 'uttrycksSlut blir en naiv klammerräkning utan strängkännedom',
-    från: '    const t = enTokenVid(text, i, till)\n    if (t) { i = t.end; continue }',
-    till: '    if (false) { i = 0; continue }',
+    från: '    const t = enTokenVid(text, i, till, förra)',
+    till: '    const t = false',
+  },
+  {
+    // Defekt 1 en nivå ned: regex-läget fanns på toppnivå men inte inuti `${}`.
+    // Utfallet var att en mall med `${x.replace(/"/g, …)}` löpte till filens
+    // slut — 109 696 tecken av accounting.service.ts maskerade, tyst, för varje
+    // vakt som frågar codeMask.
+    läge: 'regex i ${}',
+    vad: 'enTokenVid känner ingen regex (defekt 1 inuti ${})',
+    från: "  if (c === '/' && REGEX_LÄGE.test(förra)) {\n    const slut = regexSlut(text, i, till)\n    if (slut !== -1) return { end: slut, förra: '/' }",
+    till: "  if (false) {\n    const slut = regexSlut(text, i, till)\n    if (slut !== -1) return { end: slut, förra: '/' }",
+  },
+  {
+    // Andra halvan av samma läge: grenen finns men får aldrig rätt kontext.
+    // Utan `förra` kan den inte skilja regex från division, och REGEX_LÄGE
+    // matchar tom sträng — så ALLT skulle läsas som regexstart.
+    läge: 'regex i ${}',
+    vad: 'uttrycksSlut spårar inget förra — enTokenVid får aldrig kontexten',
+    från: '    const t = enTokenVid(text, i, till, förra)',
+    till: "    const t = enTokenVid(text, i, till, 'QQ_ALDRIG_REGEXLÄGE')",
   },
   {
     läge: 'SQL-radkommentar',
@@ -273,10 +292,14 @@ async function självtest() {
   t('ett ankare som matchar flera gånger rapporteras som ANKARE', dubbelt[0].utfall === 'ANKARE',
     dubbelt[0].detalj)
 
-  // (4) OMFÅNG: mutationslistan får inte krympa tyst. Golv MÄTT vid införandet:
-  // 12 mutationer över 11 lägen.
-  const MIN_MUTATIONER = 12
-  const MIN_LÄGEN = 11
+  // (4) OMFÅNG: mutationslistan får inte krympa tyst. Golvet är en SPÄRRHAKE —
+  // det höjs när mängden växer, aldrig sänks. Mätt vid införandet: 12 mutationer
+  // över 11 lägen. Höjt 2026-09-03 till 14/12 när läget `regex i ${}` kom till
+  // (defekt 1 levde kvar inuti `${}` och maskerade 69 % av
+  // accounting.service.ts). Höjs golvet inte kan mängden krympa tillbaka utan
+  // att något blir rött, och då är omfångsprovet pynt.
+  const MIN_MUTATIONER = 14
+  const MIN_LÄGEN = 12
   t(`omfång: ${MUTATIONER.length} mutationer (golv ${MIN_MUTATIONER})`,
     MUTATIONER.length >= MIN_MUTATIONER)
   t(`omfång: ${KANARIEFÅGEL_LÄGEN.length} lägen med prov (golv ${MIN_LÄGEN})`,
