@@ -914,7 +914,16 @@ export function ReconciliationPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <BankTransactionStatusBadge status={tx.status} />
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <BankTransactionStatusBadge status={tx.status} />
+                        {/* Avmatchad av en människa: raden är fortfarande
+                            omatchad, men bulkmatchningen rör den inte igen.
+                            Utan den här skillnaden ser "väntar på matchning"
+                            och "automatiken hade fel här" identiska ut. */}
+                        {tx.autoMatchExcludedAt ? (
+                          <Badge variant="ghost">Avmatchad manuellt</Badge>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       {tx.invoice ? (

@@ -398,6 +398,13 @@ export interface BankTransaction {
   invoiceId?: string
   matchedAt?: string
   matchedBy?: string
+  /**
+   * Satt när en MÄNNISKA avmatchat raden. Den går då ur bulkmatchningens
+   * kandidatfilter men förblir `UNMATCHED` — den ska stämmas av, av en
+   * människa. Skilj den från `IGNORED`, som svarar på en annan fråga: ska den
+   * avstämmas över huvud taget?
+   */
+  autoMatchExcludedAt?: string
   createdAt: string
   invoice?: { id: string; invoiceNumber: string; status: string }
 }
