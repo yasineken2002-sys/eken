@@ -187,6 +187,9 @@ describe('#517 — vakt: kreditnotan får aldrig sakna original eller verifikat'
       invoice: { findFirst: jest.fn().mockResolvedValue(original), create: invoiceCreate },
       invoiceLine: { findMany: jest.fn().mockResolvedValue([]) },
       invoiceNumberSequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 7 }) },
+      // Fakturans eget verifikat är inte rättat — riktning 2 av spärrparet
+      // släpper därför igenom, vilket är förutsättningen dessa prov mäter.
+      journalEntry: { findFirst: jest.fn().mockResolvedValue(null) },
     }
     const createJournalEntryForCreditNote = opts.bokförMisslyckas
       ? jest.fn().mockRejectedValue(new Error('kontoplanen saknar konto'))
@@ -400,6 +403,9 @@ describe('#517 — vakt: radtaket och inkassospärren fälls mekaniskt', () => {
           ),
       },
       invoiceNumberSequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 9 }) },
+      // Fakturans eget verifikat är inte rättat — riktning 2 av spärrparet
+      // släpper därför igenom, vilket är förutsättningen dessa prov mäter.
+      journalEntry: { findFirst: jest.fn().mockResolvedValue(null) },
     }
     const service = new CreditNoteService(
       { $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)) } as never,

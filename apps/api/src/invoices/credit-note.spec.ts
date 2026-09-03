@@ -39,6 +39,8 @@ function makeService(
     creditNotes?: number[]
     lines?: Array<Record<string, unknown>>
     tidigareRadkrediteringar?: Array<[string, number]>
+    /** Fakturans EGET verifikat är rättat av en operatör (riktning 2 av paret). */
+    verifikatRattat?: boolean
   } = {},
 ) {
   const original = {
@@ -80,6 +82,15 @@ function makeService(
     },
     invoiceNumberSequence: {
       upsert: jest.fn().mockResolvedValue({ lastNumber: 42 }),
+    },
+    // Fakturans eget verifikat. `reversedBy` != null betyder att en operatör
+    // rättat det — riktning 2 av spärrparet.
+    journalEntry: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue(
+          overrides.verifikatRattat ? { reversedBy: { series: 'A', verNumber: 12 } } : null,
+        ),
     },
   }
   const prisma = {
