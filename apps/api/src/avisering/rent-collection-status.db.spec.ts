@@ -48,7 +48,14 @@ describe('förutsättningar', () => {
   })
 })
 
-const NU = new Date('2026-09-02T12:00:00.000Z')
+// RELATIV, aldrig hårdkodad. Tjänstens `daysSince()` räknar mot `Date.now()`,
+// så en fast tidpunkt här gör åldern beroende av NÄR sviten körs: en avi satt
+// till `NU - 5 dygn` blir sex dygn gammal ett dygn senare. Uppmätt 2026-09-03 —
+// `NU` stod på 2026-09-02T12:00Z, och `daysUntilEvaluation` gick 14 → 13 exakt
+// när klockan passerade 12:00 UTC. Två CI-körningar 40 minuter isär, samma kod:
+// 11:50Z grön, 12:30Z röd. Det är ingen flake utan en tidsbomb — den small en
+// gång och fäller sedan varje körning.
+const NU = new Date()
 const DYGN = 24 * 60 * 60 * 1000
 
 medDb('collectionStatus', () => {
