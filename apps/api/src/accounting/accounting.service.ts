@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   UnprocessableEntityException,
@@ -401,6 +402,44 @@ export class AccountingService {
     // Utan tx öppnar metoden en egen transaktion som tidigare.
     tx?: Prisma.TransactionClient
   }) {
+    // ── C0: IDEMPOTENSNYCKELN MÅSTE FINNAS OCH VARA ORG-SCOPAD ───────────────
+    //
+    // `idempotencyWhere` är REDAN obligatorisk i typen ovan — inget `?`. Den
+    // här spärren finns för att typen inte skyddar mot ett värde som RÅKAR bli
+    // undefined i runtime: ett spec som går via `as any` förbi den privata
+    // metodens synlighet, ett params-objekt byggt med spridning av något
+    // valfritt, en `JSON.parse`. Uppmätt: `{ ...undefined, source }` är laglig
+    // JS och ger `{ source }`.
+    //
+    // VARFÖR DET ÄR ALLVARLIGT och inte bara "hittar fel rad": uppslaget nedan
+    // är `findFirst({ where: { ...idempotencyWhere, source } })`. Faller
+    // nyckeln bort återstår bara `source` — alltså INGEN `organizationId`, och
+    // frågan returnerar första verifikatet med den källan i HELA tabellen,
+    // tvärs över organisationsgränsen. Metoden svarar då med en annan
+    // organisations verifikat i stället för att skapa ett nytt, och anroparen
+    // ser det som en lyckad idempotent träff.
+    //
+    // Kravet på `organizationId` är inte en skärpning av något befintligt:
+    // samtliga 20 anropare i den här filen scopar redan på org (uppmätt), så
+    // spärren kan inte fälla en existerande väg. Den fäller nästa.
+    //
+    // VAD DEN INTE KAN SE: att nyckeln är TILLRÄCKLIGT unik. En `where` som
+    // bär `organizationId` men fel `sourceId` är org-scopad och ändå fel;
+    // det ägs av det unika DB-indexet (org, source, sourceId) och av
+    // anroparens egen spec, inte av den här kontrollen.
+    if (params.idempotencyWhere == null) {
+      throw new InternalServerErrorException(
+        `createNumberedEntry anropades utan idempotencyWhere (${params.source} ${params.sourceId ?? '—'}) — ` +
+          'uppslaget hade blivit oscopat över organisationer',
+      )
+    }
+    if (params.idempotencyWhere.organizationId == null) {
+      throw new InternalServerErrorException(
+        `createNumberedEntry: idempotencyWhere saknar organizationId (${params.source} ${params.sourceId ?? '—'}) — ` +
+          'ett oscopat uppslag kan returnera en annan organisations verifikat',
+      )
+    }
+
     // ── C1: DEN GLOBALA BALANSGRINDEN ────────────────────────────────────────
     //
     // Ett verifikat MÅSTE balansera: summa debet = summa kredit (BFL 5 kap).
