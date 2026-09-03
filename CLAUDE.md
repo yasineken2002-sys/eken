@@ -1743,19 +1743,35 @@ den beroende PR:en först, eller rikta om dess bas till `main` (`gh pr edit <n>
 
 Hände i #447 (bas var #446:s gren), ersatt av #448.
 
-### Frontend-deployer kan vara strypta i 24 timmar
+### Frontend-deployer kan strypas — och ett grönt Deploy-jobb betyder inte deployat
 
-Vercel rate-limitar builds (`upgradeToPro=build-rate-limit`). När taket slås i
-failar `Vercel – eken-web/admin/portal` medan `CI passed` förblir grön — **en
-grön required-check betyder alltså inte att webben är ute**.
+TVÅ oberoende vägar deployar frontend och kan ge motsatt svar om samma commit:
+Vercels git-integration (som postar commit-statusar) och `deploy.yml`:s CLI-steg.
+Uppmätt på `735ada3`, fyra minuter isär:
 
-Det är samma form som avsnittet om Railway ovan, fast åt andra hållet: där
-deployas MER än man tror (Railway lyssnar på `main` utan att bry sig om CI), här
-MINDRE (bygget körs aldrig). Båda gör `CI passed` till ett svagt bevis om vad som
-faktiskt kör.
+```
+13:01:44  Vercel – eken-portal      failure  "Deployment rate limited — retry in 24 hours."
+                                             target_url: …?upgradeToPro=build-rate-limit
+13:05:38  deploy.yml Deploy Portal  success  "not affected" · ⏭ Ignoring the change
+```
 
-Kontrollera `deploy.yml`-körningen för squash-commiten innan du påstår att en
-frontend-ändring är ute.
+Strypningen syns alltså BARA på commit-statusen, och det gröna jobbet betyder här att
+appen hoppades över — inte att den deployades. Blir CLI-steget självt strypt säger dess
+egen logg i stället `Resource is limited … (more than 100, code:
+"api-deployments-free-per-day")`. Samma kvot, två ytor, två formuleringar. Första strypta
+körningen i går: **2026-09-02T19:19:02Z** (`Deploy Web`), så dygnsfönstret gick ut då.
+
+Kvotläget avgörs härifrån, mot squash-shan:
+
+```bash
+gh api repos/{owner}/{repo}/commits/$(git rev-parse origin/main)/status \
+  --jq '.statuses[] | "\(.context)\t\(.state)\t\(.description)"'
+```
+
+**En frontend-ändring är ute först när BÅDA ytorna är gröna för den appen** — commit-statusen
+och `deploy.yml`-jobbet, och jobbet får inte ha hoppat över appen. `CI passed` säger ingenting
+om någondera. Samma svaga bevis som i Railway-avsnittet ovan, fast åt andra hållet: där
+deployas MER än man tror, här MINDRE.
 
 ### `gh pr checks <nummer>` kan svara om en ÄLDRE körning
 
