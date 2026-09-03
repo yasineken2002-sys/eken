@@ -129,35 +129,40 @@ export class AuthService {
     // utskickad uppgraderingspåminnelse.
     const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
 
-    // Allokera plattformsglobalt kundnummer (K-100001 …). Atomär och
-    // race-säker på egen hand; ett ev. hål om create:t failar är ofarligt.
-    const customerNumber = await this.customerNumber.allocate()
+    // Kundnumret (K-100001 …) allokeras i SAMMA transaktion som
+    // organisationsraden det hör till. Allokeringen är atomär i sig, men låg
+    // tidigare på poolen med create:t som separat sats — föll skrivningen var
+    // numret ändå förbrukat. Endast dessa två satser ligger i transaktionen;
+    // kontoplan och användare skapas som förut efteråt.
+    const org = await this.prisma.$transaction(async (tx) => {
+      const customerNumber = await this.customerNumber.allocate(tx)
 
-    const org = await this.prisma.organization.create({
-      data: {
-        name: dto.organizationName,
-        customerNumber,
-        ...(normalizedOrgNumber ? { orgNumber: normalizedOrgNumber } : {}),
-        accountType: dto.accountType ?? (companyForm === 'ENSKILD_FIRMA' ? 'PRIVATE' : 'COMPANY'),
-        companyForm,
-        hasFSkatt,
-        fSkattApprovedDate,
-        ...(dto.vatNumber ? { vatNumber: dto.vatNumber } : {}),
-        email,
-        street: '',
-        city: '',
-        postalCode: '',
-        subscriptionPlan: 'TRIAL',
-        status: 'TRIAL',
-        trialEndsAt,
-        planStartedAt: new Date(),
-        // Snapshot:a versionen för hela organisationen vid signup. När
-        // CURRENT_TERMS_VERSION höjs visar inloggningsflödet en
-        // re-acceptance-modal tills den nya versionen bekräftats.
-        termsAcceptedAt: new Date(),
-        termsVersion: CURRENT_TERMS_VERSION,
-      },
-    })
+      return tx.organization.create({
+        data: {
+          name: dto.organizationName,
+          customerNumber,
+          ...(normalizedOrgNumber ? { orgNumber: normalizedOrgNumber } : {}),
+          accountType: dto.accountType ?? (companyForm === 'ENSKILD_FIRMA' ? 'PRIVATE' : 'COMPANY'),
+          companyForm,
+          hasFSkatt,
+          fSkattApprovedDate,
+          ...(dto.vatNumber ? { vatNumber: dto.vatNumber } : {}),
+          email,
+          street: '',
+          city: '',
+          postalCode: '',
+          subscriptionPlan: 'TRIAL',
+          status: 'TRIAL',
+          trialEndsAt,
+          planStartedAt: new Date(),
+          // Snapshot:a versionen för hela organisationen vid signup. När
+          // CURRENT_TERMS_VERSION höjs visar inloggningsflödet en
+          // re-acceptance-modal tills den nya versionen bekräftats.
+          termsAcceptedAt: new Date(),
+          termsVersion: CURRENT_TERMS_VERSION,
+        },
+      })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     // Seeda BAS-kontoplan automatiskt vid registrering så att första
     // fakturan/journalposten hittar konton. Eget kapital-serien väljs per

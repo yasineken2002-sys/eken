@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { NotificationsService } from '../notifications/notifications.service'
 import { StorageService } from '../storage/storage.service'
 import {
@@ -10,7 +11,12 @@ import {
 } from '../common/utils/file-validation'
 import { CreateMaintenanceTicketDto } from './dto/create-maintenance-ticket.dto'
 import { UpdateMaintenanceTicketDto } from './dto/update-maintenance-ticket.dto'
-import type { MaintenanceStatus, MaintenancePriority, MaintenanceCategory } from '@prisma/client'
+import type {
+  MaintenanceStatus,
+  MaintenancePriority,
+  MaintenanceCategory,
+  Prisma,
+} from '@prisma/client'
 
 /**
  * Filuppladdning till maintenance. Controllern måste själv konsumera
@@ -76,8 +82,17 @@ export class MaintenanceService {
   // UPSERT med atomär increment — Postgres låser raden så samtidiga skapanden
   // av tickets aldrig kan dela ut samma nummer. Tidigare COUNT+1-mönstret
   // hade en race där två parallella requests fick samma värde.
-  private async generateTicketNumber(organizationId: string): Promise<string> {
-    const row = await this.prisma.maintenanceTicketSequence.upsert({
+  //
+  // Klienten kommer UTIFRÅN och är obligatorisk. Metoden läste tidigare
+  // `this.prisma` direkt, alltså poolen, och `maintenanceTicket.create` var en
+  // separat sats: föll skrivningen var numret förbrukat ändå. Numret och raden
+  // det hör till skrivs nu i samma transaktion. Regel R4 i
+  // `check-sequence-allocation.mjs` hindrar att kopplingen tas bort igen.
+  private async generateTicketNumber(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+  ): Promise<string> {
+    const row = await tx.maintenanceTicketSequence.upsert({
       where: { organizationId },
       create: { organizationId, lastNumber: 1 },
       update: { lastNumber: { increment: 1 } },
@@ -209,40 +224,46 @@ export class MaintenanceService {
       unitId: dto.unitId,
       tenantId: dto.tenantId,
     })
-    const ticketNumber = await this.generateTicketNumber(organizationId)
+    // Numret och raden det hör till skrivs i SAMMA transaktion. Faller
+    // create:t rullas sekvensökningen tillbaka med den, i stället för att
+    // brännas. Ingen annan skrivning ligger i transaktionen — notifieringen
+    // nedan är avsiktligt kvar utanför (den får inte kunna fälla ärendet).
+    const ticket = await this.prisma.$transaction(async (tx) => {
+      const ticketNumber = await this.generateTicketNumber(tx, organizationId)
 
-    const ticket = await this.prisma.maintenanceTicket.create({
-      data: {
-        ticketNumber,
-        organizationId,
-        propertyId: dto.propertyId,
-        ...(dto.unitId ? { unitId: dto.unitId } : {}),
-        ...(dto.tenantId ? { tenantId: dto.tenantId } : {}),
-        ...(userId ? { reportedById: userId } : {}),
-        title: dto.title,
-        description: dto.description,
-        category: dto.category ?? 'OTHER',
-        priority: dto.priority ?? 'NORMAL',
-        ...(dto.scheduledDate ? { scheduledDate: new Date(dto.scheduledDate) } : {}),
-        ...(dto.estimatedCost != null ? { estimatedCost: dto.estimatedCost } : {}),
-      },
-      include: {
-        property: { select: { id: true, name: true, city: true } },
-        unit: { select: { id: true, name: true, unitNumber: true } },
-        tenant: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            companyName: true,
-            type: true,
-            email: true,
-          },
+      return tx.maintenanceTicket.create({
+        data: {
+          ticketNumber,
+          organizationId,
+          propertyId: dto.propertyId,
+          ...(dto.unitId ? { unitId: dto.unitId } : {}),
+          ...(dto.tenantId ? { tenantId: dto.tenantId } : {}),
+          ...(userId ? { reportedById: userId } : {}),
+          title: dto.title,
+          description: dto.description,
+          category: dto.category ?? 'OTHER',
+          priority: dto.priority ?? 'NORMAL',
+          ...(dto.scheduledDate ? { scheduledDate: new Date(dto.scheduledDate) } : {}),
+          ...(dto.estimatedCost != null ? { estimatedCost: dto.estimatedCost } : {}),
         },
-        images: true,
-        comments: true,
-      },
-    })
+        include: {
+          property: { select: { id: true, name: true, city: true } },
+          unit: { select: { id: true, name: true, unitNumber: true } },
+          tenant: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              companyName: true,
+              type: true,
+              email: true,
+            },
+          },
+          images: true,
+          comments: true,
+        },
+      })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     void this.notificationsService
       .createForAllOrgUsers(

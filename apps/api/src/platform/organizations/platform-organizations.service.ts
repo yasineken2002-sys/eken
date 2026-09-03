@@ -7,6 +7,7 @@ import {
 import * as bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../../common/prisma/transaction-limits'
 import { CustomerNumberService } from '../../common/customer-number/customer-number.service'
 import { normalizeEmail } from '../../common/utils/normalize-email'
 import { CreateOrganizationDto, UpdateOrganizationDto } from './dto/platform-organization.dto'
@@ -168,10 +169,6 @@ export class PlatformOrganizationsService {
     const tempPassword = dto.adminPassword ?? this.generateTempPassword()
     const passwordHash = await bcrypt.hash(tempPassword, 12)
 
-    // Plattformsglobalt kundnummer (K-100001 …) — samma allokering som
-    // självregistreringen i AuthService.
-    const customerNumber = await this.customerNumber.allocate()
-
     const trialDays = dto.trialDays ?? 30
     const plan = dto.plan ?? 'TRIAL'
     const trialEndsAt =
@@ -180,25 +177,32 @@ export class PlatformOrganizationsService {
     // skapar oftast direktkonton (förbetald) — sätt ACTIVE där.
     const status = plan === 'TRIAL' ? 'TRIAL' : 'ACTIVE'
 
-    const org = await this.prisma.organization.create({
-      data: {
-        name: dto.name,
-        customerNumber,
-        ...(dto.orgNumber ? { orgNumber: dto.orgNumber } : {}),
-        ...(dto.vatNumber ? { vatNumber: dto.vatNumber } : {}),
-        email: orgEmail,
-        ...(dto.phone ? { phone: dto.phone } : {}),
-        street: dto.street,
-        city: dto.city,
-        postalCode: dto.postalCode,
-        country: dto.country ?? 'SE',
-        subscriptionPlan: plan,
-        status,
-        ...(trialEndsAt ? { trialEndsAt } : {}),
-        ...(billingEmail ? { billingEmail } : {}),
-        ...(dto.monthlyFee !== undefined ? { planMonthlyFee: dto.monthlyFee } : {}),
-      },
-    })
+    // Plattformsglobalt kundnummer (K-100001 …) — samma allokering som
+    // självregistreringen i AuthService, och som där i SAMMA transaktion som
+    // organisationsraden. Låg tidigare på poolen med create:t som separat sats.
+    const org = await this.prisma.$transaction(async (tx) => {
+      const customerNumber = await this.customerNumber.allocate(tx)
+
+      return tx.organization.create({
+        data: {
+          name: dto.name,
+          customerNumber,
+          ...(dto.orgNumber ? { orgNumber: dto.orgNumber } : {}),
+          ...(dto.vatNumber ? { vatNumber: dto.vatNumber } : {}),
+          email: orgEmail,
+          ...(dto.phone ? { phone: dto.phone } : {}),
+          street: dto.street,
+          city: dto.city,
+          postalCode: dto.postalCode,
+          country: dto.country ?? 'SE',
+          subscriptionPlan: plan,
+          status,
+          ...(trialEndsAt ? { trialEndsAt } : {}),
+          ...(billingEmail ? { billingEmail } : {}),
+          ...(dto.monthlyFee !== undefined ? { planMonthlyFee: dto.monthlyFee } : {}),
+        },
+      })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     const adminUser = await this.prisma.user.create({
       data: {
