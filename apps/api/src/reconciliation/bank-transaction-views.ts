@@ -80,6 +80,11 @@ export const RECONCILIATION_TRANSACTION_FIELDS = [
   'invoiceId',
   'matchedRentNoticeId',
   'matchedAt',
+  // Sätts när en människa AVMATCHAT raden. Den går ur bulkmatchningens
+  // kandidatfilter men förblir UNMATCHED — den ska stämmas av, av en människa.
+  // Fältet exponeras så gränssnittet kan skilja "väntar på matchning" från
+  // "automatiken hade fel här"; utan det ser de två identiska ut i tabellen.
+  'autoMatchExcludedAt',
   'createdAt',
 ] as const
 
@@ -122,6 +127,7 @@ export function projectReconciliationTransaction(
     invoiceId: rad.invoiceId,
     matchedRentNoticeId: rad.matchedRentNoticeId,
     matchedAt: rad.matchedAt,
+    autoMatchExcludedAt: rad.autoMatchExcludedAt,
     createdAt: rad.createdAt,
     invoice: rad.invoice ?? null,
     matchedRentNotice: rad.matchedRentNotice ?? null,
