@@ -61,7 +61,7 @@
     },
     "platform/invoices/platform-invoices.service.ts::convertExpiredTrialsCron": {
       "class": "B",
-      "invariant": "Organization-uppdateringen gör kandidatvillkoret (subscriptionStatus=TRIALING och utgången trialEndsAt) falskt, så nästa körning inte längre ser raden — dokumenterat i metoden."
+      "invariant": "Var och en av de tre skrivvägarna (grandfather, CASE A, CASE B) är ett ANSPRÅK: organization.updateMany bär kandidatvillkoret (status=TRIAL + utgången trialEndsAt + grenens eget villkor) i sin where-sats, och count===0 hoppar över resten av grenen inklusive mejlet. Mejlen är dessutom Bull-dedupade på jobId (platform-trial-converted-<orgId>, platform-trial-expired-<orgId>). Ersatte en SEKVENTIELL formulering som inte svarade på samtidighetsfrågan — och som namngav ett fält som inte finns (subscriptionStatus=TRIALING; kolumnen heter status, värdet TRIAL)."
     },
     "notifications/notifications.service.ts::markOverdueInvoices": {
       "class": "B",
