@@ -48,14 +48,28 @@ describe('förutsättningar', () => {
   })
 })
 
-// RELATIV, aldrig hårdkodad. Tjänstens `daysSince()` räknar mot `Date.now()`,
-// så en fast tidpunkt här gör åldern beroende av NÄR sviten körs: en avi satt
-// till `NU - 5 dygn` blir sex dygn gammal ett dygn senare. Uppmätt 2026-09-03 —
-// `NU` stod på 2026-09-02T12:00Z, och `daysUntilEvaluation` gick 14 → 13 exakt
-// när klockan passerade 12:00 UTC. Två CI-körningar 40 minuter isär, samma kod:
-// 11:50Z grön, 12:30Z röd. Det är ingen flake utan en tidsbomb — den small en
-// gång och fäller sedan varje körning.
-const NU = new Date()
+// FAST, och det går nu att vara det.
+//
+// Historien i två steg, eftersom mellansteget ser ut som lösningen och inte var
+// det. `NU` var hårdkodad till 2026-09-02T12:00Z. Specen INJICERADE den —
+// `collectionStatus(id, orgId, NU)` — men tjänsten räknade `daysOverdue` med
+// `this.daysSince(dueDate)`, som läste `Date.now()`. Injektionen var
+// HALVDRAGEN: `freshness.evaluate(org, now)` honorerade den, åldern inte.
+//
+// Utfallet var en tidsbomb. `daysUntilEvaluation` gick 14 → 13 exakt när
+// klockan passerade 2026-09-03T12:00Z; två CI-körningar på samma testkod, 40
+// minuter isär, gav 11:50Z grön och 12:30Z röd. Ingen flake — den small en gång
+// och fällde sedan varje körning.
+//
+// #690 gjorde `NU` RELATIV (`new Date()`). Det tog bort symptomet genom att ge
+// upp injektionen: det injicerade värdet blev ungefär den riktiga klockan, så
+// de sammanföll. Provet slutade driva men slutade också mäta något.
+//
+// Nu är `daysSince(date, now)` obligatorisk hela vägen, så en fast tidpunkt är
+// det RIKTIGA valet: provet blir deterministiskt i stället för att bara slippa
+// drifta. `injektionen styr åldern`-provet nedan är det som håller den
+// egenskapen på plats.
+const NU = new Date('2026-09-02T12:00:00.000Z')
 const DYGN = 24 * 60 * 60 * 1000
 
 medDb('collectionStatus', () => {
@@ -255,6 +269,30 @@ medDb('collectionStatus', () => {
     expect(s.state).toBe('WAITING')
     expect(s.thresholdDays).toBe(19) // rentReminderDay 5 + rentInkassoDaysAfterReminder 14
     expect(s.daysUntilEvaluation).toBe(14)
+  })
+
+  // ── ATT INJEKTIONEN FAKTISKT STYR ÅLDERN ──────────────────────────────────
+  //
+  // Det här provet är hela filens förutsättning, och det var RÖTT före
+  // #694-fixen: `collectionStatus` tog emot ett `now` men räknade `daysOverdue`
+  // med `Date.now()`, så båda anropen nedan fick samma ålder och differensen
+  // blev 0 i stället för 10.
+  //
+  // Utan det här provet kan `NU` ovan tystnadsvis sluta betyda något igen —
+  // och då är varje tal i filen ett tal om den maskin som råkar köra den.
+  it('INJEKTIONEN STYR ÅLDERN: samma avi, två tidpunkter, tio dygns skillnad', async () => {
+    const id = await avi({ dagarSedanFörfall: 5, händelser: ['SENT', 'EMAIL_DELIVERED'] })
+
+    const vid = async (när: Date) => service.collectionStatus(id, orgId, när)
+    const nu = await vid(NU)
+    const senare = await vid(new Date(NU.getTime() + 10 * DYGN))
+
+    expect(senare.daysOverdue - nu.daysOverdue).toBe(10)
+    // Och åt andra hållet i samma storhet: fönstret krymper lika mycket.
+    expect(nu.daysUntilEvaluation - senare.daysUntilEvaluation).toBe(10)
+    // Tröskeln är en organisationsinställning och ska INTE röra sig med tiden —
+    // annars kunde differensen ovan komma från fel håll.
+    expect(senare.thresholdDays).toBe(nu.thresholdDays)
   })
 
   it('PAUSAD: inaktuell betalningsdata — cronets tysta väg vidare', async () => {

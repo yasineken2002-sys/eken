@@ -121,7 +121,7 @@ export class PaymentReminderService {
               continue
             }
 
-            const daysOverdue = this.daysSince(invoice.dueDate)
+            const daysOverdue = this.daysSince(invoice.dueDate, new Date())
             const sentTypes = new Set<PaymentReminderType>(
               invoice.paymentReminders.map((r) => r.type),
             )
@@ -249,7 +249,7 @@ export class PaymentReminderService {
 
     return invoices.map((inv) => {
       const party = inv.tenant ?? inv.customer
-      const daysOverdue = this.daysSince(inv.dueDate)
+      const daysOverdue = this.daysSince(inv.dueDate, new Date())
       const reminders = inv.paymentReminders
       // ── `lastReminderType` BETYDER "SENASTE STEGET I KRAVTRAPPAN" ─────────
       //
@@ -321,8 +321,19 @@ export class PaymentReminderService {
 
   // ── Privata hjälpare ─────────────────────────────────────────────────────
 
-  private daysSince(date: Date): number {
-    const now = new Date()
+  /**
+   * Hela dygn mellan `date` och `now`.
+   *
+   * `now` är OBLIGATORISK av samma skäl som i `RentReminderService`: en
+   * hjälpare som läser klockan själv gör varje framtida `now`-parameter
+   * HALVDRAGEN, och den defekten är tyst — anroparen tror att den styr tiden.
+   * Ingen av de två anroparna här injicerar en tidpunkt i dag, och det är
+   * precis därför spärren läggs nu: formen kan inte återuppstå av att någon
+   * lägger till ett `now` och glömmer skicka det vidare.
+   *
+   * Se `rent-reminder.service.ts` för det uppmätta fallet (#690/#693-serien).
+   */
+  private daysSince(date: Date, now: Date): number {
     const ms = now.getTime() - date.getTime()
     return Math.floor(ms / (24 * 60 * 60 * 1000))
   }
