@@ -81,7 +81,7 @@ export function avsiktISchema(text) {
   const rårader = text.split('\n')
   const ut = []
   for (let i = 0; i < kodrader.length; i++) {
-    const m = /^model\s+(\w+)\s*\{/.exec(kodrader[i])
+    const m = /^model\s+([\p{L}\p{N}_$]+)\s*\{/u.exec(kodrader[i])
     if (!m) continue
     // gå bakåt genom det sammanhängande kommentarsblocket ovanför
     const doc = []
@@ -278,6 +278,28 @@ function självtest() {
     avsiktISchema(schemaBlock).join() === 'ZzBlock',
     JSON.stringify(avsiktISchema(schemaBlock)),
   )
+
+
+  // ── #668: IDENTIFIERARE ÄR UNICODE, INTE \w ─────────────────────────────
+  //
+  // `\w` är ASCII i JavaScript. Härledningen ovan missade varje namn med å, ä
+  // eller ö — och utfallet var TYSTNAD: objektet hamnade aldrig i mängden och
+  // vakten förblev grön om något den aldrig sett.
+  //
+  // BÅDA FELFORMERNA prövas, inte bara den positiva:
+  //   MISSAD  svensk INITIAL → posten hittas inte alls (sänker antalet)
+  //   KAPAD   svensk bokstav MITT i namnet → ASCII-svansen matchar, posten
+  //           hittas med FEL namn (antalet är OFÖRÄNDRAT, så ett tal döljer det)
+  // Plus delsträngs-motprovet: hela namnet ska fångas, inte en svans.
+  {
+    const svenskInitial = `// append-only tabell.\nmodel Ärende {\n  id String\n}\n`
+    t('#668 MISSAD: modellnamn med svensk INITIAL härleds',
+      avsiktISchema(svenskInitial).join() === 'Ärende', JSON.stringify(avsiktISchema(svenskInitial)))
+
+    const svenskMitt = `// append-only tabell.\nmodel Förvaltning {\n  id String\n}\n`
+    t('#668 KAPAD: hela namnet fångas, inte ASCII-svansen',
+      avsiktISchema(svenskMitt).join() === 'Förvaltning', JSON.stringify(avsiktISchema(svenskMitt)))
+  }
 
   // Den DELADE skannerns egna kanariefåglar.
   for (const f of kanariefåglar()) t(`delad skanner: ${f}`, false)

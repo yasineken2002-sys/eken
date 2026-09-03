@@ -165,7 +165,7 @@ export function findAllocationWrites(text) {
   const rader = text.split('\n')
   const funktionAt = (idx) => {
     for (let i = idx; i >= 0; i--) {
-      const m = /^ {2}(?:private |public )?(?:async )?(\w+)\s*\(/.exec(rader[i])
+      const m = /^ {2}(?:private |public )?(?:async )?([\p{L}\p{N}_$]+)\s*\(/u.exec(rader[i])
       if (m) return m[1]
     }
     return null
@@ -525,6 +525,26 @@ function selfTest() {
   }
 
   console.log(ok ? '\n✅ Självtest OK.' : '\n❌ Självtest misslyckades.')
+
+  // ── #668: IDENTIFIERARE ÄR UNICODE, INTE \w ─────────────────────────────
+  //
+  // `\w` är ASCII. Härledningen missade varje namn med å, ä eller ö, och
+  // utfallet var TYSTNAD: posten hamnade aldrig i mängden.
+  //
+  // BÅDA FELFORMERNA prövas, inte bara den positiva:
+  //   MISSAD  svensk INITIAL → hittas inte alls (sänker antalet)
+  //   KAPAD   svensk bokstav MITT i namnet → ASCII-svansen matchar, FEL namn
+  //           (antalet är OFÖRÄNDRAT, så ett tal döljer det)
+  {
+    const ur = (src) => JSON.stringify(findAllocationWrites(src))
+    const s1 = 'class C {\n  private async ärLevande() {\n    await tx.rentNoticePayment.create({ data: {} })\n  }\n}\n'
+    if (!ur(s1).includes('ärLevande')) fail('#668 MISSAD: metod med svensk INITIAL härleds inte')
+    else console.log('✅ #668 MISSAD: metod med svensk INITIAL härleds')
+    const s2 = 'class C {\n  private async förvaltaAvi() {\n    await tx.rentNoticePayment.create({ data: {} })\n  }\n}\n'
+    if (!ur(s2).includes('förvaltaAvi') || ur(s2).includes('"rvaltaAvi"')) fail('#668 KAPAD: ASCII-svansen fångades i stället för hela namnet')
+    else console.log('✅ #668 KAPAD: hela namnet fångas, inte svansen')
+  }
+
   process.exit(ok ? 0 : 1)
 }
 

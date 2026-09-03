@@ -73,7 +73,7 @@ const SKALÄRER = new Set(['String', 'Boolean', 'Int', 'BigInt', 'Float', 'Decim
  * Exporterad så självtestet kör exakt samma kod som CI.
  */
 export function relationerPåModell(schemaText, modellNamn) {
-  const modeller = new Set([...schemaText.matchAll(/^model\s+(\w+)\s*\{/gm)].map((m) => m[1]))
+  const modeller = new Set([...schemaText.matchAll(/^model\s+([\p{L}\p{N}_$]+)\s*\{/gmu)].map((m) => m[1]))
   const m = new RegExp(`^model\\s+${modellNamn}\\s*\\{([\\s\\S]*?)^\\}`, 'm').exec(schemaText)
   if (!m) return { relationer: [], modellHittad: false }
   const relationer = []
@@ -296,6 +296,26 @@ function selfTest() {
   for (const f of kanariefåglar()) {
     fel++
     console.error(`  ❌ delad källskanner: ${f}`)
+  }
+
+
+  // ── #668: IDENTIFIERARE ÄR UNICODE, INTE \w ─────────────────────────────
+  //
+  // `\w` är ASCII i JavaScript. Härledningen ovan missade varje namn med å, ä
+  // eller ö — och utfallet var TYSTNAD: objektet hamnade aldrig i mängden och
+  // vakten förblev grön om något den aldrig sett.
+  //
+  // BÅDA FELFORMERNA prövas, inte bara den positiva:
+  //   MISSAD  svensk INITIAL → posten hittas inte alls (sänker antalet)
+  //   KAPAD   svensk bokstav MITT i namnet → ASCII-svansen matchar, posten
+  //           hittas med FEL namn (antalet är OFÖRÄNDRAT, så ett tal döljer det)
+  // Plus delsträngs-motprovet: hela namnet ska fångas, inte en svans.
+  {
+    const schema = `model Ärende {\n  id String\n}\n\nmodel Förvaltning {\n  id String\n  arende Ärende @relation(fields: [x], references: [id])\n}\n`
+    const r1 = relationerPåModell(schema, 'Ärende')
+    t('#668 MISSAD: modell med svensk INITIAL hittas', r1.modellHittad, JSON.stringify(r1))
+    const r2 = relationerPåModell(schema, 'Förvaltning')
+    t('#668 KAPAD: hela namnet fångas, inte ASCII-svansen', r2.modellHittad, JSON.stringify(r2))
   }
 
   if (fel > 0) {

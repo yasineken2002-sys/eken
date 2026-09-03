@@ -113,7 +113,7 @@ export function metoderMedEffects(src) {
   const rader = codeMask(src).split('\n')
   const ut = []
   for (let i = 0; i < rader.length; i++) {
-    const m = /^  (?:private |public |protected )?(?:async )?(\w+)\s*\(/.exec(rader[i])
+    const m = /^  (?:private |public |protected )?(?:async )?([\p{L}\p{N}_$]+)\s*\(/u.exec(rader[i])
     if (!m) continue
     // `constructor(...) {}` stänger på SIN EGEN rad, så sökningen efter nästa
     // `  }` svalde hela klassen och matchade `effects` någonstans långt ner.
@@ -365,6 +365,28 @@ function självtest() {
     granska({ ...bas, specFinns: false }).fel.some((f) => f.startsWith('R5')))
   t('KANARIE R5 (spec utan executeTool → fäller)',
     granska({ ...bas, specSrc: 'it("x", () => expect(1).toBe(1))' }).fel.some((f) => f.startsWith('R5')))
+
+
+  // ── #668: IDENTIFIERARE ÄR UNICODE, INTE \w ─────────────────────────────
+  //
+  // `\w` är ASCII. Metodhärledningen missade varje namn med å, ä eller ö —
+  // och utfallet var TYSTNAD: metoden hamnade aldrig i mängden, så en
+  // oinstrumenterad metod med svenskt namn hade passerat vakten.
+  //
+  // BÅDA FELFORMERNA prövas:
+  //   MISSAD  svensk INITIAL → hittas inte alls (sänker antalet)
+  //   KAPAD   svensk bokstav MITT i namnet → ASCII-svansen matchar, FEL namn
+  //           (antalet är OFÖRÄNDRAT, så ett tal döljer det)
+  {
+    const ur = (src) => JSON.stringify(metoderMedEffects(src))
+    // Kroppen MÅSTE bära `effects:` — det är vad funktionen letar efter.
+    // Utan den blev mängden tom och kanariefågeln föll av fel skäl.
+    const s1 = 'class C {\n  private async ärLevande() {\n    return { effects: [] }\n  }\n}\n'
+    t('#668 MISSAD: metod med svensk INITIAL härleds', ur(s1).includes('ärLevande'), ur(s1))
+    const s2 = 'class C {\n  private async förvaltaAvi() {\n    return { effects: [] }\n  }\n}\n'
+    t('#668 KAPAD: hela namnet fångas, inte svansen',
+      ur(s2).includes('förvaltaAvi') && !ur(s2).includes('"rvaltaAvi"'), ur(s2))
+  }
 
   // Den DELADE skannerns egna kanariefåglar.
   for (const f of kanariefåglar()) fel.push(`delad skanner: ${f}`)
