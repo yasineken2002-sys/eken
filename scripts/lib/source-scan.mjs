@@ -24,6 +24,46 @@
  * innehålla strängar med `}` i sig, så en ren djupräkning på klammer räcker
  * inte. Därför tokeniseras `${}`-uttryck REKURSIVT.
  *
+ * ── OCH SVÅRT PÅ VARJE NIVÅ, INTE BARA DEN ÖVERSTA ─────────────────────────
+ *
+ * Defekt 1 löstes på toppnivå 2026-08. Den levde kvar INUTI `${}` i ytterligare
+ * en månad, därför att `uttrycksSlut` var en egen, enklare skanner:
+ * `enTokenVid` kände strängar, mallar och kommentarer men INGEN regex, och
+ * spårade inget `förra` att avgöra regex-mot-division med. Samma tre tecken —
+ * `/"/` — läste därför `"` som en strängstart, mallen stängdes aldrig, och
+ * regionen löpte till FILENS SLUT.
+ *
+ * Uppmätt mot main `735ada3`, ett enda ställe i kodbasen och därför osynligt i
+ * varje summa: `accounting.service.ts:1139` bär
+ * `\`… "\${entry.description.replace(/"/g, '')}"\``, och
+ *
+ *     69,2 % av filen maskerad · 109 696 tecken · rad 1139 → 3616
+ *
+ * försvann ur kodvyn för VARJE vakt som frågar `codeMask`. Ingen av de elva
+ * lägesproven föll: INCIDENT 1 provar exakt samma mönster på toppnivå, där det
+ * fungerade hela tiden. Läget `regex i ${}` finns nu, med två mutationer.
+ *
+ * LÄXAN, generellt: när en tokeniserare har en andra, snabbare kodväg för ett
+ * delfall (här `enTokenVid` för `${}`, skriven för att undvika en kvadratisk
+ * omtokenisering) måste den kodvägen känna SAMMA lägen som huvudvägen. En
+ * genväg som kan färre lägen är inte snabbare — den är tystare.
+ *
+ * ── VAD DEN INTE KAN SE ─────────────────────────────────────────────────────
+ *
+ * `tokenize` är en LEXER, inte en parser. Den vet inget om räckvidd, typer
+ * eller om en identifierare är en variabel eller ett fältnamn. Den avgör
+ * regex-mot-division på FÖREGÅENDE TOKEN (`REGEX_LÄGE`) och inte på grammatik,
+ * så ett uttryck där båda tolkningarna är giltiga kan klassas fel. En
+ * oterminerad literal fångas per konstruktion inte som ett FEL: strängar bryts
+ * vid radslut, mallar och blockkommentarer löper till `till`. Det gör en trasig
+ * fil till en tyst maskering i stället för ett kast — och det är just den formen
+ * som kostade 109 696 tecken ovan.
+ *
+ * En KONSUMENT som vill veta att skannern faktiskt läste filen får inte lita på
+ * att den är grön. Måttet är maskandelen: en fil där `codeMask` blankar en
+ * oväntad andel är antingen en fil full av prosa eller en desync, och de två
+ * går bara att skilja genom att titta.
+ *
  * ── SEMANTIKEN BEHÅLLS PER VAKT ─────────────────────────────────────────────
  *
  * Modulen tar inte ställning till vad en vakt vill se. `tokenize` klassificerar;
@@ -183,20 +223,53 @@ function mallSlut(text, start, till) {
 function uttrycksSlut(text, från, till) {
   let djup = 0
   let i = från
+  // `förra` = föregående betydelsebärande token, spårad EXAKT som i
+  // `tokenizeTs`. Utan den kan `enTokenVid` inte skilja en REGEX från en
+  // division, och ett `/"/g` inne i ett `${}` läses då som en STRÄNGSTART —
+  // defekt 1, en nivå ned. Uppmätt: `\`x \${s.replace(/"/g, "-")} y\`` fick
+  // mallen att löpa till filens slut, och 69 % av accounting.service.ts (109 696
+  // tecken) maskerades för varje vakt som frågar codeMask.
+  let förra = ''
   while (i < till) {
     const c = text[i]
     if (c === '}' && djup === 0) return i
-    if (c === '{') { djup++; i++; continue }
-    if (c === '}') { djup--; i++; continue }
-    const t = enTokenVid(text, i, till)
-    if (t) { i = t.end; continue }
+    if (c === '{') { djup++; förra = '{'; i++; continue }
+    if (c === '}') { djup--; förra = '}'; i++; continue }
+    const t = enTokenVid(text, i, till, förra)
+    if (t) {
+      // En KOMMENTAR är ingen betydelsebärande token — `förra` ska stå kvar,
+      // precis som i tokenizeTs. Därför `undefined` och inte `c`.
+      if (t.förra !== undefined) förra = t.förra
+      i = t.end
+      continue
+    }
+    // Hoppa över hela identifieraren i ETT steg — samma skäl som i tokenizeTs:
+    // att räkna om ordet per tecken är kvadratiskt i ordlängd.
+    if (/[A-Za-z_$]/.test(c)) {
+      let b = i
+      while (b + 1 < till && /[\w$]/.test(text[b + 1])) b++
+      förra = text.slice(i, b + 1)
+      i = b + 1
+      continue
+    }
+    if (!/\s/.test(c)) förra = c
     i++
   }
   return till
 }
 
-/** Tokenen som börjar exakt vid `i`, eller null. Skannar bara den. */
-function enTokenVid(text, i, till) {
+/**
+ * Tokenen som börjar exakt vid `i`, eller null. Skannar bara den.
+ *
+ * `förra` är föregående betydelsebärande token och används till EXAKT en sak:
+ * samma regex-mot-division-avgörande som `tokenizeTs` gör. Ordningen på
+ * grenarna nedan speglar `tokenizeTs` och är bärande — regex MÅSTE prövas före
+ * strängar.
+ *
+ * `förra` i svaret är den token anroparen ska minnas. `undefined` betyder
+ * "ändra inte" och gäller kommentarer, som inte är betydelsebärande.
+ */
+function enTokenVid(text, i, till, förra = '') {
   const c = text[i]
   if (c === '/' && text[i + 1] === '/') {
     const n = text.indexOf('\n', i)
@@ -206,6 +279,12 @@ function enTokenVid(text, i, till) {
     const n = text.indexOf('*/', i + 2)
     return { end: n === -1 || n + 2 > till ? till : n + 2 }
   }
+  // Regex-literal. SAMMA mekanism som i tokenizeTs — samma `REGEX_LÄGE`, samma
+  // `regexSlut` — och av samma skäl prövad FÖRE strängar.
+  if (c === '/' && REGEX_LÄGE.test(förra)) {
+    const slut = regexSlut(text, i, till)
+    if (slut !== -1) return { end: slut, förra: '/' }
+  }
   if (c === "'" || c === '"') {
     let j = i + 1
     while (j < till && text[j] !== c) {
@@ -213,9 +292,9 @@ function enTokenVid(text, i, till) {
       if (text[j] === '\n') break
       j++
     }
-    return { end: Math.min(j + 1, till) }
+    return { end: Math.min(j + 1, till), förra: c }
   }
-  if (c === '`') return { end: mallSlut(text, i, till).slut }
+  if (c === '`') return { end: mallSlut(text, i, till).slut, förra: '`' }
   return null
 }
 
@@ -493,6 +572,56 @@ const LÄGESPROV = [
       const src2 = 'const t = `${ a["}"] + `inre` }`; const ZZEFTER8B = 8'
       kräv('LÄGE ${} (mallen räknas som EN)', templateLiterals(src2).length === 1,
         `${templateLiterals(src2).length} mallar hittades, väntade 1`)
+    },
+  },
+  {
+    // ── DEN FÄLLA FÖRBEHANDLINGEN KAN GÅ I, EN NIVÅ NED ────────────────────
+    //
+    // Defekt 1 (regex med citattecken läst som strängstart) var löst på
+    // TOPPNIVÅ men levde kvar inuti `${}`: `uttrycksSlut` spårade inget `förra`
+    // och `enTokenVid` kände ingen regex, så `/"/g` i ett uttryck läste `"` som
+    // en strängstart. Mallen stängdes då aldrig och löpte till FILENS SLUT.
+    //
+    // Uppmätt 2026-09-03 mot main `735ada3`: accounting.service.ts:1139 bär
+    //
+    //     `#VER "${serie}" … "${entry.description.replace(/"/g, '')}"`
+    //
+    // och 109 696 tecken — 69 % av filen — maskerades för VARJE vakt som frågar
+    // codeMask. Ingen av de tolv lägesproven föll: INCIDENT 1 nedan provar exakt
+    // samma mönster men på toppnivå, där det fungerade hela tiden.
+    //
+    // SONDERNA STÅR PÅ SAMMA RAD som det som ska överleva — se regeln ovan. Här
+    // är det dessutom bärande av ett andra skäl: en oterminerad MALL bryts inte
+    // vid radslut som en oterminerad sträng gör, utan äter allt. Ett prov på
+    // nästa rad hade fallit också, men av tur snarare än av konstruktion.
+    //
+    // MASKLÄNGDEN prövas medvetet INTE här. `blankRegions` bevarar längden per
+    // konstruktion, så en längdassertion är grön även med läget avstängt — och
+    // ett prov som inte kan falla är pynt.
+    läge: 'regex i ${}',
+    prova: (kräv) => {
+      const src = 'const t = `x ${s.replace(/"/g, "-")} y`; const ZZEFTER11 = 11'
+      kräv('LÄGE regex i ${} (koden efter mallen finns kvar)', codeMask(src).includes('ZZEFTER11'),
+        `mallen löpte vidare efter sin backtick: ${JSON.stringify(codeMask(src))}`)
+      const lits = templateLiterals(src)
+      kräv('LÄGE regex i ${} (mallen räknas som EN)', lits.length === 1,
+        `${lits.length} mallar hittades, väntade 1`)
+      kräv('LÄGE regex i ${} (mallen sluter vid sin backtick)',
+        lits[0]?.text === 'x ${s.replace(/"/g, "-")} y', JSON.stringify(lits[0]?.text))
+
+      // Den formen som stod i produktionskoden: mall med ett regex-ersättande
+      // ${} FÖLJT av ett anrop. Anropet är vad en vakt letar efter.
+      const src2 =
+        'const h = `<b>${v.replace(/"/g, "&quot;")}</b>`; await prisma.$transaction(async () => { ZZEFTER11B })'
+      kräv('LÄGE regex i ${} (anropet efter mallen syns i kodvyn)',
+        codeMask(src2).includes('ZZEFTER11B'),
+        `anropet maskerades bort: ${JSON.stringify(codeMask(src2))}`)
+
+      // MOTPROVET: en `/` som är DIVISION inne i ett ${} får inte läsas som en
+      // regexstart. Utan det skulle en för glupsk fix se ut att fungera.
+      const src3 = 'const t = `${a / b} ${c}`; const ZZEFTER11C = 11'
+      kräv('LÄGE regex i ${} (division är inte en regex)', codeMask(src3).includes('ZZEFTER11C'),
+        `divisionen lästes som regexstart: ${JSON.stringify(codeMask(src3))}`)
     },
   },
   {

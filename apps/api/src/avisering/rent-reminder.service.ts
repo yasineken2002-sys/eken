@@ -248,7 +248,7 @@ export class RentReminderService {
               summary.pausedStale++
               continue
             }
-            const daysOverdue = this.daysSince(notice.dueDate)
+            const daysOverdue = this.daysSince(notice.dueDate, new Date())
             if (daysOverdue < notice.organization.rentReminderDay) {
               summary.skipped++
               continue
@@ -526,7 +526,7 @@ export class RentReminderService {
               summary.pausedStale++
               continue
             }
-            const daysOverdue = this.daysSince(notice.dueDate)
+            const daysOverdue = this.daysSince(notice.dueDate, new Date())
             const threshold =
               notice.organization.rentReminderDay + notice.organization.rentInkassoDaysAfterReminder
             if (daysOverdue < threshold) {
@@ -709,7 +709,7 @@ export class RentReminderService {
         'SYSTEM',
         null,
         {
-          daysOverdue: this.daysSince(fresh.dueDate),
+          daysOverdue: this.daysSince(fresh.dueDate, new Date()),
           capital,
           reminderFeeAmount: Number(fresh.reminderFeeAmount),
           interestAccruedAmount: Number(fresh.interestAccruedAmount),
@@ -948,7 +948,7 @@ export class RentReminderService {
         paidSoFar: paid,
         overpaidAmount: overpaid,
         dueDate: notice.dueDate,
-        daysOverdue: this.daysSince(notice.dueDate),
+        daysOverdue: this.daysSince(notice.dueDate, new Date()),
         organizationName: org.name,
         accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
         pdfBuffer,
@@ -1003,8 +1003,27 @@ export class RentReminderService {
     }
   }
 
-  private daysSince(date: Date): number {
-    const ms = Date.now() - date.getTime()
+  /**
+   * Hela dygn mellan `date` och `now`.
+   *
+   * `now` är OBLIGATORISK, och det är hela poängen. Hjälparen läste tidigare
+   * `Date.now()` själv, vilket gjorde `collectionStatus(…, now)` HALVDRAGEN:
+   * signaturen tog emot en tidpunkt, `freshness.evaluate(org, now)` honorerade
+   * den, men `daysOverdue` och `blockedDays` räknades mot den riktiga klockan.
+   * Anroparen trodde att den styrde tiden.
+   *
+   * Utfallet var en tidsbomb i `rent-collection-status.db.spec.ts`: specen
+   * INJICERADE sin `NU` och blev ändå röd när verklig tid passerade
+   * 2026-09-03T12:00Z, eftersom `daysOverdue` drev och det injicerade värdet
+   * inte gjorde det (#690). Rättningen där gjorde fixturen relativ — alltså
+   * gav upp injektionen — i stället för att laga det som var trasigt.
+   *
+   * Med `now` obligatorisk kan ingen väg läsa klockan GÖMD i hjälparen. En
+   * cron-väg får läsa den riktiga klockan, men skriver då `new Date()` synligt
+   * vid sitt eget anropsställe.
+   */
+  private daysSince(date: Date, now: Date): number {
+    const ms = now.getTime() - date.getTime()
     return Math.floor(ms / (24 * 60 * 60 * 1000))
   }
 
@@ -1063,7 +1082,7 @@ export class RentReminderService {
     // och ett mejl med restskulden vore värre än två fel siffror — de hade
     // motsagt varandra i samma försändelse.
     const { payable, nominalBeforeFee, fee, paid, overpaid } = rentNoticeOutstanding(notice)
-    const daysOverdue = this.daysSince(notice.dueDate)
+    const daysOverdue = this.daysSince(notice.dueDate, new Date())
     const dueDateStr = notice.dueDate.toLocaleDateString('sv-SE')
 
     const tenantName =
@@ -1257,7 +1276,7 @@ export class RentReminderService {
     const org = notice.organization
     const freshness = this.freshness.evaluate(org, now)
     const thresholdDays = org.rentReminderDay + org.rentInkassoDaysAfterReminder
-    const daysOverdue = this.daysSince(notice.dueDate)
+    const daysOverdue = this.daysSince(notice.dueDate, now)
 
     const senaste = (t: RentNoticeEventType): Date | null => {
       let träff: Date | null = null
@@ -1315,7 +1334,7 @@ export class RentReminderService {
         sendFailedAt: senaste('SEND_FAILED'),
       },
       lastBlockedAt: senastBlockerad,
-      blockedDays: senastBlockerad ? this.daysSince(senastBlockerad) : null,
+      blockedDays: senastBlockerad ? this.daysSince(senastBlockerad, now) : null,
       resend: bedömOmsändning({
         collectionStage: notice.collectionStage,
         senasteUtskick: senasteUtskickFullt,
