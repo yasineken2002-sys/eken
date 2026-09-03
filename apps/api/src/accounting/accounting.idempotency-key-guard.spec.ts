@@ -126,7 +126,11 @@ describe('C0 — kanariefågeln: spärren får inte fälla en LEGITIM väg', () 
 
 describe('C0 — mekaniken som gör hålet farligt, belagd', () => {
   it('spridning av undefined ger ett where UTAN organizationId', () => {
-    const idempotencyWhere = undefined
+    // Typad som den ÄR i anroparen — valfri i praktiken, inte literalt
+    // `undefined`. Skriven som bara `undefined` smalnar TS av den till typen
+    // `undefined`, och då är spridningen ett kompileringsfel i stället för det
+    // körningsbeteende provet handlar om.
+    const idempotencyWhere: Record<string, unknown> | undefined = undefined
     expect({ ...idempotencyWhere, source: 'MANUAL' }).toEqual({ source: 'MANUAL' })
   })
 })
