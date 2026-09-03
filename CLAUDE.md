@@ -184,6 +184,87 @@ efterfrågan när något annat redan tagit minnet. Kör du shardat: skriv ut att
 var shardat, och att en summa på rätt tal är en bekräftelse — inte samma bevis
 som en körning i en process.
 
+### En spec kan vara grön av att `.env` inte var laddad
+
+Mekaniken har två halvor, och de blandas lätt ihop. **Mekanismen** är att
+`process.env` vinner över `ConfigModule.forRoot({ load: … })` i `@nestjs/config`:
+`ignoreEnvFile: true` skyddar mot **filen** `apps/api/.env`, aldrig mot en variabel
+som redan står i miljön. Levererar specen sin egen hemlighet via `load:` medan den
+riktiga står i `process.env`, validerar guarden mot den ena medan testet signerar
+med den andra — utfallet är **401**, alltså ett fel som ser ut att handla om
+behörighet.
+
+**Utlösaren** i en vanlig `npx jest`-körning är inte att någon körde `set -a; . .env`.
+Det är `@prisma/client`, som laddar `.env` in i `process.env` **vid import** — via en
+RELATIV sökväg som bakas in i den genererade klienten när `prisma generate` körs:
+
+```
+.prisma/client/index.js   "schemaEnvPath": "../../../../../../apps/api/.env"
+env -u PLATFORM_JWT_SECRET node -e 'require("@prisma/client")'
+  före require: osatt   ·   efter require: SATT
+```
+
+Fanns ingen `.env` när klienten genererades — vilket är normalläget i en ny
+worktree, där `pnpm install` kör `generate` innan någon hunnit kopiera in filen —
+är fältet `null`, och ingenting laddas. **Samma repo, samma commit, olika utfall i
+två kataloger.** Ett grönt prov i en worktree är alltså inget bevis för en annan.
+Kontrollen som avgör vilket av de två lägena just din katalog är i:
+
+```bash
+grep -o '"schemaEnvPath":[^,}]*' \
+  "$(dirname "$(node -p 'require.resolve("@prisma/client")')")/../../.prisma/client/index.js"
+```
+
+**Två specar föll, och de föll av OLIKA vägar in** — det följer importkedjan, inte
+slumpen:
+
+```
+apps/api/src/platform/errors/report-endpoint-authz.integration.spec.ts
+  → PlatformErrorsService → PrismaService → @prisma/client
+  FILEN PÅ DISK RÄCKER — Prisma laddar den åt en
+
+apps/api/src/config/env.validation.integration.spec.ts
+  → ConfigModule, Test, validateEnv, env-placeholders   (ingen Prisma i kedjan)
+  grön med .env på disk · RÖD först när miljön är laddad (set -a; . .env)
+```
+
+Mätt med klienten genererad **med** `.env` på plats (#685):
+
+| villkor                                | report-endpoint-authz    | env.validation.integration |
+| -------------------------------------- | ------------------------ | -------------------------- |
+| `.env` på disk, ingen manuell laddning | **2 failed** → 4/4 efter | 3/3 (Prisma importeras ej) |
+| miljön laddad ur `.env`                | **2 failed** → 4/4 efter | **1 failed** → 3/3 efter   |
+| `.env` bortflyttad                     | 4/4                      | 3/3                        |
+
+Mängden härleddes i stället för att gissas: **9** specar nämner en
+hemlighetsbärande `.env`-nyckel, alla kördes en och en, **2** föll. Den andra
+hittades av uppräkningen — inte av den ursprungliga rapporten.
+
+**Regeln (#685): en spec som levererar sina egna hemligheter ska NOLLSTÄLLA dem i
+`process.env` före modulbygget och lägga tillbaka dem exakt efteråt** — inklusive
+fallet "var inte satt". Åtgärden är då oberoende av vilken av de två vägarna in som
+gällde: nyckeln tas bort oavsett om Prisma eller utvecklaren lade den där.
+
+**Och rensningsmängden ska HÄRLEDAS, inte skrivas.** Mängden är
+`PLACEHOLDER_CHECKED_VARS ∪ SECRET_FORM_VARS` (`apps/api/src/config/env-placeholders.ts`)
+— samma mängd som `validateEnv` steg 3 granskar. `env.validation.integration.spec.ts`
+nollställde tidigare bara `CRITICAL_KEYS`, och **7** nycklar låg utanför:
+`JWT_REFRESH_SECRET`, `PLATFORM_JWT_REFRESH_SECRET`, `PSD2_TOKEN_KEY`, de tre
+`R2_BACKUP_*` och `VOYAGE_API_KEY`. Bara den som råkar vara satt på just den maskinen
+fäller något — därför såg felet ut som ett enda fall.
+
+**CI är grön av FRÅNVARO.** Runnern har ingen `.env`-fil och sätter `DATABASE_URL`
+som ren miljövariabel; ingen av de två vägarna in existerar där. Ett grönt CI-svar
+säger alltså ingenting om den här klassen av fel. Lokalt betyder grönt bara något
+om du vet vilket av lägena du mätte i — kör CI:s villkor så här när du vill veta:
+
+```bash
+mv apps/api/.env apps/api/.env.tillfallig
+DATABASE_URL="postgresql://eken:eken@localhost:5432/eken_dev" \
+  REDIS_URL="redis://localhost:6379" npx jest --runInBand
+mv apps/api/.env.tillfallig apps/api/.env
+```
+
 ### En tung körning i taget på den här maskinen
 
 Mekanik, inte artighet. Codespacet har **två kärnor och ~2,5 GB ledigt** när
