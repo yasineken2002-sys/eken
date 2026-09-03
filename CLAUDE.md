@@ -1754,42 +1754,100 @@ den beroende PR:en först, eller rikta om dess bas till `main` (`gh pr edit <n>
 
 Hände i #447 (bas var #446:s gren), ersatt av #448.
 
-### Frontend-deployer kan strypas — och ett grönt Deploy-jobb betyder inte deployat
+### TVÅ deploy-ytor för frontend — och ingen av dem säger vad den ser ut att säga
 
-TVÅ oberoende vägar deployar frontend och kan ge motsatt svar om samma commit:
-Vercels git-integration (som postar commit-statusar) och `deploy.yml`:s CLI-steg.
-Uppmätt på `735ada3`, fyra minuter isär:
+Frontend deployas av **två oberoende vägar**, och de kan ge motsatt svar om samma
+commit. De delar kvot men syns inte i varandras listor, vilket gör att den ena kan
+vara röd medan den andra är grön av skäl som inte har med varandra att göra.
+
+| yta | vad det ÄR | var det syns |
+| ---------------------------- | ------------------------------------------------ | ----------------------------------- |
+| `Vercel – eken-web/admin/portal` | **PREVIEW**-deployen, från Vercels git-integration | commit-status (`gh pr checks`, PR-sidan) |
+| `deploy.yml` → `Deploy Web/Admin/Portal` | **PRODUKTIONEN**, via Vercel-CLI i GitHub Actions | Actions-körningen för shan |
+
+**En röd preview-status säger ingenting om produktionen — och tvärtom.** Uppmätt
+2026-09-03 på två squash-commits i följd:
+
+```
+89ee213   commit-status   eken-web/admin/portal   FAILURE  "Deployment rate limited"
+          deploy.yml      Deploy Web/Admin/Portal SUCCESS  — men alla tre "Ignoring the change"
+
+e51a1d6   commit-status   eken-admin              SUCCESS  "Deployment has completed"
+                          eken-web, eken-portal   FAILURE  "Deployment rate limited"
+          deploy.yml      Deploy Web/Admin/Portal SUCCESS  — men alla tre "Ignoring the change"
+```
+
+Två saker att läsa ur `e51a1d6`: previewkvoten stryps **per app** (admin kom
+igenom, web och portal inte), och ett grönt `deploy.yml`-jobb kan betyda att
+appen hoppades över.
+
+### "Är webben ute?" avgörs av EN sak, och det är inte en grön bock
+
+Turbo-ignore hoppar över appar som commiten inte rör, och **det hoppet
+rapporteras som SUCCESS**. Ett grönt `Deploy Web` betyder alltså antingen "byggd
+och utrullad" eller "inte berörd, gjorde ingenting" — och skillnaden syns bara i
+loggen. Uppmätt av #692 på `735ada3`, fyra minuter isär, och det fallet står sig:
 
 ```
 13:01:44  Vercel – eken-portal      failure  "Deployment rate limited — retry in 24 hours."
-                                             target_url: …?upgradeToPro=build-rate-limit
 13:05:38  deploy.yml Deploy Portal  success  "not affected" · ⏭ Ignoring the change
 ```
 
-Strypningen syns alltså BARA på commit-statusen, och det gröna jobbet betyder här att
-appen hoppades över — inte att den deployades. Blir CLI-steget självt strypt säger dess
-egen logg i stället `Resource is limited … (more than 100, code:
-"api-deployments-free-per-day")`. Samma kvot, två ytor, två formuleringar. Första strypta
-körningen i går: **2026-09-02T19:19:02Z** (`Deploy Web`), så dygnsfönstret gick ut då.
+**Kriteriet: `deploy.yml`-jobbet för squash-shan är grönt OCH loggen säger inte
+`Ignoring the change` för den appen.**
 
-Kvotläget avgörs härifrån, mot squash-shan:
+```bash
+SHA=$(git rev-parse origin/main)
+RUN=$(gh run list --workflow deploy.yml --limit 20 --json databaseId,headSha \
+  --jq "[.[] | select(.headSha==\"$SHA\")][0].databaseId")
+gh run view "$RUN" --json jobs --jq '.jobs[] | select(.name|startswith("Deploy")) | "\(.conclusion)\t\(.name)"'
+gh run view "$RUN" --log | grep -E "Ignoring the change|Proceeding with deployment"
+```
+
+Står det `⏭ Ignoring the change` deployades ingenting — vilket är RÄTT för en
+commit som bara rör `apps/api` eller `docs/`, och fel att rapportera som "ute".
+Kostnaden är mätt: jag rapporterade själv `89ee213` som "frontend är ute" på
+enbart de tre gröna bockarna, och alla tre hade hoppat över.
+
+Preview-kvotens läge, när det är den frågan du har:
 
 ```bash
 gh api repos/{owner}/{repo}/commits/$(git rev-parse origin/main)/status \
   --jq '.statuses[] | "\(.context)\t\(.state)\t\(.description)"'
 ```
 
-**En frontend-ändring är ute först när BÅDA ytorna är gröna för den appen** — commit-statusen
-och `deploy.yml`-jobbet, och jobbet får inte ha hoppat över appen. `CI passed` säger ingenting
-om någondera. Samma svaga bevis som i Railway-avsnittet ovan, fast åt andra hållet: där
-deployas MER än man tror, här MINDRE.
+### Kvoten är gemensam, felmeddelandena är två
+
+Samma dygnskvot bär både previewer och produktionsdeployer, men de formulerar sig
+olika:
+
+```
+commit-status      "Deployment rate limited — retry in 24 hours."
+                   target_url: …?upgradeToPro=build-rate-limit
+CLI-steget i loggen  Resource is limited - try again in 24 hours
+                   (more than 100, code: "api-deployments-free-per-day")
+```
+
+Mätaren är **antal deployer per dygn**, inte byggfrekvens, och fönstret är
+rullande — strypningen släpper och slår igen under samma kväll. Att en PR:s
+previewer stryps betyder alltså inte att nästa merge till `main` blir strypt, och
+en lugn förmiddag garanterar inte en lugn eftermiddag. En rullande kvot går inte
+att planera runt utifrån ett klockslag.
+
+**`CI passed` säger ingenting om någondera ytan.** Samma svaga bevis som i
+Railway-avsnittet ovan, fast åt andra hållet: där deployas MER än man tror, här
+MINDRE.
 
 ### `gh pr checks <nummer>` kan svara om en ÄLDRE körning
 
-Den fjärde varianten av samma tema. De tre andra handlar om att `CI passed` säger
+Ännu en variant av samma tema. De föregående handlar om att `CI passed` säger
 för mycket eller för lite om vad som DEPLOYAS. Den här handlar om att
 checklistan kan beskriva en **annan commit än den du tror** — och då är det inte
 deployen som är fel, utan din bild av vad som ens testats.
+
+(Avsnitten räknas medvetet inte. Ett tal i prosan blir fel första gången någon
+lägger till en variant — vilket hände just den här: "de tre andra" stämde till
+2026-09-03, då Vercel-avsnittet delades i tre.)
 
 `gh pr checks <nummer>` frågar på PR:en, inte på ett sha. Precis efter en push
 — och särskilt efter `git merge origin/main` in i grenen — hinner GitHub svara
