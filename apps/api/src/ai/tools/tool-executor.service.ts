@@ -430,7 +430,12 @@ export class ToolExecutorService {
     // ibland med city ("lunna 15:2, Vallda"). Vi matchar mot alla tre
     // (case-insensitiv contains) så Claude inte behöver veta exakt
     // vilken kolumn som motsvarar vad det visar i UI:t.
-    const propertyWhere: Prisma.PropertyWhereInput = { organizationId }
+    // Intersektionen gör organisationen obligatorisk i TYPEN: varje fält i
+    // PropertyWhereInput är valfritt, så en initiering utan organizationId
+    // hade kompilerat och frågan hade korsat organisationsgränsen (#703).
+    const propertyWhere: Prisma.PropertyWhereInput & { organizationId: string } = {
+      organizationId,
+    }
     if (propertyNameHint) {
       const q = propertyNameHint.trim()
       propertyWhere.OR = [
