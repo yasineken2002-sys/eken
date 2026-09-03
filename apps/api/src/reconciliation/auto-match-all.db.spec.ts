@@ -94,6 +94,7 @@ medDb('autoMatchAll som bulkkörning', () => {
   let tenantId: string
   let unitId: string
   let leaseId: string
+  let userId: string
   let räknare = 0
   const utfall: Record<string, unknown> = {}
 
@@ -179,6 +180,22 @@ medDb('autoMatchAll som bulkkörning', () => {
     })
     leaseId = lease.id
 
+    // `manualMatch` skriver `matchedBy` mot User (främmande nyckel). Utan en
+    // riktig rad faller varje manuell matchning med P2003, och FALL H hade
+    // rapporterat ett riggfel som ett fynd om koden.
+    const user = await prisma.user.create({
+      data: {
+        organizationId: orgId,
+        email: `u-${sfx}@example.se`,
+        passwordHash: 'x',
+        firstName: 'Auto',
+        lastName: 'Rigg',
+        role: 'OWNER',
+      },
+      select: { id: true },
+    })
+    userId = user.id
+
     const accounting = new AccountingService(
       prisma as never,
       new VerifikationsnummerService(prisma as never),
@@ -231,6 +248,7 @@ medDb('autoMatchAll som bulkkörning', () => {
     await prisma.unit.deleteMany({ where: { property: { organizationId: orgId } } })
     await prisma.property.deleteMany({ where: { organizationId: orgId } })
     await prisma.account.deleteMany({ where: { organizationId: orgId } })
+    await prisma.user.deleteMany({ where: { organizationId: orgId } })
     await prisma.journalEntrySequence.deleteMany({ where: { organizationId: orgId } })
     await prisma.rentNoticeNumberSequence.deleteMany({ where: { organizationId: orgId } })
     await prisma.tenantOcrSequence.deleteMany({ where: { organizationId: orgId } })
@@ -461,5 +479,89 @@ medDb('autoMatchAll som bulkkörning', () => {
     expect(andra).toMatchObject({ matched: 0, failed: 1 })
     expect(efterAndra.allokeringar).toBe(2)
     expect(efterAndra.betalverifikat).toBe(2)
+  }, 180_000)
+
+  // ── FALL G: EN MÄNNISKAS AVMATCHNING ÖVERLEVER NÄSTA AUTOKÖRNING ──────────
+  //
+  // `unmatchTransaction` sätter raden tillbaka till `UNMATCHED` (`:2919`) och
+  // nollar länkarna — exakt det tillstånd `autoMatchAll`s kandidatfilter letar
+  // efter (`:1867`). Före `autoMatchExcludedAt` åter-matchade nästa bulkkörning
+  // samma transaktion mot samma avi, med ett TREDJE verifikat i huvudboken, och
+  // operatörens beslut var ogjort utan att något sa ifrån.
+  it('G: auto → unmatch → auto igen ger NOLL nya allokeringar och NOLL nya verifikat', async () => {
+    const ocr = `9670001`
+    const noticeId = await avi({ ocr, månad: 1 })
+    const tx = await bt({ ocr, belopp: AVIBELOPP })
+
+    const första = await service.autoMatchAll(orgId)
+    const efterMatch = await läge('G_efter_match')
+
+    await service.unmatchTransaction(tx.id, orgId, userId, 'riggens avmatchning')
+    const efterUnmatch = await läge('G_efter_unmatch')
+
+    const andra = await service.autoMatchAll(orgId)
+    const efterOmkörning = await läge('G_efter_omkorning')
+
+    const rad = await prisma.bankTransaction.findUniqueOrThrow({
+      where: { id: tx.id },
+      select: { status: true, autoMatchExcludedAt: true },
+    })
+    const notice = await prisma.rentNotice.findUniqueOrThrow({
+      where: { id: noticeId },
+      select: { status: true },
+    })
+    console.warn(
+      `[autoMatchAll G] match=${JSON.stringify(första)} → ${JSON.stringify(efterMatch)}\n` +
+        `[autoMatchAll G] unmatch → ${JSON.stringify(efterUnmatch)}\n` +
+        `[autoMatchAll G] auto igen=${JSON.stringify(andra)} → ${JSON.stringify(efterOmkörning)} ` +
+        `txStatus=${rad.status} stämplad=${rad.autoMatchExcludedAt !== null} avi=${notice.status}`,
+    )
+
+    expect(första.matched).toBe(1)
+    // Stämpeln sattes av avmatchningen …
+    expect(rad.autoMatchExcludedAt).not.toBeNull()
+    // … och raden är fortfarande UNMATCHED, inte IGNORED: den SKA stämmas av,
+    // bara inte av automatiken.
+    expect(rad.status).toBe('UNMATCHED')
+    // DEN BÄRANDE ASSERTIONEN: omkörningen ser den inte alls.
+    expect(andra).toMatchObject({ matched: 0, unmatched: 0, failed: 0 })
+    expect(efterOmkörning.allokeringar).toBe(efterUnmatch.allokeringar)
+    expect(efterOmkörning.betalverifikat).toBe(efterUnmatch.betalverifikat)
+    expect(notice.status).not.toBe('PAID')
+  }, 180_000)
+
+  // ── FALL H: MEN EN MÄNNISKA FÅR MATCHA OM ─────────────────────────────────
+  //
+  // Motprovet till G, och det som gör G till en avgränsning i stället för en
+  // återvändsgränd. Fältet säger "automatiken hade fel", inte "rör den inte" —
+  // `manualMatch` går inte via kandidatfiltret och ska lyckas direkt, utan att
+  // något behöver nollställas.
+  it('H: auto → unmatch → MANUELL match lyckas ändå', async () => {
+    const ocr = `9680001`
+    const noticeId = await avi({ ocr, månad: 1 })
+    const tx = await bt({ ocr, belopp: AVIBELOPP })
+
+    await service.autoMatchAll(orgId)
+    await service.unmatchTransaction(tx.id, orgId, userId, 'riggens avmatchning')
+    const efterUnmatch = await läge('H_efter_unmatch')
+
+    await service.manualMatch(tx.id, { rentNoticeId: noticeId }, orgId, userId)
+    const efterManuell = await läge('H_efter_manuell')
+
+    const rad = await prisma.bankTransaction.findUniqueOrThrow({
+      where: { id: tx.id },
+      select: { status: true, autoMatchExcludedAt: true },
+    })
+    console.warn(
+      `[autoMatchAll H] unmatch → ${JSON.stringify(efterUnmatch)} ` +
+        `manuell → ${JSON.stringify(efterManuell)} txStatus=${rad.status} ` +
+        `stämplad=${rad.autoMatchExcludedAt !== null}`,
+    )
+
+    expect(rad.status).toBe('MATCHED')
+    expect(efterManuell.allokeringar).toBe(efterUnmatch.allokeringar + 1)
+    // Stämpeln står kvar och behöver inte nollställas: raden är MATCHED och
+    // faller därmed ur automatikens filter ändå.
+    expect(rad.autoMatchExcludedAt).not.toBeNull()
   }, 180_000)
 })

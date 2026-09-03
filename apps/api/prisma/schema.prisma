@@ -2105,6 +2105,9 @@ model BankTransaction {
   balance             Decimal?              @db.Decimal(12, 2)
   reference           String?
   rawOcr              String?
+  // IGNORED svarar på "ska den avstämmas alls" — INTE på "automatiken hade
+  // fel". Den andra frågan bärs av `autoMatchExcludedAt` nedan. Se resonemanget
+  // där innan du frestas låna det ena fältet för det andra.
   status              BankTransactionStatus @default(UNMATCHED)
   // PSD2 P1 — källidentitet & dedup. Bägge NULLABLE: befintliga fil-rader (och
   // all filimport) saknar externalId → oförändrade. `externalId` = bankens/
@@ -2131,6 +2134,31 @@ model BankTransaction {
   matchedRentNoticeId String?
   matchedAt           DateTime?
   matchedBy           String?
+
+  // ── TVÅ FÄLT, TVÅ FRÅGOR — LÅNA INTE DET ENA FÖR DET ANDRA ────────────────
+  //
+  //   status = IGNORED       ska den här transaktionen avstämmas ÖVER HUVUD
+  //                          TAGET? (bankavgift, egen överföring, brus)
+  //   autoMatchExcludedAt    AUTOMATIKEN hade fel om den här transaktionen.
+  //                          Den ska avstämmas — men av en människa.
+  //
+  // Värdemängderna ser besläktade ut och frågorna är det inte. Att sätta
+  // IGNORED vid avmatchning hade svarat "avstäm den inte" om en transaktion som
+  // MÅSTE stämmas av, och den hade då försvunnit ur periodstängningens varning
+  // för omatchade rader (`accounting-period.service.ts:948`) — alltså ur exakt
+  // den kontroll som finns för att fånga obokförda affärshändelser.
+  //
+  // NULL betyder "aldrig avmatchad av en människa", inte "får auto-matchas".
+  // Skillnaden spelar roll den dag ett andra skäl att utesluta uppstår: då är
+  // det ett tredje fält, inte ett värde till här.
+  //
+  // Sätts av `unmatchTransaction`. Nollställs ALDRIG: de fyra match-vägarna
+  // skriver explicita fältlistor och rör den inte, och båda importvägarna
+  // HOPPAR ÖVER en dubblett i stället för att uppdatera raden. En manuellt
+  // om-matchad transaktion blir MATCHED och faller därmed ur automatikens
+  // filter ändå; avmatchas den igen stämplas den på nytt.
+  autoMatchExcludedAt DateTime?
+
   createdAt           DateTime              @default(now())
 
   // Bokföringslagen (1999:1078): banktransaktioner är räkenskapsinformation, bevaras 7 år.

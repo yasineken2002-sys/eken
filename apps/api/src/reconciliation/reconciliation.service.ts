@@ -1864,7 +1864,28 @@ export class ReconciliationService {
 
   async autoMatchAll(organizationId: string): Promise<AutoMatchResult> {
     const candidates = await this.prisma.bankTransaction.findMany({
-      where: { organizationId, status: 'UNMATCHED' },
+      where: {
+        organizationId,
+        status: 'UNMATCHED',
+        // ── EN MÄNNISKAS AVMATCHNING ÖVERLEVER NÄSTA AUTOKÖRNING ────────────
+        //
+        // `unmatchTransaction` sätter raden tillbaka till UNMATCHED och nollar
+        // länkarna — alltså exakt det tillstånd den här frågan letade efter.
+        // Utan filtret nedan åter-matchade nästa bulkkörning samma transaktion
+        // mot samma avi, med ett tredje verifikat i huvudboken, och operatörens
+        // beslut var ogjort utan att något sa ifrån. Uppmätt före fixen:
+        //
+        //   auto → 1 allok, 1 verifikat, MATCHED
+        //   unmatch → 0 allok, 2 verifikat (betalning + motverifikat), UNMATCHED
+        //   auto igen → 1 allok, 3 verifikat, MATCHED, avin PAID igen
+        //
+        // BARA AUTOMATIKEN FILTRERAR. `manualMatch` går inte via den här frågan
+        // alls — den tar ett explicit `rentNoticeId`/`invoiceId` från
+        // operatören. En människa får alltså matcha om en avmatchad
+        // transaktion, direkt, utan att något behöver nollställas. Det är
+        // avsiktligt: fältet säger "automatiken hade fel", inte "rör den inte".
+        autoMatchExcludedAt: null,
+      },
       orderBy: { date: 'asc' },
     })
 
@@ -2921,6 +2942,11 @@ export class ReconciliationService {
           matchedRentNoticeId: null,
           matchedAt: null,
           matchedBy: null,
+          // STÄMPELN som gör att bulkmatchningen inte ångrar det här beslutet.
+          // `new Date()` står SYNLIGT här och inte gömt i en hjälpare: metoden
+          // tar inget injicerat `now`, och en klocka som läses inuti något
+          // annat är precis den halvdragna injektion #694 handlade om.
+          autoMatchExcludedAt: new Date(),
         },
       })
 
