@@ -39,6 +39,20 @@ export interface GapResult {
   missingCount?: number
 }
 
+/**
+ * Ett where-villkor som BEVISLIGEN bär sin organisation.
+ *
+ * `Record<string, unknown>` säger ingenting om att `organizationId` finns med,
+ * så en hjälpare som råkade sluta sätta det hade sett likadan ut för både
+ * kompilatorn och en läsare — och frågan hade tyst korsat organisationsgränsen.
+ * Intersektionen gör kravet till en typ i stället för till en vana; en gren som
+ * glömmer fältet blir ett kompileringsfel på returraden.
+ *
+ * Samma tanke som `OrgScopedMailOptions` i mail-tjänsten: regeln har EN plats
+ * att läsas på. Se #703 för fallet där avgränsningen föll bort i runtime.
+ */
+type OrgScopadWhere = { organizationId: string } & Record<string, unknown>
+
 @Injectable()
 export class GapsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -112,20 +126,14 @@ export class GapsService {
   }
 
   /** Avtalen förväntan prövas mot, per dimension. */
-  private leaseVillkor(
-    organizationId: string,
-    subject: HistorySubjectRef,
-  ): Record<string, unknown> {
+  private leaseVillkor(organizationId: string, subject: HistorySubjectRef): OrgScopadWhere {
     if (subject.kind === 'TENANT') return { organizationId, tenantId: subject.id }
     if (subject.kind === 'UNIT') return { organizationId, unitId: subject.id }
     return { organizationId, unit: { propertyId: subject.id } }
   }
 
   /** Besiktningarna förväntan prövas mot, per dimension. */
-  private inspektionsVillkor(
-    organizationId: string,
-    subject: HistorySubjectRef,
-  ): Record<string, unknown> {
+  private inspektionsVillkor(organizationId: string, subject: HistorySubjectRef): OrgScopadWhere {
     if (subject.kind === 'TENANT') return { organizationId, tenantId: subject.id }
     if (subject.kind === 'UNIT') return { organizationId, unitId: subject.id }
     return { organizationId, propertyId: subject.id }
@@ -352,7 +360,7 @@ export class GapsService {
   private utrustningsVillkor(
     organizationId: string,
     subject: HistorySubjectRef,
-  ): Record<string, unknown> | null {
+  ): OrgScopadWhere | null {
     const bas = { removedAt: null }
     if (subject.kind === 'PROPERTY') return { ...bas, organizationId, propertyId: subject.id }
     if (subject.kind === 'UNIT') return { ...bas, organizationId, unitId: subject.id }
