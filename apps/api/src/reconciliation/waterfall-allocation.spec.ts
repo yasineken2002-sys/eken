@@ -12,6 +12,29 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
  * specar låste det. De skrivs om här, inte bort — se `reconciliation-payment-
  * allocation.spec.ts` för de två som gäller enskild avi respektive manuell
  * matchning, vilka är OFÖRÄNDRADE.
+ *
+ * ── VAD DEN HÄR SPECEN INTE KAN SE ──────────────────────────────────────────
+ *
+ * Den är HELT MOCKAD, och det är ett medvetet val: den äger FORMLOGIKEN
+ * (ordningen, toleransen, same-tenant-invarianten, avbrottsvillkoren) och kör på
+ * millisekunder utan databas.
+ *
+ * Men en attrapp returnerar det den blivit tillsagd att returnera oavsett
+ * `where`. Den kan därför per konstruktion inte se:
+ *
+ *   • om kandidatfrågans `where`/`orderBy` faktiskt väljer rätt rader
+ *   • om `FOR UPDATE`-låsen går att ta i den ordningen
+ *   • om bokföringen blir av, och blir 1930 D / 1510 K per allokering
+ *   • om `hasReceivableAccrual` släpper igenom — en avi utan bokförd fordran får
+ *     inte betalas, och den grinden är osynlig här
+ *
+ * Det sista är inte teoretiskt: db-provet byggdes först utan accrual-verifikat
+ * och varje fall kastade. Den här specen hade varit grön hela tiden.
+ *
+ * **`waterfall-allocation.db.spec.ts` äger de fyra frågorna ovan** och kör samma
+ * fyra former mot riktig Postgres. Samtidigheten ägs i sin tur av
+ * `waterfall-lock-order.concurrency.spec.ts`. Tre prov, tre frågor — ändrar du
+ * beteendet här ska du fråga dig vilket av dem som faktiskt kan fälla dig.
  */
 
 import { InternalServerErrorException } from '@nestjs/common'
