@@ -9,6 +9,7 @@
 import { ConfigModule } from '@nestjs/config'
 import { Test } from '@nestjs/testing'
 import { validateEnv } from './env.validation'
+import { PLACEHOLDER_CHECKED_VARS, SECRET_FORM_VARS } from './env-placeholders'
 
 const CRITICAL_KEYS = [
   'DATABASE_URL',
@@ -52,9 +53,27 @@ const FULL_PROD: Record<string, string> = {
   SIGNING_PII_PEPPER: 'p'.repeat(16),
 }
 
+// Mängden som måste nollställas är INTE bara CRITICAL_KEYS. validateEnv steg 3
+// granskar dessutom PLACEHOLDER_CHECKED_VARS ∪ SECRET_FORM_VARS, och en variabel
+// som bara står i den mängden läcker in från utvecklarens egen miljö —
+// process.env vinner över det testet sätter. Uppmätt: sju nycklar låg utanför
+// listan (bl.a. PLATFORM_JWT_REFRESH_SECRET), och den som råkade vara satt
+// fällde "prod + allt satt" med ett platshållarfel om ett värde testet aldrig
+// valt. Härledd ur koden, inte listad, så en ny nyckel i endera arrayen städas
+// automatiskt i stället för att tyst öppna hålet igen.
+const RENSADE_KEYS: readonly string[] = [
+  ...new Set<string>([
+    ...CRITICAL_KEYS,
+    ...PLACEHOLDER_CHECKED_VARS,
+    ...SECRET_FORM_VARS,
+    'NODE_ENV',
+    'PSD2_ENABLED',
+    'SIGNING_ENABLED',
+  ]),
+]
+
 async function boot(env: Record<string, string>) {
-  for (const k of [...CRITICAL_KEYS, 'NODE_ENV', 'PSD2_ENABLED', 'SIGNING_ENABLED'])
-    delete process.env[k]
+  for (const k of RENSADE_KEYS) delete process.env[k]
   Object.assign(process.env, env)
   const mod = await Test.createTestingModule({
     imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true, validate: validateEnv })],
@@ -72,7 +91,7 @@ describe('ConfigModule ↔ validateEnv (boot-integration, #1)', () => {
   afterEach(() => {
     warnSpy.mockRestore()
     // återställ process.env exakt
-    for (const k of [...CRITICAL_KEYS, 'PSD2_ENABLED', 'SIGNING_ENABLED']) delete process.env[k]
+    for (const k of RENSADE_KEYS) delete process.env[k]
     Object.assign(process.env, saved)
   })
 
