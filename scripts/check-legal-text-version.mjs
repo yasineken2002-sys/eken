@@ -127,7 +127,7 @@ export function documentHash(filer, läs) {
 export function parseVersions(text) {
   const m = /export const LEGAL_DOCUMENT_VERSIONS = \{([\s\S]*?)\} as const/.exec(text)
   if (!m) return null
-  return Object.fromEntries([...m[1].matchAll(/(\w+):\s*'([^']+)'/g)].map((x) => [x[1], x[2]]))
+  return Object.fromEntries([...m[1].matchAll(/([\p{L}\p{N}_$]+):\s*'([^']+)'/gu)].map((x) => [x[1], x[2]]))
 }
 
 /**
@@ -151,7 +151,7 @@ export function parseHashes(text) {
   const entries = Object.fromEntries(
     [
       ...m[1].matchAll(
-        /(\w+):\s*\{\s*version:\s*'([^']+)',\s*sha256:\s*'([a-f0-9]{64})',?\s*\}/g,
+        /([\p{L}\p{N}_$]+):\s*\{\s*version:\s*'([^']+)',\s*sha256:\s*'([a-f0-9]{64})',?\s*\}/gu,
       ),
     ].map((x) => [x[1], { version: x[2], sha256: x[3] }]),
   )
@@ -166,7 +166,7 @@ export function parseHashes(text) {
 export function parseHistory(text) {
   const m = /export const LEGAL_DOCUMENT_VERSION_HISTORY = \[([\s\S]*?)\] as const/.exec(text)
   if (!m) return []
-  return [...m[1].matchAll(/\{\s*doc:\s*'(\w+)',\s*version:\s*'([^']+)'/g)].map((x) => ({
+  return [...m[1].matchAll(/\{\s*doc:\s*'([\p{L}\p{N}_$]+)',\s*version:\s*'([^']+)'/gu)].map((x) => ({
     doc: x[1],
     version: x[2],
   }))
@@ -384,6 +384,26 @@ function selfTest() {
 
   for (const f of kanariefåglar()) { ok = false; console.error(`❌ delad källskanner: ${f}`) }
   console.log(ok ? '\n✅ Självtest OK.' : '\n❌ Självtest misslyckades.')
+
+  // ── #668: IDENTIFIERARE ÄR UNICODE, INTE \w ─────────────────────────────
+  //
+  // `\w` är ASCII. Härledningen missade varje namn med å, ä eller ö, och
+  // utfallet var TYSTNAD: posten hamnade aldrig i mängden.
+  //
+  // BÅDA FELFORMERNA prövas, inte bara den positiva:
+  //   MISSAD  svensk INITIAL → hittas inte alls (sänker antalet)
+  //   KAPAD   svensk bokstav MITT i namnet → ASCII-svansen matchar, FEL namn
+  //           (antalet är OFÖRÄNDRAT, så ett tal döljer det)
+  {
+    const src = (nyckel) => `export const LEGAL_DOCUMENT_VERSIONS = {\n  ${nyckel}: '1.2',\n} as const`
+    const v1 = parseVersions(src('ärende'))
+    if (!v1 || !('ärende' in v1)) fail(`#668 MISSAD: konfignyckel med svensk INITIAL härleds inte — ${JSON.stringify(v1)}`)
+    else console.log('✅ #668 MISSAD: konfignyckel med svensk INITIAL härleds')
+    const v2 = parseVersions(src('förvaltningsvillkor'))
+    if (!v2 || !('förvaltningsvillkor' in v2) || 'rvaltningsvillkor' in v2) fail(`#668 KAPAD: ASCII-svansen fångades — ${JSON.stringify(v2)}`)
+    else console.log('✅ #668 KAPAD: hela namnet fångas, inte svansen')
+  }
+
   process.exit(ok ? 0 : 1)
 }
 

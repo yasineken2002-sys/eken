@@ -138,7 +138,7 @@ export function findOcrLookups(text) {
 
     // Vilka fält i blocket binds till den råa OCR-strängen?
     const fält = []
-    for (const [, key, value] of block.matchAll(/(\w+)\s*:\s*([\w.]+)/g)) {
+    for (const [, key, value] of block.matchAll(/([\p{L}\p{N}_$]+)\s*:\s*([\p{L}\p{N}_$.]+)/gu)) {
       if (RAW_OCR_BINDINGS.includes(value)) fält.push(key)
     }
     // Kortform (`{ organizationId, ocrNumber, … }`) — nyckeln ÄR variabeln.
@@ -148,14 +148,14 @@ export function findOcrLookups(text) {
     // INLEDANDE avgränsare, och vattenfallets uppslag blev osynligt för guarden:
     // 3 träffar i stället för 4. En skanning som missar ett uppslag rapporterar
     // grönt om precis det uppslag den inte kan se.
-    for (const [, key] of block.matchAll(/[{,]\s*(\w+)\s*(?=[,}])/g)) {
+    for (const [, key] of block.matchAll(/[{,]\s*([\p{L}\p{N}_$]+)\s*(?=[,}])/gu)) {
       if (RAW_OCR_BINDINGS.includes(key)) fält.push(key)
     }
     if (fält.length === 0) continue
 
     // Modellen: närmaste `.<modell>.find…(` bakåt.
     const före = kod.slice(Math.max(0, m.index - 400), m.index)
-    const modellMatch = [...före.matchAll(/\.\s*(\w+)\s*\.\s*find\w*\s*\(/g)].pop()
+    const modellMatch = [...före.matchAll(/\.\s*([\p{L}\p{N}_$]+)\s*\.\s*find\w*\s*\(/gu)].pop()
     const modell = modellMatch ? modellMatch[1] : null
 
     for (const f of new Set(fält)) {
@@ -489,6 +489,28 @@ const invoice = !identitet
   )
 
   console.log(ok ? '\n✅ Självtest OK.' : '\n❌ Självtest misslyckades.')
+
+  // ── #668: IDENTIFIERARE ÄR UNICODE, INTE \w ─────────────────────────────
+  //
+  // `\w` är ASCII. Härledningen missade varje namn med å, ä eller ö, och
+  // utfallet var TYSTNAD: posten hamnade aldrig i mängden.
+  //
+  // BÅDA FELFORMERNA prövas, inte bara den positiva:
+  //   MISSAD  svensk INITIAL → hittas inte alls (sänker antalet)
+  //   KAPAD   svensk bokstav MITT i namnet → ASCII-svansen matchar, FEL namn
+  //           (antalet är OFÖRÄNDRAT, så ett tal döljer det)
+  {
+    const ur = (src) => JSON.stringify(findOcrLookups(src))
+    // VÄRDET måste ligga i RAW_OCR_BINDINGS för att fältet ska plockas upp —
+    // det är NYCKELN som ska vara svensk, inte bindningen.
+    const s1 = 'await prisma.ärende.findFirst({ where: { ärendeNr: rawOcr } })'
+    if (!ur(s1).includes('ärende')) fail(`#668 MISSAD: modell/fält med svensk INITIAL härleds inte — ${ur(s1)}`)
+    else console.log('✅ #668 MISSAD: modell/fält med svensk INITIAL härleds')
+    const s2 = 'await prisma.förvaltning.findFirst({ where: { förvaltningsId: rawOcr } })'
+    if (!ur(s2).includes('förvaltning') || ur(s2).includes('"rvaltning"')) fail('#668 KAPAD: ASCII-svansen fångades i stället för hela namnet')
+    else console.log('✅ #668 KAPAD: hela namnet fångas, inte svansen')
+  }
+
   process.exit(ok ? 0 : 1)
 }
 
