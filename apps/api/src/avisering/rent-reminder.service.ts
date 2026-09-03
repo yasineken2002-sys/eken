@@ -6,7 +6,13 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
-import { Prisma, RentNoticeType, type RentNotice, type RentNoticeEventType } from '@prisma/client'
+import {
+  Prisma,
+  RentNoticeType,
+  UserRole,
+  type RentNotice,
+  type RentNoticeEventType,
+} from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
@@ -30,6 +36,7 @@ import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { bedömOmsändning, hashaAdress } from './resend-verdict'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
+import { NotificationsService } from '../notifications/notifications.service'
 
 interface ReminderSummary {
   reminded: number
@@ -45,6 +52,8 @@ interface InkassoReadySummary {
   skipped: number
   errors: number
   pausedStale: number
+  /** #648 — avier som passerat larmtröskeln och fått sitt ENDA larm denna period. */
+  alerted: number
 }
 
 // Avin med precis de relationer INV-B-grinden behöver för att avgöra om
@@ -119,6 +128,24 @@ export interface RentCollectionStatus {
   }
 }
 
+/**
+ * HUR LÄNGE FÅR EN AVI STÅ BLOCKERAD INNAN NÅGON FÅR VETA? — #648
+ *
+ * PRODUKTBESLUT, ÄNDRAS HÄR. Sju dygn är valt mot fristen: en avi prövas först
+ * `rentReminderDay + rentInkassoDaysAfterReminder` dygn efter förfall (default
+ * 7 + 14 = 21), och blockeras därefter varje dygn utan att något syns.
+ * En vecka är kort nog att adressen hinner rättas innan kravet fastnar på
+ * riktigt, och långt nog att en leveranskvittens som dröjer ett dygn eller två
+ * inte larmar i onödan.
+ *
+ * Talet står HÄR och inte i en `Organization`-kolumn med flit: det är ett
+ * produktbeslut om när VI säger till, inte en avtalsfrist per hyresvärd. Blir
+ * det senare en inställning hör den hemma bredvid `rentInkassoDaysAfterReminder`
+ * i schemat — och då ska den här konstanten bli dess default, inte leva vid
+ * sidan av den.
+ */
+export const BLOCKERAD_AVI_LARMTROSKEL_DAGAR = 7
+
 const INKASSO_READY_INCLUDE = {
   // personalNumberHash, inte personnumret: grinden ska bara veta OM gäldenären
   // har ett registrerat personnummer. Blind-indexet svarar på det utan att en
@@ -183,6 +210,8 @@ export class RentReminderService {
     // #605 — varaktig felsänka. SIST i listan: nya beroenden läggs till på
     // slutet så befintliga positionsanrop inte tyst byter betydelse.
     private readonly cronErrors: CronErrorSink,
+    // #648 — larmet om en avi som fastnat. SIST, av samma skäl som raden ovan.
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -420,6 +449,15 @@ export class RentReminderService {
           collectionStage: 'REMINDED',
           remindedAt: now,
           reminderFeeAmount: new Prisma.Decimal(safeFee.toFixed(2)),
+          // #648 — NY BLOCKERINGSPERIOD BÖRJAR HÄR, inte där den förra slutade.
+          //
+          // Nollställningen ligger på INGÅNGEN med flit. En avi kan lämna
+          // REMINDED på fyra sätt (flip, betalning, kreditering, annullering),
+          // och en nollställning per utgång hade varit fyra ställen att glömma
+          // — utgången via betalning sker dessutom i en annan modul. Ingången
+          // är EN, och den passeras av varje ny period.
+          blockedSince: null,
+          blockedAlertedAt: null,
         },
       })
       if (claim.count === 0) return false
@@ -491,6 +529,7 @@ export class RentReminderService {
       skipped: 0,
       errors: 0,
       pausedStale: 0,
+      alerted: 0,
     }
 
     // T5 B1b — linda hela cron-kroppen: en DB-blipp på findMany/freshness larmar
@@ -520,9 +559,16 @@ export class RentReminderService {
           candidates.map((n) => n.organizationId),
         )
 
+        // EN klocka för hela körningen. Två avier i samma körning ska mätas mot
+        // samma nu — annars kan larmtröskeln passeras mitt i loopen.
+        const nu = new Date()
+
         for (const notice of candidates) {
           try {
             if (staleOrgs.has(notice.organizationId)) {
+              // PAUSAD, INTE BLOCKERAD. Markörerna rörs inte: orgen larmas redan av
+              // freshness-larmet (ETT mejl per org och stale-period), och ett larm PER
+              // AVI ovanpå det hade varit samma besked en gång per obetald avi.
               summary.pausedStale++
               continue
             }
@@ -537,7 +583,7 @@ export class RentReminderService {
             const res = await this.escalateNoticeToInkassoReady(
               notice.id,
               notice.organizationId,
-              new Date(),
+              nu,
             )
             if (res.flipped) summary.ready++
             else summary.skipped++
@@ -547,6 +593,22 @@ export class RentReminderService {
             if (err instanceof ConflictException) {
               summary.blocked++
               this.logger.warn(`Inkasso-redo blockerad för avi ${notice.id}: ${err.message}`)
+              // #648 — den enda platsen som VET att avin är blockerad just nu.
+              // Larmet ligger efter räknaren och före `continue`, så en blockerad
+              // avi räknas oavsett om larmet gick eller inte.
+              // Anropet är också omslutet: kastar något FÖRE try/catch:en inne
+              // i metoden (t.ex. själva anspråksskrivningen) får det inte göra
+              // en korrekt blockerad avi till ett cron-fel.
+              try {
+                if (await this.larmaOmBlockeradAvi(notice.id, notice.organizationId, nu)) {
+                  summary.alerted++
+                }
+              } catch (larmFel) {
+                this.logger.error(
+                  `Larm om blockerad avi ${notice.id} kunde inte utvärderas: ` +
+                    `${larmFel instanceof Error ? larmFel.message : String(larmFel)}`,
+                )
+              }
               continue
             }
             summary.errors++
@@ -557,13 +619,131 @@ export class RentReminderService {
         }
 
         this.logger.log(
-          `Inkasso-redo: ${summary.ready} klara, ${summary.blocked} blockerade, ${summary.skipped} hoppade över, ` +
+          `Inkasso-redo: ${summary.ready} klara, ${summary.blocked} blockerade ` +
+            `(${summary.alerted} larmade), ${summary.skipped} hoppade över, ` +
             `${summary.pausedStale} pausade (inaktuell betalningsdata), ${summary.errors} fel`,
         )
       },
       { logger: this.logger, sink: this.cronErrors },
     )
     return summary
+  }
+
+  /**
+   * LARMET OM EN AVI SOM FASTNAT — #648.
+   *
+   * Anropas när INV-B-grinden just vägrat. Returnerar `true` bara när ett larm
+   * FAKTISKT skrevs, så cronens räknare inte påstår mer än som hände.
+   *
+   * ── VARFÖR TVÅ MARKÖRER OCH INTE EN ──────────────────────────────────────
+   *
+   * `blockedSince` är periodens BÖRJAN, `blockedAlertedAt` är larmets
+   * idempotensmarkör. Frestelsen är att klara sig med den senare och räkna
+   * åldern ur händelseloggen — men loggen är append-only och cronen skriver en
+   * blockeringsanteckning VARJE DYGN. Den senaste är därför alltid ~i dag:
+   * uppmätt gav `collectionStatus.blockedDays` **0** på en avi som stått
+   * blockerad i tre dygn. Talet svarar på "när prövades den sist", inte på
+   * "hur länge har den stått still".
+   *
+   * ── VARFÖR EN NOTIS OCH INTE ETT MEJL ────────────────────────────────────
+   *
+   * Åtgärden (rätta adressen, ladda upp underlaget) görs i appen. Ett mejl hade
+   * dessutom konkurrerat med freshness-larmet, som redan mejlar per org.
+   *
+   * ── VAD METODEN INTE GÖR ─────────────────────────────────────────────────
+   *
+   *  • Inget nytt event. Blockeringen är redan skriven som `NOTE_ADDED` av
+   *    grinden; ett andra spår om samma sak hade gjort loggen oense med sig
+   *    själv.
+   *  • Inget larm för en PAUSAD org — den vägen når aldrig hit (se loopen).
+   *  • Ingen nollställning. Den sker på INGÅNGEN till REMINDED, som är den
+   *    enda punkt varje ny blockeringsperiod måste passera.
+   */
+  private async larmaOmBlockeradAvi(
+    noticeId: string,
+    organizationId: string,
+    now: Date,
+  ): Promise<boolean> {
+    // Periodens början — ett ANSPRÅK, inte läs-sedan-skriv: två repliker får
+    // inte kunna sätta var sitt `blockedSince` och flytta fram tröskeln.
+    await this.prisma.rentNotice.updateMany({
+      where: { id: noticeId, organizationId, blockedSince: null },
+      data: { blockedSince: now },
+    })
+
+    const rad = await this.prisma.rentNotice.findFirst({
+      where: { id: noticeId, organizationId },
+      select: { noticeNumber: true, blockedSince: true, blockedAlertedAt: true },
+    })
+    if (!rad?.blockedSince || rad.blockedAlertedAt) return false
+
+    const blockeradeDygn = this.daysSince(rad.blockedSince, now)
+    if (blockeradeDygn < BLOCKERAD_AVI_LARMTROSKEL_DAGAR) return false
+
+    // ETT larm per period. Anspråket avgör vem som skriver det; förlorar man
+    // det har någon annan redan larmat och den här körningen ska tiga.
+    const anspråk = await this.prisma.rentNotice.updateMany({
+      where: { id: noticeId, organizationId, blockedAlertedAt: null },
+      data: { blockedAlertedAt: now },
+    })
+    if (anspråk.count === 0) return false
+
+    // Samma mottagarurval som stale-larmet i `payment-freshness.service.ts`.
+    const mottagare = await this.prisma.user.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        role: { in: [UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.ACCOUNTANT] },
+      },
+      select: { id: true },
+    })
+
+    // ── ETT TRASIGT LARM FÅR INTE BLI ETT TRASIGT CRON ─────────────────────
+    //
+    // Larmet är ett SIDOSPÅR till eskaleringen. Kastar det här ut i loopen
+    // fångas det av `runCronSafely` och hela körningen rapporteras som ett
+    // cron-fel — en avi som korrekt blockerades hade då sett ut som ett
+    // systemhaveri.
+    //
+    // Markören rullas tillbaka, exakt som stale-larmet gör: en tyst paus utan
+    // notis vore värst, och nästa dygns körning ska få försöka igen.
+    try {
+      for (const user of mottagare) {
+        await this.notifications.create(
+          organizationId,
+          user.id,
+          'SYSTEM',
+          `Avi ${rad.noticeNumber} har stått stilla i ${blockeradeDygn} dygn`,
+          `Kravtrappan kan inte gå vidare med avi ${rad.noticeNumber}: underlaget är ` +
+            'ofullständigt, och ärendet har prövats utan resultat varje dygn sedan ' +
+            `${rad.blockedSince.toLocaleDateString('sv-SE')}. Öppna avin för att se ` +
+            'exakt vad som saknas — en studsad påminnelse kräver att adressen rättas.',
+          {
+            // Listsidan, inte en djuplänk. `/avisering/:id` finns inte som rutt
+            // (`router.tsx` registrerar bara `/avisering`), och en länk som ger
+            // 404 är sämre än en som ger listan. Id:t följer med i den
+            // strukturerade referensen, så en framtida fokusering kan öppna
+            // avin utan att den här skrivaren ändras.
+            link: `avisering/${noticeId}`,
+            relatedEntityType: 'RENT_NOTICE',
+            relatedEntityId: noticeId,
+          },
+        )
+      }
+    } catch (err) {
+      await this.prisma.rentNotice
+        .updateMany({
+          where: { id: noticeId, organizationId, blockedAlertedAt: now },
+          data: { blockedAlertedAt: null },
+        })
+        .catch(() => undefined)
+      this.logger.error(
+        `Larm om blockerad avi ${noticeId} misslyckades (markör återställd för ` +
+          `omförsök): ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return false
+    }
+    return true
   }
 
   /**
@@ -705,7 +885,14 @@ export class RentReminderService {
           status: 'OVERDUE',
           collectionStage: 'REMINDED',
         },
-        data: { collectionStage: 'INKASSO_READY', collectionReadyAt: now },
+        data: {
+          collectionStage: 'INKASSO_READY',
+          collectionReadyAt: now,
+          // #648 — ärendet är inte blockerat längre. Ingången nollställer
+          // ändå vid nästa period; det här håller raden ärlig under tiden.
+          blockedSince: null,
+          blockedAlertedAt: null,
+        },
       })
       if (claim.count === 0) return { flipped: false }
 
@@ -1373,7 +1560,24 @@ export class RentReminderService {
         sendFailedAt: senaste('SEND_FAILED'),
       },
       lastBlockedAt: senastBlockerad,
-      blockedDays: senastBlockerad ? this.daysSince(senastBlockerad, now) : null,
+      // ── VAD `blockedDays` FAKTISKT MÄTER (#648) ──────────────────────────
+      //
+      // Talet räknade från den SENASTE blockeringsanteckningen. Men cronen
+      // skriver en sådan varje dygn, så det var alltid ~0 — uppmätt: 0 på en
+      // avi som stått blockerad i tre dygn. Fältet svarade på "när prövades
+      // den sist" medan namnet lovar "hur länge har den stått still", och det
+      // är den senare frågan både operatören och larmet ställer.
+      //
+      // `blockedSince` är periodens början och nollställs på ingången till
+      // REMINDED. Fallbacken finns för rader som blockerades innan kolumnen
+      // fanns: där är `blockedSince` null, och då är det gamla talet det enda
+      // som går att svara — men `lastBlockedAt` står bredvid, så en läsare kan
+      // se vilket av de två svaren hen får.
+      blockedDays: notice.blockedSince
+        ? this.daysSince(notice.blockedSince, now)
+        : senastBlockerad
+          ? this.daysSince(senastBlockerad, now)
+          : null,
       resend: bedömOmsändning({
         collectionStage: notice.collectionStage,
         senasteUtskick: senasteUtskickFullt,

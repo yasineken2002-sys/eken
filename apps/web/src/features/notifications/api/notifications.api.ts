@@ -24,6 +24,8 @@ export type RelatedEntityType =
   | 'RENT_INCREASE'
   | 'TERMINATION_REQUEST'
   | 'AI_ASSIGNMENT'
+  // #648 — hyresavi som fastnat i kravtrappan.
+  | 'RENT_NOTICE'
 
 export interface Notification {
   id: string

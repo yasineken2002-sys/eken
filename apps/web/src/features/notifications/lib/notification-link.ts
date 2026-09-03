@@ -17,6 +17,10 @@ const ENTITY_PATH = {
   RENT_INCREASE: '/rent-increases',
   TERMINATION_REQUEST: '/terminations',
   AI_ASSIGNMENT: '/uppdrag',
+  // #648 — en avi som fastnat i kravtrappan. LISTSIDAN, inte en djuplänk:
+  // `/avisering/:id` finns inte som rutt (router.tsx registrerar bara
+  // `/avisering`), och en länk som ger 404 är sämre än en som ger listan.
+  RENT_NOTICE: '/avisering',
 } as const
 
 export function entityTypeToPath(type: RelatedEntityType) {
@@ -44,6 +48,11 @@ export function notificationLinkToPath(link: string) {
       return '/uppdrag'
     case 'collections':
       return '/collections'
+    // #648 — hyresavi. Segmentet saknades, så en notis om en avi som fastnat
+    // föll på `default: null` och blev en notis utan väg vidare — samma
+    // återvändsgränd som studsnotisen i #654 hamnade i.
+    case 'avisering':
+      return '/avisering'
     default:
       return null
   }

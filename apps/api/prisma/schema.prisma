@@ -3779,6 +3779,26 @@ model RentNotice {
   // (befarad är en balansräkningsomklassning, ingen ny kravstegsövergång).
   probableLossAt    DateTime?
 
+  // ── #648: HUR LÄNGE HAR ÄRENDET STÅTT STILL, OCH HAR NÅGON FÅTT VETA? ─────
+  //
+  // TVÅ fält, inte ett, och skälet är mätt. `collectionStatus.blockedDays`
+  // räknar från den SENASTE blockeringsanteckningen — men cronen skriver en
+  // sådan varje dygn, så talet är alltid ~0 oavsett hur länge avin stått still
+  // (uppmätt: 0 på en avi blockerad i tre dygn). Det svarar alltså på "när
+  // prövades den sist", inte på "hur länge har den stått still".
+  //
+  // `blockedSince` är periodens BÖRJAN: sätts vid första blockeringen, och
+  // nollställs — tillsammans med larmmarkören — när avin lämnar blockerat läge.
+  // Utan det går perioderna inte att skilja åt i en append-only-logg: efter en
+  // nollställning finns ingen markör kvar som säger var den nya perioden börjar.
+  //
+  // `blockedAlertedAt` är larmets idempotensmarkör, samma form som
+  // `Organization.paymentDataStaleAlertedAt`: ETT larm per blockeringsperiod,
+  // inte ett per dygn. Nollställs i samma skrivning som `blockedSince`, så en
+  // avi som fastnar på nytt kan larma på nytt.
+  blockedSince      DateTime?
+  blockedAlertedAt  DateTime?
+
   // Påminnelseavgift (inkasso PR 2). Default 0 → ingen påverkan på icke-påminda
   // avier. Sätts ATOMISKT med påminnelseavgiftens verifikat (1510 D / 3593 K) när
   // avin eskaleras till REMINDED. Hålls SKILD från totalAmount (hyran, som styr

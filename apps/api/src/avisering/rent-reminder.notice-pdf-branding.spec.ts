@@ -77,6 +77,9 @@ function makeService(): RentReminderService {
         throw new Error('#605: cronErrors.report anropades oväntat i test')
       },
     } as never,
+    // #648 — notisskrivaren. Attrappen räknar anrop; att den KASTAR vore fel
+    // här, eftersom larmet är en legitim sidoeffekt av en blockerad avi.
+    { create: jest.fn() } as never,
   )
 }
 

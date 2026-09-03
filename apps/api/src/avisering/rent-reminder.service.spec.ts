@@ -79,6 +79,9 @@ function makeService(opts: { ocrOutstanding?: number; staleOrgs?: Set<string> } 
         throw new Error('#605: cronErrors.report anropades oväntat i test')
       },
     } as never,
+    // #648 — notisskrivaren. Attrappen räknar anrop; att den KASTAR vore fel
+    // här, eftersom larmet är en legitim sidoeffekt av en blockerad avi.
+    { create: jest.fn() } as never,
   )
   return {
     service,
@@ -346,6 +349,9 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
           throw new Error('#605: cronErrors.report anropades oväntat i test')
         },
       } as never,
+      // #648 — notisskrivaren. Attrappen räknar anrop; att den KASTAR vore fel
+      // här, eftersom larmet är en legitim sidoeffekt av en blockerad avi.
+      { create: jest.fn() } as never,
     )
     return { service, prisma, update, uploadFile, mailService, rentNoticeEvents, notice, org }
   }
@@ -619,6 +625,9 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
           throw new Error('#605: cronErrors.report anropades oväntat i test')
         },
       } as never,
+      // #648 — notisskrivaren. Attrappen räknar anrop; att den KASTAR vore fel
+      // här, eftersom larmet är en legitim sidoeffekt av en blockerad avi.
+      { create: jest.fn() } as never,
     )
     return { service, prisma, tx, rentNoticeEvents, rentInterest, outstanding }
   }
@@ -767,8 +776,21 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
 
 describe('escalateRemindedToInkassoReady (cron)', () => {
   function makeCronService(staleOrgs: Set<string> = new Set()) {
+    // #648 — larmet skriver på RentNotice och läser User. Delegaten finns här
+    // så cron-proven kör produktionens kodväg i stället för en kortare.
+    const notisCreate = jest.fn()
     const prisma = {
-      rentNotice: { findMany: jest.fn().mockResolvedValue([]) },
+      rentNotice: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findFirst: jest.fn().mockResolvedValue({
+          noticeNumber: 'AVI-1',
+          // Blockerad sedan 30 dygn → långt förbi larmtröskeln.
+          blockedSince: new Date(Date.now() - 30 * DAY),
+          blockedAlertedAt: null,
+        }),
+      },
+      user: { findMany: jest.fn().mockResolvedValue([{ id: 'u-1' }]) },
     }
     const evaluateAndAlert = jest.fn().mockResolvedValue(staleOrgs)
     const service = new RentReminderService(
@@ -790,8 +812,11 @@ describe('escalateRemindedToInkassoReady (cron)', () => {
           throw new Error('#605: cronErrors.report anropades oväntat i test')
         },
       } as never,
+      // #648 — notisskrivaren. Attrappen räknar anrop; att den KASTAR vore fel
+      // här, eftersom larmet är en legitim sidoeffekt av en blockerad avi.
+      { create: notisCreate } as never,
     )
-    return { service, prisma, evaluateAndAlert }
+    return { service, prisma, evaluateAndAlert, notisCreate }
   }
 
   function candidate(daysOverdue: number) {
@@ -867,6 +892,46 @@ describe('escalateRemindedToInkassoReady (cron)', () => {
     const summary = await service.escalateRemindedToInkassoReady()
     expect(summary.blocked).toBe(1)
     expect(summary.errors).toBe(0)
+  })
+
+  // ── #648: LARMET ÄR ETT SIDOSPÅR, INTE EN DEL AV ESKALERINGEN ───────────
+  it('en blockerad avi förbi larmtröskeln larmar, och räknas som blocked', async () => {
+    const { ConflictException } = await import('@nestjs/common')
+    const { service, prisma, notisCreate } = makeCronService()
+    prisma.rentNotice.findMany.mockResolvedValueOnce([candidate(25)])
+    jest
+      .spyOn(service, 'escalateNoticeToInkassoReady')
+      .mockRejectedValue(new ConflictException('ofullständigt underlag'))
+
+    const summary = await service.escalateRemindedToInkassoReady()
+
+    expect(notisCreate).toHaveBeenCalledTimes(1)
+    expect(summary.blocked).toBe(1)
+    expect(summary.alerted).toBe(1)
+    expect(summary.errors).toBe(0)
+  })
+
+  it('DEN OMVÄNDA RIKTNINGEN: ett trasigt larm gör inte avin till ett cron-fel', async () => {
+    const { ConflictException } = await import('@nestjs/common')
+    const { service, prisma, notisCreate } = makeCronService()
+    prisma.rentNotice.findMany.mockResolvedValueOnce([candidate(25)])
+    notisCreate.mockRejectedValueOnce(new Error('notistabellen nere'))
+    jest
+      .spyOn(service, 'escalateNoticeToInkassoReady')
+      .mockRejectedValue(new ConflictException('ofullständigt underlag'))
+
+    // Attrappen för cronErrors KASTAR om den anropas. Att provet är grönt är
+    // därför beviset: larmets fel når aldrig `runCronSafely`, och en korrekt
+    // blockerad avi rapporteras inte som ett systemhaveri.
+    const summary = await service.escalateRemindedToInkassoReady()
+
+    expect(summary.blocked).toBe(1)
+    expect(summary.alerted).toBe(0)
+    expect(summary.errors).toBe(0)
+    // Markören rullas tillbaka så nästa dygns körning får försöka igen.
+    expect(prisma.rentNotice.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { blockedAlertedAt: null } }),
+    )
   })
 
   // PR 4 (B) — inaktuell betalningsdata pausar inkasso-redo-eskaleringen.
