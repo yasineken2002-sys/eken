@@ -699,34 +699,6 @@ export class RentNoticeCreditService {
         tx,
       )
 
-      // ── STATUS RÖRS INTE ──────────────────────────────────────────────────
-      //
-      // Ingen ny status, ingen flipp, inget nollställt kravsteg. Skulden är ett
-      // BERÄKNAT tillstånd: `computeRentDebt` läser krediteringarna, och varje
-      // grind i kravtrappan läser den. En fullt krediterad avi har
-      // `ocrOutstanding = 0` och eskalerar därför inte — utan att en enda
-      // statuskolumn behöver bära informationen. Att dessutom sätta en status
-      // hade skapat ett andra, muterbart påstående om samma sak, och det är
-      // precis den sortens spegel som `paidAmount` fick rättad.
-      await this.events.record(
-        notice.id,
-        'CREDITED',
-        'USER',
-        actorId,
-        {
-          creditId: credit.id,
-          amount: summa.toNumber(),
-          reason: dto.reason,
-          journalEntryId: entry?.id ?? null,
-          lines: kreditrader.map((r) => ({
-            rentNoticeLineId: r.rentNoticeLineId,
-            description: r.description,
-            amount: r.amount.toNumber(),
-          })),
-        },
-        { tx },
-      )
-
       const debtAfter = computeRentDebt({
         type: notice.type,
         totalAmount: notice.totalAmount,
@@ -738,6 +710,93 @@ export class RentNoticeCreditService {
         credits: [...notice.credits.map((c) => c.amount), credit.amount],
       })
 
+      // ── STATUS RÖRS INTE — MEN KRAVSTEGET GÖR DET ─────────────────────────
+      //
+      // Den första halvan står kvar och är rätt: ingen ny STATUS, ingen flipp.
+      // Skulden är ett BERÄKNAT tillstånd, `computeRentDebt` läser
+      // krediteringarna, och en statuskolumn hade blivit ett andra muterbart
+      // påstående om samma sak — precis den spegel som `paidAmount` fick rättad.
+      //
+      // `collectionStage` är INTE den sortens spegel. Den säger inte hur stor
+      // skulden är utan VAR I KRAVTRAPPAN ärendet står, och det läget måste
+      // lämnas aktivt. Att låta bli var inte en försiktighet utan en permanent
+      // återvändsgränd, och den är uppmätt (#648):
+      //
+      //     en fullt krediterad avi i REMINDED, cronen körd tre dygn
+      //       → stage REMINDED, tre NOTE_ADDED ("ingen utestående skuld att
+      //         driva in"), state=BLOCKED i /collection-status
+      //
+      // Grinden faller på steg 10 i `checkInkassoReadiness`
+      // (`rent-reminder.service.ts`, ocrOutstanding <= 0), så eskaleringen kan
+      // aldrig ske — och kundförlust-cronen plockar bara
+      // `collectionStage: 'INKASSO_READY'` (`rent-bad-debt.service.ts`), så
+      // avskrivningen kan aldrig ske heller. Ingen cron tar ärendet ur loopen:
+      // det blockeras varje dygn, för alltid, och skriver en append-only-rad
+      // per dygn om saken.
+      //
+      // Manuell utväg finns inte heller: `cancelNotice` matchar bara rader med
+      // `credits: { none: {} }` (`avisering.service.ts`) — en krediterad avi
+      // kan alltså inte annulleras.
+      //
+      // BETALVÄGARNA GÖR REDAN EXAKT DET HÄR, i samma update som statusen:
+      // `reconciliation.service.ts` (enskild match och vattenfall) och
+      // `avisering.service.ts` (manuell markering). En delbetalning som lämnar
+      // skuld kvar rör inte steget — samma gräns gäller här: en DELKREDIT
+      // lämnar `collectionStage` orört.
+      //
+      // `interestOnlyAfterCredit` (kapitalet bortkrediterat, ränta kvar) ingår
+      // MED FLIT i utträdet. Kravtrappan kan ändå aldrig gå vidare på ren
+      // restränta — `ocrOutstanding` exkluderar ränta av ett uttryckligt val
+      // (`rent-debt.service.ts`) — så att lämna avin i REMINDED är inte att
+      // "vänta på ett människobeslut", det är samma permanenta blockering som
+      // ovan. Räntefordran finns kvar och syns i skuldunderlaget.
+      //
+      // INGET EGET EVENT: ingen av betalvägarna skriver ett för utträdet, och
+      // en ny händelsetyp för samma sak hade gjort historiken oense med
+      // fakturasidan. `CREDITED` skrivs ändå nedan och bär flaggan i sin
+      // payload, så utträdet går att fråga efter.
+      const lämnarKravtrappan =
+        debtAfter.ocrOutstanding <= 0 &&
+        notice.collectionStage !== 'NONE' &&
+        notice.collectionStage !== 'WRITTEN_OFF'
+
+      if (lämnarKravtrappan) {
+        // Villkorad updateMany, inte update: `organizationId` som
+        // defense-in-depth (samma form som annulleringen), och steget i
+        // where-satsen så att en samtidig eskalering inte skrivs över av ett
+        // beslut som fattades på en äldre läsning.
+        await tx.rentNotice.updateMany({
+          where: {
+            id: notice.id,
+            organizationId,
+            collectionStage: { notIn: ['NONE', 'WRITTEN_OFF'] },
+          },
+          data: { collectionStage: 'NONE' },
+        })
+      }
+
+      await this.events.record(
+        notice.id,
+        'CREDITED',
+        'USER',
+        actorId,
+        {
+          creditId: credit.id,
+          amount: summa.toNumber(),
+          reason: dto.reason,
+          journalEntryId: entry?.id ?? null,
+          // Utträdet ur kravtrappan, om det skedde. Se blocket ovan: ingen egen
+          // händelsetyp, men frågan ska gå att ställa mot loggen.
+          collectionStageCleared: lämnarKravtrappan,
+          lines: kreditrader.map((r) => ({
+            rentNoticeLineId: r.rentNoticeLineId,
+            description: r.description,
+            amount: r.amount.toNumber(),
+          })),
+        },
+        { tx },
+      )
+
       return {
         credit,
         rentNotice: {
@@ -747,8 +806,9 @@ export class RentNoticeCreditService {
           // läser. Anroparen ska aldrig behöva räkna ut den själv.
           outstanding: debtAfter.ocrOutstanding,
           // Se `RentDebtBreakdown.interestOnlyAfterCredit`: kapitalet är
-          // bortkrediterat men ränta står kvar, och då stannar kravtrappan och
-          // väntar på ett människobeslut.
+          // bortkrediterat men ränta står kvar. Avin har då LÄMNAT kravtrappan
+          // (blocket ovan) — den kunde ändå aldrig eskalera på ren restränta —
+          // och räntefordran står kvar som en egen post för ett människobeslut.
           interestOnlyAfterCredit: debtAfter.interestOnlyAfterCredit,
         },
       }
