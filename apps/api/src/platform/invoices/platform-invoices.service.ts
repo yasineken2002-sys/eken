@@ -949,9 +949,20 @@ export class PlatformInvoicesService {
    * isoleringen sitter i convertExpiredTrials och delas av båda vägarna.
    */
   // ── KLASSIFICERING: B — SKYDDAT AV INVARIANT ─────────────────────────
-  // Organization-uppdateringen gör kandidatvillkoret
-  // (subscriptionStatus=TRIALING och utgången trialEndsAt) falskt, så nästa
-  // körning inte längre ser raden — dokumenterat i metoden.
+  // Var och en av de tre skrivvägarna (grandfather, CASE A, CASE B) är ett
+  // ANSPRÅK: `organization.updateMany` bär kandidatvillkoret
+  // (`status: 'TRIAL'` + utgången `trialEndsAt`, plus grenens eget villkor) i
+  // sin where-sats, och `count === 0` betyder att någon annan redan tagit
+  // raden — då hoppas resten av grenen över, mejlet inkluderat. Mejlen är
+  // dessutom Bull-dedupade på jobId (`platform-trial-converted-<orgId>`,
+  // `platform-trial-expired-<orgId>`).
+  //
+  // TIDIGARE STOD HÄR att uppdateringen "gör kandidatvillkoret falskt, så
+  // nästa körning inte längre ser raden". Det är en SEKVENTIELL egenskap och
+  // svarade aldrig på samtidighetsfrågan: två repliker läser båda findMany
+  // INNAN någon hinner skriva. Invarianten nämnde dessutom ett fält som inte
+  // finns (`subscriptionStatus=TRIALING`; kolumnen heter `status` och värdet
+  // `TRIAL`) — ett belägg som drivit ifrån koden.
   //
   // Bevakas av check-cron-classification.mjs: ett @Cron utan klassificering
   // fäller CI, och ett B utan namngiven invariant likaså.
@@ -1006,11 +1017,16 @@ export class PlatformInvoicesService {
     const summary = { converted: 0, suspended: 0, grandfathered: 0, failed: 0 }
 
     // T5 B1c — per-org-isolering: ett org-fel isoleras (nästa org körs) + larmar
-    // via Sentry (org-tagg); failed räknas från helperns fel-lista. Idempotent
-    // per org: grandfather sätter trialEndsAt > cutoff, CASE A sätter status
-    // ACTIVE och CASE B sätter SUSPENDED → nästa körning plockar inte upp samma
-    // org igen (where-filtret kräver status TRIAL + trialEndsAt < cutoff). Inget
-    // lokalt try/catch — oväntade kast bubblar till forEachOrgSafely.
+    // via Sentry (org-tagg); failed räknas från helperns fel-lista. Inget lokalt
+    // try/catch — oväntade kast bubblar till forEachOrgSafely.
+    //
+    // IDEMPOTENSEN BÄRS AV ANSPRÅKEN, INTE AV ORDNINGEN. Att grandfather sätter
+    // trialEndsAt > cutoff och att CASE A/B lämnar status TRIAL räcker bara när
+    // körningarna följer PÅ VARANDRA. `expired` ovan är läst EN gång; två
+    // repliker som startar samtidigt har båda listan i handen innan någon
+    // skriver, och en ovillkorlig `update({ where: { id } })` hade då kört båda
+    // gångerna. Därför bär varje gren en `updateMany` med kandidatvillkoret i
+    // where-satsen och hoppar över allt efter den när `count === 0`.
     const failures = await forEachOrgSafely(
       'platform-invoices-convert-trials',
       expired,
@@ -1023,10 +1039,19 @@ export class PlatformInvoicesService {
           (org.trialEndsAt ?? new Date(0)) <= GRANDFATHER_CUTOFF
         ) {
           const newEnd = new Date(GRANDFATHER_CUTOFF.getTime() + 30 * 24 * 60 * 60 * 1000)
-          await this.prisma.organization.update({
-            where: { id: org.id },
+          // ANSPRÅK, inte ovillkorlig update. Villkoret är samma som grenen
+          // ovan prövade i minnet — men prövat i DATABASEN, där två samtidiga
+          // körningar inte kan vinna båda. Se metodens huvud.
+          const anspråk = await this.prisma.organization.updateMany({
+            where: {
+              id: org.id,
+              status: 'TRIAL',
+              trialEndsAt: { not: null, lt: cutoff, lte: GRANDFATHER_CUTOFF },
+              createdAt: { lt: GRANDFATHER_CUTOFF },
+            },
             data: { trialEndsAt: newEnd },
           })
+          if (anspråk.count === 0) return
           summary.grandfathered += 1
           this.logger.log(
             `Grandfather: ${org.name} trial förlängd till ${newEnd.toISOString().slice(0, 10)}`,
@@ -1043,10 +1068,19 @@ export class PlatformInvoicesService {
           const plan = org.subscriptionPlan as SubscriptionPlan
           const fee = PLAN_LIMITS[plan].monthlyFee
           const planName = PLAN_LIMITS[plan].name
-          await this.prisma.organization.update({
-            where: { id: org.id },
+          // ANSPRÅK: `status: 'TRIAL'` i where-satsen är det som gör den andra
+          // körningen till en no-op. Utan den skrivs planStartedAt om och
+          // välkomstmejlet köas en andra gång.
+          const anspråk = await this.prisma.organization.updateMany({
+            where: {
+              id: org.id,
+              status: 'TRIAL',
+              trialEndsAt: { not: null, lt: cutoff },
+              subscriptionPlan: { not: 'TRIAL' },
+            },
             data: { status: 'ACTIVE', planStartedAt: now, planMonthlyFee: fee },
           })
+          if (anspråk.count === 0) return
           const nextMonth = MONTHS_SV[new Date(now.getFullYear(), now.getMonth() + 1, 1).getMonth()]
           await this.enqueueTrialMail(
             org.id,
@@ -1069,10 +1103,18 @@ export class PlatformInvoicesService {
           this.logger.log(`Konverterade ${org.name} → ACTIVE plan ${plan} (${fee} kr)`)
         } else {
           // CASE B — ingen plan vald, pausa kontot
-          await this.prisma.organization.update({
-            where: { id: org.id },
+          // ANSPRÅK: samma form som CASE A. `suspendedAt` skulle annars skrivas
+          // om av den andra körningen, och "pausat sedan" bli fel tidpunkt.
+          const anspråk = await this.prisma.organization.updateMany({
+            where: {
+              id: org.id,
+              status: 'TRIAL',
+              trialEndsAt: { not: null, lt: cutoff },
+              subscriptionPlan: 'TRIAL',
+            },
             data: { status: 'SUSPENDED', suspendedAt: now },
           })
+          if (anspråk.count === 0) return
           await this.enqueueTrialMail(
             org.id,
             recipient,
