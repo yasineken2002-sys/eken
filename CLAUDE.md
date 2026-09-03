@@ -265,13 +265,24 @@ hittades av uppräkningen — inte av den ursprungliga rapporten.
 fallet "var inte satt". Åtgärden är då oberoende av vilken av de två vägarna in som
 gällde: nyckeln tas bort oavsett om Prisma eller utvecklaren lade den där.
 
-**Och rensningsmängden ska HÄRLEDAS, inte skrivas.** Mängden är
-`PLACEHOLDER_CHECKED_VARS ∪ SECRET_FORM_VARS` (`apps/api/src/config/env-placeholders.ts`)
-— samma mängd som `validateEnv` steg 3 granskar. `env.validation.integration.spec.ts`
-nollställde tidigare bara `CRITICAL_KEYS`, och **7** nycklar låg utanför:
-`JWT_REFRESH_SECRET`, `PLATFORM_JWT_REFRESH_SECRET`, `PSD2_TOKEN_KEY`, de tre
-`R2_BACKUP_*` och `VOYAGE_API_KEY`. Bara den som råkar vara satt på just den maskinen
-fäller något — därför såg felet ut som ett enda fall.
+**Och rensningsmängden ska HÄRLEDAS ur det som FAKTISKT LÄSES.** Mängden är
+`VALIDATED_ENV_VARS` (`apps/api/src/config/env.validation.ts`): varje variabel
+`validateEnv` läser, byggd ur samma strukturer dess egna loopar går igenom, och läst
+av BÅDE valideringen och `env.validation.integration.spec.ts` — två uppräkningar som
+ska vara lika är inte en uppräkning. Den härleddes först ur
+`PLACEHOLDER_CHECKED_VARS ∪ SECRET_FORM_VARS`, alltså ur en DELMÄNGD: **27 av 37**
+nycklar, och av de tio utanför kan `SIGNING_PII_KEY_OLD` och
+`E2E_RELAX_AUTH_THROTTLE` ge FEL — de fällde specen med ett meddelande om ett värde
+testet aldrig valt, hos den som råkade ha dem satta. Att härledningen fortfarande är
+uttömmande syns INTE på att specen är grön, utan på **kanariefågeln** i den: en
+granskad nyckel som mängden inte täcker ska FÄLLA boot, och gör den inte det är det
+inte nollställningen som gör proven gröna.
+
+Steget dessförinnan hörde till samma familj: specen nollställde bara `CRITICAL_KEYS`,
+och **7** nycklar låg utanför — `JWT_REFRESH_SECRET`, `PLATFORM_JWT_REFRESH_SECRET`,
+`PSD2_TOKEN_KEY`, de tre `R2_BACKUP_*` och `VOYAGE_API_KEY`. Bara den som råkar vara
+satt på just den maskinen fäller något, därför såg felet ut som ett enda fall — och
+därför är en uppräkning som ser komplett ut inte ett belägg för att den är det.
 
 **CI är grön av FRÅNVARO.** Runnern har ingen `.env`-fil och sätter `DATABASE_URL`
 som ren miljövariabel; ingen av de två vägarna in existerar där. Ett grönt CI-svar
