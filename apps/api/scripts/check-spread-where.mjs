@@ -59,6 +59,27 @@ import { fileURLToPath } from 'node:url'
 
 import { codeMask, kanariefåglar, KANARIEFÅGEL_LÄGEN } from '../../../scripts/lib/source-scan.mjs'
 
+/**
+ * IDENTIFIERARE ÄR UNICODE, INTE ASCII (#713, samma form som #668/#711).
+ *
+ * `\w` OCH `[A-Za-z_$][\w$]*` är båda ASCII. Den senare ser mer omsorgsfull ut
+ * och är exakt lika begränsad. Ett fältnamn, en modell eller en typ som börjar
+ * på å/ä/ö härleds inte alls (MISSAD); en svensk bokstav mitt i namnet gör att
+ * ASCII-SVANSEN matchar och posten hittas med FEL namn (KAPAD) — och då är
+ * ANTALET oförändrat, så ett prov som bara räknar ser ingenting.
+ *
+ * `\b` är ASCII-definierat på samma sätt: mellan ett blanksteg och ett `ä`
+ * finns ingen ordgräns, så `\bärLevande\b` kan aldrig matcha. Lookaround-formen
+ * täcker allt `\b` täckte, plus svenska initialer.
+ *
+ * `\bwhere\s*:` på :238 är MEDVETET kvar: `where` är ett fast ASCII-nyckelord
+ * ur Prismas API, inte en härledd identifierare.
+ */
+const IDENT = '[\\p{L}\\p{N}_$]'
+const IDENT_RE = /[\p{L}\p{N}_$]/u
+/** Ordgräns för identifierare, unicode-säker. Ersätter `\b` runt ett namn. */
+const ordgräns = (namn) => `(?<!${IDENT})${namn}(?!${IDENT})`
+
 const HÄR = dirname(fileURLToPath(import.meta.url))
 const SRC = join(HÄR, '..', 'src')
 const SCHEMA = join(HÄR, '..', 'prisma', 'schema.prisma')
@@ -66,7 +87,7 @@ const SCHEMA = join(HÄR, '..', 'prisma', 'schema.prisma')
 /** Modeller med organizationId — härledda ur schemat, aldrig listade. */
 function modellerMedOrg(schemaText) {
   const ut = new Map()
-  for (const m of schemaText.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm))
+  for (const m of schemaText.matchAll(/^model\s+([\p{L}\p{N}_$]+)\s*\{([\s\S]*?)^\}/gmu))
     ut.set(m[1][0].toLowerCase() + m[1].slice(1), /^\s*organizationId\s+String/m.test(m[2]))
   return ut
 }
@@ -128,8 +149,8 @@ function toppniva(kropp) {
       k = j - 1
       continue
     }
-    const m = /^([A-Za-z_$][\w$]*)\s*([:,}])/.exec(kropp.slice(k))
-    if (m && !/[\w$]/.test(kropp[k - 1] ?? '')) {
+    const m = /^([\p{L}\p{N}_$]+)\s*([:,}])/u.exec(kropp.slice(k))
+    if (m && !IDENT_RE.test(kropp[k - 1] ?? '')) {
       falt.push(m[1])
       k += m[1].length
     }
@@ -165,7 +186,7 @@ function modellFor(kod, idx) {
   for (const m of kod
     .slice(Math.max(0, idx - 400), idx)
     .matchAll(
-      /\.(\w+)\s*\.\s*(?:findFirst|findUnique|findUniqueOrThrow|findFirstOrThrow|findMany|update|updateMany|delete|deleteMany|upsert|count|aggregate|groupBy)\s*\(/g,
+      /\.([\p{L}\p{N}_$]+)\s*\.\s*(?:findFirst|findUnique|findUniqueOrThrow|findFirstOrThrow|findMany|update|updateMany|delete|deleteMany|upsert|count|aggregate|groupBy)\s*\(/gu,
     ))
     bäst = m[1]
   return bäst
@@ -184,7 +205,7 @@ function deklarationBärOrg(kod, uttryck) {
   const esc = rot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const alias = new Map()
   for (const m of kod.matchAll(
-    /\btype\s+([A-Za-z_$][\w$]*)\s*=([^\n]*(?:\n(?!\s*(?:type|const|let|export|\/\/))[^\n]*)*)/g,
+    /\btype\s+([\p{L}\p{N}_$]+)\s*=([^\n]*(?:\n(?!\s*(?:type|const|let|export|\/\/))[^\n]*)*)/gu,
   ))
     alias.set(m[1], m[2])
   const bärOrgText = (t) => {
@@ -198,22 +219,23 @@ function deklarationBärOrg(kod, uttryck) {
     return false
   }
   // metod: `private namn(...): ReturnTyp {`   ·   variabel: `const namn: Typ =`
-  const metod = new RegExp(`\\b${esc}\\s*\\([^)]*\\)\\s*:\\s*([^{]+)\\{`, 's').exec(kod)
+  const metod = new RegExp(`${ordgräns(esc)}\\s*\\([^)]*\\)\\s*:\\s*([^{]+)\\{`, 'su').exec(kod)
   if (metod) return { bärOrg: bärOrgText(metod[1]), ärFunktion: false }
-  const variabel = new RegExp(`\\b(?:const|let|var)\\s+${esc}\\s*:\\s*([^=]+)=`, 's').exec(kod)
+  const variabel = new RegExp(`\\b(?:const|let|var)\\s+${ordgräns(esc)}\\s*:\\s*([^=]+)=`, 'su').exec(kod)
   if (variabel) return { bärOrg: bärOrgText(variabel[1]), ärFunktion: false }
   // `const villkor = this.inspektionsVillkor(...)` — ingen annotering. Följ
   // anropet till metodens DEKLARERADE returtyp; annars ser en hjälpare som
   // bevisligen bär org ut som ett oskyddat värde.
   const viaAnrop = new RegExp(
-    `\\b(?:const|let|var)\\s+${esc}\\s*=\\s*(?:await\\s+)?(?:this\\.)?([A-Za-z_$][\\w$]*)\\s*\\(`,
+    `\\b(?:const|let|var)\\s+${ordgräns(esc)}\\s*=\\s*(?:await\\s+)?(?:this\\.)?([\\p{L}\\p{N}_$]+)\\s*\\(`,
+    'u',
     's',
   ).exec(kod)
   if (viaAnrop) {
-    const m2 = new RegExp(`\\b${viaAnrop[1]}\\s*\\([^)]*\\)\\s*:\\s*([^{]+)\\{`, 's').exec(kod)
+    const m2 = new RegExp(`${ordgräns(viaAnrop[1])}\\s*\\([^)]*\\)\\s*:\\s*([^{]+)\\{`, 'su').exec(kod)
     if (m2) return { bärOrg: bärOrgText(m2[1]), ärFunktion: false }
   }
-  const arrow = new RegExp(`\\b(?:const|let|var)\\s+${esc}\\s*=\\s*(?:async\\s*)?[(<]`, 's').test(
+  const arrow = new RegExp(`\\b(?:const|let|var)\\s+${ordgräns(esc)}\\s*=\\s*(?:async\\s*)?[(<]`, 'su').test(
     kod,
   )
   return { bärOrg: false, ärFunktion: arrow }
@@ -268,7 +290,7 @@ export function granska(rå, filnamn, medOrg) {
       }
       continue
     }
-    const m2 = /^([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*[,}\)]/.exec(kod.slice(j))
+    const m2 = /^([\p{L}\p{N}_$]+(?:\.[\p{L}\p{N}_$]+)*)\s*[,}\)]/u.exec(kod.slice(j))
     if (!m2) continue
     uttryck = m2[1]
     const d = deklarationBärOrg(kod, uttryck)
@@ -418,6 +440,75 @@ function selfTest() {
     kör(viaAnropUtanOrg).length === 1,
     `fick ${kör(viaAnropUtanOrg).length}`,
   )
+
+  // ── #713: IDENTIFIERARE ÄR UNICODE, INTE ASCII ──────────────────────────
+  //
+  // BÅDA FELFORMERNA prövas, inte bara den positiva:
+  //   MISSAD  svensk INITIAL → posten härleds inte alls (sänker antalet)
+  //   KAPAD   svensk bokstav MITT i namnet → ASCII-svansen matchar, posten
+  //           härleds med FEL namn. ANTALET är OFÖRÄNDRAT i den formen — se
+  //           modell-provet nedan, där 1 → 1 men modellen blir null.
+  //
+  // VILKA AV ÄNDRINGARNA SOM FAKTISKT GÅR ATT PRÖVA HÄR — mätt, inte antaget,
+  // genom att mutera tillbaka varje ändring en i taget och köra fem fixturer:
+  //
+  //   :168 modell        OBSERVERBAR   båda felformerna, prov nedan
+  //   :187 typalias      OBSERVERBAR   prov nedan
+  //   :131 fältnamn      EJ OBSERVERBAR vid vaktens utdata
+  //   :271 bart uttryck  EJ OBSERVERBAR vid vaktens utdata
+  //   ordgräns()         EJ OBSERVERBAR vid vaktens utdata
+  //
+  // De tre sista är HÄRDNING, inte lagning av något som läcker i dag:
+  // klammerloopen läser tecken för tecken och återhämtar sig, så ett missat
+  // fältnamn ändrar inte utfallet. De får därför INGEN kanariefågel — ett
+  // grönt prov som inte kan falla hade sagt att de var bevakade när de inte är
+  // det. Ändras loopen så att ett fält kan tappas bort ska ett prov läggas till
+  // HÄR, inte förutsättas finnas.
+  {
+    const medOrgSv = new Map([['ärende', true], ['förvaltning', true], ['property', true]])
+    const körSv = (kod) => granska(kod, '<fixtur>', medOrgSv)
+
+    const svenskModell = `
+      async function f(extra: unknown) {
+        await prisma.ärende.findMany({ where: { ...extra } })
+      }`
+    kräv('#713 MISSAD: modell med svensk INITIAL härleds',
+      körSv(svenskModell)[0]?.modell === 'ärende', JSON.stringify(körSv(svenskModell)))
+
+    // KAPAD: antalet är 1 i BÅDA fallen — bara modellnamnet skiljer. Ett prov
+    // som räknar hade varit grönt med den trasiga teckenklassen.
+    const kapadModell = `
+      async function f(extra: unknown) {
+        await prisma.förvaltning.findMany({ where: { ...extra } })
+      }`
+    kräv('#713 KAPAD: hela modellnamnet härleds, inte "rvaltning"',
+      körSv(kapadModell)[0]?.modell === 'förvaltning', JSON.stringify(körSv(kapadModell)))
+
+    const svenskTyp = `
+      type ÄrendeWhere = { organizationId: string } & Record<string, unknown>
+      class C {
+        private villkor(organizationId: string): ÄrendeWhere { return { organizationId } }
+        async f() {
+          await prisma.property.findMany({ where: { ...this.villkor('o') } })
+        }
+      }`
+    kräv('#713 MISSAD: typalias med svensk INITIAL läses av S2',
+      kör(svenskTyp).length === 0, JSON.stringify(kör(svenskTyp)))
+
+    // MOTPROV mot en FÖR BRED fix: ordgräns() får inte matcha en identifierare
+    // som bara INNEHÅLLER namnet. Det diskriminerar inte mot \b (båda avvisar
+    // delsträngen) men fäller en fix som tar bort avgränsningen helt.
+    const delsträng = `
+      class C {
+        private xvillkorY(organizationId: string): OrgBär { return { organizationId } }
+        async f() {
+          const villkor = this.helperSomInteFinns()
+          await prisma.property.findMany({ where: villkor })
+        }
+      }`
+    kräv('#713 MOTPROV: xvillkorY räknas INTE som villkor',
+      kör(delsträng).length === 1, `fick ${kör(delsträng).length}`)
+  }
 
   return ok
 }
