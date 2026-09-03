@@ -42,6 +42,10 @@ export type RelatedEntityType =
   // uppdrag förfallit. Länkmålet är läsytan `/uppdrag` — se
   // apps/web/src/features/assignments.
   | 'AI_ASSIGNMENT'
+  // #648: en hyresavi som fastnat i kravtrappan. Länkmålet är läsytan
+  // `/avisering` — `/avisering/:id` finns inte som rutt, så id:t bärs av
+  // `relatedEntityId` tills en detaljrutt finns.
+  | 'RENT_NOTICE'
 
 export interface NotificationTarget {
   link?: string

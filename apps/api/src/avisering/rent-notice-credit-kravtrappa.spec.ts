@@ -167,6 +167,9 @@ function reminderRigg(notices: FakeNotice[]) {
         throw new Error('#605: cronErrors.report anropades oväntat i test')
       },
     } as never,
+    // #648 — notisskrivaren. Attrappen räknar anrop; att den KASTAR vore fel
+    // här, eftersom larmet är en legitim sidoeffekt av en blockerad avi.
+    { create: jest.fn() } as never,
   )
   // Eskaleringens SIDOEFFEKT (avgift, verifikat, PDF-kö) är inte det som prövas
   // här — det som prövas är OM den anropas, och med vilken avi. Att spionera på
