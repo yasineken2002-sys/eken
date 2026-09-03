@@ -118,6 +118,12 @@ describe('#518 — assessRentNoticeCreditability', () => {
     expect(res.reason).toMatch(/ingenting kvar/i)
   })
 
+  // ── #648: UTTRÄDET UR KRAVTRAPPAN ────────────────────────────────────────
+  //
+  // Attrappen kan bara visa ATT anropet görs och med vilket villkor — inte att
+  // raden ändras. Den halvan mäts mot riktig Postgres i
+  // `credit-clears-collection-stage.db.spec.ts`, inklusive att cronen därefter
+  // slutar blockera avin.
   it('inga ärendenummer i texten som når operatören', () => {
     // Samma regel som no-issue-refs-in-user-text.spec.ts vaktar för exceptions.
     const alla = [
@@ -126,6 +132,35 @@ describe('#518 — assessRentNoticeCreditability', () => {
       assessRentNoticeCreditability(avi({ vatAmount: D(1) }), skuld(1)),
     ]
     for (const r of alla) expect(r.reason).not.toMatch(/#\d+/)
+  })
+})
+
+describe('#648 — helkreditering lämnar kravtrappan', () => {
+  it('HELKREDIT: kravsteget nollas i samma transaktion, villkorat på org och steg', async () => {
+    const { service, rentNoticeUpdateMany } = rigg()
+    await service.createCredit('avi-1', 'org-1', 'u1', belopp(10_000))
+
+    expect(rentNoticeUpdateMany).toHaveBeenCalledTimes(1)
+    expect(rentNoticeUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'avi-1',
+        organizationId: 'org-1',
+        collectionStage: { notIn: ['NONE', 'WRITTEN_OFF'] },
+      },
+      data: { collectionStage: 'NONE' },
+    })
+  })
+
+  it('DEN OMVÄNDA RIKTNINGEN: delkredit med skuld kvar rör inte kravsteget', async () => {
+    const { service, rentNoticeUpdateMany } = rigg()
+    await service.createCredit('avi-1', 'org-1', 'u1', belopp(4_000))
+    expect(rentNoticeUpdateMany).not.toHaveBeenCalled()
+  })
+
+  it('en avi som redan står i NONE skriver inte om steget', async () => {
+    const { service, rentNoticeUpdateMany } = rigg({ collectionStage: 'NONE' })
+    await service.createCredit('avi-1', 'org-1', 'u1', belopp(10_000))
+    expect(rentNoticeUpdateMany).not.toHaveBeenCalled()
   })
 })
 
@@ -138,6 +173,7 @@ function rigg(
     tidigareKrediterat?: number
     bokförMisslyckas?: boolean
     interest?: number
+    collectionStage?: 'NONE' | 'REMINDED' | 'INKASSO_READY'
     lines?: Array<Record<string, unknown>>
   } = {},
 ) {
@@ -156,12 +192,18 @@ function rigg(
     miscChargeAmount: D(0),
     reminderFeeAmount: D(0),
     interestAccruedAmount: D(opts.interest ?? 0),
+    // Kravsteget måste stå i fixturen: utträdet läser det, och utan fältet
+    // hade `collectionStage !== 'NONE'` varit sant av att egenskapen saknas
+    // i stället för av ett värde.
+    collectionStage: opts.collectionStage ?? 'REMINDED',
     probableLossAt: null,
     writtenOffAt: null,
     lines: opts.lines ?? [],
     payments: [],
     credits: redan ? [{ amount: D(redan) }] : [],
   }
+
+  const rentNoticeUpdateMany = jest.fn().mockResolvedValue({ count: 1 })
 
   const creditCreate = jest.fn(async (arg: { data: Record<string, unknown> }) => ({
     id: 'kred-1',
@@ -172,7 +214,13 @@ function rigg(
 
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([]),
-    rentNotice: { findFirst: jest.fn().mockResolvedValue(notice) },
+    rentNotice: {
+      findFirst: jest.fn().mockResolvedValue(notice),
+      // #648 — utträdet ur kravtrappan sker i SAMMA transaktion som
+      // krediteringen. Delegatet måste finnas här, annars mäter riggen en
+      // kodväg produktionen inte har.
+      updateMany: rentNoticeUpdateMany,
+    },
     rentNoticeEvent: { findFirst: jest.fn().mockResolvedValue(null) },
     rentNoticeCredit: { create: creditCreate },
     rentNoticeCreditLine: {
@@ -197,7 +245,13 @@ function rigg(
     { record } as never,
     { createJournalEntryForRentNoticeCredit } as never,
   )
-  return { service, creditCreate, createJournalEntryForRentNoticeCredit, record }
+  return {
+    service,
+    creditCreate,
+    createJournalEntryForRentNoticeCredit,
+    record,
+    rentNoticeUpdateMany,
+  }
 }
 
 const belopp = (n: number) => ({ lines: [{ amount: n }], reason: 'felaktig debitering' })
