@@ -174,6 +174,25 @@ export class AccountingController {
   // ── Årsstängning (#704 PR 2) ─────────────────────────────────────────────
 
   /**
+   * Räkenskapsårens läge — underlaget till korten (#704 PR 3).
+   *
+   * KLASSNIVÅNS GRIND (minst ACCOUNTANT), inte ADMIN/OWNER som stängningen.
+   * Att SE att ett år är stängt, när och med vilket verifikat är samma sorts
+   * uppgift som periodöversikten redan visar under samma grind — och den som
+   * inte får stänga behöver ändå kunna se varför en period inte går att öppna.
+   * Svaret bär inga belopp; det föreslagna verifikatet ligger i
+   * `close-preview`, som är grindad hårdare.
+   */
+  @Get('fiscal-years')
+  async listFiscalYears(@OrgId() organizationId: string, @Query('years') years?: string) {
+    const parsed = years != null ? Number(years) : undefined
+    return this.periods.listFiscalYears(
+      organizationId,
+      Number.isFinite(parsed) ? (parsed as number) : undefined,
+    )
+  }
+
+  /**
    * Vad skulle årsstängningen göra, och får den göras? Ren läsning.
    *
    * Klassnivåns grind (minst ACCOUNTANT) hade räckt för en LÄSNING, men

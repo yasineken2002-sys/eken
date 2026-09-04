@@ -14,6 +14,7 @@ import type { Account, JournalEntry, JournalEntryLine } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import { useAccounts, useSeedAccounts, useJournalEntries } from './hooks/useAccounting'
 import { PeriodsPanel } from './components/PeriodsPanel'
+import { FiscalYearsPanel } from './components/FiscalYearsPanel'
 import { ReverseEntryModal } from './components/ReverseEntryModal'
 import { useAuthStore } from '@/stores/auth.store'
 import { isForbidden } from '@/lib/api'
@@ -264,7 +265,16 @@ export function AccountingPage() {
         </div>
       )}
 
-      {view === 'periods' && <PeriodsPanel />}
+      {view === 'periods' && (
+        <>
+          {/* ÅREN FÖRST, sedan månaderna. Ordningen speglar beroendet: ett
+              räkenskapsår stängs genom att dess sista månad stängs, så den som
+              undrar varför en månad inte går att öppna hittar svaret ovanför
+              i stället för nedanför. */}
+          <FiscalYearsPanel />
+          <PeriodsPanel />
+        </>
+      )}
 
       {!isLoading && !isError && view === 'chart' && (
         <div className="mt-5 space-y-4">
