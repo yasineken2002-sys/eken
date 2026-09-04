@@ -69,7 +69,7 @@ const DATAINTERPOLATIONER = [
 
 const FÖRBJUDNA = [
   [/https?:\/\//, 'http(s)://'],
-  [/(?:^|[\s"'(=])\/\/[a-zA-Z0-9]/, 'protokollrelativ //'],
+  [/(?:^|[\s"'(=])\/\/[\p{L}\p{N}]/u, 'protokollrelativ //'],
   [/@import/, '@import'],
   [/url\(/, 'url('],
   [/<link\b/i, '<link'],
@@ -92,7 +92,7 @@ const FÖRBJUDNA = [
 function skanna(kalla) {
   return {
     mask: codeMask(kalla),
-    literaler: templateLiterals(kalla).filter((l) => /<[a-zA-Z!]/.test(l.text)),
+    literaler: templateLiterals(kalla).filter((l) => /<[\p{L}!]/u.test(l.text)),
   }
 }
 
@@ -115,7 +115,7 @@ function allaTs(dir, ut = []) {
 
 // ── funktionskroppar ────────────────────────────────────────────────────────
 
-const DEKL = /(?:^|\n)[ \t]*(?:export\s+)?(?:default\s+)?(?:private\s+|public\s+|protected\s+|static\s+|readonly\s+)*(?:async\s+)?(?:function\s+)?([A-Za-z_$][\w$]*)\s*(?:<[^>]*>)?\s*\(/g
+const DEKL = /(?:^|\n)[ \t]*(?:export\s+)?(?:default\s+)?(?:private\s+|public\s+|protected\s+|static\s+|readonly\s+)*(?:async\s+)?(?:function\s+)?([\p{L}\p{N}_$]+)\s*(?:<[^>]*>)?\s*\(/gu
 /** Nyckelord som ser ut som deklarationer. `switch (` matchar annars DEKL och
  *  blir en "producent" som ingen kan kvittera. */
 const EJ_FUNKTION = new Set([
@@ -140,7 +140,7 @@ function kroppar(filRel) {
       else if (f.mask[k] === ')') { d--; if (d === 0) break }
     }
     let b = k + 1
-    while (b < f.mask.length && /[\s:<>|&\][\w$,.'"]/.test(f.mask[b])) b++
+    while (b < f.mask.length && /[\s:<>|&\][\p{L}\p{N}_$,.'"]/u.test(f.mask[b])) b++
     if (f.mask[b] !== '{') continue
     let bd = 0, e = b
     for (; e < f.mask.length; e++) {
@@ -188,9 +188,9 @@ function hittaFunktion(filRel, symbol, sedda = new Set()) {
 function producent(filRel, argument, index) {
   const arg = argument.trim().replace(/^await\s+/, '')
   if (arg.includes(':')) return null // typannotering ⇒ metoddeklaration, inte anrop
-  const anrop = arg.match(/^(?:this\.)?([A-Za-z_$][\w$]*)\s*\(/)
+  const anrop = arg.match(/^(?:this\.)?([\p{L}\p{N}_$]+)\s*\(/u)
   if (anrop) return anrop[1]
-  const ident = arg.match(/^([A-Za-z_$][\w$]*)$/)
+  const ident = arg.match(/^([\p{L}\p{N}_$]+)$/u)
   if (!ident) return null
   const f = fil(filRel)
   const före = f.kalla.slice(0, index)
@@ -203,7 +203,7 @@ function producent(filRel, argument, index) {
     const om = kroppar(filRel).filter((k) => k.start <= idx && idx <= k.slut).sort((a, b) => b.start - a.start)[0]
     return om ? om.namn : null
   }
-  const s = uttryck.match(/^(?:this\.)?([A-Za-z_$][\w$]*)\s*\(/)
+  const s = uttryck.match(/^(?:this\.)?([\p{L}\p{N}_$]+)\s*\(/u)
   return s ? s[1] : null
 }
 
@@ -297,7 +297,7 @@ export function evaluate(filer) {
     for (const lit of d.literaler)
       if (lit.start > träff.start && lit.start < träff.slut) literaler.push({ fil: träff.fil, ...lit })
     const kropp = d.mask.slice(träff.start, träff.slut)
-    for (const m of kropp.matchAll(/\b([A-Za-z_$][\w$]{2,})\s*\(/g)) kö.push([träff.fil, m[1]])
+    for (const m of kropp.matchAll(/(?<![\p{L}\p{N}_$])([\p{L}\p{N}_$]{3,})\s*\(/gu)) kö.push([träff.fil, m[1]])
   }
 
   // R5/R6 — innehållet i mallarnas markup.
@@ -365,6 +365,64 @@ function självtest() {
   if (!bas.mätt.filer || bas.mätt.filer < 5)
     fel.push(`KANARIE 3: markup hittades i bara ${bas.mätt.filer} filer — anropskedjan når inte de delade skalen.`)
 
+  // ── KANARIE 6 — SVENSKA FUNKTIONSNAMN I KEDJAN (#713) ────────────────────
+  //
+  // Kedjan följs genom att HÄRLEDA anropade funktionsnamn ur maskerad kod.
+  // Härledningen gick via `[A-Za-z_$][\w$]*`, som är ASCII, och två riktiga
+  // funktioner i apps/api/src föll därför ur kedjan — uppmätt mot origin/main,
+  // inte befarat:
+  //
+  //     src/ai/tools/tool-executor.service.ts#ärBatchMottagarkonflikt
+  //     src/maintenance/duplicate-ticket-window.ts#hittaFärskDubblett
+  //
+  // 64 funktioner granskade i stället för 66. De två felformerna, båda i
+  // listan ovan:
+  //
+  //   MISSAD  `ärBatchMottagarkonflikt` — `[A-Za-z_$]` matchar inte `ä`.
+  //   KAPAD   `hittaFärskDubblett` — svansen `hittaF` fångas, men `\s*\(`
+  //           följer inte, så anropet försvinner ändå. KAPAD kan alltså sluta
+  //           som en MISSAD när mönstret kräver något EFTER namnet.
+  //
+  // Konsekvensen var inte kosmetisk: allt inuti de två funktionerna — varje
+  // mall-literal, varje `https://`, varje `<link>` — låg utanför R5/R6. Vakten
+  // var grön om kod den aldrig läst.
+  const kedjeProv = [
+    ['svensk INITIAL', 'ärNågot', 'const x = ärNågot(1)'],
+    ['svenskt tecken MITT i', 'hittaFärskDubblett', 'const y = hittaFärskDubblett(2)'],
+    ['ren ASCII', 'hittaDubblett', 'const z = hittaDubblett(3)'],
+  ]
+  for (const [vad, namn, kod] of kedjeProv) {
+    const hittade = [...kod.matchAll(/(?<![\p{L}\p{N}_$])([\p{L}\p{N}_$]{3,})\s*\(/gu)].map((m) => m[1])
+    if (!hittade.includes(namn))
+      fel.push(`KANARIE 6 (${vad}): anropet till ${namn} härleds inte ur kedjan — hittade ${JSON.stringify(hittade)}`)
+  }
+
+  // MOTPROVEN.
+  //
+  // DELSTRÄNG: härledningen får aldrig börja MITT i ett namn. `zzhittaDubblett(`
+  // är ett anrop till `zzhittaDubblett`, inte till `hittaDubblett`. Utan det
+  // här provet hade en fix som helt tog bort avgränsningen sett likadan ut.
+  const hel = [...'zzhittaDubblett(1)'.matchAll(/(?<![\p{L}\p{N}_$])([\p{L}\p{N}_$]{3,})\s*\(/gu)].map((m) => m[1])
+  if (hel.join(',') !== 'zzhittaDubblett')
+    fel.push(`KANARIE 6 MOTPROV: härledningen började mitt i ett namn — ${JSON.stringify(hel)}`)
+
+  // Ett METODANROP fångas med flit (kedjan följer `this.x()` och `obj.y()`),
+  // och punkten står inte i lookbehindens klass. Det var så `\b` betedde sig
+  // också — provet står här för att nästa läsare inte ska tro att det är en
+  // regression när `obj.gör()` dyker upp i kön.
+  const metod = [...'obj.hittaFärskDubblett(1)'.matchAll(/(?<![\p{L}\p{N}_$])([\p{L}\p{N}_$]{3,})\s*\(/gu)].map((m) => m[1])
+  if (metod.join(',') !== 'hittaFärskDubblett')
+    fel.push(`KANARIE 6 MOTPROV: metodnamnet efter punkt fångas inte längre — ${JSON.stringify(metod)}`)
+
+  // TRÖSKELN {3,} ska bestå, annars fylls kön med `if(`, `for(` och brus.
+  const kort = [...'ab(1)'.matchAll(/(?<![\p{L}\p{N}_$])([\p{L}\p{N}_$]{3,})\s*\(/gu)]
+  if (kort.length !== 0) fel.push('KANARIE 6 MOTPROV: tvåteckensnamn passerar tröskeln {3,}')
+
+  // Och GOLVET: kedjan ska nå minst de 66 som mättes upp. Sjunker talet har
+  // härledningen gått blind igen, och det syns inte på att vakten är grön.
+  if (bas.mätt.funktioner < 66)
+    fel.push(`KANARIE 6: bara ${bas.mätt.funktioner} funktioner i kedjan, golv 66 — härledningen har tappat namn.`)
+
   // KANARIE 4 — resolvern knyter faktiskt anrop till producenter.
   if (bas.mätt.producenter < REGISTER.length)
     fel.push(`KANARIE 4: bara ${bas.mätt.producenter} producenter härleddes ur ${REGISTER.length} kvitterade — resolvern har slutat matcha.`)
@@ -372,7 +430,7 @@ function självtest() {
   if (fel.length) { console.error('SJÄLVTEST RÖTT:\n  ' + fel.join('\n  ')); process.exit(1) }
   console.warn(
     `SJÄLVTEST GRÖNT — ${bas.mätt.renderingsställen} renderingsställen, ${bas.mätt.producenter} producenter, ` +
-      `${bas.mätt.funktioner} funktioner i kedjan, ${bas.mätt.literaler} mall-literaler i ${bas.mätt.filer} filer, 5 kanariefåglar.`,
+      `${bas.mätt.funktioner} funktioner i kedjan, ${bas.mätt.literaler} mall-literaler i ${bas.mätt.filer} filer, 6 kanariefåglar.`,
   )
 }
 
