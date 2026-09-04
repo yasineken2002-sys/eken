@@ -1,0 +1,723 @@
+{
+  "$comment": "BASLINJE — befintliga ASCII-antaganden om identifierare i vakternas regexar (#713). MEDLEMMAR, inte ett tal: fil + mönster + antal. Radnummer står inte här; de flyttar.",
+  "$howto": "Listan får bara KRYMPA. Laga en förekomst och ta bort dess post i SAMMA PR — en post utan motsvarighet i koden är lika röd som en okänd förekomst. Att lägga TILL en post är att ta på sig ny skuld och ska motiveras i PR-texten.",
+  "$definition": "Formerna står i check-identifier-regex.mjs (FORMER). Talet går att härleda om mot vilken ref som helst: node apps/api/scripts/check-identifier-regex.mjs --skriv",
+  "total": 86,
+  "poster": [
+    {
+      "fil": "apps/api/scripts/check-action-tool-authorization.mjs",
+      "mönster": "\\\\b${GATE}\\\\b",
+      "former": [
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-action-tool-authorization.mjs",
+      "mönster": "\\b(interface|type)\\s+\\w[\\w<>,\\s]*=?\\s*$",
+      "former": [
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-action-tool-authorization.mjs",
+      "mönster": "\\n  (?:private |public )?(?:async )?\\w+\\s*\\(",
+      "former": [
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-actor-stamping.mjs",
+      "mönster": "'(\\w+)'",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-actor-stamping.mjs",
+      "mönster": "^model\\s+(\\w+)\\s*\\{",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-actor-stamping.mjs",
+      "mönster": "runWithActor\\(\\s*'(\\w+)'",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-ai-tool-effects.mjs",
+      "mönster": "'([a-z_]+)'",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-ai-tool-effects.mjs",
+      "mönster": "'([a-z0-9_]+)'",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-ai-tool-effects.mjs",
+      "mönster": "\\n  (?:private |public )?(?:async )?\\w+\\s*\\(",
+      "former": [
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-append-only.mjs",
+      "mönster": "CREATE\\\\s+TRIGGER\\\\s+${TRIGGER_PREFIX}\\\\w+\\\\s+BEFORE\\\\s+UPDATE\\\\s+ON\\\\s+\"([^\"]+)\"",
+      "former": [
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-critical-indexes.mjs",
+      "mönster": "^\\w+\\.",
+      "former": [
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-critical-indexes.mjs",
+      "mönster": "^ALTER\\s+INDEX\\s+(?:IF\\s+EXISTS\\s+)?((?:\"?\\w+\"?\\.)?\"?[^\"\\s]+\"?)\\s+RENAME\\s+TO\\s+\"?([^\"\\s;]+)\"?",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-critical-indexes.mjs",
+      "mönster": "^CREATE\\s+(UNIQUE\\s+)?INDEX\\s+(?:CONCURRENTLY\\s+)?(?:IF\\s+NOT\\s+EXISTS\\s+)?\"?([^\"\\s(]+)\"?\\s+ON\\s+(?:ONLY\\s+)?((?:\"?\\w+\"?\\.)?\"?[^\"\\s(]+\"?)\\s*\\(([^)]*)\\)\\s*(?:WHERE\\s+(.+))?$",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-critical-indexes.mjs",
+      "mönster": "^DROP\\s+INDEX\\s+(?:CONCURRENTLY\\s+)?(?:IF\\s+EXISTS\\s+)?((?:\"?\\w+\"?\\.)?\"?[^\"\\s;]+\"?)",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-cron-classification.mjs",
+      "mönster": "(?:const|let|var)\\\\s+(\\\\w+)[^=\\\\n]*=\\\\s*${literal}",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-cron-classification.mjs",
+      "mönster": "\\b[A-Z][a-zA-Z]{3,}\\b",
+      "former": [
+        "matchning-ascii",
+        "gräns-idkonstrukt"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-cron-error-sink.mjs",
+      "mönster": "(?:private|public|protected|readonly|\\\\s)\\\\s*(\\\\w+)\\\\s*:\\\\s*${klassnamn}\\\\b",
+      "former": [
+        "fångst-w",
+        "matchning-w",
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-cron-error-sink.mjs",
+      "mönster": "\\\\b${b}\\\\s*\\\\.\\\\s*${m}\\\\s*\\\\(",
+      "former": [
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-cron-error-sink.mjs",
+      "mönster": "\\\\b${metod}\\\\s*\\\\(",
+      "former": [
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-cron-error-sink.mjs",
+      "mönster": "\\\\bsink\\\\s*:\\\\s*[\\\\w.]*\\\\b${b}\\\\b",
+      "former": [
+        "matchning-w",
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
+      "mönster": "'([a-z0-9_]+)'",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
+      "mönster": "'([a-zA-Z]+)'",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
+      "mönster": "(^|\\n) {2}[a-z0-9_]+: \\{",
+      "former": [
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
+      "mönster": "(^|\\n)\\s{2}([a-z0-9_]+):\\s*\\{",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
+      "mönster": "\\{\\s*typ:\\s*'([A-ZÄÅÖ_]+)'([^}]*)\\}",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
+      "mönster": "effectIdempotency:\\s*'([A-ZÄÅÖ_]+)'",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
+      "mönster": "idempotencyUnit:\\s*'([A-ZÄÅÖ_]+)'",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
+      "mönster": "modell:\\s*'([A-Za-z]+)'",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 2
+    },
+    {
+      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
+      "mönster": "plats:\\s*'([A-ZÄÅÖ_]+)'",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
+      "mönster": "resumptionPolicy:\\s*'([A-ZÄÅÖ_]+)'",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-enqueue-cron-context.mjs",
+      "mönster": "\\.\\.\\.\\s*([A-Za-z_$][\\w$]*)\\b",
+      "former": [
+        "fångst-w",
+        "fångst-ascii",
+        "matchning-w",
+        "matchning-ascii",
+        "gräns-idkonstrukt"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-history-registry.mjs",
+      "mönster": "^([A-Za-z0-9_]+)'",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-identifier-regex.mjs",
+      "mönster": "(\\w+)\\s*:",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-identifier-regex.mjs",
+      "mönster": "\\\\\\\\\\\\\\\\w|${ASCII_INTERVALL}",
+      "former": [
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-identifier-regex.mjs",
+      "mönster": "\\\\b[A-Za-z]+\\$|\\^[A-Za-z]+\\\\b",
+      "former": [
+        "matchning-ascii",
+        "gräns-idkonstrukt"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-identifier-regex.mjs",
+      "mönster": "\\\\w",
+      "former": [
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-identifier-regex.mjs",
+      "mönster": "^(?:[^\\\\]|\\\\[^bw])*\\\\b[A-Za-z]+\\\\b(?:[^\\\\]|\\\\[^bw])*$",
+      "former": [
+        "matchning-ascii",
+        "gräns-idkonstrukt"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-identifier-regex.mjs",
+      "mönster": "^\\/([\\s\\S]*)\\/([a-z]*)$",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-mail-id-provenance.mjs",
+      "mönster": "\\b(\\w*(?:MessageId|EmailId))\\s*:\\s*([^,\\n}]*)",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-module-cycles.mjs",
+      "mönster": "\\b([A-Z]\\w*Module)\\b",
+      "former": [
+        "fångst-w",
+        "fångst-ascii",
+        "matchning-w",
+        "matchning-ascii",
+        "gräns-idkonstrukt"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-module-cycles.mjs",
+      "mönster": "import\\\\s*\\\\{[^}]*\\\\b${namn}\\\\b[^}]*\\\\}\\\\s*from\\\\s*['\"\\`]",
+      "former": [
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-ocr-lookup-fields.mjs",
+      "mönster": "(?:!\\\\s*${v}\\\\b|\\\\b${v}\\\\s*(?:\\\\?|&&|\\\\|\\\\|))",
+      "former": [
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-ocr-lookup-fields.mjs",
+      "mönster": "(?:const|let|var)\\\\s+(\\\\w+)\\\\s*=\\\\s*await\\\\s+${GATE}\\\\s*\\\\(",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-ocr-lookup-fields.mjs",
+      "mönster": "[A-Za-z]",
+      "former": [
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-ocr-lookup-fields.mjs",
+      "mönster": "\\.\\s*([\\p{L}\\p{N}_$]+)\\s*\\.\\s*find\\w*\\s*\\(",
+      "former": [
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-ocr-provenance.mjs",
+      "mönster": "[A-Za-z]",
+      "former": [
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-ocr-provenance.mjs",
+      "mönster": "\\\\b(${PROSE}|${RAW})\\\\s*\\\\(\\\\s*([\\\\w.?![\\\\]]+)\\\\s*\\\\)",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
+      "mönster": "(?:^|[\\s\"'(=])\\/\\/[a-zA-Z0-9]",
+      "former": [
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
+      "mönster": "(?:^|\\n)[ \\t]*(?:export\\s+)?(?:default\\s+)?(?:private\\s+|public\\s+|protected\\s+|static\\s+|readonly\\s+)*(?:async\\s+)?(?:function\\s+)?([A-Za-z_$][\\w$]*)\\s*(?:<[^>]*>)?\\s*\\(",
+      "former": [
+        "fångst-w",
+        "fångst-ascii",
+        "matchning-w",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
+      "mönster": "[\\s:<>|&\\][\\w$,.'\"]",
+      "former": [
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
+      "mönster": "\\b([A-Za-z_$][\\w$]{2,})\\s*\\(",
+      "former": [
+        "fångst-w",
+        "fångst-ascii",
+        "matchning-w",
+        "matchning-ascii",
+        "gräns-idkonstrukt"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
+      "mönster": "^(?:this\\.)?([A-Za-z_$][\\w$]*)\\s*\\(",
+      "former": [
+        "fångst-w",
+        "fångst-ascii",
+        "matchning-w",
+        "matchning-ascii"
+      ],
+      "antal": 2
+    },
+    {
+      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
+      "mönster": "^([A-Za-z_$][\\w$]*)$",
+      "former": [
+        "fångst-w",
+        "fångst-ascii",
+        "matchning-w",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
+      "mönster": "<[a-zA-Z!]",
+      "former": [
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-period-lookup-source.mjs",
+      "mönster": "\\\\b${model}\\\\s*\\\\.\\\\s*[a-zA-Z]",
+      "former": [
+        "matchning-ascii",
+        "gräns-interp",
+        "gräns-idkonstrukt"
+      ],
+      "antal": 2
+    },
+    {
+      "fil": "apps/api/scripts/check-platform-invoice-number-source.mjs",
+      "mönster": "\\\\b${ALLOCATOR}\\\\(",
+      "former": [
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-redact-copies.mjs",
+      "mönster": "[A-Za-z]",
+      "former": [
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-reminder-fee-source.mjs",
+      "mönster": "\\\\b${field}\\\\s*:",
+      "former": [
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-reminder-fee-source.mjs",
+      "mönster": "\\\\b${field}\\\\s*:\\\\s*['\"]0(\\\\.0+)?['\"]",
+      "former": [
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-reminder-fee-source.mjs",
+      "mönster": "\\\\b${field}\\\\s*:\\\\s*0\\\\b",
+      "former": [
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-reminder-fee-source.mjs",
+      "mönster": "\\\\b${field}\\\\s*:\\\\s*new\\\\s+Prisma\\\\.Decimal\\\\(\\\\s*0\\\\s*\\\\)",
+      "former": [
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-reminder-fee-source.mjs",
+      "mönster": "\\\\b${model}\\\\s*\\\\.\\\\s*(create|createMany|update|updateMany|upsert)\\\\s*\\\\(",
+      "former": [
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-reminder-fee-source.mjs",
+      "mönster": "\\\\b${RESOLVER}\\\\(",
+      "former": [
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-sequence-allocation.mjs",
+      "mönster": "(?:readonly|private|public|protected)\\\\s+([\\\\w$]+)\\\\s*:\\\\s*${info.klass}\\\\b",
+      "former": [
+        "fångst-w",
+        "matchning-w",
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-sequence-allocation.mjs",
+      "mönster": "([\\w$.]+)\\s*\\.\\s*$",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-sequence-allocation.mjs",
+      "mönster": "([\\w$]+)\\s*(\\?)?\\s*:",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-sequence-allocation.mjs",
+      "mönster": "([\\w$]+)\\s*$",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-sequence-allocation.mjs",
+      "mönster": "[\\w$]\\s*\\?\\s*:",
+      "former": [
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-sequence-allocation.mjs",
+      "mönster": "\\\\b${accessor}\\\\s*\\\\.\\\\s*(\\\\w+)\\\\s*\\\\(",
+      "former": [
+        "fångst-w",
+        "matchning-w",
+        "gräns-interp"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-sequence-allocation.mjs",
+      "mönster": "\\b[\\w$]+\\s*\\([^)]*\\)\\s*(:[^{]*)?$",
+      "former": [
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-sequence-allocation.mjs",
+      "mönster": "\\b[\\w$]+\\s*$",
+      "former": [
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-sequence-allocation.mjs",
+      "mönster": "\\bclass\\s+([\\w$]+)[^{]*\\{",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-sequence-allocation.mjs",
+      "mönster": "^model\\s+(\\w*Sequence)\\s*\\{",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-sequence-allocation.mjs",
+      "mönster": "^this\\b",
+      "former": [
+        "gräns-ankare"
+      ],
+      "antal": 2
+    },
+    {
+      "fil": "apps/api/scripts/check-tool-iteration-cap.mjs",
+      "mönster": "(?:const|let|var)\\s+(\\w*(?:ITERATION|Iteration|ROUND|Round)\\w*)\\s*(?::\\s*number\\s*)?=\\s*(\\d+)",
+      "former": [
+        "fångst-w",
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-user-html-sanitizer.mjs",
+      "mönster": "[A-Za-z]",
+      "former": [
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/check-user-html-sanitizer.mjs",
+      "mönster": "function\\\\s+${RENDERARE}\\\\b",
+      "former": [
+        "gräns-interp"
+      ],
+      "antal": 2
+    },
+    {
+      "fil": "scripts/check-design-tokens.mjs",
+      "mönster": "(?<![\\\\w-])(?:${COLOR_UTILITY_PREFIXES})-(${TAILWIND_STOCK_FAMILIES.join('|')})-\\\\d{2,3}(?![\\\\w-])",
+      "former": [
+        "matchning-w"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "scripts/check-design-tokens.mjs",
+      "mönster": "(?<![a-zA-Z0-9])(?:rgba?|hsla?)\\(\\s*(?:[^()]|\\([^()]*\\))*\\)",
+      "former": [
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "scripts/check-design-tokens.mjs",
+      "mönster": "([A-Za-z_$][\\w$]*)\\s*:\\s*evenoScales\\s*\\.\\s*([\\w$]+)",
+      "former": [
+        "fångst-w",
+        "fångst-ascii",
+        "matchning-w",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    },
+    {
+      "fil": "scripts/check-design-tokens.mjs",
+      "mönster": "var\\(\\s*--ev-[a-z0-9-]+\\s*\\)",
+      "former": [
+        "fångst-ascii",
+        "matchning-ascii"
+      ],
+      "antal": 1
+    }
+  ]
+}
