@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import type {
   BankIdCollectResult,
   BankIdCompletionData,
@@ -90,8 +92,14 @@ export class MockBankIdProvider implements BankIdProvider {
 
   async start(_input: BankIdStartInput): Promise<BankIdStartResult> {
     this.started += 1
+    // UUID OCH INTE EN RÄKNARE. Första försöket var `…-order-${n}`, vilket är
+    // unikt inom EN process — och tabellen är inte processens. En omstartad
+    // dev-server började om på 1 och krockade med rader från förra körningen:
+    // P2002 på `BankIdOrder.orderRef`, alltså ett 500 på login/start. Uppmätt,
+    // inte befarat — E2E föll på "Internal server error" efter en omstart.
+    // Räknaren `started` finns kvar bara som en läsbar signal i loggar.
     const orderRef =
-      this.opts.orderRef ?? `${this.opts.orderRefPrefix ?? 'mock'}-order-${this.started}`
+      this.opts.orderRef ?? `${this.opts.orderRefPrefix ?? 'mock'}-order-${randomUUID()}`
     this.collectsByOrder.set(orderRef, 0)
     return {
       orderRef,
