@@ -66,13 +66,24 @@ function makeDb(
     ),
     deleteMany: jest.fn(() => Promise.resolve({ count: 0 })),
   }
+  // Radens id härleds ur innehållet så att provet kan adressera en identitet
+  // utan att attrappen behöver en id-generator: `id:<userId>`.
+  const idFor = (i: { userId: string }) => `id:${i.userId}`
   const userBankIdIdentity = {
-    findMany: jest.fn(({ where }: { where: { subjectHash: string } }) =>
+    findMany: jest.fn(({ where }: { where: { subjectHash?: string; userId?: string } }) =>
       Promise.resolve(
         identities
-          .filter((i) => i.subjectHash === where.subjectHash)
+          // ATTRAPPEN FILTRERAR PÅ DE FÄLT SOM FAKTISKT STÅR I `where`, inte på
+          // en fast nyckel. Skillnaden är hela poängen: tappar tjänsten ett fält
+          // ur sitt villkor blir filtret bredare här också, och provet faller.
+          // En attrapp som filtrerade på ett hårdkodat fält hade varit grön
+          // oavsett vad koden frågade efter.
+          .filter((i) => where.subjectHash == null || i.subjectHash === where.subjectHash)
+          .filter((i) => where.userId == null || i.userId === where.userId)
           .map((i) => ({
+            id: idFor(i),
             userId: i.userId,
+            verifiedAt: NU,
             user: {
               role: i.role ?? 'OWNER',
               isActive: i.isActive ?? true,
@@ -81,6 +92,21 @@ function makeDb(
           })),
       ),
     ),
+    deleteMany: jest.fn(({ where }: { where: { id?: string; userId?: string } }) => {
+      // Samma princip som findMany ovan, och här är den lastbärande: skulle
+      // `removeIdentity` tappa `userId` ur sitt villkor blir `where.userId`
+      // undefined, filtret matchar en annans rad, och provet nedan faller.
+      const kvar = identities.filter(
+        (i) =>
+          !(
+            (where.id == null || idFor(i) === where.id) &&
+            (where.userId == null || i.userId === where.userId)
+          ),
+      )
+      const count = identities.length - kvar.length
+      identities.splice(0, identities.length, ...kvar)
+      return Promise.resolve({ count })
+    }),
     upsert: jest.fn(
       ({
         where,
@@ -117,9 +143,17 @@ const CONFIG = { getOrThrow: () => HEMLIGHET }
 
 function bygg(db: ReturnType<typeof makeDb>, mock: MockBankIdProvider, issued: string[] = []) {
   const auth = {
-    issueTokensForUser: jest.fn((userId: string) => {
+    issueAuthResponseForUser: jest.fn((userId: string) => {
       issued.push(userId)
-      return Promise.resolve({ accessToken: `at:${userId}`, refreshToken: `rt:${userId}` })
+      // Hela AuthResponse, inte bara tokens: BankID-vägen ska ge frontend exakt
+      // samma nyttolast som lösenordsinloggningen, så store:n kan sättas i ETT
+      // steg. Attrappen bär formen så provet fäller om fälten tappas.
+      return Promise.resolve({
+        accessToken: `at:${userId}`,
+        refreshToken: `rt:${userId}`,
+        user: { id: userId, email: `${userId}@x.se`, role: 'OWNER', organizationId: 'o' },
+        organization: { id: 'o', name: 'Org', orgNumber: null, termsVersion: null },
+      })
     }),
   }
   const service = new BankIdAuthService(
@@ -259,19 +293,23 @@ describe('inloggning (LOGIN)', () => {
     expect(db.orders[0]?.userId).toBeUndefined()
   })
 
-  it('EN träff → TokenPair via issueTokensForUser, och ordern förbrukas', async () => {
+  it('EN träff → hel AuthResponse via issueAuthResponseForUser, och ordern förbrukas', async () => {
     const db = makeDb([], [{ userId: 'u1', subjectHash: 'hash:199001019802' }])
     const issued: string[] = []
     const { service, auth } = bygg(db, new MockBankIdProvider({ orderRef: 'o1' }), issued)
     await service.loginStart('127.0.0.1', NU)
 
     const res = await service.loginCollect('o1', NU)
-    expect(res).toEqual({
-      status: 'complete',
-      tokens: { accessToken: 'at:u1', refreshToken: 'rt:u1' },
-    })
+    if (res.status !== 'complete') throw new Error('otillräcklig avsmalning')
+    // `session`, inte `tokens`: frontend måste kunna sätta auth-store:n i ett
+    // steg. Ett svar med bara tokens hade tvingat fram ett extra GET /auth/me,
+    // alltså en annan inloggningssekvens än lösenordsvägens.
+    expect(res.session.accessToken).toBe('at:u1')
+    expect(res.session.refreshToken).toBe('rt:u1')
+    expect(res.session.user.id).toBe('u1')
+    expect(res.session.organization.name).toBe('Org')
     // EXAKT samma väg som lösenordsinloggningen — inget parallellt utfärdande.
-    expect(auth.issueTokensForUser).toHaveBeenCalledWith('u1')
+    expect(auth.issueAuthResponseForUser).toHaveBeenCalledWith('u1')
     expect(db.orders[0]!.consumedAt).toEqual(NU)
   })
 
@@ -284,7 +322,7 @@ describe('inloggning (LOGIN)', () => {
     expect(fel).toBeInstanceOf(UnauthorizedException)
     // Meddelandet får inte skilja "okänd person" från "misslyckad identifiering".
     expect((fel as Error).message).toBe('Inloggningen kunde inte slutföras')
-    expect(auth.issueTokensForUser).not.toHaveBeenCalled()
+    expect(auth.issueAuthResponseForUser).not.toHaveBeenCalled()
     // Ordern förbrukas ändå — en identifierad order får inte kunna spelas om.
     expect(db.orders[0]!.consumedAt).toEqual(NU)
   })
@@ -313,7 +351,7 @@ describe('inloggning (LOGIN)', () => {
       { userId: 'u1', organizationName: 'Alfa AB', role: 'OWNER' },
       { userId: 'u2', organizationName: 'Beta AB', role: 'ADMIN' },
     ])
-    expect(auth.issueTokensForUser).not.toHaveBeenCalled()
+    expect(auth.issueAuthResponseForUser).not.toHaveBeenCalled()
     // Ordern är auktoriteten för valet och lever kvar tills valet gjorts.
     expect(db.orders[0]!.consumedAt).toBeNull()
 
@@ -339,11 +377,12 @@ describe('kontoval (CHOOSE)', () => {
     return { db, service, auth, token: res.chooseToken }
   }
 
-  it('giltigt val → TokenPair för det valda kontot, och ordern förbrukas', async () => {
+  it('giltigt val → hel session för det VALDA kontot, och ordern förbrukas', async () => {
     const { db, service, auth, token } = await tillVal()
-    const tokens = await service.loginChoose(token, 'u2', NU)
-    expect(tokens).toEqual({ accessToken: 'at:u2', refreshToken: 'rt:u2' })
-    expect(auth.issueTokensForUser).toHaveBeenCalledWith('u2')
+    const session = await service.loginChoose(token, 'u2', NU)
+    expect(session.accessToken).toBe('at:u2')
+    expect(session.user.id).toBe('u2')
+    expect(auth.issueAuthResponseForUser).toHaveBeenCalledWith('u2')
     expect(db.orders[0]!.consumedAt).toEqual(NU)
   })
 
@@ -352,7 +391,7 @@ describe('kontoval (CHOOSE)', () => {
     // som helst — token säger "vi vet vem du är", inte "du får vara vem du vill".
     const { service, auth, token } = await tillVal()
     await expect(service.loginChoose(token, 'u9', NU)).rejects.toBeInstanceOf(ForbiddenException)
-    expect(auth.issueTokensForUser).not.toHaveBeenCalled()
+    expect(auth.issueAuthResponseForUser).not.toHaveBeenCalled()
   })
 
   it('REPLAY: samma token en andra gång nekas — ordern är förbrukad', async () => {
@@ -375,6 +414,52 @@ describe('kontoval (CHOOSE)', () => {
     await expect(service.loginChoose(trasig, 'u1', NU)).rejects.toBeInstanceOf(
       UnauthorizedException,
     )
+  })
+})
+
+describe('kopplade identiteter (#745 PR 3)', () => {
+  it('listan är kontots egen — en annan användares rad syns inte', async () => {
+    const db = makeDb(
+      [],
+      [
+        { userId: 'u1', subjectHash: 'h1' },
+        { userId: 'u2', subjectHash: 'h1' },
+      ],
+    )
+    const { service } = bygg(db, new MockBankIdProvider())
+    const rader = await service.listIdentities('u1')
+    expect(rader.map((r) => r.id)).toEqual(['id:u1'])
+  })
+
+  it('BORTKOPPLING av EGEN rad tar bort den', async () => {
+    const db = makeDb([], [{ userId: 'u1', subjectHash: 'h1' }])
+    const { service } = bygg(db, new MockBankIdProvider())
+    await expect(service.removeIdentity('u1', 'id:u1')).resolves.toEqual({ removed: true })
+    expect(db.identities).toHaveLength(0)
+  })
+
+  it('DEN OMVÄNDA RIKTNINGEN: en ANNANS identitets-id nekas, och raden står kvar', async () => {
+    // Formen är den klassiska objektnivå-IDOR:en: id:t kommer från klienten.
+    // Grinden är skrivningens eget villkor, `deleteMany where { id, userId }`.
+    //
+    // VAD DET HÄR PROVET FAKTISKT MÄTER: att TJÄNSTEN skickar med `userId`.
+    // Attrappen filtrerar på de fält som står i `where`, så ett tappat userId
+    // gör filtret bredare och provet rött. Att POSTGRES utvärderar villkoret som
+    // väntat är en annan fråga, och den ägs av bankid-identity.db.spec.ts
+    // ("BORTKOPPLING: deleteMany where { id, userId } träffar bara ägarens rad").
+    // Ingen av de två duger som den andra.
+    const db = makeDb([], [{ userId: 'u2', subjectHash: 'h1' }])
+    const { service } = bygg(db, new MockBankIdProvider())
+    await expect(service.removeIdentity('u1', 'id:u2')).rejects.toBeInstanceOf(NotFoundException)
+    expect(db.identities).toHaveLength(1)
+  })
+
+  it('ett id som inte finns ger SAMMA svar som en annans — inget orakel', async () => {
+    const db = makeDb([], [{ userId: 'u1', subjectHash: 'h1' }])
+    const { service } = bygg(db, new MockBankIdProvider())
+    const a = await service.removeIdentity('u1', 'id:finns-inte').catch((e: Error) => e)
+    const b = await service.removeIdentity('u1', 'id:u9').catch((e: Error) => e)
+    expect((a as Error).message).toBe((b as Error).message)
   })
 })
 

@@ -9,11 +9,10 @@ import {
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Cron } from '@nestjs/schedule'
-import type { TokenPair } from '@eken/shared'
 
 import { PrismaService } from '../common/prisma/prisma.service'
 import { SigningCryptoService } from '../signing/signing-crypto.service'
-import { AuthService } from '../auth/auth.service'
+import { AuthService, type AuthResponse } from '../auth/auth.service'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
@@ -39,12 +38,26 @@ export type BankIdCollectResponse =
 export type BankIdLoginResponse =
   | { status: 'pending'; hintCode?: string }
   | { status: 'failed'; reason: string }
-  | { status: 'complete'; tokens: TokenPair }
+  /**
+   * `session`, inte `tokens`: fältet bär hela `AuthResponse` — tokens PLUS
+   * `user` och `organization` — därför att frontend måste kunna sätta
+   * auth-store:n i ETT steg, precis som efter en lösenordsinloggning. Namnet
+   * följer innehållet; ett `tokens` som bar två fält till hade varit en lögn i
+   * typen. Se `AuthService.issueAuthResponseForUser`.
+   */
+  | { status: 'complete'; session: AuthResponse }
   | {
       status: 'choose'
       chooseToken: string
       accounts: Array<{ userId: string; organizationName: string; role: string }>
     }
+
+/** En kopplad BankID-identitet, som den visas för kontots ägare. */
+export interface BankIdIdentityView {
+  id: string
+  /** När anslutningen bekräftades med en fullbordad BankID-order. */
+  verifiedAt: Date
+}
 
 /**
  * BankID-inloggning och -anslutning för operatörer (`apps/web`).
@@ -187,7 +200,7 @@ export class BankIdAuthService {
     if (konton.length === 1) {
       const konto = konton[0] as (typeof konton)[number]
       await this.consume(orderRef, now)
-      return { status: 'complete', tokens: await this.auth.issueTokensForUser(konto.userId) }
+      return { status: 'complete', session: await this.auth.issueAuthResponseForUser(konto.userId) }
     }
 
     // FLERA KONTON. Ordern förbrukas INTE här — den är auktoriteten för valet,
@@ -203,7 +216,7 @@ export class BankIdAuthService {
     }
   }
 
-  async loginChoose(chooseToken: string, userId: string, now: Date): Promise<TokenPair> {
+  async loginChoose(chooseToken: string, userId: string, now: Date): Promise<AuthResponse> {
     const payload = verifyChooseToken(
       chooseToken,
       this.config.getOrThrow<string>('JWT_SECRET'),
@@ -224,7 +237,50 @@ export class BankIdAuthService {
     }
 
     await this.consume(payload.orderRef, now)
-    return this.auth.issueTokensForUser(userId)
+    return this.auth.issueAuthResponseForUser(userId)
+  }
+
+  // ── Kopplade identiteter (kontots egen vy) ────────────────────────────────
+
+  /**
+   * Kontots egna BankID-anslutningar.
+   *
+   * `subjectHash` och `subjectEnc` lämnar ALDRIG servern. Hashen är visserligen
+   * inte personnumret, men den är ett stabilt, globalt uppslagsvärde för en
+   * person — den som har den kan avgöra om två konton tillhör samma människa.
+   * Vyn bär därför bara det gränssnittet behöver: id:t att koppla bort, och när
+   * anslutningen skedde.
+   */
+  async listIdentities(userId: string): Promise<BankIdIdentityView[]> {
+    return this.prisma.userBankIdIdentity.findMany({
+      where: { userId, provider: PROVIDER },
+      select: { id: true, verifiedAt: true },
+      orderBy: { createdAt: 'asc' },
+    })
+  }
+
+  /**
+   * Kopplar bort en identitet från DET EGNA kontot.
+   *
+   * `deleteMany` med både `id` och `userId` i villkoret, inte `delete` på id:t
+   * följt av en kontroll: den formen är atomisk och kan inte ha ett fönster
+   * emellan. Att `deleteMany` accepterar ett icke-unikt filter är hela poängen —
+   * `delete` hade krävt ett unikt villkor, alltså id:t ensamt, och userId hade
+   * fått kontrolleras i en separat läsning.
+   *
+   * `count === 0` betyder antingen "finns inte" eller "tillhör någon annan", och
+   * svaret är detsamma i båda fallen. Att skilja dem åt hade gjort endpointen
+   * till ett orakel för vilka identitets-id som existerar.
+   */
+  async removeIdentity(userId: string, identityId: string): Promise<{ removed: true }> {
+    const res = await this.prisma.userBankIdIdentity.deleteMany({
+      where: { id: identityId, userId },
+    })
+    if (res.count === 0) {
+      throw new NotFoundException('Anslutningen finns inte')
+    }
+    this.logger.log(`[bankid] identitet bortkopplad från konto ${userId}`)
+    return { removed: true }
   }
 
   // ── Hjälpare ──────────────────────────────────────────────────────────────

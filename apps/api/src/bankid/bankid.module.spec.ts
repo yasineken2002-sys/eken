@@ -23,7 +23,7 @@ import { StubBankIdProvider } from './providers/stub-bankid.provider'
  * ── VARFÖR EN MINIMAL MODUL OCH INTE HELA BankidModule ───────────────────
  *
  * Sedan PR 2 importerar `BankidModule` även `AuthModule` (för
- * `issueTokensForUser`), och därmed `JwtModule`, `PrismaModule`, `MailModule`
+ * `issueAuthResponseForUser`), och därmed `JwtModule`, `PrismaModule`, `MailModule`
  * och `AccountingModule`. Att bygga hela grafen bara för att fråga "vilken
  * provider väljer flaggan?" gjorde provet beroende av `JWT_SECRET` och en
  * databasattrapp — alltså av saker som inte har med frågan att göra, och som

@@ -167,6 +167,50 @@ medDb('#745 PR 2 · UserBankIdIdentity och BankIdOrder', () => {
     expect(await prisma.userBankIdIdentity.count({ where: { subjectHash: HASH } })).toBe(0)
   })
 
+  // ── Bortkopplingen (#745 PR 3) ────────────────────────────────────────────
+  //
+  // MOT RIKTIG POSTGRES, inte mot en attrapp, och skälet står i CLAUDE.md: en
+  // attrapp returnerar det den blev tillsagd oavsett `where`. Tappar
+  // `removeIdentity` sitt `userId` ur villkoret ser en attrapp ingen skillnad —
+  // här utvärderas villkoret på riktigt, och båda riktningarna faller ihop i ett
+  // prov: rätt ägare tar bort EN rad, fel ägare tar bort NOLL.
+  it('BORTKOPPLING: `deleteMany where { id, userId }` träffar bara ägarens rad', async () => {
+    const a = await nyOrgMedUser('Alfa')
+    const b = await nyOrgMedUser('Beta')
+    const rader = []
+    for (const u of [a, b]) {
+      rader.push(
+        await prisma.userBankIdIdentity.create({
+          data: {
+            userId: u.userId,
+            provider: 'BANKID',
+            subjectHash: HASH,
+            subjectEnc: 'enc',
+            verifiedAt: new Date(),
+          },
+          select: { id: true },
+        }),
+      )
+    }
+    const [radA, radB] = rader as [{ id: string }, { id: string }]
+
+    // FEL ÄGARE: B:s identitets-id med A:s userId → noll rader. Det är den här
+    // riktningen som gör endpointen ofarlig, och den enda som kan avslöja ett
+    // `where` som tappat sitt userId.
+    const fel = await prisma.userBankIdIdentity.deleteMany({
+      where: { id: radB.id, userId: a.userId },
+    })
+    expect(fel.count).toBe(0)
+    expect(await prisma.userBankIdIdentity.count({ where: { id: radB.id } })).toBe(1)
+
+    // RÄTT ÄGARE: en rad, och bara den.
+    const ratt = await prisma.userBankIdIdentity.deleteMany({
+      where: { id: radA.id, userId: a.userId },
+    })
+    expect(ratt.count).toBe(1)
+    expect(await prisma.userBankIdIdentity.count({ where: { subjectHash: HASH } })).toBe(1)
+  })
+
   // ── Ordern ────────────────────────────────────────────────────────────────
   it('FÖRBRUKNINGEN ÄR ATOMÄR: två samtidiga ger count 1 och count 0', async () => {
     const orderRef = `e2e-${randomUUID()}`

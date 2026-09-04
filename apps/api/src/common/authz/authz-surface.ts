@@ -529,6 +529,33 @@ const GRANSKAD_HINK_A: ReadonlyMap<string, string> = new Map([
       'lagras aldrig i klartext; svaret bär bara status.',
   ],
   [
+    'GET /auth/bankid/identities',
+    'Listar DET EGNA kontots BankID-anslutningar. Ingen @Roles av samma skäl som\n' +
+      'enroll-vägarna: att se och sköta sin egen inloggningsmetod är en handling på\n' +
+      'det egna kontot, inte en förvaltningshandling.\n' +
+      '\n' +
+      'SVARET BÄR INGEN DATA OM ANDRA: filtret är `userId` ur JWT:n, och vyn är två\n' +
+      'fält — id och verifiedAt. `subjectHash` och `subjectEnc` lämnar aldrig\n' +
+      'servern; hashen är inte personnumret men är ett stabilt globalt\n' +
+      'uppslagsvärde för en person, och skulle avslöja om två konton tillhör\n' +
+      'samma människa.',
+  ],
+  [
+    'DELETE /auth/bankid/identity/:id',
+    'Kopplar bort en anslutning från DET EGNA kontot. Ingen @Roles av samma skäl.\n' +
+      '\n' +
+      'DEN ENDA ENDPOINTEN I MODULEN DÄR ETT ID KOMMER FRÅN KLIENTEN, och därför\n' +
+      'den enda som kan bära en objektnivå-IDOR. Grinden är skrivningens eget\n' +
+      'villkor: `deleteMany where { id, userId }`, atomiskt, med userId ur JWT:n.\n' +
+      'En annans identitets-id träffar noll rader och ger NotFound — samma svar\n' +
+      'som ett id som inte finns, så endpointen är inget orakel.\n' +
+      '\n' +
+      'Modellen är sedan den här ändringen klassificerad `parent-scoped` med User\n' +
+      'som förälder i object-scope.ts, och skrivstället är deklarerat i\n' +
+      'CALLER_SCOPED — heuristiken ser inte en bindning som står i en skrivnings\n' +
+      'where.',
+  ],
+  [
     'GET /history/units/:unitId',
     'Lägenhetens historik över ALLA hyresgäster, även tidigare. Öppen för varje\n' +
       'roll därför att varje källa i unit-dimensionen redan är det: leases,\n' +

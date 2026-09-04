@@ -45,7 +45,7 @@ där scopningen är anroparens ansvar. Den måste skrivas ner i CALLER_SCOPED me
 ett påstående om vem som scopar i stället — se sista sektionen.
 
 
-## Form 1 — update/delete (16 rader)
+## Form 1 — update/delete (18 rader)
 
 AiTenantConversation    delete      ai/tenant-ai.service.ts                                 D annan nyckel
 AiTenantConversation    update      ai/tenant-ai.service.ts                             ×4  C scopat anrop + INGEN UPPTÄCKT
@@ -63,6 +63,8 @@ RentNoticeSend          updateMany  mail/mail.worker.ts                         
 Unit                    updateMany  units/unit-status.sync.ts                           ×2  INGEN UPPTÄCKT
 Unit                    delete      units/units.service.ts                                  A kedje-query
 Unit                    update      units/units.service.ts                                  A kedje-query
+UserBankIdIdentity      deleteMany  bankid/bankid-auth.service.ts                           INGEN UPPTÄCKT
+UserBankIdIdentity      upsert      bankid/bankid-auth.service.ts                           INGEN UPPTÄCKT
 
 ## Form 2 — create (40 rader)
 
@@ -108,7 +110,7 @@ Unit                    create      units/units.service.ts                      
 UnitEquipmentEvent      create      history/history-fixture.ts                          ×2  INGEN UPPTÄCKT
 
 
-## Undantag: scopningen ligger hos anroparen (3 st)
+## Undantag: scopningen ligger hos anroparen (5 st)
 
 Interna hjälpare utan aktörskontext. Formen är INTE automatiskt ofarlig — en
 privat metod som tar ett id är exakt den skepnad en verklig IDOR gömmer sig i.
@@ -120,6 +122,26 @@ AiTenantConversation.update  —  ai/tenant-ai.service.ts  (1 st)
     updatedAt. Dess enda anropare skickar conversation.id från
     getOrCreateConversation(tenantId, …), som scopar på tenantId (form D). Id:t
     har alltså redan passerat portalens scopning innan det når hit.
+
+UserBankIdIdentity.upsert  —  bankid/bankid-auth.service.ts  (1 st)
+    enrollCollect: skrivningens EGET where är det sammansatta unika villkoret
+    (provider, subjectHash, userId), och `userId` är metodens första parameter —
+    den inloggades `sub` ur JWT:n, satt av controllern via @CurrentUser. Fem
+    rader ovanför står CSRF-spärren: ordern bär det userId den STARTADES av, och
+    collect kastar 403 när order.userId !== userId. Skrivningen kan alltså inte
+    nå ett annat konto än det som både är inloggat och startade ordern.
+    Heuristikens form A känner igen en bindning på find*, inte i en skrivnings
+    where, och ingen av A–D är keyad på userId — därför står den här. Provet som
+    bär den heter "CSRF: en ANNAN användares collect på samma orderRef NEKAS" i
+    bankid-auth.service.spec.ts.
+
+UserBankIdIdentity.deleteMany  —  bankid/bankid-auth.service.ts  (1 st)
+    removeIdentity: `deleteMany where { id, userId }`, där id kommer från
+    klienten och userId ur JWT:n. Avgränsningen står i skrivningen själv och är
+    atomisk — därför deleteMany och inte `delete` på id:t följt av en kontroll,
+    som hade haft ett fönster emellan. Träffar den noll rader kastas NotFound,
+    med samma svar för "finns inte" och "tillhör någon annan". Samma osynlighet
+    för heuristiken som posten ovan.
 
 PaymentReminder.updateMany  —  notifications/payment-reminder.service.ts  (1 st)
     sendFormalReminder skriver mailJobId på markören efter commit (#357).
@@ -181,5 +203,5 @@ TenantMagicLink                 utanför: auth-realm: scopas av tokenvärdet
 TenantSession                   utanför: auth-realm: scopas av sessionstoken
 Unit                            förälder-scopad via Property
 UnitEquipmentEvent              förälder-scopad via UnitEquipment
-UserBankIdIdentity              utanför: auth-realm: nås via blindindex eller userId ur JWT, aldrig via ett id från klienten. Se kommentaren ovan för vad som flyttar den till parent-scoped.
+UserBankIdIdentity              förälder-scopad via User
 UserInvitation                  utanför: auth-realm: scopas av tokenvärdet

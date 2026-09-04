@@ -110,7 +110,7 @@ export function bankIdProviderFactory(
 }
 
 @Module({
-  // AuthModule för `issueTokensForUser` — BankID-vägen ska sluta i EXAKT samma
+  // AuthModule för `issueAuthResponseForUser` — BankID-vägen ska sluta i EXAKT samma
   // tokenutfärdande som lösenordsinloggningen, inte i ett parallellt.
   // CronErrorSinkModule importerar bara PrismaModule och kan inte sluta en cykel.
   imports: [PrismaModule, CronErrorSinkModule, AuthModule],
