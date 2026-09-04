@@ -89,7 +89,7 @@ export function parseActionTools(src) {
   if (i === -1) return []
   const b = block(text, text.indexOf('new Set(', i))
   const rå = b ? b.kropp : text.slice(i, text.indexOf('])', i))
-  return [...rå.matchAll(/'([a-z0-9_]+)'/g)].map((m) => m[1])
+  return [...rå.matchAll(/'([\p{Ll}\p{N}_]+)'/gu)].map((m) => m[1])
 }
 
 /** Deklarationerna, som en lista av poster. */
@@ -102,7 +102,7 @@ export function parseDeclarations(src) {
   const poster = []
   let rest = yttre.kropp
   let offset = 0
-  const nyckel = /(^|\n)\s{2}([a-z0-9_]+):\s*\{/g
+  const nyckel = /(^|\n)\s{2}([\p{Ll}\p{N}_]+):\s*\{/gu
   let m
   while ((m = nyckel.exec(rest)) !== null) {
     const b = block(rest, m.index + m[0].length - 1)
@@ -114,17 +114,17 @@ export function parseDeclarations(src) {
   void offset
   return poster.map((p) => ({
     namn: p.namn,
-    effectIdempotency: (p.kropp.match(/effectIdempotency:\s*'([A-ZÄÅÖ_]+)'/) ?? [])[1] ?? null,
-    idempotencyUnit: (p.kropp.match(/idempotencyUnit:\s*'([A-ZÄÅÖ_]+)'/) ?? [])[1] ?? null,
-    plats: (p.kropp.match(/plats:\s*'([A-ZÄÅÖ_]+)'/) ?? [])[1] ?? null,
-    resumptionPolicy: (p.kropp.match(/resumptionPolicy:\s*'([A-ZÄÅÖ_]+)'/) ?? [])[1] ?? null,
+    effectIdempotency: (p.kropp.match(/effectIdempotency:\s*'([\p{Lu}_]+)'/u) ?? [])[1] ?? null,
+    idempotencyUnit: (p.kropp.match(/idempotencyUnit:\s*'([\p{Lu}_]+)'/u) ?? [])[1] ?? null,
+    plats: (p.kropp.match(/plats:\s*'([\p{Lu}_]+)'/u) ?? [])[1] ?? null,
+    resumptionPolicy: (p.kropp.match(/resumptionPolicy:\s*'([\p{Lu}_]+)'/u) ?? [])[1] ?? null,
     policyBeslutad: /policyBeslutad:\s*true/.test(p.kropp),
-    mekanismer: [...p.kropp.matchAll(/\{\s*typ:\s*'([A-ZÄÅÖ_]+)'([^}]*)\}/g)].map((mm) => ({
+    mekanismer: [...p.kropp.matchAll(/\{\s*typ:\s*'([\p{Lu}_]+)'([^}]*)\}/gu)].map((mm) => ({
       typ: mm[1],
-      modell: (mm[2].match(/modell:\s*'([A-Za-z]+)'/) ?? [])[1] ?? null,
-      falt: [...mm[2].matchAll(/'([a-zA-Z]+)'/g)]
+      modell: (mm[2].match(/modell:\s*'([\p{L}]+)'/u) ?? [])[1] ?? null,
+      falt: [...mm[2].matchAll(/'([\p{L}]+)'/gu)]
         .map((f) => f[1])
-        .filter((f) => mm[2].includes('falt') && f !== (mm[2].match(/modell:\s*'([A-Za-z]+)'/) ?? [])[1]),
+        .filter((f) => mm[2].includes('falt') && f !== (mm[2].match(/modell:\s*'([\p{L}]+)'/u) ?? [])[1]),
       fil: (mm[2].match(/fil:\s*'([^']+)'/) ?? [])[1] ?? null,
       symbol: (mm[2].match(/symbol:\s*'([^']+)'/) ?? [])[1] ?? null,
     })),
@@ -316,12 +316,99 @@ function självtest() {
   const bas = { deklarationSrc: ÄKTA_DEK, definitionSrc: ÄKTA_DEF, schemaSrc: ÄKTA_SCHEMA, filFinns: allaFinns }
 
   // KANARIE 0 — extraktionen ser lika många poster som en rå räkning.
-  const råttAntal = (blankComments(ÄKTA_DEK).match(/(^|\n) {2}[a-z0-9_]+: \{/g) ?? []).length
+  const råttAntal = (blankComments(ÄKTA_DEK).match(/(^|\n) {2}[\p{Ll}\p{N}_]+: \{/gu) ?? []).length
   const sedda = parseDeclarations(ÄKTA_DEK).length
   t('KANARIE 0 (extraktionen ser lika många poster som en rå räkning)', sedda === råttAntal,
     `extraherade ${sedda}, rå räkning ${råttAntal}`)
   t('KANARIE 0 (antalet är inte noll)', sedda > 0, 'extraktionen hittar inga poster alls')
   t('KANARIE 0 (ACTION_TOOLS läses)', parseActionTools(ÄKTA_DEF).length > 0)
+
+  // ── SVENSKA NAMN: MISSAD, OCH VARFÖR KANARIE 0 INTE SÅG DET (#713) ────────
+  //
+  // Vakten HÄRLEDER namn ur källtext — deklarationsnyckel, enumvärde, modell,
+  // fältnamn, verktygsnamn — och varje härledning gick via ett ASCII-intervall
+  // (`[a-z0-9_]`, `[A-Za-z]`) eller ett handlappat `[A-ZÄÅÖ_]`.
+  //
+  // FELFORMEN ÄR MISSAD, INTE KAPAD, och det följer av avgränsaren: varje
+  // mönster här slutar mot ett `'` eller ett `:`. Ett namn med en svensk
+  // bokstav var som helst gör att HELA matchningen faller, inte att en
+  // ASCII-svans plockas ut. Uppmätt mot origin/main med en deklaration som
+  // heter `ärendehantering`:
+  //
+  //     poster        ["vanlig_post"]              ← ärendehantering BORTA
+  //     plats         ["EFTER"]
+  //     modell        ["Invoice"]                  ← 'Ärende' borta
+  //     ACTION_TOOLS  ["create_invoice"]           ← 'föreslå_avi' borta
+  //
+  // ETT HELT VERKTYGS IDEMPOTENSDEKLARATION blir alltså omätt, tyst.
+  //
+  // OCH KANARIE 0 OVAN KUNDE INTE SE DET. Den jämför extraktionen mot en "rå
+  // räkning" — men båda sidor bar SAMMA teckenklass, så båda sjönk med ett och
+  // pariteten höll. Uppmätt på fixturen nedan, mot origin/main:
+  //
+  //     rå räkning (ascii)   1        extraktionen   1     → KANARIE 0 GRÖN
+  //     rå räkning (unicode) 2                             ← sanningen
+  //
+  // Det är regeln "paritet bevisar likhet, inte riktighet" i sin renaste form:
+  // två uppräkningar som ska vara lika är inte en uppräkning. Provet nedan
+  // kräver därför att fixturen DISKRIMINERAR — att ASCII-formen ger ett annat
+  // tal — innan det litar på att unicode-formen ger rätt.
+  {
+    const FIXTUR = `export const EFFECT_DECLARATIONS = {
+  ärendehantering: {
+    effectIdempotency: 'IDEMPOTENT',
+    plats: 'FÖRE_EFFEKTEN',
+    mekanismer: [{ typ: 'UNIKT_INDEX', modell: 'Ärende', falt: ['organisationsId'] }],
+  },
+  vanlig_post: {
+    effectIdempotency: 'IDEMPOTENT',
+    plats: 'EFTER',
+    mekanismer: [{ typ: 'UNIKT_INDEX', modell: 'Invoice', falt: ['organizationId'] }],
+  },
+}
+`
+    const dek = parseDeclarations(FIXTUR)
+
+    // Att fixturen KAN ge ett annat svar — annars mäter proven nedan ingenting.
+    //
+    // ⚠️ ASCII-FORMEN NEDAN STÅR KVAR MED FLIT och är den enda posten från den
+    // här filen som är kvar i identifier-regex.baseline.json (#713/#724). Den
+    // är en NEGATIV REFERENS: den ska visa vad den GAMLA formen hade sett, och
+    // utan den går det inte att skilja "fixturen mäter något" från "fixturen är
+    // trivialt grön". Byt den inte till \p{Ll} — då blir de två talen lika och
+    // provet slutar diskriminera.
+    const asciiRå = (blankComments(FIXTUR).match(/(^|\n) {2}[a-z0-9_]+: \{/g) ?? []).length
+    const uniRå = (blankComments(FIXTUR).match(/(^|\n) {2}[\p{Ll}\p{N}_]+: \{/gu) ?? []).length
+    t('MISSAD (fixturen diskriminerar: ASCII-formen ser färre)', asciiRå === 1 && uniRå === 2,
+      `ascii=${asciiRå} unicode=${uniRå} — fixturen mäter inte det den ska`)
+
+    t('MISSAD (deklaration med svensk initial extraheras)',
+      dek.map((d) => d.namn).join(',') === 'ärendehantering,vanlig_post',
+      JSON.stringify(dek.map((d) => d.namn)))
+    t('MISSAD (enumvärde med svenskt tecken läses)',
+      dek[0]?.plats === 'FÖRE_EFFEKTEN', JSON.stringify(dek[0]?.plats))
+    t('MISSAD (modellnamn med svensk initial läses)',
+      dek[0]?.mekanismer[0]?.modell === 'Ärende', JSON.stringify(dek[0]?.mekanismer[0]?.modell))
+    t('MISSAD (verktygsnamn med svenskt tecken läses)',
+      parseActionTools(`export const ACTION_TOOLS = new Set(['föreslå_avi', 'create_invoice'])`)
+        .join(',') === 'föreslå_avi,create_invoice',
+      JSON.stringify(parseActionTools(`export const ACTION_TOOLS = new Set(['föreslå_avi'])`)))
+
+    // MOTPROVEN. Klasserna blev unicode-medvetna, inte kravlösa: en nyckel ska
+    // fortfarande vara GEMEN och ett enumvärde VERSALT. Utan de här hade en fix
+    // som bara bytte till `\p{L}` sett likadan ut och tappat all skärpa.
+    const versalNyckel = parseDeclarations(
+      `export const EFFECT_DECLARATIONS = {\n  Ärende: {\n    effectIdempotency: 'IDEMPOTENT',\n  },\n}\n`,
+    )
+    t('MOTPROV (VERSAL nyckel är ingen deklarationsnyckel)', versalNyckel.length === 0,
+      JSON.stringify(versalNyckel.map((d) => d.namn)))
+
+    const gemenEnum = parseDeclarations(
+      `export const EFFECT_DECLARATIONS = {\n  x: {\n    plats: 'före_effekten',\n  },\n}\n`,
+    )
+    t('MOTPROV (GEMENT enumvärde läses inte som enumvärde)', gemenEnum[0]?.plats == null,
+      JSON.stringify(gemenEnum[0]?.plats))
+  }
 
   // KANARIE OMFÅNG — tom mängd FÄLLER, i båda riktningarna.
   t('KANARIE omfång (tom ACTION_TOOLS → fäller)',
@@ -386,7 +473,7 @@ export function buildEffectCatalog() { throw new Error('x') }`
   // KANARIE R3 — symbolen som bara står i PROSA får inte uppfylla regeln.
   const baraKommentar = codeMask('// aiJournalSourceId nämns bara i en kommentar här\nconst x = 1')
   t('KANARIE R3 (symbol i kommentar uppfyller INTE regeln)',
-    !/\baiJournalSourceId\b/.test(baraKommentar),
+    !/(?<![\p{L}\p{N}_$])aiJournalSourceId(?![\p{L}\p{N}_$])/u.test(baraKommentar),
     'en kommentar som nämner symbolen skulle ha gjort vakten grön')
   const baraSträng = codeMask("const namn = 'aiJournalSourceId'\n")
   t('KANARIE R3 (symbol i stränglitteral uppfyller INTE regeln)',
