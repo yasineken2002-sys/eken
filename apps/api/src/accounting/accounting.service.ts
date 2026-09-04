@@ -40,7 +40,7 @@ import type {
   VatReport,
 } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
-import { stockholmCivilDate } from '../common/time/stockholm-period'
+import { stockholmCivilDate, throughStockholmDay } from '../common/time/stockholm-period'
 import { encodeCp437 } from './cp437'
 import { VerifikationsnummerService } from './verifikationsnummer.service'
 import { basChartFor } from './bas-chart'
@@ -1139,6 +1139,11 @@ export class AccountingService {
       // cutoff `to`, så att saldot stämmer mot de verifikationer filen bär.
       const yearCutoff = yearEnd < cutoff ? yearEnd : cutoff
 
+      // DAGSGRÄNSER, och det är rätt (#730): `yearStart`/`yearCutoff` kommer ur
+      // `fromCompact` respektive `new Date(to)` — båda UTC-midnatt. Mot en
+      // `@db.Date`-kolumn är Prismas trunkering då en no-op, och fönstren
+      // inkluderar sin egen sista dag. Bytt till ögonblick hade de slutat göra
+      // det. Rör dem inte.
       const ib = await balancesFor({ journalEntry: { organizationId, date: { lt: yearStart } } })
       const ub = await balancesFor({ journalEntry: { organizationId, date: { lte: yearCutoff } } })
       const res = await balancesFor({
@@ -1354,13 +1359,26 @@ export class AccountingService {
    * summan kan aldrig spänna över fel tenant. Ren LÄSNING — rör aldrig
    * verifikat/huvudbok.
    */
+  /**
+   * `to` FÅR VARA ETT ÖGONBLICK, och normaliseras här (#730).
+   *
+   * `JournalEntry.date` är `@db.Date`, så Prisma trunkerar en ögonblicksgräns
+   * till dess UTC-datum — inte till dagens datum i Sverige. Mätt: med
+   * `to = 2026-12-31T23:30Z`, alltså 1 januari 00:30 svensk tid, föll raden
+   * daterad 2027-01-01 bort. "Årets intäkter hittills" tappade den innevarande
+   * dagen under de sista en till två timmarna av varje UTC-dygn.
+   *
+   * `throughStockholmDay` gör gränsen till den svenska civila dagen, så den
+   * betyder samma sak dygnet runt. `from` normaliseras INTE: båda anroparna
+   * skickar redan räkenskapsårets första dag som UTC-midnatt.
+   */
   async getRevenueTotal(organizationId: string, from: Date, to: Date): Promise<number> {
     const agg = await this.prisma.journalEntryLine.aggregate({
       where: {
         account: { organizationId, number: { gte: 3000, lt: 4000 } },
         journalEntry: {
           organizationId,
-          date: { gte: from, lte: to },
+          date: { gte: from, lte: throughStockholmDay(to) },
         },
       },
       _sum: { debit: true, credit: true },
