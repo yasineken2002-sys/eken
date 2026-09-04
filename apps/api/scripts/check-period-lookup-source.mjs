@@ -124,7 +124,7 @@ export function scanSource(text, relPath) {
   // (1) Direkt modellåtkomst utanför den delade uppslagningen.
   if (!inLookupFile) {
     for (const model of MODELS) {
-      const accessRe = new RegExp(`\\b${model}\\s*\\.\\s*[a-zA-Z]`, 'g')
+      const accessRe = new RegExp(`(?<![\\p{L}\\p{N}_$])${model}\\s*\\.\\s*[\\p{L}]`, 'gu')
       let a
       while ((a = accessRe.exec(kod))) {
         violations.push({
@@ -316,7 +316,7 @@ function omfångskanariefågel() {
     if (!isLookupFile(f)) continue
     const kod = codeMask(readFileSync(f, 'utf8'))
     for (const model of MODELS) {
-      iKällan += (kod.match(new RegExp(`\\b${model}\\s*\\.\\s*[a-zA-Z]`, 'g')) ?? []).length
+      iKällan += (kod.match(new RegExp(`(?<![\\p{L}\\p{N}_$])${model}\\s*\\.\\s*[\\p{L}]`, 'gu')) ?? []).length
     }
   }
   const fel = []
@@ -330,6 +330,42 @@ function omfångskanariefågel() {
 
 function selfTest() {
   let ok = true
+
+  // ── #713: MODELLÅTKOMSTEN, BÅDA HALVORNA ────────────────────────────────
+  //
+  // `\b${model}\s*\.\s*[a-zA-Z]` bär TVÅ ASCII-antaganden, och de ger fel åt
+  // var sitt håll. Uppmätt mot origin/main:
+  //
+  //   FALSK GRÖN   await tx.closedAccountingPeriod.återöppna(id)
+  //                  [a-zA-Z] matchar inte `å` → åtkomsten rapporteras INTE
+  //                Det är vaktens hela uppgift: en direkt Prisma-åtkomst till
+  //                periodtillståndet utanför closed-period.ts. Med ett svenskt
+  //                metodnamn går den igenom tyst.
+  //
+  //   FALSKT LARM  await denPåclosedAccountingPeriod.findFirst()
+  //                  `\b` matchar inuti namnet → en åtkomst rapporteras på ett
+  //                objekt som inte är modellen.
+  {
+    const träffar = (kod) => scanSource(kod, 'x.ts').filter((v) => v.rule.startsWith('direkt Prisma-åtkomst'))
+    const svenskMetod = 'await tx.closedAccountingPeriod.återöppna(id)'
+    if (träffar(svenskMetod).length !== 1) {
+      ok = false
+      console.error('❌ #713 FALSK GRÖN: direkt åtkomst med svenskt metodnamn rapporteras inte')
+    } else console.log('✅ #713 FALSK GRÖN: åtkomst med svenskt metodnamn rapporteras')
+    const annatNamn = 'await denPåclosedAccountingPeriod.findFirst()'
+    if (träffar(annatNamn).length !== 0) {
+      ok = false
+      console.error('❌ #713 FALSKT LARM: `denPåclosedAccountingPeriod` rapporterades som modellåtkomst')
+    } else console.log('✅ #713 FALSKT LARM: ett annat objekt är inte modellen')
+    if (träffar('await tx.closedAccountingPeriod.findFirst()').length !== 1) {
+      ok = false
+      console.error('❌ #713 MOTPROV: den vanliga ASCII-åtkomsten slutade rapporteras')
+    }
+    if (träffar('await tx.xclosedAccountingPeriod.findFirst()').length !== 0) {
+      ok = false
+      console.error('❌ #713 MOTPROV: ASCII-delsträng rapporterades som modellåtkomst')
+    }
+  }
 
   // (0) Den delade skannerns kanariefåglar — metavaktens R2.
   const skanner = kanariefåglar()
