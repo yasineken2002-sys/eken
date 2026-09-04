@@ -135,22 +135,32 @@ Bygg inte UI först. Bygg först de mekanismer som gör agenten säker.
 avstängd, alltså ett rent bygge av Regel 3, och den är underlaget varje senare agent
 läser. Bygger vi agenten först får den gissa om saker som redan står i databasen.
 
-| Etapp | Innehåll | Blockerad av | Klar när |
-| --- | --- | --- | --- |
-| 0 | Minnets form — `MEMORY.md` laddas bara delvis (utreds separat) | — | mätt gräns, 1:1-integritet bevisad med sond |
-| 1 | **Historiken** — händelser + luckor, hyresgäst/objekt/fastighet | — | full nytta utan agent; registervakten har setts falla |
-| 1b | Datamodell för utrustning och byten i en lägenhet | 1 | "vad byttes och när" går att svara på |
-| 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen |
-| 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför de två hårdkodade filerna fäller vakten |
-| 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa |
-| 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken |
-| 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla |
-| 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något |
-| 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen |
-| 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt |
-| 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem |
-| 10 | Hantverkarmodell → bokningsflöde | 9 | `assignedToId` är en riktig relation |
-| 11+ | Agent 2–5 | 9 | var och en enligt samma etappform |
+| Etapp | Innehåll | Blockerad av | Klar när | Status |
+| --- | --- | --- | --- | --- |
+| 0 | Minnets form — `MEMORY.md` laddas bara delvis (utreds separat) | — | mätt gräns, 1:1-integritet bevisad med sond | — |
+| 1 | **Historiken** — händelser + luckor, hyresgäst/objekt/fastighet | — | full nytta utan agent; registervakten har setts falla | — |
+| 1b | Datamodell för utrustning och byten i en lägenhet | 1 | "vad byttes och när" går att svara på | — |
+| 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | — |
+| 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför de två hårdkodade filerna fäller vakten | — |
+| 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
+| 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `dbe12ff` |
+| 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **DELVIS** `dbe12ff` |
+| 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | — |
+| 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | — |
+| 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | — |
+| 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem | — |
+| 10 | Hantverkarmodell → bokningsflöde | 9 | `assignedToId` är en riktig relation | — |
+| 11+ | Agent 2–5 | 9 | var och en enligt samma etappform | — |
+
+`—` i statuskolumnen betyder **inte mätt i den här omgången**, aldrig "inte
+gjord". Etapp 0–2b och 6–11 ägs av en annan ström och deras rader är oförändrade
+— bara den tomma cellen är tillagd. Etapp 1, 1b, 2 och 2b är i main; att de står
+med `—` är en lucka i mätningen, inte i koden.
+
+Och läs `dbe12ff` som det raden säger: **var mätningen gjordes**, inte att den
+gäller i dag. Samma regel som `docs/revision-status.md`. Landar något i
+`apps/api/src/ai/`, `apps/api/src/common/actor/` eller `apps/web/src/app/router.tsx`
+— mät om.
 
 Parallellt och oberoende: backup-token, BankID, PSD2, juridisk slutgenomgång.
 
@@ -174,6 +184,117 @@ finns redan och gör rätt sak — den är bara inte inkopplad i den generella v
 ett av bara två skrivande hyresgästverktyg (`tenant-tool-executor.service.ts:380`, det
 andra är `request_termination` på `:448`), och `TENANT_TOOLS` är 8 verktyg varav sex rena
 läsningar. Men "bedöm allvar" landar i `OTHER` tills klagomålsfrågan är avgjord.
+
+### Mätning 2026-09-04 — etapp 3, 4 och 5 mot `dbe12ff`
+
+Alla tre står på **DELVIS**, och det som fattas är olika saker i varje rad. Talen
+nedan är körda mot koden, inte lästa ur en tidigare rad.
+
+**Etapp 3 — G1 Aktörsmodellen.** Tre av fyra dimensioner är byggda och fäller.
+
+| | Mekanism | Läge |
+| --- | --- | --- |
+| VEM | `ActorKind` (`schema.prisma:32`), stämplad av `actorStampExtension` vid tre gränser (`common/actor/actor.context.ts:76`) | **23 modeller** bär kolumnen (härlett ur DMMF) |
+| FÖR VEMS RÄKNING | `AiPrincipal`, obligatorisk vid AI-gränsen (`common/ai-origin/ai-origin.context.ts:53`, `:112`) | persisteras som `AiToolExecution.userId`/`tenantId` |
+| MED VILKEN RÄTT | bara *att* en människa bekräftade (`requiredConfirmation`/`confirmedAt`) | **halv** — se nedan |
+| INOM VILKEN GRÄNS | `organizationId` | 22 av 23 direkt, `Unit` via `Property` |
+
+Den negativa kontrollen är ett **fel, inte ett SAKNAS** — kört:
+
+```
+runAsAi utan uppdragsgivare  → KASTAR "AI-körning utan uppdragsgivare: aktörsobjektet saknas"
+bindande verktyg utan bevis  → KASTAR ForbiddenException (assertActionToolAuthorized)
+```
+
+Det som **fattas** är vägen från domänraden till grunden. `aiToolExecutionId`
+finns på **4** modeller (`InvoiceEvent`, `JournalEntry`, `AiAssignment`,
+`AiToolEffect`), medan `actorKind` finns på 23 — för de övriga 19 går vägen bara
+via `AiToolEffect(entityType, entityId)`, och det är en koppling, inte ett fält.
+Delegationsgrunden finns inte alls; den är etapp 7.
+
+**Etapp 4 — G3/G4.** Riggen kördes i **två skilda processer** mot en tom,
+nyskapad databas med egna förutsättningar. En ny `PrismaClient` hade delat
+process, modulcache och `AsyncLocalStorage` med skrivaren och alltså inte prövat
+något:
+
+```
+[A] pid=38821  skrev uppdraget + kallelsen, dog
+[B] pid=39133  hittade det, status=AWAITING_APPROVAL, toolInput intakt
+[B] besluta(APPROVED) → decidedByUserId satt, anspråket atomiskt
+```
+
+Uppdraget överlever alltså natten, och godkännandet går igenom. Vad som
+**inte** stämmer i klart-kriteriet: *"och syns i historiken"*. **Noll av 20**
+`HISTORY_SOURCES` läser `AiAssignment`, och modellen står inte i
+`history-sources.ack.json`. `check-history-registry.mjs` kan inte se det —
+`AiAssignment` har varken tenant-, unit- eller propertyrelation, så vakten
+ställer aldrig frågan om den. Det är en riktad blindhet, inte ett fel i vakten.
+
+Del 12:s kapplöpning: **grinden vid skapandet finns** (`assignment-eligibility.ts:90`,
+23 av 30 `ACTION_TOOLS` dugliga, de 7 avvisade alla `DEDUPLICERBAR`).
+**Omprövningen vid utförandet saknas — bekräftat, inte antaget**: i
+`src/ai/assignments/` finns noll referenser till `ToolExecutorService` utom i en
+kommentar, noll anropare av `skapa()`, och noll skrivare av
+`AiAssignment.aiToolExecutionId`. Ingen producent, ingen utförare — precis som
+tjänstens eget docblock säger.
+
+**Etapp 5 — Tool Catalog.** Katalogen **kastar**, i två oberoende byggare:
+`buildToolCatalog()` (`ai-tools.catalog.ts:351`) och `buildEffectCatalog()`
+(`effect-idempotency.ts:1121`), den senare även vid `traceIntegrity: 'OKÄND'`.
+Prövat: 30/30 gröna i `ai-tools-catalog.spec.ts` + `effect-idempotency.spec.ts`.
+
+Av planens sju fält fanns tre. Ett fjärde landar med den här omgången:
+
+| Fält | Läge |
+| --- | --- |
+| `toolName` | finns — nyckeln i `EFFECT_DECLARATIONS` |
+| `effectClassification` | **delvis** — `effectIdempotency`, `idempotencyUnit`, `traceDurability`, `traceIntegrity`, `externalHandle` finns; axeln *anteckning \| utåtriktad handling* är inte ett deklarerat fält |
+| `requiresApproval` | finns, **härlett** ur `ACTION_TOOLS` — ingen andra lista |
+| `humanPath` | **byggd** ([#773](https://github.com/yasineken2002-sys/eken/pull/773), `8743f72`) — `ai/tools/human-path.ts` + `check-tool-human-path.mjs`, ratchet i tre riktningar |
+| `agentAllowlist` | saknas |
+| `supportsUndo` | saknas per verktyg (bara `AiAssignment.undoHint` per uppdrag) |
+| `authorityScope` | saknas |
+
+Vakterna i Del 10, en rad var:
+
+| # | Vakt | Läge |
+| --- | --- | --- |
+| 1 | `sourceId = NULL` på AI-verifikat | `check-ai-journal-source.mjs` R1/R2 |
+| 2 | förbrukat claim ger "redan utförd" | samma vakt, defekt B + `ai-confirm-crash-honesty.spec.ts` |
+| 3 | skrivande verktyg utan deterministisk identitet | `check-effect-idempotency.mjs` R1–R5 |
+| 4 | samma identitet ger inte två effekter | 6 `.db.spec.ts` mot riktig Postgres |
+| 5 | historikdomän saknas i registret | `check-history-registry.mjs` |
+| 6 | verktyg utan `humanPath`, och `humanPath` som inte finns | **byggd** ([#773](https://github.com/yasineken2002-sys/eken/pull/773), `8743f72`) |
+| 7 | **befintligt** verktyg får **ny utåtriktad förmåga** | **saknas** — se nedan |
+
+Vakt 7 är den planen säger ska byggas FÖRST, och den är den enda som fortfarande
+inte finns. Närmast ligger `check-ai-tool-effects.mjs` R5/R6, men den jämför
+`EFFECT_PRODUCING_TOOLS ∪ effectFree` mot `ACTION_TOOLS` — och de mängderna
+ändras inte när ett *befintligt* verktyg får en ny förmåga. `externalHandle`
+deklareras men **prövas inte mot koden**: noll träffar på fältnamnet i
+`apps/api/scripts/`. Det är alltså en deklaration utan vakt, vilket är precis den
+form planen varnar för.
+
+Vad etapp 5 saknar för att bli KLAR: vakt 7, `agentAllowlist`, `supportsUndo`,
+`authorityScope`, och de sju verktyg som i dag saknar mänsklig väg
+(`apps/api/scripts/tool-human-path.baseline.json`).
+
+**Ordningen härifrån, beslutad 2026-09-04.** Tre saker mätningen fann byggs
+medvetet INTE i samma omgång, och skälet står här så att nästa person inte tar
+frånvaron för ett förbiseende:
+
+1. **Ytorna för `create_journal_entry` och `record_expense` byggs i en egen PR.**
+   De två är det starkaste fyndet — AI:n kan bokföra en verifikation hyresvärden
+   inte kan bokföra själv — men en bokföringsyta är ett eget arbete, inte en
+   bilaga till en vakt. Tills dess är de dokumenterade undantag i en baslinje som
+   bara får krympa.
+2. **Historikkällan för `AiAssignment` byggs i en egen PR efter delmängdsvakten.**
+   Etapp 4 står som DELVIS just av det skälet, och raden ska inte flyttas förrän
+   källan finns — inte förrän någon tycker att den borde finnas.
+3. **Vakt 7 byggs efter att etapp 2b landat.** Planen säger redan varför den ska
+   byggas FÖRST av vakterna, men den ärver R5:s blindhet om den byggs på ett
+   omfång som ännu inte är formbaserat. Ordningen är alltså 2b och sedan vakt 7,
+   inte vakt 7 först i kalendern.
 
 ---
 
