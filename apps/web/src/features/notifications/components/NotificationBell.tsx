@@ -122,11 +122,19 @@ export function NotificationBell() {
     if (!n.read) markOne.mutate(id)
 
     // 1. Strukturerad referens (relatedEntityType + relatedEntityId) — nya
-    //    notiser. Sätter focus så mottagarsidan kan öppna rätt detaljvy.
+    //    notiser. Två vägar till detaljvyn, och `entityTypeToPath` avgör
+    //    vilken: bär svaret id:t är det en DJUPLÄNK (typen har en detaljrutt,
+    //    t.ex. `/avisering/<id>`), annars listsidan plus en focus-signal som
+    //    mottagarsidan läser.
     if (n.relatedEntityType && n.relatedEntityId) {
-      const path = entityTypeToPath(n.relatedEntityType)
+      const path = entityTypeToPath(n.relatedEntityType, n.relatedEntityId)
       if (path) {
-        requestFocus({ type: n.relatedEntityType, id: n.relatedEntityId })
+        // Focus sätts BARA för listsidevägen. En focus-signal som ingen sida
+        // läser blir liggande i storen och kan öppna fel detalj när användaren
+        // senare navigerar till en sida som lyssnar på samma typ.
+        if (path === entityTypeToPath(n.relatedEntityType)) {
+          requestFocus({ type: n.relatedEntityType, id: n.relatedEntityId })
+        }
         setOpen(false)
         void navigate({ to: path })
         return

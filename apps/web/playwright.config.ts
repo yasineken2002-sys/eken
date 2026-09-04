@@ -47,7 +47,10 @@ export default defineConfig({
   //    kunde se det. Uteslutningen står nu här i stället, där den syns och
   //    räknas av kanariefågeln i ci.yml.
   //    TILLBAKA NÄR #477 ÄR LÖST: ta bort raden nedan OCH höj
-  //    `E2E_EXPECTED_TESTS` i .github/workflows/ci.yml från 7 till 8.
+  //    `E2E_EXPECTED_TESTS` i .github/workflows/ci.yml med ETT.
+  //    Talet står med flit inte här: det stod "från 7 till 8" och var förlegat
+  //    redan vid nästa spec (mätt 11 i #719). Härled det ur körningen —
+  //    `CI=1 npx playwright test --list` — aldrig ur den här kommentaren.
   testIgnore: process.env.CI ? ['**/*-50x.spec.ts', '**/ai-attachment-composer.spec.ts'] : [],
   // Ett enda kritiskt flöde i denna första PR — kör seriellt och utan
   // parallellism så att test-data och assertions blir deterministiska.

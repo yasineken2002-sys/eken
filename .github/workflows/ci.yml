@@ -1242,7 +1242,7 @@ jobs:
       #   npx playwright test --list <riktig> <påhittad>   → exit 0, 1 test
       # En bortdöpt spec försvann alltså ur CI utan att något blev rött. Ett
       # förväntat antal kan inte krympa tyst.
-      E2E_EXPECTED_TESTS: '9'
+      E2E_EXPECTED_TESTS: '11'
 
     steps:
       - uses: actions/checkout@v4

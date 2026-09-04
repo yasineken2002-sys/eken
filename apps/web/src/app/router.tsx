@@ -304,6 +304,24 @@ const contractBatchReviewRoute = appPage(
 const aiRoute = appPage('/ai', AiPage)
 const maintenanceRoute = appPage('/maintenance', MaintenancePage)
 const aviseringRoute = appPage('/avisering', AviseringPage)
+
+// #648/#719 — djuplänk till EN avi. Rutten renderar LISTSIDAN och låter den
+// öppna detaljmodalen ovanpå, i stället för att vara en egen sida: modalen är
+// enda ytan som visar avins BERÄKNADE skuld (#518), och den bor på listan.
+//
+// Det är ett annat mönster än `/import/contract-batches/$batchId`, som är en
+// egen helsida — och ett annat än useFocusStore, som invoices/leases/maintenance
+// använder. Skälet att inte ta focus-vägen här: den signalen bor i minnet och
+// överlever varken omladdning eller en länk ur ett mejl, vilket är precis vad
+// en notis om en avi som stått stilla i en vecka behöver.
+const aviseringDetailRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/avisering/$noticeId',
+  component: function AviseringDetailRoute() {
+    const { noticeId } = aviseringDetailRoute.useParams()
+    return <AviseringPage focusNoticeId={noticeId} />
+  },
+})
 const backfillRoute = appPage('/backfill', BackfillPage)
 const inspectionsRoute = appPage('/inspections', InspectionsPage)
 const maintenancePlanRoute = appPage('/maintenance-plan', MaintenancePlanPage)
@@ -364,6 +382,7 @@ const routeTree = rootRoute.addChildren([
     aiRoute,
     maintenanceRoute,
     aviseringRoute,
+    aviseringDetailRoute,
     backfillRoute,
     inspectionsRoute,
     maintenancePlanRoute,
