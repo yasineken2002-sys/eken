@@ -92,6 +92,12 @@ export const loginWithPassword = (payload: { email: string; password: string }) 
 // om den bestämde den. Kontovalet är undantaget — där VÄLJER användaren, och
 // servern kontrollerar ändå att raden stod i den signerade kandidatlistan.
 
+/**
+ * Funktionsflaggor FÖRE inloggning. Samma endpoint som webben använder
+ * (#745 PR 3) — bara booleaner, aldrig ett värde eller ett miljönamn.
+ */
+export const publicFeatures = () => get<{ features: { bankId: boolean } }>('/public/config')
+
 export const bankIdStart = () => post<PortalBankIdStart>('/tenant-portal/auth/bankid/start', {})
 
 export const bankIdCollect = (orderRef: string) =>

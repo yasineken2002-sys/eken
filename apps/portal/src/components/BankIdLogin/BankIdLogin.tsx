@@ -1,6 +1,13 @@
 import { useEffect, useReducer, useState } from 'react'
 import QRCode from 'qrcode'
-import { bankIdChoose, bankIdCollect, bankIdStart, extractApiError } from '@/api/portal.api'
+import { useQuery } from '@tanstack/react-query'
+import {
+  bankIdChoose,
+  bankIdCollect,
+  bankIdStart,
+  extractApiError,
+  publicFeatures,
+} from '@/api/portal.api'
 import {
   BANKID_INAKTIV,
   INGEN_HYRESGAST,
@@ -25,6 +32,14 @@ const POLL_MS = 2000
  * enda steget — och för en hyresgäst som aldrig aktiverat portalen är det den
  * FÖRSTA vägen in, inte ett alternativ till ett lösenord hen inte har.
  *
+ * ── KNAPPEN VISAS BARA NÄR API:T SÄGER ATT DEN FUNGERAR ───────────────────
+ *
+ * Är BankID av svarar hela ytan 503 (Stub-providern), och en knapp som leder dit
+ * gör felet till hyresgästens: hen trycker, väntar, och får något som inte går
+ * att skilja från ett trasigt BankID. Frågan går till samma publika endpoint som
+ * webben använder, och utfallet vid ett misslyckat anrop är AV — vet vi inte,
+ * visar vi inte.
+ *
  * ── ALL LOGIK LIGGER I REDUCERAREN ────────────────────────────────────────
  *
  * Komponenten anropar, pollar och renderar. Varje beslut om vad ett svar BETYDER
@@ -33,6 +48,13 @@ const POLL_MS = 2000
  * går genom en egen händelse.
  */
 export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResult) => void }) {
+  const { data: flaggor } = useQuery({
+    queryKey: ['public-config'],
+    queryFn: publicFeatures,
+    // En funktionsflagga ändras genom en omdeploy, inte under en session.
+    staleTime: Infinity,
+    retry: 1,
+  })
   const [state, dispatch] = useReducer(bankIdReducer, BANKID_INAKTIV)
   const [qrUrl, setQrUrl] = useState<string | null>(null)
   const [valjer, setValjer] = useState(false)
@@ -120,6 +142,8 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
   }
 
   const oppen = state.steg !== 'inaktiv' && state.steg !== 'klar'
+
+  if (!flaggor?.features.bankId) return null
 
   return (
     <>
