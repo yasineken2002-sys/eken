@@ -75,6 +75,22 @@ export const LEGAL_DOCUMENTS = {
   privacy: [
     'apps/web/src/features/legal/PrivacyPage.tsx',
     'apps/portal/src/pages/legal/PrivacyPage.tsx',
+    // #576 — DEN TIONDE KOPIAN. Portalen serverar en ANDRA integritetstext på
+    // `/integritet`, `/integritetspolicy` och `/privacy` (apps/portal/src/App.tsx),
+    // medan `/legal/integritet` går till filen ovan. Webben har samma tre alias
+    // men REDIRECTAR dem; portalen gör det inte. Asymmetrin är sannolikt
+    // oavsiktlig, och följden var att en kundvänd juridisk text stod helt utanför
+    // manifestet — den kunde ändras hur som helst utan att något blev rött.
+    //
+    // Att den hör till `privacy` och inte är ett eget dokument följer modellen
+    // som redan gäller: hashen täcker webbens OCH portalens rendering
+    // TILLSAMMANS, eftersom versionen är per dokument och inte per app. Den här
+    // sidan är en tredje rendering av samma dokument.
+    //
+    // ATT DE TRE SÄGER OLIKA SAKER ÄR EN ANNAN FRÅGA, och den är #576:s
+    // egentliga. Den här raden gör bara att en ändring i någon av dem numera
+    // syns. Den påstår inte att de är samma text.
+    'apps/portal/src/pages/PrivacyPage/PrivacyPage.tsx',
   ],
   cookies: [
     'apps/web/src/features/legal/CookiesPage.tsx',
@@ -331,6 +347,33 @@ function selfTest() {
       else console.log(`✅ kanariefågel: ${doc}/${f.split('/')[1]} — ${träffar} av ${rubriker.length} rubriker överlevde, ${prosa.length} tecken prosa`)
     }
   }
+
+  // ── KANARIEFÅGEL 1a: VARJE LISTAD FIL BIDRAR FAKTISKT TILL HASHEN ────────
+  //
+  // Kanariefågel 1 ovan visar att rubrikerna överlever extraheringen. Den visar
+  // INTE att filen påverkar dokumentets hash — en fil kan stå i uppräkningen,
+  // läsas, och ändå inte bidra (tom prosa, en sökväg som pekar på fel fil som
+  // råkar finnas, en extrahering som ger tomt just där). Då är filen bevakad på
+  // pappret och obevakad i praktiken, vilket är sämre än att inte stå med: den
+  // ser skyddad ut.
+  //
+  // Provet stör EN fil i taget och kräver att dokumentets hash ändras. Mängden
+  // är HÄRLEDD ur LEGAL_DOCUMENTS, så en fil som läggs till i framtiden prövas
+  // av sig själv — inklusive #576:s tionde kopia, som är skälet att regeln finns.
+  for (const [doc, filer] of Object.entries(LEGAL_DOCUMENTS)) {
+    const orörd = documentHash(filer, läsRiktig)
+    for (const mål of filer) {
+      const stört = documentHash(filer, (f) =>
+        f === mål ? läsRiktig(f) + '\n<p>ZZSOND_KANARIE</p>\n' : läsRiktig(f),
+      )
+      if (stört === orörd) {
+        fail(`kanariefågel 1a: ${mål} bidrar INTE till ${doc}-hashen — filen är obevakad trots att den står i uppräkningen`)
+      }
+    }
+  }
+  console.log(
+    `✅ kanariefågel 1a: alla ${Object.values(LEGAL_DOCUMENTS).flat().length} listade filer bidrar till sitt dokuments hash`,
+  )
 
   // ── KANARIEFÅGEL 1b: hashen är okänslig för FORMATERING, känslig för INNEHÅLL ──
   const omformaterad = FIXTUR_SIDA.replace(/\n\s+/g, '\n      ').replace(/<p>/g, '<p>\n        ')

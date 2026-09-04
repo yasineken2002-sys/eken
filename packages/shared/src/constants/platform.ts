@@ -136,9 +136,20 @@ export const LEGAL_DOCUMENT_HASHES = {
     version: '1.1',
     sha256: '2777746208020045cba385120cb2a8cb02d274c4319ba6861558470173d02c6a',
   },
+  // #576: hashen ändrades av att MÄNGDEN växte, inte av att en text gjorde det.
+  // Portalens publika integritetssida (`/integritet`, `/integritetspolicy`,
+  // `/privacy`) togs in i LEGAL_DOCUMENTS; den fanns och var oförändrad, men låg
+  // utanför manifestet.
+  //
+  // VERSIONEN STÅR DÄRFÖR KVAR PÅ 1.1, och det är ett beslut och ingen genväg:
+  // en bump tvingar VARJE befintlig organisation att godkänna om vid nästa
+  // inloggning (se kommentaren överst). Att skicka den signalen när ingen text
+  // ändrats vore ett falskt besked om att villkoren ändrats — och det urholkar
+  // exakt den mekanism re-acceptansen finns för. Versionen betecknar den text
+  // kunden ser; den texten är densamma idag som igår.
   privacy: {
     version: '1.1',
-    sha256: '1289189776e0132df0e96692ac720d5bb78b82b918044be16883fe907ca3d0c0',
+    sha256: 'dcf9e6cfca4849ed70b0c19d493bbb98e918a419a502b8d2a9c25999940e3a9e',
   },
   cookies: {
     version: '1.0',
