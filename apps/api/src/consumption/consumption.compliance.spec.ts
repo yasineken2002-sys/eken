@@ -569,6 +569,8 @@ function makeAccrual(o: AccrualOpts = {}) {
         .fn()
         .mockResolvedValue({ fiscalYearStartMonth: o.fiscalYearStartMonth ?? 1 }),
     },
+    // #704 PR 1: spärren frågar om räkenskapsåret först. Inget år är stängt här.
+    fiscalYearClose: { findUnique: jest.fn().mockResolvedValue(null) },
     // PR1b: stängt tillstånd = periodens senaste händelse är CLOSED.
     accountingPeriodEvent: {
       findFirst: jest.fn().mockResolvedValue(o.closed ? { type: 'CLOSED' } : null),

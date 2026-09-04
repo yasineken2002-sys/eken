@@ -47,6 +47,8 @@ function makePrisma(created: Created[]) {
   }
   return {
     accountingPeriodEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+    // #704 PR 1: allocate frågar om räkenskapsåret först.
+    fiscalYearClose: { findUnique: jest.fn().mockResolvedValue(null) },
     closedAccountingPeriod: { findFirst: jest.fn().mockResolvedValue(null) },
     account: {
       findMany: jest.fn().mockResolvedValue(accounts),

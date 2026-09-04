@@ -37,6 +37,8 @@ function makePrisma(befintligt: typeof BEFINTLIGT | null) {
     prisma: {
       // Perioden är öppen.
       accountingPeriodEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+      // #704 PR 1: allocate frågar om räkenskapsåret först.
+      fiscalYearClose: { findUnique: jest.fn().mockResolvedValue(null) },
       account: {
         findMany: jest.fn().mockResolvedValue([
           { id: 'acc-1930', number: 1930 },

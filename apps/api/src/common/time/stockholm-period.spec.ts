@@ -149,6 +149,10 @@ describe('H5 — stängd-period-grinden använder svensk civil tid', () => {
     return {
       organization: { findUnique: jest.fn().mockResolvedValue({ fiscalYearStartMonth: 1 }) },
       accountingPeriodEvent: { findFirst },
+      // #704 PR 1: spärren frågar om räkenskapsåret först. Inget år är stängt i
+      // den här sviten — den vaktar MÅNADSHÄRLEDNINGEN i svensk civil tid, och
+      // ett stängt år hade fällt varje prov innan månaden ens lästes.
+      fiscalYearClose: { findUnique: jest.fn().mockResolvedValue(null) },
       journalEntrySequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 1 }) },
       _findFirst: findFirst,
     }

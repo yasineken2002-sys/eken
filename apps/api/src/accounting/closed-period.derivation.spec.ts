@@ -22,8 +22,10 @@ import { ConflictException } from '@nestjs/common'
 import {
   appendPeriodClosedEvent,
   assertPeriodOpen,
+  fiscalYearLabel,
   getClosedPeriodStates,
   getClosedPeriods,
+  isFiscalYearClosed,
   isPeriodClosed,
   periodKeyOf,
 } from './closed-period'
@@ -43,8 +45,24 @@ interface FakeEvent {
  * (Att den RIKTIGA SQL:en har samma semantik verifieras separat mot Postgres —
  * se rapporten; attrappen bevisar att KODEN runt omkring drar rätt slutsats.)
  */
-function makeDb(events: FakeEvent[]) {
+function makeDb(events: FakeEvent[], stangdaAr: number[] = [], startMonth = 1) {
   return {
+    // #704 PR 1: `assertPeriodOpen` frågar numera OM ÅRET FÖRST. Attrappen bär
+    // därför båda dimensionerna. Defaulten (inga stängda år, kalenderår) gör att
+    // de befintliga månadsproven mäter exakt det de mätte förut.
+    organization: {
+      findUnique: jest.fn(() => Promise.resolve({ fiscalYearStartMonth: startMonth })),
+    },
+    fiscalYearClose: {
+      findUnique: jest.fn(
+        (args: { where: { organizationId_fiscalYear: { fiscalYear: number } } }) =>
+          Promise.resolve(
+            stangdaAr.includes(args.where.organizationId_fiscalYear.fiscalYear)
+              ? { closedAt: new Date('2027-01-02T00:00:00Z') }
+              : null,
+          ),
+      ),
+    },
     accountingPeriodEvent: {
       findFirst: jest.fn(
         (args: { where: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'> }) => {
@@ -393,6 +411,61 @@ describe('T5 PR1b · härledningen "är perioden stängd?"', () => {
         ORG,
       )
       expect(states).toHaveLength(0)
+    })
+  })
+
+  describe('#704 PR 1 — årsdimensionen, och ordningen mellan de två', () => {
+    // Attrapp-provet finns bredvid db-provet därför att det körs ÄVEN utan
+    // DATABASE_URL, och därför att det isolerar ORDNINGEN: vilken av de två
+    // frågorna som avgör meddelandet är kodens beslut, inte databasens.
+    it('stängt ÅR med ÖPPEN månad → kastar, och meddelandet säger ÅR', async () => {
+      const db = makeDb(chain([]), [2026])
+      await expect(isPeriodClosed(db as never, ORG, IN_PERIOD)).resolves.toBe(false)
+      await expect(isFiscalYearClosed(db as never, ORG, IN_PERIOD)).resolves.toBe(true)
+      await expect(assertPeriodOpen(db as never, ORG, IN_PERIOD, 'test')).rejects.toThrow(
+        /Räkenskapsåret 2026 är stängt/,
+      )
+    })
+
+    it('öppet ÅR med STÄNGD månad → meddelandet säger PERIOD, aldrig ÅR', async () => {
+      const db = makeDb(chain(['CLOSED']), [])
+      const fel = await assertPeriodOpen(db as never, ORG, IN_PERIOD, 'test').catch((e: Error) => e)
+      expect((fel as Error).message).toMatch(/Bokföringsperioden 2026-05 är stängd/)
+      expect((fel as Error).message).not.toMatch(/Räkenskapsåret/)
+    })
+
+    it('BÅDA stängda → ÅRET vinner (annars vore årsmeddelandet oåtkomligt)', async () => {
+      const db = makeDb(chain(['CLOSED']), [2026])
+      const fel = await assertPeriodOpen(db as never, ORG, IN_PERIOD, 'test').catch((e: Error) => e)
+      expect((fel as Error).message).toMatch(/Räkenskapsåret 2026 är stängt/)
+      expect((fel as Error).message).not.toMatch(/Bokföringsperioden/)
+    })
+
+    it('årsuppslagningen är ORG-SCOPAD och frågar på det sammansatta villkoret', async () => {
+      const db = makeDb(chain([]), [2026])
+      await isFiscalYearClosed(db as never, ORG, IN_PERIOD)
+      const args = db.fiscalYearClose.findUnique.mock.calls[0]?.[0] as unknown as {
+        where: { organizationId_fiscalYear: { organizationId: string; fiscalYear: number } }
+      }
+      // Regel 2 i filens docblock: en glömd org-scopning betyder att en ANNAN
+      // organisations stängning avgör om DITT år är stängt.
+      expect(args.where.organizationId_fiscalYear).toEqual({
+        organizationId: ORG,
+        fiscalYear: 2026,
+      })
+    })
+
+    it('BRUTET år: maj-datumet tillhör räkenskapsåret 2026, och etiketten visar båda åren', async () => {
+      // startMonth = 5 → 15 maj 2026 hör till räkenskapsåret 2026 (maj 26–apr 27).
+      const db = makeDb(chain([]), [2026], 5)
+      await expect(isFiscalYearClosed(db as never, ORG, IN_PERIOD)).resolves.toBe(true)
+      await expect(assertPeriodOpen(db as never, ORG, IN_PERIOD, 'test')).rejects.toThrow(
+        /Räkenskapsåret 2026\/2027 är stängt/,
+      )
+      // …och ett datum FÖRE startmånaden hör till FÖREGÅENDE räkenskapsår.
+      const iApril = new Date('2026-04-15T10:00:00Z')
+      await expect(isFiscalYearClosed(db as never, ORG, iApril)).resolves.toBe(false)
+      expect(fiscalYearLabel(2025, 5)).toBe('2025/2026')
     })
   })
 })

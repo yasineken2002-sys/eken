@@ -829,6 +829,7 @@ model Organization {
   customers                 Customer[]
   closedPeriods             ClosedAccountingPeriod[]
   periodEvents              AccountingPeriodEvent[]
+  fiscalYearCloses          FiscalYearClose[]
   terminationRequests       TerminationRequest[]
   keyHandovers              KeyHandover[]
   meters                    Meter[]
@@ -889,6 +890,7 @@ model User {
   journalEntries          JournalEntry[]
   closedPeriods           ClosedAccountingPeriod[]
   periodEvents            AccountingPeriodEvent[]
+  fiscalYearCloses        FiscalYearClose[]
   documents               Document[]
   importJobs              ImportJob[]
   aiConversations         AiConversation[]
@@ -1928,9 +1930,10 @@ model JournalEntry {
   reversedBy        JournalEntry? @relation("JournalEntryReversal")
 
   // Bokföringslagen (1999:1078): journalposter är räkenskapsinformation, bevaras 7 år.
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  createdBy    User?              @relation(fields: [createdById], references: [id])
-  lines        JournalEntryLine[]
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy       User?              @relation(fields: [createdById], references: [id])
+  lines           JournalEntryLine[]
+  fiscalYearClose FiscalYearClose?
 
   createdAt DateTime @default(now())
 
@@ -2094,6 +2097,101 @@ model AccountingPeriodEvent {
   @@unique([organizationId, year, month, seq])
 }
 
+// ─── FiscalYearClose — RÄKENSKAPSÅRET är stängt (#704 PR 1) ───────────────────
+//
+// APPEND-ONLY. En rad skrivs en gång och ändras aldrig; spärren bor i databasen
+// (`append_only_guard_actor('closedById')`), inte i vanan. Se
+// 20260828140000_append_only_event_triggers för varför en trigger och inte
+// REVOKE.
+//
+// ── VARFÖR EN EGEN MODELL OCH INTE AccountingPeriodEvent ────────────────────
+//
+// De två svarar på OLIKA FRÅGOR, och det syns först vid brutet räkenskapsår:
+//
+//   AccountingPeriodEvent(org, year, month)  "Är KALENDERMÅNADEN year-month
+//                                             stängd?"  year är ett KALENDERår,
+//                                             month 1–12, härledd ur datumet i
+//                                             svensk civil tid.
+//   FiscalYearClose(org, fiscalYear)         "Är RÄKENSKAPSÅRET fiscalYear
+//                                             stängt?"  härlett med
+//                                             stockholmFiscalYear ur
+//                                             fiscalYearStartMonth.
+//
+// Mätt: med fiscalYearStartMonth = 5 består räkenskapsåret 2026 av månads-
+// nycklarna 2026-05 … 2027-04 — TVÅ kalenderår. Det finns alltså inget
+// (year, month)-par som kan NAMNGE året. En sentinel (month = 0) hade blivit ett
+// lån av ett fält som svarar på en annan fråga: `getClosedPeriodStates` gör
+// DISTINCT ON (year, month) UTAN månadsfilter och hade rapporterat "2026-00" som
+// en stängd period till UI:t. (Samma form som #680.)
+//
+// ── OCH VARFÖR INTE HÄRLEDA "år stängt" UR "alla tolv månader stängda" ──────
+//
+// Därför att härledningen kortsluter sig själv. Årsavslutsverifikatet dateras
+// räkenskapsårets SISTA DAG, alltså inuti en av de tolv månaderna. Vore året
+// stängt DÄRFÖR ATT de tolv är stängda, spärrade året ut sitt eget
+// avslutsverifikat — låset hade slagit igen före det som ska låsa det.
+// Året måste därför ha en egen rad, och den skrivs EFTER verifikatet.
+//
+// ── KONTRAKTET PR 2 (closeFiscalYear) MÅSTE HÅLLA ──────────────────────────
+//
+// Raden är append-only OCH unik per (org, fiscalYear). `journalEntryId` går
+// alltså inte att fylla i efterhand med en UPDATE — triggern avvisar den. Hela
+// stängningen sker i EN transaktion, i den här ordningen:
+//
+//   1. kontrollera att räkenskapsårets månader är stängda
+//   2. bokför årsavslutsverifikatet   ← året är ännu inte stängt, så
+//                                       assertPeriodOpen släpper igenom det
+//   3. skapa FiscalYearClose-raden MED journalEntryId satt
+//
+// Kastar steg 3 P2002 på (organizationId, fiscalYear) är året redan stängt och
+// hela transaktionen rullas tillbaka — det är idempotensen, och den bor i
+// databasen.
+//
+// BOKSLUTSPOSTER FÖRE STÄNGNING: `runYearEndAccrual` (consumption.service.ts)
+// bokför på räkenskapsårets sista dag. Den måste alltså köras INNAN året stängs;
+// efteråt går det inte. Spärren är riktad med flit — den återföring accrualen
+// gör ligger i NÄSTA räkenskapsår och berörs inte.
+//
+// ÅTERÖPPNING FINNS INTE, och det är strukturellt: unik-villkoret plus
+// append-only gör raden till en enkelriktad dörr. Blir återöppning av ett år
+// någonsin ett krav är rätt åtgärd att ersätta den här tabellen med en
+// händelselogg av samma form som AccountingPeriodEvent — inte att lätta på
+// spärren här.
+model FiscalYearClose {
+  id             String @id @default(uuid())
+  organizationId String
+  // Räkenskapsåret, härlett med stockholmFiscalYear(datum, fiscalYearStartMonth).
+  // Vid brutet år är detta det år räkenskapsåret BÖRJAR (2026 = maj 2026–apr 2027).
+  fiscalYear     Int
+
+  closedAt   DateTime @default(now())
+  closedById String?
+
+  // Årsavslutsverifikatet (PR 2). Nullbart bara för att PR 1 inte skapar något
+  // verifikat alls — PR 2 sätter det vid insert, aldrig efteråt (se kontraktet
+  // ovan). @unique: ett verifikat kan bara stänga ett år.
+  //
+  // Restrict, samma skäl som JournalEntry.organization: ett verifikat raderas
+  // aldrig, och fanns en raderingsväg ska den stoppas, inte tyst nolla länken.
+  journalEntryId String? @unique
+
+  // Ögonblicksbild av vad den som stängde FAKTISKT SÅG (PR 2: resultat per
+  // konto, plug-posten mot 2099, jämförelsen mot SIE4:s #RES). Räknas aldrig om.
+  summary Json?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  closedBy     User?         @relation(fields: [closedById], references: [id])
+  journalEntry JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+
+  // Immutabilitetsgaranti: ingen updatedAt (samma mönster som AccountingPeriodEvent).
+  createdAt DateTime @default(now())
+
+  // BÄR IDEMPOTENSEN. Två samtidiga stängningar av samma år: en vinner, den
+  // andra får P2002 och rullas tillbaka i sin helhet.
+  @@unique([organizationId, fiscalYear])
+  @@index([organizationId])
+}
+
 // ─── Bank Reconciliation (Bankavstämning) ─────────────────────────────────────
 
 model BankTransaction {
@@ -2159,7 +2257,7 @@ model BankTransaction {
   // filter ändå; avmatchas den igen stämplas den på nytt.
   autoMatchExcludedAt DateTime?
 
-  createdAt           DateTime              @default(now())
+  createdAt DateTime @default(now())
 
   // Bokföringslagen (1999:1078): banktransaktioner är räkenskapsinformation, bevaras 7 år.
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
@@ -3796,8 +3894,8 @@ model RentNotice {
   // `Organization.paymentDataStaleAlertedAt`: ETT larm per blockeringsperiod,
   // inte ett per dygn. Nollställs i samma skrivning som `blockedSince`, så en
   // avi som fastnar på nytt kan larma på nytt.
-  blockedSince      DateTime?
-  blockedAlertedAt  DateTime?
+  blockedSince     DateTime?
+  blockedAlertedAt DateTime?
 
   // Påminnelseavgift (inkasso PR 2). Default 0 → ingen påverkan på icke-påminda
   // avier. Sätts ATOMISKT med påminnelseavgiftens verifikat (1510 D / 3593 K) när

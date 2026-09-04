@@ -25,6 +25,9 @@ function makePrisma(latest: { type: string } | null) {
   return {
     prisma: {
       accountingPeriodEvent: { findFirst },
+      // #704 PR 1: förhandsbeskedet frågar bara om månaden, men allocate i
+      // samma flöde frågar om året. Inget år är stängt här.
+      fiscalYearClose: { findUnique: jest.fn().mockResolvedValue(null) },
       // Tom kontoplan → flöden som tar sig FÖRBI periodkontrollen stannar här,
       // med ett annat (och igenkännbart) besked.
       account: { findMany: jest.fn().mockResolvedValue([]) },

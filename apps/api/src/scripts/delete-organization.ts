@@ -121,6 +121,9 @@ export const DELETION_STEPS: readonly Step[] = [
   // BÅDA faller via kaskaden. Det här steget är skälet till att skriptet finns.
   { model: 'Lease', restrictAgainst: 'Tenant, Unit (ingen FK mot Organization)', where: byOrg },
   { model: 'KeyHandover', restrictAgainst: 'Organization, Tenant, Unit', where: byOrg },
+  // FÖRE JournalEntry: årsstängningen pekar på årsavslutsverifikatet med
+  // Restrict (#704 PR 1), så raden måste bort innan verifikatet kan raderas.
+  { model: 'FiscalYearClose', restrictAgainst: 'JournalEntry, Organization', where: byOrg },
   { model: 'JournalEntrySequence', restrictAgainst: 'Organization', where: byOrg },
   { model: 'JournalEntry', restrictAgainst: 'Organization', where: byOrg },
   { model: 'InvoiceNumberSequence', restrictAgainst: 'Organization', where: byOrg },

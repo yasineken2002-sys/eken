@@ -69,8 +69,19 @@ const SRC_DIR = join(HERE, '..', 'src')
 /** Enda filen som får röra modellerna direkt. */
 const LOOKUP_FILE = join('accounting', 'closed-period.ts')
 
-/** Prisma-modellerna som bär periodtillståndet. */
-const MODELS = ['accountingPeriodEvent', 'closedAccountingPeriod']
+/**
+ * Prisma-modellerna som bär periodtillståndet.
+ *
+ * `fiscalYearClose` (#704 PR 1) står här av EXAKT samma skäl som de två andra:
+ * årsfrågan har en enda härledning (`stockholmFiscalYear` ur
+ * `Organization.fiscalYearStartMonth`, i closed-period.ts), och en fjärde kopia
+ * som räknar året på egen hand hade blivit tyst fel vid brutet räkenskapsår —
+ * fel år slår upp en rad som inte finns, och svaret blir "året är öppet".
+ */
+const MODELS = ['accountingPeriodEvent', 'closedAccountingPeriod', 'fiscalYearClose']
+
+/** Tabellnamnen i rå SQL, samma mängd som MODELS. */
+const TABLES = ['AccountingPeriodEvent', 'ClosedAccountingPeriod', 'FiscalYearClose']
 
 /** Mutatorer som bryter append-only. `create`/`createMany` är tillåtna. */
 const MUTATORS = ['update', 'updateMany', 'delete', 'deleteMany', 'upsert']
@@ -128,8 +139,14 @@ export function scanSource(text, relPath) {
 
     // Rå SQL mot tabellerna kringgår Prisma och därmed hela hjälparen.
     // blankComments och inte codeMask — satsen står i en sträng.
+    const tabellAlt = TABLES.join('|')
+    const nämnerTabell = new RegExp(`["'\`]?(${tabellAlt})["'\`]?`, 'i')
+    const skrivning = new RegExp(
+      `(insert\\s+into|update|delete\\s+from)\\s+["'\`]?(${tabellAlt})\\b`,
+      'i',
+    )
     utanKommentarer.split('\n').forEach((ln, i) => {
-      if (/["'`]?(AccountingPeriodEvent|ClosedAccountingPeriod)["'`]?/i.test(ln) === false) return
+      if (nämnerTabell.test(ln) === false) return
       if (/\$(executeRaw|executeRawUnsafe|queryRaw|queryRawUnsafe)/.test(ln)) {
         violations.push({
           line: i + 1,
@@ -137,7 +154,7 @@ export function scanSource(text, relPath) {
           detail: 'Rå SQL kringgår den delade uppslagningen — flytta den till closed-period.ts.',
         })
       }
-      if (/(insert\s+into|update|delete\s+from)\s+["'`]?(AccountingPeriodEvent|ClosedAccountingPeriod)\b/i.test(ln)) {
+      if (skrivning.test(ln)) {
         violations.push({
           line: i + 1,
           rule: 'rå INSERT/UPDATE/DELETE mot periodtabellerna',
@@ -175,6 +192,11 @@ const GOOD = [
     'rå DISTINCT ON i closed-period.ts',
     'src/accounting/closed-period.ts',
     `const rows = await client.$queryRaw\`SELECT DISTINCT ON ("year","month") * FROM "AccountingPeriodEvent"\``,
+  ],
+  [
+    'årsuppslagningen i closed-period.ts (#704 PR 1)',
+    'src/accounting/closed-period.ts',
+    `const row = await client.fiscalYearClose.findUnique({ where: { organizationId_fiscalYear: { organizationId, fiscalYear } } })`,
   ],
   [
     'anropare går via hjälparen',
@@ -222,6 +244,16 @@ const BAD = [
     'kopia mot den NYA modellen',
     'src/ai/tools/tool-executor.service.ts',
     `const ev = await this.prisma.accountingPeriodEvent.findFirst({ where: { organizationId, year, month } })`,
+  ],
+  [
+    'egen ÅRS-uppslagning utanför den delade filen (#704 PR 1)',
+    'src/accounting/accounting-period.service.ts',
+    `const y = await this.prisma.fiscalYearClose.findFirst({ where: { organizationId, fiscalYear: date.getFullYear() } })`,
+  ],
+  [
+    'rå SQL mot FiscalYearClose',
+    'src/accounting/accounting.service.ts',
+    `await this.prisma.$queryRawUnsafe('SELECT 1 FROM "FiscalYearClose" WHERE "organizationId" = $1', org)`,
   ],
   [
     'typfiltrerad kopia (tyst tillåtare)',

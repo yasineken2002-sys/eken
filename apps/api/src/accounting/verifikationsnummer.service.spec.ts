@@ -14,6 +14,8 @@ import { VerifikationsnummerService } from './verifikationsnummer.service'
 function makeClient(opts: {
   fiscalYearStartMonth?: number | null
   closed?: boolean
+  /** #704 PR 1: räkenskapsåret stängt (FiscalYearClose-rad finns). */
+  closedYear?: boolean
   lastNumber?: number
 }) {
   const upsert = jest.fn().mockResolvedValue({ lastNumber: opts.lastNumber ?? 1 })
@@ -30,6 +32,12 @@ function makeClient(opts: {
     // PR1b: stängt tillstånd härleds ur periodens SENASTE händelse.
     accountingPeriodEvent: {
       findFirst: jest.fn().mockResolvedValue(opts.closed ? { type: 'CLOSED' } : null),
+    },
+    // #704 PR 1: årsdimensionen. `allocate` frågar om BÅDA, året först.
+    fiscalYearClose: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValue(opts.closedYear ? { closedAt: new Date('2027-01-02') } : null),
     },
     journalEntrySequence: { upsert },
   }
@@ -119,6 +127,20 @@ describe('VerifikationsnummerService.allocate', () => {
       service.allocate(client as never, 'org-1', new Date('2026-06-15T00:00:00Z')),
     ).rejects.toBeInstanceOf(ConflictException)
     // Ingen sekvensökning får ske om perioden är stängd.
+    expect(upsert).not.toHaveBeenCalled()
+  })
+
+  it('vägrar tilldela nummer i ett stängt RÄKENSKAPSÅR, med öppen månad (#704 PR 1)', async () => {
+    const { client, upsert } = makeClient({ closed: false, closedYear: true })
+    const fel = await service
+      .allocate(client as never, 'org-1', new Date('2026-06-15T00:00:00Z'))
+      .catch((e: Error) => e)
+
+    expect(fel).toBeInstanceOf(ConflictException)
+    // Månaden är öppen — faller anropet ändå är det årsspärren som gör det, och
+    // meddelandet ska säga det, eftersom åtgärderna skiljer sig åt.
+    expect((fel as Error).message).toMatch(/Räkenskapsåret 2026 är stängt/)
+    // Samma krav som för månaden: numret får inte brännas.
     expect(upsert).not.toHaveBeenCalled()
   })
 })
