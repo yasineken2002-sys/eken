@@ -16,6 +16,7 @@ import { SigningCryptoService } from '../signing/signing-crypto.service'
 import { AuthService } from '../auth/auth.service'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { runCronSafely } from '../common/cron/cron-safety'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { BANKID_PROVIDER, type BankIdProvider, type BankIdStartResult } from './bankid.types'
 import { signChooseToken, verifyChooseToken } from './bankid-choose-token'
 
@@ -116,6 +117,10 @@ export class BankIdAuthService {
     const subjectHash = this.crypto.blindIndex(res.completionData.personalNumber)
     const subjectEnc = this.crypto.encrypt(res.completionData.personalNumber)
 
+    // PRISMA_DEFAULT_TX_LIMITS, uttryckligen: transaktionen gör två skrivningar
+    // mot indexerade nycklar och har ingen väntan i sig — den behöver inte
+    // pengavägarnas längre fönster. Gränsen står ändå skriven, så nästa läsare
+    // ser att den är VALD och inte ärvd (#488).
     await this.prisma.$transaction(async (tx) => {
       // Idempotent: samma person + samma konto en gång. Ett andra försök är
       // inte ett fel — användaren tryckte två gånger.
@@ -132,7 +137,7 @@ export class BankIdAuthService {
         where: { orderRef, consumedAt: null },
         data: { consumedAt: now },
       })
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
 
     this.logger.log(`[bankid] identitet ansluten till konto ${userId}`)
     return { status: 'complete' }

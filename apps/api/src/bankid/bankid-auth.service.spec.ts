@@ -250,7 +250,13 @@ describe('inloggning (LOGIN)', () => {
     const db = makeDb()
     const { service } = bygg(db, new MockBankIdProvider({ orderRef: 'o1' }))
     await service.loginStart('127.0.0.1', NU)
-    expect(db.orders[0]).toMatchObject({ purpose: 'LOGIN', userId: undefined })
+    expect(db.orders).toHaveLength(1)
+    expect(db.orders[0]).toMatchObject({ purpose: 'LOGIN' })
+    // `toMatchObject({ userId: undefined })` KRÄVER att nyckeln finns med värdet
+    // undefined och faller när fältet utelämnas helt — vilket är precis vad
+    // loginStart gör. Frågan här är "ingen användare", inte "nyckeln finns":
+    // assertionen ska hålla för båda formerna, och tystnar inte för någon av dem.
+    expect(db.orders[0]?.userId).toBeUndefined()
   })
 
   it('EN träff → TokenPair via issueTokensForUser, och ordern förbrukas', async () => {

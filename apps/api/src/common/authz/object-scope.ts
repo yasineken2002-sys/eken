@@ -181,6 +181,24 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
   Organization: { scope: 'out', reason: 'toppnivån själv — inget att scopa mot' },
   RefreshToken: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet, inte av ett id' },
   PasswordResetToken: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet' },
+  // BankID-identiteten (#745 PR 2). Syskon till RefreshToken ovan, inte till de
+  // förälder-scopade: den hör visserligen till ett konto som bär organizationId,
+  // men ingen väg dit går via ett id från klienten. Skrivvägen är det
+  // sammansatta unika villkoret (provider, subjectHash, userId) — subjectHash är
+  // en HMAC av personnumret och går inte att gissa, och userId kommer ur JWT:n
+  // via den order som startades av samma konto. Läsvägarna är blindindexet
+  // (inloggning) och userId (kontots egen lista). Ingen organisation ingår i
+  // frågan alls: aktören ÄR användaren, så det finns inget org-id att scopa mot.
+  //
+  // DETTA ÄNDRAS av en "koppla bort BankID"-endpoint som tar ett identitets-id
+  // från klienten. Då är modellen förälder-scopad med User som förälder, och den
+  // raden måste flyttas — annars inventeras skrivstället aldrig.
+  UserBankIdIdentity: {
+    scope: 'out',
+    reason:
+      'auth-realm: nås via blindindex eller userId ur JWT, aldrig via ett id från ' +
+      'klienten. Se kommentaren ovan för vad som flyttar den till parent-scoped.',
+  },
   UserInvitation: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet' },
   TenantMagicLink: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet' },
   TenantSession: { scope: 'out', reason: 'auth-realm: scopas av sessionstoken' },
@@ -189,6 +207,16 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
   AiResumptionRun: {
     scope: 'out',
     reason: 'plattformens körningslogg — ingen klientväg, inget adresserbart id',
+  },
+  // Pågående BankID-order (#745 PR 2). Adresseras av `orderRef` — providerns
+  // opaka handtag — aldrig av sitt eget id, och raden bär ingen organisation:
+  // vid LOGIN är det okänt vem det är förrän ordern fullbordats. Samma form som
+  // TenantMagicLink ovan. Skyddet mot att någon annan förbrukar ordern ligger
+  // inte i en objektnivå-scopning utan i att en ENROLL-order bär det userId den
+  // startades av, och att collect nekar när det inte är den inloggade.
+  BankIdOrder: {
+    scope: 'out',
+    reason: 'auth-realm: scopas av orderRef, aldrig av sitt id; bär ingen organisation',
   },
   PlatformUser: { scope: 'out', reason: 'egen realm (PlatformGuard), ingen org-koppling' },
   PlatformRefreshToken: { scope: 'out', reason: 'egen realm, scopas av tokenvärdet' },
