@@ -124,8 +124,11 @@ function ConsentKort({
         hidden: { opacity: 0, y: 8 },
         show: { opacity: 1, y: 0, transition: { duration: 0.2 } },
       }}
-      whileHover={{ y: -2, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
-      className="border-line bg-surface rounded-2xl border p-5 transition-shadow"
+      // Lyftet i Framer Motion, skuggan i Tailwind. Designsystemets kortspec
+      // skriver skuggan som en rå rgba(), men `check-design-tokens` fäller varje
+      // NY sådan — och `hover:shadow-md` ger samma yta utan ett färgvärde i koden.
+      whileHover={{ y: -2 }}
+      className="border-line bg-surface rounded-2xl border p-5 transition-shadow hover:shadow-md"
       data-testid={`bank-consent-${index}`}
     >
       <div className="flex items-start justify-between gap-3">
