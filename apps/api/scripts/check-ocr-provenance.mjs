@@ -85,7 +85,7 @@ export function parseRegistry(text, name) {
  */
 export function findExtractorCalls(text) {
   const träffar = []
-  const re = new RegExp(`\\b(${PROSE}|${RAW})\\s*\\(\\s*([\\w.?![\\]]+)\\s*\\)`, 'g')
+  const re = new RegExp(`(?<![\\p{L}\\p{N}_$])(${PROSE}|${RAW})\\s*\\(\\s*([\\p{L}\\p{N}_$.?![\\]]+)\\s*\\)`, 'gu')
   // KOD, inte råtext: ett anropsexempel i en kommentar är inget anrop, och
   // hade räknats som ett oklassat fält.
   const kod = codeMask(text)
@@ -233,6 +233,54 @@ function selfTest() {
     ok = false
     console.error(`❌ ${m}`)
   }
+
+  // ── #713: DE TVÅ STÄLLEN SOM BYTTES ─────────────────────────────────────
+  //
+  // (1) EXTRAKTORANROPET. Både funktionsnamnets avgränsning och ARGUMENTET var
+  //     ASCII. Argumentet är den mätbara halvan — uppmätt mot origin/main:
+  //
+  //       läsOcrProsa(ärendeText)   \w → argumentet blev "rendeText"   KAPAD
+  //       läsOcrProsa(förText.rå)   \w → "rText.r"                     KAPAD
+  //
+  //     Anropet HITTAS i båda fallen, med FEL argument, och antalet är
+  //     oförändrat. Argumentet är det som klassar anropet som grindat eller
+  //     ogrindat — ett kapat namn matchar ingen grindvariabel, så prosa-
+  //     extraktion utan kontrollsiffra kan läsas som grindad. Falsk grön.
+  //
+  //     Och namnets egen gräns: `\b${PROSE}` matchar inuti `denPå<PROSE>`, så
+  //     ett anrop till en HELT ANNAN funktion räknades som extraktoranrop.
+  //
+  // (2) `!/[A-Za-z]/.test(f)` — en av #713:s fyra "svaga rimlighetskontroller".
+  //     Den kräver att ett härlett fältnamn bär minst en ASCII-bokstav. Den
+  //     fäller inte ett svenskt namn i praktiken (`ärende` bär r, e, n, d),
+  //     men antagandet är detsamma och den ligger i självtestet, där den
+  //     påstår att masken inte blankat stränginnehållet.
+  {
+    const anrop = (kod) => findExtractorCalls(kod).map((c) => `${c.extraktor}(${c.fält})`)
+    const a1 = anrop(`const x = ${PROSE}(ärendeText)`)
+    if (a1.join() !== `${PROSE}(ärendeText)`)
+      fail(`#713 (1) KAPAD: argumentet kapades — ${JSON.stringify(a1)}`)
+    else console.log('✅ #713 (1) KAPAD: argument med svensk initial fångas helt')
+    const a2 = anrop(`const x = ${PROSE}(förText.rå)`)
+    if (a2.join() !== `${PROSE}(förText.rå)`)
+      fail(`#713 (1) KAPAD: sökvägsargument kapades — ${JSON.stringify(a2)}`)
+    else console.log('✅ #713 (1) KAPAD: sökvägsargument med svenska tecken fångas helt')
+    if (anrop(`const x = denPå${PROSE}(t)`).length !== 0)
+      fail('#713 (1) FALSK GRÖN: `denPå<PROSE>` räknades som extraktoranrop')
+    else console.log('✅ #713 (1) FALSK GRÖN: ett annat namn är inget extraktoranrop')
+    if (anrop(`const x = x${PROSE}(t)`).length !== 0)
+      fail('#713 (1) MOTPROV: ASCII-delsträng räknades som extraktoranrop')
+    if (anrop(`const x = ${PROSE}(t)`).length !== 1)
+      fail('#713 (1) MOTPROV: det äkta anropet slutade räknas')
+    // (2) HAR MEDVETET INGEN KANARIEFÅGEL, och skälet är substantiellt:
+    //     `[A-Za-z]` och `[\p{L}]` ger SAMMA svar för varje realistiskt namn,
+    //     eftersom ett svenskt namn alltid bär minst en ASCII-bokstav
+    //     (`ärende` bär r, e, n, d). Uppmätt: mutationen tillbaka till
+    //     `[A-Za-z]` lämnar självtestet GRÖNT. Bytet är alltså ren HÄRDNING —
+    //     samma form, samma antagande, ingen mätbar skillnad — och ett prov
+    //     som påstod annat hade varit pynt. Det står här så att frånvaron är
+    //     ett beslut och inte ett förbiseende.
+  }
   const grön = (label, r) =>
     r.length === 0
       ? console.log(`✅ inget falsklarm: ${label}`)
@@ -260,7 +308,7 @@ function selfTest() {
   // varje klassificering nedan hade blivit vakuös.
   {
     const r = parseRegistry(PROVENANCE_OK, 'INTENT_OCR_FIELDS') ?? []
-    if (r.length === 0 || r.some((f) => !/[A-Za-z]/.test(f))) {
+    if (r.length === 0 || r.some((f) => !/[\p{L}]/u.test(f))) {
       fail(`registret gav ${JSON.stringify(r)} — masken har blankat stränginnehållet`)
     } else console.log(`✅ registret bär riktiga fältnamn: ${r.join(', ')}`)
   }
