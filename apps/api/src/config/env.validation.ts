@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { E2E_AUTH_THROTTLE_FLAG, authThrottleRelaxed } from '../common/throttler/auth-throttle-mode'
+import { BANKID_PROVIDER_VAR, bankIdMockRequested } from '../bankid/bankid-provider-mode'
 import {
   PLACEHOLDER_CHECKED_VARS,
   SECRET_FORM_VARS,
@@ -138,11 +139,16 @@ export const FLAG_CONDITIONAL_VARS = {
  *
  * VAD DEN INTE KAN SE: att någon läser en variabel ur `config` utan att gå via
  * `CRITICAL`, `OPTIONAL_FORMAT`, `FLAG_CONDITIONAL_VARS`, de två
- * platshållar-arrayerna eller `E2E_AUTH_THROTTLE_FLAG`. Just de fem är
- * uttömmande i dag därför att loopar och namngivna läsningar går genom dem —
- * lägger du till en sjätte läsväg hör den hemma här också, annars öppnas hålet
- * ovan igen. Felriktningen är den milda: en nyckel för MYCKET i mängden gör
- * bara att specen nollställer något ofarligt.
+ * platshållar-arrayerna, `E2E_AUTH_THROTTLE_FLAG` eller `BANKID_PROVIDER_VAR`.
+ * Just de sex är uttömmande i dag därför att loopar och namngivna läsningar går
+ * genom dem — lägger du till en sjunde läsväg hör den hemma här också, annars
+ * öppnas hålet ovan igen. Felriktningen är den milda: en nyckel för MYCKET i
+ * mängden gör bara att specen nollställer något ofarligt.
+ *
+ * (`BANKID_PROVIDER_VAR` var den sjätte, tillagd med mock-vägen i #745 PR 3. Den
+ * är ett belägg för att raden ovan behövs: variabeln kan FÄLLA en boot — 'mock'
+ * i produktion — och en spec som inte nollställer den blir röd hos den som råkar
+ * ha den satt lokalt, med ett meddelande om ett värde testet aldrig valde.)
  */
 export const VALIDATED_ENV_VARS: readonly string[] = [
   ...new Set<string>([
@@ -153,6 +159,7 @@ export const VALIDATED_ENV_VARS: readonly string[] = [
     ...PLACEHOLDER_CHECKED_VARS,
     ...SECRET_FORM_VARS,
     E2E_AUTH_THROTTLE_FLAG,
+    BANKID_PROVIDER_VAR,
   ]),
 ]
 
@@ -301,6 +308,19 @@ export function validateEnv(config: EnvRecord): EnvRecord {
   //    kombinationen, så anropet är en no-op i alla andra lägen.
   try {
     authThrottleRelaxed(config as NodeJS.ProcessEnv)
+  } catch (err) {
+    errors.push(`  • ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  // 6. BankID:s MOCK-provider får ALDRIG väljas i produktion. Samma form och
+  //    samma skäl som punkt 5 — men OBEROENDE av BANKID_ENABLED, med flit: en
+  //    produktionsmiljö som bär BANKID_PROVIDER=mock är felkonfigurerad redan
+  //    när variabeln sätts, inte först den dag någon tänder flaggan. Att vänta
+  //    på flaggan hade lagt upptäckten i den sämsta av stunder.
+  //    `bankIdMockRequested` kastar bara i just den otillåtna kombinationen, så
+  //    anropet är en no-op i alla andra lägen.
+  try {
+    bankIdMockRequested(config as NodeJS.ProcessEnv)
   } catch (err) {
     errors.push(`  • ${err instanceof Error ? err.message : String(err)}`)
   }

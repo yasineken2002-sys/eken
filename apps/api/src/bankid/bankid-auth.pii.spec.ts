@@ -102,7 +102,7 @@ describe('personnummer i loggen (dynamiskt)', () => {
           blindIndex: (pn: string) => `hash:${pn.slice(0, 4)}`,
           encrypt: () => 'enc',
         } as never,
-        { issueTokensForUser: jest.fn() } as never,
+        { issueAuthResponseForUser: jest.fn() } as never,
         { getOrThrow: () => 'x'.repeat(48) } as never,
         { record: jest.fn() } as never,
       )

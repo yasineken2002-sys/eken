@@ -26,7 +26,7 @@ test('hyresvärd: logga in → skapa avi → markera betald → syns som betald'
   await page.goto('/login')
   await page.getByLabel('E-postadress').fill(org.email)
   await page.locator('input[autocomplete="current-password"]').fill(org.password)
-  await page.getByRole('button', { name: 'Logga in' }).click()
+  await page.getByRole('button', { name: 'Logga in', exact: true }).click()
 
   // Inloggning lyckades → vi lämnar /login. Gå till avisering.
   await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 })

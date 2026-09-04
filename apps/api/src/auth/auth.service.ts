@@ -621,21 +621,35 @@ export class AuthService {
   // ── Tokens ──────────────────────────────────────────────────────────────────
 
   /**
-   * TokenPair för ett konto som redan är AUKTORISERAT någon annanstans.
+   * Hel inloggningssession för ett konto som redan är AUKTORISERAT någon
+   * annanstans.
    *
    * Finns för BankID-inloggningen (#745 PR 2), som verifierar identiteten via en
    * BankID-order i stället för med ett lösenord. Metoden gör INGEN
-   * behörighetskontroll — den utfärdar tokens för det konto den får — och den är
+   * behörighetskontroll — den utfärdar en session för det konto den får — och är
    * därför medvetet smal: den laddar användaren själv, så en anropare inte kan
    * skicka in ett hopplockat payload, och den går genom `issueTokens` så att det
    * bara finns EN väg som signerar en access-token och skriver en RefreshToken.
+   *
+   * ── VARFÖR HELA AuthResponse OCH INTE BARA TokenPair ──────────────────────
+   *
+   * Metoden gav TokenPair i PR 2, vilket var allt API:t då behövde. PR 3 bygger
+   * gränssnittet, och där syns bristen: `useAuthStore.setAuth` kräver `user` och
+   * `organization`, och lösenordsinloggningen levererar dem i samma svar. En
+   * BankID-inloggning som bara gav tokens hade tvingat frontend att göra ett
+   * extra `GET /auth/me` — alltså en ANNAN inloggningssekvens för samma resultat,
+   * med ett fönster där man är inloggad men saknar identitet i store:n.
+   *
+   * De två halvorna sätts inte ihop för hand: `me()` ÄR källan till den formen,
+   * och används av `GET /auth/me` såväl som här. Vore fälten avskrivna i stället
+   * hade de två svaren kunnat glida isär utan att något blev rött.
    *
    * `mustChangePassword` läses ur raden och sätts inte till false: en användare
    * som måste byta lösenord ska mötas av det oavsett hur hen loggade in. Att
    * BankID-vägen inte använder lösenordet gör inte kravet inaktuellt — kontot
    * kan fortfarande nås med lösenord.
    */
-  async issueTokensForUser(userId: string): Promise<TokenPair> {
+  async issueAuthResponseForUser(userId: string): Promise<AuthResponse> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -650,13 +664,14 @@ export class AuthService {
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Inloggningen kunde inte slutföras')
     }
-    return this.issueTokens(
+    const tokens = await this.issueTokens(
       user.id,
       user.email,
       user.organizationId,
       user.role,
       user.mustChangePassword,
     )
+    return { ...tokens, ...(await this.me(user.id, user.organizationId)) }
   }
 
   private async issueTokens(

@@ -204,7 +204,7 @@ POST /users/:id/reactivate                                      OWNER
 POST /users/invite                                              ADMIN, OWNER
 
 
-## 1b. HTTP-endpoints UTAN rollgrind (165 st)
+## 1b. HTTP-endpoints UTAN rollgrind (168 st)
 
 RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som
 granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli
@@ -218,7 +218,7 @@ konstruktion osynlig för driftbevakningen. #81 visade vad det kostade —
 GET /import/jobs var varken självscopad eller avsedd att vara öppen, låg
 öppen för VIEWER, och fanns inte i den här filen medan hålet var öppet.
 
-### a) Org-inloggad, öppen för VARJE roll (69 st)
+### a) Org-inloggad, öppen för VARJE roll (71 st)
 
 Enbart globala guards — antingen ingen @UseGuards alls, eller en som bara
 räknar upp JwtAuthGuard/RolesGuard och därmed inte ändrar något (#441).
@@ -232,7 +232,7 @@ det är precis vad VIEWER ska betyda. Frågan är: läser VIEWER DOMÄNDATA,
 eller det OPERATIVA SPÅRET av en handling som kräver högre roll? Spåren
 grindas och flyttar därmed till avsnitt 1.
 
-GRANSKADE — avsiktligt öppna, med skälet (69 st)
+GRANSKADE — avsiktligt öppna, med skälet (71 st)
 
 RÄCKVIDD: granskad som ANROPSYTA — vem som får anropa. INTE som SVARSYTA:
 vad svaret bär är inte prövat här. Se #445.
@@ -244,11 +244,36 @@ ytor varav ingen ägde det, och banktransaktionsraden, som nåddes genom ett
 verkningslösa. Ingen av dem hade upptäckts av en genomgång av den här hinken,
 hur noggrann den än varit — frågan ställs aldrig här.
 
+DELETE /auth/bankid/identity/:id                                bankid.controller.ts
+    Kopplar bort en anslutning från DET EGNA kontot. Ingen @Roles av samma skäl.
+
+    DEN ENDA ENDPOINTEN I MODULEN DÄR ETT ID KOMMER FRÅN KLIENTEN, och därför
+    den enda som kan bära en objektnivå-IDOR. Grinden är skrivningens eget
+    villkor: `deleteMany where { id, userId }`, atomiskt, med userId ur JWT:n.
+    En annans identitets-id träffar noll rader och ger NotFound — samma svar
+    som ett id som inte finns, så endpointen är inget orakel.
+
+    Modellen är sedan den här ändringen klassificerad `parent-scoped` med User
+    som förälder i object-scope.ts, och skrivstället är deklarerat i
+    CALLER_SCOPED — heuristiken ser inte en bindning som står i en skrivnings
+    where.
+
 DELETE /users/me                                                users.controller.ts
     SJÄLVSCOPAD SKRIVNING — raderar `current.sub`, inte en godtycklig användare
     (det är DELETE /users/:id, som är OWNER). GDPR Art. 17, och kräver dessutom
     lösenordsbekräftelse. En rollgrind hade nekat en VIEWER att radera sitt eget
     konto.
+
+GET /auth/bankid/identities                                     bankid.controller.ts
+    Listar DET EGNA kontots BankID-anslutningar. Ingen @Roles av samma skäl som
+    enroll-vägarna: att se och sköta sin egen inloggningsmetod är en handling på
+    det egna kontot, inte en förvaltningshandling.
+
+    SVARET BÄR INGEN DATA OM ANDRA: filtret är `userId` ur JWT:n, och vyn är två
+    fält — id och verifiedAt. `subjectHash` och `subjectEnc` lämnar aldrig
+    servern; hashen är inte personnumret men är ett stabilt globalt
+    uppslagsvärde för en person, och skulle avslöja om två konton tillhör
+    samma människa.
 
 GET /auth/me                                                    auth.controller.ts
     Självscopad på JWT:ns `sub` — läser inte organisationen, utan den inloggade.
@@ -662,12 +687,13 @@ POST /tenant-portal/maintenance/:id/comment                     TenantAuthGuard 
 POST /tenant-portal/maintenance/:id/images                      TenantAuthGuard               tenant-portal.controller.ts
 POST /tenant-portal/maintenance                                 TenantAuthGuard               tenant-portal.controller.ts
 
-### c) VERKLIGT ÖPPNA — ingen autentisering alls (28 st)
+### c) VERKLIGT ÖPPNA — ingen autentisering alls (29 st)
 
 @Public() utan någon egen guard. Ingen inloggning krävs. En NY rad här är
 den mest säkerhetskänsliga ändring den här filen kan visa.
 
 GET /health                                                     health.controller.ts
+GET /public/config                                              public-config.controller.ts
 GET /public/plans                                               public-plans.controller.ts
 GET /reconciliation/psd2/callback                               psd2.controller.ts
 GET /tenant-portal/activation/:token/contract                   tenant-portal.controller.ts

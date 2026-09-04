@@ -85,15 +85,36 @@ describe('MockBankIdProvider — deterministisk sekvens', () => {
     expect(res).toEqual({ status: 'failed', reason: 'userCancel' })
   })
 
-  it('start NOLLSTÄLLER räknaren — två flöden i samma prov ska inte smitta', async () => {
-    const mock = new MockBankIdProvider({ pendingCollects: 1 })
+  it('start NOLLSTÄLLER räknaren FÖR SIN ORDER — ett omtag börjar om', async () => {
+    // Provet mätte tidigare `mock.calls === 0` efter en ny start, alltså att en
+    // GLOBAL räknare nollställdes. Räkningen ligger sedan mock-vägen (#745 PR 3)
+    // per orderRef, och `calls` är summan över alla ordrar — den kan inte längre
+    // gå bakåt. Invarianten provet faktiskt skyddar är oförändrad och prövas nu
+    // direkt: samma order startad om ger om sekvensen.
+    const mock = new MockBankIdProvider({ orderRef: 'fix', pendingCollects: 1 })
     await mock.start({ endUserIp: '127.0.0.1' })
-    expect((await mock.collect('x')).status).toBe('pending')
-    expect((await mock.collect('x')).status).toBe('complete')
+    expect((await mock.collect('fix')).status).toBe('pending')
+    expect((await mock.collect('fix')).status).toBe('complete')
 
     await mock.start({ endUserIp: '127.0.0.1' })
-    expect(mock.calls).toBe(0)
-    expect((await mock.collect('x')).status).toBe('pending')
+    expect((await mock.collect('fix')).status).toBe('pending')
+  })
+
+  it('TVÅ SAMTIDIGA ORDRAR äter inte av varandras sekvens', async () => {
+    // Det här kunde inte prövas alls med en global räknare, och det är precis
+    // vad som går sönder när providern slutar vara en per-prov-instans och blir
+    // en singleton i en levande process: två inloggningar i två flikar hade gett
+    // ett `complete` för fel order.
+    const mock = new MockBankIdProvider({ pendingCollects: 1 })
+    const a = await mock.start({ endUserIp: '127.0.0.1' })
+    const b = await mock.start({ endUserIp: '127.0.0.1' })
+    expect(a.orderRef).not.toBe(b.orderRef)
+
+    expect((await mock.collect(a.orderRef)).status).toBe('pending')
+    expect((await mock.collect(b.orderRef)).status).toBe('pending')
+    expect((await mock.collect(a.orderRef)).status).toBe('complete')
+    expect((await mock.collect(b.orderRef)).status).toBe('complete')
+    expect(mock.calls).toBe(4)
   })
 
   it('start ger orderRef och båda starthandtagen', async () => {

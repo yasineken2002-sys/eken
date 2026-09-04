@@ -1,4 +1,14 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Req,
+} from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import type { FastifyRequest } from 'fastify'
@@ -20,7 +30,7 @@ import { BankIdChooseDto, BankIdCollectDto } from './dto/bankid.dto'
  *
  * `AuthController` bor i `AuthModule`, och en controller kan bara injicera det
  * som syns i SIN moduls kontext. `BankIdAuthService` bor i `BankidModule`, som
- * i sin tur importerar `AuthModule` (för `issueTokensForUser`). Att lägga
+ * i sin tur importerar `AuthModule` (för `issueAuthResponseForUser`). Att lägga
  * endpointsen i `AuthController` hade alltså krävt att `AuthModule` importerar
  * `BankidModule` — en cykel, som bara går att lösa med `forwardRef` åt båda hållen.
  *
@@ -67,6 +77,27 @@ export class BankIdController {
   @ApiOperation({ summary: 'Hämta status för pågående BankID-anslutning' })
   enrollCollect(@CurrentUser() user: JwtPayload, @Body() dto: BankIdCollectDto) {
     return this.bankid.enrollCollect(user.sub, dto.orderRef, new Date())
+  }
+
+  /** Kontots egna anslutningar. Bär aldrig blindindex eller chiffertext. */
+  @Get('bankid/identities')
+  @ApiOperation({ summary: 'Lista inloggat kontos BankID-anslutningar' })
+  listIdentities(@CurrentUser() user: JwtPayload) {
+    return this.bankid.listIdentities(user.sub)
+  }
+
+  /**
+   * Kopplar bort en anslutning från DET EGNA kontot.
+   *
+   * `:id` kommer från klienten, och det är den ENDA endpointen i modulen där ett
+   * id gör det. Avgränsningen ligger i skrivningens eget villkor — `deleteMany
+   * where { id, userId }` — och inte i en läsning före. Se `removeIdentity`.
+   */
+  @Delete('bankid/identity/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Koppla bort en BankID-anslutning från inloggat konto' })
+  removeIdentity(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.bankid.removeIdentity(user.sub, id)
   }
 
   @Post('bankid/login/start')

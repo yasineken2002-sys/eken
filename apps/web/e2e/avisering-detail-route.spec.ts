@@ -63,7 +63,7 @@ async function loggaIn(page: Page) {
   await page.goto('/login')
   await page.getByLabel('E-postadress').fill(org.email)
   await page.locator('input[autocomplete="current-password"]').fill(org.password)
-  await page.getByRole('button', { name: 'Logga in' }).click()
+  await page.getByRole('button', { name: 'Logga in', exact: true }).click()
   await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 })
 }
 

@@ -177,28 +177,22 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
   // Ett UTSKICK når man bara via sin avi, som bär organizationId (#656).
   RentNoticeSend: { scope: 'parent-scoped', parent: 'RentNotice' },
 
+  // ── VILLKORET FRÅN PR 2 SLOG IN ─────────────────────────────────────────
+  //
+  // `UserBankIdIdentity` stod som `out` i #745 PR 2, med skälet att ingen väg
+  // dit gick via ett id från klienten: skrivvägen var det sammansatta unika
+  // villkoret och läsvägarna blindindexet respektive userId ur JWT:n. Vid raden
+  // stod vad som skulle ändra klassificeringen — "en koppla bort BankID-endpoint
+  // som tar ett identitets-id från klienten" — och PR 3 byggde exakt den.
+  //
+  // Raden är alltså flyttad därför att villkoret inföll, inte därför att någon
+  // ändrade sig. Föräldern är `User`, som bär organizationId.
+  UserBankIdIdentity: { scope: 'parent-scoped', parent: 'User' },
+
   // ── Utanför: kan inte bära en objektnivå-IDOR ────────────────────────────
   Organization: { scope: 'out', reason: 'toppnivån själv — inget att scopa mot' },
   RefreshToken: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet, inte av ett id' },
   PasswordResetToken: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet' },
-  // BankID-identiteten (#745 PR 2). Syskon till RefreshToken ovan, inte till de
-  // förälder-scopade: den hör visserligen till ett konto som bär organizationId,
-  // men ingen väg dit går via ett id från klienten. Skrivvägen är det
-  // sammansatta unika villkoret (provider, subjectHash, userId) — subjectHash är
-  // en HMAC av personnumret och går inte att gissa, och userId kommer ur JWT:n
-  // via den order som startades av samma konto. Läsvägarna är blindindexet
-  // (inloggning) och userId (kontots egen lista). Ingen organisation ingår i
-  // frågan alls: aktören ÄR användaren, så det finns inget org-id att scopa mot.
-  //
-  // DETTA ÄNDRAS av en "koppla bort BankID"-endpoint som tar ett identitets-id
-  // från klienten. Då är modellen förälder-scopad med User som förälder, och den
-  // raden måste flyttas — annars inventeras skrivstället aldrig.
-  UserBankIdIdentity: {
-    scope: 'out',
-    reason:
-      'auth-realm: nås via blindindex eller userId ur JWT, aldrig via ett id från ' +
-      'klienten. Se kommentaren ovan för vad som flyttar den till parent-scoped.',
-  },
   UserInvitation: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet' },
   TenantMagicLink: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet' },
   TenantSession: { scope: 'out', reason: 'auth-realm: scopas av sessionstoken' },
@@ -1123,16 +1117,36 @@ export function toInventory(sites: WriteSite[]): InventoryRow[] {
 }
 
 /**
- * Form 1-skrivningar där scopningen ligger hos ANROPAREN, inte i funktionen.
+ * Form 1-skrivningar som heuristiken inte kan uttala sig om — deklarerade, en
+ * och en, med ett påstående en granskare kan pröva.
  *
- * Den femte legitima formen, och den enda som inte går att detektera: en intern
- * hjälpare som tar ett id som parameter och saknar aktörskontext helt. Den kan
- * inte scopa — det är per konstruktion anroparens ansvar.
+ * ── TVÅ SKEPNADER, INTE EN ─────────────────────────────────────────────────
  *
- * Formen är inte automatiskt ofarlig. "Privat metod som tar ett id" är exakt den
- * skepnad en verklig IDOR gömmer sig i, så den får ALDRIG detekteras bort. Den
- * måste skrivas ner, med ett påstående om vem som scopar i stället — och det
- * påståendet är vad en granskare läser.
+ * Namnet kommer från den FÖRSTA: en intern hjälpare som tar ett id som parameter
+ * och saknar aktörskontext helt. Den kan inte scopa — det är per konstruktion
+ * anroparens ansvar, och det är den enda formen som är omöjlig att detektera.
+ *
+ * Den ANDRA upptäcktes när `PaymentReminder`-posten skrevs, och namnet hann inte
+ * med: skrivningen ÄR scopad, i sitt EGET `where`, men formerna A–D läser bara
+ * `find*` och ser därför inte en bindning som står i en skrivning. `#745 PR 3`
+ * lade två poster till av samma skepnad. Att posterna bor i samma lista är
+ * avsiktligt — frågan listan svarar på är "vad bär scopningen här, när
+ * heuristiken inte kan säga det?", inte "vem är anroparen".
+ *
+ * Ingendera formen är automatiskt ofarlig. "Privat metod som tar ett id" är
+ * exakt den skepnad en verklig IDOR gömmer sig i, så den får ALDRIG detekteras
+ * bort. Varje post måste skrivas ner, med ett påstående om vad som scopar i
+ * stället — och det påståendet är vad en granskare läser.
+ *
+ * ── VARFÖR HEURISTIKEN INTE UTVIDGADES I STÄLLET ───────────────────────────
+ *
+ * Övervägt och avvisat, mätt på de tre posterna. Att låta form A läsa en
+ * SKRIVNINGS `where` hade täckt `PaymentReminder` (som binder på
+ * `organizationId`) men inte BankID-posterna, som binder på `userId` — och en
+ * regel som godkänner varje skrivning vars `where` nämner `userId` är för grov
+ * för att vara ett skydd: fältet står i mängder av villkor där det inte är
+ * aktörens id. En detektor som godkänner för mycket är värre än ingen detektor,
+ * eftersom den ser ut som täckning.
  *
  * Nyckeln saknar radnummer med flit, av samma skäl som inventariet.
  */
@@ -1178,6 +1192,34 @@ export const CALLER_SCOPED: readonly CallerScopedException[] = [
       'updatedAt. Dess enda anropare skickar conversation.id från ' +
       'getOrCreateConversation(tenantId, …), som scopar på tenantId (form D). Id:t har ' +
       'alltså redan passerat portalens scopning innan det når hit.',
+  },
+  {
+    file: 'bankid/bankid-auth.service.ts',
+    model: 'UserBankIdIdentity',
+    op: 'upsert',
+    sites: 1,
+    reason:
+      'enrollCollect: skrivningens EGET where är det sammansatta unika villkoret ' +
+      '(provider, subjectHash, userId), och `userId` är metodens första parameter — den ' +
+      'inloggades `sub` ur JWT:n, satt av controllern via @CurrentUser. Fem rader ovanför ' +
+      'står CSRF-spärren: ordern bär det userId den STARTADES av, och collect kastar 403 ' +
+      'när order.userId !== userId. Skrivningen kan alltså inte nå ett annat konto än det ' +
+      'som både är inloggat och startade ordern. Heuristikens form A känner igen en ' +
+      'bindning på find*, inte i en skrivnings where, och ingen av A–D är keyad på userId ' +
+      '— därför står den här. Provet som bär den heter "CSRF: en ANNAN användares collect ' +
+      'på samma orderRef NEKAS" i bankid-auth.service.spec.ts.',
+  },
+  {
+    file: 'bankid/bankid-auth.service.ts',
+    model: 'UserBankIdIdentity',
+    op: 'deleteMany',
+    sites: 1,
+    reason:
+      'removeIdentity: `deleteMany where { id, userId }`, där id kommer från klienten och ' +
+      'userId ur JWT:n. Avgränsningen står i skrivningen själv och är atomisk — därför ' +
+      'deleteMany och inte `delete` på id:t följt av en kontroll, som hade haft ett fönster ' +
+      'emellan. Träffar den noll rader kastas NotFound, med samma svar för "finns inte" och ' +
+      '"tillhör någon annan". Samma osynlighet för heuristiken som posten ovan.',
   },
   {
     file: 'notifications/payment-reminder.service.ts',

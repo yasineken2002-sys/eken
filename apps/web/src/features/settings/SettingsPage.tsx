@@ -44,6 +44,7 @@ import { useOrganization, useUpdateOrganization, useUploadLogo } from './hooks/u
 import { clearAiMemory } from '@/features/ai/api/ai.api'
 import { UsersPanel } from '@/features/users/UsersPanel'
 import { PlanPanel } from './components/PlanPanel'
+import { BankIdPanel } from './components/BankIdPanel'
 import { useAuthStore } from '@/stores/auth.store'
 import { get, del } from '@/lib/api'
 import { useNavigate } from '@tanstack/react-router'
@@ -369,6 +370,9 @@ export function SettingsPage() {
               </Button>
             </div>
           </section>
+
+          {/* Renderar ingenting när API:t säger att BankID är av. */}
+          <BankIdPanel />
 
           <section className="rounded-2xl border border-gray-100 bg-white p-5">
             <h2 className="mb-2 text-[14px] font-semibold text-gray-800">Inloggad som</h2>

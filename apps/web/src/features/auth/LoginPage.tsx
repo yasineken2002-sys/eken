@@ -7,6 +7,7 @@ import { Building2, BarChart3, Shield, Zap, CheckCircle2 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { PasswordInput } from './components/PasswordInput'
+import { BankIdLoginButton } from './components/BankIdLoginButton'
 import { loginApi } from './api/auth.api'
 import { consumeLoginFlash } from './lib/login-flash'
 import { useAuthStore } from '@/stores/auth.store'
@@ -231,6 +232,16 @@ export function LoginPage() {
               {isPending ? 'Loggar in...' : 'Logga in'}
             </Button>
           </form>
+
+          {/*
+            BankID ligger UTANFÖR formuläret. En knapp inuti ett <form> är en
+            submit-knapp om inget annat sägs, och även med type="button" hamnar
+            den i tabbordningen mitt i lösenordsflödet. Den är dessutom ett eget
+            sätt att logga in, inte ett alternativ till fältet ovanför.
+
+            Komponenten renderar ingenting alls när API:t säger att BankID är av.
+          */}
+          <BankIdLoginButton />
 
           <div className="my-7 flex items-center gap-3">
             <div className="h-px flex-1 bg-gray-100" />

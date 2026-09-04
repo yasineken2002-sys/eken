@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import type {
   BankIdCollectResult,
   BankIdCompletionData,
@@ -18,6 +20,16 @@ export interface MockBankIdOptions {
   failWith?: string
   /** Fast orderRef, så prov kan assertera på handtaget. */
   orderRef?: string
+  /**
+   * Prefix för AUTOGENERERADE orderRef, när `orderRef` inte är satt.
+   *
+   * Finns därför att providern numera kan leva i en riktig process (dev/E2E, se
+   * `bankid-provider-mode.ts`), och `BankIdOrder.orderRef` är `@unique`: ett
+   * fast handtag hade gjort den ANDRA inloggningen till en P2002 i stället för
+   * ett flöde. Prov som vill assertera på handtaget sätter `orderRef` och får
+   * det fasta beteendet oförändrat.
+   */
+  orderRefPrefix?: string
 }
 
 const DEFAULT_COMPLETION: BankIdCompletionData = {
@@ -43,39 +55,64 @@ const DEFAULT_COMPLETION: BankIdCompletionData = {
  * Mocken är därför STATEFULL med flit: den räknar sina `collect`-anrop. Den är
  * inte en attrapp för ETT prov utan en referensimplementation av porten.
  *
- * ── DEN KAN INTE HAMNA I DRIFT ────────────────────────────────────────────
+ * ── DEN KAN INTE HAMNA I PRODUKTION ───────────────────────────────────────
  *
- * Modulens factory väljer aldrig den här — bara Stub eller (från S3) en skarp
- * adapter. Mocken instansieras uteslutande av prov, som skickar in den själva.
+ * Raden ovan sa tidigare att factoryn aldrig väljer den här. Det stämmer inte
+ * längre: `BANKID_PROVIDER=mock` väljer den i dev och E2E. Det som gäller — och
+ * som är det verkliga skyddet — är att kombinationen `BANKID_PROVIDER=mock` +
+ * `NODE_ENV=production` får appen att VÄGRA STARTA, kontrollerat både i
+ * `validateEnv` och i factoryn. Se `bankid-provider-mode.ts` för varför valet är
+ * bundet till körningsläget i stället för till ett värde.
+ *
+ * ── DÄRFÖR RÄKNAS PENDING PER ORDER ───────────────────────────────────────
+ *
+ * En global räknare räckte så länge varje prov hade sin egen instans. I en
+ * levande process är providern en singleton, och två samtidiga flöden hade då
+ * ätit av varandras sekvens — ett `complete` för fel order. Räkningen ligger
+ * därför på orderRef. `calls` är fortfarande SUMMAN, vilket är vad de befintliga
+ * proven mäter.
  */
 export class MockBankIdProvider implements BankIdProvider {
   readonly name = 'MOCK'
 
-  private collectCount = 0
+  private readonly collectsByOrder = new Map<string, number>()
+  private started = 0
   private readonly opts: MockBankIdOptions
 
   constructor(opts: MockBankIdOptions = {}) {
     this.opts = opts
   }
 
-  /** Antal `collect` hittills — för prov som mäter att pollningen skedde. */
+  /** Antal `collect` hittills, över alla ordrar — prov mäter att pollningen skedde. */
   get calls(): number {
-    return this.collectCount
+    let sum = 0
+    for (const n of this.collectsByOrder.values()) sum += n
+    return sum
   }
 
   async start(_input: BankIdStartInput): Promise<BankIdStartResult> {
-    this.collectCount = 0
+    this.started += 1
+    // UUID OCH INTE EN RÄKNARE. Första försöket var `…-order-${n}`, vilket är
+    // unikt inom EN process — och tabellen är inte processens. En omstartad
+    // dev-server började om på 1 och krockade med rader från förra körningen:
+    // P2002 på `BankIdOrder.orderRef`, alltså ett 500 på login/start. Uppmätt,
+    // inte befarat — E2E föll på "Internal server error" efter en omstart.
+    // Räknaren `started` finns kvar bara som en läsbar signal i loggar.
+    const orderRef =
+      this.opts.orderRef ?? `${this.opts.orderRefPrefix ?? 'mock'}-order-${randomUUID()}`
+    this.collectsByOrder.set(orderRef, 0)
     return {
-      orderRef: this.opts.orderRef ?? 'mock-order-ref',
+      orderRef,
       autoStartToken: 'mock-autostart-token',
-      qrData: 'mock-qr-data',
+      qrData: `mock-qr-data-${orderRef}`,
     }
   }
 
-  async collect(_orderRef: string): Promise<BankIdCollectResult> {
-    this.collectCount += 1
+  async collect(orderRef: string): Promise<BankIdCollectResult> {
+    const n = (this.collectsByOrder.get(orderRef) ?? 0) + 1
+    this.collectsByOrder.set(orderRef, n)
     const pendingWanted = this.opts.pendingCollects ?? 0
-    if (this.collectCount <= pendingWanted) {
+    if (n <= pendingWanted) {
       return { status: 'pending', hintCode: 'outstandingTransaction' }
     }
     if (this.opts.failWith) {

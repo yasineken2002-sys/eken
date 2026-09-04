@@ -232,6 +232,45 @@ describe('BANKID_ENABLED fail-fastar utan PII-nycklar', () => {
     )
   })
 
+  it('BANKID_PROVIDER=mock i PRODUKTION → boot vägrar, oavsett flaggan', async () => {
+    // Den bärande halvan av mock-vägen. En provider som intygar en påhittad
+    // identitet utan att någon legitimerar sig får inte kunna väljas skarpt, och
+    // skyddet ligger i att kombinationen är OMÖJLIG — inte olämplig.
+    //
+    // OBEROENDE AV BANKID_ENABLED, och båda fallen prövas: en miljö som bär
+    // variabeln är felkonfigurerad redan när den sätts. Vore kontrollen inne i
+    // flagg-grenen hade felet upptäckts först den dag någon tände flaggan.
+    await expect(boot({ ...FULL_PROD, BANKID_PROVIDER: 'mock' })).rejects.toThrow(
+      /BANKID_PROVIDER=mock.*NODE_ENV=production/s,
+    )
+    await expect(
+      boot({ ...FULL_PROD, BANKID_ENABLED: 'true', BANKID_PROVIDER: 'mock' }),
+    ).rejects.toThrow(/BANKID_PROVIDER=mock.*NODE_ENV=production/s)
+  })
+
+  it('bara exakt "mock" — allt annat faller åt det säkra hållet', async () => {
+    // Kanariefågeln till provet ovan: utan den går det inte att skilja "regeln
+    // träffar rätt värde" från "fixturen fäller boot av något annat skäl".
+    // 'MOCK', 'Mock', 'true' och tom sträng ska alla vara harmlösa i produktion.
+    for (const värde of ['MOCK', 'Mock', 'true', '']) {
+      await expect(boot({ ...FULL_PROD, BANKID_PROVIDER: värde })).resolves.toBeUndefined()
+    }
+  })
+
+  it('mock i DEV går igenom — det är hela poängen med vägen', async () => {
+    await expect(
+      boot({ NODE_ENV: 'development', BANKID_PROVIDER: 'mock' }),
+    ).resolves.toBeUndefined()
+  })
+
+  it('#689: rensningsmängden tar med BANKID_PROVIDER — den kan FÄLLA en boot', () => {
+    // Skarpare än syskonet nedan, och det är skälet att den står här: en
+    // utvecklare som har BANKID_PROVIDER=mock i sin miljö för att köra UI:t
+    // lokalt hade annars sett prod-fixturerna ovan falla med ett meddelande om
+    // ett värde testet aldrig valde. Exakt formen #685 dokumenterar.
+    expect(RENSADE_KEYS).toContain('BANKID_PROVIDER')
+  })
+
   it('#689: rensningsmängden tog med BANKID_ENABLED UTAN att någon lade till den', () => {
     // Härledningen går via `Object.values(FLAG_CONDITIONAL_VARS)`, så en ny
     // flagg-villkorad nyckel hamnar i mängden av sig själv. Provet finns för att
