@@ -206,7 +206,7 @@ export function findCopies(text, tags, { rel } = {}) {
     }
   }
   // R4 — definitionen är KOD.
-  if (new RegExp(`function\\s+${RENDERARE}\\b`).test(kod)) {
+  if (new RegExp(`function\\s+${RENDERARE}(?![\\p{L}\\p{N}_$])`, 'u').test(kod)) {
     problem.push({ kind: 'renderare', detalj: `function ${RENDERARE}` })
   }
   return problem
@@ -247,7 +247,7 @@ export function bedömOmfång({ filer, samlingar, taggar, sänkor }) {
     fel.push(`omfång: ${taggar.length} kanoniska taggar, golv ${MIN_TAGGAR}`)
   // Jämförelsemängden måste vara RIKTIGA namn. Hade någon bytt R3 till codeMask
   // blir de blanktecken, och överlappet kan aldrig mer bli sant.
-  if (taggar.some((t) => !/[A-Za-z]/.test(t)))
+  if (taggar.some((t) => !/[\p{L}]/u.test(t)))
     fel.push('omfång: taggnamn utan bokstäver — masken har blankat stränginnehållet')
   if (sänkor.length < MIN_SÄNKOR)
     fel.push(
@@ -279,7 +279,7 @@ export function scanTree(root = SRC) {
       'Kunde inte läsa allowedTags ur den kanoniska modulen — vakten mäter ingenting.',
     )
   }
-  if (!new RegExp(`function\\s+${RENDERARE}\\b`).test(codeMask(kanonisk))) {
+  if (!new RegExp(`function\\s+${RENDERARE}(?![\\p{L}\\p{N}_$])`, 'u').test(codeMask(kanonisk))) {
     throw new Error(
       `Den kanoniska modulen definierar inte längre ${RENDERARE} — R4 letar efter ett namn ` +
         'som inte finns, och skulle vara grön för alltid.',
@@ -364,6 +364,41 @@ function selfTest() {
     if (!ok) failed++
   }
   const TAGGAR = ['p', 'h1', 'h2', 'strong', 'em', 'a', 'br', 'ul', 'ol', 'li']
+
+  // ── #713: DE TVÅ STÄLLEN SOM BYTTES ─────────────────────────────────────
+  //
+  // (1) RENDERARENS DEFINITION, `function\s+${RENDERARE}\b`, på TVÅ ställen:
+  //     R4 (letar en andra definition) och startkontrollen (kräver att den
+  //     kanoniska modulen fortfarande har den). `\b` efter ett ASCII-namn
+  //     matchar när nästa tecken inte är ett ordtecken — och `ä` är inget
+  //     ordtecken. Uppmätt mot origin/main:
+  //
+  //       function ${RENDERARE}ärendeVariant(x) {}
+  //         \b   → RÄKNAS som en andra definition av renderaren   FALSKT LARM
+  //         fix  → räknas inte
+  //
+  //     En kopia som inte finns fäller en PR i en BLOCKERANDE vakt. Och åt
+  //     andra hållet: startkontrollen hade godtagit en fil där renderaren
+  //     bytt namn till `${RENDERARE}ärende` — alltså en vakt som letar ett
+  //     namn som inte finns, vilket är precis det kontrollen ska förhindra.
+  //
+  // (2) `!/[A-Za-z]/.test(t)` — samma "svaga rimlighetskontroll" som i
+  //     check-ocr-provenance, och den saknar kanariefågel av SAMMA mätta skäl:
+  //     `[A-Za-z]` och `[\p{L}]` ger samma svar för varje realistiskt taggnamn.
+  //     Ren härdning. Skrivet här så att frånvaron är ett beslut.
+  {
+    const r4 = (kod) => findCopies(kod, TAGGAR, { rel: 'zz.ts' }).map((x) => x.kind)
+    const falsk = `function ${RENDERARE}ärendeVariant(x) { return x }`
+    t('#713 (1) FALSKT LARM: `<renderare>ärendeVariant` är inte en andra definition',
+      !r4(falsk).includes('renderare'), JSON.stringify(r4(falsk)))
+    const äkta = `function ${RENDERARE}(x) { return x }`
+    t('#713 (1) MOTPROV: den äkta definitionen fälls fortfarande',
+      r4(äkta).includes('renderare'), JSON.stringify(r4(äkta)))
+    const asciiDelsträng = `function ${RENDERARE}Extra(x) { return x }`
+    t('#713 (1) MOTPROV: ASCII-suffix räknas inte heller',
+      !r4(asciiDelsträng).includes('renderare'), JSON.stringify(r4(asciiDelsträng)))
+  }
+
 
   // ── R1–R4, en och en ─────────────────────────────────────────────────────
   t(
