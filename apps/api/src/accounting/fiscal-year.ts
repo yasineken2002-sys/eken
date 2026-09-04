@@ -1,4 +1,4 @@
-import { stockholmFiscalYear, stockholmMonthBounds } from '../common/time/stockholm-period'
+import { stockholmFiscalYear } from '../common/time/stockholm-period'
 import type { PeriodKey } from './closed-period'
 
 /**
@@ -12,22 +12,40 @@ import type { PeriodKey } from './closed-period'
  *
  * ── ÅRET ÄR EXAKT SINA TOLV MÅNADER, PER KONSTRUKTION ──────────────────────
  *
- * `months` räknas upp först, och fönstret (`from`/`to`) härleds ur den FÖRSTA
- * och SISTA månadens `stockholmMonthBounds`. Det är inte en bekvämlighet utan
- * invarianten: årsstängningen kräver att månad 1–11 är stängda och stänger
- * månad 12, och den frågan blir meningslös om årsfönstret kan innehålla ett
- * ögonblick som ingen av de tolv månaderna gör. Med härledningen ur samma
- * hjälpare som månadsstängningen använder kan de inte glida isär.
+ * `months` räknas upp ur samma `startMonth` som `fiscalStart`, och fönstret är
+ * årets första dag t.o.m. dagen före nästa års första. Det är inte en
+ * bekvämlighet utan invarianten: årsstängningen kräver att månad 1–11 är
+ * stängda och stänger månad 12, och den frågan blir meningslös om årsfönstret
+ * kan innehålla en dag som ingen av de tolv månaderna gör.
  *
- * ── VARFÖR DATUMEN RÄKNAS I UTC MEN PERIODERNA I SVENSK CIVIL TID ──────────
+ * ── FÖNSTRET ÄR DAGAR, INTE ÖGONBLICK — OCH DET ÄR MÄTT ───────────────────
  *
- * `fiscalStart`, `yearEndDate` och `reversalDate` är DAGAR, inte ögonblick —
- * de landar i `JournalEntry.date`, som är `@db.Date` och saknar tid. Midnatt
- * UTC har samma civila datum i Sverige (offset +1/+2), så en dag uttryckt som
- * `Date.UTC(...)` tillhör samma svenska kalendermånad som den ser ut att göra.
- * Fönstret `from`/`to` är däremot ÖGONBLICK och måste därför komma från
- * `stockholmMonthBounds` — en post 22:30 UTC den 31 december är 00:30 svensk
- * tid den 1 januari och tillhör nästa månad, alltså nästa räkenskapsår.
+ * Första versionen härledde `from`/`to` ur `stockholmMonthBounds`, med
+ * motiveringen att en post 22:30 UTC den 31 december är 00:30 svensk tid den
+ * 1 januari. Den motiveringen är RÄTT för en tidsstämpel och FEL här — och
+ * felet var inte teoretiskt.
+ *
+ * `JournalEntry.date` är `@db.Date`, en dag utan tid. Prisma TRUNKERAR då
+ * jämförelseparametern till ett datum, så ett ögonblick 22:00 UTC blir den
+ * dagen. Mätt mot riktig Postgres med fyra verifikat och räkenskapsåret
+ * maj 2026–april 2027:
+ *
+ *   Prisma  gte 2026-04-30T22:00Z · lt 2027-04-30T22:00Z → 2026-04-30 · 2026-05-01
+ *   rå SQL  samma gränser som ::timestamptz              → 2026-05-01 · 2027-04-30
+ *
+ * Fönstret sköt alltså in FÖREGÅENDE räkenskapsårs sista dag och tappade sin
+ * EGEN. Den tappade dagen är precis den `runYearEndAccrual` daterar sin
+ * bokslutspost på, så årsstängningen hade räknat resultatet utan
+ * periodiseringen — tyst, och bara hos dem som faktiskt använder den.
+ *
+ * Rätt fönster för en datumkolumn är DAGARNA själva: `[fiscalStart,
+ * reversalDate)`. Det finns ingen tidszonssubtilitet att hantera, eftersom
+ * kolumnen inte bär någon tid — det lagrade värdet ÄR det civila datumet.
+ *
+ * VIKTIGT OM RÄCKVIDDEN: samma fälla gäller varje `gte/lt`-fråga mot
+ * `JournalEntry.date` med gränser ur `stockholmMonthBounds`. Den finns kvar i
+ * `buildSummary` och i månadsprecheckens kontroller — inte införd av #704 och
+ * inte åtgärdad här; se följdärendet.
  */
 export interface FiscalYearBounds {
   fiscalYear: number
@@ -40,9 +58,9 @@ export interface FiscalYearBounds {
   reversalDate: Date
   /** Årets tolv kalendermånader i ordning, äldst först. */
   months: PeriodKey[]
-  /** Fönstrets början som ÖGONBLICK (svensk civil tid), inklusive. */
+  /** Fönstrets början — räkenskapsårets FÖRSTA DAG, inklusive. Se docblocket. */
   from: Date
-  /** Fönstrets slut som ÖGONBLICK (svensk civil tid), exklusive. */
+  /** Fönstrets slut — NÄSTA räkenskapsårs första dag, exklusive. */
   to: Date
 }
 
@@ -60,12 +78,16 @@ export function fiscalYearBounds(fiscalYear: number, startMonth: number): Fiscal
     months.push({ year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 })
   }
 
-  const first = months[0] as PeriodKey
-  const last = months[11] as PeriodKey
-  const { from } = stockholmMonthBounds(first.year, first.month)
-  const { to } = stockholmMonthBounds(last.year, last.month)
-
-  return { fiscalYear, startMonth, fiscalStart, yearEndDate, reversalDate, months, from, to }
+  return {
+    fiscalYear,
+    startMonth,
+    fiscalStart,
+    yearEndDate,
+    reversalDate,
+    months,
+    from: fiscalStart,
+    to: reversalDate,
+  }
 }
 
 /**

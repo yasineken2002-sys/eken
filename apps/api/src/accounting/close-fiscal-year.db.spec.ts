@@ -239,6 +239,63 @@ medDb('#704 PR 2 · closeFiscalYear', () => {
       .toNumber()
   }
 
+  /**
+   * VARJE RAD BÄR EN SIDA, MED ETT POSITIVT BELOPP.
+   *
+   * Den här kontrollen finns för att en negativkontroll ska kunna FÄLLA. Mätt:
+   * vänder man teckenregeln i `buildYearEndDraft` (`saldo.isPositive()` →
+   * `isNegative()`) negeras BÅDE beloppet och sidan, och `debet − kredit` blir
+   * exakt detsamma. Varje saldoassertion i den här filen förblev då grön, och
+   * verifikatet balanserade — det bestod av rader som `credit: −30 000,01`.
+   *
+   * `createNumberedEntry`s balansgrind ser det inte heller: den kräver att en
+   * rad bär EN sida och att summorna är lika, men inte att beloppen är positiva
+   * (mätt i accounting.service.ts). Ett negativt belopp på fel sida är alltså
+   * aritmetiskt ekvivalent och bokföringsmässigt nonsens.
+   *
+   * Utan det här provet hade sviten inte kunnat skilja rätt riktning från
+   * spegelvänd, och alla sexton proven hade varit gröna om en implementation
+   * som skriver negativa krediter.
+   */
+  async function assertRaderÄrVälformade(journalEntryId: string): Promise<void> {
+    const entry = await prisma.journalEntry.findUniqueOrThrow({
+      where: { id: journalEntryId },
+      include: { lines: { include: { account: true } } },
+    })
+    expect(entry.lines.length).toBeGreaterThan(0)
+    for (const l of entry.lines) {
+      const debet = l.debit == null ? null : Number(l.debit)
+      const kredit = l.credit == null ? null : Number(l.credit)
+      // Exakt en sida…
+      expect([debet, kredit].filter((v) => v != null)).toHaveLength(1)
+      // …och beloppet på den sidan är STRIKT POSITIVT.
+      expect(debet ?? kredit).toBeGreaterThan(0)
+    }
+  }
+
+  /**
+   * Kontots rörelse INOM ett räkenskapsår — samma fönster som stängningen läser.
+   *
+   * Skild från `saldo` med flit. `saldo` är kumulativt och svarar på "vad blir
+   * ingående balans nästa år"; den här svarar på "vad hände under året". För ett
+   * resultatkonto ska den senare vara NOLL efter stängningen, medan den förra
+   * kan bära rester från år som stängdes utan avslutsverifikat — vilket den gör
+   * i brutna-år-provet nedan, där 2025 är stängt av riggen utan att ha nollats.
+   */
+  async function årsrörelse(orgId: string, kontoId: string, fy: number, startMonth: number) {
+    const { from, to } = fiscalYearBounds(fy, startMonth)
+    const agg = await prisma.journalEntryLine.aggregate({
+      where: {
+        accountId: kontoId,
+        journalEntry: { organizationId: orgId, date: { gte: from, lt: to } },
+      },
+      _sum: { debit: true, credit: true },
+    })
+    return new Prisma.Decimal(agg._sum.debit ?? 0)
+      .minus(new Prisma.Decimal(agg._sum.credit ?? 0))
+      .toNumber()
+  }
+
   // ── 1. Vinst ─────────────────────────────────────────────────────────────
   it('VINST 18 000,01: resultatkonton nollas, 2099 får kreditsaldo, balanskonton orörda', async () => {
     const { orgId, kontoId } = await nyOrg(1)
@@ -277,6 +334,7 @@ medDb('#704 PR 2 · closeFiscalYear', () => {
     expect(entry.date.toISOString().slice(0, 10)).toBe('2026-12-31')
     expect(entry.sourceId).toBe('year-end:2026')
     expect(entry.lines).toHaveLength(3)
+    await assertRaderÄrVälformade(res.journalEntryId as string)
   })
 
   // ── 2. Förlust ───────────────────────────────────────────────────────────
@@ -295,6 +353,7 @@ medDb('#704 PR 2 · closeFiscalYear', () => {
     const res = await service.closeFiscalYear(orgId, 2026, NU, ADMIN)
 
     expect(res.summary.result).toBe(-5_000)
+    await assertRaderÄrVälformade(res.journalEntryId as string)
     expect(await saldo(orgId, kontoId.get(3911) as string, '2026-12-31')).toBe(0)
     expect(await saldo(orgId, kontoId.get(5010) as string, '2026-12-31')).toBe(0)
     // Förlust → eget kapital minskar → DEBETsaldo → positivt.
@@ -361,13 +420,35 @@ medDb('#704 PR 2 · closeFiscalYear', () => {
   it('BRUTET ÅR (startmånad 5): verifikat i BÅDA kalenderåren räknas in, dateringen är 30 april', async () => {
     const { orgId, kontoId } = await nyOrg(5)
     // Räkenskapsåret 2026 = maj 2026 – april 2027.
+    //
+    // FÖRE årets början, men i SAMMA KALENDERÅR: mars 2026 hör till
+    // räkenskapsåret 2025 och får inte räknas med. Utan den här raden är provet
+    // blint för ett fönster som börjar 1 januari i stället för 1 maj — mätt:
+    // med `from` hårdsatt till kalenderårets början förblev alla sexton proven
+    // gröna, eftersom övriga fixturer låg inom BÅDA fönstren.
+    await bokför(orgId, kontoId, '2026-03-10', 2025, [
+      { konto: 1510, debit: 7_777 },
+      { konto: 3911, credit: 7_777 },
+    ])
+    // …och 2025 måste vara stängt, annars fäller spärren mot öppna tidigare år.
+    await prisma.fiscalYearClose.create({ data: { organizationId: orgId, fiscalYear: 2025 } })
     await bokför(orgId, kontoId, '2026-09-15', 2026, [
       { konto: 1510, debit: 20_000 },
       { konto: 3911, credit: 20_000 },
     ])
     await bokför(orgId, kontoId, '2027-02-20', 2026, [
-      { konto: 5010, debit: 8_000 },
-      { konto: 1930, credit: 8_000 },
+      { konto: 5010, debit: 6_000 },
+      { konto: 1930, credit: 6_000 },
+    ])
+    // BOKSLUTSPOST DATERAD RÄKENSKAPSÅRETS SISTA DAG — samma datering som
+    // `runYearEndAccrual` använder. Utan den här raden är provet blint för ett
+    // fönster som slutar en dag för tidigt, och det var precis det felet som
+    // fanns: Prisma trunkerar en tidsstämpel mot en `@db.Date`-kolumn, så
+    // `lt: <sista dagen 22:00Z>` uteslöt sista dagen. Periodiseringen hade då
+    // fallit ur årets resultat, tyst.
+    await bokför(orgId, kontoId, '2027-04-30', 2026, [
+      { konto: 5010, debit: 2_000 },
+      { konto: 1930, credit: 2_000 },
     ])
     // …och ett verifikat i NÄSTA räkenskapsår, som INTE får räknas med.
     await bokför(orgId, kontoId, '2027-05-02', 2027, [
@@ -380,7 +461,11 @@ medDb('#704 PR 2 · closeFiscalYear', () => {
 
     expect(res.label).toBe('2026/2027')
     expect(res.monthClosed).toEqual({ year: 2027, month: 4 })
-    // 20 000 − 8 000 = 12 000. Hade 2027-05-02 räknats med vore det 12 999.
+    // 20 000 − 6 000 − 2 000 = 12 000. Talet skiljer FYRA fönster åt:
+    //   utan sista dagen (2027-04-30)          → 14 000
+    //   med nästa års 2027-05-02               → 12 999
+    //   med föregående års 2026-03-10          → 19 777
+    //   rätt fönster [1 maj 2026, 1 maj 2027)  → 12 000
     expect(res.summary.result).toBe(12_000)
     expect(res.summary.yearEndDate).toBe('2027-04-30')
 
@@ -388,12 +473,20 @@ medDb('#704 PR 2 · closeFiscalYear', () => {
       where: { id: res.journalEntryId as string },
     })
     expect(entry.date.toISOString().slice(0, 10)).toBe('2027-04-30')
-    // Resultatkontona är nollade PER RÄKENSKAPSÅRETS SLUT — inte per kalenderår.
-    expect(await saldo(orgId, kontoId.get(3911) as string, '2027-04-30')).toBe(0)
-    expect(await saldo(orgId, kontoId.get(5010) as string, '2027-04-30')).toBe(0)
-    expect(await saldo(orgId, kontoId.get(2099) as string, '2027-04-30')).toBe(-12_000)
-    // …och nästa års verifikat ligger kvar orört.
-    expect(await saldo(orgId, kontoId.get(3911) as string, '2027-05-31')).toBe(-999)
+    await assertRaderÄrVälformade(res.journalEntryId as string)
+    // Resultatkontonas RÖRELSE UNDER RÄKENSKAPSÅRET är nollad — inte per
+    // kalenderår, och inte kumulativt: 2025 stängdes av riggen utan
+    // avslutsverifikat, så den kumulativa summan bär kvar den årsresten (se
+    // assertionen på 2026-04-30 nedan). Det är fönstret som är invarianten.
+    expect(await årsrörelse(orgId, kontoId.get(3911) as string, 2026, 5)).toBe(0)
+    expect(await årsrörelse(orgId, kontoId.get(5010) as string, 2026, 5)).toBe(0)
+    expect(await årsrörelse(orgId, kontoId.get(2099) as string, 2026, 5)).toBe(-12_000)
+    // …och grannårens verifikat ligger kvar ORÖRDA, åt båda hållen. Kumulativt
+    // efter maj 2027: 2025-resten (−7 777) + nästa års intäkt (−999). Året
+    // 2026 självt summerar till noll, vilket är precis vad `årsrörelse` ovan
+    // mäter — de två talen säger tillsammans att stängningen rörde ETT år.
+    expect(await saldo(orgId, kontoId.get(3911) as string, '2027-05-31')).toBe(-8_776)
+    expect(await saldo(orgId, kontoId.get(3911) as string, '2026-04-30')).toBe(-7_777)
   })
 
   // ── 5–6. Förutsättningarna ───────────────────────────────────────────────
