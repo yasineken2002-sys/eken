@@ -7,7 +7,7 @@
     "apps/api/scripts/check-effect-idempotency.mjs": "EN (1) post: kanariefågelns NEGATIVA REFERENS, mönstret (^|\\n) {2}[a-z0-9_]+: \\{ . Den visar vad den GAMLA formen hade sett, och utan den går det inte att skilja \"fixturen mäter något\" från \"fixturen är trivialt grön\". Byts den till \\p{Ll} blir de två talen lika och provet slutar diskriminera. Motiverad vid raden i vakten."
   },
   "$permanenta_regel": "De två posterna ovan är PERMANENTA och ska inte räknas som skuld. En negativ referens i en kanariefågel ska helst skrivas UTAN interpolation — då blir den ingen post alls; se sonderna i check-reminder-fee-source.mjs. Behövs ändå en post: lägg den här, med skäl.",
-  "total": 38,
+  "total": 34,
   "poster": [
     {
       "fil": "apps/api/scripts/check-action-tool-authorization.mjs",
@@ -289,42 +289,6 @@
         "gräns-interp"
       ],
       "antal": 2
-    },
-    {
-      "fil": "scripts/check-design-tokens.mjs",
-      "mönster": "(?<![\\\\w-])(?:${COLOR_UTILITY_PREFIXES})-(${TAILWIND_STOCK_FAMILIES.join('|')})-\\\\d{2,3}(?![\\\\w-])",
-      "former": [
-        "matchning-w"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "scripts/check-design-tokens.mjs",
-      "mönster": "(?<![a-zA-Z0-9])(?:rgba?|hsla?)\\(\\s*(?:[^()]|\\([^()]*\\))*\\)",
-      "former": [
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "scripts/check-design-tokens.mjs",
-      "mönster": "([A-Za-z_$][\\w$]*)\\s*:\\s*evenoScales\\s*\\.\\s*([\\w$]+)",
-      "former": [
-        "fångst-w",
-        "fångst-ascii",
-        "matchning-w",
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "scripts/check-design-tokens.mjs",
-      "mönster": "var\\(\\s*--ev-[a-z0-9-]+\\s*\\)",
-      "former": [
-        "fångst-ascii",
-        "matchning-ascii"
-      ],
-      "antal": 1
     }
   ]
 }
