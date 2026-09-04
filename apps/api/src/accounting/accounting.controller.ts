@@ -171,6 +171,52 @@ export class AccountingController {
     })
   }
 
+  // ── Årsstängning (#704 PR 2) ─────────────────────────────────────────────
+
+  /**
+   * Vad skulle årsstängningen göra, och får den göras? Ren läsning.
+   *
+   * Klassnivåns grind (minst ACCOUNTANT) hade räckt för en LÄSNING, men
+   * endpointen är medvetet grindad som stängningen själv. Skälet är inte
+   * hemlighet utan förväxling: svaret innehåller det FÖRESLAGNA verifikatet rad
+   * för rad, och en förhandsvisning som fler kan öppna än som kan bekräfta
+   * inbjuder till att någon räknar på ett bokslut hen sedan inte får verkställa.
+   */
+  @Get('fiscal-years/:year/close-preview')
+  @Roles('ADMIN', 'OWNER')
+  async previewFiscalYearClose(@OrgId() organizationId: string, @Param('year') year: string) {
+    return this.periods.previewFiscalYearClose(organizationId, Number(year))
+  }
+
+  /**
+   * Stänger räkenskapsåret. OWNER/ADMIN — ACCOUNTANT får stänga en MÅNAD men
+   * inte ett ÅR: en månad kan öppnas igen (spårat, av OWNER), ett år kan inte
+   * öppnas alls. Det oåterkalleliga beslutet ligger hos den som bär ansvaret för
+   * bokslutet.
+   *
+   * Dekoratorn är inte skyddet: `CLOSE_YEAR_ROLES` upprepas i tjänsten
+   * (#194-mönstret), så en framtida intern anropare träffar samma grind utan att
+   * passera någon dekorator.
+   *
+   * `now` skickas IN i tjänsten i stället för att läsas där. Stängningstidpunkten
+   * är räkenskapsinformation som hamnar i både `FiscalYearClose.closedAt` och i
+   * ögonblicksbilden, och en klocka som tjänsten läser själv går inte att styra
+   * i ett prov — då blir tidsberoendet en flake i stället för en invariant.
+   */
+  @Post('fiscal-years/:year/close')
+  @Roles('ADMIN', 'OWNER')
+  @HttpCode(200)
+  async closeFiscalYear(
+    @OrgId() organizationId: string,
+    @Param('year') year: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.periods.closeFiscalYear(organizationId, Number(year), new Date(), {
+      actorRole: user.role,
+      actorUserId: user.sub,
+    })
+  }
+
   @Post('accounts/seed')
   @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
   async seedAccounts(@OrgId() organizationId: string) {
