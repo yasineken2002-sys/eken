@@ -57,6 +57,11 @@ const SKYDDADE = [
   // Satsnivå räcker: dess enda nullbara FK (maintenanceTicketId) är RESTRICT
   // just för att ingen kaskad-UPDATE ska kunna nå hit.
   'UnitEquipmentEvent',
+  // #704 PR 1. Raden bär tidpunkten då ett räkenskapsår låstes och verifikatet
+  // som låste det. Går den att UPDATE:a går årsstängningen att flytta i
+  // efterhand — precis det ett revisionsspår ska omöjliggöra. Radnivå och
+  // aktörsvarianten, eftersom closedById är ON DELETE SET NULL från User.
+  'FiscalYearClose',
 ] as const
 
 /**
@@ -70,6 +75,7 @@ const SKYDDADE = [
 const MED_KASKADUNDANTAG: Record<string, string> = {
   AccountingPeriodEvent: 'actorUserId',
   TenantAnonymizationLog: 'performedById',
+  FiscalYearClose: 'closedById',
 }
 
 medDb('append-only-spärren i databasen', () => {
@@ -133,7 +139,7 @@ medDb('append-only-spärren i databasen', () => {
     }
   }, 60_000)
 
-  it('(1b) de två med kaskadundantag avvisar ALLT UTOM att aktören nollas', async () => {
+  it('(1b) de med kaskadundantag avvisar ALLT UTOM att aktören nollas', async () => {
     const sfx = randomUUID().slice(0, 8)
     const org = await prisma.organization.create({
       data: {
@@ -188,6 +194,46 @@ medDb('append-only-spärren i databasen', () => {
     expect(efter?.actorUserId).toBeNull()
     expect(efter?.type).toBe('CLOSED')
 
+    // ── FiscalYearClose (#704 PR 1), samma undantag och samma smalhet ────────
+    //
+    // EGEN ANVÄNDARE: den ovan är redan raderad, och poängen här är att pröva
+    // kaskaden en gång till — inte att ärva dess utfall.
+    const user2 = await prisma.user.create({
+      data: {
+        organizationId: org.id,
+        email: `ao3b-${sfx}@example.se`,
+        passwordHash: 'x',
+        firstName: 'C',
+        lastName: 'D',
+      },
+    })
+    const fyc = await prisma.fiscalYearClose.create({
+      data: { organizationId: org.id, fiscalYear: 2026, closedById: user2.id },
+    })
+
+    // Ett vanligt fältbyte avvisas — här: att flytta stängningen till ett annat år.
+    await expect(
+      prisma.$executeRawUnsafe(
+        `UPDATE "FiscalYearClose" SET "fiscalYear" = 2027 WHERE id = $1`,
+        fyc.id,
+      ),
+    ).rejects.toThrow(/append-only/)
+
+    // Att nolla aktören OCH ändra något annat avvisas också.
+    await expect(
+      prisma.$executeRawUnsafe(
+        `UPDATE "FiscalYearClose" SET "closedById" = NULL, "fiscalYear" = 2027 WHERE id = $1`,
+        fyc.id,
+      ),
+    ).rejects.toThrow(/append-only/)
+
+    // Databasens egen ON DELETE SET NULL släpps igenom.
+    await prisma.user.delete({ where: { id: user2.id } })
+    const fycEfter = await prisma.fiscalYearClose.findUnique({ where: { id: fyc.id } })
+    expect(fycEfter?.closedById).toBeNull()
+    expect(fycEfter?.fiscalYear).toBe(2026)
+
+    await prisma.fiscalYearClose.deleteMany({ where: { organizationId: org.id } })
     await prisma.accountingPeriodEvent.deleteMany({ where: { organizationId: org.id } })
     await prisma.organization.delete({ where: { id: org.id } })
   }, 60_000)
