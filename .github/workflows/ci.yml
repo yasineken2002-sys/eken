@@ -793,6 +793,40 @@ jobs:
       - name: Verify no new ASCII identifier derivations
         run: node apps/api/scripts/check-identifier-regex.mjs
 
+  self-tests-must-fail-guard:
+    name: Self-tests must be able to fail
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Varje --self-test är ett LÖFTE: "går den här vakten sönder blir CI
+      # rött". Löftet vilar på att ett rapporterat fel når EXITKODEN.
+      #
+      # Formen som bryter det skrevs i den här kodbasen 2026-09-04:
+      #
+      #   const f = (m) => { console.error(`❌ ${m}`); process.exitCode = 1 }
+      #   …
+      #   process.exit(ok ? 0 : 1)      // `ok` rörs aldrig av f()
+      #
+      # process.exit(kod) skriver ALLTID över process.exitCode. Kanariefåglarna
+      # skrev ❌ utan att fälla körningen, och det upptäcktes bara för att
+      # någon läste exitkoden för hand.
+      #
+      # Vakten injicerar ett garanterat fallande kanariefall i varje självtests
+      # primära rapportväg och kräver nollskild exitkod. Mutationen sker i ett
+      # SKUGGTRÄD under os.tmpdir() — trädet rörs aldrig, inte ens tillfälligt.
+      #
+      # fs-only, inga beroenden, ingen DB. Körtid mätt: 24,5 s för 44 vakter.
+      - name: Self-test the guard (four fixtures, shadow tree, floor)
+        run: node apps/api/scripts/check-self-tests-fail.mjs --self-test
+
+      - name: Verify every self-test can actually fail
+        run: node apps/api/scripts/check-self-tests-fail.mjs
+
   guard-preprocessor-guard:
     name: Guard preprocessor single-source guard
     runs-on: ubuntu-latest
@@ -1956,6 +1990,7 @@ jobs:
       - cron-classification-guard
       - pdf-selfcontained-guard
       - guard-preprocessor-guard
+      - self-tests-must-fail-guard
       - source-scan-canary-guard
       - identifier-regex-guard
       - cron-error-sink-guard
