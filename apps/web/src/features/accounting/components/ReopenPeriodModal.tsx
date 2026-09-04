@@ -47,6 +47,8 @@ export function ReopenPeriodModal({ period, onClose }: Props) {
   const reasonOk = reason.trim().length >= MIN_REASON
   const canSubmit =
     isOwner &&
+    // Ett stängt räkenskapsår låser månaden oavsett fönstret (#704 PR 3).
+    d?.fiscalYearClosed === false &&
     d?.withinReopenWindow === true &&
     category === 'MISSING_ENTRY' &&
     reasonOk &&
@@ -95,6 +97,38 @@ export function ReopenPeriodModal({ period, onClose }: Props) {
             <p className="rounded-xl bg-gray-50 p-3 text-[13px] text-gray-600">
               Perioden är öppen. Du kan bokföra i den som vanligt.
             </p>
+          ) : d.fiscalYearClosed ? (
+            /*
+             * ÅRSSTÄNGNINGEN (#704) — hårdast av alla spärrar, och den som
+             * förklarar mest. Den står FÖRE fönsterspärren därför att den är
+             * absolut: fönstret är en tidsgräns, men ett stängt räkenskapsår
+             * går inte att öppna alls.
+             *
+             * Att bara dölja knappen hade varit sämre än att neka. Utan den här
+             * texten ser en återöppning ut som något som borde fungera, och den
+             * som försöker får ett 409 från årsspärren först när verifikatet
+             * ska skrivas — alltså efter att ha gjort halva arbetet.
+             */
+            <section
+              data-testid="reopen-blocked-fiscal-year"
+              className="flex gap-2 rounded-xl bg-red-50 p-3"
+            >
+              <CircleAlert size={15} strokeWidth={1.8} className="mt-0.5 shrink-0 text-red-600" />
+              <div className="space-y-2 text-[13px] text-red-700">
+                <p className="font-medium">
+                  Räkenskapsåret {d.fiscalYearLabel} är stängt och kan inte öppnas igen.
+                </p>
+                <p>
+                  Årsstängningen har bokfört resultatavräkningen och låst året. Att öppna den här
+                  månaden skulle inte hjälpa: spärren mot bokföring gäller hela räkenskapsåret, inte
+                  bara månaden.
+                </p>
+                <p>
+                  Behöver något rättas bokförs det i innevarande räkenskapsår, med en notering om
+                  vilket år felet gäller.
+                </p>
+              </div>
+            </section>
           ) : !d.withinReopenWindow ? (
             /* Räkenskapsårsspärren — hård, ingen kryssruta, inget val. */
             <section className="flex gap-2 rounded-xl bg-red-50 p-3">
@@ -230,11 +264,15 @@ export function ReopenPeriodModal({ period, onClose }: Props) {
         <Button variant="secondary" onClick={onClose}>
           {category === 'EXISTING_ENTRY_INCORRECT' ? 'Jag förstår' : 'Avbryt'}
         </Button>
-        {d?.closed && isOwner && d.withinReopenWindow && category === 'MISSING_ENTRY' && (
-          <Button variant="primary" disabled={!canSubmit} onClick={handleReopen}>
-            {reopen.isPending ? 'Öppnar…' : 'Öppna perioden igen'}
-          </Button>
-        )}
+        {d?.closed &&
+          isOwner &&
+          !d.fiscalYearClosed &&
+          d.withinReopenWindow &&
+          category === 'MISSING_ENTRY' && (
+            <Button variant="primary" disabled={!canSubmit} onClick={handleReopen}>
+              {reopen.isPending ? 'Öppnar…' : 'Öppna perioden igen'}
+            </Button>
+          )}
       </ModalFooter>
     </Modal>
   )

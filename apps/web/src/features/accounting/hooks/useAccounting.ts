@@ -9,6 +9,9 @@ import {
   closePeriod,
   reopenPeriod,
   reverseJournalEntry,
+  fetchFiscalYears,
+  fetchFiscalYearClosePreview,
+  closeFiscalYear,
 } from '../api/accounting.api'
 
 export function useAccounts() {
@@ -105,6 +108,60 @@ export function useReverseJournalEntry() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['accounting', 'journal'] })
       void qc.invalidateQueries({ queryKey: ['accounting', 'period-precheck'] })
+    },
+    meta: { handlesOwnError: true },
+  })
+}
+
+// ── Årsstängning (#704 PR 3) ─────────────────────────────────────────────────
+
+/**
+ * Räkenskapsårens läge. Billig fråga — två databasfrågor oavsett antal år — och
+ * körs därför på sidladdning, till skillnad från förhandsvisningen.
+ */
+export function useFiscalYears(years?: number) {
+  return useQuery({
+    queryKey: ['accounting', 'fiscal-years', years ?? 3],
+    queryFn: () => fetchFiscalYears(years),
+  })
+}
+
+/**
+ * Det FÖRESLAGNA årsavslutsverifikatet, rad för rad.
+ *
+ * Hämtas först när dialogen öppnas: den läser hela kontoplanen, grupperar årets
+ * journalrader per konto och kör månad tolvs precheck. Samma beräkning som
+ * stängningen sedan bokför — det är hela poängen med att de delar kod, och det
+ * är därför dialogen kan visa exakt de rader som kommer att skrivas.
+ */
+export function useFiscalYearClosePreview(fiscalYear: number | null) {
+  return useQuery({
+    queryKey: ['accounting', 'fiscal-year-preview', fiscalYear],
+    queryFn: () => fetchFiscalYearClosePreview(fiscalYear as number),
+    enabled: fiscalYear != null,
+  })
+}
+
+/**
+ * Stänger räkenskapsåret. OÅTERKALLELIGT — det finns ingen väg tillbaka, varken
+ * i UI:t eller i backend.
+ *
+ * Invalideringen är bred med flit: stängningen bokför ett verifikat (journalen),
+ * stänger årets sista månad (periodöversikten och dess precheck) och låser året
+ * (korten och periodhistoriken). En utebliven invalidering hade lämnat sidan i
+ * ett läge som ser ut som att ingenting hände.
+ */
+export function useCloseFiscalYear() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ fiscalYear }: { fiscalYear: number }) => closeFiscalYear(fiscalYear),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['accounting', 'fiscal-years'] })
+      void qc.invalidateQueries({ queryKey: ['accounting', 'fiscal-year-preview'] })
+      void qc.invalidateQueries({ queryKey: ['accounting', 'periods'] })
+      void qc.invalidateQueries({ queryKey: ['accounting', 'period-precheck'] })
+      void qc.invalidateQueries({ queryKey: ['accounting', 'period-history'] })
+      void qc.invalidateQueries({ queryKey: ['accounting', 'journal'] })
     },
     meta: { handlesOwnError: true },
   })

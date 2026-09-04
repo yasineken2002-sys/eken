@@ -9,7 +9,13 @@ import { extractApiError } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
 import { ReopenPeriodModal } from './ReopenPeriodModal'
 import { periodLabel } from './period-label'
-import { usePeriods, usePeriodPrecheck, useClosePeriod } from '../hooks/useAccounting'
+import { periodInLockedFiscalYear } from './fiscal-year-status'
+import {
+  usePeriods,
+  usePeriodPrecheck,
+  useClosePeriod,
+  useFiscalYears,
+} from '../hooks/useAccounting'
 import type { PeriodOverviewItem } from '../api/accounting.api'
 
 /**
@@ -24,6 +30,10 @@ import type { PeriodOverviewItem } from '../api/accounting.api'
  */
 export function PeriodsPanel() {
   const periods = usePeriods()
+  // Månaderna vet inget om år. Utan den här frågan syns det inte att en stängd
+  // månad ligger i ett LÅST räkenskapsår — och skillnaden är att den ena går att
+  // öppna igen medan den andra inte gör det (#704 PR 3).
+  const fiscalYears = useFiscalYears()
   const [pending, setPending] = useState<{ year: number; month: number } | null>(null)
   const [detail, setDetail] = useState<{ year: number; month: number } | null>(null)
   const precheck = usePeriodPrecheck(pending)
@@ -119,12 +129,19 @@ export function PeriodsPanel() {
             {item.closed ? (
               <div className="flex items-center gap-2">
                 <Badge variant="default">Stängd</Badge>
+                {periodInLockedFiscalYear(item, fiscalYears.data) && (
+                  /* NEUTRAL info-nivå: att året är låst är ett TILLSTÅND, inte
+                     ett utfall. Signalfärgerna är reserverade för signaler. */
+                  <span data-testid={`period-year-locked-${item.year}-${item.month}`}>
+                    <Badge variant="info">Året stängt</Badge>
+                  </span>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"
                   onClick={() => setDetail({ year: item.year, month: item.month })}
                 >
-                  Öppna igen
+                  {periodInLockedFiscalYear(item, fiscalYears.data) ? 'Historik' : 'Öppna igen'}
                 </Button>
               </div>
             ) : item.reopenedCount > 0 ? (
