@@ -16,7 +16,9 @@ import { execFileSync } from 'node:child_process'
  * (AviseringService.generateMonthlyNotices filtrerar på status ACTIVE).
  */
 
-const API = 'http://localhost:3000/v1'
+// Exporterad så att specar som behöver egna API-anrop (t.ex. att hämta ut ett
+// avi-id för en djuplänk) slipper duplicera basadressen.
+export const API = 'http://localhost:3000/v1'
 
 export interface SeededOrg {
   email: string

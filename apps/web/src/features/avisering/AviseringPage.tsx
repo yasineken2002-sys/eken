@@ -22,6 +22,7 @@ import { RentNoticeBadge } from './components/RentNoticeBadge'
 import { GenerateModal } from './components/GenerateModal'
 import { MarkPaidModal } from './components/MarkPaidModal'
 import { RentNoticeDetailModal } from './components/RentNoticeDetailModal'
+import { fetchNotice } from './api/avisering.api'
 import {
   useNotices,
   useNoticeStats,
@@ -29,6 +30,7 @@ import {
   useSendAllNotices,
   useDownloadPdf,
 } from './hooks/useAvisering'
+import { useNavigate } from '@tanstack/react-router'
 import { formatDate, formatCurrency } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import type { RentNotice, NoticeFilter, RentNoticeStatus } from './api/avisering.api'
@@ -73,7 +75,14 @@ function tenantName(notice: RentNotice): string {
   return notice.tenant.companyName ?? notice.tenant.email
 }
 
-export function AviseringPage() {
+interface AviseringPageProps {
+  // Satt av rutten `/avisering/$noticeId` (#648/#719). Listsidan självt skickar
+  // inget, och beter sig då exakt som förut.
+  focusNoticeId?: string
+}
+
+export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
+  const navigate = useNavigate()
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
@@ -109,6 +118,64 @@ export function AviseringPage() {
   const sendNotices = useSendNotices()
   const sendAll = useSendAllNotices()
   const downloadPdf = useDownloadPdf()
+
+  // Djuplänk → detaljmodal. TVÅ STEG, av samma skäl som MaintenancePage: listan
+  // är MÅNADSFILTRERAD, och en notis om en avi som stått stilla i en vecka
+  // pekar ofta på en tidigare period. Avin behöver alltså inte finnas i
+  // `notices` — och att bara leta i listan hade gett en tyst tom modal.
+  //
+  // Ref:en bär vilket id vi redan börjat lösa upp. Utan den startar hämtningen
+  // om vid varje render: `notices` defaultar till en NY tom array medan frågan
+  // laddar, så referensen ändras och effekten körs igen.
+  const focusResolvedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!focusNoticeId) {
+      focusResolvedRef.current = null
+      return
+    }
+    if (focusResolvedRef.current === focusNoticeId) return
+
+    const fromList = notices.find((n) => n.id === focusNoticeId)
+    if (fromList) {
+      focusResolvedRef.current = focusNoticeId
+      setDetailNotice(fromList)
+      return
+    }
+    // Vänta in listan innan vi går till nätet — annars hämtas en avi som
+    // ändå är på väg in i `notices`.
+    if (isLoading) return
+
+    focusResolvedRef.current = focusNoticeId
+    // VAKTEN ÄR REF:EN, inte en lokal `cancelled` med cleanup. En cleanup körs
+    // vid varje DEP-ÄNDRING och inte bara vid unmount — `notices` byter
+    // referens när listfrågan landar, alltså mitt under hämtningen. Med en
+    // lokal flagga hade svaret då kastats, medan ref:en redan var satt, och
+    // nästa körning hoppat över allt: modalen öppnas ALDRIG.
+    //
+    // Ref:en överlever omrenderingar och bär vilket id vi fortfarande vill ha,
+    // så ett svar för ett övergivet id (användaren bytte avi) tystas medan ett
+    // svar för det aktuella släpps fram.
+    fetchNotice(focusNoticeId)
+      .then((notice) => {
+        if (focusResolvedRef.current === focusNoticeId) setDetailNotice(notice)
+      })
+      .catch(() => {
+        // Okänt eller borttaget id: tillbaka till listan i stället för en
+        // tom modal över en URL som påstår att avin finns.
+        if (focusResolvedRef.current === focusNoticeId) void navigate({ to: '/avisering' })
+      })
+  }, [focusNoticeId, notices, isLoading, navigate])
+
+  // Stängning måste städa URL:en när vi kom in via detaljrutten, annars står
+  // adressen kvar på avin medan modalen är borta — och en omladdning öppnar
+  // den igen.
+  function closeDetail() {
+    setDetailNotice(null)
+    if (focusNoticeId) {
+      focusResolvedRef.current = null
+      void navigate({ to: '/avisering' })
+    }
+  }
 
   const currentYear = now.getFullYear()
   const years = [currentYear - 1, currentYear, currentYear + 1]
@@ -412,9 +479,7 @@ export function AviseringPage() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {detailNotice && (
-          <RentNoticeDetailModal notice={detailNotice} onClose={() => setDetailNotice(null)} />
-        )}
+        {detailNotice && <RentNoticeDetailModal notice={detailNotice} onClose={closeDetail} />}
       </AnimatePresence>
 
       <AnimatePresence>
