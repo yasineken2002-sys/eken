@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { E2E_AUTH_THROTTLE_FLAG, authThrottleRelaxed } from '../common/throttler/auth-throttle-mode'
 import { BANKID_PROVIDER_VAR, bankIdMockRequested } from '../bankid/bankid-provider-mode'
+import { PSD2_PROVIDER_VAR, psd2MockRequested } from '../psd2/psd2-provider-mode'
 import {
   PLACEHOLDER_CHECKED_VARS,
   SECRET_FORM_VARS,
@@ -139,16 +140,24 @@ export const FLAG_CONDITIONAL_VARS = {
  *
  * VAD DEN INTE KAN SE: att någon läser en variabel ur `config` utan att gå via
  * `CRITICAL`, `OPTIONAL_FORMAT`, `FLAG_CONDITIONAL_VARS`, de två
- * platshållar-arrayerna, `E2E_AUTH_THROTTLE_FLAG` eller `BANKID_PROVIDER_VAR`.
- * Just de sex är uttömmande i dag därför att loopar och namngivna läsningar går
- * genom dem — lägger du till en sjunde läsväg hör den hemma här också, annars
- * öppnas hålet ovan igen. Felriktningen är den milda: en nyckel för MYCKET i
- * mängden gör bara att specen nollställer något ofarligt.
+ * platshållar-arrayerna, `E2E_AUTH_THROTTLE_FLAG`, `BANKID_PROVIDER_VAR` eller
+ * `PSD2_PROVIDER_VAR`. Just de sju är uttömmande i dag därför att loopar och
+ * namngivna läsningar går genom dem — lägger du till en åttonde läsväg hör den
+ * hemma här också, annars öppnas hålet ovan igen. Felriktningen är den milda: en
+ * nyckel för MYCKET i mängden gör bara att specen nollställer något ofarligt.
  *
  * (`BANKID_PROVIDER_VAR` var den sjätte, tillagd med mock-vägen i #745 PR 3. Den
  * är ett belägg för att raden ovan behövs: variabeln kan FÄLLA en boot — 'mock'
  * i produktion — och en spec som inte nollställer den blir röd hos den som råkar
- * ha den satt lokalt, med ett meddelande om ett värde testet aldrig valde.)
+ * ha den satt lokalt, med ett meddelande om ett värde testet aldrig valde.
+ * `PSD2_PROVIDER_VAR` är den sjunde, tillagd med PSD2:s mock-väg, och bär exakt
+ * samma egenskap.)
+ *
+ * `PSD2_MOCK_SCENARIO` står med FLIT inte här. `validateEnv` läser den inte:
+ * scenariot tolkas av `psd2ProviderFactory` först när mocken redan valts, och
+ * mocken kan inte väljas i produktion. Variabeln kan alltså inte påverka utfallet
+ * av en boot-validering, och en nyckel i den här mängden som ingen läser hade
+ * gjort mängdens namn osant. Se `psd2-provider-mode.ts`.
  */
 export const VALIDATED_ENV_VARS: readonly string[] = [
   ...new Set<string>([
@@ -160,6 +169,7 @@ export const VALIDATED_ENV_VARS: readonly string[] = [
     ...SECRET_FORM_VARS,
     E2E_AUTH_THROTTLE_FLAG,
     BANKID_PROVIDER_VAR,
+    PSD2_PROVIDER_VAR,
   ]),
 ]
 
@@ -321,6 +331,21 @@ export function validateEnv(config: EnvRecord): EnvRecord {
   //    anropet är en no-op i alla andra lägen.
   try {
     bankIdMockRequested(config as NodeJS.ProcessEnv)
+  } catch (err) {
+    errors.push(`  • ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  // 7. PSD2:s MOCK-provider får ALDRIG väljas i produktion. Samma form och samma
+  //    oberoende av flaggan som punkt 6 — men insatsen är en annan, och det är
+  //    värt att skriva ut: BankID:s mock intygar en identitet, PSD2:s mock matar
+  //    PÅHITTADE BANKTRANSAKTIONER genom `ingestFromApi`, alltså exakt den väg
+  //    som skapar BankTransaction-rader och kan matcha dem mot riktiga avier.
+  //    En mock som slog igenom i produktion hade alltså inte bara släppt in fel
+  //    person, den hade skrivit fiktiva betalningar i en kunds avstämning.
+  //    `psd2MockRequested` kastar bara i just den otillåtna kombinationen, så
+  //    anropet är en no-op i alla andra lägen.
+  try {
+    psd2MockRequested(config as NodeJS.ProcessEnv)
   } catch (err) {
     errors.push(`  • ${err instanceof Error ? err.message : String(err)}`)
   }
