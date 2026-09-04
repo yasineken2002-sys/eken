@@ -162,6 +162,90 @@ describe('rensningsmängden härleds ur det validateEnv faktiskt läser', () => 
 })
 
 /**
+ * BANKID_ENABLED — samma fail-fast som SIGNING_ENABLED, i ALLA miljöer.
+ *
+ * Grenen finns i `collectFeatureFlagErrors` och inte bara i modul-factoryn av
+ * samma skäl som signeringens: factoryn fäller vid DI-bygget, valideringen vid
+ * ConfigModule. Den som deployar ska mötas av variabelnamnet i klartext, inte av
+ * ett DI-spår.
+ */
+describe('BANKID_ENABLED fail-fastar utan PII-nycklar', () => {
+  const saved = { ...process.env }
+  let warnSpy: jest.SpyInstance
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+  afterEach(() => {
+    warnSpy.mockRestore()
+    for (const k of RENSADE_KEYS) delete process.env[k]
+    Object.assign(process.env, saved)
+  })
+
+  it('utan PEPPER → boot faller, och meddelandet NÄMNER BANKID', async () => {
+    const env: Record<string, string> = { ...FULL_PROD, BANKID_ENABLED: 'true' }
+    delete env.SIGNING_PII_PEPPER
+    await expect(boot(env)).rejects.toThrow(/BANKID_ENABLED=true men SIGNING_PII_PEPPER/)
+  })
+
+  it('utan KEY → boot faller på nyckeln', async () => {
+    const env: Record<string, string> = { ...FULL_PROD, BANKID_ENABLED: 'true' }
+    delete env.SIGNING_PII_KEY
+    await expect(boot(env)).rejects.toThrow(/BANKID_ENABLED=true men SIGNING_PII_KEY/)
+  })
+
+  it('i DEV också — flaggan är inte produktionsberoende', async () => {
+    // Skillnaden mot CRITICAL: de felar bara i produktion. En påslagen
+    // funktionsflagga utan sina förutsättningar ska fälla överallt, annars
+    // upptäcks felet först vid deploy.
+    await expect(boot({ NODE_ENV: 'development', BANKID_ENABLED: 'true' })).rejects.toThrow(
+      /BANKID_ENABLED=true men SIGNING_PII/,
+    )
+  })
+
+  it('AV (default) → ingen sådan gren, boot går igenom', async () => {
+    // Kanariefågeln för proven ovan: utan den här raden går det inte att skilja
+    // "grenen fäller rätt" från "boot faller alltid i den här fixturen".
+    //
+    // MÄTNINGEN GÖRS I DEV, och det är inte en genväg. `SIGNING_PII_KEY`/`_PEPPER`
+    // ligger ÄVEN i CRITICAL — de behövs för Tenant/Customer oavsett flaggor — så
+    // i produktion fälls boot av dem hur som helst, och provet hade blivit grönt
+    // av fel orsak. I dev varnar CRITICAL bara, så det enda som kan fälla är den
+    // flagg-villkorade grenen. Paret dev-av/dev-på isolerar alltså exakt flaggan.
+    await expect(boot({ NODE_ENV: 'development' })).resolves.toBeUndefined()
+    await expect(boot({ NODE_ENV: 'development', BANKID_ENABLED: 'true' })).rejects.toThrow(
+      /BANKID_ENABLED/,
+    )
+  })
+
+  it('SIGNING_ENABLED uppfyller INTE BankID:s krav, och tvärtom', async () => {
+    // De delar nycklar men är egna funktioner. Vore villkoret ett `||`-tillägg i
+    // signeringsgrenen hade en tänd SIGNING_ENABLED tyst uppfyllt BankID:s krav.
+    const utanPepper: Record<string, string> = { ...FULL_PROD }
+    delete utanPepper.SIGNING_PII_PEPPER
+
+    await expect(boot({ ...utanPepper, SIGNING_ENABLED: 'true' })).rejects.toThrow(
+      /SIGNING_ENABLED=true men SIGNING_PII_PEPPER/,
+    )
+    await expect(boot({ ...utanPepper, BANKID_ENABLED: 'true' })).rejects.toThrow(
+      /BANKID_ENABLED=true men SIGNING_PII_PEPPER/,
+    )
+  })
+
+  it('#689: rensningsmängden tog med BANKID_ENABLED UTAN att någon lade till den', () => {
+    // Härledningen går via `Object.values(FLAG_CONDITIONAL_VARS)`, så en ny
+    // flagg-villkorad nyckel hamnar i mängden av sig själv. Provet finns för att
+    // den egenskapen ska FÄLLA om någon byter härledningen mot en lista — det är
+    // precis det #689 handlade om, och en lista ser rätt ut ända tills den glider.
+    expect(RENSADE_KEYS).toContain('BANKID_ENABLED')
+    // …och att den inte råkade komma med via någon ANNAN väg, vilket hade gjort
+    // provet ovan grönt av fel skäl.
+    expect([...PLACEHOLDER_CHECKED_VARS, ...SECRET_FORM_VARS]).not.toContain('BANKID_ENABLED')
+    expect(CRITICAL_KEYS).not.toContain('BANKID_ENABLED')
+  })
+})
+
+/**
  * ── KANARIEFÅGEL: mäter rensningen fortfarande något? ────────────────────────
  *
  * `RENSADE_KEYS` ovan HÄRLEDS ur `PLACEHOLDER_CHECKED_VARS ∪ SECRET_FORM_VARS`

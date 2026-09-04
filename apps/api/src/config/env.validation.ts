@@ -108,6 +108,7 @@ const OPTIONAL_FORMAT: Record<string, z.ZodTypeAny> = {
  * ifrån vad koden faktiskt gör.
  */
 export const FLAG_CONDITIONAL_VARS = {
+  BANKID_ENABLED: 'BANKID_ENABLED',
   PSD2_ENABLED: 'PSD2_ENABLED',
   PSD2_TOKEN_KEY: 'PSD2_TOKEN_KEY',
   SIGNING_ENABLED: 'SIGNING_ENABLED',
@@ -179,6 +180,34 @@ function collectFeatureFlagErrors(config: EnvRecord): string[] {
     const pepper = config[FLAG_CONDITIONAL_VARS.SIGNING_PII_PEPPER]
     if (typeof pepper !== 'string' || pepper.length < 16) {
       errs.push('  • SIGNING_ENABLED=true men SIGNING_PII_PEPPER saknas/för kort (≥16 tecken)')
+    }
+  }
+
+  // BANKID_ENABLED bär SAMMA krav som SIGNING_ENABLED, och delar nycklarna med
+  // flit: identitetsbindningen mot BankID-personnumret går genom blind-indexet
+  // (HMAC-SHA256 med SIGNING_PII_PEPPER), alltså exakt den mekanism signeringen
+  // redan använder för att binda en part till en `Tenant`-rad. Två pepprar hade
+  // gett två index över samma personnummer, och då hade en matchning kunnat
+  // lyckas i det ena och missa i det andra.
+  //
+  // EGEN FLAGGA ÄNDÅ: BankID-INLOGGNING kräver inget signeringsavtal, och
+  // signering kräver ingen inloggningsadapter. Att de delar nycklar betyder inte
+  // att de ska tändas tillsammans. Grenen är därför en egen och inte ett
+  // `||`-tillägg i den ovan — annars hade `SIGNING_ENABLED=true` tyst uppfyllt
+  // BankID:s krav, och tvärtom.
+  //
+  // Villkoret upprepar modul-factoryns `crypto.configured` med flit: den fäller
+  // vid DI-bygget, den här vid ConfigModule-valideringen. Den som deployar ska
+  // få veta av det FÖRSTA felet, med variabelnamnet i klartext, inte av ett
+  // DI-spår.
+  if (String(config[FLAG_CONDITIONAL_VARS.BANKID_ENABLED]) === 'true') {
+    const key = config[FLAG_CONDITIONAL_VARS.SIGNING_PII_KEY]
+    if (typeof key !== 'string' || !hex64.test(key)) {
+      errs.push('  • BANKID_ENABLED=true men SIGNING_PII_KEY saknas/ogiltig (kräver 64 hex-tecken)')
+    }
+    const pepper = config[FLAG_CONDITIONAL_VARS.SIGNING_PII_PEPPER]
+    if (typeof pepper !== 'string' || pepper.length < 16) {
+      errs.push('  • BANKID_ENABLED=true men SIGNING_PII_PEPPER saknas/för kort (≥16 tecken)')
     }
   }
 
