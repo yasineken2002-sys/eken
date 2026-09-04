@@ -123,10 +123,23 @@ export function enclosingFunction(text, idx) {
       // Obalanserad `{` — blockets öppning. Är raden en funktionsdeklaration?
       const lineStart = text.lastIndexOf('\n', i) + 1
       const header = text.slice(lineStart, i)
+      // ── \b OCH \w ÄR BYTTA HÄR (#713) ─────────────────────────────────
+      //
+      // Varje avgränsning som läser en HÄRLEDD identifierare går via
+      // `[\p{L}\p{N}_$]` med u-flaggan. Skälet är mätt: `\b` och `\w` är
+      // ASCII-definierade, så ett funktionsnamn som `ärLevande` MISSAS helt
+      // och ett som `förvaltaAvi` KAPAS till sin ASCII-svans `rvaltaAvi` —
+      // och den andra formen sänker inte antalet, så ett prov som räknar ser
+      // ingenting.
+      //
+      // `\bfunction\b` STÅR KVAR: `function` är ett fast nyckelord ur TS
+      // grammatik, och båda gränserna vetter mot samma literal. Positionen
+      // efter är ett blanksteg eller `*` — den kan inte vara en identifierare,
+      // så unicode-avgränsning hade gett brus utan att skydda något.
       let isFunction =
         /\bfunction\b/.test(header) ||
         /=>\s*$/.test(header) ||
-        /\b[\w$]+\s*\([^)]*\)\s*(:[^{]*)?$/.test(header)
+        /(?<![\p{L}\p{N}_$])[\p{L}\p{N}_$]+\s*\([^)]*\)\s*(:[^{]*)?$/u.test(header)
 
       // FLERRADIG SIGNATUR. De tre proven ovan läser EN rad. Bryts parameter-
       // listan över flera rader står bara `): Promise<string> {` kvar på raden
@@ -154,7 +167,7 @@ export function enclosingFunction(text, idx) {
             if (d === 0) {
               const sigStart = text.lastIndexOf('\n', j) + 1
               const sigHeader = text.slice(sigStart, j)
-              isFunction = /\bfunction\b/.test(sigHeader) || /\b[\w$]+\s*$/.test(sigHeader)
+              isFunction = /\bfunction\b/.test(sigHeader) || /(?<![\p{L}\p{N}_$])[\p{L}\p{N}_$]+\s*$/u.test(sigHeader)
               break
             }
           }
@@ -193,12 +206,15 @@ export function deriveSequenceModels(schemaText) {
   // åtta modeller — bytet ändrar inget utfall, bara vad som KAN hända.
   schemaText = blankComments(schemaText)
   const models = []
-  const re = /^model\s+(\w*Sequence)\s*\{/gm
+  const re = /^model\s+([\p{L}\p{N}_$]*Sequence)\s*\{/gmu
   let m
   while ((m = re.exec(schemaText))) {
     const bodyStart = schemaText.indexOf('{', m.index)
     const bodyEnd = schemaText.indexOf('\n}', bodyStart)
     const body = schemaText.slice(bodyStart, bodyEnd === -1 ? schemaText.length : bodyEnd)
+    // `Int\b` står kvar: `Int` är en av Prismas skalärtyper, och positionen
+    // efter den kan i giltigt schema bara vara `?`, `@` eller blanksteg —
+    // aldrig en identifierare.
     if (/^\s*lastNumber\s+Int\b/m.test(body)) models.push(m[1])
   }
   return models
@@ -227,7 +243,7 @@ export function scanSource(text, relPath, models) {
     // men `tx.invoice.` gör det inte — och omvänt matchar `.invoice.` aldrig
     // sekvensmodellen, så en modell som är prefix till en annan blir inte
     // förväxlad.
-    const re = new RegExp(`\\b${accessor}\\s*\\.\\s*(\\w+)\\s*\\(`, 'g')
+    const re = new RegExp(`(?<![\\p{L}\\p{N}_$])${accessor}\\s*\\.\\s*([\\p{L}\\p{N}_$]+)\\s*\\(`, 'gu')
     let m
     while ((m = re.exec(kod))) {
       const method = m[1]
@@ -251,6 +267,9 @@ export function scanSource(text, relPath, models) {
       // Formen, inte en exakt sträng: `increment` ska stå i upsertens update-gren.
       // En upsert som SÄTTER lastNumber (`update: { lastNumber: n }`) är samma
       // race i ny dräkt — värdet räknades fram utanför låset.
+      // `\bincrement` står kvar: `increment` är en nyckel ur Prismas eget
+      // API, inte ett namn vi härleder, och den föregås i genererad kod av
+      // `{` eller `,`.
       if (!/\bincrement\s*:/.test(call)) {
         violations.push({
           line,
@@ -272,6 +291,8 @@ export function scanSource(text, relPath, models) {
       // Ingen egen kommentarfiltrering längre. `enclosingFunction` returnerar
       // en kropp ur codeMask, så kommentarerna är redan blanka — inklusive de
       // efterhängda, som den gamla radregexen (`^\s*(\*|\/\/)`) inte kunde se.
+      // `\b_max\b` står kvar: `_max` är Prismas aggregatnyckel, ett fast
+      // ASCII-namn med båda gränserna mot samma literal.
       if (!/\.count\s*\(|\.aggregate\s*\(|\b_max\b/.test(ln)) return
       violations.push({
         line: lineOf(kod, start) + i,
@@ -383,7 +404,7 @@ export function checkAllocatorTxTyping(filer, callSites) {
 
     // R4.3 — vem skriver upserten på?
     const klient = klientUttryck(kod, site.idx)
-    if (klient && /^this\b/.test(klient)) {
+    if (klient && /^this(?![\p{L}\p{N}_$])/u.test(klient)) {
       violations.push({
         file: site.file,
         line: site.line,
@@ -435,7 +456,7 @@ export function checkAllocatorTxTyping(filer, callSites) {
 function klientUttryck(kod, idx) {
   const radStart = kod.lastIndexOf('\n', idx) + 1
   const före = kod.slice(radStart, idx)
-  const m = före.match(/([\w$.]+)\s*\.\s*$/)
+  const m = före.match(/([\p{L}\p{N}_$.]+)\s*\.\s*$/u)
   return m ? m[1] : null
 }
 
@@ -474,7 +495,7 @@ export function allocatorInfo(kod, start) {
 
   const params = kod.slice(parenOpen + 1, parenClose)
   const föreNamn = kod.slice(Math.max(0, parenOpen - 200), parenOpen)
-  const nm = föreNamn.match(/([\w$]+)\s*$/)
+  const nm = föreNamn.match(/([\p{L}\p{N}_$]+)\s*$/u)
   if (!nm) return null
   const namn = nm[1]
 
@@ -486,7 +507,7 @@ export function allocatorInfo(kod, start) {
     if (!/Prisma\s*\.\s*TransactionClient/.test(p)) return
     if (txIndex !== -1) return
     txIndex = i
-    const pm = p.match(/([\w$]+)\s*(\?)?\s*:/)
+    const pm = p.match(/([\p{L}\p{N}_$]+)\s*(\?)?\s*:/u)
     txNamn = pm ? pm[1] : null
     valfri = Boolean(pm && pm[2])
   })
@@ -504,7 +525,7 @@ export function allocatorInfo(kod, start) {
   // se form 4 — ett anrop som utelämnar transaktionsklienten HAR ett argument i
   // dess position (nästa parameters), så "saknas" går inte att se på positionen
   // ensam. Antalet argument mot antalet krävda parametrar ser det.
-  const minArity = delar.filter((d) => !/[\w$]\s*\?\s*:/.test(d) && !/=/.test(d)).length
+  const minArity = delar.filter((d) => !/[\p{L}\p{N}_$]\s*\?\s*:/u.test(d) && !/=/.test(d)).length
 
   return {
     namn,
@@ -521,7 +542,7 @@ export function allocatorInfo(kod, start) {
 
 /** Namnet på klassen vars kropp omsluter `idx`, eller null för en fri funktion. */
 function ägandeKlass(kod, idx) {
-  const re = /\bclass\s+([\w$]+)[^{]*\{/g
+  const re = /(?<![\p{L}\p{N}_$])class\s+([\p{L}\p{N}_$]+)[^{]*\{/gu
   let m
   let träff = null
   while ((m = re.exec(kod))) {
@@ -576,12 +597,12 @@ function anroparePasserarPoolen(filer, info, allokerarSite) {
     const mönster = []
     if (info.klass) {
       const propRe = new RegExp(
-        `(?:readonly|private|public|protected)\\s+([\\w$]+)\\s*:\\s*${info.klass}\\b`,
-        'g',
+        `(?:readonly|private|public|protected)\\s+([\\p{L}\\p{N}_$]+)\\s*:\\s*${info.klass}(?![\\p{L}\\p{N}_$])`,
+        'gu',
       )
       let pm
       while ((pm = propRe.exec(kod))) {
-        mönster.push(new RegExp(`\\bthis\\s*\\.\\s*${pm[1]}\\s*\\.\\s*${info.namn}\\s*\\(`, 'g'))
+        mönster.push(new RegExp(`(?<![\\p{L}\\p{N}_$])this\\s*\\.\\s*${pm[1]}\\s*\\.\\s*${info.namn}\\s*\\(`, 'gu'))
       }
     } else {
       mönster.push(new RegExp(`(?<![\\p{L}\\p{N}_$.])${info.namn}\\s*\\(`, 'gu'))
@@ -594,6 +615,8 @@ function anroparePasserarPoolen(filer, info, allokerarSite) {
         // definitionen själv är ingen anropsplats
         if (
           fil.rel === allokerarSite.file &&
+          // Nyckelordsalternering — `function`/`async` är fasta ord ur
+          // grammatiken, inte härledda namn. Står kvar.
           /\b(function|async)\s*$/.test(kod.slice(Math.max(0, m.index - 20), m.index))
         )
           continue
@@ -636,7 +659,7 @@ function anroparePasserarPoolen(filer, info, allokerarSite) {
               'allokeringen hamnar på reserven. Skicka tx från den ' +
               '$transaction som skriver raden numret hör till.',
           })
-        } else if (/^this\b/.test(arg)) {
+        } else if (/^this(?![\p{L}\p{N}_$])/u.test(arg)) {
           violations.push({
             file: fil.rel,
             line,
@@ -915,6 +938,70 @@ function selfTest() {
       `✅ omfång: ${alla.length} källfiler (golv ${MIN_KÄLLFILER}), ${real.length} sekvensmodeller ` +
         `(golv ${MIN_MODELLER}), ${riktigaAnrop.length} anropsplatser (golv ${MIN_ANROPSPLATSER})`,
     )
+  }
+
+  // ── SVENSKA IDENTIFIERARE: MISSAD OCH KAPAD (#713) ────────────────────────
+  //
+  // Vakten HÄRLEDER namn ur källkod — modell, allokerare, ägande klass — och
+  // varje sådan härledning gick tidigare via `\w`/`\b`, som är ASCII. De två
+  // felformerna, båda uppmätta mot origin/main innan bytet:
+  //
+  //   MISSAD   svensk INITIAL      `class Ärendetjänst` → klass = null.
+  //                                Antalet SJUNKER, vilket syns i en summa.
+  //   KAPAD    svensk bokstav MITT i  `class Förvaltning` → klass = "F",
+  //                                `async förvaltaAvi` → namn = "rvaltaAvi".
+  //                                Något hittas, med FEL namn, och ANTALET ÄR
+  //                                OFÖRÄNDRAT — ett prov som räknar ser inget.
+  //
+  // KAPAD är därför den bärande av de två. Ett prov som bara kontrollerar att
+  // en klass hittades hade varit grönt med den trasiga formen.
+  {
+    const bygg = (klass, fn) =>
+      `class ${klass} {\n  async ${fn}(tx: Prisma.TransactionClient, orgId: string) {\n    return 1\n  }\n}\n`
+    const läs = (klass, fn) => {
+      const kod = bygg(klass, fn)
+      return allocatorInfo(kod, kod.indexOf('{', kod.indexOf(`${fn}(`)))
+    }
+
+    const missad = läs('Ärendetjänst', 'allokera')
+    if (missad?.klass !== 'Ärendetjänst')
+      fail(`MISSAD: klass med svensk initial gav ${JSON.stringify(missad?.klass)}, väntade "Ärendetjänst"`)
+    else console.log('✅ MISSAD: klass med svensk INITIAL härleds (var null med \\w)')
+
+    const kapadKlass = läs('Förvaltning', 'allokera')
+    if (kapadKlass?.klass !== 'Förvaltning')
+      fail(`KAPAD: klassnamnet gav ${JSON.stringify(kapadKlass?.klass)}, väntade "Förvaltning"`)
+    else console.log('✅ KAPAD: klassnamnet kapas inte till sin ASCII-svans (var "F")')
+
+    const kapatNamn = läs('Tjänst', 'förvaltaAvi')
+    if (kapatNamn?.namn !== 'förvaltaAvi' || kapatNamn?.klass !== 'Tjänst')
+      fail(
+        `KAPAD: allokerarnamn/klass gav ${JSON.stringify([kapatNamn?.namn, kapatNamn?.klass])}, ` +
+          'väntade ["förvaltaAvi","Tjänst"]',
+      )
+    else console.log('✅ KAPAD: allokerarnamnet kapas inte (var "rvaltaAvi" / "Tj")')
+
+    // KAPAD-formen är osynlig för en RÄKNING: båda varianterna hittar EN
+    // allokerare. Bara namnet skiljer. Provet måste alltså jämföra mot det
+    // VÄNTADE namnet, aldrig mot "hittade något".
+    if (!kapadKlass || !kapatNamn)
+      fail('KAPAD: fixturen gav ingen allokerare alls — provet mäter inte det det ska')
+
+    // DELSTRÄNGS-MOTPROVET. Lookbehinden får inte bli en ren delsträngssökning:
+    // `subclass Yttre` är inte en klassdeklaration som heter `Yttre`.
+    const sub = 'subclass Yttre {\n  async allokera(tx) {\n    return 1\n  }\n}\n'
+    const subInfo = allocatorInfo(sub, sub.indexOf('{', sub.indexOf('allokera(')))
+    if (subInfo?.klass != null)
+      fail(`MOTPROV: "subclass Yttre" lästes som klassen ${JSON.stringify(subInfo?.klass)}`)
+    else console.log('✅ MOTPROV: `subclass` är inte `class` (delsträng avvisas)')
+
+    // Och modellhärledningen, samma fråga en nivå upp: MISSAD sänker ANTALET.
+    const modeller = deriveSequenceModels(
+      'model ÄrendeSequence {\n  lastNumber Int\n}\nmodel OcrSequence {\n  lastNumber Int\n}\n',
+    )
+    if (modeller.length !== 2 || !modeller.includes('ÄrendeSequence'))
+      fail(`MISSAD: sekvensmodeller gav ${JSON.stringify(modeller)}, väntade båda två`)
+    else console.log('✅ MISSAD: modell med svensk initial härleds (gav 1 av 2 med \\w)')
   }
 
   // ── R1/R3: inga falsklarm på legitim kod ──────────────────────────────────
