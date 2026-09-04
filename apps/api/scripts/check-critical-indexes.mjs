@@ -116,7 +116,7 @@ const CRITICAL_INDEXES = [
 
 // ── normalisering ──────────────────────────────────────────────────────────
 const stripIdentQuotes = (s) => s.replace(/["`]/g, '') // bara identifierare, ej '-literaler
-const normTable = (s) => stripIdentQuotes(s).replace(/^\w+\./, '') // ta bort ev. schema-prefix
+const normTable = (s) => stripIdentQuotes(s).replace(/^[\p{L}\p{N}_]+\./u, '') // ta bort ev. schema-prefix
 const normCols = (s) =>
   s
     .split(',')
@@ -128,10 +128,10 @@ const normPredicate = (s) => (s ? stripIdentQuotes(s).replace(/::text/gi, '').re
 
 // ── parsers (körs på whitespace-normaliserade, ;-delade statements) ─────────
 const CREATE_RE =
-  /^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?"?([^"\s(]+)"?\s+ON\s+(?:ONLY\s+)?((?:"?\w+"?\.)?"?[^"\s(]+"?)\s*\(([^)]*)\)\s*(?:WHERE\s+(.+))?$/i
-const DROP_RE = /^DROP\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+EXISTS\s+)?((?:"?\w+"?\.)?"?[^"\s;]+"?)/i
+  /^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?"?([^"\s(]+)"?\s+ON\s+(?:ONLY\s+)?((?:"?[\p{L}\p{N}_]+"?\.)?"?[^"\s(]+"?)\s*\(([^)]*)\)\s*(?:WHERE\s+(.+))?$/iu
+const DROP_RE = /^DROP\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+EXISTS\s+)?((?:"?[\p{L}\p{N}_]+"?\.)?"?[^"\s;]+"?)/iu
 const RENAME_RE =
-  /^ALTER\s+INDEX\s+(?:IF\s+EXISTS\s+)?((?:"?\w+"?\.)?"?[^"\s]+"?)\s+RENAME\s+TO\s+"?([^"\s;]+)"?/i
+  /^ALTER\s+INDEX\s+(?:IF\s+EXISTS\s+)?((?:"?[\p{L}\p{N}_]+"?\.)?"?[^"\s]+"?)\s+RENAME\s+TO\s+"?([^"\s;]+)"?/iu
 
 /** Bygg index-sluttillståndet: name -> {unique, table, columns[], where, origin}. */
 function buildFinalIndexState() {
@@ -250,4 +250,95 @@ function main() {
   console.log(`\n✅ Alla ${CRITICAL_INDEXES.length} kritiska index intakta i migrations-sluttillståndet.`)
 }
 
-main()
+/**
+ * GOLV för parsern. MÄTT mot 918e8f5: 275 index i migrations-sluttillståndet.
+ * Satt med marginal — migrationer tillkommer, försvinner sällan. Sjunker talet
+ * under det här har parsningen tappat statements, och det syns INTE på att
+ * vakten är grön: en parser som ser noll index hittar inga brott heller.
+ */
+const MIN_INDEX = 200
+
+// ── självtest ───────────────────────────────────────────────────────────────
+//
+// Vakten hade INGEN --self-test förrän #713. Den parsar SQL-identifierare, och
+// parsningen var ASCII-begränsad: `\w` i schema-prefixet och i normaliseringen.
+// Postgres-identifierare får vara vad som helst i UTF-8, och den här kodbasen
+// namnger allt på svenska — så antagandet är inte teoretiskt.
+//
+// UPPMÄTT 2026-09-04, en CREATE med ett schema som heter `förvaltning`:
+//
+//     ascii    CREATE OSYNLIG   DROP letar efter "förvaltning"
+//     unicode  CREATE PARSAD    tabell="Lease"   DROP letar efter indexnamnet
+//
+// Båda utfallen är fel, åt var sitt håll: en osynlig CREATE gör att ett
+// kritiskt index rapporteras SAKNAT (falsklarm), och en DROP som normaliseras
+// till fel nyckel raderar inte posten — då säger vakten "intakt" om ett index
+// som är borta. Det andra är en falsk GRÖN i en vakt vars hela uppgift är att
+// upptäcka att ett index tappats.
+//
+// PROVEN BEHÖVER INGEN ASCII-REFERENS för att diskriminera: de påstår rätt
+// utfall, och backas normaliseringen till `^\w+\.` blir de röda direkt.
+// Det är också skälet att de INTE skrivs som en jämförelse mot den gamla
+// formen — en sådan sond hade själv blivit en post i
+// identifier-regex.baseline.json, alltså ny skuld för att bevisa gammal.
+function självtest() {
+  const fel = []
+  const kräv = (namn, villkor, detalj) => { if (!villkor) fel.push(`${namn}${detalj ? ` — ${detalj}` : ''}`) }
+
+  // Den delade skannern bär SQL-kommentarsmaskeringen. Går den sönder ska DEN
+  // HÄR vakten bli röd, inte bara source-scan.mjs egen körning.
+  for (const f of kanariefåglar()) fel.push(`delad skanner: ${f}`)
+
+  // MISSAD — schema med svensk bokstav.
+  kräv(
+    'MISSAD (schema-prefix med svenskt tecken normaliseras bort)',
+    normTable('"förvaltning"."Lease"') === 'Lease',
+    JSON.stringify(normTable('"förvaltning"."Lease"')),
+  )
+  const skapa =
+    'CREATE UNIQUE INDEX "lease_unit_active_unique" ON "förvaltning"."Lease" (unitId) WHERE status = \'ACTIVE\''
+  const c = CREATE_RE.exec(skapa)
+  kräv('MISSAD (CREATE med svenskt schema parsas)', !!c, 'CREATE_RE matchade inte alls')
+  kräv('MISSAD (tabellen blir Lease, inte förvaltning.Lease)',
+    c ? normTable(c[3]) === 'Lease' : false, c ? JSON.stringify(normTable(c[3])) : '—')
+  kräv('MISSAD (indexnamnet läses rätt)',
+    c ? stripIdentQuotes(c[2]) === 'lease_unit_active_unique' : false,
+    c ? JSON.stringify(stripIdentQuotes(c[2])) : '—')
+
+  const d = DROP_RE.exec('DROP INDEX "förvaltning"."lease_unit_active_unique"')
+  kräv('MISSAD (DROP med svenskt schema pekar på INDEXET, inte på schemat)',
+    d ? normTable(d[1]) === 'lease_unit_active_unique' : false,
+    d ? JSON.stringify(normTable(d[1])) : 'DROP_RE matchade inte')
+
+  const r = RENAME_RE.exec('ALTER INDEX "förvaltning"."gammalt" RENAME TO "nytt"')
+  kräv('MISSAD (RENAME med svenskt schema läses)',
+    r ? normTable(r[1]) === 'gammalt' && stripIdentQuotes(r[2]) === 'nytt' : false,
+    r ? JSON.stringify([normTable(r[1]), stripIdentQuotes(r[2])]) : 'RENAME_RE matchade inte')
+
+  // MOTPROVEN — normaliseringen får inte bli glupsk.
+  kräv('MOTPROV (ett index UTAN schema rörs inte)',
+    normTable('"lease_unit_active_unique"') === 'lease_unit_active_unique',
+    JSON.stringify(normTable('"lease_unit_active_unique"')))
+  kräv('MOTPROV (bara FÖRSTA prefixet strippas)',
+    normTable('a.b.c') === 'b.c', JSON.stringify(normTable('a.b.c')))
+  kräv('MOTPROV (en punkt inuti ett namn utan prefix är inget prefix)',
+    normTable('x') === 'x', JSON.stringify(normTable('x')))
+
+  // GOLV — parsern ska se de riktiga migrationerna. En parser som gått blind
+  // ger noll index och är grön om hela mängden.
+  const state = buildFinalIndexState()
+  kräv(`GOLV (index i sluttillståndet ≥ ${MIN_INDEX})`, state.size >= MIN_INDEX,
+    `${state.size} index parsade ur migrationerna`)
+  kräv('GOLV (varje kritiskt index finns)',
+    CRITICAL_INDEXES.every((i) => state.has(i.expectedName)),
+    CRITICAL_INDEXES.filter((i) => !state.has(i.expectedName)).map((i) => i.expectedName).join(', '))
+
+  if (fel.length) { console.error('SJÄLVTEST RÖTT:\n  ' + fel.join('\n  ')); process.exit(1) }
+  console.log(
+    `✅ självtest: ${state.size} index parsade ur migrationerna (golv ${MIN_INDEX}), ` +
+      `${CRITICAL_INDEXES.length} kritiska funna, svenska schemanamn parsas, motproven håller.`,
+  )
+}
+
+if (process.argv.includes('--self-test')) självtest()
+else main()

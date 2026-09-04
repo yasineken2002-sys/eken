@@ -182,6 +182,14 @@ jobs:
         with:
           node-version: 20
 
+      # Självtestet tillkom i #713: vakten parsar SQL-IDENTIFIERARE, och
+      # parsningen var ASCII-begränsad. Ett schema med en svensk bokstav gjorde
+      # en CREATE osynlig (kritiskt index rapporteras SAKNAT) och en DROP
+      # normaliserad till fel nyckel (vakten säger INTAKT om ett index som är
+      # borta). Proven kräver rätt utfall och blir röda om formen backas.
+      - name: Self-test the guard (SQL identifier parsing, floor, counter-probes)
+        run: node apps/api/scripts/check-critical-indexes.mjs --self-test
+
       - name: Verify critical partial DB indexes survive migrations
         run: node apps/api/scripts/check-critical-indexes.mjs
 
