@@ -48,6 +48,7 @@ import { TenantAuthGuard } from './tenant-auth.guard'
 import { CurrentTenant } from './current-tenant.decorator'
 import type { Tenant } from '@prisma/client'
 import { readTenantWithCredentials } from './tenant-credential-read'
+import { TenantBankIdService } from './tenant-bankid.service'
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,31 @@ class ActivateDto {
   @IsString()
   @MinLength(2)
   signatureName?: string
+}
+
+/**
+ * BankID-anropen bär ETT fält: providerns handtag. Ingen tenantId, inget
+ * personnummer — servern avgör vem ordern gäller ur uppslaget, och en klient som
+ * fick skicka med en identitet hade sett ut som om den bestämde den.
+ */
+class BankIdCollectDto {
+  @IsString()
+  @MinLength(1)
+  orderRef!: string
+}
+
+class BankIdChooseDto {
+  @IsString()
+  @MinLength(1)
+  chooseToken!: string
+
+  /**
+   * Hyresgästraden användaren valde. Får BARA vara en av dem som signerades i
+   * `chooseToken` — kontrollen ligger i `TenantBankIdService.choose`, inte här:
+   * en DTO kan bara se formen, aldrig vilka id som var kandidater.
+   */
+  @IsUUID()
+  tenantId!: string
 }
 
 class DeleteAccountDto {
@@ -187,6 +213,7 @@ export class TenantAuthController {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly contracts: ContractTemplateService,
+    private readonly tenantBankId: TenantBankIdService,
   ) {}
 
   /**
@@ -283,6 +310,38 @@ export class TenantAuthController {
       expiresAt: result.expiresAt.toISOString(),
       tenant: tenantSummary(result.tenant),
     }
+  }
+
+  // ── BankID (#745 PR 4) ─────────────────────────────────────────────────
+  //
+  // Strypningen speglar magic-link-/lösenordsvägen: `start` är ett
+  // inloggningsförsök och får dess tak, `collect` POLLAS med flit under hela
+  // flödet och behöver ett högre. Ett gemensamt tak hade antingen strypt en
+  // normal pollning eller öppnat starten.
+  //
+  // Hela controllern är `@Public()` — se klassdekoratorn. Grinden är inte
+  // dekoratorn utan orderraden: single-use, kortlivad, och uppslaget som binder
+  // den till en hyresgäst sker serverside.
+
+  @Post('auth/bankid/start')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  async bankIdStart(@Req() req: FastifyRequest) {
+    return this.tenantBankId.start(req.ip, new Date())
+  }
+
+  @Post('auth/bankid/collect')
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  async bankIdCollect(@Body() dto: BankIdCollectDto) {
+    return this.tenantBankId.collect(dto.orderRef, new Date())
+  }
+
+  @Post('auth/bankid/choose')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  async bankIdChoose(@Body() dto: BankIdChooseDto) {
+    return this.tenantBankId.choose(dto.chooseToken, dto.tenantId, new Date())
   }
 
   @Post('forgot-password')

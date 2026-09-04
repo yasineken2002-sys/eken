@@ -1,15 +1,26 @@
 import * as crypto from 'node:crypto'
 import { JwtService } from '@nestjs/jwt'
 
-import { CHOOSE_TOKEN_TTL_MS, signChooseToken, verifyChooseToken } from './bankid-choose-token'
+import {
+  CHOOSE_KONTEXT_PORTAL,
+  CHOOSE_KONTEXT_WEB,
+  CHOOSE_TOKEN_TTL_MS,
+  signChooseToken,
+  verifyChooseToken,
+} from './bankid-choose-token'
 
 const HEMLIGHET = 'x'.repeat(48)
 const NU = new Date('2026-09-04T12:00:00Z')
 
 describe('väljar-token — signering och verifiering', () => {
   it('rundtur: det som signerades kommer ut', () => {
-    const t = signChooseToken({ orderRef: 'o1', subjectHash: 'h1' }, HEMLIGHET, NU)
-    expect(verifyChooseToken(t, HEMLIGHET, NU)).toEqual({
+    const t = signChooseToken(
+      { orderRef: 'o1', subjectHash: 'h1' },
+      HEMLIGHET,
+      NU,
+      CHOOSE_KONTEXT_WEB,
+    )
+    expect(verifyChooseToken(t, HEMLIGHET, NU, CHOOSE_KONTEXT_WEB)).toEqual({
       orderRef: 'o1',
       subjectHash: 'h1',
       exp: NU.getTime() + CHOOSE_TOKEN_TTL_MS,
@@ -17,29 +28,44 @@ describe('väljar-token — signering och verifiering', () => {
   })
 
   it('utgången → null', () => {
-    const t = signChooseToken({ orderRef: 'o1', subjectHash: 'h1' }, HEMLIGHET, NU)
+    const t = signChooseToken(
+      { orderRef: 'o1', subjectHash: 'h1' },
+      HEMLIGHET,
+      NU,
+      CHOOSE_KONTEXT_WEB,
+    )
     const efter = new Date(NU.getTime() + CHOOSE_TOKEN_TTL_MS + 1)
-    expect(verifyChooseToken(t, HEMLIGHET, efter)).toBeNull()
+    expect(verifyChooseToken(t, HEMLIGHET, efter, CHOOSE_KONTEXT_WEB)).toBeNull()
   })
 
   it('annan hemlighet → null', () => {
-    const t = signChooseToken({ orderRef: 'o1', subjectHash: 'h1' }, HEMLIGHET, NU)
-    expect(verifyChooseToken(t, 'y'.repeat(48), NU)).toBeNull()
+    const t = signChooseToken(
+      { orderRef: 'o1', subjectHash: 'h1' },
+      HEMLIGHET,
+      NU,
+      CHOOSE_KONTEXT_WEB,
+    )
+    expect(verifyChooseToken(t, 'y'.repeat(48), NU, CHOOSE_KONTEXT_WEB)).toBeNull()
   })
 
   it('manipulerad payload → null (signaturen täcker den)', () => {
-    const t = signChooseToken({ orderRef: 'o1', subjectHash: 'h1' }, HEMLIGHET, NU)
+    const t = signChooseToken(
+      { orderRef: 'o1', subjectHash: 'h1' },
+      HEMLIGHET,
+      NU,
+      CHOOSE_KONTEXT_WEB,
+    )
     const [p, body, sig] = t.split('.') as [string, string, string]
     const ny = Buffer.from(
       JSON.stringify({ orderRef: 'o2', subjectHash: 'h1', exp: NU.getTime() + 60_000 }),
     ).toString('base64url')
-    expect(verifyChooseToken(`${p}.${ny}.${sig}`, HEMLIGHET, NU)).toBeNull()
+    expect(verifyChooseToken(`${p}.${ny}.${sig}`, HEMLIGHET, NU, CHOOSE_KONTEXT_WEB)).toBeNull()
     expect(body).not.toBe(ny)
   })
 
   it('skräpformer → null, aldrig kast', () => {
     for (const t of ['', 'abc', 'v1.abc', 'v2.a.b', 'a.b.c', 'v1..', 'v1.a.b.c']) {
-      expect(verifyChooseToken(t, HEMLIGHET, NU)).toBeNull()
+      expect(verifyChooseToken(t, HEMLIGHET, NU, CHOOSE_KONTEXT_WEB)).toBeNull()
     }
   })
 })
@@ -53,7 +79,12 @@ describe('väljar-token — signering och verifiering', () => {
  * systemet vet vilken organisation hen agerar i.
  */
 describe('väljar-token är INTE en access-token', () => {
-  const t = signChooseToken({ orderRef: 'o1', subjectHash: 'h1' }, HEMLIGHET, NU)
+  const t = signChooseToken(
+    { orderRef: 'o1', subjectHash: 'h1' },
+    HEMLIGHET,
+    NU,
+    CHOOSE_KONTEXT_WEB,
+  )
 
   it('1. FORMEN: den är inget JWT — JwtService avvisar den vid parsningen', () => {
     // Prefixet `v1.` är inget JOSE-huvud. `@nestjs/jwt` och `passport-jwt`
@@ -83,7 +114,7 @@ describe('väljar-token är INTE en access-token', () => {
   })
 
   it('3. PAYLOADEN saknar det en session behöver (sub, organizationId, role)', () => {
-    const p = verifyChooseToken(t, HEMLIGHET, NU)
+    const p = verifyChooseToken(t, HEMLIGHET, NU, CHOOSE_KONTEXT_WEB)
     expect(p).not.toBeNull()
     const nycklar = Object.keys(p as object).sort()
     expect(nycklar).toEqual(['exp', 'orderRef', 'subjectHash'])
@@ -96,5 +127,45 @@ describe('väljar-token är INTE en access-token', () => {
 
   it('4. LIVSLÄNGDEN är två minuter, inte femton', () => {
     expect(CHOOSE_TOKEN_TTL_MS).toBe(2 * 60 * 1000)
+  })
+
+  it('KONTEXTEN SKILJER REALMEN ÅT: en web-token verifierar inte i portalen', () => {
+    // Web (User + JWT) och portalen (Tenant + TenantSession) är skilda
+    // autentiseringsvärldar. Skulle en väljar-token gälla i båda hade den som
+    // identifierat sig i den ena kunnat välja i den andra. Nyckeln härleds ur
+    // kontexten, så separationen är kryptografisk och inte en kontroll man kan
+    // glömma.
+    const web = signChooseToken(
+      { orderRef: 'o1', subjectHash: 'h1' },
+      HEMLIGHET,
+      NU,
+      CHOOSE_KONTEXT_WEB,
+    )
+    expect(verifyChooseToken(web, HEMLIGHET, NU, CHOOSE_KONTEXT_PORTAL)).toBeNull()
+
+    const portal = signChooseToken(
+      { orderRef: 'o1', subjectHash: 'h1' },
+      HEMLIGHET,
+      NU,
+      CHOOSE_KONTEXT_PORTAL,
+    )
+    expect(verifyChooseToken(portal, HEMLIGHET, NU, CHOOSE_KONTEXT_WEB)).toBeNull()
+
+    // KANARIEFÅGEL: utan den här raden går det inte att skilja "kontexten skiljer
+    // dem åt" från "verifieringen avvisar allt".
+    expect(verifyChooseToken(portal, HEMLIGHET, NU, CHOOSE_KONTEXT_PORTAL)).not.toBeNull()
+  })
+
+  it('kandidatlistan bärs signerad och kommer tillbaka oförändrad', () => {
+    const t = signChooseToken(
+      { orderRef: 'o1', subjectHash: 'h1', tenantIds: ['t1', 't2'] },
+      HEMLIGHET,
+      NU,
+      CHOOSE_KONTEXT_PORTAL,
+    )
+    expect(verifyChooseToken(t, HEMLIGHET, NU, CHOOSE_KONTEXT_PORTAL)?.tenantIds).toEqual([
+      't1',
+      't2',
+    ])
   })
 })

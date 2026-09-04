@@ -12,11 +12,11 @@ _Eveno_ — fastighetsförvaltnings-SaaS för svenska privata hyresvärdar och m
 posterna gatas av bolagsregistreringen och att de var ogjorda. Ingetdera stämde:
 två av dem är byggda och väntar på driftsättning, och bara delar av dem gatas.
 
-| Post | Läge | Vad som blockerar |
-| ---- | ---- | ----------------- |
-| DB-backup | **DELVIS** — mekanism klar och bevisad, drift av | backup-env i prod: noll satta |
-| BankID-inloggning | **INTE PÅBÖRJAT** | RP/broker-avtal (orgnr) för skarp drift |
-| Bankkoppling (PSD2) | **DELVIS** — P0–P2 i main, P3 saknas | aggregatoravtal (orgnr) + all frontend |
+| Post                   | Läge                                              | Vad som blockerar                        |
+| ---------------------- | ------------------------------------------------- | ---------------------------------------- |
+| DB-backup              | **DELVIS** — mekanism klar och bevisad, drift av  | backup-env i prod: noll satta            |
+| BankID-inloggning      | **DELVIS** — allt utom den skarpa adaptern        | RP/broker-avtal (orgnr)                  |
+| Bankkoppling (PSD2)    | **DELVIS** — P0–P2 i main, P3 saknas              | aggregatoravtal (orgnr) + all frontend   |
 | Juridisk slutgenomgång | **DELVIS** — texter finns, genomgången inte gjord | orgnummer i texterna + extern granskning |
 
 **DB-backup — DELVIS.** `apps/api/src/backup/`: `runBackup`
@@ -35,16 +35,34 @@ skarpa dumpen verifierad, (4) [#580](https://github.com/yasineken2002-sys/eken/i
 runbooken själv kräver. **Gatas INTE av bolagsregistreringen** — R2 används redan
 i prod. Det här är den enda posten som går att slutföra i dag.
 
-**BankID-inloggning — INTE PÅBÖRJAT.** Ingen provider, endpoint, DTO eller
-env-nyckel; `auth.controller.ts` är helt lösenords- och tokenbaserad. Träffarna på
-"BankID" i kodbasen är **signering**, en annan port —
-`signing.types.ts:4` säger det uttryckligen ("EGEN port, skild från en framtida
-BankIdProvider (inloggning)"). Återanvändbart finns ändå: portmönstret Stub-inert
-/ Mock-i-test / skarp adapter bakom fail-fast-flagga är byggt två gånger
-(`signing.module.ts:40`, `psd2.module.ts:46`), och personnummer-blindindex finns
-(`signing-crypto.service.ts`). **Gatas** av RP/broker-avtal för skarp drift — men
-port, Stub och inloggnings-UI går att bygga nu, precis som de andra två gjordes
-före sina avtal.
+**BankID-inloggning — DELVIS. Allt utom den skarpa adaptern är byggt** (#745,
+fyra PR:er: [#744](https://github.com/yasineken2002-sys/eken/pull/744),
+[#748](https://github.com/yasineken2002-sys/eken/pull/748),
+[#760](https://github.com/yasineken2002-sys/eken/pull/760) och den här).
+Raden sa "INTE PÅBÖRJAT" fram till 2026-09-04; det stämde när den skrevs.
+
+`apps/api/src/bankid/`: leverantörsneutral port (`bankid.types.ts`), Stub som
+strukturellt inte kan autentisera (503 på båda metoderna), deterministisk Mock,
+och `BANKID_ENABLED` som känns till på **exakt ett ställe** —
+`bankIdProviderFactory` (`bankid.module.ts`). Fyra utfall: flaggan av → Stub;
+flaggan på utan PII-nycklar → kastar om nycklarna; flaggan på + `BANKID_PROVIDER=mock`
+utanför produktion → Mock (dev/E2E); annars → kastar om den saknade adaptern.
+
+**Två inloggningsvägar, två realm.** Web (`User`, JWT + refresh) har anslutning
+och inloggning med kontoval; portalen (`Tenant`, `TenantSession`) har bara
+inloggning — hyresvärden HAR redan registrerat personnumret, så kopplingen är
+gjord av den part som får göra den. Identiteterna är två tabeller med olika
+föräldrar (`UserBankIdIdentity`, `TenantBankIdIdentity`), och väljar-token har
+skild kryptografisk kontext så en token från den ena aldrig gäller i den andra.
+
+Ordern (`BankIdOrder`) är auktoriteten i båda: single-use, kortlivad,
+serverlagrad, och `purpose` (`ENROLL` | `LOGIN` | `TENANT_LOGIN`) håller flödena
+isär. CSRF-spärren vid anslutning är att ordern bär det konto den startades av.
+
+**Vad som saknas: adaptern, och bara den.** `bankid.module.ts` kastar uttryckligen
+att den levereras i S3 och kräver avtal/nycklar, så flaggan går inte att slå på
+skarpt. **Gatas** av RP/broker-avtal, som kräver organisationsnummer — samma
+grind som PSD2:s P3 och signeringens skarpa läge.
 
 **Bankkoppling (PSD2) — DELVIS, och betydligt längre gången än raden påstod.**
 P0/P1/P2 är mergade (#173/#174/#175) med två migrationer
@@ -1840,10 +1858,10 @@ Frontend deployas av **två oberoende vägar**, och de kan ge motsatt svar om sa
 commit. De delar kvot men syns inte i varandras listor, vilket gör att den ena kan
 vara röd medan den andra är grön av skäl som inte har med varandra att göra.
 
-| yta | vad det ÄR | var det syns |
-| ---------------------------- | ------------------------------------------------ | ----------------------------------- |
-| `Vercel – eken-web/admin/portal` | **PREVIEW**-deployen, från Vercels git-integration | commit-status (`gh pr checks`, PR-sidan) |
-| `deploy.yml` → `Deploy Web/Admin/Portal` | **PRODUKTIONEN**, via Vercel-CLI i GitHub Actions | Actions-körningen för shan |
+| yta                                      | vad det ÄR                                         | var det syns                             |
+| ---------------------------------------- | -------------------------------------------------- | ---------------------------------------- |
+| `Vercel – eken-web/admin/portal`         | **PREVIEW**-deployen, från Vercels git-integration | commit-status (`gh pr checks`, PR-sidan) |
+| `deploy.yml` → `Deploy Web/Admin/Portal` | **PRODUKTIONEN**, via Vercel-CLI i GitHub Actions  | Actions-körningen för shan               |
 
 **En röd preview-status säger ingenting om produktionen — och tvärtom.** Uppmätt
 2026-09-03 på två squash-commits i följd:

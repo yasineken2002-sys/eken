@@ -193,6 +193,24 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
   Organization: { scope: 'out', reason: 'toppnivån själv — inget att scopa mot' },
   RefreshToken: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet, inte av ett id' },
   PasswordResetToken: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet' },
+  // Hyresgästens BankID-kvitto (#745 PR 4). Samma bedömning som
+  // `UserBankIdIdentity` fick i PR 2, och av samma skäl: ingen väg dit går via
+  // ett id från klienten. Skrivvägen är det sammansatta unika villkoret
+  // (provider, subjectHash, tenantId) — subjectHash är en HMAC av personnumret
+  // och går inte att gissa, och tenantId kommer ur uppslaget serverside eller ur
+  // en SIGNERAD kandidatlista. Läsvägen finns inte alls: portalen har ingen
+  // endpoint som visar kvittot.
+  //
+  // DETTA ÄNDRAS av en "koppla bort BankID"-vy i portalen som tar ett
+  // identitets-id. Då är modellen förälder-scopad med Tenant som förälder, och
+  // raden måste flyttas — precis som `UserBankIdIdentity` flyttades i PR 3 när
+  // dess villkor inföll. Skriv inte om raden utan att bygga den endpointen.
+  TenantBankIdIdentity: {
+    scope: 'out',
+    reason:
+      'auth-realm: nås via blindindex eller ett serverside-uppslag, aldrig via ett id ' +
+      'från klienten. Se kommentaren ovan för vad som flyttar den till parent-scoped.',
+  },
   UserInvitation: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet' },
   TenantMagicLink: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet' },
   TenantSession: { scope: 'out', reason: 'auth-realm: scopas av sessionstoken' },

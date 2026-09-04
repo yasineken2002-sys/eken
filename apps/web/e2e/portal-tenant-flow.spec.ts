@@ -40,7 +40,7 @@ test('hyresgäst-portal: logga in → se avi → felanmälan → logga ut', asyn
   await page.goto(`${PORTAL}/login`)
   await page.locator('#email').fill(tenant.email)
   await page.locator('#password').fill(tenant.password)
-  await page.getByRole('button', { name: 'Logga in' }).click()
+  await page.getByRole('button', { name: 'Logga in', exact: true }).click()
 
   // Inloggad → lämnar /login, layouten (med Avier-fliken) renderas.
   await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 })
@@ -73,5 +73,5 @@ test('hyresgäst-portal: logga in → se avi → felanmälan → logga ut', asyn
   // ── 4. Logga ut (nyligen fixad knapp) ────────────────────────────────────────
   await page.getByRole('button', { name: 'Logga ut' }).click()
   await expect(page).toHaveURL(/\/login/, { timeout: 15_000 })
-  await expect(page.getByRole('button', { name: 'Logga in' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Logga in', exact: true })).toBeVisible()
 })

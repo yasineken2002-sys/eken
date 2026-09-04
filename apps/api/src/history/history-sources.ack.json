@@ -10,6 +10,7 @@
     "organization": "Föräldrarelation, inte en händelse. Organisationen är historikens scope, inte dess innehåll.",
     "magicLinks": "Inloggningsmekanik. En utfärdad magic link är infrastruktur, inte något som hände hyresgästen i förvaltningen.",
     "sessions": "Inloggningsmekanik, samma skäl som magicLinks. Sessioner gallras dessutom löpande.",
+    "bankIdIdentities": "Inloggningsmekanik, samma familj som magicLinks och sessions. Raden är ett KVITTO på att hyresgästen styrkt sin identitet med BankID (#745 PR 4) — en autentiseringshändelse, inte något som hände i förvaltningen. Att visa den i historiken hade dessutom talat om för hyresvärden NÄR hyresgästen legitimerade sig, vilket är en uppgift om personen och inte om hyresförhållandet.",
     "aiConversations": "Chattens meddelandeflöde. Det AI:n GJORDE står i aiToolExecutions och är registrerat; det den SA är inte en domänhändelse.",
     "aiUsageLogs": "Kostnadstelemetri per anrop. Bär inga domänfakta och skulle dränka historiken i rader.",
     "aiMessageSubjects": "Kopplingstabell (AiMessageTenant) för ämneskoppling. Bär ingen egen händelse.",

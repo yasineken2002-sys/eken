@@ -802,9 +802,9 @@ model Organization {
   // Fälten är därför nullbara utan sentinel. CLAUDE.md:s regel om nullbara
   // kolumner gäller UNIKA VILLKOR — här finns inget, så två NULL kan inte
   // kollidera och ingen semantik går förlorad.
-  termsHash      String?
-  privacyVersion String?
-  privacyHash    String?
+  termsHash       String?
+  privacyVersion  String?
+  privacyHash     String?
 
   users                     User[]
   properties                Property[]
@@ -919,9 +919,9 @@ model User {
   // Fälten är därför nullbara utan sentinel. CLAUDE.md:s regel om nullbara
   // kolumner gäller UNIKA VILLKOR — här finns inget, så två NULL kan inte
   // kollidera och ingen semantik går förlorad.
-  termsHash      String?
-  privacyVersion String?
-  privacyHash    String?
+  termsHash       String?
+  privacyVersion  String?
+  privacyHash     String?
 
   organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   refreshTokens           RefreshToken[]
@@ -1269,10 +1269,77 @@ model Tenant {
   // efter migrationens brytpunkt görs synligt.
   actorKind ActorKind?
 
+  bankIdIdentities TenantBankIdIdentity[]
+
   @@unique([organizationId, email])
   @@unique([organizationId, ocrNumber])
   @@index([organizationId])
   @@index([organizationId, personalNumberHash])
+  // ── GLOBALT UPPSLAG PÅ BLINDINDEXET (#745 PR 4) ──────────────────────────
+  //
+  // VARFÖR ETT TILL NÄR DET REDAN FINNS ETT. Indexet ovan är org-scopat och
+  // svarar på en ANNAN fråga: "har DEN HÄR organisationen en hyresgäst med det
+  // här personnumret?" — den frågan har alltid en organisation i handen
+  // (dedup vid registrering, uppslag inne i en org) och står därför kvar orörd.
+  //
+  // BankID-inloggningen i portalen har ingen organisation att scopa mot: en
+  // hyresgäst som legitimerar sig vet vi ingenting om förrän uppslaget är gjort.
+  // Frågan är "vilka hyresgästrader i HELA databasen hör till den här personen?",
+  // och den kan ett org-scopat index inte besvara — Postgres hade fått göra en
+  // seq scan över samtliga hyresgäster vid varje inloggning.
+  //
+  // INTE UNIKT, och det är själva poängen: samma person kan mycket väl vara
+  // hyresgäst hos två hyresvärdar, och kommer i ett SaaS med många kunder att
+  // vara det. Ett unikt villkor hade gjort den andra hyresvärdens registrering
+  // till ett hårt fel — en organisation hade blockerat en annan, vilket är
+  // precis den flerhyresvärds-kollision H1 löste för OCR-numret.
+  //
+  // Flera träffar är därför ett NORMALT utfall och hanteras med ett val av
+  // hyresvärd i inloggningsflödet, inte som ett fel.
+  @@index([personalNumberHash])
+}
+
+/// BankID-identitet för en HYRESGÄST (#745 PR 4).
+///
+/// ── VARFÖR EN EGEN TABELL OCH INTE UserBankIdIdentity ───────────────────────
+///
+/// Olika föräldrar och olika sessioner. `UserBankIdIdentity` hänger på `User`
+/// (org-anställd, JWT + refresh token); den här hänger på `Tenant` (hyresgäst,
+/// `TenantSession` med en hashad sessionstoken). En delad tabell hade behövt två
+/// nullbara främmande nycklar med ett villkor om att exakt en är satt — alltså
+/// en invariant i prosa i stället för i schemat.
+///
+/// ── DE TVÅ FRÅGORNA, SKRIVNA BREDVID VARANDRA ──────────────────────────────
+///
+///   Tenant.personalNumberHash          VEM påstår hyresvärden att hyresgästen är?
+///   TenantBankIdIdentity.subjectHash   VEM har BEVISAT det med BankID, och när?
+///
+/// Värdena är samma HMAC med samma pepper och blir i normalfallet lika — men de
+/// svarar på olika frågor, och det är därför den här raden inte ersätter
+/// kolumnen. UPPSLAGET vid inloggning sker mot `Tenant.personalNumberHash`:
+/// hyresvärdens registrering är det som knyter en person till ett hyresförhållande,
+/// och en hyresgäst som aldrig loggat in med BankID ska kunna göra det första
+/// gången. Den här raden SKRIVS vid den lyckade inloggningen och är ett kvitto på
+/// att beviset finns — inte matchningsnyckeln.
+model TenantBankIdIdentity {
+  id          String   @id @default(uuid())
+  tenantId    String
+  /// 'BANKID' i dag. Fältet finns för att nästa metod inte ska bli ett nytt fält.
+  provider    String
+  /// HMAC-SHA256(normaliserat personnr, SIGNING_PII_PEPPER). Aldrig klartext.
+  subjectHash String
+  /// AES-256-GCM-envelope (base64: iv[12] + authTag[16] + ct). Aldrig klartext.
+  subjectEnc  String
+  /// När identiteten senast bevisades med en fullbordad BankID-order.
+  verifiedAt  DateTime
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// En rad per (person, hyresgästrad). Samma person hos två hyresvärdar är två
+  /// hyresgästrader och därmed två identiteter — precis som det ska vara.
+  @@unique([provider, subjectHash, tenantId])
+  @@index([tenantId])
 }
 
 // ─── Customer (Externt kundregister, separerat från Tenant) ───────────────────
@@ -2536,12 +2603,30 @@ model BankIdOrder {
   id         String    @id @default(uuid())
   /// Providerns handtag. Opakt för oss; unikt så en order inte kan dubbleras.
   orderRef   String    @unique
-  /// 'ENROLL' | 'LOGIN'. En order för det ena får aldrig fullbordas som det andra.
+  /// 'ENROLL' | 'LOGIN' | 'TENANT_LOGIN'. En order för det ena får aldrig
+  /// fullbordas som det andra — `loadLiveOrder` kräver exakt match, och det är
+  /// vad som håller webbens och portalens flöden isär i en delad tabell.
   purpose    String
   /// Satt ENDAST vid ENROLL — kontot ordern är bunden till. Se docblocket.
   userId     String?
   /// single-use: sätts atomiskt vid collect. En förbrukad order avvisas.
   consumedAt DateTime?
+  /// AES-256-GCM-envelope av det identifierade personnumret. ALDRIG klartext.
+  ///
+  /// ── VARFÖR DEN LIGGER PÅ ORDERN OCH INTE BARA I MINNET ───────────────────
+  ///
+  /// Portalens inloggning (#745 PR 4) kan sluta i ett VAL av hyresvärd när samma
+  /// person är hyresgäst hos flera. Klartexten finns bara i den collect som
+  /// identifierade personen, och valet sker i ett senare anrop — utan den här
+  /// kolumnen går identitetskvittot (`TenantBankIdIdentity.subjectEnc`) inte att
+  /// fylla för just de hyresgäster som har mer än en hyresvärd. Alternativen var
+  /// sämre: en nullbar `subjectEnc` bär ett tyst undantag för exakt de rader
+  /// ingen tänkte på, och att lägga envelopen i väljar-token hade gett klienten
+  /// personuppgifter att hålla.
+  ///
+  /// Fältet sätts BARA i den grenen, nollställs när ordern förbrukas, och raden
+  /// lever i minuter innan städjobbet tar den.
+  subjectEnc String?
   expiresAt  DateTime
   createdAt  DateTime  @default(now())
 

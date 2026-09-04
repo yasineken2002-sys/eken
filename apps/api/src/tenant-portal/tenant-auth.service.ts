@@ -454,6 +454,31 @@ export class TenantAuthService {
 
   // ── Sessionshantering ────────────────────────────────────────────────────────
 
+  /**
+   * Session för en hyresgäst som redan är AUTENTISERAD någon annanstans.
+   *
+   * Finns för BankID-inloggningen (#745 PR 4), som styrker identiteten med en
+   * BankID-order i stället för med ett lösenord. Metoden gör INGEN
+   * behörighetskontroll — den skapar en session för den hyresgäst den får — och
+   * är därför medvetet smal: den laddar raden själv, så en anropare inte kan
+   * skicka in ett hopplockat objekt, och den går genom `createSession` så att det
+   * bara finns EN väg som skriver en `TenantSession`.
+   *
+   * Samma sessionsform som magic-link- och lösenordsvägen: slumpad token till
+   * klienten, SHA-256 i kolumnen, samma TTL. En BankID-inloggad hyresgäst är
+   * inte en annan sorts session.
+   */
+  async createSessionForTenant(tenantId: string): Promise<SessionResult> {
+    const tenant = await findTenantWithCredentials(this.prisma, {
+      where: { id: tenantId },
+      include: { organization: { select: { id: true, name: true } } },
+    })
+    if (!tenant) throw new UnauthorizedException('Inloggningen kunde inte slutföras')
+    return this.createSession(
+      tenant as unknown as Tenant & { organization: { id: string; name: string } },
+    )
+  }
+
   private async createSession(
     tenant: Tenant & { organization: { id: string; name: string } },
   ): Promise<SessionResult> {

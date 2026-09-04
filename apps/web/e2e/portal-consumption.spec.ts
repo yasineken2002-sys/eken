@@ -140,7 +140,7 @@ test('portal: förbruknings-kort renderas + röd hög-markering', async ({ page,
   await page.goto(`${PORTAL}/login`)
   await page.locator('#email').fill(tenantEmail)
   await page.locator('#password').fill(password)
-  await page.getByRole('button', { name: 'Logga in' }).click()
+  await page.getByRole('button', { name: 'Logga in', exact: true }).click()
   await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 })
 
   // ── Förbrukningsvyn ────────────────────────────────────────────────────────
