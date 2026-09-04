@@ -128,8 +128,17 @@ jobs:
       - name: Apply migrations
         run: pnpm --filter @eken/api exec prisma migrate deploy
 
+      # AVGRÄNSAT TILL @eken/api, och avgränsningen är HÄRLEDD i två delar som
+      # är exakta komplement: det här jobbet kör `@eken/api`, jobbet
+      # "Unit tests (web, portal)" kör `!@eken/api`. Ingenting kan falla mellan
+      # dem, och ett FJÄRDE paket med prov hamnar automatiskt i det andra
+      # jobbet — ingen lista att glömma uppdatera.
+      #
+      # Skälet att dela alls: det här jobbet provisionerar Postgres och Redis
+      # för API-sviten. Webs och portals rena enhetsprov behöver ingetdera, och
+      # att köra dem här hade gjort dem beroende av en databas de aldrig rör.
       - name: Run test suite
-        run: pnpm exec turbo test:ci
+        run: pnpm exec turbo test:ci --filter=@eken/api
 
       # ── INGA HOPPADE TESTER. NOLL, INTE ETT UNDERHÅLLET TAL. ────────────
       #
@@ -1793,6 +1802,55 @@ jobs:
       - name: Guard self-test (canaries must fail the guard)
         run: node apps/api/scripts/check-spread-where.mjs --self-test
 
+  unit-tests-web:
+    name: Unit tests (web, portal)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # FILTRET ÄR HÄRLETT, INTE UPPRÄKNAT. `!@eken/api` är komplementet till
+      # Tests-jobbets `@eken/api`, så varje paket med ett `test:ci`-skript körs
+      # av exakt ett av de två jobben. Får ett tredje SPA prov behöver ingen
+      # lista ändras — bara jobbets NAMN blir inaktuellt, vilket syns.
+      #
+      # Ingen databas och ingen Redis här med flit: proven är rena funktioner.
+      # Behöver ett framtida prov en tjänst hör det inte hemma i det här jobbet.
+      - name: Run unit tests
+        run: pnpm exec turbo test:ci --filter='!@eken/api'
+
+  test-runner-wiring-guard:
+    name: Test runner wiring guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Rent statisk kontroll (fs-only, inga beroenden). Vakten mäter att
+      # kedjan paket → test:ci-skript → turbo-uppgift är hel. Uppmätt i #719:
+      # apps/portal hade vitest, en konfig och ett prov som ALDRIG kördes,
+      # eftersom paketet bara definierade `test` och CI anropar `test:ci`.
+      # Turbo svarade <NONEXISTENT> och gick vidare — grönt, tyst, i månader.
+      - name: Self-test the guard (each rule proven by its own canary)
+        run: node apps/api/scripts/check-test-runner-wiring.mjs --self-test
+
+      - name: Verify every package with tests is reached by turbo test:ci
+        run: node apps/api/scripts/check-test-runner-wiring.mjs
+
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
@@ -1807,6 +1865,8 @@ jobs:
       - typecheck
       - lint
       - test
+      - unit-tests-web
+      - test-runner-wiring-guard
       - index-guard
       - resumption-shadow-guard
       - invoice-number-guard
