@@ -193,7 +193,17 @@ export function mätOmfång(root = SRC) {
   // Jämförelsemängden måste dessutom vara RIKTIGA namn. Hade någon bytt till
   // codeMask blir de blanktecken, och överlappet kan aldrig mer bli sant.
   if (fields.length < 10) fel.push(`omfång: ${fields.length} kanoniska fältnamn, golv 10`)
-  if (fields.some((f) => !/[A-Za-z]/.test(f)))
+  // `\p{L}` och inte `[A-Za-z]` (#713). Bytet är REN HÄRDNING och har
+  // MEDVETET ingen kanariefågel: de två klasserna ger samma svar för varje
+  // realistiskt fältnamn, eftersom ett svenskt namn alltid bär minst en
+  // ASCII-bokstav (`personnummer` bär p, e, r, s…). Uppmätt: mutationen
+  // tillbaka till `[A-Za-z]` lämnar självtestet grönt. Ett prov som påstod
+  // annat hade varit pynt; frånvaron är ett beslut, inte ett förbiseende.
+  //
+  // Kontrollen som FAKTISKT bär den här raden är längdgolvet ovan
+  // (`fields.length < 10`) plus fältöverlappet i R2 — det är de som fäller
+  // om masken blankat stränginnehållet.
+  if (fields.some((f) => !/[\p{L}]/u.test(f)))
     fel.push(`omfång: fältnamn utan bokstäver — masken har blankat stränginnehållet`)
   return { fel, mätt: { filer, samlingar, fält: fields.length } }
 }
