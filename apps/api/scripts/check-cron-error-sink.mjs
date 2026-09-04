@@ -228,11 +228,11 @@ export function metodkropp(kod, metod) {
   }
 
   // VARJE förekomst av namnet prövas, och den FÖRSTA som ser ut som en
-  // DEKLARATION vinner. Ett bart `\\b${metod}\\s*\\(`-ankare räcker inte:
+  // DEKLARATION vinner. Ett bart namn-ankare räcker inte:
   // `await this.runBackup()` står ofta före deklarationen i filen, och då
   // mäts fel kropp. Uppmätt under #619 — den lydelsen sänkte täckningen från
   // 24 till 18 jobb, alltså ett fel åt SAMMA håll som defekten den skulle laga.
-  const träffar = [...kod.matchAll(new RegExp(`\\b${metod}\\s*\\(`, 'g'))]
+  const träffar = [...kod.matchAll(new RegExp(`(?<![\\p{L}\\p{N}_$])${metod}\\s*\\(`, 'gu'))]
   for (const träff of träffar) {
     // Ett anrop: `this.metod(`, `x.metod(`. Aldrig en deklaration.
     if (/[.?]\s*$/.test(kod.slice(Math.max(0, träff.index - 2), träff.index))) continue
@@ -281,7 +281,7 @@ export function metodkropp(kod, metod) {
 export function härledSänkbindningar(text, klassnamn) {
   const kod = codeMask(text)
   return [
-    ...kod.matchAll(new RegExp(`(?:private|public|protected|readonly|\\s)\\s*(\\w+)\\s*:\\s*${klassnamn}\\b`, 'g')),
+    ...kod.matchAll(new RegExp(`(?:private|public|protected|readonly|\\s)\\s*(${IDENT})\\s*:\\s*${klassnamn}(?![\\p{L}\\p{N}_$])`, 'gu')),
   ].map((m) => m[1])
 }
 
@@ -308,9 +308,9 @@ export function nårSänkan(text, metod, sänkmetoder, bindningar) {
   const allt = metodkropp(kod, metod) + '\n' + (kod.includes(unsafe) ? metodkropp(kod, unsafe) : '')
   for (const b of bindningar) {
     // …som option till en cron-hjälpare
-    if (new RegExp(`\\bsink\\s*:\\s*[\\w.]*\\b${b}\\b`).test(allt)) return true
+    if (new RegExp(`(?<![\\p{L}\\p{N}_$])sink\\s*:\\s*[\\p{L}\\p{N}_$.]*(?<![\\p{L}\\p{N}_$])${b}(?![\\p{L}\\p{N}_$])`, 'u').test(allt)) return true
     // …eller genom ett direkt anrop på bindningen
-    if (sänkmetoder.some((m) => new RegExp(`\\b${b}\\s*\\.\\s*${m}\\s*\\(`).test(allt))) return true
+    if (sänkmetoder.some((m) => new RegExp(`(?<![\\p{L}\\p{N}_$])${b}\\s*\\.\\s*${m}\\s*\\(`, 'u').test(allt))) return true
   }
   return false
 }
@@ -1016,6 +1016,65 @@ function självtest() {
       `${deklarerade.length} via @SinkIn, ` +
       `${riktiga.length - direkta.length - deklarerade.length} utan`,
   )
+
+  // (5b) SVENSKA IDENTIFIERARE I BINDNINGARNA (#713)
+  //
+  // Både bindningens NAMN och användningen av den härleds ur kod. Härledningen
+  // gick via `\w` respektive `\b`, som är ASCII. Uppmätt mot origin/main —
+  // två felformer, och den andra är den farliga:
+  //
+  //   MISSAD        `private ärendeSänka: CronErrorSink`  →  []
+  //                 `private sänkaFörCron: CronErrorSink` →  []
+  //                 Bindningen finns inte, jobbet läses som OSÄNKAT. Falsklarm.
+  //
+  //   FALSK GRÖN    kroppen `await denPåerrorSink.report('x')` med bindningen
+  //                 `errorSink`  →  nårSänkan = TRUE
+  //                 `\berrorSink\b` matchar inuti `denPåerrorSink`, eftersom
+  //                 `å` inte är ett ordtecken. Jobbet rapporteras nå den
+  //                 varaktiga felsänkan när det inte gör det.
+  //
+  // Den andra är värre än den första: hela vaktens uppgift (#619) är att inget
+  // cron-fel ska försvinna med processen. En falsk grön där är precis den
+  // tystnad vakten byggdes mot.
+  {
+    const bind = (kropp) => härledSänkbindningar(`class S {\n  ${kropp}\n}`, 'CronErrorSink')
+    t('MISSAD (bindning med svensk INITIAL härleds)',
+      bind('private ärendeSänka: CronErrorSink').join(',') === 'ärendeSänka',
+      JSON.stringify(bind('private ärendeSänka: CronErrorSink')))
+    t('MISSAD (bindning med svenskt tecken MITT i härleds)',
+      bind('private sänkaFörCron: CronErrorSink').join(',') === 'sänkaFörCron',
+      JSON.stringify(bind('private sänkaFörCron: CronErrorSink')))
+    t('MOTPROV (ren ASCII härleds som förut)',
+      bind('private errorSink: CronErrorSink').join(',') === 'errorSink',
+      JSON.stringify(bind('private errorSink: CronErrorSink')))
+
+    const kropp = (rad) => `class S {\n  async jobb() {\n    ${rad}\n  }\n}`
+    t('FALSK GRÖN (svensk bokstav FÖRE bindningsnamnet är inte bindningen)',
+      nårSänkan(kropp("await denPåerrorSink.report('x')"), 'jobb', ['report'], ['errorSink']) === false)
+    t('MOTPROV (den ÄKTA användningen når fortfarande sänkan)',
+      nårSänkan(kropp("await this.errorSink.report('x')"), 'jobb', ['report'], ['errorSink']) === true)
+    t('MOTPROV (DELSTRÄNG med ASCII före räknas inte heller)',
+      nårSänkan(kropp("await xerrorSink.report('x')"), 'jobb', ['report'], ['errorSink']) === false)
+    t('MOTPROV (sink:-optionen når fortfarande sänkan)',
+      nårSänkan(kropp('await körCron({ sink: this.errorSink })'), 'jobb', ['report'], ['errorSink']) === true)
+
+    // SINK-OPTIONEN bar SAMMA fälla, i BÅDA riktningarna. Uppmätt:
+    //
+    //   { påsink: this.errorSink }      ascii=true  unicode=false
+    //       `\bsink` matchar inuti `påsink` → en option som INTE heter sink
+    //       godtogs som sänkoptionen. Falsk grön.
+    //
+    //   { sink: tjänst.errorSink }      ascii=false unicode=true
+    //       sökvägsklassen `[\w.]*` kan inte korsa `ä`, så en bindning som nås
+    //       via en svenskt namngiven egenskap syntes inte. Falsklarm — och
+    //       `tjänst`/`förvaltning` som egenskapsnamn är inte ett hörnfall här.
+    t('FALSK GRÖN (påsink: är inte sink:)',
+      nårSänkan(kropp('await körCron({ påsink: this.errorSink })'), 'jobb', ['report'], ['errorSink']) === false)
+    t('MISSAD (sökväg genom en svenskt namngiven egenskap ses)',
+      nårSänkan(kropp('await körCron({ sink: tjänst.errorSink })'), 'jobb', ['report'], ['errorSink']) === true)
+    t('MOTPROV (xsink: är inte sink:)',
+      nårSänkan(kropp('await körCron({ xsink: this.errorSink })'), 'jobb', ['report'], ['errorSink']) === false)
+  }
 
   // (6) Kodbasen i paritet med kvitteringen.
   const bas = evaluate({
