@@ -194,3 +194,99 @@ const EQUITY_BY_FORM: Record<CompanyForm, BasAccountSeed[]> = {
 export function basChartFor(companyForm: CompanyForm): BasAccountSeed[] {
   return [...COMMON_ACCOUNTS, ...EQUITY_BY_FORM[companyForm]]
 }
+
+// ─── ÅRSSTÄNGNINGENS KONTOMÄNGD (#704 PR 2) ──────────────────────────────────
+
+/**
+ * RESULTATKONTONA — mängden som nollställs vid årsstängning.
+ *
+ * Regeln är kontots NUMMER: 3000–8999. BAS-planens klass 3 är intäkter och
+ * klass 4–8 kostnader och finansiella poster; klass 1–2 är balanskonton och
+ * klass 9 finns inte i planen. Ett balanskonto som råkade med i nollställningen
+ * skulle nolla en bank- eller fordringsrad — därför är gränsen skriven som en
+ * konstant här, bredvid planen den beskriver, och inte som ett magiskt tal
+ * inuti stängningsfunktionen.
+ *
+ * ── VARFÖR VARKEN `type` ELLER `ACCOUNT_CLASS_RANGES` DUGER ────────────────
+ *
+ * Belägget är #716, mätt mot `d29e918` och ommätt här: kodbasen har TRE
+ * partitioner av samma kontoplan, och de är oeniga om två verkliga konton.
+ *
+ *   8131  Dröjsmålsränta, kundfordringar      type=REVENUE   nummerklass 4–8
+ *   8313  Ränteintäkter från kundfordringar   type=REVENUE   nummerklass 4–8
+ *
+ * `ACCOUNT_CLASS_RANGES` (@eken/shared) säger `EXPENSE 4000–8999` om båda.
+ * Den har dessutom NOLL produktionsläsare (#716) — den är dokumentation, och
+ * att bygga bokföringsbeteende på dokumentation gör dokumentationen bärande
+ * utan att någon märker det.
+ *
+ * `account.type` säger `REVENUE` om båda, vilket är rimligare — men `type` är
+ * en kolumn på organisationens EGEN kontorad och kan seedas eller redigeras per
+ * organisation, och den säger dessutom bara vilken sida kontot NORMALT ligger
+ * på. Ett kostnadskonto kan fullt lagligt bära ett kreditsaldo (en återförd
+ * kostnad, en för hög periodisering). Normaliserar man riktningen efter `type`
+ * bokförs den posten åt fel håll.
+ *
+ * DÄRFÖR: mängden avgörs av NUMRET, och RIKTNINGEN av SALDOT — aldrig av någon
+ * av partitionerna. Se `closeFiscalYear`.
+ *
+ * ── OCH DÄRFÖR MÄTS OENIGHETEN VID STÄNGNING ──────────────────────────────
+ *
+ * Mätt över hela planen (alla 55 konton, samtliga bolagsformer): noll konton
+ * ligger i 3000–8999 utan att vara REVENUE/EXPENSE, och noll REVENUE/EXPENSE
+ * ligger utanför intervallet. De två partitionerna är alltså ense om MÄNGDEN i
+ * dag — de är bara oeniga om vad de två kontona ovan HETER.
+ *
+ * Att de är ense nu är ingen garanti för att de förblir det: organisationen kan
+ * lägga till egna konton. `closeFiscalYear` kontrollerar därför likheten vid
+ * varje stängning och NEKAR om den brutits, i stället för att tyst nolla ett
+ * balanskonto eller missa ett resultatkonto. Det är #716:s slutsats gjord till
+ * beteende: tre partitioner som beskriver samma plan får inte kunna svara olika
+ * utan att någon märker det.
+ */
+export const RESULT_ACCOUNT_MIN = 3000
+export const RESULT_ACCOUNT_MAX = 8999
+
+/** Är kontonumret ett resultatkonto enligt regeln ovan? */
+export function isResultAccountNumber(number: number): boolean {
+  return number >= RESULT_ACCOUNT_MIN && number <= RESULT_ACCOUNT_MAX
+}
+
+/**
+ * "Årets resultat" — motkontot årsavslutsverifikatet balanseras mot.
+ *
+ * DET ÄR INTE 2099 FÖR ALLA. Underlaget på #704 skrev genomgående 2099, vilket
+ * är rätt för aktiebolag och fel för de fem andra bolagsformerna. Mätt mot
+ * planen:
+ *
+ *   AB              2099  "Årets resultat"
+ *   ENSKILD_FIRMA   2019  "Årets resultat"
+ *   HB / KB         2019  "Årets resultat, delägare 1"
+ *   FORENING        2069  "Årets resultat"
+ *   STIFTELSE       2079  "Årets resultat"
+ *
+ * Ett hårdkodat 2099 hade alltså inte gett fel bokföring utan INGEN: kontot
+ * finns inte i de fem planerna, uppslaget hade returnerat undefined, och
+ * stängningen fallit på ett meddelande om ett saknat konto — för varje
+ * organisation som inte är ett AB.
+ *
+ * Mappningen är en egen konstant och inte en namnsökning i planen: HB/KB heter
+ * "Årets resultat, delägare 1", så en exakt namnmatchning hade missat dem och
+ * en prefixmatchning hade varit ett namnberoende i bokföringslogiken. Att den
+ * här mappningen fortfarande stämmer överens med planen bevakas av
+ * `bas-chart-year-result.spec.ts`, som kräver att numret finns i respektive
+ * plan, är EQUITY, och heter något som börjar på "Årets resultat".
+ *
+ * STEGET 2099 → 2091 (årets resultat till balanserat resultat) BYGGS INTE —
+ * varken här eller i `closeFiscalYear`. Det är bolagsstämmans dispositions-
+ * beslut och fattas av människor efter fastställd årsredovisning. Systemet får
+ * föreslå posten; det får inte bokföra den.
+ */
+export const YEAR_RESULT_ACCOUNT_BY_FORM: Record<CompanyForm, number> = {
+  AB: 2099,
+  ENSKILD_FIRMA: 2019,
+  HB: 2019,
+  KB: 2019,
+  FORENING: 2069,
+  STIFTELSE: 2079,
+}

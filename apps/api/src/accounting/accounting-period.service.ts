@@ -5,14 +5,19 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common'
-import { NotificationType, Prisma, RentNoticeType, UserRole } from '@prisma/client'
+import { CompanyForm, NotificationType, Prisma, RentNoticeType, UserRole } from '@prisma/client'
 import type { AccountingPeriodEventReasonCategory } from '@prisma/client'
+import { NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { AccountingService } from './accounting.service'
+import { isResultAccountNumber, YEAR_RESULT_ACCOUNT_BY_FORM } from './bas-chart'
+import { fiscalYearBounds, fiscalYearOf, type FiscalYearBounds } from './fiscal-year'
 import { vatPeriodLabelsForMonths } from '../avisering/vat-period.util'
 import { stockholmCivilDate, stockholmMonthBounds } from '../common/time/stockholm-period'
 import {
   appendPeriodClosedEvent,
   appendPeriodReopenedEvent,
+  fiscalYearLabel,
   getClosedPeriodStates,
   getPeriodHistory,
   getReopenCounts,
@@ -135,6 +140,16 @@ export interface PeriodDetail {
  * isär blir det andra lagret tyst overksamt.
  */
 export const CLOSE_ROLES: UserRole[] = [UserRole.ACCOUNTANT, UserRole.ADMIN, UserRole.OWNER]
+
+/**
+ * Årsstängningen kräver mer än månadsstängningen: OWNER eller ADMIN, inte
+ * ACCOUNTANT. Att stänga ett räkenskapsår bokför ett verifikat som avslutar
+ * årets resultaträkning och låser året OÅTERKALLELIGT — det finns ingen
+ * återöppning av ett år (se FiscalYearClose i schema.prisma). En månad kan
+ * öppnas igen av OWNER; ett år kan inte öppnas alls, och då ska beslutet ligga
+ * hos den som bär ansvaret för bokslutet.
+ */
+export const CLOSE_YEAR_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.OWNER]
 
 /** Vilka som får veta att en period öppnats igen. VIEWER/MANAGER utelämnas. */
 const REOPEN_NOTIFICATION_ROLES: UserRole[] = [UserRole.OWNER, UserRole.ADMIN, UserRole.ACCOUNTANT]
@@ -287,7 +302,10 @@ export function canReopenForCorrection(_actorRole: UserRole): boolean {
 export class AccountingPeriodService {
   private readonly logger = new Logger(AccountingPeriodService.name)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accounting: AccountingService,
+  ) {}
 
   // ── Översikt ───────────────────────────────────────────────────────────────
   /**
@@ -433,6 +451,46 @@ export class AccountingPeriodService {
     month: number,
     opts: { actorRole?: UserRole; actorUserId?: string | null },
   ): Promise<{ year: number; month: number; summary: PeriodSummary; checks: PeriodCheck[] }> {
+    const prepared = await this.prepareMonthClose(organizationId, year, month, opts)
+
+    try {
+      await this.prisma.$transaction(
+        async (tx) =>
+          this.writeMonthClose(tx, organizationId, year, month, prepared, opts.actorUserId ?? null),
+        PRISMA_DEFAULT_TX_LIMITS,
+      )
+    } catch (err) {
+      throw this.asAlreadyClosed(err, year, month)
+    }
+    const { summary } = prepared
+
+    this.logger.log(
+      `[period] ${periodKeyOf({ year, month })} stängd för org ${organizationId} ` +
+        `(${summary.entriesCount} verifikat, resultat ${summary.result})`,
+    )
+
+    return { year, month, summary, checks: prepared.pre.checks }
+  }
+
+  // ── Månadsstängningens delade kärna (#704 PR 2) ───────────────────────────
+  //
+  // Uppdelningen finns för att ÅRSSTÄNGNINGEN ska kunna stänga månad tolv med
+  // exakt samma grindar, samma ögonblicksbild och samma skrivning som en vanlig
+  // månadsstängning — utan att kopiera dem. En kopia hade blivit två stängningar
+  // som kan glida isär, och den ena hade varit den som ingen tittar på.
+  //
+  // Snittet ligger där det gör därför att ALLA grindar och ALL läsning är
+  // sidoeffektfria: `prepareMonthClose` kan därför köras utanför transaktionen
+  // (den ska kunna neka innan något öppnats), och `writeMonthClose` är den enda
+  // biten som måste ligga inuti.
+
+  /** Alla grindar + ögonblicksbilden. Ren läsning; kastar om månaden inte får stängas. */
+  private async prepareMonthClose(
+    organizationId: string,
+    year: number,
+    month: number,
+    opts: { actorRole?: UserRole; actorUserId?: string | null },
+  ): Promise<{ pre: PeriodPrecheck; summary: PeriodSummary; actorLabel: string | null }> {
     if (!opts.actorRole || !CLOSE_ROLES.includes(opts.actorRole)) {
       throw new ForbiddenException('Du saknar behörighet att stänga en bokföringsperiod')
     }
@@ -455,45 +513,61 @@ export class AccountingPeriodService {
     // år, när User-raden kan vara borttagen eller personen ha bytt namn. Saknas
     // användaren lämnas etiketten tom — vi fabricerar aldrig en aktör.
     const actorLabel = await this.actorLabelFor(opts.actorUserId ?? null)
+    return { pre, summary, actorLabel }
+  }
 
-    // summary är en ÖGONBLICKSBILD vid stängningstillfället och räknas aldrig om
-    // i efterhand (FAR: att uppdatera den retroaktivt vore att påstå att den som
-    // stängde såg siffror hen aldrig såg). Därför skrivs den in i händelsen och
-    // rörs sedan aldrig — en framtida omstängning lägger en NY händelse med en
-    // NY bild bredvid den gamla i stället för att skriva över den.
-    //
-    // Transaktionen omsluter både händelsen och speglingen till den gamla
-    // tabellen: de två får aldrig kunna hamna i otakt.
-    try {
-      await this.prisma.$transaction(
-        async (tx) =>
-          appendPeriodClosedEvent(tx, {
-            organizationId,
-            year,
-            month,
-            actorUserId: opts.actorUserId ?? null,
-            actorLabel,
-            summary: summary as unknown as Prisma.InputJsonValue,
-          }),
-        PRISMA_DEFAULT_TX_LIMITS,
-      )
-    } catch (err) {
-      // Två samtidiga stängningar av samma period. Vilket av de två unika indexen
-      // som slår (händelsens (org, år, månad, seq) eller speglingens
-      // (org, år, månad)) spelar ingen roll — båda betyder exakt samma sak:
-      // någon annan hann före, perioden är redan stängd.
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new ConflictException(`Perioden ${periodKeyOf({ year, month })} är redan stängd.`)
-      }
-      throw err
+  /**
+   * Skrivningen. MÅSTE köras med en transaktionsklient.
+   *
+   * summary är en ÖGONBLICKSBILD vid stängningstillfället och räknas aldrig om i
+   * efterhand (FAR: att uppdatera den retroaktivt vore att påstå att den som
+   * stängde såg siffror hen aldrig såg). Därför skrivs den in i händelsen och
+   * rörs sedan aldrig — en framtida omstängning lägger en NY händelse med en NY
+   * bild bredvid den gamla i stället för att skriva över den.
+   *
+   * TILLSTÅNDSKONTROLLEN INUTI TRANSAKTIONEN är ny (#704 PR 2) och stänger ett
+   * fönster som fanns förut: `prepareMonthClose` läser utanför transaktionen, så
+   * två samtidiga stängningar kunde båda se "öppen". Krockade de på seq fick
+   * förloraren P2002 — men hann den ena committa FÖRE den andra öppnade sin
+   * transaktion räknade den andra fram seq = n+1, fick inget P2002, och kedjan
+   * blev `CLOSED → CLOSED` utan mellanliggande återöppning. Ingen bokföring
+   * hamnar fel av det (perioden är stängd i båda fallen), men historiken är
+   * hela poängen med händelsemodellen. Samma resonemang och samma åtgärd som i
+   * `appendPeriodReopenedEvent`.
+   */
+  private async writeMonthClose(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    year: number,
+    month: number,
+    prepared: { summary: PeriodSummary; actorLabel: string | null },
+    actorUserId: string | null = null,
+  ): Promise<void> {
+    const { from } = stockholmMonthBounds(year, month)
+    if (await isPeriodClosed(tx, organizationId, from)) {
+      throw new ConflictException(`Perioden ${periodKeyOf({ year, month })} är redan stängd.`)
     }
+    await appendPeriodClosedEvent(tx, {
+      organizationId,
+      year,
+      month,
+      actorUserId,
+      actorLabel: prepared.actorLabel,
+      summary: prepared.summary as unknown as Prisma.InputJsonValue,
+    })
+  }
 
-    this.logger.log(
-      `[period] ${periodKeyOf({ year, month })} stängd för org ${organizationId} ` +
-        `(${summary.entriesCount} verifikat, resultat ${summary.result})`,
-    )
-
-    return { year, month, summary, checks: pre.checks }
+  /**
+   * Två samtidiga stängningar av samma period. Vilket av de två unika indexen
+   * som slår (händelsens (org, år, månad, seq) eller speglingens
+   * (org, år, månad)) spelar ingen roll — båda betyder exakt samma sak: någon
+   * annan hann före, perioden är redan stängd.
+   */
+  private asAlreadyClosed(err: unknown, year: number, month: number): unknown {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return new ConflictException(`Perioden ${periodKeyOf({ year, month })} är redan stängd.`)
+    }
+    return err
   }
 
   // ── Återöppning (PR1c) ─────────────────────────────────────────────────────
@@ -1028,6 +1102,524 @@ export class AccountingPeriodService {
     }
   }
 
+  // ── Årsstängning (#704 PR 2) ──────────────────────────────────────────────
+  //
+  // ÅRSSTÄNGNINGEN ÄR STÄNGNINGEN AV MÅNAD TOLV. Det är inte en förenkling utan
+  // upplösningen av en motsägelse i #704:s egen kravtext, som ville BÅDE att
+  // alla månader skulle vara stängda före årsstängningen OCH att årsavsluts-
+  // verifikatet skulle dateras räkenskapsårets sista dag. Den sista dagen ligger
+  // i månad tolv, så med alla tolv stängda hade månadsspärren avvisat verifikatet
+  // (mätt i `closed-fiscal-year.db.spec.ts`, PR 1). Med årsstängningen SOM månad
+  // tolvs stängning finns ingen motsägelse: verifikatet bokförs medan månaden
+  // ännu är öppen, och månaden stängs i samma transaktion direkt efteråt.
+  //
+  // FÖRUTSÄTTNINGEN blir därför: månad 1–11 STÄNGDA, månad 12 ÖPPEN.
+  //
+  // ── VAD SOM MEDVETET INTE BYGGS ───────────────────────────────────────────
+  //
+  // 2099 → 2091 (årets resultat till balanserat resultat). Det är bolagsstämmans
+  // dispositionsbeslut — utdelning eller balansering — och fattas efter fastställd
+  // årsredovisning, av människor. Systemet får förbereda underlaget och föreslå
+  // posten; det får inte bokföra den. Samma karaktär som #535.
+  //
+  // MOMSKONTONA rörs inte. De är LIABILITY (2000–2999) och ligger per definition
+  // utanför resultatkontomängden, men det är inte därför de utelämnas: moms-
+  // avräkning hör till MOMSREDOVISNINGSPERIODEN, inte till räkenskapsåret — en
+  // decemberperiods moms kan deklareras i februari. Avräknade årsstängningen dem
+  // skulle en ännu oreglerad skuld tystas bort ur balansräkningen. Ett kvarstående
+  // saldo på 2611/2641/2650 efter stängning är RÄTT UTFALL, inte ett tecken på
+  // att något saknas.
+
+  /**
+   * Förhandsbesked: vad skulle årsstängningen göra, och får den göras?
+   *
+   * Ren läsning — det här är underlaget PR 3:s dialog visar innan människan
+   * bekräftar. Samma beräkning som `closeFiscalYear`, samma grindar, inga
+   * skrivningar. Att de två delar kod är poängen: en förhandsvisning som räknar
+   * på egen hand visar något annat än det som sedan bokförs.
+   */
+  async previewFiscalYearClose(
+    organizationId: string,
+    fiscalYear: number,
+  ): Promise<FiscalYearClosePreview> {
+    this.assertValidFiscalYear(fiscalYear)
+    const org = await this.loadOrgForYearClose(organizationId)
+    const bounds = fiscalYearBounds(fiscalYear, org.fiscalYearStartMonth)
+
+    const [checks, draft] = await Promise.all([
+      this.fiscalYearChecks(organizationId, org, bounds),
+      this.buildYearEndDraft(this.prisma, organizationId, org, bounds),
+    ])
+
+    return {
+      fiscalYear,
+      label: fiscalYearLabel(fiscalYear, org.fiscalYearStartMonth),
+      startMonth: org.fiscalYearStartMonth,
+      fiscalStart: bounds.fiscalStart.toISOString().slice(0, 10),
+      yearEndDate: bounds.yearEndDate.toISOString().slice(0, 10),
+      months: bounds.months,
+      canClose: !checks.some((c) => c.severity === 'blocking'),
+      checks,
+      entry: draft,
+    }
+  }
+
+  /**
+   * Stänger räkenskapsåret: bokför resultatavräkningen, stänger månad tolv och
+   * skriver `FiscalYearClose` — allt i EN transaktion.
+   *
+   * ORDNINGEN INUTI TRANSAKTIONEN ÄR TVINGANDE, inte en stilfråga:
+   *
+   *   1. verifikatet   månad tolv är ännu öppen, året ännu inte stängt, så
+   *                    `assertPeriodOpen` släpper igenom dateringen
+   *   2. månad tolv    stängs med `writeMonthClose` — samma skrivning som en
+   *                    vanlig månadsstängning, inte en kopia
+   *   3. FiscalYearClose  skrivs SIST, med `journalEntryId` satt. Raden är
+   *                    append-only (PR 1), så fältet går inte att fylla i
+   *                    efterhand — triggern avvisar en UPDATE.
+   *
+   * Kastar steg 3 P2002 på (organizationId, fiscalYear) rullas HELA
+   * transaktionen tillbaka: inget verifikat, ingen stängd månad. Det är
+   * idempotensen, och den bor i databasen — inte i kontrollen på raden ovanför.
+   */
+  async closeFiscalYear(
+    organizationId: string,
+    fiscalYear: number,
+    now: Date,
+    actor: { actorRole?: UserRole; actorUserId?: string | null },
+  ): Promise<FiscalYearCloseResult> {
+    if (!actor.actorRole || !CLOSE_YEAR_ROLES.includes(actor.actorRole)) {
+      throw new ForbiddenException('Du saknar behörighet att stänga ett räkenskapsår')
+    }
+    this.assertValidFiscalYear(fiscalYear)
+
+    const org = await this.loadOrgForYearClose(organizationId)
+    const bounds = fiscalYearBounds(fiscalYear, org.fiscalYearStartMonth)
+    const label = fiscalYearLabel(fiscalYear, org.fiscalYearStartMonth)
+
+    const checks = await this.fiscalYearChecks(organizationId, org, bounds)
+    const blocking = checks.filter((c) => c.severity === 'blocking')
+    if (blocking.length > 0) {
+      throw new ConflictException(
+        `Räkenskapsåret ${label} kan inte stängas: ${blocking.map((b) => b.message).join(' ')}`,
+      )
+    }
+
+    // Månad tolvs egna grindar och dess ögonblicksbild. Läses FÖRE verifikatet
+    // bokförs, och det är avsiktligt: `summary` ska betyda samma sak för månad
+    // tolv som för varje annan månad — månadens egen omsättning. Räknades den
+    // efter resultatavräkningen hade månad tolv fått hela ÅRETS intäkter
+    // avdragna och visat ett stort negativt tal som inte beskriver någonting.
+    const twelfth = bounds.months[11] as PeriodKey
+    const prepared = await this.prepareMonthClose(
+      organizationId,
+      twelfth.year,
+      twelfth.month,
+      actor,
+    )
+
+    const actorLabel = prepared.actorLabel
+    const result = await this.prisma.$transaction(async (tx) => {
+      const draft = await this.buildYearEndDraft(tx, organizationId, org, bounds)
+
+      let journalEntryId: string | null = null
+      if (draft.lines.length > 0) {
+        const entry = await this.accounting.createYearEndResultEntry({
+          organizationId,
+          fiscalYear,
+          date: bounds.yearEndDate,
+          lines: draft.lines.map((l) => ({
+            accountId: l.accountId,
+            ...(l.debit != null ? { debit: l.debit } : {}),
+            ...(l.credit != null ? { credit: l.credit } : {}),
+            description: l.description,
+          })),
+          createdById: actor.actorUserId ?? null,
+          tx,
+        })
+        journalEntryId = entry.id
+      }
+
+      await this.writeMonthClose(
+        tx,
+        organizationId,
+        twelfth.year,
+        twelfth.month,
+        prepared,
+        actor.actorUserId ?? null,
+      )
+
+      const summary: FiscalYearCloseSummary = {
+        fiscalYear,
+        label,
+        startMonth: org.fiscalYearStartMonth,
+        fiscalStart: bounds.fiscalStart.toISOString().slice(0, 10),
+        yearEndDate: bounds.yearEndDate.toISOString().slice(0, 10),
+        result: draft.result,
+        accountsZeroed: draft.lines.filter((l) => l.accountNumber !== draft.resultAccountNumber)
+          .length,
+        resultAccountNumber: draft.resultAccountNumber,
+        // Nollresultat i betydelsen INGET ATT NOLLSTÄLLA: inget resultatkonto
+        // hade saldo, så inget verifikat skrevs. Raden skrivs ändå — året ÄR
+        // stängt, och att det saknas ett verifikat är ett faktum som ska framgå
+        // av stängningen i stället för att se ut som en utebliven bokföring.
+        noEntryReason: journalEntryId == null ? 'inga resultatkonton med saldo' : null,
+        closedAt: now.toISOString(),
+        generatedAt: new Date().toISOString(),
+      }
+
+      await tx.fiscalYearClose.create({
+        data: {
+          organizationId,
+          fiscalYear,
+          closedAt: now,
+          ...(actor.actorUserId ? { closedById: actor.actorUserId } : {}),
+          ...(journalEntryId ? { journalEntryId } : {}),
+          summary: summary as unknown as Prisma.InputJsonValue,
+        },
+      })
+
+      return { journalEntryId, summary }
+    }, PRISMA_DEFAULT_TX_LIMITS)
+
+    this.logger.log(
+      `[fiscal-year] ${label} stängt för org ${organizationId} ` +
+        `(resultat ${result.summary.result}, ${result.summary.accountsZeroed} konton nollade, ` +
+        `verifikat ${result.journalEntryId ?? '—'}, av ${actorLabel ?? 'system'})`,
+    )
+
+    return {
+      fiscalYear,
+      label,
+      journalEntryId: result.journalEntryId,
+      summary: result.summary,
+      monthClosed: twelfth,
+      checks,
+    }
+  }
+
+  // ── Årsstängningens hjälpare ──────────────────────────────────────────────
+
+  private async loadOrgForYearClose(
+    organizationId: string,
+  ): Promise<{ fiscalYearStartMonth: number; companyForm: CompanyForm }> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { fiscalYearStartMonth: true, companyForm: true },
+    })
+    if (!org) throw new NotFoundException('Organisationen hittades inte')
+    return { fiscalYearStartMonth: org.fiscalYearStartMonth ?? 1, companyForm: org.companyForm }
+  }
+
+  private assertValidFiscalYear(fiscalYear: number): void {
+    if (!Number.isInteger(fiscalYear) || fiscalYear < 2000 || fiscalYear > 2100) {
+      throw new BadRequestException('Ogiltigt räkenskapsår')
+    }
+  }
+
+  /**
+   * Alla förutsättningar för årsstängningen, som en LISTA i stället för en kedja
+   * av kast.
+   *
+   * Formen är vald för att förhandsvisningen ska kunna visa ALLT som är i vägen
+   * på en gång. Kastar man på det första hindret får operatören rätta en sak,
+   * försöka igen, och mötas av nästa — och en årsstängning görs en gång om året,
+   * av någon som inte gjort den nyligen.
+   */
+  private async fiscalYearChecks(
+    organizationId: string,
+    org: { fiscalYearStartMonth: number; companyForm: CompanyForm },
+    bounds: FiscalYearBounds,
+  ): Promise<FiscalYearCheck[]> {
+    const checks: FiscalYearCheck[] = []
+    const label = fiscalYearLabel(bounds.fiscalYear, org.fiscalYearStartMonth)
+    const twelfth = bounds.months[11] as PeriodKey
+
+    const [redanStängt, stängdaPerioder, konton, tidigareDatum] = await Promise.all([
+      this.prisma.fiscalYearClose.findUnique({
+        where: {
+          organizationId_fiscalYear: { organizationId, fiscalYear: bounds.fiscalYear },
+        },
+        select: { closedAt: true },
+      }),
+      getClosedPeriodStates(this.prisma, organizationId),
+      this.prisma.account.findMany({
+        where: { organizationId },
+        select: { id: true, number: true, name: true, type: true },
+      }),
+      // DISTINKTA DATUM, inte en beräkning i SQL: räkenskapsåret ett datum
+      // tillhör härleds på ETT ställe (`fiscalYearOf` → `stockholmFiscalYear`).
+      // En CASE-sats i SQL hade varit en andra härledning, och den hade dessutom
+      // behövt upprepa den civila tidens subtilitet.
+      this.prisma.journalEntry.findMany({
+        where: { organizationId, date: { lt: bounds.fiscalStart } },
+        select: { date: true },
+        distinct: ['date'],
+      }),
+    ])
+
+    // (1) IDEMPOTENSEN, som ett besked i stället för ett databasfel.
+    if (redanStängt) {
+      checks.push({
+        code: 'fiscal-year-already-closed',
+        severity: 'blocking',
+        message:
+          `Räkenskapsåret ${label} är redan stängt ` +
+          `(${redanStängt.closedAt.toISOString().slice(0, 10)}).`,
+      })
+    }
+
+    // (2) MÅNAD 1–11 STÄNGDA, MÅNAD 12 ÖPPEN — se docblocket ovanför
+    // previewFiscalYearClose för varför just den formen.
+    const stängda = new Set(stängdaPerioder.map(periodKeyOf))
+    const saknas = bounds.months.slice(0, 11).filter((m) => !stängda.has(periodKeyOf(m)))
+    if (saknas.length > 0) {
+      checks.push({
+        code: 'months-not-closed',
+        severity: 'blocking',
+        message:
+          `Följande månader måste stängas först: ${saknas.map(periodKeyOf).join(', ')}. ` +
+          'Årsstängningen är stängningen av årets sista månad.',
+      })
+    }
+    if (stängda.has(periodKeyOf(twelfth))) {
+      checks.push({
+        code: 'final-month-already-closed',
+        severity: 'blocking',
+        message:
+          `Årets sista månad (${periodKeyOf(twelfth)}) är redan stängd, så ` +
+          'årsavslutsverifikatet kan inte längre bokföras i den. Öppna månaden igen ' +
+          'och stäng räkenskapsåret i stället för månaden.',
+      })
+    }
+
+    // (3) TOLVMÅNADERSÅR I v1. Ett förkortat eller förlängt FÖRSTA räkenskapsår
+    // går inte att uttrycka: `Organization` bär `fiscalYearStartMonth` men inget
+    // faktiskt start- och slutdatum. Spärren är därför formulerad som en fråga
+    // koden KAN svara på — finns bokföring före det här årets första dag som
+    // inte tillhör ett stängt år? — i stället för att låtsas veta något om
+    // årets längd. Se följdärendet som PR 2 öppnade.
+    const tidigareÅr = [
+      ...new Set(tidigareDatum.map((d) => fiscalYearOf(d.date, org.fiscalYearStartMonth))),
+    ].sort((a, b) => a - b)
+    if (tidigareÅr.length > 0) {
+      const stängdaÅr = await this.prisma.fiscalYearClose.findMany({
+        where: { organizationId, fiscalYear: { in: tidigareÅr } },
+        select: { fiscalYear: true },
+      })
+      const stängdaÅrSet = new Set(stängdaÅr.map((r) => r.fiscalYear))
+      const öppna = tidigareÅr.filter((y) => !stängdaÅrSet.has(y))
+      if (öppna.length > 0) {
+        checks.push({
+          code: 'earlier-fiscal-year-open',
+          severity: 'blocking',
+          message:
+            `Det finns bokföring i tidigare räkenskapsår som inte är stängda: ` +
+            `${öppna.map((y) => fiscalYearLabel(y, org.fiscalYearStartMonth)).join(', ')}. ` +
+            'Stäng dem i ordning först — ingående balanser för det här året vilar på dem.',
+        })
+      }
+    }
+
+    // (4) PARTITIONERNA MÅSTE VARA ENSE OM MÄNGDEN (#716). Mängden avgörs av
+    // numret; att `type` säger samma sak kontrolleras här i stället för att
+    // antas. Mätt i dag: noll avvikelser i hela BAS-planen. Men organisationen
+    // kan lägga till egna konton, och ett balanskonto som råkat få type=EXPENSE
+    // (eller ett resultatkonto numrerat i 2-serien) skulle antingen nollas fel
+    // eller missas helt — tyst, i ett verifikat ingen läser rad för rad.
+    const oeniga = konton.filter(
+      (a) => isResultAccountNumber(a.number) !== (a.type === 'REVENUE' || a.type === 'EXPENSE'),
+    )
+    if (oeniga.length > 0) {
+      checks.push({
+        code: 'account-partition-mismatch',
+        severity: 'blocking',
+        message:
+          'Kontoplanen är motsägelsefull: följande konton klassas olika av kontonumret ' +
+          `och av kontotypen — ${oeniga
+            .map((a) => `${a.number} ${a.name} (type=${a.type})`)
+            .join(', ')}. ` +
+          'Rätta klassificeringen innan året stängs; annars kan resultatavräkningen ' +
+          'nollställa fel konton.',
+      })
+    }
+
+    // (5) MOTKONTOT MÅSTE FINNAS. Numret beror på bolagsformen — 2099 gäller
+    // bara aktiebolag (se YEAR_RESULT_ACCOUNT_BY_FORM).
+    const resultNumber = YEAR_RESULT_ACCOUNT_BY_FORM[org.companyForm]
+    if (!konton.some((a) => a.number === resultNumber)) {
+      checks.push({
+        code: 'year-result-account-missing',
+        severity: 'blocking',
+        message:
+          `Kontot ${resultNumber} (Årets resultat) saknas i kontoplanen. ` +
+          'Seeda BAS-kontoplanen innan räkenskapsåret stängs.',
+      })
+    }
+
+    // (6) BOKSLUTSPOSTER — icke-blockerande med flit. Systemet kan inte avgöra
+    // om periodiseringarna är kompletta; det kräver kännedom om verksamheten.
+    // Ett blockerande krav hade därför bara producerat falska stopp. Men steget
+    // är oåterkalleligt åt ett håll: efter stängningen går bokslutsposter inte
+    // längre att bokföra i året.
+    checks.push({
+      code: 'accruals-before-close',
+      severity: 'warning',
+      message:
+        'Kontrollera att bokslutsposter och periodiseringar är bokförda innan året stängs — ' +
+        'efteråt går det inte. Den automatiska periodiseringen av omätt förbrukning körs ' +
+        'separat (bokslutspost IMD) och måste köras först.',
+    })
+
+    // (7) MOMSEN STÅR KVAR, och det är rätt. Sägs uttryckligen så att ett
+    // kvarstående saldo inte läses som ett fel av den som stänger.
+    checks.push({
+      code: 'vat-accounts-untouched',
+      severity: 'warning',
+      message:
+        'Momskonton avräknas inte av årsstängningen. Moms hör till momsredovisnings-' +
+        'perioden, inte till räkenskapsåret — ett kvarstående saldo är väntat.',
+    })
+
+    return checks
+  }
+
+  /**
+   * ÅRSAVSLUTSVERIFIKATET, SALDOBASERAT.
+   *
+   * ── VARFÖR SALDOT OCH INTE KLASSIFICERINGEN AVGÖR RIKTNINGEN ─────────────
+   *
+   * Belägget är #716: kodbasen har tre partitioner av kontoplanen och de är
+   * oeniga om två verkliga konton — 8131 och 8313 har `type=REVENUE` men ligger
+   * i nummerklass 4–8, som `ACCOUNT_CLASS_RANGES` kallar EXPENSE. En typbaserad
+   * och en intervallbaserad regel ger alltså OLIKA riktning på just de kontona.
+   *
+   * Och även om de vore ense vore klassificeringen fel verktyg: den säger vilken
+   * sida kontot NORMALT ligger på, inte vilken sida det faktiskt ligger på. Ett
+   * kostnadskonto kan lagligt bära kreditsaldo (återförd kostnad, för hög
+   * periodisering). Saldot vet; klassificeringen gissar.
+   *
+   *   kreditsaldo (saldo < 0)  →  DEBITERA kontot med beloppet
+   *   debetsaldo  (saldo > 0)  →  KREDITERA kontot med beloppet
+   *   saldo = 0                →  ingen rad; ett konto utan saldo har inget att
+   *                               nollställa, och en nollrad i ett verifikat är
+   *                               brus för den som granskar
+   *
+   * Nettot går mot Årets resultat på den sida som gör verifikatet balanserat.
+   * `createNumberedEntry`s globala balansgrind är därför inte bara ett skyddsnät
+   * här utan en riktig kontroll av uträkningen ovan.
+   *
+   * ── DECIMAL HELA VÄGEN ────────────────────────────────────────────────────
+   *
+   * Beloppen är Decimal(10,2) och summeras i Decimal, aldrig via Number. Ett öre
+   * är ett fel, inte brus — mätningen på #704 hade med flit en öresfordran
+   * (0,01) i sitt provfall, och en flyttalskonvertering hade kunnat flytta den.
+   */
+  private async buildYearEndDraft(
+    client: Pick<Prisma.TransactionClient, 'journalEntryLine' | 'account'>,
+    organizationId: string,
+    org: { fiscalYearStartMonth: number; companyForm: CompanyForm },
+    bounds: FiscalYearBounds,
+  ): Promise<FiscalYearEntryDraft> {
+    const resultAccountNumber = YEAR_RESULT_ACCOUNT_BY_FORM[org.companyForm]
+
+    const konton = await client.account.findMany({
+      where: { organizationId },
+      select: { id: true, number: true, name: true },
+    })
+    const resultatkonton = konton.filter((a) => isResultAccountNumber(a.number))
+    const motkonto = konton.find((a) => a.number === resultAccountNumber)
+
+    const summor = await client.journalEntryLine.groupBy({
+      by: ['accountId'],
+      where: {
+        accountId: { in: resultatkonton.map((a) => a.id) },
+        journalEntry: { organizationId, date: { gte: bounds.from, lt: bounds.to } },
+      },
+      _sum: { debit: true, credit: true },
+    })
+    const perKonto = new Map(summor.map((r) => [r.accountId, r]))
+
+    const lines: FiscalYearEntryLine[] = []
+    let debetSumma = new Prisma.Decimal(0)
+    let kreditSumma = new Prisma.Decimal(0)
+
+    // Stigande kontonummer: verifikatet ska gå att läsa uppifrån och ned som
+    // kontoplanen, inte i den ordning databasen råkade returnera raderna.
+    for (const konto of [...resultatkonton].sort((a, b) => a.number - b.number)) {
+      const rad = perKonto.get(konto.id)
+      const debet = new Prisma.Decimal(rad?._sum.debit ?? 0)
+      const kredit = new Prisma.Decimal(rad?._sum.credit ?? 0)
+      const saldo = debet.minus(kredit)
+      if (saldo.isZero()) continue
+
+      if (saldo.isPositive()) {
+        kreditSumma = kreditSumma.plus(saldo)
+        lines.push({
+          accountId: konto.id,
+          accountNumber: konto.number,
+          accountName: konto.name,
+          credit: saldo.toNumber(),
+          description: `Nollställning ${konto.number} ${konto.name}`,
+        })
+      } else {
+        const belopp = saldo.negated()
+        debetSumma = debetSumma.plus(belopp)
+        lines.push({
+          accountId: konto.id,
+          accountNumber: konto.number,
+          accountName: konto.name,
+          debit: belopp.toNumber(),
+          description: `Nollställning ${konto.number} ${konto.name}`,
+        })
+      }
+    }
+
+    // Resultatet: summan av (kredit − debet) över resultatkontona. Positivt =
+    // vinst. Uttryckt ur samma tal som raderna byggdes av, inte omräknat.
+    const resultat = debetSumma.minus(kreditSumma)
+
+    if (lines.length > 0 && !resultat.isZero()) {
+      if (!motkonto) {
+        // Kan inte inträffa via `closeFiscalYear` — check (5) har redan fällt.
+        // Förhandsvisningen når hit när kontot saknas, och ska då visa raderna
+        // den KAN visa i stället för att kasta.
+        return {
+          lines,
+          result: resultat.toNumber(),
+          resultAccountNumber,
+          resultAccountMissing: true,
+          date: bounds.yearEndDate.toISOString().slice(0, 10),
+        }
+      }
+      if (resultat.isPositive()) {
+        lines.push({
+          accountId: motkonto.id,
+          accountNumber: motkonto.number,
+          accountName: motkonto.name,
+          credit: resultat.toNumber(),
+          description: `Årets resultat ${bounds.fiscalYear}`,
+        })
+      } else {
+        lines.push({
+          accountId: motkonto.id,
+          accountNumber: motkonto.number,
+          accountName: motkonto.name,
+          debit: resultat.negated().toNumber(),
+          description: `Årets resultat ${bounds.fiscalYear}`,
+        })
+      }
+    }
+
+    return {
+      lines,
+      result: resultat.toNumber(),
+      resultAccountNumber,
+      resultAccountMissing: false,
+      date: bounds.yearEndDate.toISOString().slice(0, 10),
+    }
+  }
+
   private assertValidPeriod(year: number, month: number): void {
     if (!Number.isInteger(month) || month < 1 || month > 12) {
       throw new BadRequestException('Månad måste vara 1–12')
@@ -1047,4 +1639,80 @@ export interface PeriodSummary {
   result: number
   entriesCount: number
   generatedAt: string
+}
+
+// ─── Årsstängningens typer (#704 PR 2) ───────────────────────────────────────
+
+/** En förutsättning för årsstängningen — uppfylld eller inte. */
+export interface FiscalYearCheck {
+  /** Maskinläsbar kod, t.ex. 'months-not-closed'. */
+  code: string
+  /** 'blocking' = stängning nekas. 'warning' = operatören får avgöra. */
+  severity: 'blocking' | 'warning'
+  message: string
+}
+
+/** En rad i årsavslutsverifikatet. Kontonamn följer med för UI:ts skull. */
+export interface FiscalYearEntryLine {
+  accountId: string
+  accountNumber: number
+  accountName: string
+  debit?: number
+  credit?: number
+  description: string
+}
+
+/** Det föreslagna (eller bokförda) årsavslutsverifikatet. */
+export interface FiscalYearEntryDraft {
+  lines: FiscalYearEntryLine[]
+  /** Positivt = vinst, negativt = förlust. Samma tal som plug-posten. */
+  result: number
+  /** Motkontots nummer för organisationens bolagsform (2099 för AB). */
+  resultAccountNumber: number
+  /** true = kontot saknas i kontoplanen; plug-raden kunde inte läggas till. */
+  resultAccountMissing: boolean
+  /** Räkenskapsårets sista dag, `YYYY-MM-DD`. */
+  date: string
+}
+
+/** Ögonblicksbilden som skrivs på `FiscalYearClose.summary`. Räknas aldrig om. */
+export interface FiscalYearCloseSummary {
+  fiscalYear: number
+  label: string
+  startMonth: number
+  fiscalStart: string
+  yearEndDate: string
+  result: number
+  /** Antal resultatkonton som nollställdes (plug-raden inte inräknad). */
+  accountsZeroed: number
+  resultAccountNumber: number
+  /** Varför inget verifikat skrevs, eller null när ett skrevs. */
+  noEntryReason: string | null
+  closedAt: string
+  generatedAt: string
+}
+
+/** Vad förhandsvisningen svarar — underlaget PR 3:s dialog visar. */
+export interface FiscalYearClosePreview {
+  fiscalYear: number
+  label: string
+  startMonth: number
+  fiscalStart: string
+  yearEndDate: string
+  months: PeriodKey[]
+  canClose: boolean
+  checks: FiscalYearCheck[]
+  entry: FiscalYearEntryDraft
+}
+
+/** Vad en genomförd årsstängning svarar. */
+export interface FiscalYearCloseResult {
+  fiscalYear: number
+  label: string
+  /** null när inget resultatkonto hade saldo — se `summary.noEntryReason`. */
+  journalEntryId: string | null
+  summary: FiscalYearCloseSummary
+  /** Månaden som stängdes som en del av årsstängningen (årets tolfte). */
+  monthClosed: PeriodKey
+  checks: FiscalYearCheck[]
 }

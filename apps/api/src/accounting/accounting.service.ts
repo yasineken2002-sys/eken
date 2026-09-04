@@ -3319,6 +3319,57 @@ export class AccountingService {
     }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
+  // ── Årsavslutsverifikatet (#704 PR 2) ─────────────────────────────────────
+  /**
+   * Bokför årsavslutsverifikatet — resultatkontonas nollställning mot "Årets
+   * resultat". ENDA publika ingången till `createNumberedEntry` för det flödet.
+   *
+   * VARFÖR EN EGEN METOD OCH INTE EN PUBLIK `createNumberedEntry`:
+   * `createNumberedEntry` är privat med flit — den bär balansgrinden,
+   * idempotensnyckelns org-scopning och sekvensallokeringen, och varje ny
+   * anropare är en ny chans att skicka in en nyckel som inte är unik nog. Den
+   * här metoden fixerar `source`, `sourceId` och `idempotencyWhere` så
+   * anroparen inte kan välja dem fel.
+   *
+   * `source = 'MANUAL'`, inte ett nytt enumvärde: samma val som den befintliga
+   * bokslutsposten för omätt förbrukning (`runYearEndAccrual`), som också är en
+   * systemskapad bokslutspost under MANUAL. Ett nytt `YEAR_END`-värde hade varit
+   * ärligare men kräver en migration och en genomgång av varje switch på
+   * `source`; det är ett eget ärende, inte en bieffekt av årsstängningen.
+   *
+   * `sourceId = 'year-end:<fiscalYear>'` — det unika indexet
+   * (organizationId, source, sourceId) ÄR idempotensen. Två samtidiga
+   * stängningar av samma år kan därför inte ge två verifikat.
+   *
+   * `tx` är OBLIGATORISK här, till skillnad från i `createNumberedEntry`.
+   * Verifikatet får aldrig finnas utan sin `FiscalYearClose`-rad eller tvärtom:
+   * ett årsavslut utan stängning ser ut som en dubbelbokning nästa gång någon
+   * försöker stänga, och en stängning utan verifikat låser året med
+   * resultatkontona kvar.
+   */
+  async createYearEndResultEntry(params: {
+    organizationId: string
+    fiscalYear: number
+    date: Date
+    lines: JournalLineInput[]
+    createdById?: string | null
+    tx: Prisma.TransactionClient
+  }) {
+    const sourceId = `year-end:${params.fiscalYear}`
+    return this.createNumberedEntry({
+      organizationId: params.organizationId,
+      date: params.date,
+      description: `Bokslut: resultatavräkning räkenskapsåret ${params.fiscalYear}`,
+      source: 'MANUAL',
+      sourceId,
+      createdById: params.createdById ?? null,
+      lines: params.lines,
+      idempotencyWhere: { organizationId: params.organizationId, sourceId },
+      include: { lines: { include: { account: true } } },
+      tx: params.tx,
+    })
+  }
+
   // Bokföring av hyresinbetalning (RentNotice). Använder samma BAS-konton som
   // Invoice-betalning (1930 D bank / 1510 K kundfordran) — hyresavin är en
   // kundfordran på samma sätt. Vi indexerar med samma source='PAYMENT' och

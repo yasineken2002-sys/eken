@@ -79,7 +79,14 @@ function makeRig(opts: RigOpts = {}) {
     $transaction,
   }
 
-  return { service: new AccountingPeriodService(prisma as never), prisma, events, notified }
+  // #704 PR 2: tjänsten injicerar numera AccountingService (årsavslutsverifikatet).
+  // Den här sviten rör inte årsstängningen — attrappen finns för konstruktorn.
+  return {
+    service: new AccountingPeriodService(prisma as never, {} as never),
+    prisma,
+    events,
+    notified,
+  }
 }
 
 const OWNER = { actorRole: UserRole.OWNER, actorUserId: 'u-owner' }

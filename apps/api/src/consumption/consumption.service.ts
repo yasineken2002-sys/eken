@@ -14,6 +14,7 @@ import type {
 } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { assertPeriodOpen } from '../accounting/closed-period'
+import { fiscalYearBounds } from '../accounting/fiscal-year'
 import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { CreateMeterDto } from './dto/create-meter.dto'
@@ -729,9 +730,12 @@ export class ConsumptionService {
 
     // Räkenskapsårets gränser. För kalenderår (startMonth=1): start 1/1, slut
     // 31/12, återföring 1/1 nästa år. Brutet år följer fiscalYearStartMonth.
-    const fiscalStart = new Date(Date.UTC(fiscalYear, startMonth - 1, 1))
-    const reversalDate = new Date(Date.UTC(fiscalYear + 1, startMonth - 1, 1))
-    const yearEndDate = new Date(reversalDate.getTime() - DAY_MS)
+    //
+    // Uträkningen låg förut här; den är flyttad till accounting/fiscal-year.ts
+    // (#704 PR 2), eftersom årsstängningen behöver EXAKT samma gränser. Två
+    // kopior av "när slutar räkenskapsåret" svarar förr eller senare olika på
+    // ett brutet år, och då bokförs bokslutsposten i fel år.
+    const { fiscalStart, reversalDate, yearEndDate } = fiscalYearBounds(fiscalYear, startMonth)
 
     // Stängd period blockerar bokslutsposten (BFL) — tydligt fel uppåt innan
     // vi börjar skapa verifikat.
