@@ -48,6 +48,7 @@ import { ReportsPage } from '../features/reports/ReportsPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
 import { OverviewPage } from '../features/overview/OverviewPage'
 import { ReconciliationPage } from '../features/reconciliation/ReconciliationPage'
+import { BankConnectionPage } from '../features/reconciliation/BankConnectionPage'
 import { DocumentsPage } from '../features/documents/DocumentsPage'
 import { ImportPage } from '../features/import/ImportPage'
 import { ContractBatchUploadPage } from '../features/contract-batch/ContractBatchUploadPage'
@@ -293,6 +294,25 @@ const terminationsRoute = appPage('/terminations', TerminationsPage)
 const accountingRoute = appPage('/accounting', AccountingPage)
 const reportsRoute = appPage('/reports', ReportsPage)
 const reconciliationRoute = appPage('/reconciliation', ReconciliationPage)
+
+// Bankkoppling (PSD2). ADRESSEN ÄR INTE FRI: `PSD2_APP_RETURN_URL` defaultar
+// till `…/reconciliation/settings` i psd2-consent.service.ts, och det är dit
+// banken skickar tillbaka användaren efter SCA. Rutten fanns inte när backend
+// skrevs — en lyckad callback landade alltså på catch-all-sidan.
+//
+// `validateSearch` finns för kvittensen `?psd2=ok|error`. Ett okänt värde
+// släpps igenom som sträng och tolkas av sidan, som gör allt utom 'ok'/'error'
+// till "ingen kvittens" — se `tolkaPsd2Kvittens`.
+const bankConnectionRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/reconciliation/settings',
+  validateSearch: (search: Record<string, unknown>): { psd2?: string } =>
+    typeof search['psd2'] === 'string' ? { psd2: search['psd2'] } : {},
+  component: function BankConnectionRoute() {
+    const { psd2 } = bankConnectionRoute.useSearch()
+    return <BankConnectionPage psd2={psd2} />
+  },
+})
 const collectionsRoute = appPage('/collections', CollectionsPage)
 const documentsRoute = appPage('/documents', DocumentsPage)
 const importRoute = appPage('/import', ImportPage)
@@ -374,6 +394,7 @@ const routeTree = rootRoute.addChildren([
     accountingRoute,
     reportsRoute,
     reconciliationRoute,
+    bankConnectionRoute,
     collectionsRoute,
     documentsRoute,
     importRoute,

@@ -141,3 +141,17 @@ export function extractApiError(err: unknown, fallback = 'Något gick fel'): str
 export function isForbidden(err: unknown): boolean {
   return axios.isAxiosError(err) && err.response?.status === 403
 }
+
+/**
+ * Är felet ett 503 — alltså en funktion som är AVSTÄNGD, inte trasig?
+ *
+ * Tredje kategorin bredvid haveri och nekande, och den behövs av samma skäl som
+ * `isForbidden`: svaret i gränssnittet är ett annat. PSD2-modulen och BankID
+ * väljer en Stub-provider när sin flagga är av, och Stuben svarar 503 på varje
+ * väg som skulle kunna göra något skarpt. Det är designat läge, inte fel —
+ * "Bankkopplingen är inte aktiverad" är sanningen, medan "Något gick fel" hade
+ * skickat användaren att felsöka en funktion som fungerar precis som avsett.
+ */
+export function isUnavailable(err: unknown): boolean {
+  return axios.isAxiosError(err) && err.response?.status === 503
+}

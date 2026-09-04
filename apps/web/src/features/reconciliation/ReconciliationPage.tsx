@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { Link } from '@tanstack/react-router'
 import {
   ArrowLeftRight,
   Upload,
@@ -12,6 +13,8 @@ import {
   FileText,
   Search,
   Sparkles,
+  Landmark,
+  ChevronRight,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -34,6 +37,8 @@ import {
 } from './hooks/useReconciliation'
 import type { BankFormat, PdfImportDraft } from './api/reconciliation.api'
 import { PdfImportPreviewModal } from './components/PdfImportPreviewModal'
+import { useBankConsents } from './hooks/usePsd2'
+import { aktivaSamtycken } from './api/psd2.api'
 import { useInvoices } from '@/features/invoices/hooks/useInvoiceQueries'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { BankTransaction, ImportResult, Invoice } from '@eken/shared'
@@ -822,6 +827,8 @@ export function ReconciliationPage() {
         </motion.div>
       </motion.div>
 
+      <BankConnectionCard />
+
       {/* Filter tabs */}
       <div className="mt-6">
         <div className="flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
@@ -1015,5 +1022,45 @@ export function ReconciliationPage() {
         <ManualMatchModal transaction={matchingTx} onClose={() => setMatchingTx(null)} />
       )}
     </PageWrapper>
+  )
+}
+
+/**
+ * INGÅNGEN TILL BANKKOPPLINGEN, på den sida där frågan uppstår.
+ *
+ * Filimporten och bankkopplingen löser samma problem — få in transaktioner — och
+ * en hyresvärd som just laddat upp sin tredje CSV-fil är den som ska få veta att
+ * det går att slippa. Därför ett kort här och inte bara en post i menyn.
+ *
+ * KORTET DÖLJS ALDRIG AV ETT FEL. Läsningen kan svara 403 (rollen får inte se
+ * samtycken) eller falla på nätet; i båda fallen visas kortet utan antal i
+ * stället för att försvinna. En ingång som ibland finns och ibland inte är
+ * svårare att lita på än en som alltid finns — och antalet är en upplysning,
+ * inte kortets skäl att existera.
+ */
+function BankConnectionCard() {
+  const { data: consents, isError } = useBankConsents()
+  const aktiva = consents ? aktivaSamtycken(consents) : null
+
+  return (
+    <Link
+      to="/reconciliation/settings"
+      className="border-line bg-surface mt-6 flex items-center gap-4 rounded-2xl border p-4 transition-shadow hover:shadow-sm"
+    >
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-gray-100 bg-gray-50">
+        <Landmark size={16} strokeWidth={1.8} className="text-gray-500" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13.5px] font-medium text-gray-900">Bankkoppling</p>
+        <p className="mt-0.5 text-[13px] text-gray-500">
+          {isError || aktiva === null
+            ? 'Hämta transaktioner automatiskt i stället för att importera filer.'
+            : aktiva > 0
+              ? `${aktiva} aktiv${aktiva !== 1 ? 'a' : ''} bankkoppling${aktiva !== 1 ? 'ar' : ''} hämtar transaktioner automatiskt.`
+              : 'Ingen bank ansluten — transaktionerna importeras manuellt.'}
+        </p>
+      </div>
+      <ChevronRight size={16} strokeWidth={1.8} className="flex-shrink-0 text-gray-400" />
+    </Link>
   )
 }
