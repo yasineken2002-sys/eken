@@ -5856,3 +5856,26 @@ model UnitEquipmentEvent {
   @@index([equipmentId, occurredAt])
   @@index([maintenanceTicketId])
 }
+
+// ── #710: HJÄRTSLAG PER LÅST CRON-JOBB ──────────────────────────────────────
+//
+// EN rad per låsnyckel som skrivs över — inte en logg. `key` är därför primär-
+// nyckel och upsert den naturliga operationen. En historik hade varit en annan
+// fråga (och en annan tabell); den här svarar bara på "när kördes jobbet sist,
+// och hur gick det".
+//
+// Skrivs av LockService.runIfUnlocked när innehavaren är klar — vid BÅDE lyckad
+// och kastad körning, aldrig när låset nekades. Läses av /v1/health.
+//
+// Ingen organizationId: cron-jobben är systemomfattande, inte per kund.
+model CronHeartbeat {
+  /// Låsnyckeln, t.ex. "cron:daily-backup". Se LASTA_CRON_JOBB.
+  key            String   @id
+  /// När körningen AVSLUTADES (inte startade) — det är färskheten vi mäter.
+  lastRunAt      DateTime
+  /// "success" eller "failed". Ett jobb som kastar varje natt är inte tyst,
+  /// men det är inte heller friskt, och de två får inte se likadana ut.
+  lastOutcome    String
+  lastDurationMs Int
+  updatedAt      DateTime @updatedAt
+}

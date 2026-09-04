@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
 import * as crypto from 'crypto'
 import { RedisService } from './redis.service'
+import { PrismaService } from '../prisma/prisma.service'
+import type { CronUtfall } from '../cron/cron-heartbeat'
 
 const RELEASE_LUA = `
 if redis.call("GET", KEYS[1]) == ARGV[1] then
@@ -36,7 +38,47 @@ export interface RunWithLockOptions {
 export class LockService {
   private readonly logger = new Logger(LockService.name)
 
-  constructor(private readonly redis: RedisService) {}
+  constructor(
+    private readonly redis: RedisService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  /**
+   * HJÄRTSLAGET (#710). Skrivs när innehavaren är KLAR — lyckad eller kastad.
+   *
+   * ── VARFÖR BÅDA UTFALLEN ────────────────────────────────────────────────
+   *
+   * Ett jobb som kastar varje natt är INTE tyst; det körs. Skrevs hjärtslaget
+   * bara vid framgång hade ett trasigt jobb sett ut som ett hängt lås, och de
+   * två kräver olika åtgärd. Utfallet står i raden så de går att skilja åt.
+   *
+   * ── VARFÖR INTE NÄR LÅSET NEKADES ───────────────────────────────────────
+   *
+   * `ran: false` betyder att kroppen ALDRIG kördes. Ett hjärtslag där hade
+   * gjort en instans som aldrig får låset till en frisk instans, och två
+   * repliker där den ena hänger hade sett friska ut båda två.
+   *
+   * ── KASTAR ALDRIG ───────────────────────────────────────────────────────
+   *
+   * Observerbarhet får inte fälla det den observerar. Ett fel mot databasen
+   * här loggas och sväljs — annars kan ett trasigt hjärtslag ta ned ett jobb
+   * som fungerar.
+   */
+  private async skrivHjärtslag(key: string, utfall: CronUtfall, ms: number): Promise<void> {
+    const nu = new Date()
+    try {
+      await this.prisma.cronHeartbeat.upsert({
+        where: { key },
+        create: { key, lastRunAt: nu, lastOutcome: utfall, lastDurationMs: ms },
+        update: { lastRunAt: nu, lastOutcome: utfall, lastDurationMs: ms },
+      })
+    } catch (err) {
+      this.logger.warn(
+        `[cron-heartbeat] kunde inte skriva hjärtslag för ${key}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  }
 
   async runWithLock<T>(
     key: string,
@@ -125,8 +167,15 @@ export class LockService {
       return { ran: false, heldForSec }
     }
 
+    const start = Date.now()
     try {
-      return { ran: true, value: await fn() }
+      const value = await fn()
+      await this.skrivHjärtslag(key, 'success', Date.now() - start)
+      return { ran: true, value }
+    } catch (err) {
+      // Hjärtslaget skrivs FÖRE omkastet: ett jobb som kastar har ändå kört.
+      await this.skrivHjärtslag(key, 'failed', Date.now() - start)
+      throw err
     } finally {
       try {
         await this.redis.client.eval(RELEASE_LUA, 1, lockKey, token)
