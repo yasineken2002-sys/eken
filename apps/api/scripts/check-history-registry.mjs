@@ -107,7 +107,7 @@ export function registreradeRelationer(registryText) {
   const re = /\b(tenant|unit|property):\s*'/g
   let m
   while ((m = re.exec(kod)) !== null) {
-    const namn = /^([A-Za-z0-9_]+)'/.exec(registryText.slice(m.index + m[0].length))
+    const namn = /^([\p{L}\p{N}_$]+)'/u.exec(registryText.slice(m.index + m[0].length))
     if (namn) ut[m[1]].push(namn[1])
   }
   return ut
@@ -233,6 +233,33 @@ function selfTest() {
   const t = (namn, ok, extra = '') => {
     console.warn(`  ${ok ? '✅' : '❌'} ${namn}${extra ? ` — ${extra}` : ''}`)
     if (!ok) fel++
+  }
+
+  // ── #713: RELATIONSNAMNET I REGISTRET ───────────────────────────────────
+  //
+  // Registret binder en relation till sitt namn: `tenant: 'ärenden'`. Namnet
+  // lästes med `^([A-Za-z0-9_]+)'`, som är ASCII, och prisma-relationer i den
+  // här kodbasen får heta svenska.
+  //
+  // Uppmätt mot origin/main:
+  //
+  //   tenant: 'ärenden'        → namnet läses INTE alls   MISSAD
+  //   tenant: 'avierFörAvtal'  → "avierF" och sedan krävs `'` → ingen match
+  //
+  // Följden är FALSKLARM åt det dyra hållet: relationen finns i schemat men
+  // saknas i den REGISTRERADE mängden, så vakten säger att en relation är
+  // ohanterad i historikregistret — och den som ska laga det hittar posten på
+  // plats och letar efter ett fel som inte finns.
+  {
+    const reg = "export const H = { tenant: 'ärenden', unit: 'avierFörAvtal', property: 'hus' }"
+    const r = registreradeRelationer(reg)
+    t('#713 MISSAD: relationsnamn med svensk initial läses',
+      r.tenant.join() === 'ärenden', JSON.stringify(r.tenant))
+    t('#713 KAPAD: relationsnamn med svenskt tecken mitt i läses helt',
+      r.unit.join() === 'avierFörAvtal', JSON.stringify(r.unit))
+    t('#713 MOTPROV: ren ASCII läses som förut', r.property.join() === 'hus', JSON.stringify(r.property))
+    t('#713 MOTPROV: ett namn i en KOMMENTAR registreras inte',
+      registreradeRelationer("// tenant: 'ärenden'\nexport const H = {}").tenant.length === 0)
   }
   const kör = (över = {}) =>
     evaluate({ schemaText: SCHEMA_OK, registryText: REGISTRY_OK, ackObjekt: ACK_OK, ...över })
