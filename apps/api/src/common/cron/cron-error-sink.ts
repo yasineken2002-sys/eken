@@ -56,7 +56,50 @@ export class CronErrorSink {
    * anledningen till att cronet fallerar.
    */
   async report(cronName: string, err: unknown, context: CronFailureContext = {}): Promise<void> {
-    const message = `[cron:${cronName}] ${err instanceof Error ? err.message : String(err)}`
+    await this.skrivVaraktigt(`cron:${cronName}`, { cron: cronName }, err, context)
+  }
+
+  /**
+   * Samma varaktighet för en UPPSTARTSKONTROLL, med en ärlig etikett.
+   *
+   * Behovet kom ur #580: `PiiCoherenceService` upptäcker vid boot att den
+   * konfigurerade PII-nyckeln inte hör ihop med datan — det klassiska
+   * återställningsfelet — men larmet nådde bara den lokala loggen och Sentry.
+   * Loggen överlever inte nästa container, och en återställning är precis det
+   * tillfälle då ingen läser boot-loggen.
+   *
+   * VARFÖR EN EGEN INGÅNG OCH INTE `report('pii-coherence', …)`: den skriver
+   * `[cron:…]` i meddelandet och `cron` i kontexten. En uppstartskontroll är
+   * inget cron-jobb, och ErrorLog är ett varaktigt underlag som andra läser —
+   * en felaktig men trovärdig etikett där är värre än ingen etikett alls, av
+   * samma skäl som en felaktig disambiguering av ett DB-fel (#649). Skrivvägen,
+   * med sitt tak och sin tystnadsgaranti, är däremot exakt densamma och finns
+   * kvar på ett ställe.
+   *
+   * Vakten `check-cron-error-sink.mjs` härleder sänkans rapportvägar ur formen
+   * `async <namn>(cronName: string, …)`. Den här metoden har medvetet en annan
+   * första parameter och räknas därför INTE som en cron-väg — ett cron-jobb kan
+   * alltså inte uppfylla vakten genom att anropa den.
+   */
+  async reportBootCheck(
+    checkName: string,
+    err: unknown,
+    context: CronFailureContext = {},
+  ): Promise<void> {
+    await this.skrivVaraktigt(`boot:${checkName}`, { bootCheck: checkName }, err, context)
+  }
+
+  /**
+   * Skriver till ErrorLog och VÄNTAR IN skrivningen (med tak). Kastar aldrig —
+   * ett fel här får aldrig bli anledningen till att anroparen fallerar.
+   */
+  private async skrivVaraktigt(
+    etikett: string,
+    nyckelfalt: Record<string, unknown>,
+    err: unknown,
+    context: CronFailureContext,
+  ): Promise<void> {
+    const message = `[${etikett}] ${err instanceof Error ? err.message : String(err)}`
     const stack = err instanceof Error ? err.stack : undefined
 
     const write = this.errors.logInternalError({
@@ -65,14 +108,14 @@ export class CronErrorSink {
       message,
       ...(stack ? { stack } : {}),
       context: {
-        cron: cronName,
+        ...nyckelfalt,
         ...(context.detail ?? {}),
       },
       ...(context.organizationId ? { organizationId: context.organizationId } : {}),
     })
 
     let timer: NodeJS.Timeout | undefined
-    const timedOut = Symbol('cron-errorlog-timeout')
+    const timedOut = Symbol('errorlog-timeout')
     try {
       const utfall = await Promise.race([
         write.then(() => undefined),
@@ -83,7 +126,7 @@ export class CronErrorSink {
       ])
       if (utfall === timedOut) {
         this.logger.error(
-          `[cron:${cronName}] ErrorLog-skrivningen slutfördes inte inom ` +
+          `[${etikett}] ErrorLog-skrivningen slutfördes inte inom ` +
             `${ERROR_LOG_WRITE_TIMEOUT_MS} ms — felet kan saknas i ErrorLog.`,
         )
       }
@@ -91,7 +134,7 @@ export class CronErrorSink {
       // Ska inte kunna hända (logInternalError fångar sitt eget fel), men en
       // sänka som kastar vore värre än ingen sänka alls.
       this.logger.error(
-        `[cron:${cronName}] felsänkan kastade oväntat`,
+        `[${etikett}] felsänkan kastade oväntat`,
         sinkErr instanceof Error ? sinkErr.stack : String(sinkErr),
       )
     } finally {
