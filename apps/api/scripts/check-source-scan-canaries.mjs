@@ -64,8 +64,8 @@ export const MUTATIONER = [
   {
     läge: 'regex',
     vad: 'regex-läget känns aldrig igen (defekt 1 återinförd)',
-    från: 'const REGEX_LÄGE = /^$|[(,=:[!&|?{};+\\-*%~^<>]|`|\\breturn$',
-    till: 'const REGEX_LÄGE = /QQ_ALDRIG_MATCHA$|[(]|\\breturn$',
+    från: '/^$|[(,=:[!&|?{};+\\-*%~^<>]|`|(?<![\\p{L}\\p{N}_$])(?:return',
+    till: '/QQ_ALDRIG_MATCHA$|[(]|(?<![\\p{L}\\p{N}_$])(?:return',
   },
   {
     läge: 'regex',
@@ -133,6 +133,30 @@ export const MUTATIONER = [
     vad: 'uttrycksSlut spårar inget förra — enTokenVid får aldrig kontexten',
     från: '    const t = enTokenVid(text, i, till, förra)',
     till: "    const t = enTokenVid(text, i, till, 'QQ_ALDRIG_REGEXLÄGE')",
+  },
+  {
+    // #713. TRE mutationer, inte en: `förra` sätts på TVÅ ställen (tokenizeTs
+    // och uttrycksSlut har var sin kopia av identifierarhoppet), och läses på
+    // ETT (REGEX_LÄGE:s nyckelordsgräns). Uppmätt 2026-09-04 är var halva för
+    // sig en NO-OP — `\bin$` matchar `påin` lika gärna som `in`. En enda
+    // mutation hade därför kunnat vara röd medan de andra två ställena var
+    // olagade, och det är just den formen läget handlar om.
+    läge: 'unicode-identifierare',
+    vad: 'tokenizeTs hoppar bara över ASCII-identifierare',
+    från: '    // tecken gör svepet kvadratiskt i ordlängd utan att ge något.\n    if (ID_START.test(c)) {\n      let b = i\n      while (b + 1 < till && ID_FORTS.test(text[b + 1])) b++',
+    till: '    // tecken gör svepet kvadratiskt i ordlängd utan att ge något.\n    if (/[A-Za-z_$]/.test(c)) {\n      let b = i\n      while (b + 1 < till && /[\\w$]/.test(text[b + 1])) b++',
+  },
+  {
+    läge: 'unicode-identifierare',
+    vad: 'uttrycksSlut hoppar bara över ASCII-identifierare (samma fälla inuti ${})',
+    från: '    // att räkna om ordet per tecken är kvadratiskt i ordlängd.\n    if (ID_START.test(c)) {\n      let b = i\n      while (b + 1 < till && ID_FORTS.test(text[b + 1])) b++',
+    till: '    // att räkna om ordet per tecken är kvadratiskt i ordlängd.\n    if (/[A-Za-z_$]/.test(c)) {\n      let b = i\n      while (b + 1 < till && /[\\w$]/.test(text[b + 1])) b++',
+  },
+  {
+    läge: 'unicode-identifierare',
+    vad: 'REGEX_LÄGE avgränsar nyckelorden med ASCII-\\b igen (andra halvan)',
+    från: '  /^$|[(,=:[!&|?{};+\\-*%~^<>]|`|(?<![\\p{L}\\p{N}_$])(?:return|typeof|case|in|of|do|else|yield|await)$/u',
+    till: '  /^$|[(,=:[!&|?{};+\\-*%~^<>]|`|\\breturn$|\\btypeof$|\\bcase$|\\bin$|\\bof$|\\bdo$|\\belse$|\\byield$|\\bawait$/',
   },
   {
     läge: 'SQL-radkommentar',

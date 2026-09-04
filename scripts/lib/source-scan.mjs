@@ -72,8 +72,36 @@
  * själv hur en sträng slutar.
  */
 
-/** Tecken efter vilka ett `/` inleder en REGEX och inte en division. */
-const REGEX_LÄGE = /^$|[(,=:[!&|?{};+\-*%~^<>]|`|\breturn$|\btypeof$|\bcase$|\bin$|\bof$|\bdo$|\belse$|\byield$|\bawait$/
+/**
+ * Ett JS-identifierartecken. `\w` och `[A-Za-z_$]` är ASCII-definierade och
+ * tappar å/ä/ö — i en kodbas som namnger allt på svenska är det inte en
+ * kantfall. Se `REGEX_LÄGE` nedan för varför de två måste bytas TILLSAMMANS.
+ */
+const ID_START = /[\p{L}_$]/u
+const ID_FORTS = /[\p{L}\p{N}_$]/u
+
+/**
+ * Tecken efter vilka ett `/` inleder en REGEX och inte en division.
+ *
+ * NYCKELORDSGRÄNSEN ÄR ANDRA HALVAN AV SAMMA ASCII-FÄLLA (#713). Formen var
+ * `\breturn$|…|\bin$`, och `\b` är ASCII-definierat precis som `\w`: mellan `å`
+ * och `i` finns en ordgräns, eftersom `å` inte är ett ordtecken. Med hela
+ * identifieraren i `förra` — vilket är just vad ID_START/ID_FORTS ovan ger —
+ * matchade `\bin$` alltså `påin`, och divisionen lästes som en regexstart.
+ *
+ * Uppmätt 2026-09-04, `förra` för namnet `påin`:
+ *
+ *     tokeniserare   REGEX_LÄGE   utfall
+ *     ASCII          \b           REGEX     ← fel
+ *     unicode        \b           REGEX     ← fel  (bara halva fixen)
+ *     ASCII          lookbehind   REGEX     ← fel  (bara andra halvan)
+ *     unicode        lookbehind   DIVISION  ← rätt
+ *
+ * Var halva FÖR SIG är alltså en ändring utan observerbar effekt. Det är
+ * skälet till att de tre ställena hör till ETT läge i kanariefåglarna.
+ */
+const REGEX_LÄGE =
+  /^$|[(,=:[!&|?{};+\-*%~^<>]|`|(?<![\p{L}\p{N}_$])(?:return|typeof|case|in|of|do|else|yield|await)$/u
 
 /** @typedef {'line-comment'|'block-comment'|'string'|'template'|'regex'} TokenKind */
 
@@ -157,9 +185,9 @@ function tokenizeTs(text, från, till) {
 
     // Hoppa över hela identifieraren i ETT steg. Att räkna om ordet för varje
     // tecken gör svepet kvadratiskt i ordlängd utan att ge något.
-    if (/[A-Za-z_$]/.test(c)) {
+    if (ID_START.test(c)) {
       let b = i
-      while (b + 1 < till && /[\w$]/.test(text[b + 1])) b++
+      while (b + 1 < till && ID_FORTS.test(text[b + 1])) b++
       förra = text.slice(i, b + 1)
       i = b + 1
       continue
@@ -245,9 +273,9 @@ function uttrycksSlut(text, från, till) {
     }
     // Hoppa över hela identifieraren i ETT steg — samma skäl som i tokenizeTs:
     // att räkna om ordet per tecken är kvadratiskt i ordlängd.
-    if (/[A-Za-z_$]/.test(c)) {
+    if (ID_START.test(c)) {
       let b = i
-      while (b + 1 < till && /[\w$]/.test(text[b + 1])) b++
+      while (b + 1 < till && ID_FORTS.test(text[b + 1])) b++
       förra = text.slice(i, b + 1)
       i = b + 1
       continue
@@ -622,6 +650,82 @@ const LÄGESPROV = [
       const src3 = 'const t = `${a / b} ${c}`; const ZZEFTER11C = 11'
       kräv('LÄGE regex i ${} (division är inte en regex)', codeMask(src3).includes('ZZEFTER11C'),
         `divisionen lästes som regexstart: ${JSON.stringify(codeMask(src3))}`)
+    },
+  },
+  {
+    // ── IDENTIFIERAREN ÄR INTE ASCII ───────────────────────────────────────
+    //
+    // `förra` — föregående betydelsebärande token — avgör om ett `/` är en
+    // REGEX eller en DIVISION. Den sattes med `[A-Za-z_$]` / `[\w$]`, och
+    // nyckelorden i `REGEX_LÄGE` avgränsades med `\b`. Båda är ASCII.
+    //
+    // DE TVÅ FELFORMERNA, och varför BÅDA behövs som prov:
+    //
+    //   MISSAD  svensk INITIAL — `äin` läses inte som en identifierare alls.
+    //           `ä` blir `förra`, sedan blir `in` det. Namnet försvinner.
+    //   KAPAD   svensk bokstav MITT i — `påin` ger ASCII-SVANSEN `in` som
+    //           `förra`. Något hittas, med FEL namn, och ett prov som bara
+    //           räknar träffar ser ingen skillnad.
+    //
+    // I båda fallen blir `förra` strängen `in`, som står i `REGEX_LÄGE`. En
+    // division läses då som en regexstart, och "regexen" löper till nästa `/`
+    // på raden — koden däremellan maskeras bort för VARJE vakt som frågar
+    // codeMask, tyst.
+    //
+    // TRE STÄLLEN, ETT LÄGE. Uppmätt 2026-09-04: att laga tokeniseraren utan
+    // att laga `\b` i REGEX_LÄGE ger `förra = 'påin'`, och `\bin$` matchar det
+    // ändå — `å` är inget ordtecken, så gränsen finns. Att laga REGEX_LÄGE utan
+    // tokeniseraren ger `förra = 'in'`, och lookbehinden har då inget att titta
+    // på. Var halva för sig är alltså en NO-OP. Därför hör tokenizeTs:s hopp,
+    // uttrycksSlut:s egna kopia av samma hopp, och REGEX_LÄGE till samma läge.
+    läge: 'unicode-identifierare',
+    prova: (kräv) => {
+      // Sonderna står på SAMMA RAD som det som ska överleva — samma skäl som
+      // för regex-läget ovan: annars är provet grönt av sin formatering.
+      const kapad = 'const x = påin / ZZDIV1 + y / 2; const ZZEFTER12 = 12'
+      kräv('LÄGE unicode-id (KAPAD: ascii-svansen `in` gjorde divisionen till en regex)',
+        codeMask(kapad).includes('ZZDIV1'),
+        `divisionen lästes som regexstart: ${JSON.stringify(codeMask(kapad))}`)
+
+      const missad = 'const x = äin / ZZDIV2 + y / 2; const ZZEFTER12B = 12'
+      kräv('LÄGE unicode-id (MISSAD: svensk initial gjorde divisionen till en regex)',
+        codeMask(missad).includes('ZZDIV2'),
+        `divisionen lästes som regexstart: ${JSON.stringify(codeMask(missad))}`)
+
+      // `uttrycksSlut` bär en EGEN kopia av identifierarhoppet. Observerbart
+      // bara inuti ett `${}`, och bara om den falska regexen sväljer BÅDE det
+      // stängande `}` och backticken — då löper mallen till filens slut.
+      const iUttryck = 'const t = `${ påin / 2 }` + b / 3; const ZZEFTER12C = 12'
+      kräv('LÄGE unicode-id (samma fälla inuti ${})',
+        codeMask(iUttryck).includes('ZZEFTER12C'),
+        `mallen löpte vidare efter sin backtick: ${JSON.stringify(codeMask(iUttryck))}`)
+      kräv('LÄGE unicode-id (mallen räknas som EN)', templateLiterals(iUttryck).length === 1,
+        `${templateLiterals(iUttryck).length} mallar hittades, väntade 1`)
+
+      // MOTPROVEN. En för glupsk fix — nyckelordsgränsen borttagen i stället
+      // för unicode-anpassad — skulle se ut att fungera utan dem.
+      const div = 'const x = förvaltning / ZZDIV4 + y / 2; const ZZEFTER12D = 12'
+      kräv('MOTPROV unicode-id (förvaltning/2 är fortfarande DIVISION)',
+        codeMask(div).includes('ZZDIV4'), JSON.stringify(codeMask(div)))
+
+      kräv('MOTPROV unicode-id (x = /ä/ är fortfarande en REGEX)',
+        !codeMask('const re = /ZZIREGEXÄ/; const ZZEFTER12E = 12').includes('ZZIREGEXÄ'),
+        'regexkroppen med svenskt tecken lästes som kod')
+
+      // DELSTRÄNGS-MOTPROVET: `returnera` slutar på `era`, inte på `return` —
+      // men `yield`/`in`/`do` är korta, och en gräns som tappas gör varje
+      // identifierare som SLUTAR på ett nyckelord till en regexstart.
+      const del = 'const x = returnera / ZZDIV5 + y / 2; const ZZEFTER12F = 12'
+      kräv('MOTPROV unicode-id (delsträng: `returnera` är inte `return`)',
+        codeMask(del).includes('ZZDIV5'), JSON.stringify(codeMask(del)))
+      const del2 = 'const x = minin / ZZDIV6 + y / 2; const ZZEFTER12G = 12'
+      kräv('MOTPROV unicode-id (delsträng: `minin` är inte `in`)',
+        codeMask(del2).includes('ZZDIV6'), JSON.stringify(codeMask(del2)))
+
+      // Och åt andra hållet: ett RIKTIGT nyckelord ska fortfarande ge regexläge.
+      kräv('MOTPROV unicode-id (`return /re/` är fortfarande en REGEX)',
+        !codeMask('function f() { return /ZZIREGEX12/.test(s) }').includes('ZZIREGEX12'),
+        'nyckelordet slutade ge regexläge')
     },
   },
   {
