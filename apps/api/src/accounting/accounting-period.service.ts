@@ -15,9 +15,12 @@ import { fiscalYearBounds, fiscalYearOf, type FiscalYearBounds } from './fiscal-
 import { vatPeriodLabelsForMonths } from '../avisering/vat-period.util'
 import { stockholmCivilDate, stockholmMonthBounds } from '../common/time/stockholm-period'
 import {
+  appendFiscalYearClose,
   appendPeriodClosedEvent,
   appendPeriodReopenedEvent,
+  findFiscalYearClose,
   fiscalYearLabel,
+  getClosedFiscalYears,
   getClosedPeriodStates,
   getPeriodHistory,
   getReopenCounts,
@@ -1268,15 +1271,13 @@ export class AccountingPeriodService {
         generatedAt: new Date().toISOString(),
       }
 
-      await tx.fiscalYearClose.create({
-        data: {
-          organizationId,
-          fiscalYear,
-          closedAt: now,
-          ...(actor.actorUserId ? { closedById: actor.actorUserId } : {}),
-          ...(journalEntryId ? { journalEntryId } : {}),
-          summary: summary as unknown as Prisma.InputJsonValue,
-        },
+      await appendFiscalYearClose(tx, {
+        organizationId,
+        fiscalYear,
+        closedAt: now,
+        closedById: actor.actorUserId ?? null,
+        journalEntryId,
+        summary: summary as unknown as Prisma.InputJsonValue,
       })
 
       return { journalEntryId, summary }
@@ -1336,12 +1337,7 @@ export class AccountingPeriodService {
     const twelfth = bounds.months[11] as PeriodKey
 
     const [redanStängt, stängdaPerioder, konton, tidigareDatum] = await Promise.all([
-      this.prisma.fiscalYearClose.findUnique({
-        where: {
-          organizationId_fiscalYear: { organizationId, fiscalYear: bounds.fiscalYear },
-        },
-        select: { closedAt: true },
-      }),
+      findFiscalYearClose(this.prisma, organizationId, bounds.fiscalYear),
       getClosedPeriodStates(this.prisma, organizationId),
       this.prisma.account.findMany({
         where: { organizationId },
@@ -1403,11 +1399,7 @@ export class AccountingPeriodService {
       ...new Set(tidigareDatum.map((d) => fiscalYearOf(d.date, org.fiscalYearStartMonth))),
     ].sort((a, b) => a - b)
     if (tidigareÅr.length > 0) {
-      const stängdaÅr = await this.prisma.fiscalYearClose.findMany({
-        where: { organizationId, fiscalYear: { in: tidigareÅr } },
-        select: { fiscalYear: true },
-      })
-      const stängdaÅrSet = new Set(stängdaÅr.map((r) => r.fiscalYear))
+      const stängdaÅrSet = await getClosedFiscalYears(this.prisma, organizationId, tidigareÅr)
       const öppna = tidigareÅr.filter((y) => !stängdaÅrSet.has(y))
       if (öppna.length > 0) {
         checks.push({

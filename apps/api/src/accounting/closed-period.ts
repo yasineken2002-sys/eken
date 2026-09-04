@@ -233,6 +233,88 @@ export async function isFiscalYearClosed(
   return (await findClosedFiscalYear(client, organizationId, date)) !== null
 }
 
+/** Räkenskapsårets stängning, för den som ska visa eller grinda på den. */
+export interface FiscalYearCloseState {
+  fiscalYear: number
+  closedAt: Date
+}
+
+/**
+ * BULKFORM: vilka av de angivna räkenskapsåren är stängda?
+ *
+ * För årsstängningens precheck, som behöver veta om NÅGOT tidigare år med
+ * bokföring i sig står öppet. Egen fråga i stället för N punktuppslag: mängden
+ * är känd i förväg och en `in`-fråga räcker.
+ */
+export async function getClosedFiscalYears(
+  client: FiscalYearClient,
+  organizationId: string,
+  fiscalYears: readonly number[],
+): Promise<Set<number>> {
+  if (fiscalYears.length === 0) return new Set()
+  const rows = await client.fiscalYearClose.findMany({
+    where: { organizationId, fiscalYear: { in: [...fiscalYears] } },
+    select: { fiscalYear: true },
+  })
+  return new Set(rows.map((r) => r.fiscalYear))
+}
+
+/** Är ETT namngivet räkenskapsår stängt? Punktform, för prechecken. */
+export async function findFiscalYearClose(
+  client: FiscalYearClient,
+  organizationId: string,
+  fiscalYear: number,
+): Promise<FiscalYearCloseState | null> {
+  const row = await client.fiscalYearClose.findUnique({
+    where: { organizationId_fiscalYear: { organizationId, fiscalYear } },
+    select: { closedAt: true },
+  })
+  return row ? { fiscalYear, closedAt: row.closedAt } : null
+}
+
+/**
+ * SKRIVNINGEN: låser räkenskapsåret (#704 PR 2).
+ *
+ * MÅSTE anropas med en transaktionsklient, och SIST i den. Raden är append-only
+ * i databasen (`append_only_guard_actor('closedById')`), så `journalEntryId` går
+ * inte att fylla i efterhand — hela kontraktet står vid modellen i
+ * schema.prisma.
+ *
+ * INGEN EGEN TILLSTÅNDSKONTROLL HÄR, till skillnad från
+ * `appendPeriodReopenedEvent`. Skälet är att skyddet är STRUKTURELLT: unik-
+ * villkoret (organizationId, fiscalYear) gör en andra stängning omöjlig, och
+ * eftersom det inte finns någon återöppning av ett år finns ingen kedja vars
+ * ordning kan bli fel. En `findFirst` före insert:en hade varit den sortens
+ * kontroll som inte låser något och därför inte skyddar något (se
+ * createNumberedEntrys docblock om samma sak). Anroparen frågar
+ * `findFiscalYearClose` FÖRE transaktionen för att kunna ge ett begripligt
+ * besked; P2002 härifrån är den verkliga spärren.
+ */
+export async function appendFiscalYearClose(
+  tx: Pick<Prisma.TransactionClient, 'fiscalYearClose'>,
+  params: {
+    organizationId: string
+    fiscalYear: number
+    closedAt: Date
+    closedById?: string | null
+    journalEntryId?: string | null
+    summary: Prisma.InputJsonValue
+  },
+): Promise<{ id: string }> {
+  const rad = await tx.fiscalYearClose.create({
+    data: {
+      organizationId: params.organizationId,
+      fiscalYear: params.fiscalYear,
+      closedAt: params.closedAt,
+      ...(params.closedById ? { closedById: params.closedById } : {}),
+      ...(params.journalEntryId ? { journalEntryId: params.journalEntryId } : {}),
+      summary: params.summary,
+    },
+    select: { id: true },
+  })
+  return rad
+}
+
 export async function assertPeriodOpen(
   client: FiscalYearClient,
   organizationId: string,
