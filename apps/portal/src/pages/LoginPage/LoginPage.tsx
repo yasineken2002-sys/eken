@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query'
 import { loginWithPassword } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
 import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
+import { BankIdLogin } from '@/components/BankIdLogin/BankIdLogin'
 import styles from './LoginPage.module.css'
 
 export function LoginPage() {
@@ -98,6 +99,19 @@ export function LoginPage() {
             )}
           </button>
         </form>
+
+        {/*
+          BankID ligger UTANFÖR formuläret. En knapp inuti ett <form> är en
+          submit-knapp om inget annat sägs, och den hör dessutom inte till
+          lösenordsflödet: för en hyresgäst som aldrig aktiverat portalen är det
+          den FÖRSTA vägen in, inte ett alternativ till ett lösenord hen inte har.
+        */}
+        <BankIdLogin
+          onSession={(session) => {
+            setSession(session.sessionToken, session.tenant, session.expiresAt)
+            navigate('/dashboard', { replace: true })
+          }}
+        />
 
         <div style={{ marginTop: 16, textAlign: 'center' }}>
           <Link

@@ -7,7 +7,7 @@ import {
 
 import { BankIdAuthService, ORDER_TTL_MS } from './bankid-auth.service'
 import { MockBankIdProvider } from './providers/mock-bankid.provider'
-import { verifyChooseToken } from './bankid-choose-token'
+import { CHOOSE_KONTEXT_WEB, verifyChooseToken } from './bankid-choose-token'
 
 /**
  * MEKANIKEN i alla fyra vägarna plus kontovalet, mot Mock-providern.
@@ -355,7 +355,7 @@ describe('inloggning (LOGIN)', () => {
     // Ordern är auktoriteten för valet och lever kvar tills valet gjorts.
     expect(db.orders[0]!.consumedAt).toBeNull()
 
-    const payload = verifyChooseToken(res.chooseToken, HEMLIGHET, NU)
+    const payload = verifyChooseToken(res.chooseToken, HEMLIGHET, NU, CHOOSE_KONTEXT_WEB)
     expect(payload).toMatchObject({ orderRef: 'o1', subjectHash: 'hash:199001019802' })
   })
 })

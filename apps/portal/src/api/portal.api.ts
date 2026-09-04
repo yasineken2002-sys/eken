@@ -3,6 +3,8 @@ import { useSessionStore } from '@/store/session.store'
 import type {
   PortalActivationInfo,
   PortalAuthResult,
+  PortalBankIdCollect,
+  PortalBankIdStart,
   PortalConsumptionCharge,
   PortalDashboard,
   PortalDocument,
@@ -81,6 +83,22 @@ export const activateAccount = (payload: {
 
 export const loginWithPassword = (payload: { email: string; password: string }) =>
   post<PortalAuthResult>('/tenant-portal/login', payload)
+
+// ── BankID (#745 PR 4) ───────────────────────────────────────────────────────
+//
+// Anropen bär ETT fält: providerns handtag. Ingen tenantId, inget personnummer.
+// Servern avgör vem ordern gäller ur uppslaget mot hyresvärdens registrerade
+// personnummer, och en klient som fick skicka med en identitet hade sett ut som
+// om den bestämde den. Kontovalet är undantaget — där VÄLJER användaren, och
+// servern kontrollerar ändå att raden stod i den signerade kandidatlistan.
+
+export const bankIdStart = () => post<PortalBankIdStart>('/tenant-portal/auth/bankid/start', {})
+
+export const bankIdCollect = (orderRef: string) =>
+  post<PortalBankIdCollect>('/tenant-portal/auth/bankid/collect', { orderRef })
+
+export const bankIdChoose = (chooseToken: string, tenantId: string) =>
+  post<PortalBankIdCollect>('/tenant-portal/auth/bankid/choose', { chooseToken, tenantId })
 
 export const requestForgotPassword = (email: string) =>
   post<{ message: string }>('/tenant-portal/forgot-password', { email })

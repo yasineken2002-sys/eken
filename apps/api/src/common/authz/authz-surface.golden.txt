@@ -204,7 +204,7 @@ POST /users/:id/reactivate                                      OWNER
 POST /users/invite                                              ADMIN, OWNER
 
 
-## 1b. HTTP-endpoints UTAN rollgrind (168 st)
+## 1b. HTTP-endpoints UTAN rollgrind (171 st)
 
 RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som
 granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli
@@ -687,7 +687,7 @@ POST /tenant-portal/maintenance/:id/comment                     TenantAuthGuard 
 POST /tenant-portal/maintenance/:id/images                      TenantAuthGuard               tenant-portal.controller.ts
 POST /tenant-portal/maintenance                                 TenantAuthGuard               tenant-portal.controller.ts
 
-### c) VERKLIGT ÖPPNA — ingen autentisering alls (29 st)
+### c) VERKLIGT ÖPPNA — ingen autentisering alls (32 st)
 
 @Public() utan någon egen guard. Ingen inloggning krävs. En NY rad här är
 den mest säkerhetskänsliga ändring den här filen kan visa.
@@ -716,6 +716,9 @@ POST /platform/auth/refresh                                     platform-auth.co
 POST /platform/impersonate/end                                  impersonation.controller.ts
 POST /signing/callback                                          signing.controller.ts
 POST /tenant-portal/activate                                    tenant-portal.controller.ts
+POST /tenant-portal/auth/bankid/choose                          tenant-portal.controller.ts
+POST /tenant-portal/auth/bankid/collect                         tenant-portal.controller.ts
+POST /tenant-portal/auth/bankid/start                           tenant-portal.controller.ts
 POST /tenant-portal/forgot-password                             tenant-portal.controller.ts
 POST /tenant-portal/login                                       tenant-portal.controller.ts
 POST /tenant-portal/logout                                      tenant-portal.controller.ts

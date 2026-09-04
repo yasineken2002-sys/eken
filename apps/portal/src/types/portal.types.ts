@@ -182,6 +182,35 @@ export interface PortalAuthResult {
   expiresAt: string
 }
 
+// ── BankID (#745 PR 4) ───────────────────────────────────────────────────────
+
+export interface PortalBankIdStart {
+  orderRef: string
+  /** Startar BankID-appen på samma enhet. Saknas hos vissa brokers. */
+  autoStartToken?: string
+  /** Innehållet i QR-koden för identifiering på annan enhet. */
+  qrData?: string
+}
+
+/**
+ * Ett hyresförhållande identifieringen matchade.
+ *
+ * `address` finns därför att orgnamnet ensamt sällan räcker: en hyresgäst känner
+ * igen sin adress, inte alltid fastighetsbolagets juridiska namn. `null` när
+ * hyresgästen saknar aktivt kontrakt.
+ */
+export interface PortalBankIdCandidate {
+  tenantId: string
+  organizationName: string
+  address: string | null
+}
+
+export type PortalBankIdCollect =
+  | { status: 'pending'; hintCode?: string }
+  | { status: 'failed'; reason: string }
+  | { status: 'complete'; sessionToken: string; expiresAt: string; tenant: PortalTenant }
+  | { status: 'choose'; chooseToken: string; candidates: PortalBankIdCandidate[] }
+
 export interface PortalActivationInfo {
   tenant: {
     id: string

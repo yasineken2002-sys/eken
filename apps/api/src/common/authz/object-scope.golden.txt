@@ -199,6 +199,7 @@ RentNoticeEvent                 förälder-scopad via RentNotice
 RentNoticeLine                  förälder-scopad via RentNotice
 RentNoticePayment               förälder-scopad via RentNotice
 RentNoticeSend                  förälder-scopad via RentNotice
+TenantBankIdIdentity            utanför: auth-realm: nås via blindindex eller ett serverside-uppslag, aldrig via ett id från klienten. Se kommentaren ovan för vad som flyttar den till parent-scoped.
 TenantMagicLink                 utanför: auth-realm: scopas av tokenvärdet
 TenantSession                   utanför: auth-realm: scopas av sessionstoken
 Unit                            förälder-scopad via Property

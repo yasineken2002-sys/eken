@@ -17,7 +17,7 @@ import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { BANKID_PROVIDER, type BankIdProvider, type BankIdStartResult } from './bankid.types'
-import { signChooseToken, verifyChooseToken } from './bankid-choose-token'
+import { CHOOSE_KONTEXT_WEB, signChooseToken, verifyChooseToken } from './bankid-choose-token'
 
 /** 'BANKID' — se `UserBankIdIdentity.provider` i schema.prisma. */
 const PROVIDER = 'BANKID'
@@ -211,6 +211,7 @@ export class BankIdAuthService {
         { orderRef, subjectHash },
         this.config.getOrThrow<string>('JWT_SECRET'),
         now,
+        CHOOSE_KONTEXT_WEB,
       ),
       accounts: konton,
     }
@@ -221,6 +222,7 @@ export class BankIdAuthService {
       chooseToken,
       this.config.getOrThrow<string>('JWT_SECRET'),
       now,
+      CHOOSE_KONTEXT_WEB,
     )
     if (!payload) throw new UnauthorizedException('Valet kunde inte verifieras')
 
