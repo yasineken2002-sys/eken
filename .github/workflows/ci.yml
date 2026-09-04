@@ -1859,6 +1859,28 @@ jobs:
       - name: Verify every package with tests is reached by turbo test:ci
         run: node apps/api/scripts/check-test-runner-wiring.mjs
 
+  di-type-import-guard:
+    name: DI type-import guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Rent statisk kontroll (fs-only, inga beroenden). Uppmätt i #739: ett
+      # konstruktorberoende skrivet som `import type` raderas i runtime, så
+      # design:paramtypes blir tomt och Nest kan inte lösa det — API:t startade
+      # inte alls, medan alla 32 prov på tjänsten var GRÖNA (de bygger den med
+      # `new` och kringgår containern). Bara E2E såg det, sist och dyrast.
+      - name: Self-test the guard (each rule proven by its own canary)
+        run: node apps/api/scripts/check-di-type-imports.mjs --self-test
+
+      - name: Verify no injected dependency is type-erased
+        run: node apps/api/scripts/check-di-type-imports.mjs
+
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
@@ -1873,6 +1895,7 @@ jobs:
       - typecheck
       - lint
       - test
+      - di-type-import-guard
       - unit-tests-web
       - test-runner-wiring-guard
       - index-guard
