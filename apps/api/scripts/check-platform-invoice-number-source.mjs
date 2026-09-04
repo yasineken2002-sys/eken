@@ -63,6 +63,13 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC_DIR = join(HERE, '..', 'src')
 
 const ALLOCATOR = 'allocatePlatformInvoiceNumber'
+
+/**
+ * Ett ANROP till allokeraren. Exporterad och namngiven av ett skäl (#713):
+ * kanariefågeln ska pröva VAKTENS mönster, inte en kopia. En sond som skriver
+ * om regexen mäter sin egen rad och kan inte falla när vakten ändras.
+ */
+export const ALLOKERARANROP_RE = new RegExp(`(?<![\\p{L}\\p{N}_$])${ALLOCATOR}\\(`, 'gu')
 // Hur långt före en create/createMany/upsert vi kräver att allokeraren syns
 // (samma tx/funktionsblock). Båda legitima skrivarna har den 1 rad före.
 const PRECEDING_WINDOW = 1200 // tecken
@@ -100,7 +107,7 @@ export function scanSource(text, relPath) {
   const utanKommentarer = blankComments(text)
 
   // (1) + (2) mutatorer på platformInvoice-modellen (ej ...NumberSequence).
-  const mutatorRe = /\bplatformInvoice\s*\.\s*(create|createMany|upsert|update|updateMany)\s*\(/g
+  const mutatorRe = /(?<![\p{L}\p{N}_$])platformInvoice\s*\.\s*(create|createMany|upsert|update|updateMany)\s*\(/gu
   let m
   while ((m = mutatorRe.exec(kod))) {
     const method = m[1]
@@ -122,7 +129,7 @@ export function scanSource(text, relPath) {
       }
     } else {
       // update/updateMany får ALDRIG sätta invoiceNumber (omnumrering).
-      if (/\binvoiceNumber\s*:/.test(call)) {
+      if (/(?<![\p{L}\p{N}_$])invoiceNumber\s*:/u.test(call)) {
         violations.push({
           line,
           rule: `platformInvoice.${method}() sätter invoiceNumber:`,
@@ -238,9 +245,9 @@ function omfångskanariefågel() {
     filer++
     const kod = codeMask(readFileSync(f, 'utf8'))
     mutatorer += (
-      kod.match(/\bplatformInvoice\s*\.\s*(create|createMany|upsert|update|updateMany)\s*\(/g) ?? []
+      kod.match(/(?<![\p{L}\p{N}_$])platformInvoice\s*\.\s*(create|createMany|upsert|update|updateMany)\s*\(/gu) ?? []
     ).length
-    allokerare += (kod.match(new RegExp(`\\b${ALLOCATOR}\\(`, 'g')) ?? []).length
+    allokerare += (kod.match(new RegExp(ALLOKERARANROP_RE.source, 'gu')) ?? []).length
   }
   if (filer < MIN_FILER) fel.push(`omfång: ${filer} filer skannade, golv ${MIN_FILER}`)
   if (mutatorer < MIN_MUTATORER)
@@ -252,6 +259,53 @@ function omfångskanariefågel() {
 
 function selfTest() {
   let ok = true
+
+  // ── #713: NAMNENS AVGRÄNSNING ───────────────────────────────────────────
+  //
+  // Tre `\b` mot INTERPOLERADE eller LITERALA identifierare: allokeraren,
+  // mutatorn och `invoiceNumber`-fältet. `\b` efter/före ett ASCII-namn
+  // matchar när grannen inte är ett ordtecken — och `å` är inget ordtecken.
+  //
+  // Uppmätt mot origin/main:
+  //
+  //   await denPåplatformInvoice.create({ data: { invoiceNumber: 'X' } })
+  //     \b   → rapporteras som en kringgång av allokeraren   FALSKT LARM
+  //     fix  → rapporteras inte
+  //
+  //   const n = denPåallocatePlatformInvoiceNumber(tx)
+  //     \b   → räknas som ett allokeraranrop   → omfångsgolvet kan hållas
+  //             uppe av anrop som inte finns
+  //
+  // Riktningen är falsklarm i den första och falsk trygghet i den andra: ett
+  // golv som räknar fel anrop kan inte upptäcka att den riktiga allokeraren
+  // försvunnit.
+  {
+    const brott = (kod) => scanSource(kod, 'x.ts').length
+    const falskt = "await denPåplatformInvoice.create({ data: { invoiceNumber: 'X' } })"
+    if (brott(falskt) !== 0) {
+      ok = false
+      console.error('❌ #713 FALSKT LARM: `denPåplatformInvoice` rapporterades som kringgång')
+    } else console.log('✅ #713 FALSKT LARM: ett annat objekt är inte platformInvoice')
+    const äkta = "await tx.platformInvoice.create({ data: { invoiceNumber: 'X' } })"
+    if (brott(äkta) === 0) {
+      ok = false
+      console.error('❌ #713 MOTPROV: den äkta kringgången rapporteras inte längre')
+    } else console.log('✅ #713 MOTPROV: den äkta kringgången rapporteras')
+    const asciiDel = "await tx.xplatformInvoice.create({ data: { invoiceNumber: 'X' } })"
+    if (brott(asciiDel) !== 0) {
+      ok = false
+      console.error('❌ #713 MOTPROV: ASCII-delsträng rapporterades som kringgång')
+    }
+    const allokRe = new RegExp(ALLOKERARANROP_RE.source, 'u') // VAKTENS mönster
+    if (allokRe.test(`const n = denPå${ALLOCATOR}(tx)`)) {
+      ok = false
+      console.error('❌ #713 FALSK TRYGGHET: ett annat namn räknades som allokeraranrop')
+    } else console.log('✅ #713 FALSK TRYGGHET: `denPå<allokerare>` räknas inte som anrop')
+    if (!allokRe.test(`const n = await ${ALLOCATOR}(tx)`)) {
+      ok = false
+      console.error('❌ #713 MOTPROV: det äkta allokeraranropet känns inte igen')
+    }
+  }
 
   // (0) DEN DELADE SKANNERNS KANARIEFÅGLAR. Går source-scan.mjs sönder ska DEN
   // HÄR vakten bli röd — inte tyst fortsätta mäta fel. Kravet metavakten (R2)
