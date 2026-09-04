@@ -19,7 +19,7 @@ import { validateSwedishOrgNumber } from '../common/validators/swedish-org-numbe
 import { normalizeEmail } from '../common/utils/normalize-email'
 import type { JwtPayload, TokenPair } from '@eken/shared'
 import type { LoginInput } from '@eken/shared'
-import { TRIAL_DAYS, CURRENT_TERMS_VERSION } from '@eken/shared'
+import { TRIAL_DAYS, CURRENT_TERMS_VERSION, LEGAL_DOCUMENT_HASHES } from '@eken/shared'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 const MAX_LOGIN_ATTEMPTS = 10
@@ -72,6 +72,29 @@ export interface AuthResponse extends TokenPair {
   organization: AuthOrganization
 }
 
+/**
+ * Vad som journalförs vid en acceptans (#577).
+ *
+ * EN funktion och inte sex fält på tre ställen: registrering skriver på
+ * Organization OCH User, och `acceptTerms` skriver på båda igen. Fyra
+ * skrivningar av samma sak är fyra ställen att glömma hashen på, och den som
+ * glöms syns inte — raden blir bara ofullständig.
+ *
+ * Värdena LÄSES UR MANIFESTET vid anropstillfället och FRYSES i raden. Det är
+ * hela poängen: ändras `LEGAL_DOCUMENT_HASHES` i morgon står den här raden kvar
+ * med den text kunden faktiskt såg. En kolumn som räknades om vid läsning hade
+ * varit samma lucka i ny form.
+ */
+export function acceptansSnapshot(nu: Date) {
+  return {
+    termsVersion: LEGAL_DOCUMENT_HASHES.terms.version,
+    termsHash: LEGAL_DOCUMENT_HASHES.terms.sha256,
+    privacyVersion: LEGAL_DOCUMENT_HASHES.privacy.version,
+    privacyHash: LEGAL_DOCUMENT_HASHES.privacy.sha256,
+    nu,
+  }
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name)
@@ -86,6 +109,10 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterPayload): Promise<AuthResponse> {
+    // EN tidpunkt och EN uppsättning versioner/hashar för hela registreringen,
+    // så att Organization- och User-raden inte kan få olika värden om
+    // manifestet råkar bytas mellan de två skrivningarna.
+    const snapshot = acceptansSnapshot(new Date())
     // Defense-in-depth: även om DTO-validering avvisat acceptTerms=false
     // kontrollerar vi en gång till. Vi får aldrig spara en användare som
     // inte aktivt godkänt villkoren — det är en GDPR-bevisbördekrav.
@@ -158,8 +185,11 @@ export class AuthService {
           // Snapshot:a versionen för hela organisationen vid signup. När
           // CURRENT_TERMS_VERSION höjs visar inloggningsflödet en
           // re-acceptance-modal tills den nya versionen bekräftats.
-          termsAcceptedAt: new Date(),
-          termsVersion: CURRENT_TERMS_VERSION,
+          termsAcceptedAt: snapshot.nu,
+          termsVersion: snapshot.termsVersion,
+          termsHash: snapshot.termsHash,
+          privacyVersion: snapshot.privacyVersion,
+          privacyHash: snapshot.privacyHash,
         },
       })
     }, PRISMA_DEFAULT_TX_LIMITS)
@@ -181,8 +211,11 @@ export class AuthService {
         // Spara även på User-nivå — på sikt kan organisationer ha flera
         // användare där var och en accepterar sin egen version. För
         // OWNER:n vid signup är det samma version som org-snapshoten.
-        acceptedTermsAt: new Date(),
-        termsVersion: CURRENT_TERMS_VERSION,
+        acceptedTermsAt: snapshot.nu,
+        termsVersion: snapshot.termsVersion,
+        termsHash: snapshot.termsHash,
+        privacyVersion: snapshot.privacyVersion,
+        privacyHash: snapshot.privacyHash,
       },
     })
 
@@ -396,18 +429,31 @@ export class AuthService {
     if (version !== CURRENT_TERMS_VERSION) {
       throw new BadRequestException(`Förväntad version ${CURRENT_TERMS_VERSION}, mottog ${version}`)
     }
-    const acceptedAt = new Date()
+    const snapshot = acceptansSnapshot(new Date())
+    const acceptedAt = snapshot.nu
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: userId },
-        data: { acceptedTermsAt: acceptedAt, termsVersion: version },
+        data: {
+          acceptedTermsAt: acceptedAt,
+          termsVersion: snapshot.termsVersion,
+          termsHash: snapshot.termsHash,
+          privacyVersion: snapshot.privacyVersion,
+          privacyHash: snapshot.privacyHash,
+        },
       }),
       this.prisma.organization.update({
         where: { id: organizationId },
-        data: { termsAcceptedAt: acceptedAt, termsVersion: version },
+        data: {
+          termsAcceptedAt: acceptedAt,
+          termsVersion: snapshot.termsVersion,
+          termsHash: snapshot.termsHash,
+          privacyVersion: snapshot.privacyVersion,
+          privacyHash: snapshot.privacyHash,
+        },
       }),
     ])
-    return { termsVersion: version, acceptedAt: acceptedAt.toISOString() }
+    return { termsVersion: snapshot.termsVersion, acceptedAt: acceptedAt.toISOString() }
   }
 
   // ── Lösenord & inbjudan ─────────────────────────────────────────────────────

@@ -97,6 +97,9 @@ export const SAFE_ORGANIZATION_SELECT = {
   // Villkorsacceptans — läses av re-acceptance-modalen i frontend
   termsAcceptedAt: true,
   termsVersion: true,
+  // #577: speglar termsVersion. Inställningssidan kan visa vilken
+  // policyversion organisationen godkänt, precis som för villkoren.
+  privacyVersion: true,
 
   createdAt: true,
   updatedAt: true,
