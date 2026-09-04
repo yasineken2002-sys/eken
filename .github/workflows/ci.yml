@@ -1244,6 +1244,22 @@ jobs:
       # hade ett 429-fel sett ut som en flakig spec.
       E2E_RELAX_AUTH_THROTTLE: 'true'
 
+      # ── BANKID: FLAGGAN PÅ, MOCK-PROVIDER ───────────────────────────────────
+      #
+      # Utan de två raderna svarar hela BankID-ytan 503 (Stub), och E2E kan inte
+      # logga in med BankID över huvud taget. Samma form som uppmjukningen ovan:
+      # `BANKID_PROVIDER=mock` är bundet till körningsläget, inte till ett värde
+      # — 'mock' + NODE_ENV=production får appen att VÄGRA STARTA, kontrollerat
+      # både i validateEnv och i modul-factoryn. Se bankid-provider-mode.ts.
+      #
+      # Krypto-nycklarna som mocken behöver (SIGNING_PII_KEY/_PEPPER) står redan
+      # ovan — identitetsbindningen GÅR genom blindindexet, även mot mocken.
+      #
+      # Steget nedan kontrollerar att valet nådde API-processen innan en enda
+      # spec körs. Utan den kontrollen hade en 503 sett ut som en trasig spec.
+      BANKID_ENABLED: 'true'
+      BANKID_PROVIDER: 'mock'
+
       # ── KANARIEFÅGELNS TAL ──────────────────────────────────────────────────
       #
       # Antalet tester CI ska köra. Talet hör ihop med `testIgnore` i
@@ -1372,6 +1388,18 @@ jobs:
             exit 1
           fi
           echo "Uppmjukningen aktiv — auth-strypningen stryper inte under körningen."
+          # Samma sorts kontroll, samma skäl: en BANKID_PROVIDER som inte nådde
+          # processen ger Stub, alltså 503 på varje BankID-anrop — ett fel som
+          # ser ut som en trasig spec och inte som en trasig konfiguration.
+          # Raden skriver ut vilken provider som FAKTISKT byggdes (den injiceras
+          # i modulens konstruktor), inte vad variabeln sa.
+          if ! grep -q "\[bankid\] aktivt — provider MOCK" /tmp/api.log; then
+            echo "::error::BANKID_ENABLED/BANKID_PROVIDER nådde inte API-processen."
+            echo "BankID-ytan hade svarat 503 och bankid-login.spec.ts sett flakig ut."
+            grep -i bankid /tmp/api.log | tail -10
+            exit 1
+          fi
+          echo "BankID aktivt med MOCK-provider — inloggningsflödet går att köra."
 
       # Vilka specar som INTE körs står i apps/web/playwright.config.ts
       # (`testIgnore`, aktiv bara när CI är satt), med motiveringen bredvid varje

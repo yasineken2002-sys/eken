@@ -1,4 +1,4 @@
-import { Logger, Module } from '@nestjs/common'
+import { Inject, Logger, Module } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { AuthModule } from '../auth/auth.module'
 import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
@@ -6,7 +6,9 @@ import { PrismaModule } from '../common/prisma/prisma.module'
 import { SigningCryptoService } from '../signing/signing-crypto.service'
 import { BankIdAuthService } from './bankid-auth.service'
 import { BankIdController } from './bankid.controller'
-import { BANKID_PROVIDER } from './bankid.types'
+import { BANKID_PROVIDER, type BankIdProvider } from './bankid.types'
+import { BANKID_PROVIDER_VAR, bankIdMockRequested } from './bankid-provider-mode'
+import { MockBankIdProvider } from './providers/mock-bankid.provider'
 import { StubBankIdProvider } from './providers/stub-bankid.provider'
 
 /**
@@ -60,11 +62,29 @@ import { StubBankIdProvider } from './providers/stub-bankid.provider'
  * GÅR genom blind-indexet (HMAC med SIGNING_PII_PEPPER). Utan pepper finns
  * inget att matcha mot, och en inloggning som inte kan matcha är antingen ett
  * fel eller — värre — något som släpper igenom.
+ *
+ * ── FYRA UTFALL, INTE TRE ───────────────────────────────────────────────────
+ *
+ *   flaggan av                                   → Stub (inert, 503)
+ *   flaggan på, krypto saknas                    → kastar, om NYCKLARNA
+ *   flaggan på, krypto finns, BANKID_PROVIDER=mock och NODE_ENV != production
+ *                                                → Mock (dev och E2E)
+ *   flaggan på, krypto finns, i övrigt           → kastar, om den SAKNADE ADAPTERN
+ *
+ * Mock-grenen ligger EFTER krypto-kontrollen med flit: mocken används just för
+ * att pröva identitetsbindningen, och den kan inte blindindexera utan pepper.
+ * En mock som "fungerade" utan nycklar hade gett ett grönt flöde som saknar
+ * exakt den mekanism flödet finns för.
+ *
+ * `bankIdMockRequested` kastar av sig själv i produktion. Villkoret prövas
+ * DESSUTOM av `validateEnv` oberoende av flaggan, så en produktionsmiljö med
+ * variabeln satt vägrar starta även när BANKID_ENABLED är av — se
+ * `bankid-provider-mode.ts`.
  */
 export function bankIdProviderFactory(
   config: ConfigService,
   crypto: SigningCryptoService,
-): StubBankIdProvider {
+): BankIdProvider {
   const enabled = config.get<string>('BANKID_ENABLED') === 'true'
   if (!enabled) return new StubBankIdProvider()
 
@@ -73,6 +93,16 @@ export function bankIdProviderFactory(
       '[bankid] BANKID_ENABLED=true men SIGNING_PII_KEY/SIGNING_PII_PEPPER saknas — fail-fast.',
     )
   }
+
+  // Env läses via ConfigService (samma källa som flaggan ovan) men skickas som
+  // ett vanligt objekt: regeln är en REN funktion och ska kunna prövas utan att
+  // någon rör process.env.
+  const mock = bankIdMockRequested({
+    [BANKID_PROVIDER_VAR]: config.get<string>(BANKID_PROVIDER_VAR),
+    NODE_ENV: config.get<string>('NODE_ENV'),
+  })
+  if (mock) return new MockBankIdProvider({ orderRefPrefix: 'dev' })
+
   throw new Error(
     '[bankid] BANKID_ENABLED=true men ingen skarp BankID-adapter är konfigurerad. ' +
       'Adaptern levereras i S3 (kräver avtal/nycklar).',
@@ -98,11 +128,26 @@ export function bankIdProviderFactory(
 })
 export class BankidModule {
   private readonly logger = new Logger(BankidModule.name)
-  constructor(config: ConfigService) {
+
+  /**
+   * Boot-raden skriver ut VILKEN provider som valdes, inte bara om flaggan är av.
+   *
+   * Skälet är E2E: jobbet sätter `BANKID_PROVIDER=mock` i sin `env`, och en
+   * variabel som inte når API-processen hade gett 503 på varje anrop — alltså
+   * ett fel som ser ut som en trasig spec och inte som en trasig konfiguration.
+   * Samma läxa och samma åtgärd som `E2E_RELAX_AUTH_THROTTLE` (#454): CI
+   * kontrollerar raden i loggen INNAN en enda spec körs.
+   *
+   * Providern injiceras i stället för att härledas om — då är raden ett svar om
+   * det som faktiskt byggdes, inte en andra uträkning som kan säga något annat.
+   */
+  constructor(config: ConfigService, @Inject(BANKID_PROVIDER) provider: BankIdProvider) {
     if (config.get<string>('BANKID_ENABLED') !== 'true') {
       this.logger.log(
         '[bankid] inaktiverat (BANKID_ENABLED != true) — Stub-provider, inloggningsvägen inert.',
       )
+      return
     }
+    this.logger.log(`[bankid] aktivt — provider ${provider.name}.`)
   }
 }
