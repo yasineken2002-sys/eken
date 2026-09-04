@@ -114,8 +114,8 @@ export function evaluate({ extText, prismaText, kontextText, svepText, schemaTex
     )
   }
   // Motfrågan: står det ändå en hårdkodad modelluppräkning i filen?
-  const schemaModeller = new Set([...schemaText.matchAll(/^model\s+(\w+)\s*\{/gm)].map((m) => m[1]))
-  const literaler = [...extSträng.matchAll(/'(\w+)'/g)]
+  const schemaModeller = new Set([...schemaText.matchAll(/^model\s+([\p{L}\p{N}_$]+)\s*\{/gmu)].map((m) => m[1]))
+  const literaler = [...extSträng.matchAll(/'([\p{L}\p{N}_$]+)'/gu)]
     .filter((m) => extKod[m.index] !== ' ') // träffen ska vara KOD, inte en kommentar
     .map((m) => m[1])
     .filter((n) => schemaModeller.has(n))
@@ -131,7 +131,7 @@ export function evaluate({ extText, prismaText, kontextText, svepText, schemaTex
   for (const [fil, kod] of källor) {
     const kodVy = codeMask(kod)
     const strängVy = blankComments(kod)
-    for (const m of strängVy.matchAll(/runWithActor\(\s*'(\w+)'/g)) {
+    for (const m of strängVy.matchAll(/runWithActor\(\s*'([\p{L}\p{N}_$]+)'/gu)) {
       // Anropet måste stå i KOD (kodVy har tecknet kvar), medan SLAGET läses ur
       // strängvyn. En gräns som bara står i en kommentar är ingen gräns.
       if (kodVy[m.index] === ' ') continue
@@ -216,6 +216,72 @@ const BAS = {
 
 function selfTest() {
   let ok = true
+  // ── #713: DE TRE STÄLLEN SOM BYTTES ─────────────────────────────────────
+  //
+  // Alla tre HÄRLEDER namn ur källtext med `\w`, som är ASCII. Proven är
+  // riktade mot exakt de tre; de befintliga proven nedan använder enbart
+  // ASCII-fixturer (Invoice, Lease, HUMAN/SYSTEM/AGENT) och kan därför inte se
+  // att härledningen gått blind — #736:s lärdom.
+  const felTexter = (r) => r.map((x) => `${x.rule ?? ''} ${x.detail ?? ''} ${JSON.stringify(x)}`).join(' | ')
+  {
+    // (1)+(2) MODELLMÄNGDEN ur schemat, och LITERALERNA i extensionen.
+    //     `model Ärende {` hamnade aldrig i mängden, så en hårdkodad
+    //     `'Ärende'` i extensionen kunde inte kännas igen som en modell.
+    //     Motfrågan i R2 — "står det ändå en hårdkodad uppräkning?" — var
+    //     alltså tyst grön för varje svenskt modellnamn.
+    const r = evaluate({
+      ...BAS,
+      schemaText: 'model Ärende {\n}\nmodel Lease {\n}\n',
+      extText: `${EXT_OK}\nconst HÅRDKODAT = ['Ärende']`,
+    })
+    if (!felTexter(r).includes('Ärende')) {
+      ok = false
+      console.error(`❌ #713 (1)(2) MISSAD: hårdkodad literal för modellen Ärende upptäcks inte — ${felTexter(r).slice(0, 120)}`)
+    } else console.log('✅ #713 (1)(2) MISSAD: modellnamn med svensk initial härleds ur schemat och känns igen som literal')
+
+    // MOTPROV: en literal som INTE är ett modellnamn ska fortfarande passera.
+    const r2 = evaluate({ ...BAS, extText: `${EXT_OK}\nconst X = ['någotAnnat']` })
+    if (felTexter(r2).includes('någotAnnat')) {
+      ok = false
+      console.error('❌ #713 MOTPROV: en literal som inte är en modell flaggades')
+    }
+  }
+  {
+    // (3) AKTÖRSSLAGET i runWithActor. Slagen är versala namn i källkoden, och
+    //     ett svenskt slag — `MÄNNISKA` — försvann helt ur uppräkningen. R3
+    //     kräver exakt tre gränser; en osynlig gräns gör att vakten larmar om
+    //     ett antal som inte stämmer, eller inte ser att en fjärde tillkommit.
+    const medSvenskt = [
+      ['/a/guard.ts', `runWithActor('MÄNNISKA', () => next())`],
+      ['/a/cron.ts', `runWithActor('SYSTEM', () => jobb())`],
+      ['/a/ai.ts', `runWithActor('AGENT', () => verktyg())`],
+    ]
+    //     Vakten fastnaglar med flit exakt {AGENT, HUMAN, SYSTEM}, så ett
+    //     svenskt slag SKA fällas. Det diskriminerande är därför inte OM den
+    //     fäller utan VAD den redovisar:
+    //
+    //       \w   → "gränserna är AGENT, SYSTEM"          slaget SAKNAS HELT
+    //       fix  → "gränserna är AGENT, MÄNNISKA, SYSTEM" slaget syns
+    //
+    //     Den första texten säger att en gräns är BORTA. Den som läser den
+    //     letar efter ett raderat runWithActor som står kvar i filen.
+    const r = evaluate({ ...BAS, källor: medSvenskt })
+    if (!felTexter(r).includes('MÄNNISKA')) {
+      ok = false
+      console.error(`❌ #713 (3) MISSAD: svenskt aktörsslag syns inte i den härledda mängden — ${felTexter(r).slice(0, 140)}`)
+    } else console.log('✅ #713 (3) MISSAD: aktörsslag med svenskt tecken härleds helt')
+
+    // MOTPROV: en gräns i en KOMMENTAR är fortfarande ingen gräns.
+    const r2 = evaluate({
+      ...BAS,
+      källor: [medSvenskt[0], medSvenskt[1], ['/a/z.ts', `// runWithActor('MÄNNISKA', ...)`]],
+    })
+    if (r2.length === 0) {
+      ok = false
+      console.error('❌ #713 (3) MOTPROV: en gräns som bara står i en kommentar räknades')
+    }
+  }
+
   // Den delade skannerns EGNA kanariefåglar. Vakten bygger hela sin R2/R3 på
   // att `codeMask` och `blankComments` bevarar index — går skannern sönder är
   // varje regel här tyst fel, inte högljutt fel.
