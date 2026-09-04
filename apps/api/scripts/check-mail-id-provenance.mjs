@@ -119,7 +119,10 @@ export function persistResendIdIntervall(workerKod) {
   return slut < 0 ? null : [start, slut]
 }
 
-const FÄLTFORM = /\b(\w*(?:MessageId|EmailId))\s*:\s*([^,\n}]*)/g
+// `\p{L}\p{N}_$` och lookbehind, inte `\w`/`\b` (#713): fältet namnges efter
+// sitt SAMMANHANG — `avierMessageId`, `påminnelseEmailId` — och ett svenskt
+// tecken i prefixet gjorde skrivningen osynlig. Se kanariefågeln i självtestet.
+const FÄLTFORM = /(?<![\p{L}\p{N}_$])([\p{L}\p{N}_$]*(?:MessageId|EmailId))\s*:\s*([^,\n}]*)/gu
 
 /**
  * Skrivningar av ett korrelations-id, härledda ur `data:`-literaler.
@@ -385,6 +388,41 @@ function självtest() {
   const t = (namn, ok, extra = '') => {
     console.warn(`${ok ? '✅' : '❌'} ${namn}${extra ? '  → ' + extra : ''}`)
     if (!ok) fel++
+  }
+
+  // ── #713: FÄLTNAMNETS PREFIX ────────────────────────────────────────────
+  //
+  // Fältet namnges efter sitt SAMMANHANG: `reminderMessageId`, och i den här
+  // kodbasen lika gärna `avierMessageId` eller `påminnelseEmailId`. Prefixet
+  // lästes med `\w*`, som är ASCII.
+  //
+  // Uppmätt mot origin/main, ur en `data:`-literal:
+  //
+  //   { påminnelseEmailId: r.id }   \w* → fältet blir "minnelseEmailId"   KAPAD
+  //   { avierMessageId: r.id }      \w* → "avierMessageId" (ren ASCII)
+  //
+  // DET ÄR KAPAD, INTE MISSAD, och det är värre. `\w*` matchar `minnelse`
+  // efter `å`, så skrivningen HITTAS — med fel fältnamn — och ANTALET är
+  // oförändrat. Vakten korsar sedan skrivningarna mot de fält webhooken frågar
+  // på; ett kapat namn matchar inget frågat fält, så korrelationen bryts i
+  // vakten i stället för i koden. Ett prov som räknar skrivningar ser ingenting.
+  //
+  // Provet jämför därför mot det VÄNTADE NAMNET, aldrig mot "hittade något".
+  {
+    const fil = [{ rel: 'x.ts', text: "await tx.rentNotice.update({ data: { påminnelseEmailId: r.id } })" }]
+    const s1 = härledSkrivningar(fil, 'w.ts').map((x) => x.fält)
+    t('#713 MISSAD: fältnamn med svenskt prefix ger en skrivning', s1.includes('påminnelseEmailId'), JSON.stringify(s1))
+    const asciiFil = [{ rel: 'x.ts', text: "await tx.rentNotice.update({ data: { avierMessageId: r.id } })" }]
+    t('#713 MOTPROV: ASCII-prefix fungerar som förut',
+      härledSkrivningar(asciiFil, 'w.ts').map((x) => x.fält).includes('avierMessageId'))
+    const frågade = [...härledFrågade("where: { påminnelseEmailId: emailId }")]
+    t('#713 MISSAD: webhookens uppslag på ett svenskt fältnamn ses',
+      frågade.includes('påminnelseEmailId'), JSON.stringify(frågade))
+    // MOTPROV: suffixet krävs fortfarande — ett fält som inte slutar på
+    // MessageId/EmailId är inget korrelations-id.
+    const utan = [{ rel: 'x.ts', text: "await tx.rentNotice.update({ data: { ärendeNr: r.id } })" }]
+    t('#713 MOTPROV: ett fält utan MessageId/EmailId-suffix räknas inte',
+      härledSkrivningar(utan, 'w.ts').length === 0)
   }
 
   // (0) Den delade skannerns kanariefåglar — metavaktens krav.
