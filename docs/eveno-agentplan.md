@@ -135,22 +135,102 @@ Bygg inte UI först. Bygg först de mekanismer som gör agenten säker.
 avstängd, alltså ett rent bygge av Regel 3, och den är underlaget varje senare agent
 läser. Bygger vi agenten först får den gissa om saker som redan står i databasen.
 
-| Etapp | Innehåll | Blockerad av | Klar när |
+| Etapp | Innehåll | Blockerad av | Klar när | Mätt status |
+| --- | --- | --- | --- | --- |
+| 0 | Minnets form — `MEMORY.md` laddas bara delvis (utreds separat) | — | mätt gräns, 1:1-integritet bevisad med sond | **DELVIS** · `dbe12ff` |
+| 1 | **Historiken** — händelser + luckor, hyresgäst/objekt/fastighet | — | full nytta utan agent; registervakten har setts falla | **KLAR** · `dbe12ff` |
+| 1b | Datamodell för utrustning och byten i en lägenhet | 1 | "vad byttes och när" går att svara på | **DELVIS** · `dbe12ff` |
+| 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | **DELVIS** (5/7) · `dbe12ff` |
+| 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför de två hårdkodade filerna fäller vakten | **KLAR** · `dbe12ff` |
+| 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | — |
+| 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | — |
+| 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | — |
+| 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | — |
+| 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | — |
+| 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | — |
+| 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem | — |
+| 10 | Hantverkarmodell → bokningsflöde | 9 | `assignedToId` är en riktig relation | — |
+| 11+ | Agent 2–5 | 9 | var och en enligt samma etappform | — |
+
+### Mätt status — etapp 0–2b, mot `dbe12ff` (2026-09-04)
+
+**Samma regel som [`docs/revision-status.md`](./revision-status.md): en rad här är ett
+SPÅR, inte ett faktum.** Sha:n är poängen — den säger vilket tillstånd raden beskriver,
+inte när någon skrev den. Mät om innan du bygger på en rad:
+
+```bash
+git merge-base --is-ancestor dbe12ff HEAD && echo "raden mätt mot en förfader"
+git log --oneline dbe12ff..HEAD -- apps/api/src/history apps/api/scripts/check-action-tool-authorization.mjs
+```
+
+Raderna 3–11 bär `—`: de är inte mätta här, och en tom cell är inte ett godkännande.
+
+**0 — DELVIS.** Gränsen ÄR mätt och 1:1-sonden finns, men **båda ligger utanför repot**:
+`~/.claude/scripts/kontrollera-index.py` (`--self-test`, fem sonder som var och en fäller
+och tystnar). Körd 2026-09-04: `198/200 rader · 17 186/25 000 B · 174 filer · 174
+refererade`. I repot är träffarna noll — `MEMORY.md` nämns bara av den här planen. Alltså
+oversionerat, utanför CI, och osynligt för alla utom den maskin det ligger på.
+
+**1 — KLAR.** `apps/api/src/history/` (18 filer), register `history-sources.registry.ts`,
+kvittering `history-sources.ack.json`. Tre nivåer i API:t — `history.controller.ts:25`
+(hyresgäst), `:40` (objekt), `:51` (fastighet), med luckorna på `:64`/`:69`/`:74` — och i
+web via `TenantsPage.tsx:353`, `UnitsPage.tsx:437`, `PropertiesPage.tsx:415`.
+**Full nytta utan agent:** ingen AI-flagga finns någonstans i vägen (noll träffar i
+`apps/web/src` och `apps/api/src/history/`), så `HistoryTab` nås med agenten av.
+**Vakten har setts falla:** `check-history-registry.mjs --self-test` kört — regel-,
+omfångs- (alla tre formerna) och kommentarkanariefåglarna RÖTT, registrerad källa TYST.
+Blockerande i CI som `history-registry-guard` (`ci.yml:1574`, `:1577`).
+
+**1b — DELVIS. Läsvägen finns, skrivvägen inte.** Modellerna är byggda
+(`schema.prisma:5731 UnitEquipment`, `:5836 UnitEquipmentEvent`), och
+`GET /v1/history/units/:unitId` svarar `EQUIPMENT_REPLACED` med tidpunkt och
+efterträdare (`history-sources.registry.ts:1061`), bevisat mot riktig Postgres i
+`unit-equipment.db.spec.ts:123`. Men **ingen controller rör `unitEquipment`** — noll
+träffar — och `unitEquipment.create` finns bara i `history-fixture.ts` och två specar.
+Cykelspärren `assertNoEquipmentCycle` (`equipment-chain.ts:35`) anropas därför **bara från
+sin egen spec, aldrig från produktionskod**. Frågan går att STÄLLA; svaret kan inte bli
+annat än tomt i prod förrän ett byte går att registrera.
+
+**2 — DELVIS, fem av sju prov.** Per prov, mot riktig Postgres där inget annat sägs:
+
+| # | Prov | Utfall | Belägg |
 | --- | --- | --- | --- |
-| 0 | Minnets form — `MEMORY.md` laddas bara delvis (utreds separat) | — | mätt gräns, 1:1-integritet bevisad med sond |
-| 1 | **Historiken** — händelser + luckor, hyresgäst/objekt/fastighet | — | full nytta utan agent; registervakten har setts falla |
-| 1b | Datamodell för utrustning och byten i en lägenhet | 1 | "vad byttes och när" går att svara på |
-| 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen |
-| 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför de två hårdkodade filerna fäller vakten |
-| 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa |
-| 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken |
-| 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla |
-| 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något |
-| 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen |
-| 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt |
-| 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem |
-| 10 | Hantverkarmodell → bokningsflöde | 9 | `assignedToId` är en riktig relation |
-| 11+ | Agent 2–5 | 9 | var och en enligt samma etappform |
+| 1 | Samma bekräftelse två gånger → 1 effekt | KLAR | `numbered-entry-race.concurrency.spec.ts:203` (B1) |
+| 2 | Två olika bekräftelser → 2 effekter, var mot sin identitet | KLAR | `:215` (B2); `ai-journal-idempotens.db.spec.ts:78` (A2) |
+| 3 | Två samtidiga försök, samma identitet → 1 effekt | KLAR | `:236` (B3); `pending-action-claim.concurrency.spec.ts:115` (24 samtidiga, med negativkontroll `:119`) |
+| 4 | Krasch efter claim, före execution → 0 spår, 0 effekt, svar ≠ "redan utförd" | DELVIS | Svarshalvan: `ai-confirm-crash-honesty.spec.ts:83` — men **mockad Prisma** (`:41`), inte Postgres. "0 spår, 0 effekt" står bara som en mätning i filens docblock (`:8`), inte som ett prov. |
+| 5 | Retry efter den kraschen | **SAKNAS** | Noll träffar på retry/omförsök i `apps/api/src/ai/**/*.spec.ts`. Närmast är `action-idempotency.spec.ts:214`, som visar mot riktig Postgres att en NY bekräftelse på identisk input kan anspråkas — men den är skriven som *legitimt upprepande*, utgår aldrig från kraschtillståndet (förbrukat anspråk **och** noll `AiToolExecution`) och når aldrig fram till en execution. |
+| 6 | Replay efter lyckad execution → "redan utförd", ingen andraeffekt | DELVIS | "Ingen andraeffekt" mot Postgres: B1 `:203`. Meddelandet: `ai-confirm-crash-honesty.spec.ts:119` — mockad. |
+| 7 | Deterministisk identitet borttagen → regressionen faller | KLAR | `:330` (B4); `ai-journal-idempotens.db.spec.ts:91` (A3) |
+
+Prov 5 är det som bär planens egen poäng: *klockan 03:00 finns ingen som ber om ett nytt
+förslag.* Att anspråksvägen mekaniskt är öppen är mätt; att den är öppen **ur
+kraschtillståndet** är det inte.
+
+**2b — KLAR.** `otherFiles` finns inte längre — noll träffar. Omfånget härleds:
+`PROOF_SIGNALS` (`check-action-tool-authorization.mjs:113`), `samlaKällfiler` (`:116`),
+`härledProofFiler` (`:130`), över rötterna `apps/api/src` och `packages/shared/src`
+(`:640`–`:651`). Mängdkanariefågeln finns (`:313`, *"NOLL filer i R5:s omfång"*, samma form
+som exekverarkanariefågeln) och prövas i självtestet (`:579`), tillsammans med
+kontrollen att härledningen tar mekanismfilerna och lämnar fakturans egna `claimed`.
+R5 är dessutom skärpt från fil- till funktionsnivå (`:326`). Landade i #596; kroppsav-
+gränsningen lagades i #747.
+
+**Planens negativkontroll körd 2026-09-04 mot `dbe12ff`** — sondnamnet först grepat till
+noll träffar under svepets rötter:
+
+```
+baslinje, vakten normalt          →  GRÖN, exit 0   (R5: 5 filer av 500 källfiler)
+sond AiDelegationService på disk  →  RÖD,  exit 1
+   ❌ src/ai/ai-delegation.sond.ts
+      skapar ett bevis (`claimed: true`) utan ett atomärt anspråk i samma funktion
+sonden borttagen                  →  GRÖN igen, trädet rent
+```
+
+Alltså precis det utfall planen krävde och som **inte** gick att få 2026-08-30. Ratcheten
+(`check-identifier-regex.mjs`: 47 vaktskript, 8 förekomster, exakt baslinjen) och
+metavakten (`check-self-tests-fail.mjs`: 44 självtester fäller på en injicerad
+kanariefågel) är gröna i samma körning.
 
 Parallellt och oberoende: backup-token, BankID, PSD2, juridisk slutgenomgång.
 
@@ -426,6 +506,16 @@ money_operations           ✗
 delegationen existerade.
 
 ### R5 faller inte — vakten är blind för ny kod
+
+> **ÅTGÄRDAT — ommätt 2026-09-04 mot `dbe12ff`.** Avsnittet nedan står kvar som
+> protokollet över vad mätningen 2026-08-30 hittade, och den beskrivningen var sann då.
+> **Den är inte sann om dagens kod.** `otherFiles` finns inte längre; omfånget härleds ur
+> koden och har en egen mängdkanariefågel (#596, lagad i #747). Samma sond som var GRÖN
+> här fäller nu vakten med exit 1. Belägget står i Del 3:s statusblock, rad 2b — läs det
+> innan du bygger på något i det här avsnittet. Följd 1 (delegationen ska inte producera
+> `ActionProof` utan vara en separat `assertDelegated`) står kvar oförändrad, och vilar
+> numera på en spärr som finns. Följd 2 är utförd.
+
 
 Planen påstod att en delegationsgrind skulle fälla R5 i
 `check-action-tool-authorization.mjs`. **Det är falskt, och mätt.**
