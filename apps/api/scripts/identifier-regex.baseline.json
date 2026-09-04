@@ -2,7 +2,7 @@
   "$comment": "BASLINJE — befintliga ASCII-antaganden om identifierare i vakternas regexar (#713). MEDLEMMAR, inte ett tal: fil + mönster + antal. Radnummer står inte här; de flyttar.",
   "$howto": "Listan får bara KRYMPA. Laga en förekomst och ta bort dess post i SAMMA PR — en post utan motsvarighet i koden är lika röd som en okänd förekomst. Att lägga TILL en post är att ta på sig ny skuld och ska motiveras i PR-texten.",
   "$definition": "Formerna står i check-identifier-regex.mjs (FORMER). Talet går att härleda om mot vilken ref som helst: node apps/api/scripts/check-identifier-regex.mjs --skriv",
-  "total": 74,
+  "total": 64,
   "poster": [
     {
       "fil": "apps/api/scripts/check-action-tool-authorization.mjs",
@@ -179,89 +179,8 @@
     },
     {
       "fil": "apps/api/scripts/check-effect-idempotency.mjs",
-      "mönster": "'([a-z0-9_]+)'",
-      "former": [
-        "fångst-ascii",
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
-      "mönster": "'([a-zA-Z]+)'",
-      "former": [
-        "fångst-ascii",
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
       "mönster": "(^|\\n) {2}[a-z0-9_]+: \\{",
       "former": [
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
-      "mönster": "(^|\\n)\\s{2}([a-z0-9_]+):\\s*\\{",
-      "former": [
-        "fångst-ascii",
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
-      "mönster": "\\{\\s*typ:\\s*'([A-ZÄÅÖ_]+)'([^}]*)\\}",
-      "former": [
-        "fångst-ascii",
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
-      "mönster": "effectIdempotency:\\s*'([A-ZÄÅÖ_]+)'",
-      "former": [
-        "fångst-ascii",
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
-      "mönster": "idempotencyUnit:\\s*'([A-ZÄÅÖ_]+)'",
-      "former": [
-        "fångst-ascii",
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
-      "mönster": "modell:\\s*'([A-Za-z]+)'",
-      "former": [
-        "fångst-ascii",
-        "matchning-ascii"
-      ],
-      "antal": 2
-    },
-    {
-      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
-      "mönster": "plats:\\s*'([A-ZÄÅÖ_]+)'",
-      "former": [
-        "fångst-ascii",
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-effect-idempotency.mjs",
-      "mönster": "resumptionPolicy:\\s*'([A-ZÄÅÖ_]+)'",
-      "former": [
-        "fångst-ascii",
         "matchning-ascii"
       ],
       "antal": 1
