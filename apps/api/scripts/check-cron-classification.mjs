@@ -155,6 +155,19 @@ const rx = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
  * hade varit ett falsklarm som väntade på att hända — och en cron-vakt som
  * larmar på legitim kod blir avstängd, varefter ALLA jobb är oskyddade.
  */
+/**
+ * Ett MODELLNAMN i invariantens skäl: PascalCase, minst fyra bokstäver.
+ *
+ * Exporterad och namngiven av ett skäl (#713): kanariefågeln ska pröva
+ * VAKTENS mönster, inte en kopia av det. En sond som skriver om regexen på
+ * nytt mäter sin egen rad och kan inte falla när vakten ändras.
+ *
+ * `\\p{Lu}` och inte `[A-Z]`: `Ärende` och `Förvaltning` är modellnamn, och
+ * med ASCII-klassen sa vakten "invarianten namnger ingen modell" om ett skäl
+ * som namnger en — ett falsklarm som BLOCKERAR en legitim klassificering.
+ */
+export const MODELLNAMN_RE = /(?<![\p{L}\p{N}_$])\p{Lu}\p{L}{3,}(?![\p{L}\p{N}_$])/u
+
 export function harLåsanrop(text, lockKey, låsmetoder) {
   if (låsmetoder.length === 0) return false // ingen härledd form → inget att pröva
   const { strängar } = vyer(text)
@@ -167,7 +180,7 @@ export function harLåsanrop(text, lockKey, låsmetoder) {
 
   // …eller via en konstant som binds till nyckeln i SAMMA fil.
   const bindningar = [
-    ...strängar.matchAll(new RegExp(`(?:const|let|var)\\s+(\\w+)[^=\\n]*=\\s*${literal}`, 'g')),
+    ...strängar.matchAll(new RegExp(`(?:const|let|var)\\s+([\\p{L}\\p{N}_$]+)[^=\\n]*=\\s*${literal}`, 'gu')),
   ].map((m) => m[1])
   for (const namn of bindningar) {
     for (const m of låsmetoder) {
@@ -313,7 +326,7 @@ export function evaluate({ jobb, ack, låsmetoder = [] }) {
         })
         continue
       }
-      if (!/\b[A-Z][a-zA-Z]{3,}\b/.test(skäl)) {
+      if (!MODELLNAMN_RE.test(skäl)) {
         problem.push({
           rule: `\`${j.nyckel}\`s invariant namnger ingen modell`,
           detail: 'Skälet ska innehålla modellnamnet, t.ex. `RentNotice` eller `PlatformInvoice`.',
@@ -405,6 +418,43 @@ function selfTest() {
     ok = false
     console.error(`❌ ${m}`)
   }
+  // ── #713: DE TVÅ STÄLLEN SOM BYTTES ─────────────────────────────────────
+  //
+  // Båda är FALSKLARM-riktningen, och båda blockerar en legitim klassificering.
+  {
+    const f = fail // VAKTENS egen fail — en lokal hade skrivit ❌ utan att fälla
+    // (1) BINDNINGEN till låsnyckeln. `const ärendeLås = 'cron:x'` följt av
+    //     `withLock(ärendeLås, …)` — namnet härleds med \w och försvann, så
+    //     jobbet lästes som OLÅST fast låset finns.
+    const lås = ['withLock']
+    const medSvenskt = "const ärendeLås = 'cron:x'\nawait this.lock.withLock(ärendeLås, () => 1)"
+    if (!harLåsanrop(medSvenskt, 'cron:x', lås))
+      f('#713 (1) MISSAD: låsbindning med svensk initial hittas inte — jobbet läses som olåst')
+    else console.log('✅ #713 (1) MISSAD: låsbindning med svensk initial hittas')
+    const medASCII = "const jobbLas = 'cron:x'\nawait this.lock.withLock(jobbLas, () => 1)"
+    if (!harLåsanrop(medASCII, 'cron:x', lås)) f('#713 (1) MOTPROV: ASCII-bindning slutade hittas')
+    const utan = "const annat = 'cron:y'\nawait this.lock.withLock(annat, () => 1)"
+    if (harLåsanrop(utan, 'cron:x', lås)) f('#713 (1) MOTPROV: en bindning till en ANNAN nyckel räknades')
+
+    // (2) MODELLNAMNET i invariantens skäl. `\b[A-Z][a-zA-Z]{3,}\b` kräver ett
+    //     PascalCase-ord. Ett svenskt modellnamn matchar inte:
+    //       "unikt index på Ärende(orgId)"        \b[A-Z]… → false   FALSKLARM
+    //       "unikt index på Förvaltning(orgId)"                false   FALSKLARM
+    //     Vakten säger då "invarianten namnger ingen modell" om ett skäl som
+    //     namnger en, och blockerar klassificeringen.
+    const modellRe = MODELLNAMN_RE // VAKTENS mönster, inte en kopia — en sond som
+    // skriver om regexen mäter sin egen rad och kan inte falla när vakten ändras.
+    for (const skäl of ['unikt index på Ärende(orgId)', 'unikt index på Förvaltning(orgId)'])
+      if (!modellRe.test(skäl)) f(`#713 (2) MISSAD: svenskt modellnamn känns inte igen — ${JSON.stringify(skäl)}`)
+    console.log('✅ #713 (2) MISSAD: svenska modellnamn i invariantens skäl känns igen')
+    if (!modellRe.test('unikt index på RentNotice(orgId)'))
+      f('#713 (2) MOTPROV: ASCII-modellnamn slutade kännas igen')
+    if (modellRe.test('gör inte om det'))
+      f('#713 (2) MOTPROV: en mening utan modellnamn godtogs')
+    if (modellRe.test('Två ord'))
+      f('#713 (2) MOTPROV: ett för kort versalt ord godtogs (tröskeln {3,} tappad)')
+  }
+
   const grön = (label, r) =>
     r.length === 0 ? console.log(`✅ inget falsklarm: ${label}`) : fail(`FALSKLARM: ${label} → ${r[0].rule}`)
   const röd = (label, r, väntad) => {
