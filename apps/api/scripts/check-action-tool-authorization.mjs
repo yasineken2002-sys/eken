@@ -69,7 +69,7 @@ export function executeToolBody(text) {
   const i = text.indexOf('async executeTool(')
   if (i === -1) return null
   const efter = text.slice(i + 10)
-  const nästa = efter.search(/\n  (?:private |public )?(?:async )?\w+\s*\(/)
+  const nästa = efter.search(/\n  (?:private |public )?(?:async )?[\p{L}\p{N}_$]+\s*\(/u)
   return nästa === -1 ? efter : efter.slice(0, nästa)
 }
 
@@ -110,7 +110,7 @@ export function executeToolBody(text) {
  * också matchar katalogen `in[spec]tions/`. De konstruerar bevis som fixturer,
  * vilket är hela poängen med dem.
  */
-const PROOF_SIGNALS = [/\bActionProof\b/, /\bactionProof\b/, new RegExp(`\\b${GATE}\\b`)]
+const PROOF_SIGNALS = [/\bActionProof\b/, /\bactionProof\b/, new RegExp(`(?<![\\p{L}\\p{N}_$])${GATE}(?![\\p{L}\\p{N}_$])`, 'u')]
 
 /** Alla .ts-filer under en katalog, rekursivt. Spec-filer på formen utesluts. */
 export function samlaKällfiler(rot, ut = []) {
@@ -177,7 +177,7 @@ export function ärTypdeklaration(kod, index) {
     else if (c === '{') {
       if (djup === 0) {
         const före = kod.slice(Math.max(0, i - 200), i)
-        return /\b(interface|type)\s+\w[\w<>,\s]*=?\s*$/.test(före)
+        return /(?<![\p{L}\p{N}_$])(interface|type)\s+[\p{L}\p{N}_$][\p{L}\p{N}_$<>,\s]*=?\s*$/u.test(före)
       }
       djup--
     }
@@ -436,6 +436,63 @@ function selfTest() {
   if (!b || !b.includes(GATE) || b.includes('executeToolWithAudit(a) {')) {
     fail(`kanariefågel: kroppsläsningen gav ${JSON.stringify(b)?.slice(0, 80)}`)
   } else console.log('✅ kanariefågel: kroppsläsningen avgränsar executeTool i fixturen')
+
+  // ── #713: DE TRE STÄLLEN SOM BYTTES, ETT PROV VART ──────────────────────
+  //
+  // KANARIEFÅGEL 1 ovan täcker INTE de här: den använder en ASCII-namngiven
+  // nästa metod och märker därför inget när avgränsningen går blind. Det är
+  // #736:s lärdom — befintliga prov skyddar mot specifika återfall, inte mot
+  // att en annan mekanism slutar mäta.
+  {
+    const kropp = (nästa) =>
+      executeToolBody(
+        `class X {\n  async executeTool(n) {\n    return 1\n  }\n\n  ${nästa}(a) {\n    const ZZNÄSTA = 1\n    return a\n  }\n}`,
+      )
+
+    // (1) KROPPSAVGRÄNSNINGEN. Uppmätt mot origin/main:
+    //       nästa metod nastaMetod   → längd 30, ZZNÄSTA utanför    (rätt)
+    //       nästa metod ärBatch      → längd 92, ZZNÄSTA INNANFÖR   MISSAD
+    //       nästa metod hittaFärsk   → längd 95, ZZNÄSTA INNANFÖR   KAPAD
+    //     Kroppen löper in i NÄSTA metod. Följden är en FALSK GRÖN: R1 letar
+    //     efter grindanropet i `executeTool`, och hittar det då lika gärna i
+    //     metoden efter. `tool-executor.service.ts` bär redan
+    //     `ärBatchMottagarkonflikt` — namnet är inte hypotetiskt.
+    if (kropp('nastaMetod')?.includes('ZZNÄSTA'))
+      fail('#713 (1) MOTPROV: ASCII-nästa metod läcker in i kroppen')
+    else console.log('✅ #713 (1) MOTPROV: ASCII-nästa metod avgränsar som förut')
+    if (kropp('ärBatch')?.includes('ZZNÄSTA'))
+      fail('#713 (1) MISSAD: nästa metod med svensk INITIAL avgränsar inte kroppen')
+    else console.log('✅ #713 (1) MISSAD: svensk initial avgränsar kroppen')
+    if (kropp('hittaFärsk')?.includes('ZZNÄSTA'))
+      fail('#713 (1) KAPAD: nästa metod med svenskt tecken MITT i avgränsar inte kroppen')
+    else console.log('✅ #713 (1) KAPAD: svenskt tecken mitt i avgränsar kroppen')
+
+    // (2) GRINDSIGNALEN. `\b${GATE}\b` matchar inuti `denPå<GATE>`, eftersom
+    //     `å` inte är ett ordtecken — en fil som INTE anropar grinden hade
+    //     räknats som bevisbärande. Falsk grön.
+    const signal = PROOF_SIGNALS[PROOF_SIGNALS.length - 1]
+    if (signal.test(`const x = denPå${GATE}(1)`))
+      fail('#713 (2) FALSK GRÖN: ett annat namn räknades som grindanrop')
+    else console.log('✅ #713 (2) FALSK GRÖN: `denPå<grind>` är inte grinden')
+    if (!signal.test(`await ${GATE}(n, p)`))
+      fail('#713 (2) MOTPROV: det äkta grindanropet känns inte igen')
+
+    // (3) TYPDEKLARATIONEN. Uppmätt: `interface Ärende {` och
+    //     `interface FörvaltningsTyp {` gav BÅDA false — en typkropp lästes
+    //     som riktig kod, och R-reglerna larmade på en deklaration.
+    for (const namn of ['Ärende', 'FörvaltningsTyp']) {
+      const src = `interface ${namn} {\n  x: 1\n}`
+      if (!ärTypdeklaration(src, src.indexOf('{') + 1))
+        fail(`#713 (3) MISSAD: \`interface ${namn}\` läses inte som typdeklaration`)
+      else console.log(`✅ #713 (3) MISSAD: typnamn ${namn} känns igen`)
+    }
+    const ascii = 'interface Avtal {\n  x: 1\n}'
+    if (!ärTypdeklaration(ascii, ascii.indexOf('{') + 1))
+      fail('#713 (3) MOTPROV: ASCII-typnamn slutade kännas igen')
+    const kod = 'function Avtal() {\n  x()\n}'
+    if (ärTypdeklaration(kod, kod.indexOf('{') + 1))
+      fail('#713 (3) MOTPROV: en FUNKTION lästes som typdeklaration')
+  }
 
   // ── KANARIEFÅGEL 2: mot den RIKTIGA källan ──────────────────────────────
   const riktiga = EXECUTORS.map((f) => ({ fil: f, text: readFileSync(join(TOOLS, f), 'utf8') }))
