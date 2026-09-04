@@ -210,6 +210,13 @@ jobs:
         with:
           node-version: 20
 
+      # Självtestet tillkom 2026-09-04. Vakten var den ENDA av fyrtiotre utan
+      # ett, och det var också därför en av dess fyra regler kunde vara död:
+      # `'LIVE'` är en STRÄNGLITERAL och söktes i kodvyn, där codeMask blankar
+      # stränginnehåll. Provet matar in det positiva fallet för VARJE post.
+      - name: Self-test the guard (all four identifiers, prose, substrings, floor)
+        run: node apps/api/scripts/check-resumption-shadow.mjs --self-test
+
       - name: Verify the resumption engine has no path to execution
         run: node apps/api/scripts/check-resumption-shadow.mjs
 
