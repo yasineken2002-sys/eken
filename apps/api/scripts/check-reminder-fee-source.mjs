@@ -160,9 +160,9 @@ const lineOf = (text, idx) => text.slice(0, idx).split('\n').length
 /** Sätts avgiften till noll? Då kan den aldrig överdebitera. */
 function isZeroing(call, field) {
   return (
-    new RegExp(`\\b${field}\\s*:\\s*0\\b`).test(call) ||
-    new RegExp(`\\b${field}\\s*:\\s*new\\s+Prisma\\.Decimal\\(\\s*0\\s*\\)`).test(call) ||
-    new RegExp(`\\b${field}\\s*:\\s*['"]0(\\.0+)?['"]`).test(call)
+    new RegExp(`(?<![\\p{L}\\p{N}_$])${field}\\s*:\\s*0\\b`, 'u').test(call) ||
+    new RegExp(`(?<![\\p{L}\\p{N}_$])${field}\\s*:\\s*new\\s+Prisma\\.Decimal\\(\\s*0\\s*\\)`, 'u').test(call) ||
+    new RegExp(`(?<![\\p{L}\\p{N}_$])${field}\\s*:\\s*['"]0(\\.0+)?['"]`, 'u').test(call)
   )
 }
 
@@ -207,13 +207,13 @@ export function scanSource(text, relPath) {
 
   // (1) reskontramarkeringarna på avin och på påminnelsen.
   for (const { model, field, detail } of LEDGER_WRITES) {
-    const re = new RegExp(`\\b${model}\\s*\\.\\s*(create|createMany|update|updateMany|upsert)\\s*\\(`, 'g')
+    const re = new RegExp(`(?<![\\p{L}\\p{N}_$])${model}\\s*\\.\\s*(create|createMany|update|updateMany|upsert)\\s*\\(`, 'gu')
     while ((m = re.exec(kod))) {
       const method = m[1]
       const openParen = kod.indexOf('(', m.index + m[0].length - 1)
       const slut = callEnd(kod, openParen)
       const call = kod.slice(openParen, slut)
-      if (!new RegExp(`\\b${field}\\s*:`).test(call)) continue
+      if (!new RegExp(`(?<![\\p{L}\\p{N}_$])${field}\\s*:`, 'u').test(call)) continue
       // Nollställningen läses ur STRÄNGVYN: `feeAmount: '0'` är en sträng, och
       // i codeMask är den blankad. Samma index — maskerna är lika långa.
       if (isZeroing(utanKommentarer.slice(openParen, slut), field)) continue
@@ -231,7 +231,7 @@ export function scanSource(text, relPath) {
   }
 
   // (2) avgiftsraden på fakturan.
-  const lineRe = /\binvoiceLine\s*\.\s*(create|createMany)\s*\(/g
+  const lineRe = /(?<![\p{L}\p{N}_$])invoiceLine\s*\.\s*(create|createMany)\s*\(/gu
   while ((m = lineRe.exec(kod))) {
     const method = m[1]
     const openParen = kod.indexOf('(', m.index + m[0].length - 1)
@@ -419,14 +419,14 @@ function omfångskanariefågel() {
   let mutatorer = 0
   let resolveranrop = 0
   const mutRe = new RegExp(
-    `\\b(${LEDGER_WRITES.map((w) => w.model).join('|')})\\s*\\.\\s*(create|createMany|update|updateMany|upsert)\\s*\\(`,
-    'g',
+    `(?<![\\p{L}\\p{N}_$])(${LEDGER_WRITES.map((w) => w.model).join('|')})\\s*\\.\\s*(create|createMany|update|updateMany|upsert)\\s*\\(`,
+    'gu',
   )
   for (const f of walk(SRC_DIR)) {
     filer++
     const kod = codeMask(readFileSync(f, 'utf8'))
     mutatorer += (kod.match(mutRe) ?? []).length
-    resolveranrop += (kod.match(new RegExp(`\\b${RESOLVER}\\(`, 'g')) ?? []).length
+    resolveranrop += (kod.match(new RegExp(`(?<![\\p{L}\\p{N}_$])${RESOLVER}\\(`, 'gu')) ?? []).length
   }
   const fel = []
   if (filer < MIN_FILER) fel.push(`omfång: ${filer} filer skannade, golv ${MIN_FILER}`)
@@ -461,6 +461,81 @@ function selfTest() {
       console.error(`✗ BAD "${label}" fångades INTE — guarden har inga tänder där`)
     }
   }
+  // ── SVENSKA IDENTIFIERARE (#713) ────────────────────────────────────────
+  //
+  // Vakten INTERPOLERAR kända namn (`rentNotice`, `feeAmount`,
+  // `resolveReminderFee`) in i sina mönster och avgränsade dem med `\b`.
+  // Det ger en ANNAN felprofil än vakter som FÅNGAR ett namn med en
+  // teckenklass, och skillnaden är värd att skriva ut:
+  //
+  //   FÅNGAR med klass (t.ex. check-pdf-templates)  → MISSAD och KAPAD
+  //   INTERPOLERAR en literal + \b (den här)        → MISSAD och FALSKLARM
+  //
+  // KAPAD kan inte uppstå här: namnet står som literal i mönstret, inte som
+  // en klass, så en svensk bokstav MITT i namnet matchas ändå. Bara det
+  // INLEDANDE tecknet spelar roll för `\b` — samma mätning som #714.
+  //
+  // FALSKLARMET är den form som fanns på riktigt, och den var mätbar mot
+  // origin/main:
+  //
+  //     await tx.pårentNotice.update({ data: { reminderFeeAmount: 60 } })
+  //         \b   → 1 anmärkning   (FALSKT: `pårentNotice` är inte rentNotice)
+  //         lookbehind → 0
+  //
+  //     await tx.paymentReminder.update({ data: { påfeeAmount: 60 } })
+  //         \b   → 1 anmärkning   (FALSKT: `påfeeAmount` är inte feeAmount)
+  //         lookbehind → 0
+  //
+  // Riktningen är den "ofarliga" — vakten FÄLLER i stället för att tiga — men
+  // utfallet är ett larm om ett kringgående som inte finns, i en kodbas som
+  // namnger saker på svenska. Den som felsöker det letar efter en bugg som
+  // aldrig skrevs.
+  for (const [label, kod, väntat] of [
+    ['äkta brott (ASCII) fälls fortfarande', 'await tx.rentNotice.update({ data: { reminderFeeAmount: 60 } })', 1],
+    ['svensk bokstav FÖRE modellnamnet är inte modellen', 'await tx.pårentNotice.update({ data: { reminderFeeAmount: 60 } })', 0],
+    ['svensk bokstav FÖRE fältnamnet är inte fältet', 'await tx.paymentReminder.update({ data: { påfeeAmount: 60 } })', 0],
+    ['DELSTRÄNG: ASCII före namnet är inte namnet', 'await tx.xrentNotice.update({ data: { reminderFeeAmount: 60 } })', 0],
+  ]) {
+    const v = scanSource(kod, 'kanarie.ts')
+    if (v.length !== väntat) {
+      ok = false
+      console.error(`✗ KANARIE "${label}": ${v.length} anmärkningar, väntade ${väntat}`)
+    }
+  }
+
+  // MISSAD, på MEKANISMEN: skulle en modell eller ett fält en dag heta svenska
+  //
+  // ⚠️ DEN HÄR SONDEN MÄTER PREMISSEN, INTE VAKTEN. Den fäller inte om vakten
+  // går sönder — den visar bara att `\b` faktiskt beter sig som kommentaren
+  // ovan påstår. Det är scanSource-proven FÖRE den här som fäller, och det är
+  // mätt: med `\b` återinförd på modellgränsen säger självtestet
+  // "svensk bokstav FÖRE modellnamnet är inte modellen: 1 anmärkningar,
+  // väntade 0".
+  // måste avgränsningen hitta det. Proven bygger samma två former som vakten
+  // och kräver att de skiljer sig — annars mäter de ingenting.
+  {
+    // Namnet står som LITERAL i sonden, inte interpolerat. Mekanismen är
+    // identisk — `\b` följt av ett namn — men sonden blir då ingen ny post i
+    // identifier-regex.baseline.json. En negativ referens ska bevisa något,
+    // inte ta på sig skuld.
+    const rad = '{ ärendeAvgift: 60 }'
+    const medB = new RegExp('\\bärendeAvgift\\s*:').test(rad)
+    const medLookbehind = new RegExp('(?<![\\p{L}\\p{N}_$])ärendeAvgift\\s*:', 'u').test(rad)
+    if (medB || !medLookbehind) {
+      ok = false
+      console.error(
+        `✗ KANARIE MISSAD: fältnamn med svensk initial — \\b gav ${medB} (väntade false), ` +
+          `lookbehind gav ${medLookbehind} (väntade true)`,
+      )
+    }
+    // Och att KAPAD verkligen INTE är en felform här: en svensk bokstav MITT i
+    // ett interpolerat namn matchas av båda formerna.
+    if (!new RegExp('\\bavgiftFörTak\\s*:').test('{ avgiftFörTak: 60 }')) {
+      ok = false
+      console.error('✗ KANARIE: antagandet om KAPAD stämmer inte — kommentaren ovan är fel')
+    }
+  }
+
   const omf = omfångskanariefågel()
   if (omf.fel.length) {
     ok = false
