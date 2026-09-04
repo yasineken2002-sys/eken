@@ -95,7 +95,7 @@ export function slåUppObjekt(kod, ident) {
 /** Bär anropets argument en cron-kontext — direkt eller via EN spridning? */
 export function lämnarKontext(kod, argument) {
   if (/\bcron\s*:/.test(argument)) return true
-  for (const m of argument.matchAll(/\.\.\.\s*([A-Za-z_$][\w$]*)\b/g)) {
+  for (const m of argument.matchAll(/\.\.\.\s*([\p{L}\p{N}_$]+)(?![\p{L}\p{N}_$])/gu)) {
     const kropp = slåUppObjekt(kod, m[1])
     if (kropp && /\bcron\s*:/.test(kropp)) return true
   }
@@ -223,6 +223,33 @@ function självtest() {
     console.warn(`${ok ? '✅' : '❌'} ${namn}${extra ? '  → ' + extra : ''}`)
     if (!ok) fel++
   }
+  // ── #713: SPRIDNINGENS VARIABELNAMN ─────────────────────────────────────
+  //
+  // Kontexten får lämnas via EN spridning: `enqueueSafely(kön, { ...bas })`,
+  // där `bas` är ett objekt med `cron:`. Namnet härleddes med
+  // `[A-Za-z_$][\w$]*`, som är ASCII.
+  //
+  // Uppmätt mot origin/main, med `const ärKontext = { cron: true }`:
+  //
+  //   { ...ärKontext }        → false   MISSAD, spridningen slås aldrig upp
+  //   { ...kontextFörCron }   → false   KAPAD, namnet blir "kontextF" och
+  //                                     uppslaget hittar inget objekt
+  //
+  // Båda ger FALSKLARM: anropet rapporteras sakna cron-kontext fast objektet
+  // det sprider bär den. Vakten pekar då ut en rad som redan är rätt.
+  {
+    const kod = (namn) => `const ${namn} = { cron: true }\nawait enqueueSafely(kön, { ...${namn} })`
+    for (const namn of ['ärKontext', 'kontextFörCron'])
+      t(`#713 MISSAD/KAPAD: spridning av \`${namn}\` ses`,
+        lämnarKontext(kod(namn), `{ ...${namn} }`))
+    t('#713 MOTPROV: ren ASCII fungerar som förut',
+      lämnarKontext(kod('bas'), '{ ...bas }'))
+    t('#713 MOTPROV: en spridning av ett objekt UTAN cron: räknas inte',
+      !lämnarKontext('const ärTom = { x: 1 }\nawait enqueueSafely(kön, { ...ärTom })', '{ ...ärTom }'))
+    t('#713 MOTPROV: ett objekt som inte finns räknas inte',
+      !lämnarKontext('await enqueueSafely(kön, { ...ärOkänd })', '{ ...ärOkänd }'))
+  }
+
   const fäller = (src) =>
     evaluate([{ fil: 'p.ts', text: src }]).problem.some((p) => p.rule.includes('utan cron-kontext'))
 
