@@ -8,7 +8,86 @@ _Eveno_ — fastighetsförvaltnings-SaaS för svenska privata hyresvärdar och m
 
 **Byggt och i main:** förvaltning (fastigheter/lägenheter/hyresgäster/avtal), automatisk hyresavisering (cron), IMD/förbruknings-debitering, AI-driven kontrakts-onboarding, dubbel bokföring, komplett inkasso-trappa (avi→påminnelse→ränta→inkasso-ready→export→kundförlust, automatisk), och härdad bankavstämning (skuld som beräknat tillstånd: INV-S→D→A→B).
 
-**Återstår före lansering (gatas av bolagsregistrering):** DB-backup, BankID-inloggning, automatisk bankkoppling (PSD2 — ersätter manuell filuppladdning, en nyckel för att avstämningen ska vara självgående), juridisk slutgenomgång.
+**Återstår före lansering — mätt mot `918e8f5`.** Raden sa tidigare att alla fyra
+posterna gatas av bolagsregistreringen och att de var ogjorda. Ingetdera stämde:
+två av dem är byggda och väntar på driftsättning, och bara delar av dem gatas.
+
+| Post | Läge | Vad som blockerar |
+| ---- | ---- | ----------------- |
+| DB-backup | **DELVIS** — mekanism klar och bevisad, drift av | elva env-vars i prod, noll satta |
+| BankID-inloggning | **INTE PÅBÖRJAT** | RP/broker-avtal (orgnr) för skarp drift |
+| Bankkoppling (PSD2) | **DELVIS** — P0–P2 i main, P3 saknas | aggregatoravtal (orgnr) + all frontend |
+| Juridisk slutgenomgång | **DELVIS** — texter finns, genomgången inte gjord | orgnummer i texterna + extern granskning |
+
+**DB-backup — DELVIS.** `apps/api/src/backup/`: `runBackup`
+(`backup.service.ts:468`), gallring (`:556`), daglig dump 03:00 och färskhetskoll
+09:00 (`backup.scheduler.ts:31`, `:89`), femvägs färskhetsutfall
+(`backup-freshness.service.ts:69`). Återläsning finns
+(`apps/api/scripts/restore-db.sh`) och är **bevisad mot en riktig
+produktionsdump** — 341/341 mätpunkter, med negativkontroll mot en stympad kopia
+(`docs/runbooks/db-backup-restore.md:235`). Vad som saknas: (1) backupbucket och
+en token scopad enbart till den, (2) de elva `BACKUP_*`/`R2_BACKUP_*`-variablerna
+i Railway — **mätt: ingen av dem finns**, så noll dumpar har tagits, (3) första
+skarpa dumpen verifierad, (4) [#580](https://github.com/yasineken2002-sys/eken/issues/580)
+(fel PII-nyckel startar tyst), (5) [#575](https://github.com/yasineken2002-sys/eken/issues/575)
+(texterna står i variant A tills backupen kör), (6) kvartalsvis omtest, som
+runbooken själv kräver. **Gatas INTE av bolagsregistreringen** — R2 används redan
+i prod. Det här är den enda posten som går att slutföra i dag.
+
+**BankID-inloggning — INTE PÅBÖRJAT.** Ingen provider, endpoint, DTO eller
+env-nyckel; `auth.controller.ts` är helt lösenords- och tokenbaserad. Träffarna på
+"BankID" i kodbasen är **signering**, en annan port —
+`signing.types.ts:4` säger det uttryckligen ("EGEN port, skild från en framtida
+BankIdProvider (inloggning)"). Återanvändbart finns ändå: portmönstret Stub-inert
+/ Mock-i-test / skarp adapter bakom fail-fast-flagga är byggt två gånger
+(`signing.module.ts:40`, `psd2.module.ts:46`), och personnummer-blindindex finns
+(`signing-crypto.service.ts`). **Gatas** av RP/broker-avtal för skarp drift — men
+port, Stub och inloggnings-UI går att bygga nu, precis som de andra två gjordes
+före sina avtal.
+
+**Bankkoppling (PSD2) — DELVIS, och betydligt längre gången än raden påstod.**
+P0/P1/P2 är mergade (#173/#174/#175) med två migrationer
+(`psd2_p1_external_id_dedup`, `psd2_p2_bank_consent`). `apps/api/src/psd2/` är 16
+filer: fem endpoints (`psd2.controller.ts:20`), samtycke med krypterade tokens
+(`BankConsent`, `schema.prisma:2370`), single-use CSRF-bindning där org-id läses
+serverside och aldrig ur callback-queryn (`Psd2ConsentState`, `:2403`),
+Bull-baserad sync och sex specar. Allt inert bakom `PSD2_ENABLED`, med
+DI-spärren att modulen aldrig får importera `AccountingModule`
+(`psd2.module.ts:24`). Vad som saknas: (1) **P3, den skarpa adaptern** —
+`psd2.module.ts:51` kastar uttryckligen att den levereras i P3 och kräver
+avtal/nycklar, så flaggan går inte ens att slå på, (2) **all frontend** (mätt:
+noll träffar på PSD2 i `apps/web/src` och `apps/admin/src`), (3) `PSD2_ENABLED`
+och `PSD2_TOKEN_KEY`. **Gatas** av aggregatoravtal — men samtyckesvyn går att
+bygga mot mock-providern nu, så P3 blir ett adapterbyte.
+
+**Juridisk slutgenomgång — DELVIS.** Tre policydokument finns i `docs/legal/`,
+renderade i `apps/web/src/features/legal/` och `apps/portal/`. Versionsstyrningen
+är stark: `LEGAL_DOCUMENT_VERSIONS` (`packages/shared/src/constants/platform.ts:102`)
+med append-only historik över förbrukade nummer och innehållshashar, vaktad av
+`check-legal-text-version.mjs`. RAG-korpusen är sex lagar under
+`apps/api/src/ai/knowledge/generated/`, var och en med `verifieradPer`-datum och
+byte-för-byte-vakt. Vad som saknas: (1) **orgnummer** — `PLATFORM_COMPANY.orgNumber`
+är en placeholder "tills Eveno AB är registrerat" (`platform.ts:14`), läst av
+dokument, footer, mejl och fakturor, (2) [#576](https://github.com/yasineken2002-sys/eken/issues/576)
+— `docs/legal` och de renderade sidorna är parallella kopior utan gemensam källa,
+och de har redan glidit isär (filerna säger 1.0, manifestet 1.1); en jurist kan
+inte granska en text vars bindande version inte går att peka ut, (3)
+[#577](https://github.com/yasineken2002-sys/eken/issues/577) — versionen är inte
+innehållsadresserad, så "vad accepterade kunden" saknar svar, (4) den externa
+granskningen själv, som **inte har någon spårande issue**. **Gatas delvis** —
+texterna kan inte färdigställas utan orgnummer och firmanamn, men den sakliga
+genomgången går att göra nu.
+
+> Två öppna bokföringsärenden hör till lanseringsbilden utan att stå i tabellen:
+> [#729](https://github.com/yasineken2002-sys/eken/issues/729) (förkortat/förlängt
+> första räkenskapsår går inte att uttrycka i modellen) och
+> [#730](https://github.com/yasineken2002-sys/eken/issues/730) (datumfönster mot
+> `@db.Date` trunkeras av Prisma; balansgrinden släpper igenom negativa belopp).
+> Båda är materiella för en första kund som bokför på riktigt.
+
+**Läs raderna ovan som ett spår, inte ett faktum** — samma regel som
+`docs/revision-status.md`. Mätpunkten är `918e8f5`; mät om mot koden innan du
+bygger på en post.
 
 > **Mätt status per post: [`docs/revision-status.md`](./docs/revision-status.md).** Varje rad bär den commit-sha den mättes mot. Läs regeln överst i filen innan du bygger på en rad — den är ett spår, inte ett faktum.
 
