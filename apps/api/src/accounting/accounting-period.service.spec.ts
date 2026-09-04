@@ -62,6 +62,8 @@ function makeRig(opts: RigOpts = {}) {
   )
 
   const prisma = {
+    // #704 PR 1: spärren frågar om räkenskapsåret först. Inget år är stängt här.
+    fiscalYearClose: { findUnique: jest.fn().mockResolvedValue(null) },
     accountingPeriodEvent: {
       // Två anropare: prechecks punktuppslag ("är perioden stängd?") och
       // appendPeriodClosedEvents seq-allokering. Attrappen svarar på båda utifrån
@@ -422,6 +424,9 @@ describe('T5 PR1a · AccountingPeriodService', () => {
       const tx = {
         organization: { findUnique: jest.fn().mockResolvedValue({ fiscalYearStartMonth: 1 }) },
         accountingPeriodEvent: { findFirst: jest.fn().mockResolvedValue(latest) },
+        // #704 PR 1: årsdimensionen. Riggen prövar MÅNADSspärren — ett stängt år
+        // hade fällt varje fall innan månaden ens lästes.
+        fiscalYearClose: { findUnique: jest.fn().mockResolvedValue(null) },
         journalEntrySequence: { upsert },
       }
       return { tx, upsert, service: new VerifikationsnummerService({} as never) }
