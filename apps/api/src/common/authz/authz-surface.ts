@@ -505,6 +505,30 @@ const TOOL_COL = 32
  */
 const GRANSKAD_HINK_A: ReadonlyMap<string, string> = new Map([
   [
+    'POST /auth/bankid/enroll/start',
+    'Startar en BankID-anslutning till DET EGNA kontot. Ingen @Roles därför att\n' +
+      'varje roll ska kunna koppla sitt eget BankID — det är en handling på det\n' +
+      'egna kontot, som byt-lösenord, inte en förvaltningshandling.\n' +
+      '\n' +
+      'SVARET BÄR INGEN DATA OM ANDRA: orderRef och starthandtag kommer från\n' +
+      'providern och säger ingenting om organisationen eller andra användare.\n' +
+      'Ordern binds till `user.sub` i tjänsten, så den kan bara fullbordas av\n' +
+      'den som startade den (BankIdAuthService.enrollCollect).',
+  ],
+  [
+    'POST /auth/bankid/enroll/collect',
+    'Pollar den egna anslutningen. Ingen @Roles av samma skäl som start.\n' +
+      '\n' +
+      'DEN VERKLIGA GRINDEN ÄR ORDERBINDNINGEN, inte rollen: `enrollCollect`\n' +
+      'kastar 403 om den inloggade inte är den användare ordern skapades för.\n' +
+      'Utan den kunde A starta en order och låta B fullborda den, så att B:s\n' +
+      'personnummer knöts till A:s konto. Prövat i bankid-auth.service.spec.ts\n' +
+      '("CSRF: en ANNAN användares collect på samma orderRef NEKAS").\n' +
+      '\n' +
+      'PERSONDATA: personnumret blindindexeras direkt vid mottagandet och\n' +
+      'lagras aldrig i klartext; svaret bär bara status.',
+  ],
+  [
     'GET /history/units/:unitId',
     'Lägenhetens historik över ALLA hyresgäster, även tidigare. Öppen för varje\n' +
       'roll därför att varje källa i unit-dimensionen redan är det: leases,\n' +

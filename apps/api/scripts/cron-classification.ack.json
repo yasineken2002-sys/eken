@@ -122,6 +122,10 @@
     "common/actor/actor-null-sweep.service.ts::sveep": {
       "class": "B",
       "invariant": "Jobbet SKRIVER ingenting: mät() kör enbart SELECT count(*) mot de 23 stämplade tabellerna (actorKind IS NULL AND createdAt > brytpunkten). Två samtidiga körningar har ingen rad att tävla om; utfallet är på sin höjd ett dubblerat Sentry-larm."
+    },
+    "bankid/bankid-auth.service.ts::cleanupExpiredOrders": {
+      "class": "B",
+      "invariant": "BankIdOrder deleteMany på `expiresAt < now` — idempotent radering, en andra körning träffar noll rader. Ordrarna är dessutom single-use via `consumedAt` och bär ingen persondata (orderRef är providerns opaka handtag), så en dubbelkörning kan varken tappa något som behövs eller radera för mycket. Prövat i bankid-identity.db.spec.ts (\"utgångna ordrar städas bort, och städningen är idempotent\"): första körningen ≥1, andra 0, färsk rad orörd."
     }
   }
 }

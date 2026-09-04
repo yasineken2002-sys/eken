@@ -1,6 +1,11 @@
 import { Logger, Module } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { AuthModule } from '../auth/auth.module'
+import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
+import { PrismaModule } from '../common/prisma/prisma.module'
 import { SigningCryptoService } from '../signing/signing-crypto.service'
+import { BankIdAuthService } from './bankid-auth.service'
+import { BankIdController } from './bankid.controller'
 import { BANKID_PROVIDER } from './bankid.types'
 import { StubBankIdProvider } from './providers/stub-bankid.provider'
 
@@ -44,36 +49,52 @@ import { StubBankIdProvider } from './providers/stub-bankid.provider'
  * `PersonalNumberModule` är `@Global` men EXPORTERAR inte `SigningCryptoService`
  * (bara `PersonalNumberService`), så den vägen finns inte att gå.
  */
+/**
+ * Providervalet, UTBRUTET ur modulen så att `bankid.module.spec.ts` kan pröva
+ * det utan att bygga hela grafen — och pröva SAMMA funktion, inte en kopia.
+ *
+ * Fail-closed: flaggan på men förutsättningar saknas → krascha vid boot, aldrig
+ * en halvkonfigurerad eller fejkad inloggning i produktion.
+ *
+ * Krypto-kravet är inte formellt: identitetsbindningen mot BankID-personnumret
+ * GÅR genom blind-indexet (HMAC med SIGNING_PII_PEPPER). Utan pepper finns
+ * inget att matcha mot, och en inloggning som inte kan matcha är antingen ett
+ * fel eller — värre — något som släpper igenom.
+ */
+export function bankIdProviderFactory(
+  config: ConfigService,
+  crypto: SigningCryptoService,
+): StubBankIdProvider {
+  const enabled = config.get<string>('BANKID_ENABLED') === 'true'
+  if (!enabled) return new StubBankIdProvider()
+
+  if (!crypto.configured) {
+    throw new Error(
+      '[bankid] BANKID_ENABLED=true men SIGNING_PII_KEY/SIGNING_PII_PEPPER saknas — fail-fast.',
+    )
+  }
+  throw new Error(
+    '[bankid] BANKID_ENABLED=true men ingen skarp BankID-adapter är konfigurerad. ' +
+      'Adaptern levereras i S3 (kräver avtal/nycklar).',
+  )
+}
+
 @Module({
+  // AuthModule för `issueTokensForUser` — BankID-vägen ska sluta i EXAKT samma
+  // tokenutfärdande som lösenordsinloggningen, inte i ett parallellt.
+  // CronErrorSinkModule importerar bara PrismaModule och kan inte sluta en cykel.
+  imports: [PrismaModule, CronErrorSinkModule, AuthModule],
+  controllers: [BankIdController],
   providers: [
     SigningCryptoService,
+    BankIdAuthService,
     {
       provide: BANKID_PROVIDER,
-      useFactory: (config: ConfigService, crypto: SigningCryptoService) => {
-        const enabled = config.get<string>('BANKID_ENABLED') === 'true'
-        if (!enabled) return new StubBankIdProvider()
-
-        // Fail-closed: flaggan på men förutsättningar saknas → krascha vid boot,
-        // aldrig en halvkonfigurerad eller fejkad inloggning i produktion.
-        //
-        // Krypto-kravet är inte formellt: identitetsbindningen mot BankID-
-        // personnumret GÅR genom blind-indexet (HMAC med SIGNING_PII_PEPPER).
-        // Utan pepper finns inget att matcha mot, och en inloggning som inte kan
-        // matcha är antingen ett fel eller — värre — något som släpper igenom.
-        if (!crypto.configured) {
-          throw new Error(
-            '[bankid] BANKID_ENABLED=true men SIGNING_PII_KEY/SIGNING_PII_PEPPER saknas — fail-fast.',
-          )
-        }
-        throw new Error(
-          '[bankid] BANKID_ENABLED=true men ingen skarp BankID-adapter är konfigurerad. ' +
-            'Adaptern levereras i S3 (kräver avtal/nycklar).',
-        )
-      },
+      useFactory: bankIdProviderFactory,
       inject: [ConfigService, SigningCryptoService],
     },
   ],
-  exports: [BANKID_PROVIDER],
+  exports: [BANKID_PROVIDER, BankIdAuthService],
 })
 export class BankidModule {
   private readonly logger = new Logger(BankidModule.name)

@@ -12,6 +12,7 @@ import { TerminusModule } from '@nestjs/terminus'
 import { PrismaModule } from './common/prisma/prisma.module'
 import { ActorModule } from './common/actor/actor.module'
 import { AuthModule } from './auth/auth.module'
+import { BankidModule } from './bankid/bankid.module'
 import { UsersModule } from './users/users.module'
 import { OrganizationsModule } from './organizations/organizations.module'
 import { PropertiesModule } from './properties/properties.module'
@@ -170,6 +171,7 @@ import { Psd2Module } from './psd2/psd2.module'
 
     // Feature modules
     AuthModule,
+    BankidModule,
     UsersModule,
     OrganizationsModule,
     PropertiesModule,
