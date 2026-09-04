@@ -21,7 +21,18 @@ let pendingQueue: Array<{ resolve: (v: string) => void; reject: (e: unknown) => 
 
 // /auth/* endpoints SKA inte triggera refresh – ett 401 där betyder fel lösenord
 // eller utgånget refresh-token, inte ett expired access-token.
-const AUTH_PATH_RE = /\/auth\/(login|register|refresh|logout)\b/
+//
+// BANKID:S INLOGGNINGSVÄGAR HÖR TILL SAMMA FAMILJ (#745 PR 3). Ett 401 från
+// `bankid/login/collect` betyder "inget konto är kopplat till det här BankID:t"
+// — inte att en access-token gått ut. Utan raden nedan gick det felet in i
+// refresh-grenen, som utan refresh-token kastar "No refresh token", ANROPAR
+// logout() och avvisar med FEL fel: gränssnittet hade visat ett meddelande om
+// något annat, och en redan inloggad användare hade loggats ut av att någon
+// provade BankID i samma flik.
+//
+// Anslutningsvägarna (`bankid/enroll/*`) står med FLIT inte här: de kräver
+// inloggning, och ett 401 där ÄR en utgången access-token som ska förnyas.
+const AUTH_PATH_RE = /\/auth\/(login|register|refresh|logout|bankid\/login)\b/
 
 api.interceptors.response.use(
   (res) => res,
