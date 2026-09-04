@@ -7,7 +7,7 @@
     "apps/api/scripts/check-effect-idempotency.mjs": "EN (1) post: kanariefågelns NEGATIVA REFERENS, mönstret (^|\\n) {2}[a-z0-9_]+: \\{ . Den visar vad den GAMLA formen hade sett, och utan den går det inte att skilja \"fixturen mäter något\" från \"fixturen är trivialt grön\". Byts den till \\p{Ll} blir de två talen lika och provet slutar diskriminera. Motiverad vid raden i vakten."
   },
   "$permanenta_regel": "De två posterna ovan är PERMANENTA och ska inte räknas som skuld. En negativ referens i en kanariefågel ska helst skrivas UTAN interpolation — då blir den ingen post alls; se sonderna i check-reminder-fee-source.mjs. Behövs ändå en post: lägg den här, med skäl.",
-  "total": 46,
+  "total": 42,
   "poster": [
     {
       "fil": "apps/api/scripts/check-action-tool-authorization.mjs",
@@ -109,41 +109,6 @@
       "former": [
         "matchning-ascii",
         "gräns-idkonstrukt"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-cron-error-sink.mjs",
-      "mönster": "(?:private|public|protected|readonly|\\\\s)\\\\s*(\\\\w+)\\\\s*:\\\\s*${klassnamn}\\\\b",
-      "former": [
-        "fångst-w",
-        "matchning-w",
-        "gräns-interp"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-cron-error-sink.mjs",
-      "mönster": "\\\\b${b}\\\\s*\\\\.\\\\s*${m}\\\\s*\\\\(",
-      "former": [
-        "gräns-interp"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-cron-error-sink.mjs",
-      "mönster": "\\\\b${metod}\\\\s*\\\\(",
-      "former": [
-        "gräns-interp"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-cron-error-sink.mjs",
-      "mönster": "\\\\bsink\\\\s*:\\\\s*[\\\\w.]*\\\\b${b}\\\\b",
-      "former": [
-        "matchning-w",
-        "gräns-interp"
       ],
       "antal": 1
     },
