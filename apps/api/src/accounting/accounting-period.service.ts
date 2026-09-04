@@ -13,7 +13,11 @@ import { AccountingService } from './accounting.service'
 import { isResultAccountNumber, YEAR_RESULT_ACCOUNT_BY_FORM } from './bas-chart'
 import { fiscalYearBounds, fiscalYearOf, type FiscalYearBounds } from './fiscal-year'
 import { vatPeriodLabelsForMonths } from '../avisering/vat-period.util'
-import { stockholmCivilDate, stockholmMonthBounds } from '../common/time/stockholm-period'
+import {
+  stockholmCivilDate,
+  stockholmMonthBounds,
+  stockholmMonthDayBounds,
+} from '../common/time/stockholm-period'
 import {
   appendFiscalYearClose,
   appendPeriodClosedEvent,
@@ -386,7 +390,17 @@ export class AccountingPeriodService {
     // Svenska månadsgränser, inte UTC: `allocate` placerar en post i den period
     // datumet tillhör I SVERIGE, och kontrollerna MÅSTE räkna samma post till
     // samma månad. En post 22:30 UTC den 31 mars är 00:30 svensk tid den 1 april.
+    // TVÅ SORTERS GRÄNSER, och valet per kontroll är inte kosmetiskt (#730).
+    //
+    //   from/to      ÖGONBLICK — mot tidsstämpelkolumner (BankTransaction.date)
+    //                och mot rå SQL, där Postgres promotar ett datum till
+    //                midnatt så att jämförelsen blir rätt ändå.
+    //   dagFrom/Till DAGAR — mot `@db.Date`-kolumner via Prismas ORM, som
+    //                trunkerar en ögonblicksparameter till ett datum. Mätt: med
+    //                ögonblicksgränser tog fönstret med föregående månads sista
+    //                dag och tappade sin egen. Se stockholmMonthDayBounds.
     const { from, to } = stockholmMonthBounds(year, month)
+    const { from: dagFrom, to: dagTill } = stockholmMonthDayBounds(year, month)
 
     // PUNKTfrågan, inte bulkformen: det här gäller EN period. Bulkformen hämtar
     // hela organisationens periodhistorik och sållar i Node — rätt för
@@ -400,7 +414,7 @@ export class AccountingPeriodService {
       await Promise.all([
         this.checkUnbalancedEntries(organizationId, from, to),
         this.checkNoticesWithoutEntry(organizationId, year, month),
-        this.checkInvoicesWithoutEntry(organizationId, from, to),
+        this.checkInvoicesWithoutEntry(organizationId, dagFrom, dagTill),
         this.checkUnbilledLeases(organizationId, year, month),
         this.checkUnmatchedBankTransactions(organizationId, from, to),
         this.checkVerificationNumberGaps(organizationId, from),
@@ -944,6 +958,8 @@ export class AccountingPeriodService {
     to: Date,
   ): Promise<PeriodCheck | null> {
     const invoices = await this.prisma.invoice.findMany({
+      // `Invoice.issueDate` är `@db.Date` — `from`/`to` MÅSTE därför vara DAGAR
+      // (stockholmMonthDayBounds), inte ögonblick. Se #730 och anroparen.
       where: { organizationId, issueDate: { gte: from, lt: to }, status: { not: 'DRAFT' } },
       select: { id: true },
     })
@@ -982,14 +998,22 @@ export class AccountingPeriodService {
     year: number,
     month: number,
   ): Promise<PeriodCheck | null> {
-    const { from: monthStart, to: monthAfter } = stockholmMonthBounds(year, month)
-    const monthEnd = new Date(monthAfter.getTime() - 1)
+    // `Lease.startDate` och `Lease.endDate` är BÅDA `@db.Date` — dagar, inte
+    // ögonblick (#730). Den gamla formen använde `stockholmMonthBounds` och
+    // `monthAfter − 1 ms`; övre gränsen blev rätt av en slump (trunkeringen
+    // landade på månadens sista dag), men den undre blev fel: `endDate >=
+    // 2026-11-30T23:00Z` trunkeras till `>= 2026-11-30`, så ett kontrakt som
+    // upphörde 30 november räknades som aktivt i december. Mätt.
+    const { from: dagFrom, to: dagTill } = stockholmMonthDayBounds(year, month)
     const leases = await this.prisma.lease.findMany({
       where: {
         organizationId,
         status: 'ACTIVE',
-        startDate: { lte: monthEnd },
-        OR: [{ endDate: null }, { endDate: { gte: monthStart } }],
+        // Startat senast sista dagen i månaden = startat FÖRE nästa månads
+        // första dag. `lt` mot dagsgränsen, i stället för `lte` mot ett
+        // ögonblick minus en millisekund.
+        startDate: { lt: dagTill },
+        OR: [{ endDate: null }, { endDate: { gte: dagFrom } }],
       },
       select: { id: true },
     })
@@ -1021,6 +1045,10 @@ export class AccountingPeriodService {
     from: Date,
     to: Date,
   ): Promise<PeriodCheck | null> {
+    // ÖGONBLICK är RÄTT här och ska inte bytas mot dagar (#730):
+    // `BankTransaction.date` är en vanlig `DateTime`, inte `@db.Date`. Ingen
+    // trunkering sker, och en transaktion 23:30 svensk tid den sista i månaden
+    // ska räknas till den månaden — vilket bara ögonblicksgränserna ger.
     const count = await this.prisma.bankTransaction.count({
       where: { organizationId, date: { gte: from, lt: to }, status: 'UNMATCHED' },
     })
@@ -1080,7 +1108,13 @@ export class AccountingPeriodService {
   ): Promise<PeriodSummary> {
     // Samma svenska gränser som precheck — summaryn är en ögonblicksbild som
     // ALDRIG räknas om, så en post som hamnar i fel månad blir permanent fel.
-    const { from, to } = stockholmMonthBounds(year, month)
+    //
+    // DAGAR, inte ögonblick (#730): `JournalEntry.date` är `@db.Date`, och
+    // Prisma trunkerar en ögonblicksgräns till ett datum. Med den gamla formen
+    // räknade december-sammanfattningen in 30 november och uteslöt 31 december —
+    // och eftersom bilden aldrig räknas om blev felet permanent i historiken.
+    // Det gällde också bokslutsposten, som dateras räkenskapsårets sista dag.
+    const { from, to } = stockholmMonthDayBounds(year, month)
     const lines = await this.prisma.journalEntryLine.findMany({
       where: { journalEntry: { organizationId, date: { gte: from, lt: to } } },
       include: { account: true },
