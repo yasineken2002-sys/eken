@@ -85,7 +85,17 @@ test('djuplänk /avisering/:id öppnar avins detaljmodal ovanpå listan', async 
 
   // Stängning ska städa URL:en. Står adressen kvar på avin öppnas modalen igen
   // vid omladdning, och bakåtknappen beter sig fel.
-  await modal.getByRole('button', { name: 'Stäng' }).click()
+  //
+  // `.first()` ÄR INTE SLARV. Modalen har TVÅ knappar med namnet "Stäng":
+  //   1. kryss-ikonen i huvudet (delade <Modal>, aria-label) — ALLTID renderad
+  //   2. en knapp i foten (RentNoticeDetailModal:144) — renderas först när
+  //      kreditförhandsvisningens fråga landat
+  // Nummer 2 är alltså ASYNKRON, och ett omarkerat `getByRole` fällde därför
+  // provet på "strict mode violation: resolved to 2 elements" — men bara när
+  // frågan hann fram. Lokalt gjorde den inte det och provet var grönt; i CI
+  // gjorde den det och main blev röd. Huvudets kryss är det ovillkorliga av de
+  // två, och `.first()` är DOM-ordning, alltså just det.
+  await modal.getByRole('button', { name: 'Stäng' }).first().click()
   await expect(modal).toBeHidden()
   await expect(page).toHaveURL(/\/avisering$/)
 })
