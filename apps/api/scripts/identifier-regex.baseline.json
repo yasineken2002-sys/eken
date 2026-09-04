@@ -7,7 +7,7 @@
     "apps/api/scripts/check-effect-idempotency.mjs": "EN (1) post: kanariefågelns NEGATIVA REFERENS, mönstret (^|\\n) {2}[a-z0-9_]+: \\{ . Den visar vad den GAMLA formen hade sett, och utan den går det inte att skilja \"fixturen mäter något\" från \"fixturen är trivialt grön\". Byts den till \\p{Ll} blir de två talen lika och provet slutar diskriminera. Motiverad vid raden i vakten."
   },
   "$permanenta_regel": "De två posterna ovan är PERMANENTA och ska inte räknas som skuld. En negativ referens i en kanariefågel ska helst skrivas UTAN interpolation — då blir den ingen post alls; se sonderna i check-reminder-fee-source.mjs. Behövs ändå en post: lägg den här, med skäl.",
-  "total": 42,
+  "total": 38,
   "poster": [
     {
       "fil": "apps/api/scripts/check-action-tool-authorization.mjs",
@@ -219,39 +219,6 @@
       "mönster": "import\\\\s*\\\\{[^}]*\\\\b${namn}\\\\b[^}]*\\\\}\\\\s*from\\\\s*['\"\\`]",
       "former": [
         "gräns-interp"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-ocr-lookup-fields.mjs",
-      "mönster": "(?:!\\\\s*${v}\\\\b|\\\\b${v}\\\\s*(?:\\\\?|&&|\\\\|\\\\|))",
-      "former": [
-        "gräns-interp"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-ocr-lookup-fields.mjs",
-      "mönster": "(?:const|let|var)\\\\s+(\\\\w+)\\\\s*=\\\\s*await\\\\s+${GATE}\\\\s*\\\\(",
-      "former": [
-        "fångst-w",
-        "matchning-w"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-ocr-lookup-fields.mjs",
-      "mönster": "[A-Za-z]",
-      "former": [
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-ocr-lookup-fields.mjs",
-      "mönster": "\\.\\s*([\\p{L}\\p{N}_$]+)\\s*\\.\\s*find\\w*\\s*\\(",
-      "former": [
-        "matchning-w"
       ],
       "antal": 1
     },
