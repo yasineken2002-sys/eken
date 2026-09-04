@@ -1,7 +1,7 @@
 import { ConflictException } from '@nestjs/common'
 import { AccountingPeriodEventType, EventActorType } from '@prisma/client'
 import type { AccountingPeriodEventReasonCategory, Prisma } from '@prisma/client'
-import { stockholmCivilDate } from '../common/time/stockholm-period'
+import { stockholmCivilDate, stockholmFiscalYear } from '../common/time/stockholm-period'
 import { resolveActorType } from '../common/ai-origin/ai-origin.context'
 
 /**
@@ -48,6 +48,25 @@ import { resolveActorType } from '../common/ai-origin/ai-origin.context'
  *     org-scopning betyder att en ANNAN organisations händelser avgör om DIN
  *     period är stängd.
  *
+ * ── #704 PR 1: TVÅ DIMENSIONER, INTE EN ────────────────────────────────────
+ *
+ * Modulen svarar numera på TVÅ frågor, och de är olika meningar:
+ *
+ *   MÅNADEN         AccountingPeriodEvent(org, year, month) — kalenderår +
+ *                   kalendermånad 1–12, härledd ur datumet i svensk civil tid.
+ *   RÄKENSKAPSÅRET  FiscalYearClose(org, fiscalYear) — härlett med
+ *                   `stockholmFiscalYear` ur `Organization.fiscalYearStartMonth`.
+ *
+ * De går inte att slå ihop: med startmånad 5 består räkenskapsåret 2026 av
+ * månadsnycklarna 2026-05 … 2027-04 — TVÅ kalenderår — så det finns inget
+ * (year, month)-par som namnger året. Motiveringen i sin helhet står vid
+ * modellen i schema.prisma.
+ *
+ * ÅRET FRÅGAS FÖRE MÅNADEN i `assertPeriodOpen`, och ordningen är inte
+ * godtycklig: ett stängt år har alla sina månader stängda (PR 2:s precheck
+ * kräver det), så med månaden först hade årsmeddelandet varit oåtkomligt och
+ * operatören alltid fått veta fel sak om varför datumet är låst.
+ *
  * Att ordningen är entydig vilar på `seq` (per-period monoton räknare), inte på
  * `createdAt`: två händelser i samma millisekund skulle annars ge godtycklig
  * ordning — och godtycklig ordning på just den här frågan betyder "perioden är
@@ -65,6 +84,19 @@ export interface PeriodKey {
  * `$queryRaw` krävs av bulkformen (DISTINCT ON, se getClosedPeriodStates).
  */
 type PeriodClient = Pick<Prisma.TransactionClient, 'accountingPeriodEvent' | '$queryRaw'>
+
+/**
+ * Minsta Prisma-yta ÅRSFRÅGAN behöver, utöver månadens.
+ *
+ * `organization` ingår därför att räkenskapsåret HÄRLEDS här och ingen annanstans.
+ * Alternativet — att låta anroparen skicka in `fiscalYearStartMonth` — hade gjort
+ * härledningen till något varje anropare kan få fel, och felet vore tyst: fel
+ * startmånad ger fel år, och fel år slår upp en rad som inte finns. Då är svaret
+ * "året är öppet", vilket är exakt fel riktning. En PK-uppslagning per verifikat
+ * är billigare än den klassen av fel.
+ */
+type FiscalYearClient = PeriodClient &
+  Pick<Prisma.TransactionClient, 'organization' | 'fiscalYearClose'>
 
 /**
  * Minsta Prisma-yta SKRIVNINGEN behöver. `closedAccountingPeriod` ingår för
@@ -100,6 +132,15 @@ export function periodOfDate(date: Date): PeriodKey {
  * Det här är punktformen som `allocate` anropar i varje verifikations-
  * transaktion: ett indexträff (organizationId, year, month, seq DESC) + LIMIT 1.
  * INGET typfilter — se regel 1 i filens docblock.
+ *
+ * VAD DEN INTE KAN SE (#704 PR 1): räkenskapsåret. Den här funktionen svarar
+ * ENBART på månadsfrågan och säger "öppen" om ett datum i ett stängt
+ * räkenskapsår vars månad råkar vara öppen. Hela frågan ställs av
+ * `assertPeriodOpen` — det är den som grindar `allocate` och därmed varje
+ * verifikat. Anropare som bara vill ge ett FÖRHANDSBESKED (AI-verktygens
+ * precheck i tool-executor.service.ts) använder fortfarande den här och kan
+ * därför missa ett stängt år; utfallet är ett sent men korrekt nej från
+ * allocate, aldrig ett verifikat som slinker igenom.
  */
 export async function isPeriodClosed(
   client: PeriodClient,
@@ -116,21 +157,100 @@ export async function isPeriodClosed(
 }
 
 /**
- * PUNKTKONTROLL: kastar ConflictException om datumets period är stängd.
+ * PUNKTKONTROLL: kastar ConflictException om datumet är låst — av MÅNADEN eller
+ * av RÄKENSKAPSÅRET. Hela frågan, till skillnad från `isPeriodClosed`.
  *
  * Anropas dels av `allocate` (den verkställande punkten, i samma tx som posten),
  * dels av flöden som vill ge ett begripligt besked INNAN de börjat skriva.
  *
- * Meddelandet är medvetet handlingsanvisande: rätt redovisningsåtgärd vid en
- * stängd period är att bokföra i innevarande period, inte att öppna det stängda
- * året. Den som ändå måste öppna gör det som en egen, spårad handling.
+ * Meddelandet är medvetet handlingsanvisande, och de två fallen anvisar OLIKA
+ * saker: en stängd månad kan öppnas igen av en behörig användare (spårat), ett
+ * stängt räkenskapsår kan det inte. Ett gemensamt "perioden är stängd" hade
+ * skickat operatören att leta efter en återöppningsknapp som inte finns.
  */
+/**
+ * Räkenskapsåret ett datum tillhör, plus organisationens startmånad.
+ *
+ * ENDA härledningen av räkenskapsår i spärrvägen. Den delar formel med
+ * `VerifikationsnummerService.fiscalYearFor` genom att båda anropar
+ * `stockholmFiscalYear` — samma skäl som för månaden: svensk civil tid, aldrig
+ * UTC. En verifikation daterad 1 maj 00:30 svensk tid är 30 april 22:30 UTC och
+ * hade annars räknats till FÖREGÅENDE räkenskapsår vid startmånad 5.
+ *
+ * Saknas organisationen faller vi tillbaka på kalenderår (startmånad 1), precis
+ * som `allocate`. Det är ofarligt här: en organisation som inte finns kan inte ha
+ * en FiscalYearClose-rad, så svaret blir "öppet" oavsett vilket år vi härleder.
+ */
+async function fiscalYearOfDate(
+  client: FiscalYearClient,
+  organizationId: string,
+  date: Date,
+): Promise<{ fiscalYear: number; startMonth: number }> {
+  const org = await client.organization.findUnique({
+    where: { id: organizationId },
+    select: { fiscalYearStartMonth: true },
+  })
+  const startMonth = org?.fiscalYearStartMonth ?? 1
+  return { fiscalYear: stockholmFiscalYear(date, startMonth), startMonth }
+}
+
+/**
+ * Räkenskapsårets namn för en människa: `2026` vid kalenderår, `2026/2027` vid
+ * brutet år.
+ *
+ * Brutet år MÅSTE visas med båda kalenderåren. "Räkenskapsåret 2026 är stängt"
+ * om ett år som löper maj 2026–april 2027 läses av operatören som kalenderåret
+ * 2026, och då ser ett avvisat datum i mars 2027 ut som ett fel i systemet i
+ * stället för som ett korrekt nej.
+ */
+export function fiscalYearLabel(fiscalYear: number, startMonth: number): string {
+  return startMonth === 1 ? String(fiscalYear) : `${fiscalYear}/${fiscalYear + 1}`
+}
+
+/** Räkenskapsåret som datumet tillhör, om det är stängt. Ren läsning — kastar inte. */
+export async function findClosedFiscalYear(
+  client: FiscalYearClient,
+  organizationId: string,
+  date: Date,
+): Promise<{ fiscalYear: number; startMonth: number; closedAt: Date } | null> {
+  const { fiscalYear, startMonth } = await fiscalYearOfDate(client, organizationId, date)
+  // findUnique på det sammansatta unik-villkoret: org-scopet kan inte glömmas
+  // bort (regel 2 i filens docblock), och en rad = året är stängt. Det finns
+  // ingen återöppning att härleda bort — se modellens docblock.
+  const row = await client.fiscalYearClose.findUnique({
+    where: { organizationId_fiscalYear: { organizationId, fiscalYear } },
+    select: { closedAt: true },
+  })
+  return row ? { fiscalYear, startMonth, closedAt: row.closedAt } : null
+}
+
+/** Är räkenskapsåret som datumet tillhör stängt? Ren läsning — kastar inte. */
+export async function isFiscalYearClosed(
+  client: FiscalYearClient,
+  organizationId: string,
+  date: Date,
+): Promise<boolean> {
+  return (await findClosedFiscalYear(client, organizationId, date)) !== null
+}
+
 export async function assertPeriodOpen(
-  client: PeriodClient,
+  client: FiscalYearClient,
   organizationId: string,
   date: Date,
   context?: string,
 ): Promise<void> {
+  // ÅRET FÖRST — se filens docblock. Ett stängt år har alla sina månader
+  // stängda, så den omvända ordningen hade gjort årsmeddelandet oåtkomligt.
+  const closedYear = await findClosedFiscalYear(client, organizationId, date)
+  if (closedYear) {
+    const label = fiscalYearLabel(closedYear.fiscalYear, closedYear.startMonth)
+    throw new ConflictException(
+      `Räkenskapsåret ${label} är stängt${context ? ` — ${context}` : ''}. ` +
+        'Ett stängt räkenskapsår kan inte öppnas igen. Bokför i innevarande ' +
+        'räkenskapsår i stället.',
+    )
+  }
+
   if (await isPeriodClosed(client, organizationId, date)) {
     const label = periodKeyOf(periodOfDate(date))
     throw new ConflictException(
