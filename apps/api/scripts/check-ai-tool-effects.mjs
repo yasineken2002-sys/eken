@@ -89,7 +89,7 @@ export function executeToolBody(text) {
   const i = text.indexOf('async executeTool(')
   if (i === -1) return null
   const efter = text.slice(i + 10)
-  const nästa = efter.search(/\n  (?:private |public )?(?:async )?\w+\s*\(/)
+  const nästa = efter.search(/\n  (?:private |public )?(?:async )?[\p{L}\p{N}_$]+\s*\(/u)
   return nästa === -1 ? efter : efter.slice(0, nästa)
 }
 
@@ -121,7 +121,7 @@ function setBody(text, name) {
 export function parseSet(text, name) {
   const kropp = setBody(text, name)
   if (kropp === null) return null
-  return [...kropp.matchAll(/'([a-z0-9_]+)'/g)].map((x) => x[1])
+  return [...kropp.matchAll(/'([\p{Ll}\p{N}_]+)'/gu)].map((x) => x[1])
 }
 
 /**
@@ -367,6 +367,42 @@ const SJALVA_SPARET = new Set(['AiToolExecution', 'AiToolEffect'])`
 const ACK_OK = { effectFree: {} }
 
 function selfTest() {
+  // ── #713: DE TVÅ STÄLLEN SOM BYTTES ─────────────────────────────────────
+  //
+  // Riktade mot exakt de två. Kanariefågel 2/2b nedan jämför `parseSet` mot en
+  // teckenklassFRI räkning och hade fångat (2) den dag ett svenskt verktygsnamn
+  // fanns i trädet — men den mäter det RIKTIGA setet, där alla namn är ASCII,
+  // och kan därför inte se blindheten i dag. (1) täcks inte alls av något
+  // befintligt prov.
+  {
+    const kropp = (n) =>
+      executeToolBody(`class X {\n  async executeTool(t) {\n    return 1\n  }\n\n  ${n}(a) {\n    const ZZNÄSTA = 1\n  }\n}`)
+    // (1) KROPPSAVGRÄNSNINGEN. Uppmätt mot origin/main:
+    //       nastaMetod → ZZNÄSTA utanför   ärBatch/hittaFärsk → INNANFÖR
+    //     Kroppen löper in i nästa metod, och R-reglerna letar effektspår i
+    //     `executeTool` — de hittar då lika gärna spår som hör till metoden
+    //     efter. `tool-executor.service.ts` bär redan `ärBatchMottagarkonflikt`.
+    for (const [n, väntat] of [['nastaMetod', false], ['ärBatch', false], ['hittaFärsk', false]]) {
+      if (kropp(n)?.includes('ZZNÄSTA') !== väntat) {
+        fail(`#713 (1): nästa metod \`${n}\` avgränsar inte executeTool-kroppen`)
+      }
+    }
+    // (2) VERKTYGSNAMNEN i parseSet. Uppmätt: ett svenskt namn försvann, och
+    //     talen gick isär mot den teckenklassFRIA räkningen.
+    const src = "export const ACTION_TOOLS = new Set(['skapa_avi', 'föreslå_avi', 'x2'])"
+    const namn = parseSet(src, 'ACTION_TOOLS')
+    if (namn?.join() !== 'skapa_avi,föreslå_avi,x2') {
+      fail(`#713 (2): verktygsnamn med svenskt tecken tappas — ${JSON.stringify(namn)}`)
+    }
+    if (countSetEntries(src, 'ACTION_TOOLS') !== namn?.length) {
+      fail('#713 (2): parseSet och den teckenklassfria räkningen går isär')
+    }
+    // MOTPROV: klassen är fortfarande GEMEN — ett VERSALT namn är inget
+    // verktygsnamn, och en fix som bara bytte till \p{L} hade tappat det.
+    const versal = parseSet("export const ACTION_TOOLS = new Set(['Skapa'])", 'ACTION_TOOLS')
+    if (versal?.length !== 0) fail(`#713 (2) MOTPROV: VERSALT namn lästes som verktygsnamn — ${JSON.stringify(versal)}`)
+  }
+
   let ok = true
   const fail = (m) => {
     ok = false
@@ -427,6 +463,11 @@ function selfTest() {
   // parsern kör med den GAMLA teckenklassen. Utan det här kan 2:an vara grön för
   // att båda sidor gick blinda samtidigt.
   const medSiffra = "export const ACTION_TOOLS = new Set(['a_tool', 'export_sie4'])"
+  // ⚠️ ASCII-KLASSEN NEDAN STÅR KVAR MED FLIT — den är den enda posten från
+  // den här filen i identifier-regex.baseline.json (#713/#724). Den är en
+  // NEGATIV REFERENS: den ska visa vad den GAMLA klassen läste, och byts den
+  // till \p{Ll} blir talen lika och sonden slutar bita. Se $permanenta i
+  // baslinjen.
   const gammalKlass = [...medSiffra.matchAll(/'([a-z_]+)'/g)].length
   const nyKlass = parseSet(medSiffra, 'ACTION_TOOLS')?.length
   const charsetFritt = countSetEntries(medSiffra, 'ACTION_TOOLS')
