@@ -93,7 +93,7 @@ export function kanter(text) {
   const inne = importsBlock(text)
   if (inne === null) return []
   const ut = []
-  for (const m of inne.matchAll(/\b([A-Z]\w*Module)\b/g)) {
+  for (const m of inne.matchAll(/(?<![\p{L}\p{N}_$])(\p{Lu}[\p{L}\p{N}_$]*Module)(?![\p{L}\p{N}_$])/gu)) {
     const före = inne.slice(Math.max(0, m.index - 40), m.index)
     ut.push({ namn: m[1], forwardRef: /forwardRef\s*\(\s*\(\s*\)\s*=>\s*$/.test(före) })
   }
@@ -103,7 +103,7 @@ export function kanter(text) {
 /** Var bor `Namn`? Slås upp i filens EGNA import-satser; null = extern. */
 export function slåUpp(text, namn, filväg) {
   const kod = codeMask(text)
-  const re = new RegExp(`import\\s*\\{[^}]*\\b${namn}\\b[^}]*\\}\\s*from\\s*['"\`]`)
+  const re = new RegExp(`import\\s*\\{[^}]*(?<![\\p{L}\\p{N}_$])${namn}(?![\\p{L}\\p{N}_$])[^}]*\\}\\s*from\\s*['"\`]`, 'u')
   const m = re.exec(kod)
   if (!m) return null
   // Sökvägen är stränginnehåll — läs den ur RÅTEXTEN på samma index.
@@ -215,6 +215,34 @@ function självtest() {
   const t = (namn, ok, extra = '') => {
     console.warn(`${ok ? '✅' : '❌'} ${namn}${extra ? '  → ' + extra : ''}`)
     if (!ok) fel++
+  }
+
+  // ── #713: DE TVÅ STÄLLEN SOM BYTTES ─────────────────────────────────────
+  //
+  // Båda HÄRLEDER modulnamn ur källtext, och båda var ASCII. Följden är att en
+  // modul med svenskt namn inte finns i grafen — och en cykel som går GENOM
+  // den kan då inte hittas. Vakten är grön om en cykel den aldrig sett.
+  {
+    const src =
+      "import { ÄrendeModule } from './a'\nimport { FörvaltningModule } from './b'\n" +
+      "import { AviModule } from './c'\n@Module({ imports: [ÄrendeModule, FörvaltningModule, AviModule] })\nexport class X {}"
+    // (1) KANTERNA. `\b[A-Z]\w*Module\b` matchar inte `Ä`, och `FörvaltningModule`
+    //     har `ö` inuti — `\w*` stannar där och `Module` följer inte.
+    //     Uppmätt mot origin/main: ["AviModule"] i stället för alla tre.
+    const namn = kanter(src).map((k) => k.namn)
+    t('#713 (1) MISSAD+KAPAD: modulnamn med svenska tecken blir kanter',
+      namn.join() === 'ÄrendeModule,FörvaltningModule,AviModule', JSON.stringify(namn))
+    // (2) UPPSLAGET av var modulen bor.
+    t('#713 (2) MISSAD: uppslaget hittar en modul med svensk initial',
+      slåUpp(src, 'ÄrendeModule', '/x.ts') === '/a.ts', JSON.stringify(slåUpp(src, 'ÄrendeModule', '/x.ts')))
+    // MOTPROVEN — avgränsningen får inte bli en delsträngssökning, och en
+    // klass som inte slutar på Module är ingen modul.
+    t('#713 MOTPROV: `XAviModule` slås inte upp som `AviModule`',
+      slåUpp(src, 'XAviModule', '/x.ts') === null, JSON.stringify(slåUpp(src, 'XAviModule', '/x.ts')))
+    t('#713 MOTPROV: en klass utan Module-suffix blir ingen kant',
+      kanter("import { Ärende } from './a'\n@Module({ imports: [Ärende] })").length === 0)
+    t('#713 MOTPROV: gemen initial blir ingen kant',
+      kanter("import { ärendeModule } from './a'\n@Module({ imports: [ärendeModule] })").length === 0)
   }
 
   // (0) Den delade skannerns kanariefåglar — metavaktens R2.

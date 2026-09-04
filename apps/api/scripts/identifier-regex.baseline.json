@@ -8,7 +8,7 @@
     "apps/api/scripts/check-ai-tool-effects.mjs": "EN (1) post: kanariefågel 2b:s NEGATIVA REFERENS, mönstret '([a-z_]+)' . Den visar vad den GAMLA teckenklassen läste, och är det enda som gör kanariefågel 2 meningsfull — utan den kan parseSet och countSetEntries vara blinda samtidigt utan att någon märker det. Byts den till \\p{Ll} blir talen lika och sonden slutar bita. Motiverad vid raden i vakten."
   },
   "$permanenta_regel": "De två posterna ovan är PERMANENTA och ska inte räknas som skuld. En negativ referens i en kanariefågel ska helst skrivas UTAN interpolation — då blir den ingen post alls; se sonderna i check-reminder-fee-source.mjs. Behövs ändå en post: lägg den här, med skäl.",
-  "total": 24,
+  "total": 22,
   "poster": [
     {
       "fil": "apps/api/scripts/check-ai-tool-effects.mjs",
@@ -114,26 +114,6 @@
       "former": [
         "fångst-w",
         "matchning-w"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-module-cycles.mjs",
-      "mönster": "\\b([A-Z]\\w*Module)\\b",
-      "former": [
-        "fångst-w",
-        "fångst-ascii",
-        "matchning-w",
-        "matchning-ascii",
-        "gräns-idkonstrukt"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-module-cycles.mjs",
-      "mönster": "import\\\\s*\\\\{[^}]*\\\\b${namn}\\\\b[^}]*\\\\}\\\\s*from\\\\s*['\"\\`]",
-      "former": [
-        "gräns-interp"
       ],
       "antal": 1
     },
