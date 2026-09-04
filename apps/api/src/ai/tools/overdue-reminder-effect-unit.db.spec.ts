@@ -347,9 +347,16 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
     // CI föll med `Received length: 6`.
     //
     // Provet är riktat mot orsaken och inte mot symptomet: slutar krasch-testet
-    // dränera sina tre körningar landar ett spår under pausen och storleken
-    // växer. Utan den här raden hade en sådan ändring bara gjort sviten
-    // FLAKIG igen, alltså grön tills den råkade vara röd.
+    // dränera sina körningar landar ett spår under pausen och storleken växer.
+    // Utan den här raden hade en sådan ändring bara gjort sviten FLAKIG igen,
+    // alltså grön tills den råkade vara röd.
+    //
+    // UPPMÄTT SKÄRPA, och gränsen hör hit: med ALLA tre dräneringarna borta —
+    // det verkliga förhandsläget — fäller raden 4 av 4 körningar, alltså
+    // deterministiskt och inte slumpvis. Med bara EN dränering borttagen är den
+    // TYST: de kvarvarande två tar tillräckligt lång tid för att det tredje
+    // spåret ändå ska hinna landa. Kanariefågeln skyddar alltså invarianten som
+    // HELHET, inte varje enskild dränering för sig.
     await new Promise((r) => setTimeout(r, 300))
     expect((await kändaSpårIds()).size).toBe(föreTom.size)
     const tomMail = bokförandeMail()
