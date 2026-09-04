@@ -2,7 +2,7 @@
   "$comment": "BASLINJE — befintliga ASCII-antaganden om identifierare i vakternas regexar (#713). MEDLEMMAR, inte ett tal: fil + mönster + antal. Radnummer står inte här; de flyttar.",
   "$howto": "Listan får bara KRYMPA. Laga en förekomst och ta bort dess post i SAMMA PR — en post utan motsvarighet i koden är lika röd som en okänd förekomst. Att lägga TILL en post är att ta på sig ny skuld och ska motiveras i PR-texten.",
   "$definition": "Formerna står i check-identifier-regex.mjs (FORMER). Talet går att härleda om mot vilken ref som helst: node apps/api/scripts/check-identifier-regex.mjs --skriv",
-  "total": 64,
+  "total": 56,
   "poster": [
     {
       "fil": "apps/api/scripts/check-action-tool-authorization.mjs",
@@ -334,75 +334,6 @@
       "former": [
         "fångst-w",
         "matchning-w"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
-      "mönster": "(?:^|[\\s\"'(=])\\/\\/[a-zA-Z0-9]",
-      "former": [
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
-      "mönster": "(?:^|\\n)[ \\t]*(?:export\\s+)?(?:default\\s+)?(?:private\\s+|public\\s+|protected\\s+|static\\s+|readonly\\s+)*(?:async\\s+)?(?:function\\s+)?([A-Za-z_$][\\w$]*)\\s*(?:<[^>]*>)?\\s*\\(",
-      "former": [
-        "fångst-w",
-        "fångst-ascii",
-        "matchning-w",
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
-      "mönster": "[\\s:<>|&\\][\\w$,.'\"]",
-      "former": [
-        "matchning-w"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
-      "mönster": "\\b([A-Za-z_$][\\w$]{2,})\\s*\\(",
-      "former": [
-        "fångst-w",
-        "fångst-ascii",
-        "matchning-w",
-        "matchning-ascii",
-        "gräns-idkonstrukt"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
-      "mönster": "^(?:this\\.)?([A-Za-z_$][\\w$]*)\\s*\\(",
-      "former": [
-        "fångst-w",
-        "fångst-ascii",
-        "matchning-w",
-        "matchning-ascii"
-      ],
-      "antal": 2
-    },
-    {
-      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
-      "mönster": "^([A-Za-z_$][\\w$]*)$",
-      "former": [
-        "fångst-w",
-        "fångst-ascii",
-        "matchning-w",
-        "matchning-ascii"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
-      "mönster": "<[a-zA-Z!]",
-      "former": [
-        "matchning-ascii"
       ],
       "antal": 1
     },
