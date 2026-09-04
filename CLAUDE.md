@@ -14,7 +14,7 @@ två av dem är byggda och väntar på driftsättning, och bara delar av dem gat
 
 | Post | Läge | Vad som blockerar |
 | ---- | ---- | ----------------- |
-| DB-backup | **DELVIS** — mekanism klar och bevisad, drift av | elva env-vars i prod, noll satta |
+| DB-backup | **DELVIS** — mekanism klar och bevisad, drift av | backup-env i prod: noll satta |
 | BankID-inloggning | **INTE PÅBÖRJAT** | RP/broker-avtal (orgnr) för skarp drift |
 | Bankkoppling (PSD2) | **DELVIS** — P0–P2 i main, P3 saknas | aggregatoravtal (orgnr) + all frontend |
 | Juridisk slutgenomgång | **DELVIS** — texter finns, genomgången inte gjord | orgnummer i texterna + extern granskning |
@@ -26,8 +26,9 @@ två av dem är byggda och väntar på driftsättning, och bara delar av dem gat
 (`apps/api/scripts/restore-db.sh`) och är **bevisad mot en riktig
 produktionsdump** — 341/341 mätpunkter, med negativkontroll mot en stympad kopia
 (`docs/runbooks/db-backup-restore.md:235`). Vad som saknas: (1) backupbucket och
-en token scopad enbart till den, (2) de elva `BACKUP_*`/`R2_BACKUP_*`-variablerna
-i Railway — **mätt: ingen av dem finns**, så noll dumpar har tagits, (3) första
+en token scopad enbart till den, (2) backup-variablerna i Railway — fyra
+obligatoriska plus tre valfria, och **mätt: ingen av dem finns**, så noll dumpar
+har tagits (namnen och ordningen står i driftsättningschecklistan), (3) första
 skarpa dumpen verifierad, (4) [#580](https://github.com/yasineken2002-sys/eken/issues/580)
 (fel PII-nyckel startar tyst), (5) [#575](https://github.com/yasineken2002-sys/eken/issues/575)
 (texterna står i variant A tills backupen kör), (6) kvartalsvis omtest, som
