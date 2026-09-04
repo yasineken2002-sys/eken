@@ -98,6 +98,29 @@ export function PrivacyPage() {
         <li>
           <strong>Sentry (EU-region)</strong> — anonymiserad felspårning
         </li>
+        {/*
+          FÖRSLAG — MÅSTE LÄSAS AV MÄNNISKA INNAN MERGE.
+
+          TVÅ TJÄNSTER SAKNADES i portalens lista:
+
+          1. Cloudflare. Hyresgästens dokument ligger i R2 (storage.service.ts).
+             Webbens lista har haft raden; portalens har aldrig haft den, trots
+             att det är hyresgästens EGNA handlingar det gäller.
+          2. Voyage AI. Aktiv i produktion, tar emot användarens fritextfråga
+             (legal-retrieval.service.ts:174).
+
+          Ingen region anges för någon av dem: R2:s dokument-bucket ligger i
+          DEFAULT-jurisdiktionen (uppmätt 2026-08-27), alltså inte EU-garanterad,
+          och var Voyage kör går inte att läsa ur repot.
+        */}
+        <li>
+          <strong>Cloudflare</strong> — objektlagring av dina dokument (region ej fastställd i
+          vår dokumentation — verifieras av människa)
+        </li>
+        <li>
+          <strong>Voyage AI</strong> — vektorisering av söktext; tar emot den fritext som skrivs
+          i assistenten (region ej fastställd i vår dokumentation — verifieras av människa)
+        </li>
       </ul>
       <p>Samtliga är bundna av personuppgiftsbiträdesavtal enligt artikel 28 GDPR.</p>
 
