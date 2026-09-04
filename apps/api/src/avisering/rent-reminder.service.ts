@@ -719,11 +719,13 @@ export class RentReminderService {
             `${rad.blockedSince.toLocaleDateString('sv-SE')}. Öppna avin för att se ` +
             'exakt vad som saknas — en studsad påminnelse kräver att adressen rättas.',
           {
-            // Listsidan, inte en djuplänk. `/avisering/:id` finns inte som rutt
-            // (`router.tsx` registrerar bara `/avisering`), och en länk som ger
-            // 404 är sämre än en som ger listan. Id:t följer med i den
-            // strukturerade referensen, så en framtida fokusering kan öppna
-            // avin utan att den här skrivaren ändras.
+            // Djuplänk. Fälten är oförändrade sedan #718 — id:t låg redan i
+            // BÅDA, och det var webbens `notification-link.ts` som kastade
+            // bort det. #719 lät det passera igenom, så `avisering/<id>` når
+            // nu detaljmodalen via rutten `/avisering/$noticeId`.
+            //
+            // `link` behålls trots den strukturerade referensen: den är den
+            // enda av de två som NotificationsPage läser.
             link: `avisering/${noticeId}`,
             relatedEntityType: 'RENT_NOTICE',
             relatedEntityId: noticeId,
