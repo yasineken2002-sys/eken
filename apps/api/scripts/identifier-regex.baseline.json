@@ -7,7 +7,7 @@
     "apps/api/scripts/check-effect-idempotency.mjs": "EN (1) post: kanariefågelns NEGATIVA REFERENS, mönstret (^|\\n) {2}[a-z0-9_]+: \\{ . Den visar vad den GAMLA formen hade sett, och utan den går det inte att skilja \"fixturen mäter något\" från \"fixturen är trivialt grön\". Byts den till \\p{Ll} blir de två talen lika och provet slutar diskriminera. Motiverad vid raden i vakten."
   },
   "$permanenta_regel": "De två posterna ovan är PERMANENTA och ska inte räknas som skuld. En negativ referens i en kanariefågel ska helst skrivas UTAN interpolation — då blir den ingen post alls; se sonderna i check-reminder-fee-source.mjs. Behövs ändå en post: lägg den här, med skäl.",
-  "total": 50,
+  "total": 46,
   "poster": [
     {
       "fil": "apps/api/scripts/check-action-tool-authorization.mjs",
@@ -90,41 +90,6 @@
       "fil": "apps/api/scripts/check-append-only.mjs",
       "mönster": "CREATE\\\\s+TRIGGER\\\\s+${TRIGGER_PREFIX}\\\\w+\\\\s+BEFORE\\\\s+UPDATE\\\\s+ON\\\\s+\"([^\"]+)\"",
       "former": [
-        "matchning-w"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-critical-indexes.mjs",
-      "mönster": "^\\w+\\.",
-      "former": [
-        "matchning-w"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-critical-indexes.mjs",
-      "mönster": "^ALTER\\s+INDEX\\s+(?:IF\\s+EXISTS\\s+)?((?:\"?\\w+\"?\\.)?\"?[^\"\\s]+\"?)\\s+RENAME\\s+TO\\s+\"?([^\"\\s;]+)\"?",
-      "former": [
-        "fångst-w",
-        "matchning-w"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-critical-indexes.mjs",
-      "mönster": "^CREATE\\s+(UNIQUE\\s+)?INDEX\\s+(?:CONCURRENTLY\\s+)?(?:IF\\s+NOT\\s+EXISTS\\s+)?\"?([^\"\\s(]+)\"?\\s+ON\\s+(?:ONLY\\s+)?((?:\"?\\w+\"?\\.)?\"?[^\"\\s(]+\"?)\\s*\\(([^)]*)\\)\\s*(?:WHERE\\s+(.+))?$",
-      "former": [
-        "fångst-w",
-        "matchning-w"
-      ],
-      "antal": 1
-    },
-    {
-      "fil": "apps/api/scripts/check-critical-indexes.mjs",
-      "mönster": "^DROP\\s+INDEX\\s+(?:CONCURRENTLY\\s+)?(?:IF\\s+EXISTS\\s+)?((?:\"?\\w+\"?\\.)?\"?[^\"\\s;]+\"?)",
-      "former": [
-        "fångst-w",
         "matchning-w"
       ],
       "antal": 1
