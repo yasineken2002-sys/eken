@@ -785,6 +785,26 @@ model Organization {
   // versionsbyten som binder hela bolaget.
   termsAcceptedAt DateTime?
   termsVersion    String?
+  // ── #577: VILKEN TEXT, INTE BARA VILKET NUMMER ──────────────────────────
+  //
+  // `termsVersion` säger vilket NUMMER kunden godkände, inte vilken TEXT. En
+  // redaktionell ändring är tillåten utan bump (regeln står i platform.ts), och
+  // då betecknar samma nummer två olika texter — varpå frågan "vad accepterade
+  // kunden" inte går att besvara i efterhand. Hashen fanns redan i manifestet
+  // (LEGAL_DOCUMENT_HASHES); den skrevs bara aldrig in i acceptansraden.
+  //
+  // Integritetspolicyn journalfördes inte alls, trots att registreringsrutan
+  // säger "Användarvillkor OCH Integritetspolicy".
+  //
+  // NULL BETYDER "ACCEPTERAD FÖRE FÄLTET FANNS" — inte "okänd text" och inte
+  // "ingen policy". Raderna som skrevs före den här migrationen kan inte
+  // efterkonstrueras: manifestet bär dagens hash, inte den som gällde då.
+  // Fälten är därför nullbara utan sentinel. CLAUDE.md:s regel om nullbara
+  // kolumner gäller UNIKA VILLKOR — här finns inget, så två NULL kan inte
+  // kollidera och ingen semantik går förlorad.
+  termsHash      String?
+  privacyVersion String?
+  privacyHash    String?
 
   users                     User[]
   properties                Property[]
@@ -882,6 +902,26 @@ model User {
   // versionen är lägre än CURRENT_TERMS_VERSION.
   acceptedTermsAt DateTime?
   termsVersion    String?
+  // ── #577: VILKEN TEXT, INTE BARA VILKET NUMMER ──────────────────────────
+  //
+  // `termsVersion` säger vilket NUMMER kunden godkände, inte vilken TEXT. En
+  // redaktionell ändring är tillåten utan bump (regeln står i platform.ts), och
+  // då betecknar samma nummer två olika texter — varpå frågan "vad accepterade
+  // kunden" inte går att besvara i efterhand. Hashen fanns redan i manifestet
+  // (LEGAL_DOCUMENT_HASHES); den skrevs bara aldrig in i acceptansraden.
+  //
+  // Integritetspolicyn journalfördes inte alls, trots att registreringsrutan
+  // säger "Användarvillkor OCH Integritetspolicy".
+  //
+  // NULL BETYDER "ACCEPTERAD FÖRE FÄLTET FANNS" — inte "okänd text" och inte
+  // "ingen policy". Raderna som skrevs före den här migrationen kan inte
+  // efterkonstrueras: manifestet bär dagens hash, inte den som gällde då.
+  // Fälten är därför nullbara utan sentinel. CLAUDE.md:s regel om nullbara
+  // kolumner gäller UNIKA VILLKOR — här finns inget, så två NULL kan inte
+  // kollidera och ingen semantik går förlorad.
+  termsHash      String?
+  privacyVersion String?
+  privacyHash    String?
 
   organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   refreshTokens           RefreshToken[]
