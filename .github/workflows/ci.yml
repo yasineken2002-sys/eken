@@ -735,6 +735,40 @@ jobs:
       - name: Verify every scanner mode has a canary that can fail
         run: node apps/api/scripts/check-source-scan-canaries.mjs
 
+  identifier-regex-guard:
+    name: Identifier regex ASCII ratchet
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # SPÄRR, inte uppräkning. `\w`, `\b` och `[A-Za-z_$]` är ASCII-definierade,
+      # och en vakt som HÄRLEDER ett namn ur källkod går då tyst fel på svenska
+      # identifierare — MISSAD (svensk initial, hittas inte) eller KAPAD (svensk
+      # bokstav mitt i, hittas med FEL namn och OFÖRÄNDRAT antal).
+      #
+      # #713 räknade upp mängden och lagade den en vakt i taget. Mätningen
+      # 2026-09-04 visade att det inte räcker: mellan 6499be6 och 7dae737 LADE
+      # #712 till nio nya förekomster i check-sequence-allocation.mjs — samma
+      # dygn som listan dränerades. Utan spärr står nästa mätning högre än den
+      # förra, hur många poster som än lagas.
+      #
+      # Baslinjen är MEDLEMMAR (fil + mönster + antal), inte ett tal, och fäller
+      # åt BÅDA hållen: en okänd förekomst är röd, och en post som inte längre
+      # finns i koden är också röd. Den andra riktningen är den som gör spärren
+      # till en spärr — annars står en lagad förekomst kvar som accepterad och
+      # formen kan återinföras i tystnad.
+      #
+      # fs-only, inga beroenden, ingen DB.
+      - name: Self-test the guard (MISSAD/KAPAD, both directions, keyword rule, views)
+        run: node apps/api/scripts/check-identifier-regex.mjs --self-test
+
+      - name: Verify no new ASCII identifier derivations
+        run: node apps/api/scripts/check-identifier-regex.mjs
+
   guard-preprocessor-guard:
     name: Guard preprocessor single-source guard
     runs-on: ubuntu-latest
@@ -1797,6 +1831,7 @@ jobs:
       - pdf-selfcontained-guard
       - guard-preprocessor-guard
       - source-scan-canary-guard
+      - identifier-regex-guard
       - cron-error-sink-guard
       - mail-id-provenance-guard
       - enqueue-cron-context-guard
