@@ -285,6 +285,109 @@ describe('BANKID_ENABLED fail-fastar utan PII-nycklar', () => {
 })
 
 /**
+ * PSD2_PROVIDER=mock — samma spärr som BankID:s, och den behövs av ett SKARPARE skäl.
+ *
+ * BankID:s mock intygar en påhittad identitet. PSD2:s mock matar påhittade
+ * BANKTRANSAKTIONER genom `ingestFromApi` — samma väg som en riktig bank — och
+ * de raderna kan matchas mot riktiga avier och därmed mot bokföringen. En mock
+ * som slog igenom i produktion hade alltså skrivit fiktiva betalningar i en
+ * kunds avstämning, inte bara släppt in fel person.
+ *
+ * Proven ligger här och inte bara i `psd2.module.spec.ts` av samma skäl som
+ * BankID:s: factoryn fäller vid DI-bygget, valideringen vid ConfigModule, och
+ * valideringen gör det OBEROENDE av PSD2_ENABLED.
+ */
+describe('PSD2_PROVIDER=mock vägrar produktion, oberoende av flaggan', () => {
+  const saved = { ...process.env }
+  let warnSpy: jest.SpyInstance
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+  afterEach(() => {
+    warnSpy.mockRestore()
+    for (const k of RENSADE_KEYS) delete process.env[k]
+    // PSD2_MOCK_SCENARIO ligger med FLIT utanför RENSADE_KEYS (se provet nedan),
+    // och `boot` skriver varje fixturnyckel in i process.env. Utan den här raden
+    // hade ett scenariovärde alltså blivit kvar efter provet som satte det —
+    // precis den läckform mängden finns för att stänga, fast åt andra hållet.
+    delete process.env.PSD2_MOCK_SCENARIO
+    Object.assign(process.env, saved)
+  })
+
+  it('mock i PRODUKTION → boot faller, och meddelandet NÄMNER PSD2', async () => {
+    // Båda fallen prövas: en miljö som bär variabeln är felkonfigurerad redan när
+    // den sätts. Vore kontrollen inne i flagg-grenen hade felet upptäckts först
+    // den dag någon tände PSD2_ENABLED — och då är den fria variabeln redan
+    // deployad.
+    await expect(boot({ ...FULL_PROD, PSD2_PROVIDER: 'mock' })).rejects.toThrow(
+      /\[psd2\] PSD2_PROVIDER=mock.*NODE_ENV=production/s,
+    )
+    await expect(
+      boot({
+        ...FULL_PROD,
+        PSD2_ENABLED: 'true',
+        PSD2_TOKEN_KEY: 'b'.repeat(64),
+        PSD2_PROVIDER: 'mock',
+      }),
+    ).rejects.toThrow(/\[psd2\] PSD2_PROVIDER=mock.*NODE_ENV=production/s)
+  })
+
+  it('bara exakt "mock" — allt annat faller åt det säkra hållet', async () => {
+    // Kanariefågeln till provet ovan: utan den går det inte att skilja "regeln
+    // träffar rätt värde" från "fixturen fäller boot av något annat skäl".
+    for (const värde of ['MOCK', 'Mock', 'true', '']) {
+      await expect(boot({ ...FULL_PROD, PSD2_PROVIDER: värde })).resolves.toBeUndefined()
+    }
+  })
+
+  it('mock i DEV går igenom — det är hela poängen med vägen', async () => {
+    await expect(boot({ NODE_ENV: 'development', PSD2_PROVIDER: 'mock' })).resolves.toBeUndefined()
+  })
+
+  it('BANKID:s och PSD2:s mock-spärrar är två grenar, inte en', async () => {
+    // De har samma form och skulle kunna slås ihop. Att de inte är det syns bara
+    // om varje variabel fälls av SITT eget meddelande — annars hade en gemensam
+    // gren kunnat rapportera fel funktion, och den som läser loggen letat i fel
+    // modul. Samma resonemang som SIGNING_ENABLED/BANKID_ENABLED ovan.
+    await expect(boot({ ...FULL_PROD, PSD2_PROVIDER: 'mock' })).rejects.toThrow(/\[psd2\]/)
+    await expect(boot({ ...FULL_PROD, PSD2_PROVIDER: 'mock' })).rejects.not.toThrow(/\[bankid\]/)
+    await expect(boot({ ...FULL_PROD, BANKID_PROVIDER: 'mock' })).rejects.toThrow(/\[bankid\]/)
+    await expect(boot({ ...FULL_PROD, BANKID_PROVIDER: 'mock' })).rejects.not.toThrow(/\[psd2\]/)
+  })
+
+  it('rensningsmängden tar med PSD2_PROVIDER — den kan FÄLLA en boot', () => {
+    // Samma egenskap som #689 krävde av BANKID_PROVIDER: en utvecklare som har
+    // PSD2_PROVIDER=mock i sin miljö för att köra bankkopplingens UI lokalt hade
+    // annars sett prod-fixturerna ovan falla med ett meddelande om ett värde
+    // testet aldrig valde. Exakt formen #685 dokumenterar.
+    expect(RENSADE_KEYS).toContain('PSD2_PROVIDER')
+    // …och att den inte råkade komma med via någon ANNAN väg, vilket hade gjort
+    // provet grönt av fel skäl.
+    expect([...PLACEHOLDER_CHECKED_VARS, ...SECRET_FORM_VARS]).not.toContain('PSD2_PROVIDER')
+    expect(CRITICAL_KEYS).not.toContain('PSD2_PROVIDER')
+  })
+
+  it('PSD2_MOCK_SCENARIO står MEDVETET utanför mängden — validateEnv läser den inte', () => {
+    // Den omvända riktningen, och den är inte pedanteri: mängden heter
+    // "varje variabel validateEnv läser", och en nyckel som ingen läser gör
+    // namnet osant. Att den är utanför ska vara ett BESLUT, inte ett glapp —
+    // därför står det som ett prov och inte bara som en kommentar.
+    //
+    // Kanariefågeln till påståendet: scenariot får inte kunna fälla en
+    // produktionsboot, ens med ett trasigt värde. Kan det inte det, hör det
+    // heller inte hemma i rensningsmängden.
+    expect(RENSADE_KEYS).not.toContain('PSD2_MOCK_SCENARIO')
+  })
+
+  it('…och ett trasigt scenario fäller ingen boot (belägget för raden ovan)', async () => {
+    await expect(
+      boot({ ...FULL_PROD, PSD2_MOCK_SCENARIO: 'inte-ett-scenario' }),
+    ).resolves.toBeUndefined()
+  })
+})
+
+/**
  * ── KANARIEFÅGEL: mäter rensningen fortfarande något? ────────────────────────
  *
  * `RENSADE_KEYS` ovan HÄRLEDS ur `PLACEHOLDER_CHECKED_VARS ∪ SECRET_FORM_VARS`

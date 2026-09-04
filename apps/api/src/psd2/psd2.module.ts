@@ -11,7 +11,7 @@ import { Psd2SyncQueue, PSD2_SYNC_QUEUE } from './psd2-sync.queue'
 import { Psd2SyncWorker } from './psd2-sync.worker'
 import { BankConsentCryptoService } from './bank-consent-crypto.service'
 import { PSD2_PROVIDER } from './psd2.types'
-import { StubBankDataProvider } from './providers/stub-bank-data.provider'
+import { psd2ProviderFactory } from './psd2-provider.factory'
 
 /**
  * PSD2-bankkopplingsmodulen. Flaggan `PSD2_ENABLED` känns till på EXAKT ett ställe:
@@ -22,6 +22,7 @@ import { StubBankDataProvider } from './providers/stub-bank-data.provider'
  *   inert; ingen sync enqueueas, inget samtycke kan skapas).
  * - `PSD2_ENABLED` == 'true' → fail-fast: token-krypto krävs, och skarp adapter
  *   (Enable Banking/Tink) levereras först i P3. Går alltså inte att aktivera i P2.
+ *   Undantaget är mock-vägen nedan, som bara finns utanför produktion.
  *
  * DI-SPÄRR: modulen importerar ReconciliationModule (för den härdade ingestFromApi-
  * seamen) men ALDRIG AccountingModule — PSD2-koden kan strukturellt inte röra
@@ -44,20 +45,7 @@ import { StubBankDataProvider } from './providers/stub-bank-data.provider'
     BankConsentCryptoService,
     {
       provide: PSD2_PROVIDER,
-      useFactory: (config: ConfigService, crypto: BankConsentCryptoService) => {
-        const enabled = config.get<string>('PSD2_ENABLED') === 'true'
-        if (!enabled) return new StubBankDataProvider()
-
-        // Fail-closed: flaggan på men förutsättningar saknas → krascha vid boot,
-        // aldrig en halvkonfigurerad bankkoppling i produktion.
-        if (!crypto.configured) {
-          throw new Error('[psd2] PSD2_ENABLED=true men PSD2_TOKEN_KEY saknas/ogiltig — fail-fast.')
-        }
-        throw new Error(
-          '[psd2] PSD2_ENABLED=true men ingen skarp bank-data-adapter är konfigurerad. ' +
-            'Enable Banking/Tink-adaptern levereras i P3 (kräver avtal/nycklar).',
-        )
-      },
+      useFactory: psd2ProviderFactory,
       inject: [ConfigService, BankConsentCryptoService],
     },
   ],

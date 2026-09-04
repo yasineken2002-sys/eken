@@ -16,7 +16,7 @@ två av dem är byggda och väntar på driftsättning, och bara delar av dem gat
 | ---------------------- | ------------------------------------------------- | ---------------------------------------- |
 | DB-backup              | **DELVIS** — mekanism klar och bevisad, drift av  | backup-env i prod: noll satta            |
 | BankID-inloggning      | **DELVIS** — allt utom den skarpa adaptern        | RP/broker-avtal (orgnr)                  |
-| Bankkoppling (PSD2)    | **DELVIS** — P0–P2 i main, P3 saknas              | aggregatoravtal (orgnr) + all frontend   |
+| Bankkoppling (PSD2)    | **DELVIS** — P0–P2 + frontend i main, P3 saknas   | aggregatoravtal (orgnr)                  |
 | Juridisk slutgenomgång | **DELVIS** — texter finns, genomgången inte gjord | orgnummer i texterna + extern granskning |
 
 **DB-backup — DELVIS.** `apps/api/src/backup/`: `runBackup`
@@ -72,12 +72,37 @@ filer: fem endpoints (`psd2.controller.ts:20`), samtycke med krypterade tokens
 serverside och aldrig ur callback-queryn (`Psd2ConsentState`, `:2403`),
 Bull-baserad sync och sex specar. Allt inert bakom `PSD2_ENABLED`, med
 DI-spärren att modulen aldrig får importera `AccountingModule`
-(`psd2.module.ts:24`). Vad som saknas: (1) **P3, den skarpa adaptern** —
-`psd2.module.ts:51` kastar uttryckligen att den levereras i P3 och kräver
-avtal/nycklar, så flaggan går inte ens att slå på, (2) **all frontend** (mätt:
-noll träffar på PSD2 i `apps/web/src` och `apps/admin/src`), (3) `PSD2_ENABLED`
-och `PSD2_TOKEN_KEY`. **Gatas** av aggregatoravtal — men samtyckesvyn går att
-bygga mot mock-providern nu, så P3 blir ett adapterbyte.
+(`psd2.module.ts:24`).
+
+**Frontend är byggd** (PR 1, den här). `/reconciliation/settings` —
+`BankConnectionPage` med samtyckeslista, anslut, synk och återkallelse, plus ett
+ingångskort på avstämningssidan. Raden ovan sa "all frontend saknas" med
+mätningen "noll träffar på PSD2 i `apps/web/src`"; den mätningen stämde när den
+gjordes. Adressen är inte fri: `PSD2_APP_RETURN_URL` defaultar till
+`…/reconciliation/settings`, och rutten fanns inte, så en lyckad callback landade
+på catch-all-sidan.
+
+Med den kom också **mock-vägen**: `psd2-provider.factory.ts` har fyra utfall i
+stället för två, och `PSD2_PROVIDER=mock` väljer `MockBankDataProvider` utanför
+produktion (`psd2-provider-mode.ts`, formen från BankID #745 PR 3).
+`PSD2_MOCK_SCENARIO=active|expired|revoked|error` styr vad mocken spelar upp;
+`active` ger tre fasta transaktioner genom `ingestFromApi`. `validateEnv` fäller
+boot på `PSD2_PROVIDER=mock` i produktion **oberoende av `PSD2_ENABLED`** — en
+mock som slog igenom skarpt hade skrivit fiktiva betalningar i en kunds
+avstämning, inte bara valt fel provider.
+
+Vad som saknas: (1) **P3, den skarpa adaptern** — `psd2-provider.factory.ts`
+kastar uttryckligen att den levereras i P3 och kräver avtal/nycklar, så flaggan
+går inte att slå på skarpt, (2) `PSD2_ENABLED` och `PSD2_TOKEN_KEY` i prod,
+(3) e2e mot Mock (PR 2). **Gatas** av aggregatoravtal — men bara adaptern; P3 är
+numera ett adapterbyte, allt annat är byggt och prövbart mot mocken.
+
+> Ett känt hål i P2:s sync, upptäckt när `error`-scenariot byggdes och MEDVETET
+> inte lagat här: `psd2-sync.service.ts` skriver `status === 'REVOKED' ?
+'REVOKED' : 'EXPIRED'`, så ett samtycke som banken rapporterar som `ERROR`
+> lagras som `EXPIRED`. `BankConsentStatus.ERROR` finns i schemat och renderas av
+> UI:t, men är i dag bara nåbar via en direkt DB-skrivning — och operatören får
+> texten "Utgången" om något som faktiskt är ett fel.
 
 **Juridisk slutgenomgång — DELVIS.** Tre policydokument finns i `docs/legal/`,
 renderade i `apps/web/src/features/legal/` och `apps/portal/`. Versionsstyrningen
