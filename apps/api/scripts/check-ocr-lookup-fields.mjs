@@ -102,7 +102,7 @@ export function gateResultVars(text) {
   // KOD: en tilldelning som bara står i en kommentar binder ingen variabel.
   return [
     ...codeMask(text).matchAll(
-      new RegExp(`(?:const|let|var)\\s+(\\w+)\\s*=\\s*await\\s+${GATE}\\s*\\(`, 'g'),
+      new RegExp(`(?:const|let|var)\\s+([\\p{L}\\p{N}_$]+)\\s*=\\s*await\\s+${GATE}\\s*\\(`, 'gu'),
     ),
   ].map((m) => m[1])
 }
@@ -120,7 +120,7 @@ export function isGovernedByGate(text, idx, gateVars) {
   // inget villkor, och fick aldrig kunna intyga att uppslaget är grindat.
   const fönster = codeMask(text).slice(Math.max(0, idx - 400), idx)
   return gateVars.some((v) =>
-    new RegExp(`(?:!\\s*${v}\\b|\\b${v}\\s*(?:\\?|&&|\\|\\|))`).test(fönster),
+    new RegExp(`(?:!\\s*(?<![\\p{L}\\p{N}_$])${v}(?![\\p{L}\\p{N}_$])|(?<![\\p{L}\\p{N}_$])${v}(?![\\p{L}\\p{N}_$])\\s*(?:\\?|&&|\\|\\|))`, 'u').test(fönster),
   )
 }
 
@@ -155,7 +155,7 @@ export function findOcrLookups(text) {
 
     // Modellen: närmaste `.<modell>.find…(` bakåt.
     const före = kod.slice(Math.max(0, m.index - 400), m.index)
-    const modellMatch = [...före.matchAll(/\.\s*([\p{L}\p{N}_$]+)\s*\.\s*find\w*\s*\(/gu)].pop()
+    const modellMatch = [...före.matchAll(/\.\s*([\p{L}\p{N}_$]+)\s*\.\s*find[\p{L}\p{N}_$]*\s*\(/gu)].pop()
     const modell = modellMatch ? modellMatch[1] : null
 
     for (const f of new Set(fält)) {
@@ -304,7 +304,7 @@ function selfTest() {
     // hade den fortsatt ge rätt ANTAL poster — men blanktecken, och
     // `system.includes(nyckel)` hade aldrig mer blivit sant.
     const r = parseRegistry(IDENTITY_OK, 'SYSTEM_ASSIGNED_OCR_FIELDS') ?? []
-    if (r.length === 0 || r.some((f) => !/[A-Za-z]/.test(f))) {
+    if (r.length === 0 || r.some((f) => !/[\p{L}]/u.test(f))) {
       fail(`registret gav ${JSON.stringify(r)} — masken har blankat stränginnehållet`)
     } else console.log(`✅ registret bär riktiga fältnamn: ${r.join(', ')}`)
   }
@@ -509,6 +509,64 @@ const invoice = !identitet
     const s2 = 'await prisma.förvaltning.findFirst({ where: { förvaltningsId: rawOcr } })'
     if (!ur(s2).includes('förvaltning') || ur(s2).includes('"rvaltning"')) fail('#668 KAPAD: ASCII-svansen fångades i stället för hela namnet')
     else console.log('✅ #668 KAPAD: hela namnet fångas, inte svansen')
+  }
+
+  // ── #713: DE TRE STÄLLEN #668:s KANARIEFÅGLAR INTE TÄCKTE ────────────────
+  //
+  // Proven ovan skyddar modell- och fältHÄRLEDNINGEN. De säger ingenting om
+  // GRINDEN, och det är mätt: fyra riktade mutationer av de ställen som lagades
+  // i #713 lämnade alla självtestet GRÖNT. Namngivna negativkontroller skyddar
+  // mot specifika återfall — de upptäcker inte att en ANNAN mekanism gått blind.
+  {
+    // (a) Grindens RESULTATVARIABEL. Uppmätt mot origin/main:
+    //       const ärIdentitet = await harSystemtilldelatOcr(x)   → []
+    //       const identitetFörAvi = await harSystemtilldelatOcr(x) → []
+    //     Ingen resultatvariabel ⇒ INGET uppslag kan räknas som grindat, och
+    //     varje fritextuppslag i filen rapporteras som ogrindat. Falsklarm.
+    const gv = (namn) => gateResultVars(`const ${namn} = await ${GATE}(x)`)
+    if (gv('ärIdentitet').join() !== 'ärIdentitet')
+      fail(`#713 (a) MISSAD: resultatvariabel med svensk INITIAL — ${JSON.stringify(gv('ärIdentitet'))}`)
+    else console.log('✅ #713 (a) MISSAD: grindens resultatvariabel med svensk initial härleds')
+    if (gv('identitetFörAvi').join() !== 'identitetFörAvi')
+      fail(`#713 (a) MISSAD: resultatvariabel med svenskt tecken MITT i — ${JSON.stringify(gv('identitetFörAvi'))}`)
+    else console.log('✅ #713 (a) MISSAD: svenskt tecken mitt i resultatvariabeln')
+    if (gv('ok').join() !== 'ok') fail('#713 (a) MOTPROV: ren ASCII slutade härledas')
+
+    // (b) GRINDFÖNSTRET, båda riktningarna. Uppmätt mot origin/main:
+    //       if (ärOk && x)      v=ärOk  →  false   MISSAD, uppslaget läses som ogrindat
+    //       if (denPåok && x)   v=ok    →  true    FALSK GRÖN, ett ANNAT namn
+    //                                              intygade att grinden styrde
+    //     Den andra är den farliga: fritext bakom en grind som inte finns.
+    const fönster = (rad) => `${rad}\nconst r = await tx.rentNotice.findFirst({ where: { ocrNumber: rawOcr } })`
+    const k1 = fönster('if (ärOk && x) return')
+    if (!isGovernedByGate(k1, k1.indexOf('where'), ['ärOk']))
+      fail('#713 (b) MISSAD: villkor på en variabel med svensk initial räknas inte som grind')
+    else console.log('✅ #713 (b) MISSAD: grindvillkor med svensk initial ses')
+    const k2 = fönster('if (denPåok && x) return')
+    if (isGovernedByGate(k2, k2.indexOf('where'), ['ok']))
+      fail('#713 (b) FALSK GRÖN: `denPåok` intygade att grinden `ok` styrde uppslaget')
+    else console.log('✅ #713 (b) FALSK GRÖN: ett annat namn intygar inte grinden')
+    const k3 = fönster('if (xok && x) return')
+    if (isGovernedByGate(k3, k3.indexOf('where'), ['ok']))
+      fail('#713 (b) MOTPROV: ASCII-delsträng intygade grinden')
+
+    // (c) FIND-METODENS SUFFIX. `find\w*` är ASCII, så en hjälpare som heter
+    //     `findFörsta` gjorde MODELLEN ohärledbar. Uppmätt: [null] mot
+    //     ["rentNotice"] — fyndet nycklas då `?.ocrNumber` och kan inte knytas
+    //     till sin modell.
+    const modellUr = (metod) =>
+      findOcrLookups(`const r = await tx.rentNotice.${metod}({ where: { ocrNumber: rawOcr } })`).map((t) => t.modell)
+    if (modellUr('findFörsta').join() !== 'rentNotice')
+      fail(`#713 (c) MISSAD: find-metod med svenskt tecken gör modellen ohärledbar — ${JSON.stringify(modellUr('findFörsta'))}`)
+    else console.log('✅ #713 (c) MISSAD: find-metod med svenskt tecken bryter inte modellhärledningen')
+    if (modellUr('findFirst').join() !== 'rentNotice') fail('#713 (c) MOTPROV: findFirst slutade fungera')
+
+    // (d) Den fjärde lagningen — `!/[A-Za-z]/` → `!/[\p{L}]/u` på rad ~307 —
+    //     står MEDVETET utan kanariefågel. Den är en rimlighetskontroll INNE i
+    //     självtestet: den påstår att registret bär riktiga fältnamn, och den
+    //     kan bara falla om registret i trädet ändras. Ett prov för den hade
+    //     mätt fixturen, inte vakten. Det står här så att frånvaron är ett
+    //     beslut och inte ett förbiseende.
   }
 
   process.exit(ok ? 0 : 1)

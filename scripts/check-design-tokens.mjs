@@ -120,7 +120,7 @@ const TW_ARBITRARY_RE = /-\[#[0-9a-fA-F]{3,8}\]/g
 // `_` och `r` står två ordtecken, alltså ingen ordgräns, alltså ingen match: hela
 // familjen rgba-i-arbitrary har varit osynlig för grinden. Primärknappens blå skugga
 // låg där. `(?<![a-zA-Z0-9])` släpper igenom efter `_` men fångar inte `myrgb(`.
-const COLOR_FN_RE = /(?<![a-zA-Z0-9])(?:rgba?|hsla?)\(\s*(?:[^()]|\([^()]*\))*\)/g
+const COLOR_FN_RE = /(?<![\p{L}\p{N}])(?:rgba?|hsla?)\(\s*(?:[^()]|\([^()]*\))*\)/gu
 
 /**
  * Inline-undantag:
@@ -137,7 +137,7 @@ const COLOR_FN_RE = /(?<![a-zA-Z0-9])(?:rgba?|hsla?)\(\s*(?:[^()]|\([^()]*\))*\)
 export function isTokenizedColorFn(text) {
   const args = text.slice(text.indexOf('(') + 1, text.lastIndexOf(')'))
   if (!/var\(\s*--ev-/.test(args)) return false
-  const withoutVars = args.replace(/var\(\s*--ev-[a-z0-9-]+\s*\)/g, '')
+  const withoutVars = args.replace(/var\(\s*--ev-[\p{Ll}\p{N}-]+\s*\)/gu, '')
   return /^[\s,/]*(?:0?\.\d+|[01](?:\.\d+)?|\d{1,3}%)?[\s,/]*$/.test(withoutVars)
 }
 
@@ -312,8 +312,8 @@ const COLOR_UTILITY_PREFIXES =
  * på precis det tokensystem regeln finns för att skydda.
  */
 const FAMILY_CLASS_RE = new RegExp(
-  `(?<![\\w-])(?:${COLOR_UTILITY_PREFIXES})-(${TAILWIND_STOCK_FAMILIES.join('|')})-\\d{2,3}(?![\\w-])`,
-  'g',
+  `(?<![\\p{L}\\p{N}_-])(?:${COLOR_UTILITY_PREFIXES})-(${TAILWIND_STOCK_FAMILIES.join('|')})-\\d{2,3}(?![\\p{L}\\p{N}_-])`,
+  'gu',
 )
 
 /**
@@ -356,7 +356,7 @@ const NO_TAILWIND_APPS = [
 export function mappedFamiliesFrom(configText) {
   const stripped = stripComments(configText, '.ts')
   const found = new Set()
-  for (const m of stripped.matchAll(/([A-Za-z_$][\w$]*)\s*:\s*evenoScales\s*\.\s*([\w$]+)/g)) {
+  for (const m of stripped.matchAll(/([\p{L}\p{N}_$]+)\s*:\s*evenoScales\s*\.\s*([\p{L}\p{N}_$]+)/gu)) {
     found.add(m[1])
   }
   return found
@@ -1319,6 +1319,54 @@ const css = 'color: var(--ev-neutral-500)'
       return d.regressions.length === 0 && d.stale.length === 0 && d.unknowns.length === 0
     })(),
     JSON.stringify(diffAllowlist(tokenState.files, tokenBase.files ?? {})).slice(0, 200),
+  )
+
+  // ── #713: IDENTIFIERARE OCH KLASSNAMN ÄR INTE ASCII ─────────────────────
+  //
+  // Fyra mönster var ASCII-begränsade: familjemappningen ur tailwind.config,
+  // klassavgränsningen, färgfunktionens lookbehind och `var(--ev-*)`-formen.
+  // Två av dem är MÄTBART fel, åt var sitt håll — uppmätt mot origin/main:
+  //
+  //   MISSAD          { grå: evenoScales.neutral }   →  []
+  //       En familj med svenskt namn syns inte som MAPPAD, och varje
+  //       användning av den rapporteras då som en ostyrd stock-familj.
+  //
+  //   FALSK POSITIV   "påtext-gray-500"              →  ["gray"]
+  //       `(?<![\w-])` släpper igenom efter `å`, så en sträng som INTE är en
+  //       Tailwind-klass rapporterades som familjeanvändning. Vakten är
+  //       blockerande i CI; ett falsklarm här stoppar en PR på en klass som
+  //       inte finns.
+  //
+  // De två övriga (färgfunktionens lookbehind, `--ev-*`-formen) är HÄRDNING:
+  // ingen mätbar skillnad i dag, eftersom tokennamnen och `rgb(`/`hsl(` är
+  // ASCII per specifikation. De byttes ändå — samma form, samma risk, och en
+  // vakt där hälften av mönstren är unicode och hälften inte är svårare att
+  // resonera om än en där alla är det.
+  t(
+    '#713 MISSAD: familj med svenskt namn ses som mappad',
+    [...mappedFamiliesFrom('module.exports = { grå: evenoScales.neutral }')].join() === 'grå',
+    JSON.stringify([...mappedFamiliesFrom('module.exports = { grå: evenoScales.neutral }')]),
+  )
+  t(
+    '#713 MOTPROV: ASCII-familjen mappas som förut',
+    [...mappedFamiliesFrom('module.exports = { gray: evenoScales.neutral }')].join() === 'gray',
+  )
+  {
+    const fam = (kod) => scanFamilies(kod, 'apps/web/src/zz.tsx').map((m) => m.family)
+    t('#713 MOTPROV: en riktig klass fångas fortfarande',
+      fam('const c = "text-gray-500"').join() === 'gray', JSON.stringify(fam('const c = "text-gray-500"')))
+    t('#713 FALSK POSITIV: `påtext-gray-500` är ingen Tailwind-klass',
+      fam('const c = "påtext-gray-500"').length === 0,
+      JSON.stringify(fam('const c = "påtext-gray-500"')))
+    t('#713 MOTPROV: ASCII-delsträng räknas inte heller',
+      fam('const c = "xtext-gray-500"').length === 0)
+    t('#713 MOTPROV: en svensk bokstav EFTER klassen räknas inte',
+      fam('const c = "text-gray-500ä"').length === 0,
+      JSON.stringify(fam('const c = "text-gray-500ä"')))
+  }
+  t(
+    '#713 MOTPROV: kanalformen rgb(var(--ev-…)/α) är fortfarande tokeniserad',
+    isTokenizedColorFn('rgb(var(--ev-brand-500-ch) / 0.12)') === true,
   )
 
   // Den DELADE skannerns kanariefåglar. Bryts scripts/lib/source-scan.mjs blir

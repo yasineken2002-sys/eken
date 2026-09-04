@@ -571,19 +571,33 @@ function självtest() {
     )
   }
 
-  // ── KANARIE 8: mängden är inte tom ────────────────────────────────────────
+  // ── KANARIE 8: INSTRUMENTET mäter något — inte baslinjen ─────────────────
   //
-  // En baslinje på noll hade varit grön och betytt ingenting. Golvet är mätt
-  // mot dagens main, inte gissat.
+  // ⚠️ GOLVET LÅG FÖRST PÅ BASLINJENS STORLEK (>= 40 förekomster, >= 5 filer),
+  // mätt mot main när spärren byggdes. Det var FEL, och felet upptäcktes när
+  // dräneringen passerade det: baslinjen är byggd för att KRYMPA MOT NOLL, så
+  // ett golv på dess storlek blockerar förr eller senare precis det arbete
+  // spärren finns för att möjliggöra. Uppmätt 2026-09-04: vid 38 förekomster
+  // blev självtestet rött utan att något var trasigt.
+  //
+  // Ett golv ska ligga på det som INTE ska krympa. Här är det KORPUSEN och
+  // FORMERNA — slutar vakten läsa filer, eller töms FORMER, blir den grön för
+  // allt, och DET är det tysta läget. Att spärren fortfarande FÄLLER en ny
+  // härledning bevisas av KANARIE 2, inte av ett tal.
   kräv(
-    'KANARIE 8 (baslinjen mäter något)',
-    bas.mätt.förekomster >= 40,
-    `bara ${bas.mätt.förekomster} förekomster — har korpusen eller FORMER tömts?`,
+    'KANARIE 8 (korpusen läses)',
+    bas.mätt.filer >= 40,
+    `bara ${bas.mätt.filer} vaktskript lästa — korpusen har krympt eller katalogerna bytt namn`,
   )
   kräv(
-    'KANARIE 8 (mer än en handfull filer bär formen)',
-    new Set((laddaBaslinje().poster ?? []).map((p) => p.fil)).size >= 5,
-    'färre än fem filer i baslinjen',
+    'KANARIE 8 (formerna finns kvar)',
+    FORMER.length >= 7,
+    `bara ${FORMER.length} former kvar i definitionen`,
+  )
+  kräv(
+    'KANARIE 8 (varje form har ett prov)',
+    FORMER.every((f) => f.prov instanceof RegExp),
+    'en form saknar prov',
   )
 
   if (fel.length) {

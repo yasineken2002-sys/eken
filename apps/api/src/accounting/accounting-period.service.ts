@@ -24,6 +24,7 @@ import {
   appendPeriodReopenedEvent,
   findFiscalYearClose,
   fiscalYearLabel,
+  getFiscalYearCloses,
   getClosedFiscalYears,
   getClosedPeriodStates,
   getPeriodHistory,
@@ -115,6 +116,14 @@ export interface PeriodDetail {
   fiscalYearEnd: string
   /** Falskt om räkenskapsårsspärren stänger dörren — roll/kategori avgörs vid POST. */
   withinReopenWindow: boolean
+  /**
+   * Är RÄKENSKAPSÅRET stängt (#704)? Då är återöppning av månaden meningslös:
+   * årsspärren fäller varje verifikat oavsett månadens tillstånd, och året går
+   * inte att öppna igen. Dialogen förklarar i stället för att erbjuda.
+   */
+  fiscalYearClosed: boolean
+  /** `2026` vid kalenderår, `2026/2027` vid brutet — för texten i dialogen. */
+  fiscalYearLabel: string
 }
 
 /**
@@ -609,6 +618,16 @@ export class AccountingPeriodService {
     const startMonth = org?.fiscalYearStartMonth ?? 1
     const window = this.reopenWindow(year, month, startMonth)
 
+    // ÅRETS LÅSNING HÖR TILL UNDERLAGET (#704 PR 3). Ett stängt räkenskapsår kan
+    // inte öppnas — det finns ingen väg att ta bort en `FiscalYearClose`-rad —
+    // och en återöppning av en månad i ett sådant år skulle därför lyckas utan
+    // att göra någon skillnad: årsspärren fäller varje verifikat ändå.
+    //
+    // Fältet finns för att dialogen ska kunna FÖRKLARA det i stället för att
+    // erbjuda en handling vars effekt är noll. Att grinden håller är backendens
+    // sak; att användaren förstår varför är den här radens.
+    const årsstängning = await findFiscalYearClose(this.prisma, organizationId, window.fiscalYear)
+
     return {
       year,
       month,
@@ -622,6 +641,8 @@ export class AccountingPeriodService {
       fiscalYear: window.fiscalYear,
       fiscalYearEnd: window.lastDay.toISOString().slice(0, 10),
       withinReopenWindow: window.within,
+      fiscalYearClosed: årsstängning != null,
+      fiscalYearLabel: fiscalYearLabel(window.fiscalYear, startMonth),
     }
   }
 
@@ -1166,6 +1187,71 @@ export class AccountingPeriodService {
   // skulle en ännu oreglerad skuld tystas bort ur balansräkningen. Ett kvarstående
   // saldo på 2611/2641/2650 efter stängning är RÄTT UTFALL, inte ett tecken på
   // att något saknas.
+
+  /**
+   * ÖVERSIKT PER RÄKENSKAPSÅR (#704 PR 3) — underlaget till korten i webben.
+   *
+   * ── VARFÖR EN EGEN, BILLIG FRÅGA OCH INTE `previewFiscalYearClose` PER ÅR ──
+   *
+   * Förhandsvisningen räknar det FÖRESLAGNA VERIFIKATET: den läser hela
+   * kontoplanen, grupperar årets journalrader per konto och kör månad tolvs
+   * precheck. Det är rätt när någon ska bekräfta en stängning, och fel att göra
+   * tre gånger om vid varje sidladdning.
+   *
+   * Den här metoden svarar bara på vad ett KORT behöver: är året stängt, och i
+   * så fall när och med vilket verifikat — annars hur många av årets elva
+   * första månader som återstår. Två frågor mot databasen totalt, oavsett hur
+   * många år som listas.
+   *
+   * `status = 'READY'` betyder alltså "månaderna är på plats", INTE "stängningen
+   * kommer att lyckas". De dyrare förutsättningarna (kontoplanens partitioner,
+   * tidigare öppna år, månad tolvs egen precheck) prövas av förhandsvisningen
+   * när dialogen öppnas, och det är DESS `canClose` som grindar bekräftelsen.
+   * Kortets knapp öppnar en dialog; den bokför ingenting.
+   */
+  async listFiscalYears(organizationId: string, count = 3): Promise<FiscalYearOverviewItem[]> {
+    const antal = Number.isInteger(count) && count > 0 && count <= 10 ? count : 3
+    const org = await this.loadOrgForYearClose(organizationId)
+
+    // Innevarande räkenskapsår enligt svensk civil tid, och de föregående.
+    const nu = stockholmCivilDate(new Date())
+    const innevarande = nu.month >= org.fiscalYearStartMonth ? nu.year : nu.year - 1
+    const år = Array.from({ length: antal }, (_, i) => innevarande - i)
+
+    const [stängdaPerioder, stängningar] = await Promise.all([
+      getClosedPeriodStates(this.prisma, organizationId),
+      getFiscalYearCloses(this.prisma, organizationId, år),
+    ])
+    const stängdaMånader = new Set(stängdaPerioder.map(periodKeyOf))
+    const perÅr = new Map(stängningar.map((r) => [r.fiscalYear, r]))
+
+    return år.map((fiscalYear) => {
+      const bounds = fiscalYearBounds(fiscalYear, org.fiscalYearStartMonth)
+      const stängning = perÅr.get(fiscalYear)
+      const kvar = bounds.months.slice(0, 11).filter((m) => !stängdaMånader.has(periodKeyOf(m)))
+      const tolfte = bounds.months[11] as PeriodKey
+      const tolfteStängd = stängdaMånader.has(periodKeyOf(tolfte))
+
+      const status: FiscalYearStatus = stängning
+        ? 'CLOSED'
+        : kvar.length === 0 && !tolfteStängd
+          ? 'READY'
+          : 'MONTHS_PENDING'
+
+      return {
+        fiscalYear,
+        label: fiscalYearLabel(fiscalYear, org.fiscalYearStartMonth),
+        fiscalStart: bounds.fiscalStart.toISOString().slice(0, 10),
+        yearEndDate: bounds.yearEndDate.toISOString().slice(0, 10),
+        status,
+        closedAt: stängning?.closedAt.toISOString() ?? null,
+        entry: stängning?.entry ?? null,
+        monthsRemaining: kvar.map(periodKeyOf),
+        finalMonth: periodKeyOf(tolfte),
+        finalMonthClosed: tolfteStängd,
+      }
+    })
+  }
 
   /**
    * Förhandsbesked: vad skulle årsstängningen göra, och får den göras?
@@ -1741,4 +1827,31 @@ export interface FiscalYearCloseResult {
   /** Månaden som stängdes som en del av årsstängningen (årets tolfte). */
   monthClosed: PeriodKey
   checks: FiscalYearCheck[]
+}
+
+/** Vad ett räkenskapsårs-kort visar (#704 PR 3). */
+export type FiscalYearStatus =
+  /** Stängt — `closedAt` och `entry` är satta. */
+  | 'CLOSED'
+  /** Månad 1–11 stängda, månad 12 öppen. Redo att stängas, om förhandsvisningen håller. */
+  | 'READY'
+  /** Månader kvar att stänga först — eller månad 12 redan stängd för egen del. */
+  | 'MONTHS_PENDING'
+
+export interface FiscalYearOverviewItem {
+  fiscalYear: number
+  /** `2026` vid kalenderår, `2026/2027` vid brutet. */
+  label: string
+  fiscalStart: string
+  yearEndDate: string
+  status: FiscalYearStatus
+  closedAt: string | null
+  /** Årsavslutsverifikatet. `null` när inget skrevs (inget resultatkonto hade saldo). */
+  entry: { id: string; series: string; verNumber: number } | null
+  /** Vilka av årets elva första månader som återstår, `2026-03`-form. */
+  monthsRemaining: string[]
+  /** Årets sista månad, `2026-12`-form. */
+  finalMonth: string
+  /** Sant = månad tolv är redan stängd för egen del, och årsstängningen kan inte längre bokföra i den. */
+  finalMonthClosed: boolean
 }

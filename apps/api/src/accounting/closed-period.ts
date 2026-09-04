@@ -272,6 +272,49 @@ export async function findFiscalYearClose(
   return row ? { fiscalYear, closedAt: row.closedAt } : null
 }
 
+/** Ett stängt räkenskapsår med sitt avslutsverifikat — underlag för översikten. */
+export interface FiscalYearCloseWithEntry {
+  fiscalYear: number
+  closedAt: Date
+  /** `null` när inget verifikat skrevs (inget resultatkonto hade saldo). */
+  entry: { id: string; series: string; verNumber: number } | null
+}
+
+/**
+ * BULKFORM MED VERIFIKAT: de angivna årens stängningar, för översiktskortet.
+ *
+ * Skild från `getClosedFiscalYears` (som bara svarar ja/nej) därför att korten
+ * ska visa VILKET verifikat som låste året — ett revisionsspår är inte läsbart
+ * om man måste leta upp numret själv. Joinen ligger här och inte hos anroparen,
+ * av samma skäl som all annan uppslagning av periodtillstånd: en enda adress.
+ */
+export async function getFiscalYearCloses(
+  client: FiscalYearClient,
+  organizationId: string,
+  fiscalYears: readonly number[],
+): Promise<FiscalYearCloseWithEntry[]> {
+  if (fiscalYears.length === 0) return []
+  const rows = await client.fiscalYearClose.findMany({
+    where: { organizationId, fiscalYear: { in: [...fiscalYears] } },
+    select: {
+      fiscalYear: true,
+      closedAt: true,
+      journalEntry: { select: { id: true, series: true, verNumber: true } },
+    },
+  })
+  return rows.map((r) => ({
+    fiscalYear: r.fiscalYear,
+    closedAt: r.closedAt,
+    entry: r.journalEntry
+      ? {
+          id: r.journalEntry.id,
+          series: r.journalEntry.series,
+          verNumber: r.journalEntry.verNumber,
+        }
+      : null,
+  }))
+}
+
 /**
  * SKRIVNINGEN: låser räkenskapsåret (#704 PR 2).
  *
