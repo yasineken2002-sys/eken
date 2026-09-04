@@ -174,6 +174,7 @@ AiResumptionRun                 utanför: plattformens körningslogg — ingen k
 AiTenantConversation            förälder-scopad via Tenant
 AiTenantMessage                 utanför: når bara via AiTenantConversation, som är klassificerad ovan
 BankIdOrder                     utanför: auth-realm: scopas av orderRef, aldrig av sitt id; bär ingen organisation
+CronHeartbeat                   utanför: systemomfattande drift, inte kunddata: en rad per LÅSNYCKEL (t.ex. "cron:daily-backup"), aldrig per organisation. Nyckeln kommer ur koden och aldrig från en klient, så det finns inget id att gissa på — #710.
 CustomerNumberSequence          utanför: global singleton-sekvens
 FailedEmail                     utanför: systemdata, ingen kundadresserbar väg
 InspectionImage                 förälder-scopad via Inspection

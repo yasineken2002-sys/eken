@@ -27,6 +27,17 @@ import Redis from 'ioredis'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { LockService } from '../common/redis/lock.service'
 
+/**
+ * Hjärtslagsstubb (#710). `LockService` tar numera en PrismaService för att
+ * skriva CronHeartbeat. Beroendet är OBLIGATORISKT och inte valfritt med flit:
+ * en valfri sänka hade tyst tappat hjärtslaget hos varje anropare som glömde
+ * den, och tystnaden är precis det ärendet handlar om. De här proven mäter
+ * låsningen, inte hjärtslaget — det ägs av lock-heartbeat.spec.ts och
+ * cron-heartbeat.db.spec.ts.
+ */
+const hjärtslagStubb = () =>
+  ({ cronHeartbeat: { upsert: () => Promise.resolve({}) } }) as unknown as PrismaService
+
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const HAR_REDIS = Boolean(process.env.REDIS_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -50,7 +61,7 @@ medRedis('(3) LÅSET — två samtidiga körningar av ett låst jobb', () => {
     // `redis.client`, och Nest-wrappern drar in ConfigService plus en
     // felhanterare som håller processen vid liv efter att testet är klart.
     client = new Redis(process.env.REDIS_URL as string, { maxRetriesPerRequest: 2 })
-    locks = new LockService({ client } as never)
+    locks = new LockService({ client } as never, hjärtslagStubb())
   })
   afterAll(async () => {
     await client.quit()
