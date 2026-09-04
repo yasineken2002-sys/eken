@@ -70,7 +70,7 @@ export const LOOP_FILES = [
  */
 export function findOwnCapConstants(text) {
   const re =
-    /(?:const|let|var)\s+(\w*(?:ITERATION|Iteration|ROUND|Round)\w*)\s*(?::\s*number\s*)?=\s*(\d+)/g
+    /(?:const|let|var)\s+([\p{L}\p{N}_$]*(?:ITERATION|Iteration|ROUND|Round)[\p{L}\p{N}_$]*)\s*(?::\s*number\s*)?=\s*(\d+)/gu
   return [...text.matchAll(re)].map((m) => ({
     namn: m[1],
     värde: m[2],
@@ -243,6 +243,38 @@ function selfTest() {
   }
   const grön = (label, r) =>
     r.length === 0 ? console.log(`✅ inget falsklarm: ${label}`) : fail(`FALSKLARM: ${label} → ${r[0].rule}`)
+
+  // ── #713: TURTAKSKONSTANTENS NAMN ───────────────────────────────────────
+  //
+  // Regeln fäller FORMEN — ett eget turtak — och inte en uppräkning av namn,
+  // just för att den fjärde varianten ska fångas. Men namnets omgivning lästes
+  // med `\w*`, som är ASCII, så formregeln hade en ASCII-formad lucka.
+  //
+  // Uppmätt mot origin/main:
+  //
+  //   const egetIterationTak = 5     \w* → hittas (ren ASCII)
+  //   const eget_ITERATION_tak = 5   \w* → hittas
+  //   const egetIterationTäck = 5    \w* → hittas ("egetIterationT" räcker)
+  //   const förIterationTak = 5      \w* → HITTAS INTE                MISSAD
+  //   const ÅTERIterationTak = 5     \w* → HITTAS INTE                MISSAD
+  //
+  // MISSAD är FALSK GRÖN här: ett eget turtak som kringgår MAX_TOOL_ROUNDS
+  // rapporteras inte, och hela vaktens syfte är att turtaket ska vara ETT
+  // värde. Ett namn som börjar på å/ä/ö räcker för att smita förbi.
+  {
+    const namn = (kod) => findOwnCapConstants(kod).map((c) => c.namn)
+    for (const n of ['förIterationTak', 'ÅTERIterationTak', 'iterationFörTak'.replace('iteration', 'ITERATION')])
+      if (namn(`const ${n} = 5`).join() !== n)
+        fail(`#713 MISSAD: eget turtak \`${n}\` hittas inte — ${JSON.stringify(namn(`const ${n} = 5`))}`)
+    console.log('✅ #713 MISSAD: egna turtak med svenska tecken i namnet hittas')
+    // MOTPROVEN — formen får inte bli glupsk.
+    if (namn('const egetIterationTak = 5').join() !== 'egetIterationTak')
+      fail('#713 MOTPROV: ASCII-namnet slutade hittas')
+    if (namn('const nagotAnnat = 5').length !== 0)
+      fail('#713 MOTPROV: ett namn utan ITERATION/ROUND fälldes')
+    if (namn('const förIterationTak = beräkna()').length !== 0)
+      fail('#713 MOTPROV: ett namn utan TALVÄRDE fälldes')
+  }
   const röd = (label, r, väntad) => {
     if (r.length === 0) return fail(`MISSADE: ${label}`)
     if (väntad && !r.some((x) => x.rule.includes(väntad))) {
