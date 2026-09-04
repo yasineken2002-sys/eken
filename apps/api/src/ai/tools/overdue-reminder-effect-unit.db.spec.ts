@@ -186,7 +186,29 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
     await prisma.$disconnect()
   })
 
-  /** Väntar tills en körning som INTE fanns före dyker upp med stängt spår. */
+  /**
+   * Väntar tills en körning som INTE fanns före dyker upp med stängt spår.
+   *
+   * ── INVARIANTEN SOM MÅSTE HÅLLA FÖR ATT DEN HÄR SKA BETYDA NÅGOT (#742) ───
+   *
+   * Funktionen returnerar det FÖRSTA spår som inte fanns i `kändaIds`. Det är
+   * bara rätt spår om HÖGST ETT spår är i flykt när `kändaIds` togs.
+   *
+   * `executeTool` skriver sitt spår med `void this.audit.logToolExecution(...)`
+   * — fire-and-forget, på två ställen i tool-executor.service.ts. Ett test som
+   * kör verktyget utan att invänta spåret lämnar det alltså i luften, och
+   * NÄSTA test:s `kändaSpårIds()` missar det. Då är det FÖRRA testets spår som
+   * ser nytt ut, och assertionen mäter fel körning.
+   *
+   * Det var inte en farhåga: CI-körning 33875871949 föll här med
+   * `Received length: 6` — tre PaymentReminder-id två gånger vardera, alltså
+   * spåret från krasch-testets OMKÖRNING (3 påminnelser × 2 effektrader).
+   * Uppmätt mot en tom databas: spåren bär 4/2, 6/3 respektive 10/5.
+   *
+   * REGELN, som gör invarianten sann i stället för trolig: varje `executeTool`
+   * i den här filen följs av ett `väntaPåNyttSpår`. Ingen körning får lämna
+   * rummet med sitt spår i flykt.
+   */
   const väntaPåNyttSpår = async (kändaIds: Set<string>) => {
     const deadline = Date.now() + SPAR_DEADLINE_MS
     for (;;) {
@@ -238,6 +260,7 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
     // `executeTool` fångar kastet och rapporterar det som ett misslyckat
     // resultat i stället för att låta det bubbla — mätt, inte antaget. Kroppen
     // avbröts likväl mitt i loopen, och det är det tillståndet som prövas nedan.
+    const föreAvbrutet = await kändaSpårIds()
     const avbrutet = await byggExecutor(förstaMail, kraschandePrisma).executeTool(
       'send_overdue_reminders',
       {},
@@ -246,6 +269,9 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
       'OWNER',
       { actionProof: { claimed: true } },
     )
+    // Dränera: spåret ska ha landat innan testet går vidare. Se invarianten
+    // vid väntaPåNyttSpår — utan detta ärver nästa test ett spår i flykt.
+    expect(await väntaPåNyttSpår(föreAvbrutet)).not.toBeNull()
     expect(avbrutet.success).toBe(false)
     expect(avbrutet.message).toContain('KRASCH')
 
@@ -264,6 +290,7 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
 
     // ── Omkörningen ─────────────────────────────────────────────────────────
     const andraMail = bokförandeMail()
+    const föreOmkörning = await kändaSpårIds()
     const resultat = await byggExecutor(andraMail).executeTool(
       'send_overdue_reminders',
       {},
@@ -272,6 +299,7 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
       'OWNER',
       { actionProof: { claimed: true } },
     )
+    expect(await väntaPåNyttSpår(föreOmkörning)).not.toBeNull()
     expect(resultat.success).toBe(true)
 
     // INGEN dubblett: de som redan fått sitt brev får inget nytt.
@@ -294,6 +322,7 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
 
     // En TREDJE körning skickar ingenting alls.
     const tredjeMail = bokförandeMail()
+    const föreTredje = await kändaSpårIds()
     await byggExecutor(tredjeMail).executeTool(
       'send_overdue_reminders',
       {},
@@ -302,6 +331,7 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
       'OWNER',
       { actionProof: { claimed: true } },
     )
+    expect(await väntaPåNyttSpår(föreTredje)).not.toBeNull()
     expect(tredjeMail.mottagare).toHaveLength(0)
   })
 
@@ -310,6 +340,18 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
     // Den betalda fakturan faller ur `where: { status: 'OVERDUE' }`, så loopen
     // har noll mottagare.
     const föreTom = await kändaSpårIds()
+
+    // KANARIEFÅGEL PÅ INVARIANTEN (#742): inget spår får vara i FLYKT när det
+    // här testet börjar. Är ett i luften returnerar `väntaPåNyttSpår` FÖRRA
+    // testets körning, och assertionen nedan mäter fel sak — det var precis så
+    // CI föll med `Received length: 6`.
+    //
+    // Provet är riktat mot orsaken och inte mot symptomet: slutar krasch-testet
+    // dränera sina tre körningar landar ett spår under pausen och storleken
+    // växer. Utan den här raden hade en sådan ändring bara gjort sviten
+    // FLAKIG igen, alltså grön tills den råkade vara röd.
+    await new Promise((r) => setTimeout(r, 300))
+    expect((await kändaSpårIds()).size).toBe(föreTom.size)
     const tomMail = bokförandeMail()
     await byggExecutor(tomMail).executeTool(
       'send_overdue_reminders',
