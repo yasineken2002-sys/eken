@@ -122,6 +122,7 @@ describe('HealthController.check', () => {
     const result = await controller.check()
 
     expect(Object.keys(result).sort()).toEqual([
+      'cron',
       'details',
       'error',
       'info',
@@ -138,6 +139,21 @@ describe('HealthController.check', () => {
     // här är spärren mot att någon senare lägger till "senaste verktyg" eller
     // "org med flest avstådda", vilket vore kunddata på en publik endpoint.
     expect(Object.keys(result.resumption).sort()).toEqual(['ageSec', 'lastRunAt', 'thresholdSec'])
+
+    // Och för de låsta jobbens hjärtslag (#710). Samma spärr, samma skäl: en
+    // publik endpoint ska inte råka få med sig en organisation eller ett
+    // felmeddelande när fältet byggs ut. Nycklarna är LÅSNYCKLAR, som kommer ur
+    // koden — inte kunddata.
+    expect(Object.keys(result.cron).sort()).toEqual(['bootAt', 'jobs', 'staleCount'])
+    for (const puls of Object.values(result.cron.jobs)) {
+      expect(Object.keys(puls).sort()).toEqual([
+        'ageSec',
+        'lastOutcome',
+        'lastRunAt',
+        'stale',
+        'thresholdSec',
+      ])
+    }
   })
 
   it('motorns puls bär ÅLDERN och TRÖSKELN, inte ett omdöme', async () => {

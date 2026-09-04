@@ -191,6 +191,13 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
 
   // ── Utanför: kan inte bära en objektnivå-IDOR ────────────────────────────
   Organization: { scope: 'out', reason: 'toppnivån själv — inget att scopa mot' },
+  CronHeartbeat: {
+    scope: 'out',
+    reason:
+      'systemomfattande drift, inte kunddata: en rad per LÅSNYCKEL (t.ex. ' +
+      '"cron:daily-backup"), aldrig per organisation. Nyckeln kommer ur koden och ' +
+      'aldrig från en klient, så det finns inget id att gissa på — #710.',
+  },
   RefreshToken: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet, inte av ett id' },
   PasswordResetToken: { scope: 'out', reason: 'auth-realm: scopas av tokenvärdet' },
   // Hyresgästens BankID-kvitto (#745 PR 4). Samma bedömning som

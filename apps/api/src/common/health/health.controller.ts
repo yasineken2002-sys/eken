@@ -5,6 +5,7 @@ import { Public } from '../decorators/public.decorator'
 import { PrismaService } from '../prisma/prisma.service'
 import { PrismaHealthIndicator } from './prisma.health'
 import { buildLegalChunks } from '../../ai/knowledge/retrieval/legal-chunk'
+import { LASTA_CRON_JOBB, tröskelSek } from '../cron/cron-heartbeat'
 import { VOYAGE_EMBEDDINGS } from '../../ai/ai.config'
 import { ATERUPPTAGNING_TYSTNAD_MAX_MS } from '../../ai/resumption/resumption-freshness.service'
 
@@ -74,6 +75,28 @@ interface LegalKnowledgeParity {
  * kontrollera, "ok" går inte. Ingen `silent: true`-flagga — då måste den som
  * läser lita på vår jämförelse i stället för att göra den själv.
  */
+/** Ett låst cron-jobbs färskhet. Samma form som ResumptionPulse — två tal och en gräns. */
+interface CronPuls {
+  /** Senaste AVSLUTADE körning, ISO. `null` = jobbet har aldrig skrivit. */
+  lastRunAt: string | null
+  /** Ålder i sekunder, eller `null` när ingen körning finns. */
+  ageSec: number | null
+  /** Tröskeln, i sekunder. Står här så talen kan jämföras utan att gissa. */
+  thresholdSec: number
+  /** Sant när jobbet varit tyst längre än tröskeln. */
+  stale: boolean
+  /** 'success' | 'failed', eller `null` när jobbet aldrig kört. */
+  lastOutcome: string | null
+}
+
+interface CronPulser {
+  /** Processens starttid, ISO. Referens för jobb som aldrig kört. */
+  bootAt: string
+  /** Antal jobb över sin tröskel. Ett tal att larma på utan att läsa tio fält. */
+  staleCount: number
+  jobs: Record<string, CronPuls>
+}
+
 interface ResumptionPulse {
   /** Senaste körningsradens starttid, ISO. `null` = motorn har aldrig skrivit. */
   lastRunAt: string | null
@@ -82,6 +105,16 @@ interface ResumptionPulse {
   /** Tröskeln larmet använder, i sekunder. Står här så talen kan jämföras. */
   thresholdSec: number
 }
+
+/**
+ * Processens starttid. Sätts vid modulladdning, alltså i praktiken vid boot.
+ *
+ * Referens för jobb som ännu inte kört: ett dagligt jobb är inte TYST fem
+ * minuter efter en deploy — det har bara inte hunnit. Utan det här talet hade
+ * varje omstart gett tio falsklarm, och ett fält som larmar efter varje deploy
+ * lär läsaren att ignorera det.
+ */
+const BOOT_AT = new Date()
 
 @Controller('health')
 export class HealthController {
@@ -137,6 +170,66 @@ export class HealthController {
       )
       return null
     }
+  }
+
+  /**
+   * De låsta cron-jobbens hjärtslag (#710).
+   *
+   * Kastar aldrig — samma avvägning som `readResumptionPulse`: Railway pollar
+   * endpointen med `restartPolicyType = "ON_FAILURE"`, så en läsning som kan
+   * fälla svaret hade gjort observerbarheten till en driftrisk.
+   *
+   * MÄNGDEN ÄR KARTANS, INTE TABELLENS. Ett jobb som aldrig kört saknar rad —
+   * och det är just det som ska synas. Läste vi tabellen och listade det vi
+   * hittade hade ett jobb som slutat köra försvunnit ur fältet i stället för
+   * att bli rött, vilket är den tystnad hela ärendet handlar om.
+   */
+  private async readCronPulses(): Promise<CronPulser> {
+    const nu = Date.now()
+    const bootAt = BOOT_AT.toISOString()
+    const sedanBoot = Math.round((nu - BOOT_AT.getTime()) / 1000)
+
+    let rader: Array<{ key: string; lastRunAt: Date; lastOutcome: string }> = []
+    try {
+      rader = await this.prisma.cronHeartbeat.findMany({
+        select: { key: true, lastRunAt: true, lastOutcome: true },
+      })
+    } catch (err) {
+      this.logger.warn(
+        `Kunde inte läsa CronHeartbeat: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      // Fail-open på LÄSNINGEN, inte på bedömningen: utan rader vet vi inget,
+      // och att då påstå `stale: false` vore ett friskintyg vi inte har täckning
+      // för. Jobben rapporteras som aldrig körda mot boot-tiden, precis som
+      // vid en tom tabell.
+    }
+    const perNyckel = new Map(rader.map((r) => [r.key, r]))
+
+    const jobs: Record<string, CronPuls> = {}
+    let staleCount = 0
+    for (const [key, uttryck] of Object.entries(LASTA_CRON_JOBB)) {
+      const thresholdSec = tröskelSek(uttryck)
+      const rad = perNyckel.get(key)
+      if (!rad) {
+        // ALDRIG KÖRT: mät mot boot, inte mot epoken. Under första intervallet
+        // efter en omstart är det normalläget och inte ett larm.
+        const stale = sedanBoot > thresholdSec
+        if (stale) staleCount++
+        jobs[key] = { lastRunAt: null, ageSec: null, thresholdSec, stale, lastOutcome: null }
+        continue
+      }
+      const ageSec = Math.round((nu - rad.lastRunAt.getTime()) / 1000)
+      const stale = ageSec > thresholdSec
+      if (stale) staleCount++
+      jobs[key] = {
+        lastRunAt: rad.lastRunAt.toISOString(),
+        ageSec,
+        thresholdSec,
+        stale,
+        lastOutcome: rad.lastOutcome,
+      }
+    }
+    return { bootAt, staleCount, jobs }
   }
 
   /**
@@ -257,6 +350,11 @@ export class HealthController {
     // nere och få Railway att starta om den. Motorn utför dessutom ingenting.
     const resumption = await this.readResumptionPulse()
 
-    return { ...result, revision: buildRevision(), legalKnowledge, resumption }
+    // Resumption-fältet står KVAR oförändrat: det har läsare (runbooken
+    // aterupptagningsmotorns-tystnad.md) och en egen tröskel med eget skäl.
+    // Det nya fältet lägger till de nio övriga, det ersätter inte det tionde.
+    const cron = await this.readCronPulses()
+
+    return { ...result, revision: buildRevision(), legalKnowledge, resumption, cron }
   }
 }

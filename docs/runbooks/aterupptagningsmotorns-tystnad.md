@@ -80,6 +80,41 @@ Fältet bär **åldern och tröskeln, inte ett omdöme**: `ageSec > thresholdSec
 betyder tystnad, och den jämförelsen gör läsaren själv. `lastRunAt: null` betyder
 att motorn aldrig skrivit något.
 
+### Samma signal finns nu för ALLA tio låsta jobb (#710)
+
+Den här runbooken beskrev länge det enda jobb som hade en tystnadssignal. De
+övriga nio låsta jobben hade ingen: ett hängt lås — eller ett jobb som slutat
+schemaläggas — var osynligt tills någon saknade dess utfall, vilket för
+månadsrapporten är nästa månad.
+
+`GET /v1/health` bär nu fältet `cron` bredvid `resumption`:
+
+```bash
+curl -fsS https://eken-production.up.railway.app/v1/health \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]["cron"]; \
+      print("stale:", d["staleCount"], "av", len(d["jobs"])); \
+      [print(f"  {k:34s} ageSec={v[\"ageSec\"]} / {v[\"thresholdSec\"]}  {v[\"lastOutcome\"]}") \
+       for k,v in sorted(d["jobs"].items()) if v["stale"]]'
+```
+
+Samma form som `resumption`: **två tal och en gräns**, jämförelsen gör läsaren.
+`staleCount` är talet att larma på utan att läsa tio fält.
+
+Tre skillnader mot `resumption` som är värda att känna till:
+
+- **Tröskeln är per jobb**, härledd ur jobbets eget `@Cron`-uttryck × 2,25 — en
+  missad körning tolereras, två gör det inte. Ett vardagsjobb får tre dygn som
+  bas (gapet fredag→måndag), inte medelintervallet.
+- **`lastOutcome`** skiljer _tyst_ från _trasigt_. Ett jobb som kastar varje natt
+  är inte tyst; det körs och misslyckas, och det kräver en annan åtgärd.
+- **`lastRunAt: null` mäts mot `bootAt`**, inte mot epoken. Ett dagligt jobb är
+  inte tyst fem minuter efter en deploy — men passeras tröskeln räknat från boot
+  blir det tyst ändå.
+
+`resumption`-fältet står kvar oförändrat. Det har en egen tröskel med ett eget
+skäl (2 h 15 min, satt efter motorns garanterade skrivintervall och inte efter
+dess kadens) — se `resumption-freshness.service.ts`.
+
 ## Läs skuggutfallet
 
 Sätt `DATABASE_URL` först. Skriv aldrig ut anslutningssträngen.

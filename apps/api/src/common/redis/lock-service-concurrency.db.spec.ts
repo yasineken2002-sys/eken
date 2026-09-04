@@ -84,6 +84,7 @@ jest.mock('../../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { randomUUID } from 'node:crypto'
+import type { PrismaService } from '../prisma/prisma.service'
 
 import { PrismaClient, UserRole } from '@prisma/client'
 import Redis from 'ioredis'
@@ -91,6 +92,17 @@ import Redis from 'ioredis'
 import { AiUsageNotifierService } from '../../ai-usage/ai-usage-notifier.service'
 import { LockService } from './lock.service'
 import type { RedisService } from './redis.service'
+
+/**
+ * Hjärtslagsstubb (#710). `LockService` tar numera en PrismaService för att
+ * skriva CronHeartbeat. Beroendet är OBLIGATORISKT och inte valfritt med flit:
+ * en valfri sänka hade tyst tappat hjärtslaget hos varje anropare som glömde
+ * den, och tystnaden är precis det ärendet handlar om. De här proven mäter
+ * låsningen, inte hjärtslaget — det ägs av lock-heartbeat.spec.ts och
+ * cron-heartbeat.db.spec.ts.
+ */
+const hjärtslagStubb = () =>
+  ({ cronHeartbeat: { upsert: () => Promise.resolve({}) } }) as unknown as PrismaService
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const HAR_REDIS = Boolean(process.env.REDIS_URL)
@@ -160,7 +172,7 @@ medDb('cron-låset under samtidighet', () => {
     // Riktig LockService över en riktig Redis-klient. RedisService exponerar
     // bara `client`; att gå via konstruktorn i stället för Object.create gör att
     // en ändrad konstruktor fäller filen i stället för att kringgås av den.
-    locks = new LockService({ client: redis } as unknown as RedisService)
+    locks = new LockService({ client: redis } as unknown as RedisService, hjärtslagStubb())
 
     const sfx = randomUUID().slice(0, 8)
     const org = await prisma.organization.create({

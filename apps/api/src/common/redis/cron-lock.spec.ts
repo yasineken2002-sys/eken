@@ -23,6 +23,18 @@
  */
 
 import { LockService } from './lock.service'
+import type { PrismaService } from '../prisma/prisma.service'
+
+/**
+ * Hjärtslagsstubb (#710). `LockService` tar numera en PrismaService för att
+ * skriva CronHeartbeat. Beroendet är OBLIGATORISKT och inte valfritt med flit:
+ * en valfri sänka hade tyst tappat hjärtslaget hos varje anropare som glömde
+ * den, och tystnaden är precis det ärendet handlar om. De här proven mäter
+ * låsningen, inte hjärtslaget — det ägs av lock-heartbeat.spec.ts och
+ * cron-heartbeat.db.spec.ts.
+ */
+const hjärtslagStubb = () =>
+  ({ cronHeartbeat: { upsert: () => Promise.resolve({}) } }) as unknown as PrismaService
 
 /**
  * Minimal Redis-fejk med RIKTIG SET NX-semantik OCH riktig TTL-utgång.
@@ -72,7 +84,7 @@ function fakeRedis() {
 describe('runIfUnlocked — hoppar över, väntar inte', () => {
   it('andra repliken kör INTE jobbet medan den första håller låset', async () => {
     const redis = fakeRedis()
-    const locks = new LockService(redis as never)
+    const locks = new LockService(redis as never, hjärtslagStubb())
     const körningar: string[] = []
 
     let släpp!: () => void
@@ -111,7 +123,7 @@ describe('runIfUnlocked — hoppar över, väntar inte', () => {
 
   it('KANARIEFÅGEL: när låset är ledigt körs jobbet faktiskt', async () => {
     // Utan det här testet vore ett lås som ALLTID hoppar över helt grönt.
-    const locks = new LockService(fakeRedis() as never)
+    const locks = new LockService(fakeRedis() as never, hjärtslagStubb())
     const result = await locks.runIfUnlocked('cron:test', async () => 'kördes', { ttlSec: 60 })
 
     expect(result).toEqual({ ran: true, value: 'kördes' })
@@ -119,7 +131,7 @@ describe('runIfUnlocked — hoppar över, väntar inte', () => {
 
   it('låset släpps efteråt, så nästa schemalagda körning inte blockeras', async () => {
     const redis = fakeRedis()
-    const locks = new LockService(redis as never)
+    const locks = new LockService(redis as never, hjärtslagStubb())
 
     await locks.runIfUnlocked('cron:test', async () => 1, { ttlSec: 60 })
     expect(redis.has('lock:cron:test')).toBe(false)
@@ -130,7 +142,7 @@ describe('runIfUnlocked — hoppar över, väntar inte', () => {
 
   it('låset släpps även när jobbet kastar', async () => {
     const redis = fakeRedis()
-    const locks = new LockService(redis as never)
+    const locks = new LockService(redis as never, hjärtslagStubb())
 
     await expect(
       locks.runIfUnlocked(
@@ -147,7 +159,7 @@ describe('runIfUnlocked — hoppar över, väntar inte', () => {
   })
 
   it('olika jobb har olika nycklar och blockerar inte varandra', async () => {
-    const locks = new LockService(fakeRedis() as never)
+    const locks = new LockService(fakeRedis() as never, hjärtslagStubb())
     const kört: string[] = []
 
     let släpp!: () => void
@@ -178,7 +190,7 @@ describe('runIfUnlocked — hoppar över, väntar inte', () => {
 
   it('TTL skickas vidare till Redis — ett lås utan utgång vore permanent', async () => {
     const redis = fakeRedis()
-    const locks = new LockService(redis as never)
+    const locks = new LockService(redis as never, hjärtslagStubb())
 
     await locks.runIfUnlocked('cron:test', async () => 1, { ttlSec: 1800 })
 
@@ -195,7 +207,7 @@ describe('runIfUnlocked — hoppar över, väntar inte', () => {
 describe('FAIL-CLOSED FÅR INTE BLI FAIL-FOREVER', () => {
   it('ett lås som ALDRIG släpps löses upp av TTL:t — jobbet kommer tillbaka', async () => {
     const redis = fakeRedis()
-    const locks = new LockService(redis as never)
+    const locks = new LockService(redis as never, hjärtslagStubb())
     const kört: string[] = []
 
     // Simulera en replik som dog mitt i jobbet: låset togs GENOM runIfUnlocked,
@@ -245,7 +257,7 @@ describe('FAIL-CLOSED FÅR INTE BLI FAIL-FOREVER', () => {
 
   it('överhoppet rapporterar hur länge låset hållits', async () => {
     const redis = fakeRedis()
-    const locks = new LockService(redis as never)
+    const locks = new LockService(redis as never, hjärtslagStubb())
 
     await redis.client.set('lock:cron:test', 'annan', 'EX', 1800, 'NX')
     redis.advanceSec(600)
@@ -259,7 +271,7 @@ describe('FAIL-CLOSED FÅR INTE BLI FAIL-FOREVER', () => {
 
   it('åldern är null när Redis inte kan svara — inte 0, som hade sett normalt ut', async () => {
     const redis = fakeRedis()
-    const locks = new LockService(redis as never)
+    const locks = new LockService(redis as never, hjärtslagStubb())
     // SET misslyckas men nyckeln är borta när vi frågar PTTL (race).
     redis.client.set = jest.fn(
       async (_k: string, _v: string, _ex: string, _t: number, _nx: string) => null,
@@ -273,7 +285,7 @@ describe('FAIL-CLOSED FÅR INTE BLI FAIL-FOREVER', () => {
 
   it('ett PTTL som kastar gör inte överhoppet till ett undantag', async () => {
     const redis = fakeRedis()
-    const locks = new LockService(redis as never)
+    const locks = new LockService(redis as never, hjärtslagStubb())
     await redis.client.set('lock:cron:test', 'annan', 'EX', 1800, 'NX')
     redis.client.pttl = jest.fn(async (_k: string) => {
       throw new Error('redis nere')
