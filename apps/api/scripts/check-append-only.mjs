@@ -107,8 +107,8 @@ export function triggrarIMigrationer(sqlTexter) {
     // en trigger som bara NÄMNS i migrationens motivering räknas som byggd.
     const kod = withoutComments(sql, { dialect: 'sql' })
     const re = new RegExp(
-      `CREATE\\s+TRIGGER\\s+${TRIGGER_PREFIX}\\w+\\s+BEFORE\\s+UPDATE\\s+ON\\s+"([^"]+)"`,
-      'gi',
+      `CREATE\\s+TRIGGER\\s+${TRIGGER_PREFIX}[\\p{L}\\p{N}_]+\\s+BEFORE\\s+UPDATE\\s+ON\\s+"([^"]+)"`,
+      'giu',
     )
     let m
     while ((m = re.exec(kod)) !== null) ut.push(m[1])
@@ -190,6 +190,37 @@ function självtest() {
   const fel = []
   const t = (namn, villkor, detalj) => {
     if (!villkor) fel.push(`${namn}${detalj ? ` — ${detalj}` : ''}`)
+  }
+
+  // ── #713: TRIGGERNAMNETS SVANS ──────────────────────────────────────────
+  //
+  // Triggernamnet härleds som `${TRIGGER_PREFIX}\w+`, och `\w` är ASCII.
+  // Postgres-identifierare får vara UTF-8, och triggern namnges efter sin
+  // MODELL — en modell som heter `Ärende` ger `append_only_Ärende`.
+  //
+  // Uppmätt mot origin/main:
+  //
+  //   CREATE TRIGGER append_only_Ärende BEFORE UPDATE ON "Ärende" …
+  //     \w+  → triggern hittas INTE                    → tabellen saknas i
+  //             mängden byggda triggrar
+  //     fix  → hittas
+  //
+  // FELRIKTNINGEN ÄR DEN SOM SPÄRRAR: vakten säger att en append-only-modell
+  // SAKNAR sin trigger fast den finns i migrationen. Åtgärden en läsare skulle
+  // vidta — skriva en ny migration som skapar triggern igen — misslyckas då
+  // med "trigger already exists".
+  {
+    const sql =
+      'CREATE TRIGGER append_only_Ärende BEFORE UPDATE ON "Ärende" FOR EACH ROW EXECUTE FUNCTION f();\n' +
+      'CREATE TRIGGER append_only_Invoice BEFORE UPDATE ON "Invoice" FOR EACH ROW EXECUTE FUNCTION f();'
+    const funna = triggrarIMigrationer([sql])
+    t('#713 MISSAD: trigger med svenskt tecken i namnet hittas',
+      funna.includes('Ärende') && funna.includes('Invoice'), JSON.stringify(funna))
+    // MOTPROVEN: prefixet krävs fortfarande, och en DROP räknar bort igen.
+    t('#713 MOTPROV: en trigger UTAN prefixet räknas inte',
+      !triggrarIMigrationer(['CREATE TRIGGER annat_Ärende BEFORE UPDATE ON "Ärende" FOR EACH ROW EXECUTE FUNCTION f();']).includes('Ärende'))
+    t('#713 MOTPROV: en DROP räknar bort den svenska triggern igen',
+      !triggrarIMigrationer([sql + '\nDROP TRIGGER append_only_Ärende ON "Ärende";']).includes('Ärende'))
   }
 
   // ── KANARIE 0: mängderna jämförs mot ett tal HÄRLETT UR KÄLLAN ─────────────
