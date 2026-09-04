@@ -60,6 +60,11 @@ const MEDVETET_UTELÄMNADE: Record<string, string> = {
     'Villkorsacceptans per användare. Inte känsligt, men ingen yta läser det — ' +
     'org-nivåns termsVersion är den frontend jämför mot.',
   termsVersion: 'Samma som acceptedTermsAt.',
+  // #577 — samma skäl som raderna ovan: org-nivån är den frontend läser.
+  // User-raden finns för revisionen, inte för gränssnittet.
+  termsHash: 'Samma som acceptedTermsAt — revisionsuppgift på användarnivå.',
+  privacyVersion: 'Samma som acceptedTermsAt.',
+  privacyHash: 'Samma som acceptedTermsAt — revisionsuppgift på användarnivå.',
 }
 
 describe('SAFE_USER_SELECT', () => {

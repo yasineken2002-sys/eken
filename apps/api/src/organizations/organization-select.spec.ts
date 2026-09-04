@@ -59,6 +59,14 @@ function utanKommentarer(src: string): string {
  * ställbar hör den hemma i plattformsadmin, inte i `GET /organizations/me`.
  */
 const MEDVETET_UTELÄMNADE: Record<string, string> = {
+  // #577 — REVISIONSUPPGIFT, INGEN KONSUMENT I GRÄNSSNITTET.
+  //
+  // Hasharna finns för att kunna svara på "vilken TEXT accepterades" i
+  // efterhand. Ingen vy visar dem, och en sha256 i ett API-svar är brus som
+  // inbjuder till att jämföras i frontend — där jämförelsen inte hör hemma.
+  // Versionerna räcker för allt gränssnittet gör.
+  termsHash: 'Innehållshash för de villkor som accepterades — revisionsuppgift.',
+  privacyHash: 'Innehållshash för den policy som accepterades — revisionsuppgift.',
   subscriptionPlan: 'Vilken plan organisationen betalar för.',
   status: 'TRIAL/ACTIVE/SUSPENDED — kommersiellt tillstånd, inte driftdata.',
   planStartedAt: 'När abonnemanget började löpa.',
