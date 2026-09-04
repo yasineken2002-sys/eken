@@ -2127,6 +2127,45 @@ Och motprovet får inte tappas bort: en DELSTRÄNG ska fortfarande inte matcha.
 Kanariefåglarna i `check-effect-idempotency.mjs` kräver båda hållen — svensk
 initial hittas, `xärLevandeY` hittas inte.
 
+**Regeln är numera SPÄRRAD, inte bara skriven.**
+`apps/api/scripts/check-identifier-regex.mjs` (eget CI-jobb i `ci-passed`:s
+`needs`) läser varje regex i vaktskripten och fäller en NY ASCII-härledning av
+en identifierare — `\w`, `\b` eller ett ASCII-bokstavsintervall. Definitionen är
+listan `FORMER` i vakten, sju namngivna former med var sitt prov, så talet går
+att härleda om: `node apps/api/scripts/check-identifier-regex.mjs --skriv`.
+
+Mängden var **86** när spärren byggdes (#724) och är dränerad till **8** — och
+de åtta är PERMANENTA: ratchetens egna formdetektorer (de måste bära `\w`
+literalt, det är de tecknen de finns för att känna igen) plus två negativa
+referenser i andra vakters kanariefåglar. De står i baslinjens `$permanenta`
+med skäl vid varje.
+
+`identifier-regex.baseline.json` **får bara krympa.** Vakten fäller åt båda
+hållen: en förekomst som inte står i baslinjen är `NY`, och en post som inte
+längre finns i koden är `STALE`. Krymp den så här — i SAMMA PR som lagningen:
+
+```bash
+# 1. laga formen i vakten, 2. kör ratcheten och läs vilka poster som blev STALE
+node apps/api/scripts/check-identifier-regex.mjs
+# 3. ta bort exakt de posterna ur identifier-regex.baseline.json
+#    ("total" härleds ur "poster" och kontrolleras — talet går inte att
+#     skriva ned utan att ta bort medlemmar)
+# 4. grönt igen, och antalet ska ha sjunkit med exakt vaktens poster
+node apps/api/scripts/check-identifier-regex.mjs
+```
+
+Att LÄGGA TILL en post är att ta på sig ny skuld och ska motiveras i PR-texten.
+En negativ referens i en kanariefågel — ett mönster som med flit visar vad den
+GAMLA formen läste — ska helst skrivas UTAN interpolation; då blir den ingen
+post alls. Behövs den ändå: lägg den i `$permanenta`, med skäl.
+
+**Och ett prov som redan finns är inte täckning.** Mätt i #736 och igen i #747:
+en vakt kan ha MISSAD/KAPAD-kanariefåglar sedan tidigare och ändå vara helt
+oskyddad på det ställe du byter — fyra riktade mutationer lämnade alla
+självtestet grönt. Kanariefågeln ska rikta sig mot EXAKT den rad som ändras, och
+den ska läsa VAKTENS mönster: en sond som skriver om regexen mäter sin egen rad
+och kan inte falla när vakten ändras (#754, #764).
+
 ### `&` binder till HELA kedjan — inte till ledet före det
 
 `cd X && kommando &` bakgrundar `cd X && kommando`. Skalet SJÄLVT står kvar i sin
