@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common'
+import { CronErrorSinkModule } from '../cron/cron-error-sink.module'
 import { SigningCryptoService } from '../../signing/signing-crypto.service'
 import { PersonalNumberService } from './personal-number.service'
 import { PiiCoherenceService } from './pii-coherence.service'
@@ -24,6 +25,10 @@ import { PiiCoherenceService } from './pii-coherence.service'
  */
 @Global()
 @Module({
+  // #580 — PiiCoherenceService behöver en VARAKTIG sänka för sitt boot-larm.
+  // CronErrorSinkModule importerar bara PrismaModule och kan därför inte sluta
+  // en modulcykel (den bär sin egen PlatformErrorsService av exakt det skälet).
+  imports: [CronErrorSinkModule],
   providers: [SigningCryptoService, PersonalNumberService, PiiCoherenceService],
   exports: [PersonalNumberService],
 })

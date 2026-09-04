@@ -10,6 +10,7 @@ import {
   type PiiProbeSource,
 } from './pii-coherence.service'
 import type { ConfigService } from '@nestjs/config'
+import type { CronErrorSink } from '../cron/cron-error-sink'
 import type { PrismaService } from '../prisma/prisma.service'
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }))
@@ -281,9 +282,28 @@ describe('classifyPiiCoherence — klassificeringen', () => {
   })
 })
 
+/** ConfigService-stubb som bara känner den enda flagga larmet grindar på. */
+function konfigMed(backupEnabled?: string): ConfigService {
+  return {
+    get: (k: string) => (k === 'BACKUP_ENABLED' ? backupEnabled : undefined),
+  } as unknown as ConfigService
+}
+
+/** Sänkspion. `reportBootCheck` är den enda väg tjänsten får ta till ErrorLog. */
+function sänkspion() {
+  const reportBootCheck = jest.fn<Promise<void>, [string, unknown, unknown?]>(() =>
+    Promise.resolve(),
+  )
+  return { sink: { reportBootCheck } as unknown as CronErrorSink, reportBootCheck }
+}
+
 describe('PiiCoherenceService — larmet', () => {
-  const tjänst = (prisma: PrismaService, crypto: SigningCryptoService) =>
-    new PiiCoherenceService(prisma, crypto)
+  const tjänst = (
+    prisma: PrismaService,
+    crypto: SigningCryptoService,
+    config: ConfigService = konfigMed(undefined),
+    sink: CronErrorSink = sänkspion().sink,
+  ) => new PiiCoherenceService(prisma, crypto, config, sink)
 
   it('OK larmar inte', async () => {
     await tjänst(
@@ -447,5 +467,92 @@ describe('PiiCoherenceService — larmet', () => {
     expect(
       fel.mock.calls.some(([m]) => String(m).includes('Sentry-rapporteringen misslyckades')),
     ).toBe(true)
+  })
+})
+
+/**
+ * #580 — VARAKTIGT LARM VID ÅTERSTÄLLNING MED FEL PII-NYCKEL.
+ *
+ * Sentry och den lokala loggen bär redan larmet, och båda är fel yta för just
+ * det här: loggen försvinner med containern, och en återställning är precis när
+ * ingen läser boot-loggen. Proven nedan mäter den varaktiga vägen — att den tas
+ * när den ska, och att den INTE tas annars.
+ *
+ * Provet på tystnad är det som gör mängden skarp. Utan det skulle "larma
+ * alltid" passera lika bra som den avsedda grinden.
+ */
+describe('PiiCoherenceService — varaktigt larm till ErrorLog (#580)', () => {
+  const kör = async (
+    crypto: SigningCryptoService,
+    backupEnabled: string | undefined,
+    rad = radSkrivenMed(NYCKEL_A, PEPPER_A),
+  ) => {
+    const { sink, reportBootCheck } = sänkspion()
+    await new PiiCoherenceService(
+      prismaMed({ tenant: rad }),
+      crypto,
+      konfigMed(backupEnabled),
+      sink,
+    ).onApplicationBootstrap()
+    return reportBootCheck
+  }
+
+  it('MISSMATCHNING med backupen i drift → varaktig rad i ErrorLog', async () => {
+    const spion = await kör(kryptoMed(NYCKEL_A, PEPPER_B), 'true')
+    expect(spion).toHaveBeenCalledTimes(1)
+
+    const [namn, fel, kontext] = spion.mock.calls[0] as [
+      string,
+      Error,
+      { detail: Record<string, unknown> },
+    ]
+    expect(namn).toBe('pii-coherence')
+    expect(fel.message).toContain('MISSMATCHNING')
+    // Meddelandet ska peka ut ÅTERSTÄLLNINGEN som trolig orsak — det är hela
+    // skälet att larmet grindas på backupen.
+    expect(fel.message).toContain('återställning')
+    expect(kontext.detail['status']).toBe('MISSMATCHNING')
+  })
+
+  it('KAN_EJ_VERIFIERAS larmar LIKA varaktigt — de två får aldrig skiljas åt', async () => {
+    // Filens egen invariant, uttryckt två gånger i dess kommentarer. Skickas
+    // bara det ena blir det andra ett mildare besked utan att någon beslutat det.
+    const spion = await kör(kryptoMed(undefined, undefined), 'true')
+    expect(spion).toHaveBeenCalledTimes(1)
+    expect((spion.mock.calls[0] as [string, Error])[1].message).toContain('KAN_EJ_VERIFIERAS')
+  })
+
+  it('MATCHANDE nyckel → tyst, även med backupen i drift', async () => {
+    const spion = await kör(kryptoMed(NYCKEL_A, PEPPER_A), 'true')
+    expect(spion).not.toHaveBeenCalled()
+  })
+
+  it('BACKUP_ENABLED saknas → tyst, trots missmatchning', async () => {
+    const spion = await kör(kryptoMed(NYCKEL_A, PEPPER_B), undefined)
+    expect(spion).not.toHaveBeenCalled()
+  })
+
+  it("BACKUP_ENABLED='false' → tyst (bara strängen 'true' öppnar grinden)", async () => {
+    const spion = await kör(kryptoMed(NYCKEL_A, PEPPER_B), 'false')
+    expect(spion).not.toHaveBeenCalled()
+  })
+
+  it('den lokala kanalen och Sentry larmar OAVSETT grinden — den nya vägen ersätter inget', async () => {
+    // Motprovet mot att ha råkat flytta larmet i stället för att lägga till ett.
+    await kör(kryptoMed(NYCKEL_A, PEPPER_B), undefined)
+    expect(captureException).toHaveBeenCalledTimes(1)
+  })
+
+  it('ett kast i sänkan tar INTE ner uppstarten', async () => {
+    // Sänkan lovar att aldrig kasta, men tjänsten får inte VILA på det löftet:
+    // en trasig ErrorLog vid boot ska inte bli ett startfel.
+    const reportBootCheck = jest.fn(() => Promise.reject(new Error('ErrorLog nere')))
+    const tjänst = new PiiCoherenceService(
+      prismaMed({ tenant: radSkrivenMed(NYCKEL_A, PEPPER_A) }),
+      kryptoMed(NYCKEL_A, PEPPER_B),
+      konfigMed('true'),
+      { reportBootCheck } as unknown as CronErrorSink,
+    )
+    await expect(tjänst.onApplicationBootstrap()).resolves.toBeUndefined()
   })
 })

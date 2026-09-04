@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
 import type { OnApplicationBootstrap } from '@nestjs/common'
 import * as Sentry from '@sentry/nestjs'
+import type { ConfigService } from '@nestjs/config'
+import { CronErrorSink } from '../cron/cron-error-sink'
 import { PrismaService } from '../prisma/prisma.service'
 import { SigningCryptoService } from '../../signing/signing-crypto.service'
 
@@ -229,6 +231,18 @@ export async function classifyPiiCoherence(
   return { status: 'KAN_EJ_VERIFIERAS', reason: 'INGA_KONTROLLERBARA_RADER', source: null }
 }
 
+/**
+ * Utfallen som får en VARAKTIG rad i ErrorLog när backupen är i drift (#580).
+ *
+ * Mängden är avsiktligt densamma som befordringsrutan överst pekar ut som
+ * fail-fast-värdig. Att låta de två listorna vara samma mängd är poängen: den
+ * dag kontrollen befordras ska inget utfall byta allvarlighetsgrad på vägen.
+ */
+const VARAKTIGT_LARMANDE: ReadonlySet<PiiCoherenceStatus> = new Set<PiiCoherenceStatus>([
+  'MISSMATCHNING',
+  'KAN_EJ_VERIFIERAS',
+])
+
 @Injectable()
 export class PiiCoherenceService implements OnApplicationBootstrap {
   private readonly logger = new Logger(PiiCoherenceService.name)
@@ -236,10 +250,83 @@ export class PiiCoherenceService implements OnApplicationBootstrap {
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: SigningCryptoService,
+    private readonly config: ConfigService,
+    private readonly sink: CronErrorSink,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    this.report(await this.run())
+    const utfall = await this.run()
+    this.report(utfall)
+    await this.larmaVaraktigt(utfall)
+  }
+
+  /**
+   * #580 — SAMMA LARM, MEN PÅ EN YTA SOM ÖVERLEVER NÄSTA CONTAINER.
+   *
+   * `report` ovan når den lokala loggen och Sentry. Ingen av dem duger i det
+   * läge kontrollen finns för: en ÅTERSTÄLLNING är precis det tillfälle då
+   * ingen läser boot-loggen — man ser att tjänsten är uppe, `/v1/health` svarar
+   * `ok`, och går vidare, ofta under tidspress. Loggen är dessutom borta vid
+   * nästa deploy. ErrorLog är varaktig och går att fråga.
+   *
+   * VARFÖR INTE FAIL-FAST. Det var alternativ A i #580 och det är mätbart fel
+   * här: `railway.toml` sätter `healthcheckPath = "/v1/health"` med
+   * `restartPolicyType = "ON_FAILURE"` och tre försök. En vägran att starta gör
+   * alltså en defekt i TVÅ krypterade kolumner till ett totalstopp för
+   * fakturering, bokföring och portal. `env.validation.ts` fail-fastar i prod,
+   * men på en annan sorts fel: konfiguration som saknas helt, alltså där appen
+   * inte kan fungera alls. Den här appen fungerar — utom i de vägar som läser
+   * de två kolumnerna. Befordran till fail-fast är redan planerad och bunden
+   * till `SIGNING_ENABLED=true` (se rutan överst); den här ändringen rör inte
+   * det beslutet.
+   *
+   * VILKA UTFALL. `MISSMATCHNING` och `KAN_EJ_VERIFIERAS`, tillsammans — filen
+   * kräver på två ställen att de aldrig får skiljas åt i högljuddhet, och att
+   * bara skicka det ena hade gjort det andra till ett mildare besked utan att
+   * någon bestämt det. `ROTATION_PAGAR` skickas inte: det är rotationens
+   * normaltillstånd, inte en defekt.
+   *
+   * GRINDEN ÄR `BACKUP_ENABLED`, och det är värt att veta vad den EGENTLIGEN
+   * svarar på: "ska den här instansen ta nattliga dumpar?" — inte "är en
+   * återställning en trolig förklaring till missmatchningen?". De två frågorna
+   * sammanfaller i dag (bara prod tar dumpar, och bara prod återställs), men
+   * det är en sammanfallande mängd och inte samma fråga. Vill man larma
+   * oberoende av backupen är det HÄR villkoret som ska bytas, inte utfallen.
+   */
+  private async larmaVaraktigt(utfall: PiiCoherenceOutcome): Promise<void> {
+    if (!VARAKTIGT_LARMANDE.has(utfall.status)) return
+    if (this.config.get<string>('BACKUP_ENABLED') !== 'true') return
+
+    // Meddelandet bär status, orsak och källa — aldrig ett värde ur en rad.
+    // Frågan som ledde hit filtrerar på `not: null` och tar inga PII-parametrar.
+    const text =
+      `[pii-coherence] ${utfall.status}: ${MANSKLIG_TEXT[utfall.reason]} ` +
+      'Backupen är i drift, så en nyss genomförd återställning är den troligaste ' +
+      'förklaringen — kontrollera att PII-nyckeln kommer från samma uppsättning ' +
+      'som dumpen.'
+
+    // Sänkan LOVAR att aldrig kasta — men den här kontrollen får inte vila på
+    // det löftet. Ett kast här skulle bli ett OHANTERAT AVVISAT LÖFTE i
+    // onApplicationBootstrap, alltså exakt det startstopp som avfärdades som
+    // oproportionerligt ovan, och det via en väg ingen valt. Provet
+    // "ett kast i sänkan tar INTE ner uppstarten" fällde först utan den här
+    // grenen; den är alltså mätt nödvändig, inte defensiv av vana.
+    try {
+      await this.sink.reportBootCheck('pii-coherence', new Error(text), {
+        detail: {
+          status: utfall.status,
+          reason: utfall.reason,
+          source: utfall.source ?? '(ingen)',
+        },
+      })
+    } catch (err) {
+      // Rapportera ATT den varaktiga vägen fallerade — svälj den inte. Larmet
+      // finns kvar i loggen och i Sentry via `report` ovan.
+      this.logger.error(
+        '[pii-coherence] den varaktiga ErrorLog-vägen fallerade, larmet nådde bara ' +
+          `logg och Sentry: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
   }
 
   /**
