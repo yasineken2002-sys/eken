@@ -1,7 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common'
 import type { OnApplicationBootstrap } from '@nestjs/common'
 import * as Sentry from '@sentry/nestjs'
-import type { ConfigService } from '@nestjs/config'
+// VÄRDE-IMPORT, INTE `import type`. En typ-import raderas i runtime, så
+// reflect-metadata får ingen klass att injicera och Nest kan inte lösa
+// beroendet — appen startar då inte alls. Det här var inte en farhåga: första
+// versionen skrev `import type` och E2E föll på
+// "Nest can't resolve dependencies of the PiiCoherenceService (…, ?, …)".
+// Samma regel som DTO-regeln i CLAUDE.md, fast på ett konstruktorberoende, och
+// samma form som SigningCryptoService bredvid redan följer.
+import { ConfigService } from '@nestjs/config'
 import { CronErrorSink } from '../cron/cron-error-sink'
 import { PrismaService } from '../prisma/prisma.service'
 import { SigningCryptoService } from '../../signing/signing-crypto.service'
