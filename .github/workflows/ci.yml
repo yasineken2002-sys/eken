@@ -1778,6 +1778,64 @@ jobs:
       - name: Verify the assignment deadline is data, not a shared constant
         run: node apps/api/scripts/check-assignment-deadline.mjs
 
+  tool-human-path-guard:
+    name: Tool human path guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # DELMÄNGDSREGELN — planens Regel 2: agenten får aldrig kunna mer än
+      # människan. En sådan regel dör inte med ett brak; den dör av att verktyg
+      # nummer 31 läggs till en tisdag och ingen ställer frågan. Vakten gör
+      # frågan tvingande.
+      #
+      # R1 omfång      — varje ACTION_TOOL har en post i HUMAN_PATHS, och varje
+      #                  post pekar på ett verktyg som finns. Båda hållen.
+      # R2 rutten      — `rutt` måste vara registrerad i apps/web/src/app/router.tsx.
+      #                  En väg till en sida som inte finns är ingen väg.
+      # R3 åtgärden    — `atgard` måste finnas ordagrant i den feature-katalog
+      #                  rutten renderar. Kopplingen rutt → katalog HÄRLEDS ur
+      #                  router.tsx:s egna importer; ingen andra lista.
+      # R4 fyndet      — varje baslinjepost bär `skal` (minst 40 tecken) och
+      #                  `arende` (tom sträng tills ett ärende finns). Ett saknat
+      #                  arende-FÄLT är något annat än ett tomt, så fältets
+      #                  existens prövas, inte dess innehåll.
+      # R5 ratchet     — tool-human-path.baseline.json räknar upp de sju verktyg
+      #                  som i dag saknar mänsklig väg, i TRE riktningar:
+      #                    a) verktyg utan väg som inte står i baslinjen  → rött
+      #                    b) verktyg i baslinjen som HAR en väg          → rött
+      #                    c) baslinjenamn utanför EFFECT_DECLARATIONS    → rött
+      #                  Baslinjen får bara krympa.
+      # R6 fail-closed — buildHumanPathCatalog måste fortfarande KASTA.
+      #
+      # EN VY PER FRÅGA: allt som söks bor i STRÄNGAR eller i JSX-text — rutter,
+      # importsökvägar, knapptexter. Vyn är därför blankComments genomgående.
+      # codeMask hade blankat exakt det som ska läsas och gjort varje regel
+      # omöjlig att bryta mot, alltså omöjlig att mäta. Kanariefågeln fäller ett
+      # sådant byte: en rutt i KOD ska läsas, samma rutt i en KOMMENTAR inte.
+      #
+      # Och en OMFÅNGSkanariefågel, inte bara en regelkanariefågel: de tre
+      # läsarna körs mot de riktiga filerna i självtestet och måste ge minst 25
+      # verktyg, 20 rutter, 25 klassificeringar och en post per verktyg. En vakt
+      # vars mängd blivit tom mäter ingenting och är grön för alltid — och R5c
+      # hade dessutom fällt VARJE baslinjepost av fel skäl.
+      #
+      # VAD JOBBET INTE BEVISAR: att rutten faktiskt utför samma sak som
+      # verktyget. Vakten mäter att en väg är ANGIVEN och att rutten finns, inte
+      # ekvivalens. Det står utskrivet i skriptets egen fil.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (scope canary on three readers, view canary both directions, R1-R6)
+        run: node apps/api/scripts/check-tool-human-path.mjs --self-test
+
+      - name: Verify every agent tool has a human path that exists
+        run: node apps/api/scripts/check-tool-human-path.mjs
+
   effect-trace-guard:
     name: Effect trace wiring guard
     runs-on: ubuntu-latest
@@ -1984,6 +2042,7 @@ jobs:
       - effect-idempotency-guard
       - effect-trace-guard
       - assignment-deadline-guard
+      - tool-human-path-guard
       - action-tool-authorization-guard
       - backup-endpoint-guard
       - legal-text-version-guard
