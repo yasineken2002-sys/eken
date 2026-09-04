@@ -151,6 +151,7 @@ AiMessageTenant                 förälder-scopad via AiMessage
 AiResumptionRun                 utanför: plattformens körningslogg — ingen klientväg, inget adresserbart id
 AiTenantConversation            förälder-scopad via Tenant
 AiTenantMessage                 utanför: når bara via AiTenantConversation, som är klassificerad ovan
+BankIdOrder                     utanför: auth-realm: scopas av orderRef, aldrig av sitt id; bär ingen organisation
 CustomerNumberSequence          utanför: global singleton-sekvens
 FailedEmail                     utanför: systemdata, ingen kundadresserbar väg
 InspectionImage                 förälder-scopad via Inspection
@@ -180,4 +181,5 @@ TenantMagicLink                 utanför: auth-realm: scopas av tokenvärdet
 TenantSession                   utanför: auth-realm: scopas av sessionstoken
 Unit                            förälder-scopad via Property
 UnitEquipmentEvent              förälder-scopad via UnitEquipment
+UserBankIdIdentity              utanför: auth-realm: nås via blindindex eller userId ur JWT, aldrig via ett id från klienten. Se kommentaren ovan för vad som flyttar den till parent-scoped.
 UserInvitation                  utanför: auth-realm: scopas av tokenvärdet

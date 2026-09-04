@@ -1,7 +1,9 @@
-import { ConfigModule } from '@nestjs/config'
+import { Module } from '@nestjs/common'
+import { ConfigModule, ConfigService } from '@nestjs/config'
 import { Test } from '@nestjs/testing'
 
-import { BankidModule } from './bankid.module'
+import { bankIdProviderFactory } from './bankid.module'
+import { SigningCryptoService } from '../signing/signing-crypto.service'
 import { BANKID_PROVIDER } from './bankid.types'
 import { StubBankIdProvider } from './providers/stub-bankid.provider'
 
@@ -17,14 +19,43 @@ import { StubBankIdProvider } from './providers/stub-bankid.provider'
  * Bara E2E såg det. Samma resonemang som `pii-coherence.di.spec.ts`, och det är
  * därför modulen byggs här i stället för att factoryn anropas.
  *
+ * ── VARFÖR EN MINIMAL MODUL OCH INTE HELA BankidModule ───────────────────
+ *
+ * Sedan PR 2 importerar `BankidModule` även `AuthModule` (för
+ * `issueTokensForUser`), och därmed `JwtModule`, `PrismaModule`, `MailModule`
+ * och `AccountingModule`. Att bygga hela grafen bara för att fråga "vilken
+ * provider väljer flaggan?" gjorde provet beroende av `JWT_SECRET` och en
+ * databasattrapp — alltså av saker som inte har med frågan att göra, och som
+ * fällde det med `Configuration key "JWT_SECRET" does not exist`.
+ *
+ * Den här specen bygger därför en minimal modul kring EXAKT de två providers
+ * factoryn behöver. Att HELA modulen går att bygga är en annan fråga, och den
+ * ställs av `bankid.di.spec.ts` — som också är den enda som kan se att
+ * controllern får sin tjänst.
+ *
+ * Faktorn är utbruten ur modulfilen och delas av båda, så provet inte kan
+ * prövas mot en kopia av logiken.
+ *
  * VAD PROVET INTE KAN SE: att providern gör rätt när den väl valts. Det ägs av
  * `bankid.provider.spec.ts`. De två är olika frågor och ingen duger som den andra.
  */
+@Module({
+  providers: [
+    SigningCryptoService,
+    {
+      provide: BANKID_PROVIDER,
+      useFactory: bankIdProviderFactory,
+      inject: [ConfigService, SigningCryptoService],
+    },
+  ],
+})
+class MinimalBankIdModule {}
+
 async function bygg(env: Record<string, string>) {
   return Test.createTestingModule({
     imports: [
       ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true, load: [() => env] }),
-      BankidModule,
+      MinimalBankIdModule,
     ],
   }).compile()
 }

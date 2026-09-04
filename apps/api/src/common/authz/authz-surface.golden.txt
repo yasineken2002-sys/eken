@@ -204,7 +204,7 @@ POST /users/:id/reactivate                                      OWNER
 POST /users/invite                                              ADMIN, OWNER
 
 
-## 1b. HTTP-endpoints UTAN rollgrind (160 st)
+## 1b. HTTP-endpoints UTAN rollgrind (165 st)
 
 RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som
 granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli
@@ -218,7 +218,7 @@ konstruktion osynlig för driftbevakningen. #81 visade vad det kostade —
 GET /import/jobs var varken självscopad eller avsedd att vara öppen, låg
 öppen för VIEWER, och fanns inte i den här filen medan hålet var öppet.
 
-### a) Org-inloggad, öppen för VARJE roll (67 st)
+### a) Org-inloggad, öppen för VARJE roll (69 st)
 
 Enbart globala guards — antingen ingen @UseGuards alls, eller en som bara
 räknar upp JwtAuthGuard/RolesGuard och därmed inte ändrar något (#441).
@@ -232,7 +232,7 @@ det är precis vad VIEWER ska betyda. Frågan är: läser VIEWER DOMÄNDATA,
 eller det OPERATIVA SPÅRET av en handling som kräver högre roll? Spåren
 grindas och flyttar därmed till avsnitt 1.
 
-GRANSKADE — avsiktligt öppna, med skälet (67 st)
+GRANSKADE — avsiktligt öppna, med skälet (69 st)
 
 RÄCKVIDD: granskad som ANROPSYTA — vem som får anropa. INTE som SVARSYTA:
 vad svaret bär är inte prövat här. Se #445.
@@ -544,6 +544,28 @@ PATCH /notifications/read-all                                   notifications.co
 POST /auth/accept-terms                                         auth.controller.ts
     Självscopad skrivning: stämplar den inloggades eget godkännande av villkoren.
 
+POST /auth/bankid/enroll/collect                                bankid.controller.ts
+    Pollar den egna anslutningen. Ingen @Roles av samma skäl som start.
+
+    DEN VERKLIGA GRINDEN ÄR ORDERBINDNINGEN, inte rollen: `enrollCollect`
+    kastar 403 om den inloggade inte är den användare ordern skapades för.
+    Utan den kunde A starta en order och låta B fullborda den, så att B:s
+    personnummer knöts till A:s konto. Prövat i bankid-auth.service.spec.ts
+    ("CSRF: en ANNAN användares collect på samma orderRef NEKAS").
+
+    PERSONDATA: personnumret blindindexeras direkt vid mottagandet och
+    lagras aldrig i klartext; svaret bär bara status.
+
+POST /auth/bankid/enroll/start                                  bankid.controller.ts
+    Startar en BankID-anslutning till DET EGNA kontot. Ingen @Roles därför att
+    varje roll ska kunna koppla sitt eget BankID — det är en handling på det
+    egna kontot, som byt-lösenord, inte en förvaltningshandling.
+
+    SVARET BÄR INGEN DATA OM ANDRA: orderRef och starthandtag kommer från
+    providern och säger ingenting om organisationen eller andra användare.
+    Ordern binds till `user.sub` i tjänsten, så den kan bara fullbordas av
+    den som startade den (BankIdAuthService.enrollCollect).
+
 POST /auth/change-password                                      auth.controller.ts
     Självscopad skrivning på den inloggade. Varje roll måste kunna byta sitt eget
     lösenord.
@@ -640,7 +662,7 @@ POST /tenant-portal/maintenance/:id/comment                     TenantAuthGuard 
 POST /tenant-portal/maintenance/:id/images                      TenantAuthGuard               tenant-portal.controller.ts
 POST /tenant-portal/maintenance                                 TenantAuthGuard               tenant-portal.controller.ts
 
-### c) VERKLIGT ÖPPNA — ingen autentisering alls (25 st)
+### c) VERKLIGT ÖPPNA — ingen autentisering alls (28 st)
 
 @Public() utan någon egen guard. Ingen inloggning krävs. En NY rad här är
 den mest säkerhetskänsliga ändring den här filen kan visa.
@@ -654,6 +676,9 @@ GET /tenant-portal/dev-activate                                 tenant-portal.co
 GET /track/open/:token                                          tracking.controller.ts
 GET /track/view/:token                                          tracking.controller.ts
 POST /auth/accept-invite                                        auth.controller.ts
+POST /auth/bankid/login/choose                                  bankid.controller.ts
+POST /auth/bankid/login/collect                                 bankid.controller.ts
+POST /auth/bankid/login/start                                   bankid.controller.ts
 POST /auth/forgot-password                                      auth.controller.ts
 POST /auth/login                                                auth.controller.ts
 POST /auth/refresh                                              auth.controller.ts

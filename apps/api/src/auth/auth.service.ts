@@ -574,6 +574,45 @@ export class AuthService {
 
   // ── Tokens ──────────────────────────────────────────────────────────────────
 
+  /**
+   * TokenPair för ett konto som redan är AUKTORISERAT någon annanstans.
+   *
+   * Finns för BankID-inloggningen (#745 PR 2), som verifierar identiteten via en
+   * BankID-order i stället för med ett lösenord. Metoden gör INGEN
+   * behörighetskontroll — den utfärdar tokens för det konto den får — och den är
+   * därför medvetet smal: den laddar användaren själv, så en anropare inte kan
+   * skicka in ett hopplockat payload, och den går genom `issueTokens` så att det
+   * bara finns EN väg som signerar en access-token och skriver en RefreshToken.
+   *
+   * `mustChangePassword` läses ur raden och sätts inte till false: en användare
+   * som måste byta lösenord ska mötas av det oavsett hur hen loggade in. Att
+   * BankID-vägen inte använder lösenordet gör inte kravet inaktuellt — kontot
+   * kan fortfarande nås med lösenord.
+   */
+  async issueTokensForUser(userId: string): Promise<TokenPair> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        organizationId: true,
+        role: true,
+        mustChangePassword: true,
+        isActive: true,
+      },
+    })
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Inloggningen kunde inte slutföras')
+    }
+    return this.issueTokens(
+      user.id,
+      user.email,
+      user.organizationId,
+      user.role,
+      user.mustChangePassword,
+    )
+  }
+
   private async issueTokens(
     userId: string,
     email: string,

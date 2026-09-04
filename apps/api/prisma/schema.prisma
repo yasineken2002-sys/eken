@@ -885,6 +885,7 @@ model User {
 
   organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   refreshTokens           RefreshToken[]
+  bankIdIdentities        UserBankIdIdentity[]
   passwordResetTokens     PasswordResetToken[]
   invitations             UserInvitation[]
   journalEntries          JournalEntry[]
@@ -2411,6 +2412,99 @@ model Psd2ConsentState {
   createdAt         DateTime  @default(now())
 
   @@index([organizationId])
+  @@index([expiresAt])
+}
+
+// ─── BankID: identitet och pågående order (S1 PR 2) ──────────────────────────
+
+// ── UserBankIdIdentity — KOPPLINGEN mellan en folkbokförd person och ett konto
+//
+// TVÅ FRÅGOR, TVÅ FÄLT, och det är hela skälet till att tabellen finns:
+//
+//   subjectHash  "VILKEN PERSON är det här?"   Folkbokföringsidentiteten, som
+//                HMAC-SHA256 över normaliserat personnummer med
+//                SIGNING_PII_PEPPER — samma blindindex som
+//                Tenant.personalNumberHash. Deterministiskt och sökbart, men
+//                röjer inget: det går inte att räkna baklänges till numret.
+//   userId       "VILKET KONTO ska hen in i?"  Ett konto i EN organisation
+//                (User.organizationId är obligatorisk).
+//
+// De två är INTE samma fråga, och det är precis därför fältparet inte kan bo på
+// `User`. En fysisk person kan ha konton i flera organisationer — hen är
+// förvaltare hos två hyresvärdar — och då finns det EN identitet men FLERA
+// konton. Ett `personalNumberHash` på `User` hade tvingat fram ett val mellan
+// två fel: globalt unikt (personen kan bara ha ett konto) eller org-scopat
+// (inloggningen kan inte hitta kontot, eftersom den inte vet organisationen
+// förrän efter matchningen).
+//
+// Det finns ett tredje skäl, och det är GDPR-ytan. `Tenant.personalNumber` finns
+// därför att hyresgästens personnummer är AVTALSDATA — det står i kontraktet.
+// En operatörs personnummer behövs bara för att veta vem som loggar in. Att lägga
+// det på `User` hade gjort ett inloggningsattribut till en persondatapost i
+// användartabellen, med användarradens hela livslängd.
+//
+// `provider` finns för att nästa metod (Freja eID, eIDAS) inte ska bli ett nytt
+// fält. `subjectEnc` är AES-256-GCM-envelopen av personnumret — den behövs för
+// att kunna VISA vilken identitet ett konto är kopplat till utan att gissa, och
+// för att kunna byta pepper utan att tappa kopplingen. Klartexten lagras aldrig.
+//
+// `@@unique([provider, subjectHash, userId])` och INTE `([provider, subjectHash])`:
+// se ovan — flera konton per person är det normala, inte kantfallet. Uppslaget
+// vid inloggning går på `@@index([provider, subjectHash])` och kan därför ge
+// FLERA träffar, vilket flödet hanterar med ett kontoval.
+model UserBankIdIdentity {
+  id          String   @id @default(uuid())
+  userId      String
+  /// 'BANKID' i dag. Fältet finns för att nästa metod inte ska bli ett nytt fält.
+  provider    String
+  /// HMAC-SHA256(normaliserat personnr, SIGNING_PII_PEPPER). Aldrig klartext.
+  subjectHash String
+  /// AES-256-GCM-envelope (base64: iv[12] + authTag[16] + ct). Aldrig klartext.
+  subjectEnc  String
+  /// När anslutningen bekräftades med en fullbordad BankID-order.
+  verifiedAt  DateTime
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Idempotensen: samma person kan anslutas till samma konto en gång.
+  @@unique([provider, subjectHash, userId])
+  // Inloggningsuppslaget. INGET unikt villkor — flera konton per person är
+  // normalt, och ett unikt index här hade gjort det omöjligt.
+  @@index([provider, subjectHash])
+  @@index([userId])
+}
+
+// ── BankIdOrder — en PÅGÅENDE BankID-order
+//
+// Formen är kopierad från `Psd2ConsentState` ovan, och av samma skäl: en
+// kortlivad, single-use, server-lagrad bindning mellan ett externt handtag och
+// det anropet får göra. Där bär `state` CSRF-skyddet för en redirect; här bär
+// `orderRef` bindningen mellan en BankID-order och den session som startade den.
+//
+// VARFÖR `userId` BARA VID ENROLL: en ANSLUTNING görs av en inloggad användare,
+// och ordern måste bindas till just det kontot — annars kan A starta en order,
+// låta B slutföra den i sin webbläsare, och därmed knyta B:s personnummer till
+// A:s konto (eller tvärtom). En INLOGGNING har per definition ingen användare
+// än; den bindningen finns inte att göra, och identiteten kommer i stället ur
+// `completionData`.
+//
+// INGEN ORGANISATION i raden. Vid inloggning finns ingen — organisationen
+// kommer ur matchningen (`UserBankIdIdentity` → `User.organizationId`). Ett
+// org-fält hade behövt fyllas med en gissning.
+model BankIdOrder {
+  id         String    @id @default(uuid())
+  /// Providerns handtag. Opakt för oss; unikt så en order inte kan dubbleras.
+  orderRef   String    @unique
+  /// 'ENROLL' | 'LOGIN'. En order för det ena får aldrig fullbordas som det andra.
+  purpose    String
+  /// Satt ENDAST vid ENROLL — kontot ordern är bunden till. Se docblocket.
+  userId     String?
+  /// single-use: sätts atomiskt vid collect. En förbrukad order avvisas.
+  consumedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+
   @@index([expiresAt])
 }
 
