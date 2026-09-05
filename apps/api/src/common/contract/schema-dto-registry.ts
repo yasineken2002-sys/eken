@@ -6,6 +6,8 @@ import {
   CreateReadingSchema,
   CreateSupplierInvoiceSchema,
   CreateTariffSchema,
+  CreateCreditNoteSchema,
+  RegisterPaymentSchema,
   UpdateMeterSchema,
 } from '@eken/shared'
 import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry.dto'
@@ -16,6 +18,8 @@ import { CreateMeterDto } from '../../consumption/dto/create-meter.dto'
 import { UpdateMeterDto } from '../../consumption/dto/update-meter.dto'
 import { RecordReadingDto } from '../../consumption/dto/record-reading.dto'
 import { CreateTariffDto } from '../../consumption/dto/create-tariff.dto'
+import { CreateCreditNoteDto } from '../../invoices/dto/create-credit-note.dto'
+import { RegisterPaymentDto } from '../../invoices/dto/register-payment.dto'
 import type { ZodType } from 'zod'
 
 /**
@@ -203,5 +207,42 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       validFrom: '2026-01-01',
     },
     ogiltigVarfor: 'priset kan inte vara negativt',
+  },
+  {
+    endpoint: 'POST /invoices/:id/pay',
+    inputTyp: 'RegisterPaymentInput',
+    schema: RegisterPaymentSchema,
+    dto: RegisterPaymentDto,
+    giltig: { amount: 1250, paymentMethod: 'Bankgiro', reference: '1234567' },
+    ogiltig: { amount: 0, paymentMethod: 'Bankgiro' },
+    ogiltigVarfor: 'ett inbetalt belopp kan inte vara noll',
+  },
+  {
+    endpoint: 'POST /invoices/:id/credit-note',
+    inputTyp: 'CreateCreditNoteInput',
+    schema: CreateCreditNoteSchema,
+    dto: CreateCreditNoteDto,
+    giltig: {
+      lines: [
+        {
+          invoiceLineId: '11111111-2222-4333-8444-555555555555',
+          quantity: 1,
+          unitPrice: 500,
+        },
+      ],
+      reason: 'Felaktigt debiterad avgift',
+    },
+    ogiltig: {
+      lines: [
+        {
+          invoiceLineId: '11111111-2222-4333-8444-555555555555',
+          quantity: 1,
+          unitPrice: 500,
+        },
+      ],
+      reason: 'fel',
+    },
+    ogiltigVarfor:
+      'skälet är kortare än fem tecken — en kreditering utan skäl går inte att granska',
   },
 ]
